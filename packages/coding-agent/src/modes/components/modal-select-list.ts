@@ -205,20 +205,18 @@ export class ModalSelectListComponent implements Component {
 	render(width: number): string[] {
 		const termHeight = Math.max(14, this.#getTerminalRows());
 		const baseSizing = sizingForArea(MODAL_SIZING_MEDIUM, termHeight);
-		// Content is measured at the WIDEST card this area allows, not at the card the
-		// percentage would have given. The list's label column is capped against a
-		// share of the row, so measuring inside a narrower card reports a column that
-		// the wider card it is about to ask for would not have needed to truncate — and
-		// the card would then settle one pass short of its own content, permanently.
-		// Asking `computeModalDims` for it keeps the border-and-padding arithmetic in
-		// its one owner.
+		// The widest card this area allows, kept as the fallback for an area too small
+		// to honour the sizing the content asks for. The measurement itself no longer
+		// depends on it: `SelectList.naturalWidth()` reports a width at which its own
+		// share cap admits the column it measured, so a card measured inside a
+		// narrower frame no longer settles one pass short of its content.
 		const widestDims = computeModalDims(width, termHeight, { ...baseSizing, preferredWidth: baseSizing.maxWidth });
 		if (!widestDims) {
 			this.#shellGeometry = null;
 			return Array.from({ length: termHeight }, () => padding(width));
 		}
 
-		const sizing = this.#contentSizing(baseSizing, widestDims.contentWidth, width);
+		const sizing = this.#contentSizing(baseSizing, width);
 		const dims = computeModalDims(width, termHeight, sizing) ?? widestDims;
 
 		const body = [...this.#list.render(dims.contentWidth)];
@@ -257,13 +255,13 @@ export class ModalSelectListComponent implements Component {
 	 * body cuts the last word off its title, and the title is the command the
 	 * operator just typed.
 	 */
-	#contentSizing(base: ModalSizing, baseContentWidth: number, areaWidth: number): ModalSizing {
+	#contentSizing(base: ModalSizing, areaWidth: number): ModalSizing {
 		if (this.#cardWidthHighWaterArea !== areaWidth) {
 			this.#cardWidthHighWaterArea = areaWidth;
 			this.#cardWidthHighWater = 0;
 		}
 		const wanted = Math.max(
-			modalWidthForContent(this.#list.naturalWidth(baseContentWidth), base),
+			modalWidthForContent(this.#list.naturalWidth(), base),
 			modalWidthForTitle(visibleWidth(this.#title)),
 		);
 		this.#cardWidthHighWater = Math.max(this.#cardWidthHighWater, wanted);

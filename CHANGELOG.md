@@ -18,7 +18,7 @@
 - `SettingsListTheme.drillIn` sets the glyph a row that opens a submenu carries in its reserved last cell, so a drill-in row is distinguishable from a value row without reading its colour; omitting it leaves the cell blank.
 - `SettingsDescriptionMode` names the three descriptions a settings list can carry: `footnote`, `reserved` (the default) and `none`.
 - `SettingsList.naturalPaneWidth()` reports the width at which no row is cut, measured over every row rather than the filtered ones, so a host that splits its card can ask what the rows cost without a search moving the split.
-- `SelectList.naturalWidth(rowWidth)` reports the row width at which nothing in the list is truncated, so a host card can size itself to its content.
+- `SelectList.naturalWidth()` reports the row width at which nothing in the list is cut by the row's width, including the width its own label-column share cap needs before it admits the column that was measured, so a host card can size itself to its content.
 - `SelectListTheme.searchField` and `SettingsListTheme.searchField` let a host draw the list's search status row, so a product with its own search field shows that field instead of the built-in `Search: ` text; omitting them keeps the built-in text.
 - `SettingsListTheme.emptyRow` lets a host paint the row the list shows when nothing is left after the filter, so a product with its own empty-state voice uses it instead of the list's keyboard-hint style; omitting it keeps the hint style.
 - `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.

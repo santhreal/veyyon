@@ -408,8 +408,7 @@ export class SelectList implements Component, MouseRoutable {
 	}
 
 	/**
-	 * The row width at which nothing in this list is truncated, measured at
-	 * `rowWidth`.
+	 * The row width at which nothing in this list is truncated by its width.
 	 *
 	 * A host card asks this so it can be as wide as its content and no wider. The
 	 * cards used to take a fixed share of the terminal — `MODAL_SIZING_MEDIUM` is
@@ -418,28 +417,36 @@ export class SelectList implements Component, MouseRoutable {
 	 * rest of itself. Height already solved this with a high-water mark; width had
 	 * no equivalent.
 	 *
-	 * `rowWidth` is needed because the primary column is capped against a share of
-	 * the row, so the answer depends on the width being considered. A caller
-	 * shrinking a card passes its CURRENT width: the column measured there is the
-	 * widest it will ever be, so the result is an upper bound on what the list
-	 * needs and a narrower card can only make it smaller.
+	 * The primary column is capped twice over — by the caller's own cap and by a
+	 * share of the row — so the returned width covers both: the column is measured
+	 * against the caller's cap, and the width is wide enough that the share cap
+	 * admits that column rather than rebuilding a narrower one inside it.
+	 *
+	 * A label past the caller's cap is cut at EVERY width, and no width returned
+	 * here changes that; raise `maxPrimaryColumnWidth` if a name has to be whole.
 	 *
 	 * Descriptions are included at their full single-line width, so a list of long
 	 * descriptions reports a width no terminal can honour. That is intended — the
 	 * caller clamps against its own maximum and this returns what the content
 	 * wants, not what the screen allows.
 	 */
-	naturalWidth(rowWidth: number): number {
+	naturalWidth(): number {
 		if (this.#filteredItems.length === 0) return 0;
 		const cursor = this.theme.symbols?.cursor ?? DEFAULT_CURSOR_SYMBOL;
 		const prefixWidth = visibleWidth(cursor) + 1;
-		const primaryColumnWidth = this.#getPrimaryColumnWidth(rowWidth);
+		const { min, max } = this.#getPrimaryColumnBounds();
+		// ONE column for every row, measured over every label exactly as
+		// `#getPrimaryColumnWidth` measures it: a long label with no description of
+		// its own still sets the column the described rows are laid out against.
+		const widestPrimary = this.#filteredItems.reduce((widest, item) => {
+			return Math.max(widest, visibleWidth(this.#getDisplayValue(item)) + PRIMARY_COLUMN_GAP);
+		}, 0);
+		const column = clamp(widestPrimary, min, max);
 		let widest = 0;
 		let anyDescription = false;
 		for (const item of this.#filteredItems) {
-			const label = visibleWidth(this.#getDisplayValue(item));
 			if (!item.description) {
-				widest = Math.max(widest, prefixWidth + label + 2);
+				widest = Math.max(widest, prefixWidth + visibleWidth(this.#getDisplayValue(item)) + 2);
 				continue;
 			}
 			anyDescription = true;
@@ -448,13 +455,16 @@ export class SelectList implements Component, MouseRoutable {
 			// cells, so a row measured to the description's own width would collapse
 			// to the label-only shape the measurement was never taken from.
 			const description = Math.max(visibleWidth(sanitizeSingleLine(item.description)), MIN_DESCRIPTION_WIDTH + 1);
-			const column = Math.max(label + PRIMARY_COLUMN_GAP, primaryColumnWidth);
 			widest = Math.max(widest, prefixWidth + column + description + 2);
 		}
-		// The same shape is also refused outright at 40 cells and under, whatever
-		// fits, so a narrow card of short descriptions has to clear that floor or
-		// draw labels alone.
-		return anyDescription ? Math.max(widest, TWO_COLUMN_MIN_ROW_WIDTH) : widest;
+		// A row measured from its content alone is one the share cap then shrinks the
+		// column inside: a 35-cell column measured into a 50-cell row was rebuilt at
+		// 25 and cut the label the measurement was taken from.
+		const shareFloor = Math.ceil(column / PRIMARY_COLUMN_WIDTH_SHARE);
+		// The two-column shape is also refused outright at 40 cells and under,
+		// whatever fits, so a narrow card of short descriptions has to clear that
+		// floor or draw labels alone.
+		return anyDescription ? Math.max(widest, shareFloor, TWO_COLUMN_MIN_ROW_WIDTH) : widest;
 	}
 
 	render(width: number): readonly string[] {
@@ -811,7 +821,7 @@ export class SelectList implements Component, MouseRoutable {
 
 	/**
 	 * The measured primary column: as wide as the widest label needs, held between
-	 * the caller's floor and the smaller of the caller's cap and a third of the row.
+	 * the caller's floor and the smaller of the caller's cap and half the row.
 	 */
 	#getPrimaryColumnWidth(rowWidth: number): number {
 		const { min, max } = this.#getPrimaryColumnBounds();

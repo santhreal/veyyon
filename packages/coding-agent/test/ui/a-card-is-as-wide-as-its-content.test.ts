@@ -15,6 +15,12 @@
  * is derived from the four ways a caller can state them, so a fifth spelling has to be
  * added here before it can ship.
  *
+ * A THIRD MEMBER, same class: a width MEASURED from content that the render then
+ * shrinks a column inside. The label column is capped twice — by the caller's cap and
+ * by half the row — so a card sized to the content alone was rebuilt with a narrower
+ * column and cut the very label the measurement was taken from. The measurement now
+ * covers both caps, and the sweep renders each list AT the width it reports.
+ *
  * WHAT IT DOES NOT CATCH: it says nothing about cards that do not host a `SelectList`
  * (the account manager, the settings selector, the model hub), which size their own
  * bodies; nothing about height, which the sibling resize suite owns; and nothing about
@@ -26,7 +32,7 @@ import { stripVTControlCharacters } from "node:util";
 import { ModalSelectListComponent } from "@veyyon/coding-agent/modes/components/modal-select-list";
 import { cardBox } from "@veyyon/coding-agent/modes/components/overlay-box";
 import { getSelectListTheme, initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
-import { SelectList, type SelectListLayoutOptions } from "@veyyon/tui";
+import { type SelectItem, SelectList, type SelectListLayoutOptions } from "@veyyon/tui";
 
 beforeAll(async () => {
 	await initTheme(false, "unicode", false, "titanium", "titanium");
@@ -155,9 +161,19 @@ describe("a measured label column", () => {
 		{ value: "short", label: "info", description: "FIRSTDESC" },
 		{ value: "long", label: "a much longer label than the other", description: "SECONDDESC" },
 	];
+	/**
+	 * The widest label carries NO description of its own and still sets the column
+	 * every described row is laid out against. A measurement taken over the described
+	 * rows alone reports a width too narrow for the column the render then builds, and
+	 * the description beside the SHORT label is the thing that falls off it.
+	 */
+	const UNDESCRIBED_WIDEST: readonly SelectItem[] = [
+		{ value: "long", label: "a much longer label than the other" },
+		{ value: "short", label: "info", description: "SECONDDESCRIPTIONTXT" },
+	];
 	const CAP = 22;
 
-	function list(items: typeof SHORT, layout: SelectListLayoutOptions): SelectList {
+	function list(items: readonly SelectItem[], layout: SelectListLayoutOptions): SelectList {
 		return new SelectList(items, 10, getSelectListTheme(), layout);
 	}
 
@@ -209,12 +225,45 @@ describe("a measured label column", () => {
 		expect(row.indexOf("SECONDDESC")).toBeLessThanOrEqual(Math.floor(width / 2) + 4);
 	});
 
-	/** The measurement a card sizes itself from is an upper bound on what the list needs. */
-	it("reports a natural width at which nothing is truncated", () => {
-		const measured = list(WIDE, {});
-		const natural = measured.naturalWidth(200);
+	/**
+	 * The measurement a card sizes itself from has to survive being rendered AT it.
+	 * The column is capped a second time against a share of the row, so a width
+	 * measured from content alone is one the share cap then shrinks the column
+	 * inside: 36 cells of column measured into a 51-cell row was rebuilt at 25 and
+	 * cut the label the measurement was taken from.
+	 */
+	it.each<[string, readonly SelectItem[], SelectListLayoutOptions]>([
+		["a cap the widest label clears", WIDE, { maxPrimaryColumnWidth: 40 }],
+		["a floor and a cap", WIDE, { minPrimaryColumnWidth: 6, maxPrimaryColumnWidth: 40 }],
+		["short labels under every bound", SHORT, {}],
+		["a floor wider than every label", SHORT, { minPrimaryColumnWidth: 20 }],
+		["a described row under an undescribed wider one", UNDESCRIBED_WIDEST, { maxPrimaryColumnWidth: 40 }],
+	])("renders whole at the width it reports with %s", (_name, items, layout) => {
+		const measured = list(items, layout);
+		const natural = measured.naturalWidth();
 		for (const row of measured.render(natural)) {
 			expect(stripVTControlCharacters(row)).not.toContain("…");
 		}
+	});
+
+	/**
+	 * A label past the caller's cap is cut at EVERY width, so the reported width is
+	 * not a promise about the label — it is a promise about the description beside
+	 * it, which is what a wider card can still recover.
+	 */
+	it("keeps the description whole at the reported width even when the cap cuts the label", () => {
+		const measured = list(WIDE, { maxPrimaryColumnWidth: 12 });
+		const rendered = measured.render(measured.naturalWidth()).map(row => stripVTControlCharacters(row));
+		expect(rendered[1]).toContain("SECONDDESC");
+		expect(rendered[1]?.indexOf("…")).toBeLessThan(rendered[1]?.indexOf("SECONDDESC") ?? 0);
+	});
+
+	/** A width nothing needs is a card of empty columns: the measurement is tight, not generous. */
+	it("reports no more than the row it measured needs", () => {
+		const measured = list(WIDE, { maxPrimaryColumnWidth: 40 });
+		// Column 36 (34-cell label plus the two-cell gap) needs 72 cells before the
+		// share cap admits it; the content itself asks for 51.
+		expect(measured.naturalWidth()).toBe(72);
+		expect(list(SHORT, {}).naturalWidth()).toBe(41);
 	});
 });
