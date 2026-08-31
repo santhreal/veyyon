@@ -236,10 +236,14 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 	/**
 	 * The two files this suite was written for. Named one by one, because the
 	 * equality above would also pass if `session/` grew an edge and `task/render.ts`
-	 * lost one.
+	 * lost one. `session-paths.ts` is read from `kernel/`, where the session spine now
+	 * owns it, so the case follows the file instead of asserting on a path.
 	 */
-	it.each(["session/session-paths.ts", "session/image-visibility.ts"])("%s names no TUI package at all", relative => {
-		const source = fs.readFileSync(path.join(SRC, relative), "utf-8");
+	it.each([
+		path.join(import.meta.dir, "..", "..", "..", "..", "kernel", "src", "session", "session-paths.ts"),
+		path.join(SRC, "session", "image-visibility.ts"),
+	])("%s names no TUI package at all", file => {
+		const source = fs.readFileSync(file, "utf-8");
 		const named = [...moduleSpecifiersIn(source), ...typeOnlyModuleSpecifiersIn(source)];
 
 		expect(named.filter(specifier => specifier.startsWith("@veyyon/tui"))).toEqual([]);
@@ -271,10 +275,10 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 		"packages/coding-agent/src/modes/terminal/components/dialogs/pause-screen.ts -> @veyyon/tui",
 		"packages/coding-agent/src/slash-commands/builtin-registry.ts -> @veyyon/tui",
 		"packages/coding-agent/src/slash-commands/helpers/secret.ts -> @veyyon/tui",
-		"packages/coding-agent/src/theme/theme-class.ts -> @veyyon/tui",
-		"packages/coding-agent/src/theme/theme.ts -> @veyyon/tui",
+		"packages/coding-agent/src/theme/theme-class.ts -> @veyyon/tui/terminal-capabilities",
+		"packages/coding-agent/src/theme/theme.ts -> @veyyon/tui/terminal-capabilities",
 		"packages/coding-agent/src/tui/code-cell.ts -> @veyyon/tui",
-		"packages/coding-agent/src/tui/hyperlink.ts -> @veyyon/tui",
+		"packages/coding-agent/src/tui/hyperlink.ts -> @veyyon/tui/terminal-capabilities",
 		"packages/coding-agent/src/tui/output-block.ts -> @veyyon/tui",
 		"packages/coding-agent/src/tui/width-aware-text.ts -> @veyyon/tui",
 	];

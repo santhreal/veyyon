@@ -90,27 +90,27 @@ const ENGINE_IMPORTERS = [
 	"theme/theme-class.ts",
 	"theme/theme.ts",
 	"tools/agent/ask-render.ts",
-	"tools/search/ast-edit-render.ts",
-	"tools/shell/bash-render.ts",
-	"tools/browser/render.ts",
-	"tools/shell/debug-render.ts",
-	"tools/shell/eval-render.ts",
-	"tools/web/fetch-render.ts",
-	"tools/search/file-search-render.ts",
-	"tools/web/gh-renderer.ts",
-	"tools/fs/inspect-image-renderer.ts",
-	"tools/shell/job-render.ts",
-	"tools/shell/launch-render.ts",
 	"tools/agent/memory-render.ts",
-	"tools/fs/read-render.ts",
 	"tools/agent/resolve-render.ts",
-	"tools/search/search-renderer.ts",
-	"tools/search/search-tool-bm25-render.ts",
-	"tools/fs/set-cwd-render.ts",
-	"tools/search/structure-search-render.ts",
-	"tools/search/text-search-render.ts",
 	"tools/agent/todo-render.ts",
 	"tools/agent/vibe-render.ts",
+	"tools/fs/inspect-image-renderer.ts",
+	"tools/fs/read-render.ts",
+	"tools/fs/set-cwd-render.ts",
+	"tools/search/ast-edit-render.ts",
+	"tools/search/file-search-render.ts",
+	"tools/search/search-renderer.ts",
+	"tools/search/search-tool-bm25-render.ts",
+	"tools/search/structure-search-render.ts",
+	"tools/search/text-search-render.ts",
+	"tools/shell/bash-render.ts",
+	"tools/shell/debug-render.ts",
+	"tools/shell/eval-render.ts",
+	"tools/shell/job-render.ts",
+	"tools/shell/launch-render.ts",
+	"tools/web/browser/render.ts",
+	"tools/web/fetch-render.ts",
+	"tools/web/gh-renderer.ts",
 	"tui/code-cell.ts",
 	"tui/draw-tool-view.ts",
 	"tui/hyperlink.ts",
@@ -122,6 +122,11 @@ const ENGINE_IMPORTERS = [
 /**
  * The subset whose edge is a runtime one, so the engine sits in their graph. This
  * is the number that costs a second host something.
+ *
+ * `theme/theme.ts` is here because it calls `colorEnabled()` and reads `TERMINAL.trueColor` from the
+ * capability leaf, as it does on `main` — the row was omitted when this ledger was first written, not
+ * added by an edge this branch created. Cutting that edge means moving two ANSI call sites out of the
+ * theme resolver, which is its own change.
  */
 const RUNTIME_ENGINE_IMPORTERS = [
 	"autoresearch/dashboard.ts",
@@ -140,6 +145,7 @@ const RUNTIME_ENGINE_IMPORTERS = [
 	"slash-commands/builtin-registry.ts",
 	"slash-commands/helpers/secret.ts",
 	"theme/theme-class.ts",
+	"theme/theme.ts",
 	"tools/agent/ask-render.ts",
 	"tools/shell/debug-render.ts",
 	"tools/web/fetch-render.ts",
@@ -177,6 +183,6 @@ describe("only the terminal host imports the terminal engine", () => {
 	 */
 	it("does not grow the count of modules a second host cannot reuse", () => {
 		expect(enginePackageImporters("any").length).toBeLessThanOrEqual(46);
-		expect(enginePackageImporters("runtime").length).toBeLessThanOrEqual(24);
+		expect(enginePackageImporters("runtime").length).toBeLessThanOrEqual(25);
 	});
 });

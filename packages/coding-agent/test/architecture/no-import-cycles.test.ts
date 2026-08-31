@@ -442,8 +442,8 @@ describe("the specific edges that closed the two cycles stay gone", () => {
 	it("still resolves internal URLs, from tools/search-scope", () => {
 		const imports = staticImports("tools/search/search-scope.ts");
 
-		expect(imports).toContain("../internal-urls");
-		expect(imports).toContain("./path-utils");
+		expect(imports).toContain("../../internal-urls");
+		expect(imports).toContain("../core/path-utils");
 		expect(typeof resolveToolSearchScope).toBe("function");
 	});
 });

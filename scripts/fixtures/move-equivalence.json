@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "150315554ca0c22fef89564e38f0275f150d129b",
+	"generatedFrom": "9f9f77948a2209069f9be523c6352f59eaf46926",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -15199,9 +15199,9 @@
 			"differs": "changed",
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
-			"hash": "17a33623df8818a7f129f47e1ed7cc8a20676000eb2a5989dc8e7165f003cdde",
+			"hash": "8db43640b71d58b3091a533f67c58c065ecf34a3a067f31c07c4fd27978a2c9d",
 			"mainHash": "46dfab0c26038f9edad9b7ec842b521779f6a0d6e26eb9781b655711325d52f8",
-			"structuralHash": "e17b57f23f71db04f1a9969b4b00974bd0af4ed6a77e678a908985683af57d91",
+			"structuralHash": "209f7e112cd63b567ac31620e3145e339c184f07c7f873293a320f63406fdf6f",
 			"mainStructuralHash": "043c8c189edf5847406b58fd4da441cf9482d2e100c5027b69db96ce67eb8b8f"
 		},
 		"packages/utils/test/autocomplete-scoring.test.ts": {
@@ -15302,9 +15302,9 @@
 			"differs": "changed",
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
-			"hash": "b68bb2a6bd9d3d1980e7d521c7f2a94558e7acd30bc8e32cce43f57f93d3398d",
+			"hash": "94b89a15cd987d0c5ab0982a97c5fba75cb1d4eb9ce434a72f430691bbc1384c",
 			"mainHash": "f33917b07ec88ab5e9018f5007d384a8827b751c730957a4e862957945b3690a",
-			"structuralHash": "055b39cfcfbb650eafd24ee8f13f11deda99359bf0f5f46132471232b92df406",
+			"structuralHash": "3026b3082307fa4f3cea6d7b32bb441d21bb78164176ba5ae2b16a03e254a54c",
 			"mainStructuralHash": "87da373d530e4173a5ca92020fe9efa2e33c63bed632845b668a0fde89acb43f"
 		},
 		"packages/utils/test/grapheme-boundary-integrity.test.ts": {
@@ -15486,9 +15486,9 @@
 			"differs": "changed",
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
-			"hash": "81f88855b82bbbbb4c45096d47b547bf92156000c14f047a11aac74d712e5132",
+			"hash": "2a8bf95c7313920748a9eb431264b0f00991b5b37968377d418158122dcddda4",
 			"mainHash": "9f92527916e67c3422c098e1c0373527684da6030784120ffbf9cac18f2dc58a",
-			"structuralHash": "234c69d11d5243eb1d07aee4996d821b5d7747963d339d261e256a59cc985cb6",
+			"structuralHash": "4381024e6edb3fa105a4f88dc105cd744168264d13abf185e255c113131d82c1",
 			"mainStructuralHash": "23cda1e62bb4cd9f2746af3a8e94e971a53fed0eab5987bcabc329483288b8f0"
 		},
 		"packages/utils/test/paste-marker-owner.test.ts": {
@@ -15497,9 +15497,9 @@
 			"differs": "changed",
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
-			"hash": "4ec32a416977adacd022c8cc0f90a3a9f252048ed4ea4b7dd148eea13a54a0b7",
+			"hash": "675ee4b289a9c53e8109398c81927d0e5ee98da8b0559729c7120e89eb93b424",
 			"mainHash": "dc54c3605ff33c70d7028aea9012e2adb329de9db9b08bd3db093c2f830fed2b",
-			"structuralHash": "71a79ebacca01391e166b28ca822ccd5ac427735c4ebf1cc305051c6abcd1264",
+			"structuralHash": "f0b593a82781ed66b7a9c23500582e8e526be4b80a90680220fee4e3286b3761",
 			"mainStructuralHash": "0ab4b960e62323007d15d0862484ba149df0e77fb4dedad27e0e5bcd304ba724"
 		},
 		"packages/utils/test/reopen-background-after-resets.test.ts": {
@@ -15535,9 +15535,9 @@
 			"differs": "changed",
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
-			"hash": "027bdb9cb95d44ece94183ca69f0cd1b1a0210af00415b6a69dca4756630c077",
+			"hash": "97a53c14fb7d7fdb788c280bcadde195422a7b3ad8f8f3d2ff1b0d771c702327",
 			"mainHash": "a1b2976d289bfdc512aacd7c0044f195528d9d4c92b95618ec3b0c25180a7591",
-			"structuralHash": "2752d8fbc04d3845b996d1acb729484272269fa834393f5ec82b39707ff23fc9",
+			"structuralHash": "eb679eae2595d74b892fa52374f20682ee1b3a34f5ec2e90cda7038a55c885bc",
 			"mainStructuralHash": "ce5e0a79f3a8f68fe82e5551bf285ee3a8de27478462ad6ff80f4ce977333d3d"
 		},
 		"packages/utils/test/the-motion-clock-always-stops.test.ts": {
@@ -28313,7 +28313,7 @@
 			"old": "packages/mnemopi/test/setup.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "91ddf42ba2c97dd69eca7cef2f736646afe106bdc54c7e55e76c89a159d96da5",
+			"hash": "c140398359e97dd8ec90c357c49e10fff014facbc784be85fd572e9b5c3c6bad",
 			"mainHash": "507a9ba5cc6a9f58e145ccff7da2c8cd8d8642c1110b5e6c9f44425e099d1e68",
 			"structuralHash": "e2252c7845838477d2d6681ab076d43c3601e1d566d98d2e57fe4893576b91cf",
 			"mainStructuralHash": "e2252c7845838477d2d6681ab076d43c3601e1d566d98d2e57fe4893576b91cf"
