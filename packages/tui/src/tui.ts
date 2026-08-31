@@ -382,9 +382,10 @@ function rowsEquivalent(a: string, b: string): boolean {
 	return a.replace(SGR_SEQUENCE, "") === b.replace(SGR_SEQUENCE, "");
 }
 
+const NON_WHITESPACE_RE = /\S/;
 function isBlankRow(row: string): boolean {
 	if (row.length === 0) return true;
-	return row.replace(SGR_SEQUENCE, "").trim().length === 0;
+	return !NON_WHITESPACE_RE.test(row.replace(SGR_SEQUENCE, ""));
 }
 
 const RESYNC_TAIL_LOOKBACK = 24;
