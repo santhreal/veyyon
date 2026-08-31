@@ -418,7 +418,7 @@ export function renderRunScreen(
  */
 export function screenSidebarWidth(width: number): number {
 	const wanted = clampLow(Math.floor(width * 0.28), SIDEBAR_MIN, SIDEBAR_MAX);
-	return Math.max(0, Math.min(wanted, width - 8));
+	return clampLow(wanted, 0, width - 8);
 }
 
 /**

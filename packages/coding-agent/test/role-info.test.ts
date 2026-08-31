@@ -99,7 +99,9 @@ describe("getRoleInfo", () => {
  *
  * The ordering contract pinned here: built-in selectable roles come first in MODEL_ROLE_IDS order,
  * then extra roles introduced by cycleOrder, then modelRoles keys, then modelTags keys, each added
- * once (deduped) and never the legacy "default" role.
+ * once (deduped) and never the legacy "default" role. `advisor` is a slot rather than a selectable
+ * role — the Advisor group's own model row writes it — so it is absent from every list below while
+ * `@advisor` still resolves.
  */
 describe("getKnownRoleIds", () => {
 	test("loads without an import-cycle error and lists the built-in roles first in order", () => {
@@ -111,7 +113,6 @@ describe("getKnownRoleIds", () => {
 			"designer",
 			"commit",
 			"tiny",
-			"advisor",
 		]);
 	});
 
@@ -131,7 +132,6 @@ describe("getKnownRoleIds", () => {
 			"designer",
 			"commit",
 			"tiny",
-			"advisor",
 			"myCustom",
 			"taggedRole",
 		]);
@@ -143,6 +143,6 @@ describe("getKnownRoleIds", () => {
 				modelRoles: { default: "gpt", extraRole: "claude" },
 			}),
 		);
-		expect(roles).toEqual(["smol", "slow", "vision", "plan", "designer", "commit", "tiny", "advisor", "extraRole"]);
+		expect(roles).toEqual(["smol", "slow", "vision", "plan", "designer", "commit", "tiny", "extraRole"]);
 	});
 });
