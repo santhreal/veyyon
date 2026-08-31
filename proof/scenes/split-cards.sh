@@ -24,10 +24,10 @@
 # reports the width it ran at in its own log line.
 #
 #   for px in 720 960 1200 1440; do
-#     SCENE_WIDTH=${px} SCENE_MOTION_FLOOR=2 \
+#     SCENE_WIDTH=${px} SCENE_MOTION_FLOOR=2 SCENE_SEED_ADVISORS=1 \
 #       OUT_DIR="${PWD}/proof/captures/x11/w${px}" \
 #       proof/docker/record-x11.sh proof/scenes/split-cards.sh
-#     SCENE_WIDTH=${px} SCENE_MOTION_FLOOR=2 \
+#     SCENE_WIDTH=${px} SCENE_MOTION_FLOOR=2 SCENE_SEED_ADVISORS=1 \
 #       OUT_DIR="${PWD}/proof/captures/x11/before/w${px}" \
 #       proof/docker/record-x11-before.sh proof/scenes/split-cards.sh
 #   done
@@ -35,7 +35,8 @@
 # OUT_DIR is per width in both arms: one directory cannot hold two takes whose
 # frames share these mark names. The motion floor is lowered because the scene is
 # deliberately still — it holds each card long enough to photograph it — and the
-# default gate reads a still take as a stutter.
+# default gate reads a still take as a stutter. SCENE_SEED_ADVISORS gives the
+# advisor overlay a roster; its empty state has no preview pane to starve.
 #
 # Every guard is a card TITLE, or the stem of one. A title is the one string on
 # these surfaces that survives every width in the sweep and both arms of the pair:
