@@ -147,12 +147,11 @@ describe("ownership-walk meta-lock", () => {
 	// Suites whose traversal genuinely differs from the shared owner and must
 	// keep a bespoke walk:
 	//   math          — also scans scripts/ and conditionally skips modes/
-	//   jwt, json     — skip test/__tests__ by name and scan the whole package tree
 	//   browser-safe-barrel — a browser-import-safety scan, skips only node_modules/dist
+	// jwt and json read the shared collector now, so they are not here: the cell below fails on an
+	// entry whose walk is gone, which is what removed them.
 	const ALLOWED_BESPOKE_WALKS: ReadonlySet<string> = new Set([
 		"utils/test/math.test.ts",
-		"utils/test/jwt.test.ts",
-		"utils/test/json.test.ts",
 		"utils/test/browser-safe-barrel.test.ts",
 	]);
 
