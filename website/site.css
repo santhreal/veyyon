@@ -331,11 +331,7 @@ footer.site{border-top:1px solid var(--line);padding:52px 0;color:var(--dim);fon
   .term .body{font-size:11px}
 }
 
-/* motion — silky reveals + interactions. reveal is added by motion.js only, so
-   no-JS renders everything visible; the global reduced-motion rule disables it. */
-.reveal{transform:translateY(20px);
-  transition:transform var(--dur) var(--ease);transition-delay:var(--d,0ms)}
-.reveal.in{transform:none}
+/* interactions — link arrows and card hovers only, no scroll reveal. */
 .section-link::after,.btn.arrow::after{transition:transform .22s var(--ease)}
 .section-link:hover::after,.btn.arrow:hover::after{transform:translateX(5px)}
 .card{transition:border-color .25s var(--ease),background .25s var(--ease)}
