@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isEnoent } from "@veyyon/utils/fs-error";
 import { isRecord } from "@veyyon/utils/type-guards";
+import { typeScriptMembersOf } from "../../../scripts/workspace-layout";
 
 /** Build-time specifier resolved to bundled legacy Pi module namespaces. */
 export const LEGACY_PI_MODULES_SPECIFIER = "veyyon-legacy-pi-modules";
@@ -11,19 +12,23 @@ const packageDir = path.resolve(import.meta.dir, "..");
 const repoRoot = path.resolve(packageDir, "..", "..");
 
 interface BundledPackage {
-	readonly dir: string;
+	/** The published package name, which is what a member's manifest declares and a specifier says. */
+	readonly name: string;
 	readonly identifier: string;
 	readonly rootShim: string | null;
 }
 
 const BUNDLED_PACKAGES: readonly BundledPackage[] = [
-	{ dir: "agent", identifier: "PiAgentCore", rootShim: null },
-	{ dir: "ai", identifier: "PiAi", rootShim: "legacy-pi-ai-shim.ts" },
-	{ dir: "coding-agent", identifier: "PiCodingAgent", rootShim: "legacy-pi-coding-agent-shim.ts" },
-	{ dir: "natives", identifier: "PiNatives", rootShim: null },
-	{ dir: "tui", identifier: "PiTui", rootShim: "legacy-pi-tui-shim.ts" },
-	{ dir: "utils", identifier: "PiUtils", rootShim: null },
+	{ name: "@veyyon/agent-core", identifier: "PiAgentCore", rootShim: null },
+	{ name: "@veyyon/ai", identifier: "PiAi", rootShim: "legacy-pi-ai-shim.ts" },
+	{ name: "@veyyon/coding-agent", identifier: "PiCodingAgent", rootShim: "legacy-pi-coding-agent-shim.ts" },
+	{ name: "@veyyon/natives", identifier: "PiNatives", rootShim: null },
+	{ name: "@veyyon/tui", identifier: "PiTui", rootShim: "legacy-pi-tui-shim.ts" },
+	{ name: "@veyyon/utils", identifier: "PiUtils", rootShim: null },
 ];
+
+/** The bundled package names, so a sweep states the subject rather than restating this table. */
+export const BUNDLED_PACKAGE_NAMES: readonly string[] = BUNDLED_PACKAGES.map(pkg => pkg.name);
 
 const TYPEBOX_MODULE_KEY = "typebox";
 const TYPEBOX_SHIM = "typebox.ts";
@@ -98,8 +103,47 @@ interface BundledManifest {
 	readonly exports: Record<string, unknown>;
 }
 
-async function readBundledManifest(dir: string): Promise<BundledManifest> {
-	const manifestPath = path.join(repoRoot, "packages", dir, "package.json");
+/**
+ * Every workspace member directory, by the package name its manifest declares.
+ *
+ * A bundled package used to be named by its directory under `packages/`, which stopped being true
+ * the day `@veyyon/tui` became `hosts/terminal/engine` and `@veyyon/natives` became
+ * `natives/bridge/bindings`: the binary build died on a manifest path that no longer exists. The
+ * member list is the package manager's own answer to "where does this package live", so a member
+ * that moves again is followed rather than restated here.
+ */
+let memberDirectoriesByName: Map<string, string> | undefined;
+
+async function memberDirectory(name: string): Promise<string> {
+	if (!memberDirectoriesByName) {
+		const resolved = new Map<string, string>();
+		for (const member of typeScriptMembersOf(repoRoot)) {
+			const manifest: unknown = JSON.parse(await fs.readFile(path.join(repoRoot, member, "package.json"), "utf8"));
+			if (isRecord(manifest) && typeof manifest.name === "string") resolved.set(manifest.name, member);
+		}
+		memberDirectoriesByName = resolved;
+	}
+	const directory = memberDirectoriesByName.get(name);
+	if (directory === undefined) {
+		throw new Error(`Bundled Pi package ${name} is not a workspace member of this checkout`);
+	}
+	return path.join(repoRoot, directory);
+}
+
+/**
+ * Where each bundled package sits in this checkout, by name.
+ *
+ * Exported so a suite can sweep it: a member that moves and a member whose manifest name changes
+ * both break the binary build here, and nothing else in the test suite compiles a binary.
+ */
+export async function bundledPackageDirectories(): Promise<Map<string, string>> {
+	const resolved = new Map<string, string>();
+	for (const pkg of BUNDLED_PACKAGES) resolved.set(pkg.name, await memberDirectory(pkg.name));
+	return resolved;
+}
+
+async function readBundledManifest(packageRoot: string): Promise<BundledManifest> {
+	const manifestPath = path.join(packageRoot, "package.json");
 	const manifest: unknown = JSON.parse(await fs.readFile(manifestPath, "utf8"));
 	if (!isRecord(manifest) || typeof manifest.name !== "string") {
 		throw new Error(`Bundled Pi package manifest has no name: ${manifestPath}`);
@@ -117,7 +161,7 @@ export async function collectShimmedRootKeys(): Promise<string[]> {
 	const keys: string[] = [];
 	for (const pkg of BUNDLED_PACKAGES) {
 		if (!pkg.rootShim) continue;
-		keys.push((await readBundledManifest(pkg.dir)).name);
+		keys.push((await readBundledManifest(await memberDirectory(pkg.name))).name);
 	}
 	return keys;
 }
@@ -142,8 +186,8 @@ export async function collectBundledPiEntries(): Promise<BundledPiEntry[]> {
 	}
 
 	for (const pkg of BUNDLED_PACKAGES) {
-		const packageRoot = path.join(repoRoot, "packages", pkg.dir);
-		const { name, exports: exportsField } = await readBundledManifest(pkg.dir);
+		const packageRoot = await memberDirectory(pkg.name);
+		const { name, exports: exportsField } = await readBundledManifest(packageRoot);
 		const rootSpecifier = pkg.rootShim ? shimSpecifier(pkg.rootShim) : name;
 		addEntry(name, `bundled${pkg.identifier}`, rootSpecifier);
 
