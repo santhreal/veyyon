@@ -186,5 +186,5 @@ content: ""
 - SQLite detection declines when an existing file with a `.sqlite` / `.db` suffix is present but does not have SQLite magic bytes; then the path falls back to a plain file write.
 - Entry content is passed as a string to `writeArchive()`, which encodes string members as UTF-8 for all archive formats.
 - The prompt forbids two common anti-patterns: using `write` for routine edits that should use `edit`, and creating `*.md` / `README` files unless explicitly requested. It also forbids emojis unless requested.
-- Plain file and internal URL writes report `cleanContent.length` as “bytes”, which is UTF-16 code units in JS, not an on-disk byte measurement.
-- `stripWriteContent()` only removes hashline prefixes when the session’s file display mode has `hashLines` enabled; otherwise content is written unchanged.
+- Plain file and internal URL writes report `content.length` as “bytes”, which is UTF-16 code units in JS, not an on-disk byte measurement.
+- `assertValidWriteContent()` refuses content that carries a hashline section header, a hashline patch operation, a read truncation notice, or a read/search line-number prefix, naming the offending line. The write tool strips no display prefix: silently rewriting pasted patch output corrupts the file invisibly, and stripping mangles legitimate numbered text.

@@ -90,7 +90,7 @@ Streaming: none. `WebSearchTool.execute()` forwards its `AbortSignal` into `exec
    - `systemPrompt` from `packages/coding-agent/src/prompts/tools/web-search-system.md`.
 6. A `SearchResponse` with no renderable content (`hasRenderableSearchContent()` returns false) is rejected as a `SearchProviderError` (status `204`) so the loop advances to the next provider. On the first response that has renderable content, `formatForLLM()` renders answer/sources/citations/related/search-queries into one text block and returns it with `details.response`.
 7. If a provider throws, `executeSearch()` records the error and tries the next provider. There is no provider-level parallel fan-out; fallback is sequential.
-8. After all candidates fail, `formatProviderError()` normalizes each error:
+8. After all candidates fail, `formatSearchProviderFailure()` normalizes each error:
    - Anthropic `404` becomes `Anthropic web search returned 404 (model or endpoint not found).`
    - `401`/`403` become `<Provider> authorization failed ...` except Z.AI, which preserves its raw message.
    - other `SearchProviderError`s surface `error.message`.
@@ -258,9 +258,9 @@ Streaming: none. `WebSearchTool.execute()` forwards its `AbortSignal` into `exec
 - Tool-level no-provider case returns a normal tool result with `Error: No web search provider configured.`; it does not throw.
 - Tool-level all-failed case also returns a normal tool result with `Error: ...`; the message is either the single normalized provider error or a semicolon-separated summary of all failed providers.
 - Provider adapters usually throw `SearchProviderError(provider, message, status)` for HTTP or protocol failures.
-- Availability probes intentionally swallow lookup errors and report `false` in many providers via `isApiKeyAvailable()`.
+- Availability probes intentionally swallow lookup errors and report `false` in many providers via `provider.isAvailable()`.
 - Per-provider notable failures:
-  - Anthropic: missing credentials throw a plain `Error`; a `404` is remapped to a special final message by `formatProviderError()`.
+  - Anthropic: missing credentials throw a plain `Error`; a `404` is remapped to a special final message by `formatSearchProviderFailure()`.
   - Perplexity: missing auth throws a plain `Error`; OAuth stream `error_code` events become `SearchProviderError("perplexity", ...)`.
   - Gemini: auth refresh, endpoint fallback, and retry logic are internal; final exhausted failures surface as `SearchProviderError("gemini", ...)`.
   - Codex and Gemini both fail if the HTTP response has no body after a `200`.

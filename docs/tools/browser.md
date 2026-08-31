@@ -237,7 +237,7 @@ The tool returns one result per call; no streaming partial output is emitted fro
 - On run timeout, the worker reports `Browser code execution timed out after <ms>ms` (with `(stalled on <op>)` naming the still-running helper); a single stalled per-op helper instead rejects with `tab.<op>(...) timed out after <ms>ms` before the cell budget is reached. The supervisor may escalate to `Browser code execution hung past grace; tab killed` if the worker does not respond after the grace window.
 
 ## Notes
-- `loadPuppeteer()` and `loadPuppeteerInWorker()` temporarily redirect `cwd` to a safe Puppeteer directory before importing `puppeteer-core`, because Puppeteer probes the current working directory during module load.
+- `loadPuppeteer()` temporarily redirects `cwd` to a safe Puppeteer directory before importing `puppeteer-core`, because Puppeteer probes the current working directory during module load. The tab worker imports the same helper rather than carrying its own loader.
 - Headless launch prefers a detected system Chrome/Chromium, then `PUPPETEER_EXECUTABLE_PATH`, and only then downloads Chromium.
 - Headless launch always passes `--no-sandbox`, `--disable-setuid-sandbox`, `--disable-blink-features=AutomationControlled`, and a `--window-size=...` matching the initial viewport. It also ignores Puppeteer default args `--disable-extensions`, `--disable-default-apps`, and `--disable-component-extensions-with-background-pages`.
 - Proxy-related env vars only affect headless launch: `PUPPETEER_PROXY`, `PUPPETEER_PROXY_BYPASS_LOOPBACK`, and `PUPPETEER_PROXY_IGNORE_CERT_ERRORS`.
