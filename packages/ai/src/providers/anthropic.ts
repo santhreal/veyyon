@@ -1569,7 +1569,7 @@ function buildParams(
 
 function isEmptyToolResultWireContent(content: AnthropicToolResultContent): boolean {
 	if (typeof content === "string") {
-		return content.trim().length === 0;
+		return !/\S/.test(content);
 	}
 	return content.length === 0;
 }
