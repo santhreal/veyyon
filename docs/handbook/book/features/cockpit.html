@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f5243578.js";
+            window.path_to_searchindex_js = "../searchindex-9b847423.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -256,13 +256,19 @@ replaces the defaults rather than adding to them; without it the defaults are <c
 named in the log once. <code>stripWorkPrefix: false</code> turns the whole step off.</p>
 <p>A project inside a temporary directory is shown relative to that temporary directory instead,
 with its own icon, whatever <code>displayRoots</code> says.</p>
-<p>The <code>path</code> and <code>git</code> segments are on screen with the launch card, before the session mounts. Both
-are read from the filesystem: the working directory from the process, the branch from <code>.git/HEAD</code>
-and its ref files. The rest of the row — model, mode, token counts, context gauge — needs the
-session and arrives to the right of them. A repository whose refs are in a reftable has no ref
-files to read, so its branch appears with the session rather than with the card, as does a
-detached HEAD with no operation to name. The dirty marker (<code>*</code>) appears once <code>git status</code> has
-answered, which is after the row is first drawn.</p>
+<p>The launch card draws the whole row before the session mounts. The working directory comes from the
+process, the branch from <code>.git/HEAD</code> and its ref files, and the mode from config. The model name,
+the dirty marker (<code>*</code>) and the context gauge are what the previous launch of this project recorded,
+in <code>cache/launch-facts.json</code>, keyed by the release, the project and the configured model; a change
+to any of those drops the facts it invalidates and the card shows the placeholder instead. Token
+counts start at zero, because nothing has been spent.</p>
+<p>Each recorded fact is replaced by a measured one as the session mounts. A tree committed from
+another terminal since the last launch keeps the recorded marker until <code>git status</code> answers, about
+130ms in. The first launch of a project has nothing recorded: the model reads as the configured
+id’s last path segment until the catalog supplies a display name, and the gauge reads <code>?</code> until a
+prompt has been assembled.</p>
+<p>A repository whose refs are in a reftable has no ref files to read, so its branch appears with the
+session rather than with the card, as does a detached HEAD with no operation to name.</p>
 <p>The <code>secrets</code> segment shows that a stored credential is live where you are working: <code>2 secrets</code>. It counts
 what would actually expand at the tool boundary in this directory, not what is in the vault file, so
 a credential scoped elsewhere or already expired is not counted. It hides itself when nothing is
