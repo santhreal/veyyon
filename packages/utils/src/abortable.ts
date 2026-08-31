@@ -1,4 +1,6 @@
-import assert from "node:assert/strict";
+// One invariant check, thrown by hand rather than through `node:assert/strict`. That module cost
+// 8.6ms of evaluation, measured on compiled binaries against an empty baseline, and this module is
+// on the launch path, so the card waited on an assertion library for a single `if`.
 
 /**
  * The error the abortable helpers in this module reject with.
@@ -22,7 +24,7 @@ import assert from "node:assert/strict";
  */
 export class AbortError extends Error {
 	constructor(signal: AbortSignal) {
-		assert(signal.aborted, "Abort signal must be aborted");
+		if (!signal.aborted) throw new Error("Abort signal must be aborted");
 
 		const { reason } = signal;
 		const message = reason instanceof Error ? reason.message : "Cancelled";

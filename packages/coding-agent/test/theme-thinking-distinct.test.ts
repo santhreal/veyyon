@@ -5,7 +5,7 @@ import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/compone
 import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
-import { defaultThemes } from "@veyyon/coding-agent/theme/defaults";
+import { getDefaultThemes } from "@veyyon/coding-agent/theme/defaults";
 import { getResolvedThemeColors, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
 
@@ -100,7 +100,7 @@ describe("thinking text visual distinctness", () => {
 	});
 
 	it("every builtin theme resolves thinkingText distinct from body text", async () => {
-		const names = ["dark", "light", ...Object.keys(defaultThemes)];
+		const names = ["dark", "light", ...Object.keys(getDefaultThemes())];
 		const offenders: string[] = [];
 		for (const name of names) {
 			const colors = await getResolvedThemeColors(name);

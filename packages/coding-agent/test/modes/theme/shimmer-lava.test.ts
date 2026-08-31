@@ -19,11 +19,11 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { ThemeJson } from "@veyyon/coding-agent/theme/color";
-import { defaultThemes } from "@veyyon/coding-agent/theme/defaults";
+import { getDefaultThemes } from "@veyyon/coding-agent/theme/defaults";
 import { LAVA_TUNING, lavaAnsi, lavaText } from "@veyyon/coding-agent/theme/shimmer";
 import { createTheme } from "@veyyon/coding-agent/theme/theme";
 
-const theme = createTheme(defaultThemes.titanium as ThemeJson, { mode: "truecolor" });
+const theme = createTheme(getDefaultThemes().titanium as ThemeJson, { mode: "truecolor" });
 
 function rgb(ansi: string | undefined): number[] {
 	const m = ansi?.match(/38;2;(\d+);(\d+);(\d+)/);

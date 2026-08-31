@@ -91,6 +91,16 @@
 - The `ask` tool emits a host-agnostic `HostNotification` through `ToolSession.notify` instead of calling the terminal, and the running host installs its delivery through `setToolNotifier`; a host that cannot reach an operator outside its own window installs nothing and the capability reads as absent.
 - Source-path comments in `modes/terminal/controllers/input-controller.ts`, `tools/render-utils.ts`, `utils/block-context.ts` and `utils/shell-snapshot.ts` name the Rust modules they cite at their new paths under `natives/`. No user-visible behavior changes.
 - A commit whose changes all sit under a grouping directory named `natives` proposes the directory below it as the scope, the way `crates`, `packages` and `tests` already do, instead of proposing `natives`.
+- Compaction can truncate the middle of an oversized text, keeping both edges, in any message role — including the roles that store their model-visible text outside `content`, such as a shell cell's `output`, a summary's `summary` and a file mention's `files[i].content`.
+- `VEYYON_DEBUG_STARTUP` emits a `native:firstCall:<export>` marker naming the native call that first loads the addon, so a launch that pays extraction before its first frame states which call pulled it in.
+- `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
+- `getLaunchFactsCachePath()` resolves the cache file the launch card reads the previous launch's model, git state and context percentage from.
+- `formatCostTiered()` and `normalizePremiumRequests()`, moved here from `@veyyon/stats/format` so the status row reaches a terminal formatter without the stats package.
+- `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
+
+### Changed
+
+- The launch card paints about 8ms sooner: the bundled themes are embedded as text and parsed on the ask instead of building all 98 before the first frame, and the card path no longer evaluates `node:assert/strict`, `node:crypto`, `node:inspector`, `node:child_process` or `node:zlib` for calls it does not make.
 - The home screen hero drops the recent-session row; `/welcome` still lists recent sessions.
 - The launch card paints the whole status row from config instead of a hand-written path and branch, so the profile, model, approval rung, branch and context gauge are on screen with the first frame; measured on a pty against the built binary, the row lands at 47-48ms rather than 1067-1083ms and the frame is editable at 49-50ms.
 - The status row's segment gathering and row fitting live in one module, `modes/components/status-line/quiet-row.ts`, which the live footline and the launch card both render through, so the two rows cannot carry different segments or order them differently.
@@ -144,6 +154,7 @@
 - `getLaunchFactsCachePath()` resolves the cache file the launch card reads the previous launch's model, git state and context percentage from.
 - `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
 - `workspaceModuleReachResolution()` resolves every workspace member declared by the root manifest, at whatever depth it sits, instead of the direct children of `packages/`, so a cross-package specifier into `@veyyon/kernel`, `@veyyon/tui`, a contract or a plugin resolves again and every module-reach ceiling built on it measures what it claims.
+- `AbortError`, the file lock and the postmortem handler no longer load `node:assert/strict`, `node:crypto` or `node:inspector` at import, which the launch path waited on for one assertion, one identifier and one signal handler.
 
 ### Removed
 
@@ -225,6 +236,7 @@
 - Codex remote compaction keeps at least one user turn when the retained-token budget it is handed is not a finite number, instead of replaying a window holding nothing but the compaction item.
 - A Codex server-side compaction sends the session's `prompt_cache_key`, so it lands on the session's cached prefix instead of missing it and making the next turn re-pay full uncached input.
 - A Codex server-side compaction with no session id is refused instead of minting a random conversation identity, which opened a second cache lineage and left the post-compaction history reset with nothing to find.
+- The addon loader resolves `node:child_process` and `node:zlib` when it loads an addon rather than when it is imported, so importing `@veyyon/natives` for its types or enum values costs 3ms less.
 - A compiled binary's first launch of a version extracts only the native addon variant the host loads, instead of every variant the binary carries, so a cold start writes about 135MB rather than 270MB before the first frame; the skipped variants are written on demand if the selected one fails to load.
 - A compiled binary carries one embedded archive per native addon variant instead of one archive holding all of them, so a cold launch inflates only the variant it loads; cold first paint on linux-x64 drops from 361ms to 229ms.
 - A sixel-capable terminal now renders inline images on Linux and macOS: the terminal is asked at startup instead of being matched against a list that named no sixel terminal at all, so images no longer silently fail to appear outside kitty, ghostty, wezterm, iTerm2 and Warp.

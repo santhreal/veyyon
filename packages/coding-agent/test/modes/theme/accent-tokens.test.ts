@@ -18,10 +18,10 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { ThemeJson } from "@veyyon/coding-agent/theme/color";
-import { defaultThemes } from "@veyyon/coding-agent/theme/defaults";
+import { getDefaultThemes } from "@veyyon/coding-agent/theme/defaults";
 import { createTheme } from "@veyyon/coding-agent/theme/theme";
 
-const titanium = defaultThemes.titanium;
+const titanium = getDefaultThemes().titanium;
 
 /** Extract `r;g;b` from a 24-bit foreground open sequence. */
 function rgbOf(ansi: string): string {
@@ -103,7 +103,7 @@ describe("accent tokens — themes that predate them get the documented defaults
 	 * regression that motivated the chain was a single optional-color theme
 	 * failing to load at all. */
 	it("all builtin themes load and resolve all five tokens", () => {
-		for (const [name, json] of Object.entries(defaultThemes)) {
+		for (const [name, json] of Object.entries(getDefaultThemes())) {
 			const t = createTheme(json as ThemeJson, { mode: "truecolor" });
 			for (const token of ["sessionAccent", "modeAccent", "shareAccent", "infoAccent", "matchHighlight"] as const) {
 				// A real 24-bit foreground open sequence. `toBeTruthy` passed on an undefined-derived
@@ -151,7 +151,7 @@ describe("composerBg — the quiet card ground (DS-6 layer 0)", () => {
 	 * is the terminal's own background unless a theme explicitly declares a
 	 * composer card. */
 	it("defaults to the unpainted terminal ground when omitted", () => {
-		for (const [name, json] of Object.entries(defaultThemes)) {
+		for (const [name, json] of Object.entries(getDefaultThemes())) {
 			const colors = (json as ThemeJson).colors as Record<string, unknown>;
 			if ("composerBg" in colors) continue;
 			const t = createTheme(json as ThemeJson, { mode: "truecolor" });
@@ -161,7 +161,7 @@ describe("composerBg — the quiet card ground (DS-6 layer 0)", () => {
 
 	/** All builtin themes must still load with the new bg token resolvable. */
 	it("all builtin themes resolve composerBg", () => {
-		for (const [name, json] of Object.entries(defaultThemes)) {
+		for (const [name, json] of Object.entries(getDefaultThemes())) {
 			const t = createTheme(json as ThemeJson, { mode: "truecolor" });
 			// Either the unpainted sentinel or a real 24-bit background open sequence. A truthy
 			// check passed on any non-empty string, including a raw var name or a bare "#1e1f29"

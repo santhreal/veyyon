@@ -27,10 +27,10 @@ import {
 	shimmerPhase,
 } from "@veyyon/coding-agent/modes/terminal/components/chrome/follow";
 import type { ThemeJson } from "@veyyon/coding-agent/theme/color";
-import { defaultThemes } from "@veyyon/coding-agent/theme/defaults";
+import { getDefaultThemes } from "@veyyon/coding-agent/theme/defaults";
 import { createTheme } from "@veyyon/coding-agent/theme/theme";
 
-const theme = createTheme(defaultThemes.titanium as ThemeJson, { mode: "truecolor" });
+const theme = createTheme(getDefaultThemes().titanium as ThemeJson, { mode: "truecolor" });
 
 /** The exact `r;g;b` triple a theme token resolves to, as paintHotTail emits it. */
 function rgbOf(token: "thinkingText" | "toolOutput" | "accent"): string {

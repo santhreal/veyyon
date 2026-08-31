@@ -1,4 +1,7 @@
-import { randomUUID } from "node:crypto";
+// `crypto.randomUUID` off the global WebCrypto object rather than `node:crypto`. This module is on
+// the launch path (`dirs.ts` locks with it), and importing `node:crypto` for one identifier cost
+// about 4ms of module evaluation before the first frame reached the terminal. The global is the
+// same generator, present on Bun 1.3 and Node 22 without an import.
 import * as fsSync from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -697,12 +700,12 @@ async function prepareCandidate(lockPath: string): Promise<{
 	lease: LockLease;
 	parentIdentity: FileIdentity;
 }> {
-	const candidatePath = `${lockPath}.candidate-${process.pid}-${randomUUID()}`;
+	const candidatePath = `${lockPath}.candidate-${process.pid}-${crypto.randomUUID()}`;
 	const parentIdentity = await inspectParent(lockPath);
 	await fs.mkdir(candidatePath, { mode: 0o700 });
 	await assertParentIdentity(lockPath, parentIdentity);
 	try {
-		const token = randomUUID();
+		const token = crypto.randomUUID();
 		const handle = await fs.open(path.join(candidatePath, "info"), "wx", 0o600);
 		try {
 			await handle.writeFile(JSON.stringify(buildLockInfo(token)), "utf8");
@@ -740,12 +743,12 @@ function prepareCandidateSync(lockPath: string): {
 	lease: LockLease;
 	parentIdentity: FileIdentity;
 } {
-	const candidatePath = `${lockPath}.candidate-${process.pid}-${randomUUID()}`;
+	const candidatePath = `${lockPath}.candidate-${process.pid}-${crypto.randomUUID()}`;
 	const parentIdentity = inspectParentSync(lockPath);
 	fsSync.mkdirSync(candidatePath, { mode: 0o700 });
 	assertParentIdentitySync(lockPath, parentIdentity);
 	try {
-		const token = randomUUID();
+		const token = crypto.randomUUID();
 		const fd = fsSync.openSync(path.join(candidatePath, "info"), "wx", 0o600);
 		try {
 			fsSync.writeFileSync(fd, JSON.stringify(buildLockInfo(token)), "utf8");

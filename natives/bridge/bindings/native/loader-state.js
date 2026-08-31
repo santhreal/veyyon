@@ -1,9 +1,7 @@
-import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as zlib from "node:zlib";
 import packageJson from "../package.json" with { type: "json" };
 import { embeddedAddon } from "./embedded-addon.js";
 
@@ -99,6 +97,20 @@ function getNativesDir() {
 export function versionedNativeCacheDir(version) {
 	return path.join(getNativesDir(), version);
 }
+
+/**
+ * `node:child_process` and `node:zlib`, resolved on first use rather than imported.
+ *
+ * Every export of this package is a lazy accessor, so a consumer that imports `@veyyon/natives`
+ * for its types or its enum values loads no addon. Those two imports broke that promise for the
+ * platform layer: they were evaluated at import, and they are the two most expensive modules on the
+ * launch path, costing 2.0ms and 4.1ms of a 45ms first frame measured on compiled binaries against
+ * an empty baseline, for a subprocess probe and a gunzip that only `loadNative()` performs.
+ *
+ * `createRequire` rather than `require`, which is not defined in an ES module under Node, and
+ * rather than `await import()`, because both callers are synchronous.
+ */
+const requireRuntime = createRequire(import.meta.url);
 
 function resolveLeafPackageDir(platformTag) {
 	try {
@@ -430,7 +442,7 @@ function runCommand(command, args) {
 		}
 	}
 	try {
-		const result = childProcess.spawnSync(command, args, { encoding: "utf-8" });
+		const result = requireRuntime("node:child_process").spawnSync(command, args, { encoding: "utf-8" });
 		if (result.error) return null;
 		if (result.status !== 0) return null;
 		return (result.stdout || "").trim();
@@ -715,7 +727,7 @@ function trialLoadModernAddon() {
 	startupMarker(`native:avx2:trial:${addonPath}`);
 	let result;
 	try {
-		result = childProcess.spawnSync(process.execPath, ["-e", TRIAL_LOAD_SCRIPT], {
+		result = requireRuntime("node:child_process").spawnSync(process.execPath, ["-e", TRIAL_LOAD_SCRIPT], {
 			env: { ...process.env, VEYYON_TRIAL_ADDON_PATH: addonPath },
 			encoding: "utf-8",
 			timeout: 30_000,
@@ -935,7 +947,7 @@ export function extractEmbeddedAddonArchive({ archivePath, files, targetDir }) {
 	}
 	if (pending.size === 0) return [];
 
-	const archive = zlib.gunzipSync(fs.readFileSync(archivePath));
+	const archive = requireRuntime("node:zlib").gunzipSync(fs.readFileSync(archivePath));
 	const writtenPaths = [];
 	let offset = 0;
 
