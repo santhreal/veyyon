@@ -13,7 +13,7 @@ use crate::{
 	motion::{MotionKey, OwnerNamespace, Property, RetainedKey, owner},
 	paint,
 	theme::{Theme, radius, space},
-	ui::focus::FocusScope,
+	ui::{Float, Floating, focus::FocusScope},
 };
 
 type DismissListener = Box<dyn Fn(DismissalRoute, &mut Window, &mut App) + 'static>;
@@ -135,11 +135,7 @@ impl RenderOnce for AnchoredPopover {
 		div()
 			.opacity(opacity)
 			.p(px(space::BASE))
-			.rounded(px(radius::POPOVER))
-			.bg(theme.overlay)
-			.border_1()
-			.border_color(theme.stroke)
-			.shadow(theme.shadow_menu())
+			.floating(&theme, Float::Menu, radius::POPOVER)
 			.overflow_hidden()
 			.children(self.children)
 			.into_any_element()

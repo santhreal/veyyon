@@ -10,7 +10,11 @@
 
 use gpui::{AnyView, App, Context, IntoElement, Render, SharedString, Window, div, prelude::*, px};
 
-use super::{kbd, text};
+use super::{
+	kbd,
+	surface::{Float, Floating},
+	text,
+};
 use crate::theme::{Theme, radius, size, space};
 
 /// A control's name, and the keystroke that reaches it.
@@ -48,11 +52,7 @@ impl Render for Tip {
 			text::line_of(space::SNUG)
 				.px(px(space::BASE))
 				.py(px(space::TIGHT + 1.0))
-				.rounded(px(radius::CONTROL))
-				.bg(theme.overlay)
-				.border_1()
-				.border_color(theme.stroke)
-				.shadow(theme.shadow_menu())
+				.floating(&theme, Float::Menu, radius::CONTROL)
 				.text_size(px(size::meta()))
 				.text_color(theme.text)
 				.child(text::line(self.what.clone()))

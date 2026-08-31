@@ -10,7 +10,11 @@ use gpui::{
 	SharedString, Styled, Window, div, px,
 };
 
-use super::{Badge, Button, Fill, Icon, Size, Tone, icon, text};
+use super::{
+	Badge, Button, Fill, Icon, Size, Tone, icon,
+	surface::{Float, Floating},
+	text,
+};
 use crate::{
 	motion::{MotionKey, OwnerNamespace, Property, RetainedKey, control},
 	paint,
@@ -191,11 +195,10 @@ impl RenderOnce for Toast {
 			.gap(px(space::BASE))
 			.w(px(320.0))
 			.p(px(space::BASE))
-			.rounded(px(radius::CARD))
-			.bg(theme.overlay)
-			.border_1()
+			.floating(&theme, Float::Menu, radius::CARD)
+			// The tone is the toast's own edge, so it keeps the float's face and
+			// its shadow and states its status in the border.
 			.border_color(self.tone.tint(&theme))
-			.shadow(theme.shadow_menu())
 			.opacity(opacity)
 			.relative()
 			.top(px(translation_y))

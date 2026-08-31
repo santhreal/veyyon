@@ -17,7 +17,7 @@ use crate::{
 	motion::{MotionKey, Property, RetainedKey, lerp},
 	paint,
 	theme::{Elevation, Theme, layout, radius, space},
-	ui::Scrolls,
+	ui::{Float, Floating, Scrolls},
 };
 
 type Click = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
@@ -177,11 +177,7 @@ impl RenderOnce for Sheet {
 			.flex()
 			.flex_col()
 			.gap(px(space::SNUG))
-			.rounded(px(radius::SHEET))
-			.bg(theme.overlay)
-			.border_1()
-			.border_color(theme.stroke)
-			.shadow(theme.shadow_sheet())
+			.floating(&theme, Float::Sheet, radius::SHEET)
 			.children(self.children)
 			.on_mouse_down(MouseButton::Left, |_event, _window, cx| cx.stop_propagation());
 		let mut sheet = div()

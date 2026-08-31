@@ -4,7 +4,7 @@ use gpui::{App, Div, ParentElement, Styled, div, px};
 use veyyon_gui_core::{Store, UiCommand};
 use veyyon_gui_kit::{
 	theme::{Theme, radius, space},
-	ui::{Empty, Icon, Row, text},
+	ui::{Empty, Float, Floating, Icon, Row, text},
 };
 
 use super::{completion, logic, state::completion_owner};
@@ -22,8 +22,7 @@ pub fn completion_menu(store: &Store, cx: &mut App) -> Option<Div> {
 		.flex_col()
 		.gap(px(space::ROWS))
 		.p(px(space::X6))
-		.rounded(px(radius::POPOVER))
-		.bg(theme.overlay);
+		.floating(&theme, Float::Menu, radius::POPOVER);
 	let Some(registry) = registry else {
 		return Some(menu.child(Empty::new("Completions are not available yet").icon(Icon::Magic)));
 	};
