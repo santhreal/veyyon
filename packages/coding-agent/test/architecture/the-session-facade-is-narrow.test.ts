@@ -184,7 +184,17 @@ describe("the facade's module graph", () => {
 	});
 
 	it("imports the session runtime and nothing else from outside its own directory tree", () => {
-		const specifiers = importSpecifiers(facade).filter(specifier => specifier.startsWith("."));
-		expect(specifiers.sort()).toEqual(["./agent-session", "./agent-session-types", "./client-bridge", "./messages"]);
+		const specifiers = importSpecifiers(facade);
+		expect(specifiers.filter(specifier => specifier.startsWith(".")).sort()).toEqual([
+			"./agent-session",
+			"./agent-session-types",
+			"./messages",
+		]);
+		// The client bridge left this directory for the kernel's session spine, so the edge is
+		// pinned at its new spelling rather than dropped: a facade that reaches a second kernel
+		// module, or reaches one through a barrel, fails here.
+		expect(specifiers.filter(specifier => specifier.startsWith("@veyyon/kernel")).sort()).toEqual([
+			"@veyyon/kernel/session/client-bridge",
+		]);
 	});
 });

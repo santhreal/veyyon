@@ -574,11 +574,13 @@ describe("AgentSession context promotion", () => {
 		// The rollback runs after the event, so wait for it rather than racing it. This row seeds
 		// roughly twice the window (~1 MB of prose) and the rescue tiers re-tokenize that tail before
 		// the rollback lands, which the shared 500 ms default does not cover on a loaded runner. The
-		// bound is still a bound: a rollback that never runs fails here.
+		// bound is still a bound: a rollback that never runs fails here, and the cell's own budget
+		// below contains the wait — a wait longer than the cell reports as a timeout and then keeps
+		// asserting against whatever session the next row has installed.
 		await waitFor(() => session.messages.at(-1)?.role === "assistant", 10_000);
 		expect(session.messages.at(-1)?.role).toBe("assistant");
 		expect((session.messages.at(-1) as AssistantMessage).stopReason).toBe("error");
-	});
+	}, 20_000);
 
 	it("promotes to a larger-context model on response.incomplete (length stop)", async () => {
 		const sparkModel = modelRegistry.find("openai-codex", "gpt-5.3-codex-spark");

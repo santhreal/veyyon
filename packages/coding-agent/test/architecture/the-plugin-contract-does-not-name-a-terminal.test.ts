@@ -61,6 +61,12 @@ import { createNoOpUIContext } from "../../src/extensibility/utils";
 
 const EXTENSIBILITY_DIR = path.join(import.meta.dir, "..", "..", "src", "extensibility");
 
+/** The kernel's contribution registry, which owns the host-agnostic view declaration. */
+const KERNEL_REGISTRY_DIR = path.join(import.meta.dir, "..", "..", "..", "..", "kernel", "src", "registry");
+
+/** The subpath every renderer contract imports `HostView` through. */
+const HOST_VIEW_SPECIFIER = "@veyyon/kernel/registry/host-view";
+
 /**
  * Every member that took a terminal, listed by name because that is what a host had to
  * implement. Two of them -- `setHeader` and `setFooter` -- no longer exist anywhere: they
@@ -137,15 +143,15 @@ describe("the published plugin contract does not name a terminal", () => {
 		// The drift this blocks: a contract widened by writing `unknown` inline instead of
 		// importing the shared declaration. Both spellings type-check and both look
 		// host-agnostic, but a second one has nowhere to carry the reasoning, and the two
-		// then diverge the first time the type gains structure. `extensibility/host-view.ts`
+		// then diverge the first time the type gains structure. `@veyyon/kernel/registry/host-view`
 		// is the one declaration; a renderer contract that does not import it is drifting.
-		const declaration = fs.readFileSync(path.join(EXTENSIBILITY_DIR, "host-view.ts"), "utf8");
+		const declaration = fs.readFileSync(path.join(KERNEL_REGISTRY_DIR, "host-view.ts"), "utf8");
 		expect(declaration).toMatch(/export type HostView\b/);
 		expect(declaration).not.toMatch(/from "@veyyon\/tui"/);
 
 		for (const contract of ["custom-tools/types.ts", "extensions/types.ts", "hooks/types.ts"]) {
 			const source = fs.readFileSync(path.join(EXTENSIBILITY_DIR, ...contract.split("/")), "utf8");
-			expect(source).toMatch(/import type \{ HostView \} from "\.\.\/host-view";/);
+			expect(source).toContain(`import type { HostView } from "${HOST_VIEW_SPECIFIER}";`);
 			expect(source).toContain("=> HostView;");
 		}
 	});
