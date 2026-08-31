@@ -535,11 +535,14 @@ describe("what the launch card knows before a session exists", () => {
 	 */
 	it("writes once for facts that have not changed", async () => {
 		await record({ contextPercent: 40, gitStatus: DIRTY });
-		const writes = vi.spyOn(atomicWrite, "atomicWriteJson");
+		const written: string[] = [];
+		vi.spyOn(atomicWrite, "atomicWriteJson").mockImplementation(async (file: string) => {
+			written.push(file);
+		});
 
 		for (let redraw = 0; redraw < 50; redraw++) await recordLaunchFacts({ contextPercent: 40, gitStatus: DIRTY });
 
-		expect(writes).toHaveBeenCalledTimes(0);
+		expect(written).toEqual([]);
 	});
 
 	/**
