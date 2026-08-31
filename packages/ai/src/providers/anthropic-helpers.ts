@@ -844,6 +844,7 @@ export type AnthropicToolResultContent =
 			  }
 	  >;
 
+const NON_WHITESPACE_RE = /\S/;
 export function convertContentBlocks(
 	content: (TextContent | ImageContent)[],
 	supportsImages = true,
@@ -865,7 +866,7 @@ export function convertContentBlocks(
 	for (const block of content) {
 		if (block.type === "text") {
 			const text = block.text.toWellFormed();
-			if (text.trim().length === 0) continue;
+			if (!NON_WHITESPACE_RE.test(text)) continue;
 			sawText = true;
 			blocks.push({ type: "text", text });
 			continue;
