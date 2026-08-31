@@ -1,31 +1,26 @@
 import { describe, expect, it } from "bun:test";
-import type { Message } from "@veyyon/ai";
+import type { Api, Message, Model } from "@veyyon/ai";
+import type { ResolvedAnthropicCompat } from "@veyyon/catalog/types";
 import {
 	buildCacheAlignedCompactionContext,
+	type CacheAlignedEligibility,
 	canUseCacheAlignedCompaction,
 	estimateCacheAlignedRequestTokens,
 	hasUnansweredToolCall,
 	modelServesPrefixCacheHits,
 } from "../src/compaction/cache-aligned-context";
 
-function makeModel(api: string, supportsLongCacheRetention = false): never {
-	return { api, compat: { supportsLongCacheRetention } } as never;
+function makeModel(api: string, supportsCache = false): Model<Api> {
+	return {
+		api,
+		compat: { supportsLongCacheRetention: supportsCache } as ResolvedAnthropicCompat,
+	} as unknown as Model<Api>;
 }
 
-function makeUserMessage(text: string): Message {
-	return { role: "user", content: [{ type: "text", text }], timestamp: 0 } as Message;
-}
-
-function makeAssistantMessage(content: Message["content"]): Message {
+function makeAssistantMessage(toolCalls: Array<{ id: string; name: string }>): Message {
 	return {
 		role: "assistant",
-		content,
-		api: "anthropic-messages" as never,
-		provider: "anthropic",
-		model: "claude-sonnet-4",
-		usage: { input: 0, output: 0 } as never,
-		stopReason: "stop",
-		timestamp: 0,
+		content: toolCalls.map(tc => ({ type: "toolCall", id: tc.id, name: tc.name, arguments: {} })),
 	} as Message;
 }
 
@@ -33,27 +28,28 @@ function makeToolResultMessage(toolCallId: string): Message {
 	return {
 		role: "toolResult",
 		toolCallId,
-		toolName: "read",
-		content: [{ type: "text", text: "result" }],
-		isError: false,
-		timestamp: 0,
+		content: [],
+	} as Message;
+}
+
+function makeUserMessage(text: string): Message {
+	return {
+		role: "user",
+		content: [{ type: "text", text }],
 	} as Message;
 }
 
 describe("modelServesPrefixCacheHits", () => {
-	it("returns true for anthropic-messages with supportsLongCacheRetention", () => {
+	it("returns true for anthropic-messages with cache support", () => {
 		expect(modelServesPrefixCacheHits(makeModel("anthropic-messages", true))).toBe(true);
 	});
-
-	it("returns false for anthropic-messages without supportsLongCacheRetention", () => {
+	it("returns false for anthropic-messages without cache support", () => {
 		expect(modelServesPrefixCacheHits(makeModel("anthropic-messages", false))).toBe(false);
 	});
-
-	it("returns false for non-anthropic-messages API", () => {
-		expect(modelServesPrefixCacheHits(makeModel("openai-chat", true))).toBe(false);
+	it("returns false for non-anthropic api", () => {
+		expect(modelServesPrefixCacheHits(makeModel("openai", true))).toBe(false);
 	});
-
-	it("returns false for unknown API", () => {
+	it("returns false for unknown api", () => {
 		expect(modelServesPrefixCacheHits(makeModel("unknown", true))).toBe(false);
 	});
 });
@@ -62,234 +58,219 @@ describe("hasUnansweredToolCall", () => {
 	it("returns false for empty messages", () => {
 		expect(hasUnansweredToolCall([])).toBe(false);
 	});
-
-	it("returns false for user-only messages", () => {
-		expect(hasUnansweredToolCall([makeUserMessage("hi")])).toBe(false);
+	it("returns false when all tool calls have results", () => {
+		const messages: Message[] = [makeAssistantMessage([{ id: "c1", name: "read" }]), makeToolResultMessage("c1")];
+		expect(hasUnansweredToolCall(messages)).toBe(false);
 	});
-
-	it("returns true for assistant with toolCall and no result", () => {
-		const msg = makeAssistantMessage([{ type: "toolCall", id: "tc1", name: "read", input: {} } as never]);
-		expect(hasUnansweredToolCall([msg])).toBe(true);
+	it("returns true when tool call has no result", () => {
+		const messages: Message[] = [makeAssistantMessage([{ id: "c1", name: "read" }])];
+		expect(hasUnansweredToolCall(messages)).toBe(true);
 	});
-
-	it("returns false for assistant with toolCall followed by result", () => {
-		const msg = makeAssistantMessage([{ type: "toolCall", id: "tc1", name: "read", input: {} } as never]);
-		expect(hasUnansweredToolCall([msg, makeToolResultMessage("tc1")])).toBe(false);
+	it("returns true when one of multiple tool calls is unanswered", () => {
+		const messages: Message[] = [
+			makeAssistantMessage([
+				{ id: "c1", name: "read" },
+				{ id: "c2", name: "write" },
+			]),
+			makeToolResultMessage("c1"),
+		];
+		expect(hasUnansweredToolCall(messages)).toBe(true);
 	});
-
-	it("returns true when only some tool calls are answered", () => {
-		const msg = makeAssistantMessage([
-			{ type: "toolCall", id: "tc1", name: "read", input: {} } as never,
-			{ type: "toolCall", id: "tc2", name: "write", input: {} } as never,
-		]);
-		expect(hasUnansweredToolCall([msg, makeToolResultMessage("tc1")])).toBe(true);
+	it("returns false for user messages only", () => {
+		const messages: Message[] = [makeUserMessage("hello")];
+		expect(hasUnansweredToolCall(messages)).toBe(false);
 	});
-
-	it("returns false for assistant with text-only content", () => {
-		const msg = makeAssistantMessage([{ type: "text", text: "hi" } as never]);
-		expect(hasUnansweredToolCall([msg])).toBe(false);
+	it("handles interleaved assistant and tool results", () => {
+		const messages: Message[] = [
+			makeAssistantMessage([{ id: "c1", name: "read" }]),
+			makeToolResultMessage("c1"),
+			makeAssistantMessage([{ id: "c2", name: "read" }]),
+			makeToolResultMessage("c2"),
+		];
+		expect(hasUnansweredToolCall(messages)).toBe(false);
 	});
-
-	it("handles multiple assistant messages with mixed results", () => {
-		const msg1 = makeAssistantMessage([{ type: "toolCall", id: "tc1", name: "read", input: {} } as never]);
-		const msg2 = makeAssistantMessage([{ type: "toolCall", id: "tc2", name: "write", input: {} } as never]);
-		expect(hasUnansweredToolCall([msg1, makeToolResultMessage("tc1"), msg2, makeToolResultMessage("tc2")])).toBe(
-			false,
-		);
-	});
-
-	it("returns true when result comes before the tool call", () => {
-		// result without a preceding toolCall - pending set is empty, then toolCall adds
-		const msg = makeAssistantMessage([{ type: "toolCall", id: "tc1", name: "read", input: {} } as never]);
-		expect(hasUnansweredToolCall([makeToolResultMessage("tc1"), msg])).toBe(true);
+	it("handles duplicate tool call ids", () => {
+		const messages: Message[] = [
+			makeAssistantMessage([{ id: "c1", name: "read" }]),
+			makeToolResultMessage("c1"),
+			makeAssistantMessage([{ id: "c1", name: "read" }]),
+		];
+		expect(hasUnansweredToolCall(messages)).toBe(true);
 	});
 });
 
 describe("canUseCacheAlignedCompaction", () => {
-	it("returns false when model does not serve prefix cache hits", () => {
-		expect(
-			canUseCacheAlignedCompaction({
-				model: makeModel("openai-chat", true),
-				sessionSystemPrompt: ["system"],
-				sessionMessages: [makeUserMessage("hi")],
-			}),
-		).toBe(false);
-	});
+	const validModel = makeModel("anthropic-messages", true);
+	const validPrompt = ["system prompt"];
+	const validMessages: Message[] = [makeUserMessage("hello")];
 
-	it("returns false for undefined system prompt", () => {
-		expect(
-			canUseCacheAlignedCompaction({
-				model: makeModel("anthropic-messages", true),
-				sessionSystemPrompt: undefined,
-				sessionMessages: [makeUserMessage("hi")],
-			}),
-		).toBe(false);
+	it("returns true when all conditions met", () => {
+		const input: CacheAlignedEligibility = {
+			model: validModel,
+			sessionSystemPrompt: validPrompt,
+			sessionMessages: validMessages,
+		};
+		expect(canUseCacheAlignedCompaction(input)).toBe(true);
 	});
-
-	it("returns false for empty system prompt array", () => {
-		expect(
-			canUseCacheAlignedCompaction({
-				model: makeModel("anthropic-messages", true),
-				sessionSystemPrompt: [],
-				sessionMessages: [makeUserMessage("hi")],
-			}),
-		).toBe(false);
+	it("returns false when model does not serve prefix cache", () => {
+		const input: CacheAlignedEligibility = {
+			model: makeModel("openai", true),
+			sessionSystemPrompt: validPrompt,
+			sessionMessages: validMessages,
+		};
+		expect(canUseCacheAlignedCompaction(input)).toBe(false);
 	});
-
-	it("returns false for all-empty-string system prompt", () => {
-		expect(
-			canUseCacheAlignedCompaction({
-				model: makeModel("anthropic-messages", true),
-				sessionSystemPrompt: ["", ""],
-				sessionMessages: [makeUserMessage("hi")],
-			}),
-		).toBe(false);
+	it("returns false when system prompt is undefined", () => {
+		const input: CacheAlignedEligibility = {
+			model: validModel,
+			sessionSystemPrompt: undefined,
+			sessionMessages: validMessages,
+		};
+		expect(canUseCacheAlignedCompaction(input)).toBe(false);
 	});
-
-	it("returns false for undefined session messages", () => {
-		expect(
-			canUseCacheAlignedCompaction({
-				model: makeModel("anthropic-messages", true),
-				sessionSystemPrompt: ["system"],
-				sessionMessages: undefined,
-			}),
-		).toBe(false);
+	it("returns false when system prompt is empty array", () => {
+		const input: CacheAlignedEligibility = {
+			model: validModel,
+			sessionSystemPrompt: [],
+			sessionMessages: validMessages,
+		};
+		expect(canUseCacheAlignedCompaction(input)).toBe(false);
 	});
-
-	it("returns false for empty session messages", () => {
-		expect(
-			canUseCacheAlignedCompaction({
-				model: makeModel("anthropic-messages", true),
-				sessionSystemPrompt: ["system"],
-				sessionMessages: [],
-			}),
-		).toBe(false);
+	it("returns false when all system prompt blocks are empty strings", () => {
+		const input: CacheAlignedEligibility = {
+			model: validModel,
+			sessionSystemPrompt: ["", ""],
+			sessionMessages: validMessages,
+		};
+		expect(canUseCacheAlignedCompaction(input)).toBe(false);
 	});
-
+	it("returns false when messages are undefined", () => {
+		const input: CacheAlignedEligibility = {
+			model: validModel,
+			sessionSystemPrompt: validPrompt,
+			sessionMessages: undefined,
+		};
+		expect(canUseCacheAlignedCompaction(input)).toBe(false);
+	});
+	it("returns false when messages are empty", () => {
+		const input: CacheAlignedEligibility = {
+			model: validModel,
+			sessionSystemPrompt: validPrompt,
+			sessionMessages: [],
+		};
+		expect(canUseCacheAlignedCompaction(input)).toBe(false);
+	});
 	it("returns false when there are unanswered tool calls", () => {
-		const msg = makeAssistantMessage([{ type: "toolCall", id: "tc1", name: "read", input: {} } as never]);
-		expect(
-			canUseCacheAlignedCompaction({
-				model: makeModel("anthropic-messages", true),
-				sessionSystemPrompt: ["system"],
-				sessionMessages: [msg],
-			}),
-		).toBe(false);
+		const input: CacheAlignedEligibility = {
+			model: validModel,
+			sessionSystemPrompt: validPrompt,
+			sessionMessages: [makeAssistantMessage([{ id: "c1", name: "read" }])],
+		};
+		expect(canUseCacheAlignedCompaction(input)).toBe(false);
 	});
-
-	it("returns true when all conditions are met", () => {
-		expect(
-			canUseCacheAlignedCompaction({
-				model: makeModel("anthropic-messages", true),
-				sessionSystemPrompt: ["system"],
-				sessionMessages: [makeUserMessage("hi")],
-			}),
-		).toBe(true);
-	});
-
-	it("returns true with at least one non-empty system prompt block", () => {
-		expect(
-			canUseCacheAlignedCompaction({
-				model: makeModel("anthropic-messages", true),
-				sessionSystemPrompt: ["", "system"],
-				sessionMessages: [makeUserMessage("hi")],
-			}),
-		).toBe(true);
+	it("returns true when system prompt has at least one non-empty block", () => {
+		const input: CacheAlignedEligibility = {
+			model: validModel,
+			sessionSystemPrompt: ["", "actual prompt"],
+			sessionMessages: validMessages,
+		};
+		expect(canUseCacheAlignedCompaction(input)).toBe(true);
 	});
 });
 
 describe("buildCacheAlignedCompactionContext", () => {
-	it("builds context with system prompt, messages, and instruction", () => {
-		const result = buildCacheAlignedCompactionContext({
+	it("builds context with messages and instruction", () => {
+		const ctx = buildCacheAlignedCompactionContext({
 			sessionSystemPrompt: ["system"],
-			sessionMessages: [makeUserMessage("hi")],
-			instruction: "Summarize",
-			timestamp: 1000,
+			sessionMessages: [makeUserMessage("hello")],
+			instruction: "compact this",
 		});
-		expect(result.systemPrompt).toEqual(["system"]);
-		expect(result.messages).toHaveLength(2);
-		expect(result.messages[1].role).toBe("user");
+		expect(ctx.systemPrompt).toEqual(["system"]);
+		expect(ctx.messages).toHaveLength(2);
 	});
-
+	it("appends instruction as user message", () => {
+		const ctx = buildCacheAlignedCompactionContext({
+			sessionSystemPrompt: ["system"],
+			sessionMessages: [],
+			instruction: "compact this",
+		});
+		const lastMessage = ctx.messages[ctx.messages.length - 1];
+		expect(lastMessage.role).toBe("user");
+	});
 	it("applies sanitize function to instruction", () => {
-		const result = buildCacheAlignedCompactionContext({
+		const ctx = buildCacheAlignedCompactionContext({
 			sessionSystemPrompt: ["system"],
 			sessionMessages: [],
-			instruction: "raw",
-			sanitize: (text: string) => `clean:${text}`,
-			timestamp: 0,
+			instruction: "compact this",
+			sanitize: (text: string) => text.toUpperCase(),
 		});
-		const lastMsg = result.messages[0] as { content: { type: string; text: string }[] };
-		expect(lastMsg.content[0].text).toBe("clean:raw");
+		const lastMessage = ctx.messages[ctx.messages.length - 1] as Extract<
+			(typeof ctx.messages)[number],
+			{ role: "user" }
+		>;
+		const textBlock = lastMessage.content[0] as { type: string; text: string };
+		expect(textBlock.text).toBe("COMPACT THIS");
 	});
-
-	it("uses Date.now() when timestamp is undefined", () => {
-		const before = Date.now();
-		const result = buildCacheAlignedCompactionContext({
+	it("uses provided timestamp", () => {
+		const ctx = buildCacheAlignedCompactionContext({
 			sessionSystemPrompt: ["system"],
 			sessionMessages: [],
-			instruction: "test",
+			instruction: "compact",
+			timestamp: 12345,
 		});
-		const after = Date.now();
-		const lastMsg = result.messages[0] as { timestamp: number };
-		expect(lastMsg.timestamp).toBeGreaterThanOrEqual(before);
-		expect(lastMsg.timestamp).toBeLessThanOrEqual(after);
+		const lastMessage = ctx.messages[ctx.messages.length - 1] as Extract<
+			(typeof ctx.messages)[number],
+			{ role: "user" }
+		>;
+		expect(lastMessage.timestamp).toBe(12345);
 	});
-
-	it("passes tools through when provided", () => {
-		const tools = [{ name: "read" }] as never;
-		const result = buildCacheAlignedCompactionContext({
+	it("passes tools through", () => {
+		const tools = [{ name: "read" }] as unknown as import("@veyyon/ai").Tool[];
+		const ctx = buildCacheAlignedCompactionContext({
 			sessionSystemPrompt: ["system"],
 			sessionMessages: [],
-			instruction: "test",
+			instruction: "compact",
 			tools,
-			timestamp: 0,
 		});
-		expect(result.tools).toBe(tools);
-	});
-
-	it("preserves session messages before the instruction", () => {
-		const userMsg = makeUserMessage("hello");
-		const result = buildCacheAlignedCompactionContext({
-			sessionSystemPrompt: ["system"],
-			sessionMessages: [userMsg],
-			instruction: "summarize",
-			timestamp: 0,
-		});
-		expect(result.messages[0]).toBe(userMsg);
-		expect(result.messages).toHaveLength(2);
+		expect(ctx.tools).toBe(tools);
 	});
 });
 
 describe("estimateCacheAlignedRequestTokens", () => {
-	it("returns positive number for non-empty input", () => {
-		const result = estimateCacheAlignedRequestTokens({
+	it("returns positive count for non-empty input", () => {
+		const tokens = estimateCacheAlignedRequestTokens({
 			sessionSystemPrompt: ["system prompt"],
 			sessionMessages: [makeUserMessage("hello world")],
-			instruction: "summarize this",
+			instruction: "compact this",
 		});
-		expect(result).toBeGreaterThan(0);
+		expect(tokens).toBeGreaterThan(0);
 	});
-
-	it("returns positive number for minimal input", () => {
-		const result = estimateCacheAlignedRequestTokens({
-			sessionSystemPrompt: ["s"],
+	it("returns count for empty messages", () => {
+		const tokens = estimateCacheAlignedRequestTokens({
+			sessionSystemPrompt: ["system"],
 			sessionMessages: [],
-			instruction: "i",
+			instruction: "compact",
 		});
-		expect(result).toBeGreaterThan(0);
+		expect(tokens).toBeGreaterThan(0);
 	});
-
-	it("increases with more content", () => {
+	it("returns count for empty system prompt", () => {
+		const tokens = estimateCacheAlignedRequestTokens({
+			sessionSystemPrompt: [],
+			sessionMessages: [],
+			instruction: "compact",
+		});
+		expect(tokens).toBeGreaterThan(0);
+	});
+	it("increases with more messages", () => {
 		const small = estimateCacheAlignedRequestTokens({
-			sessionSystemPrompt: ["s"],
-			sessionMessages: [],
-			instruction: "i",
+			sessionSystemPrompt: ["system"],
+			sessionMessages: [makeUserMessage("a")],
+			instruction: "compact",
 		});
 		const large = estimateCacheAlignedRequestTokens({
-			sessionSystemPrompt: ["s".repeat(1000)],
-			sessionMessages: [makeUserMessage("x".repeat(1000))],
-			instruction: "i".repeat(100),
+			sessionSystemPrompt: ["system"],
+			sessionMessages: [makeUserMessage("a"), makeUserMessage("b"), makeUserMessage("c")],
+			instruction: "compact",
 		});
 		expect(large).toBeGreaterThan(small);
 	});
