@@ -7,7 +7,7 @@ use veyyon_gui_core::{
 };
 use veyyon_gui_kit::{
 	input::Editor,
-	motion::{OwnerNamespace, RetainedKey},
+	motion::{OwnerNamespace, owner},
 	theme::{Theme, space},
 	ui::{Badge, Banner, Card, Empty, Fill, Icon, SearchField, Size, Tone, text},
 };
@@ -16,7 +16,6 @@ use super::logic::{self, ProviderStatus, VirtualWindow};
 use crate::{act, settings::remote};
 
 const PAGE_ROWS: usize = 32;
-const SEARCH_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Settings, 6);
 
 pub fn render(store: &Store, field: &Entity<Editor>, cx: &mut App) -> AnyElement {
 	remote::render(
@@ -65,7 +64,11 @@ fn page(
 					btn
 				}),
 		)
-		.child(SearchField::new("provider-filter", SEARCH_OWNER, field.clone()))
+		.child(SearchField::new(
+			"provider-filter",
+			owner(OwnerNamespace::Settings, "filter", "provider-filter"),
+			field.clone(),
+		))
 		.child(provider_content(
 			auth,
 			query,

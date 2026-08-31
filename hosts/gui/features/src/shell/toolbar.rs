@@ -3,7 +3,7 @@
 use gpui::{AnyElement, App, InteractiveElement, IntoElement, ParentElement, Styled, div, px};
 use veyyon_gui_core::{Store, UiCommand, navigation::Route};
 use veyyon_gui_kit::{
-	motion::{OwnerNamespace, RetainedKey},
+	motion::{OwnerNamespace, owner},
 	theme::{Theme, layout, space},
 	ui::{Button, Fill, Icon, Tone, text},
 };
@@ -38,11 +38,15 @@ pub fn route(store: &Store, route: Route, cx: &mut App) -> AnyElement {
 		.child(text::label(label, &theme))
 		.child(text::spacer())
 		.children(action.map(|(tip, command)| {
-			Button::new("route-refresh", RetainedKey::semantic(OwnerNamespace::Shell, 20), Icon::Retry)
-				.tip(tip)
-				.fill(Fill::Ghost)
-				.tone(Tone::Muted)
-				.on_click(act::click(command))
+			Button::new(
+				"route-refresh",
+				owner(OwnerNamespace::Shell, "toolbar", "route-refresh"),
+				Icon::Retry,
+			)
+			.tip(tip)
+			.fill(Fill::Ghost)
+			.tone(Tone::Muted)
+			.on_click(act::click(command))
 		}))
 		.into_any_element()
 }

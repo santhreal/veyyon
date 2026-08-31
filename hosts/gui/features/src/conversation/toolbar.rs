@@ -7,17 +7,17 @@ use veyyon_gui_core::{
 	navigation::Overlay,
 };
 use veyyon_gui_kit::{
-	motion::{OwnerNamespace, RetainedKey},
 	theme::{Theme, layout, space},
 	ui::{Banner, Button, Icon, text},
 };
 
-use super::{logic, state::SessionShelfState};
+use super::{
+	logic,
+	state::{ControlSlot, SessionShelfState},
+};
 use crate::act;
 
-const TOOLBAR_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Conversation, 102);
-
-pub fn route_toolbar(store: &Store, state: &SessionShelfState, cx: &mut App) -> Div {
+pub fn route_toolbar(store: &Store, cx: &mut App) -> Div {
 	let theme = Theme::get(cx);
 	let selected = store.frontend.selected_session.as_ref();
 	let title = selected_title(store, selected).unwrap_or("Conversation");
@@ -29,7 +29,7 @@ pub fn route_toolbar(store: &Store, state: &SessionShelfState, cx: &mut App) -> 
 			.h(px(layout::toolbar()))
 			.px(px(space::X12))
 			.child(text::line(title.to_owned()).flex_1().min_w(px(0.0)))
-			.children(selected.map(|session| actions(store, state, session))),
+			.children(selected.map(|session| actions(store, session))),
 	);
 	if let Some(error) = store
 		.replica
@@ -68,14 +68,13 @@ fn selected_title<'a>(store: &'a Store, selected: Option<&SessionId>) -> Option<
 		.map(logic::row_title)
 }
 
-fn actions(store: &Store, state: &SessionShelfState, session: &SessionId) -> Div {
+fn actions(store: &Store, session: &SessionId) -> Div {
 	let current_name = selected_title(store, Some(session))
 		.unwrap_or_default()
 		.to_owned();
 	let rename = action(
-		state,
 		session,
-		1,
+		ControlSlot::Rename,
 		Icon::Rename,
 		"Rename conversation",
 		Some(UiCommand::OpenOverlay(Overlay::RenameSession {
@@ -90,9 +89,8 @@ fn actions(store: &Store, state: &SessionShelfState, session: &SessionId) -> Div
 		.as_ref()
 		.map(|entry| UiCommand::BranchSession { session: session.clone(), entry: entry.clone() });
 	let branch = action(
-		state,
 		session,
-		2,
+		ControlSlot::Branch,
 		Icon::BranchFrom,
 		"Branch from selected entry",
 		branch_command.clone(),
@@ -102,36 +100,32 @@ fn actions(store: &Store, state: &SessionShelfState, session: &SessionId) -> Div
 			.or_else(|| capability_reason(store, Capability::SessionTreeNavigation)),
 	);
 	let export = action(
-		state,
 		session,
-		3,
+		ControlSlot::Export,
 		Icon::Export,
 		"Export conversation",
 		Some(UiCommand::ExportSession { session: session.clone(), output_path: None }),
 		capability_reason(store, Capability::Sessions),
 	);
 	let compact = action(
-		state,
 		session,
-		4,
+		ControlSlot::Compact,
 		Icon::Compact,
 		"Compact context",
 		Some(UiCommand::CompactSession { session: session.clone(), instructions: None }),
 		capability_reason(store, Capability::Sessions),
 	);
 	let handoff = action(
-		state,
 		session,
-		5,
+		ControlSlot::Handoff,
 		Icon::Handoff,
 		"Handoff conversation",
 		Some(UiCommand::HandoffSession { session: session.clone(), instructions: None }),
 		capability_reason(store, Capability::Sessions),
 	);
 	let delete = action(
-		state,
 		session,
-		6,
+		ControlSlot::Delete,
 		Icon::Delete,
 		"Delete conversation",
 		Some(UiCommand::OpenOverlay(Overlay::Confirmation {
@@ -156,16 +150,16 @@ fn actions(store: &Store, state: &SessionShelfState, session: &SessionId) -> Div
 }
 
 fn action(
-	state: &SessionShelfState,
 	session: &SessionId,
-	slot: u8,
+	slot: ControlSlot,
 	icon: Icon,
 	label: &'static str,
 	command: Option<UiCommand>,
 	disabled: Option<String>,
 ) -> Button {
-	let owner = state.control_owner(session, slot).unwrap_or(TOOLBAR_OWNER);
-	let mut button = Button::new(format!("session-action-{slot}:{session}"), owner, icon).tip(label);
+	let owner = SessionShelfState::control_owner(session, slot);
+	let mut button =
+		Button::new(format!("session-action-{}:{session}", slot.offset()), owner, icon).tip(label);
 	if let Some(command) = command {
 		button = button.on_click(act::click(command));
 	}

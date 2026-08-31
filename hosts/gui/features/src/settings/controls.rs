@@ -1,48 +1,13 @@
 //! Stable retained identities for settings-owned controls.
 
-use std::{
-	collections::BTreeMap,
-	sync::{LazyLock, Mutex},
-};
-
 use gpui::SharedString;
 use veyyon_gui_kit::{
-	motion::{OwnerNamespace, RetainedKey},
+	motion::{OwnerNamespace, RetainedKey, owner},
 	ui::{Button, Icon, Row, Select, Spinner, Stepper, Switch, Tab},
 };
 
-static REGISTRY: LazyLock<Mutex<SettingsKeyRegistry>> =
-	LazyLock::new(|| Mutex::new(SettingsKeyRegistry::new()));
-struct SettingsKeyRegistry {
-	owners: BTreeMap<String, RetainedKey>,
-	next:   u64,
-}
-
-impl SettingsKeyRegistry {
-	fn new() -> Self {
-		Self { owners: BTreeMap::new(), next: 1 }
-	}
-
-	fn get_or_create(&mut self, value: &str) -> RetainedKey {
-		if let Some(key) = self.owners.get(value) {
-			return *key;
-		}
-		let local = self.next;
-		self.next = self.next.saturating_add(1);
-		let key = RetainedKey::scoped(OwnerNamespace::Settings, local, 0).unwrap_or_else(|| {
-			RetainedKey::semantic(OwnerNamespace::Settings, (local & 0x00ff_ffff) as u32)
-		});
-		self.owners.insert(value.to_owned(), key);
-		key
-	}
-}
-
 pub fn key(value: &str) -> RetainedKey {
-	if let Ok(mut guard) = REGISTRY.lock() {
-		guard.get_or_create(value)
-	} else {
-		RetainedKey::semantic(OwnerNamespace::Settings, 1)
-	}
+	owner(OwnerNamespace::Settings, "control", value)
 }
 
 pub fn button(id: impl Into<SharedString>, label: impl Into<SharedString>) -> Button {

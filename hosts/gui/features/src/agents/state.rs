@@ -1,78 +1,63 @@
 //! Long-lived retained identity registry for agents, transcripts, and controls.
 
-use std::{cell::RefCell, collections::BTreeMap};
-
 use veyyon_gui_core::model::AgentId;
-use veyyon_gui_kit::motion::{OwnerNamespace, RetainedKey};
+use veyyon_gui_kit::motion::{OwnerNamespace, RetainedKey, control, owner as kit_owner};
 
-const FIRST_DYNAMIC_OWNER: u64 = 256;
-
-#[derive(Debug)]
-pub struct AgentsState {
-	agents: BTreeMap<AgentId, RetainedKey>,
-	owners: BTreeMap<String, RetainedKey>,
-	next:   u64,
+/// A control drawn against one agent row, and the offset inside that row's
+/// block it animates on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
+pub enum ControlSlot {
+	/// Expand / collapse toggle on an agent hierarchy row.
+	Expand = 1,
+	/// Send button on the agent chat composer.
+	Chat   = 2,
+	/// Kill button on the selected-agent detail panel.
+	Kill   = 3,
+	/// Revive button on the selected-agent detail panel.
+	Revive = 4,
 }
 
-impl Default for AgentsState {
-	fn default() -> Self {
-		Self { agents: BTreeMap::new(), owners: BTreeMap::new(), next: FIRST_DYNAMIC_OWNER }
+impl ControlSlot {
+	pub const ALL: [ControlSlot; 4] =
+		[ControlSlot::Expand, ControlSlot::Chat, ControlSlot::Kill, ControlSlot::Revive];
+
+	/// The offset inside the row's block.
+	pub const fn offset(self) -> u64 {
+		self as u64
 	}
 }
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct AgentsState;
 
 impl AgentsState {
-	pub fn agent_owner(&mut self, id: &AgentId) -> RetainedKey {
-		if let Some(owner) = self.agents.get(id) {
-			return *owner;
-		}
-		let owner = RetainedKey::scoped(OwnerNamespace::Agents, self.next, 0).unwrap_or_else(|| {
-			RetainedKey::semantic(OwnerNamespace::Agents, (self.next & 0x00ff_ffff) as u32)
-		});
-		self.next = self.next.saturating_add(1);
-		self.agents.insert(id.clone(), owner);
-		owner
+	pub fn agent_owner(&self, id: &AgentId) -> RetainedKey {
+		agent_owner(id)
 	}
 
-	pub fn owner(&mut self, key: &str) -> RetainedKey {
-		if let Some(owner) = self.owners.get(key) {
-			return *owner;
-		}
-		let owner = RetainedKey::scoped(OwnerNamespace::Agents, self.next, 0).unwrap_or_else(|| {
-			RetainedKey::semantic(OwnerNamespace::Agents, (self.next & 0x00ff_ffff) as u32)
-		});
-		self.next = self.next.saturating_add(1);
-		self.owners.insert(key.to_owned(), owner);
-		owner
+	pub fn owner(&self, key: &str) -> RetainedKey {
+		owner(key)
 	}
 
-	pub fn control_owner(&mut self, agent: &AgentId, slot: u8) -> RetainedKey {
-		let base = self.agent_owner(agent);
-		RetainedKey::new(
-			base
-				.object
-				.saturating_mul(16)
-				.saturating_add(u64::from(slot)),
-			base.generation,
-		)
+	pub fn control_owner(&self, agent: &AgentId, slot: ControlSlot) -> RetainedKey {
+		control_owner(agent, slot)
 	}
-}
-
-thread_local! {
-	static REGISTRY: RefCell<AgentsState> = RefCell::new(AgentsState::default());
 }
 
 pub fn with_state<R>(f: impl FnOnce(&mut AgentsState) -> R) -> R {
-	REGISTRY.with(|cell| f(&mut cell.borrow_mut()))
+	let mut state = AgentsState;
+	f(&mut state)
 }
 
 pub fn agent_owner(id: &AgentId) -> RetainedKey {
-	with_state(|state| state.agent_owner(id))
+	kit_owner(OwnerNamespace::Agents, "agent", id.as_str())
 }
 
 pub fn owner(key: &str) -> RetainedKey {
-	with_state(|state| state.owner(key))
+	kit_owner(OwnerNamespace::Agents, "chrome", key)
 }
 
-pub fn control_owner(agent: &AgentId, slot: u8) -> RetainedKey {
-	with_state(|state| state.control_owner(agent, slot))
+pub fn control_owner(agent: &AgentId, slot: ControlSlot) -> RetainedKey {
+	control(OwnerNamespace::Agents, "agent", agent.as_str(), slot as u8)
 }

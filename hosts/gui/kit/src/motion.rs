@@ -17,6 +17,7 @@ mod curve;
 mod eval;
 mod index;
 mod model;
+mod owners;
 mod registry;
 mod sample;
 pub mod spec;
@@ -29,8 +30,11 @@ pub use model::{
 	MAX_CONTINUOUS_TRACKS, MotionKey, OwnerGenerations, OwnerNamespace, Priority, Program, Property,
 	RetainedKey, Sample, Spring, Steps, Tween, Wake,
 };
+pub use owners::{BLOCK, control, owner, owner_at};
 pub use registry::{Ghost, Motion};
 pub use sample::{sample, sample_spring, sample_tween};
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod two_names_never_share_one_track;

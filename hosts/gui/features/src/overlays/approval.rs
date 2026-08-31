@@ -15,25 +15,15 @@ use veyyon_gui_kit::{
 
 use super::{
 	interaction::{self, RequestState},
-	state::OverlayState,
+	state::owner_of,
 };
 use crate::act;
 
-pub fn render(
-	store: &Store,
-	id: &InteractionId,
-	state: &mut OverlayState,
-	open: bool,
-	cx: &mut App,
-) -> AnyElement {
-	let Some(sheet_owner) = state.owner(format!("approval:{id}")) else {
-		return Banner::failure("Approval unavailable").into_any_element();
-	};
+pub fn render(store: &Store, id: &InteractionId, open: bool, cx: &mut App) -> AnyElement {
+	let sheet_owner = owner_of(&format!("approval:{id}"));
 	let body = match interaction::request(store, id) {
 		RequestState::Loading => {
-			let Some(owner) = state.owner(format!("approval:{id}:loading")) else {
-				return Banner::failure("Approval unavailable").into_any_element();
-			};
+			let owner = owner_of(&format!("approval:{id}:loading"));
 			Spinner::new(owner, Icon::Running).into_any_element()
 		},
 		RequestState::Missing => Empty::new("This approval request has ended")
@@ -41,7 +31,8 @@ pub fn render(
 			.into_any_element(),
 		RequestState::Error { message, retryable } => {
 			let mut banner = Banner::failure("Approval unavailable").detail(message.to_owned());
-			if retryable && let Some(owner) = state.owner(format!("approval:{id}:retry")) {
+			if retryable {
+				let owner = owner_of(&format!("approval:{id}:retry"));
 				banner = banner.child(
 					Button::labelled("approval-retry", owner, "Retry")
 						.on_click(act::click(UiCommand::RetryConnection)),
@@ -49,8 +40,8 @@ pub fn render(
 			}
 			banner.into_any_element()
 		},
-		RequestState::Stale(request, reason) => form(store, request, Some(reason), state, cx),
-		RequestState::Ready(request) => form(store, request, None, state, cx),
+		RequestState::Stale(request, reason) => form(store, request, Some(reason), cx),
+		RequestState::Ready(request) => form(store, request, None, cx),
 	};
 	let theme = Theme::get(cx);
 	Sheet::new("approval-dialog", sheet_owner, open)
@@ -68,7 +59,6 @@ fn form(
 	store: &Store,
 	request: &InteractionRequest,
 	stale: Option<String>,
-	state: &mut OverlayState,
 	cx: &mut App,
 ) -> AnyElement {
 	let theme = Theme::get(cx);
@@ -144,18 +134,10 @@ fn form(
 				.pad(space::BASE)
 				.child(text::body(arguments.clone(), &theme)),
 		);
-	let Some(deny_owner) = control_owner(state, request, "deny") else {
-		return Banner::failure("Approval controls unavailable").into_any_element();
-	};
-	let Some(session_owner) = control_owner(state, request, "session") else {
-		return Banner::failure("Approval controls unavailable").into_any_element();
-	};
-	let Some(always_owner) = control_owner(state, request, "always") else {
-		return Banner::failure("Approval controls unavailable").into_any_element();
-	};
-	let Some(once_owner) = control_owner(state, request, "once") else {
-		return Banner::failure("Approval controls unavailable").into_any_element();
-	};
+	let deny_owner = control_owner(request, "deny");
+	let session_owner = control_owner(request, "session");
+	let always_owner = control_owner(request, "always");
+	let once_owner = control_owner(request, "once");
 	content = content.child(
 		div()
 			.flex()
@@ -207,12 +189,8 @@ fn form(
 	content.into_any_element()
 }
 
-fn control_owner(
-	state: &mut OverlayState,
-	request: &InteractionRequest,
-	control: &str,
-) -> Option<RetainedKey> {
-	state.owner(format!("approval:{}:{control}", request.id))
+fn control_owner(request: &InteractionRequest, control: &str) -> RetainedKey {
+	owner_of(&format!("approval:{}:{control}", request.id))
 }
 
 // A decision button is described by eight independent facts, not a state bag.

@@ -7,15 +7,13 @@ use veyyon_gui_core::{
 };
 use veyyon_gui_kit::{
 	input::Editor,
-	motion::{OwnerNamespace, RetainedKey},
+	motion::{OwnerNamespace, owner},
 	theme::{Theme, space},
 	ui::{Badge, Banner, Card, Empty, Fill, Group, Icon, SearchField, Tone, text},
 };
 
 use super::logic::{self, Category};
 use crate::{act, settings::remote};
-
-const SEARCH_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Settings, 8);
 
 pub fn render(store: &Store, field: &Entity<Editor>, cx: &mut App) -> AnyElement {
 	remote::render(
@@ -63,7 +61,11 @@ fn page(
 				btn
 			}),
 	);
-	page = page.child(SearchField::new("extension-filter", SEARCH_OWNER, field.clone()));
+	page = page.child(SearchField::new(
+		"extension-filter",
+		owner(OwnerNamespace::Settings, "filter", "extension-filter"),
+		field.clone(),
+	));
 	for category in Category::ALL {
 		if category_visible(state, category) {
 			page = page.child(registry_content(state, category, query, mutable, cx));

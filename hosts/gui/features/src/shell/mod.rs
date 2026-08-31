@@ -17,7 +17,7 @@ mod toolbar;
 
 pub use compositor::{FrameSlots, render_body};
 pub use layout::{
-	BOTTOM_HEIGHT, INSPECTOR_WIDTH, LayoutPlan, PanelSizes, Placement, SIDEBAR_WIDTH,
+	LayoutPlan, PanelSizes, Placement, bottom_height, inspector_width, sidebar_width,
 };
 pub use navigation::escape_command;
 pub use slots::{SurfaceRefs, compose};

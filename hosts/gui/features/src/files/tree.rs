@@ -10,28 +10,23 @@ use veyyon_gui_core::{
 };
 use veyyon_gui_kit::{
 	input::Editor,
-	motion::{OwnerNamespace, RetainedKey},
 	theme::{Elevation, Theme, space},
 	ui::{Button, Empty, Fill, Icon, Row, Scrolls, SearchField, Size, Tab, Tabs, Tone, text},
 };
 
 use super::{
-	logic, search,
+	logic,
+	owners::{self, Chrome},
+	search,
 	tree_cache::{TreeCache, TreeEntry},
 };
 use crate::act;
-
-const REFRESH_TREE_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Files, 1);
-const SEARCH_FILES_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Files, 2);
-const SEARCH_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Files, 3);
-const TAB_NAMES_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Files, 11);
-const TAB_CONTENTS_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Files, 12);
 
 pub fn render(
 	store: &Store,
 	field: &Entity<Editor>,
 	scroll: &ScrollHandle,
-	cache: &mut TreeCache,
+	cache: &TreeCache,
 	cx: &mut App,
 ) -> gpui::Div {
 	let theme = Theme::get(cx);
@@ -43,15 +38,9 @@ pub fn render(
 		.size_full()
 		.min_h(px(0.0))
 		.bg(theme.chrome);
-	surface = surface.child(toolbar(store, field, files.map(|files| &files.value), cache, cx));
+	surface = surface.child(toolbar(store, field, files.map(|files| &files.value), cx));
 	if !store.frontend.file_filter.is_empty() {
-		return surface.child(search::render(
-			store,
-			files.map(|files| &files.value),
-			scroll,
-			cache,
-			cx,
-		));
+		return surface.child(search::render(store, files.map(|files| &files.value), scroll, cx));
 	}
 	let Some(files) = files else {
 		return surface.child(
@@ -89,8 +78,8 @@ pub fn render(
 		.w_full()
 		.px(px(space::TIGHT))
 		.py(px(space::TIGHT));
-	for entry in cache.rows.clone() {
-		column = column.child(tree_row(&entry, &files.value, store, cache, cx));
+	for entry in &cache.rows {
+		column = column.child(tree_row(entry, &files.value, store, cx));
 	}
 	surface.child(
 		div()
@@ -106,7 +95,6 @@ fn toolbar(
 	store: &Store,
 	field: &Entity<Editor>,
 	files: Option<&FileWorkspaceState>,
-	cache: &mut TreeCache,
 	cx: &mut App,
 ) -> gpui::Div {
 	let theme = Theme::get(cx);
@@ -120,7 +108,7 @@ fn toolbar(
 				.iter()
 				.find(|workspace| workspace.id == *workspace_id)
 			{
-				let owner = cache.workspace_owner(&workspace.id);
+				let owner = owners::workspace(&workspace.id);
 				let mut root =
 					Row::new(format!("file-root-{}", workspace.id), owner, workspace.name.clone())
 						.icon(Icon::Checkout)
@@ -145,11 +133,12 @@ fn toolbar(
 	} else {
 		None
 	};
-	let mut refresh = Button::new("refresh-file-tree", REFRESH_TREE_OWNER, Icon::Running)
-		.fill(Fill::Ghost)
-		.tone(Tone::Muted)
-		.size(Size::Small)
-		.tip("Refresh files");
+	let mut refresh =
+		Button::new("refresh-file-tree", owners::chrome(Chrome::RefreshTree), Icon::Running)
+			.fill(Fill::Ghost)
+			.tone(Tone::Muted)
+			.size(Size::Small)
+			.tip("Refresh files");
 	if let Some(reason) = refresh_disabled {
 		refresh = refresh.disabled(reason);
 	} else if let Some(workspace) = store.frontend.selected_workspace.clone() {
@@ -168,11 +157,12 @@ fn toolbar(
 	} else {
 		None
 	};
-	let mut search = Button::new("search-workspace-files", SEARCH_FILES_OWNER, Icon::Search)
-		.fill(Fill::Ghost)
-		.tone(Tone::Muted)
-		.size(Size::Small)
-		.tip("Search workspace files");
+	let mut search =
+		Button::new("search-workspace-files", owners::chrome(Chrome::SearchFiles), Icon::Search)
+			.fill(Fill::Ghost)
+			.tone(Tone::Muted)
+			.size(Size::Small)
+			.tip("Search workspace files");
 	if let Some(reason) = search_disabled {
 		search = search.disabled(reason);
 	} else if let Some(workspace) = store
@@ -190,7 +180,7 @@ fn toolbar(
 	let modes = Tabs::new("file-search-mode")
 		.tab(
 			Tab::new(
-				TAB_NAMES_OWNER,
+				owners::chrome(Chrome::TabNames),
 				"Names",
 				store.frontend.file_search_mode == FileSearchMode::Name,
 			)
@@ -198,7 +188,7 @@ fn toolbar(
 		)
 		.tab(
 			Tab::new(
-				TAB_CONTENTS_OWNER,
+				owners::chrome(Chrome::TabContents),
 				"Contents",
 				store.frontend.file_search_mode == FileSearchMode::Content,
 			)
@@ -218,7 +208,7 @@ fn toolbar(
 				.flex()
 				.items_center()
 				.gap(px(space::TIGHT))
-				.child(SearchField::new("file-filter", SEARCH_OWNER, field.clone()))
+				.child(SearchField::new("file-filter", owners::chrome(Chrome::Filter), field.clone()))
 				.child(search)
 				.child(refresh),
 		)
@@ -229,7 +219,6 @@ fn tree_row(
 	entry: &TreeEntry,
 	files: &FileWorkspaceState,
 	store: &Store,
-	cache: &mut TreeCache,
 	_cx: &mut App,
 ) -> AnyElement {
 	match entry {
@@ -238,7 +227,7 @@ fn tree_row(
 				return div().into_any_element();
 			};
 			let note = logic::metadata(node);
-			let owner = cache.file_owner(id);
+			let owner = owners::file(id);
 			let mut row = Row::new(format!("file-node-{}", node.id), owner, node.name.clone())
 				.icon(if node.kind == FileKind::Directory {
 					if store.frontend.expanded_files.contains(&node.id) {
@@ -288,7 +277,7 @@ fn tree_row(
 			row.into_any_element()
 		},
 		TreeEntry::Loading { parent, depth } => {
-			let owner = cache.aux_owner(&format!("loading-{parent}"));
+			let owner = owners::aux(&format!("loading-{parent}"));
 			Row::new(format!("file-loading-{parent}"), owner, "Loading folder…")
 				.icon(Icon::Running)
 				.depth(*depth)
@@ -296,7 +285,7 @@ fn tree_row(
 				.into_any_element()
 		},
 		TreeEntry::Empty { parent, depth } => {
-			let owner = cache.aux_owner(&format!("empty-{parent}"));
+			let owner = owners::aux(&format!("empty-{parent}"));
 			Row::new(format!("file-empty-{parent}"), owner, "Empty folder")
 				.icon(Icon::Checkout)
 				.depth(*depth)
@@ -304,7 +293,7 @@ fn tree_row(
 				.into_any_element()
 		},
 		TreeEntry::Error { workspace, parent, depth, message } => {
-			let owner = cache.aux_owner(&format!("error-{parent}"));
+			let owner = owners::aux(&format!("error-{parent}"));
 			let mut row = Row::new(format!("file-error-{parent}"), owner, "Unable to read folder")
 				.icon(Icon::Failed)
 				.depth(*depth)

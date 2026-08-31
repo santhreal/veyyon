@@ -1,18 +1,60 @@
 //! Long-lived session-list identity and bounded collection reconciliation.
 
-use std::collections::BTreeMap;
-
 use gpui::ScrollHandle;
 use veyyon_gui_core::model::{SessionId, SessionSummary};
-use veyyon_gui_kit::motion::{CollectionItem, CollectionPlan, OwnerNamespace, RetainedKey};
+use veyyon_gui_kit::motion::{
+	CollectionItem, CollectionPlan, OwnerNamespace, RetainedKey, control, owner,
+};
 
 use super::logic::HISTORY_PAGE_ROWS;
 
+/// What a conversation row is, in the namespace's table of names.
+const ROW: &str = "session";
+
+/// A control drawn against one conversation row, and the offset inside that
+/// row's block it animates on. The sidebar row and the toolbar draw against the
+/// same row, so they share one slot space.
+///
+/// One variant per control, so a new control cannot reuse another's track and
+/// cannot silently exceed the block: `ControlSlot` is matched exhaustively in
+/// `every_control_a_conversation_draws_animates_on_its_own_track`, which fails
+/// to build until a new variant is listed there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
+pub enum ControlSlot {
+	/// Pin, on the sidebar row.
+	Pin       = 1,
+	/// Delete, on the sidebar row.
+	RowDelete = 2,
+	Rename    = 3,
+	Branch    = 4,
+	Export    = 5,
+	Compact   = 6,
+	Handoff   = 7,
+	Delete    = 8,
+}
+
+impl ControlSlot {
+	pub const ALL: [ControlSlot; 8] = [
+		ControlSlot::Pin,
+		ControlSlot::RowDelete,
+		ControlSlot::Rename,
+		ControlSlot::Branch,
+		ControlSlot::Export,
+		ControlSlot::Compact,
+		ControlSlot::Handoff,
+		ControlSlot::Delete,
+	];
+
+	/// The offset inside the row's block.
+	pub const fn offset(self) -> u64 {
+		self as u64
+	}
+}
+
 pub struct SessionShelfState {
 	pub scroll:      ScrollHandle,
-	keys:            BTreeMap<SessionId, RetainedKey>,
 	items:           Vec<CollectionItem>,
-	next_object:     u64,
 	history_visible: usize,
 	plan:            CollectionPlan,
 }
@@ -21,9 +63,7 @@ impl Default for SessionShelfState {
 	fn default() -> Self {
 		Self {
 			scroll:          ScrollHandle::new(),
-			keys:            BTreeMap::new(),
 			items:           Vec::new(),
-			next_object:     1,
 			history_visible: HISTORY_PAGE_ROWS,
 			plan:            CollectionPlan::default(),
 		}
@@ -38,27 +78,10 @@ impl SessionShelfState {
 		sessions: &[SessionSummary],
 		selected: Option<&SessionId>,
 	) -> &CollectionPlan {
-		self
-			.keys
-			.retain(|id, _| sessions.iter().any(|session| session.id == *id));
-		for session in sessions {
-			if !self.keys.contains_key(&session.id) {
-				let local = 0x2000u64.saturating_add(self.next_object.saturating_mul(16));
-				let key = RetainedKey::scoped(OwnerNamespace::Conversation, local, 0)
-					.unwrap_or_else(|| RetainedKey::semantic(OwnerNamespace::Conversation, 0));
-				self.next_object = self.next_object.saturating_add(1);
-				self.keys.insert(session.id.clone(), key);
-			}
-		}
 		let mut next = Vec::with_capacity(sessions.len());
 		for (position, session) in sessions.iter().enumerate() {
-			let owner = self
-				.keys
-				.get(&session.id)
-				.copied()
-				.unwrap_or_else(|| RetainedKey::semantic(OwnerNamespace::Conversation, 0));
 			next.push(CollectionItem {
-				owner,
+				owner:    Self::owner(&session.id),
 				position: position as f32,
 				selected: selected == Some(&session.id),
 			});
@@ -68,13 +91,15 @@ impl SessionShelfState {
 		&self.plan
 	}
 
-	pub fn owner(&self, session: &SessionId) -> Option<RetainedKey> {
-		self.keys.get(session).copied()
+	/// The track this conversation's row animates on.
+	pub fn owner(session: &SessionId) -> RetainedKey {
+		owner(OwnerNamespace::Conversation, ROW, session.as_str())
 	}
 
-	pub fn control_owner(&self, session: &SessionId, slot: u8) -> Option<RetainedKey> {
-		let row = self.owner(session)?;
-		Some(RetainedKey::new(row.object.saturating_add(u64::from(slot)), row.generation))
+	/// The track this conversation's `slot` control animates on, inside the
+	/// row's own block.
+	pub fn control_owner(session: &SessionId, slot: ControlSlot) -> RetainedKey {
+		control(OwnerNamespace::Conversation, ROW, session.as_str(), slot.offset() as u8)
 	}
 
 	pub const fn history_visible(&self) -> usize {

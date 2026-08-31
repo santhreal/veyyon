@@ -26,6 +26,17 @@ pub enum OwnerNamespace {
 	Kit,
 }
 
+impl OwnerNamespace {
+	/// One past the highest discriminant, for a table with one row per
+	/// namespace. A namespace added to the enum widens the table.
+	pub const COUNT: usize = OwnerNamespace::Kit as usize + 1;
+
+	/// This namespace's row in such a table.
+	pub const fn index(self) -> usize {
+		self as usize
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RetainedKey {
 	pub object:     u64,
@@ -50,6 +61,16 @@ impl RetainedKey {
 
 	pub const fn semantic(namespace: OwnerNamespace, local: u32) -> Self {
 		Self { object: ((namespace as u64) << 56) | local as u64, generation: 0 }
+	}
+
+	/// The key a construction falls back to when no product id is available.
+	///
+	/// Local id 0 is reserved for it in every namespace, so a fallback cannot
+	/// land on a live control's track. Two objects that fall back share one
+	/// track, so a surface with several controls assigns a distinct id per
+	/// control instead of falling back here.
+	pub const fn reserved(namespace: OwnerNamespace) -> Self {
+		Self::semantic(namespace, 0)
 	}
 }
 

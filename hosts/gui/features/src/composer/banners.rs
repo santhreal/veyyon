@@ -14,17 +14,20 @@ use veyyon_gui_kit::{
 	ui::{Banner, Button, Fill, Icon, Tone},
 };
 
-use super::{logic, state::ComposerState};
+use super::{
+	logic,
+	state::{Control, control_owner},
+};
 use crate::act;
 
-pub fn pending_context(store: &Store, state: &ComposerState) -> Div {
+pub fn pending_context(store: &Store) -> Div {
 	let mut stack = div().flex().flex_col().gap(px(space::X4));
-	if let Some(banner) = connection_banner(store, state) {
+	if let Some(banner) = connection_banner(store) {
 		stack = stack.child(banner);
 	}
 	if let Some(interaction) = active_interaction(store) {
-		stack = stack.child(interaction_banner(interaction, state));
-	} else if let Some(banner) = plan_banner(store, state) {
+		stack = stack.child(interaction_banner(interaction));
+	} else if let Some(banner) = plan_banner(store) {
 		stack = stack.child(banner);
 	}
 	if let Some((_, draft)) = logic::selected_draft(store)
@@ -54,7 +57,7 @@ pub fn pending_context(store: &Store, state: &ComposerState) -> Div {
 	stack
 }
 
-fn connection_banner(store: &Store, state: &ComposerState) -> Option<Banner> {
+fn connection_banner(store: &Store) -> Option<Banner> {
 	match &store.connection {
 		ConnectionState::Detached => Some(
 			Banner::notice("No host is attached")
@@ -74,18 +77,26 @@ fn connection_banner(store: &Store, state: &ComposerState) -> Option<Banner> {
 			Banner::waiting("Connection interrupted")
 				.detail(format!("Attempt {attempt}: {message}. Drafts are retained."))
 				.child(
-					Button::labelled("composer-retry-connection", state.control_owner(21), "Retry now")
-						.icon(Icon::Retry)
-						.on_click(act::click(UiCommand::RetryConnection)),
+					Button::labelled(
+						"composer-retry-connection",
+						control_owner(Control::RetryConnection),
+						"Retry now",
+					)
+					.icon(Icon::Retry)
+					.on_click(act::click(UiCommand::RetryConnection)),
 				),
 		),
 		ConnectionState::Fatal { message } => Some(
 			Banner::failure("Host is unavailable")
 				.detail(message.clone())
 				.child(
-					Button::labelled("composer-retry-fatal", state.control_owner(22), "Retry")
-						.icon(Icon::Retry)
-						.on_click(act::click(UiCommand::RetryConnection)),
+					Button::labelled(
+						"composer-retry-fatal",
+						control_owner(Control::RetryFatal),
+						"Retry",
+					)
+					.icon(Icon::Retry)
+					.on_click(act::click(UiCommand::RetryConnection)),
 				),
 		),
 	}
@@ -117,7 +128,7 @@ fn active_interaction(store: &Store) -> Option<&InteractionRequest> {
 	store.replica.interactions.readable()?.value.first()
 }
 
-fn interaction_banner(interaction: &InteractionRequest, state: &ComposerState) -> Banner {
+fn interaction_banner(interaction: &InteractionRequest) -> Banner {
 	match &interaction.kind {
 		InteractionKind::Approval { reason, risk, arguments, .. } => {
 			let detail = [reason.as_deref(), risk.as_deref(), Some(arguments.as_str())]
@@ -128,7 +139,7 @@ fn interaction_banner(interaction: &InteractionRequest, state: &ComposerState) -
 			Banner::waiting("Approval required")
 				.detail(detail)
 				.child(
-					Button::labelled("deny-approval", state.control_owner(30), "Deny")
+					Button::labelled("deny-approval", control_owner(Control::DenyApproval), "Deny")
 						.tone(Tone::Danger)
 						.on_click(act::click(UiCommand::SubmitInteraction {
 							interaction: interaction.id.clone(),
@@ -138,18 +149,22 @@ fn interaction_banner(interaction: &InteractionRequest, state: &ComposerState) -
 						})),
 				)
 				.child(
-					Button::labelled("approve-request", state.control_owner(31), "Approve")
-						.fill(Fill::Solid)
-						.tone(Tone::Accent)
-						.on_click(act::click(UiCommand::SubmitInteraction {
-							interaction: interaction.id.clone(),
-							response:    InteractionResponse::Approval(ApprovalDecision::AllowOnce),
-						})),
+					Button::labelled(
+						"approve-request",
+						control_owner(Control::ApproveRequest),
+						"Approve",
+					)
+					.fill(Fill::Solid)
+					.tone(Tone::Accent)
+					.on_click(act::click(UiCommand::SubmitInteraction {
+						interaction: interaction.id.clone(),
+						response:    InteractionResponse::Approval(ApprovalDecision::AllowOnce),
+					})),
 				)
 		},
 		InteractionKind::OpenUrl { title, url } => {
 			Banner::waiting(title.clone()).detail(url.clone()).child(
-				Button::labelled("open-request-url", state.control_owner(32), "Open")
+				Button::labelled("open-request-url", control_owner(Control::OpenRequestUrl), "Open")
 					.icon(Icon::Export)
 					.on_click(act::click(UiCommand::OpenExternal(url.clone()))),
 			)
@@ -157,7 +172,7 @@ fn interaction_banner(interaction: &InteractionRequest, state: &ComposerState) -
 		kind => {
 			let (title, detail) = interaction_copy(kind);
 			Banner::waiting(title).detail(detail).child(
-				Button::labelled("answer-request", state.control_owner(33), "Answer")
+				Button::labelled("answer-request", control_owner(Control::AnswerRequest), "Answer")
 					.icon(Icon::Question)
 					.fill(Fill::Solid)
 					.tone(Tone::Accent)
@@ -190,7 +205,7 @@ fn interaction_copy(kind: &InteractionKind) -> (String, String) {
 	}
 }
 
-fn plan_banner(store: &Store, state: &ComposerState) -> Option<Banner> {
+fn plan_banner(store: &Store) -> Option<Banner> {
 	let plan = &store.replica.plan.readable()?.value;
 	let PlanState::Active { approval: Some(approval), .. } = plan else {
 		return None;
@@ -209,7 +224,7 @@ fn plan_banner(store: &Store, state: &ComposerState) -> Option<Banner> {
 				.unwrap_or_else(|| "Review the plan before the agent continues".to_owned()),
 		)
 		.child(
-			Button::labelled("review-plan", state.control_owner(34), "Review plan")
+			Button::labelled("review-plan", control_owner(Control::ReviewPlan), "Review plan")
 				.icon(Icon::Plan)
 				.fill(Fill::Solid)
 				.tone(Tone::Accent)

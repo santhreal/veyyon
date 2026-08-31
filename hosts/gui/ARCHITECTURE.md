@@ -271,6 +271,24 @@ These are checked, not trusted.
 - **A primitive owns the motion channel it drives.** A caller that wants to fade with a row's hover
   asks the row (`Row::hovered_child`) rather than reading the channel itself: a key derived by hand
   agrees until one side renames it, and then a control silently stops appearing.
+- **One control, one motion track.** A track is keyed by its owner, so two controls a window can
+  draw at once must not resolve to one `RetainedKey`: hovering either lights both. Nobody picks a
+  number. Every object is named through `kit::motion::owners`: `owner(namespace, kind, id)` for the
+  object and `control(namespace, kind, id, slot)` for a control drawn against it, which sits inside
+  that object's block of `BLOCK` ids. A surface states its fixed controls as one enum with a name per
+  variant (`composer::Control`, `changes::owners::Chrome`, `files::owners::Chrome`) and its row
+  controls as one slot enum (`ControlSlot`, `RowSlot`, `ChipSlot`), so a control cannot be given a
+  name or a slot another control already holds. A name is what the object is, never where it sits: a
+  row keyed by its index moves onto its neighbour's track the moment a row above it leaves.
+  `RetainedKey::reserved` is the one shared key, for a construction with no product id, and it takes
+  id 0 in every namespace so a fallback cannot land on a live control.
+  `two_names_never_share_one_track` proves the registry, and
+  `every_control_a_conversation_draws_animates_on_its_own_track`,
+  `every_object_the_changes_route_draws_animates_on_its_own_track` and
+  `every_object_the_files_route_draws_animates_on_its_own_track` sweep every name their surfaces
+  draw at once. `the-gui-crates-only-depend-downward.test.ts` holds the two structural halves: no
+  surface outside `kit` builds a `RetainedKey` itself, and no slot variant is named by two drawing
+  files.
 - **The window fits the display it opens on.** A fixed size centred on a smaller display hangs off
   every edge, and what leaves through the bottom one is the composer.
   `the_window_opens_inside_the_display` sweeps display sizes across both rules.

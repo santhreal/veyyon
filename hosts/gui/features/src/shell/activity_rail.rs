@@ -6,7 +6,7 @@ use veyyon_gui_core::{
 	navigation::{Route, SettingsPage},
 };
 use veyyon_gui_kit::{
-	motion::{OwnerNamespace, RetainedKey},
+	motion::{OwnerNamespace, owner},
 	theme::{Theme, layout, space},
 	ui::{Button, Fill, Icon, Tone, text},
 };
@@ -17,7 +17,6 @@ struct Destination {
 	id:    &'static str,
 	label: &'static str,
 	icon:  Icon,
-	owner: RetainedKey,
 	route: Route,
 }
 
@@ -26,28 +25,19 @@ const DESTINATIONS: [Destination; 4] = [
 		id:    "route-conversation",
 		label: "Conversation",
 		icon:  Icon::Conversation,
-		owner: RetainedKey::semantic(OwnerNamespace::Shell, 1),
 		route: Route::Conversation,
 	},
 	Destination {
 		id:    "route-changes",
 		label: "Changes",
 		icon:  Icon::Changes,
-		owner: RetainedKey::semantic(OwnerNamespace::Shell, 2),
 		route: Route::Changes,
 	},
-	Destination {
-		id:    "route-files",
-		label: "Files",
-		icon:  Icon::Files,
-		owner: RetainedKey::semantic(OwnerNamespace::Shell, 3),
-		route: Route::Files,
-	},
+	Destination { id: "route-files", label: "Files", icon: Icon::Files, route: Route::Files },
 	Destination {
 		id:    "route-agents",
 		label: "Agents",
 		icon:  Icon::Agents,
-		owner: RetainedKey::semantic(OwnerNamespace::Shell, 4),
 		route: Route::Agents,
 	},
 ];
@@ -67,26 +57,30 @@ pub fn render(store: &Store, cx: &mut App) -> AnyElement {
 		.gap(px(space::X4))
 		.py(px(space::X6))
 		.children(DESTINATIONS.map(|destination| {
-			Button::new(destination.id, destination.owner, destination.icon)
-				.tip(destination.label)
-				.fill(if active == destination.route {
-					Fill::Tinted
-				} else {
-					Fill::Ghost
-				})
-				.tone(if active == destination.route {
-					Tone::Accent
-				} else {
-					Tone::Muted
-				})
-				.on(active == destination.route)
-				.on_click(act::click(UiCommand::Navigate(destination.route)))
+			Button::new(
+				destination.id,
+				owner(OwnerNamespace::Shell, "activity", destination.id),
+				destination.icon,
+			)
+			.tip(destination.label)
+			.fill(if active == destination.route {
+				Fill::Tinted
+			} else {
+				Fill::Ghost
+			})
+			.tone(if active == destination.route {
+				Tone::Accent
+			} else {
+				Tone::Muted
+			})
+			.on(active == destination.route)
+			.on_click(act::click(UiCommand::Navigate(destination.route)))
 		}))
 		.child(text::spacer())
 		.child(
 			Button::new(
 				"toggle-terminal-dock",
-				RetainedKey::semantic(OwnerNamespace::Shell, 5),
+				owner(OwnerNamespace::Shell, "activity", "toggle-terminal-dock"),
 				Icon::Terminal,
 			)
 			.tip(if store.frontend.panels.bottom_open {
@@ -102,7 +96,7 @@ pub fn render(store: &Store, cx: &mut App) -> AnyElement {
 		.child(
 			Button::new(
 				"route-settings",
-				RetainedKey::semantic(OwnerNamespace::Shell, 6),
+				owner(OwnerNamespace::Shell, "activity", "route-settings"),
 				Icon::Settings,
 			)
 			.tip("Settings")

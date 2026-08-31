@@ -11,25 +11,20 @@ use veyyon_gui_kit::{
 	ui::{Banner, Button, Empty, Fill, Icon, Sheet, Spinner, Tone, text},
 };
 
-use super::state::OverlayState;
+use super::state::owner_of;
 use crate::act;
 
 pub fn render(
 	store: &Store,
 	provider: &ProviderId,
 	field: &Entity<Editor>,
-	state: &mut OverlayState,
 	open: bool,
 	cx: &mut App,
 ) -> AnyElement {
-	let Some(sheet_owner) = state.owner(format!("provider-auth:{provider}")) else {
-		return Banner::failure("Provider sign in unavailable").into_any_element();
-	};
-	let Some(close_owner) = state.owner(format!("provider-auth:{provider}:close")) else {
-		return Banner::failure("Provider sign in unavailable").into_any_element();
-	};
+	let sheet_owner = owner_of(&format!("provider-auth:{provider}"));
+	let close_owner = owner_of(&format!("provider-auth:{provider}:close"));
 	let theme = Theme::get(cx);
-	let body = body(store, provider, field, state, cx);
+	let body = body(store, provider, field, cx);
 	Sheet::new("provider-auth", sheet_owner, open)
 		.centred()
 		.on_dismiss(act::click(UiCommand::CancelAuthFlow { provider: provider.clone() }))
@@ -53,16 +48,10 @@ pub fn render(
 		.into_any_element()
 }
 
-fn body(
-	store: &Store,
-	provider: &ProviderId,
-	field: &Entity<Editor>,
-	state: &mut OverlayState,
-	cx: &mut App,
-) -> AnyElement {
+fn body(store: &Store, provider: &ProviderId, field: &Entity<Editor>, cx: &mut App) -> AnyElement {
 	let auth = match &store.replica.auth {
 		RemoteData::Unrequested | RemoteData::Loading { .. } => {
-			return loading(state, provider, "loading");
+			return loading(provider, "loading");
 		},
 		RemoteData::Empty => {
 			return Empty::new("No authentication methods are available")
@@ -100,9 +89,7 @@ fn body(
 	}
 	content = match auth.flow.as_ref() {
 		None => {
-			let Some(button) = labelled(state, provider, "start", "Start sign in") else {
-				return Banner::failure("Sign in controls unavailable").into_any_element();
-			};
+			let button = labelled(provider, "start", "Start sign in");
 			content.child(enabled(
 				button
 					.fill(Fill::Solid)
@@ -112,16 +99,12 @@ fn body(
 			))
 		},
 		Some(AuthFlowState::Starting) => content
-			.child(loading(state, provider, "starting"))
-			.children(cancel(state, provider)),
+			.child(loading(provider, "starting"))
+			.child(cancel(provider)),
 		Some(AuthFlowState::AwaitingBrowser { url, launch_url, instructions }) => {
 			let open_url = launch_url.as_ref().unwrap_or(url);
-			let Some(copy) = labelled(state, provider, "copy-url", "Copy link") else {
-				return Banner::failure("Sign in controls unavailable").into_any_element();
-			};
-			let Some(open) = labelled(state, provider, "open-url", "Open browser") else {
-				return Banner::failure("Sign in controls unavailable").into_any_element();
-			};
+			let copy = labelled(provider, "copy-url", "Copy link");
+			let open = labelled(provider, "open-url", "Open browser");
 			content
 				.children(
 					instructions
@@ -135,7 +118,7 @@ fn body(
 						.flex_wrap()
 						.justify_end()
 						.gap(px(space::SNUG))
-						.children(cancel(state, provider))
+						.child(cancel(provider))
 						.child(copy.on_click(act::click(UiCommand::CopyText(url.clone()))))
 						.child(enabled(
 							open
@@ -152,15 +135,13 @@ fn body(
 		Some(AuthFlowState::AwaitingSecretInput) => content
 			.child(text::body("Paste the credential and press Enter.", &theme))
 			.child(field.clone())
-			.children(cancel(state, provider)),
+			.child(cancel(provider)),
 		Some(AuthFlowState::AwaitingCallback) => content
 			.child(text::body("Waiting for the provider callback", &theme))
-			.child(loading(state, provider, "callback"))
-			.children(cancel(state, provider)),
+			.child(loading(provider, "callback"))
+			.child(cancel(provider)),
 		Some(AuthFlowState::Succeeded) => {
-			let Some(done) = labelled(state, provider, "done", "Done") else {
-				return Banner::failure("Sign in controls unavailable").into_any_element();
-			};
+			let done = labelled(provider, "done", "Done");
 			content
 				.child(Banner::new(Tone::Ok, "Provider connected"))
 				.child(
@@ -171,9 +152,7 @@ fn body(
 				)
 		},
 		Some(AuthFlowState::Failed { message }) => {
-			let Some(retry) = labelled(state, provider, "retry", "Retry") else {
-				return Banner::failure("Sign in controls unavailable").into_any_element();
-			};
+			let retry = labelled(provider, "retry", "Retry");
 			content
 				.child(Banner::failure("Sign in failed").detail(message.clone()))
 				.child(
@@ -181,7 +160,7 @@ fn body(
 						.flex()
 						.justify_end()
 						.gap(px(space::SNUG))
-						.children(cancel(state, provider))
+						.child(cancel(provider))
 						.child(enabled(
 							retry
 								.fill(Fill::Solid)
@@ -194,9 +173,7 @@ fn body(
 				)
 		},
 		Some(AuthFlowState::Cancelled) => {
-			let Some(restart) = labelled(state, provider, "restart", "Start again") else {
-				return Banner::failure("Sign in controls unavailable").into_any_element();
-			};
+			let restart = labelled(provider, "restart", "Start again");
 			content
 				.child(Banner::notice("Sign in cancelled"))
 				.child(enabled(
@@ -209,25 +186,18 @@ fn body(
 	content.into_any_element()
 }
 
-fn labelled(
-	state: &mut OverlayState,
-	provider: &ProviderId,
-	id: &str,
-	label: &str,
-) -> Option<Button> {
-	let owner = state.owner(format!("provider-auth:{provider}:{id}"))?;
-	Some(Button::labelled(format!("provider-auth-{id}"), owner, label.to_owned()))
+fn labelled(provider: &ProviderId, id: &str, label: &str) -> Button {
+	let owner = owner_of(&format!("provider-auth:{provider}:{id}"));
+	Button::labelled(format!("provider-auth-{id}"), owner, label.to_owned())
 }
 
-fn cancel(state: &mut OverlayState, provider: &ProviderId) -> Option<Button> {
-	let button = labelled(state, provider, "cancel", "Cancel")?;
-	Some(button.on_click(act::click(UiCommand::CancelAuthFlow { provider: provider.clone() })))
+fn cancel(provider: &ProviderId) -> Button {
+	let button = labelled(provider, "cancel", "Cancel");
+	button.on_click(act::click(UiCommand::CancelAuthFlow { provider: provider.clone() }))
 }
 
-fn loading(state: &mut OverlayState, provider: &ProviderId, id: &str) -> AnyElement {
-	let Some(owner) = state.owner(format!("provider-auth:{provider}:{id}")) else {
-		return Banner::failure("Sign in status unavailable").into_any_element();
-	};
+fn loading(provider: &ProviderId, id: &str) -> AnyElement {
+	let owner = owner_of(&format!("provider-auth:{provider}:{id}"));
 	div()
 		.flex()
 		.items_center()

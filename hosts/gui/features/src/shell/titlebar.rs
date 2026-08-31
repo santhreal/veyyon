@@ -7,7 +7,7 @@ use veyyon_gui_core::{
 	navigation::{Overlay, PaletteMode, Route},
 };
 use veyyon_gui_kit::{
-	motion::{OwnerNamespace, RetainedKey},
+	motion::{OwnerNamespace, owner},
 	theme::{Theme, layout, space},
 	ui::{Badge, Button, Fill, Icon, Tone, text},
 };
@@ -37,7 +37,7 @@ pub fn render(store: &Store, cx: &mut App) -> AnyElement {
 		.child(
 			Button::labelled(
 				"command-center",
-				RetainedKey::semantic(OwnerNamespace::Shell, 10),
+				owner(OwnerNamespace::Shell, "titlebar", "command-center"),
 				"Search",
 			)
 			.icon(Icon::Search)
@@ -52,7 +52,7 @@ pub fn render(store: &Store, cx: &mut App) -> AnyElement {
 		.child(
 			Button::new(
 				"show-agent-activity",
-				RetainedKey::semantic(OwnerNamespace::Shell, 11),
+				owner(OwnerNamespace::Shell, "titlebar", "show-agent-activity"),
 				Icon::Activity,
 			)
 			.tip("Show agent activity")
@@ -62,7 +62,7 @@ pub fn render(store: &Store, cx: &mut App) -> AnyElement {
 		.child(
 			Button::new(
 				"titlebar-sidebar",
-				RetainedKey::semantic(OwnerNamespace::Shell, 12),
+				owner(OwnerNamespace::Shell, "titlebar", "titlebar-sidebar"),
 				Icon::Panel,
 			)
 			.tip(if store.frontend.panels.sidebar_open {
@@ -76,7 +76,7 @@ pub fn render(store: &Store, cx: &mut App) -> AnyElement {
 		.child(
 			Button::new(
 				"titlebar-inspector",
-				RetainedKey::semantic(OwnerNamespace::Shell, 13),
+				owner(OwnerNamespace::Shell, "titlebar", "titlebar-inspector"),
 				Icon::Inspector,
 			)
 			.tip(if store.frontend.panels.inspector_open {
@@ -88,14 +88,18 @@ pub fn render(store: &Store, cx: &mut App) -> AnyElement {
 			.on_click(act::click(UiCommand::ToggleInspector)),
 		)
 		.child(
-			Button::new("titlebar-dock", RetainedKey::semantic(OwnerNamespace::Shell, 14), Icon::Dock)
-				.tip(if store.frontend.panels.bottom_open {
-					"Hide bottom dock"
-				} else {
-					"Show bottom dock"
-				})
-				.on(store.frontend.panels.bottom_open)
-				.on_click(act::click(UiCommand::ToggleBottomDock)),
+			Button::new(
+				"titlebar-dock",
+				owner(OwnerNamespace::Shell, "titlebar", "titlebar-dock"),
+				Icon::Dock,
+			)
+			.tip(if store.frontend.panels.bottom_open {
+				"Hide bottom dock"
+			} else {
+				"Show bottom dock"
+			})
+			.on(store.frontend.panels.bottom_open)
+			.on_click(act::click(UiCommand::ToggleBottomDock)),
 		)
 		.into_any_element()
 }
@@ -163,11 +167,15 @@ fn connection(state: &ConnectionState) -> AnyElement {
 	// The one affordance on screen in every route: a state a reader is meant to
 	// act on is the control that acts on it, rather than a chip beside a button
 	// that is only on some routes.
-	Button::labelled("connection", RetainedKey::semantic(OwnerNamespace::Shell, 15), shown.label)
-		.icon(Icon::Engine)
-		.fill(Fill::Tinted)
-		.tone(shown.tone)
-		.tip(tip)
-		.on_click(act::click(command))
-		.into_any_element()
+	Button::labelled(
+		"connection",
+		owner(OwnerNamespace::Shell, "titlebar", "connection"),
+		shown.label,
+	)
+	.icon(Icon::Engine)
+	.fill(Fill::Tinted)
+	.tone(shown.tone)
+	.tip(tip)
+	.on_click(act::click(command))
+	.into_any_element()
 }

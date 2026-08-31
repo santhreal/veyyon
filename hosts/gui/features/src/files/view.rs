@@ -17,7 +17,7 @@ use super::{FilesHandles, error, header, inspector, preview, tree};
 
 pub fn render_sidebar(store: &Store, handles: &mut FilesHandles, cx: &mut App) -> gpui::Div {
 	handles.sync(store);
-	tree::render(store, &handles.search, &handles.tree_scroll, &mut handles.tree, cx)
+	tree::render(store, &handles.search, &handles.tree_scroll, &handles.tree, cx)
 }
 
 pub fn render_route(store: &Store, handles: &mut FilesHandles, cx: &mut App) -> gpui::Div {
@@ -71,7 +71,7 @@ pub fn render_inspector(store: &Store, handles: &mut FilesHandles, cx: &mut App)
 		.size_full()
 		.min_h(px(0.0))
 		.id("files-view-scroll-1")
-		.child(inspector::render(store, read, cache.as_ref(), handles, cx))
+		.child(inspector::render(store, read, cache.as_ref(), cx))
 		.scrolls_y(&handles.inspector_scroll, Elevation::Chrome)
 }
 

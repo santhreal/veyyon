@@ -47,6 +47,14 @@
 // Both sets are parsed from the token files at run time: a new accessor has to
 // appear in kit's scale suite, and a new constant has to be recorded as fixed.
 //
+// The sixth is that two controls never share a motion track. A track is keyed
+// by its owner, so a duplicate `RetainedKey` makes hovering one control light
+// another: the sidebar's pin and the toolbar's rename ran on one track, and an
+// unkeyed conversation put all six toolbar controls plus the search field on
+// one. Keys are no longer picked by hand: a surface names an object through
+// `kit::motion::owners`, so this checks that no surface builds a key itself and
+// that no slot variant is named by two drawing sites.
+//
 // WHAT IT DOES NOT CATCH. Whether a module inside a crate belongs to the layer
 // it sits in: `features/src/render/` could import a surface and this stays
 // green. Nor does it read Rust - a file under the ceiling can still hold two
@@ -515,5 +523,73 @@ describe("the gui crates only depend downward", () => {
 			"space::LOOSE = space::X20",
 			"space::HUGE = space::X32",
 		]);
+	});
+
+	// A motion track is keyed by its owner, so two controls a window can draw at
+	// the same time must not resolve to one key: hovering either lights both. A
+	// surface therefore never builds a key: it names the object and lets
+	// `kit::motion::owners` allocate the block. A hand-built key is what the
+	// numbers were, and every collision came from two files picking one.
+	test("no surface builds a motion key by hand", () => {
+		const built: string[] = [];
+		let named = 0;
+
+		for (const relative of sources()) {
+			if (relative.startsWith("kit/")) {
+				continue;
+			}
+			const source = readFileSync(path.join(guiRoot, relative), "utf8");
+			for (const [, builder] of source.matchAll(/RetainedKey::(semantic|scoped|new)\(/g)) {
+				built.push(`${relative}: RetainedKey::${builder}`);
+			}
+			if (
+				/\bowner\(\s*(?:NS|OwnerNamespace::)/.test(source) ||
+				/\bcontrol\(\s*(?:NS|OwnerNamespace::)/.test(source)
+			) {
+				named += 1;
+			}
+		}
+
+		expect(named, "no surface names an object; the scan stopped matching").toBeGreaterThan(5);
+		expect(built).toEqual([]);
+	});
+
+	// The other half: a slot enum names one control each, and a variant used
+	// twice puts two controls on one track without repeating an id anywhere. The
+	// enums and the files that declare them are read at run time, so a slot
+	// added to any surface joins the sweep.
+	test("no two controls share a slot", () => {
+		const declarations = new Map<string, string>();
+		for (const relative of sources()) {
+			const source = readFileSync(path.join(guiRoot, relative), "utf8");
+			for (const [, name] of source.matchAll(/pub enum (\w*(?:ControlSlot|RowSlot|ChipSlot))\b/g)) {
+				declarations.set(`${relative}:${name}`, name as string);
+			}
+		}
+
+		expect(declarations.size, "no slot enum was found; the scan stopped matching").toBeGreaterThan(2);
+		const collisions: string[] = [];
+
+		for (const [declaredIn, name] of declarations) {
+			const declaration = declaredIn.slice(0, declaredIn.lastIndexOf(":"));
+			const surface = declaration.slice(0, declaration.lastIndexOf("/"));
+			const uses = new Map<string, string[]>();
+			for (const relative of sources()) {
+				if (relative === declaration || !relative.startsWith(`${surface}/`) || relative.includes("/every_")) {
+					continue;
+				}
+				const source = readFileSync(path.join(guiRoot, relative), "utf8");
+				for (const [, variant] of source.matchAll(new RegExp(`${name}::(\\w+)`, "g"))) {
+					uses.set(variant as string, [...(uses.get(variant as string) ?? []), relative]);
+				}
+			}
+			for (const [variant, sites] of uses) {
+				if (sites.length > 1) {
+					collisions.push(`${name}::${variant} in ${sites.join(", ")}`);
+				}
+			}
+		}
+
+		expect(collisions).toEqual([]);
 	});
 });

@@ -10,15 +10,13 @@ use veyyon_gui_core::{
 };
 use veyyon_gui_kit::{
 	input::Editor,
-	motion::{OwnerNamespace, RetainedKey},
+	motion::{OwnerNamespace, owner},
 	theme::{Elevation, Theme, layout, size, space, weight},
 	ui::{Badge, Banner, Empty, Fill, Icon, Row, Scrolls, SearchField, Size, Spinner, Tone, text},
 };
 
 use super::logic;
 use crate::act;
-
-const SEARCH_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Terminal, 9);
 
 /// Draw Problems from the diagnostics replica; no empty producer error is
 /// interpreted as a healthy result.
@@ -224,7 +222,11 @@ fn toolbar(count: usize, store: &Store, field: &Entity<Editor>, theme: &Theme) -
 				.on_click(act::click(UiCommand::ToggleProblemLevel(level))),
 		);
 	}
-	bar = bar.child(SearchField::new("problem-filter", SEARCH_OWNER, field.clone()));
+	bar = bar.child(SearchField::new(
+		"problem-filter",
+		owner(OwnerNamespace::Terminal, "filter", "problem-filter"),
+		field.clone(),
+	));
 	bar.child(text::spacer())
 		.child(
 			crate::terminal::control::enabled(

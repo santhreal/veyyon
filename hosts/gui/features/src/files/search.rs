@@ -10,14 +10,13 @@ use veyyon_gui_kit::{
 	ui::{Banner, EdgeFade, Empty, Icon, Row, Scrolls, text},
 };
 
-use super::{TreeCache, logic};
+use super::{logic, owners};
 use crate::act;
 
 pub fn render(
 	store: &Store,
 	files: Option<&FileWorkspaceState>,
 	scroll: &ScrollHandle,
-	cache: &mut TreeCache,
 	_cx: &mut App,
 ) -> EdgeFade {
 	let Some(files) = files else {
@@ -74,7 +73,7 @@ pub fn render(
 		column = column.child(Banner::failure("File search failed").detail(message.to_owned()));
 	}
 	for result in ranked {
-		let owner = cache.search_owner(&result.file, result.line);
+		let owner = owners::search_hit(&result.file, result.line);
 		let mut row = Row::new(
 			format!("file-search-{}-{:?}", result.file, result.line),
 			owner,

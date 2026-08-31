@@ -9,20 +9,12 @@ use veyyon_gui_core::{
 	navigation::{BottomTab, InspectorTab},
 };
 use veyyon_gui_kit::{
-	motion::{OwnerNamespace, RetainedKey},
+	motion::{OwnerNamespace, owner},
 	theme::{Appearance, Theme, layout, opacity, space},
 	ui::{Tab, Tabs},
 };
 
 use crate::act;
-
-/// The motion keys the two tab strips retain their tabs under.
-///
-/// A tab keeps its underline across frames by key, so the key is its position
-/// in the set and the two strips start far enough apart that neither reaches
-/// the other however many tabs are added.
-const INSPECTOR_TAB_KEY: u32 = 20;
-const DOCK_TAB_KEY: u32 = 30;
 
 pub fn sidebar(header: AnyElement, body: AnyElement, width: f32, cx: &mut App) -> AnyElement {
 	let theme = Theme::get(cx);
@@ -64,11 +56,10 @@ pub fn inspector(store: &Store, body: AnyElement, width: f32, cx: &mut App) -> A
 	let selected = store.frontend.inspector_tab;
 	let tabs = InspectorTab::ALL
 		.into_iter()
-		.enumerate()
-		.fold(Tabs::new("inspector-tabs"), |tabs, (index, tab)| {
+		.fold(Tabs::new("inspector-tabs"), |tabs, tab| {
 			tabs.tab(
 				Tab::new(
-					RetainedKey::semantic(OwnerNamespace::Shell, INSPECTOR_TAB_KEY + index as u32),
+					owner(OwnerNamespace::Shell, "inspector-tab", tab.label()),
 					tab.label(),
 					selected == tab,
 				)
@@ -96,19 +87,18 @@ pub fn inspector(store: &Store, body: AnyElement, width: f32, cx: &mut App) -> A
 pub fn bottom_dock(store: &Store, body: AnyElement, height: f32, cx: &mut App) -> AnyElement {
 	let theme = Theme::get(cx);
 	let selected = store.frontend.bottom_tab;
-	let tabs = BottomTab::ALL.into_iter().enumerate().fold(
-		Tabs::new("bottom-tabs"),
-		|tabs, (index, tab)| {
+	let tabs = BottomTab::ALL
+		.into_iter()
+		.fold(Tabs::new("bottom-tabs"), |tabs, tab| {
 			tabs.tab(
 				Tab::new(
-					RetainedKey::semantic(OwnerNamespace::Shell, DOCK_TAB_KEY + index as u32),
+					owner(OwnerNamespace::Shell, "dock-tab", tab.label()),
 					tab.label(),
 					selected == tab,
 				)
 				.on_click(act::click(UiCommand::SetBottomTab(tab))),
 			)
-		},
-	);
+		});
 	div()
 		.id("bottom-dock-host")
 		.flex()

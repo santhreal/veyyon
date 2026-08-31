@@ -12,7 +12,7 @@ use gpui::{
 pub use resize::edges as resize_edges;
 use veyyon_gui_core::Store;
 use veyyon_gui_kit::{
-	motion::{OwnerNamespace, RetainedKey},
+	motion::{OwnerNamespace, owner},
 	theme::{Theme, layout, space},
 	ui::{Button, Fill, Icon, Tone},
 };
@@ -67,7 +67,7 @@ fn window_controls(_cx: &mut App) -> Stateful<Div> {
 		.child(
 			Button::new(
 				"window-minimize",
-				RetainedKey::semantic(OwnerNamespace::Shell, 30),
+				owner(OwnerNamespace::Shell, "window", "window-minimize"),
 				Icon::Less,
 			)
 			.tip("Minimize window")
@@ -78,7 +78,7 @@ fn window_controls(_cx: &mut App) -> Stateful<Div> {
 		.child(
 			Button::new(
 				"window-maximize",
-				RetainedKey::semantic(OwnerNamespace::Shell, 31),
+				owner(OwnerNamespace::Shell, "window", "window-maximize"),
 				Icon::More,
 			)
 			.tip("Maximize or restore window")
@@ -87,10 +87,14 @@ fn window_controls(_cx: &mut App) -> Stateful<Div> {
 			.on_click(|_, window, _| window.zoom_window()),
 		)
 		.child(
-			Button::new("window-close", RetainedKey::semantic(OwnerNamespace::Shell, 32), Icon::Close)
-				.tip("Close window")
-				.fill(Fill::Ghost)
-				.tone(Tone::Danger)
-				.on_click(|_, window, _| window.remove_window()),
+			Button::new(
+				"window-close",
+				owner(OwnerNamespace::Shell, "window", "window-close"),
+				Icon::Close,
+			)
+			.tip("Close window")
+			.fill(Fill::Ghost)
+			.tone(Tone::Danger)
+			.on_click(|_, window, _| window.remove_window()),
 		)
 }

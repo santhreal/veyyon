@@ -10,7 +10,6 @@ use veyyon_gui_core::{
 };
 use veyyon_gui_kit::{
 	input::Editor,
-	motion::{OwnerNamespace, RetainedKey},
 	theme::{Elevation, Theme, space},
 	ui::{
 		Badge, Banner, Button, Empty, Fill, Icon, Row, Scrolls, SearchField, Size, Spinner, Tone,
@@ -20,8 +19,6 @@ use veyyon_gui_kit::{
 
 use super::logic;
 use crate::act;
-
-const SEARCH_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Agents, 3);
 
 /// The route's agent sidebar: the filter over the hierarchy, then the
 /// hierarchy.
@@ -101,7 +98,7 @@ fn header(search: &Entity<Editor>, theme: &Theme) -> Div {
 		.p(px(space::TIGHT))
 		.border_b_1()
 		.border_color(theme.stroke)
-		.child(SearchField::new("agent-filter", SEARCH_OWNER, search.clone()))
+		.child(SearchField::new("agent-filter", super::state::owner("agent-filter"), search.clone()))
 }
 
 fn roster_elements(store: &Store, roster: &AgentRosterState) -> Vec<AnyElement> {
@@ -227,7 +224,7 @@ fn branch(
 		.child(Badge::new(status).tone(logic::status_tone(&agent.status)))
 		.on_click(act::click(UiCommand::SelectAgent(agent.id.clone())));
 	if !children.is_empty() {
-		let expand_owner = super::state::control_owner(&agent.id, 0);
+		let expand_owner = super::state::control_owner(&agent.id, super::state::ControlSlot::Expand);
 		row = row.hover_actions(
 			veyyon_gui_kit::theme::layout::control_height(),
 			Button::new(

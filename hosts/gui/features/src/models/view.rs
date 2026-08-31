@@ -12,7 +12,7 @@ use veyyon_gui_core::{
 };
 use veyyon_gui_kit::{
 	input::Editor,
-	motion::{OwnerNamespace, RetainedKey},
+	motion::{OwnerNamespace, owner},
 	theme::{Theme, space},
 	ui::{Badge, Banner, Empty, Fill, Group, Icon, SearchField, Size, Tone, text},
 };
@@ -21,7 +21,6 @@ use super::logic::{self, VirtualWindow};
 use crate::{act, settings::remote};
 
 const PAGE_ROWS: usize = 40;
-const SEARCH_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Settings, 5);
 
 pub fn render(store: &Store, field: &Entity<Editor>, cx: &mut App) -> AnyElement {
 	remote::render(
@@ -87,7 +86,11 @@ fn catalog(
 					}),
 			),
 	);
-	page = page.child(SearchField::new("model-filter", SEARCH_OWNER, field.clone()));
+	page = page.child(SearchField::new(
+		"model-filter",
+		owner(OwnerNamespace::Settings, "filter", "model-filter"),
+		field.clone(),
+	));
 
 	if let CommandState::Failed { message, .. } = &state.refresh {
 		page = page.child(Banner::failure("Model refresh failed").detail(message.clone()));
