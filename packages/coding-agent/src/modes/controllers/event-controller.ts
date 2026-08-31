@@ -16,7 +16,6 @@ import {
 	ReadToolGroupComponent,
 	readArgsGroupable,
 	readArgsHaveTarget,
-	readArgsTargetInternalUrl,
 } from "../../modes/components/read-tool-group";
 import { TodoReminderComponent } from "../../modes/components/todo-reminder";
 import { ToolExecutionComponent } from "../../modes/components/tool-execution";
