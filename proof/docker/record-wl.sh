@@ -96,6 +96,6 @@ docker run --rm \
 			printf '"'"'%s\n'"'"' "${SCENE_SETTINGS}" \
 				>> /sandbox/home/.veyyon/profiles/default/agent/config.yml
 		fi
-		bash /repo/proof/docker/seed-demo.sh /sandbox/home/demo
+		bash /repo/proof/docker/seed-demo.sh /sandbox/home/demo "/repo/'"${SCENE}"'"
 		exec /repo/proof/docker/wlsession.sh "/repo/'"${SCENE}"'"
 	'
