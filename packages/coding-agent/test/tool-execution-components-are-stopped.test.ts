@@ -57,6 +57,9 @@ describe("tool block construction in tests", () => {
 	/**
 	 * The contract. The helper itself is the one allowed constructor call, since it is what performs the
 	 * cleanup.
+	 *
+	 * The case bound is the walk plus one read of every test source. On a checkout served over the
+	 * network that is seconds, so the default five would fail on latency rather than on an offender.
 	 */
 	it("goes through the helper, never a direct constructor call", () => {
 		const offenders: string[] = [];
@@ -68,8 +71,7 @@ describe("tool block construction in tests", () => {
 		}
 
 		expect(offenders).toEqual([]);
-	}, // network that is seconds, so the default five would fail on latency rather than on an offender. // The bound is the walk plus one read of every test source. On a checkout served over the
-	30_000);
+	}, 30_000);
 
 	/**
 	 * And the helper still does the thing the ban exists for. Without this, someone could satisfy the rule

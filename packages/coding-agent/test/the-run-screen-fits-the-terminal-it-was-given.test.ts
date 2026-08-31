@@ -252,7 +252,11 @@ describe("the run screen fits the terminal it was given", () => {
 			requestRender: () => {},
 			rows: () => 20,
 		});
-		const textOf = (): string => screen.render(80).map(line => stripAnsi(line)).join("\n");
+		const textOf = (): string =>
+			screen
+				.render(80)
+				.map(line => stripAnsi(line))
+				.join("\n");
 		screen.handleInput("\x1b[B"); // session → playbook
 		const first = textOf();
 		expect(first).toContain("note line 0");

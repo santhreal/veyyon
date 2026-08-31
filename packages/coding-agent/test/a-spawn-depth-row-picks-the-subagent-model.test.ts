@@ -120,12 +120,18 @@ describe("a depth row outranks every existing layer at exactly its own depth", (
 			"subagent.modelByDepth": { "2": DEPTH_TWO },
 		});
 
-		expect(
-			resolveSubagentModel({ settings, agentName: AGENT, agentModel: FRONTMATTER, taskDepth: 1 }),
-		).toEqual({ patterns: [FRONTMATTER], source: "frontmatter", depth: undefined, unresolved: undefined });
-		expect(
-			resolveSubagentModel({ settings, agentName: AGENT, activeModelPattern: SESSION, taskDepth: 1 }),
-		).toEqual({ patterns: [SESSION], source: "inherit", depth: undefined, unresolved: undefined });
+		expect(resolveSubagentModel({ settings, agentName: AGENT, agentModel: FRONTMATTER, taskDepth: 1 })).toEqual({
+			patterns: [FRONTMATTER],
+			source: "frontmatter",
+			depth: undefined,
+			unresolved: undefined,
+		});
+		expect(resolveSubagentModel({ settings, agentName: AGENT, activeModelPattern: SESSION, taskDepth: 1 })).toEqual({
+			patterns: [SESSION],
+			source: "inherit",
+			depth: undefined,
+			unresolved: undefined,
+		});
 	});
 
 	/**
