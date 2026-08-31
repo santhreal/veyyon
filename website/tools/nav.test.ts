@@ -17,15 +17,34 @@ const WEBSITE = join(dirname(import.meta.dir), ".");
 type Link = { label: string; href: string; page?: string; absolute?: boolean };
 const links: Link[] = LINKS;
 
-/** Link labels and hrefs found inside a page's nav region. */
+/**
+ * The accessible name of one anchor: its text content, or its `aria-label` when the
+ * content is an icon carrying no text of its own. An anchor with neither has no name
+ * at all — a screen reader announces its URL — so it throws rather than being skipped,
+ * which is what let an icon-only link into every nav region unnamed.
+ */
+function anchorName(anchor: string, inner: string): string {
+	const text = inner.replace(/<[^>]*>/g, "").trim();
+	if (text) return text;
+	const labelled = /aria-label="([^"]+)"/.exec(anchor);
+	if (!labelled) throw new Error(`nav anchor has no accessible name: ${anchor}`);
+	return labelled[1]!;
+}
+
+/** Every anchor's accessible name in one nav's HTML, in document order. */
+function anchorNames(html: string): string[] {
+	return [...html.matchAll(/<a\s[^>]*>([\s\S]*?)<\/a>/g)].map(([anchor, inner]) => anchorName(anchor, inner!));
+}
+
+/** Link names and hrefs found inside a page's nav region. */
 function navRegions(html: string): { links: { href: string; label: string; current: boolean }[]; raw: string }[] {
 	const regions = [...html.matchAll(/<!--NAV:START-->([\s\S]*?)<!--NAV:END-->/g)];
 	return regions.map(([, raw]) => ({
 		raw,
-		links: [...raw.matchAll(/<a href="([^"]+)"([^>]*)>([^<]+)<\/a>/g)].map(([, href, attrs, label]) => ({
-			href,
-			label,
-			current: attrs.includes('aria-current="page"'),
+		links: [...raw!.matchAll(/<a href="([^"]+)"([^>]*)>([\s\S]*?)<\/a>/g)].map(([anchor, href, attrs, inner]) => ({
+			href: href!,
+			label: anchorName(anchor, inner!),
+			current: attrs!.includes('aria-current="page"'),
 		})),
 	}));
 }
@@ -36,8 +55,7 @@ describe("renderNav", () => {
 	 *  to stop. */
 	it("renders every link in order, with the CTA last in header navs", () => {
 		const html = renderNav({ prefix: "./", current: "install" });
-		const labels = [...html.matchAll(/>([^<]+)<\/a>/g)].map(m => m[1]);
-		expect(labels).toEqual([...links.map(l => l.label), CTA.label]);
+		expect(anchorNames(html)).toEqual([...links.map(l => l.label), CTA.label]);
 	});
 
 	/** The footer carries the same destinations but not the Get-started button;
@@ -113,6 +131,25 @@ describe("built pages", () => {
 			const marked = region.links.filter(l => l.current);
 			expect(marked).toHaveLength(1);
 			expect(marked[0]!.href).toBe(expected);
+		}
+	});
+
+	/**
+	 * A link rendered as a glyph is named by `aria-label` or it is named by nothing: its
+	 * svg is `aria-hidden`, so a screen reader falls back to the URL. Every icon link in
+	 * LINKS is asserted by name in every region of every page, so a new one that ships
+	 * unnamed — or a renamed one whose label stops reaching the markup — is red.
+	 */
+	it.each(PAGES)("$file names every icon link in every region", ({ file }) => {
+		const iconLinks = links.filter(link => "icon" in link);
+		expect(iconLinks.length).toBeGreaterThan(0);
+		const html = readFileSync(join(WEBSITE, file), "utf8");
+		for (const region of navRegions(html)) {
+			for (const link of iconLinks) {
+				const anchor = region.links.find(l => l.href === (link.absolute ? link.href : `./${link.href}`));
+				expect(anchor?.label).toBe(link.label);
+			}
+			expect(region.raw).toContain(`aria-label="${iconLinks[0]!.label}"`);
 		}
 	});
 });
