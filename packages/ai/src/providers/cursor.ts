@@ -233,7 +233,7 @@ async function appendCursorDebugLog(entry: CursorLogEntry): Promise<void> {
 	}
 }
 
-function log(type: string, subtype?: string, data?: unknown): void {
+export function log(type: string, subtype?: string, data?: unknown): void {
 	if (!$env.DEBUG_CURSOR) return;
 	const normalizedData = data ? decodeLogData(data) : data;
 	const entry: CursorLogEntry = { ts: Date.now(), type, subtype, data: normalizedData };
@@ -243,7 +243,7 @@ function log(type: string, subtype?: string, data?: unknown): void {
 	void appendCursorDebugLog(entry);
 }
 
-function frameConnectMessage(data: Uint8Array, flags = 0): Buffer {
+export function frameConnectMessage(data: Uint8Array, flags = 0): Buffer {
 	const frame = Buffer.alloc(5 + data.length);
 	frame[0] = flags;
 	frame.writeUInt32BE(data.length, 1);
@@ -310,7 +310,7 @@ function debugBytes(bytes: Uint8Array, asHex: boolean): string {
 	return Buffer.from(bytes).toString("hex");
 }
 
-function debugReplacer(key: string, value: unknown): unknown {
+export function debugReplacer(key: string, value: unknown): unknown {
 	if (
 		value instanceof Uint8Array ||
 		(value && typeof value === "object" && "type" in value && value.type === "Buffer" && "data" in value)
