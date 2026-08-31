@@ -847,8 +847,10 @@ describe("reading a local file does not load the MCP client, the skill loader or
 		expect(skill).not.toContain("../extensibility/skills");
 
 		const memory = runtimeImportsOf(path.join(SRC, "internal-urls/memory-protocol.ts"));
-		expect(memory).toContain("../memories/paths");
+		const memoryHelpers = runtimeImportsOf(path.join(SRC, "internal-urls/memory-protocol-helpers.ts"));
+		expect(memoryHelpers).toContain("../memories/paths");
 		expect(memory).not.toContain("../memories");
+		expect(memoryHelpers).not.toContain("../memories/index");
 	});
 
 	/**
@@ -1084,7 +1086,7 @@ describe("a cheap value is owned by a leaf, and a file that wants only it names 
  * path. So: the STATIC edge is gone, the DYNAMIC one is present, and the call sites still exist.
  */
 describe("declaring the web-search tool does not load the credential store", () => {
-	const source = fs.readFileSync(path.join(SRC, "web/search/index.ts"), "utf-8");
+	const source = fs.readFileSync(path.join(SRC, "web/search/web-search-tool-helpers.ts"), "utf-8");
 
 	/**
 	 * The four modules by name, because the count is the symptom and these are the cause. Each is a piece of
@@ -1129,7 +1131,11 @@ describe("declaring the web-search tool does not load the credential store", () 
 		expect(dynamicImportSpecifiersIn(source)).toContain("../../session/auth-broker-config");
 		expect(dynamicImportBindings(source, "../../session/auth-broker-config")).toEqual(["discover"]);
 
-		const callSites = withoutComments(source).match(/await discoverAuthStorage\(\)/g) ?? [];
+		const toolSource = fs.readFileSync(path.join(SRC, "web/search/web-search-tool.ts"), "utf-8");
+		const callSites = [
+			...(withoutComments(source).match(/await discoverAuthStorage\(\)/g) ?? []),
+			...(withoutComments(toolSource).match(/await discoverAuthStorage\(\)/g) ?? []),
+		];
 		expect(callSites.length).toBe(3);
 	});
 });

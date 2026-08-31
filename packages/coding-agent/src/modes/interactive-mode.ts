@@ -1021,13 +1021,19 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (!base) return;
 		let provider = base;
 		for (const factory of this.#autocompleteProviderFactories) {
-			const wrapped = factory(provider);
-			if (
-				wrapped &&
-				typeof wrapped === "object" &&
-				typeof (wrapped as AutocompleteProvider).getSuggestions === "function"
-			) {
-				provider = wrapped as AutocompleteProvider;
+			try {
+				const wrapped = factory(provider);
+				if (
+					wrapped &&
+					typeof wrapped.getSuggestions === "function" &&
+					typeof wrapped.applyCompletion === "function"
+				) {
+					provider = wrapped;
+				} else {
+					logger.warn("Extension autocomplete provider factory returned an invalid provider; skipping it");
+				}
+			} catch (error) {
+				logger.warn("Extension autocomplete provider factory threw; skipping it", { error: String(error) });
 			}
 		}
 		this.editor.setAutocompleteProvider(provider);

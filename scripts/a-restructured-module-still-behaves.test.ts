@@ -14,6 +14,7 @@
  * done incorrectly.
  */
 import { describe, expect, it } from "bun:test";
+import type { AssistantMessage } from "@veyyon/ai";
 
 describe("restructured modules still behave", () => {
 	it("agent: snapshotAssistantMessage preserves content and role", async () => {
@@ -22,7 +23,7 @@ describe("restructured modules still behave", () => {
 			role: "assistant" as const,
 			content: [{ type: "text" as const, text: "hello" }],
 			usage: { cost: { input: 0, output: 0, read: 0, write: 0, reasoning: 0 } },
-		};
+		} as unknown as AssistantMessage;
 		const snap = snapshotAssistantMessage(msg, "full");
 		expect(snap.role).toBe("assistant");
 		expect(snap.content).toHaveLength(1);

@@ -25,6 +25,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { namedImportsFrom } from "@veyyon/utils/module-reach";
@@ -177,7 +178,13 @@ describe("no kernel retypes a shared budget", () => {
 	it("has every kernel importing the owner's budgets and conventions", async () => {
 		for (const kernel of KERNELS) {
 			const text = await Bun.file(path.join(EVAL_SRC, kernel)).text();
-			expect(namedImportsFrom(text, "../kernel-base"), `${kernel} imports from the owner`).toEqual(
+			const helperPath = path.join(EVAL_SRC, kernel.replace("kernel.ts", "kernel-helpers.ts"));
+			const helperText = fs.existsSync(helperPath) ? await Bun.file(helperPath).text() : "";
+			const imports = [
+				...namedImportsFrom(text, "../kernel-base"),
+				...namedImportsFrom(helperText, "../kernel-base"),
+			];
+			expect(imports, `${kernel} imports from the owner`).toEqual(
 				expect.arrayContaining([
 					"KERNEL_SHUTDOWN_GRACE_MS",
 					"KERNEL_INTERRUPT_ESCALATION_MS",

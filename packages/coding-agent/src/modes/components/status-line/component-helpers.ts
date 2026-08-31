@@ -2,7 +2,7 @@ import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
 import { sliceWithWidth, visibleWidth } from "@veyyon/tui";
-import { stripAnsi } from "@veyyon/utils";
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import type { AgentSession } from "../../../session/agent-session";
 import type { ActiveRepoContext } from "../../../utils/active-repo-context";
 import * as git from "../../../utils/git";
