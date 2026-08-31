@@ -552,9 +552,9 @@ export function getExtraHelpText(): string {
 			[
 				[
 					"veyyon agents unpack",
-					`Export bundled subagents to the active profile's agent dir, ~/${CONFIG_DIR_NAME}/profiles/<name>/agent/agents (default)`,
+					`Export bundled subagents to ~/${CONFIG_DIR_NAME}/subagents, read by every profile`,
 				],
-				["veyyon agents unpack --project", "Export bundled subagents to ./.veyyon/agents"],
+				["veyyon agents unpack --dir <path>", "Export them to a directory instead, without installing them"],
 			],
 			{ indent: "  " },
 		),

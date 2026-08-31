@@ -54,6 +54,7 @@
 ### Fixed
 
 - The session mount no longer forces a full-viewport repaint over the launch card, so the screen no longer flashes and darkens at handover; the mount now writes only the rows whose content changed.
+- `veyyon agents unpack` writes bundled definitions to `~/.veyyon/subagents`, the directory agent discovery reads, instead of the active profile's `agent/agents`, where nothing loaded them; the `--user` and `--project` flags are gone, and `--dir` still writes to a path you name.
 - The launch card states the model name, git state and context percentage recorded at the end of the last launch instead of placeholders, so the status row and hero do not change when the session mounts; each fact falls back to its placeholder when the release, the model or the project changed.
 - `certify_arms` is attached only to a session whose breadth is above 1, so a serial autoresearch loop is no longer offered a tool that triages arms it does not have.
 - An autoswarm winner has to beat the segment's baseline, not merely the worst of its sibling arms: an iteration where every arm regressed reported a winner, which was then logged as an improvement and re-applied.

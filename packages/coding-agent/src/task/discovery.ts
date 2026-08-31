@@ -119,7 +119,7 @@ async function loadAgentsFromDir(dir: string, source: AgentSource): Promise<Agen
 
 /**
  * Discover agents from filesystem and merge with bundled agents.
- * Precedence (highest wins): project `.veyyon/agents`, user `.veyyon/agents`,
+ * Precedence (highest wins): the global `subagents` dir at the base config root,
  * veyyon extension-package agents in `listVeyyonExtensionRoots` source order
  * (CLI roots > project `extensions:` settings > user `extensions:` settings >
  * installed npm/link plugins), Claude marketplace plugin agents (project

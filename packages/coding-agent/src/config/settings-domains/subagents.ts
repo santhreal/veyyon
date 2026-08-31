@@ -129,7 +129,7 @@ function validateModelByDepthEntry(key: string, value: unknown): string | undefi
  * The other bundled agents (scout, reviewer, librarian, designer, sonic) stay
  * off until the operator turns them on. They are still LISTED while off, each
  * with a line saying what it is for, because an agent you cannot see is one you
- * will never enable. A user-authored agent under `.veyyon/agents/` is on by
+ * will never enable. A user-authored agent under `~/.veyyon/subagents/` is on by
  * default: writing the file is the opt-in.
  */
 export const DEFAULT_ENABLED_BUNDLED_AGENT = "deep";

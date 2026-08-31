@@ -58,18 +58,18 @@ Because bundled parsing uses `level: "fatal"`, malformed bundled frontmatter thr
 
 ## Filesystem and plugin discovery
 
-`discoverAgents(cwd, home, agentDir)` (`src/task/discovery.ts`) merges agents from Veyyon-native roots and Claude plugin roots before appending bundled definitions. Cross-harness roots such as `.claude/agents`, `.codex/agents`, and `.gemini/agents` are intentionally skipped, their frontmatter schema is not the Veyyon task-agent contract (`TASK_AGENT_CONFIG_SOURCE = ".veyyon"` filters the dir list). `agentDir` selects the profile for all three profile-scoped sources at once (the user `agents/` dir, that profile's `extensions:` settings and installed plugins, and that profile's marketplace registry); leave it undefined and each source resolves the process-active profile.
+`discoverAgents(cwd, home, agentDir)` (`src/task/discovery.ts`) merges agents from Veyyon-native roots and Claude plugin roots before appending bundled definitions. Cross-harness roots such as `.claude/agents`, `.codex/agents`, and `.gemini/agents` are intentionally skipped, their frontmatter schema is not the Veyyon task-agent contract (`TASK_AGENT_CONFIG_SOURCE = ".veyyon"` filters the dir list). `agentDir` selects the profile for the two profile-scoped sources at once (that profile's `extensions:` settings and installed plugins, and that profile's marketplace registry); leave it undefined and each source resolves the process-active profile. The authored definitions dir is not one of them: it is global.
 
 ### Discovery inputs
 
-1. User `.veyyon` agents dir: `path.resolve(agentDir, "agents")` when `agentDir` is passed, otherwise `getConfigDirs("agents", { project: false })` filtered to `.veyyon`, first hit only. A repository's `.veyyon/agents/` is not read: an agent definition carries a system prompt, a tool allowlist, a model, and a `spawns` field, so a checked-in one could shadow a bundled agent by name. `discoverAgents` returns `projectAgentsDir: null` unconditionally; the field survives only because `task/index.ts` plumbs it into `TaskToolDetails` for display.
+1. Authored definitions dir: `getGlobalSubagentsDir()`, `~/.veyyon/subagents` at the base config root, read whatever profile is active. `veyyon agents unpack` writes there. A repository's `.veyyon/agents/` is not read: an agent definition carries a system prompt, a tool allowlist, a model, and a `spawns` field, so a checked-in one could shadow a bundled agent by name. `discoverAgents` returns `projectAgentsDir: null` unconditionally; the field survives only because `task/index.ts` plumbs it into `TaskToolDetails` for display.
 2. Veyyon extension-package `agents/` dirs (`listVeyyonExtensionRoots`): only when `isProviderEnabled("veyyon-plugins")`; consumed in source-precedence order (CLI roots > user `extensions:` settings > installed npm/link plugins, marketplace installs excluded by realpath)
 3. Claude marketplace plugin roots (`listClaudePluginRoots(home, cwd)`) with `agents/` subdirs: only when `isProviderEnabled("claude-plugins")`; project-scope plugin installs are filtered out
 4. Bundled agents (`loadBundledAgents()`)
 
 ### Actual source order
 
-1. user `~/.veyyon/profiles/<name>/agent/agents`
+1. `~/.veyyon/subagents`
 2. Veyyon extension-package `agents/` dirs (CLI > user settings > installed plugins)
 3. Claude plugin `agents/` dirs (user-scope only)
 4. bundled agents last

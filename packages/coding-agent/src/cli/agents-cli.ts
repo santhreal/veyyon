@@ -1,11 +1,12 @@
 /**
  * Agents CLI command handlers.
  *
- * Handles `veyyon agents unpack` for writing bundled agent definitions to disk.
+ * Handles `veyyon agents unpack` for writing bundled agent definitions to the
+ * directory `discoverAgents` reads authored definitions from.
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getAgentDir, getProjectDir, isEnoent } from "@veyyon/utils";
+import { getGlobalSubagentsDir, getProjectDir, isEnoent } from "@veyyon/utils";
 import { YAML } from "bun";
 import chalk from "chalk";
 import { theme } from "../modes/theme/theme";
@@ -23,8 +24,6 @@ export interface AgentsCommandArgs {
 		force?: boolean;
 		json?: boolean;
 		dir?: string;
-		user?: boolean;
-		project?: boolean;
 	};
 }
 
@@ -39,20 +38,23 @@ function writeStdout(line: string): void {
 	process.stdout.write(`${line}\n`);
 }
 
+/**
+ * Where an unpacked definition goes.
+ *
+ * `getGlobalSubagentsDir()` and nothing else, because that is the one directory
+ * `discoverAgents` reads an authored definition from: it wrote them into the
+ * active profile's `agent/agents`, which stopped being a source when discovery
+ * moved to the base config root, so every unpacked agent was invisible to
+ * `/agents` and to `task`. A project scope has no reader either — a repository
+ * cannot supply an agent definition at all — so `--dir`, an explicit path the
+ * caller names, is the only other target.
+ */
 function resolveTargetDir(flags: AgentsCommandArgs["flags"]): string {
 	if (flags.dir && flags.dir.trim().length > 0) {
 		return path.resolve(getProjectDir(), flags.dir.trim());
 	}
 
-	if (flags.user && flags.project) {
-		throw new Error("Choose either --user or --project, not both.");
-	}
-
-	if (flags.project) {
-		return path.resolve(getProjectDir(), ".veyyon", "agents");
-	}
-
-	return path.join(getAgentDir(), "agents");
+	return getGlobalSubagentsDir();
 }
 
 function toFrontmatter(agent: AgentDefinition): Record<string, unknown> {
