@@ -358,6 +358,15 @@ wait_for_screen() {
 	return 1
 }
 
+# True while the window the session handed the scene still exists. The X session
+# exports SCENE_WINDOW; the Wayland one has no window id and no xdotool, so an
+# unanswerable question is answered "alive" and changes no message.
+scene_terminal_alive() {
+	[ -n "${SCENE_WINDOW:-}" ] || return 0
+	command -v xdotool >/dev/null 2>&1 || return 0
+	xdotool getwindowgeometry "${SCENE_WINDOW}" >/dev/null 2>&1
+}
+
 # Abandon the take now, naming the guard that did not arrive.
 #
 # A scene used to record a miss in MISSED and walk on to the next guard. A take with five
@@ -368,6 +377,18 @@ wait_for_screen() {
 # host reads to decide whether the scene or the model is at fault.
 abandon_take() {
 	local guard="$1" reason="$2"
+	# A take whose terminal is gone was not a scene mistake: the product exited and
+	# every frame after that is the empty root, which reaches the host as "this shot
+	# is byte-identical to the previous one" and reads like a key pressed too early.
+	# One such run cost three takes across two hosts before the cause turned out to
+	# be a missing build artifact the CLI imports at parse time. The window is asked
+	# first, so the product's own stderr is what gets reported.
+	if ! scene_terminal_alive; then
+		echo "scene: the terminal exited mid-take -- every frame after that is an empty screen" >&2
+		tail -20 /tmp/boot.err >&2 2>/dev/null || true
+		tail -10 /tmp/term.log >&2 2>/dev/null || true
+		reason="the terminal exited mid-take, so: ${reason}"
+	fi
 	echo "scene: abandoning the take -- ${guard}: ${reason}" >&2
 	if [ -n "${SCENE_OUT:-}" ]; then
 		printf '%s\t%s\n' "${guard}" "${reason}" >>"${SCENE_OUT}/abandoned.tsv"
