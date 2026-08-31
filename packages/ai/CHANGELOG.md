@@ -9,7 +9,7 @@
 - `CONTEXTUAL_USER_PREFIXES` is exported from the codex compaction module so the retained-window rule is asserted against the real list rather than a copy of it.
 ### Fixed
 
-- ChatGPT Codex server-side compaction posts to the codex responses route instead of the retired `/responses/compact` route, which answered 404 and turned the session over to local compaction for the rest of its life.
+- ChatGPT Codex server-side compaction posts to `{base}/codex/responses/compact` and reads one JSON document, instead of streaming a `compaction_trigger` turn to the plain responses route, which answered 404 and turned the session over to local compaction for the rest of its life.
 - Codex remote compaction keeps at least one user turn when the retained-token budget it is handed is not a finite number, instead of replaying a window holding nothing but the compaction item.
 
 ### Changed

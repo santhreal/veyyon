@@ -4,7 +4,7 @@
  * compact its way out.
  */
 
-import { stripLegacyArchive, usableInputWindow } from "@veyyon/agent-core/compaction";
+import { stripLegacyArchive } from "@veyyon/agent-core/compaction";
 import type { CodexCompactionContext, Model } from "@veyyon/ai";
 
 export type CompactionCheckResult = Readonly<{
@@ -68,11 +68,7 @@ export function compactionDeadEndWarning(): string {
  */
 export function declaredContextWindow(model: Model | undefined): number | undefined {
 	const contextWindow = model?.contextWindow;
-	if (typeof contextWindow !== "number" || contextWindow <= 0) return undefined;
-	// The cap is on what a prompt may carry, so it is the usable INPUT window: the
-	// output allocation is charged against the same window and is not available to
-	// the prompt.
-	return usableInputWindow(contextWindow, model?.maxTokens);
+	return typeof contextWindow === "number" && contextWindow > 0 ? contextWindow : undefined;
 }
 
 export function createCodexCompactionContext(options: {

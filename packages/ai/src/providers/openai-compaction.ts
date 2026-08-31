@@ -44,11 +44,6 @@ import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils"
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { boundProviderErrorDetail, ProviderHttpError, readProviderErrorDetail } from "../error";
 import type { Api, CodexCompactionRequestContext, FetchImpl, Message, Model, ProviderSessionState } from "../types";
-import {
-	buildCodexCompactionV2Window,
-	CODEX_COMPACTION_TRIGGER_ITEM,
-	collectCodexCompactionV2Stream,
-} from "./openai-codex/compaction-v2";
 import { applyCodexResponsesLiteShape, resolveCodexResponsesLite } from "./openai-codex/request-transformer";
 import { createOpenAICodexDirectRequest } from "./openai-codex-responses";
 import type { ResponseInput } from "./openai-responses-wire";
@@ -263,22 +258,21 @@ function buildCompactInputItems(model: Model<Api>, messages: Message[]): Respons
 
 /**
  * Resolve the compaction endpoint and headers for the ChatGPT Codex backend.
- * The route is the plain codex responses path
- * (`chatgpt.com/backend-api/codex/responses`), reached with the ChatGPT OAuth
- * access token and the same request identity a turn carries.
  *
- * There is no `/compact` suffix, here or anywhere on this host: that path,
- * `/codex/compact` and `/responses/compact` each answer 404. The client
- * metadata's `compaction` request kind marks the turn, and the
- * `compaction_trigger` input item the transport appends is what makes the
- * backend compact rather than answer.
+ * The route is the codex responses path with the `/compact` suffix
+ * (`chatgpt.com/backend-api/codex/responses/compact`), reached with the ChatGPT
+ * OAuth access token and the same request identity a turn carries. This is the
+ * wire oh-my-pi posts (`resolveOpenAiCodexCompactEndpoint`): a base already
+ * ending in `/codex` takes `/responses/compact`, anything else takes
+ * `/codex/responses/compact`. `createOpenAICodexDirectRequest` returns the turn
+ * route, so the suffix is appended to it.
  */
 function resolveCodexCompactRequest(
 	model: Model<Api>,
 	apiKey: string,
 	request: ServerCompactionRequest,
 ): { url: string; headers: Record<string, string>; clientMetadata: Record<string, string> } {
-	return createOpenAICodexDirectRequest({
+	const direct = createOpenAICodexDirectRequest({
 		model: model as Model<"openai-codex-responses">,
 		accessToken: apiKey,
 		requestKind: "compaction",
@@ -287,6 +281,8 @@ function resolveCodexCompactRequest(
 		compaction: request.codexCompaction,
 		responsesLite: resolveCodexResponsesLite(model, undefined),
 	});
+	const base = direct.url.replace(/\/+$/, "");
+	return { ...direct, url: base.endsWith("/compact") ? base : `${base}/compact` };
 }
 
 /** The OpenAI Responses server-side compaction transport (official, Azure, and ChatGPT Codex hosts). */
@@ -318,20 +314,25 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 			body.instructions = request.instructions;
 		}
 		if (isCodex) {
-			// Codex compaction v2 is an ordinary streaming turn ending in a
-			// `compaction_trigger` item; the backend answers it with one
-			// `compaction` output item and nothing else. It rejects a
-			// non-streaming body with 400 `Stream must be set to true`, and the
-			// encrypted reasoning has to be asked for or the window loses it.
-			// The rest matches a turn body, lite rewrite included, because
-			// codex-rs builds both through one builder.
+			// The compact route answers one JSON document, exactly as the official
+			// host does: no `stream`, no `compaction_trigger` item. What the codex
+			// host adds is its request identity and, for a Responses Lite model, the
+			// same rewrite a turn takes — oh-my-pi routes compaction through the one
+			// request builder for this reason (`build_responses_request` in
+			// codex-rs), so the lite marker and the encrypted-reasoning include ride
+			// along rather than being special-cased here.
 			const clientMetadata = "clientMetadata" in resolved ? resolved.clientMetadata : undefined;
 			if (clientMetadata) body.client_metadata = clientMetadata;
 			body.store = false;
-			body.stream = true;
-			body.include = ["reasoning.encrypted_content"];
-			input.push(CODEX_COMPACTION_TRIGGER_ITEM);
-			if (resolveCodexResponsesLite(model, undefined)) applyCodexResponsesLiteShape(body);
+			if (resolveCodexResponsesLite(model, undefined)) {
+				applyCodexResponsesLiteShape(body);
+				body.include = Array.from(
+					new Set([
+						...(Array.isArray(body.include) ? (body.include as string[]) : []),
+						"reasoning.encrypted_content",
+					]),
+				);
+			}
 		}
 		const applyCallerSanitizer = (text: string): string => {
 			if (!request.sanitizeErrorText) return text;
@@ -383,27 +384,6 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 					response.status,
 					{ headers: response.headers },
 				);
-			}
-
-			if (isCodex) {
-				if (!response.body) {
-					throw new Error(
-						"Codex compaction answered without a body. The history was NOT compacted; the caller falls back to local compaction.",
-					);
-				}
-				// `body.input` is read back rather than `input`: the lite rewrite
-				// prepends its developer items to a NEW array, and the window
-				// must be built from what was actually sent.
-				const sent = Array.isArray(body.input) ? body.input : input;
-				const collected = await collectCodexCompactionV2Stream(
-					response.body,
-					requestTimeout?.signal ?? request.signal,
-					sanitize,
-				);
-				return {
-					window: buildCodexCompactionV2Window(sent, collected.compactionItem),
-					usage: collected.usage,
-				};
 			}
 
 			const data = (await response.json()) as CompactedResponseWire | undefined;

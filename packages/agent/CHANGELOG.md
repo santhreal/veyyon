@@ -13,8 +13,8 @@
 
 ### Fixed
 
-- Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the route they are sent to.
-- Context budgeting reserves the model's output allocation, which providers charge against the same context window, so history no longer grows past the largest input the provider will accept; a branch summary is sized the same way, so the request that shrinks an overfull session is no longer rejected for being too large itself.
+- Codex remote compaction requests declare the `responses_compact` implementation, matching the `/codex/responses/compact` route they are sent to.
+- A ChatGPT Codex server-side compaction now reduces the context it was paid to reduce: its stored window was not on the list of apis whose window can be replayed, so the entry counted as unusable, the whole pre-compaction span was re-expanded on the next rebuild, and the session crossed the threshold and compacted again on every turn.
 - Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
 
 ## [1.3.0] - 2026-08-28

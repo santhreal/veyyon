@@ -1,40 +1,52 @@
 /**
- * A ChatGPT OAuth (codex) session compacts server-side, on the wire codex-rs
- * itself uses.
+ * DO NOT CHANGE THIS TEST WITHOUT OPERATOR PERMISSION.
+ * THIS REGRESSION HAS HAPPENED 50+ TIMES.
  *
- * WHY: `compaction.remote` defaults on, and every gate below it was written for
- * the API-key OpenAI host, whose compact route is `POST {base}/responses/compact`
- * answering with one JSON document. The Codex backend serves no compact route —
- * that path, `{base}/codex/compact` and `{base}/responses/compact` all answer
- * 404 — and compacts through an input item instead: an ordinary STREAMING
- * `POST {base}/codex/responses` whose last input item is
- * `{ type: "compaction_trigger" }`, answered with exactly one `compaction`
- * output item on `response.output_item.done`.
+ * A ChatGPT OAuth (codex) session compacts server-side, on the wire oh-my-pi
+ * posts.
  *
- * Three defects shipped because this suite asserted the OpenAI-host shape
- * instead. It pinned `body.stream` as undefined, so the backend's
- * `{"detail":"Stream must be set to true"}` 400 was invisible. It never sent a
- * trigger item, so once the 400 was fixed the backend ran the span as an
- * ordinary turn and answered with prose. And it read the window off
- * `response.completed`, which on this host carries an empty `output`.
+ * WHY: `compaction.remote` defaults on. When the compaction route answers 404
+ * the transport latches route-absent for the whole process and every later
+ * compaction is a paid LOCAL pass that rewrites the history prefix and
+ * invalidates the prompt cache, so the session re-pays full uncached input on
+ * every turn afterwards. One such session compacted 31 times.
+ *
+ * THE PINNED WIRE is oh-my-pi's (`can1357/oh-my-pi`,
+ * `packages/agent/src/compaction/openai.ts`): a NON-streaming
+ * `POST {base}/codex/responses/compact` whose client metadata declares
+ * `implementation: "responses_compact"`, carrying NO `compaction_trigger` input
+ * item, answered with ONE JSON document whose `output` is the window.
+ *
+ * WHY THE FILE READS AS A REVERSAL. This suite previously pinned the opposite
+ * wire — streaming `POST {base}/codex/responses` with a trailing
+ * `{ type: "compaction_trigger" }` item — from a live call on 2026-08-29 whose
+ * host answered `{"detail":"Not Found"}` for `/compact` and
+ * `{"detail":"Stream must be set to true"}` for a non-streaming body. That
+ * observation is recorded here rather than deleted, because it is the reason
+ * the two wires keep trading places: a later session on the same account got a
+ * 404 from the streaming route instead. Both halves of the pairing have to move
+ * together, and they are set in two packages:
+ *
+ *   {base}/codex/responses/compact  <->  responses_compact
+ *   {base}/codex/responses          <->  responses_compaction_v2
+ *
+ * A route from one pairing sent with the other's declaration is its own 404,
+ * which is how a half-applied flip looks exactly like the bug it was meant to
+ * fix. `packages/ai/src/providers/openai-compaction.ts` is hash-locked by
+ * `scripts/the-codex-compaction-route-is-locked.test.ts` so neither half can
+ * move without the change being recorded.
  *
  * WHAT CLASS THIS CLOSES: the mock agreeing with the code instead of with the
- * host. `codexBackend()` below is a fake of the REAL backend, not of our
- * request: it rejects a non-streaming body with the recorded 400, answers a
- * body with no trigger item the way the host does (a reasoning item and a
- * message, no compaction item), and only streams a compaction item for a
- * request shaped the way the host requires. Every assertion here therefore
- * fails against each of the three pre-fix states, for the reason that state was
- * wrong. It also pins the negative side, because opening a gate is how a gate
- * stops meaning anything — a repointed proxy row and a non-Responses api must
- * still resolve nothing.
+ * host. `codexBackend()` is a fake of the host, not of our request. It answers
+ * a compaction posted to the plain turn route the way that route answers one —
+ * with ordinary prose and no compaction item — and it refuses a streaming body
+ * and a trigger item on the compact route. Every assertion therefore fails
+ * against the previous wire for the reason that wire is wrong here.
  *
- * WHAT IT DOES NOT CATCH: a change in what the backend does. The fake is
- * faithful to a live call made against the real host on 2026-08-29 (window of
- * retained user messages plus one compaction item, `response.completed` with an
- * empty `output`), and only another live call can tell that it drifted. It also
- * does not cover the websocket transport codex-rs can use for the same request;
- * this path is HTTP SSE only.
+ * WHAT IT DOES NOT CATCH: a change in what the backend does. Only a live call
+ * can tell that the host moved again, and when it does, the fix is to move the
+ * route AND the declaration together and re-record the lock hash — not to edit
+ * one assertion until this file is green.
  */
 import { afterEach, describe, expect, test, vi } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
@@ -46,10 +58,13 @@ import {
 	resolveServerCompactionTransport,
 } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, Model } from "@veyyon/ai";
+import { resetServerCompactionRouteCache } from "@veyyon/ai/providers/openai-compaction";
 import { buildOpenAIResponsesCompat } from "@veyyon/catalog/compat/openai";
 import { getBundledModel } from "@veyyon/catalog/models";
 import type { ResolvedOpenAIResponsesCompat } from "@veyyon/catalog/types";
 import { OPENAI_HEADERS } from "@veyyon/catalog/wire/codex";
+
+const COMPACT_ROUTE = "https://chatgpt.com/backend-api/codex/responses/compact";
 
 /** A ChatGPT OAuth access token is a JWT; the account id is read out of its payload. */
 function fakeCodexToken(accountId: string): string {
@@ -64,9 +79,10 @@ function makeAssistantStop(text: string): AssistantMessage {
 		role: "assistant",
 		content: [{ type: "text", text }],
 		timestamp: Date.now(),
-		provider: "mock",
-		model: "mock",
-		api: "mock",
+		stopReason: "stop",
+		api: "openai-completions",
+		provider: "openai-codex",
+		model: "gpt-5.1-codex",
 		usage: {
 			input: 0,
 			output: 0,
@@ -75,7 +91,6 @@ function makeAssistantStop(text: string): AssistantMessage {
 			totalTokens: 0,
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 		},
-		stopReason: "stop",
 	};
 }
 
@@ -102,34 +117,28 @@ function makePreparation(): CompactionPreparation {
 	};
 }
 
-/** The compaction item the live backend returns, with its blob replaced. */
+/** The compaction item the backend returns, with its blob replaced. */
 const COMPACTION_ITEM = {
 	id: "cmp_001",
 	type: "compaction",
 	encrypted_content: "gAAAAABpM0Yj-fake",
 };
 
-function sse(events: Array<Record<string, unknown>>): Response {
-	const body = events.map(event => `event: ${String(event.type)}\ndata: ${JSON.stringify(event)}\n\n`).join("");
-	return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
-}
+/** A retained user item, as the compacted window carries it. */
+const RETAINED_ITEM = {
+	id: "msg_000",
+	type: "message",
+	status: "completed",
+	role: "user",
+	content: [{ type: "input_text", text: "history msg" }],
+};
 
-/**
- * The terminal event as the host sends it: `output` is EMPTY, so a reader that
- * takes the window from here gets nothing and a reader that collects
- * `response.output_item.done` gets the item.
- */
-function completedEvent(): Record<string, unknown> {
-	return {
-		type: "response.completed",
-		response: {
-			id: "resp_codex_compaction",
-			object: "response",
-			status: "completed",
-			output: [],
-			usage: { input_tokens: 139, output_tokens: 438, total_tokens: 577 },
-		},
-	};
+function json(payload: unknown, status = 200, statusText?: string): Response {
+	return new Response(JSON.stringify(payload), {
+		status,
+		statusText,
+		headers: { "content-type": "application/json" },
+	});
 }
 
 interface CapturedCall {
@@ -140,9 +149,9 @@ interface CapturedCall {
 
 /**
  * A fake of the ChatGPT Codex backend, not of our request. It answers the way
- * the real host answered a live call, including both refusals.
+ * the host serving the pinned wire answers, including each refusal.
  */
-function codexBackend(options?: { streamed?: Array<Record<string, unknown>> }): CapturedCall[] {
+function codexBackend(options?: { output?: unknown[] }): CapturedCall[] {
 	const calls: CapturedCall[] = [];
 	vi.spyOn(globalThis, "fetch").mockImplementation(
 		Object.assign(
@@ -152,42 +161,38 @@ function codexBackend(options?: { streamed?: Array<Record<string, unknown>> }): 
 				const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
 				calls.push({ url: String(input), headers, body });
 
-				if (String(input).endsWith("/compact")) {
-					return new Response('{"detail":"Not Found"}', { status: 404, statusText: "Not Found" });
-				}
-				if (body.stream !== true) {
-					// Recorded verbatim from the live host.
-					return new Response('{"detail":"Stream must be set to true"}', {
-						status: 400,
-						statusText: "Bad Request",
-					});
-				}
-				const items = Array.isArray(body.input) ? body.input : [];
-				const last = items.at(-1);
-				const triggered =
-					!!last && typeof last === "object" && "type" in last && last.type === "compaction_trigger";
-				if (!triggered) {
-					// What the host does with a compaction-marked request that
-					// carries no trigger item: it just answers the conversation.
-					return sse([
-						{
-							type: "response.output_item.done",
-							item: { id: "rs_0", type: "reasoning", encrypted_content: "gAAA-reasoning" },
-						},
-						{
-							type: "response.output_item.done",
-							item: {
+				if (!String(input).endsWith("/compact")) {
+					// What the turn route does with a compaction-marked request: it
+					// runs the span as an ordinary turn and answers prose. Nothing
+					// 404s, so a reader that accepts this claims a compaction that
+					// never happened and replays the span at full size forever.
+					return json({
+						id: "resp_turn",
+						object: "response",
+						output: [
+							{ id: "rs_0", type: "reasoning", encrypted_content: "gAAA-reasoning" },
+							{
 								id: "msg_0",
 								type: "message",
 								role: "assistant",
 								content: [{ type: "output_text", text: "The conversation references history msg." }],
 							},
-						},
-						completedEvent(),
-					]);
+						],
+					});
 				}
-				const streamed = options?.streamed ?? [{ type: "response.output_item.done", item: COMPACTION_ITEM }];
-				return sse([...streamed, completedEvent()]);
+				if (body.stream === true) {
+					return json({ detail: "stream is not supported on this route" }, 400, "Bad Request");
+				}
+				const items = Array.isArray(body.input) ? body.input : [];
+				if (items.some(item => !!item && typeof item === "object" && item.type === "compaction_trigger")) {
+					return json({ detail: "compaction_trigger is not a valid input item" }, 400, "Bad Request");
+				}
+				return json({
+					id: "resp_codex_compaction",
+					object: "response.compaction",
+					output: options?.output ?? [RETAINED_ITEM, COMPACTION_ITEM],
+					usage: { input_tokens: 139, output_tokens: 438, total_tokens: 577 },
+				});
 			},
 			{ preconnect: fetch.preconnect },
 		),
@@ -204,6 +209,10 @@ function remoteWindow(result: { preserveData?: Record<string, unknown> }): Array
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	// The route-absent latch is a module-level Set. A 404 reached in this file
+	// otherwise makes every later file resolve no transport for this model,
+	// which is a failure that appears only in a full-suite run.
+	resetServerCompactionRouteCache();
 });
 
 describe("a ChatGPT OAuth session compacts on the codex backend", () => {
@@ -213,7 +222,7 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 		expect(resolveServerCompactionTransport(codexModel())).toBeDefined();
 	});
 
-	test("posts the span to the codex responses route with the ChatGPT credential and identity", async () => {
+	test("posts the span to the compact route with the ChatGPT credential and identity", async () => {
 		const calls = codexBackend();
 		const token = fakeCodexToken("acct-9");
 
@@ -230,20 +239,21 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 
 		expect(calls).toHaveLength(1);
 		const call = calls[0]!;
-		expect(call.url).toBe("https://chatgpt.com/backend-api/codex/responses");
+		expect(call.url).toBe(COMPACT_ROUTE);
 		expect(call.headers.authorization).toBe(`Bearer ${token}`);
 		expect(call.headers[OPENAI_HEADERS.ACCOUNT_ID.toLowerCase()]).toBe("acct-9");
 		expect(call.headers[OPENAI_HEADERS.ORIGINATOR.toLowerCase()]).toBeDefined();
 		// The installation header is the one a direct codex call requires.
 		expect(call.headers[OPENAI_HEADERS.INSTALLATION_ID.toLowerCase()]).toBeDefined();
 		expect(call.headers["content-type"]).toBe("application/json");
-		// The route streams, so a JSON-only accept is a request the host serves
-		// as a turn body the reader cannot parse.
+		// `accept: text/event-stream` rides along from the shared codex request
+		// builder, which oh-my-pi also routes compaction through; the compact
+		// route answers one JSON document regardless of it.
 		expect(call.headers.accept).toBe("text/event-stream");
 		expect(result.summary).toBe("");
 	});
 
-	test("the body streams, carries the trigger as its last input item, and asks for encrypted reasoning", async () => {
+	test("the body does not stream and carries no trigger item", async () => {
 		const calls = codexBackend();
 
 		await compactWithProvider(makePreparation(), codexModel(), fakeCodexToken("acct-9"), "base system prompt");
@@ -251,15 +261,54 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 		const body = calls[0]!.body;
 		expect(body.model).toBe(codexModel().id);
 		expect(body.store).toBe(false);
-		expect(body.stream).toBe(true);
-		expect(body.include).toEqual(["reasoning.encrypted_content"]);
+		expect(body.stream).toBeUndefined();
 		expect(body.client_metadata).toBeDefined();
 		expect(body.instructions).toBe("base system prompt");
 		const input = body.input as Array<Record<string, unknown>>;
-		expect(input.length).toBeGreaterThan(1);
-		expect(input.at(-1)).toEqual({ type: "compaction_trigger" });
-		// The trigger is appended, never a replacement for the span.
+		expect(input.length).toBeGreaterThan(0);
+		expect(input.filter(item => item.type === "compaction_trigger")).toEqual([]);
+		// The span itself is what gets sent, never a marker standing in for it.
 		expect(input.some(item => item.role === "user")).toBe(true);
+	});
+
+	test("the request declares the route it is posted to", async () => {
+		// The two halves are set in different packages, so each can be right
+		// while the pair is wrong. This is the assertion that fails on half a flip.
+		//
+		// The codex context is supplied because every production entry supplies it
+		// before reaching the transport (`agent-session.ts` builds one at each of
+		// the manual, automatic and overflow entries). A caller that omits it posts
+		// to `/compact` with no declaration at all, because
+		// `createOpenAICodexCompactionRequestContext` returns undefined without a
+		// context; no shipped path does that, and closing it would mean sending a
+		// declaration with no operation identity, which is a wire change.
+		const calls = codexBackend();
+
+		await compactWithProvider(
+			makePreparation(),
+			codexModel(),
+			fakeCodexToken("acct-9"),
+			"base system prompt",
+			undefined,
+			{
+				sessionId: "session-declaration",
+				codexCompaction: {
+					operationId: "op-declaration",
+					trigger: "auto",
+					reason: "context_limit",
+					phase: "pre_turn",
+					strategy: "prefix_compaction",
+				},
+			},
+		);
+
+		const metadata = calls[0]!.body.client_metadata as Record<string, string>;
+		const turn = JSON.parse(metadata[OPENAI_HEADERS.TURN_METADATA]!) as {
+			request_kind?: string;
+			compaction?: { implementation?: string };
+		};
+		expect(turn.request_kind).toBe("compaction");
+		expect(turn.compaction?.implementation).toBe("responses_compact");
 	});
 
 	test("the stored window is the retained user messages followed by the compaction item", async () => {
@@ -275,65 +324,49 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 		const window = remoteWindow(result);
 		expect(window).toBeDefined();
 		expect(window?.at(-1)).toEqual(COMPACTION_ITEM);
-		// `response.completed.output` is empty on this host, so a window of one
-		// item means the reader took it from the terminal event.
 		expect(window?.length).toBeGreaterThan(1);
 		const retained = window!.slice(0, -1);
 		expect(retained.every(item => item.role === "user")).toBe(true);
 		expect(JSON.stringify(retained)).toContain("history msg");
-		// The trigger is a request item; replaying it would compact on every turn.
+		// The trigger belongs to the other wire; replaying it would compact on
+		// every turn.
 		expect(retained.some(item => item.type === "compaction_trigger")).toBe(false);
 	});
 
-	test("a stream that carries no compaction item compacts nothing", async () => {
-		// The host's answer when the trigger did not take: real output items,
-		// none of them a compaction. Storing that window would claim a
-		// compaction that did not happen and replay the span at full size.
-		codexBackend({
-			streamed: [
-				{
-					type: "response.output_item.done",
-					item: { id: "msg_1", type: "message", role: "assistant", content: [] },
-				},
-			],
-		});
+	test("a reply carrying no compaction item compacts nothing", async () => {
+		// What the turn route answers, and what the compact route answers if the
+		// compaction did not take: real output items, none of them a compaction.
+		// Storing that window would claim a compaction that did not happen.
+		codexBackend({ output: [{ id: "msg_1", type: "message", role: "assistant", content: [] }] });
 
 		await expect(
 			compactWithProvider(makePreparation(), codexModel(), fakeCodexToken("acct-9"), "base system prompt"),
-		).rejects.toThrow(/expected exactly one/);
+		).rejects.toThrow(/no compaction item/);
 	});
 
-	test("two compaction items are refused rather than picked between", async () => {
-		codexBackend({
-			streamed: [
-				{ type: "response.output_item.done", item: COMPACTION_ITEM },
-				{ type: "response.output_item.done", item: { ...COMPACTION_ITEM, id: "cmp_002" } },
-			],
-		});
+	test("an empty output is a failure, not an empty window", async () => {
+		codexBackend({ output: [] });
 
 		await expect(
 			compactWithProvider(makePreparation(), codexModel(), fakeCodexToken("acct-9"), "base system prompt"),
-		).rejects.toThrow(/expected exactly one/);
+		).rejects.toThrow(/no output items/);
 	});
 
-	test("a stream that ends before response.completed is a failure, not a short window", async () => {
+	test("a reply that is not JSON is a failure, not a short window", async () => {
 		vi.spyOn(globalThis, "fetch").mockImplementation(
 			Object.assign(
 				async () =>
-					new Response(
-						`event: response.output_item.done\ndata: ${JSON.stringify({
-							type: "response.output_item.done",
-							item: COMPACTION_ITEM,
-						})}\n\n`,
-						{ status: 200, headers: { "content-type": "text/event-stream" } },
-					),
+					new Response("event: response.output_item.done\ndata: {}\n\n", {
+						status: 200,
+						headers: { "content-type": "text/event-stream" },
+					}),
 				{ preconnect: fetch.preconnect },
 			),
 		);
 
 		await expect(
 			compactWithProvider(makePreparation(), codexModel(), fakeCodexToken("acct-9"), "base system prompt"),
-		).rejects.toThrow(/closed before response\.completed/);
+		).rejects.toThrow();
 	});
 
 	test("a lite codex row moves the instructions into a developer item and pins all_turns replay", async () => {
@@ -352,6 +385,7 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 		// The lite marker header and this value are one contract; the host
 		// answers a lite request without it with 400 `unsupported_value`.
 		expect(body.reasoning).toMatchObject({ context: "all_turns" });
+		expect(body.include).toEqual(["reasoning.encrypted_content"]);
 		const input = body.input as Array<Record<string, unknown>>;
 		expect(input[0]?.type).toBe("additional_tools");
 		expect(input[1]).toMatchObject({
@@ -359,8 +393,9 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 			role: "developer",
 			content: [{ type: "input_text", text: "base system prompt" }],
 		});
-		// The lite rewrite prepends to a new array; the trigger must survive it.
-		expect(input.at(-1)).toEqual({ type: "compaction_trigger" });
+		// The lite rewrite prepends to a new array; it must not smuggle a trigger
+		// item back in on the way.
+		expect(input.filter(item => item.type === "compaction_trigger")).toEqual([]);
 	});
 
 	test("a row that cannot take all_turns reasoning keeps top-level instructions even with the lite flag on", async () => {

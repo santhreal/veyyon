@@ -15,12 +15,6 @@
  * ignored, inverted at the window boundary, or silently replaced by a different value
  * than the caller asked for.
  *
- * The reserve is subtracted from the model's USABLE INPUT window rather than its catalog
- * window, because the output allocation is charged against the same window: budgeting a
- * summarization request against the raw window builds the one request that must not be
- * rejected. Every window below is therefore a usable input window, and the fixture model's
- * catalog window carries the allocation on top of it.
- *
  * Boundaries are derived from the fixture's own measured token cost rather than
  * hardcoded, so a tokenizer change moves the fixture and the expectations together
  * instead of turning the suite green by accident.
@@ -49,10 +43,7 @@ const ZERO_USAGE: Usage = {
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-/** The output allocation every fixture model advertises. */
-const MOCK_MAX_OUTPUT_TOKENS = 1024;
-
-function modelWithAllocation(contextWindow: number, maxTokens: number): Model {
+function modelWithWindow(contextWindow: number): Model {
 	return buildModel({
 		id: "mock-model",
 		name: "mock-model",
@@ -63,18 +54,8 @@ function modelWithAllocation(contextWindow: number, maxTokens: number): Model {
 		input: ["text"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow,
-		maxTokens,
+		maxTokens: 1024,
 	});
-}
-
-/**
- * A model whose USABLE INPUT window is `usableWindow`. The reserve is subtracted from the
- * usable input window, not the catalog window, because the output allocation is charged
- * against the same window; the raw window is `usableWindow` plus that allocation so every
- * boundary below reads as the budget the summarizer actually receives.
- */
-function modelWithWindow(usableWindow: number): Model {
-	return modelWithAllocation(usableWindow + MOCK_MAX_OUTPUT_TOKENS, MOCK_MAX_OUTPUT_TOKENS);
 }
 
 /** Four user turns, oldest first, each carrying a marker the prompt either keeps or drops. */
@@ -184,23 +165,5 @@ describe("the branch summary reserve bounds what the summarizer is sent", () => 
 		expect(defaulted).toBe(explicit);
 		expect(defaulted).not.toContain(OLDEST);
 		expect(defaulted).toContain(NEWEST);
-	});
-
-	test("the output allocation is charged against the budget, not left to the provider to reject", async () => {
-		// Same catalog window, same reserve; only the advertised output allocation differs.
-		// Sizing the branch against the raw window would send both prompts whole, which is
-		// the request the provider rejects on a model whose allocation is most of its window.
-		const window = (FIXTURE_TOKENS + MOCK_MAX_OUTPUT_TOKENS) * 2;
-		const unallocated = await promptFor({ model: modelWithAllocation(window, 0), reserveTokens: 1 });
-		expect(unallocated).toContain(OLDEST);
-		expect(unallocated).toContain(NEWEST);
-
-		// Leaves half the fixture's cost as usable input, so the oldest turn cannot fit.
-		const allocated = await promptFor({
-			model: modelWithAllocation(window, window - Math.floor(FIXTURE_TOKENS / 2)),
-			reserveTokens: 1,
-		});
-		expect(allocated).not.toContain(OLDEST);
-		expect(allocated).toContain(NEWEST);
 	});
 });

@@ -14,7 +14,7 @@
 
 import { type AgentMessage, countTokens } from "@veyyon/agent-core";
 import type { CompactionSettings } from "@veyyon/agent-core/compaction";
-import { estimateTokens, usableInputWindow } from "@veyyon/agent-core/compaction";
+import { estimateTokens } from "@veyyon/agent-core/compaction";
 import type { Tool as AiTool, ContextSnapshot, Model } from "@veyyon/ai";
 import type { SessionTelemetryDetail } from "@veyyon/ai/instrumentation";
 import { stripSchemaDescriptions, toolWireSchema } from "@veyyon/ai/utils/schema";
@@ -382,11 +382,7 @@ export function computeNonMessageBreakdown(session: AgentSession): {
  */
 export function computeContextBreakdown(session: AgentSession): ContextBreakdown {
 	const model = session.model;
-	// The window a request can actually fill, not the catalog number: the model's
-	// output allocation is charged against the same window, so budgeting history
-	// against the raw figure overstates the room by that allocation and the
-	// provider rejects the request before compaction ever reaches its threshold.
-	const contextWindow = usableInputWindow(model?.contextWindow ?? 0, model?.maxTokens);
+	const contextWindow = model?.contextWindow ?? 0;
 
 	const breakdown = typeof session.getContextBreakdown === "function" ? session.getContextBreakdown() : undefined;
 

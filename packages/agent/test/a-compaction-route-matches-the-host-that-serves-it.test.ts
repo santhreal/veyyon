@@ -151,13 +151,14 @@ const ROUTES: Record<string, RouteCase> = {
 		pathnameEndsWith: "/responses/compact",
 		compactSuffix: true,
 	},
-	// Codex serves v2 only: an ordinary responses request that its client
-	// metadata marks as a compaction. There is no `/compact` route to reach.
+	// Codex serves the `/compact` route, declared as `responses_compact`. The
+	// route and that declaration are one decision; see
+	// `the-codex-compaction-wire-does-not-regress.test.ts`.
 	"openai-codex-responses": {
 		model: () => bundled("openai-codex", "gpt-5.1-codex"),
 		apiKey: fakeCodexToken("acct-9"),
-		pathnameEndsWith: "/backend-api/codex/responses",
-		compactSuffix: false,
+		pathnameEndsWith: "/backend-api/codex/responses/compact",
+		compactSuffix: true,
 		origin: "https://chatgpt.com",
 	},
 };
@@ -210,8 +211,8 @@ describe("a compaction route matches the host that serves it", () => {
 		});
 	}
 
-	test("the codex route carries no compact segment anywhere in the path", async () => {
-		// `endsWith` alone would accept `/responses/compact/responses`.
+	test("the codex route carries exactly one compact segment, at the end", async () => {
+		// `endsWith` alone would accept `/compact/responses/compact`.
 		const model = ROUTES["openai-codex-responses"]!.model();
 		const transport = resolveServerCompactionTransport(model);
 		if (!transport) throw new Error("Expected the codex row to resolve a transport");
@@ -224,12 +225,14 @@ describe("a compaction route matches the host that serves it", () => {
 			fetch: captureFetch(calls),
 		});
 
-		expect(new URL(calls[0]!.url).pathname.split("/")).not.toContain("compact");
+		const segments = new URL(calls[0]!.url).pathname.split("/");
+		expect(segments.filter(segment => segment === "compact")).toEqual(["compact"]);
+		expect(segments.at(-1)).toBe("compact");
 	});
 });
 
 describe("a compaction request declares the implementation it is sent as", () => {
-	test("codex names the v2 implementation, matching the v2 route", async () => {
+	test("codex names responses_compact, matching the /compact route", async () => {
 		const model = bundled("openai-codex", "gpt-5.1-codex");
 		const calls: CapturedCall[] = [];
 
@@ -253,11 +256,14 @@ describe("a compaction request declares the implementation it is sent as", () =>
 			compaction?: { implementation?: string };
 		};
 
-		// The two halves of one decision: the marker that makes an ordinary
-		// responses request a compaction, and the implementation it claims.
+		// DO NOT CHANGE WITHOUT OPERATOR PERMISSION — THIS REGRESSION HAS HAPPENED
+		// 50+ TIMES. The two halves of one decision: the marker that makes the
+		// request a compaction, and the implementation it claims. The declaration
+		// must name the route it is posted to, or the host answers 404 and every
+		// compaction falls back to paid local compaction.
 		expect(turn.request_kind).toBe("compaction");
-		expect(turn.compaction?.implementation).toBe("responses_compaction_v2");
-		expect(new URL(calls[0]!.url).pathname.endsWith("/compact")).toBe(false);
+		expect(turn.compaction?.implementation).toBe("responses_compact");
+		expect(new URL(calls[0]!.url).pathname.endsWith("/compact")).toBe(true);
 	});
 });
 

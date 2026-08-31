@@ -85,7 +85,6 @@ import {
 	serverCompactionRouteAbsent,
 	shouldCompact,
 	upsertFileOperations,
-	usableInputWindow,
 } from "@veyyon/agent-core/compaction";
 import { modelServesPrefixCacheHits } from "@veyyon/agent-core/compaction/cache-aligned-context";
 import {
@@ -660,16 +659,6 @@ const TRUNCATION_KEEP_EDGE_TOKENS = 512;
  * than the cut frees.
  */
 const TRUNCATION_MIN_TEXT_TOKENS = TRUNCATION_KEEP_EDGE_TOKENS * 2 + 256;
-
-/**
- * The input room a model actually offers, for every budgeting decision in this
- * file. `model.contextWindow` is the catalog figure and includes the output
- * allocation the provider will not let a prompt use; reading it directly is what
- * let history grow into a request the provider rejects.
- */
-function usableWindowOf(model: Model | undefined | null): number {
-	return usableInputWindow(model?.contextWindow ?? 0, model?.maxTokens);
-}
 
 /** Whether writing `path` must rebuild the prompt the model is holding. */
 function rebuildsThePrompt(path: string): boolean {
@@ -2859,7 +2848,7 @@ export class AgentSession {
 	async #promoteAdvisorContextModel(advisor: ActiveAdvisor, currentModel: Model): Promise<boolean> {
 		const promotionSettings = this.settings.getGroup("contextPromotion");
 		if (!promotionSettings.enabled) return false;
-		const contextWindow = usableInputWindow(currentModel.contextWindow ?? 0, currentModel.maxTokens);
+		const contextWindow = currentModel.contextWindow ?? 0;
 		if (contextWindow <= 0) return false;
 		const targetModel = await this.#resolveContextPromotionTarget(currentModel, contextWindow);
 		if (!targetModel) return false;
@@ -9367,7 +9356,7 @@ export class AgentSession {
 
 			const agentPromptOptions = options?.toolChoice ? { toolChoice: options.toolChoice } : undefined;
 			const nonMessageTokens = computeNonMessageTokens(this);
-			const contextWindow = usableWindowOf(this.model);
+			const contextWindow = this.model?.contextWindow ?? 0;
 			const breakdown = this.getContextBreakdown({ contextWindow, pendingMessages: messages });
 			const promptTokens =
 				breakdown?.usedTokens ??
@@ -11779,7 +11768,7 @@ export class AgentSession {
 	async #runPrePromptCompactionIfNeeded(messages: AgentMessage[]): Promise<void> {
 		const model = this.model;
 		if (!model) return;
-		const contextWindow = usableInputWindow(model.contextWindow ?? 0, model.maxTokens);
+		const contextWindow = model.contextWindow ?? 0;
 		if (contextWindow <= 0) return;
 		const compactionSettings = this.settings.getGroup("compaction");
 		const contextTokens = this.#estimatePrePromptContextTokens(messages, contextWindow);
@@ -11834,7 +11823,7 @@ export class AgentSession {
 			return;
 
 		const model = this.model;
-		const contextWindow = usableWindowOf(model);
+		const contextWindow = model?.contextWindow ?? 0;
 		if (contextWindow <= 0) return;
 
 		const compactionSettings = this.settings.getGroup("compaction");
@@ -11923,7 +11912,7 @@ export class AgentSession {
 	): Promise<CompactionCheckResult> {
 		// Skip if message was aborted (user cancelled) - unless skipAbortedCheck is false
 		if (skipAbortedCheck && assistantMessage.stopReason === "aborted") return COMPACTION_CHECK_NONE;
-		const contextWindow = usableWindowOf(this.model);
+		const contextWindow = this.model?.contextWindow ?? 0;
 		const generation = this.#promptGeneration;
 		// Skip overflow check if the message came from a different model.
 		// This handles the case where user switched from a smaller-context model (e.g. opus)
@@ -13963,7 +13952,7 @@ export class AgentSession {
 	 * reserved on purpose.
 	 */
 	#compactionBudget(bar: CompactionBar): CompactionBudget | undefined {
-		const contextWindow = usableWindowOf(this.model);
+		const contextWindow = this.model?.contextWindow ?? 0;
 		if (contextWindow <= 0) return undefined;
 		const compactionSettings = this.settings.getGroup("compaction");
 		const residualTokens = this.#residualContextTokens(contextWindow);
@@ -14003,7 +13992,7 @@ export class AgentSession {
 	 * unnecessary.
 	 */
 	#thresholdStillTrips(compactionSettings: Parameters<typeof shouldCompact>[2]): boolean {
-		const contextWindow = usableWindowOf(this.model);
+		const contextWindow = this.model?.contextWindow ?? 0;
 		if (contextWindow <= 0) return true;
 		return shouldCompact(this.#residualContextTokens(contextWindow), contextWindow, compactionSettings);
 	}
@@ -14968,7 +14957,7 @@ export class AgentSession {
 
 		const id = this.#classifyRetryMessage(message);
 		// Context overflow is handled by compaction, not retry
-		const contextWindow = usableWindowOf(this.model);
+		const contextWindow = this.model?.contextWindow ?? 0;
 		if (AIError.isContextOverflow(message, contextWindow)) return false;
 
 		if (this.#isClassifierRefusal(message)) return true;

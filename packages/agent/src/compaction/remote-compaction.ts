@@ -129,11 +129,13 @@ export async function compactWithProvider(
 				providerSessionState: options?.providerSessionState,
 				codexCompaction: createOpenAICodexCompactionRequestContext({
 					context: options?.codexCompaction,
-					// `responses_compact` is the RETIRED v1 route. The Codex
-					// backend answers 404 for it, and a 404 is recorded as
-					// route-absent, so a session that asked once compacted
-					// locally from then on. v2 is the live implementation.
-					implementation: "responses_compaction_v2",
+					// `responses_compact` names the `{base}/codex/responses/compact`
+					// route the transport posts to, which is the wire oh-my-pi
+					// serves. The declaration and the route are one decision: a
+					// `responses_compaction_v2` metadata sent to the `/compact`
+					// endpoint is a mismatch, and a mismatch is its own 404.
+					// Changing either one means changing both.
+					implementation: "responses_compact",
 				}),
 				apiKey: key,
 				signal,
