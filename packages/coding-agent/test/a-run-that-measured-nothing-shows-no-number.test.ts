@@ -25,9 +25,6 @@ import { metricLabel, renderRunDetail, runScreenRows } from "@veyyon/coding-agen
 import { createExperimentState, createSessionRuntime } from "@veyyon/coding-agent/autoresearch/state";
 import type { AutoresearchRuntime, ExperimentResult, ExperimentStatus } from "@veyyon/coding-agent/autoresearch/types";
 import { useTruecolorTheme } from "./helpers/theme-assertions";
-
-useTruecolorTheme();
-
 /**
  * Every status a logged run can carry, and whether it carries a measurement.
  *
@@ -81,6 +78,10 @@ function runtimeWith(status: ExperimentStatus, metric: number): AutoresearchRunt
 }
 
 describe("a run that measured nothing shows no number", () => {
+	// The detail pane paints through the theme, so one has to be installed; the
+	// assertions read text, not colour.
+	useTruecolorTheme("dark");
+
 	it("classifies every status the store can hand back", () => {
 		// A status added to the union without a decision here is the failure this
 		// exists to force: the sweep below would not reach it.
