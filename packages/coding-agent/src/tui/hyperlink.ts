@@ -13,9 +13,9 @@
  * used to pay, including the launch shell.
  */
 import * as url from "node:url";
-import { BEL, OSC, ST } from "@veyyon/utils/ansi";
 // The capability leaf, not the `@veyyon/tui` barrel, which re-exports every component in the library.
 import { detectStreamAnsiPolicy, TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import { BEL, OSC, ST } from "@veyyon/utils/ansi";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../config/settings-instance";
 

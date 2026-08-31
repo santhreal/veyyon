@@ -7,8 +7,8 @@
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import type { Theme } from "../theme/theme";
 import { tryResolveInternalUrlSync } from "../internal-urls/resolve-sync";
+import type { Theme } from "../theme/theme";
 import {
 	Ellipsis,
 	fileHyperlink,

@@ -13,6 +13,7 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { encodeConformanceValue } from "../packages/utils/src/conformance";
 import { detectLineEnding, normalizeToLF, restoreLineEndings, stripBom } from "../plugins/hashline/src/normalize";
 import { parseLid, splitHashlineLines } from "../plugins/hashline/src/tokenizer";
 import {
@@ -28,7 +29,6 @@ import {
 	weibullDecayFactor12,
 	wordSetSorted,
 } from "../plugins/mnemopi/src/core/conformance-boundary";
-import { encodeConformanceValue } from "../packages/utils/src/conformance";
 
 const BOUNDARY: Record<string, (...args: never[]) => unknown> = {
 	splitHashlineLines,

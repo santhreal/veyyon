@@ -25,15 +25,15 @@
  */
 
 import { Spacer } from "@veyyon/tui/components/spacer";
+import { TUI } from "@veyyon/tui/core/tui";
+import { ProcessTerminal } from "@veyyon/tui/terminal";
+import { setTerminalTextSizing, TERMINAL } from "@veyyon/tui/terminal-capabilities";
 // Leaves, not the `@veyyon/tui` barrel. The barrel re-exports every component in the library, and
 // the first frame paints before any of them exist.
 import { matchesKey } from "@veyyon/utils/keys";
-import { planPaintGround } from "@veyyon/utils/paint-ground";
-import { ProcessTerminal } from "@veyyon/tui/terminal";
-import { setTerminalTextSizing, TERMINAL } from "@veyyon/tui/terminal-capabilities";
-import { TUI } from "@veyyon/tui/core/tui";
-import { setTuiTight } from "@veyyon/utils/tight-mode";
 import * as logger from "@veyyon/utils/logger";
+import { planPaintGround } from "@veyyon/utils/paint-ground";
+import { setTuiTight } from "@veyyon/utils/tight-mode";
 import { settings } from "../../config/settings-instance";
 import { applyGroundPaint, setDetectedTerminalGround } from "../../theme/ground-tints";
 import { theme } from "../../theme/theme";

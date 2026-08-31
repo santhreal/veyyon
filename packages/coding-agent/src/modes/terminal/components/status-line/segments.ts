@@ -8,9 +8,9 @@ import { DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault, getProjectDir } fr
 import { formatDuration, formatNumber } from "@veyyon/utils/format";
 import { clamp01 } from "@veyyon/utils/math";
 import { PRIORITY_TIER_LABEL } from "../../../../config/service-tier";
+import { describeMsLeft } from "../../../../secrets/vault";
 import { withIcon } from "../../../../theme/icon-label";
 import { type ThemeColor, theme } from "../../../../theme/theme";
-import { describeMsLeft } from "../../../../secrets/vault";
 import { normalizeApprovalMode } from "../../../../tools/approval";
 import { AUTONOMY_LABEL } from "../../../../tools/approval-modes";
 import { TRUNCATE_LENGTHS, truncateToWidth } from "../../../../tools/render-utils";

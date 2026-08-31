@@ -59,8 +59,17 @@ export const WARMUP_STAGES: readonly WarmupStage[] = [
 	{ name: "session/agent-session", load: () => import("../session/agent-session") },
 	{ name: "sdk", load: () => import("../sdk") },
 	{ name: "slash-commands/builtin-registry", load: () => import("../slash-commands/builtin-registry") },
-	{ name: "modes/terminal/controllers/event-controller", load: () => import("../modes/terminal/controllers/event-controller") },
-	{ name: "modes/terminal/controllers/tan-command-controller", load: () => import("../modes/terminal/controllers/tan-command-controller") },
-	{ name: "modes/terminal/controllers/selector-controller", load: () => import("../modes/terminal/controllers/selector-controller") },
+	{
+		name: "modes/terminal/controllers/event-controller",
+		load: () => import("../modes/terminal/controllers/event-controller"),
+	},
+	{
+		name: "modes/terminal/controllers/tan-command-controller",
+		load: () => import("../modes/terminal/controllers/tan-command-controller"),
+	},
+	{
+		name: "modes/terminal/controllers/selector-controller",
+		load: () => import("../modes/terminal/controllers/selector-controller"),
+	},
 	{ name: "modes/terminal/interactive-mode", load: () => import("../modes/terminal/interactive-mode") },
 ];

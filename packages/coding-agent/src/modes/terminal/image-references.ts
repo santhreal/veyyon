@@ -9,9 +9,9 @@
  */
 
 import type { ImageContent } from "@veyyon/ai";
+import { type BlobPutResult, blobExtensionForImageMimeType } from "@veyyon/kernel/session/blob-store";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
-import { type BlobPutResult, blobExtensionForImageMimeType } from "@veyyon/kernel/session/blob-store";
 
 type ImageBlobWriter = (data: Buffer, options?: { extension?: string }) => Promise<BlobPutResult>;
 type ImageBlobWriterSync = (data: Buffer, options?: { extension?: string }) => BlobPutResult;

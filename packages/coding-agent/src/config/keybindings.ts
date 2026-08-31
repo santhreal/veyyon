@@ -1,10 +1,15 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { type Keybinding, type KeybindingsConfig, setKeybindings, KeybindingsManager as TuiKeybindingsManager } from "@veyyon/utils/keybindings";
-import type { KeyId } from "@veyyon/utils/keys";
 import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
 import { getActiveProfile, getAgentDir, getProfileRootDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
+import {
+	type Keybinding,
+	type KeybindingsConfig,
+	setKeybindings,
+	KeybindingsManager as TuiKeybindingsManager,
+} from "@veyyon/utils/keybindings";
+import type { KeyId } from "@veyyon/utils/keys";
 // Owners, not the `@veyyon/utils` barrel: 6 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { quarantineUnparseableFileSync } from "@veyyon/utils/quarantine-file";

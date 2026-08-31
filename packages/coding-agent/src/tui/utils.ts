@@ -1,8 +1,9 @@
 /**
  * Shared helpers for tool-rendered UI components.
  */
-import { visibleWidth } from "@veyyon/utils/width";
+
 import { padding } from "@veyyon/utils/padding";
+import { visibleWidth } from "@veyyon/utils/width";
 import type { Theme, ThemeBg } from "../theme/theme";
 import type { State } from "./types";
 
@@ -112,4 +113,3 @@ export function getStateBgColor(state: State): ThemeBg {
 	if (state === "error") return "toolErrorBg";
 	return "toolPendingBg";
 }
-

@@ -368,14 +368,12 @@ import {
 	listLocalPlanFileUrls,
 	resolveLocalUrlToPath,
 } from "../internal-urls/local-protocol";
-import { IrcBus, type IrcMessage, type IrcPersistedDeliveryFacts, type IrcPersistedDeliveryTelemetry, projectIrcDeliveryTelemetry } from "../task/irc-bus";
 import { resolveMemoryBackend } from "../memory/backend";
 import type { HindsightSessionState } from "../memory/hindsight/state";
 import { shutdownMnemopiEmbedClient } from "../memory/mnemopi/embed-client";
 import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../memory/mnemopi/state";
 import { ORCHESTRATE_NOTICE, renderWorkflowNotice, ULTRATHINK_NOTICE } from "../modes/keywords/magic-keyword-notices";
 import { containsOrchestrate } from "../modes/keywords/orchestrate-keyword";
-import { theme } from "../theme/theme-binding";
 import { containsUltrathink } from "../modes/keywords/ultrathink-keyword";
 import { containsWorkflow } from "../modes/keywords/workflow-keyword";
 import { resolveApprovedPlan } from "../plan-mode/approved-plan";
@@ -409,9 +407,16 @@ import {
 } from "../slash-commands/helpers/parse";
 import { invalidateHostMetadata } from "../ssh/connection-manager";
 import { isLivePromptGate } from "../system-prompt-builder/gate-registry";
-
+import {
+	IrcBus,
+	type IrcMessage,
+	type IrcPersistedDeliveryFacts,
+	type IrcPersistedDeliveryTelemetry,
+	projectIrcDeliveryTelemetry,
+} from "../task/irc-bus";
 import { usesCodexTaskPrompt } from "../task/prompt-policy";
 import { enabledSubagentNames, preferredSubagentName, resolveDelegation } from "../task/subagent-settings";
+import { theme } from "../theme/theme-binding";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,

@@ -18,6 +18,7 @@
 
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { CONFORMANCE_SCHEMA_VERSION, encodeConformanceValue } from "../packages/utils/src/conformance";
 import { detectLineEnding, normalizeToLF, restoreLineEndings, stripBom } from "../plugins/hashline/src/normalize";
 import { parseLid, splitHashlineLines } from "../plugins/hashline/src/tokenizer";
 import {
@@ -33,7 +34,6 @@ import {
 	weibullDecayFactor12,
 	wordSetSorted,
 } from "../plugins/mnemopi/src/core/conformance-boundary";
-import { CONFORMANCE_SCHEMA_VERSION, encodeConformanceValue } from "../packages/utils/src/conformance";
 
 interface RecordedCase {
 	name: string;

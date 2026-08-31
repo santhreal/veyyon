@@ -8,14 +8,14 @@
 import * as path from "node:path";
 import type { ToolCallContext } from "@veyyon/agent-core";
 import type { Ellipsis } from "@veyyon/natives";
-import { getKeybindings } from "@veyyon/utils/keybindings";
 import type { Component } from "@veyyon/tui/core/component-types";
-import { replaceTabs } from "@veyyon/utils/wrap";
-import { truncateToWidth } from "@veyyon/utils/width";
 // Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { formatCount, pluralize } from "@veyyon/utils/format";
+import { getKeybindings } from "@veyyon/utils/keybindings";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import { formatKeyHints, type KeyId } from "../config/keybindings";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
@@ -26,8 +26,8 @@ import { isPathWithinCwd } from "./path-utils";
 import { shortenPath } from "./shorten-path";
 
 export { Ellipsis } from "@veyyon/natives";
-export { replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 export { truncateToWidth } from "@veyyon/utils/width";
+export { replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 
 // =============================================================================
 // Standardized Display Constants
@@ -1057,4 +1057,3 @@ export function getLspBatchRequest(toolCall: ToolCallContext | undefined): LspBa
 	const hasLaterWrites = toolCall.toolCalls.slice(toolCall.index + 1).some(call => LSP_BATCH_TOOLS.has(call.name));
 	return { id: toolCall.batchId, flush: !hasLaterWrites };
 }
-

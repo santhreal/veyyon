@@ -29,9 +29,14 @@ function image(mimeType: string, data = "AAAA"): ImageContent {
 
 function result(displayPath: string): BlobPutResult {
 	const hash = "0".repeat(64);
-	return { hash, path: `/blobs/${hash}`, displayPath, get ref() {
-		return `blob:sha256:${hash}`;
-	} };
+	return {
+		hash,
+		path: `/blobs/${hash}`,
+		displayPath,
+		get ref() {
+			return `blob:sha256:${hash}`;
+		},
+	};
 }
 
 /** Records what each call was handed, so the extension the writer derives is observable. */
@@ -72,8 +77,9 @@ describe("a failed image write keeps the links that worked", () => {
 
 	it("reports nothing when every write fails, rather than an array of holes", async () => {
 		const writer = recordingWriter(() => true);
-		const links = await materializeImageReferenceLinks([image("image/png"), image("image/png")], async (data, options) =>
-			writer.put(data, options),
+		const links = await materializeImageReferenceLinks(
+			[image("image/png"), image("image/png")],
+			async (data, options) => writer.put(data, options),
 		);
 		expect(links).toBeUndefined();
 	});
@@ -117,7 +123,9 @@ describe("a failed image write keeps the links that worked", () => {
 			),
 		).toEqual([undefined, "image-1.out"]);
 		expect(writer.seen.map(call => call.extension)).toEqual(["png", "gif"]);
-		expect(materializeImageReferenceLinksSync(undefined, (data, options) => writer.put(data, options))).toBeUndefined();
+		expect(
+			materializeImageReferenceLinksSync(undefined, (data, options) => writer.put(data, options)),
+		).toBeUndefined();
 		expect(
 			materializeImageReferenceLinksSync([image("image/png")], () => {
 				throw new Error("blob store is full");
