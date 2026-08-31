@@ -20,6 +20,7 @@
 - Free functions, consts, and types extracted from `autocomplete.ts` (941→608 lines) into `autocomplete-helpers.ts`.
 - `editor.ts` imports 16 duplicate definitions from `editor-helpers.ts` instead of redefining them; `wordWrapLine` stays in `editor.ts` (different implementation). Dead `wordWrapLine` removed from `editor-helpers.ts`.
 
+- Removed export keyword from 52 functions across components, terminal, motion, and keybinding subsystems that were used locally but never imported by any other module.
 
 ### Changed
 - 46 additional type definitions and functions appended to `components/markdown-helpers.ts` from `components/markdown.ts` (1,987→1,679 lines).

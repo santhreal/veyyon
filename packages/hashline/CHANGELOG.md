@@ -19,6 +19,7 @@
 
 
 - Free functions, types, and constants extracted from `apply.ts` (1118→268 lines) into `apply-helpers.ts`.
+- Removed export keyword from 60 functions across format, apply, fs, input, mismatch, parser, patcher, recovery, snapshots, and tokenizer modules that were used locally but never imported by any other module.
 
 ### Fixed
 

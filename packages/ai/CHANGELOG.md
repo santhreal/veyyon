@@ -29,3 +29,4 @@
 - Free functions, consts, and types extracted from `src/registry/oauth/gitlab-duo.ts` and `src/registry/oauth/openai-codex.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `src/providers/anthropic-client.ts` into companion `src/providers/anthropic-client-helpers.ts`.
 - Free functions, consts, and types extracted from `src/providers/anthropic-client.ts` into companion `src/providers/anthropic-client-helpers.ts`.
+- Removed export keyword from 328 functions across providers, registry, dialect, error, stream, and utils subsystems that were used locally but never imported by any other module.

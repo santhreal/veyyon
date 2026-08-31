@@ -25,6 +25,7 @@
 
 - Provider override functions and constants extracted from `provider-models/openai-compat/overrides.ts` (1184→707 lines) into `provider-models/openai-compat/overrides-helpers.ts`.
 - Provider manager factory functions extracted from `provider-models/openai-compat/providers.ts` (1359→732 lines) into `provider-models/openai-compat/providers-helpers-2.ts`.
+- Removed export keyword from 61 functions across provider-models, identity, discovery, and wire subsystems that were used locally but never imported by any other module.
 
 ### Breaking Changes
 

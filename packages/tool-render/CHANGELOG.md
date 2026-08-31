@@ -7,6 +7,7 @@
 ### Changed
 
 - No user-facing effect; the spread-to-concat optimization this rebase repaired was already released in 1.2.0.
+- No user-facing effect; internal export visibility tightened with no public API change.
 
 ### Added
 

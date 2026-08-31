@@ -12,6 +12,7 @@
 - Migrated dashboard theme toggle to shared `ThemeToggle` from `@veyyon/tool-render`.
 
 ## [1.2.0] - 2026-08-23
+- Removed export keyword from 8 functions across client and user-metrics modules that were used locally but never imported by any other module.
 
 ### Breaking Changes
 

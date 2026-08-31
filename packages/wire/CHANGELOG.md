@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### Changed
+- No user-facing effect; internal export visibility tightened with no public API change.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes

@@ -37,3 +37,4 @@
 - Free functions, consts, and types extracted from `modes/components/assistant-message.ts`, `modes/setup-wizard/wizard-overlay.ts`, `modes/components/transcript-container.ts`, `modes/components/plugin-settings.ts`, and `debug/log-viewer.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `session/indexed-session-storage.ts` and `eval/js/worker-core.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `session/indexed-session-storage.ts` and `eval/js/worker-core.ts` into companion `*-helpers.ts` files.
+- Removed export keyword from 481 functions across modes, tools, config, session, lsp, cli, eval, edit, web/search, mcp, internal-urls, extensibility, dap, ssh, discovery, tui, and utils subsystems that were used locally but never imported by any other module.
