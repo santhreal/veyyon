@@ -158,10 +158,17 @@ function verifyMissedIsFatal(scene: string, findings: Finding[], name: string): 
 /**
  * The text the scene itself puts on screen. Only what it TYPES counts: the whole file cannot be a
  * source, or every guard would prove itself by being written down.
+ *
+ * `t` is in the list because it is the primitive every other spelling ends in: a scene that enters
+ * two runs of text with a key between them -- a line break inside one objective -- calls it
+ * directly, and reading only the wrappers reported both halves as strings the product never prints.
+ * The leading boundary keeps `submit`, `shot` and the rest from matching on their last letter.
  */
 function typedByScene(scene: string): string {
 	const typed: string[] = [];
-	for (const match of scene.matchAll(/(?:submit|slash|type|type_line|type_visible|type_human)\s+"([^"]*)"/g)) {
+	for (const match of scene.matchAll(
+		/(?:^|[\s;])(?:submit|slash|t|type|type_line|type_visible|type_human)\s+"([^"]*)"/gm,
+	)) {
 		typed.push(match[1]);
 	}
 	return typed.join("\n");
