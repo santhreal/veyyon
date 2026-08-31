@@ -119,8 +119,8 @@ describe("the kernel names no tool and no host", () => {
 	// 1. Anti-vacuity, first cell
 	it("finds kernel source files and extracts import specifiers", () => {
 		expect(kernelMember).toBeDefined();
-		expect(kernelFiles.length).toBe(53);
-		expect(concernCounts.registry).toBe(6);
+		expect(kernelFiles.length).toBe(54);
+		expect(concernCounts.registry).toBe(7);
 		expect(concernCounts.loader).toBe(12);
 		expect(concernCounts.session).toBe(35);
 		expect(concernCounts.registry).toBeGreaterThan(0);
