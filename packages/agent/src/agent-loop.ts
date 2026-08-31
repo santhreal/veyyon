@@ -185,7 +185,7 @@ export function createToolScopedAbortReason(
  */
 export const TERMINAL_TOOL_RESULT_ABORT_REASON = Symbol.for("pi-agent-core.terminal-tool-result");
 
-const STEERING_INTERRUPT_POLL_MS = 250;
+export const STEERING_INTERRUPT_POLL_MS = 250;
 
 class HarmonyLeakInterruption extends Error {
 	constructor(
@@ -266,7 +266,7 @@ function snapshotAssistantContentBlock(block: AssistantContentBlock, mode: Snaps
 	}
 }
 
-function snapshotAssistantMessage(message: AssistantMessage, mode: SnapshotMode = "full"): AssistantMessage {
+export function snapshotAssistantMessage(message: AssistantMessage, mode: SnapshotMode = "full"): AssistantMessage {
 	return {
 		...message,
 		content: message.content.map(block => snapshotAssistantContentBlock(block, mode)),
@@ -335,7 +335,7 @@ function hasSubstantiveToolResultContent(content: AgentToolResult["content"]): b
 	return false;
 }
 
-function coerceToolResult(raw: unknown): { result: AgentToolResult<unknown>; malformed: boolean } {
+export function coerceToolResult(raw: unknown): { result: AgentToolResult<unknown>; malformed: boolean } {
 	const rawObj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
 	const rawContent = rawObj?.content;
 	const details = rawObj && "details" in rawObj ? rawObj.details : {};
@@ -786,7 +786,10 @@ function resolveIntentMode(intent: AgentTool["intent"]): "require" | "optional" 
 	return "require";
 }
 
-function extractIntent(args: Record<string, unknown>): { intent?: string; strippedArgs: Record<string, unknown> } {
+export function extractIntent(args: Record<string, unknown>): {
+	intent?: string;
+	strippedArgs: Record<string, unknown>;
+} {
 	const { [INTENT_FIELD]: intent, ...strippedArgs } = args;
 	if (typeof intent !== "string") {
 		return { strippedArgs };
