@@ -71,6 +71,7 @@
 - An ACP client following a tool-call location now opens the file, not a name ending in the read tool's line range.
 - The settings screen states that `left` returns to the category list, and no longer expands a row that has no description, which consumed the next `left` with nothing on screen to show for it.
 - Codex remote compaction requests declare the `responses_compact` implementation, matching the `/codex/responses/compact` route they are sent to.
+- A ChatGPT Codex server-side compaction now reduces the context it was paid to reduce: its stored window was not on the list of apis whose window can be replayed, so the entry counted as unusable, the whole pre-compaction span was re-expanded on the next rebuild, and the session crossed the threshold and compacted again on every turn.
 - Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
 - ChatGPT Codex server-side compaction posts to `{base}/codex/responses/compact` and reads one JSON document, instead of streaming a `compaction_trigger` turn to the plain responses route, which answered 404 and turned the session over to local compaction for the rest of its life.
 - Codex remote compaction keeps at least one user turn when the retained-token budget it is handed is not a finite number, instead of replaying a window holding nothing but the compaction item.

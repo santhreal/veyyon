@@ -163,10 +163,27 @@ export function chainableRemoteCompactionWindow(
 	return data.window;
 }
 
-/** Responses-family apis whose providers replay a stored window through the native-history seam. */
+/**
+ * Responses-family apis whose providers replay a stored window through the
+ * native-history seam.
+ *
+ * An api that can compact server-side but is missing here is not a smaller
+ * feature, it is a paid no-op: `session-context.ts` computes
+ * `usableCompaction = replayable || summary.trim().length > 0`, a server-side
+ * entry's summary is empty by construction, and an unusable entry re-expands
+ * the whole pre-compaction span. The session pays the provider to compact,
+ * gets the same context back, crosses the threshold again on the next turn and
+ * compacts again. `openai-codex-responses` was absent and is the api the
+ * ChatGPT OAuth session runs on.
+ *
+ * `the-codex-compaction-cannot-drain-the-account.test.ts` sweeps
+ * `SERVER_COMPACTION_WIRE_APIS` and fails on a compaction-capable api with no
+ * recorded decision here, so a new transport cannot arrive as a silent drain.
+ */
 const REMOTE_COMPACTION_REPLAY_APIS: Record<string, true> = {
 	"openai-responses": true,
 	"azure-openai-responses": true,
+	"openai-codex-responses": true,
 };
 
 /**
