@@ -118,16 +118,16 @@ Uses `SessionManager.continueRecent(...)` directly (breadcrumb-first behavior ab
 `selectSession(sessions, { allSessions? })` creates a standalone TUI with `SessionSelectorComponent` and resolves exactly once:
 
 - selection -> resolves selected `SessionInfo` (caller uses `.path` / `.cwd`)
-- cancel (Esc) -> resolves `null`
-- hard exit (Ctrl+C path) -> stops TUI and `process.exit(0)`
-- Tab toggles current-folder / all-projects scope; the all-projects list is loaded lazily via `SessionManager.listAll` (or preloaded via `allSessions`)
+- cancel (`esc`) -> resolves `null`
+- hard exit (`ctrl+c` path) -> stops TUI and `process.exit(0)`
+- `tab` toggles current-folder / all-projects scope; the all-projects list is loaded lazily via `SessionManager.listAll` (or preloaded via `allSessions`)
 - search ranking is augmented with prompt-history matches from `history.db` (`HistoryStorage.matchingSessionIds`) when available
 
 ## Interactive in-session picker (`SelectorController.showSessionSelector`)
 
 Flow:
 
-1. fetch sessions from current session dir via `SessionManager.list(currentCwd, currentSessionDir)`; the selector always opens in current-folder scope, an empty list renders `No sessions in current folder. Press tab to view all.`, and Tab loads all-projects lazily via `SessionManager.listAll()`
+1. fetch sessions from current session dir via `SessionManager.list(currentCwd, currentSessionDir)`; the selector always opens in current-folder scope, an empty list renders `No sessions in current folder. Press tab to view all.`, and `tab` loads all-projects lazily via `SessionManager.listAll()`
 2. mount `SessionSelectorComponent` as a fullscreen alternate-screen overlay via `ctx.ui.showOverlay(...)`, wired with `loadAllSessions: () => SessionManager.listAll()` and a `history.db` prompt matcher
 3. callbacks:
    - select -> close selector and call `handleResumeSession(sessionPath)`
@@ -139,18 +139,18 @@ Flow:
 `SessionList` supports:
 
 - arrow/page navigation
-- enter to select
-- Delete to delete after confirmation
-- esc to cancel
-- Ctrl+C to exit
-- Tab to toggle current-folder / all-projects scope
+- `enter` to select
+- `delete` to delete after confirmation
+- `esc` to cancel
+- `ctrl+c` to exit
+- `tab` to toggle current-folder / all-projects scope
 - ranked fuzzy search across session id/title/cwd/first message/all messages/path, merged with prompt-history matches from `history.db`
 
 Empty-list render behavior:
 
 - current-folder scope renders `No sessions in current folder. Press tab to view all.`; all-projects scope renders `No sessions found`
-- Enter/Delete on empty do nothing (no callback)
-- Esc/Ctrl+C still work
+- `enter`/`delete` on empty do nothing (no callback)
+- `esc`/`ctrl+c` still work
 
 ## Runtime switch execution (`AgentSession.switchSession`)
 
@@ -248,4 +248,4 @@ Switch/open can still throw on true I/O failures (permission errors, rewrite fai
 - First match in modified-descending order wins; there is no ambiguity UI if multiple sessions share a prefix.
 - Prefix-listing metadata is intentionally lightweight, so search text may not include messages outside the first 4KB of the session file.
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `859fd9264a` on 2026-08-31.*
