@@ -4485,7 +4485,7 @@ export class SettingsSelectorComponent implements Component {
 			const fallback = new Container();
 			fallback.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
 			fallback.addChild(new Spacer(1));
-			fallback.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			fallback.addChild(new Text(theme.fg("dim", "  esc to go back"), 0, 0));
 			(fallback as Container & { handleInput?: (data: string) => void }).handleInput = data => {
 				if (matchesKey(data, "escape") || data === "\x1b") done();
 			};
