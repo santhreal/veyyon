@@ -1,6 +1,6 @@
 //! A destructive action confirmation.
 
-use gpui::{AnyElement, App, IntoElement, ParentElement, Styled, div, px};
+use gpui::{AnyElement, App, IntoElement, ParentElement, ScrollHandle, Styled, div, px};
 use veyyon_gui_core::UiCommand;
 use veyyon_gui_kit::{
 	theme::{Theme, space},
@@ -14,6 +14,7 @@ pub fn render(
 	title: &str,
 	body: &str,
 	confirm: &UiCommand,
+	scroll: &ScrollHandle,
 	open: bool,
 	cx: &mut App,
 ) -> AnyElement {
@@ -24,11 +25,11 @@ pub fn render(
 	Sheet::new("destructive-confirmation", sheet_owner, open)
 		.centred()
 		.on_dismiss(act::click(UiCommand::CloseTopOverlay))
-		.child(
-			text::stack(space::BASE)
-				.child(text::heading(title.to_owned(), &theme))
-				.child(text::body(body.to_owned(), &theme)),
-		)
+		.child(text::heading(title.to_owned(), &theme))
+		// The body states what is about to be destroyed, at whatever length the
+		// command that opened the dialog wrote: it is the region that scrolls,
+		// so Confirm and Cancel stay drawn however long the warning runs.
+		.body(scroll, text::body(body.to_owned(), &theme))
 		.child(
 			div()
 				.flex()

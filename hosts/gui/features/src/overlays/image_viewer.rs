@@ -83,10 +83,15 @@ pub fn render(
 	let theme = Theme::get(cx);
 	let sheet_owner = owner_of(&format!("image-viewer:{entry}:{index}"));
 	let close_owner = owner_of(&format!("image-viewer:{entry}:{index}:close"));
+	// A preferred height rather than a floor: the sheet gives a fitted child the
+	// height the title row leaves, and a floor taller than that is clipped,
+	// which takes the bottom off the image at the smallest window the app opens
+	// at. This shrinks instead, so the image is whole at every window size.
 	let mut content = div()
 		.flex()
 		.flex_col()
-		.min_h(px(layout::SHEET))
+		.h(px(layout::SHEET))
+		.min_h(px(0.0))
 		.max_h(px(layout::reading()))
 		.gap(px(space::SNUG));
 
@@ -152,7 +157,9 @@ pub fn render(
 						.on_click(act::click(UiCommand::CloseTopOverlay)),
 				),
 		)
-		.child(content)
+		// The image scales into the height the title row leaves rather than
+		// scrolling: a picture has no reading order to scroll through.
+		.fitted(content)
 		.into_any_element()
 }
 

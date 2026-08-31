@@ -159,6 +159,14 @@ impl RenderOnce for Picker {
 					.flex_row()
 					.gap(px(space::BASE))
 					.w_full()
+					// The sheet gives its fitted child the height the search
+					// row, the status and the footer leave, so the body takes
+					// what is left rather than a height of its own: the reading
+					// measure is the ceiling on a tall window, and on a short
+					// one the rows scroll inside the panel instead of running
+					// off the bottom edge.
+					.flex_1()
+					.min_h(px(0.0))
 					.max_h(px(layout::reading()))
 					.child(
 						div()
@@ -171,11 +179,13 @@ impl RenderOnce for Picker {
 			} else {
 				div()
 					.w_full()
+					.flex_1()
+					.min_h(px(0.0))
 					.max_h(px(layout::reading()))
 					.child(results_list)
 			};
 
-			sheet = sheet.child(body);
+			sheet = sheet.fitted(body);
 		}
 
 		let footer = if let Some(footer) = self.footer {
@@ -200,6 +210,11 @@ fn render_groups(
 		.flex()
 		.flex_col()
 		.gap(px(space::ROWS))
+		// The scroll region is the height the body gives it, so every row is
+		// reachable by scrolling on a window too short for the whole list. A
+		// region taller than the panel is clipped by it, and the rows past the
+		// clip cannot be scrolled to at all.
+		.h_full()
 		.max_h(px(layout::reading()))
 		.pt(px(space::SNUG));
 

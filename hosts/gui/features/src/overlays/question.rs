@@ -1,6 +1,6 @@
 //! Ask, select, multiselect, confirm, input, editor, and URL requests.
 
-use gpui::{AnyElement, App, Entity, IntoElement, ParentElement, Styled, div, px};
+use gpui::{AnyElement, App, Entity, IntoElement, ParentElement, ScrollHandle, Styled, div, px};
 use veyyon_gui_core::{
 	Store, UiCommand,
 	model::{
@@ -25,6 +25,7 @@ pub fn render(
 	id: &InteractionId,
 	field: &Entity<Editor>,
 	note: &Entity<Editor>,
+	scroll: &ScrollHandle,
 	open: bool,
 	cx: &mut App,
 ) -> AnyElement {
@@ -69,7 +70,9 @@ pub fn render(
 			timed_out:   false,
 		}))
 		.child(text::heading(title.to_owned(), &theme))
-		.child(body)
+		// A select with twenty options, or an editor request carrying a file, is
+		// taller than the panel: the form scrolls and the title stays whole.
+		.body(scroll, body)
 		.into_any_element()
 }
 

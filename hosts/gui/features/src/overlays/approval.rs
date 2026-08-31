@@ -1,6 +1,6 @@
 //! Tool approval with explicit risk context and request-bound decisions.
 
-use gpui::{AnyElement, App, IntoElement, ParentElement, Styled, div, px};
+use gpui::{AnyElement, App, IntoElement, ParentElement, ScrollHandle, Styled, div, px};
 use veyyon_gui_core::{
 	Store, UiCommand,
 	model::{
@@ -19,7 +19,13 @@ use super::{
 };
 use crate::act;
 
-pub fn render(store: &Store, id: &InteractionId, open: bool, cx: &mut App) -> AnyElement {
+pub fn render(
+	store: &Store,
+	id: &InteractionId,
+	scroll: &ScrollHandle,
+	open: bool,
+	cx: &mut App,
+) -> AnyElement {
 	let sheet_owner = owner_of(&format!("approval:{id}"));
 	let body = match interaction::request(store, id) {
 		RequestState::Loading => {
@@ -51,7 +57,9 @@ pub fn render(store: &Store, id: &InteractionId, open: bool, cx: &mut App) -> An
 			timed_out:   false,
 		}))
 		.child(text::heading("Approval required", &theme))
-		.child(body)
+		// A tool call carries as much argument text as the model wrote, so the
+		// request is what scrolls and the heading stays whole above it.
+		.body(scroll, body)
 		.into_any_element()
 }
 

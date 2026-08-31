@@ -8,14 +8,16 @@
 //! and restoration.
 
 use gpui::{
-	AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, MouseButton,
-	ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+	AnyElement, App, ClickEvent, Div, ElementId, InteractiveElement, IntoElement, MouseButton,
+	ParentElement, Pixels, RenderOnce, ScrollHandle, SharedString, Size, StatefulInteractiveElement,
+	Styled, Window, div, px,
 };
 
 use crate::{
 	motion::{MotionKey, Property, RetainedKey, lerp},
 	paint,
-	theme::{Theme, layout, radius, space},
+	theme::{Elevation, Theme, layout, radius, space},
+	ui::Scrolls,
 };
 
 type Click = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
@@ -73,15 +75,78 @@ impl Sheet {
 		self.on_dismiss = Some(Box::new(listener));
 		self
 	}
-}
-impl ParentElement for Sheet {
-	fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
-		self.children.extend(elements);
+
+	/// The one child that yields when the panel meets its cap, scrolling what
+	/// does not fit.
+	///
+	/// A panel is capped against the window, and every child of a flex column
+	/// shrinks by default: a dialog whose content outgrows the cap loses height
+	/// from its heading, its tabs and its action row at once, which draws
+	/// clipped glyphs and an Approve the reader cannot press. Naming the body
+	/// pins everything around it, so the content is what gives way and the
+	/// controls that answer the dialog stay whole.
+	pub fn body(mut self, scroll: &ScrollHandle, child: impl IntoElement) -> Self {
+		let id = ElementId::from(SharedString::from(format!("{}-body", self.id)));
+		self.children.push(
+			Self::yielding()
+				.id(id)
+				.child(child)
+				.scrolls_y(scroll, Elevation::Overlay)
+				.into_any_element(),
+		);
+		self
+	}
+
+	/// The one child that yields by scaling rather than by scrolling, for
+	/// content with no reading order to scroll through: an image drawn to fit
+	/// is whole at every window size, where the same image in a scroll region
+	/// is cropped to a corner.
+	pub fn fitted(mut self, child: impl IntoElement) -> Self {
+		self
+			.children
+			.push(Self::yielding().child(child).into_any_element());
+		self
+	}
+
+	/// The region a yielding child draws in: a column, so the child is a flex
+	/// item that shrinks to the height the pinned children leave rather than a
+	/// block box that keeps its preferred height and spills over the edge.
+	fn yielding() -> Div {
+		div().flex().flex_col().flex_1().min_h(px(0.0))
 	}
 }
 
+impl ParentElement for Sheet {
+	/// Every child but the body is pinned. Which one may shrink is the sheet's
+	/// rule rather than each caller's, so a dialog cannot half-apply it.
+	fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+		self.children.extend(
+			elements
+				.into_iter()
+				.map(|child| div().flex_shrink_0().child(child).into_any_element()),
+		);
+	}
+}
+
+/// The box a sheet may occupy in the window it is drawn in: its asked width,
+/// bounded by the window less the margin it keeps on each side, and the room
+/// left under the drop it hangs from.
+///
+/// A sheet hangs from `top` when it has one and is centred when it does not, so
+/// the height is measured from that drop either way: a centred sheet that used
+/// the whole window would overflow by half its excess at each end.
+pub fn bounded(viewport: Size<Pixels>, top: Option<f32>, max_width: f32) -> (f32, f32) {
+	let drop = top.unwrap_or(layout::OVERLAY_MARGIN);
+	let width = (f32::from(viewport.width) - 2.0 * layout::OVERLAY_MARGIN)
+		.max(layout::OVERLAY_MARGIN)
+		.min(max_width);
+	let height =
+		(f32::from(viewport.height) - drop - layout::OVERLAY_MARGIN).max(layout::OVERLAY_MARGIN);
+	(width, height)
+}
+
 impl RenderOnce for Sheet {
-	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let theme = Theme::get(cx);
 		let opacity = paint::sample(
 			cx,
@@ -94,9 +159,20 @@ impl RenderOnce for Sheet {
 			u8::from(self.open) as f32,
 		);
 		let scrim = gpui::Hsla { a: theme.scrim().a * opacity, ..theme.scrim() };
+		// The window is the only bound a sheet has, and it is applied here
+		// rather than by each caller: a picker that reserves a preview column
+		// asks for a width a narrow window does not have, and a list of every
+		// command is taller than a short window has room for. Both are clamped
+		// so a sheet is reachable on every window size the app opens at, and
+		// what does not fit scrolls inside the panel instead of hanging off the
+		// edge of the screen.
+		let (width, height) = bounded(window.viewport_size(), self.top, self.max_width);
 		let panel = div()
 			.w_full()
-			.max_w(px(self.max_width))
+			.max_w(px(width))
+			.min_w(px(0.0))
+			.max_h(px(height))
+			.overflow_hidden()
 			.p(px(self.pad))
 			.flex()
 			.flex_col()
@@ -120,7 +196,7 @@ impl RenderOnce for Sheet {
 			.child(
 				div()
 					.w_full()
-					.max_w(px(self.max_width))
+					.max_w(px(width))
 					.relative()
 					.top(px(lerp(-space::BASE, 0.0, geometry)))
 					.opacity(opacity)

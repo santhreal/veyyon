@@ -48,6 +48,14 @@ pub struct Scrolls {
 	pub inspector:       ScrollHandle,
 	pub bottom:          ScrollHandle,
 	pub palette_results: ScrollHandle,
+	pub plan_review:     ScrollHandle,
+	/// One handle per dialog kind rather than one shared by every dialog: the
+	/// overlay stack draws a single dialog at a time, and a shared offset would
+	/// open the next dialog scrolled to where the last one was left.
+	pub confirmation:    ScrollHandle,
+	pub provider_auth:   ScrollHandle,
+	pub approval:        ScrollHandle,
+	pub question:        ScrollHandle,
 }
 
 /// The one focus handle an element tracks.
@@ -145,6 +153,11 @@ impl SurfaceHandles {
 				inspector:       ScrollHandle::new(),
 				bottom:          ScrollHandle::new(),
 				palette_results: ScrollHandle::new(),
+				plan_review:     ScrollHandle::new(),
+				confirmation:    ScrollHandle::new(),
+				provider_auth:   ScrollHandle::new(),
+				approval:        ScrollHandle::new(),
+				question:        ScrollHandle::new(),
 			},
 			diff: cx.new(|_| DiffViewport::new()),
 			changes: ChangesCache::default(),

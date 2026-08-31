@@ -1,6 +1,6 @@
 //! Plan outline/diff review with explicit protocol capability limits.
 
-use gpui::{AnyElement, App, IntoElement, ParentElement, Styled, div, px};
+use gpui::{AnyElement, App, IntoElement, ParentElement, ScrollHandle, Styled, div, px};
 use veyyon_gui_core::{
 	Store, UiCommand,
 	model::{
@@ -21,22 +21,20 @@ pub fn render(
 	store: &Store,
 	request: Option<RequestId>,
 	interaction: Option<InteractionId>,
+	scroll: &ScrollHandle,
 	open: bool,
 	cx: &mut App,
 ) -> AnyElement {
 	let sheet_owner = owner_of(&format!("plan-review:{request:?}:{interaction:?}"));
 	let theme = Theme::get(cx);
-	let body = match &store.replica.plan {
+	let review = match &store.replica.plan {
 		RemoteData::Unrequested | RemoteData::Loading { .. } => {
-			let owner = owner_of("plan-review:loading");
-			Spinner::new(owner, Icon::Running).into_any_element()
+			Review::note(Spinner::new(owner_of("plan-review:loading"), Icon::Running))
 		},
-		RemoteData::Empty => Empty::new("No plan is available")
-			.icon(Icon::Notice)
-			.into_any_element(),
-		RemoteData::Error { message, stale: None, .. } => Banner::failure("Plan unavailable")
-			.detail(message.clone())
-			.into_any_element(),
+		RemoteData::Empty => Review::note(Empty::new("No plan is available").icon(Icon::Notice)),
+		RemoteData::Error { message, stale: None, .. } => {
+			Review::note(Banner::failure("Plan unavailable").detail(message.clone()))
+		},
 		RemoteData::Ready(versioned)
 		| RemoteData::Stale { value: versioned, .. }
 		| RemoteData::Error { stale: Some(versioned), .. } => {
@@ -48,8 +46,32 @@ pub fn render(
 		.max_width(veyyon_gui_kit::theme::layout::reading())
 		.on_dismiss(act::click(UiCommand::CloseTopOverlay))
 		.child(text::heading("Review plan", &theme))
-		.child(body)
+		.children(review.notice)
+		.children(review.tabs)
+		.body(scroll, review.body)
+		.children(review.actions)
 		.into_any_element()
+}
+
+/// What the plan dialog draws: chrome that stays whole around the one region
+/// that scrolls.
+///
+/// An outline of thirty headings or a diff of three files is taller than the
+/// panel the window allows. Handing the sheet the parts separately lets it pin
+/// the tabs and the decision buttons and shrink only the plan, so a long plan
+/// stays answerable.
+struct Review {
+	notice:  Option<AnyElement>,
+	tabs:    Option<AnyElement>,
+	body:    AnyElement,
+	actions: Option<AnyElement>,
+}
+
+impl Review {
+	/// A state with nothing to answer: a spinner, an empty note, a failure.
+	fn note(body: impl IntoElement) -> Self {
+		Self { notice: None, tabs: None, body: body.into_any_element(), actions: None }
+	}
 }
 
 fn plan(
@@ -58,17 +80,16 @@ fn plan(
 	request: Option<RequestId>,
 	interaction: Option<InteractionId>,
 	cx: &mut App,
-) -> AnyElement {
+) -> Review {
 	let PlanState::Active { content, approval, .. } = plan else {
-		return Empty::new("Plan mode is not active")
-			.icon(Icon::Notice)
-			.into_any_element();
+		return Review::note(Empty::new("Plan mode is not active").icon(Icon::Notice));
 	};
 	if request.is_some() && approval.as_ref().and_then(|approval| approval.request) != request {
-		return Empty::new("This plan review request has ended")
-			.note("No other request was selected")
-			.icon(Icon::Notice)
-			.into_any_element();
+		return Review::note(
+			Empty::new("This plan review request has ended")
+				.note("No other request was selected")
+				.icon(Icon::Notice),
+		);
 	}
 	if interaction.is_some()
 		&& approval
@@ -76,24 +97,22 @@ fn plan(
 			.and_then(|approval| approval.interaction.as_ref())
 			!= interaction.as_ref()
 	{
-		return Empty::new("This plan review request has ended")
-			.note("No other request was selected")
-			.icon(Icon::Notice)
-			.into_any_element();
+		return Review::note(
+			Empty::new("This plan review request has ended")
+				.note("No other request was selected")
+				.icon(Icon::Notice),
+		);
 	}
 	let effective_interaction =
 		interaction.or_else(|| approval.as_ref().and_then(|a| a.interaction.clone()));
 	match content {
 		RemoteData::Unrequested | RemoteData::Loading { .. } => {
-			let owner = owner_of("plan-review:content-loading");
-			Spinner::new(owner, Icon::Running).into_any_element()
+			Review::note(Spinner::new(owner_of("plan-review:content-loading"), Icon::Running))
 		},
-		RemoteData::Empty => Empty::new("The plan has no content")
-			.icon(Icon::Notice)
-			.into_any_element(),
-		RemoteData::Error { message, stale: None, .. } => Banner::failure("Plan content unavailable")
-			.detail(message.clone())
-			.into_any_element(),
+		RemoteData::Empty => Review::note(Empty::new("The plan has no content").icon(Icon::Notice)),
+		RemoteData::Error { message, stale: None, .. } => {
+			Review::note(Banner::failure("Plan content unavailable").detail(message.clone()))
+		},
 		RemoteData::Ready(source) => review_content(store, source, None, effective_interaction, cx),
 		RemoteData::Stale { value, reason } => {
 			review_content(store, value, Some(format!("{reason:?}")), effective_interaction, cx)
@@ -110,7 +129,7 @@ fn review_content(
 	stale: Option<String>,
 	interaction: Option<InteractionId>,
 	cx: &mut App,
-) -> AnyElement {
+) -> Review {
 	let outline_owner = owner_of("plan-review:tab:outline");
 	let diff_owner = owner_of("plan-review:tab:diff");
 	let tab = store.frontend.plan_review_tab;
@@ -124,19 +143,19 @@ fn review_content(
 			Tab::new(diff_owner, "Diff", tab == PlanReviewTab::Diff)
 				.on_click(act::click(UiCommand::SetPlanReviewTab(PlanReviewTab::Diff))),
 		);
-	let body = match tab {
-		PlanReviewTab::Outline => outline(source, cx),
-		PlanReviewTab::Diff => diff(source, cx),
-	};
-	div()
-		.flex()
-		.flex_col()
-		.gap(px(space::BASE))
-		.children(stale.map(|reason| Banner::notice("Showing cached plan").detail(reason)))
-		.child(tabs)
-		.child(body)
-		.child(actions(store, interaction))
-		.into_any_element()
+	Review {
+		notice:  stale.map(|reason| {
+			Banner::notice("Showing cached plan")
+				.detail(reason)
+				.into_any_element()
+		}),
+		tabs:    Some(tabs.into_any_element()),
+		body:    match tab {
+			PlanReviewTab::Outline => outline(source, cx),
+			PlanReviewTab::Diff => diff(source, cx),
+		},
+		actions: Some(actions(store, interaction)),
+	}
 }
 
 fn outline(source: &str, _cx: &mut App) -> AnyElement {

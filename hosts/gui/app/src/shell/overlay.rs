@@ -36,23 +36,34 @@ impl Shell {
 				&self.store,
 				provider,
 				&self.handles.editors.provider_secret,
+				&self.handles.scrolls.provider_auth,
 				true,
 				cx,
 			)),
-			Overlay::Approval { interaction } => {
-				Some(overlays::render_approval(&self.store, interaction, true, cx))
-			},
+			Overlay::Approval { interaction } => Some(overlays::render_approval(
+				&self.store,
+				interaction,
+				&self.handles.scrolls.approval,
+				true,
+				cx,
+			)),
 			Overlay::Question { interaction } => Some(overlays::render_question(
 				&self.store,
 				interaction,
 				&self.handles.editors.interaction,
 				&self.handles.editors.interaction_note,
+				&self.handles.scrolls.question,
 				true,
 				cx,
 			)),
-			Overlay::PlanReview { request, interaction } => {
-				Some(overlays::render_plan_review(&self.store, *request, interaction.clone(), true, cx))
-			},
+			Overlay::PlanReview { request, interaction } => Some(overlays::render_plan_review(
+				&self.store,
+				*request,
+				interaction.clone(),
+				&self.handles.scrolls.plan_review,
+				true,
+				cx,
+			)),
 			Overlay::QuickOpen => Some(palette::render(
 				&self.store,
 				PaletteMode::QuickOpen,
@@ -110,9 +121,14 @@ impl Shell {
 						.into_any_element(),
 				)
 			},
-			Overlay::Confirmation { title, body, confirm } => {
-				Some(overlays::render_confirmation(title, body, confirm, true, cx))
-			},
+			Overlay::Confirmation { title, body, confirm } => Some(overlays::render_confirmation(
+				title,
+				body,
+				confirm,
+				&self.handles.scrolls.confirmation,
+				true,
+				cx,
+			)),
 			Overlay::ImageViewer { entry, index } => Some(overlays::render_image_viewer(
 				&self.store,
 				entry,
