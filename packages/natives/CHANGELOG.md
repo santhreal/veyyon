@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A compiled binary's first launch of a version extracts only the native addon variant the host loads, instead of every variant the binary carries, so a cold start writes about 135MB rather than 270MB before the first frame; the skipped variants are written on demand if the selected one fails to load.
+
+### Added
+
+- `VEYYON_DEBUG_STARTUP` emits a `native:firstCall:<export>` marker naming the native call that first loads the addon, so a launch that pays extraction before its first frame states which call pulled it in.
+
 ## [1.3.0] - 2026-08-28
 
 ### Fixed
