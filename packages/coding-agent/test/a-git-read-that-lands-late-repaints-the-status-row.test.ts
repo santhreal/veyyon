@@ -27,13 +27,23 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { StatusLineSettings } from "@veyyon/coding-agent/modes/components/status-line";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
+import { recordLaunchFacts, resetLaunchFactsForTest } from "@veyyon/coding-agent/modes/launch-facts";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { GitRefHead, GitStatusSummary } from "@veyyon/coding-agent/utils/git";
 import * as git from "@veyyon/coding-agent/utils/git";
 import { getProjectDir, setProjectDir } from "@veyyon/utils";
+import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 import { statusLineSessionParts } from "./helpers/status-line-session";
 
 const originalProjectDir = getProjectDir();
+
+/**
+ * A config root per test, because the recorded marker is read from it.
+ *
+ * Without this the seed below reads the developer's own `launch-facts.json`, and every case that
+ * asserts what the FIRST frame says would pass or fail on whether their tree happened to be dirty.
+ */
+let isolated: IsolatedConfigRoot;
 
 beforeAll(async () => {
 	resetSettingsForTest();
@@ -47,11 +57,15 @@ afterAll(() => {
 });
 
 beforeEach(() => {
+	isolated = enterIsolatedConfigRoot("late-git-read", { defaultProfile: true });
+	resetLaunchFactsForTest();
 	vi.spyOn(git.head, "resolveSync").mockReturnValue(featureHead);
 });
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	resetLaunchFactsForTest();
+	isolated.restore();
 });
 
 /**
@@ -93,9 +107,9 @@ const gitRow: StatusLineSettings = {
  * No model, because the three git lookups are what it watches and its preset renders git, pr and
  * the session name.
  */
-function makeSession() {
+function makeSession(cwd?: string) {
 	return {
-		...statusLineSessionParts({ sessionName: "late git read", messages: [] }),
+		...statusLineSessionParts({ sessionName: "late git read", messages: [], ...(cwd ? { cwd: () => cwd } : {}) }),
 		state: { messages: [], model: undefined },
 		model: undefined,
 		getAsyncJobSnapshot: () => ({ running: [] }),
@@ -158,17 +172,24 @@ function instrumentAsyncGitReads(reached: Set<string>, answers: Map<string, () =
 }
 
 /** A component on the git row, rendered once, with every lookup in flight. */
-function renderOnce(answers: Map<string, () => Promise<unknown>>) {
+function renderOnce(answers: Map<string, () => Promise<unknown>>, cwd?: string) {
 	const reached = new Set<string>();
 	instrumentAsyncGitReads(reached, answers);
-	const repaints = { count: 0 };
-	const component = new StatusLineComponent(makeSession());
+	const repaint = vi.fn();
+	const component = new StatusLineComponent(makeSession(cwd));
 	component.updateSettings(gitRow);
-	component.watchGitState(() => {
-		repaints.count++;
-	});
-	component.renderQuietLine(120);
-	return { component, repaints, reached };
+	component.watchGitState(repaint);
+	const first = component.renderQuietLine(120);
+	return { component, repaint, reached, first };
+}
+
+/** The three lookups held open, so a case can decide which one answers and when. */
+function heldOpen(status: () => Promise<unknown>): Map<string, () => Promise<unknown>> {
+	return new Map<string, () => Promise<unknown>>([
+		["branch.default", neverAnswers()],
+		["github.run", neverAnswers()],
+		["status.summary", status],
+	]);
 }
 
 describe("a git read that lands after the frame that asked for it", () => {
@@ -185,7 +206,7 @@ describe("a git read that lands after the frame that asked for it", () => {
 		const defaultBranch = deferred<string | null>();
 		const prView = deferred<{ exitCode: number; stdout: string; stderr: string }>();
 		const status = deferred<GitStatusSummary | null>();
-		const { component, repaints } = renderOnce(
+		const { component, repaint } = renderOnce(
 			new Map<string, () => Promise<unknown>>([
 				["branch.default", () => defaultBranch.promise],
 				["github.run", () => prView.promise],
@@ -193,23 +214,23 @@ describe("a git read that lands after the frame that asked for it", () => {
 			]),
 		);
 
-		expect(repaints.count).toBe(0);
+		expect(repaint).toHaveBeenCalledTimes(0);
 
 		await defaultBranch.land("main");
-		expect(repaints.count).toBe(1);
+		expect(repaint).toHaveBeenCalledTimes(1);
 
 		await status.land(DIRTY);
-		expect(repaints.count).toBe(2);
+		expect(repaint).toHaveBeenCalledTimes(2);
 
 		await prView.land({ exitCode: 0, stdout: JSON.stringify({ number: 7, url: "https://forge/pr/7" }), stderr: "" });
-		expect(repaints.count).toBe(3);
+		expect(repaint).toHaveBeenCalledTimes(3);
 
 		component.dispose();
 	});
 
 	it("puts the dirty marker on the row the landing repainted, not the one before it", async () => {
 		const status = deferred<GitStatusSummary | null>();
-		const { component, repaints } = renderOnce(
+		const { component, repaint } = renderOnce(
 			new Map<string, () => Promise<unknown>>([
 				["branch.default", neverAnswers()],
 				["github.run", neverAnswers()],
@@ -221,7 +242,7 @@ describe("a git read that lands after the frame that asked for it", () => {
 		expect(beforeTheAnswer).not.toContain("*");
 
 		await status.land(DIRTY);
-		expect(repaints.count).toBe(1);
+		expect(repaint).toHaveBeenCalledTimes(1);
 		expect(component.renderQuietLine(120)).toContain("*");
 
 		component.dispose();
@@ -229,7 +250,7 @@ describe("a git read that lands after the frame that asked for it", () => {
 
 	it("does not repaint for a `git status` that leaves the row saying the same thing", async () => {
 		const status = deferred<GitStatusSummary | null>();
-		const { component, repaints } = renderOnce(
+		const { component, repaint } = renderOnce(
 			new Map<string, () => Promise<unknown>>([
 				["branch.default", neverAnswers()],
 				["github.run", neverAnswers()],
@@ -241,7 +262,7 @@ describe("a git read that lands after the frame that asked for it", () => {
 		// answer changes no byte. Repainting here would refetch on the next
 		// render and repaint again.
 		await status.land(CLEAN);
-		expect(repaints.count).toBe(0);
+		expect(repaint).toHaveBeenCalledTimes(0);
 
 		component.dispose();
 	});
@@ -250,7 +271,7 @@ describe("a git read that lands after the frame that asked for it", () => {
 		const defaultBranch = deferred<string | null>();
 		const prView = deferred<{ exitCode: number; stdout: string; stderr: string }>();
 		const status = deferred<GitStatusSummary | null>();
-		const { component, repaints } = renderOnce(
+		const { component, repaint } = renderOnce(
 			new Map<string, () => Promise<unknown>>([
 				["branch.default", () => defaultBranch.promise],
 				["github.run", () => prView.promise],
@@ -264,14 +285,14 @@ describe("a git read that lands after the frame that asked for it", () => {
 		await status.land(DIRTY);
 		await prView.land({ exitCode: 0, stdout: JSON.stringify({ number: 7, url: "https://forge/pr/7" }), stderr: "" });
 
-		expect(repaints.count).toBe(0);
+		expect(repaint).toHaveBeenCalledTimes(0);
 	});
 
 	it("asks for no repaint when the lookups had already answered before disposal", async () => {
 		// The same guard, reached down the other path: the awaited promises are
 		// settled before `dispose()`, so what has to be suppressed is a queued
 		// microtask rather than a pending subprocess.
-		const { component, repaints } = renderOnce(
+		const { component, repaint } = renderOnce(
 			new Map<string, () => Promise<unknown>>([
 				["branch.default", async () => "main"],
 				["github.run", async () => ({ exitCode: 1, stdout: "", stderr: "no pr" })],
@@ -285,6 +306,96 @@ describe("a git read that lands after the frame that asked for it", () => {
 		await Promise.resolve();
 		await Promise.resolve();
 
-		expect(repaints.count).toBe(0);
+		expect(repaint).toHaveBeenCalledTimes(0);
+	});
+});
+
+/**
+ * WHY: the launch card paints the recorded dirty marker at ~48ms and the session mounts at ~650ms.
+ * A mounted row that started from `null` rendered the tree CLEAN until its own `git status`
+ * answered ~90ms later, so a dirty tree lost its marker and got it back on a tree that never
+ * changed. That is not one asterisk appearing late: `renderBranch` styles the whole segment
+ * `statusLineGitDirty` or `statusLineGitClean`, so the branch changes colour twice, which is what
+ * reads as the row darkening for no reason.
+ *
+ * THE CLASS: any fact the card paints from the cache and the mount recomputes has to open on the
+ * cached answer, or the handover is a flicker rather than a correction. The gauge, the model name
+ * and the effort already do; the tree was the one left. What the scan finds still wins, so a tree
+ * that really did move still repaints exactly once.
+ *
+ * NOT CAUGHT: a marker that is stale in the same direction (committed from another terminal since
+ * the last launch) still shows for the width of the scan. That is the recorded trade the whole
+ * cache makes, and the row corrects it in place.
+ *
+ * ALSO NOT CAUGHT: that the seed is spent on the first render rather than re-read on every one.
+ * `readLaunchFacts` memoizes per process and the row's own recorder rewrites that memo from the
+ * status it just measured, so a second read returns what the row already renders and a mutation
+ * removing the once-only guard stays green. The guard is a bound on where a recorded marker may
+ * come from, not a behaviour the row can be driven to show.
+ */
+describe("the marker the card painted survives the mount", () => {
+	it("opens on the recorded marker instead of taking it away", async () => {
+		await recordLaunchFacts({ gitStatus: DIRTY });
+		resetLaunchFactsForTest();
+		const status = deferred<GitStatusSummary | null>();
+
+		const { component, repaint, first } = renderOnce(
+			heldOpen(() => status.promise),
+			getProjectDir(),
+		);
+
+		// The frame the mount opens with, before any subprocess has answered.
+		expect(first).toContain("*");
+
+		await status.land(DIRTY);
+
+		// The scan agreed, so nothing moved and nothing was repainted.
+		expect(repaint).toHaveBeenCalledTimes(0);
+		expect(component.renderQuietLine(120)).toBe(first);
+
+		component.dispose();
+	});
+
+	it("drops the marker when the scan says the tree really did change", async () => {
+		await recordLaunchFacts({ gitStatus: DIRTY });
+		resetLaunchFactsForTest();
+		const status = deferred<GitStatusSummary | null>();
+
+		const { component, repaint, first } = renderOnce(
+			heldOpen(() => status.promise),
+			getProjectDir(),
+		);
+		expect(first).toContain("*");
+
+		await status.land(CLEAN);
+
+		expect(repaint).toHaveBeenCalledTimes(1);
+		expect(component.renderQuietLine(120)).not.toContain("*");
+
+		component.dispose();
+	});
+
+	it("states no marker at all when the last launch recorded none", async () => {
+		await recordLaunchFacts({ gitStatus: CLEAN });
+		resetLaunchFactsForTest();
+
+		const { component, first } = renderOnce(heldOpen(neverAnswers()), getProjectDir());
+
+		expect(first).not.toContain("*");
+
+		component.dispose();
+	});
+
+	it("never seeds a repository the facts do not describe", async () => {
+		await recordLaunchFacts({ gitStatus: DIRTY });
+		resetLaunchFactsForTest();
+
+		// The row follows the active repo, which a worktree hop or a subagent's cwd moves off the
+		// project the recorder keyed on. A marker from there would be a claim about this one.
+		const { component, first } = renderOnce(heldOpen(neverAnswers()), "/repo");
+
+		expect(first).not.toContain("*");
+
+		component.dispose();
 	});
 });
