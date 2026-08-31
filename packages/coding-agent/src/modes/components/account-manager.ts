@@ -35,7 +35,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
-import { clampLow } from "@veyyon/utils";
+import { clamp, clampLow } from "@veyyon/utils";
 import type { AccountInventory, AccountRow } from "../../session/account-inventory";
 import { accountsForProvider, selectedButRotated } from "../../session/account-inventory";
 import { formatProviderName } from "../../slash-commands/helpers/format";
@@ -87,6 +87,19 @@ const DETAIL_INSET_COLS = 2;
 const NOTE_MAX_LINES = 3;
 const SIDEBAR_MIN_WIDTH = 20;
 const SIDEBAR_MAX_WIDTH = 30;
+/** Columns the ` │ ` hairline between the provider column and the pane takes. */
+const PANE_SEP_COLS = 3;
+/**
+ * Narrowest pane worth drawing beside the provider column.
+ *
+ * The pane's own rows wrap rather than truncate, so a narrow pane does not cut a
+ * sentence, it stacks it: at 54 columns the scope line — which states that these
+ * credentials are shared by every profile and whether balancing is on — took
+ * three rows, and the accounts it applies to were pushed under the fold. Below
+ * this the card gives the column away instead, and shows one pane at a time when
+ * even the floor cannot buy it.
+ */
+const MIN_BODY_WIDTH = 46;
 /**
  * Rows the sidebar spends below its provider list: a blank gap, a rule, and the account tally.
  *
@@ -235,7 +248,12 @@ export class AccountManagerComponent implements Component {
 	#frameLeft = 0;
 	#contentRowStart = 0;
 	#splitRowCount = 0;
-	#sidebarWidthLast = SIDEBAR_MIN_WIDTH;
+	/** Columns the provider column occupies on screen, 0 while it is stacked out of the frame. */
+	#sidebarCols = SIDEBAR_MIN_WIDTH;
+	/** Column the pane's own first cell sits at, 0 while the pane holds the whole frame. */
+	#bodyColStart = SIDEBAR_MIN_WIDTH + PANE_SEP_COLS;
+	/** Whether the pane is on screen at all: a stacked card shows it or the providers, never both. */
+	#bodyOnScreen = true;
 	#bodyLines: BodyLine[] = [];
 	/**
 	 * Read-only mirror of `accounts.loadBalancing`, for the scope line.
@@ -689,9 +707,13 @@ export class AccountManagerComponent implements Component {
 		// subtract it.
 		// The summary block owns the last rows of the sidebar column and answers to no provider,
 		// so a click there must select nothing rather than index past the visible list.
+		// Both panes answer where the last frame actually DREW them: a stacked card holds one of
+		// them, so a column that was the provider column a frame ago may be an account row now,
+		// and arithmetic from the column's own natural width would hand a click to a pane that is
+		// not on screen.
 		const overSidebar =
-			overSplit && contentLine < this.#sidebarListRows() && innerCol >= 0 && innerCol < this.#sidebarWidthLast;
-		const overBody = overSplit && innerCol >= this.#sidebarWidthLast + 3;
+			overSplit && contentLine < this.#sidebarListRows() && innerCol >= 0 && innerCol < this.#sidebarCols;
+		const overBody = overSplit && this.#bodyOnScreen && innerCol >= this.#bodyColStart;
 
 		if (event.motion) {
 			this.#sidebarHover = overSidebar ? this.#sidebarScroll + contentLine : null;
@@ -757,12 +779,25 @@ export class AccountManagerComponent implements Component {
 	// Rendering
 	// ═══════════════════════════════════════════════════════════════════════
 
-	#sidebarWidth(): number {
+	/**
+	 * The columns the provider column takes.
+	 *
+	 * THE CHROME YIELDS BEFORE THE CONTENT DOES. Measured from the provider names alone, the
+	 * column took up to {@link SIDEBAR_MAX_WIDTH} and the pane wrapped in whatever was left, which
+	 * is what pushed a provider's own accounts under the fold behind three rows of wrapped scope
+	 * line. The column keeps its natural width only while the pane has {@link MIN_BODY_WIDTH}, and
+	 * gives the surplus back down to {@link SIDEBAR_MIN_WIDTH} first.
+	 *
+	 * `contentWidth` is omitted by a caller that wants the natural width alone.
+	 */
+	#sidebarWidth(contentWidth?: number): number {
 		let longest = SIDEBAR_MIN_WIDTH;
 		for (const entry of this.#entries) {
 			longest = Math.max(longest, visibleWidth(entry.label) + visibleWidth(entry.annotation) + 7);
 		}
-		return clampLow(longest, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH);
+		const natural = clampLow(longest, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH);
+		if (contentWidth === undefined) return natural;
+		return clamp(contentWidth - PANE_SEP_COLS - MIN_BODY_WIDTH, SIDEBAR_MIN_WIDTH, natural);
 	}
 
 	#glyph(kind: AccountGlyphKind): string {
@@ -1123,10 +1158,23 @@ export class AccountManagerComponent implements Component {
 			return Array.from({ length: height }, () => padding(width));
 		}
 		const contentWidth = dims.contentWidth;
-		const sidebarWidth = this.#sidebarWidth();
-		this.#sidebarWidthLast = sidebarWidth;
+		// ONE PANE AT A TIME WHEN TWO WILL NOT FIT. A card too narrow to carry the provider column
+		// and a readable pane side by side starved both: twenty columns of provider names beside a
+		// pane whose first sentence took three rows. It shows one full-width pane instead — the
+		// providers, or the accounts once Right asks for them — with the provider named in the
+		// title so the pane still says whose accounts these are. The keys are unchanged: Left and
+		// Right already moved between the two panes, and now they swap which one holds the frame.
+		const stacked = contentWidth - SIDEBAR_MIN_WIDTH - PANE_SEP_COLS < MIN_BODY_WIDTH;
+		const showSidebar = !stacked || this.#focus === "sidebar";
+		const sidebarWidth = stacked ? contentWidth : this.#sidebarWidth(contentWidth);
 		const paneSep = theme.fg("dim", ` ${theme.boxSharp.vertical} `);
-		const bodyWidth = Math.max(1, contentWidth - sidebarWidth - 3);
+		const bodyWidth = stacked ? contentWidth : Math.max(1, contentWidth - sidebarWidth - PANE_SEP_COLS);
+		// What the pointer needs to know about this frame: how many columns the provider column
+		// holds (none while it is stacked away), where the pane's first cell is, and whether the
+		// pane is on screen at all.
+		this.#sidebarCols = showSidebar ? sidebarWidth : 0;
+		this.#bodyColStart = stacked ? 0 : sidebarWidth + PANE_SEP_COLS;
+		this.#bodyOnScreen = !stacked || !showSidebar;
 
 		const shortcuts = this.#shortcuts();
 		const chrome = planModalChrome({
@@ -1170,15 +1218,22 @@ export class AccountManagerComponent implements Component {
 			rowWidth => window.map(line => truncateToWidth(line.text, rowWidth)),
 		);
 
-		const sidebarLines = this.#renderSidebar(sidebarWidth);
+		const sidebarLines = showSidebar ? this.#renderSidebar(sidebarWidth) : [];
 		const body: string[] = [];
-		for (let i = 0; i < splitRows; i++) {
-			// The hairline is what separates the scope column from the pane beside it.
-			body.push(fit(sidebarLines[i] ?? "", sidebarWidth) + paneSep + fit(paneLines[i] ?? "", bodyWidth));
+		if (stacked) {
+			const only = showSidebar ? sidebarLines : paneLines;
+			for (let i = 0; i < splitRows; i++) body.push(fit(only[i] ?? "", contentWidth));
+		} else {
+			for (let i = 0; i < splitRows; i++) {
+				// The hairline is what separates the scope column from the pane beside it.
+				body.push(fit(sidebarLines[i] ?? "", sidebarWidth) + paneSep + fit(paneLines[i] ?? "", bodyWidth));
+			}
 		}
 
 		const shell = renderModalShell({
-			title: "Accounts",
+			// A stacked pane has no provider column beside it, so the title carries the provider:
+			// `Accounts › Anthropic` rather than a list of credentials belonging to nothing on screen.
+			title: stacked && !showSidebar ? `Accounts › ${this.#activeEntry()?.label ?? ""}` : "Accounts",
 			sizing,
 			areaWidth: width,
 			areaHeight: height,

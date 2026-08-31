@@ -159,12 +159,12 @@ describe("SelectList", () => {
 		expect(plain(lines[1]!)).toBe("  1.5.2");
 	});
 
-	it("cuts the value itself only when even that will not fit", () => {
-		// At 8 columns "1.6.0" loses its last character. Locked deliberately: the
-		// list truncates without an ellipsis (Ellipsis.Omit throughout), so a
-		// change to that policy shows up here as a diff rather than as a version
-		// string quietly reading as a different version.
-		expect(plain(new SelectList(ITEMS, 5, defaultSelectListTheme).render(8)[0]!)).toBe("> 1.6.");
+	it("marks the value it cuts, so a cut version is not read as a version", () => {
+		// At 8 columns "1.6.0" loses its last character, and the row says so: the
+		// cut is marked with the one ellipsis every truncated row in the product
+		// carries. Cut silently, this read as `1.6.` — a version string that
+		// exists, is not this one, and gives no sign of being short.
+		expect(plain(new SelectList(ITEMS, 5, defaultSelectListTheme).render(8)[0]!)).toBe("> 1.6…");
 	});
 
 	it("drops the description before the value when the pane is narrow", () => {

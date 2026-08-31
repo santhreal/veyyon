@@ -30,7 +30,7 @@ import {
 	type TUI,
 	truncateToWidth,
 } from "@veyyon/tui";
-import { clampLow, errorMessage } from "@veyyon/utils";
+import { clamp, errorMessage } from "@veyyon/utils";
 import {
 	ADVISOR_DEFAULT_TOOL_NAMES,
 	type AdvisorConfig,
@@ -132,6 +132,20 @@ const BROWSER_FRAME_ROWS = 5;
 const PANE_SEPARATOR_COLS = 3;
 
 /**
+ * Narrowest preview worth the hairline beside it.
+ *
+ * The preview is a wrapped instruction paragraph, and a paragraph in twenty
+ * columns is a column of words. Below this the roster takes the whole card and
+ * the preview is not drawn; `enter` opens the same instructions full width, so
+ * the pane is a convenience at every width and never the only way to the text.
+ */
+const MIN_PREVIEW_WIDTH = 34;
+
+/** Columns the roster holds at least, and at most, while the preview sits beside it. */
+const ROSTER_MIN_WIDTH = 22;
+const ROSTER_MAX_WIDTH = 44;
+
+/**
  * Advisor-configuration overlay. Implements {@link Component} directly (rather
  * than extending Container) so it owns the card body and the mouse geometry
  * that makes every row clickable.
@@ -164,6 +178,15 @@ export class AdvisorConfigOverlayComponent implements Component {
 	#bodyColStart = 0;
 	/** Absolute screen column of the pane separator on the list screen. */
 	#dividerCol = 0;
+	/**
+	 * Whether the preview pane is on screen at all.
+	 *
+	 * A card too narrow for both panes gives the roster the whole width, and the
+	 * divider column then sits past the card's own border. Without this, a click
+	 * on that border read as a click in a preview that is not drawn and was
+	 * swallowed as a scroll.
+	 */
+	#previewOnScreen = false;
 	#hoveredShortcutId: string | null = null;
 
 	constructor(
@@ -209,19 +232,30 @@ export class AdvisorConfigOverlayComponent implements Component {
 		let body: readonly string[];
 
 		if (this.#screen === "list") {
-			// The roster keeps a little over a third of the card, the preview the
-			// rest: enough for a wrapped instruction paragraph to read as prose.
-			sidebarWidth = clampLow(Math.floor(dims.contentWidth * 0.36), 22, 44);
-			const previewWidth = Math.max(1, dims.contentWidth - sidebarWidth - PANE_SEPARATOR_COLS);
+			// THE CHROME YIELDS BEFORE THE CONTENT DOES, AND A SPLIT THAT CANNOT PAY
+			// FOR ITSELF IS NOT DRAWN. The roster took a little over a third of the
+			// card with a floor of 22 columns, so a narrow card left the preview 20
+			// columns of broken prose beside it. The roster now takes what the
+			// preview does not need, and where the preview cannot reach a readable
+			// width the roster holds the card alone.
+			const previewFits = dims.contentWidth - ROSTER_MIN_WIDTH - PANE_SEPARATOR_COLS >= MIN_PREVIEW_WIDTH;
+			sidebarWidth = previewFits
+				? clamp(dims.contentWidth - PANE_SEPARATOR_COLS - MIN_PREVIEW_WIDTH, ROSTER_MIN_WIDTH, ROSTER_MAX_WIDTH)
+				: dims.contentWidth;
 			if (this.#active instanceof SelectList) this.#active.setRowBudget(bodyRows);
-			const sidebar = this.#active.render(sidebarWidth);
-			const preview = this.#previewWindow(this.#previewContent(previewWidth), bodyRows);
-			const separator = theme.fg("borderAccent", ` ${theme.boxSharp.vertical} `);
-			const split: string[] = [];
-			for (let i = 0; i < bodyRows; i++) {
-				split.push(fit(sidebar[i] ?? "", sidebarWidth) + separator + fit(preview[i] ?? "", previewWidth));
+			if (!previewFits) {
+				body = this.#active.render(sidebarWidth).slice(0, bodyRows);
+			} else {
+				const previewWidth = Math.max(1, dims.contentWidth - sidebarWidth - PANE_SEPARATOR_COLS);
+				const sidebar = this.#active.render(sidebarWidth);
+				const preview = this.#previewWindow(this.#previewContent(previewWidth), bodyRows);
+				const separator = theme.fg("borderAccent", ` ${theme.boxSharp.vertical} `);
+				const split: string[] = [];
+				for (let i = 0; i < bodyRows; i++) {
+					split.push(fit(sidebar[i] ?? "", sidebarWidth) + separator + fit(preview[i] ?? "", previewWidth));
+				}
+				body = split;
 			}
-			body = split;
 		} else {
 			if (this.#active instanceof SelectList) this.#active.setRowBudget(bodyRows);
 			else if (this.#active instanceof ModelBrowser) {
@@ -247,6 +281,7 @@ export class AdvisorConfigOverlayComponent implements Component {
 		this.#bodyRowStart = shell.geometry?.bodyRowStart ?? 0;
 		this.#bodyColStart = (shell.geometry?.cardColStart ?? 0) + CARD_BODY_COL_INSET;
 		this.#dividerCol = this.#bodyColStart + sidebarWidth + 1;
+		this.#previewOnScreen = this.#screen === "list" && sidebarWidth < dims.contentWidth;
 		return shell.lines;
 	}
 
@@ -290,7 +325,7 @@ export class AdvisorConfigOverlayComponent implements Component {
 		}
 		// Right pane of the split (the preview) only scrolls; everything left of the
 		// separator routes into the active list/component at card-local coordinates.
-		if (this.#screen === "list" && event.col >= this.#dividerCol) {
+		if (this.#previewOnScreen && event.col >= this.#dividerCol) {
 			if (event.wheel !== null) {
 				this.#previewScroll = Math.max(0, this.#previewScroll + event.wheel);
 				this.#cb.requestRender();

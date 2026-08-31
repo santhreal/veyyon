@@ -24,7 +24,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { clampLow, getMCPConfigPath, logger } from "@veyyon/utils";
+import { clamp, clampLow, getMCPConfigPath, logger } from "@veyyon/utils";
 import { Settings } from "../../../config/settings";
 import { setMcpServerEnabled } from "../../../mcp/config-writer";
 import { getTabBarTheme } from "../../../modes/shared";
@@ -60,6 +60,19 @@ const EXT_SHORTCUTS = [
 	{ label: "left/right provider" },
 	{ label: "esc close", clickable: true, id: "close" },
 ] as const;
+
+/** Columns the ` │ ` hairline between the list and the inspector takes. */
+const PANE_SEP_COLS = 3;
+/** Columns the inventory list keeps before the inspector's floor comes out of it. */
+const LIST_MIN_WIDTH = 24;
+/**
+ * Narrowest inspector worth the hairline beside it.
+ *
+ * The pane wraps an extension's own prose — a description, a path, a tool list —
+ * and below this it wraps into a column of single words. The list holds the card
+ * alone instead; selecting a row still says which extension is selected.
+ */
+const MIN_INSPECTOR_WIDTH = 30;
 
 /**
  * Map dashboard provider tabs to {@link TabBar} tabs. Empty *enabled* providers
@@ -504,6 +517,13 @@ export class ExtensionDashboard implements Component {
  * a vertical rule. The inspector is a {@link ScrollView} viewport so long detail
  * panes scroll (wheel) with an auto scrollbar; the left list manages its own
  * windowing. Records the left-column width so the host can hit-test panes.
+ *
+ * A SPLIT THAT CANNOT PAY FOR ITSELF IS NOT DRAWN. The two columns were an even
+ * half each, so a narrow card starved both at once: at 44 columns the list held
+ * 22 and the inspector 19, which is a column of broken words beside a column of
+ * cut names. The list keeps its half while the inspector clears
+ * {@link MIN_INSPECTOR_WIDTH}, yields down to {@link LIST_MIN_WIDTH} to keep it
+ * there, and below that holds the card alone.
  */
 class TwoColumnBody implements Component {
 	#maxHeight: number;
@@ -539,9 +559,19 @@ class TwoColumnBody implements Component {
 	}
 
 	render(width: number): readonly string[] {
-		const leftWidth = Math.floor(width * 0.5);
+		const inspectorFits = width - LIST_MIN_WIDTH - PANE_SEP_COLS >= MIN_INSPECTOR_WIDTH;
+		const leftWidth = inspectorFits
+			? clamp(Math.floor(width / 2), LIST_MIN_WIDTH, width - PANE_SEP_COLS - MIN_INSPECTOR_WIDTH)
+			: width;
 		this.#leftWidth = leftWidth;
-		const rightWidth = Math.max(0, width - leftWidth - 3);
+		const rightWidth = inspectorFits ? width - leftWidth - PANE_SEP_COLS : 0;
+		if (!inspectorFits) {
+			const only = this.leftPane.render(leftWidth);
+			return Array.from({ length: this.#maxHeight }, (_, i) => {
+				const line = truncateToWidth(only[i] ?? "", leftWidth);
+				return line + padding(Math.max(0, leftWidth - visibleWidth(line)));
+			});
+		}
 		const numLines = this.#maxHeight;
 
 		const leftLines = this.leftPane.render(leftWidth);
