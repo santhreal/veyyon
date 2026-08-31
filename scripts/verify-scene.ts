@@ -33,7 +33,10 @@ const run = promisify(execFile);
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const SCENES_DIR = path.join(REPO_ROOT, "proof", "scenes");
-const AGENT_SRC = path.join(REPO_ROOT, "packages", "coding-agent", "src");
+// Every first-party root a rendered string can come from, not `packages/coding-agent/src`
+// alone: a label the terminal draws is defined in a plugin, a host or a contract now, and a
+// verifier reading one root reports a live needle as unresolved the moment its owner moves.
+const SOURCE_ROOTS = ["contracts", "hosts", "kernel", "packages", "plugins"].map(root => path.join(REPO_ROOT, root));
 const SEED = path.join(REPO_ROOT, "proof", "docker", "seed-demo.sh");
 
 /** Scene files that are shared helpers or probes rather than a recorded scene. */
@@ -53,13 +56,17 @@ async function readIfPresent(file: string): Promise<string> {
 	}
 }
 
-/** Every `.ts`, `.tsx` and `.md` byte under the coding agent's source, concatenated once. */
+/** Every `.ts`, `.tsx` and `.md` byte under the first-party source roots, concatenated once. */
 export async function agentSourceText(): Promise<string> {
 	const parts: string[] = [];
 	const walk = async (dir: string): Promise<void> => {
 		const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
 		for (const entry of entries) {
 			const full = path.join(dir, entry.name);
+			// node_modules and dist under a member hold a dependency's or a build's strings, which
+			// prove nothing about what this product draws, and reading them costs more than every
+			// scene put together.
+			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "coverage") continue;
 			if (entry.isDirectory()) {
 				await walk(full);
 				continue;
@@ -68,7 +75,7 @@ export async function agentSourceText(): Promise<string> {
 			parts.push(await fs.readFile(full, "utf8"));
 		}
 	};
-	await walk(AGENT_SRC);
+	for (const root of SOURCE_ROOTS) await walk(root);
 	return parts.join("\n");
 }
 
