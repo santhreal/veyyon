@@ -110,7 +110,7 @@ function collectMessageParts(error: unknown, captured: CapturedHttpErrorResponse
 		capturedStringField(captured, "code"),
 		capturedStringField(captured, "type"),
 		captured?.bodyText,
-	].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+	].filter((value): value is string => typeof value === "string" && /\S/.test(value));
 	return parts.join("\n");
 }
 

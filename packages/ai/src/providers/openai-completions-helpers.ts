@@ -508,7 +508,7 @@ export function maybeAddAnthropicCacheControl(
 
 		const content = msg.content;
 		if (typeof content === "string") {
-			if (content.trim().length === 0) continue;
+			if (!/\S/.test(content)) continue;
 			msg.content = [
 				Object.assign({ type: "text" as const, text: content }, { cache_control: { ...cacheControl } }),
 			];
@@ -519,7 +519,7 @@ export function maybeAddAnthropicCacheControl(
 
 		for (let j = content.length - 1; j >= 0; j--) {
 			const part = content[j];
-			if (part?.type === "text" && part.text.trim().length > 0) {
+			if (part?.type === "text" && /\S/.test(part.text)) {
 				Object.assign(part, { cache_control: { ...cacheControl } });
 				return;
 			}
@@ -536,7 +536,7 @@ function convertUserOrDeveloperMessage(
 	const role = !devAsUser && msg.role === "developer" ? "developer" : "user";
 	if (typeof msg.content === "string") {
 		const text = msg.content.toWellFormed();
-		if (text.trim().length === 0) return [];
+		if (!/\S/.test(text)) return [];
 		return [{ role, content: text }];
 	}
 	const supportsImages = model.input.includes("image") && !isDashscopeCompatibleModeTextOnlyQwen(model);
@@ -545,7 +545,7 @@ function convertUserOrDeveloperMessage(
 	for (const item of msg.content) {
 		if (item.type === "text") {
 			const text = item.text.toWellFormed();
-			if (text.trim().length === 0) continue;
+			if (!/\S/.test(text)) continue;
 			content.push({ type: "text", text } satisfies ChatCompletionContentPartText);
 		} else if (supportsImages) {
 			content.push({
@@ -707,7 +707,7 @@ function convertAssistantMessage(
 	};
 
 	const textBlocks = msg.content.filter(b => b.type === "text") as TextContent[];
-	const nonEmptyTextBlocks = textBlocks.filter(b => b.text && b.text.trim().length > 0);
+	const nonEmptyTextBlocks = textBlocks.filter(b => b.text && /\S/.test(b.text));
 	if (nonEmptyTextBlocks.length > 0) {
 		assistantMsg.content = nonEmptyTextBlocks
 			.map((b, i) => {
@@ -718,7 +718,7 @@ function convertAssistantMessage(
 	}
 
 	const thinkingBlocks = msg.content.filter(b => b.type === "thinking") as ThinkingContent[];
-	const nonEmptyThinkingBlocks = thinkingBlocks.filter(b => b.thinking && b.thinking.trim().length > 0);
+	const nonEmptyThinkingBlocks = thinkingBlocks.filter(b => b.thinking && /\S/.test(b.thinking));
 	const toolCalls = msg.content.filter(b => b.type === "toolCall") as ToolCall[];
 
 	applyAssistantReasoningFields(assistantMsg, msg, model, compat, nonEmptyThinkingBlocks, toolCalls);
@@ -900,7 +900,7 @@ function createOpenAIToolCallIdTracker(
 		},
 		ensureToolCallId: (rawId: string, seed: string): string => {
 			const normalized = normalizeToolCallId(rawId);
-			if (normalized.trim().length > 0) return normalized;
+			if (/\S/.test(normalized)) return normalized;
 			return generateFallbackToolCallId(seed);
 		},
 	};

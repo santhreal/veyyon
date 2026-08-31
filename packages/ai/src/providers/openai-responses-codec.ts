@@ -383,7 +383,7 @@ export async function processResponsesStream<TApi extends Api>(
 			return false;
 		}
 		const partial = candidate.block[kStreamingPartialJson];
-		if (partial.trim().length === 0) return false;
+		if (!/\S/.test(partial)) return false;
 		const state = classifyJsonPrefix(partial);
 		if (state !== "prefix") return true;
 		return classifyJsonPrefix(partial + delta) === "invalid";

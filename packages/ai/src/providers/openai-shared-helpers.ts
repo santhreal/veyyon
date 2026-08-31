@@ -407,7 +407,7 @@ export function applyChatCompletionsToolStream(
 
 function rejectionText(error: unknown, capturedErrorResponse: CapturedHttpErrorResponse | undefined): string {
 	return [error instanceof Error ? error.message : undefined, capturedErrorResponse?.bodyText]
-		.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+		.filter((value): value is string => typeof value === "string" && /\S/.test(value))
 		.join("\n");
 }
 

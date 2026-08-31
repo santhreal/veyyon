@@ -244,7 +244,7 @@ export function convertResponsesInputContent(
 	supportsImageDetailOriginal: boolean,
 ): ResponseInputContent[] | undefined {
 	if (typeof content === "string") {
-		if (content.trim().length === 0) return undefined;
+		if (!/\S/.test(content)) return undefined;
 		return [{ type: "input_text", text: content.toWellFormed() } satisfies ResponseInputText];
 	}
 
@@ -252,7 +252,7 @@ export function convertResponsesInputContent(
 	const normalizedContent: ResponseInputContent[] = [];
 	for (const item of textBlocks) {
 		const text = item.text.toWellFormed();
-		if (text.trim().length === 0) continue;
+		if (!/\S/.test(text)) continue;
 		normalizedContent.push({
 			type: "input_text",
 			text,

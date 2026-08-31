@@ -292,8 +292,7 @@ function flushDeepseekStripBuffer(ctx: OpenAICompletionsStreamContext, final: bo
 		ctx.deepseekStripBuffer = trailing;
 	}
 	const stripped = stripDeepseekSpecialTokens(flushable);
-	if (stripped && (stripped === flushable || stripped.trim().length > 0))
-		appendOpenAICompletionsTextDelta(ctx, stripped);
+	if (stripped && (stripped === flushable || /\S/.test(stripped))) appendOpenAICompletionsTextDelta(ctx, stripped);
 }
 
 function appendOpenAICompletionsProcessedText(ctx: OpenAICompletionsStreamContext, processedText: string): void {
