@@ -9,6 +9,7 @@
  * terminal. Everything that table held is in {@link ./screen}, which is a screen
  * and can afford it.
  */
+import { visibleWidth } from "@veyyon/tui";
 import type { ExtensionContext } from "../extensibility/extensions";
 import { theme } from "../modes/theme/theme";
 import { formatElapsed, formatNum } from "./helpers";
@@ -22,6 +23,25 @@ export function createDashboardController(): DashboardController {
 	let refreshTimer: NodeJS.Timeout | undefined;
 	/** The last UI context, so a tick can repaint the row without an event. */
 	let ticking: { ctx: ExtensionContext; runtime: AutoresearchRuntime } | null = null;
+	/** The last row painted, so a resize can rebuild it against the new width. */
+	let painted: { ctx: ExtensionContext; runtime: AutoresearchRuntime } | null = null;
+
+	/**
+	 * A row shed for 120 columns is the wrong row at 40, and nothing else
+	 * rebuilds it: the host re-prints the string it already holds and truncates
+	 * that. So the resize is where the row is built again, and the listener is
+	 * attached only while there is a row to rebuild.
+	 */
+	const onResize = (): void => {
+		if (painted?.ctx.hasUI) painted.ctx.ui.setStatus("autoresearch", renderStatusRow(painted.runtime));
+	};
+	let watchingResize = false;
+	const watchResize = (wanted: boolean): void => {
+		if (wanted === watchingResize) return;
+		watchingResize = wanted;
+		if (wanted) process.stdout.on("resize", onResize);
+		else process.stdout.off("resize", onResize);
+	};
 
 	const requestRender = (): void => {
 		screenTui?.requestRender();
@@ -58,6 +78,8 @@ export function createDashboardController(): DashboardController {
 	return {
 		clear(ctx): void {
 			ticking = null;
+			painted = null;
+			watchResize(false);
 			stopRefresh();
 			if (ctx.hasUI) ctx.ui.setStatus("autoresearch", undefined);
 		},
@@ -66,11 +88,15 @@ export function createDashboardController(): DashboardController {
 			if (!ctx.hasUI) return;
 			if (!hasSession(runtime)) {
 				ticking = null;
+				painted = null;
+				watchResize(false);
 				syncTimer();
 				ctx.ui.setStatus("autoresearch", undefined);
 				return;
 			}
 			ticking = runtime.runningExperiment ? { ctx, runtime } : null;
+			painted = { ctx, runtime };
+			watchResize(true);
 			syncTimer();
 			ctx.ui.setStatus("autoresearch", renderStatusRow(runtime));
 			requestRender();
@@ -112,47 +138,96 @@ function hasSession(runtime: AutoresearchRuntime): boolean {
 }
 
 /**
+ * One segment of the row, and the order it is given up in. The host prints the
+ * row through `truncateToWidth`, so a row longer than the terminal loses its
+ * TAIL — and the tail is the chord, which is the only statement of how to reach
+ * everything the row had to leave out. A narrow terminal was told there was a
+ * loop and not told where it was.
+ *
+ * `drop` is the order segments are given up in, lowest first; a segment with
+ * drop 0 is never given up. What survives to the narrowest row is what the loop
+ * is and how to open it.
+ */
+interface StatusSegment {
+	text: string;
+	drop: number;
+}
+
+/** Width of the joined row, `separator` included. */
+function rowWidth(segments: readonly StatusSegment[]): number {
+	return visibleWidth(segments.map(segment => segment.text).join(SEPARATOR));
+}
+
+const SEPARATOR = " · ";
+
+/**
  * The one row. Left to right: what this is, what it is doing now, where the
  * metric stands, and the chord. Every segment is dropped rather than shortened
  * when it has nothing to say, so the row reads the same length whatever the
- * loop is doing.
+ * loop is doing — and on a terminal too narrow for all of them, the least
+ * informative are dropped in turn rather than the row being cut mid-word.
  */
-export function renderStatusRow(runtime: AutoresearchRuntime): string {
+export function renderStatusRow(runtime: AutoresearchRuntime, width = process.stdout.columns ?? 80): string {
 	const state = runtime.state;
-	const parts: string[] = [theme.fg("accent", effectiveBreadth(runtime) > 1 ? "autoswarm" : "autoresearch")];
+	const segments: StatusSegment[] = [
+		{ text: theme.fg("accent", effectiveBreadth(runtime) > 1 ? "autoswarm" : "autoresearch"), drop: 0 },
+	];
 
 	if (runtime.runningExperiment) {
-		parts.push(
-			theme.fg("warning", `run #${runtime.runningExperiment.runNumber}`),
-			theme.fg("dim", formatElapsed(Date.now() - runtime.runningExperiment.startedAt)),
+		segments.push(
+			{ text: theme.fg("warning", `run #${runtime.runningExperiment.runNumber}`), drop: 7 },
+			{ text: theme.fg("dim", formatElapsed(Date.now() - runtime.runningExperiment.startedAt)), drop: 6 },
 		);
 	} else if (runtime.lastRunSummary) {
-		parts.push(
-			theme.fg(
-				"warning",
-				`run #${runtime.lastRunSummary.runNumber} ${runtime.lastRunSummary.passed ? "passed" : "failed"}`,
-			),
-			theme.fg("dim", "log pending"),
+		segments.push(
+			{
+				text: theme.fg(
+					"warning",
+					`run #${runtime.lastRunSummary.runNumber} ${runtime.lastRunSummary.passed ? "passed" : "failed"}`,
+				),
+				drop: 7,
+			},
+			{ text: theme.fg("dim", "log pending"), drop: 6 },
 		);
 	} else if (state.results.length === 0) {
-		parts.push(theme.fg("warning", runtime.autoresearchMode ? "baseline pending" : "not started"));
+		segments.push({
+			text: theme.fg("warning", runtime.autoresearchMode ? "baseline pending" : "not started"),
+			drop: 7,
+		});
 	}
 
 	if (state.results.length > 0) {
 		const current = currentResults(state.results, state.currentSegment);
-		parts.push(theme.fg("muted", `${current.length} runs`));
-		parts.push(theme.fg("success", `${current.filter(result => result.status === "keep").length} kept`));
-		if (state.breadth > 1) parts.push(theme.fg("muted", `${state.breadth} arms`));
+		segments.push({ text: theme.fg("muted", `${current.length} runs`), drop: 3 });
+		segments.push({
+			text: theme.fg("success", `${current.filter(result => result.status === "keep").length} kept`),
+			drop: 4,
+		});
+		if (state.breadth > 1) segments.push({ text: theme.fg("muted", `${state.breadth} arms`), drop: 2 });
 		const flagged = current.filter(result => result.flagged).length;
-		if (flagged > 0) parts.push(theme.fg("warning", `${flagged} flagged`));
+		if (flagged > 0) segments.push({ text: theme.fg("warning", `${flagged} flagged`), drop: 8 });
 		const best = bestMetric(state);
-		if (best !== null) parts.push(theme.fg("toolTitle", `best ${formatNum(best, state.metricUnit)}`));
-		if (state.confidence !== null) parts.push(theme.fg("dim", `conf ${state.confidence.toFixed(1)}x`));
+		if (best !== null)
+			segments.push({ text: theme.fg("toolTitle", `best ${formatNum(best, state.metricUnit)}`), drop: 5 });
+		if (state.confidence !== null)
+			segments.push({ text: theme.fg("dim", `conf ${state.confidence.toFixed(1)}x`), drop: 1 });
 	}
 
-	if (!runtime.autoresearchMode) parts.push(theme.fg("dim", "mode off"));
-	parts.push(theme.fg("dim", `${AUTORESEARCH_SCREEN_KEY} runs`));
-	return parts.join(theme.fg("borderMuted", " · "));
+	if (!runtime.autoresearchMode) segments.push({ text: theme.fg("dim", "mode off"), drop: 9 });
+	segments.push({ text: theme.fg("dim", `${AUTORESEARCH_SCREEN_KEY} runs`), drop: 0 });
+
+	let kept = segments;
+	while (rowWidth(kept) > width) {
+		let victim = -1;
+		for (let index = 0; index < kept.length; index += 1) {
+			const drop = kept[index].drop;
+			if (drop === 0) continue;
+			if (victim === -1 || drop < kept[victim].drop) victim = index;
+		}
+		if (victim === -1) break;
+		kept = kept.filter((_segment, index) => index !== victim);
+	}
+	return kept.map(segment => segment.text).join(theme.fg("borderMuted", SEPARATOR));
 }
 
 /** Best kept, unflagged metric of the current segment. */

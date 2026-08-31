@@ -40,7 +40,19 @@ const LABEL_WIDTH = 12;
 const SIDEBAR_MIN = 22;
 const SIDEBAR_MAX = 34;
 
-const FOOTER_HINT = "up/down select   pgup/pgdn page   esc close";
+/**
+ * Footer hints, widest first. The row is truncated to the card, so one long
+ * string lost its tail: below 29 columns the card cut `esc close` off and the
+ * screen stated no way out of itself. Each entry is a whole hint, and the
+ * widest one that fits is the one printed, so the exit is the last thing shed
+ * rather than the first.
+ */
+const FOOTER_HINTS = [
+	"up/down select   pgup/pgdn page   esc close",
+	"up/down   pgup/pgdn   esc close",
+	"esc close",
+	"esc",
+];
 /**
  * Shortest frame the card can be: four chrome rows (title border, divider,
  * footer, bottom border) around the three-row body floor. The clamp used to be
@@ -384,6 +396,15 @@ function runDetail(result: ExperimentResult, state: ExperimentState, width: numb
 }
 
 /**
+ * The widest hint the footer can print whole, or the last one when even that
+ * overflows. `row` insets a column on each side of the border pair.
+ */
+export function footerHint(width: number): string {
+	const room = Math.max(0, width - 4);
+	return FOOTER_HINTS.find(hint => hint.length <= room) ?? FOOTER_HINTS[FOOTER_HINTS.length - 1];
+}
+
+/**
  * The whole card: `rows` lines exactly, so the host never has to guess how tall
  * the screen came out.
  */
@@ -401,7 +422,7 @@ export function renderRunScreen(
 		out.push(splitRow(sidebar[index] ?? "", detail[index] ?? "", width, sidebarWidth));
 	}
 	out.push(dividerSplit(width, sidebarWidth));
-	out.push(row(theme.fg("dim", FOOTER_HINT), width));
+	out.push(row(theme.fg("dim", footerHint(width)), width));
 	out.push(bottomBorder(width));
 	// The chrome has a floor of its own — two borders and the insets between
 	// them — so a terminal narrower than that still gets rows it can print.

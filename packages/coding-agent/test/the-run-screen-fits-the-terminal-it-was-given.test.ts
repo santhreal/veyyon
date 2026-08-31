@@ -21,6 +21,7 @@ import { describe, expect, it } from "bun:test";
 import { homedir } from "node:os";
 import {
 	AutoresearchScreenComponent,
+	footerHint,
 	renderRunDetail,
 	renderRunScreen,
 	runScreenRows,
@@ -289,6 +290,33 @@ describe("the run screen fits the terminal it was given", () => {
 				expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 			}
 		}
+	});
+
+	it("keeps the way out of the screen at every width it fits", () => {
+		// The footer was one string, and the frame truncates to the card, so the
+		// tail went first: below 29 columns `esc close` was the part cut, and the
+		// screen printed navigation keys with no exit. The exit is now the last
+		// hint shed, not the first, so a reader on any terminal that can hold the
+		// two words is told how to leave.
+		//
+		// Swept from the narrowest width that fits `esc close` inside the insets
+		// up past the full hint, so a future hint added to the ladder is covered
+		// by the sweep rather than by a case someone remembered to add.
+		for (let width = 13; width <= 60; width += 1) {
+			const screen = new AutoresearchScreenComponent({
+				runtime: runtimeWith(3),
+				close: () => {},
+				requestRender: () => {},
+				rows: () => 12,
+			});
+			const frame = screen.render(width);
+			expect(frame.join("\n")).toContain("esc close");
+			for (const line of frame) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+		}
+		// Narrower than the two words plus insets, the ladder's floor still names
+		// the key rather than printing a fragment of a longer hint.
+		expect(footerHint(11)).toBe("esc");
+		expect(footerHint(13)).toBe("esc close");
 	});
 
 	it("pages the detail pane, and pages back to where it started", () => {
