@@ -108,7 +108,7 @@ Malformed `package.json` JSON is a hard failure at read time; malformed manifest
    - `[a,b]`: validates each feature exists in manifest features map
    - `[]`: empty feature list
    - bare spec: `null` (use defaults policy later in loader)
-7. Validate declared extension entries (`#validateInstalledExtensions`): each manifest `extensions` entry must resolve on disk and import to a factory function. On failure, roll back the install, restore the previous `plugins/package.json`, remove the freshly installed package, and restore any prior version from a backup taken before `bun install`, then abort.
+7. Validate declared extension entries (`#validateInstalledExtensions`): each manifest `extensions` entry must resolve on disk and import to a factory function. On failure, roll back the install, restore the previous plugins-root `package.json`, remove the freshly installed package, and restore any prior version from a backup taken before `bun install`, then abort.
 8. Upsert lockfile runtime state: `{ version, enabledFeatures, enabled: true }`.
 
 ### Update semantics
@@ -163,7 +163,7 @@ Caveat: `PluginManager.link` performs no cwd path-boundary or symlink-target tra
 
 ## Discovery gate
 
-`getEnabledPlugins(cwd)` (`plugins/loader.ts`) enumerates two roots: the user root (`getPluginsDir(home)`) plus, when a `.veyyon/` or `.git/` anchor exists at or above cwd, the project root `<anchor>/.veyyon/plugins`. Each root contributes its plugin dependency manifest (`package.json`) unioned with lockfile plugin entries, so `plugin link`-only plugins without a dependency entry are still discovered, and project entries shadow same-named user entries. It then reads:
+`getEnabledPlugins(cwd)` (`src/extensibility/plugins/loader.ts`) enumerates two roots: the user root (`getPluginsDir(home)`) plus, when a `.veyyon/` or `.git/` anchor exists at or above cwd, the project root `<anchor>/.veyyon/plugins`. Each root contributes its plugin dependency manifest (`package.json`) unioned with lockfile plugin entries, so `plugin link`-only plugins without a dependency entry are still discovered, and project entries shadow same-named user entries. It then reads:
 
 - lockfile runtime state
 - project overrides via `getConfigDirPaths("plugin-overrides.json", { user: false, cwd })`

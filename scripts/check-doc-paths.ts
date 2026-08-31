@@ -57,15 +57,50 @@ export interface PathCheckResult {
  * `~/.veyyon/config.yml`, `and/or`, other projects' trees. Anchoring on real
  * top-level directories is what keeps the gate's failures worth reading.
  *
- * `.veyyon/` is deliberately absent. In this repo's docs it names files a USER
- * creates in THEIR project — `.veyyon/mcp.json`, `.veyyon/settings.json`,
- * `.veyyon/RULES.md` — not files that exist here. Every page that teaches project
- * configuration writes that
- * kind, so anchoring on the prefix produces a screenful of failures that are all
- * the documentation working correctly, and a gate whose failures are usually
- * wrong is a gate people turn off.
+ * Every tracked top-level directory is a root, and
+ * `check-doc-paths.test.ts` derives that set from the tree at run time, so a new
+ * one fails the suite until it is listed here or excluded below. The list used to
+ * stop at `packages/`, `scripts/`, `docs/`, `website/`, `examples/`, `assets/` and
+ * `.github/`, which left `contracts/`, `hosts/`, `kernel/`, `natives/`,
+ * `plugins/`, `tests/`, `proof/`, `python/`, `fixtures/`, `fuzz/`, `patches/`,
+ * `types/` and `.githooks/` invisible -- the directories a doc names most often
+ * right after code moves into them, which is the one moment this gate exists for.
+ * `examples/` is gone with them: no such directory is tracked, so every span
+ * under it was dead by construction.
  */
-const SOURCE_ROOTS = ["packages/", "scripts/", "docs/", "website/", "examples/", "assets/", ".github/"] as const;
+export const SOURCE_ROOTS = [
+	".githooks/",
+	".github/",
+	"assets/",
+	"contracts/",
+	"docs/",
+	"fixtures/",
+	"fuzz/",
+	"hosts/",
+	"kernel/",
+	"natives/",
+	"packages/",
+	"patches/",
+	"plugins/",
+	"proof/",
+	"python/",
+	"scripts/",
+	"tests/",
+	"types/",
+	"website/",
+] as const;
+
+/**
+ * Tracked top-level directories that are deliberately not source roots.
+ *
+ * `.veyyon/` is the only one. In this repo's docs it names files a USER creates in
+ * THEIR project -- `.veyyon/mcp.json`, `.veyyon/settings.json`, `.veyyon/RULES.md`
+ * -- not the profile fixtures tracked here under the same name. Every page that
+ * teaches project configuration writes that kind, so anchoring on the prefix
+ * produces a screenful of failures that are all the documentation working
+ * correctly, and a gate whose failures are usually wrong is a gate people turn off.
+ */
+export const NON_SOURCE_ROOTS: readonly string[] = Object.freeze([".veyyon/"]);
 
 /**
  * Extensions that make a code span a FILE reference rather than a prose fragment.
@@ -159,19 +194,31 @@ export function extractCodeSpanPaths(markdown: string): FoundPath[] {
 }
 
 /**
- * The package directory a doc lives in, or undefined for a doc outside `packages/`.
+ * The bases a doc's paths resolve against, nearest first: every directory on the
+ * doc's own path, then the repo root.
  *
- * A README inside a package writes its own paths package-relative, because that is
- * how its reader will run them: `packages/catalog/README.md` says "regenerate with
- * `scripts/generate-models.ts`", and `packages/catalog/scripts/generate-models.ts`
- * is exactly where that file is. Judging those against the repo root alone reports
- * every in-package README as broken, which is the false-positive class that would
- * have made this gate unusable.
+ * A doc inside a workspace member writes its own paths member-relative, because
+ * that is how its reader will run them: `packages/catalog/README.md` says
+ * "regenerate with `scripts/generate-models.ts`", and
+ * `packages/catalog/scripts/generate-models.ts` is exactly where that file is.
+ * Judging those against the repo root alone reports every in-member README as
+ * broken, which is the false-positive class that would have made this gate
+ * unusable.
+ *
+ * The rule used to name `packages/<name>` alone, so it could not see a member at
+ * any other depth: `hosts/terminal/engine`, `contracts/wire`, `natives/bridge/addon`
+ * and `kernel` all write their own paths the same way, and nothing in the rule
+ * distinguished them from a doc with no member to be relative to. Walking the
+ * doc's own directory chain answers for every depth without a list of member
+ * layouts to keep current.
  */
-function enclosingPackage(relFile: string): string | undefined {
+function docBases(relFile: string): string[] {
 	const parts = relFile.split("/");
-	if (parts[0] !== "packages" || parts.length < 3) return undefined;
-	return `${parts[0]}/${parts[1]}`;
+	const bases: string[] = [];
+	// The file's own name is not a directory, and the deepest directory is the
+	// nearest base, so the chain is walked inward from the file and reversed.
+	for (let end = parts.length - 1; end > 0; end--) bases.push(parts.slice(0, end).join("/"));
+	return bases;
 }
 
 /**
@@ -226,15 +273,15 @@ function ignoredPaths(rootDir: string, candidates: readonly string[]): Set<strin
 /**
  * Whether `target`, as written in `relFile`, names something that exists.
  *
- * Two bases, in the order a reader would try them: the repo root, then the package
- * the doc belongs to. A doc outside `packages/` gets the repo root only, so a path
- * in `docs/internal/` must be written from the root -- which is the whole point,
- * since its reader has no package to be relative to.
+ * The bases a reader would try, in that order: the repo root, then the doc's own
+ * directory chain from nearest outward. A doc directly under `docs/` therefore
+ * gets the root and `docs/`, so a path in `docs/internal/` is still written from
+ * the root -- which is the whole point, since its reader has no member to be
+ * relative to.
  */
 function resolvesFor(rootDir: string, relFile: string, target: string): boolean {
 	if (fs.existsSync(path.join(rootDir, target))) return true;
-	const pkg = enclosingPackage(relFile);
-	return pkg !== undefined && fs.existsSync(path.join(rootDir, pkg, target));
+	return docBases(relFile).some(base => fs.existsSync(path.join(rootDir, base, target)));
 }
 
 /**
@@ -312,13 +359,12 @@ export function checkDocPaths(rootDir: string, relFiles: string[]): PathCheckRes
 	// which is the doc doing its job rather than rot. Asked once, in a batch,
 	// after the scan, so the common case costs nothing.
 	//
-	// Both spellings are offered, the same two `resolvesFor` tries: a package
-	// README naming its own build output writes it package-relative, and asking
-	// only the root-relative form would report it as rot.
+	// Every spelling `resolvesFor` tries is offered: a member README naming its own
+	// build output writes it member-relative, and asking only the root-relative form
+	// would report it as rot.
 	const spellings = (d: DeadPath): string[] => {
 		const target = withoutLocator(d.target);
-		const pkg = enclosingPackage(d.file);
-		return pkg === undefined ? [target] : [target, `${pkg}/${target}`];
+		return [target, ...docBases(d.file).map(base => `${base}/${target}`)];
 	};
 	const generated = ignoredPaths(rootDir, result.dead.flatMap(spellings));
 	result.dead = result.dead.filter(d => !spellings(d).some(s => generated.has(s)));
