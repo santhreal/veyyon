@@ -12,11 +12,17 @@
  * sixth status cannot compile until someone classifies it. The report is read out of the real
  * controller through `/goal show`, not out of the private method that formats it.
  *
+ * The objective is the report's one free-text field -- an operator types it, or a model writes it
+ * through the goal tool -- and it reached a `Text` component with nothing done to it, so the cells
+ * below drive each control-character class that has a distinct effect on a terminal through the
+ * same path.
+ *
  * WHAT THIS DOES NOT CATCH: the goal tool's own card, whose badge carries the raw status by design
  * and is pinned by `a-goal-card-draws-the-same-panel-its-renderer-drew.test.ts`; and which status
  * the runtime should write for a given transition, which
- * `only-an-operator-interrupt-pauses-a-goal.test.ts` owns. It proves the field, not the ordering of
- * the five lines around it.
+ * `only-an-operator-interrupt-pauses-a-goal.test.ts` owns. It proves the two fields, not the
+ * ordering of the five lines around them, and it says nothing about the length of an objective,
+ * which this report deliberately does not bound.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
@@ -122,6 +128,12 @@ function statusFieldOf(report: string): string {
 	return line;
 }
 
+function objectiveFieldOf(report: string): string {
+	const line = report.split("\n").find(candidate => candidate.startsWith("Objective: "));
+	if (line === undefined) throw new Error(`report has no objective line:\n${report}`);
+	return line;
+}
+
 beforeEach(async () => {
 	resetSettingsForTest();
 	await Settings.init({ inMemory: true });
@@ -169,6 +181,36 @@ describe("a goal report states the goal's status once", () => {
 	it("says no goal is set when the session has none", async () => {
 		expect(await reportFor(undefined)).toBe("No goal set.");
 	});
+
+	/**
+	 * Every class of byte an objective can carry that a terminal reads as an instruction rather
+	 * than as text, and what the report must do with it. A field of the report is one line, so a
+	 * newline is in this table too: it would put half an objective where a field name belongs.
+	 */
+	const HOSTILE = [
+		{ what: "an SGR escape sequence", raw: "Ship \u001b[31mthe release\u001b[0m" },
+		{ what: "a cursor-move escape", raw: "Ship \u001b[2Athe release" },
+		{ what: "an 8-bit CSI sequence", raw: "Ship \u009b2Athe release" },
+		{ what: "a tab", raw: "Ship\tthe release" },
+		{ what: "a newline", raw: "Ship\nthe release" },
+		{ what: "a carriage return", raw: "Ship\rthe release" },
+		{ what: "a bare C0 control", raw: "Ship \u0001the release" },
+		{ what: "a bare C1 control", raw: "Ship \u0085the release" },
+	] as const;
+
+	for (const { what, raw } of HOSTILE) {
+		it(`renders an objective carrying ${what} as its words alone`, async () => {
+			const state = goalWith("active");
+			state.goal.objective = raw;
+			const report = await reportFor(state);
+			// Exact: the words survive in order, and nothing a terminal acts on is left between
+			// them. This is sanitization, not redaction -- the reader still reads the objective.
+			expect(objectiveFieldOf(report)).toBe("Objective: Ship the release");
+			// A field is one line, and the report is its five fields. An unsanitized newline
+			// makes six, which is the case no per-field assertion can see.
+			expect(report.split("\n")).toHaveLength(5);
+		});
+	}
 });
 
 describe("the report the runtime's own pause produces", () => {

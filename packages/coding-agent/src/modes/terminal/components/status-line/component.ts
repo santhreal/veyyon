@@ -8,6 +8,7 @@ import type { Component } from "@veyyon/tui/tui";
 import { getProjectDir } from "@veyyon/utils/dirs";
 import { formatClock } from "@veyyon/utils/format";
 import { MOTION, type MotionClock, SettleValue } from "@veyyon/utils/motion";
+import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 import { scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { resolveContextLimit } from "../../../../config/compaction-strategy";
@@ -23,7 +24,6 @@ import { AUTO_THINKING } from "../../../../thinking";
 import { type ActiveRepoContext, resolveActiveRepoContextSync } from "../../../../utils/active-repo-context";
 import * as git from "../../../../utils/git";
 import { type LaunchFactsUpdate, recordLaunchFacts } from "../../../launch-facts";
-import { sanitizeStatusText } from "../../shared";
 import { isTreeDirty } from "./branch";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
 import {

@@ -1,5 +1,6 @@
 import type { AssistantMessage } from "@veyyon/ai";
 import { errorMessage, formatCount, logger } from "@veyyon/utils";
+import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 import { type GuidedGoalMessage, newGuidedGoalSessionId, runGuidedGoalTurn } from "../../../goals/guided-setup";
 import type { Goal, GoalModeState, GoalStatus } from "../../../goals/state";
 import type { AgentSessionEvent } from "../../../session/agent-session-types";
@@ -129,9 +130,13 @@ function goalStatusField(status: GoalStatus, modeEnabled: boolean): string {
 	return advancing ? `${status} (mode off)` : status;
 }
 
-type GoalSubcommand = "set" | "show" | "pause" | "resume" | "drop";
+export type GoalSubcommand = "set" | "show" | "pause" | "resume" | "drop";
 
-const GOAL_SUBCOMMANDS: Record<GoalSubcommand, true> = {
+/**
+ * Every word `/goal` accepts after its name. Keyed by the union so the two stay in step, and
+ * exported so a sweep over the command surface reads the list rather than restating it.
+ */
+export const GOAL_SUBCOMMANDS: Record<GoalSubcommand, true> = {
 	set: true,
 	show: true,
 	pause: true,
@@ -504,11 +509,14 @@ export class GoalModeController {
 		return this.#context.showHookEditor(title, initial, undefined, { promptStyle: true });
 	}
 
-	/** The objective as it appears in a one-line notice. One owner for the cap. */
+	/**
+	 * The objective as it appears in a one-line notice or a selector title. One owner for the cap,
+	 * and for the stripping: sanitizing first means the cap counts characters a terminal draws,
+	 * and cutting an escape sequence in half can never leave its tail behind as text.
+	 */
 	#summary(objective: string): string {
-		return objective.length > GOAL_SUMMARY_MAX_LENGTH
-			? `${objective.slice(0, GOAL_SUMMARY_MAX_LENGTH - 1)}…`
-			: objective;
+		const plain = sanitizeStatusText(objective);
+		return plain.length > GOAL_SUMMARY_MAX_LENGTH ? `${plain.slice(0, GOAL_SUMMARY_MAX_LENGTH - 1)}…` : plain;
 	}
 
 	#pausedGoalState(): GoalModeState | undefined {
@@ -873,7 +881,10 @@ export class GoalModeController {
 			tokensLine = `${used} / ${goal.tokenBudget.toLocaleString()} (${pct}%, ${left.toLocaleString()} left)`;
 		}
 		const lines = [
-			`Objective: ${goal.objective}`,
+			// The objective is whatever an operator typed or a model wrote, and it lands in a
+			// terminal: an escape sequence in it would style the rest of the report, a tab would
+			// open a hole in it, and a newline would put a line of it where a field name belongs.
+			`Objective: ${sanitizeStatusText(goal.objective)}`,
 			`Status: ${goalStatusField(goal.status, state?.enabled === true)}`,
 			`Tokens: ${tokensLine}`,
 			`Turns: ${goal.turnsCompleted}`,

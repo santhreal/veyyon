@@ -8,6 +8,7 @@
 - Removed `ui.setHeader()` and `ui.setFooter()`, which every host implemented as an empty function, interactive mode included.
 - Fifty-three session spine, plugin loader and contribution registry modules moved from `src/session/` and `src/extensibility/` to `@veyyon/kernel`: subpath imports previously resolved through `@veyyon/coding-agent/session/*`, `@veyyon/coding-agent/extensibility/*`, `@veyyon/coding-agent/extensibility/plugins` and `@veyyon/coding-agent/extensibility/plugins/*` are now imported from `@veyyon/kernel/session/*`, `@veyyon/kernel/loader/*` and `@veyyon/kernel/registry/*`.
 - The 152 modules under `src/tools/` moved into one directory per domain — `core/` for the plumbing every domain reads, then `fs/`, `search/`, `shell/`, `web/` and `agent/` — so a subpath import previously resolved through `@veyyon/coding-agent/tools/<name>` is now `@veyyon/coding-agent/tools/<domain>/<name>`.
+- `sanitizeStatusText` is `@veyyon/utils/sanitize-status-text`, so a subpath import previously resolved through `@veyyon/coding-agent/modes/sanitize-status-text` names the utils module: the function is text-only and every host reduces a value to one line the same way.
 
 ### Added
 
@@ -158,6 +159,7 @@
 - A crashed autoresearch run reports `-` for the metric instead of `0ms`, which sorted it as the fastest run in the table.
 - A turn that calls a tool and then stops with text is treated as ending in text: the todo reminder fires again as the board changes instead of falling silent after the first one, and the rewind, plan-mode, verification and code-review checks run at that stop.
 - The goal report from `/goal show` and the goal detail menu states the goal's status once: a paused goal read `Status: paused (paused)`, and a finished one `Status: complete (paused)`. Goal mode being off is now named only where the status does not already carry it, as `active (mode off)`.
+- A goal objective reaches every surface that shows it as one plain line: the `/goal show` report, the `/goal` menu title, the warning a disabled Goal Mode prints over a stored goal, the `/goal` autocomplete row and the goal tool's own card each formatted the objective raw, so an escape sequence in one styled or moved the rest of the surface, a tab opened a hole in it, and a newline split it across two fields.
 
 ## [1.3.0] - 2026-08-28
 

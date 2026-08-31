@@ -1,5 +1,6 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import { formatNumber, prompt } from "@veyyon/utils";
+import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { ToolView, ToolViewContext, ToolViewRenderer, ViewSection, ViewSpan, ViewTone } from "@veyyon/view";
 import { type } from "arktype";
@@ -192,7 +193,7 @@ export const goalToolView: Required<ToolViewRenderer<GoalRenderArgs, GoalRenderR
 		const meta: ViewSpan[] = [];
 		if (args.op === "create" && objective) {
 			meta.push({
-				text: `"${truncateToWidth(objective, TRUNCATE_LENGTHS.TITLE)}"`,
+				text: `"${truncateToWidth(sanitizeStatusText(objective), TRUNCATE_LENGTHS.TITLE)}"`,
 				tone: "muted",
 				italic: true,
 			});
@@ -250,7 +251,7 @@ export const goalToolView: Required<ToolViewRenderer<GoalRenderArgs, GoalRenderR
 				lines: [
 					[
 						{
-							text: `"${truncateToWidth(goal.objective.trim(), TRUNCATE_LENGTHS.LONG)}"`,
+							text: `"${truncateToWidth(sanitizeStatusText(goal.objective), TRUNCATE_LENGTHS.LONG)}"`,
 							tone: "muted",
 							italic: true,
 						},

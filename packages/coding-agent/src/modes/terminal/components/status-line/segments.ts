@@ -6,6 +6,7 @@ import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
 import { DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault, getProjectDir } from "@veyyon/utils/dirs";
 import { formatDuration, formatNumber, normalizePremiumRequests } from "@veyyon/utils/format";
 import { clamp01 } from "@veyyon/utils/math";
+import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 import { PRIORITY_TIER_LABEL } from "../../../../config/service-tier";
 import { describeMsLeft } from "../../../../secrets/vault";
 import { withIcon } from "../../../../theme/icon-label";
@@ -14,7 +15,6 @@ import { normalizeApprovalMode } from "../../../../tools/core/approval";
 import { AUTONOMY_LABEL } from "../../../../tools/core/approval-modes";
 import { TRUNCATE_LENGTHS, truncateToWidth } from "../../../../tools/core/render-utils";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../../../../utils/session-color";
-import { sanitizeStatusText } from "../../shared";
 import { isTreeDirty, renderBranch } from "./branch";
 import {
 	type ContextUsageLevel,

@@ -1,7 +1,7 @@
 /**
  * Text a status row displays carries no escape sequence, no control character and no run of spaces.
  *
- * WHY THIS SUITE EXISTS. `src/modes/terminal/sanitize-status-text.ts` is what stands between a
+ * WHY THIS SUITE EXISTS. `@veyyon/utils/sanitize-status-text` is what stands between a
  * single-line status indicator and whatever a tool, a branch name or a model wrote. An escape
  * sequence there moves the cursor or repaints colour inside a row the renderer measured as plain
  * text, and a newline turns a one-line row into two. Nothing named the module: it was exercised only
@@ -12,7 +12,7 @@
  * `truncateToWidth`'s subject.
  */
 import { describe, expect, it } from "bun:test";
-import { sanitizeStatusText } from "@veyyon/coding-agent/modes/terminal/sanitize-status-text";
+import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 
 describe("status text is reduced to one plain line", () => {
 	it("strips a colour escape and keeps the text it wrapped", () => {

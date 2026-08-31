@@ -12,7 +12,6 @@ import { Spacer } from "@veyyon/tui";
 import {
 	APP_NAME,
 	CHANGELOG_URL,
-	collapseWhitespace,
 	getActiveProfile,
 	getAgentDir,
 	getGlobalConfigRootDir,
@@ -23,6 +22,7 @@ import {
 	truncate,
 } from "@veyyon/utils";
 import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
+import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 import { advisorStatusNextStep, describeAdvisorToggle } from "../advisor/messages";
 import { runTrustSlashCommand } from "../cli/trust-cli";
 import { COLLAB_GUEST_ALLOWED_COMMANDS } from "../collab/guest-commands";
@@ -221,8 +221,13 @@ function noThinkingControlMessage(session: AgentSession): string {
 
 const AUTOCOMPLETE_DETAIL_LIMIT = 48;
 
+/**
+ * A command's detail column: one line, plain, capped. The value is not this file's -- a goal
+ * objective is typed or written by a model -- so an escape sequence in it would style the rest of
+ * the autocomplete row, and `sanitizeStatusText` strips it before the cap counts characters.
+ */
 function shortDetail(value: string, limit = AUTOCOMPLETE_DETAIL_LIMIT): string {
-	return truncate(collapseWhitespace(value), limit);
+	return truncate(sanitizeStatusText(value), limit);
 }
 
 function formatTokenCount(value: number): string {

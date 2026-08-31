@@ -17,11 +17,11 @@
  * the handover that means nothing happened.
  */
 
+import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 import { settingsOrNull } from "../../../../config/settings-instance";
 import { withIcon } from "../../../../theme/icon-label";
 import { theme } from "../../../../theme/theme";
 import type { GitStatusSummary } from "../../../../utils/git";
-import { sanitizeStatusText } from "../../sanitize-status-text";
 import { resolvePresetSegments } from "./presets";
 
 /**

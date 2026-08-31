@@ -17,12 +17,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { pathIsWithin, relativePathWithinRoot } from "@veyyon/utils/dirs";
 import * as logger from "@veyyon/utils/logger";
+import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 import { sliceWithWidth, visibleWidth } from "@veyyon/utils/width";
 import { settingsOrNull } from "../../../../config/settings-instance";
 import { withIcon } from "../../../../theme/icon-label";
 import { theme } from "../../../../theme/theme";
 import { shortenPath } from "../../../../tools/core/shorten-path";
-import { sanitizeStatusText } from "../../sanitize-status-text";
 import { getPreset } from "./presets";
 import type { StatusLineSegmentOptions } from "./types";
 

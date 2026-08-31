@@ -11,6 +11,7 @@
 - `@veyyon/utils/color-format` states whether escape sequences are written as 24-bit or 256-colour SGR; `@veyyon/tui` sets it once the terminal's capabilities resolve, which is how a utils module renders colour without reading terminal state.
 - `@veyyon/utils/ttyid` reads the controlling terminal's identity, and `@veyyon/utils/image-fallback` states the four causes a client can fail to draw a picture for, as `IMAGE_FALLBACK_REASONS` and the `ImageFallbackReason` union over it. Both moved out of `@veyyon/tui`, so a conversation engine can name a session or a cause without importing a renderer.
 - `@veyyon/utils/host-notification` states `HostNotification`, the out-of-band message a tool asks its host to deliver, and `HostNotifier`, the delivery a host installs. Neither names a terminal, so a GUI host can honour one.
+- `@veyyon/utils/sanitize-status-text` reduces text to one line a terminal draws as text, stripping escape sequences, mapping the remaining controls to spaces and collapsing space runs, so domain code that names a value in a single-line surface no longer imports the terminal host to sanitize it.
 
 ### Changed
 
