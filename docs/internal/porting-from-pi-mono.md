@@ -278,7 +278,7 @@ packages/ai:
 - fix: add overflow detection for Bedrock, MiniMax, Kimi providers
 - fix: 429 status is rate limiting, not context overflow
 
-packages/tui:
+hosts/terminal/engine:
 - fix: refactored autocomplete state tracking
 - fix: file autocomplete should not trigger on empty text
 - fix: configurable autocomplete max visible items
@@ -360,7 +360,7 @@ Our fork has architectural decisions that differ from upstream. **Do not port th
 | Upstream                                                         | Our Fork                                                                                          |
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `jiti` for TypeScript loading                                    | Native Bun `import()`                                                                              |
-| `pkg.pi` manifest field                                          | `pkg.veyyon` preferred; `omp` and `pi` remain accepted as legacy keys (`MANIFEST_KEYS` in `src/extensibility/manifest-key.ts`, first defined wins) |
+| `pkg.pi` manifest field                                          | `pkg.veyyon` preferred; `omp` and `pi` remain accepted as legacy keys (`MANIFEST_KEYS` in `kernel/src/loader/manifest-key.ts`, first defined wins) |
 | `StringEnum` from `pi-ai`                                        | `Type.Enum` from the `pi.typebox` shim (or author the schema with `pi.zod`); `pi-ai` no longer exports `StringEnum` |
 | `formatSize` from `pi-coding-agent`                              | `formatBytes` from `@veyyon/utils`                                                            |
 | `DefaultResourceLoader` / `DefaultPackageManager` / `SettingsManager` / `createEventBus` | Capability-based discovery (`loadCapability(...)`) plus the `Settings` singleton and `EventBus` |
@@ -483,4 +483,4 @@ handbook pages. `neverPorted` in `scripts/upstream-port-policy.json` lists the
 paths a port has no business authoring, which is the checklist to read that diff
 against.
 
-*Verified against `d22ae362` on 2026-08-22.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

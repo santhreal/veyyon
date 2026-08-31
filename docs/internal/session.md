@@ -64,7 +64,7 @@ Three rules hold for a new one:
 
 ## Operator notices
 
-`OperatorNotices` is where a subsystem says "this is degraded, carry on" and reaches a person. Use it instead of `logger.warn` for anything an operator needs to act on. The default transport set is `{ file: true }` with no console transport (`logger.ts:219`), and a TUI cannot write to the console without corrupting its render, so a `logger.warn` at startup lands in a file nobody opens. Before this existed, refusing to start was the only reliably loud mechanism in the codebase.
+`OperatorNotices` is where a subsystem says "this is degraded, carry on" and reaches a person. Use it instead of `logger.warn` for anything an operator needs to act on. The default transport set is `{ file: true }` with no console transport (`logger.ts:248`), and a TUI cannot write to the console without corrupting its render, so a `logger.warn` at startup lands in a file nobody opens. Before this existed, refusing to start was the only reliably loud mechanism in the codebase.
 
 The contract, in the order it matters:
 
@@ -74,20 +74,20 @@ The contract, in the order it matters:
 - Two severities only, `warning` and `error`. A third is never used honestly.
 - `all()` is the record, so a diagnostic or a test can read what was raised without a sink ever having been attached.
 
-Raise one with `session.operatorNotices.warn(source, text)`, where `source` is the subsystem in one lowercase word. `secrets`, `skills` and `filesystem` are the current callers. `AgentSession.skillWarnings` was the previous attempt: a getter that collected skill-loading problems and was read by no production code at all, which is worse than no channel, because the next person to need one reuses it and inherits the silence. The secrets subsystem's use of this channel is documented in [`../handbook/src/architecture/secrets.md`](../handbook/src/architecture/secrets.md).
+Raise one with `session.operatorNotices.warn(source, text)`, where `source` is the subsystem in one lowercase word. `secrets`, `skills`, `system-prompt`, `cpu`, `session` and `filesystem` are the current callers. `AgentSession.skillWarnings` was the previous attempt: a getter that collected skill-loading problems and was read by no production code at all, which is worse than no channel, because the next person to need one reuses it and inherits the silence. The secrets subsystem's use of this channel is documented in [`../handbook/src/architecture/secrets.md`](../handbook/src/architecture/secrets.md).
 
 ### Reaching the channel from a lower layer
 
-`OperatorNotices` lives in `packages/coding-agent`, so `packages/utils` cannot import it, and the helpers that find most degradations there are free functions with no session handle. Those report through `reportFault` in `packages/utils/src/fault-sink.ts`, and the reporting direction is inverted: the low layer owns a sink, and whoever owns a surface attaches theirs. `sdk.ts` attaches one beside the `OperatorNotices` it builds, so every mode gets the reach without having to remember.
+`OperatorNotices` lives in `kernel`, so `packages/utils` cannot import it, and the helpers that find most degradations there are free functions with no session handle. Those report through `reportFault` in `packages/utils/src/fault-sink.ts`, and the reporting direction is inverted: the low layer owns a sink, and whoever owns a surface attaches theirs. `sdk.ts` attaches one beside the `OperatorNotices` it builds, so every mode gets the reach without having to remember.
 
 What you need to know before using it:
 
 - Call `reportFault({ source, text, context })` from a low-layer helper that cannot throw and cannot reach a session. Use `OperatorNotices` directly whenever you do have a session.
 - `text` is what a person reads, so it names the consequence and the remedy. `context` is the structured detail for the file log, kept out of `text` because a JSON blob mid-sentence is how a channel becomes noise.
 - The **file log is written either way**, before any forwarding. Attaching a sink can only add reach, never remove the record, so no configuration reports a fault to fewer places than before.
-- The sink is **module-level**, which is the opposite of the per-session rule above and deliberate. These faults are properties of the machine rather than of a session: a directory that cannot be listed affects both sessions in a process, and identical notices collapse anyway.
-- A sink that throws does not break the caller, because these run inside helpers whose contract is to carry on. The throw is recorded on its own line.
-- Call `setFaultSink(undefined)` in test teardown. A sink that outlives the test that installed it collects another test's faults and reports them against the wrong subject.
+- The sink set is **module-level**, which is the opposite of the per-session rule above and deliberate. These faults are properties of the machine rather than of a session: a directory that cannot be listed affects both sessions in a process, and identical notices collapse anyway.
+- A sink that throws does not break the caller, because these run inside helpers whose contract is to carry on. It does not block the other sinks either, and the throw is recorded on its own line.
+- Detach in test teardown with the handle `attachFaultSink` returned. A sink that outlives the test that installed it collects another test's faults and reports them against the wrong subject.
 
 `fs-optional.ts` is the reason this exists. Its header promised that a directory that exists and cannot be listed "is not allowed to be silent", and it reported that with `logger.warn`, so an unreadable `~/.veyyon/agents` showed the operator "no subagents" and put the cause in a file nobody opens.
 
@@ -838,7 +838,7 @@ Before persisting entries:
   - the full bytes are written content-addressed and the JSONL line keeps a short `blobtext:sha256:<hash>` ref
   - on load `resolveBlobRefsInEntries` restores the exact original string, so a huge tool result round-trips losslessly and stays fully readable when studying the session
   - signed/encrypted blocks (see the persistence pipeline) are exempt and persist verbatim
-- Transient fields `partialJson` and `jsonlEvents` are removed.
+- The transient field `jsonlEvents` is removed.
 - If an object has both `content` and `lineCount`, line count is recomputed from the inline content, but not when `content` is a `blobtext:` ref (the ref is one line; the real count is preserved).
 - Image blocks in `content` arrays with base64 length >= 1024 are externalized to blob refs:
   - stored as `blob:sha256:<hash>`
@@ -883,4 +883,4 @@ Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(.
 
 Use session files for conversation graph/state replay; use `HistoryStorage` for prompt history UX.
 
-*Verified against `e73409eb2` on 2026-08-28.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

@@ -115,6 +115,7 @@ Kernel startup and per-execution environment patching can receive:
 - `VEYYON_TOOL_BRIDGE_TOKEN`
 - `VEYYON_TOOL_BRIDGE_SESSION`
 - `VEYYON_EVAL_LOCAL_ROOTS`
+- `VEYYON_EVAL_SESSION_ID`
 
 The runner initializes process state so code executes in the requested cwd, managed env entries are reflected in `os.environ`, and cwd is available on `sys.path`.
 
@@ -186,4 +187,4 @@ If a workflow needs both notebook mutation and execution:
 
 Current implementation does not provide a single tool that both mutates `.ipynb` and executes notebook cells through kernel context.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

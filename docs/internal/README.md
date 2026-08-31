@@ -17,8 +17,9 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 - **Verification stamps.** A doc whose claims have been checked against the code ends with
   `*Verified against \`<commit-sha>\` on YYYY-MM-DD.*` as its last line. `scripts/check-doc-freshness.ts`
   (a `docs.yml` gate) fails a stamped doc edited after its stamp date, re-verify and re-stamp in the
-  same change. Stamping is earned by verifying, never backfilled blind; unstamped docs are
-  reported loudly but do not fail.
+  same change. A change confined to markdown path tokens that resolve in the tree they are read
+  against is exempt, and reported by name. Stamping is earned by verifying, never backfilled blind;
+  unstamped docs are reported loudly but do not fail.
 
 ## Getting started and process
 
@@ -157,4 +158,4 @@ Per-model tool-call wire-format notes live in [toolconv/](toolconv/) (Anthropic,
 
 Step-by-step runbooks for when something breaks live in [runbooks/](runbooks/).
 
-*Verified against `afbe182a1` on 2026-08-25.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

@@ -156,4 +156,4 @@ The current binary misses the first target by 4.5x and the second by 4x, so the 
 and not yet a gate. Wiring it to CI needs a runner whose timings are stable enough that a red build
 means a regression; the numbers above vary by 30% across repetitions on an idle workstation.
 
-*Verified against `a6d3fa8e4` on 2026-08-22.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

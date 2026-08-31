@@ -103,7 +103,7 @@ Session-level bang-command executions pass `sessionKey: this.sessionId`.
 
 Tool-call executions pass `sessionKey: this.session.getSessionId?.()`, when available. In both surfaces, a session key isolates shell reuse per session; without one, reuse falls back to shell config/snapshot/env.
 
-Concurrent calls never share one `Shell`: the native session runs one command at a time and `Shell.abort()` kills every in-flight run on it. `executeBash()` tracks in-flight keys in `shellSessionsInUse`; while a key is busy, overlapping calls skip the cache and run through one-shot `executeShell()` (same isolation as quarantined sessions). Only the owning call releases the in-use flag or deletes the cached session in its `finally`.
+Concurrent calls never share one `Shell`: the native session runs one command at a time and `Shell.abort()` kills every in-flight run on it. `executeBash()` tracks in-flight keys in `shellSessionsInUse`; while a key is busy, overlapping calls skip the cache and run on a one-shot `Shell` instance (same isolation as quarantined sessions). Only the owning call releases the in-use flag or deletes the cached session in its `finally`.
 
 ## Shell config and snapshot behavior
 
@@ -272,7 +272,8 @@ This component is wired by `CommandController.handleBashCommand()` and fed from 
 
 ## Implementation files
 
-- [`src/tools/shell/bash.ts`](../../packages/coding-agent/src/tools/shell/bash.ts): tool entrypoint, input handling/interception, async and PTY/non-PTY selection, result/error mapping, bash tool renderer.
+- [`src/tools/shell/bash.ts`](../../packages/coding-agent/src/tools/shell/bash.ts): tool entrypoint, input handling/interception, async and PTY/non-PTY selection, and result/error mapping.
+- [`src/tools/shell/bash-render.ts`](../../packages/coding-agent/src/tools/shell/bash-render.ts): `createShellRenderer`, `BashRenderContext`, and the `bashToolRenderer` built from them.
 - [`src/tools/shell/bash-pty-selection.ts`](../../packages/coding-agent/src/tools/shell/bash-pty-selection.ts): `canUseInteractiveBashPty` predicate for choosing the local PTY overlay.
 - [`src/tools/shell/bash-interceptor.ts`](../../packages/coding-agent/src/tools/shell/bash-interceptor.ts): interceptor rule matching and blocked-command messages.
 - [`src/exec/bash-executor.ts`](../../packages/coding-agent/src/exec/bash-executor.ts): non-PTY executor, shell session reuse, cancellation wiring, output sink integration.
@@ -286,4 +287,4 @@ This component is wired by `CommandController.handleBashCommand()` and fed from 
 - [`src/modes/rpc/rpc-mode.ts`](../../packages/coding-agent/src/modes/rpc/rpc-mode.ts): RPC `bash` and `abort_bash` command surface.
 - [`src/internal-urls/artifact-protocol.ts`](../../packages/coding-agent/src/internal-urls/artifact-protocol.ts): `artifact://<id>` resolution.
 
-*Verified against `23e2a7938b9f` on 2026-08-28.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

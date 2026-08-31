@@ -58,4 +58,4 @@ Session welcome is a single hero card (not a dual-column dashboard): wordmark, o
 
 See also: [Themes and identity](../handbook/src/using/themes.md), [TUI design language](./tui-design-language.md).
 
-*Verified against `23e2a7938b9f` on 2026-08-28.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

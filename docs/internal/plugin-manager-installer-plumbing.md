@@ -4,7 +4,7 @@ This document describes how `veyyon plugin` npm/git/link operations mutate plugi
 
 ## Scope and architecture
 
-There are two plugin-management implementations in the codebase:
+There is one plugin-management implementation in the codebase:
 
 1. **Active path used by CLI commands**: `PluginManager` (`src/extensibility/plugins/manager.ts`), the sole plugin-management implementation. The legacy `installer.ts` helper module was deleted (commit bbaf24df); no installer module exists under `packages/coding-agent/src`.
 
@@ -78,7 +78,7 @@ Marketplace registries live separately:
 
 ## Manifest source and required fields
 
-Manifest is resolved through the one-owner helper `manifestFromPackageJson()` (`src/extensibility/manifest-key.ts`, `MANIFEST_KEYS = ["veyyon", "omp", "pi"]`, first defined key wins):
+Manifest is resolved through the one-owner helper `manifestFromPackageJson()` (`kernel/src/loader/manifest-key.ts`, `MANIFEST_KEYS = ["veyyon", "omp", "pi"]`, first defined key wins):
 
 1. `package.json.veyyon`
 2. legacy `package.json.omp`
@@ -279,4 +279,4 @@ Operationally, `doctor --fix` can repair some drift (`bun install`, orphaned con
 - [`src/extensibility/custom-tools/loader.ts`](../../packages/coding-agent/src/extensibility/custom-tools/loader.ts): runtime wiring for plugin-provided tool modules
 - [`src/extensibility/extensions/loader.ts`](../../packages/coding-agent/src/extensibility/extensions/loader.ts): runtime wiring for plugin-provided extension modules
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

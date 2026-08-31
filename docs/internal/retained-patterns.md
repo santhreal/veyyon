@@ -7,7 +7,7 @@ and [Models, roles, and profiles](../handbook/src/using/roles-and-profiles.md)).
 
 This page is a keep/cut ledger carried forward from the pre-fork planning notes. The keep/cut
 *decisions* are sound; the module pointers below have been re-grounded on the real TypeScript tree,
-the original notes pointed at an archived Rust/codex layout (`natives/core/src/...`,
+the original notes pointed at an archived Rust/codex layout (`crates/core/src/...`,
 `multi_agents_v2`, `RoleModelSetting`) that was never the shipped engine for this product.
 
 ## KEEP: coordination + prompts
@@ -69,7 +69,7 @@ the shipped model-slots-plus-3-knob-compaction design (see [Compaction & project
 | Layer | KEEP or CUT | Where it lives |
 | --- | --- | --- |
 | How agents are spawned and report back | **KEEP** | `task/executor.ts`, `task` tool |
-| How agents message each other directly (send/wait/inbox) | **KEEP** | `tools/agent/irc.ts`, `irc/bus.ts` |
+| How agents message each other directly (send/wait/inbox) | **KEEP** | `tools/agent/irc.ts`, `task/irc-bus.ts` |
 | How agents track work (todo/checklist discipline) | **KEEP** | `tools/agent/todo.ts` + prompt guidance |
 | How compaction hands off context | **KEEP** | `packages/agent/src/compaction/compaction.ts` |
 | Which model runs for which role (matrix + popups) | **CUT** | Replaced by plain `subagent.model` / `compaction.model` fields |
@@ -81,4 +81,4 @@ the shipped model-slots-plus-3-knob-compaction design (see [Compaction & project
 handoff prompt, preserve behavior. If it touches model-routing *settings knobs*, follow the shipped
 model-slots design above, do not resurrect a role→model matrix because an old fork had one.
 
-*Verified against `27773e7` on 2026-08-28.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

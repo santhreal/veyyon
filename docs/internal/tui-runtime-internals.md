@@ -230,4 +230,4 @@ Throttled/debounced paths:
 
 The runtime therefore mixes event-driven state transitions with bounded render cadence to keep interactivity responsive without repaint storms.
 
-*Verified against `23e2a7938b9f` on 2026-08-28.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

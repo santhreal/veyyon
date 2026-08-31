@@ -57,8 +57,8 @@ one. If no boundary is available at all, the suite does not run. Read
 
 | Mode | Contents |
 | --- | --- |
-| `workspace` | Fast packages (hashline, wire, utils, catalog, ai, agent, argot, stats, tool-render, swarm-extension, mnemopi, simulations). Packages only: the script gates are their own bucket. |
-| `native` | natives, tui, evals, collab-web |
+| `workspace` | Fast packages (hashline, wire, utils, catalog, ai, agent, argot, stats, tool-render, mode-swarm, mnemopi, simulations). Packages only: the script gates are their own bucket. |
+| `native` | natives/bridge/bindings, hosts/terminal/engine, evals, collab-web |
 | `coding-agent-singleton` | Settings / global-state suites (one process; do not chunk) |
 | `coding-agent-ui` | TUI/interactive suites (chunk size 5; ghostty GC ceiling) |
 | `coding-agent-runtime` | Session, RPC, SDK, MCP, extensions |
@@ -1101,7 +1101,7 @@ A suite that drives a real `TUI` against a `VirtualTerminal` has to wait for the
 frame before it asserts on the screen. Ask the engine, do not guess:
 
 ```ts
-import { settleFrames } from "../../tui/test/helpers/settle-frames";
+import { settleFrames } from "../../../hosts/terminal/engine/test/helpers/settle-frames";
 
 rows.setLines(["status-after"]);
 tui.requestRender();
@@ -1219,4 +1219,4 @@ Wiring you can't exercise in-process (worker spawn, install flow) is covered by 
 runtime smoke probe (`veyyon --smoke-test`) and the install-test scripts, not by a
 source grep.
 
-*Verified against `27773e7` on 2026-08-28.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

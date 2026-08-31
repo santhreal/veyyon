@@ -39,7 +39,7 @@ Sources: [`packages/stats/README.md`](../../packages/stats/README.md), [`package
 
 Sources: [`packages/evals/package.json`](../../packages/evals/package.json), [`packages/evals/engine/contracts.ts`](../../packages/evals/engine/contracts.ts), [`packages/evals/suites/typescript-edit/generate.ts`](../../packages/evals/suites/typescript-edit/generate.ts), [`packages/evals/suites/typescript-edit/verify.ts`](../../packages/evals/suites/typescript-edit/verify.ts), [`packages/evals/backends/in-process/client.ts`](../../packages/evals/backends/in-process/client.ts), [`packages/evals/EVALS.md`](../../packages/evals/EVALS.md).
 
-- Package: private `@veyyon/evals`; bins: `evals` (suite runner) and `evals-server` (run store API and dashboard).
+- Package: private `@veyyon/evals`; bin: `evals`, the suite runner; `evals serve` starts the run store API and dashboard.
 - Feature: one runner over five axes — eval suite, agent harness, configuration arm, prompt variant, and model — across three execution backends (`pier` for DeepSWE containers, `harbor` for Terminal-Bench 3.0, `in-process` for the TypeScript-edit suite).
 - Suites: `suites/deep-swe` (SWE tasks in Pier containers), `suites/terminal-bench` (Terminal-Bench 3.0 through Harbor), `suites/typescript-edit` (in-process TypeScript source mutations).
 - Modules: `engine` holds the suite, harness and backend contracts plus the variant matrix and the run engine; `store` holds the SQLite run store and experiment grouping; `api` serves the REST/SSE API; `dashboard` is the live dashboard; `tools` renders aggregates and markdown tables.
@@ -48,4 +48,4 @@ Sources: [`packages/evals/package.json`](../../packages/evals/package.json), [`p
 - Outputs: trial directories and JSON result snapshots under `packages/evals/runs/`, plus the run rows the dashboard reads.
 - Side effects/limits: extracts fixture archives, clones upstream task repositories into `datasets/repo-cache/`, vendors pinned datasets into `.cache/`, and runs Docker containers for the `pier` and `harbor` backends.
 
-*Verified against `6f9dbe46` on 2026-08-28.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

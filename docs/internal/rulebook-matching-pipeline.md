@@ -224,14 +224,14 @@ The first three steps are the operator's levers, and `ruleIsEnabled` (`capabilit
 
 - Carried through on `Rule`.
 - Rendered inline in the default prompt's rulebook listing (`- <name> (<glob>, ...): <description>`); the custom-prompt template renders them as `<glob>...</glob>` entries.
-- Exposed in rules UI state (`extensions` mode list).
+- Reported by `ttsr list` (`cli/ttsr-cli.ts`) in a rule's condition summary and in its JSON output.
 - Used by TTSR as a global path gate: if a TTSR rule has globs, the match context must include at least one matching file path.
 - Not used to automatically select rulebook rules for `rule://`; rulebook matching remains advisory prompt behavior.
 
 ### `alwaysApply`
 
 - Parsed and preserved by providers.
-- Used in UI display (`"always"` trigger label in extensions state manager).
+- Used in UI display (`"always"` kind label in the settings selector's rules panel).
 - Used as an exclusion condition from `rulebookRules`.
 - **Full rule content is auto-injected into the system prompt** (before the rulebook rules section).
 - Rule is also addressable via `rule://<name>` for re-reading.
@@ -252,7 +252,7 @@ A rule that uses `pathScope` should stay scoped to navigation tools (`read`, `se
 
 ### Rule bodies and their render context
 
-A rule body is a template. `AgentSession.#renderRuleBody` is the one place it is resolved, for both TTSR delivery paths, and it provides exactly four variables:
+A rule body is a template. `TtsrRuntime.#renderRuleBody` (`session/runtime/ttsr-runtime.ts`) is the one place it is resolved, for both TTSR delivery paths, and it provides exactly four variables:
 
 - `argot` -- whether the argot feature is enabled, for advice that names an argot tool.
 - `argotUnloaded` -- whether argot is enabled AND the project's dictionary is not loaded yet. This is the gate a nudge to CALL `argot_load` must use: the feature being on does not mean the dictionary is missing, and advising a model to load one it already loaded is advice it cannot act on. The template language has no `unless`, so the inverted condition is passed in pre-inverted.
@@ -295,4 +295,4 @@ Implications:
 3. Rule selection for `rule://` includes rulebook, always-apply, and registered TTSR rules (so a triggered TTSR rule can be re-read), but not rules that registered no condition and carry neither a description nor `alwaysApply`.
 4. Discovery warnings (`loadCapability("rules").warnings`) are produced but `createAgentSession` does not currently surface/log them in this path.
 
-*Verified against `f5e89e2d` on 2026-08-28.*
+*Verified against `4aaaffd0a` on 2026-08-30.*
