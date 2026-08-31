@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, setSystemTime, vi } from "bun:test";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -29,7 +30,7 @@ import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { branchLabelFromFiles } from "@veyyon/coding-agent/utils/git-head";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { Component } from "@veyyon/tui";
-import { getProjectDir, TempDir } from "@veyyon/utils";
+import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
 
 /**
@@ -90,6 +91,39 @@ function launchComposer(): Component[] {
 /** Every row the launch composer paints at `width`, in order. */
 function launchRows(width: number): string[] {
 	return launchComposer().flatMap(child => child.render(width));
+}
+
+/** The branch the fixture checkout's HEAD names. */
+const FIXTURE_BRANCH = "launch-card-fixture";
+
+/**
+ * Run `body` with the project directory pointed at a checkout whose HEAD names {@link
+ * FIXTURE_BRANCH}, written as files rather than by running git — which is how the card reads it.
+ *
+ * The process's own checkout cannot be the subject. A pull-request CI job checks out the merge
+ * commit with a DETACHED HEAD, so `branchLabelFromFiles` answers null there and a cell that read the
+ * branch off the ambient repository proved the row only on a machine that happened to sit on a
+ * branch, and asserted nothing everywhere else. The fixture names the branch, so both the shown and
+ * the withheld case are decided by this file.
+ */
+function onABranch(body: (branch: string) => void): void {
+	const dir = TempDir.createSync("veyyon-launch-card-branch-");
+	const gitDir = path.join(dir.path(), ".git");
+	fs.mkdirSync(path.join(gitDir, "refs", "heads"), { recursive: true });
+	fs.writeFileSync(path.join(gitDir, "HEAD"), `ref: refs/heads/${FIXTURE_BRANCH}\n`);
+	fs.writeFileSync(path.join(gitDir, "refs", "heads", FIXTURE_BRANCH), `${"0".repeat(40)}\n`);
+	const previous = getProjectDir();
+	setProjectDir(dir.path());
+	try {
+		expect(branchLabelFromFiles(getProjectDir())).toBe(FIXTURE_BRANCH);
+		body(FIXTURE_BRANCH);
+	} finally {
+		// The project directory moves the process working directory with it, so it is restored BEFORE
+		// the directory is removed: leaving the process inside a deleted cwd breaks every relative
+		// path a later suite in this file resolves.
+		setProjectDir(previous);
+		dir.removeSync();
+	}
 }
 
 beforeAll(async () => {
@@ -167,23 +201,26 @@ describe("the launch composer", () => {
 	});
 
 	it("names the branch, after the location, joined the way the live row joins segments", () => {
-		const branch = renderBranch(branchLabelFromFiles(getProjectDir()), false);
-		// The suite runs inside this repository's checkout, so there is one.
-		expect(branch).not.toBe("");
-		const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
-		const row = launchRows(100).find(candidate => candidate.includes(located));
-		expect(row).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}${located}${segmentSeparator()}${branch}`);
+		onABranch(branch => {
+			const rendered = renderBranch(branch, false);
+			expect(rendered).not.toBe("");
+			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
+			const row = launchRows(100).find(candidate => candidate.includes(located));
+			expect(row).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}${located}${segmentSeparator()}${rendered}`);
+		});
 	});
 
 	it("leaves the branch off the card when the row will not show one", () => {
-		settings.set("git.enabled", false);
-		try {
-			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
-			const row = launchRows(100).find(candidate => candidate.includes(located));
-			expect(row).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
-		} finally {
-			settings.set("git.enabled", true);
-		}
+		onABranch(() => {
+			settings.set("git.enabled", false);
+			try {
+				const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
+				const row = launchRows(100).find(candidate => candidate.includes(located));
+				expect(row).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
+			} finally {
+				settings.set("git.enabled", true);
+			}
+		});
 	});
 
 	it("shows no dirty marker, having run no `git status`", () => {
@@ -191,11 +228,12 @@ describe("the launch composer", () => {
 		// branch the way the live row renders it before its own asynchronous
 		// lookup lands: clean, unmarked. A card that guessed differently would
 		// change colour at the handover for no reason the reader can see.
-		const label = branchLabelFromFiles(getProjectDir());
-		const row = launchRows(100).find(candidate => candidate.includes(label as string));
-		expect(row).toBeDefined();
-		expect(row).toContain(renderBranch(label, false));
-		expect(row).not.toContain("*");
+		onABranch(branch => {
+			const row = launchRows(100).find(candidate => candidate.includes(branch));
+			expect(row).toBeDefined();
+			expect(row).toContain(renderBranch(branch, false));
+			expect(row).not.toContain("*");
+		});
 	});
 });
 
