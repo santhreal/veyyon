@@ -29,6 +29,7 @@ import {
 import { createExperimentState, createSessionRuntime } from "@veyyon/coding-agent/autoresearch/state";
 import type { AutoresearchRuntime, ExperimentResult } from "@veyyon/coding-agent/autoresearch/types";
 import { visibleWidth } from "@veyyon/tui";
+import { stripAnsi } from "@veyyon/utils";
 import { useTruecolorTheme } from "./helpers/theme-assertions";
 
 function result(overrides: Partial<ExperimentResult> = {}): ExperimentResult {
@@ -238,6 +239,11 @@ describe("the run screen fits the terminal it was given", () => {
 	it("pages the detail pane, and pages back to where it started", () => {
 		// The pane holds a playbook longer than the card, so the rows past the
 		// bottom are reachable only through the page keys the footer advertises.
+		//
+		// Compared as text, not as bytes: the selected row's prefix carries a lava
+		// shimmer, which is a function of the clock, so two frames of the same
+		// state differ by a colour channel when they land in different animation
+		// frames. What paging owes the reader is the same CONTENT it started on.
 		const runtime = runtimeWith(1);
 		runtime.state.notes = Array.from({ length: 120 }, (_unused, index) => `note line ${index}`).join("\n");
 		const screen = new AutoresearchScreenComponent({
@@ -246,17 +252,18 @@ describe("the run screen fits the terminal it was given", () => {
 			requestRender: () => {},
 			rows: () => 20,
 		});
+		const textOf = (): string => screen.render(80).map(line => stripAnsi(line)).join("\n");
 		screen.handleInput("\x1b[B"); // session → playbook
-		const first = screen.render(80).join("\n");
+		const first = textOf();
 		expect(first).toContain("note line 0");
 
 		screen.handleInput("\x1b[6~");
-		const paged = screen.render(80).join("\n");
+		const paged = textOf();
 		expect(paged).not.toBe(first);
 		expect(paged).not.toContain("note line 0");
 
 		screen.handleInput("\x1b[5~");
-		expect(screen.render(80).join("\n")).toBe(first);
+		expect(textOf()).toBe(first);
 	});
 
 	it("closes on escape, and on escape only once the filter is gone", () => {
