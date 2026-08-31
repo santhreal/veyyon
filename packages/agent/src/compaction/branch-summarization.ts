@@ -21,6 +21,7 @@ import {
 	createCustomMessage,
 	defaultConvertToLlm,
 } from "./messages";
+import { usableInputWindow } from "./threshold";
 import { estimateTokens } from "./token-estimate";
 import {
 	computeFileLists,
@@ -612,7 +613,12 @@ export async function generateBranchSummary(
 	// Such a reserve is unsatisfiable, so it falls back to the same 15%
 	// proportional reserve the rest of the compaction code uses for a reserve the
 	// window cannot hold, leaving 85% of the window as the budget.
-	const contextWindow = model.contextWindow || 128000;
+	// Usable INPUT, not the catalog window: the summarization request is a request
+	// like any other, so the model's output allocation is unavailable to it. Sizing
+	// the conversation to the raw window builds a compaction request the provider
+	// rejects, which is the failure that leaves a session with no way out — the
+	// history overflows and the one operation that could shrink it overflows too.
+	const contextWindow = usableInputWindow(model.contextWindow || 128000, model.maxTokens);
 	const configuredBudget = contextWindow - reserveTokens;
 	const tokenBudget = configuredBudget > 0 ? configuredBudget : Math.max(1, Math.floor(contextWindow * 0.85));
 

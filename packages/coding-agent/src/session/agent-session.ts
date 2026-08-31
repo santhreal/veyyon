@@ -87,6 +87,7 @@ import {
 	shouldCompact,
 	stripLegacyArchive,
 	upsertFileOperations,
+	usableInputWindow,
 } from "@veyyon/agent-core/compaction";
 import { modelServesPrefixCacheHits } from "@veyyon/agent-core/compaction/cache-aligned-context";
 import {
@@ -881,7 +882,11 @@ function compactionDeadEndWarning(): string {
  */
 function declaredContextWindow(model: Model | undefined): number | undefined {
 	const contextWindow = model?.contextWindow;
-	return typeof contextWindow === "number" && contextWindow > 0 ? contextWindow : undefined;
+	if (typeof contextWindow !== "number" || contextWindow <= 0) return undefined;
+	// The cap is on what a prompt may carry, so it is the usable INPUT window: the
+	// output allocation is charged against the same window and is not available to
+	// the prompt.
+	return usableInputWindow(contextWindow, model?.maxTokens);
 }
 
 function createCodexCompactionContext(options: {
@@ -4147,7 +4152,7 @@ export class AgentSession {
 	async #promoteAdvisorContextModel(advisor: ActiveAdvisor, currentModel: Model): Promise<boolean> {
 		const promotionSettings = this.settings.getGroup("contextPromotion");
 		if (!promotionSettings.enabled) return false;
-		const contextWindow = currentModel.contextWindow ?? 0;
+		const contextWindow = usableInputWindow(currentModel.contextWindow ?? 0, currentModel.maxTokens);
 		if (contextWindow <= 0) return false;
 		const targetModel = await this.#resolveContextPromotionTarget(currentModel, contextWindow);
 		if (!targetModel) return false;
@@ -14059,7 +14064,7 @@ export class AgentSession {
 	async #runPrePromptCompactionIfNeeded(messages: AgentMessage[]): Promise<void> {
 		const model = this.model;
 		if (!model) return;
-		const contextWindow = model.contextWindow ?? 0;
+		const contextWindow = usableInputWindow(model.contextWindow ?? 0, model.maxTokens);
 		if (contextWindow <= 0) return;
 		const compactionSettings = this.settings.getGroup("compaction");
 		const contextTokens = this.#estimatePrePromptContextTokens(messages, contextWindow);
