@@ -60,6 +60,19 @@ export function runOutcome(result: ExperimentResult): string {
 	return result.flagged ? "flagged" : result.status;
 }
 
+/**
+ * What a run's metric column says.
+ *
+ * A crashed run produced no measurement, and `log_experiment` requires a number,
+ * so the loop records the only number it has: zero. Formatted like any other
+ * value that read `#6  0ms` in a session where lower is better — the fastest row
+ * on the screen was the run that segfaulted. Best and baseline math already skips
+ * a crash, so this is the display saying what the number is worth.
+ */
+export function metricLabel(result: ExperimentResult, unit: string): string {
+	return result.status === "crash" ? "no metric" : formatNum(result.metric, unit);
+}
+
 /** Whether this session is a swarm, which decides the title and the arm fields. */
 function isSwarm(state: ExperimentState): boolean {
 	return state.breadth > 1;
@@ -106,7 +119,7 @@ export function runScreenRows(runtime: AutoresearchRuntime): SelectItem[] {
 		const arm = result.arm ? `  ${result.arm}` : "";
 		rows.push({
 			value: `run:${number}`,
-			label: `#${number}  ${formatNum(result.metric, state.metricUnit)}`,
+			label: `#${number}  ${metricLabel(result, state.metricUnit)}`,
 			description: `${runOutcome(result)}${arm}`,
 			group: `segment ${result.segment + 1}`,
 			filterText: `${number} ${result.description} ${result.arm ?? ""}`,
@@ -277,7 +290,9 @@ function pendingDetail(runtime: AutoresearchRuntime, width: number): string[] {
 function runDetail(result: ExperimentResult, state: ExperimentState, width: number): string[] {
 	const baseline = findBaselineMetric(state.results, state.currentSegment);
 	const baselineSecondary = findBaselineSecondary(state.results, state.currentSegment, state.secondaryMetrics);
-	const change = formatPercentChange(result.metric, baseline);
+	// No measurement means no comparison: a crash against a 205ms baseline read
+	// `0ms  -100.0%`, which is a claim about a run that never finished.
+	const change = result.status === "crash" ? "" : formatPercentChange(result.metric, baseline);
 	const lines: string[] = [];
 	lines.push(
 		...field(
@@ -288,7 +303,7 @@ function runDetail(result: ExperimentResult, state: ExperimentState, width: numb
 		),
 	);
 	lines.push(
-		...field(state.metricName, `${formatNum(result.metric, state.metricUnit)}${change ? `  ${change}` : ""}`, width),
+		...field(state.metricName, `${metricLabel(result, state.metricUnit)}${change ? `  ${change}` : ""}`, width),
 	);
 	for (const metric of state.secondaryMetrics) {
 		const value = result.metrics[metric.name];
