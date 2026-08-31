@@ -1670,12 +1670,12 @@ export function convertAnthropicMessages(
 
 			let content: string | ContentBlockParam[];
 			if (typeof msg.content === "string") {
-				if (msg.content.trim().length === 0) continue;
+				if (!/\S/.test(msg.content)) continue;
 				content = msg.content.toWellFormed();
 			} else {
 				const contentBlocks = convertContentBlocks(msg.content, model.input.includes("image"));
 				if (typeof contentBlocks === "string") {
-					if (contentBlocks.trim().length === 0) continue;
+					if (!/\S/.test(contentBlocks)) continue;
 					content = contentBlocks;
 				} else {
 					if (contentBlocks.length === 0) continue;
@@ -1687,21 +1687,20 @@ export function convertAnthropicMessages(
 		} else if (msg.role === "assistant") {
 			const blocks: ContentBlockParam[] = [];
 			const hasSignedThinking = msg.content.some(
-				block =>
-					block.type === "thinking" && !!block.thinkingSignature && block.thinkingSignature.trim().length > 0,
+				block => block.type === "thinking" && !!block.thinkingSignature && /\S/.test(block.thinkingSignature),
 			);
 
 			for (const block of msg.content) {
 				if (block.type === "text") {
-					if (block.text.trim().length === 0) continue;
+					if (!/\S/.test(block.text)) continue;
 					blocks.push({
 						type: "text",
 						text: block.text.toWellFormed(),
 					});
 				} else if (block.type === "thinking") {
 					if (hasSignedThinking) {
-						if (!block.thinkingSignature || block.thinkingSignature.trim().length === 0) {
-							if (block.thinking.trim().length === 0) continue;
+						if (!block.thinkingSignature || !/\S/.test(block.thinkingSignature)) {
+							if (!/\S/.test(block.thinking)) continue;
 							blocks.push({
 								type: "text",
 								text: renderDemotedThinking(model.id, block.thinking),
@@ -1715,8 +1714,8 @@ export function convertAnthropicMessages(
 						});
 						continue;
 					}
-					if (block.thinking.trim().length === 0) continue;
-					if (!block.thinkingSignature || block.thinkingSignature.trim().length === 0) {
+					if (!/\S/.test(block.thinking)) continue;
+					if (!block.thinkingSignature || !/\S/.test(block.thinkingSignature)) {
 						if (model.compat.replayUnsignedThinking) {
 							blocks.push({
 								type: "thinking",
@@ -1737,7 +1736,7 @@ export function convertAnthropicMessages(
 						});
 					}
 				} else if (block.type === "redactedThinking") {
-					if (block.data.trim().length === 0) continue;
+					if (!/\S/.test(block.data)) continue;
 					blocks.push({
 						type: "redacted_thinking",
 						data: block.data,
