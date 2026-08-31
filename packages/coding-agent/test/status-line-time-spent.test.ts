@@ -94,6 +94,7 @@ function makeSession(
 		autoResolvedThinkingLevel: () => undefined,
 		isFastModeActive: () => false,
 		isFastModeEnabled: () => false,
+		isAdvisorActive: () => false,
 		getGoalModeState: () => null,
 		getAsyncJobSnapshot: () => ({ running: [] }),
 		modelRegistry: { isUsingOAuth: () => false },

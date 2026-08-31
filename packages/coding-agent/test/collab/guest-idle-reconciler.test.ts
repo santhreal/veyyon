@@ -71,6 +71,7 @@ function makeSession(): ConstructorParameters<typeof StatusLineComponent>[0] {
 		autoResolvedThinkingLevel: () => undefined,
 		isFastModeActive: () => false,
 		isFastModeEnabled: () => false,
+		isAdvisorActive: () => false,
 		getGoalModeState: () => null,
 		getAsyncJobSnapshot: () => ({ running: [] }),
 		modelRegistry: { isUsingOAuth: () => false },

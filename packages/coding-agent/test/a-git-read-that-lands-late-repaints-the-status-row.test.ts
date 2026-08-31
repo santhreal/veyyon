@@ -97,6 +97,7 @@ function makeSession() {
 		isFastModeActive: () => false,
 		isApprovalBypassed: () => false,
 		isFastModeEnabled: () => false,
+		isAdvisorActive: () => false,
 		getGoalModeState: () => null,
 		getAsyncJobSnapshot: () => ({ running: [] }),
 		modelRegistry: { isUsingOAuth: () => false },
