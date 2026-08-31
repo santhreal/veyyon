@@ -1,17 +1,13 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Model } from "@veyyon/ai";
 import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
-import { Markdown } from "@veyyon/tui";
 import { collapseWhitespace, prompt } from "@veyyon/utils";
-import { INTENT_FIELD } from "@veyyon/wire";
-import chalk from "chalk";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import { commitPrompts } from "../../prompts/commit/rows";
 import { commitAgenticPrompts } from "../../prompts/commit-agentic/rows";
 import { createAgentSession } from "../../sdk";
 import type { AgentSessionEvent } from "../../session/agent-session-types";
-import { getMarkdownTheme } from "../../theme/markdown-theme";
 import type { CommitAgentState } from "./state";
 import { commitAnalysisSpawnTarget, createCommitTools } from "./tools";
 
@@ -28,12 +24,37 @@ export interface CommitAgentInput {
 	requireChangelog: boolean;
 	diffText?: string;
 	existingChangelogEntries?: ExistingChangelogEntries[];
+	/** Where the run is drawn. A caller that draws nothing passes none. */
+	reporter?: CommitAgentReporter;
 	onComplete?: (state: CommitAgentState) => Promise<void> | void;
 }
 
 export interface ExistingChangelogEntries {
 	path: string;
 	sections: Array<{ name: string; items: string[] }>;
+}
+
+/**
+ * What a commit agent run reports while it happens.
+ *
+ * The session states what occurred and never how it looks: `veyyon commit`
+ * installs `createCommitConsoleReporter` from `./agent-render`, the only module
+ * that draws any of it, and a caller with no screen installs nothing. The run's
+ * result is {@link CommitAgentState} either way.
+ */
+export interface CommitAgentReporter {
+	/** The assistant's text so far, whitespace collapsed and unbounded. */
+	thinking(preview: string): void;
+	/** An assistant message closed; any in-flight preview is spent. */
+	messageEnded(): void;
+	/** The message stopped on an error the model reported. */
+	assistantError(message: string): void;
+	/** The message's final text, as markdown. */
+	assistantMessage(markdown: string): void;
+	/** A tool call finished, with the arguments it was called with. */
+	toolFinished(toolName: string, args: Record<string, unknown> | undefined, isError: boolean): void;
+	/** The run ended after this many assistant messages and tool calls. */
+	finished(messageCount: number, toolCalls: number): void;
 }
 
 export async function runCommitAgentSession(input: CommitAgentInput): Promise<CommitAgentState> {
@@ -80,34 +101,15 @@ export async function runCommitAgentSession(input: CommitAgentInput): Promise<Co
 	});
 	let toolCalls = 0;
 	let messageCount = 0;
-	let isThinking = false;
-	let thinkingLineActive = false;
+	const report = input.reporter;
 	const toolArgsById = new Map<string, { name: string; args?: Record<string, unknown> }>();
-	const writeThinkingLine = (text: string) => {
-		if (!process.stdout.isTTY) return;
-		const line = chalk.dim(`… ${text}`);
-		process.stdout.write(`\r\x1b[2K${line}`);
-		thinkingLineActive = true;
-	};
-	const clearThinkingLine = () => {
-		if (!thinkingLineActive) return;
-		if (!process.stdout.isTTY) return;
-		process.stdout.write("\r\x1b[2K");
-		thinkingLineActive = false;
-	};
 	const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
 		switch (event.type) {
-			case "message_start":
-				if (event.message.role === "assistant") {
-					isThinking = true;
-					thinkingLineActive = false;
-				}
-				break;
 			case "message_update": {
 				if (event.message?.role !== "assistant") break;
 				const preview = extractMessagePreview(event.message?.content ?? []);
 				if (!preview) break;
-				writeThinkingLine(preview);
+				report?.thinking(preview);
 				break;
 			}
 			case "tool_execution_start":
@@ -118,40 +120,27 @@ export async function runCommitAgentSession(input: CommitAgentInput): Promise<Co
 				});
 				break;
 			case "message_end": {
-				const role = event.message?.role;
-				if (role === "assistant") {
-					messageCount += 1;
-					isThinking = false;
-					clearThinkingLine();
-					const assistantMessage = event.message as { stopReason?: string; errorMessage?: string };
-					if (assistantMessage.stopReason === "error" && assistantMessage.errorMessage) {
-						process.stdout.write(`● Error: ${assistantMessage.errorMessage}\n`);
-					}
-					const messageText = extractMessageText(event.message?.content ?? []);
-					if (messageText) {
-						writeAssistantMessage(messageText);
-					}
+				if (event.message?.role !== "assistant") break;
+				messageCount += 1;
+				report?.messageEnded();
+				const assistantMessage = event.message as { stopReason?: string; errorMessage?: string };
+				if (assistantMessage.stopReason === "error" && assistantMessage.errorMessage) {
+					report?.assistantError(assistantMessage.errorMessage);
+				}
+				const messageText = extractMessageText(event.message?.content ?? []);
+				if (messageText) {
+					report?.assistantMessage(messageText);
 				}
 				break;
 			}
 			case "tool_execution_end": {
 				const stored = toolArgsById.get(event.toolCallId) ?? { name: event.toolName };
 				toolArgsById.delete(event.toolCallId);
-				clearThinkingLine();
-				const toolLabel = formatToolLabel(stored.name);
-				const symbol = event.isError ? "" : "";
-				process.stdout.write(`${symbol} ${toolLabel}\n`);
-				const argsLines = formatToolArgs(stored.args);
-				if (argsLines.length > 0) {
-					process.stdout.write(`${formatToolArgsBlock(argsLines)}\n`);
-				}
+				report?.toolFinished(stored.name, stored.args, event.isError === true);
 				break;
 			}
 			case "agent_end":
-				if (isThinking) {
-					isThinking = false;
-				}
-				process.stdout.write(`● agent finished (${messageCount} messages, ${toolCalls} tools)\n`);
+				report?.finished(messageCount, toolCalls);
 				break;
 			default:
 				break;
@@ -198,8 +187,7 @@ function extractMessagePreview(content: Array<{ type: string; text?: string }>):
 		.map(block => block.text?.trim())
 		.filter((value): value is string => Boolean(value));
 	if (textBlocks.length === 0) return null;
-	const combined = collapseWhitespace(textBlocks.join(" "));
-	return truncateToolArg(combined);
+	return collapseWhitespace(textBlocks.join(" "));
 }
 
 function extractMessageText(content: Array<{ type: string; text?: string }>): string | null {
@@ -209,88 +197,6 @@ function extractMessageText(content: Array<{ type: string; text?: string }>): st
 		.filter(value => value.trim().length > 0);
 	if (textBlocks.length === 0) return null;
 	return textBlocks.join("\n").trim();
-}
-
-function writeAssistantMessage(message: string): void {
-	const lines = renderMarkdownLines(message);
-	if (lines.length === 0) return;
-	let firstContentIndex = lines.findIndex(line => line.trim().length > 0);
-	if (firstContentIndex === -1) {
-		firstContentIndex = 0;
-	}
-	for (const [index, line] of lines.entries()) {
-		const prefix = index === firstContentIndex ? "● " : "  ";
-		process.stdout.write(`${`${prefix}${line}`.trimEnd()}\n`);
-	}
-}
-
-function renderMarkdownLines(message: string): readonly string[] {
-	const width = Math.max(40, process.stdout.columns ?? 100);
-	const markdown = new Markdown(message, 0, 0, getMarkdownTheme());
-	return markdown.render(width);
-}
-
-function formatToolLabel(toolName: string): string {
-	const displayName = toolName
-		.split(/[_-]/)
-		.map(segment => segment.charAt(0).toUpperCase() + segment.slice(1))
-		.join("");
-	return displayName;
-}
-
-function formatToolArgs(args?: Record<string, unknown>): string[] {
-	if (!args || Object.keys(args).length === 0) return [];
-	const lines: string[] = [];
-	const visit = (value: unknown, keyPath: string) => {
-		if (value === null || value === undefined) return;
-		if (Array.isArray(value)) {
-			if (value.length === 0) return;
-			const rendered = value.map(item => renderPrimitive(item)).filter(Boolean);
-			if (rendered.length > 0) {
-				lines.push(`${keyPath}: ${rendered.join(", ")}`);
-			}
-			return;
-		}
-		if (typeof value === "object") {
-			const entries = Object.entries(value as Record<string, unknown>);
-			if (entries.length === 0) return;
-			for (const [childKey, childValue] of entries) {
-				visit(childValue, `${keyPath}.${childKey}`);
-			}
-			return;
-		}
-		const rendered = renderPrimitive(value);
-		if (rendered) {
-			lines.push(`${keyPath}: ${rendered}`);
-		}
-	};
-	for (const [key, value] of Object.entries(args)) {
-		if (key === INTENT_FIELD) continue;
-		visit(value, key);
-	}
-	return lines;
-}
-
-function renderPrimitive(value: unknown): string | null {
-	if (value === null || value === undefined) return null;
-	if (typeof value === "string") {
-		const trimmed = value.trim();
-		return trimmed.length > 0 ? trimmed : null;
-	}
-	if (typeof value === "number" || typeof value === "boolean") {
-		return String(value);
-	}
-	return null;
-}
-
-function formatToolArgsBlock(lines: string[]): string {
-	return lines
-		.map((line, index) => {
-			if (index === 0) return `  ⎿ ${line}`;
-			const branch = index === lines.length - 1 ? "└" : "├";
-			return `    ${branch} ${line}`;
-		})
-		.join("\n");
 }
 
 function isProposalComplete(state: CommitAgentState, requireChangelog: boolean): boolean {
@@ -320,9 +226,4 @@ Reminder ${retryCount} of ${maxRetries}.
 
 Call the missing tool(s) now.
 </system-reminder>`;
-}
-
-function truncateToolArg(value: string): string {
-	if (value.length <= 40) return value;
-	return `${value.slice(0, 39)}…`;
 }

@@ -14,6 +14,7 @@ import { formatCommitMessage } from "../message";
 import { resolvePrimaryModel, resolveSmolModel } from "../model-selection";
 import type { CommitCommandArgs, ConventionalAnalysis, NumstatEntry } from "../types";
 import { type ExistingChangelogEntries, runCommitAgentSession } from "./agent";
+import { createCommitConsoleReporter } from "./agent-render";
 import { generateFallbackProposal } from "./fallback";
 import { assignLockFilesToPlan } from "./lock-files";
 import type { CommitAgentState, CommitProposal, HunkSelector, SplitCommitPlan } from "./state";
@@ -146,6 +147,7 @@ export async function runAgenticCommit(args: CommitCommandArgs): Promise<void> {
 			requireChangelog: !args.noChangelog && changelogTargets.length > 0,
 			diffText: diff,
 			existingChangelogEntries,
+			reporter: createCommitConsoleReporter(),
 			onComplete: async commitState => {
 				agentSessionCompleted = true;
 				await completeAgentCommitState(commitState, {
