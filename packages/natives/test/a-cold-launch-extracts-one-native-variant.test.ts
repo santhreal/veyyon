@@ -281,31 +281,24 @@ describe("the loader's own extraction pass, driven as the loader calls it", () =
 	const VERSION = "9.9.9";
 	const PLATFORM_TAG = `${process.platform}-${process.arch}`;
 
-	/** Three variants, so at least two are left behind on x64 and on every other arch alike. */
+	/**
+	 * Three variants, so at least two are left behind on x64 and on every other arch alike, each in
+	 * its own archive as the build now writes them. Separate archives are what make "extract one
+	 * variant" mean "inflate one variant": a shared archive is a single gzip stream.
+	 */
 	function bundleOfEveryVariant(dir: string): { bundle: EmbeddedAddonBundle; contents: Map<string, Buffer> } {
 		const contents = new Map<string, Buffer>();
 		const files: AddonFile[] = [];
 		for (const variant of ALL_VARIANTS) {
 			const content = Buffer.from(`${variant}-addon-bytes`.padEnd(32 + variant.length, "."));
 			const file = addonFile(variant, content.length);
+			const archiveName = `embedded-addons.${PLATFORM_TAG}-${variant}.tar.gz`;
+			const archivePath = path.join(dir, archiveName);
+			fs.writeFileSync(archivePath, tarGz([{ filename: file.filename, content }]));
 			contents.set(file.filename, content);
-			files.push(file);
+			files.push({ ...file, archive: { format: "tar.gz", filename: archiveName, filePath: archivePath } });
 		}
-		const archiveName = `embedded-addons.${PLATFORM_TAG}.tar.gz`;
-		const archivePath = path.join(dir, archiveName);
-		fs.writeFileSync(
-			archivePath,
-			tarGz(files.map(file => ({ filename: file.filename, content: contents.get(file.filename) as Buffer }))),
-		);
-		return {
-			bundle: {
-				platformTag: PLATFORM_TAG,
-				version: VERSION,
-				files,
-				archive: { format: "tar.gz", filename: archiveName, filePath: archivePath },
-			},
-			contents,
-		};
+		return { bundle: { platformTag: PLATFORM_TAG, version: VERSION, files }, contents };
 	}
 
 	function contextFor(dir: string): EmbeddedAddonExtractionContext {
@@ -393,14 +386,21 @@ describe("the loader's own extraction pass, driven as the loader calls it", () =
 	it("reports the archive it could not read instead of returning a path to nothing", () => {
 		withScratch(dir => {
 			const { bundle } = bundleOfEveryVariant(dir);
-			fs.writeFileSync(bundle.archive?.filePath as string, Buffer.from("not a gzip stream"));
 			const ctx = contextFor(dir);
+			const { selected } = planEmbeddedAddonExtraction({
+				files: bundle.files,
+				arch: process.arch,
+				selectedVariant: ctx.selectedVariant,
+			});
+			// Only the archive this host would read is corrupted; the siblings stay intact, so a pass
+			// that reached for the wrong one would succeed and fail this case.
+			fs.writeFileSync(selected?.archive?.filePath as string, Buffer.from("not a gzip stream"));
 			const errors: string[] = [];
 
 			expect(maybeExtractEmbeddedAddon(ctx, errors, bundle)).toBeNull();
 
 			expect(errors.length).toBe(1);
-			expect(errors[0]).toContain(bundle.archive?.filename as string);
+			expect(errors[0]).toContain(selected?.archive?.filename as string);
 			expect(fs.readdirSync(ctx.versionedDir)).toEqual([]);
 		});
 	});

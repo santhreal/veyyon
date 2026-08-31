@@ -3,6 +3,8 @@ export interface EmbeddedAddonFile {
 	filename: string;
 	size?: number;
 	filePath?: string;
+	/** The archive carrying this variant. One per variant, so extracting one inflates only it. */
+	archive?: EmbeddedAddonArchive;
 }
 
 export interface EmbeddedAddonArchive {
@@ -145,7 +147,6 @@ export interface EmbeddedAddonBundle {
 	platformTag: string;
 	version: string;
 	files: EmbeddedAddonFile[];
-	archive?: { format: "tar.gz"; filename: string; filePath: string };
 }
 
 /** The loader-context fields the embedded-addon extractors read. */

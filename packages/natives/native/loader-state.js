@@ -1020,21 +1020,22 @@ export function maybeExtractEmbeddedAddon(ctx, errors, bundle = embeddedAddon) {
 		return null;
 	}
 
-	if (bundle.archive) {
+	const archive = selectedEmbeddedFile.archive;
+	if (archive) {
 		try {
 			extractEmbeddedAddonArchive({
-				archivePath: bundle.archive.filePath,
+				archivePath: archive.filePath,
 				files: [selectedEmbeddedFile],
 				targetDir: ctx.versionedDir,
 			});
 			if (isEmbeddedAddonFileCurrent(targetPath, selectedEmbeddedFile)) {
 				return targetPath;
 			}
-			errors.push(`embedded addon archive (${bundle.archive.filename}): missing ${selectedEmbeddedFile.filename}`);
+			errors.push(`embedded addon archive (${archive.filename}): missing ${selectedEmbeddedFile.filename}`);
 			return null;
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
-			errors.push(`embedded addon archive (${bundle.archive.filename}): ${message}`);
+			errors.push(`embedded addon archive (${archive.filename}): ${message}`);
 			return null;
 		}
 	}
@@ -1079,25 +1080,26 @@ export function extractRemainingEmbeddedAddons(ctx, errors, bundle = embeddedAdd
 	if (remaining.length === 0) return [];
 
 	startupMarker("native:extractRemainingEmbeddedAddons:start");
-	if (bundle.archive) {
-		try {
-			return extractEmbeddedAddonArchive({
-				archivePath: bundle.archive.filePath,
-				files: remaining,
-				targetDir: ctx.versionedDir,
-			});
-		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-			errors.push(`embedded addon fallback (${bundle.archive.filename}): ${message}`);
-			return [];
-		}
-	}
-
 	const written = [];
 	for (const file of remaining) {
-		if (!file.filePath) continue;
 		const targetPath = path.join(ctx.versionedDir, file.filename);
 		if (isEmbeddedAddonFileCurrent(targetPath, file)) continue;
+		if (file.archive) {
+			try {
+				written.push(
+					...extractEmbeddedAddonArchive({
+						archivePath: file.archive.filePath,
+						files: [file],
+						targetDir: ctx.versionedDir,
+					}),
+				);
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				errors.push(`embedded addon fallback (${file.archive.filename}): ${message}`);
+			}
+			continue;
+		}
+		if (!file.filePath) continue;
 		try {
 			fs.writeFileSync(targetPath, fs.readFileSync(file.filePath));
 			written.push(targetPath);
