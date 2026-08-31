@@ -12,11 +12,7 @@ import { getFileSnapshotStore } from "../../edit/file-snapshot-store";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";
 import { detectCacheInvalidation, usesExplicitPromptCache } from "../../modes/components/cache-invalidation-marker";
 import { compactionActionLabel, resolveCompactionKind } from "../../modes/components/compaction-summary-message";
-import {
-	ReadToolGroupComponent,
-	readArgsGroupable,
-	readArgsHaveTarget,
-} from "../../modes/components/read-tool-group";
+import { ReadToolGroupComponent, readArgsGroupable, readArgsHaveTarget } from "../../modes/components/read-tool-group";
 import { TodoReminderComponent } from "../../modes/components/todo-reminder";
 import { ToolExecutionComponent } from "../../modes/components/tool-execution";
 import { TtsrNotificationComponent } from "../../modes/components/ttsr-notification";
