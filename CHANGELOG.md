@@ -57,6 +57,7 @@
 - `/autoresearch clear` and `/autoswarm clear` ask before resetting the worktree, naming the baseline commit and how many files hold uncommitted changes, and reject an unrecognized flag instead of resetting.
 - `/autoresearch` and `/autoswarm` list their `off` and `clear` subcommands before a letter is typed, and `clear` offers `--keep-tree` and `--reset-tree`.
 - A run records the arm that produced it and the arm that certified it, both shown on the run screen.
+- The subagent model resolver states the layer numbering its per-agent chain actually resolves. No behavior change.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 
