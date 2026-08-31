@@ -81,6 +81,42 @@ describe("a bundled legacy module follows its package", () => {
 	});
 
 	/**
+	 * The wildcard exports, which are most of the surface: `@veyyon/agent-core/compaction/*` reaches a
+	 * binary only because the collector scans the source directory behind the pattern. The prefixes
+	 * come from each manifest at run time, so a package that adds a wildcard export is swept without
+	 * being named here, and dropping the expansion leaves every prefix with no entries.
+	 */
+	it("expands every source-backed wildcard export into concrete subpath entries", async () => {
+		const prefixes: string[] = [];
+		for (const [name, directory] of directories) {
+			const manifest: unknown = JSON.parse(await fs.readFile(path.join(directory, "package.json"), "utf8"));
+			const exportsField = (manifest as { exports?: Record<string, unknown> }).exports ?? {};
+			for (const [exportKey, target] of Object.entries(exportsField)) {
+				if (!exportKey.startsWith("./") || !exportKey.includes("*")) continue;
+				const importTarget =
+					typeof target === "string"
+						? target
+						: ((target as { import?: string; default?: string } | null)?.import ??
+							(target as { default?: string } | null)?.default);
+				if (typeof importTarget !== "string" || !/\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/.test(importTarget)) continue;
+				const exportPrefix = exportKey.slice(2, exportKey.indexOf("*"));
+				if (exportPrefix === "" || exportPrefix === "/") continue;
+				prefixes.push(`${name}/${exportPrefix}`);
+			}
+		}
+
+		// Non-vacuity: a checkout with no wildcard export would pass the sweep below on an empty list.
+		expect(prefixes.length).toBeGreaterThan(0);
+		const keys = entries.map(entry => entry.key);
+		for (const prefix of prefixes) {
+			expect(
+				keys.filter(key => key.startsWith(prefix) && key.length > prefix.length).length,
+				`${prefix}* expanded to no entries`,
+			).toBeGreaterThan(0);
+		}
+	});
+
+	/**
 	 * The shimmed roots, by exact equality: a package that gains or loses a compat shim changes what
 	 * an extension importing its bare name receives, which is a decision rather than a detail.
 	 */
