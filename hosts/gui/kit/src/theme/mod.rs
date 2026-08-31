@@ -15,7 +15,10 @@
 
 #[cfg(test)]
 mod a_larger_interface_size_moves_text_and_its_boxes_together;
+#[cfg(test)]
+mod every_theme_in_the_library_supplies_every_token_and_meets_contrast;
 pub mod geometry;
+pub mod library;
 pub mod palette;
 pub mod scale;
 pub mod syntax;
@@ -25,6 +28,10 @@ pub mod tokens;
 
 pub use geometry::{ResponsiveLayout, control, diff, icon, layout, responsive_layout, row};
 use gpui::{App, BoxShadow, Global, Hsla, Pixels, point, px};
+pub use library::{
+	ContrastPair, ResolutionReport, ThemeEntry, contrast_pairs, contrast_ratio, entries,
+	resolve as resolve_theme,
+};
 pub use palette::{MONO_CANDIDATES, MONO_FAMILY, UI_CANDIDATES, UI_FAMILY, families, set_families};
 pub use scale::{base_font, interface, scaled, scaled_type, set_base_font};
 pub use syntax::Syntax;

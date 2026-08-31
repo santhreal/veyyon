@@ -24,6 +24,7 @@ pub mod files;
 pub mod inspector;
 pub mod mcp;
 pub mod models;
+pub mod notifications;
 pub mod overlays;
 pub mod palette;
 pub mod problems;

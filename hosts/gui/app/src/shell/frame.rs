@@ -15,7 +15,7 @@ use veyyon_gui_kit::{
 	motion::Wake,
 	paint,
 	theme::{Appearance, Theme, layout, radius, set_base_font, size},
-	ui::{Icon, Toast, Tone},
+	ui::{Toast, Tone},
 };
 
 use super::{Panel, Shell};
@@ -138,9 +138,16 @@ impl Render for Shell {
 				.right(px(layout::OVERLAY_MARGIN))
 				.bottom(px(layout::OVERLAY_MARGIN))
 				.child(
-					Toast::new(notice.clone())
-						.tone(Tone::Warn)
-						.icon(Icon::Notice),
+					Toast::new(
+						"shell.notice",
+						veyyon_gui_kit::motion::owner(
+							veyyon_gui_kit::motion::OwnerNamespace::Shell,
+							"notice",
+							"global",
+						),
+						notice.clone(),
+					)
+					.tone(Tone::Warn),
 				)
 		});
 		let overlay = self.render_overlay(cx);

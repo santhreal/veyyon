@@ -308,6 +308,28 @@ These are checked, not trusted.
   region without a [`Scrollbar`] gives no sign that there is more of it. The bar is a sibling of the
   scrolling box inside a `relative()` wrapper, because it measures its thumb against its own parent:
   hung one level out, it draws the thumb from the top of whatever header is above the list.
+- **A byte stream is interpreted below the toolkit.** `core::text::terminal` turns terminal bytes
+  into a grid — SGR attributes, CSI cursor and erase, OSC title, wrap, reflow at a width, bounded
+  scrollback — with no gpui type in scope, and `features::terminal` resolves a cell's colour through
+  `RendererPalette` and nothing else. A colour decided in the parser is a palette the reader cannot
+  change.
+- **A selection is a sequence of element-keyed byte ranges, normalised.** A drag backwards produces
+  the same range as a drag forwards, an offset lands on a grapheme cluster boundary rather than
+  inside one, and the wash is a theme token. The range set spans blocks and entries, so copying
+  across a fence and the prose around it produces the text a reader selected rather than the runs one
+  renderer happened to emit.
+- **A notification is queued, not printed.** The queue is in core: deduplicated by key, evicted by
+  priority at its bound, expired against frame time, and held while the pointer rests on it. What is
+  visible animates on a track named through `kit::motion::owners`, so two toasts on screen at once
+  never share one.
+- **A menu row and a palette row are the same command under the same predicate.** The menu bar is
+  built from `core::command`, `every_command_is_in_the_menu_or_opted_out` pins the opt-out set by
+  exact equality, and a verb added without a menu row turns it red. Enablement reads the predicate
+  the palette reads; a second copy of it is a defect.
+- **An anchored surface is placed against the window, not against its anchor alone.** A popover flips
+  to the opposite side at an edge, clamps to the viewport and scrolls when it is taller than the room
+  it has, dismisses on Escape, on an outside press and when a second one opens, and returns the
+  keyboard to what held it. One popover is open at a time.
 
 ## State
 
@@ -353,6 +375,48 @@ and nothing else, and every one is addressed by conversation:
 
 Nothing calls these yet, and nothing invents a reply.
 
+## How the window reaches an engine
+
+The transport is four files in the binary, under `app/src/transport/`, and it is the only code in
+the tree that performs network I/O. Above it nothing changes: a surface dispatches a command, the
+store turns it into a `HostRequest`, and every value a surface draws arrived as a `HostEvent`
+through `Store::apply`.
+
+| file | what it owns |
+|---|---|
+| `endpoint.rs` | the address as written: `unix:/run/veyyon.sock` or `tcp:127.0.0.1:7654`, from `VEYYON_GUI_ENDPOINT` |
+| `frames.rs` | one JSON value per line, bounded at 8 MiB, with an empty line as a keep-alive |
+| `outbox.rs` | requests that have no socket yet, bounded at 256, refusing rather than forgetting |
+| `session.rs` | the thread that connects, reads, reports why it stopped, and connects again |
+
+- **Line framing, not a length prefix.** The engine side is a Bun process, and a second thing to
+  agree about is a second thing to get wrong. A newline may not appear inside a frame, which serde
+  guarantees by escaping one inside a string.
+- **Every read is bounded and every wait ends.** A peer that never sends a newline ends the
+  connection at `MAX_FRAME_BYTES` instead of growing a buffer until the process dies. A backoff is
+  slept in slices, so closing the window does not wait out a thirty second wait.
+- **A refusal is an answer.** A request dropped in silence leaves a correlation id that never comes
+  back and a surface waiting on it forever, so a full outbox, a stopped transport and an unusable
+  endpoint each answer the request with `RequestFailed` carrying its id.
+- **Two faults, two responses.** A closed socket, a truncated frame and a socket error are worth
+  reconnecting to. A frame past the bound and a frame this side cannot read repeat forever, so they
+  end the session as `Fatal`, and so does a greeting stating a protocol this window does not speak.
+- **The engine states its protocol first.** The first frame on every connection is
+  `ConnectionChanged(Connected { protocol })`. A payload before it is a protocol fault, and nothing
+  an ungreeted peer sent reaches the store.
+- **Stopping is a shutdown, not a flag.** A thread parked in `read` cannot see an `AtomicBool`, so
+  the session holds a second handle to the socket and closing the window shuts it down.
+- **A frame arrives when the engine has one.** `Shell::watch_for_engine_frames` looks every 8ms
+  after a frame and every 120ms when there was none, and asks for a redraw only when something
+  arrived. A detached window looks for nothing.
+- **A recorded scene stays detached.** `--scene` is the whole product for the frame it draws, and a
+  live engine writing over it would change what the capture shows.
+
+No path here fabricates a value. A window with no endpoint is `Detached`, a window whose engine is
+away is `Connecting` or `Reconnecting` with the time of the next attempt, and what an earlier
+connection left on screen is marked `Stale { reason: Disconnected }` rather than presented as
+current.
+
 ## Text and content
 
 Message content is parsed, not printed, once at write time rather than per frame. Three parsers in
@@ -391,6 +455,12 @@ sheet: the light canvas is a grey, a card is white, and the chrome recedes below
 A terminal theme file describes sixteen ANSI colours and says nothing about a sidebar, so it is not
 the source for chrome. It supplies the transcript's syntax colours, which is the one thing it
 describes. There is one theme format, and it is this one.
+
+A theme in the library states every token. Nothing defaults, nothing inherits from another theme, and
+a missing field fails the suite rather than resolving to a neighbouring palette's value. Choosing one
+is persisted; hovering one previews it and leaving the row reverts it, which is a frontend value and
+never a write to the stored selection. An unknown name resolves to the default and reports the name
+it refused. The interface scale is geometry and a theme is colour: neither reads the other.
 
 Text is drawn grayscale, asked for once at startup. Subpixel rendering is what Linux and Windows
 pick and what macOS dropped, and it puts a blue fringe down the left of every stem and an orange one

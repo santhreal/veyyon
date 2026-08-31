@@ -36,6 +36,7 @@ pub mod key_cap;
 pub mod menu;
 pub mod meter;
 pub mod overlay;
+pub mod popover;
 pub mod progress;
 pub mod radio;
 pub mod row;
@@ -53,6 +54,7 @@ pub mod surface;
 pub mod switch;
 pub mod tabs;
 pub mod text;
+pub mod toast;
 pub mod toolbar;
 pub mod tooltip;
 pub mod tree_row;
@@ -76,7 +78,8 @@ pub use image::ImagePreview;
 pub use key_cap::KeyCap;
 pub use menu::{Menu, MenuItem};
 pub use meter::Meter;
-pub use overlay::{Dialog, Popover, Toast};
+pub use overlay::{Dialog, Popover};
+pub use popover::{Alignment, AnchoredPopover, DismissalRoute, PopoverBounds, PopoverState, Side};
 pub use progress::{Progress, Skeleton};
 pub use radio::Radio;
 pub use row::Row;
@@ -94,6 +97,7 @@ pub use surface::{Panel, Well};
 pub use switch::Switch;
 pub use tabs::{Tab, Tabs};
 pub use text::{hairline, line, line_of, meta, spacer, stack};
+pub use toast::{Toast, ToastSlot};
 pub use toolbar::Toolbar;
 pub use tooltip::Tip;
 pub use tree_row::TreeRow;
@@ -235,3 +239,5 @@ pub fn square(size: f32) -> Div {
 		.justify_center()
 		.size(px(size))
 }
+#[cfg(test)]
+mod every_toast_animates_on_its_own_retained_track;

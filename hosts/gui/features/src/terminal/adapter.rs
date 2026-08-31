@@ -62,6 +62,58 @@ impl RendererPalette {
 			bright_white:   theme.text,
 		}
 	}
+
+	/// Resolve a cell colour to an HSLA value through this palette.
+	pub fn resolve_color(
+		&self,
+		color: veyyon_gui_core::text::terminal::CellColor,
+		default_color: Hsla,
+	) -> Hsla {
+		match color {
+			veyyon_gui_core::text::terminal::CellColor::Default => default_color,
+			veyyon_gui_core::text::terminal::CellColor::Rgb(r, g, b) => {
+				gpui::Rgba { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0, a: 1.0 }
+					.into()
+			},
+			veyyon_gui_core::text::terminal::CellColor::Indexed(ix) => match ix {
+				0 => self.black,
+				1 => self.red,
+				2 => self.green,
+				3 => self.yellow,
+				4 => self.blue,
+				5 => self.magenta,
+				6 => self.cyan,
+				7 => self.white,
+				8 => self.bright_black,
+				9 => self.bright_red,
+				10 => self.bright_green,
+				11 => self.bright_yellow,
+				12 => self.bright_blue,
+				13 => self.bright_magenta,
+				14 => self.bright_cyan,
+				15 => self.bright_white,
+				16..=231 => {
+					let i = ix - 16;
+					let r = (i / 36) % 6;
+					let g = (i / 6) % 6;
+					let b = i % 6;
+					let conv = |v: u8| {
+						if v == 0 {
+							0.0
+						} else {
+							(v as f32 * 40.0 + 55.0) / 255.0
+						}
+					};
+					gpui::Rgba { r: conv(r), g: conv(g), b: conv(b), a: 1.0 }.into()
+				},
+				232..=255 => {
+					let gray = (ix - 232) as f32 * 10.0 + 8.0;
+					let v = gray / 255.0;
+					gpui::Rgba { r: v, g: v, b: v, a: 1.0 }.into()
+				},
+			},
+		}
+	}
 }
 
 /// Font settings applied without replacing the renderer instance.

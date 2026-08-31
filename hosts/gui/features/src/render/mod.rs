@@ -37,4 +37,6 @@ pub mod unknown;
 pub mod user_text;
 
 #[cfg(test)]
+mod every_block_kind_supports_text_selection_and_copy;
+#[cfg(test)]
 mod tests;

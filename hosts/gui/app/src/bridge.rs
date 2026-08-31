@@ -28,11 +28,24 @@ impl Adapter for Detached {
 
 pub struct Bridge {
 	adapter: Box<dyn Adapter>,
+	live:    bool,
 }
 
 impl Bridge {
 	pub fn detached() -> Self {
-		Self { adapter: Box::<Detached>::default() }
+		Self { adapter: Box::<Detached>::default(), live: false }
+	}
+
+	/// A bridge over a live transport. The adapter owns the connection; the
+	/// bridge only moves typed values across it.
+	pub fn attached(adapter: Box<dyn Adapter>) -> Self {
+		Self { adapter, live: true }
+	}
+
+	/// Whether events can arrive without anyone touching the window. A detached
+	/// window has nothing to look for, so it looks for nothing.
+	pub fn is_live(&self) -> bool {
+		self.live
 	}
 
 	/// Drain typed intent and apply all events currently available from the

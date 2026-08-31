@@ -55,7 +55,56 @@ impl Timeline {
 		error: Option<(&str, bool)>,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		let weak = cx.weak_entity();
+		let weak_click = weak.clone();
 		let mut root = div()
+			.id("transcript-root")
+			.key_context("Transcript")
+			.track_focus(&cx.focus_handle())
+			.on_key_down(move |event: &gpui::KeyDownEvent, window, cx| {
+				let key = event.keystroke.key.as_str();
+				let meta = event.keystroke.modifiers.platform || event.keystroke.modifiers.control;
+				if meta && key == "c" {
+					if let Some(text) = veyyon_gui_kit::input::selection::selected_text() {
+						cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+					}
+				} else if meta && key == "a" {
+					if let Some(timeline) = weak.upgrade() {
+						timeline.update(cx, |timeline, cx| {
+							let doc = timeline.document_elements();
+							let refs: Vec<(&str, &str)> =
+								doc.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+							veyyon_gui_kit::input::selection::select_all(&refs);
+							cx.notify();
+						});
+					}
+					window.refresh();
+				} else if key == "escape" && veyyon_gui_kit::input::selection::clear() {
+					window.refresh();
+				}
+			})
+			.on_mouse_down(gpui::MouseButton::Left, move |event: &gpui::MouseDownEvent, window, cx| {
+				if event.modifiers.shift {
+					if let Some(timeline) = weak_click.upgrade() {
+						timeline.update(cx, |timeline, _| {
+							let doc = timeline.document_elements();
+							let refs: Vec<(&str, &str)> =
+								doc.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+							if let Some((first_key, _)) = refs.first() {
+								veyyon_gui_kit::input::selection::extend_anchor(first_key, 0, &refs);
+							}
+						});
+					}
+				} else if event.click_count == 1 {
+					veyyon_gui_kit::input::selection::clear();
+				}
+				window.refresh();
+			})
+			.on_mouse_up(gpui::MouseButton::Left, move |_, window, _| {
+				if let Some(_text) = veyyon_gui_kit::input::selection::end_active_drag() {
+					window.refresh();
+				}
+			})
 			.relative()
 			.flex()
 			.flex_col()

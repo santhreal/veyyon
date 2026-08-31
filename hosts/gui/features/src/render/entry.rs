@@ -272,3 +272,98 @@ pub fn cache_is_current(cache: &EntryCache, entry: &TranscriptEntry) -> bool {
 pub fn cache_key(entry: &TranscriptEntry) -> EntryId {
 	entry.id.clone()
 }
+
+/// Collect all plain-text selectable runs from an entry in document order.
+pub fn collect_elements(
+	entry: &TranscriptEntry,
+	cache: &EntryCache,
+	out: &mut Vec<(String, String)>,
+) {
+	for (index, block) in entry.content.iter().enumerate() {
+		let id = format!("{}-{index}", entry.id);
+		match block {
+			ContentBlock::Text { .. }
+			| ContentBlock::Thinking { .. }
+			| ContentBlock::Summary { .. } => {
+				collect_md_elements(cache.markdown(index), &id, out);
+			},
+			ContentBlock::Execution { command, output, .. } => {
+				let mut text = String::new();
+				if let Some(cmd) = command {
+					text.push_str(cmd);
+					text.push('\n');
+				}
+				text.push_str(output);
+				out.push((format!("{id}-exec"), text));
+			},
+			ContentBlock::Diff { raw } => {
+				out.push((format!("{id}-diff"), raw.clone()));
+			},
+			ContentBlock::ToolCall { name, arguments, .. } => {
+				out.push((format!("{id}-tool-call"), format!("{name}({arguments:?})")));
+			},
+			ContentBlock::ToolResult { content, .. } => {
+				out.push((format!("{id}-tool-result"), format!("{content:?}")));
+			},
+			ContentBlock::FileMention { path, .. } => {
+				out.push((format!("{id}-file"), path.clone()));
+			},
+			ContentBlock::Image { alt: Some(alt), .. } => {
+				out.push((format!("{id}-img"), alt.clone()));
+			},
+			_ => {},
+		}
+	}
+}
+
+/// Collect document-ordered text elements from markdown blocks.
+pub fn collect_md_elements(blocks: &[Md], id: &str, out: &mut Vec<(String, String)>) {
+	let dummy_theme = Theme::of(veyyon_gui_kit::theme::Appearance::Dark);
+	for (index, block) in blocks.iter().enumerate() {
+		let block_id = format!("{id}-{index}");
+		match block {
+			Md::Heading { spans, .. } => {
+				let (text, _) = super::markdown::styled(spans, &dummy_theme);
+				out.push((format!("{block_id}-h"), text));
+			},
+			Md::Paragraph(spans) => {
+				let (text, _) = super::markdown::styled(spans, &dummy_theme);
+				out.push((format!("{block_id}-p"), text));
+			},
+			Md::List(items) => {
+				for (item_idx, item) in items.iter().enumerate() {
+					let (item_text, _) = super::markdown::styled(&item.spans, &dummy_theme);
+					let marker = match item.kind {
+						veyyon_gui_core::text::markdown::ListKind::Bullet => "• ",
+						veyyon_gui_core::text::markdown::ListKind::Ordered(n) => {
+							let s = format!("{n}. ");
+							let (t, _) = super::markdown::styled(&item.spans, &dummy_theme);
+							out.push((format!("{block_id}-item-{item_idx}"), format!("{s}{t}")));
+							continue;
+						},
+					};
+					out.push((format!("{block_id}-item-{item_idx}"), format!("{marker}{item_text}")));
+				}
+			},
+			Md::Quote(inner) => {
+				collect_md_elements(inner, &block_id, out);
+			},
+			Md::Code { body, .. } => {
+				out.push((format!("{block_id}-code"), body.clone()));
+			},
+			Md::Table { head, rows } => {
+				for (col_idx, cell) in head.iter().enumerate() {
+					let (cell_text, _) = super::markdown::styled(cell, &dummy_theme);
+					out.push((format!("{block_id}-head-{col_idx}"), cell_text));
+				}
+				for (row_idx, row) in rows.iter().enumerate() {
+					for (col_idx, cell) in row.iter().enumerate() {
+						let (cell_text, _) = super::markdown::styled(cell, &dummy_theme);
+						out.push((format!("{block_id}-row-{row_idx}-{col_idx}"), cell_text));
+					}
+				}
+			},
+			Md::Rule => {},
+		}
+	}
+}

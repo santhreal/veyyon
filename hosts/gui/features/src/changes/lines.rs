@@ -7,7 +7,7 @@ use gpui::{
 use veyyon_gui_core::{UiCommand, model::LineRange};
 use veyyon_gui_kit::{
 	theme::{Theme, diff, size, space, weight},
-	ui::{Badge, Tone, text},
+	ui::{AnchoredPopover, Badge, Side, Tone, text},
 };
 
 use super::{
@@ -112,20 +112,56 @@ impl DiffViewport {
 	}
 
 	fn hunk_header(&self, file: usize, hunk: usize, theme: &Theme) -> Div {
-		let Some(hunk) = self.files.get(file).and_then(|file| file.hunks.get(hunk)) else {
+		let Some(file_paint) = self.files.get(file) else {
 			return div();
 		};
+		let Some(hunk_paint) = file_paint.hunks.get(hunk) else {
+			return div();
+		};
+		let added = hunk_paint
+			.lines
+			.iter()
+			.filter(|l| matches!(l.kind, veyyon_gui_core::text::diff::LineKind::Added))
+			.count();
+		let deleted = hunk_paint
+			.lines
+			.iter()
+			.filter(|l| matches!(l.kind, veyyon_gui_core::text::diff::LineKind::Removed))
+			.count();
+		let context_count = hunk_paint
+			.lines
+			.iter()
+			.filter(|l| matches!(l.kind, veyyon_gui_core::text::diff::LineKind::Context))
+			.count();
+
+		let mut popover =
+			AnchoredPopover::new(format!("hunk-popover-{}-{}", file_paint.path, hunk), true)
+				.side(Side::Bottom)
+				.has_controls(true);
+
+		popover = popover.child(
+			text::stack(space::SNUG)
+				.child(text::title("Hunk context", theme))
+				.child(hunk_detail_row("Header", &hunk_paint.header, theme))
+				.child(hunk_detail_row("File", &file_paint.path, theme))
+				.child(hunk_detail_row("Additions", &format!("+{added} lines"), theme))
+				.child(hunk_detail_row("Deletions", &format!("-{deleted} lines"), theme))
+				.child(hunk_detail_row("Context lines", &format!("{context_count} lines"), theme)),
+		);
+
 		div()
 			.flex()
 			.items_center()
+			.justify_between()
 			.h(px(diff::hunk_header_height()))
 			.px(px(space::X10))
 			.bg(theme.sunken)
 			.child(
-				text::mono(hunk.header.clone(), theme)
+				text::mono(hunk_paint.header.clone(), theme)
 					.text_size(px(size::body()))
 					.text_color(theme.text_muted),
 			)
+			.child(popover)
 	}
 
 	fn unified_line(&self, file: usize, hunk: usize, line: usize, theme: &Theme) -> Div {
@@ -256,4 +292,18 @@ impl DiffViewport {
 			},
 		)
 	}
+}
+
+fn hunk_detail_row(label: &str, value: &str, theme: &Theme) -> gpui::Div {
+	div()
+		.flex()
+		.items_center()
+		.justify_between()
+		.gap(px(space::BASE))
+		.child(text::meta(label.to_owned(), theme))
+		.child(
+			text::mono(value.to_owned(), theme)
+				.text_size(px(size::meta()))
+				.text_color(theme.text),
+		)
 }

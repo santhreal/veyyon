@@ -13,8 +13,10 @@ use veyyon_gui_core::{
 use veyyon_gui_kit::{
 	input::Editor,
 	motion::{OwnerNamespace, owner},
-	theme::{Theme, space},
-	ui::{Badge, Banner, Empty, Fill, Group, Icon, SearchField, Size, Tone, text},
+	theme::{Theme, size, space},
+	ui::{
+		AnchoredPopover, Badge, Banner, Empty, Fill, Group, Icon, SearchField, Side, Size, Tone, text,
+	},
 };
 
 use super::logic::{self, VirtualWindow};
@@ -201,6 +203,8 @@ fn rows(
 			}));
 		}
 		item = item.child(fav_btn);
+		let theme = Theme::get(cx);
+		item = item.child(model_popover(row.model, &theme));
 		if let Some(reason) = unavailable {
 			item = item
 				.tone(Tone::Muted)
@@ -250,6 +254,69 @@ fn thinking(state: &ModelCatalogState, mutable: bool, _cx: &mut App) -> Option<A
 		group = group.child(btn);
 	}
 	Some(group.into_any_element())
+}
+
+fn model_popover(model: &ModelOption, theme: &Theme) -> AnchoredPopover {
+	let popover =
+		AnchoredPopover::new(format!("model-popover-{}-{}", model.provider, model.id), true)
+			.side(Side::Bottom)
+			.has_controls(true);
+	let mut stack = text::stack(space::SNUG)
+		.child(text::title(&model.name, theme))
+		.child(model_detail_row("Provider", model.provider.as_str(), theme))
+		.child(model_detail_row("Model ID", model.id.as_str(), theme));
+	if let Some(context) = model.context_window {
+		stack = stack.child(model_detail_row("Context window", &format!("{context} tokens"), theme));
+	}
+	stack = stack.child(model_detail_row(
+		"Reasoning",
+		if model.reasoning {
+			"Supported"
+		} else {
+			"Standard"
+		},
+		theme,
+	));
+	if let Some(mode) = &model.thinking_mode {
+		stack = stack.child(model_detail_row("Thinking mode", mode, theme));
+	}
+	if !model.input_modalities.is_empty() {
+		stack = stack.child(model_detail_row(
+			"Input modalities",
+			&model.input_modalities.join(", "),
+			theme,
+		));
+	}
+	if let Some(tools) = model.tool_support {
+		stack = stack.child(model_detail_row(
+			"Tool calling",
+			if tools { "Supported" } else { "Unsupported" },
+			theme,
+		));
+	}
+	match &model.availability {
+		Availability::Available => {
+			stack = stack.child(model_detail_row("Status", "Available", theme));
+		},
+		Availability::Unavailable { reason } => {
+			stack = stack.child(model_detail_row("Status", &format!("Unavailable: {reason}"), theme));
+		},
+	}
+	popover.child(stack)
+}
+
+fn model_detail_row(label: &str, value: &str, theme: &Theme) -> gpui::Div {
+	div()
+		.flex()
+		.items_center()
+		.justify_between()
+		.gap(px(space::BASE))
+		.child(text::meta(label.to_owned(), theme))
+		.child(
+			text::mono(value.to_owned(), theme)
+				.text_size(px(size::meta()))
+				.text_color(theme.text),
+		)
 }
 
 pub fn selected_unavailable(state: &ModelCatalogState) -> Option<(&ModelOption, &str)> {

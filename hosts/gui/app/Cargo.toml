@@ -16,6 +16,9 @@ path = "src/main.rs"
 [dependencies]
 gpui = { workspace = true }
 gpui_platform = { workspace = true }
+# The transport serialises the host types over a socket, so it needs the traits
+# `core` derives; it derives nothing of its own.
+serde = "1.0"
 serde_json = { workspace = true }
 veyyon-gui-core = { path = "../core" }
 veyyon-gui-kit = { path = "../kit" }

@@ -29,6 +29,7 @@ pub fn render(store: &Store, cx: &mut App) -> AnyElement {
 					.child(grouped),
 			),
 		)
+		.child(super::notifications::render(store, cx))
 		.child(schema::render_embedded(store, SettingsPage::General, cx))
 		.into_any_element()
 }
