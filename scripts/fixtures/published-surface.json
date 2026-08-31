@@ -7189,10 +7189,10 @@
 				"./tools/agent/memory-recall.js",
 				"./tools/agent/memory-reflect",
 				"./tools/agent/memory-reflect.js",
-				"./tools/agent/memory-render",
-				"./tools/agent/memory-render.js",
 				"./tools/agent/memory-retain",
 				"./tools/agent/memory-retain.js",
+				"./tools/agent/memory-view",
+				"./tools/agent/memory-view.js",
 				"./tools/agent/renderers",
 				"./tools/agent/renderers.js",
 				"./tools/agent/report-tool-issue",
@@ -11363,12 +11363,12 @@
 					"why": "packages/coding-agent/src/tools/memory-reflect.ts moved to packages/coding-agent/src/tools/agent/memory-reflect.ts, which @veyyon/coding-agent publishes as ./tools/agent/memory-reflect.js"
 				},
 				"./tools/memory-render": {
-					"to": "@veyyon/coding-agent/tools/agent/memory-render",
-					"why": "packages/coding-agent/src/tools/memory-render.ts moved to packages/coding-agent/src/tools/agent/memory-render.ts, which @veyyon/coding-agent publishes as ./tools/agent/memory-render"
+					"to": "./tools/agent/memory-view",
+					"why": "the retain, recall and reflect cards are declared in tools/agent/memory-view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./tools/memory-render.js": {
-					"to": "@veyyon/coding-agent/tools/agent/memory-render.js",
-					"why": "packages/coding-agent/src/tools/memory-render.ts moved to packages/coding-agent/src/tools/agent/memory-render.ts, which @veyyon/coding-agent publishes as ./tools/agent/memory-render.js"
+					"to": "./tools/agent/memory-view.js",
+					"why": "the retain, recall and reflect cards are declared in tools/agent/memory-view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./tools/memory-retain": {
 					"to": "@veyyon/coding-agent/tools/agent/memory-retain",

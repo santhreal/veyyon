@@ -50,6 +50,10 @@
 			"packages/coding-agent/src/config/personality-resolver.ts"
 		],
 		[
+			"packages/coding-agent/src/tools/memory-render.ts",
+			"packages/coding-agent/test/oracles/memory-main-renderer.ts"
+		],
+		[
 			"packages/coding-agent/src/commit/git/diff.ts",
 			"packages/coding-agent/src/commit/git-diff.ts"
 		],
@@ -13723,37 +13727,34 @@
 		"packages/coding-agent/src/tools/agent/memory-recall.ts": {
 			"old": "packages/coding-agent/src/tools/memory-recall.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "6cf462fa5d1956280f592ea8c701607233833a50034b03e931bad77dbfd49f12",
+			"differs": "changed",
+			"group": "view-conversion",
+			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. Byte identity of the drawn output is proved by the oracle suite, not here.",
+			"hash": "da7a8d859ba36bb18cc7edb5693733bec9a5343443004035d36c92a2b9339cfd",
 			"mainHash": "a3b6a3da7cbbce280435fd30bd9ba8d59e39651efb51e20aa2c9c3836f779939",
-			"structuralHash": "76645f0742325e1dcff26fb43a6508784919e6ed4fc145304106843728dcafa1",
+			"structuralHash": "26f8e40e1644b4b58ef9b5b9e55dd26bb554f3901a95de2682411c0f11811a3e",
 			"mainStructuralHash": "76645f0742325e1dcff26fb43a6508784919e6ed4fc145304106843728dcafa1"
 		},
 		"packages/coding-agent/src/tools/agent/memory-reflect.ts": {
 			"old": "packages/coding-agent/src/tools/memory-reflect.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "d8b4fd944c32aee6a1ef80cd17c2d5de9735e7f83dca0be0135db765a3e4162b",
+			"differs": "changed",
+			"group": "view-conversion",
+			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. Byte identity of the drawn output is proved by the oracle suite, not here.",
+			"hash": "d83d0395f07db3807239446746c7e26abeffcfd92c36628ed65bea707801611e",
 			"mainHash": "c7e6d45b6b06617fd1888c2fc8e732249a6646b3a636b061f2b0041cd4e71d90",
-			"structuralHash": "5cc528a88a6eaee5ddb741fc4bedcfd566318c1fa66c4481916aec3eeb810174",
+			"structuralHash": "c74a085b6f2f8a0b3639801d54d61ac07f251ee2e6331a5c16afce176710175d",
 			"mainStructuralHash": "5cc528a88a6eaee5ddb741fc4bedcfd566318c1fa66c4481916aec3eeb810174"
-		},
-		"packages/coding-agent/src/tools/agent/memory-render.ts": {
-			"old": "packages/coding-agent/src/tools/memory-render.ts",
-			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "a6c47697d8edc84c6468b6cdd4ad768632b22b321bb0940ef2d7fc0d1f36f67e",
-			"mainHash": "f9d86832e8cb513f343126a482af9cc848fef58eebf2ad2baa969769e924c68d",
-			"structuralHash": "7d9306e04f57025673ef71c279f3c16de629b756ef4e58d5e4617064e9d2bd67",
-			"mainStructuralHash": "7d9306e04f57025673ef71c279f3c16de629b756ef4e58d5e4617064e9d2bd67"
 		},
 		"packages/coding-agent/src/tools/agent/memory-retain.ts": {
 			"old": "packages/coding-agent/src/tools/memory-retain.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "ac0b0e641bdac8e2b99a8f012002530ef9489b6b8dd3e17fdd55a1f59e21b9d7",
+			"differs": "changed",
+			"group": "view-conversion",
+			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. Byte identity of the drawn output is proved by the oracle suite, not here.",
+			"hash": "2ae9577a61961f49115a3368d7ed25d9605c198d354a19769fad238af0b9fdf3",
 			"mainHash": "a198c1384820b3919e0d39503b7dd512079c6f7ad8d7c644c3a900cf45f5e9f6",
-			"structuralHash": "44896e4242522be3d2f9bf928599431d10e0fbb13c34df76cf95b9064c64eb98",
+			"structuralHash": "6aacefdcc754c6338fd96dfd2eadc0027775e5bdb0304f5dc0bf789fc963d385",
 			"mainStructuralHash": "44896e4242522be3d2f9bf928599431d10e0fbb13c34df76cf95b9064c64eb98"
 		},
 		"packages/coding-agent/src/tools/agent/report-tool-issue.ts": {
@@ -14936,6 +14937,15 @@
 			"mainHash": "7c89af567666c1f1aa1386a215a048d6c8088756b80595483667a49b26857810",
 			"structuralHash": "08cefcfd485c233e2c02a2d857bd2c221a10758d282f5011ee11722a44dcaa2b",
 			"mainStructuralHash": "08cefcfd485c233e2c02a2d857bd2c221a10758d282f5011ee11722a44dcaa2b"
+		},
+		"packages/coding-agent/test/oracles/memory-main-renderer.ts": {
+			"old": "packages/coding-agent/src/tools/memory-render.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "b8dd9112b0686818f59a34dd45fbf33a85265242d8d97ed6aca1deac45282372",
+			"mainHash": "f9d86832e8cb513f343126a482af9cc848fef58eebf2ad2baa969769e924c68d",
+			"structuralHash": "7d9306e04f57025673ef71c279f3c16de629b756ef4e58d5e4617064e9d2bd67",
+			"mainStructuralHash": "7d9306e04f57025673ef71c279f3c16de629b756ef4e58d5e4617064e9d2bd67"
 		},
 		"packages/coding-agent/test/tools/an-ssh-block-keeps-its-header-on-one-line.test.ts": {
 			"old": "packages/coding-agent/test/tools/ssh-render.test.ts",
