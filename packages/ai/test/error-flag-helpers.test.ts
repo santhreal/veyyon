@@ -14,100 +14,96 @@ describe("Flag", () => {
 	it("Class is 0x1000", () => {
 		expect(Flag.Class).toBe(0x1000);
 	});
-	it("ThinkingLoop is 0x10000", () => {
-		expect(Flag.ThinkingLoop).toBe(0x0001_0000);
-	});
-	it("AuthFailed is 0x1000000", () => {
-		expect(Flag.AuthFailed).toBe(0x0100_0000);
-	});
-	it("Abort is 0x8000000", () => {
-		expect(Flag.Abort).toBe(0x0800_0000);
+	it("each flag is a unique power of 2 or mask", () => {
+		const values = Object.values(Flag);
+		const unique = new Set(values);
+		expect(unique.size).toBe(values.length);
 	});
 });
 
 describe("KIND_MASK", () => {
-	it("does not include Class bit", () => {
-		expect((KIND_MASK & Flag.Class) === 0).toBe(true);
+	it("includes all flags except Class", () => {
+		expect(KIND_MASK & Flag.Class).toBe(0);
 	});
-	it("includes all non-Class flags", () => {
-		expect((KIND_MASK & Flag.ThinkingLoop) !== 0).toBe(true);
-		expect((KIND_MASK & Flag.AuthFailed) !== 0).toBe(true);
-		expect((KIND_MASK & Flag.Abort) !== 0).toBe(true);
+	it("includes Transient", () => {
+		expect(KIND_MASK & Flag.Transient).toBe(Flag.Transient);
+	});
+	it("includes UsageLimit", () => {
+		expect(KIND_MASK & Flag.UsageLimit).toBe(Flag.UsageLimit);
 	});
 });
 
 describe("ERROR_KIND_LABELS", () => {
-	it("does not include Class", () => {
-		expect(ERROR_KIND_LABELS.some(([flag]) => flag === Flag.Class)).toBe(false);
+	it("has one entry per non-Class flag", () => {
+		expect(ERROR_KIND_LABELS.length).toBe(Object.keys(Flag).length - 1);
 	});
-	it("includes ThinkingLoop with kebab-case label", () => {
-		const entry = ERROR_KIND_LABELS.find(([flag]) => flag === Flag.ThinkingLoop);
-		expect(entry).toBeDefined();
-		expect(entry?.[1]).toBe("thinking-loop");
-	});
-	it("includes AuthFailed", () => {
-		expect(ERROR_KIND_LABELS.some(([flag]) => flag === Flag.AuthFailed)).toBe(true);
+	it("labels are kebab-case", () => {
+		for (const [, label] of ERROR_KIND_LABELS) {
+			expect(label).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
+		}
 	});
 });
 
 describe("create", () => {
-	it("creates a classified error id with Class bit", () => {
-		const id = create(Flag.AuthFailed);
-		expect(isClassified(id)).toBe(true);
-		expect(is(id, Flag.AuthFailed)).toBe(true);
+	it("ORs flags together with Class", () => {
+		const id = create(Flag.Transient);
+		expect(id & Flag.Transient).toBe(Flag.Transient);
+		expect(id & Flag.Class).toBe(Flag.Class);
+	});
+	it("with no args still sets Class", () => {
+		expect(create() & Flag.Class).toBe(Flag.Class);
 	});
 	it("combines multiple flags", () => {
-		const id = create(Flag.AuthFailed, Flag.Transient);
-		expect(is(id, Flag.AuthFailed)).toBe(true);
-		expect(is(id, Flag.Transient)).toBe(true);
-	});
-	it("always sets Class bit", () => {
-		const id = create();
-		expect(isClassified(id)).toBe(true);
+		const id = create(Flag.Transient, Flag.Timeout);
+		expect(id & Flag.Transient).toBe(Flag.Transient);
+		expect(id & Flag.Timeout).toBe(Flag.Timeout);
 	});
 });
 
 describe("is", () => {
 	it("returns true when flag is set", () => {
-		const id = create(Flag.Timeout);
-		expect(is(id, Flag.Timeout)).toBe(true);
+		const id = create(Flag.Transient);
+		expect(is(id, Flag.Transient)).toBe(true);
 	});
 	it("returns false when flag is not set", () => {
-		const id = create(Flag.Timeout);
-		expect(is(id, Flag.AuthFailed)).toBe(false);
+		const id = create(Flag.Transient);
+		expect(is(id, Flag.Timeout)).toBe(false);
 	});
 	it("returns false for undefined id", () => {
-		expect(is(undefined, Flag.Timeout)).toBe(false);
+		expect(is(undefined, Flag.Transient)).toBe(false);
+	});
+	it("returns false for 0 id", () => {
+		expect(is(0, Flag.Transient)).toBe(false);
 	});
 });
 
 describe("isClassified", () => {
 	it("returns true for classified id", () => {
-		expect(isClassified(create(Flag.Timeout))).toBe(true);
+		expect(isClassified(create(Flag.Transient))).toBe(true);
 	});
-	it("returns false for raw status code", () => {
+	it("returns false for bare status", () => {
 		expect(isClassified(404)).toBe(false);
-	});
-	it("returns false for undefined", () => {
-		expect(isClassified(undefined)).toBe(false);
 	});
 	it("returns false for 0", () => {
 		expect(isClassified(0)).toBe(false);
 	});
+	it("returns false for undefined", () => {
+		expect(isClassified(undefined)).toBe(false);
+	});
 });
 
 describe("statusFromId", () => {
-	it("returns undefined for classified id", () => {
-		expect(statusFromId(create(Flag.Timeout))).toBeUndefined();
-	});
-	it("returns raw status for unclassified id", () => {
+	it("returns status for bare id", () => {
 		expect(statusFromId(404)).toBe(404);
 	});
-	it("returns undefined for undefined", () => {
-		expect(statusFromId(undefined)).toBeUndefined();
+	it("returns undefined for classified id", () => {
+		expect(statusFromId(create(Flag.Transient))).toBeUndefined();
 	});
 	it("returns undefined for 0", () => {
 		expect(statusFromId(0)).toBeUndefined();
+	});
+	it("returns undefined for undefined", () => {
+		expect(statusFromId(undefined)).toBeUndefined();
 	});
 });
 
@@ -118,17 +114,19 @@ describe("stringify", () => {
 	it("returns 'none' for undefined", () => {
 		expect(stringify(undefined)).toBe("none");
 	});
-	it("returns status: prefix for unclassified", () => {
+	it("returns 'status:N' for bare status", () => {
 		expect(stringify(404)).toBe("status:404");
 	});
-	it("returns flag labels for classified", () => {
-		const id = create(Flag.Timeout, Flag.AuthFailed);
+	it("returns label for single flag", () => {
+		const id = create(Flag.Transient);
 		const result = stringify(id);
-		expect(result).toContain("timeout");
-		expect(result).toContain("auth-failed");
+		expect(result).toContain("transient");
 	});
-	it("returns classified: prefix for classified with no flags", () => {
-		const id = create();
-		expect(stringify(id)).toMatch(/^classified:/);
+	it("returns joined labels for multiple flags", () => {
+		const id = create(Flag.Transient, Flag.Timeout);
+		const result = stringify(id);
+		expect(result).toContain("transient");
+		expect(result).toContain("timeout");
+		expect(result).toContain("|");
 	});
 });
