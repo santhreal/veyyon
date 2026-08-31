@@ -1,6 +1,13 @@
 import type { UsageStatistics } from "@veyyon/kernel/session/session-entries";
 
-export type GoalStatus = "active" | "paused" | "budget-limited" | "complete" | "dropped";
+/**
+ * Every status a goal can hold, as a value, so a surface that renders the status can be swept over
+ * the whole set rather than over the members someone remembered. {@link GoalStatus} is derived from
+ * this tuple and has no other spelling, so a new status lands in every sweep that reads it.
+ */
+export const GOAL_STATUSES = ["active", "paused", "budget-limited", "complete", "dropped"] as const;
+
+export type GoalStatus = (typeof GOAL_STATUSES)[number];
 
 export interface Goal {
 	id: string;

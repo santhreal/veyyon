@@ -1,7 +1,7 @@
 import type { AssistantMessage } from "@veyyon/ai";
 import { errorMessage, formatCount, logger } from "@veyyon/utils";
 import { type GuidedGoalMessage, newGuidedGoalSessionId, runGuidedGoalTurn } from "../../../goals/guided-setup";
-import type { Goal, GoalModeState } from "../../../goals/state";
+import type { Goal, GoalModeState, GoalStatus } from "../../../goals/state";
 import type { AgentSessionEvent } from "../../../session/agent-session-types";
 import type { SessionContext } from "../../../session/session-context";
 import { formatDurationCoarse } from "../../../slash-commands/helpers/format";
@@ -111,6 +111,22 @@ function goalTurnEndedInError(event: Extract<AgentSessionEvent, { type: "agent_e
 		.reverse()
 		.find((message): message is AssistantMessage => message.role === "assistant");
 	return lastAssistant?.stopReason === "error";
+}
+
+/**
+ * The status field of the goal report: the goal's own status, and the mode's state only when the
+ * status does not already carry it.
+ *
+ * The field appended `" (paused)"` whenever goal mode was not driving, and every path that stops
+ * the mode records that in the status too -- an operator interrupt, a `/goal pause` and a session
+ * resume all write `paused`, and a completion writes `complete`. So the suffix never told a reader
+ * anything the word before it had not: it read `paused (paused)`, or it called a finished goal
+ * paused. A goal the mode could still be driving is the one case where the mode being off is news.
+ */
+function goalStatusField(status: GoalStatus, modeEnabled: boolean): string {
+	if (modeEnabled) return status;
+	const advancing = status === "active" || status === "budget-limited";
+	return advancing ? `${status} (mode off)` : status;
 }
 
 type GoalSubcommand = "set" | "show" | "pause" | "resume" | "drop";
@@ -858,7 +874,7 @@ export class GoalModeController {
 		}
 		const lines = [
 			`Objective: ${goal.objective}`,
-			`Status: ${goal.status}${state?.enabled ? "" : " (paused)"}`,
+			`Status: ${goalStatusField(goal.status, state?.enabled === true)}`,
 			`Tokens: ${tokensLine}`,
 			`Turns: ${goal.turnsCompleted}`,
 			`Time spent: ${formatDurationCoarse(goal.timeUsedSeconds * 1000)}`,

@@ -157,6 +157,7 @@
 - The autoresearch result table and summary no longer repeat the primary metric as a secondary column.
 - A crashed autoresearch run reports `-` for the metric instead of `0ms`, which sorted it as the fastest run in the table.
 - A turn that calls a tool and then stops with text is treated as ending in text: the todo reminder fires again as the board changes instead of falling silent after the first one, and the rewind, plan-mode, verification and code-review checks run at that stop.
+- The goal report from `/goal show` and the goal detail menu states the goal's status once: a paused goal read `Status: paused (paused)`, and a finished one `Status: complete (paused)`. Goal mode being off is now named only where the status does not already carry it, as `active (mode off)`.
 
 ## [1.3.0] - 2026-08-28
 
