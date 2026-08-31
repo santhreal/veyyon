@@ -14,19 +14,33 @@ use veyyon_gui_core::{
 };
 use veyyon_gui_kit::{
 	input::Editor,
-	motion::{OwnerNamespace, RetainedKey},
+	motion::{OwnerNamespace, RetainedKey, owner},
 	theme::{Elevation, Theme, layout, space},
 	ui::{
 		Badge, Banner, Button, EdgeFade, Empty, Fill, Icon, Row, Scrolls, SearchField, Tone, text,
 	},
 };
 
-use super::{logic, state::SessionShelfState};
+use super::{
+	logic,
+	state::{ControlSlot, SessionShelfState},
+};
 use crate::act;
 
-const LOAD_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Conversation, 100);
-const CREATE_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Conversation, 101);
-const SEARCH_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Conversation, 102);
+/// What a fixture of the sidebar is, in the namespace's table of names.
+const CHROME: &str = "sidebar";
+
+pub(super) fn load_owner() -> RetainedKey {
+	owner(OwnerNamespace::Conversation, CHROME, "load")
+}
+
+pub(super) fn create_owner() -> RetainedKey {
+	owner(OwnerNamespace::Conversation, CHROME, "create")
+}
+
+pub(super) fn search_owner() -> RetainedKey {
+	owner(OwnerNamespace::Conversation, CHROME, "search")
+}
 
 pub fn sync_session_shelf(store: &Store, state: &mut SessionShelfState) {
 	let sessions = store
@@ -94,11 +108,11 @@ fn shelf_header(store: &Store, search: &Entity<Editor>, theme: &Theme) -> Div {
 				.child(text::spacer())
 				.child(new_session_button(store)),
 		)
-		.child(SearchField::new("session-filter", SEARCH_OWNER, search.clone()))
+		.child(SearchField::new("session-filter", search_owner(), search.clone()))
 }
 
 fn new_session_button(store: &Store) -> Button {
-	let mut button = Button::new("new-session", CREATE_OWNER, Icon::New)
+	let mut button = Button::new("new-session", create_owner(), Icon::New)
 		.tip("New conversation")
 		.on_click(act::click(UiCommand::CreateSession { workspace: None, parent: None }));
 	if let Some(reason) = capability_reason(store, Capability::Sessions) {
@@ -125,7 +139,7 @@ fn unrequested(store: &Store, theme: &Theme) -> AnyElement {
 }
 
 fn empty_sessions(store: &Store) -> AnyElement {
-	let mut action = Button::labelled("create-first-session", CREATE_OWNER, "New conversation")
+	let mut action = Button::labelled("create-first-session", create_owner(), "New conversation")
 		.icon(Icon::New)
 		.fill(Fill::Solid)
 		.tone(Tone::Accent)
@@ -169,7 +183,7 @@ fn session_rows(
 			.iter()
 			.filter(|session| logic::matches_filter(session, query))
 		{
-			list = list.child(session_row(store, state, session));
+			list = list.child(session_row(store, session));
 			count += 1;
 		}
 		if count == 0 {
@@ -194,7 +208,7 @@ fn session_rows(
 				hidden += 1;
 				continue;
 			}
-			section_rows = section_rows.child(session_row(store, state, session));
+			section_rows = section_rows.child(session_row(store, session));
 			count += 1;
 		}
 		if count > 0 {
@@ -205,8 +219,9 @@ fn session_rows(
 		}
 	}
 	for unreadable in &store.replica.sessions.unreadable {
+		let row = owner(OwnerNamespace::Conversation, "unreadable", &unreadable.path);
 		list = list.child(
-			Row::new(format!("unreadable:{}", unreadable.path), LOAD_OWNER, unreadable.path.clone())
+			Row::new(format!("unreadable:{}", unreadable.path), row, unreadable.path.clone())
 				.icon(Icon::Failed)
 				.note(unreadable.reason.clone())
 				.tone(Tone::Danger)
@@ -216,8 +231,8 @@ fn session_rows(
 	list.scrolls_y(&state.scroll, Elevation::Chrome)
 }
 
-fn session_row(store: &Store, state: &SessionShelfState, session: &SessionSummary) -> Row {
-	let owner = state.owner(&session.id).unwrap_or(LOAD_OWNER);
+fn session_row(store: &Store, session: &SessionSummary) -> Row {
+	let owner = SessionShelfState::owner(&session.id);
 	let pinned = store.frontend.pinned_sessions.contains(&session.id);
 	let open_reason = capability_reason(store, Capability::Sessions);
 	let pin_command = if pinned {
@@ -227,7 +242,7 @@ fn session_row(store: &Store, state: &SessionShelfState, session: &SessionSummar
 	};
 	let pin = Button::new(
 		format!("pin:{}", session.id),
-		state.control_owner(&session.id, 1).unwrap_or(LOAD_OWNER),
+		SessionShelfState::control_owner(&session.id, ControlSlot::Pin),
 		Icon::Pin,
 	)
 	.tip(if pinned {
@@ -239,7 +254,7 @@ fn session_row(store: &Store, state: &SessionShelfState, session: &SessionSummar
 	.on_click(act::click(pin_command));
 	let mut delete = Button::new(
 		format!("delete:{}", session.id),
-		state.control_owner(&session.id, 2).unwrap_or(LOAD_OWNER),
+		SessionShelfState::control_owner(&session.id, ControlSlot::RowDelete),
 		Icon::Delete,
 	)
 	.tip("Delete conversation")
@@ -318,7 +333,7 @@ fn error_banner(message: &str, retryable: bool) -> Banner {
 		Banner::failure("Conversation list could not refresh").detail(message.to_owned());
 	if retryable {
 		banner = banner.child(
-			Button::labelled("retry-sessions", LOAD_OWNER, "Retry")
+			Button::labelled("retry-sessions", load_owner(), "Retry")
 				.icon(Icon::Retry)
 				.on_click(act::click(UiCommand::LoadSessions)),
 		);
@@ -333,7 +348,7 @@ fn load_error(message: &str, retryable: bool) -> AnyElement {
 		.filling();
 	if retryable {
 		empty = empty.child(
-			Button::labelled("retry-session-load", LOAD_OWNER, "Retry")
+			Button::labelled("retry-session-load", load_owner(), "Retry")
 				.icon(Icon::Retry)
 				.on_click(act::click(UiCommand::LoadSessions)),
 		);

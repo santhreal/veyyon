@@ -14,18 +14,18 @@ use veyyon_gui_kit::{
 	ui::{Badge, Button, ComposerChrome, Fill, Icon, Meter, Tone, text},
 };
 
-use super::{banners, chips, completions, controls, logic, state::ComposerState};
+use super::{
+	banners, chips, completions, controls, logic,
+	state::{Control, control_owner},
+};
 use crate::act;
 
 pub fn render(store: &Store, field: &Entity<Editor>, window: &mut Window, cx: &mut App) -> Div {
-	let mut state = ComposerState::default();
-	chips::sync_composer_state(store, &mut state);
-	main_composer(store, &state, field, window, cx)
+	main_composer(store, field, window, cx)
 }
 
 pub fn main_composer(
 	store: &Store,
-	state: &ComposerState,
 	field: &Entity<Editor>,
 	_window: &mut Window,
 	cx: &mut App,
@@ -46,16 +46,15 @@ pub fn main_composer(
 	let blocked = logic::blocked(draft, gate);
 	let action = logic::primary_action(runtime);
 	let pending = logic::submission_pending(draft);
-	let controls = controls::composer_controls(store, state, runtime);
-	let footer =
-		composer_footer(store, state, runtime, draft, action, blocked.as_ref(), pending, &theme);
+	let controls = controls::composer_controls(store, runtime);
+	let footer = composer_footer(store, runtime, draft, action, blocked.as_ref(), pending, &theme);
 	let mut chrome = ComposerChrome::new(field.clone())
-		.banner(banners::pending_context(store, state))
-		.context(chips::context_chips(store, state, cx))
+		.banner(banners::pending_context(store))
+		.context(chips::context_chips(store, cx))
 		.toolbar(controls)
 		.footer(footer)
 		.expanded(true);
-	if let Some(menu) = completions::completion_menu(store, state, cx) {
+	if let Some(menu) = completions::completion_menu(store, cx) {
 		chrome = chrome.banner(menu);
 	}
 	let focus_field = field.clone();
@@ -73,7 +72,6 @@ pub fn main_composer(
 #[allow(clippy::too_many_arguments)]
 fn composer_footer(
 	store: &Store,
-	state: &ComposerState,
 	runtime: Option<&SessionRuntimeView>,
 	draft: Option<&Draft>,
 	action: logic::PrimaryAction,
@@ -111,17 +109,17 @@ fn composer_footer(
 		controls::capability_reason(store, Capability::BackgroundSubmission)
 			.unwrap_or_else(|| "Background submission is unavailable".to_owned())
 	};
-	let background = Button::new("send-background", state.control_owner(10), Icon::Background)
-		.tip("Send in background")
-		.disabled(background_reason);
+	let background =
+		Button::new("send-background", control_owner(Control::Background), Icon::Background)
+			.tip("Send in background")
+			.disabled(background_reason);
 	footer
 		.child(background)
-		.child(primary_button(store, state, runtime, action, reason))
+		.child(primary_button(store, runtime, action, reason))
 }
 
 fn primary_button(
 	store: &Store,
-	state: &ComposerState,
 	runtime: Option<&SessionRuntimeView>,
 	action: logic::PrimaryAction,
 	disabled: Option<String>,
@@ -131,7 +129,7 @@ fn primary_button(
 	} else {
 		Icon::Send
 	};
-	let mut button = Button::new("composer-primary", state.control_owner(11), icon)
+	let mut button = Button::new("composer-primary", control_owner(Control::Primary), icon)
 		.label(action.label())
 		.fill(Fill::Solid)
 		.tone(if action == logic::PrimaryAction::Abort {

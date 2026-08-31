@@ -5,19 +5,17 @@ use std::sync::Arc;
 use gpui::{App, ParentElement, Styled, div, px};
 use veyyon_gui_core::{Store, UiCommand, model::FileReadView};
 use veyyon_gui_kit::{
-	motion::{OwnerNamespace, RetainedKey},
+	motion::RetainedKey,
 	theme::{Theme, layout, size, space, weight},
 	ui::{Button, Fill, Icon, Size, Tone},
 };
 
-use super::{FilesHandles, logic, preview};
+use super::{
+	FilesHandles, logic,
+	owners::{self, Chrome},
+	preview,
+};
 use crate::act;
-
-const REFRESH_SELECTED_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Files, 30);
-const REVEAL_SELECTED_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Files, 31);
-const COPY_PATH_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Files, 32);
-const COPY_CONTENTS_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Files, 33);
-const OPEN_EXTERNAL_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Files, 34);
 
 pub fn file_header(
 	store: &Store,
@@ -61,7 +59,7 @@ pub fn file_header(
 	let connected = store.connection.is_connected();
 	let mut refresh = action_button(
 		"refresh-selected-file",
-		REFRESH_SELECTED_OWNER,
+		owners::chrome(Chrome::RefreshSelected),
 		Icon::Running,
 		"Refresh file",
 		(!connected).then_some("Reconnect before refreshing"),
@@ -71,15 +69,20 @@ pub fn file_header(
 	}
 	let reveal = action_button(
 		"reveal-selected-file",
-		REVEAL_SELECTED_OWNER,
+		owners::chrome(Chrome::RevealSelected),
 		Icon::Checkout,
 		"Reveal in file tree",
 		None,
 	)
 	.on_click(act::click(UiCommand::RevealSelectedFile));
-	let copy_path =
-		action_button("copy-selected-path", COPY_PATH_OWNER, Icon::Copy, "Copy path", None)
-			.on_click(act::click(UiCommand::CopyText(path.to_owned())));
+	let copy_path = action_button(
+		"copy-selected-path",
+		owners::chrome(Chrome::CopyPath),
+		Icon::Copy,
+		"Copy path",
+		None,
+	)
+	.on_click(act::click(UiCommand::CopyText(path.to_owned())));
 	let open_disabled = if !connected {
 		Some("Reconnect before opening externally")
 	} else if stale {
@@ -89,7 +92,7 @@ pub fn file_header(
 	};
 	let mut open = action_button(
 		"open-selected-external",
-		OPEN_EXTERNAL_OWNER,
+		owners::chrome(Chrome::OpenExternal),
 		Icon::Read,
 		"Open externally",
 		open_disabled,
@@ -100,7 +103,7 @@ pub fn file_header(
 	let contents = read.and_then(|read| copyable_text(read, handles));
 	let mut copy_contents = action_button(
 		"copy-selected-contents",
-		COPY_CONTENTS_OWNER,
+		owners::chrome(Chrome::CopyContents),
 		Icon::Copy,
 		"Copy file contents",
 		contents

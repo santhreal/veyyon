@@ -46,8 +46,8 @@ pub fn render(agent: &AgentView, store: &Store, cx: &mut App) -> Div {
 		}
 		body = body.child(recent(progress, cx));
 	}
-	let kill_owner = super::state::control_owner(&agent.id, 2);
-	let revive_owner = super::state::control_owner(&agent.id, 3);
+	let kill_owner = super::state::control_owner(&agent.id, super::state::ControlSlot::Kill);
+	let revive_owner = super::state::control_owner(&agent.id, super::state::ControlSlot::Revive);
 	let can_kill = logic::can_kill(agent);
 	let kill_enabled = enabled && can_kill;
 	let mut kill_btn = Button::labelled(format!("kill-agent-{}", agent.id), kill_owner, "Kill")

@@ -15,7 +15,7 @@ use veyyon_gui_kit::{
 	ui::{Banner, Button, Empty, Icon, Sheet, Spinner, text},
 };
 
-use super::state::OverlayState;
+use super::state::owner_of;
 use crate::act;
 
 #[derive(Default)]
@@ -76,18 +76,13 @@ pub fn render(
 	entry: &EntryId,
 	index: usize,
 	handle: &mut ImageViewerHandle,
-	state: &mut OverlayState,
 	open: bool,
 	cx: &mut App,
 ) -> AnyElement {
 	handle.sync(store, entry, index);
 	let theme = Theme::get(cx);
-	let Some(sheet_owner) = state.owner(format!("image-viewer:{entry}:{index}")) else {
-		return Banner::failure("Image viewer unavailable").into_any_element();
-	};
-	let Some(close_owner) = state.owner(format!("image-viewer:{entry}:{index}:close")) else {
-		return Banner::failure("Image viewer unavailable").into_any_element();
-	};
+	let sheet_owner = owner_of(&format!("image-viewer:{entry}:{index}"));
+	let close_owner = owner_of(&format!("image-viewer:{entry}:{index}:close"));
 	let mut content = div()
 		.flex()
 		.flex_col()
@@ -116,10 +111,9 @@ pub fn render(
 		},
 		(_, Some(error), _) => content.child(Empty::new(error.clone()).icon(Icon::Failed)),
 		(_, _, RemoteData::Unrequested | RemoteData::Loading { .. }) => {
-			let spinner = state
-				.owner(format!("image-viewer:{entry}:{index}:loading"))
-				.map(|owner| Spinner::new(owner, Icon::Running).into_any_element())
-				.unwrap_or_else(|| Banner::failure("Loading indicator unavailable").into_any_element());
+			let spinner =
+				Spinner::new(owner_of(&format!("image-viewer:{entry}:{index}:loading")), Icon::Running)
+					.into_any_element();
 			content.child(
 				div()
 					.flex_1()

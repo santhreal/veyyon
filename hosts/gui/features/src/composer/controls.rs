@@ -14,22 +14,21 @@ use veyyon_gui_kit::{
 	ui::{Button, Icon},
 };
 
-use super::{logic, state::ComposerState};
+use super::{
+	logic,
+	state::{Control, control_owner},
+};
 use crate::act;
 
-pub fn composer_controls(
-	store: &Store,
-	state: &ComposerState,
-	runtime: Option<&SessionRuntimeView>,
-) -> Div {
+pub fn composer_controls(store: &Store, runtime: Option<&SessionRuntimeView>) -> Div {
 	let selected = store.frontend.selected_session.as_ref();
 	let mut controls = div().flex().flex_wrap().items_center().gap(px(space::X4));
-	let mut files =
-		Button::new("choose-files", state.control_owner(1), Icon::Attachment).tip("Attach files");
-	let mut images =
-		Button::new("choose-images", state.control_owner(2), Icon::Image).tip("Attach images");
-	let mut mention =
-		Button::new("mention-context", state.control_owner(3), Icon::Mention).tip("Mention a file");
+	let mut files = Button::new("choose-files", control_owner(Control::Files), Icon::Attachment)
+		.tip("Attach files");
+	let mut images = Button::new("choose-images", control_owner(Control::Images), Icon::Image)
+		.tip("Attach images");
+	let mut mention = Button::new("mention-context", control_owner(Control::Mention), Icon::Mention)
+		.tip("Mention a file");
 	if let Some(session) = selected {
 		files = files.on_click(act::click(UiCommand::ChooseFiles { session: session.clone() }));
 		images = images.on_click(act::click(UiCommand::ChooseImages { session: session.clone() }));
@@ -57,18 +56,18 @@ pub fn composer_controls(
 		.child(files)
 		.child(images)
 		.child(mention)
-		.child(model_control(store, state))
-		.child(thinking_control(store, state));
+		.child(model_control(store))
+		.child(thinking_control(store));
 	if let (Some(session), Some(runtime)) = (selected, runtime) {
 		controls = controls
-			.child(queue_control(state, session, runtime, QueueControl::Steering))
-			.child(queue_control(state, session, runtime, QueueControl::FollowUp))
-			.child(queue_control(state, session, runtime, QueueControl::Interrupt));
+			.child(queue_control(session, runtime, QueueControl::Steering))
+			.child(queue_control(session, runtime, QueueControl::FollowUp))
+			.child(queue_control(session, runtime, QueueControl::Interrupt));
 	}
 	controls
 }
 
-fn model_control(store: &Store, state: &ComposerState) -> Button {
+fn model_control(store: &Store) -> Button {
 	let catalog = store
 		.replica
 		.models
@@ -77,7 +76,7 @@ fn model_control(store: &Store, state: &ComposerState) -> Button {
 	let label = catalog
 		.and_then(selected_model_label)
 		.unwrap_or_else(|| "Choose model".to_owned());
-	let mut button = Button::labelled("composer-model", state.control_owner(4), label)
+	let mut button = Button::labelled("composer-model", control_owner(Control::Model), label)
 		.icon(Icon::Model)
 		.on_click(act::click(UiCommand::OpenOverlay(Overlay::ModelPicker)));
 	if let Some(reason) = capability_reason(store, Capability::Models) {
@@ -101,7 +100,7 @@ fn selected_model_label(catalog: &ModelCatalogState) -> Option<String> {
 	})
 }
 
-fn thinking_control(store: &Store, state: &ComposerState) -> Button {
+fn thinking_control(store: &Store) -> Button {
 	let catalog = store
 		.replica
 		.models
@@ -116,7 +115,7 @@ fn thinking_control(store: &Store, state: &ComposerState) -> Button {
 	});
 	let mut button = Button::labelled(
 		"composer-thinking",
-		state.control_owner(5),
+		control_owner(Control::Thinking),
 		current
 			.map_or_else(|| "Thinking unavailable".to_owned(), |level| format!("Thinking {level}")),
 	)
@@ -153,14 +152,13 @@ enum QueueControl {
 }
 
 fn queue_control(
-	state: &ComposerState,
 	session: &SessionId,
 	runtime: &SessionRuntimeView,
 	control: QueueControl,
 ) -> Button {
 	let (slot, label, command) = match control {
 		QueueControl::Steering => (
-			6,
+			Control::QueueSteering,
 			format!("Steer {}", delivery_label(&runtime.queue.steering)),
 			UiCommand::SetQueueMode {
 				session:   session.clone(),
@@ -170,7 +168,7 @@ fn queue_control(
 			},
 		),
 		QueueControl::FollowUp => (
-			7,
+			Control::QueueFollowUp,
 			format!("Follow-up {}", delivery_label(&runtime.queue.follow_up)),
 			UiCommand::SetQueueMode {
 				session:   session.clone(),
@@ -180,7 +178,7 @@ fn queue_control(
 			},
 		),
 		QueueControl::Interrupt => (
-			8,
+			Control::QueueInterrupt,
 			format!("Interrupt {}", interrupt_label(&runtime.queue.interrupt)),
 			UiCommand::SetQueueMode {
 				session:   session.clone(),
@@ -190,7 +188,7 @@ fn queue_control(
 			},
 		),
 	};
-	Button::labelled(format!("queue-mode-{slot}"), state.control_owner(slot), label)
+	Button::labelled(format!("queue-mode-{}", slot.name()), control_owner(slot), label)
 		.icon(Icon::Mode)
 		.on_click(act::click(command))
 }

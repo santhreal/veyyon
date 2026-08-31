@@ -8,7 +8,7 @@
 use gpui::App;
 use veyyon_gui_core::navigation::PanelState;
 use veyyon_gui_kit::{
-	motion::{MotionKey, OwnerNamespace, Property, RetainedKey},
+	motion::{MotionKey, OwnerNamespace, Property, RetainedKey, owner},
 	paint,
 	theme::{ResponsiveLayout, layout, responsive_layout},
 };
@@ -19,13 +19,29 @@ use veyyon_gui_kit::{
 /// directly while one is dragged; `PanelSizes` samples them. Both sides resolve
 /// the owner here, so a panel cannot animate under one key and draw from
 /// another.
-const SIDEBAR: RetainedKey = RetainedKey::semantic(OwnerNamespace::Shell, 100);
-const INSPECTOR: RetainedKey = RetainedKey::semantic(OwnerNamespace::Shell, 101);
-const BOTTOM: RetainedKey = RetainedKey::semantic(OwnerNamespace::Shell, 102);
+fn sidebar() -> RetainedKey {
+	owner(OwnerNamespace::Shell, "panel", "sidebar")
+}
 
-pub const SIDEBAR_WIDTH: MotionKey = MotionKey::new(SIDEBAR, Property::Width);
-pub const INSPECTOR_WIDTH: MotionKey = MotionKey::new(INSPECTOR, Property::Width);
-pub const BOTTOM_HEIGHT: MotionKey = MotionKey::new(BOTTOM, Property::Height);
+fn inspector() -> RetainedKey {
+	owner(OwnerNamespace::Shell, "panel", "inspector")
+}
+
+fn bottom() -> RetainedKey {
+	owner(OwnerNamespace::Shell, "panel", "bottom")
+}
+
+pub fn sidebar_width() -> MotionKey {
+	MotionKey::new(sidebar(), Property::Width)
+}
+
+pub fn inspector_width() -> MotionKey {
+	MotionKey::new(inspector(), Property::Width)
+}
+
+pub fn bottom_height() -> MotionKey {
+	MotionKey::new(bottom(), Property::Height)
+}
 
 /// Below this a panel occupies no space and is not drawn at all. A closing
 /// panel crosses it on its last frame, which is the frame its surface leaves
@@ -74,9 +90,9 @@ impl PanelSizes {
 	pub fn sample(panels: &PanelState, cx: &mut App) -> Self {
 		let rest = Self::rest(panels);
 		Self {
-			sidebar:   paint::sample(cx, SIDEBAR_WIDTH, rest.sidebar),
-			inspector: paint::sample(cx, INSPECTOR_WIDTH, rest.inspector),
-			bottom:    paint::sample(cx, BOTTOM_HEIGHT, rest.bottom),
+			sidebar:   paint::sample(cx, sidebar_width(), rest.sidebar),
+			inspector: paint::sample(cx, inspector_width(), rest.inspector),
+			bottom:    paint::sample(cx, bottom_height(), rest.bottom),
 		}
 	}
 }

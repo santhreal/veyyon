@@ -4,31 +4,22 @@ use gpui::{AnyElement, App, IntoElement, ParentElement, Styled, div, px};
 use veyyon_gui_core::UiCommand;
 use veyyon_gui_kit::{
 	theme::{Theme, space},
-	ui::{Banner, Button, Fill, Sheet, Tone, text},
+	ui::{Button, Fill, Sheet, Tone, text},
 };
 
-use super::state::OverlayState;
+use super::state::owner_of;
 use crate::act;
 
 pub fn render(
 	title: &str,
 	body: &str,
 	confirm: &UiCommand,
-	state: &mut OverlayState,
 	open: bool,
 	cx: &mut App,
 ) -> AnyElement {
-	let Some(sheet_owner) = state.owner(format!("confirmation:{title}")) else {
-		return Banner::failure("Confirmation unavailable")
-			.detail("The retained identity table is full")
-			.into_any_element();
-	};
-	let Some(cancel_owner) = state.owner(format!("confirmation:{title}:cancel")) else {
-		return Banner::failure("Confirmation unavailable").into_any_element();
-	};
-	let Some(confirm_owner) = state.owner(format!("confirmation:{title}:confirm")) else {
-		return Banner::failure("Confirmation unavailable").into_any_element();
-	};
+	let sheet_owner = owner_of(&format!("confirmation:{title}"));
+	let cancel_owner = owner_of(&format!("confirmation:{title}:cancel"));
+	let confirm_owner = owner_of(&format!("confirmation:{title}:confirm"));
 	let theme = Theme::get(cx);
 	Sheet::new("destructive-confirmation", sheet_owner, open)
 		.centred()

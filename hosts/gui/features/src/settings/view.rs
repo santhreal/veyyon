@@ -9,15 +9,13 @@ use veyyon_gui_core::{
 };
 use veyyon_gui_kit::{
 	input::Editor,
-	motion::{OwnerNamespace, RetainedKey},
+	motion::{OwnerNamespace, owner},
 	theme::{Elevation, Theme, space},
 	ui::{EdgeFade, Fill, Scrolls, SearchField, Size, Tone, text},
 };
 
 use super::{appearance, context, general, keybinding_view, registry, schema};
 use crate::{act, extensions, mcp, models, providers};
-
-const SEARCH_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Settings, 4);
 
 /// The search rows the settings route draws: the page filter, and the query
 /// each catalogue page filters by.
@@ -80,7 +78,7 @@ pub fn navigation(page: SettingsPage, search: &Entity<Editor>, cx: &mut App) -> 
 	}
 	selector.child(text::spacer()).child(SearchField::new(
 		"settings-filter",
-		SEARCH_OWNER,
+		owner(OwnerNamespace::Settings, "filter", "settings-filter"),
 		search.clone(),
 	))
 }

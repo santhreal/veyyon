@@ -6,26 +6,24 @@ use veyyon_gui_core::{
 	navigation::{AttachmentKind, AttachmentState, LocalAttachment},
 };
 use veyyon_gui_kit::{
-	motion::RetainedKey,
 	theme::{Theme, radius, space},
 	ui::{Badge, Button, Icon, Tone, icon, text},
 };
 
-use super::{logic, state::ComposerState};
+use super::{
+	logic,
+	state::{ChipSlot, attachment_control},
+};
 use crate::act;
 
-pub fn sync_composer_state(store: &Store, state: &mut ComposerState) {
-	state.reconcile(&store.frontend.drafts);
-}
-
-pub fn context_chips(store: &Store, state: &ComposerState, cx: &mut App) -> Div {
+pub fn context_chips(store: &Store, cx: &mut App) -> Div {
 	let theme = Theme::get(cx);
 	let mut chips = div().flex().flex_wrap().gap(px(space::X8));
 	let Some((session, draft)) = logic::selected_draft(store) else {
 		return chips;
 	};
 	for attachment in &draft.attachments {
-		chips = chips.child(chip(session, attachment, state, &theme));
+		chips = chips.child(chip(session, attachment, &theme));
 	}
 	chips
 }
@@ -33,12 +31,10 @@ pub fn context_chips(store: &Store, state: &ComposerState, cx: &mut App) -> Div 
 fn chip(
 	session: &veyyon_gui_core::model::SessionId,
 	attachment: &LocalAttachment,
-	state: &ComposerState,
 	theme: &Theme,
 ) -> Div {
-	let owner = state.attachment_owner(&attachment.id);
-	let remove_owner = child_owner(owner, 1);
-	let retry_owner = child_owner(owner, 2);
+	let remove_owner = attachment_control(&attachment.id, ChipSlot::Remove);
+	let retry_owner = attachment_control(&attachment.id, ChipSlot::Retry);
 	let mut row = div()
 		.flex()
 		.items_center()
@@ -104,10 +100,6 @@ fn chip(
 				attachment: attachment.id.clone(),
 			})),
 	)
-}
-
-fn child_owner(owner: RetainedKey, slot: u64) -> RetainedKey {
-	RetainedKey::new(owner.object.saturating_add(slot), owner.generation)
 }
 
 fn attachment_icon(kind: &AttachmentKind) -> Icon {

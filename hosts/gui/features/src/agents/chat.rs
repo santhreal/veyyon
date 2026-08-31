@@ -59,7 +59,7 @@ pub fn render(store: &Store, agent: &AgentView, field: &Entity<Editor>, cx: &mut
 		.border_color(theme.stroke)
 		.child(div().flex_1().min_w(px(0.0)).child(field.clone()))
 		.child({
-			let owner = super::state::control_owner(&agent.id, 1);
+			let owner = super::state::control_owner(&agent.id, super::state::ControlSlot::Chat);
 			let mut button = Button::new(format!("chat-agent-{}", agent.id), owner, Icon::Send)
 				.label("Send")
 				.fill(if armed { Fill::Solid } else { Fill::Ghost })

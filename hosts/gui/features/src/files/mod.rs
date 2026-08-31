@@ -7,22 +7,18 @@ mod error;
 mod header;
 mod inspector;
 mod logic;
+pub(crate) mod owners;
 mod preview;
 mod search;
 mod tree;
 pub(crate) mod tree_cache;
 mod view;
 
-use std::collections::BTreeMap;
-
 use gpui::{Entity, ScrollHandle, ScrollStrategy, UniformListScrollHandle};
 use preview::CachedBody;
 pub(crate) use tree_cache::TreeCache;
 use veyyon_gui_core::{Store, model::FileId};
-use veyyon_gui_kit::{
-	input::Editor,
-	motion::{CollectionPlan, OwnerNamespace, RetainedKey},
-};
+use veyyon_gui_kit::{input::Editor, motion::CollectionPlan};
 pub use view::{render_inspector, render_route, render_sidebar};
 
 /// Long-lived GPUI and presentation caches passed by the shell.
@@ -36,8 +32,6 @@ pub struct FilesHandles {
 	read:                 Option<CachedRead>,
 	revealed_cursor:      Option<FileId>,
 	revealed_line:        Option<(FileId, u32)>,
-	outline_owners:       BTreeMap<(FileId, u32, u32), RetainedKey>,
-	next_outline_owner:   u64,
 }
 
 struct CachedRead {
@@ -58,8 +52,6 @@ impl FilesHandles {
 			read: None,
 			revealed_cursor: None,
 			revealed_line: None,
-			outline_owners: BTreeMap::new(),
-			next_outline_owner: 1000,
 		}
 	}
 
@@ -124,17 +116,7 @@ impl FilesHandles {
 			.filter(|cached| &cached.file == file)
 			.map(|cached| cached.body.clone())
 	}
-
-	pub(crate) fn outline_owner(&mut self, file: &FileId, start: u32, end: u32) -> RetainedKey {
-		let key = (file.clone(), start, end);
-		if let Some(owner) = self.outline_owners.get(&key) {
-			*owner
-		} else {
-			self.next_outline_owner = self.next_outline_owner.saturating_add(1);
-			let owner = RetainedKey::scoped(OwnerNamespace::Files, self.next_outline_owner, 0)
-				.unwrap_or_else(|| RetainedKey::semantic(OwnerNamespace::Files, u32::MAX));
-			self.outline_owners.insert(key, owner);
-			owner
-		}
-	}
 }
+
+#[cfg(test)]
+mod every_object_the_files_route_draws_animates_on_its_own_track;

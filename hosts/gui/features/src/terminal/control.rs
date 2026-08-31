@@ -2,17 +2,12 @@
 
 use gpui::SharedString;
 use veyyon_gui_kit::{
-	motion::{OwnerNamespace, RetainedKey},
+	motion::{OwnerNamespace, RetainedKey, owner},
 	ui::{Button, Icon, Row},
 };
 
 fn key(id: &str) -> RetainedKey {
-	let mut hash = 0xcbf2_9ce4_8422_2325u64;
-	for byte in id.as_bytes() {
-		hash ^= u64::from(*byte);
-		hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-	}
-	RetainedKey::new(((OwnerNamespace::Terminal as u64) << 56) | (hash & 0x00ff_ffff_ffff_ffff), 0)
+	owner(OwnerNamespace::Terminal, "control", id)
 }
 pub fn retained(id: &str) -> RetainedKey {
 	key(id)

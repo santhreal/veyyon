@@ -14,26 +14,21 @@ use veyyon_gui_kit::{
 	ui::{Banner, Button, Empty, Fill, Icon, Row, Sheet, Spinner, Tab, Tabs, Tone, text},
 };
 
-use super::{plan_logic, state::OverlayState};
+use super::{plan_logic, state::owner_of};
 use crate::{act, render};
 
 pub fn render(
 	store: &Store,
 	request: Option<RequestId>,
 	interaction: Option<InteractionId>,
-	state: &mut OverlayState,
 	open: bool,
 	cx: &mut App,
 ) -> AnyElement {
-	let Some(sheet_owner) = state.owner(format!("plan-review:{request:?}:{interaction:?}")) else {
-		return Banner::failure("Plan review unavailable").into_any_element();
-	};
+	let sheet_owner = owner_of(&format!("plan-review:{request:?}:{interaction:?}"));
 	let theme = Theme::get(cx);
 	let body = match &store.replica.plan {
 		RemoteData::Unrequested | RemoteData::Loading { .. } => {
-			let Some(owner) = state.owner("plan-review:loading") else {
-				return Banner::failure("Plan review unavailable").into_any_element();
-			};
+			let owner = owner_of("plan-review:loading");
 			Spinner::new(owner, Icon::Running).into_any_element()
 		},
 		RemoteData::Empty => Empty::new("No plan is available")
@@ -45,7 +40,7 @@ pub fn render(
 		RemoteData::Ready(versioned)
 		| RemoteData::Stale { value: versioned, .. }
 		| RemoteData::Error { stale: Some(versioned), .. } => {
-			plan(store, &versioned.value, request, interaction, state, cx)
+			plan(store, &versioned.value, request, interaction, cx)
 		},
 	};
 	Sheet::new("plan-review", sheet_owner, open)
@@ -62,7 +57,6 @@ fn plan(
 	plan: &PlanState,
 	request: Option<RequestId>,
 	interaction: Option<InteractionId>,
-	state: &mut OverlayState,
 	cx: &mut App,
 ) -> AnyElement {
 	let PlanState::Active { content, approval, .. } = plan else {
@@ -91,9 +85,7 @@ fn plan(
 		interaction.or_else(|| approval.as_ref().and_then(|a| a.interaction.clone()));
 	match content {
 		RemoteData::Unrequested | RemoteData::Loading { .. } => {
-			let Some(owner) = state.owner("plan-review:content-loading") else {
-				return Banner::failure("Plan content unavailable").into_any_element();
-			};
+			let owner = owner_of("plan-review:content-loading");
 			Spinner::new(owner, Icon::Running).into_any_element()
 		},
 		RemoteData::Empty => Empty::new("The plan has no content")
@@ -102,14 +94,12 @@ fn plan(
 		RemoteData::Error { message, stale: None, .. } => Banner::failure("Plan content unavailable")
 			.detail(message.clone())
 			.into_any_element(),
-		RemoteData::Ready(source) => {
-			review_content(store, source, None, effective_interaction, state, cx)
-		},
+		RemoteData::Ready(source) => review_content(store, source, None, effective_interaction, cx),
 		RemoteData::Stale { value, reason } => {
-			review_content(store, value, Some(format!("{reason:?}")), effective_interaction, state, cx)
+			review_content(store, value, Some(format!("{reason:?}")), effective_interaction, cx)
 		},
 		RemoteData::Error { message, stale: Some(source), .. } => {
-			review_content(store, source, Some(message.clone()), effective_interaction, state, cx)
+			review_content(store, source, Some(message.clone()), effective_interaction, cx)
 		},
 	}
 }
@@ -119,15 +109,10 @@ fn review_content(
 	source: &str,
 	stale: Option<String>,
 	interaction: Option<InteractionId>,
-	state: &mut OverlayState,
 	cx: &mut App,
 ) -> AnyElement {
-	let Some(outline_owner) = state.owner("plan-review:tab:outline") else {
-		return Banner::failure("Plan tabs unavailable").into_any_element();
-	};
-	let Some(diff_owner) = state.owner("plan-review:tab:diff") else {
-		return Banner::failure("Plan tabs unavailable").into_any_element();
-	};
+	let outline_owner = owner_of("plan-review:tab:outline");
+	let diff_owner = owner_of("plan-review:tab:diff");
 	let tab = store.frontend.plan_review_tab;
 	let tabs = Tabs::new("plan-review-tabs")
 		.stretch()
@@ -140,7 +125,7 @@ fn review_content(
 				.on_click(act::click(UiCommand::SetPlanReviewTab(PlanReviewTab::Diff))),
 		);
 	let body = match tab {
-		PlanReviewTab::Outline => outline(source, state, cx),
+		PlanReviewTab::Outline => outline(source, cx),
 		PlanReviewTab::Diff => diff(source, cx),
 	};
 	div()
@@ -150,11 +135,11 @@ fn review_content(
 		.children(stale.map(|reason| Banner::notice("Showing cached plan").detail(reason)))
 		.child(tabs)
 		.child(body)
-		.child(actions(store, interaction, state))
+		.child(actions(store, interaction))
 		.into_any_element()
 }
 
-fn outline(source: &str, state: &mut OverlayState, _cx: &mut App) -> AnyElement {
+fn outline(source: &str, _cx: &mut App) -> AnyElement {
 	let items = plan_logic::outline(source);
 	if items.is_empty() {
 		return Empty::new("The plan has no outline headings")
@@ -163,9 +148,7 @@ fn outline(source: &str, state: &mut OverlayState, _cx: &mut App) -> AnyElement 
 	}
 	let mut list = div().flex().flex_col().gap(px(space::ROWS));
 	for (index, item) in items.into_iter().enumerate() {
-		let Some(owner) = state.owner(format!("plan-review:outline:{index}:{}", item.label)) else {
-			return Banner::failure("Plan outline unavailable").into_any_element();
-		};
+		let owner = owner_of(&format!("plan-review:outline:{index}:{}", item.label));
 		list = list.child(
 			Row::new(format!("plan-outline-{index}"), owner, item.label)
 				.gutter(true)
@@ -190,11 +173,7 @@ fn diff(source: &str, cx: &mut App) -> AnyElement {
 		.into_any_element()
 }
 
-fn actions(
-	store: &Store,
-	interaction: Option<InteractionId>,
-	state: &mut OverlayState,
-) -> AnyElement {
+fn actions(store: &Store, interaction: Option<InteractionId>) -> AnyElement {
 	let connected = store.connection.is_connected();
 	let mut row = div().flex().flex_wrap().justify_end().gap(px(space::SNUG));
 	if let Some(interaction_id) = interaction {
@@ -203,32 +182,30 @@ fn actions(
 		} else {
 			None
 		};
-		if let Some(owner) = state.owner(format!("plan-review:{interaction_id}:cancel")) {
-			let mut button = Button::labelled("plan-review-cancel", owner, "Cancel")
-				.fill(Fill::Solid)
-				.tone(Tone::Danger)
-				.on_click(act::click(UiCommand::CancelInteraction {
-					interaction: interaction_id.clone(),
-					timed_out:   false,
-				}));
-			if let Some(reason) = &disabled_reason {
-				button = button.disabled(reason.clone());
-			}
-			row = row.child(button);
+		let owner = owner_of(&format!("plan-review:{interaction_id}:cancel"));
+		let mut button = Button::labelled("plan-review-cancel", owner, "Cancel")
+			.fill(Fill::Solid)
+			.tone(Tone::Danger)
+			.on_click(act::click(UiCommand::CancelInteraction {
+				interaction: interaction_id.clone(),
+				timed_out:   false,
+			}));
+		if let Some(reason) = &disabled_reason {
+			button = button.disabled(reason.clone());
 		}
-		if let Some(owner) = state.owner(format!("plan-review:{interaction_id}:approve")) {
-			let mut button = Button::labelled("plan-review-approve", owner, "Approve")
-				.fill(Fill::Solid)
-				.tone(Tone::Accent)
-				.on_click(act::click(UiCommand::SubmitInteraction {
-					interaction: interaction_id,
-					response:    InteractionResponse::Approval(ApprovalDecision::AllowOnce),
-				}));
-			if let Some(reason) = &disabled_reason {
-				button = button.disabled(reason.clone());
-			}
-			row = row.child(button);
+		row = row.child(button);
+		let owner = owner_of(&format!("plan-review:{interaction_id}:approve"));
+		let mut button = Button::labelled("plan-review-approve", owner, "Approve")
+			.fill(Fill::Solid)
+			.tone(Tone::Accent)
+			.on_click(act::click(UiCommand::SubmitInteraction {
+				interaction: interaction_id,
+				response:    InteractionResponse::Approval(ApprovalDecision::AllowOnce),
+			}));
+		if let Some(reason) = &disabled_reason {
+			button = button.disabled(reason.clone());
 		}
+		row = row.child(button);
 	} else {
 		let unavailable = match store.replica.capabilities.get(&Capability::Plans) {
 			Some(CapabilityStatus::Unavailable { reason }) => reason.clone(),
@@ -244,18 +221,17 @@ fn actions(
 			("revise", "Request revision", Tone::Plain),
 			("approve", "Approve", Tone::Accent),
 		] {
-			if let Some(owner) = state.owner(format!("plan-review:{id}")) {
-				row = row.child(
-					Button::labelled(format!("plan-review-{id}"), owner, label)
-						.fill(if tone == Tone::Plain {
-							Fill::Ghost
-						} else {
-							Fill::Solid
-						})
-						.tone(tone)
-						.disabled(unavailable.clone()),
-				);
-			}
+			let owner = owner_of(&format!("plan-review:{id}"));
+			row = row.child(
+				Button::labelled(format!("plan-review-{id}"), owner, label)
+					.fill(if tone == Tone::Plain {
+						Fill::Ghost
+					} else {
+						Fill::Solid
+					})
+					.tone(tone)
+					.disabled(unavailable.clone()),
+			);
 		}
 	}
 	row.into_any_element()

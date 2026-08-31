@@ -27,6 +27,7 @@
 ### Fixed
 
 - A row in the GPU front end stays lit while the pointer rests on it; while unreleased the pointer ground faded in and then disappeared on the frame the fade finished, and a settled panel width or overlay fade snapped back the same way.
+- A pointer resting on one control in the GPU front end lights only that control, on every surface the window draws at once; while unreleased the sidebar's pin shared a hover track with the toolbar's rename, a settings switch with the settings filter field, a files tree row with the tree's refresh button, an agent row with a task row, and a window control with a dock tab.
 - The GPU front end's context tab asks for usage when it is revealed and reports the request while it is in flight, instead of showing a button that has to be pressed and re-asking on every reveal.
 - A panel in the GPU front end keeps its surface while its width or height drains and leaves the tree on the frame that reaches zero, instead of being placed by whether it is open while the animated size reached nothing on screen.
 - A palette in the GPU front end opens on an empty filter instead of the filter the last palette closed with, which left the field holding text nobody typed there and no rows under it.

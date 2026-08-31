@@ -8,7 +8,7 @@ use veyyon_gui_core::{
 use veyyon_gui_features::{act, overlays, palette};
 use veyyon_gui_kit::{
 	theme::{Theme, space},
-	ui::{Banner, Button, Fill, Sheet, Tone, text},
+	ui::{Button, Fill, Sheet, Tone, text},
 };
 
 use super::Shell;
@@ -22,7 +22,6 @@ impl Shell {
 				*mode,
 				&self.handles.editors.command,
 				&self.handles.scrolls.palette_results,
-				&mut self.handles.palette_motion,
 				true,
 				cx,
 			)),
@@ -30,7 +29,6 @@ impl Shell {
 				&self.store,
 				&self.handles.editors.command,
 				&self.handles.scrolls.palette_results,
-				&mut self.handles.palette_motion,
 				true,
 				cx,
 			)),
@@ -38,40 +36,28 @@ impl Shell {
 				&self.store,
 				provider,
 				&self.handles.editors.provider_secret,
-				&mut self.handles.overlay_state,
 				true,
 				cx,
 			)),
-			Overlay::Approval { interaction } => Some(overlays::render_approval(
-				&self.store,
-				interaction,
-				&mut self.handles.overlay_state,
-				true,
-				cx,
-			)),
+			Overlay::Approval { interaction } => {
+				Some(overlays::render_approval(&self.store, interaction, true, cx))
+			},
 			Overlay::Question { interaction } => Some(overlays::render_question(
 				&self.store,
 				interaction,
 				&self.handles.editors.interaction,
 				&self.handles.editors.interaction_note,
-				&mut self.handles.overlay_state,
 				true,
 				cx,
 			)),
-			Overlay::PlanReview { request, interaction } => Some(overlays::render_plan_review(
-				&self.store,
-				*request,
-				interaction.clone(),
-				&mut self.handles.overlay_state,
-				true,
-				cx,
-			)),
+			Overlay::PlanReview { request, interaction } => {
+				Some(overlays::render_plan_review(&self.store, *request, interaction.clone(), true, cx))
+			},
 			Overlay::QuickOpen => Some(palette::render(
 				&self.store,
 				PaletteMode::QuickOpen,
 				&self.handles.editors.command,
 				&self.handles.scrolls.palette_results,
-				&mut self.handles.palette_motion,
 				true,
 				cx,
 			)),
@@ -80,32 +66,13 @@ impl Shell {
 				PaletteMode::Sessions,
 				&self.handles.editors.command,
 				&self.handles.scrolls.palette_results,
-				&mut self.handles.palette_motion,
 				true,
 				cx,
 			)),
 			Overlay::RenameSession { session, value } => {
-				let Some(sheet_owner) = self
-					.handles
-					.overlay_state
-					.owner(format!("rename-session:{session}"))
-				else {
-					return Some(Banner::failure("Rename unavailable").into_any_element());
-				};
-				let Some(cancel_owner) = self
-					.handles
-					.overlay_state
-					.owner(format!("rename-session:{session}:cancel"))
-				else {
-					return Some(Banner::failure("Rename unavailable").into_any_element());
-				};
-				let Some(save_owner) = self
-					.handles
-					.overlay_state
-					.owner(format!("rename-session:{session}:save"))
-				else {
-					return Some(Banner::failure("Rename unavailable").into_any_element());
-				};
+				let sheet_owner = overlays::owner_of(&format!("rename-session:{session}"));
+				let cancel_owner = overlays::owner_of(&format!("rename-session:{session}:cancel"));
+				let save_owner = overlays::owner_of(&format!("rename-session:{session}:save"));
 				let theme = Theme::get(cx);
 				Some(
 					Sheet::new("rename-session", sheet_owner, true)
@@ -143,20 +110,14 @@ impl Shell {
 						.into_any_element(),
 				)
 			},
-			Overlay::Confirmation { title, body, confirm } => Some(overlays::render_confirmation(
-				title,
-				body,
-				confirm,
-				&mut self.handles.overlay_state,
-				true,
-				cx,
-			)),
+			Overlay::Confirmation { title, body, confirm } => {
+				Some(overlays::render_confirmation(title, body, confirm, true, cx))
+			},
 			Overlay::ImageViewer { entry, index } => Some(overlays::render_image_viewer(
 				&self.store,
 				entry,
 				*index,
 				&mut self.handles.image_viewer,
-				&mut self.handles.overlay_state,
 				true,
 				cx,
 			)),

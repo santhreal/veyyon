@@ -73,7 +73,7 @@ pub fn compose(
 		Route::Conversation => (
 			conversation::session_shelf(store, session_shelf, session_search, window, cx)
 				.into_any_element(),
-			conversation::route_toolbar(store, session_shelf, cx).into_any_element(),
+			conversation::route_toolbar(store, cx).into_any_element(),
 			conversation::work_surface(
 				transcript::render(store, timeline, cx),
 				composer::render(store, composer, window, cx),

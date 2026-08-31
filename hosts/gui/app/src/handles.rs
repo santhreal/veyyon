@@ -9,8 +9,7 @@ use veyyon_gui_features::{
 	changes::{ChangesCache, DiffViewport},
 	conversation::SessionShelfState,
 	files::FilesHandles,
-	overlays::{ImageViewerHandle, OverlayState},
-	palette::PaletteMotion,
+	overlays::ImageViewerHandle,
 	problems::OutputRendererAdapter,
 	terminal::RendererAdapter,
 	transcript::Timeline,
@@ -63,21 +62,19 @@ pub struct PanelFocus {
 }
 
 pub struct SurfaceHandles {
-	pub editors:        Editors,
-	pub scrolls:        Scrolls,
-	pub focus:          PanelFocus,
-	pub diff:           Entity<DiffViewport>,
-	pub changes:        ChangesCache,
-	pub timeline:       Entity<Timeline>,
-	pub session_shelf:  SessionShelfState,
-	pub files:          FilesHandles,
-	pub palette_motion: PaletteMotion,
-	pub overlay_state:  OverlayState,
-	pub image_viewer:   ImageViewerHandle,
+	pub editors:       Editors,
+	pub scrolls:       Scrolls,
+	pub focus:         PanelFocus,
+	pub diff:          Entity<DiffViewport>,
+	pub changes:       ChangesCache,
+	pub timeline:      Entity<Timeline>,
+	pub session_shelf: SessionShelfState,
+	pub files:         FilesHandles,
+	pub image_viewer:  ImageViewerHandle,
 	/// Installed by an attached adapter. Detached startup has no renderer and no
 	/// terminal data to invent.
-	pub terminal:       Option<Box<dyn RendererAdapter>>,
-	pub output:         Option<Box<dyn OutputRendererAdapter>>,
+	pub terminal:      Option<Box<dyn RendererAdapter>>,
+	pub output:        Option<Box<dyn OutputRendererAdapter>>,
 }
 
 impl SurfaceHandles {
@@ -129,8 +126,6 @@ impl SurfaceHandles {
 			files,
 			session_shelf: SessionShelfState::default(),
 			timeline: cx.new(Timeline::new),
-			palette_motion: PaletteMotion::default(),
-			overlay_state: OverlayState::default(),
 			image_viewer: ImageViewerHandle::default(),
 			scrolls: Scrolls {
 				changes_tree:    ScrollHandle::new(),

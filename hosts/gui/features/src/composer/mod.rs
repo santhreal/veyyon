@@ -10,9 +10,11 @@ mod state;
 mod view;
 
 pub use banners::pending_context;
-pub use chips::{context_chips, sync_composer_state};
+pub use chips::context_chips;
 pub use logic::PLACEHOLDER;
-pub use state::ComposerState;
+pub use state::{
+	ChipSlot, Control, attachment_control, attachment_owner, completion_owner, control_owner,
+};
 pub use view::{main_composer, render};
 
 #[cfg(test)]

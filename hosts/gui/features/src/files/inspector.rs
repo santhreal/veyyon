@@ -7,28 +7,27 @@ use veyyon_gui_core::{
 	navigation::{AttachmentKind, InspectorTab},
 };
 use veyyon_gui_kit::{
-	motion::{OwnerNamespace, RetainedKey},
 	theme::{Theme, size, space, weight},
 	ui::{Button, Empty, Fill, Icon, Row, Tone, card, text},
 };
 
-use super::{FilesHandles, logic, preview::CachedBody};
+use super::{
+	logic,
+	owners::{self, Chrome},
+	preview::CachedBody,
+};
 use crate::act;
-
-const MENTION_FILE_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Files, 20);
-const ATTACH_LINES_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Files, 21);
 
 pub fn render(
 	store: &Store,
 	read: Option<&FileReadView>,
 	cache: Option<&CachedBody>,
-	handles: &mut FilesHandles,
 	cx: &mut App,
 ) -> AnyElement {
 	match store.frontend.inspector_tab {
 		InspectorTab::Context => context(store, read, cache, cx).into_any_element(),
 		InspectorTab::Details => details(store, read, cx).into_any_element(),
-		InspectorTab::Outline => outline(read, cache, handles, cx).into_any_element(),
+		InspectorTab::Outline => outline(read, cache, cx).into_any_element(),
 	}
 }
 
@@ -52,40 +51,52 @@ fn context(
 	};
 
 	let mut column = section("Composer context", cx).child(
-		Button::labelled("mention-selected-file", MENTION_FILE_OWNER, "Add file mention")
-			.icon(Icon::Mention)
-			.fill(Fill::Tinted)
-			.tone(Tone::Accent)
-			.on_click(act::click(UiCommand::AddAttachment {
-				session: session.clone(),
-				kind:    AttachmentKind::File { path: read.path.clone() },
-			})),
+		Button::labelled(
+			"mention-selected-file",
+			owners::chrome(Chrome::MentionFile),
+			"Add file mention",
+		)
+		.icon(Icon::Mention)
+		.fill(Fill::Tinted)
+		.tone(Tone::Accent)
+		.on_click(act::click(UiCommand::AddAttachment {
+			session: session.clone(),
+			kind:    AttachmentKind::File { path: read.path.clone() },
+		})),
 	);
 
 	let range = store.frontend.file_range;
 	if let (Some(range), Some(text)) = (range, cache.and_then(|cache| selected_text(cache, range))) {
 		column = column.child(
-			Button::labelled("attach-selected-file-lines", ATTACH_LINES_OWNER, range_label(range))
-				.icon(Icon::Attachment)
-				.fill(Fill::Ghost)
-				.tone(Tone::Plain)
-				.on_click(act::click(UiCommand::AddAttachment {
-					session,
-					kind: AttachmentKind::TextRange {
-						path: read.path.clone(),
-						start_line: range.start,
-						end_line: range.end,
-						text,
-					},
-				})),
+			Button::labelled(
+				"attach-selected-file-lines",
+				owners::chrome(Chrome::AttachLines),
+				range_label(range),
+			)
+			.icon(Icon::Attachment)
+			.fill(Fill::Ghost)
+			.tone(Tone::Plain)
+			.on_click(act::click(UiCommand::AddAttachment {
+				session,
+				kind: AttachmentKind::TextRange {
+					path: read.path.clone(),
+					start_line: range.start,
+					end_line: range.end,
+					text,
+				},
+			})),
 		);
 	} else {
 		column = column.child(
-			Button::labelled("attach-selected-file-lines", ATTACH_LINES_OWNER, "Add selected lines")
-				.icon(Icon::Attachment)
-				.fill(Fill::Ghost)
-				.tone(Tone::Muted)
-				.disabled("Select a text range in this file first"),
+			Button::labelled(
+				"attach-selected-file-lines",
+				owners::chrome(Chrome::AttachLines),
+				"Add selected lines",
+			)
+			.icon(Icon::Attachment)
+			.fill(Fill::Ghost)
+			.tone(Tone::Muted)
+			.disabled("Select a text range in this file first"),
 		);
 	}
 
@@ -177,12 +188,7 @@ fn reader_name(read: &FileReadView) -> &'static str {
 	}
 }
 
-fn outline(
-	read: Option<&FileReadView>,
-	_cache: Option<&CachedBody>,
-	handles: &mut FilesHandles,
-	cx: &mut App,
-) -> gpui::Div {
+fn outline(read: Option<&FileReadView>, _cache: Option<&CachedBody>, cx: &mut App) -> gpui::Div {
 	let Some(read) = read else {
 		return pane_empty("No outline", "Choose a text or Markdown file to inspect its structure.");
 	};
@@ -190,7 +196,7 @@ fn outline(
 		return pane_empty("No symbols found", "The host returned no outline entries for this file.");
 	}
 	let mut column = section("Outline", cx);
-	column = outline_rows(column, read, &read.outline, 0, handles);
+	column = outline_rows(column, read, &read.outline, 0);
 	column
 }
 
@@ -199,10 +205,9 @@ fn outline_rows(
 	read: &FileReadView,
 	items: &[veyyon_gui_core::model::OutlineItem],
 	depth: u8,
-	handles: &mut FilesHandles,
 ) -> gpui::Div {
 	for item in items {
-		let owner = handles.outline_owner(&read.id, item.range.start, item.range.end);
+		let owner = owners::outline(&read.id, item.range.start, item.range.end);
 		column = column.child(
 			Row::new(
 				format!("outline-{}-{}-{}", read.id, item.range.start, item.range.end),
@@ -225,7 +230,7 @@ fn outline_rows(
 				range: Some(item.range),
 			})),
 		);
-		column = outline_rows(column, read, &item.children, depth.saturating_add(1), handles);
+		column = outline_rows(column, read, &item.children, depth.saturating_add(1));
 	}
 	column
 }

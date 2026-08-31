@@ -6,7 +6,6 @@
 pub mod highlight;
 pub mod state;
 pub mod view;
-pub use state::PaletteMotion;
 pub use view::{render, selected_child, selected_commands};
 
 #[cfg(test)]

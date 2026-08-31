@@ -7,12 +7,12 @@ use veyyon_gui_kit::{
 	ui::{Empty, Icon, Row, text},
 };
 
-use super::{completion, logic, state::ComposerState};
+use super::{completion, logic, state::completion_owner};
 use crate::act;
 
 const VISIBLE_COMPLETIONS: usize = 6;
 
-pub fn completion_menu(store: &Store, state: &ComposerState, cx: &mut App) -> Option<Div> {
+pub fn completion_menu(store: &Store, cx: &mut App) -> Option<Div> {
 	let (session, draft) = logic::selected_draft(store)?;
 	let trigger = completion::at_caret(&draft.text, draft.caret)?;
 	let theme = Theme::get(cx);
@@ -38,14 +38,12 @@ pub fn completion_menu(store: &Store, state: &ComposerState, cx: &mut App) -> Op
 				.take(VISIBLE_COMPLETIONS)
 			{
 				menu = menu.child(completion_row(
-					state,
 					session,
 					draft,
 					trigger.replace_from,
 					draft.caret,
 					format!("/{}", command.name),
 					command.description.clone(),
-					shown,
 				));
 				shown += 1;
 			}
@@ -59,14 +57,12 @@ pub fn completion_menu(store: &Store, state: &ComposerState, cx: &mut App) -> Op
 				.take(VISIBLE_COMPLETIONS)
 			{
 				menu = menu.child(completion_row(
-					state,
 					session,
 					draft,
 					trigger.replace_from,
 					draft.caret,
 					format!("${}", skill.name),
 					"Skill".to_owned(),
-					shown,
 				));
 				shown += 1;
 			}
@@ -82,16 +78,13 @@ pub fn completion_menu(store: &Store, state: &ComposerState, cx: &mut App) -> Op
 	Some(menu)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn completion_row(
-	state: &ComposerState,
 	session: &veyyon_gui_core::model::SessionId,
 	draft: &veyyon_gui_core::navigation::Draft,
 	replace_from: usize,
 	caret: usize,
 	value: String,
 	note: String,
-	index: usize,
 ) -> Row {
 	let mut text = String::with_capacity(draft.text.len() + value.len());
 	text.push_str(&draft.text[..replace_from]);
@@ -100,7 +93,7 @@ fn completion_row(
 	let next_caret = replace_from + value.len();
 	let edit = UiCommand::EditDraft { session: session.clone(), text };
 	let move_caret = UiCommand::SetDraftCaret { session: session.clone(), byte: next_caret };
-	Row::new(format!("completion:{value}"), state.control_owner(200 + index as u16), value)
+	Row::new(format!("completion:{value}"), completion_owner(&value), value)
 		.note(note)
 		.icon(Icon::Magic)
 		.on_click(move |_, window, cx| {

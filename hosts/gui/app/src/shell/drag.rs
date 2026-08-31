@@ -2,7 +2,7 @@
 
 use gpui::{Context, MouseMoveEvent, Window};
 use veyyon_gui_core::UiCommand;
-use veyyon_gui_features::shell::{BOTTOM_HEIGHT, INSPECTOR_WIDTH, SIDEBAR_WIDTH};
+use veyyon_gui_features::shell::{bottom_height, inspector_width, sidebar_width};
 use veyyon_gui_kit::{motion::Damage, paint, theme::layout};
 
 use super::Shell;
@@ -52,7 +52,7 @@ impl Shell {
 				(
 					value,
 					UiCommand::ResizeSidebar { width_milli_px: (value * 1000.0) as u32 },
-					SIDEBAR_WIDTH,
+					sidebar_width(),
 				)
 			},
 			Panel::Inspector => {
@@ -61,7 +61,7 @@ impl Shell {
 				(
 					value,
 					UiCommand::ResizeInspector { width_milli_px: (value * 1000.0) as u32 },
-					INSPECTOR_WIDTH,
+					inspector_width(),
 				)
 			},
 			Panel::Bottom => {
@@ -70,7 +70,7 @@ impl Shell {
 				(
 					value,
 					UiCommand::ResizeBottomDock { height_milli_px: (value * 1000.0) as u32 },
-					BOTTOM_HEIGHT,
+					bottom_height(),
 				)
 			},
 		};

@@ -11,7 +11,6 @@ use veyyon_gui_core::{
 };
 use veyyon_gui_kit::{
 	input::Editor,
-	motion::{OwnerNamespace, RetainedKey},
 	theme::{Elevation, Theme, layout, size, space, weight},
 	ui::{
 		Banner, Button, Empty, Fill, Icon, Row, Scrolls, SearchField, Sheet, Spinner, Tone, icon,
@@ -19,12 +18,9 @@ use veyyon_gui_kit::{
 	},
 };
 
-/// The owner key the palette's own field retains its hover channel under.
-const SEARCH_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Overlays, 140);
-
 use super::{
 	highlight,
-	state::{PaletteMotion, chrome},
+	state::{chrome, row},
 };
 use crate::act;
 
@@ -35,7 +31,6 @@ pub fn render(
 	mode: PaletteMode,
 	field: &Entity<Editor>,
 	scroll: &ScrollHandle,
-	motion: &mut PaletteMotion,
 	open: bool,
 	cx: &mut App,
 ) -> AnyElement {
@@ -46,12 +41,12 @@ pub fn render(
 	let query = store.frontend.palette_query.as_str();
 	let results = results(store, mode, query);
 	let selected = store.frontend.palette_cursor;
-	Sheet::new("command-palette", chrome(1), open)
+	Sheet::new("command-palette", chrome("sheet"), open)
 		.max_width(layout::SHEET)
 		.on_dismiss(act::click(UiCommand::CloseTopOverlay))
 		.child(search(mode, field, cursor::item_count(&results.groups), !query.trim().is_empty(), cx))
 		.child(status(&results, mode, cx))
-		.child(list(&results.groups, selected, query, scroll, motion, cx))
+		.child(list(&results.groups, selected, query, scroll, cx))
 		.child(footer(mode, !results.groups.is_empty(), cx))
 		.into_any_element()
 }
@@ -82,7 +77,7 @@ fn search(
 		.px(px(space::BASE))
 		.pb(px(space::SNUG))
 		.child(
-			SearchField::new("palette-search", SEARCH_OWNER, field.clone())
+			SearchField::new("palette-search", chrome("search"), field.clone())
 				.prominent()
 				.hint(if filtered {
 					format!("{count} results · {}", mode.title())
@@ -100,7 +95,7 @@ fn status(results: &Results, mode: PaletteMode, _cx: &mut App) -> AnyElement {
 			.items_center()
 			.justify_center()
 			.py(px(space::LOOSE))
-			.child(Spinner::new(chrome(2), Icon::Running))
+			.child(Spinner::new(chrome("spinner"), Icon::Running))
 			.into_any_element(),
 		SourceState::Empty => Empty::new(format!("No {} found", mode.title().to_lowercase()))
 			.note("Try a different search")
@@ -113,7 +108,7 @@ fn status(results: &Results, mode: PaletteMode, _cx: &mut App) -> AnyElement {
 				Banner::failure(format!("{} unavailable", mode.title())).detail(message.clone());
 			if *retryable && let Some(command) = retry(mode) {
 				banner = banner.child(
-					Button::labelled("palette-retry", chrome(3), "Retry")
+					Button::labelled("palette-retry", chrome("retry"), "Retry")
 						.fill(Fill::Tinted)
 						.tone(Tone::Danger)
 						.on_click(act::click(command)),
@@ -132,7 +127,6 @@ fn list(
 	selected: usize,
 	query: &str,
 	scroll: &ScrollHandle,
-	motion: &mut PaletteMotion,
 	cx: &mut App,
 ) -> AnyElement {
 	if groups.is_empty() {
@@ -160,7 +154,7 @@ fn list(
 				.child(text::overline(group.label, &theme).text_color(theme.text_muted)),
 		);
 		for item in &group.items {
-			element = element.child(entry(item, index == selected, query, motion, cx));
+			element = element.child(entry(item, index == selected, query, cx));
 			index += 1;
 		}
 	}
@@ -169,18 +163,8 @@ fn list(
 		.into_any_element()
 }
 
-fn entry(
-	item: &Item,
-	selected: bool,
-	query: &str,
-	motion: &mut PaletteMotion,
-	cx: &mut App,
-) -> AnyElement {
-	let Some(owner) = motion.row(&item.id) else {
-		return Banner::failure("Result unavailable")
-			.detail("The retained identity table is full")
-			.into_any_element();
-	};
+fn entry(item: &Item, selected: bool, query: &str, cx: &mut App) -> AnyElement {
+	let owner = row(&item.id);
 	let theme = Theme::get(cx);
 	let title = highlighted(&item.title, query, &theme);
 	let mut row = Row::new(item.id.clone(), owner, item.title.clone())

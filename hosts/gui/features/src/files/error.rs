@@ -6,16 +6,12 @@ use veyyon_gui_core::{
 	model::{FileReadError, FileReadErrorKind},
 };
 use veyyon_gui_kit::{
-	motion::{OwnerNamespace, RetainedKey},
 	theme::space,
 	ui::{Button, Empty, Fill, Icon, Row, Tone, text},
 };
 
+use super::owners::{self, Chrome};
 use crate::act;
-
-const STATE_ACTION_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Files, 35);
-const LOADING_PRIMARY_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Files, 36);
-const LOADING_SECONDARY_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Files, 37);
 
 pub fn render_file_read_error(error: &FileReadError, store: &Store) -> gpui::Div {
 	let retry_command = error
@@ -95,13 +91,21 @@ pub fn loading(label: &str) -> gpui::Div {
 		.child(
 			text::stack(space::ROWS)
 				.child(
-					Row::new("file-loading-primary", LOADING_PRIMARY_OWNER, label.to_owned())
-						.icon(Icon::Running)
-						.tone(Tone::Muted),
+					Row::new(
+						"file-loading-primary",
+						owners::chrome(Chrome::LoadingPrimary),
+						label.to_owned(),
+					)
+					.icon(Icon::Running)
+					.tone(Tone::Muted),
 				)
 				.child(
-					Row::new("file-loading-secondary", LOADING_SECONDARY_OWNER, "Waiting for host data")
-						.tone(Tone::Muted),
+					Row::new(
+						"file-loading-secondary",
+						owners::chrome(Chrome::LoadingSecondary),
+						"Waiting for host data",
+					)
+					.tone(Tone::Muted),
 				),
 		)
 }
@@ -128,7 +132,7 @@ pub fn state_empty(title: &str, note: &str, icon: Icon, action: Option<UiCommand
 			_ => "Retry",
 		};
 		empty = empty.child(
-			Button::labelled("files-state-action", STATE_ACTION_OWNER, label)
+			Button::labelled("files-state-action", owners::chrome(Chrome::StateAction), label)
 				.fill(Fill::Tinted)
 				.tone(Tone::Accent)
 				.on_click(act::click(action)),

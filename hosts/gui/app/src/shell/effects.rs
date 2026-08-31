@@ -2,7 +2,7 @@
 
 use gpui::{ClipboardItem, Context, Window};
 use veyyon_gui_core::{Effects, ShellEffect, UiCommand, navigation::PanelState};
-use veyyon_gui_features::shell::{BOTTOM_HEIGHT, INSPECTOR_WIDTH, PanelSizes, SIDEBAR_WIDTH};
+use veyyon_gui_features::shell::{PanelSizes, bottom_height, inspector_width, sidebar_width};
 use veyyon_gui_kit::{
 	motion::{Damage, Priority, spec},
 	paint,
@@ -62,9 +62,9 @@ impl Shell {
 		let was = PanelSizes::rest(before);
 		let now = PanelSizes::rest(&self.store.frontend.panels);
 		for (key, old, new) in [
-			(SIDEBAR_WIDTH, was.sidebar, now.sidebar),
-			(INSPECTOR_WIDTH, was.inspector, now.inspector),
-			(BOTTOM_HEIGHT, was.bottom, now.bottom),
+			(sidebar_width(), was.sidebar, now.sidebar),
+			(inspector_width(), was.inspector, now.inspector),
+			(bottom_height(), was.bottom, now.bottom),
 		] {
 			if (old - new).abs() > f32::EPSILON {
 				let _ = paint::retarget(cx, key, spec::LAYOUT, new, Priority::Shell, Damage::Layout(0));
