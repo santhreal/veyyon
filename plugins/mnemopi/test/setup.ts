@@ -8,7 +8,10 @@ import * as Embeddings from "@veyyon/mnemopi/core/embeddings";
 import type { CompleteOptions, LlmBackend } from "@veyyon/mnemopi/core/llm-backends";
 import * as LlmBackends from "@veyyon/mnemopi/core/llm-backends";
 import * as Memory from "@veyyon/mnemopi/core/memory";
-import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../packages/utils/test/helpers/isolated-config-root";
+import {
+	enterIsolatedConfigRoot,
+	type IsolatedConfigRoot,
+} from "../../../packages/utils/test/helpers/isolated-config-root";
 import { DELIBERATE_HOME_CONTROL_ROOT } from "./helpers/home-isolation";
 
 type ResettableModule = Record<string, unknown>;

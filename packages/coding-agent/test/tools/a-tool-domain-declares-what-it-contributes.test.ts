@@ -51,6 +51,9 @@ const DOMAIN_RENDERERS: Readonly<Record<string, Record<string, unknown>>> = {
 	agent: agentRenderers,
 };
 
+/** The aggregate table, keyed loosely so a name derived at run time can look a renderer up in it. */
+const ALL_RENDERERS: Readonly<Record<string, unknown>> = toolRenderers;
+
 /**
  * The tools whose implementation is not a domain directory, so no manifest claims them: the edit
  * tool is the hashline executor, `lsp` and `task` are subsystems, `web_search` is the provider
@@ -114,7 +117,7 @@ describe("a tool domain declares what it contributes", () => {
 
 			outsideManifest.push(...drawn.filter(name => !contributed.has(name)));
 			for (const name of drawn) {
-				expect(toolRenderers[name]).toBe(DOMAIN_RENDERERS[manifest.domain]?.[name]);
+				expect(ALL_RENDERERS[name]).toBe(DOMAIN_RENDERERS[manifest.domain]?.[name]);
 			}
 		}
 
