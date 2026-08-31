@@ -978,13 +978,6 @@ export class InteractiveMode implements InteractiveModeContext {
 				void this.openGoalDetail();
 				return;
 			}
-			// The chip says a credential is live here, and clicking it answers WHICH: the same list
-			// `/secret list` prints, without leaving the screen the reader is already looking at. A
-			// reader who notices the chip should not have to remember a command name to act on it.
-			if (segmentId === "secrets") {
-				this.showSecretList();
-				return;
-			}
 			// A click on either half of the location widens the row and spends the readouts on the
 			// right for the room; the next click on the same half puts every one of them back. A
 			// long path or branch is the one thing on this line that cannot be read any other way

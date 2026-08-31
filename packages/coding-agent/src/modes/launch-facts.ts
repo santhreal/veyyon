@@ -29,14 +29,6 @@
  * one changed row instead of the whole screen. The alternative on that frame is a placeholder, and
  * a placeholder is not more accurate than a slightly stale truth — `no model yet · /login` was the
  * proof.
- *
- * WHAT DOES NOT BELONG HERE. The secrets chip, whose count is the last remaining segment to arrive
- * after the card. It states what the expansion authority would substitute right now, and a
- * credential that expired, was retired or is scoped to another directory is absent from it by
- * design; a recorded count states what WAS live and can only overstate. Every other fact here is
- * cosmetic when stale, and that one is planned around, so it stays silent until the session
- * measures it. Counting the environment half alone does not rescue it either: two counters for one
- * chip is the disagreement `liveSecrets` exists to prevent.
  */
 
 import { readFileSync } from "node:fs";
