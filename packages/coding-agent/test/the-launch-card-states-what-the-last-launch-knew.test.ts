@@ -27,8 +27,8 @@
  * that ought to invalidate shows up as a hole here rather than as a confident wrong value.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { readFileSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import {
@@ -50,7 +50,6 @@ import { resetGroundTintsForTest } from "@veyyon/coding-agent/theme/ground-tints
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { GitStatusSummary } from "@veyyon/coding-agent/utils/git";
 import { getLaunchFactsCachePath, stripAnsi } from "@veyyon/utils";
-import * as atomicWrite from "@veyyon/utils/atomic-write";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 import { makeStatusLineSession, type StubSessionOptions } from "./helpers/status-line-session";
 
@@ -138,7 +137,6 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-	vi.restoreAllMocks();
 	resetSettingsForTest();
 	resetLaunchFactsForTest();
 	isolated.restore();
@@ -343,17 +341,35 @@ describe("what the launch card knows before a session exists", () => {
 	 * An idle session redraws continuously and every redraw reaches the recorder with the same
 	 * facts. The write has to stop at the first.
 	 *
-	 * Counted at the filesystem call rather than inferred from the file's contents: a recorder
-	 * that rewrote identical bytes fifty times would leave a file indistinguishable from one
-	 * written once, so only the call count can see the amplification.
+	 * Observed at the file rather than at its contents: identical bytes rewritten fifty times leave
+	 * a file whose contents cannot tell the difference, but each write is a temp file renamed over
+	 * the target, so a rewrite replaces the inode and moves the modification time. A file whose
+	 * identity is unchanged after fifty redraws was written once.
 	 */
 	it("writes once for facts that have not changed", async () => {
 		await record({ contextPercent: 40, gitStatus: DIRTY });
-		const writes = vi.spyOn(atomicWrite, "atomicWriteJson");
+		const before = statSync(getLaunchFactsCachePath());
 
 		for (let redraw = 0; redraw < 50; redraw++) await recordLaunchFacts({ contextPercent: 40, gitStatus: DIRTY });
 
-		expect(writes).toHaveBeenCalledTimes(0);
+		const after = statSync(getLaunchFactsCachePath());
+		expect(after.ino).toBe(before.ino);
+		expect(after.mtimeMs).toBe(before.mtimeMs);
+	});
+
+	/**
+	 * The other half of that guard: a fact that DID change reaches the disk. Without this, a
+	 * recorder that never wrote at all would satisfy the case above.
+	 */
+	it("writes again when a fact changed", async () => {
+		await record({ contextPercent: 40, gitStatus: DIRTY });
+		const before = statSync(getLaunchFactsCachePath());
+
+		await recordLaunchFacts({ contextPercent: 41 });
+
+		const after = statSync(getLaunchFactsCachePath());
+		expect(after.ino).not.toBe(before.ino);
+		expect(readLaunchFacts().contextPercent).toBe(41);
 	});
 
 	/**
