@@ -18,6 +18,14 @@ export interface ClientSessionState {
 	sessionManager?: SessionManager;
 	unsubscribeSession?: () => void;
 	activeTurnPromise?: Promise<boolean>;
+	/**
+	 * Identity of the reply currently streaming, held for as long as it streams.
+	 * Every delta of one reply carries it, so the desktop replaces one
+	 * accumulating entry instead of appending a new one per frame; it is dropped
+	 * when the reply ends, and the next reply mints the next one.
+	 */
+	streamingEntry?: string;
+	streamingSeq?: number;
 }
 
 /**
@@ -87,10 +95,14 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 	switch (event.type) {
 		case "message_update": {
 			if (event.message.role === "assistant") {
-				const transcriptEntry = agentMessageToTranscriptEntry(event.message, state.revision);
+				if (!state.streamingEntry) {
+					state.streamingSeq = (state.streamingSeq ?? 0) + 1;
+					state.streamingEntry = `stream-${state.streamingSeq}`;
+				}
+				const transcriptEntry = agentMessageToTranscriptEntry(event.message, state.revision, state.streamingEntry);
 				writeFrame(socket, {
 					StreamingChanged: {
-						entry: event.message.id ?? `msg-${Date.now()}`,
+						entry: state.streamingEntry,
 						tool: null,
 						accumulating: transcriptEntry,
 						revision: state.revision,
@@ -101,12 +113,14 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 		}
 		case "message_end": {
 			if (event.message.role === "assistant") {
+				state.streamingEntry = undefined;
 				writeFrame(socket, { StreamingChanged: null });
 			}
 			break;
 		}
 		case "turn_end":
 		case "agent_end": {
+			state.streamingEntry = undefined;
 			writeFrame(socket, { StreamingChanged: null });
 			break;
 		}

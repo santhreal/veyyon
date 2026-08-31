@@ -387,7 +387,7 @@ export class GuiHostServer {
 				if (typeof action === "object" && action !== null && "LoadTranscript" in action) {
 					const payload = action.LoadTranscript;
 					if (payload && typeof payload === "object" && "before" in payload) {
-						before = payload.before ?? null;
+						before = typeof payload.before === "string" ? payload.before : null;
 					}
 				}
 

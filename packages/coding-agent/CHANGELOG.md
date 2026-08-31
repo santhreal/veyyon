@@ -254,6 +254,14 @@
 - The GPU front end's command palette lists what the open conversation offers to open: a plan waiting for review, and every image the transcript holds.
 - `secondary-home` and `secondary-end` show the oldest and the newest message in the GPU front end's transcript, and the jump to the oldest stops following the tail.
 - The GPU front end draws a filter field on every surface that narrows itself by one: the agent roster, the settings pages, the model, provider, MCP and tool catalogues, and the Problems dock.
+- The GPU front end holds several conversations at once as tabs, grouped into spaces that each keep their own tab set and panel layout, and reopens the ones whose sessions still exist.
+- The GPU front end browses past sessions by date and repository, searches their content, and opens one read-only.
+- The GPU front end anchors a review comment to the lines it was written against, re-anchors it as the diff changes, and states which anchor was orphaned and why.
+- The GPU front end previews an attachment inline before it is sent, states its type and size, and refuses one the model cannot read with the reason.
+- The GPU front end's command palette, model picker and session switcher are one picker primitive with one keyboard contract.
+- The GPU front end draws a streamed reply as the shape it is becoming, so an unterminated fence, table row or inline span renders as itself rather than as its markup.
+- The GPU front end selects transcript text by dragging across it and copies what the pointer crossed.
+- The GPU front end's theme is chosen in Appearance, previewed while the pointer rests on a row, persisted on press, and drawn on the next frame.
 
 ### Changed
 
@@ -434,6 +442,12 @@
 - The status row's dirty marker appears when `git status` answers instead of waiting for whatever redraws next, which in a resting session is the next keystroke; the row had been showing a clean branch over a tree nothing had looked at.
 - The status row keeps the dirty marker the launch card painted instead of dropping it for the width of its own `git status`, so a handover on a dirty tree no longer shows the branch change colour twice; a scan that finds the tree really did move still repaints it once.
 - A turn that ends on text after a tool call is recognized as finished even while a session subscriber is still running, so the todo reminder, the rewind pass and the session-stop hooks no longer skip a turn whose final message arrived behind a slow subscriber.
+- The GPU front end's theme is the window's own preference rather than an engine request, so a detached window can be themed, and the profile theme list is read-only because a profile theme carries no palette the window could draw.
+- The desktop host states that profile theme listing is unavailable rather than describing a theme selection it never owned.
+
+### Fixed
+
+- The desktop host names one accumulating entry per streamed reply, so the desktop replaces that entry as the reply grows; while unreleased every delta carried a new name and one reply drew as a column of duplicates.
 - A row in the GPU front end stays lit while the pointer rests on it; while unreleased the pointer ground faded in and then disappeared on the frame the fade finished, and a settled panel width or overlay fade snapped back the same way.
 - A pointer resting on one control in the GPU front end lights only that control, on every surface the window draws at once; while unreleased the sidebar's pin shared a hover track with the toolbar's rename, a settings switch with the settings filter field, a files tree row with the tree's refresh button, an agent row with a task row, and a window control with a dock tab.
 - The GPU front end's context tab asks for usage when it is revealed and reports the request while it is in flight, instead of showing a button that has to be pressed and re-asking on every reveal.

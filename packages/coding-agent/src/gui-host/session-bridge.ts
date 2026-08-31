@@ -50,7 +50,7 @@ export const UNAVAILABLE_CAPABILITY_REASONS: Record<
 	AgentCommands: "Agent command discovery is not supported by the host server",
 	Tasks: "Background task spawning and management are not supported by the host server",
 	Settings: "Settings inspection and modification are not supported by the host server",
-	Themes: "Theme selection and management are not supported by the host server",
+	Themes: "Profile theme listing is not supported by the host server",
 	Keybindings: "Keybinding configuration is not supported by the host server",
 	Diagnostics: "Engine diagnostic collection is not supported by the host server",
 	Usage: "Usage telemetry querying is not supported by the host server",
@@ -159,7 +159,6 @@ export function mapActionToErrorScope(actionTag: string): ErrorScope {
 		case "SetSetting":
 		case "ResetSetting":
 		case "LoadThemes":
-		case "SetTheme":
 		case "LoadKeybindings":
 		case "SetKeybinding":
 			return "Settings";
@@ -332,9 +331,14 @@ function mapUsage(usage: unknown): UsageTotals | null {
 }
 
 /**
- * Convert an AgentMessage to a wire TranscriptEntry.
+ * Convert an AgentMessage to a wire TranscriptEntry under the identity `id`.
+ *
+ * The id is the caller's because a message carries none of its own: a session
+ * entry has one, and a streaming message has whatever the connection minted for
+ * the turn. Minting one here per call gave every delta of one reply a different
+ * identity, which the desktop reads as a new entry per frame.
  */
-export function agentMessageToTranscriptEntry(message: AgentMessage, revision: number): TranscriptEntry {
+export function agentMessageToTranscriptEntry(message: AgentMessage, revision: number, id: string): TranscriptEntry {
 	let role: MessageRole = "Custom";
 	let meta: EntryMeta | null = null;
 	let content: ContentBlock[] = [];
@@ -358,7 +362,7 @@ export function agentMessageToTranscriptEntry(message: AgentMessage, revision: n
 	}
 
 	return {
-		id: "id" in message && typeof message.id === "string" ? message.id : `msg-${Date.now()}`,
+		id,
 		parent: null,
 		revision,
 		timestamp_ms: "timestamp" in message && typeof message.timestamp === "number" ? message.timestamp : Date.now(),
@@ -377,10 +381,9 @@ export function sessionEntryToTranscriptEntry(entry: SessionEntry, revision: num
 	const timestampMs = entry.timestamp ? new Date(entry.timestamp).getTime() : Date.now();
 
 	if (entry.type === "message" && "message" in entry) {
-		const messageEntry = agentMessageToTranscriptEntry(entry.message as AgentMessage, revision);
+		const messageEntry = agentMessageToTranscriptEntry(entry.message as AgentMessage, revision, entry.id);
 		return {
 			...messageEntry,
-			id: entry.id,
 			parent: entry.parentId ?? null,
 			timestamp_ms: timestampMs,
 			raw_discriminator: entry.type,
