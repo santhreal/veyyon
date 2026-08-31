@@ -54,33 +54,43 @@ pub(super) fn view(store: &Store) -> Group {
 	Group { id: "view", label: "View", items }
 }
 
-/// The appearance switches, each stating which one is in force.
+/// The appearance switches and the themes, each stating which one is in force.
+///
+/// A theme was reachable by pressing a row on the settings page and nowhere
+/// else, so a reader without a pointer could not change one. The rows are the
+/// themes this build ships, so a theme added to `core::theme::THEMES` is
+/// offered here with no edit.
 pub(super) fn appearance(store: &Store) -> Group {
 	let preferences = &store.frontend.preferences;
-	Group {
-		id:    "appearance",
-		label: "Appearance",
-		items: vec![
-			verb(
-				"appearance-dark",
-				"Dark appearance",
-				preferences.dark,
-				UiCommand::SetDarkAppearance(true),
-			),
-			verb(
-				"appearance-light",
-				"Light appearance",
-				!preferences.dark,
-				UiCommand::SetDarkAppearance(false),
-			),
-			verb(
-				"appearance-reduced-motion",
-				"Toggle reduced motion",
-				preferences.reduced_motion,
-				UiCommand::SetReducedMotion(!preferences.reduced_motion),
-			),
-		],
+	let mut items = vec![
+		verb(
+			"appearance-dark",
+			"Dark appearance",
+			preferences.dark,
+			UiCommand::SetDarkAppearance(true),
+		),
+		verb(
+			"appearance-light",
+			"Light appearance",
+			!preferences.dark,
+			UiCommand::SetDarkAppearance(false),
+		),
+		verb(
+			"appearance-reduced-motion",
+			"Toggle reduced motion",
+			preferences.reduced_motion,
+			UiCommand::SetReducedMotion(!preferences.reduced_motion),
+		),
+	];
+	for theme in &crate::theme::THEMES {
+		items.push(verb(
+			format!("appearance-theme-{}", theme.id),
+			format!("Use theme: {}", theme.name),
+			preferences.theme.as_deref() == Some(theme.id),
+			UiCommand::SetTheme(theme.id.to_owned()),
+		));
 	}
+	Group { id: "appearance", label: "Appearance", items }
 }
 
 /// What the open conversation offers to open: a plan waiting for review, and

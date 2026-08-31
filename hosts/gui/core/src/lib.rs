@@ -12,6 +12,7 @@ pub mod navigation;
 pub mod palette;
 pub mod store;
 pub mod text;
+pub mod theme;
 
 pub use command::{CommandClass, UiCommand};
 pub use host::{HostAction, HostEvent, HostRequest, SnapshotSection};

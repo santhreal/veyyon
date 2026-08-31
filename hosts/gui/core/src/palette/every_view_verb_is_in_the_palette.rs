@@ -7,10 +7,11 @@
 //! The class this closes is a verb with one route to it. The palette is the
 //! surface that has to hold every verb, so the sweep below derives the verb
 //! space from the sets the product itself enumerates — `BottomTab::ALL`,
-//! `InspectorTab::ALL`, the panel toggles, both appearances — and a member
-//! added to any of them turns this red until it is listed. Each row is then
-//! accepted through the real store, so a row that resolves to nothing, or that
-//! leaves the palette open on top of the change, fails here.
+//! `InspectorTab::ALL`, the panel toggles, both appearances, every theme in
+//! `theme::THEMES` — and a member added to any of them turns this red until it
+//! is listed. Each row is then accepted through the real store, so a row that
+//! resolves to nothing, or that leaves the palette open on top of the change,
+//! fails here.
 //!
 //! Not covered: whether the change is visible. Two of these verbs move a panel
 //! by animating it, and the recorded scenes own that.
@@ -65,6 +66,11 @@ fn required(store: &Store) -> Vec<UiCommand> {
 	];
 	wanted.extend(BottomTab::ALL.map(UiCommand::SetBottomTab));
 	wanted.extend(InspectorTab::ALL.map(UiCommand::SetInspectorTab));
+	wanted.extend(
+		crate::theme::THEMES
+			.iter()
+			.map(|theme| UiCommand::SetTheme(theme.id.to_owned())),
+	);
 	wanted
 }
 
@@ -138,6 +144,14 @@ fn accepting_a_verb_runs_it_and_leaves_no_overlay_behind() {
 			},
 			UiCommand::SetReducedMotion(value) => {
 				assert_eq!(store.frontend.preferences.reduced_motion, value)
+			},
+			UiCommand::SetTheme(id) => {
+				assert_eq!(store.frontend.preferences.theme.as_deref(), Some(id.as_str()));
+				assert_eq!(
+					crate::theme::identity(&id).map(|theme| theme.id),
+					Some(id.as_str()),
+					"the palette offered a theme this build does not ship"
+				);
 			},
 			UiCommand::JumpToOldest | UiCommand::JumpToLatest => {
 				assert!(acted, "{command:?} reached nothing")
