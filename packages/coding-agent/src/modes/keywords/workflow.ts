@@ -16,7 +16,7 @@ import { magicKeywordRegex } from "./magic-keyword-boundary";
  * know whether a message mentions the keyword does not have to import the
  * gradient highlighter and, through it, the theme engine. Detection is
  * re-exported here so a caller that draws the word can also test for it; the
- * notice it appends is in `./magic-keyword-notices`, which reads the prompt
+ * notice it appends is in `../session/magic-keyword-notices`, which reads the prompt
  * registry and belongs in neither of the other two graphs.
  */
 

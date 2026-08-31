@@ -40,9 +40,6 @@ function createSettings(model: Model<Api>, tinyModel: string) {
 		getModelRole(role: string) {
 			return role === "smol" ? `${model.provider}/${model.id}` : undefined;
 		},
-		getStorage() {
-			return undefined;
-		},
 	} as never;
 }
 

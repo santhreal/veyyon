@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { computeEditorMaxHeight } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
+import { computeEditorMaxHeight } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
 
 describe("computeEditorMaxHeight", () => {
 	it("caps the editor within the comfortable band on roomy terminals", () => {

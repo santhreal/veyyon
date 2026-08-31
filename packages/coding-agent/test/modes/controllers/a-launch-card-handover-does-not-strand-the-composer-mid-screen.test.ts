@@ -28,7 +28,7 @@
  * wrong one would have been repaired.
  */
 import { beforeAll, describe, expect, test } from "bun:test";
-import { StaticComposerFrame } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import { mountLaunchComposer } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
 import { HomeAnchorLayout } from "@veyyon/coding-agent/modes/terminal/controllers/home-anchor-layout";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type Component, CURSOR_MARKER, type Focusable, Spacer, TUI } from "@veyyon/tui";
@@ -91,14 +91,14 @@ describe("a launch card handover does not strand the composer mid-screen", () =>
 		// Arm one: the launch card, painted by its OWN layout instance, exactly as
 		// `paintFirstFrame` builds it.
 		const cardLayout = new HomeAnchorLayout({ ui: tui, transcriptChildCount: () => 0, hasHero: () => true });
-		const cardChildren = [
+		const cardChildren: Component[] = [
 			cardLayout.topFill,
 			new Spacer(1),
 			hero(),
 			new Spacer(1),
 			cardLayout.bottomFill,
-			new StaticComposerFrame(),
 		];
+		mountLaunchComposer({ addChild: child => cardChildren.push(child) }, new Composer());
 		for (const child of cardChildren) tui.addChild(child);
 		cardLayout.sync(true);
 		tui.start();

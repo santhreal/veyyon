@@ -29,6 +29,7 @@ import {
 import type { ModelRegistry } from "../../../../config/model-registry";
 import { formatModelSelectorValue } from "../../../../config/model-resolver";
 import type { Settings } from "../../../../config/settings";
+import { AgentStorage } from "../../../../session/agent-storage";
 import { getSelectListTheme, theme } from "../../../../theme/theme";
 import {
 	type ConfiguredThinkingLevel,
@@ -497,7 +498,7 @@ export class AdvisorConfigOverlayComponent implements Component {
 	}
 
 	#showModelPicker(index: number): void {
-		const storage = this.#settings.getStorage();
+		const storage = AgentStorage.forAgentDir(this.#settings.getAgentDir());
 		const mruOrder = storage?.getModelUsageOrder() ?? [];
 		let models: ReadonlyArray<Model>;
 		if (this.#scopedModels.length > 0) {

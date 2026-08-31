@@ -141,6 +141,7 @@ import { secretSpendMarker } from "./secrets/spend-marker";
 import { resolveVaultLocations, type ScopedVaultEntry, SecretVault, vaultPathFor } from "./secrets/vault";
 import { loadOrCreateVaultKey } from "./secrets/vault-crypto";
 import { AgentSession, obfuscateProviderPayload } from "./session/agent-session";
+import { AgentStorage } from "./session/agent-storage";
 import { discoverAuthStorage } from "./session/auth-broker-config";
 import { sessionCpuExecHooks } from "./session/cpu-limit";
 import { convertToLlm, LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "./session/messages";
@@ -1687,7 +1688,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		};
 		if (enableMCP && !mcpManager) {
 			if (deferMCPDiscoveryForUI) {
-				const cacheStorage = settings.getStorage();
+				const cacheStorage = AgentStorage.forAgentDir(settings.getAgentDir());
 				mcpManager = new MCPManager(cwd, cacheStorage ? new MCPToolCache(cacheStorage) : null);
 				mcpManager.setAuthStorage(authStorage);
 				toolSession.mcpManager = mcpManager;
@@ -1748,7 +1749,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			} else {
 				const mcpResult = await logger.time("discoverAndLoadMCPTools", discoverAndLoadMCPTools, cwd, {
 					...mcpDiscoverOptions,
-					cacheStorage: settings.getStorage(),
+					cacheStorage: AgentStorage.forAgentDir(settings.getAgentDir()),
 					authStorage,
 				});
 				mcpManager = mcpResult.manager;

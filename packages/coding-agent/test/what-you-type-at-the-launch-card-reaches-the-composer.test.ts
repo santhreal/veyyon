@@ -1,33 +1,36 @@
 /**
  * WHY:
- * Session startup runs for over a second, and `paintFirstFrame` puts a
- * `StaticComposerFrame` on screen for all of it, so the launch card shows a
- * composer that looks ready to type into. The input gate installed alongside it
- * consumed every keystroke until the real composer mounted, so anything typed
- * in that window was discarded: the operator typed a prompt at a visible
- * composer and watched it vanish when the session landed.
+ * Session startup runs for over a second, and `paintFirstFrame` puts a composer
+ * on screen for all of it, so the launch card shows something that looks ready
+ * to type into. It has to BE ready: the class this closes is "input accepted by
+ * the screen is dropped instead of reaching the composer", and every earlier
+ * shape of the launch card lost a keystroke somewhere -- flushed by the tty
+ * handover, swallowed by a gate, or held in a draft that the mounted editor
+ * never received.
  *
- * The class this closes is "input accepted by the screen is dropped instead of
- * reaching the composer". The gate now keeps what was typed after the tty flush
- * and hands it back from `releaseInput()`, and `InteractiveMode.init` puts that
- * text in the composer unsubmitted.
+ * The card now mounts the real `CustomEditor` and focuses it, so there is no
+ * hand-over to lose anything in: what is on screen at the first paint is the
+ * editor the session comes up behind. These tests drive the production input
+ * path -- a real `ProcessTerminal` reading real `process.stdin` data events --
+ * because the adversarial half of the class is everything on stdin that is NOT
+ * typing. The terminal's own answers to the probes the screen just issued
+ * (OSC 11 ground, DA1, sixel geometry) arrive inside this exact window, and a
+ * reply that reached a focused editor would paste escape bytes into the
+ * operator's first prompt.
  *
- * The gate reads raw terminal bytes, so the adversarial half of this suite is
- * everything on stdin that is NOT typing: the terminal's own answers to the
- * probes the screen just issued (OSC 11 ground, DA, sixel), cursor keys, mouse
- * reports and bracketed-paste wrappers. A probe reply captured as typing would
- * paste escape bytes into the operator's draft, and a captured carriage return
- * would resurrect the queued-newline submit this gate exists to prevent.
+ * The carriage return is the other half. A key pressed before the process
+ * started is still in the kernel's queue when the card paints, so a queued
+ * newline reaches an editor whose `onSubmit` the session has not wired yet.
+ * Submitting there would clear the draft and hand it to nobody.
  *
- * What it does NOT catch: it drives the gate through the terminal's own input
- * callback rather than a live tty, so it cannot prove the kernel delivers a
- * pre-launch backlog inside the flush window; that boundary is owned by
- * `flushPendingTtyInput` and asserted here only through the degrade path.
+ * What it does NOT catch: the loop turn `settleQueuedInput` spends so the
+ * redraw reaches the terminal before the caller blocks on the main module's
+ * evaluation. Nothing in-process observes a write that never left the buffer;
+ * only a pty run shows it.
  */
 
-import { afterEach, beforeAll, describe, expect, it, mock, spyOn } from "bun:test";
-import { ProcessTerminal } from "@veyyon/tui";
-import { TempDir } from "@veyyon/utils";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { setTerminalHeadless, TempDir } from "@veyyon/utils";
 import { Settings } from "../src/config/settings";
 import { type FirstFrame, paintFirstFrame, takeFirstFrame } from "../src/modes/terminal/first-frame";
 import * as ttyInputFlush from "../src/modes/terminal/tty-input-flush";
@@ -41,19 +44,25 @@ beforeAll(async () => {
 	await initTheme(false);
 });
 
-/**
- * A painted card plus the terminal callback that feeds it.
- *
- * `paintFirstFrame` builds its own `ProcessTerminal`, so the callback the TUI
- * hands the terminal is the only way in. Spying on the prototype captures that
- * callback and keeps the run off the real tty: nothing enters raw mode and no
- * escape sequence reaches the operator's screen.
- */
+const stdinIsTty = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+const stdoutIsTty = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+const stdinSetRawMode = Object.getOwnPropertyDescriptor(process.stdin, "setRawMode");
+let previousHeadless = false;
+
+function restoreProperty(target: object, key: string, descriptor: PropertyDescriptor | undefined): void {
+	if (descriptor) {
+		Object.defineProperty(target, key, descriptor);
+		return;
+	}
+	delete (target as Record<string, unknown>)[key];
+}
+
+/** A painted card, plus the bytes the terminal wrote while it was up. */
 interface PaintedCard {
 	readonly frame: FirstFrame;
-	readonly send: (data: string) => void;
 	/** How many times the paint discarded the kernel's tty queue. */
 	readonly flushCount: () => number;
+	readonly draft: () => string;
 }
 
 /** Defaults describe an ordinary launch, which is every launch but a relaunch. */
@@ -62,27 +71,41 @@ interface LaunchKind {
 	readonly flushed?: boolean;
 }
 
-function paintCard(options: LaunchKind): PaintedCard {
-	const flush = spyOn(ttyInputFlush, "flushPendingTtyInput").mockReturnValue(options.flushed ?? true);
-	if (options.relaunched) process.env[ttyInputFlush.RELAUNCH_MARKER] = "1";
-	else delete process.env[ttyInputFlush.RELAUNCH_MARKER];
-	let onInput: ((data: string) => void) | undefined;
-	spyOn(ProcessTerminal.prototype, "start").mockImplementation((handler: (data: string) => void): void => {
-		onInput = handler;
-	});
-	spyOn(ProcessTerminal.prototype, "stop").mockImplementation((): void => {});
-	const frame = paintFirstFrame("1.1.1");
-	if (!onInput) throw new Error("the painted card never started its terminal");
-	const send = onInput;
-	return { frame, send, flushCount: () => flush.mock.calls.length };
+/**
+ * Bytes the operator's terminal put on stdin. Emitted on the real stream the
+ * real `ProcessTerminal` is reading, so a sequence the terminal layer consumes
+ * is consumed here too rather than being handed to the composer by a stub.
+ */
+function send(data: string): void {
+	process.stdin.emit("data", data);
 }
 
 const cards: PaintedCard[] = [];
+
 function card(options: LaunchKind = {}): PaintedCard {
-	const painted = paintCard(options);
+	const flush = spyOn(ttyInputFlush, "flushPendingTtyInput").mockReturnValue(options.flushed ?? true);
+	if (options.relaunched) process.env[ttyInputFlush.RELAUNCH_MARKER] = "1";
+	else delete process.env[ttyInputFlush.RELAUNCH_MARKER];
+	const frame = paintFirstFrame("1.1.1");
+	const painted: PaintedCard = {
+		frame,
+		flushCount: () => flush.mock.calls.length,
+		draft: () => frame.editor.getText(),
+	};
 	cards.push(painted);
 	return painted;
 }
+
+beforeEach(() => {
+	Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
+	Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+	Object.defineProperty(process.stdin, "setRawMode", { value: () => process.stdin, configurable: true });
+	previousHeadless = setTerminalHeadless(false);
+	spyOn(process.stdin, "resume").mockImplementation(() => process.stdin);
+	spyOn(process.stdin, "pause").mockImplementation(() => process.stdin);
+	spyOn(process.stdin, "setEncoding").mockImplementation(() => process.stdin);
+	spyOn(process.stdout, "write").mockReturnValue(true);
+});
 
 afterEach(() => {
 	for (const painted of cards) {
@@ -97,139 +120,121 @@ afterEach(() => {
 	// cached ground changes every band and card rendered after this file in the
 	// same process.
 	resetGroundTintsForTest();
+	setTerminalHeadless(previousHeadless);
+	restoreProperty(process.stdin, "isTTY", stdinIsTty);
+	restoreProperty(process.stdout, "isTTY", stdoutIsTty);
+	restoreProperty(process.stdin, "setRawMode", stdinSetRawMode);
 	// `spyOn` on a shared prototype and on an imported module object outlives
 	// the test that installed it.
 	mock.restore();
 });
 
 describe("what you type at the launch card reaches the composer", () => {
-	it("hands back the prompt typed while the session was still starting", () => {
-		const { frame, send } = card();
+	it("puts the prompt typed while the session was still starting in the draft", () => {
+		const { draft } = card();
 		send("fix");
 		send(" the bug");
-		expect(frame.releaseInput()).toBe("fix the bug");
+		expect(draft()).toBe("fix the bug");
 	});
 
-	it("returns nothing when the operator typed nothing", () => {
+	it("focuses the composer, which is how the keystroke gets there at all", () => {
 		const { frame } = card();
-		expect(frame.releaseInput()).toBe("");
+		expect(frame.ui.getFocused()).toBe(frame.editor);
 	});
 
-	it("empties on release, so a second release cannot paste the draft twice", () => {
-		const { frame, send } = card();
-		send("hello");
-		expect(frame.releaseInput()).toBe("hello");
-		expect(frame.releaseInput()).toBe("");
+	it("hands the mode the very editor that took the keystroke", () => {
+		const { frame } = card();
+		send("carried over");
+		// `takeFirstFrame` is what `InteractiveMode` reads; the draft survives
+		// because the editor is adopted rather than rebuilt.
+		const adopted = takeFirstFrame();
+		expect(adopted?.editor).toBe(frame.editor);
+		expect(adopted?.editor.getText()).toBe("carried over");
 	});
 
-	it("keeps typing that arrives after the gate has already been released", () => {
-		const { frame, send } = card();
-		send("before");
-		expect(frame.releaseInput()).toBe("before");
-		// The listener is gone, so this reaches the composer as an ordinary
-		// keystroke instead of being held a second time.
-		send("after");
-		expect(frame.releaseInput()).toBe("");
+	it("keeps the container the editor is mounted in, so the zone re-parents nothing", () => {
+		const { frame } = card();
+		expect(frame.editorContainer.children).toContain(frame.editor);
 	});
 
-	describe("what the terminal sends that is not typing", () => {
-		// Every one of these arrives on stdin during startup. Capturing any of
-		// them would paste control bytes into the operator's first prompt.
-		const notTyping: ReadonlyArray<readonly [string, string]> = [
-			["an OSC 11 background report", "\x1b]11;rgb:1e1e/1e1e/1e1e\x07"],
-			["a primary device attributes reply", "\x1b[?62;1;6;9;15;22c"],
-			["a sixel geometry reply", "\x1b[?2;1;0S"],
-			["a cursor key", "\x1b[A"],
-			["an SGR mouse report", "\x1b[<0;12;24M"],
-			["a bracketed paste wrapper", "\x1b[200~pasted\x1b[201~"],
-			["a carriage return", "\r"],
-			["a newline", "\n"],
-			["a tab", "\t"],
-			["ctrl+c", "\x03"],
-		];
+	it("holds non-ASCII typing, which is text the operator can see", () => {
+		const { draft } = card();
+		send("résumé 日本語");
+		expect(draft()).toBe("résumé 日本語");
+	});
 
-		for (const [name, data] of notTyping) {
-			it(`drops ${name}`, () => {
-				const { frame, send } = card();
-				send(data);
-				expect(frame.releaseInput()).toBe("");
-			});
-		}
-
-		it("drops a chunk that mixes typing with a control byte rather than splitting it", () => {
-			const { frame, send } = card();
-			// A submit typed at the card: the text is held only when it arrives
-			// without the newline, so the queued-return guard still holds.
-			send("send this\r");
-			expect(frame.releaseInput()).toBe("");
+	describe("a carriage return still queued from before the process started", () => {
+		// The composer is live before the session wires `onSubmit`, and the
+		// editor's submit path clears the draft on its way out. A queued newline
+		// reaching it would destroy the prompt and deliver it to no one.
+		it("does not clear the draft it arrives behind", () => {
+			const { draft } = card();
+			send("fix the parser");
+			send("\r");
+			expect(draft()).toBe("fix the parser");
 		});
 
-		it("keeps ordinary text arriving between two probe replies", () => {
-			const { frame, send } = card();
-			send("\x1b]11;rgb:0000/0000/0000\x07");
-			send("draft");
-			send("\x1b[?62;c");
-			expect(frame.releaseInput()).toBe("draft");
+		it("does not clear it when it shares a chunk with the text", () => {
+			const { draft } = card();
+			send("send this\r");
+			expect(draft()).toBe("send this");
+		});
+
+		it("leaves an empty composer empty rather than inserting a blank line", () => {
+			const { draft } = card();
+			send("\r");
+			expect(draft()).toBe("");
 		});
 	});
 
 	describe("correcting a mistake typed at the card", () => {
-		// A backspace is a C0 byte, so the printable rule refused the whole chunk carrying one and
-		// the correction did nothing: the operator watched the typo stay on screen and the composer
-		// was handed the typo on mount. It is the one control byte that IS typing.
 		it("takes back the last character", () => {
-			const { frame, send } = card();
+			const { draft } = card();
 			send("hello");
 			send("\x7f");
-			expect(frame.releaseInput()).toBe("hell");
+			expect(draft()).toBe("hell");
 		});
 
 		it("applies a backspace that shares a chunk with the text around it", () => {
-			const { frame, send } = card();
+			const { draft } = card();
 			send("hellp\x7fo");
-			expect(frame.releaseInput()).toBe("hello");
-		});
-
-		it("treats ctrl+h as the same edit, which is what some terminals send", () => {
-			const { frame, send } = card();
-			send("ab\x08");
-			expect(frame.releaseInput()).toBe("a");
+			expect(draft()).toBe("hello");
 		});
 
 		it("does not underflow on an empty draft", () => {
-			const { frame, send } = card();
+			const { draft } = card();
 			send("\x7f\x7f\x7f");
-			expect(frame.releaseInput()).toBe("");
-		});
-
-		it("still refuses a chunk where a backspace travels with a carriage return", () => {
-			const { frame, send } = card();
-			// The queued-return guard is what stops a launch submitting a turn nobody typed, and
-			// accepting backspace must not open a hole in it.
-			send("ab\x7f\r");
-			expect(frame.releaseInput()).toBe("");
-		});
-
-		it("shrinks a draft that had reached the cap", () => {
-			const { frame, send } = card();
-			for (let i = 0; i < 200; i++) send("x".repeat(100));
-			send("\x7f");
-			expect(frame.releaseInput().length).toBe(4095);
+			expect(draft()).toBe("");
 		});
 	});
 
-	it("holds non-ASCII typing, which is text the operator can see", () => {
-		const { frame, send } = card();
-		send("résumé 日本語");
-		expect(frame.releaseInput()).toBe("résumé 日本語");
-	});
+	describe("what the terminal sends that is not typing", () => {
+		// Every one of these arrives on stdin during startup, and the composer
+		// is focused for the whole window. The terminal layer consumes its own
+		// probe replies; anything it does not consume reaches the editor, so
+		// this sweep is the guard against escape bytes in the first prompt.
+		const notTyping: ReadonlyArray<readonly [string, string]> = [
+			["an OSC 11 background report", "\x1b]11;rgb:1e1e/1e1e/1e1e\x07"],
+			["a primary device attributes reply", "\x1b[?62;1;6;9;15;22c"],
+			["a sixel geometry reply", "\x1b[?2;1;0S"],
+			["an SGR mouse report", "\x1b[<0;12;24M"],
+		];
 
-	it("bounds what a held key can accumulate", () => {
-		const { frame, send } = card();
-		for (let i = 0; i < 200; i++) send("x".repeat(100));
-		const held = frame.releaseInput();
-		expect(held.length).toBe(4096);
-		expect(held).toBe("x".repeat(4096));
+		for (const [name, data] of notTyping) {
+			it(`keeps ${name} out of the draft`, () => {
+				const { draft } = card();
+				send(data);
+				expect(draft()).toBe("");
+			});
+		}
+
+		it("keeps ordinary text arriving between two probe replies", () => {
+			const { draft } = card();
+			send("\x1b]11;rgb:0000/0000/0000\x07");
+			send("draft");
+			send("\x1b[?62;c");
+			expect(draft()).toBe("draft");
+		});
 	});
 
 	describe("which launches may discard the kernel's tty queue", () => {
@@ -240,30 +245,40 @@ describe("what you type at the launch card reaches the composer", () => {
 			// delayed: measured at a live pty, text sent 0.05s, 0.30s and 0.50s
 			// after exec never reached the composer, while 0.70s onward arrived
 			// within 40ms.
-			const { frame, send, flushCount } = card();
+			const { draft, flushCount } = card();
 			send("fix the parser");
 			expect(flushCount()).toBe(0);
-			expect(frame.releaseInput()).toBe("fix the parser");
+			expect(draft()).toBe("fix the parser");
 		});
 
 		it("discards the queue a relaunch inherited", () => {
 			// `/profile <name>` respawns the CLI, and nothing reads fd 0 between
 			// the parent restoring the terminal and the child starting, so the
 			// queue holds the dead session's backlog rather than typing.
-			const { frame, send, flushCount } = card({ relaunched: true });
+			const { draft, flushCount } = card({ relaunched: true });
 			expect(flushCount()).toBe(1);
-			// Bytes arriving after the flush are this session's, so they are held.
+			// Bytes arriving after the flush are this session's, so they land.
 			send("typed at the new profile");
-			expect(frame.releaseInput()).toBe("typed at the new profile");
+			expect(draft()).toBe("typed at the new profile");
 		});
 
 		it("discards everything when a relaunch could not flush the queue", () => {
 			// Windows consoles have no termios. Without the flush the backlog is
 			// still queued and cannot be told apart from typing, so the degrade
 			// is to drop both rather than paste a dead session's keystrokes.
-			const { frame, send } = card({ relaunched: true, flushed: false });
+			const { draft } = card({ relaunched: true, flushed: false });
 			send("this was queued before launch");
-			expect(frame.releaseInput()).toBe("");
+			expect(draft()).toBe("");
+		});
+
+		it("stops discarding once the mode has taken the screen", () => {
+			// The degrade is bounded by the mount, not by a timer: a session that
+			// came up must accept the next keystroke.
+			const { frame, draft } = card({ relaunched: true, flushed: false });
+			send("queued");
+			frame.release();
+			send("typed for real");
+			expect(draft()).toBe("typed for real");
 		});
 
 		it("clears the marker, so a process this session spawns is not read as a relaunch", () => {
@@ -281,58 +296,45 @@ describe("what you type at the launch card reaches the composer", () => {
 	 * 156ms and the character typed before it at 312ms, because the next thing
 	 * the caller does is evaluate the main module and hold the loop.
 	 *
-	 * `paintTypeahead` spends the turns that collect and draw it. The assertion
-	 * that matters is the asynchronous one: a version that samples the buffer
-	 * synchronously passes every other test in this file and reproduces the
-	 * defect exactly.
-	 *
-	 * What it does NOT catch: the second turn, which lets the redraw reach the
-	 * terminal before the caller blocks the loop. These tests stub the terminal
-	 * away, so dropping that turn leaves them green; only a pty run shows it.
+	 * `settleQueuedInput` spends the turns that collect and draw it. The
+	 * assertion that matters is the asynchronous one: a version that samples
+	 * the buffer synchronously passes every other test in this file and
+	 * reproduces the defect exactly.
 	 */
 	describe("the card repaints with what was typed before it appeared", () => {
 		it("collects a keystroke the reader delivers after the card was composed", async () => {
-			const { frame, send } = card();
+			const { frame, draft } = card();
 			setImmediate(() => send("Z"));
-			expect(await frame.paintTypeahead()).toBe(true);
-			expect(frame.releaseInput()).toBe("Z");
+			expect(await frame.settleQueuedInput()).toBe(true);
+			expect(draft()).toBe("Z");
 		});
 
 		it("collects every keystroke of one delivery, not the first", async () => {
-			const { frame, send } = card();
+			const { frame, draft } = card();
 			setImmediate(() => {
 				send("he");
 				send("llo");
 			});
-			expect(await frame.paintTypeahead()).toBe(true);
-			expect(frame.releaseInput()).toBe("hello");
+			expect(await frame.settleQueuedInput()).toBe(true);
+			expect(draft()).toBe("hello");
 		});
 
 		it("reports nothing to draw, and returns, when the operator typed nothing", async () => {
 			const { frame } = card();
-			expect(await frame.paintTypeahead()).toBe(false);
-		});
-
-		it("keeps the draft, so the composer still receives it after the repaint", async () => {
-			const { frame, send } = card();
-			send("fix the parser");
-			expect(await frame.paintTypeahead()).toBe(true);
-			expect(frame.releaseInput()).toBe("fix the parser");
+			expect(await frame.settleQueuedInput()).toBe(false);
 		});
 
 		it("ignores a terminal probe reply that arrives in the same window", async () => {
-			const { frame, send } = card();
+			const { frame, draft } = card();
 			setImmediate(() => send("\x1b]11;rgb:1e1e/1e1e/1e1e\x07"));
-			expect(await frame.paintTypeahead()).toBe(false);
-			expect(frame.releaseInput()).toBe("");
+			expect(await frame.settleQueuedInput()).toBe(false);
+			expect(draft()).toBe("");
 		});
 
-		it("returns on a second call rather than waiting for input that will not come", async () => {
-			const { frame, send } = card();
-			send("a");
-			expect(await frame.paintTypeahead()).toBe(true);
-			frame.releaseInput();
-			expect(await frame.paintTypeahead()).toBe(false);
+		it("returns rather than waiting for input that will not come", async () => {
+			const { frame } = card();
+			expect(await frame.settleQueuedInput()).toBe(false);
+			expect(await frame.settleQueuedInput()).toBe(false);
 		});
 	});
 });

@@ -29,6 +29,10 @@
 
 - `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
 
+### Fixed
+
+- An `Editor` with no `onSubmit` consumer leaves the draft alone when Enter arrives, instead of clearing it, so a submit typed before anything is listening cannot destroy what was typed.
+
 ## [1.3.0] - 2026-08-28
 
 ### Added

@@ -27,9 +27,6 @@ function createSettings(model: Model<Api>, tinyModel = "online") {
 		getModelRole(role: string) {
 			return role === "smol" ? `${model.provider}/${model.id}` : undefined;
 		},
-		getStorage() {
-			return undefined;
-		},
 	} as never;
 }
 
@@ -645,9 +642,6 @@ describe("title generator", () => {
 				if (role === "smol") return `${smolModel.provider}/${smolModel.id}`;
 				return undefined;
 			},
-			getStorage() {
-				return undefined;
-			},
 		} as never;
 
 		const registry = {
@@ -675,9 +669,6 @@ describe("title generator", () => {
 				if (role === "smol") return `${smolModel.provider}/${smolModel.id}`;
 				return undefined;
 			},
-			getStorage() {
-				return undefined;
-			},
 		} as never;
 
 		await generateSessionTitle("Some message", registry, currentSettings);
@@ -694,9 +685,6 @@ describe("title generator", () => {
 			},
 			getModelRole(role: string) {
 				if (role === "smol") return `${smolModel.provider}/${smolModel.id}`;
-				return undefined;
-			},
-			getStorage() {
 				return undefined;
 			},
 		} as never;

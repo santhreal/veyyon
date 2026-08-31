@@ -21,9 +21,6 @@ describe("SpeechEnhancer rewriting", () => {
 			getModelRole(role: string) {
 				return role === "tiny" ? `${model.provider}/${model.id}` : undefined;
 			},
-			getStorage() {
-				return undefined;
-			},
 		} as never;
 		const registry = {
 			getAvailable: () => [model],
@@ -56,9 +53,6 @@ describe("SpeechEnhancer rewriting", () => {
 			},
 			getModelRole(role: string) {
 				return role === "tiny" ? `${model.provider}/${model.id}` : undefined;
-			},
-			getStorage() {
-				return undefined;
 			},
 		} as never;
 		const registry = {

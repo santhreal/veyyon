@@ -10,34 +10,49 @@
  * known as soon as settings and the theme are up.
  *
  * So the frame is painted here, and the mode adopts what this module built
- * instead of building its own: the same TUI, and the same card, whose model
- * line and recent session arrive through `WelcomeComponent.setModel` and
- * `setRecentSessions` once the session resolves them.
+ * instead of building its own: the same TUI, the same card -- whose model line
+ * and recent session arrive through `WelcomeComponent.setModel` and
+ * `setRecentSessions` once the session resolves them -- and the same composer.
+ *
+ * The composer is the REAL one. An earlier shape painted a static picture of a
+ * composer and held every keystroke in a gate until the mode could build the
+ * editor, which meant the rows on screen were a promise rather than an input:
+ * the draft had to be echoed by hand, backspace had to be reimplemented, and
+ * the held text had to be transplanted at mount. Building the editor here
+ * costs a few milliseconds and deletes all of it. What is on screen at the
+ * first paint takes keystrokes, and the mode's own zone mounts its status
+ * line, footline and shortcuts AROUND that editor without ever replacing it.
  *
  * One TUI per process is a hard constraint -- `terminal.start` puts stdin in
  * raw mode and installs the reader, so a second instance reads the same fd --
- * and the tty handover moves here with it: the queue is flushed, a swallow gate
- * is installed, and that gate releases only once the composer is mounted and a
- * keystroke has somewhere to land. The mode reads the frame through
+ * and the tty handover moves here with it. The mode reads the frame through
  * {@link takeFirstFrame} rather than a constructor argument, for the same
  * reason the terminal layer keeps its active instance at module level: there is
  * one screen, and whoever owns it owns it for the process.
  */
-
 import { Spacer } from "@veyyon/tui/components/spacer";
+// Leaves, not the `@veyyon/tui` barrel. The barrel re-exports every component in the library, and
+// the first frame paints before any of them exist.
+import type { Component } from "@veyyon/tui/core/component-types";
+import { Container } from "@veyyon/tui/core/container";
 import { TUI } from "@veyyon/tui/core/tui";
 import { ProcessTerminal } from "@veyyon/tui/terminal";
 import { setTerminalTextSizing, TERMINAL } from "@veyyon/tui/terminal-capabilities";
-// Leaves, not the `@veyyon/tui` barrel. The barrel re-exports every component in the library, and
-// the first frame paints before any of them exist.
 import { matchesKey } from "@veyyon/utils/keys";
 import * as logger from "@veyyon/utils/logger";
 import { planPaintGround } from "@veyyon/utils/paint-ground";
 import { setTuiTight } from "@veyyon/utils/tight-mode";
 import { settings } from "../../config/settings-instance";
 import { applyGroundPaint, setDetectedTerminalGround } from "../../theme/ground-tints";
-import { theme } from "../../theme/theme";
-import { StaticComposerFrame } from "./components/composer/composer-chrome";
+import { getEditorTheme, theme } from "../../theme/theme";
+import {
+	applyComposerChrome,
+	computeEditorMaxHeight,
+	mountLaunchComposer,
+	PRISTINE_COMPOSER_ACCENT_STATE,
+	resolveComposerAccents,
+} from "./components/composer/composer-chrome";
+import { CustomEditor } from "./components/composer/custom-editor";
 import { WelcomeComponent } from "./components/dialogs/welcome";
 import { HomeAnchorLayout } from "./controllers/home-anchor-layout";
 import { consumeRelaunchMarker, flushPendingTtyInput } from "./tty-input-flush";
@@ -76,17 +91,24 @@ export interface FirstFrame {
 	 * the operator when the session lands.
 	 */
 	readonly hero: WelcomeComponent;
-	/** Drop the placeholder rows, leaving an empty root for the mode's own tree. Idempotent. */
+	/**
+	 * The composer on screen, focused and taking keystrokes. The mode adopts
+	 * this editor instead of building one, so a character typed at the card is
+	 * already in the draft the session comes up behind -- there is nothing to
+	 * hold and nothing to transplant.
+	 */
+	readonly editor: CustomEditor;
+	/**
+	 * The container {@link editor} is mounted in. `mountComposerZone` takes it
+	 * as the zone's `editorContainer`, so the editor moves from the launch
+	 * chrome to the mode's zone without being detached from its parent.
+	 */
+	readonly editorContainer: Container;
+	/** Drop the launch rows, leaving an empty root for the mode's own tree. Idempotent. */
 	release(): void;
 	/**
-	 * Let input through to the composer, which is mounted by the time this runs,
-	 * and return the text typed at the card while the gate held it. The caller
-	 * places that text in the composer. Idempotent: a second call returns "".
-	 */
-	releaseInput(): string;
-	/**
-	 * Put whatever was typed before the card appeared on screen, and report
-	 * whether there was anything to put there.
+	 * Spend the loop turns that let input queued before the card reach the
+	 * composer, and report whether anything arrived.
 	 *
 	 * The card is composed inside {@link paintFirstFrame} and its bytes are
 	 * queued, so the frame the operator sees was built before the reader ever
@@ -101,56 +123,7 @@ export interface FirstFrame {
 	 * so the redraw is written. When nothing was typed it costs those two turns
 	 * and draws nothing.
 	 */
-	paintTypeahead(): Promise<boolean>;
-}
-
-/**
- * How much of what is typed at the launch card carries into the composer. A
- * held key repeats, and no startup draft needs more than this; past the cap
- * the remainder is dropped rather than grown without bound.
- */
-const STARTUP_TYPEAHEAD_LIMIT = 4096;
-
-/**
- * True when a chunk is ordinary typed text rather than a control sequence.
- *
- * The gate receives everything the terminal sends, and during startup that
- * includes the terminal's own answers to the probes the screen just issued
- * (OSC 11 for the ground, the DA query, the sixel query), as well as arrow
- * keys, mouse reports and bracketed-paste wrappers. Each of those carries ESC
- * or another C0 byte, so accepting only printable characters keeps a probe
- * reply out of the draft without enumerating the sequences. It also excludes
- * the carriage return the gate exists to stop, so a queued newline still
- * cannot submit a turn.
- *
- * Backspace is the exception the printable rule cannot express. It is a C0
- * byte, so a chunk carrying one used to be rejected whole: a character typed
- * by mistake at the card could not be taken back, the correction did nothing
- * on screen, and the typo was what the composer received on mount. It is
- * accepted here and applied by {@link applyTypedEdit}, which is safe because
- * a probe reply opens with ESC and is still refused by the printable rule.
- *
- * An empty chunk answers true and appends nothing, which is why there is no
- * guard for it: the guard could not be observed failing.
- */
-function isTypedText(data: string): boolean {
-	for (let i = 0; i < data.length; i++) {
-		const code = data.charCodeAt(i);
-		if (code === 0x7f || code === 0x08) continue;
-		if (code < 0x20) return false;
-	}
-	return true;
-}
-
-/** Apply one accepted chunk to the held draft: text appends, a backspace takes one character off. */
-function applyTypedEdit(draft: string, data: string): string {
-	let next = draft;
-	for (let i = 0; i < data.length; i++) {
-		const code = data.charCodeAt(i);
-		if (code === 0x7f || code === 0x08) next = next.slice(0, -1);
-		else next += data[i];
-	}
-	return next;
+	settleQueuedInput(): Promise<boolean>;
 }
 
 let painted: FirstFrame | undefined;
@@ -170,23 +143,33 @@ export function paintFirstFrame(version: string): FirstFrame {
 
 	const hero = new WelcomeComponent(version, "", "");
 	const layout = new HomeAnchorLayout({ ui, transcriptChildCount: () => 0, hasHero: () => true });
-	const composerFrame = new StaticComposerFrame();
-	const children = [
-		layout.topFill,
-		new Spacer(1),
-		hero,
-		new Spacer(1),
-		layout.bottomFill,
-		// The composer at rest, painted NOW. Centring is a share of the slack
-		// below the card (HomeAnchorLayout), so the zone's height has to be on
-		// screen before the zone exists: this paints the resting zone's exact
-		// row count with its real chrome, and the mounted zone swaps text into
-		// those rows rather than arriving under them.
-		composerFrame,
-	];
+	// The composer, live. Dressed through the one chrome owner and sized through
+	// the one height policy, so it is the same composer the mode goes on using
+	// rather than a lookalike that has to be reconciled with one.
+	const editor = new CustomEditor(getEditorTheme());
+	applyComposerChrome(editor, resolveComposerAccents(PRISTINE_COMPOSER_ACCENT_STATE));
+	editor.setUseTerminalCursor(ui.getShowHardwareCursor());
+	editor.setMaxHeight(computeEditorMaxHeight(ui.terminal.rows));
+	const editorContainer = new Container();
+	editorContainer.addChild(editor);
+	const children: Component[] = [layout.topFill, new Spacer(1), hero, new Spacer(1), layout.bottomFill];
+	// The composer zone at rest, painted NOW. Centring is a share of the slack
+	// below the card (HomeAnchorLayout), so the zone's height has to be on
+	// screen before the mode's zone exists: the launch composer occupies the
+	// resting zone's exact row count, and `mountComposerZone` swaps its own
+	// chrome into those rows around this same editor rather than arriving
+	// under them.
+	mountLaunchComposer({ addChild: child => children.push(child) }, editorContainer);
 	for (const child of children) ui.addChild(child);
+	// Keystrokes have somewhere to land from here on: `TUI` forwards input to
+	// the focused component, and the focused component is the composer the
+	// operator is looking at.
+	ui.setFocus(editor);
 	// No frame has been composed, so this measures the children directly.
 	layout.sync(true);
+
+	// Set only by the Windows relaunch degrade below; released at mount.
+	let discardUntilMount: (() => void) | undefined;
 
 	// The tty handover, which `InteractiveMode.init` used to own. Two different
 	// things can be sitting in the kernel's input queue by now, and the bytes do
@@ -204,33 +187,17 @@ export function paintFirstFrame(version: string): FirstFrame {
 	//   the session read as unresponsive.
 	//
 	// Only who started the process separates them, which is what the relaunch
-	// marker records. On an ordinary launch the queue is handed to the gate
-	// below, where `isTypedText` keeps the printable text and swallows control
-	// input — including the carriage return the flush existed to catch.
+	// marker records. An ordinary launch installs no gate at all: the composer
+	// below is live, so the queue lands in the draft the operator is looking at.
 	const relaunched = consumeRelaunchMarker();
 	const flushed = relaunched ? flushPendingTtyInput() : false;
-	// Hold what is typed and swallow the rest, except ctrl+c, which stays live
-	// so a launch can be aborted, until the composer is mounted.
-	let typeahead = "";
-	let inputGate: (() => void) | undefined = ui.addInputListener(data => {
-		if (matchesKey(data, "ctrl+c")) return undefined;
-		// A relaunch that could not flush (Windows has no termios) cannot tell
-		// the stale queue from typing, so it degrades to discarding both.
-		if ((flushed || !relaunched) && isTypedText(data)) {
-			typeahead = applyTypedEdit(typeahead, data).slice(0, STARTUP_TYPEAHEAD_LIMIT);
-			// Echo it. Holding the text is only half of the handover: the card
-			// paints a composer for the whole of startup, and one that shows
-			// nothing back reads as a composer that is not listening. Forced,
-			// because the ordinary path waits for the next throttle frame and a
-			// keystroke that appears a frame late is the lag this exists to
-			// remove; the card is a handful of rows, so the repaint is cheap.
-			composerFrame.setDraft(typeahead);
-			ui.requestRender(true);
-		}
-		return { consume: true };
-	});
+	// A relaunch that could not flush (Windows has no termios) cannot tell the
+	// stale queue from typing, so it degrades to discarding both: everything is
+	// swallowed until the mode releases the gate, except ctrl+c, which stays
+	// live so a launch can be aborted.
 	if (relaunched && !flushed) {
 		logger.debug("No tty input flush available at startup; discarding buffered input until mount completes");
+		discardUntilMount = ui.addInputListener(data => (matchesKey(data, "ctrl+c") ? undefined : { consume: true }));
 	}
 	// The first paint always clears the viewport (ED 2) so the card never
 	// appends over the previous run's frame. Erasing the terminal's saved
@@ -251,29 +218,26 @@ export function paintFirstFrame(version: string): FirstFrame {
 	const frame: FirstFrame = {
 		ui,
 		hero,
+		editor,
+		editorContainer,
 		release(): void {
+			discardUntilMount?.();
+			discardUntilMount = undefined;
 			if (!mounted) return;
 			mounted = false;
 			for (const child of children) ui.removeChild(child);
 		},
-		releaseInput(): string {
-			inputGate?.();
-			inputGate = undefined;
-			const typed = typeahead;
-			typeahead = "";
-			return typed;
-		},
-		async paintTypeahead(): Promise<boolean> {
+		async settleQueuedInput(): Promise<boolean> {
 			// A check-phase turn, so the loop reaches poll and the reader hands
-			// over anything the operator typed before the card existed. The gate
-			// above sets the draft and forces a render on delivery.
+			// over anything the operator typed before the card existed. The
+			// editor takes it as ordinary input and asks for a render.
 			const delivered = Promise.withResolvers<void>();
 			setImmediate(delivered.resolve);
 			await delivered.promise;
-			if (typeahead.length === 0) return false;
-			// Re-forced rather than trusted: the gate's render is subject to the
-			// throttle, and this call is the one that has to be on screen before
-			// the caller blocks the loop again.
+			if (editor.getText().length === 0) return false;
+			// Forced rather than trusted: the editor's own render request is
+			// subject to the throttle, and this call is the one that has to be
+			// on screen before the caller blocks the loop again.
 			ui.requestRender(true);
 			const written = Promise.withResolvers<void>();
 			setImmediate(written.resolve);

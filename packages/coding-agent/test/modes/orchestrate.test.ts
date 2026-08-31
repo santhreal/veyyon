@@ -11,9 +11,9 @@
  */
 
 import { beforeAll, describe, expect, it } from "bun:test";
-import { ORCHESTRATE_NOTICE } from "@veyyon/coding-agent/modes/keywords/magic-keyword-notices";
 import { containsOrchestrate, highlightOrchestrate } from "@veyyon/coding-agent/modes/keywords/orchestrate";
 import { containsUltrathink, highlightUltrathink } from "@veyyon/coding-agent/modes/keywords/ultrathink";
+import { ORCHESTRATE_NOTICE } from "@veyyon/coding-agent/session/magic-keyword-notices";
 import { clearBundledCommandsCache, loadBundledCommands } from "@veyyon/coding-agent/task/commands";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 

@@ -176,9 +176,6 @@ describe("auto thinking classifier helpers", () => {
 			getModelRole(role: string) {
 				return role === "smol" ? `${classifierModel.provider}/${classifierModel.id}` : undefined;
 			},
-			getStorage() {
-				return undefined;
-			},
 		} as never;
 		const registry = {
 			getAvailable: () => [classifierModel],
@@ -214,9 +211,6 @@ describe("auto thinking classifier helpers", () => {
 			},
 			getModelRole(role: string) {
 				return role === "smol" ? `${classifierModel.provider}/${classifierModel.id}` : undefined;
-			},
-			getStorage() {
-				return undefined;
 			},
 		} as never;
 		const registry = {

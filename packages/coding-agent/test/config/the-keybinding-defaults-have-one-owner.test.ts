@@ -52,12 +52,16 @@ describe("the keybinding defaults have one owner", () => {
 	 * table without pulling in yaml, atomic writes, the quarantine path and the
 	 * profile resolver, and one import of the loader from here would undo that
 	 * silently, since everything would still compile and pass.
+	 *
+	 * The specifiers are the owning leaves rather than a barrel, which is the same
+	 * rule one level down: `@veyyon/utils` re-exports every shared helper in the
+	 * package, and this file wants a key table and a key id.
 	 */
 	it("imports nothing but the keyboard primitives from the leaf", () => {
 		const imported = [...moduleSpecifiersIn(DEFS_SOURCE), ...typeOnlyModuleSpecifiersIn(DEFS_SOURCE)];
 
 		expect(
-			imported.sort(),
+			[...new Set(imported)].sort(),
 			"keybinding-defs.ts is the leaf a UI component reads. Keep its imports to the @veyyon/utils keyboard modules",
 		).toEqual(["@veyyon/utils/keybindings", "@veyyon/utils/keys"]);
 	});

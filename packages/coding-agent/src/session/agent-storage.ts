@@ -16,13 +16,6 @@ import * as logger from "@veyyon/utils/logger";
 import { SQLITE_NOW_EPOCH } from "@veyyon/utils/sqlite";
 import { DAY_MS } from "@veyyon/utils/time";
 import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
-import type { RawSettings as Settings } from "../config/settings";
-
-/** Row shape for settings table queries */
-type SettingsRow = {
-	key: string;
-	value: string;
-};
 
 /** Row shape for model_usage table queries */
 type ModelUsageRow = {
@@ -128,6 +121,9 @@ export const SCHEMA_VERSION = 6;
 /** Singleton instances per database path */
 const instances = new Map<string, AgentStorage>();
 
+/** Paths whose open already failed, so a per-turn accessor does not retry-storm. */
+const unopenable = new Set<string>();
+
 /**
  * Unified SQLite storage for agent settings, model usage, and auth credentials.
  * Delegates auth credential operations to AuthCredentialStore from @veyyon/ai.
@@ -137,7 +133,6 @@ export class AgentStorage {
 	#db: Database;
 	#authStore: AuthCredentialStore;
 
-	#listSettingsStmt: Statement;
 	#upsertModelUsageStmt: Statement;
 	#listModelUsageStmt: Statement;
 	#upsertModelPerfStmt: Statement;
@@ -172,7 +167,6 @@ export class AgentStorage {
 		// Create AuthCredentialStore with our open database
 		this.#authStore = new SqliteAuthCredentialStore(this.#db);
 
-		this.#listSettingsStmt = this.#db.prepare("SELECT key, value FROM settings");
 		this.#upsertModelUsageStmt = this.#db.prepare(
 			`INSERT INTO model_usage (model_key, last_used_at) VALUES (?, ${SQLITE_NOW_EPOCH}) ON CONFLICT(model_key) DO UPDATE SET last_used_at = ${SQLITE_NOW_EPOCH}`,
 		);
@@ -393,14 +387,48 @@ FROM model_usage_legacy
 			{ cause: lastError },
 		);
 	}
+
+	/**
+	 * The database under `agentDir`, opened on first use.
+	 *
+	 * This is what a caller wants when it records model usage or reads a
+	 * cached credential mid-turn: the handle for the run, without an await and
+	 * without a second owner caching it. `config/settings` used to hold that
+	 * cache, which put `bun:sqlite` and the credential store in the module
+	 * graph every reader of a setting evaluates — and therefore in front of
+	 * the launch card, which reads settings and nothing from this database.
+	 *
+	 * Synchronous, so the open cannot retry a busy database the way
+	 * {@link open} does. Every caller treats `null` as "not recorded", so a
+	 * database that will not open costs usage statistics rather than the run:
+	 * the reason is logged once per path, and the path is not retried.
+	 */
+	static forAgentDir(agentDir: string): AgentStorage | null {
+		const dbPath = getAgentDbPath(agentDir);
+		const existing = instances.get(dbPath);
+		if (existing) return existing;
+		if (unopenable.has(dbPath)) return null;
+		try {
+			const storage = new AgentStorage(dbPath);
+			instances.set(dbPath, storage);
+			return storage;
+		} catch (error) {
+			unopenable.add(dbPath);
+			logger.warn("AgentStorage: agent database unavailable, usage will not be recorded", {
+				path: dbPath,
+				error: errorMessage(error),
+			});
+			return null;
+		}
+	}
 	/** @internal Reset all singletons and close their databases — test-only. */
 	static resetInstance(): void {
 		for (const storage of instances.values()) storage.#close();
 		instances.clear();
+		unopenable.clear();
 	}
 
 	#close(): void {
-		this.#listSettingsStmt.finalize();
 		this.#upsertModelUsageStmt.finalize();
 		this.#listModelUsageStmt.finalize();
 		this.#upsertModelPerfStmt.finalize();
@@ -408,29 +436,6 @@ FROM model_usage_legacy
 		// SqliteAuthCredentialStore.close() finalizes its own statements and
 		// closes the shared #db handle — must run after our statements finalize.
 		this.#authStore.close();
-	}
-
-	/**
-	 * Reads legacy settings persisted in the agent.db `settings` table.
-	 * The canonical settings store is `config.yml`; this accessor only
-	 * exists so the config loader can migrate values from older installs.
-	 * @returns Settings object, or null if no settings are stored
-	 */
-	getSettings(): Settings | null {
-		const rows = (this.#listSettingsStmt.all() as SettingsRow[]) ?? [];
-		if (rows.length === 0) return null;
-		const settings: Record<string, unknown> = {};
-		for (const row of rows) {
-			try {
-				settings[row.key] = JSON.parse(row.value) as unknown;
-			} catch (error) {
-				logger.warn("AgentStorage failed to parse setting", {
-					key: row.key,
-					error: String(error),
-				});
-			}
-		}
-		return settings as Settings;
 	}
 
 	/**

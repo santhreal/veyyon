@@ -1,89 +1,93 @@
 /**
  * WHY: the launch card paints a composer and session startup then runs for the
  * better part of a second, so the card shows something that looks ready to type
- * into long before anything can receive a keystroke. The first frame's input
- * gate already KEEPS what is typed in that window and hands it to the real
- * composer at mount, but it did not draw it, so the operator got no echo and
- * the card read as a composer that had stopped listening.
+ * into long before the session exists. Earlier shapes drew a picture of a
+ * composer and held keystrokes in a gate, and every version of that arrangement
+ * lost the echo somewhere: the operator typed at a visible prompt and saw
+ * nothing come back.
  *
- * The class this closes is "the card lies about being live". It is not enough
- * that the text survives; the frame has to show it, at the width it will be
- * shown at, without moving the rows the mounted zone swaps into. So this pins:
+ * The class this closes is "the card lies about being live". It is closed by
+ * construction now — the card mounts the real editor — so what is left to pin
+ * is that the live composer, dressed the way the launch path dresses it, still
+ * behaves like the resting zone the mode mounts into:
  *
  * 1. The ghost prompt is what an untouched card shows.
  * 2. A draft replaces the ghost prompt rather than joining it.
- * 3. The row count does not move with the draft. The mounted composer takes
- *    these exact rows, and a card that grows a row when you type would push
- *    the whole zone and undo what the static frame exists to prevent.
- * 4. A draft wider than the row keeps its END. The next character lands there
- *    and that is where a typist is looking; keeping the head would freeze the
- *    visible text after the row filled, which is the same defect again.
+ * 3. A one-line draft does not move the row count. The mounted composer takes
+ *    these exact rows, and a card that grew a row as soon as you typed would
+ *    push the whole zone.
+ * 4. It still draws at a width with no room for the gutter.
  *
- * WHAT IT DOES NOT CATCH: that the gate actually calls setDraft, or that a
- * render is scheduled for it. That wiring is in `paintFirstFrame`, which owns a
- * real TUI and a real tty; it is exercised by the launch path, not here.
+ * WHAT IT DOES NOT CATCH: that a keystroke reaches this editor at all. That is
+ * routing through a real TUI and a real terminal, and it is asserted in
+ * `test/what-you-type-at-the-launch-card-reaches-the-composer.test.ts`.
  */
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import {
+	applyComposerChrome,
 	COMPOSER_PLACEHOLDER,
 	COMPOSER_RESTING_ROWS,
-	StaticComposerFrame,
+	computeEditorMaxHeight,
+	mountLaunchComposer,
+	PRISTINE_COMPOSER_ACCENT_STATE,
+	resolveComposerAccents,
 } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
-import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { CustomEditor } from "@veyyon/coding-agent/modes/terminal/components/composer/custom-editor";
+import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
+import type { Component } from "@veyyon/tui";
 
 beforeAll(async () => {
 	await initTheme();
 });
 
-function rows(frame: StaticComposerFrame, width: number): string[] {
-	return frame.render(width).map(row => stripVTControlCharacters(row));
+/** The launch composer and the live editor inside it, built the launch way. */
+function launchComposer(): { editor: CustomEditor; render: (width: number) => string[] } {
+	const editor = new CustomEditor(getEditorTheme());
+	applyComposerChrome(editor, resolveComposerAccents(PRISTINE_COMPOSER_ACCENT_STATE));
+	editor.setMaxHeight(computeEditorMaxHeight(30));
+	const mounted: Component[] = [];
+	mountLaunchComposer({ addChild: child => mounted.push(child) }, editor);
+	return {
+		editor,
+		render: width => mounted.flatMap(child => child.render(width)).map(row => stripVTControlCharacters(row)),
+	};
 }
 
-/** The one row that carries the gutter and whatever the card is showing. */
-function inputRow(frame: StaticComposerFrame, width: number): string {
-	const row = rows(frame, width).find(line => line.includes("›"));
+/** The one row that carries the gutter and whatever the composer is showing. */
+function inputRow(rows: readonly string[]): string {
+	const row = rows.find(line => line.includes("›"));
 	expect(row).toBeDefined();
 	return row as string;
 }
 
 describe("the launch card's composer", () => {
 	it("shows the ghost prompt until something is typed", () => {
-		expect(inputRow(new StaticComposerFrame(), 80)).toContain(COMPOSER_PLACEHOLDER);
+		expect(inputRow(launchComposer().render(80))).toContain(COMPOSER_PLACEHOLDER);
 	});
 
 	it("shows what was typed at it instead of the ghost prompt", () => {
-		const frame = new StaticComposerFrame();
-		frame.setDraft("fix the parser");
+		const composer = launchComposer();
+		composer.editor.setText("fix the parser");
 
-		const row = inputRow(frame, 80);
+		const row = inputRow(composer.render(80));
 		expect(row).toContain("fix the parser");
 		expect(row).not.toContain(COMPOSER_PLACEHOLDER);
 	});
 
 	it("keeps the resting row count once a draft is showing", () => {
-		const frame = new StaticComposerFrame();
-		const restingRows = frame.render(80).length;
-		frame.setDraft("a draft long enough to be interesting");
+		const composer = launchComposer();
+		expect(composer.render(80)).toHaveLength(COMPOSER_RESTING_ROWS);
+		composer.editor.setText("a draft long enough to be interesting");
 
-		expect(restingRows).toBe(COMPOSER_RESTING_ROWS);
-		expect(frame.render(80)).toHaveLength(COMPOSER_RESTING_ROWS);
+		expect(composer.render(80)).toHaveLength(COMPOSER_RESTING_ROWS);
 	});
 
-	it("keeps the end of a draft that is wider than the row", () => {
-		const frame = new StaticComposerFrame();
-		frame.setDraft("abcdefghijklmnopqrstuvwxyz");
+	it("draws rows rather than throwing when the terminal has no room for one", () => {
+		const composer = launchComposer();
+		composer.editor.setText("wide enough to not fit");
 
-		const row = inputRow(frame, 20);
-		expect(row).toContain("z");
-		expect(row).not.toContain("a");
-	});
-
-	it("draws a row rather than throwing when the terminal has no room for one", () => {
-		const frame = new StaticComposerFrame();
-		frame.setDraft("wide enough to not fit");
-
-		expect(frame.render(1)).toHaveLength(COMPOSER_RESTING_ROWS);
+		expect(composer.render(1).length).toBeGreaterThan(0);
 	});
 });

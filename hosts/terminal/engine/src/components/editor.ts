@@ -2068,6 +2068,14 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	}
 
 	#submitValue(): void {
+		// An editor nothing is listening to has nowhere to send the text, and
+		// this method destroys the draft on its way out: clearing it here would
+		// hand the operator's typing to no one. The composer is on screen from
+		// the launch card, before the session wires `onSubmit`, so a carriage
+		// return still sitting in the tty queue from before the process started
+		// reaches an editor in exactly that state. It does nothing, and the
+		// draft is still there when the handler arrives.
+		if (!this.onSubmit) return;
 		this.#resetKillSequence();
 
 		const result = this.#expandPasteMarkers(this.#state.lines.join("\n")).trim();

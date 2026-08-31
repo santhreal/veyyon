@@ -7,13 +7,14 @@
  * the frame.
  */
 
-import type { ThinkingLevel } from "@veyyon/agent-core";
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import { Spacer } from "@veyyon/tui/components/spacer";
 import type { Component } from "@veyyon/tui/core/component-types";
 import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
 import { getProjectDir } from "@veyyon/utils/dirs";
+import { clampLow } from "@veyyon/utils/math";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
-import { sliceByColumn, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { truncateToWidth } from "@veyyon/utils/width";
 import { groundHairlineHex, groundTintFgAnsi } from "../../../../theme/ground-tints";
 import { theme } from "../../../../theme/theme";
 import { branchLabelFromFiles } from "../../../../utils/git-head";
@@ -117,6 +118,57 @@ export function resolveComposerAccents(state: ComposerAccentState): ComposerAcce
 }
 
 /**
+ * The accent state of a composer nothing has happened to yet: no approval
+ * bypass, no bash or python prefix, no plan mode, no borrowed subagent view,
+ * no named session and no thinking level. It is what the launch composer
+ * resolves its chrome from, and what every field of {@link ComposerAccentState}
+ * falls back to before a session exists to answer for it.
+ */
+export const PRISTINE_COMPOSER_ACCENT_STATE: ComposerAccentState = {
+	bypass: false,
+	bashMode: false,
+	pythonMode: false,
+	planMode: false,
+	focusedSubagent: false,
+	sessionAccentAnsi: undefined,
+	thinkingLevel: ThinkingLevel.Off,
+};
+
+/**
+ * The editor surface the composer's chrome is written to. Structural rather
+ * than `CustomEditor`, so this module stays a leaf of the component it dresses
+ * instead of importing it back.
+ */
+export interface ComposerChromeTarget {
+	borderColor: (str: string) => string;
+	setBorderVisible(visible: boolean): void;
+	setPlaceholder(placeholder: string | undefined): void;
+	setPromptGutter(gutter: string): void;
+	setPromptGutterContinuation(gutter: string): void;
+	setRowBackground(background: string | undefined): void;
+}
+
+/**
+ * Dress a composer editor: the borderless card, the ghost prompt, and the
+ * resolved accents.
+ *
+ * Every composer in the process goes through here — the one the launch card
+ * paints, the one the mode adopts, and the replacement an extension supplies —
+ * so a composer that exists before the session cannot drift from the one that
+ * exists after it. The border is hidden and the row background cleared because
+ * the design has no composer card: the input renders on the terminal's own
+ * ground.
+ */
+export function applyComposerChrome(editor: ComposerChromeTarget, accents: ComposerAccents): void {
+	editor.setBorderVisible(false);
+	editor.setPlaceholder(COMPOSER_PLACEHOLDER);
+	editor.borderColor = accents.borderColor;
+	editor.setPromptGutter(accents.promptGutter);
+	editor.setPromptGutterContinuation(accents.promptGutterContinuation);
+	editor.setRowBackground(undefined);
+}
+
+/**
  * A small breathing margin below the whole composer block so the prompt never
  * sits flush against the terminal's bottom edge — jammed there it read as "too
  * low". One row lifts it just off the floor in every state (home anchor and
@@ -170,6 +222,26 @@ export function mountComposerZone(ui: { addChild(component: Component): void }, 
 	ui.addChild(parts.hookWidgetsBelow);
 	ui.addChild(new Spacer(COMPOSER_BOTTOM_MARGIN_ROWS));
 	return 11;
+}
+
+/**
+ * Mount the launch composer: the same live editor container, wrapped in the
+ * only chrome that has an owner before the session exists.
+ *
+ * It sits beside {@link mountComposerZone} because the two are one contract in
+ * two states. Both compose to {@link COMPOSER_RESTING_ROWS} on the home screen,
+ * so the mode's zone lands on the rows the card already reserved and the
+ * handover changes text rather than position; a row added to one shape and not
+ * the other is visible here, on the next screen of the same file.
+ *
+ * Returns the number of root children mounted, for the same reason
+ * {@link mountComposerZone} does.
+ */
+export function mountLaunchComposer(ui: { addChild(component: Component): void }, editorContainer: Component): number {
+	ui.addChild(new LaunchComposerHead());
+	ui.addChild(editorContainer);
+	ui.addChild(new LaunchComposerFoot());
+	return 3;
 }
 
 /**
@@ -286,19 +358,60 @@ export class ComposerHairline implements Component {
  * finishes (the real zone mounts into exactly this height). */
 export const COMPOSER_RESTING_ROWS = 8;
 
-/** The ghost prompt the real composer shows when its draft is empty. Owned
- * here so the first frame's static composer and the live editor show the same
- * sentence — the swap between them must be invisible. */
+const EDITOR_MAX_HEIGHT_MIN = 6;
+const EDITOR_MAX_HEIGHT_MAX = 18;
+const EDITOR_RESERVED_ROWS = 12;
+const EDITOR_FALLBACK_ROWS = 24;
+const EDITOR_MIN_CHROME_ROWS = 4; // rows reserved for transcript + status on small terms
+const EDITOR_MIN_RENDERED_ROWS = 3; // bordered editor floor: top+bottom border + 1 content row
+
+/**
+ * Editor max-height cap for a terminal of `terminalRows` rows.
+ *
+ * Roomy terminals get the comfortable [6, 18] band. Small terminals shrink the
+ * cap so the editor leaves at least EDITOR_MIN_CHROME_ROWS rows for the
+ * transcript + status line. The editor is bordered, so it never renders fewer
+ * than EDITOR_MIN_RENDERED_ROWS rows; once the terminal is too small for both
+ * (terminalRows < EDITOR_MIN_RENDERED_ROWS + EDITOR_MIN_CHROME_ROWS) the cap is
+ * pinned to that floor — returning a smaller number would not shrink the editor
+ * any further, it would only misreport the rows it actually occupies.
+ */
+export function computeEditorMaxHeight(terminalRows: number): number {
+	const rows = Number.isFinite(terminalRows) && terminalRows > 0 ? terminalRows : EDITOR_FALLBACK_ROWS;
+	const comfortable = clampLow(rows - EDITOR_RESERVED_ROWS, EDITOR_MAX_HEIGHT_MIN, EDITOR_MAX_HEIGHT_MAX);
+	return clampLow(comfortable, EDITOR_MIN_RENDERED_ROWS, rows - EDITOR_MIN_CHROME_ROWS);
+}
+
+/** The ghost prompt the composer shows when its draft is empty. Owned here
+ * because {@link applyComposerChrome} is the one place it is applied. */
 export const COMPOSER_PLACEHOLDER = "ask anything · / for commands";
 
 /**
- * The composer at rest, painted by the FIRST frame so the prompt is on screen
- * from the first paint instead of arriving when the mode's init finishes.
- * It mirrors mountComposerZone's resting shape with static bytes — empty
- * status row, hairline, pad, one ghost input row, pad, footline row,
- * shortcuts row — no state, no animation, nothing to settle. The real zone
- * mounts into the same rows, so the handover changes text, not position:
- * nothing slides.
+ * The launch composer's chrome above the input: an empty status row, the
+ * hairline, and one pad row.
+ *
+ * The input itself is not here. The launch card mounts the REAL editor between
+ * these rows and {@link LaunchComposerFoot}, so what is on screen from the
+ * first paint takes keystrokes; the mode's own zone then mounts the live
+ * status line, footline and shortcuts around that same editor. These two
+ * components are the rows that have no owner yet, and nothing else.
+ *
+ * Three rows here plus one input row plus four in the foot is
+ * {@link COMPOSER_RESTING_ROWS}, which is what `mountComposerZone` composes to
+ * at rest: the handover changes text, not position, so nothing slides.
+ */
+export class LaunchComposerHead implements Component {
+	render(width: number): string[] {
+		const w = Math.max(1, width);
+		return ["", truncateToWidth(new ComposerHairline().render(w)[0] ?? "", w), ""];
+	}
+
+	invalidate(): void {}
+}
+
+/**
+ * The launch composer's chrome below the input: one pad row, the metadata
+ * footline, the shortcuts row and the bottom margin.
  *
  * The footline row is where the session's status line lands, and it landed
  * about a second after the composer above it: measured on a pty, the card and
@@ -310,43 +423,11 @@ export const COMPOSER_PLACEHOLDER = "ask anything · / for commands";
  * session's arrival ADDS the model, the mode and the context gauge to the
  * right of text that does not move.
  */
-export class StaticComposerFrame implements Component {
-	#draft = "";
-
-	/**
-	 * Show text that was typed before the live composer exists.
-	 *
-	 * The card paints this frame and session startup then runs for the better
-	 * part of a second, so the composer looks ready for the whole window. The
-	 * first frame's gate keeps what is typed there and hands it over at mount,
-	 * but a keystroke that produces nothing on screen reads as a dropped one:
-	 * the draft has to be visible here or the card is a picture of a composer.
-	 *
-	 * One row, tail-anchored. The live editor wraps and this frame's row count
-	 * is a layout contract the mounted zone swaps into, so a draft wider than
-	 * the row keeps its END on screen — that is where the next character lands,
-	 * and it is what a typist is looking at.
-	 */
-	setDraft(text: string): void {
-		this.#draft = text;
-	}
-
+export class LaunchComposerFoot implements Component {
 	render(width: number): string[] {
 		const w = Math.max(1, width);
-		const clip = (row: string): string => truncateToWidth(row, w);
-		const hairline = new ComposerHairline().render(w)[0] ?? "";
 		const inset = " ".repeat(COMPOSER_INSET_COLS);
-		const gutter = `${theme.getFgAnsi("borderAccent")}›\x1b[39m`;
-		return [
-			"",
-			clip(hairline),
-			"",
-			clip(`${inset}${gutter} ${this.#body(w - COMPOSER_INSET_COLS - 2)}`),
-			"",
-			clip(`${inset}${this.#footline(w - COMPOSER_INSET_COLS)}`),
-			"",
-			"",
-		];
+		return ["", truncateToWidth(`${inset}${this.#footline(w - COMPOSER_INSET_COLS)}`, w), "", ""];
 	}
 
 	/**
@@ -374,14 +455,6 @@ export class StaticComposerFrame implements Component {
 		const branch = isBranchOnTheRow() ? renderBranch(branchLabelFromFiles(projectDir), false) : "";
 		const row = branch ? `${location}${segmentSeparator()}${branch}` : location;
 		return truncateToWidth(row, avail);
-	}
-
-	/** The ghost prompt, or the tail of the draft when one has been typed. */
-	#body(avail: number): string {
-		if (!this.#draft) return theme.fg("dim", COMPOSER_PLACEHOLDER);
-		if (avail < 1) return "";
-		const drawn = visibleWidth(this.#draft);
-		return drawn > avail ? sliceByColumn(this.#draft, drawn - avail, avail) : this.#draft;
 	}
 
 	invalidate(): void {}

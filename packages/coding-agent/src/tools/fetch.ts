@@ -20,7 +20,7 @@ import { readEditableNotebookText } from "../edit/notebook";
 import { CONVERTIBLE_EXTENSIONS } from "../export/markit/convertible-extensions";
 import { type ProviderTextTransformResolver, resolveProviderTextTransform } from "../provider-boundary";
 import type { ToolSession } from "../sdk";
-import type { AgentStorage } from "../session/agent-storage";
+import { AgentStorage } from "../session/agent-storage";
 import { primarySessionCpuAdoption } from "../session/cpu-limit";
 import { truncateHead } from "../session/streaming-output";
 // Each from its owner, not the `../tui` barrel: the barrel is 768 modules because it re-exports the
@@ -1982,7 +1982,7 @@ async function buildReadUrlCacheEntry(
 
 	throwIfAborted(signal, "fetch");
 
-	const storage = session.settings.getStorage();
+	const storage = AgentStorage.forAgentDir(session.settings.getAgentDir());
 	const result = await renderUrl(
 		url,
 		effectiveTimeout,

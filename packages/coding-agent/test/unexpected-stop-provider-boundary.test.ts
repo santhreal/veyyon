@@ -23,9 +23,6 @@ function settingsFor(backend: string, model = onlineModel()) {
 		getModelRole(role: string) {
 			return role === "smol" ? `${model.provider}/${model.id}` : undefined;
 		},
-		getStorage() {
-			return undefined;
-		},
 	} as never;
 }
 

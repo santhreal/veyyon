@@ -5,12 +5,17 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import {
+	applyComposerChrome,
 	COMPOSER_INSET_COLS,
 	COMPOSER_PLACEHOLDER,
 	COMPOSER_RESTING_ROWS,
 	ComposerHairline,
-	StaticComposerFrame,
+	computeEditorMaxHeight,
+	mountLaunchComposer,
+	PRISTINE_COMPOSER_ACCENT_STATE,
+	resolveComposerAccents,
 } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import { CustomEditor } from "@veyyon/coding-agent/modes/terminal/components/composer/custom-editor";
 import { renderBranch } from "@veyyon/coding-agent/modes/terminal/components/status-line/branch";
 import {
 	renderLocation,
@@ -20,7 +25,7 @@ import { segmentSeparator } from "@veyyon/coding-agent/modes/terminal/components
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { branchLabelFromFiles } from "@veyyon/coding-agent/utils/git-head";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { Component } from "@veyyon/tui";
@@ -30,23 +35,25 @@ import { visibleWidth } from "@veyyon/utils/width";
 /**
  * WHY: startup used to paint eight BLANK rows where the composer would live,
  * so the prompt appeared only when InteractiveMode.init finished — reading as
- * the composer "sliding up" seconds after launch. The first frame now paints
- * a static resting composer into those rows, and the real zone mounts into
- * the same height, so the handover changes text and never position.
+ * the composer "sliding up" seconds after launch. The launch card now mounts
+ * the REAL composer into those rows, wrapped in the only chrome that has an
+ * owner before the session exists, and the mode's zone mounts into the same
+ * height around that same editor, so the handover changes text and never
+ * position.
  *
- * What these tests close: the static frame must render exactly
+ * What these tests close: the launch composer must render exactly
  * COMPOSER_RESTING_ROWS, must carry the real hairline bytes from the same
  * owner the mounted zone uses, must show the shared ghost placeholder, and
  * must be time-invariant — nothing on it may animate.
  *
  * The last suite closes the drift: it constructs a real InteractiveMode,
  * runs the real init, and sums what the MOUNTED zone renders at rest, so the
- * static frame is compared against the live components rather than against a
+ * launch shape is compared against the live components rather than against a
  * second copy of the same number. A footline that gains a row, a status line
  * that stops collapsing, an extra pad row inside mountComposerZone or a
  * changed bottom margin all move that sum and fail here.
  *
- * The resting frame also paints the footline row, which is the row the live
+ * The launch shape also paints the footline row, which is the row the live
  * status line takes over. Measured on a pty before it did: the card and its
  * composer at 84-102ms, the status row still blank at 1067ms. The half of that
  * row which needs no session — where you are and what branch you are on — is
@@ -65,69 +72,83 @@ import { visibleWidth } from "@veyyon/utils/width";
  * `modes/components/status-line/the-branch-reads-the-same-on-the-card-and-the-live-row.test.ts`.
  */
 
+/**
+ * The components `paintFirstFrame` mounts below the hero, built through the
+ * same owner it calls. Rendering the real editor is the point: the card's
+ * input row is the mode's input row, so a divergence between them cannot be
+ * expressed.
+ */
+function launchComposer(): Component[] {
+	const editor = new CustomEditor(getEditorTheme());
+	applyComposerChrome(editor, resolveComposerAccents(PRISTINE_COMPOSER_ACCENT_STATE));
+	editor.setMaxHeight(computeEditorMaxHeight(30));
+	const mounted: Component[] = [];
+	mountLaunchComposer({ addChild: child => mounted.push(child) }, editor);
+	return mounted;
+}
+
+/** Every row the launch composer paints at `width`, in order. */
+function launchRows(width: number): string[] {
+	return launchComposer().flatMap(child => child.render(width));
+}
+
 beforeAll(async () => {
 	await Settings.init({ inMemory: true, cwd: process.cwd() });
 	await initTheme(false);
 });
 
-describe("static first-frame composer", () => {
+describe("the launch composer", () => {
 	it("renders exactly the resting zone's row count", () => {
-		const frame = new StaticComposerFrame();
-		expect(frame.render(100)).toHaveLength(COMPOSER_RESTING_ROWS);
+		expect(launchRows(100)).toHaveLength(COMPOSER_RESTING_ROWS);
 	});
 
 	it("shows the hairline with its real bytes", () => {
-		const frame = new StaticComposerFrame();
-		const rows = frame.render(100);
 		const hairline = new ComposerHairline().render(100)[0];
-		expect(rows).toContain(hairline);
+		expect(launchRows(100)).toContain(hairline);
 	});
 
 	it("shows the shared ghost placeholder inset by the composer margin", () => {
-		const frame = new StaticComposerFrame();
-		const inputRow = frame.render(100).find(row => row.includes(COMPOSER_PLACEHOLDER));
+		const inputRow = launchRows(100).find(row => row.includes(COMPOSER_PLACEHOLDER));
 		expect(inputRow).toBeDefined();
 		expect(visibleWidth(inputRow as string)).toBeLessThanOrEqual(100);
 	});
 
 	it("never animates: identical bytes at different wall-clock times", async () => {
-		const frame = new StaticComposerFrame();
-		const first = frame.render(100);
+		const composer = launchComposer();
+		const render = (): string[] => composer.flatMap(child => child.render(100));
+		const first = render();
 		await Bun.sleep(30);
 		setSystemTime(new Date(Date.now() + 5_000));
 		try {
-			expect(frame.render(100)).toEqual(first);
+			expect(render()).toEqual(first);
 		} finally {
 			setSystemTime();
 		}
 	});
 
 	it("clips to narrow widths without throwing or wrapping", () => {
-		const frame = new StaticComposerFrame();
 		for (const width of [1, 10, 40]) {
-			const rows = frame.render(width);
+			const rows = launchRows(width);
 			expect(rows).toHaveLength(COMPOSER_RESTING_ROWS);
 			for (const row of rows) expect(visibleWidth(row)).toBeLessThanOrEqual(width);
 		}
 	});
 
 	it("says where you are, on the row the live status line takes over", () => {
-		const rows = new StaticComposerFrame().render(100);
 		const expected = renderLocation({
 			projectDir: getProjectDir(),
 			options: resolveLocationOptions(),
 		}).content;
-		expect(rows.some(row => row.includes(expected))).toBe(true);
+		expect(launchRows(100).some(row => row.includes(expected))).toBe(true);
 	});
 
 	it("clips the location to the preset's budget, not to the terminal", () => {
 		// A 300-column terminal must not paint a 300-column path: the live row
 		// clamps at the preset's `maxLength`, and a card that did not would
 		// shorten the path the moment the session mounted.
-		const wide = new StaticComposerFrame().render(300);
 		const narrowOptions = resolveLocationOptions();
 		const expected = renderLocation({ projectDir: getProjectDir(), options: narrowOptions }).content;
-		const row = wide.find(candidate => candidate.includes(expected));
+		const row = launchRows(300).find(candidate => candidate.includes(expected));
 		expect(row).toBeDefined();
 		expect(visibleWidth(row as string)).toBeLessThan(300);
 	});
@@ -137,7 +158,7 @@ describe("static first-frame composer", () => {
 		try {
 			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
 			expect(visibleWidth(located)).toBeLessThanOrEqual(12);
-			const row = new StaticComposerFrame().render(100).find(candidate => candidate.includes(located));
+			const row = launchRows(100).find(candidate => candidate.includes(located));
 			expect(row).toBeDefined();
 			expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
 		} finally {
@@ -150,7 +171,7 @@ describe("static first-frame composer", () => {
 		// The suite runs inside this repository's checkout, so there is one.
 		expect(branch).not.toBe("");
 		const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
-		const row = new StaticComposerFrame().render(100).find(candidate => candidate.includes(located));
+		const row = launchRows(100).find(candidate => candidate.includes(located));
 		expect(row).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}${located}${segmentSeparator()}${branch}`);
 	});
 
@@ -158,7 +179,7 @@ describe("static first-frame composer", () => {
 		settings.set("git.enabled", false);
 		try {
 			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
-			const row = new StaticComposerFrame().render(100).find(candidate => candidate.includes(located));
+			const row = launchRows(100).find(candidate => candidate.includes(located));
 			expect(row).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
 		} finally {
 			settings.set("git.enabled", true);
@@ -171,14 +192,14 @@ describe("static first-frame composer", () => {
 		// lookup lands: clean, unmarked. A card that guessed differently would
 		// change colour at the handover for no reason the reader can see.
 		const label = branchLabelFromFiles(getProjectDir());
-		const row = new StaticComposerFrame().render(100).find(candidate => candidate.includes(label as string));
+		const row = launchRows(100).find(candidate => candidate.includes(label as string));
 		expect(row).toBeDefined();
 		expect(row).toContain(renderBranch(label, false));
 		expect(row).not.toContain("*");
 	});
 });
 
-describe("the mounted composer zone occupies the static frame's rows", () => {
+describe("the mounted composer zone occupies the launch composer's rows", () => {
 	let authStorage: AuthStorage;
 	let mode: InteractiveMode;
 	let session: AgentSession;
@@ -244,21 +265,20 @@ describe("the mounted composer zone occupies the static frame's rows", () => {
 		expect(restingRows(100)).toBe(COMPOSER_RESTING_ROWS);
 	});
 
-	it("renders the same number of rows the static frame paints", () => {
+	it("renders the same number of rows the launch composer paints", () => {
 		const width = 100;
-		expect(restingRows(width)).toBe(new StaticComposerFrame().render(width).length);
+		expect(restingRows(width)).toBe(launchRows(width).length);
 	});
 
-	it("holds that height across the widths the static frame clips to", () => {
-		const frame = new StaticComposerFrame();
+	it("holds that height across the widths the launch composer clips to", () => {
 		for (const width of [40, 100, 200]) {
-			expect(restingRows(width), `width ${width}`).toBe(frame.render(width).length);
+			expect(restingRows(width), `width ${width}`).toBe(launchRows(width).length);
 		}
 	});
 
 	/**
 	 * Counted from the BOTTOM of the block, because that is the end both sides
-	 * share: the static frame carries a leading blank standing for the status
+	 * share: the launch composer carries a leading blank standing for the status
 	 * rows the live zone collapses to nothing at rest, so the two disagree on
 	 * index 0 and must agree on everything under the input. A pad row added
 	 * between the editor and the footline, a shortcuts row that stops
@@ -284,9 +304,9 @@ describe("the mounted composer zone occupies the static frame's rows", () => {
 			projectDir: getProjectDir(),
 			options: resolveLocationOptions(),
 		}).content;
-		const restingRowList = new StaticComposerFrame().render(width);
+		const restingRowList = launchRows(width);
 		const restingFootline = restingRowList.findIndex(row => row.includes(expected));
-		expect(restingFootline, "the resting frame must paint the location somewhere").toBeGreaterThanOrEqual(0);
+		expect(restingFootline, "the launch composer must paint the location somewhere").toBeGreaterThanOrEqual(0);
 
 		expect(rowFromEnd(restingRowList, restingFootline)).toBe(rowFromEnd(live, liveFootline));
 	});

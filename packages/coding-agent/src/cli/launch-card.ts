@@ -124,7 +124,7 @@ export async function runStartupPrologue(parsed: Args, forceSetupWizard = false)
 		// statement evaluates the main module and holds the loop long enough
 		// that the character would otherwise appear 156ms after the composer it
 		// was typed into.
-		await logger.time("paintFirstFrame:typeahead", () => frame.paintTypeahead());
+		await logger.time("paintFirstFrame:queuedInput", () => frame.settleQueuedInput());
 	}
 
 	const prologue: StartupPrologue = { settings, workdirApplied, showStartupSplash };

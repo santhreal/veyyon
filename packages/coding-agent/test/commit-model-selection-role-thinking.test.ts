@@ -14,9 +14,6 @@ function createSettings(modelRoles: Record<string, string>) {
 		getModelRole(role: string) {
 			return modelRoles[role];
 		},
-		getStorage() {
-			return undefined;
-		},
 		setModelRole(role: string, value: string) {
 			modelRoles[role] = value;
 		},
