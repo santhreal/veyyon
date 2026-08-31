@@ -13,19 +13,28 @@ use crate::{
 impl Store {
 	/// Insert a notification into the replica queue.
 	///
-	/// If notification sound is enabled in preferences, an audio playback
-	/// effect or notification event is scheduled at this decision point.
+	/// Deliberate decision: connection notices in `host.rs` produce in-app
+	/// `ShellEffect::Notify { message }` status notices rather than OS-level
+	/// system notifications, because connection notices represent synchronous
+	/// in-window feedback for immediate user actions. System notifications and
+	/// chimes are reserved for out-of-view asynchronous background events and
+	/// completions.
 	pub fn push_notification(
 		&mut self,
 		notification: Notification,
 		effects: &mut Effects,
 	) -> NotificationId {
-		if self.replica.notifications.settings.sound {
-			// Decision point for audio chime. Zero audio dependencies exist in
-			// core/kit, so we route through ShellEffect::Notify.
+		if self.replica.notifications.settings.chime {
 			effects
 				.shell
-				.push(ShellEffect::Notify { message: notification.title.clone() });
+				.push(ShellEffect::Chime { tone: notification.tone });
+		}
+		if self.replica.notifications.settings.system_notice {
+			effects.shell.push(ShellEffect::SystemNotification {
+				tag:   notification.key.clone(),
+				title: notification.title.clone(),
+				body:  notification.detail.clone(),
+			});
 		}
 		self.replica.notifications.push(notification)
 	}
@@ -77,9 +86,20 @@ impl Store {
 		self.replica.notifications.set_hover_held(held);
 	}
 
-	/// Update notification sound playback preference.
+	/// Update notification chime playback preference.
+	pub fn set_notification_chime(&mut self, chime: bool) {
+		self.replica.notifications.settings.chime = chime;
+	}
+
+	/// Backward-compatible helper for setting notification sound/chime
+	/// preference.
 	pub fn set_notification_sound(&mut self, sound: bool) {
-		self.replica.notifications.settings.sound = sound;
+		self.set_notification_chime(sound);
+	}
+
+	/// Update OS system notification preference.
+	pub fn set_notification_system_notice(&mut self, system_notice: bool) {
+		self.replica.notifications.settings.system_notice = system_notice;
 	}
 
 	/// Update whether errors remain on screen after being read.
@@ -90,9 +110,21 @@ impl Store {
 	/// Dispatch notification-specific commands if matched.
 	pub(super) fn dispatch_notify(&mut self, command: &UiCommand, _effects: &mut Effects) -> bool {
 		match command {
-			UiCommand::EditSetting { path, value } if path.0 == "notifications.sound" => {
+			UiCommand::EditSetting { path, value }
+				if path.0 == "notifications.chime" || path.0 == "notifications.sound" =>
+			{
 				if let crate::model::Value::Bool(b) = value {
-					self.set_notification_sound(*b);
+					self.set_notification_chime(*b);
+					return true;
+				}
+				false
+			},
+			UiCommand::EditSetting { path, value }
+				if path.0 == "notifications.system_notice"
+					|| path.0 == "notifications.system-notice" =>
+			{
+				if let crate::model::Value::Bool(b) = value {
+					self.set_notification_system_notice(*b);
 					return true;
 				}
 				false

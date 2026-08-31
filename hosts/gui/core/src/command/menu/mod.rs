@@ -231,9 +231,17 @@ pub fn menu_tree() -> Vec<MenuDef> {
 
 /// Evaluate live enablement of a command against current store state.
 ///
-/// Returns true if the command is currently actionable, matching the refusal
-/// semantics of the command palette.
+/// Returns true if the command is currently actionable, by the same refusals
+/// the palette draws and the dispatcher applies: a host verb needs a
+/// connection, and the verbs that address a selection need one.
 pub fn is_command_enabled(command: &UiCommand, store: &Store) -> bool {
+	// Where `Store::emit_checked` stops a host action in a window that reached
+	// no engine. A menu bar is a snapshot the platform never re-reads, so an
+	// item reporting itself reachable in a detached window stays wrong for as
+	// long as that snapshot is installed.
+	if command.class() == crate::command::CommandClass::Host && !store.connection.is_connected() {
+		return false;
+	}
 	match command {
 		UiCommand::OpenOverlay(Overlay::RenameSession { .. })
 		| UiCommand::OpenOverlay(Overlay::Confirmation { .. })

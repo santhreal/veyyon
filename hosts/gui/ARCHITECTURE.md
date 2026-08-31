@@ -326,6 +326,14 @@ These are checked, not trusted.
   built from `core::command`, `every_command_is_in_the_menu_or_opted_out` pins the opt-out set by
   exact equality, and a verb added without a menu row turns it red. Enablement reads the predicate
   the palette reads; a second copy of it is a defect.
+- **The menu bar is a snapshot, so it is reinstalled when its answer moves.** `set_menus` hands the
+  platform a tree with each item's enabled state already decided and the platform never asks again,
+  so a bar installed once at open describes a window that had no session for the rest of the
+  process. `menus::MenuEnablement` holds the commands the bar names, fingerprints their enablement
+  on every settle without allocating, and the window reinstalls the tree on the settle where the
+  fingerprint moves. An item's title and its verb come from `menu_tree` together: the app adds no
+  command-carrying row of its own, because a row whose title says one verb and whose action is
+  another is invisible from the outside.
 - **An anchored surface is placed against the window, not against its anchor alone.** A popover flips
   to the opposite side at an edge, clamps to the viewport and scrolls when it is taller than the room
   it has, dismisses on Escape, on an outside press and when a second one opens, and returns the
