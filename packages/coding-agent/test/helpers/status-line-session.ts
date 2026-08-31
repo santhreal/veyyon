@@ -98,8 +98,6 @@ export interface StubSessionOptions {
 	thinkingLevel?: ThinkingLevel;
 	/** `auto`: a mode, not a rung. The row prints the pending marker until a turn is classified. */
 	autoThinking?: boolean;
-	/** The live obfuscator, whose `liveSecrets()` the secrets chip counts. */
-	obfuscator?: unknown;
 }
 
 /**
@@ -153,7 +151,6 @@ export function statusLineSessionParts(options: StubSessionOptions = {}): Record
 		// Auto-compaction off: the gauge denominates against the raw model window,
 		// so a percentage a suite asserts is the arithmetic and nothing else.
 		settings: { getGroup: () => ({ enabled: false }), get: () => undefined },
-		obfuscator: options.obfuscator,
 		isAdvisorActive: () => options.advisorActive ?? false,
 		isApprovalBypassed: () => options.approvalBypassed ?? false,
 		isFastModeActive: () => options.fastMode ?? false,

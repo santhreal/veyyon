@@ -807,13 +807,6 @@ export class InteractiveMode implements InteractiveModeContext {
 				void this.openGoalDetail();
 				return;
 			}
-			// The chip says a credential is live here, and clicking it answers WHICH: the same list
-			// `/secret list` prints, without leaving the screen the reader is already looking at. A
-			// reader who notices the chip should not have to remember a command name to act on it.
-			if (segmentId === "secrets") {
-				this.showSecretList();
-				return;
-			}
 			// A click on either half of the location widens the row and spends the readouts on the
 			// right for the room; the next click on the same half puts every one of them back. A
 			// long path or branch is the one thing on this line that cannot be read any other way
@@ -1205,7 +1198,16 @@ export class InteractiveMode implements InteractiveModeContext {
 		);
 		this.#syncEditorMaxHeight();
 		this.isInitialized = true;
-		this.ui.requestRender(true);
+		// THE HANDOVER IS A DIFF, NOT A REPAINT. A forced render rewrites every row of the viewport,
+		// and on a terminal without synchronized output the operator watches 25 rows get erased and
+		// redrawn: the branch, the hero and the composer darken for a frame on a screen whose
+		// content did not change. Nothing here needs that. The launch card painted through THIS
+		// `TUI`, so the rows it left are the window the engine diffs against and a clean handover
+		// writes nothing at all; without a card, `ui.start()` above has already claimed the viewport
+		// with its own ED 2, so this render only has to put the finished tree over a screen the
+		// engine already describes. Either way an ordinary render writes exactly the rows that
+		// differ, which is the whole job.
+		this.ui.requestRender();
 
 		// Initialize hooks with TUI-based UI context
 		await this.initHooksAndCustomTools();

@@ -1,32 +1,36 @@
 /**
- * Every value a session masks can be found from a command, and the two surfaces that report
- * protection report the same number.
+ * Every value a session masks can be found from a command.
  *
  * WHY THIS SUITE EXISTS. The composer footer read `10 masked` while `/secret list` answered "No
  * active secrets. Nothing is being substituted right now." Both halves came from the same session:
- * the footer counts what the obfuscator will substitute, the list read the vault, and the vault was
- * empty because every one of those ten values had been auto-detected in the environment.
+ * the footer counted what the obfuscator will substitute, the list read the vault, and the vault
+ * was empty because every one of those ten values had been auto-detected in the environment.
  * `collectEnvSecrets` registered them with no name, so nothing on any surface could say what they
  * were. The operator could see that ten things were being masked and had no way to learn which.
  *
- * THE CLASS, not the incident: a surface that reports protection must read the same counter as
- * every other surface, and a counted value must be nameable by something. Two counters for one
- * fact is the defect; the ten environment variables were only how it showed up. The same shape had
- * already shipped once as `3 secrets` beside a one-row list, which is why `liveSecrets` splits
- * `named` out at all.
+ * The footer chip is gone; a count of protection is now reported in one place, by `/secret list`.
+ * That removes the two-counter half of the defect and leaves the half that matters: whatever is
+ * counted has to be findable, and it has to be counted from the authority that will actually
+ * substitute it.
+ *
+ * THE CLASS, not the incident: a counted value must be nameable by something, and the count must
+ * come from `maskedInventory()` -- the expansion authority, after the expiry sweep -- rather than
+ * from the vault file or the configuration. The ten environment variables were only how it showed
+ * up.
  *
  * WHAT IS PINNED HERE:
- *   1. The footer's count and the list's count come from ONE obfuscator built the way a session
- *      builds it, and every case asserts them against each other rather than against a literal.
+ *   1. The list's count comes from ONE obfuscator built the way a session builds it, and every
+ *      case asserts the report against that obfuscator rather than against a literal.
  *   2. A masked value carries a label a person can search for -- the environment variable name, or
  *      the `secrets.yml` path -- and that label is never spendable as a placeholder.
  *   3. The empty-vault answer does not claim nothing is being substituted while something is.
  *   4. A credential that is BOTH stored under a name and present in the environment is reported
  *      once, by the list, and not a second time as unnameable.
+ *   5. Every member of `SECRET_ORIGINS` is swept, so a fourth source cannot inherit an answer
+ *      silently.
  *
- * WHAT IT DOES NOT CATCH: whether the footer segment itself renders the number it is handed.
- * That is `secretsSegment`'s own contract, and it reads `liveSecrets()`, which is the counter this
- * suite pins the list against.
+ * WHAT IT DOES NOT CATCH: the wording of the list's own table, which the secret command's suites
+ * own, and how the report behaves when the vault is unreadable.
  */
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
@@ -34,7 +38,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { collectEnvSecrets, loadSecrets } from "@veyyon/coding-agent/secrets";
 import { buildEnvSecretPattern } from "@veyyon/coding-agent/secrets/env-keywords";
-import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
+import { SECRET_ORIGINS, type SecretEntry, SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { renderSecretList, runSecretCommand } from "@veyyon/coding-agent/secrets/secret-command";
 import { resolveVaultLocations, SecretVault } from "@veyyon/coding-agent/secrets/vault";
 
@@ -69,21 +73,32 @@ function fromEnvironment(vars: Record<string, string>): SecretObfuscator {
 	}
 }
 
-describe("a value the session masks is reported by the same counter everywhere", () => {
+/** The entries the real collector builds for one keyword-matching variable, environment restored. */
+function collectEnvSecretsFor(name: string, content: string): SecretEntry[] {
+	const previous = process.env[name];
+	process.env[name] = content;
+	try {
+		return collectEnvSecrets(PATTERN);
+	} finally {
+		if (previous === undefined) delete process.env[name];
+		else process.env[name] = previous;
+	}
+}
+
+describe("a value the session masks is reported by the counter that will substitute it", () => {
 	/**
 	 * The reported defect, end to end: ten-ish masked values, an empty vault, and a list that has to
-	 * agree with the footer instead of contradicting it.
+	 * name what it is counting instead of denying it.
 	 */
 	it("names every environment variable behind the masked count", () => {
 		const obfuscator = fromEnvironment({ FINDABLE_API_TOKEN: TOKEN, FINDABLE_CLIENT_SECRET: OTHER });
 
-		const chip = obfuscator.liveSecrets();
 		const inventory = obfuscator.maskedInventory();
 
-		// The footer's number and the list's number are the same number.
-		expect(chip.count).toBe(2);
-		expect(chip.named).toBe(0);
-		expect(inventory.count).toBe(chip.count - chip.named);
+		// Nothing carries a name, so every masked value is one the list has to label.
+		expect(obfuscator.namedSecretNames()).toEqual([]);
+		expect(inventory.count).toBe(2);
+		expect(inventory.unlabelled).toBe(0);
 		expect(inventory.sources).toEqual(["FINDABLE_API_TOKEN", "FINDABLE_CLIENT_SECRET"]);
 
 		const rendered = renderSecretList([], { now: NOW, masked: inventory });
@@ -146,16 +161,14 @@ describe("a value the session masks is reported by the same counter everywhere",
 	/**
 	 * Two variables holding ONE credential are one masked value.
 	 *
-	 * The footer counts by value and so does the inventory, so a duplicated export cannot make the
-	 * two numbers disagree -- which is the failure mode a second counter would have reintroduced.
+	 * The inventory counts by value, so a duplicated export cannot inflate the report -- which is
+	 * the failure mode counting registrations would reintroduce.
 	 */
 	it("counts one credential once however many variables hold it", () => {
 		const obfuscator = fromEnvironment({ FINDABLE_API_TOKEN: TOKEN, FINDABLE_OTHER_TOKEN: TOKEN });
 
-		const chip = obfuscator.liveSecrets();
 		const inventory = obfuscator.maskedInventory();
 
-		expect(chip.count).toBe(1);
 		expect(inventory.count).toBe(1);
 		expect(inventory.sources).toEqual(["FINDABLE_API_TOKEN"]);
 	});
@@ -168,7 +181,7 @@ describe("a value the session masks is reported by the same counter everywhere",
 	 * ordinary (the file is how you make the detection deterministic, the export is how the tool that
 	 * needs it reads it). Two entries register two placeholders for the same bytes, and this is the
 	 * only shape in which counting placeholders and counting values give different answers -- so it
-	 * is the only shape that can prove the inventory counts what the footer counts.
+	 * is the only shape that can prove the inventory counts values.
 	 */
 	it("counts one credential once behind two placeholders", () => {
 		const obfuscator = new SecretObfuscator([
@@ -178,7 +191,7 @@ describe("a value the session masks is reported by the same counter everywhere",
 
 		const inventory = obfuscator.maskedInventory();
 
-		expect(obfuscator.liveSecrets().count).toBe(1);
+		expect(obfuscator.namedSecretNames()).toEqual([]);
 		expect(inventory.count).toBe(1);
 		// Both labels, because the operator has two places to look and either one is a true answer to
 		// "where is this coming from".
@@ -200,7 +213,7 @@ describe("a value the session masks is reported by the same counter everywhere",
 				...collectEnvSecrets(PATTERN),
 			]);
 
-			expect(obfuscator.liveSecrets()).toMatchObject({ count: 1, named: 1 });
+			expect(obfuscator.namedSecretNames()).toEqual(["FINDABLE"]);
 			expect(obfuscator.maskedInventory()).toEqual({ count: 0, sources: [], unlabelled: 0 });
 		} finally {
 			if (previous === undefined) delete process.env.FINDABLE_API_TOKEN;
@@ -214,6 +227,45 @@ describe("a value the session masks is reported by the same counter everywhere",
 
 		expect(rendered).toContain("No active secrets. Nothing is being substituted right now.");
 		expect(rendered).not.toContain("masked in what is sent");
+	});
+});
+
+describe("every source a session builds protection from", () => {
+	/**
+	 * Swept from `SECRET_ORIGINS` rather than from a list written here, and the swept list is then
+	 * pinned against a literal one: comparing the result only against the constant it came from is
+	 * green by construction, so a fourth source would have joined the sweep and answered for
+	 * itself. The literal is what turns this red until somebody records what the new source does.
+	 */
+	it("masks a nameless entry and never masks a named one, whichever source it came from", () => {
+		expect([...SECRET_ORIGINS]).toEqual(["vault", "environment", "config"]);
+		const nameable: string[] = [];
+		for (const origin of SECRET_ORIGINS) {
+			const content = `${origin}-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`;
+			const named: SecretEntry[] = [{ type: "plain", content, name: "TOKEN_X", origin }];
+			const withName = new SecretObfuscator(named);
+			// A name is carried by the ENTRY, so every origin can hold one; what differs is whether
+			// the source that builds those entries ever sets it, which the next case pins for the one
+			// source that never does.
+			if (withName.namedSecretNames().length === 1) nameable.push(origin);
+			expect(withName.maskedInventory(), `${origin} with a name is named, never masked`).toEqual({
+				count: 0,
+				sources: [],
+				unlabelled: 0,
+			});
+
+			const anonymous = new SecretObfuscator([{ type: "plain", content, origin }]);
+			expect(anonymous.namedSecretNames(), `${origin} without a name has nothing to spend`).toEqual([]);
+			expect(anonymous.maskedInventory().count, `${origin} without a name is masked`).toBe(1);
+		}
+		expect(nameable).toEqual(["vault", "environment", "config"]);
+	});
+
+	it("gives an environment value no name, which is why anything is masked at all", () => {
+		const entries = collectEnvSecretsFor("VEYYON_DEMO_SECRET", TOKEN);
+		expect(entries).toHaveLength(1);
+		expect(entries[0]).toMatchObject({ type: "plain", origin: "environment", mode: "obfuscate" });
+		expect(entries[0]?.name).toBeUndefined();
 	});
 });
 

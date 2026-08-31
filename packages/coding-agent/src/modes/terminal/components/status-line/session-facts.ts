@@ -46,13 +46,6 @@ export interface ModelFact {
 	supportsThinking: boolean;
 }
 
-/** Live secret protection in this directory, as the expansion authority counts it. */
-export interface SecretsFact {
-	count: number;
-	named: number;
-	nextExpiryAt: number | undefined;
-}
-
 export interface SessionFacts {
 	model: ModelFact | null;
 	/** The configured effort. Ignored while {@link autoThinking} is set. */
@@ -79,7 +72,6 @@ export interface SessionFacts {
 	goal: Goal | null;
 	goalModelBudgets: boolean;
 	goalVerbose: boolean;
-	secrets: SecretsFact | null;
 }
 
 /** What the row knows before a session exists and before config is read. */
@@ -99,7 +91,6 @@ export const NO_SESSION_FACTS: SessionFacts = {
 	goal: null,
 	goalModelBudgets: false,
 	goalVerbose: false,
-	secrets: null,
 };
 
 /**

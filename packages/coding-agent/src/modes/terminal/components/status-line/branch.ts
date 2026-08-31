@@ -6,15 +6,15 @@
  * the launch card reaches it directly so the row under the card is not blank
  * for the second the session takes to mount.
  *
- * The two callers do not know the same amount, and the card resolves that by
- * saying exactly what the live row says at the same point. The branch name
- * comes out of `.git/HEAD` and its ref files, which is a handful of reads;
- * whether the tree is dirty comes out of `git status`, which is a subprocess
- * and is not run on the frame the terminal is owed. The live row does not have
- * that answer on its first render either — the lookup is asynchronous — and it
- * renders `dirty: false` until it lands. So does the card. Rendering the card
- * differently, however defensible, would show the reader a colour change at
- * the handover that means nothing happened.
+ * The two callers do not know the same amount, and they resolve that by saying
+ * the same thing. The branch name comes out of `.git/HEAD` and its ref files,
+ * which is a handful of reads; whether the tree is dirty comes out of
+ * `git status`, which is a subprocess and is not run on the frame the terminal
+ * is owed. Both answer it from what the last launch recorded until the scan
+ * lands. That matters more than it sounds: the marker is not a character the
+ * row grows, it is a colour the whole segment carries, so a card and a mount
+ * that disagree flip the branch between `statusLineGitDirty` and
+ * `statusLineGitClean` and back on a tree that never changed.
  */
 
 import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";

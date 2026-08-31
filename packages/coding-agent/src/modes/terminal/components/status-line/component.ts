@@ -23,7 +23,7 @@ import { theme } from "../../../../theme/theme";
 import { AUTO_THINKING } from "../../../../thinking";
 import { type ActiveRepoContext, resolveActiveRepoContextSync } from "../../../../utils/active-repo-context";
 import * as git from "../../../../utils/git";
-import { type LaunchFactsUpdate, recordLaunchFacts } from "../../../launch-facts";
+import { type LaunchFactsUpdate, readLaunchFacts, recordLaunchFacts } from "../../../launch-facts";
 import { isTreeDirty } from "./branch";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
 import {
@@ -777,20 +777,34 @@ export class StatusLineComponent implements Component {
 	/**
 	 * The working tree's dirtiness, or `null` while nothing has asked git yet.
 	 *
-	 * `git status` is a subprocess and cannot answer on the frame that asked,
-	 * so the row renders clean until it lands. The landing repaints. Without
-	 * that the marker waited for whatever redrew next, which in a resting
-	 * session is the next keystroke: the two lookups beside this one already
-	 * repaint, and this was the one that did not.
+	 * `git status` is a subprocess and cannot answer on the frame that asked, so the landing
+	 * repaints. The repaint is conditional on {@link isTreeDirty} moving, not on the counts moving,
+	 * so a refetch triggered by that very repaint cannot ask for another one and spin.
 	 *
-	 * The repaint is conditional on {@link isTreeDirty} moving, not on the
-	 * counts moving, so a refetch triggered by that very repaint cannot ask for
-	 * another one and spin.
+	 * THE FIRST ANSWER IS THE ONE THE CARD ALREADY GAVE. The launch card paints the recorded
+	 * marker, so a mounted row that started from `null` took the `*` away for the 90ms until the
+	 * subprocess answered and then put it back. That is not a marker arriving late, it is the
+	 * branch changing colour twice on a tree that never changed: `renderBranch` styles the whole
+	 * segment `statusLineGitDirty` or `statusLineGitClean`, so the flicker is the width of the
+	 * branch, not of one asterisk. Seeding the cache with what the card painted makes the mount
+	 * silent, and the scan below still runs and still repaints if the tree really did move.
+	 *
+	 * SPENT ON THE FIRST RENDER, recorded marker or not, and only for the directory the facts
+	 * describe. `gitCwd` follows the active repo, which a worktree hop or a subagent's cwd can move
+	 * off the project the recorder keyed on. Reading the file again later would let a record another
+	 * veyyon process wrote in this project land on a row that has already painted, which is the
+	 * arriving marker this seed exists to remove rather than a second copy of it.
 	 */
 	#getGitStatus(effectiveGitCwd?: string): git.GitStatusSummary | null {
 		if (!this.#gitEnabled()) return null;
 
 		const gitCwd = effectiveGitCwd ?? this.#resolveActiveRepoCache().effectiveGitCwd;
+		if (this.#cachedGitStatusCwd === undefined && gitCwd === getProjectDir()) {
+			// `#gitStatusLastFetch` stays 0, so this is a value to render and never a fetch that
+			// happened: the scan below runs on this same call and replaces it.
+			this.#cachedGitStatusCwd = gitCwd;
+			this.#cachedGitStatus = readLaunchFacts().gitStatus;
+		}
 		if (this.#gitStatusInFlightCwd !== undefined) {
 			return this.#cachedGitStatusCwd === gitCwd ? this.#cachedGitStatus : null;
 		}
@@ -1234,7 +1248,6 @@ export class StatusLineComponent implements Component {
 			goal: this.session.getGoalModeState()?.goal ?? null,
 			goalModelBudgets: this.session.settings.get("goal.modelBudgetsEnabled") === true,
 			goalVerbose: this.session.settings.get("goal.statusInFooter") === true,
-			secrets: this.session.obfuscator?.liveSecrets() ?? null,
 		};
 	}
 

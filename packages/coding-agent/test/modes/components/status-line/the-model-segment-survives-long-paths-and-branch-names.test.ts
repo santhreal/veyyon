@@ -88,7 +88,6 @@ const RIGHT_GROUP_CAPABLE_SEGMENT_IDS = [
 	"model",
 	"pi",
 	"profile",
-	"secrets",
 	"session",
 	"session_name",
 	"subagents",
