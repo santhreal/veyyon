@@ -5,13 +5,13 @@ use gpui::{AnyElement, App, InteractiveElement, IntoElement, ParentElement, Styl
 use veyyon_gui_core::{Store, UiCommand};
 use veyyon_gui_kit::{
 	motion::{OwnerNamespace, owner, owner_at},
-	theme::{Theme, layout, radius, space, weight},
+	theme::{Theme, TitlebarDensity, layout, radius, space, weight},
 	ui::{Button, Fill, Icon, Tone, text},
 };
 
 use crate::act;
 
-pub fn space_switcher(store: &Store, cx: &mut App) -> AnyElement {
+pub fn space_switcher(store: &Store, density: TitlebarDensity, cx: &mut App) -> AnyElement {
 	let theme = Theme::get(cx);
 	let active_space_id = store.frontend.spaces.active_space_id();
 	let spaces_count = store.frontend.spaces.spaces.len();
@@ -69,11 +69,11 @@ pub fn space_switcher(store: &Store, cx: &mut App) -> AnyElement {
 		.gap(px(space::X4))
 		.h(px(layout::toolbar()))
 		.px(px(space::X8))
-		.child(
+		.children((density == TitlebarDensity::Full).then(|| {
 			text::label("Spaces:", &theme)
 				.font_weight(weight::STRONG)
-				.text_color(theme.text_muted),
-		)
+				.text_color(theme.text_muted)
+		}))
 		.children(space_buttons)
 		.child(
 			Button::new(

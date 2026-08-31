@@ -246,6 +246,16 @@ pub mod layout {
 	pub const MIN_WINDOW_HEIGHT: f32 = 560.0;
 	pub const BREAKPOINT_INLINE: f32 = 1180.0;
 	pub const BREAKPOINT_SIDEBAR_SHEET: f32 = 920.0;
+	/// The widths, in design units rather than pixels, at which the titlebar
+	/// stops having room for what it draws.
+	///
+	/// Read against the window width divided by the interface scale, because
+	/// what runs out of room there is a row of text, and text is the one thing
+	/// the scale multiplies. Every other breakpoint above is compared against
+	/// the width itself: a sidebar is a fixed measure, and a reader who raised
+	/// the text size did not ask for a narrower window.
+	pub const TITLEBAR_FULL: f32 = 800.0;
+	pub const TITLEBAR_TRIMMED: f32 = 660.0;
 }
 
 pub mod diff {
@@ -301,5 +311,37 @@ pub fn responsive_layout(width: f32) -> ResponsiveLayout {
 		ResponsiveLayout::InspectorSheet
 	} else {
 		ResponsiveLayout::SidebarAndInspectorSheets
+	}
+}
+
+/// How much of its content the titlebar has room for.
+///
+/// One row holds the workspace, the route, the spaces, a search button, the
+/// engine's state and four panel toggles, and beside it the platform's own
+/// window controls, which are a fixed measure. At the design text size the
+/// narrowest window the app opens at holds all of it. At the largest text size
+/// that same window holds two thirds of it, and the row it cannot fit is drawn
+/// over the window controls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TitlebarDensity {
+	/// Every label the titlebar has.
+	Full,
+	/// The labels beside an icon that already says the same thing go: the
+	/// engine's state, and the word before the spaces.
+	Trimmed,
+	/// The search button becomes its icon and the route label goes, leaving the
+	/// workspace, the space in force and the toggles.
+	Tight,
+}
+
+/// The density a window of `width` has room for at the interface size in force.
+pub fn titlebar_density(width: f32) -> TitlebarDensity {
+	let designed = width / super::scale::interface();
+	if designed >= layout::TITLEBAR_FULL {
+		TitlebarDensity::Full
+	} else if designed >= layout::TITLEBAR_TRIMMED {
+		TitlebarDensity::Trimmed
+	} else {
+		TitlebarDensity::Tight
 	}
 }
