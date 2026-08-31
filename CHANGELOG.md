@@ -34,6 +34,7 @@
 - `@veyyon/kernel/loader/*` publishes plugin discovery, manifest parsing, the installed registry, the marketplace client and load-failure reporting.
 - `@veyyon/kernel/registry/*` publishes the contribution surface a plugin is resolved through: the tool proxy, the tool event input, the widget and host-view declarations, and the TypeBox schema conversion.
 - `@veyyon/kernel/registry/tool-domain` declares `ToolDomainManifest`, the name and lazy-factory table a tool domain contributes, so a host reads a domain's tools without depending on the coding agent.
+- `VEYYON_DEBUG_STARTUP` emits a `native:firstCall:<export>` marker naming the native call that first loads the addon, so a launch that pays extraction before its first frame states which call pulled it in.
 - Added a `vibe` renderer covering `vibe_spawn`, `vibe_send`, `vibe_wait`, `vibe_kill` and `vibe_list`, so a non-terminal host draws screen state, per-op summaries and output tails instead of raw JSON.
 - `TUI.frameScrollable` states whether the last composed frame had content above the viewport, so a host can render a scroll affordance without re-deriving it from row counts it cannot see.
 - The package is `hosts/terminal/engine` in the repository, beside the other halves of the terminal host. The published package name, exports and entry points are unchanged.
@@ -88,13 +89,6 @@
 - The `ask` tool emits a host-agnostic `HostNotification` through `ToolSession.notify` instead of calling the terminal, and the running host installs its delivery through `setToolNotifier`; a host that cannot reach an operator outside its own window installs nothing and the capability reads as absent.
 - Source-path comments in `modes/terminal/controllers/input-controller.ts`, `tools/render-utils.ts`, `utils/block-context.ts` and `utils/shell-snapshot.ts` name the Rust modules they cite at their new paths under `natives/`. No user-visible behavior changes.
 - A commit whose changes all sit under a grouping directory named `natives` proposes the directory below it as the scope, the way `crates`, `packages` and `tests` already do, instead of proposing `natives`.
-- Compaction can truncate the middle of an oversized text, keeping both edges, in any message role — including the roles that store their model-visible text outside `content`, such as a shell cell's `output`, a summary's `summary` and a file mention's `files[i].content`.
-- `VEYYON_DEBUG_STARTUP` emits a `native:firstCall:<export>` marker naming the native call that first loads the addon, so a launch that pays extraction before its first frame states which call pulled it in.
-- `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
-- `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
-
-### Changed
-
 - The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
 - `VEYYON_TIMING` reports the window between process start and the launch card instead of hiding it: the tree now starts at the CLI entry and carries spans for the command load, the launch-card import, the prologue, settings, the theme and the paint, leaving only Bun's own start and the entry's static imports under `(before instrumentation)`.
 - The launch card arrives in about half the time. The binary is now code-split, so the standalone loader links the CLI entry and the launch card instead of the bytecode of every subcommand, tool and agent-runtime module before the first statement runs, and whitespace and syntax minification are on. Measured warm on a pty, the card's first byte goes from 138-151ms to 57-72ms, the first keystroke echoes at 111ms instead of 188-207ms, and the binary is 231.7MB instead of 296.9MB. Function names are still kept, so a stack trace is unchanged.
@@ -137,7 +131,7 @@
 - Source-path comments in `ansi.ts` and `eval-prompt-overrides.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - `sanitize-text.ts` imports the escape byte from `@veyyon/utils/ansi` rather than declaring a second copy of it.
 - Source-path comments in `sanitize-text.ts`, `strip-ansi.ts`, `tab-spacing.ts` and `width.ts` name the Rust modules they cite at their new paths under `natives/`. No user-visible behavior changes.
-- Source-path comments in `adversarial-strings.ts`, `ansi.ts`, `tab-spacing.ts` and `width.ts` name the terminal renderer's modules at their new path, `hosts/terminal/engine`. No user-visible behavior changes.
+- Source-path comments in `adversarial-strings.ts`, `ansi.ts`, `tab-spacing.ts` and `width.ts` name the modules they cite at the paths those modules occupy: `visibleWidth`, `sliceWithWidth` and the ansi escape are `packages/utils` modules and their locks are `packages/utils` suites, while the adversarial-string helpers are `hosts/terminal/engine` test helpers. No user-visible behavior changes.
 - `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
 - `workspaceModuleReachResolution()` resolves every workspace member declared by the root manifest, at whatever depth it sits, instead of the direct children of `packages/`, so a cross-package specifier into `@veyyon/kernel`, `@veyyon/tui`, a contract or a plugin resolves again and every module-reach ceiling built on it measures what it claims.
 
@@ -148,6 +142,9 @@
 - HTML export works again: the five assets `export/html/index.ts` loads as strings — the markdown renderer, the template CSS, HTML and JS, and the generated tool views — lost their `with { type: "text" }` import attributes while unreleased, so each one loaded as a module and every export threw `Missing 'default' export in module`.
 - Seven published entry points the reorganization dropped are served again at their new paths: `./modes/terminal/components/*`, `./modes/terminal/components/extensions/*`, `./modes/terminal/components/status-line/*`, `./modes/terminal/controllers/*`, `./modes/terminal/setup-wizard/*`, `./modes/terminal/utils/*` and `./export/markit/*`. Every subpath `1.3.0` published now has a successor key.
 - A source build of the compiled binary reaches the native addon package at `natives/bridge/bindings`, its path since the bindings moved out of `packages/`, instead of failing on a chdir to `packages/natives`.
+- The source launcher (`scripts/veyyon`, `scripts/veyyon.cmd`) finds the native addon at `natives/bridge/bindings/native` and provisions it through that package's `ensure-native.ts`, instead of dying at boot on `packages/natives/scripts/ensure-native.ts` after the bindings moved out of `packages/`.
+- The compiled binary builds again: its legacy-extension module surface resolved each bundled package by its directory name under `packages/`, so the build died on `packages/natives/package.json` once the bindings moved to `natives/bridge/bindings` and the terminal engine to `hosts/terminal/engine`. Each bundled package is now found by the name its manifest declares, wherever the member sits.
+- The compiled binary builds through its legacy-extension shims again: the `@veyyon/ai` and TypeBox compat shims were named by hand-written paths under `packages/coding-agent/src/extensibility/`, so the build reported two unresolvable entrypoints once both shims moved into `@veyyon/kernel`. Each shim is now resolved through its owning package's published subpath, at build time and at extension load.
 - Context budgeting is unchanged from 1.3.0: the unreleased reserve for the model's output allocation is withdrawn, because subtracting it from the usable window moved every model's compaction threshold, roughly doubling how often compaction fired and invalidating the prompt cache on each pass.
 - A turn too large for compaction to summarize is truncated in the middle, keeping the head and the tail, instead of pausing automatic maintenance; the removed text is written to a recovery artifact the notice names. A session whose newest turn was a single oversized message could previously make no progress, and rewinding the tree did not clear it.
 - A payload the outbound secret scan refuses for its size is treated as a context overflow, so the session compacts and retries instead of stopping at "the provider request exceeds the confidentiality scan byte limit" on every attempt. The scan runs before the request is sent, so nothing else had reported the turn as too large.
@@ -189,9 +186,6 @@
 - The autoresearch result table and summary no longer repeat the primary metric as a secondary column.
 - A crashed autoresearch run reports `-` for the metric instead of `0ms`, which sorted it as the fastest run in the table.
 - A turn that calls a tool and then stops with text is treated as ending in text: the todo reminder fires again as the board changes instead of falling silent after the first one, and the rewind, plan-mode, verification and code-review checks run at that stop.
-- Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the route they are sent to.
-- Context budgeting reserves the model's output allocation, which providers charge against the same context window, so history no longer grows past the largest input the provider will accept; a branch summary is sized the same way, so the request that shrinks an overfull session is no longer rejected for being too large itself.
-- Codex remote compaction requests declare the `responses_compact` implementation, matching the `/codex/responses/compact` route they are sent to.
 - Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the `{base}/codex/responses` route they are sent to.
 - A ChatGPT Codex server-side compaction now reduces the context it was paid to reduce: its stored window was not on the list of apis whose window can be replayed, so the entry counted as unusable, the whole pre-compaction span was re-expanded on the next rebuild, and the session crossed the threshold and compacted again on every turn.
 - Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
@@ -200,14 +194,14 @@
 - A Codex compaction stream carrying a `compaction` item with no `encrypted_content` is refused instead of being stored as a window every later turn discards.
 - A compaction route that answers 404 is retried after 30 minutes instead of standing the model down for the whole process, so one transient 404 no longer forces a paid local compaction on every later pass.
 - Codex remote compaction keeps at least one user turn when the retained-token budget it is handed is not a finite number, instead of replaying a window holding nothing but the compaction item.
-- A sixel-capable terminal now renders inline images on Linux and macOS: the terminal is asked at startup instead of being matched against a list that named no sixel terminal at all, so images no longer silently fail to appear outside kitty, ghostty, wezterm, iTerm2 and Warp.
-- An inline image whose top has scrolled above the viewport, or which is taller than the terminal, is left undrawn until a repaint can reach its origin, instead of being stamped at full size over the top of the live transcript.
-- An inline image is handed pixels at exactly the cell box the terminal will scale it into, so the terminal's own scaler no longer smears a downscaled screenshot; the transmitted payload shrinks by more than half at the same size on screen.
-- The row shown in place of a picture names the setting that undoes the reason when there is one, instead of stating the reason alone.
 - A Codex server-side compaction sends the session's `prompt_cache_key`, so it lands on the session's cached prefix instead of missing it and making the next turn re-pay full uncached input.
 - A Codex server-side compaction with no session id is refused instead of minting a random conversation identity, which opened a second cache lineage and left the post-compaction history reset with nothing to find.
 - A compiled binary's first launch of a version extracts only the native addon variant the host loads, instead of every variant the binary carries, so a cold start writes about 135MB rather than 270MB before the first frame; the skipped variants are written on demand if the selected one fails to load.
 - A compiled binary carries one embedded archive per native addon variant instead of one archive holding all of them, so a cold launch inflates only the variant it loads; cold first paint on linux-x64 drops from 361ms to 229ms.
+- A sixel-capable terminal now renders inline images on Linux and macOS: the terminal is asked at startup instead of being matched against a list that named no sixel terminal at all, so images no longer silently fail to appear outside kitty, ghostty, wezterm, iTerm2 and Warp.
+- An inline image whose top has scrolled above the viewport, or which is taller than the terminal, is left undrawn until a repaint can reach its origin, instead of being stamped at full size over the top of the live transcript.
+- An inline image is handed pixels at exactly the cell box the terminal will scale it into, so the terminal's own scaler no longer smears a downscaled screenshot; the transmitted payload shrinks by more than half at the same size on screen.
+- The row shown in place of a picture names the setting that undoes the reason when there is one, instead of stating the reason alone.
 - An `Editor` with no `onSubmit` consumer leaves the draft alone when Enter arrives, instead of clearing it, so a submit typed before anything is listening cannot destroy what was typed.
 
 ## [1.3.0] - 2026-08-28
