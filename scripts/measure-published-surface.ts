@@ -567,6 +567,10 @@ const DOCUMENTED_KEY_RELOCATIONS: Readonly<Record<string, Readonly<Record<string
  */
 const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, RelocationNote>>>> = {
 	"@veyyon/coding-agent": {
+		"./modes/sanitize-status-text": {
+			to: "@veyyon/utils/sanitize-status-text",
+			why: "sanitizeStatusText is declared in packages/utils/src/sanitize-status-text.ts, which @veyyon/utils publishes as ./sanitize-status-text; it is text over stripAnsi and names no host, and the goal tool reduces an objective to one line while building a view model in the domain package",
+		},
 		"./vibe/state": {
 			to: "./session/vibe-runtime",
 			why: "VibeModeState is declared in session/vibe-runtime.ts, which publishes it",

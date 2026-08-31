@@ -6953,8 +6953,6 @@
 				"./modes/terminal/queue-input.js",
 				"./modes/terminal/running-subagent-badge",
 				"./modes/terminal/running-subagent-badge.js",
-				"./modes/terminal/sanitize-status-text",
-				"./modes/terminal/sanitize-status-text.js",
 				"./modes/terminal/session-observer-registry",
 				"./modes/terminal/session-observer-registry.js",
 				"./modes/terminal/session-teardown",
@@ -7515,6 +7513,8 @@
 				"./paint-ground.js",
 				"./paint-surface",
 				"./paint-surface.js",
+				"./sanitize-status-text",
+				"./sanitize-status-text.js",
 				"./sgr",
 				"./sgr.js",
 				"./symbols",
@@ -9807,12 +9807,12 @@
 					"why": "packages/coding-agent/src/modes/running-subagent-badge.ts moved to packages/coding-agent/src/modes/terminal/running-subagent-badge.ts, which @veyyon/coding-agent publishes as ./modes/terminal/running-subagent-badge.js"
 				},
 				"./modes/sanitize-status-text": {
-					"to": "@veyyon/coding-agent/modes/terminal/sanitize-status-text",
-					"why": "packages/coding-agent/src/modes/sanitize-status-text.ts moved to packages/coding-agent/src/modes/terminal/sanitize-status-text.ts, which @veyyon/coding-agent publishes as ./modes/terminal/sanitize-status-text"
+					"to": "@veyyon/utils/sanitize-status-text",
+					"why": "sanitizeStatusText is declared in packages/utils/src/sanitize-status-text.ts, which @veyyon/utils publishes as ./sanitize-status-text; it is text over stripAnsi and names no host, and the goal tool reduces an objective to one line while building a view model in the domain package"
 				},
 				"./modes/sanitize-status-text.js": {
-					"to": "@veyyon/coding-agent/modes/terminal/sanitize-status-text.js",
-					"why": "packages/coding-agent/src/modes/sanitize-status-text.ts moved to packages/coding-agent/src/modes/terminal/sanitize-status-text.ts, which @veyyon/coding-agent publishes as ./modes/terminal/sanitize-status-text.js"
+					"to": "@veyyon/utils/sanitize-status-text.js",
+					"why": "sanitizeStatusText is declared in packages/utils/src/sanitize-status-text.ts, which @veyyon/utils publishes as ./sanitize-status-text; it is text over stripAnsi and names no host, and the goal tool reduces an objective to one line while building a view model in the domain package"
 				},
 				"./modes/session-observer-registry": {
 					"to": "@veyyon/coding-agent/modes/terminal/session-observer-registry",

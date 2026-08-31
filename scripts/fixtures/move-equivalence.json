@@ -10184,9 +10184,9 @@
 			"differs": "changed",
 			"group": "view-conversion",
 			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. Byte identity of the drawn output is proved by the oracle suite, not here.",
-			"hash": "c6de01e223baaaab5adb40adec18250b533b4313d55b308b7a3fabb583f8ce57",
+			"hash": "deb4e4b7b8ae598ba36e2f3dc91fe99ab530f9ed3df0a65667b143cd8414ccbf",
 			"mainHash": "e64f1a24414688155e74076ac6421b7416b6fbc04f1a51c8747e5712dbfba07f",
-			"structuralHash": "de0244019319fbede23c41538a9b1e6a02513fab557cf87c8aceb13275018f7b",
+			"structuralHash": "947f3f04a4c18bbcf663124e68d0556e030edd2facd7b1047b498707a507f667",
 			"mainStructuralHash": "2f8fac33777a1c41d69cfbfab7f68785636a74d2c511f62e38562a8377aabec2"
 		},
 		"packages/coding-agent/src/memory/backend.ts": {
@@ -11281,7 +11281,7 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/branch.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "63aa7ecf3009471e706b0092926ab04598eacb5045b46d26e8e675dab0e02665",
+			"hash": "12b1be44f9828a86a28fde605c654229aeeb10c4b600d97b3c30757bc0e4242e",
 			"mainHash": "5f0db024b53108d9f0806687c4dffa36315a13e0e9a3e382200fcb8dd9da7046",
 			"structuralHash": "79d07447ea589ef7cf0e1e0803114cb5bd3e0cbe6c00429c6fcea9dcfbb4f956",
 			"mainStructuralHash": "79d07447ea589ef7cf0e1e0803114cb5bd3e0cbe6c00429c6fcea9dcfbb4f956"
@@ -11299,7 +11299,7 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/component.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "8b8a3441fd4cc5efcc0e9adc49f14d01b9407aa2937c6e4514b0cfacf4b083d1",
+			"hash": "2d63aec59d3a9e740f2d961ddeabb708b66094e7ca0b52de59c1783f97422657",
 			"mainHash": "9d0df0d62e347b3d465100478fe7e670403024375d2c1598e8ce0281bfad75ff",
 			"structuralHash": "30664c5a866464423e90d25804c554ba8a5bfda43a321ad10ea0de52e5df4866",
 			"mainStructuralHash": "30664c5a866464423e90d25804c554ba8a5bfda43a321ad10ea0de52e5df4866"
@@ -11335,7 +11335,7 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/location.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "be8c45261465cd54ea28ac756a43c27c631295b7c92bc7d54045c6e36500dce7",
+			"hash": "edb91649559978147b2bb0b49176114f3a8cf87678ee53c7c9ebc9941b48af58",
 			"mainHash": "677ad6c30f35dd2cda992f891904607956e860a08c3f2ec60d976c9b5f4892af",
 			"structuralHash": "113906ced29b72ed1f108af112410d752c89362cc46fba593a7da90f7a4bb975",
 			"mainStructuralHash": "113906ced29b72ed1f108af112410d752c89362cc46fba593a7da90f7a4bb975"
@@ -11389,7 +11389,7 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/segments.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "a8b1857bb3f2144b3334069d66ea315edb3bf72014e6eb46a04b5e84a65eb813",
+			"hash": "7ca2b8f43fc81e443c00b8784531b6ba22d56c10f5941cfc58103f41bbffdec4",
 			"mainHash": "95b990e719705ca4386ae76fd67285820ea6ea4009594dbe524ecfd88b87852c",
 			"structuralHash": "bad167d8e9dec00fcef0288c22b23745868a3a77dfcf35d559594117282d1d30",
 			"mainStructuralHash": "bad167d8e9dec00fcef0288c22b23745868a3a77dfcf35d559594117282d1d30"
@@ -11984,15 +11984,6 @@
 			"structuralHash": "ab09dd8ca8df6e93fbb91db12aa30976c0bd02a8d6bc34df76853d91e120af6c",
 			"mainStructuralHash": "ab09dd8ca8df6e93fbb91db12aa30976c0bd02a8d6bc34df76853d91e120af6c"
 		},
-		"packages/coding-agent/src/modes/terminal/sanitize-status-text.ts": {
-			"old": "packages/coding-agent/src/modes/sanitize-status-text.ts",
-			"kind": "normalized",
-			"differs": "none",
-			"hash": "5fc8229d35cc55b831f9e0f53c052f10293788e9e1796585e6f0099242dbbd82",
-			"mainHash": "5fc8229d35cc55b831f9e0f53c052f10293788e9e1796585e6f0099242dbbd82",
-			"structuralHash": "c01427542922fb8dcf4a297f8d11ad76fa113039028b8fefed9c8127d71ff07a",
-			"mainStructuralHash": "c01427542922fb8dcf4a297f8d11ad76fa113039028b8fefed9c8127d71ff07a"
-		},
 		"packages/coding-agent/src/modes/terminal/session-observer-registry.ts": {
 			"old": "packages/coding-agent/src/modes/session-observer-registry.ts",
 			"kind": "normalized",
@@ -12168,7 +12159,7 @@
 			"old": "packages/coding-agent/src/modes/shared.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "0eeff9c2674ce8faa0f5ce6758364b0b62d73cb9085c4346882056a02fd7fb54",
+			"hash": "47e6b69fce448d62134a4ee92f939b7d061ec9213626a6c035ba83eb88620ea3",
 			"mainHash": "c80a5b31c5834452cff1034051e59f5e56862ae3c239b7febe0fa852d6ef5bd5",
 			"structuralHash": "ad7a42ce3f1f88be3b0f552d3ee5225250ae7e96c6fbf404538bc1a8d8c29630",
 			"mainStructuralHash": "ad7a42ce3f1f88be3b0f552d3ee5225250ae7e96c6fbf404538bc1a8d8c29630"
