@@ -63,7 +63,7 @@ const LEGACY_RUNTIME_READERS: readonly string[] = [
 	"components/selectors/tree-selector.ts",
 	"components/status-line/component.ts",
 	"components/status-line/segments.ts",
-	"components/status-line/types.ts",
+	"components/status-line/session-facts.ts",
 	"components/transcript/assistant-message.ts",
 	"components/transcript/background-tan-message.ts",
 	"components/transcript/cache-invalidation-marker.ts",

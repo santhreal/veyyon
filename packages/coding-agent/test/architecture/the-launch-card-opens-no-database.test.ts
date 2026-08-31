@@ -73,17 +73,23 @@ const DATABASE_OWNERS = workspaceSources().filter(relative => {
 const ADMITTED_ON_THE_CARD_PATH = [path.join("coding-agent", "src", "config", "legacy-agent-db-settings.ts")];
 
 /**
- * What the card costs, measured 2026-08-30 with the workspace resolved to source, down from 311 when
+ * What the card costs, measured 2026-08-31 with the workspace resolved to source, down from 311 when
  * the settings store still carried a storage handle, and up from 290 when the card stopped
  * hand-writing its own `path · git` row and started rendering the real status row through
- * `status-line/quiet-row.ts` and `status-line/session-facts.ts`. Those two modules are the whole
- * increase: the segment table the row composes was already reachable, because the hand-written copy
- * called into it for the location and the branch.
+ * `status-line/quiet-row.ts` and `status-line/session-facts.ts`.
+ *
+ * 304 rather than 292 is a file count, not more work: the terminal engine's `tui.ts` became ten
+ * modules under `core/` (`renderer`, `container`, `overlay`, `scroll`, `cursor`, `mouse-routing`,
+ * `component-types`, `terminal-session`, `image-budget`, `tui`), and the string, layout and colour
+ * helpers it carried moved to `@veyyon/utils` subpaths (`width`, `wrap`, `padding`, `sgr`, `bar`,
+ * `color-format`, `tight-mode`, `word-nav`). The card reaches 20 engine modules where it reached 30,
+ * and no subsystem joined the path — which is what the reachability assertions below, not this
+ * number, are the proof of.
  *
  * The floor is what stops a resolution table that stopped resolving from satisfying the ceiling with
  * a handful of modules while measuring nothing.
  */
-const LAUNCH_CARD_CEILING = 292;
+const LAUNCH_CARD_CEILING = 304;
 const LAUNCH_CARD_FLOOR = 150;
 
 describe("the launch card opens no database", () => {

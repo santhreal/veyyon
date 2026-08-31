@@ -649,8 +649,8 @@ describe("session/messages, which the session layer is mostly made of", () => {
 	it("names the notice module and not the tool module", () => {
 		const imports = runtimeImportsOf(path.join(SRC, "session/messages.ts"));
 
-		expect(imports).toContain("../tools/output-notice");
-		expect(imports).not.toContain("../tools/output-meta");
+		expect(imports).toContain("../tools/core/output-notice");
+		expect(imports).not.toContain("../tools/core/output-meta");
 		expect(imports).not.toContain("../prompts/registry");
 	});
 

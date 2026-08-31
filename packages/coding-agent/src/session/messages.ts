@@ -43,9 +43,9 @@ export {
 	createCustomMessage,
 } from "@veyyon/agent-core/compaction/messages";
 
-// The notice text, not the tool layer that builds it: `../tools/output-meta` reaches 177 modules
+// The notice text, not the tool layer that builds it: `../tools/core/output-meta` reaches 177 modules
 // because it owns the builder, the tool wrapper and the spill configuration, and appending a notice to
-// a message needs none of them. `../tools/output-notice` owns the wording and the metadata shape.
+// a message needs none of them. `../tools/core/output-notice` owns the wording and the metadata shape.
 import { formatOutputNotice, type OutputMeta } from "../tools/core/output-notice";
 
 export const SKILL_PROMPT_MESSAGE_TYPE = "skill-prompt";
