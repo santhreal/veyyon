@@ -13,6 +13,7 @@
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 - `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
 - Compaction can truncate the middle of an oversized text, keeping both edges, in any message role — including the roles that store their model-visible text outside `content`, such as a shell cell's `output`, a summary's `summary` and a file mention's `files[i].content`.
+- `VEYYON_DEBUG_STARTUP` emits a `native:firstCall:<export>` marker naming the native call that first loads the addon, so a launch that pays extraction before its first frame states which call pulled it in.
 - `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
 - `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
 
@@ -80,6 +81,8 @@
 - Codex remote compaction keeps at least one user turn when the retained-token budget it is handed is not a finite number, instead of replaying a window holding nothing but the compaction item.
 - A Codex server-side compaction sends the session's `prompt_cache_key`, so it lands on the session's cached prefix instead of missing it and making the next turn re-pay full uncached input.
 - A Codex server-side compaction with no session id is refused instead of minting a random conversation identity, which opened a second cache lineage and left the post-compaction history reset with nothing to find.
+- A compiled binary's first launch of a version extracts only the native addon variant the host loads, instead of every variant the binary carries, so a cold start writes about 135MB rather than 270MB before the first frame; the skipped variants are written on demand if the selected one fails to load.
+- A compiled binary carries one embedded archive per native addon variant instead of one archive holding all of them, so a cold launch inflates only the variant it loads; cold first paint on linux-x64 drops from 361ms to 229ms.
 - An `Editor` with no `onSubmit` consumer leaves the draft alone when Enter arrives, instead of clearing it, so a submit typed before anything is listening cannot destroy what was typed.
 
 ## [1.3.0] - 2026-08-28
