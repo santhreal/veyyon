@@ -18,28 +18,27 @@ use super::{
 	Backspace, Copy, Cut, Delete, DeleteToLineEnd, DeleteWordLeft, DeleteWordRight, DocEnd,
 	DocStart, Down, End, Home, Left, Newline, Paste, Right, SelectAll, SelectDown, SelectEnd,
 	SelectHome, SelectLeft, SelectRight, SelectUp, SelectWordLeft, SelectWordRight,
-	ShowCharacterPalette, Up, WordLeft, WordRight,
+	ShowCharacterPalette, Submit, Up, WordLeft, WordRight,
 };
 
 /// Every field the caret motions apply in.
 ///
-/// A predicate over the names a field declares, not a name any element carries:
+/// A predicate over the kinds a field declares, not a name any element carries:
 /// that is what keeps a caret motion from firing while the shell has the
-/// keyboard.
-const EDITING: &str = "Editor || MultilineEditor || PaletteSearch";
+/// keyboard. Every field is one of these three, so a motion written here
+/// reaches the composer, the palette's search, a filter box and a credential
+/// alike. A field's own name is not in it, because a name is what the surface
+/// under the field binds and the caret has no business reading it.
+const EDITING: &str = "Editor || MultilineEditor || SecureEditor";
 
-/// The fields a vertical motion means something in.
+/// The fields a vertical motion and an inserted line mean something in.
 ///
-/// Not the palette's field. There, up and down walk the list under it, and a
-/// motion bound on the same keystroke in a context that also matched would
-/// shadow whichever of the two was installed second.
-const ROWS: &str = "Editor || MultilineEditor";
-
-/// The one field where a keystroke can insert a line.
-///
-/// A single-line field ignores a newline anyway, but binding it there claims
-/// the keystroke: the palette's field would swallow shift-enter rather than let
-/// it reach whatever the window does with it.
+/// A single-line field has one row, so up and down have nowhere to go there and
+/// a newline would be a line inserted into a search box. Both are left to
+/// whatever is under the field, which is what makes the palette's list, the
+/// file tree and the settings pages reachable while their filter holds the
+/// keyboard: a motion bound on the same keystroke in a context that also
+/// matched would shadow whichever of the two was installed second.
 const MULTILINE: &str = "MultilineEditor";
 
 /// Kill to the end of the line.
@@ -65,12 +64,7 @@ fn editing(keys: &'static str, action: fn() -> Box<dyn Action>) -> Row {
 	Row { keys, context: EDITING, action }
 }
 
-/// Applies only where the text has rows to move through.
-fn rows(keys: &'static str, action: fn() -> Box<dyn Action>) -> Row {
-	Row { keys, context: ROWS, action }
-}
-
-/// Applies only in a field that has more than one line to give.
+/// Applies only in a field that has rows to move through and a line to give.
 fn multiline(keys: &'static str, action: fn() -> Box<dyn Action>) -> Row {
 	Row { keys, context: MULTILINE, action }
 }
@@ -80,8 +74,8 @@ fn table() -> Vec<Row> {
 		// Moving.
 		editing("left", || Box::new(Left)),
 		editing("right", || Box::new(Right)),
-		rows("up", || Box::new(Up)),
-		rows("down", || Box::new(Down)),
+		multiline("up", || Box::new(Up)),
+		multiline("down", || Box::new(Down)),
 		editing("alt-left", || Box::new(WordLeft)),
 		editing("alt-right", || Box::new(WordRight)),
 		editing("secondary-left", || Box::new(Home)),
@@ -93,8 +87,8 @@ fn table() -> Vec<Row> {
 		// Selecting. Every motion above that a reader can hold shift with.
 		editing("shift-left", || Box::new(SelectLeft)),
 		editing("shift-right", || Box::new(SelectRight)),
-		rows("shift-up", || Box::new(SelectUp)),
-		rows("shift-down", || Box::new(SelectDown)),
+		multiline("shift-up", || Box::new(SelectUp)),
+		multiline("shift-down", || Box::new(SelectDown)),
 		editing("alt-shift-left", || Box::new(SelectWordLeft)),
 		editing("alt-shift-right", || Box::new(SelectWordRight)),
 		editing("secondary-shift-left", || Box::new(SelectHome)),
@@ -111,24 +105,28 @@ fn table() -> Vec<Row> {
 		editing("secondary-x", || Box::new(Cut)),
 		editing("secondary-v", || Box::new(Paste)),
 		editing("ctrl-secondary-space", || Box::new(ShowCharacterPalette)),
-		// Writing a line without ending the message. The other half of this pair
-		// is not here: plain Return sends, which is a decision about the
-		// application rather than about the caret, and it lives in the command
-		// table with everything else a reader can look up.
+		// Ending an entry, and writing a line without ending it. Return is the
+		// field's, not the window's: it turns into `EditorEvent::Submit` and the
+		// window decides what a submitted field means, which is a send in the
+		// composer, an accepted row in the palette and a saved name in a rename.
+		// A field that swallowed Return instead would leave every one of those
+		// reachable only with the pointer.
+		editing("enter", || Box::new(Submit)),
 		multiline("shift-enter", || Box::new(Newline)),
 	]
 }
 
-/// Every caret binding, ready for `App::bind_keys`.
+/// Every validated caret binding, ready for `App::bind_keys`.
 ///
-/// Panics on a row that does not parse, which is what a test turns into a
-/// failure instead of a launch that silently ignores a key.
+/// Invalid static rows are excluded without crashing startup. The exhaustive
+/// table test makes an invalid row a development failure.
 pub fn bindings() -> Vec<KeyBinding> {
 	table()
 		.into_iter()
-		.map(|row| {
-			let predicate = KeyBindingContextPredicate::parse(row.context)
-				.expect("a caret binding's context must parse");
+		.filter_map(|row| {
+			let Ok(predicate) = KeyBindingContextPredicate::parse(row.context) else {
+				return None;
+			};
 			KeyBinding::load(
 				row.keys,
 				(row.action)(),
@@ -137,7 +135,7 @@ pub fn bindings() -> Vec<KeyBinding> {
 				None,
 				&DummyKeyboardMapper,
 			)
-			.expect("a caret binding's keystroke must parse")
+			.ok()
 		})
 		.collect()
 }
@@ -179,8 +177,7 @@ mod tests {
 	/// `every_context_states_what_it_is_inside_of`.
 	fn wider_than(narrow: &str) -> Vec<&'static str> {
 		match narrow {
-			_ if narrow == MULTILINE => vec![ROWS, EDITING],
-			_ if narrow == ROWS => vec![EDITING],
+			_ if narrow == MULTILINE => vec![EDITING],
 			_ if narrow == EDITING => Vec::new(),
 			other => panic!("{other} is a context nothing knows the shape of"),
 		}
@@ -246,28 +243,34 @@ mod tests {
 
 	#[test]
 	fn a_motion_that_needs_rows_is_not_bound_where_there_are_none() {
-		// Pinned by equality: a motion moved between the two contexts shows up
-		// here, because that decision is what the palette's arrow keys depend
-		// on.
+		// Pinned by equality: the whole set a single-line field does not get.
+		// Vertical motion and an inserted line are what the palette's list, the
+		// file tree and the settings pages take the arrow keys for while a
+		// filter holds the keyboard, and a newline in a search box would be a
+		// line inserted into a search box. A motion moved into or out of this
+		// context shows up here, because that decision is what those surfaces
+		// depend on.
 		let mut vertical: Vec<&'static str> = table()
-			.into_iter()
-			.filter(|row| row.context == ROWS)
-			.map(|row| row.keys)
-			.collect();
-		vertical.sort_unstable();
-		assert_eq!(vertical, vec!["down", "shift-down", "shift-up", "up"]);
-	}
-
-	#[test]
-	fn only_a_field_with_rows_can_be_given_another_one() {
-		// A newline in the palette's field would be a line inserted into a
-		// search box; in a single-line field it would be a keystroke claimed and
-		// dropped. Pinned by equality so moving it has to be a decision.
-		let rows: Vec<&'static str> = table()
 			.into_iter()
 			.filter(|row| row.context == MULTILINE)
 			.map(|row| row.keys)
 			.collect();
-		assert_eq!(rows, vec!["shift-enter"]);
+		vertical.sort_unstable();
+		assert_eq!(vertical, vec!["down", "shift-down", "shift-enter", "shift-up", "up"]);
+	}
+
+	#[test]
+	fn every_kind_of_field_a_caret_lives_in_is_in_the_widest_context() {
+		// The defect this closes: a field declared one name of its own, the
+		// caret's table names kinds, and every motion in the field was dead —
+		// no backspace, no Home, no Return. Read from the kinds `Editor::new`
+		// and `SecureEditor::new` can produce, so a fourth kind fails here
+		// rather than shipping a field with no caret.
+		for kind in ["Editor", "MultilineEditor", "SecureEditor"] {
+			assert!(
+				EDITING.split("||").any(|name| name.trim() == kind),
+				"a {kind} field has no caret motions"
+			);
+		}
 	}
 }

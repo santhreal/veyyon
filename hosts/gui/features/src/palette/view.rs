@@ -1,208 +1,271 @@
-//! Drawing the sheet, the field and the rows.
+//! Multi-mode palette chrome and grouped result rendering.
 
 use gpui::{
-	AnyElement, App, Div, Entity, InteractiveElement, IntoElement, ParentElement, ScrollHandle,
-	StatefulInteractiveElement, Styled, div, px,
+	AnyElement, App, Div, Entity, HighlightStyle, InteractiveElement, IntoElement, ParentElement,
+	ScrollHandle, Styled, StyledText, div, px,
 };
 use veyyon_gui_core::{
-	command::Command,
-	palette::{self, Row as PaletteRow},
-	store::model::Store,
+	Store, UiCommand,
+	navigation::PaletteMode,
+	palette::{Group, Item, Results, SourceState, cursor, results},
 };
 use veyyon_gui_kit::{
 	input::Editor,
-	motion::{self, Channel, Key},
-	paint,
-	theme::{Theme, layout, size, space},
-	ui::{Empty, Icon, Row, Sheet, Tone, icon, kbd, scrollbar::Scrollbar, square, text},
+	motion::{OwnerNamespace, RetainedKey},
+	theme::{Elevation, Theme, layout, size, space, weight},
+	ui::{
+		Banner, Button, Empty, Fill, Icon, Row, Scrolls, SearchField, Sheet, Spinner, Tone, icon,
+		kbd, text,
+	},
 };
 
-use super::logic;
+/// The owner key the palette's own field retains its hover channel under.
+const SEARCH_OWNER: RetainedKey = RetainedKey::semantic(OwnerNamespace::Overlays, 140);
+
+use super::{
+	highlight,
+	state::{PaletteMotion, chrome},
+};
 use crate::act;
 
-/// How tall the list is allowed to get before it scrolls.
-///
-/// Twelve rows and a bit: a list that fills the window is a list a reader has
-/// to read rather than glance at, and the field is where the next keystroke
-/// goes anyway.
-const LIST_MAX: f32 = 13.0 * layout::ROW;
-
-/// The palette, or nothing at all.
-///
-/// Returns `None` once it is both closed and finished leaving, which is what
-/// keeps the closing animation on screen: the sheet stays mounted while its
-/// channel runs back to zero.
-///
-/// THE SHEET IS THE ROOT OF WHAT THIS RETURNS. An absolutely positioned
-/// element is laid out against its own parent here, not against the nearest
-/// ancestor that asked to be positioned, so a wrapper around the sheet is a
-/// wrapper the sheet then fills: a flex item of no height, drawn nowhere. The
-/// caller hangs this on the window root, which is the box the sheet covers.
+// The palette borrows field, scroll and motion state separately.
+#[allow(clippy::too_many_arguments)]
 pub fn render(
 	store: &Store,
+	mode: PaletteMode,
 	field: &Entity<Editor>,
 	scroll: &ScrollHandle,
+	motion: &mut PaletteMotion,
+	open: bool,
 	cx: &mut App,
-) -> Option<AnyElement> {
-	let open = store.overlay.palette().is_some();
-	let arrival = paint::toward(
-		cx,
-		Key::of(Channel::Sheet),
-		if open {
-			motion::SHEET_IN
-		} else {
-			motion::SHEET_OUT
-		},
-		f32::from(open),
-	);
-	if !open && arrival <= 0.01 {
-		return None;
-	}
-
-	let rows = palette::rows(store);
-	let selected = store
-		.overlay
-		.palette()
-		.map(|palette| palette.selected)
-		.unwrap_or(0);
-
-	Some(
-		Sheet::new("palette", arrival)
-			.width(layout::SHEET)
-			.on_dismiss(act::click(Command::Back))
-			.child(search(field, cx))
-			.child(list(&rows, selected, scroll, cx))
-			.into_any_element(),
-	)
-}
-
-/// The field at the top of the sheet.
-///
-/// No label and no placeholder beyond a word: the sheet arrived because
-/// somebody pressed the chord for it, and a form label above a search field in
-/// a palette is a line of text between the keystroke and the answer.
-fn search(field: &Entity<Editor>, cx: &mut App) -> Div {
-	let theme = Theme::get(cx);
-	div()
-		.flex()
-		.items_center()
-		.gap(px(space::BASE))
-		.px(px(space::BASE))
-		.pb(px(space::SNUG))
-		.child(square(icon::scale::BASE).child(icon::base(Icon::Search, theme.text_faint)))
-		.child(
-			div()
-				.flex_1()
-				.min_w(px(0.0))
-				.text_size(px(size::LEAD))
-				.child(field.clone()),
-		)
-}
-
-/// Where the selected row is in the box that scrolls, for the window to put it
-/// back in view after a walk.
-///
-/// Here rather than in the surface because the count belongs to the list this
-/// file draws: the rows and their headings are children of one box, and a
-/// heading is a child like any other.
-pub fn selected_child(store: &Store) -> usize {
-	let rows = palette::rows(store);
-	let selected = store
-		.overlay
-		.palette()
-		.map(|palette| palette.selected)
-		.unwrap_or(0);
-	logic::selected_child(&rows, selected)
-}
-
-/// The rows, in the order the list decided, under a heading per run.
-///
-/// The list is walked with the arrow keys, so it is tracked: the window brings
-/// the selection back into view through [`selected_child`] when a walk leaves
-/// it. It is not put back during render, which would drag the list away from
-/// wherever the wheel had taken it on the next frame.
-fn list(rows: &[PaletteRow], selected: usize, scroll: &ScrollHandle, cx: &mut App) -> AnyElement {
-	let theme = Theme::get(cx);
-	if rows.is_empty() {
-		// Not an error, and not a row: a list with nothing in it says so where
-		// the rows would be, so the sheet does not collapse to a field.
-		return div()
-			.px(px(space::BASE))
-			.pb(px(space::BASE))
-			.child(Empty::new("Nothing matches").note("Try fewer words."))
-			.into_any_element();
-	}
-
-	let mut list = div()
-		.id("palette-rows")
-		.flex()
-		.flex_col()
-		.gap(px(space::ROWS))
-		.max_h(px(LIST_MAX))
-		.overflow_y_scroll()
-		.track_scroll(scroll)
-		.border_t_1()
-		.border_color(theme.stroke)
-		.pt(px(space::SNUG));
-	let mut heading = None;
-	for (index, row) in rows.iter().enumerate() {
-		if heading != Some(row.kind) {
-			heading = Some(row.kind);
-			list = list.child(
-				div()
-					.px(px(space::BASE))
-					.pt(px(if index == 0 { 0.0 } else { space::SNUG }))
-					.pb(px(space::PAIR))
-					.child(text::overline(logic::heading(row.kind), &theme)),
-			);
-		}
-		list = list.child(entry(row, index, index == selected, cx));
-	}
-
-	// The bar sits over the rows rather than beside them, so the wrapper is the
-	// box it measures itself against: a bar hung on the sheet would draw its
-	// thumb from the top of the field.
-	div()
-		.relative()
-		.flex()
-		.flex_col()
-		.min_h(px(0.0))
-		.child(list)
-		.child(Scrollbar::new("palette-bar", scroll.clone()))
+) -> AnyElement {
+	// The one query the rows are selected by. A caller that passed its own
+	// filtered the drawn rows by one query while `selected_commands` resolved
+	// the accepted row against another, so the row a keystroke ran was not the
+	// row under the cursor.
+	let query = store.frontend.palette_query.as_str();
+	let results = results(store, mode, query);
+	let selected = store.frontend.palette_cursor;
+	Sheet::new("command-palette", chrome(1), open)
+		.max_width(layout::SHEET)
+		.on_dismiss(act::click(UiCommand::CloseTopOverlay))
+		.child(search(mode, field, cursor::item_count(&results.groups), !query.trim().is_empty(), cx))
+		.child(status(&results, mode, cx))
+		.child(list(&results.groups, selected, query, scroll, motion, cx))
+		.child(footer(mode, !results.groups.is_empty(), cx))
 		.into_any_element()
 }
 
-/// One row: what it is, what it is in, and the chord that does it.
-fn entry(row: &PaletteRow, index: usize, selected: bool, cx: &mut App) -> Row {
+pub fn selected_child(store: &Store, mode: PaletteMode) -> usize {
+	let results = results(store, mode, &store.frontend.palette_query);
+	cursor::selected_child(&results.groups, store.frontend.palette_cursor)
+}
+
+pub fn selected_commands(store: &Store, mode: PaletteMode) -> Option<Vec<UiCommand>> {
+	let results = results(store, mode, &store.frontend.palette_query);
+	cursor::selected_commands(&results.groups, store.frontend.palette_cursor)
+		.map(<[UiCommand]>::to_vec)
+}
+
+fn search(
+	mode: PaletteMode,
+	field: &Entity<Editor>,
+	count: usize,
+	filtered: bool,
+	cx: &mut App,
+) -> Div {
 	let theme = Theme::get(cx);
-	let mut entry = Row::new(format!("palette-{index}"), row.label.clone())
-		.selected(selected)
-		// Every row keeps the space a drawing takes, because only some commands
-		// have one and a list whose titles start at two different offsets reads
-		// as two lists.
-		.gutter(true)
-		.tone(if selected { Tone::Plain } else { Tone::Muted })
-		.on_click(act::click(row.command.clone()));
+	let _ = &theme;
+	div()
+		.flex()
+		.items_center()
+		.px(px(space::BASE))
+		.pb(px(space::SNUG))
+		.child(
+			SearchField::new("palette-search", SEARCH_OWNER, field.clone())
+				.prominent()
+				.hint(if filtered {
+					format!("{count} results · {}", mode.title())
+				} else {
+					mode.title().to_owned()
+				}),
+		)
+}
 
-	if let Some(mark) = logic::mark(row) {
-		entry = entry.icon(mark);
+fn status(results: &Results, mode: PaletteMode, _cx: &mut App) -> AnyElement {
+	match &results.state {
+		SourceState::Ready => div().into_any_element(),
+		SourceState::Loading => div()
+			.flex()
+			.items_center()
+			.justify_center()
+			.py(px(space::LOOSE))
+			.child(Spinner::new(chrome(2), Icon::Running))
+			.into_any_element(),
+		SourceState::Empty => Empty::new(format!("No {} found", mode.title().to_lowercase()))
+			.note("Try a different search")
+			.into_any_element(),
+		SourceState::Stale(reason) => Banner::notice("Showing cached results")
+			.detail(reason.clone())
+			.into_any_element(),
+		SourceState::Error { message, retryable } => {
+			let mut banner =
+				Banner::failure(format!("{} unavailable", mode.title())).detail(message.clone());
+			if *retryable && let Some(command) = retry(mode) {
+				banner = banner.child(
+					Button::labelled("palette-retry", chrome(3), "Retry")
+						.fill(Fill::Tinted)
+						.tone(Tone::Danger)
+						.on_click(act::click(command)),
+				);
+			}
+			banner.into_any_element()
+		},
+		SourceState::Unavailable(reason) => Banner::failure(format!("{} unavailable", mode.title()))
+			.detail(reason.clone())
+			.into_any_element(),
 	}
+}
 
-	// The right of the row, in the order a reader scans it: where it lives,
-	// then whether it is already on screen, then the chord for it.
-	let mut trailing: Vec<AnyElement> = Vec::new();
-	if !row.detail.is_empty() {
-		trailing.push(text::meta(row.detail.clone(), &theme).into_any_element());
+fn list(
+	groups: &[Group],
+	selected: usize,
+	query: &str,
+	scroll: &ScrollHandle,
+	motion: &mut PaletteMotion,
+	cx: &mut App,
+) -> AnyElement {
+	if groups.is_empty() {
+		return div().into_any_element();
 	}
-	if logic::current(row) {
-		trailing.push(
-			square(icon::scale::SMALL)
-				.child(icon::at(Icon::Check, icon::scale::SMALL, theme.accent))
-				.into_any_element(),
+	let theme = Theme::get(cx);
+	let mut element = div()
+		.id("palette-results")
+		.flex()
+		.flex_col()
+		.gap(px(space::ROWS))
+		.max_h(px(layout::reading()))
+		.pt(px(space::SNUG));
+	let mut index = 0;
+	for (group_index, group) in groups.iter().enumerate() {
+		element = element.child(
+			div()
+				.px(px(space::BASE))
+				.pt(px(if group_index == 0 {
+					space::WIDE
+				} else {
+					space::LOOSE
+				}))
+				.pb(px(space::BASE))
+				.child(text::overline(group.label, &theme).text_color(theme.text_muted)),
 		);
+		for item in &group.items {
+			element = element.child(entry(item, index == selected, query, motion, cx));
+			index += 1;
+		}
 	}
-	if let Some(chord) = logic::chord(row) {
-		trailing.push(kbd::caps(chord, &theme).into_any_element());
+	element
+		.scrolls_y(scroll, Elevation::Overlay)
+		.into_any_element()
+}
+
+fn entry(
+	item: &Item,
+	selected: bool,
+	query: &str,
+	motion: &mut PaletteMotion,
+	cx: &mut App,
+) -> AnyElement {
+	let Some(owner) = motion.row(&item.id) else {
+		return Banner::failure("Result unavailable")
+			.detail("The retained identity table is full")
+			.into_any_element();
+	};
+	let theme = Theme::get(cx);
+	let title = highlighted(&item.title, query, &theme);
+	let mut row = Row::new(item.id.clone(), owner, item.title.clone())
+		.gutter(true)
+		.title_element(title)
+		.selected(selected)
+		.active(item.current);
+	if let Some(detail) = &item.detail {
+		row = row.note(detail.clone());
 	}
-	entry.children(trailing)
+	if let Some(reason) = &item.disabled_reason {
+		row = row.note(reason.clone()).disabled(reason.clone());
+	} else {
+		row = row.on_click(run_all(item.commands.clone()));
+	}
+	if item.current {
+		row = row.child(icon::base(Icon::Check, theme.accent));
+	}
+	row.into_any_element()
+}
+
+fn highlighted(title: &str, query: &str, theme: &Theme) -> Div {
+	let styles: Vec<_> = highlight::ranges(title, query)
+		.into_iter()
+		.map(|highlight| {
+			(highlight.range, HighlightStyle {
+				font_weight: Some(weight::STRONG),
+				..Default::default()
+			})
+		})
+		.collect();
+	div()
+		.overflow_hidden()
+		.text_ellipsis()
+		.whitespace_nowrap()
+		.text_size(px(size::body()))
+		.text_color(theme.text)
+		.child(StyledText::new(title.to_owned()).with_highlights(styles))
+}
+
+fn footer(mode: PaletteMode, has_results: bool, cx: &mut App) -> Div {
+	let theme = Theme::get(cx);
+	let mut hints = div()
+		.flex()
+		.flex_wrap()
+		.items_center()
+		.gap(px(space::BASE))
+		.pt(px(space::SNUG))
+		.child(hint("↑ ↓", "Navigate", &theme));
+	if has_results {
+		hints = hints.child(hint("Enter", "Open", &theme));
+	}
+	if mode != PaletteMode::Commands {
+		hints = hints.child(hint("Backspace", "Back", &theme));
+	}
+	hints.child(hint("Esc", "Close", &theme))
+}
+
+fn hint(keys: &str, label: &str, theme: &Theme) -> Div {
+	div()
+		.flex()
+		.items_center()
+		.gap(px(space::TIGHT))
+		.child(kbd::caps(keys, theme))
+		.child(text::meta(label, theme))
+}
+
+fn retry(mode: PaletteMode) -> Option<UiCommand> {
+	match mode {
+		PaletteMode::Sessions | PaletteMode::Messages | PaletteMode::QuickOpen => {
+			Some(UiCommand::LoadSessions)
+		},
+		PaletteMode::Models => Some(UiCommand::RefreshModels),
+		PaletteMode::Providers => Some(UiCommand::RefreshProviders),
+		PaletteMode::Agents => Some(UiCommand::RefreshAgents),
+		PaletteMode::Commands | PaletteMode::Files | PaletteMode::Settings => None,
+	}
+}
+
+fn run_all(
+	commands: Vec<UiCommand>,
+) -> impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut App) + 'static {
+	move |_, window, cx| {
+		for command in &commands {
+			act::run(command.clone(), window, cx);
+		}
+	}
 }

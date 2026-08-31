@@ -18,14 +18,25 @@
 //! against the store: hiding the application, which is the platform's, and
 //! quitting, which the palette reaches through the command table.
 
+#[cfg(test)]
+mod a_palette_row_hands_the_keyboard_to_what_it_drew;
+#[cfg(test)]
+mod a_reopened_palette_starts_on_an_empty_field;
+#[cfg(test)]
+mod a_typed_secret_leaves_the_field_only_on_submit;
+mod bridge;
 mod chrome;
+#[cfg(test)]
+mod every_filter_the_window_holds_has_a_field;
+mod handles;
+mod launch;
 mod shell;
 #[cfg(test)]
 mod the_keyboard_reaches_every_route;
 #[cfg(test)]
+mod the_window_draws_the_preferences_it_holds;
+#[cfg(test)]
 mod the_window_opens_inside_the_display;
-
-use std::time::Duration;
 
 use gpui::{
 	App, AppContext, Bounds, Menu, MenuItem, Pixels, Size, TextRenderingMode, TitlebarOptions,
@@ -33,13 +44,13 @@ use gpui::{
 };
 use gpui_platform::application;
 use veyyon_gui_core::{
-	command::Command,
-	store::model::{Appearance, SettingsPage},
+	UiCommand,
+	navigation::{Overlay, PaletteMode, Route, SettingsPage},
 };
 use veyyon_gui_features::act::{self, Do};
 use veyyon_gui_kit::{
 	input,
-	theme::{MONO_CANDIDATES, MONO_FAMILY, Theme, UI_CANDIDATES, UI_FAMILY},
+	theme::{Appearance, MONO_CANDIDATES, MONO_FAMILY, Theme, UI_CANDIDATES, UI_FAMILY},
 };
 
 actions!(veyyon, [HideApp]);
@@ -81,13 +92,13 @@ fn fitted(room: Option<Size<Pixels>>) -> Size<Pixels> {
 }
 
 fn main() {
-	// A capture or a smoke run needs the window to close itself. Nothing else
-	// reads the command line yet.
-	let exit_after = std::env::args()
-		.skip_while(|argument| argument != "--exit-after")
-		.nth(1)
-		.and_then(|value| value.parse::<u64>().ok());
-
+	let launch = match launch::Launch::parse(std::env::args().skip(1)) {
+		Ok(launch) => launch,
+		Err(error) => {
+			eprintln!("{error}");
+			std::process::exit(2);
+		},
+	};
 	application().run(move |cx: &mut App| {
 		install_fonts(cx);
 		// Subpixel rendering puts a blue fringe down the left of every stem and
@@ -132,12 +143,17 @@ fn main() {
 			..Default::default()
 		};
 
+		#[cfg(debug_assertions)]
+		let events = launch.events;
+		#[cfg(not(debug_assertions))]
+		let events = Vec::new();
+
 		let window = cx
 			.open_window(options, |window, cx| {
 				// Nothing in the window is sized in rem, so this is only the
 				// base gpui resolves its own defaults against.
 				window.set_rem_size(px(16.0));
-				cx.new(|cx| shell::Shell::new(window, cx))
+				cx.new(|cx| shell::Shell::with_events(events, window, cx))
 			})
 			.expect("the platform must give the app a window");
 
@@ -148,11 +164,9 @@ fn main() {
 			})
 			.ok();
 
-		if let Some(after) = exit_after {
+		if let Some(after) = launch.exit_after {
 			cx.spawn(async move |cx| {
-				cx.background_executor()
-					.timer(Duration::from_millis(after))
-					.await;
+				cx.background_executor().timer(after).await;
 				cx.update(|cx| cx.quit());
 			})
 			.detach();
@@ -187,28 +201,31 @@ fn install_fonts(cx: &mut App) {
 /// Every row is a command, so a menu row and its palette row and its chord are
 /// the same thing said three ways, and the words come from the command itself.
 fn menus() -> Vec<Menu> {
-	let row = |command: Command| MenuItem::action(command.what(), Do(command));
+	let row = |name: &'static str, command: UiCommand| MenuItem::action(name, Do(command));
 	vec![
 		Menu::new("veyyon").items([
-			row(Command::OpenSettings(SettingsPage::Appearance)),
+			row("Settings", UiCommand::Navigate(Route::Settings(SettingsPage::Appearance))),
 			MenuItem::separator(),
 			MenuItem::action("Hide", HideApp),
-			row(Command::Quit),
+			row("Quit", UiCommand::QuitWindow),
 		]),
 		Menu::new("Conversation").items([
-			row(Command::NewSession),
-			row(Command::CycleSession { forward: true }),
-			row(Command::CycleSession { forward: false }),
+			row("New Session", UiCommand::CreateSession { workspace: None, parent: None }),
+			row("Next Session", UiCommand::CycleSession { forward: true }),
+			row("Previous Session", UiCommand::CycleSession { forward: false }),
 			MenuItem::separator(),
-			row(Command::DeleteSelected),
+			row("Close Overlay", UiCommand::CloseTopOverlay),
 		]),
 		Menu::new("View").items([
-			row(Command::OpenPalette),
-			row(Command::ToggleSidebar),
+			row(
+				"Command Palette",
+				UiCommand::OpenOverlay(Overlay::CommandPalette { mode: PaletteMode::Commands }),
+			),
+			row("Toggle Sidebar", UiCommand::ToggleSidebar),
+			row("Toggle Bottom Dock", UiCommand::ToggleBottomDock),
+			row("Toggle Inspector", UiCommand::ToggleInspector),
 			MenuItem::separator(),
-			row(Command::FlipAppearance),
-			row(Command::StepTextSize { up: true }),
-			row(Command::StepTextSize { up: false }),
+			row("Toggle Dark Theme", UiCommand::SetDarkAppearance(true)),
 		]),
 	]
 }

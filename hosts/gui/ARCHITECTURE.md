@@ -143,6 +143,13 @@ function of `(&Store, …, &mut App)` returning elements, and the state that mus
 passed in (the two `Editor` entities, the two `ScrollHandle`s). Interaction leaves through
 `features::act::Do(Command)`, so a surface has nothing to subscribe to and nothing to notify.
 
+A surface that narrows itself by a query draws `kit::ui::SearchField` over an `Editor` the app owns,
+and never a filter row of its own: one primitive spans the conversation shelf, the changes tree, the
+file tree, the agent roster, the settings pages, the four catalogue pages and the Problems dock.
+Filter state with no field is unreachable state, so `app/src/every_filter_the_window_holds_has_a_field.rs`
+reads every `*_filter` and `*_query` field out of `FrontendState` at run time, types into the field
+each one is reached through, and fails on a filter no surface draws.
+
 Two globals are readable during a frame, both in `kit`: the theme, and `kit::paint`, which holds
 the motion registry and this frame's instant. Nothing below `app` reads a clock; `paint::begin`
 stamps the instant once per frame and `paint::end` advances every channel.
@@ -160,16 +167,68 @@ No other file changes. If a step 6 appears, the layering is wrong.
 
 ## The window
 
-`app` is three files and holds no feature logic.
+`app` holds no feature logic: five modules and the `shell` it drives, plus the windowed suites that
+need a real window.
 
 - `main.rs` opens the window, installs both key tables, and builds the menu bar from `Command`.
-- `shell.rs` holds the store, the two fields, the two scroll handles, and the one action listener.
-  `Shell::perform` runs a command and carries out its `Outcome`; `Shell::settle_focus` is the only
-  place focus is decided, because a binding dispatches along the focused element's ancestors and a
-  route change can unmount the focused field.
+- `launch.rs` is the command-line preflight, run before the platform opens a window.
+- `bridge.rs` is the only transport boundary. Production starts detached and performs no I/O; a
+  debug proof scene decodes in full before a window opens and then enters through the same
+  `Bridge::apply` as a live event.
+- `handles.rs` holds the retained gpui state for every movable surface: the editors, the scroll
+  handles, the focus handle. Layout receives references to those values, so moving a region between
+  an attached pane, a sheet and the bottom dock cannot replace a caret, a selection, a scroll offset
+  or a focus identity.
+- `shell/` holds the store and the one action listener. `Shell::perform` runs a command and carries
+  out its `Outcome`; `shell/frame.rs` opens each frame by draining the effects a field's own event
+  raised, since a subscription is handed no window, and by installing the appearance the
+  preferences hold, since every token a frame reads comes from `Theme::get`.
+- Where the keyboard is, is a pure function of the route and the overlay stack.
+  `shell/focus.rs::reconcile_the_keyboard` recomputes the holder whenever either changes and never
+  restores a remembered handle: a handle that held the keyboard a moment ago is the one most likely
+  to have left the tree with its overlay, its route or its panel, and a binding dispatches along the
+  focused element's ancestors, so a field nothing draws leaves the window answering nothing at all.
+  `place_the_credential_field` is the one addition, for a secret field that arrives with a flow
+  phase rather than with its overlay.
+- A field seeded on that transition draws the store's value: the rename sheet starts on the current
+  name, and a palette starts on the query the store holds, which is empty because opening a
+  palette-shaped overlay clears it. One editor backs every palette, so a field that keeps its own
+  text offers the last palette's filter to the next one with the rows of neither.
 - `chrome.rs` draws the frame: two headers, the window controls, the drag surface and the resize
   edges. Two headers rather than one titlebar, so the chrome colour stops at the sidebar's edge and
   the content column keeps its top corner.
+
+## Shell and panels
+
+Five regions, composed in `features/src/shell/layout.rs`:
+
+```
+┌──┬──────────────┬─────────────────────────────┬─────────────┐
+│  │ sidebar      │ titlebar                    │             │
+│ra├──────────────┼─────────────────────────────┤ inspector   │
+│il│ session list │ toolbar                     │ context     │
+│  │ file tree    ├─────────────────────────────┤ details     │
+│  │ roster       │ route content               │ outline     │
+│  │              ├─────────────────────────────┤             │
+│  │              │ bottom dock                 │             │
+└──┴──────────────┴─────────────────────────────┴─────────────┘
+```
+
+The activity rail is a fixed strip and never resizes. The sidebar, the inspector and the bottom dock
+carry a width or height in `PanelState`, clamped by `PanelState::constrain` on every window resize.
+
+**Presentation is derived, never stored as a preference.** `constrain` sets
+`inspector_presentation` to `Sheet` below 1180px and `sidebar_presentation` to `Sheet` below 920px.
+There is no user-facing attached-versus-sheet toggle, so no width can produce a layout that does not
+fit, and a restored window that is narrower than the one that saved the state still opens usable.
+
+**The inspector's tabs are a function of the route, not a list the user accumulates.** The reference
+architecture puts diffs, files, agents, terminals and previews in the right panel as closable tabs
+opened by the user. Here Changes, Files and Agents are routes, and the inspector holds context on
+whatever the route is showing: `InspectorTab` stays a closed enum. One piece of content has one home.
+
+**A draft belongs to a session, not to a route.** `FrontendState::drafts` is keyed by `SessionId`, so
+navigating away from an unsent composer and back is lossless without making the draft addressable.
 
 ## Rules with teeth
 
@@ -319,6 +378,27 @@ Text is drawn grayscale, asked for once at startup. Subpixel rendering is what L
 pick and what macOS dropped, and it puts a blue fringe down the left of every stem and an orange one
 down the right: a captured glyph edge carried 140 parts in 255 of colour on text that is one grey.
 One mode means one window on three platforms.
+
+### The interface scale
+
+One number, in `theme::scale`, that every token holding a glyph is multiplied by. The reader sets it
+on the appearance page, the store clamps it to the range `core::navigation::font_size` defines, and
+the frame installs it once per frame before anything reads a token.
+
+A token that holds a glyph is a function: type sizes, the rows and controls text sits in, the icons
+beside it, the fade band, and the measures derived from a line of text. A token that holds none is a
+constant: spacing, radii, strokes, panel widths, responsive breakpoints and the platform's window
+geometry. Scaling the first set and not the second is the whole design — 20px text in a 28px row
+clips, and a scaled breakpoint decides at 24px text that a window already showing a sidebar has no
+room for one.
+
+A box is rounded to a whole pixel and a type size is not. A row height of 30.7 puts the hairline
+under it on a half pixel, which reads as a list whose lines alternate in thickness; a type size
+rounded to a pixel lands two designed sizes on one.
+
+The value is a thread local, not a global or an atomic: `App` and `Window` are not `Send`, so every
+read is on the thread that draws, and a suite that installs a size is then invisible to the suite
+running beside it.
 
 ## Optical alignment
 

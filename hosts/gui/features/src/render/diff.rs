@@ -41,7 +41,7 @@ fn one(file: &FileDiff, cx: &mut App) -> Div {
 			.gap(px(space::SNUG))
 			.w_full()
 			.px(px(space::BASE))
-			.h(px(layout::ROW_TIGHT))
+			.h(px(layout::row_tight()))
 			.child(
 				text::mono(file.path().to_owned(), &theme)
 					.flex_1()
@@ -93,12 +93,12 @@ fn run(hunk: &Hunk, width: f32, theme: &Theme) -> Div {
 		div()
 			.w_full()
 			.px(px(space::BASE))
-			.py(px(2.0))
+			.py(px(space::PAIR))
 			.bg(theme.text.opacity(0.03))
 			.child(
 				text::mono(heading, theme)
 					.text_color(theme.text_faint)
-					.text_size(px(size::META)),
+					.text_size(px(size::meta())),
 			),
 	);
 	for line in &hunk.lines {
@@ -118,7 +118,7 @@ fn row(line: &DiffLine, width: f32, theme: &Theme) -> Div {
 		text::mono(value.map(|value| value.to_string()).unwrap_or_default(), theme)
 			.flex_none()
 			.w(px(width))
-			.text_size(px(size::META))
+			.text_size(px(size::meta()))
 			.text_color(theme.text_faint)
 	};
 
@@ -134,8 +134,8 @@ fn row(line: &DiffLine, width: f32, theme: &Theme) -> Div {
 			text::mono(format!("{sign}{}", line.text), theme)
 				.flex_1()
 				.min_w(px(0.0))
-				.text_size(px(size::SMALL))
-				.line_height(px(size::SMALL * size::LINE_CODE))
+				.text_size(px(size::meta()))
+				.line_height(px(size::meta() * size::LINE_CODE))
 				.text_color(ink),
 		);
 	if line.no_newline {
@@ -161,7 +161,7 @@ fn number_width(hunks: &[Hunk]) -> f32 {
 	// Mono digits at the meta size, plus a little: the exact advance is the text
 	// system's to know, and this is the column it is given.
 	let digits = widest.to_string().len().max(2) as f32;
-	digits * 7.0
+	digits * space::SNUG
 }
 
 /// What happened to the file, in a word, and nothing when the counts beside it
@@ -191,7 +191,7 @@ fn renamed(file: &FileDiff, theme: &Theme) -> Option<Div> {
 	Some(
 		text::mono(format!("was {}", file.old_path), theme)
 			.flex_none()
-			.text_size(px(size::META))
+			.text_size(px(size::meta()))
 			.text_color(theme.text_faint),
 	)
 }

@@ -13,22 +13,46 @@
 //! sidebar or a titlebar, so they are not the source for chrome. They will
 //! supply [`syntax`], which is the one thing they do describe.
 
+#[cfg(test)]
+mod a_larger_interface_size_moves_text_and_its_boxes_together;
+pub mod geometry;
 pub mod palette;
+pub mod scale;
 pub mod syntax;
 #[cfg(test)]
 mod tests;
 pub mod tokens;
 
+pub use geometry::{ResponsiveLayout, control, diff, icon, layout, responsive_layout, row};
 use gpui::{App, BoxShadow, Global, Hsla, Pixels, point, px};
 pub use palette::{MONO_CANDIDATES, MONO_FAMILY, UI_CANDIDATES, UI_FAMILY, families, set_families};
+pub use scale::{base_font, interface, scaled, scaled_type, set_base_font};
 pub use syntax::Syntax;
-pub use tokens::{layout, radius, size, space, weight};
-use veyyon_gui_core::store::model::Appearance;
+pub use tokens::{opacity, radius, size, space, weight};
+
+/// Window appearance. This presentation preference is defined in kit so the
+/// visual layer does not import product or store state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Appearance {
+	Dark,
+	Light,
+}
+
+impl Appearance {
+	pub const fn flipped(self) -> Self {
+		match self {
+			Self::Dark => Self::Light,
+			Self::Light => Self::Dark,
+		}
+	}
+}
 
 /// Every colour the window draws with.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Theme {
 	pub appearance: Appearance,
+	/// The deepest graphite ground, used by the titlebar and activity rail.
+	pub ground:     Hsla,
 
 	/// The titlebar and the sidebar: one continuous region, so the window reads
 	/// as chrome around content rather than as three panes.
@@ -54,6 +78,8 @@ pub struct Theme {
 	pub text_on_accent: Hsla,
 
 	pub accent: Hsla,
+	/// Informational state that is not a selection or primary action.
+	pub info:   Hsla,
 	pub danger: Hsla,
 	/// Something finished and did what it said.
 	pub ok:     Hsla,
@@ -72,6 +98,34 @@ pub struct Theme {
 	pub font_mono: &'static str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Elevation {
+	Ground,
+	Chrome,
+	Canvas,
+	Raised,
+	Overlay,
+	Sunken,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlState {
+	Rest,
+	Hovered,
+	Pressed,
+	Focused,
+	Selected,
+	Disabled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusRole {
+	Neutral,
+	Info,
+	Success,
+	Warning,
+	Danger,
+}
 impl Global for Theme {}
 
 impl Theme {
@@ -102,14 +156,47 @@ impl Theme {
 	///
 	/// A fixed array rather than a list a caller writes: a sixth ground has to
 	/// be added here, and the suites that sweep this go red until it is.
-	pub fn grounds(self) -> [(&'static str, Hsla); 5] {
+	pub fn grounds(self) -> [(&'static str, Hsla); 6] {
 		[
+			("ground", self.ground),
 			("chrome", self.chrome),
 			("canvas", self.canvas),
 			("raised", self.raised),
 			("sunken", self.sunken),
 			("overlay", self.overlay),
 		]
+	}
+
+	pub fn elevation(self, elevation: Elevation) -> Hsla {
+		match elevation {
+			Elevation::Ground => self.ground,
+			Elevation::Chrome => self.chrome,
+			Elevation::Canvas => self.canvas,
+			Elevation::Raised => self.raised,
+			Elevation::Overlay => self.overlay,
+			Elevation::Sunken => self.sunken,
+		}
+	}
+
+	pub fn status(self, role: StatusRole) -> Hsla {
+		match role {
+			StatusRole::Neutral => self.text_muted,
+			StatusRole::Info => self.info,
+			StatusRole::Success => self.ok,
+			StatusRole::Warning => self.warn,
+			StatusRole::Danger => self.danger,
+		}
+	}
+
+	pub fn control_fill(self, state: ControlState) -> Hsla {
+		match state {
+			ControlState::Rest => Hsla { a: 0.0, ..self.text },
+			ControlState::Hovered => self.hover(),
+			ControlState::Pressed => self.pressed(),
+			ControlState::Focused => self.ring.opacity(0.12),
+			ControlState::Selected => self.selected(),
+			ControlState::Disabled => self.text.opacity(0.025),
+		}
 	}
 
 	/// The ground a hoverable surface takes under the pointer.
@@ -130,6 +217,13 @@ impl Theme {
 		}
 	}
 
+	pub fn selected_hover(self) -> Hsla {
+		match self.appearance {
+			Appearance::Dark => self.text.opacity(0.15),
+			Appearance::Light => self.accent.opacity(0.18),
+		}
+	}
+
 	/// The fill a status takes behind a badge, at the weight a fill can carry
 	/// text.
 	pub fn tint(self, color: Hsla) -> Hsla {
@@ -137,6 +231,16 @@ impl Theme {
 			Appearance::Dark => color.opacity(0.18),
 			Appearance::Light => color.opacity(0.14),
 		}
+	}
+
+	pub fn focus_ring(self) -> Vec<BoxShadow> {
+		vec![BoxShadow {
+			color:         self.ring,
+			offset:        point(Pixels::ZERO, Pixels::ZERO),
+			blur_radius:   Pixels::ZERO,
+			spread_radius: px(control::FOCUS_RING),
+			inset:         false,
+		}]
 	}
 
 	/// A card lifted off the canvas: a menu row's parent, a banner.
@@ -176,8 +280,8 @@ impl Theme {
 	/// a defect. The caller multiplies this by the sheet's arrival.
 	pub fn scrim(self) -> Hsla {
 		match self.appearance {
-			Appearance::Dark => Hsla { h: 0.63, s: 0.30, l: 0.02, a: 1.0 },
-			Appearance::Light => Hsla { h: 0.63, s: 0.16, l: 0.28, a: 1.0 },
+			Appearance::Dark => Hsla { h: 0.63, s: 0.30, l: 0.02, a: opacity::SCRIM_DARK },
+			Appearance::Light => Hsla { h: 0.63, s: 0.16, l: 0.28, a: opacity::SCRIM_LIGHT },
 		}
 	}
 

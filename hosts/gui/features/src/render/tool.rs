@@ -1,130 +1,170 @@
-//! What a tool did.
-//!
-//! One folded row per call: the glyph for the kind of thing it was, the one
-//! line that names it, where it is, and the output behind a disclosure. A
-//! transcript that prints every tool's output inline is a transcript where the
-//! prose is unfindable, and a transcript that hides the output entirely cannot
-//! be checked against what happened.
-//!
-//! FOLDED BY DEFAULT, EXCEPT WHEN IT FAILED. A reader scrolling past a run of
-//! successful calls wants the lines; a reader looking at a failure wants the
-//! text. So the fold's default follows the state rather than being one policy.
-//!
-//! WHAT WAITS IS NOT WHAT RUNS. A call waiting to be allowed is not making
-//! progress, so it does not turn: a spinner on something that is not moving is
-//! a lie the reader believes for as long as it spins.
+//! Tool invocations, lifecycle states, arguments, and producer-owned results.
 
 use gpui::{App, Div, ParentElement, Styled, div, px};
 use veyyon_gui_core::{
-	command::Command,
-	store::model::{ToolCall, ToolKind, ToolState},
+	UiCommand,
+	model::{ToolCallView, ToolId, ToolState, Value},
 };
 use veyyon_gui_kit::{
-	theme::{Theme, size, space},
-	ui::{Badge, Disclosure, Icon, Size, Spinner, Tone, card, text},
+	theme::space,
+	ui::{Badge, Button, Fill, Icon, Size, Tone, disclosure::Disclosure, text},
 };
 
+use super::{generic_json, identity};
 use crate::act;
 
-/// One call.
-pub fn call(call: &ToolCall, cx: &mut App) -> Div {
-	let theme = Theme::get(cx);
-	let open = call.unfolded();
+pub fn result(id: &str, tool_id: &ToolId, value: &Value, is_error: bool, cx: &mut App) -> Div {
+	text::stack(space::TIGHT)
+		.w_full()
+		.min_w(px(0.0))
+		.child(
+			Badge::new(format!("Result · {tool_id}"))
+				.tone(if is_error { Tone::Danger } else { Tone::Muted })
+				.icon(if is_error { Icon::Failed } else { Icon::Tool }),
+		)
+		.child(generic_json::detail(id, value, cx))
+}
 
-	let mut header = Disclosure::new(format!("tool-{}", call.id), call.what.clone())
-		.icon(mark(call.kind))
-		.open(open);
+/// Render a canonical tool call. `None` is a retained invocation whose
+/// lifecycle snapshot has not arrived; it remains visible as unavailable.
+pub fn call(
+	id: &ToolId,
+	name: &str,
+	arguments: &Value,
+	view: Option<&ToolCallView>,
+	open: bool,
+	cx: &mut App,
+) -> Div {
+	let shown_arguments = view.map_or(arguments, |view| &view.arguments);
+	let result = view.and_then(|view| view.result.as_ref());
+	let has_arguments = !matches!(shown_arguments, Value::Null);
+	let has_detail = has_arguments || result.is_some();
+	let label = view
+		.and_then(|view| view.intent.as_deref())
+		.filter(|intent| !intent.trim().is_empty())
+		.unwrap_or(name);
 
-	// Pressable only where there is output. The chevron is what says a row has
-	// more behind it, so a row with nothing behind it does not draw one.
-	if call.has_detail() {
-		let id = call.id.clone();
-		header = header
-			.on_toggle(move |_, window, cx| act::run(Command::ToggleTool(id.clone()), window, cx));
-	}
-
-	// The state, at the far end, in the one form that fits a row: a turning
-	// mark while it runs, a word once it is over, nothing at all when it did
-	// what it said. A green tick on every successful call is a column of green
-	// ticks nobody reads.
-	match &call.state {
-		ToolState::Running => {
-			header = header.count("running");
-		},
-		ToolState::Waiting => {
-			header = header.count("waiting");
-		},
-		ToolState::Failed(_) => {
-			header = header.count("failed");
-		},
-		ToolState::Done => {},
-	}
-
-	let mut column = text::stack(space::TIGHT).w_full().child(header);
-
-	// A running call gets the turning mark on its own line rather than inside
-	// the row, so the row's text does not shift when it stops.
-	if matches!(call.state, ToolState::Running) {
-		column = column.child(
-			div().pl(px(space::LOOSE)).child(
-				Spinner::new(format!("tool-spin-{}", call.id))
-					.size(Size::Small)
-					.what("Running"),
-			),
-		);
-	}
-	if let ToolState::Waiting = call.state {
-		column = column.child(
-			div().pl(px(space::LOOSE)).child(
-				Badge::new("Waiting to be allowed")
-					.tone(Tone::Warn)
-					.icon(Icon::Allow),
-			),
-		);
-	}
-	if let ToolState::Failed(why) = &call.state
-		&& !why.trim().is_empty()
-	{
-		column = column.child(
-			div().pl(px(space::LOOSE)).child(
-				Badge::new(why.clone())
-					.tone(Tone::Danger)
-					.icon(Icon::Failed)
-					.exact(),
-			),
-		);
+	let disclosure_id = format!("tool-{id}");
+	let mut disclosure =
+		Disclosure::new(disclosure_id.clone(), identity::owner(&disclosure_id), label.to_owned())
+			.open(open)
+			.count(state_label(view.map(|view| &view.state)));
+	if has_detail {
+		let command_id = id.clone();
+		disclosure = disclosure.on_toggle(move |_, window, cx| {
+			act::run(UiCommand::ToggleToolDisclosure(command_id.clone()), window, cx);
+		});
 	}
 
 	if open {
-		column = column.child(detail(&call.detail, &theme));
+		if has_arguments {
+			disclosure = disclosure.child(
+				text::stack(space::TIGHT)
+					.w_full()
+					.min_w(px(0.0))
+					.child(Badge::new("Arguments").tone(Tone::Muted).bare())
+					.child(generic_json::detail(&format!("tool-{id}-args"), shown_arguments, cx)),
+			);
+		}
+		if let Some(result) = result {
+			disclosure = disclosure.child(
+				text::stack(space::TIGHT)
+					.w_full()
+					.min_w(px(0.0))
+					.child(
+						Badge::new("Result")
+							.tone(if view.is_some_and(|view| view.is_error) {
+								Tone::Danger
+							} else {
+								Tone::Muted
+							})
+							.bare(),
+					)
+					.child(generic_json::detail(&format!("tool-{id}-result"), result, cx)),
+			);
+		}
+	}
+
+	let mut column = text::stack(space::TIGHT)
+		.w_full()
+		.min_w(px(0.0))
+		.child(disclosure);
+	match view.map(|view| &view.state) {
+		Some(ToolState::Pending | ToolState::Running | ToolState::StreamingResult) => {
+			let cancel_id = id.clone();
+			let cancel_control_id = format!("cancel-tool-{id}");
+			column = column.child(
+				div().flex().justify_end().child(
+					Button::labelled(
+						cancel_control_id.clone(),
+						identity::owner(&cancel_control_id),
+						"Cancel",
+					)
+					.icon(Icon::Stop)
+					.tone(Tone::Danger)
+					.fill(Fill::Ghost)
+					.size(Size::Base)
+					.tip("Cancel tool")
+					.on_click(act::click(UiCommand::CancelTool(cancel_id))),
+				),
+			);
+		},
+		Some(ToolState::WaitingForApproval) => {
+			column = column.child(
+				Badge::new("Waiting for approval")
+					.tone(Tone::Warn)
+					.icon(Icon::Allow),
+			);
+		},
+		Some(ToolState::Failed) => {
+			column = column.child(
+				Badge::new("Tool failed")
+					.tone(Tone::Danger)
+					.icon(Icon::Failed),
+			);
+		},
+		Some(ToolState::Cancelled) => {
+			column = column.child(Badge::new("Cancelled").tone(Tone::Muted));
+		},
+		Some(ToolState::Interrupted) => {
+			column = column.child(Badge::new("Interrupted").tone(Tone::Warn));
+		},
+		Some(ToolState::Succeeded) => {},
+		None => {
+			column = column.child(Badge::new("Tool state unavailable").tone(Tone::Warn));
+		},
 	}
 	column
 }
 
-/// What a call produced: a well of mono text, indented under the row it belongs
-/// to.
-fn detail(text_body: &str, theme: &Theme) -> Div {
-	card::well(theme)
-		.w_full()
-		.ml(px(space::LOOSE))
-		.px(px(space::BASE))
-		.py(px(space::SNUG))
-		.child(
-			text::mono(text_body.to_owned(), theme)
-				.w_full()
-				.text_size(px(size::SMALL))
-				.line_height(px(size::SMALL * size::LINE_CODE))
-				.text_color(theme.text_muted),
-		)
+fn state_label(state: Option<&ToolState>) -> &'static str {
+	match state {
+		Some(ToolState::Pending) => "pending",
+		Some(ToolState::WaitingForApproval) => "approval",
+		Some(ToolState::Running) => "running",
+		Some(ToolState::StreamingResult) => "streaming",
+		Some(ToolState::Succeeded) => "succeeded",
+		Some(ToolState::Failed) => "failed",
+		Some(ToolState::Cancelled) => "cancelled",
+		Some(ToolState::Interrupted) => "interrupted",
+		None => "unavailable",
+	}
 }
 
-/// The glyph for a kind of call.
-pub fn mark(kind: ToolKind) -> Icon {
-	match kind {
-		ToolKind::Ran => Icon::Ran,
-		ToolKind::Read => Icon::Read,
-		ToolKind::Edited => Icon::Edited,
-		ToolKind::Searched => Icon::Search,
-		ToolKind::Other => Icon::Tool,
+pub fn mark(name: &str) -> Icon {
+	let normalized = name.to_ascii_lowercase();
+	if normalized.contains("read") {
+		Icon::Read
+	} else if normalized.contains("write") || normalized.contains("edit") {
+		Icon::Edited
+	} else if normalized.contains("search") || normalized.contains("glob") {
+		Icon::Search
+	} else if normalized.contains("bash")
+		|| normalized.contains("shell")
+		|| normalized.contains("python")
+	{
+		Icon::Ran
+	} else {
+		Icon::Tool
 	}
 }

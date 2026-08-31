@@ -10,11 +10,31 @@
 //! controls inside one that do — a copy button on a fenced block, a disclosure
 //! on a tool call — are primitives from the kit, which own their own state.
 
+pub mod assistant_text;
 pub mod code;
+pub mod custom;
+pub mod developer_text;
 pub mod diff;
+pub mod entry;
+pub mod entry_meta;
+pub mod execution;
+pub mod fallback;
+pub mod file_mention;
+pub mod footer;
+pub mod generic_json;
+pub mod identity;
+pub mod image;
+pub mod lifecycle;
+pub mod list;
 pub mod markdown;
-pub mod message;
+pub mod model_change;
+pub mod quote;
+pub mod summary;
+pub mod table;
+pub mod thinking;
 pub mod tool;
+pub mod unknown;
+pub mod user_text;
 
 #[cfg(test)]
 mod tests;

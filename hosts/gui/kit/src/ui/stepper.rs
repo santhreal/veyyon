@@ -1,70 +1,63 @@
-//! A number, one step at a time.
-//!
-//! Text size, a width, a count of retries. A stepper is for a number whose
-//! steps are the only values worth setting; a number typed freely is an input,
-//! and a number with a ceiling worth seeing is a [`Meter`](super::Meter).
-//!
-//! The value sits between the two buttons and is drawn in the monospace family,
-//! so it does not shift the buttons as it goes from 9 to 10. Its unit follows
-//! it on the same line, the way a number is read aloud; stacked under it, the
-//! two read as two values.
-//!
-//! Each end reports whether it can still move, and a stepper at its limit draws
-//! that end faint rather than removing it: a control that disappears at the
-//! boundary takes the explanation with it.
+//! Numeric stepper with stable button geometry.
 
 use gpui::{
 	App, ClickEvent, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div, px,
 };
 
 use super::{Button, Fill, Icon, Size, Tone, text};
-use crate::theme::{Theme, radius, size, space, weight};
+use crate::{
+	motion::RetainedKey,
+	theme::{Theme, control, radius, size, space, weight},
+};
 
 type Click = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 
-/// A number with a step either side.
 #[derive(IntoElement)]
 pub struct Stepper {
-	id:      SharedString,
-	value:   SharedString,
-	/// What the value is, under it: the unit, or nothing when the number speaks
-	/// for itself.
-	unit:    Option<SharedString>,
-	down:    bool,
-	up:      bool,
-	size:    Size,
-	on_down: Option<Click>,
-	on_up:   Option<Click>,
+	id:         SharedString,
+	down_owner: RetainedKey,
+	up_owner:   RetainedKey,
+	value:      SharedString,
+	unit:       Option<SharedString>,
+	down:       bool,
+	up:         bool,
+	size:       Size,
+	on_down:    Option<Click>,
+	on_up:      Option<Click>,
 }
-
 impl Stepper {
-	pub fn new(id: impl Into<SharedString>, value: impl Into<SharedString>) -> Stepper {
-		Stepper {
-			id:      id.into(),
-			value:   value.into(),
-			unit:    None,
-			down:    true,
-			up:      true,
-			size:    Size::Base,
+	pub fn new(
+		id: impl Into<SharedString>,
+		down_owner: RetainedKey,
+		up_owner: RetainedKey,
+		value: impl Into<SharedString>,
+	) -> Self {
+		Self {
+			id: id.into(),
+			down_owner,
+			up_owner,
+			value: value.into(),
+			unit: None,
+			down: true,
+			up: true,
+			size: Size::Base,
 			on_down: None,
-			on_up:   None,
+			on_up: None,
 		}
 	}
 
-	pub fn unit(mut self, unit: impl Into<SharedString>) -> Stepper {
+	pub fn unit(mut self, unit: impl Into<SharedString>) -> Self {
 		self.unit = Some(unit.into());
 		self
 	}
 
-	/// Whether each end can still move. A stepper at its floor draws the down
-	/// step faint and does nothing when it is pressed.
-	pub fn limits(mut self, down: bool, up: bool) -> Stepper {
+	pub fn limits(mut self, down: bool, up: bool) -> Self {
 		self.down = down;
 		self.up = up;
 		self
 	}
 
-	pub fn size(mut self, size: Size) -> Stepper {
+	pub fn size(mut self, size: Size) -> Self {
 		self.size = size;
 		self
 	}
@@ -72,47 +65,43 @@ impl Stepper {
 	pub fn on_down(
 		mut self,
 		listener: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-	) -> Stepper {
+	) -> Self {
 		self.on_down = Some(Box::new(listener));
 		self
 	}
 
-	pub fn on_up(
-		mut self,
-		listener: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-	) -> Stepper {
+	pub fn on_up(mut self, listener: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
 		self.on_up = Some(Box::new(listener));
 		self
 	}
 }
-
 impl RenderOnce for Stepper {
 	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let theme = Theme::get(cx);
-		let step = self.size;
-		let mut less = Button::new(format!("{}-less", self.id), Icon::Less)
+		let mut less = Button::new(format!("{}-less", self.id), self.down_owner, Icon::Less)
 			.tone(Tone::Muted)
 			.fill(Fill::Ghost)
-			.size(step)
-			.tip("Less")
-			.enabled(self.down);
-		if let Some(listener) = self.on_down {
-			less = less.on_click(move |event, window, cx| listener(event, window, cx));
-		}
-		let mut more = Button::new(format!("{}-more", self.id), Icon::More)
+			.size(self.size)
+			.tip("Decrease");
+		less = match (self.down, self.on_down) {
+			(true, Some(listener)) => less.on_click(listener),
+			(false, _) => less.disabled("Minimum reached"),
+			_ => less.disabled("This value cannot be decreased"),
+		};
+		let mut more = Button::new(format!("{}-more", self.id), self.up_owner, Icon::MoreValue)
 			.tone(Tone::Muted)
 			.fill(Fill::Ghost)
-			.size(step)
-			.tip("More")
-			.enabled(self.up);
-		if let Some(listener) = self.on_up {
-			more = more.on_click(move |event, window, cx| listener(event, window, cx));
-		}
-
-		text::line_of(space::TIGHT)
+			.size(self.size)
+			.tip("Increase");
+		more = match (self.up, self.on_up) {
+			(true, Some(listener)) => more.on_click(listener),
+			(false, _) => more.disabled("Maximum reached"),
+			_ => more.disabled("This value cannot be increased"),
+		};
+		text::line_of(space::X4)
 			.flex_none()
-			.p(px(2.0))
-			.rounded(px(radius::CHIP + 2.0))
+			.p(px(space::X2))
+			.rounded(px(radius::POPOVER))
 			.bg(theme.sunken)
 			.border_1()
 			.border_color(theme.stroke)
@@ -122,19 +111,19 @@ impl RenderOnce for Stepper {
 					.flex()
 					.items_center()
 					.justify_center()
-					.gap(px(space::TIGHT - 1.0))
-					.min_w(px(52.0))
+					.gap(px(space::X4))
+					.min_w(px(control::stepper_value_width()))
 					.child(
 						div()
 							.font_family(theme.font_mono)
-							.text_size(px(step.text()))
+							.text_size(px(self.size.text()))
 							.font_weight(weight::MEDIUM)
 							.text_color(theme.text)
 							.child(self.value),
 					)
 					.children(self.unit.map(|unit| {
 						div()
-							.text_size(px(size::META))
+							.text_size(px(size::meta()))
 							.text_color(theme.text_faint)
 							.child(unit)
 					})),

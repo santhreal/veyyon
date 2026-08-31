@@ -13,45 +13,41 @@ impl Editor {
 		multiline: bool,
 		cx: &mut Context<Self>,
 	) -> Self {
-		let blink = cx.spawn(async move |this, cx| {
-			loop {
-				cx.background_executor().timer(BLINK).await;
-				let alive = this
-					.update(cx, |editor, cx| {
-						if editor.focused {
-							editor.caret_on = !editor.caret_on;
-							cx.notify();
-						}
-					})
-					.is_ok();
-				if !alive {
-					break;
-				}
-			}
-		});
-
 		Editor {
 			focus: cx.focus_handle(),
-			text: SharedString::default(),
+			text: String::new(),
+			display: SharedString::default(),
+			secret: false,
 			selection: 0..0,
 			reversed: false,
 			marked: None,
 			placeholder: placeholder.into(),
 			multiline,
-			context: if multiline {
+			kind: if multiline {
 				"MultilineEditor"
 			} else {
 				"Editor"
 			},
-			min_height: px(20.0),
-			max_height: px(240.0),
+			name: None,
+			min_height: px(crate::theme::layout::editor_single_line()),
+			max_height: px(crate::theme::layout::composer_max_height()),
 			shaped: None,
 			dragging: false,
 			focused: false,
-			caret_on: true,
 			scroll: px(0.0),
-			_blink: blink,
 		}
+	}
+
+	/// A field whose text is a secret: drawn masked, never copied or cut, and
+	/// taken out through [`SecureEditor::take`] into a zeroizing value.
+	///
+	/// A constructor on `Editor` rather than on `SecureEditor`, because a secret
+	/// field is one of these with two flags set, not a second kind of field.
+	pub fn secure(placeholder: impl Into<SharedString>, cx: &mut Context<Self>) -> Self {
+		let mut editor = Self::new(placeholder, false, cx);
+		editor.secret = true;
+		editor.kind = "SecureEditor";
+		editor
 	}
 
 	/// How tall the field is when empty and how tall it may grow.
@@ -61,9 +57,13 @@ impl Editor {
 		self
 	}
 
-	/// Dispatch in a named keymap context instead of the default.
-	pub fn context(mut self, context: &'static str) -> Self {
-		self.context = context;
+	/// Answer to one more name than the field's kind, for a binding that
+	/// belongs to the surface under this field.
+	///
+	/// The kind stays: a field that dropped it would lose every caret motion,
+	/// since those are written over the kinds and not over the names.
+	pub fn named(mut self, name: &'static str) -> Self {
+		self.name = Some(name);
 		self
 	}
 
@@ -88,7 +88,7 @@ impl Editor {
 		if self.text == text {
 			return;
 		}
-		self.text = SharedString::from(text.to_owned());
+		self.set_storage(text.to_owned());
 		let caret = text::clamp(&self.text, caret);
 		self.selection = caret..caret;
 		self.reversed = false;
@@ -98,7 +98,7 @@ impl Editor {
 	}
 
 	pub fn clear(&mut self, cx: &mut Context<Self>) {
-		self.text = SharedString::default();
+		self.set_storage(String::new());
 		self.selection = 0..0;
 		self.reversed = false;
 		self.marked = None;
@@ -127,7 +127,7 @@ impl Editor {
 			display: if placeholder {
 				self.placeholder.clone()
 			} else {
-				self.text.clone()
+				self.display.clone()
 			},
 			marked: self.marked.clone(),
 			placeholder,
@@ -135,13 +135,11 @@ impl Editor {
 	}
 
 	pub(super) fn edited(&mut self, cx: &mut Context<Self>) {
-		self.caret_on = true;
 		cx.emit(EditorEvent::Changed);
 		cx.notify();
 	}
 
 	pub(super) fn moved(&mut self, cx: &mut Context<Self>) {
-		self.caret_on = true;
 		cx.notify();
 	}
 
@@ -167,12 +165,22 @@ impl Editor {
 	}
 
 	pub(super) fn replace(&mut self, range: Range<usize>, with: &str, cx: &mut Context<Self>) {
-		let (text, caret) = text::replace(&self.text, range, with);
-		self.text = SharedString::from(text);
+		let (value, caret) = text::replace(&self.text, range, with);
+		self.set_storage(value);
 		self.selection = caret..caret;
 		self.reversed = false;
 		self.marked = None;
 		self.edited(cx);
+	}
+
+	pub(super) fn set_storage(&mut self, value: String) {
+		if self.secret {
+			wipe_string(&mut self.text);
+			self.display = "*".repeat(value.len()).into();
+		} else {
+			self.display = value.clone().into();
+		}
+		self.text = value;
 	}
 
 	pub(super) fn selected_range(&self) -> Range<usize> {
@@ -182,4 +190,30 @@ impl Editor {
 			self.selection.clone()
 		}
 	}
+}
+
+impl SecureEditor {
+	/// Move the secret into a zeroizing boundary value and clear the editor.
+	pub fn take(editor: &mut Editor, cx: &mut Context<Editor>) -> SecretValue {
+		let bytes = std::mem::take(&mut editor.text).into_bytes();
+		editor.display = SharedString::default();
+		editor.selection = 0..0;
+		editor.marked = None;
+		editor.scroll = px(0.0);
+		cx.notify();
+		SecretValue(bytes)
+	}
+}
+
+impl Drop for Editor {
+	fn drop(&mut self) {
+		if self.secret {
+			wipe_string(&mut self.text);
+		}
+	}
+}
+
+fn wipe_string(value: &mut String) {
+	let mut bytes = std::mem::take(value).into_bytes();
+	bytes.fill(0);
 }

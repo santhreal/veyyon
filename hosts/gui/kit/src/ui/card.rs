@@ -13,10 +13,7 @@ use gpui::{
 };
 
 use super::Tone;
-use crate::{
-	motion, paint,
-	theme::{Theme, radius, space},
-};
+use crate::theme::{Theme, radius, space};
 
 /// How far off its ground a card sits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -42,8 +39,6 @@ pub struct Card {
 	gap:      f32,
 	radius:   f32,
 	stroked:  bool,
-	/// The entrance channel this card animates on, if it animates at all.
-	arrives:  Option<(motion::Channel, u64)>,
 	full:     bool,
 	width:    Option<f32>,
 	min_w:    Option<f32>,
@@ -61,7 +56,6 @@ impl Card {
 			gap:      space::BASE,
 			radius:   radius::CARD,
 			stroked:  false,
-			arrives:  None,
 			full:     false,
 			width:    None,
 			min_w:    None,
@@ -134,13 +128,6 @@ impl Card {
 		self.max_h = Some(max);
 		self
 	}
-
-	/// Animate the first appearance: rise and fade in, once, addressed by
-	/// `channel` and `id` so a card that merely remounts does not replay it.
-	pub fn arriving(mut self, channel: motion::Channel, id: u64) -> Card {
-		self.arrives = Some((channel, id));
-		self
-	}
 }
 
 impl Default for Card {
@@ -162,11 +149,6 @@ impl RenderOnce for Card {
 			(Some(ground), _) => ground,
 			(None, Some(tone)) => tone.tint(&theme),
 			(None, None) => theme.raised,
-		};
-
-		let arrival = match self.arrives {
-			Some((channel, id)) => paint::arriving(cx, motion::Key::at(channel, id), motion::ENTER),
-			None => 1.0,
 		};
 
 		let mut card = div()
@@ -198,14 +180,6 @@ impl RenderOnce for Card {
 			Lift::Card => card.shadow(theme.shadow_card()),
 			Lift::Menu => card.shadow(theme.shadow_menu()),
 		};
-		if arrival < 1.0 {
-			// Rise, rather than grow: a card that scales up drags the text
-			// inside it through a size it will never be read at.
-			card = card
-				.relative()
-				.top(px(motion::lerp(6.0, 0.0, arrival)))
-				.opacity(arrival);
-		}
 		card
 	}
 }
@@ -225,7 +199,7 @@ pub fn well(theme: &Theme) -> Div {
 	div()
 		.flex()
 		.flex_col()
-		.rounded(px(radius::CHIP))
+		.rounded(px(radius::CONTROL))
 		.bg(theme.sunken)
 		.border_1()
 		.border_color(theme.stroke)

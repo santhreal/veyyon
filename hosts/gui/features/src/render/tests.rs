@@ -29,13 +29,13 @@ use veyyon_gui_core::text::{
 };
 use veyyon_gui_kit::theme::Theme;
 
-use super::{markdown as render, message};
+use super::{markdown as render, user_text};
 
 /// Text that has broken every offset bug in this file at least once.
 const AWKWARD: &str = "漢字 👨‍👩‍👧 e\u{0301}nd";
 
 fn theme() -> Theme {
-	Theme::of(veyyon_gui_core::store::model::Appearance::Dark)
+	Theme::of(veyyon_gui_kit::theme::Appearance::Dark)
 }
 
 /// One span of every kind, each carrying awkward text.
@@ -209,9 +209,72 @@ fn a_block_with_a_ground_of_its_own_is_drawn_beside_a_bubble_and_never_inside_on
 		let blocks = markdown::parse(source);
 		assert!(!blocks.is_empty(), "{what} parsed to nothing, so nothing was classified");
 		assert_eq!(
-			blocks.iter().any(message::alone),
+			blocks.iter().any(user_text::standalone),
 			beside,
 			"{what} is drawn on the wrong side of a bubble, from {blocks:?}"
 		);
 	}
+}
+
+#[test]
+fn language_aliases_have_one_visible_identity() {
+	for alias in ["rs", "rust", "RS"] {
+		assert_eq!(super::code::canonical_language(alias), "rust");
+	}
+	for alias in ["py", "python", "PY"] {
+		assert_eq!(super::code::canonical_language(alias), "python");
+	}
+}
+
+#[test]
+fn message_parse_cache_identity_changes_with_the_entry_revision() {
+	use veyyon_gui_core::model::{ContentBlock, EntryId, MessageRole, TranscriptEntry, Value};
+
+	let mut value = TranscriptEntry {
+		id:                EntryId::new("entry-1").expect("nonempty entry"),
+		parent:            None,
+		revision:          4,
+		timestamp_ms:      0,
+		role:              MessageRole::Assistant,
+		content:           vec![ContentBlock::Text { text: "**first**".to_owned() }],
+		meta:              None,
+		raw_discriminator: "message".to_owned(),
+		raw:               Value::Null,
+	};
+	let cache = super::entry::EntryCache::build(&value);
+	assert!(super::entry::cache_is_current(&cache, &value));
+	value.revision = 5;
+	value.content = vec![ContentBlock::Text { text: "**second**".to_owned() }];
+	assert!(!super::entry::cache_is_current(&cache, &value));
+}
+
+#[test]
+fn unknown_json_is_copyable_and_depth_bounded_without_changing_the_replica() {
+	use veyyon_gui_core::model::Value;
+
+	let value = Value::Object(vec![
+		("tag".to_owned(), Value::String("future-entry".to_owned())),
+		("payload".to_owned(), Value::Array(vec![Value::Bool(true), Value::Number("42".to_owned())])),
+	]);
+	let before = value.clone();
+	assert_eq!(
+		super::generic_json::format(&value),
+		"{\n  \"tag\": \"future-entry\",\n  \"payload\": [\n    true,\n    42\n  ]\n}",
+	);
+	assert_eq!(value, before);
+
+	let mut nested = Value::Null;
+	for _ in 0..80 {
+		nested = Value::Array(vec![nested]);
+	}
+	assert!(super::generic_json::format(&nested).contains("<nested value retained>"));
+}
+
+#[test]
+fn fallback_markers_are_only_suppressed_in_presentation() {
+	use veyyon_gui_core::model::Value;
+
+	let value = Value::Object(vec![("producer".to_owned(), Value::String("fallback".to_owned()))]);
+	assert!(super::fallback::suppressed("provider", &value).is_none());
+	assert_eq!(value.object_field("producer"), Some(&Value::String("fallback".to_owned())));
 }

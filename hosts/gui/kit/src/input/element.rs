@@ -5,8 +5,17 @@ use super::*;
 
 impl Render for Editor {
 	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		// Both names, not one: the caret's table is written over the kinds, and
+		// a field that declared only its own name would answer to nothing the
+		// table binds. `add` takes a `&'static str` through `SharedString`, so
+		// neither name allocates per frame.
+		let mut context = KeyContext::new_with_defaults();
+		context.add(self.kind);
+		if let Some(name) = self.name {
+			context.add(name);
+		}
 		div()
-			.key_context(self.context)
+			.key_context(context)
 			.track_focus(&self.focus)
 			.cursor(CursorStyle::IBeam)
 			.on_action(cx.listener(Self::left))
@@ -175,12 +184,12 @@ impl Element for EditorElement {
 
 		// The entity answers geometry out of what was shaped, so it gets this
 		// frame's lines before anything asks it where the caret is.
-		let (selection, caret_offset, caret_on) = self.editor.update(cx, |editor, _| {
+		let (selection, caret_offset) = self.editor.update(cx, |editor, _| {
 			editor.focused = focused;
 			editor.scroll = editor.scroll.clamp(px(0.0), overflow);
 			editor.shaped =
 				Some(Shaped { lines: lines.clone(), line_height, bounds, scroll: editor.scroll });
-			(editor.selection.clone(), editor.caret(), editor.caret_on && focused)
+			(editor.selection.clone(), editor.caret())
 		});
 
 		let caret_at = self.editor.read(cx).position_of(caret_offset);
@@ -233,7 +242,7 @@ impl Element for EditorElement {
 			}
 		}
 
-		let caret = (caret_on && selection.is_empty())
+		let caret = (focused && selection.is_empty())
 			.then_some(caret_at)
 			.flatten()
 			.map(|at| {

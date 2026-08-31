@@ -17,49 +17,87 @@
 //! without touching anything it draws with, and every control of one kind in
 //! the window is the same control.
 
+pub mod activity;
 pub mod badge;
 pub mod banner;
 pub mod button;
 pub mod card;
+pub mod checkbox;
+pub mod composer;
 pub mod disclosure;
+pub mod edge_fade;
 pub mod empty;
 pub mod field;
+pub mod focus;
 pub mod icon;
+pub mod image;
 pub mod kbd;
+pub mod key_cap;
 pub mod menu;
 pub mod meter;
+pub mod overlay;
+pub mod progress;
+pub mod radio;
 pub mod row;
 pub mod scrollbar;
+pub mod search;
+pub mod segmented;
 pub mod select;
 pub mod sheet;
 pub mod spinner;
+pub mod split_handle;
+pub mod state;
+pub mod status;
 pub mod stepper;
+pub mod surface;
 pub mod switch;
 pub mod tabs;
 pub mod text;
+pub mod toolbar;
 pub mod tooltip;
+pub mod tree_row;
 
+pub mod viewport;
+
+pub use activity::ActivityItem;
 pub use badge::Badge;
 pub use banner::Banner;
 pub use button::Button;
 pub use card::Card;
-pub use disclosure::Disclosure;
+pub use checkbox::{Check, Checkbox};
+pub use composer::ComposerChrome;
+pub use edge_fade::{EdgeFade, FadedEdges, Scrolls, edge_fade, scrolls_list, scrolls_uniform};
 pub use empty::Empty;
 pub use field::{Field, Group};
+pub use focus::FocusScope;
 use gpui::{Div, Hsla, div, prelude::*, px};
 pub use icon::Icon;
+pub use image::ImagePreview;
+pub use key_cap::KeyCap;
 pub use menu::{Menu, MenuItem};
 pub use meter::Meter;
+pub use overlay::{Dialog, Popover, Toast};
+pub use progress::{Progress, Skeleton};
+pub use radio::Radio;
 pub use row::Row;
 pub use scrollbar::Scrollbar;
+pub use search::{SearchField, SearchGround};
+pub use segmented::SegmentedControl;
 pub use select::Select;
 pub use sheet::Sheet;
 pub use spinner::Spinner;
+pub use split_handle::{SplitAxis, SplitHandle};
+pub use state::{StateKind, StateSurface};
+pub use status::StatusDot;
 pub use stepper::Stepper;
+pub use surface::{Panel, Well};
 pub use switch::Switch;
 pub use tabs::{Tab, Tabs};
 pub use text::{hairline, line, line_of, meta, spacer, stack};
+pub use toolbar::Toolbar;
 pub use tooltip::Tip;
+pub use tree_row::TreeRow;
+pub use viewport::VirtualListMetrics;
 
 use crate::theme::{Theme, layout, size, space};
 
@@ -149,24 +187,24 @@ impl Size {
 	/// The height a control of this size takes.
 	pub fn height(self) -> f32 {
 		match self {
-			Size::Small => 22.0,
-			Size::Base => layout::CONTROL_HEIGHT,
+			Size::Small => layout::control_height(),
+			Size::Base => crate::theme::row::roomy(),
 		}
 	}
 
 	/// The text size inside it.
 	pub fn text(self) -> f32 {
 		match self {
-			Size::Small => size::SMALL,
-			Size::Base => size::BODY,
+			Size::Small => size::meta(),
+			Size::Base => size::body(),
 		}
 	}
 
 	/// The icon size inside it.
 	pub fn glyph(self) -> f32 {
 		match self {
-			Size::Small => icon::scale::SMALL,
-			Size::Base => icon::scale::BASE,
+			Size::Small => icon::scale::small(),
+			Size::Base => icon::scale::base(),
 		}
 	}
 
@@ -181,7 +219,7 @@ impl Size {
 	/// The gap between a control's glyph and its label.
 	pub fn gap(self) -> f32 {
 		match self {
-			Size::Small => space::TIGHT + 1.0,
+			Size::Small => space::TIGHT,
 			Size::Base => space::SNUG,
 		}
 	}

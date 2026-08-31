@@ -9,8 +9,8 @@ use veyyon_gui_core::{
 	store::model::{Route, SettingsPage, Store},
 };
 use veyyon_gui_kit::{
-	theme::{Theme, space},
-	ui::{Button, Disclosure, Fill, Icon, Row, Size, Tone, scrollbar::Scrollbar, text},
+	theme::{Elevation, Theme, space},
+	ui::{Button, Disclosure, Fill, Icon, Row, Scrolls, Size, Tone, scrollbar::Scrollbar, text},
 };
 
 use super::logic::{self, Column};
@@ -57,8 +57,6 @@ pub fn render(store: &Store, scroll: &ScrollHandle, cx: &mut App) -> Div {
 		.gap(px(space::ROWS))
 		.flex_1()
 		.min_h(px(0.0))
-		.overflow_y_scroll()
-		.track_scroll(scroll)
 		.px(px(space::SNUG))
 		.pb(px(space::BASE));
 
@@ -81,7 +79,7 @@ pub fn render(store: &Store, scroll: &ScrollHandle, cx: &mut App) -> Div {
 				.flex_col()
 				.flex_1()
 				.min_h(px(0.0))
-				.child(list)
+				.child(list.scrolls_y(scroll, Elevation::Chrome))
 				.child(Scrollbar::new("conversations-bar", scroll.clone())),
 		)
 		.child(settings(store, cx))

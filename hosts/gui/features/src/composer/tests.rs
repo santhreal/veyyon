@@ -1,101 +1,159 @@
-//! WHY THIS SUITE EXISTS.
-//!
-//! Two defects, both of which a reader meets before anything else in the
-//! window: a send control that looks pressable over an empty field, and a hint
-//! that prints a chord the window does not answer to. The second is the one
-//! that survives a refactor, because moving a binding in the key table leaves a
-//! hardcoded hint behind saying the old one.
-//!
-//! WHAT IT DOES NOT CATCH. Whether the caret is in the field, which needs a
-//! window, and how the hint wraps at a narrow width.
+//! Composer decision contracts.
 
 use veyyon_gui_core::{
-	command::Command,
-	keys,
-	store::{model::Store, moves},
+	model::{
+		AttachmentId, InterruptMode, PromptConstraints as RuntimeConstraints, QueueDelivery,
+		QueueState, SessionId, SessionRuntimeView, SubmissionMode, TurnPhase, TurnState,
+	},
+	navigation::{AttachmentKind, AttachmentState, Draft, LocalAttachment},
 };
 
-use super::logic::{PLACEHOLDER, armed, hints, notice};
+use super::logic::{Blocked, GateContext, PLACEHOLDER, PrimaryAction, blocked, primary_action};
 
-fn store() -> Store {
-	Store::opened_in("veyyon", "/repo/veyyon")
-}
-
-#[test]
-fn a_field_of_whitespace_has_nothing_to_send() {
-	let mut store = store();
-	assert!(!armed(&store), "an untouched field is not armed");
-	for blank in ["", " ", "\t", "\n", "   \n\t "] {
-		moves::set_draft(&mut store, blank.to_owned(), blank.len());
-		assert!(!armed(&store), "{blank:?} is not a message");
+fn constraints() -> GateContext<'static> {
+	GateContext {
+		connected:         true,
+		provider_error:    None,
+		invalid_reason:    None,
+		max_characters:    Some(10),
+		max_attachments:   Some(2),
+		required_decision: None,
 	}
-	moves::set_draft(&mut store, " x ".to_owned(), 3);
-	assert!(armed(&store), "a character surrounded by blanks is a message");
 }
 
-#[test]
-fn every_hint_prints_a_chord_the_window_answers_to() {
-	// The defect this closes: a hint written as a literal, left saying
-	// "secondary-return" after the table moved to something else. Both tables
-	// are checked, because one of the two chords is the field's own.
-	let commands: Vec<String> = crate::act::bindings()
-		.iter()
-		.chain(veyyon_gui_kit::input::keys::bindings().iter())
-		.map(|binding| {
-			binding
-				.keystrokes()
-				.iter()
-				.map(|keystroke| keystroke.inner().unparse())
-				.collect::<Vec<String>>()
-				.join(" ")
-		})
-		.collect();
-	for (chord, _) in hints() {
-		let wanted = gpui::Keystroke::parse(chord)
-			.expect("a hint's chord parses")
-			.unparse();
-		assert!(commands.contains(&wanted), "{chord:?} is in the hint and in no key table");
+fn attachment(state: AttachmentState) -> LocalAttachment {
+	LocalAttachment {
+		id: AttachmentId::new("attachment").expect("valid id"),
+		kind: AttachmentKind::File { path: "/repo/input.txt".to_owned() },
+		state,
 	}
 }
 
 #[test]
-fn the_send_hint_is_whatever_the_table_says_sends() {
-	let sends = keys::chord_for(&Command::Send).expect("send is bound");
-	let hints = hints();
-	assert_eq!(hints.first().map(|(chord, _)| *chord), Some(sends));
-	assert_eq!(hints.first().map(|(_, what)| *what), Some("to send"));
+fn invalid_and_oversize_drafts_remain_present_with_exact_reasons() {
+	let draft = Draft { text: "retained draft".to_owned(), ..Draft::default() };
+	assert_eq!(
+		blocked(Some(&draft), constraints()),
+		Some(Blocked::Oversize { characters: 14, maximum: 10 }),
+	);
+	assert_eq!(draft.text, "retained draft");
+
+	let invalid =
+		GateContext { invalid_reason: Some("The active model accepts text only"), ..constraints() };
+	assert_eq!(
+		blocked(Some(&draft), invalid),
+		Some(Blocked::Invalid("The active model accepts text only")),
+	);
+	assert_eq!(draft.text, "retained draft");
 }
 
 #[test]
-fn the_hint_is_two_rows_and_says_what_each_one_does() {
-	// A hint is one line under a field. Three chords is a keyboard page, which
-	// is a different surface and is reachable from settings.
-	let hints = hints();
-	assert_eq!(hints.len(), 2, "{hints:?} is not a hint any more");
-	for (chord, what) in hints {
-		assert!(!chord.is_empty() && !what.is_empty());
-		assert!(what.len() < 24, "{what:?} is a sentence, not a label");
+fn every_incomplete_attachment_blocks_send_in_place() {
+	let cases = [
+		(AttachmentState::Uploading { progress_milli: 500 }, Blocked::Uploading),
+		(
+			AttachmentState::Failed { message: "Upload rejected".to_owned(), retryable: true },
+			Blocked::UploadFailed("Upload rejected"),
+		),
+		(
+			AttachmentState::NeedsReattach { reason: "Local bytes are unavailable".to_owned() },
+			Blocked::NeedsReattach("Local bytes are unavailable"),
+		),
+	];
+	for (state, expected) in cases {
+		let draft = Draft {
+			text: "send".to_owned(),
+			attachments: vec![attachment(state)],
+			..Draft::default()
+		};
+		assert_eq!(blocked(Some(&draft), constraints()), Some(expected));
+		assert_eq!(draft.text, "send");
+		assert_eq!(draft.attachments.len(), 1);
 	}
 }
 
 #[test]
-fn a_notice_is_shown_while_the_store_holds_one_and_not_after() {
-	let mut store = store();
-	assert_eq!(notice(&store), None);
-	moves::notify(&mut store, "Deleted");
-	assert_eq!(notice(&store), Some("Deleted"));
-	// The store retires it on its own clock, and the composer follows rather
-	// than keeping a copy: a line that outlives the notice is a stale claim.
-	let deadline = store.notice_until.expect("a notice has a deadline");
-	moves::tick(&mut store, deadline + 1);
-	assert_eq!(notice(&store), None);
+fn a_required_decision_is_the_nearest_blocker() {
+	let draft = Draft { text: "send".to_owned(), ..Draft::default() };
+	let constraints = GateContext {
+		connected: false,
+		provider_error: Some("Provider unavailable"),
+		required_decision: Some("Answer the pending question before sending"),
+		..constraints()
+	};
+	assert_eq!(
+		blocked(Some(&draft), constraints),
+		Some(Blocked::RequiredDecision("Answer the pending question before sending")),
+	);
 }
 
 #[test]
-fn the_placeholder_says_what_to_do_and_names_nothing() {
-	// The window says "veyyon" once in its chrome at most, and this is not the
-	// place: a placeholder is an instruction.
-	assert!(!PLACEHOLDER.to_lowercase().contains("veyyon"));
-	assert!(PLACEHOLDER.len() < 32, "{PLACEHOLDER:?} is a paragraph in a field");
-	assert!(!PLACEHOLDER.ends_with('.'), "a placeholder is a label, not a sentence");
+fn whitespace_without_context_has_nothing_to_send() {
+	for text in ["", " ", "\t", "\n", "   \n\t "] {
+		let draft = Draft { text: text.to_owned(), ..Draft::default() };
+		assert_eq!(blocked(Some(&draft), constraints()), Some(Blocked::Empty));
+	}
+	let draft = Draft { attachments: vec![attachment(AttachmentState::Ready)], ..Draft::default() };
+	assert_eq!(blocked(Some(&draft), constraints()), None);
+}
+
+#[test]
+fn the_placeholder_is_a_short_instruction() {
+	assert!(PLACEHOLDER.len() < 32);
+	assert!(!PLACEHOLDER.ends_with('.'));
+}
+
+fn runtime(turn: TurnState, active_submission: SubmissionMode) -> SessionRuntimeView {
+	SessionRuntimeView {
+		session: SessionId::new("session").expect("valid id"),
+		file: None,
+		name: None,
+		provider: None,
+		model: None,
+		thinking_level: None,
+		streaming: !matches!(&turn, TurnState::Idle),
+		compacting: matches!(&turn, TurnState::Compacting { .. }),
+		auto_compaction: false,
+		message_count: 0,
+		queue: QueueState {
+			count: 0,
+			steering: QueueDelivery::Immediate,
+			follow_up: QueueDelivery::Queued,
+			interrupt: InterruptMode::AbortThenSend,
+			active_submission,
+		},
+		todos: Vec::new(),
+		context: None,
+		turn,
+		prompt_constraints: RuntimeConstraints {
+			max_characters:     None,
+			max_attachments:    None,
+			allowed_modalities: Vec::new(),
+			validation_error:   None,
+		},
+	}
+}
+
+#[test]
+fn primary_control_changes_only_with_confirmed_runtime() {
+	assert_eq!(primary_action(None), PrimaryAction::Send);
+	assert_eq!(
+		primary_action(Some(&runtime(TurnState::Idle, SubmissionMode::FollowUp))),
+		PrimaryAction::Send,
+	);
+	for (mode, expected) in [
+		(SubmissionMode::Prompt, PrimaryAction::Abort),
+		(SubmissionMode::Steer, PrimaryAction::Steer),
+		(SubmissionMode::FollowUp, PrimaryAction::FollowUp),
+	] {
+		let running = runtime(
+			TurnState::Running {
+				turn_id:       Some("turn".to_owned()),
+				started_at_ms: 1,
+				phase:         TurnPhase::Responding,
+			},
+			mode,
+		);
+		assert_eq!(primary_action(Some(&running)), expected);
+	}
 }

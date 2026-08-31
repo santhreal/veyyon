@@ -1,164 +1,206 @@
-//! Drawing the field, and the two lines around it.
+//! Composed editor, controls, context meter, and runtime actions.
 
 use gpui::{
 	App, Div, Entity, InteractiveElement, MouseButton, ParentElement, Styled, Window, div, px,
-	transparent_black,
 };
-use veyyon_gui_core::{command::Command, store::model::Store};
+use veyyon_gui_core::{
+	Store,
+	model::{Capability, SessionRuntimeView, TurnState},
+	navigation::Draft,
+};
 use veyyon_gui_kit::{
 	input::Editor,
-	motion::{self, Channel, Key, mix},
-	paint,
-	theme::{Theme, layout, radius, size, space},
-	ui::{Button, Fill, Icon, Tone, kbd, text},
+	theme::{Theme, layout, space},
+	ui::{Badge, Button, ComposerChrome, Fill, Icon, Meter, Tone, text},
 };
 
-use super::logic;
+use super::{banners, chips, completions, controls, logic, state::ComposerState};
 use crate::act;
 
-/// The composer: notice, field, hint.
 pub fn render(store: &Store, field: &Entity<Editor>, window: &mut Window, cx: &mut App) -> Div {
-	let armed = logic::armed(store);
-	let focused = Editor::holds_keyboard(field, window, cx);
-
-	div()
-		.flex()
-		.flex_col()
-		.items_center()
-		.w_full()
-		.flex_none()
-		.px(px(space::HUGE))
-		.pb(px(space::LOOSE))
-		.child(
-			text::stack(space::SNUG)
-				.w_full()
-				.max_w(px(layout::READING))
-				.children(notice(store, cx))
-				.child(pill(field, armed, focused, cx))
-				// The hint is for the keystroke nobody has tried yet, so it fades
-				// as soon as there is something to send: a line that stays under
-				// the caret forever is read on every keystroke and needed once.
-				// Its row keeps its height while it goes, because a field that
-				// steps down the window on the first character is a field that
-				// moved while somebody was aiming at it.
-				.child(hint(cx).opacity(paint::toward(
-					cx,
-					Key::named(Channel::Control, "composer-hint"),
-					motion::FADE,
-					f32::from(!armed),
-				))),
-		)
+	let mut state = ComposerState::default();
+	chips::sync_composer_state(store, &mut state);
+	main_composer(store, &state, field, window, cx)
 }
 
-/// The field, and the one control beside it.
-fn pill(field: &Entity<Editor>, armed: bool, focused: bool, cx: &mut App) -> Div {
+pub fn main_composer(
+	store: &Store,
+	state: &ComposerState,
+	field: &Entity<Editor>,
+	_window: &mut Window,
+	cx: &mut App,
+) -> Div {
 	let theme = Theme::get(cx);
-
-	// The ring fades in rather than snapping, which is the difference between a
-	// field that was focused and a field that lit up.
-	let lit = paint::toward(
-		cx,
-		Key::named(Channel::Control, "composer-edge"),
-		motion::FADE,
-		if focused { 1.0 } else { 0.0 },
-	);
-	let field = field.clone();
-
+	let runtime = logic::active_runtime(store);
+	let draft = logic::selected_draft(store).map(|(_, draft)| draft);
+	let required_decision = required_decision(store);
+	let gate = logic::GateContext {
+		connected: store.connection.is_connected(),
+		provider_error: provider_error(store),
+		invalid_reason: runtime
+			.and_then(|runtime| runtime.prompt_constraints.validation_error.as_deref()),
+		max_characters: runtime.and_then(|runtime| runtime.prompt_constraints.max_characters),
+		max_attachments: runtime.and_then(|runtime| runtime.prompt_constraints.max_attachments),
+		required_decision,
+	};
+	let blocked = logic::blocked(draft, gate);
+	let action = logic::primary_action(runtime);
+	let pending = logic::submission_pending(draft);
+	let controls = controls::composer_controls(store, state, runtime);
+	let footer =
+		composer_footer(store, state, runtime, draft, action, blocked.as_ref(), pending, &theme);
+	let mut chrome = ComposerChrome::new(field.clone())
+		.banner(banners::pending_context(store, state))
+		.context(chips::context_chips(store, state, cx))
+		.toolbar(controls)
+		.footer(footer)
+		.expanded(true);
+	if let Some(menu) = completions::completion_menu(store, state, cx) {
+		chrome = chrome.banner(menu);
+	}
+	let focus_field = field.clone();
 	div()
-		.flex()
-		.items_end()
-		.gap(px(space::SNUG))
 		.w_full()
-		.p(px(space::BASE))
-		.rounded(px(radius::CARD))
-		.bg(theme.raised)
-		.border_1()
-		.border_color(mix(transparent_black(), theme.ring, lit))
-		// The pill is one field as far as a pointer is concerned: a press on its
-		// padding, or on the space beside the text, puts the keyboard in it
-		// rather than taking the keyboard away from it.
-		.on_mouse_down(MouseButton::Left, {
-			let field = field.clone();
-			move |_, window: &mut Window, cx: &mut App| Editor::focus(&field, window, cx)
+		.max_w(px(layout::reading()))
+		.mx_auto()
+		.on_mouse_down(MouseButton::Left, move |_, window, cx| {
+			Editor::focus(&focus_field, window, cx);
 		})
-		.child(
-			div()
-				.flex_1()
-				.min_w(px(0.0))
-				.px(px(space::SNUG))
-				.child(field),
-		)
-		.child(
-			// Solid only once there is something to send. A lit control over an
-			// empty field is a promise the press does not keep.
-			Button::new("send", Icon::Send)
-				.tone(Tone::Accent)
-				.fill(if armed { Fill::Solid } else { Fill::Ghost })
-				.enabled(armed)
-				.tip("Send")
-				.keys("enter")
-				.on_click(act::click(Command::Send)),
-		)
+		.child(chrome)
 }
 
-/// The notice line: what the store had to say, for as long as it says it.
-///
-/// Inset to where the field's text starts, the same measure the hint under the
-/// field uses: the two lines around the field are read as a pair, and two
-/// different left edges nine points apart read as one of them being loose.
-fn notice(store: &Store, cx: &mut App) -> Option<Div> {
-	let theme = Theme::get(cx);
-	let notice = logic::notice(store).map(str::to_owned);
-	let showing =
-		paint::toward(cx, Key::of(Channel::Notice), motion::FADE, f32::from(notice.is_some()));
-	if showing <= 0.01 {
+// The footer reads eight independent pieces of already-borrowed state.
+#[allow(clippy::too_many_arguments)]
+fn composer_footer(
+	store: &Store,
+	state: &ComposerState,
+	runtime: Option<&SessionRuntimeView>,
+	draft: Option<&Draft>,
+	action: logic::PrimaryAction,
+	blocked: Option<&logic::Blocked<'_>>,
+	pending: bool,
+	theme: &Theme,
+) -> Div {
+	let mut footer = div()
+		.flex()
+		.flex_1()
+		.min_w(px(0.0))
+		.items_center()
+		.gap(px(space::X8));
+	if let Some((filled, figure)) = logic::context_fraction(runtime) {
+		footer = footer
+			.child(
+				div()
+					.flex_1()
+					.min_w(px(0.0))
+					.max_w(px(layout::measure()))
+					.child(Meter::new(filled).bare()),
+			)
+			.child(Badge::new(figure).exact().bare());
+	}
+	let reason = primary_disabled_reason(store, runtime, action, blocked, pending);
+	let status = reason.clone().unwrap_or_else(|| {
+		format!("Enter to {} · Shift+Enter for a new line", action.label().to_lowercase())
+	});
+	footer = footer
+		.child(text::meta(status, theme))
+		.child(text::spacer());
+	let background_reason = if draft.is_none() {
+		"Select a conversation before sending in background".to_owned()
+	} else {
+		controls::capability_reason(store, Capability::BackgroundSubmission)
+			.unwrap_or_else(|| "Background submission is unavailable".to_owned())
+	};
+	let background = Button::new("send-background", state.control_owner(10), Icon::Background)
+		.tip("Send in background")
+		.disabled(background_reason);
+	footer
+		.child(background)
+		.child(primary_button(store, state, runtime, action, reason))
+}
+
+fn primary_button(
+	store: &Store,
+	state: &ComposerState,
+	runtime: Option<&SessionRuntimeView>,
+	action: logic::PrimaryAction,
+	disabled: Option<String>,
+) -> Button {
+	let icon = if action == logic::PrimaryAction::Abort {
+		Icon::Stop
+	} else {
+		Icon::Send
+	};
+	let mut button = Button::new("composer-primary", state.control_owner(11), icon)
+		.label(action.label())
+		.fill(Fill::Solid)
+		.tone(if action == logic::PrimaryAction::Abort {
+			Tone::Danger
+		} else {
+			Tone::Accent
+		});
+	if let Some(session) = store.frontend.selected_session.as_ref() {
+		button = button.on_click(act::click(action.command(session)));
+	}
+	if let Some(reason) = disabled {
+		button = button.disabled(reason);
+	}
+	if action == logic::PrimaryAction::Abort
+		&& matches!(runtime.map(|runtime| &runtime.turn), Some(TurnState::Aborting))
+	{
+		button = button.disabled("Abort is already pending");
+	}
+	button
+}
+
+fn primary_disabled_reason(
+	store: &Store,
+	runtime: Option<&SessionRuntimeView>,
+	action: logic::PrimaryAction,
+	blocked: Option<&logic::Blocked<'_>>,
+	pending: bool,
+) -> Option<String> {
+	if action == logic::PrimaryAction::Abort {
+		if !store.connection.is_connected() {
+			return Some("Reconnect before aborting the running turn".to_owned());
+		}
+		if runtime.is_none() {
+			return Some("Runtime state is unavailable; abort cannot be confirmed".to_owned());
+		}
 		return None;
 	}
-	Some(
-		div()
-			.flex()
-			.items_center()
-			.gap(px(space::SNUG))
-			.h(px(18.0))
-			.px(px(space::BASE + space::SNUG + 1.0))
-			.opacity(showing)
-			.child(veyyon_gui_kit::ui::icon::at(
-				Icon::Notice,
-				veyyon_gui_kit::ui::icon::scale::SMALL,
-				theme.text_faint,
-			))
-			.children(notice.map(|notice| text::meta(notice, &theme))),
-	)
+	if pending {
+		return Some("Wait for the pending composer action to finish".to_owned());
+	}
+	blocked.map(logic::Blocked::message)
 }
 
-/// The two keystrokes, drawn as keys rather than described in prose.
-///
-/// A chord and what it does are one thing, so the gap inside a hint is smaller
-/// than the gap between two hints: with one gap for both, four caps and two
-/// phrases read as six unrelated items. The row starts where the field's text
-/// starts, which is the pill's border, its padding and the field's own inset.
-fn hint(cx: &mut App) -> Div {
-	let theme = Theme::get(cx);
-	let mut line = div()
-		.flex()
-		.items_center()
-		.gap(px(space::LOOSE))
-		.px(px(space::BASE + space::SNUG + 1.0))
-		.flex_wrap();
-	for (keys, what) in logic::hints() {
-		line = line.child(
-			div()
-				.flex()
-				.items_center()
-				.gap(px(space::SNUG))
-				.child(kbd::caps(keys, &theme))
-				.child(
-					div()
-						.text_size(px(size::META))
-						.text_color(theme.text_faint)
-						.child(what),
-				),
-		);
+fn required_decision(store: &Store) -> Option<&'static str> {
+	if store
+		.replica
+		.interactions
+		.readable()
+		.is_some_and(|items| !items.value.is_empty())
+	{
+		return Some("Answer the pending request before sending another message");
 	}
-	line
+	if store.replica.plan.readable().is_some_and(|plan| {
+		matches!(&plan.value, veyyon_gui_core::model::PlanState::Active { approval: Some(_), .. })
+	}) {
+		return Some("Review the pending plan before sending another message");
+	}
+	None
+}
+
+fn provider_error(store: &Store) -> Option<&str> {
+	let provider = logic::active_runtime(store)?.provider.as_ref()?;
+	store
+		.replica
+		.providers
+		.readable()?
+		.value
+		.iter()
+		.find(|candidate| &candidate.id == provider)?
+		.error
+		.as_deref()
 }

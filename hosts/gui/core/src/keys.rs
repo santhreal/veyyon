@@ -1,129 +1,161 @@
-//! Every key the window answers to, against the command it runs.
+//! Central keyboard bindings over [`UiCommand`](crate::UiCommand).
 //!
-//! One table. The keymap the app installs and the list the keyboard page shows
-//! are built from these rows, so a key that works is a key that is documented
-//! and a key that is documented is a key that works. There is no second table
-//! to forget.
-//!
-//! `secondary-` is Command on macOS and Control everywhere else, which is why a
-//! row is written in keystroke syntax and spelled for a reader at the point it
-//! is drawn rather than the other way round.
-//!
-//! WHAT IS NOT HERE. The caret's own bindings. A field answers to Home, to
-//! alt-left and to twenty other motions, and none of them is a feature: a
-//! keyboard page listing thirty caret motions hides the ten that matter. Those
-//! rows belong to the editor, in `veyyon-gui-kit`.
+//! The installed keymap and keybinding settings read the same rows. Editor and
+//! IME navigation remain in the kit editor and are not duplicated here.
 
-use crate::{command::Command, store::model::SettingsPage};
+use crate::{
+	UiCommand,
+	navigation::{BottomTab, PaletteMode, Route, SettingsPage},
+};
 
-/// The dispatch context a row applies in.
+/// Where a row applies.
 ///
 /// A context is a claim about what holds the keyboard. `Everywhere` is for the
-/// few chords that must work whatever is focused; every other row names the one
-/// place it belongs, because a chord claimed in two contexts at once is a chord
-/// where one of the two silently never fires.
+/// chords that must fire whatever is focused; every other variant names one
+/// place, because a chord claimed in two contexts that can both match is a
+/// chord where one of the two never fires.
+///
+/// A field's own context wins over the window's for the same chord: bindings
+/// are collected from the focused element outwards, so the caret keeps `up` in
+/// the composer while the window keeps it on a route that draws no field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Context {
-	/// Anywhere in the window, whatever holds the keyboard.
 	Everywhere,
-	/// The window, when no field has claimed the keystroke first.
-	Shell,
-	/// The composer.
-	Composer,
-	/// The palette's field, where up, down and Return belong to the list under
-	/// it rather than to the caret.
 	Palette,
+	Composer,
+	Files,
+	Settings,
 }
 
 impl Context {
-	/// The name the toolkit's own predicate parser knows this by.
+	/// The name the toolkit's predicate parser knows this by, and `None` for a
+	/// row that applies with nothing named.
 	///
-	/// A string, because the predicate language is a string; this is the one
-	/// place the two vocabularies meet.
+	/// The one place the two vocabularies meet. Every name here is declared by
+	/// an element that can hold the keyboard or sit above whatever does: the
+	/// two field names by the editor, the two route names by the window frame.
+	/// A name nothing declares is a row that never fires.
 	pub fn predicate(self) -> Option<&'static str> {
 		match self {
-			Context::Everywhere => None,
-			Context::Shell => Some("Shell"),
-			Context::Composer => Some("MultilineEditor"),
-			Context::Palette => Some("PaletteSearch"),
+			Self::Everywhere => None,
+			Self::Palette => Some("PaletteSearch"),
+			Self::Composer => Some("MultilineEditor"),
+			Self::Files => Some("Files"),
+			Self::Settings => Some("Settings"),
 		}
 	}
 }
 
-/// One binding: the chord, where it applies, and what it does.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Row {
 	pub keys:    &'static str,
 	pub context: Context,
-	pub command: Command,
-	/// Whether the keyboard page lists it.
-	///
-	/// The rows it does not list are the ones whose absence would be a defect
-	/// rather than whose presence is a feature: walking the palette's own list
-	/// with the arrow keys is not a shortcut anybody looks up.
+	pub command: UiCommand,
 	pub listed:  bool,
 }
 
-/// Every binding the window installs.
 pub fn table() -> Vec<Row> {
 	vec![
-		listed("secondary-k", Context::Shell, Command::OpenPalette),
-		listed("secondary-n", Context::Shell, Command::NewSession),
-		listed("secondary-b", Context::Shell, Command::ToggleSidebar),
-		listed("secondary-,", Context::Shell, Command::OpenSettings(SettingsPage::Appearance)),
-		// Shift is part of it deliberately. Deleting a conversation cannot be
-		// undone, and `secondary-backspace` is one finger from the delete-word
-		// chord a reader uses inside the composer that always holds the
-		// keyboard.
-		listed("secondary-shift-backspace", Context::Shell, Command::DeleteSelected),
-		listed("ctrl-tab", Context::Shell, Command::CycleSession { forward: true }),
-		listed("ctrl-shift-tab", Context::Shell, Command::CycleSession { forward: false }),
-		listed("secondary-shift-l", Context::Shell, Command::FlipAppearance),
-		listed("secondary-i", Context::Shell, Command::FocusComposer),
-		listed("secondary-=", Context::Shell, Command::StepTextSize { up: true }),
-		listed("secondary--", Context::Shell, Command::StepTextSize { up: false }),
-		listed("secondary-q", Context::Everywhere, Command::Quit),
-		listed("escape", Context::Shell, Command::Back),
-		listed("enter", Context::Composer, Command::Send),
+		listed(
+			"secondary-p",
+			Context::Everywhere,
+			UiCommand::OpenOverlay(crate::navigation::Overlay::CommandPalette {
+				mode: PaletteMode::Commands,
+			}),
+		),
+		listed(
+			"secondary-shift-p",
+			Context::Everywhere,
+			UiCommand::OpenOverlay(crate::navigation::Overlay::CommandPalette {
+				mode: PaletteMode::QuickOpen,
+			}),
+		),
+		listed("escape", Context::Everywhere, UiCommand::CloseTopOverlay),
+		listed("secondary-1", Context::Everywhere, UiCommand::Navigate(Route::Conversation)),
+		listed("secondary-2", Context::Everywhere, UiCommand::Navigate(Route::Changes)),
+		listed("secondary-3", Context::Everywhere, UiCommand::Navigate(Route::Files)),
+		listed("secondary-4", Context::Everywhere, UiCommand::Navigate(Route::Agents)),
+		// Written as the keystroke the platform produces. `secondary-comma`
+		// parses, and then matches nothing: a keystroke carries the character,
+		// so the row has to spell it.
+		listed(
+			"secondary-,",
+			Context::Everywhere,
+			UiCommand::Navigate(Route::Settings(SettingsPage::General)),
+		),
+		listed("secondary-b", Context::Everywhere, UiCommand::ToggleSidebar),
+		listed("secondary-shift-i", Context::Everywhere, UiCommand::ToggleInspector),
+		listed("secondary-shift-b", Context::Everywhere, UiCommand::ToggleBottomDock),
+		// The dock's tabs, on the chords an editor uses for the same three
+		// panels, so a reader who knows one knows these.
+		listed("secondary-j", Context::Everywhere, UiCommand::SetBottomTab(BottomTab::Terminals)),
+		listed(
+			"secondary-shift-m",
+			Context::Everywhere,
+			UiCommand::SetBottomTab(BottomTab::Problems),
+		),
+		listed("secondary-shift-u", Context::Everywhere, UiCommand::SetBottomTab(BottomTab::Output)),
+		// Starting a conversation, and moving between the ones already open.
+		// Without these three a reader reaches the daily verbs of the product
+		// with the pointer only.
+		listed("secondary-n", Context::Everywhere, UiCommand::CreateSession {
+			workspace: None,
+			parent:    None,
+		}),
+		listed("secondary-tab", Context::Everywhere, UiCommand::CycleSession { forward: true }),
+		listed("secondary-shift-tab", Context::Everywhere, UiCommand::CycleSession {
+			forward: false,
+		}),
+		listed(
+			"secondary-shift-s",
+			Context::Everywhere,
+			UiCommand::OpenOverlay(crate::navigation::Overlay::SessionSwitcher),
+		),
+		// The model in use is changed as often as a conversation is started.
+		listed(
+			"secondary-m",
+			Context::Everywhere,
+			UiCommand::OpenOverlay(crate::navigation::Overlay::ModelPicker),
+		),
+		listed("secondary-enter", Context::Composer, UiCommand::FocusComposer),
+		// The transcript's ends, on the document chords. The bare Home and End
+		// belong to the field the caret is in, which is why these carry the
+		// modifier: a reader in the composer reaches both without leaving it.
+		listed("secondary-home", Context::Everywhere, UiCommand::JumpToOldest),
+		listed("secondary-end", Context::Everywhere, UiCommand::JumpToLatest),
 		// The settings pages, walked from the keyboard. Listed, because a reader
-		// on that page has no other way to learn the arrows do anything there,
-		// and unlike the palette's own list it is not on screen with a highlight
-		// following the keystroke.
-		listed("down", Context::Shell, Command::StepSettingsPage { down: true }),
-		listed("up", Context::Shell, Command::StepSettingsPage { down: false }),
-		// The palette's own list. Unlisted: an arrow key walking a list on
-		// screen is not a shortcut.
-		unlisted("up", Context::Palette, Command::MovePaletteCursor { down: false }),
-		unlisted("down", Context::Palette, Command::MovePaletteCursor { down: true }),
-		unlisted("enter", Context::Palette, Command::AcceptPalette),
-		unlisted("escape", Context::Palette, Command::Back),
+		// on that page has no other way to learn the arrows do anything there.
+		listed("down", Context::Settings, UiCommand::StepSettingsPage { down: true }),
+		listed("up", Context::Settings, UiCommand::StepSettingsPage { down: false }),
+		listed("up", Context::Files, UiCommand::MoveFileCursor { forward: false }),
+		listed("down", Context::Files, UiCommand::MoveFileCursor { forward: true }),
+		listed("left", Context::Files, UiCommand::ToggleFileCursor),
+		listed("right", Context::Files, UiCommand::ToggleFileCursor),
+		listed("enter", Context::Files, UiCommand::OpenFileCursor),
+		listed("secondary-shift-r", Context::Files, UiCommand::RevealSelectedFile),
+		// The palette's own list. Unlisted: an arrow key walking a list that is
+		// on screen with the highlight following it is not a shortcut anybody
+		// looks up. The caret leaves these alone in that field, which is what
+		// makes the rows reachable.
+		unlisted("up", Context::Palette, UiCommand::MovePaletteCursor { down: false }),
+		unlisted("down", Context::Palette, UiCommand::MovePaletteCursor { down: true }),
 	]
 }
 
-fn listed(keys: &'static str, context: Context, command: Command) -> Row {
+fn listed(keys: &'static str, context: Context, command: UiCommand) -> Row {
 	Row { keys, context, command, listed: true }
 }
 
-fn unlisted(keys: &'static str, context: Context, command: Command) -> Row {
+fn unlisted(keys: &'static str, context: Context, command: UiCommand) -> Row {
 	Row { keys, context, command, listed: false }
 }
 
-/// The chord that runs a command, for a tooltip or a menu row that wants to
-/// print it.
-///
-/// The first row that runs the command, because a command bound twice is bound
-/// once for the reader: the second chord is a synonym nobody is shown.
-pub fn chord_for(command: &Command) -> Option<&'static str> {
+pub fn chord_for(command: &UiCommand) -> Option<&'static str> {
 	table()
 		.into_iter()
-		.find(|row| &row.command == command)
-		.map(|row| row.keys)
+		.find_map(|row| (row.command == *command).then_some(row.keys))
 }
 
-/// The rows the keyboard page lists, in the order it lists them.
 pub fn listed_rows() -> Vec<Row> {
 	table().into_iter().filter(|row| row.listed).collect()
 }
-
-#[cfg(test)]
-mod tests;

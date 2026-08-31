@@ -7,26 +7,30 @@
 
 use std::sync::OnceLock;
 
-use veyyon_gui_core::store::model::Appearance;
-
-use super::{Theme, syntax};
+use super::{Appearance, Theme, syntax};
 
 /// Dark. The chrome sits above the content in luminance, so the content well is
 /// the darkest large area and the sidebar frames it.
 pub static DARK: Theme = Theme {
 	appearance:     Appearance::Dark,
+	ground:         Hsla { h: 0.63, s: 0.08, l: 0.070, a: 1.0 },
 	chrome:         Hsla { h: 0.63, s: 0.05, l: 0.132, a: 1.0 },
 	canvas:         Hsla { h: 0.63, s: 0.06, l: 0.094, a: 1.0 },
 	raised:         Hsla { h: 0.63, s: 0.05, l: 0.152, a: 1.0 },
 	sunken:         Hsla { h: 0.63, s: 0.08, l: 0.062, a: 1.0 },
 	overlay:        Hsla { h: 0.63, s: 0.05, l: 0.178, a: 1.0 },
-	stroke:         Hsla { h: 0.63, s: 0.10, l: 0.95, a: 0.07 },
-	ring:           Hsla { h: 0.62, s: 0.80, l: 0.62, a: 0.45 },
+	stroke:         Hsla { h: 0.63, s: 0.10, l: 0.95, a: 0.38 },
+	// Lighter than the accent it echoes: composited over the overlay, the
+	// lightest ground in this theme, the ring is the one token that has to clear
+	// 3:1 against a surface almost as light as itself, and 0.62 lands on 3.0
+	// exactly.
+	ring:           Hsla { h: 0.62, s: 0.80, l: 0.66, a: 0.85 },
 	text:           Hsla { h: 0.63, s: 0.08, l: 0.95, a: 1.0 },
 	text_muted:     Hsla { h: 0.63, s: 0.06, l: 0.66, a: 1.0 },
 	text_faint:     Hsla { h: 0.63, s: 0.05, l: 0.46, a: 1.0 },
 	text_on_accent: Hsla { h: 0.0, s: 0.0, l: 1.0, a: 1.0 },
 	accent:         Hsla { h: 0.62, s: 0.78, l: 0.60, a: 1.0 },
+	info:           Hsla { h: 0.57, s: 0.70, l: 0.58, a: 1.0 },
 	danger:         Hsla { h: 0.99, s: 0.70, l: 0.62, a: 1.0 },
 	ok:             Hsla { h: 0.35, s: 0.52, l: 0.56, a: 1.0 },
 	warn:           Hsla { h: 0.11, s: 0.72, l: 0.62, a: 1.0 },
@@ -47,18 +51,20 @@ pub static DARK: Theme = Theme {
 /// read as outlines drawn on one flat sheet.
 pub static LIGHT: Theme = Theme {
 	appearance:     Appearance::Light,
+	ground:         Hsla { h: 0.63, s: 0.12, l: 0.855, a: 1.0 },
 	chrome:         Hsla { h: 0.63, s: 0.10, l: 0.905, a: 1.0 },
 	canvas:         Hsla { h: 0.63, s: 0.12, l: 0.940, a: 1.0 },
 	raised:         Hsla { h: 0.63, s: 0.10, l: 0.994, a: 1.0 },
 	sunken:         Hsla { h: 0.63, s: 0.10, l: 0.888, a: 1.0 },
 	overlay:        Hsla { h: 0.63, s: 0.14, l: 1.0, a: 1.0 },
-	stroke:         Hsla { h: 0.63, s: 0.20, l: 0.15, a: 0.09 },
-	ring:           Hsla { h: 0.62, s: 0.78, l: 0.50, a: 0.40 },
+	stroke:         Hsla { h: 0.63, s: 0.20, l: 0.15, a: 0.54 },
+	ring:           Hsla { h: 0.62, s: 0.78, l: 0.50, a: 0.76 },
 	text:           Hsla { h: 0.63, s: 0.18, l: 0.13, a: 1.0 },
 	text_muted:     Hsla { h: 0.63, s: 0.09, l: 0.42, a: 1.0 },
 	text_faint:     Hsla { h: 0.63, s: 0.07, l: 0.60, a: 1.0 },
 	text_on_accent: Hsla { h: 0.0, s: 0.0, l: 1.0, a: 1.0 },
 	accent:         Hsla { h: 0.62, s: 0.74, l: 0.50, a: 1.0 },
+	info:           Hsla { h: 0.57, s: 0.68, l: 0.43, a: 1.0 },
 	danger:         Hsla { h: 0.99, s: 0.68, l: 0.48, a: 1.0 },
 	ok:             Hsla { h: 0.36, s: 0.54, l: 0.36, a: 1.0 },
 	warn:           Hsla { h: 0.09, s: 0.72, l: 0.42, a: 1.0 },

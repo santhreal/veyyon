@@ -65,13 +65,13 @@ pub fn cap(what: impl Into<String>, theme: &Theme) -> Div {
 		.h(px(18.0))
 		.min_w(px(18.0))
 		.px(px(space::TIGHT))
-		.rounded(px(radius::CHIP - 2.0))
+		.rounded(px(radius::CONTROL - 2.0))
 		.bg(theme.sunken)
 		.border_1()
 		.border_color(theme.stroke)
-		.text_size(px(size::META))
+		.text_size(px(size::meta()))
 		.font_weight(weight::MEDIUM)
-		.line_height(px(size::META * size::LINE_TIGHT))
+		.line_height(px(size::meta() * size::LINE_CHROME))
 		.text_color(theme.text_muted);
 	// Padding on one side only, so the fixed height stays and the flex centre
 	// moves half of it.

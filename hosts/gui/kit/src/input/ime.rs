@@ -75,7 +75,7 @@ impl EntityInputHandler for Editor {
 
 		let (text, caret) = text::replace(&self.text, range.clone(), new_text);
 		let start = text::clamp(&text, range.start);
-		self.text = SharedString::from(text);
+		self.set_storage(text);
 		self.marked = (!new_text.is_empty()).then(|| start..start + new_text.len());
 		self.selection = match new_selection_utf16.as_ref() {
 			Some(selected) => {

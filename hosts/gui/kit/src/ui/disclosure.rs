@@ -1,15 +1,8 @@
-//! A group that folds.
+//! Measured, interruptible disclosure.
 //!
-//! A project in the sidebar, a settings section, a tool call's output, a diff's
-//! hunks. One header that says what is inside and how much of it, and a body
-//! that is drawn only while it is open.
-//!
-//! WHAT IS ANIMATED, AND WHAT IS NOT. The chevron turns and the body fades in,
-//! both on the group's own channel. The height does not animate: an unfolding
-//! group's height is its content's height, which nothing knows until it has
-//! been laid out, and a height animated from a guess overshoots and snaps. A
-//! fold is therefore instant in layout and gradual in ink, which reads as fast
-//! rather than as broken.
+//! The caller reports the destination body height after layout. Toggle events
+//! retarget that height spring and the chevron at the event instant; rendering
+//! only samples. The inner body stays mounted and clipped during reversal.
 
 use gpui::{
 	AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, ParentElement,
@@ -18,60 +11,68 @@ use gpui::{
 
 use super::{Icon, icon, square, text};
 use crate::{
-	motion::{self, Channel, Key},
+	motion::{Damage, MotionKey, Priority, Property, RetainedKey, mix, spec},
 	paint,
-	theme::{Theme, radius, size, space, weight},
+	theme::{Theme, radius, row, size, space, weight},
 };
 
 type Click = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 
-/// A header, and what it hides.
 #[derive(IntoElement)]
 pub struct Disclosure {
-	id:        SharedString,
-	what:      SharedString,
-	/// How much is inside, drawn at the end of the header: a count, a size.
-	count:     Option<SharedString>,
-	icon:      Option<Icon>,
-	open:      bool,
-	body:      Vec<AnyElement>,
-	/// A header set in the smallest type, for a group of rows rather than a
-	/// section of a page.
-	quiet:     bool,
-	on_toggle: Option<Click>,
+	id:              SharedString,
+	owner:           RetainedKey,
+	what:            SharedString,
+	count:           Option<SharedString>,
+	icon:            Option<Icon>,
+	open:            bool,
+	measured_height: f32,
+	body:            Vec<AnyElement>,
+	quiet:           bool,
+	on_toggle:       Option<Click>,
 }
 
 impl Disclosure {
-	pub fn new(id: impl Into<SharedString>, what: impl Into<SharedString>) -> Disclosure {
-		Disclosure {
-			id:        id.into(),
-			what:      what.into(),
-			count:     None,
-			icon:      None,
-			open:      false,
-			body:      Vec::new(),
-			quiet:     false,
+	pub fn new(
+		id: impl Into<SharedString>,
+		owner: RetainedKey,
+		what: impl Into<SharedString>,
+	) -> Self {
+		Self {
+			id: id.into(),
+			owner,
+			what: what.into(),
+			count: None,
+			icon: None,
+			open: false,
+			measured_height: 0.0,
+			body: Vec::new(),
+			quiet: false,
 			on_toggle: None,
 		}
 	}
 
-	pub fn open(mut self, open: bool) -> Disclosure {
+	pub fn open(mut self, open: bool) -> Self {
 		self.open = open;
 		self
 	}
 
-	pub fn count(mut self, count: impl Into<SharedString>) -> Disclosure {
+	pub fn measured_height(mut self, height: f32) -> Self {
+		self.measured_height = height.max(0.0);
+		self
+	}
+
+	pub fn count(mut self, count: impl Into<SharedString>) -> Self {
 		self.count = Some(count.into());
 		self
 	}
 
-	pub fn icon(mut self, icon: Icon) -> Disclosure {
+	pub fn icon(mut self, icon: Icon) -> Self {
 		self.icon = Some(icon);
 		self
 	}
 
-	/// A group of rows: the header is an overline rather than a heading.
-	pub fn quiet(mut self) -> Disclosure {
+	pub fn quiet(mut self) -> Self {
 		self.quiet = true;
 		self
 	}
@@ -79,7 +80,7 @@ impl Disclosure {
 	pub fn on_toggle(
 		mut self,
 		listener: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-	) -> Disclosure {
+	) -> Self {
 		self.on_toggle = Some(Box::new(listener));
 		self
 	}
@@ -94,57 +95,70 @@ impl ParentElement for Disclosure {
 impl RenderOnce for Disclosure {
 	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let theme = Theme::get(cx);
-		let fold = Key::named(Channel::Group, self.id.as_ref());
-		let wash = Key::named(Channel::Control, self.id.as_ref());
-
-		// The chevron points right when folded and down when open, and the
-		// quarter turn between the two is the whole of the animation. It is drawn
-		// only where pressing does something: a chevron on a header that cannot
-		// be folded says there is more behind it, and pressing proves otherwise.
-		let open = paint::toward(cx, fold, motion::COLLAPSE, f32::from(u8::from(self.open)));
-		let ground = paint::wash(cx, wash, gpui::transparent_black(), theme.hover());
+		let height_key = MotionKey::new(self.owner, Property::Height);
+		let rotation_key = MotionKey::new(self.owner, Property::Rotation);
+		let hover_key = MotionKey::new(self.owner, Property::ColorMix);
+		let target_height = if self.open { self.measured_height } else { 0.0 };
+		let height = paint::sample(cx, height_key, target_height);
+		let rotation = paint::sample(cx, rotation_key, f32::from(u8::from(self.open)));
+		let hover = paint::sample(cx, hover_key, 0.0);
+		let ground = mix(gpui::transparent_black(), theme.hover(), hover);
 		let pressable = self.on_toggle.is_some();
 		let ink = if self.quiet {
 			theme.text_faint
 		} else {
 			theme.text_muted
 		};
-
 		let mut header = div()
 			.id(ElementId::from(self.id.clone()))
 			.flex()
 			.items_center()
 			.gap(px(space::SNUG))
 			.w_full()
-			.h(px(if self.quiet { 26.0 } else { 32.0 }))
+			.h(px(if self.quiet {
+				row::compact()
+			} else {
+				row::normal()
+			}))
 			.px(px(space::SNUG))
-			.rounded(px(radius::CHIP));
-
+			.rounded(px(radius::ROW));
 		if pressable {
 			header = header
 				.bg(ground)
 				.cursor_pointer()
 				.on_hover(move |over, _window, cx| {
-					paint::hover(cx, wash, *over);
+					let program = if *over {
+						spec::HOVER_IN
+					} else {
+						spec::HOVER_OUT
+					};
+					let _ = paint::retarget(
+						cx,
+						hover_key,
+						program,
+						u8::from(*over) as f32,
+						Priority::Content,
+						Damage::Paint(0),
+					);
 					cx.refresh_windows();
 				});
 		}
-
-		// The chevron's track is there either way, so a column of headers whose
-		// bodies some have and some do not still reads as one column.
-		header = header.child(square(icon::scale::SMALL).children(
-			pressable.then(|| icon::turning(Icon::Folded, icon::scale::SMALL, ink, open * 0.25)),
+		header = header.child(square(icon::scale::small()).children(
+			pressable.then(|| icon::turning(Icon::Folded, icon::scale::small(), ink, rotation * 0.25)),
 		));
-
 		let header = header
 			.children(self.icon.map(|glyph| {
-				square(icon::scale::SMALL).child(icon::at(glyph, icon::scale::SMALL, ink))
+				square(icon::scale::small()).child(icon::at(glyph, icon::scale::small(), ink))
 			}))
 			.child(
 				text::line(self.what)
 					.flex_1()
 					.min_w(px(0.0))
-					.text_size(px(if self.quiet { size::META } else { size::BODY }))
+					.text_size(px(if self.quiet {
+						size::overline()
+					} else {
+						size::body()
+					}))
 					.font_weight(weight::MEDIUM)
 					.text_color(if self.quiet {
 						theme.text_faint
@@ -153,23 +167,37 @@ impl RenderOnce for Disclosure {
 					}),
 			)
 			.children(self.count.map(|count| text::meta(count, &theme)));
-
+		let measured = self.measured_height;
+		let next_open = !self.open;
 		let header = match self.on_toggle {
 			Some(listener) => header.on_click(move |event, window, cx| {
+				let target = if next_open { measured } else { 0.0 };
+				let _ = paint::retarget(
+					cx,
+					height_key,
+					spec::LAYOUT,
+					target,
+					Priority::Content,
+					Damage::Layout(0),
+				);
+				let _ = paint::retarget(
+					cx,
+					rotation_key,
+					spec::DISCLOSURE_ROTATE,
+					u8::from(next_open) as f32,
+					Priority::Content,
+					Damage::Paint(0),
+				);
 				listener(event, window, cx);
 			}),
 			None => header,
 		};
-
-		let mut group = text::stack(space::ROWS).w_full().child(header);
-		if self.open {
-			group = group.child(
-				text::stack(space::ROWS)
-					.w_full()
-					.opacity(open)
-					.children(self.body),
-			);
-		}
-		group
+		text::stack(space::ROWS).w_full().child(header).child(
+			div()
+				.w_full()
+				.h(px(height.max(0.0)))
+				.overflow_hidden()
+				.child(text::stack(space::ROWS).w_full().children(self.body)),
+		)
 	}
 }

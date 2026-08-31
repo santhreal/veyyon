@@ -1,67 +1,29 @@
-//! Something is running, and nobody knows for how long.
+//! Shared stepped activity indicator.
 //!
-//! The one indicator in the window that repeats. It exists to say that work is
-//! in flight when there is no number to show; the moment a count, a token total
-//! or a step is available, a [`Meter`](super::Meter) or a
-//! [`Badge`](super::Badge) says more and this comes off the screen.
-//!
-//! It turns on the same clock as every other moving thing, so it does not
-//! animate while the window is idle: the frame it stops being drawn, its
-//! channel is retired and the window stops asking for frames. Under reduced
-//! motion it stands still, which is the honest alternative to spinning.
+//! A visible indicator registers once with the window's eight-client activity
+//! clock. It owns no continuous track. Its phase changes at one absolute 200 ms
+//! boundary shared by every indicator, and becomes a static running glyph under
+//! reduced motion or capacity overflow.
 
-use gpui::{App, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, px};
+use gpui::{App, IntoElement, RenderOnce, Styled, Window};
 
-use super::{Size, Tone, icon, square, text};
-use crate::{
-	motion::{Channel, Key},
-	paint,
-	theme::{Theme, space},
-};
+use super::{Icon, icon};
+use crate::{motion::RetainedKey, paint, theme::Theme};
 
-/// Work in flight.
 #[derive(IntoElement)]
 pub struct Spinner {
-	id:    SharedString,
-	what:  Option<SharedString>,
-	tone:  Tone,
-	size:  Size,
-	glyph: icon::Icon,
+	owner:        RetainedKey,
+	icon:         Icon,
+	phase_offset: u8,
 }
 
 impl Spinner {
-	/// `id` addresses the turn, so two indicators on screen keep their own
-	/// phase and one that leaves and comes back starts where it should.
-	pub fn new(id: impl Into<SharedString>) -> Spinner {
-		Spinner {
-			id:    id.into(),
-			what:  None,
-			tone:  Tone::Muted,
-			size:  Size::Base,
-			glyph: icon::Icon::Running,
-		}
+	pub fn new(owner: RetainedKey, icon: Icon) -> Self {
+		Self { owner, icon, phase_offset: 0 }
 	}
 
-	/// What is running, next to the indicator. A spinner with no word says only
-	/// that something is happening.
-	pub fn what(mut self, what: impl Into<SharedString>) -> Spinner {
-		self.what = Some(what.into());
-		self
-	}
-
-	pub fn tone(mut self, tone: Tone) -> Spinner {
-		self.tone = tone;
-		self
-	}
-
-	pub fn size(mut self, size: Size) -> Spinner {
-		self.size = size;
-		self
-	}
-
-	/// Turn a different glyph: the engine's own mark while it connects.
-	pub fn glyph(mut self, glyph: icon::Icon) -> Spinner {
-		self.glyph = glyph;
+	pub fn phase_offset(mut self, offset: u8) -> Self {
+		self.phase_offset = offset % 8;
 		self
 	}
 }
@@ -69,17 +31,14 @@ impl Spinner {
 impl RenderOnce for Spinner {
 	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let theme = Theme::get(cx);
-		let ink = self.tone.ink(&theme);
-		let turns = paint::spinning(cx, Key::named(Channel::Spin, self.id.as_ref()));
-		let glyph = self.size.glyph();
-
-		text::line_of(space::SNUG)
-			.flex_none()
-			.child(square(glyph).child(icon::turning(self.glyph, glyph, ink, turns)))
-			.children(self.what.map(|what| {
-				text::line(what)
-					.text_size(px(self.size.text()))
-					.text_color(theme.text_muted)
-			}))
+		let now = paint::Clock::frame(cx);
+		let registered = paint::registry(cx).activity_registered(self.owner);
+		let phase = if registered {
+			paint::registry(cx).activity_phase(self.owner, now)
+		} else {
+			0
+		};
+		let opacity = if phase < 4 { 1.0 } else { 0.52 };
+		icon::at(self.icon, icon::scale::base(), theme.accent).opacity(opacity)
 	}
 }

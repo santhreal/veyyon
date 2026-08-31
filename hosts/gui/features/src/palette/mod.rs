@@ -1,21 +1,13 @@
-//! The one list a reader searches.
+//! Multi-mode search and navigation overlays.
 //!
-//! A sheet over the window with a field at the top and rows under it: the
-//! conversations first, then the commands, both reached by typing part of what
-//! they are called. What is in the list, in what order, and what taking a row
-//! does are [`veyyon_gui_core::palette`]; this draws it.
-//!
-//! WHY IT DRAWS NOTHING IT DECIDES. The highlighted index and the list are read
-//! from one function, so a row cannot be lit at an index the list does not
-//! draw. That defect is invisible until somebody presses Return and the wrong
-//! thing happens, which is the worst kind: it teaches a reader not to trust the
-//! keyboard.
+//! Core supplies authoritative replicas and frontend query/cursor state. This
+//! module projects grouped rows and dispatches only `UiCommand` values.
 
-pub mod logic;
+pub mod highlight;
+pub mod state;
 pub mod view;
-
-pub use logic::{chord, mark};
-pub use view::{render, selected_child};
+pub use state::PaletteMotion;
+pub use view::{render, selected_child, selected_commands};
 
 #[cfg(test)]
 mod tests;

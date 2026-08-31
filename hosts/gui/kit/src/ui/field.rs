@@ -67,15 +67,15 @@ impl RenderOnce for Field {
 			.overflow_hidden()
 			.child(
 				text::line(self.what)
-					.text_size(px(size::BODY))
+					.text_size(px(size::body()))
 					.font_weight(weight::MEDIUM)
-					.line_height(px(size::BODY * size::LINE_TIGHT))
+					.line_height(px(size::body() * size::LINE_CHROME))
 					.text_color(theme.text),
 			)
 			.children(
 				self
 					.note
-					.map(|note| text::note_wrapping(note, &theme).max_w(px(layout::MEASURE))),
+					.map(|note| text::note_wrapping(note, &theme).max_w(px(layout::measure()))),
 			);
 
 		let row = div()
@@ -143,15 +143,15 @@ impl RenderOnce for Group {
 					.px(px(space::WIDE))
 					.child(
 						text::line(self.what)
-							.text_size(px(size::LEAD))
+							.text_size(px(size::lead()))
 							.font_weight(weight::MEDIUM)
-							.line_height(px(size::LEAD * size::LINE_TIGHT))
+							.line_height(px(size::lead() * size::LINE_CHROME))
 							.text_color(theme.text),
 					)
 					.children(
 						self
 							.note
-							.map(|note| text::note_wrapping(note, &theme).max_w(px(layout::MEASURE))),
+							.map(|note| text::note_wrapping(note, &theme).max_w(px(layout::measure()))),
 					),
 			)
 			.child(

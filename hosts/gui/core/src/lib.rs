@@ -1,15 +1,18 @@
-//! The front end's decisions, with no toolkit under them.
+//! Toolkit-free desktop state and the single typed host boundary.
 //!
-//! Everything a window would have to be open to test is somewhere else. What is
-//! here is the store, every move over it, and the analysis of the text a
-//! message carries. The crate compiles without a GPU, a display or a font, and
-//! its suites run in milliseconds.
-//!
-//! A dependency on gpui in this crate is a defect. The layering that keeps that
-//! true is `hosts/gui/ARCHITECTURE.md`.
+//! Crate direction is `core <- kit <- features <- app`. This crate performs no
+//! I/O and imports no UI toolkit. Production starts detached and empty; host
+//! events are the only source of product replica values.
 
 pub mod command;
+pub mod host;
 pub mod keys;
+pub mod model;
+pub mod navigation;
 pub mod palette;
 pub mod store;
 pub mod text;
+
+pub use command::{CommandClass, UiCommand};
+pub use host::{HostAction, HostEvent, HostRequest, SnapshotSection};
+pub use store::{Changes, Effects, ShellEffect, Store};

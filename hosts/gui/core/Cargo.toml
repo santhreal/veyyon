@@ -15,6 +15,7 @@ description = "The desktop front end's store, moves and text analysis."
 # toolkit out of the decisions is for the toolkit not to be reachable. An
 # addition here is a claim that a decision cannot be made without it.
 [dependencies]
+serde = { version = "1.0", features = ["derive"] }
 
 [lints]
 workspace = true
