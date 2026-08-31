@@ -16,15 +16,15 @@
 //! where a utf16 offset lands) is in [`text`], as free functions over `&str`,
 //! and that is where the tests are. The rest needs a window.
 
-use std::{ops::Range, sync::Arc, time::Duration};
+use std::{ops::Range, sync::Arc};
 
 use gpui::{
 	App, Bounds, ClipboardItem, ContentMask, Context, CursorStyle, Element, ElementId,
 	ElementInputHandler, Entity, EntityInputHandler, EventEmitter, FocusHandle, Focusable,
-	GlobalElementId, InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent,
-	MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ScrollWheelEvent, SharedString, Size,
-	Style, Task, TextAlign, TextRun, UTF16Selection, UnderlineStyle, Window, WrappedLine, actions,
-	div, fill, point, prelude::*, px, relative, size,
+	GlobalElementId, InspectorElementId, IntoElement, KeyContext, LayoutId, MouseButton,
+	MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ScrollWheelEvent,
+	SharedString, Size, Style, TextAlign, TextRun, UTF16Selection, UnderlineStyle, Window,
+	WrappedLine, actions, div, fill, point, prelude::*, px, relative, size,
 };
 mod actions;
 mod editor;
@@ -70,10 +70,6 @@ actions!(editor, [
 	ShowCharacterPalette,
 ]);
 
-/// The caret's blink half-period, from the motion catalog: the caret is one
-/// more thing that moves on this app's clock, not a private timer.
-const BLINK: Duration = Duration::from_millis(crate::motion::BLINK_MS as u64);
-
 /// A frame's shaped text. Shared rather than cloned: a [`WrappedLine`] holds an
 /// `Arc` to its layout but is not itself cloneable, and both the entity (for
 /// hit testing) and the paint pass need the same lines.
@@ -91,7 +87,9 @@ pub enum EditorEvent {
 /// A wrapped, growable text field.
 pub struct Editor {
 	focus:       FocusHandle,
-	text:        SharedString,
+	text:        String,
+	display:     SharedString,
+	secret:      bool,
 	/// Byte offsets, `start <= end` always. Which end the caret is at is
 	/// [`Editor::reversed`], so a selection extended leftward keeps its anchor.
 	selection:   Range<usize>,
@@ -101,9 +99,14 @@ pub struct Editor {
 	placeholder: SharedString,
 	/// Whether Enter inserts a line or submits.
 	multiline:   bool,
-	/// The keymap context this field dispatches in. The palette's field uses
-	/// its own, so up, down and enter reach the list rather than the caret.
-	context:     &'static str,
+	/// The kind of field this is, as the caret's table reads it: a motion is
+	/// written once over `Editor` or `MultilineEditor` rather than once per
+	/// field on screen.
+	kind:        &'static str,
+	/// What this one field answers to on top of its kind, for a binding that
+	/// belongs to the surface under it rather than to every field. The
+	/// palette's field carries `PaletteSearch` so up and down reach its list.
+	name:        Option<&'static str>,
 	/// The height the field takes when empty, and the height past which it
 	/// stops growing and starts scrolling.
 	min_height:  Pixels,
@@ -113,11 +116,27 @@ pub struct Editor {
 	shaped:      Option<Shaped>,
 	dragging:    bool,
 	focused:     bool,
-	caret_on:    bool,
 	scroll:      Pixels,
-	/// Dropping this stops the blink.
-	_blink:      Task<()>,
 }
+
+/// A secret returned across the provider-auth boundary. Its bytes are cleared
+/// before deallocation and it has no `Clone`, `Debug`, or display conversion.
+pub struct SecretValue(Vec<u8>);
+
+impl SecretValue {
+	pub fn expose(&self) -> &[u8] {
+		&self.0
+	}
+}
+
+impl Drop for SecretValue {
+	fn drop(&mut self) {
+		self.0.fill(0);
+	}
+}
+
+/// Constructor and extraction boundary for a masked editor entity.
+pub struct SecureEditor;
 
 /// Where the text ended up on screen.
 struct Shaped {

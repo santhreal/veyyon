@@ -16,8 +16,6 @@
 //! not that the fence, the patch and the tool's output ask for one. That is
 //! `ui::card::well`, which is the one place they ask.
 
-use veyyon_gui_core::store::model::Appearance;
-
 use super::*;
 
 fn lum(color: Hsla) -> f32 {
@@ -110,7 +108,13 @@ fn the_hairline_reads_against_every_ground_it_is_drawn_on() {
 
 /// A colour with alpha, over an opaque ground, as the compositor lands it.
 fn over(top: Hsla, ground: Hsla) -> Hsla {
-	Hsla { l: ground.l + top.a * (top.l - ground.l), a: 1.0, ..ground }
+	let (top, ground) = (gpui::Rgba::from(top), gpui::Rgba::from(ground));
+	Hsla::from(gpui::Rgba {
+		r: ground.r + top.a * (top.r - ground.r),
+		g: ground.g + top.a * (top.g - ground.g),
+		b: ground.b + top.a * (top.b - ground.b),
+		a: 1.0,
+	})
 }
 
 /// 13/255 is the floor at which a fill is seen at a glance rather than found.
@@ -193,6 +197,7 @@ fn a_status_colour_is_distinct_from_the_other_three_in_both_appearances() {
 		let theme = Theme::of(appearance);
 		let states = [
 			("accent", theme.accent),
+			("info", theme.info),
 			("ok", theme.ok),
 			("warn", theme.warn),
 			("danger", theme.danger),
@@ -205,6 +210,40 @@ fn a_status_colour_is_distinct_from_the_other_three_in_both_appearances() {
 					"{appearance:?}: {left_name} and {right_name} are the same hue"
 				);
 			}
+		}
+	}
+}
+
+fn channel_luminance(channel: f32) -> f32 {
+	if channel <= 0.04045 {
+		channel / 12.92
+	} else {
+		((channel + 0.055) / 1.055).powf(2.4)
+	}
+}
+
+fn relative_luminance(color: Hsla) -> f32 {
+	let rgba = gpui::Rgba::from(color);
+	0.2126 * channel_luminance(rgba.r)
+		+ 0.7152 * channel_luminance(rgba.g)
+		+ 0.0722 * channel_luminance(rgba.b)
+}
+
+fn contrast(left: Hsla, right: Hsla) -> f32 {
+	let (a, b) = (relative_luminance(left), relative_luminance(right));
+	(a.max(b) + 0.05) / (a.min(b) + 0.05)
+}
+
+#[test]
+fn text_focus_and_separator_tokens_meet_contrast_contracts() {
+	for appearance in [Appearance::Dark, Appearance::Light] {
+		let theme = Theme::of(appearance);
+		for (ground_name, ground) in theme.grounds() {
+			assert!(contrast(theme.text, ground) >= 4.5, "{appearance:?}: text on {ground_name}");
+			let stroke = over(theme.stroke, ground);
+			assert!(contrast(stroke, ground) >= 3.0, "{appearance:?}: separator on {ground_name}");
+			let ring = over(theme.ring, ground);
+			assert!(contrast(ring, ground) >= 3.0, "{appearance:?}: focus ring on {ground_name}");
 		}
 	}
 }

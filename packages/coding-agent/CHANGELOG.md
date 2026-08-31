@@ -14,6 +14,10 @@
 - The GPU front end shows only what it can be honest about with no engine attached: the checkout it was launched in, conversations written in the window, a composer whose draft and caret belong to its conversation, a command palette over those conversations and five commands, and settings for appearance, text size and grouping.
 - The GPU front end keeps the keyboard on the field the route draws, so the settings pages take shortcuts, a click on chrome leaves the caret in the composer, and the palette's list walks with the arrow keys.
 - The GPU front end states that nothing answers a message once, under the last line of the conversation, where a reply would be.
+- The GPU front end's command palette carries the verbs that change what the window shows: the three panels, every dock and inspector tab, both ends of the transcript, the two appearances and reduced motion, each row stating whether it is the one in force.
+- The GPU front end's command palette lists what the open conversation offers to open: a plan waiting for review, and every image the transcript holds.
+- `secondary-home` and `secondary-end` show the oldest and the newest message in the GPU front end's transcript, and the jump to the oldest stops following the tail.
+- The GPU front end draws a filter field on every surface that narrows itself by one: the agent roster, the settings pages, the model, provider, MCP and tool catalogues, and the Problems dock.
 
 ### Changed
 
@@ -22,6 +26,11 @@
 
 ### Fixed
 
+- A row in the GPU front end stays lit while the pointer rests on it; while unreleased the pointer ground faded in and then disappeared on the frame the fade finished, and a settled panel width or overlay fade snapped back the same way.
+- The GPU front end's context tab asks for usage when it is revealed and reports the request while it is in flight, instead of showing a button that has to be pressed and re-asking on every reveal.
+- A panel in the GPU front end keeps its surface while its width or height drains and leaves the tree on the frame that reaches zero, instead of being placed by whether it is open while the animated size reached nothing on screen.
+- A palette in the GPU front end opens on an empty filter instead of the filter the last palette closed with, which left the field holding text nobody typed there and no rows under it.
+- The GPU front end's model picker narrows its rows by the text typed into it; while unreleased it filtered by a query nothing wrote, so typing changed nothing and the row a keystroke ran was not the row under the cursor.
 - A memory limit pins the capped subtree's swap to zero, so the cap bounds the whole anonymous footprint; while unreleased a 256 MB machine cap let a single process reach 5,520 MB by swapping.
 - The machine limit requires a parent that delegates two cgroup levels, so a host that delegates one — a container whose cgroup root holds processes — reports per-session limits held and the machine tier unheld, instead of reporting a machine cap the kernel never applies.
 - The CPU-limit probe and the limiter resolve one environment, so the probe can no longer report support for a cgroup path the limiter does not write to.

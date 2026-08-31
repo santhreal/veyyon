@@ -57,18 +57,18 @@ pub fn rule(theme: &Theme) -> Div {
 /// A page's title. One per screen.
 pub fn title(text: impl Into<SharedString>, theme: &Theme) -> Div {
 	line(text)
-		.text_size(px(size::TITLE))
+		.text_size(px(size::section()))
 		.font_weight(weight::STRONG)
-		.line_height(px(size::TITLE * size::LINE_TIGHT))
+		.line_height(px(size::section() * size::LINE_CHROME))
 		.text_color(theme.text)
 }
 
 /// A section heading inside a page, and the name of what is on screen.
 pub fn heading(text: impl Into<SharedString>, theme: &Theme) -> Div {
 	line(text)
-		.text_size(px(size::LEAD))
+		.text_size(px(size::lead()))
 		.font_weight(weight::MEDIUM)
-		.line_height(px(size::LEAD * size::LINE_TIGHT))
+		.line_height(px(size::lead() * size::LINE_CHROME))
 		.text_color(theme.text)
 }
 
@@ -78,8 +78,8 @@ pub fn heading(text: impl Into<SharedString>, theme: &Theme) -> Div {
 /// is allowed to be long.
 pub fn body(text: impl Into<SharedString>, theme: &Theme) -> Div {
 	div()
-		.text_size(px(size::BODY))
-		.line_height(px(size::BODY * size::LINE))
+		.text_size(px(size::body()))
+		.line_height(px(size::body() * size::LINE_PROSE))
 		.text_color(theme.text)
 		.child(text.into())
 }
@@ -88,25 +88,25 @@ pub fn body(text: impl Into<SharedString>, theme: &Theme) -> Div {
 /// weight than what is under it.
 pub fn label(text: impl Into<SharedString>, theme: &Theme) -> Div {
 	line(text)
-		.text_size(px(size::BODY))
+		.text_size(px(size::body()))
 		.font_weight(weight::MEDIUM)
-		.line_height(px(size::BODY * size::LINE_TIGHT))
+		.line_height(px(size::body() * size::LINE_CHROME))
 		.text_color(theme.text)
 }
 
 /// A second line: a row's preview, a setting's description.
 pub fn note(text: impl Into<SharedString>, theme: &Theme) -> Div {
 	line(text)
-		.text_size(px(size::SMALL))
-		.line_height(px(size::SMALL * size::LINE))
+		.text_size(px(size::meta()))
+		.line_height(px(size::meta() * size::LINE_PROSE))
 		.text_color(theme.text_muted)
 }
 
 /// The same, allowed to wrap. A setting's description under its label.
 pub fn note_wrapping(text: impl Into<SharedString>, theme: &Theme) -> Div {
 	div()
-		.text_size(px(size::SMALL))
-		.line_height(px(size::SMALL * size::LINE))
+		.text_size(px(size::meta()))
+		.line_height(px(size::meta() * size::LINE_PROSE))
 		.text_color(theme.text_muted)
 		.child(text.into())
 }
@@ -114,8 +114,8 @@ pub fn note_wrapping(text: impl Into<SharedString>, theme: &Theme) -> Div {
 /// A count, a duration, a keystroke: text read only when looked for.
 pub fn meta(text: impl Into<SharedString>, theme: &Theme) -> Div {
 	line(text)
-		.text_size(px(size::META))
-		.line_height(px(size::META * size::LINE_TIGHT))
+		.text_size(px(size::meta()))
+		.line_height(px(size::meta() * size::LINE_CHROME))
 		.text_color(theme.text_faint)
 }
 
@@ -124,8 +124,8 @@ pub fn meta(text: impl Into<SharedString>, theme: &Theme) -> Div {
 pub fn mono(text: impl Into<SharedString>, theme: &Theme) -> Div {
 	line(text)
 		.font_family(theme.font_mono)
-		.text_size(px(size::SMALL))
-		.line_height(px(size::SMALL * size::LINE_CODE))
+		.text_size(px(size::meta()))
+		.line_height(px(size::meta() * size::LINE_CODE))
 		.text_color(theme.text_muted)
 }
 
@@ -133,8 +133,8 @@ pub fn mono(text: impl Into<SharedString>, theme: &Theme) -> Div {
 /// the weight that lets it read at that size.
 pub fn overline(text: impl Into<SharedString>, theme: &Theme) -> Div {
 	line(text)
-		.text_size(px(size::META))
+		.text_size(px(size::meta()))
 		.font_weight(weight::MEDIUM)
-		.line_height(px(size::META * size::LINE_TIGHT))
+		.line_height(px(size::meta() * size::LINE_CHROME))
 		.text_color(theme.text_faint)
 }

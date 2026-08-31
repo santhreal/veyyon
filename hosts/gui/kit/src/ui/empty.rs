@@ -77,11 +77,11 @@ impl RenderOnce for Empty {
 					.rounded_full()
 					.bg(theme.raised)
 					.mb(px(space::TIGHT))
-					.child(icon::at(glyph, icon::scale::LARGE, theme.text_faint))
+					.child(icon::at(glyph, icon::scale::large(), theme.text_faint))
 			}))
 			.child(
 				text::line(self.what)
-					.text_size(px(size::BODY))
+					.text_size(px(size::body()))
 					.font_weight(weight::MEDIUM)
 					.text_color(theme.text_muted),
 			)

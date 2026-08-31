@@ -1,90 +1,144 @@
-//! What the transcript says about itself.
-//!
-//! Two decisions, both about honesty rather than layout, and both made without
-//! a window so they can be pinned by a test: what the line under the last
-//! message says, and what an empty conversation says instead of pretending to
-//! be one.
+//! Pure timeline state, row transitions, and end-follow tracking.
 
-use veyyon_gui_core::store::model::{Engine, Message, Role, Store};
+use veyyon_gui_core::model::{ConnectionState, RemoteData, StaleReason, Versioned};
 
-/// The line under the last message, where a reply would be.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Tail {
-	/// Nothing to add: something is attached and the last word was its own.
-	Silent,
-	/// One faint line. Nothing is coming, and this says why.
-	Note(String),
-	/// A turning mark and a line. Something is on its way.
-	Working(String),
+pub enum SurfaceState<'a, T> {
+	Loading { received: Option<u64>, expected: Option<u64> },
+	Empty,
+	Ready { value: &'a T, stale: Option<&'a StaleReason>, error: Option<(&'a str, bool)> },
+	Unavailable { message: &'a str, retryable: bool },
+	Fatal { message: &'a str },
 }
 
-impl Tail {
-	/// The words, for a caller that draws them the same either way.
-	pub fn what(&self) -> Option<&str> {
-		match self {
-			Tail::Silent => None,
-			Tail::Note(what) | Tail::Working(what) => Some(what),
+pub fn surface<'a, T>(
+	connection: &'a ConnectionState,
+	data: &'a RemoteData<Versioned<T>>,
+) -> SurfaceState<'a, T> {
+	if let ConnectionState::Fatal { message } = connection {
+		return SurfaceState::Fatal { message };
+	}
+	match data {
+		RemoteData::Unrequested => SurfaceState::Empty,
+		RemoteData::Loading { .. } => match connection {
+			ConnectionState::Syncing { received, expected } => {
+				SurfaceState::Loading { received: Some(*received), expected: *expected }
+			},
+			_ => SurfaceState::Loading { received: None, expected: None },
+		},
+		RemoteData::Ready(versioned) => {
+			SurfaceState::Ready { value: &versioned.value, stale: None, error: None }
+		},
+		RemoteData::Empty => SurfaceState::Empty,
+		RemoteData::Stale { value, reason } => {
+			SurfaceState::Ready { value: &value.value, stale: Some(reason), error: None }
+		},
+		RemoteData::Error { message, retryable, stale: Some(value) } => SurfaceState::Ready {
+			value: &value.value,
+			stale: None,
+			error: Some((message, *retryable)),
+		},
+		RemoteData::Error { message, retryable, stale: None } => {
+			SurfaceState::Unavailable { message, retryable: *retryable }
+		},
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FollowState {
+	pub following: bool,
+	pub unseen:    usize,
+}
+
+impl Default for FollowState {
+	fn default() -> Self {
+		Self { following: true, unseen: 0 }
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FollowEvent {
+	UserMovedAway,
+	ReachedEnd,
+	Appended(usize),
+	JumpToLatest,
+}
+
+impl FollowState {
+	pub fn apply(&mut self, event: FollowEvent) {
+		match event {
+			FollowEvent::UserMovedAway => self.following = false,
+			FollowEvent::ReachedEnd | FollowEvent::JumpToLatest => {
+				self.following = true;
+				self.unseen = 0;
+			},
+			FollowEvent::Appended(count) if !self.following => {
+				self.unseen = self.unseen.saturating_add(count);
+			},
+			FollowEvent::Appended(_) => {},
 		}
 	}
 
-	/// Whether the mark beside the line turns.
-	pub fn turning(&self) -> bool {
-		matches!(self, Tail::Working(_))
+	pub fn show_jump(self) -> bool {
+		!self.following && self.unseen > 0
 	}
 }
 
-/// What to say under the last message of a conversation.
-///
-/// The rule in one sentence: say what is true about the engine, and say nothing
-/// once the engine has spoken. A window with nothing attached says so under
-/// every message rather than once at the top, because that is where a reader
-/// looks for the reply that did not arrive.
-pub fn tail(store: &Store, messages: &[Message]) -> Tail {
-	let waiting = messages
-		.last()
-		.is_some_and(|message| message.role == Role::Operator);
-	let streaming = messages.last().is_some_and(|message| message.streaming);
-	match &store.engine {
-		// The only state the window is ever in today. Said plainly: a reader who
-		// takes silence for a failure is a reader the window misled.
-		Engine::Detached => Tail::Note("No engine attached, so nothing answers yet.".to_owned()),
-		Engine::Connecting => Tail::Working("Connecting".to_owned()),
-		// While it writes, the message itself carries the mark, so a second one
-		// under it would be two claims about one thing.
-		Engine::Attached { .. } if streaming => Tail::Silent,
-		Engine::Attached { what, .. } if waiting => Tail::Working(format!("{what} is working")),
-		Engine::Attached { .. } => Tail::Silent,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowTransition {
+	Prefix { appended: usize },
+	Prepend { prepended: usize },
+	Reset,
+}
+
+pub trait HasEntryId {
+	fn entry_id(&self) -> &str;
+}
+
+impl HasEntryId for veyyon_gui_core::model::TranscriptEntry {
+	fn entry_id(&self) -> &str {
+		self.id.as_str()
 	}
 }
 
-/// What an empty conversation says: a headline, and the line under it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Opening {
-	pub what: String,
-	pub note: String,
+impl HasEntryId for &str {
+	fn entry_id(&self) -> &str {
+		self
+	}
 }
 
-/// What to put in a conversation with no messages in it.
-///
-/// One sentence about what this window is, and one about what happens to what
-/// is written in it. Both change with the engine, because a reader deciding
-/// whether to type needs the answer before typing rather than after.
-///
-/// A note is drawn centred in a measure of 320 points, which is 56 characters
-/// at the body size, and a note that runs past it breaks with one word alone on
-/// the second line.
-pub fn opening(store: &Store) -> Opening {
-	match &store.engine {
-		Engine::Detached => Opening {
-			what: "Nothing is attached".to_owned(),
-			note: "What you write stays here until an engine is attached.".to_owned(),
-		},
-		Engine::Connecting => Opening {
-			what: "Connecting".to_owned(),
-			note: "Write while it connects; the draft is kept.".to_owned(),
-		},
-		Engine::Attached { what, model } => {
-			Opening { what: format!("Ask {what} something"), note: format!("Running {model}.") }
-		},
+impl HasEntryId for String {
+	fn entry_id(&self) -> &str {
+		self
+	}
+}
+
+pub fn row_transition<T: HasEntryId>(old: &[T], new: &[T]) -> RowTransition {
+	let old_len = old.len();
+	let new_len = new.len();
+	if old_len <= new_len
+		&& old
+			.iter()
+			.zip(new.iter())
+			.all(|(a, b)| a.entry_id() == b.entry_id())
+	{
+		RowTransition::Prefix { appended: new_len - old_len }
+	} else if old_len <= new_len
+		&& old
+			.iter()
+			.zip(new.iter().skip(new_len - old_len))
+			.all(|(a, b)| a.entry_id() == b.entry_id())
+	{
+		RowTransition::Prepend { prepended: new_len - old_len }
+	} else {
+		RowTransition::Reset
+	}
+}
+
+pub fn loading_progress(received: Option<u64>, expected: Option<u64>) -> String {
+	match (received, expected) {
+		(Some(received), Some(expected)) => format!("{received} of {expected} entries received"),
+		(Some(received), None) => format!("{received} entries received"),
+		_ => "Waiting for the transcript snapshot".to_owned(),
 	}
 }

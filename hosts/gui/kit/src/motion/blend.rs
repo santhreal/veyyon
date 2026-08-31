@@ -33,14 +33,3 @@ pub fn mix(from: Hsla, to: Hsla, t: f32) -> Hsla {
 		a,
 	})
 }
-
-/// `VEYYON_MOTION_SCALE` stretches every timeline, for stepping through a 200ms
-/// tween a frame at a time. Never set in ordinary use.
-pub(super) fn env_scale() -> f32 {
-	std::env::var("VEYYON_MOTION_SCALE")
-		.ok()
-		.and_then(|value| value.parse::<f32>().ok())
-		.filter(|scale| scale.is_finite())
-		.map(|scale| scale.clamp(0.01, 100.0))
-		.unwrap_or(1.0)
-}

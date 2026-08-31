@@ -1,15 +1,9 @@
-//! A line in a list.
+//! Stable list and tree rows.
 //!
-//! A session in the sidebar, a command in the palette, a file in a
-//! changed-files tree, a model in a picker. All of them are this: a glyph, a
-//! title, an optional second line, something at the far end, and three states a
-//! pointer and a keyboard can put it in.
-//!
-//! SELECTED AND ACTIVE ARE TWO THINGS. Selected is what the keyboard is on;
-//! active is what the window is showing. A palette row is selected while being
-//! walked and never active; a sidebar row is both when the conversation it
-//! names is open. A list that draws them the same way cannot be walked with the
-//! keyboard while it shows what is open.
+//! A row reserves its metadata geometry. Hover actions are painted in an
+//! absolute trailing slot, so entering the row never moves, clips, or rewraps
+//! the title, note, count, or status. Collection entrances and reorder motion
+//! are registered from model events through `motion::CollectionPlan`, not here.
 
 use gpui::{
 	AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, ParentElement,
@@ -18,113 +12,125 @@ use gpui::{
 
 use super::{Icon, Tone, icon, square, text};
 use crate::{
-	motion::{self, Channel, Key},
+	motion::{Damage, MotionKey, Priority, Property, RetainedKey, mix, spec},
 	paint,
 	theme::{Theme, layout, radius, size, space},
 };
 
 type Click = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 
-/// One line in a list.
 #[derive(IntoElement)]
 pub struct Row {
-	id:       SharedString,
-	icon:     Option<Icon>,
-	/// Keep the icon's space where there is no icon, so a list lines up.
-	gutter:   bool,
-	title:    SharedString,
-	note:     Option<SharedString>,
-	trailing: Vec<AnyElement>,
-	/// Controls that appear with the pointer and fade with it.
-	hovered:  Vec<AnyElement>,
-	tone:     Tone,
-	/// What the keyboard is on.
-	selected: bool,
-	/// What the window is showing.
-	active:   bool,
-	/// Indent, in steps of one level, for a row inside a tree.
-	depth:    u8,
-	/// Animate the first appearance.
-	arrives:  bool,
-	on_click: Option<Click>,
+	id:                SharedString,
+	owner:             RetainedKey,
+	icon:              Option<Icon>,
+	gutter:            bool,
+	title:             Option<SharedString>,
+	title_element:     Option<AnyElement>,
+	note:              Option<SharedString>,
+	trailing:          Vec<AnyElement>,
+	hovered:           Vec<AnyElement>,
+	hover_slot:        f32,
+	tone:              Tone,
+	selected:          bool,
+	active:            bool,
+	focused:           bool,
+	destructive_armed: bool,
+	depth:             u8,
+	disabled_reason:   Option<SharedString>,
+	on_click:          Option<Click>,
 }
 
 impl Row {
-	pub fn new(id: impl Into<SharedString>, title: impl Into<SharedString>) -> Row {
-		Row {
-			id:       id.into(),
-			icon:     None,
-			gutter:   false,
-			title:    title.into(),
-			note:     None,
+	pub fn new(
+		id: impl Into<SharedString>,
+		owner: RetainedKey,
+		title: impl Into<SharedString>,
+	) -> Self {
+		Self {
+			id: id.into(),
+			owner,
+			icon: None,
+			gutter: false,
+			title: Some(title.into()),
+			title_element: None,
+			note: None,
 			trailing: Vec::new(),
-			hovered:  Vec::new(),
-			tone:     Tone::Plain,
+			hovered: Vec::new(),
+			hover_slot: layout::control_height(),
+			tone: Tone::Plain,
 			selected: false,
-			active:   false,
-			depth:    0,
-			arrives:  false,
+			active: false,
+			focused: false,
+			destructive_armed: false,
+			depth: 0,
+			disabled_reason: None,
 			on_click: None,
 		}
 	}
 
-	pub fn icon(mut self, icon: Icon) -> Row {
+	pub fn icon(mut self, icon: Icon) -> Self {
 		self.icon = Some(icon);
 		self
 	}
 
-	/// Keep the space a drawing takes even where there is none.
-	///
-	/// For a list where only some rows carry one: without it the titles start at
-	/// two different offsets, which reads as two lists that happen to be next
-	/// to each other.
-	pub fn gutter(mut self, gutter: bool) -> Row {
+	pub fn gutter(mut self, gutter: bool) -> Self {
 		self.gutter = gutter;
 		self
 	}
 
-	/// A second line under the title: a preview, a path, a time.
-	pub fn note(mut self, note: impl Into<SharedString>) -> Row {
+	pub fn note(mut self, note: impl Into<SharedString>) -> Self {
 		self.note = Some(note.into());
 		self
 	}
 
-	pub fn tone(mut self, tone: Tone) -> Row {
+	pub fn tone(mut self, tone: Tone) -> Self {
 		self.tone = tone;
 		self
 	}
 
-	/// What the keyboard is on. Drawn as a wash, because the pointer's hover is
-	/// the same claim made by a different device.
-	pub fn selected(mut self, selected: bool) -> Row {
+	pub fn selected(mut self, selected: bool) -> Self {
 		self.selected = selected;
 		self
 	}
 
-	/// What the window is showing. Drawn with a fill that stays under the
-	/// pointer's wash, so a hovered row that is open reads as both.
-	pub fn active(mut self, active: bool) -> Row {
+	pub fn active(mut self, active: bool) -> Self {
 		self.active = active;
 		self
 	}
 
-	pub fn depth(mut self, depth: u8) -> Row {
+	pub fn focused(mut self, focused: bool) -> Self {
+		self.focused = focused;
+		self
+	}
+
+	pub fn destructive_armed(mut self, armed: bool) -> Self {
+		self.destructive_armed = armed;
+		self
+	}
+
+	pub fn depth(mut self, depth: u8) -> Self {
 		self.depth = depth;
 		self
 	}
 
-	pub fn arriving(mut self) -> Row {
-		self.arrives = true;
+	pub fn disabled(mut self, reason: impl Into<SharedString>) -> Self {
+		self.disabled_reason = Some(reason.into());
 		self
 	}
 
-	/// A control that appears when the pointer is on the row, at the opacity of
-	/// the row's own wash.
-	///
-	/// The row holds the value, because a caller that reads the wash itself has
-	/// to name the channel the row drives, and a name that agrees today is a
-	/// control that silently stops appearing the day the row renames its own.
-	pub fn hovered_child(mut self, element: impl IntoElement) -> Row {
+	/// Replace the title run with a highlighted or otherwise styled element.
+	/// The element receives the same flex/min-width clipping container as text.
+	pub fn title_element(mut self, element: impl IntoElement) -> Self {
+		self.title = None;
+		self.title_element = Some(element.into_any_element());
+		self
+	}
+
+	/// Add actions to the fixed overlay slot. `width` is a named token selected
+	/// by the parent surface, commonly one or two control heights.
+	pub fn hover_actions(mut self, width: f32, element: impl IntoElement) -> Self {
+		self.hover_slot = width;
 		self.hovered.push(element.into_any_element());
 		self
 	}
@@ -132,13 +138,12 @@ impl Row {
 	pub fn on_click(
 		mut self,
 		listener: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-	) -> Row {
+	) -> Self {
 		self.on_click = Some(Box::new(listener));
 		self
 	}
 }
 
-/// The far end of a row: a badge, a count, a button that appears on hover.
 impl ParentElement for Row {
 	fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
 		self.trailing.extend(elements);
@@ -148,98 +153,126 @@ impl ParentElement for Row {
 impl RenderOnce for Row {
 	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let theme = Theme::get(cx);
-		let wash = Key::named(Channel::Row, self.id.as_ref());
+		let key = MotionKey::new(self.owner, Property::ColorMix);
 		let ink = self.tone.ink(&theme);
-
-		let rest = if self.active {
+		let base_selected = self.selected || self.active;
+		let rest = if self.destructive_armed {
+			Tone::Danger.tint(&theme)
+		} else if base_selected {
 			theme.selected()
 		} else {
 			gpui::transparent_black()
 		};
-		let lit = if self.active {
-			theme.selected()
+		let lit = if self.destructive_armed {
+			Tone::Danger.ink(&theme)
+		} else if base_selected {
+			theme.selected_hover()
 		} else {
 			theme.hover()
 		};
-		// A row with nothing to run does not light and does not take the
-		// pointer's shape. It still washes when it carries a control of its own,
-		// since that wash is what reveals the control.
-		let live = self.on_click.is_some() || !self.hovered.is_empty();
-		let hover = if live { paint::at(cx, wash) } else { 0.0 };
-		let ground = if self.selected {
-			lit
+		let live =
+			self.disabled_reason.is_none() && (self.on_click.is_some() || !self.hovered.is_empty());
+		let hover = if live {
+			paint::sample(cx, key, 0.0)
 		} else {
-			motion::mix(rest, lit, hover)
+			0.0
 		};
-
-		let arrival = if self.arrives {
-			paint::arriving(cx, Key::named(Channel::RowEnter, self.id.as_ref()), motion::ENTER)
-		} else {
-			1.0
-		};
-
+		let ground = mix(rest, lit, hover);
 		let tall = self.note.is_some();
+		let title = self
+			.title
+			.map(|value| {
+				text::line(value)
+					.text_size(px(size::body()))
+					.line_height(px(size::body() * size::LINE_CHROME))
+					.text_color(ink)
+					.into_any_element()
+			})
+			.or(self.title_element);
+		let note = self.note.map(|value| text::note(value, &theme));
+		let has_hovered = !self.hovered.is_empty();
+		let hover_slot = self.hover_slot;
 		let mut row = div()
 			.id(ElementId::from(self.id.clone()))
+			.relative()
 			.flex()
 			.items_center()
 			.gap(px(space::BASE))
 			.w_full()
-			.h(px(if tall { layout::ROW_TALL } else { layout::ROW }))
+			.h(px(if tall {
+				layout::row_tall()
+			} else {
+				layout::row()
+			}))
 			.pl(px(space::BASE + f32::from(self.depth) * space::WIDE))
-			.pr(px(space::SNUG))
+			.pr(px(if has_hovered {
+				hover_slot + space::SNUG
+			} else {
+				space::SNUG
+			}))
 			.rounded(px(radius::ROW))
-			.bg(ground);
-
-		if live {
-			row = row.on_hover(move |over, _window, cx| {
-				paint::hover(cx, wash, *over);
-				cx.refresh_windows();
-			});
-		}
-		if self.on_click.is_some() {
-			row = row.cursor_pointer();
-		}
-
-		row = row
+			.bg(ground)
 			.children(
 				self
 					.icon
-					.map(|glyph| square(icon::scale::BASE).child(icon::base(glyph, theme.text_faint)))
-					.or_else(|| self.gutter.then(|| square(icon::scale::BASE))),
+					.map(|glyph| square(icon::scale::base()).child(icon::base(glyph, theme.text_faint)))
+					.or_else(|| self.gutter.then(|| square(icon::scale::base()))),
 			)
 			.child(
 				text::stack(space::PAIR)
 					.flex_1()
+					.min_w(px(0.0))
 					.overflow_hidden()
-					.child(
-						text::line(self.title)
-							.text_size(px(size::BODY))
-							.line_height(px(size::BODY * size::LINE_TIGHT))
-							.text_color(ink),
-					)
-					.children(self.note.map(|note| text::note(note, &theme))),
+					.children(title)
+					.children(note),
 			)
 			.children(self.trailing)
-			// The pointer's own controls, at the pointer's own opacity. The row
-			// holds the value, so nothing outside has to name the channel it
-			// drives: a caller deriving the same key by hand and getting a
-			// different one is a control that never appears.
-			.children((hover > 0.02 && !self.hovered.is_empty()).then(|| {
+			.children(has_hovered.then(|| {
 				div()
-					.opacity(hover)
+					.absolute()
+					.right(px(space::SNUG))
+					.top(px(0.0))
+					.h_full()
+					.w(px(hover_slot))
 					.flex()
 					.items_center()
+					.justify_end()
+					.opacity(hover)
 					.children(self.hovered)
 			}));
-
-		if arrival < 1.0 {
-			row = row.opacity(arrival);
+		if self.focused {
+			row = row.shadow(theme.focus_ring());
 		}
-
-		match self.on_click {
-			Some(listener) => row.on_click(move |event, window, cx| listener(event, window, cx)),
+		if live {
+			row = row.on_hover(move |over, _window, cx| {
+				let program = if *over {
+					spec::HOVER_IN
+				} else {
+					spec::HOVER_OUT
+				};
+				let _ = paint::retarget(
+					cx,
+					key,
+					program,
+					u8::from(*over) as f32,
+					Priority::Content,
+					Damage::Paint(0),
+				);
+				cx.refresh_windows();
+			});
+		}
+		if self.on_click.is_some() && self.disabled_reason.is_none() {
+			row = row.cursor_pointer();
+		}
+		let row = match self.disabled_reason {
+			Some(reason) => row.tooltip(move |_window, cx| super::Tip::view(reason.clone(), cx)),
 			None => row,
+		};
+		match (self.on_click, live) {
+			(Some(listener), true) => {
+				row.on_click(move |event, window, cx| listener(event, window, cx))
+			},
+			_ => row,
 		}
 	}
 }

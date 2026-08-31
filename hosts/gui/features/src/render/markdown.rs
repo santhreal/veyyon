@@ -15,13 +15,13 @@ use gpui::{
 	AnyElement, App, HighlightStyle, IntoElement, ParentElement, Styled, StyledText, UnderlineStyle,
 	div, px,
 };
-use veyyon_gui_core::text::markdown::{Item, ListKind, Md, Span};
+use veyyon_gui_core::text::markdown::{Md, Span};
 use veyyon_gui_kit::{
-	theme::{Theme, radius, size, space, weight},
-	ui::{Icon, card, icon, square, text},
+	theme::{Theme, size, space, weight},
+	ui::text,
 };
 
-use super::code;
+use super::{code, list, quote, table};
 
 /// Every block of one run of prose, in order.
 pub fn blocks(blocks: &[Md], id: &str, cx: &mut App) -> Vec<AnyElement> {
@@ -42,37 +42,9 @@ pub fn block(block: &Md, id: &str, cx: &mut App) -> AnyElement {
 
 		Md::Paragraph(spans) => runs(spans, &theme).w_full().into_any_element(),
 
-		Md::List(items) => {
-			let mut column = text::stack(space::TIGHT).w_full();
-			for item in items {
-				column = column.child(bullet(item, &theme));
-			}
-			column.into_any_element()
-		},
+		Md::List(items) => list::list(items, &theme).into_any_element(),
 
-		// A quote is a run of blocks indented behind a rule, so a quote of a
-		// list is a list and a quote of a quote steps in again.
-		Md::Quote(inner) => div()
-			.flex()
-			.w_full()
-			.gap(px(space::BASE))
-			.child(
-				div()
-					.flex_none()
-					.w(px(2.0))
-					.rounded(px(radius::PILL))
-					.bg(theme.stroke),
-			)
-			.child(
-				text::stack(space::BASE)
-					// A quoted fence or table carries lines that do not break,
-					// and without a floor of zero their width becomes the
-					// quote's, which puts the rule and the text past the column.
-					.flex_1()
-					.min_w(px(0.0))
-					.children(blocks(inner, id, cx)),
-			)
-			.into_any_element(),
+		Md::Quote(inner) => quote::quote(inner, id, cx).into_any_element(),
 
 		Md::Code { lang, body } => code::well(id, lang, body, cx).into_any_element(),
 
@@ -80,7 +52,7 @@ pub fn block(block: &Md, id: &str, cx: &mut App) -> AnyElement {
 			.my(px(space::SNUG))
 			.into_any_element(),
 
-		Md::Table { head, rows } => table(head, rows, &theme).into_any_element(),
+		Md::Table { head, rows } => table::table(head, rows, &theme).into_any_element(),
 	}
 }
 
@@ -88,103 +60,20 @@ pub fn block(block: &Md, id: &str, cx: &mut App) -> AnyElement {
 /// document and a level-five heading inside a message is a bold line.
 fn heading(level: u8, spans: &[Span], theme: &Theme) -> gpui::Div {
 	let size = match level {
-		1 => size::TITLE,
-		2 => size::LEAD,
-		_ => size::BODY,
+		1 => size::section(),
+		2 => size::lead(),
+		_ => size::body(),
 	};
 	runs(spans, theme)
 		.w_full()
 		.text_size(px(size))
-		.line_height(px(size * size::LINE_TIGHT))
+		.line_height(px(size * size::LINE_CHROME))
 		.font_weight(if level <= 2 {
 			weight::STRONG
 		} else {
 			weight::MEDIUM
 		})
 		.pt(px(space::TIGHT))
-}
-
-/// One list item: its marker, then its text.
-///
-/// The marker column is fixed, so wrapped text lines up under the first word
-/// rather than under the bullet.
-fn bullet(item: &Item, theme: &Theme) -> gpui::Div {
-	let marker = match (item.done, item.kind) {
-		// A task box is drawn as a box, not as a pair of brackets.
-		(Some(done), _) => square(icon::scale::SMALL)
-			.child(icon::at(
-				if done { Icon::Check } else { Icon::Folded },
-				icon::scale::SMALL,
-				if done { theme.ok } else { theme.text_faint },
-			))
-			.into_any_element(),
-		// A middot is a punctuation mark inside a line; a list marker is a
-		// bullet, drawn a little smaller than the words it heads.
-		(None, ListKind::Bullet) => text::line("•")
-			.text_size(px(size::SMALL))
-			.text_color(theme.text_faint)
-			.into_any_element(),
-		(None, ListKind::Ordered(number)) => text::line(format!("{number}."))
-			.text_color(theme.text_faint)
-			.text_size(px(size::SMALL))
-			.into_any_element(),
-	};
-
-	div()
-		.flex()
-		.w_full()
-		.gap(px(space::SNUG))
-		.pl(px(f32::from(item.depth) * space::WIDE))
-		.child(
-			div()
-				.flex_none()
-				.w(px(icon::scale::BASE))
-				.flex()
-				// The marker ends where the column ends, so every marker sits the
-				// same gap from its own words and a stack of numbers lines up on
-				// the period. Centred, "•" and "10." start and end at four
-				// different places down one list.
-				.justify_end()
-				.child(marker),
-		)
-		// A URL or an identifier in a list item is one unbroken run, and its
-		// width would otherwise become the row's and take the marker's column
-		// with it.
-		.child(runs(&item.spans, theme).flex_1().min_w(px(0.0)))
-}
-
-/// A table. Rows of cells with a hairline under the head, in the well every
-/// standalone block takes.
-///
-/// The well is what makes it a block rather than loose text: a table is lifted
-/// out of the bubble its message reads in, so without a ground of its own it
-/// lands on the canvas with nothing around it while the fence above it and the
-/// patch below it are both cards.
-fn table(head: &[Vec<Span>], rows: &[Vec<Vec<Span>>], theme: &Theme) -> gpui::Div {
-	let cells = |cells: &[Vec<Span>], strong: bool| {
-		let mut row = div().flex().w_full().gap(px(space::BASE));
-		for cell in cells {
-			let mut element = runs(cell, theme).flex_1().min_w(px(0.0));
-			if strong {
-				element = element.font_weight(weight::MEDIUM);
-			}
-			row = row.child(element);
-		}
-		row
-	};
-
-	let mut column = text::stack(space::TIGHT).w_full();
-	if !head.is_empty() {
-		column = column.child(cells(head, true)).child(text::hairline(theme));
-	}
-	for row in rows {
-		column = column.child(cells(row, false));
-	}
-	card::well(theme)
-		.w_full()
-		.px(px(space::BASE))
-		.py(px(space::SNUG))
-		.child(column)
 }
 
 /// One run of prose: the text, with its emphasis, code and links as styled

@@ -84,7 +84,7 @@ impl RenderOnce for Banner {
 					.items_start()
 					.child(div().flex().flex_none().mt(px(1.0)).child(icon::at(
 						self.icon.unwrap_or(Icon::Notice),
-						icon::scale::SMALL + 1.0,
+						icon::scale::small() + 1.0,
 						ink,
 					)))
 					.child(
@@ -98,17 +98,17 @@ impl RenderOnce for Banner {
 							.overflow_hidden()
 							.child(
 								div()
-									.text_size(px(size::BODY))
+									.text_size(px(size::body()))
 									.font_weight(weight::MEDIUM)
-									.line_height(px(size::BODY * size::LINE_TIGHT))
+									.line_height(px(size::body() * size::LINE_CHROME))
 									.text_color(theme.text)
 									.child(self.what),
 							)
 							.children(self.detail.map(|detail| {
 								div()
 									.font_family(theme.font_mono)
-									.text_size(px(size::SMALL))
-									.line_height(px(size::SMALL * size::LINE_CODE))
+									.text_size(px(size::meta()))
+									.line_height(px(size::meta() * size::LINE_CODE))
 									.text_color(theme.text_muted)
 									.child(detail)
 							})),

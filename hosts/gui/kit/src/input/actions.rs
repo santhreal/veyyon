@@ -225,7 +225,7 @@ impl Editor {
 	}
 
 	pub(super) fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
-		if self.selection.is_empty() {
+		if self.secret || self.selection.is_empty() {
 			return;
 		}
 		let selected = self.text[self.selection.clone()].to_owned();
@@ -233,7 +233,7 @@ impl Editor {
 	}
 
 	pub(super) fn cut(&mut self, _: &Cut, _: &mut Window, cx: &mut Context<Self>) {
-		if self.selection.is_empty() {
+		if self.secret || self.selection.is_empty() {
 			return;
 		}
 		let selected = self.text[self.selection.clone()].to_owned();

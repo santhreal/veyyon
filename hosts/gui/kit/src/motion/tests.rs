@@ -1,302 +1,318 @@
-//! WHY THIS SUITE EXISTS.
+//! Motion contract tests.
 //!
-//! An animation layer fails in ways a screenshot cannot show and a person
-//! only feels: a reversal that snaps because the tween restarted from its
-//! target, a channel that never reports itself finished so the window
-//! repaints at the display's full rate forever, a hover wash that outlives
-//! the row it belonged to and comes back already lit, an eased value a hair
-//! outside 0..1 that panics one layer down as an opacity.
-//!
-//! Every one of those is arithmetic over a clock, and the clock is an
-//! argument here, so all of it is asserted at exact milliseconds with no
-//! sleeping and no window.
-//!
-//! WHAT IT DOES NOT CATCH. Whether the motion looks right. The curves are
-//! pinned to the CSS ones by value at five points each, which is the part
-//! that can be wrong arithmetically rather than by taste.
+//! These tests cover the closed-form boundary and the fixed registry policies.
+//! They do not cover gpui's platform RAF delivery or compositor damage.
 
-use gpui::{Hsla, Rgba};
+use super::{spec, *};
 
-use super::*;
+fn owner(id: u64) -> RetainedKey {
+	RetainedKey::new(id, 0)
+}
 
-fn close(actual: f32, expected: f32, tolerance: f32, what: &str) {
-	assert!(
-		(actual - expected).abs() <= tolerance,
-		"{what}: got {actual}, expected {expected} ±{tolerance}"
-	);
+fn key(id: u64, property: Property) -> MotionKey {
+	MotionKey::new(owner(id), property)
 }
 
 #[test]
-fn a_linear_bezier_is_the_identity() {
-	let linear = Curve::new(0.0, 0.0, 1.0, 1.0);
-	for x in [0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0] {
-		close(linear.at(x), x, 1e-4, "linear");
+fn analytic_spring_starts_at_the_event_state_and_reaches_the_exact_endpoint() {
+	let Program::Spring(spring) = spec::LAYOUT else {
+		unreachable!()
+	};
+	let start = sample_spring(spring, 18.0, -7.0, 280.0, 0);
+	assert_eq!(start.value, 18.0);
+	assert_eq!(start.velocity, -7.0);
+	let end = sample_spring(spring, 18.0, -7.0, 280.0, u64::from(spring.hard_limit_ms));
+	assert_eq!(end, Sample { value: 280.0, velocity: 0.0, settled: true });
+}
+
+#[test]
+fn retarget_preserves_position_and_velocity() {
+	let mut motion = Motion::new(false);
+	let property = key(1, Property::Width);
+	assert!(motion.insert(
+		property,
+		spec::LAYOUT,
+		0.0,
+		300.0,
+		0,
+		Priority::Shell,
+		Damage::Layout(0)
+	));
+	let before = motion.sample(property, 300.0, 73);
+	let velocity = motion.velocity(property, 73);
+	assert!(motion.retarget(property, spec::LAYOUT, 40.0, 73, Priority::Shell, Damage::Layout(0)));
+	assert!((motion.sample(property, 40.0, 73) - before).abs() < 1e-5);
+	assert!((motion.velocity(property, 73) - velocity).abs() < 1e-4);
+}
+
+#[test]
+fn analytic_sampling_is_independent_of_frame_rate() {
+	let Program::Spring(spring) = spec::SHARED_ELEMENT else {
+		unreachable!()
+	};
+	let direct = sample_spring(spring, 0.0, 140.0, 420.0, 250);
+	let samples_60 = [16_u64, 33, 50, 100, 167, 250];
+	let samples_120 = [8_u64, 16, 25, 50, 83, 125, 167, 208, 250];
+	let at_60 = samples_60
+		.into_iter()
+		.map(|time| sample_spring(spring, 0.0, 140.0, 420.0, time))
+		.next_back();
+	let at_120 = samples_120
+		.into_iter()
+		.map(|time| sample_spring(spring, 0.0, 140.0, 420.0, time))
+		.next_back();
+	assert_eq!(at_60, Some(direct));
+	assert_eq!(at_120, Some(direct));
+}
+
+#[test]
+fn continuous_capacity_settles_decorative_work_before_high_priority_work() {
+	let mut motion = Motion::new(false);
+	for id in 0..MAX_CONTINUOUS_TRACKS as u64 {
+		assert!(motion.insert(
+			key(id, Property::Opacity),
+			spec::ENTER,
+			0.0,
+			1.0,
+			0,
+			Priority::Decorative,
+			Damage::Paint(0),
+		));
+	}
+	assert_eq!(motion.active_tracks(), MAX_CONTINUOUS_TRACKS);
+	assert!(motion.insert(
+		key(99, Property::Width),
+		spec::LAYOUT,
+		0.0,
+		200.0,
+		1,
+		Priority::Shell,
+		Damage::Layout(0),
+	));
+	assert_eq!(motion.active_tracks(), MAX_CONTINUOUS_TRACKS);
+	assert!(!motion.insert(
+		key(100, Property::Opacity),
+		spec::ENTER,
+		0.0,
+		1.0,
+		1,
+		Priority::Decorative,
+		Damage::Paint(0),
+	));
+}
+
+#[test]
+fn settlement_and_exit_ghost_retire_in_the_observing_frame() {
+	let mut motion = Motion::new(false);
+	let property = key(1, Property::Opacity);
+	assert!(motion.insert(property, spec::EXIT, 1.0, 0.0, 0, Priority::Content, Damage::Paint(1)));
+	assert!(motion.remove(owner(2), 42, key(2, Property::Opacity), spec::EXIT, 0, Damage::Paint(1)));
+	let frame = motion.finish_frame(110);
+	assert_eq!(motion.active_tracks(), 0);
+	assert_eq!(motion.active_ghosts(), 0);
+	assert_eq!(frame.wake, Wake::None);
+}
+
+#[test]
+fn idle_registry_has_no_wake_or_damage() {
+	let mut motion = Motion::new(false);
+	assert_eq!(motion.finish_frame(10_000), FrameResult {
+		wake:   Wake::None,
+		damage: DamageSet::default(),
+	});
+}
+
+#[test]
+fn reduced_motion_snaps_and_never_wakes() {
+	let mut motion = Motion::new(true);
+	let property = key(1, Property::TranslateY);
+	assert!(motion.insert(property, spec::ENTER, 6.0, 0.0, 0, Priority::Content, Damage::Paint(2)));
+	assert_eq!(motion.sample(property, 0.0, 0), 0.0);
+	assert!(!motion.register_activity(owner(2), 0, Damage::Paint(0)));
+	assert_eq!(motion.finish_frame(0).wake, Wake::None);
+}
+
+#[test]
+fn shared_activity_clock_is_bounded_and_has_one_discontinuous_wake() {
+	let mut motion = Motion::new(false);
+	for id in 0..MAX_ACTIVITY_CLIENTS as u64 {
+		assert!(motion.register_activity(owner(id), id as u8, Damage::Paint(id as u8)));
+	}
+	assert!(!motion.register_activity(owner(99), 0, Damage::Paint(0)));
+	assert_eq!(motion.activity_phase(owner(3), 400), 5);
+	assert_eq!(motion.finish_frame(401).wake, Wake::At(600));
+	for id in 0..MAX_ACTIVITY_CLIENTS as u64 {
+		motion.unregister_activity(owner(id));
+	}
+	assert_eq!(motion.finish_frame(401).wake, Wake::None);
+}
+
+#[test]
+fn recycled_owner_advances_generation() {
+	let mut generations = OwnerGenerations::<4>::default();
+	let first = generations.current(7);
+	assert_eq!(first, Some(RetainedKey::new(7, 0)));
+	assert!(generations.retire(RetainedKey::new(7, 0)));
+	assert_eq!(generations.current(7), Some(RetainedKey::new(7, 1)));
+	assert!(!generations.retire(RetainedKey::new(7, 0)));
+}
+
+#[test]
+fn collection_plan_is_bounded_and_stagger_never_exceeds_sixty_ms() {
+	let old: [CollectionItem; 0] = [];
+	let new = std::array::from_fn::<_, 20, _>(|index| CollectionItem {
+		owner:    owner(index as u64),
+		position: index as f32 * 32.0,
+		selected: index == 19,
+	});
+	let plan = CollectionPlan::reconcile(&old, &new);
+	assert_eq!(plan.len(), MAX_COLLECTION_GHOSTS);
+	assert!(plan.iter().any(
+		|change| matches!(change, CollectionChange::Insert { owner: key, .. } if key.object == 19)
+	));
+	for change in plan.iter() {
+		let delay = match change {
+			CollectionChange::Insert { delay_ms, .. }
+			| CollectionChange::Remove { delay_ms, .. }
+			| CollectionChange::Move { delay_ms, .. } => delay_ms,
+		};
+		assert!(delay <= spec::MAX_STAGGER_MS);
 	}
 }
 
 #[test]
-fn the_curves_are_the_css_curves_by_value() {
-	// References solved independently by bisection to 1e-6. A curve that
-	// drifts from these is no longer the shape the rest of the machine's
-	// software moves with, which is the only reason to use CSS curves.
-	let cases: [(&str, Curve, [f32; 5]); 4] = [
-		("expo-out", EXPO_OUT, [0.494391, 0.825622, 0.971779, 0.997677, 0.999878]),
-		("ease-out", OUT, [0.160572, 0.378138, 0.684643, 0.906535, 0.982973]),
-		("ease", EASE, [0.094796, 0.408511, 0.802403, 0.960459, 0.994316]),
-		("ease-in-out", IN_OUT, [0.019151, 0.129405, 0.5, 0.870595, 0.980849]),
-	];
-	for (name, curve, expected) in cases {
-		for (x, want) in [0.1, 0.25, 0.5, 0.75, 0.9].into_iter().zip(expected) {
-			close(curve.at(x), want, 1e-3, name);
+fn repeated_frame_sampling_does_not_create_tracks() {
+	let motion = Motion::new(false);
+	let property = key(3, Property::ColorMix);
+	for now in 0..10_000 {
+		assert_eq!(motion.sample(property, 1.0, now), 1.0);
+	}
+	assert_eq!(motion.active_tracks(), 0);
+}
+
+// WHY: a row's hover ground animated to full and then vanished. `finish_frame`
+// retired every settled track, so the next render's `sample` found no track and
+// fell back to the resting value its caller passes. Any property that animated
+// to a non-rest target snapped back one frame after it arrived. The class is
+// the registry's retention policy, not the hover ground: a panel width, an
+// overlay opacity and a row's colour mix all read the same slot through the
+// same call. These tests do not cover gpui's pointer or RAF delivery, and they
+// cannot say whether a caller passes the correct resting value for its
+// property.
+
+/// Drive frames at 60 Hz until the registry stops asking to be woken, and
+/// return the instant it went quiet. Bounded: a policy that keeps requesting
+/// frames for a property nothing is animating fails here rather than spinning.
+fn settle(motion: &mut Motion, from: u64) -> u64 {
+	let mut now = from;
+	for _ in 0..600 {
+		if motion.finish_frame(now).wake == Wake::None {
+			return now;
+		}
+		now += 16;
+	}
+	panic!("the registry never stopped asking for frames")
+}
+
+/// Every program a retained track can carry a target on. The match is
+/// exhaustive, so a new `Program` variant fails to compile here instead of
+/// quietly skipping the retention policy.
+fn retaining_programs() -> Vec<Program> {
+	let mut programs = Vec::new();
+	for program in [spec::LAYOUT, spec::HOVER_IN, spec::ACTIVITY, Program::Direct] {
+		match program {
+			Program::Spring(_) | Program::Tween(_) => programs.push(program),
+			// Steps loops and never reports a settled sample, so it has no
+			// endpoint to hold. Direct commits its value in the caller and keeps
+			// no track by design.
+			Program::Steps(_) | Program::Direct => {},
 		}
 	}
+	programs
 }
 
 #[test]
-fn an_eased_value_never_escapes_the_unit_interval() {
-	// f32 rounding puts the sharper curves a hair above 1.0 near the tail.
-	// A value above 1.0 handed to an opacity is a panic, so the sweep is
-	// dense and includes the values closest to the endpoint.
-	for curve in [EXPO_OUT, OUT, EASE, IN_OUT, IN, COLOR] {
-		for step in 0..=20_000u32 {
-			let x = step as f32 / 20_000.0;
-			let y = curve.at(x);
-			assert!((0.0..=1.0).contains(&y), "at({x}) = {y} escaped 0..1");
-		}
-		for x in [0.999_999_f32, 0.999_999_9, 1.0 - f32::EPSILON] {
-			assert!((0.0..=1.0).contains(&curve.at(x)));
-		}
+fn a_property_that_settles_on_a_non_rest_target_keeps_holding_it() {
+	for program in retaining_programs() {
+		let mut motion = Motion::new(false);
+		let property = key(1, Property::ColorMix);
+		assert!(motion.retarget(property, program, 1.0, 0, Priority::Content, Damage::Paint(0)));
+		let quiet = settle(&mut motion, 0);
+		assert_eq!(motion.sample(property, 0.0, quiet), 1.0, "{program:?} dropped its target");
+		assert_eq!(
+			motion.sample(property, 0.0, quiet + 1_000),
+			1.0,
+			"{program:?} decayed to rest a second later"
+		);
+		assert_eq!(motion.active_tracks(), 1);
+		// Holding a value is not work: a frame that finds only held properties
+		// asks for no wake and reports nothing to repaint.
+		assert_eq!(
+			motion.finish_frame(quiet + 1_000),
+			FrameResult { wake: Wake::None, damage: DamageSet::default() },
+			"{program:?} kept dirtying frames while holding its target"
+		);
 	}
 }
 
 #[test]
-fn every_curve_starts_at_nothing_ends_at_everything_and_clamps_outside() {
-	for curve in [EXPO_OUT, OUT, EASE, IN_OUT, IN, COLOR] {
-		assert_eq!(curve.at(0.0), 0.0);
-		assert_eq!(curve.at(1.0), 1.0);
-		assert_eq!(curve.at(-0.5), 0.0);
-		assert_eq!(curve.at(1.5), 1.0);
-	}
+fn a_property_retargeted_to_rest_fades_from_the_value_it_held_and_frees_its_slot() {
+	let mut motion = Motion::new(false);
+	let property = key(2, Property::ColorMix);
+	assert!(motion.retarget(property, spec::HOVER_IN, 1.0, 0, Priority::Content, Damage::Paint(0)));
+	let held = settle(&mut motion, 0);
+	assert_eq!(motion.sample(property, 0.0, held), 1.0);
+	assert!(motion.retarget(
+		property,
+		spec::HOVER_OUT,
+		0.0,
+		held,
+		Priority::Content,
+		Damage::Paint(0)
+	));
+	assert_eq!(motion.sample(property, 0.0, held), 1.0);
+	let quiet = settle(&mut motion, held);
+	assert_eq!(motion.sample(property, 0.0, quiet), 0.0);
+	assert_eq!(motion.active_tracks(), 0);
 }
 
 #[test]
-fn the_curves_never_go_backwards() {
-	for curve in [EXPO_OUT, OUT, EASE, IN_OUT, IN, COLOR] {
-		let mut last = 0.0;
-		for step in 0..=1_000 {
-			let y = curve.at(step as f32 / 1_000.0);
-			assert!(y >= last - 1e-4, "{curve:?} went backwards at {step}");
-			last = y;
-		}
-	}
-}
-
-#[test]
-fn a_spec_starts_at_zero_and_ends_at_one() {
-	let spec = Spec::new(200, EASE);
-	assert_eq!(spec.at_ms(0), 0.0, "a motion that has not started has not moved");
-	assert!(spec.at_ms(100) > 0.0, "halfway through the duration is halfway in");
-	assert_eq!(spec.at_ms(200), 1.0, "the end of the duration is the end of the motion");
-	assert_eq!(spec.at_ms(9_000), 1.0, "past the end stays at the end");
-}
-
-#[test]
-fn a_zero_length_motion_is_already_there() {
-	assert_eq!(Spec::new(0, EASE).at_ms(0), 1.0);
-}
-
-#[test]
-fn the_catalog_is_the_timing_the_window_was_tuned_at() {
-	// Not decoration: these numbers are what the window's feel was set by,
-	// and a change to one of them is a change to the product that should
-	// be made deliberately rather than by editing a constant in passing.
-	assert_eq!((ENTER.duration_ms, ENTER.curve), (260, EXPO_OUT));
-	assert_eq!((RESIZE.duration_ms, RESIZE.curve), (200, OUT));
-	assert_eq!((COLLAPSE.duration_ms, COLLAPSE.curve), (180, OUT));
-	assert_eq!((WASH.duration_ms, WASH.curve), (150, COLOR));
-}
-
-#[test]
-fn the_first_sight_of_a_driven_value_is_at_rest_on_its_target() {
-	// A sidebar that is open at startup is open, not sliding in.
-	let mut motion = Motion::new();
-	let key = Key::of(Channel::SidebarWidth);
-	assert_eq!(motion.drive(key, RESIZE, 268.0, 0), 268.0);
-	assert!(!motion.advance(0), "a value at rest asked for a frame");
-	assert_eq!(motion.next_frame_after(0), None, "a value at rest asked for a frame");
-}
-
-#[test]
-fn a_driven_value_travels_to_a_new_target_and_arrives() {
-	let mut motion = Motion::new();
-	let key = Key::of(Channel::SidebarWidth);
-	motion.drive(key, RESIZE, 0.0, 0);
-	motion.drive(key, RESIZE, 200.0, 0);
-
-	let quarter = motion.drive(key, RESIZE, 200.0, 50);
-	assert!(quarter > 0.0 && quarter < 200.0, "did not travel: {quarter}");
-	assert_eq!(motion.next_frame_after(50), Some(0), "a moving value wants the next frame");
-
-	assert_eq!(motion.drive(key, RESIZE, 200.0, 200), 200.0);
-	assert_eq!(motion.next_frame_after(200), None, "an arrived value still wants frames");
-}
-
-#[test]
-fn restating_a_target_every_frame_does_not_restart_the_motion() {
-	// The render path re-states every target on every frame by
-	// construction. A tween that restarts on a re-statement never arrives.
-	let mut motion = Motion::new();
-	let key = Key::of(Channel::SidebarWidth);
-	motion.drive(key, RESIZE, 0.0, 0);
-	motion.drive(key, RESIZE, 260.0, 0);
-	let mut last = 0.0;
-	for now in [16, 32, 48, 64, 80, 96] {
-		let value = motion.drive(key, RESIZE, 260.0, now);
-		assert!(value >= last, "went backwards at {now}: {last} then {value}");
-		last = value;
-	}
-	assert_eq!(motion.drive(key, RESIZE, 260.0, 200), 260.0);
-}
-
-#[test]
-fn a_reversal_continues_from_where_the_value_actually_is() {
-	// The defect this closes: a panel toggled twice quickly jumps to the
-	// far end and slides back, because the second leg started from the
-	// first leg's target instead of from the value on screen.
-	let mut motion = Motion::new();
-	let key = Key::of(Channel::SidebarWidth);
-	motion.drive(key, RESIZE, 0.0, 0);
-	motion.drive(key, RESIZE, 260.0, 0);
-	let midway = motion.drive(key, RESIZE, 260.0, 100);
-	assert!(midway > 0.0 && midway < 260.0);
-
-	motion.drive(key, RESIZE, 0.0, 100);
-	let after = motion.value(key, 100);
-	close(after, midway, 1.0, "a reversal jumped instead of continuing");
-}
-
-#[test]
-fn an_entrance_runs_once_and_a_remount_does_not_replay_it() {
-	// This is the whole reason the window does not use an element-keyed
-	// animation: the tree remounts constantly and a replay is a flash.
-	let mut motion = Motion::new();
-	let key = Key::named(Channel::Message, "message-7");
-	assert_eq!(motion.enter(key, ENTER, 0), 0.0, "an entrance starts at nothing");
-	let midway = motion.enter(key, ENTER, 100);
-	assert!(midway > 0.0 && midway < 1.0);
-	assert_eq!(motion.enter(key, ENTER, 300), 1.0);
-
-	// The frame after it finished, and a hundred frames later: still 1. It
-	// asks for no more frames, and it is kept, because a value at 1 is not
-	// the same as a value that was never there.
-	assert!(!motion.advance(300), "an arrived entrance asked for another frame");
-	assert_eq!(motion.len(), 1);
-	assert_eq!(motion.enter(key, ENTER, 5_000), 1.0, "the entrance replayed");
-}
-
-#[test]
-fn a_hover_that_never_happened_creates_nothing() {
-	// Every drawn row reports a leave when the pointer crosses the list. A
-	// registry that stores a zero for each of them grows with the session
-	// count and scans longer every frame.
-	let mut motion = Motion::new();
-	motion.flip(Key::named(Channel::Row, "a"), false, WASH, 0);
-	assert!(motion.is_empty(), "a leave created a channel");
-}
-
-#[test]
-fn a_hover_wash_does_not_outlive_the_row_it_belonged_to() {
-	// A row unmounted while the pointer is over it never gets its leave, so
-	// its channel would sit at 1.0 and the row would come back lit. It is
-	// dropped instead, because nothing read it for a whole frame.
-	let mut motion = Motion::new();
-	let key = Key::named(Channel::Row, "grep");
-	motion.flip(key, true, WASH, 0);
-	assert_eq!(motion.value(key, 200), 1.0);
-	assert!(!motion.advance(200), "an arrived wash asked for another frame");
-	assert_eq!(motion.len(), 1, "the wash was read this frame, so it stays");
-
-	// The next frame does not draw the row at all.
-	assert!(!motion.advance(400));
-	assert!(motion.is_empty(), "the wash outlived its row");
-	assert_eq!(motion.value(key, 400), 0.0, "the row came back lit");
-}
-
-#[test]
-fn a_value_settled_back_at_zero_is_forgotten() {
-	let mut motion = Motion::new();
-	let key = Key::named(Channel::Control, "send");
-	motion.flip(key, true, WASH, 0);
-	motion.value(key, 0);
-	motion.advance(0);
-	motion.flip(key, false, WASH, 0);
-	motion.value(key, 200);
-	assert!(!motion.advance(200));
-	assert!(motion.is_empty(), "a settled hover was kept");
-}
-
-#[test]
-fn the_window_stops_asking_for_frames_once_everything_arrives() {
-	// The failure this closes is a window that repaints forever for a
-	// motion that ended, which is the single most expensive defect an
-	// animation layer can have.
-	let mut motion = Motion::new();
-	let key = Key::of(Channel::SidebarWidth);
-	motion.drive(key, RESIZE, 0.0, 0);
-	motion.drive(key, RESIZE, 268.0, 0);
-	assert_eq!(motion.next_frame_after(0), Some(0));
-
+fn holding_a_target_costs_one_slot_per_property_and_returns_it() {
+	let mut motion = Motion::new(false);
 	let mut now = 0;
-	let mut frames = 0;
-	while let Some(wait) = motion.next_frame_after(now) {
-		now += wait.max(16) as u64;
-		motion.drive(key, RESIZE, 268.0, now);
-		motion.advance(now);
-		frames += 1;
-		assert!(frames < 100, "the window never stopped asking for frames");
+	for id in 0..u64::try_from(MAX_CONTINUOUS_TRACKS).unwrap() * 3 {
+		let property = key(id, Property::ColorMix);
+		assert!(motion.retarget(
+			property,
+			spec::HOVER_IN,
+			1.0,
+			now,
+			Priority::Content,
+			Damage::Paint(0)
+		));
+		now = settle(&mut motion, now);
+		assert_eq!(motion.sample(property, 0.0, now), 1.0, "row {id} lost its ground");
+		assert_eq!(motion.active_tracks(), 1);
+		assert!(motion.retarget(
+			property,
+			spec::HOVER_OUT,
+			0.0,
+			now,
+			Priority::Content,
+			Damage::Paint(0)
+		));
+		now = settle(&mut motion, now);
+		assert_eq!(motion.active_tracks(), 0, "row {id} kept its slot after leaving");
 	}
-	assert_eq!(motion.drive(key, RESIZE, 268.0, now), 268.0);
 }
 
 #[test]
-fn reduced_motion_snaps_every_value_and_schedules_no_frames() {
-	let mut motion = Motion::new();
-	motion.set_reduced(true);
-	let key = Key::of(Channel::SidebarWidth);
-	motion.drive(key, RESIZE, 0.0, 0);
-	assert_eq!(motion.drive(key, RESIZE, 268.0, 0), 268.0, "a value animated");
-	assert_eq!(motion.enter(Key::of(Channel::Sheet), SHEET_IN, 0), 1.0);
-	assert!(!motion.advance(0));
-	assert_eq!(motion.next_frame_after(0), None);
-}
-
-#[test]
-fn a_wash_fading_in_from_transparent_never_passes_through_grey() {
-	// Naive interpolation of a white wash over transparent black darkens
-	// first and brightens second, which reads as a flicker on a dark row.
-	let wash = Hsla { h: 0.0, s: 0.0, l: 1.0, a: 0.08 };
-	let half = mix(gpui::transparent_black(), wash, 0.5);
-	close(half.a, 0.04, 1e-4, "alpha midpoint");
-	let rgba = Rgba::from(half);
-	assert!(rgba.r > 0.99 && rgba.g > 0.99 && rgba.b > 0.99, "the wash lost its hue: {rgba:?}");
-}
-
-#[test]
-fn mixing_holds_its_endpoints_and_clamps() {
-	let from = Hsla { h: 0.6, s: 0.1, l: 0.2, a: 1.0 };
-	let to = Hsla { h: 0.6, s: 0.1, l: 0.4, a: 1.0 };
-	assert_eq!(mix(from, to, 0.0), from);
-	assert_eq!(mix(from, to, 1.0), to);
-	assert_eq!(mix(from, to, -1.0), from);
-	assert_eq!(mix(from, to, 2.0), to);
-	let middle = mix(from, to, 0.5);
-	assert!(middle.l > from.l && middle.l < to.l, "midpoint lightness {}", middle.l);
-}
-
-#[test]
-fn a_named_key_is_stable_and_distinguishes_its_channel() {
-	let row = Key::named(Channel::Row, "frame");
-	assert_eq!(row, Key::named(Channel::Row, "frame"));
-	assert_ne!(row, Key::named(Channel::Row, "themes"));
-	assert_ne!(row, Key::named(Channel::Control, "frame"), "two channels collided");
+fn a_held_target_is_released_with_its_owner() {
+	let mut motion = Motion::new(false);
+	let property = key(3, Property::ColorMix);
+	assert!(motion.retarget(property, spec::HOVER_IN, 1.0, 0, Priority::Content, Damage::Paint(0)));
+	let quiet = settle(&mut motion, 0);
+	motion.cancel_owner(owner(3));
+	assert_eq!(motion.active_tracks(), 0);
+	assert_eq!(motion.sample(property, 0.0, quiet), 0.0);
 }

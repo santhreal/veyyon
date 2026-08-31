@@ -99,7 +99,7 @@ impl RenderOnce for Badge {
 				(_, true) => space::SNUG,
 				(_, false) => space::TIGHT + 1.0,
 			}))
-			.rounded(px(radius::CHIP))
+			.rounded(px(radius::CONTROL))
 			.bg(ground)
 			.text_size(px(self.size.text() - 0.5))
 			.font_weight(weight::MEDIUM)

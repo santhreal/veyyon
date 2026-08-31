@@ -12,32 +12,39 @@
 //! this control, here, beside the text it copies.
 
 use gpui::{
-	App, ClipboardItem, Div, HighlightStyle, ParentElement, Styled, StyledText, Window, div, px,
+	App, ClipboardItem, Div, HighlightStyle, InteractiveElement, ParentElement, ScrollHandle,
+	Styled, StyledText, Window, div, px,
 };
 use veyyon_gui_core::text::syntax;
 use veyyon_gui_kit::{
-	theme::{Theme, layout, size, space},
-	ui::{Button, Fill, Icon, Size, Tone, card, text},
+	theme::{Elevation, Theme, layout, size, space},
+	ui::{Button, Fill, Icon, Scrolls, Size, Tone, card, text},
 };
+
+use super::identity;
 
 /// One fenced block: the language, the way to take it, and the body.
 pub fn well(id: &str, lang: &str, body: &str, cx: &mut App) -> Div {
 	let theme = Theme::get(cx);
 	let copy = body.to_owned();
 	let named = !lang.is_empty();
+	let label = canonical_language(lang);
+	let scroll = ScrollHandle::new();
 
 	card::well(&theme)
 		.w_full()
+		.min_w(px(0.0))
+		.overflow_hidden()
 		.child(
 			div()
 				.flex()
 				.items_center()
-				.h(px(layout::ROW_TIGHT))
+				.h(px(layout::row_tight()))
 				.w_full()
 				.pl(px(space::BASE))
 				.pr(px(space::TIGHT))
 				.child(if named {
-					text::meta(lang.to_owned(), &theme)
+					text::meta(label, &theme)
 				} else {
 					// An unnamed fence still gets the row, so a block with a
 					// language and one without are the same height and the
@@ -46,10 +53,10 @@ pub fn well(id: &str, lang: &str, body: &str, cx: &mut App) -> Div {
 				})
 				.child(text::spacer())
 				.child(
-					Button::new(format!("copy-{id}"), Icon::Copy)
+					Button::new(format!("copy-{id}"), identity::owner(id), Icon::Copy)
 						.tone(Tone::Muted)
 						.fill(Fill::Ghost)
-						.size(Size::Small)
+						.size(Size::Base)
 						.tip("Copy this block")
 						.on_click(move |_, _window: &mut Window, cx: &mut App| {
 							cx.write_to_clipboard(ClipboardItem::new_string(copy.clone()));
@@ -59,13 +66,16 @@ pub fn well(id: &str, lang: &str, body: &str, cx: &mut App) -> Div {
 		.child(
 			div()
 				.w_full()
+				.min_w(px(0.0))
+				.id(format!("render-code-scroll-{id}"))
 				.px(px(space::BASE))
 				// Nothing pads the block above its caption row, so the room up
 				// there is what centring a 17 line box in ROW_TIGHT leaves: 6 or
 				// 7. SNUG under the last line matches it. A full BASE there
 				// reads as 13 against 8 and tips the block upwards.
 				.pb(px(space::SNUG))
-				.child(lexed(lang, body, &theme)),
+				.child(lexed(lang, body, &theme))
+				.scrolls_x(&scroll, Elevation::Sunken),
 		)
 }
 
@@ -80,11 +90,24 @@ pub fn lexed(lang: &str, body: &str, theme: &Theme) -> Div {
 
 	div()
 		.w_full()
+		.min_w(px(0.0))
+		.whitespace_nowrap()
 		.font_family(theme.font_mono)
-		.text_size(px(size::SMALL))
-		.line_height(px(size::SMALL * size::LINE_CODE))
+		.text_size(px(size::meta()))
+		.line_height(px(size::meta() * size::LINE_CODE))
 		.text_color(theme.text)
 		.child(StyledText::new(body.to_owned()).with_highlights(runs))
+}
+
+pub fn canonical_language(lang: &str) -> &str {
+	match lang.to_ascii_lowercase().as_str() {
+		"rs" | "rust" => "rust",
+		"js" | "javascript" => "javascript",
+		"ts" | "typescript" => "typescript",
+		"py" | "python" => "python",
+		"sh" | "bash" | "shell" => "shell",
+		_ => lang,
+	}
 }
 
 /// The style one run of code takes inside a line of prose.

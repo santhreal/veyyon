@@ -1,104 +1,115 @@
-//! Every number the window is built out of.
+//! Numeric visual tokens.
 //!
-//! Type, weight, space, radius, and the fixed sizes of regions. A literal
-//! outside this file is a token nobody has named, and a token nobody has named
-//! is a number two surfaces will disagree about.
+//! Typography, spacing, radii and opacities. The boxes they sit in are in
+//! [`super::geometry`]. Product surfaces consume these names and contain no
+//! local design literals.
+//!
+//! A type size is a function, not a constant, because it is multiplied by the
+//! interface scale in [`super::scale`]. A ratio, a gap, a radius and an opacity
+//! are constants: they are the same at every text size, and scaling a gap makes
+//! a narrow window unusable at the size that was supposed to make it readable.
 
 use gpui::FontWeight;
 
-/// Text sizes, in pixels at the default text size.
-///
-/// Five, and each one has a job. Anything a sixth would say is said by weight
-/// or colour instead.
+use super::scale::scaled_type;
+
 pub mod size {
-	/// A count, a duration, a keystroke: text that is read only when looked for.
-	pub const META: f32 = 11.0;
-	/// A second line: a row's preview, a setting's description.
-	pub const SMALL: f32 = 12.0;
-	/// A message, a row's title, a control's label.
-	pub const BODY: f32 = 13.5;
-	/// A section heading inside a page, and the name of what is on screen.
-	pub const LEAD: f32 = 15.0;
-	/// A page's title. One per screen.
-	pub const TITLE: f32 = 20.0;
-	/// The line height every run of text takes, as a multiple of its size.
-	pub const LINE: f32 = 1.55;
-	/// The line height a heading takes. Tighter, because a heading is one line
-	/// and the space around it is doing the separating.
-	pub const LINE_TIGHT: f32 = 1.25;
-	/// The line height code takes. Looser than its own size so a stack of lines
-	/// with no descenders still reads as lines.
-	pub const LINE_CODE: f32 = 1.5;
+	use super::scaled_type;
+
+	const OVERLINE_PX: f32 = 11.0;
+	const META_PX: f32 = 12.0;
+	const MONO_PX: f32 = 12.5;
+	const BODY_PX: f32 = 13.0;
+	const LEAD_PX: f32 = 15.0;
+	const SECTION_PX: f32 = 20.0;
+	const DISPLAY_PX: f32 = 26.0;
+	const DISPLAY_LARGE_PX: f32 = 32.0;
+
+	pub fn overline() -> f32 {
+		scaled_type(OVERLINE_PX)
+	}
+
+	pub fn meta() -> f32 {
+		scaled_type(META_PX)
+	}
+
+	pub fn mono() -> f32 {
+		scaled_type(MONO_PX)
+	}
+
+	pub fn body() -> f32 {
+		scaled_type(BODY_PX)
+	}
+
+	pub fn lead() -> f32 {
+		scaled_type(LEAD_PX)
+	}
+
+	pub fn section() -> f32 {
+		scaled_type(SECTION_PX)
+	}
+
+	pub fn display() -> f32 {
+		scaled_type(DISPLAY_PX)
+	}
+
+	pub fn display_large() -> f32 {
+		scaled_type(DISPLAY_LARGE_PX)
+	}
+
+	/// The three sizes the appearance page offers, and the one the tokens were
+	/// designed at. Read from here rather than written into the settings page,
+	/// so the choices and the design values cannot drift apart.
+	pub const CHOICES_PX: [f32; 5] = [META_PX, BODY_PX, LEAD_PX, 17.0, SECTION_PX];
+
+	// A line height is a ratio, so it is the same at every text size.
+	pub const LINE_CHROME: f32 = 1.25;
+	pub const LINE_PROSE: f32 = 1.48;
+	pub const LINE_CODE: f32 = 1.55;
 }
 
-/// Weights. Three, matching what a variable UI family reliably has.
 pub mod weight {
 	use super::FontWeight;
-
-	/// Body text and anything long.
 	pub const REGULAR: FontWeight = FontWeight::NORMAL;
-	/// A title, a selected row, a value that has to win against its label.
 	pub const MEDIUM: FontWeight = FontWeight::MEDIUM;
-	/// A page title, and nothing smaller than a section heading.
 	pub const STRONG: FontWeight = FontWeight::SEMIBOLD;
 }
 
-/// Spacing, in pixels. Every gap and pad in the window is one of these.
 pub mod space {
-	/// A line and the note under it. Smaller than any gap between two things,
-	/// because the pair is one thing: a row's title and its preview, a
-	/// setting's name and what it does.
-	pub const PAIR: f32 = 2.0;
-	/// The gap between rows in a list. Each row carries its own fill when the
-	/// pointer or the keyboard is on it, so the gap exists to keep two fills
-	/// from touching and nothing more.
-	pub const ROWS: f32 = 2.0;
-	pub const TIGHT: f32 = 4.0;
-	pub const SNUG: f32 = 6.0;
-	pub const BASE: f32 = 10.0;
-	pub const WIDE: f32 = 14.0;
-	pub const LOOSE: f32 = 20.0;
-	pub const HUGE: f32 = 32.0;
+	pub const X2: f32 = 2.0;
+	pub const X4: f32 = 4.0;
+	pub const X6: f32 = 6.0;
+	pub const X8: f32 = 8.0;
+	pub const X10: f32 = 10.0;
+	pub const X12: f32 = 12.0;
+	pub const X16: f32 = 16.0;
+	pub const X20: f32 = 20.0;
+	pub const X24: f32 = 24.0;
+	pub const X32: f32 = 32.0;
+
+	pub const PAIR: f32 = X2;
+	pub const ROWS: f32 = X2;
+	pub const TIGHT: f32 = X4;
+	pub const SNUG: f32 = X6;
+	pub const BASE: f32 = X10;
+	pub const WIDE: f32 = X16;
+	pub const LOOSE: f32 = X20;
+	pub const HUGE: f32 = X32;
 }
 
-/// Corner radii. Nothing in the window is square.
 pub mod radius {
-	pub const CHIP: f32 = 6.0;
-	pub const ROW: f32 = 9.0;
-	pub const CARD: f32 = 14.0;
-	pub const SHEET: f32 = 18.0;
+	pub const CONTROL: f32 = 4.0;
+	pub const ROW: f32 = 6.0;
+	pub const CARD: f32 = 6.0;
+	pub const POPOVER: f32 = 8.0;
+	pub const COMPOSER: f32 = 12.0;
+	pub const SHEET: f32 = 12.0;
 	pub const PILL: f32 = 999.0;
 }
 
-/// Fixed region sizes.
-pub mod layout {
-	/// The titlebar. Tall enough for macOS traffic lights inset at 14, and for
-	/// the same controls drawn by the app elsewhere.
-	pub const TITLEBAR: f32 = 46.0;
-	/// The reading column for a conversation.
-	pub const READING: f32 = 680.0;
-	/// The palette sheet.
-	pub const SHEET: f32 = 560.0;
-	/// How wide the drag handle between two regions is.
-	pub const HANDLE: f32 = 5.0;
-	/// How wide secondary prose gets before it wraps: a setting's description,
-	/// a note under a control. Shorter than `READING`, because it is read at a
-	/// glance beside the thing it describes rather than line after line.
-	pub const MEASURE: f32 = 460.0;
-	/// A window control: the three circles on the titlebar's left.
-	pub const CONTROL: f32 = 12.0;
-	/// A control's height, for the ones that sit in a row together and have to
-	/// line up: a button, a select, a field.
-	pub const CONTROL_HEIGHT: f32 = 28.0;
-	/// A compact row: a menu item, and the caption band a card wears over its
-	/// content. Shorter than `ROW` because nothing in it is a second line.
-	pub const ROW_TIGHT: f32 = 30.0;
-	/// A list row's height with one line in it.
-	pub const ROW: f32 = 36.0;
-	/// A list row's height with a second line under the first. Not `ROW` plus a
-	/// line: the pair of lines is tighter than either would be alone, and the
-	/// room above and below them is the same 6 a one-line row has.
-	pub const ROW_TALL: f32 = 50.0;
-	/// The thin overlay scrollbar.
-	pub const SCROLLBAR: f32 = 8.0;
+pub mod opacity {
+	pub const SCRIM_DARK: f32 = 0.52;
+	pub const SCRIM_LIGHT: f32 = 0.32;
+	pub const DISABLED: f32 = 0.42;
+	pub const PLACEHOLDER: f32 = 0.62;
 }
