@@ -47,3 +47,4 @@
 - `bash.ts`, `render-utils.ts`, `ast-edit-helpers.ts`, `cwd-boundary.ts`, `inspect-image-helpers.ts`, `report-tool-issue.ts`, `write-helpers.ts`, `sqlite-reader.ts`, `reroot-hint.ts`, `set-cwd-helpers.ts`, and `gh-renderer.ts` use regex tests instead of `trim().length` for boolean blank-content checks.
 - `edit/diff.ts` and `edit/match.ts` use regex tests instead of `trim().length` for blank-line checks in hunk parsing and indent depth computation.
 - `web/search/render.ts` uses a regex test instead of `trim().length` for blank-line filtering in search result rendering.
+- `tool-execution.ts` image source name check uses a regex test instead of `trim().length`.

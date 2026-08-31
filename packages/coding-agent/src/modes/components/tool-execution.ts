@@ -426,7 +426,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		const candidates = [details?.resolvedPath, details?.sourcePath, args?.file_path, args?.path];
 		for (let ci = 0; ci < candidates.length; ci++) {
 			const candidate = candidates[ci];
-			if (typeof candidate === "string" && candidate.trim().length > 0) return shortenPath(candidate);
+			if (typeof candidate === "string" && /\S/.test(candidate)) return shortenPath(candidate);
 		}
 		return undefined;
 	}
