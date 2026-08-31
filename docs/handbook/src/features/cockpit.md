@@ -74,12 +74,19 @@ process, the branch from `.git/HEAD` and its ref files, and the mode from config
 the effort beside it, the dirty marker (`*`) and the context gauge are what a previous launch
 recorded, in `cache/launch-facts.json`.
 
-That file records two kinds of fact. The model's display name, its provider, the effort and the
+That file records three kinds of fact. The model's display name, its provider, the effort and the
 at-rest context reading belong to the model, so they are stated in every project you use it in,
 including one you open for the first time. The dirty marker belongs to the project, because it
 describes that working tree. The gauge is recorded under both: a project states its own reading
-where it has one, and the model's reading from wherever it last idled where it does not. Both maps
-are keyed by the release as well, and each holds its 24 most recently written entries.
+where it has one, and the model's reading from wherever it last idled where it does not. Those two
+maps are keyed by the release as well.
+
+The third fact is the terminal's background color, keyed by the terminal and by nothing else. A new
+release does not change what an emulator draws, and it is the same window whichever directory is
+open in it. Veyyon queries the background at startup and the reply arrives after the card is on
+screen, so the card mixes the composer hairline, the composer outline and the transcript rules out
+of the background this terminal reported last time. A reply that contradicts the record takes
+effect on the next frame. Each of the three maps holds its 24 most recently written entries.
 
 Each recorded fact is replaced by a measured one as the session mounts. A tree committed from
 another terminal since the last launch keeps the recorded marker until `git status` answers, about

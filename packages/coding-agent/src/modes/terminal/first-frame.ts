@@ -149,7 +149,9 @@ export function paintFirstFrame(version: string): FirstFrame {
 	// operator who is logged in, and a row the session then rewrote 600ms later.
 	// Absent a recording the configured role's own tail is stated instead, so the
 	// placeholder is reached only when no model is configured and it is true.
-	const { providerName } = readLaunchFacts();
+	const { providerName, terminalGround } = readLaunchFacts();
+	// The ground every structural color is derived from is settled below, before the first paint,
+	// out of what this terminal last reported.
 	const hero = new WelcomeComponent(version, launchModelLabel(), providerName ?? "");
 	const layout = new HomeAnchorLayout({ ui, transcriptChildCount: () => 0, hasHero: () => true });
 	// The composer, live. Dressed through the one chrome owner and sized through
@@ -208,22 +210,41 @@ export function paintFirstFrame(version: string): FirstFrame {
 		logger.debug("No tty input flush available at startup; discarding buffered input until mount completes");
 		discardUntilMount = ui.addInputListener(data => (matchesKey(data, "ctrl+c") ? undefined : { consume: true }));
 	}
+	// Set only while the card owns the screen; the mode takes the ground over at mount.
+	let mounted = true;
+	// The ground, and everything that resolves against it, settled in one place.
+	//
+	// `ui.start()` below is what SENDS the OSC 11 query, so the terminal cannot have answered when
+	// the card is painted, and the answer decides three things at once: the hairline above the
+	// composer, the composer outline and the transcript rules, which are mixed out of the ground;
+	// and, under `auto`, whether the theme ground is painted over the terminal's own at all.
+	//
+	// Nothing consumed that answer until the mode subscribed, half a second later. Measured on a
+	// pty that answers OSC 11 like a terminal: the hairline was drawn from the static `borderMuted`
+	// token, `#202329`, at 46ms and restyled to the ground-derived `#2a2e33` at 615ms, so one line
+	// on a settled screen changed shade under the operator.
+	//
+	// So the card states the ground its terminal reported last time and settles the whole decision
+	// BEFORE the paint. The recording is per terminal and this is the same value the answer is
+	// about to confirm; when it does not confirm it, the answer wins on the very next frame rather
+	// than at mount.
+	const settleGround = (): void => {
+		const ground = ui.terminal.backgroundColor ?? terminalGround ?? undefined;
+		setDetectedTerminalGround(ground);
+		applyGroundPaint(planPaintGround(settings.get("tui.paintGround"), theme.getGroundHex(), ground), ui.terminal);
+	};
+	settleGround();
+	ui.terminal.onBackgroundColorChange?.(() => {
+		if (!mounted) return;
+		settleGround();
+		ui.requestRender();
+	});
 	// The first paint always clears the viewport (ED 2) so the card never
 	// appends over the previous run's frame. Erasing the terminal's saved
 	// scrollback (ED 3) also takes whatever the operator had on screen before
 	// launch, so it happens only when they asked for it.
 	ui.start({ clearScrollback: settings.get("startup.clearScrollback") });
-	// The theme ground goes on with the card, not 300ms after it. `auto` needs
-	// the terminal's OSC 11 answer, which has not arrived this early, so it
-	// paints nothing here and the mode applies it when the report lands; the
-	// modes that need no report (`always`, `never`) are settled now.
-	setDetectedTerminalGround(ui.terminal.backgroundColor);
-	applyGroundPaint(
-		planPaintGround(settings.get("tui.paintGround"), theme.getGroundHex(), ui.terminal.backgroundColor),
-		ui.terminal,
-	);
 
-	let mounted = true;
 	const frame: FirstFrame = {
 		ui,
 		hero,

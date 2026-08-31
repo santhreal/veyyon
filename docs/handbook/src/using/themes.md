@@ -49,6 +49,11 @@ uses (see `docs/handbook/src/reference/theme.md`). Every built-in theme declares
 | `always` | Always paint the theme ground. |
 | `never` | Never touch the terminal background. |
 
+On `auto`, the decision is taken before the launch card paints, from the background this terminal
+reported on the previous launch (`cache/launch-facts.json`). The first launch in a terminal has no
+record and inherits; the report that follows paints the ground if it is close enough. A report that
+contradicts the record takes effect on the next frame.
+
 A custom theme that declares no page background has no ground to paint, so Veyyon inherits
 the terminal's own background regardless of this setting. With `always`, it also logs once
 that the active theme declares no ground, since that is the one case you asked to paint and

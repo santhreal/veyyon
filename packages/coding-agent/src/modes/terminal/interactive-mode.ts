@@ -119,7 +119,7 @@ import {
 import { formatProviderName } from "../../slash-commands/helpers/format";
 import type { SubcommandDef } from "../../slash-commands/types";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "../../system-prompt";
-import { applyGroundPaint, setDetectedTerminalGround } from "../../theme/ground-tints";
+import { applyGroundPaint, getDetectedTerminalGround, setDetectedTerminalGround } from "../../theme/ground-tints";
 import { setMarkdownMermaidRendering } from "../../theme/markdown-theme";
 import { clearMermaidCache } from "../../theme/mermaid-cache";
 import { transitionsEnabled } from "../../theme/shimmer";
@@ -152,6 +152,7 @@ import { getEditorCommand, openInEditor } from "../../utils/external-editor";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../../utils/session-color";
 import { messageHasDisplayableThinking } from "../../utils/thinking-display";
 import { popTerminalTitle, pushTerminalTitle, setSessionTerminalTitle } from "../../utils/title-generator";
+import { recordLaunchFacts } from "../launch-facts";
 import {
 	consumeLoopLimitIteration,
 	createLoopLimitRuntime,
@@ -1345,10 +1346,21 @@ export class InteractiveMode implements InteractiveModeContext {
 			// outlines): every derived chrome color re-resolves against the REAL
 			// terminal ground the moment it is known or changes.
 			setDetectedTerminalGround(hex);
+			// And record it, because the NEXT launch's card is painted before this
+			// query can be answered. The card seeds its derived chrome from this
+			// value; without it the hairline is drawn from the static token and
+			// restyled once the report lands, half a second into a settled screen.
+			void recordLaunchFacts({ terminalGround: hex });
 			this.updateEditorBorderColor();
 			this.ui.requestRender();
 		});
-		setDetectedTerminalGround(this.ui.terminal.backgroundColor);
+		// Only when the terminal has actually answered. The card seeds the recorded
+		// ground before its first paint, and overwriting that with `undefined` here
+		// would drop the chrome back onto the static token at mount -- the same
+		// restyle on a settled screen, in the other direction.
+		if (this.ui.terminal.backgroundColor !== undefined) {
+			setDetectedTerminalGround(this.ui.terminal.backgroundColor);
+		}
 		this.#applyPaintGround();
 
 		// A checkout, worktree switch or `git switch` changes the branch, and the
@@ -1370,12 +1382,18 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * startup, on a committed theme change, and when the terminal reports an
 	 * external background change. The paint is reset on exit by the terminal layer
 	 * (OSC 111), including after a crash, so this never has to undo it here.
+	 *
+	 * The ground comes from the tint owner and not from the terminal directly, because the launch
+	 * card settles one before this runs: it seeds the ground its terminal reported on the previous
+	 * launch, and planning against a terminal that has not answered yet would undo that decision at
+	 * mount -- repainting the whole background half a second into a settled screen, which is the
+	 * defect the seed exists to remove.
 	 */
 	#applyPaintGround(): void {
 		const plan = planPaintGround(
 			this.settings.get("tui.paintGround"),
 			theme.getGroundHex(),
-			this.ui.terminal.backgroundColor,
+			this.ui.terminal.backgroundColor ?? getDetectedTerminalGround(),
 		);
 		if (plan.unhonoredAlways) {
 			// `always` is the one setting the user explicitly asked to paint that a
