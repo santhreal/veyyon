@@ -61,7 +61,7 @@
 ### Fixed
 
 - The launch card states the model name, git state and context percentage recorded at the end of the last launch instead of placeholders, so the status row and hero do not change when the session mounts; each fact falls back to its placeholder when the release, the model or the project changed.
-- The launch card keeps one set of facts per project instead of one for the whole machine, so working in two projects no longer erases both and leaves the context gauge reading `?` on every start. The file is versioned, bounded to the 24 most recently written projects, and a copy written by the previous shape is discarded rather than read.
+- The launch card records what a project knows and what a model knows separately, so working in two projects no longer erases both and leaves the context gauge reading `?` on every start, and a project opened for the first time states the model's display name and effort instead of a raw id. The file is versioned, each map is bounded to its 24 most recently written entries, and a copy written by a previous shape is discarded rather than read.
 - The launch card states the effort the last launch ran at, so the status row no longer grows a `@high` tail when the session mounts and shifts every segment beside it; the rung is dropped when the model changes and erased when the row stops printing one.
 - The launch card prints the configured model id's last path segment rather than the whole qualified id, so a namespaced id no longer costs the status row its context gauge on the first launch of a project.
 - The launch hero states the configured model instead of `no model yet · /login` when no display name has been recorded yet.
