@@ -25,6 +25,13 @@ export interface ExperimentResult {
 	runNumber: number | null;
 	commit: string;
 	metric: number;
+	/**
+	 * The primary metric the harness itself printed, or null when it printed
+	 * none. `metric` above is the number the log call was required to supply, so
+	 * a crash that never measured carries a zero there; this is how the display
+	 * tells that placeholder from a run that measured 205ms and then died.
+	 */
+	measuredPrimary: number | null;
 	metrics: NumericMetricMap;
 	status: ExperimentStatus;
 	description: string;

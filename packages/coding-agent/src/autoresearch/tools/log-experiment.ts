@@ -246,6 +246,7 @@ export function createLogExperimentTool(
 				runNumber: tentativeRun.id,
 				commit: (commitHash ?? "").slice(0, 12),
 				metric,
+				measuredPrimary: pendingRun.parsedPrimary,
 				metrics: secondaryMetrics,
 				status: params.status,
 				description: params.description,

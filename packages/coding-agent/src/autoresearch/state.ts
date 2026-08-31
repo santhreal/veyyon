@@ -211,6 +211,7 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 			runNumber: run.id,
 			commit: run.commitHash ?? "",
 			metric: run.metric ?? 0,
+			measuredPrimary: run.parsedPrimary,
 			metrics: run.metrics ?? {},
 			status: run.status,
 			description: run.description ?? "",

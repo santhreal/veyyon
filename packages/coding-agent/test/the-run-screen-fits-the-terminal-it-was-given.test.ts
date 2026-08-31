@@ -36,6 +36,7 @@ function result(overrides: Partial<ExperimentResult> = {}): ExperimentResult {
 		runNumber: 1,
 		commit: "abcdef1234567890",
 		metric: 100,
+		measuredPrimary: 100,
 		metrics: {},
 		status: "keep",
 		description: "shortened the hot loop",

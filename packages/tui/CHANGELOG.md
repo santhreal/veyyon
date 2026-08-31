@@ -5,6 +5,7 @@
 ### Added
 
 - `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
+- `SelectList.setItems` replaces the rows in place, keeping the live search query, the cancel ladder and the selected row followed by value, so a host whose data changes does not have to construct a second list and take the reader's filter with it.
 
 ### Fixed
 

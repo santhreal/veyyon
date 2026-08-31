@@ -84,14 +84,20 @@ export function runOutcome(result: ExperimentResult): string {
 /**
  * What a run's metric column says.
  *
- * A crashed run produced no measurement, and `log_experiment` requires a number,
- * so the loop records the only number it has: zero. Formatted like any other
- * value that read `#6  0ms` in a session where lower is better — the fastest row
- * on the screen was the run that segfaulted. Best and baseline math already skips
- * a crash, so this is the display saying what the number is worth.
+ * A crash that produced no measurement still has to log a number, because
+ * `log_experiment` requires one, so the loop records the only number it has:
+ * zero. Formatted like any other value that read `#6  0ms` in a session where
+ * lower is better — the fastest row on the screen was the run that segfaulted.
+ * Best and baseline math already skips a crash, so this is the display saying
+ * what the number is worth.
+ *
+ * A harness that printed its metric and then died did measure, and that number
+ * is the one the run is worth reading for: it comes from the harness's own
+ * output rather than from the logged placeholder.
  */
 export function metricLabel(result: ExperimentResult, unit: string): string {
-	return result.status === "crash" ? "no metric" : formatNum(result.metric, unit);
+	if (result.status !== "crash") return formatNum(result.metric, unit);
+	return result.measuredPrimary === null ? "no metric" : formatNum(result.measuredPrimary, unit);
 }
 
 export function screenTitle(runtime: AutoresearchRuntime): string {
@@ -121,10 +127,15 @@ export function runScreenRows(runtime: AutoresearchRuntime): SelectItem[] {
 		{ value: "notes", label: "Playbook", description: notesSummary(state), group: "overview" },
 	];
 	if (runtime.runningExperiment) {
+		// No elapsed time on this row. The list is rebuilt whenever its rows change,
+		// and a rebuilt list is a fresh one: a clock here changed the rows once a
+		// second, so a filter the reader had typed vanished on the next tick. The
+		// elapsed time is on the status row and in this row's detail pane, both of
+		// which are painted from scratch on every frame.
 		rows.push({
 			value: "running",
 			label: `#${runtime.runningExperiment.runNumber}  running`,
-			description: formatElapsed(Date.now() - runtime.runningExperiment.startedAt),
+			description: "in flight",
 			group: "overview",
 		});
 	} else if (runtime.lastRunSummary) {
@@ -316,9 +327,11 @@ function runDetail(result: ExperimentResult, state: ExperimentState, width: numb
 	// later segment's baseline describes a comparison the loop never made.
 	const baseline = findBaselineMetric(state.results, result.segment);
 	const baselineSecondary = findBaselineSecondary(state.results, result.segment, state.secondaryMetrics);
-	// No measurement means no comparison: a crash against a 205ms baseline read
-	// `0ms  -100.0%`, which is a claim about a run that never finished.
-	const change = result.status === "crash" ? "" : formatPercentChange(result.metric, baseline);
+	// The comparison is against the number the row shows: a crash that measured
+	// nothing has none, and reading its logged zero against a 205ms baseline
+	// printed `0ms  -100.0%`, a claim about a run that never finished.
+	const shown = result.status === "crash" ? result.measuredPrimary : result.metric;
+	const change = shown === null ? undefined : formatPercentChange(shown, baseline);
 	const lines: string[] = [];
 	lines.push(
 		...field(
@@ -460,11 +473,18 @@ export class AutoresearchScreenComponent implements Component {
 		return list;
 	}
 
-	/** Rebuild only when the rows themselves changed, so scrolling stays cheap. */
+	/**
+	 * Push new rows only when the rows themselves changed, so an idle repaint
+	 * costs one string. The list is updated rather than replaced: a reader who
+	 * filtered the sidebar keeps their filter and their selected run across a run
+	 * being logged.
+	 */
 	#sync(): void {
 		const items = runScreenRows(this.#runtime);
-		if (signatureOf(items) === this.#signature) return;
-		this.#list = this.#buildList(items);
+		const signature = signatureOf(items);
+		if (signature === this.#signature) return;
+		this.#signature = signature;
+		this.#list.setItems(items);
 	}
 
 	render(width: number): readonly string[] {

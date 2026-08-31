@@ -17,6 +17,7 @@ function result(overrides: Partial<ExperimentResult>): ExperimentResult {
 		runNumber: 1,
 		commit: "c",
 		metric: 5,
+		measuredPrimary: 5,
 		metrics: { lat: 10 },
 		status: "keep",
 		description: "d",

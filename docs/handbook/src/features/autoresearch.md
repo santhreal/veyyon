@@ -87,6 +87,11 @@ secondary metrics, confidence, the arm that produced the run and the arm that
 certified it, the flag reason, scope deviations, the change description, the
 commit and the files it touched.
 
+`log_experiment` requires a metric on every status, so a run that crashed before
+it measured anything is recorded with a zero. The screen states `no metric` for
+that run rather than formatting the zero. A run whose harness printed its metric
+and then died shows that number, and the comparison is against it.
+
 Up and down move through the list, page up and page down move the detail pane by
 a full pane, and typing filters the list. Escape clears a live filter, and closes
 the screen when there is none. It is readable before the first run, where it
@@ -138,7 +143,9 @@ resets to and how many files hold uncommitted changes. Two flags:
 | `--reset-tree` | Reset even when the branch is not an `autoresearch/*` one. |
 
 Any other argument after `clear` is rejected and nothing is reset, so a
-misspelled `--keep-tree` cannot fall through to the reset.
+misspelled `--keep-tree` cannot fall through to the reset. A `clear` that cannot
+read git status resets nothing and leaves the session open, since the
+confirmation exists to state what the reset discards.
 
 `/autoswarm` takes the same subcommands.
 

@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5d32bdab.js";
+            window.path_to_searchindex_js = "searchindex-287e0f59.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0d6bf2a1.js"></script>
@@ -6500,6 +6500,10 @@ entry in full: metric and percentage change against the segment baseline,
 secondary metrics, confidence, the arm that produced the run and the arm that
 certified it, the flag reason, scope deviations, the change description, the
 commit and the files it touched.</p>
+<p><code>log_experiment</code> requires a metric on every status, so a run that crashed before
+it measured anything is recorded with a zero. The screen states <code>no metric</code> for
+that run rather than formatting the zero. A run whose harness printed its metric
+and then died shows that number, and the comparison is against it.</p>
 <p>Up and down move through the list, page up and page down move the detail pane by
 a full pane, and typing filters the list. Escape clears a live filter, and closes
 the screen when there is none. It is readable before the first run, where it
@@ -6552,7 +6556,9 @@ resets to and how many files hold uncommitted changes. Two flags:</p>
 </table>
 </div>
 <p>Any other argument after <code>clear</code> is rejected and nothing is reset, so a
-misspelled <code>--keep-tree</code> cannot fall through to the reset.</p>
+misspelled <code>--keep-tree</code> cannot fall through to the reset. A <code>clear</code> that cannot
+read git status resets nothing and leaves the session open, since the
+confirmation exists to state what the reset discards.</p>
 <p><code>/autoswarm</code> takes the same subcommands.</p>
 <p>State is stored per repository, under the profile directory. The database is
 keyed on the primary checkout, so worktrees of one repository share it.

@@ -7,9 +7,15 @@
  * percentage against the baseline, printing `0ms  -100.0%` about a run that
  * produced no measurement at all.
  *
- * The contract: a status that carries no measurement is never rendered as a
- * measurement, in the sidebar or in the detail, and never as a comparison against
- * one.
+ * Suppressing every crash's number overshoots in the other direction: a harness
+ * that printed `205.94ms` and then died on teardown did measure, and that number
+ * is what the run is worth reading for. The store keeps what the harness itself
+ * printed, so the two cases are distinguishable and are distinguished here.
+ *
+ * The contract: a run reports the measurement its harness produced, and a run
+ * whose harness produced none reports no measurement and no comparison — in the
+ * sidebar and in the detail alike. The logged placeholder is never rendered as a
+ * measurement.
  *
  * The class is a placeholder value formatted as data. The variant space is the
  * `ExperimentStatus` union, swept from the product's own statuses at run time
@@ -27,12 +33,16 @@ import type { AutoresearchRuntime, ExperimentResult, ExperimentStatus } from "@v
 import { useTruecolorTheme } from "./helpers/theme-assertions";
 
 /**
- * Every status a logged run can carry, and whether it carries a measurement.
+ * Every status a logged run can carry, and whether its logged `metric` is a
+ * measurement.
  *
  * Read off `parseStatus`, which is the only gate a status passes through on its
  * way out of the store: a value it rejects never reaches a screen. Keeping the
  * map here rather than the list means a new status has to be classified, and the
  * sweep below fails until it is.
+ *
+ * `crash` is false because its logged number is the tool's required placeholder.
+ * What a crashed run measured, if anything, is carried separately.
  */
 const MEASURES: Readonly<Record<ExperimentStatus, boolean>> = {
 	keep: true,
@@ -46,6 +56,7 @@ function result(overrides: Partial<ExperimentResult> = {}): ExperimentResult {
 		runNumber: 1,
 		commit: "abcdef1234567890",
 		metric: 0,
+		measuredPrimary: null,
 		metrics: {},
 		status: "keep",
 		description: "reused one arena across chunks",
@@ -64,7 +75,11 @@ function result(overrides: Partial<ExperimentResult> = {}): ExperimentResult {
 }
 
 /** A session with a baseline to compare against, plus one run of `status`. */
-function runtimeWith(status: ExperimentStatus, metric: number): AutoresearchRuntime {
+function runtimeWith(
+	status: ExperimentStatus,
+	metric: number,
+	measuredPrimary: number | null = null,
+): AutoresearchRuntime {
 	const runtime = createSessionRuntime();
 	runtime.autoresearchMode = true;
 	runtime.state = createExperimentState();
@@ -72,8 +87,8 @@ function runtimeWith(status: ExperimentStatus, metric: number): AutoresearchRunt
 	runtime.state.metricUnit = "ms";
 	runtime.state.bestDirection = "lower";
 	runtime.state.results = [
-		result({ runNumber: 1, metric: 205.94, status: "keep", description: "baseline" }),
-		result({ runNumber: 2, metric, status }),
+		result({ runNumber: 1, metric: 205.94, measuredPrimary: 205.94, status: "keep", description: "baseline" }),
+		result({ runNumber: 2, metric, measuredPrimary, status }),
 	];
 	return runtime;
 }
@@ -90,11 +105,22 @@ describe("a run that measured nothing shows no number", () => {
 		expect(Object.keys(MEASURES).sort()).toEqual([...statuses].sort());
 	});
 
-	it("names the outcome instead of a metric for a status that measures nothing", () => {
+	it("names the outcome instead of a metric for a status whose number is a placeholder", () => {
 		for (const [status, measures] of Object.entries(MEASURES) as [ExperimentStatus, boolean][]) {
-			const label = metricLabel(result({ status, metric: 0 }), "ms");
+			const label = metricLabel(result({ status, metric: 0, measuredPrimary: null }), "ms");
 			if (measures) expect(label).toBe("0ms");
 			else expect(label).toBe("no metric");
+		}
+	});
+
+	it("reports a measurement the harness printed, whatever the status", () => {
+		// Every status that measures reads its logged number; the one whose logged
+		// number is a placeholder reads what the harness printed instead. Both are
+		// "show the measurement that exists", which is the single rule under test.
+		for (const status of Object.keys(MEASURES) as ExperimentStatus[]) {
+			const measured = result({ status, metric: 0, measuredPrimary: 244.51 });
+			const expected = MEASURES[status] ? "0ms" : "244.51ms";
+			expect(metricLabel(measured, "ms")).toBe(expected);
 		}
 	});
 
@@ -118,11 +144,27 @@ describe("a run that measured nothing shows no number", () => {
 	it("still reports a measured failure, which is a different thing", () => {
 		// `checks_failed` measured the tree and then failed its tests: the number is
 		// real and the reader needs it to know whether the idea was worth repairing.
-		const detail = renderRunDetail(runtimeWith("checks_failed", 244.51), "run:2", 76).join("\n");
+		const detail = renderRunDetail(runtimeWith("checks_failed", 244.51, 244.51), "run:2", 76).join("\n");
 		expect(detail).toContain("244.51ms");
 		expect(detail).toContain("%");
-		const rows = runScreenRows(runtimeWith("checks_failed", 244.51));
+		const rows = runScreenRows(runtimeWith("checks_failed", 244.51, 244.51));
 		expect(rows.find(row => row.value === "run:2")?.label).toBe("#2  244.51ms");
+	});
+
+	it("reports a crash that measured before it died", () => {
+		// The harness printed 244.51ms and the process died on teardown. The logged
+		// metric is still the required placeholder, so a screen that reads `metric`
+		// says 0ms and a screen that suppresses every crash says nothing; both hide
+		// the one number the run produced.
+		const runtime = runtimeWith("crash", 0, 244.51);
+		expect(runScreenRows(runtime).find(row => row.value === "run:2")?.label).toBe("#2  244.51ms");
+		const detail = renderRunDetail(runtime, "run:2", 76).join("\n");
+		expect(detail).toContain("244.51ms");
+		// It is still a crash: the outcome says so, and the comparison it prints is
+		// against the measurement, not against the placeholder.
+		expect(detail).toContain("crash");
+		expect(detail).toContain("+18.7%");
+		expect(detail).not.toContain("0ms");
 	});
 
 	it("does not let a crash become the best or the baseline", () => {

@@ -31,6 +31,7 @@ function makeResult(partial: Partial<ExperimentResult>): ExperimentResult {
 		runNumber: partial.runNumber ?? null,
 		commit: partial.commit ?? "",
 		metric: partial.metric ?? 0,
+		measuredPrimary: partial.measuredPrimary ?? null,
 		metrics: partial.metrics ?? {},
 		status: partial.status ?? "keep",
 		description: partial.description ?? "",
@@ -344,6 +345,74 @@ describe("AutoresearchStorage round-trip", () => {
 		expect(state.branch).toBe("autoresearch/foo");
 		expect(state.baselineCommit).toBe("deadbeef");
 		expect(state.scopePaths).toEqual(["src"]);
+		// What the harness printed, kept apart from the number the log call supplied,
+		// so a crash's required placeholder is distinguishable from a measurement.
+		expect(state.results[0]?.measuredPrimary).toBe(50);
+		storage.close();
+	});
+
+	it("buildExperimentState keeps a crash's measurement apart from its logged placeholder", () => {
+		// `log_experiment` requires a metric on every status, so a crashed run logs
+		// zero. Whether the harness measured anything before dying is a different
+		// fact, and the rebuild is where it would be dropped.
+		const storage = openStorage();
+		const session = storage.openSession({
+			name: "speed",
+			goal: null,
+			primaryMetric: "runtime_ms",
+			metricUnit: "ms",
+			direction: "lower",
+			preferredCommand: null,
+			branch: null,
+			baselineCommit: null,
+			maxIterations: null,
+			scopePaths: [],
+			offLimits: [],
+			constraints: [],
+			secondaryMetrics: [],
+		});
+		const logCrash = (parsedPrimary: number | null, startedAt: number): void => {
+			const run = storage.insertRun({
+				sessionId: session.id,
+				segment: 0,
+				command: "bun bench",
+				logPath: `/tmp/${startedAt}/benchmark.log`,
+				preRunDirtyPaths: [],
+				startedAt,
+			});
+			storage.markRunCompleted({
+				runId: run.id,
+				completedAt: startedAt + 10,
+				durationMs: 10,
+				exitCode: 139,
+				timedOut: false,
+				parsedPrimary,
+				parsedMetrics: parsedPrimary === null ? {} : { runtime_ms: parsedPrimary },
+				parsedAsi: null,
+			});
+			storage.markRunLogged({
+				runId: run.id,
+				status: "crash",
+				description: "segfaulted on teardown",
+				metric: 0,
+				metrics: {},
+				asi: null,
+				commitHash: "abc",
+				confidence: null,
+				modifiedPaths: [],
+				scopeDeviations: [],
+				justification: null,
+				loggedAt: startedAt + 20,
+			});
+		};
+		logCrash(205.94, 1);
+		logCrash(null, 100);
+
+		const refreshed = storage.getActiveSession();
+		expect(refreshed).not.toBeNull();
+		const state = buildExperimentState(refreshed!, storage.listLoggedRuns(session.id));
+		expect(state.results.map(result => result.metric)).toEqual([0, 0]);
+		expect(state.results.map(result => result.measuredPrimary)).toEqual([205.94, null]);
 		storage.close();
 	});
 

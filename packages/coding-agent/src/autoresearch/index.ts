@@ -525,6 +525,15 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			// the commit and the file count, and treat a refusal as "clear nothing":
 			// `clear --keep-tree` closes the session without touching files.
 			const dirty = await dirtyPathCount(ctx.cwd);
+			if (dirty === null) {
+				// Nothing is reset and the session stays open, so the baseline commit
+				// this needs is still recorded when git answers again.
+				ctx.ui.notify(
+					"Could not read git status, so nothing was reset and the session is still open. Use `clear --keep-tree` to close the session and keep your files.",
+					"error",
+				);
+				return;
+			}
 			const confirmed = await ctx.ui.confirm(
 				"Reset worktree to baseline?",
 				`Resets to ${session.baselineCommit.slice(0, 12)} and deletes untracked files${
@@ -591,18 +600,22 @@ function removeLegacyArtifacts(workDir: string): void {
 }
 
 /**
- * How many worktree files a reset would discard, for the confirmation to state.
- * A git failure counts as zero rather than blocking the prompt: the reset is
- * still described by the commit it lands on, and refusing to ask is worse than
- * asking without the number.
+ * How many worktree files a reset would discard, for the confirmation to state,
+ * or null when the worktree could not be inspected at all.
+ *
+ * Null is not zero. The confirmation is the only thing standing in front of
+ * `git reset --hard` plus `git clean`, and it earns that by naming what is at
+ * stake; a git failure reported as zero turned "discarding uncommitted changes
+ * in 3 files" into a prompt that mentioned nothing, and the answer to it erased
+ * work the user was never told about.
  */
-async function dirtyPathCount(cwd: string): Promise<number> {
+async function dirtyPathCount(cwd: string): Promise<number | null> {
 	try {
 		const [statusText, workDirPrefix] = await Promise.all([gitStatusPorcelain(cwd), gitWorkDirPrefix(cwd)]);
 		return parseWorkDirDirtyPaths(statusText, workDirPrefix).length;
 	} catch (err) {
 		logger.warn("Failed to count dirty paths before autoresearch clear", { error: errorMessage(err) });
-		return 0;
+		return null;
 	}
 }
 
