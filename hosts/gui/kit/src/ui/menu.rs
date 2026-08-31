@@ -145,7 +145,7 @@ impl RenderOnce for MenuItem {
 			.children(self.icon.map(|glyph| {
 				square(icon::scale::SMALL).child(icon::at(glyph, icon::scale::SMALL, ink))
 			}))
-			.child(text::line(self.what).flex_1())
+			.child(text::line(self.what).flex_1().min_w(px(0.0)))
 			.children(self.checked.map(|checked| {
 				square(icon::scale::SMALL).child(if checked {
 					icon::at(Icon::Check, icon::scale::SMALL, theme.accent).into_any_element()

@@ -65,7 +65,11 @@ pub fn block(block: &Md, id: &str, cx: &mut App) -> AnyElement {
 			)
 			.child(
 				text::stack(space::BASE)
+					// A quoted fence or table carries lines that do not break,
+					// and without a floor of zero their width becomes the
+					// quote's, which puts the rule and the text past the column.
 					.flex_1()
+					.min_w(px(0.0))
 					.children(blocks(inner, id, cx)),
 			)
 			.into_any_element(),
@@ -143,7 +147,10 @@ fn bullet(item: &Item, theme: &Theme) -> gpui::Div {
 				.justify_end()
 				.child(marker),
 		)
-		.child(runs(&item.spans, theme).flex_1())
+		// A URL or an identifier in a list item is one unbroken run, and its
+		// width would otherwise become the row's and take the marker's column
+		// with it.
+		.child(runs(&item.spans, theme).flex_1().min_w(px(0.0)))
 }
 
 /// A table. Rows of cells with a hairline under the head, in the well every

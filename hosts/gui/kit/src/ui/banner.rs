@@ -89,7 +89,13 @@ impl RenderOnce for Banner {
 					)))
 					.child(
 						text::stack(space::TIGHT - 1.0)
+							// The words shrink and the actions do not. A path or
+							// an exit status arrives as one unbroken run, whose
+							// automatic minimum would otherwise push retry and
+							// dismiss out through the edge of the card.
 							.flex_1()
+							.min_w(px(0.0))
+							.overflow_hidden()
 							.child(
 								div()
 									.text_size(px(size::BODY))

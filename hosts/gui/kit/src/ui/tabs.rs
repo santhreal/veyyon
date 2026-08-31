@@ -149,7 +149,7 @@ impl RenderOnce for Tabs {
 			}
 
 			if stretch {
-				pill = pill.flex_1();
+				pill = pill.flex_1().min_w(px(0.0));
 			}
 			if tab.selected {
 				pill = pill.shadow(theme.shadow_card());
