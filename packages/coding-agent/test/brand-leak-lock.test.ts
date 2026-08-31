@@ -8,14 +8,14 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { getOpenRouterHeaders } from "@veyyon/ai";
-import { Glob } from "bun";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { MEMBERS } from "../../utils/test/support/package-sources";
+import { getOpenRouterHeaders } from "@veyyon/ai";
+import { Glob } from "bun";
 // Relative: `loader-state.js` is a hand-authored shim with no export-map entry,
 // and giving it one to satisfy a test would widen the package's public surface.
 import { buildHelpMessage } from "../../../natives/bridge/bindings/native/loader-state.js";
+import { MEMBERS } from "../../utils/test/support/package-sources";
 
 const ROOT = `${import.meta.dir}/../../..`;
 
