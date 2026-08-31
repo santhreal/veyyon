@@ -18,6 +18,7 @@
  * palette defect, and the theme owns that.
  */
 import { describe, expect, it } from "bun:test";
+import { homedir } from "node:os";
 import {
 	AutoresearchScreenComponent,
 	renderRunDetail,
@@ -191,6 +192,41 @@ describe("the run screen fits the terminal it was given", () => {
 			"run:2",
 			"run:1",
 		]);
+	});
+
+	it("names the artifacts directory without the home directory in it", () => {
+		// The run directory sits under the profile, so the raw string carries the account name and the
+		// profile layout onto every screenshot, demo frame and pasted transcript of a loop. Both the run
+		// in flight and the one owed a log print the same path, so both are swept.
+		const home = homedir();
+		const runtime = runtimeWith(1);
+		runtime.runningExperiment = {
+			runNumber: 2,
+			startedAt: Date.now(),
+			command: "bash autoresearch.sh",
+			runDirectory: `${home}/.veyyon/profiles/work/autoresearch/0002`,
+		};
+		const running = renderRunDetail(runtime, "running", 90).join("\n");
+		expect(stripAnsi(running)).toContain("~/.veyyon/profiles/work/autoresearch/0002");
+		expect(running).not.toContain(home);
+
+		runtime.runningExperiment = null;
+		runtime.lastRunSummary = {
+			runNumber: 3,
+			passed: true,
+			command: "bash autoresearch.sh",
+			runDirectory: `${home}/.veyyon/profiles/work/autoresearch/0003`,
+			parsedPrimary: 98,
+			parsedAsi: null,
+			parsedMetrics: null,
+			preRunDirtyPaths: [],
+			durationSeconds: 1.5,
+			exitCode: 0,
+			timedOut: false,
+		};
+		const pending = renderRunDetail(runtime, "pending", 90).join("\n");
+		expect(stripAnsi(pending)).toContain("~/.veyyon/profiles/work/autoresearch/0003");
+		expect(pending).not.toContain(home);
 	});
 
 	it("shows arm and reviewer on a run that has them", () => {

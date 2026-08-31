@@ -22,6 +22,7 @@ import {
 	topBorderSplit,
 } from "../modes/components/overlay-box";
 import { getSelectListTheme, type ThemeColor, theme } from "../modes/theme/theme";
+import { shortenPath } from "../tools/shorten-path";
 import { formatElapsed, formatNum, formatPercentChange } from "./helpers";
 import {
 	currentResults,
@@ -299,7 +300,9 @@ function pendingDetail(runtime: AutoresearchRuntime, width: number): string[] {
 		return [
 			...field("Run", `#${running.runNumber}  running ${formatElapsed(Date.now() - running.startedAt)}`, width),
 			...field("Command", running.command, width),
-			...field("Artifacts", running.runDirectory, width),
+			// The run directory sits under the profile, so the untouched string states the operator's home
+			// directory and account name on a screen a demo or a screenshot carries out of the session.
+			...field("Artifacts", shortenPath(running.runDirectory), width),
 		];
 	}
 	const pending = runtime.lastRunSummary;
@@ -315,7 +318,7 @@ function pendingDetail(runtime: AutoresearchRuntime, width: number): string[] {
 		lines.push(...field("Duration", `${pending.durationSeconds.toFixed(1)}s`, width));
 	if (pending.exitCode !== null) lines.push(...field("Exit", String(pending.exitCode), width));
 	if (pending.timedOut) lines.push(...field("Timed out", "yes", width));
-	lines.push(...field("Artifacts", pending.runDirectory, width));
+	lines.push(...field("Artifacts", shortenPath(pending.runDirectory), width));
 	lines.push("");
 	lines.push(theme.fg("warning", "Not logged yet: the loop owes this run a log_experiment."));
 	return lines;
