@@ -1482,18 +1482,13 @@ export function formatPhaseDisplayName(name: string, oneBasedIndex: number): str
 export const TODO_STRIKE_HOLD_FRAMES = 2;
 export const TODO_STRIKE_REVEAL_FRAMES = 12;
 export const TODO_STRIKE_TOTAL_FRAMES = TODO_STRIKE_HOLD_FRAMES + TODO_STRIKE_REVEAL_FRAMES;
-const STRIKE_START = "\x1b[9m";
-const STRIKE_END = "\x1b[29m";
 
-export function strikethroughText(text: string): string {
-	return `${STRIKE_START}${text}${STRIKE_END}`;
-}
-
-function partialStrikethrough(text: string, visibleChars: number): string {
-	if (visibleChars <= 0) return text;
-	const chars = [...text];
-	if (visibleChars >= chars.length) return strikethroughText(text);
-	return `${strikethroughText(chars.slice(0, visibleChars).join(""))}${chars.slice(visibleChars).join("")}`;
+/** A task's text split at the point the completion strike has swept to. */
+export interface TodoStrikeSplit {
+	/** The leading run the strike covers. */
+	struck: string;
+	/** The trailing run it has not reached yet. */
+	plain: string;
 }
 
 function strikeRevealCount(text: string, frame: number | undefined): number | undefined {
@@ -1506,7 +1501,7 @@ function strikeRevealCount(text: string, frame: number | undefined): number | un
 }
 
 /**
- * A task's text with the completion strike swept across it, `frame` frames in.
+ * Where the completion strike has swept to, `frame` frames in.
  *
  * The sweep is the one gesture that says a task closed, and both surfaces that
  * draw a closed task run it: the transcript card and the anchored board above
@@ -1516,13 +1511,20 @@ function strikeRevealCount(text: string, frame: number | undefined): number | un
  * card swept it, so the same completion looked like two different events
  * depending on which surface the eye was on.
  *
+ * The split states where the strike has reached, never how a strike is drawn.
+ * The host renders the struck run as an SGR attribute, as a CSS rule, or as
+ * plain text on a terminal that has attributes off.
+ *
  * `undefined` is the settled state: fully struck, no animation owed. A frame
  * past {@link TODO_STRIKE_TOTAL_FRAMES} is the same thing, so a caller that
- * keeps counting past the window converges on the static bytes instead of
+ * keeps counting past the window converges on the static split instead of
  * wrapping back to the start of the sweep.
  */
-export function todoStrikeReveal(text: string, frame: number | undefined): string {
+export function todoStrikeSplit(text: string, frame: number | undefined): TodoStrikeSplit {
 	const revealCount = strikeRevealCount(text, frame);
-	if (revealCount === undefined) return strikethroughText(text);
-	return partialStrikethrough(text, revealCount);
+	if (revealCount === undefined) return { struck: text, plain: "" };
+	if (revealCount <= 0) return { struck: "", plain: text };
+	const chars = [...text];
+	if (revealCount >= chars.length) return { struck: text, plain: "" };
+	return { struck: chars.slice(0, revealCount).join(""), plain: chars.slice(revealCount).join("") };
 }

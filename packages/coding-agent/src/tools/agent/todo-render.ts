@@ -18,15 +18,28 @@ import {
 	formatPhaseDisplayName,
 	normalizeTodoArg,
 	prioritizeTodoItems,
-	strikethroughText,
 	TODO_ITEM_PREVIEW_WIDTH,
 	TODO_REMINDER_PREVIEW_LIMIT,
 	TODO_TOTAL_PREVIEW_WIDTH,
 	type TodoItem,
 	type TodoRenderArgs,
 	type TodoToolDetails,
-	todoStrikeReveal,
+	todoStrikeSplit,
 } from "./todo";
+
+/**
+ * A closed task's text with the strike drawn as far as it has swept, `frame` frames in.
+ *
+ * The tool states where the sweep has reached and this states what a struck run looks like, which
+ * is the theme's strikethrough attribute, and nothing at all on a terminal that has attributes off.
+ * The board above the composer draws a settled closed task with that same attribute, so the two
+ * surfaces cannot drift.
+ */
+export function drawTodoStrike(text: string, frame: number | undefined, uiTheme: Theme): string {
+	const { struck, plain } = todoStrikeSplit(text, frame);
+	if (struck.length === 0) return plain;
+	return `${uiTheme.strikethrough(struck)}${plain}`;
+}
 
 const EMPTY_COMPLETION_KEYS = new Set<string>();
 function formatTodoLine(
@@ -41,14 +54,17 @@ function formatTodoLine(
 	switch (item.status) {
 		case "completed": {
 			const strikeFrame = completionKeys.has(item.content) ? frame : undefined;
-			return uiTheme.fg("success", `${prefix}${checkbox.checked} ${todoStrikeReveal(safeContent, strikeFrame)}`);
+			return uiTheme.fg(
+				"success",
+				`${prefix}${checkbox.checked} ${drawTodoStrike(safeContent, strikeFrame, uiTheme)}`,
+			);
 		}
 		case "in_progress":
 			// Its own glyph, not the pending box in a different colour, and the
 			// same one the HUD above the composer draws for this state.
 			return uiTheme.fg("accent", `${prefix}${checkbox.progress} ${safeContent}`);
 		case "abandoned":
-			return uiTheme.fg("error", `${prefix}${checkbox.unchecked} ${strikethroughText(safeContent)}`);
+			return uiTheme.fg("error", `${prefix}${checkbox.unchecked} ${uiTheme.strikethrough(safeContent)}`);
 		case "pending":
 			return uiTheme.fg("dim", `${prefix}${checkbox.unchecked} ${safeContent}`);
 		default:

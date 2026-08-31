@@ -27,7 +27,7 @@
 import { visibleWidth } from "@veyyon/utils/width";
 import { theme } from "../../../../theme/theme";
 import type { TodoItem, TodoPhase } from "../../../../tools/agent/todo";
-import { boundedTodoPreviewText, formatPhaseDisplayName, todoStrikeReveal } from "../../../../tools/agent/todo";
+import { boundedTodoPreviewText, formatPhaseDisplayName } from "../../../../tools/agent/todo";
 import { renderTreeList } from "../../../../tui/tree-list";
 
 /** Stages listed after the active one when the board is collapsed. */
@@ -132,11 +132,11 @@ function taskLine(task: TodoItem, options: TodoBoardOptions, width: number): str
 	const content = boundedTodoPreviewText(task.content, width);
 	switch (task.status) {
 		case "completed":
-			return theme.fg("success", `${checkbox.checked} ${todoStrikeReveal(content, undefined)}`);
+			return theme.fg("success", `${checkbox.checked} ${theme.strikethrough(content)}`);
 		case "in_progress":
 			return theme.fg("accent", `${workingMark(options.frame, options.animate)} ${content}`);
 		case "abandoned":
-			return theme.fg("error", `${checkbox.unchecked} ${todoStrikeReveal(content, undefined)}`);
+			return theme.fg("error", `${checkbox.unchecked} ${theme.strikethrough(content)}`);
 		default:
 			if (options.owned.has(task.content)) {
 				return theme.fg("accent", `${workingMark(options.frame, options.animate)} ${content}`);

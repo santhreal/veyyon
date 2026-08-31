@@ -64,8 +64,7 @@
 - A commit whose changes all sit under a grouping directory named `natives` proposes the directory below it as the scope, the way `crates`, `packages` and `tests` already do, instead of proposing `natives`.
 - The `set_cwd` renderer drops `name`, `renderArguments` and `renderPending`: no host reads any of the three, and the tool-renderer contract declares none of them. No user-visible behavior changes.
 - `showHookInput`'s `inputOptions.mask` is a boolean rather than the character to draw, so the host that paints the field owns the glyph and `/secret add` no longer names the terminal engine to ask for a hidden field; the masked prompt draws the same `•` it drew before.
-### Changed
-
+- The todo tool states where a closed task's completion strike has reached with `todoStrikeSplit` and writes no SGR escape itself: the terminal draws the struck run with the theme's strikethrough attribute, so a session with terminal attributes off receives the task text without the `\x1b[9m` bytes it cannot render, and the transcript card sweeps the strike exactly as it did before.
 - The home screen hero drops the recent-session row; `/welcome` still lists recent sessions.
 - The launch card paints the whole status row from config instead of a hand-written path and branch, so the profile, model, approval rung, branch and context gauge are on screen with the first frame; measured on a pty against the built binary, the row lands at 47-48ms rather than 1067-1083ms and the frame is editable at 49-50ms.
 - The status row's segment gathering and row fitting live in one module, `modes/components/status-line/quiet-row.ts`, which the live footline and the launch card both render through, so the two rows cannot carry different segments or order them differently.

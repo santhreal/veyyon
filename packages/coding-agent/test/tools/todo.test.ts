@@ -7,12 +7,15 @@ import {
 	nextActionableTask,
 	resolveTodoMarkdownPath,
 	TODO_STRIKE_HOLD_FRAMES,
+	TODO_STRIKE_REVEAL_FRAMES,
+	TODO_STRIKE_TOTAL_FRAMES,
 	type TodoPhase,
 	TodoTool,
 	todoMatchesAnyDescription,
+	todoStrikeSplit,
 } from "@veyyon/coding-agent/tools/agent/todo";
 import { todoToolRenderer } from "@veyyon/coding-agent/tools/agent/todo-render";
-import type { Component } from "@veyyon/tui";
+import { type Component, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { type } from "arktype";
 
 function createSession(initialPhases: TodoPhase[] = []): ToolSession {
@@ -128,21 +131,48 @@ describe("nextActionableTask", () => {
 // The board keeps a second task so it is still OPEN: a board whose every task
 // has closed collapses to the one-line "Todo list done" summary and has no rows
 // left to strike through (see todo-done-collapse.test.ts).
+//
+// The policy is stated rather than inherited: the assertion is about attribute BYTES, and a run
+// under `NO_COLOR` or a pipe resolves the policy to `plain`, where a terminal draws no attribute
+// and the row is correct without one.
 it("renders completed tasks as checked before revealing strikethrough", async () => {
 	const tool = new TodoTool(createSession());
 	await tool.execute("call-1", { op: "init", list: [{ phase: "Execution", items: ["finish", "carry on"] }] });
 	const result = await tool.execute("call-2", { op: "done", task: "finish" });
 	const options = { expanded: true, isPartial: false, spinnerFrame: 0 };
 	const component = todoToolRenderer.renderResult(result, options, theme);
+	const policy = getAnsiPolicy();
+	setAnsiPolicy("full");
+	try {
+		const firstFrame = component.render(120).join("\n");
+		expect(Bun.stripANSI(firstFrame)).toContain("finish");
+		expect(firstFrame).not.toContain("\x1b[9m");
 
-	const firstFrame = component.render(120).join("\n");
-	expect(Bun.stripANSI(firstFrame)).toContain("finish");
-	expect(firstFrame).not.toContain("\x1b[9m");
+		options.spinnerFrame = TODO_STRIKE_HOLD_FRAMES + 1;
+		const revealFrame = component.render(120).join("\n");
+		expect(Bun.stripANSI(revealFrame)).toContain("finish");
+		expect(revealFrame).toContain("\x1b[9m");
+	} finally {
+		setAnsiPolicy(policy);
+	}
+});
 
-	options.spinnerFrame = TODO_STRIKE_HOLD_FRAMES + 1;
-	const revealFrame = component.render(120).join("\n");
-	expect(Bun.stripANSI(revealFrame)).toContain("finish");
-	expect(revealFrame).toContain("\x1b[9m");
+/**
+ * The sweep is the task's, the strike is the host's: this states where the sweep has reached as two
+ * runs of text, so a host that has no strike attribute still knows which part of the task is closed.
+ * The card case above proves the terminal turns the same split into the bytes it drew before.
+ */
+it("sweeps the strike across a closed task and settles with all of it struck", () => {
+	const text = "abcdefghijkl";
+
+	expect(todoStrikeSplit(text, undefined)).toEqual({ struck: text, plain: "" });
+	expect(todoStrikeSplit(text, TODO_STRIKE_HOLD_FRAMES)).toEqual({ struck: "", plain: text });
+	expect(todoStrikeSplit(text, TODO_STRIKE_TOTAL_FRAMES)).toEqual({ struck: text, plain: "" });
+	expect(todoStrikeSplit(text, TODO_STRIKE_TOTAL_FRAMES + 5)).toEqual({ struck: text, plain: "" });
+
+	const mid = todoStrikeSplit(text, TODO_STRIKE_HOLD_FRAMES + TODO_STRIKE_REVEAL_FRAMES / 2);
+	expect(mid.struck).toBe(text.slice(0, text.length / 2));
+	expect(mid.plain).toBe(text.slice(text.length / 2));
 });
 
 describe("TodoTool operations", () => {

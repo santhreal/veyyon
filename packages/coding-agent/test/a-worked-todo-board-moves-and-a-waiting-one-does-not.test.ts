@@ -37,7 +37,6 @@ import {
 } from "@veyyon/coding-agent/modes/terminal/components/dashboard/todo-board";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
-import { todoStrikeReveal } from "@veyyon/coding-agent/tools/agent/todo";
 import { paintRailMotion, railIdleHeadAt } from "@veyyon/coding-agent/tui/rail-motion";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { TODO_STATUSES } from "@veyyon/wire";
@@ -145,12 +144,12 @@ describe("the todo board's state", () => {
 		];
 		const completedRow = rawRowFor(plan, "task completed");
 		expect(completedRow).toContain(
-			theme.fg("success", `${theme.checkbox.checked} ${todoStrikeReveal("task completed", undefined)}`),
+			theme.fg("success", `${theme.checkbox.checked} ${theme.strikethrough("task completed")}`),
 		);
 
 		const abandonedRow = rawRowFor(plan, "task abandoned");
 		expect(abandonedRow).toContain(
-			theme.fg("error", `${theme.checkbox.unchecked} ${todoStrikeReveal("task abandoned", undefined)}`),
+			theme.fg("error", `${theme.checkbox.unchecked} ${theme.strikethrough("task abandoned")}`),
 		);
 
 		const inProgressRow = rawRowFor(plan, "task in_progress");
@@ -158,6 +157,32 @@ describe("the todo board's state", () => {
 
 		const pendingRow = rawRowFor(plan, "task pending");
 		expect(pendingRow).toContain(theme.fg("dim", `${theme.checkbox.unchecked} task pending`));
+	});
+
+	/**
+	 * WHY: a strike is an SGR attribute, so a terminal that draws none must show the task's text and
+	 * not the bytes that would have struck it. The tool wrote `\x1b[9m` itself until the sweep became
+	 * a split of two runs, which puts the attribute where the policy is read.
+	 */
+	it("draws a closed task with no attribute bytes when the terminal has none", () => {
+		const plan = [
+			phase("Auth", [
+				["task completed", "completed"],
+				["task abandoned", "abandoned"],
+			]),
+		];
+		setAnsiPolicy("plain");
+		try {
+			const completed = rawRowFor(plan, "task completed");
+			const abandoned = rawRowFor(plan, "task abandoned");
+
+			expect(completed).toContain("task completed");
+			expect(completed).not.toContain("\x1b[9m");
+			expect(abandoned).toContain("task abandoned");
+			expect(abandoned).not.toContain("\x1b[9m");
+		} finally {
+			setAnsiPolicy("full");
+		}
 	});
 
 	it("renders phase rows with tallies and no glyphs, drawing tasks only for the active phase when collapsed", () => {
