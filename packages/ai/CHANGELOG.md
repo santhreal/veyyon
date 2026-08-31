@@ -37,3 +37,4 @@
 - `convertMessages` in `anthropic.ts` uses regex tests instead of `trim().length` for all blank-content checks in the message conversion loop, eliminating string allocations on every request.
 - `openai-completions-helpers.ts`, `openai-completions.ts`, `openai-responses-codec.ts`, `openai-responses-codec-helpers.ts`, `openai-shared-helpers.ts`, and `openai-reasoning-fallback.ts` use regex tests instead of `trim().length` for blank-content checks in message conversion, streaming, and error formatting paths.
 - `google-shared-helpers.ts` and `amazon-bedrock-helpers.ts` use regex tests instead of `trim().length` for blank-content checks in message conversion loops.
+- `transform-messages.ts` and `openai-prompt-cache.ts` use regex tests instead of `trim().length` for tool call validation and prompt cache breakpoint checks.

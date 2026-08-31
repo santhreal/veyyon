@@ -71,6 +71,6 @@ export function formatOpenAIInputText(
 	policy: OpenAIPromptCachePolicy = OPENAI_PROMPT_CACHE_DISABLED,
 ): OpenAICacheableInputText {
 	const breakpoint = policy.stablePrefixBreakpoint;
-	if (!breakpoint || text.trim().length === 0) return { type: "input_text", text };
+	if (!breakpoint || !/\S/.test(text)) return { type: "input_text", text };
 	return { type: "input_text", text, prompt_cache_breakpoint: breakpoint };
 }

@@ -101,11 +101,11 @@ function deduplicateToolCallIds(
 }
 
 function isMalformedToolCallName(name: string | undefined): boolean {
-	return !name || name.trim().length === 0;
+	return !name || !/\S/.test(name);
 }
 
 function isMalformedToolCallId(id: string | undefined): boolean {
-	return !id || id.trim().length === 0;
+	return !id || !/\S/.test(id);
 }
 
 function isMalformedToolCall(block: { id: string; name: string }): boolean {
