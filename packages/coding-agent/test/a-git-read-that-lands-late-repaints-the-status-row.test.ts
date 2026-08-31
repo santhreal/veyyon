@@ -175,12 +175,14 @@ function instrumentAsyncGitReads(reached: Set<string>, answers: Map<string, () =
 function renderOnce(answers: Map<string, () => Promise<unknown>>, cwd?: string) {
 	const reached = new Set<string>();
 	instrumentAsyncGitReads(reached, answers);
-	const repaint = vi.fn();
+	let painted = 0;
 	const component = new StatusLineComponent(makeSession(cwd));
 	component.updateSettings(gitRow);
-	component.watchGitState(repaint);
+	component.watchGitState(() => {
+		painted += 1;
+	});
 	const first = component.renderQuietLine(120);
-	return { component, repaint, reached, first };
+	return { component, repaints: () => painted, reached, first };
 }
 
 /** The three lookups held open, so a case can decide which one answers and when. */
@@ -206,7 +208,7 @@ describe("a git read that lands after the frame that asked for it", () => {
 		const defaultBranch = deferred<string | null>();
 		const prView = deferred<{ exitCode: number; stdout: string; stderr: string }>();
 		const status = deferred<GitStatusSummary | null>();
-		const { component, repaint } = renderOnce(
+		const { component, repaints } = renderOnce(
 			new Map<string, () => Promise<unknown>>([
 				["branch.default", () => defaultBranch.promise],
 				["github.run", () => prView.promise],
@@ -214,23 +216,23 @@ describe("a git read that lands after the frame that asked for it", () => {
 			]),
 		);
 
-		expect(repaint).toHaveBeenCalledTimes(0);
+		expect(repaints()).toBe(0);
 
 		await defaultBranch.land("main");
-		expect(repaint).toHaveBeenCalledTimes(1);
+		expect(repaints()).toBe(1);
 
 		await status.land(DIRTY);
-		expect(repaint).toHaveBeenCalledTimes(2);
+		expect(repaints()).toBe(2);
 
 		await prView.land({ exitCode: 0, stdout: JSON.stringify({ number: 7, url: "https://forge/pr/7" }), stderr: "" });
-		expect(repaint).toHaveBeenCalledTimes(3);
+		expect(repaints()).toBe(3);
 
 		component.dispose();
 	});
 
 	it("puts the dirty marker on the row the landing repainted, not the one before it", async () => {
 		const status = deferred<GitStatusSummary | null>();
-		const { component, repaint } = renderOnce(
+		const { component, repaints } = renderOnce(
 			new Map<string, () => Promise<unknown>>([
 				["branch.default", neverAnswers()],
 				["github.run", neverAnswers()],
@@ -242,7 +244,7 @@ describe("a git read that lands after the frame that asked for it", () => {
 		expect(beforeTheAnswer).not.toContain("*");
 
 		await status.land(DIRTY);
-		expect(repaint).toHaveBeenCalledTimes(1);
+		expect(repaints()).toBe(1);
 		expect(component.renderQuietLine(120)).toContain("*");
 
 		component.dispose();
@@ -250,7 +252,7 @@ describe("a git read that lands after the frame that asked for it", () => {
 
 	it("does not repaint for a `git status` that leaves the row saying the same thing", async () => {
 		const status = deferred<GitStatusSummary | null>();
-		const { component, repaint } = renderOnce(
+		const { component, repaints } = renderOnce(
 			new Map<string, () => Promise<unknown>>([
 				["branch.default", neverAnswers()],
 				["github.run", neverAnswers()],
@@ -262,7 +264,7 @@ describe("a git read that lands after the frame that asked for it", () => {
 		// answer changes no byte. Repainting here would refetch on the next
 		// render and repaint again.
 		await status.land(CLEAN);
-		expect(repaint).toHaveBeenCalledTimes(0);
+		expect(repaints()).toBe(0);
 
 		component.dispose();
 	});
@@ -271,7 +273,7 @@ describe("a git read that lands after the frame that asked for it", () => {
 		const defaultBranch = deferred<string | null>();
 		const prView = deferred<{ exitCode: number; stdout: string; stderr: string }>();
 		const status = deferred<GitStatusSummary | null>();
-		const { component, repaint } = renderOnce(
+		const { component, repaints } = renderOnce(
 			new Map<string, () => Promise<unknown>>([
 				["branch.default", () => defaultBranch.promise],
 				["github.run", () => prView.promise],
@@ -285,14 +287,14 @@ describe("a git read that lands after the frame that asked for it", () => {
 		await status.land(DIRTY);
 		await prView.land({ exitCode: 0, stdout: JSON.stringify({ number: 7, url: "https://forge/pr/7" }), stderr: "" });
 
-		expect(repaint).toHaveBeenCalledTimes(0);
+		expect(repaints()).toBe(0);
 	});
 
 	it("asks for no repaint when the lookups had already answered before disposal", async () => {
 		// The same guard, reached down the other path: the awaited promises are
 		// settled before `dispose()`, so what has to be suppressed is a queued
 		// microtask rather than a pending subprocess.
-		const { component, repaint } = renderOnce(
+		const { component, repaints } = renderOnce(
 			new Map<string, () => Promise<unknown>>([
 				["branch.default", async () => "main"],
 				["github.run", async () => ({ exitCode: 1, stdout: "", stderr: "no pr" })],
@@ -306,7 +308,7 @@ describe("a git read that lands after the frame that asked for it", () => {
 		await Promise.resolve();
 		await Promise.resolve();
 
-		expect(repaint).toHaveBeenCalledTimes(0);
+		expect(repaints()).toBe(0);
 	});
 });
 
@@ -339,7 +341,7 @@ describe("the marker the card painted survives the mount", () => {
 		resetLaunchFactsForTest();
 		const status = deferred<GitStatusSummary | null>();
 
-		const { component, repaint, first } = renderOnce(
+		const { component, repaints, first } = renderOnce(
 			heldOpen(() => status.promise),
 			getProjectDir(),
 		);
@@ -350,7 +352,7 @@ describe("the marker the card painted survives the mount", () => {
 		await status.land(DIRTY);
 
 		// The scan agreed, so nothing moved and nothing was repainted.
-		expect(repaint).toHaveBeenCalledTimes(0);
+		expect(repaints()).toBe(0);
 		expect(component.renderQuietLine(120)).toBe(first);
 
 		component.dispose();
@@ -361,7 +363,7 @@ describe("the marker the card painted survives the mount", () => {
 		resetLaunchFactsForTest();
 		const status = deferred<GitStatusSummary | null>();
 
-		const { component, repaint, first } = renderOnce(
+		const { component, repaints, first } = renderOnce(
 			heldOpen(() => status.promise),
 			getProjectDir(),
 		);
@@ -369,7 +371,7 @@ describe("the marker the card painted survives the mount", () => {
 
 		await status.land(CLEAN);
 
-		expect(repaint).toHaveBeenCalledTimes(1);
+		expect(repaints()).toBe(1);
 		expect(component.renderQuietLine(120)).not.toContain("*");
 
 		component.dispose();
