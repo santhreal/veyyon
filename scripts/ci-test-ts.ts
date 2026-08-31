@@ -305,6 +305,7 @@ export const workspaceTestPackages = [
 // typo'd path in this array is invisible rather than fatal. Check the file exists.)
 export const repoScriptTests = [
 	"scripts/a-generated-doc-says-so-on-its-first-line.test.ts",
+	"scripts/a-helper-extraction-leaves-no-orphan.test.ts",
 	"scripts/a-local-action-is-called-with-everything-it-requires.test.ts",
 	"scripts/a-shipped-module-arrives-with-a-test-that-names-it.test.ts",
 	"scripts/a-package-exports-its-public-surface.test.ts",
