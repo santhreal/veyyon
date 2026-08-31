@@ -1,10 +1,10 @@
 /**
  * WHY THIS SUITE EXISTS: ChatGPT Codex server-side compaction was sent to
- * `POST {base}/codex/responses/compact`. That is the v1 remote-compaction
- * route, and the Codex backend has retired it, so every request answered 404.
- * A 404 is not treated as a transient failure here — it is recorded as
- * route-absent for the process, which is correct for a route that truly does
- * not exist and catastrophic for one that was merely misspelled: the first
+ * `POST {base}/codex/responses/compact`. The Codex backend does not serve that
+ * route — measured again on 2026-09-01, it answers 404 — so every request
+ * answered 404. A 404 is not treated as a transient failure here: it is
+ * recorded as route-absent, which is correct for a route that truly does not
+ * exist and catastrophic for one that was merely misspelled. The first
  * compaction of a session paid a round trip, warned once, and handed the rest
  * of that session to local compaction in silence. The operator had server-side
  * compaction enabled the whole time.
@@ -151,14 +151,15 @@ const ROUTES: Record<string, RouteCase> = {
 		pathnameEndsWith: "/responses/compact",
 		compactSuffix: true,
 	},
-	// Codex serves the `/compact` route, declared as `responses_compact`. The
-	// route and that declaration are one decision; see
+	// Codex serves the plain turn route, declared as `responses_compaction_v2`,
+	// with the compaction requested by a trailing `compaction_trigger` input
+	// item. The route and that declaration are one decision; see
 	// `the-codex-compaction-wire-does-not-regress.test.ts`.
 	"openai-codex-responses": {
 		model: () => bundled("openai-codex", "gpt-5.1-codex"),
 		apiKey: fakeCodexToken("acct-9"),
-		pathnameEndsWith: "/backend-api/codex/responses/compact",
-		compactSuffix: true,
+		pathnameEndsWith: "/backend-api/codex/responses",
+		compactSuffix: false,
 		origin: "https://chatgpt.com",
 	},
 };
@@ -194,6 +195,7 @@ describe("a compaction route matches the host that serves it", () => {
 
 			const calls: CapturedCall[] = [];
 			await transport.compact({
+				sessionId: "route-host-session",
 				model,
 				messages: compactionMessages(),
 				apiKey: route.apiKey,
@@ -211,14 +213,15 @@ describe("a compaction route matches the host that serves it", () => {
 		});
 	}
 
-	test("the codex route carries exactly one compact segment, at the end", async () => {
-		// `endsWith` alone would accept `/compact/responses/compact`.
+	test("the codex route carries no compact segment at all", async () => {
+		// `endsWith` alone would miss `/compact/responses`.
 		const model = ROUTES["openai-codex-responses"]!.model();
 		const transport = resolveServerCompactionTransport(model);
 		if (!transport) throw new Error("Expected the codex row to resolve a transport");
 
 		const calls: CapturedCall[] = [];
 		await transport.compact({
+			sessionId: "route-no-compact-segment-session",
 			model,
 			messages: compactionMessages(),
 			apiKey: fakeCodexToken("acct-9"),
@@ -226,13 +229,13 @@ describe("a compaction route matches the host that serves it", () => {
 		});
 
 		const segments = new URL(calls[0]!.url).pathname.split("/");
-		expect(segments.filter(segment => segment === "compact")).toEqual(["compact"]);
-		expect(segments.at(-1)).toBe("compact");
+		expect(segments.filter(segment => segment === "compact")).toEqual([]);
+		expect(segments.at(-1)).toBe("responses");
 	});
 });
 
 describe("a compaction request declares the implementation it is sent as", () => {
-	test("codex names responses_compact, matching the /compact route", async () => {
+	test("codex names responses_compaction_v2, matching the turn route", async () => {
 		const model = bundled("openai-codex", "gpt-5.1-codex");
 		const calls: CapturedCall[] = [];
 
@@ -262,8 +265,8 @@ describe("a compaction request declares the implementation it is sent as", () =>
 		// must name the route it is posted to, or the host answers 404 and every
 		// compaction falls back to paid local compaction.
 		expect(turn.request_kind).toBe("compaction");
-		expect(turn.compaction?.implementation).toBe("responses_compact");
-		expect(new URL(calls[0]!.url).pathname.endsWith("/compact")).toBe(true);
+		expect(turn.compaction?.implementation).toBe("responses_compaction_v2");
+		expect(new URL(calls[0]!.url).pathname.endsWith("/compact")).toBe(false);
 	});
 });
 
@@ -278,6 +281,7 @@ describe("a compaction route that answers 404 stands down, and nothing else does
 
 		await expect(
 			transport.compact({
+				sessionId: "route-404-standdown-session",
 				model,
 				messages: compactionMessages(),
 				apiKey: fakeCodexToken("acct-9"),
@@ -299,6 +303,7 @@ describe("a compaction route that answers 404 stands down, and nothing else does
 
 			await expect(
 				transport.compact({
+					sessionId: "route-transient-status-session",
 					model,
 					messages: compactionMessages(),
 					apiKey: fakeCodexToken("acct-9"),
@@ -321,6 +326,7 @@ describe("a compaction route that answers 404 stands down, and nothing else does
 
 		await expect(
 			transport.compact({
+				sessionId: "route-standdown-per-model-session",
 				model: codex,
 				messages: compactionMessages(),
 				apiKey: fakeCodexToken("acct-9"),

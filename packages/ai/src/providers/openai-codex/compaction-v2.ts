@@ -1,21 +1,27 @@
 /**
- * Codex remote compaction v2: the alternate wire, kept but not posted.
+ * Codex remote compaction v2: the wire the ChatGPT Codex backend serves.
  *
- * NOTHING SHIPPED CALLS THIS MODULE. Compaction posts to
- * `{base}/codex/responses/compact` as a non-streaming request declared
- * `responses_compact`, which is the wire oh-my-pi serves;
- * `packages/ai/src/providers/openai-compaction.ts` owns it, is hash-locked by
- * `scripts/the-codex-compaction-route-is-locked.test.ts`, and
- * `packages/agent/test/the-codex-compaction-wire-does-not-regress.test.ts`
- * pins the route and the declaration together.
+ * `packages/ai/src/providers/openai-compaction.ts` posts it for every
+ * `openai-codex-responses` model and reads the stream through
+ * {@link collectCodexCompactionV2Stream}, and
+ * `@veyyon/agent-core/compaction/remote-compaction` declares the matching
+ * `responses_compaction_v2` metadata. The route and the declaration are one
+ * decision and move together.
  *
- * READ THIS BEFORE REWIRING ANYTHING HERE. On 2026-08-29 a live call found the
- * opposite: `POST {base}/codex/responses/compact`, `{base}/codex/compact` and
- * `{base}/responses/compact` all answered 404, and the ordinary responses route
- * answered a compaction-marked request with an ordinary turn. A later session
- * on the same account got a 404 from the streaming route instead. Both
- * observations are real and dated; that is why the two wires keep trading
- * places, and why the route and the declaration may only move together.
+ * READ THIS BEFORE REWIRING ANYTHING HERE. The two candidate wires have traded
+ * places more than once, so each move is a live measurement rather than a
+ * reading of the OpenAI compaction guide, which documents the official host
+ * only. On 2026-08-29 a live call found `POST {base}/codex/responses/compact`,
+ * `{base}/codex/compact` and `{base}/responses/compact` all answering 404,
+ * while the ordinary responses route answered a compaction-marked request with
+ * an ordinary turn; a later session on the same account got a 404 from the
+ * streaming route instead, and this module was retired in favour of the
+ * compact route. That was wrong, and it shipped: with the compact route live,
+ * every codex compaction answered 404 and fell back to a paid local pass.
+ * Re-measured on 2026-09-01 against a ChatGPT account on `gpt-5.6-sol`:
+ * `{base}/codex/responses/compact` answered `404 Not Found`, and the same span
+ * posted here answered `200` with exactly one `compaction` item carrying a
+ * 1740-character `encrypted_content` (usage in=639, out=116).
  *
  * The mechanism this module implements is an input item. Appending
  * `{ type: "compaction_trigger" }` to an otherwise-normal streaming Responses
@@ -116,10 +122,13 @@ function describeFailure(event: CodexCompactionV2Event, type: string, sanitize: 
 /**
  * Read a v2 compaction stream down to its single compaction item.
  *
- * Exactly one is required. Zero means the backend ran the span as a turn — the
- * trigger item did not take — and more than one means the window would be
- * ambiguous; both are failures the caller turns into a local pass rather than
- * storing a history that does not compact.
+ * Exactly one is required, and it must carry its blob. Zero means the backend
+ * ran the span as a turn — the trigger item did not take — and more than one
+ * means the window would be ambiguous. A `compaction` item with no
+ * `encrypted_content` is the third shape: it looks compacted to the transport
+ * and is rejected later as an unusable window, which re-expands the whole span
+ * on the next turn. All three are failures the caller turns into a local pass
+ * rather than storing a history that does not compact.
  */
 export async function collectCodexCompactionV2Stream(
 	body: ReadableStream<Uint8Array>,
@@ -127,6 +136,7 @@ export async function collectCodexCompactionV2Stream(
 	sanitize: (text: string) => string,
 ): Promise<CodexCompactionV2StreamResult> {
 	const compactionItems: Array<Record<string, unknown>> = [];
+	let malformedCompactionItems = 0;
 	let outputItemCount = 0;
 	let sawCompleted = false;
 	let usage: CodexCompactionV2Usage | undefined;
@@ -136,7 +146,13 @@ export async function collectCodexCompactionV2Stream(
 		const type = typeof event.type === "string" ? event.type : undefined;
 		if (type === "response.output_item.done") {
 			outputItemCount++;
-			if (isRecord(event.item) && event.item.type === "compaction") compactionItems.push(event.item);
+			if (isRecord(event.item) && event.item.type === "compaction") {
+				// The blob IS the compacted history. An item without one carries no
+				// window, so counting it as the compaction item stores an entry that
+				// every later turn discards.
+				if (typeof event.item.encrypted_content === "string") compactionItems.push(event.item);
+				else malformedCompactionItems++;
+			}
 			continue;
 		}
 		if (type === "response.completed") {
@@ -154,6 +170,11 @@ export async function collectCodexCompactionV2Stream(
 	if (!sawCompleted) {
 		throw new Error(
 			"Codex compaction stream closed before response.completed. The history was NOT compacted; the caller falls back to local compaction.",
+		);
+	}
+	if (malformedCompactionItems > 0 && compactionItems.length === 0) {
+		throw new Error(
+			`Codex compaction returned ${malformedCompactionItems} compaction items with no encrypted_content. The history was NOT compacted; the caller falls back to local compaction.`,
 		);
 	}
 	const compactionItem = compactionItems[0];

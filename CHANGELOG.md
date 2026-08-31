@@ -185,14 +185,20 @@
 - Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the route they are sent to.
 - Context budgeting reserves the model's output allocation, which providers charge against the same context window, so history no longer grows past the largest input the provider will accept; a branch summary is sized the same way, so the request that shrinks an overfull session is no longer rejected for being too large itself.
 - Codex remote compaction requests declare the `responses_compact` implementation, matching the `/codex/responses/compact` route they are sent to.
+- Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the `{base}/codex/responses` route they are sent to.
 - A ChatGPT Codex server-side compaction now reduces the context it was paid to reduce: its stored window was not on the list of apis whose window can be replayed, so the entry counted as unusable, the whole pre-compaction span was re-expanded on the next rebuild, and the session crossed the threshold and compacted again on every turn.
 - Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
-- ChatGPT Codex server-side compaction posts to `{base}/codex/responses/compact` and reads one JSON document, instead of streaming a `compaction_trigger` turn to the plain responses route, which answered 404 and turned the session over to local compaction for the rest of its life.
+- Remote compaction forwards the session's prompt cache key to the provider, so a session whose cache key differs from its session id compacts on the same cache lineage its turns use.
+- ChatGPT Codex server-side compaction streams a trailing `compaction_trigger` item to `{base}/codex/responses`, instead of posting to `{base}/codex/responses/compact`, which answers 404 and turned every compaction into a paid local pass for the rest of the session.
+- A Codex compaction stream carrying a `compaction` item with no `encrypted_content` is refused instead of being stored as a window every later turn discards.
+- A compaction route that answers 404 is retried after 30 minutes instead of standing the model down for the whole process, so one transient 404 no longer forces a paid local compaction on every later pass.
 - Codex remote compaction keeps at least one user turn when the retained-token budget it is handed is not a finite number, instead of replaying a window holding nothing but the compaction item.
 - A sixel-capable terminal now renders inline images on Linux and macOS: the terminal is asked at startup instead of being matched against a list that named no sixel terminal at all, so images no longer silently fail to appear outside kitty, ghostty, wezterm, iTerm2 and Warp.
 - An inline image whose top has scrolled above the viewport, or which is taller than the terminal, is left undrawn until a repaint can reach its origin, instead of being stamped at full size over the top of the live transcript.
 - An inline image is handed pixels at exactly the cell box the terminal will scale it into, so the terminal's own scaler no longer smears a downscaled screenshot; the transmitted payload shrinks by more than half at the same size on screen.
 - The row shown in place of a picture names the setting that undoes the reason when there is one, instead of stating the reason alone.
+- A Codex server-side compaction sends the session's `prompt_cache_key`, so it lands on the session's cached prefix instead of missing it and making the next turn re-pay full uncached input.
+- A Codex server-side compaction with no session id is refused instead of minting a random conversation identity, which opened a second cache lineage and left the post-compaction history reset with nothing to find.
 - An `Editor` with no `onSubmit` consumer leaves the draft alone when Enter arrives, instead of clearing it, so a submit typed before anything is listening cannot destroy what was typed.
 
 ## [1.3.0] - 2026-08-28

@@ -124,18 +124,23 @@ export async function compactWithProvider(
 				previousWindow,
 				instructions: instructions.length > 0 ? instructions : undefined,
 				// Codex keys request identity to the live conversation; the
-				// official and Azure routes ignore all three.
+				// official and Azure routes ignore all four. The cache key is the
+				// turn's own, so the compaction lands on the session's cached
+				// prefix instead of opening a second lineage beside it.
 				sessionId: options?.sessionId,
+				promptCacheKey: options?.promptCacheKey,
 				providerSessionState: options?.providerSessionState,
 				codexCompaction: createOpenAICodexCompactionRequestContext({
 					context: options?.codexCompaction,
-					// `responses_compact` names the `{base}/codex/responses/compact`
-					// route the transport posts to, which is the wire oh-my-pi
-					// serves. The declaration and the route are one decision: a
-					// `responses_compaction_v2` metadata sent to the `/compact`
-					// endpoint is a mismatch, and a mismatch is its own 404.
-					// Changing either one means changing both.
-					implementation: "responses_compact",
+					// `responses_compaction_v2` names the wire the transport posts:
+					// an ordinary streaming `{base}/codex/responses` turn whose last
+					// input item is `compaction_trigger`. The declaration and the
+					// route are one decision — `responses_compact` metadata sent to
+					// the turn route is a mismatch, and so is the reverse — so
+					// changing either one means changing both. Measured 2026-09-01:
+					// the `/compact` route answers 404 and this one answers 200 with
+					// the compaction item.
+					implementation: "responses_compaction_v2",
 				}),
 				apiKey: key,
 				signal,

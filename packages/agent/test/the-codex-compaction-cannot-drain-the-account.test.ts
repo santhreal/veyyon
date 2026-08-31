@@ -119,9 +119,17 @@ interface Captured {
 	body: Record<string, unknown>;
 }
 
+/**
+ * The two host families answer differently and this stands in for both: the
+ * `/responses/compact` hosts return one JSON document, and the codex host
+ * streams. `stream: true` is how the real host tells them apart too, so the
+ * `payload.output` a case supplies becomes the streamed output items for codex
+ * and the JSON `output` array for the others.
+ */
 function captureFetch(calls: Captured[], status = 200, payload: unknown = undefined) {
 	return async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-		calls.push({ url: String(input), body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown> });
+		const request = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+		calls.push({ url: String(input), body: request });
 		const body =
 			payload ??
 			({
@@ -130,6 +138,18 @@ function captureFetch(calls: Captured[], status = 200, payload: unknown = undefi
 				output: [RETAINED_ITEM, COMPACTION_ITEM],
 				usage: { input_tokens: 10, output_tokens: 2 },
 			} as unknown);
+		if (status === 200 && request.stream === true) {
+			const source = body as { output?: unknown; usage?: unknown };
+			const output = Array.isArray(source.output) ? source.output : [];
+			const events = [
+				...output.map(item => ({ type: "response.output_item.done", item })),
+				{ type: "response.completed", response: { status: "completed", output: [], usage: source.usage } },
+			];
+			return new Response(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join(""), {
+				status,
+				headers: { "content-type": "text/event-stream" },
+			});
+		}
 		return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 	};
 }
@@ -155,6 +175,7 @@ async function compactDirect(model: Model, status: number, payload?: unknown): P
 	if (!transport) throw new Error(`${BANNER}: ${model.api} resolves no transport`);
 	try {
 		await transport.compact({
+			sessionId: "drain-guard-session",
 			model,
 			messages: [{ role: "user", content: "span" }] as Message[],
 			apiKey: codexToken(),
@@ -419,7 +440,12 @@ describe(`a window and a local summary never both survive (${BANNER})`, () => {
 		expect(Object.keys(result.preserveData ?? {})).toEqual([REMOTE_COMPACTION_PRESERVE_KEY]);
 	});
 
-	test("the stored window is the provider's, not a locally rebuilt one", async () => {
+	test("the stored window is the span plus the provider's compaction item, and nothing the host injected", async () => {
+		// Under the codex wire the host answers `response.completed` with an empty
+		// output, so the window is assembled from the span that was sent. The blob
+		// is the provider's; every other item must come from the span. A host item
+		// that reached the stored window would be replayed as conversation history
+		// on every later turn.
 		const result = await compactWithProvider(preparation(), codexModel(), codexToken(), "sys", undefined, {
 			sessionId: "s",
 			codexCompaction: {
@@ -432,7 +458,12 @@ describe(`a window and a local summary never both survive (${BANNER})`, () => {
 			fetch: captureFetch([]),
 		});
 		const data = getRemoteCompactionPreserveData(result.preserveData);
-		expect(data?.window).toEqual([RETAINED_ITEM, COMPACTION_ITEM]);
+		const window = data?.window ?? [];
+		expect(window.at(-1)).toEqual(COMPACTION_ITEM);
+		expect(window.slice(0, -1).every(item => (item as { role?: string }).role === "user")).toBe(true);
+		expect(JSON.stringify(window.slice(0, -1))).toContain("history msg");
+		// RETAINED_ITEM is the host's own item, text "kept". It is not the span's.
+		expect(window).not.toContainEqual(RETAINED_ITEM);
 	});
 
 	test("structural fields come from the preparation, so a provider cannot move the keep marker", async () => {
@@ -544,10 +575,14 @@ describe(`only a 404 stands the route down (${BANNER})`, () => {
 
 describe(`a reply is not a compaction until it carries one (${BANNER})`, () => {
 	const rejected: Array<[string, unknown, RegExp]> = [
-		["an empty output", { output: [] }, /no output items/],
-		["a missing output", {}, /no output items/],
-		["a null output", { output: null }, /no output items/],
-		["a non-array output", { output: { item: 1 } }, /no output items/],
+		// The codex reader counts compaction items, not output items, so an absent
+		// or unusable output reads as "no compaction item arrived" rather than as
+		// an empty document. Both refusals name the fallback and the fact that the
+		// history was not compacted, which is the contract the caller relies on.
+		["an empty output", { output: [] }, /expected exactly one/],
+		["a missing output", {}, /expected exactly one/],
+		["a null output", { output: null }, /expected exactly one/],
+		["a non-array output", { output: { item: 1 } }, /expected exactly one/],
 		["an output of only prose", { output: [{ type: "message", role: "assistant", content: [] }] }, /compaction item/],
 		["a compaction item with no blob", { output: [{ type: "compaction" }] }, /compaction item/],
 		[
@@ -762,12 +797,15 @@ describe(`a second compaction chains instead of re-reading the span (${BANNER})`
 		expect(input.some(item => item.type === "compaction")).toBe(false);
 	});
 
-	test("only the newly returned window is stored, so windows do not accumulate", async () => {
+	test("only one compaction item is stored, so windows do not accumulate", async () => {
 		const calls: Captured[] = [];
 		const result = (await chained(calls, preserved())) as { preserveData?: Record<string, unknown> };
 		const data = getRemoteCompactionPreserveData(result.preserveData);
-		// Two items in, two items out: the reply replaces the stored window
-		// rather than being appended to it.
-		expect(data?.window).toEqual([RETAINED_ITEM, COMPACTION_ITEM]);
+		const window = data?.window ?? [];
+		// The chained request sends the previous blob so the host reads it, and the
+		// blob it answers with supersedes it. Keeping both would replay two
+		// overlapping histories and grow the window on every pass.
+		expect(window.filter(item => (item as { type?: string }).type === "compaction")).toEqual([COMPACTION_ITEM]);
+		expect(window.at(-1)).toEqual(COMPACTION_ITEM);
 	});
 });

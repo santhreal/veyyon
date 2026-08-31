@@ -28,27 +28,28 @@ import type { FetchImpl } from "@veyyon/utils";
  *   {base}/codex/responses          <->  implementation "responses_compaction_v2"
  *
  * A route from one pairing sent with the other's declaration is a mismatch, and
- * a mismatch is its own 404. The wire pinned here is oh-my-pi's
- * (`can1357/oh-my-pi`, `resolveOpenAiCodexCompactEndpoint`): the `/compact`
- * endpoint, `responses_compact`, one JSON document, no `compaction_trigger`
- * item and no `stream`. Changing either half without the other, or without the
+ * a mismatch is its own 404. The wire pinned here is the second pairing, and it
+ * is pinned to a live measurement: on 2026-09-01, against a ChatGPT account on
+ * `gpt-5.6-sol`, `{base}/codex/responses/compact` answered 404 while the plain
+ * turn route with a trailing `compaction_trigger` item answered 200 with the
+ * compaction item. Changing either half without the other, or without the
  * operator saying so, is the regression.
  *
- * The class this closes: a permanent negative from the compact route being
+ * The class this closes: a permanent negative from the compaction route being
  * treated as a transient failure. It covers every non-2xx status, not the one
  * that was reported, so a sibling status is not quietly given the same
  * treatment — 401, 429 and 500 must stay retryable, because a credential, a
  * rate limit and an outage all resolve on their own.
  *
- * What it does NOT catch: a host that starts serving the route mid-process.
- * The negative is process-scoped and never persisted, so it clears on the next
- * launch, but this run will not notice.
+ * What it does NOT catch: a host that starts serving the route mid-process
+ * inside the stand-down window. The negative expires after that window and is
+ * never persisted, so it also clears on the next launch.
  */
 
-/** The route oh-my-pi posts to. The paired declaration is `responses_compact`. */
-const CODEX_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses/compact";
-/** The plain turn route, which pairs with `responses_compaction_v2`, not with compaction. */
-const RETIRED_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses";
+/** The route the host serves. The paired declaration is `responses_compaction_v2`. */
+const CODEX_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses";
+/** The compact endpoint, which answers 404. Nothing may post compaction here. */
+const RETIRED_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses/compact";
 const RECORDED_404_BODY = '{"detail":"Not Found"}';
 function codexModel(id = "gpt-test-codex"): Model<Api> {
 	// Built through the real catalog path so `supportsServerCompaction` is the
@@ -79,6 +80,7 @@ function respondWith(status: number, statusText: string, body: string): { fetch:
 async function compactOnce(model: Model<Api>, impl: FetchImpl): Promise<Error | undefined> {
 	try {
 		await openAIResponsesServerCompaction.compact({
+			sessionId: "route-404-cache-session",
 			model,
 			messages: [{ role: "user", content: "compact this span", timestamp: Date.now() }],
 			apiKey: "test-access-token",

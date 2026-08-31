@@ -556,6 +556,7 @@ describe("Responses Lite all_turns invariant suite", () => {
 			const ineligible = createCodexModel("gpt-5.1-codex");
 
 			const eligibleReq = createOpenAICodexDirectRequest({
+				sessionId: "lite-eligible-session",
 				model: eligible,
 				accessToken: createCodexTestToken(),
 				requestKind: "compaction",
@@ -564,6 +565,7 @@ describe("Responses Lite all_turns invariant suite", () => {
 			expect(eligibleReq.headers[OPENAI_HEADERS.RESPONSES_LITE]).toBe("true");
 
 			const ineligibleReq = createOpenAICodexDirectRequest({
+				sessionId: "lite-ineligible-session",
 				model: ineligible,
 				accessToken: createCodexTestToken(),
 				requestKind: "compaction",
