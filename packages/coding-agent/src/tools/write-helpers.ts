@@ -129,7 +129,11 @@ export function assertValidWriteContent(content: string): void {
 		}
 	}
 
-	const nonEmptyLines = lines.map((text, idx) => ({ text, lineNum: idx + 1 })).filter(l => l.text.trim().length > 0);
+	const nonEmptyLines: Array<{ text: string; lineNum: number }> = [];
+	for (let idx = 0; idx < lines.length; idx++) {
+		const text = lines[idx]!;
+		if (/\S/.test(text)) nonEmptyLines.push({ text, lineNum: idx + 1 });
+	}
 
 	if (nonEmptyLines.length >= 2) {
 		const allPrefixed = nonEmptyLines.every(l => LINE_PREFIX_RE.test(l.text));
