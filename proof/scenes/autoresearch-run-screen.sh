@@ -29,7 +29,10 @@ settle 20
 # left. What the arms are is already on screen before a key is pressed.
 slash "/autoresearch make the tokenizer faster"
 settle 6
-expect_screen "autoswarm" 90 "armed"
+# Each arm's own word for the same session, which is part of what changed: the
+# widget called a four-arm swarm `autoresearch`, because it had one title for both
+# shapes of the loop. The row names the shape it is reporting.
+expect_screen "$(arm_key autoswarm autoresearch)" 90 "armed"
 shot armed
 
 # ctrl+x. The whole differential in one keystroke: a run screen in the after arm,
