@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "80cf11d2f49c9535a7e4d51a38506619035b4720",
+	"generatedFrom": "343932b94b457cdd998b3aefe699f04e052d3b8f",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -70,7 +70,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4607,
+	"changedCount": 4608,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -2532,6 +2532,7 @@
 		"packages/coding-agent/test/text-reformats-itself-against-the-width-it-is-drawn-at.test.ts",
 		"packages/coding-agent/test/the-autoswarm-console-configures-a-run-before-it-starts.test.ts",
 		"packages/coding-agent/test/the-card-and-the-live-row-are-one-row.test.ts",
+		"packages/coding-agent/test/the-card-is-painted-on-the-ground-the-session-settles-on.test.ts",
 		"packages/coding-agent/test/the-collab-qr-block-opens-with-its-own-blank-row.test.ts",
 		"packages/coding-agent/test/the-commit-console-draws-what-the-commit-agent-reports.test.ts",
 		"packages/coding-agent/test/the-composer-footline-ships-on.test.ts",

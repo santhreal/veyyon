@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "80cf11d2f49c9535a7e4d51a38506619035b4720",
+	"generatedFrom": "343932b94b457cdd998b3aefe699f04e052d3b8f",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -11920,10 +11920,10 @@
 			"old": "packages/coding-agent/src/modes/first-frame.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "9d3c7eb9f82eae47a48a819f7c251b2e02359fe744e10b03e736c255910c755a",
-			"mainHash": "cb4fc204bae0cf725d58a53ac436d14675f759bb84b8517848cb922fd25ca9f4",
-			"structuralHash": "d649cdc9f8433875ae12b15a19288ad2e694917bc8745cb44ec784b6ec69b902",
-			"mainStructuralHash": "d649cdc9f8433875ae12b15a19288ad2e694917bc8745cb44ec784b6ec69b902"
+			"hash": "27536eb37a2cad358bf3d978feb20d5a0a9b783b9a9e869c72238f52db87d59b",
+			"mainHash": "7b779a17b15d95f3c25b8a27da56ca1eac9f3bad075b86aaede7e8bc95f7e8ce",
+			"structuralHash": "65ea3c27ee1413fd1856de8fb62a07b2d37005275d79c98b602b50b5007a4556",
+			"mainStructuralHash": "65ea3c27ee1413fd1856de8fb62a07b2d37005275d79c98b602b50b5007a4556"
 		},
 		"packages/coding-agent/src/modes/terminal/image-reference-markers.ts": {
 			"old": "packages/coding-agent/src/modes/image-reference-markers.ts",
@@ -11949,10 +11949,10 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "79231200a07873a19e6c0c25d8626fe8118d19243e0c4167aa9768524a937462",
-			"mainHash": "63258ea2bd4d357c319d06d6a699f49f44231ffefd1d6cb4a7057073ba7fa401",
-			"structuralHash": "0824d90965f46346ce0ad682bbd2d845e1af031ab7f3a3823ea8b5f20f22a9d9",
-			"mainStructuralHash": "6f205c499ee48ce21c75d53c592f5ee18beab6f77114347747907914ebea2f30"
+			"hash": "7a932fd044714676ccdd60fabf71cd9fb3db1838113c02c3c7dadc0b16659a3f",
+			"mainHash": "bb7349b9b901dc52f675a024092acf3dc27e2d91373ce62f6a4654aefe64e7b4",
+			"structuralHash": "29a2ee7ee3a16c64b7394e2f97d3271c798688f0bcfb570dc99bd427cbafce67",
+			"mainStructuralHash": "e9f7c89b440c3f2bde5a2abe57bb282019e63baaceffc0974faae23f15bb6cc1"
 		},
 		"packages/coding-agent/src/modes/terminal/oauth-manual-input.ts": {
 			"old": "packages/coding-agent/src/modes/oauth-manual-input.ts",
