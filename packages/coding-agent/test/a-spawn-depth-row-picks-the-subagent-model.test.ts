@@ -11,15 +11,22 @@
  * or disappears quietly:
  *
  *  1. A row must win at EXACTLY its depth and only there. A depth row that also
- *     fired for other depths would make the blanket setting unreachable, and
+ *     fired for other depths would make the layers under it unreachable, and
  *     one that never fired would be a knob wired to nothing.
  *  2. A row that matches no model must REFUSE, naming its own
- *     `subagent.modelByDepth.<n>` row. Falling through to the blanket is the
- *     defect the blanket/frontmatter layers already refuse to commit: a
+ *     `subagent.modelByDepth.<n>` row. Falling through to a lower layer is the
+ *     defect the lane and frontmatter layers already refuse to commit: a
  *     configured setting that looks live and does nothing.
  *  3. A caller that passes no depth (depth 0, the root session, or a surface
  *     describing an agent rather than a spawn) sees today's behavior exactly,
  *     whatever rows are configured.
+ *
+ * The layer under a depth row is the agent's own `model:` frontmatter and then
+ * the session's live model. `subagent.model` is NOT in this chain: it is the
+ * shared chain, read only while `subagent.sharedModel` is on, and the cases
+ * below set it anyway so a blanket value cannot pre-empt a row from outside the
+ * chain it belongs to. That switch's own precedence is pinned in
+ * `test/task/subagent-settings.test.ts`.
  *
  * Every case drives `resolveSubagentModel` — the one owner of "what model does
  * a subagent run" — the way the task executor and the eval agent-bridge call
@@ -46,11 +53,11 @@ const DEPTH_TWO = "openai/gpt-5-nano";
 
 describe("a depth row outranks every existing layer at exactly its own depth", () => {
 	/**
-	 * The headline case: blanket, frontmatter and session are ALL configured,
-	 * and the depth row still decides — because outranking one of them in
-	 * isolation says nothing about the others.
+	 * The headline case: frontmatter and session are both configured, a blanket value sits beside
+	 * them in a chain the per-agent path does not read, and the depth row still decides — because
+	 * outranking one layer in isolation says nothing about the others.
 	 */
-	it("beats the blanket, the frontmatter, and the session model together", () => {
+	it("beats the frontmatter and the session model together", () => {
 		const settings = Settings.isolated({
 			"subagent.model": BLANKET,
 			"subagent.modelByDepth": { "1": DEPTH_ONE },
@@ -72,7 +79,9 @@ describe("a depth row outranks every existing layer at exactly its own depth", (
 
 	/**
 	 * A row is scoped to its own depth or the map is a second blanket wearing a
-	 * different name: the "1" row must not leak into a grandchild spawn.
+	 * different name: the "1" row must not leak into a grandchild spawn. The
+	 * frontmatter is what a spawn at another depth lands on, so a leaked row
+	 * shows up as `depth` where `frontmatter` belongs.
 	 */
 	it("decides nothing at any other depth", () => {
 		const settings = Settings.isolated({
@@ -81,9 +90,9 @@ describe("a depth row outranks every existing layer at exactly its own depth", (
 		});
 
 		for (const taskDepth of [2, 3, 10]) {
-			const resolved = resolveSubagentModel({ settings, agentName: AGENT, taskDepth });
-			expect(resolved.source, `depth ${taskDepth}`).toBe("blanket");
-			expect(resolved.patterns, `depth ${taskDepth}`).toEqual([BLANKET]);
+			const resolved = resolveSubagentModel({ settings, agentName: AGENT, agentModel: FRONTMATTER, taskDepth });
+			expect(resolved.source, `depth ${taskDepth}`).toBe("frontmatter");
+			expect(resolved.patterns, `depth ${taskDepth}`).toEqual([FRONTMATTER]);
 		}
 	});
 
@@ -101,31 +110,21 @@ describe("a depth row outranks every existing layer at exactly its own depth", (
 	});
 
 	/**
-	 * Depths without a row keep the old order, in full: blanket, then
-	 * frontmatter, then the session. Pinning only "miss → blanket" would leave
-	 * the rest of the chain free to rot.
+	 * Depths without a row keep the rest of the chain, in full: the agent's own frontmatter,
+	 * then the session's live model. Pinning only "a miss decides nothing" would leave the layers
+	 * under the row free to rot, and a blanket value set beside them must not stand in for either.
 	 */
-	it("leaves blanket, frontmatter and inherit in their old order when no row matches", () => {
-		const withBlanket = Settings.isolated({
+	it("falls to the frontmatter, then to the session, when no row matches", () => {
+		const settings = Settings.isolated({
 			"subagent.model": BLANKET,
 			"subagent.modelByDepth": { "2": DEPTH_TWO },
 		});
-		const withoutBlanket = Settings.isolated({ "subagent.modelByDepth": { "2": DEPTH_TWO } });
 
 		expect(
-			resolveSubagentModel({ settings: withBlanket, agentName: AGENT, agentModel: FRONTMATTER, taskDepth: 1 })
-				.patterns,
-		).toEqual([BLANKET]);
-		expect(
-			resolveSubagentModel({ settings: withoutBlanket, agentName: AGENT, agentModel: FRONTMATTER, taskDepth: 1 }),
+			resolveSubagentModel({ settings, agentName: AGENT, agentModel: FRONTMATTER, taskDepth: 1 }),
 		).toEqual({ patterns: [FRONTMATTER], source: "frontmatter", depth: undefined, unresolved: undefined });
 		expect(
-			resolveSubagentModel({
-				settings: withoutBlanket,
-				agentName: AGENT,
-				activeModelPattern: SESSION,
-				taskDepth: 1,
-			}),
+			resolveSubagentModel({ settings, agentName: AGENT, activeModelPattern: SESSION, taskDepth: 1 }),
 		).toEqual({ patterns: [SESSION], source: "inherit", depth: undefined, unresolved: undefined });
 	});
 
@@ -148,19 +147,26 @@ describe("a depth row outranks every existing layer at exactly its own depth", (
 
 describe("a depth row that matches no model refuses, naming its own row", () => {
 	/**
-	 * The same contract the blanket and frontmatter layers already keep: a
+	 * The same contract the lane and frontmatter layers already keep: a
 	 * configured value that expands to nothing comes back `unresolved` so the
 	 * spawn is refused and the setting named, rather than silently dropping to
-	 * the next layer. Here the blanket IS configured, so a fallthrough would
-	 * have something to fall to — which is exactly what must not happen.
+	 * the next layer. The frontmatter and the session model ARE configured here,
+	 * so a fallthrough would have something to fall to — which is exactly what
+	 * must not happen.
 	 */
-	it("does not fall through to the blanket", () => {
+	it("does not fall through to a lower layer", () => {
 		const settings = Settings.isolated({
 			"subagent.model": BLANKET,
 			"subagent.modelByDepth": { "2": "@no-such-role" },
 		});
 
-		const resolved = resolveSubagentModel({ settings, agentName: AGENT, taskDepth: 2 });
+		const resolved = resolveSubagentModel({
+			settings,
+			agentName: AGENT,
+			agentModel: FRONTMATTER,
+			activeModelPattern: SESSION,
+			taskDepth: 2,
+		});
 
 		expect(resolved.patterns).toEqual([]);
 		expect(resolved.source).toBe("depth");
@@ -187,8 +193,8 @@ describe("a caller with no depth keeps today's behavior", () => {
 	 * Depth 0 is the root session and an omitted depth is a surface describing
 	 * an agent rather than a spawn (the Agents table). Both must resolve
 	 * exactly as if the map did not exist, even with rows configured — a depth
-	 * row that reached the root would re-decide the SESSION's own delegates
-	 * behind the blanket's back.
+	 * row that reached the root would re-decide the SESSION's own delegates from
+	 * a setting that never claimed to.
 	 */
 	it("ignores every row at depth 0 and at no depth at all", () => {
 		const settings = Settings.isolated({
@@ -204,8 +210,8 @@ describe("a caller with no depth keeps today's behavior", () => {
 				activeModelPattern: SESSION,
 				taskDepth,
 			});
-			expect(resolved.source, `taskDepth ${String(taskDepth)}`).toBe("blanket");
-			expect(resolved.patterns, `taskDepth ${String(taskDepth)}`).toEqual([BLANKET]);
+			expect(resolved.source, `taskDepth ${String(taskDepth)}`).toBe("frontmatter");
+			expect(resolved.patterns, `taskDepth ${String(taskDepth)}`).toEqual([FRONTMATTER]);
 			expect(resolved.depth, `taskDepth ${String(taskDepth)}`).toBeUndefined();
 		}
 	});
