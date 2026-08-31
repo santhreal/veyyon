@@ -456,7 +456,7 @@ function elideTailToolResults(
 			prunedAt: Date.now(),
 		};
 		candidate.entry.message = replacement;
-		tailTokens -= Math.max(0, candidate.tokens - estimateTokens({ ...replacement } as AgentMessage));
+		tailTokens -= Math.max(0, candidate.tokens - estimateTokens(replacement as AgentMessage));
 		elisions.push({
 			entryId: candidate.entry.id,
 			toolName: candidate.message.toolName,
