@@ -199,6 +199,7 @@ pub fn all_command_variants() -> Vec<UiCommand> {
 		UiCommand::CancelThemePreview,
 		UiCommand::SetDarkAppearance(true),
 		UiCommand::SetFontSize { milli_px: 16_000 },
+		UiCommand::StepFontSize { larger: true },
 		UiCommand::SetReducedMotion(false),
 		UiCommand::SetDiffLayout(DiffLayout::Unified),
 		UiCommand::SetDiffWrap(true),

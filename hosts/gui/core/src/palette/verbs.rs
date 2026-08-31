@@ -75,6 +75,12 @@ pub(super) fn appearance(store: &Store) -> Group {
 			!preferences.dark,
 			UiCommand::SetDarkAppearance(false),
 		),
+		verb("appearance-text-larger", "Larger interface text", false, UiCommand::StepFontSize {
+			larger: true,
+		}),
+		verb("appearance-text-smaller", "Smaller interface text", false, UiCommand::StepFontSize {
+			larger: false,
+		}),
 		verb(
 			"appearance-reduced-motion",
 			"Toggle reduced motion",

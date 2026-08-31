@@ -215,6 +215,15 @@ pub fn menu_tree() -> Vec<MenuDef> {
 				},
 				MenuEntry::Separator,
 				MenuEntry::Action {
+					title:   "Larger Interface Text",
+					command: UiCommand::StepFontSize { larger: true },
+				},
+				MenuEntry::Action {
+					title:   "Smaller Interface Text",
+					command: UiCommand::StepFontSize { larger: false },
+				},
+				MenuEntry::Separator,
+				MenuEntry::Action {
 					title:   "Jump to Oldest Message",
 					command: UiCommand::JumpToOldest,
 				},

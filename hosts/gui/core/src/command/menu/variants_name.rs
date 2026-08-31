@@ -110,6 +110,7 @@ pub fn command_variant_name(command: &UiCommand) -> &'static str {
 		UiCommand::CancelThemePreview => "CancelThemePreview",
 		UiCommand::SetDarkAppearance(_) => "SetDarkAppearance",
 		UiCommand::SetFontSize { .. } => "SetFontSize",
+		UiCommand::StepFontSize { .. } => "StepFontSize",
 		UiCommand::SetReducedMotion(_) => "SetReducedMotion",
 		UiCommand::SetDiffLayout(_) => "SetDiffLayout",
 		UiCommand::SetDiffWrap(_) => "SetDiffWrap",

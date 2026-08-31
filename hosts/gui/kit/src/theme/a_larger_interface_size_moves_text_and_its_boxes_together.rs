@@ -327,3 +327,20 @@ fn the_windows_own_geometry_does_not_move_with_the_text() {
 		);
 	});
 }
+
+/// The row of sizes the appearance page offers is the list the chord and the
+/// menu item step through. Two lists would put the window at a size the page
+/// reports as no choice at all, which is how a reader loses the way back to the
+/// size the tokens were drawn at.
+#[test]
+fn the_page_offers_the_sizes_the_step_walks_through() {
+	let offered: Vec<u16> = tokens::size::CHOICES_PX
+		.iter()
+		.map(|px| (px * 1_000.0) as u16)
+		.collect();
+	assert_eq!(
+		offered,
+		veyyon_gui_core::navigation::font_size::CHOICES_MILLI_PX.to_vec(),
+		"the appearance page's sizes and the sizes a step walks through have drifted apart"
+	);
+}

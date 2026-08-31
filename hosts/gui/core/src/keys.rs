@@ -85,6 +85,11 @@ pub fn table() -> Vec<Row> {
 			UiCommand::Navigate(Route::Settings(SettingsPage::General)),
 		),
 		listed("secondary-b", Context::Everywhere, UiCommand::ToggleSidebar),
+		// The interface text size, on the chords every desktop uses for it.
+		// Written as the characters the keystroke carries: `secondary-plus` and
+		// `secondary-minus` parse and then match nothing.
+		listed("secondary-=", Context::Everywhere, UiCommand::StepFontSize { larger: true }),
+		listed("secondary--", Context::Everywhere, UiCommand::StepFontSize { larger: false }),
 		listed("secondary-shift-i", Context::Everywhere, UiCommand::ToggleInspector),
 		listed("secondary-shift-b", Context::Everywhere, UiCommand::ToggleBottomDock),
 		// The dock's tabs, on the chords an editor uses for the same three

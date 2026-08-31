@@ -24,6 +24,43 @@ pub mod font_size {
 	/// Twice the design size. Beyond this a sidebar holds two words and the
 	/// window is a column of truncations.
 	pub const MAX_MILLI_PX: u16 = DEFAULT_MILLI_PX * 2;
+
+	/// The sizes a reader steps through, smallest first.
+	///
+	/// Discrete rather than a fixed increment: the appearance page offers these
+	/// as a row of choices, and a chord that added a thousandth at a time would
+	/// leave the window at a size no choice on that page reports as current.
+	/// Held here, at the bottom of the ladder, so the page's row and the chord
+	/// step through one list.
+	pub const CHOICES_MILLI_PX: [u16; 5] = [12_000, DEFAULT_MILLI_PX, 15_000, 17_000, 20_000];
+
+	/// The next size up or down from `current`.
+	///
+	/// A size between two choices, or outside them, resolves to the nearest
+	/// choice in the direction asked for, so a preference written by another
+	/// build steps back onto the list rather than sticking.
+	pub fn stepped(current: u16, larger: bool) -> u16 {
+		let next = if larger {
+			CHOICES_MILLI_PX.iter().find(|choice| **choice > current)
+		} else {
+			CHOICES_MILLI_PX
+				.iter()
+				.rev()
+				.find(|choice| **choice < current)
+		};
+		match next {
+			Some(size) => *size,
+			// Already at an end: the reader stays at that end rather than
+			// wrapping around to the other one.
+			None if larger => MAX_ON_LIST,
+			None => MIN_ON_LIST,
+		}
+	}
+
+	/// The ends of [`CHOICES_MILLI_PX`], named so a step at an end cannot
+	/// index an empty list.
+	const MIN_ON_LIST: u16 = CHOICES_MILLI_PX[0];
+	const MAX_ON_LIST: u16 = CHOICES_MILLI_PX[CHOICES_MILLI_PX.len() - 1];
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
