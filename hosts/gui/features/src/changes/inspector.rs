@@ -272,6 +272,7 @@ fn pending_comments(store: &Store, theme: &Theme) -> Group {
 			AttachmentState::Ready => "ready",
 			AttachmentState::Failed { .. } => "failed",
 			AttachmentState::NeedsReattach { .. } => "needs reattach",
+			AttachmentState::Refused { .. } => "refused",
 		};
 		let remove_owner = owners::comment(&attachment.id);
 		group = group.child(

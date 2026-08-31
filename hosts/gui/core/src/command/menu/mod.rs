@@ -166,6 +166,7 @@ pub fn menu_tree() -> Vec<MenuDef> {
 				MenuEntry::Action { title: "Changes", command: UiCommand::Navigate(Route::Changes) },
 				MenuEntry::Action { title: "Files", command: UiCommand::Navigate(Route::Files) },
 				MenuEntry::Action { title: "Agents", command: UiCommand::Navigate(Route::Agents) },
+				MenuEntry::Action { title: "History", command: UiCommand::Navigate(Route::History) },
 				MenuEntry::Separator,
 				MenuEntry::Action { title: "Toggle Sidebar", command: UiCommand::ToggleSidebar },
 				MenuEntry::Action { title: "Toggle Inspector", command: UiCommand::ToggleInspector },

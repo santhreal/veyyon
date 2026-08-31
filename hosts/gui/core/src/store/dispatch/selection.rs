@@ -41,16 +41,12 @@ impl Store {
 						.entry(session.clone())
 						.or_default()
 						.attachments
-						.push(LocalAttachment {
-							id,
-							kind: AttachmentKind::ReviewComment {
-								path:       path.clone(),
-								start_line: range.start,
-								end_line:   range.end,
-								text:       text.clone(),
-							},
-							state: AttachmentState::Selected,
-						}),
+						.push(LocalAttachment::new(id, AttachmentKind::ReviewComment {
+							path:       path.clone(),
+							start_line: range.start,
+							end_line:   range.end,
+							text:       text.clone(),
+						})),
 					Err(error) => effects
 						.shell
 						.push(ShellEffect::Notify { message: error.to_string() }),
@@ -69,7 +65,10 @@ impl Store {
 			UiCommand::SetProviderQuery(value) => self.frontend.provider_query = value.clone(),
 			UiCommand::SetMcpQuery(value) => self.frontend.mcp_query = value.clone(),
 			UiCommand::SetExtensionQuery(value) => self.frontend.extension_query = value.clone(),
-			UiCommand::SelectSession(id) => self.frontend.selected_session = Some(id.clone()),
+			UiCommand::SelectSession(id) => {
+				self.frontend.spaces.open_tab(id.clone());
+				self.frontend.selected_session = self.frontend.spaces.active_session();
+			},
 			UiCommand::SelectEntry(id) => self.frontend.selected_entry = Some(id.clone()),
 			UiCommand::SelectFile(id) => self.frontend.selected_file = Some(id.clone()),
 			UiCommand::SelectAgent(id) => self.frontend.selected_agent = Some(id.clone()),

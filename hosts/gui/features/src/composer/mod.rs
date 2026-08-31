@@ -5,7 +5,7 @@ mod chips;
 mod completion;
 mod completions;
 mod controls;
-mod logic;
+pub mod logic;
 mod state;
 mod view;
 

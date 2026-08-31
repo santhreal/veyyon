@@ -53,19 +53,18 @@ fn typed_attachment_submissions_project_from_draft() {
 
 	let draft = store.frontend.drafts.entry(s.clone()).or_default();
 	draft.text = "Please check this code".to_owned();
-	draft.attachments.push(LocalAttachment {
-		id:    aid1.clone(),
-		kind:  AttachmentKind::File { path: "/src/main.rs".to_owned() },
-		state: AttachmentState::Selected,
+	draft
+		.attachments
+		.push(LocalAttachment::new(aid1.clone(), AttachmentKind::File {
+			path: "/src/main.rs".to_owned(),
+		}));
+	let mut failed_att = LocalAttachment::new(aid2, AttachmentKind::Image {
+		path: "/assets/logo.png".to_owned(),
+		alt:  Some("Logo".to_owned()),
 	});
-	draft.attachments.push(LocalAttachment {
-		id:    aid2,
-		kind:  AttachmentKind::Image {
-			path: "/assets/logo.png".to_owned(),
-			alt:  Some("Logo".to_owned()),
-		},
-		state: AttachmentState::Failed { message: "upload failed".to_owned(), retryable: true },
-	});
+	failed_att.state =
+		AttachmentState::Failed { message: "upload failed".to_owned(), retryable: true };
+	draft.attachments.push(failed_att);
 
 	let effects = store.dispatch(UiCommand::SubmitPrompt { session: s.clone() });
 	assert_eq!(effects.requests.len(), 1);

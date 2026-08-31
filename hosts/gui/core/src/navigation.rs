@@ -6,10 +6,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 mod drafts;
+mod history;
 mod preferences;
+mod review;
+mod spaces;
 
 pub use drafts::*;
+pub use history::*;
 pub use preferences::*;
+pub use review::*;
+pub use spaces::*;
 
 use crate::model::*;
 
@@ -64,6 +70,7 @@ pub enum Route {
 	Changes,
 	Files,
 	Agents,
+	History,
 	Settings(SettingsPage),
 }
 
@@ -296,6 +303,7 @@ pub struct FrontendState {
 	pub inspector_tab: InspectorTab,
 	pub overlays: Vec<Overlay>,
 	pub selected_session: Option<SessionId>,
+	pub spaces: SpacesState,
 	pub selected_entry: Option<EntryId>,
 	pub selected_file: Option<FileId>,
 	pub selected_agent: Option<AgentId>,
@@ -326,6 +334,7 @@ pub struct FrontendState {
 	pub collapsed_change_files: BTreeSet<FileId>,
 	pub change_base_intent: Option<String>,
 	pub review_range: Option<(String, LineRange)>,
+	pub review: ReviewState,
 	pub plan_review_tab: PlanReviewTab,
 	pub model_query: String,
 	pub provider_query: String,
@@ -348,4 +357,5 @@ pub struct FrontendState {
 	pub file_filter: String,
 	pub agent_filter: String,
 	pub settings_filter: String,
+	pub history: HistoryNavState,
 }

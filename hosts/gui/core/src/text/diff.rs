@@ -20,6 +20,10 @@ pub enum LineKind {
 	Removed,
 }
 
+impl LineKind {
+	pub const ALL: [Self; 3] = [Self::Context, Self::Added, Self::Removed];
+}
+
 /// One line inside a hunk, with the numbers it takes on each side.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiffLine {
@@ -51,6 +55,10 @@ pub enum Change {
 	Removed,
 	Renamed,
 	Modified,
+}
+
+impl Change {
+	pub const ALL: [Self; 4] = [Self::Added, Self::Removed, Self::Renamed, Self::Modified];
 }
 
 /// One file's worth of a patch.

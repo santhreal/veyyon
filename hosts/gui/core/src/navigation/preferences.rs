@@ -35,6 +35,10 @@ pub struct Preferences {
 	pub wrap_diff: bool,
 	pub show_whitespace: bool,
 	pub group_sessions_by_workspace: bool,
+	/// The theme the reader chose by name, or `None` for the one the window
+	/// picks from `dark`. A name the running build does not carry resolves to
+	/// that same default, so a state file written by a newer build still opens.
+	pub theme: Option<String>,
 }
 
 impl Default for Preferences {
@@ -47,6 +51,7 @@ impl Default for Preferences {
 			wrap_diff: false,
 			show_whitespace: false,
 			group_sessions_by_workspace: true,
+			theme: None,
 		}
 	}
 }

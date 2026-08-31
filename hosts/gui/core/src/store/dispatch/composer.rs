@@ -19,16 +19,22 @@ impl Store {
 				self.frontend.drafts.entry(session).or_default().caret = byte
 			},
 			UiCommand::SetDraftSelection { session, anchor, head } => {
-				self.frontend.drafts.entry(session).or_default().selection = Some((anchor, head))
+				self.frontend.drafts.entry(session).or_default().selection = Some((anchor, head));
 			},
 			UiCommand::AddAttachment { session, kind } => match self.next_attachment_id() {
-				Ok(id) => self
-					.frontend
-					.drafts
-					.entry(session)
-					.or_default()
-					.attachments
-					.push(LocalAttachment { id, kind, state: AttachmentState::Selected }),
+				Ok(id) => {
+					let mut item = LocalAttachment::new(id, kind);
+					if let Some(reason) = self.evaluate_attachment_refusal(&session, &item) {
+						item.state = AttachmentState::Refused { reason };
+					}
+					self
+						.frontend
+						.drafts
+						.entry(session)
+						.or_default()
+						.attachments
+						.push(item);
+				},
 				Err(error) => effects
 					.shell
 					.push(ShellEffect::Notify { message: error.to_string() }),
@@ -39,13 +45,26 @@ impl Store {
 				}
 			},
 			UiCommand::RetryAttachment { session, attachment } => {
-				if let Some(item) = self.frontend.drafts.get_mut(&session).and_then(|draft| {
-					draft
-						.attachments
-						.iter_mut()
-						.find(|item| item.id == attachment)
-				}) {
-					item.state = AttachmentState::Selected;
+				let item_clone = self
+					.frontend
+					.drafts
+					.get(&session)
+					.and_then(|draft| draft.attachments.iter().find(|item| item.id == attachment))
+					.cloned();
+				if let Some(item_clone) = item_clone {
+					let refusal = self.evaluate_attachment_refusal(&session, &item_clone);
+					if let Some(item) = self.frontend.drafts.get_mut(&session).and_then(|draft| {
+						draft
+							.attachments
+							.iter_mut()
+							.find(|item| item.id == attachment)
+					}) {
+						if let Some(reason) = refusal {
+							item.state = AttachmentState::Refused { reason };
+						} else {
+							item.state = AttachmentState::Selected;
+						}
+					}
 				}
 			},
 			UiCommand::ChooseFiles { session } => effects.shell.push(ShellEffect::ChooseAttachments {
@@ -101,17 +120,20 @@ impl Store {
 			},
 			UiCommand::AddTerminalSelection { session, terminal, text } => {
 				match self.next_attachment_id() {
-					Ok(id) => self
-						.frontend
-						.drafts
-						.entry(session)
-						.or_default()
-						.attachments
-						.push(LocalAttachment {
-							id,
-							kind: AttachmentKind::TerminalSelection { terminal, text },
-							state: AttachmentState::Selected,
-						}),
+					Ok(id) => {
+						let mut item =
+							LocalAttachment::new(id, AttachmentKind::TerminalSelection { terminal, text });
+						if let Some(reason) = self.evaluate_attachment_refusal(&session, &item) {
+							item.state = AttachmentState::Refused { reason };
+						}
+						self
+							.frontend
+							.drafts
+							.entry(session)
+							.or_default()
+							.attachments
+							.push(item);
+					},
 					Err(error) => effects
 						.shell
 						.push(ShellEffect::Notify { message: error.to_string() }),
@@ -176,6 +198,91 @@ impl Store {
 				draft.selection = None;
 				draft.attachments.clear();
 			}
+		}
+	}
+}
+
+impl Store {
+	pub fn evaluate_attachment_refusal(
+		&self,
+		session: &SessionId,
+		attachment: &LocalAttachment,
+	) -> Option<AttachmentRefusalReason> {
+		let runtime = self.session_runtime(session)?;
+		let constraints = &runtime.prompt_constraints;
+
+		if let Some(max) = constraints.max_attachments
+			&& let Some(draft) = self.frontend.drafts.get(session)
+		{
+			let current_count = draft
+				.attachments
+				.iter()
+				.filter(|item| item.id != attachment.id)
+				.count();
+			if current_count >= max {
+				return Some(AttachmentRefusalReason::TooManyAttachments {
+					count: current_count + 1,
+					max,
+				});
+			}
+		}
+
+		let active_model = runtime.model.as_ref().and_then(|mid| {
+			self.replica.models.readable().and_then(|catalog| {
+				catalog
+					.value
+					.models
+					.readable()
+					.and_then(|models| models.iter().find(|m| &m.id == mid))
+			})
+		});
+
+		if let Some(model) = active_model {
+			if let Availability::Unavailable { reason } = &model.availability {
+				return Some(AttachmentRefusalReason::ModelUnavailable { reason: reason.clone() });
+			}
+
+			if attachment.is_image()
+				&& !model.input_modalities.is_empty()
+				&& !model.input_modalities.iter().any(|m| m == "image")
+			{
+				return Some(AttachmentRefusalReason::UnsupportedModality {
+					modality: "image".to_owned(),
+				});
+			}
+
+			if let Some(max_bytes) = model.max_attachment_bytes {
+				let size = attachment.size();
+				if size > max_bytes {
+					return Some(AttachmentRefusalReason::SizeExceeded { size_bytes: size, max_bytes });
+				}
+			}
+		}
+
+		if let Some(max_bytes) = constraints.max_attachment_bytes {
+			let size = attachment.size();
+			if size > max_bytes {
+				return Some(AttachmentRefusalReason::SizeExceeded { size_bytes: size, max_bytes });
+			}
+		}
+
+		if !constraints.allowed_modalities.is_empty()
+			&& attachment.is_image()
+			&& !constraints.allowed_modalities.iter().any(|m| m == "image")
+		{
+			return Some(AttachmentRefusalReason::UnsupportedModality {
+				modality: "image".to_owned(),
+			});
+		}
+		None
+	}
+
+	pub fn session_runtime(&self, session: &SessionId) -> Option<&SessionRuntimeView> {
+		let runtime = &self.replica.runtime.readable()?.value;
+		if &runtime.session == session {
+			Some(runtime)
+		} else {
+			None
 		}
 	}
 }

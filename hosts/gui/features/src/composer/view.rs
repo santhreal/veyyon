@@ -50,10 +50,11 @@ pub fn main_composer(
 	let footer = composer_footer(store, runtime, draft, action, blocked.as_ref(), pending, &theme);
 	let mut chrome = ComposerChrome::new(field.clone())
 		.banner(banners::pending_context(store))
-		.context(chips::context_chips(store, cx))
-		.toolbar(controls)
-		.footer(footer)
-		.expanded(true);
+		.context(chips::context_chips(store, cx));
+	if let Some(strip) = crate::attachments::attachment_strip(store, cx) {
+		chrome = chrome.context(strip);
+	}
+	let mut chrome = chrome.toolbar(controls).footer(footer).expanded(true);
 	if let Some(menu) = completions::completion_menu(store, cx) {
 		chrome = chrome.banner(menu);
 	}

@@ -255,9 +255,6 @@ pub enum HostAction {
 		path: SettingPath,
 	},
 	LoadThemes,
-	SetTheme {
-		id: String,
-	},
 	LoadKeybindings,
 	SetKeybinding {
 		command: String,

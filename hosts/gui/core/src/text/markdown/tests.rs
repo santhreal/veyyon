@@ -11,6 +11,8 @@
 //! consuming these types. It does not validate full CommonMark HTML block
 //! parsing or reference-style link definitions.
 
+#[path = "a_streamed_fence_renders_as_the_shape_it_is_becoming.rs"]
+mod a_streamed_fence_renders_as_the_shape_it_is_becoming;
 mod blocks;
 mod inlines;
 

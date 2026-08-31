@@ -14,7 +14,8 @@
 //! font renders specific glyphs clearly.
 
 use super::{
-	contrast_pairs, contrast_ratio, entries, layout, radius, resolve_theme, scale, size, space,
+	Appearance, contrast_pairs, contrast_ratio, entries, layout, radius, resolve_theme, scale, size,
+	space,
 };
 
 #[test]
@@ -141,29 +142,38 @@ fn interface_scale_changes_do_not_alter_theme_colors() {
 
 #[test]
 fn theme_resolution_honors_known_and_reports_refused_unknown() {
-	// Known themes resolve without refusal.
+	// Known themes resolve without refusal, whatever the window's appearance.
 	for entry in entries() {
-		let report = resolve_theme(Some(entry.id));
-		assert_eq!(report.entry.id, entry.id, "theme `{}` did not resolve", entry.id);
-		assert_eq!(report.refused, None, "known theme `{}` was refused", entry.id);
+		for appearance in [Appearance::Dark, Appearance::Light] {
+			let report = resolve_theme(Some(entry.id), appearance);
+			assert_eq!(report.entry.id, entry.id, "theme `{}` did not resolve", entry.id);
+			assert_eq!(report.refused, None, "known theme `{}` was refused", entry.id);
+		}
 	}
 
-	// None resolves to default dark without refusal.
-	let default_report = resolve_theme(None);
-	assert_eq!(default_report.entry.id, "dark");
-	assert_eq!(default_report.refused, None);
+	// No name, and a name of nothing but spaces, resolve to the default of the
+	// appearance the window is on, and refuse nothing: the reader named no
+	// theme, so there is nothing to report as unavailable.
+	for (appearance, expected) in [(Appearance::Dark, "dark"), (Appearance::Light, "light")] {
+		for requested in [None, Some("   ")] {
+			let report = resolve_theme(requested, appearance);
+			assert_eq!(
+				report.entry.id, expected,
+				"a window with no theme chosen drew neither default for {appearance:?}"
+			);
+			assert_eq!(report.refused, None);
+		}
 
-	// Empty string resolves to default dark without refusal.
-	let empty_report = resolve_theme(Some("   "));
-	assert_eq!(empty_report.entry.id, "dark");
-	assert_eq!(empty_report.refused, None);
-
-	// Unknown theme resolves to default dark and reports refused name.
-	let unknown_report = resolve_theme(Some("nonexistent-theme-xyz"));
-	assert_eq!(unknown_report.entry.id, "dark");
-	assert_eq!(
-		unknown_report.refused,
-		Some("nonexistent-theme-xyz".to_string()),
-		"unknown theme was not reported in refusal"
-	);
+		// A name this build does not ship falls back to that same default and
+		// states the name, which is what the settings page reports. A light
+		// window falling back to the dark palette is the drift this pins: the
+		// frame installs what this resolves, so the two cannot disagree.
+		let unknown = resolve_theme(Some("nonexistent-theme-xyz"), appearance);
+		assert_eq!(unknown.entry.id, expected, "the refused fallback ignored the appearance");
+		assert_eq!(
+			unknown.refused,
+			Some("nonexistent-theme-xyz".to_string()),
+			"unknown theme was not reported in refusal"
+		);
+	}
 }

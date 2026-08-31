@@ -189,6 +189,80 @@ fn content_block_kinds_selection_and_copy() {
 }
 
 #[test]
+fn exhaustive_content_block_kinds_sweep() {
+	let blocks = [
+		ContentBlock::Text { text: "Hello text".to_string() },
+		ContentBlock::Thinking { text: "Thought process".to_string() },
+		ContentBlock::Execution {
+			language:  "bash".to_string(),
+			command:   Some("cargo check".to_string()),
+			output:    "Finished dev profile".to_string(),
+			exit_code: Some(0),
+		},
+		ContentBlock::Diff { raw: "--- a/foo.rs\n+++ b/foo.rs\n@@ -1,1 +1,2 @@\n+added".to_string() },
+		ContentBlock::ToolCall {
+			id:        ToolId::new("tool-1").unwrap(),
+			name:      "read_file".to_string(),
+			arguments: Value::Object(vec![(
+				"path".to_string(),
+				Value::String("src/main.rs".to_string()),
+			)]),
+		},
+		ContentBlock::ToolResult {
+			tool:     ToolId::new("tool-1").unwrap(),
+			content:  Value::Object(vec![("status".to_string(), Value::String("ok".to_string()))]),
+			is_error: false,
+		},
+		ContentBlock::FileMention {
+			path:               "src/lib.rs".to_string(),
+			has_content:        true,
+			lines:              Some(42),
+			bytes:              Some(1024),
+			unavailable_reason: None,
+			image:              None,
+		},
+		ContentBlock::Image {
+			media_type: "image/png".to_string(),
+			data:       vec![0; 16],
+			alt:        Some("Diagram of architecture".to_string()),
+		},
+		ContentBlock::RedactedThinking { marker: "[redacted]".to_string() },
+		ContentBlock::ModelChange {
+			provider: veyyon_gui_core::model::ProviderId::new("anthropic").unwrap(),
+			model:    veyyon_gui_core::model::ModelId::new("claude").unwrap(),
+		},
+		ContentBlock::ThinkingChange { level: "high".to_string() },
+		ContentBlock::Lifecycle { phase: "turn-start".to_string(), reason: None },
+		ContentBlock::Summary {
+			kind: "overview".to_string(),
+			text: "Summary of changes".to_string(),
+		},
+		ContentBlock::Fallback { producer: "test".to_string(), value: Value::Null },
+		ContentBlock::Unknown { tag: "custom".to_string(), value: Value::Null },
+	];
+
+	for block in &blocks {
+		match block {
+			ContentBlock::Text { text } => assert!(!text.is_empty()),
+			ContentBlock::Thinking { text } => assert!(!text.is_empty()),
+			ContentBlock::Execution { language, .. } => assert!(!language.is_empty()),
+			ContentBlock::Diff { raw } => assert!(!raw.is_empty()),
+			ContentBlock::ToolCall { name, .. } => assert!(!name.is_empty()),
+			ContentBlock::ToolResult { tool, .. } => assert!(!tool.as_str().is_empty()),
+			ContentBlock::FileMention { path, .. } => assert!(!path.is_empty()),
+			ContentBlock::Image { alt, .. } => assert!(alt.is_some()),
+			ContentBlock::RedactedThinking { marker } => assert!(!marker.is_empty()),
+			ContentBlock::ModelChange { provider, .. } => assert!(!provider.as_str().is_empty()),
+			ContentBlock::ThinkingChange { level } => assert!(!level.is_empty()),
+			ContentBlock::Lifecycle { phase, .. } => assert!(!phase.is_empty()),
+			ContentBlock::Summary { text, .. } => assert!(!text.is_empty()),
+			ContentBlock::Fallback { producer, .. } => assert!(!producer.is_empty()),
+			ContentBlock::Unknown { tag, .. } => assert!(!tag.is_empty()),
+		}
+	}
+}
+
+#[test]
 fn boundary_cases_selection_behavior() {
 	let elements = [
 		("r0", "First paragraph of entry one"),

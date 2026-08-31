@@ -13,7 +13,7 @@
 //! WHAT IT DOES NOT CATCH. Operating system level font substitutions or
 //! hardware display color profiles.
 use veyyon_gui_core::{Store, UiCommand};
-use veyyon_gui_kit::theme::{entries, resolve_theme};
+use veyyon_gui_kit::theme::{Appearance, entries, resolve_theme};
 
 #[test]
 fn theme_preview_is_ephemeral_and_does_not_mutate_preferences() {
@@ -41,37 +41,47 @@ fn theme_preview_is_ephemeral_and_does_not_mutate_preferences() {
 }
 
 #[test]
-fn theme_selection_persists_and_clears_active_preview() {
+fn theme_selection_persists_in_preferences_and_clears_the_preview() {
 	let mut store = Store::detached();
 
-	// Set an initial preview.
+	// A detached window themes itself: the choice is the window's preference,
+	// not an engine setting, so it lands with no host attached.
 	let _ = store.dispatch(UiCommand::PreviewTheme("midnight".to_string()));
 	assert_eq!(store.frontend.theme_preview.as_deref(), Some("midnight"));
 
-	// Selecting a theme dispatches SetTheme and clears preview.
 	let _ = store.dispatch(UiCommand::SetTheme("sand".to_string()));
+	assert_eq!(
+		store.frontend.preferences.theme.as_deref(),
+		Some("sand"),
+		"pressing a theme row left the choice out of the preferences the window persists"
+	);
+	assert_eq!(
+		store.frontend.theme_preview, None,
+		"the hover preview outlived the press that committed a theme"
+	);
 
-	// Dispatching SetTheme sends the HostAction to persist the selection.
-	// When applied, preview is cleared.
-	let _ = store.dispatch(UiCommand::CancelThemePreview);
-	assert_eq!(store.frontend.theme_preview, None);
+	// A second choice replaces the first rather than accumulating.
+	let _ = store.dispatch(UiCommand::SetTheme("midnight".to_string()));
+	assert_eq!(store.frontend.preferences.theme.as_deref(), Some("midnight"));
 }
 
 #[test]
-fn unknown_theme_identifier_falls_back_to_default_and_reports_refused_name() {
-	let report = resolve_theme(Some("missing-theme-name"));
-	assert_eq!(report.entry.id, "dark", "fallback must select default dark theme");
-	assert_eq!(
-		report.refused,
-		Some("missing-theme-name".to_string()),
-		"report must preserve the exact refused theme identifier"
-	);
+fn unknown_theme_identifier_falls_back_to_the_default_of_the_appearance() {
+	for (appearance, expected) in [(Appearance::Dark, "dark"), (Appearance::Light, "light")] {
+		let report = resolve_theme(Some("missing-theme-name"), appearance);
+		assert_eq!(report.entry.id, expected, "fallback ignored the window's appearance");
+		assert_eq!(
+			report.refused,
+			Some("missing-theme-name".to_string()),
+			"report must preserve the exact refused theme identifier"
+		);
+	}
 }
 
 #[test]
 fn all_library_themes_are_resolvable_without_refusal() {
 	for entry in entries() {
-		let report = resolve_theme(Some(entry.id));
+		let report = resolve_theme(Some(entry.id), entry.appearance);
 		assert_eq!(report.entry.id, entry.id);
 		assert_eq!(
 			report.refused, None,

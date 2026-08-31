@@ -209,12 +209,6 @@ impl Store {
 				Completion::None,
 				Some(Capability::Themes),
 			)),
-			UiCommand::SetTheme(id) => Some((
-				HostAction::SetTheme { id },
-				CommandTarget::Themes,
-				Completion::None,
-				Some(Capability::Themes),
-			)),
 			UiCommand::LoadKeybindings => Some((
 				HostAction::LoadKeybindings,
 				CommandTarget::Keybindings,

@@ -122,10 +122,11 @@ pub struct QueueState {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PromptConstraints {
-	pub max_characters:     Option<usize>,
-	pub max_attachments:    Option<usize>,
-	pub allowed_modalities: Vec<String>,
-	pub validation_error:   Option<String>,
+	pub max_characters:       Option<usize>,
+	pub max_attachments:      Option<usize>,
+	pub max_attachment_bytes: Option<u64>,
+	pub allowed_modalities:   Vec<String>,
+	pub validation_error:     Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

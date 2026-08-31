@@ -18,7 +18,7 @@ use crate::agents::{format, logic};
 pub fn render(store: &Store, cx: &mut App) -> Div {
 	let mut body = text::stack(space::BASE).w_full();
 	body = match store.frontend.route {
-		Route::Conversation => body.child(conversation(store, cx)),
+		Route::Conversation | Route::History => body.child(conversation(store, cx)),
 		Route::Agents => body.child(agent(store, cx)),
 		Route::Files | Route::Changes => body.child(file(store, cx)),
 		Route::Settings(page) => body.child(

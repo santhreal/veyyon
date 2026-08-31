@@ -55,8 +55,9 @@ impl Timeline {
 		error: Option<(&str, bool)>,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		let doc = self.document_elements();
+		veyyon_gui_kit::input::selection::publish_document(&doc);
 		let weak = cx.weak_entity();
-		let weak_click = weak.clone();
 		let mut root = div()
 			.id("transcript-root")
 			.key_context("Transcript")
@@ -83,23 +84,15 @@ impl Timeline {
 					window.refresh();
 				}
 			})
-			.on_mouse_down(gpui::MouseButton::Left, move |event: &gpui::MouseDownEvent, window, cx| {
-				if event.modifiers.shift {
-					if let Some(timeline) = weak_click.upgrade() {
-						timeline.update(cx, |timeline, _| {
-							let doc = timeline.document_elements();
-							let refs: Vec<(&str, &str)> =
-								doc.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-							if let Some((first_key, _)) = refs.first() {
-								veyyon_gui_kit::input::selection::extend_anchor(first_key, 0, &refs);
-							}
-						});
+			.on_mouse_down(
+				gpui::MouseButton::Left,
+				move |event: &gpui::MouseDownEvent, window, _cx| {
+					if !event.modifiers.shift && !veyyon_gui_kit::input::selection::is_dragging() {
+						veyyon_gui_kit::input::selection::clear();
 					}
-				} else if event.click_count == 1 {
-					veyyon_gui_kit::input::selection::clear();
-				}
-				window.refresh();
-			})
+					window.refresh();
+				},
+			)
 			.on_mouse_up(gpui::MouseButton::Left, move |_, window, _| {
 				if let Some(_text) = veyyon_gui_kit::input::selection::end_active_drag() {
 					window.refresh();

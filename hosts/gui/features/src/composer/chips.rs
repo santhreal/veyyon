@@ -49,7 +49,11 @@ fn chip(
 			text::line(attachment_label(&attachment.kind))
 				.flex_1()
 				.min_w(px(0.0)),
-		);
+		)
+		.child(text::meta(
+			format!("{} • {}", attachment.display_type(), attachment.formatted_size()),
+			theme,
+		));
 	match &attachment.state {
 		AttachmentState::Selected => {
 			row = row.child(Badge::new("Selected").tone(Tone::Muted).bare());
@@ -65,7 +69,9 @@ fn chip(
 			row = row.child(Badge::new("Ready").tone(Tone::Ok).bare());
 		},
 		AttachmentState::Failed { message, retryable } => {
-			row = row.child(Badge::new("Upload failed").tone(Tone::Danger).bare());
+			row = row
+				.child(Badge::new("Failed").tone(Tone::Danger).bare())
+				.child(text::meta(message.clone(), theme));
 			let mut retry =
 				Button::new(format!("retry-attachment:{}", attachment.id), retry_owner, Icon::Retry)
 					.tip("Retry upload")
@@ -76,6 +82,19 @@ fn chip(
 			if !retryable {
 				retry = retry.disabled(message.clone());
 			}
+			row = row.child(retry);
+		},
+		AttachmentState::Refused { reason } => {
+			row = row
+				.child(Badge::new("Refused").tone(Tone::Danger).bare())
+				.child(text::meta(reason.reason_text(), theme));
+			let retry =
+				Button::new(format!("retry-attachment:{}", attachment.id), retry_owner, Icon::Retry)
+					.tip("Retry attachment")
+					.on_click(act::click(UiCommand::RetryAttachment {
+						session:    session.clone(),
+						attachment: attachment.id.clone(),
+					}));
 			row = row.child(retry);
 		},
 		AttachmentState::NeedsReattach { reason } => {

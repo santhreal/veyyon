@@ -180,6 +180,15 @@ fn changed_file(file: &ChangedFileView, depth: u8, store: &Store, owner: Retaine
 				.bare(),
 		);
 	}
+	let unresolved = store.frontend.review.unresolved_count_for_file(&file.path);
+	if unresolved > 0 {
+		row = row.child(
+			Badge::new(format!("{unresolved}"))
+				.icon(Icon::Review)
+				.tone(Tone::Warn)
+				.bare(),
+		);
+	}
 
 	let actions = div()
 		.flex()

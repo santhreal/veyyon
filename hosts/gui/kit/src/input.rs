@@ -185,6 +185,8 @@ fn rows_of(line: &WrappedLine, line_start: usize) -> Vec<(usize, usize)> {
 }
 
 #[cfg(test)]
+mod a_drag_across_the_transcript_selects_what_the_pointer_crossed;
+#[cfg(test)]
 mod a_selection_spans_runs_normalises_and_respects_grapheme_clusters;
 #[cfg(test)]
 mod tests;

@@ -94,15 +94,49 @@ pub fn lexed_keyed(key: &str, lang: &str, body: &str, theme: &Theme) -> Div {
 		.collect();
 	let runs = veyyon_gui_kit::input::selection::apply_selection_highlights(body, key, runs, theme);
 
-	div()
+	let text = StyledText::new(body.to_owned()).with_highlights(runs);
+	let base = div()
 		.w_full()
 		.min_w(px(0.0))
 		.whitespace_nowrap()
 		.font_family(theme.font_mono)
 		.text_size(px(size::meta()))
 		.line_height(px(size::meta() * size::LINE_CODE))
-		.text_color(theme.text)
-		.child(StyledText::new(body.to_owned()).with_highlights(runs))
+		.text_color(theme.text);
+
+	if key.is_empty() {
+		return base.child(text);
+	}
+
+	let layout = text.layout().clone();
+	let key_down = key.to_string();
+	let key_move = key.to_string();
+	let layout_down = layout.clone();
+	let layout_move = layout.clone();
+
+	base
+		.child(text)
+		.on_mouse_down(gpui::MouseButton::Left, move |event: &gpui::MouseDownEvent, window, _cx| {
+			let offset = match layout_down.index_for_position(event.position) {
+				Ok(ix) | Err(ix) => ix,
+			};
+			if event.modifiers.shift {
+				veyyon_gui_kit::input::selection::extend_anchor_at(&key_down, offset);
+			} else {
+				veyyon_gui_kit::input::selection::begin_at(&key_down, offset);
+			}
+			window.refresh();
+		})
+		.on_mouse_move(move |event: &gpui::MouseMoveEvent, window, _cx| {
+			if veyyon_gui_kit::input::selection::is_dragging() {
+				let offset = match layout_move.index_for_position(event.position) {
+					Ok(ix) | Err(ix) => ix,
+				};
+				if veyyon_gui_kit::input::selection::drag_to(&key_move, offset) {
+					window.refresh();
+				}
+			}
+		})
 }
 
 pub fn canonical_language(lang: &str) -> &str {

@@ -155,6 +155,35 @@ pub fn get(id: &str) -> Option<&'static ThemeEntry> {
 	})
 }
 
+/// The entry the window draws when no name was chosen, or when the chosen name
+/// is one this build does not ship.
+fn default_entry(appearance: Appearance) -> &'static ThemeEntry {
+	match appearance {
+		Appearance::Dark => &VEYYON_DARK,
+		Appearance::Light => &VEYYON_LIGHT,
+	}
+}
+
+/// Install the palette every token of the next frame is read from: the theme
+/// named by `chosen` when this build ships it, and the default of `appearance`
+/// otherwise.
+///
+/// Here rather than in the frame because the palettes are here, and because the
+/// window has two sources for the name — the persisted choice and the hover
+/// preview — which have to resolve the same way. Writes the global only on a
+/// change, so an unchanged frame notifies no observer of it. The same
+/// [`resolve`] the settings page reads decides which palette this is, so the
+/// row marked active and the frame drawn cannot name two different themes.
+pub fn install(chosen: Option<&str>, appearance: Appearance, cx: &mut gpui::App) {
+	let mut theme = resolve(chosen, appearance).entry.theme;
+	let (ui, mono) = palette::families();
+	theme.font_ui = ui;
+	theme.font_mono = mono;
+	if Theme::get(cx) != theme {
+		cx.set_global(theme);
+	}
+}
+
 /// Fallback report when resolving a requested theme identifier.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolutionReport {
@@ -162,21 +191,17 @@ pub struct ResolutionReport {
 	pub refused: Option<String>,
 }
 
-/// Resolves a requested theme identifier with honest fallback reporting.
-pub fn resolve(requested: Option<&str>) -> ResolutionReport {
-	let Some(id) = requested else {
-		return ResolutionReport { entry: &VEYYON_DARK, refused: None };
+/// Resolves a requested theme identifier against the themes this build ships,
+/// falling back to the default of `appearance` and stating the name refused.
+pub fn resolve(requested: Option<&str>, appearance: Appearance) -> ResolutionReport {
+	let fallback = default_entry(appearance);
+	let Some(trimmed) = requested.map(str::trim).filter(|id| !id.is_empty()) else {
+		return ResolutionReport { entry: fallback, refused: None };
 	};
 
-	let trimmed = id.trim();
-	if trimmed.is_empty() {
-		return ResolutionReport { entry: &VEYYON_DARK, refused: None };
-	}
-
-	if let Some(entry) = get(trimmed) {
-		ResolutionReport { entry, refused: None }
-	} else {
-		ResolutionReport { entry: &VEYYON_DARK, refused: Some(trimmed.to_string()) }
+	match get(trimmed) {
+		Some(entry) => ResolutionReport { entry, refused: None },
+		None => ResolutionReport { entry: fallback, refused: Some(trimmed.to_string()) },
 	}
 }
 /// Returns view models for all available library themes.

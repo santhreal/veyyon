@@ -6,12 +6,10 @@ use gpui::{
 };
 use veyyon_gui_core::{
 	Store, UiCommand,
-	model::{CommandState, ThemeState, Versioned},
-	store::CommandTarget,
+	model::{ThemeState, Versioned},
 };
 use veyyon_gui_kit::{
-	motion::{OwnerNamespace, owner},
-	theme::{Theme, entries as library_entries, resolve_theme, size, space},
+	theme::{Appearance, Theme, entries as library_entries, resolve_theme, size, space},
 	ui::{Badge, Banner, Field, Fill, Group, Icon, Size, Tabs, Tone, text},
 };
 
@@ -80,12 +78,13 @@ pub fn render(store: &Store, cx: &mut App) -> AnyElement {
 /// persistence.
 fn theme_library_group(store: &Store, cx: &mut App) -> AnyElement {
 	let _theme = Theme::get(cx);
-	let selected_id = store
-		.replica
-		.themes
-		.readable()
-		.and_then(|t| t.value.selected.as_deref());
-	let report = resolve_theme(selected_id);
+	let selected_id = store.frontend.preferences.theme.as_deref();
+	let appearance = if store.frontend.preferences.dark {
+		Appearance::Dark
+	} else {
+		Appearance::Light
+	};
+	let report = resolve_theme(selected_id, appearance);
 	let current_id = report.entry.id;
 
 	let mut stack = text::stack(space::BASE);
@@ -166,7 +165,6 @@ fn theme_library_group(store: &Store, cx: &mut App) -> AnyElement {
 
 		actions = actions.child(use_btn);
 
-		let owner_key = owner(OwnerNamespace::Settings, "theme-row", entry.id);
 		let row_interactive =
 			div()
 				.id(format!("theme-row-{}", entry.id))
@@ -188,7 +186,6 @@ fn theme_library_group(store: &Store, cx: &mut App) -> AnyElement {
 
 		let row_element = row_interactive.child(field_content).into_any_element();
 
-		let _ = owner_key;
 		group = group.child(row_element);
 	}
 
@@ -202,76 +199,38 @@ fn theme_registry(store: &Store, cx: &mut App) -> AnyElement {
 		remote::Copy {
 			loading:     "Loading profile themes",
 			empty:       "No profile themes",
-			empty_note:  "Built-in themes remain active.",
+			empty_note:  "The window draws from its own palettes.",
 			detached:    "Profile themes are not loaded",
 			unavailable: "Themes are unavailable",
 		},
 		UiCommand::LoadThemes,
-		|versioned: &Versioned<ThemeState>, mutable, cx| {
-			theme_rows(store, &versioned.value, mutable, cx)
-		},
+		|versioned: &Versioned<ThemeState>, _mutable, cx| theme_rows(&versioned.value, cx),
 		cx,
 	)
 }
 
-fn theme_rows(store: &Store, themes: &ThemeState, mutable: bool, cx: &mut App) -> AnyElement {
+/// Lists the themes installed in the profile. A profile theme carries a name
+/// and an appearance, not a palette, so the window cannot draw one: these rows
+/// state what the terminal interface uses and offer no selection.
+fn theme_rows(themes: &ThemeState, cx: &mut App) -> AnyElement {
 	if themes.available.is_empty() {
 		return div().into_any_element();
 	}
 	let _theme = Theme::get(cx);
-	let state = store.command_state(&CommandTarget::Themes);
-	let mut stack = text::stack(space::BASE);
-	if let CommandState::Failed { message, .. } = &state {
-		stack = stack.child(Banner::failure("Theme change failed").detail(message.clone()));
-	}
-	let mut group = Group::new("Profile Themes").note("Custom themes installed from your profile.");
+	let mut group = Group::new("Profile Themes")
+		.note("Installed in your profile and applied to the terminal interface.");
 	for option in &themes.available {
-		let previewing = store.frontend.theme_preview.as_deref() == Some(option.id.as_str());
-		let selected = themes.selected.as_deref() == Some(option.id.as_str());
-		let mut actions = div().flex().flex_wrap().items_center().gap(px(space::SNUG));
-		if previewing {
-			actions = actions
-				.child(Badge::new("Preview").tone(Tone::Accent))
-				.child(
-					crate::settings::controls::button(format!("cancel-theme-{}", option.id), "Cancel")
-						.fill(Fill::Ghost)
-						.size(Size::Small)
-						.on_click(act::click(UiCommand::CancelThemePreview)),
-				);
-		} else {
-			actions = actions.child(
-				crate::settings::controls::button(format!("preview-theme-{}", option.id), "Preview")
-					.fill(Fill::Ghost)
-					.size(Size::Small)
-					.on_click(act::click(UiCommand::PreviewTheme(option.id.clone()))),
-			);
+		let mut row = Field::new(option.name.clone())
+			.stacked()
+			.note(if option.dark {
+				"Dark theme"
+			} else {
+				"Light theme"
+			});
+		if themes.selected.as_deref() == Some(option.id.as_str()) {
+			row = row.child(Badge::new("Terminal").icon(Icon::Check).tone(Tone::Ok));
 		}
-		if selected {
-			actions = actions.child(Badge::new("Current").icon(Icon::Check).tone(Tone::Ok));
-		}
-		let mut use_btn =
-			crate::settings::controls::button(format!("use-theme-{}", option.id), "Use theme")
-				.fill(Fill::Tinted)
-				.tone(Tone::Accent)
-				.size(Size::Small);
-		if matches!(state, CommandState::Pending { .. }) {
-			use_btn = use_btn.disabled("Theme change in progress");
-		} else if !mutable {
-			use_btn = use_btn.disabled("Themes are read-only");
-		} else {
-			use_btn = use_btn.on_click(act::click(UiCommand::SetTheme(option.id.clone())));
-		}
-		actions = actions.child(use_btn);
-		group = group.child(
-			Field::new(option.name.clone())
-				.stacked()
-				.note(if option.dark {
-					"Dark theme"
-				} else {
-					"Light theme"
-				})
-				.child(actions),
-		);
+		group = group.child(row);
 	}
-	stack.child(group).into_any_element()
+	text::stack(space::BASE).child(group).into_any_element()
 }

@@ -107,14 +107,17 @@ pub(crate) struct PendingRecord {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Store {
-	pub connection:  ConnectionState,
-	pub replica:     Replica,
-	pub frontend:    FrontendState,
-	next_request:    RequestId,
-	next_attachment: u64,
-	outbox:          VecDeque<HostRequest>,
-	pending:         BTreeMap<RequestId, PendingRecord>,
-	command_states:  BTreeMap<CommandTarget, CommandState>,
+	pub connection:      ConnectionState,
+	pub replica:         Replica,
+	pub frontend:        FrontendState,
+	next_request:        RequestId,
+	next_attachment:     u64,
+	next_review_thread:  u64,
+	next_review_comment: u64,
+	next_change_request: u64,
+	outbox:              VecDeque<HostRequest>,
+	pending:             BTreeMap<RequestId, PendingRecord>,
+	command_states:      BTreeMap<CommandTarget, CommandState>,
 }
 
 impl Store {
@@ -126,6 +129,9 @@ impl Store {
 			frontend,
 			next_request: RequestId::FIRST,
 			next_attachment: 1,
+			next_review_thread: 1,
+			next_review_comment: 1,
+			next_change_request: 1,
 			outbox: VecDeque::new(),
 			pending: BTreeMap::new(),
 			command_states: BTreeMap::new(),
@@ -172,6 +178,24 @@ impl Store {
 		let value = self.next_attachment;
 		self.next_attachment = self.next_attachment.saturating_add(1);
 		AttachmentId::new(format!("attachment-{value}"))
+	}
+
+	pub(crate) fn next_review_thread_id(&mut self) -> ReviewThreadId {
+		let value = self.next_review_thread;
+		self.next_review_thread = self.next_review_thread.saturating_add(1);
+		ReviewThreadId::new(format!("thread-{value}"))
+	}
+
+	pub(crate) fn next_review_comment_id(&mut self) -> ReviewCommentId {
+		let value = self.next_review_comment;
+		self.next_review_comment = self.next_review_comment.saturating_add(1);
+		ReviewCommentId::new(format!("comment-{value}"))
+	}
+
+	pub(crate) fn next_change_request_id(&mut self) -> ChangeRequestId {
+		let value = self.next_change_request;
+		self.next_change_request = self.next_change_request.saturating_add(1);
+		ChangeRequestId::new(format!("cr-{value}"))
 	}
 }
 

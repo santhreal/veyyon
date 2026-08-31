@@ -49,7 +49,11 @@ impl Store {
 				{
 					value.value.parsed = crate::text::diff::parse(raw);
 				}
-				replace_newer(&mut self.replica.changes, value)
+				let changed = replace_newer(&mut self.replica.changes, value);
+				if changed && let Some(versioned) = self.replica.changes.readable() {
+					self.frontend.review.remap_anchors(&versioned.value.parsed);
+				}
+				changed
 			},
 			SnapshotSection::Terminals(value) => replace_newer(&mut self.replica.terminals, value),
 			SnapshotSection::Processes(value, completions) => {

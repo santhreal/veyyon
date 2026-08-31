@@ -34,6 +34,42 @@ pub fn navigation_opt_outs() -> &'static [OptOut] {
 			reason:       "session unpin toggle targeted to a specific session ID",
 		},
 		OptOut {
+			command_name: "OpenTab",
+			reason:       "session tab open targeted to a specific session ID",
+		},
+		OptOut {
+			command_name: "CloseTab",
+			reason:       "tab closure targeted to a specific tab index",
+		},
+		OptOut {
+			command_name: "MoveTab",
+			reason:       "tab reordering index move dispatched by pointer dragging",
+		},
+		OptOut {
+			command_name: "SelectTab",
+			reason:       "tab selection targeted to a specific tab index",
+		},
+		OptOut {
+			command_name: "CycleTabs",
+			reason:       "tab cycling bound to keyboard shortcuts and tab strip gestures",
+		},
+		OptOut {
+			command_name: "CreateSpace",
+			reason:       "space creation prompted or dispatched from space switcher",
+		},
+		OptOut {
+			command_name: "RenameSpace",
+			reason:       "space renaming targeted to a specific space ID",
+		},
+		OptOut {
+			command_name: "CloseSpace",
+			reason:       "space closure targeted to a specific space ID",
+		},
+		OptOut {
+			command_name: "SelectSpace",
+			reason:       "space selection targeted to a specific space ID",
+		},
+		OptOut {
 			command_name: "SelectSession",
 			reason:       "session selection targeted to a specific session ID",
 		},
@@ -86,6 +122,54 @@ pub fn navigation_opt_outs() -> &'static [OptOut] {
 			reason:       "review comment submitted with specific session, path, range, and text",
 		},
 		OptOut {
+			command_name: "StartReviewThread",
+			reason:       "review thread created with specific path, line range, and initial comment",
+		},
+		OptOut {
+			command_name: "ReplyReviewThread",
+			reason:       "review reply submitted for specific thread",
+		},
+		OptOut {
+			command_name: "EditReviewDraft",
+			reason:       "review comment draft edited in contextual review composer",
+		},
+		OptOut {
+			command_name: "ResolveReviewThread",
+			reason:       "review thread resolved by card action in review surface",
+		},
+		OptOut {
+			command_name: "UnresolveReviewThread",
+			reason:       "review thread unresolved by card action in review surface",
+		},
+		OptOut {
+			command_name: "ToggleReviewThreadResolved",
+			reason:       "review thread resolved status toggled by card control",
+		},
+		OptOut {
+			command_name: "DeleteReviewThread",
+			reason:       "review thread deleted by card action",
+		},
+		OptOut {
+			command_name: "DeleteReviewComment",
+			reason:       "review comment deleted by comment card action",
+		},
+		OptOut {
+			command_name: "SelectReviewThread",
+			reason:       "review thread selected to focus anchor in changes route",
+		},
+		OptOut {
+			command_name: "CreateChangeRequest",
+			reason:       "change request created with title and thread associations",
+		},
+		OptOut {
+			command_name: "SetChangeRequestState",
+			reason:       "change request status set from change request card",
+		},
+		OptOut {
+			command_name: "RemapReviewAnchors",
+			reason:       "review anchors remapped on diff arrival",
+		},
+		OptOut {
 			command_name: "SetChangeBase",
 			reason:       "git diff base set by changes view branch selector",
 		},
@@ -120,6 +204,26 @@ pub fn navigation_opt_outs() -> &'static [OptOut] {
 		OptOut {
 			command_name: "OpenFileCursor",
 			reason:       "file tree entry opened by keyboard Enter in file tree",
+		},
+		OptOut {
+			command_name: "SetHistoryFilter",
+			reason:       "continuous text input from history search field",
+		},
+		OptOut {
+			command_name: "SetHistoryGroupBy",
+			reason:       "history grouping mode selected from in-surface controls",
+		},
+		OptOut {
+			command_name: "ToggleHistoryGroup",
+			reason:       "history section disclosure toggled by clicking group header",
+		},
+		OptOut {
+			command_name: "CollapseAllHistoryGroups",
+			reason:       "history section collapse all dispatched from in-surface controls",
+		},
+		OptOut {
+			command_name: "ExpandAllHistoryGroups",
+			reason:       "history section expand all dispatched from in-surface controls",
 		},
 		OptOut {
 			command_name: "SetFileSearchMode",

@@ -22,11 +22,12 @@ fn constraints() -> GateContext<'static> {
 }
 
 fn attachment(state: AttachmentState) -> LocalAttachment {
-	LocalAttachment {
-		id: AttachmentId::new("attachment").expect("valid id"),
-		kind: AttachmentKind::File { path: "/repo/input.txt".to_owned() },
-		state,
-	}
+	let mut att = LocalAttachment::new(
+		AttachmentId::new("attachment").expect("valid id"),
+		AttachmentKind::File { path: "/repo/input.txt".to_owned() },
+	);
+	att.state = state;
+	att
 }
 
 #[test]
@@ -126,10 +127,11 @@ fn runtime(turn: TurnState, active_submission: SubmissionMode) -> SessionRuntime
 		context: None,
 		turn,
 		prompt_constraints: RuntimeConstraints {
-			max_characters:     None,
-			max_attachments:    None,
-			allowed_modalities: Vec::new(),
-			validation_error:   None,
+			max_characters:       None,
+			max_attachments:      None,
+			max_attachment_bytes: None,
+			allowed_modalities:   Vec::new(),
+			validation_error:     None,
 		},
 	}
 }

@@ -28,6 +28,7 @@ pub enum Blocked<'a> {
 	Uploading,
 	UploadFailed(&'a str),
 	NeedsReattach(&'a str),
+	AttachmentRefused(String),
 	Invalid(&'a str),
 	Oversize { characters: usize, maximum: usize },
 	TooManyAttachments { attachments: usize, maximum: usize },
@@ -44,6 +45,7 @@ impl Blocked<'_> {
 			| Self::UploadFailed(reason)
 			| Self::NeedsReattach(reason)
 			| Self::Invalid(reason) => (*reason).to_owned(),
+			Self::AttachmentRefused(reason) => reason.clone(),
 			Self::Uploading => "Wait for every attachment upload to finish".to_owned(),
 			Self::Oversize { characters, maximum } => {
 				format!("Draft has {characters} characters; the active provider allows {maximum}")
@@ -142,6 +144,9 @@ pub fn blocked<'a>(draft: Option<&'a Draft>, context: GateContext<'a>) -> Option
 			},
 			AttachmentState::NeedsReattach { reason } => {
 				return Some(Blocked::NeedsReattach(reason));
+			},
+			AttachmentState::Refused { reason } => {
+				return Some(Blocked::AttachmentRefused(reason.reason_text()));
 			},
 			AttachmentState::Selected | AttachmentState::Ready => {},
 		}

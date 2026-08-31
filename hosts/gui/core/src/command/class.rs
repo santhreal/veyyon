@@ -27,15 +27,41 @@ impl UiCommand {
 			| Self::PinSession(_)
 			| Self::UnpinSession(_)
 			| Self::CycleSession { .. }
+			| Self::OpenTab(_)
+			| Self::CloseTab { .. }
+			| Self::MoveTab { .. }
+			| Self::SelectTab(_)
+			| Self::CycleTabs { .. }
+			| Self::CreateSpace { .. }
+			| Self::RenameSpace { .. }
+			| Self::CloseSpace(_)
+			| Self::SelectSpace(_)
 			| Self::SetFileFilter(_)
 			| Self::SetAgentFilter(_)
 			| Self::SetSettingsFilter(_)
+			| Self::SetHistoryFilter(_)
+			| Self::SetHistoryGroupBy(_)
+			| Self::ToggleHistoryGroup(_)
+			| Self::CollapseAllHistoryGroups
+			| Self::ExpandAllHistoryGroups
 			| Self::SetChangesFilter(_)
 			| Self::SetChangesTreeMode(_)
 			| Self::ToggleChangeFolder(_)
 			| Self::ToggleChangeFile(_)
 			| Self::SetReviewRange { .. }
 			| Self::AddReviewComment { .. }
+			| Self::StartReviewThread { .. }
+			| Self::ReplyReviewThread { .. }
+			| Self::EditReviewDraft { .. }
+			| Self::ResolveReviewThread(_)
+			| Self::UnresolveReviewThread(_)
+			| Self::ToggleReviewThreadResolved(_)
+			| Self::DeleteReviewThread(_)
+			| Self::DeleteReviewComment { .. }
+			| Self::SelectReviewThread(_)
+			| Self::CreateChangeRequest { .. }
+			| Self::SetChangeRequestState { .. }
+			| Self::RemapReviewAnchors
 			| Self::SetProblemFilter(_)
 			| Self::ToggleProblemLevel(_)
 			| Self::SetOutputPaused(_)
@@ -77,6 +103,7 @@ impl UiCommand {
 			| Self::SetModelFavorite { .. }
 			| Self::EditSetting { .. }
 			| Self::PreviewTheme(_)
+			| Self::SetTheme(_)
 			| Self::CancelThemePreview
 			| Self::SetDarkAppearance(_)
 			| Self::SetFontSize { .. }
@@ -190,7 +217,6 @@ impl UiCommand {
 			| Self::SetSetting { .. }
 			| Self::ResetSetting(_)
 			| Self::LoadThemes
-			| Self::SetTheme(_)
 			| Self::LoadKeybindings
 			| Self::SetKeybinding { .. }
 			| Self::RefreshDiagnostics

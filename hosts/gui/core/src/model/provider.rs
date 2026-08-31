@@ -4,17 +4,18 @@ use super::{AccountId, CommandState, ModelId, ProviderId, RemoteData};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ModelOption {
-	pub id:                ModelId,
-	pub provider:          ProviderId,
-	pub name:              String,
-	pub context_window:    Option<u64>,
-	pub reasoning:         bool,
-	pub thinking_mode:     Option<String>,
-	pub supported_efforts: Vec<String>,
-	pub default_effort:    Option<String>,
-	pub input_modalities:  Vec<String>,
-	pub tool_support:      Option<bool>,
-	pub availability:      Availability,
+	pub id:                   ModelId,
+	pub provider:             ProviderId,
+	pub name:                 String,
+	pub context_window:       Option<u64>,
+	pub max_attachment_bytes: Option<u64>,
+	pub reasoning:            bool,
+	pub thinking_mode:        Option<String>,
+	pub supported_efforts:    Vec<String>,
+	pub default_effort:       Option<String>,
+	pub input_modalities:     Vec<String>,
+	pub tool_support:         Option<bool>,
+	pub availability:         Availability,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

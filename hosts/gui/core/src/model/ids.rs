@@ -35,6 +35,10 @@ macro_rules! text_id {
 			pub fn as_str(&self) -> &str {
 				&self.0
 			}
+
+			pub fn from_static(value: &'static str) -> Self {
+				Self(value.to_owned())
+			}
 		}
 
 		impl fmt::Display for $name {
@@ -62,6 +66,7 @@ text_id!(ExtensionId);
 text_id!(ProcessId);
 text_id!(AccountId);
 text_id!(AttachmentId);
+text_id!(SpaceId);
 
 #[derive(
 	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,

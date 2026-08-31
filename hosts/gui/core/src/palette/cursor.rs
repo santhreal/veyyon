@@ -65,6 +65,28 @@ pub fn move_cursor(groups: &[Group], selected: usize, down: bool) -> usize {
 	}
 }
 
+pub fn page_cursor(groups: &[Group], selected: usize, down: bool, page_size: usize) -> usize {
+	let count = item_count(groups);
+	if count == 0 {
+		return 0;
+	}
+	let step = page_size.max(1);
+	if down {
+		(selected + step).min(count - 1)
+	} else {
+		selected.saturating_sub(step)
+	}
+}
+
+pub fn home_cursor(_groups: &[Group]) -> usize {
+	0
+}
+
+pub fn end_cursor(groups: &[Group]) -> usize {
+	let count = item_count(groups);
+	count.saturating_sub(1)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

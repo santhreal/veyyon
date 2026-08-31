@@ -17,7 +17,7 @@ use crate::{act, agents::logic};
 
 pub fn render(store: &Store, scroll: &ScrollHandle, _cx: &mut App) -> EdgeFade {
 	let body = match store.frontend.route {
-		Route::Conversation => transcript(store),
+		Route::Conversation | Route::History => transcript(store),
 		Route::Agents => agents(store),
 		Route::Files => files(store),
 		Route::Changes => changes(store),

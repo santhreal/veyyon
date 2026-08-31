@@ -136,15 +136,56 @@ pub fn render_center(store: &Store, viewport: &Entity<DiffViewport>, cx: &mut Ap
 					),
 				);
 			}
-			body
-				.child(
-					div()
-						.flex_1()
-						.min_h(px(0.0))
-						.p(px(space::X10))
-						.child(viewport.clone()),
-				)
-				.into_any_element()
+			let has_review_selection = store.frontend.review_range.is_some();
+			let thread_count = store.frontend.review.threads.len();
+
+			let mut content = div()
+				.flex()
+				.flex_row()
+				.flex_1()
+				.min_h(px(0.0))
+				.gap(px(space::X10))
+				.p(px(space::X10));
+
+			content = content.child(
+				div()
+					.flex_1()
+					.min_w(px(0.0))
+					.min_h(px(0.0))
+					.child(viewport.clone()),
+			);
+
+			if has_review_selection || thread_count > 0 {
+				let mut review_pane = div()
+					.flex()
+					.flex_col()
+					.w(px(320.0))
+					.min_w(px(260.0))
+					.gap(px(space::X8))
+					.overflow_hidden();
+
+				if let Some((path, range)) = &store.frontend.review_range {
+					let draft = store.frontend.review.drafts.get(&None).map(|s| s.as_str());
+					review_pane = review_pane
+						.child(crate::review::render_new_thread_composer(path, *range, draft, cx));
+				}
+
+				for (id, thread) in &store.frontend.review.threads {
+					let selected = store.frontend.review.selected_thread.as_ref() == Some(id);
+					let draft = store
+						.frontend
+						.review
+						.drafts
+						.get(&Some(id.clone()))
+						.map(|s| s.as_str());
+					review_pane =
+						review_pane.child(crate::review::render_thread_card(thread, selected, draft, cx));
+				}
+
+				content = content.child(review_pane);
+			}
+
+			body.child(content).into_any_element()
 		},
 	}
 }
@@ -181,6 +222,18 @@ fn toolbar(snapshot: Option<&ChangesSnapshot>, store: &Store, cx: &mut App) -> i
 				.tone(Tone::Danger)
 				.bare()
 		}));
+	let unresolved = store.frontend.review.unresolved_count();
+	if unresolved > 0 {
+		bar = bar.child(
+			Badge::new(if unresolved == 1 {
+				"1 unresolved".to_string()
+			} else {
+				format!("{unresolved} unresolved")
+			})
+			.icon(Icon::Review)
+			.tone(Tone::Warn),
+		);
+	}
 
 	if let Some(snapshot) = snapshot {
 		bar = bar

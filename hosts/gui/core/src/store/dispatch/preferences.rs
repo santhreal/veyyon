@@ -35,6 +35,10 @@ impl Store {
 			},
 			UiCommand::PreviewTheme(id) => self.frontend.theme_preview = Some(id.clone()),
 			UiCommand::CancelThemePreview => self.frontend.theme_preview = None,
+			UiCommand::SetTheme(id) => {
+				self.frontend.preferences.theme = Some(id.clone());
+				self.frontend.theme_preview = None;
+			},
 			UiCommand::SetDarkAppearance(value) => self.frontend.preferences.dark = *value,
 			UiCommand::SetFontSize { milli_px } => {
 				self.frontend.preferences.font_size_milli_px =
