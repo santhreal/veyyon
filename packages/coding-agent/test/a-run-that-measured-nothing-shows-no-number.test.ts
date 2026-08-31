@@ -25,6 +25,7 @@ import { metricLabel, renderRunDetail, runScreenRows } from "@veyyon/coding-agen
 import { createExperimentState, createSessionRuntime } from "@veyyon/coding-agent/autoresearch/state";
 import type { AutoresearchRuntime, ExperimentResult, ExperimentStatus } from "@veyyon/coding-agent/autoresearch/types";
 import { useTruecolorTheme } from "./helpers/theme-assertions";
+
 /**
  * Every status a logged run can carry, and whether it carries a measurement.
  *
