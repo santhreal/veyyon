@@ -38,3 +38,7 @@
 - Free functions, consts, and types extracted from `session/indexed-session-storage.ts` and `eval/js/worker-core.ts` into companion `*-helpers.ts` files.
 - Free functions, consts, and types extracted from `session/indexed-session-storage.ts` and `eval/js/worker-core.ts` into companion `*-helpers.ts` files.
 - Removed export keyword from 481 functions across modes, tools, config, session, lsp, cli, eval, edit, web/search, mcp, internal-urls, extensibility, dap, ssh, discovery, tui, and utils subsystems that were used locally but never imported by any other module.
+- `groupLineIndicesByBlank` in `tools/grouped-file-output.ts` uses regex tests instead of `trim().length` to avoid string allocations on every line during grouping.
+- `render-utils.ts` diff segmenter uses a regex test instead of `trim().length` for blank-line detection.
+- `write-helpers.ts` combines `.map().filter()` into a single loop, avoiding an intermediate array and trim allocations when detecting prefixed content.
+- `assistant-message.ts` shimmer render uses a regex test instead of `stripAnsi(row).trim().length` to avoid a string allocation on every row scan.

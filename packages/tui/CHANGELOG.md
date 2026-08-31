@@ -99,6 +99,7 @@
 - `keybindings.ts` and `utils.ts` replace remaining `Set`/`Segment` spreads with `Array.from()`.
 - `toHexColor` in `motion-paint.ts` emits hex channels via three direct template interpolations, eliminating an intermediate array allocation per truecolor color construction.
 - `latex-block.ts` replaces `[...spec.text].filter()` with a `charCodeAt` loop for array column spec extraction, eliminating a character array allocation.
+- `isBlankRow` in `tui.ts` uses a regex test instead of `trim().length` to avoid a string allocation during render resync.
 
 ## [1.2.0] - 2026-08-23
 

@@ -30,3 +30,6 @@
 - Free functions, consts, and types extracted from `src/providers/anthropic-client.ts` into companion `src/providers/anthropic-client-helpers.ts`.
 - Free functions, consts, and types extracted from `src/providers/anthropic-client.ts` into companion `src/providers/anthropic-client-helpers.ts`.
 - Removed export keyword from 328 functions across providers, registry, dialect, error, stream, and utils subsystems that were used locally but never imported by any other module.
+- `EventStream` async iterator uses `Promise.withResolvers()` instead of `new Promise((resolve, reject) => ...)`.
+- `buildToolResultBlock` combines image hoisting and text filtering into a single pass, eliminating an intermediate array from `.filter()`.
+- `convertContentBlocks` and `isEmptyToolResultWireContent` use regex tests instead of `trim().length` to avoid string allocations.
