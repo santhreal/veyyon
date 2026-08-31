@@ -60,6 +60,44 @@ export class ProviderTransformError extends Error {
 	}
 }
 
+/**
+ * Which refusal means the payload was too big to scan, as opposed to malformed in
+ * a way no smaller payload would fix.
+ *
+ * A size refusal is the one confidentiality failure a caller can act on, because
+ * the same request carrying less text passes. Which codes those are is a property
+ * of the limits this module enforces, so the answer is stated here rather than
+ * re-derived from the message text by whoever catches the error.
+ *
+ * The table is exhaustive over the code union on purpose: a new failure code does
+ * not compile until someone states whether sending less text would clear it.
+ */
+const OVERSIZE_FAILURE_CODES: Record<ProviderTransformFailureCode, boolean> = {
+	accessor: false,
+	"array-items": true,
+	cycle: false,
+	depth: true,
+	"input-bytes": true,
+	"input-utf16": false,
+	internal: false,
+	"key-collision": false,
+	keys: true,
+	nodes: true,
+	"non-json-value": false,
+	"non-plain-object": false,
+	"output-bytes": true,
+	"output-text": false,
+	"resolver-threw": false,
+	"symbol-key": false,
+	"transform-output": false,
+	"transform-threw": false,
+};
+
+/** Whether a transform refusal was caused by payload size, so sending less text would pass. */
+export function isProviderPayloadOversize(error: unknown): boolean {
+	return error instanceof ProviderTransformError && OVERSIZE_FAILURE_CODES[error.code];
+}
+
 const identityProviderTextTransform: ProviderTextTransform = text => text;
 
 function confidentialityTransformError(
