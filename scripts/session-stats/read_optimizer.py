@@ -49,7 +49,7 @@ DB_PATH = Path.home() / ".veyyon" / "stats.db"
 OUT_DIR = Path(__file__).resolve().parent / "out"
 DEFAULT_SINCE = "2026-05-04"
 
-# Current code defaults, from packages/coding-agent/src/tools/read.ts and
+# Current code defaults, from packages/coding-agent/src/tools/fs/read.ts and
 # packages/coding-agent/src/config/settings-schema.ts.
 CURRENT_DEFAULT = 500
 CURRENT_MAX_LINES = 3000

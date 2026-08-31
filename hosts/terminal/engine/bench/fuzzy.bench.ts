@@ -80,8 +80,8 @@ const VARIANTS = [
 // tree change is not a reason to edit a fixture the goldens pin.
 const FILES = [
 	"src/components/markdown.ts",
-	"src/tools/fs/read.ts",
-	"src/tools/search/text-search.ts",
+	"src/tools/read.ts",
+	"src/tools/text-search.ts",
 	"src/utils/git.ts",
 	"src/modes/theme/theme.ts",
 	"src/system-prompt.ts",
@@ -92,8 +92,8 @@ const FILES = [
 	"crates/veyyon-natives/src/grep.rs",
 	"crates/veyyon-ast/src/summary.rs",
 	"crates/veyyon-shell/src/shell.rs",
-	"packages/coding-agent/src/tools/fs/write.ts",
-	"packages/coding-agent/src/tools/shell/bash.ts",
+	"packages/coding-agent/src/tools/write.ts",
+	"packages/coding-agent/src/tools/bash.ts",
 ];
 
 function buildCorpus(): string[] {

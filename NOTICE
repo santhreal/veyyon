@@ -33,7 +33,7 @@ headers; the Apache License 2.0 full text is available at
   `packages/ai/src/providers/openai-responses-wire.ts` — wire-type
   definitions vendored from `openai-node` v6.42.0 (Copyright OpenAI,
   Apache-2.0), trimmed to the streaming wire surface this repo speaks.
-- `packages/coding-agent/src/tools/browser/aria/aria-snapshot.bundle.txt` —
+- `packages/coding-agent/src/tools/web/browser/aria-snapshot.bundle.txt` —
   a generated, committed bundle of Playwright's injected ARIA-snapshot
   sources (Copyright Microsoft Corporation, Apache-2.0), pinned and rebuilt
   by `packages/coding-agent/scripts/generate-aria-snapshot.ts`. The upstream
@@ -67,8 +67,8 @@ carries forward here because no Codex source is present in this tree.
 - `packages/utils/src/vendor/mermaid-ascii/NOTICE` documents the ASCII diagram
   renderer adapted from `beautiful-mermaid` under the MIT License.
 - `packages/ai/src/registry/oauth/xai-oauth.ts`,
-  `packages/coding-agent/src/tools/xai-http.ts`, and
-  `packages/coding-agent/src/tools/tts.ts` contain code adapted from
+  `packages/coding-agent/src/tools/web/xai-http.ts`, and
+  `packages/coding-agent/src/tools/web/tts.ts` contain code adapted from
   `NousResearch/hermes-agent` (Copyright (c) 2025 Nous Research, MIT).
 - `packages/ai/src/error/rate-limit.ts` contains code adapted from
   `NoeFabris/opencode-antigravity-auth` (Copyright (c) 2025 Jens, MIT).

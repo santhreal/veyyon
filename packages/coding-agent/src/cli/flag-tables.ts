@@ -113,7 +113,7 @@ function parseMaxTimeSeconds(value: string): number {
 
 /**
  * Accepted `--mode` values, with the guard that gates them. Mirrors the
- * `isKnownApprovalMode` shape in `../tools/approval-modes` so both enum-valued
+ * `isKnownApprovalMode` shape in `../tools/core/approval-modes` so both enum-valued
  * flags reject a bad value the same way.
  *
  * Keyed by `Mode` rather than written as a bare array so the compiler forces

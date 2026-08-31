@@ -27,8 +27,8 @@ import type { Theme } from "../theme/theme-class";
 import type { ToolSession } from "../tools";
 import { truncateForPrompt } from "../tools/core/approval";
 import { formatPathRelativeToCwd, resolveToCwd } from "../tools/core/path-utils";
-// The leaf, not `tools/tool-result`: that module builds results and reaches 151 modules through
-// `tools/output-meta`, and this only prepends a string to one already built.
+// The leaf, not `tools/core/tool-result`: that module builds results and reaches 151 modules through
+// `tools/core/output-meta`, and this only prepends a string to one already built.
 import { prependResultNotice } from "../tools/core/result-notice";
 import { ToolAbortError, ToolError, throwIfAborted } from "../tools/core/tool-errors";
 import { clampTimeout, formatTimeoutClampNotice } from "../tools/core/tool-timeouts";

@@ -90,8 +90,8 @@ packages/coding-agent/src/system-prompt-builder/section-registry.test.ts
 packages/coding-agent/src/system-prompt-builder/statement-registry.test.ts
 packages/coding-agent/src/system-prompt.test.ts
 packages/coding-agent/src/task/render.test.ts
-packages/coding-agent/src/tools/__tests__/file-search.test.ts
-packages/coding-agent/src/tools/__tests__/vibe-render.test.ts
+packages/coding-agent/src/tools/search/__tests__/file-search.test.ts
+packages/coding-agent/src/tools/agent/__tests__/vibe-render.test.ts
 packages/coding-agent/src/utils/host-environment.test.ts
 packages/coding-agent/test/acp-agent.test.ts
 packages/coding-agent/test/acp-builtins.test.ts

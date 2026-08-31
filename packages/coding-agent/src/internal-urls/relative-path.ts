@@ -3,7 +3,7 @@
  *
  * A leaf on purpose: `node:path` is the only thing it imports. It used to live in
  * `skill-protocol.ts`, which imports `extensibility/skills` and through it 375 more modules, so
- * `local-protocol`, `memory-protocol`, `vault-protocol` and `tools/bash-skill-urls` were each
+ * `local-protocol`, `memory-protocol`, `vault-protocol` and `tools/shell/bash-skill-urls` were each
  * pulling the whole skill subsystem in to call one nine-line function. Keep it dependency-free:
  * this is the check that stands between a URL and the filesystem, and it should be reachable from
  * anywhere without cost.
