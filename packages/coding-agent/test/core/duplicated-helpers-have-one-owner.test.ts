@@ -363,7 +363,7 @@ describe("the browser tab target id", () => {
 	 * Both had a private copy of both functions.
 	 */
 	it("is derived by one module that both sides import", () => {
-		for (const file of ["tools/browser/tab-supervisor.ts", "tools/browser/tab-worker.ts"]) {
+		for (const file of ["tools/web/browser/tab-supervisor.ts", "tools/web/browser/tab-worker.ts"]) {
 			expect(importsOf(file), file).toContain("./target-id");
 		}
 	});
@@ -582,8 +582,11 @@ describe("the worker log replay", () => {
 	 * is reading, without any sign that it happened.
 	 */
 	it("has one owner that both supervisors import", () => {
-		for (const file of ["eval/js/context-manager.ts", "tools/browser/tab-supervisor.ts"]) {
-			expect(importsOf(file), file).toContain("../../subprocess/worker-log");
+		for (const [file, owner] of [
+			["eval/js/context-manager.ts", "../../subprocess/worker-log"],
+			["tools/web/browser/tab-supervisor.ts", "../../../subprocess/worker-log"],
+		] as const) {
+			expect(importsOf(file), file).toContain(owner);
 		}
 	});
 

@@ -5,8 +5,9 @@
  * spawns joins the session's budget group. A NEW spawn site added without
  * the wiring is a silent hole: the kernel cap does not cover it, the watcher
  * does not see it, and nobody gets an error. The author of that site has no
- * reason to know the budget exists. So every spawn primitive in src/ is
- * enumerated here, and each file carrying one is either wired (named with
+ * reason to know the budget exists. So every spawn primitive under the roots
+ * in `SWEEP_ROOTS` — the CLI package, the kernel, the hosts and the contracts —
+ * is enumerated here, and each file carrying one is either wired (named with
  * its mechanism) or exempt (named with its reason). A new site fails this
  * test until the author chooses one.
  *
@@ -24,7 +25,15 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-const SRC_ROOT = path.resolve(import.meta.dir, "../src");
+const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
+
+/**
+ * The roots this guard sweeps, repo-relative. The CLI package is where most
+ * spawn sites are, the kernel holds the budget layer's own host seam, and the
+ * hosts spawn for the operator's desktop; a site that moves between them is a
+ * rename in the ledger rather than a hole.
+ */
+const SWEEP_ROOTS = ["contracts", "hosts", "kernel/src", "packages/coding-agent/src"];
 
 /**
  * Spawn primitives that start OS processes (or in-process workers, which must
@@ -69,139 +78,204 @@ interface SpawnSiteEntry {
  */
 const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 	// Wired to ONE session: the spawn carries that session's id or budget name.
-	"exec/bash-executor.ts": {
+	"packages/coding-agent/src/exec/bash-executor.ts": {
 		wired: true,
 		reason: "brush Shell runs receive cpuBudgetId; the native spawn observer adopts every external child",
 	},
-	"tools/shell/bash-interactive.ts": {
+	"packages/coding-agent/src/tools/shell/bash-interactive.ts": {
 		wired: true,
 		reason: "PtySession.start receives cpuBudgetId; the PTY spawner adopts the child",
 	},
-	"mcp/transports/stdio.ts": {
+	"packages/coding-agent/src/mcp/transports/stdio.ts": {
 		wired: true,
 		reason: "beforeSpawn gates, then onSpawnPid hands the server pid to the session's limiter",
 	},
-	"session/cgroup-host.ts": {
-		wired: true,
-		reason:
-			"the budget layer's own host seam: `runHostCommand` is the systemctl/systemd-run runner behind `CpuLimitEnvironment.run`, moved here from session/cpu-limit.ts when the host probe got its own module",
-	},
-	"launch/client.ts": {
+	"packages/coding-agent/src/launch/client.ts": {
 		wired: true,
 		reason: "the broker spawn is adopted; every daemon the broker launches inherits the group",
 	},
-	"launch/broker.ts": {
+	"packages/coding-agent/src/launch/broker.ts": {
 		wired: true,
 		reason: "daemon spawns inherit the adopted broker's budget group; the broker never outruns the cap",
 	},
-	"exec/exec.ts": {
+	"packages/coding-agent/src/exec/exec.ts": {
 		wired: true,
 		reason:
 			"beforeSpawn runs the session gate, then adoptPid joins the child; custom tools, commands and extensions pass both",
 	},
-	"eval/py/kernel.ts": { wired: true, reason: "kernel subprocess adopted via KernelStartOptions.adoptPid" },
-	"eval/rb/kernel.ts": { wired: true, reason: "kernel subprocess adopted via KernelStartOptions.adoptPid" },
-	"eval/jl/kernel.ts": { wired: true, reason: "kernel subprocess adopted via KernelStartOptions.adoptPid" },
+	"packages/coding-agent/src/eval/py/kernel.ts": {
+		wired: true,
+		reason: "kernel subprocess adopted via KernelStartOptions.adoptPid",
+	},
+	"packages/coding-agent/src/eval/rb/kernel.ts": {
+		wired: true,
+		reason: "kernel subprocess adopted via KernelStartOptions.adoptPid",
+	},
+	"packages/coding-agent/src/eval/jl/kernel.ts": {
+		wired: true,
+		reason: "kernel subprocess adopted via KernelStartOptions.adoptPid",
+	},
 
 	// Wired to the ROOT session: process-wide singletons every session shares.
-	"subprocess/worker-client.ts": {
+	"packages/coding-agent/src/subprocess/worker-client.ts": {
 		wired: true,
 		reason: "shared service workers join the root session's budget group",
 	},
-	"lsp/client.ts": {
+	"packages/coding-agent/src/lsp/client.ts": {
 		wired: true,
 		reason: "language servers are the big one: rust-analyzer is a sustained multi-core load, adopted on spawn",
 	},
-	"lsp/index.ts": {
+	"packages/coding-agent/src/lsp/index.ts": {
 		wired: true,
 		reason: "the go.work probe and the project diagnostics build (cargo check, tsc, go build) are adopted",
 	},
-	"lsp/lspmux.ts": { wired: true, reason: "the lspmux status probe is adopted" },
-	"lsp/clients/biome-client.ts": { wired: true, reason: "the biome CLI run is adopted" },
-	"lsp/clients/swiftlint-client.ts": { wired: true, reason: "the swiftlint CLI run is adopted" },
-	"debug/dap/client.ts": { wired: true, reason: "debug adapters are adopted on spawn in all three transport modes" },
-	"debug/dap/session.ts": { wired: true, reason: "the debuggee started for runInTerminal is adopted" },
-	"modes/rpc/rpc-client.ts": { wired: true, reason: "the child harness spawned for RPC mode is adopted" },
-	"tools/browser/registry.ts": {
+	"packages/coding-agent/src/lsp/lspmux.ts": { wired: true, reason: "the lspmux status probe is adopted" },
+	"packages/coding-agent/src/lsp/clients/biome-client.ts": { wired: true, reason: "the biome CLI run is adopted" },
+	"packages/coding-agent/src/lsp/clients/swiftlint-client.ts": {
+		wired: true,
+		reason: "the swiftlint CLI run is adopted",
+	},
+	"packages/coding-agent/src/debug/dap/client.ts": {
+		wired: true,
+		reason: "debug adapters are adopted on spawn in all three transport modes",
+	},
+	"packages/coding-agent/src/debug/dap/session.ts": {
+		wired: true,
+		reason: "the debuggee started for runInTerminal is adopted",
+	},
+	"packages/coding-agent/src/modes/rpc/rpc-client.ts": {
+		wired: true,
+		reason: "the child harness spawned for RPC mode is adopted",
+	},
+	"packages/coding-agent/src/tools/web/browser/registry.ts": {
 		wired: true,
 		reason:
 			"managed Chromium is adopted, headless via browser.process() and app.path via the spawn; a REUSED endpoint is not, because this session did not start it",
 	},
-	"speech/stt/recorder.ts": {
+	"packages/coding-agent/src/speech/stt/recorder.ts": {
 		wired: true,
 		reason: "every recorder backend (sox, ffmpeg, arecord, powershell) is adopted",
 	},
-	"speech/tts/player.ts": { wired: true, reason: "the audio player process is adopted" },
-	"speech/tts/streaming-player.ts": { wired: true, reason: "the streaming audio backend is adopted" },
-	"extensibility/plugins/manager.ts": { wired: true, reason: "bun install/update/uninstall runs are adopted" },
-	"extensibility/plugins/bun-git-cache.ts": { wired: true, reason: "the git cache refresh commands are adopted" },
-	"ssh/ssh-executor.ts": { wired: true, reason: "the ssh client process is adopted" },
-	"ssh/file-transfer.ts": { wired: true, reason: "every ssh read/write/stat/list child is adopted" },
-	"ssh/connection-manager.ts": { wired: true, reason: "the ssh pre-command helpers are adopted" },
-	"tools/web/fetch.ts": { wired: true, reason: "the trafilatura and lynx reader-mode extractors are adopted" },
-	"web/scrapers/youtube.ts": { wired: true, reason: "yt-dlp metadata and subtitle runs are adopted" },
-	"utils/tools-manager.ts": { wired: true, reason: "the uv/pip on-demand tool installs are adopted" },
-	"utils/git.ts": {
+	"packages/coding-agent/src/speech/tts/player.ts": { wired: true, reason: "the audio player process is adopted" },
+	"packages/coding-agent/src/speech/tts/streaming-player.ts": {
+		wired: true,
+		reason: "the streaming audio backend is adopted",
+	},
+	"packages/coding-agent/src/extensibility/plugins/manager.ts": {
+		wired: true,
+		reason: "bun install/update/uninstall runs are adopted",
+	},
+	"packages/coding-agent/src/extensibility/plugins/bun-git-cache.ts": {
+		wired: true,
+		reason: "the git cache refresh commands are adopted",
+	},
+	"packages/coding-agent/src/ssh/ssh-executor.ts": { wired: true, reason: "the ssh client process is adopted" },
+	"packages/coding-agent/src/ssh/file-transfer.ts": {
+		wired: true,
+		reason: "every ssh read/write/stat/list child is adopted",
+	},
+	"packages/coding-agent/src/ssh/connection-manager.ts": {
+		wired: true,
+		reason: "the ssh pre-command helpers are adopted",
+	},
+	"packages/coding-agent/src/tools/web/fetch.ts": {
+		wired: true,
+		reason: "the trafilatura and lynx reader-mode extractors are adopted",
+	},
+	"packages/coding-agent/src/web/scrapers/youtube.ts": {
+		wired: true,
+		reason: "yt-dlp metadata and subtitle runs are adopted",
+	},
+	"packages/coding-agent/src/utils/tools-manager.ts": {
+		wired: true,
+		reason: "the uv/pip on-demand tool installs are adopted",
+	},
+	"packages/coding-agent/src/utils/git.ts": {
 		wired: true,
 		reason:
 			"the git and gh runners are adopted; the four spawnSync HEAD reads are not, because a synchronous child has already exited when the call returns",
 	},
-	"utils/jj.ts": { wired: true, reason: "the jj runner is adopted" },
-	"internal-urls/vault-protocol.ts": { wired: true, reason: "the vault CLI bridge process is adopted" },
+	"packages/coding-agent/src/utils/jj.ts": { wired: true, reason: "the jj runner is adopted" },
+	"packages/coding-agent/src/internal-urls/vault-protocol.ts": {
+		wired: true,
+		reason: "the vault CLI bridge process is adopted",
+	},
 
 	// Exempt. Each of these is either not started by a session, or is not a
 	// process a per-process cgroup can hold. docs/handbook/src/features/cpu-limit.md
 	// lists this same set in prose.
-	"cli/auth-broker-cli.ts": {
+	"packages/coding-agent/src/cli/auth-broker-cli.ts": {
 		wired: false,
 		reason: "ssh bootstrap for a remote auth broker; runs before any session exists, so there is no budget to join",
 	},
-	"cli/update-cli.ts": {
+	"packages/coding-agent/src/cli/update-cli.ts": {
 		wired: false,
 		reason: "self-update; a maintenance command, and capping the updater could leave a half-written install",
 	},
-	"cli/claude-trace-cli.ts": { wired: false, reason: "trace inspection CLI; drives no agent session" },
-	"cli/shell-cli.ts": {
+	"packages/coding-agent/src/cli/claude-trace-cli.ts": {
+		wired: false,
+		reason: "trace inspection CLI; drives no agent session",
+	},
+	"packages/coding-agent/src/cli/shell-cli.ts": {
 		wired: false,
 		reason: "the operator's own interactive shell (veyyon shell), typed at by a human, not agent-spawned compute",
 	},
-	"config/model-registry.ts": {
+	"packages/coding-agent/src/config/model-registry.ts": {
 		wired: false,
 		reason: "execSync provider probes at CLI/model discovery time, before the first session registers",
 	},
-	"modes/terminal/interactive-mode.ts": {
+	"packages/coding-agent/src/modes/terminal/interactive-mode.ts": {
 		wired: false,
 		reason: "process relaunch; the new process replaces the harness, and the harness is never in the budget",
 	},
-	"subprocess/worker-runtime.ts": {
+	"packages/coding-agent/src/subprocess/worker-runtime.ts": {
 		wired: false,
 		reason: "tiny-runtime installer, run once per install rather than per session",
 	},
-	"tools/browser/tab-supervisor.ts": {
+	"packages/coding-agent/src/tools/web/browser/tab-supervisor.ts": {
 		wired: false,
 		reason: "Bun Worker threads run inside the harness process; a cgroup holds processes, not threads of one",
 	},
-	"eval/js/context-manager.ts": {
+	"packages/coding-agent/src/eval/js/context-manager.ts": {
 		wired: false,
 		reason: "Bun Worker threads are in-process; the subprocess fallback goes through worker-client (wired)",
 	},
-	"utils/clipboard.ts": {
+	"packages/coding-agent/src/utils/clipboard.ts": {
 		wired: false,
 		reason: "clipboard helper; talks to the operator's desktop session, not the agent's",
 	},
-	"utils/open.ts": {
+	"packages/coding-agent/src/utils/open.ts": {
 		wired: false,
 		reason: "hands a path to the operator's own editor or browser; that application is theirs, not the session's",
 	},
-	"utils/external-editor.ts": {
+	"packages/coding-agent/src/utils/external-editor.ts": {
 		wired: false,
 		reason: "the operator's own editor session; killing it on a budget breach would discard their unsaved text",
 	},
-	"utils/host-environment.ts": { wired: false, reason: "host capability probe, run at startup before any session" },
-	"utils/shell-snapshot.ts": { wired: false, reason: "one-shot shell env capture at startup" },
+	"packages/coding-agent/src/utils/host-environment.ts": {
+		wired: false,
+		reason: "host capability probe, run at startup before any session",
+	},
+	"packages/coding-agent/src/utils/shell-snapshot.ts": {
+		wired: false,
+		reason: "one-shot shell env capture at startup",
+	},
+
+	// Outside the CLI package. The session spine and the hosts are swept under the
+	// same rule, so a spawn site that moves out of packages/coding-agent stays
+	// accounted for instead of disappearing from this ledger.
+	"kernel/src/session/cgroup-host.ts": {
+		wired: true,
+		reason:
+			"the budget layer's own host seam: `runHostCommand` is the systemctl/systemd-run runner behind `CpuLimitEnvironment.run`",
+	},
+	"hosts/terminal/engine/src/desktop-notify.ts": {
+		wired: false,
+		reason: "notify-send/osascript hands a notification to the operator's desktop session, not the agent's",
+	},
 };
 
-/** Files under src/ (tests excluded) that contain a spawn primitive. */
+/** Files under `root` (tests excluded) that contain a spawn primitive, relative to it. */
 async function findSpawnFiles(root: string): Promise<string[]> {
 	const hits: string[] = [];
 	async function walk(dir: string): Promise<void> {
@@ -223,16 +297,24 @@ async function findSpawnFiles(root: string): Promise<string[]> {
 	return hits.sort();
 }
 
-describe("every spawn site in src is wired into the session CPU budget or exempt with a reason", () => {
+/** Every spawn file across SWEEP_ROOTS, keyed the way the ledger keys it: repo-relative. */
+async function findEverySpawnFile(): Promise<string[]> {
+	const perRoot = await Promise.all(
+		SWEEP_ROOTS.map(async root => (await findSpawnFiles(path.join(REPO_ROOT, root))).map(file => `${root}/${file}`)),
+	);
+	return perRoot.flat().sort();
+}
+
+describe("every spawn site is wired into the session CPU budget or exempt with a reason", () => {
 	it("accounts for every file containing a spawn primitive", async () => {
-		const files = await findSpawnFiles(SRC_ROOT);
+		const files = await findEverySpawnFile();
 		const unaccounted = files.filter(file => !(file in SPAWN_SITES));
 		expect(unaccounted).toEqual([]);
 	});
 
 	it("drops manifest entries for files that no longer spawn", async () => {
 		// A stale entry hides a move: the site must be re-found at its new home.
-		const files = new Set(await findSpawnFiles(SRC_ROOT));
+		const files = new Set(await findEverySpawnFile());
 		const stale = Object.keys(SPAWN_SITES).filter(file => !files.has(file));
 		expect(stale).toEqual([]);
 	});

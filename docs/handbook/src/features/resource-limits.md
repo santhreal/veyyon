@@ -78,8 +78,9 @@ oversight:
   there is no budget to join.
 - **The harness itself.** Agent turns, the TUI, and the relaunch that replaces the veyyon process.
 - **Programs that are yours rather than the agent's.** The editor veyyon opens a file in, the
-  clipboard helper, `veyyon shell`, and the self-updater. Capping the updater could leave a
-  half-written install, and killing your editor on a budget breach would discard unsaved text.
+  clipboard helper, the desktop notifier, `veyyon shell`, and the self-updater. Capping the
+  updater could leave a half-written install, and killing your editor on a budget breach would
+  discard unsaved text.
 - **Threads rather than processes.** The browser tab supervisor and the JavaScript eval context
   run as Bun Workers inside the harness process, and a cgroup holds processes, not threads of one.
 - **Processes the session did not start.** Attaching to a browser that is already running adopts

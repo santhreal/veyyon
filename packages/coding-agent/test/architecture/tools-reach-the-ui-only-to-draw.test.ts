@@ -262,7 +262,7 @@ const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/search/ast-edit-render.ts", ["Text", "type Component"]],
 	["tools/shell/bash-interactive.ts", ["type Component"]],
 	["tools/shell/bash-render.ts", ["ImageProtocol", "TERMINAL", "type Component"]],
-	["tools/browser/render.ts", ["Text", "type Component"]],
+	["tools/web/browser/render.ts", ["Text", "type Component"]],
 	["tools/shell/debug-render.ts", ["Text", "type Component"]],
 	["tools/shell/eval-render.ts", ["Markdown", "Text", "type Component"]],
 	["tools/web/fetch-render.ts", ["Text", "type Component"]],

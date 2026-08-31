@@ -28,9 +28,11 @@ import { MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import { LEGACY_TOOL_DEFINITION_MARKER } from "@veyyon/kernel/registry/legacy-tool-marker";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
-const SRC = path.resolve(import.meta.dir, "../../src");
-const AI_SRC = path.resolve(import.meta.dir, "../../../ai/src");
-const CATALOG_SRC = path.resolve(import.meta.dir, "../../../catalog/src");
+const REPO_ROOT = path.resolve(import.meta.dir, "../../../..");
+const SRC = path.join(REPO_ROOT, "packages/coding-agent/src");
+const AI_SRC = path.join(REPO_ROOT, "packages/ai/src");
+const CATALOG_SRC = path.join(REPO_ROOT, "packages/catalog/src");
+const KERNEL_SRC = path.join(REPO_ROOT, "kernel/src");
 
 describe("the legacy tool-definition marker", () => {
 	/** The exact property name, since it is set with `defineProperty` and read by index. */
@@ -55,7 +57,9 @@ describe("the legacy tool-definition marker", () => {
 	it("is stamped by the shim from the owner", () => {
 		const shim = path.join(SRC, "extensibility/legacy-pi-coding-agent-shim.ts");
 
-		expect(moduleSpecifiersIn(fs.readFileSync(shim, "utf-8"))).toContain("./legacy-tool-marker");
+		expect(moduleSpecifiersIn(fs.readFileSync(shim, "utf-8"))).toContain(
+			"@veyyon/kernel/registry/legacy-tool-marker",
+		);
 	});
 });
 
@@ -141,7 +145,7 @@ describe("Anthropic's web-search tool name", () => {
 
 describe("each value is declared once", () => {
 	const OWNERS = new Set([
-		path.join(SRC, "extensibility/legacy-tool-marker.ts"),
+		path.join(KERNEL_SRC, "registry/legacy-tool-marker.ts"),
 		path.join(SRC, "plan-mode/plan-file-url.ts"),
 		path.join(SRC, "mcp/protocol-version.ts"),
 		path.join(CATALOG_SRC, "wire/anthropic.ts"),
@@ -149,13 +153,13 @@ describe("each value is declared once", () => {
 
 	async function sources(): Promise<ReadonlyArray<{ file: string; text: string }>> {
 		const collected: Array<{ file: string; text: string }> = [];
-		for (const root of [SRC, AI_SRC, CATALOG_SRC]) {
+		for (const root of [SRC, AI_SRC, CATALOG_SRC, KERNEL_SRC]) {
 			for (const file of new Bun.Glob("**/*.ts").scanSync(root)) {
 				const full = path.join(root, file);
 				if (OWNERS.has(full)) continue;
 				// In-source test directories are fixtures, not declarations of where a value comes from.
 				if (file.includes("__tests__")) continue;
-				collected.push({ file: path.relative(path.join(SRC, "../.."), full), text: await Bun.file(full).text() });
+				collected.push({ file: path.relative(REPO_ROOT, full), text: await Bun.file(full).text() });
 			}
 		}
 		return collected;
@@ -260,15 +264,15 @@ describe("each value is declared once", () => {
 		const files = (await sources()).map(entry => entry.file);
 		expect(files.length).toBeGreaterThan(500);
 		for (const declarer of [
-			"coding-agent/src/sdk.ts",
-			"coding-agent/src/extensibility/legacy-pi-coding-agent-shim.ts",
-			"coding-agent/src/modes/acp/acp-agent.ts",
-			"coding-agent/src/plan-mode/plan-protection.ts",
-			"coding-agent/src/session/agent-session.ts",
-			"coding-agent/src/mcp/client.ts",
-			"coding-agent/src/web/search/providers/zai.ts",
-			"coding-agent/src/web/search/providers/anthropic.ts",
-			"ai/src/providers/anthropic.ts",
+			"packages/coding-agent/src/sdk.ts",
+			"packages/coding-agent/src/extensibility/legacy-pi-coding-agent-shim.ts",
+			"packages/coding-agent/src/modes/acp/acp-agent.ts",
+			"packages/coding-agent/src/plan-mode/plan-protection.ts",
+			"packages/coding-agent/src/session/agent-session.ts",
+			"packages/coding-agent/src/mcp/client.ts",
+			"packages/coding-agent/src/web/search/providers/zai.ts",
+			"packages/coding-agent/src/web/search/providers/anthropic.ts",
+			"packages/ai/src/providers/anthropic.ts",
 		]) {
 			expect(files).toContain(declarer);
 		}
