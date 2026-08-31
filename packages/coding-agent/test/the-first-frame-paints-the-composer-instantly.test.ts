@@ -30,6 +30,7 @@ import type { Component } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/tui/utils";
 import { getProjectDir, TempDir } from "@veyyon/utils";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
+import { useFixtureCheckout } from "./helpers/fixture-checkout";
 
 /**
  * WHY: startup used to paint eight BLANK rows where the composer would live,
@@ -123,6 +124,16 @@ function widthThatFitsTheLocation(): number {
 	throw new Error("the launch row carried the budgeted location at no width between 40 and 400 columns");
 }
 
+/**
+ * The checkout the card describes, so the branch and the path are this file's facts rather than
+ * the directory the run started in. Nested deep enough that the rendered location is shorter than
+ * the path itself, which is what the budget cases below measure.
+ */
+const CHECKOUT = useFixtureCheckout({
+	branch: "launch-card-fixture",
+	nested: ["platform-services", "ingest-pipeline", "normalizer"],
+});
+
 let isolated: IsolatedConfigRoot;
 
 beforeAll(async () => {
@@ -207,32 +218,47 @@ describe("the launch composer", () => {
 		// does. The location inside it is what the budget governs.
 		const narrowOptions = resolveLocationOptions();
 		const expected = renderLocation({ projectDir: getProjectDir(), options: narrowOptions }).content;
+		// The same path with room for the whole terminal, which is what a card clipping to the
+		// terminal instead of the budget would paint. Compared against the render rather than
+		// against the raw path, so the check holds wherever the fixture lives: a directory the
+		// row shows relative to a root it strips never carries its own absolute path.
+		const unbudgeted = renderLocation({
+			projectDir: getProjectDir(),
+			options: { ...narrowOptions, maxLength: 300 },
+		}).content;
+		// The budget bit at all. The fixture checkout is nested deeper than any preset's path
+		// budget, so the two renders differ and the absence below is the budget's work rather
+		// than a short path that fit whole either way.
+		expect(visibleWidth(unbudgeted)).toBeGreaterThan(visibleWidth(expected));
 		const row = launchRows(300).find(candidate => candidate.includes(expected));
 		expect(row).toBeDefined();
 		expect(visibleWidth(row as string)).toBeLessThanOrEqual(300);
 		expect(visibleWidth(expected)).toBeLessThan(300);
-		// The unclipped path is absent: a row that had simply been given more room
-		// would carry it, and would then shrink at the handover.
-		expect(row).not.toContain(getProjectDir());
+		expect(row).not.toContain(unbudgeted);
 	});
 
 	it("honors a path budget the session overrides the preset with", () => {
 		settings.set("statusLine.segmentOptions", { path: { maxLength: 12 } });
 		try {
-			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
-			expect(visibleWidth(located)).toBeLessThanOrEqual(12);
-			const row = launchRows(100).find(candidate => candidate.includes(located));
+			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() });
+			// `pin` is the icon and the space after it, which the clamp never counted: the budget
+			// governs the path, and a directory the row marks with an icon must not read as one
+			// that blew the budget by the width of that icon.
+			expect(visibleWidth(located.content) - located.pin).toBeLessThanOrEqual(12);
+			const row = launchRows(100).find(candidate => candidate.includes(located.content));
 			expect(row).toBeDefined();
-			expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
+			expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located.content}`);
 		} finally {
 			settings.set("statusLine.segmentOptions", {});
 		}
 	});
 
 	it("names the branch, after the location, joined the way the live row joins segments", () => {
-		const branch = renderBranch(branchLabelFromFiles(getProjectDir()), false);
-		// The suite runs inside this repository's checkout, so there is one.
-		expect(branch).not.toBe("");
+		const label = branchLabelFromFiles(getProjectDir());
+		// Read from the fixture checkout's own `.git/HEAD`, so the card has a branch to name on
+		// any machine and on the detached checkout a pull-request run hands the suite.
+		expect(label).toBe(CHECKOUT.branch);
+		const branch = renderBranch(label, false);
 		const located = budgetedLocation();
 		const row = launchRows(widthThatFitsTheLocation()).find(candidate => candidate.includes(located));
 		// `toStartWith`, not `toBe`: the rest of the row is the preset's remaining
@@ -249,7 +275,7 @@ describe("the launch composer", () => {
 			expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
 			// Nothing after the location is a branch: no separator-then-label, and
 			// no bare label anywhere else on the row.
-			expect(row).not.toContain(branchLabelFromFiles(getProjectDir()) as string);
+			expect(row).not.toContain(CHECKOUT.branch);
 		} finally {
 			settings.set("git.enabled", true);
 		}
@@ -262,7 +288,7 @@ describe("the launch composer", () => {
 		// `the-launch-card-states-what-the-last-launch-knew.test.ts`; the config root is isolated
 		// above so that file's recordings cannot answer for this one.
 		const label = branchLabelFromFiles(getProjectDir());
-		const row = launchRows(100).find(candidate => candidate.includes(label as string));
+		const row = launchRows(100).find(candidate => candidate.includes(CHECKOUT.branch));
 		expect(row).toBeDefined();
 		expect(row).toContain(renderBranch(label, false));
 		expect(row).not.toContain("*");
