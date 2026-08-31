@@ -39,6 +39,13 @@
  * a truncated text — only that the bytes left the context and the edges
  * survived. And a host that injects an untyped role at runtime is invisible to
  * the type-level gate.
+ *
+ * The no-grind test below proves the COLLECTOR honors its floor, with this
+ * file's own margin. It does not pin `TRUNCATION_MIN_TEXT_TOKENS` against
+ * `TRUNCATION_KEEP_EDGE_TOKENS` in `agent-session.ts`; a session-level version
+ * was tried and deleted, because a second maintenance pass never reaches the
+ * tier, so it stayed green with both production guards removed and could not
+ * fail on the bug it named.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -280,5 +287,19 @@ describe("every oversized text can be truncated", () => {
 
 		const regions = collectOversizedTextRegions([summarized, boundary, kept], config({ keepBoundaryId: kept.id }));
 		expect(regions.map(region => region.entry)).toEqual([kept]);
+	});
+
+	test("leaves a text it already truncated alone, so repeated passes do not grind it away", () => {
+		// The only thing standing between this tier and a slow grind is the margin
+		// between `minTextTokens` and the two edges it leaves behind: a cut text
+		// must land BELOW the floor that made it a candidate, or every maintenance
+		// pass shaves the same message again and the model loses a little more of
+		// it each time while the session still reports recovery.
+		const entry = messageEntry(structuredClone(OVERSIZED.user));
+		const first = collectOversizedTextRegions([entry], config());
+		expect(first).toHaveLength(1);
+		applyShakeRegions(first.map(region => ({ region, replacement: "[truncated ~4,000 tokens]" })));
+
+		expect(collectOversizedTextRegions([entry], config())).toEqual([]);
 	});
 });

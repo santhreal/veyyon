@@ -580,6 +580,16 @@ function collectTruncationCandidates(
  * caller's ordinary splice keeps the edges without a second apply path, and the
  * removed bytes reach the caller's recovery artifact like any other region.
  *
+ * ON THE PROMPT CACHE. Pruning orders its victims by how much of the cache a
+ * mutation forces the provider to re-write (`computeMessageSuffixTokens`),
+ * because it runs on a session that could have sent its request anyway, so a
+ * rewrite it did not need is pure cost. This tier is ordered by size alone, and
+ * that is deliberate: it runs only after every other tier failed on a session
+ * that CANNOT send at all, so the comparison is not "cheap prune vs expensive
+ * prune" but "one cache rewrite vs no request". Cutting the largest text covers
+ * the excess in the fewest regions, and the reported case — the newest turn is
+ * the oversized one — is also the cheapest position to cut.
+ *
  * Returns `[]` when no text is large enough to cut, which is the honest
  * dead end: the context is many small messages and only a summarizer or the
  * operator can reduce it.

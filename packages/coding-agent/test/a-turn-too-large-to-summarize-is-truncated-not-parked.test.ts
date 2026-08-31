@@ -37,12 +37,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Agent, countTokens } from "@veyyon/agent-core";
+import * as AIError from "@veyyon/ai/error";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { loadExtensions } from "@veyyon/coding-agent/extensibility/extensions/loader";
 import { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
-import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { MAX_JSON_TRANSFORM_STRING_BYTES, SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
+import { AgentSession, obfuscateProviderPayload } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { getProjectAgentDir, TempDir } from "@veyyon/utils";
@@ -307,4 +309,64 @@ describe("a turn too large to summarize is truncated, not parked", () => {
 		expect(live.filter(text => text.includes("truncated ~"))).toHaveLength(1);
 		expect(live).toContain(second);
 	});
+
+	/**
+	 * BACKTEST. The report carried both notices from one session:
+	 *
+	 *   "Compaction freed too little context to make progress — pausing automatic
+	 *    maintenance to avoid a compaction loop."
+	 *   "AgentSession provider payload: the provider request exceeds the
+	 *    confidentiality scan byte limit; confidentiality transform failed."
+	 *
+	 * They are one dead end with two locks. The scan runs before the send, so it
+	 * refuses the turn locally and no provider ever answers; that refusal used to
+	 * classify as nothing, so the retry ladder had no recovery for it and the
+	 * rescue was never reached. The rescue could not have helped anyway, because
+	 * no tier recognized unfenced prose.
+	 *
+	 * The input is the reported SHAPE reduced to what reproduces it: one turn
+	 * whose single unfenced text exceeds the scan's cumulative byte limit, with a
+	 * secret configured, which is what puts the scan on the path at all. No
+	 * recorded content, path or identifier from the session is used.
+	 */
+	it("backtest: the reported turn is refused by the scan, then cleared by maintenance", async () => {
+		const bulk = prose(60_000) + "x".repeat(MAX_JSON_TRANSFORM_STRING_BYTES);
+		sessionManager.appendMessage({ role: "user", content: bulk, timestamp: Date.now() });
+		vi.spyOn(session.agent, "continue").mockResolvedValue();
+		vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined as never);
+		trackLiveContext(120_000);
+
+		const payloadOf = () => ({
+			messages: sessionManager
+				.getBranch()
+				.flatMap(entry =>
+					entry.type === "message" && "content" in entry.message && typeof entry.message.content === "string"
+						? [{ text: entry.message.content }]
+						: [],
+				),
+		});
+		const secrets = new SecretObfuscator([{ type: "plain", origin: "config", content: "A_CONFIGURED_SECRET" }]);
+
+		// Wall two, as reported: the scan refuses this turn before it can be sent.
+		// It must now say the payload is too big, so the overflow recovery is
+		// entered instead of the failure surfacing as an unactionable error.
+		let refusal: unknown;
+		try {
+			obfuscateProviderPayload(payloadOf(), secrets);
+		} catch (error) {
+			refusal = error;
+		}
+		expect(refusal).toBeDefined();
+		expect(AIError.is(AIError.classify(refusal), AIError.Flag.ContextOverflow)).toBe(true);
+
+		// Wall one: maintenance recovers rather than parking.
+		const notices = collectNotices();
+		await runMaintenance();
+		expect(notices.filter(n => n.message.includes(NO_PROGRESS_FRAGMENT))).toEqual([]);
+		expect(notices.filter(n => n.message.includes(RECOVERY_FRAGMENT))).toHaveLength(1);
+
+		// The two locks open together: the same scan now accepts the branch, so the
+		// next request leaves the process instead of repeating the refusal.
+		expect(() => obfuscateProviderPayload(payloadOf(), secrets)).not.toThrow();
+	}, 60_000);
 });
