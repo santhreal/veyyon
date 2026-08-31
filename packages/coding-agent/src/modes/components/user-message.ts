@@ -59,7 +59,7 @@ export class UserMessageComponent extends Container {
 		const wrapped: string[] = new Array(lines.length);
 		for (let li = 0; li < lines.length; li++) {
 			const line = lines[li]!;
-			if (!gutterPlaced && stripAnsi(line).trim().length > 0) {
+			if (!gutterPlaced && /\S/.test(stripAnsi(line))) {
 				gutterPlaced = true;
 				wrapped[li] = gutter + line;
 			} else {
