@@ -27,9 +27,18 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { IrcBus } from "@veyyon/coding-agent/irc/bus";
 import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
-import { AGENT_DISPLAY_STATES, agentStatusGlyph } from "@veyyon/coding-agent/modes/components/agent-status-display";
+import {
+	AGENT_DISPLAY_STATES,
+	agentDisplayState,
+	agentStatusGlyph,
+} from "@veyyon/coding-agent/modes/components/agent-status-display";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { AGENT_STATUSES, AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
+import {
+	AGENT_STATUSES,
+	AgentRegistry,
+	type AgentStatus,
+	MAIN_AGENT_ID,
+} from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { visibleWidth } from "@veyyon/tui/utils";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
@@ -94,12 +103,10 @@ function rows(dashboard: AgentDashboard, width = WIDE): string[] {
 	const strip = lines.findIndex(line => line.includes("Live (") && line.includes("Comms ("));
 	// Only rows that carry an agent: the frame, the strip and the footer are not
 	// table rows and have no columns to line up.
-	return lines.slice(strip + 1).filter(line => AGENT_STATUSES.some(status => line.includes(statusWordFor(status))));
-}
-
-/** The word a status is DISPLAYED as, which is what a row's status column holds. */
-function statusWordFor(status: string): string {
-	return status;
+	// Any DISPLAYED state, not only the raw statuses: a row whose word is derived
+	// (`waiting` from `idle`) is a row of the table, and filtering it out is how a
+	// column measured on the raw status escapes notice.
+	return lines.slice(strip + 1).filter(line => AGENT_DISPLAY_STATES.some(state => line.includes(state)));
 }
 
 /** Where `token` starts in each row that carries it. A table has one answer. */
@@ -138,6 +145,67 @@ describe("a roster row is a table, not a sentence", () => {
 		const statusCols = AGENT_STATUSES.flatMap(status => columnOf(lines, status));
 		expect(statusCols.length).toBeGreaterThan(1);
 		expect(new Set(statusCols).size).toBe(1);
+		dashboard.dispose();
+	});
+
+	test("pads the status column to the widest DISPLAYED word, not the raw status", () => {
+		// Derived from source: the raw statuses whose DISPLAYED word is wider than
+		// themselves (`waiting` from `idle` and `parked`), and the roster of raw
+		// statuses narrow enough that none of them reaches that width on its own.
+		// The roster matters as much as the waiting row: with a `running` or
+		// `aborted` row present the raw column is already as wide as `waiting`, the
+		// drift cancels, and a column measured on `agent.status` looks correct. So
+		// this is built out of the narrow statuses only, main included, which is the
+		// one roster shape where the measurement is visible.
+		const derivedFor = (status: AgentStatus): string => agentDisplayState({ status, waitingOnPeer: true });
+		const widening = AGENT_STATUSES.filter(status => derivedFor(status).length > status.length);
+		expect(widening.length).toBeGreaterThan(0);
+		const derivedWidth = Math.max(...widening.map(status => derivedFor(status).length));
+		const narrow = AGENT_STATUSES.filter(status => status.length < derivedWidth);
+		expect(narrow.length).toBeGreaterThan(1);
+
+		AgentRegistry.global().register({
+			id: MAIN_AGENT_ID,
+			displayName: "Main Session",
+			kind: "main",
+			// Not the `running` default: the driving row is measured with the rest,
+			// and a seven-cell word on it hides what this test is looking for.
+			status: narrow[0],
+			session: accepting(),
+		});
+		narrow.forEach((status, index) => {
+			AgentRegistry.global().register({
+				id: `narrow-${index}`,
+				displayName: index === 0 ? "x" : "a-considerably-longer-type",
+				kind: "sub",
+				parentId: MAIN_AGENT_ID,
+				session: accepting(),
+				status,
+				model: "anthropic/claude-sonnet-5",
+			});
+		});
+		const raw = widening[0] ?? "idle";
+		AgentRegistry.global().register({
+			id: "peer-waiter",
+			displayName: "waiter",
+			kind: "sub",
+			parentId: MAIN_AGENT_ID,
+			session: accepting(),
+			status: raw,
+			model: "anthropic/claude-sonnet-5",
+		});
+		AgentRegistry.global().setWaitingOnPeer("peer-waiter", true);
+		const dashboard = new AgentDashboard({ terminalHeight: ROWS, showModelBadge: true });
+		const lines = rows(dashboard);
+
+		// The derived row is on screen, so the assertion below has something to
+		// disagree about.
+		expect(lines.filter(line => line.includes(derivedFor(raw))).length).toBe(1);
+		// The model column begins one gap after the status column. It is at one cell
+		// on the derived row and on every row measured from a raw word.
+		const cols = columnOf(lines, "claude-sonnet-5");
+		expect(cols.length).toBe(narrow.length + 1);
+		expect(new Set(cols).size).toBe(1);
 		dashboard.dispose();
 	});
 

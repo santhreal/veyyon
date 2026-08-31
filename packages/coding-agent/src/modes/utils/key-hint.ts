@@ -19,7 +19,10 @@
  * across the TUI, while `formatKeyHints` produces the title-case form the settings
  * UI and `/hotkeys` use.
  */
-import { getKeybindings, type Keybinding } from "@veyyon/tui";
+// The leaf, never `@veyyon/tui`: `fold-row.ts` reaches this module and the status
+// row reaches `fold-row.ts`, so a root-barrel edge here evaluates the whole
+// component library on the launch path. `keybindings.ts` is already on it.
+import { getKeybindings, type Keybinding } from "@veyyon/tui/keybindings";
 import { formatKeyHints, type KeyId } from "../../config/keybindings";
 
 /**

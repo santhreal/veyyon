@@ -27,7 +27,12 @@
  * all, and composes {@link searchIcon} with {@link queryField} on a body row —
  * same glyph, same caret, same hint grammar, one row lower.
  */
-import { CURSOR_MARKER, truncateToWidth, visibleWidth } from "@veyyon/tui";
+// The leaves, never `@veyyon/tui`: `theme.ts` reaches this module, and every
+// module a launch waits on reaches `theme.ts`, so a root-barrel edge here
+// evaluates the whole component library before the composer takes a keystroke.
+// Both leaves are already on that graph, so naming them costs nothing.
+import { CURSOR_MARKER } from "@veyyon/tui/tui";
+import { truncateToWidth, visibleWidth } from "@veyyon/tui/utils";
 import { formatCount } from "@veyyon/utils/format";
 // Type-only, so it is erased and closes no cycle at run time.
 import type { Theme } from "../theme/theme";

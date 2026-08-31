@@ -14,6 +14,7 @@
 
 ### Changed
 
+- The search band and the key-hint helper import the TUI's leaf modules instead of its package barrel, so the launch shell no longer evaluates the barrel at startup; no user-visible change.
 - A floating card's section rule spans the content it separates instead of the whole row field, so a card that narrows its content no longer draws a rule past the last cell its rows can reach.
 - The subagent roster reads as a table: the status glyph, the model and the badge strip each hold a measured column, the badges flush to the row's edge, and the activity takes what is left between them.
 - The account manager keeps the width of its cursor column while the cursor is elsewhere, so a row's text no longer steps sideways as the cursor arrives on it.
