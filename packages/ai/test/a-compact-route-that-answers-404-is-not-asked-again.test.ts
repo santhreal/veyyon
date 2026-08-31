@@ -10,14 +10,29 @@ import { buildModel } from "@veyyon/catalog/build";
 import type { FetchImpl } from "@veyyon/utils";
 
 /**
+ * DO NOT CHANGE THIS TEST WITHOUT OPERATOR PERMISSION.
+ * THIS REGRESSION HAS HAPPENED 50+ TIMES.
+ *
  * WHY: a real run compacted on a ChatGPT Codex model and every compaction
- * answered 404 with `{"detail":"Not Found"}`: one request, one warning, one
- * fallback, repeated for the whole session. The cause was the route. Veyyon
- * posted to `POST /responses/compact`, the v1 remote-compaction route, which
- * the Codex backend has retired; it serves v2, an ordinary `POST /responses`
- * marked as a compaction by its client metadata. The capability flag can only
- * predict support from the host; a 404 is the host answering the question, and
- * that answer was being thrown away.
+ * answered 404, so every pass fell back to LOCAL compaction — a paid
+ * summarization call that rewrites the history prefix and busts the prompt
+ * cache, making every following turn re-pay full uncached input.
+ *
+ * READ THIS BEFORE CHANGING THE ROUTE. Both codex routes have answered 404 in
+ * real runs at different times, which is why this has regressed more than fifty
+ * times: someone flips the path, the other 404 appears, someone flips it back.
+ * The path alone was never the decision. The route and the `implementation` the
+ * client metadata declares are ONE decision and must agree:
+ *
+ *   {base}/codex/responses/compact  <->  implementation "responses_compact"
+ *   {base}/codex/responses          <->  implementation "responses_compaction_v2"
+ *
+ * A route from one pairing sent with the other's declaration is a mismatch, and
+ * a mismatch is its own 404. The wire pinned here is oh-my-pi's
+ * (`can1357/oh-my-pi`, `resolveOpenAiCodexCompactEndpoint`): the `/compact`
+ * endpoint, `responses_compact`, one JSON document, no `compaction_trigger`
+ * item and no `stream`. Changing either half without the other, or without the
+ * operator saying so, is the regression.
  *
  * The class this closes: a permanent negative from the compact route being
  * treated as a transient failure. It covers every non-2xx status, not the one
@@ -30,9 +45,10 @@ import type { FetchImpl } from "@veyyon/utils";
  * launch, but this run will not notice.
  */
 
-/** The live v2 route. The recorded 404 came from the retired v1 one below. */
-const CODEX_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses";
-const RETIRED_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses/compact";
+/** The route oh-my-pi posts to. The paired declaration is `responses_compact`. */
+const CODEX_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses/compact";
+/** The plain turn route, which pairs with `responses_compaction_v2`, not with compaction. */
+const RETIRED_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses";
 const RECORDED_404_BODY = '{"detail":"Not Found"}';
 function codexModel(id = "gpt-test-codex"): Model<Api> {
 	// Built through the real catalog path so `supportsServerCompaction` is the

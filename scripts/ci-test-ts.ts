@@ -463,6 +463,11 @@ export const repoScriptTests = [
 	// it enforces stops being enforced the moment nobody reruns it by hand.
 	"scripts/an-off-screen-raster-never-enters-assets.test.ts",
 	"scripts/one-owner-answers-a-command-lookup.test.ts",
+	// The ChatGPT Codex compaction route has been broken and re-fixed 50+ times, and
+	// each break falls back to paid local compaction that busts the prompt cache. The
+	// suite hashes the file, so editing it at all fails CI until an operator records
+	// the new hash.
+	"scripts/the-codex-compaction-route-is-locked.test.ts",
 ];
 
 /**
