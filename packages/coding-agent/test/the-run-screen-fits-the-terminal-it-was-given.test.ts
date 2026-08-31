@@ -20,6 +20,7 @@
 import { describe, expect, it } from "bun:test";
 import {
 	AutoresearchScreenComponent,
+	renderRunDetail,
 	renderRunScreen,
 	runScreenRows,
 	screenSidebarWidth,
@@ -85,13 +86,26 @@ describe("the run screen fits the terminal it was given", () => {
 	it("returns exactly the rows it was given, at every width and height", () => {
 		const runtime = runtimeWith(40);
 		for (const width of [60, 80, 120, 200]) {
-			for (const rows of [14, 20, 40, 60]) {
+			// From the shortest frame the card has (four chrome rows around a
+			// three-row body) upward: the clamp used to floor at 14 and write eight
+			// rows past the bottom of a ten-row terminal.
+			for (const rows of [7, 8, 10, 13, 14, 20, 40, 60]) {
 				const frame = frameOf(runtime, width, rows);
 				expect(frame.length).toBe(rows);
 				for (const line of frame) {
 					expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 				}
 			}
+		}
+	});
+
+	it("never writes more rows than a terminal shorter than its own minimum", () => {
+		// Below the seven-row floor there is nothing to shrink: the card states its
+		// minimum instead of scaling to two rows, and a host that cannot spare
+		// seven rows gets seven rather than a frame torn in half.
+		const runtime = runtimeWith(40);
+		for (const rows of [1, 3, 6]) {
+			expect(frameOf(runtime, 80, rows).length).toBe(7);
 		}
 	});
 
@@ -140,6 +154,20 @@ describe("the run screen fits the terminal it was given", () => {
 		const off = runtimeWith(1);
 		off.autoresearchMode = false;
 		expect(screenTitle(off)).toContain("mode off");
+	});
+
+	it("reads a swarm the console configured before any session exists", () => {
+		// Between the setup console and the first `init_experiment` there is no
+		// stored session, so `state.breadth` is 1 for a whole turn. The surface
+		// titled itself "Autoresearch" and its session pane said "serial, no arms"
+		// about a swarm of four that the user had already configured.
+		const runtime = runtimeWith(0);
+		runtime.pendingSwarm = { breadth: 4, attempts: 2, certify: true };
+		expect(screenTitle(runtime)).toContain("Autoswarm");
+
+		const detail = renderRunDetail(runtime, "session", 90).join("\n");
+		expect(detail).toContain("4 arms per iteration");
+		expect(detail).not.toContain("serial, no arms");
 	});
 
 	it("lists the session, the playbook and every run, newest first", () => {
@@ -204,5 +232,120 @@ describe("the run screen fits the terminal it was given", () => {
 		const frame = renderRunScreen(runtime, 80, 24, ["one"], ["two"], screenSidebarWidth(80));
 		expect(frame.length).toBe(24);
 		for (const line of frame) expect(visibleWidth(line)).toBeLessThanOrEqual(80);
+	});
+
+	it("pages the detail pane, and pages back to where it started", () => {
+		// The pane holds a playbook longer than the card, so the rows past the
+		// bottom are reachable only through the page keys the footer advertises.
+		const runtime = runtimeWith(1);
+		runtime.state.notes = Array.from({ length: 120 }, (_unused, index) => `note line ${index}`).join("\n");
+		const screen = new AutoresearchScreenComponent({
+			runtime,
+			close: () => {},
+			requestRender: () => {},
+			rows: () => 20,
+		});
+		screen.handleInput("\x1b[B"); // session → playbook
+		const first = screen.render(80).join("\n");
+		expect(first).toContain("note line 0");
+
+		screen.handleInput("\x1b[6~");
+		const paged = screen.render(80).join("\n");
+		expect(paged).not.toBe(first);
+		expect(paged).not.toContain("note line 0");
+
+		screen.handleInput("\x1b[5~");
+		expect(screen.render(80).join("\n")).toBe(first);
+	});
+
+	it("closes on escape, and on escape only once the filter is gone", () => {
+		// `q` closed the screen and never reached the list, so a reader filtering
+		// for a run whose label held a q lost the surface mid-keystroke. Escape is
+		// the only chord the card claims, and it clears a live filter before it
+		// means leave — the setup wizard lost onboarding to exactly that reading.
+		const closes: string[] = [];
+		const newScreen = (runs: number, rows: number): AutoresearchScreenComponent =>
+			new AutoresearchScreenComponent({
+				runtime: runtimeWith(runs),
+				close: () => closes.push("closed"),
+				requestRender: () => {},
+				rows: () => rows,
+			});
+
+		const unfiltered = newScreen(3, 20);
+		for (const key of ["q", "Q", "\x1b[5~", "\x1b[6~", "\x1b[B"]) unfiltered.handleInput(key);
+		expect(closes).toEqual([]);
+		unfiltered.handleInput("\x1b");
+		expect(closes).toEqual(["closed"]);
+
+		// A list longer than its budget is the one that can be typed into, which is
+		// the case where Escape has two meanings.
+		closes.length = 0;
+		const filtered = newScreen(30, 12);
+		filtered.render(80);
+		filtered.handleInput("2");
+		filtered.handleInput("\x1b");
+		expect(closes).toEqual([]);
+		// The filter is gone, so this one leaves.
+		filtered.handleInput("\x1b");
+		expect(closes).toEqual(["closed"]);
+	});
+
+	it("expands the control bytes in text it did not write", () => {
+		// A literal tab lands on the terminal's tab stops and opens a hole through
+		// the pane's columns; an embedded newline pushes a row past the border the
+		// caller measured. Both arrive from a model writing a session field.
+		const runtime = runtimeWith(1, { goal: "goal\twith\ttabs" });
+		// The session name is inset into the top border, which is measured before
+		// the name reaches it.
+		runtime.state.name = "startup\tlatency";
+		runtime.state.notes = "first\tline";
+		runtime.state.results = [
+			result({ description: "shortened\tthe\nhot loop", flagged: true, flaggedReason: "reason\nover\nlines" }),
+		];
+		for (const rowIndex of [0, 1, 2]) {
+			const screen = new AutoresearchScreenComponent({
+				runtime,
+				close: () => {},
+				requestRender: () => {},
+				rows: () => 20,
+			});
+			for (let step = 0; step < rowIndex; step += 1) screen.handleInput("\x1b[B");
+			const frame = screen.render(70);
+			expect(frame.length).toBe(20);
+			for (const line of frame) {
+				expect(line).not.toContain("\t");
+				expect(line).not.toContain("\n");
+				expect(visibleWidth(line)).toBeLessThanOrEqual(70);
+			}
+		}
+	});
+
+	it("compares an archived run to the baseline of its own segment", () => {
+		// A run in segment 1 is judged against segment 1's baseline. Reading every
+		// run against the CURRENT segment's baseline stated a comparison the loop
+		// never made: here it would read 100ms as +100.0% against a later 50ms.
+		const runtime = runtimeWith(0);
+		runtime.state.results = [
+			result({ runNumber: 1, metric: 200, segment: 0 }),
+			result({ runNumber: 2, metric: 100, segment: 0 }),
+			result({ runNumber: 3, metric: 50, segment: 1 }),
+			result({ runNumber: 4, metric: 25, segment: 1 }),
+		];
+		runtime.state.currentSegment = 1;
+		const screen = new AutoresearchScreenComponent({
+			runtime,
+			close: () => {},
+			requestRender: () => {},
+			rows: () => 24,
+		});
+		const rows = runScreenRows(runtime);
+		const index = rows.findIndex(row => row.value === "run:2");
+		expect(index).toBeGreaterThan(0);
+		for (let step = 0; step < index; step += 1) screen.handleInput("\x1b[B");
+
+		const detail = screen.render(100).join("\n");
+		expect(detail).toContain("-50.0%");
+		expect(detail).not.toContain("+100.0%");
 	});
 });

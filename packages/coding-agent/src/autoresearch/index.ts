@@ -511,8 +511,11 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		opts: { keepTree: boolean; resetTreeForce: boolean },
 	): Promise<void> {
 		const storage = await openAutoresearchStorage(ctx.cwd);
-		const session = storage.getActiveSession();
 		const branchName = await tryReadBranch(ctx.cwd);
+		// Scoped to the branch: the newest open session may belong to another one,
+		// and its baseline is the commit `git reset --hard` below would move this
+		// worktree to. Every other caller resolves the session the same way.
+		const session = storage.getActiveSessionForBranch(branchName);
 		const onAutoresearchBranch = branchName?.startsWith("autoresearch/") ?? false;
 		const shouldResetTree = !opts.keepTree && (onAutoresearchBranch || opts.resetTreeForce);
 		if (shouldResetTree && session?.baselineCommit) {

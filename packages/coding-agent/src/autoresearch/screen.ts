@@ -11,7 +11,7 @@
  * Row geometry lives in `renderRunScreen`, which takes its width and height as
  * arguments so a test can pin a frame without a terminal.
  */
-import { type Component, type SelectItem, SelectList, truncateToWidth } from "@veyyon/tui";
+import { type Component, type SelectItem, SelectList, sanitizeSingleLine, truncateToWidth } from "@veyyon/tui";
 import { clampLow } from "@veyyon/utils";
 import {
 	bottomBorder,
@@ -23,7 +23,13 @@ import {
 } from "../modes/components/overlay-box";
 import { getSelectListTheme, type ThemeColor, theme } from "../modes/theme/theme";
 import { formatElapsed, formatNum, formatPercentChange } from "./helpers";
-import { currentResults, findBaselineMetric, findBaselineRunNumber, findBaselineSecondary } from "./state";
+import {
+	currentResults,
+	effectiveBreadth,
+	findBaselineMetric,
+	findBaselineRunNumber,
+	findBaselineSecondary,
+} from "./state";
 import type { AutoresearchRuntime, ExperimentResult, ExperimentState } from "./types";
 
 /** Label column of the detail body, so every value starts at one column. */
@@ -34,11 +40,26 @@ const SIDEBAR_MIN = 22;
 const SIDEBAR_MAX = 34;
 
 const FOOTER_HINT = "up/down select   pgup/pgdn page   esc close";
+/**
+ * Shortest frame the card can be: four chrome rows (title border, divider,
+ * footer, bottom border) around the three-row body floor. The clamp used to be
+ * 14, which wrote eight rows more than a ten-row terminal had — the same defect
+ * on the screen that the widget had above the composer.
+ */
+const SCREEN_MIN_ROWS = 7;
 
-/** Soft-wrap plain text, returning at least one (possibly empty) line. */
+/**
+ * Soft-wrap plain text, returning at least one (possibly empty) line.
+ *
+ * Every value in this pane is text a model wrote into the session — a
+ * description, a note, a flag reason, a commit subject — so it is sanitized
+ * first: a literal tab lands on the terminal's own tab stops and opens a hole
+ * through the pane's columns, and an embedded newline pushes a row past the
+ * border the caller measured.
+ */
 function wrap(text: string, width: number): string[] {
 	if (!text) return [""];
-	return Bun.wrapAnsi(text, Math.max(1, width), { trim: false }).split("\n");
+	return Bun.wrapAnsi(sanitizeSingleLine(text), Math.max(1, width), { trim: false }).split("\n");
 }
 
 /** `Label       value`, wrapped under a hanging indent so values stay in column. */
@@ -73,15 +94,16 @@ export function metricLabel(result: ExperimentResult, unit: string): string {
 	return result.status === "crash" ? "no metric" : formatNum(result.metric, unit);
 }
 
-/** Whether this session is a swarm, which decides the title and the arm fields. */
-function isSwarm(state: ExperimentState): boolean {
-	return state.breadth > 1;
-}
-
 export function screenTitle(runtime: AutoresearchRuntime): string {
 	const state = runtime.state;
-	const name = state.name ?? state.goal ?? runtime.goal;
-	const label = isSwarm(state) ? "Autoswarm" : "Autoresearch";
+	// The name and the goal are model-written text, and this one is inset into a
+	// border: a tab or a newline in it breaks the row the card is measured by.
+	const named = state.name ?? state.goal ?? runtime.goal;
+	const name = named ? sanitizeSingleLine(named) : null;
+	// The breadth the console chose, not only the breadth the stored session has:
+	// a fresh autoswarm spends its first turn with a state that reads breadth 1,
+	// and titling that surface "Autoresearch" names the wrong loop.
+	const label = effectiveBreadth(runtime) > 1 ? "Autoswarm" : "Autoresearch";
 	const mode = runtime.autoresearchMode ? "" : "  (mode off)";
 	return name ? `${label} · ${name}${mode}` : `${label}${mode}`;
 }
@@ -205,8 +227,9 @@ function sessionDetail(runtime: AutoresearchRuntime, width: number): string[] {
 		lines.push(...field("Archived", `${state.results.length - current.length} runs from earlier segments`, width));
 	}
 	lines.push("");
-	if (isSwarm(state)) {
-		lines.push(...field("Breadth", `${state.breadth} arms per iteration`, width));
+	const breadth = effectiveBreadth(runtime);
+	if (breadth > 1) {
+		lines.push(...field("Breadth", `${breadth} arms per iteration`, width));
 		const flagged = state.results.filter(result => result.flagged).length;
 		lines.push(...field("Flagged", flagged === 0 ? "none" : `${flagged} runs`, width));
 	} else {
@@ -288,8 +311,11 @@ function pendingDetail(runtime: AutoresearchRuntime, width: number): string[] {
 }
 
 function runDetail(result: ExperimentResult, state: ExperimentState, width: number): string[] {
-	const baseline = findBaselineMetric(state.results, state.currentSegment);
-	const baselineSecondary = findBaselineSecondary(state.results, state.currentSegment, state.secondaryMetrics);
+	// The run's own segment, not the current one: an archived run was judged
+	// against the baseline of the segment it ran in, and a percentage against a
+	// later segment's baseline describes a comparison the loop never made.
+	const baseline = findBaselineMetric(state.results, result.segment);
+	const baselineSecondary = findBaselineSecondary(state.results, result.segment, state.secondaryMetrics);
 	// No measurement means no comparison: a crash against a 205ms baseline read
 	// `0ms  -100.0%`, which is a claim about a run that never finished.
 	const change = result.status === "crash" ? "" : formatPercentChange(result.metric, baseline);
@@ -394,6 +420,8 @@ export class AutoresearchScreenComponent implements Component {
 	#detailScroll = 0;
 	/** Last sidebar width, so the group rule is drawn to the column it lives in. */
 	#sidebarWidth = SIDEBAR_MIN;
+	/** Rows the detail pane last showed, so a page key moves by a viewport. */
+	#detailRows = 1;
 
 	constructor(options: {
 		runtime: AutoresearchRuntime;
@@ -441,13 +469,14 @@ export class AutoresearchScreenComponent implements Component {
 
 	render(width: number): readonly string[] {
 		this.#sync();
-		const rows = Math.max(14, this.#rows());
+		const rows = Math.max(SCREEN_MIN_ROWS, this.#rows());
 		const bodyRows = Math.max(3, rows - 4);
 		const sidebarWidth = screenSidebarWidth(width);
 		this.#sidebarWidth = sidebarWidth;
 		const bodyWidth = splitBodyWidth(width, sidebarWidth);
 		this.#list.setRowBudget(bodyRows);
 		const sidebar = this.#list.render(sidebarWidth);
+		this.#detailRows = bodyRows;
 		const detail = this.#detailWindow(bodyWidth, bodyRows);
 		return renderRunScreen(this.#runtime, width, rows, sidebar, detail, sidebarWidth);
 	}
@@ -472,19 +501,29 @@ export class AutoresearchScreenComponent implements Component {
 	}
 
 	handleInput(data: string): void {
-		if (data === "\x1b" || data === "q") {
+		if (data === "\x1b") {
+			// A reader who filtered the run list gets their filter back first: the
+			// list states whether Escape has a filter to clear, and one that closed
+			// the whole screen instead read a filter as "leave".
+			if (this.#list.hasActiveFilter()) {
+				this.#list.handleInput(data);
+				this.#requestRender();
+				return;
+			}
 			this.#close();
 			return;
 		}
-		// The detail pane scrolls with the page keys; the list owns the arrows, so
-		// a long session and a long run detail are both reachable without a mode.
+		// The detail pane pages with the page keys; the list owns the arrows and
+		// every printable character, which is its filter, so no letter is a chord
+		// here. A page is the pane's own height less the indicator row it spends.
+		const page = Math.max(1, this.#detailRows - 1);
 		if (data === "\x1b[5~") {
-			this.#detailScroll = Math.max(0, this.#detailScroll - 1);
+			this.#detailScroll = Math.max(0, this.#detailScroll - page);
 			this.#requestRender();
 			return;
 		}
 		if (data === "\x1b[6~") {
-			this.#detailScroll += 1;
+			this.#detailScroll += page;
 			this.#requestRender();
 			return;
 		}

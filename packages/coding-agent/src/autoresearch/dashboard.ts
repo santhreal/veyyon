@@ -9,31 +9,55 @@
  * terminal. Everything that table held is in {@link ./screen}, which is a screen
  * and can afford it.
  */
+import type { ExtensionContext } from "../extensibility/extensions";
 import { theme } from "../modes/theme/theme";
 import { formatElapsed, formatNum } from "./helpers";
 import { AutoresearchScreenComponent } from "./screen";
 import { AUTORESEARCH_SCREEN_KEY } from "./shortcuts";
-import { currentResults } from "./state";
+import { currentResults, effectiveBreadth } from "./state";
 import type { AutoresearchRuntime, DashboardController, ExperimentState } from "./types";
 
 export function createDashboardController(): DashboardController {
 	let screenTui: { requestRender(): void } | null = null;
 	let refreshTimer: NodeJS.Timeout | undefined;
+	/** The last UI context, so a tick can repaint the row without an event. */
+	let ticking: { ctx: ExtensionContext; runtime: AutoresearchRuntime } | null = null;
 
 	const requestRender = (): void => {
 		screenTui?.requestRender();
 	};
 
-	const stopRefresh = (): void => {
-		screenTui = null;
-		if (refreshTimer) {
+	/**
+	 * One second is the row's clock and the screen's clock both.
+	 *
+	 * The row states the elapsed time of the run in flight, and nothing else
+	 * repaints it: the extension calls `update` on state transitions, and a
+	 * benchmark between two of those is exactly when a reader is watching. So the
+	 * timer runs while a run is in flight or the screen is open, and stops as soon
+	 * as neither is true, which is what keeps an idle session off the event loop.
+	 */
+	const syncTimer = (): void => {
+		const wanted = ticking !== null || screenTui !== null;
+		if (wanted === (refreshTimer !== undefined)) return;
+		if (!wanted) {
 			clearInterval(refreshTimer);
 			refreshTimer = undefined;
+			return;
 		}
+		refreshTimer = setInterval(() => {
+			if (ticking) ticking.ctx.ui.setStatus("autoresearch", renderStatusRow(ticking.runtime));
+			requestRender();
+		}, 1000);
+	};
+
+	const stopRefresh = (): void => {
+		screenTui = null;
+		syncTimer();
 	};
 
 	return {
 		clear(ctx): void {
+			ticking = null;
 			stopRefresh();
 			if (ctx.hasUI) ctx.ui.setStatus("autoresearch", undefined);
 		},
@@ -41,9 +65,13 @@ export function createDashboardController(): DashboardController {
 		update(ctx, runtime): void {
 			if (!ctx.hasUI) return;
 			if (!hasSession(runtime)) {
+				ticking = null;
+				syncTimer();
 				ctx.ui.setStatus("autoresearch", undefined);
 				return;
 			}
+			ticking = runtime.runningExperiment ? { ctx, runtime } : null;
+			syncTimer();
 			ctx.ui.setStatus("autoresearch", renderStatusRow(runtime));
 			requestRender();
 		},
@@ -52,11 +80,9 @@ export function createDashboardController(): DashboardController {
 			await ctx.ui.custom<void>(
 				(tui, _theme, _keybindings, done) => {
 					screenTui = tui;
-					// A run in flight has a clock in it, so the screen ticks while one
-					// is open. An idle screen has nothing to animate and no timer.
-					if (!refreshTimer && runtime.runningExperiment) {
-						refreshTimer = setInterval(requestRender, 1000);
-					}
+					// The screen's own clock: a run in flight ticks it, and so does the
+					// row underneath, which is why both share one timer.
+					syncTimer();
 					const component = new AutoresearchScreenComponent({
 						runtime,
 						close: () => done(undefined),
@@ -93,7 +119,7 @@ function hasSession(runtime: AutoresearchRuntime): boolean {
  */
 export function renderStatusRow(runtime: AutoresearchRuntime): string {
 	const state = runtime.state;
-	const parts: string[] = [theme.fg("accent", state.breadth > 1 ? "autoswarm" : "autoresearch")];
+	const parts: string[] = [theme.fg("accent", effectiveBreadth(runtime) > 1 ? "autoswarm" : "autoresearch")];
 
 	if (runtime.runningExperiment) {
 		parts.push(

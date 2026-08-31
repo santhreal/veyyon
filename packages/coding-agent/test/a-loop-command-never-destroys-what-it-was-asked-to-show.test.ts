@@ -11,9 +11,13 @@
  *      destructive default, and reset the worktree the user was asking to keep.
  *   3. The reset itself — `git reset --hard` plus `git clean` — ran with no
  *      confirmation, from four letters typed after a slash.
+ *   4. The reset resolved its session as the newest open row rather than the one
+ *      on this branch, so a second worktree elsewhere decided which commit this
+ *      one was reset to.
  *
  * The class is: an argument the parser does not recognize, or a bare command,
- * must never resolve to the destructive branch. Each case here drives the real
+ * must never resolve to the destructive branch, and the destructive branch acts
+ * on the session of the branch it stands on. Each case here drives the real
  * command handler registered by the real extension against a real git worktree
  * and a real store.
  *
@@ -154,18 +158,21 @@ function makeCtx(cwd: string, harness: Harness, surface: Surface): ExtensionCont
  * An open session with a real baseline commit, which is what makes `clear`
  * reach the reset at all: without one the command reports "no baseline commit
  * recorded" and the destructive branch under test is never entered.
+ *
+ * Returns the commit the session was opened at, which is the commit a confirmed
+ * clear resets this worktree to.
  */
-async function openSessionAtHead(cwd: string): Promise<void> {
+async function openSessionAtHead(cwd: string, branch = "autoresearch/test"): Promise<string> {
 	const storage = await openAutoresearchStorage(cwd);
 	const head = (await $`git rev-parse HEAD`.cwd(cwd).quiet()).stdout.toString().trim();
 	storage.openSession({
-		name: "loop-command-test",
+		name: `loop-command-test ${branch}`,
 		goal: "make it faster",
 		primaryMetric: "duration",
 		metricUnit: "ms",
 		direction: "lower",
 		preferredCommand: null,
-		branch: "autoresearch/test",
+		branch,
 		baselineCommit: head,
 		maxIterations: null,
 		scopePaths: [],
@@ -173,6 +180,7 @@ async function openSessionAtHead(cwd: string): Promise<void> {
 		constraints: [],
 		secondaryMetrics: [],
 	});
+	return head;
 }
 
 describe("a loop command never destroys what it was asked to show", () => {
@@ -301,6 +309,33 @@ describe("a loop command never destroys what it was asked to show", () => {
 		expect(await Bun.file(dirty).exists()).toBe(true);
 		expect(harness.notices.at(-1)?.text).toBe("Autoresearch session cleared.");
 		expect(harness.activeTools).toEqual([]);
+	});
+
+	it("resets to the baseline of the branch it is standing on, not the newest session", async () => {
+		// `clear` resolved the session as "newest still-open row", so a second
+		// worktree on another branch made this one reset to a commit it had never
+		// been at, and closed that other branch's session instead of its own. Every
+		// other caller resolves by branch; this one now does too.
+		const harness = buildHarness();
+		const surface = newSurface();
+		const ctx = makeCtx(cwdDir.path(), harness, surface);
+		await harness.commands.get("autoresearch")?.handler("make it faster", ctx);
+		const ours = await openSessionAtHead(cwdDir.path(), "autoresearch/test");
+		await Bun.write(path.join(cwdDir.path(), "later.txt"), "committed after the baseline\n");
+		await $`git add later.txt && git commit -m later`.cwd(cwdDir.path()).quiet();
+		const theirs = await openSessionAtHead(cwdDir.path(), "autoresearch/other");
+		expect(theirs).not.toBe(ours);
+
+		await harness.commands.get("autoresearch")?.handler("clear", ctx);
+
+		expect(surface.confirms[0]?.message).toContain(ours.slice(0, 12));
+		expect(surface.confirms[0]?.message).not.toContain(theirs.slice(0, 12));
+		const head = (await $`git rev-parse HEAD`.cwd(cwdDir.path()).quiet()).stdout.toString().trim();
+		expect(head).toBe(ours);
+		// The other branch's session is untouched, and ours is the one that closed.
+		const storage = await openAutoresearchStorage(cwdDir.path());
+		expect(storage.getActiveSessionForBranch("autoresearch/other")?.baselineCommit).toBe(theirs);
+		expect(storage.getActiveSessionForBranch("autoresearch/test")).toBeNull();
 	});
 
 	it("occupies one status row and no widget above the composer", async () => {

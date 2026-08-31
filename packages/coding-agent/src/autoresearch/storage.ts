@@ -473,6 +473,25 @@ export class AutoresearchStorage {
 			setClauses.push("notes = ?");
 			values.push(updates.notes);
 		}
+		// The four swarm settings the setup console reopens on: declared by
+		// `UpdateSessionParams` and silently dropped here, so raising breadth on a
+		// live session left the loop running its old shape.
+		if (updates.breadth !== undefined) {
+			setClauses.push("breadth = ?");
+			values.push(updates.breadth);
+		}
+		if (updates.attempts !== undefined) {
+			setClauses.push("attempts = ?");
+			values.push(updates.attempts);
+		}
+		if (updates.maxParallel !== undefined) {
+			setClauses.push("max_parallel = ?");
+			values.push(updates.maxParallel);
+		}
+		if (updates.certify !== undefined) {
+			setClauses.push("certify = ?");
+			values.push(updates.certify ? 1 : 0);
+		}
 		if (setClauses.length > 0) {
 			values.push(sessionId);
 			this.#db.prepare(`UPDATE sessions SET ${setClauses.join(", ")} WHERE id = ?`).run(...(values as never[]));
