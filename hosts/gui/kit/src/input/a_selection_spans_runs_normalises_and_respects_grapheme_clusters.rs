@@ -9,11 +9,8 @@
 //! WHAT IT DOES NOT CATCH. Window-level GPU compositing and platform-specific
 //! clipboard daemon synchronisation.
 
-use gpui::{Bounds, Pixels, Point, point, px, size};
-
 use super::selection::{
-	Position, Selection, hit_test_advance, line_range, range_rects_with_positions, resolve_spans,
-	snap_to_grapheme, word_range,
+	Position, Selection, line_range, resolve_spans, snap_to_grapheme, word_range,
 };
 
 #[test]
@@ -152,40 +149,4 @@ fn word_and_line_boundaries() {
 
 	let l2 = line_range(text, 30);
 	assert_eq!(&text[l2], "second line here");
-}
-
-#[test]
-fn hit_test_with_measured_advances() {
-	let text = "abc";
-	let advances = [10.0, 22.0, 35.0];
-	assert_eq!(hit_test_advance(text, &advances, 0.0), 0);
-	assert_eq!(hit_test_advance(text, &advances, 4.0), 0);
-	assert_eq!(hit_test_advance(text, &advances, 8.0), 1);
-	assert_eq!(hit_test_advance(text, &advances, 14.0), 1);
-	assert_eq!(hit_test_advance(text, &advances, 20.0), 2);
-	assert_eq!(hit_test_advance(text, &advances, 30.0), 3);
-	assert_eq!(hit_test_advance(text, &advances, 40.0), 3);
-}
-
-#[test]
-fn wrapped_line_visual_end_mapping() {
-	let bounds = Bounds::new(point(px(0.0), px(0.0)), size(px(200.0), px(100.0)));
-	let line_height = px(20.0);
-	let range = 0..20;
-
-	// Mock position mapping simulating wrapped rows at y=0 and y=20
-	let position_for_index = |ix: usize| -> Option<Point<Pixels>> {
-		if ix < 10 {
-			Some(point(px(ix as f32 * 10.0), px(0.0)))
-		} else if ix <= 20 {
-			Some(point(px((ix - 10) as f32 * 10.0), px(20.0)))
-		} else {
-			None
-		}
-	};
-
-	let rects = range_rects_with_positions(bounds, line_height, &range, position_for_index);
-	assert_eq!(rects.len(), 2);
-	assert_eq!(rects[0].origin.y, px(0.0));
-	assert_eq!(rects[1].origin.y, px(20.0));
 }

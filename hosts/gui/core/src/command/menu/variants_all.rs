@@ -4,8 +4,8 @@ use crate::{
 	UiCommand,
 	model::*,
 	navigation::{
-		AttachmentKind, BottomTab, ChangesTreeMode, DiffLayout, InspectorTab, Overlay, PaletteMode,
-		PlanReviewTab, Route, TerminalPresentation,
+		AttachmentKind, BottomTab, ChangesTreeMode, DiffLayout, HistoryGroupBy, InspectorTab,
+		Overlay, PaletteMode, PlanReviewTab, Route, TerminalPresentation,
 	},
 };
 
@@ -39,6 +39,7 @@ def_id!(dummy_task_id, TaskId);
 def_id!(dummy_process_id, ProcessId);
 def_id!(dummy_tool_id, ToolId);
 def_id!(dummy_attachment_id, AttachmentId);
+def_id!(dummy_space_id, SpaceId);
 
 /// A representative instance of every `UiCommand` variant for exhaustiveness
 /// testing.
@@ -59,6 +60,7 @@ pub fn all_command_variants() -> Vec<UiCommand> {
 	let procid = dummy_process_id();
 	let toolid = dummy_tool_id();
 	let attid = dummy_attachment_id();
+	let spcid = dummy_space_id();
 
 	vec![
 		UiCommand::Navigate(Route::Conversation),
@@ -82,9 +84,23 @@ pub fn all_command_variants() -> Vec<UiCommand> {
 		UiCommand::PinSession(sid.clone()),
 		UiCommand::UnpinSession(sid.clone()),
 		UiCommand::CycleSession { forward: true },
+		UiCommand::OpenTab(sid.clone()),
+		UiCommand::CloseTab { index: 0, force: false },
+		UiCommand::MoveTab { from: 0, to: 0 },
+		UiCommand::SelectTab(0),
+		UiCommand::CycleTabs { forward: true },
+		UiCommand::CreateSpace { name: String::new() },
+		UiCommand::RenameSpace { id: spcid.clone(), name: String::new() },
+		UiCommand::CloseSpace(spcid.clone()),
+		UiCommand::SelectSpace(spcid.clone()),
 		UiCommand::SetFileFilter(String::new()),
 		UiCommand::SetAgentFilter(String::new()),
 		UiCommand::SetSettingsFilter(String::new()),
+		UiCommand::SetHistoryFilter(String::new()),
+		UiCommand::SetHistoryGroupBy(HistoryGroupBy::Date),
+		UiCommand::ToggleHistoryGroup(String::new()),
+		UiCommand::CollapseAllHistoryGroups,
+		UiCommand::ExpandAllHistoryGroups,
 		UiCommand::SetChangesFilter(String::new()),
 		UiCommand::SetChangesTreeMode(ChangesTreeMode::List),
 		UiCommand::ToggleChangeFolder(String::new()),
@@ -96,6 +112,37 @@ pub fn all_command_variants() -> Vec<UiCommand> {
 			range:   LineRange { start: 1, end: 2 },
 			text:    String::new(),
 		},
+		UiCommand::StartReviewThread {
+			path:  "src/lib.rs".to_string(),
+			range: LineRange { start: 1, end: 5 },
+			text:  "Review note".to_string(),
+		},
+		UiCommand::ReplyReviewThread {
+			thread_id: ReviewThreadId::new("thread-1"),
+			text:      "Reply text".to_string(),
+		},
+		UiCommand::EditReviewDraft {
+			thread_id: Some(ReviewThreadId::new("thread-1")),
+			text:      "Draft text".to_string(),
+		},
+		UiCommand::ResolveReviewThread(ReviewThreadId::new("thread-1")),
+		UiCommand::UnresolveReviewThread(ReviewThreadId::new("thread-1")),
+		UiCommand::ToggleReviewThreadResolved(ReviewThreadId::new("thread-1")),
+		UiCommand::DeleteReviewThread(ReviewThreadId::new("thread-1")),
+		UiCommand::DeleteReviewComment {
+			thread_id:  ReviewThreadId::new("thread-1"),
+			comment_id: ReviewCommentId::new("comment-1"),
+		},
+		UiCommand::SelectReviewThread(Some(ReviewThreadId::new("thread-1"))),
+		UiCommand::CreateChangeRequest {
+			title:       "PR Title".to_string(),
+			description: Some("PR Description".to_string()),
+		},
+		UiCommand::SetChangeRequestState {
+			id:    ChangeRequestId::new("cr-1"),
+			state: ChangeRequestState::Open,
+		},
+		UiCommand::RemapReviewAnchors,
 		UiCommand::SetChangeBase(None),
 		UiCommand::RevealFile(fid.clone()),
 		UiCommand::SetProblemFilter(String::new()),

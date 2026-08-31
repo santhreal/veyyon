@@ -16,12 +16,74 @@ use crate::theme::Theme;
 pub mod geometry;
 pub mod model;
 
-pub use geometry::{
-	hit_test_advance, line_range, range_rects_with_positions, snap_to_grapheme, word_range,
-};
+pub use geometry::{line_range, snap_to_grapheme, word_range};
 pub use model::{Position, Selection, Span, resolve_spans};
 
 static STATE: LazyLock<Mutex<Selection>> = LazyLock::new(|| Mutex::new(Selection::default()));
+static DOCUMENT: LazyLock<Mutex<Vec<(String, String)>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+
+/// Record the document elements in order for the current frame.
+pub fn publish_document(elements: &[(String, String)]) {
+	if let Ok(mut guard) = DOCUMENT.lock() {
+		*guard = elements.to_vec();
+	}
+}
+
+/// Record document elements from string slices.
+pub fn publish_document_slices(elements: &[(&str, &str)]) {
+	if let Ok(mut guard) = DOCUMENT.lock() {
+		*guard = elements
+			.iter()
+			.map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+			.collect();
+	}
+}
+
+/// Begin selection anchored at `key` and byte `offset`, resolving text from the
+/// published document.
+pub fn begin_at(key: &str, offset: usize) {
+	let text = {
+		let doc = DOCUMENT.lock().ok();
+		doc.as_ref()
+			.and_then(|d| d.iter().find(|(k, _)| k == key).map(|(_, t)| t.clone()))
+			.unwrap_or_default()
+	};
+	if let Ok(mut guard) = global_state().lock() {
+		guard.begin(key, offset, &text);
+	}
+}
+
+/// Extend selection drag to a live pointer position at `key` and `offset`.
+/// Returns true if the selection spans changed.
+pub fn drag_to(key: &str, offset: usize) -> bool {
+	let doc_guard = match DOCUMENT.lock() {
+		Ok(g) => g,
+		Err(_) => return false,
+	};
+	let Some(index) = doc_guard.iter().position(|(k, _)| k == key) else {
+		return false;
+	};
+	let refs: Vec<(&str, &str)> = doc_guard
+		.iter()
+		.map(|(k, v)| (k.as_str(), v.as_str()))
+		.collect();
+	update_drag(&refs, (index, offset))
+}
+
+/// Extend selection anchor to `key` and `offset`, resolving through the
+/// published document.
+pub fn extend_anchor_at(key: &str, offset: usize) -> bool {
+	let doc_guard = match DOCUMENT.lock() {
+		Ok(g) => g,
+		Err(_) => return false,
+	};
+	let refs: Vec<(&str, &str)> = doc_guard
+		.iter()
+		.map(|(k, v)| (k.as_str(), v.as_str()))
+		.collect();
+	extend_anchor(key, offset, &refs);
+	true
+}
 
 fn global_state() -> &'static Mutex<Selection> {
 	&STATE

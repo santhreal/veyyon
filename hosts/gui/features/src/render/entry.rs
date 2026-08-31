@@ -45,7 +45,10 @@ impl EntryCache {
 				| ContentBlock::Summary { text, .. } => Some(text.as_str()),
 				_ => None,
 			};
-			let parsed = source.map(veyyon_gui_core::text::markdown::parse);
+			let parsed = source.map(|src| {
+				let mended = veyyon_gui_core::text::markdown::mend(src);
+				veyyon_gui_core::text::markdown::parse(&mended.text)
+			});
 			if let Some(parsed) = &parsed {
 				collect_links(parsed, &mut links);
 			}
@@ -67,7 +70,7 @@ impl EntryCache {
 		Self { revision: entry.revision, markdown, images, diffs, links }
 	}
 
-	fn markdown(&self, index: usize) -> &[Md] {
+	pub fn markdown(&self, index: usize) -> &[Md] {
 		self
 			.markdown
 			.get(index)

@@ -75,6 +75,7 @@ pub fn table() -> Vec<Row> {
 		listed("secondary-2", Context::Everywhere, UiCommand::Navigate(Route::Changes)),
 		listed("secondary-3", Context::Everywhere, UiCommand::Navigate(Route::Files)),
 		listed("secondary-4", Context::Everywhere, UiCommand::Navigate(Route::Agents)),
+		listed("secondary-5", Context::Everywhere, UiCommand::Navigate(Route::History)),
 		// Written as the keystroke the platform produces. `secondary-comma`
 		// parses, and then matches nothing: a keystroke carries the character,
 		// so the row has to spell it.

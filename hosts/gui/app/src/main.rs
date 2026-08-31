@@ -14,6 +14,8 @@ mod a_chime_and_a_system_notice_are_two_separate_settings;
 #[cfg(test)]
 mod a_palette_row_hands_the_keyboard_to_what_it_drew;
 #[cfg(test)]
+mod a_relaunch_restores_spaces_or_rejects_stale_or_missing_sessions;
+#[cfg(test)]
 mod a_reopened_palette_starts_on_an_empty_field;
 #[cfg(test)]
 mod a_request_raised_by_an_event_leaves_on_the_same_pass;
@@ -41,6 +43,7 @@ mod the_window_opens_inside_the_display;
 #[cfg(test)]
 mod the_window_reopens_with_its_recorded_state;
 mod transport;
+pub mod window_state;
 
 use gpui::{
 	App, AppContext, Bounds, Pixels, Size, TextRenderingMode, TitlebarOptions, WindowBounds,

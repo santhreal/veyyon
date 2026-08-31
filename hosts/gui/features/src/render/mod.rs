@@ -37,6 +37,8 @@ pub mod unknown;
 pub mod user_text;
 
 #[cfg(test)]
+mod a_streamed_block_renders_as_the_shape_it_is_becoming;
+#[cfg(test)]
 mod every_block_kind_supports_text_selection_and_copy;
 #[cfg(test)]
 mod tests;

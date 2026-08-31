@@ -16,11 +16,13 @@
 
 pub mod act;
 pub mod agents;
+pub mod attachments;
 pub mod changes;
 pub mod composer;
 pub mod conversation;
 pub mod extensions;
 pub mod files;
+pub mod history;
 pub mod inspector;
 pub mod mcp;
 pub mod models;
@@ -30,8 +32,10 @@ pub mod palette;
 pub mod problems;
 pub mod providers;
 pub mod render;
+pub mod review;
 pub mod settings;
 pub mod shell;
+pub mod spaces;
 pub mod tasks;
 pub mod terminal;
 pub mod transcript;

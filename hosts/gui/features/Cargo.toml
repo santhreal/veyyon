@@ -15,11 +15,12 @@ description = "The desktop front end's surfaces and content renderers."
 # type, because a surface that names the view it lives in cannot be moved.
 [dependencies]
 gpui = { workspace = true }
+serde_json = { workspace = true }
 veyyon-gui-core = { path = "../core" }
 veyyon-gui-kit = { path = "../kit" }
-
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

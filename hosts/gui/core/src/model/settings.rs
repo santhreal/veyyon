@@ -66,24 +66,16 @@ pub struct SettingsState {
 	pub save:             CommandState,
 }
 
+/// The themes the engine's profile holds. A profile theme is a name and an
+/// appearance, not a palette, so the window lists these and draws from its own
+/// library: no field here selects what the window draws.
 #[derive(Default, Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ThemeState {
-	pub available:  Vec<ThemeView>,
-	pub selected:   Option<String>,
-	pub preference: Option<String>,
-	pub refused:    Option<String>,
+	pub available: Vec<ThemeView>,
+	/// The theme the terminal interface is on, which the list marks.
+	pub selected:  Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ThemePreference {
-	pub theme: String,
-}
-
-impl Default for ThemePreference {
-	fn default() -> Self {
-		Self { theme: "dark".to_string() }
-	}
-}
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ThemeView {
 	pub id:   String,

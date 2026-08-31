@@ -18,13 +18,14 @@ pub fn route(store: &Store, route: Route, cx: &mut App) -> AnyElement {
 		Route::Files => "Files",
 		Route::Agents => "Agents",
 		Route::Settings(_) => "Settings",
+		Route::History => "History",
 	};
 	let action = match route {
 		Route::Changes => store.replica.changes.readable().map(|snapshot| {
 			("Refresh changes", UiCommand::RefreshChanges(snapshot.value.scope.clone()))
 		}),
 		Route::Agents => Some(("Refresh agents", UiCommand::RefreshAgents)),
-		Route::Conversation | Route::Files | Route::Settings(_) => None,
+		Route::Conversation | Route::Files | Route::Settings(_) | Route::History => None,
 	};
 	div()
 		.id("route-toolbar")

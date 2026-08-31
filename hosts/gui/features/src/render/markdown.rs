@@ -12,8 +12,8 @@
 //! into one string, which is exactly what a run-styled text element wants.
 
 use gpui::{
-	AnyElement, App, HighlightStyle, IntoElement, ParentElement, Styled, StyledText, UnderlineStyle,
-	div, px,
+	AnyElement, App, HighlightStyle, InteractiveElement, IntoElement, ParentElement, Styled,
+	StyledText, UnderlineStyle, div, px,
 };
 use veyyon_gui_core::text::markdown::{Md, Span};
 use veyyon_gui_kit::{
@@ -25,10 +25,19 @@ use super::{code, list, quote, table};
 
 /// Every block of one run of prose, in order.
 pub fn blocks(blocks: &[Md], id: &str, cx: &mut App) -> Vec<AnyElement> {
+	blocks_streamed(blocks, id, false, cx)
+}
+
+/// Every block of one run of prose, with streaming awareness.
+pub fn blocks_streamed(blocks: &[Md], id: &str, streaming: bool, cx: &mut App) -> Vec<AnyElement> {
+	let len = blocks.len();
 	blocks
 		.iter()
 		.enumerate()
-		.map(|(index, md)| block(md, &format!("{id}-{index}"), cx))
+		.map(|(index, md)| {
+			let is_tail = streaming && index + 1 == len;
+			block_streamed(md, &format!("{id}-{index}"), is_tail, cx)
+		})
 		.collect()
 }
 
@@ -36,13 +45,18 @@ pub fn blocks(blocks: &[Md], id: &str, cx: &mut App) -> Vec<AnyElement> {
 /// prose and its fences into different fills, which means asking for a block
 /// at a time.
 pub fn block(block: &Md, id: &str, cx: &mut App) -> AnyElement {
+	block_streamed(block, id, false, cx)
+}
+
+/// One block with streaming tail awareness.
+pub fn block_streamed(block: &Md, id: &str, is_tail: bool, cx: &mut App) -> AnyElement {
 	let theme = Theme::get(cx);
 	match block {
 		Md::Heading { level, spans } => {
 			heading_keyed(&format!("{id}-h"), *level, spans, &theme).into_any_element()
 		},
 
-		Md::Paragraph(spans) => runs_keyed(&format!("{id}-p"), spans, &theme)
+		Md::Paragraph(spans) => runs_keyed_streamed(&format!("{id}-p"), spans, is_tail, &theme)
 			.w_full()
 			.into_any_element(),
 
@@ -93,10 +107,53 @@ pub fn runs(spans: &[Span], theme: &Theme) -> gpui::Div {
 
 /// One run of prose with selection highlight support.
 pub fn runs_keyed(key: &str, spans: &[Span], theme: &Theme) -> gpui::Div {
-	let (body, styles) = styled(spans, theme);
+	runs_keyed_streamed(key, spans, false, theme)
+}
+
+/// One run of prose with selection highlight and streaming tail support.
+pub fn runs_keyed_streamed(key: &str, spans: &[Span], is_tail: bool, theme: &Theme) -> gpui::Div {
+	let (body, mut styles) = styled(spans, theme);
+	if is_tail
+		&& let Some(Span::Link { href, .. }) = spans.last()
+		&& href == veyyon_gui_core::text::markdown::PENDING_LINK_URL
+		&& let Some((_, style)) = styles.last_mut()
+	{
+		style.color = Some(theme.text_muted);
+	}
 	let styles =
 		veyyon_gui_kit::input::selection::apply_selection_highlights(&body, key, styles, theme);
-	div().child(StyledText::new(body).with_highlights(styles))
+	let text = StyledText::new(body).with_highlights(styles);
+	if key.is_empty() {
+		return div().child(text);
+	}
+	let layout = text.layout().clone();
+	let key_down = key.to_string();
+	let key_move = key.to_string();
+	let layout_down = layout.clone();
+	let layout_move = layout.clone();
+	div()
+		.child(text)
+		.on_mouse_down(gpui::MouseButton::Left, move |event: &gpui::MouseDownEvent, window, _cx| {
+			let offset = match layout_down.index_for_position(event.position) {
+				Ok(ix) | Err(ix) => ix,
+			};
+			if event.modifiers.shift {
+				veyyon_gui_kit::input::selection::extend_anchor_at(&key_down, offset);
+			} else {
+				veyyon_gui_kit::input::selection::begin_at(&key_down, offset);
+			}
+			window.refresh();
+		})
+		.on_mouse_move(move |event: &gpui::MouseMoveEvent, window, _cx| {
+			if veyyon_gui_kit::input::selection::is_dragging() {
+				let offset = match layout_move.index_for_position(event.position) {
+					Ok(ix) | Err(ix) => ix,
+				};
+				if veyyon_gui_kit::input::selection::drag_to(&key_move, offset) {
+					window.refresh();
+				}
+			}
+		})
 }
 
 /// The text a run of spans reads as, and the styled ranges into it.

@@ -2,10 +2,12 @@
 
 mod a_notice_reaches_the_platform_only_when_its_setting_says_so;
 mod a_window_that_just_attached_asks_for_what_it_draws;
+mod anchor_survival_across_rediff;
 mod drafts_and_submissions;
 mod helpers;
 mod lifecycle;
 mod navigation_and_panels;
+mod review_threads_and_change_requests;
 mod snapshots_and_revisions;
 mod terminals_and_files;
 mod the_inspector_asks_for_usage_when_it_is_revealed;

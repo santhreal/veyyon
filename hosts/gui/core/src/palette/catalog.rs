@@ -15,6 +15,7 @@ pub(super) fn commands(store: &Store) -> Results {
 		item("route-changes", "Changes", None, UiCommand::Navigate(Route::Changes)),
 		item("route-files", "Files", None, UiCommand::Navigate(Route::Files)),
 		item("route-agents", "Agents", None, UiCommand::Navigate(Route::Agents)),
+		item("route-history", "History", None, UiCommand::Navigate(Route::History)),
 	];
 	let mut modes = vec![
 		mode("open-quick", "Quick open", PaletteMode::QuickOpen),

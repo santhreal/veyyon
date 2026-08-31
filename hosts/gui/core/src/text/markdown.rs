@@ -16,11 +16,15 @@ mod emphasis;
 mod inline;
 mod link;
 mod list;
+pub mod mend;
+mod mend_inline;
 mod table;
+pub mod veil;
 
 pub use block::parse;
 pub use inline::{flatten, inline};
-
+pub use mend::{Mended, PENDING_LINK_URL, RepairKind, all_repair_kinds, mend};
+pub use veil::{Veil, reveal_boundary};
 /// One run of inline text inside a block.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Span {
@@ -103,5 +107,27 @@ pub type Cell = Vec<Span>;
 /// One table row, header or body.
 pub type Row = Vec<Cell>;
 
+/// Every block variant of `Md` for testing and coverage sweeps.
+pub fn all_block_variants() -> Vec<Md> {
+	vec![
+		Md::Heading { level: 1, spans: Vec::new() },
+		Md::Paragraph(Vec::new()),
+		Md::List(Vec::new()),
+		Md::Quote(Vec::new()),
+		Md::Code { lang: String::new(), body: String::new() },
+		Md::Rule,
+		Md::Table { head: Vec::new(), rows: Vec::new() },
+	]
+}
+
+pub fn all_span_variants() -> Vec<Span> {
+	vec![
+		Span::Plain(String::new()),
+		Span::Strong(String::new()),
+		Span::Emphasis(String::new()),
+		Span::Code(String::new()),
+		Span::Link { text: String::new(), href: String::new() },
+	]
+}
 #[cfg(test)]
 mod tests;

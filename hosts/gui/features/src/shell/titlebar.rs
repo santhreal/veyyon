@@ -33,6 +33,7 @@ pub fn render(store: &Store, cx: &mut App) -> AnyElement {
 		.items_center()
 		.gap(px(space::X8))
 		.child(identity(workspace, route, &theme))
+		.child(crate::spaces::space_switcher(store, cx))
 		.child(text::spacer())
 		.child(
 			Button::labelled(
@@ -152,6 +153,7 @@ fn route_label(store: &Store) -> &'static str {
 		Route::Files => "Files",
 		Route::Agents => "Agents",
 		Route::Settings(_) => "Settings",
+		Route::History => "History",
 	}
 }
 

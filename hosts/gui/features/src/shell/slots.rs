@@ -96,6 +96,12 @@ pub fn compose(
 			toolbar::route(store, Route::Agents, cx),
 			agents::render(store, agent_detail_scroll, cx).into_any_element(),
 		),
+		Route::History => (
+			crate::history::render_sidebar(store, session_search, bottom_scroll, window, cx)
+				.into_any_element(),
+			crate::history::render_toolbar(store, cx).into_any_element(),
+			crate::history::render_center(store, timeline, cx).into_any_element(),
+		),
 		Route::Settings(page) => (
 			settings::navigation(page, settings_search.settings, cx).into_any_element(),
 			settings::route_toolbar(store, page, cx).into_any_element(),

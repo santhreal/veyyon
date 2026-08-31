@@ -16,7 +16,7 @@ pub fn text(id: &str, blocks: &[Md], streaming: bool, stale: bool, cx: &mut App)
 		.min_w(px(0.0))
 		.overflow_hidden()
 		.text_color(theme.text)
-		.children(markdown::blocks(blocks, id, cx));
+		.children(markdown::blocks_streamed(blocks, id, streaming, cx));
 	if stale {
 		body = body.child(Badge::new("Partial · disconnected").tone(Tone::Warn));
 	} else if streaming {

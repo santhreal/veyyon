@@ -36,6 +36,7 @@ pub mod key_cap;
 pub mod menu;
 pub mod meter;
 pub mod overlay;
+pub mod picker;
 pub mod popover;
 pub mod progress;
 pub mod radio;
@@ -79,6 +80,10 @@ pub use key_cap::KeyCap;
 pub use menu::{Menu, MenuItem};
 pub use meter::Meter;
 pub use overlay::{Dialog, Popover};
+pub use picker::{
+	Picker, PickerAction, PickerGroup, PickerItem, PickerPreview, picker_owner, picker_preview,
+	picker_row, picker_scroll, picker_search,
+};
 pub use popover::{Alignment, AnchoredPopover, DismissalRoute, PopoverBounds, PopoverState, Side};
 pub use progress::{Progress, Skeleton};
 pub use radio::Radio;

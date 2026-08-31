@@ -14,7 +14,7 @@ use veyyon_gui_features::{
 use veyyon_gui_kit::{
 	motion::Wake,
 	paint,
-	theme::{Appearance, Theme, layout, radius, set_base_font, size},
+	theme::{Appearance, Theme, install_theme, layout, radius, set_base_font, size},
 	ui::{Toast, Tone},
 };
 
@@ -43,6 +43,7 @@ fn route_context(route: Route) -> &'static str {
 		Route::Files => "Shell Files",
 		Route::Agents => "Shell Agents",
 		Route::Settings(_) => "Shell Settings",
+		Route::History => "Shell History",
 	}
 }
 
@@ -58,20 +59,25 @@ impl Render for Shell {
 			self.perform_shell_effects(deferred, window, cx);
 		}
 		self.reconcile_the_keyboard(window, cx);
-		// The appearance is a preference, and every token a frame reads comes
-		// from `Theme::get`, so the preference is installed here rather than at
-		// startup: set once when the process began, a reader who switched to
-		// light kept a dark window with one row of the settings page redrawn.
-		// Written only on a change, so an unchanged frame notifies no observer
-		// of the global.
+		// The palette is a preference and a live preview, and every token a
+		// frame reads comes from `Theme::get`, so it is installed here rather
+		// than at startup: set once when the process began, a reader who chose
+		// another theme kept the old window with one row of the settings page
+		// redrawn. The preview wins while the pointer is on a row, so leaving
+		// the row restores the persisted choice on the next frame with no
+		// second code path.
 		let appearance = if self.store.frontend.preferences.dark {
 			Appearance::Dark
 		} else {
 			Appearance::Light
 		};
-		if Theme::get(cx).appearance != appearance {
-			Theme::set(appearance, cx);
-		}
+		let chosen = self
+			.store
+			.frontend
+			.theme_preview
+			.as_deref()
+			.or(self.store.frontend.preferences.theme.as_deref());
+		install_theme(chosen, appearance, cx);
 		// Before anything reads a token: every metric that holds a glyph is a
 		// function of this, so a frame that draws before it is installed draws
 		// the previous size's rows around the new size's text.

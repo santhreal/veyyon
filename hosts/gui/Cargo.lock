@@ -5836,6 +5836,7 @@ name = "veyyon-gui-features"
 version = "0.1.0"
 dependencies = [
  "gpui",
+ "serde_json",
  "veyyon-gui-core",
  "veyyon-gui-kit",
 ]

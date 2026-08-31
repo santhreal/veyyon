@@ -21,16 +21,22 @@ pub fn route_toolbar(store: &Store, cx: &mut App) -> Div {
 	let theme = Theme::get(cx);
 	let selected = store.frontend.selected_session.as_ref();
 	let title = selected_title(store, selected).unwrap_or("Conversation");
-	let mut toolbar = div().flex().flex_col().flex_none().bg(theme.canvas).child(
-		div()
-			.flex()
-			.items_center()
-			.gap(px(space::X8))
-			.h(px(layout::toolbar()))
-			.px(px(space::X12))
-			.child(text::line(title.to_owned()).flex_1().min_w(px(0.0)))
-			.children(selected.map(|session| actions(store, session))),
-	);
+	let mut toolbar = div()
+		.flex()
+		.flex_col()
+		.flex_none()
+		.bg(theme.canvas)
+		.child(crate::spaces::tab_strip(store, cx))
+		.child(
+			div()
+				.flex()
+				.items_center()
+				.gap(px(space::X8))
+				.h(px(layout::toolbar()))
+				.px(px(space::X12))
+				.child(text::line(title.to_owned()).flex_1().min_w(px(0.0)))
+				.children(selected.map(|session| actions(store, session))),
+		);
 	if let Some(error) = store
 		.replica
 		.errors
