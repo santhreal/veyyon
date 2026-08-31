@@ -73,6 +73,9 @@ fn stale_snapshots_are_preserved_when_older_revisions_arrive() {
 		value:    vec![entry2],
 	})));
 	assert!(!older.replica);
+	// Silent would be worse than wrong: a caller replaying recorded events reads
+	// this flag to learn that the state it named never arrived.
+	assert!(older.ignored_stale_event);
 	assert_eq!(store.replica.transcript.readable().map(|v| v.revision), Some(5));
 	assert_eq!(store.replica.transcript.readable().map(|v| &v.value[0].id), Some(&entry1.id));
 }

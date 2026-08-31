@@ -19,6 +19,8 @@ mod a_relaunch_restores_spaces_or_rejects_stale_or_missing_sessions;
 mod a_reopened_palette_starts_on_an_empty_field;
 #[cfg(test)]
 mod a_request_raised_by_an_event_leaves_on_the_same_pass;
+#[cfg(all(test, debug_assertions))]
+mod a_scene_event_the_store_discards_never_opens_a_window;
 #[cfg(test)]
 mod a_typed_secret_leaves_the_field_only_on_submit;
 mod bridge;
@@ -54,14 +56,20 @@ use veyyon_gui_core::host::HostEvent;
 use veyyon_gui_features::act;
 use veyyon_gui_kit::{
 	input,
-	theme::{Appearance, MONO_CANDIDATES, MONO_FAMILY, Theme, UI_CANDIDATES, UI_FAMILY},
+	theme::{Appearance, MONO_CANDIDATES, MONO_FAMILY, Theme, UI_CANDIDATES, UI_FAMILY, layout},
 };
 
 /// The window's opening size, and the floor it may be dragged to.
+///
+/// The floor is the layout system's own, not a second copy of it: `layout`
+/// states the width the panels, breakpoints and sheets are drawn against, so a
+/// window that refuses to open that narrow refuses a display the app lays out
+/// correctly, and opens wider than the display instead — with its right edge,
+/// and every control on it, off the screen.
 pub(crate) const WIDTH: f32 = 1_320.0;
 pub(crate) const HEIGHT: f32 = 880.0;
-pub(crate) const MIN_WIDTH: f32 = 900.0;
-pub(crate) const MIN_HEIGHT: f32 = 560.0;
+pub(crate) const MIN_WIDTH: f32 = layout::MIN_WINDOW_WIDTH;
+pub(crate) const MIN_HEIGHT: f32 = layout::MIN_WINDOW_HEIGHT;
 
 /// How much of the display the window leaves around itself when it has to
 /// shrink to fit one.

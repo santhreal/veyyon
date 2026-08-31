@@ -16,6 +16,7 @@
 //! is large enough for a particular desktop.
 
 use gpui::{Pixels, px, size};
+use veyyon_gui_kit::theme::layout;
 
 use super::{HEIGHT, MARGIN, MIN_HEIGHT, MIN_WIDTH, WIDTH, fitted};
 
@@ -103,5 +104,36 @@ fn every_display_between_the_two_rules_gets_a_size_that_fits_and_is_usable() {
 			"{width}: wider than the display for a reason other than the floor"
 		);
 		width += 37.0;
+	}
+}
+
+#[test]
+fn every_display_the_layout_is_drawn_for_gets_a_window_that_fits_inside_it() {
+	// The layout states the smallest window it is drawn for, and the window had
+	// a second copy of that floor eighty pixels wider. A display exactly the
+	// layout's own minimum — which is the size every narrow capture records at
+	// — therefore opened a window wider than itself, with its right edge and
+	// the controls on it off the screen, while the app lays that width out
+	// correctly. The sweep covers every display from the floor up, on both
+	// axes, so a floor that drifts away from the layout's again is caught
+	// wherever it drifts.
+	let mut width = layout::MIN_WINDOW_WIDTH;
+	while width <= WIDTH + MARGIN {
+		let mut height = layout::MIN_WINDOW_HEIGHT;
+		while height <= HEIGHT + MARGIN {
+			let room = size(px(width), px(height));
+			let opened = fitted(Some(room));
+
+			assert!(
+				opened.width <= room.width,
+				"{width}x{height}: the window opened wider than the display"
+			);
+			assert!(
+				opened.height <= room.height,
+				"{width}x{height}: the window opened taller than the display"
+			);
+			height += 53.0;
+		}
+		width += 47.0;
 	}
 }
