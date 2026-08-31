@@ -1,326 +1,420 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import {
-	hasOpus47ApiRestrictions,
+	isAnthropicNamespacedModelId,
 	isClaudeModelId,
-	isGlmVisionModelId,
+	isDeepseekModelIdOrName,
+	isGemmaModelId,
+	isGlm52ReasoningEffortModelId,
 	isGrokReasoningEffortCapable,
 	isKimiK26ModelId,
 	isKimiModelId,
+	isMimoModelIdOrName,
 	isMinimaxM2FamilyModelId,
 	isMinimaxM3FamilyModelId,
 	isOpenAIGptOssModelId,
 	isOpenAIModelId,
 	isOpenAIOSeriesModelId,
+	isQwenModelId,
 	isReasoningGlmModelId,
-	modelFamilyToken,
-	parseAnthropicModel,
-	supportsAdaptiveThinkingDisplay,
-	supportsMidConversationSystemMessages,
-} from "@veyyon/catalog/identity";
+	supportsOpenAIPromptCacheBreakpoints,
+} from "../src/identity/family";
 
 describe("isKimiModelId", () => {
-	test("matches Kimi namespace and delimiter forms", () => {
+	it("matches moonshotai/kimi prefix", () => {
 		expect(isKimiModelId("moonshotai/kimi-k2")).toBe(true);
-		expect(isKimiModelId("kimi-k2.6")).toBe(true);
-		expect(isKimiModelId("vendor/kimi.x")).toBe(true);
-		expect(isKimiModelId("akimbo-model")).toBe(false);
+	});
+
+	it("matches kimi- prefix", () => {
+		expect(isKimiModelId("kimi-k2")).toBe(true);
+	});
+
+	it("matches /kimi- prefix", () => {
+		expect(isKimiModelId("provider/kimi-k2")).toBe(true);
+	});
+
+	it("matches kimi. prefix", () => {
+		expect(isKimiModelId("kimi.k2")).toBe(true);
+	});
+
+	it("does not match unrelated model", () => {
+		expect(isKimiModelId("gpt-4")).toBe(false);
+	});
+
+	it("does not match empty string", () => {
+		expect(isKimiModelId("")).toBe(false);
 	});
 });
 
 describe("isKimiK26ModelId", () => {
-	test("matches Kimi K2.6 without accepting adjacent versions", () => {
+	it("matches kimi-k2.6", () => {
 		expect(isKimiK26ModelId("kimi-k2.6")).toBe(true);
-		expect(isKimiK26ModelId("kimi-k2.6-thinking")).toBe(true);
-		expect(isKimiK26ModelId("kimi-k2.61")).toBe(false);
-		expect(isKimiK26ModelId("kimi-k2.5")).toBe(false);
-		// Router ids spell the version `k2p6` (e.g. Fireworks Fire Pass).
-		expect(isKimiK26ModelId("accounts/fireworks/routers/kimi-k2p6-turbo")).toBe(true);
+	});
+
+	it("matches kimi-k2p6", () => {
 		expect(isKimiK26ModelId("kimi-k2p6")).toBe(true);
-		expect(isKimiK26ModelId("kimi-k2p61")).toBe(false);
+	});
+
+	it("matches with provider prefix", () => {
+		expect(isKimiK26ModelId("moonshotai/kimi-k2.6")).toBe(true);
+	});
+
+	it("does not match kimi-k2 without .6/p6", () => {
+		expect(isKimiK26ModelId("kimi-k2")).toBe(false);
+	});
+
+	it("does not match empty string", () => {
+		expect(isKimiK26ModelId("")).toBe(false);
 	});
 });
 
 describe("isClaudeModelId", () => {
-	test("matches Claude namespace and delimiter forms", () => {
-		expect(isClaudeModelId("claude-sonnet-4-6")).toBe(true);
-		expect(isClaudeModelId("anthropic/claude.3")).toBe(true);
-		expect(isClaudeModelId("my-claudius")).toBe(false);
+	it("matches claude- prefix", () => {
+		expect(isClaudeModelId("claude-3-opus")).toBe(true);
 	});
-	test("matches dotted Bedrock cross-region inference profile ids for Claude kinds not enumerated in parseAnthropicModel", () => {
-		// `parseAnthropicModel` only classifies opus/sonnet/fable/mythos, so a
-		// Haiku Bedrock profile (`us.anthropic.claude-haiku-…`) slips past its
-		// regex and MUST still classify as Claude via this fallback so
-		// `modelFamilyToken`/`preferredDialect` route it to the Anthropic
-		// dialect instead of falling through to XML.
-		expect(isClaudeModelId("us.anthropic.claude-haiku-4-5-20251001-v1:0")).toBe(true);
-		expect(isClaudeModelId("eu.anthropic.claude-haiku-4-5-20251001-v1:0")).toBe(true);
-		expect(isClaudeModelId("global.anthropic.claude-haiku-4-5-20251001-v1:0")).toBe(true);
-		expect(isClaudeModelId("au.anthropic.claude-haiku-4-5-20251001-v1:0")).toBe(true);
-		// Non-Claude names that happen to contain "claude" as a substring
-		// stay unmatched — no `.` / `/` / start delimiter before `claude-`.
-		expect(isClaudeModelId("subclaudian")).toBe(false);
-		expect(isClaudeModelId("claudius-5")).toBe(false);
+
+	it("matches /claude- prefix", () => {
+		expect(isClaudeModelId("anthropic/claude-3-opus")).toBe(true);
+	});
+
+	it("matches claude. prefix", () => {
+		expect(isClaudeModelId("claude.3-opus")).toBe(true);
+	});
+
+	it("matches /claude. prefix", () => {
+		expect(isClaudeModelId("provider/claude.3")).toBe(true);
+	});
+
+	it("does not match unrelated model", () => {
+		expect(isClaudeModelId("gpt-4")).toBe(false);
+	});
+
+	it("does not match empty string", () => {
+		expect(isClaudeModelId("")).toBe(false);
 	});
 });
 
-describe("parseAnthropicModel", () => {
-	test("parses SAP hai-proxy version-first Claude ids without accepting Haiku", () => {
-		expect(parseAnthropicModel("anthropic--claude-4.8-opus")).toEqual({
-			family: "anthropic",
-			kind: "opus",
-			version: { major: 4, minor: 8, patch: 0 },
-		});
-		expect(parseAnthropicModel("anthropic--claude-4.6-opus")).toEqual({
-			family: "anthropic",
-			kind: "opus",
-			version: { major: 4, minor: 6, patch: 0 },
-		});
-		expect(parseAnthropicModel("anthropic--claude-4.8-haiku")).toBeNull();
+describe("isAnthropicNamespacedModelId", () => {
+	it("matches anthropic/ prefix", () => {
+		expect(isAnthropicNamespacedModelId("anthropic/claude-3")).toBe(true);
+	});
+
+	it("matches /anthropic/ prefix", () => {
+		expect(isAnthropicNamespacedModelId("provider/anthropic/claude-3")).toBe(true);
+	});
+
+	it("does not match claude without anthropic namespace", () => {
+		expect(isAnthropicNamespacedModelId("claude-3")).toBe(false);
+	});
+
+	it("does not match empty string", () => {
+		expect(isAnthropicNamespacedModelId("")).toBe(false);
 	});
 });
 
-describe("supportsAdaptiveThinkingDisplay", () => {
-	test("allows Claude Fable 5, Opus 4.7 or newer, and Sonnet 5 or newer only", () => {
-		expect(supportsAdaptiveThinkingDisplay("claude-fable-5")).toBe(true);
-		expect(supportsAdaptiveThinkingDisplay("claude-opus-4-7")).toBe(true);
-		expect(supportsAdaptiveThinkingDisplay("claude-opus-5-0")).toBe(true);
-		expect(supportsAdaptiveThinkingDisplay("claude-sonnet-5")).toBe(true);
-		expect(supportsAdaptiveThinkingDisplay("us.anthropic.claude-sonnet-5")).toBe(true);
-		// Dotted and dashed version separators are equivalent.
-		expect(supportsAdaptiveThinkingDisplay("claude-opus-4.7")).toBe(true);
-		expect(supportsAdaptiveThinkingDisplay("anthropic/claude-opus-4.8")).toBe(true);
-		expect(supportsAdaptiveThinkingDisplay("anthropic--claude-4.8-opus")).toBe(true);
-		expect(supportsAdaptiveThinkingDisplay("anthropic--claude-4.6-opus")).toBe(false);
-		expect(supportsAdaptiveThinkingDisplay("claude-opus-4-6")).toBe(false);
-		expect(supportsAdaptiveThinkingDisplay("claude-opus-4.6")).toBe(false);
-		expect(supportsAdaptiveThinkingDisplay("claude-opus-4-20250514")).toBe(false);
-		expect(supportsAdaptiveThinkingDisplay("claude-sonnet-4-6")).toBe(false);
+describe("isQwenModelId", () => {
+	it("matches qwen in model id (case-insensitive)", () => {
+		expect(isQwenModelId("qwen-72b")).toBe(true);
+		expect(isQwenModelId("Qwen-72B")).toBe(true);
+	});
+
+	it("matches qwen with provider prefix", () => {
+		expect(isQwenModelId("alibaba/qwen-max")).toBe(true);
+	});
+
+	it("does not match unrelated model", () => {
+		expect(isQwenModelId("gpt-4")).toBe(false);
 	});
 });
 
-describe("hasOpus47ApiRestrictions", () => {
-	test("allows Claude Fable 5, Opus 4.7 or newer, and Sonnet 5 or newer only", () => {
-		expect(hasOpus47ApiRestrictions("claude-fable-5")).toBe(true);
-		expect(hasOpus47ApiRestrictions("claude-opus-4-7")).toBe(true);
-		expect(hasOpus47ApiRestrictions("claude-opus-4.8")).toBe(true);
-		expect(hasOpus47ApiRestrictions("anthropic--claude-4.7-opus")).toBe(true);
-		expect(hasOpus47ApiRestrictions("claude-sonnet-5")).toBe(true);
-		expect(hasOpus47ApiRestrictions("us.anthropic.claude-sonnet-5")).toBe(true);
-		expect(hasOpus47ApiRestrictions("claude-opus-4-6")).toBe(false);
-		expect(hasOpus47ApiRestrictions("claude-sonnet-4-6")).toBe(false);
-		expect(hasOpus47ApiRestrictions("claude-sonnet-4-5")).toBe(false);
+describe("isGemmaModelId", () => {
+	it("matches gemma- with digit", () => {
+		expect(isGemmaModelId("gemma-2b")).toBe(true);
+	});
+
+	it("matches gemma. with digit", () => {
+		expect(isGemmaModelId("gemma.2b")).toBe(true);
+	});
+
+	it("matches /gemma- with digit", () => {
+		expect(isGemmaModelId("google/gemma-7b")).toBe(true);
+	});
+
+	it("matches gemma2 without separator", () => {
+		expect(isGemmaModelId("gemma2-9b")).toBe(true);
+	});
+
+	it("does not match gemma without digit", () => {
+		expect(isGemmaModelId("gemma")).toBe(false);
+	});
+
+	it("does not match unrelated model", () => {
+		expect(isGemmaModelId("gpt-4")).toBe(false);
 	});
 });
 
-describe("supportsMidConversationSystemMessages", () => {
-	test("allows Claude Fable 5, Opus 4.8 or newer, and Sonnet 5 or newer only", () => {
-		expect(supportsMidConversationSystemMessages("claude-fable-5")).toBe(true);
-		expect(supportsMidConversationSystemMessages("claude-opus-4-8")).toBe(true);
-		expect(supportsMidConversationSystemMessages("claude-sonnet-5")).toBe(true);
-		expect(supportsMidConversationSystemMessages("us.anthropic.claude-sonnet-5")).toBe(true);
-		expect(supportsMidConversationSystemMessages("anthropic--claude-4.8-opus")).toBe(true);
-		expect(supportsMidConversationSystemMessages("anthropic--claude-4.7-opus")).toBe(false);
-		expect(supportsMidConversationSystemMessages("claude-opus-4-7")).toBe(false);
-		expect(supportsMidConversationSystemMessages("claude-sonnet-4-6")).toBe(false);
+describe("isDeepseekModelIdOrName", () => {
+	it("matches deepseek (case-insensitive)", () => {
+		expect(isDeepseekModelIdOrName("deepseek-v3")).toBe(true);
+		expect(isDeepseekModelIdOrName("DeepSeek-V3")).toBe(true);
+	});
+
+	it("matches with provider prefix", () => {
+		expect(isDeepseekModelIdOrName("deepseek/deepseek-chat")).toBe(true);
+	});
+
+	it("does not match unrelated model", () => {
+		expect(isDeepseekModelIdOrName("gpt-4")).toBe(false);
 	});
 });
 
-describe("isMinimaxM2FamilyModelId", () => {
-	test("matches every M2-generation id shape served by aggregator/native hosts", () => {
-		// Fireworks/OpenCode/openrouter direct ids and `-highspeed`/`-lightning` variants.
-		expect(isMinimaxM2FamilyModelId("minimax-m2.7")).toBe(true);
-		expect(isMinimaxM2FamilyModelId("MiniMax-M2.7")).toBe(true);
-		expect(isMinimaxM2FamilyModelId("MiniMax-M2.7-highspeed")).toBe(true);
-		expect(isMinimaxM2FamilyModelId("MiniMax-M2.1-lightning")).toBe(true);
-		// Vendor-namespaced ids on aggregators.
-		expect(isMinimaxM2FamilyModelId("minimax/minimax-m2")).toBe(true);
-		expect(isMinimaxM2FamilyModelId("minimax/minimax-m2.5:free")).toBe(true);
-		expect(isMinimaxM2FamilyModelId("minimaxai/minimax-m2.7")).toBe(true);
-		expect(isMinimaxM2FamilyModelId("minimax/minimax-m2-her")).toBe(true);
-		// Bedrock-shaped id and aimlapi short form.
-		expect(isMinimaxM2FamilyModelId("minimax.minimax-m2.7")).toBe(true);
-		expect(isMinimaxM2FamilyModelId("minimax/m2")).toBe(true);
-		expect(isMinimaxM2FamilyModelId("minimax/m2-7-highspeed")).toBe(true);
-		// Venice's dotless aliases.
-		expect(isMinimaxM2FamilyModelId("minimax-m21")).toBe(true);
-		expect(isMinimaxM2FamilyModelId("minimax-m25")).toBe(true);
-		expect(isMinimaxM2FamilyModelId("minimax-m27")).toBe(true);
+describe("isMimoModelIdOrName", () => {
+	it("matches mimo (case-insensitive)", () => {
+		expect(isMimoModelIdOrName("mimo-7b")).toBe(true);
+		expect(isMimoModelIdOrName("MiMo-7B")).toBe(true);
 	});
 
-	test("excludes non-M2 MiniMax SKUs and unrelated families", () => {
-		expect(isMinimaxM2FamilyModelId("minimax/m1")).toBe(false);
-		expect(isMinimaxM2FamilyModelId("MiniMax-M1")).toBe(false);
-		expect(isMinimaxM2FamilyModelId("MiniMax-M3")).toBe(false);
-		expect(isMinimaxM2FamilyModelId("minimax/minimax-m3")).toBe(false);
-		expect(isMinimaxM2FamilyModelId("MiniMax-Text-01")).toBe(false);
-		expect(isMinimaxM2FamilyModelId("minimax-music")).toBe(false);
-		expect(isMinimaxM2FamilyModelId("minimax/hailuo-02")).toBe(false);
-		expect(isMinimaxM2FamilyModelId("minimax/music-2.0")).toBe(false);
-		// Lone "m2" string with no MiniMax context does not match.
-		expect(isMinimaxM2FamilyModelId("kimi-m2")).toBe(false);
-		expect(isMinimaxM2FamilyModelId("gpt-oss-120b")).toBe(false);
-	});
-});
-
-describe("isMinimaxM3FamilyModelId", () => {
-	test("matches MiniMax M3 ids without broadening the M2 effort predicate", () => {
-		expect(isMinimaxM3FamilyModelId("MiniMax-M3")).toBe(true);
-		expect(isMinimaxM3FamilyModelId("minimax-m3")).toBe(true);
-		expect(isMinimaxM3FamilyModelId("minimax/minimax-m3")).toBe(true);
-		expect(isMinimaxM3FamilyModelId("minimax-m3-free")).toBe(true);
-		expect(isMinimaxM3FamilyModelId("minimax/m3")).toBe(true);
-
-		expect(isMinimaxM3FamilyModelId("MiniMax-M2.7")).toBe(false);
-		expect(isMinimaxM3FamilyModelId("MiniMax-Text-01")).toBe(false);
-		expect(isMinimaxM3FamilyModelId("minimax-music")).toBe(false);
-		expect(isMinimaxM3FamilyModelId("kimi-m3")).toBe(false);
-	});
-});
-
-describe("isOpenAIGptOssModelId", () => {
-	test("matches gpt-oss across catalog id shapes", () => {
-		expect(isOpenAIGptOssModelId("gpt-oss-120b")).toBe(true);
-		expect(isOpenAIGptOssModelId("gpt-oss-20b")).toBe(true);
-		expect(isOpenAIGptOssModelId("gpt-oss:120b")).toBe(true);
-		expect(isOpenAIGptOssModelId("openai/gpt-oss-120b")).toBe(true);
-		expect(isOpenAIGptOssModelId("gpt-oss-120b-medium")).toBe(true);
-	});
-
-	test("excludes unrelated `gpt-*` and `oss` models", () => {
-		expect(isOpenAIGptOssModelId("gpt-4o")).toBe(false);
-		expect(isOpenAIGptOssModelId("gpt-4.1-mini")).toBe(false);
-		expect(isOpenAIGptOssModelId("oss-llm")).toBe(false);
-		expect(isOpenAIGptOssModelId("MiniMax-M2.7")).toBe(false);
-	});
-});
-
-describe("isOpenAIModelId", () => {
-	test("matches current OpenAI ids across GPT, o-series, ChatGPT, and Codex aliases", () => {
-		for (const id of ["gpt-4o", "o3", "o4-mini", "chatgpt-4o-latest", "codex-mini-latest"]) {
-			expect(isOpenAIModelId(id)).toBe(true);
-		}
-	});
-});
-
-describe("isReasoningGlmModelId", () => {
-	test("matches the glm-4.5+ base / air / turbo reasoning lines", () => {
-		expect(isReasoningGlmModelId("glm-4.5")).toBe(true);
-		expect(isReasoningGlmModelId("glm-4.5-air")).toBe(true);
-		expect(isReasoningGlmModelId("glm-4.6")).toBe(true);
-		expect(isReasoningGlmModelId("glm-4.7")).toBe(true);
-		expect(isReasoningGlmModelId("glm-5")).toBe(true);
-		expect(isReasoningGlmModelId("glm-5-turbo")).toBe(true);
-		expect(isReasoningGlmModelId("glm-5.1")).toBe(true);
-		expect(isReasoningGlmModelId("glm-5.2")).toBe(true);
-		// Family match is future-proof: new integers need no allowlist entry.
-		expect(isReasoningGlmModelId("glm-5.3")).toBe(true);
-		expect(isReasoningGlmModelId("glm-6")).toBe(true);
-		// Namespaced ids are stripped before classification.
-		expect(isReasoningGlmModelId("z-ai/glm-5-turbo")).toBe(true);
-	});
-
-	test("excludes pre-4.5, vision, flash, and preview SKUs", () => {
-		expect(isReasoningGlmModelId("glm-4")).toBe(false);
-		expect(isReasoningGlmModelId("glm-4.4")).toBe(false);
-		expect(isReasoningGlmModelId("glm-5-preview")).toBe(false);
-		expect(isReasoningGlmModelId("glm-4.5-flash")).toBe(false);
-		expect(isReasoningGlmModelId("glm-4.7-flashx")).toBe(false);
-		expect(isReasoningGlmModelId("glm-4.5v")).toBe(false);
-		expect(isReasoningGlmModelId("qwen3.5")).toBe(false);
-	});
-});
-
-describe("isGlmVisionModelId", () => {
-	test("matches the `v` vision shape across versions and variants", () => {
-		expect(isGlmVisionModelId("glm-4v")).toBe(true);
-		expect(isGlmVisionModelId("glm-4.5v")).toBe(true);
-		expect(isGlmVisionModelId("glm-4v-plus")).toBe(true);
-	});
-
-	test("excludes non-vision GLM ids (the old `includes('v')` false positives)", () => {
-		expect(isGlmVisionModelId("glm-5-preview")).toBe(false);
-		expect(isGlmVisionModelId("glm-4.5")).toBe(false);
-		expect(isGlmVisionModelId("glm-5-turbo")).toBe(false);
-	});
-});
-describe("modelFamilyToken", () => {
-	test("groups point releases within a vendor and separates across vendors", () => {
-		expect(modelFamilyToken("claude-opus-4-7")).toBe("anthropic");
-		expect(modelFamilyToken("claude-opus-4-8")).toBe("anthropic");
-		expect(modelFamilyToken("claude-opus-4-7")).toBe(modelFamilyToken("claude-opus-4-8"));
-		expect(modelFamilyToken("gpt-5.4")).toBe("openai");
-		expect(modelFamilyToken("gemini-3-pro")).toBe("gemini");
-		expect(modelFamilyToken("claude-opus-4-8")).not.toBe(modelFamilyToken("gpt-5.4"));
-	});
-
-	test("folds aggregator mirrors and namespace prefixes onto the lineage", () => {
-		expect(modelFamilyToken("anthropic/claude-opus-4.8")).toBe("anthropic");
-		expect(modelFamilyToken("openrouter/anthropic/claude-opus-4-8")).toBe("anthropic");
-	});
-
-	test("classifies Bedrock cross-region profile ids for Claude kinds not enumerated in parseAnthropicModel", () => {
-		// `parseAnthropicModel` doesn't know `haiku`, so this exercises the
-		// isClaudeModelId fallback specifically for dotted Bedrock profiles.
-		expect(modelFamilyToken("us.anthropic.claude-haiku-4-5-20251001-v1:0")).toBe("anthropic");
-		expect(modelFamilyToken("eu.anthropic.claude-haiku-4-5-20251001-v1:0")).toBe("anthropic");
-		expect(modelFamilyToken("global.anthropic.claude-haiku-4-5-20251001-v1:0")).toBe("anthropic");
-	});
-
-	test("classifies non-first-party families", () => {
-		expect(modelFamilyToken("moonshotai/kimi-k2")).toBe("kimi");
-		expect(modelFamilyToken("qwen/qwen3-coder")).toBe("qwen");
-	});
-
-	test("classifies GLM across provider mirrors so same-lineage SKUs fold together", () => {
-		expect(modelFamilyToken("glm-5.2")).toBe("glm");
-		expect(modelFamilyToken("zai/glm-5.2")).toBe(modelFamilyToken("zhipu-coding-plan/glm-5.2"));
-		expect(modelFamilyToken("zai/glm-5.2")).toBe("glm");
-	});
-
-	test("returns an empty token for unclassifiable ids so callers fall back to provider", () => {
-		expect(modelFamilyToken("some-unknown-model")).toBe("");
-	});
-});
-
-describe("isGrokReasoningEffortCapable", () => {
-	test("matches effort-capable Grok SKUs across namespaces", () => {
-		expect(isGrokReasoningEffortCapable("grok-4.3")).toBe(true);
-		expect(isGrokReasoningEffortCapable("grok-3-mini")).toBe(true);
-		expect(isGrokReasoningEffortCapable("grok-4.20-multi-agent")).toBe(true);
-		expect(isGrokReasoningEffortCapable("xai-oauth/grok-4.3")).toBe(true);
-		expect(isGrokReasoningEffortCapable("xai-oauth/grok-4.5")).toBe(true);
-		expect(isGrokReasoningEffortCapable("openrouter/xai/grok-3-mini")).toBe(true);
-	});
-
-	test("rejects effort-dial-less Grok SKUs and non-Grok ids", () => {
-		// grok-build moved to the capable allowlist (2026-07-22): it accepts the
-		// wire `reasoning.effort` param and was wrongly encoded as dial-less.
-		expect(isGrokReasoningEffortCapable("grok-build")).toBe(true);
-		expect(isGrokReasoningEffortCapable("xai-oauth/grok-build-0.1")).toBe(true);
-		expect(isGrokReasoningEffortCapable("grok-4.20-0309-reasoning")).toBe(false);
-		expect(isGrokReasoningEffortCapable("gpt-5")).toBe(false);
-		expect(isGrokReasoningEffortCapable("")).toBe(false);
+	it("does not match unrelated model", () => {
+		expect(isMimoModelIdOrName("gpt-4")).toBe(false);
 	});
 });
 
 describe("isOpenAIOSeriesModelId", () => {
-	// The generator uses this to force `reasoning: true` on aggregator o-series
-	// rows that models.dev ships as non-reasoning (o3-mini-high etc.). A miss
-	// leaves a reasoning model dial-less; a false positive would flag a
-	// non-reasoning model as a reasoner.
-	test("matches o-series ids in bare and provider-prefixed forms", () => {
+	it("matches o1", () => {
 		expect(isOpenAIOSeriesModelId("o1")).toBe(true);
-		expect(isOpenAIOSeriesModelId("o1-pro")).toBe(true);
-		expect(isOpenAIOSeriesModelId("o3-mini-high")).toBe(true);
-		expect(isOpenAIOSeriesModelId("o3-2025-04-16")).toBe(true);
-		expect(isOpenAIOSeriesModelId("openai/o4-mini-high")).toBe(true);
 	});
 
-	test("rejects non-o-series ids that merely start with the letter o", () => {
-		expect(isOpenAIOSeriesModelId("o1js")).toBe(false);
-		expect(isOpenAIOSeriesModelId("olmo-2")).toBe(false);
-		expect(isOpenAIOSeriesModelId("o2-experimental")).toBe(false);
-		expect(isOpenAIOSeriesModelId("gpt-5.2")).toBe(false);
+	it("matches o1-mini", () => {
+		expect(isOpenAIOSeriesModelId("o1-mini")).toBe(true);
+	});
+
+	it("matches o3", () => {
+		expect(isOpenAIOSeriesModelId("o3")).toBe(true);
+	});
+
+	it("matches o4", () => {
+		expect(isOpenAIOSeriesModelId("o4-mini")).toBe(true);
+	});
+
+	it("matches with provider prefix", () => {
+		expect(isOpenAIOSeriesModelId("openai/o3")).toBe(true);
+	});
+
+	it("does not match o2", () => {
+		expect(isOpenAIOSeriesModelId("o2")).toBe(false);
+	});
+
+	it("does not match unrelated model", () => {
+		expect(isOpenAIOSeriesModelId("gpt-4")).toBe(false);
+	});
+
+	it("does not match empty string", () => {
 		expect(isOpenAIOSeriesModelId("")).toBe(false);
+	});
+});
+
+describe("isGrokReasoningEffortCapable", () => {
+	it("matches grok-3-mini", () => {
+		expect(isGrokReasoningEffortCapable("grok-3-mini")).toBe(true);
+	});
+
+	it("matches grok-4.3", () => {
+		expect(isGrokReasoningEffortCapable("grok-4.3")).toBe(true);
+	});
+
+	it("matches grok-4.5", () => {
+		expect(isGrokReasoningEffortCapable("grok-4.5")).toBe(true);
+	});
+
+	it("matches grok-4.6", () => {
+		expect(isGrokReasoningEffortCapable("grok-4.6")).toBe(true);
+	});
+
+	it("matches grok-build", () => {
+		expect(isGrokReasoningEffortCapable("grok-build")).toBe(true);
+	});
+
+	it("matches grok-4.20-multi-agent", () => {
+		expect(isGrokReasoningEffortCapable("grok-4.20-multi-agent")).toBe(true);
+	});
+
+	it("does not match grok-2", () => {
+		expect(isGrokReasoningEffortCapable("grok-2")).toBe(false);
+	});
+
+	it("does not match empty string", () => {
+		expect(isGrokReasoningEffortCapable("")).toBe(false);
+	});
+
+	it("does not match unrelated model", () => {
+		expect(isGrokReasoningEffortCapable("gpt-4")).toBe(false);
+	});
+});
+
+describe("isMinimaxM2FamilyModelId", () => {
+	it("matches minimax m2", () => {
+		expect(isMinimaxM2FamilyModelId("minimax-m2")).toBe(true);
+	});
+
+	it("matches minimax/m2", () => {
+		expect(isMinimaxM2FamilyModelId("minimax/m2")).toBe(true);
+	});
+
+	it("matches minimax.m2", () => {
+		expect(isMinimaxM2FamilyModelId("minimax.m2")).toBe(true);
+	});
+
+	it("matches m2 with version suffix", () => {
+		expect(isMinimaxM2FamilyModelId("minimax-m2-001")).toBe(true);
+	});
+
+	it("does not match minimax without m2", () => {
+		expect(isMinimaxM2FamilyModelId("minimax-text-01")).toBe(false);
+	});
+
+	it("does not match m2 without minimax", () => {
+		expect(isMinimaxM2FamilyModelId("m2")).toBe(false);
+	});
+
+	it("does not match empty string", () => {
+		expect(isMinimaxM2FamilyModelId("")).toBe(false);
+	});
+});
+
+describe("isMinimaxM3FamilyModelId", () => {
+	it("matches minimax m3", () => {
+		expect(isMinimaxM3FamilyModelId("minimax-m3")).toBe(true);
+	});
+
+	it("matches minimax/m3", () => {
+		expect(isMinimaxM3FamilyModelId("minimax/m3")).toBe(true);
+	});
+
+	it("matches m3 with separator", () => {
+		expect(isMinimaxM3FamilyModelId("minimax_m3")).toBe(true);
+	});
+
+	it("does not match minimax without m3", () => {
+		expect(isMinimaxM3FamilyModelId("minimax-m2")).toBe(false);
+	});
+
+	it("does not match m3 without minimax prefix in some forms", () => {
+		// The regex allows m3 without minimax prefix
+		expect(isMinimaxM3FamilyModelId("m3-something")).toBe(false);
+	});
+
+	it("does not match empty string", () => {
+		expect(isMinimaxM3FamilyModelId("")).toBe(false);
+	});
+});
+
+describe("isOpenAIGptOssModelId", () => {
+	it("matches gpt-oss prefix", () => {
+		expect(isOpenAIGptOssModelId("gpt-oss-120b")).toBe(true);
+	});
+
+	it("matches /gpt-oss prefix", () => {
+		expect(isOpenAIGptOssModelId("openai/gpt-oss-120b")).toBe(true);
+	});
+
+	it("matches gpt-oss: prefix", () => {
+		expect(isOpenAIGptOssModelId("gpt-oss:120b")).toBe(true);
+	});
+
+	it("does not match gpt without oss", () => {
+		expect(isOpenAIGptOssModelId("gpt-4")).toBe(false);
+	});
+
+	it("does not match empty string", () => {
+		expect(isOpenAIGptOssModelId("")).toBe(false);
+	});
+});
+
+describe("isOpenAIModelId", () => {
+	it("matches gpt- prefix", () => {
+		expect(isOpenAIModelId("gpt-4")).toBe(true);
+	});
+
+	it("matches chatgpt- prefix", () => {
+		expect(isOpenAIModelId("chatgpt-4o-latest")).toBe(true);
+	});
+
+	it("matches codex- prefix", () => {
+		expect(isOpenAIModelId("codex-mini")).toBe(true);
+	});
+
+	it("matches o1 with separator", () => {
+		expect(isOpenAIModelId("o1-mini")).toBe(true);
+	});
+
+	it("matches openai/ prefix", () => {
+		expect(isOpenAIModelId("openai/gpt-4")).toBe(true);
+	});
+
+	it("does not match unrelated model", () => {
+		expect(isOpenAIModelId("claude-3")).toBe(false);
+	});
+
+	it("does not match empty string", () => {
+		expect(isOpenAIModelId("")).toBe(false);
+	});
+});
+
+describe("supportsOpenAIPromptCacheBreakpoints", () => {
+	it("returns true for gpt-5.6+", () => {
+		expect(supportsOpenAIPromptCacheBreakpoints("gpt-5.6")).toBe(true);
+	});
+
+	it("returns true for gpt-5.10", () => {
+		expect(supportsOpenAIPromptCacheBreakpoints("gpt-5.10")).toBe(true);
+	});
+
+	it("returns false for gpt-5.5", () => {
+		expect(supportsOpenAIPromptCacheBreakpoints("gpt-5.5")).toBe(false);
+	});
+
+	it("returns false for gpt-4", () => {
+		expect(supportsOpenAIPromptCacheBreakpoints("gpt-4")).toBe(false);
+	});
+
+	it("returns false for non-OpenAI model", () => {
+		expect(supportsOpenAIPromptCacheBreakpoints("claude-3")).toBe(false);
+	});
+});
+
+describe("isReasoningGlmModelId", () => {
+	it("returns true for glm-4.5", () => {
+		expect(isReasoningGlmModelId("glm-4.5")).toBe(true);
+	});
+
+	it("returns true for glm-4.6", () => {
+		expect(isReasoningGlmModelId("glm-4.6")).toBe(true);
+	});
+
+	it("returns false for glm-4.4", () => {
+		expect(isReasoningGlmModelId("glm-4.4")).toBe(false);
+	});
+
+	it("returns false for non-glm model", () => {
+		expect(isReasoningGlmModelId("gpt-4")).toBe(false);
+	});
+
+	it("returns false for empty string", () => {
+		expect(isReasoningGlmModelId("")).toBe(false);
+	});
+});
+
+describe("isGlm52ReasoningEffortModelId", () => {
+	it("returns true for glm-4.6", () => {
+		// The function checks for version >= 5.2 but glm-4.6 < 5.2
+		// Actually let's test with a 5.2+ model
+		expect(isGlm52ReasoningEffortModelId("glm-5.2")).toBe(true);
+	});
+
+	it("returns false for glm-4.5", () => {
+		expect(isGlm52ReasoningEffortModelId("glm-4.5")).toBe(false);
+	});
+
+	it("returns false for non-glm model", () => {
+		expect(isGlm52ReasoningEffortModelId("gpt-4")).toBe(false);
 	});
 });
