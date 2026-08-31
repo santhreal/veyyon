@@ -95,4 +95,38 @@ describe("restructured modules still behave", () => {
 		expect(Bun.stringWidth("hello")).toBe(5);
 		expect(Bun.stringWidth("日本語")).toBe(6);
 	});
+
+	it("agent: pruneToolOutputs reports prunedCount for empty results", async () => {
+		const { pruneToolOutputs, DEFAULT_PRUNE_CONFIG } = await import("@veyyon/agent-core/compaction/pruning");
+		const entries = [
+			{ role: "tool", toolCallId: "1", content: [{ type: "text", text: "Command output" }] },
+			{ role: "tool", toolCallId: "2", content: [{ type: "text", text: "" }] },
+		] as never;
+		const result = pruneToolOutputs(entries, DEFAULT_PRUNE_CONFIG);
+		expect(result.prunedCount).toBeGreaterThanOrEqual(0);
+		expect(typeof result.tokensSaved).toBe("number");
+	});
+
+	it("agent: readToolSupersedeKey extracts paths from read tool args", async () => {
+		const { readToolSupersedeKey } = await import("@veyyon/agent-core/compaction/pruning");
+		const key = readToolSupersedeKey("read", { path: "/tmp/test.ts" });
+		expect(key).toEqual(["/tmp/test.ts"]);
+		expect(readToolSupersedeKey("bash", { command: "ls" })).toBeUndefined();
+	});
+
+	it("agent: isProviderRefusalMessage detects error stop with refusal details", async () => {
+		const { isProviderRefusalMessage } = await import("@veyyon/agent-core/replay-policy");
+		const refusal = { role: "assistant", stopReason: "error", stopDetails: { type: "refusal" } } as never;
+		const normal = { role: "assistant", stopReason: "end_turn" } as never;
+		expect(isProviderRefusalMessage(refusal)).toBe(true);
+		expect(isProviderRefusalMessage(normal)).toBe(false);
+	});
+
+	it("utils: estimateTokensFromText returns positive integer for non-empty text", async () => {
+		const { estimateTokensFromText } = await import("@veyyon/utils");
+		const tokens = estimateTokensFromText("Hello, world! This is a test.");
+		expect(tokens).toBeGreaterThan(0);
+		expect(Number.isInteger(tokens)).toBe(true);
+		expect(estimateTokensFromText("")).toBe(0);
+	});
 });
