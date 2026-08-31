@@ -30,7 +30,6 @@ import { resolveVaultLocations, SecretVault } from "@veyyon/coding-agent/secrets
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import { maskedPromptTitle, runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/helpers/secret";
 import { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
-import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
 
 /** The credential under test. Long enough to be obfuscatable, distinctive enough to grep for. */
 const VALUE = "ghp_maskedEntryTestCredential99";
@@ -690,9 +689,9 @@ describe("the TUI path", () => {
 		const [title, placeholder, inputOptions] = showHookInput.mock.calls[0] as unknown as [
 			string,
 			undefined,
-			{ mask?: string },
+			{ mask?: boolean },
 		];
-		expect(inputOptions.mask).toBe(DEFAULT_MASK_CHAR);
+		expect(inputOptions.mask).toBe(true);
 		expect(placeholder).toBeUndefined();
 		expect(title).toBe(maskedPromptTitle());
 		// And it carries NO name, because at this point there is not one yet to carry: `/secret add`

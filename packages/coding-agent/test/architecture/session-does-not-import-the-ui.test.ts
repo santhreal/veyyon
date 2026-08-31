@@ -274,7 +274,6 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 	const PRINT_MODE_TUI_EDGES = [
 		"packages/coding-agent/src/modes/terminal/components/dialogs/pause-screen.ts -> @veyyon/tui",
 		"packages/coding-agent/src/slash-commands/builtin-registry.ts -> @veyyon/tui",
-		"packages/coding-agent/src/slash-commands/helpers/secret.ts -> @veyyon/tui",
 		"packages/coding-agent/src/theme/theme-class.ts -> @veyyon/tui/terminal-capabilities",
 		"packages/coding-agent/src/theme/theme.ts -> @veyyon/tui/terminal-capabilities",
 		"packages/coding-agent/src/tui/code-cell.ts -> @veyyon/tui",

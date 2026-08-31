@@ -1,5 +1,14 @@
 import { abortDetached } from "@veyyon/kernel/session/detached-abort";
-import { type Component, Container, type OverlayHandle, Spacer, TERMINAL, Text, type TUI } from "@veyyon/tui";
+import {
+	type Component,
+	Container,
+	DEFAULT_MASK_CHAR,
+	type OverlayHandle,
+	Spacer,
+	TERMINAL,
+	Text,
+	type TUI,
+} from "@veyyon/tui";
 import { clampLow, errorMessage } from "@veyyon/utils";
 import type { CollabUiRequestDraft, CollabUiSelectItem } from "@veyyon/wire";
 import { KeybindingsManager } from "../../../config/keybindings";
@@ -1032,12 +1041,14 @@ export class ExtensionUiController {
 		placeholder?: string,
 		dialogOptions?: ExtensionUIDialogOptions,
 		/**
-		 * How the field renders, as opposed to how the dialog behaves. `mask` makes it a
-		 * credential field. Separate from `dialogOptions` for the same reason
-		 * {@link showHookEditor} keeps `editorOptions` separate: presentation is not an extension
-		 * API concern, and masking must not become something a remote extension can switch off.
+		 * How the field renders, as opposed to how the dialog behaves. `mask` states that the field
+		 * carries a credential; the character drawn in place of each keystroke is this host's, which
+		 * is why the caller states a boolean and never a glyph. Separate from `dialogOptions` for the
+		 * same reason {@link showHookEditor} keeps `editorOptions` separate: presentation is not an
+		 * extension API concern, and masking must not become something a remote extension can switch
+		 * off.
 		 */
-		inputOptions?: { mask?: string; hint?: string },
+		inputOptions?: { mask?: boolean; hint?: string },
 	): Promise<string | undefined> {
 		return this.#presentDialog(dialogOptions?.signal, settle => {
 			const input = new HookInputComponent(
@@ -1049,7 +1060,7 @@ export class ExtensionUiController {
 					timeout: dialogOptions?.timeout,
 					onTimeout: dialogOptions?.onTimeout,
 					tui: this.ctx.ui,
-					mask: inputOptions?.mask,
+					mask: inputOptions?.mask === true ? DEFAULT_MASK_CHAR : undefined,
 					hint: inputOptions?.hint,
 					onRequestRender: () => this.ctx.ui.requestRender(),
 				},

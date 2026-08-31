@@ -520,15 +520,16 @@ export interface InteractiveModeContext {
 	/**
 	 * One line of text from the operator. `undefined` = cancelled.
 	 *
-	 * `inputOptions.mask` renders each character as that one instead of itself, which is how a
-	 * credential is entered without it landing in the scrollback. Local only: unlike the selector
-	 * and editor dialogs, this one is never raced against a collab guest, so a masked prompt
-	 * cannot be answered from another machine.
+	 * `inputOptions.mask` states that the field carries a credential, so the operator's characters
+	 * never land in the scrollback; the host picks the character it draws instead of them, which is
+	 * why this is a boolean and not a glyph. Local only: unlike the selector and editor dialogs,
+	 * this one is never raced against a collab guest, so a masked prompt cannot be answered from
+	 * another machine.
 	 */
 	showHookInput(
 		title: string,
 		placeholder?: string,
-		inputOptions?: { mask?: string; hint?: string },
+		inputOptions?: { mask?: boolean; hint?: string },
 	): Promise<string | undefined>;
 	hideHookInput(): void;
 	showHookEditor(

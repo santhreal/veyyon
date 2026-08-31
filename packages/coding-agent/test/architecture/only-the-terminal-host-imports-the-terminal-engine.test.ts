@@ -85,7 +85,6 @@ const ENGINE_IMPORTERS = [
 	"index.ts",
 	"lsp/render.ts",
 	"slash-commands/builtin-registry.ts",
-	"slash-commands/helpers/secret.ts",
 	"task/render.ts",
 	"theme/theme-class.ts",
 	"theme/theme.ts",
@@ -143,7 +142,6 @@ const RUNTIME_ENGINE_IMPORTERS = [
 	"index.ts",
 	"lsp/render.ts",
 	"slash-commands/builtin-registry.ts",
-	"slash-commands/helpers/secret.ts",
 	"theme/theme-class.ts",
 	"theme/theme.ts",
 	"tools/agent/ask-render.ts",
@@ -182,7 +180,7 @@ describe("only the terminal host imports the terminal engine", () => {
 	 * ledger above and the ceiling here.
 	 */
 	it("does not grow the count of modules a second host cannot reuse", () => {
-		expect(enginePackageImporters("any").length).toBeLessThanOrEqual(46);
-		expect(enginePackageImporters("runtime").length).toBeLessThanOrEqual(25);
+		expect(enginePackageImporters("any").length).toBeLessThanOrEqual(45);
+		expect(enginePackageImporters("runtime").length).toBeLessThanOrEqual(24);
 	});
 });

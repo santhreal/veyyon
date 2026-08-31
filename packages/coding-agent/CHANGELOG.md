@@ -63,6 +63,7 @@
 - Source-path comments in `modes/terminal/controllers/input-controller.ts`, `tools/render-utils.ts`, `utils/block-context.ts` and `utils/shell-snapshot.ts` name the Rust modules they cite at their new paths under `natives/`. No user-visible behavior changes.
 - A commit whose changes all sit under a grouping directory named `natives` proposes the directory below it as the scope, the way `crates`, `packages` and `tests` already do, instead of proposing `natives`.
 - The `set_cwd` renderer drops `name`, `renderArguments` and `renderPending`: no host reads any of the three, and the tool-renderer contract declares none of them. No user-visible behavior changes.
+- `showHookInput`'s `inputOptions.mask` is a boolean rather than the character to draw, so the host that paints the field owns the glyph and `/secret add` no longer names the terminal engine to ask for a hidden field; the masked prompt draws the same `•` it drew before.
 ### Changed
 
 - The home screen hero drops the recent-session row; `/welcome` still lists recent sessions.
