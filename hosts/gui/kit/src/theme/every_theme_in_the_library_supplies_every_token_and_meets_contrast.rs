@@ -177,3 +177,30 @@ fn theme_resolution_honors_known_and_reports_refused_unknown() {
 		);
 	}
 }
+
+#[test]
+fn every_theme_the_product_names_has_a_palette_and_no_palette_is_unnamed() {
+	// The identities are in the core crate, because the command palette offers
+	// each theme as a verb and the store accepts the name; the palettes are
+	// here, because a colour is a rendering concern. Two lists mean two ways to
+	// drift: a name with no palette resolves to the default and the row does
+	// nothing, and a palette with no name is a theme nothing can reach.
+	for identity in &veyyon_gui_core::theme::THEMES {
+		let entry = super::library::get(identity.id)
+			.unwrap_or_else(|| panic!("theme `{}` is named with no palette", identity.id));
+		assert_eq!(entry.name, identity.name, "theme `{}` is named twice, differently", identity.id);
+		assert_eq!(
+			matches!(entry.appearance, Appearance::Dark),
+			identity.dark,
+			"theme `{}` is dark in one list and light in the other",
+			identity.id
+		);
+	}
+
+	let unnamed: Vec<&str> = entries()
+		.iter()
+		.map(|entry| entry.id)
+		.filter(|id| veyyon_gui_core::theme::identity(id).is_none())
+		.collect();
+	assert_eq!(unnamed, Vec::<&str>::new(), "these palettes are reachable from nowhere");
+}
