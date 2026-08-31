@@ -66,12 +66,24 @@ pub struct SettingsState {
 	pub save:             CommandState,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ThemeState {
-	pub available: Vec<ThemeView>,
-	pub selected:  Option<String>,
+	pub available:  Vec<ThemeView>,
+	pub selected:   Option<String>,
+	pub preference: Option<String>,
+	pub refused:    Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ThemePreference {
+	pub theme: String,
+}
+
+impl Default for ThemePreference {
+	fn default() -> Self {
+		Self { theme: "dark".to_string() }
+	}
+}
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ThemeView {
 	pub id:   String,

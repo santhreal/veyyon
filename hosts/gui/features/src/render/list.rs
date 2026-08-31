@@ -11,15 +11,20 @@ use super::markdown;
 
 /// A complete list.
 pub fn list(items: &[Item], theme: &Theme) -> Div {
+	list_keyed("", items, theme)
+}
+
+/// A complete list with keyed items for selection.
+pub fn list_keyed(id: &str, items: &[Item], theme: &Theme) -> Div {
 	let mut column = text::stack(space::TIGHT).w_full().min_w(px(0.0));
-	for item in items {
-		column = column.child(item_row(item, theme));
+	for (index, item) in items.iter().enumerate() {
+		column = column.child(item_row(&format!("{id}-item-{index}"), item, theme));
 	}
 	column
 }
 
 /// One item. The fixed marker column keeps wrapped lines aligned with the text.
-fn item_row(item: &Item, theme: &Theme) -> Div {
+fn item_row(key: &str, item: &Item, theme: &Theme) -> Div {
 	let marker = match (item.done, item.kind) {
 		(Some(done), _) => square(icon::scale::small())
 			.child(icon::at(
@@ -52,5 +57,9 @@ fn item_row(item: &Item, theme: &Theme) -> Div {
 				.justify_end()
 				.child(marker),
 		)
-		.child(markdown::runs(&item.spans, theme).flex_1().min_w(px(0.0)))
+		.child(
+			markdown::runs_keyed(key, &item.spans, theme)
+				.flex_1()
+				.min_w(px(0.0)),
+		)
 }

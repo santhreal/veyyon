@@ -13,6 +13,7 @@
 pub mod diff;
 pub mod markdown;
 pub mod syntax;
+pub mod terminal;
 
 /// One line of text, cut to `max` characters at a word boundary.
 ///

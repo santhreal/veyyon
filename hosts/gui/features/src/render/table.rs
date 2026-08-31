@@ -10,6 +10,16 @@ use veyyon_gui_kit::{
 use super::markdown;
 
 pub fn table(head: &[Vec<Span>], rows: &[Vec<Vec<Span>>], theme: &Theme) -> EdgeFade {
+	table_keyed("table", head, rows, theme)
+}
+
+/// A markdown table with keyed cells for selection.
+pub fn table_keyed(
+	id: &str,
+	head: &[Vec<Span>],
+	rows: &[Vec<Vec<Span>>],
+	theme: &Theme,
+) -> EdgeFade {
 	let scroll = ScrollHandle::new();
 	let columns = head
 		.len()
@@ -20,10 +30,12 @@ pub fn table(head: &[Vec<Span>], rows: &[Vec<Vec<Span>>], theme: &Theme) -> Edge
 			values.peek().is_some() && values.all(|cell| compact_value(cell))
 		})
 		.collect();
-	let cells = |cells: &[Vec<Span>], strong: bool| {
+	let cells = |cells: &[Vec<Span>], strong: bool, row_key: &str| {
 		let mut row = div().flex().w_full().min_w(px(0.0)).gap(px(space::BASE));
 		for (index, cell) in cells.iter().enumerate() {
-			let mut element = markdown::runs(cell, theme).min_w(px(layout::row_tall()));
+			let cell_key = format!("{row_key}-{index}");
+			let mut element =
+				markdown::runs_keyed(&cell_key, cell, theme).min_w(px(layout::row_tall()));
 			if compact.get(index).copied().unwrap_or(false) {
 				element = element.flex_none().w(px(layout::row_tall()));
 			} else {
@@ -39,10 +51,12 @@ pub fn table(head: &[Vec<Span>], rows: &[Vec<Vec<Span>>], theme: &Theme) -> Edge
 
 	let mut column = text::stack(space::TIGHT).w_full().min_w(px(0.0));
 	if !head.is_empty() {
-		column = column.child(cells(head, true)).child(text::hairline(theme));
+		column = column
+			.child(cells(head, true, &format!("{id}-head")))
+			.child(text::hairline(theme));
 	}
-	for row in rows {
-		column = column.child(cells(row, false));
+	for (row_idx, row) in rows.iter().enumerate() {
+		column = column.child(cells(row, false, &format!("{id}-row-{row_idx}")));
 	}
 	card::well(theme)
 		.w_full()

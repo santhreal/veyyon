@@ -5,6 +5,9 @@
 //! state; shell actions return a typed shell effect.
 
 mod class;
+#[cfg(test)]
+mod every_command_is_in_the_menu_or_opted_out;
+pub mod menu;
 
 use crate::{model::*, navigation::*};
 

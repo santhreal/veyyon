@@ -74,19 +74,25 @@ pub fn well(id: &str, lang: &str, body: &str, cx: &mut App) -> Div {
 				// 7. SNUG under the last line matches it. A full BASE there
 				// reads as 13 against 8 and tips the block upwards.
 				.pb(px(space::SNUG))
-				.child(lexed(lang, body, &theme))
+				.child(lexed_keyed(&format!("{id}-code"), lang, body, &theme))
 				.scrolls_x(&scroll, Elevation::Sunken),
 		)
 }
 
 /// The body, lexed, as one text element with styled runs.
 pub fn lexed(lang: &str, body: &str, theme: &Theme) -> Div {
+	lexed_keyed("", lang, body, theme)
+}
+
+/// The body, lexed, with selection highlight support.
+pub fn lexed_keyed(key: &str, lang: &str, body: &str, theme: &Theme) -> Div {
 	let runs: Vec<(std::ops::Range<usize>, HighlightStyle)> = syntax::spans(lang, body)
 		.into_iter()
 		.map(|(range, token)| {
 			(range, HighlightStyle { color: Some(theme.syntax.of(token)), ..Default::default() })
 		})
 		.collect();
+	let runs = veyyon_gui_kit::input::selection::apply_selection_highlights(body, key, runs, theme);
 
 	div()
 		.w_full()

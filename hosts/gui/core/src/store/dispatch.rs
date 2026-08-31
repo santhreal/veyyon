@@ -4,6 +4,7 @@
 mod composer;
 mod host;
 mod navigation;
+pub mod notify;
 mod preferences;
 mod selection;
 
@@ -28,6 +29,9 @@ impl Store {
 			return effects;
 		}
 		if self.dispatch_selection(&command, &mut effects) {
+			return effects;
+		}
+		if self.dispatch_notify(&command, &mut effects) {
 			return effects;
 		}
 		if self.dispatch_preferences(&command, &mut effects) {

@@ -10,8 +10,12 @@ pub(crate) mod control;
 pub mod frame;
 pub mod interaction;
 mod logic;
+pub mod render;
 mod topology;
 mod view;
+
+#[cfg(test)]
+mod every_terminal_cell_draws_through_the_adapter_palette;
 
 pub use adapter::{
 	DamageRect, GridSize, RendererAdapter, RendererDamage, RendererFont, RendererPalette,
@@ -20,4 +24,5 @@ pub use adapter::{
 pub use frame::{FrameCoalescer, FrameRequest};
 pub use interaction::{SelectionRequest, SelectionRequestGuard};
 pub use logic::{ConnectionPresentation, LifecyclePresentation, lifecycle};
+pub use render::{RetainedTerminalRenderer, RetainedTerminalSession};
 pub use view::render;

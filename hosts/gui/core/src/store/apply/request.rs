@@ -52,10 +52,23 @@ impl Store {
 							.map(|f| f.as_str().to_owned())
 							.unwrap_or_default(),
 						kind,
-						message: error.message,
+						message: error.message.clone(),
 						retryable: error.retryable,
 					});
 				}
+				let id = self.replica.notifications.next_id();
+				let (key, title) = if pending.target == CommandTarget::Files {
+					("file-read-error".to_string(), "File read failed".to_string())
+				} else {
+					(
+						format!("request-failed:{:?}", pending.target),
+						format!("Request failed: {:?}", pending.target),
+					)
+				};
+				let mut notification =
+					Notification::new(id, NotificationKey::new(key), NotificationTone::Error, title, 0);
+				notification.detail = Some(error.message);
+				self.replica.notifications.push(notification);
 				changes.replica = true;
 				changes.frontend = true;
 			},

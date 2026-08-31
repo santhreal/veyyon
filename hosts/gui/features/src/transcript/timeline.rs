@@ -287,4 +287,37 @@ impl Timeline {
 			.scroll_to(ListOffset { item_ix: 0, offset_in_item: px(0.0) });
 		cx.notify();
 	}
+
+	pub fn document_elements(&self) -> Vec<(String, String)> {
+		let mut elements = Vec::new();
+		for row in &self.rows {
+			if let Some(cache) = self.entry_cache.get(&row.id) {
+				crate::render::entry::collect_elements(row, cache, &mut elements);
+			}
+		}
+		elements
+	}
+
+	pub fn autoscroll_up(&mut self) {
+		let top = self.list.logical_scroll_top();
+		if top.item_ix > 0 {
+			self
+				.list
+				.scroll_to_reveal_item(top.item_ix.saturating_sub(1));
+		} else {
+			self.list.scroll_to_reveal_item(0);
+		}
+	}
+
+	pub fn autoscroll_down(&mut self) {
+		let top = self.list.logical_scroll_top();
+		let max_ix = self.rows.len().saturating_sub(1);
+		if top.item_ix < max_ix {
+			self
+				.list
+				.scroll_to_reveal_item((top.item_ix + 1).min(max_ix));
+		} else {
+			self.list.scroll_to_reveal_item(max_ix);
+		}
+	}
 }

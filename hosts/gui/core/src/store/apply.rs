@@ -27,6 +27,20 @@ impl Store {
 					self.mark_replica_stale(StaleReason::Disconnected);
 					changes.replica = true;
 				}
+				if let ConnectionState::Fatal { message }
+				| ConnectionState::Reconnecting { message, .. } = &self.connection
+				{
+					let id = self.replica.notifications.next_id();
+					let mut notification = Notification::new(
+						id,
+						NotificationKey::new("connection-failed"),
+						NotificationTone::Error,
+						"Connection dropped",
+						0,
+					);
+					notification.detail = Some(message.clone());
+					self.replica.notifications.push(notification);
+				}
 			},
 			HostEvent::Snapshot(section) => changes.replica = self.apply_snapshot(section),
 			HostEvent::TranscriptAppended { revision, entries } => {
@@ -64,6 +78,18 @@ impl Store {
 				changes.replica = true;
 			},
 			HostEvent::ToolUpdated { revision, tool } => {
+				if tool.is_error {
+					let id = self.replica.notifications.next_id();
+					let mut notification = Notification::new(
+						id,
+						NotificationKey::new(format!("tool-error:{}", tool.id)),
+						NotificationTone::Error,
+						format!("Tool {} failed", tool.name),
+						0,
+					);
+					notification.detail = tool.intent.clone();
+					self.replica.notifications.push(notification);
+				}
 				changes.replica = apply_vec_event(
 					&mut self.replica.tools,
 					revision,
@@ -159,9 +185,19 @@ impl Store {
 				self.finish_request(request, Some(error), &mut changes);
 			},
 			HostEvent::FatalProtocolError { message } => {
-				self.connection = ConnectionState::Fatal { message };
+				self.connection = ConnectionState::Fatal { message: message.clone() };
 				self.mark_replica_stale(StaleReason::Disconnected);
 				self.frontend.theme_preview = None;
+				let id = self.replica.notifications.next_id();
+				let mut notification = Notification::new(
+					id,
+					NotificationKey::new("fatal-protocol-error"),
+					NotificationTone::Error,
+					"Fatal protocol error",
+					0,
+				);
+				notification.detail = Some(message);
+				self.replica.notifications.push(notification);
 				changes.connection = true;
 				changes.replica = true;
 				changes.frontend = true;

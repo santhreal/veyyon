@@ -8,7 +8,7 @@ use veyyon_gui_core::{
 };
 use veyyon_gui_kit::{
 	theme::{Theme, size, space, weight},
-	ui::{Button, Empty, Fill, Icon, Row, Tone, card, text},
+	ui::{AnchoredPopover, Button, Empty, Fill, Icon, Row, Side, Tone, card, text},
 };
 
 use super::{
@@ -140,7 +140,7 @@ fn details(store: &Store, read: Option<&FileReadView>, cx: &mut App) -> gpui::Di
 		.readable()
 		.and_then(|versioned| versioned.value.nodes.iter().find(|node| node.id == read.id));
 	let mut column = section("File", cx)
-		.child(detail("Path", &read.path, cx))
+		.child(path_detail(&read.path, read, node, cx))
 		.child(detail("Reader", reader_name(read), cx));
 	if let Some(node) = node {
 		column = column.child(detail("Kind", kind_name(&node.kind), cx));
@@ -153,6 +153,82 @@ fn details(store: &Store, read: Option<&FileReadView>, cx: &mut App) -> gpui::Di
 		column = metadata_rows(column, node, cx);
 	}
 	column
+}
+
+fn path_detail(
+	path: &str,
+	read: &FileReadView,
+	node: Option<&FileNode>,
+	cx: &mut App,
+) -> gpui::Div {
+	let theme = Theme::get(cx);
+	let mut popover = AnchoredPopover::new(format!("path-popover-{}", read.id), true)
+		.side(Side::Bottom)
+		.has_controls(true);
+	popover = popover.child(
+		text::stack(space::SNUG)
+			.child(text::title("File metadata", &theme))
+			.child(detail_row("Full path", path, &theme))
+			.child(detail_row("File id", read.id.as_str(), &theme))
+			.child(detail_row("Reader", reader_name(read), &theme))
+			.children(node.map(|n| detail_row("Kind", kind_name(&n.kind), &theme)))
+			.children(
+				node
+					.and_then(|n| n.size_bytes)
+					.map(|s| detail_row("Exact bytes", &format!("{s} bytes"), &theme)),
+			)
+			.children(
+				node
+					.and_then(|n| n.modified_at_ms)
+					.map(|m| detail_row("Modified timestamp", &format!("{m} ms"), &theme)),
+			)
+			.children((!read.outline.is_empty()).then(|| {
+				detail_row("Outline symbols", &format!("{} items", read.outline.len()), &theme)
+			})),
+	);
+
+	card::well(&theme).w_full().p(px(space::BASE)).child(
+		text::stack(space::TIGHT)
+			.child(
+				div()
+					.flex()
+					.items_center()
+					.justify_between()
+					.child(text::meta("Path", &theme))
+					.child(
+						Button::labelled(
+							format!("copy-path-{}", read.id),
+							owners::chrome(Chrome::CopyPath),
+							"Full details",
+						)
+						.icon(Icon::Read)
+						.fill(Fill::Ghost)
+						.tone(Tone::Plain)
+						.on_click(act::click(UiCommand::RevealFile(read.id.clone()))),
+					),
+			)
+			.child(
+				div()
+					.text_size(px(size::body()))
+					.text_color(theme.text)
+					.child(path.to_owned()),
+			)
+			.child(popover),
+	)
+}
+
+fn detail_row(label: &str, value: &str, theme: &Theme) -> gpui::Div {
+	div()
+		.flex()
+		.items_center()
+		.justify_between()
+		.gap(px(space::BASE))
+		.child(text::meta(label.to_owned(), theme))
+		.child(
+			text::mono(value.to_owned(), theme)
+				.text_size(px(size::meta()))
+				.text_color(theme.text),
+		)
 }
 
 fn metadata_rows(mut column: gpui::Div, node: &FileNode, cx: &mut App) -> gpui::Div {

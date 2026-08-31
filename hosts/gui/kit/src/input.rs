@@ -33,6 +33,7 @@ mod geometry;
 mod ime;
 pub mod keys;
 mod pointer;
+pub mod selection;
 pub mod text;
 
 use crate::theme::Theme;
@@ -183,5 +184,7 @@ fn rows_of(line: &WrappedLine, line_start: usize) -> Vec<(usize, usize)> {
 	rows
 }
 
+#[cfg(test)]
+mod a_selection_spans_runs_normalises_and_respects_grapheme_clusters;
 #[cfg(test)]
 mod tests;

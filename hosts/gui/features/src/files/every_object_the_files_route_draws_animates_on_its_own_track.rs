@@ -89,7 +89,10 @@ fn no_two_objects_the_route_draws_share_a_track() {
 	assert!(seen.insert(owners::search_hit(&hit, Some(12))), "a search hit shares a track");
 	assert!(seen.insert(owners::search_hit(&hit, Some(48))), "two hits in one file share a track");
 	assert!(seen.insert(owners::search_hit(&hit, None)), "a whole-file hit shares a track");
-	assert!(seen.insert(owners::search_hit(&hit, Some(0))), "a hit on the first line is the whole file");
+	assert!(
+		seen.insert(owners::search_hit(&hit, Some(0))),
+		"a hit on the first line is the whole file"
+	);
 	assert!(seen.insert(owners::outline(&hit, 1, 20)), "an outline row shares a track");
 	assert!(seen.insert(owners::outline(&hit, 21, 40)), "two outline ranges share a track");
 	assert!(seen.insert(owners::outline(&hit, 0, 1)), "an outline row at the top shares a track");

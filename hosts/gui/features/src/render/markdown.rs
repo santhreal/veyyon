@@ -38,11 +38,15 @@ pub fn blocks(blocks: &[Md], id: &str, cx: &mut App) -> Vec<AnyElement> {
 pub fn block(block: &Md, id: &str, cx: &mut App) -> AnyElement {
 	let theme = Theme::get(cx);
 	match block {
-		Md::Heading { level, spans } => heading(*level, spans, &theme).into_any_element(),
+		Md::Heading { level, spans } => {
+			heading_keyed(&format!("{id}-h"), *level, spans, &theme).into_any_element()
+		},
 
-		Md::Paragraph(spans) => runs(spans, &theme).w_full().into_any_element(),
+		Md::Paragraph(spans) => runs_keyed(&format!("{id}-p"), spans, &theme)
+			.w_full()
+			.into_any_element(),
 
-		Md::List(items) => list::list(items, &theme).into_any_element(),
+		Md::List(items) => list::list_keyed(id, items, &theme).into_any_element(),
 
 		Md::Quote(inner) => quote::quote(inner, id, cx).into_any_element(),
 
@@ -52,19 +56,19 @@ pub fn block(block: &Md, id: &str, cx: &mut App) -> AnyElement {
 			.my(px(space::SNUG))
 			.into_any_element(),
 
-		Md::Table { head, rows } => table::table(head, rows, &theme).into_any_element(),
+		Md::Table { head, rows } => table::table_keyed(id, head, rows, &theme).into_any_element(),
 	}
 }
 
 /// A heading. Three sizes for six levels, because a transcript is not a
 /// document and a level-five heading inside a message is a bold line.
-fn heading(level: u8, spans: &[Span], theme: &Theme) -> gpui::Div {
+pub fn heading_keyed(key: &str, level: u8, spans: &[Span], theme: &Theme) -> gpui::Div {
 	let size = match level {
 		1 => size::section(),
 		2 => size::lead(),
 		_ => size::body(),
 	};
-	runs(spans, theme)
+	runs_keyed(key, spans, theme)
 		.w_full()
 		.text_size(px(size))
 		.line_height(px(size * size::LINE_CHROME))
@@ -76,10 +80,22 @@ fn heading(level: u8, spans: &[Span], theme: &Theme) -> gpui::Div {
 		.pt(px(space::TIGHT))
 }
 
+/// A heading with default unkeyed styling.
+pub fn heading(level: u8, spans: &[Span], theme: &Theme) -> gpui::Div {
+	heading_keyed("", level, spans, theme)
+}
+
 /// One run of prose: the text, with its emphasis, code and links as styled
 /// runs.
 pub fn runs(spans: &[Span], theme: &Theme) -> gpui::Div {
+	runs_keyed("", spans, theme)
+}
+
+/// One run of prose with selection highlight support.
+pub fn runs_keyed(key: &str, spans: &[Span], theme: &Theme) -> gpui::Div {
 	let (body, styles) = styled(spans, theme);
+	let styles =
+		veyyon_gui_kit::input::selection::apply_selection_highlights(&body, key, styles, theme);
 	div().child(StyledText::new(body).with_highlights(styles))
 }
 

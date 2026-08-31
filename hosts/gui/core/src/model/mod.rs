@@ -10,6 +10,7 @@ mod diagnostic;
 mod file;
 mod ids;
 mod mcp;
+mod notification;
 mod provider;
 mod remote;
 mod session;
@@ -28,6 +29,7 @@ pub use diagnostic::*;
 pub use file::*;
 pub use ids::*;
 pub use mcp::*;
+pub use notification::*;
 pub use provider::*;
 pub use remote::*;
 pub use session::*;
@@ -70,6 +72,7 @@ pub struct Replica {
 	pub lifecycle:         RemoteData<Versioned<LifecycleState>>,
 	pub capabilities:      BTreeMap<Capability, CapabilityStatus>,
 	pub errors:            Vec<BackendError>,
+	pub notifications:     NotificationQueue,
 }
 
 impl Default for Replica {
@@ -109,6 +112,7 @@ impl Default for Replica {
 			lifecycle:         RemoteData::Unrequested,
 			capabilities:      BTreeMap::new(),
 			errors:            Vec::new(),
+			notifications:     NotificationQueue::default(),
 		}
 	}
 }
@@ -121,3 +125,7 @@ impl Replica {
 			.unwrap_or(&CapabilityStatus::UnknownUntilAttached)
 	}
 }
+#[cfg(test)]
+mod every_failure_reporting_store_field_produces_a_notification;
+#[cfg(test)]
+mod the_notification_queue_dedupes_bounds_and_expires_by_frame_time;
