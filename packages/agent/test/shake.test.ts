@@ -155,7 +155,7 @@ describe("collectShakeRegions — fenced / XML blocks", () => {
 		expect(text.slice(region.start, region.end)).toBe(xml);
 	});
 
-	test("never targets toolCall blocks and points blockIndex at the text block", () => {
+	test("never targets toolCall blocks and addresses the text block", () => {
 		const fence = fencedBlock(120);
 		const toolCall: ToolCall = { type: "toolCall", id: "tc-1", name: "read", arguments: { path: "x" } };
 		const entry = messageEntry(
@@ -166,7 +166,7 @@ describe("collectShakeRegions — fenced / XML blocks", () => {
 		expect(regions).toHaveLength(1);
 		const region = regions[0];
 		if (region.kind !== "block") throw new Error("expected block region");
-		expect(region.blockIndex).toBe(2);
+		expect(region.address).toEqual({ field: "content", blockIndex: 2 });
 	});
 
 	test("does not cross message boundaries — each large block stays in its own entry", () => {
@@ -259,14 +259,14 @@ describe("collectShakeRegions — user / developer / custom_message blocks", () 
 		const [region] = regions;
 		expect(region.kind).toBe("block");
 		if (region.kind !== "block") throw new Error("expected a block region");
-		expect(region.blockIndex).toBe(-1);
+		expect(region.address).toEqual({ field: "content", blockIndex: -1 });
 		expect(region.label).toBe("user");
 
 		applyShakeRegion(region, "[shaken]");
 		expect((entry.message as { content: string }).content).toBe("intro\n[shaken]\ntrailer");
 	});
 
-	test("collects a block from array-form developer content and points blockIndex at the text block", () => {
+	test("collects a block from array-form developer content and addresses the text block", () => {
 		const entry = messageEntry({
 			role: "developer",
 			content: [{ type: "text", text: fencedBlock(120) }],
@@ -277,7 +277,7 @@ describe("collectShakeRegions — user / developer / custom_message blocks", () 
 		expect(regions).toHaveLength(1);
 		const [region] = regions;
 		if (region.kind !== "block") throw new Error("expected a block region");
-		expect(region.blockIndex).toBe(0);
+		expect(region.address).toEqual({ field: "content", blockIndex: 0 });
 		expect(region.label).toBe("developer");
 	});
 
@@ -288,7 +288,7 @@ describe("collectShakeRegions — user / developer / custom_message blocks", () 
 		expect(regions).toHaveLength(1);
 		const [region] = regions;
 		if (region.kind !== "block") throw new Error("expected a block region");
-		expect(region.blockIndex).toBe(-1);
+		expect(region.address).toEqual({ field: "content", blockIndex: -1 });
 		expect(region.label).toBe("plan");
 
 		applyShakeRegion(region, "[shaken]");
@@ -302,7 +302,7 @@ describe("collectShakeRegions — user / developer / custom_message blocks", () 
 		expect(regions).toHaveLength(1);
 		const [region] = regions;
 		if (region.kind !== "block") throw new Error("expected a block region");
-		expect(region.blockIndex).toBe(0);
+		expect(region.address).toEqual({ field: "content", blockIndex: 0 });
 
 		applyShakeRegion(region, "[shaken]");
 		const block = (entry.content as TextContent[])[0];

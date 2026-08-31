@@ -51,6 +51,7 @@ import {
 	calculateContextTokens,
 	calculatePromptTokens,
 	collectEntriesForBranchSummary,
+	collectOversizedTextRegions,
 	collectRedundantToolResultRegions,
 	collectShakeRegions,
 	compact,
@@ -84,6 +85,7 @@ import {
 	serverCompactionRouteAbsent,
 	shouldCompact,
 	upsertFileOperations,
+	usableInputWindow,
 } from "@veyyon/agent-core/compaction";
 import { modelServesPrefixCacheHits } from "@veyyon/agent-core/compaction/cache-aligned-context";
 import {
@@ -387,7 +389,7 @@ import { sessionPrompts } from "../prompts/session/rows";
 import { sideChannelPrompts } from "../prompts/side-channel/rows";
 import { steeringPrompts } from "../prompts/steering/rows";
 import { turnControlPrompts } from "../prompts/turn-control/rows";
-import { transformProviderPayload } from "../provider-boundary";
+import { isProviderPayloadOversize, transformProviderPayload } from "../provider-boundary";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { AgentRegistry } from "../registry/agent-registry";
 import { noteSecretsCondition } from "../secrets/notices";
@@ -634,6 +636,40 @@ const GEMINI_HEADER_INTERRUPT_REASON = "Interrupted: emit a tool call instead of
 const UNEXPECTED_STOP_MAX_RETRIES = 3;
 const UNEXPECTED_STOP_TIMEOUT_MS = 4000;
 const EMPTY_STOP_MAX_RETRIES = 3;
+/**
+ * The bar a compaction pass is measured against. `"fit"` is the overflow/
+ * incomplete retry, which only has to fit the window; `"recovery-band"` is the
+ * threshold pass, which needs hysteresis under the trigger.
+ */
+type CompactionBar = "fit" | "recovery-band";
+
+/** Where the live context sits relative to a {@link CompactionBar}. */
+type CompactionBudget = Readonly<{ residualTokens: number; budgetTokens: number }>;
+
+/**
+ * Tokens preserved at the start and at the end of every text the truncation
+ * tier cuts. A tool result states what it read in its first lines and what it
+ * concluded in its last, and a model that keeps both can still tell what the
+ * call was; the bulk between them is what a context window is spent on.
+ */
+const TRUNCATION_KEEP_EDGE_TOKENS = 512;
+
+/**
+ * Smallest text the truncation tier will cut. Below `2 ×` the kept edges plus
+ * a margin there is no middle worth removing, and the marker would cost more
+ * than the cut frees.
+ */
+const TRUNCATION_MIN_TEXT_TOKENS = TRUNCATION_KEEP_EDGE_TOKENS * 2 + 256;
+
+/**
+ * The input room a model actually offers, for every budgeting decision in this
+ * file. `model.contextWindow` is the catalog figure and includes the output
+ * allocation the provider will not let a prompt use; reading it directly is what
+ * let history grow into a request the provider rejects.
+ */
+function usableWindowOf(model: Model | undefined | null): number {
+	return usableInputWindow(model?.contextWindow ?? 0, model?.maxTokens);
+}
 
 /** Whether writing `path` must rebuild the prompt the model is holding. */
 function rebuildsThePrompt(path: string): boolean {
@@ -822,12 +858,29 @@ function createHandoffFileName(date = new Date()): string {
  * mutable request hooks. The bounded shared walker rejects transformed-key
  * collisions and unsupported/cyclic payloads; the boundary converts every
  * walker failure into a fail-closed confidentiality error.
+ *
+ * A refusal the boundary attributes to payload SIZE carries the context-overflow
+ * flag out of here. The scan runs ahead of the send, so an oversized turn is
+ * refused locally before any provider sees it, and a session whose turn outgrew
+ * the scan limits used to stop at a confidentiality error it could not act on:
+ * the one mechanism that shrinks a turn is reached by classifying the failure as
+ * an overflow, and it was never reached because nothing said this was one. The
+ * flag is attached rather than matched on the message text so `classify` latches
+ * it off the chain and every reader of the id — the retry ladder, the compaction
+ * rescue, `isContextOverflow` — gives the same answer without a second predicate.
  */
 export function obfuscateProviderPayload(value: unknown, obfuscator: SecretObfuscator | undefined): unknown {
 	if (!obfuscator?.hasSecrets()) return value;
-	return transformProviderPayload(value, text => obfuscator.obfuscate(text), "AgentSession provider payload", {
-		safeFailureDetails: true,
-	});
+	try {
+		return transformProviderPayload(value, text => obfuscator.obfuscate(text), "AgentSession provider payload", {
+			safeFailureDetails: true,
+		});
+	} catch (error) {
+		if (isProviderPayloadOversize(error) && error instanceof Error) {
+			throw AIError.attach(error, AIError.create(AIError.Flag.ContextOverflow));
+		}
+		throw error;
+	}
 }
 
 const REPLAN_TITLE_CONTEXT_TURN_LIMIT = 6;
@@ -2806,7 +2859,7 @@ export class AgentSession {
 	async #promoteAdvisorContextModel(advisor: ActiveAdvisor, currentModel: Model): Promise<boolean> {
 		const promotionSettings = this.settings.getGroup("contextPromotion");
 		if (!promotionSettings.enabled) return false;
-		const contextWindow = currentModel.contextWindow ?? 0;
+		const contextWindow = usableInputWindow(currentModel.contextWindow ?? 0, currentModel.maxTokens);
 		if (contextWindow <= 0) return false;
 		const targetModel = await this.#resolveContextPromotionTarget(currentModel, contextWindow);
 		if (!targetModel) return false;
@@ -9314,7 +9367,7 @@ export class AgentSession {
 
 			const agentPromptOptions = options?.toolChoice ? { toolChoice: options.toolChoice } : undefined;
 			const nonMessageTokens = computeNonMessageTokens(this);
-			const contextWindow = this.model?.contextWindow ?? 0;
+			const contextWindow = usableWindowOf(this.model);
 			const breakdown = this.getContextBreakdown({ contextWindow, pendingMessages: messages });
 			const promptTokens =
 				breakdown?.usedTokens ??
@@ -11145,11 +11198,18 @@ export class AgentSession {
 		};
 	}
 
+	/**
+	 * The marker that replaces one region's content. A truncation region is the
+	 * middle of a text whose head and tail survive, so its marker says the text
+	 * continues; every other region replaced its content entirely.
+	 */
 	#shakeElidePlaceholder(region: ShakeRegion, index: number, artifactId: string | undefined): string {
-		if (artifactId) {
-			return `[shaken ~${region.tokens} tokens; recover: artifact://${artifactId} (region ${index + 1})]`;
-		}
-		return `[shaken ~${region.tokens} tokens]`;
+		const truncated = region.kind === "block" && region.truncation === true;
+		const verb = truncated ? "truncated" : "shaken";
+		const marker = artifactId
+			? `[${verb} ~${region.tokens} tokens; recover: artifact://${artifactId} (region ${index + 1})]`
+			: `[${verb} ~${region.tokens} tokens]`;
+		return truncated ? `\n${marker}\n` : marker;
 	}
 
 	/**
@@ -11719,7 +11779,7 @@ export class AgentSession {
 	async #runPrePromptCompactionIfNeeded(messages: AgentMessage[]): Promise<void> {
 		const model = this.model;
 		if (!model) return;
-		const contextWindow = model.contextWindow ?? 0;
+		const contextWindow = usableInputWindow(model.contextWindow ?? 0, model.maxTokens);
 		if (contextWindow <= 0) return;
 		const compactionSettings = this.settings.getGroup("compaction");
 		const contextTokens = this.#estimatePrePromptContextTokens(messages, contextWindow);
@@ -11774,7 +11834,7 @@ export class AgentSession {
 			return;
 
 		const model = this.model;
-		const contextWindow = model?.contextWindow ?? 0;
+		const contextWindow = usableWindowOf(model);
 		if (contextWindow <= 0) return;
 
 		const compactionSettings = this.settings.getGroup("compaction");
@@ -11863,7 +11923,7 @@ export class AgentSession {
 	): Promise<CompactionCheckResult> {
 		// Skip if message was aborted (user cancelled) - unless skipAbortedCheck is false
 		if (skipAbortedCheck && assistantMessage.stopReason === "aborted") return COMPACTION_CHECK_NONE;
-		const contextWindow = this.model?.contextWindow ?? 0;
+		const contextWindow = usableWindowOf(this.model);
 		const generation = this.#promptGeneration;
 		// Skip overflow check if the message came from a different model.
 		// This handles the case where user switched from a smaller-context model (e.g. opus)
@@ -13855,104 +13915,105 @@ export class AgentSession {
 	}
 
 	/**
-	 * Post-maintenance progress check for the context-full tail.
-	 *
-	 * After `appendCompaction` rewrote history and `replaceMessages` swapped in the
-	 * compacted context, measure the residual context off the live message set and
-	 * decide whether maintenance actually created headroom. Mirrors the shake
-	 * recovery-band logic (#2275): a session whose single most-recent turn already
-	 * blows the threshold cannot be reduced by compaction (findCutPoint keeps that
-	 * turn verbatim), so re-firing on the next agent_end just thrashes. We only
-	 * report progress when residual context lands at or below
-	 * `COMPACTION_RECOVERY_BAND × threshold` — a band that sits strictly under the
-	 * compaction threshold, so reaching it guarantees the next turn cannot
-	 * re-trip threshold compaction.
-	 *
-	 * When the model/window is unknown we cannot evaluate the band, so we
-	 * optimistically allow the continuation (preserving prior behavior).
+	 * Live residual context in tokens: usage for the active window minus the
+	 * stored-snapshot allowance. Every post-maintenance measurement in this
+	 * class uses this convention, so it is stated once.
 	 */
-	#compactionCreatedHeadroom(): boolean {
-		const contextWindow = this.model?.contextWindow ?? 0;
-		if (contextWindow <= 0) return true;
-		const compactionSettings = this.settings.getGroup("compaction");
-		const residualTokens = compactionContextTokens(
+	#residualContextTokens(contextWindow: number): number {
+		return compactionContextTokens(
 			this.getContextUsage({ contextWindow })?.tokens ?? 0,
 			this.#estimateStoredContextTokens(),
 		);
+	}
+
+	/**
+	 * The bar a compaction pass has to land under, and where the live context
+	 * sits relative to it.
+	 *
+	 * Two bars exist because the callers recover from different things.
+	 * `"fit"` is the overflow/incomplete retry: the rebuilt prompt only has to
+	 * fit the window again. Reusing the band there turned recoverable overflows
+	 * into manual dead ends — a 200k-window prompt compacted from overflow down
+	 * to ~150k is comfortably retryable, but sits above `0.8 × 170k = 136k` and
+	 * was refused (PR #3412 review). `"recovery-band"` is the threshold pass,
+	 * which needs hysteresis: a residual just over the line re-trips threshold
+	 * compaction on the next agent_end, which is the compaction thrash, so it
+	 * has to reach `COMPACTION_RECOVERY_BAND × threshold`. Reaching the band
+	 * settles it either way — no secondary "smaller than the trigger" guard,
+	 * because when stale/tool-output pruning already dropped context under the
+	 * band before this pass the trigger is itself sub-band, and demanding a
+	 * strict reduction suppressed a valid continuation and warned about no
+	 * progress over a session compaction had left safe.
+	 *
+	 * Both bars are answered here rather than at each caller because the
+	 * dead-end rescue sizes its cut from the excess this reports and is then
+	 * judged by a predicate over the same numbers. Sized against one bar and
+	 * judged by another, the rescue either under-cuts and dead-ends anyway or
+	 * removes far more context than the pause required.
+	 *
+	 * `undefined` when the model declares no context window: there is nothing
+	 * to measure against, and every reader treats that as progress rather than
+	 * pausing a session over a budget nobody stated.
+	 *
+	 * The `"fit"` reserve carries one wrinkle of its own. The default absolute
+	 * reserve can exceed a bundled small-context window, or nearly consume a
+	 * 16k-class one, so those known-impossible defaults fall back to the
+	 * proportional 15% reserve; an explicit valid reserve still defines the
+	 * usable prompt budget, so a retry does not enter headroom the user
+	 * reserved on purpose.
+	 */
+	#compactionBudget(bar: CompactionBar): CompactionBudget | undefined {
+		const contextWindow = usableWindowOf(this.model);
+		if (contextWindow <= 0) return undefined;
+		const compactionSettings = this.settings.getGroup("compaction");
+		const residualTokens = this.#residualContextTokens(contextWindow);
+		if (bar === "fit") {
+			const reserve = resolveBudgetReserveTokens(contextWindow, compactionSettings);
+			return { residualTokens, budgetTokens: Math.max(0, contextWindow - reserve) };
+		}
 		const thresholdTokens = resolveThresholdTokens(contextWindow, compactionSettings);
-		const recoveryBand = Math.floor(thresholdTokens * COMPACTION_RECOVERY_BAND);
-		// Residual at/below the band is authoritative headroom: the band sits
-		// strictly under the compaction threshold, so the next turn cannot
-		// re-trip threshold compaction regardless of how little this pass shaved.
-		// Don't add a secondary "smaller than the trigger" guard — when stale/
-		// tool-output pruning already dropped context under the band before this
-		// pass, the trigger is itself sub-band, and requiring a strict reduction
-		// would suppress a valid continuation and emit a false no-progress warning
-		// even though compaction left the session safe.
-		return residualTokens <= recoveryBand;
+		return { residualTokens, budgetTokens: Math.floor(thresholdTokens * COMPACTION_RECOVERY_BAND) };
+	}
+
+	/**
+	 * Does the live context meet `bar`? Callers on the retry path MUST ask this
+	 * only AFTER dropping the failed assistant from `this.messages`, so the
+	 * just-failed turn — which the retry prompt will not include — is out of the
+	 * estimate.
+	 */
+	#compactionMeets(bar: CompactionBar): boolean {
+		const budget = this.#compactionBudget(bar);
+		return !budget || budget.residualTokens <= budget.budgetTokens;
+	}
+
+	/** Tokens the live context is over `bar` by; zero once it meets the bar. */
+	#compactionExcessTokens(bar: CompactionBar): number {
+		const budget = this.#compactionBudget(bar);
+		return budget ? Math.max(0, budget.residualTokens - budget.budgetTokens) : 0;
 	}
 
 	/**
 	 * Does the live context still trip threshold compaction? Measured with the
-	 * same convention as {@link #compactionCreatedHeadroom} (usage minus stored
-	 * snapshot, against the active window) and the exact `shouldCompact`
-	 * predicate the caller used to trigger this run. Used by the Tier-0 lossless
-	 * dedup pass to decide whether an LLM/snap compaction is still warranted
-	 * after redundant tool-results were elided. When the window is unknown we
-	 * cannot evaluate the bar, so we assume it still trips and let compaction
-	 * proceed (never suppress a compaction we cannot prove is unnecessary).
+	 * same residual convention as {@link #compactionBudget} and the exact
+	 * `shouldCompact` predicate the caller used to trigger this run. Used by the
+	 * Tier-0 lossless dedup pass to decide whether an LLM/snap compaction is
+	 * still warranted after redundant tool-results were elided. When the window
+	 * is unknown we cannot evaluate the bar, so we assume it still trips and let
+	 * compaction proceed: never suppress a compaction we cannot prove is
+	 * unnecessary.
 	 */
 	#thresholdStillTrips(compactionSettings: Parameters<typeof shouldCompact>[2]): boolean {
-		const contextWindow = this.model?.contextWindow ?? 0;
+		const contextWindow = usableWindowOf(this.model);
 		if (contextWindow <= 0) return true;
-		const residualTokens = compactionContextTokens(
-			this.getContextUsage({ contextWindow })?.tokens ?? 0,
-			this.#estimateStoredContextTokens(),
-		);
-		return shouldCompact(residualTokens, contextWindow, compactionSettings);
-	}
-
-	/**
-	 * Retry-side counterpart to {@link #compactionCreatedHeadroom}. An
-	 * overflow/incomplete recovery only needs the rebuilt prompt to *fit* the
-	 * window again — it does not have to land under the compaction threshold, let
-	 * alone the stricter `COMPACTION_RECOVERY_BAND × threshold` hysteresis the
-	 * auto-continue thrash guard uses. Reusing the band here turned recoverable
-	 * overflows into manual dead-ends: a 200k-window prompt compacted from
-	 * overflow down to ~150k is comfortably retryable, but sits above
-	 * `0.8 × 170k = 136k` and was wrongly refused (PR #3412 review).
-	 *
-	 * Measures residual context against the usable budget (`contextWindow - reserve`).
-	 * The default absolute reserve can exceed bundled small-context windows, or
-	 * nearly consume a 16k-class window; those known-impossible defaults fall
-	 * back to the proportional 15% reserve. Explicit valid reserves still define
-	 * the usable prompt budget so retries do not enter headroom the user
-	 * intentionally reserved. Callers MUST
-	 * invoke this AFTER dropping the failed assistant from `this.messages`, so
-	 * the just-failed turn (which the retry prompt will not include) is excluded
-	 * from the estimate.
-	 *
-	 * When the model/window is unknown we cannot evaluate the budget, so we
-	 * optimistically allow the retry (preserving prior behavior).
-	 */
-	#compactionCreatedRetryFit(): boolean {
-		const contextWindow = this.model?.contextWindow ?? 0;
-		if (contextWindow <= 0) return true;
-		const compactionSettings = this.settings.getGroup("compaction");
-		const residualTokens = compactionContextTokens(
-			this.getContextUsage({ contextWindow })?.tokens ?? 0,
-			this.#estimateStoredContextTokens(),
-		);
-		const fitBudget = Math.max(0, contextWindow - resolveBudgetReserveTokens(contextWindow, compactionSettings));
-		return residualTokens <= fitBudget;
+		return shouldCompact(this.#residualContextTokens(contextWindow), contextWindow, compactionSettings);
 	}
 
 	/**
 	 * Last-resort tiered reducer when {@link #runAutoCompaction} would otherwise
 	 * dead-end. The summarizer cut at the only available turn boundary, but the
-	 * kept tail is still over the recovery band because a single recent turn (a
-	 * large tool-result, a heavy fenced/XML block, attached images) is itself
-	 * bigger than the band and `findCutPoint` cannot cut inside one message.
+	 * kept tail is still over `bar` because a single recent turn (a large
+	 * tool-result, a heavy fenced/XML block, attached images) is itself bigger
+	 * than the bar and `findCutPoint` cannot cut inside one message.
 	 *
 	 * Tier 1 — `shake("elide")` reaches INSIDE that tail: heavy tool-result /
 	 * block content is offloaded to one `artifact://` blob behind a recoverable
@@ -13961,20 +14022,26 @@ export class AgentSession {
 	 * Image blocks are stripped from the branch; unlike elided text they are NOT
 	 * artifact-recoverable, so this tier only runs once elide has failed the
 	 * progress re-test.
+	 * Tier 3 — {@link #truncateOversizedTail}: cut the middle out of the largest
+	 * remaining texts. The first two tiers are shape-driven — a whole tool
+	 * result, a fenced or XML block, an image — and a session wedged by a single
+	 * message of megabyte-scale prose with no fence in it matches none of them,
+	 * so both report nothing eligible and the session parks while unable to send
+	 * another request. This tier asks only how big a text is.
 	 *
-	 * Each tier's rewrite re-anchors the in-flight context snapshot on its way out
-	 * ({@link #afterHistoryRewrite}), so the progress predicate below measures the
-	 * reduced context rather than the run-start figure. The predicate is re-tested
-	 * after each tier; the first tier that
-	 * restores progress emits one info notice describing everything freed and
-	 * stops. Returns whether progress was restored — `false` falls through to
-	 * the dead-end warning.
+	 * Each tier's rewrite re-anchors the in-flight context snapshot on its way
+	 * out ({@link #afterHistoryRewrite}), so the progress predicate measures the
+	 * reduced context rather than the run-start figure. The predicate is
+	 * re-tested after each tier; the first tier that restores progress emits one
+	 * info notice describing everything freed and stops. Returns whether
+	 * progress was restored — `false` falls through to the dead-end warning.
 	 */
 	async #rescueCompactionDeadEnd(
 		signal: AbortSignal,
-		options: { skipElide: boolean; hasProgress: () => boolean },
+		options: { skipElide: boolean; bar: CompactionBar },
 	): Promise<boolean> {
 		if (signal.aborted) return false;
+		const hasProgress = (): boolean => this.#compactionMeets(options.bar);
 		let elided = 0;
 		let elidedTokens = 0;
 		let elideSink = "placeholders";
@@ -13989,7 +14056,7 @@ export class AgentSession {
 					error: errorMessage(error),
 				});
 			}
-			if (elided > 0 && options.hasProgress()) {
+			if (elided > 0 && hasProgress()) {
 				this.emitNotice(
 					"info",
 					`Compaction dead-end recovery: ${this.#describeElideRescue(elided, elidedTokens, elideSink)} so maintenance could make progress.`,
@@ -13998,6 +14065,7 @@ export class AgentSession {
 				return true;
 			}
 		}
+		const elidedPart = elided > 0 ? `${this.#describeElideRescue(elided, elidedTokens, elideSink)} and ` : "";
 		if (signal.aborted) return false;
 		let imagesDropped = 0;
 		try {
@@ -14007,8 +14075,7 @@ export class AgentSession {
 				error: errorMessage(error),
 			});
 		}
-		if (imagesDropped > 0 && options.hasProgress()) {
-			const elidedPart = elided > 0 ? `${this.#describeElideRescue(elided, elidedTokens, elideSink)} and ` : "";
+		if (imagesDropped > 0 && hasProgress()) {
 			this.emitNotice(
 				"info",
 				`Compaction dead-end recovery: ${elidedPart}dropped ${formatCount("attached image", imagesDropped)} so maintenance could make progress.`,
@@ -14016,7 +14083,62 @@ export class AgentSession {
 			);
 			return true;
 		}
+		if (signal.aborted) return false;
+		const truncated = await this.#truncateOversizedTail(options.bar);
+		if (truncated.texts > 0 && hasProgress()) {
+			const imagePart = imagesDropped > 0 ? `dropped ${formatCount("attached image", imagesDropped)} and ` : "";
+			this.emitNotice(
+				"info",
+				`Compaction dead-end recovery: ${elidedPart}${imagePart}truncated the middle of ${formatCount("oversized message", truncated.texts)} (~${truncated.tokensFreed.toLocaleString()} tokens) to ${truncated.sink} so maintenance could make progress.`,
+				"compaction",
+			);
+			return true;
+		}
 		return false;
+	}
+
+	/**
+	 * Cut the middle out of the largest texts in the live tail until the context
+	 * is no longer over `bar`, keeping each text's head and tail.
+	 *
+	 * This is the reducer that cannot be defeated by the shape of what is too
+	 * large, and it is deliberately the last one tried: it removes bytes the
+	 * model was still reading, which the earlier tiers do not. It removes only
+	 * what the bar is exceeded by, largest text first, so a session that is
+	 * barely over loses one middle rather than its whole tail.
+	 *
+	 * The removed bytes go to the same recovery artifact every other shake
+	 * region uses, so `artifact://` still holds them, and the placeholder that
+	 * replaces each middle says so. Returns zero counts when no single text is
+	 * large enough to cut, which is the honest dead end.
+	 */
+	async #truncateOversizedTail(bar: CompactionBar): Promise<{ texts: number; tokensFreed: number; sink: string }> {
+		const excessTokens = this.#compactionExcessTokens(bar);
+		if (excessTokens <= 0) return { texts: 0, tokensFreed: 0, sink: "placeholders" };
+		const branchEntries = this.sessionManager.getBranch();
+		const config = this.#withPlanProtection({
+			...AGGRESSIVE_SHAKE_CONFIG,
+			keepBoundaryId: getLatestCompactionEntry(branchEntries)?.firstKeptEntryId,
+		});
+		const regions = collectOversizedTextRegions(branchEntries, {
+			excessTokens,
+			keepEdgeTokens: TRUNCATION_KEEP_EDGE_TOKENS,
+			minTextTokens: TRUNCATION_MIN_TEXT_TOKENS,
+			protectedTools: config.protectedTools,
+			keepBoundaryId: config.keepBoundaryId,
+		});
+		if (regions.length === 0) return { texts: 0, tokensFreed: 0, sink: "placeholders" };
+		try {
+			const applied = await this.#offloadAndApplyShakeRegions(regions);
+			return {
+				texts: applied.blocksDropped,
+				tokensFreed: applied.tokensFreed,
+				sink: applied.artifactId ? "an artifact" : "placeholders",
+			};
+		} catch (error) {
+			logger.warn("Dead-end truncation rescue failed", { error: errorMessage(error) });
+			return { texts: 0, tokensFreed: 0, sink: "placeholders" };
+		}
 	}
 
 	/**
@@ -14199,11 +14321,7 @@ export class AgentSession {
 					continuationScheduled = true;
 				}
 				if (noProgressDeadEnd) {
-					this.emitNotice(
-						"warning",
-						compactionDeadEndWarning("shrink it (e.g. clear large tool output)"),
-						"compaction",
-					);
+					this.emitNotice("warning", compactionDeadEndWarning(), "compaction");
 				}
 				if (continuationScheduled) return COMPACTION_CHECK_CONTINUATION;
 				return noProgressDeadEnd ? COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION : COMPACTION_CHECK_NONE;
@@ -14574,11 +14692,11 @@ export class AgentSession {
 				// won't include) is excluded. Reusing the auto-continue recovery band
 				// here turned recoverable overflows into manual dead-ends (#3412 review),
 				// so use the looser fit budget.
-				retryFits = this.#compactionCreatedRetryFit();
+				retryFits = this.#compactionMeets("fit");
 				if (!retryFits) {
 					retryFits = await this.#rescueCompactionDeadEnd(autoCompactionSignal, {
 						skipElide: false,
-						hasProgress: () => this.#compactionCreatedRetryFit(),
+						bar: "fit",
 					});
 				}
 				if (!retryFits) {
@@ -14592,11 +14710,11 @@ export class AgentSession {
 				// when auto-continue is disabled, a no-headroom threshold pass must still
 				// block later automatic continuations (todo reminders/session_stop hooks)
 				// from re-entering the same oversized context.
-				hasHeadroom = this.#compactionCreatedHeadroom();
+				hasHeadroom = this.#compactionMeets("recovery-band");
 				if (!hasHeadroom) {
 					hasHeadroom = await this.#rescueCompactionDeadEnd(autoCompactionSignal, {
 						skipElide: false,
-						hasProgress: () => this.#compactionCreatedHeadroom(),
+						bar: "recovery-band",
 					});
 				}
 				if (!hasHeadroom) {
@@ -14604,7 +14722,7 @@ export class AgentSession {
 				}
 			}
 
-			const deadEndWarning = noProgressDeadEnd ? compactionDeadEndWarning("clear large tool output") : undefined;
+			const deadEndWarning = noProgressDeadEnd ? compactionDeadEndWarning() : undefined;
 			if (deadEndWarning && savedCompactionEntry) {
 				// Stamp the divider: the compaction bar badges the dead-end and
 				// carries the full warning in its ctrl+o detail, so the pause
@@ -14715,8 +14833,9 @@ export class AgentSession {
 		// The retry side only needs the rebuilt prompt to fit the window; the
 		// threshold side needs the recovery band, exactly as the success tail
 		// measures them.
-		const hasProgress = willRetry ? () => this.#compactionCreatedRetryFit() : () => this.#compactionCreatedHeadroom();
-		const rescued = hasProgress() || (await this.#rescueCompactionDeadEnd(signal, { skipElide: false, hasProgress }));
+		const bar: CompactionBar = willRetry ? "fit" : "recovery-band";
+		const rescued =
+			this.#compactionMeets(bar) || (await this.#rescueCompactionDeadEnd(signal, { skipElide: false, bar }));
 		if (rescued) {
 			let continuationScheduled = false;
 			if (willRetry) {
@@ -14749,7 +14868,7 @@ export class AgentSession {
 			});
 			continuationScheduled = true;
 		}
-		this.emitNotice("warning", compactionDeadEndWarning("clear large tool output"), "compaction");
+		this.emitNotice("warning", compactionDeadEndWarning(), "compaction");
 		return continuationScheduled ? COMPACTION_CHECK_CONTINUATION : COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION;
 	}
 
@@ -14849,7 +14968,7 @@ export class AgentSession {
 
 		const id = this.#classifyRetryMessage(message);
 		// Context overflow is handled by compaction, not retry
-		const contextWindow = this.model?.contextWindow ?? 0;
+		const contextWindow = usableWindowOf(this.model);
 		if (AIError.isContextOverflow(message, contextWindow)) return false;
 
 		if (this.#isClassifierRefusal(message)) return true;

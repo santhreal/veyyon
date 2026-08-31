@@ -3,7 +3,7 @@
  * a continuation is scheduled, and a continuation is refused — and every caller
  * branches on the same three frozen verdicts. #2275 was an auto-continue dead
  * loop caused by re-checking residual context against the raw threshold, which
- * is why the recovery band exists and why the dead-end notice names remedies
+ * is why the recovery band exists and why the dead-end notice names the reducers
  * instead of a stack trace.
  *
  * Closes the class: each verdict's field set is pinned by exact equality (a new
@@ -28,8 +28,8 @@ import {
 	mergeLlmCompactionPreserveData,
 } from "@veyyon/kernel/session/agent-session-compaction-policy";
 
-function modelWithWindow(contextWindow: number | null | undefined): Model {
-	return { id: "m", name: "m", provider: "p", contextWindow } as unknown as Model;
+function modelWithWindow(contextWindow: number | null | undefined, maxTokens?: number | null): Model {
+	return { id: "m", name: "m", provider: "p", contextWindow, maxTokens } as unknown as Model;
 }
 
 describe("the compaction verdict is data, not a side effect", () => {
@@ -53,10 +53,11 @@ describe("the compaction verdict is data, not a side effect", () => {
 		expect(COMPACTION_RECOVERY_BAND).toBeLessThan(1);
 	});
 
-	it("names the remedies the caller has left in the dead-end notice", () => {
-		const warning = compactionDeadEndWarning("drop the last tool result");
+	it("names every reducer that already ran in the dead-end notice", () => {
+		const warning = compactionDeadEndWarning();
 
-		expect(warning).toContain("drop the last tool result");
+		expect(warning).toContain("Eliding, image-dropping and truncating");
+		expect(warning).toContain("/new");
 		expect(warning).toContain("larger-context model");
 	});
 
@@ -67,6 +68,17 @@ describe("the compaction verdict is data, not a side effect", () => {
 		expect(declaredContextWindow(modelWithWindow(0))).toBeUndefined();
 		expect(declaredContextWindow(modelWithWindow(-1))).toBeUndefined();
 		expect(declaredContextWindow(undefined)).toBeUndefined();
+	});
+
+	// The window a prompt may fill is the window less the output allocation charged
+	// against it, so a model that states a maximum prices compaction against the
+	// smaller figure. A model that states none keeps the whole window, because an
+	// unknown allocation must not shrink a budget that works today.
+	it("prices against the input room a model offers, not the window it advertises", () => {
+		expect(declaredContextWindow(modelWithWindow(272_000, 128_000))).toBe(144_000);
+		expect(declaredContextWindow(modelWithWindow(272_000, null))).toBe(272_000);
+		expect(declaredContextWindow(modelWithWindow(128_000, 128_000))).toBe(128_000);
+		expect(declaredContextWindow(modelWithWindow(128_000, 0))).toBe(128_000);
 	});
 
 	it("stamps every codex compaction context with its own operation id", () => {

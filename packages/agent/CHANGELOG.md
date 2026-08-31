@@ -9,9 +9,12 @@
 ### Changed
 
 - A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
+- Compaction can truncate the middle of an oversized text, keeping both edges, in any message role — including the roles that store their model-visible text outside `content`, such as a shell cell's `output`, a summary's `summary` and a file mention's `files[i].content`.
+
 ### Fixed
 
 - Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the route they are sent to.
+- Context budgeting reserves the model's output allocation, which providers charge against the same context window, so history no longer grows past the largest input the provider will accept; a branch summary is sized the same way, so the request that shrinks an overfull session is no longer rejected for being too large itself.
 - Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
 
 ## [1.3.0] - 2026-08-28

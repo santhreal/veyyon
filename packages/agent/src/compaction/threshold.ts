@@ -303,6 +303,43 @@ export function effectiveReserveTokens(contextWindow: number, settings: Compacti
 }
 
 /**
+ * The largest INPUT a model will accept, which is not its context window.
+ *
+ * Every major provider bills input and output against one window and rejects a
+ * request whose input leaves no room for the output allocation: OpenAI answers
+ * "Your input exceeds the context window of this model", Anthropic requires
+ * `input + max_tokens <= context window`. A caller that budgets history against
+ * the raw window therefore aims at a ceiling the provider never offered, and the
+ * overshoot is the whole output allocation — 128k of a 272k window on the
+ * codex-class models, where it lets history grow to nearly double what can be
+ * sent.
+ *
+ * This is charged even when the request omits an output cap. The codex backend
+ * rejects a caller-supplied `max_output_tokens` (see
+ * `buildTransformedCodexRequestBody`) and reserves the allocation server-side, so
+ * the room disappears whether or not we ask for it. The model's own advertised
+ * maximum is the honest estimate of what it takes.
+ *
+ * A model that advertises no maximum, or an incoherent one that would consume the
+ * window whole, keeps the full window: an unknown allocation must not silently
+ * shrink a budget that works today. The proportional reserve in
+ * {@link resolveBudgetReserveTokens} still applies on top of this.
+ */
+export function usableInputWindow(contextWindow: number, maxOutputTokens: number | null | undefined): number {
+	if (!Number.isFinite(contextWindow) || contextWindow <= 0) return contextWindow;
+	// `null` is how the catalog spells "this model states no maximum", distinct from
+	// a stated zero; both mean no allocation can be derived.
+	if (maxOutputTokens == null || !Number.isFinite(maxOutputTokens) || maxOutputTokens <= 0) {
+		return contextWindow;
+	}
+	// A maximum at or above the window cannot be a real allocation (bad catalog
+	// metadata); shrinking to zero or negative would disable every budget that
+	// divides by the window, so the window stands unchanged.
+	if (maxOutputTokens >= contextWindow) return contextWindow;
+	return contextWindow - maxOutputTokens;
+}
+
+/**
  * Reserve used when deciding whether a prompt still fits inside the model window.
  *
  * The default absolute reserve predates small bundled windows and can leave no

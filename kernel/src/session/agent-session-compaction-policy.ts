@@ -4,7 +4,7 @@
  * compact its way out.
  */
 
-import { stripLegacyArchive } from "@veyyon/agent-core/compaction";
+import { stripLegacyArchive, usableInputWindow } from "@veyyon/agent-core/compaction";
 import type { CodexCompactionContext, Model } from "@veyyon/ai";
 
 export type CompactionCheckResult = Readonly<{
@@ -40,15 +40,17 @@ export const COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION: CompactionCheckResul
 export const COMPACTION_RECOVERY_BAND = 0.8;
 
 /**
- * User-facing notice for a compaction dead end: maintenance freed too little
- * to retry safely. `remedies` names the recovery actions left on the emitting
- * path — by the time the post-pass dead end fires, the tiered rescue has
- * already attempted both elide and image-drop automatically.
+ * User-facing notice for a compaction dead end: every automatic reducer ran and
+ * the context is still over the bar. By the time this fires the tiered rescue
+ * has already elided heavy blocks to an artifact, dropped attached images and
+ * truncated the largest remaining texts, so what is left is many small messages
+ * that only a summarizer or the operator can reduce.
  */
-export function compactionDeadEndWarning(remedies: string): string {
+export function compactionDeadEndWarning(): string {
 	return (
 		"Compaction freed too little context to make progress — pausing automatic maintenance to avoid a compaction loop. " +
-		`The most recent turn alone is too large to reduce further; ${remedies} or switch to a larger-context model.`
+		"Eliding, image-dropping and truncating the largest messages all ran and the context is still over budget: " +
+		"start a fresh session with /new, or switch to a larger-context model."
 	);
 }
 
@@ -66,7 +68,11 @@ export function compactionDeadEndWarning(remedies: string): string {
  */
 export function declaredContextWindow(model: Model | undefined): number | undefined {
 	const contextWindow = model?.contextWindow;
-	return typeof contextWindow === "number" && contextWindow > 0 ? contextWindow : undefined;
+	if (typeof contextWindow !== "number" || contextWindow <= 0) return undefined;
+	// The cap is on what a prompt may carry, so it is the usable INPUT window: the
+	// output allocation is charged against the same window and is not available to
+	// the prompt.
+	return usableInputWindow(contextWindow, model?.maxTokens);
 }
 
 export function createCodexCompactionContext(options: {
