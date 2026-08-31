@@ -3447,7 +3447,7 @@ function enforceCacheControlLimit(params: MessageCreateParamsStreaming, maxBreak
 	}
 }
 
-function usesAdaptiveThinkingTagOnly(model: Model<"anthropic-messages">): boolean {
+export function usesAdaptiveThinkingTagOnly(model: Model<"anthropic-messages">): boolean {
 	const thinking = model.thinking;
 	if (thinking?.mode !== "anthropic-adaptive") return false;
 	const effortMap = thinking.effortMap;

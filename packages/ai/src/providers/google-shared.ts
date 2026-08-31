@@ -127,7 +127,7 @@ export function retainThoughtSignature(existing: string | undefined, incoming: s
 // Thought signatures must be base64 for Google APIs (TYPE_BYTES).
 const base64SignaturePattern = /^[A-Za-z0-9+/]+={0,2}$/;
 
-const SKIP_THOUGHT_SIGNATURE = "skip_thought_signature_validator";
+export const SKIP_THOUGHT_SIGNATURE = "skip_thought_signature_validator";
 
 function isValidThoughtSignature(signature: string | undefined): signature is string {
 	if (!signature) return false;
@@ -138,7 +138,10 @@ function isValidThoughtSignature(signature: string | undefined): signature is st
 /**
  * Only keep signatures from the same provider/model and with valid base64.
  */
-function resolveThoughtSignature(isSameProviderAndModel: boolean, signature: string | undefined): string | undefined {
+export function resolveThoughtSignature(
+	isSameProviderAndModel: boolean,
+	signature: string | undefined,
+): string | undefined {
 	return isSameProviderAndModel && isValidThoughtSignature(signature) ? signature : undefined;
 }
 
@@ -278,7 +281,7 @@ export function sendsSignature(policy: SignaturePolicy, messageIndex: number, si
 	return true;
 }
 
-function supportsFunctionPartId<T extends GoogleApiType>(model: Model<T>): boolean {
+export function supportsFunctionPartId<T extends GoogleApiType>(model: Model<T>): boolean {
 	if (model.api === "google-vertex") return false;
 	return model.id.startsWith("claude-") || (model.api === "google-generative-ai" && isGemini3Model(model.id));
 }
@@ -289,7 +292,7 @@ function getGeminiMajorVersion(modelId: string): number | undefined {
 	return Number.parseInt(match[1], 10);
 }
 
-function supportsMultimodalFunctionResponse(modelId: string): boolean {
+export function supportsMultimodalFunctionResponse(modelId: string): boolean {
 	const geminiMajorVersion = getGeminiMajorVersion(modelId);
 	if (geminiMajorVersion !== undefined) {
 		return geminiMajorVersion >= 3;
@@ -297,7 +300,7 @@ function supportsMultimodalFunctionResponse(modelId: string): boolean {
 	return true;
 }
 
-function isGemini3Model(modelId: string): boolean {
+export function isGemini3Model(modelId: string): boolean {
 	return modelId.includes("gemini-3");
 }
 
