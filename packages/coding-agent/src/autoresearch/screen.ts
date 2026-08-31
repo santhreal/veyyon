@@ -15,10 +15,12 @@ import { type Component, type SelectItem, SelectList, sanitizeSingleLine, trunca
 import { clampLow } from "@veyyon/utils";
 import {
 	bottomBorder,
+	divider,
 	dividerSplit,
 	row,
 	splitBodyWidth,
 	splitRow,
+	topBorder,
 	topBorderSplit,
 } from "../modes/components/overlay-box";
 import { getSelectListTheme, type ThemeColor, theme } from "../modes/theme/theme";
@@ -405,8 +407,36 @@ export function footerHint(width: number): string {
 }
 
 /**
+ * Columns a detail pane needs before it can say anything. A pane narrower than
+ * this holds a label column and nothing else, and at 31 columns the split gave
+ * it two: every line of the run under the cursor arrived as an ellipsis, and the
+ * card spent a third of a narrow terminal drawing a border around them.
+ */
+const DETAIL_MIN = 24;
+
+/** True when the card is too narrow to carry two panes beside each other. */
+export function screenStacks(width: number): boolean {
+	return splitBodyWidth(width, screenSidebarWidth(width)) < DETAIL_MIN;
+}
+
+/**
+ * Body rows the list takes when the card is stacked; the detail pane takes the
+ * rest. The list gets the larger half of an odd split, because it is what the
+ * page keys move through and a one-row list cannot show a cursor in context.
+ */
+export function screenListRows(bodyRows: number): number {
+	return Math.max(1, Math.min(bodyRows - 1, Math.ceil(bodyRows / 2)));
+}
+
+/** Body rows of a stacked card: two dividers rather than one. */
+function stackedBodyRows(rows: number): number {
+	return Math.max(2, rows - 5);
+}
+
+/**
  * The whole card: `rows` lines exactly, so the host never has to guess how tall
- * the screen came out.
+ * the screen came out. Two panes side by side where the terminal can pay for
+ * them, one above the other where it cannot.
  */
 export function renderRunScreen(
 	runtime: AutoresearchRuntime,
@@ -416,12 +446,22 @@ export function renderRunScreen(
 	detail: readonly string[],
 	sidebarWidth: number,
 ): string[] {
-	const bodyRows = Math.max(3, rows - 4);
-	const out: string[] = [topBorderSplit(width, screenTitle(runtime), sidebarWidth)];
-	for (let index = 0; index < bodyRows; index += 1) {
-		out.push(splitRow(sidebar[index] ?? "", detail[index] ?? "", width, sidebarWidth));
+	const out: string[] = [];
+	if (screenStacks(width)) {
+		const bodyRows = stackedBodyRows(rows);
+		const listRows = screenListRows(bodyRows);
+		out.push(topBorder(width, screenTitle(runtime)));
+		for (let index = 0; index < listRows; index += 1) out.push(row(sidebar[index] ?? "", width));
+		out.push(divider(width));
+		for (let index = 0; index < bodyRows - listRows; index += 1) out.push(row(detail[index] ?? "", width));
+	} else {
+		const bodyRows = Math.max(3, rows - 4);
+		out.push(topBorderSplit(width, screenTitle(runtime), sidebarWidth));
+		for (let index = 0; index < bodyRows; index += 1) {
+			out.push(splitRow(sidebar[index] ?? "", detail[index] ?? "", width, sidebarWidth));
+		}
 	}
-	out.push(dividerSplit(width, sidebarWidth));
+	out.push(screenStacks(width) ? divider(width) : dividerSplit(width, sidebarWidth));
 	out.push(row(theme.fg("dim", footerHint(width)), width));
 	out.push(bottomBorder(width));
 	// The chrome has a floor of its own — two borders and the insets between
@@ -524,14 +564,18 @@ export class AutoresearchScreenComponent implements Component {
 	render(width: number): readonly string[] {
 		this.#sync();
 		const rows = Math.max(SCREEN_MIN_ROWS, this.#rows());
-		const bodyRows = Math.max(3, rows - 4);
 		const sidebarWidth = screenSidebarWidth(width);
-		this.#sidebarWidth = sidebarWidth;
-		const bodyWidth = splitBodyWidth(width, sidebarWidth);
-		this.#list.setRowBudget(bodyRows);
-		const sidebar = this.#list.render(sidebarWidth);
-		this.#detailRows = bodyRows;
-		const detail = this.#detailWindow(bodyWidth, bodyRows);
+		this.#sidebarWidth = screenStacks(width) ? width - 4 : sidebarWidth;
+		// Stacked, both panes are the full inner width and the rows are split
+		// between them; side by side, both panes get every body row.
+		const stackedRows = stackedBodyRows(rows);
+		const listRows = screenStacks(width) ? screenListRows(stackedRows) : Math.max(3, rows - 4);
+		const detailRows = screenStacks(width) ? stackedRows - listRows : Math.max(3, rows - 4);
+		const paneWidth = screenStacks(width) ? width - 4 : splitBodyWidth(width, sidebarWidth);
+		this.#list.setRowBudget(listRows);
+		const sidebar = this.#list.render(this.#sidebarWidth);
+		this.#detailRows = detailRows;
+		const detail = this.#detailWindow(paneWidth, detailRows);
 		return renderRunScreen(this.#runtime, width, rows, sidebar, detail, sidebarWidth);
 	}
 

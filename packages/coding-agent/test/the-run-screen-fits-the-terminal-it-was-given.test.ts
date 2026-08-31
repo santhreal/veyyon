@@ -26,6 +26,7 @@ import {
 	renderRunScreen,
 	runScreenRows,
 	screenSidebarWidth,
+	screenStacks,
 	screenTitle,
 } from "@veyyon/coding-agent/autoresearch/screen";
 import { createExperimentState, createSessionRuntime } from "@veyyon/coding-agent/autoresearch/state";
@@ -277,19 +278,45 @@ describe("the run screen fits the terminal it was given", () => {
 		// The sidebar asks for 22 columns and the pane for what is left, so a
 		// terminal narrower than the pair writes a frame wider than the window and
 		// the border wraps into a second row nothing accounts for. Every row of
-		// every frame stays inside the width it was handed, down to the narrowest
-		// terminal a reader can produce.
+		// every frame stays inside the width it was handed, and the frame is still
+		// exactly as tall as the terminal, down to the narrowest one a reader can
+		// produce.
 		for (const width of [10, 20, 29, 40]) {
-			const screen = new AutoresearchScreenComponent({
-				runtime: runtimeWith(3),
-				close: () => {},
-				requestRender: () => {},
-				rows: () => 12,
-			});
-			for (const line of screen.render(width)) {
-				expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-			}
+			const frame = frameOf(runtimeWith(3), width, 12);
+			expect(frame.length).toBe(12);
+			for (const line of frame) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 		}
+	});
+
+	it("stacks its panes when the terminal cannot hold them side by side", () => {
+		// Side by side, the sidebar's floor of 22 columns plus seven of chrome left
+		// a 31-column terminal two columns of detail pane: every line of the run
+		// under the cursor arrived as a bare ellipsis, and the card spent a third
+		// of the terminal drawing a border around them. Below the width a pane can
+		// say anything in, the two go one above the other at full width instead.
+		//
+		// Swept from the narrowest terminal up through the changeover, with the
+		// changeover read from the code rather than written down here, so moving it
+		// moves the sweep.
+		for (let width = 24; width <= 90; width += 1) {
+			const frame = frameOf(runtimeWith(3), width, 20);
+			const text = stripAnsi(frame.join("\n"));
+			expect(frame.length).toBe(20);
+			// Both panes are on screen either way: a run to select, and the selected
+			// run's detail. Every detail field states its LABEL in full at every
+			// width, which is what the two-column pane could not do — it printed
+			// `S…`, `G…`, `M…` down the side of the card and nothing else.
+			expect(text).toContain("Playbook");
+			expect(text).toContain("Goal");
+			expect(text).toContain("Metric");
+			// A pane holding the 12-column label gutter, the fixture's 15-column
+			// session name and the four columns of chrome states the value too.
+			if (screenStacks(width) && width >= 31) expect(text).toContain("startup-latency");
+		}
+		// The changeover is a property of the geometry, not of a width someone
+		// remembered: a pane that cannot hold a label and a value stacks.
+		expect(screenStacks(31)).toBe(true);
+		expect(screenStacks(100)).toBe(false);
 	});
 
 	it("keeps the way out of the screen at every width it fits", () => {
