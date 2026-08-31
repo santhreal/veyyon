@@ -449,6 +449,7 @@ function mergeMetrics(
 		merged[name] = value;
 	}
 	for (const [name, value] of Object.entries(ensureNumericMetricMap(overrides))) {
+		if (name === primaryMetricName) continue;
 		merged[name] = value;
 	}
 	return merged;
