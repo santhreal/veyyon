@@ -14,6 +14,8 @@ mod a_palette_row_hands_the_keyboard_to_what_it_drew;
 #[cfg(test)]
 mod a_reopened_palette_starts_on_an_empty_field;
 #[cfg(test)]
+mod a_request_raised_by_an_event_leaves_on_the_same_pass;
+#[cfg(test)]
 mod a_typed_secret_leaves_the_field_only_on_submit;
 mod bridge;
 mod chrome;

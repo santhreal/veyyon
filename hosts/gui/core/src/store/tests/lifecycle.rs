@@ -33,6 +33,11 @@ fn host_requests_are_correlated_and_pending_before_emission() {
 		Capability::Sessions,
 		CapabilityStatus::Available,
 	)])));
+	// The capability snapshot asks for the index on its own, which
+	// `a_window_that_just_attached_asks_for_what_it_draws` covers. This test is
+	// about the correlation of an explicit request, so that one leaves the queue
+	// first.
+	let _ = store.drain_requests();
 	let effects = store.dispatch(UiCommand::LoadSessions);
 	assert_eq!(effects.requests.len(), 1);
 	let request = effects.requests[0].id;
