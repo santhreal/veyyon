@@ -112,7 +112,7 @@ const piSegment: StatusLineSegment = {
 const modelSegment: StatusLineSegment = {
 	id: "model",
 	render(ctx) {
-		const { model, thinkingLevel, autoThinking } = ctx.facts;
+		const { model, thinkingLevel, autoThinking, advisorActive } = ctx.facts;
 		const opts = ctx.options.model ?? {};
 
 		// A model name is provider text: it arrives from a `/models` listing or from a custom
@@ -158,7 +158,7 @@ const modelSegment: StatusLineSegment = {
 		// `statusLineModel` is aliased to `accent` in many themes, so the badge
 		// uses `success` to stay visibly distinct from the model name color.
 		let content = theme.fg("statusLineModel", withIcon(modelIcon, modelName));
-		if (ctx.facts.advisorActive) {
+		if (advisorActive) {
 			content += theme.fg("success", "++");
 		}
 		if (tail) {

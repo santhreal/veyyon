@@ -102,7 +102,6 @@ export interface StubSessionOptions {
  * The base stays complete either way, so the suite states only what it varies
  * and inherits every fact added later.
  */
-
 export function statusLineSessionParts(options: StubSessionOptions = {}): Record<string, unknown> {
 	const contextWindow = options.contextWindow ?? CONTEXT_WINDOW;
 	const id = options.modelId ?? "claude-3-7-sonnet";

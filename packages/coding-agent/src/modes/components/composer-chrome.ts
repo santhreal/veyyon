@@ -492,11 +492,20 @@ export class LaunchComposerFoot implements Component {
 		return (
 			composeQuietRow({
 				...groups,
-				width: avail + 1,
+				// The same width the gather measured against, and the same width `QuietZoneLine`
+				// hands the live provider (terminal minus the inset), so both rows shed at the
+				// same column and the handover moves nothing.
+				width: avail,
+				// No focus badge and no run clock exist before a session: both are live state the
+				// row only positions, and an empty string is how the composer spells their absence.
 				badge: "",
 				clock: "",
+				// The path expansion is a click-driven animation on the live row. Nothing has been
+				// clicked yet, so the row is at rest and the expanded half is never consulted.
 				expansion: 0,
 				expandedHalf: "path",
+				// `null` is "nothing worth a row", which the live footline answers by drawing no
+				// row at all. The card owns a fixed four-row block, so its row is blank instead.
 			}).line ?? ""
 		);
 	}
