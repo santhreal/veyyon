@@ -113,6 +113,7 @@ const GRANDFATHERED: Readonly<Record<string, number>> = {
 	"packages/coding-agent/test/a-git-read-that-lands-late-repaints-the-status-row.test.ts": 8,
 	"packages/coding-agent/test/a-retry-walks-the-fallback-chain-before-it-gives-up.test.ts": 4,
 	"packages/coding-agent/test/a-superseded-prompt-stops-before-classifying-thinking.test.ts": 4,
+	"packages/coding-agent/test/a-turn-too-large-to-summarize-is-truncated-not-parked.test.ts": 3,
 	"packages/coding-agent/test/acp-builtins.test.ts": 10,
 	"packages/coding-agent/test/agent-session-acp-permission.test.ts": 11,
 	"packages/coding-agent/test/agent-session-auto-compaction-progress-guard.test.ts": 43,

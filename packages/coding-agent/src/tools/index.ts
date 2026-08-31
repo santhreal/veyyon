@@ -7,6 +7,7 @@ import type {
 } from "@veyyon/agent-core";
 import type { FetchImpl, ImageContent, Model, ServiceTierByFamily, ToolChoice } from "@veyyon/ai";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
+import type { ToolDomainManifest } from "@veyyon/kernel/registry/tool-domain";
 import type { ArtifactManager } from "@veyyon/kernel/session/artifacts";
 import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { ClientBridge } from "@veyyon/kernel/session/client-bridge";
@@ -43,7 +44,7 @@ import type { ConfiguredThinkingLevel } from "../thinking";
 import type { EventBus } from "../utils/event-bus";
 import type { WorkspaceTree } from "../workspace-tree";
 import { isIrcEnabled } from "./agent/irc-enabled";
-import { agentHiddenTools, agentTools } from "./agent/manifest";
+import { agentDomain } from "./agent/manifest";
 import type { TodoPhase } from "./agent/todo";
 import { type BuiltinToolName, type HiddenToolName, normalizeToolNames, TOOL } from "./core/builtin-names";
 import {
@@ -59,12 +60,12 @@ import {
 import { wrapToolWithMetaNotice } from "./core/output-meta";
 import type { CheckpointState, CompletedRewindState } from "./fs/checkpoint";
 import type { ConflictHistory } from "./fs/conflict-detect";
-import { fsTools } from "./fs/manifest";
+import { fsDomain } from "./fs/manifest";
 import { RerootDetector, wrapToolWithRerootHint } from "./fs/reroot-hint";
-import { searchTools } from "./search/manifest";
+import { searchDomain } from "./search/manifest";
 import { resolveEvalBackends } from "./shell/eval-backends";
-import { shellTools } from "./shell/manifest";
-import { webTools } from "./web/manifest";
+import { shellDomain } from "./shell/manifest";
+import { webDomain } from "./web/manifest";
 
 // Builtin implementation modules remain lazy so the CLI boot path does not
 // parse tools this session never activates.
@@ -485,6 +486,21 @@ export function computeEssentialBuiltinNames(settings: Settings): string[] {
 }
 
 /**
+ * Every tool domain this package ships, in the order their rows enter {@link BUILTIN_TOOLS}.
+ *
+ * A host that wants one subject reads the manifest it wants instead of the union: the keys are
+ * readable without constructing a tool, and each factory pulls its implementation in on first use.
+ * The terminal takes the union below because it advertises every tool it is allowed to.
+ */
+export const BUILTIN_TOOL_DOMAINS: readonly ToolDomainManifest<ToolFactory>[] = [
+	fsDomain,
+	searchDomain,
+	shellDomain,
+	webDomain,
+	agentDomain,
+];
+
+/**
  * Public callable factory map. External callers may invoke `BUILTIN_TOOLS.read(session)` or
  * `BUILTIN_TOOLS[name](session)` to construct a tool directly.
  *
@@ -492,8 +508,8 @@ export function computeEssentialBuiltinNames(settings: Settings): string[] {
  * it was the one place a tool's own directory could not answer for itself: `tools/fs` could be read
  * end to end without learning that it contributes `read`, and a host that wanted the filesystem
  * tools and nothing else had to import a table naming all thirty-three. Each domain now declares its
- * own rows next to the tools they construct, and this map is their union plus the four whose
- * implementation lives outside `tools/`.
+ * own manifest next to the tools it constructs, {@link BUILTIN_TOOL_DOMAINS} is the list of them,
+ * and this map is their union plus the four whose implementation lives outside `tools/`.
  *
  * Still annotated `Record<BuiltinToolName, ToolFactory>`, and each manifest table still satisfies
  * `Partial<Record<BuiltinToolName, ToolFactory>>`, so the union of the spreads is checked for
@@ -501,11 +517,11 @@ export function computeEssentialBuiltinNames(settings: Settings): string[] {
  * domain claiming it fails here, and a domain claiming a name that is not one fails there.
  */
 export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
-	...fsTools,
-	...searchTools,
-	...shellTools,
-	...webTools,
-	...agentTools,
+	...fsDomain.tools,
+	...searchDomain.tools,
+	...shellDomain.tools,
+	...webDomain.tools,
+	...agentDomain.tools,
 	// The four whose implementation is not a tool directory: the edit tool is the hashline
 	// executor, `lsp` and `task` are subsystems of their own, and `web_search` is the provider
 	// search client under `../web`.
@@ -520,7 +536,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 // a rename against. Typed as `string` it accepted any key, and a hidden tool renamed in one place
 // stayed registered under the old name with nothing to say so.
 export const HIDDEN_TOOLS: Record<HiddenToolName, ToolFactory> = {
-	...agentHiddenTools,
+	...agentDomain.hidden,
 	goal: async s => new (await import("../goals/goal-tool")).GoalTool(s),
 };
 

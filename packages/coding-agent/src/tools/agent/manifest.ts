@@ -44,8 +44,8 @@ export const agentHiddenTools = {
 	resolve: async s => new (await import("./resolve")).ResolveTool(s),
 } satisfies Partial<Record<HiddenToolName, ToolFactory>>;
 
-export const agentDomain: ToolDomainManifest<ToolFactory> = {
+export const agentDomain = {
 	domain: "agent",
 	tools: agentTools,
 	hidden: agentHiddenTools,
-};
+} satisfies ToolDomainManifest<ToolFactory>;

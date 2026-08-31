@@ -18,4 +18,4 @@ export const fsTools = {
 	rewind: async s => (await import("./checkpoint")).RewindTool.createIf(s),
 } satisfies Partial<Record<BuiltinToolName, ToolFactory>>;
 
-export const fsDomain: ToolDomainManifest<ToolFactory> = { domain: "fs", tools: fsTools };
+export const fsDomain = { domain: "fs", tools: fsTools } satisfies ToolDomainManifest<ToolFactory>;

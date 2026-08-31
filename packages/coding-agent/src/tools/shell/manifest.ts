@@ -21,4 +21,4 @@ export const shellTools = {
 	ssh: async s => (await import("./ssh")).loadSshTool(s),
 } satisfies Partial<Record<BuiltinToolName, ToolFactory>>;
 
-export const shellDomain: ToolDomainManifest<ToolFactory> = { domain: "shell", tools: shellTools };
+export const shellDomain = { domain: "shell", tools: shellTools } satisfies ToolDomainManifest<ToolFactory>;

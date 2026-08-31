@@ -18,4 +18,4 @@ export const searchTools = {
 	search_tool_bm25: async s => (await import("./search-tool-bm25")).SearchToolBm25Tool.createIf(s),
 } satisfies Partial<Record<BuiltinToolName, ToolFactory>>;
 
-export const searchDomain: ToolDomainManifest<ToolFactory> = { domain: "search", tools: searchTools };
+export const searchDomain = { domain: "search", tools: searchTools } satisfies ToolDomainManifest<ToolFactory>;

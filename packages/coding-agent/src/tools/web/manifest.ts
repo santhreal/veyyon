@@ -18,4 +18,4 @@ export const webTools = {
 	github: async s => (await import("./gh")).GithubTool.createIf(s),
 } satisfies Partial<Record<BuiltinToolName, ToolFactory>>;
 
-export const webDomain: ToolDomainManifest<ToolFactory> = { domain: "web", tools: webTools };
+export const webDomain = { domain: "web", tools: webTools } satisfies ToolDomainManifest<ToolFactory>;
