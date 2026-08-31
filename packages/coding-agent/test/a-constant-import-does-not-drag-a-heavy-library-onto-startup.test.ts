@@ -236,7 +236,7 @@ describe("a startup root cannot reach an expensive third-party package through s
 
 	it("keeps the two constant leaves import-free, which is the property that makes them cheap", () => {
 		for (const leaf of [
-			"markit/convertible-extensions.ts",
+			"export/markit/convertible-extensions.ts",
 			"web/search/providers/browser-fingerprint-constants.ts",
 		]) {
 			const { bare, local } = staticImportsOf(join(SRC, leaf));
