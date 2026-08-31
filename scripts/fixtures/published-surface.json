@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "d3205d3ecafae2bc21f637721cfd0c5d71581b43",
+	"generatedFrom": "7ef8c9fee115de390a747115a87e9da9477a5628",
 	"packages": {
 		"@veyyon/agent-core": {
 			"name": "@veyyon/agent-core",
@@ -5568,8 +5568,6 @@
 				"./db.js",
 				"./embedded-client",
 				"./embedded-client.js",
-				"./format",
-				"./format.js",
 				"./index",
 				"./index.js",
 				"./parser",
@@ -11807,16 +11805,6 @@
 				"./vibe/state.js": {
 					"to": "./session/vibe-runtime.js",
 					"why": "VibeModeState is declared in session/vibe-runtime.ts, which publishes it"
-				}
-			},
-			"@veyyon/stats": {
-				"./format": {
-					"to": "@veyyon/utils/format",
-					"why": "formatCostTiered and normalizePremiumRequests are declared in packages/utils/src/format.ts, which @veyyon/utils publishes as ./format; the status row read them and put the whole dashboard package on the startup graph"
-				},
-				"./format.js": {
-					"to": "@veyyon/utils/format.js",
-					"why": "formatCostTiered and normalizePremiumRequests are declared in packages/utils/src/format.ts, which @veyyon/utils publishes as ./format; the status row read them and put the whole dashboard package on the startup graph"
 				}
 			},
 			"@veyyon/tui": {

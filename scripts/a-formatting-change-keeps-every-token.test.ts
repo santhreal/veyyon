@@ -39,7 +39,7 @@ const LEDGER_PATH = resolve(REPO_ROOT, "scripts/fixtures/token-equivalence.json"
  * `main`, not the tip of `main`. A tip moves under the measurement, and a ledger measured half
  * against one tree and half against another charges main's own edits to this branch.
  */
-const BASELINE_COMMIT = "d3205d3ecafae2bc21f637721cfd0c5d71581b43";
+const BASELINE_COMMIT = "7ef8c9fee115de390a747115a87e9da9477a5628";
 
 function loadLedger(): TokenEquivalenceLedger {
 	const raw = readFileSync(LEDGER_PATH, "utf-8");
@@ -107,7 +107,7 @@ describe("token equivalence differential suite", () => {
 		expect(ledger.generatedFrom).toBe(BASELINE_COMMIT);
 		expect(formattingEntries).toHaveLength(67);
 		expect(importReorderEntries).toHaveLength(0);
-		expect(ledger.changedCount).toBe(4588);
+		expect(ledger.changedCount).toBe(4584);
 	});
 
 	it("passes anti-vacuity: a token mutation in a verified file changes its hash (cell f)", () => {
