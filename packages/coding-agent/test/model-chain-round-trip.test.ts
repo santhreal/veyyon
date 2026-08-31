@@ -89,9 +89,16 @@ describe("model chain encoding", () => {
 	 * `patterns.length` to say "+2 fallbacks", and the executor slices everything
 	 * after the selected entry into the retry role, so a truncated list here
 	 * silently removes every fallback the user configured.
+	 *
+	 * `subagent.model` answers only while `subagent.sharedModel` is on, which is
+	 * the one question that decides whether a model is chosen once for everyone
+	 * or once per agent, so the switch is seeded rather than assumed.
 	 */
 	it("resolveSubagentModel keeps the whole blanket chain, in order", () => {
-		const settings = Settings.isolated({ "subagent.model": "anthropic/opus,anthropic/sonnet,anthropic/haiku" });
+		const settings = Settings.isolated({
+			"subagent.sharedModel": true,
+			"subagent.model": "anthropic/opus,anthropic/sonnet,anthropic/haiku",
+		});
 		const resolved = resolveSubagentModel({ settings, agentName: "reviewer", agentModel: undefined });
 		expect(resolved.source).toBe("blanket");
 		expect(resolved.patterns).toEqual(["anthropic/opus", "anthropic/sonnet", "anthropic/haiku"]);
@@ -99,14 +106,14 @@ describe("model chain encoding", () => {
 
 	/**
 	 * A per-agent lane row is the most specific statement anyone can make — it
-	 * names the agent — so a lane that names a model REPLACES the blanket chain
-	 * and reports `source: "lane"`, which is what the Agents column badges. The
+	 * names the agent — so with the shared switch off the lane answers and
+	 * reports `source: "lane"`, which is what the Agents column badges. The
 	 * field was retired once for outranking the blanket setting from a screen
 	 * that did not show it, and reinstated when every page that shows a lane's
 	 * model became the page that edits it. This asserts the layer that decided is
 	 * named, so a silent replacement can never come back.
 	 */
-	it("lets a per-agent lane row outrank the blanket chain, and names the layer that decided", () => {
+	it("lets a per-agent lane row answer, and names the layer that decided", () => {
 		const lane: SubagentAgentSettings = { model: ["openai/gpt-5", "openai/gpt-5-mini"] };
 		const settings = Settings.isolated({
 			"subagent.model": "anthropic/opus,anthropic/sonnet",
@@ -128,6 +135,7 @@ describe("model chain encoding", () => {
 	it("keeps the blanket chain whole under a per-agent row that names no model", () => {
 		const row: SubagentAgentSettings = { enabled: true, maxNestedSpawnDepth: 0 };
 		const settings = Settings.isolated({
+			"subagent.sharedModel": true,
 			"subagent.model": "anthropic/opus,anthropic/sonnet",
 			"subagent.agents": { reviewer: row },
 		});

@@ -256,12 +256,16 @@ describe("the real workspace resolves completely", () => {
 	});
 
 	/**
-	 * The four packages no hand-written table knew about. Named individually rather than counted, so a
-	 * failure says which one stopped resolving.
+	 * The four packages no hand-written table knew about, at the paths they occupy: two of them left
+	 * `packages/` when the workspace grew `plugins/` and `natives/`, which is the move that made a
+	 * table spelled by hand unmaintainable in the first place. Named individually rather than counted,
+	 * so a failure says which one stopped resolving.
 	 */
 	it("resolves the packages the hand-written tables omitted entirely", () => {
-		expect(byName.get("@veyyon/mnemopi")).toBe(path.join(REPO_ROOT, "packages", "mnemopi", "src", "index.ts"));
-		expect(byName.get("@veyyon/natives")).toBe(path.join(REPO_ROOT, "packages", "natives", "native", "index.js"));
+		expect(byName.get("@veyyon/mnemopi")).toBe(path.join(REPO_ROOT, "plugins", "mnemopi", "src", "index.ts"));
+		expect(byName.get("@veyyon/natives")).toBe(
+			path.join(REPO_ROOT, "natives", "bridge", "bindings", "native", "index.js"),
+		);
 		expect(byName.get("@veyyon/stats")).toBe(path.join(REPO_ROOT, "packages", "stats", "src", "index.ts"));
 		expect(byName.get("@veyyon/tool-render")).toBe(
 			path.join(REPO_ROOT, "packages", "tool-render", "src", "index.ts"),

@@ -50,8 +50,8 @@ if not exist "%scripts_dir%..\src\export\html\tool-views.generated.js" (
     exit /b 1
   )
 )
-if not exist "%scripts_dir%..\..\natives\native\veyyon_natives.win32-x64*.node" (
-  call bun "%scripts_dir%..\..\natives\scripts\ensure-native.ts" 1>&2
+if not exist "%scripts_dir%..\..\..\natives\bridge\bindings\native\veyyon_natives.win32-x64*.node" (
+  call bun "%scripts_dir%..\..\..\natives\bridge\bindings\scripts\ensure-native.ts" 1>&2
   if errorlevel 1 exit /b 1
 )
 

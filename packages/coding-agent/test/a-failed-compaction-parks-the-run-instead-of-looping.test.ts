@@ -242,7 +242,11 @@ describe("a failed compaction parks the run instead of looping", () => {
 		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
 		expect(noProgress.length).toBe(1);
 		expect(noProgress[0]!.level).toBe("warning");
-		expect(noProgress[0]!.message).toContain("clear large tool output");
+		// A parked run is a dead end the operator has to break, so the warning names the two moves
+		// that break it. Its "every reducer already ran" half is pinned beside the verdict, in
+		// `the-compaction-verdict-is-data-not-a-side-effect.test.ts`.
+		expect(noProgress[0]!.message).toContain("start a fresh session with /new");
+		expect(noProgress[0]!.message).toContain("larger-context model");
 	});
 
 	it("does not warn or block continuation when rescue after summarizer failure creates headroom", async () => {

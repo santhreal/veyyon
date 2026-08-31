@@ -188,12 +188,18 @@ jobs:
     # Scoped to the test files this push/PR CHANGED, not the whole repo: a full sweep is
     # one process per file (~1700 files in the coding-agent tree alone) and belongs in a
     # nightly, while the gate that matters is "the suite you just wrote does not leak".
+    #
+    # The ceiling is an hour because one process per file is the cost, and a change that
+    # relocates a directory puts every suite under it in the changed set: a tree-wide move
+    # reached 1504 of 3329 files before a 30-minute ceiling cancelled the job, which reports
+    # nothing about the tree. A pure move is excluded below, so an ordinary push still
+    # answers in a minute or two and the ceiling only ever binds on a restructuring.
     if: >-
       github.event_name == 'pull_request' ||
       (github.event_name == 'push' &&
        github.event.before != '0000000000000000000000000000000000000000')
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -244,7 +250,11 @@ jobs:
             LEAK_BASE="$(git rev-parse HEAD~1)"
           fi
           echo "Leak base: ${LEAK_BASE}"
-          changed_list="$(git diff --name-only --diff-filter=d "$LEAK_BASE"...HEAD -- '*.test.ts')"
+          # `-M100%` pairs only byte-identical moves, and `r` drops those pairs: a suite whose
+          # bytes did not change cannot leak something its old path did not. A move that also
+          # edited the file is not paired at that threshold, so it arrives as an addition and is
+          # still checked.
+          changed_list="$(git diff --name-only --diff-filter=dr -M100% "$LEAK_BASE"...HEAD -- '*.test.ts')"
           if [ -z "$changed_list" ]; then
             echo "No test files changed; nothing to leak-check."
             exit 0

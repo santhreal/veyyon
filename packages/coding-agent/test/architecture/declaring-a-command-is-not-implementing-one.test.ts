@@ -99,7 +99,7 @@ describe("the declarations are a leaf", () => {
 		const reached = reachedNames("slash-commands/builtin-declarations.ts");
 
 		expect(reached).toContain(path.join("packages", "coding-agent", "src", "config", "service-tier.ts"));
-		expect(reached).toContain(path.join("packages", "coding-agent", "src", "session", "compact-modes.ts"));
+		expect(reached).toContain(path.join("kernel", "src", "session", "compact-modes.ts"));
 	});
 });
 

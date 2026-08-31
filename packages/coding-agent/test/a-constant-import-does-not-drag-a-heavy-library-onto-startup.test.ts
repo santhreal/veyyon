@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
 /**
@@ -132,17 +132,36 @@ function staticImportsOf(file: string): ModuleImports {
 
 /** The eagerly awaited tool-factory modules, read out of the factory table itself. */
 function startupRoots(): Map<string, string> {
-	const indexPath = join(SRC, "tools", "index.ts");
-	const source = readFileSync(indexPath, "utf8");
 	const roots = new Map<string, string>();
-	// Each factory is `<name>: async s => ... await import("<specifier>") ...` on one or more lines.
-	for (const match of source.matchAll(/await import\((["'])([^"']+)\1\)/g)) {
-		const specifier = match[2];
-		if (!specifier?.startsWith(".")) continue;
-		const resolved = resolveRelative(specifier, indexPath);
-		if (resolved) roots.set(resolved, specifier);
+	for (const table of factoryTableFiles()) {
+		const source = readFileSync(table, "utf8");
+		// Each factory is `<name>: async s => ... await import("<specifier>") ...` on one or more lines.
+		for (const match of source.matchAll(/await import\((["'])([^"']+)\1\)/g)) {
+			const specifier = match[2];
+			if (!specifier?.startsWith(".")) continue;
+			const resolved = resolveRelative(specifier, table);
+			if (resolved) roots.set(resolved, specifier);
+		}
 	}
 	return roots;
+}
+
+/**
+ * Every file that holds tool factories: `tools/index.ts` and each domain's `manifest.ts`.
+ *
+ * The domain directory is read at run time rather than listed, so a domain added tomorrow is measured
+ * without an edit here. A hardcoded list would lower this ceiling in silence, which is the failure
+ * mode the whole suite is built to avoid.
+ */
+function factoryTableFiles(): string[] {
+	const toolsDir = join(SRC, "tools");
+	const files = [join(toolsDir, "index.ts")];
+	for (const entry of readdirSync(toolsDir, { withFileTypes: true })) {
+		if (!entry.isDirectory()) continue;
+		const manifest = join(toolsDir, entry.name, "manifest.ts");
+		if (existsSync(manifest)) files.push(manifest);
+	}
+	return files;
 }
 
 /** Every expensive package reachable from `root` through static imports, with the path that reaches it. */

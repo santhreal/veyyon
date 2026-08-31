@@ -60,6 +60,9 @@ const EAGER_AT_STARTUP = [
 	"@veyyon/ai",
 	"@veyyon/catalog",
 	"@veyyon/hashline",
+	// The session spine: the CLI cannot reach a first frame without a session, so the kernel is
+	// evaluated for the same reason `@veyyon/ai` and `@veyyon/catalog` are.
+	"@veyyon/kernel",
 	"@veyyon/natives",
 	"@veyyon/tui",
 	"@veyyon/utils",
