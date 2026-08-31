@@ -284,7 +284,7 @@ describe("both config-value resolvers route a failed command through the shared 
 	const OWNER = path.resolve(import.meta.dir, "../../src/config/config-value-resolution.ts");
 	const RESOLVERS = [
 		{ name: "resolve-config-value", path: path.resolve(import.meta.dir, "../../src/config/resolve-config-value.ts") },
-		{ name: "model-registry", path: path.resolve(import.meta.dir, "../../src/config/model-registry.ts") },
+		{ name: "model-registry", path: path.resolve(import.meta.dir, "../../src/config/model-registry-resolution.ts") },
 	];
 
 	for (const resolver of RESOLVERS) {
