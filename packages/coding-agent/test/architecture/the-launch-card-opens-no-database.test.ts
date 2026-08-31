@@ -73,17 +73,21 @@ const DATABASE_OWNERS = workspaceSources().filter(relative => {
 const ADMITTED_ON_THE_CARD_PATH = [path.join("coding-agent", "src", "config", "legacy-agent-db-settings.ts")];
 
 /**
- * What the card costs, measured 2026-08-30 with the workspace resolved to source, down from 311 when
+ * What the card costs, measured 2026-08-31 with the workspace resolved to source, down from 311 when
  * the settings store still carried a storage handle, and up from 290 when the card stopped
  * hand-writing its own `path · git` row and started rendering the real status row through
- * `status-line/quiet-row.ts` and `status-line/session-facts.ts`. Those two modules are the whole
- * increase: the segment table the row composes was already reachable, because the hand-written copy
- * called into it for the location and the branch.
+ * `status-line/quiet-row.ts` and `status-line/session-facts.ts`. Those two modules were the whole
+ * increase then: the segment table the row composes was already reachable, because the hand-written
+ * copy called into it for the location and the branch.
+ *
+ * The one after that is `status-line/launch-gauge-baseline.ts`, which lets the card state a context
+ * percentage instead of `?`. It is a leaf over four `@veyyon/utils` entry points the card already
+ * reached, so it costs itself and nothing under it.
  *
  * The floor is what stops a resolution table that stopped resolving from satisfying the ceiling with
  * a handful of modules while measuring nothing.
  */
-const LAUNCH_CARD_CEILING = 292;
+const LAUNCH_CARD_CEILING = 293;
 const LAUNCH_CARD_FLOOR = 150;
 
 describe("the launch card opens no database", () => {

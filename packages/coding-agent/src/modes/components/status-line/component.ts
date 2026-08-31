@@ -26,6 +26,7 @@ import { transitionsEnabled } from "../../theme/shimmer";
 import { theme } from "../../theme/theme";
 import { isTreeDirty } from "./branch";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
+import { recordLaunchGaugePercent } from "./launch-gauge-baseline";
 import {
 	composeQuietLines,
 	composeQuietRow,
@@ -1321,6 +1322,17 @@ export class StatusLineComponent implements Component {
 			// about — never a trigger resolved from the guest's own settings.
 			contextLimit = contextWindow;
 			contextLimitKind = "window";
+		}
+
+		// An empty conversation makes this reading the AT-REST cost — prompt,
+		// tools, context files, skills and nothing else — which is the number the
+		// next launch's card wants and cannot compute before a session exists.
+		// Recorded here rather than at session start because this is the one
+		// place that resolves the limit the percentage is taken against, and
+		// after the collab override because a guest's reading belongs to the
+		// host's machine, not to the next launch on this one.
+		if (contextPercent !== null && !collabState?.contextUsage && (this.session.messages?.length ?? 0) === 0) {
+			void recordLaunchGaugePercent(contextPercent);
 		}
 
 		const shouldResolveActiveRepo = this.#gitEnabled() && (includePath || includeGit || includePr);

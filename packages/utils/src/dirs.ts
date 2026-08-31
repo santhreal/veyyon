@@ -2206,6 +2206,17 @@ export function getGpuCachePath(): string {
 }
 
 /**
+ * Get the launch gauge baseline path (profile `cache/launch-gauge.json`).
+ *
+ * Holds what the context gauge read while the conversation was still empty, so
+ * the launch card can state a number instead of `?` in the half second before
+ * the session finishes assembling its prompt.
+ */
+export function getLaunchGaugeCachePath(): string {
+	return dirs.rootSubdir(path.join("cache", "launch-gauge.json"), "cache");
+}
+
+/**
  * Get the GitHub view cache database path (profile `cache/github-cache.db`).
  * Honors the `VEYYON_GITHUB_CACHE_DB` env var when set so tests can isolate the
  * cache file without touching the rest of the config root.

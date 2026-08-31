@@ -236,26 +236,17 @@ export class WelcomeComponent implements Component {
 		const lines = this.#sunriseHeader(termWidth);
 		if (!this.full) {
 			lines.push("");
-			// Continue where you left off: the most recent session, one quiet
-			// line. The data was always fetched for the hero; before this it was
-			// only ever shown behind /welcome — the single most useful thing at
-			// launch stayed hidden.
-			const recent = this.recentSessions[0];
-			if (recent) {
-				const nameBudget = Math.max(8, Math.min(40, termWidth - 30));
-				const name =
-					visibleWidth(recent.name) > nameBudget ? truncateToWidth(recent.name, nameBudget) : recent.name;
-				lines.push(
-					centerLine(
-						theme.fg("muted", name) + theme.fg("dim", ` · ${recent.timeAgo} — `) + theme.fg("accent", "/resume"),
-						termWidth,
-					),
-				);
-			}
-			// The /resume hint dedups against the continue line above.
-			const more = recent ? "  ·  /settings" : "  ·  /resume  ·  /settings";
+			// The hero names the commands and nothing else. A most-recent-session
+			// line was here, and it arrived with the asynchronous session list
+			// rather than with the frame, so the block it sits in changed height
+			// after the composer had already been drawn under it.
 			lines.push(
-				centerLine(theme.fg("dim", "more: ") + theme.fg("accent", "/welcome") + theme.fg("dim", more), termWidth),
+				centerLine(
+					theme.fg("dim", "more: ") +
+						theme.fg("accent", "/welcome") +
+						theme.fg("dim", "  ·  /resume  ·  /settings"),
+					termWidth,
+				),
 			);
 			for (const tipLine of this.#centeredTipBlock(termWidth)) lines.push(tipLine);
 			return lines;
