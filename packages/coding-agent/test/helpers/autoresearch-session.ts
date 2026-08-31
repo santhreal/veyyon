@@ -208,10 +208,7 @@ export function seedMeasuredRun(harness: AutoresearchHarness, options: SeedRunOp
 }
 
 /** Logs a run through the real `log_experiment` tool. */
-export async function logRun(
-	harness: AutoresearchHarness,
-	params: Record<string, unknown>,
-): Promise<LogDetails> {
+export async function logRun(harness: AutoresearchHarness, params: Record<string, unknown>): Promise<LogDetails> {
 	const result = await createLogExperimentTool(harness.options).execute(
 		"call-log",
 		params as never,

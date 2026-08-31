@@ -26,13 +26,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import { renderRunDetail } from "@veyyon/coding-agent/autoresearch/screen";
-import {
-	logRun,
-	openExperiment,
-	seedMeasuredRun,
-	stateOf,
-	useAutoresearchRepo,
-} from "./helpers/autoresearch-session";
+import { stripAnsi } from "@veyyon/utils";
+import { logRun, openExperiment, seedMeasuredRun, stateOf, useAutoresearchRepo } from "./helpers/autoresearch-session";
 import { useIsolatedAgentDir } from "./helpers/isolated-agent-dir";
 import { useTruecolorTheme } from "./helpers/theme-assertions";
 
@@ -43,9 +38,7 @@ const freshRepo = useAutoresearchRepo("veyyon-metric-listed-once-");
 
 /** Every line of the pane that names `metric`, with styling stripped. */
 function rowsNaming(pane: string[], metric: string): string[] {
-	// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping SGR sequences is the point.
-	const plain = pane.map(line => line.replace(/\u001b\[[0-9;]*m/g, ""));
-	return plain.filter(line => line.includes(metric));
+	return pane.map(line => stripAnsi(line)).filter(line => line.includes(metric));
 }
 
 describe("a metric is listed once", () => {

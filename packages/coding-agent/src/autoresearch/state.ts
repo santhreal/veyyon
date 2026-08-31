@@ -271,11 +271,7 @@ export function createRuntimeStore(): RuntimeStore {
 	};
 }
 
-function registerSecondaryMetrics(
-	metrics: MetricDef[],
-	values: NumericMetricMap,
-	primaryName: string,
-): void {
+function registerSecondaryMetrics(metrics: MetricDef[], values: NumericMetricMap, primaryName: string): void {
 	for (const name of Object.keys(values)) {
 		if (name === primaryName) continue;
 		if (metrics.some(metric => metric.name === name)) continue;
