@@ -8,6 +8,8 @@
 - A Codex compaction stream carrying a `compaction` item with no `encrypted_content` is refused instead of being stored as a window every later turn discards.
 - A compaction route that answers 404 is retried after 30 minutes instead of standing the model down for the whole process, so one transient 404 no longer forces a paid local compaction on every later pass.
 - Codex remote compaction keeps at least one user turn when the retained-token budget it is handed is not a finite number, instead of replaying a window holding nothing but the compaction item.
+- A Codex server-side compaction sends the session's `prompt_cache_key`, so it lands on the session's cached prefix instead of missing it and making the next turn re-pay full uncached input.
+- A Codex server-side compaction with no session id is refused instead of minting a random conversation identity, which opened a second cache lineage and left the post-compaction history reset with nothing to find.
 
 ### Changed
 

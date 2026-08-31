@@ -64,6 +64,9 @@ import type { ResolvedOpenAIResponsesCompat } from "@veyyon/catalog/types";
 import { OPENAI_HEADERS } from "@veyyon/catalog/wire/codex";
 
 /** The route the host serves compaction on: the ordinary turn route. */
+// A compaction rides a live conversation, so the transport requires the session
+// id every production caller passes.
+const CODEX_SESSION_ID = "codex-oauth-session";
 const TURN_ROUTE = "https://chatgpt.com/backend-api/codex/responses";
 
 /** A ChatGPT OAuth access token is a JWT; the account id is read out of its payload. */
@@ -252,7 +255,16 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 	test("never posts compaction to the /compact route, which answers 404", async () => {
 		const calls = codexBackend();
 
-		await compactWithProvider(makePreparation(), codexModel(), fakeCodexToken("acct-9"), "base system prompt");
+		await compactWithProvider(
+			makePreparation(),
+			codexModel(),
+			fakeCodexToken("acct-9"),
+			"base system prompt",
+			undefined,
+			{
+				sessionId: CODEX_SESSION_ID,
+			},
+		);
 
 		expect(calls.map(call => call.url).filter(url => url.endsWith("/compact"))).toEqual([]);
 	});
@@ -260,7 +272,16 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 	test("the body streams and carries exactly one trigger item, last", async () => {
 		const calls = codexBackend();
 
-		await compactWithProvider(makePreparation(), codexModel(), fakeCodexToken("acct-9"), "base system prompt");
+		await compactWithProvider(
+			makePreparation(),
+			codexModel(),
+			fakeCodexToken("acct-9"),
+			"base system prompt",
+			undefined,
+			{
+				sessionId: CODEX_SESSION_ID,
+			},
+		);
 
 		const body = calls[0]!.body;
 		expect(body.model).toBe(codexModel().id);
@@ -319,6 +340,8 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 			codexModel(),
 			fakeCodexToken("acct-9"),
 			"base system prompt",
+			undefined,
+			{ sessionId: CODEX_SESSION_ID },
 		);
 
 		const window = remoteWindow(result);
@@ -339,7 +362,16 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 		codexBackend({ items: [{ id: "msg_1", type: "message", role: "assistant", content: [] }] });
 
 		await expect(
-			compactWithProvider(makePreparation(), codexModel(), fakeCodexToken("acct-9"), "base system prompt"),
+			compactWithProvider(
+				makePreparation(),
+				codexModel(),
+				fakeCodexToken("acct-9"),
+				"base system prompt",
+				undefined,
+				{
+					sessionId: CODEX_SESSION_ID,
+				},
+			),
 		).rejects.toThrow(/expected exactly one/);
 	});
 
@@ -348,7 +380,16 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 		codexBackend({ items: [COMPACTION_ITEM, { ...COMPACTION_ITEM, id: "cmp_002" }] });
 
 		await expect(
-			compactWithProvider(makePreparation(), codexModel(), fakeCodexToken("acct-9"), "base system prompt"),
+			compactWithProvider(
+				makePreparation(),
+				codexModel(),
+				fakeCodexToken("acct-9"),
+				"base system prompt",
+				undefined,
+				{
+					sessionId: CODEX_SESSION_ID,
+				},
+			),
 		).rejects.toThrow(/expected exactly one/);
 	});
 
@@ -356,7 +397,16 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 		codexBackend({ items: [] });
 
 		await expect(
-			compactWithProvider(makePreparation(), codexModel(), fakeCodexToken("acct-9"), "base system prompt"),
+			compactWithProvider(
+				makePreparation(),
+				codexModel(),
+				fakeCodexToken("acct-9"),
+				"base system prompt",
+				undefined,
+				{
+					sessionId: CODEX_SESSION_ID,
+				},
+			),
 		).rejects.toThrow(/expected exactly one/);
 	});
 
@@ -376,7 +426,16 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 		);
 
 		await expect(
-			compactWithProvider(makePreparation(), codexModel(), fakeCodexToken("acct-9"), "base system prompt"),
+			compactWithProvider(
+				makePreparation(),
+				codexModel(),
+				fakeCodexToken("acct-9"),
+				"base system prompt",
+				undefined,
+				{
+					sessionId: CODEX_SESSION_ID,
+				},
+			),
 		).rejects.toThrow(/before response.completed/);
 	});
 
@@ -389,7 +448,9 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 		expect(lite.useResponsesLite).toBe(true);
 		const calls = codexBackend();
 
-		await compactWithProvider(makePreparation(), lite, fakeCodexToken("acct-9"), "base system prompt");
+		await compactWithProvider(makePreparation(), lite, fakeCodexToken("acct-9"), "base system prompt", undefined, {
+			sessionId: CODEX_SESSION_ID,
+		});
 
 		const body = calls[0]!.body;
 		expect(body.instructions).toBeUndefined();
@@ -417,7 +478,9 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 		const flagged: Model = { ...codexModel(), useResponsesLite: true };
 		const calls = codexBackend();
 
-		await compactWithProvider(makePreparation(), flagged, fakeCodexToken("acct-9"), "base system prompt");
+		await compactWithProvider(makePreparation(), flagged, fakeCodexToken("acct-9"), "base system prompt", undefined, {
+			sessionId: CODEX_SESSION_ID,
+		});
 
 		expect(calls[0]!.body.instructions).toBe("base system prompt");
 	});

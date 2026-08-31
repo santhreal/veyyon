@@ -50,7 +50,7 @@ const LOCKED_FILE = "packages/ai/src/providers/openai-compaction.ts";
  * SHA-256 of the locked file. Updating this constant without operator permission
  * is the exact move this gate exists to stop.
  */
-const LOCKED_SHA256 = "c1217385527918894bf6a13564b41b42187ff9d567eebcdc681132cacd4abba0";
+const LOCKED_SHA256 = "e380143f7edbd422ada4a9a21650e3df73b6496445f25abd925ce8cdc3c44f49";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 

@@ -195,6 +195,7 @@ describe("a compaction route matches the host that serves it", () => {
 
 			const calls: CapturedCall[] = [];
 			await transport.compact({
+				sessionId: "route-host-session",
 				model,
 				messages: compactionMessages(),
 				apiKey: route.apiKey,
@@ -220,6 +221,7 @@ describe("a compaction route matches the host that serves it", () => {
 
 		const calls: CapturedCall[] = [];
 		await transport.compact({
+			sessionId: "route-no-compact-segment-session",
 			model,
 			messages: compactionMessages(),
 			apiKey: fakeCodexToken("acct-9"),
@@ -279,6 +281,7 @@ describe("a compaction route that answers 404 stands down, and nothing else does
 
 		await expect(
 			transport.compact({
+				sessionId: "route-404-standdown-session",
 				model,
 				messages: compactionMessages(),
 				apiKey: fakeCodexToken("acct-9"),
@@ -300,6 +303,7 @@ describe("a compaction route that answers 404 stands down, and nothing else does
 
 			await expect(
 				transport.compact({
+					sessionId: "route-transient-status-session",
 					model,
 					messages: compactionMessages(),
 					apiKey: fakeCodexToken("acct-9"),
@@ -322,6 +326,7 @@ describe("a compaction route that answers 404 stands down, and nothing else does
 
 		await expect(
 			transport.compact({
+				sessionId: "route-standdown-per-model-session",
 				model: codex,
 				messages: compactionMessages(),
 				apiKey: fakeCodexToken("acct-9"),

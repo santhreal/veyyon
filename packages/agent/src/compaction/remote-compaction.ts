@@ -124,8 +124,11 @@ export async function compactWithProvider(
 				previousWindow,
 				instructions: instructions.length > 0 ? instructions : undefined,
 				// Codex keys request identity to the live conversation; the
-				// official and Azure routes ignore all three.
+				// official and Azure routes ignore all four. The cache key is the
+				// turn's own, so the compaction lands on the session's cached
+				// prefix instead of opening a second lineage beside it.
 				sessionId: options?.sessionId,
+				promptCacheKey: options?.promptCacheKey,
 				providerSessionState: options?.providerSessionState,
 				codexCompaction: createOpenAICodexCompactionRequestContext({
 					context: options?.codexCompaction,

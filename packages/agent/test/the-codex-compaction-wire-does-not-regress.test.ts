@@ -365,6 +365,38 @@ describe(`the codex compaction CACHE IDENTITY (${BANNER})`, () => {
 	test("does not ask the host to store the turn, which would fork the lineage", async () => {
 		expect((await captureOne()).body.store).toBe(false);
 	});
+	test("sends the prompt_cache_key a turn sends, so it lands on the session's cached prefix", async () => {
+		// A compaction body with no `prompt_cache_key` is a cache miss on the
+		// session's own prefix, and the turn after it re-pays full uncached input.
+		expect((await captureOne()).body.prompt_cache_key).toBe(SESSION_ID);
+	});
+
+	test("prefers the session's own cache key over the session id when they differ", async () => {
+		// The agent may key its cache on something other than the session id
+		// (`promptCacheKey ?? sessionId` is what a turn uses). A compaction that
+		// keyed on the session id alone would open a second lineage beside it.
+		const calls: Captured[] = [];
+		await compactWithProvider(preparation(), codexModel(), codexToken(), "base system prompt", undefined, {
+			sessionId: SESSION_ID,
+			promptCacheKey: "the-turns-cache-key",
+			fetch: captureFetch(calls),
+		});
+		expect(calls[0]?.body.prompt_cache_key).toBe("the-turns-cache-key");
+		// The conversation identity stays the session's; only the cache key moves.
+		expect(calls[0]?.headers[OPENAI_HEADERS.CONVERSATION_ID.toLowerCase()]).toBe(SESSION_ID);
+	});
+
+	test("refuses to compact without a session id rather than minting a new lineage", async () => {
+		// No session id means no conversation to ride: the old code minted a
+		// random one, which is a fresh cache lineage AND a post-compaction reset
+		// that silently finds nothing. Falling back to local compaction is worse
+		// than a cache hit and better than a silent fork, so it must not request.
+		const calls: Captured[] = [];
+		await compactWithProvider(preparation(), codexModel(), codexToken(), "base system prompt", undefined, {
+			fetch: captureFetch(calls),
+		}).catch(() => undefined);
+		expect(calls).toEqual([]);
+	});
 });
 
 /**

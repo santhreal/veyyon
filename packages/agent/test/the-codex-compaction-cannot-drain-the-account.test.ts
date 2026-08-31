@@ -175,6 +175,7 @@ async function compactDirect(model: Model, status: number, payload?: unknown): P
 	if (!transport) throw new Error(`${BANNER}: ${model.api} resolves no transport`);
 	try {
 		await transport.compact({
+			sessionId: "drain-guard-session",
 			model,
 			messages: [{ role: "user", content: "span" }] as Message[],
 			apiKey: codexToken(),

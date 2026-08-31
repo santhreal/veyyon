@@ -98,6 +98,13 @@ export interface ServerCompactionRequest {
 	 * the stateless official and Azure routes ignore it.
 	 */
 	sessionId?: string;
+	/**
+	 * The session's prompt cache key, when it differs from the session id. A
+	 * turn keys its cache on `promptCacheKey ?? sessionId`, so a compaction that
+	 * used the session id alone would open a second cache lineage for the same
+	 * conversation and the next turn would re-pay full uncached input.
+	 */
+	promptCacheKey?: string;
 	/** Provider-owned per-session transport state, for the same identity. */
 	providerSessionState?: Map<string, ProviderSessionState>;
 	/** Canonical Codex compaction classification for this pass; ignored elsewhere. */
@@ -310,6 +317,9 @@ function buildCompactInputItems(model: Model<Api>, messages: Message[]): Respons
  * access token and the same request identity a turn carries. There is no
  * `/compact` suffix: the host answers that path with 404, and the compaction is
  * requested by the trailing `compaction_trigger` input item instead.
+ *
+ * The cache key is the turn's, not a compaction-specific one: the request rides
+ * the same conversation and must land on the same cached prefix.
  */
 function resolveCodexCompactRequest(
 	model: Model<Api>,
@@ -321,6 +331,7 @@ function resolveCodexCompactRequest(
 		accessToken: apiKey,
 		requestKind: "compaction",
 		sessionId: request.sessionId,
+		promptCacheKey: request.promptCacheKey,
 		providerSessionState: request.providerSessionState,
 		compaction: request.codexCompaction,
 		responsesLite: resolveCodexResponsesLite(model, undefined),
@@ -372,6 +383,11 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 			if (clientMetadata) body.client_metadata = clientMetadata;
 			body.stream = true;
 			body.store = false;
+			// A turn sends `prompt_cache_key`, so a compaction without it is a
+			// cache miss on the session's own prefix, and the turn after it pays
+			// full uncached input again. Same key, same lineage, one cache.
+			const cacheKey = "promptCacheKey" in resolved ? resolved.promptCacheKey : undefined;
+			if (cacheKey) body.prompt_cache_key = cacheKey;
 			if (resolveCodexResponsesLite(model, undefined)) {
 				applyCodexResponsesLiteShape(body);
 				body.include = Array.from(

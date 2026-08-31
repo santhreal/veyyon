@@ -80,6 +80,7 @@ function respondWith(status: number, statusText: string, body: string): { fetch:
 async function compactOnce(model: Model<Api>, impl: FetchImpl): Promise<Error | undefined> {
 	try {
 		await openAIResponsesServerCompaction.compact({
+			sessionId: "route-404-cache-session",
 			model,
 			messages: [{ role: "user", content: "compact this span", timestamp: Date.now() }],
 			apiKey: "test-access-token",

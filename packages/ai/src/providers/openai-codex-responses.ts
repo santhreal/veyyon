@@ -627,7 +627,17 @@ export function createOpenAICodexCompatibilityMetadata(
 	options: OpenAICodexCompatibilityMetadataOptions,
 ): OpenAICodexCompatibilityMetadata {
 	const providerState = getCodexProviderSessionState(options.providerSessionState);
-	const sessionId = normalizeOpenAIPromptCacheKey(options.sessionId) ?? crypto.randomUUID();
+	const normalizedSessionId = normalizeOpenAIPromptCacheKey(options.sessionId);
+	// A compaction rides an existing conversation: it must reuse that session's
+	// thread, window and turn, and `resetOpenAICodexHistoryAfterCompaction`
+	// looks the state back up by the same id. Minting a random one here would
+	// open a second lineage on a fresh cache key, and the post-compaction reset
+	// would silently find nothing. Refuse instead; the caller falls back to
+	// local compaction and says so.
+	if (options.requestKind === "compaction" && !normalizedSessionId) {
+		throw new Error("Codex server-side compaction requires the live session id; refusing to start a new session.");
+	}
+	const sessionId = normalizedSessionId ?? crypto.randomUUID();
 	const session = getOrCreateCodexMetadataSessionState(sessionId, providerState);
 	const startNewTurn = resolveCodexStartNewTurn(
 		session,
@@ -671,10 +681,18 @@ export function createOpenAICodexDirectRequest(options: {
 	accessToken: string;
 	requestKind: OpenAICodexRequestKind;
 	sessionId?: string;
+	/**
+	 * The session's prompt cache key, when it differs from the session id. It
+	 * travels in the request body as `prompt_cache_key`, exactly as a turn sends
+	 * it; the conversation headers below stay keyed to the session id. A
+	 * compaction that omitted it, or sent a different one, would miss the
+	 * session's cached prefix and the next turn would re-pay full uncached input.
+	 */
+	promptCacheKey?: string;
 	providerSessionState?: Map<string, ProviderSessionState>;
 	compaction?: CodexCompactionRequestContext;
 	responsesLite?: boolean;
-}): { url: string; headers: Record<string, string>; clientMetadata: Record<string, string> } {
+}): { url: string; headers: Record<string, string>; clientMetadata: Record<string, string>; promptCacheKey?: string } {
 	const baseUrl = options.model.baseUrl || CODEX_BASE_URL;
 	const identity = createOpenAICodexCompatibilityMetadata({
 		sessionId: options.sessionId,
@@ -703,6 +721,9 @@ export function createOpenAICodexDirectRequest(options: {
 		url: resolveCodexResponsesUrl(baseUrl),
 		headers: Object.fromEntries(headers.entries()),
 		clientMetadata: identity.clientMetadata,
+		// The body field a turn sends. Resolved here so the compaction body and
+		// the turn body cannot drift apart on how the key is derived.
+		promptCacheKey: normalizeOpenAIPromptCacheKey(options.promptCacheKey ?? options.sessionId),
 	};
 }
 
