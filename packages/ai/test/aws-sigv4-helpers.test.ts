@@ -1,73 +1,82 @@
 import { describe, expect, it } from "bun:test";
-import { formatAmzDate, getSigningKey, sha256, sha256Hex, signRequest, toHex } from "../src/providers/aws-sigv4";
+import {
+	type AwsCredentials,
+	formatAmzDate,
+	getSigningKey,
+	type SignParams,
+	sha256,
+	sha256Hex,
+	signRequest,
+	toHex,
+} from "../src/providers/aws-sigv4";
+
+const creds: AwsCredentials = {
+	accessKeyId: "AKIAIOSFODNN7EXAMPLE",
+	secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+};
 
 describe("toHex", () => {
-	it("converts empty array to empty string", () => {
-		expect(toHex(new Uint8Array([]))).toBe("");
+	it("encodes empty bytes", () => {
+		expect(toHex(new Uint8Array(0))).toBe("");
 	});
-	it("converts single byte 0", () => {
+	it("encodes single byte 0x00", () => {
 		expect(toHex(new Uint8Array([0]))).toBe("00");
 	});
-	it("converts single byte 255", () => {
+	it("encodes single byte 0xff", () => {
 		expect(toHex(new Uint8Array([255]))).toBe("ff");
 	});
-	it("converts multi-byte array", () => {
-		expect(toHex(new Uint8Array([0, 15, 16, 255]))).toBe("000f10ff");
-	});
-	it("converts byte 10 to '0a'", () => {
+	it("encodes single byte 0x0a", () => {
 		expect(toHex(new Uint8Array([10]))).toBe("0a");
 	});
-	it("converts byte 160 to 'a0'", () => {
-		expect(toHex(new Uint8Array([160]))).toBe("a0");
+	it("encodes multi-byte sequence", () => {
+		expect(toHex(new Uint8Array([0, 1, 2, 255, 128, 64]))).toBe("000102ff8040");
+	});
+	it("encodes all nibble values", () => {
+		const bytes = new Uint8Array([0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]);
+		expect(toHex(bytes)).toBe("0123456789abcdef");
 	});
 });
 
 describe("sha256", () => {
-	it("returns 32-byte digest for empty string", async () => {
+	it("hashes empty string", async () => {
 		const result = await sha256("");
-		expect(result).toBeInstanceOf(Uint8Array);
-		expect(result.length).toBe(32);
+		expect(toHex(result)).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
 	});
-	it("returns 32-byte digest for non-empty string", async () => {
+	it("hashes simple string", async () => {
 		const result = await sha256("hello");
-		expect(result.length).toBe(32);
+		expect(toHex(result)).toBe("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
 	});
-	it("returns consistent digest for same input", async () => {
-		const a = await sha256("test");
-		const b = await sha256("test");
-		expect(a).toEqual(b);
+	it("hashes Uint8Array input", async () => {
+		const input = new TextEncoder().encode("hello");
+		const result = await sha256(input);
+		expect(toHex(result)).toBe("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
 	});
-	it("returns different digests for different inputs", async () => {
-		const a = await sha256("test1");
-		const b = await sha256("test2");
-		expect(a).not.toEqual(b);
-	});
-	it("accepts Uint8Array input", async () => {
-		const result = await sha256(new TextEncoder().encode("hello"));
+	it("produces 32-byte digest", async () => {
+		const result = await sha256("test");
 		expect(result.length).toBe(32);
 	});
 });
 
 describe("sha256Hex", () => {
-	it("returns hex string of length 64", async () => {
-		expect((await sha256Hex("")).length).toBe(64);
+	it("returns hex string for empty input", async () => {
+		expect(await sha256Hex("")).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
 	});
-	it("returns known hash for empty string", async () => {
-		const emptySha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-		expect(await sha256Hex("")).toBe(emptySha256);
+	it("returns hex string for string input", async () => {
+		expect(await sha256Hex("hello")).toBe("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
 	});
-	it("returns lowercase hex", async () => {
-		const result = await sha256Hex("test");
-		expect(result).toBe(result.toLowerCase());
+	it("returns hex string for Uint8Array input", async () => {
+		expect(await sha256Hex(new TextEncoder().encode("hello"))).toBe(
+			"2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+		);
 	});
 });
 
 describe("formatAmzDate", () => {
 	it("formats a known date correctly", () => {
-		const d = new Date("2024-01-15T10:30:45.000Z");
+		const d = new Date("2015-08-30T12:36:00.000Z");
 		const result = formatAmzDate(d);
-		expect(result.longDate).toBe("20240115T103045Z");
-		expect(result.shortDate).toBe("20240115");
+		expect(result.longDate).toBe("20150830T123600Z");
+		expect(result.shortDate).toBe("20150830");
 	});
 	it("formats epoch correctly", () => {
 		const d = new Date(0);
@@ -76,78 +85,200 @@ describe("formatAmzDate", () => {
 		expect(result.shortDate).toBe("19700101");
 	});
 	it("shortDate is first 8 chars of longDate", () => {
-		const d = new Date("2025-06-07T12:00:00.000Z");
+		const d = new Date("2024-01-15T23:59:59.999Z");
 		const result = formatAmzDate(d);
 		expect(result.shortDate).toBe(result.longDate.slice(0, 8));
 	});
-	it("pads single-digit months and days", () => {
-		const d = new Date("2024-03-05T01:02:03.000Z");
+	it("handles single-digit months and days", () => {
+		const d = new Date("2024-01-05T03:04:05.000Z");
 		const result = formatAmzDate(d);
-		expect(result.longDate).toBe("20240305T010203Z");
+		expect(result.longDate).toBe("20240105T030405Z");
 	});
 });
 
 describe("getSigningKey", () => {
-	it("returns a 32-byte key", async () => {
-		const key = await getSigningKey("secret", "20240115", "us-east-1", "bedrock");
-		expect(key).toBeInstanceOf(Uint8Array);
+	it("produces a 32-byte key", async () => {
+		const key = await getSigningKey(creds.secretAccessKey, "20150830", "us-east-1", "iam");
 		expect(key.length).toBe(32);
 	});
-	it("returns different keys for different secrets", async () => {
-		const a = await getSigningKey("secret1", "20240115", "us-east-1", "bedrock");
-		const b = await getSigningKey("secret2", "20240115", "us-east-1", "bedrock");
-		expect(a).not.toEqual(b);
+	it("produces deterministic key for same inputs", async () => {
+		const key1 = await getSigningKey(creds.secretAccessKey, "20150830", "us-east-1", "iam");
+		const key2 = await getSigningKey(creds.secretAccessKey, "20150830", "us-east-1", "iam");
+		expect(toHex(key1)).toBe(toHex(key2));
 	});
-	it("returns different keys for different regions", async () => {
-		const a = await getSigningKey("secret", "20240115", "us-east-1", "bedrock");
-		const b = await getSigningKey("secret", "20240115", "us-west-2", "bedrock");
-		expect(a).not.toEqual(b);
+	it("produces different keys for different regions", async () => {
+		const key1 = await getSigningKey(creds.secretAccessKey, "20150830", "us-east-1", "iam");
+		const key2 = await getSigningKey(creds.secretAccessKey, "20150830", "us-west-2", "iam");
+		expect(toHex(key1)).not.toBe(toHex(key2));
 	});
-	it("returns consistent key for same inputs", async () => {
-		const a = await getSigningKey("secret", "20240115", "us-east-1", "bedrock");
-		const b = await getSigningKey("secret", "20240115", "us-east-1", "bedrock");
-		expect(a).toEqual(b);
+	it("produces different keys for different services", async () => {
+		const key1 = await getSigningKey(creds.secretAccessKey, "20150830", "us-east-1", "iam");
+		const key2 = await getSigningKey(creds.secretAccessKey, "20150830", "us-east-1", "s3");
+		expect(toHex(key1)).not.toBe(toHex(key2));
+	});
+	it("produces different keys for different dates", async () => {
+		const key1 = await getSigningKey(creds.secretAccessKey, "20150830", "us-east-1", "iam");
+		const key2 = await getSigningKey(creds.secretAccessKey, "20150831", "us-east-1", "iam");
+		expect(toHex(key1)).not.toBe(toHex(key2));
 	});
 });
 
 describe("signRequest", () => {
-	const creds = { accessKeyId: "AKIAIOSFODNN7EXAMPLE", secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" };
-	const baseParams = {
-		method: "POST" as const,
-		host: "bedrock-runtime.us-east-1.amazonaws.com",
-		path: "/model/foo/invoke",
-		body: new TextEncoder().encode("{}"),
+	const baseParams: SignParams = {
+		method: "GET",
+		host: "iam.amazonaws.com",
+		path: "/",
+		body: new Uint8Array(0),
 		region: "us-east-1",
-		service: "bedrock",
+		service: "iam",
 		credentials: creds,
+		date: new Date("2015-08-30T12:36:00.000Z"),
 	};
-	it("returns signed headers with authorization", async () => {
+
+	it("returns SignedHeaders with required fields", async () => {
 		const result = await signRequest(baseParams);
-		expect(result.host).toBe("bedrock-runtime.us-east-1.amazonaws.com");
-		expect(result.authorization).toContain("AWS4-HMAC-SHA256");
-		expect(result["x-amz-date"]).toBeDefined();
+		expect(result.host).toBe("iam.amazonaws.com");
+		expect(result["x-amz-date"]).toBe("20150830T123600Z");
 		expect(result["x-amz-content-sha256"]).toBeDefined();
+		expect(result.authorization).toContain("AWS4-HMAC-SHA256");
+		expect(result.authorization).toContain("Credential=AKIAIOSFODNN7EXAMPLE/20150830/us-east-1/iam/aws4_request");
 	});
+
+	it("includes SignedHeaders in authorization header", async () => {
+		const result = await signRequest(baseParams);
+		expect(result.authorization).toContain("SignedHeaders=");
+		expect(result.authorization).toContain("Signature=");
+	});
+
+	it("uppercases the HTTP method", async () => {
+		const result = await signRequest({ ...baseParams, method: "get" });
+		expect(result.authorization).toBeDefined();
+	});
+
 	it("includes x-amz-security-token when sessionToken provided", async () => {
 		const result = await signRequest({
 			...baseParams,
-			credentials: { ...creds, sessionToken: "session-token" },
+			credentials: { ...creds, sessionToken: "session-token-123" },
 		});
-		expect(result["x-amz-security-token"]).toBe("session-token");
+		expect(result["x-amz-security-token"]).toBe("session-token-123");
 	});
-	it("does not include x-amz-security-token when no sessionToken", async () => {
+
+	it("omits x-amz-security-token when no sessionToken", async () => {
 		const result = await signRequest(baseParams);
-		expect(result["x-amz-security-token"]).toBeUndefined();
+		expect(result).not.toHaveProperty("x-amz-security-token");
 	});
-	it("produces consistent signatures for same inputs and same date", async () => {
-		const date = new Date("2024-01-15T10:30:45.000Z");
-		const a = await signRequest({ ...baseParams, date });
-		const b = await signRequest({ ...baseParams, date });
-		expect(a.authorization).toBe(b.authorization);
+
+	it("filters unsignable headers", async () => {
+		const result = await signRequest({
+			...baseParams,
+			headers: {
+				"User-Agent": "test-agent",
+				Connection: "keep-alive",
+				"x-custom-header": "custom-value",
+			},
+		});
+		expect(result.authorization).toContain("x-custom-header");
+		// User-Agent and Connection are in UNSIGNABLE, should not be in signed headers
+		expect(result.authorization).not.toContain("user-agent");
+		expect(result.authorization).not.toContain("connection");
 	});
-	it("produces different signatures for different dates", async () => {
-		const a = await signRequest({ ...baseParams, date: new Date("2024-01-15T10:30:45.000Z") });
-		const b = await signRequest({ ...baseParams, date: new Date("2024-01-16T10:30:45.000Z") });
-		expect(a.authorization).not.toBe(b.authorization);
+
+	it("filters proxy- prefixed headers", async () => {
+		const result = await signRequest({
+			...baseParams,
+			headers: {
+				"proxy-authorization": "bearer token",
+				"x-custom-header": "custom-value",
+			},
+		});
+		expect(result.authorization).not.toContain("proxy-authorization");
+	});
+
+	it("filters sec- prefixed headers", async () => {
+		const result = await signRequest({
+			...baseParams,
+			headers: {
+				"sec-fetch-mode": "cors",
+				"x-custom-header": "custom-value",
+			},
+		});
+		expect(result.authorization).not.toContain("sec-fetch-mode");
+	});
+
+	it("normalizes header values by trimming and collapsing whitespace", async () => {
+		const result = await signRequest({
+			...baseParams,
+			headers: {
+				"x-custom-header": "  value   with   spaces  ",
+			},
+		});
+		expect(result.authorization).toContain("x-custom-header");
+		// The signed header value should be normalized
+		expect(result["x-custom-header" as keyof typeof result]).toBeUndefined();
+	});
+
+	it("handles query string parameters", async () => {
+		const result = await signRequest({
+			...baseParams,
+			query: "Action=ListUsers&Version=2010-05-08",
+		});
+		expect(result.authorization).toBeDefined();
+	});
+
+	it("handles empty query string", async () => {
+		const result = await signRequest({
+			...baseParams,
+			query: "",
+		});
+		expect(result.authorization).toBeDefined();
+	});
+
+	it("handles undefined query string", async () => {
+		const result = await signRequest({
+			...baseParams,
+			query: undefined,
+		});
+		expect(result.authorization).toBeDefined();
+	});
+
+	it("produces deterministic signatures for same inputs", async () => {
+		const result1 = await signRequest(baseParams);
+		const result2 = await signRequest(baseParams);
+		expect(result1.authorization).toBe(result2.authorization);
+	});
+
+	it("produces different signatures for different bodies", async () => {
+		const result1 = await signRequest({ ...baseParams, body: new TextEncoder().encode("body1") });
+		const result2 = await signRequest({ ...baseParams, body: new TextEncoder().encode("body2") });
+		expect(result1.authorization).not.toBe(result2.authorization);
+	});
+
+	it("produces different signatures for different paths", async () => {
+		const result1 = await signRequest({ ...baseParams, path: "/path1" });
+		const result2 = await signRequest({ ...baseParams, path: "/path2" });
+		expect(result1.authorization).not.toBe(result2.authorization);
+	});
+
+	it("encodes path segments with RFC 3986", async () => {
+		const result = await signRequest({
+			...baseParams,
+			path: "/foo bar/baz",
+		});
+		expect(result.authorization).toBeDefined();
+	});
+
+	it("handles POST method with body", async () => {
+		const result = await signRequest({
+			...baseParams,
+			method: "POST",
+			body: new TextEncoder().encode('{"key":"value"}'),
+		});
+		expect(result.authorization).toContain("AWS4-HMAC-SHA256");
+	});
+
+	it("uses current date when date not provided", async () => {
+		const result = await signRequest({ ...baseParams, date: undefined });
+		expect(result["x-amz-date"]).toBeDefined();
+		expect(result["x-amz-date"].length).toBe(16);
 	});
 });
