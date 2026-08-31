@@ -18,6 +18,7 @@ import { accountDisplayLabel, accountsForProvider, buildAccountInventory } from 
 import type { AgentSession } from "../../../session/agent-session";
 import type { OAuthAccountIdentity } from "../../../session/auth-storage";
 import { limitMatchesActiveAccount } from "../../../slash-commands/helpers/active-oauth-account";
+import { AUTO_THINKING } from "../../../thinking";
 import { type ActiveRepoContext, resolveActiveRepoContextSync } from "../../../utils/active-repo-context";
 import * as git from "../../../utils/git";
 import { type LaunchFactsUpdate, recordLaunchFacts } from "../../launch-facts";
@@ -1242,11 +1243,12 @@ export class StatusLineComponent implements Component {
 	/**
 	 * Keep what this row knows for the next launch of this project.
 	 *
-	 * Three of the things the launch card draws cannot be computed inside its budget — a model's
-	 * display name needs the catalog, the dirty marker needs a `git status` subprocess, and the
-	 * gauge needs a prompt that has not been assembled — and this method runs at the one moment all
-	 * three are resolved and agree with each other. They are written together so the next card
-	 * paints one consistent row rather than a mix of two sessions.
+	 * Four of the things the launch card draws cannot be computed inside its budget — a model's
+	 * display name needs the catalog, the dirty marker needs a `git status` subprocess, the gauge
+	 * needs a prompt that has not been assembled, and the effort is clamped to what the resolved
+	 * model supports — and this method runs at the one moment all four are resolved and agree with
+	 * each other. They are written together so the next card paints one consistent row rather than
+	 * a mix of two sessions.
 	 *
 	 * WHAT EACH ONE REQUIRES.
 	 *
@@ -1301,6 +1303,22 @@ export class StatusLineComponent implements Component {
 		if (model?.name && isDefaultRole) {
 			update.modelName = model.name;
 			if (model.provider) update.providerName = model.provider;
+		}
+
+		// The effort is model-scoped for the same reason the gauge is: it is clamped to the rungs
+		// this model supports, so the level one model ran at states nothing about another's. Sent as
+		// an explicit `null` when the row printed no tail, so a model whose thinking was turned off
+		// stops the next launch printing the rung it used to run at.
+		if (isDefaultRole && model) {
+			const supportsThinking = Boolean(model.thinking);
+			const level = this.session.state.thinkingLevel ?? ThinkingLevel.Off;
+			if (!supportsThinking) {
+				update.thinking = null;
+			} else if (this.session.isAutoThinking) {
+				update.thinking = AUTO_THINKING;
+			} else {
+				update.thinking = level === ThinkingLevel.Off ? null : level;
+			}
 		}
 
 		if (this.#cachedGitStatus) update.gitStatus = this.#cachedGitStatus;

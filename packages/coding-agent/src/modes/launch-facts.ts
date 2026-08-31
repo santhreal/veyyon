@@ -2,10 +2,11 @@
  * What the last launch of this project knew, so the card can state it instead of a placeholder.
  *
  * THE PROBLEM THIS SOLVES. The launch card paints at about 48ms and the session finishes booting at
- * about 650ms. Three of the things on that card cannot be computed inside the first budget at any
+ * about 650ms. Four of the things on that card cannot be computed inside the first budget at any
  * price: a model's display name needs the catalog, the working tree's dirty flag needs a `git
- * status` that costs 130ms on a repository this size, and the context gauge needs a prompt that has
- * not been assembled yet. Rendered as placeholders they were not merely blank — the hero announced
+ * status` that costs 130ms on a repository this size, the context gauge needs a prompt that has not
+ * been assembled yet, and the effort the row prints is resolved against the model and clamped to
+ * what that model supports. Rendered as placeholders they were not merely blank — the hero announced
  * `no model yet · /login` to an operator who is logged in, and the status row printed a raw
  * `provider/vendor/model-id` so long that the justifier dropped the profile segment to fit it. Both
  * corrected themselves 600ms later, which is the repaint a person actually notices.
@@ -29,13 +30,24 @@
  */
 
 import { readFileSync } from "node:fs";
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import { atomicWriteJson } from "@veyyon/utils/atomic-write";
 import { getLaunchFactsCachePath, getProjectDir, VERSION } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { settings } from "../config/settings-instance";
+import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../thinking";
 import type { GitStatusSummary } from "../utils/git";
+
+/**
+ * The levels a recorded effort may hold, from the two modules that own them.
+ *
+ * The row prints this value through a theme table, so a damaged file must not be able to put text
+ * of its own choosing on the status row: an unknown string is discarded like any other invalid
+ * fact. Derived from the ladder rather than listed, so a new rung needs no edit here.
+ */
+const RECORDABLE_THINKING: ReadonlySet<string> = new Set<string>([...Object.values(ThinkingLevel), AUTO_THINKING]);
 
 /**
  * The file on disk: one entry per project, so a launch in one project does not erase what another
@@ -69,6 +81,8 @@ interface ProjectFacts {
 	modelName?: string;
 	providerName?: string;
 	contextPercent?: number;
+	/** The effort the row printed, concrete or `auto`; absent when it printed none. */
+	thinking?: string;
 	/** Milliseconds since the epoch, used only to decide which entry leaves when the map is full. */
 	recordedAt: number;
 }
@@ -91,6 +105,13 @@ export interface LaunchFacts {
 	modelName: string | null;
 	providerName: string | null;
 	contextPercent: number | null;
+	/**
+	 * The effort the last launch of this model ran at, or null when it ran without one.
+	 *
+	 * Model-scoped like the name and the gauge: an effort is resolved against the model and clamped
+	 * to what that model supports, so the level one model ran at states nothing about the next.
+	 */
+	thinking: ConfiguredThinkingLevel | null;
 }
 
 /** What a caller can contribute; anything omitted keeps its recorded value. */
@@ -99,9 +120,23 @@ export interface LaunchFactsUpdate {
 	modelName?: string;
 	providerName?: string;
 	contextPercent?: number;
+	/**
+	 * The effort, or null to record that there was none.
+	 *
+	 * The only fact with an explicit clear. The others describe something that exists and is merely
+	 * unresolved yet, so omitting them keeps the recorded value; an effort turned off is a fact in
+	 * itself, and carrying the previous one forward would print `@high` on a row that has none.
+	 */
+	thinking?: ConfiguredThinkingLevel | null;
 }
 
-const NO_FACTS: LaunchFacts = { gitStatus: null, modelName: null, providerName: null, contextPercent: null };
+const NO_FACTS: LaunchFacts = {
+	gitStatus: null,
+	modelName: null,
+	providerName: null,
+	contextPercent: null,
+	thinking: null,
+};
 
 /**
  * The release and the project.
@@ -208,6 +243,10 @@ export function readLaunchFacts(): LaunchFacts {
 			modelValid && typeof entry.contextPercent === "number" && Number.isFinite(entry.contextPercent)
 				? clampPercent(entry.contextPercent)
 				: null,
+		thinking:
+			modelValid && typeof entry.thinking === "string" && RECORDABLE_THINKING.has(entry.thinking)
+				? (entry.thinking as ConfiguredThinkingLevel)
+				: null,
 	};
 }
 
@@ -270,6 +309,7 @@ export function recordLaunchFacts(update: LaunchFactsUpdate): Promise<void> {
 					...(typeof recorded.modelName === "string" ? { modelName: recorded.modelName } : {}),
 					...(typeof recorded.providerName === "string" ? { providerName: recorded.providerName } : {}),
 					...(typeof recorded.contextPercent === "number" ? { contextPercent: recorded.contextPercent } : {}),
+					...(typeof recorded.thinking === "string" ? { thinking: recorded.thinking } : {}),
 				}
 			: {}),
 	};
@@ -278,6 +318,13 @@ export function recordLaunchFacts(update: LaunchFactsUpdate): Promise<void> {
 	if (update.providerName !== undefined && update.providerName.length > 0) next.providerName = update.providerName;
 	if (update.contextPercent !== undefined && Number.isFinite(update.contextPercent)) {
 		next.contextPercent = clampPercent(Math.round(update.contextPercent));
+	}
+	// The one fact a caller can erase: `null` states that the row printed no effort, which is a
+	// different answer from not having resolved one yet.
+	if (update.thinking === null) {
+		delete next.thinking;
+	} else if (update.thinking !== undefined) {
+		next.thinking = update.thinking;
 	}
 
 	// `recordedAt` moves on every call, so it is left out of the comparison: a redraw that changed

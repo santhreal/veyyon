@@ -21,6 +21,7 @@
  * these names. `factsFromSession` is typed against the real class, so a rename
  * fails the type check rather than these suites.
  */
+import type { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 
 const CONTEXT_WINDOW = 128_000;
@@ -91,6 +92,12 @@ export interface StubSessionOptions {
 	advisorActive?: boolean;
 	fastMode?: boolean;
 	streaming?: boolean;
+	/** Whether the model has a controllable effort at all; without one the row prints no tail. */
+	modelThinking?: boolean;
+	/** The rung the session settled on, which is what the row prints and the recorder keeps. */
+	thinkingLevel?: ThinkingLevel;
+	/** `auto`: a mode, not a rung. The row prints the pending marker until a turn is classified. */
+	autoThinking?: boolean;
 	/** The live obfuscator, whose `liveSecrets()` the secrets chip counts. */
 	obfuscator?: unknown;
 }
@@ -115,6 +122,7 @@ export function statusLineSessionParts(options: StubSessionOptions = {}): Record
 		name: options.modelName ?? id,
 		contextWindow,
 		...(options.modelProvider === undefined ? {} : { provider: options.modelProvider }),
+		...(options.modelThinking ? { thinking: { defaultLevel: options.thinkingLevel } } : {}),
 	};
 	const messages = options.messages ?? [];
 	const usage = options.usage ? { ...RESTING_USAGE, ...options.usage } : RESTING_USAGE;
@@ -132,7 +140,7 @@ export function statusLineSessionParts(options: StubSessionOptions = {}): Record
 		agent: { state: { tools: [] } },
 		skills: [],
 		getContextUsage: () => contextUsage,
-		state: { messages, model },
+		state: { messages, model, thinkingLevel: options.thinkingLevel },
 		sessionManager: {
 			getCwd: options.cwd ?? (() => "/repo"),
 			getSessionId: () => undefined,
@@ -149,7 +157,7 @@ export function statusLineSessionParts(options: StubSessionOptions = {}): Record
 		isAdvisorActive: () => options.advisorActive ?? false,
 		isApprovalBypassed: () => options.approvalBypassed ?? false,
 		isFastModeActive: () => options.fastMode ?? false,
-		isAutoThinking: false,
+		isAutoThinking: options.autoThinking ?? false,
 		isStreaming: options.streaming ?? false,
 		autoResolvedThinkingLevel: () => undefined,
 		configuredThinkingLevel: () => undefined,
