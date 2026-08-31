@@ -400,7 +400,6 @@ export const repoScriptTests = [
 	"website/tools/gen-changelog.test.ts",
 	"scripts/tracked-but-deleted-paths.test.ts",
 	"website/tools/undocumented-release-ratchet.test.ts",
-	"website/tools/gen-blog.test.ts",
 	"website/tools/nav.test.ts",
 	"scripts/demos/lib/png.test.ts",
 	"scripts/demos/lib/ansi-grid.test.ts",

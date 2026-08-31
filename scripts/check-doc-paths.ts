@@ -261,12 +261,8 @@ function resolvesFor(rootDir: string, relFile: string, target: string): boolean 
  * gone and the entry with it. It also carried
  * `docs/handbook/src/context/context-files.md:151:docs/setup.md`, which was only the filler path in an
  * example of trailing-punctuation trimming; the example now uses
- * `notes/setup.md`, which names no source root, so it needs no entry at all. The
- * last two to go were the illustrative
- * `packages/server/src/database/connection.ts` in the argot blog post, which the
- * post now shows only inside its TOML dictionary example, and a fenced block is
- * not where this gate reads. Every remaining entry is one of the three kinds
- * above.
+ * `notes/setup.md`, which names no source root, so it needs no entry at all. Every
+ * remaining entry is one of the three kinds above.
  *
  * Adding to this list is deliberately awkward: the exact line number is part of
  * the key, so an entry stops matching the moment the doc is edited around it, and
