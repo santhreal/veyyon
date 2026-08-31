@@ -33,12 +33,12 @@ import {
 	getBuiltinThemeNames,
 	getBuiltinThemes,
 	hasBuiltinTheme,
-} from "@veyyon/coding-agent/modes/theme/builtin-themes";
-import { DEFAULT_THEME_NAMES, getDefaultTheme, getDefaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
+} from "@veyyon/coding-agent/theme/builtin-themes";
+import { DEFAULT_THEME_NAMES, getDefaultTheme, getDefaultThemes } from "@veyyon/coding-agent/theme/defaults";
 
 /** The shipped theme files, read from disk, so a new one joins this suite by existing. */
 const SHIPPED = fs
-	.readdirSync(path.join(import.meta.dir, "..", "..", "..", "src", "modes", "theme", "defaults"))
+	.readdirSync(path.join(import.meta.dir, "..", "..", "..", "src", "theme", "defaults"))
 	.filter(file => file.endsWith(".json"))
 	.map(file => file.slice(0, -5))
 	.sort();
