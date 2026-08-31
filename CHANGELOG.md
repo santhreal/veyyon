@@ -8,6 +8,12 @@
 
 - `/rephrase` asks for the reply on screen again in plainer prose, and refuses unless the conversation is resting on a finished reply.
 - The subagent dashboard bands the roster row under the pointer, fading it in and out rather than answering a pointer only on a terminable row and only by swapping in its terminate affordance.
+- `/autoswarm` opens a setup console for the goal, breadth, attempts and certification, then runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
+- Autoresearch and autoswarm have handbook pages.
+- Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
+- The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
+- `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
+- Compaction can truncate the middle of an oversized text, keeping both edges, in any message role — including the roles that store their model-visible text outside `content`, such as a shell cell's `output`, a summary's `summary` and a file mention's `files[i].content`.
 - `SCROLLBAR_RESERVE_COLS` names the columns a scroll view's bar takes, for a caller that must size its rows before the view that will hold them exists.
 - `SettingsListTheme.drillIn` sets the glyph a row that opens a submenu carries in its reserved last cell, so a drill-in row is distinguishable from a value row without reading its colour; omitting it leaves the cell blank.
 - `SettingsDescriptionMode` names the three descriptions a settings list can carry: `footnote`, `reserved` (the default) and `none`.
@@ -15,17 +21,11 @@
 - `SelectList.naturalWidth(rowWidth)` reports the row width at which nothing in the list is truncated, so a host card can size itself to its content.
 - `SelectListTheme.searchField` and `SettingsListTheme.searchField` let a host draw the list's search status row, so a product with its own search field shows that field instead of the built-in `Search: ` text; omitting them keeps the built-in text.
 - `SettingsListTheme.emptyRow` lets a host paint the row the list shows when nothing is left after the filter, so a product with its own empty-state voice uses it instead of the list's keyboard-hint style; omitting it keeps the hint style.
+- `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
 - `formatMore(label, count)` states a withheld count as `3 more lines`, pluralised, with a non-finite count floored to zero.
 - `countedNounPattern(label)` builds the pattern that reads a count back out of a sentence `formatCount` wrote, matching the singular and the plural spelling, so a writer and a reader of the same count share one definition.
 - `IMAGE_MIME_BY_EXTENSION` and `imageMimeForPath(path)` state the image media type a file name carries, for a caller that holds a path and no bytes.
 - `agreeWith("is/are", count)` states the word that agrees with a count — verb, pronoun or demonstrative — from a reviewed pair spelled `singular/plural`, with zero and a non-finite count taking the plural.
-- `/autoswarm` opens a setup console for the goal, breadth, attempts and certification, then runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
-- Autoresearch and autoswarm have handbook pages.
-- Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
-- The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
-- `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
-- Compaction can truncate the middle of an oversized text, keeping both edges, in any message role — including the roles that store their model-visible text outside `content`, such as a shell cell's `output`, a summary's `summary` and a file mention's `files[i].content`.
-- `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
 - `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
 
 ### Changed
@@ -54,10 +54,6 @@
 - The subagent dashboard marks the view it is showing with the same cursor glyph the roster, the settings sidebar and every picker use, instead of bracketing the active tab's label.
 - Every surface that filters draws the same search field — the search glyph in the theme's accent, the terminal's own caret in a card's band, and a live count of what survived the query — instead of five spellings, including the `Search:` label with a painted caret that the session tree, the extension pane, the hook picker, the OAuth picker, the message picker and every list's own status row, onboarding's included, each drew for themselves.
 - The advisor configuration overlay's tool checkboxes come from the active symbol preset instead of the literal `[x]` and `[ ]`.
-- `/autoswarm` opens a setup console for the goal, breadth, attempts and certification, then runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
-- Autoresearch and autoswarm have handbook pages.
-- Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
-- The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 - An extension's `ui.custom` overlay can ask for `fullscreen: true`, which gives it the alternate screen and mouse reporting the built-in modals use.
 - Compaction drops the images the kept history still carries, since the summary states what was in them; `compaction.keepImages` keeps them for a session whose subject is the picture.
 - Every measured duration and byte size on screen is spelled by one owner, so a sub-second latency reads `420ms` on the turn receipt and in the model picker instead of `0.4s`, and a saved screenshot reads `2.8MB` instead of `2867.20 KB`.
@@ -123,7 +119,6 @@
 - The autoswarm setup console marks its focused field with the same cursor glyph the rest of the product uses and puts the terminal's own caret in the field it is editing, instead of an accent chevron and a painted block that never blinked.
 - Every resource-limit surface counts one thing as one: `/cpu-limit` at both scopes, its palette row, the limiter's status line, the spawn refusal and the kill notices say `1 core` and `1 process` rather than `1 core(s)` and `1 process(es)`.
 - The `/cpu-limit` report puts one fact on each line: the session cap, what enforcement is doing, the machine-wide cap, the kernel's verdict on it, how it bounds this session and what a lift leaves behind were one wrapped paragraph.
-- `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
 - Every surface with nothing to show says so in one voice: the account manager, session, tree, message, OAuth, model and hook pickers, the move overlay, the history search, the plugin and extension panes, the reset picker, the subagent comms log, the transcript viewer and the settings card all draw the same row at the same indent in the same weight, instead of five greys, a stray info glyph, and a sentence that moved sideways as the list emptied.
 - The inline image width, height and live-image budget are on the `/settings` appearance tab under Display, shown only on a terminal that draws images with inline images switched on.
 - A turn too large for compaction to summarize is truncated in the middle, keeping the head and the tail, instead of pausing automatic maintenance; the removed text is written to a recovery artifact the notice names. A session whose newest turn was a single oversized message could previously make no progress, and rewinding the tree did not clear it.
@@ -163,7 +158,6 @@
 - A sixel-capable terminal now renders inline images on Linux and macOS: the terminal is asked at startup instead of being matched against a list that named no sixel terminal at all, so images no longer silently fail to appear outside kitty, ghostty, wezterm, iTerm2 and Warp.
 - An inline image whose top has scrolled above the viewport, or which is taller than the terminal, is left undrawn until a repaint can reach its origin, instead of being stamped at full size over the top of the live transcript.
 - An inline image is handed pixels at exactly the cell box the terminal will scale it into, so the terminal's own scaler no longer smears a downscaled screenshot; the transmitted payload shrinks by more than half at the same size on screen.
-- `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
 - An `Editor` with no `onSubmit` consumer leaves the draft alone when Enter arrives, instead of clearing it, so a submit typed before anything is listening cannot destroy what was typed.
 
 ## [1.3.0] - 2026-08-28

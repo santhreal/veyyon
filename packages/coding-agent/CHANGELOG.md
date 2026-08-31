@@ -6,6 +6,11 @@
 
 - `/rephrase` asks for the reply on screen again in plainer prose, and refuses unless the conversation is resting on a finished reply.
 - The subagent dashboard bands the roster row under the pointer, fading it in and out rather than answering a pointer only on a terminable row and only by swapping in its terminate affordance.
+- `/autoswarm` opens a setup console for the goal, breadth, attempts and certification, then runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
+- Autoresearch and autoswarm have handbook pages.
+- Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
+- The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
+- `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
 
 ### Changed
 
@@ -33,10 +38,6 @@
 - The subagent dashboard marks the view it is showing with the same cursor glyph the roster, the settings sidebar and every picker use, instead of bracketing the active tab's label.
 - Every surface that filters draws the same search field — the search glyph in the theme's accent, the terminal's own caret in a card's band, and a live count of what survived the query — instead of five spellings, including the `Search:` label with a painted caret that the session tree, the extension pane, the hook picker, the OAuth picker, the message picker and every list's own status row, onboarding's included, each drew for themselves.
 - The advisor configuration overlay's tool checkboxes come from the active symbol preset instead of the literal `[x]` and `[ ]`.
-- `/autoswarm` opens a setup console for the goal, breadth, attempts and certification, then runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
-- Autoresearch and autoswarm have handbook pages.
-- Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
-- The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 - An extension's `ui.custom` overlay can ask for `fullscreen: true`, which gives it the alternate screen and mouse reporting the built-in modals use.
 - Compaction drops the images the kept history still carries, since the summary states what was in them; `compaction.keepImages` keeps them for a session whose subject is the picture.
 - Every measured duration and byte size on screen is spelled by one owner, so a sub-second latency reads `420ms` on the turn receipt and in the model picker instead of `0.4s`, and a saved screenshot reads `2.8MB` instead of `2867.20 KB`.
@@ -60,7 +61,6 @@
 - The autoswarm setup console marks its focused field with the same cursor glyph the rest of the product uses and puts the terminal's own caret in the field it is editing, instead of an accent chevron and a painted block that never blinked.
 - Every resource-limit surface counts one thing as one: `/cpu-limit` at both scopes, its palette row, the limiter's status line, the spawn refusal and the kill notices say `1 core` and `1 process` rather than `1 core(s)` and `1 process(es)`.
 - The `/cpu-limit` report puts one fact on each line: the session cap, what enforcement is doing, the machine-wide cap, the kernel's verdict on it, how it bounds this session and what a lift leaves behind were one wrapped paragraph.
-- `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
 - Every surface with nothing to show says so in one voice: the account manager, session, tree, message, OAuth, model and hook pickers, the move overlay, the history search, the plugin and extension panes, the reset picker, the subagent comms log, the transcript viewer and the settings card all draw the same row at the same indent in the same weight, instead of five greys, a stray info glyph, and a sentence that moved sideways as the list emptied.
 - The inline image width, height and live-image budget are on the `/settings` appearance tab under Display, shown only on a terminal that draws images with inline images switched on.
 
