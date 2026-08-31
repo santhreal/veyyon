@@ -353,12 +353,7 @@ export const TODO_PREVIEW_MARKERS: Record<TodoStatus, string> = {
 	abandoned: "[-]",
 };
 
-function formatSummaryBody(
-	phases: TodoPhase[],
-	errors: string[],
-	readOnly: boolean,
-	params?: TodoParams,
-): string {
+function formatSummaryBody(phases: TodoPhase[], errors: string[], readOnly: boolean, params?: TodoParams): string {
 	const tasks = phases.flatMap(phase => phase.tasks);
 	const errorSummary =
 		errors.length > 0 ? `Errors: ${boundedTodoPreviewText(errors.join("; "), TODO_TOTAL_PREVIEW_WIDTH)}` : undefined;

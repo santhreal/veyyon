@@ -41,9 +41,7 @@ function isRateableAssistantTurn(message: MaybeAssistantMessage | undefined): me
 	);
 }
 
-function getLastRateableAssistantMessage(
-	messages: ReadonlyArray<MaybeAssistantMessage>,
-): AssistantLikeMessage | null {
+function getLastRateableAssistantMessage(messages: ReadonlyArray<MaybeAssistantMessage>): AssistantLikeMessage | null {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const message = messages[i];
 		if (isRateableAssistantTurn(message)) {

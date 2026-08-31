@@ -827,10 +827,7 @@ export interface LspWritethroughBatchState {
 	options: ResolvedWritethroughOptions;
 }
 export const writethroughBatches = new Map<string, LspWritethroughBatchState>();
-function getOrCreateWritethroughBatch(
-	id: string,
-	options: ResolvedWritethroughOptions,
-): LspWritethroughBatchState {
+function getOrCreateWritethroughBatch(id: string, options: ResolvedWritethroughOptions): LspWritethroughBatchState {
 	const existing = writethroughBatches.get(id);
 	if (existing) {
 		existing.options.enableFormat ||= options.enableFormat;

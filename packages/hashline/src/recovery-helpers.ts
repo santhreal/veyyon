@@ -59,10 +59,7 @@ export interface AnchorNeighbors {
 	after: number | undefined;
 }
 
-function computeAnchorNeighbors(
-	anchorLines: ReadonlySet<number>,
-	lineCount: number,
-): Map<number, AnchorNeighbors> {
+function computeAnchorNeighbors(anchorLines: ReadonlySet<number>, lineCount: number): Map<number, AnchorNeighbors> {
 	const sorted = Array.from(anchorLines).sort((a, b) => a - b);
 	const neighbors = new Map<number, AnchorNeighbors>();
 	for (let i = 0; i < sorted.length; ) {
@@ -144,11 +141,7 @@ export interface RemappedEdits {
 	offset: number;
 }
 
-function remapEditsToCurrent(
-	previousText: string,
-	currentText: string,
-	edits: readonly Edit[],
-): RemappedEdits | null {
+function remapEditsToCurrent(previousText: string, currentText: string, edits: readonly Edit[]): RemappedEdits | null {
 	const lineMap = buildLineMap(previousText, currentText);
 	if (!validateRemappedAnchorContext(previousText, currentText, lineMap, edits)) return null;
 	const offsets: number[] = [];

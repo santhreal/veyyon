@@ -2262,9 +2262,7 @@ export type CursorRootPromptContentPart =
 	| { type: "text"; text: string }
 	| { type: "image"; image: string; mediaType: string };
 
-function buildCursorRootPromptContent(
-	content: string | (TextContent | ImageContent)[],
-): CursorRootPromptContentPart[] {
+function buildCursorRootPromptContent(content: string | (TextContent | ImageContent)[]): CursorRootPromptContentPart[] {
 	if (typeof content === "string") {
 		const text = content.trim();
 		return text ? [{ type: "text", text }] : [];
@@ -2570,11 +2568,7 @@ function extractImages(content: (TextContent | ImageContent)[]) {
  * History blobs are out of scope on purpose. They carry earlier turns as the caller wrote them,
  * and a caller that puts its own instructions in a message is not this function's business.
  */
-function countInstructionCopies(
-	requestBytes: Uint8Array,
-	headBlobs: readonly string[],
-	instructions: string,
-): number {
+function countInstructionCopies(requestBytes: Uint8Array, headBlobs: readonly string[], instructions: string): number {
 	const decoder = new TextDecoder();
 	const escaped = JSON.stringify(instructions).slice(1, -1);
 	const countIn = (text: string): number =>

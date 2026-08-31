@@ -51,10 +51,7 @@ export async function checkPythonKernelAvailability(
 	return result;
 }
 
-async function probePythonKernelAvailability(
-	cwd: string,
-	interpreter?: string,
-): Promise<PythonKernelAvailability> {
+async function probePythonKernelAvailability(cwd: string, interpreter?: string): Promise<PythonKernelAvailability> {
 	try {
 		const settings = await Settings.init();
 		const { env } = settings.getShellConfig();

@@ -293,10 +293,7 @@ function indexTodoTasks(phases: readonly TodoPhase[]): Map<string, IndexedTodoTa
 	return indexed;
 }
 
-function getTaskTransitions(
-	previous: readonly TodoPhase[],
-	updated: readonly TodoPhase[],
-): TodoTaskTransition[] {
+function getTaskTransitions(previous: readonly TodoPhase[], updated: readonly TodoPhase[]): TodoTaskTransition[] {
 	const before = indexTodoTasks(previous);
 	const after = indexTodoTasks(updated);
 	const transitions: TodoTaskTransition[] = [];

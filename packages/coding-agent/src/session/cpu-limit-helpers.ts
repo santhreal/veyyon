@@ -120,10 +120,7 @@ export function limitFileValue(value: number): string {
 	return value > 0 ? String(Math.floor(value)) : "max";
 }
 
-async function tryDirectParent(
-	env: CpuLimitEnvironment,
-	dir: string,
-): Promise<CgroupControllerCapabilities | null> {
+async function tryDirectParent(env: CpuLimitEnvironment, dir: string): Promise<CgroupControllerCapabilities | null> {
 	const controllers = (await readOptional(path.join(dir, "cgroup.controllers")))?.split(/\s+/) ?? [];
 	if (!controllers.includes("cpu")) return null;
 	const probeChild = path.join(dir, `.veyyon-cpu-probe-${env.uid}`);

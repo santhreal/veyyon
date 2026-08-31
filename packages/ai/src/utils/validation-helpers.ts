@@ -82,10 +82,7 @@ function tryCoerceBoolean(value: unknown, expectedTypes: string[]): { value: unk
 	}
 }
 
-function tryCoerceBooleanToNumber(
-	value: unknown,
-	expectedTypes: string[],
-): { value: unknown; changed: boolean } {
+function tryCoerceBooleanToNumber(value: unknown, expectedTypes: string[]): { value: unknown; changed: boolean } {
 	if (!expectedTypes.includes("number") && !expectedTypes.includes("integer")) {
 		return { value, changed: false };
 	}

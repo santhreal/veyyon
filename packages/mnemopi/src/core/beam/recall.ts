@@ -612,7 +612,12 @@ function scoreCandidate(
 	return result;
 }
 
-export function explain(tierLabel: TierLabel, signals: CandidateSignals, lexical: number, temporalScore: number): string {
+export function explain(
+	tierLabel: TierLabel,
+	signals: CandidateSignals,
+	lexical: number,
+	temporalScore: number,
+): string {
 	const parts: string[] = [tierLabel, signals.candidateSource];
 	if (lexical > 0) parts.push(`keyword=${round4(lexical)}`);
 	if (signals.dense > 0) parts.push(`dense=${round4(signals.dense)}`);

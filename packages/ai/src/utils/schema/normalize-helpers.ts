@@ -368,9 +368,7 @@ function narrowEnumToType(schema: Record<string, unknown>, type: string): boolea
 	return true;
 }
 
-function inferStrictPrimitiveTypeFromEnumOrConst(
-	node: Record<string, unknown>,
-): StrictPrimitiveType | undefined {
+function inferStrictPrimitiveTypeFromEnumOrConst(node: Record<string, unknown>): StrictPrimitiveType | undefined {
 	const values: unknown[] = Array.isArray(node.enum) ? node.enum : Object.hasOwn(node, "const") ? [node.const] : [];
 	if (values.length === 0) return undefined;
 	let inferred: StrictPrimitiveType | undefined;
@@ -389,10 +387,7 @@ function isUnrepresentableStrictBranch(value: unknown): boolean {
 	return typeof value === "boolean" || (isRecord(value) && isJsonObjectEmpty(value));
 }
 
-function hasUnrepresentableStrictObjectMap(
-	schema: Record<string, unknown>,
-	epoch: number = epochNext(),
-): boolean {
+function hasUnrepresentableStrictObjectMap(schema: Record<string, unknown>, epoch: number = epochNext()): boolean {
 	if (!once(schema, epoch)) return false;
 
 	let hasPatternProperties = false;

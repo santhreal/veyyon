@@ -652,11 +652,7 @@ export async function primaryRootFromRepository(repository: GitRepository): Prom
 	return repository.repoRoot;
 }
 
-function resolveRepoFromEntrySync(
-	repoRoot: string,
-	gitEntryPath: string,
-	entryType: EntryType,
-): GitRepository | null {
+function resolveRepoFromEntrySync(repoRoot: string, gitEntryPath: string, entryType: EntryType): GitRepository | null {
 	const gitDir = resolveGitDirSync(gitEntryPath, entryType);
 	if (!gitDir) return null;
 	return {

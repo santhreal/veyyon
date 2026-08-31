@@ -343,11 +343,7 @@ function findReplacementGroup(edits: readonly AppliedEdit[], start: number): Rep
 	};
 }
 
-function findDuplicateSuffix(
-	group: ReplacementGroup,
-	fileLines: readonly string[],
-	delta: DelimiterBalance,
-): number {
+function findDuplicateSuffix(group: ReplacementGroup, fileLines: readonly string[], delta: DelimiterBalance): number {
 	if (balanceIsZero(delta)) return 0;
 	const { payload, endLine } = group;
 	const maxK = Math.min(payload.length, fileLines.length - endLine);
@@ -365,11 +361,7 @@ function findDuplicateSuffix(
 	return 0;
 }
 
-function findDuplicatePrefix(
-	group: ReplacementGroup,
-	fileLines: readonly string[],
-	delta: DelimiterBalance,
-): number {
+function findDuplicatePrefix(group: ReplacementGroup, fileLines: readonly string[], delta: DelimiterBalance): number {
 	if (balanceIsZero(delta)) return 0;
 	const { payload, startLine } = group;
 	const maxJ = Math.min(payload.length, startLine - 1);
@@ -652,11 +644,7 @@ function findOneSidedBoundaryEcho(
 	return { side, count };
 }
 
-function describeOneSidedEchoRepair(
-	group: ReplacementGroup,
-	side: "leading" | "trailing",
-	count: number,
-): string {
+function describeOneSidedEchoRepair(group: ReplacementGroup, side: "leading" | "trailing", count: number): string {
 	const where = side === "leading" ? "above" : "below";
 	return (
 		`Auto-repaired a replacement boundary echo at line ${group.startLine}: ` +

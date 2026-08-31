@@ -65,10 +65,7 @@ function endToolCallBlock(stream: AssistantMessageEventStream, output: Assistant
 	stream.push({ type: "toolcall_end", contentIndex: index, toolCall, partial: output });
 }
 
-function mapDoneReason(
-	doneReason: string | undefined,
-	output: AssistantMessage,
-): AssistantMessage["stopReason"] {
+function mapDoneReason(doneReason: string | undefined, output: AssistantMessage): AssistantMessage["stopReason"] {
 	if (doneReason === "length") {
 		return "length";
 	}

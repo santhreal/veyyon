@@ -36,10 +36,7 @@ async function generateCursorAuthParams(): Promise<CursorAuthParams> {
 	return { verifier, challenge, uuid, loginUrl };
 }
 
-async function pollCursorAuth(
-	uuid: string,
-	verifier: string,
-): Promise<{ accessToken: string; refreshToken: string }> {
+async function pollCursorAuth(uuid: string, verifier: string): Promise<{ accessToken: string; refreshToken: string }> {
 	let delay = POLL_BASE_DELAY;
 	let consecutiveErrors = 0;
 

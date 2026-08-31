@@ -175,12 +175,7 @@ function scanRangeSeparator(line: string, index: number, end: number): number | 
 	return cursor;
 }
 
-function scanHeaderRange(
-	line: string,
-	index = 0,
-	end = trimEndIndex(line),
-	allowSingle = false,
-): RangeScan | null {
+function scanHeaderRange(line: string, index = 0, end = trimEndIndex(line), allowSingle = false): RangeScan | null {
 	const numberStart = skipWhitespace(line, index, end);
 	const start = scanLineNumber(line, numberStart, end);
 	if (start === null) return null;

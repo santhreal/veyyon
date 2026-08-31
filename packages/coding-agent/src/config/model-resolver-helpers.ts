@@ -52,10 +52,7 @@ export interface ModelStringParseOptions extends ThinkingSuffixOptions {
 }
 export const MAX_THINKING_SUFFIX_OPTIONS: ThinkingSuffixOptions = { allowMaxSuffix: true, allowAutoAlias: true };
 
-function parseThinkingSuffix(
-	value: string,
-	options?: ThinkingSuffixOptions,
-): ConfiguredThinkingLevel | undefined {
+function parseThinkingSuffix(value: string, options?: ThinkingSuffixOptions): ConfiguredThinkingLevel | undefined {
 	const level = parseThinkingLevel(value);
 	if (level === ThinkingLevel.Max) return options?.allowMaxSuffix === true ? level : undefined;
 	if (level !== undefined) return level;

@@ -880,11 +880,7 @@ function applyTrailingNewlinePolicy(content: string, hadFinalNewline: boolean): 
 	}
 	return content.replace(/\n+$/u, "");
 }
-async function readExistingPatchFile(
-	fileSystem: FileSystem,
-	absolutePath: string,
-	path: string,
-): Promise<string> {
+async function readExistingPatchFile(fileSystem: FileSystem, absolutePath: string, path: string): Promise<string> {
 	try {
 		return await fileSystem.read(absolutePath);
 	} catch (error) {

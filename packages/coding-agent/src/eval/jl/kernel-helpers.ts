@@ -46,10 +46,7 @@ export async function checkJuliaKernelAvailability(
 	return result;
 }
 
-async function probeJuliaKernelAvailability(
-	cwd: string,
-	interpreter?: string,
-): Promise<JuliaKernelAvailability> {
+async function probeJuliaKernelAvailability(cwd: string, interpreter?: string): Promise<JuliaKernelAvailability> {
 	const { env: shellEnv } = (await Settings.init()).getShellConfig();
 	const baseEnv = filterEnv(shellEnv);
 	const runtimes = enumerateJuliaRuntimes(cwd, baseEnv, interpreter);

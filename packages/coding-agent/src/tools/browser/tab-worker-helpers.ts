@@ -314,9 +314,7 @@ export interface ClickTargetResolution {
 	firstProbeError: string | null;
 }
 
-async function resolveActionableQueryHandlerClickTarget(
-	handles: ElementHandle[],
-): Promise<ClickTargetResolution> {
+async function resolveActionableQueryHandlerClickTarget(handles: ElementHandle[]): Promise<ClickTargetResolution> {
 	const candidates: Array<{
 		handle: ElementHandle;
 		rect: { x: number; y: number; w: number; h: number };

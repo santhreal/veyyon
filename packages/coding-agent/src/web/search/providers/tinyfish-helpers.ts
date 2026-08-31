@@ -50,10 +50,7 @@ export function findApiKey(
 	return authStorage.getApiKey("tinyfish", sessionId, { signal });
 }
 
-async function callTinyFishSearch(
-	apiKey: string,
-	params: TinyFishSearchParams,
-): Promise<TinyFishSearchResponse> {
+async function callTinyFishSearch(apiKey: string, params: TinyFishSearchParams): Promise<TinyFishSearchResponse> {
 	return withHardTimeout(params.signal, async hardSignal => {
 		const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "TinyFish search");
 		const url = new URL(TINYFISH_SEARCH_URL);

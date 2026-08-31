@@ -76,12 +76,7 @@ export const BINARY_FILE_EXTENSIONS = new Set([
 	".zip",
 ]);
 
-function buildNonTextLocalResource(
-	url: InternalUrl,
-	filePath: string,
-	size: number,
-	reason: string,
-): InternalResource {
+function buildNonTextLocalResource(url: InternalUrl, filePath: string, size: number, reason: string): InternalResource {
 	const content = `[Cannot read binary local:// file '${url.href}' (${formatBytes(size)}): ${reason}. This resource is not text. Use a metadata/key-frame/video-specific workflow instead.]`;
 	return {
 		url: url.href,

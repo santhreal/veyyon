@@ -253,11 +253,7 @@ export function stripLiteLLMResellerUsageSuffix(name: string): string {
 	return cleaned.length > 0 ? cleaned : name;
 }
 
-function toLiteLLMDisplayName(
-	modelName: string | undefined,
-	referenceName: string | undefined,
-	id: string,
-): string {
+function toLiteLLMDisplayName(modelName: string | undefined, referenceName: string | undefined, id: string): string {
 	const cleanedModelName = modelName ? stripLiteLLMResellerUsageSuffix(modelName) : undefined;
 	if (cleanedModelName && cleanedModelName !== id) {
 		return cleanedModelName;

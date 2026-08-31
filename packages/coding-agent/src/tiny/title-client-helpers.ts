@@ -44,9 +44,7 @@ export function normalizeTinyTitleGenerateOptions(
 	return options;
 }
 
-function readTinyModelSetting(
-	path: "providers.tinyModelDevice" | "providers.tinyModelDtype",
-): string | undefined {
+function readTinyModelSetting(path: "providers.tinyModelDevice" | "providers.tinyModelDtype"): string | undefined {
 	try {
 		const value = settings.get(path);
 		return typeof value === "string" ? value : undefined;

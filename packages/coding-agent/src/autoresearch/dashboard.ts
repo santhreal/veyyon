@@ -228,12 +228,7 @@ function renderCollapsedLine(runtime: AutoresearchRuntime, state: ExperimentStat
 	return parts.join("");
 }
 
-function renderDashboardLines(
-	runtime: AutoresearchRuntime,
-	width: number,
-	theme: Theme,
-	maxRows: number,
-): string[] {
+function renderDashboardLines(runtime: AutoresearchRuntime, width: number, theme: Theme, maxRows: number): string[] {
 	const state = runtime.state;
 	if (state.results.length === 0) {
 		if (runtime.lastRunSummary) {

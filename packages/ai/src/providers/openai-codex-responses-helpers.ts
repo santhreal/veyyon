@@ -825,9 +825,7 @@ export function createCodexProviderSessionState(): CodexProviderSessionState {
 	return state;
 }
 
-function isCodexProviderSessionState(
-	state: ProviderSessionState | undefined,
-): state is CodexProviderSessionState {
+function isCodexProviderSessionState(state: ProviderSessionState | undefined): state is CodexProviderSessionState {
 	return (
 		state !== undefined &&
 		"webSocketSessions" in state &&

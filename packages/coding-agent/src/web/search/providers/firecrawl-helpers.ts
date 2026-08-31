@@ -61,10 +61,7 @@ export function buildRequestBody(params: FirecrawlSearchParams): Record<string, 
 	return body;
 }
 
-async function callFirecrawlSearch(
-	apiKey: string,
-	params: FirecrawlSearchParams,
-): Promise<FirecrawlSearchResponse> {
+async function callFirecrawlSearch(apiKey: string, params: FirecrawlSearchParams): Promise<FirecrawlSearchResponse> {
 	return withHardTimeout(params.signal, async hardSignal => {
 		const transform = resolveProviderTextTransform(params.resolveProviderTextTransform, "Firecrawl search");
 		const body = transformProviderPayload(buildRequestBody(params), transform, "Firecrawl search");

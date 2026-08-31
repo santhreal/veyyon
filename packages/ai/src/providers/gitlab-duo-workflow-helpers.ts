@@ -2229,9 +2229,7 @@ function renderGitLabDuoWorkflowChatMlToolCall(toolCall: GitLabDuoWorkflowReplay
 	return `<ran ${toolCall.name}>${args}</ran>`;
 }
 
-function buildGitLabDuoWorkflowConversationHistory(
-	messages: readonly Message[],
-): GitLabDuoWorkflowReplayMessage[] {
+function buildGitLabDuoWorkflowConversationHistory(messages: readonly Message[]): GitLabDuoWorkflowReplayMessage[] {
 	const history: GitLabDuoWorkflowReplayMessage[] = [];
 	for (let index = 0; index < messages.length; index++) {
 		const replayMessage = buildGitLabDuoWorkflowReplayMessage(messages[index]);
@@ -2240,9 +2238,7 @@ function buildGitLabDuoWorkflowConversationHistory(
 	return history;
 }
 
-function buildGitLabDuoWorkflowReplayMessage(
-	message: Message | undefined,
-): GitLabDuoWorkflowReplayMessage | undefined {
+function buildGitLabDuoWorkflowReplayMessage(message: Message | undefined): GitLabDuoWorkflowReplayMessage | undefined {
 	if (!message) return undefined;
 	if (message.role === "toolResult") {
 		const content = gitLabDuoWorkflowMessageContentToText(message);
@@ -2612,9 +2608,7 @@ function getGitLabDuoWorkflowLatestMessageType(chatLog: unknown[]): string | und
 	return undefined;
 }
 
-function extractGitLabDuoWorkflowAction(
-	event: Record<string, unknown>,
-): GitLabDuoWorkflowActionDescriptor | undefined {
+function extractGitLabDuoWorkflowAction(event: Record<string, unknown>): GitLabDuoWorkflowActionDescriptor | undefined {
 	const wrappedAction =
 		getRecord(event, "action") ?? getRecord(event, "workflowAction") ?? getRecord(event, "toolCall");
 	if (wrappedAction) {

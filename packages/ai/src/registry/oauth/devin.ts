@@ -2,11 +2,11 @@ import { DEVIN_AUTH_ENDPOINT, DEVIN_WEBAPP_URL } from "@veyyon/catalog/provider-
 import { decodeJwtPayload } from "@veyyon/utils/jwt";
 import * as AIError from "../../error";
 import { DEFAULT_CALLBACK_PATH, OAuthCallbackFlow } from "./callback-server";
+import type { DevinPKCEParams, FetchFunction } from "./devin-helpers";
+import { CALLBACK_PORT, FALLBACK_EXPIRES_MS, TOKEN_PATH } from "./devin-helpers";
 import { credentialExpiryFromJwtExp } from "./expiry";
 import { generatePKCE } from "./pkce";
 import type { OAuthController, OAuthCredentials } from "./types";
-import type { DevinPKCEParams, FetchFunction } from "./devin-helpers";
-import { CALLBACK_PORT, FALLBACK_EXPIRES_MS, TOKEN_PATH } from "./devin-helpers";
 
 export async function loginDevin(ctrl: OAuthController): Promise<OAuthCredentials> {
 	const flow = new DevinOAuthFlow(ctrl);

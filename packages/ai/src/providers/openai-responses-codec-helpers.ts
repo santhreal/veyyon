@@ -274,9 +274,7 @@ export function convertResponsesInputContent(
 	return normalizedContent.length > 0 ? normalizedContent : undefined;
 }
 
-function buildCustomToolWireNameMap(
-	tools: readonly Tool[] | undefined,
-): ReadonlyMap<string, string> | undefined {
+function buildCustomToolWireNameMap(tools: readonly Tool[] | undefined): ReadonlyMap<string, string> | undefined {
 	if (!tools?.length) return undefined;
 	const map = new Map<string, string>();
 	for (const tool of tools) {
@@ -285,10 +283,7 @@ function buildCustomToolWireNameMap(
 	return map.size > 0 ? map : undefined;
 }
 
-function resolveReplayCustomToolName(
-	wireName: string,
-	wireNameMap: ReadonlyMap<string, string> | undefined,
-): string {
+function resolveReplayCustomToolName(wireName: string, wireNameMap: ReadonlyMap<string, string> | undefined): string {
 	return wireNameMap?.get(wireName) ?? (wireName === "apply_patch" ? "edit" : wireName);
 }
 

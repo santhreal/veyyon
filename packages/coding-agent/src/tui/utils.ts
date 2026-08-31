@@ -3,6 +3,7 @@ import type { Theme, ThemeBg } from "../modes/theme/theme";
 import type { State } from "./types";
 
 import { hashBytes1, hashBytes4, hashBytes8, hashView } from "./utils-helpers";
+
 export * from "./utils-helpers";
 
 export class Hasher {

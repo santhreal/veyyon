@@ -646,10 +646,7 @@ export function parseArchivePathCandidates(filePath: string): ArchivePathCandida
 	return candidates.sort((left, right) => right.archivePath.length - left.archivePath.length);
 }
 
-function readZip64CentralDirectoryInfoSync(
-	bytes: Uint8Array,
-	eocdOffset: number,
-): ZipCentralDirectoryInfo | undefined {
+function readZip64CentralDirectoryInfoSync(bytes: Uint8Array, eocdOffset: number): ZipCentralDirectoryInfo | undefined {
 	const locatorOffset = eocdOffset - ZIP64_EOCD_LOCATOR_LENGTH;
 	if (locatorOffset < 0) return undefined;
 

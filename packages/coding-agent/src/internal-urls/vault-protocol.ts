@@ -510,9 +510,7 @@ function validateQueryPath(params: VaultParams, name: string): string | undefine
 	return value;
 }
 
-function buildObsidianCliInvocation(
-	parsed: Extract<ParsedVaultUrl, { kind: "file-op" | "vault-op" }>,
-): CliInvocation {
+function buildObsidianCliInvocation(parsed: Extract<ParsedVaultUrl, { kind: "file-op" | "vault-op" }>): CliInvocation {
 	if (parsed.kind === "file-op") {
 		const pathArg = `path=${parsed.relativePath}`;
 		switch (parsed.op) {

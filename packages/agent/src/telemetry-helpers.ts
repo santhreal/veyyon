@@ -394,9 +394,7 @@ export function summarizeTelemetryValue(value: unknown, depth = 0, seen?: Set<ob
 	return summary;
 }
 
-function summarizeTelemetryObjectKeys(
-	entries: readonly (readonly [string, unknown])[],
-): Record<string, unknown> {
+function summarizeTelemetryObjectKeys(entries: readonly (readonly [string, unknown])[]): Record<string, unknown> {
 	const keys = entries.slice(0, MAX_TELEMETRY_OBJECT_KEYS).map(([key]) => key);
 	return entries.length > MAX_TELEMETRY_OBJECT_KEYS
 		? { kind: "object", keys, telemetrySummary: { omittedKeys: entries.length - MAX_TELEMETRY_OBJECT_KEYS } }
@@ -809,11 +807,7 @@ export function mapStopReason(reason: StopReason | undefined): string | undefine
 	}
 }
 
-function applyTerminalStatus(
-	span: Span,
-	stopReason: StopReason | undefined,
-	errorMessage: string | undefined,
-): void {
+function applyTerminalStatus(span: Span, stopReason: StopReason | undefined, errorMessage: string | undefined): void {
 	if (stopReason === "error" || stopReason === "aborted") {
 		span.setAttribute(GenAIAttr.ErrorType, stopReason);
 		span.setStatus({ code: SpanStatusCode.ERROR, message: errorMessage ?? stopReason });
