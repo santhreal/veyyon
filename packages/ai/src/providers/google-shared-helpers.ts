@@ -104,7 +104,7 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 				for (const item of msg.content) {
 					if (item.type === "text") {
 						const text = item.text.toWellFormed();
-						if (text.trim().length === 0) continue;
+						if (!/\S/.test(text)) continue;
 						parts.push({ text });
 					} else if (supportsImages) {
 						parts.push({
@@ -332,7 +332,7 @@ export const EMPTY_STREAM_BASE_DELAY_MS = 500;
 export function hasMeaningfulGoogleContent(output: AssistantMessage): boolean {
 	for (const block of output.content) {
 		if (block.type === "toolCall") return true;
-		if (block.type === "text" && block.text.trim().length > 0) return true;
+		if (block.type === "text" && /\S/.test(block.text)) return true;
 	}
 	return false;
 }

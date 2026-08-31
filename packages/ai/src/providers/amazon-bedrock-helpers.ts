@@ -236,7 +236,7 @@ export function convertMessages(
 						switch (c.type) {
 							case "text": {
 								const text = c.text.toWellFormed();
-								if (text.trim().length === 0) continue;
+								if (!/\S/.test(text)) continue;
 								contentBlocks.push({ text });
 								break;
 							}
@@ -257,7 +257,7 @@ export function convertMessages(
 				for (const c of m.content) {
 					switch (c.type) {
 						case "text":
-							if (c.text.trim().length === 0) continue;
+							if (!/\S/.test(c.text)) continue;
 							contentBlocks.push({ text: c.text.toWellFormed() });
 							break;
 						case "toolCall":
@@ -270,7 +270,7 @@ export function convertMessages(
 							});
 							break;
 						case "thinking":
-							if (c.thinking.trim().length === 0) continue;
+							if (!/\S/.test(c.thinking)) continue;
 							if (supportsThinkingSignature(model) && c.thinkingSignature) {
 								contentBlocks.push({
 									reasoningContent: {
