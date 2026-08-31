@@ -8,6 +8,10 @@
 
 - `/rephrase` asks for the reply on screen again in plainer prose, and refuses unless the conversation is resting on a finished reply.
 - The subagent dashboard bands the roster row under the pointer, fading it in and out rather than answering a pointer only on a terminable row and only by swapping in its terminate affordance.
+- `SCROLLBAR_RESERVE_COLS` names the columns a scroll view's bar takes, for a caller that must size its rows before the view that will hold them exists.
+- `SettingsListTheme.drillIn` sets the glyph a row that opens a submenu carries in its reserved last cell, so a drill-in row is distinguishable from a value row without reading its colour; omitting it leaves the cell blank.
+- `SettingsDescriptionMode` names the three descriptions a settings list can carry: `footnote`, `reserved` (the default) and `none`.
+- `SettingsList.naturalPaneWidth()` reports the width at which no row is cut, measured over every row rather than the filtered ones, so a host that splits its card can ask what the rows cost without a search moving the split.
 - `SelectList.naturalWidth(rowWidth)` reports the row width at which nothing in the list is truncated, so a host card can size itself to its content.
 - `SelectListTheme.searchField` and `SettingsListTheme.searchField` let a host draw the list's search status row, so a product with its own search field shows that field instead of the built-in `Search: ` text; omitting them keeps the built-in text.
 - `SettingsListTheme.emptyRow` lets a host paint the row the list shows when nothing is left after the filter, so a product with its own empty-state voice uses it instead of the list's keyboard-hint style; omitting it keeps the hint style.
@@ -15,9 +19,19 @@
 - `countedNounPattern(label)` builds the pattern that reads a count back out of a sentence `formatCount` wrote, matching the singular and the plural spelling, so a writer and a reader of the same count share one definition.
 - `IMAGE_MIME_BY_EXTENSION` and `imageMimeForPath(path)` state the image media type a file name carries, for a caller that holds a path and no bytes.
 - `agreeWith("is/are", count)` states the word that agrees with a count — verb, pronoun or demonstrative — from a reviewed pair spelled `singular/plural`, with zero and a non-finite count taking the plural.
+- `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
 
 ### Changed
 
+- A floating card's section rule spans the content it separates instead of the whole row field, so a card that narrows its content no longer draws a rule past the last cell its rows can reach.
+- The subagent roster reads as a table: the status glyph, the model and the badge strip each hold a measured column, the badges flush to the row's edge, and the activity takes what is left between them.
+- The account manager keeps the width of its cursor column while the cursor is elsewhere, so a row's text no longer steps sideways as the cursor arrives on it.
+- The settings screen reads as a grouped list: each group's rows are inset past its heading, a row that opens a panel carries a drill-in glyph in its own last cell, every state starts in one column whatever the length of the name beside it, and the selected row's description sits in a fixed band at the foot of the card — including in the split layout, which had nowhere to show one — so moving the cursor no longer reflows the rows beneath it.
+- A setting's state sits beside its name instead of against the far edge of the card, so a wide terminal no longer puts fifty empty columns between `Dark Theme` and `titanium`, and the band a row wears under the pointer covers the whole row rather than stopping at its last letter.
+- The settings card gives its category column away before it cuts a row: the sidebar yields its width down to a floor as the rows ask for columns, and a card too narrow for both shows one full-width pane at a time — the rows, or the categories once Left asks for them, with the category stated in the title — instead of a starved column of cut names beside a starved column of cut states.
+- `/models` gives its scope column away before it cuts a model row: the column yields its width down to a floor as the rows ask for columns, and a card too narrow for both shows one full-width pane at a time — the scopes, or the rows once Right asks for them, with the scope stated in the title — instead of an eighteen-column list of scopes beside model ids cut to `anthropic/claude-…`.
+- A squeezed settings sidebar shortens category names instead of replacing them with their icons.
+- The blank row between settings groups is drawn only while the whole list still fits with them, so air is never paid for with a row of content that falls off the end of the card.
 - Every counted noun in the CLI is spelled by one helper, so `2 peers`, `3 entries`, `1 match` and `5 processes` read as English on every surface that counts, instead of a hundred and fifty hand-written spellings in four dialects — three that disagreed at zero, and the parenthetical `2 peer(s)` that never decided at all.
 - A counted row agrees with its count in every word and not only its noun, so `/secret audit` no longer says `1 line … are not shown above`, `/cpu` no longer says `1 core are bounded by it`, `/account` no longer says `1 account have`, and a withheld picture is no longer announced as `These 1 images are`.
 - Every surface holding content back states it in one voice — `… 3 more lines (ctrl+o to expand)`, in one weight — instead of thirty-nine hand-written spellings that disagreed on the decoration, the weight, the wording of the expand key and, at half of them, the plural.
@@ -28,9 +42,8 @@
 - A floating card is drawn as one rounded surface: rounded corners, and section rules inset between its own borders instead of welded into them.
 - A card's close affordance and the subagent dashboard's row-local terminate affordance are one glyph from the active symbol preset instead of the literal `[x]`.
 - The subagent dashboard marks the view it is showing with the same cursor glyph the roster, the settings sidebar and every picker use, instead of bracketing the active tab's label.
-- Every surface that filters draws the same search field — the search glyph in the theme's state accent, the terminal's own caret in a card's band, and a live count of what survived the query — instead of five spellings, including the `Search:` label with a painted caret that the session tree, the extension pane, the hook picker, the OAuth picker, the message picker and every list's own status row, onboarding's included, each drew for themselves.
+- Every surface that filters draws the same search field — the search glyph in the theme's accent, the terminal's own caret in a card's band, and a live count of what survived the query — instead of five spellings, including the `Search:` label with a painted caret that the session tree, the extension pane, the hook picker, the OAuth picker, the message picker and every list's own status row, onboarding's included, each drew for themselves.
 - The advisor configuration overlay's tool checkboxes come from the active symbol preset instead of the literal `[x]` and `[ ]`.
-- A theme resolves the token its state cues paint in once, when the theme is constructed, rather than measuring the palette again on every painted cue; no visible change.
 - `/autoswarm` opens a setup console for the goal, breadth, attempts and certification, then runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
 - Autoresearch and autoswarm have handbook pages.
 - Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
@@ -44,12 +57,6 @@
 - Every row that leaves text out marks it with one `…` instead of three ASCII periods, so a bash preview in the session tree, an elided thinking fence, an update step and a truncated reference list agree with the `[edit: …]` row beside them.
 - A command whose frontmatter states no description takes its first body line cut to sixty columns, so a description of wide glyphs stays inside the palette row it is given instead of overrunning it by half again.
 - The startup model-scope banner and onboarding's composer preview name the keys that are actually bound, so remapping the cycle or newline gesture no longer leaves either row naming a key that does nothing.
-- `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
-- `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
-- `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
-
-### Changed
-
 - The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
 - `VEYYON_TIMING` reports the window between process start and the launch card instead of hiding it: the tree now starts at the CLI entry and carries spans for the command load, the launch-card import, the prologue, settings, the theme and the paint, leaving only Bun's own start and the entry's static imports under `(before instrumentation)`.
 - The launch card arrives in about half the time. The binary is now code-split, so the standalone loader links the CLI entry and the launch card instead of the bytecode of every subcommand, tool and agent-runtime module before the first statement runs, and whitespace and syntax minification are on. Measured warm on a pty, the card's first byte goes from 138-151ms to 57-72ms, the first keystroke echoes at 111ms instead of 188-207ms, and the binary is 231.7MB instead of 296.9MB. Function names are still kept, so a stack trace is unchanged.
@@ -77,6 +84,17 @@
 - Codex compaction v2 clamps its retained-token budget through the shared `clampLow` helper instead of an inline clamp. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 - Every counted noun a tool view draws is spelled by `@veyyon/utils`, so an LSP, IRC, search or working-directory result reads `2 references` and `1 match` instead of the package's own `(s)` hedges and inline ternaries, and the LSP view reads its diagnostic and reference counts back out through the same definition that writes them.
+- A settings row states its kind and its depth in its shape: a group's members are inset past their heading, a blank row separates one group from the next while the list still fits with them, every value starts in one column whatever its label's length, and the last cell of the row is reserved for the drill-in glyph so a row that opens a panel is not a row that holds a value.
+- The selected setting's description is a fixed band at the foot of the list rather than rows spliced in beneath the row, so moving the cursor moves the cursor and leaves every row where it was; the band takes its rows only when the list fits with it or already overflows without it, so it never costs a row that would otherwise have shown a setting.
+- The split layout shows the selected setting's description, which it previously had nowhere to put.
+- A settings row whose value list holds one value wears no `‹ ›` frame, which marked a value that cycles where nothing could cycle.
+- A settings row's value sits beside its name rather than against the row's right edge: the column follows the label column, so a wide pane keeps its surplus as right margin instead of stranding a state fifty empty cells away from the name it belongs to, and a tight pane still ends the row on its own edge.
+- The band a settings row wears under the pointer spans the whole row instead of stopping at the row's last letter, so the pane's band and the sidebar's band answer the pointer in the same shape.
+- A settings row too narrow for both its name and its state cuts the name and keeps eight columns for the state, and marks either cut with an ellipsis, so a `Disabled` no longer arrives as an unmarked `Disa`.
+- A list's rows are sized by the scroll view's own reserve instead of a one-column guess, so the last cell of every row is no longer spent on an ellipsis the row did not need.
+- A `SelectList` description reaches the row's edge instead of stopping two columns short of it, so `/session`'s `Start a new session from this point` fits where it used to be cut.
+- A `SelectList` label cut to its column is marked with an ellipsis, so `logout <provider> [account]` no longer arrives as `logout <provider> [accoun`.
+- A settings viewport is measured in rows rather than in items, so a list with groups no longer drops its last group into a frame with room for it.
 - A `SelectList` given only `maxPrimaryColumnWidth` no longer pins its label column to that width; the column is measured from the widest label and capped at half the row, so short labels stop sitting a fixed distance from their descriptions and long ones stop being truncated.
 - The row standing in for a picture the terminal will not draw reads `… image not shown · shot.png · 1600x1000 (images off, turn on Show Inline Images in /settings)`: the voice every surface holding content back uses, a cause that names the setting undoing it and where to change it, and no media type beside a file name whose extension already states it.
 - The settings list's search status row names its keys in the spelling you type them, `backspace to edit search · esc to cancel`.
@@ -85,16 +103,11 @@
 ### Fixed
 
 - The retry summary spells its noun: a turn that recovered through several retries reported `Recovered after 3 retrys`, and now reports `3 retries`.
-- A floating card's frame is now a hairline off the terminal's own ground rather than the theme's accent colour, so the loudest colour in the palette is no longer the card's outline.
-- Selection, focus and active-tab cues on a card carry the theme's colour in a theme whose `accent` token is a neutral, where the settings cursor, kicker diamonds, selected label and value, the account manager's active provider and selected row, the subagent dashboard's active tab and selected call sign, and the close glyph all rendered grey.
-- Ground-derived chrome mixes out of the background that is on screen, so with `tui.paintGround: always` a card's hairline follows the painted ground instead of the terminal's replaced one, and a terminal that reports no background still gets the derived hairline once the ground is painted.
 - The close affordance on a card's title row draws its padding as rule, so the top border runs unbroken into its corner instead of stopping short with the glyph sitting in a gap.
 - A subcommand picker sizes itself to its rows: `/session` no longer draws two short rows into a 120-column card, and `/account` no longer truncates `use <provider> <account>` with screen unused beside it.
 - The account manager's `ctrl+s` filter is a search field across the card with a caret and a live provider count, instead of a `Search:` label inside the scope column that pushed the provider list down a row while the pane beside it stayed put.
-- The account manager's sidebar rule spans the scope column in the frame's own colour instead of stopping two cells short in the accent colour.
-- Every rule inside a floating card is drawn in the card's own hairline: the account manager, model hub and extension dashboard pane separators, the advisor configuration overlay's pane separator, the autoresearch dashboard's header and footer rules, the extension inspector's section rules, the model browser's recents separator, and every scroll track in the product, which restated the same rule in three different weights.
+- The account manager's sidebar rule spans the full height of the scope column instead of stopping two cells short of it.
 - A card's footer chips wrap into rows of even width instead of filling each row to the brim, so the account manager's ten shortcuts read as one centred strip rather than as rows 73, 57 and 27 cells wide with the last one looking like a leftover.
-- A rule inside a floating card — the settings card's category split, the ask dialog's preview divider, the model hub's group separators and the plan review card's region rule and column divider — is drawn in the card's own hairline instead of the theme's accent colour, which was a full-height orange line down the middle of the settings dialog on titanium.
 - The ask dialog's question tabs and the setup wizard's provider tabs fade their pointer band instead of switching it on the frame a mouse report lands, and the ask dialog builds its tab strip once instead of reconstructing it on every render.
 - The advisor configuration overlay fades its pointer band instead of switching it on the frame a mouse report lands, as every other card's list does.
 - The autoswarm setup console marks its focused field with the same cursor glyph the rest of the product uses and puts the terminal's own caret in the field it is editing, instead of an accent chevron and a painted block that never blinked.
@@ -138,6 +151,7 @@
 - A sixel-capable terminal now renders inline images on Linux and macOS: the terminal is asked at startup instead of being matched against a list that named no sixel terminal at all, so images no longer silently fail to appear outside kitty, ghostty, wezterm, iTerm2 and Warp.
 - An inline image whose top has scrolled above the viewport, or which is taller than the terminal, is left undrawn until a repaint can reach its origin, instead of being stamped at full size over the top of the live transcript.
 - An inline image is handed pixels at exactly the cell box the terminal will scale it into, so the terminal's own scaler no longer smears a downscaled screenshot; the transmitted payload shrinks by more than half at the same size on screen.
+- `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
 - An `Editor` with no `onSubmit` consumer leaves the draft alone when Enter arrives, instead of clearing it, so a submit typed before anything is listening cannot destroy what was typed.
 
 ## [1.3.0] - 2026-08-28
