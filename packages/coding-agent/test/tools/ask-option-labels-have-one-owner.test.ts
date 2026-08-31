@@ -172,11 +172,23 @@ describe("the ask option labels have one owner", () => {
 		}
 	});
 
-	/** The positive half: each former declarer takes its labels from the owner. */
+	/**
+	 * The positive half: each former declarer takes its labels from the owner.
+	 *
+	 * The specifier is RESOLVED against the importing module rather than matched as text, so the
+	 * check survives the owner moving and the declarers moving. Matching the literal used to be the
+	 * whole assertion, and `tools/ask-option-labels` becoming `tools/agent/ask-option-labels` turned
+	 * it red while every import was correct.
+	 */
 	it("has every former declarer importing from the owner", async () => {
+		const owner = path.join(SRC, OWNER_REL);
 		for (const declarer of FORMER_DECLARERS) {
-			const text = await Bun.file(path.join(SRC, declarer)).text();
-			expect(text, declarer).toMatch(/from "(?:(?:\.\.\/)+tools\/ask-option-labels|\.\/ask-option-labels)";/);
+			const from = path.dirname(path.join(SRC, declarer));
+			const resolved = moduleSpecifiersIn(await Bun.file(path.join(SRC, declarer)).text())
+				.filter(specifier => specifier.startsWith("."))
+				.map(specifier => `${path.resolve(from, specifier)}.ts`);
+
+			expect(resolved, declarer).toContain(owner);
 		}
 	});
 

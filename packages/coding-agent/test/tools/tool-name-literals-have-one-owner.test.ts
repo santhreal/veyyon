@@ -19,7 +19,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { BUILTIN_TOOL_NAMES, HIDDEN_TOOL_NAMES, TOOL } from "@veyyon/coding-agent/tools/core/builtin-names";
 
 const SRC = join(import.meta.dir, "..", "..", "src");
@@ -123,26 +123,49 @@ describe("what the constant must not change", () => {
 	 * dynamic-imports its module on first construction, so starting a session does not parse the
 	 * browser tool or the LSP client. Naming a tool must stay free, which is why `HIDDEN_TOOL_NAMES`
 	 * lives in the leaf and not in this file.
+	 *
+	 * The registry is DISTRIBUTED: `tools/index.ts` declares the four rows whose implementation
+	 * lives outside a tool directory, and each `tools/<domain>/manifest.ts` declares its own. So the
+	 * lazy contract belongs to every one of those files, and the manifest list is read off the disk
+	 * rather than written here — a sixth domain arrives covered, and one that imports its tools
+	 * eagerly fails here instead of charging every session the parse.
 	 */
 	it("loads every tool module dynamically and none of them eagerly", () => {
-		const source = read("tools/index.ts");
-		const registries = source.slice(
-			source.indexOf("export const BUILTIN_TOOLS"),
-			source.indexOf("export type ToolName"),
-		);
+		const manifests = [...new Bun.Glob("tools/*/manifest.ts").scanSync(SRC)]
+			.map(file => file.split(sep).join("/"))
+			.sort();
+		expect(manifests.length).toBeGreaterThanOrEqual(5);
 
-		const dynamic = new Set([...registries.matchAll(/await import\("([^"]+)"\)/g)].map(match => match[1]));
+		const index = read("tools/index.ts");
+		const registries: ReadonlyArray<{ file: string; source: string }> = [
+			{
+				file: "tools/index.ts",
+				source: index.slice(index.indexOf("const DOMAIN_TOOL_FACTORIES"), index.indexOf("export type ToolName")),
+			},
+			...manifests.map(file => ({ file, source: read(file) })),
+		];
+
+		const dynamic = new Set<string>();
+		for (const { file, source } of registries) {
+			for (const match of source.matchAll(/await import\("([^"]+)"\)/g)) dynamic.add(`${file} -> ${match[1]}`);
+		}
 		// One per registered tool, minus the pairs that share a module (checkpoint/rewind, the two
 		// Argot tools, the three memory tools each having their own).
 		expect(dynamic.size).toBeGreaterThanOrEqual(30);
-		expect(dynamic.has("./bash")).toBe(true);
-		expect(dynamic.has("../lsp")).toBe(true);
+		expect([...dynamic]).toContain("tools/shell/manifest.ts -> ./bash");
+		expect([...dynamic]).toContain("tools/index.ts -> ../lsp");
 
 		// The contract: a module a factory imports on demand must not also be imported at the top of
-		// the file, or the boot path pays for it anyway and the indirection buys nothing. `import
-		// type` is erased, so only value imports count.
-		const eager = [...source.matchAll(/^import (?!type )[^;]*? from "([^"]+)";$/gm)].map(match => match[1]);
-		expect(eager.filter(specifier => dynamic.has(specifier))).toEqual([]);
+		// the file that declares the factory, or the boot path pays for it anyway and the indirection
+		// buys nothing. `import type` is erased, so only value imports count.
+		const eager: string[] = [];
+		for (const { file, source } of registries) {
+			const lazyHere = new Set([...source.matchAll(/await import\("([^"]+)"\)/g)].map(match => match[1] as string));
+			for (const match of read(file).matchAll(/^import (?!type )[^;]*? from "([^"]+)";$/gm)) {
+				if (lazyHere.has(match[1] as string)) eager.push(`${file}: ${match[1]}`);
+			}
+		}
+		expect(eager).toEqual([]);
 	});
 
 	/** The leaf itself must not pull a tool module in, or the point above is lost one level down. */

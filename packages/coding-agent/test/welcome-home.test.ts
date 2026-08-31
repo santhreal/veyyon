@@ -1,29 +1,41 @@
 /**
- * Default welcome home (the screen every launch shows) — the 2026-07-22
- * improvement pass. Before it, the recent-session list was fetched on every
- * start yet rendered only behind /welcome, so the single most useful thing at
- * launch (continue where you left off) stayed hidden, and tips were equally
- * buried. The home now shows ONE continue line and ONE quiet tip, and nothing
- * else changed: the hero stays open space, no boxes, no panels.
+ * Default welcome home (the screen every launch shows) and the `/welcome` screen behind it.
  *
  * Locks:
- *  1. With a recent session: a centred continue line with the session name,
- *     its relative age, and the /resume affordance.
- *  2. The "more:" hint dedups /resume when the continue line already offers
- *     it, and keeps it when there is no recent session.
- *  3. A tip renders on the home (not only behind /welcome).
- *  4. No recent sessions → no continue line, no stray separators.
- *  5. Long session names truncate instead of shattering the centred column.
+ *  1. The launch hero carries the hint line and a tip, and NO recent-session row, whatever
+ *     sessions it was handed. The row used to be here and was removed: it arrived with the
+ *     asynchronous session list rather than with the frame, so the block it sat in changed
+ *     height after the composer had already been drawn under it. A test that expects it back
+ *     is asserting the reflow.
+ *  2. The hint line therefore always offers `/resume`, because nothing else on the hero does.
+ *  3. A tip renders on the home, not only behind `/welcome`, and a wrapped tip centres as one
+ *     block with its hanging indent intact.
+ *  4. `/welcome` is where the recent sessions live, as a `Recent` column, and a long session
+ *     name truncates there instead of shattering the centred column.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { WelcomeComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/welcome";
+import {
+	WELCOME_SESSION_SLOTS,
+	WelcomeComponent,
+} from "@veyyon/coding-agent/modes/terminal/components/dialogs/welcome";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
+const WIDTH = 100;
+
+/** The launch hero: the screen a start paints, before anyone asks for `/welcome`. */
 function home(sessions: { name: string; timeAgo: string }[]): string {
-	const welcome = new WelcomeComponent("1.2.3", "Sonnet 4.5", "anthropic", sessions);
+	return frameOf(new WelcomeComponent("1.2.3", "Sonnet 4.5", "anthropic", sessions));
+}
+
+/** The `/welcome` screen: the sunrise header plus the menu and `Recent` column. */
+function welcomeScreen(sessions: { name: string; timeAgo: string }[]): string {
+	return frameOf(new WelcomeComponent("1.2.3", "Sonnet 4.5", "anthropic", sessions, [], true));
+}
+
+function frameOf(welcome: WelcomeComponent): string {
 	return welcome
-		.render(100)
+		.render(WIDTH)
 		.map(line => stripVTControlCharacters(line))
 		.join("\n");
 }
@@ -33,20 +45,17 @@ describe("welcome home screen", () => {
 		initTheme();
 	});
 
-	it("shows a continue line for the most recent session with the /resume affordance", () => {
+	it("shows no recent-session row on the launch hero, whatever sessions it was handed", () => {
 		const frame = home([{ name: "detector policy work", timeAgo: "2h ago" }]);
-		expect(frame).toContain("detector policy work · 2h ago — /resume");
+		expect(frame).not.toContain("detector policy work");
+		expect(frame).not.toContain("2h ago");
 	});
 
-	it("dedups /resume out of the more-hint when the continue line offers it", () => {
-		const frame = home([{ name: "detector policy work", timeAgo: "2h ago" }]);
-		expect(frame).toContain("more: /welcome  ·  /settings");
-		expect(frame).not.toContain("/welcome  ·  /resume");
-	});
-
-	it("keeps /resume in the more-hint when there is no session to continue", () => {
-		const frame = home([]);
-		expect(frame).toContain("more: /welcome  ·  /resume  ·  /settings");
+	it("offers /resume in the hint line, which is the only place the hero offers it", () => {
+		const withSession = home([{ name: "detector policy work", timeAgo: "2h ago" }]);
+		const withNone = home([]);
+		expect(withSession).toContain("more: /welcome  ·  /resume  ·  /settings");
+		expect(withNone).toContain("more: /welcome  ·  /resume  ·  /settings");
 	});
 
 	it("renders a tip on the home screen", () => {
@@ -85,13 +94,26 @@ describe("welcome home screen", () => {
 		throw new Error("expected at least one wrapping tip in 60 samples");
 	});
 
-	it("truncates a long session name instead of shattering the centred column", () => {
+	it("lists the recent sessions on /welcome, newest first and no more than the slots", () => {
+		const sessions = ["newest", "middle", "older", "oldest"].map((name, index) => ({
+			name,
+			timeAgo: `${index + 1}h ago`,
+		}));
+		const frame = welcomeScreen(sessions);
+
+		expect(frame).toContain("Recent");
+		const listed = sessions.filter(session => frame.includes(session.name)).map(session => session.name);
+		expect(listed).toEqual(sessions.slice(0, WELCOME_SESSION_SLOTS).map(session => session.name));
+	});
+
+	it("truncates a long session name on /welcome instead of shattering the centred column", () => {
 		const longName = "a".repeat(120);
-		const frame = home([{ name: longName, timeAgo: "1d ago" }]);
+		const frame = welcomeScreen([{ name: longName, timeAgo: "1d ago" }]);
+
 		expect(frame).not.toContain(longName);
-		expect(frame).toContain("— /resume");
+		expect(frame).toContain("1d ago");
 		for (const line of frame.split("\n")) {
-			expect(line.length).toBeLessThanOrEqual(100);
+			expect(line.length).toBeLessThanOrEqual(WIDTH);
 		}
 	});
 });

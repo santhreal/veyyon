@@ -33,7 +33,7 @@ import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
-import { TempDir } from "@veyyon/utils";
+import { setProjectDir, TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 import { useSpyTeardown } from "../helpers/spy-teardown";
 
@@ -300,6 +300,12 @@ describe("a lease whose captured vault revision has been overtaken", () => {
 	 * "always refresh on stale" trampling a cwd transition.
 	 */
 	it("never schedules a reload for a directory the session has already left", async () => {
+		// The move below chdirs the PROCESS: the session cwd authority calls `setProjectDir`,
+		// which calls `process.chdir`. The destination is inside the fixture tree this row
+		// removes, so without the restore in `finally` the process is left inside a deleted
+		// directory and `process.cwd()` throws ENOENT — not here, but in whichever file runs
+		// next, and in the leak tracer that snapshots the cwd after every row.
+		const enteredFrom = process.cwd();
 		const fixture = await createLeaseFixture();
 		const sourceLease = await fixture.session.leaseSecretRuntime();
 		// Only now, so the source lease captured a real fingerprint the live one disagrees with.
@@ -343,6 +349,7 @@ describe("a lease whose captured vault revision has been overtaken", () => {
 			loadSpy.mockRestore();
 			revision.restore();
 			await fixture.session.dispose();
+			setProjectDir(enteredFrom);
 			await fixture.root.remove();
 		}
 	});

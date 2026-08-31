@@ -97,9 +97,14 @@ describe("getRoleInfo", () => {
  * routes the color import through the leaf theme/color. The `it loads` behavior below only
  * passes if that import edge stays off the cycle.
  *
- * The ordering contract pinned here: built-in selectable roles come first in MODEL_ROLE_IDS order,
+ * The ordering contract pinned here: built-in roles come first in SELECTABLE_MODEL_ROLE_IDS order,
  * then extra roles introduced by cycleOrder, then modelRoles keys, then modelTags keys, each added
  * once (deduped) and never the legacy "default" role.
+ *
+ * `advisor` is not among the built-ins. It is a slot rather than a selectable role: the model it
+ * runs is asked for in the Advisor group's own row, which writes the same slot, so listing it here
+ * as well gave one value two surfaces. Assigning it puts it back in this list through the
+ * `modelRoles` pass, which `compaction-strategy-settings.test.ts` pins beside the slot itself.
  */
 describe("getKnownRoleIds", () => {
 	test("loads without an import-cycle error and lists the built-in roles first in order", () => {
@@ -111,7 +116,6 @@ describe("getKnownRoleIds", () => {
 			"designer",
 			"commit",
 			"tiny",
-			"advisor",
 		]);
 	});
 
@@ -123,18 +127,7 @@ describe("getKnownRoleIds", () => {
 				modelTags: { taggedRole: { name: "T" }, smol: { name: "x" } },
 			}),
 		);
-		expect(roles).toEqual([
-			"smol",
-			"slow",
-			"vision",
-			"plan",
-			"designer",
-			"commit",
-			"tiny",
-			"advisor",
-			"myCustom",
-			"taggedRole",
-		]);
+		expect(roles).toEqual(["smol", "slow", "vision", "plan", "designer", "commit", "tiny", "myCustom", "taggedRole"]);
 	});
 
 	test("appends custom roles assigned in modelRoles, skipping the legacy 'default'", () => {
@@ -143,6 +136,6 @@ describe("getKnownRoleIds", () => {
 				modelRoles: { default: "gpt", extraRole: "claude" },
 			}),
 		);
-		expect(roles).toEqual(["smol", "slow", "vision", "plan", "designer", "commit", "tiny", "advisor", "extraRole"]);
+		expect(roles).toEqual(["smol", "slow", "vision", "plan", "designer", "commit", "tiny", "extraRole"]);
 	});
 });

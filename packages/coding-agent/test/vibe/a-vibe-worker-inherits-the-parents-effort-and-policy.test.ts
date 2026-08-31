@@ -416,12 +416,14 @@ describe("vibe session registry", () => {
 	 * Prevents Vibe from drifting from task/eval policy by pinning the exact
 	 * model and effort fields handed to its production executor.
 	 *
-	 * The values come from the ONE place model and effort are set (`subagent.model`
-	 * and `subagent.thinkingLevel`), because the per-agent row that used to carry
-	 * them is retired: it outranked the setting the operator had just changed from
-	 * another screen. The case below this one is the other half of that contract.
+	 * `subagent.sharedModel` picks the chain: with it ON, `subagent.model` and
+	 * `subagent.thinkingLevel` are the one answer for every agent and nothing
+	 * per-agent is consulted. The case below this one is the other chain, where
+	 * the blanket pair does not apply at all and the lane row decides. Vibe
+	 * resolves through the same two chains as a spawn, and it is the path that
+	 * would keep an old order longest if the two ever drifted.
 	 */
-	it("forwards canonical model and effort overrides from the one place they are set", async () => {
+	it("forwards the shared model and effort when subagent.sharedModel is on", async () => {
 		const spy = vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
 			AgentRegistry.global().register({
 				id: options.id,
@@ -439,6 +441,7 @@ describe("vibe session registry", () => {
 			hasUI: false,
 			settings: Settings.isolated({
 				"subagent.agents": { sonic: { enabled: true } },
+				"subagent.sharedModel": true,
 				"subagent.model": "openai/gpt-5.2-codex",
 				"subagent.thinkingLevel": "xhigh",
 			}),
@@ -462,14 +465,14 @@ describe("vibe session registry", () => {
 	/**
 	 * The lane layer, asserted rather than described.
 	 *
-	 * `subagent.agents.<name>.model` and `.thinkingLevel` are the highest-precedence
-	 * layer, above the blanket settings the case before this one pins, so a row
-	 * written for one agent decides what THAT agent runs and leaves every other
-	 * agent on the blanket pair. The vibe path resolves through the same layers as
-	 * a spawn, and it is the path that would keep the old order longest if the two
-	 * ever drifted, which is why the precedence is asserted here too.
+	 * With `subagent.sharedModel` off — the default — `subagent.agents.<name>.model` and
+	 * `.thinkingLevel` are the top of the per-agent chain, and the blanket pair the case above
+	 * pins is not consulted at all. So a row written for one agent decides what THAT agent runs,
+	 * and an agent with no row inherits the session rather than the blanket. The vibe path
+	 * resolves through the same layers as a spawn, and it is the path that would keep the old
+	 * order longest if the two ever drifted, which is why the precedence is asserted here too.
 	 */
-	it("lets a per-agent row outrank the blanket model and effort", async () => {
+	it("lets a per-agent row decide, with the blanket pair out of the chain", async () => {
 		const spy = vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
 			AgentRegistry.global().register({
 				id: options.id,

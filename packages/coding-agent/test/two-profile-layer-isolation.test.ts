@@ -53,7 +53,8 @@ import { loadAllMCPConfigs } from "@veyyon/coding-agent/mcp/config";
 import { discoverContextFiles, discoverRules, discoverSkills } from "@veyyon/coding-agent/session/factory-extensions";
 import { buildSystemPrompt, loadProjectContextFiles } from "@veyyon/coding-agent/system-prompt";
 import { discoverCommands } from "@veyyon/coding-agent/task/commands";
-import { discoverAgents } from "@veyyon/coding-agent/task/discovery";
+import { type DiscoveryResult, discoverAgents } from "@veyyon/coding-agent/task/discovery";
+import { getGlobalSubagentsDir } from "@veyyon/utils";
 import {
 	GLOBAL_BODY,
 	PROFILE_BODY,
@@ -284,13 +285,19 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 
 	/**
 	 * Agent definitions shipped by an extension PACKAGE the profile declared in its own
-	 * `settings.json#extensions`, and the profile's own `<agentDir>/agents` dir. Two more
-	 * sources feeding the same `discoverAgents` surface as the marketplace case below, and
-	 * each one resolved the process-active profile independently of the others, so fixing
-	 * the marketplace read alone would still have handed a spawned agent the wrong
-	 * definition through either of these.
+	 * `settings.json#extensions`, against the user-authored definitions, which are GLOBAL.
+	 * Two sources feeding the same `discoverAgents` surface as the marketplace case below,
+	 * and each one resolved the process-active profile independently of the others, so
+	 * fixing the marketplace read alone would still have handed a spawned agent the wrong
+	 * definition through the extension source.
+	 *
+	 * The two sources are asserted together because they scope DIFFERENTLY and the split is
+	 * invisible from either one alone: switching profile changes which extension packages
+	 * contribute agents, and never which user-authored agents exist. The retired
+	 * `<agentDir>/agents` location is asserted absent in the same breath — a definition
+	 * left there is silently unavailable, which is the failure the global dir replaced.
 	 */
-	test("discoverAgents follows the named profile for its extensions and its own agents dir", async () => {
+	test("scopes extension agents to the named profile and user agents globally", async () => {
 		const f = fixture("agentdirs-active");
 		const namedAgentDir = f.agentDirFor("agentdirs-named");
 		const activePackage = path.join(f.home, "active-agent-pkg");
@@ -299,17 +306,18 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 		writeAgentDefinition(f, path.join(namedPackage, "agents"), "named-ext-agent");
 		f.writeFile(path.join(f.agentDir, "settings.json"), JSON.stringify({ extensions: [activePackage] }));
 		f.writeFile(path.join(namedAgentDir, "settings.json"), JSON.stringify({ extensions: [namedPackage] }));
-		writeAgentDefinition(f, path.join(f.agentDir, "agents"), "active-user-agent");
-		writeAgentDefinition(f, path.join(namedAgentDir, "agents"), "named-user-agent");
+		writeAgentDefinition(f, getGlobalSubagentsDir(), "global-user-agent");
+		writeAgentDefinition(f, path.join(f.agentDir, "agents"), "retired-active-agent");
+		writeAgentDefinition(f, path.join(namedAgentDir, "agents"), "retired-named-agent");
 
 		const defaulted = await discoverAgents(f.cwd, f.home);
 		f.resetCaches();
 		const named = await discoverAgents(f.cwd, f.home, namedAgentDir);
 
-		const own = (result: Awaited<ReturnType<typeof discoverAgents>>): string[] =>
+		const own = (result: DiscoveryResult): string[] =>
 			result.agents.map(agent => agent.name).filter(name => name.endsWith("-agent"));
-		expect(own(defaulted).toSorted()).toEqual(["active-ext-agent", "active-user-agent"]);
-		expect(own(named).toSorted()).toEqual(["named-ext-agent", "named-user-agent"]);
+		expect(own(defaulted).toSorted()).toEqual(["active-ext-agent", "global-user-agent"]);
+		expect(own(named).toSorted()).toEqual(["global-user-agent", "named-ext-agent"]);
 	});
 
 	/** All four layers at once, so no single fix can be credited for another's. */
