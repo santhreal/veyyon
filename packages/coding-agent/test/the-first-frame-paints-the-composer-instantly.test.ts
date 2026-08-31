@@ -140,6 +140,24 @@ function inAFixtureCheckout(body: (dir: string) => void): void {
 }
 
 /**
+ * Run `body` with the project directory pointed at a nested leaf inside a fresh checkout, so a cell
+ * about REFITTING a path has a path with a head to lose.
+ *
+ * The location abbreviates to its own basename once the whole path fits the budget, so a shallow
+ * directory has nothing to shorten and the refit is unobservable. That is also why the ambient
+ * checkout cannot decide it: a runner's `/srv/veyyon` is shorter than the budget, a workstation's
+ * worktree is not, and the same cell then asserts a different thing on each.
+ */
+function inADeepFixtureCheckout(body: (leaf: string) => void): void {
+	inAFixtureCheckout(dir => {
+		const leaf = path.join(dir, "nested-project", "workspaces", "app-server", "runtime");
+		fs.mkdirSync(leaf, { recursive: true });
+		setProjectDir(leaf);
+		body(leaf);
+	});
+}
+
+/**
  * Run `body` inside {@link inAFixtureCheckout}, with the checkout's HEAD naming {@link
  * FIXTURE_BRANCH}, written as files rather than by running git — which is how the card reads it.
  *
@@ -248,15 +266,21 @@ describe("the launch composer", () => {
 	 * at the directory the operator is in, only shorter. A card that shed the location instead would
 	 * paint a row with nothing where the live row says where you are, and would grow one at the
 	 * handover.
+	 *
+	 * Driven from a stated deep checkout, not the ambient one. A CI job checks out `/srv/veyyon`,
+	 * whose whole path is shorter than the budget, so there is nothing to refit and the shortened
+	 * row is the same bytes as the budgeted one — the cell read green on a workstation's deep
+	 * worktree and red on the runner, and neither reading was about the card.
 	 */
 	it("shortens the path rather than dropping it when the row cannot afford the budget", () => {
-		const fits = widthThatFitsTheLocation();
-		const tail = path.basename(getProjectDir());
-		const row = launchRows(fits - 1).find(candidate => candidate.includes(tail));
+		inADeepFixtureCheckout(leaf => {
+			const fits = widthThatFitsTheLocation();
+			const row = launchRows(fits - 1).find(candidate => candidate.includes(path.basename(leaf)));
 
-		expect(row).toBeDefined();
-		expect(row).not.toContain(budgetedLocation());
-		expect(row).toStartWith(" ".repeat(COMPOSER_INSET_COLS));
+			expect(row).toBeDefined();
+			expect(row).not.toContain(budgetedLocation());
+			expect(row).toStartWith(" ".repeat(COMPOSER_INSET_COLS));
+		});
 	});
 
 	it("clips the location to the preset's budget, not to the terminal", () => {
