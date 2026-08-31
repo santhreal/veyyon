@@ -1,17 +1,18 @@
 /**
- * Default welcome home (the screen every launch shows) and the `/welcome` screen behind it.
+ * The two welcome surfaces: the hero every launch shows, and the fuller screen `/welcome` opens.
+ *
+ * The hero carried a most-recent-session line, and it arrived with the asynchronous session list
+ * rather than with the frame, so the block grew a row under a composer that had already been drawn.
+ * Recent sessions now live on `/welcome`, which is opened deliberately and can afford to wait for
+ * them, and the hero is the header, one hint line naming the commands, and one tip.
  *
  * Locks:
- *  1. The launch hero carries the hint line and a tip, and NO recent-session row, whatever
- *     sessions it was handed. The row used to be here and was removed: it arrived with the
- *     asynchronous session list rather than with the frame, so the block it sat in changed
- *     height after the composer had already been drawn under it. A test that expects it back
- *     is asserting the reflow.
- *  2. The hint line therefore always offers `/resume`, because nothing else on the hero does.
- *  3. A tip renders on the home, not only behind `/welcome`, and a wrapped tip centres as one
- *     block with its hanging indent intact.
- *  4. `/welcome` is where the recent sessions live, as a `Recent` column, and a long session
- *     name truncates there instead of shattering the centred column.
+ *  1. The hero's hint line is the same bytes with recent sessions and without, since a hint that
+ *     changed with the list would reintroduce the late repaint by another route.
+ *  2. The hero names no session: no age, no `/resume` affordance beside a name.
+ *  3. A tip renders on the hero, not only behind `/welcome`, and a wrapped tip centres as a block.
+ *  4. `/welcome` lists the recent sessions under a Recent heading, most recent first.
+ *  5. A long session name is truncated to the menu column rather than shattering it.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
@@ -45,17 +46,27 @@ describe("welcome home screen", () => {
 		initTheme();
 	});
 
-	it("shows no recent-session row on the launch hero, whatever sessions it was handed", () => {
-		const frame = home([{ name: "detector policy work", timeAgo: "2h ago" }]);
-		expect(frame).not.toContain("detector policy work");
-		expect(frame).not.toContain("2h ago");
-	});
-
-	it("offers /resume in the hint line, which is the only place the hero offers it", () => {
+	/**
+	 * The hint is a constant. It was computed from the session list — `/resume` was dropped from it
+	 * when a continue line above already offered one — so the line changed the moment the
+	 * asynchronous list landed. Identical bytes is the assertion, not merely "contains /resume".
+	 */
+	it("names the same commands whether or not there is a session to continue", () => {
 		const withSession = home([{ name: "detector policy work", timeAgo: "2h ago" }]);
 		const withNone = home([]);
-		expect(withSession).toContain("more: /welcome  ·  /resume  ·  /settings");
-		expect(withNone).toContain("more: /welcome  ·  /resume  ·  /settings");
+		const hintOf = (frame: string): string | undefined => frame.split("\n").find(line => line.includes("more:"));
+
+		expect(hintOf(withNone)).toContain("more: /welcome  ·  /resume  ·  /settings");
+		expect(hintOf(withSession)).toBe(hintOf(withNone));
+	});
+
+	/** The hero names no session at all: not the name, not the age, not a resume affordance. */
+	it("names no recent session on the hero", () => {
+		const frame = home([{ name: "detector policy work", timeAgo: "2h ago" }]);
+
+		expect(frame).not.toContain("detector policy work");
+		expect(frame).not.toContain("2h ago");
+		expect(frame).not.toContain("— /resume");
 	});
 
 	it("renders a tip on the home screen", () => {
@@ -94,19 +105,37 @@ describe("welcome home screen", () => {
 		throw new Error("expected at least one wrapping tip in 60 samples");
 	});
 
-	it("lists the recent sessions on /welcome, newest first and no more than the slots", () => {
-		const sessions = ["newest", "middle", "older", "oldest"].map((name, index) => ({
+	it("lists the recent sessions on /welcome, most recent first", () => {
+		const frame = welcomeScreen([
+			{ name: "detector policy work", timeAgo: "2h ago" },
+			{ name: "launch card facts", timeAgo: "1d ago" },
+		]);
+		const lines = frame.split("\n");
+		const recent = lines.findIndex(line => line.includes("Recent"));
+
+		expect(recent).toBeGreaterThan(-1);
+		expect(lines.slice(recent).join("\n")).toContain("detector policy work");
+		expect(lines.findIndex(line => line.includes("detector policy work"))).toBeLessThan(
+			lines.findIndex(line => line.includes("launch card facts")),
+		);
+	});
+
+	/**
+	 * The column holds a fixed number of rows, so a long history cannot push the menu off the
+	 * screen. The cap is the component's own constant rather than a number repeated here.
+	 */
+	it("lists no more sessions on /welcome than the column has slots", () => {
+		const sessions = ["newest", "second", "third", "fourth", "fifth", "sixth", "seventh"].map((name, index) => ({
 			name,
 			timeAgo: `${index + 1}h ago`,
 		}));
 		const frame = welcomeScreen(sessions);
-
-		expect(frame).toContain("Recent");
 		const listed = sessions.filter(session => frame.includes(session.name)).map(session => session.name);
+
 		expect(listed).toEqual(sessions.slice(0, WELCOME_SESSION_SLOTS).map(session => session.name));
 	});
 
-	it("truncates a long session name on /welcome instead of shattering the centred column", () => {
+	it("truncates a long session name instead of shattering the centred column", () => {
 		const longName = "a".repeat(120);
 		const frame = welcomeScreen([{ name: longName, timeAgo: "1d ago" }]);
 
