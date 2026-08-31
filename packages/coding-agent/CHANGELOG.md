@@ -45,6 +45,7 @@
 - A panel in the GPU front end keeps its surface while its width or height drains and leaves the tree on the frame that reaches zero, instead of being placed by whether it is open while the animated size reached nothing on screen.
 - A palette in the GPU front end opens on an empty filter instead of the filter the last palette closed with, which left the field holding text nobody typed there and no rows under it.
 - The GPU front end's model picker narrows its rows by the text typed into it; while unreleased it filtered by a query nothing wrote, so typing changed nothing and the row a keystroke ran was not the row under the cursor.
+- A dialog in the GPU front end keeps its heading, its tabs and its buttons drawn while its body scrolls, so a plan with a long outline or a large diff can still be approved at the narrowest window it opens at.
 - A memory limit pins the capped subtree's swap to zero, so the cap bounds the whole anonymous footprint; while unreleased a 256 MB machine cap let a single process reach 5,520 MB by swapping.
 - The machine limit requires a parent that delegates two cgroup levels, so a host that delegates one — a container whose cgroup root holds processes — reports per-session limits held and the machine tier unheld, instead of reporting a machine cap the kernel never applies.
 - The CPU-limit probe and the limiter resolve one environment, so the probe can no longer report support for a cgroup path the limiter does not write to.
