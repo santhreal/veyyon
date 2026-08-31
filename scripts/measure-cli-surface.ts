@@ -19,6 +19,7 @@
  * robustly without fragile text patterns.
  */
 
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parse } from "@babel/parser";
@@ -422,6 +423,15 @@ export function buildLedger(
 	};
 }
 
+/**
+ * The commit the ledger's rows are attributed to. Every ledger in this proof set is measured against
+ * the merge base with `main`, and a suite asserts all four name the same commit, so a literal
+ * default here goes stale the moment the base moves and stamps a ledger with a tree it did not read.
+ */
+function mergeBaseWithMain(): string {
+	return execFileSync("git", ["merge-base", "origin/main", "HEAD"], { cwd: REPO_ROOT, encoding: "utf-8" }).trim();
+}
+
 if (import.meta.main) {
 	// The ledger's rows are main's surface, so they cannot be read from this tree. A baseline root
 	// holding main's checkout of the six extracted modules is required: deriving both sides from the
@@ -434,7 +444,7 @@ if (import.meta.main) {
 		process.exit(2);
 	}
 	const baseRoot = resolve(args[baseFlag + 1]);
-	const generatedFrom = shaFlag === -1 ? "e9467ab12c976cd830eb7a61e30bfd6adc4bff1f" : (args[shaFlag + 1] ?? "");
+	const generatedFrom = shaFlag === -1 ? mergeBaseWithMain() : (args[shaFlag + 1] ?? "");
 	if (generatedFrom === "") {
 		process.stderr.write("--from needs a sha\n");
 		process.exit(2);
