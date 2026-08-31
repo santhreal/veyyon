@@ -11,19 +11,13 @@ import type { RenderResultOptions } from "../../extensibility/custom-tools/types
 import type { Theme } from "../../theme/theme";
 import { framedBlock, renderStatusLine } from "../../tui";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../core/render-utils";
-import { SET_CWD_TOOL_NAME } from "./reroot-hint";
 import type { SetCwdToolDetails, SetCwdToolInput } from "./set-cwd";
 
 export const setCwdToolRenderer = {
-	name: SET_CWD_TOOL_NAME,
 	renderCall(args: unknown, _options: RenderResultOptions, theme: Theme): Component {
 		const pathArg = (args as Partial<SetCwdToolInput>)?.path;
 		const label = typeof pathArg === "string" ? truncateToWidth(shortenPath(pathArg), TRUNCATE_LENGTHS.TITLE) : "…";
 		return new Text(theme.fg("toolTitle", `set_cwd ${label}`));
-	},
-	renderArguments(args: unknown): string {
-		const pathArg = (args as Partial<SetCwdToolInput>)?.path;
-		return typeof pathArg === "string" ? pathArg : "";
 	},
 	renderResult(
 		result: AgentToolResult<SetCwdToolDetails>,
@@ -54,10 +48,5 @@ export const setCwdToolRenderer = {
 			header: renderStatusLine({ icon: "success", title: "cwd", meta }, theme),
 			width,
 		}));
-	},
-	renderPending(args: unknown, theme: Theme): Component {
-		const pathArg = (args as Partial<SetCwdToolInput>)?.path;
-		const label = typeof pathArg === "string" ? pathArg : "…";
-		return new Text(theme.fg("toolTitle", `set_cwd ${label}`));
 	},
 };
