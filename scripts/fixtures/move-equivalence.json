@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "e848c707b7af4de30362f941ec1b19ab5e0d6649",
+	"generatedFrom": "1ff292625f87211b94a3a0c119911d9f63fce571",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -10721,10 +10721,10 @@
 			"old": "packages/coding-agent/src/modes/components/composer-chrome.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "e64843305d02f8dbe969c8b5efa67d5e180c1334964ceb3ad10430b96fe3ea7c",
-			"mainHash": "813c6f4098bd9b6aec89e7113a5d4de24cfe2c84c9a64c727951c97322bf54d0",
-			"structuralHash": "34d553878760b99c055530f5c7edde6a0c032a704708ce85364f658b3585e4ad",
-			"mainStructuralHash": "34d553878760b99c055530f5c7edde6a0c032a704708ce85364f658b3585e4ad"
+			"hash": "f72dbdb20673097153f3de77e6243936e8068dd7ab7fd08aa2997162da30a0a5",
+			"mainHash": "3b736d2a0ea117a13a9cd8b93718c1cc8cc2a42d1b490250b4db9067cd4e6d19",
+			"structuralHash": "6830877e694acd4003a6d3ad1c76c695ea76924e1178221c1f1c254defc93ee8",
+			"mainStructuralHash": "6830877e694acd4003a6d3ad1c76c695ea76924e1178221c1f1c254defc93ee8"
 		},
 		"packages/coding-agent/src/modes/terminal/components/composer/composer-defect-oracle.ts": {
 			"old": "packages/coding-agent/src/modes/components/composer-defect-oracle.ts",
@@ -11299,10 +11299,10 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/component.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "70ff36197965d47441a632be38845e105f671911e167e9028824cae098904e69",
-			"mainHash": "58c3cfebe76cb2c008218969c3428f75d9e8825ee44e1709d0098206065eb806",
-			"structuralHash": "a4a9c74fdb15058982d76340f983e03ec7dc534dc99fe923f8ae32554cf87daa",
-			"mainStructuralHash": "a4a9c74fdb15058982d76340f983e03ec7dc534dc99fe923f8ae32554cf87daa"
+			"hash": "c8826f3f74e7ec90121f4838010ff7244715413964ecb72482f9cc605aac1d97",
+			"mainHash": "e9ab3f24713cfe81466e8b425448ffc980a8e5531826c0d89b1d8013aeeca79d",
+			"structuralHash": "294b641481aee0ae5e78fea233620f8dbc136eb87355947c5f25812bd6f76674",
+			"mainStructuralHash": "294b641481aee0ae5e78fea233620f8dbc136eb87355947c5f25812bd6f76674"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/context-thresholds.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/context-thresholds.ts",
@@ -11389,10 +11389,10 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/segments.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "11549455d8d72757d24b62a161f3953c8dd30ed5a115e8bc30568db2b4dd5871",
-			"mainHash": "18ef3f76577a00d0abd263364aa971b4b6397d9ac94ddec08c3b02ffd9cba2f6",
-			"structuralHash": "473d19ff18f01154007267b76b61da64330f7fb542bcec6b4842ef31aa36109d",
-			"mainStructuralHash": "473d19ff18f01154007267b76b61da64330f7fb542bcec6b4842ef31aa36109d"
+			"hash": "4ce0e2cc646b9303c751167fb89af18d954da59dd9bae16e269a67868e128a3d",
+			"mainHash": "4d372810c30417f8bde48a08336fe174b6eced38d9fe9d529d74179e3811c7d7",
+			"structuralHash": "bad167d8e9dec00fcef0288c22b23745868a3a77dfcf35d559594117282d1d30",
+			"mainStructuralHash": "bad167d8e9dec00fcef0288c22b23745868a3a77dfcf35d559594117282d1d30"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/service-tier-chip.test.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/service-tier-chip.test.ts",
