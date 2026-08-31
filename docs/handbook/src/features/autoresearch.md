@@ -87,10 +87,10 @@ secondary metrics, confidence, the arm that produced the run and the arm that
 certified it, the flag reason, scope deviations, the change description, the
 commit and the files it touched.
 
-Up and down move through the list, page up and page down scroll the detail pane,
-typing filters the list, and Escape closes the screen. It is readable before the
-first run, where it shows the goal, the scope and the metric the session was
-configured with.
+Up and down move through the list, page up and page down move the detail pane by
+a full pane, and typing filters the list. Escape clears a live filter, and closes
+the screen when there is none. It is readable before the first run, where it
+shows the goal, the scope and the metric the session was configured with.
 
 ## Going wider
 
