@@ -23,6 +23,13 @@
 // stamp was written is markdown path tokens (link targets, link text, code
 // spans — anywhere a `foo/bar.md` appears). Any prose change still fails.
 //
+// A package move is the same edit one class wider: it rewrites the source paths inside every
+// stamped page that points at it, and a page whose only change is `packages/tui/src/x.ts` becoming
+// `hosts/terminal/engine/src/x.ts` still describes the same code. So the exemption also folds a
+// token that NAMES SOMETHING IN THE TREE it is read against — the old path in the stamped
+// snapshot's tree, the new path in the working tree. A rewrite pointing at a path that exists in
+// neither is not a move, so it stays a difference and the stamp still has to be renewed.
+//
 // The baseline for that judgement is the commit that WROTE the current stamp,
 // not the commit the stamp names: the stamp names the code it was verified
 // against, and the doc at that code commit is usually a different, older page.
@@ -95,6 +102,53 @@ export function normalizeDocPaths(markdown: string): string {
 	return markdown.replace(MARKDOWN_PATH_TOKEN, "@");
 }
 
+/**
+ * Every token shaped like a path inside this repository: `packages/coding-agent/src/cli.ts`,
+ * `natives/`, `hosts/terminal/engine`, or a glob over a directory's children. A token with no
+ * slash in it is not a candidate, so ordinary prose never matches.
+ */
+export const REPO_PATH_TOKEN = /[\w@.-]+\/(?:[\w@.*+-]+\/?)*/g;
+
+/**
+ * The tracked paths of one tree, files and every directory above them.
+ *
+ * Read once per tree and reused, because the fold below asks about a few hundred tokens per doc
+ * and a `git cat-file` apiece would cost more than the whole gate.
+ */
+export function trackedPaths(root: string, sha?: string): Set<string> {
+	const listing = sha === undefined ? git(root, ["ls-files"]) : git(root, ["ls-tree", "-r", "--name-only", sha]);
+	const known = new Set<string>();
+	if (listing.status !== 0) return known;
+	for (const file of listing.stdout.split("\n")) {
+		if (file.length === 0) continue;
+		known.add(file);
+		for (let cut = file.lastIndexOf("/"); cut > 0; cut = file.lastIndexOf("/", cut - 1)) {
+			known.add(file.slice(0, cut));
+		}
+	}
+	return known;
+}
+
+/**
+ * Fold away where CODE lives, on the same terms as where other docs live.
+ *
+ * A package move rewrites the paths inside every doc that points at it, and the stamp asserts that
+ * this page's claims match the code — not which directory the code sits in, which the rewrite is
+ * what keeps true. Folding is granted only for a token that NAMES SOMETHING IN THE TREE it is read
+ * against, so a rewrite to a path that does not exist stays a difference and the gate still asks
+ * for a re-verification. Prose is untouched: a token needs a slash to be a candidate at all.
+ */
+export function foldRepoPaths(markdown: string, known: Set<string>): string {
+	return markdown.replace(REPO_PATH_TOKEN, token => {
+		const bare = token.endsWith("/") ? token.slice(0, -1) : token;
+		if (known.has(bare)) return "@";
+		// A glob names a set of siblings; the directory holding them is what the token asserts.
+		const parent = bare.slice(0, bare.lastIndexOf("/"));
+		if (bare.includes("*") && parent.length > 0 && known.has(parent)) return "@";
+		return token;
+	});
+}
+
 function lastLine(markdown: string): string {
 	const lines = markdown.trimEnd().split("\n");
 	return lines[lines.length - 1]?.trim() ?? "";
@@ -138,6 +192,15 @@ export function checkFreshness(root: string, files: string[]): FreshnessResult {
 		missing: [],
 		pathRenamedOnly: [],
 		issues: [],
+	};
+	const currentTree = trackedPaths(root);
+	const snapshotTrees = new Map<string, Set<string>>();
+	const treeOf = (sha: string): Set<string> => {
+		const cached = snapshotTrees.get(sha);
+		if (cached !== undefined) return cached;
+		const tree = trackedPaths(root, sha);
+		snapshotTrees.set(sha, tree);
+		return tree;
 	};
 	for (const file of files) {
 		const abs = path.join(root, file);
@@ -183,10 +246,13 @@ export function checkFreshness(root: string, files: string[]): FreshnessResult {
 			// claims is backdated, and comparing the doc against the commit that
 			// backdated it would certify the edit with itself.
 			const snapshot = stampedSnapshot(root, file, lastLine(markdown));
+			// Each side is folded against ITS OWN tree, so a path that existed then and a path that
+			// exists now both read as "a path", while a path naming nothing in either tree does not.
 			if (
 				snapshot !== null &&
 				snapshot.date <= stamp.date &&
-				normalizeDocPaths(snapshot.markdown) === normalizeDocPaths(markdown)
+				foldRepoPaths(normalizeDocPaths(snapshot.markdown), treeOf(snapshot.sha)) ===
+					foldRepoPaths(normalizeDocPaths(markdown), currentTree)
 			) {
 				result.pathRenamedOnly.push(file);
 				continue;

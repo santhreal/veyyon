@@ -64,6 +64,18 @@ function commit(root: string, file: string, content: string, dateIso: string): s
 	return spawnSync("git", ["rev-parse", "--short", "HEAD"], { cwd: root, encoding: "utf-8" }).stdout.trim();
 }
 
+/** Delete a tracked file in its own commit, so the fixture's tree really loses the old path. */
+function remove(root: string, file: string, dateIso: string): void {
+	const env = { ...process.env, GIT_AUTHOR_DATE: `${dateIso}T12:00:00`, GIT_COMMITTER_DATE: `${dateIso}T12:00:00` };
+	for (const args of [
+		["rm", "-q", file],
+		["commit", "-q", "-m", `remove ${file}`],
+	]) {
+		const result = spawnSync("git", args, { cwd: root, encoding: "utf-8", env });
+		if (result.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.stderr}`);
+	}
+}
+
 describe("checkFreshness", () => {
 	it("counts unstamped docs without failing them", () => {
 		const root = makeRepo();
@@ -337,6 +349,112 @@ describe("checkFreshness", () => {
 		);
 
 		const result = checkFreshness(root, ["docs/internal/j.md"]);
+
+		expect(result.pathRenamedOnly).toEqual([]);
+		expect(result.issues).toHaveLength(1);
+	});
+
+	/**
+	 * WHY: the doc-path exemption above covers a docs reorganization and left a package move —
+	 * the same mechanical rewrite over source paths — failing every stamped page that pointed at
+	 * the moved tree. These cases fix that boundary: a token that names something in the tree it
+	 * is read against folds, a token that names nothing does not, and prose never folds.
+	 */
+	it("keeps the stamp when a source path moved and the new path exists", () => {
+		const root = makeRepo();
+		const sha = commit(root, "packages/tui/src/renderer.ts", "export const draw = () => {};\n", "2026-01-10");
+		commit(
+			root,
+			"docs/internal/k.md",
+			`# K\n\nThe renderer is \`packages/tui/src/renderer.ts\`.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-01-10",
+		);
+		commit(root, "hosts/terminal/engine/src/renderer.ts", "export const draw = () => {};\n", "2026-03-01");
+		remove(root, "packages/tui/src/renderer.ts", "2026-03-01");
+		commit(
+			root,
+			"docs/internal/k.md",
+			`# K\n\nThe renderer is \`hosts/terminal/engine/src/renderer.ts\`.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-03-01",
+		);
+
+		const result = checkFreshness(root, ["docs/internal/k.md"]);
+
+		expect(result.issues).toEqual([]);
+		expect(result.pathRenamedOnly).toEqual(["docs/internal/k.md"]);
+	});
+
+	/**
+	 * The fold is granted by the TREE, not by the token's shape. A rewrite to a path that exists
+	 * in neither tree is a claim nobody checked, and the exemption would certify it.
+	 */
+	it("still fails when the rewritten source path names nothing in either tree", () => {
+		const root = makeRepo();
+		const sha = commit(root, "packages/tui/src/renderer.ts", "export const draw = () => {};\n", "2026-01-10");
+		commit(
+			root,
+			"docs/internal/l.md",
+			`# L\n\nThe renderer is \`packages/tui/src/renderer.ts\`.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-01-10",
+		);
+		commit(
+			root,
+			"docs/internal/l.md",
+			`# L\n\nThe renderer is \`hosts/terminal/engine/src/renderer.ts\`.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-03-01",
+		);
+
+		const result = checkFreshness(root, ["docs/internal/l.md"]);
+
+		expect(result.pathRenamedOnly).toEqual([]);
+		expect(result.issues).toHaveLength(1);
+	});
+
+	/** A bare directory prefix (`crates/` becoming `natives/`) and a glob over its children are the
+	 *  same statement about where code lives, so both fold once the directory is real. */
+	it("keeps the stamp when a bare directory prefix and a glob over it moved", () => {
+		const root = makeRepo();
+		const sha = commit(root, "crates/veyyon-keys/src/lib.rs", "pub fn parse() {}\n", "2026-01-10");
+		commit(
+			root,
+			"docs/internal/m.md",
+			`# M\n\nThe crates live under \`crates/\`, one per concern (\`crates/veyyon-*/\`).\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-01-10",
+		);
+		commit(root, "natives/text/keys/src/lib.rs", "pub fn parse() {}\n", "2026-03-01");
+		remove(root, "crates/veyyon-keys/src/lib.rs", "2026-03-01");
+		commit(
+			root,
+			"docs/internal/m.md",
+			`# M\n\nThe crates live under \`natives/\`, one per concern (\`natives/text/*/\`).\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-03-01",
+		);
+
+		const result = checkFreshness(root, ["docs/internal/m.md"]);
+
+		expect(result.issues).toEqual([]);
+		expect(result.pathRenamedOnly).toEqual(["docs/internal/m.md"]);
+	});
+
+	it("still fails when a source path move travels with a prose change", () => {
+		const root = makeRepo();
+		const sha = commit(root, "packages/tui/src/renderer.ts", "export const draw = () => {};\n", "2026-01-10");
+		commit(
+			root,
+			"docs/internal/n.md",
+			`# N\n\nThe renderer is \`packages/tui/src/renderer.ts\`.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-01-10",
+		);
+		commit(root, "hosts/terminal/engine/src/renderer.ts", "export const draw = () => {};\n", "2026-03-01");
+		remove(root, "packages/tui/src/renderer.ts", "2026-03-01");
+		commit(
+			root,
+			"docs/internal/n.md",
+			`# N\n\nThe renderer is \`hosts/terminal/engine/src/renderer.ts\`, and it now double-buffers.\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-03-01",
+		);
+
+		const result = checkFreshness(root, ["docs/internal/n.md"]);
 
 		expect(result.pathRenamedOnly).toEqual([]);
 		expect(result.issues).toHaveLength(1);
