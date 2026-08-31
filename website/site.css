@@ -2,10 +2,10 @@
    JetBrains Mono across the entire site. Near-black ground, silver structure,
    ember-sun accent (veyyōn = the sun). Sharp edges, no gradients. */
 
-@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Regular.woff2) format("woff2");font-weight:400;font-display:swap}
-@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Medium.woff2) format("woff2");font-weight:500;font-display:swap}
-@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-SemiBold.woff2) format("woff2");font-weight:600;font-display:swap}
-@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Bold.woff2) format("woff2");font-weight:700;font-display:swap}
+@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Regular.woff2) format("woff2");font-weight:400;font-display:block}
+@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Medium.woff2) format("woff2");font-weight:500;font-display:block}
+@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-SemiBold.woff2) format("woff2");font-weight:600;font-display:block}
+@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Bold.woff2) format("woff2");font-weight:700;font-display:block}
 
 :root{
   --bg:#000000; --raised:#000000; --inset:#000000; --hover:#000000;
@@ -50,6 +50,7 @@ header.site{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--
 .nav nav{display:flex;gap:30px;align-items:center;font-size:14px}
 .nav nav a{color:var(--muted);font-weight:500}
 .nav nav a:hover{color:var(--fg)}
+.nav-icon{width:16px;height:16px;display:inline-block;vertical-align:-2px}
 .nav nav a[aria-current="page"]{color:var(--silver-hi)}
 .btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-2);color:var(--fg);
   padding:9px 17px;font-size:14px;font-weight:500;background:transparent;font-family:var(--sans);
@@ -330,11 +331,7 @@ footer.site{border-top:1px solid var(--line);padding:52px 0;color:var(--dim);fon
   .term .body{font-size:11px}
 }
 
-/* motion — silky reveals + interactions. reveal is added by motion.js only, so
-   no-JS renders everything visible; the global reduced-motion rule disables it. */
-.reveal{opacity:0;transform:translateY(20px);
-  transition:opacity var(--dur) var(--ease),transform var(--dur) var(--ease);transition-delay:var(--d,0ms)}
-.reveal.in{opacity:1;transform:none}
+/* interactions — link arrows and card hovers only, no scroll reveal. */
 .section-link::after,.btn.arrow::after{transition:transform .22s var(--ease)}
 .section-link:hover::after,.btn.arrow:hover::after{transform:translateX(5px)}
 .card{transition:border-color .25s var(--ease),background .25s var(--ease)}

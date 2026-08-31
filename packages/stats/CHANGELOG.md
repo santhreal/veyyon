@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Removed
+
+- The `@veyyon/stats/format` entry point. `formatCostTiered` and `normalizePremiumRequests` are now exported by `@veyyon/utils/format`.
+
 ## [1.3.0] - 2026-08-28
 
 ### Changed

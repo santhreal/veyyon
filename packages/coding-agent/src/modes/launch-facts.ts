@@ -2,10 +2,11 @@
  * What the last launch of this project knew, so the card can state it instead of a placeholder.
  *
  * THE PROBLEM THIS SOLVES. The launch card paints at about 48ms and the session finishes booting at
- * about 650ms. Three of the things on that card cannot be computed inside the first budget at any
+ * about 650ms. Four of the things on that card cannot be computed inside the first budget at any
  * price: a model's display name needs the catalog, the working tree's dirty flag needs a `git
- * status` that costs 130ms on a repository this size, and the context gauge needs a prompt that has
- * not been assembled yet. Rendered as placeholders they were not merely blank — the hero announced
+ * status` that costs 130ms on a repository this size, the context gauge needs a prompt that has not
+ * been assembled yet, and the effort the row prints is resolved against the model and clamped to
+ * what that model supports. Rendered as placeholders they were not merely blank — the hero announced
  * `no model yet · /login` to an operator who is logged in, and the status row printed a raw
  * `provider/vendor/model-id` so long that the justifier dropped the profile segment to fit it. Both
  * corrected themselves 600ms later, which is the repaint a person actually notices.
@@ -21,36 +22,83 @@
  * longer matches is dropped and the surface renders its own absent state, which is the behaviour
  * that existed before this cache.
  *
- * WHEN IT IS WRONG. Committing from another terminal, editing an `AGENTS.md`, installing a skill or
- * connecting an MCP server moves one of these without moving its key. The first frame then states
- * the previous answer and the session corrects it in place, which is one changed row instead of the
- * whole screen. The alternative on that frame is a placeholder, and a placeholder is not more
- * accurate than a slightly stale truth — `no model yet · /login` was the proof.
+ * WHEN IT IS WRONG. Committing from another terminal, editing an `AGENTS.md`, installing a skill,
+ * connecting an MCP server or changing `defaultEffort` moves one of these without moving its key.
+ * The first frame then states the previous answer and the session corrects it in place, which is
+ * one changed row instead of the whole screen. The alternative on that frame is a placeholder, and
+ * a placeholder is not more accurate than a slightly stale truth — `no model yet · /login` was the
+ * proof.
+ *
+ * WHAT DOES NOT BELONG HERE. The secrets chip, whose count is the last remaining segment to arrive
+ * after the card. It states what the expansion authority would substitute right now, and a
+ * credential that expired, was retired or is scoped to another directory is absent from it by
+ * design; a recorded count states what WAS live and can only overstate. Every other fact here is
+ * cosmetic when stale, and that one is planned around, so it stays silent until the session
+ * measures it. Counting the environment half alone does not rescue it either: two counters for one
+ * chip is the disagreement `liveSecrets` exists to prevent.
  */
 
 import { readFileSync } from "node:fs";
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import { atomicWriteJson } from "@veyyon/utils/atomic-write";
 import { getLaunchFactsCachePath, getProjectDir, VERSION } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { settings } from "../config/settings-instance";
+import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../thinking";
 import type { GitStatusSummary } from "../utils/git";
 
 /**
- * The file on disk. Both keys are stored so a reader can tell which facts survived.
+ * The levels a recorded effort may hold, from the two modules that own them.
+ *
+ * The row prints this value through a theme table, so a damaged file must not be able to put text
+ * of its own choosing on the status row: an unknown string is discarded like any other invalid
+ * fact. Derived from the ladder rather than listed, so a new rung needs no edit here.
+ */
+const RECORDABLE_THINKING: ReadonlySet<string> = new Set<string>([...Object.values(ThinkingLevel), AUTO_THINKING]);
+
+/**
+ * The file on disk: one entry per project, so a launch in one project does not erase what another
+ * knows.
+ *
+ * A single set of facts was enough for one project and made every launch cold for anyone who works
+ * in two: the second project's launch overwrote the first's, so alternating between them meant the
+ * card never had a fact to state and the gauge read `?` on every start. Entries are bounded and the
+ * oldest write is evicted, because this is a cache of what is worth stating on a first frame, not a
+ * record of every directory ever opened.
+ *
+ * `version` is checked on read. A file written by an older shape is dropped rather than
+ * reinterpreted, since its facts were filed under keys this reader would resolve differently.
+ */
+const FACTS_VERSION = 2;
+
+/** How many projects keep facts. Each entry is a few hundred bytes and the file is read on paint. */
+const MAX_PROJECTS = 24;
+
+/**
+ * What one project knows.
  *
  * Every fact is optional: they are recorded from different places at different moments, and a
  * launch that never resolved one leaves the previous value alone rather than writing a null over
- * it.
+ * it. `modelRole` is what the model-scoped facts were measured under, so a role change invalidates
+ * the display name and the gauge while leaving the dirty flag alone.
  */
-interface LaunchFactsFile {
-	projectKey: string;
+interface ProjectFacts {
+	modelRole: string;
 	gitStatus?: GitStatusSummary;
-	modelKey: string;
 	modelName?: string;
 	providerName?: string;
 	contextPercent?: number;
+	/** The effort the row printed, concrete or `auto`; absent when it printed none. */
+	thinking?: string;
+	/** Milliseconds since the epoch, used only to decide which entry leaves when the map is full. */
+	recordedAt: number;
+}
+
+interface LaunchFactsFile {
+	version: number;
+	projects: Record<string, ProjectFacts>;
 }
 
 /** The facts that survived validation, each null when it did not. */
@@ -66,6 +114,13 @@ export interface LaunchFacts {
 	modelName: string | null;
 	providerName: string | null;
 	contextPercent: number | null;
+	/**
+	 * The effort the last launch of this model ran at, or null when it ran without one.
+	 *
+	 * Model-scoped like the name and the gauge: an effort is resolved against the model and clamped
+	 * to what that model supports, so the level one model ran at states nothing about the next.
+	 */
+	thinking: ConfiguredThinkingLevel | null;
 }
 
 /** What a caller can contribute; anything omitted keeps its recorded value. */
@@ -74,9 +129,23 @@ export interface LaunchFactsUpdate {
 	modelName?: string;
 	providerName?: string;
 	contextPercent?: number;
+	/**
+	 * The effort, or null to record that there was none.
+	 *
+	 * The only fact with an explicit clear. The others describe something that exists and is merely
+	 * unresolved yet, so omitting them keeps the recorded value; an effort turned off is a fact in
+	 * itself, and carrying the previous one forward would print `@high` on a row that has none.
+	 */
+	thinking?: ConfiguredThinkingLevel | null;
 }
 
-const NO_FACTS: LaunchFacts = { gitStatus: null, modelName: null, providerName: null, contextPercent: null };
+const NO_FACTS: LaunchFacts = {
+	gitStatus: null,
+	modelName: null,
+	providerName: null,
+	contextPercent: null,
+	thinking: null,
+};
 
 /**
  * The release and the project.
@@ -89,14 +158,14 @@ function projectKey(): string {
 }
 
 /**
- * The release, the project and the configured default model.
+ * The configured default model, which is what the model-scoped facts were measured under.
  *
- * The model is in this key because a display name belongs to one model and a context percentage is
- * taken against one window. The id is read from the settings store the launch path has already
- * loaded, and it is the same id the next session will start from.
+ * A display name belongs to one model and a context percentage is taken against one window. The id
+ * is read from the settings store the launch path has already loaded, and it is the same id the
+ * next session will start from.
  */
-function modelKey(): string {
-	return `${projectKey()}|${settings.getModelRole("default") ?? ""}`;
+function modelRole(): string {
+	return settings.getModelRole("default") ?? "";
 }
 
 /** Hold a percentage inside the band the gauge can draw, since the bar derives its cells from it. */
@@ -133,11 +202,13 @@ function load(): LaunchFactsFile | null {
 		return memo;
 	}
 	const file = parsed as Partial<LaunchFactsFile>;
-	if (typeof file.projectKey !== "string" || typeof file.modelKey !== "string") {
+	// A file this reader would misread is no better than no file. The single-slot shape that came
+	// before this one filed its facts under one project with no map to look them up in.
+	if (file.version !== FACTS_VERSION || !file.projects || typeof file.projects !== "object") {
 		memo = null;
 		return memo;
 	}
-	memo = file as LaunchFactsFile;
+	memo = { version: FACTS_VERSION, projects: file.projects };
 	return memo;
 }
 
@@ -163,19 +234,27 @@ function asGitStatus(value: unknown): GitStatusSummary | null {
  * does not get.
  */
 export function readLaunchFacts(): LaunchFacts {
-	const file = load();
-	if (!file) return NO_FACTS;
+	const entry = load()?.projects[projectKey()];
+	if (!entry || typeof entry !== "object") return NO_FACTS;
 
-	const projectValid = file.projectKey === projectKey();
-	const modelValid = file.modelKey === modelKey();
+	// The dirty flag belongs to the working tree and survives a model change; the name, the provider
+	// and the gauge were measured against one model and do not.
+	const modelValid = entry.modelRole === modelRole();
 	return {
-		gitStatus: projectValid ? asGitStatus(file.gitStatus) : null,
-		modelName: modelValid && typeof file.modelName === "string" && file.modelName.length > 0 ? file.modelName : null,
+		gitStatus: asGitStatus(entry.gitStatus),
+		modelName:
+			modelValid && typeof entry.modelName === "string" && entry.modelName.length > 0 ? entry.modelName : null,
 		providerName:
-			modelValid && typeof file.providerName === "string" && file.providerName.length > 0 ? file.providerName : null,
+			modelValid && typeof entry.providerName === "string" && entry.providerName.length > 0
+				? entry.providerName
+				: null,
 		contextPercent:
-			modelValid && typeof file.contextPercent === "number" && Number.isFinite(file.contextPercent)
-				? clampPercent(file.contextPercent)
+			modelValid && typeof entry.contextPercent === "number" && Number.isFinite(entry.contextPercent)
+				? clampPercent(entry.contextPercent)
+				: null,
+		thinking:
+			modelValid && typeof entry.thinking === "string" && RECORDABLE_THINKING.has(entry.thinking)
+				? (entry.thinking as ConfiguredThinkingLevel)
 				: null,
 	};
 }
@@ -205,11 +284,15 @@ export function launchModelLabel(): string {
 }
 
 /**
- * Merge `update` into what is recorded and write it, when anything changed.
+ * Merge `update` into what this project has recorded and write it, when anything changed.
  *
- * Facts recorded under a key that has since moved are DROPPED rather than carried onto the new key:
- * a display name from the model the operator just left is worse than no name at all, because the
- * card would state it with the same confidence as a correct one.
+ * Facts recorded under a model that has since moved are DROPPED rather than carried onto the new
+ * one: a display name from the model the operator just left is worse than no name at all, because
+ * the card would state it with the same confidence as a correct one. The dirty flag is kept, since
+ * it describes the working tree rather than the model.
+ *
+ * Other projects' entries are carried through untouched. When the map is full the oldest write
+ * leaves, so a machine that opens hundreds of directories keeps the ones it returns to.
  *
  * A caller reaches this on every redraw of an idle session, so an update that changes nothing
  * returns before it touches the disk. The write is atomic, so a crash cannot leave a half-written
@@ -220,40 +303,65 @@ export function launchModelLabel(): string {
  * into a warning per redraw — and the next changed fact tries again.
  */
 export function recordLaunchFacts(update: LaunchFactsUpdate): Promise<void> {
-	const currentProjectKey = projectKey();
-	const currentModelKey = modelKey();
+	const key = projectKey();
+	const role = modelRole();
 	const previous = load();
-	// Only facts still valid under today's keys survive into the merge.
-	const kept: LaunchFactsFile = {
-		projectKey: currentProjectKey,
-		modelKey: currentModelKey,
-		...(previous?.projectKey === currentProjectKey && asGitStatus(previous.gitStatus)
-			? { gitStatus: previous.gitStatus }
-			: {}),
-		...(previous?.modelKey === currentModelKey
+	const recorded = previous?.projects[key];
+	const sameModel = recorded?.modelRole === role;
+
+	const next: ProjectFacts = {
+		modelRole: role,
+		recordedAt: Date.now(),
+		...(recorded && asGitStatus(recorded.gitStatus) ? { gitStatus: recorded.gitStatus } : {}),
+		...(sameModel && recorded
 			? {
-					...(typeof previous.modelName === "string" ? { modelName: previous.modelName } : {}),
-					...(typeof previous.providerName === "string" ? { providerName: previous.providerName } : {}),
-					...(typeof previous.contextPercent === "number" ? { contextPercent: previous.contextPercent } : {}),
+					...(typeof recorded.modelName === "string" ? { modelName: recorded.modelName } : {}),
+					...(typeof recorded.providerName === "string" ? { providerName: recorded.providerName } : {}),
+					...(typeof recorded.contextPercent === "number" ? { contextPercent: recorded.contextPercent } : {}),
+					...(typeof recorded.thinking === "string" ? { thinking: recorded.thinking } : {}),
 				}
 			: {}),
 	};
-
-	const next: LaunchFactsFile = { ...kept };
 	if (update.gitStatus !== undefined) next.gitStatus = update.gitStatus;
 	if (update.modelName !== undefined && update.modelName.length > 0) next.modelName = update.modelName;
 	if (update.providerName !== undefined && update.providerName.length > 0) next.providerName = update.providerName;
 	if (update.contextPercent !== undefined && Number.isFinite(update.contextPercent)) {
 		next.contextPercent = clampPercent(Math.round(update.contextPercent));
 	}
+	// The one fact a caller can erase: `null` states that the row printed no effort, which is a
+	// different answer from not having resolved one yet.
+	if (update.thinking === null) {
+		delete next.thinking;
+	} else if (update.thinking !== undefined) {
+		next.thinking = update.thinking;
+	}
 
-	if (previous && JSON.stringify(previous) === JSON.stringify(next)) return Promise.resolve();
-	memo = next;
-	return atomicWriteJson(getLaunchFactsCachePath(), next, { fsync: false }).catch((err: unknown) => {
+	// `recordedAt` moves on every call, so it is left out of the comparison: a redraw that changed
+	// no fact must not rewrite the file, which is what keeps an idle session off the disk.
+	if (recorded && sameFacts(recorded, next)) return Promise.resolve();
+
+	const projects = { ...previous?.projects, [key]: next };
+	const file: LaunchFactsFile = { version: FACTS_VERSION, projects: evictOldest(projects) };
+	memo = file;
+	return atomicWriteJson(getLaunchFactsCachePath(), file, { fsync: false }).catch((err: unknown) => {
 		logger.warn("Launch facts could not be written; the next launch will use placeholders", {
 			error: errorMessage(err),
 		});
 	});
+}
+
+/** Every fact but the timestamp, which moves on each call and is not itself a fact about the project. */
+function sameFacts(left: ProjectFacts, right: ProjectFacts): boolean {
+	const strip = ({ recordedAt: _, ...rest }: ProjectFacts): Omit<ProjectFacts, "recordedAt"> => rest;
+	return JSON.stringify(strip(left)) === JSON.stringify(strip(right));
+}
+
+/** The newest {@link MAX_PROJECTS} entries, so the file cannot grow without bound. */
+function evictOldest(projects: Record<string, ProjectFacts>): Record<string, ProjectFacts> {
+	const entries = Object.entries(projects);
+	if (entries.length <= MAX_PROJECTS) return projects;
+	entries.sort(([, left], [, right]) => (right.recordedAt ?? 0) - (left.recordedAt ?? 0));
+	return Object.fromEntries(entries.slice(0, MAX_PROJECTS));
 }
 
 /** Forget what this process read or wrote, so a test can drive the file directly. */

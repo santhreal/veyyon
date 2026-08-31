@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, setSystemTime, vi } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, setSystemTime, vi } from "bun:test";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -20,6 +20,7 @@ import { renderBranch } from "@veyyon/coding-agent/modes/components/status-line/
 import { renderLocation, resolveLocationOptions } from "@veyyon/coding-agent/modes/components/status-line/location";
 import { segmentSeparator } from "@veyyon/coding-agent/modes/components/status-line/state-grammar";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
+import { resetLaunchFactsForTest } from "@veyyon/coding-agent/modes/launch-facts";
 import { getEditorTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
@@ -28,6 +29,7 @@ import { branchLabelFromFiles } from "@veyyon/coding-agent/utils/git-head";
 import type { Component } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/tui/utils";
 import { getProjectDir, TempDir } from "@veyyon/utils";
+import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 
 /**
  * WHY: startup used to paint eight BLANK rows where the composer would live,
@@ -61,13 +63,23 @@ import { getProjectDir, TempDir } from "@veyyon/utils";
  * fresh session on the home screen at three widths. A zone height that only
  * diverges under state the resting session never reaches — a live status
  * message, a multi-line draft, a mounted hook widget — is outside it, and so
- * is a divergence that appears only at a width not in the list. The location's
- * final WIDTH under a live row is outside it too: the live component refits
- * the path against the segments competing for the row, which carry measured
- * values the card does not have. That every segment the preset declares
- * reaches the card is held in `the-card-and-the-live-row-are-one-row.test.ts`,
- * and that the card's branch bytes equal the live segment's is held in
+ * is a divergence that appears only at a width not in the list. That every
+ * segment the preset declares reaches the card is held in
+ * `the-card-and-the-live-row-are-one-row.test.ts`, and that the card's branch
+ * bytes equal the live segment's is held in
  * `modes/components/status-line/the-branch-reads-the-same-on-the-card-and-the-live-row.test.ts`.
+ *
+ * The card refits the path against the segments competing for the row, exactly
+ * as the live component does, so the width at which the budgeted location
+ * survives whole depends on how long the checkout's path is. It is measured
+ * here rather than written down: a fixed hundred columns fits on one machine
+ * and refits on another, and a suite that hardcoded it would fail for the
+ * length of a directory name.
+ *
+ * The card also states what the LAST launch recorded, so an ambient facts cache
+ * would put a dirty marker and a context reading on these rows. The config root
+ * is isolated for the file: what is asserted here is the row a project with no
+ * history draws.
  */
 
 /**
@@ -90,9 +102,42 @@ function launchRows(width: number): string[] {
 	return launchComposer().flatMap(child => child.render(width));
 }
 
+/** The location segment at the budget the preset sets for it, before any row competes for width. */
+function budgetedLocation(): string {
+	return renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
+}
+
+/**
+ * The narrowest terminal whose card row carries the budgeted location whole.
+ *
+ * Wider than this the path is untouched; narrower, the row refits it against the segments beside
+ * it, which is what the live row does with the same path. Measured because the answer is the
+ * length of this checkout's path, and asserted against a bound so a location that never survives
+ * at any width fails here instead of quietly calibrating to 400.
+ */
+function widthThatFitsTheLocation(): number {
+	const located = budgetedLocation();
+	for (let width = 40; width <= 400; width += 1) {
+		if (launchRows(width).some(row => row.includes(located))) return width;
+	}
+	throw new Error("the launch row carried the budgeted location at no width between 40 and 400 columns");
+}
+
+let isolated: IsolatedConfigRoot;
+
 beforeAll(async () => {
+	// The card states what the last launch recorded, and every suite sharing this sandbox home
+	// records into the same file. Isolating it is what makes "no dirty marker" a claim about the
+	// card rather than about which file ran first.
+	isolated = enterIsolatedConfigRoot("launch-composer", { defaultProfile: true });
+	resetLaunchFactsForTest();
 	await Settings.init({ inMemory: true, cwd: process.cwd() });
 	await initTheme(false);
+});
+
+afterAll(() => {
+	resetLaunchFactsForTest();
+	isolated.restore();
 });
 
 describe("the launch composer", () => {
@@ -133,11 +178,23 @@ describe("the launch composer", () => {
 	});
 
 	it("says where you are, on the row the live status line takes over", () => {
-		const expected = renderLocation({
-			projectDir: getProjectDir(),
-			options: resolveLocationOptions(),
-		}).content;
-		expect(launchRows(100).some(row => row.includes(expected))).toBe(true);
+		expect(launchRows(widthThatFitsTheLocation()).some(row => row.includes(budgetedLocation()))).toBe(true);
+	});
+
+	/**
+	 * One column narrower, the path is refit rather than dropped: still the same path, still ending
+	 * at the directory the operator is in, only shorter. A card that shed the location instead would
+	 * paint a row with nothing where the live row says where you are, and would grow one at the
+	 * handover.
+	 */
+	it("shortens the path rather than dropping it when the row cannot afford the budget", () => {
+		const fits = widthThatFitsTheLocation();
+		const tail = path.basename(getProjectDir());
+		const row = launchRows(fits - 1).find(candidate => candidate.includes(tail));
+
+		expect(row).toBeDefined();
+		expect(row).not.toContain(budgetedLocation());
+		expect(row).toStartWith(" ".repeat(COMPOSER_INSET_COLS));
 	});
 
 	it("clips the location to the preset's budget, not to the terminal", () => {
@@ -176,8 +233,8 @@ describe("the launch composer", () => {
 		const branch = renderBranch(branchLabelFromFiles(getProjectDir()), false);
 		// The suite runs inside this repository's checkout, so there is one.
 		expect(branch).not.toBe("");
-		const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
-		const row = launchRows(100).find(candidate => candidate.includes(located));
+		const located = budgetedLocation();
+		const row = launchRows(widthThatFitsTheLocation()).find(candidate => candidate.includes(located));
 		// `toStartWith`, not `toBe`: the rest of the row is the preset's remaining
 		// segments, which is the point of the card rendering the real row. What is
 		// pinned here is the left group's content and its order.
@@ -198,11 +255,12 @@ describe("the launch composer", () => {
 		}
 	});
 
-	it("shows no dirty marker, having run no `git status`", () => {
-		// The card must not run a subprocess to paint this row, so it renders the
-		// branch the way the live row renders it before its own asynchronous
-		// lookup lands: clean, unmarked. A card that guessed differently would
-		// change colour at the handover for no reason the reader can see.
+	it("shows no dirty marker for a project that has recorded none", () => {
+		// The card must not run a subprocess to paint this row. With nothing recorded by a previous
+		// launch it renders the branch the way the live row renders it before its own asynchronous
+		// lookup lands: clean, unmarked. What it does when a launch DID record a scan is held in
+		// `the-launch-card-states-what-the-last-launch-knew.test.ts`; the config root is isolated
+		// above so that file's recordings cannot answer for this one.
 		const label = branchLabelFromFiles(getProjectDir());
 		const row = launchRows(100).find(candidate => candidate.includes(label as string));
 		expect(row).toBeDefined();
@@ -302,7 +360,9 @@ describe("the mounted composer zone occupies the launch composer's rows", () => 
 	}
 
 	it("paints the location on the row the live footline occupies", () => {
-		const width = 100;
+		// The width the budgeted path survives at, so the row is found by the bytes the preset asks
+		// for rather than by whatever the fitter shortened them to.
+		const width = widthThatFitsTheLocation();
 		const live: string[] = [];
 		let liveFootline = -1;
 		for (const child of mountedZone()) {
@@ -312,12 +372,8 @@ describe("the mounted composer zone occupies the launch composer's rows", () => 
 		}
 		expect(liveFootline, "the live footline must render a row at rest").toBeGreaterThanOrEqual(0);
 
-		const expected = renderLocation({
-			projectDir: getProjectDir(),
-			options: resolveLocationOptions(),
-		}).content;
 		const restingRowList = launchRows(width);
-		const restingFootline = restingRowList.findIndex(row => row.includes(expected));
+		const restingFootline = restingRowList.findIndex(row => row.includes(budgetedLocation()));
 		expect(restingFootline, "the launch composer must paint the location somewhere").toBeGreaterThanOrEqual(0);
 
 		expect(rowFromEnd(restingRowList, restingFootline)).toBe(rowFromEnd(live, liveFootline));
