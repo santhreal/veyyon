@@ -1,6 +1,6 @@
 //! Provider authentication phases with request-bound controls.
 
-use gpui::{AnyElement, App, Entity, IntoElement, ParentElement, Styled, div, px};
+use gpui::{AnyElement, App, Entity, IntoElement, ParentElement, ScrollHandle, Styled, div, px};
 use veyyon_gui_core::{
 	Store, UiCommand,
 	model::{AuthFlowState, ProviderId, RemoteData},
@@ -18,6 +18,7 @@ pub fn render(
 	store: &Store,
 	provider: &ProviderId,
 	field: &Entity<Editor>,
+	scroll: &ScrollHandle,
 	open: bool,
 	cx: &mut App,
 ) -> AnyElement {
@@ -44,7 +45,10 @@ pub fn render(
 						.on_click(act::click(UiCommand::CancelAuthFlow { provider: provider.clone() })),
 				),
 		)
-		.child(body)
+		// The provider writes the instructions and the device URL, so the flow
+		// is what scrolls: the heading and its Close stay drawn, and a long
+		// instruction never pushes the sign-in controls out of the panel.
+		.body(scroll, body)
 		.into_any_element()
 }
 
