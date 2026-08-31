@@ -31,7 +31,7 @@ function regexEscape(str: string): string {
 
 export const HL_LINE_RE_RAW = `[1-9]\\d*`;
 
-export const HL_LINE_CAPTURE_RE_RAW = `(${HL_LINE_RE_RAW})`;
+const HL_LINE_CAPTURE_RE_RAW = `(${HL_LINE_RE_RAW})`;
 
 export function formatReplaceHeader(start: number, end: number): string {
 	return `${HL_REPLACE_KEYWORD} ${start}${HL_RANGE_SEP}${end}${HL_HEADER_COLON}`;
@@ -56,8 +56,8 @@ export function formatInsertHeader(cursor: Cursor): string {
 
 export const HL_FILE_HASH_LENGTH = 4;
 export const HL_FILE_HASH_RE_RAW = `[0-9A-F]{${HL_FILE_HASH_LENGTH}}`;
-export const HL_FILE_HASH_CAPTURE_RE_RAW = `(${HL_FILE_HASH_RE_RAW})`;
-export const HL_LINE_BODY_SEP_RE_RAW = regexEscape(HL_LINE_BODY_SEP);
+const HL_FILE_HASH_CAPTURE_RE_RAW = `(${HL_FILE_HASH_RE_RAW})`;
+const HL_LINE_BODY_SEP_RE_RAW = regexEscape(HL_LINE_BODY_SEP);
 export const HL_FILE_HASH_EXAMPLES = ["1A2B", "3C4D", "9F3E"] as const;
 function normalizeFileHashText(text: string): string {
 	return text.replace(/[ \t\r]+(?=\n|$)/g, "");

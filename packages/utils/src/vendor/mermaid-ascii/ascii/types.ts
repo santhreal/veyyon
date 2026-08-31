@@ -30,7 +30,7 @@ export const LowerRight: Direction = { x: 2, y: 2 }
 export const LowerLeft: Direction  = { x: 0, y: 2 }
 export const Middle: Direction     = { x: 1, y: 1 }
 
-export const ALL_DIRECTIONS: readonly Direction[] = [
+const ALL_DIRECTIONS: readonly Direction[] = [
   Up, Down, Left, Right, UpperRight, UpperLeft, LowerRight, LowerLeft, Middle,
 ]
 

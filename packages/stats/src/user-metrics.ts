@@ -504,7 +504,7 @@ export function computeUserMessageMetrics(text: string): UserMessageMetrics {
 	};
 }
 
-export const EMPTY_USER_METRICS: UserMessageMetrics = Object.freeze({
+const EMPTY_USER_METRICS: UserMessageMetrics = Object.freeze({
 	chars: 0,
 	words: 0,
 	yelling: 0,
