@@ -262,7 +262,6 @@ const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/shell/bash-interactive.ts", ["type Component"]],
 	["tools/shell/bash-render.ts", ["ImageProtocol", "TERMINAL", "type Component"]],
 	["tools/web/browser/render.ts", ["Text", "type Component"]],
-	["tools/shell/debug-render.ts", ["Text", "type Component"]],
 	["tools/shell/eval-render.ts", ["Markdown", "Text", "type Component"]],
 	["tools/search/file-search-render.ts", ["Text", "type Component"]],
 	["tools/web/gh-renderer.ts", ["Text", "type Component"]],
@@ -478,6 +477,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"tools/agent/resolve-view.ts",
 			"tools/agent/review.ts",
 			"tools/fs/set-cwd.ts",
+			"tools/shell/debug-view.ts",
 			"tools/web/fetch-view.ts",
 		]);
 		for (const file of converted) {

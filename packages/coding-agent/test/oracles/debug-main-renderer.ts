@@ -1,25 +1,32 @@
 /**
- * Terminal drawing for the debug tool. The tool half in `debug.ts` decides what
- * happened; this half decides how a terminal shows it, and is the only one of the two
- * that reaches the TUI.
+ * Differential oracle: the debug renderer from origin/main.
+ *
+ * Source SHA: 80cf11d2f49c9535a7e4d51a38506619035b4720, `packages/coding-agent/src/tools/debug.ts`.
+ * Frozen: never edited to make a test pass.
+ *
+ * The edits against that source are the theme parameter, which defaulted to the module-level theme
+ * binding and is required here so the oracle draws with the theme the differential hands it, and the
+ * import of `formatSessionSnapshot`, which now sits in `debug/session-snapshot.ts`. The lines it
+ * draws are the same lines.
  */
 
-import type { RenderResultOptions } from "@veyyon/agent-core";
-import { type Component, Text } from "@veyyon/tui";
-import { formatMoreLines } from "@veyyon/utils";
-import type { Theme } from "../../theme/theme";
-import { renderStatusLine } from "../../tui";
-import { CachedOutputBlock, markFramedBlockComponent } from "../../tui/output-block";
+import { formatSessionSnapshot } from "@veyyon/coding-agent/debug/session-snapshot";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	formatExpandHint,
-	formatStatusIcon,
 	PREVIEW_LIMITS,
 	replaceTabs,
 	shortenPath,
 	TRUNCATE_LENGTHS,
-	truncateToWidth,
-} from "../core/render-utils";
-import { type DebugParams, type DebugToolDetails, formatSessionSnapshot } from "./debug";
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import { formatStatusIcon } from "@veyyon/coding-agent/tools/core/tool-ui-status";
+import type { DebugParams, DebugToolDetails } from "@veyyon/coding-agent/tools/shell/debug";
+import { CachedOutputBlock, markFramedBlockComponent } from "@veyyon/coding-agent/tui/output-block";
+import { renderStatusLine } from "@veyyon/coding-agent/tui/status-line";
+import { type Component, Text } from "@veyyon/tui";
+import { formatMoreLines } from "@veyyon/utils/format";
+import { truncateToWidth } from "@veyyon/utils/width";
 
 interface DebugRenderArgs extends Partial<DebugParams> {}
 

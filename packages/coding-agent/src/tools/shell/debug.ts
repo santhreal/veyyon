@@ -36,6 +36,7 @@ import {
 	selectAttachAdapter,
 	selectLaunchAdapter,
 } from "../../debug/dap";
+import { formatLocation, formatSessionSnapshot } from "../../debug/session-snapshot";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 import type { ToolSession } from "..";
@@ -46,6 +47,7 @@ import { replaceTabs, shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../
 import { ToolError } from "../core/tool-errors";
 import { prependResultNotice, toolResult } from "../core/tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "../core/tool-timeouts";
+import { debugToolView } from "./debug-view";
 
 /**
  * DAP debug actions that only read program state (no mutation, no execution).
@@ -166,35 +168,6 @@ export interface DebugToolDetails {
 	state?: DapContinueOutcome["state"];
 	timedOut?: boolean;
 	meta?: OutputMeta;
-}
-
-function formatLocation(snapshot: DapSessionSummary | undefined): string | null {
-	if (!snapshot?.source?.path || snapshot.line === undefined) {
-		return null;
-	}
-	return `${snapshot.source.path}:${snapshot.line}${snapshot.column !== undefined ? `:${snapshot.column}` : ""}`;
-}
-
-export function formatSessionSnapshot(snapshot: DapSessionSummary): string[] {
-	const lines = [
-		`Session ${snapshot.id}`,
-		`Adapter: ${snapshot.adapter}`,
-		`Status: ${snapshot.status}`,
-		`CWD: ${snapshot.cwd}`,
-	];
-	if (snapshot.program) lines.push(`Program: ${snapshot.program}`);
-	if (snapshot.stopReason) lines.push(`Stop reason: ${snapshot.stopReason}`);
-	if (snapshot.frameName) lines.push(`Frame: ${snapshot.frameName}`);
-	if (snapshot.instructionPointerReference) {
-		lines.push(`Instruction pointer: ${snapshot.instructionPointerReference}`);
-	}
-	const location = formatLocation(snapshot);
-	if (location) lines.push(`Location: ${location}`);
-	if (snapshot.needsConfigurationDone) {
-		lines.push("Configuration: pending configurationDone; set breakpoints, then continue.");
-	}
-	if (snapshot.exitCode !== undefined) lines.push(`Exit code: ${snapshot.exitCode}`);
-	return lines;
 }
 
 function formatBreakpoints(filePath: string, breakpoints: DapBreakpointRecord[]): string {
@@ -584,6 +557,7 @@ export class DebugTool implements AgentTool<typeof debugSchema, DebugToolDetails
 	readonly description: string;
 	readonly parameters = debugSchema;
 	readonly strict = true;
+	readonly view = debugToolView;
 
 	readonly examples: readonly ToolExample<typeof debugSchema.infer>[] = [
 		{

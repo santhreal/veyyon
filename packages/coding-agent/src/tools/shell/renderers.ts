@@ -4,9 +4,10 @@
  * Separate from `./manifest` on purpose: a renderer constructs terminal components, so this module
  * is imported only by a host that draws one.
  */
+import { viewToolRenderer } from "../../tui/draw-tool-view";
 import type { ToolRenderer } from "../renderers";
 import { bashToolRenderer } from "./bash-render";
-import { debugToolRenderer } from "./debug-render";
+import { debugToolView } from "./debug-view";
 import { evalToolRenderer } from "./eval-render";
 import { jobToolRenderer } from "./job-render";
 import { launchToolRenderer } from "./launch-render";
@@ -16,7 +17,10 @@ export const shellRenderers: Record<string, ToolRenderer> = {
 	bash: bashToolRenderer as ToolRenderer,
 	launch: launchToolRenderer as ToolRenderer,
 	job: jobToolRenderer as ToolRenderer,
-	debug: debugToolRenderer as ToolRenderer,
+	debug: viewToolRenderer(debugToolView, {
+		mergeCallAndResult: true,
+		animatedPartialResult: true,
+	}) as ToolRenderer,
 	eval: evalToolRenderer as ToolRenderer,
 	ssh: sshToolRenderer as ToolRenderer,
 };

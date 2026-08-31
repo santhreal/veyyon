@@ -108,7 +108,7 @@ The agent tool returns a standard `toolResult()` payload from `packages/coding-a
   - `sessions`: `sessions`
 
 Streaming/UI behavior:
-- The tool renderer merges call and result (`mergeCallAndResult: true`) and renders inline.
+- The card is a `ToolView` (`tools/shell/debug-view.ts`), not a terminal component. The host merges call and result (`mergeCallAndResult: true`) and animates a result that is still arriving.
 - `debug.ts` itself does not emit progress updates through `_onUpdate`; result delivery is single-shot.
 - Approval is action-sensitive: read-only actions (`output`, `threads`, `stack_trace`, `scopes`, `variables`, `disassemble`, `read_memory`, `loaded_sources`, `modules`, `sessions`) request read approval; all other actions request exec approval.
 - The interactive selector is UI-driven instead of model-driven. It swaps TUI components, appends status lines to the chat pane, opens files in external viewers, or writes archives/temp files.

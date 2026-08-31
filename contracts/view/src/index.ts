@@ -263,15 +263,22 @@ export type ToolView = StatusRowView | TextBlockView | HeadedBlockView | FramedB
 export type LineToolView = StatusRowView | TextBlockView;
 
 /**
- * What the reader has already asked of the card, which names no host.
+ * What the surface knows about the card when it asks for a view, which names no host.
  *
  * A collapsed card shows a summary and an expanded one shows everything, and only the surface knows
  * which the reader chose. A terminal expands on a keypress and a graphical host on a disclosure
  * control; both answer the same boolean, so a tool that shows a longer output when expanded is
  * host-agnostic and a tool that reads a `Theme` is not.
+ *
+ * `partial` is the other thing only the surface knows: whether the result in hand is the tool's last
+ * word or an update it will replace. A tool that streams says a different thing about the same
+ * payload -- running rather than succeeded -- and without this it would have to read the outcome off
+ * a half-finished result and report success on every update.
  */
 export interface ToolViewContext {
 	expanded: boolean;
+	/** Omitted means the result is settled, which is what a call site with nothing to stream states. */
+	partial?: boolean;
 }
 
 /**

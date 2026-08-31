@@ -11644,9 +11644,9 @@
 			"differs": "changed",
 			"group": "view-conversion",
 			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. Byte identity of the drawn output is proved by the oracle suite, not here.",
-			"hash": "aebbc4960d9ab1f3f0e7540c4705897b0dc04107155d46fc19bc082b3d883945",
+			"hash": "d9eba00538c451be7006d31bf91ac96c82a9250467b91850b7b74dbf42375587",
 			"mainHash": "0975591bf78ca2176c626d5218145393e218eb09f9b4294017454e05c0f7b281",
-			"structuralHash": "112efae32f85191150f2ae04c1d4c07cd96eb117e78cef86cd492584ddc0566f",
+			"structuralHash": "9b397de84dc4dc32847a155f9d359e085dadc9431a5f17773d0740296ad158da",
 			"mainStructuralHash": "a2bd3352f9d22f8e9e643b4e4dd30511252de9b17e10dd20a7fd20b84e7066bb"
 		},
 		"packages/coding-agent/src/modes/terminal/components/transcript/transcript-block-chrome.ts": {
@@ -13772,9 +13772,9 @@
 			"differs": "changed",
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "a82b0e8c4a20c7da68fcd465fc22be92504947ee9d6acf5be31a642a04304b14",
+			"hash": "13b50b4260b62771ba12dd94e9c00aa075b5bf9bfff10f6ec9ac081cd2b4b934",
 			"mainHash": "3acf269b811745e98b17c560f33c193b98740ddb3c888f60c9e879e5bbc2a3a6",
-			"structuralHash": "c334992e9572190fbe70fadeb4e8917f601ec672b2c719c631c1fa4efab5bd06",
+			"structuralHash": "646e56e16f3fb35c36400c3fff7c2a0a28bc5a4cc178f429f1a3ab7c12add391",
 			"mainStructuralHash": "e86172b32d6be2f90ecde0319008d28b1ad409b829cde0eed5c25f424bbe57c8"
 		},
 		"packages/coding-agent/src/tools/agent/review.ts": {
@@ -14430,9 +14430,9 @@
 			"differs": "changed",
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "4b1f80b7dad98bbc980be149bde8985bd6c018daf713939389f4eb7aee74bd25",
+			"hash": "ee94da150c83d3addfe34ef4f4e60058b1f8d80c08c538f0114a68d5af554392",
 			"mainHash": "49f1a71b91025fc28b505c519e4e43538b949634c9e56074bdbcff2f22d55dd2",
-			"structuralHash": "9b194e3776094b24403d3c849783b4c3786493fdf6edf5592a1052170214dff3",
+			"structuralHash": "655128858cf67d617b2080db07021c465497718a1be95d21922dec2c0516b80e",
 			"mainStructuralHash": "f05ffb6a933e83df55411d7b01ff9935d470919c912b2eee34b07613bd57ccc6"
 		},
 		"packages/coding-agent/src/tools/shell/eval-backends.ts": {

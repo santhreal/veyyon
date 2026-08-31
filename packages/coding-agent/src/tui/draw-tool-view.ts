@@ -413,22 +413,32 @@ export function drawToolView(view: ToolView, theme: Theme, spinnerFrame?: number
  */
 export function viewToolRenderer<Args, Result>(
 	view: Required<ToolViewRenderer<Args, Result>>,
-	extras?: { mergeCallAndResult?: boolean },
+	extras?: { mergeCallAndResult?: boolean; animatedPartialResult?: boolean },
 ): {
 	renderCall: (args: unknown, options: RenderResultOptions, theme: Theme) => Component;
 	renderResult: (result: unknown, options: RenderResultOptions, theme: Theme, args?: unknown) => Component;
 	mergeCallAndResult?: boolean;
+	animatedPartialResult?: boolean;
 } {
 	return {
 		renderCall: (args, options, theme) =>
-			drawToolView(view.renderCall(args as Args, { expanded: options.expanded }), theme, options.spinnerFrame),
+			drawToolView(
+				view.renderCall(args as Args, { expanded: options.expanded, partial: options.isPartial }),
+				theme,
+				options.spinnerFrame,
+			),
 		renderResult: (result, options, theme, args) =>
 			drawToolView(
-				view.renderResult(result as Result, { expanded: options.expanded }, args as Args | undefined),
+				view.renderResult(
+					result as Result,
+					{ expanded: options.expanded, partial: options.isPartial },
+					args as Args | undefined,
+				),
 				theme,
 				options.spinnerFrame,
 			),
 		mergeCallAndResult: extras?.mergeCallAndResult,
+		animatedPartialResult: extras?.animatedPartialResult,
 	};
 }
 
