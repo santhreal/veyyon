@@ -47,6 +47,7 @@
 
 ### Fixed
 
+- The session mount no longer forces a full-viewport repaint over the launch card, so the screen no longer flashes and darkens at handover; the mount now writes only the rows whose content changed.
 - The launch card states the model name, git state and context percentage recorded at the end of the last launch instead of placeholders, so the status row and hero do not change when the session mounts; each fact falls back to its placeholder when the release, the model or the project changed.
 - The launch card records what a project knows and what a model knows separately, so working in two projects no longer erases both and leaves the context gauge reading `?` on every start, and a project opened for the first time states the model's display name and effort instead of a raw id. The file is versioned, each map is bounded to its 24 most recently written entries, and a copy written by a previous shape is discarded rather than read.
 - The launch card states the context gauge in a project it has never measured, using the at-rest reading the configured model last took anywhere, so a project opened for the first time draws a real bar instead of `? left` and an empty one; the project's own reading still wins where it has one, and the gauge falls back to `?` only until that model has idled once.

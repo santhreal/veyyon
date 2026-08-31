@@ -1359,7 +1359,16 @@ export class InteractiveMode implements InteractiveModeContext {
 		);
 		this.#syncEditorMaxHeight();
 		this.isInitialized = true;
-		this.ui.requestRender(true);
+		// THE HANDOVER IS A DIFF, NOT A REPAINT. A forced render rewrites every row of the viewport,
+		// and on a terminal without synchronized output the operator watches 25 rows get erased and
+		// redrawn: the branch, the hero and the composer darken for a frame on a screen whose
+		// content did not change. Nothing here needs that. The launch card painted through THIS
+		// `TUI`, so the rows it left are the window the engine diffs against and a clean handover
+		// writes nothing at all; without a card, `ui.start()` above has already claimed the viewport
+		// with its own ED 2, so this render only has to put the finished tree over a screen the
+		// engine already describes. Either way an ordinary render writes exactly the rows that
+		// differ, which is the whole job.
+		this.ui.requestRender();
 
 		// Initialize hooks with TUI-based UI context
 		await this.initHooksAndCustomTools();
