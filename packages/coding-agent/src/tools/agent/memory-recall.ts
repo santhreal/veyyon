@@ -4,6 +4,7 @@ import { type } from "arktype";
 import { formatCurrentTime, formatMemories } from "../../memory/hindsight/content";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
+import { recallToolView } from "./memory-view";
 
 const memoryRecallSchema = type({
 	query: type("string").describe("natural language search query"),
@@ -20,6 +21,7 @@ export class MemoryRecallTool implements AgentTool<typeof memoryRecallSchema> {
 	readonly strict = true;
 	readonly loadMode = "discoverable";
 	readonly summary = "Search memory for relevant prior context";
+	readonly view = recallToolView;
 
 	constructor(private readonly session: ToolSession) {}
 

@@ -7,10 +7,11 @@
  * The five vibe rows come from one factory taking the sub-command, which is why they are spelled out
  * here rather than derived: each is a distinct tool name in the same table.
  */
+import { viewToolRenderer } from "../../tui/draw-tool-view";
 import type { ToolRenderer } from "../renderers";
 import { askToolRenderer } from "./ask-render";
 import { ircToolRenderer } from "./irc-render";
-import { recallToolRenderer, reflectToolRenderer, retainToolRenderer } from "./memory-render";
+import { recallToolView, reflectToolView, retainToolView } from "./memory-view";
 import { resolveToolRenderer } from "./resolve-render";
 import { todoToolRenderer } from "./todo-render";
 import { createVibeToolRenderer } from "./vibe-render";
@@ -20,9 +21,9 @@ export const agentRenderers: Record<string, ToolRenderer> = {
 	irc: ircToolRenderer as ToolRenderer,
 	todo: todoToolRenderer as ToolRenderer,
 	resolve: resolveToolRenderer as ToolRenderer,
-	retain: retainToolRenderer as ToolRenderer,
-	recall: recallToolRenderer as ToolRenderer,
-	reflect: reflectToolRenderer as ToolRenderer,
+	retain: viewToolRenderer(retainToolView, { mergeCallAndResult: true }) as ToolRenderer,
+	recall: viewToolRenderer(recallToolView, { mergeCallAndResult: true }) as ToolRenderer,
+	reflect: viewToolRenderer(reflectToolView, { mergeCallAndResult: true }) as ToolRenderer,
 	vibe_spawn: createVibeToolRenderer("spawn") as ToolRenderer,
 	vibe_send: createVibeToolRenderer("send") as ToolRenderer,
 	vibe_wait: createVibeToolRenderer("wait") as ToolRenderer,

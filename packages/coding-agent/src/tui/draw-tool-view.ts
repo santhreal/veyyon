@@ -11,14 +11,19 @@
  * silently falls back to plain text for an unknown tone loses the meaning the tool sent.
  */
 
+import { Ellipsis } from "@veyyon/natives";
 import { type Component, Text } from "@veyyon/tui";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import type {
 	FramedBlockView,
+	HeadedBlockView,
 	LineToolView,
 	StatusRowView,
 	TextBlockView,
 	ToolView,
 	ToolViewRenderer,
+	ViewHiddenCount,
+	ViewLine,
 	ViewSpan,
 	ViewStatus,
 	ViewTone,
@@ -26,6 +31,7 @@ import type {
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { type SymbolKey, UNICODE_SYMBOLS } from "../theme/symbols";
 import type { Theme, ThemeColor } from "../theme/theme";
+import { createCachedComponent, formatExpandHint } from "../tools/core/render-utils";
 import type { ToolUIStatus } from "../tools/core/tool-ui-status";
 import { framedBlock } from "./output-block";
 import { renderStatusLine } from "./status-line";
@@ -41,6 +47,7 @@ import type { State } from "./types";
 const TONE_COLORS: Record<ViewTone, ThemeColor> = {
 	title: "toolTitle",
 	accent: "accent",
+	output: "toolOutput",
 	muted: "muted",
 	dim: "dim",
 	success: "success",
@@ -190,14 +197,80 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 }
 
 /**
+ * A headed block as the frameless component a terse card draws.
+ *
+ * The two columns of indent, the width every line is cut to and the held-back note are the host's
+ * answer to the view, which is why the tool states lines and a count and nothing else. A content
+ * line is cut with an ellipsis, since a line that lost its tail has to say so; the header and the
+ * host's own note are cut without one, because the host composed them to fit.
+ */
+export function drawHeadedBlock(view: HeadedBlockView, theme: Theme, spinnerFrame?: number): Component {
+	const header = view.header === undefined ? undefined : drawStatusRow(view.header, theme, spinnerFrame);
+	const lines = view.lines;
+	const hidden = view.hidden;
+	return createCachedComponent(
+		() => false,
+		width => {
+			const rows: string[] = [];
+			if (header !== undefined) rows.push(truncateToWidth(header, width, Ellipsis.Omit));
+			for (const line of lines) rows.push(`  ${drawLineToWidth(line, theme, Math.max(1, width - INDENT))}`);
+			if (hidden !== undefined && (hidden.count > 0 || hidden.revealable)) {
+				const hint = formatExpandHint(theme, !hidden.revealable, true);
+				const note =
+					hidden.count > 0 ? `${theme.fg("dim", `… ${hidden.count} more${nounSuffix(hidden)}`)} ${hint}` : hint;
+				rows.push(truncateToWidth(`  ${note}`, width, Ellipsis.Omit));
+			}
+			return rows;
+		},
+	);
+}
+
+/** The two columns a block's lines sit in, under the row that names them. */
+const INDENT = 2;
+
+/**
+ * One line of a block, cut to the columns it has.
+ *
+ * The cut lands on the span's TEXT rather than on the drawn bytes: truncating a styled string ends
+ * the line between a colour and its reset, so the ellipsis marking the cut draws in the terminal's
+ * default colour and the row it belongs to loses its tone at the last column. Spans are measured in
+ * order and each is given what the ones before it left, so the span that runs out of room is the one
+ * that carries the mark.
+ */
+function drawLineToWidth(line: ViewLine, theme: Theme, width: number): string {
+	let used = 0;
+	let drawn = "";
+	for (const span of line) {
+		const remaining = width - used;
+		if (remaining <= 0) break;
+		if (span.symbol !== undefined && Object.hasOwn(UNICODE_SYMBOLS, span.symbol)) {
+			drawn += drawSpan(span, theme);
+			used += visibleWidth(theme.symbol(span.symbol as SymbolKey));
+			continue;
+		}
+		const text = truncateToWidth(span.text, remaining, Ellipsis.Unicode);
+		drawn += drawSpan({ ...span, text }, theme);
+		used += visibleWidth(text);
+	}
+	return drawn;
+}
+
+/** The unit a held-back count is in, as the words that follow it, or nothing when the tool named none. */
+function nounSuffix(hidden: ViewHiddenCount): string {
+	if (hidden.noun === undefined) return "";
+	return ` ${hidden.count === 1 ? hidden.noun.one : hidden.noun.many}`;
+}
+
+/**
  * A view as a terminal component.
  *
  * A one-line view is `Text` with zero padding, which is what every tool renderer converted to a view
- * returned before, so the surrounding card lays the row out exactly as it did. A framed block is a
+ * returned before, so the surrounding card lays the row out exactly as it did. Either block kind is a
  * container instead, because it owes the card a height at a width.
  */
 export function drawToolView(view: ToolView, theme: Theme, spinnerFrame?: number): Component {
 	if (view.kind === "framedBlock") return drawFramedBlock(view, theme, spinnerFrame);
+	if (view.kind === "headedBlock") return drawHeadedBlock(view, theme, spinnerFrame);
 	return new Text(drawToolViewText(view, theme, spinnerFrame), 0, 0);
 }
 

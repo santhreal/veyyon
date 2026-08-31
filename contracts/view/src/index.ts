@@ -28,11 +28,11 @@ export type ViewStatus = "success" | "done" | "error" | "warning" | "info" | "pe
 /**
  * The role a run of text plays, which a host maps to its own appearance.
  *
- * `title` is the name of the thing, `accent` its subject, `muted` and `dim` are secondary detail at
- * two strengths, and the remaining four carry outcome. A tone is a meaning, so a host is free to draw
- * two of them the same way.
+ * `title` is the name of the thing, `accent` its subject, `output` the text the tool itself
+ * produced, `muted` and `dim` are secondary detail at two strengths, and the remaining four carry
+ * outcome. A tone is a meaning, so a host is free to draw two of them the same way.
  */
-export type ViewTone = "title" | "accent" | "muted" | "dim" | "success" | "warning" | "error" | "info";
+export type ViewTone = "title" | "accent" | "output" | "muted" | "dim" | "success" | "warning" | "error" | "info";
 
 /**
  * A run of text with one tone.
@@ -120,6 +120,45 @@ export interface ViewSection {
 }
 
 /**
+ * What a card held back, so the host is the one that names the gesture for seeing it.
+ *
+ * A tool that trims its own output to a preview knows how much it dropped and knows nothing about
+ * how a reader asks for the rest: a terminal says `▸ ctrl+o expand`, a graphical host draws a
+ * disclosure triangle, and a transcript export has no gesture at all. So the tool states the count
+ * and whether more is reachable, and the host writes the sentence.
+ *
+ * `noun` is the unit the count is in, for a card whose preview trims something other than lines --
+ * memories, files, findings. Omitted states the bare count, which is what a card says when the
+ * lines above already make the unit obvious.
+ */
+export interface ViewHiddenCount {
+	count: number;
+	noun?: { one: string; many: string };
+	/** False once the reader has everything, so the host offers no gesture it cannot honour. */
+	revealable: boolean;
+}
+
+/**
+ * A header row with its own lines under it, drawn without a frame.
+ *
+ * The shape a terse card already has: one status row, a few indented lines, and a note that more was
+ * held back. A framed block is the wrong kind for it -- these cards are deliberately frameless, and a
+ * rail around two bullets reads as a panel around nothing -- and a text block is the wrong kind too,
+ * because a text block is one run of styled text and states no header and no held-back count.
+ *
+ * The lines are the tool's; the indent, the width they are cut to and the held-back note are the
+ * host's.
+ */
+export interface HeadedBlockView {
+	kind: "headedBlock";
+	/** Omitted means the block is its lines alone, for a card whose row is drawn elsewhere. */
+	header?: StatusRowView;
+	lines: readonly ViewLine[];
+	/** Omitted means the lines are everything the card has. */
+	hidden?: ViewHiddenCount;
+}
+
+/**
  * A titled block of sections, framed by the host.
  *
  * This is the shape a tool reaches for when its output is a panel rather than a row: a header, then
@@ -139,12 +178,13 @@ export interface FramedBlockView {
 }
 
 /** Everything a host knows how to draw. */
-export type ToolView = StatusRowView | TextBlockView | FramedBlockView;
+export type ToolView = StatusRowView | TextBlockView | HeadedBlockView | FramedBlockView;
 
 /**
  * The views that are one line of text, which a host can draw without a width.
  *
- * A framed block is not one of them: it has sections to lay out, so a host draws it as a container.
+ * Neither block kind is one of them: a framed block has sections to lay out and a headed block has
+ * lines to cut to a width, so a host draws both as containers.
  */
 export type LineToolView = StatusRowView | TextBlockView;
 

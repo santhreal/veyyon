@@ -256,7 +256,7 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 	{
 		name: "view-conversion",
 		matches: relative =>
-			/(goals\/goal-tool\.ts|transcript\/tool-execution\.ts|tools\/agent\/review\.ts|tools\/fs\/set-cwd\.ts)$/.test(
+			/(goals\/goal-tool\.ts|transcript\/tool-execution\.ts|tools\/agent\/(review|memory-view|memory-retain|memory-recall|memory-reflect)\.ts|tools\/fs\/set-cwd\.ts)$/.test(
 				relative,
 			),
 		reason:

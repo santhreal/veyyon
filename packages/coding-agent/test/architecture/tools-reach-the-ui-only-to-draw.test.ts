@@ -237,7 +237,7 @@ describe("tools reach the terminal UI only to draw", () => {
  * `@veyyon/tui` and get a widget it can draw. Same concern, different boundary, so
  * it lives beside its sibling instead of in a file of its own.
  *
- * WHAT THE ROWS SAY NOW. Twenty-six of the twenty-eight are `-render.ts` /
+ * WHAT THE ROWS SAY NOW. Twenty-four of the twenty-six are `-render.ts` /
  * `-renderer.ts` siblings, which is where drawing belongs: a tool module decides what
  * happened, its sibling decides how a terminal shows it, and only the sibling names
  * the renderer package. The two that are not siblings, `bash-interactive.ts` and
@@ -272,7 +272,6 @@ const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/agent/irc-render.ts", ["type Component"]],
 	["tools/shell/job-render.ts", ["Text", "type Component"]],
 	["tools/shell/launch-render.ts", ["Text", "type Component"]],
-	["tools/agent/memory-render.ts", ["Text", "type Component"]],
 	["tools/fs/read-render.ts", ["Text", "type Component"]],
 	["tools/core/render-utils.ts", ["type Component"]],
 	["tools/renderers.ts", ["type Component"]],
@@ -447,16 +446,27 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 	 * A converted tool still declares renderers -- `view.renderCall` and `view.renderResult` -- so the
 	 * sweep above still sees it. What it no longer does is take a runtime value from the terminal
 	 * package, because it returns a `ToolView` and the terminal draws that. The set is derived from the
-	 * tree by the `view:` member every conversion carries, and pinned by equality, so a further
+	 * tree by two spellings a conversion carries -- the `view:` member on the tool, and an import of
+	 * the view contract in the module that describes the cards -- and pinned by equality, so a further
 	 * conversion turns this red until it is recorded, and a converted tool that quietly kept its
 	 * `@veyyon/tui` import fails here instead of passing as an untouched row.
+	 *
+	 * The second spelling is what the memory tools needed: `retain`, `recall` and `reflect` share one
+	 * card vocabulary, so their views are declared once in `tools/agent/memory-view.ts` and each tool
+	 * names the view it owns. Detecting only the tool-side member would have read three conversions as
+	 * none.
 	 */
 	it("sees every converted tool as declaring a renderer without drawing with a terminal value", () => {
-		// Two spellings reach the same member: a `ToolDefinition` writes `view: { ... }` inline, and a
+		// Three spellings reach the same member: a `ToolDefinition` writes `view: { ... }` inline, a
 		// class-based `AgentTool` writes `readonly view = <the exported view>`, because its card is
-		// also what the terminal's registry entry draws and one object serves both.
+		// also what the terminal's registry entry draws and one object serves both, and a card shared
+		// by several tools is a module of views the contract types.
 		const converted = declaring
-			.filter(file => /^\s*(readonly\s+)?view\s*(:\s*\{|=)/m.test(fs.readFileSync(path.join(SRC, file), "utf8")))
+			.filter(file => !TERMINAL_DRAWERS.has(file))
+			.filter(file => {
+				const source = fs.readFileSync(path.join(SRC, file), "utf8");
+				return /^\s*(readonly\s+)?view\s*(:\s*\{|=)/m.test(source) || /from "@veyyon\/view"/.test(source);
+			})
 			.sort();
 		expect(converted).toEqual([
 			"autoresearch/tools/certify-arms.ts",
@@ -465,6 +475,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"autoresearch/tools/run-experiment.ts",
 			"autoresearch/tools/update-notes.ts",
 			"goals/goal-tool.ts",
+			"tools/agent/memory-view.ts",
 			"tools/agent/review.ts",
 			"tools/fs/set-cwd.ts",
 		]);

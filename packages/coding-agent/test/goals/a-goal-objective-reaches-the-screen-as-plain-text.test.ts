@@ -195,6 +195,8 @@ function textOf(view: ToolView): string[] {
 			return [view.title, view.description ?? "", view.badge?.label ?? "", ...spans(view.meta)];
 		case "textBlock":
 			return spans(view.spans);
+		case "headedBlock":
+			return [...(view.header === undefined ? [] : textOf(view.header)), ...view.lines.flatMap(line => spans(line))];
 		case "framedBlock":
 			return [
 				...textOf(view.header),

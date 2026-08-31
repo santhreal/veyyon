@@ -9,6 +9,7 @@ import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
 import { abortedPartway } from "../core/aborted-partway";
 import { throwIfAborted } from "../core/tool-errors";
+import { retainToolView } from "./memory-view";
 
 const memoryRetainSchema = type({
 	items: type({
@@ -85,6 +86,7 @@ export class MemoryRetainTool implements AgentTool<typeof memoryRetainSchema> {
 	readonly strict = true;
 	readonly loadMode = "discoverable";
 	readonly summary = "Store important facts in long-term memory";
+	readonly view = retainToolView;
 
 	constructor(private readonly session: ToolSession) {}
 

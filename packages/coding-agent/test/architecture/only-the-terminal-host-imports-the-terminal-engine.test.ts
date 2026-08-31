@@ -88,7 +88,6 @@ const ENGINE_IMPORTERS = [
 	"theme/theme-class.ts",
 	"theme/theme.ts",
 	"tools/agent/ask-render.ts",
-	"tools/agent/memory-render.ts",
 	"tools/agent/resolve-render.ts",
 	"tools/agent/todo-render.ts",
 	"tools/agent/vibe-render.ts",
@@ -177,7 +176,7 @@ describe("only the terminal host imports the terminal engine", () => {
 	 * ledger above and the ceiling here.
 	 */
 	it("does not grow the count of modules a second host cannot reuse", () => {
-		expect(enginePackageImporters("any").length).toBeLessThanOrEqual(43);
+		expect(enginePackageImporters("any").length).toBeLessThanOrEqual(42);
 		expect(enginePackageImporters("runtime").length).toBeLessThanOrEqual(23);
 	});
 });

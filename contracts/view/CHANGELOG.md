@@ -12,3 +12,5 @@
 - `StatusRowView.emblem` names a symbol a host resolves from its own registry, falling back to the row's status icon when the host has no such symbol.
 - `ToolViewRenderer.renderResult` receives the call arguments alongside the result, so a card whose header states the operation still states it when the call failed and returned no details.
 - `ViewSpan.symbol` names a symbol a host resolves from its own registry for one span inside a line, drawn in that span's tone; `text` is what a host without such a symbol draws instead.
+- `HeadedBlockView` states a frameless card: an optional `StatusRowView` header, `ViewLine`s under it, and a `ViewHiddenCount` naming what a preview held back, so a terse tool card describes its rows without picking an indent, a width or the gesture that reveals the rest.
+- `ViewTone` carries an `output` tone for text the tool itself produced, so a card that shows tool output states that rather than reaching for a colour name.

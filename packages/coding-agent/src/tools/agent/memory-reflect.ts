@@ -4,6 +4,7 @@ import { type } from "arktype";
 import { ensureBankExists } from "../../memory/hindsight/bank";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
+import { reflectToolView } from "./memory-view";
 
 const memoryReflectSchema = type({
 	query: type("string").describe("question to answer"),
@@ -21,6 +22,7 @@ export class MemoryReflectTool implements AgentTool<typeof memoryReflectSchema> 
 	readonly strict = true;
 	readonly loadMode = "discoverable";
 	readonly summary = "Synthesize an answer from long-term memory";
+	readonly view = reflectToolView;
 
 	constructor(private readonly session: ToolSession) {}
 

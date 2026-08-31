@@ -1,20 +1,12 @@
 /**
- * Inline TUI renderers for the long-term memory tools (`retain`, `recall`,
- * `reflect`).
+ * Differential oracle: the three long-term memory tool renderers from origin/main.
  *
- * These keep the transcript terse — one status line plus, for `retain`, one
- * `Remember: …` line per stored item — instead of the generic JSON arg tree,
- * which exploded multi-line memory blobs into an unreadable wall. The tool
- * container is a transparent passthrough, so these renderers stay frameless:
- * a status line with a couple of dim bullets reads far cleaner than boxing a
- * one-line memory note.
+ * Source SHA: 80cf11d2f49c9535a7e4d51a38506619035b4720
+ * Frozen: never edited to make a test pass.
  */
-import type { Component } from "@veyyon/tui";
-import { Text } from "@veyyon/tui";
-import { formatMoreLines } from "@veyyon/utils/format";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import type { Theme } from "../../theme/theme";
-import { Ellipsis, renderStatusLine, truncateToWidth } from "../../tui";
+
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	createCachedComponent,
 	formatErrorMessage,
@@ -22,7 +14,11 @@ import {
 	PREVIEW_LIMITS,
 	replaceTabs,
 	type ToolUIStatus,
-} from "../core/render-utils";
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import { Ellipsis, renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/tui";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { formatMoreLines } from "@veyyon/utils/format";
 
 // Each stored memory renders as `<bullet> <content>`; the bullet glyph comes
 // from the active theme (`•` by default, a nerd-font dot under nerd themes).

@@ -33,11 +33,12 @@
  * component asking only for a terminal renderer; the call branch ignoring the view renderer; and the
  * migrated tool importing `@veyyon/tui` again.
  *
- * WHAT IT DOES NOT CATCH. It compares strings, not pixels: nothing here proves how a tone looks, only
- * that the same theme call produces it. It does not enumerate `ViewTone` or `ViewStatus` at run time,
- * because a TypeScript union has no run-time members — that totality is held by
- * `TONE_COLORS: Record<ViewTone, ThemeColor>` and `STATUS_ICONS: Record<ViewStatus, ToolUIStatus>` in
- * `tui/draw-tool-view.ts`, which fail `check:ts` when either union grows a member. And it says nothing
+ * WHAT IT DOES NOT CATCH. It compares strings, not pixels: nothing here proves how a colour looks on
+ * a screen. Which colour each tone asks for IS pinned, on a probe theme that answers with the role it
+ * was handed, because the live theme draws two of its roles identically and hid a mis-mapped tone.
+ * The cell is total in `ViewTone`, as `TONE_COLORS: Record<ViewTone, ThemeColor>` and
+ * `STATUS_ICONS: Record<ViewStatus, ToolUIStatus>` in `tui/draw-tool-view.ts` are, so either union
+ * growing a member fails `check:ts` rather than drawing the wrong thing. And it says nothing
  * about the streamed preview: `exposesRawPartialJson` in `controllers/event-controller.ts` counts a
  * `view.renderCall` so a conversion does not narrow what the live preview is handed, and that
  * predicate is private to a controller this suite does not drive.
@@ -66,13 +67,13 @@ import type { ExtensionAPI, ToolDefinition } from "@veyyon/coding-agent/extensib
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { RegisteredToolAdapter } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import type { ThemeColor } from "@veyyon/coding-agent/theme/color";
-import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
+import { initTheme, type Theme as TerminalTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { drawSpan, drawStatusRow, drawToolViewText, toolDrawsItself } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { renderStatusLine } from "@veyyon/coding-agent/tui/status-line";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
 import { truncateToWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
-import type { LineToolView, ToolView } from "@veyyon/view";
+import type { LineToolView, ToolView, ViewTone } from "@veyyon/view";
 import { createToolExecution } from "./helpers/tool-execution";
 
 // `theme` is a live module binding the engine assigns, so it is undefined until a theme loads. Every
@@ -96,14 +97,16 @@ afterAll(() => {
 });
 
 /**
- * The view a one-line renderer returns, refusing a framed block.
+ * The view a one-line renderer returns, refusing a block.
  *
  * `drawToolViewText` draws the kinds that are one line of text; a block is drawn as a container at a
  * width. A renderer that changes kind therefore fails here, loudly, instead of being handed to a
  * drawer that cannot lay it out.
  */
 function lineView(view: ToolView): LineToolView {
-	if (view.kind === "framedBlock") throw new Error(`expected a one-line view, got ${view.kind}`);
+	if (view.kind === "framedBlock" || view.kind === "headedBlock") {
+		throw new Error(`expected a one-line view, got ${view.kind}`);
+	}
 	return view;
 }
 
@@ -163,6 +166,50 @@ describe("the measurement itself", () => {
 		expect(theme.fg("accent", "x")).not.toBe("x");
 		expect(theme.bold("x")).not.toBe("x");
 		expect(theme.italic("x")).not.toBe("x");
+	});
+
+	/**
+	 * Which colour each tone draws in, on a theme that answers with the name it was asked for.
+	 *
+	 * The live theme cannot decide this: two of its roles resolve to the same escape, so a tone
+	 * mapped to the wrong one of them draws identical bytes and every differential above stays green.
+	 * `output` against `muted` is the pair that proved it -- the memory cards' content is `toolOutput`
+	 * and re-pointing the tone at `muted` changed nothing anybody could see. A probe theme reports
+	 * the role rather than a colour, so the mapping is read instead of inferred.
+	 *
+	 * Total in `ViewTone`: a tone added to the contract fails the type check here until this record
+	 * states what it looks like, which is the same guarantee `TONE_COLORS` holds on the drawing side.
+	 */
+	it("draws each tone in the colour the host recorded for it, and no two of those agree", () => {
+		const expected: Record<ViewTone, ThemeColor> = {
+			title: "toolTitle",
+			accent: "accent",
+			output: "toolOutput",
+			muted: "muted",
+			dim: "dim",
+			success: "success",
+			warning: "warning",
+			error: "error",
+			info: "infoAccent",
+		};
+		const probe = {
+			fg: (color: ThemeColor, text: string) => `<${color}>${text}`,
+			bold: (text: string) => `*${text}*`,
+			italic: (text: string) => `/${text}/`,
+			styledSymbol: (key: string, color: ThemeColor) => `<${color}:${key}>`,
+		} as unknown as TerminalTheme;
+		for (const [tone, color] of Object.entries(expected) as [ViewTone, ThemeColor][]) {
+			expect(drawSpan({ text: "x", tone }, probe)).toBe(`<${color}>x`);
+			// A glyph takes the same colour as the text would, and drops emphasis.
+			expect(drawSpan({ symbol: "status.error", text: "!", tone, bold: true }, probe)).toBe(
+				`<${color}:status.error>`,
+			);
+		}
+		// Anti-vacuity: nine tones, nine distinct roles, so no assertion above passes by collision.
+		expect(new Set(Object.values(expected)).size).toBe(Object.keys(expected).length);
+		// An untoned span is raw text, and an untoned glyph is the accent one.
+		expect(drawSpan({ text: "x" }, probe)).toBe("x");
+		expect(drawSpan({ symbol: "status.error", text: "!" }, probe)).toBe("<accent:status.error>");
 	});
 });
 

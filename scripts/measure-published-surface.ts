@@ -555,12 +555,14 @@ const DOCUMENTED_KEY_RELOCATIONS: Readonly<Record<string, Readonly<Record<string
 
 /**
  * A module whose contents were absorbed into another module, which is a relocation no rename can
- * show: the destination already existed and grew, so git sees a deletion beside an edit.
+ * show: the destination already existed and grew, or the successor was rewritten far past the point
+ * git pairs two files, so the diff reads as a deletion beside an edit.
  *
- * Both rows were measured, not assumed. `vibe/state.ts` was a four-line `VibeModeState` interface and
+ * Every row was measured, not assumed. `vibe/state.ts` was a four-line `VibeModeState` interface and
  * `session/vibe-runtime.ts` declares it now. The four `motion-*` modules of the terminal engine were
  * folded into `packages/utils/src/motion.ts`, which holds `BlockReveal`, `HoverFade`,
- * `fadeLineTowards` and `SettleValue` today.
+ * `fadeLineTowards` and `SettleValue` today. `tools/memory-render.ts` built terminal components for
+ * the three memory tools and `tools/agent/memory-view.ts` states the same cards as `ToolView`s.
  *
  * A row here is checked against the head like any other successor, so it cannot describe a surface
  * that is not served.
@@ -570,6 +572,10 @@ const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, Relocat
 		"./modes/sanitize-status-text": {
 			to: "@veyyon/utils/sanitize-status-text",
 			why: "sanitizeStatusText is declared in packages/utils/src/sanitize-status-text.ts, which @veyyon/utils publishes as ./sanitize-status-text; it is text over stripAnsi and names no host, and the goal tool reduces an objective to one line while building a view model in the domain package",
+		},
+		"./tools/memory-render": {
+			to: "./tools/agent/memory-view",
+			why: "the retain, recall and reflect cards are declared in tools/agent/memory-view.ts as views the host draws, so the module that built their terminal components is gone",
 		},
 		"./vibe/state": {
 			to: "./session/vibe-runtime",
