@@ -8,7 +8,6 @@ import type {
 	Model,
 	ServiceTier,
 	SimpleStreamOptions,
-	TextContent,
 	Tool,
 	ToolResultMessage,
 } from "@veyyon/ai";
@@ -172,12 +171,13 @@ export async function generateHandoffFromContext(
 		throw createSummarizationError("Handoff generation failed", response);
 	}
 
-	const document = response.content
-		.filter((c): c is { type: "text"; text: string } => c.type === "text")
-		.map(c => c.text)
-		.join("\n");
+	const fragments: string[] = [];
+	for (const c of response.content) {
+		if (c.type === "text") fragments.push(c.text);
+	}
+	const document = fragments.join("\n");
 
-	if (document.trim().length === 0) {
+	if (!/\S/.test(document)) {
 		throw new Error(
 			`Handoff generation returned an empty document (stopReason: ${response.stopReason}). ` +
 				`Retry the handoff, or use the \`summary\` strategy if it keeps recurring.`,
@@ -273,7 +273,7 @@ export interface CompactionPreparationOptions {
 }
 
 export function assertValidCompactionResult(preparation: CompactionPreparation, result: CompactionResult): void {
-	if (typeof result.summary !== "string" || result.summary.trim().length === 0) {
+	if (typeof result.summary !== "string" || !/\S/.test(result.summary)) {
 		if (!getRemoteCompactionPreserveData(result.preserveData)) {
 			const claimedRemote =
 				result.preserveData !== undefined && REMOTE_COMPACTION_PRESERVE_KEY in result.preserveData;
@@ -405,10 +405,11 @@ const TAIL_ELISION_MIN_TOKENS = 100;
 
 function tailToolResultText(message: ToolResultMessage): string {
 	if (typeof message.content === "string") return message.content;
-	return message.content
-		.filter((block): block is TextContent => block.type === "text")
-		.map(block => block.text)
-		.join("\n");
+	const fragments: string[] = [];
+	for (const block of message.content) {
+		if (block.type === "text") fragments.push(block.text);
+	}
+	return fragments.join("\n");
 }
 
 function elideTailToolResults(
@@ -785,8 +786,9 @@ async function generateTurnPrefixSummary(
 		{ signal },
 	);
 
-	return response.content
-		.filter((c): c is { type: "text"; text: string } => c.type === "text")
-		.map(c => c.text)
-		.join("\n");
+	const fragments: string[] = [];
+	for (const c of response.content) {
+		if (c.type === "text") fragments.push(c.text);
+	}
+	return fragments.join("\n");
 }

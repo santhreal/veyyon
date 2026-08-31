@@ -15,3 +15,5 @@
 - `elideTailToolResults` estimates the replacement message directly instead of spreading it into a new object for `estimateTokens`.
 
 - `entryTokens` in `shake.ts` collects text fragments in a single loop instead of chaining `.filter().map()`.
+- `generateHandoffFromContext`, `tailToolResultText`, and `generateTurnPrefixSummary` in `compaction.ts` collect text fragments in a single loop instead of chaining `.filter().map().join()`.
+- `assertValidCompactionResult` and `generateHandoffFromContext` use regex tests instead of `trim().length` to avoid string allocations.
