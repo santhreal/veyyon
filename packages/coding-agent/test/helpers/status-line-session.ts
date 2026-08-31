@@ -65,6 +65,11 @@ export interface StubSessionOptions {
 	/** Working directory the path segment renders. Read per render, so a suite may move it. */
 	cwd?: () => string;
 	modelId?: string;
+	/**
+	 * Provider slug, absent by default. What the launch recorder qualifies the id with before
+	 * comparing it to the configured role, and the one fact here no rendered segment prints.
+	 */
+	modelProvider?: string;
 	/** Display name; defaults to the id, which is what a listing without one gives. */
 	modelName?: string;
 	contextWindow?: number;
@@ -105,7 +110,12 @@ export interface StubSessionOptions {
 export function statusLineSessionParts(options: StubSessionOptions = {}): Record<string, unknown> {
 	const contextWindow = options.contextWindow ?? CONTEXT_WINDOW;
 	const id = options.modelId ?? "claude-3-7-sonnet";
-	const model = { id, name: options.modelName ?? id, contextWindow };
+	const model = {
+		id,
+		name: options.modelName ?? id,
+		contextWindow,
+		...(options.modelProvider === undefined ? {} : { provider: options.modelProvider }),
+	};
 	const messages = options.messages ?? [];
 	const usage = options.usage ? { ...RESTING_USAGE, ...options.usage } : RESTING_USAGE;
 	// `contextUsage` distinguishes "absent" from "not passed": a suite proving the
@@ -144,7 +154,10 @@ export function statusLineSessionParts(options: StubSessionOptions = {}): Record
 		autoResolvedThinkingLevel: () => undefined,
 		configuredThinkingLevel: () => undefined,
 		effectiveApprovalMode: () => undefined,
-		modelRegistry: { isUsingOAuth: () => false, authStorage: { listStoredCredentials: () => [] } },
+		modelRegistry: {
+			isUsingOAuth: () => false,
+			authStorage: { listStoredCredentials: () => [], getOAuthAccountIdentity: () => undefined },
+		},
 	};
 }
 

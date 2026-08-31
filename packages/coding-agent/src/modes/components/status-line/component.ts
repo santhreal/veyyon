@@ -1272,19 +1272,15 @@ export class StatusLineComponent implements Component {
 		if (isCollabGuest) return;
 		const update: LaunchFactsUpdate = {};
 
-		if (contextPercent !== null && (this.session.messages?.length ?? 0) === 0) {
-			update.contextPercent = contextPercent;
-		}
-
 		// `session.state.model` is the one the row itself renders from, via `#facts()`;
 		// `session.model` is undefined here and recorded nothing at all.
 		//
-		// The name is filed under the DEFAULT ROLE, because that string is what the next launch
-		// keys on, so it is recorded only when the session is running that role's model. The role
-		// is `provider/id` — comparing it to the bare `model.id` never matched and left the card
-		// printing the raw id — and it carries an optional `:thinking` or `@route` suffix, which
-		// is why this tests the qualified id as a PREFIX at a delimiter rather than splitting on a
-		// colon the id is itself allowed to contain.
+		// Both model facts are filed under the DEFAULT ROLE, because that string is what the next
+		// launch keys on, so they are recorded only when the session is running that role's model.
+		// The role is `provider/id` — comparing it to the bare `model.id` never matched and left
+		// the card printing the raw id — and it carries an optional `:thinking` or `@route`
+		// suffix, which is why this tests the qualified id as a PREFIX at a delimiter rather than
+		// splitting on a colon the id is itself allowed to contain.
 		const model = this.session.state.model;
 		const role = settings.getModelRole("default");
 		const qualified = model?.provider ? `${model.provider}/${model.id}` : model?.id;
@@ -1292,6 +1288,16 @@ export class StatusLineComponent implements Component {
 			!!role &&
 			!!qualified &&
 			(role === qualified || role.startsWith(`${qualified}:`) || role.startsWith(`${qualified}@`));
+
+		// A percentage is a fraction of the window of the model that measured it. A session runs a
+		// model other than the configured role whenever `--model` names one, `/model` switches
+		// before anything is sent, or the role does not resolve and the fallback answers — and
+		// recording that reading under the role's key hands the next launch a gauge drawn against
+		// a window its model does not have. Left absent, the card states `?` and is right.
+		if (isDefaultRole && contextPercent !== null && (this.session.messages?.length ?? 0) === 0) {
+			update.contextPercent = contextPercent;
+		}
+
 		if (model?.name && isDefaultRole) {
 			update.modelName = model.name;
 			if (model.provider) update.providerName = model.provider;

@@ -32,9 +32,11 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import { LaunchComposerFoot } from "@veyyon/coding-agent/modes/components/composer-chrome";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line/component";
 import { factsAtLaunch, launchSegmentContext } from "@veyyon/coding-agent/modes/components/status-line/session-facts";
 import { paintFirstFrame, takeFirstFrame } from "@veyyon/coding-agent/modes/first-frame";
 import {
+	type LaunchFacts,
 	type LaunchFactsUpdate,
 	launchModelLabel,
 	readLaunchFacts,
@@ -47,6 +49,7 @@ import type { GitStatusSummary } from "@veyyon/coding-agent/utils/git";
 import { getLaunchFactsCachePath, stripAnsi } from "@veyyon/utils";
 import * as atomicWrite from "@veyyon/utils/atomic-write";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
+import { makeStatusLineSession, type StubSessionOptions } from "./helpers/status-line-session";
 
 const DIRTY: GitStatusSummary = { staged: 1, unstaged: 2, untracked: 3, truncated: false };
 const CLEAN: GitStatusSummary = { staged: 0, unstaged: 0, untracked: 0, truncated: false };
@@ -520,5 +523,78 @@ describe("the row the card can afford", () => {
 
 		expect(factsAtLaunch().model).toBeNull();
 		expect(launchModelLabel()).toBe("");
+	});
+});
+
+/**
+ * A FACT IS RECORDED UNDER THE MODEL THAT MEASURED IT, OR IT IS NOT RECORDED.
+ *
+ * The reader above validates facts against the key they were filed under, which is only half of it:
+ * the writer decides what goes under that key, and it files under the configured DEFAULT ROLE
+ * because that is the string the next launch has before a session exists. A session does not always
+ * run that role — `--model` names another, `/model` switches before anything is sent, and a role
+ * that will not resolve falls back — and a percentage is a fraction of the window of whichever
+ * model measured it. Filed under the role regardless, the next launch draws a gauge against a
+ * window its model does not have, and every key check in this file passes while it does.
+ *
+ * Driven through the real component and its real render, because the recorder runs inside the
+ * segment build: a suite calling the module directly would prove the merge and never the guard.
+ */
+describe("what a running session records for the next launch", () => {
+	/** The default role, and the session model that satisfies it. */
+	const ROLE = "anthropic/claude-sonnet-4";
+	const RUNS_THE_ROLE = { modelId: "claude-sonnet-4", modelProvider: "anthropic", modelName: "Claude Sonnet 4" };
+
+	/** Render the row for `session`, which is what reaches the recorder, and report what it left. */
+	function recordedAfterRender(options: StubSessionOptions): LaunchFacts {
+		const session = makeStatusLineSession({
+			contextUsage: { tokens: 32_000, contextWindow: 128_000 },
+			...options,
+		});
+		new StatusLineComponent(session).renderQuietLine(120);
+		return readLaunchFacts();
+	}
+
+	beforeEach(async () => {
+		await initTheme(false);
+		settings.setModelRole("default", ROLE);
+	});
+
+	it("records the reading and the name of the model the role names", () => {
+		const recorded = recordedAfterRender(RUNS_THE_ROLE);
+
+		expect(recorded.modelName).toBe("Claude Sonnet 4");
+		expect(recorded.providerName).toBe("anthropic");
+		// The record holds the percentage SPENT, which is what the gauge subtracts from to print
+		// "75% left": 32k of a 128k window.
+		expect(recorded.contextPercent).toBe(25);
+	});
+
+	/**
+	 * The case the percentage guard exists for. A fallback model's window is not the role's, and
+	 * the id here shares no prefix with it at all.
+	 */
+	it("records no reading measured by a model the role does not name", () => {
+		const recorded = recordedAfterRender({ modelId: "deepseek-r1", modelName: "DeepSeek-R1" });
+
+		expect(recorded).toEqual({ gitStatus: null, modelName: null, providerName: null, contextPercent: null });
+	});
+
+	/** A role carrying a thinking level or a route still names the same model, and still records. */
+	it("records for a role that carries a suffix", () => {
+		settings.setModelRole("default", `${ROLE}:thinking`);
+
+		expect(recordedAfterRender(RUNS_THE_ROLE).contextPercent).toBe(25);
+	});
+
+	/**
+	 * The prefix trap. `anthropic/claude-sonnet-45` starts with `anthropic/claude-sonnet-4`, and a
+	 * match written as a bare `startsWith` would file a 45's reading under the 4's key — the exact
+	 * cross-model leak the keys exist to prevent, arriving through the writer instead of the reader.
+	 */
+	it("records nothing for a role whose id merely starts with the model's", () => {
+		settings.setModelRole("default", "anthropic/claude-sonnet-45");
+
+		expect(recordedAfterRender(RUNS_THE_ROLE).contextPercent).toBeNull();
 	});
 });
