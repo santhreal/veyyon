@@ -29,7 +29,7 @@ import { KEYBINDINGS as VIA_LOADER } from "@veyyon/coding-agent/config/keybindin
 import { moduleSpecifiersIn, namedImportsFrom, typeOnlyModuleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const SRC = path.resolve(import.meta.dir, "../../src");
-const EDITOR = path.join(SRC, "modes", "components", "custom-editor.ts");
+const EDITOR = path.join(SRC, "modes", "components", "custom-editor-helpers.ts");
 const DEFS = path.join(SRC, "config", "keybinding-defs.ts");
 
 const EDITOR_SOURCE = fs.readFileSync(EDITOR, "utf8");
