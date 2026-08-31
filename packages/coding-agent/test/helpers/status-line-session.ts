@@ -98,6 +98,12 @@ export interface StubSessionOptions {
 	thinkingLevel?: ThinkingLevel;
 	/** `auto`: a mode, not a rung. The row prints the pending marker until a turn is classified. */
 	autoThinking?: boolean;
+	/**
+	 * The assembled system prompt parts. Everything after the first part is the PROJECT's context
+	 * (its `AGENTS.md` and the rest), which is what the launch recorder subtracts to file the
+	 * model's floor, so a suite proving that split has to be able to put something there.
+	 */
+	systemPrompt?: string[];
 }
 
 /**
@@ -134,7 +140,7 @@ export function statusLineSessionParts(options: StubSessionOptions = {}): Record
 		messages,
 		model,
 		contextUsageRevision: 0,
-		systemPrompt: [],
+		systemPrompt: options.systemPrompt ?? [],
 		agent: { state: { tools: [] } },
 		skills: [],
 		getContextUsage: () => contextUsage,

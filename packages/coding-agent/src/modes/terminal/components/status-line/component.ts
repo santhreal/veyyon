@@ -16,6 +16,7 @@ import { resolveContextLimit } from "../../../../config/compaction-strategy";
 import { settings } from "../../../../config/settings-instance";
 import { accountDisplayLabel, accountsForProvider, buildAccountInventory } from "../../../../session/account-inventory";
 import type { AgentSession } from "../../../../session/agent-session";
+import { computeNonMessageBreakdown } from "../../../../session/context-usage";
 import { limitMatchesActiveAccount } from "../../../../slash-commands/helpers/active-oauth-account";
 import { withIcon } from "../../../../theme/icon-label";
 import { transitionsEnabled } from "../../../../theme/shimmer";
@@ -1281,7 +1282,7 @@ export class StatusLineComponent implements Component {
 	 *
 	 * Every redraw of an idle session reaches this; the recorder collapses them to one write.
 	 */
-	#recordLaunchFacts(contextPercent: number | null, isCollabGuest: boolean): void {
+	#recordLaunchFacts(contextPercent: number | null, contextLimit: number, isCollabGuest: boolean): void {
 		if (isCollabGuest) return;
 		const update: LaunchFactsUpdate = {};
 
@@ -1307,8 +1308,19 @@ export class StatusLineComponent implements Component {
 		// before anything is sent, or the role does not resolve and the fallback answers — and
 		// recording that reading under the role's key hands the next launch a gauge drawn against
 		// a window its model does not have. Left absent, the card states `?` and is right.
+		//
+		// The model's copy is the same reading with this project's context files taken out, so a
+		// project that has never been measured states a floor every project shares rather than the
+		// last directory's `AGENTS.md`. `computeNonMessageBreakdown` is the same cached split the
+		// `/context` panel reads, keyed on the prompt, tool and skill references, so it costs a
+		// map lookup on a resting redraw.
 		if (isDefaultRole && contextPercent !== null && (this.session.messages?.length ?? 0) === 0) {
 			update.contextPercent = contextPercent;
+			const projectContext = computeNonMessageBreakdown(this.session).systemContextTokens;
+			// Not clamped here: `recordLaunchFacts` holds every recorded percentage inside the band
+			// the gauge can draw, and a second clamp on this line would be a second owner of it.
+			update.modelContextPercent =
+				contextLimit > 0 ? contextPercent - (projectContext / contextLimit) * 100 : contextPercent;
 		}
 
 		if (model?.name && isDefaultRole) {
@@ -1422,7 +1434,7 @@ export class StatusLineComponent implements Component {
 			contextLimitKind = "window";
 		}
 
-		this.#recordLaunchFacts(contextPercent, collabState?.contextUsage != null);
+		this.#recordLaunchFacts(contextPercent, contextLimit, collabState?.contextUsage != null);
 
 		const shouldResolveActiveRepo = this.#gitEnabled() && (includePath || includeGit || includePr);
 		const projectDir = this.session.sessionManager?.getCwd?.() ?? getProjectDir();
