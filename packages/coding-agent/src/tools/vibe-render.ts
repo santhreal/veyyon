@@ -18,6 +18,8 @@ import {
 } from "./render-utils";
 import type { VibeOp, VibeToolDetails } from "./vibe";
 
+const NON_WHITESPACE_RE = /\S/;
+
 const COMPOSER_LINE_MAX = 96;
 const TV_LINE_MAX = 110;
 const TV_TRACE_COLLAPSED = 2;
@@ -79,7 +81,7 @@ function composerRows(uiTheme: Theme, message: string, options: { cursor: boolea
 	const rawAll = message.split(/\r?\n/);
 	const rawLines: string[] = [];
 	for (let li = 0; li < rawAll.length; li++) {
-		if (rawAll[li]!.trim().length > 0) rawLines.push(rawAll[li]!);
+		if (NON_WHITESPACE_RE.test(rawAll[li]!)) rawLines.push(rawAll[li]!);
 	}
 	const maxRows = options.expanded ? 6 : 2;
 	const rowLimit = Math.min(rawLines.length, maxRows);
@@ -152,7 +154,7 @@ function tvScreen(
 		}
 		const outputCap = options.expanded ? TV_OUTPUT_EXPANDED : TV_OUTPUT_COLLAPSED;
 		for (const line of screen.outputTail.slice(-outputCap)) {
-			if (line.trim().length === 0) continue;
+			if (!NON_WHITESPACE_RE.test(line)) continue;
 			body.push(`  ${uiTheme.fg("muted", frameText(line, TV_LINE_MAX))}`);
 		}
 	} else if (screen.lastActivity) {
