@@ -1,9 +1,10 @@
 /**
  * A converted tool view draws the exact terminal bytes its origin/main renderer drew.
  *
- * WHY THIS SUITE EXISTS. Six tool renderers were migrated from imperative TUI Component renderers
- * (`renderCall` and `renderResult` returning `Component`) to host-agnostic `ToolView` descriptions
- * (`ToolViewRenderer` returning `StatusRowView`, `TextBlockView`, or `FramedBlockView`).
+ * WHY THIS SUITE EXISTS. Every tool in `CONVERTED_TOOLS` was migrated from an imperative TUI
+ * Component renderer (`renderCall` and `renderResult` returning `Component`) to a host-agnostic
+ * `ToolView` description (`ToolViewRenderer` returning `StatusRowView`, `TextBlockView`,
+ * `HeadedBlockView`, `FramedBlockView` or `NoticeView`).
  *
  * Hand-rolled test assertions recreate the expected strings by hand, which tests the expectation
  * rather than proving equivalence with what `main` actually drew. This suite drives FROZEN ORACLES
@@ -19,19 +20,28 @@
  *  - Framed block state reductions (success, error, warning) mapping to incorrect rails or borders.
  *  - Error cards dropping sanitation or failing when details are absent.
  *
- * WHAT THIS SUITE DOES NOT CATCH. Three legitimate differences are acknowledged and asserted as
- * explicit, reasoned exception cells:
+ * WHAT THIS SUITE DOES NOT CATCH. Nine legitimate differences are acknowledged and asserted as
+ * explicit, reasoned exception cells, each pinning the exact bytes of both arms:
  *  1) SGR nesting order for italic spans: `main` wrapped `italic(fg("muted", text))` while
  *     `drawSpan` applies styles inside color `fg("muted", italic(text))`. Both render identically
  *     in all standard ANSI terminals and produce identical visible text.
  *  2) Multi-line error cards in `goal`: `main`'s `formatErrorDetail(msg).split("\n")` only colored
  *     the first line, leaving subsequent lines untoned and unindented. The new view applies tone
  *     and indent to each line.
- *  3) The `set_cwd` call row: `main` built it with `new Text(text)`, whose default constructor
+ *  3) The `goal` report's section label, which `main` drew in a colour no other card's section
+ *     label uses.
+ *  4) The `set_cwd` call row: `main` built it with `new Text(text)`, whose default constructor
  *     arguments pad a row by one column horizontally and one row vertically, so the row drew with a
  *     blank row above and below it and a one-column indent. Every other tool renderer passes
  *     `0, 0`, and a view is drawn the same way, so the converted row loses that padding and draws
  *     in the column its siblings draw in. The cell pins the difference to the padding alone.
+ *  5) A memory row at a width narrower than its clamp, where the host cuts the line span by span
+ *     so the ellipsis inherits the span's colour instead of ending outside it.
+ *  6) The `read_url` held-back note and 7) its truncation mark, which the host now words and tones
+ *     rather than the tool.
+ *  8) The `debug` result header, which colours the tool name and sets the action off after it
+ *     where `main` concatenated both untoned, and 9) its held-back note, which draws in the dim
+ *     its own expand hint already used instead of a lighter muted.
  * It also does not test tool execution logic (`execute()`), which is covered by tool-specific suites.
  */
 
