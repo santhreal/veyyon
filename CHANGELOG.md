@@ -14,6 +14,7 @@
 - `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
 - Compaction can truncate the middle of an oversized text, keeping both edges, in any message role — including the roles that store their model-visible text outside `content`, such as a shell cell's `output`, a summary's `summary` and a file mention's `files[i].content`.
 - `VEYYON_DEBUG_STARTUP` emits a `native:firstCall:<export>` marker naming the native call that first loads the addon, so a launch that pays extraction before its first frame states which call pulled it in.
+- `TUI.markLayoutSized(component)` marks a root child whose height the `onBeforeCompose` pass owns, so a component-scoped frame renders it instead of reusing the rows the previous frame's content called for.
 - `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
 - `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
 
@@ -51,6 +52,8 @@
 
 ### Fixed
 
+- The screen no longer shakes while an answer streams into a viewport it has not filled: each streamed chunk repaints its own block alone, and the anchor fill above it is now resized in that same frame rather than reused at the previous frame's height, which composed one row past the viewport and moved the window per row of the answer.
+- The composer no longer lifts off the bottom row for a frame when content collapses (a tool card closing, the working indicator retiring): the anchor is sized from the children about to render rather than from the frame that already composed, so the placement no longer needs a second paint to correct it.
 - Context budgeting is unchanged from 1.3.0: the unreleased reserve for the model's output allocation is withdrawn, because subtracting it from the usable window moved every model's compaction threshold, roughly doubling how often compaction fired and invalidating the prompt cache on each pass.
 - A turn too large for compaction to summarize is truncated in the middle, keeping the head and the tail, instead of pausing automatic maintenance; the removed text is written to a recovery artifact the notice names. A session whose newest turn was a single oversized message could previously make no progress, and rewinding the tree did not clear it.
 - A payload the outbound secret scan refuses for its size is treated as a context overflow, so the session compacts and retries instead of stopping at "the provider request exceeds the confidentiality scan byte limit" on every attempt. The scan runs before the request is sent, so nothing else had reported the turn as too large.
