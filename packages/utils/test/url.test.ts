@@ -181,11 +181,14 @@ const LOCAL_DEF = /function\s+trimTrailingSlash(?:es)?\s*\(/;
 // defined outside the owner is an offender. No grandfathered set.
 const LOCAL_NORMALIZE_BASE_URL = /function\s+normalizeBaseUrl\s*\(/;
 
-// Inline `.replace(/\/+$/...)` trailing-slash strips are fully drained: every
-// former site now calls trimTrailingSlashes. The set is empty, so ANY new inline
-// strip in a production `.ts` source fails the lock and must import the owner
-// instead. (utils/src/url.ts is the owner and always allowed.)
-const INLINE_STRIP_GRANDFATHERED = new Set<string>([]);
+// Inline `.replace(/\/+$/...)` trailing-slash strips are drained down to one site, and that one is
+// unreachable: `ai/src/providers/openai-compaction.ts` carries the ChatGPT Codex compact route and is
+// byte-locked by `scripts/the-codex-compaction-route-is-locked.test.ts`, which fails on any edit to
+// it, importing the owner included. The two locks would otherwise contradict each other, so the
+// stricter one wins and the site is recorded here. ANY other new inline strip in a production `.ts`
+// source fails the lock and must import the owner instead. (utils/src/url.ts is the owner and always
+// allowed.)
+const INLINE_STRIP_GRANDFATHERED = new Set<string>(["ai/src/providers/openai-compaction.ts"]);
 // Whitespace-tolerant between `replace(` and the pattern. It was not, and that is exactly how one slipped
 // through: the formatter wrapped `mnemopi/src/core/extraction/client.ts`'s call across three lines, so
 // `replace(` and `/\/+$/` were no longer adjacent and the lock read the file as clean. The site had been
