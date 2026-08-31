@@ -26,9 +26,14 @@ pub mod scale;
 pub mod syntax;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod the_titlebar_sheds_what_the_window_cannot_hold;
 pub mod tokens;
 
-pub use geometry::{ResponsiveLayout, control, diff, icon, layout, responsive_layout, row};
+pub use geometry::{
+	ResponsiveLayout, TitlebarDensity, control, diff, icon, layout, responsive_layout, row,
+	titlebar_density,
+};
 use gpui::{
 	App, Background, BoxShadow, Global, Hsla, Pixels, linear_color_stop, linear_gradient, point, px,
 };

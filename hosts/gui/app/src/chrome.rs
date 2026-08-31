@@ -13,7 +13,7 @@ pub use resize::edges as resize_edges;
 use veyyon_gui_core::Store;
 use veyyon_gui_kit::{
 	motion::{OwnerNamespace, owner},
-	theme::{Theme, layout, space},
+	theme::{Theme, layout, space, titlebar_density},
 	ui::{Button, Fill, Icon, Tone},
 };
 
@@ -53,7 +53,11 @@ pub fn titlebar(store: &Store, window: &Window, cx: &mut Context<Shell>) -> Stat
 				window.start_window_move();
 			}
 		})
-		.child(veyyon_gui_features::shell::titlebar(store, cx))
+		.child(veyyon_gui_features::shell::titlebar(
+			store,
+			titlebar_density(f32::from(window.viewport_size().width)),
+			cx,
+		))
 		.children(controls)
 }
 

@@ -1,6 +1,8 @@
 //! Product content inside the platform titlebar.
 
-use gpui::{AnyElement, App, InteractiveElement, IntoElement, ParentElement, Styled, div, px};
+use gpui::{
+	AnyElement, App, InteractiveElement, IntoElement, ParentElement, SharedString, Styled, div, px,
+};
 use veyyon_gui_core::{
 	Store, UiCommand,
 	model::{ConnectionState, WorkspaceView},
@@ -8,7 +10,7 @@ use veyyon_gui_core::{
 };
 use veyyon_gui_kit::{
 	motion::{OwnerNamespace, owner},
-	theme::{Theme, layout, space},
+	theme::{Theme, TitlebarDensity, layout, space},
 	ui::{Badge, Button, Fill, Icon, Tone, text},
 };
 
@@ -20,10 +22,10 @@ use crate::act;
 const PALETTE: UiCommand =
 	UiCommand::OpenOverlay(Overlay::CommandPalette { mode: PaletteMode::Commands });
 
-pub fn render(store: &Store, cx: &mut App) -> AnyElement {
+pub fn render(store: &Store, density: TitlebarDensity, cx: &mut App) -> AnyElement {
 	let theme = Theme::get(cx);
 	let workspace = active_workspace(store);
-	let route = route_label(store);
+	let route = (density != TitlebarDensity::Tight).then(|| route_label(store));
 	div()
 		.id("titlebar-content")
 		.flex()
@@ -33,23 +35,18 @@ pub fn render(store: &Store, cx: &mut App) -> AnyElement {
 		.items_center()
 		.gap(px(space::X8))
 		.child(identity(workspace, route, &theme))
-		.child(crate::spaces::space_switcher(store, cx))
+		.child(crate::spaces::space_switcher(store, density, cx))
 		.child(text::spacer())
 		.child(
-			Button::labelled(
-				"command-center",
-				owner(OwnerNamespace::Shell, "titlebar", "command-center"),
-				"Search",
-			)
-			.icon(Icon::Search)
-			.fill(Fill::Tinted)
-			.tone(Tone::Muted)
-			.tip("Search commands and resources")
-			.chord(&PALETTE)
-			.on_click(act::click(PALETTE.clone())),
+			search(density)
+				.fill(Fill::Tinted)
+				.tone(Tone::Muted)
+				.tip("Search commands and resources")
+				.chord(&PALETTE)
+				.on_click(act::click(PALETTE.clone())),
 		)
 		.child(text::spacer())
-		.child(connection(&store.connection))
+		.child(connection(&store.connection, density))
 		.child(
 			Button::new(
 				"show-agent-activity",
@@ -105,7 +102,23 @@ pub fn render(store: &Store, cx: &mut App) -> AnyElement {
 		.into_any_element()
 }
 
-fn identity(workspace: Option<&WorkspaceView>, route: &str, theme: &Theme) -> AnyElement {
+/// The search button, which keeps its word until the row has no space for one.
+///
+/// The chord is on both spellings: an icon with no label is the one a reader
+/// has to be told the keystroke for.
+fn search(density: TitlebarDensity) -> Button {
+	let button = Button::new(
+		"command-center",
+		owner(OwnerNamespace::Shell, "titlebar", "command-center"),
+		Icon::Search,
+	);
+	match density {
+		TitlebarDensity::Tight => button,
+		_ => button.label("Search"),
+	}
+}
+
+fn identity(workspace: Option<&WorkspaceView>, route: Option<&str>, theme: &Theme) -> AnyElement {
 	let mut content = div()
 		.flex()
 		.items_center()
@@ -122,7 +135,7 @@ fn identity(workspace: Option<&WorkspaceView>, route: &str, theme: &Theme) -> An
 			);
 	}
 	content
-		.child(text::meta(route.to_owned(), theme))
+		.children(route.map(|route| text::meta(route.to_owned(), theme)))
 		.into_any_element()
 }
 
@@ -157,10 +170,16 @@ fn route_label(store: &Store) -> &'static str {
 	}
 }
 
-fn connection(state: &ConnectionState) -> AnyElement {
+fn connection(state: &ConnectionState, density: TitlebarDensity) -> AnyElement {
 	let shown = status::connection(state);
+	let worded = density == TitlebarDensity::Full;
 	let Some((tip, command)) = shown.action else {
-		return Badge::new(shown.label)
+		let badge = Badge::new(if worded {
+			shown.label
+		} else {
+			SharedString::default()
+		});
+		return badge
 			.icon(Icon::Engine)
 			.tone(shown.tone)
 			.bare()
@@ -169,15 +188,20 @@ fn connection(state: &ConnectionState) -> AnyElement {
 	// The one affordance on screen in every route: a state a reader is meant to
 	// act on is the control that acts on it, rather than a chip beside a button
 	// that is only on some routes.
-	Button::labelled(
+	let button = Button::new(
 		"connection",
 		owner(OwnerNamespace::Shell, "titlebar", "connection"),
-		shown.label,
-	)
-	.icon(Icon::Engine)
-	.fill(Fill::Tinted)
-	.tone(shown.tone)
-	.tip(tip)
-	.on_click(act::click(command))
-	.into_any_element()
+		Icon::Engine,
+	);
+	let button = if worded {
+		button.label(shown.label)
+	} else {
+		button
+	};
+	button
+		.fill(Fill::Tinted)
+		.tone(shown.tone)
+		.tip(tip)
+		.on_click(act::click(command))
+		.into_any_element()
 }
