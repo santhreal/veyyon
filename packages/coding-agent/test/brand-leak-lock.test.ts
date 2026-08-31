@@ -10,6 +10,9 @@
 import { describe, expect, it } from "bun:test";
 import { getOpenRouterHeaders } from "@veyyon/ai";
 import { Glob } from "bun";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { MEMBERS } from "../../utils/test/support/package-sources";
 // Relative: `loader-state.js` is a hand-authored shim with no export-map entry,
 // and giving it one to satisfy a test would widen the package's public surface.
 import { buildHelpMessage } from "../../../natives/bridge/bindings/native/loader-state.js";
@@ -157,19 +160,35 @@ describe("brand leak lock (SPEC-BRAND-LEAK-CODE)", () => {
 		// The published author identity of veyyon's OWN packages is `santhreal`. Two
 		// foreign names had leaked in: the upstream fork author `Can Boluk` across
 		// most manifests, and a zero-footprint placeholder `Derek Rynd` on
-		// @veyyon/swarm-extension. This scans every workspace package manifest so
+		// @veyyon/swarm-extension. This scans every workspace member manifest so
 		// neither — nor any other non-santhreal author — can reappear when a package
 		// is added or bumped.
-		const glob = new Glob("packages/*/package.json");
+		//
+		// The member list answers, not `packages/*/package.json`: a member declared under
+		// `kernel`, `contracts/`, `hosts/`, `plugins/` or `natives/` is published under the same
+		// name and was invisible to a glob rooted at one directory.
 		const offenders: Array<{ pkg: string; author: unknown }> = [];
-		let scanned = 0;
-		for await (const rel of glob.scan({ cwd: ROOT })) {
-			const manifest = (await Bun.file(`${ROOT}/${rel}`).json()) as { name?: string; author?: unknown };
-			if (typeof manifest.name !== "string" || !manifest.name.startsWith("@veyyon/")) continue;
-			scanned++;
+		const names: string[] = [];
+		const outsideTheScope: string[] = [];
+		for (const member of MEMBERS) {
+			const manifest = JSON.parse(await readFile(join(ROOT, member, "package.json"), "utf8")) as {
+				name?: string;
+				author?: unknown;
+			};
+			if (typeof manifest.name !== "string" || !manifest.name.startsWith("@veyyon/")) {
+				outsideTheScope.push(member);
+				continue;
+			}
+			names.push(manifest.name);
 			if (manifest.author !== "santhreal") offenders.push({ pkg: manifest.name, author: manifest.author });
 		}
-		expect(scanned).toBeGreaterThan(10);
+		// Pinned by exact equality: `argot` publishes standalone under its own name and `veybot-web` is
+		// private, so neither carries the scope. A new member outside it turns this red rather than
+		// shipping unscanned.
+		expect(outsideTheScope.sort()).toEqual(["plugins/argot", "python/veybot/web"]);
+		expect(names.length).toBe(MEMBERS.length - outsideTheScope.length);
+		expect(names).toContain("@veyyon/kernel");
+		expect(names).toContain("@veyyon/tui");
 		expect(offenders).toEqual([]);
 	});
 

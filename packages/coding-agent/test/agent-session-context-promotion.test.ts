@@ -572,15 +572,23 @@ describe("AgentSession context promotion", () => {
 		expect(session.sessionManager.getEntries().some(entry => entry.type === "compaction")).toBe(false);
 		// And the refusal the user has to read is still the last thing in context.
 		// The rollback runs after the event, so wait for it rather than racing it. This row seeds
-		// roughly twice the window (~1 MB of prose) and the rescue tiers re-tokenize that tail before
-		// the rollback lands, which the shared 500 ms default does not cover on a loaded runner. The
-		// bound is still a bound: a rollback that never runs fails here, and the cell's own budget
-		// below contains the wait — a wait longer than the cell reports as a timeout and then keeps
-		// asserting against whatever session the next row has installed.
-		await waitFor(() => session.messages.at(-1)?.role === "assistant", 10_000);
+		// roughly twice the window (~1 MB of prose) and the rescue tiers re-tokenize that tail and
+		// spill it to a recovery artifact before the rollback lands, which the shared 500 ms default
+		// does not cover on a loaded runner. The bound is still a bound, and it is contained by the
+		// cell's own budget below, so a rollback that never runs fails here rather than asserting
+		// against whatever session the next row has installed.
+		//
+		// A timeout names the tail it did see: "the refusal is not last" and "the rollback is still in
+		// flight" are different defects, and a bare deadline cannot tell them apart.
+		try {
+			await waitFor(() => session.messages.at(-1)?.role === "assistant", 20_000);
+		} catch (error) {
+			const tail = session.messages.slice(-3).map(message => message.role);
+			throw new Error(`${String(error)}; the last three message roles were [${tail.join(", ")}]`);
+		}
 		expect(session.messages.at(-1)?.role).toBe("assistant");
 		expect((session.messages.at(-1) as AssistantMessage).stopReason).toBe("error");
-	}, 20_000);
+	}, 40_000);
 
 	it("promotes to a larger-context model on response.incomplete (length stop)", async () => {
 		const sparkModel = modelRegistry.find("openai-codex", "gpt-5.3-codex-spark");

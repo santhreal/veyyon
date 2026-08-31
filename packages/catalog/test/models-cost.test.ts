@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
-import { MEMBER_ROOTS, memberRelative, memberRootOf, REPO_ROOT } from "../../utils/test/support/package-sources";
+import { MEMBER_ROOTS, MEMBERS, memberRelative, memberRootOf, REPO_ROOT } from "../../utils/test/support/package-sources";
 import { calculateCost, emptyCost, emptyUsage, modelsAreEqual } from "../src/models";
 import type { Api, Model, Usage } from "../src/types";
 
@@ -142,24 +142,22 @@ async function walk(dir: string, out: string[]): Promise<void> {
 }
 
 /**
- * Every production module key the lock reads, over every root the workspace declares. Naming
+ * Every production module key the lock reads, over every member the workspace declares. Naming
  * `packages/` alone left a hand-written zeroed cost under any other root outside the lock, and the
- * lock reported one owner while there were two.
+ * lock reported one owner while there were two. Walking one level under each root missed the members
+ * that do not sit at that depth -- `kernel` is a root and a member at once, `hosts/terminal/engine`
+ * and `natives/bridge/bindings` sit one level deeper -- so the member list answers instead.
  */
 async function scannedSources(): Promise<{ rel: string; file: string }[]> {
 	const sources: { rel: string; file: string }[] = [];
-	for (const root of MEMBER_ROOTS) {
-		const rootDir = path.join(REPO_ROOT, root);
-		for (const pkg of await readdir(rootDir, { withFileTypes: true })) {
-			if (!pkg.isDirectory()) continue;
-			const files: string[] = [];
-			try {
-				await walk(path.join(rootDir, pkg.name, "src"), files);
-			} catch {
-				// Package without a src/ directory (assets-only): nothing to scan.
-			}
-			for (const file of files) sources.push({ rel: memberRelative(file), file });
+	for (const member of MEMBERS) {
+		const files: string[] = [];
+		try {
+			await walk(path.join(REPO_ROOT, member, "src"), files);
+		} catch {
+			// Member without a src/ directory (assets-only): nothing to scan.
 		}
+		for (const file of files) sources.push({ rel: memberRelative(file), file });
 	}
 	return sources;
 }

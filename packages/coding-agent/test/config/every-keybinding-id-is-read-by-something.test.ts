@@ -34,10 +34,13 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { KEYBINDINGS } from "@veyyon/coding-agent/config/keybindings";
+import { memberSrcNamed } from "../../../utils/test/support/package-sources";
 
 const CODING_AGENT_SRC = path.resolve(import.meta.dir, "../../src");
-const TUI_SRC = path.resolve(import.meta.dir, "../../../tui/src");
-const UTILS_SRC = path.resolve(import.meta.dir, "../../../utils/src");
+// A published name is stable and its directory is not: the terminal engine is `hosts/terminal/engine`,
+// and a relative `../../../tui/src` failed with ENOENT the day it left `packages/`.
+const TUI_SRC = memberSrcNamed("@veyyon/tui");
+const UTILS_SRC = memberSrcNamed("@veyyon/utils");
 
 /**
  * All three roots are scanned, because the table is assembled across packages.
