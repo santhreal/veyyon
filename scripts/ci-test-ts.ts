@@ -463,6 +463,14 @@ export const repoScriptTests = [
 	// it enforces stops being enforced the moment nobody reruns it by hand.
 	"scripts/an-off-screen-raster-never-enters-assets.test.ts",
 	"scripts/one-owner-answers-a-command-lookup.test.ts",
+	// The gui workspace's two structural gates. They were on disk and in no
+	// runner, which is how `hosts/gui/features/src/changes/` sat ignored: the
+	// suites that read that tree ran only when somebody ran them by hand.
+	"scripts/the-gui-crates-only-depend-downward.test.ts",
+	"scripts/the-gui-workspace-is-outside-the-rust-gates.test.ts",
+	// And the rule that would have caught it: no source file the build reads is
+	// ignored, and no unanchored pattern names a directory that holds source.
+	"scripts/every-source-file-the-build-reads-is-in-the-repository.test.ts",
 ];
 
 /**
