@@ -64,6 +64,7 @@
 - An autoswarm winner has to beat the segment's baseline, not merely the worst of its sibling arms: an iteration where every arm regressed reported a winner, which was then logged as an improvement and re-applied.
 - `/autoresearch clear --keeptree` and any other misspelling of `--keep-tree` no longer fall through to resetting the worktree, which was the opposite of what the flag asked for.
 - The autoswarm setup console keeps its hint column still while a value is adjusted, and wraps its explanatory line instead of cutting it on a narrow terminal.
+- A crashed run states that it has no metric on the run screen instead of reporting the zero it was logged with as a measurement, which listed it as the fastest result of a session where lower is better.
 - The launch card prints the configured model id's last path segment rather than the whole qualified id, so a namespaced id no longer costs the status row its context gauge on the first launch of a project.
 - The launch hero states the configured model instead of `no model yet · /login` when no display name has been recorded yet.
 - The context percentage the next launch states is recorded only while the session is running the configured default model, so a session started with `--model`, switched with `/model` before anything was sent, or fallen back to another model no longer leaves the card a gauge measured against a window its model does not have.
