@@ -14,6 +14,8 @@ type FieldId = "goal" | "breadth" | "attempts" | "certify";
 
 const FIELD_ORDER: readonly FieldId[] = ["goal", "breadth", "attempts", "certify"] as const;
 
+const SUBTITLE = "Autoresearch with breadth. The model derives the metric from your harness.";
+
 /**
  * Pure state behind the setup console, so the rules are testable without a
  * terminal. The component below is a thin shell over this.
@@ -111,43 +113,62 @@ function goalWindow(goal: string, room: number): string {
 	return `…${goal.slice(goal.length - room + 1)}`;
 }
 
+/**
+ * The value column, from the bounds each field can reach rather than the value
+ * it holds now: `attempts` crossing 9 and `certify` toggling off widen the
+ * current maximum by a column, and a width read off the live values moved the
+ * whole hint column sideways on the keystroke that did it. The bar is the same
+ * for every field, so the hints stand still while the numbers change.
+ */
+const VALUE_WIDTH = Math.max(
+	String(MAX_BREADTH).length,
+	String(MAX_ATTEMPTS).length,
+	String(MIN_BREADTH).length,
+	String(MIN_ATTEMPTS).length,
+	"off".length,
+);
+
+/** Marker and space, label column, then the caret cell the goal row reserves. */
+const LABEL_WIDTH = 14;
+
+/**
+ * Sentences and key legends wrap; only the field rows, whose value is windowed
+ * to the caret, are cut. A truncated sentence loses its last clause, and the
+ * clause at the end of each of these is the one that matters: where the metric
+ * comes from, what the chosen breadth actually buys, and which key leaves.
+ */
+function prose(text: string, width: number, paint: (line: string) => string): string[] {
+	return Bun.wrapAnsi(text, Math.max(20, width), { trim: false }).split("\n").map(paint);
+}
+
 export function renderSetupConsole(model: SwarmSetupModel, width: number, theme: Theme): string[] {
-	const labelWidth = 14;
 	const rows = setupRows(model);
-	// Hints line up in one column, so the eye reads them as a list rather than
-	// as a ragged tail hanging off values of different lengths. The goal has no
-	// hint precisely because its value cannot be padded to a shared width.
-	const valueWidth = Math.max(...rows.filter(row => row.hint.length > 0).map(row => row.value.length));
-	// Marker, space, label, then the caret cell the goal row reserves.
-	const goalRoom = width - labelWidth - 3;
-	const lines: string[] = [
-		theme.bold(theme.fg("accent", "Autoswarm setup")),
-		theme.fg("dim", "Autoresearch with breadth. The model derives the metric from your harness."),
-		"",
-	];
+	const goalRoom = width - LABEL_WIDTH - 3;
+	const dim = (line: string): string => theme.fg("dim", line);
+	const lines: string[] = [theme.bold(theme.fg("accent", "Autoswarm setup"))];
+	lines.push(...prose(SUBTITLE, width, dim));
+	lines.push("");
 	for (const row of rows) {
 		const focused = row.id === model.field;
 		const marker = focused ? theme.fg("accent", "›") : " ";
-		const label = theme.fg(focused ? "accent" : "dim", row.label.padEnd(labelWidth));
+		const label = theme.fg(focused ? "accent" : "dim", row.label.padEnd(LABEL_WIDTH));
 		const isGoal = row.id === "goal";
 		const empty = isGoal && model.goal.length === 0;
-		const text = isGoal ? (empty ? row.value : goalWindow(row.value, goalRoom)) : row.value.padEnd(valueWidth);
+		const text = isGoal ? (empty ? row.value : goalWindow(row.value, goalRoom)) : row.value.padEnd(VALUE_WIDTH);
 		const shown = replaceTabs(text);
 		const caret = focused && isGoal ? theme.fg("accent", "▌") : "";
 		const value = empty ? theme.fg("dim", shown) : theme.fg(focused ? "toolTitle" : "muted", shown);
 		const hint = row.hint.length > 0 ? theme.fg("dim", `  ${row.hint}`) : "";
-		lines.push(`${marker} ${label}${value}${caret}${hint}`);
+		lines.push(truncateToWidth(`${marker} ${label}${value}${caret}${hint}`, width));
 	}
 	lines.push("");
-	lines.push(theme.fg("muted", model.certifierSummary()));
+	lines.push(...prose(model.certifierSummary(), width, line => theme.fg("muted", line)));
 	if (!model.canStart()) {
-		lines.push(theme.fg("warning", "A goal is required before autoswarm can start."));
+		lines.push(...prose("A goal is required before autoswarm can start.", width, line => theme.fg("warning", line)));
 	}
 	lines.push("");
-	lines.push(theme.fg("dim", "↑↓ field   ←→ adjust   space toggle   enter start   esc cancel"));
-	// Truncating once at the end is the only way every line is covered; a line
-	// that escapes it wraps and pushes the exit legend off an overlay.
-	return lines.map(line => truncateToWidth(line, width));
+	lines.push(...prose("↑↓ field   ←→ adjust   space toggle   enter start   esc cancel", width, dim));
+	return lines;
 }
 
 /**

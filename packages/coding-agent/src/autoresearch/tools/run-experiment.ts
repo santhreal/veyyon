@@ -127,7 +127,7 @@ export function createRunExperimentTool(
 				runDirectory,
 				runNumber: insertedRun.id,
 			};
-			options.dashboard.updateWidget(ctx, runtime);
+			options.dashboard.update(ctx, runtime);
 			options.dashboard.requestRender();
 
 			const timeoutMs = Math.max(0, Math.floor((params.timeout_seconds ?? 600) * 1000));
@@ -155,7 +155,7 @@ export function createRunExperimentTool(
 				});
 			} finally {
 				runtime.runningExperiment = null;
-				options.dashboard.updateWidget(ctx, runtime);
+				options.dashboard.update(ctx, runtime);
 				options.dashboard.requestRender();
 			}
 
@@ -234,7 +234,7 @@ export function createRunExperimentTool(
 			if (refreshedSession) {
 				runtime.state = buildExperimentState(refreshedSession, storage.listLoggedRuns(session.id));
 			}
-			options.dashboard.updateWidget(ctx, runtime);
+			options.dashboard.update(ctx, runtime);
 			options.dashboard.requestRender();
 
 			const headerLines: string[] = [];

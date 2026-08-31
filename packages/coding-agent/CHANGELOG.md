@@ -42,10 +42,19 @@
 - The launch card paints the real composer instead of a drawing of one. Typing at the card edits the editor the session goes on to use, so nothing has to be replayed into it at handover, and a submit typed before the session exists no longer discards the draft. Measured warm on a pty, a keystroke at the card echoes 3.2ms after the card's first byte.
 - The settings store holds no database handle. `AgentStorage.forAgentDir` is the one owner of the run's agent.db and opens it on first use, `config/legacy-agent-db-settings.ts` owns the first-run read of the pre-config.yml `settings` table, and the launch card no longer evaluates `bun:sqlite` or the SQLite credential store to read a setting. Measured warm on a pty, the card's first byte goes from 50.5ms to 42.4ms and a keystroke is echoed at 45.6ms instead of 53.6ms; a database that will not open now costs usage statistics with a logged reason rather than failing the launch.
 - The three hidden magic-keyword notices are in `session/magic-keyword-notices.ts` rather than under `modes/`, which was the one edge from the session into the UI directory with no drawing behind it. No behavior change.
+- A running autoresearch or autoswarm loop occupies one status row instead of a widget above the composer, and `ctrl+x` opens a run screen listing the session, the playbook, the run in flight and every logged run, with the highlighted entry in full beside it.
+- A bare `/autoresearch` opens the run screen instead of leaving the mode; `off` still leaves it.
+- `/autoresearch clear` and `/autoswarm clear` ask before resetting the worktree, naming the baseline commit and how many files hold uncommitted changes, and reject an unrecognized flag instead of resetting.
+- `/autoresearch` and `/autoswarm` list their `off` and `clear` subcommands before a letter is typed, and `clear` offers `--keep-tree` and `--reset-tree`.
+- A run records the arm that produced it and the arm that certified it, both shown on the run screen.
 
 ### Fixed
 
 - The launch card states the model name, git state and context percentage recorded at the end of the last launch instead of placeholders, so the status row and hero do not change when the session mounts; each fact falls back to its placeholder when the release, the model or the project changed.
+- `certify_arms` is attached only to a session whose breadth is above 1, so a serial autoresearch loop is no longer offered a tool that triages arms it does not have.
+- An autoswarm winner has to beat the segment's baseline, not merely the worst of its sibling arms: an iteration where every arm regressed reported a winner, which was then logged as an improvement and re-applied.
+- `/autoresearch clear --keeptree` and any other misspelling of `--keep-tree` no longer fall through to resetting the worktree, which was the opposite of what the flag asked for.
+- The autoswarm setup console keeps its hint column still while a value is adjusted, and wraps its explanatory line instead of cutting it on a narrow terminal.
 - The launch card prints the configured model id's last path segment rather than the whole qualified id, so a namespaced id no longer costs the status row its context gauge on the first launch of a project.
 - The launch hero states the configured model instead of `no model yet · /login` when no display name has been recorded yet.
 - The context percentage the next launch states is recorded only while the session is running the configured default model, so a session started with `--model`, switched with `/model` before anything was sent, or fallen back to another model no longer leaves the card a gauge measured against a window its model does not have.

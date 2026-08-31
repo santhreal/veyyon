@@ -41,7 +41,6 @@ export function createSessionRuntime(): AutoresearchRuntime {
 	return {
 		autoresearchMode: false,
 		autoResumeArmed: false,
-		dashboardExpanded: false,
 		lastAutoResumePendingRunNumber: null,
 		lastRunDuration: null,
 		lastRunAsi: null,
@@ -53,6 +52,20 @@ export function createSessionRuntime(): AutoresearchRuntime {
 		goal: null,
 		pendingSwarm: null,
 	};
+}
+
+/**
+ * The breadth this session runs at, including the one the setup console just
+ * chose.
+ *
+ * `state.breadth` is read from the stored session, which does not exist until
+ * `init_experiment` creates it — a fresh autoswarm spends the whole first turn
+ * with a state that reports breadth 1 while `pendingSwarm` holds what the user
+ * actually asked for. Anything deciding swarm-vs-serial before that first tool
+ * call has to ask both.
+ */
+export function effectiveBreadth(runtime: AutoresearchRuntime): number {
+	return Math.max(runtime.state.breadth, runtime.pendingSwarm?.breadth ?? 1);
 }
 
 export function cloneExperimentState(state: ExperimentState): ExperimentState {
@@ -208,6 +221,8 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 			justification: run.justification,
 			flagged: run.flagged,
 			flaggedReason: run.flaggedReason,
+			arm: run.arm,
+			certifiedBy: run.certifiedBy,
 		};
 		state.results.push(result);
 		if (run.segment === state.currentSegment) {

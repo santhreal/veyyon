@@ -23,6 +23,8 @@ function result(overrides: Partial<ExperimentResult>): ExperimentResult {
 		justification: null,
 		flagged: false,
 		flaggedReason: null,
+		arm: null,
+		certifiedBy: null,
 		...overrides,
 	};
 }

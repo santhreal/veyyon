@@ -37,6 +37,10 @@ export interface ExperimentResult {
 	justification: string | null;
 	flagged: boolean;
 	flaggedReason: string | null;
+	/** Candidate arm this run measured, when breadth was above 1. */
+	arm: string | null;
+	/** Which arm or the director certified this run. */
+	certifiedBy: string | null;
 }
 
 export interface ExperimentState {
@@ -132,7 +136,6 @@ export interface SwarmSetup {
 export interface AutoresearchRuntime {
 	autoresearchMode: boolean;
 	autoResumeArmed: boolean;
-	dashboardExpanded: boolean;
 	lastAutoResumePendingRunNumber: number | null;
 	lastRunDuration: number | null;
 	lastRunAsi: ASIData | null;
@@ -169,8 +172,10 @@ export interface RuntimeStore {
 export interface DashboardController {
 	clear(ctx: ExtensionContext): void;
 	requestRender(): void;
-	showOverlay(ctx: ExtensionContext, runtime: AutoresearchRuntime): Promise<void>;
-	updateWidget(ctx: ExtensionContext, runtime: AutoresearchRuntime): void;
+	/** Open the run screen and resolve when it closes. */
+	showScreen(ctx: ExtensionContext, runtime: AutoresearchRuntime): Promise<void>;
+	/** Repaint the status row from the current runtime. */
+	update(ctx: ExtensionContext, runtime: AutoresearchRuntime): void;
 }
 
 export interface AutoresearchToolFactoryOptions {

@@ -156,6 +156,13 @@ export interface MarkRunLoggedParams {
 	scopeDeviations: string[];
 	justification: string | null;
 	loggedAt: number;
+	/**
+	 * Arm and reviewer the loop attributes this result to. Either left undefined
+	 * keeps whatever the run already recorded, so a serial log never erases the
+	 * arm `run_experiment` stamped on the measurement.
+	 */
+	arm?: string | null;
+	certifiedBy?: string | null;
 }
 
 type SessionDbRow = {
@@ -558,7 +565,8 @@ export class AutoresearchStorage {
 				`UPDATE runs SET
 					status = ?, description = ?, metric = ?, metrics_json = ?, asi_json = ?,
 					commit_hash = ?, confidence = ?, modified_paths_json = ?, scope_deviations_json = ?,
-					justification = ?, logged_at = ?
+					justification = ?, logged_at = ?,
+					arm = COALESCE(?, arm), certified_by = COALESCE(?, certified_by)
 				WHERE id = ?`,
 			)
 			.run(
@@ -573,6 +581,8 @@ export class AutoresearchStorage {
 				JSON.stringify(params.scopeDeviations),
 				params.justification,
 				params.loggedAt,
+				params.arm ?? null,
+				params.certifiedBy ?? null,
 				params.runId,
 			);
 		return this.getRunByIdRequired(params.runId);

@@ -12,6 +12,7 @@ import { buildExperimentState } from "../state";
 import { openAutoresearchStorage, type SessionRow } from "../storage";
 import { MAX_ATTEMPTS, MAX_BREADTH } from "../swarm";
 import type { AutoresearchToolFactoryOptions, ExperimentState } from "../types";
+import { activeToolsChanged, activeToolsFor } from ".";
 
 export const HARNESS_FILENAME = "autoresearch.sh";
 export const DEFAULT_HARNESS_COMMAND = `bash ${HARNESS_FILENAME}`;
@@ -189,7 +190,15 @@ export function createInitExperimentTool(
 			runtime.lastRunArtifactDir = null;
 			runtime.lastRunNumber = null;
 			runtime.lastRunSummary = null;
-			options.dashboard.updateWidget(ctx, runtime);
+			// The stored session is the first place the real breadth exists, so this
+			// is where a swarm gains `certify_arms` and a serial session loses it.
+			// The command path armed the set before the breadth was known.
+			const activeTools = options.pi.getActiveTools();
+			const nextActiveTools = activeToolsFor(activeTools, true, state.breadth);
+			if (activeToolsChanged(activeTools, nextActiveTools)) {
+				await options.pi.setActiveTools(nextActiveTools);
+			}
+			options.dashboard.update(ctx, runtime);
 			options.dashboard.requestRender();
 
 			const lines: string[] = [];

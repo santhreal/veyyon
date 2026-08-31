@@ -6,22 +6,23 @@ import type { ExtensionContext, ExtensionFactory } from "../extensibility/extens
 import { autoresearchPrompts } from "../prompts/autoresearch/rows";
 import * as git from "../utils/git";
 import { createDashboardController } from "./dashboard";
-import { ensureAutoresearchBranch } from "./git";
-import { formatNum } from "./helpers";
+import { ensureAutoresearchBranch, parseWorkDirDirtyPaths } from "./git";
+import { formatNum, gitStatusPorcelain, gitWorkDirPrefix } from "./helpers";
 import { handleSetupKey, renderSetupConsole, SwarmSetupModel, type SwarmSetupResult } from "./setup-console";
-import { AUTORESEARCH_OVERLAY_KEY, AUTORESEARCH_TOGGLE_KEY } from "./shortcuts";
+import { AUTORESEARCH_SCREEN_KEY } from "./shortcuts";
 import {
 	buildExperimentState,
 	createExperimentState,
 	createRuntimeStore,
 	currentResults,
+	effectiveBreadth,
 	findBaselineMetric,
 	findBestKeptMetric,
 	reconstructControlState,
 } from "./state";
 import { openAutoresearchStorage, openAutoresearchStorageIfExists, type RunRow, type SessionRow } from "./storage";
 import { DEFAULT_SWARM_BREADTH } from "./swarm";
-import { EXPERIMENT_TOOL_NAMES } from "./tools";
+import { activeToolsChanged, activeToolsFor } from "./tools";
 import { createCertifyArmsTool } from "./tools/certify-arms";
 import { createInitExperimentTool } from "./tools/init-experiment";
 import { createLogExperimentTool } from "./tools/log-experiment";
@@ -88,17 +89,11 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		runtime.lastRunArtifactDir = runtime.lastRunSummary?.runDirectory ?? null;
 		runtime.lastRunNumber = runtime.lastRunSummary?.runNumber ?? null;
 		runtime.runningExperiment = null;
-		dashboard.updateWidget(ctx, runtime);
+		dashboard.update(ctx, runtime);
 
 		const activeTools = api.getActiveTools();
-		const experimentTools = new Set(EXPERIMENT_TOOL_NAMES);
-		const nextActiveTools = runtime.autoresearchMode
-			? [...new Set([...activeTools, ...EXPERIMENT_TOOL_NAMES])]
-			: activeTools.filter(name => !experimentTools.has(name));
-		const toolsChanged =
-			nextActiveTools.length !== activeTools.length ||
-			nextActiveTools.some((name, index) => name !== activeTools[index]);
-		if (toolsChanged) {
+		const nextActiveTools = activeToolsFor(activeTools, runtime.autoresearchMode, effectiveBreadth(runtime));
+		if (activeToolsChanged(activeTools, nextActiveTools)) {
 			await api.setActiveTools(nextActiveTools);
 		}
 	};
@@ -135,9 +130,8 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 
 	const disableMode = async (ctx: ExtensionContext, runtime: AutoresearchRuntime, label: string): Promise<void> => {
 		setMode(ctx, false, runtime.goal, "off");
-		dashboard.updateWidget(ctx, runtime);
-		const experimentTools = new Set(EXPERIMENT_TOOL_NAMES);
-		await api.setActiveTools(api.getActiveTools().filter(name => !experimentTools.has(name)));
+		dashboard.update(ctx, runtime);
+		await api.setActiveTools(activeToolsFor(api.getActiveTools(), false, effectiveBreadth(runtime)));
 		ctx.ui.notify(`${label} mode disabled`, "info");
 	};
 
@@ -177,16 +171,35 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		const trimmed = args.trim();
 		const runtime = getRuntime(ctx);
 
-		if ((trimmed === "" && runtime.autoresearchMode) || trimmed === "off") {
+		// A bare command on a live loop is a request to LOOK at it, never to end
+		// it. Ending one is `off`, which is a word the user typed on purpose:
+		// reaching for `/autoswarm` to check on a run and having the mode fall out
+		// from under you is the same keystroke meaning two opposite things.
+		if (trimmed === "off") {
 			await disableMode(ctx, runtime, spec.label);
+			return;
+		}
+		if (trimmed === "" && runtime.autoresearchMode && !spec.swarm) {
+			await dashboard.showScreen(ctx, runtime);
 			return;
 		}
 
 		if (trimmed === "clear" || trimmed.startsWith("clear ")) {
-			const flagPart = trimmed === "clear" ? "" : trimmed.slice("clear ".length).trim();
-			const keepTree = flagPart.includes("--keep-tree");
-			const resetTreeForce = flagPart.includes("--reset-tree");
-			await handleClear(ctx, runtime, { keepTree, resetTreeForce });
+			const flags = trimmed === "clear" ? [] : trimmed.slice("clear ".length).trim().split(/\s+/).filter(Boolean);
+			// Tokens, not a substring scan: `--keeptree` used to match nothing and
+			// fall through to the destructive default, so one typo reset the tree.
+			const unknown = flags.filter(flag => flag !== "--keep-tree" && flag !== "--reset-tree");
+			if (unknown.length > 0) {
+				ctx.ui.notify(
+					`Unknown option ${unknown.join(", ")}. \`clear\` takes --keep-tree or --reset-tree; nothing was reset.`,
+					"error",
+				);
+				return;
+			}
+			await handleClear(ctx, runtime, {
+				keepTree: flags.includes("--keep-tree"),
+				resetTreeForce: flags.includes("--reset-tree"),
+			});
 			return;
 		}
 
@@ -246,8 +259,8 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			runtime.state = buildExperimentState(refreshed, existingStorage.listLoggedRuns(refreshed.id));
 			runtime.goal = refreshed.goal ?? goalArg;
 			setMode(ctx, true, runtime.goal, "on");
-			dashboard.updateWidget(ctx, runtime);
-			await api.setActiveTools([...new Set([...api.getActiveTools(), ...EXPERIMENT_TOOL_NAMES])]);
+			dashboard.update(ctx, runtime);
+			await api.setActiveTools(activeToolsFor(api.getActiveTools(), true, effectiveBreadth(runtime)));
 			api.sendUserMessage(
 				prompt.render(autoresearchPrompts["autoresearch/command-resume"].text, {
 					branch_status_line: branchStatusLine,
@@ -259,8 +272,8 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		}
 
 		setMode(ctx, true, goalArg, "on");
-		dashboard.updateWidget(ctx, runtime);
-		await api.setActiveTools([...new Set([...api.getActiveTools(), ...EXPERIMENT_TOOL_NAMES])]);
+		dashboard.update(ctx, runtime);
+		await api.setActiveTools(activeToolsFor(api.getActiveTools(), true, effectiveBreadth(runtime)));
 		if (goalArg !== null) {
 			api.sendUserMessage(goalArg);
 		} else {
@@ -268,27 +281,38 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		}
 	};
 
-	// Both commands take the same two subcommands. Breadth is not among them:
-	// autoswarm is configured in its console, and anything else typed after the
-	// command is the goal.
+	// Both commands take the same two subcommands, and both list them before a
+	// letter is typed: a subcommand nobody can see is one nobody finds. Breadth is
+	// not among them — autoswarm is configured in its console, and anything else
+	// typed after the command is the goal.
 	function modeCompletions(argumentPrefix: string): AutocompleteItem[] | null {
-		if (argumentPrefix.includes(" ")) return null;
 		const normalized = argumentPrefix.trim().toLowerCase();
-		if (normalized.length === 0) return null;
+		if (normalized.startsWith("clear")) {
+			return [
+				{ label: "--keep-tree", value: "clear --keep-tree", description: "Close the session, leave your files" },
+				{
+					label: "--reset-tree",
+					value: "clear --reset-tree",
+					description: "Reset to baseline even off an autoresearch branch",
+				},
+			];
+		}
+		if (argumentPrefix.includes(" ")) return null;
 		const completions: AutocompleteItem[] = [
-			{ label: "off", value: "off", description: "Leave the mode" },
+			{ label: "off", value: "off", description: "Leave the mode, keep the session" },
 			{
 				label: "clear",
 				value: "clear",
 				description: "Reset worktree to baseline and close the active session",
 			},
 		];
-		const filtered = completions.filter(item => item.label.startsWith(normalized));
+		const filtered =
+			normalized.length === 0 ? completions : completions.filter(item => item.label.startsWith(normalized));
 		return filtered.length > 0 ? filtered : null;
 	}
 
 	api.registerCommand("autoresearch", {
-		description: "Toggle builtin autoresearch mode, or pass off / clear, or a goal message.",
+		description: `Run an optimization loop. Bare opens the run screen (${AUTORESEARCH_SCREEN_KEY}); pass a goal, off, or clear.`,
 		getArgumentCompletions: modeCompletions,
 		handler: (args, ctx) => runModeCommand(args, ctx, { label: "Autoresearch", swarm: false }),
 	});
@@ -300,23 +324,14 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		handler: (args, ctx) => runModeCommand(args, ctx, { label: "Autoswarm", swarm: true }),
 	});
 
-	api.registerShortcut(AUTORESEARCH_TOGGLE_KEY, {
-		description: "Toggle autoresearch dashboard",
-		handler(ctx): void {
-			const runtime = getRuntime(ctx);
-			if (runtime.state.results.length === 0 && !runtime.runningExperiment) {
-				ctx.ui.notify("No autoresearch results yet", "info");
-				return;
-			}
-			runtime.dashboardExpanded = !runtime.dashboardExpanded;
-			dashboard.updateWidget(ctx, runtime);
-		},
-	});
-
-	api.registerShortcut(AUTORESEARCH_OVERLAY_KEY, {
-		description: "Show autoresearch dashboard overlay",
+	api.registerShortcut(AUTORESEARCH_SCREEN_KEY, {
+		description: "Open the autoresearch run screen",
 		handler(ctx): Promise<void> {
-			return dashboard.showOverlay(ctx, getRuntime(ctx));
+			// Reachable before the first run, on purpose: the screen is where the
+			// goal, the scope and the harness are read, and those exist before any
+			// measurement does. It used to refuse with "no results yet", which is
+			// exactly when a reader most wants to check what was configured.
+			return dashboard.showScreen(ctx, getRuntime(ctx));
 		},
 	});
 
@@ -332,7 +347,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	api.on("agent_end", async (_event, ctx) => {
 		const runtime = getRuntime(ctx);
 		runtime.runningExperiment = null;
-		dashboard.updateWidget(ctx, runtime);
+		dashboard.update(ctx, runtime);
 		dashboard.requestRender();
 		if (!runtime.autoresearchMode) return;
 		if (ctx.hasPendingMessages()) {
@@ -380,9 +395,8 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			runtime.state = createExperimentState();
 			runtime.lastRunSummary = null;
 			runtime.runningExperiment = null;
-			dashboard.updateWidget(ctx, runtime);
-			const experimentTools = new Set(EXPERIMENT_TOOL_NAMES);
-			await api.setActiveTools(api.getActiveTools().filter(name => !experimentTools.has(name)));
+			dashboard.update(ctx, runtime);
+			await api.setActiveTools(activeToolsFor(api.getActiveTools(), false, effectiveBreadth(runtime)));
 			return;
 		}
 		const storage = await openAutoresearchStorageIfExists(ctx.cwd);
@@ -502,6 +516,22 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		const onAutoresearchBranch = branchName?.startsWith("autoresearch/") ?? false;
 		const shouldResetTree = !opts.keepTree && (onAutoresearchBranch || opts.resetTreeForce);
 		if (shouldResetTree && session?.baselineCommit) {
+			// `git reset --hard` plus `git clean` is the one autoresearch action with
+			// nothing behind it: uncommitted work in the worktree is gone, and the
+			// command that reaches it is four letters typed after a slash. Ask, name
+			// the commit and the file count, and treat a refusal as "clear nothing":
+			// `clear --keep-tree` closes the session without touching files.
+			const dirty = await dirtyPathCount(ctx.cwd);
+			const confirmed = await ctx.ui.confirm(
+				"Reset worktree to baseline?",
+				`Resets to ${session.baselineCommit.slice(0, 12)} and deletes untracked files${
+					dirty > 0 ? `, discarding uncommitted changes in ${dirty} ${dirty === 1 ? "file" : "files"}` : ""
+				}. Use \`clear --keep-tree\` to close the session and keep your files.`,
+			);
+			if (!confirmed) {
+				ctx.ui.notify("Clear cancelled; nothing was reset.", "info");
+				return;
+			}
 			try {
 				await git.reset(ctx.cwd, { hard: true, target: session.baselineCommit });
 				await git.clean(ctx.cwd);
@@ -526,9 +556,8 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		runtime.lastRunNumber = null;
 		runtime.lastRunSummary = null;
 		setMode(ctx, false, null, "clear");
-		dashboard.updateWidget(ctx, runtime);
-		const experimentTools = new Set(EXPERIMENT_TOOL_NAMES);
-		await api.setActiveTools(api.getActiveTools().filter(name => !experimentTools.has(name)));
+		dashboard.update(ctx, runtime);
+		await api.setActiveTools(activeToolsFor(api.getActiveTools(), false, effectiveBreadth(runtime)));
 		ctx.ui.notify("Autoresearch session cleared.", "info");
 	}
 };
@@ -555,6 +584,22 @@ function removeLegacyArtifacts(workDir: string): void {
 				error: errorMessage(err),
 			});
 		}
+	}
+}
+
+/**
+ * How many worktree files a reset would discard, for the confirmation to state.
+ * A git failure counts as zero rather than blocking the prompt: the reset is
+ * still described by the commit it lands on, and refusing to ask is worse than
+ * asking without the number.
+ */
+async function dirtyPathCount(cwd: string): Promise<number> {
+	try {
+		const [statusText, workDirPrefix] = await Promise.all([gitStatusPorcelain(cwd), gitWorkDirPrefix(cwd)]);
+		return parseWorkDirDirtyPaths(statusText, workDirPrefix).length;
+	} catch (err) {
+		logger.warn("Failed to count dirty paths before autoresearch clear", { error: errorMessage(err) });
+		return 0;
 	}
 }
 

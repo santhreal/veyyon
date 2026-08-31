@@ -166,15 +166,22 @@ describe("autoswarm is its own command", () => {
 
 	it("completes the two subcommands on both, and breadth on neither", () => {
 		// `/autoswarm off` and `/autoswarm clear` still work, so they must still
-		// be offered. Breadth is not a subcommand any more and must not be
-		// offered on either command.
+		// be offered — including before a letter is typed, which is the only point
+		// a reader who does not already know the names can find them. Breadth is
+		// not a subcommand any more and must not be offered on either command.
 		const { commands } = buildHarness();
 		for (const name of ["autoswarm", "autoresearch"]) {
 			const offered = commands.get(name)?.getArgumentCompletions?.("") ?? [];
-			expect(offered).toEqual([]);
+			expect(offered.map(item => item.label)).toEqual(["off", "clear"]);
 			expect((commands.get(name)?.getArgumentCompletions?.("o") ?? []).map(item => item.label)).toEqual(["off"]);
 			expect((commands.get(name)?.getArgumentCompletions?.("c") ?? []).map(item => item.label)).toEqual(["clear"]);
 			expect(commands.get(name)?.getArgumentCompletions?.("b") ?? []).toEqual([]);
+			// `clear` takes exactly two flags, and offering them is how a reader
+			// learns `--keep-tree` exists before typing the destructive default.
+			expect((commands.get(name)?.getArgumentCompletions?.("clear ") ?? []).map(item => item.label)).toEqual([
+				"--keep-tree",
+				"--reset-tree",
+			]);
 		}
 	});
 

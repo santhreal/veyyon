@@ -53,6 +53,45 @@ justification is reported in the next iteration.
 The harness itself belongs in `off_limits`. A loop that is allowed to edit its
 own benchmark can improve the number without improving the code.
 
+## Reading a run
+
+A live loop occupies one status row:
+
+```
+autoswarm · run #5 · 1m 12s · 4 runs · 3 kept · 3 arms · best 168.40ms · conf 3.2x · ctrl+x runs
+```
+
+`ctrl+x` opens the run screen, and so does `/autoresearch` with nothing after
+it:
+
+```
+┌─ Autoswarm · tokenizer-laten…┬───────────────────────────────────────────────────┐
+│   OVERVIEW ───────────────── │ Session     tokenizer-latency                     │
+│ › Session                    │ Goal        make the tokenizer faster             │
+│   Playbook                   │ Metric      duration  lower is better             │
+│   #5 running                 │                                                   │
+│   SEGMENT 1 ──────────────── │ Baseline    192.78ms  (#1)                        │
+│   #4 168.40ms                │ Best        168.40ms  (#4)  -12.6%                │
+│   #3 210.10ms                │ Confidence  3.2x                                  │
+│   #2 188.40ms                │                                                   │
+│   #1 192.78ms                │ Breadth     3 arms per iteration                  │
+├──────────────────────────────┴───────────────────────────────────────────────────┤
+│ up/down select   pgup/pgdn page   esc close                                      │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+The list holds the session, the playbook, the run in flight and every logged
+run, newest first, grouped by segment. The pane beside it shows the highlighted
+entry in full: metric and percentage change against the segment baseline,
+secondary metrics, confidence, the arm that produced the run and the arm that
+certified it, the flag reason, scope deviations, the change description, the
+commit and the files it touched.
+
+Up and down move through the list, page up and page down scroll the detail pane,
+typing filters the list, and Escape closes the screen. It is readable before the
+first run, where it shows the goal, the scope and the metric the session was
+configured with.
+
 ## Going wider
 
 `/autoresearch` tries one change per iteration. [Autoswarm](./autoswarm.md) is
@@ -86,9 +125,22 @@ These attach in autoresearch and autoswarm, and nowhere else.
 
 ## Ending a session
 
-`/autoresearch off` leaves the mode and keeps the session. `/autoresearch clear`
-resets the worktree to the baseline and closes the session; `--keep-tree` leaves
-your files alone. `/autoswarm` takes the same two.
+`/autoresearch off` leaves the mode and keeps the session. A bare
+`/autoresearch` opens the run screen; it does not end anything.
+
+`/autoresearch clear` resets the worktree to the segment baseline, deletes
+untracked files and closes the session. It asks first, naming the commit it
+resets to and how many files hold uncommitted changes. Two flags:
+
+| Flag | Effect |
+|---|---|
+| `--keep-tree` | Close the session and leave every file alone. Nothing to confirm. |
+| `--reset-tree` | Reset even when the branch is not an `autoresearch/*` one. |
+
+Any other argument after `clear` is rejected and nothing is reset, so a
+misspelled `--keep-tree` cannot fall through to the reset.
+
+`/autoswarm` takes the same subcommands.
 
 State is stored per repository, under the profile directory. The database is
 keyed on the primary checkout, so worktrees of one repository share it.

@@ -14,12 +14,13 @@ trusted, has the survivors review each other, and keeps at most one.
 Autoswarm setup
 Autoresearch with breadth. The model derives the metric from your harness.
 
-› Goal          make the tokenizer faster▌  type to edit
-  Breadth       3                           candidate arms per iteration
-  Attempts      1                           retries before an arm is abandoned
-  Certification on                          arms cross-review before one is kept
+› Goal          make the tokenizer faster▌
+  Breadth       3    candidate arms per iteration
+  Attempts      1    retries before an arm is abandoned
+  Certification on   arms cross-review before one is kept
 
-3 arms in a review ring: each arm is reviewed by another, and no pair reviews each other.
+3 arms in a review ring: each arm is reviewed by another, and no pair reviews
+each other.
 
 ↑↓ field   ←→ adjust   space toggle   enter start   esc cancel
 ```
@@ -33,6 +34,10 @@ The console opens on whatever the current branch is already doing, so running it
 during a session shows that session's breadth rather than the default, and
 starting applies the new values from the next iteration.
 
+A bare `/autoswarm` reopens the console rather than the run screen, because the
+console is where a live swarm is reconfigured. `ctrl+x` opens the run screen from
+either loop.
+
 Everything autoresearch provides is unchanged underneath: the same
 `autoresearch.sh` harness, the same metric lines, the same segments, the same
 scope rules, the same database. Read that page first; this one covers only what
@@ -43,7 +48,8 @@ breadth adds.
 ## Breadth
 
 Breadth is 1 to 8 and opens at 3, the fewest arms a review ring needs. The
-dashboard shows `breadth N` whenever it is above 1.
+status row states `N arms` whenever breadth is above 1, and the run screen
+states it per session.
 
 Arms share one worktree. They are built one at a time, measured, and reverted,
 so breadth costs iteration time rather than disk. An arm is a different idea:
@@ -128,5 +134,11 @@ reviewer concludes; the judgement on top of them does not.
 
 Breadth, attempts and certification belong to the session rather than the
 installation, so the setup console sets them per investigation and `/settings`
-does not carry them. A run records which arm produced it and which reviewer
-certified it.
+does not carry them. A run records which arm produced it and which arm certified
+it, both stated on the run screen's entry for that run.
+
+A winning arm has to beat the segment's baseline, not merely the other arms of
+its iteration. An iteration where every arm regressed is a null round.
+
+`certify_arms` attaches only while breadth is above 1. A serial session has one
+candidate and no ring, so there is nothing for it to triage.

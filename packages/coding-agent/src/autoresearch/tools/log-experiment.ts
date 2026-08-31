@@ -34,7 +34,7 @@ import type {
 	LogDetails,
 	NumericMetricMap,
 } from "../types";
-import { EXPERIMENT_TOOL_NAMES } from ".";
+import { activeToolsFor } from ".";
 
 const logExperimentSchema = type({
 	metric: type("number").describe("primary metric value"),
@@ -44,6 +44,8 @@ const logExperimentSchema = type({
 	"asi?": type({ "[string]": "unknown" }).describe("free-form structured metadata"),
 	"commit?": type("string").describe("override recorded commit hash"),
 	"justification?": type("string").describe("required when keeping a scope-deviating run"),
+	"arm?": type("string").describe("candidate arm this result came from, when breadth > 1"),
+	"certified_by?": type("string").describe("arm or `director` that certified this result"),
 	"flag_runs?": type({
 		run_id: type("number.integer").describe("run id to flag"),
 		reason: type("string").describe("why this run is suspect"),
@@ -214,6 +216,8 @@ export function createLogExperimentTool(
 				scopeDeviations,
 				justification,
 				loggedAt,
+				arm: params.arm?.trim() || undefined,
+				certifiedBy: params.certified_by?.trim() || undefined,
 			});
 
 			// Recompute confidence with this run included
@@ -252,8 +256,12 @@ export function createLogExperimentTool(
 				modifiedPaths: allModified,
 				scopeDeviations,
 				justification,
-				flagged: false,
-				flaggedReason: null,
+				// The verdict is whatever the row carries: `certify_arms` may already
+				// have flagged this arm's measurement before it was logged.
+				flagged: tentativeRun.flagged,
+				flaggedReason: tentativeRun.flaggedReason,
+				arm: tentativeRun.arm,
+				certifiedBy: tentativeRun.certifiedBy,
 			};
 
 			const segmentRunCount = currentResults(finalState.results, finalState.currentSegment).length;
@@ -263,12 +271,10 @@ export function createLogExperimentTool(
 					"autoresearch-control",
 					runtime.goal ? { mode: "off", goal: runtime.goal } : { mode: "off" },
 				);
-				await options.pi.setActiveTools(
-					options.pi.getActiveTools().filter(name => !EXPERIMENT_TOOL_NAMES.includes(name)),
-				);
+				await options.pi.setActiveTools(activeToolsFor(options.pi.getActiveTools(), false, finalState.breadth));
 			}
 
-			options.dashboard.updateWidget(ctx, runtime);
+			options.dashboard.update(ctx, runtime);
 			options.dashboard.requestRender();
 
 			const wallClockSeconds = pendingRun.durationMs !== null ? pendingRun.durationMs / 1000 : null;
