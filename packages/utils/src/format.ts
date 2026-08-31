@@ -183,3 +183,21 @@ export function formatPercent(ratio: number): string {
 	if (!Number.isFinite(ratio)) return "0.0%";
 	return `${(ratio * 100).toFixed(1)}%`;
 }
+
+/**
+ * Tiered fixed-precision dollar display for terminal output.
+ *
+ * Sub-cent figures keep four decimals because a single request costs less than a cent and would
+ * otherwise print as `$0.00`. The web client's locale-aware cost display is a different contract
+ * and stays in the stats client.
+ */
+export function formatCostTiered(n: number): string {
+	if (n < 0.01) return `$${n.toFixed(4)}`;
+	if (n < 1) return `$${n.toFixed(3)}`;
+	return `$${n.toFixed(2)}`;
+}
+
+/** Premium-request counts are fractional units; display rounded to 2 decimals. */
+export function normalizePremiumRequests(n: number): number {
+	return Math.round((n + Number.EPSILON) * 100) / 100;
+}

@@ -2,10 +2,12 @@ import { describe, expect, it } from "bun:test";
 import {
 	formatAge,
 	formatBytes,
+	formatCostTiered,
 	formatCount,
 	formatDuration,
 	formatNumber,
 	formatPercent,
+	normalizePremiumRequests,
 	pluralize,
 	truncate,
 } from "@veyyon/utils/format";
@@ -204,5 +206,60 @@ describe("formatPercent", () => {
 		expect(formatPercent(Number.NaN)).toBe("0.0%");
 		expect(formatPercent(Number.POSITIVE_INFINITY)).toBe("0.0%");
 		expect(formatPercent(0 / 0)).toBe("0.0%");
+	});
+});
+
+describe("formatCostTiered", () => {
+	it("uses 4 decimals under a cent", () => {
+		expect(formatCostTiered(0.0001)).toBe("$0.0001");
+		expect(formatCostTiered(0.0099)).toBe("$0.0099");
+		expect(formatCostTiered(0)).toBe("$0.0000");
+	});
+
+	it("uses 3 decimals from a cent up to a dollar", () => {
+		expect(formatCostTiered(0.01)).toBe("$0.010");
+		expect(formatCostTiered(0.5)).toBe("$0.500");
+		expect(formatCostTiered(0.999)).toBe("$0.999");
+	});
+
+	it("uses 2 decimals from a dollar up", () => {
+		expect(formatCostTiered(1)).toBe("$1.00");
+		expect(formatCostTiered(12.345)).toBe("$12.35");
+		expect(formatCostTiered(1234.5)).toBe("$1234.50");
+	});
+
+	it("rounds across a tier edge in the tier the input fell in", () => {
+		// Under a cent, so four decimals, and the rounding lands ON the cent it is below. Deciding
+		// the tier from the ROUNDED value instead would print `$0.010` here and flip the width of a
+		// status-row segment mid-run.
+		expect(formatCostTiered(0.00999)).toBe("$0.0100");
+		expect(formatCostTiered(0.9999)).toBe("$1.000");
+	});
+
+	it("prints a negative in the finest tier, sign inside the figure", () => {
+		// A negative is below every threshold, so it takes the four-decimal tier whatever its
+		// magnitude, and the minus sits after the dollar. Pinned because a credit reaching the
+		// status row must not change the segment's width from one render to the next.
+		expect(formatCostTiered(-0.5)).toBe("$-0.5000");
+		expect(formatCostTiered(-12.34)).toBe("$-12.3400");
+	});
+});
+
+describe("normalizePremiumRequests", () => {
+	it("rounds to 2 decimals", () => {
+		expect(normalizePremiumRequests(1.005)).toBe(1.01);
+		expect(normalizePremiumRequests(0.124)).toBe(0.12);
+		expect(normalizePremiumRequests(0.125)).toBe(0.13);
+	});
+
+	it("keeps integers and clean values untouched", () => {
+		expect(normalizePremiumRequests(3)).toBe(3);
+		expect(normalizePremiumRequests(2.5)).toBe(2.5);
+		expect(normalizePremiumRequests(0)).toBe(0);
+	});
+
+	it("survives float artifacts near the boundary", () => {
+		// 1.005 is famously 1.00499999… in IEEE754; EPSILON nudge must fix it.
+		expect(normalizePremiumRequests(0.1 + 0.2)).toBe(0.3);
 	});
 });
