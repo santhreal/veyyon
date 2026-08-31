@@ -58,7 +58,7 @@ Because bundled parsing uses `level: "fatal"`, malformed bundled frontmatter thr
 
 ## Filesystem and plugin discovery
 
-`discoverAgents(cwd, home, agentDir)` (`src/task/discovery.ts`) merges agents from Veyyon-native roots and Claude plugin roots before appending bundled definitions. Cross-harness roots such as `.claude/agents`, `.codex/agents`, and `.gemini/agents` are intentionally skipped, their frontmatter schema is not the Veyyon task-agent contract (`TASK_AGENT_CONFIG_SOURCE = ".veyyon"` filters the dir list). `agentDir` selects the profile for the two profile-scoped sources at once (that profile's `extensions:` settings and installed plugins, and that profile's marketplace registry); leave it undefined and each source resolves the process-active profile. The authored definitions dir is not one of them: it is global.
+`discoverAgents(cwd, home, agentDir)` (`src/task/discovery.ts`) merges agents from Veyyon-native roots and Claude plugin roots before appending bundled definitions. Cross-harness roots such as `.claude/agents`, `.codex/agents`, and `.gemini/agents` are never in the directory list it builds, their frontmatter schema is not the Veyyon task-agent contract. `agentDir` selects the profile for the two profile-scoped sources at once (that profile's `extensions:` settings and installed plugins, and that profile's marketplace registry); leave it undefined and each source resolves the process-active profile. The authored definitions dir is not one of them: it is global.
 
 ### Discovery inputs
 
@@ -205,4 +205,4 @@ When parent plan mode is enabled, `TaskTool.#runSpawn` builds an `effectiveAgent
 
 The same `effectiveAgent` is used for subprocess launch, model/thinking overrides, and output-schema selection.
 
-*Verified against `8bb0e4d0` on 2026-08-25.*
+*Verified against `ad6db3fa` on 2026-08-31.*
