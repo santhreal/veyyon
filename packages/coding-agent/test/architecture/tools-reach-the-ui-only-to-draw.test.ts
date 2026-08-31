@@ -279,7 +279,6 @@ const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/agent/resolve-render.ts", ["Text", "type Component"]],
 	["tools/search/search-renderer.ts", ["Text", "type Component"]],
 	["tools/search/search-tool-bm25-render.ts", ["Text", "type Component"]],
-	["tools/fs/set-cwd-render.ts", ["Text", "type Component"]],
 	["tools/shell/ssh-render.ts", ["type Component"]],
 	["tools/search/structure-search-render.ts", ["Text", "type Component"]],
 	["tools/search/text-search-render.ts", ["Text", "type Component"]],
@@ -411,6 +410,9 @@ function renderDeclaringModules(dir: string): string[] {
  * grew the contract the one member it needed: a `framedBlock` kind for the goal
  * card's header and sections, and a symbol span for the review row's per-priority
  * mark, which is a registry key the host resolves rather than a glyph the tool picked.
+ * `tools/fs/set-cwd.ts` joined them from the other direction: its card was a `-render.ts`
+ * sibling rather than an in-place renderer, and converting it deleted that sibling instead
+ * of moving code out of the tool.
  * One row remains, and it is not waiting on effort: the compatibility shim reproduces
  * the old `pi` API, whose renderers were declared in place, so drawing in place is the
  * contract it exists to keep.
@@ -445,7 +447,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 	 * A converted tool still declares renderers -- `view.renderCall` and `view.renderResult` -- so the
 	 * sweep above still sees it. What it no longer does is take a runtime value from the terminal
 	 * package, because it returns a `ToolView` and the terminal draws that. The set is derived from the
-	 * tree by the `view:` member every conversion carries, and pinned by equality, so a sixth
+	 * tree by the `view:` member every conversion carries, and pinned by equality, so a further
 	 * conversion turns this red until it is recorded, and a converted tool that quietly kept its
 	 * `@veyyon/tui` import fails here instead of passing as an untouched row.
 	 */
@@ -464,6 +466,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"autoresearch/tools/update-notes.ts",
 			"goals/goal-tool.ts",
 			"tools/agent/review.ts",
+			"tools/fs/set-cwd.ts",
 		]);
 		for (const file of converted) {
 			expect([...IN_PLACE_ANYWHERE.keys()]).not.toContain(file);

@@ -94,7 +94,6 @@ const ENGINE_IMPORTERS = [
 	"tools/agent/vibe-render.ts",
 	"tools/fs/inspect-image-renderer.ts",
 	"tools/fs/read-render.ts",
-	"tools/fs/set-cwd-render.ts",
 	"tools/search/ast-edit-render.ts",
 	"tools/search/file-search-render.ts",
 	"tools/search/search-renderer.ts",
@@ -178,7 +177,7 @@ describe("only the terminal host imports the terminal engine", () => {
 	 * ledger above and the ceiling here.
 	 */
 	it("does not grow the count of modules a second host cannot reuse", () => {
-		expect(enginePackageImporters("any").length).toBeLessThanOrEqual(44);
+		expect(enginePackageImporters("any").length).toBeLessThanOrEqual(43);
 		expect(enginePackageImporters("runtime").length).toBeLessThanOrEqual(23);
 	});
 });

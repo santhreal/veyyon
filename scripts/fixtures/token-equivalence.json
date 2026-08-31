@@ -70,7 +70,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4594,
+	"changedCount": 4593,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -1111,7 +1111,6 @@
 		"packages/coding-agent/src/tools/fs/read.ts",
 		"packages/coding-agent/src/tools/fs/renderers.ts",
 		"packages/coding-agent/src/tools/fs/reroot-hint.ts",
-		"packages/coding-agent/src/tools/fs/set-cwd-render.ts",
 		"packages/coding-agent/src/tools/fs/set-cwd.ts",
 		"packages/coding-agent/src/tools/fs/write-render.ts",
 		"packages/coding-agent/src/tools/fs/write.ts",

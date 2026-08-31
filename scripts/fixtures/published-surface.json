@@ -7306,8 +7306,6 @@
 				"./tools/fs/reroot-hint",
 				"./tools/fs/reroot-hint.js",
 				"./tools/fs/set-cwd",
-				"./tools/fs/set-cwd-render",
-				"./tools/fs/set-cwd-render.js",
 				"./tools/fs/set-cwd.js",
 				"./tools/fs/write",
 				"./tools/fs/write-render",

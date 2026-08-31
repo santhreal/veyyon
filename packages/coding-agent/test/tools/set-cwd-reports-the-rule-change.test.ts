@@ -37,8 +37,8 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
+import { fsRenderers } from "@veyyon/coding-agent/tools/fs/renderers";
 import { SetCwdTool, type SetCwdToolDetails } from "@veyyon/coding-agent/tools/fs/set-cwd";
-import { setCwdToolRenderer } from "@veyyon/coding-agent/tools/fs/set-cwd-render";
 import type { Component } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
@@ -224,7 +224,7 @@ describe("set_cwd rule reporting", () => {
 		const { tool } = toolAt(outer);
 		const result = await tool.execute("s1", { path: sibling });
 		const theme = (await getThemeByName("titanium"))!;
-		const rendered = await renderToText(setCwdToolRenderer.renderResult(result, {} as never, theme));
+		const rendered = await renderToText(fsRenderers.set_cwd?.renderResult?.(result, {} as never, theme));
 
 		expect(rendered).toContain("+1 -1 rule files");
 	});
@@ -237,7 +237,7 @@ describe("set_cwd rule reporting", () => {
 		const { tool } = toolAt(outer);
 		const result = await tool.execute("s1", { path: sibling });
 		const theme = (await getThemeByName("titanium"))!;
-		const rendered = await renderToText(setCwdToolRenderer.renderResult(result, {} as never, theme));
+		const rendered = await renderToText(fsRenderers.set_cwd?.renderResult?.(result, {} as never, theme));
 
 		expect(rendered).toContain("+1 rule file");
 		expect(rendered).not.toContain("rule files");
