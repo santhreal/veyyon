@@ -274,7 +274,6 @@ packages/coding-agent/test/modes/controllers/todo-command-controller.test.ts
 packages/coding-agent/test/modes/controllers/transcript-composer.test.ts
 packages/coding-agent/test/modes/controllers/welcome-controller.test.ts
 packages/coding-agent/test/modes/github-ref-autocomplete.test.ts
-packages/coding-agent/test/modes/image-references.test.ts
 packages/coding-agent/test/modes/internal-url-autocomplete.test.ts
 packages/coding-agent/test/modes/magic-keyword-boundary.test.ts
 packages/coding-agent/test/modes/magic-keywords.test.ts
@@ -492,7 +491,6 @@ packages/mnemopi/test/text-similarity.test.ts
 packages/mnemopi/test/vector-index.test.ts
 packages/mnemopi/test/veracity-consolidation.test.ts
 packages/natives/test/sha256-sidecar.test.ts
-packages/stats/test/format.test.ts
 packages/stats/test/user-metrics.test.ts
 packages/swarm-extension/src/swarm/__tests__/dag.test.ts
 packages/swarm-extension/src/swarm/__tests__/executor.test.ts
