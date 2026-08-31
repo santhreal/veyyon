@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "9f9f77948a2209069f9be523c6352f59eaf46926",
+	"generatedFrom": "7e6b8a72f09c3807aab750419777a50fd824d7ce",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -2878,10 +2878,10 @@
 			"differs": "changed",
 			"group": "changelog-or-readme",
 			"reason": "A moved package records the move in its own changelog or names its new path in its readme.",
-			"hash": "3d62635a3b91f27dfa683a1f94207b52e9cb95276844dd993a24a36e75070549",
-			"mainHash": "480f08a2ae60d0a8189d79e8715e5a3f31f11ff87b2921d9c55f428f5ffc23d7",
-			"structuralHash": "d172b86fb41c49fe8c037667349712378073ee63c89c03d38807bcc875a397ef",
-			"mainStructuralHash": "3d3d2cc7693296c06c6f3b2df28e71baedb2e1d1c8dccabfbd485acff129d894"
+			"hash": "c3353b9ef0a0c49bd339180d65edb71fc4625027fc588cfc0330e7ce6cfdaedc",
+			"mainHash": "78ece24519cf55abb9257ca277fbdda231b3fba0239fcd9e221c9c78d5fd2cb8",
+			"structuralHash": "48f6517d4b15ec2f55750f3fc861cf1c8860ee7bd3e668c9395b4ad33d2a4484",
+			"mainStructuralHash": "2b79db4154c746b0827dca9aa0d38eae4ea9b44758c61f21ed4b07834c33d7eb"
 		},
 		"natives/bridge/bindings/README.md": {
 			"old": "packages/natives/README.md",
@@ -2932,8 +2932,8 @@
 			"old": "packages/natives/native/embedded-addon.js",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "32aeb58b68f9b4b466040a02082c277f00f5256694173306d131baf0428b1260",
-			"mainHash": "32aeb58b68f9b4b466040a02082c277f00f5256694173306d131baf0428b1260",
+			"hash": "1c3e023c1c59b0dd0f630195b31302d82bbb40e0c1026b3dbf15bb5277cf795e",
+			"mainHash": "1c3e023c1c59b0dd0f630195b31302d82bbb40e0c1026b3dbf15bb5277cf795e",
 			"structuralHash": "f87b9f62c83a19e06d2025c78cd766bb04ffb44d1e9017ffc2b6ea8c4cbf08f7",
 			"mainStructuralHash": "f87b9f62c83a19e06d2025c78cd766bb04ffb44d1e9017ffc2b6ea8c4cbf08f7"
 		},
@@ -2959,19 +2959,19 @@
 			"old": "packages/natives/native/loader-state.d.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "234e74f366356e65dbacd4da0315b06140915f7e69e2dde4c8710b09f3dc720b",
-			"mainHash": "234e74f366356e65dbacd4da0315b06140915f7e69e2dde4c8710b09f3dc720b",
-			"structuralHash": "c70f4cd212ddd6b3b1a5fdca86ab663f679036a6bb38b5c3420a8e35afe95b4a",
-			"mainStructuralHash": "c70f4cd212ddd6b3b1a5fdca86ab663f679036a6bb38b5c3420a8e35afe95b4a"
+			"hash": "df6b3a8b53538e85d5382bc6527533911e8d6b09a2c057f249fa75ad6aa26a04",
+			"mainHash": "df6b3a8b53538e85d5382bc6527533911e8d6b09a2c057f249fa75ad6aa26a04",
+			"structuralHash": "12c937cadca5bd5d36275284c90006e546d8cf640ec50bc730da7e0b8d488000",
+			"mainStructuralHash": "12c937cadca5bd5d36275284c90006e546d8cf640ec50bc730da7e0b8d488000"
 		},
 		"natives/bridge/bindings/native/loader-state.js": {
 			"old": "packages/natives/native/loader-state.js",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "ea910a93f8d62e8d6a0441703cff976735274fb971e31a55534e89bb5abcbc0d",
-			"mainHash": "ea910a93f8d62e8d6a0441703cff976735274fb971e31a55534e89bb5abcbc0d",
-			"structuralHash": "2a8970103595e1ce16dbef05f53c0718a7f1564b20ebb7283419dfb201d4a443",
-			"mainStructuralHash": "2a8970103595e1ce16dbef05f53c0718a7f1564b20ebb7283419dfb201d4a443"
+			"hash": "b2fd1f78d8febdf7bcfe9a8845cc7d332eed5134f04a3a6db03d50db6a9e085b",
+			"mainHash": "b2fd1f78d8febdf7bcfe9a8845cc7d332eed5134f04a3a6db03d50db6a9e085b",
+			"structuralHash": "baa133b40b6ad283f9fcad7dea302433251bb73ea4ee30850bf8a5f69e921edc",
+			"mainStructuralHash": "baa133b40b6ad283f9fcad7dea302433251bb73ea4ee30850bf8a5f69e921edc"
 		},
 		"natives/bridge/bindings/package.json": {
 			"old": "packages/natives/package.json",
@@ -2995,19 +2995,19 @@
 			"old": "packages/natives/scripts/embed-native.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "e7e431b880258e007da9804935cb3ab35c75403e523f679762ffd7b5673862ac",
-			"mainHash": "e7e431b880258e007da9804935cb3ab35c75403e523f679762ffd7b5673862ac",
-			"structuralHash": "a94c74fc7052399aaf9193be09908f8cb2e79785252bc591c8a271bea12b811e",
-			"mainStructuralHash": "a94c74fc7052399aaf9193be09908f8cb2e79785252bc591c8a271bea12b811e"
+			"hash": "960864ab8f783730e702249dd37c4b9f25f7c1cf79494c44ac35e8f00f09cc0d",
+			"mainHash": "960864ab8f783730e702249dd37c4b9f25f7c1cf79494c44ac35e8f00f09cc0d",
+			"structuralHash": "c4b7fd8827895f445be5475ad848b9a7527ffeb757cb500c19c5bacecd5578ff",
+			"mainStructuralHash": "c4b7fd8827895f445be5475ad848b9a7527ffeb757cb500c19c5bacecd5578ff"
 		},
 		"natives/bridge/bindings/scripts/embedded-metadata.ts": {
 			"old": "packages/natives/scripts/embedded-metadata.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "0a4c8345b2b78e4e256ed4d3fed0afeccc921fdf09dc7ae48266fd74c133c8de",
-			"mainHash": "0a4c8345b2b78e4e256ed4d3fed0afeccc921fdf09dc7ae48266fd74c133c8de",
-			"structuralHash": "afef9e82d81814f318ba7a7273e6186a4d6b581ecf03bb5f73346644d124b403",
-			"mainStructuralHash": "afef9e82d81814f318ba7a7273e6186a4d6b581ecf03bb5f73346644d124b403"
+			"hash": "8c3cad3c97de2666051d3eca6b5c922b09dc049df70f0b62efbdd75a5cca4b83",
+			"mainHash": "8c3cad3c97de2666051d3eca6b5c922b09dc049df70f0b62efbdd75a5cca4b83",
+			"structuralHash": "cc99eb5a1607fddbe4afbf990b697da904a4adadfcfda9157b643be5b1b967c3",
+			"mainStructuralHash": "cc99eb5a1607fddbe4afbf990b697da904a4adadfcfda9157b643be5b1b967c3"
 		},
 		"natives/bridge/bindings/scripts/ensure-native.ts": {
 			"old": "packages/natives/scripts/ensure-native.ts",
@@ -3045,6 +3045,15 @@
 			"structuralHash": "accaf0c6fcc929330d07bc4237c252a1d759b03896ed56888042a4cc74ff50a6",
 			"mainStructuralHash": "accaf0c6fcc929330d07bc4237c252a1d759b03896ed56888042a4cc74ff50a6"
 		},
+		"natives/bridge/bindings/test/a-cold-launch-extracts-one-native-variant.test.ts": {
+			"old": "packages/natives/test/a-cold-launch-extracts-one-native-variant.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "8ae34790b296c9d9658899f6037d75ff82f0c9ad91151cda0d2460e7a9679212",
+			"mainHash": "8ae34790b296c9d9658899f6037d75ff82f0c9ad91151cda0d2460e7a9679212",
+			"structuralHash": "633ce9915d64b732f3e3f876e107a8a51d9a54b075dbf79f502b42f038353399",
+			"mainStructuralHash": "633ce9915d64b732f3e3f876e107a8a51d9a54b075dbf79f502b42f038353399"
+		},
 		"natives/bridge/bindings/test/a-grep-bench-cannot-publish-an-unproven-speed-claim.test.ts": {
 			"old": "packages/natives/test/a-grep-bench-cannot-publish-an-unproven-speed-claim.test.ts",
 			"kind": "normalized",
@@ -3069,10 +3078,10 @@
 			"old": "packages/natives/test/a-rebuild-is-the-addon-that-loads.test.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "46a94c59560973f3ac3fb4d5c7c8567c338b3a1efb7d0104bb9da6faa49cda07",
-			"mainHash": "46a94c59560973f3ac3fb4d5c7c8567c338b3a1efb7d0104bb9da6faa49cda07",
-			"structuralHash": "690d7a0979deace0fbd543facb41d10215c812829f4ac43eb72638c051681f22",
-			"mainStructuralHash": "690d7a0979deace0fbd543facb41d10215c812829f4ac43eb72638c051681f22"
+			"hash": "b18a06a5d1c4182d1049aea1c507e0ba851d03a13b6e8cc5e73e2a8470dbb0df",
+			"mainHash": "b18a06a5d1c4182d1049aea1c507e0ba851d03a13b6e8cc5e73e2a8470dbb0df",
+			"structuralHash": "2170baeabdbffc192c520dfede082a7af627f0cea88482e3b8df8f7b49a0275c",
+			"mainStructuralHash": "2170baeabdbffc192c520dfede082a7af627f0cea88482e3b8df8f7b49a0275c"
 		},
 		"natives/bridge/bindings/test/a-source-tree-never-claims-to-be-compiled.test.ts": {
 			"old": "packages/natives/test/a-source-tree-never-claims-to-be-compiled.test.ts",
@@ -3080,10 +3089,10 @@
 			"differs": "changed",
 			"group": "bindings-path-expectation",
 			"reason": "A native-bindings test asserts on the addon's own path, which moved with the package out of `packages/`.",
-			"hash": "552a1a715af68334c41c5f19fe000dc24d584a431d596929bf9cbe61ebfe5d0f",
-			"mainHash": "9d22df9c69c220786f8389aeaa699a58ff1bff8a4380993e247978b45105408b",
-			"structuralHash": "6ba7a8f5e25c5a7f19a3748099ccfbdeadd349256d1438e29ecf64c5420e9e73",
-			"mainStructuralHash": "bb9ce4c8947d45cd4c11ea4a73b7966dfb6b7df0ece983ccb19933ba63f0b6fa"
+			"hash": "090306f5b021c9945fc833c363a10bb05f0ca9b8752360d7497f57da2f705466",
+			"mainHash": "80f477297f998997edfbfc9065bcf6c0e6b928f944cdf4c3924cef7af4d2ca96",
+			"structuralHash": "9687d1da0bdddc5e4bdaa93812fee83f33a1d98d432e1ee526f45bb5faed2d48",
+			"mainStructuralHash": "a7b4111435a43c22e27a5562eb460151e132b2c46ef31d94c8c34ed4c0e58b29"
 		},
 		"natives/bridge/bindings/test/a-windows-machine-keeps-its-fast-native-build.test.ts": {
 			"old": "packages/natives/test/a-windows-machine-keeps-its-fast-native-build.test.ts",

@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "9f9f77948a2209069f9be523c6352f59eaf46926",
+	"generatedFrom": "7e6b8a72f09c3807aab750419777a50fd824d7ce",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -71,7 +71,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4571,
+	"changedCount": 4574,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -342,6 +342,7 @@
 		"natives/bridge/bindings/scripts/gen-enums.ts",
 		"natives/bridge/bindings/scripts/native-portability.ts",
 		"natives/bridge/bindings/src/sha256-sidecar.ts",
+		"natives/bridge/bindings/test/a-cold-launch-extracts-one-native-variant.test.ts",
 		"natives/bridge/bindings/test/a-grep-bench-cannot-publish-an-unproven-speed-claim.test.ts",
 		"natives/bridge/bindings/test/a-launch-never-waits-for-the-stale-addon-cache.test.ts",
 		"natives/bridge/bindings/test/a-rebuild-is-the-addon-that-loads.test.ts",
@@ -1433,6 +1434,7 @@
 		"packages/coding-agent/test/artifacts-sanitization.test.ts",
 		"packages/coding-agent/test/ask-timeout.test.ts",
 		"packages/coding-agent/test/async-yield-queue.test.ts",
+		"packages/coding-agent/test/atomic-write-has-one-behavior.test.ts",
 		"packages/coding-agent/test/auth-storage-minimax-login.test.ts",
 		"packages/coding-agent/test/auth-storage-rotation.test.ts",
 		"packages/coding-agent/test/auto-compaction-refuses-an-unsendable-summary.test.ts",
@@ -2987,6 +2989,7 @@
 		"packages/simulations/src/turn-sim/classifier-request-transport.test.ts",
 		"packages/simulations/src/turn-sim/errored-tool-result-is-the-tools-error.test.ts",
 		"packages/simulations/src/turn-sim/harness.ts",
+		"packages/simulations/src/turn-sim/overflow-recovery.test.ts",
 		"packages/simulations/src/turn-sim/plan-protection-across-passes.test.ts",
 		"packages/simulations/src/turn-sim/retry-budgets-and-forced-choices.test.ts",
 		"packages/simulations/src/turn-sim/stream-death-mid-batch.test.ts",
