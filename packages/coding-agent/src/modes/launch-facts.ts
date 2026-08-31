@@ -106,6 +106,16 @@ interface ModelFacts {
 	provider?: string;
 	/** The effort the row printed, concrete or `auto`; absent when it printed none. */
 	thinking?: string;
+	/**
+	 * The at-rest reading this model last took, in whatever project took it.
+	 *
+	 * What a project that has never been measured states instead of nothing. Most of a resting
+	 * prompt is the model's own: the system prompt, the tool schemas and the skills index are the
+	 * same wherever it runs, and what a project adds to them is its `AGENTS.md`. So this lands
+	 * within a few points of what that project will measure, and the session replaces it with the
+	 * measured reading in place, moving a number rather than filling an empty bar.
+	 */
+	contextPercent?: number;
 	/** Milliseconds since the epoch, used only to decide which entry leaves when the map is full. */
 	recordedAt: number;
 }
@@ -128,6 +138,15 @@ export interface LaunchFacts {
 	gitStatus: GitStatusSummary | null;
 	modelName: string | null;
 	providerName: string | null;
+	/**
+	 * How much of the window a resting prompt costs, as a percentage SPENT.
+	 *
+	 * This project's own reading when it has one, and this model's last reading anywhere when it
+	 * does not. A project opened for the first time would otherwise draw an empty bar and `?`,
+	 * which is not more accurate than the answer every other project using this model gave, only
+	 * emptier, and it is the one segment whose arrival redraws the row instead of moving a number
+	 * on it. Null only before this model has rested anywhere, which no cache can answer.
+	 */
 	contextPercent: number | null;
 	/**
 	 * The effort the last launch of this model ran at, or null when it ran without one.
@@ -189,6 +208,19 @@ function modelRole(): string {
 /** Hold a percentage inside the band the gauge can draw, since the bar derives its cells from it. */
 function clampPercent(percent: number): number {
 	return Math.max(0, Math.min(100, percent));
+}
+
+/**
+ * A recorded percentage the gauge can draw, or null.
+ *
+ * Out of band is clamped rather than rejected, because the bar derives its filled cells from this
+ * and 140 would draw past them; anything that is not a number is not a reading at all. One
+ * predicate rather than a `typeof` beside it: the only caller is the JSON parser, whose grammar
+ * has no NaN and no infinity, so the two spellings can only differ for a caller that does not
+ * exist yet, and a test cannot tell them apart.
+ */
+function asPercent(value: unknown): number | null {
+	return Number.isFinite(value) ? clampPercent(value as number) : null;
 }
 
 /**
@@ -262,18 +294,20 @@ export function readLaunchFacts(): LaunchFacts {
 	const project = file?.projects[projectKey()];
 	const model = file?.models[modelKey()];
 
-	// The gauge is the one fact that answers to both keys: it is a fraction of THIS model's window
-	// measured in THIS project, so a role change invalidates it while the dirty marker beside it,
-	// which describes the working tree, survives.
-	const gaugeValid = !!project && project.modelRole === modelRole();
+	// The gauge answers to both keys, project first. A reading is a fraction of THIS model's
+	// window, so a role change invalidates the project's copy while the dirty marker beside it,
+	// which describes the working tree, survives. What stands in for an invalidated or missing
+	// reading is the same model's resting cost from wherever it last idled: system prompt, tool
+	// schemas and skills index dominate it, and only the project-scoped context that directory
+	// contributed differs, which on a project carrying a large `AGENTS.md` is several points. That
+	// is a bar drawn a cell or two off against `? left` and no bar at all, and `?` is the one
+	// reading whose arrival redraws the row rather than moving a number already on it.
+	const projectGauge = project && project.modelRole === modelRole() ? asPercent(project.contextPercent) : null;
 	return {
 		gitStatus: project ? asGitStatus(project.gitStatus) : null,
 		modelName: model && typeof model.name === "string" && model.name.length > 0 ? model.name : null,
 		providerName: model && typeof model.provider === "string" && model.provider.length > 0 ? model.provider : null,
-		contextPercent:
-			gaugeValid && typeof project.contextPercent === "number" && Number.isFinite(project.contextPercent)
-				? clampPercent(project.contextPercent)
-				: null,
+		contextPercent: projectGauge ?? (model ? asPercent(model.contextPercent) : null),
 		thinking:
 			model && typeof model.thinking === "string" && RECORDABLE_THINKING.has(model.thinking)
 				? (model.thinking as ConfiguredThinkingLevel)
@@ -347,18 +381,27 @@ export function recordLaunchFacts(update: LaunchFactsUpdate): Promise<void> {
 			: {}),
 	};
 	if (update.gitStatus !== undefined) nextProject.gitStatus = update.gitStatus;
-	if (update.contextPercent !== undefined && Number.isFinite(update.contextPercent)) {
-		nextProject.contextPercent = clampPercent(Math.round(update.contextPercent));
-	}
 
 	const nextModel: ModelFacts = {
 		recordedAt: Date.now(),
 		...(typeof recordedModel?.name === "string" ? { name: recordedModel.name } : {}),
 		...(typeof recordedModel?.provider === "string" ? { provider: recordedModel.provider } : {}),
 		...(typeof recordedModel?.thinking === "string" ? { thinking: recordedModel.thinking } : {}),
+		...(typeof recordedModel?.contextPercent === "number" ? { contextPercent: recordedModel.contextPercent } : {}),
 	};
 	if (update.modelName !== undefined && update.modelName.length > 0) nextModel.name = update.modelName;
 	if (update.providerName !== undefined && update.providerName.length > 0) nextModel.provider = update.providerName;
+
+	// A reading lands under BOTH keys. The project's is the exact one it will state next time; the
+	// model's is what a project that has never been measured states instead of an empty bar. Only
+	// an at-rest reading reaches here (the recorder's own guard), so the model's copy stays a
+	// resting cost rather than the size of somebody's conversation.
+	if (update.contextPercent !== undefined && Number.isFinite(update.contextPercent)) {
+		const percent = clampPercent(Math.round(update.contextPercent));
+		nextProject.contextPercent = percent;
+		nextModel.contextPercent = percent;
+	}
+
 	// The one fact a caller can erase: `null` states that the row printed no effort, which is a
 	// different answer from not having resolved one yet.
 	if (update.thinking === null) {

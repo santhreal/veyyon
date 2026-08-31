@@ -74,18 +74,21 @@ process, the branch from `.git/HEAD` and its ref files, and the mode from config
 the effort beside it, the dirty marker (`*`) and the context gauge are what a previous launch
 recorded, in `cache/launch-facts.json`.
 
-That file records two kinds of fact. The model's display name, its provider and the effort belong
-to the model, so they are stated in every project you use it in, including one you open for the
-first time. The dirty marker and the context gauge belong to the project, because one describes its
-working tree and the other is measured against the prompt that project assembles. Both are keyed by
-the release as well, and each holds its 24 most recently written entries; changing the configured
-model drops the gauge, and the card shows the placeholder instead.
+That file records two kinds of fact. The model's display name, its provider, the effort and the
+at-rest context reading belong to the model, so they are stated in every project you use it in,
+including one you open for the first time. The dirty marker belongs to the project, because it
+describes that working tree. The gauge is recorded under both: a project states its own reading
+where it has one, and the model's reading from wherever it last idled where it does not. Both maps
+are keyed by the release as well, and each holds its 24 most recently written entries.
 
 Each recorded fact is replaced by a measured one as the session mounts. A tree committed from
 another terminal since the last launch keeps the recorded marker until `git status` answers, about
-130ms in. The first launch in a project has no marker and no gauge: the gauge reads `?` until a
-prompt has been assembled. A model you have never run states its configured id's last path segment
-until the catalog supplies a display name.
+130ms in. A project you open for the first time has no dirty marker. The gauge reads `?` only
+until this model has idled somewhere once; after that a new project starts at the reading every
+other project using that model gave, which differs by what this project's `AGENTS.md` adds.
+Configuring a different model resets it to `?` again, because a reading is a fraction of the
+window it was taken against. A model you have never run states its configured id's last path
+segment until the catalog supplies a display name.
 
 A repository whose refs are in a reftable has no ref files to read, so its branch appears with the
 session rather than with the card, as does a detached HEAD with no operation to name.

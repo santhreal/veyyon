@@ -233,13 +233,13 @@ describe("what the launch card knows before a session exists", () => {
 	});
 
 	/**
-	 * THE SCOPE SPLIT. A display name, its provider and the effort describe the MODEL and are the
-	 * same in every directory, so the first launch in a new project states them rather than
-	 * printing a raw id and growing an effort tail when the session lands. What that project has
-	 * never measured — its working tree, and a percentage taken against the prompt it assembles —
-	 * is absent, because neither says anything about a directory it was not measured in.
+	 * THE SCOPE SPLIT. A display name, its provider, the effort and the model's own resting cost
+	 * describe the MODEL and are the same wherever it runs, so the first launch in a new project
+	 * states them rather than printing a raw id, growing an effort tail, and drawing an empty bar
+	 * when the session lands. The working tree is the one fact that stays absent, because a marker
+	 * from another directory would be a claim about this one.
 	 */
-	it("keeps the model's facts in a project it has never been used in, and nothing else", async () => {
+	it("states what the model knows in a project it has never been used in, and no tree marker", async () => {
 		await record({
 			modelName: "Claude Sonnet 4",
 			providerName: "anthropic",
@@ -258,7 +258,43 @@ describe("what the launch card knows before a session exists", () => {
 			modelName: "Claude Sonnet 4",
 			providerName: "anthropic",
 			thinking: ThinkingLevel.High,
+			contextPercent: 40,
 		});
+	});
+
+	/**
+	 * THE GAUGE IS NEVER UNKNOWN ONCE THIS MODEL HAS RESTED ANYWHERE. `? left` with an empty bar is
+	 * the one placeholder that redraws the whole row when the session lands, and the reading it is
+	 * standing in for is mostly the model's own: the system prompt, the tool schemas and the skills
+	 * index cost the same wherever it runs. The project's own reading still wins where it exists,
+	 * so the fallback is what an unmeasured project states and never an override of a measured one.
+	 */
+	it("prefers this project's reading to the model's, and states the model's when it has none", async () => {
+		await record({ contextPercent: 40 });
+		const file = onDisk();
+		const projects = file.projects as Record<string, Record<string, unknown>>;
+		const [key, entry] = Object.entries(projects)[0] as [string, Record<string, unknown>];
+
+		// This project measured 55 while the model last rested at 40 somewhere else.
+		planted({ ...file, projects: { [key]: { ...entry, contextPercent: 55 } } });
+		expect(readLaunchFacts().contextPercent).toBe(55);
+
+		// The same model, in a directory that has measured nothing.
+		planted({ ...file, projects: { [`${key}-elsewhere`]: entry } });
+		expect(readLaunchFacts().contextPercent).toBe(40);
+	});
+
+	/**
+	 * The fallback answers to the model key like every other model fact. A reading taken against
+	 * another model's window is not a smaller error than `?`, it is a bar drawn against a window
+	 * this model does not have.
+	 */
+	it("states no reading at all when the model has never rested", async () => {
+		await record({ contextPercent: 40, modelName: "Claude Sonnet 4" });
+
+		settings.setModelRole("default", MODEL_B);
+
+		expect(readLaunchFacts().contextPercent).toBeNull();
 	});
 
 	/**
@@ -438,6 +474,37 @@ describe("what the launch card knows before a session exists", () => {
 
 		plantedEntry("projects", { contextPercent: -20 });
 		expect(readLaunchFacts().contextPercent).toBe(0);
+	});
+
+	/**
+	 * Nothing that is not a finite number is a reading. A percentage arrives from a file on disk
+	 * that an editor, a truncated write or an older build may have left in any shape, and the bar
+	 * derives its filled cells arithmetically: a string sails through a clamp and draws.
+	 */
+	it.each([["40"], [null], [{}], [true]])("states no reading for %p on disk", async damaged => {
+		await record({ contextPercent: 40 });
+
+		plantedEntry("projects", { contextPercent: damaged });
+		plantedEntry("models", { contextPercent: damaged });
+
+		expect(readLaunchFacts().contextPercent).toBeNull();
+	});
+
+	/**
+	 * The model's copy of the reading merges like every other model fact. An update carrying only
+	 * a display name must not erase it, or the next unmeasured project draws an empty bar because
+	 * some later redraw mentioned something else.
+	 */
+	it("keeps the model's reading when a later update does not mention it", async () => {
+		await record({ contextPercent: 40 });
+		await record({ modelName: "Claude Sonnet 4" });
+
+		const file = onDisk();
+		const projects = file.projects as Record<string, unknown>;
+		const [key, entry] = Object.entries(projects)[0] as [string, unknown];
+		planted({ ...file, projects: { [`${key}-elsewhere`]: entry } });
+
+		expect(readLaunchFacts().contextPercent).toBe(40);
 	});
 
 	/**
