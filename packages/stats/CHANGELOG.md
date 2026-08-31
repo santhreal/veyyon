@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Repointed a doc comment at `@veyyon/kernel/session/session-entries`, where the session header type now lives; no behavior change.
+
 ## [1.3.0] - 2026-08-28
 
 ### Changed

@@ -8,6 +8,8 @@
 
 - Screen takeover moved off `ExtensionUIContext` and `HookUIContext` onto an optional `ui.terminal` capability: `custom()` and `setEditorComponent()` are now `ctx.ui.terminal?.custom(...)` and `ctx.ui.terminal?.setEditorComponent(...)`, and a component widget goes through `ctx.ui.terminal?.setWidgetComponent(key, factory)` while `setWidget(key, lines)` keeps the text form every host draws. A host that is not a terminal omits `ui.terminal` rather than declaring members with empty bodies.
 - Removed `ui.setHeader()` and `ui.setFooter()`, which every host implemented as an empty function, interactive mode included.
+- Fifty-three session spine, plugin loader and contribution registry modules moved from `src/session/` and `src/extensibility/` to `@veyyon/kernel`: subpath imports previously resolved through `@veyyon/coding-agent/session/*`, `@veyyon/coding-agent/extensibility/*`, `@veyyon/coding-agent/extensibility/plugins` and `@veyyon/coding-agent/extensibility/plugins/*` are now imported from `@veyyon/kernel/session/*`, `@veyyon/kernel/loader/*` and `@veyyon/kernel/registry/*`.
+- The 152 modules under `src/tools/` moved into one directory per domain — `core/` for the plumbing every domain reads, then `fs/`, `search/`, `shell/`, `web/` and `agent/` — so a subpath import previously resolved through `@veyyon/coding-agent/tools/<name>` is now `@veyyon/coding-agent/tools/<domain>/<name>`.
 - `@veyyon/tui` exports rendering only. The string, escape, keyboard, mouse, motion and layout-math primitives it also carried are now `@veyyon/utils` modules, imported by subpath: `@veyyon/utils/{ansi,autocomplete,bar,bracketed-paste,deccara,fuzzy,keybindings,keys,kill-ring,kitty-graphics,latex-block,latex-unicode,loop-watchdog,motion,mouse,padding,paint-columns,paint-ground,paint-surface,sgr,symbols,text-sizing,tight-mode,tmux,width,word-nav,wrap}`. The barrel re-exports none of them.
 - `MOTION` and the grow, hover, paint and settle curve tables are one module, `@veyyon/utils/motion`.
 - `EditorComponent` is `@veyyon/tui/components/editor-component`.
@@ -25,10 +27,17 @@
 - `setImageDisplayProbe` lets a front end state whether it draws pictures, which is what the session reports to the model about an image a tool returned; a client that installs nothing draws nothing, so a host embedding the engine no longer inherits a terminal's answer.
 - `ToolDefinition.view` lets an extension describe its tool's call and result cards as a `ToolView` instead of building a terminal component, and re-exports the `@veyyon/view` vocabulary (`ToolView`, `StatusRowView`, `TextBlockView`, `ViewSpan`, `ViewTone`, `ViewStatus`) so a plugin can construct one; the terminal draws it, and a tool that also declares `renderCall`/`renderResult` keeps those.
 - `src/tui/draw-tool-view.ts` draws a `ToolView` as terminal bytes through exhaustive tone-to-colour and status-to-icon records, so a tone added to the contract fails the type check until the terminal states how it looks.
+- Each tool domain declares a `manifest.ts` naming its lazy tool factories and a `renderers.ts` holding its terminal renderers, and `tools/index.ts` and `tools/renderers.ts` compose those five pairs instead of listing every tool themselves, so a host that draws no terminal reads the manifests alone.
 - `AgentTool.view` takes a host-agnostic `ToolViewRenderer` from `@veyyon/view`, so a tool describes its call and result cards without receiving a theme or returning a host component; where a tool also declares `renderCall`/`renderResult`, the host-specific pair still wins.
+- `@veyyon/kernel` is a workspace member: the loader, the contribution registry and the session spine, moved out of `@veyyon/coding-agent` unchanged. It names no tool, no host and no mode, and `scripts/the-kernel-names-no-tool-and-no-host.test.ts` fails on the first edge that does.
+- `@veyyon/kernel/session/*` publishes the session spine: entries, storage backends, persistence, migrations, listing, paths, retry policy, compaction policy, machine budget and the turn's owned resources.
+- `@veyyon/kernel/loader/*` publishes plugin discovery, manifest parsing, the installed registry, the marketplace client and load-failure reporting.
+- `@veyyon/kernel/registry/*` publishes the contribution surface a plugin is resolved through: the tool proxy, the tool event input, the widget and host-view declarations, and the TypeBox schema conversion.
+- `@veyyon/kernel/registry/tool-domain` declares `ToolDomainManifest`, the name and lazy-factory table a tool domain contributes, so a host reads a domain's tools without depending on the coding agent.
 - Added a `vibe` renderer covering `vibe_spawn`, `vibe_send`, `vibe_wait`, `vibe_kill` and `vibe_list`, so a non-terminal host draws screen state, per-op summaries and output tails instead of raw JSON.
 - `TUI.frameScrollable` states whether the last composed frame had content above the viewport, so a host can render a scroll affordance without re-deriving it from row counts it cannot see.
 - The package is `hosts/terminal/engine` in the repository, beside the other halves of the terminal host. The published package name, exports and entry points are unchanged.
+- `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
 - The string, escape, keyboard, mouse, motion and layout-math primitives that `@veyyon/tui` used to own are `@veyyon/utils` modules, reachable by subpath and not on the barrel, so a caller that needs the escape bytes or the fuzzy matcher no longer declares a dependency on the terminal renderer.
 - `@veyyon/utils/color-format` states whether escape sequences are written as 24-bit or 256-colour SGR; `@veyyon/tui` sets it once the terminal's capabilities resolve, which is how a utils module renders colour without reading terminal state.
 - `@veyyon/utils/ttyid` reads the controlling terminal's identity, and `@veyyon/utils/image-fallback` states the four causes a client can fail to draw a picture for, as `IMAGE_FALLBACK_REASONS` and the `ImageFallbackReason` union over it. Both moved out of `@veyyon/tui`, so a conversation engine can name a session or a cause without importing a renderer.
@@ -43,6 +52,8 @@
 
 ### Changed
 
+- Fifty-three modules moved from `src/session/` (35 session spine modules) and `src/extensibility/` (18 loader and registry modules) to `@veyyon/kernel`, leaving `src/session/` containing the turn loop, session factories and prompt rendering, and `src/extensibility/` containing tool, command, hook and host extensions.
+- Every tool module is grouped by domain under `src/tools/<domain>/`, each domain importing only `core/` and itself, so the dispatch table no longer sits above 139 flat modules. No user-visible behavior changes.
 - Source-path comments and the gallery search fixture name the terminal renderer at its new path, `hosts/terminal/engine`, and a new architecture gate records every module outside `src/modes/terminal/` that still imports it. No user-visible behavior changes.
 - A source-checkout update runs the native-addon ensure step in `natives/bridge/bindings`, the bindings package's path after it moved out of `packages/`.
 - Seventeen tool modules keep their terminal drawing in a `<tool>-render.ts` sibling — `ask`, `ast-edit`, `bash`, `debug`, `fetch`, `file-search`, `job`, `launch`, `read`, `resolve`, `search-tool-bm25`, `set-cwd`, `ssh`, `structure-search`, `text-search`, `todo` and `write` — completing the convention eight tools already followed, and `tools/json-tree.ts` is `tools/json-tree-render.ts`. Twenty-seven of the thirty modules under `tools/` that name `@veyyon/tui` are now render siblings, print mode no longer loads the renderer through the todo tool, and subpath imports of the moved renderers follow the new layout. No user-visible behavior changes.
@@ -77,11 +88,6 @@
 - The `ask` tool emits a host-agnostic `HostNotification` through `ToolSession.notify` instead of calling the terminal, and the running host installs its delivery through `setToolNotifier`; a host that cannot reach an operator outside its own window installs nothing and the capability reads as absent.
 - Source-path comments in `modes/terminal/controllers/input-controller.ts`, `tools/render-utils.ts`, `utils/block-context.ts` and `utils/shell-snapshot.ts` name the Rust modules they cite at their new paths under `natives/`. No user-visible behavior changes.
 - A commit whose changes all sit under a grouping directory named `natives` proposes the directory below it as the scope, the way `crates`, `packages` and `tests` already do, instead of proposing `natives`.
-- `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
-- `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
-
-### Changed
-
 - The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
 - `VEYYON_TIMING` reports the window between process start and the launch card instead of hiding it: the tree now starts at the CLI entry and carries spans for the command load, the launch-card import, the prologue, settings, the theme and the paint, leaving only Bun's own start and the entry's static imports under `(before instrumentation)`.
 - The launch card arrives in about half the time. The binary is now code-split, so the standalone loader links the CLI entry and the launch card instead of the bytecode of every subcommand, tool and agent-runtime module before the first statement runs, and whitespace and syntax minification are on. Measured warm on a pty, the card's first byte goes from 138-151ms to 57-72ms, the first keystroke echoes at 111ms instead of 188-207ms, and the binary is 231.7MB instead of 296.9MB. Function names are still kept, so a stack trace is unchanged.
@@ -95,10 +101,6 @@
 - Which segments a status-line preset shows is resolved by one function, `resolvePresetSegments`, so the launch card honors the same preset and `git.enabled` rules the mounted row does. No behavior change to the mounted row.
 - The branch a repository is on can be read from `.git` alone through `utils/git-head.ts`, without running git; `utils/git.ts` composes that reader with the `git symbolic-ref` fallback a reftable repository needs, rather than keeping a second copy of the file parsing.
 - `StatusLineComponent.watchBranch` is `watchGitState`: one repaint request for every git read the row is painted from, rather than a name that described only the HEAD watcher. No user-visible change.
-- A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
-- A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `packages/bench/`; behavior is unchanged.
-- A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
-- `CONTEXTUAL_USER_PREFIXES` is exported from the codex compaction module so the retained-window rule is asserted against the real list rather than a copy of it.
 - The model and effort a subagent runs are asked in one place. Subagents → Roster opens with Same Model for All Agents, off by default: off, each agent runs what its own page names; on, one shared Model and Effort appear above the agent rows and those rows grey out. The standalone Subagent Model and Subagent Effort rows are gone from every tab.
 - A subagent definition that names a tool nobody recognizes is reported with the file and the unknown names instead of loading an agent with no tools and a prompt pruned of everything.
 - User-authored subagents are discovered from `~/.veyyon/subagents/`, shared across profiles, and enabled per profile.
@@ -109,19 +111,31 @@
 - The launch card paints the real composer instead of a drawing of one. Typing at the card edits the editor the session goes on to use, so nothing has to be replayed into it at handover, and a submit typed before the session exists no longer discards the draft. Measured warm on a pty, a keystroke at the card echoes 3.2ms after the card's first byte.
 - The settings store holds no database handle. `AgentStorage.forAgentDir` is the one owner of the run's agent.db and opens it on first use, `config/legacy-agent-db-settings.ts` owns the first-run read of the pre-config.yml `settings` table, and the launch card no longer evaluates `bun:sqlite` or the SQLite credential store to read a setting. Measured warm on a pty, the card's first byte goes from 50.5ms to 42.4ms and a keystroke is echoed at 45.6ms instead of 53.6ms; a database that will not open now costs usage statistics with a logged reason rather than failing the launch.
 - The three hidden magic-keyword notices are in `session/magic-keyword-notices.ts` rather than under `modes/`, which was the one edge from the session into the UI directory with no drawing behind it. No behavior change.
+- A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
+- A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `packages/bench/`; behavior is unchanged.
+- A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
+- `CONTEXTUAL_USER_PREFIXES` is exported from the codex compaction module so the retained-window rule is asserted against the real list rather than a copy of it.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
+- The package directory is `plugins/argot` instead of `packages/argot`; the published package name, entry points and behavior are unchanged.
 - Source-path comments in `constants.ts` and `generate.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
+- The package directory is `plugins/hashline` instead of `packages/hashline`; the published package name, entry points and behavior are unchanged.
+- The package directory is `plugins/mnemopi` instead of `packages/mnemopi`; the published package name, entry points and behavior are unchanged.
 - The loader's diagnostic comment names the addon crate at `natives/bridge/addon/src/lib.rs`, the path it moved to. No user-visible behavior changes.
 - The rebuild instruction in the stale-addon refusal reads `bun --cwd=natives/bridge/bindings run build`, the package's path after it moved out of `packages/`. The package name `@veyyon/natives` and every import specifier are unchanged.
+- Repointed a doc comment at `@veyyon/kernel/session/session-entries`, where the session header type now lives; no behavior change.
+- The package directory is `plugins/mode-swarm` instead of `packages/swarm-extension`; the published package name, entry points and behavior are unchanged.
 - `TerminalNotification` extends `HostNotification` from `@veyyon/utils/host-notification`, so a terminal is one host that can deliver a tool's notification and the two shapes cannot drift apart.
 - Source-path comments in `ansi.ts` and `eval-prompt-overrides.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - `sanitize-text.ts` imports the escape byte from `@veyyon/utils/ansi` rather than declaring a second copy of it.
 - Source-path comments in `sanitize-text.ts`, `strip-ansi.ts`, `tab-spacing.ts` and `width.ts` name the Rust modules they cite at their new paths under `natives/`. No user-visible behavior changes.
 - Source-path comments in `adversarial-strings.ts`, `ansi.ts`, `tab-spacing.ts` and `width.ts` name the terminal renderer's modules at their new path, `hosts/terminal/engine`. No user-visible behavior changes.
+- `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
 
 ### Fixed
 
+- The launch shell no longer evaluates the prompt registries: `modes/keywords/{orchestrate,ultrathink,workflow}-keyword.ts` kept imports of `prompts/subagent/rows`, `prompts/turn-control/rows` and the `@veyyon/utils` barrel after the notices they fed moved to `magic-keyword-notices.ts`, which pulled 62 extra modules into the first frame's import graph.
+- HTML export works again: the five assets `export/html/index.ts` loads as strings — the markdown renderer, the template CSS, HTML and JS, and the generated tool views — lost their `with { type: "text" }` import attributes while unreleased, so each one loaded as a module and every export threw `Missing 'default' export in module`.
 - Seven published entry points the reorganization dropped are served again at their new paths: `./modes/terminal/components/*`, `./modes/terminal/components/extensions/*`, `./modes/terminal/components/status-line/*`, `./modes/terminal/controllers/*`, `./modes/terminal/setup-wizard/*`, `./modes/terminal/utils/*` and `./export/markit/*`. Every subpath `1.3.0` published now has a successor key.
 - An image a kitty-protocol terminal cannot be handed reports the format as the reason instead of claiming images are switched off, and a picture whose conversion is still running no longer prints a placeholder that a moment later becomes the picture.
 - A key pressed before the launch card appears is drawn into the card's composer about a millisecond later instead of 156ms later, so the composer no longer sits on screen ignoring what is typed into it while the main module loads.
