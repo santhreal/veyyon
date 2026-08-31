@@ -22,6 +22,7 @@
 
 ### Changed
 
+- The launch card paints about 8ms sooner: the bundled themes are embedded as text and parsed on the ask instead of building all 98 before the first frame, and the card path no longer evaluates `node:assert/strict`, `node:crypto`, `node:inspector`, `node:child_process` or `node:zlib` for calls it does not make.
 - The home screen hero drops the recent-session row; `/welcome` still lists recent sessions.
 - The launch card paints the whole status row from config instead of a hand-written path and branch, so the profile, model, approval rung, branch and context gauge are on screen with the first frame; measured on a pty against the built binary, the row lands at 47-48ms rather than 1067-1083ms and the frame is editable at 49-50ms.
 - The status row's segment gathering and row fitting live in one module, `modes/components/status-line/quiet-row.ts`, which the live footline and the launch card both render through, so the two rows cannot carry different segments or order them differently.
@@ -54,6 +55,7 @@
 - The status row no longer carries the secrets segment. The `secrets` id is gone from every preset and from `statusLine.segments`, and a configuration naming it is rejected; `/secret list` states what a session has masked.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
+- `AbortError`, the file lock and the postmortem handler no longer load `node:assert/strict`, `node:crypto` or `node:inspector` at import, which the launch path waited on for one assertion, one identifier and one signal handler.
 
 ### Removed
 
@@ -106,6 +108,7 @@
 - Codex remote compaction keeps at least one user turn when the retained-token budget it is handed is not a finite number, instead of replaying a window holding nothing but the compaction item.
 - A Codex server-side compaction sends the session's `prompt_cache_key`, so it lands on the session's cached prefix instead of missing it and making the next turn re-pay full uncached input.
 - A Codex server-side compaction with no session id is refused instead of minting a random conversation identity, which opened a second cache lineage and left the post-compaction history reset with nothing to find.
+- The addon loader resolves `node:child_process` and `node:zlib` when it loads an addon rather than when it is imported, so importing `@veyyon/natives` for its types or enum values costs 3ms less.
 - A compiled binary's first launch of a version extracts only the native addon variant the host loads, instead of every variant the binary carries, so a cold start writes about 135MB rather than 270MB before the first frame; the skipped variants are written on demand if the selected one fails to load.
 - A compiled binary carries one embedded archive per native addon variant instead of one archive holding all of them, so a cold launch inflates only the variant it loads; cold first paint on linux-x64 drops from 361ms to 229ms.
 - An `Editor` with no `onSubmit` consumer leaves the draft alone when Enter arrives, instead of clearing it, so a submit typed before anything is listening cannot destroy what was typed.
