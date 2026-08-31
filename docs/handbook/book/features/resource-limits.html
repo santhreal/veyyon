@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-499800d3.js";
+            window.path_to_searchindex_js = "../searchindex-8156068f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -265,8 +265,9 @@ snapshot, model provider probes, and the ssh bootstrap for a remote auth broker 
 there is no budget to join.</li>
 <li><strong>The harness itself.</strong> Agent turns, the TUI, and the relaunch that replaces the veyyon process.</li>
 <li><strong>Programs that are yours rather than the agent’s.</strong> The editor veyyon opens a file in, the
-clipboard helper, <code>veyyon shell</code>, and the self-updater. Capping the updater could leave a
-half-written install, and killing your editor on a budget breach would discard unsaved text.</li>
+clipboard helper, the desktop notifier, <code>veyyon shell</code>, and the self-updater. Capping the
+updater could leave a half-written install, and killing your editor on a budget breach would
+discard unsaved text.</li>
 <li><strong>Threads rather than processes.</strong> The browser tab supervisor and the JavaScript eval context
 run as Bun Workers inside the harness process, and a cgroup holds processes, not threads of one.</li>
 <li><strong>Processes the session did not start.</strong> Attaching to a browser that is already running adopts
