@@ -1,17 +1,99 @@
+/**
+ * Behavioral metrics extracted from a single user message.
+ *
+ * Pure, side-effect free. Designed for batch use during session ingestion
+ * and standalone testing.
+ */
+
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 
 export interface UserMessageMetrics {
+	/** Total characters of analyzed text. */
 	chars: number;
+	/** Whitespace-delimited word count. */
 	words: number;
+	/**
+	 * Number of "yelling" sentences: sentences where more than half of the
+	 * alphabetic characters are uppercase (and there are enough letters to
+	 * make the ratio meaningful - short acronyms like "OK" don't count).
+	 * A sentence also needs either two uppercase runs ("WHAT THE HELL") or
+	 * one elongated run ("CMOOON") so a lone acronym/env var ("use JSON",
+	 * "HOME=/tmp") doesn't register.
+	 */
 	yelling: number;
+	/** Profanity hits (word-boundary, case-insensitive). */
 	profanity: number;
+	/**
+	 * Catch-all "obviously upset" signal computed on a *prose-only* body
+	 * (code fences, XML/HTML tags, URLs, file mentions, and quoted lines
+	 * are stripped first; messages whose remaining prose is >=3 lines score
+	 * zero because formatted prompts aren't tantrums).
+	 *
+	 * Sum of:
+	 * - drama runs: 3+ `!` / `?` (with `1`-mishit fallout)
+	 * - interjections, elongated where the short form is ambiguous:
+	 *   `noooo`, `ahhh`, `ugh(h)`, `argh`, `grr`, `stooop`, `whyyy`,
+	 *   `fuuu(ck)`, `wtfff`, `omggg`, `yesss`, `goddd`, `bruhh`
+	 * - standalone `dude`
+	 * - sad emoticons: `:(`, `;(`, `:-(((`
+	 */
 	anguish: number;
+	/**
+	 * Corrective negation: the user is telling us we got it wrong.
+	 *
+	 * Counted on the same prose-only body as {@link anguish}. The lead
+	 * patterns anchor at the START OF THE MESSAGE only (not every line):
+	 * real corrective negation opens the message, whereas pasted error text
+	 * and bullet lists put words like "Wrong user name" or "No such file" at
+	 * later line starts, so a per-line anchor (`/m`) produced false positives.
+	 *
+	 * - message-leading `nope` / `nah` / `nvm` / `wrong` / `incorrect`
+	 *   (word-bounded, so `now`, `nobody`, `north` don't match)
+	 * - message-leading `no` when used as an interjection - followed by
+	 *   punctuation, end-of-text, or a discourse word (`no i meant`,
+	 *   `no, wait`). Determiner `no` (`no extensions to the page`,
+	 *   `no auto start`) doesn't count.
+	 * - `that(?:'s)? not (what|right|it)` and `not what i (meant|asked|said|wanted)`
+	 * - `makes (no|zero) sense`
+	 */
 	negation: number;
+	/**
+	 * The user is repeating themselves - strong signal the previous turn
+	 * missed the ask. Counts hits for:
+	 *
+	 * - `i (meant|said|asked|told you|already (said|told|did|asked|wrote))`
+	 * - `(like|as) i (said|told you|asked)`
+	 * - `still (doesn't|isn't|not|broken|wrong|fails|failing|the same|same)`
+	 *
+	 * Bare `still` / `again` are too ambiguous to count alone (they show up
+	 * in normal speech like "try again" or "still works").
+	 */
 	repetition: number;
+	/**
+	 * Direct second-person reproach pinned on the agent:
+	 *
+	 * - `you (didn't|did not|broke|missed|forgot|keep|always|never|still|ignored)`
+	 * - `why (would|did) (you|u)`
+	 * - sentence-leading `stop <verb>ing` imperatives
+	 */
 	blame: number;
 }
 
+/**
+ * Words considered profane/aggressive. Word-boundary, case-insensitive.
+ *
+ * Broad English coverage: f-/s-word families and their censored variants,
+ * mild swears, intelligence-based insults, body-part insults, British/
+ * Australian/Irish slang, religious exclamations, and chat acronyms.
+ * Curated to exclude racial, homophobic, and other identity slurs, and
+ * words whose dominant use in a coding corpus is technical rather than
+ * profane (`dummy` data, `blast` radius, config `knob`, `trash` bin,
+ * CRUD, `garbage` files) or plain opinion (`useless`, `awful`, `meh`,
+ * `hate`). Pure frustration interjections (`ugh`, `argh`, `grr`) are
+ * scored as anguish instead.
+ */
 const PROFANITY: readonly string[] = [
+	// f-word family
 	"fuck",
 	"fucks",
 	"fucked",
@@ -35,6 +117,7 @@ const PROFANITY: readonly string[] = [
 	"clusterfuck",
 	"ratfuck",
 	"unfuck",
+	// censored / euphemistic f-word
 	"fk",
 	"fks",
 	"fking",
@@ -60,6 +143,7 @@ const PROFANITY: readonly string[] = [
 	"freaking",
 	"freakin",
 	"freaked",
+	// s-word family
 	"shit",
 	"shits",
 	"shat",
@@ -95,6 +179,7 @@ const PROFANITY: readonly string[] = [
 	"jackshit",
 	"dumbshit",
 	"holyshit",
+	// mild swears
 	"damn",
 	"damns",
 	"damned",
@@ -120,6 +205,7 @@ const PROFANITY: readonly string[] = [
 	"bloody",
 	"bollocks",
 	"bollox",
+	// crap family
 	"crap",
 	"craps",
 	"crappy",
@@ -129,6 +215,7 @@ const PROFANITY: readonly string[] = [
 	"crapping",
 	"crapload",
 	"crapola",
+	// piss family
 	"piss",
 	"pisses",
 	"pissed",
@@ -137,6 +224,7 @@ const PROFANITY: readonly string[] = [
 	"pisspoor",
 	"pisstake",
 	"pisshead",
+	// ass family
 	"ass",
 	"asses",
 	"asshole",
@@ -166,6 +254,7 @@ const PROFANITY: readonly string[] = [
 	"arsehole",
 	"arseholes",
 	"arsewipe",
+	// bitch family
 	"bitch",
 	"bitches",
 	"bitched",
@@ -176,6 +265,7 @@ const PROFANITY: readonly string[] = [
 	"sonofabitch",
 	"biatch",
 	"biotch",
+	// strong vulgarity
 	"cunt",
 	"cunts",
 	"cunty",
@@ -185,6 +275,7 @@ const PROFANITY: readonly string[] = [
 	"twatty",
 	"bastard",
 	"bastards",
+	// body-part insults
 	"dick",
 	"dicks",
 	"dickhead",
@@ -230,6 +321,7 @@ const PROFANITY: readonly string[] = [
 	"lowlife",
 	"lowlifes",
 	"deadbeat",
+	// intelligence-based insults
 	"idiot",
 	"idiots",
 	"idiotic",
@@ -307,6 +399,7 @@ const PROFANITY: readonly string[] = [
 	"sodding",
 	"bugger",
 	"buggered",
+	// generic aggression / dismissal
 	"suck",
 	"sucks",
 	"sucked",
@@ -314,12 +407,14 @@ const PROFANITY: readonly string[] = [
 	"sucky",
 	"suckage",
 	"trashy",
+	// religious exclamations
 	"jesus",
 	"christ",
 	"jeez",
 	"jeezus",
 	"sheesh",
 	"godsake",
+	// chat acronyms
 	"wtf",
 	"wth",
 	"wtaf",
@@ -347,9 +442,18 @@ const LETTER_RE = /\p{L}/gu;
 const UPPER_LETTER_RE = /\p{Lu}/gu;
 const YELLING_MIN_LETTERS = 4;
 const YELLING_THRESHOLD = 0.5;
+// Runs starting with `!` or `?` followed by 2+ of `!?1`. The `1` is the
+// classic shift-key mishit ("!!!111" / "!?!??111") so we count those as
+// part of the same drama burst.
 const DRAMA_RE = /[!?][!?1]{2,}/g;
 const WORD_RE = /\S+/g;
 
+// Anguish/exasperation interjections. Each alternative is a case-insensitive
+// word-bounded pattern. Interjections whose short form collides with normal
+// prose ("no", "ahh", "why", "yes", "god") require *real* elongation;
+// unambiguous ones ("ugh", "argh", "grr") match their plain form too.
+// Picked to avoid hex / base64 contamination via the surrounding `\b` plus
+// letter-only alternatives.
 const ANGUISH_PATTERNS: readonly string[] = [
 	"no{3,}", //          nooo, noooooo
 	"a+h{2,}", //         ahh, aaaahhh
@@ -367,34 +471,92 @@ const ANGUISH_PATTERNS: readonly string[] = [
 ];
 const ANGUISH_RE = new RegExp(String.raw`\b(?:${ANGUISH_PATTERNS.join("|")})\b`, "gi");
 const DUDE_RE = /\bdude\b/gi;
+// Sad emoticons (`:(` and friends). Requires a leading boundary so pasted
+// code/regex fragments like `foo:(bar)` don't fire; `\(+` folds `:(((` into
+// one hit. 46 corpus hits, ~90% genuinely deflated.
 const SAD_EMOTICON_RE = /(?<=^|[\s.!?])[:;]-?\(+/g;
+// Dot runs (`..` / `...` / `....`) are deliberately NOT counted: on a real
+// corpus they are dominated by neutral trail-offs, template placeholders
+// (`{{href...}}`) and range syntax, not exasperation.
 
+// --- Frustration signals ----------------------------------------------------
+// Each set of patterns below is tuned against ~42k real user prompts so the
+// short-prose hits are dominated by genuine frustration, not technical talk.
+
+// Corrective negation. We deliberately anchor to the very start of the
+// trimmed prose body (no `m` flag) - in practice mid-message lines that
+// start with `no`/`Wrong`/`No JSDoc warning` are list items, pasted error
+// text or descriptive statements, not actual corrections. Real frustration
+// negation overwhelmingly opens the message. Bare `no` only counts as an
+// interjection - followed by punctuation, end-of-text, or a discourse word -
+// so determiner uses ("no extensions to the page", "no auto start") don't
+// score. A hyphen only counts as a separator when it doesn't glue a compound
+// (`no - not that` yes, `no-op change` no). Note: the bare-`no` branch
+// deliberately has no trailing `\b`, so emphatic misspellings like `nou ...`
+// / `nono ...` also count (via `no` + follower `u`/`no`) - on the real
+// corpus every such hit is a genuine correction.
 const NEGATION_LEAD_RE =
 	/^[ \t]*(?:(?:nope|nah|nvm|wrong|incorrect)\b|no(?=\s*(?:[,.!?;:\u2013\u2014]|-(?!\w)|$|(?:i|im|u|you|ur|we|it|its|that|thats|this|the|they|theyre|he|she|man|dude|bro|wait|dont|not|stop|just|again|please|plz|but|actually|literally|seriously|sorry|no|never|nothing|wtf|why|what|wrong)\b)))/gi;
 const NEGATION_PHRASE_RE =
 	/\b(?:that['\u2019]?s\s+not\s+(?:what|right|it)|not\s+what\s+i\s+(?:meant|asked|said|wanted)|makes\s+(?:no|zero)\s+sense)\b/gi;
 
+// User repeating themselves. The recall pattern accepts an optional
+// `like ` / `as ` prefix so "like i said" doesn't double-count with bare
+// "i said". Bare `i asked` is too noisy - it's overwhelmingly "i asked
+// <some third party>" in this corpus (committee, experts, weaker LLM, ...) -
+// so we require `i asked you` for that variant. Bare `still` / `again` are
+// ambiguous so we only count `still` when followed by a negative or
+// sameness marker.
 const REPETITION_RECALL_RE =
 	/\b(?:(?:like|as)\s+i\s+(?:said|told\s+you|asked)|i\s+(?:meant|said|told\s+you|asked\s+you|already\s+(?:said|told|did|asked|wrote)))\b/gi;
 const REPETITION_STILL_RE =
 	/\bstill\s+(?:doesn['\u2019]?t|doesnt|isn['\u2019]?t|isnt|not|broken|wrong|fails|failing|the\s+same|same)\b/gi;
 
+// Direct second-person reproach. `you` alone is too generic (>7k hits in
+// short prose), so we anchor it to a small set of accusatory verbs.
 const BLAME_YOU_RE = /\byou\s+(?:didn['\u2019]?t|did\s+not|broke|missed|forgot|keep|always|never|still|ignored)\b/gi;
+// `why would/did you ...` is reproach even when politely phrased. Bare
+// `why you` / `why are you` are dominated by neutral how-does-this-work
+// questions, so only the past/conditional forms count.
 const BLAME_WHY_RE = /\bwhy\s+(?:would|did)\s+(?:you|u)\b/gi;
+// `stop <verb>ing` is only frustration when it's an imperative - require it
+// to start a sentence (line start or after a sentence-terminating punctuator).
 const BLAME_STOP_RE = /(?:^|(?<=[.!?\n]))\s*stop\s+\w+ing\b/gim;
 
+// Stripped from the analyzed body before scoring so that structured
+// content (code, XML/HTML, URLs, file mentions, quoted blocks) doesn't
+// pollute behavior signals. We replace with a newline so line counts
+// reflect what was removed instead of merging neighbors.
 const FENCED_CODE_RE = /```[\s\S]*?```/g;
 const XML_TAG_PAIR_RE = /<([A-Za-z][\w-]*)\b[^>]*>[\s\S]*?<\/\1>/g;
 const XML_TAG_BARE_RE = /<\/?[A-Za-z][\w-]*\b[^>]*\/?>/g;
 const INLINE_CODE_RE = /`[^`\n]*`/g;
 const URL_RE = /\bhttps?:\/\/\S+/gi;
 const FILE_MENTION_RE = /(^|\s)@[\w./-]+/g;
+// Dotted tokens: filenames (`AGENTS.md`), dotted identifiers (`Bun.file`),
+// versions (`1.2.3`). Stripped so SENTENCE_RE doesn't split them into
+// all-caps fragments ("Follow AGENTS.md and ..." -> "Follow AGENTS") that
+// register as yelling.
 const DOTTED_TOKEN_RE = /(?<=^|[\s("'[])[\w-]+(?:\.[\w-]+)+(?=$|[\s)"'\],:;!?]|\.(?!\w))/g;
 const QUOTE_LINE_RE = /^[ \t]*>.*$/gm;
+// Harness placeholders the TUI substitutes for binary/non-text user input.
+// Strip them so real frustration signals on later lines aren't masked off
+// by `[Image #1]` etc. consuming line 1.
 const IMAGE_MARKER_RE = /\[Image #\d+\]/g;
+// ANSI escape sequences sometimes leak in from terminal copy-paste (e.g. when the
+// user pastes a bash transcript). Stripped through `@veyyon/utils/strip-ansi`,
+// which owns the grammar, rather than through a local pattern: the local one was
+// `/\x1b\[[0-9;]*[A-Za-z]/g`, which accepts neither a private-mode sequence
+// (`ESC [ ?25l`, because `?` is not a parameter byte to it) nor an intermediate
+// byte nor a non-alphabetic final, and does not know OSC at all. A pasted prompt
+// or a hyperlinked path therefore left `?25l` and a whole URL behind as prose, and
+// the metrics below then scored that leftover as the user's words.
 
+// Users don't really get angry with super detailed and formatted prompts
+// - if the remaining prose is this many lines or more, score zero.
 const MAX_PROSE_LINES = 3;
 
+/** Count regex hits without materializing the match array. */
 function countMatches(text: string, re: RegExp): number {
 	let count = 0;
 	re.lastIndex = 0;
@@ -402,6 +564,10 @@ function countMatches(text: string, re: RegExp): number {
 	return count;
 }
 
+// A sentence needs 2+ uppercase runs ("WHAT THE HELL"), or a single elongated
+// run with a tripled letter ("CMOOON"), before its caps ratio can count as
+// yelling. A lone acronym / identifier / env var ("Follow AGENTS", "use
+// JSON", "HOME=/tmp") never does.
 const UPPER_RUN_RE = /\p{Lu}{2,}/gu;
 const TRIPLED_LETTER_RE = /(\p{Lu})\1\1/u;
 
@@ -412,6 +578,14 @@ function isShoutedSentence(sentence: string): boolean {
 	return runs[0].length >= YELLING_MIN_LETTERS && TRIPLED_LETTER_RE.test(runs[0]);
 }
 
+/**
+ * Count sentences where the share of uppercase letters exceeds
+ * {@link YELLING_THRESHOLD}. Sentences shorter than
+ * {@link YELLING_MIN_LETTERS} alphabetic characters are ignored so that
+ * short acronyms ("OK", "WIP", "TODO") don't register as yelling, and the
+ * caps must span multiple words (or one elongated shout) - see
+ * {@link isShoutedSentence}.
+ */
 function countYellingSentences(text: string): number {
 	let count = 0;
 	SENTENCE_RE.lastIndex = 0;
@@ -428,7 +602,29 @@ function countYellingSentences(text: string): number {
 	return count;
 }
 
+/**
+ * Strip structured content so that pasted code, harness wrappers, file
+ * mentions and quoted blocks don't dilute or fake behavior signals.
+ * Each strip is replaced with a newline so subsequent line counting
+ * reflects what was removed instead of merging neighbors.
+ *
+ * Exported because it is the seam the behavior signals are computed over, and the
+ * signals cannot observe most of what it removes: the leftover from a missed CSI
+ * sequence is at most something like `?25l`, which matches no signal pattern and
+ * shifts no count, so a test that went through {@link computeUserMessageMetrics}
+ * would pass whether or not the sequence was stripped. What it WOULD do is join the
+ * prose and change where sentences begin and end, which is exactly the kind of
+ * defect that surfaces later as an unexplained score. Asserting on the stripped text
+ * is the only way to state the contract in terms of real values.
+ */
 export function stripStructuredContent(text: string): string {
+	// ESCAPES COME OFF FIRST, before any rule that reads the text as content. An escape
+	// sequence carries a payload that is not prose but very much looks like it, and the
+	// URL rule below is greedy to the next whitespace: with the ANSI strip running last,
+	// an OSC 8 hyperlink's target ran through its own BEL terminator and took the first
+	// word of the user's sentence with it, leaving `]8;;` behind as the sentence's
+	// opening token. Removing the sequences first means every later rule sees text a
+	// terminal would have drawn.
 	return stripAnsi(text)
 		.replace(FENCED_CODE_RE, "\n")
 		.replace(XML_TAG_PAIR_RE, "\n")
@@ -449,6 +645,11 @@ function countNonEmptyLines(text: string): number {
 	return count;
 }
 
+/**
+ * Compute behavioral metrics for a user message.
+ *
+ * `text` may be empty or whitespace; in that case every metric is 0.
+ */
 export function computeUserMessageMetrics(text: string): UserMessageMetrics {
 	const trimmed = text.trim();
 	if (!trimmed) {
@@ -467,6 +668,9 @@ export function computeUserMessageMetrics(text: string): UserMessageMetrics {
 	const chars = trimmed.length;
 	const words = countMatches(trimmed, WORD_RE);
 
+	// Behavior signals are computed on a stripped prose body; long /
+	// well-formatted messages score zero because they are deliberate, not
+	// emotional outbursts.
 	const prose = stripStructuredContent(trimmed).trim();
 	if (!prose || countNonEmptyLines(prose) >= MAX_PROSE_LINES) {
 		return {
@@ -503,3 +707,15 @@ export function computeUserMessageMetrics(text: string): UserMessageMetrics {
 		blame,
 	};
 }
+
+/** Empty metrics constant for callers that need a default. */
+export const EMPTY_USER_METRICS: UserMessageMetrics = Object.freeze({
+	chars: 0,
+	words: 0,
+	yelling: 0,
+	profanity: 0,
+	anguish: 0,
+	negation: 0,
+	repetition: 0,
+	blame: 0,
+});

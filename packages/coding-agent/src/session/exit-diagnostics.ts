@@ -8,11 +8,18 @@ import type { SessionEntry } from "./session-entries";
 export const TOOL_EXECUTION_START_CUSTOM_TYPE = "tool_execution_start";
 export const SESSION_EXIT_CUSTOM_TYPE = "session_exit";
 
+/**
+ * Compact projection of tool-call arguments persisted with the start marker.
+ * The assistant message already carries the full arguments; this exists only
+ * so `appendArgumentSummary` can name the command/path in resume warnings
+ * without duplicating whole argument payloads into the session JSONL.
+ */
 export interface ToolArgumentSummary {
 	command?: string;
 	path?: string;
 }
 
+/** Persisted marker written before a tool implementation starts running. */
 export interface ToolExecutionStartData {
 	toolCallId: string;
 	toolName: string;
@@ -21,6 +28,7 @@ export interface ToolExecutionStartData {
 	startedAt: string;
 }
 
+/** Tool call left without a matching toolResult at the end of a branch. */
 export interface PendingToolCallDiagnostic {
 	toolCallId?: string;
 	toolName: string;
@@ -30,6 +38,7 @@ export interface PendingToolCallDiagnostic {
 	startedAt?: string;
 }
 
+/** Session shutdown marker written during normal and fatal process teardown. */
 export interface SessionExitData {
 	reason: string;
 	kind: "normal" | "signal" | "fatal" | "process_exit";
@@ -37,8 +46,33 @@ export interface SessionExitData {
 	pendingToolCalls?: PendingToolCallDiagnostic[];
 }
 
+/** How loudly a recorded exit reads in the log. */
 export type SessionExitLogLevel = "debug" | "warn" | "error";
 
+/**
+ * The severity of one recorded exit, from what actually happened to the session.
+ *
+ * WHY THIS IS A FUNCTION AND NOT A TERNARY AT THE CALL SITE. The call site asked one
+ * question — "was this a clean dispose?" — and answered it with two levels, so a session
+ * killed by an uncaught exception and a session whose terminal closed with nothing in
+ * flight were both a warning. Measured across 19 profile logs: 23 exits logged at warn,
+ * 17 of them `sighup` with zero pending tool calls, 4 of them `fatal`. So the level that
+ * meant "look at this" was carried four times out of twenty-three by the records that
+ * deserved it, and the crashes were indistinguishable from a closed window.
+ *
+ * The three levels are the three things a reader of the log does about it:
+ *
+ * - `error`: the session died on an unhandled throw or rejection. Nothing else in the
+ *   log says so, because the record is written from the teardown path, not the thrower.
+ * - `warn`: tool calls were in flight and are now orphaned. The resume path renders them
+ *   to the operator, so the log line is the trace of a warning already shown.
+ * - `debug`: a signal, a `process.exit`, or a normal dispose with nothing in flight. The
+ *   session ended for a reason outside itself and lost no work. Still recorded, because
+ *   "which of my sessions ended and why" is a real question, but it is not a problem.
+ *
+ * A fatal exit that also orphaned tool calls is an `error`: the crash is the finding and
+ * the pending count travels in the payload.
+ */
 export function sessionExitLogLevel(kind: SessionExitData["kind"], pendingToolCalls: number): SessionExitLogLevel {
 	if (kind === "fatal") return "error";
 	return pendingToolCalls > 0 ? "warn" : "debug";
@@ -95,6 +129,10 @@ function readSessionExit(entry: SessionEntry): SessionExitData | undefined {
 	};
 }
 
+/**
+ * createInterruptedTurnAbortMessage returns a terminal assistant record when
+ * the latest persisted process exit follows a non-terminal conversation tail.
+ */
 export function createInterruptedTurnAbortMessage(
 	entries: readonly SessionEntry[],
 	fallbackModel?: AssistantModelMetadata,
@@ -157,12 +195,27 @@ function isToolCallContent(value: unknown): value is ToolCallContent {
 	return value.type === "toolCall" && (typeof value.name === "string" || typeof value.id === "string");
 }
 
+/** Character cap for each summarized argument field. */
 const ARGUMENT_SUMMARY_MAX_CHARS = 200;
 
 function truncateSummaryField(value: string): string {
 	return value.length > ARGUMENT_SUMMARY_MAX_CHARS ? `${value.slice(0, ARGUMENT_SUMMARY_MAX_CHARS)}…` : value;
 }
 
+/**
+ * Project full tool-call arguments down to the fields the pending-tool-call
+ * resume warning actually renders (`command`/`path`), truncated. Returns
+ * `undefined` when the arguments carry neither, so callers can omit `args`
+ * entirely instead of persisting an empty object.
+ *
+ * PASS `redact` ON ANY PATH THAT PERSISTS THE RESULT. The arguments reaching a
+ * running tool are post-expansion: `#GITHUB_TOKEN#` has already become the
+ * credential, because that is the whole point of expansion. Writing them to the
+ * session file verbatim puts the plaintext credential next to the encrypted
+ * vault, and from there into `/share`, exports, backups and bug reports.
+ * Redaction runs before truncation so a placeholder is never cut in half and a
+ * long command can never keep a raw prefix of a value the redactor replaced.
+ */
 export function summarizeToolArguments(
 	args: unknown,
 	redact?: (text: string) => string,
@@ -190,6 +243,7 @@ function readToolExecutionStart(entry: SessionEntry): ToolExecutionStartData | u
 		toolName: data.toolName,
 		startedAt,
 	};
+	// Legacy sessions persisted full argument objects; project them down.
 	if ("args" in data) {
 		const args = summarizeToolArguments(data.args);
 		if (args) result.args = args;
@@ -224,6 +278,8 @@ function applyToolExecutionStart(pending: Map<string, PendingToolCallRecord>, ma
 	const existing = pending.get(marker.toolCallId);
 	if (existing) {
 		existing.startedAt = marker.startedAt;
+		// The assistant message carries the full arguments; the marker only has
+		// the command/path projection. Keep the richer copy when present.
 		existing.args ??= marker.args;
 		if (marker.intent) existing.intent = marker.intent;
 		return;
@@ -248,6 +304,7 @@ function applyMessageEntry(pending: Map<string, PendingToolCallRecord>, message:
 	appendAssistantToolCalls(pending, message);
 }
 
+/** Finds tool calls left pending at the end of a session branch. */
 export function collectPendingToolCalls(entries: readonly SessionEntry[]): PendingToolCallDiagnostic[] {
 	const pending = new Map<string, PendingToolCallRecord>();
 	for (const entry of entries) {
@@ -258,7 +315,7 @@ export function collectPendingToolCalls(entries: readonly SessionEntry[]): Pendi
 		const marker = readToolExecutionStart(entry);
 		if (marker) applyToolExecutionStart(pending, marker);
 	}
-	return Array.from(pending.values()).map(({ key: _key, ...toolCall }) => toolCall);
+	return [...pending.values()].map(({ key: _key, ...toolCall }) => toolCall);
 }
 
 function appendArgumentSummary(parts: string[], args: unknown): void {
@@ -279,6 +336,7 @@ function formatPendingToolCall(call: PendingToolCallDiagnostic): string {
 	return parts.join(" ");
 }
 
+/** Builds the resume warning shown when a prior branch ended mid-tool-call. */
 export function describePendingToolCalls(entries: readonly SessionEntry[]): string | undefined {
 	const pending = collectPendingToolCalls(entries);
 	if (pending.length === 0) return undefined;

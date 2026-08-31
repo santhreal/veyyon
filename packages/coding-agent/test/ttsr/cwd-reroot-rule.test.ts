@@ -132,7 +132,7 @@ describe("the tools cwd-reroot listens to", () => {
 	 * whole set the rule can safely read, and it is pinned so a scope rewrite cannot drop one: a
 	 * missing tool here is a class of cross-project work the rule stops seeing, silently.
 	 */
-	it.each(["read", "grep", "glob", "ast_grep"])("fires for the navigation tool %s", toolName => {
+	it.each(["read", "search"])("fires for the navigation tool %s", toolName => {
 		expect(fires(OUTSIDE, toolName)).toBe(true);
 	});
 

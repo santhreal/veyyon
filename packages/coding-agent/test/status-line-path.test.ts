@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import { NO_SESSION_FACTS } from "@veyyon/coding-agent/modes/components/status-line/session-facts";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { getProjectDir, removeSyncWithRetries, setProjectDir } from "@veyyon/utils";
 
@@ -26,12 +27,7 @@ function expectIconMarker(content: string, expected: string, absent: string): vo
 
 function createPathContext(): SegmentContext {
 	return {
-		session: {
-			state: {},
-			isFastModeEnabled: () => false,
-			modelRegistry: { isUsingOAuth: () => false },
-			sessionManager: undefined,
-		} as unknown as SegmentContext["session"],
+		facts: NO_SESSION_FACTS,
 		width: 120,
 		compactThinkingLevel: false,
 		options: {

@@ -1,3 +1,13 @@
+/**
+ * Guest-side session replica for the collab web client.
+ *
+ * Owns the relay socket, applies host frames in strict arrival order, and
+ * exposes an immutable {@link GuestSnapshot} through a
+ * `useSyncExternalStore`-compatible subscribe/getSnapshot pair. The snapshot
+ * object (and every replaced collection inside it) gets a new reference per
+ * applied frame, so React change detection is reference equality all the way.
+ */
+
 import type {
 	AgentSnapshot,
 	CollabUiRequest,
@@ -11,27 +21,77 @@ import type {
 	WireSessionHeader,
 } from "@veyyon/wire";
 import { SNAPSHOT_PROGRESS_TIMEOUT_MS, TRANSCRIPT_TIMEOUT_MS, WELCOME_TIMEOUT_MS } from "@veyyon/wire";
-import type {
-	ActiveTool,
-	ConnectionPhase,
-	GuestSnapshot,
-	Notice,
-	PendingTranscript,
-	TranscriptResult,
-} from "./client-helpers";
-import { MAX_NOTICES } from "./client-helpers";
 import { importRoomKey } from "./codec";
-
-export * from "./client-helpers";
-
 import { COLLAB_PROTO, encodeBase64Url, parseCollabLink } from "./link";
 import { CollabSocket } from "./socket";
 
-export type { GuestSnapshot, TranscriptResult };
+export type ConnectionPhase = "connecting" | "waiting" | "live" | "reconnecting" | "ended";
+
+export interface ActiveTool {
+	toolCallId: string;
+	toolName: string;
+	args: unknown;
+	intent?: string;
+	partialResult?: unknown;
+	startedAt: number;
+}
+
+export interface Notice {
+	id: number;
+	level: "info" | "warning" | "error";
+	message: string;
+	at: number;
+}
+
+export interface GuestSnapshot {
+	phase: ConnectionPhase;
+	endedReason: string | null;
+	header: WireSessionHeader | null;
+	entries: readonly WireSessionEntry[];
+	state: SessionState | null;
+	agents: readonly AgentSnapshot[];
+	/** Keyed by `payload.progress.id`. */
+	progress: ReadonlyMap<string, SubagentProgressPayload>;
+	/** Keyed by `payload.id`. */
+	lifecycle: ReadonlyMap<string, SubagentLifecyclePayload>;
+	/** Streaming assistant ghost; held until the matching entry lands. */
+	stream: WireAssistantMessage | null;
+	streamDone: boolean;
+	activeTools: ReadonlyMap<string, ActiveTool>;
+	/** agent_start..agent_end, reconciled by state.isStreaming. */
+	working: boolean;
+	/** True when this guest joined through a read-only (view) link. */
+	readOnly: boolean;
+	/** Pending host-side UI request (`ask` select/editor) this guest can answer. */
+	uiRequest: CollabUiRequest | null;
+	/** Capped at 50, newest last. */
+	notices: readonly Notice[];
+}
+
+const MAX_NOTICES = 50;
+// The join budgets used to be declared here and kept in step with the TUI guest
+// by hand, which is how the transcript one drifted to 10 s while the terminal
+// used 20 s. They are protocol-level, so @veyyon/wire owns them and both guests
+// import the same values.
+
+/**
+ * One fetch-transcript round trip.
+ * - `rows`: decoded JSONL from `fromByte`; `newSize` is the next offset base.
+ * - `error`: terminal read failure reported by the host (unchanged cursor);
+ *   callers must surface it and stop polling instead of hot retrying.
+ * Transient failures (timeout, session end) resolve `null` and are retryable.
+ */
+export type TranscriptResult = { kind: "rows"; text: string; newSize: number } | { kind: "error"; message: string };
+
+interface PendingTranscript {
+	resolve: (result: TranscriptResult | null) => void;
+	timer: Timer;
+}
 
 export class GuestClient {
 	readonly #socket: CollabSocket;
 	readonly #name: string;
+	/** base64url write token from a full link; absent when joined via a view link. */
 	readonly #writeToken: string | undefined;
 	readonly #listeners = new Set<() => void>();
 	readonly #pendingTranscripts = new Map<number, PendingTranscript>();
@@ -60,6 +120,7 @@ export class GuestClient {
 	#notices: readonly Notice[] = [];
 	#snapshot: GuestSnapshot;
 
+	/** @throws Error when the link does not parse. */
 	constructor(link: string, displayName: string) {
 		const parsed = parseCollabLink(link);
 		if ("error" in parsed) throw new Error(parsed.error);
@@ -103,6 +164,7 @@ export class GuestClient {
 		};
 	}
 
+	/** Cached stable reference; replaced (with fresh collection refs) per applied frame. */
 	getSnapshot(): GuestSnapshot {
 		return this.#snapshot;
 	}
@@ -127,6 +189,11 @@ export class GuestClient {
 		this.#socket.send({ t: "agent-cmd", cmd, agentId, text });
 	}
 
+	/**
+	 * Incremental subagent-transcript read. Resolves a {@link TranscriptResult}
+	 * (`rows` or terminal `error`), or `null` on transient failure (10s timeout,
+	 * session end) where re-polling from the same cursor is correct.
+	 */
 	fetchTranscript(agentId: string, fromByte: number): Promise<TranscriptResult | null> {
 		const reqId = ++this.#reqSeq;
 		const { promise, resolve } = Promise.withResolvers<TranscriptResult | null>();
@@ -139,6 +206,7 @@ export class GuestClient {
 		return promise;
 	}
 
+	/** Test seam: apply a synthetic host frame through the real apply path. */
 	applyFrameForTest(frame: HostFrame): void {
 		this.#applyFrameSafe(frame);
 	}
@@ -199,6 +267,7 @@ export class GuestClient {
 		}
 	}
 
+	/** Surfaces apply failures instead of letting the socket's recv chain swallow them. */
 	#applyFrameSafe(frame: HostFrame): void {
 		try {
 			this.#applyFrame(frame);
@@ -216,10 +285,12 @@ export class GuestClient {
 	#applyFrame(frame: HostFrame): void {
 		switch (frame.t) {
 			case "welcome":
+				// Reset accumulator: a fresh welcome arriving mid-load (reconnect)
+				// supersedes any partially-streamed snapshot from the prior session.
 				this.#header = frame.header;
 				this.#entries = [];
 				this.#state = frame.state;
-				this.#agents = frame.agents.slice();
+				this.#agents = [...frame.agents];
 				this.#stream = null;
 				this.#streamDone = false;
 				this.#activeTools = new Map();
@@ -239,7 +310,10 @@ export class GuestClient {
 				this.#endedReason = null;
 				break;
 			case "snapshot-chunk": {
-				this.#entries = this.#entries.concat(frame.entries);
+				// Stream transcript fragments into the live snapshot. The host
+				// always closes the train with `final: true`; that flip is what
+				// moves the guest from "waiting" to "live".
+				this.#entries = [...this.#entries, ...frame.entries];
 				if (frame.final) {
 					this.#clearSnapshotProgressTimer();
 					this.#phase = "live";
@@ -249,7 +323,7 @@ export class GuestClient {
 				break;
 			}
 			case "entry":
-				this.#entries = this.#entries.concat([frame.entry]);
+				this.#entries = [...this.#entries, frame.entry];
 				if (this.#streamDone && frame.entry.type === "message" && frame.entry.message.role === "assistant") {
 					this.#stream = null;
 					this.#streamDone = false;
@@ -269,7 +343,7 @@ export class GuestClient {
 				}
 				break;
 			case "agents":
-				this.#agents = frame.agents.slice();
+				this.#agents = [...frame.agents];
 				break;
 			case "bus":
 				if (frame.channel === "task:subagent:progress") {
@@ -281,7 +355,7 @@ export class GuestClient {
 				}
 				break;
 			case "ui-request":
-				if (this.#uiRequest) this.#uiRequestQueue = this.#uiRequestQueue.concat([frame.request]);
+				if (this.#uiRequest) this.#uiRequestQueue = [...this.#uiRequestQueue, frame.request];
 				else this.#uiRequest = frame.request;
 				break;
 			case "ui-request-end":
@@ -306,12 +380,17 @@ export class GuestClient {
 				return; // #end already committed
 			case "error":
 				if (!this.#welcomed) {
+					// Pre-welcome errors are the host's targeted reply to our
+					// hello (e.g. protocol mismatch): no welcome will follow.
+					// End with the host's reason instead of waiting out the
+					// welcome timeout.
 					this.#end(frame.message);
 					return; // #end already committed
 				}
 				this.#pushNotice("error", frame.message);
 				break;
 			default:
+				// unknown frame type from a newer host — ignore
 				break;
 		}
 		this.#commit();
@@ -391,13 +470,14 @@ export class GuestClient {
 				}
 				break;
 			default:
+				// turn_start/turn_end/thinking_level_changed/unknown — ignore
 				break;
 		}
 	}
 
 	#pushNotice(level: Notice["level"], message: string): void {
 		const notice: Notice = { id: ++this.#noticeSeq, level, message, at: Date.now() };
-		const next = this.#notices.concat([notice]);
+		const next = [...this.#notices, notice];
 		if (next.length > MAX_NOTICES) next.splice(0, next.length - MAX_NOTICES);
 		this.#notices = next;
 	}

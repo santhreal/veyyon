@@ -1,3 +1,8 @@
+/**
+ * Token-driven state machine that turns a stream of {@link Token}s into a
+ * flat list of {@link Edit}s. Sits between the {@link Tokenizer} and the
+ * applier.
+ */
 import { HL_PAYLOAD_REPLACE, HL_RANGE_SEP } from "./format";
 import {
 	BARE_BODY_AUTO_PIPED_WARNING,
@@ -10,20 +15,103 @@ import {
 	MOVE_TAKES_NO_BODY,
 	REM_TAKES_NO_BODY,
 } from "./messages";
-import type { PayloadRow, Pending, PendingComment } from "./parser-helpers";
-
-export * from "./parser-helpers";
-
-import {
-	BARE_LITERAL_VALUE_RE,
-	detectApplyPatchContamination,
-	expandRange,
-	isSkippableCommentLine,
-	validateRangeOrder,
-} from "./parser-helpers";
 import { stripOneLeadingHashlinePrefix } from "./prefixes";
-import { cloneCursor, type Token, Tokenizer } from "./tokenizer";
+import { type BlockTarget, cloneCursor, type ParsedRange, type Token, Tokenizer } from "./tokenizer";
 import type { Anchor, Cursor, Edit, FileOp } from "./types";
+
+function validateRangeOrder(range: ParsedRange, lineNum: number): void {
+	if (range.end.line < range.start.line) {
+		throw new Error(
+			`line ${lineNum}: range ${range.start.line}${HL_RANGE_SEP}${range.end.line} ends before it starts.`,
+		);
+	}
+}
+
+function expandRange(range: ParsedRange): Anchor[] {
+	const anchors: Anchor[] = [];
+	for (let line = range.start.line; line <= range.end.line; line++) anchors.push({ line });
+	return anchors;
+}
+
+function isSkippableCommentLine(line: string): boolean {
+	return line.trimStart().startsWith("#");
+}
+
+/**
+ * Stripped remainder of a bare `N: <value>` row that is a lone literal — a quoted string, a number,
+ * or one of the JSON keywords `true`/`false`/`null` — optionally comma-terminated. That is the shape
+ * of a numeric-keyed dict/JSON/YAML body rather than read-output paste.
+ *
+ * Exported because the write tool asks the same question of a whole-file payload. Two copies of this
+ * shape disagreed: the copy here rejected `true`/`false`/`null`, so a numeric-keyed JSON body of
+ * keywords had its `N:` keys stripped as if it were a read paste, while the write tool accepted the
+ * identical body.
+ */
+export const BARE_LITERAL_VALUE_RE = /^\s*(?:"[^"]*"|'[^']*'|[-+]?\d+(?:\.\d+)?|true|false|null)\s*,?\s*$/;
+
+function detectApplyPatchContamination(text: string, _hasPending: boolean): string | null {
+	const trimmed = text.trimStart();
+	if (trimmed.length === 0) return null;
+	if (
+		trimmed.startsWith("*** Update File:") ||
+		trimmed.startsWith("*** Add File:") ||
+		trimmed.startsWith("*** Delete File:") ||
+		trimmed.startsWith("*** Move to:")
+	) {
+		const preview = trimmed.length > 48 ? `${trimmed.slice(0, 48)}…` : trimmed;
+		return (
+			`apply_patch sentinel ${JSON.stringify(preview)} is not valid in hashline. ` +
+			"File sections start with `[path#HASH]` (no `Update File:` / `Add File:` keyword). " +
+			`Use \`SWAP N${HL_RANGE_SEP}M:\`, \`DEL N${HL_RANGE_SEP}M\`, or \`INS.PRE|POST|HEAD|TAIL:\` ops.`
+		);
+	}
+	if (/^@@\s+[-+]?\d+,\d+\s+[-+]?\d+,\d+\s+@@/.test(trimmed)) {
+		return (
+			"unified-diff hunk header (`@@ -N,M +N,M @@`) is not valid in hashline. " +
+			`Use \`SWAP N${HL_RANGE_SEP}M:\`, \`DEL N${HL_RANGE_SEP}M\`, or \`INS.PRE|POST|HEAD|TAIL:\` ops.`
+		);
+	}
+	if (trimmed.startsWith("@@")) {
+		const preview = trimmed.length > 48 ? `${trimmed.slice(0, 48)}…` : trimmed;
+		return (
+			`\`@@\`-bracketed hunk header ${JSON.stringify(preview)} is not valid in hashline. ` +
+			`Drop the \`@@ ... @@\` brackets and write a verb header such as \`SWAP N${HL_RANGE_SEP}M:\`.`
+		);
+	}
+	if (/^DEL\s+[1-9]\d*(?:\s*(?:\.\.|\.=|-|…|\s)\s*[1-9]\d*)?\s*:/.test(trimmed)) {
+		return `\`DEL N${HL_RANGE_SEP}M\` has no colon and no body. Remove the colon and body rows.`;
+	}
+	if (/^[1-9]\d*\s*$/.test(trimmed)) {
+		return `hunk headers need a verb. Use \`SWAP ${trimmed}${HL_RANGE_SEP}${trimmed}:\` to replace, or \`DEL ${trimmed}\` to delete.`;
+	}
+	const bareRange = /^([1-9]\d*)\s*[-. …=]+\s*([1-9]\d*)\s*:?$/.exec(trimmed);
+	if (bareRange !== null) {
+		return (
+			`bare range hunk header ${JSON.stringify(trimmed)} is not valid. ` +
+			`Hunk headers need a verb: write \`SWAP ${bareRange[1]}${HL_RANGE_SEP}${bareRange[2]}:\` or \`DEL ${bareRange[1]}${HL_RANGE_SEP}${bareRange[2]}\`.`
+		);
+	}
+	return null;
+}
+
+interface PendingComment {
+	lineNum: number;
+	text: string;
+}
+
+type PayloadRow = { kind: "literal"; text: string; lineNum: number; bare?: boolean };
+
+interface Pending {
+	target: BlockTarget;
+	lineNum: number;
+	payloads: PayloadRow[];
+	/**
+	 * Blank rows seen after the body started. Interior blanks are committed to
+	 * the payload when the next non-blank row arrives; trailing blanks before
+	 * the next header/op are layout separators and are discarded on flush.
+	 */
+	deferredBlanks: PayloadRow[];
+}
 
 export class Executor {
 	#edits: Edit[] = [];
@@ -167,7 +255,7 @@ export class Executor {
 		}
 		for (const [anchorLine, sourceLines] of sourceLinesByAnchor) {
 			if (sourceLines.length < 2) continue;
-			const [firstBlock, secondBlock] = sourceLines.slice().sort((a, b) => a - b);
+			const [firstBlock, secondBlock] = [...sourceLines].sort((a, b) => a - b);
 			throw new Error(
 				`line ${secondBlock}: anchor line ${anchorLine} is already targeted by another hunk on line ${firstBlock}. ` +
 					"Issue ONE hunk per range; payload is only the final desired content, never a before/after pair.",
@@ -205,6 +293,13 @@ export class Executor {
 			if (text.trimStart().charCodeAt(0) === 45 /* - */) throw new Error(`line ${lineNum}: ${MINUS_ROW_REJECTED}`);
 			if (!this.#warnings.includes(BARE_BODY_AUTO_PIPED_WARNING)) this.#warnings.push(BARE_BODY_AUTO_PIPED_WARNING);
 			this.#commitDeferredBlanks(this.#pending);
+			// Defer read-output line-number stripping to #flushPending: a bare
+			// "N:text" row is only a copy-paste artifact from snapshot output
+			// when *every* bare row in the hunk carries that prefix. Stripping a
+			// row in isolation would corrupt a genuine body that merely starts
+			// with "digits:" (YAML ports "42:hello", timestamps "12:30") when it
+			// sits next to an unprefixed sibling. Rows with an explicit "+" go
+			// through #handleLiteralPayload and are never bare, never stripped.
 			this.#pending.payloads.push({ kind: "literal", text, lineNum, bare: true });
 			return;
 		}
@@ -215,6 +310,13 @@ export class Executor {
 		);
 	}
 
+	/**
+	 * A blank row inside a hunk body is ambiguous: interior blanks are body
+	 * content (a bare-pasted body legitimately contains empty lines), while
+	 * blanks before the body starts or trailing into the next op are layout.
+	 * Defer them; {@link #commitDeferredBlanks} folds them in only when a later
+	 * non-blank row proves they were interior.
+	 */
 	#handleBlank(text: string, lineNum: number): void {
 		const pending = this.#pending;
 		if (!pending) return;
@@ -226,10 +328,17 @@ export class Executor {
 	#commitDeferredBlanks(pending: Pending): void {
 		if (pending.deferredBlanks.length === 0) return;
 		if (!this.#warnings.includes(BARE_BODY_AUTO_PIPED_WARNING)) this.#warnings.push(BARE_BODY_AUTO_PIPED_WARNING);
-		for (let bi = 0; bi < pending.deferredBlanks.length; bi++) pending.payloads.push(pending.deferredBlanks[bi]!);
+		pending.payloads.push(...pending.deferredBlanks);
 		pending.deferredBlanks = [];
 	}
 
+	/**
+	 * Strip a single read-output line-number prefix (`N:`) from every bare body
+	 * row, but only when *all* bare rows carry one. A uniform set of prefixes is
+	 * the signature of content pasted straight from `read`/`search` output; a
+	 * mixed set means the `N:` is genuine payload content and must stay. Rows
+	 * authored with an explicit `+` are not bare and are never touched.
+	 */
 	#stripBarePrefixesIfUniform(payloads: PayloadRow[]): void {
 		let sawBare = false;
 		let allLiteralValues = true;
@@ -241,6 +350,10 @@ export class Executor {
 			allLiteralValues &&= BARE_LITERAL_VALUE_RE.test(stripped);
 		}
 		if (!sawBare) return;
+		// A body where every stripped remainder is a lone quoted/numeric literal
+		// (optionally comma-terminated) is the shape of a numeric-keyed dict or
+		// YAML mapping (`1: "one",`), not read-output paste; stripping the "N:"
+		// keys would mangle every line. Leave such bodies untouched.
 		if (allLiteralValues) return;
 		for (const row of payloads) {
 			if (row.bare && row.text.trim().length > 0) row.text = stripOneLeadingHashlinePrefix(row.text);
@@ -288,6 +401,7 @@ export class Executor {
 			return;
 		}
 		if (target.kind === "delete_block") {
+			// A block edit with no payloads resolves to a pure block deletion.
 			this.#pushBlock(target.anchor, [], lineNum);
 			return;
 		}
@@ -302,6 +416,9 @@ export class Executor {
 			return;
 		}
 		if (payloads.length === 0) {
+			// A bodyless SWAP is rejected, never treated as a delete: the body is
+			// the final content, so its absence usually means a truncated stream,
+			// and silently deleting the range would be silent data loss.
 			if (target.kind === "replace") throw new Error(`line ${lineNum}: ${EMPTY_REPLACE}`);
 			throw new Error(`line ${lineNum}: ${EMPTY_INSERT}`);
 		}

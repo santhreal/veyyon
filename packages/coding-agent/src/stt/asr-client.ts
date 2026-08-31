@@ -1,25 +1,93 @@
 import { errorMessage, logger } from "@veyyon/utils";
 import {
+	createWorkerSubprocess,
 	logWorkerMessage,
 	type RefCountedWorkerHandle,
+	refCountedUnavailableWorker,
+	resolveWorkerSpawnCmd,
 	SMOKE_TEST_TIMEOUT_MS,
+	type SpawnedSubprocess,
 	smokeTestWorker,
+	spawnWorkerOrUnavailable,
 	wrapRefCountedSubprocess,
 } from "../subprocess/worker-client";
-import type {
-	PendingRequest,
-	StreamState,
-	SttDownloadOptions,
-	SttDownloadResult,
-	SttStreamHandle,
-	SttStreamOptions,
-	SttTranscribeOptions,
-} from "./asr-client-helpers";
-import { createSttSubprocess, spawnSttWorker } from "./asr-client-helpers";
+import { tinyWorkerEnv } from "../tiny/title-client";
+import { STT_WORKER_ARG } from "../worker-args";
 import type { SttProgressEvent, SttWorkerInbound, SttWorkerOutbound } from "./asr-protocol";
 import type { SttModelKey } from "./models";
 
-export type { SttStreamHandle };
+type PendingRequest =
+	| { kind: "transcribe"; modelKey: SttModelKey; resolve: (text: string) => void; reject: (error: Error) => void }
+	| { kind: "download"; modelKey: SttModelKey; resolve: (result: SttDownloadResult) => void };
+
+export interface SttTranscribeOptions {
+	language?: string;
+	signal?: AbortSignal;
+}
+
+export interface SttDownloadOptions {
+	signal?: AbortSignal;
+	onProgress?: (event: SttProgressEvent) => void;
+}
+
+export interface SttDownloadResult {
+	ok: boolean;
+	error?: string;
+}
+
+/** Live streaming session handle returned by {@link SttClient.startStream}. */
+export interface SttStreamHandle {
+	/** Feed 16 kHz mono float samples as the recorder produces them. */
+	pushAudio(audio: Float32Array): void;
+	/** Flush the trailing segment and resolve with the full joined transcript. */
+	stop(): Promise<string>;
+	/** Tear the session down without a final flush (resolves `stop()` with ""). */
+	cancel(): void;
+}
+
+export interface SttStreamOptions {
+	language?: string;
+	signal?: AbortSignal;
+	/** Volatile transcript of the in-progress segment, refreshed as audio arrives. */
+	onPartial?: (text: string) => void;
+	/** A finalized segment, emitted once when the endpointer commits it. */
+	onSegment?: (text: string, index: number) => void;
+}
+
+interface StreamState {
+	modelKey: SttModelKey;
+	onPartial: ((text: string) => void) | undefined;
+	onSegment: ((text: string, index: number) => void) | undefined;
+	resolve: (text: string) => void;
+	reject: (error: Error) => void;
+	/** Run `apply` (resolve/reject) once, then unregister the stream. */
+	finish: (apply: () => void) => void;
+}
+
+/**
+ * Hidden subcommand on the main CLI that boots the speech-recognition worker in
+ * the spawned subprocess. Kept in sync with the dispatch in `cli.ts`.
+ */
+
+/**
+ * Spawn the speech worker as a subprocess. Exported for tests and the smoke
+ * probe; production callers go through {@link spawnSttWorker}.
+ */
+export function createSttSubprocess(): SpawnedSubprocess<SttWorkerOutbound> {
+	return createWorkerSubprocess<SttWorkerOutbound>({
+		spawnCommand: resolveWorkerSpawnCmd(STT_WORKER_ARG),
+		env: tinyWorkerEnv(),
+		exitLabel: "stt subprocess",
+	});
+}
+
+function spawnSttWorker(): RefCountedWorkerHandle<SttWorkerInbound, SttWorkerOutbound> {
+	return spawnWorkerOrUnavailable(
+		() => wrapRefCountedSubprocess<SttWorkerInbound, SttWorkerOutbound>(createSttSubprocess(), "stt"),
+		error => refCountedUnavailableWorker<SttWorkerInbound, SttWorkerOutbound>(error),
+		"stt worker spawn failed; speech-to-text disabled",
+	);
+}
 
 export class SttClient {
 	#worker: RefCountedWorkerHandle<SttWorkerInbound, SttWorkerOutbound> | null = null;
@@ -41,6 +109,11 @@ export class SttClient {
 		return () => this.#progressListeners.delete(listener);
 	}
 
+	/**
+	 * Transcribe 16 kHz mono audio on the warm worker. Rejects with the worker
+	 * error on failure and with an `AbortError` when the signal fires (the warm
+	 * worker keeps the model loaded across calls — the model is never reloaded).
+	 */
 	async transcribe(modelKey: SttModelKey, audio: Float32Array, options: SttTranscribeOptions = {}): Promise<string> {
 		options.signal?.throwIfAborted();
 		const worker = this.#ensureWorker();
@@ -63,10 +136,22 @@ export class SttClient {
 		}
 	}
 
+	/**
+	 * Open a live streaming session on the warm worker. Audio fed through the
+	 * returned handle is segmented by the worker's endpointer: `onSegment` fires
+	 * once per committed segment and `onPartial` for the volatile in-progress
+	 * preview. `stop()` resolves with the full joined transcript; `cancel()` (or
+	 * an aborted signal) tears the session down and resolves `stop()` with "".
+	 */
 	startStream(modelKey: SttModelKey, options: SttStreamOptions = {}): SttStreamHandle {
 		const worker = this.#ensureWorker();
 		const id = String(++this.#nextRequestId);
 		const { promise, resolve, reject } = Promise.withResolvers<string>();
+		// `stop()` is normally the only awaiter of `promise`, but with model loading
+		// now deferred to the stream, a load failure (or early worker error) can
+		// reject it before the caller stops — attach a benign handler so that never
+		// surfaces as an unhandled rejection. stop()/await still observes the
+		// rejection through the original promise.
 		void promise.catch(() => {});
 		const signal = options.signal;
 		let settled = false;
@@ -159,7 +244,9 @@ export class SttClient {
 		this.#failStreams(new Error("stt worker terminated"));
 		try {
 			await worker?.terminate();
-		} catch {}
+		} catch {
+			// Already gone.
+		}
 	}
 
 	#ensureWorker(): RefCountedWorkerHandle<SttWorkerInbound, SttWorkerOutbound> {
@@ -171,15 +258,22 @@ export class SttClient {
 		return worker;
 	}
 
+	/** Register a pending request and keep the worker referenced while work is in flight. */
 	#addPending(id: string, request: PendingRequest): void {
 		this.#pending.set(id, request);
 		this.#syncWorkerRef();
 	}
 
+	/** Drop a pending request and unref the worker once no request or stream is active. */
 	#deletePending(id: string): void {
 		if (this.#pending.delete(id)) this.#syncWorkerRef();
 	}
 
+	/**
+	 * STT workers start unreferenced so an idle warm model never blocks exit.
+	 * Setup/download commands must keep the worker alive while awaiting IPC, or
+	 * Bun can drain the event loop immediately after `Preparing Speech-to-Text`.
+	 */
 	#syncWorkerRef(): void {
 		const worker = this.#worker;
 		if (!worker) return;
@@ -230,6 +324,7 @@ export class SttClient {
 			if (pending.kind === "download") pending.resolve({ ok: true });
 			return;
 		}
+		// message.type === "error"
 		this.#emitProgress({ modelKey: pending.modelKey, status: "error" });
 		if (pending.kind === "transcribe") pending.reject(new Error(message.error));
 		else pending.resolve({ ok: false, error: message.error });
@@ -240,7 +335,7 @@ export class SttClient {
 	}
 
 	#failStreams(error: Error): void {
-		for (const stream of Array.from(this.#streams.values())) {
+		for (const stream of [...this.#streams.values()]) {
 			this.#emitProgress({ modelKey: stream.modelKey, status: "error" });
 			stream.finish(() => stream.reject(error));
 		}
@@ -260,6 +355,10 @@ export class SttClient {
 }
 
 export const sttClient = new SttClient();
+
+export async function shutdownSttClient(): Promise<void> {
+	await sttClient.terminate();
+}
 
 export async function smokeTestSttWorker({
 	timeoutMs = SMOKE_TEST_TIMEOUT_MS,

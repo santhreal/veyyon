@@ -1,3 +1,9 @@
+/**
+ * Debug report bundle creation.
+ *
+ * Creates a .tar.gz archive with session data, logs, system info, and optional profiling data.
+ */
+
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { WorkProfile } from "@veyyon/natives";
@@ -7,9 +13,24 @@ import { writeArchive } from "../utils/zip";
 import type { CpuProfile, HeapSnapshot } from "./profiler";
 import { collectSystemInfo, sanitizeEnv } from "./system-info";
 
+/** Maximum number of log lines to load into memory at once. */
 const MAX_LOG_LINES = 5000;
 
+/** Maximum bytes to read from the tail of a log file (2 MB). */
+// How much of a log file's tail a bug report may read. A bound on what we ship
+// to the user, not on what the log is allowed to grow to (see LOG_ROTATE_BYTES
+// in launch/broker.ts, which is an order of magnitude larger and means something
+// else entirely).
 const MAX_BUNDLED_LOG_TAIL_BYTES = 2 * 1024 * 1024;
+/** Read last N lines from a file, reading at most `maxBytes` from the tail. */
+/**
+ * What the copied session transcript is called INSIDE a debug bundle.
+ *
+ * A fixed entry name rather than the transcript's own filename, so a bundle always has the same layout
+ * whatever session produced it. Named once because it is written twice, as the archive key and as the
+ * manifest entry, and a bundle whose manifest lists a name the archive does not hold is a bundle the
+ * reader cannot open.
+ */
 const SESSION_BUNDLE_ENTRY = "session.jsonl";
 
 async function readLastLines(filePath: string, n: number, maxBytes = MAX_BUNDLED_LOG_TAIL_BYTES): Promise<string> {
@@ -19,6 +40,7 @@ async function readLastLines(filePath: string, n: number, maxBytes = MAX_BUNDLED
 		const start = Math.max(0, size - maxBytes);
 		const content = start > 0 ? await file.slice(start, size).text() : await file.text();
 		const lines = content.split("\n");
+		// If we sliced mid-file, drop the first (partial) line
 		if (start > 0 && lines.length > 0) {
 			lines.shift();
 		}
@@ -30,11 +52,17 @@ async function readLastLines(filePath: string, n: number, maxBytes = MAX_BUNDLED
 }
 
 export interface ReportBundleOptions {
+	/** Session file path */
 	sessionFile: string | undefined;
+	/** Settings to include */
 	settings?: Record<string, unknown>;
+	/** CPU profile (for performance reports) */
 	cpuProfile?: CpuProfile;
+	/** Heap snapshot (for memory reports) */
 	heapSnapshot?: HeapSnapshot;
+	/** Work profile (for work scheduling reports) */
 	workProfile?: WorkProfile;
+	/** Raw provider SSE diagnostics captured by the session buffer */
 	rawSseText?: string;
 }
 
@@ -49,6 +77,25 @@ export interface DebugLogSource {
 	loadOlderLogs(limitDays?: number): Promise<string>;
 }
 
+/**
+ * Create a debug report bundle.
+ *
+ * Bundle contents:
+ * - session.jsonl: Current session transcript
+ * - artifacts/: Session artifacts directory
+ * - subagents/: Subagent sessions + artifacts
+ * - logs.txt: Recent log entries
+ * - system.json: OS, arch, CPU, memory, versions
+ * - env.json: Sanitized environment variables
+ * - config.json: Resolved settings
+ * - profile.cpuprofile: CPU profile (performance report only)
+ * - raw-sse.txt: Recent raw provider SSE diagnostics (when captured)
+ * - profile.md: Markdown CPU profile (performance report only)
+ * - heap.heapsnapshot: Heap snapshot (memory report only)
+ * - work.folded: Work profile folded stacks (work report only)
+ * - work.md: Work profile summary (work report only)
+ * - work.svg: Work profile flamegraph (work report only)
+ */
 export async function createReportBundle(options: ReportBundleOptions): Promise<ReportBundleResult> {
 	const reportsDir = getReportsDir();
 	await fs.mkdir(reportsDir, { recursive: true });
@@ -59,18 +106,22 @@ export async function createReportBundle(options: ReportBundleOptions): Promise<
 	const data: Record<string, string> = {};
 	const files: string[] = [];
 
+	// Collect system info
 	const systemInfo = await collectSystemInfo();
 	data["system.json"] = JSON.stringify(systemInfo, null, 2);
 	files.push("system.json");
 
+	// Sanitized environment
 	data["env.json"] = JSON.stringify(sanitizeEnv(Bun.env as Record<string, string>), null, 2);
 	files.push("env.json");
 
+	// Settings/config
 	if (options.settings) {
 		data["config.json"] = JSON.stringify(options.settings, null, 2);
 		files.push("config.json");
 	}
 
+	// Recent logs (last 1000 lines)
 	const logPath = getLogPath();
 	const logs = await readLastLines(logPath, 1000);
 	if (logs) {
@@ -78,26 +129,33 @@ export async function createReportBundle(options: ReportBundleOptions): Promise<
 		files.push("logs.txt");
 	}
 
+	// Recent raw provider SSE diagnostics
 	if (options.rawSseText && options.rawSseText.trim().length > 0) {
 		data["raw-sse.txt"] = options.rawSseText;
 		files.push("raw-sse.txt");
 	}
 
+	// Session file
 	if (options.sessionFile) {
 		try {
 			const sessionContent = await Bun.file(options.sessionFile).text();
 			data[SESSION_BUNDLE_ENTRY] = sessionContent;
 			files.push(SESSION_BUNDLE_ENTRY);
-		} catch {}
+		} catch {
+			// Session file might not exist yet
+		}
 
+		// Artifacts directory (same path without .jsonl)
 		const artifactsDir = options.sessionFile.slice(0, -6);
 		await addDirectoryToArchive(data, files, artifactsDir, "artifacts");
 
+		// Look for subagent sessions in the same directory
 		const sessionDir = path.dirname(options.sessionFile);
 		const sessionBasename = sessionFileStem(path.basename(options.sessionFile));
 		await addSubagentSessions(data, files, sessionDir, sessionBasename);
 	}
 
+	// CPU profile
 	if (options.cpuProfile) {
 		data["profile.cpuprofile"] = options.cpuProfile.data;
 		files.push("profile.cpuprofile");
@@ -105,11 +163,13 @@ export async function createReportBundle(options: ReportBundleOptions): Promise<
 		files.push("profile.md");
 	}
 
+	// Heap snapshot
 	if (options.heapSnapshot) {
 		data["heap.heapsnapshot"] = options.heapSnapshot.data;
 		files.push("heap.heapsnapshot");
 	}
 
+	// Work profile
 	if (options.workProfile) {
 		data["work.folded"] = options.workProfile.folded;
 		files.push("work.folded");
@@ -121,11 +181,13 @@ export async function createReportBundle(options: ReportBundleOptions): Promise<
 		}
 	}
 
+	// Write archive
 	await writeArchive(outputPath, "tar.gz", Object.entries(data));
 
 	return { path: outputPath, files };
 }
 
+/** Add all files from a directory to the archive */
 async function addDirectoryToArchive(
 	data: Record<string, string>,
 	files: string[],
@@ -142,23 +204,32 @@ async function addDirectoryToArchive(
 				const content = await Bun.file(filePath).text();
 				data[archivePath] = content;
 				files.push(archivePath);
-			} catch {}
+			} catch {
+				// Skip files we can't read
+			}
 		}
-	} catch {}
+	} catch {
+		// Directory doesn't exist
+	}
 }
 
+/** Find and add subagent session files */
 async function addSubagentSessions(
 	data: Record<string, string>,
 	files: string[],
 	sessionDir: string,
 	parentBasename: string,
 ): Promise<void> {
+	// Subagent sessions are named with task IDs in the same directory
+	// They follow the pattern: {timestamp}_{sessionId}.jsonl
+	// We look for any sessions created after the parent session
 	try {
 		const entries = await fs.readdir(sessionDir, { withFileTypes: true });
 		const sessionFiles = entries
 			.filter(e => e.isFile() && isSessionFileName(e.name) && e.name !== sessionFileName(parentBasename))
 			.map(e => e.name);
 
+		// Limit to most recent 10 subagent sessions
 		const sortedFiles = sessionFiles.sort().slice(-10);
 
 		for (const filename of sortedFiles) {
@@ -169,11 +240,21 @@ async function addSubagentSessions(
 				data[archivePath] = content;
 				files.push(archivePath);
 
+				// Also add artifacts for this subagent session
 				const artifactsDir = filePath.slice(0, -6);
 				await addDirectoryToArchive(data, files, artifactsDir, `subagents/${filename.slice(0, -6)}`);
-			} catch {}
+			} catch {
+				// Skip files we can't read
+			}
 		}
-	} catch {}
+	} catch {
+		// Directory doesn't exist
+	}
+}
+
+/** Get recent log entries for display (tail-limited to avoid OOM on large files). */
+export async function getLogText(): Promise<string> {
+	return readLastLines(getLogPath(), MAX_LOG_LINES);
 }
 
 const LOG_FILE_PATTERN = new RegExp(`^${APP_NAME}\\.(\\d{4}-\\d{2}-\\d{2})\\.log$`);
@@ -238,6 +319,7 @@ export async function createDebugLogSource(): Promise<DebugLogSource> {
 	};
 }
 
+/** Calculate total size of artifact cache */
 export async function getArtifactCacheStats(
 	sessionsDir: string,
 ): Promise<{ count: number; totalSize: number; oldestDate: Date | null }> {
@@ -249,6 +331,7 @@ export async function getArtifactCacheStats(
 		const sessions = await fs.readdir(sessionsDir, { withFileTypes: true });
 
 		for (const session of sessions) {
+			// Artifact directories don't have .jsonl extension
 			if (session.isDirectory()) {
 				const dirPath = path.join(sessionsDir, session.name);
 				try {
@@ -265,14 +348,19 @@ export async function getArtifactCacheStats(
 					if (!oldestDate || stat.mtime < oldestDate) {
 						oldestDate = stat.mtime;
 					}
-				} catch {}
+				} catch {
+					// Skip inaccessible directories
+				}
 			}
 		}
-	} catch {}
+	} catch {
+		// Directory doesn't exist
+	}
 
 	return { count, totalSize, oldestDate };
 }
 
+/** Clear artifact cache older than N days */
 export async function clearArtifactCache(sessionsDir: string, daysOld: number = 30): Promise<{ removed: number }> {
 	const cutoff = new Date();
 	cutoff.setDate(cutoff.getDate() - daysOld);
@@ -290,10 +378,14 @@ export async function clearArtifactCache(sessionsDir: string, daysOld: number = 
 						await fs.rm(dirPath, { recursive: true, force: true });
 						removed++;
 					}
-				} catch {}
+				} catch {
+					// Skip inaccessible directories
+				}
 			}
 		}
-	} catch {}
+	} catch {
+		// Directory doesn't exist
+	}
 
 	return { removed };
 }

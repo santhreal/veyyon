@@ -15,9 +15,9 @@
 <meta property="og:title" content="Features | Veyyon" />
 <meta property="og:url" content="https://veyyon.dev/features.html" />
 <link rel="canonical" href="https://veyyon.dev/features.html" />
-<meta name="description" content="Argot per-project shorthand, hashline edits, approval modes, models and roles, sessions, MCP, skills, hooks, plan mode. Terminal coding agent." />
+<meta name="description" content="Subagent cockpit (/agents), unified search, autonomous auto-review, kernel CPU limits, persistent goal mode, hashline edits, approval modes. Terminal coding agent." />
 <link rel="preload" href="./fonts/JetBrainsMono-Bold.woff2" as="font" type="font/woff2" crossorigin />
-<link rel="preload" href="./fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="./fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="./site.css" />
 </head>
 <body>
@@ -31,9 +31,8 @@
       <a href="./features.html" aria-current="page">Features</a>
       <a href="./install.html">Install</a>
       <a href="./changelog.html">Changelog</a>
-      <a href="./blog/">Blog</a>
       <a href="./docs/">Docs</a>
-      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+      <a href="https://github.com/santhreal/veyyon"><svg class="nav-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
       <a href="./install.html" class="btn">Get started</a>
     <!--NAV:END-->
     </nav>
@@ -44,107 +43,214 @@
         <a href="./features.html" aria-current="page">Features</a>
         <a href="./install.html">Install</a>
         <a href="./changelog.html">Changelog</a>
-        <a href="./blog/">Blog</a>
         <a href="./docs/">Docs</a>
-        <a href="https://github.com/santhreal/veyyon">GitHub</a>
+        <a href="https://github.com/santhreal/veyyon"><svg class="nav-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
         <a href="./install.html" class="btn">Get started</a>
       <!--NAV:END-->
       </nav>
     </details>
   </div>
-  <div class="suntrack" aria-hidden="true"><canvas data-sun="progress" width="14" height="14"></canvas></div>
 </header>
 
 <main class="wrap">
 
   <div class="page-head">
-    <span class="kicker">Features</span>
     <h1>What the binary includes</h1>
-    <p>Agent loop and TUI: TypeScript on Bun. Grep, PTY/shell, hashline apply: Rust natives
-      (<span class="inline">@veyyon/natives</span>). Operator detail: handbook under <span class="inline">docs/</span>.</p>
+    <p>Subagent orchestration, unified structural search, autonomous deep review, kernel resource limits, and deterministic line-anchored editing. Developer detail: handbook under <span class="inline">docs/</span>.</p>
   </div>
 
+  <!-- 1. Subagent Cockpit & Inspector -->
   <section class="plain">
-    <div class="lead"><span class="kicker">Shorthand</span><h2>Argot per-project vocabulary</h2>
-      <p class="sub">Per-project shorthand vocabulary. The agent loads the project dictionary with <span class="inline">argot_load</span>; Veyyon generates a dictionary mapping short handles to strings repeated in the project. The model writes <span class="inline">§dbconn</span>; Veyyon expands full text before execution or display.</p></div>
+    <div class="lead">
+      <h2>Subagent Cockpit (<span class="inline">/agents</span>)</h2>
+      <p class="sub">Full visibility into every subagent. The <span class="inline">/agents</span> command opens an interactive inspector across the entire session tree. Stream live child transcripts, inspect intermediate tool calls and outputs, check real-time token spend, and jump directly into any subagent history with <span class="inline">history://&lt;id&gt;</span>.</p>
+    </div>
     <div class="panel">
       <div class="copy">
         <ul>
-          <li><b>Lossless</b>: no tool, file, or transcript ever sees an unexpanded handle.</li>
-          <li><b>Gated</b>: encoding is per model and by context size; decoding always runs, so a handle can never leak.</li>
-          <li><b>Generated</b>: Veyyon generates the dictionary from strings repeated across project files during <span class="inline">argot_load</span>.</li>
-          <li><b>Monotonic</b>: the per-project cache only grows, so a handle already taught always expands.</li>
-          <li><b>Enable</b>: <span class="inline">argot.enabled: true</span>, then configure allowed models in settings. Off by default.</li>
+          <li><b>Live Stream Inspector</b>: monitor concurrent worker thoughts, running tool executions, and stream outputs without blocking parent flow.</li>
+          <li><b>Session Tree Traversal</b>: drill down into nested subagents at any depth, switch thread focus, and audit child tool histories.</li>
+          <li><b>Transcript Resolution</b>: internal <span class="inline">history://&lt;id&gt;</span> and <span class="inline">agent://&lt;id&gt;</span> URLs let parent sessions and tools extract structured data from past workers.</li>
+          <li><b>Concurrency Governance</b>: bounded worker execution via dynamic session spawn semaphores and provider rate limits.</li>
         </ul>
       </div>
-      <pre class="demo" aria-hidden="true"><span class="c"># dictionary (generated on argot_load, cached, never committed)</span>
-<span class="k">sigil</span> = <span class="s">"§"</span>
+      <pre class="demo" aria-hidden="true"><span class="c"># interactive subagent cockpit</span>
+/agents
 
-[<span class="k">handles</span>]
-<span class="k">dbconn</span> = <span class="s">"src/server/db/connection.ts"</span>
-<span class="k">build</span>  = <span class="s">"bunx tsgo -p packages/coding-agent/tsconfig.json --noEmit"</span></pre>
+<span class="k">Active Spawns</span> (3 running, 1 completed):
+  [1] <span class="s">DynamicsAgent</span>   running  tool: edit (src/physics.ts)
+  [2] <span class="s">RenderAgent</span>     running  tool: search (type: structure)
+  [3] <span class="s">FlightAgent</span>     running  tool: bash (bun test)
+  [4] <span class="s">TypesWorker</span>     complete exit: 0 (14.2k tokens)
+
+<span class="c"># inspect worker history directly</span>
+read history://subagent-4-types</pre>
     </div>
-    <a class="section-link" href="./docs/why/argot.html">How Argot works</a>
   </section>
 
+  <!-- 2. Unified Search Tool -->
   <section>
-    <div class="lead"><span class="kicker">Editing</span><h2>Hashline and plan mode</h2>
-      <p class="sub"><span class="inline">edit</span> / <span class="inline">write</span> use content-hash anchors;
-        verification runs before disk write. Schema repair may rewrite tool JSON before validation.
-        Plan mode drafts a plan file; <span class="inline">resolve</span> handles plan approval.</p></div>
+    <div class="lead">
+      <h2>Unified Search (<span class="inline">search</span>)</h2>
+      <p class="sub">Replaces fragmented grep, find, and ast-grep tools with a single unified search tool. Combines full-text PCRE2 regex, gitignore-aware glob layout, and tree-sitter AST syntax queries under one interface. Cuts context tokens drastically and eliminates model tool-selection ambiguity.</p>
+    </div>
     <div class="panel">
       <div class="copy">
         <ul>
-          <li><b>Hashline</b>: anchors from prior reads; stale tags fail with recovery context.</li>
-          <li><b>Tool-call repair</b>: parse leniency, alias rename, strict unknown keys at dispatch.</li>
-          <li><b>Plan / goal modes</b>: engine modes; <span class="inline">/plan</span>, <span class="inline">/goal</span>.</li>
-          <li><b>Review</b>: <span class="inline">/review</span> and optional advisor role.</li>
+          <li><b>Three Modes, One Tool</b>:
+            <br />&bull; <span class="inline">type: "text"</span> — PCRE2 / regex full-text search with ripgrep speed and path bounds.
+            <br />&bull; <span class="inline">type: "files"</span> — Fast parallel file and layout discovery respecting <span class="inline">.gitignore</span>.
+            <br />&bull; <span class="inline">type: "structure"</span> — Tree-sitter / ast-grep syntax and semantic AST structure search across types, methods, and callsites.
+          </li>
+          <li><b>Context-Preserving Output</b>: returns matched lines, structural hierarchy, and file references without dumping redundant raw bytes into the prompt.</li>
+          <li><b>Zero Tool Confusion</b>: the model never hesitates between distinct grep or find tools; one tool handles every discovery task.</li>
         </ul>
       </div>
-      <pre class="demo" aria-hidden="true"><span class="c"># hashline edit path</span>
-edit routes/upload.ts
-  anchor from read snapshot tag
-  verify → write or error tool result</pre>
+      <pre class="demo" aria-hidden="true"><span class="c"># 1. Structural AST search for method signatures</span>
+search { type: "structure", input: "class $NAME { #flushUsageLocked($$$) { $$$ } }" }
+
+<span class="c"># 2. Fast regex text search with path filter</span>
+search { type: "text", input: "goalTokenDelta", path: "src/goals" }
+
+<span class="c"># 3. Workspace file layout discovery</span>
+search { type: "files", input: "packages/coding-agent/src" }</pre>
     </div>
   </section>
 
+  <!-- 3. Autonomous Auto-Review -->
   <section>
-    <div class="lead"><span class="kicker">Control</span><h2>Approvals (no OS sandbox)</h2>
-      <p class="sub"><span class="inline">tools.approvalMode</span> gates tool tiers. There is no Landlock,
-        seccomp, or Seatbelt confinement. Schema default is <span class="inline">yolo</span> (auto-approve all tiers).</p></div>
+    <div class="lead">
+      <h2>Autonomous Auto-Review (<span class="inline">afterEditCheck</span>)</h2>
+      <p class="sub">Automatic deep code inspection after complex multi-file changes. When enabled in settings (<span class="inline">afterEditCheck: review</span>) or triggered via <span class="inline">/review</span>, Veyyon autonomously reads back modified files and audits changes before concluding the turn.</p>
+    </div>
     <div class="grid">
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M10 2l7 3v5c0 4-3 6.5-7 8-4-1.5-7-4-7-8V5z"/></svg></div><h3>Tiers</h3><p>read / write / exec. Modes: <span class="inline">plan</span>, <span class="inline">ask</span>, <span class="inline">auto-edit</span>, <span class="inline">yolo</span>. Aliases: <span class="inline">always-ask</span>→ask, <span class="inline">write</span>→auto-edit.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><rect x="4" y="8" width="12" height="9" rx="1.5"/><path d="M7 8V6a3 3 0 0 1 6 0v2"/></svg></div><h3>Execpolicy</h3><p>User and project <span class="inline">.rules</span> refine which commands auto-run. Untrusted project dirs disable project rules/hooks until trusted.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M3 10h4l2-5 3 10 2-5h3"/></svg></div><h3>Non-interactive</h3><p><span class="inline">veyyon --print</span> (<span class="inline">-p</span>). No TTY for prompts; set <span class="inline">--approval-mode</span> or <span class="inline">--yolo</span>. Exit status follows the run.</p></div>
+      <div class="card">
+        <div class="ic"><svg viewBox="0 0 20 20"><path d="M4 4h12v12H4z"/><path d="M4 9h12M9 4v12"/></svg></div>
+        <h3>Cross-File Contracts</h3>
+        <p>Catches exported function signature mismatches, interface drift, missing type definitions, and broken import/export barrels across workspace packages.</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg viewBox="0 0 20 20"><path d="M10 2l7 3v5c0 4-3 6.5-7 8-4-1.5-7-4-7-8V5z"/></svg></div>
+        <h3>Regressions &amp; Invariants</h3>
+        <p>Audits boundary conditions, unhandled exceptions, lifecycle state transitions, concurrency races, and guarantees termination on queues and retry loops.</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg viewBox="0 0 20 20"><rect x="4" y="8" width="12" height="9" rx="1.5"/><path d="M7 8V6a3 3 0 0 1 6 0v2"/></svg></div>
+        <h3>Security &amp; Secret Leaks</h3>
+        <p>Verifies that credentials, private tokens, absolute host paths, and unsanitized command inputs never leak into public files, logs, or commit histories.</p>
+      </div>
     </div>
   </section>
 
+  <!-- 4. Kernel CPU & Resource Limits -->
   <section>
-    <div class="lead"><span class="kicker">Context</span><h2>Compaction, memory, sessions</h2>
-      <p class="sub"><span class="inline">compaction.strategy</span>: <span class="inline">handoff</span> | <span class="inline">snap</span>
-        (default <span class="inline">snap</span>). Memory backends opt-in. Session trees: branch / fork / tree.</p></div>
-    <div class="grid">
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><ellipse cx="10" cy="5" rx="6.5" ry="2.6"/><path d="M3.5 5v10c0 1.4 2.9 2.6 6.5 2.6s6.5-1.2 6.5-2.6V5M3.5 10c0 1.4 2.9 2.6 6.5 2.6s6.5-1.2 6.5-2.6"/></svg></div><h3>Memory</h3><p>Optional backends store project facts across sessions. Disabled until enabled; content is inspectable on disk.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><circle cx="5" cy="5" r="2.2"/><circle cx="5" cy="15" r="2.2"/><circle cx="15" cy="9" r="2.2"/><path d="M5 7.2v5.6M7 5h4a2 2 0 0 1 2 2"/></svg></div><h3>Session branching</h3><p>Session files are trees. <span class="inline">/tree</span> jumps, labels, and branches; <span class="inline">/fork</span> and <span class="inline">/branch</span> write a new session file without rewriting the original.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2.4"/><path d="M10 3v2.6M10 14.4V17M3 10h2.6M14.4 10H17"/></svg></div><h3>Cockpit</h3><p>TUI surface for concurrent subagents: per-agent model, thread focus, and live tool activity for the parent session.</p></div>
+    <div class="lead">
+      <h2>Kernel CPU &amp; Resource Limits (<span class="inline">/cpu-limit</span>)</h2>
+      <p class="sub">Machine-wide resource protection. Enforces hard kernel-level CPU quotas across the entire session process tree (main agent, subagents, bash commands, workers, and MCP servers) so heavy parallel builds never freeze your workstation.</p>
+    </div>
+    <div class="panel">
+      <div class="copy">
+        <ul>
+          <li><b>Kernel-Level Quotas</b>: Linux cgroup v2 quotas and Windows Job Objects throttle the entire process tree as a single unified budget group.</li>
+          <li><b>Tree-Wide Scope</b>: limits apply to the session and every subagent spawned beneath it; delegating work to 10 workers cannot multiply host CPU consumption.</li>
+          <li><b>Runaway Protection</b>: <span class="inline">session.cpuLimitKill: true</span> automatically sends SIGTERM to processes that peg cores past saturation, reporting a clean budget action instead of a crash.</li>
+          <li><b>Interactive Tuning</b>: adjust on the fly with <span class="inline">/cpu-limit 4</span> or remove with <span class="inline">/cpu-limit remove</span> without editing persistent config.</li>
+        </ul>
+      </div>
+      <pre class="demo" aria-hidden="true"><span class="c"># limit entire session tree to 4 CPU cores</span>
+/cpu-limit 4
+
+<span class="c"># kernel enforcement active</span>
+cgroup v2: /sys/fs/cgroup/veyyon-session-38a1/
+cpu.max: 400000 100000 (4 cores hard ceiling)
+processes: 14 (main CLI, 3 workers, 2 compilers)</pre>
     </div>
   </section>
 
+  <!-- 5. Zero-Leak Secrets -->
   <section>
-    <div class="lead"><span class="kicker">Extend</span><h2>Extensions surface</h2>
-      <p class="sub">MCP servers, skills, TypeScript extensions, browser, and web search attach to the same agent
-        loop. Non-interactive runs use <span class="inline">veyyon --print</span>.</p></div>
+    <div class="lead">
+      <h2>Zero-Leak Secrets (<span class="inline">/secret</span>)</h2>
+      <p class="sub">Vault-stored credentials referenced as <span class="inline">#NAME#</span> tokens. Real values are injected right before execution and never leak into prompts, logs, or transcripts.</p>
+    </div>
+    <div class="panel">
+      <div class="copy">
+        <ul>
+          <li><b>Token References</b>: write <span class="inline">#NAME#</span> where the credential belongs — a header, an env var, a CLI flag. The real value is substituted in just before the tool runs, and you never see it.</li>
+          <li><b>Vault Storage</b>: secrets live in an encrypted vault on disk, separate from project config. A secret is created, updated, and deleted through <span class="inline">/secret</span> without touching tracked files.</li>
+          <li><b>No Prompt Leakage</b>: the model's history contains the token, not the value. Logs, transcripts, exports, and subagent returns all carry the opaque token — the real value never crosses the model boundary.</li>
+        </ul>
+      </div>
+      <pre class="demo" aria-hidden="true"><span class="c"># reference a secret in a tool call</span>
+bash: curl -H "Authorization: Bearer #STAGING_TOKEN#" https://api.example.com
+
+<span class="c"># the model sees #STAGING_TOKEN#, never the value</span>
+<span class="c"># the value is injected at execution time</span></pre>
+    </div>
+  </section>
+
+  <!-- 6. Autoswarm -->
+  <section>
+    <div class="lead">
+      <h2>Autoswarm (<span class="inline">/autoswarm</span>)</h2>
+      <p class="sub">Autoresearch with breadth. Each iteration builds several candidate arms instead of one change, rejects the ones that cannot be trusted, has the survivors cross-review each other, and keeps at most one.</p>
+    </div>
+    <div class="panel">
+      <div class="copy">
+        <ul>
+          <li><b>Multi-Arm Search</b>: breadth (1–8, default 3) controls how many candidate arms each iteration produces. Arms share one worktree — they are built, measured, and reverted one at a time, so breadth costs iteration time, not disk.</li>
+          <li><b>Mechanical Rejection</b>: before a reviewer sees anything, four rejections fire automatically — <span class="inline">empty</span> (changed nothing), <span class="inline">scope</span> (edited an off-limits path), <span class="inline">opaque</span> (unreadable diff: binary patch or 512+ base64 chars), and <span class="inline">duplicate</span> (same diff as another arm).</li>
+          <li><b>Cross-Review Ring</b>: with 3+ survivors, each arm is reviewed by another in a ring where no pair reviews each other. A reviewer flags an arm when the metric moved for the wrong reason — a hardcoded answer, a cache keyed on benchmark inputs, a narrowed input space, or work relocated out of the timed region. A flagged arm cannot win, however good its number.</li>
+          <li><b>Relocated-Cost Detection</b>: a change that moves work out of the timed region lowers the metric without making anything faster. If the harness reports a cold-start metric (<span class="inline">cold_ms</span>), growth above 25ms against baseline is stated to the reviewer as a measured fact.</li>
+          <li><b>Setup Console</b>: <span class="inline">/autoswarm</span> opens an interactive console for the goal, breadth, attempts, and certification toggle. Text after the command prefills the goal: <span class="inline">/autoswarm make the tokenizer faster</span>.</li>
+        </ul>
+      </div>
+      <pre class="demo" aria-hidden="true"><span class="c"># autoswarm setup console</span>
+/autoswarm
+
+<span class="k">Autoswarm setup</span>
+<span class="c">Autoresearch with breadth. The model derives the metric from your harness.</span>
+
+<span class="k">› Goal</span>          make the tokenizer faster
+  <span class="k">Breadth</span>       3     candidate arms per iteration
+  <span class="k">Attempts</span>      1     retries before an arm is abandoned
+  <span class="k">Certification</span> on    arms cross-review before one is kept
+
+<span class="c">3 arms in a review ring: each arm is reviewed by another,</span>
+<span class="c">and no pair reviews each other.</span>
+
+<span class="c">↑↓ field   ←→ adjust   space toggle   enter start   esc cancel</span></pre>
+    </div>
+  </section>
+
+  <!-- 7. Control, Sessions, & Extensions -->
+  <section>
+    <div class="lead">
+      <h2>Approvals, Session Trees, and MCP</h2>
+      <p class="sub">Configurable permission tiers, non-destructive session branching, and broad extensibility via MCP servers, custom skills, and native tools.</p>
+    </div>
     <div class="grid">
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M7 3v4M13 3v4M5 7h10v3a5 5 0 0 1-10 0z"/><path d="M10 15v3"/></svg></div><h3>MCP, skills, hooks</h3><p>MCP servers register tools. <span class="inline">SKILL.md</span> files register procedures. Extensions register tools, commands, and <span class="inline">pi.on</span> lifecycle handlers.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M3 8h14M3 12h14M10 3c2.5 2 2.5 12 0 14M10 3c-2.5 2-2.5 12 0 14"/></svg></div><h3>Browser &amp; web search</h3><p>Built-in headless browser tool and multi-provider web search for live page content and search results.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M4 15l5-10 2 6 2-3 3 7"/></svg></div><h3>Doctor &amp; keybindings</h3><p><span class="inline">veyyon plugin doctor</span> checks plugin health: directories, manifests, entry paths, enabled features. Run <span class="inline">veyyon setup status</span> to verify configured provider credentials. Keybindings: <span class="inline">keybindings.yml</span> under the active agent dir; vim mode is a setting.</p></div>
+      <div class="card">
+        <div class="ic"><svg viewBox="0 0 20 20"><path d="M10 2l7 3v5c0 4-3 6.5-7 8-4-1.5-7-4-7-8V5z"/></svg></div>
+        <h3>Approval Tiers</h3>
+        <p>Permission modes: <span class="inline">plan</span>, <span class="inline">ask</span>, <span class="inline">auto-edit</span>, and <span class="inline">yolo</span>. Project rules refine auto-run commands; untrusted directories require explicit trust.</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg viewBox="0 0 20 20"><circle cx="5" cy="5" r="2.2"/><circle cx="5" cy="15" r="2.2"/><circle cx="15" cy="9" r="2.2"/><path d="M5 7.2v5.6M7 5h4a2 2 0 0 1 2 2"/></svg></div>
+        <h3>Session Branching</h3>
+        <p>Session files are non-destructive trees. <span class="inline">/tree</span> navigates history; <span class="inline">/fork</span> and <span class="inline">/branch</span> create new session timelines without modifying previous state.</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg viewBox="0 0 20 20"><path d="M7 3v4M13 3v4M5 7h10v3a5 5 0 0 1-10 0z"/><path d="M10 15v3"/></svg></div>
+        <h3>MCP, Skills, Browser</h3>
+        <p>Integrate external MCP servers, declare local <span class="inline">SKILL.md</span> playbooks, and drive headless web automation with the built-in browser tool.</p>
+      </div>
     </div>
   </section>
 
   <section class="thesis">
-    <span class="kicker">Reference</span>
-    <h2>Operator detail lives in the handbook</h2>
-    <p>Settings, tools, modes, and layout are documented under
+    <h2>Developer detail lives in the handbook</h2>
+    <p>Settings, tools, modes, and architecture are documented under
       <a href="./docs/">docs/</a>. Source: <a href="https://github.com/santhreal/veyyon">github.com/santhreal/veyyon</a>.</p>
   </section>
 
@@ -164,16 +270,14 @@ edit routes/upload.ts
       <a href="./features.html" aria-current="page">Features</a>
       <a href="./install.html">Install</a>
       <a href="./changelog.html">Changelog</a>
-      <a href="./blog/">Blog</a>
       <a href="./docs/">Docs</a>
-      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+      <a href="https://github.com/santhreal/veyyon"><svg class="nav-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
     <!--NAV:END-->
     </nav>
   </div>
 </footer>
 
 <script src="./sun-field.js" defer></script>
-<script src="./motion.js" defer></script>
 <script src="./sunmark.js" defer></script>
 </body>
 </html>

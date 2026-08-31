@@ -67,6 +67,8 @@
  * `packages/utils/test/sandbox-gate-contracts.test.ts` fails when it does.
  */
 
+import type * as nodeFs from "node:fs";
+import type * as nodeOs from "node:os";
 import * as path from "node:path";
 import { SANDBOX_MARKER_ENV_KEY } from "../../src/dir-env-keys";
 
@@ -86,8 +88,8 @@ import { SANDBOX_MARKER_ENV_KEY } from "../../src/dir-env-keys";
  *
  * `node:path` is exempt because nothing patches it -- it is pure string arithmetic.
  */
-const fsModule = require("node:fs") as typeof import("node:fs");
-const osModule = require("node:os") as typeof import("node:os");
+const fsModule = require("node:fs") as typeof nodeFs;
+const osModule = require("node:os") as typeof nodeOs;
 
 /**
  * The marker the sandbox guest sets. A FAST PRE-CHECK ONLY.

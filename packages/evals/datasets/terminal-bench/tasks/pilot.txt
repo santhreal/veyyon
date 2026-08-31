@@ -1,0 +1,11 @@
+# @biased: the 10 cheapest/fastest tasks by agent timeout and expert time estimate — a speed-skewed subset for quick validation, not a representative headline.
+bun-sourcemap-leak
+html-js-filter
+cli-2ph-simplex
+layout-config-recreation
+cargo-flight-dispatch
+erp-procurement-planning
+kv-live-surgery
+production-planning
+cad-model
+music-harmony

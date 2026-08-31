@@ -1,13 +1,93 @@
 import { errorMessage } from "@veyyon/utils/type-guards";
-import type { PatternAnalysis } from "./regex-helpers";
-import {
-	enforceGlobalFlag,
-	MAX_GROUP_DEPTH,
-	MAX_PATTERN_LENGTH,
-	splitRegexLiteral,
-	validateFlags,
-} from "./regex-helpers";
 
+const MAX_PATTERN_LENGTH = 4096;
+const MAX_GROUP_DEPTH = 64;
+const MAX_FLAG_LENGTH = 16;
+
+interface PatternAnalysis {
+	/** Whether this expression can succeed without consuming a character. */
+	nullable: boolean;
+	/** Minimum and maximum characters this expression can consume. */
+	minimumWidth: number;
+	maximumWidth: number;
+	/** Variable-width alternation decisions encountered along one matching path. */
+	variableWidthAlternations: number;
+	/** Whether this expression contains a variable-width quantifier. */
+	hasVariableQuantifier: boolean;
+	/** Whether this expression contains an alternation. */
+	hasAlternation: boolean;
+	/** Source shapes of variably quantified atoms at the consuming boundaries. */
+	startsWithVariableAtom: string | undefined;
+	endsWithVariableAtom: string | undefined;
+}
+
+/**
+ * Add global scanning while preserving user-provided flags.
+ *
+ * A sticky expression is deliberately refused rather than combined with `g`: `y` requires the
+ * next match to begin exactly at `lastIndex`, so the first piece of ordinary text before a secret
+ * stops the scan and leaves every later match exposed.
+ */
+function enforceGlobalFlag(flags: string): string {
+	if (flags.includes("y")) {
+		throw new Error('the sticky "y" flag is incompatible with global secret scanning');
+	}
+	return flags.includes("g") ? flags : `${flags}g`;
+}
+
+/**
+ * Split documented `/pattern/flags` syntax without maintaining a stale allow-list of flags.
+ *
+ * The suffix is intentionally allowed to contain any ASCII letters here. The runtime validates it
+ * below, which makes `/secret/z` an actionable typo instead of silently treating the whole literal
+ * as a raw pattern that will never match `secret`.
+ */
+function splitRegexLiteral(pattern: string): { pattern: string; flags: string } | undefined {
+	if (!pattern.startsWith("/")) return undefined;
+
+	for (let index = pattern.length - 1; index > 0; index--) {
+		if (pattern[index] !== "/") continue;
+		let precedingBackslashes = 0;
+		for (let cursor = index - 1; cursor >= 0 && pattern[cursor] === "\\"; cursor--) precedingBackslashes++;
+		if (precedingBackslashes % 2 !== 0) continue;
+
+		const flags = pattern.slice(index + 1);
+		if (!/^[A-Za-z]*$/.test(flags)) {
+			throw new Error("regex literal flags must contain only ASCII letters");
+		}
+		return { pattern: pattern.slice(1, index), flags };
+	}
+	return undefined;
+}
+
+/** Ask the active JavaScript runtime which flags it supports, while adding security semantics. */
+function validateFlags(flags: string, source: string): void {
+	if (flags.length > MAX_FLAG_LENGTH) {
+		throw new Error(`${source} regex flags are too long to be valid`);
+	}
+	if (flags.includes("y")) {
+		throw new Error(`the sticky "y" flag in ${source} is incompatible with global secret scanning`);
+	}
+	try {
+		// The empty pattern isolates flag validation from pattern validation. In particular this
+		// accepts newer runtime flags such as `d` and `v` without a hard-coded list going stale.
+		new RegExp("", flags);
+	} catch (error) {
+		const message = errorMessage(error);
+		throw new Error(`${source} has invalid or incompatible regex flags ${JSON.stringify(flags)} (${message})`);
+	}
+}
+
+/**
+ * A small, bounded structural parser for the two regex properties that matter at this boundary.
+ *
+ * JavaScript offers no match timeout. Running an operator-supplied expression against a probe is
+ * therefore not a safety check: the check itself can hang. This parser instead walks the source
+ * once, caps both source length and nesting, and conservatively refuses the high-risk structures:
+ * variable quantifiers nested inside another repetition, repeated alternations, concatenated
+ * variable-width alternations, and backreferences whose consumption cannot be established locally.
+ * It also computes nullability so zero-width-only patterns cannot be accepted as protection.
+ */
 class PatternSafetyParser {
 	#index = 0;
 	#depth = 0;
@@ -238,6 +318,7 @@ class PatternSafetyParser {
 			maximum = match[2] === undefined ? minimum : match[2] === "" ? Number.POSITIVE_INFINITY : Number(match[2]);
 			this.#index += match[0].length;
 		}
+		// A trailing question mark changes greediness, not the language or its safety analysis.
 		if (this.pattern[this.#index] === "?") this.#index++;
 		return { minimum, maximum };
 	}
@@ -340,6 +421,7 @@ function validatePatternSafety(pattern: string, flags: string): void {
 	}
 }
 
+/** Compile a secret regex entry with global scanning enabled and unsafe semantics refused. */
 export function compileSecretRegex(pattern: string, flags?: string): RegExp {
 	const literal = splitRegexLiteral(pattern);
 	const resolvedPattern = literal?.pattern ?? pattern;
@@ -349,7 +431,9 @@ export function compileSecretRegex(pattern: string, flags?: string): RegExp {
 	validateFlags(explicitFlags, 'the explicit "flags" field');
 	validateFlags(literalFlags, "the regex literal");
 
-	const mergedFlags = Array.from(new Set(explicitFlags + literalFlags)).join("");
+	// Each source is validated before de-duplication so `/secret/ii` remains an error, while a
+	// deliberate `g` in both supported flag locations is harmless.
+	const mergedFlags = [...new Set([...explicitFlags, ...literalFlags])].join("");
 	const resolvedFlags = enforceGlobalFlag(mergedFlags);
 	validatePatternSafety(resolvedPattern, resolvedFlags);
 	let compiled: RegExp;

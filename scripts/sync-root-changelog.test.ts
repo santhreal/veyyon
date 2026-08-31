@@ -189,13 +189,19 @@ describe("the root changelog covers every package", () => {
 	 * reads like a changelog rather than like whatever order the packages happened
 	 * to be read in.
 	 */
-	it("orders sections Added before Fixed within a release", () => {
+	it("orders Breaking Changes before Added and Fixed within a release", () => {
 		const md = renderRootChangelog([
 			{ name: "a", md: "# Changelog\n\n## [1.0.1] - 2026-01-01\n\n### Fixed\n\n- fixed thing\n" },
 			{ name: "b", md: "# Changelog\n\n## [1.0.1] - 2026-01-01\n\n### Added\n\n- added thing\n" },
+			{
+				name: "c",
+				md: "# Changelog\n\n## [1.0.1] - 2026-01-01\n\n### Breaking Changes\n\n- broke thing\n",
+			},
 		]) as string;
 
+		expect(md.indexOf("### Breaking Changes")).toBeLessThan(md.indexOf("### Added"));
 		expect(md.indexOf("### Added")).toBeLessThan(md.indexOf("### Fixed"));
+		expect(md).toContain("- broke thing");
 		expect(md).toContain("- added thing");
 		expect(md).toContain("- fixed thing");
 	});

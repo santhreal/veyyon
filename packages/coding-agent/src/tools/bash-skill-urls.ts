@@ -2,6 +2,8 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage, urlScheme } from "@veyyon/utils";
 import type { Skill } from "../extensibility/skills";
+// Owners, not the `internal-urls` barrel: the barrel re-exports every protocol
+// handler and reaches hundreds of modules.
 import { type LocalProtocolOptions, resolveLocalUrlToPath } from "../internal-urls/local-protocol";
 import { InternalUrlRouter } from "../internal-urls/router";
 import type { InternalResource, ResolveContext } from "../internal-urls/types";
@@ -21,7 +23,14 @@ interface InternalUrlResolver {
 }
 
 export interface InternalUrlExpansionOptions {
-	/** The calling session's resolved skills, or `undefined` when it never resolved them. The two are not interchangeable. `[]` is an assertion that the session HAS no skills, */
+	/**
+	 * The calling session's resolved skills, or `undefined` when it never resolved them.
+	 *
+	 * The two are not interchangeable. `[]` is an assertion that the session HAS no skills,
+	 * and `skill-protocol.ts` honors it (`context?.skills ?? getActiveSkills()`), so an empty
+	 * array suppresses the process-wide snapshot and every `skill://` reports
+	 * "Unknown skill: X / Available: none". Callers that do not know MUST pass `undefined`.
+	 */
 	skills: readonly Skill[] | undefined;
 	noEscape?: boolean;
 	internalRouter?: InternalUrlResolver;
@@ -121,7 +130,11 @@ async function resolveInternalUrlToPath(
 	return path.resolve(resource.sourcePath);
 }
 
-/** Expand supported internal URLs in a bash command string to shell-escaped absolute paths. Unresolvable URLs and literal mentions inside larger quoted text are left unchanged. */
+/**
+ * Expand supported internal URLs in a bash command string to shell-escaped absolute paths.
+ * Unresolvable URLs and literal mentions inside larger quoted text are left unchanged.
+ * Supported schemes: skill://, agent://, artifact://, memory://, rule://, local://
+ */
 export async function expandInternalUrls(command: string, options: InternalUrlExpansionOptions): Promise<string> {
 	if (!command.includes("://") && !command.includes("local:/")) return command;
 

@@ -1,3 +1,11 @@
+/**
+ * Ruby runtime resolution utilities.
+ *
+ * Resolves the Ruby interpreter for the local kernel and filters the
+ * environment to a safe allowlist before exposing it to user cell code. Much
+ * simpler than the Python sibling — Ruby has no venv layout to detect — but it
+ * mirrors the same allowlist/denylist + explicit-interpreter shape.
+ */
 import {
 	BASE_ENV_ALLOW_PREFIXES,
 	BASE_ENV_ALLOWLIST,
@@ -36,10 +44,14 @@ const WINDOWS_ENV_ALLOWLIST = [
 	"WINDIR",
 ];
 
+// Ruby version managers and gem layout live behind these prefixes; passing them
+// through lets `bundle`/`gem`/rbenv/asdf-shimmed code resolve consistently.
 const RUBY_ENV_ALLOW_PREFIXES = [...BASE_ENV_ALLOW_PREFIXES, "GEM_", "BUNDLE", "RBENV_", "RUBY", "CHRUBY_", "ASDF_"];
 
 export interface RubyRuntime {
+	/** Path to the ruby executable. */
 	rubyPath: string;
+	/** Filtered environment variables. */
 	env: Record<string, string | undefined>;
 }
 
@@ -50,6 +62,12 @@ export const filterEnv = createEnvFilter({
 	allowPrefixes: RUBY_ENV_ALLOW_PREFIXES,
 });
 
+/**
+ * Resolve an explicitly configured interpreter (`ruby.interpreter`) into a
+ * runtime, bypassing discovery. Does not probe the executable — callers must
+ * check it actually runs. `~` expands to the home directory and relative paths
+ * resolve against `cwd`.
+ */
 export function resolveExplicitRubyRuntime(
 	interpreter: string,
 	cwd: string,
@@ -59,6 +77,10 @@ export function resolveExplicitRubyRuntime(
 	return { rubyPath, env: { ...baseEnv } };
 }
 
+/**
+ * Enumerate candidate Ruby runtimes in priority order. With an explicit
+ * interpreter that is the only candidate; otherwise the first `ruby` on PATH.
+ */
 export function enumerateRubyRuntimes(
 	cwd: string,
 	baseEnv: Record<string, string | undefined>,
@@ -67,6 +89,9 @@ export function enumerateRubyRuntimes(
 	return enumerateRuntimes(cwd, baseEnv, "ruby", (rubyPath, env) => ({ rubyPath, env }), interpreter);
 }
 
+/**
+ * Resolve the highest-priority Ruby runtime. Throws when none exists.
+ */
 export function resolveRubyRuntime(
 	cwd: string,
 	baseEnv: Record<string, string | undefined>,

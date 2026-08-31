@@ -1,3 +1,12 @@
+// Device authorization and token refresh adapted from NousResearch/hermes-agent (MIT).
+
+/**
+ * xAI Grok OAuth device authorization flow.
+ *
+ * Requests an RFC 8628 device code, opens xAI's verification page, and polls
+ * the discovered token endpoint until the user approves the login.
+ */
+
 import { decodeJwtPayload } from "@veyyon/utils/jwt";
 import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
@@ -29,6 +38,16 @@ interface XAIDeviceAuthorization {
 	intervalSeconds: number;
 }
 
+/**
+ * Validate an xAI OIDC endpoint against its scheme and host.
+ *
+ * The discovery response is long-lived and its token endpoint receives every
+ * future refresh token. Rejecting non-HTTPS or non-`x.ai` / `*.x.ai` hosts
+ * pins that endpoint to the xAI auth origin.
+ *
+ * @throws Error with message `Invalid xAI <field>: <url>` when the URL fails
+ *         either scheme or host validation.
+ */
 export function validateXAIEndpoint(url: string, field: string): string {
 	let parsed: URL;
 	try {
@@ -46,10 +65,13 @@ export function validateXAIEndpoint(url: string, field: string): string {
 	return url;
 }
 
+/** Fetch xAI's OIDC discovery document and validate the token endpoint. */
 async function xaiOAuthDiscovery(
 	timeoutMs: number = DISCOVERY_TIMEOUT_MS,
 	fetchOverride?: FetchImpl,
 ): Promise<XAIOAuthDiscovery> {
+	// The scoped fence spans the body reads below and its timer is cleared
+	// on settle (a bare AbortSignal.timeout stays armed for the full timeout).
 	const requestTimeout = scopedTimeoutSignal(timeoutMs);
 	try {
 		const fetchImpl = fetchOverride ?? fetch;
@@ -104,6 +126,13 @@ async function xaiOAuthDiscovery(
 	}
 }
 
+/**
+ * Check whether a JWT access token is at or past its `exp` claim (with an
+ * optional refresh-skew margin).
+ *
+ * Returns `false` for malformed input because this is a refresh-trigger check,
+ * not token validation.
+ */
 export function isXAIAccessTokenExpiring(jwt: string, skewSeconds: number = 0): boolean {
 	const payload = decodeJwtPayload(jwt);
 	if (!isRecord(payload)) return false;
@@ -198,6 +227,8 @@ async function requestXAIDeviceAuthorization(
 	fetchImpl: FetchImpl,
 	signal?: AbortSignal,
 ): Promise<XAIDeviceAuthorization> {
+	// The scoped fence spans the body reads below and its timer is cleared
+	// on settle (a bare AbortSignal.timeout stays armed for the full timeout).
 	const requestTimeout = scopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS, signal);
 	try {
 		let response: Response;
@@ -227,7 +258,9 @@ async function requestXAIDeviceAuthorization(
 			let detail = "";
 			try {
 				detail = (await response.text()).trim();
-			} catch {}
+			} catch {
+				// Ignore body-read failures; the status code is the diagnostic.
+			}
 			throw new AIError.OAuthError(
 				`xAI device-code request failed: ${response.status}${detail ? ` ${detail}` : ""}`,
 				{
@@ -260,6 +293,8 @@ async function pollXAIDeviceToken(
 	fetchImpl: FetchImpl,
 	signal?: AbortSignal,
 ): Promise<OAuthDeviceCodePollResult<OAuthCredentials>> {
+	// The scoped fence spans the body reads below and its timer is cleared
+	// on settle (a bare AbortSignal.timeout stays armed for the full timeout).
 	const requestTimeout = scopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS, signal);
 	try {
 		let response: Response;
@@ -328,6 +363,7 @@ async function pollXAIDeviceToken(
 	}
 }
 
+/** Log in to xAI Grok with the RFC 8628 device authorization grant. */
 export async function loginXAIOAuth(ctrl: OAuthController): Promise<OAuthCredentials> {
 	const fetchImpl = ctrl.fetch ?? fetch;
 	const discovery = await xaiOAuthDiscovery(DISCOVERY_TIMEOUT_MS, fetchImpl);
@@ -344,10 +380,18 @@ export async function loginXAIOAuth(ctrl: OAuthController): Promise<OAuthCredent
 		expiresInSeconds: device.expiresInSeconds,
 		signal: ctrl.signal,
 	});
+	// Device-code flows get no browser redirect of their own; bring up the
+	// branded success page so grok ends on the same screen as callback providers.
 	emitOAuthSuccessPage(ctrl);
 	return credentials;
 }
 
+/**
+ * Refresh an xAI OAuth access token using a stored refresh_token.
+ *
+ * Re-runs OIDC discovery and re-validates the token endpoint before sending
+ * the stored refresh token.
+ */
 export async function refreshXAIOAuthToken(refreshToken: string, fetchOverride?: FetchImpl): Promise<OAuthCredentials> {
 	const fetchImpl = fetchOverride ?? fetch;
 	if (typeof refreshToken !== "string" || !refreshToken.trim()) {
@@ -363,6 +407,9 @@ export async function refreshXAIOAuthToken(refreshToken: string, fetchOverride?:
 		refresh_token: refreshToken,
 	});
 
+	// The scoped fence covers only the refresh request (discovery has its own),
+	// spans the body reads, and clears its timer on settle (a bare
+	// AbortSignal.timeout stays armed for the full timeout).
 	const requestTimeout = scopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS);
 	try {
 		const response = await fetchImpl(tokenEndpoint, {
@@ -379,7 +426,9 @@ export async function refreshXAIOAuthToken(refreshToken: string, fetchOverride?:
 			let detail = "";
 			try {
 				detail = (await response.text()).trim();
-			} catch {}
+			} catch {
+				// Ignore body-read failures; the status code is the diagnostic.
+			}
 			throw new AIError.OAuthError(`xAI token refresh failed: ${response.status}${detail ? ` ${detail}` : ""}`, {
 				kind: "token-refresh",
 				provider: "xai",

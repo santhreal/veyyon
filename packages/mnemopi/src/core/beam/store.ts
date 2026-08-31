@@ -1,5 +1,8 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
-import { batched, errorMessage, HOUR_MS, isRecord, logger } from "@veyyon/utils";
+import { batched } from "@veyyon/utils/array";
+import * as logger from "@veyyon/utils/logger";
+import { HOUR_MS } from "@veyyon/utils/time";
+import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import { scratchpadMaxItems } from "../../config";
 import { transaction } from "../../db";
 import { toUtcIso } from "../../util/datetime";
@@ -54,9 +57,11 @@ const TRUST_TIERS: Record<string, true> = {
 	EXTERNAL_WRITE: true,
 	IMPORTED: true,
 };
+// Read through `../../config`, the one owner of MNEMOPI_SP_MAX. It falls back to 1000
+// rather than seeding a NaN cap that corrupts the pruning bound and its SQLite LIMIT bind.
 const SCRATCHPAD_MAX_ITEMS = scratchpadMaxItems();
 
-export function metadataJson(metadata: Metadata | null | undefined): string | null {
+function metadataJson(metadata: Metadata | null | undefined): string | null {
 	return metadata == null ? null : JSON.stringify(metadata);
 }
 
@@ -113,7 +118,7 @@ function normalizeTrustTier(value: unknown, source: string): TrustTier {
 	return "STATED";
 }
 
-export function emitEvent(beam: BeamMemoryState, type: string, data: EventPayload): void {
+function emitEvent(beam: BeamMemoryState, type: string, data: EventPayload): void {
 	const event: BeamEvent = {
 		...data,
 		type,
@@ -177,6 +182,8 @@ function addTemporalAnnotations(beam: BeamMemoryState, memoryId: string, timesta
 			beam.annotations?.add?.(memoryId, "has_source", source);
 		}
 	} catch (error) {
+		// Non-blocking (matches Python's path), but dropped annotations degrade
+		// temporal recall — surface it.
 		logger.warn("mnemopi: temporal annotation enrichment failed for stored memory", {
 			memoryId,
 			error: errorMessage(error),
@@ -207,6 +214,8 @@ function proactiveLinkIfEnabled(
 			extractEntities,
 		});
 	} catch (error) {
+		// Must never block durable memory storage, but a silently missing graph
+		// link is invisible recall loss — surface it.
 		logger.warn("mnemopi: proactive graph linking failed; memory stored without episodic links", {
 			memoryId,
 			error: errorMessage(error),
@@ -214,7 +223,12 @@ function proactiveLinkIfEnabled(
 	}
 }
 
-/** Run LLM fact extractor over freshly stored content and persist facts. */
+/**
+ * Run the LLM fact extractor over freshly stored content and persist the
+ * resulting facts. Best-effort: failures (no LLM, closed DB, malformed output)
+ * are swallowed so they can never disrupt the synchronous `remember` that
+ * scheduled them.
+ */
 async function runFactExtraction(beam: BeamMemoryState, memoryId: string, content: string): Promise<void> {
 	try {
 		const extracted = await extractFactCategoriesSafe(content);
@@ -222,6 +236,8 @@ async function runFactExtraction(beam: BeamMemoryState, memoryId: string, conten
 		storeExtractedFactCategories(beam, extracted, 0, memoryId);
 		invalidateCaches(beam);
 	} catch (error) {
+		// Never disrupts the `remember` that scheduled it, but a failed
+		// extraction means facts silently never became searchable — surface it.
 		logger.warn("mnemopi: background fact extraction failed; no facts stored for memory", {
 			memoryId,
 			error: errorMessage(error),
@@ -229,7 +245,15 @@ async function runFactExtraction(beam: BeamMemoryState, memoryId: string, conten
 	}
 }
 
-/** Schedule background fact extraction for a stored memory. */
+/**
+ * Schedule background fact extraction for a stored memory. `remember` is
+ * synchronous, so the async extractor is fired-and-forgotten; the promise is
+ * tracked on `beam.pendingExtractions` so callers can drain it via
+ * `flushExtractions()` (tests, graceful shutdown). The active runtime options
+ * (host LLM `complete`, model, prompt overrides) are captured here and
+ * re-entered inside the task because the AsyncLocalStorage scope set by
+ * `Mnemopi.#withRuntimeOptions` has already exited by the time the task runs.
+ */
 function scheduleFactExtraction(beam: BeamMemoryState, memoryId: string, content: string): void {
 	if (content.trim() === "") return;
 	const runtimeOptions = getMnemopiRuntimeOptions();
@@ -245,21 +269,44 @@ function rowToDict(row: Row): Row {
 	return { ...row };
 }
 
-/** Re-embedding batch size for model-change rebuilds. */
+/** Re-embedding batch size for a model-change rebuild — bounds each background
+ *  embedding request instead of embedding the whole corpus in one call. */
 const EMBED_REBUILD_BATCH = 128;
 
-/** Reconcile stored embeddings against the active embedding model at store open. */
+/**
+ * Reconcile stored embeddings against the active embedding model at store open.
+ *
+ * Every `memory_embeddings` row is stamped with the model that produced it (see
+ * `runEmbedding` in `helpers.ts`). When the configured embedding model changes,
+ * its vector dimension changes too, so the previously-stored vectors are no
+ * longer comparable. On a mismatch we wipe every stored vector — the
+ * `memory_embeddings` table, the `episodic_memory.binary_vector` column, and the
+ * sqlite-vec `vec_episodes` index — then enqueue all live memories for
+ * background re-embedding under the new model via `scheduleEmbedding`.
+ *
+ * Runs once per store open; a fresh store (no embeddings) or an already-current
+ * store is a no-op. The destructive wipe is skipped whenever it could not be
+ * rebuilt — embeddings disabled via the runtime option OR the
+ * `MNEMOPI_NO_EMBEDDINGS` env, or an unresolved (empty) active model — so a
+ * stale-but-valid corpus is never destroyed without a replacement. MUST run
+ * inside the active runtime-options scope so `currentEmbeddingModel()` /
+ * `embeddingsDisabled()` reflect the per-instance configuration.
+ */
 export function reconcileEmbeddingModel(beam: BeamMemoryState): void {
 	if (embeddingsDisabled()) return;
 	const active = currentEmbeddingModel().trim();
 	if (active === "") return;
 
+	// Re-embed in bounded batches so a corpus-wide rebuild never issues one giant
+	// embedding request; each batch is its own tracked background task.
 	const rebuild = (items: readonly EmbedItem[]): void => {
 		for (const batch of batched(items, EMBED_REBUILD_BATCH)) {
 			scheduleEmbedding(beam, batch);
 		}
 	};
 
+	// Stop at the first row whose stamped model differs from the active one
+	// (NULL/unstamped counts as a mismatch via `IS NOT`).
 	const mismatch = beam.db.query("SELECT 1 FROM memory_embeddings WHERE model IS NOT ? LIMIT 1").get(active);
 	if (mismatch) {
 		const staleModels = beam.db
@@ -279,7 +326,9 @@ export function reconcileEmbeddingModel(beam: BeamMemoryState): void {
 			if (vecAvailable(beam.db)) {
 				try {
 					beam.db.prepare("DELETE FROM vec_episodes").run();
-				} catch {}
+				} catch {
+					// sqlite-vec cleanup is best-effort; rebuild correctness takes precedence.
+				}
 			}
 		});
 
@@ -292,6 +341,10 @@ export function reconcileEmbeddingModel(beam: BeamMemoryState): void {
 		return;
 	}
 
+	// No stale embeddings, but a previously-interrupted rebuild (a failed embed or a process
+	// exit after the wipe) can leave live memories with no active-model embedding. Treating an
+	// empty/partial table as "reconciled" would strand them FTS-only, so re-enqueue any live
+	// row still missing an active-model embedding.
 	const missing = beam.db
 		.query(`
 			SELECT id AS memoryId, COALESCE(embed_text, content) AS content FROM working_memory
@@ -395,6 +448,9 @@ export function remember(beam: BeamMemoryState, content: string, options: StoreR
 			trustTier,
 		);
 	addTemporalAnnotations(beam, memoryId, timestamp, source);
+	// `extractText` lets a caller decouple "what gets stored" from "what facts are
+	// mined". coding-agent retains full multi-author transcripts but wants
+	// fact/entity heuristics to read only the user-authored turns (issue #3372).
 	const extractionSource = options.extractText ?? options.extract_text ?? content;
 	proactiveLinkIfEnabled(
 		beam,
@@ -618,8 +674,19 @@ export function get(beam: BeamMemoryState, memoryId: string): Row | null {
 	return getFact(beam, memoryId);
 }
 
-/** Read-only resolution for fact ids. */
-export function getFact(beam: BeamMemoryState, memoryId: string): Row | null {
+/**
+ * Read-only resolution for ids minted from the `facts` table. `recall`
+ * surfaces `facts.fact_id` as a result id (`factRecall`), so `get` must
+ * resolve those ids too — otherwise every surfaced fact id is a dead end
+ * for the read path (issue #4725). Visibility mirrors `factRecall`:
+ * same-session facts plus explicitly global ones (`scope` is an optional
+ * column on `facts`; `SELECT *` tolerates banks without it, in which case
+ * only same-session facts resolve). The row is shaped like the
+ * working/episodic hits with the full triple as content;
+ * `memory_store: "fact"` marks it read-only — no update/forget/invalidate
+ * path mutates `facts`.
+ */
+function getFact(beam: BeamMemoryState, memoryId: string): Row | null {
 	const fact = beam.db.prepare("SELECT * FROM facts WHERE fact_id = ?").get(memoryId) as Row | null | undefined;
 	if (fact == null) return null;
 	if (fact.session_id !== beam.sessionId && fact.scope !== "global") return null;

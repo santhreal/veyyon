@@ -1,4 +1,29 @@
-import { type Component, matchesKey, padding, parseSgrMouse, ScrollView, TabBar, truncateToWidth } from "@veyyon/tui";
+/**
+ * ExtensionDashboard - Fullscreen alternate-screen control center for extensions.
+ *
+ * Chrome mirrors the `/settings` overlay: a titled rounded box, a shared
+ * {@link TabBar} for provider selection, and a two-column body (inventory list |
+ * inspector). Both panes are mouse-aware — wheel scrolls, hover highlights, and
+ * clicks select/activate — routed from a single SGR-mouse handler.
+ *
+ * Navigation:
+ * - Tab/Shift+Tab or ←/→: switch provider tab
+ * - Up/Down/j/k or wheel: move list selection
+ * - Space/Enter or click: toggle selected item (or provider master switch)
+ * - Wheel over the inspector: scroll the detail pane
+ * - Esc: clear search (if active) then close
+ */
+import {
+	type Component,
+	matchesKey,
+	padding,
+	parseSgrMouse,
+	ScrollView,
+	type Tab,
+	TabBar,
+	truncateToWidth,
+	visibleWidth,
+} from "@veyyon/tui";
 import { clampLow, getMCPConfigPath, logger } from "@veyyon/utils";
 import { Settings } from "../../../config/settings";
 import { setMcpServerEnabled } from "../../../mcp/config-writer";
@@ -16,7 +41,6 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "../modal-shell";
-import { buildTabBarTabs, EXT_SHORTCUTS, SCROLL_LIST_THEME } from "./extension-dashboard-helpers";
 import { ExtensionList } from "./extension-list";
 import { InspectorPanel } from "./inspector-panel";
 import {
@@ -27,9 +51,32 @@ import {
 	refreshState,
 	toggleProvider,
 } from "./state-manager";
-import type { DashboardState } from "./types";
+import type { DashboardState, ProviderTab } from "./types";
 
-export { buildTabBarTabs };
+const EXT_SHORTCUTS = [
+	{ label: "up/down navigate" },
+	{ label: "space toggle", clickable: true, id: "toggle" },
+	{ label: "left/right provider" },
+	{ label: "esc close", clickable: true, id: "close" },
+] as const;
+
+/**
+ * Map dashboard provider tabs to {@link TabBar} tabs. Empty *enabled* providers
+ * are muted — skipped by keyboard nav and unclickable; disabled providers stay
+ * selectable (with a leading disabled glyph) so their master switch can be
+ * re-enabled from the list. The "all" tab is never muted or marked.
+ */
+export function buildTabBarTabs(tabs: ProviderTab[]): Tab[] {
+	return tabs.map(tab => {
+		const isAll = tab.id === "all";
+		const isEmptyEnabled = tab.count === 0 && tab.enabled && !isAll;
+		const isDisabled = !tab.enabled && !isAll;
+		let label = tab.label;
+		if (tab.count > 0) label += ` (${tab.count})`;
+		if (isDisabled) label = `${theme.status.disabled} ${label}`;
+		return { id: tab.id, label, short: tab.label, muted: isEmptyEnabled };
+	});
+}
 
 export class ExtensionDashboard implements Component {
 	#state!: DashboardState;
@@ -38,6 +85,8 @@ export class ExtensionDashboard implements Component {
 	#tabBar!: TabBar;
 	#body!: TwoColumnBody;
 	#refreshToken = 0;
+	// Frame geometry from the last render, for SGR mouse hit-testing. The
+	// fullscreen overlay paints from screen row 0, so mouse rows map 1:1.
 	#tabRowStart = 0;
 	#tabRowCount = 0;
 	#bodyRowStart = 0;
@@ -49,12 +98,18 @@ export class ExtensionDashboard implements Component {
 	onClose?: () => void;
 	onRequestRender?: () => void;
 
+	/**
+	 * Lend the two pointer surfaces a repaint and take the frames the shared clock will owe them.
+	 * The list band and the tab band have no frames of their own between two mouse reports, so
+	 * without this both switch. Same ambient gate as the open unfold.
+	 */
 	setOnRequestRender(cb: () => void): void {
 		this.onRequestRender = cb;
 		this.#mainList.setHoverMotion({ requestRender: cb, enabled: pointerMotionEnabled() });
 		this.#tabBar.setHoverMotion({ requestRender: cb, enabled: pointerMotionEnabled() });
 	}
 
+	/** Settle both bands so no timer outlives a dismissed dashboard. */
 	dispose(): void {
 		this.#mainList.disposeHoverMotion();
 		this.#tabBar.disposeHoverMotion();
@@ -88,6 +143,7 @@ export class ExtensionDashboard implements Component {
 				onSelectionChange: ext => {
 					this.#state.selected = ext;
 					this.#inspector.setExtension(ext);
+					// A fresh selection resets the inspector to the top.
 					this.#body.resetInspectorScroll();
 				},
 				onToggle: (extensionId, enabled) => this.#handleExtensionToggle(extensionId, enabled),
@@ -117,21 +173,34 @@ export class ExtensionDashboard implements Component {
 		return tab && tab.id !== "all" ? tab.id : null;
 	}
 
+	/** Live terminal height so the dashboard tracks resize while open. */
 	#terminalRows(): number {
 		return process.stdout.rows || this.terminalHeight || 24;
 	}
 
+	/**
+	 * Floating ModalShell card: titled chrome, tabs, two-column body, tip gap,
+	 * centered shortcut chips. Transcript visible around the card.
+	 */
 	render(width: number): readonly string[] {
 		const height = Math.max(14, this.#terminalRows());
 		const sizing = sizingForArea(MODAL_SIZING_LARGE, height);
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return new Array(height).fill(padding(width));
+			return Array.from({ length: height }, () => padding(width));
 		}
 		const contentWidth = dims.contentWidth;
 
 		const tabLines = this.#tabBar.render(contentWidth);
+		// Ask the shell for the body budget rather than subtracting a magic 8.
+		// The card reserves NINE rows at this sizing (top border, vPad above AND
+		// below the body, footer divider, two footer lines, bottom border), so
+		// the dashboard handed it one row too many and the shell silently dropped
+		// the last one — while `#bodyRowCount` below still counted it, so a click
+		// on the bottom row selected a row that was not on screen. The floor was
+		// the same trap: `Math.max(5, …)` asked for five content rows on a card
+		// that could show fewer, overrunning again.
 		const chrome = planModalChrome({
 			sizing,
 			modalHeight: dims.modalHeight,
@@ -144,7 +213,7 @@ export class ExtensionDashboard implements Component {
 		this.#mainList.setMaxVisible(Math.max(1, contentRows - 2));
 		this.#body.setMaxHeight(contentRows);
 		const bodyLines = this.#body.render(contentWidth);
-		const body: string[] = tabLines.slice();
+		const body: string[] = [...tabLines];
 		for (let i = 0; i < contentRows; i++) body.push(bodyLines[i] ?? "");
 
 		const shell = renderModalShell({
@@ -153,7 +222,7 @@ export class ExtensionDashboard implements Component {
 			areaWidth: width,
 			areaHeight: height,
 			body,
-			shortcuts: EXT_SHORTCUTS.slice(),
+			shortcuts: [...EXT_SHORTCUTS],
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,
 		});
@@ -173,6 +242,11 @@ export class ExtensionDashboard implements Component {
 		this.#inspector.invalidate();
 	}
 
+	/**
+	 * Route an SGR mouse report against the last render's geometry. Wheel scrolls
+	 * the pane under the pointer, motion drives hover highlights (tabs + rows),
+	 * and a left click switches tabs or selects/activates a list row.
+	 */
 	#handleMouse(data: string): void {
 		const event = parseSgrMouse(data);
 		if (!event) return;
@@ -203,6 +277,7 @@ export class ExtensionDashboard implements Component {
 			return;
 		}
 
+		// row() insets content by the border column plus a space; frame may be centered.
 		const contentColInset = 2 + this.#frameLeft;
 		const innerCol = event.col - contentColInset;
 		const tabLine = event.row - this.#tabRowStart;
@@ -245,6 +320,7 @@ export class ExtensionDashboard implements Component {
 		}
 	}
 
+	/** Switch to the provider tab with `id`, re-filtering the list around it. */
 	#selectProviderById(id: string): void {
 		const index = this.#state.tabs.findIndex(t => t.id === id);
 		if (index < 0) return;
@@ -276,6 +352,9 @@ export class ExtensionDashboard implements Component {
 		const sm = this.settings ?? Settings.instance;
 		if (!sm) return;
 
+		// MCP toggles route through the canonical denylist in
+		// `~/.veyyon/agent/mcp.json` so `/mcp list`, the MCP runtime, and this
+		// dashboard agree on every server's enabled state (issue #3827).
 		if (extensionId.startsWith("mcp:")) {
 			void this.#toggleMcpExtension(extensionId, enabled, sm);
 			return;
@@ -313,6 +392,10 @@ export class ExtensionDashboard implements Component {
 			logger.warn("Failed to persist MCP toggle", { name, enabled, error: String(error) });
 		}
 
+		// Reconcile `settings.disabledExtensions` with the canonical mcp.json
+		// state so a legacy `mcp:<name>` flag from before this routing change
+		// doesn't keep the server marked disabled after the user re-enables it
+		// via the UI.
 		const stored = ((sm.get("disabledExtensions") as string[]) ?? []).slice();
 		const had = stored.indexOf(extensionId);
 		if (enabled && had !== -1) {
@@ -333,6 +416,7 @@ export class ExtensionDashboard implements Component {
 
 	async #refreshFromState(): Promise<void> {
 		const refreshToken = ++this.#refreshToken;
+		// Remember the current tab so it survives the re-sort.
 		const currentTabId = this.#state.tabs[this.#state.activeTabIndex]?.id;
 
 		const sm = this.settings ?? Settings.instance;
@@ -341,6 +425,7 @@ export class ExtensionDashboard implements Component {
 		if (refreshToken !== this.#refreshToken) return;
 		this.#state = nextState;
 
+		// Re-anchor on the same tab id in the (re-sorted) list.
 		if (currentTabId) {
 			const newIndex = this.#state.tabs.findIndex(t => t.id === currentTabId);
 			if (newIndex >= 0) {
@@ -369,16 +454,19 @@ export class ExtensionDashboard implements Component {
 	}
 
 	handleInput(data: string): void {
+		// SGR mouse reports (the fullscreen overlay enables tracking).
 		if (data.startsWith("\x1b[<")) {
 			this.#handleMouse(data);
 			return;
 		}
 
+		// Ctrl+C - close immediately
 		if (matchesKey(data, "ctrl+c")) {
 			this.onClose?.();
 			return;
 		}
 
+		// Escape - clear search first, then close
 		if (matchesAppInterrupt(data)) {
 			if (this.#state.searchQuery.length > 0) {
 				this.#state.searchQuery = "";
@@ -392,12 +480,15 @@ export class ExtensionDashboard implements Component {
 			return;
 		}
 
+		// Tab/Shift+Tab or ←/→: switch provider tabs (fires onTabChange).
 		if (this.#tabBar.handleInput(data)) {
 			return;
 		}
 
+		// All other input goes to the list.
 		this.#mainList.handleInput(data);
 
+		// Sync search query back to state.
 		const query = this.#mainList.getSearchQuery();
 		if (query !== this.#state.searchQuery) {
 			this.#state.searchQuery = query;
@@ -407,6 +498,12 @@ export class ExtensionDashboard implements Component {
 	}
 }
 
+/**
+ * Two-column body: inventory list on the left, inspector on the right, split by
+ * a vertical rule. The inspector is a {@link ScrollView} viewport so long detail
+ * panes scroll (wheel) with an auto scrollbar; the left list manages its own
+ * windowing. Records the left-column width so the host can hit-test panes.
+ */
 class TwoColumnBody implements Component {
 	#maxHeight: number;
 	#rightScroll = 0;
@@ -425,6 +522,7 @@ class TwoColumnBody implements Component {
 		this.#maxHeight = maxHeight;
 	}
 
+	/** Content width of the left (list) column from the last render. */
 	get leftWidth(): number {
 		return this.#leftWidth;
 	}
@@ -433,6 +531,7 @@ class TwoColumnBody implements Component {
 		this.#rightScroll = 0;
 	}
 
+	/** Wheel notch over the inspector pane: scroll its content, clamped. */
 	scrollInspector(delta: -1 | 1): void {
 		const max = Math.max(0, this.#rightTotal - this.#maxHeight);
 		this.#rightScroll = clampLow(this.#rightScroll + delta, 0, max);
@@ -450,10 +549,13 @@ class TwoColumnBody implements Component {
 		const maxScroll = Math.max(0, this.#rightTotal - numLines);
 		if (this.#rightScroll > maxScroll) this.#rightScroll = maxScroll;
 
+		// `totalRows` omitted so the ScrollView windows `rightLines` by the scroll
+		// offset (rather than treating them as a pre-windowed slice) and pads short
+		// content to exactly `numLines`.
 		const rightView = new ScrollView(rightLines, {
 			height: numLines,
 			scrollbar: "auto",
-			theme: SCROLL_LIST_THEME,
+			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
 		});
 		rightView.setScrollOffset(this.#rightScroll);
 		const rightRendered = rightView.render(rightWidth);
@@ -461,7 +563,8 @@ class TwoColumnBody implements Component {
 		const combined: string[] = [];
 		const separator = theme.fg("dim", ` ${theme.boxSharp.vertical} `);
 		for (let i = 0; i < numLines; i++) {
-			const leftPadded = truncateToWidth(leftLines[i] ?? "", leftWidth, undefined, true);
+			const left = truncateToWidth(leftLines[i] ?? "", leftWidth);
+			const leftPadded = left + padding(Math.max(0, leftWidth - visibleWidth(left)));
 			const right = rightRendered[i] ?? "";
 			combined.push(leftPadded + separator + right);
 		}

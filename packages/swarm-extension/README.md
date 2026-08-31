@@ -2,7 +2,7 @@
 
 Multi-agent orchestration extension for Veyyon. Executes agent workflows defined in YAML files across pipeline, sequential, parallel, or directed acyclic graph (DAG) topologies.
 
-Each agent runs as a subagent with access to tools (read, write, edit, bash, grep, glob, eval, web_search, browser). Agents communicate via files in the shared workspace directory.
+Each agent runs as a subagent with access to tools (read, write, edit, bash, search, eval, web_search, browser). Agents communicate via files in the shared workspace directory.
 
 ## Setup
 

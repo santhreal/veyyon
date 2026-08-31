@@ -1,3 +1,7 @@
+/**
+ * State manager for the Extension Control Center.
+ * Handles data loading, tree building, filtering, and toggle persistence.
+ */
 import * as path from "node:path";
 import { fuzzyMatch } from "@veyyon/tui";
 import { getMCPConfigPath, logger } from "@veyyon/utils";
@@ -30,10 +34,22 @@ import type {
 } from "./types";
 import { makeExtensionId, sourceFromMeta } from "./types";
 
+/**
+ * Settings manager interface for granular toggle persistence.
+ */
+export interface ExtensionSettingsManager {
+	getDisabledExtensions(): string[];
+	setDisabledExtensions(ids: string[]): void;
+}
+
+/**
+ * Load all extensions from all capabilities.
+ */
 export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): Promise<ExtensionRow[]> {
 	const extensions: ExtensionRow[] = [];
 	const disabledExtensions = new Set<string>(disabledIds ?? []);
 
+	// Helper to convert capability items to extensions
 	function addItems<T extends { name: string; path: string; _source: SourceMeta }>(
 		items: T[],
 		kind: ExtensionKind,
@@ -52,6 +68,7 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 			let state: ExtensionState;
 			let disabledReason: "shadowed" | "provider-disabled" | "item-disabled" | undefined;
 
+			// Item-disabled takes precedence over shadowed
 			if (isDisabled) {
 				state = "disabled";
 				disabledReason = "item-disabled";
@@ -84,6 +101,7 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 
 	const loadOpts = cwd ? { cwd, includeDisabled: true } : { includeDisabled: true };
 
+	// Load skills
 	try {
 		const skills = await loadCapability<DiscoveredSkill>("skills", loadOpts);
 		addItems(skills.all, "skill", {
@@ -94,6 +112,7 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 		logger.warn("Failed to load skills capability", { error: String(error) });
 	}
 
+	// Load rules
 	try {
 		const rules = await loadCapability<Rule>("rules", loadOpts);
 		addItems(rules.all, "rule", {
@@ -104,6 +123,7 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 		logger.warn("Failed to load rules capability", { error: String(error) });
 	}
 
+	// Load custom tools
 	try {
 		const tools = await loadCapability<DiscoveredCustomTool>("tools", loadOpts);
 		addItems(tools.all, "tool", {
@@ -113,6 +133,7 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 		logger.warn("Failed to load tools capability", { error: String(error) });
 	}
 
+	// Load extension modules
 	try {
 		const modules = await loadCapability<ExtensionModule>("extension-modules", loadOpts);
 		const nativeModules = modules.all.filter(module => module._source.provider === "native");
@@ -121,6 +142,12 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 		logger.warn("Failed to load extension-modules capability", { error: String(error) });
 	}
 
+	// Load MCP servers. The dashboard mirrors `/mcp list` (issue #3827) by
+	// honoring the same disable signals: the dashboard-private settings list,
+	// the per-server `enabled: false` flag, and the user-level `disabledServers`
+	// denylist that `/mcp disable` writes through `setServerDisabled`. The
+	// user-level `enabledServers` allowlist overrides a non-writable source's
+	// `enabled: false` (e.g. opencode.json) but never the denylist.
 	try {
 		const userMcpPath = cwd ? getMCPConfigPath("user", cwd) : undefined;
 		const [mcpDisabledNames, mcpForcedEnabled] = await Promise.all([
@@ -178,6 +205,7 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 		logger.warn("Failed to load mcps capability", { error: String(error) });
 	}
 
+	// Load prompts
 	try {
 		const prompts = await loadCapability<Prompt>("prompts", loadOpts);
 		addItems(prompts.all, "prompt", {
@@ -188,6 +216,7 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 		logger.warn("Failed to load prompts capability", { error: String(error) });
 	}
 
+	// Load slash commands
 	try {
 		const commands = await loadCapability<SlashCommand>("slash-commands", loadOpts);
 		addItems(commands.all, "slash-command", {
@@ -198,6 +227,7 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 		logger.warn("Failed to load slash-commands capability", { error: String(error) });
 	}
 
+	// Load hooks
 	try {
 		const hooks = await loadCapability<Hook>("hooks", loadOpts);
 		for (const hook of hooks.all) {
@@ -240,9 +270,11 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 		logger.warn("Failed to load hooks capability", { error: String(error) });
 	}
 
+	// Load context files
 	try {
 		const contextFiles = await loadCapability<ContextFile>("context-files", loadOpts);
 		for (const file of contextFiles.all) {
+			// Extract filename from path for display
 			const name = path.basename(file.path);
 			const id = makeExtensionId("context-file", `${file.level}:${name}`);
 			const isDisabled = disabledExtensions.has(id);
@@ -286,6 +318,73 @@ export async function loadAllExtensions(cwd?: string, disabledIds?: string[]): P
 	return extensions;
 }
 
+/**
+ * Build sidebar tree from extensions.
+ * Groups by provider → kind.
+ */
+export function buildSidebarTree(extensions: ExtensionRow[]): TreeNode[] {
+	const providers = getAllProvidersInfo();
+	const tree: TreeNode[] = [];
+
+	// Group extensions by provider and kind
+	const byProvider = new Map<string, Map<ExtensionKind, ExtensionRow[]>>();
+
+	for (const ext of extensions) {
+		const providerId = ext.source.provider;
+		if (!byProvider.has(providerId)) {
+			byProvider.set(providerId, new Map());
+		}
+		const byKind = byProvider.get(providerId)!;
+		if (!byKind.has(ext.kind)) {
+			byKind.set(ext.kind, []);
+		}
+		byKind.get(ext.kind)!.push(ext);
+	}
+
+	// Build tree nodes for each provider (show ALL providers, even if disabled/empty)
+	for (const provider of providers) {
+		// Skip the 'native' provider as it cannot be toggled
+		if (provider.id === "native") continue;
+
+		const byKind = byProvider.get(provider.id);
+		const kindNodes: TreeNode[] = [];
+		let totalCount = 0;
+
+		if (byKind && byKind.size > 0) {
+			for (const [kind, exts] of byKind) {
+				totalCount += exts.length;
+				kindNodes.push({
+					id: `${provider.id}:${kind}`,
+					label: getKindDisplayName(kind),
+					type: "kind",
+					enabled: provider.enabled,
+					collapsed: true,
+					children: [],
+					count: exts.length,
+				});
+			}
+
+			// Sort kind nodes by count (most items first)
+			kindNodes.sort((a, b) => (b.count || 0) - (a.count || 0));
+		}
+
+		tree.push({
+			id: provider.id,
+			label: provider.displayName,
+			type: "provider",
+			enabled: provider.enabled,
+			collapsed: false,
+			children: kindNodes,
+			count: totalCount,
+		});
+	}
+
+	return tree;
+}
+
+/**
+ * Flatten tree for keyboard navigation.
+ */
 export function flattenTree(tree: TreeNode[]): FlatTreeItem[] {
 	const flat: FlatTreeItem[] = [];
 	let index = 0;
@@ -306,16 +405,15 @@ export function flattenTree(tree: TreeNode[]): FlatTreeItem[] {
 	return flat;
 }
 
+/**
+ * Apply fuzzy filter to extensions.
+ */
 export function applyFilter(extensions: ExtensionRow[], query: string): ExtensionRow[] {
 	if (!query.trim()) {
 		return extensions;
 	}
 
-	const rawTokens = query.toLowerCase().split(/\s+/);
-	const tokens: string[] = [];
-	for (let ti = 0; ti < rawTokens.length; ti++) {
-		if (rawTokens[ti]!) tokens.push(rawTokens[ti]!);
-	}
+	const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
 	if (tokens.length === 0) {
 		return extensions;
 	}
@@ -334,16 +432,51 @@ export function applyFilter(extensions: ExtensionRow[], query: string): Extensio
 	});
 }
 
+/**
+ * Get display name for extension kind.
+ */
+function getKindDisplayName(kind: ExtensionKind): string {
+	switch (kind) {
+		case "extension-module":
+			return "Extension Modules";
+		case "skill":
+			return "Skills";
+		case "rule":
+			return "Rules";
+		case "tool":
+			return "Tools";
+		case "mcp":
+			return "MCP Servers";
+		case "prompt":
+			return "Prompts";
+		case "instruction":
+			return "Instructions";
+		case "context-file":
+			return "Context Files";
+		case "hook":
+			return "Hooks";
+		case "slash-command":
+			return "Slash Commands";
+		default:
+			return kind;
+	}
+}
+
+/**
+ * Build provider tabs from extensions.
+ */
 export function buildProviderTabs(extensions: ExtensionRow[]): ProviderTab[] {
 	const providers = getAllProvidersInfo();
 	const tabs: ProviderTab[] = [];
 
+	// Count extensions per provider
 	const countByProvider = new Map<string, number>();
 	for (const ext of extensions) {
 		const count = countByProvider.get(ext.source.provider) ?? 0;
 		countByProvider.set(ext.source.provider, count + 1);
 	}
 
+	// ALL tab first
 	tabs.push({
 		id: "all",
 		label: "ALL",
@@ -351,6 +484,7 @@ export function buildProviderTabs(extensions: ExtensionRow[]): ProviderTab[] {
 		count: extensions.length,
 	});
 
+	// Provider tabs (skip native)
 	for (const provider of providers) {
 		if (provider.id === "native") continue;
 		const count = countByProvider.get(provider.id) ?? 0;
@@ -362,10 +496,12 @@ export function buildProviderTabs(extensions: ExtensionRow[]): ProviderTab[] {
 		});
 	}
 
+	// Sort: ALL first, then enabled by count, then disabled by count, then empty
 	tabs.sort((a, b) => {
 		if (a.id === "all") return -1;
 		if (b.id === "all") return 1;
 
+		// Categorize: 0 = enabled with content, 1 = disabled, 2 = empty+enabled
 		const category = (t: ProviderTab) => {
 			if (t.count === 0 && t.enabled) return 2; // empty
 			if (!t.enabled) return 1; // disabled
@@ -376,12 +512,16 @@ export function buildProviderTabs(extensions: ExtensionRow[]): ProviderTab[] {
 		const bCat = category(b);
 		if (aCat !== bCat) return aCat - bCat;
 
+		// Within same category, sort by count descending
 		return b.count - a.count;
 	});
 
 	return tabs;
 }
 
+/**
+ * Filter extensions by provider tab.
+ */
 export function filterByProvider(extensions: ExtensionRow[], providerId: string): ExtensionRow[] {
 	if (providerId === "all") {
 		return extensions;
@@ -394,6 +534,10 @@ function isShadowedExtension(ext: ExtensionRow): boolean {
 	return Boolean((ext.raw as { _shadowed?: boolean } | null | undefined)?._shadowed);
 }
 
+/**
+ * Apply setting-backed item disable overrides to an existing dashboard state.
+ * This gives the UI immediate feedback while the full capability refresh runs.
+ */
 export function applyDisabledExtensionsToState(state: DashboardState, disabledIds: string[]): DashboardState {
 	const disabled = new Set(disabledIds);
 	const updateExtension = (ext: ExtensionRow): ExtensionRow => {
@@ -426,6 +570,9 @@ export function applyDisabledExtensionsToState(state: DashboardState, disabledId
 	};
 }
 
+/**
+ * Create initial dashboard state.
+ */
 export async function createInitialState(cwd?: string, disabledIds?: string[]): Promise<DashboardState> {
 	const extensions = await loadAllExtensions(cwd, disabledIds);
 	const tabs = buildProviderTabs(extensions);
@@ -445,6 +592,9 @@ export async function createInitialState(cwd?: string, disabledIds?: string[]): 
 	};
 }
 
+/**
+ * Toggle provider enabled state.
+ */
 export function toggleProvider(providerId: string): boolean {
 	if (isProviderEnabled(providerId)) {
 		disableProvider(providerId);
@@ -455,6 +605,9 @@ export function toggleProvider(providerId: string): boolean {
 	}
 }
 
+/**
+ * Refresh state after toggle.
+ */
 export async function refreshState(
 	state: DashboardState,
 	cwd?: string,
@@ -463,15 +616,19 @@ export async function refreshState(
 	const extensions = await loadAllExtensions(cwd, disabledIds);
 	const tabs = buildProviderTabs(extensions);
 
+	// Get current provider from tabs
 	const activeTab = state.tabs[state.activeTabIndex];
 	const providerId = activeTab?.id ?? "all";
 
+	// Re-apply filters
 	const tabFiltered = filterByProvider(extensions, providerId);
 	const searchFiltered = applyFilter(tabFiltered, state.searchQuery);
 
+	// Find new index for current provider (tabs may have reordered)
 	const newActiveTabIndex = tabs.findIndex(t => t.id === providerId);
 	const activeTabIndex = newActiveTabIndex >= 0 ? newActiveTabIndex : 0;
 
+	// Try to preserve selection
 	const selectedId = state.selected?.id;
 	let selected = selectedId ? searchFiltered.find(e => e.id === selectedId) : null;
 	if (!selected && searchFiltered.length > 0) {

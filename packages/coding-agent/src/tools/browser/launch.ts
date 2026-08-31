@@ -22,8 +22,25 @@ import { ToolError } from "../tool-errors";
 
 export const DEFAULT_VIEWPORT = { width: 1365, height: 768, deviceScaleFactor: 1.25 };
 
+/**
+ * Per-CDP-message timeout applied to every puppeteer launch/connect. Set above
+ * `TOOL_TIMEOUTS.browser.max` (30s) so the agent-side wall-clock is the canonical
+ * limit; this constant only catches genuinely stuck CDP sockets (renderer wedged,
+ * connection dropped, etc.).
+ */
 export const BROWSER_PROTOCOL_TIMEOUT_MS = 60_000;
 const ENABLE_AUTOMATION_FLAG = "--enable-automation";
+// Automation-tell launch flags that puppeteer-core adds by default. We suppress
+// them via `ignoreDefaultArgs` (the supported escape hatch) to mirror xxxx's
+// chromiumSwitches patch. `--enable-automation` is the loudest: it normally sets
+// navigator.webdriver=true and shows the "controlled by automated software" infobar.
+// Edge is the launch-stability exception: it can exit before CDP opens when this
+// default flag is stripped, so Edge keeps Puppeteer's flag while our explicit
+// `--disable-blink-features=AutomationControlled` launch arg still handles
+// navigator.webdriver.
+// `ignoreDefaultArgs` does exact-string matching, so each entry must be a flag that
+// puppeteer emits verbatim. The default `--disable-features=...` string can't be
+// matched this way; it is neutralized in the puppeteer-core patch (ChromeLauncher).
 const STEALTH_IGNORE_DEFAULT_ARGS = [
 	ENABLE_AUTOMATION_FLAG,
 	"--disable-extensions",
@@ -48,7 +65,7 @@ function isMicrosoftEdgeExecutable(executablePath: string | undefined): boolean 
 }
 
 function stealthIgnoreDefaultArgs(executablePath: string | undefined): string[] {
-	if (!isMicrosoftEdgeExecutable(executablePath)) return STEALTH_IGNORE_DEFAULT_ARGS.slice();
+	if (!isMicrosoftEdgeExecutable(executablePath)) return [...STEALTH_IGNORE_DEFAULT_ARGS];
 	return STEALTH_IGNORE_DEFAULT_ARGS.filter(arg => arg !== ENABLE_AUTOMATION_FLAG);
 }
 
@@ -58,6 +75,27 @@ const USER_AGENT_TARGET_TIMEOUT_MS = 5_000;
 const USER_AGENT_TARGET_TYPES = new Set(["page", "webview", "background_page"]);
 const PUPPETEER_SOURCE_URL_SUFFIX = "//# sourceURL=__puppeteer_evaluation_script__";
 
+/**
+ * Lazy-import puppeteer with `process.cwd` pointed at a scratch directory, so
+ * cosmiconfig does not choke on a malformed `package.json` in the user's
+ * project tree.
+ *
+ * The dynamic import is required: puppeteer-core probes the working directory
+ * while its module body evaluates, so a static import would run before the
+ * directory is safe.
+ *
+ * The redirect replaces `process.cwd` for the duration of the import rather
+ * than calling `process.chdir`, and that difference matters in both directions.
+ * `chdir` moves the whole process, so anything reading the working directory
+ * while the import is in flight sees the scratch directory instead of the
+ * user's project, and `@veyyon/utils` keeps its own `projectDir` that a bare
+ * `chdir` silently desynchronizes. Restoring is worse: `chdir` back into a
+ * directory the user has since deleted throws from a `finally` block, which
+ * both masks the import's own result and strands the process in the scratch
+ * directory for the rest of its life. Swapping the function has neither
+ * failure mode, and it works in a Worker thread, where `process.chdir` does not
+ * exist at all.
+ */
 let puppeteerModule: typeof Puppeteer | undefined;
 export async function loadPuppeteer(): Promise<typeof Puppeteer> {
 	if (puppeteerModule) return puppeteerModule;
@@ -81,6 +119,15 @@ async function loadBrowsers(): Promise<typeof BrowsersNs> {
 	return browsersModule;
 }
 
+/**
+ * Resolve the Chromium executable puppeteer will launch, lazily downloading it
+ * on first use via @puppeteer/browsers. Skipped when a system Chromium (NixOS)
+ * or PUPPETEER_EXECUTABLE_PATH is set. The browser is cached under
+ * ~/.veyyon/puppeteer (getPuppeteerDir). Returns undefined when platform
+ * detection fails (puppeteer default resolution takes over). Exported so
+ * real-browser tests can probe launchability and skip on hosts missing
+ * Chrome's system libraries.
+ */
 let chromiumExecutablePromise: Promise<string | undefined> | undefined;
 export async function ensureChromiumExecutable(): Promise<string | undefined> {
 	const sysChrome = resolveSystemChromium();
@@ -147,6 +194,8 @@ function isExecutableFile(p: string): boolean {
 		const st = fs.statSync(p);
 		return st.isFile();
 	} catch {
+		// A candidate path we cannot stat is a candidate we cannot launch, so it is not the browser we
+		// are looking for. The search moves to the next candidate and reports if every one fails.
 		return false;
 	}
 }
@@ -186,7 +235,10 @@ function systemChromiumCandidates(): string[] {
 			let onNixos = false;
 			try {
 				onNixos = fs.existsSync("/etc/NIXOS");
-			} catch {}
+			} catch {
+				// Probing for NixOS. Unreadable `/etc` means not-NixOS for this purpose,
+				// and the candidate list below is unaffected either way.
+			}
 			if (onNixos) {
 				candidates.push(path.join(home, ".nix-profile/bin/chromium"), "/run/current-system/sw/bin/chromium");
 			}
@@ -249,6 +301,8 @@ export async function launchHeadlessBrowser(opts: LaunchHeadlessOptions): Promis
 	const proxy = process.env.PUPPETEER_PROXY;
 	if (proxy) {
 		launchArgs.push(`--proxy-server=${proxy}`);
+		// Chrome (since v72) bypasses proxies for localhost by default. When PUPPETEER_PROXY_BYPASS_LOOPBACK
+		// is true, add <-loopback> so traffic to localhost reaches the proxy (e.g. for mitmdump/auth capture).
 		const bypassLoopback = process.env.PUPPETEER_PROXY_BYPASS_LOOPBACK?.toLowerCase();
 		if (bypassLoopback === "true" || bypassLoopback === "1" || bypassLoopback === "yes" || bypassLoopback === "on") {
 			launchArgs.push("--proxy-bypass-list=<-loopback>");
@@ -283,6 +337,10 @@ export async function applyViewport(
 		deviceScaleFactor: viewport.deviceScaleFactor ?? DEFAULT_VIEWPORT.deviceScaleFactor,
 	});
 }
+
+// =====================================================================
+// Stealth patches
+// =====================================================================
 
 interface PuppeteerCdpClient {
 	send: (method: string, params?: Record<string, unknown>) => Promise<unknown>;
@@ -365,6 +423,8 @@ async function resolveMacOsProductVersion(): Promise<string> {
 		const plist = await Bun.file("/System/Library/CoreServices/SystemVersion.plist").text();
 		return plist.match(/<key>ProductVersion<\/key>\s*<string>([^<]+)<\/string>/)?.[1] ?? "";
 	} catch {
+		// The version only decorates a user-agent string, and an unreadable plist leaves it out the same
+		// way a non-macOS host does. Nothing downstream branches on it, so there is no loss to report.
 		return "";
 	}
 }
@@ -451,8 +511,25 @@ function wrapSession(session: CDPSession): PuppeteerCdpClient {
 	};
 }
 
+/**
+ * Apply the user-agent override through both CDP domains.
+ *
+ * The two are redundant on purpose: `Emulation` is the modern one and
+ * `Network` covers older targets, so one of them failing is normal and not
+ * worth reporting. BOTH failing is not normal, and it is not cosmetic either:
+ * the target keeps its headless user agent, so the page can tell it is
+ * automated and behaves differently, which is the exact thing the override
+ * exists to prevent.
+ *
+ * Every failure here used to be swallowed (`Network.enable` outright, the other
+ * two at `debug`), so a target with no override in place was indistinguishable
+ * from one that had it. The loss is reported now, with what was attempted and
+ * why each attempt failed (Law 10).
+ */
 export async function sendUserAgentOverride(client: PuppeteerCdpClient, override: UserAgentOverride): Promise<void> {
 	const failures: string[] = [];
+	// Not counted as an override failure: it only prepares the Network domain,
+	// and the Emulation path below does not need it.
 	let networkEnableError: string | undefined;
 	try {
 		await client.send("Network.enable");
@@ -477,6 +554,12 @@ export async function sendUserAgentOverride(client: PuppeteerCdpClient, override
 	});
 }
 
+export interface UserAgentSession {
+	override: UserAgentOverride;
+	browserSession: CDPSession | null;
+}
+
+/** Configure UA override on the browser + auto-attach to new targets. */
 async function configureUserAgentTargets(
 	browser: Browser,
 	state: { browserSession: CDPSession | null; override: UserAgentOverride },
@@ -530,6 +613,8 @@ async function applyTargetUserAgentOverride(target: Target, override: UserAgentO
 	try {
 		await sendUserAgentOverride(wrapSession(session), override);
 	} finally {
+		// The CDP session is a scratch session created two lines above for one override; detaching from a target
+		// that has already gone fails, and rethrowing here would replace the override's own error.
 		await session.detach().catch(() => undefined);
 	}
 }
@@ -573,6 +658,10 @@ const STEALTH_PATCH_SCRIPTS = [
 ];
 
 function buildStealthInjectionScript(scripts: readonly string[] = STEALTH_PATCH_SCRIPTS): string {
+	// Each patch is wrapped in its own in-page `try`/`catch` on purpose: the
+	// patches are independent, and one that throws on a given browser build must
+	// not take the other thirteen down with it. There is no channel back from a
+	// document-start preload, so the isolation is the whole contract.
 	const joint = scripts
 		.map(
 			script => `
@@ -590,6 +679,13 @@ function buildStealthInjectionScript(scripts: readonly string[] = STEALTH_PATCH_
 				const Page_WeakMap = WeakMap;
 				const Page_WeakMap_get = Page_WeakMap.prototype.get;
 				const Page_WeakMap_set = Page_WeakMap.prototype.set;
+				// Native function cache - captured before any tampering.
+				// A same-origin iframe yields natives uncontaminated by page-level
+				// tampering, but at document-start (when this preload runs) there is
+				// no documentElement to attach it to. In that case the page itself
+				// hasn't executed yet, so window's own natives are still pristine —
+				// fall back to window instead of bailing, otherwise none of the
+				// fingerprint patches below would ever run.
 				let iframe = null;
 				const container = document.head ?? document.documentElement;
 				if (container) {
@@ -601,6 +697,7 @@ function buildStealthInjectionScript(scripts: readonly string[] = STEALTH_PATCH_
 				try {
 					const nativeWindow = iframe ? iframe.contentWindow : window;
 
+					// Cache pristine native functions
 					const Function_toString = nativeWindow.Function.prototype.toString;
 					const Object_getOwnPropertyDescriptor = nativeWindow.Object.getOwnPropertyDescriptor;
 					const Object_getOwnPropertyDescriptors = nativeWindow.Object.getOwnPropertyDescriptors;
@@ -677,6 +774,12 @@ async function injectStealthScripts(page: Page): Promise<void> {
 	await page.evaluateOnNewDocument(buildStealthInjectionScript());
 }
 
+/** Builds the browser-page stealth bootstrap source for regression tests. */
+export function buildStealthInjectionScriptForTest(scripts: readonly string[] = STEALTH_PATCH_SCRIPTS): string {
+	return buildStealthInjectionScript(scripts);
+}
+
+/** Apply stealth patches + UA override to a headless page. Idempotent within a tab. */
 export async function applyStealthPatches(
 	browser: Browser,
 	page: Page,
@@ -698,4 +801,15 @@ export async function applyStealthPatches(
 
 export function stealthIgnoreDefaultArgsForTest(executablePath: string | undefined): string[] {
 	return stealthIgnoreDefaultArgs(executablePath);
+}
+
+export function targetSupportsUserAgentOverrideForTest(target: Target): boolean {
+	return targetSupportsUserAgentOverride(target);
+}
+export async function configureUserAgentTargetsForTest(
+	browser: Browser,
+	state: { browserSession: CDPSession | null; override: UserAgentOverride },
+	targetTimeoutMs?: number,
+): Promise<void> {
+	await configureUserAgentTargets(browser, state, targetTimeoutMs);
 }

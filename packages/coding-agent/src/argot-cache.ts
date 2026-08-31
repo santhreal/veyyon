@@ -239,12 +239,22 @@ export async function rearmArgotForDecode(
  * Never throws for a missing project: that is a normal "nothing to load" answer,
  * surfaced to the caller as `undefined`, not an error.
  */
+export interface ArgotLoadResult {
+	root: string;
+	handles: number;
+}
+
+export interface ArgotUnloadResult {
+	root: string;
+	changed: boolean;
+}
+
 export async function loadArgotFolder(
 	argot: ArgotSession,
 	folder: string,
 	signal?: AbortSignal,
 	tokenBudget?: number,
-): Promise<{ root: string; handles: number } | undefined> {
+): Promise<ArgotLoadResult | undefined> {
 	const resolved = await resolveFolderVocab(folder, tokenBudget, signal);
 	if (resolved === undefined) {
 		return undefined;
@@ -263,7 +273,7 @@ export async function loadArgotFolder(
  * was never loaded or was already not taught), or `undefined` when `folder` has no
  * project marker to resolve.
  */
-export function unloadArgotFolder(argot: ArgotSession, folder: string): { root: string; changed: boolean } | undefined {
+export function unloadArgotFolder(argot: ArgotSession, folder: string): ArgotUnloadResult | undefined {
 	const root = resolveProjectRoot(folder);
 	if (root === undefined) {
 		return undefined;
@@ -283,7 +293,7 @@ export function unloadArgotFolder(argot: ArgotSession, folder: string): { root: 
  * with the vocabulary the dictionary produced — INCLUDING an empty one. That empty
  * case is the whole point: a repo with no repeated-token mass generates an empty
  * dictionary, so the model has nothing to encode and the prompt is never refreshed
- * (the size gate below). Downstream instruments (the deepswe-bench argot telemetry)
+ * (the size gate below). Downstream instruments (the DeepSWE argot telemetry)
  * need to see it to tell "the corpus had nothing to compress" apart from "the model
  * ignored available handles"; without it, a null encode result is uninterpretable.
  *

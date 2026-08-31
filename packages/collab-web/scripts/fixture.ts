@@ -1,3 +1,11 @@
+/**
+ * Canned session data for the offline collab harness.
+ *
+ * One realistic host session (header + ~14 entries covering every renderer
+ * branch), an agent registry (main + a running sub with ticking progress + a
+ * parked sub with a transcript), a subagent transcript JSONL blob, and a
+ * scripted streaming turn the mock host replays on every guest prompt.
+ */
 import type {
 	AgentEvent,
 	AgentSnapshot,
@@ -340,6 +348,8 @@ export const fixtureEntries: WireSessionEntry[] = [
 	},
 ];
 
+// ─── agents ──────────────────────────────────────────────────────────────────
+
 export const fixtureAgents: AgentSnapshot[] = [
 	{
 		id: "main",
@@ -372,14 +382,15 @@ export const fixtureAgents: AgentSnapshot[] = [
 	},
 ];
 
-const PROBE_TOOLS = ["bash", "read", "grep", "edit"] as const;
+const PROBE_TOOLS = ["bash", "read", "search", "edit"] as const;
 const PROBE_TOOL_ARGS: Record<(typeof PROBE_TOOLS)[number], string> = {
 	bash: "bun test packages/coding-agent/test/collab --filter reconnect",
 	read: "packages/coding-agent/src/collab/relay-client.ts:168-197",
-	grep: "scheduleRetry|failFatal",
+	search: 'text "scheduleRetry|failFatal" in packages/coding-agent/src/collab',
 	edit: "packages/coding-agent/test/collab/reconnect.test.ts",
 };
 
+/** Progress payload for the running sub; `tick` advances the counters. */
 export function makeProbeProgress(tick: number): SubagentProgressPayload {
 	const tool = PROBE_TOOLS[tick % PROBE_TOOLS.length]!;
 	const recentTools = [1, 2, 3].map(back => {
@@ -417,10 +428,13 @@ export function makeProbeProgress(tick: number): SubagentProgressPayload {
 	};
 }
 
+// ─── subagent transcript ─────────────────────────────────────────────────────
+
 const SUB_T0 = NOW - 25 * MIN;
 
 const subagentTranscriptLines: unknown[] = [
 	{ type: "session", id: "mock-docsweep", timestamp: iso(SUB_T0), cwd: "/Users/kai/Projects/pi" },
+	// Unknown entry type — guests must skip it (tolerant default branch).
 	{ type: "session_init", id: "s00", parentId: null, timestamp: iso(SUB_T0), version: 3 },
 	{
 		id: "s01",
@@ -441,13 +455,13 @@ const subagentTranscriptLines: unknown[] = [
 		message: {
 			role: "assistant",
 			content: [
-				{ type: "thinking", thinking: "Grep the doc for 4xxx codes, then diff against protocol.ts." },
+				{ type: "thinking", thinking: "Search the doc for 4xxx codes, then diff against protocol.ts." },
 				{ type: "text", text: "Scanning `docs/handbook/src/features/collab.md` for close-code mentions." },
 				{
 					type: "toolCall",
 					id: "sub-call-01",
-					name: "grep",
-					arguments: { pattern: "40\\d\\d", paths: ["docs/handbook/src/features/collab.md"] },
+					name: "search",
+					arguments: { type: "text", input: "40\\d\\d", path: "docs/handbook/src/features/collab.md" },
 					intent: "Finding close codes",
 				},
 			],
@@ -466,7 +480,7 @@ const subagentTranscriptLines: unknown[] = [
 		message: {
 			role: "toolResult",
 			toolCallId: "sub-call-01",
-			toolName: "grep",
+			toolName: "search",
 			content: [
 				{
 					type: "text",
@@ -541,9 +555,12 @@ const subagentTranscriptLines: unknown[] = [
 	},
 ];
 
+/** DocSweep's session file, served by the mock host's fetch-transcript handler. */
 export const subagentTranscriptJsonl: string = `${subagentTranscriptLines
 	.map(line => JSON.stringify(line))
 	.join("\n")}\n`;
+
+// ─── scripted streaming turn ─────────────────────────────────────────────────
 
 export type ScriptedStep =
 	| { kind: "event"; event: AgentEvent }
@@ -557,6 +574,12 @@ const TURN_TEXT_2 = "Kicking off a live reconnect probe — one suite run, then 
 const TURN_CLOSE_1 = "Probe passed: 3 reconnects, ";
 const TURN_CLOSE_2 = "Probe passed: 3 reconnects, 0 duplicate entries after resync. The reconnect path holds.";
 
+/**
+ * One scripted streaming turn, replayed by the mock host at ~40ms cadence.
+ *
+ * `seq` keeps ids unique across replays; `parentId` chains the appended
+ * entries onto the current transcript tail.
+ */
 export function makeScriptedTurn(seq: number, parentId: string | null): ScriptedStep[] {
 	const ts = Date.now();
 	const a1Id = `turn${seq}-a1`;

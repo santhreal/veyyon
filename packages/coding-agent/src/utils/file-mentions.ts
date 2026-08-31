@@ -1,3 +1,10 @@
+/**
+ * Auto-read file mentions from user prompts.
+ *
+ * When users reference files with @path syntax (e.g., "@src/foo.ts"),
+ * we automatically inject the file contents as a FileMentionMessage
+ * so the agent doesn't need to read them manually.
+ */
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
@@ -7,21 +14,20 @@ import { formatAge, formatBytes, isProbablyBinary, pathExistsQuietly, readImageM
 import { canonicalSnapshotKey } from "../edit/file-snapshot-store";
 import { normalizeToLF } from "../edit/normalize";
 import type { FileMentionMessage } from "../session/messages";
-import {
-	DEFAULT_MAX_BYTES,
-	formatHeadTruncationNotice,
-	truncateHead,
-	truncateHeadBytes,
-} from "../session/streaming-output";
+import { formatHeadTruncationNotice, truncateHead, truncateHeadBytes } from "../session/streaming-output";
+import { type InlinePricingSource, inlineBudgetFor } from "../tools/output-artifact";
 import { resolveReadPath } from "../tools/path-utils";
 import { formatDimensionNote, resizeImage } from "./image-resize";
 
+/** Regex to match @filepath patterns in text */
 const FILE_MENTION_REGEX = /@(?:"([^"]+)"|'([^']+)'|([^\s@]+))/g;
 const LEADING_PUNCTUATION_REGEX = /^[`"'([{<]+/;
 const TRAILING_PUNCTUATION_REGEX = /[)\]}>.,;:!?"'`]+$/;
 const MENTION_BOUNDARY_REGEX = /[\s([{<"'`]/;
 const DEFAULT_DIR_LIMIT = 500;
 
+// Avoid OOM when users @mention very large files. Above these limits we skip
+// auto-reading and only include the path in the message.
 const MAX_AUTO_READ_TEXT_BYTES = 5 * 1024 * 1024; // 5MB
 const MAX_AUTO_READ_IMAGE_BYTES = 25 * 1024 * 1024; // 25MB
 
@@ -38,32 +44,51 @@ function sanitizeMentionPath(rawPath: string): string | null {
 	return cleaned.length > 0 ? cleaned : null;
 }
 
+/**
+ * Whether an `@mention` names a file that is really there.
+ *
+ * The throw is how "absent" arrives, and absent is the ordinary answer: this runs against every candidate
+ * a half-typed mention could mean, so most calls are misses by design. False also covers a path this
+ * process cannot stat, which reaches the same place -- a file the session cannot read is not a file it can
+ * attach to the prompt.
+ */
+/**
+ * Why this probe is silent about a fault.
+ *
+ * A half-typed `@`-mention is resolved against several candidates, so a miss is the ordinary answer
+ * and reporting each one would make the channel useless. A path this process cannot stat reaches the
+ * same place for the same reason: a file the session cannot read is not one it can attach.
+ */
 const MENTION_PROBE_IS_A_GUESS =
 	"an @-mention resolves against several candidate paths, so most probes are misses by design";
 
 async function resolveMentionPath(filePath: string, cwd: string): Promise<string | null> {
+	// Exact resolution only. The TUI @-selector inserts the real, complete path, so a
+	// mention that does not resolve to an existing file or directory is prose, not a file
+	// reference. Fuzzy/prefix guessing here previously dragged in unrelated same-named
+	// files; that disambiguation belongs to the selector's display, not post-send.
 	const absolutePath = resolveReadPath(filePath, cwd);
 	return (await pathExistsQuietly(absolutePath, MENTION_PROBE_IS_A_GUESS)) ? filePath : null;
 }
 
-function buildTextOutput(textContent: string): { output: string; lineCount: number } {
+function buildTextOutput(textContent: string, maxBytes: number): { output: string; lineCount: number } {
 	const allLines = textContent.split("\n");
 	const totalFileLines = allLines.length;
-	const truncation = truncateHead(textContent);
+	const truncation = truncateHead(textContent, { maxBytes });
 
 	if (truncation.firstLineExceedsLimit) {
 		const firstLine = allLines[0] ?? "";
 		const firstLineBytes = Buffer.byteLength(firstLine, "utf-8");
-		const snippet = truncateHeadBytes(firstLine, DEFAULT_MAX_BYTES);
+		const snippet = truncateHeadBytes(firstLine, maxBytes);
 		let outputText = snippet.text;
 
 		if (outputText.length > 0) {
 			outputText += `\n\n[Line 1 is ${formatBytes(firstLineBytes)}, exceeds ${formatBytes(
-				DEFAULT_MAX_BYTES,
+				maxBytes,
 			)} limit. Showing first ${formatBytes(snippet.bytes)} of the line.]`;
 		} else {
 			outputText = `[Line 1 is ${formatBytes(firstLineBytes)}, exceeds ${formatBytes(
-				DEFAULT_MAX_BYTES,
+				maxBytes,
 			)} limit. Unable to display a valid UTF-8 snippet.]`;
 		}
 
@@ -79,7 +104,10 @@ function buildTextOutput(textContent: string): { output: string; lineCount: numb
 	return { output: outputText, lineCount: totalFileLines };
 }
 
-async function buildDirectoryListing(absolutePath: string): Promise<{ output: string; lineCount: number }> {
+async function buildDirectoryListing(
+	absolutePath: string,
+	maxBytes: number,
+): Promise<{ output: string; lineCount: number }> {
 	let entries: string[];
 	try {
 		entries = await Array.fromAsync(new Bun.Glob("*").scan({ cwd: absolutePath, dot: true, onlyFiles: false }));
@@ -122,7 +150,7 @@ async function buildDirectoryListing(absolutePath: string): Promise<{ output: st
 	}
 
 	const rawOutput = results.join("\n");
-	const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
+	const truncation = truncateHead(rawOutput, { maxBytes, maxLines: Number.MAX_SAFE_INTEGER });
 	let output = truncation.content;
 
 	const notices: string[] = [];
@@ -130,21 +158,18 @@ async function buildDirectoryListing(absolutePath: string): Promise<{ output: st
 		notices.push(`${DEFAULT_DIR_LIMIT} entries limit reached. Use limit=${DEFAULT_DIR_LIMIT * 2} for more`);
 	}
 	if (truncation.truncated) {
-		notices.push(`${formatBytes(DEFAULT_MAX_BYTES)} limit reached`);
+		notices.push(`${formatBytes(maxBytes)} limit reached`);
 	}
 	if (notices.length > 0) {
 		output += `\n\n[${notices.join(". ")}]`;
 	}
 
-	let lc = 1;
-	for (let i = 0; i < output.length; i++) {
-		if (output.charCodeAt(i) === 0x0a) lc++;
-	}
-	return { output, lineCount: lc };
+	return { output, lineCount: output.split("\n").length };
 }
 
+/** Extract all @filepath mentions from text */
 export function extractFileMentions(text: string): string[] {
-	const matches = Array.from(text.matchAll(FILE_MENTION_REGEX));
+	const matches = [...text.matchAll(FILE_MENTION_REGEX)];
 	const mentions: string[] = [];
 
 	for (const match of matches) {
@@ -160,18 +185,30 @@ export function extractFileMentions(text: string): string[] {
 		mentions.push(cleaned);
 	}
 
-	return Array.from(new Set(mentions));
+	return [...new Set(mentions)];
 }
 
+/**
+ * Generate a FileMentionMessage containing the contents of mentioned files.
+ * Returns empty array if no files could be read.
+ *
+ * `pricing` is REQUIRED, and positional rather than one more optional field on
+ * `options`, because a mention is billed on every later request exactly like a
+ * tool result: it rode the compiled 50KB constant while
+ * `tools.artifactSpillThreshold` moved every tool around it, and an optional
+ * field is one a caller forgets. A source carrying no settings resolves to the
+ * compiled default, which is the same answer as not configuring one.
+ */
 export async function generateFileMentionMessages(
 	filePaths: string[],
 	cwd: string,
+	pricing: InlinePricingSource,
 	options?: { autoResizeImages?: boolean; useHashLines?: boolean; snapshotStore?: SnapshotStore },
 ): Promise<AgentMessage[]> {
 	if (filePaths.length === 0) return [];
 
 	const autoResizeImages = options?.autoResizeImages ?? true;
-
+	const maxBytes = inlineBudgetFor(pricing);
 	const files: FileMentionMessage["files"] = [];
 
 	for (const filePath of filePaths) {
@@ -183,7 +220,7 @@ export async function generateFileMentionMessages(
 		try {
 			const stat = await Bun.file(absolutePath).stat();
 			if (stat.isDirectory()) {
-				const { output, lineCount } = await buildDirectoryListing(absolutePath);
+				const { output, lineCount } = await buildDirectoryListing(absolutePath, maxBytes);
 				files.push({ path: resolvedPath, content: output, lineCount });
 				continue;
 			}
@@ -249,13 +286,15 @@ export async function generateFileMentionMessages(
 			const content = await Bun.file(absolutePath).text();
 			const snapshotStore = options?.useHashLines ? options.snapshotStore : undefined;
 			const normalized = snapshotStore ? normalizeToLF(content) : content;
-			let { output, lineCount } = buildTextOutput(normalized);
+			let { output, lineCount } = buildTextOutput(normalized, maxBytes);
 			if (snapshotStore) {
 				const tag = snapshotStore.record(canonicalSnapshotKey(absolutePath), normalized);
 				output = `${formatHashlineHeader(resolvedPath, tag)}\n${formatNumberedLines(output)}`;
 			}
 			files.push({ path: resolvedPath, content: output, lineCount });
-		} catch {}
+		} catch {
+			// File doesn't exist or isn't readable - skip silently
+		}
 	}
 
 	if (files.length === 0) return [];

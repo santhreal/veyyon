@@ -131,7 +131,7 @@ describe("profile switch handoff (atomic teardown + relaunch)", () => {
 			writes.push(data);
 			realWrite(data);
 		});
-		vi.spyOn(createdMode.statusLine, "watchBranch").mockImplementation(() => {});
+		vi.spyOn(createdMode.statusLine, "watchGitState").mockImplementation(() => {});
 
 		// Event timeline: a monotonic sequence stamped on spawn and ui.stop so
 		// the test can assert the child is spawned only after the terminal is

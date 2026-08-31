@@ -3,7 +3,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { errorMessage, isTimeoutError, postmortem, Snowflake, untilAborted } from "@veyyon/utils";
+// The owner, not the barrel: this module reaches the two discard contracts and nothing else.
 import { bestEffort, optionalResult } from "@veyyon/utils/discarded-fault";
+import type { HTMLElement } from "linkedom";
 import type {
 	Browser,
 	CDPSession,
@@ -11,6 +13,8 @@ import type {
 	ElementHandle,
 	ElementScreenshotOptions,
 	HTTPResponse,
+	ImageFormat,
+	KeyInput,
 	Page,
 	SerializedAXNode,
 	Target,
@@ -21,8 +25,13 @@ import { resizeImage } from "../../utils/image-resize";
 import { resolveToCwd } from "../path-utils";
 import { formatScreenshot } from "../render-utils";
 import { ToolAbortError, ToolError, throwIfAborted } from "../tool-errors";
-import { captureAriaSnapshot, parseAriaRefSelector, resolveAriaRefHandle } from "./aria/aria-snapshot";
-import { releaseHandle } from "./handle-release";
+import {
+	type AriaSnapshotOptions,
+	captureAriaSnapshot,
+	parseAriaRefSelector,
+	resolveAriaRefHandle,
+} from "./aria/aria-snapshot";
+import { releaseHandle, releaseHandles } from "./handle-release";
 import {
 	applyStealthPatches,
 	applyViewport,
@@ -30,8 +39,14 @@ import {
 	DEFAULT_VIEWPORT,
 	loadPuppeteer,
 } from "./launch";
-import { extractReadableFromHtml } from "./readable";
-import { markHandled, resolvePredicateTimeout, type WaitPredicateOptions, waitForBrowserRun } from "./run-cancellation";
+import { extractReadableFromHtml, type ReadableFormat } from "./readable";
+import {
+	CELL_BUDGET_SLACK_MS,
+	markHandled,
+	resolvePredicateTimeout,
+	type WaitPredicateOptions,
+	waitForBrowserRun,
+} from "./run-cancellation";
 import { cloneSafe, RunOutput } from "./run-output";
 import { guardTabApi } from "./tab-api-guard";
 import type {
@@ -40,52 +55,599 @@ import type {
 	ReadyInfo,
 	ScreenshotResult,
 	SessionSnapshot,
+	TabRunErrorPayload,
 	TabWorkerInbound,
 	TabWorkerTransport,
 	ToolReply,
 	WorkerInitPayload,
 } from "./tab-protocol";
-import {
-	type ActiveRun,
-	clickQueryHandlerText,
-	collectObservationEntries,
-	type DialogPolicy,
-	type DragTarget,
-	describeInflight,
-	describeScreenshot,
-	errorPayload,
-	fillViaHandle,
-	formatSelectorMatchHint,
-	imageFormatForPath,
-	normalizeSelector,
-	type OpenDialogInfo,
-	redactUrlCredentials,
-	replyError,
-	resolveOpTimeouts,
-	resolveWaitTimeout,
-	type ScreenshotOptions,
-	type TabApi,
-	toActionableHandle,
-	ZERO_MATCH_FAIL_FAST_MS,
-	ZERO_MATCH_POLL_MS,
-} from "./tab-worker-helpers";
 import { targetIdForPage, targetIdForTarget } from "./target-id";
 
-export {
-	type ActionableHandle,
-	describeInflight,
-	describeMissingClickTarget,
-	describeScreenshot,
-	formatSelectorMatchHint,
-	type InflightOp,
-	imageFormatForPath,
-	normalizeSelector,
-	type OpTimeouts,
-	resolveOpTimeouts,
-	resolveWaitTimeout,
-	type TabApi,
-	toActionableHandle,
-} from "./tab-worker-helpers";
+declare module "puppeteer-core" {
+	interface Frame {
+		/** Puppeteer's main JavaScript realm, retained by our pinned runtime patch. */
+		mainRealm(): Realm;
+	}
+}
+
+declare global {
+	interface Element extends HTMLElement {}
+	function getComputedStyle(element: Element): Record<string, unknown>;
+	var innerWidth: number;
+	var innerHeight: number;
+	var document: {
+		elementFromPoint(x: number, y: number): Element | null;
+	};
+}
+
+const INTERACTIVE_AX_ROLES = new Set([
+	"button",
+	"link",
+	"textbox",
+	"combobox",
+	"listbox",
+	"option",
+	"checkbox",
+	"radio",
+	"switch",
+	"tab",
+	"menuitem",
+	"menuitemcheckbox",
+	"menuitemradio",
+	"slider",
+	"spinbutton",
+	"searchbox",
+	"treeitem",
+]);
+
+const LEGACY_SELECTOR_PREFIXES = ["p-aria/", "p-text/", "p-xpath/", "p-pierce/"] as const;
+
+const SELECTOR_HANDLER_PREFIXES = [
+	"aria/",
+	"text/",
+	"xpath/",
+	"pierce/",
+	"aria-ref=",
+	"aria-ref/",
+	"ariaref/",
+	"p-",
+] as const;
+
+/**
+ * Playwright-only selector engines/pseudos puppeteer cannot parse. Without this guard a
+ * `tab.click(":has-text(...)")` would wait the full action timeout and fail opaquely;
+ * fail fast instead with a pointer to the puppeteer-native alternative. Skipped for
+ * explicit query-handler prefixes (`text/`, `aria/`, …) whose payload is literal text.
+ */
+const PLAYWRIGHT_ONLY_SELECTOR_RE =
+	/:has-text\(|:text\(|:text-is\(|:text-matches\(|:visible\b|:hidden\b|:nth-match\(|:near\(|:above\(|:below\(|:right-of\(|:left-of\(/;
+
+type DialogPolicy = "accept" | "dismiss";
+type DragTarget = string | { readonly x: number; readonly y: number };
+type ActionabilityResult = { ok: true; x: number; y: number } | { ok: false; reason: string };
+/** Last JS dialog seen on the page; kept for timeout attribution until handled or navigation. */
+interface OpenDialogInfo {
+	type: string;
+	message: string;
+}
+
+/**
+ * Per-op fail-fast ceilings for `tab.*` helpers. All are kept strictly under the cell
+ * budget (`timeoutMs - OP_DEADLINE_SLACK_MS`) so a stalled helper rejects with a named,
+ * attributable error that leaves recovery budget — never the opaque whole-cell
+ * "Browser code execution timed out" path that consumed the entire run.
+ *
+ * - `QUICK_OP_TIMEOUT_MS`: page-coupled reads that should resolve fast (`observe`,
+ *   `screenshot`, `extract`, `ariaSnapshot`).
+ * - `ACTION_OP_TIMEOUT_MS`: interactive point actions (`click`, `fill`, `type`, …) and
+ *   the default for wait helpers when no explicit `{ timeout }` is given. Selector ops
+ *   additionally fail fast after `ZERO_MATCH_FAIL_FAST_MS` of confirmed zero matches
+ *   (see `#zeroMatchWatchdog`), so the full ceiling is only spent on elements that
+ *   exist but are not yet actionable.
+ *
+ * `goto` and `evaluate` stay uncapped (`Number.POSITIVE_INFINITY`): navigation and user
+ * code legitimately use the full cell budget.
+ */
+const QUICK_OP_TIMEOUT_MS = 20_000;
+const ACTION_OP_TIMEOUT_MS = 8_000;
+/** Headroom subtracted from the cell budget so a per-op deadline fires before it. */
+const OP_DEADLINE_SLACK_MS = CELL_BUDGET_SLACK_MS;
+/**
+ * A selector op whose selector has matched nothing for this long fails fast with the
+ * zero-match hint instead of burning the rest of its deadline: a wrong selector or a
+ * wrong page (consent wall, pre-navigation document) is the common agent failure and
+ * should cost ~2s, not the full action ceiling. Explicit `{ timeout }` waits opt out.
+ */
+const ZERO_MATCH_FAIL_FAST_MS = 2_000;
+/** Poll cadence for the zero-match watchdog. */
+const ZERO_MATCH_POLL_MS = 250;
+
+export interface OpTimeouts {
+	/** Largest per-op deadline allowed — strictly below the cell budget. */
+	budgetBound: number;
+	/** Ceiling for quick page reads. */
+	quickOpMs: number;
+	/** Ceiling for interactive actions + default for waits. */
+	actionOpMs: number;
+}
+
+/** Resolve the per-op fail-fast ceilings for a given cell budget. */
+export function resolveOpTimeouts(cellTimeoutMs: number): OpTimeouts {
+	const budgetBound = Math.max(1, cellTimeoutMs - OP_DEADLINE_SLACK_MS);
+	return {
+		budgetBound,
+		quickOpMs: Math.min(budgetBound, QUICK_OP_TIMEOUT_MS),
+		actionOpMs: Math.min(budgetBound, ACTION_OP_TIMEOUT_MS),
+	};
+}
+
+/**
+ * Effective timeout for a wait helper (`waitFor*`). A positive explicit `{ timeout }` is
+ * honored but clamped to the cell budget so it still fails fast + named; raising the tool
+ * `timeout` raises that cap, so a longer budget stays meaningful. No `{ timeout }` → the
+ * action ceiling. Puppeteer's `{ timeout: 0 }` / `Infinity` ("disable") maps to the largest
+ * bounded wait (`budgetBound`) — the harness never permits an unbounded wait. Garbage input
+ * (negative, `NaN`) falls back to the action ceiling rather than the longest wait.
+ */
+export function resolveWaitTimeout(cellTimeoutMs: number, explicit?: number): number {
+	const { budgetBound, actionOpMs } = resolveOpTimeouts(cellTimeoutMs);
+	if (explicit === undefined) return actionOpMs;
+	// Puppeteer "disable" sentinels — still bounded by the budget here.
+	if (explicit === 0 || explicit === Number.POSITIVE_INFINITY) return budgetBound;
+	// Positive finite → honored + clamped. Negative/NaN garbage → default, not the longest wait.
+	if (Number.isFinite(explicit) && explicit > 0) return Math.min(explicit, budgetBound);
+	return actionOpMs;
+}
+
+interface ScreenshotOptions {
+	selector?: string;
+	fullPage?: boolean;
+	save?: string;
+	silent?: boolean;
+}
+
+export interface TabApi {
+	readonly name: string;
+	readonly page: Page;
+	readonly signal?: AbortSignal;
+	url(): string;
+	title(): Promise<string>;
+	goto(
+		url: string,
+		opts?: { waitUntil?: "load" | "domcontentloaded" | "networkidle0" | "networkidle2" },
+	): Promise<void>;
+	observe(opts?: { includeAll?: boolean; viewportOnly?: boolean }): Promise<Observation>;
+	ariaSnapshot(selector?: string, opts?: AriaSnapshotOptions): Promise<string>;
+	screenshot(opts?: ScreenshotOptions): Promise<ScreenshotResult>;
+	extract(format?: ReadableFormat): Promise<string>;
+	click(selector: string): Promise<void>;
+	type(selector: string, text: string): Promise<void>;
+	fill(selector: string, value: string): Promise<void>;
+	press(key: KeyInput, opts?: { selector?: string }): Promise<void>;
+	scroll(deltaX: number, deltaY: number): Promise<void>;
+	drag(from: DragTarget, to: DragTarget): Promise<void>;
+	waitFor(selector: string, opts?: { timeout?: number }): Promise<ActionableHandle>;
+	evaluate<TResult, TArgs extends unknown[]>(
+		fn: string | ((...args: TArgs) => TResult | Promise<TResult>),
+		...args: TArgs
+	): Promise<TResult>;
+	scrollIntoView(selector: string): Promise<void>;
+	select(selector: string, ...values: string[]): Promise<string[]>;
+	uploadFile(selector: string, ...filePaths: string[]): Promise<void>;
+	waitForUrl(pattern: string | RegExp, opts?: { timeout?: number }): Promise<string>;
+	waitForResponse(
+		pattern: string | RegExp | ((response: HTTPResponse) => boolean | Promise<boolean>),
+		opts?: { timeout?: number },
+	): Promise<HTTPResponse>;
+	waitForSelector(
+		selector: string,
+		opts?: { timeout?: number; visible?: boolean; hidden?: boolean },
+	): Promise<ActionableHandle | null>;
+	waitForNavigation(opts?: {
+		waitUntil?: "load" | "domcontentloaded" | "networkidle0" | "networkidle2";
+		timeout?: number;
+	}): Promise<HTTPResponse | null>;
+	id(n: number): Promise<ActionableHandle>;
+	ref(id: string): Promise<ActionableHandle>;
+}
+
+export function normalizeSelector(selector: string): string {
+	if (!selector) return selector;
+	if (
+		!SELECTOR_HANDLER_PREFIXES.some(prefix => selector.startsWith(prefix)) &&
+		PLAYWRIGHT_ONLY_SELECTOR_RE.test(selector)
+	) {
+		throw new ToolError(
+			`Playwright-only selector ${JSON.stringify(selector)} is not supported by the browser tool. ` +
+				`Use a puppeteer text selector ("text/Allow all"), an aria selector ("aria/Name"), CSS, or "xpath/...".`,
+		);
+	}
+	if (selector.startsWith("p-") && !LEGACY_SELECTOR_PREFIXES.some(prefix => selector.startsWith(prefix))) {
+		throw new ToolError(
+			`Unsupported selector prefix. Use CSS or puppeteer query handlers (aria/, text/, xpath/, pierce/). Got: ${selector}`,
+		);
+	}
+	if (selector.startsWith("p-text/")) return `text/${selector.slice("p-text/".length)}`;
+	if (selector.startsWith("p-xpath/")) return `xpath/${selector.slice("p-xpath/".length)}`;
+	if (selector.startsWith("p-pierce/")) return `pierce/${selector.slice("p-pierce/".length)}`;
+	if (selector.startsWith("p-aria/")) {
+		const rest = selector.slice("p-aria/".length);
+		const nameMatch = rest.match(/\[\s*name\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\]]+))\s*\]/);
+		const name = nameMatch?.[1] ?? nameMatch?.[2] ?? nameMatch?.[3];
+		if (name) return `aria/${name.trim()}`;
+		return `aria/${rest}`;
+	}
+	return selector;
+}
+
+function isInteractiveNode(node: SerializedAXNode): boolean {
+	if (INTERACTIVE_AX_ROLES.has(node.role)) return true;
+	return (
+		node.checked !== undefined ||
+		node.pressed !== undefined ||
+		node.selected !== undefined ||
+		node.expanded !== undefined ||
+		node.focused === true
+	);
+}
+
+function asElementHandle(handle: unknown): ElementHandle | null {
+	return handle ? (handle as ElementHandle) : null;
+}
+
+/** ElementHandle enriched with the `fill()` the tool docs promise on handles from `tab.id()`/`tab.ref()`/`tab.waitFor()`. */
+export type ActionableHandle = ElementHandle & { fill(value: string): Promise<void> };
+
+/**
+ * Attach `fill()` to a puppeteer ElementHandle before handing it to user code.
+ * Puppeteer handles expose `type()` but no `fill()`; the semantics mirror the
+ * selector-based `tab.fill()`: focus, clear any existing value, then type.
+ */
+export function toActionableHandle(handle: ElementHandle): ActionableHandle {
+	const enriched = handle as ActionableHandle;
+	enriched.fill = value => fillViaHandle(enriched, value);
+	return enriched;
+}
+
+/** Focus, clear any existing value, then retype — shared by `tab.fill(aria-ref)` and enriched handles. */
+async function fillViaHandle(handle: ElementHandle, value: string, signal?: AbortSignal): Promise<void> {
+	await untilAborted(signal, () =>
+		handle.evaluate(el => {
+			const node = el as unknown as { value?: string; focus?: () => void };
+			node.focus?.();
+			if ("value" in node) node.value = "";
+		}),
+	);
+	await untilAborted(signal, () => handle.type(value, { delay: 0 }));
+}
+
+/**
+ * Strip `user:pass@` from a URL before surfacing it in tool outputs / details
+ * so Basic Auth credentials don't leak into transcripts. Returns the original
+ * string verbatim when it doesn't parse as a URL or when there are no
+ * credentials to redact.
+ */
+function redactUrlCredentials(url: string): string {
+	if (!url || (!url.includes("@") && !url.includes("//"))) return url;
+	try {
+		const parsed = new URL(url);
+		if (!parsed.username && !parsed.password) return url;
+		parsed.username = "";
+		parsed.password = "";
+		return parsed.toString();
+	} catch {
+		return url;
+	}
+}
+
+function errorPayload(error: unknown): TabRunErrorPayload {
+	if (error instanceof ToolAbortError) {
+		return { name: error.name, message: error.message, stack: error.stack, isToolError: false, isAbort: true };
+	}
+	if (error instanceof ToolError) {
+		return { name: error.name, message: error.message, stack: error.stack, isToolError: true, isAbort: false };
+	}
+	if (error instanceof Error) {
+		return { name: error.name, message: error.message, stack: error.stack, isToolError: false, isAbort: false };
+	}
+	return { name: "Error", message: errorMessage(error), isToolError: false, isAbort: false };
+}
+
+function replyError(payload: TabRunErrorPayload): Error {
+	if (payload.isAbort) {
+		const err = new ToolAbortError(payload.message || "Tool call aborted");
+		if (payload.stack) err.stack = payload.stack;
+		return err;
+	}
+	const Ctor = payload.isToolError ? ToolError : Error;
+	const err = new Ctor(payload.message);
+	if (payload.name) err.name = payload.name;
+	if (payload.stack) err.stack = payload.stack;
+	return err;
+}
+
+async function collectObservationEntries(
+	core: WorkerCore,
+	node: SerializedAXNode,
+	entries: ObservationEntry[],
+	options: { viewportOnly: boolean; includeAll: boolean },
+): Promise<void> {
+	if (options.includeAll || isInteractiveNode(node)) {
+		const handle = await node.elementHandle();
+		if (handle) {
+			let inViewport = true;
+			if (options.viewportOnly) {
+				try {
+					inViewport = await handle.isIntersectingViewport();
+				} catch {
+					inViewport = false;
+				}
+			}
+			if (inViewport) {
+				const id = core.nextElementId();
+				const states: string[] = [];
+				if (node.disabled) states.push("disabled");
+				if (node.checked !== undefined) states.push(`checked=${String(node.checked)}`);
+				if (node.pressed !== undefined) states.push(`pressed=${String(node.pressed)}`);
+				if (node.selected !== undefined) states.push(`selected=${String(node.selected)}`);
+				if (node.expanded !== undefined) states.push(`expanded=${String(node.expanded)}`);
+				if (node.required) states.push("required");
+				if (node.readonly) states.push("readonly");
+				if (node.multiselectable) states.push("multiselectable");
+				if (node.multiline) states.push("multiline");
+				if (node.modal) states.push("modal");
+				if (node.focused) states.push("focused");
+				core.cacheElement(id, handle as ElementHandle);
+				entries.push({
+					id,
+					role: node.role,
+					name: node.name,
+					value: node.value,
+					description: node.description,
+					keyshortcuts: node.keyshortcuts,
+					states,
+				});
+			} else {
+				await handle.dispose();
+			}
+		}
+	}
+	for (const child of node.children ?? []) {
+		await collectObservationEntries(core, child, entries, options);
+	}
+}
+
+/**
+ * Which of the matched elements to click, and what happened to the ones that were not chosen.
+ *
+ * `probeFailures` is separate from "not visible" on purpose. Probing an element means evaluating in
+ * the page, which throws when the node was detached between the query and the check, which is
+ * routine on a re-rendering page. Both outcomes remove a candidate, but they mean opposite things to
+ * whoever reads the timeout: a genuinely invisible element is a page or selector problem, while a
+ * failed probe says the element was there and the check lost the race. Reporting both as
+ * "no-visible-candidate" sent the reader after CSS for a re-render race.
+ */
+interface ClickTargetResolution {
+	target: ElementHandle | null;
+	/** Elements examined, which is every handle the selector matched. */
+	probed: number;
+	/** Elements dropped because a probe threw rather than because they were unclickable. */
+	probeFailures: number;
+	/** The first probe error's message, so the timeout can name the cause and not just count it. */
+	firstProbeError: string | null;
+}
+
+async function resolveActionableQueryHandlerClickTarget(handles: ElementHandle[]): Promise<ClickTargetResolution> {
+	const candidates: Array<{
+		handle: ElementHandle;
+		rect: { x: number; y: number; w: number; h: number };
+		ownedProxy?: ElementHandle;
+	}> = [];
+	let probeFailures = 0;
+	let firstProbeError: string | null = null;
+	for (const handle of handles) {
+		let clickable: ElementHandle = handle;
+		let clickableProxy: ElementHandle | null = null;
+		try {
+			const proxy = await handle.evaluateHandle(el => {
+				const target =
+					(el as Element).closest(
+						'a,button,[role="button"],[role="link"],input[type="button"],input[type="submit"]',
+					) ?? el;
+				return target;
+			});
+			clickableProxy = asElementHandle(proxy.asElement());
+			if (clickableProxy) clickable = clickableProxy;
+		} catch {
+			// Looking for the clickable ancestor failed (detached node, or a frame that will not run
+			// script). Clicking the matched element itself is the right degrade and is usually the same
+			// thing: the ancestor lookup only matters when the match is a span inside a button. Not
+			// counted as a probe failure, because the element is still a candidate.
+		}
+		try {
+			const intersecting = await clickable.isIntersectingViewport();
+			if (!intersecting) continue;
+			const rect = (await clickable.evaluate(el => {
+				const r = (el as Element).getBoundingClientRect();
+				return { x: r.left, y: r.top, w: r.width, h: r.height };
+			})) as { x: number; y: number; w: number; h: number };
+			if (rect.w < 1 || rect.h < 1) continue;
+			candidates.push({ handle: clickable, rect, ownedProxy: clickableProxy ?? undefined });
+		} catch (err) {
+			// The visibility probe threw, so this element is dropped without ever being judged. Counted
+			// and reported: dropping it silently is what made a detached-node race read as an invisible
+			// element in the timeout message.
+			probeFailures += 1;
+			firstProbeError ??= errorMessage(err);
+		} finally {
+			if (clickableProxy && clickableProxy !== handle && clickable !== clickableProxy) {
+				await releaseHandle(clickableProxy);
+			}
+		}
+	}
+	const resolution = { probed: handles.length, probeFailures, firstProbeError };
+	if (!candidates.length) return { target: null, ...resolution };
+	candidates.sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x);
+	const winner = candidates[0]?.handle ?? null;
+	for (let i = 1; i < candidates.length; i++) {
+		const candidate = candidates[i]!;
+		await releaseHandle(candidate.ownedProxy);
+	}
+	return { target: winner, ...resolution };
+}
+
+async function isClickActionable(handle: ElementHandle): Promise<ActionabilityResult> {
+	return (await handle.evaluate(el => {
+		const element = el as HTMLElement;
+		const style = globalThis.getComputedStyle(element);
+		if (style.display === "none") return { ok: false as const, reason: "display:none" };
+		if (style.visibility === "hidden") return { ok: false as const, reason: "visibility:hidden" };
+		if (style.pointerEvents === "none") return { ok: false as const, reason: "pointer-events:none" };
+		if (Number(style.opacity) === 0) return { ok: false as const, reason: "opacity:0" };
+		const r = element.getBoundingClientRect();
+		if (r.width < 1 || r.height < 1) return { ok: false as const, reason: "zero-size" };
+		// Inline clamp (not @veyyon/utils clampLow): this function is serialized and
+		// injected into the page's own JS context, which has no access to workspace
+		// modules — an import here would throw at evaluation time in the browser.
+		const left = Math.max(0, Math.min(globalThis.innerWidth, r.left));
+		const right = Math.max(0, Math.min(globalThis.innerWidth, r.right));
+		const top = Math.max(0, Math.min(globalThis.innerHeight, r.top));
+		const bottom = Math.max(0, Math.min(globalThis.innerHeight, r.bottom));
+		if (right - left < 1 || bottom - top < 1) return { ok: false as const, reason: "off-viewport" };
+		const x = Math.floor((left + right) / 2);
+		const y = Math.floor((top + bottom) / 2);
+		const topEl = globalThis.document.elementFromPoint(x, y);
+		if (!topEl) return { ok: false as const, reason: "elementFromPoint-null" };
+		if (topEl === element || element.contains(topEl) || (topEl as Element).contains(element))
+			return { ok: true as const, x, y };
+		return { ok: false as const, reason: "obscured" };
+	})) as ActionabilityResult;
+}
+
+async function clickQueryHandlerText(
+	page: Page,
+	selector: string,
+	timeoutMs: number,
+	signal?: AbortSignal,
+): Promise<void> {
+	const clickTimeout = scopedTimeoutSignal(timeoutMs, signal);
+	const clickSignal = clickTimeout.signal;
+	const start = Date.now();
+	let lastSeen = 0;
+	let lastReason: string | null = null;
+	while (Date.now() - start < timeoutMs) {
+		throwIfAborted(clickSignal);
+		const handles = (await untilAborted(clickSignal, () => page.$$(selector))) as ElementHandle[];
+		try {
+			lastSeen = handles.length;
+			const resolved = await resolveActionableQueryHandlerClickTarget(handles);
+			const target = resolved.target;
+			if (!target) {
+				lastReason = describeMissingClickTarget(resolved);
+				await untilAborted(clickSignal, () => Bun.sleep(100));
+				continue;
+			}
+			const actionability = await isClickActionable(target);
+			if (!actionability.ok) {
+				lastReason = actionability.reason;
+				await untilAborted(clickSignal, () => Bun.sleep(100));
+				continue;
+			}
+			try {
+				await untilAborted(clickSignal, () => target.click());
+				return;
+			} catch (err) {
+				lastReason = errorMessage(err);
+				await untilAborted(clickSignal, () => Bun.sleep(100));
+			}
+		} finally {
+			await releaseHandles(handles);
+		}
+	}
+	clickTimeout.cancel();
+	throw new ToolError(
+		`Timed out clicking ${selector} (seen ${lastSeen} matches; last reason: ${lastReason ?? "unknown"}). ` +
+			"If there are multiple matching elements, use observe + tab.id() or a more specific selector.",
+	);
+}
+
+/**
+ * Why no click target was chosen, in the words the timeout message needs.
+ *
+ * A probe that threw is called out separately from an element that was simply not visible, because
+ * the two send the reader in opposite directions: "no-visible-candidate" for a detached-node race
+ * had them inspecting CSS for an element that was on screen the whole time.
+ */
+export function describeMissingClickTarget(resolution: {
+	probed: number;
+	probeFailures: number;
+	firstProbeError: string | null;
+}): string {
+	if (resolution.probed === 0) return "no-matches";
+	if (resolution.probeFailures === 0) return "no-visible-candidate";
+	const detail = resolution.firstProbeError ? `: ${resolution.firstProbeError}` : "";
+	if (resolution.probeFailures === resolution.probed) {
+		return `every candidate probe failed (${resolution.probeFailures} of ${resolution.probed})${detail}`;
+	}
+	return `no-visible-candidate, and ${resolution.probeFailures} of ${resolution.probed} probes failed${detail}`;
+}
+
+/**
+ * Hint appended to a selector op's fail-fast timeout, given the selector's current
+ * match count: a missing element (consent wall, wrong page) reads differently from
+ * a present-but-unactionable one.
+ */
+export function formatSelectorMatchHint(count: number): string {
+	return count === 0
+		? "; selector currently matches no elements — run tab.observe() or tab.ariaSnapshot() to inspect the page"
+		: `; selector currently matches ${count} element(s) but the action never became possible — the element may be hidden or covered (try tab.scrollIntoView() or a more specific selector)`;
+}
+
+export interface InflightOp {
+	label: string;
+	startedAt: number;
+}
+
+interface ActiveRun {
+	id: string;
+	ac: AbortController;
+	signal: AbortSignal;
+	output: RunOutput;
+	screenshots: ScreenshotResult[];
+	pendingTools: Map<string, { resolve(value: unknown): void; reject(error: Error): void }>;
+	/** Helper invocations currently awaiting the page/network, keyed by op id. */
+	inflight: Map<number, InflightOp>;
+	opCounter: number;
+}
+
+/** Human-readable label for a screenshot op, used in op tracking + timeout errors. */
+export function describeScreenshot(opts?: ScreenshotOptions): string {
+	if (opts?.selector) return `tab.screenshot({ selector: ${JSON.stringify(opts.selector)} })`;
+	if (opts?.fullPage) return "tab.screenshot({ fullPage: true })";
+	return "tab.screenshot()";
+}
+
+/** Map an explicit save path's extension to a puppeteer capture format (default png). */
+export function imageFormatForPath(filePath: string): ImageFormat {
+	switch (path.extname(filePath).toLowerCase()) {
+		case ".webp":
+			return "webp";
+		case ".jpg":
+		case ".jpeg":
+			return "jpeg";
+		default:
+			return "png";
+	}
+}
+
+/** Summarize still-running helpers (oldest first) so a cell timeout names what stalled. */
+export function describeInflight(inflight: Map<number, InflightOp>): string {
+	const now = Date.now();
+	return [...inflight.values()]
+		.sort((a, b) => a.startedAt - b.startedAt)
+		.map(op => `${op.label} (${((now - op.startedAt) / 1000).toFixed(1)}s)`)
+		.join(", ");
+}
 
 export class WorkerCore {
 	#transport: TabWorkerTransport;
@@ -160,12 +722,16 @@ export class WorkerCore {
 				if (payload.dialogs) this.#applyDialogPolicy(payload.dialogs);
 				if (payload.url) {
 					await this.#page.goto(payload.url, {
+						// Default to "load" because dev servers with HMR/WS never reach networkidle.
 						waitUntil: payload.waitUntil ?? "load",
 						timeout: payload.timeoutMs,
 					});
 				}
 			} else {
 				const target = await this.#findAttachedTarget(payload.targetId);
+				// Post-timeout recycle: unblock the target BEFORE adopting the page — an open
+				// modal dialog or hung navigation can stall `target.page()` / ready info, and a
+				// stalled init used to time out and force-kill the tab.
 				if (payload.recover) await this.#recoverAttachedTarget(target);
 				const page = await target.page();
 				if (!page) throw new ToolError(`Target ${payload.targetId} is no longer available on the attached browser`);
@@ -183,12 +749,20 @@ export class WorkerCore {
 	async #findAttachedTarget(targetId: string): Promise<Target> {
 		if (!this.#browser) throw new ToolError("Browser is not connected");
 		for (const target of this.#browser.targets()) {
+			// A target that will not report its id is not the one being looked for; the empty string cannot match
+			// a real id, and exhausting the loop throws the named "no longer available" error below.
 			if ((await targetIdForTarget(target).catch(() => "")) !== targetId) continue;
 			return target;
 		}
 		throw new ToolError(`Target ${targetId} is no longer available on the attached browser`);
 	}
 
+	/**
+	 * Best-effort unblocking of a wedged target during post-timeout recovery: dismiss any
+	 * open JS dialog and stop a pending navigation over a raw CDP session (created on the
+	 * target, not the page, so it works while the page itself is unresponsive). Every step
+	 * tolerates "nothing to do".
+	 */
 	async #recoverAttachedTarget(target: Target): Promise<void> {
 		let session: CDPSession | undefined;
 		try {
@@ -208,6 +782,12 @@ export class WorkerCore {
 		}
 	}
 
+	/**
+	 * Record JS dialogs for timeout attribution without handling them (semantics of an
+	 * unset `dialogs` policy are unchanged — the page stays blocked until user code or
+	 * the policy handler acts). Cleared when the policy handler settles the dialog or a
+	 * main-frame navigation proves the modal is gone.
+	 */
 	#observeDialogs(): void {
 		const page = this.#requirePage();
 		page.on("dialog", dialog => {
@@ -224,6 +804,8 @@ export class WorkerCore {
 		this.#targetId = targetId;
 		return {
 			url: redactUrlCredentials(page.url()),
+			// Reported to the operator for display; `undefined` is distinct from an empty string, which would
+			// claim the page has no title.
 			title: await optionalResult(page.title(), "a page mid-navigation has no title yet"),
 			viewport: page.viewport() ?? DEFAULT_VIEWPORT,
 			targetId,
@@ -305,6 +887,8 @@ export class WorkerCore {
 				assert: (cond: unknown, text?: string): void => {
 					if (!cond) throw new ToolError(text ?? "Assertion failed");
 				},
+				// Both wait forms register in the in-flight map so a cell that dies while
+				// sleeping/polling names the culprit instead of a bare whole-cell timeout.
 				wait: (msOrPredicate: number | (() => unknown), opts?: WaitPredicateOptions): Promise<unknown> => {
 					const label = typeof msOrPredicate === "number" ? `wait(${msOrPredicate}ms)` : "wait(predicate)";
 					const resolved =
@@ -338,6 +922,7 @@ export class WorkerCore {
 				} else {
 					rejectCancel(abortError);
 				}
+				// Cancel in-flight tool calls so user code's awaited proxies reject promptly.
 				const toolAbort = cellTimeout.signal.aborted
 					? postmortem.markExpectedCleanupError(
 							new ToolAbortError(undefined, { cause: cellTimeout.signal.reason }),
@@ -368,6 +953,10 @@ export class WorkerCore {
 				signal.removeEventListener("abort", onCancel);
 			}
 		} catch (error) {
+			// The run's own output goes back WITH the failure. `output.finish()` drains whatever
+			// `display()` produced before the throw, and those lines are usually the only evidence
+			// of why it threw; dropping them left a timed-out cell reporting a bare deadline and
+			// nothing that explains it. Screenshots ride along for the same reason.
 			this.#transport.send({
 				type: "result",
 				id: msg.id,
@@ -429,6 +1018,17 @@ export class WorkerCore {
 		else pending.reject(replyError(reply.error));
 	}
 
+	/**
+	 * Wrap a tab helper so it (a) registers in the active run's in-flight map for
+	 * timeout diagnostics and (b) honors an optional per-op deadline that fails fast
+	 * with a named error instead of silently consuming the whole cell budget. Pass
+	 * `Number.POSITIVE_INFINITY` for `perOpTimeoutMs` to bound the op only by the cell
+	 * budget (used for `evaluate` running user code and for locator helpers that already
+	 * carry puppeteer's own `.setTimeout(timeoutMs)`). When the op targets a `selector`,
+	 * the fail-fast timeout carries a best-effort match-count hint, and — when
+	 * `zeroMatchAfterMs` is set — a watchdog aborts the op early once the selector has
+	 * matched nothing for that long.
+	 */
 	async #runOp<T>(
 		active: ActiveRun,
 		label: string,
@@ -447,6 +1047,8 @@ export class WorkerCore {
 			selector !== undefined && opts?.zeroMatchAfterMs !== undefined && parseAriaRefSelector(selector) === null
 				? { selector, afterMs: opts.zeroMatchAfterMs }
 				: undefined;
+		// Fired when the watchdog wins the race (tears down the in-flight action) and in
+		// the finally (stops the watchdog's polling once the op settles either way).
 		const earlyAc = new AbortController();
 		try {
 			if (!watchdog) return await fn(opSignal);
@@ -456,6 +1058,10 @@ export class WorkerCore {
 				this.#zeroMatchWatchdog(watchdog.selector, label, watchdog.afterMs, racedSignal),
 			]);
 		} catch (err) {
+			// Fail fast with a named, attributable error instead of the opaque whole-cell timeout:
+			// our per-op deadline fired, or puppeteer's own (equal) timeout fired first — having
+			// already torn down the CDP action via the op signal, so no work is left dangling.
+			// Cell-budget aborts and uncapped helpers (goto/evaluate) keep their native errors.
 			if (capped && !cellSignal.aborted && (opTimeout?.signal.aborted || isTimeoutError(err))) {
 				const hint = selector ? await this.#selectorTimeoutHint(selector) : "";
 				throw new ToolError(`${label} timed out after ${perOpTimeoutMs}ms${hint}`);
@@ -468,6 +1074,14 @@ export class WorkerCore {
 		}
 	}
 
+	/**
+	 * Fail-fast arm raced against a selector op: rejects once the selector has matched
+	 * nothing for the whole `afterMs` window, so a wrong selector or wrong page (consent
+	 * wall, pre-navigation document) costs ~2s instead of the full action deadline.
+	 * Disarms — hangs until the settled race drops it — the moment at least one element
+	 * matches; an inconclusive probe (mid-navigation, detached frame) never counts
+	 * toward the zero-match window.
+	 */
 	async #zeroMatchWatchdog(selector: string, label: string, afterMs: number, signal: AbortSignal): Promise<never> {
 		const page = this.#requirePage();
 		const resolved = normalizeSelector(selector);
@@ -478,7 +1092,9 @@ export class WorkerCore {
 				const handles = await page.$$(resolved);
 				count = handles.length;
 				for (const handle of handles) void releaseHandle(handle);
-			} catch {}
+			} catch {
+				// Inconclusive probe — keep polling without advancing toward failure.
+			}
 			if (count !== null && count > 0) break;
 			if (count === 0 && Date.now() >= deadline) {
 				throw new ToolError(`${label} failed fast after ${afterMs}ms${formatSelectorMatchHint(0)}`);
@@ -492,6 +1108,10 @@ export class WorkerCore {
 		return await new Promise<never>(() => {});
 	}
 
+	/**
+	 * Best-effort match-count probe for a timed-out selector op. Never throws;
+	 * empty string when the probe fails, stalls, or the selector is an aria-ref.
+	 */
 	async #selectorTimeoutHint(selector: string): Promise<string> {
 		if (parseAriaRefSelector(selector) !== null) return "";
 		try {
@@ -537,11 +1157,16 @@ export class WorkerCore {
 				op(`tab.goto(${JSON.stringify(url)})`, INF, async sig => {
 					this.#clearElementCache();
 					try {
+						// Default to "load" because dev servers with HMR/WS never reach networkidle.
+						// budgetBound (not the full cell) so a hung navigation fails named and
+						// catchable inside the run instead of dying with the whole cell.
 						await untilAborted(sig, () =>
 							page.goto(url, { waitUntil: opts?.waitUntil ?? "load", timeout: budgetBound }),
 						);
 					} catch (err) {
 						if (isTimeoutError(err)) {
+							// Abandon the hung navigation NOW — a still-pending load stalls every
+							// later op on this page and cascades into more opaque timeouts.
 							await this.#stopLoading();
 							throw new ToolError(
 								`tab.goto(${JSON.stringify(url)}) timed out after ${budgetBound}ms; pending navigation stopped — retry with a longer tool timeout or waitUntil:"domcontentloaded"`,
@@ -689,6 +1314,7 @@ export class WorkerCore {
 					},
 					{
 						selector,
+						// `hidden: true` waits for zero matches — that is success, never a fast-fail.
 						zeroMatchAfterMs: opts?.timeout === undefined && !opts?.hidden ? ZERO_MATCH_FAIL_FAST_MS : undefined,
 					},
 				);
@@ -812,11 +1438,19 @@ export class WorkerCore {
 		opts: ScreenshotOptions = {},
 	): Promise<ScreenshotResult> {
 		const page = this.#requirePage();
+		// Multiple tabs can share one Chromium (sibling headless tabs on a shared
+		// endpoint, cdp/app attach). CDP `Page.captureScreenshot` reads the
+		// compositor surface, which follows the *active* target — a backgrounded
+		// page can stall waiting for a fresh frame (the 20s screenshot timeouts)
+		// or hand back a sibling tab's pixels. Activate first.
 		await bestEffort(
 			untilAborted(signal, () => page.bringToFront()),
 			"an already-active or freshly-closed target never fails the capture",
 		);
 		const fullPage = opts.selector ? false : (opts.fullPage ?? false);
+		// An explicit save path picks the full-res capture format: puppeteer encodes
+		// png/jpeg/webp natively, so `save: "shot.webp"` gets real WebP bytes instead
+		// of PNG bytes hiding behind a .webp name. Unknown/missing extensions stay PNG.
 		const explicitPath = opts.save ? resolveToCwd(opts.save, session.cwd) : undefined;
 		const captureType = explicitPath ? imageFormatForPath(explicitPath) : "png";
 		const captureMime = `image/${captureType}` as const;
@@ -827,6 +1461,9 @@ export class WorkerCore {
 			)) as ElementHandle | null;
 			if (!handle) throw new ToolError("Screenshot selector did not resolve to an element");
 			try {
+				// Bring the element into view with a single instant scroll instead of puppeteer's
+				// scrollIntoViewIfNeeded(), whose IntersectionObserver promise can stall indefinitely
+				// on continuously-animating pages (WebGL / backdrop-filter "glass" effects). Best-effort.
 				await bestEffort(
 					untilAborted(signal, () =>
 						handle.evaluate(el => {
@@ -838,6 +1475,8 @@ export class WorkerCore {
 					),
 					"the capture renders the clipped region whether or not the scroll landed",
 				);
+				// scrollIntoView:false skips the same IntersectionObserver check inside screenshot();
+				// captureBeyondViewport (puppeteer's default) still renders the clipped region.
 				const shotOpts: ElementScreenshotOptions = { type: captureType, scrollIntoView: false };
 				buffer = (await untilAborted(signal, () => handle.screenshot(shotOpts))) as Buffer;
 			} finally {
@@ -853,6 +1492,8 @@ export class WorkerCore {
 		const saveFullRes = !!(explicitPath || session.browserScreenshotDir);
 		const savedBuffer = saveFullRes ? buffer : resized.buffer;
 		const savedMimeType = saveFullRes ? captureMime : resized.mimeType;
+		// Names must match the bytes we actually write: full-res follows the capture
+		// format, the resized buffer is whichever of PNG/JPEG/WebP encoded smallest.
 		const ext = savedMimeType === "image/webp" ? "webp" : savedMimeType === "image/jpeg" ? "jpg" : "png";
 		const dest =
 			explicitPath ??
@@ -1065,6 +1706,11 @@ export class WorkerCore {
 		return handle;
 	}
 
+	/**
+	 * Resolve a selector to an ElementHandle for handle-based actions. An
+	 * `aria-ref=eN` selector resolves against the latest ariaSnapshot's refs
+	 * (main world); anything else goes through the normal locator wait.
+	 */
 	async #resolveActionHandle(selector: string, timeoutMs: number, sig: AbortSignal): Promise<ElementHandle> {
 		if (parseAriaRefSelector(selector) !== null) return this.#resolveAriaRef(selector);
 		return (await untilAborted(sig, () =>
@@ -1076,12 +1722,13 @@ export class WorkerCore {
 			this.#elementCounter = 0;
 			return;
 		}
-		const handles = Array.from(this.#elementCache.values());
+		const handles = [...this.#elementCache.values()];
 		this.#elementCache.clear();
 		this.#elementCounter = 0;
 		for (const handle of handles) void releaseHandle(handle);
 	}
 
+	/** Best-effort `Page.stopLoading` so an abandoned navigation cannot stall later ops. */
 	async #stopLoading(): Promise<void> {
 		try {
 			const session = await this.#requirePage().createCDPSession();
@@ -1102,6 +1749,8 @@ export class WorkerCore {
 		this.#clearElementCache();
 		const page = this.#page;
 		if (this.#dialogHandler && page && !page.isClosed()) page.off("dialog", this.#dialogHandler);
+		// The worker is shutting down and reports `closed` below regardless: a page that will not close is either
+		// already closing or belongs to a browser that is going away with it, and the disconnect follows.
 		if (this.#mode === "headless" && page && !page.isClosed()) {
 			await bestEffort(page.close(), "a page that will not close is already closing or going with its browser");
 		}

@@ -1,135 +1,97 @@
 import * as os from "node:os";
-import * as path from "node:path";
-import { ThinkingLevel } from "@veyyon/agent-core";
-import { normalizePremiumRequests } from "@veyyon/stats/format";
-import { sliceWithWidth, TERMINAL, visibleWidth } from "@veyyon/tui";
-import {
-	clamp01,
-	DEFAULT_PROFILE_DIR_NAME,
-	formatDuration,
-	formatNumber,
-	getActiveProfileOrDefault,
-	getProjectDir,
-	logger,
-	pathIsWithin,
-	relativePathWithinRoot,
-} from "@veyyon/utils";
+// The one-enum leaf, not the `@veyyon/agent-core` barrel: the barrel is the whole agent runtime,
+// 69ms of module evaluation, and the status row draws before a session exists.
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
+import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import { DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault, getProjectDir } from "@veyyon/utils/dirs";
+import { formatDuration, formatNumber, normalizePremiumRequests } from "@veyyon/utils/format";
+import { clamp01 } from "@veyyon/utils/math";
 import { PRIORITY_TIER_LABEL } from "../../../config/service-tier";
 import { withIcon } from "../../../modes/theme/icon-label";
 import { type ThemeColor, theme } from "../../../modes/theme/theme";
-import { describeMsLeft } from "../../../secrets/vault";
 import { normalizeApprovalMode } from "../../../tools/approval";
 import { AUTONOMY_LABEL } from "../../../tools/approval-modes";
-import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
+import { TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../../../utils/session-color";
 import { sanitizeStatusText } from "../../shared";
+import { isTreeDirty, renderBranch } from "./branch";
 import {
 	type ContextUsageLevel,
 	formatContextRemainingPercent,
 	getContextUsageLevel,
 	getContextUsageThemeColor,
 } from "./context-thresholds";
+import { renderLocation } from "./location";
 import { joinStates } from "./state-grammar";
 import type { RenderedSegment, SegmentContext, StatusLineSegment, StatusLineSegmentId } from "./types";
 
 export type { SegmentContext } from "./types";
 
-const SECRET_EXPIRY_CHIP_WINDOW_MS = 60 * 60 * 1000;
+// ═══════════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════════
 
-const PAD2: readonly string[] = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
-
-function clampPathLength(pwd: string, maxLen: number): string {
-	const total = visibleWidth(pwd);
-	if (total <= maxLen) return pwd;
-	const ellipsis = "…";
-	const room = Math.max(0, maxLen - visibleWidth(ellipsis));
-	if (room === 0) return ellipsis;
-	return `${ellipsis}${sliceWithWidth(pwd, total - room, room, true).text}`;
-}
-
+/**
+ * Leading glyph of a thinking-level display string (e.g. "◉ xhigh" → "◉").
+ * Compact mode promotes this glyph to the model-segment icon so the level
+ * stays visible without the verbose " · <level>" tail.
+ */
 function thinkingGlyph(display: string): string {
 	const space = display.indexOf(" ");
 	return space === -1 ? display : display.slice(0, space);
 }
 
-export function defaultDisplayRoots(): readonly string[] {
-	return [path.join(os.homedir(), "Projects"), "/work"];
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// Segment Implementations
+// ═══════════════════════════════════════════════════════════════════════════
 
-const warnedDisplayRoots = new Set<string>();
-
-export function resolveDisplayRoots(roots: readonly string[]): string[] {
-	const resolved: string[] = [];
-	for (const root of roots) {
-		const trimmed = typeof root === "string" ? root.trim() : "";
-		const afterTilde = trimmed.startsWith("~/") || trimmed.startsWith("~\\") ? trimmed.slice(2) : null;
-		const expanded =
-			trimmed === "~" ? os.homedir() : afterTilde === null ? trimmed : path.join(os.homedir(), afterTilde);
-		if (expanded !== "" && path.isAbsolute(expanded)) {
-			resolved.push(expanded);
-			continue;
-		}
-		if (warnedDisplayRoots.has(trimmed)) continue;
-		warnedDisplayRoots.add(trimmed);
-		logger.warn("Status line path display root ignored: not an absolute path", { root });
-	}
-	return resolved;
-}
-
-let displayRootCache: { pwd: string; key: string; result: string } | null = null;
-
-function stripDisplayRoot(pwd: string, roots: readonly string[] | undefined): string {
-	const declared = roots ?? defaultDisplayRoots();
-	const key = declared.join("\u0000");
-	if (displayRootCache?.pwd === pwd && displayRootCache.key === key) return displayRootCache.result;
-	let result = pwd;
-	for (const root of resolveDisplayRoots(declared)) {
-		const relative = relativePathWithinRoot(root, pwd);
-		if (relative) {
-			result = relative;
-			break;
-		}
-	}
-	displayRootCache = { pwd, key, result };
-	return result;
-}
-
-function scratchRoots(): readonly string[] {
-	const roots = new Set<string>([os.tmpdir(), path.join(os.homedir(), "tmp")]);
-	if (process.platform === "win32") {
-		const { TEMP, TMP, SystemRoot } = process.env;
-		if (TEMP) roots.add(TEMP);
-		if (TMP) roots.add(TMP);
-		if (SystemRoot) roots.add(path.join(SystemRoot, "Temp"));
-	} else {
-		roots.add("/tmp");
-		roots.add("/var/tmp");
-		if (process.platform === "darwin") {
-			roots.add("/private/tmp");
-			roots.add("/private/var/tmp");
-		}
-	}
-	return Array.from(roots);
-}
-
-function classifyProjectDir(pwd: string): { scratch: boolean; relative: string | null } {
-	for (const root of scratchRoots()) {
-		if (pathIsWithin(root, pwd)) {
-			return { scratch: true, relative: relativePathWithinRoot(root, pwd) };
-		}
-	}
-	return { scratch: false, relative: null };
-}
-
+/**
+ * `👻 <agent> · esc back`, the one place the proxied view says whose session you are in.
+ *
+ * WHY IT IS NOT A SEGMENT. It used to be the focused branch of {@link piSegment}, and that made
+ * the whole affordance depend on a preset choice: `pi` is only in `full` and `nerd`, so on
+ * `default`, `minimal`, `compact` and `ascii` -- which is what nearly everybody runs -- opening an
+ * agent from `/agents` announced itself by dimming the bar and NOTHING ELSE. A render proof of the
+ * default preset in both states shows two bars with identical text.
+ *
+ * Focus is a mode of the whole view, not a thing you opted into on your status line, so
+ * the live status surface prefixes this unconditionally and no preset can drop it. The live
+ * surface is `renderQuietLine`: the borderless composer hides the editor border, so
+ * `getTopBorder` still prefixes it too but nothing in production calls that method; the
+ * quiet footline below the input is the status bar the operator actually sees.
+ *
+ * AND IT NAMES THE WAY OUT, which nothing persistent did. `focusAgent` prints one status flash
+ * saying Esc returns to main; a second later the screen is an ordinary session with the agent's
+ * transcript in it, the composer live, and no sign that Esc now means "go back" rather than
+ * "clear the line". That is how people got stuck in a view whose edge they could not see.
+ *
+ * `esc` is spelled literally, unlike every other chord in the TUI, because it is not a remappable
+ * action: `input-controller.ts` handles the raw Esc key for focus exit, so there is no `KeyId` for
+ * `keyHint` to resolve and nothing a user can rebind. If it ever becomes a binding, this must go
+ * through `actionKeyHint`.
+ */
 export function focusExitBadge(focusedAgentId: string): string {
 	const who = theme.fg("warning", withIcon(theme.icon.ghost, sanitizeStatusText(focusedAgentId)));
+	// "esc to go back" in full, not "esc back". This is the one hint a reader has never seen before
+	// and cannot guess from context -- Esc means "clear the line" everywhere else in this composer --
+	// so it is spelled as the sentence it is rather than compressed into a chip. The bar has room:
+	// the badge is prefixed and the rest of the line is built into what is left.
 	const exit = `${theme.fg("accent", "esc")}${theme.fg("muted", " to go back")}`;
+	// A rule closes the badge so it reads as its own group rather than running into the first
+	// segment. Without it "back" and the profile name sat one space apart and looked like one list.
 	return `${who}${theme.fg("muted", " · ")}${exit}${theme.fg("border", " │")}`;
 }
 
 const piSegment: StatusLineSegment = {
 	id: "pi",
 	render() {
+		// The segment is the icon alone, so its label is empty: an icon-less preset
+		// contributes nothing here rather than a stray space.
+		//
+		// It no longer has a focused branch. Announcing focus from here made the whole
+		// affordance a preset opt-in, since `pi` is only in `full` and `nerd`; the badge
+		// `getTopBorder` prefixes is the one owner now, so this stays the veyyon mark in
+		// both states and neither surface can contradict the other.
 		const content = withIcon(theme.icon.pi, "");
 		return { content: theme.fg("accent", content), visible: true };
 	},
@@ -138,45 +100,66 @@ const piSegment: StatusLineSegment = {
 const modelSegment: StatusLineSegment = {
 	id: "model",
 	render(ctx) {
-		const state = ctx.session.state;
+		const { model, thinkingLevel, autoThinking, advisorActive } = ctx.facts;
 		const opts = ctx.options.model ?? {};
 
-		let modelName = sanitizeStatusText(state.model?.name || state.model?.id || "") || "no-model";
+		// A model name is provider text: it arrives from a `/models` listing or from a custom
+		// endpoint's config, so it is no more trusted than a directory name.
+		let modelName = sanitizeStatusText(model?.name || model?.id || "") || "no-model";
 		if (modelName.startsWith("Claude ")) {
 			modelName = modelName.slice(7);
 		}
 
+		// Resolve the current thinking-level display ("◉ xhigh", "◐ auto", …)
+		// when the model supports thinking and the segment isn't hiding it.
 		let thinkingDisplay = "";
-		if (opts.showThinkingLevel !== false && state.model?.thinking) {
-			if (ctx.session.isAutoThinking) {
-				const resolved = ctx.session.autoResolvedThinkingLevel();
-				thinkingDisplay = resolved
-					? (theme.thinking[resolved as keyof typeof theme.thinking] ?? resolved)
+		if (opts.showThinkingLevel !== false && model?.supportsThinking) {
+			if (autoThinking) {
+				// Pending (no turn classified yet / classifying) shows a symbol-theme
+				// question-box marker; once resolved it shows `<level>`.
+				thinkingDisplay = autoThinking.resolved
+					? (theme.thinking[autoThinking.resolved as keyof typeof theme.thinking] ?? autoThinking.resolved)
 					: `${theme.thinking.autoPending} auto`;
-			} else {
-				const level = state.thinkingLevel ?? ThinkingLevel.Off;
-				if (level !== ThinkingLevel.Off) {
-					thinkingDisplay = theme.thinking[level as keyof typeof theme.thinking] ?? "";
-				}
+			} else if (thinkingLevel !== ThinkingLevel.Off) {
+				thinkingDisplay = theme.thinking[thinkingLevel as keyof typeof theme.thinking] ?? "";
 			}
 		}
 
+		// Compact mode swaps the model icon for the thinking-level glyph and drops
+		// the " · <level>" tail, keeping the level visible as a single icon.
 		const compact = ctx.compactThinkingLevel && thinkingDisplay !== "";
 		const modelIcon = compact ? thinkingGlyph(thinkingDisplay) : theme.icon.model;
 
+		// The thinking-level suffix trails the model name and is colored with it as
+		// `statusLineModel`. The advisor "++" badge sits between the name and that
+		// tail in `accent`, so it reads as a distinct marker. theme.fg resets only
+		// the fg, so the spans are concatenated (not nested) to keep each color
+		// intact. The service tier is NOT part of this tail — see below.
 		let tail = "";
 		if (!compact && thinkingDisplay) {
+			// Roomy (quiet footline): the effort merges into the model label as
+			// ONE segment (`Model @high`) — a fake ` · ` separator made it read
+			// as two segments.
 			tail += opts.roomy ? ` @${thinkingDisplay}` : `${theme.sep.dot}${thinkingDisplay}`;
 		}
 
+		// `statusLineModel` is aliased to `accent` in many themes, so the badge
+		// uses `success` to stay visibly distinct from the model name color.
 		let content = theme.fg("statusLineModel", withIcon(modelIcon, modelName));
-		if (ctx.session.isAdvisorActive()) {
+		if (advisorActive) {
 			content += theme.fg("success", "++");
 		}
 		if (tail) {
 			content += theme.fg("statusLineModel", tail);
 		}
-		if (ctx.session.isFastModeActive()) {
+		// The priority service tier is a QUEUE tier, not a fourth effort level. Its
+		// icon used to sit immediately BEFORE the effort glyph in the same
+		// `statusLineModel` color, so `⚡ ◉ high` read as one more rung on the
+		// thinking scale. It now trails the effort as
+		// its own `warning`-colored chip, and it names itself wherever there is room,
+		// so it reads as a serving choice. Naming it also makes the tier visible in
+		// symbol themes whose `icon.fast` is empty, where it used to show nothing.
+		if (ctx.facts.fastMode) {
 			content += theme.fg("warning", ` ${formatServiceTierChip(compact)}`);
 		}
 
@@ -184,26 +167,37 @@ const modelSegment: StatusLineSegment = {
 	},
 };
 
+/**
+ * The priority-tier chip: icon plus the word, or the word alone when the symbol
+ * theme has no icon. Compact mode (a narrow status line) keeps the icon only,
+ * falling back to the word rather than rendering nothing.
+ */
 function formatServiceTierChip(compact: boolean): string {
 	const icon = theme.icon.fast;
 	if (!icon) return PRIORITY_TIER_LABEL;
 	return compact ? icon : `${icon} ${PRIORITY_TIER_LABEL}`;
 }
 
+/** Cells in the compact goal progress bar (verbose mode only). */
 const GOAL_BAR_WIDTH = 8;
+/** Spinner advances one frame per this many active-ms (steady when idle/paused). */
 const GOAL_SPINNER_PERIOD_MS = 120;
+/** Recolor to warning once the goal has burned this fraction of its token budget. */
 const GOAL_NEAR_BUDGET_FRACTION = 0.9;
 
-const GOAL_BAR_STRINGS: readonly string[] = Array.from(
-	{ length: GOAL_BAR_WIDTH + 1 },
-	(_, i) => "▰".repeat(i) + "▱".repeat(GOAL_BAR_WIDTH - i),
-);
-
-function goalProgressBar(fraction: number): string {
-	const filled = Math.round(clamp01(fraction) * GOAL_BAR_WIDTH);
-	return GOAL_BAR_STRINGS[filled]!;
+/** Compact filled/empty unicode bar for a 0..1 fraction (clamped). */
+export function goalProgressBar(fraction: number): string {
+	const clamped = clamp01(fraction);
+	const filled = Math.round(clamped * GOAL_BAR_WIDTH);
+	return `${"▰".repeat(filled)}${"▱".repeat(GOAL_BAR_WIDTH - filled)}`;
 }
 
+/**
+ * Token readout for the goal segment. Always shows `tokensUsed`; when a budget
+ * is set it adds `used/budget` and a percent, and in verbose mode a compact
+ * progress bar. This is surfaced regardless of `goal.statusInFooter` — that flag
+ * now controls verbosity (the bar), not whether the readout exists at all.
+ */
 function formatGoalProgress(tokensUsed: number, tokenBudget: number | undefined, verbose: boolean): string {
 	const used = formatNumber(tokensUsed);
 	if (typeof tokenBudget !== "number" || tokenBudget <= 0) return used;
@@ -213,6 +207,12 @@ function formatGoalProgress(tokensUsed: number, tokenBudget: number | undefined,
 	return verbose ? `${base} ${goalProgressBar(fraction)}` : base;
 }
 
+/**
+ * Deterministic spinner frame for a still-running goal. `activeMs` advances only
+ * while the agent is streaming, so the frame is steady the instant the turn ends
+ * and needs no wall-clock read (making the rendered string exact for tests).
+ * Returns the static goal icon when the theme declares no spinner frames.
+ */
 function goalSpinnerIcon(activeMs: number): string {
 	const frames = theme.spinnerFrames;
 	if (frames.length === 0) return theme.icon.goal;
@@ -221,12 +221,13 @@ function goalSpinnerIcon(activeMs: number): string {
 }
 
 function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: boolean }): string {
-	const goal = ctx.session.getGoalModeState()?.goal;
-	const modelBudgetsEnabled = ctx.session.settings.get("goal.modelBudgetsEnabled");
+	const { goal, goalModelBudgets: modelBudgetsEnabled } = ctx.facts;
 	const persistedStatus = goal?.status ?? (mode.paused ? "paused" : "active");
 	const status = !modelBudgetsEnabled && persistedStatus === "budget-limited" ? "active" : persistedStatus;
 
 	let icon: string = theme.icon.goal;
+	// Modes carry the cool arc's mode hue (violet on titanium); semantic
+	// warning/success/dim states below still override it.
 	let color: ThemeColor = "modeAccent";
 	switch (status) {
 		case "paused":
@@ -253,27 +254,50 @@ function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: b
 	const tokenBudget = modelBudgetsEnabled ? goal?.tokenBudget : undefined;
 	const running = status === "active";
 
+	// Near-budget soft warning: before the hard `budget-limited` status trips, a
+	// goal that has burned ≥90% of its budget recolors to warning so the operator
+	// sees the ceiling approaching while it is still running.
 	const nearBudget =
 		typeof tokenBudget === "number" && tokenBudget > 0 && tokensUsed >= tokenBudget * GOAL_NEAR_BUDGET_FRACTION;
 	if (running && nearBudget) color = "warning";
 
-	if (running && ctx.session.isStreaming) icon = goalSpinnerIcon(ctx.activeMs);
+	// Live motion while the agent streams under a running goal; steady otherwise.
+	if (running && ctx.facts.streaming) icon = goalSpinnerIcon(ctx.activeMs);
 
-	const verbose = ctx.session.settings.get("goal.statusInFooter") === true;
-	const goalLabel = withIcon(icon, "Goal");
-	if (!goal) return theme.fg(color, goalLabel);
-	return theme.fg(color, `${goalLabel} ${formatGoalProgress(tokensUsed, tokenBudget, verbose)}`);
+	// The goal's own values are bound to it with a plain space: the budget and
+	// percent are this state's readout, not further states, and the separator
+	// grammar reserves `·` for a boundary between independent states.
+	const verbose = ctx.facts.goalVerbose;
+	const parts: string[] = [withIcon(icon, "Goal")];
+	if (goal) parts.push(formatGoalProgress(tokensUsed, tokenBudget, verbose));
+	return theme.fg(color, parts.join(" "));
 }
 
+/**
+ * One base mode the segment can be in, and how it renders when it is.
+ *
+ * The modes are MUTUALLY EXCLUSIVE and this list is their priority order: the
+ * first entry that returns text wins. It is a table rather than a cascade of
+ * `if`s so the state space can be enumerated at run time — the suite that
+ * proves the segment's spacing sweeps this array, so a mode added here is
+ * covered the day it lands instead of the day someone remembers to add it to a
+ * hardcoded list of five.
+ */
 interface BaseModeState {
+	/** Stable id, used by the suite to name the case it is exercising. */
 	readonly id: string;
+	/** The mode's label, already colored, or "" when the mode is not active. */
 	render(ctx: SegmentContext): string;
 }
 
+/** Suffix marking a paused mode: the theme's pause glyph, or words for a preset with none. */
 function pauseSuffix(): string {
 	return theme.icon.pause ? ` ${theme.icon.pause}` : " (paused)";
 }
 
+// Every mode label reads in the cool arc's mode hue (`modeAccent`, violet on
+// titanium) so "what mode am I in" is one color everywhere; paused keeps the
+// semantic warning override.
 export const BASE_MODE_STATES: readonly BaseModeState[] = [
 	{
 		id: "plan",
@@ -315,6 +339,7 @@ export const BASE_MODE_STATES: readonly BaseModeState[] = [
 	},
 ];
 
+/** The active mode label (plan/prewalk/goal/vibe/loop), independent of the bypass marker. */
 function renderBaseMode(ctx: SegmentContext): string {
 	for (const mode of BASE_MODE_STATES) {
 		const content = mode.render(ctx);
@@ -323,22 +348,75 @@ function renderBaseMode(ctx: SegmentContext): string {
 	return "";
 }
 
+/**
+ * How much the agent may do unasked, as a label the operator can read at a
+ * glance.
+ *
+ * Colored by how much rope it grants, not by taste: the two asking rungs are
+ * the same cool mode hue as every other mode label, `auto` is a warning, and
+ * `yolo` is an error. A rung that turns prompts off should not look like a
+ * neutral preference.
+ *
+ * Reads the ENFORCED rung, not `tools.approvalMode`. Two things outrank the
+ * stored value: `--yolo` / `--auto-approve` forces `yolo` for the run, and an
+ * active plan session caps to `plan`. Reading the setting directly made
+ * `veyyon --yolo` render `Ask all` over a session running every tool unasked,
+ * which is precisely the lie this segment was added to stop telling.
+ *
+ * Returns "" for `plan`, because the base label already says Plan and the pair
+ * would render "Plan Plan".
+ */
 function renderApprovalRung(ctx: SegmentContext): string {
+	// The rung is suppressed only when the BASE label is already saying Plan,
+	// which is what `ctx.planMode.enabled` decides. Suppressing it whenever the
+	// enforced rung is `plan` was wrong: `/permissions plan` sets that rung with
+	// no plan session open, so `renderBaseMode` says nothing, the rung said
+	// nothing, and the whole segment disappeared — in the one state where every
+	// write tool is denied and the operator most needs to know why.
 	if (ctx.planMode?.enabled) return "";
-	const level = normalizeApprovalMode(ctx.session.effectiveApprovalMode?.());
+	// An absent mode is the ordinary launch state, not an error: config may name
+	// no rung, and `normalizeApprovalMode` answers `undefined` with the default
+	// the session will enforce. The row states a rung from the first frame.
+	const level = normalizeApprovalMode(ctx.facts.approvalMode);
 	const color: ThemeColor =
 		level === "yolo" ? "error" : level === "auto" ? "warning" : level === "plan" ? "warning" : "modeAccent";
 	return theme.fg(color, AUTONOMY_LABEL[level]);
 }
 
+/**
+ * The `/yolo` full-bypass marker: "all prompts off", the single most important
+ * state on the line.
+ *
+ * It does not replace the mode label — it stands beside it — but it DOES
+ * replace the rung label, because the bypass outranks the configured rung and
+ * `YOLO · Ask all` would name a rule that is not being enforced. Errs loud
+ * (Law 10 — a silent bypass would be a safety bug); the red editor border is
+ * the always-on guarantee and this text is the label.
+ */
 function renderBypassMarker(ctx: SegmentContext): string {
-	if (!ctx.session.isApprovalBypassed()) return "";
+	if (!ctx.facts.approvalBypassed) return "";
+	// `withIcon`, not a template: a symbol preset is allowed to render this glyph
+	// as the empty string, and the hand-written form then emitted a leading space
+	// that the join above would carry into the middle of the line.
 	return theme.fg("error", withIcon(theme.symbol("status.warning"), "YOLO"));
 }
 
 const modeSegment: StatusLineSegment = {
 	id: "mode",
 	render(ctx) {
+		// THE THREE STATES, COMPOSED BY ONE RULE. Bypass, mode and rung are
+		// independent facts, and any one of them can be absent, so they are joined
+		// through `joinStates` rather than glued with spaces at each call site.
+		// Spelled by hand this produced `! YOLO Goal 12K/50K 25%` — the boundary
+		// between two states rendered exactly like the space inside one — and it
+		// only looked wrong once more than one state was active at a time, which
+		// is why nobody caught it from a screenshot.
+		//
+		// The rung is always shown when there is no bypass, even with no mode
+		// active: an operator who cannot see it has to guess whether the next
+		// command will ask, and this segment used to render nothing at all in the
+		// ordinary case, which is how "there are no permissions" became the honest
+		// reading of a product that had a whole ladder.
 		const bypass = renderBypassMarker(ctx);
 		const content = joinStates(bypass, renderBaseMode(ctx), bypass === "" ? renderApprovalRung(ctx) : "");
 		if (content === "") return { content: "", visible: false };
@@ -346,51 +424,18 @@ const modeSegment: StatusLineSegment = {
 	},
 };
 
-function iconPin(icon: string): number {
-	return icon ? visibleWidth(icon) + 1 : 0;
-}
-
 const pathSegment: StatusLineSegment = {
 	id: "path",
 	render(ctx) {
-		const opts = ctx.options.path ?? {};
-		const stripPrefix = opts.stripWorkPrefix !== false;
-
-		if (stripPrefix && ctx.worktree) {
-			const { projectName, worktreeName } = ctx.worktree;
-			const label = ctx.git.branch === worktreeName ? projectName : `${projectName}/${worktreeName}`;
-			const content = withIcon(
-				theme.icon.worktree,
-				clampPathLength(sanitizeStatusText(label), opts.maxLength ?? 40),
-			);
-			return { content: theme.fg("statusLinePath", content), visible: true, pin: iconPin(theme.icon.worktree) };
-		}
-
-		const projectDir = ctx.session.sessionManager?.getCwd?.() ?? ctx.activeRepo?.cwd ?? getProjectDir();
-		const { scratch, relative } = classifyProjectDir(projectDir);
-		let pwd = projectDir;
-
-		if (stripPrefix) {
-			if (scratch) {
-				if (relative) pwd = relative;
-			} else {
-				pwd = stripDisplayRoot(pwd, opts.displayRoots);
-			}
-		}
-		const repoSuffix = ctx.activeRepo ? ` ↳ ${sanitizeStatusText(ctx.activeRepo.relativeRepoRoot)}` : "";
-		if (opts.abbreviate !== false) {
-			pwd = shortenPath(pwd);
-		}
-
-		pwd = clampPathLength(sanitizeStatusText(pwd), opts.maxLength ?? 40);
-		if (repoSuffix) {
-			pwd = `${pwd}${repoSuffix}`;
-		}
-
-		const showScratchIcon = scratch && stripPrefix;
-		const icon = showScratchIcon ? theme.icon.scratchFolder : theme.icon.folder;
-		const content = withIcon(icon, pwd);
-		return { content: theme.fg("statusLinePath", content), visible: true, pin: iconPin(icon) };
+		const projectDir = ctx.facts.cwd ?? ctx.activeRepo?.cwd ?? getProjectDir();
+		const { content, pin } = renderLocation({
+			projectDir,
+			worktree: ctx.worktree,
+			branch: ctx.git.branch,
+			activeRepoRelativeRoot: ctx.activeRepo?.relativeRepoRoot ?? null,
+			options: ctx.options.path,
+		});
+		return { content, visible: true, pin };
 	},
 };
 
@@ -400,20 +445,11 @@ const gitSegment: StatusLineSegment = {
 		const { branch, status } = ctx.git;
 		if (!branch && !status) return { content: "", visible: false };
 
-		const opts = ctx.options.git ?? {};
-		const gitStatus = status;
-		const isDirty = gitStatus && (gitStatus.staged > 0 || gitStatus.unstaged > 0 || gitStatus.untracked > 0);
-
-		const showBranch = opts.showBranch !== false;
-		let content = "";
-		if (showBranch && branch) {
-			content = withIcon(theme.icon.branch, sanitizeStatusText(branch));
-		}
-
-		if (isDirty) content = `${content} ${theme.fg("statusLineDirty", "*")}`;
+		const showBranch = ctx.options.git?.showBranch !== false;
+		const dirty = isTreeDirty(status);
+		const content = renderBranch(showBranch ? branch : null, dirty);
 		if (!content) return { content: "", visible: false };
-		const colorName = isDirty ? "statusLineGitDirty" : "statusLineGitClean";
-		return { content: theme.fg(colorName, content), visible: true };
+		return { content, visible: true };
 	},
 };
 
@@ -439,6 +475,14 @@ const subagentsSegment: StatusLineSegment = {
 		return { content: theme.fg("statusLineSubagents", content), visible: true };
 	},
 };
+/**
+ * Conversations running with nothing drawing them.
+ *
+ * The only signal that a handed-off `/new` is still spending. A subagent is at
+ * least visible in the transcript that spawned it; a backgrounded conversation
+ * has no surface at all, so this count is the whole of what an operator can see
+ * about it. Hidden at zero, like every other conditional segment.
+ */
 const backgroundSegment: StatusLineSegment = {
 	id: "background",
 	render(ctx) {
@@ -475,6 +519,10 @@ const tokenOutSegment: StatusLineSegment = {
 const tokenTotalSegment: StatusLineSegment = {
 	id: "token_total",
 	render(ctx) {
+		// Excludes cacheRead: that field re-reads the full cached context every
+		// turn, making the cumulative sum N×context_size. Orchestration cache read
+		// follows the same rule; orchestration input/output remain in the total so
+		// provider-side service work is preserved without labeling it prompt input.
 		const { input, output, cacheWrite, orchestrationInput, orchestrationOutput } = ctx.usageStats;
 		const total = input + output + cacheWrite + orchestrationInput + orchestrationOutput;
 		if (!total) return { content: "", visible: false };
@@ -500,28 +548,49 @@ const costSegment: StatusLineSegment = {
 	render(ctx) {
 		const { cost, premiumRequests } = ctx.usageStats;
 		const normalizedPremiumRequests = normalizePremiumRequests(premiumRequests);
-		const state = ctx.session.state;
-		const usingSubscription = state.model ? ctx.session.modelRegistry.isUsingOAuth(state.model) : false;
+		const usingSubscription = ctx.facts.subscription;
 
 		if (!cost && !usingSubscription && !normalizedPremiumRequests) {
 			return { content: "", visible: false };
 		}
 
-		let body = "";
-		if (cost) body = `$${cost.toFixed(2)}`;
-		if (normalizedPremiumRequests)
-			body = body
-				? `${body} * ${formatNumber(normalizedPremiumRequests)}`
-				: `* ${formatNumber(normalizedPremiumRequests)}`;
-		if (usingSubscription) body = body ? `${body} (sub)` : "(sub)";
-		return { content: theme.fg("statusLineCost", body), visible: true };
+		const billingParts: string[] = [];
+		if (cost) billingParts.push(`$${cost.toFixed(2)}`);
+		if (normalizedPremiumRequests) billingParts.push(`* ${formatNumber(normalizedPremiumRequests)}`);
+		if (usingSubscription) billingParts.push("(sub)");
+
+		return { content: theme.fg("statusLineCost", billingParts.join(" ")), visible: true };
 	},
 };
 
+/** The context bar's fixed cell count — small enough to whisper, wide enough
+ *  that one cell is a meaningful 12.5% step. */
 const CONTEXT_BAR_CELLS = 8;
+/** Live-tip pulse cadence; past the error threshold the pulse doubles — the
+ *  bar visibly quickens as compaction nears. */
 const CONTEXT_BAR_TIP_STEP_MS = 1000;
 const CONTEXT_BAR_TIP_STEP_URGENT_MS = 500;
 
+/**
+ * The draining context bar: `▰▰▰▰▰▰▱▱` — one filled cell per eighth of the room
+ * still available, in the usage-level hue (silver → gold → ember → alarm via the
+ * ONE getContextUsageThemeColor owner), spent cells dim.
+ *
+ * `ratio` is the fraction of cells to fill, and the caller passes REMAINING
+ * room, so the bar empties as the session grows. It used to fill instead, which
+ * put it in contradiction with the percentage beside it the moment that
+ * percentage started saying "left" — and a gauge for how much you have left
+ * that grows as you spend is a fuel gauge running backwards.
+ *
+ * Strictly two glyphs, two tones: mixing shaded quarter-step glyphs (░▒▓) into
+ * the outlined track read as a rendering artifact ("a random rectangle in the
+ * middle of the context window box") — the adjacent percent text already
+ * carries the sub-cell precision. While the agent RUNS (`live`) the last
+ * remaining cell pulses between filled and empty in the SAME two-glyph
+ * vocabulary: that is the cell being spent right now. Motion means "the model
+ * is working"; at rest the bar is fully static. Pure in (ratio, level, nowMs,
+ * live) so tests can pin exact frames.
+ */
 export function renderContextBar(ratio: number, level: ContextUsageLevel, nowMs: number, live: boolean): string {
 	const clamped = Math.min(1, Math.max(0, Number.isFinite(ratio) ? ratio : 0));
 	const filled = Math.min(CONTEXT_BAR_CELLS, Math.round(clamped * CONTEXT_BAR_CELLS));
@@ -541,13 +610,27 @@ export function renderContextBar(ratio: number, level: ContextUsageLevel, nowMs:
 	return bar;
 }
 
+/**
+ * The room-left gauge. It measures against {@link SegmentContext.contextLimit} —
+ * the auto-compaction trigger when auto-compaction is on, the model's window
+ * otherwise — because that is where the context actually runs out. The window
+ * itself belongs to {@link contextTotalSegment}.
+ */
 const contextPctSegment: StatusLineSegment = {
 	id: "context_pct",
 	render(ctx) {
 		const pct = ctx.contextPercent;
 		const level = getContextUsageLevel(pct);
+		// The bar carries the heat and the number says what it is. Both report
+		// room LEFT, so they cannot disagree. Auto-compaction shows as a
+		// session-accent ∞ — the endless-session mark.
+		//
+		// This used to be one of two forms, the other a `47k/170k` token readout
+		// behind a `bar` option with its own `emberRamp` colouring. The composer
+		// footline is the only renderer and it always asked for the bar, so the
+		// readout, both options and the ramp were unreachable.
 		const remainingRatio = pct === null || pct === undefined ? 1 : Math.max(0, 100 - pct) / 100;
-		const bar = renderContextBar(remainingRatio, level, Date.now(), ctx.session.isStreaming);
+		const bar = renderContextBar(remainingRatio, level, Date.now(), ctx.facts.streaming);
 		const pctText = formatContextRemainingPercent(pct);
 		const autoIcon =
 			ctx.autoCompactEnabled && theme.icon.auto ? ` ${theme.fg("sessionAccent", theme.icon.auto)}` : "";
@@ -558,6 +641,11 @@ const contextPctSegment: StatusLineSegment = {
 	},
 };
 
+/**
+ * The model's context window, and only ever that. It used to print whatever was
+ * in `contextWindow`, which the status line had already overwritten with the
+ * auto-compaction trigger — so a 200k model advertised a 170k window here.
+ */
 const contextTotalSegment: StatusLineSegment = {
 	id: "context_total",
 	render(ctx) {
@@ -570,6 +658,14 @@ const contextTotalSegment: StatusLineSegment = {
 	},
 };
 
+/**
+ * Total time the agent was actively processing this session — the union of
+ * every `agent_start`→`agent_end` window plus the currently-running window,
+ * sourced from {@link SegmentContext.activeMs}. Idle wall-clock between turns
+ * never accumulates, so the displayed total reflects how long the agent has
+ * been working for the user, not how long the session has been open. Hidden
+ * before the first second of activity to avoid flashing `0s` at session start.
+ */
 const timeSpentSegment: StatusLineSegment = {
 	id: "time_spent",
 	render(ctx) {
@@ -591,10 +687,10 @@ const timeSegment: StatusLineSegment = {
 			hours = hours % 12 || 12;
 		}
 
-		const mins = PAD2[now.getMinutes()];
+		const mins = now.getMinutes().toString().padStart(2, "0");
 		let timeStr = `${hours}:${mins}`;
 		if (opts.showSeconds) {
-			timeStr += `:${PAD2[now.getSeconds()]}`;
+			timeStr += `:${now.getSeconds().toString().padStart(2, "0")}`;
 		}
 		timeStr += suffix;
 
@@ -605,10 +701,9 @@ const timeSegment: StatusLineSegment = {
 const sessionSegment: StatusLineSegment = {
 	id: "session",
 	render(ctx) {
-		const sessionManager = ctx.session.sessionManager;
-		const sessionId = sessionManager?.getSessionId?.();
-		const display = sessionId?.slice(0, 8) || "new";
+		const display = ctx.facts.sessionId?.slice(0, 8) || "new";
 
+		// Session identity reads in the cool arc's session hue (teal on titanium).
 		return { content: theme.fg("sessionAccent", withIcon(theme.icon.session, display)), visible: true };
 	},
 };
@@ -616,13 +711,15 @@ const sessionSegment: StatusLineSegment = {
 const hostnameSegment: StatusLineSegment = {
 	id: "hostname",
 	render(_ctx) {
-		const full = os.hostname();
-		const dot = full.indexOf(".");
-		const name = dot === -1 ? full : full.slice(0, dot);
+		const name = os.hostname().split(".")[0];
 		return { content: withIcon(theme.icon.host, name), visible: true };
 	},
 };
 
+// The active veyyon profile ("work", "rec", a client sandbox). Hidden when it is
+// the built-in "default" profile: an unconfigured user has nothing to disambiguate
+// and the decluttered default status line stays quiet. Any named profile shows,
+// so you always know which sandbox's config, sessions, and keys are in play.
 const profileSegment: StatusLineSegment = {
 	id: "profile",
 	render(_ctx) {
@@ -634,6 +731,21 @@ const profileSegment: StatusLineSegment = {
 	},
 };
 
+/**
+ * Which of several stored accounts is spending right now.
+ *
+ * OFF unless `statusLine.showAccount` is on, which the resolver enforces by reporting no account at
+ * all: this segment never sees one, and the inventory walk behind it never runs. Silent as well for a
+ * provider with one credential, because then the account is not in question. So the chip appears only
+ * where it answers something: the setting is on, and the active provider stores more than one login.
+ * Load balancing is off by default, so exactly one of those is being spent, and a quota that drains
+ * has to drain somewhere the reader can see.
+ *
+ * Prefixed `as ` so it cannot be read as the profile chip or the session name, which are also bare
+ * words on this line. Before the session's first request the prefix is `next `, because routing can
+ * only say which account WOULD serve: the reader can tell an account that is spending from one that
+ * is merely selected, and the chip flips to `as ` the moment a request confirms it.
+ */
 const accountSegment: StatusLineSegment = {
 	id: "account",
 	render(ctx) {
@@ -646,32 +758,14 @@ const accountSegment: StatusLineSegment = {
 	},
 };
 
-const secretsSegment: StatusLineSegment = {
-	id: "secrets",
-	render(ctx) {
-		const live = ctx.session.obfuscator?.liveSecrets();
-		if (!live || live.count === 0) return { content: "", visible: false };
-		const masked = live.count - live.named;
-		const namedLabel = live.named > 0 ? `${live.named} ${live.named === 1 ? "secret" : "secrets"}` : "";
-		const maskedLabel = masked > 0 ? `${masked} masked` : "";
-		const bodyText = namedLabel && maskedLabel ? `${namedLabel} · ${maskedLabel}` : namedLabel || maskedLabel;
-		const body = theme.fg("muted", bodyText);
-		const left = live.nextExpiryAt === undefined ? undefined : live.nextExpiryAt - Date.now();
-		if (left === undefined || left > SECRET_EXPIRY_CHIP_WINDOW_MS) return { content: body, visible: true };
-		const deadline = `${theme.fg("muted", "(")}${theme.fg("warning", describeMsLeft(left))}${theme.fg("muted", ")")}`;
-		return { content: `${body} ${deadline}`, visible: true };
-	},
-};
-
 const cacheReadSegment: StatusLineSegment = {
 	id: "cache_read",
 	render(ctx) {
 		const { cacheRead } = ctx.usageStats;
 		if (!cacheRead) return { content: "", visible: false };
 
-		const icon = theme.icon.cache;
-		const num = formatNumber(cacheRead);
-		const content = icon ? `${icon} ${num}` : num;
+		const parts = [theme.icon.cache, formatNumber(cacheRead)].filter(Boolean);
+		const content = parts.join(" ");
 		return { content: theme.fg("statusLineSpend", content), visible: true };
 	},
 };
@@ -681,9 +775,9 @@ const cacheWriteSegment: StatusLineSegment = {
 	render(ctx) {
 		const { cacheWrite } = ctx.usageStats;
 		if (!cacheWrite) return { content: "", visible: false };
-		const icon = theme.icon.cache;
-		const num = formatNumber(cacheWrite);
-		const content = icon ? `${icon} ${num}` : num;
+
+		const parts = [theme.icon.cache, formatNumber(cacheWrite)].filter(Boolean);
+		const content = parts.join(" ");
 		return { content: theme.fg("statusLineOutput", content), visible: true };
 	},
 };
@@ -694,27 +788,34 @@ const cacheHitSegment: StatusLineSegment = {
 		const { cacheRead, cacheWrite, input } = ctx.usageStats;
 		if (!cacheRead) return { content: "", visible: false };
 
+		// Hit rate = cacheRead / total prompt tokens. The prompt is the sum of
+		// cacheRead (served from cache), cacheWrite (newly cached this turn) and
+		// input (uncached). Including uncached input keeps the denominator honest
+		// for Anthropic/OpenRouter; DeepSeek reports its miss as input with
+		// cacheWrite 0, so this still yields hit/(hit+miss).
 		const total = cacheRead + cacheWrite + input;
 
-		const rateStr = ((cacheRead / total) * 100).toFixed(2);
-		const icon = theme.icon.cache;
-		const rateColored = theme.fg("statusLineSpend", `${rateStr}%`);
-		const content = icon ? `${icon} ${rateColored}` : rateColored;
-		return { content, visible: true };
+		const rate = (cacheRead / total) * 100;
+		const rateStr = rate.toFixed(2);
+
+		const parts: string[] = [theme.icon.cache];
+		parts.push(theme.fg("statusLineSpend", `${rateStr}%`));
+		return { content: parts.join(" "), visible: true };
 	},
 };
 
 const sessionNameSegment: StatusLineSegment = {
 	id: "session_name",
 	render(ctx) {
-		const sessionManager = ctx.session.sessionManager;
-		const name = sessionManager?.getSessionName();
+		const name = ctx.facts.sessionName;
 		if (!name) return { content: "", visible: false };
 
 		const ansi =
 			getSessionAccentAnsi(
 				getSessionAccentHex(name, theme.getMajorThemeColorHexes(), theme.accentSurfaceLuminance),
 			) ?? theme.getFgAnsi("accent");
+		// Clamp: auto-generated titles are sentence-length ("Render check line
+		// second paragraph") and an unclamped chip dominates the shared footline.
 		const label = truncateToWidth(sanitizeStatusText(name), TRUNCATE_LENGTHS.CHIP);
 		return { content: `${ansi}${label}\x1b[39m`, visible: true };
 	},
@@ -728,6 +829,7 @@ const collabSegment: StatusLineSegment = {
 			ctx.collab.role === "host"
 				? `⇄ collab:${ctx.collab.participantCount}`
 				: `⇄ collab guest:${ctx.collab.participantCount}`;
+		// Share/collab state reads in the cool arc's share hue (indigo on titanium).
 		return { content: theme.fg("shareAccent", label), visible: true };
 	},
 };
@@ -740,11 +842,13 @@ function pickUsageColor(percent: number): "muted" | "warning" | "error" {
 
 function formatUsageReset(value: number, unit: "m" | "h"): string {
 	if (unit === "m") {
+		// total minutes (5h window: max 300)
 		if (value < 60) return `${value}m`;
 		const hours = Math.floor(value / 60);
 		const mins = value % 60;
 		return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 	}
+	// total hours (7d window: max 168)
 	if (value < 24) return `${value}h`;
 	const days = Math.floor(value / 24);
 	const hours = value % 24;
@@ -758,11 +862,10 @@ const usageSegment: StatusLineSegment = {
 		if (!u || (!u.fiveHour && !u.sevenDay)) {
 			return { content: "", visible: false };
 		}
-		const sep = theme.sep.dot;
-		let body = "";
+		const parts: string[] = [];
 		if (u.tier) {
 			const tier = truncateToWidth(sanitizeStatusText(u.tier), TRUNCATE_LENGTHS.SHORT);
-			if (tier) body = theme.fg("accent", tier);
+			if (tier) parts.push(theme.fg("accent", tier));
 		}
 		if (u.fiveHour) {
 			const pct = u.fiveHour.percent;
@@ -771,7 +874,7 @@ const usageSegment: StatusLineSegment = {
 				u.fiveHour.resetMinutes !== undefined
 					? theme.fg("muted", ` (${formatUsageReset(u.fiveHour.resetMinutes, "m")})`)
 					: "";
-			body = body ? `${body}${sep}5h ${pctText}${reset}` : `5h ${pctText}${reset}`;
+			parts.push(`5h ${pctText}${reset}`);
 		}
 		if (u.sevenDay) {
 			const pct = u.sevenDay.percent;
@@ -780,18 +883,21 @@ const usageSegment: StatusLineSegment = {
 				u.sevenDay.resetHours !== undefined
 					? theme.fg("muted", ` (${formatUsageReset(u.sevenDay.resetHours, "h")})`)
 					: "";
-			body = body ? `${body}${sep}7d ${pctText}${reset}` : `7d ${pctText}${reset}`;
+			parts.push(`7d ${pctText}${reset}`);
 		}
-		const content = withIcon(theme.icon.time, body);
+		const content = withIcon(theme.icon.time, parts.join(theme.sep.dot));
 		return { content, visible: true };
 	},
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Segment Registry
+// ═══════════════════════════════════════════════════════════════════════════
 
 export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
 	pi: piSegment,
 	model: modelSegment,
 	account: accountSegment,
-	secrets: secretsSegment,
 	mode: modeSegment,
 	path: pathSegment,
 	git: gitSegment,
@@ -825,3 +931,5 @@ export function renderSegment(id: StatusLineSegmentId, ctx: SegmentContext): Ren
 	}
 	return segment.render(ctx);
 }
+
+export const ALL_SEGMENT_IDS: StatusLineSegmentId[] = Object.keys(SEGMENTS) as StatusLineSegmentId[];

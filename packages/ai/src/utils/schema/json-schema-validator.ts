@@ -1,3 +1,17 @@
+/**
+ * In-tree JSON Schema validator.
+ *
+ * Used by `validation.ts` for tools authored as plain JSON Schema (no Zod
+ * runtime). Covers the keyword set tool authors actually rely on — type,
+ * enum, const, combinators, if/then/else, object/array/string/number
+ * constraints, $ref, prefixItems/items, contains, propertyNames, pattern &
+ * dependent* — but treats `unevaluatedProperties` / `unevaluatedItems` as
+ * permissive (with a one-shot warning) since those require evaluation
+ * tracking we do not implement.
+ *
+ * Compared to AJV this is single-pass, synchronous, dependency-free, and
+ * tolerates non-standard shapes (`nullable`) that LLM-emitted schemas carry.
+ */
 import * as logger from "@veyyon/utils/logger";
 import { codePointLength } from "@veyyon/utils/string-length";
 import { isRecord } from "@veyyon/utils/type-guards";
@@ -9,6 +23,13 @@ export interface JsonSchemaValidationIssue {
 	message: string;
 	expectedTypes?: string[];
 	keyword?: string;
+	/**
+	 * Marks issues that originate inside a failed `anyOf` / `oneOf` branch.
+	 * Consumers such as the tool-argument coercion layer use this to avoid
+	 * applying type repairs (e.g. singleton-array wrapping) that would be
+	 * authoritative outside of a combinator but are only one candidate
+	 * branch's expectation here.
+	 */
 	fromUnionBranch?: boolean;
 }
 
@@ -17,6 +38,14 @@ export interface JsonSchemaValidationResult {
 	issues: JsonSchemaValidationIssue[];
 }
 
+/**
+ * Cycle bookkeeping for recursive `$ref` schemas. We track pairs of (resolved
+ * ref, value identity) rather than refs alone: returning `true` for every
+ * nested occurrence of a ref previously allowed recursive schemas to silently
+ * validate values they should have rejected. For primitive values we fall back
+ * to a depth counter capped at MAX_REF_DEPTH so a self-referential schema can
+ * still bottom out without infinite recursion.
+ */
 interface ValidationContext {
 	root: unknown;
 	seenPairs: Set<string>;
@@ -27,6 +56,7 @@ interface ValidationContext {
 
 const MAX_REF_DEPTH = 64;
 
+/** Module-level guard so the unevaluatedItems/unevaluatedProperties warning fires once per process. */
 let seenUnevaluatedWarning = false;
 
 function getValueIdentity(ctx: ValidationContext, value: object): number {
@@ -44,7 +74,7 @@ function pushIssue(
 	message: string,
 	options: { expectedTypes?: string[]; keyword?: string } = {},
 ): void {
-	issues.push({ path: path.slice(), message, ...options });
+	issues.push({ path: [...path], message, ...options });
 }
 
 function typeOfJsonValue(value: unknown): string {
@@ -53,6 +83,8 @@ function typeOfJsonValue(value: unknown): string {
 	if (typeof value === "number" && Number.isInteger(value)) return "integer";
 	return typeof value;
 }
+
+/** Push a validation issue with a copied path so later mutations to `path` do not corrupt earlier issues. */
 
 function matchesJsonSchemaType(value: unknown, type: string): boolean {
 	switch (type) {
@@ -75,6 +107,8 @@ function matchesJsonSchemaType(value: unknown, type: string): boolean {
 	}
 }
 
+/** Decide whether `value` satisfies a single JSON-Schema `type` keyword string. `integer` is a refinement of `number`. */
+
 function schemaTypes(schema: Record<string, unknown>): string[] {
 	const raw = schema.type;
 	const types =
@@ -84,14 +118,18 @@ function schemaTypes(schema: Record<string, unknown>): string[] {
 				? raw.filter((entry): entry is string => typeof entry === "string")
 				: [];
 	if (schema.nullable === true && !types.includes("null")) {
-		return types.concat(["null"]);
+		return [...types, "null"];
 	}
 	return types;
 }
 
+/** Extract the effective `type` list from a schema, treating `nullable: true` as adding `"null"`. */
+
 function decodePointerToken(token: string): string {
 	return token.replace(/~1/g, "/").replace(/~0/g, "~");
 }
+
+/** RFC 6901 token decode: `~1` → `/`, `~0` → `~`. */
 
 function resolveLocalRef(root: unknown, ref: string): unknown | undefined {
 	if (ref === "#") return root;
@@ -105,10 +143,20 @@ function resolveLocalRef(root: unknown, ref: string): unknown | undefined {
 	return current;
 }
 
+/** Resolve a `#/path/to/node` pointer against the root schema. Returns `undefined` for external/unsupported refs. */
+
 function isRequiredSet(value: unknown): value is string[] {
 	return Array.isArray(value) && value.every(entry => typeof entry === "string");
 }
 
+/** Narrow `required: unknown` to `required: string[]` — the spec allows it to be missing but rejects non-string entries. */
+
+/**
+ * Core validator. Walks a schema node, applies every applicable keyword to
+ * `value`, and accumulates issues. Returns `true` only if no keyword
+ * rejected; combinators may add issues but still return true (e.g. `anyOf`
+ * succeeds if at least one branch matches).
+ */
 function validateSchemaNode(
 	schema: unknown,
 	value: unknown,
@@ -133,6 +181,11 @@ function validateSchemaNode(
 			pushIssue(issues, path, `unresolved reference ${ref}`, { keyword: "$ref" });
 			return false;
 		}
+		// Cycle detection: for object/array values we key on (ref, value-identity)
+		// so the same schema applied to a different value still recurses; only an
+		// exact (schema, value) repeat short-circuits as a true cycle. For
+		// primitives we fall back to a depth counter so self-referential schemas
+		// without a base case still terminate.
 		let pairKey: string | undefined;
 		if (value !== null && typeof value === "object") {
 			pairKey = `${ref}:${getValueIdentity(ctx, value)}`;
@@ -196,6 +249,9 @@ function validateSchemaNode(
 		const branchValid = keyword === "anyOf" ? matches > 0 : matches === 1;
 		if (!branchValid) {
 			if (matches === 0 && firstIssues && firstIssues.length > 0) {
+				// Only tag issues that sit at the combinator's own path as
+				// union-branch; deeper issues describe a specific field within
+				// the failed branch and should remain individually repairable.
 				const unionDepth = path.length;
 				for (const branchIssue of firstIssues) {
 					if (branchIssue.path.length === unionDepth) {
@@ -226,6 +282,12 @@ function validateSchemaNode(
 		}
 	}
 
+	// if/then/else: validate the if-branch silently; based on its outcome,
+	// validate against then/else. Each sub-schema is treated as a schema node
+	// (no requirement that branches be objects). This is a minimal correct
+	// semantic — schemas where the if-branch references properties only present
+	// after applying then will still resolve consistently for the LLM-emitted
+	// shapes we encounter.
 	if ("if" in schema) {
 		const ifIssues: JsonSchemaValidationIssue[] = [];
 		const ifOk = validateSchemaNode(schema.if, value, path, ctx, ifIssues);
@@ -235,6 +297,11 @@ function validateSchemaNode(
 		}
 	}
 
+	// `unevaluatedProperties` / `unevaluatedItems` require tracking which
+	// keys/indices were "evaluated" by sibling keywords across composed
+	// schemas — expensive bookkeeping we do not implement. Warn once so tool
+	// authors who rely on them know the keyword is silently permissive in
+	// this validator.
 	if (("unevaluatedProperties" in schema || "unevaluatedItems" in schema) && !seenUnevaluatedWarning) {
 		seenUnevaluatedWarning = true;
 		logger.warn(
@@ -258,6 +325,7 @@ function validateSchemaNode(
 	return valid;
 }
 
+/** Apply object-shaped JSON-Schema keywords: `required`, `properties`, `propertyNames`, `patternProperties`, `dependentRequired`, `dependentSchemas`, `additionalProperties`, and the `min/maxProperties` counts. */
 function validateObjectKeywords(
 	schema: Record<string, unknown>,
 	value: Record<string, unknown>,
@@ -267,10 +335,20 @@ function validateObjectKeywords(
 ): boolean {
 	let valid = true;
 	const properties = isRecord(schema.properties) ? schema.properties : {};
+	// Every instance-membership test below uses `Object.hasOwn`, never `key in
+	// value`. JSON Schema defines a `required`/`properties` key as an OWN property
+	// of the instance, but `key in value` also matches inherited `Object.prototype`
+	// members. A JSON.parse'd instance always carries that prototype, so `key in
+	// value` breaks two ways: `required: ["toString"]` passes on an object that
+	// lacks the property (false negative), and `properties: { toString: ... }` on
+	// an object without it validates the inherited `Object.prototype.toString`
+	// function against the subschema (spurious failure). `Object.hasOwn` keeps the
+	// tests to real own properties, matching the `Object.keys(value)` iteration the
+	// count/additionalProperties keywords already use.
 	if (isRequiredSet(schema.required)) {
 		for (const key of schema.required) {
 			if (!Object.hasOwn(value, key)) {
-				pushIssue(issues, path.concat([key]), "is required", { keyword: "required" });
+				pushIssue(issues, [...path, key], "is required", { keyword: "required" });
 				valid = false;
 			}
 		}
@@ -278,12 +356,12 @@ function validateObjectKeywords(
 
 	for (const key in properties) {
 		if (!Object.hasOwn(value, key)) continue;
-		valid = validateSchemaNode(properties[key], value[key], path.concat([key]), ctx, issues) && valid;
+		valid = validateSchemaNode(properties[key], value[key], [...path, key], ctx, issues) && valid;
 	}
 
 	if (schema.propertyNames !== undefined) {
 		for (const key of Object.keys(value)) {
-			valid = validateSchemaNode(schema.propertyNames, key, path.concat([key]), ctx, issues) && valid;
+			valid = validateSchemaNode(schema.propertyNames, key, [...path, key], ctx, issues) && valid;
 		}
 	}
 
@@ -303,7 +381,7 @@ function validateObjectKeywords(
 			for (const key of Object.keys(value)) {
 				if (!re.test(key)) continue;
 				known.add(key);
-				valid = validateSchemaNode(patternSchema, value[key], path.concat([key]), ctx, issues) && valid;
+				valid = validateSchemaNode(patternSchema, value[key], [...path, key], ctx, issues) && valid;
 			}
 		}
 	}
@@ -317,7 +395,7 @@ function validateObjectKeywords(
 			for (const dep of deps) {
 				if (typeof dep !== "string") continue;
 				if (!Object.hasOwn(value, dep)) {
-					pushIssue(issues, path.concat([dep]), `is required when "${key}" is present`, {
+					pushIssue(issues, [...path, dep], `is required when "${key}" is present`, {
 						keyword: "dependentRequired",
 					});
 					valid = false;
@@ -334,17 +412,19 @@ function validateObjectKeywords(
 		}
 	}
 
+	// `known` includes property names and any keys matched by patternProperties
+	// above, so additionalProperties only governs the genuine leftovers.
 	const additional = schema.additionalProperties;
 	if (additional === false) {
 		for (const key of Object.keys(value)) {
 			if (known.has(key)) continue;
-			pushIssue(issues, path.concat([key]), "must not be present", { keyword: "additionalProperties" });
+			pushIssue(issues, [...path, key], "must not be present", { keyword: "additionalProperties" });
 			valid = false;
 		}
 	} else if (additional !== undefined && additional !== true) {
 		for (const key of Object.keys(value)) {
 			if (known.has(key)) continue;
-			valid = validateSchemaNode(additional, value[key], path.concat([key]), ctx, issues) && valid;
+			valid = validateSchemaNode(additional, value[key], [...path, key], ctx, issues) && valid;
 		}
 	}
 
@@ -360,6 +440,7 @@ function validateObjectKeywords(
 	return valid;
 }
 
+/** Apply array-shaped keywords: `min/maxItems`, `uniqueItems`, `prefixItems` + `items` tuple validation, and `contains` with `min/maxContains`. */
 function validateArrayKeywords(
 	schema: Record<string, unknown>,
 	value: unknown[],
@@ -380,12 +461,14 @@ function validateArrayKeywords(
 		for (let i = 0; i < value.length; i += 1) {
 			for (let j = i + 1; j < value.length; j += 1) {
 				if (!areJsonValuesEqual(value[i], value[j])) continue;
-				pushIssue(issues, path.concat([j]), "must be unique", { keyword: "uniqueItems" });
+				pushIssue(issues, [...path, j], "must be unique", { keyword: "uniqueItems" });
 				valid = false;
 			}
 		}
 	}
 
+	// Tuple validation uses JSON Schema 2020-12 `prefixItems` for per-index
+	// schemas. When present, `items` is the schema for every remaining element.
 	const prefixItems = Array.isArray(schema.prefixItems) ? schema.prefixItems : undefined;
 	const items = schema.items;
 	if (Array.isArray(items)) {
@@ -396,16 +479,16 @@ function validateArrayKeywords(
 	} else if (prefixItems) {
 		const limit = Math.min(prefixItems.length, value.length);
 		for (let i = 0; i < limit; i += 1) {
-			valid = validateSchemaNode(prefixItems[i], value[i], path.concat([i]), ctx, issues) && valid;
+			valid = validateSchemaNode(prefixItems[i], value[i], [...path, i], ctx, issues) && valid;
 		}
 		if (items !== undefined) {
 			for (let i = prefixItems.length; i < value.length; i += 1) {
-				valid = validateSchemaNode(items, value[i], path.concat([i]), ctx, issues) && valid;
+				valid = validateSchemaNode(items, value[i], [...path, i], ctx, issues) && valid;
 			}
 		}
 	} else if (items !== undefined) {
 		for (let i = 0; i < value.length; i += 1) {
-			valid = validateSchemaNode(items, value[i], path.concat([i]), ctx, issues) && valid;
+			valid = validateSchemaNode(items, value[i], [...path, i], ctx, issues) && valid;
 		}
 	}
 
@@ -415,7 +498,7 @@ function validateArrayKeywords(
 		let count = 0;
 		for (let i = 0; i < value.length; i += 1) {
 			const containsIssues: JsonSchemaValidationIssue[] = [];
-			if (validateSchemaNode(schema.contains, value[i], path.concat([i]), ctx, containsIssues)) {
+			if (validateSchemaNode(schema.contains, value[i], [...path, i], ctx, containsIssues)) {
 				count += 1;
 			}
 		}
@@ -432,6 +515,17 @@ function validateArrayKeywords(
 	return valid;
 }
 
+/**
+ * Compile a JSON Schema `pattern` once and memoize it. Validating an array of N
+ * strings against a shared `{ items: { pattern } }` schema reaches
+ * `validateStringKeywords` N times with the identical pattern string, so a bare
+ * `new RegExp(schema.pattern)` recompiled the same regex once per element -
+ * O(elements) redundant compilation on the hot path that validates model tool
+ * output. The cache keys on the raw pattern source and stores `null` for a
+ * pattern that fails to compile, so an invalid pattern is diagnosed once and
+ * never re-throws on subsequent elements. This is the single owner of pattern
+ * compilation for the validator.
+ */
 const compiledPatternCache = new Map<string, RegExp | null>();
 
 function compiledPattern(pattern: string): RegExp | null {
@@ -447,6 +541,7 @@ function compiledPattern(pattern: string): RegExp | null {
 	return regex;
 }
 
+/** Apply string-shaped keywords: `min/maxLength`, `pattern`. Invalid regexes flag the schema itself rather than the value. */
 function validateStringKeywords(
 	schema: Record<string, unknown>,
 	value: string,
@@ -477,6 +572,7 @@ function validateStringKeywords(
 	return valid;
 }
 
+/** Apply number-shaped keywords: `minimum`/`maximum`, `exclusiveMinimum`/`exclusiveMaximum` (both numeric draft 2020-12 and boolean draft-07 forms), and `multipleOf`. */
 function validateNumberKeywords(
 	schema: Record<string, unknown>,
 	value: number,

@@ -1,3 +1,6 @@
+/**
+ * Hook loader - loads TypeScript hook modules using native Bun import.
+ */
 import * as path from "node:path";
 import { errorMessage, logger } from "@veyyon/utils";
 import * as arktype from "arktype";
@@ -13,32 +16,62 @@ import * as typebox from "../typebox";
 import { resolvePath, withExitGuard } from "../utils";
 import type { ExecOptions, HookAPI, HookFactory, HookMessageRenderer, RegisteredCommand } from "./types";
 
+/**
+ * Generic handler function type.
+ */
 type HandlerFn = (...args: unknown[]) => Promise<unknown>;
 
+/**
+ * Send message handler type for pi.sendMessage().
+ */
 export type SendMessageHandler = <T = unknown>(
 	message: CustomMessagePayload<T>,
 	options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" },
 ) => void;
 
+/**
+ * Append entry handler type for pi.appendEntry().
+ */
 export type AppendEntryHandler = <T = unknown>(customType: string, data?: T) => void;
 
+// Session-lifecycle handler types live once in session-handler-types; re-exported
+// here because hooks/runner.ts imports them from this module.
 export type { BranchHandler, NavigateTreeHandler, NewSessionHandler } from "../session-handler-types";
 
+/**
+ * Registered handlers for a loaded hook.
+ */
 export interface LoadedHook {
+	/** Original path from config */
 	path: string;
+	/** Resolved absolute path */
 	resolvedPath: string;
+	/** Map of event type to handler functions */
 	handlers: Map<string, HandlerFn[]>;
+	/** Map of customType to hook message renderer */
 	messageRenderers: Map<string, HookMessageRenderer>;
+	/** Map of command name to registered command */
 	commands: Map<string, RegisteredCommand>;
+	/** Set the send message handler for this hook's pi.sendMessage() */
 	setSendMessageHandler: (handler: SendMessageHandler) => void;
+	/** Set the append entry handler for this hook's pi.appendEntry() */
 	setAppendEntryHandler: (handler: AppendEntryHandler) => void;
 }
 
+/**
+ * Result of loading hooks.
+ */
 export interface LoadHooksResult {
+	/** Successfully loaded hooks */
 	hooks: LoadedHook[];
+	/** Errors encountered during loading */
 	errors: Array<{ path: string; error: string }>;
 }
 
+/**
+ * Create a HookAPI instance that collects handlers, renderers, and commands.
+ * Returns the API, maps, and functions to set handlers later.
+ */
 async function createHookAPI(
 	handlers: Map<string, HandlerFn[]>,
 	cwd: string,
@@ -56,6 +89,8 @@ async function createHookAPI(
 	const messageRenderers = new Map<string, HookMessageRenderer>();
 	const commands = new Map<string, RegisteredCommand>();
 
+	// Cast to HookAPI - the implementation is more general (string event names)
+	// but the interface has specific overloads for type safety in hooks
 	const api = {
 		on(event: string, handler: HandlerFn): void {
 			if (!handlers.has(event)) {
@@ -94,6 +129,7 @@ async function createHookAPI(
 		},
 		logger,
 		typebox,
+		// HookAPI.arktype is typed as the arktype `Type` constructor; expose it from the module namespace.
 		arktype: arktype.Type,
 		zod: zodModule,
 		pi: await loadCodingAgentApi(),
@@ -112,6 +148,9 @@ async function createHookAPI(
 	};
 }
 
+/**
+ * Load a single hook module using native Bun import.
+ */
 async function loadHook(
 	hookPath: string,
 	cwd: string,
@@ -121,6 +160,7 @@ async function loadHook(
 	const resolvedPath = resolvePath(hookPath, cwd);
 
 	try {
+		// Import the module using native Bun import
 		const module = await withExitGuard(() => import(resolvedPath));
 		const factory = module.default as HookFactory;
 
@@ -128,6 +168,7 @@ async function loadHook(
 			return { hook: null, error: factoryExportMissingMessage("hook") };
 		}
 
+		// Create handlers map and API
 		const handlers = new Map<string, HandlerFn[]>();
 		const { api, messageRenderers, commands, setSendMessageHandler, setAppendEntryHandler } = await createHookAPI(
 			handlers,
@@ -136,6 +177,7 @@ async function loadHook(
 			gateSpawn,
 		);
 
+		// Call factory to register handlers
 		await withExitGuard(async () => factory(api));
 
 		return {
@@ -155,6 +197,11 @@ async function loadHook(
 	}
 }
 
+/**
+ * Load all hooks from configuration.
+ * @param paths - Array of hook file paths
+ * @param cwd - Current working directory for resolving relative paths
+ */
 export async function loadHooks(
 	paths: string[],
 	cwd: string,
@@ -180,6 +227,20 @@ export async function loadHooks(
 	return { hooks, errors };
 }
 
+/**
+ * Discover and load hooks from all registered providers.
+ * Uses the capability API to discover hook paths from:
+ * 1. Veyyon native configs (.veyyon/.pi hooks/)
+ * 2. Installed plugins
+ * 3. Other editor/IDE configurations
+ *
+ * Plus any explicitly configured paths from settings.
+ *
+ * `agentDir` names WHICH profile supplies the user scope
+ * (`<agentDir>/hooks/{pre,post}` and that profile's plugin roots). It defaults
+ * inside `loadCapability` (`options.agentDir ?? getAgentDir()`), so omitting it
+ * still resolves the process-active profile. Pass it whenever you have one.
+ */
 export async function discoverAndLoadHooks(
 	configuredPaths: string[],
 	cwd: string,
@@ -190,6 +251,7 @@ export async function discoverAndLoadHooks(
 	const allPaths: string[] = [];
 	const seen = new Set<string>();
 
+	// Helper to add paths without duplicates
 	const addPaths = (paths: string[]) => {
 		for (const p of paths) {
 			const resolved = path.resolve(p);
@@ -200,9 +262,11 @@ export async function discoverAndLoadHooks(
 		}
 	};
 
+	// 1. Discover hooks via capability API
 	const discovered = await loadCapability<Hook>(hookCapability.id, { cwd, agentDir });
 	addPaths(discovered.items.map(hook => hook.path));
 
+	// 2. Explicitly configured paths (can override/add)
 	addPaths(configuredPaths.map(p => resolvePath(p, cwd)));
 
 	return loadHooks(allPaths, cwd, adoptSpawnedPid, gateSpawn);

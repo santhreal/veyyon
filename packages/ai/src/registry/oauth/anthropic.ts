@@ -1,20 +1,218 @@
+/**
+ * Anthropic OAuth flow (Claude Pro/Max)
+ */
+
+import { CLAUDE_CODE_VERSION as claudeCodeVersion } from "@veyyon/catalog/wire/anthropic";
+import { withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
-import {
-	AUTHORIZE_URL,
-	CALLBACK_PORT,
-	CLIENT_ID,
-	formatErrorDetails,
-	parseOAuthTokenResponse,
-	postJson,
-	resolveAccountIdentity,
-	SCOPES,
-	TOKEN_URL,
-} from "./anthropic-helpers";
 import { DEFAULT_CALLBACK_PATH, OAuthCallbackFlow } from "./callback-server";
 import { credentialExpiryFromExpiresIn } from "./expiry";
 import { generatePKCE } from "./pkce";
 import type { OAuthController, OAuthCredentials } from "./types";
+
+const decode = (s: string) => atob(s);
+const CLIENT_ID = decode("OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl");
+const AUTHORIZE_URL = "https://claude.ai/oauth/authorize";
+const TOKEN_URL = "https://api.anthropic.com/v1/oauth/token";
+const BOOTSTRAP_URL = "https://api.anthropic.com/api/claude_cli/bootstrap";
+const CLAUDE_CODE_BOOTSTRAP_MODEL = "claude-opus-4-8";
+const CLAUDE_CODE_BOOTSTRAP_USER_AGENT = `claude-code/${claudeCodeVersion}`;
+const CALLBACK_PORT = 54545;
+// Scopes required for direct OAuth-token inference (user:inference) plus account/session management.
+// platform.claude.com/oauth/authorize issues console tokens (org:create_api_key only) and does not
+// grant user:inference — the claude.ai endpoint is required for direct inference access.
+const SCOPES =
+	"org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
+
+function formatErrorDetails(error: unknown): string {
+	if (error instanceof Error) {
+		const details: string[] = [`${error.name}: ${error.message}`];
+		const errorWithCode = error as Error & { code?: string; errno?: number | string; cause?: unknown };
+		if (errorWithCode.code) details.push(`code=${errorWithCode.code}`);
+		if (typeof errorWithCode.errno !== "undefined") details.push(`errno=${String(errorWithCode.errno)}`);
+		if (typeof error.cause !== "undefined") {
+			details.push(`cause=${formatErrorDetails(error.cause)}`);
+		}
+		if (error.stack) {
+			details.push(`stack=${error.stack}`);
+		}
+		return details.join("; ");
+	}
+	return String(error);
+}
+
+async function postJson(
+	url: string,
+	body: Record<string, string | number>,
+	fetchImpl: FetchImpl,
+	extraHeaders?: Record<string, string>,
+): Promise<string> {
+	// The fence spans the body read and its timer is cleared on settle
+	// (a bare AbortSignal.timeout stays armed for the full 30s).
+	return await withScopedTimeoutSignal(30_000, async signal => {
+		const response = await fetchImpl(url, {
+			method: "POST",
+			headers: {
+				// No Accept header: CC omits it on OAuth token requests.
+				...extraHeaders,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(body),
+			signal,
+		});
+
+		if (!response.ok) {
+			// A token endpoint's error body is where a credential is most likely to be echoed
+			// back, so the failure path reads it through the shared bounded reader. The success
+			// body is the caller's to parse and is read whole.
+			const detail = await AIError.readProviderErrorDetail(response);
+			throw new AIError.ProviderHttpError(
+				`HTTP request failed. status=${response.status}; url=${url}; body=${detail}`,
+				response.status,
+			);
+		}
+		return await response.text();
+	});
+}
+
+/**
+ * Decoded shape of Anthropic's `/v1/oauth/token` response (both
+ * `authorization_code` exchange and `refresh_token` refresh return the same
+ * envelope). Newer responses inline `account`; older/stale credentials can
+ * recover the same identity from `/api/claude_cli/bootstrap`.
+ */
+interface AnthropicTokenResponse {
+	access_token: string;
+	refresh_token: string;
+	expires_in: number;
+	account?: { uuid?: string; email_address?: string };
+	organization?: { uuid?: string; name?: string };
+}
+
+interface AnthropicBootstrapResponse {
+	oauth_account?: {
+		account_uuid?: string;
+		account_email?: string;
+		organization_uuid?: string;
+		organization_name?: string;
+	};
+}
+
+/**
+ * Account + organization identity slice resolved from the token response
+ * and/or the `/api/claude_cli/bootstrap` endpoint. The organization is the
+ * subscription workspace the token draws limits from — one account email can
+ * hold several (e.g. a Team seat plus a personal Max plan).
+ */
+interface AnthropicIdentity {
+	accountId?: string;
+	email?: string;
+	orgId?: string;
+	orgName?: string;
+}
+
+function nonEmpty(value: string | undefined): string | undefined {
+	return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function parseOAuthTokenResponse(responseBody: string, operation: string): AnthropicTokenResponse {
+	try {
+		return JSON.parse(responseBody) as AnthropicTokenResponse;
+	} catch (error) {
+		throw new AIError.OAuthError(
+			`Anthropic ${operation} returned invalid JSON. url=${TOKEN_URL}; body=${responseBody}; details=${formatErrorDetails(error)}`,
+			{ kind: "validation", provider: "anthropic", cause: error },
+		);
+	}
+}
+
+/**
+ * Lift the OAuth response's `account: { uuid, email_address }` and
+ * `organization: { uuid, name }` blocks onto {@link OAuthCredentials} so
+ * downstream identity propagation (e.g. `metadata.user_id.account_uuid`,
+ * usage tracking, org-scoped credential identity) works without a separate
+ * `/api/oauth/profile` round-trip. Returns `undefined` for any field the
+ * response omits or carries as a non-string / empty value.
+ */
+function extractAccountFromTokenResponse(data: AnthropicTokenResponse): AnthropicIdentity {
+	return {
+		accountId: nonEmpty(data.account?.uuid),
+		email: nonEmpty(data.account?.email_address),
+		orgId: nonEmpty(data.organization?.uuid),
+		orgName: nonEmpty(data.organization?.name),
+	};
+}
+
+async function fetchBootstrapIdentity(accessToken: string, fetchImpl: FetchImpl): Promise<AnthropicIdentity> {
+	const url = `${BOOTSTRAP_URL}?entrypoint=cli&model=${encodeURIComponent(CLAUDE_CODE_BOOTSTRAP_MODEL)}`;
+	// The fence spans the body read and its timer is cleared on settle
+	// (a bare AbortSignal.timeout stays armed for the full 30s).
+	const responseBody = await withScopedTimeoutSignal(30_000, async signal => {
+		const response = await fetchImpl(url, {
+			method: "GET",
+			headers: {
+				Accept: "application/json, text/plain, */*",
+				Authorization: `Bearer ${accessToken}`,
+				"Content-Type": "application/json",
+				"User-Agent": CLAUDE_CODE_BOOTSTRAP_USER_AGENT,
+				"anthropic-beta": "oauth-2025-04-20",
+			},
+			signal,
+		});
+		if (!response.ok) {
+			const detail = await AIError.readProviderErrorDetail(response);
+			throw new AIError.ProviderHttpError(
+				`HTTP request failed. status=${response.status}; url=${url}; body=${detail}`,
+				response.status,
+			);
+		}
+		return await response.text();
+	});
+	let data: AnthropicBootstrapResponse;
+	try {
+		data = JSON.parse(responseBody) as AnthropicBootstrapResponse;
+	} catch (error) {
+		throw new AIError.OAuthError(
+			`Anthropic bootstrap returned invalid JSON. url=${url}; body=${AIError.boundProviderErrorDetail(responseBody)}; details=${formatErrorDetails(error)}`,
+			{ kind: "validation", provider: "anthropic", cause: error },
+		);
+	}
+	return {
+		accountId: nonEmpty(data.oauth_account?.account_uuid),
+		email: nonEmpty(data.oauth_account?.account_email),
+		orgId: nonEmpty(data.oauth_account?.organization_uuid),
+		orgName: nonEmpty(data.oauth_account?.organization_name),
+	};
+}
+
+/**
+ * Resolve account (and optionally organization) identity for a token
+ * response. `includeOrg` is login-only: the org an access token is scoped to
+ * is captured once when the credential is created and deliberately never
+ * refreshed afterwards — rewriting identity during background token
+ * refreshes could silently re-key stored credentials.
+ */
+async function resolveAccountIdentity(
+	data: AnthropicTokenResponse,
+	fetchImpl: FetchImpl,
+	options?: { includeOrg?: boolean },
+): Promise<AnthropicIdentity> {
+	const identity = extractAccountFromTokenResponse(data);
+	const orgSatisfied = !options?.includeOrg || identity.orgId !== undefined;
+	if (identity.accountId && identity.email && orgSatisfied) return identity;
+	try {
+		const bootstrap = await fetchBootstrapIdentity(data.access_token, fetchImpl);
+		return {
+			accountId: identity.accountId ?? bootstrap.accountId,
+			email: identity.email ?? bootstrap.email,
+			orgId: identity.orgId ?? bootstrap.orgId,
+			orgName: identity.orgName ?? bootstrap.orgName,
+		};
+	} catch {
+		return identity;
+	}
+}
 
 export class AnthropicOAuthFlow extends OAuthCallbackFlow {
 	#verifier: string = "";
@@ -100,11 +298,17 @@ export class AnthropicOAuthFlow extends OAuthCallbackFlow {
 	}
 }
 
+/**
+ * Login with Anthropic OAuth
+ */
 export async function loginAnthropic(ctrl: OAuthController): Promise<OAuthCredentials> {
 	const flow = new AnthropicOAuthFlow(ctrl);
 	return flow.login();
 }
 
+/**
+ * Refresh Anthropic OAuth token
+ */
 export async function refreshAnthropicToken(
 	refreshToken: string,
 	fetchOverride?: FetchImpl,
@@ -121,6 +325,7 @@ export async function refreshAnthropicToken(
 			},
 			fetchImpl,
 			{
+				// CC sends these on refresh but not on the initial code exchange
 				"anthropic-beta": "oauth-2025-04-20",
 				"User-Agent": "anthropic-sdk-typescript/0.94.0 userOAuthProvider",
 			},
@@ -137,6 +342,9 @@ export async function refreshAnthropicToken(
 	}
 
 	const data = parseOAuthTokenResponse(responseBody, "token refresh");
+	// Deliberately no `includeOrg` and no org fields on the result: the org a
+	// credential is scoped to is fixed at login. Callers merge refresh results
+	// over the stored credential, so omitting org here preserves it verbatim.
 	const { accountId, email } = await resolveAccountIdentity(data, fetchImpl);
 
 	return {

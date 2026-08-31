@@ -18,12 +18,13 @@ import { beforeAll, describe, expect, it, spyOn } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/components/status-line/component";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line/component";
-import { defaultDisplayRoots, resolveDisplayRoots } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import { defaultDisplayRoots, resolveDisplayRoots } from "@veyyon/coding-agent/modes/components/status-line/location";
+import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/components/status-line/quiet-row";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { logger, pathIsWithin, stripAnsi } from "@veyyon/utils";
+import { makeStatusLineSession } from "../../../helpers/status-line-session";
 
 /** Wide enough that nothing on the row is clipped, so the text asserted is the text produced. */
 const ROOM_TO_SPARE = 400;
@@ -32,45 +33,7 @@ const ROOM_TO_SPARE = 400;
 const PROJECT = path.join("platform-services", "normalizer");
 
 function makeSession(cwd: () => string): AgentSession {
-	return {
-		messages: [],
-		model: { id: "claude-3-7-sonnet", name: "claude-3-7-sonnet", contextWindow: 128000 },
-		contextUsageRevision: 0,
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		getContextUsage: () => ({ tokens: 16000, contextWindow: 128000 }),
-		state: {
-			messages: [],
-			model: { id: "claude-3-7-sonnet", name: "claude-3-7-sonnet", contextWindow: 128000 },
-		},
-		sessionManager: {
-			getCwd: cwd,
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-				tokensPerSecond: null,
-			}),
-			getSessionName: () => "display-root-session",
-		},
-		getPrewalkState: () => undefined,
-		getAsyncJobSnapshot: () => undefined,
-		getRunningNonTaskJobCount: () => 0,
-		settings: { getGroup: () => ({ enabled: false }) },
-		isAdvisorActive: () => false,
-		isApprovalBypassed: () => false,
-		isFastModeActive: () => false,
-		configuredThinkingLevel: () => undefined,
-		modelRegistry: { isUsingOAuth: () => false },
-	} as unknown as AgentSession;
+	return makeStatusLineSession({ cwd });
 }
 
 function slotText(line: string, bounds: readonly QuietSegmentBounds[], id: string): string | null {

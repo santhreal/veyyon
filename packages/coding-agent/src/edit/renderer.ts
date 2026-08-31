@@ -1,3 +1,7 @@
+/**
+ * Edit tool renderer and LSP batching helpers.
+ */
+
 import { HL_FILE_PREFIX, HL_FILE_SUFFIX, HL_MOVE_KEYWORD, HL_REM_KEYWORD } from "@veyyon/hashline";
 import type { Component } from "@veyyon/tui";
 import { sliceWithWidth, visibleWidth, wrapTextWithAnsi } from "@veyyon/tui";
@@ -41,7 +45,15 @@ import { type ApplyPatchEntry, expandApplyPatchToEntries, expandApplyPatchToPrev
 import type { Operation } from "./modes/patch";
 import type { PerFileDiffPreview } from "./streaming";
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LSP Batching
+// ═══════════════════════════════════════════════════════════════════════════
+
 export { getLspBatchRequest, type LspBatchRequest };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tool Details Types
+// ═══════════════════════════════════════════════════════════════════════════
 
 export interface EditToolPerFileResult {
 	path: string;
@@ -52,28 +64,50 @@ export interface EditToolPerFileResult {
 	move?: string;
 	isError?: boolean;
 	errorText?: string;
+	/** TUI-friendly error text. When present, rendered to the user instead of `errorText`.
+	 * Set when the underlying error carries a `displayMessage` (e.g. {@link HashlineMismatchError}). */
 	displayErrorText?: string;
 	meta?: OutputMeta;
+	/** Source-of-truth content before the edit; `undefined` for create operations. */
 	oldText?: string;
+	/** Source-of-truth content after the edit; `undefined` for delete operations. */
 	newText?: string;
+	/** True when {@link pruneOversizedEditSnapshots} dropped `oldText`/`newText` from this entry. Aggregators check this to suppress misleading combined snapshots when at least one entry of a multi-entry single-path edit was pruned. */
 	snapshotsPruned?: boolean;
+	/** Pre-move source path; set only when the edit moved/renamed the file. The header renders `sourcePath → path`. */
 	sourcePath?: string;
 }
 
 export interface EditToolDetails {
+	/** Unified diff of the changes made */
 	diff: string;
+	/** Line number of the first change in the new file (for editor navigation) */
 	firstChangedLine?: number;
+	/** Diagnostic result (if available) */
 	diagnostics?: FileDiagnosticsResult;
+	/** Operation type (patch mode only) */
 	op?: Operation;
+	/** New path after move/rename (patch mode only) */
 	move?: string;
+	/** Structured output metadata */
 	meta?: OutputMeta;
+	/** Per-file results (multi-file edits) */
 	perFileResults?: EditToolPerFileResult[];
+	/** Absolute file path for single-file edit results. Required by ACP diff metadata consumers. */
 	path?: string;
+	/** Source-of-truth content before the edit; `undefined` for create operations. */
 	oldText?: string;
+	/** Source-of-truth content after the edit; `undefined` for delete operations. */
 	newText?: string;
+	/** True when {@link pruneOversizedEditSnapshots} dropped `oldText`/`newText` from this entry. Aggregators check this to suppress misleading combined snapshots when at least one entry of a multi-entry single-path edit was pruned. */
 	snapshotsPruned?: boolean;
+	/** Pre-move source path; set only when the edit moved/renamed the file. The header renders `sourcePath → path`. */
 	sourcePath?: string;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TUI Renderer
+// ═══════════════════════════════════════════════════════════════════════════
 
 interface EditRenderArgs {
 	path?: unknown;
@@ -84,11 +118,16 @@ interface EditRenderArgs {
 	input?: string;
 	_input?: string;
 	all?: boolean;
+	// Patch mode fields
 	op?: Operation;
 	rename?: unknown;
 	diff?: string;
+	/**
+	 * Computed preview diff (used when tool args don't include a diff, e.g. hashline mode).
+	 */
 	previewDiff?: string;
 	__partialJson?: string;
+	// Hashline mode fields
 	edits?: EditRenderEntry[];
 }
 
@@ -103,6 +142,7 @@ interface HashlineInputEntry {
 	path: string;
 	op?: Operation;
 	rename?: string;
+	/** A SWAP/DEL/INS line-editing op precedes the file op — keeps a move framed. */
 	hasLineEdits?: boolean;
 }
 
@@ -115,11 +155,17 @@ interface ApplyPatchRenderSummary {
 	error?: string;
 }
 
+/** Extended context for edit tool rendering */
 export interface EditRenderContext {
+	/** Edit mode resolved by the caller; lets the renderer dispatch without shape-sniffing */
 	editMode?: EditMode;
+	/** Pre-computed diff preview (computed before tool executes) */
 	editDiffPreview?: DiffResult | DiffError;
+	/** Multi-file streaming diff preview (edits spanning several files) */
 	perFileDiffPreview?: PerFileDiffPreview[];
+	/** Raw in-flight edit text shown while a computed diff preview is unavailable */
 	editStreamingFallback?: string;
+	/** Function to render diff text with syntax highlighting */
 	renderDiff?: (diffText: string, options?: { filePath?: string }) => string;
 }
 
@@ -130,6 +176,11 @@ function plainDiffRender(diffText: string): string {
 	return diffText;
 }
 
+/**
+ * Lazily grown per-file preview cache slots: the file count of a streaming
+ * multi-file patch is discovered mid-stream, so a fixed-size array would
+ * silently bypass caching for late files.
+ */
 function previewCacheAt(caches: RenderedStringCache[] | undefined, index: number): RenderedStringCache | undefined {
 	if (!caches) return undefined;
 	let cache = caches[index];
@@ -143,6 +194,7 @@ function previewCacheAt(caches: RenderedStringCache[] | undefined, index: number
 const CALL_TEXT_PREVIEW_LINES = 6;
 const CALL_TEXT_PREVIEW_WIDTH = 80;
 
+/** Extract file path from an edit entry. */
 function filePathFromEditEntry(p: unknown): string | undefined {
 	if (typeof p !== "string") {
 		return undefined;
@@ -151,12 +203,15 @@ function filePathFromEditEntry(p: unknown): string | undefined {
 }
 
 function decodePartialJsonStringFragment(fragment: string): string {
+	// Trim a trailing partial escape so JSON.parse sees a well-formed string.
 	let text = fragment.replace(/\\u[0-9a-fA-F]{0,3}$/, "");
 	const trailingBackslashes = text.match(/\\+$/)?.[0].length ?? 0;
 	if (trailingBackslashes % 2 === 1) text = text.slice(0, -1);
 	try {
 		return JSON.parse(`"${text}"`) as string;
 	} catch {
+		// Streaming fragment isn't a valid JSON string yet; surface it raw rather
+		// than ad-hoc unescaping that mishandles surrogates and partial escapes.
 		return text;
 	}
 }
@@ -173,13 +228,9 @@ function getPartialJsonEditPath(args: EditRenderArgs): string | undefined {
 	return filePathFromEditEntry(extractPartialJsonString(args.__partialJson, "path"));
 }
 
+/** Count distinct file paths in an edits array. */
 function countEditFiles(edits: EditRenderEntry[]): number {
-	const seen = new Set<string>();
-	for (let i = 0; i < edits.length; i++) {
-		const path = filePathFromEditEntry(edits[i]!.path);
-		if (path) seen.add(path);
-	}
-	return seen.size;
+	return new Set(edits.map(edit => filePathFromEditEntry(edit.path)).filter(Boolean)).size;
 }
 
 function getOperationTitle(op: Operation | undefined): string {
@@ -219,6 +270,9 @@ function formatEditPathDisplay(
 	uiTheme: Theme,
 	options?: EditPathDisplayOptions,
 ): { text: string; pathWidth: number } {
+	// `rawPath`/`rename` are shown (cwd-relative) but the OSC 8 link targets the
+	// absolute path when known — a relative `rawPath` would otherwise yield a
+	// `file:///rel` URI that resolves against filesystem root instead of cwd.
 	const linkTarget = options?.linkPath || rawPath;
 	const lineLink = options?.firstChangedLine ? { line: options.firstChangedLine } : undefined;
 	const primaryDisplay = rawPath ? formatEditTitlePath(rawPath, options?.maxPathWidth) : "…";
@@ -304,6 +358,12 @@ function renderEditHeader(
 	return buildHeader(fitted.description);
 }
 
+/**
+ * Inline status row for delete / move-only edits — they carry no diff, so they
+ * render as a single line instead of an empty framed container. The completed
+ * result uses the eraser/move glyph; a still-streaming call uses the shared
+ * pending hourglass like every other tool.
+ */
 function renderInlineEditRow(
 	uiTheme: Theme,
 	opts: { op?: Operation; rename?: string; rawPath: string; linkPath?: string; pending: boolean },
@@ -327,6 +387,13 @@ function renderInlineEditRow(
 	);
 }
 
+/**
+ * Whether a streaming edit call carries any payload worth boxing (a diff
+ * preview, replacement text, or a non-empty edits array). Used to keep a
+ * move-with-edits framed while a payload-less move/delete folds to an inline
+ * row — gated on args, not the async preview, so it can't flash inline before
+ * the diff arrives.
+ */
 function hasEditCallPayload(args: EditRenderArgs, renderContext: EditRenderContext | undefined): boolean {
 	const multi = renderContext?.perFileDiffPreview;
 	if (multi && multi.length > 1 && multi.some(p => p.diff || p.error)) return true;
@@ -339,8 +406,8 @@ function hasEditCallPayload(args: EditRenderArgs, renderContext: EditRenderConte
 function renderPlainTextPreview(text: string, uiTheme: Theme, _filePath?: string): string {
 	const previewLines = sanitizeText(text).split("\n");
 	let preview = "\n\n";
-	for (let i = 0; i < Math.min(previewLines.length, CALL_TEXT_PREVIEW_LINES); i++) {
-		preview += `${uiTheme.fg("toolOutput", truncateToWidth(replaceTabs(previewLines[i]!), CALL_TEXT_PREVIEW_WIDTH))}\n`;
+	for (const line of previewLines.slice(0, CALL_TEXT_PREVIEW_LINES)) {
+		preview += `${uiTheme.fg("toolOutput", truncateToWidth(replaceTabs(line), CALL_TEXT_PREVIEW_WIDTH))}\n`;
 	}
 	if (previewLines.length > CALL_TEXT_PREVIEW_LINES) {
 		preview += uiTheme.fg("dim", `… ${formatMoreLines(previewLines.length - CALL_TEXT_PREVIEW_LINES)}`);
@@ -359,6 +426,17 @@ function formatStreamingDiff(
 	maxVisualRows?: number,
 ): string {
 	if (!diff) return "";
+	// Clamp the tail to the viewport so a tall or fast-growing diff cannot
+	// outgrow the live window. Otherwise its mutating rows scroll above the
+	// native-scrollback commit boundary mid-stream and freeze into immutable
+	// history as a stale preview snapshot; the finalize repair then recommits
+	// the final render below it — a duplicated block on the tape. Collapsed
+	// gets a short fixed tail; expanded widens it to the viewport-sized window,
+	// never unbounded. The budget is VISUAL rows (a long wrapped line counts
+	// for more than one) at the framed block's inner width (border only —
+	// contentPaddingLeft is 0); only the visible suffix is syntax-colored, so
+	// the cheap raw-line wrap walk keeps the per-chunk cost bounded.
+	// innerWidth/budget are in the cache salt so a resize re-slices.
 	const innerWidth = Math.max(1, width - 2);
 	const budget =
 		maxVisualRows !== undefined
@@ -367,6 +445,11 @@ function formatStreamingDiff(
 				? Math.max(1, previewWindowRows() - EDIT_STREAMING_HEADROOM)
 				: Math.min(EDIT_STREAMING_PREVIEW_LINES, previewWindowRows());
 	let text = cachedRenderedString(cache, uiTheme, expanded, `${rawPath}:${innerWidth}:${budget}`, diff, () => {
+		// "Cursor" tail window: pin the last rows to the bottom so freshly streamed
+		// changes stay on screen. The whole-file diff is recomputed every chunk and
+		// its Myers alignment is not monotonic in payload length, so a hunk-aware
+		// window stutters as rows move between hunks. Expanded widens the window
+		// to the viewport; the full diff appears once the result finalizes.
 		const allLines = diff.replace(/\n+$/u, "").split("\n");
 		let visualUsed = 0;
 		let cut = allLines.length;
@@ -389,7 +472,13 @@ function formatStreamingDiff(
 		rendered += renderDiffColored(visible.join("\n"), { filePath: rawPath });
 		return rendered;
 	});
+	// The animated glyph rides this trailing line — inside the transcript's
+	// volatile-tail holdback — never the block header: an animating head row
+	// pins the native-scrollback commit boundary at the top of the block, so a
+	// tall expanded preview could never scroll-append mid-stream.
 	const spinner = spinnerFrame !== undefined ? `${formatStatusIcon("running", uiTheme, spinnerFrame)} ` : "";
+	// Expanded approval previews hide the "(preview)" label (#1992) but keep
+	// the animated glyph when one is active so the volatile tail stays live.
 	const hideLabel = expanded && label === "preview";
 	if (spinner || !hideLabel) {
 		text += `\n${hideLabel ? spinner.trimEnd() : `${spinner}${uiTheme.fg("dim", `(${label})`)}`}`;
@@ -410,10 +499,8 @@ function formatMultiFileStreamingDiff(
 		? Math.max(1, previewWindowRows() - EDIT_STREAMING_HEADROOM)
 		: Math.min(EDIT_STREAMING_PREVIEW_LINES, previewWindowRows());
 
-	let remainingActiveFiles = 0;
-	for (let i = 0; i < previews.length; i++) {
-		if (previews[i]!.diff || previews[i]!.error) remainingActiveFiles++;
-	}
+	const activePreviews = previews.filter(p => p.diff || p.error);
+	let remainingActiveFiles = activePreviews.length;
 	let remainingBudget = totalBudget;
 
 	const parts: string[] = [];
@@ -429,6 +516,9 @@ function formatMultiFileStreamingDiff(
 			continue;
 		}
 		if (preview.diff) {
+			// Only the last file's preview carries the animated streaming glyph;
+			// earlier files have settled and must stay byte-stable so their rows
+			// can commit to native scrollback mid-stream.
 			const isLast = index === previews.length - 1;
 			const cache = previewCacheAt(caches, index);
 			const fileBudget =
@@ -512,14 +602,24 @@ function normalizeHashlineInputPreviewPath(rawPath: string): string {
 function parseHashlineInputPreviewHeader(line: string): string | null {
 	const trimmed = line.trimEnd();
 	if (!trimmed.startsWith(HL_FILE_PREFIX)) return null;
+	// Keep streaming previews tolerant while the closing bracket is still
+	// being generated; the parser enforces the final `[path#TAG]` shape.
 	const bodyEnd = trimmed.endsWith(HL_FILE_SUFFIX) ? trimmed.length - HL_FILE_SUFFIX.length : trimmed.length;
 	const body = trimmed.slice(HL_FILE_PREFIX.length, bodyEnd).trim();
 	const previewPath = normalizeHashlineInputPreviewPath(body);
 	return previewPath.length > 0 ? previewPath : null;
 }
 
+// Line-editing op headers (SWAP/DEL/INS family), distinct from the file-level
+// REM/MV ops. Body rows are always `+TEXT`, so this only matches real headers.
 const HL_LINE_OP_HEADER = /^(?:SWAP|DEL|INS)\b/;
 
+/**
+ * Walk a (possibly mid-stream) hashline payload into per-section descriptors:
+ * the target path plus any file-level op (`REM` → delete, `MV dest` → rename)
+ * and whether a line edit precedes it. Tolerant of partial input so the call
+ * preview can label a delete/move before the payload finishes streaming.
+ */
 function getHashlineInputSections(input: string): HashlineInputEntry[] {
 	const stripped = input.startsWith("\uFEFF") ? input.slice(1) : input;
 	const entries: HashlineInputEntry[] = [];
@@ -651,6 +751,26 @@ function renderErrorSection(
 	return rendered.join("\n");
 }
 
+/**
+ * Split a diff row into the prefix it keeps on its first visual row and the
+ * prefix its wrapped rows carry instead. `undefined` means the row is not a
+ * diff row and wraps generically.
+ *
+ * Gutter shapes produced by formatCodeFrameLine: "-315│", " 313│", "+322│",
+ * plus the deduplicated forms "   +│" and "    │" whose repeated line number
+ * renderDiff blanked (single-line replacement pairs and insert-then-context
+ * runs) — all │-separated. ASCII "|" gutters exist only in raw canonical diff
+ * rows passed through by the plain fallback ("-42|old", " 42|ctx"), which always
+ * carry a marker column ("+"/"-"/space) and a line number. So the number is
+ * optional for "│", while "|" requires the full canonical shape; anything else
+ * (a body line merely starting with "|", error text like "123|…") is not a diff
+ * row.
+ *
+ * A row a preview produced before the edit landed has no line number to draw, so
+ * its gutter is the marker alone: `+return raw.split(...)`. It wraps as often as
+ * a numbered row does, and a wrapped row that starts back in the marker column
+ * reads as one more added line rather than the tail of the one above it.
+ */
 function splitDiffRow(body: string): { prefix: string; continuation: string; content: string } | undefined {
 	const gutter = /^(\s*[+-]?\s*\d*)([|│])(.*)$/s.exec(body);
 	if (gutter && gutter[1].length > 0 && (gutter[2] === "│" || /^[+\-\s]\s*\d+$/.test(gutter[1]))) {
@@ -679,6 +799,11 @@ function wrapEditRendererLine(line: string, width: number): string[] {
 	const contentWidth = Math.max(1, width - visibleWidth(split.prefix));
 	const wrappedContent = wrapTextWithAnsi(split.content, contentWidth);
 
+	// Each visual row is a standalone terminal line: wrapTextWithAnsi re-opens
+	// active SGR state at the next row's start, so a row that breaks inside an
+	// intra-line diff highlight still ends with inverse video active. Close it
+	// alongside the foreground reset — otherwise the frame padding appended
+	// after the row is painted as an inverse block (default-foreground cells).
 	return wrappedContent.map(
 		(segment, index) => `${startAnsi}${index === 0 ? split.prefix : split.continuation}${segment}\x1b[27m\x1b[39m`,
 	);
@@ -698,6 +823,7 @@ export const editToolRenderer = {
 		const applyPatchSummary = getApplyPatchRenderSummary(editArgs, options.isPartial, renderContext?.editMode);
 		const firstApplyPatchEntry = applyPatchSummary?.entries[0];
 		const firstHashlineInputEntry = hashlineInputSummary?.entries[0];
+		// Extract path from first edit entry when top-level path is absent (new schema)
 		const firstEdit = Array.isArray(editArgs.edits) && editArgs.edits.length > 0 ? editArgs.edits[0] : undefined;
 		const rawPath =
 			typeof editArgs.file_path === "string"
@@ -720,12 +846,20 @@ export const editToolRenderer = {
 		if (Array.isArray(editArgs.edits)) {
 			fileCount = countEditFiles(editArgs.edits);
 		}
+		// Delete / payload-less move calls render as an inline pending row (no
+		// empty framed container), mirroring the completed result but with the
+		// shared hourglass instead of the eraser/move glyph.
 		const hasPayload = hasEditCallPayload(editArgs, renderContext) || Boolean(firstHashlineInputEntry?.hasLineEdits);
 		if (fileCount <= 1 && !applyPatchSummary?.error && (op === "delete" || (rename !== undefined && !hasPayload))) {
 			return renderInlineEditRow(uiTheme, { op, rename, rawPath, pending: true });
 		}
 		const callPreviewCaches: RenderedStringCache[] = [];
 		return framedBlock(uiTheme, width => {
+			// No status icon on the head row: it's the head of the framed block,
+			// and native-scrollback commits are prefix-only — an animated glyph
+			// would pin the commit boundary at the top, and the pending hourglass
+			// just adds noise. The liveness cue rides the trailing "(preview)" /
+			// "(streaming)" line instead.
 			const header = renderEditHeader(width, uiTheme, {
 				op,
 				rawPath,
@@ -745,14 +879,11 @@ export const editToolRenderer = {
 			if (applyPatchSummary?.error) {
 				body += `\n${uiTheme.fg("error", truncateToWidth(replaceTabs(applyPatchSummary.error), Math.max(1, width - 2)))}`;
 			}
-			const bodyLines: string[] = [];
-			if (body) {
-				const rawBodyLines = body.split("\n");
-				for (let bi = 0; bi < rawBodyLines.length; bi++) {
-					const wrapped = wrapEditRendererLine(rawBodyLines[bi]!, Math.max(1, width - 2));
-					for (let wi = 0; wi < wrapped.length; wi++) bodyLines.push(wrapped[wi]!);
-				}
-			}
+			// Pre-wrap with the continuation gutter, as the landed result does, so a
+			// row too long for the frame keeps reading as one row of the diff.
+			const bodyLines = body
+				? body.split("\n").flatMap(line => wrapEditRendererLine(line, Math.max(1, width - 2)))
+				: [];
 			while (bodyLines.length > 0 && bodyLines[0].trim() === "") bodyLines.shift();
 			return {
 				header,
@@ -821,6 +952,10 @@ function renderSingleFileResult(
 			(result.content?.find(c => c.type === "text")?.text ?? "")
 		: "";
 
+	// Delete and move-only results carry no diff to box. Per design these render
+	// as an inline status row (eraser / move glyph) rather than an empty framed
+	// container. Errors, no-ops, creates, move-with-edits, and anything with
+	// diagnostics keep the framed block below.
 	if (!isError && !details?.diff && !details?.diagnostics && (op === "delete" || rename)) {
 		const linkPath = details && "path" in details ? details.path : undefined;
 		return renderInlineEditRow(uiTheme, { op, rename, rawPath, linkPath, pending: false });
@@ -831,6 +966,11 @@ function renderSingleFileResult(
 
 	return framedBlock(uiTheme, width => {
 		const { expanded, renderContext } = options;
+		// A finalized result is authoritative: its `details` describe exactly
+		// what happened. The shared streaming `editDiffPreview` is a call-phase
+		// artifact (in a batch it reflects only the first file), so consulting it
+		// for an empty-diff delete/move/no-op result mislabels the card. Fall
+		// back to the preview only when no details exist yet.
 		const editDiffPreview = details ? undefined : renderContext?.editDiffPreview;
 		const renderDiffFn = renderContext?.renderDiff ?? plainDiffRender;
 
@@ -843,6 +983,7 @@ function renderSingleFileResult(
 			(details && !isError ? details.firstChangedLine : undefined);
 		const linkPath = details && "path" in details ? details.path : undefined;
 
+		// Change stats ride inline on the header bar next to the path.
 		const previewDiff = editDiffPreview && !("error" in editDiffPreview) ? editDiffPreview.diff : undefined;
 		const headerDiff = isError ? undefined : details?.diff || previewDiff;
 		const statsSuffix = headerDiff ? formatDiffStatsSuffix(headerDiff, uiTheme) : "";
@@ -863,6 +1004,10 @@ function renderSingleFileResult(
 		} else if (details?.diff) {
 			body = renderDiffSection(details.diff, rawPath, expanded, uiTheme, renderDiffFn, diffSectionCache);
 		} else if (details) {
+			// Authoritative result with no textual diff: a delete, a move-only
+			// rename, or a genuine no-op. The header already names the op
+			// (Delete / `src → dst`); only a true no-op needs an explanatory
+			// body so an empty card isn't mistaken for a stalled edit.
 			if (op !== "delete" && op !== "create" && !rename) {
 				const noChangePath = linkPath ? shortenPath(linkPath) : rawPath ? shortenPath(rawPath) : "";
 				body = uiTheme.fg("dim", `No changes were made${noChangePath ? ` to ${noChangePath}` : ""}.`);
@@ -879,15 +1024,11 @@ function renderSingleFileResult(
 			);
 		}
 
+		// Diff lines self-wrap with a continuation gutter; pre-wrap to the frame's
+		// inner width so renderOutputBlock's generic wrap is a no-op. Edit frames
+		// use a flush left border because code-frame gutters already provide padding.
 		const innerWidth = Math.max(1, width - 2);
-		const bodyLines: string[] = [];
-		if (body.length > 0) {
-			const rawBodyLines = body.split("\n");
-			for (let bi = 0; bi < rawBodyLines.length; bi++) {
-				const wrapped = wrapEditRendererLine(rawBodyLines[bi]!, innerWidth);
-				for (let wi = 0; wi < wrapped.length; wi++) bodyLines.push(wrapped[wi]!);
-			}
-		}
+		const bodyLines = body.length > 0 ? body.split("\n").flatMap(line => wrapEditRendererLine(line, innerWidth)) : [];
 		while (bodyLines.length > 0 && bodyLines[0].trim() === "") bodyLines.shift();
 
 		return {
@@ -924,14 +1065,16 @@ function renderMultiFileResult(
 				if (i > 0) {
 					allLines.push("");
 				}
-				const rendered = fileComponents[i]!.render(width);
-				for (let li = 0; li < rendered.length; li++) allLines.push(rendered[li]!);
+				allLines.push(...fileComponents[i].render(width));
 			}
 
+			// Show pending indicator for files still being processed
 			if (remaining > 0) {
 				if (allLines.length > 0) allLines.push("");
 				const spinnerFrame = options.spinnerFrame;
 				const spinner = spinnerFrame !== undefined ? formatStatusIcon("running", uiTheme, spinnerFrame) : "";
+				// Spinner while actively rendering, otherwise no icon — never the
+				// pending hourglass on the head row.
 				allLines.push(
 					renderStatusLine(
 						{

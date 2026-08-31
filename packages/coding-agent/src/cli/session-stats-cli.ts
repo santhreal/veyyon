@@ -1,4 +1,9 @@
-/** `veyyon session stats [id]` — load a stored session and report how it spent its time and tokens. Reads only; it resolves the file, loads its entries, and */
+/**
+ * `veyyon session stats [id]` — load a stored session and report how it spent
+ * its time and tokens. Reads only; it resolves the file, loads its entries, and
+ * hands them to the pure {@link computeSessionStats}. When no id is given it
+ * studies the most recent session in the current directory.
+ */
 
 import { errorMessage } from "@veyyon/utils";
 import { listSessions, resolveResumableSession } from "../session/session-listing";
@@ -37,7 +42,7 @@ async function resolveSessionFile(
 }
 
 /** Build the report for a session file. Exported so the command and tests share one path. */
-async function buildSessionStatsReport(
+export async function buildSessionStatsReport(
 	filePath: string,
 	storage: FileSessionStorage = new FileSessionStorage(),
 ): Promise<SessionStatsReport> {

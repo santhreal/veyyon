@@ -25,7 +25,7 @@ describe("generateFileMentionMessages path resolution", () => {
 		await fs.mkdir(path.join(cwd, "src"), { recursive: true });
 		await Bun.write(path.join(cwd, "src", "config.ts"), "export const x = 1;");
 
-		const messages = await generateFileMentionMessages(["src/config.ts"], cwd);
+		const messages = await generateFileMentionMessages(["src/config.ts"], cwd, {});
 		expect(messages).toHaveLength(1);
 		const message = messages[0];
 		if (message?.role !== "fileMention") {
@@ -41,7 +41,7 @@ describe("generateFileMentionMessages path resolution", () => {
 		await fs.mkdir(path.join(cwd, "src"), { recursive: true });
 		await Bun.write(path.join(cwd, "src", "index.ts"), "ok");
 
-		const messages = await generateFileMentionMessages(["src"], cwd);
+		const messages = await generateFileMentionMessages(["src"], cwd, {});
 		expect(messages).toHaveLength(1);
 		const message = messages[0];
 		if (message?.role !== "fileMention") {
@@ -61,16 +61,16 @@ describe("generateFileMentionMessages path resolution", () => {
 		// Partial path (old prefix match), scope-style token and bare substring (old fuzzy
 		// match) must all resolve to nothing: the @-selector turns these into real paths
 		// before send, so an unresolved mention is prose, not a file reference.
-		expect(await generateFileMentionMessages(["docs/rea"], cwd)).toHaveLength(0);
-		expect(await generateFileMentionMessages(["widget/"], cwd)).toHaveLength(0);
-		expect(await generateFileMentionMessages(["widget"], cwd)).toHaveLength(0);
+		expect(await generateFileMentionMessages(["docs/rea"], cwd, {})).toHaveLength(0);
+		expect(await generateFileMentionMessages(["widget/"], cwd, {})).toHaveLength(0);
+		expect(await generateFileMentionMessages(["widget"], cwd, {})).toHaveLength(0);
 	});
 
 	test("reads only the mentions that resolve to real paths", async () => {
 		const cwd = await createTempDir();
 		await Bun.write(path.join(cwd, "real.txt"), "present");
 
-		const messages = await generateFileMentionMessages(["real.txt", "does-not-exist.txt"], cwd);
+		const messages = await generateFileMentionMessages(["real.txt", "does-not-exist.txt"], cwd, {});
 		expect(messages).toHaveLength(1);
 		const message = messages[0];
 		if (message?.role !== "fileMention") {
@@ -89,7 +89,7 @@ describe("generateFileMentionMessages path resolution", () => {
 		const mentions = extractFileMentions("Please see @\"My Folder/my file.png\" and @'My Folder/my file.png'");
 		expect(mentions).toEqual(["My Folder/my file.png"]);
 
-		const messages = await generateFileMentionMessages(mentions, cwd);
+		const messages = await generateFileMentionMessages(mentions, cwd, {});
 		expect(messages).toHaveLength(1);
 		const message = messages[0];
 		if (message?.role !== "fileMention") {
@@ -107,7 +107,7 @@ describe("generateFileMentionMessages path resolution", () => {
 		// A non-NUL invalid-UTF8 blob must be refused too, not just NUL-bearing files.
 		await Bun.write(path.join(cwd, "blob.bin"), Buffer.from([0x4d, 0x5a, 0xff, 0xfe, 0xc0, 0xc0]));
 
-		const messages = await generateFileMentionMessages(["Silver.ttf", "blob.bin"], cwd);
+		const messages = await generateFileMentionMessages(["Silver.ttf", "blob.bin"], cwd, {});
 		expect(messages).toHaveLength(1);
 		const message = messages[0];
 		if (message?.role !== "fileMention") {

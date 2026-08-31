@@ -1,4 +1,5 @@
 import { enclosingBlockBoundaries } from "@veyyon/natives";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import * as logger from "@veyyon/utils/logger";
 
 const OPEN_TO_CLOSE: Record<string, string> = {
@@ -18,6 +19,13 @@ export interface LineSpan {
 	endLine: number;
 }
 
+/**
+ * Where the source came from, so tree-sitter can pick a grammar.
+ *
+ * `text` is the same source `fullLines` was split from, when the caller still has it. The
+ * native side needs one string, and rebuilding it with `join` allocates the whole file a
+ * second time -- 3.5MiB per read on a 100k-line file whose caller had just read it.
+ */
 export interface BlockContextSource {
 	path?: string;
 	lang?: string;
@@ -72,11 +80,34 @@ function hasEveryLineVisible(visible: ReadonlySet<number>, totalLines: number): 
 	return totalLines > 0 && visible.size >= totalLines;
 }
 
+/**
+ * Ceiling on the source a boundary lookup will scan, in bytes. It mirrors
+ * `MAX_CACHED_BYTES` in `crates/veyyon-ast/src/parse_cache.rs`: below it the
+ * parse cache retains the tree (and serves a source one edit away by editing
+ * it), so a second lookup on the same file is nearly free; above it nothing is
+ * retained and every lookup pays a whole-file parse. A streamed edit preview
+ * asks twice per redraw — the file on disk, then the file the edit produces —
+ * so on a 11.7MiB source that was 1.9s of tree-sitter per redraw for at most
+ * two boundary rows, and the redraw rate collapsed to the parse rate. Past the
+ * ceiling the diff and the read window render without off-window boundary rows
+ * instead of paying for them.
+ */
 const SCAN_CEILING_BYTES = 4 * 1024 * 1024;
 
+/**
+ * Whether the source is too large for a boundary lookup to scan. Sizing is
+ * exact against {@link SCAN_CEILING_BYTES} when the caller kept the source
+ * string; without it, summing line lengths is a lower bound on the byte count
+ * (one UTF-16 unit is at least one UTF-8 byte), so a source over the ceiling in
+ * units is over it in bytes, and anything at or below falls through to the
+ * lookup as before.
+ */
 function exceedsScanCeiling(fullLines: readonly string[], source: BlockContextSource): boolean {
 	const text = source.text;
 	if (text !== undefined) {
+		// A character count is checked first because it is free: it can only
+		// undercount bytes, so a source over the ceiling in characters needs no
+		// byte pass, and one well under it needs no byte pass either.
 		if (text.length > SCAN_CEILING_BYTES) return true;
 		if (text.length <= SCAN_CEILING_BYTES / 4) return false;
 		return Buffer.byteLength(text) > SCAN_CEILING_BYTES;
@@ -89,12 +120,20 @@ function exceedsScanCeiling(fullLines: readonly string[], source: BlockContextSo
 	return false;
 }
 
+/**
+ * Whether a boundary lookup on this source would be refused for its size, for
+ * a caller that would otherwise build the line arrays a lookup needs. A
+ * unified diff splits both sides of the pair to map boundary rows onto line
+ * numbers, which is two whole-file arrays per redraw for an answer the ceiling
+ * already decided.
+ */
 export function exceedsBlockContextScanCeiling(text: string): boolean {
 	return exceedsScanCeiling([], { text });
 }
 
+/** Collapse a set of visible line numbers into sorted, merged inclusive spans. */
 function visibleSetToSpans(visible: ReadonlySet<number>): LineSpan[] {
-	const sorted = Array.from(visible).sort((left, right) => left - right);
+	const sorted = [...visible].sort((left, right) => left - right);
 	const spans: LineSpan[] = [];
 	for (const line of sorted) {
 		const previous = spans[spans.length - 1];
@@ -107,6 +146,13 @@ function visibleSetToSpans(visible: ReadonlySet<number>): LineSpan[] {
 	return spans;
 }
 
+/**
+ * Tree-sitter-backed block boundaries. For each multi-line named node whose
+ * span crosses the visible window, the native side returns the boundary line
+ * outside that window (closer when the opener is shown, opener when the closer
+ * is shown). Returns `null` when the language is unrecognized or the source has
+ * a syntax error so the caller can fall back to a lexical bracket scan.
+ */
 function nativeBlockContext(
 	fullLines: readonly string[],
 	visible: ReadonlySet<number>,
@@ -152,6 +198,12 @@ function isHashCommentStart(line: string, index: number): boolean {
 	return true;
 }
 
+/**
+ * Lexical bracket-matching fallback for sources tree-sitter can't parse
+ * (unknown extensions, syntax errors). Pairs `()[]{}` while skipping strings
+ * and line/block comments, and reports the matching line when one endpoint is
+ * visible and the other is not.
+ */
 function lexicalBracketContext(fullLines: readonly string[], visible: ReadonlySet<number>): Map<number, string> {
 	const context = new Map<number, string>();
 	const stack: StackEntry[] = [];
@@ -256,6 +308,15 @@ function lexicalBracketContext(fullLines: readonly string[], visible: ReadonlySe
 	return context;
 }
 
+/**
+ * Resolve the off-window boundary lines for a visible window: tree-sitter
+ * syntactic spans first (covers brace and indentation languages), falling back
+ * to a lexical bracket scan when the grammar is unavailable. Returns a map of
+ * `lineNumber → source text` for the lines to surface, never including a line
+ * already visible. A source over {@link SCAN_CEILING_BYTES} resolves to no
+ * boundary lines: both backends scan the whole source, and past that size
+ * nothing retains the result, so the scan would be paid again on every redraw.
+ */
 export function findBlockContextLines(
 	fullLines: readonly string[],
 	visibleInput: ReadonlySet<number> | readonly number[],
@@ -267,6 +328,12 @@ export function findBlockContextLines(
 	return nativeBlockContext(fullLines, visible, source) ?? lexicalBracketContext(fullLines, visible);
 }
 
+/**
+ * Build display entries for `visibleSpans` plus any off-window block-boundary
+ * lines, in source order, with `{ kind: "ellipsis" }` markers inserted across
+ * non-contiguous gaps. `options.lineText` lets callers substitute display text
+ * (e.g. column-truncated lines) for a given line number.
+ */
 export function buildLineEntriesWithBlockContext(
 	fullLines: readonly string[],
 	visibleSpans: readonly LineSpan[],
@@ -281,7 +348,7 @@ export function buildLineEntriesWithBlockContext(
 	const allLines = new Set<number>(visible);
 	for (const lineNumber of context.keys()) allLines.add(lineNumber);
 
-	const sorted = Array.from(allLines).sort((left, right) => left - right);
+	const sorted = [...allLines].sort((left, right) => left - right);
 	const entries: LineEntry[] = [];
 	let previousLine: number | undefined;
 	for (const lineNumber of sorted) {

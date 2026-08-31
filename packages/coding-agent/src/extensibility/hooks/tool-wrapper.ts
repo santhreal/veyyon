@@ -1,3 +1,6 @@
+/**
+ * Tool wrapper - wraps tools with hook callbacks for interception.
+ */
 import type { AgentTool, AgentToolContext, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { Static, TSchema } from "@veyyon/ai";
 import { errorMessage } from "@veyyon/utils";
@@ -6,6 +9,14 @@ import { applyToolProxy } from "../tool-proxy";
 import type { HookRunner } from "./runner";
 import type { ToolCallEventResult, ToolResultEventResult } from "./types";
 
+/**
+ * Wraps an AgentTool with hook callbacks for interception.
+ *
+ * Features:
+ * - Emits tool_call event before execution (can block)
+ * - Emits tool_result event after execution (can modify result)
+ * - Forwards onUpdate callback to wrapped tool for progress streaming
+ */
 export class HookToolWrapper<TParameters extends TSchema = TSchema, TDetails = unknown>
 	implements AgentTool<TParameters, TDetails>
 {
@@ -29,6 +40,8 @@ export class HookToolWrapper<TParameters extends TSchema = TSchema, TDetails = u
 		onUpdate?: AgentToolUpdateCallback<TDetails, TParameters>,
 		context?: AgentToolContext,
 	) {
+		// Emit tool_call event - hooks can block execution
+		// If hook errors/times out, block by default (fail-safe)
 		if (this.hookRunner.hasHandlers("tool_call")) {
 			try {
 				const callResult = (await this.hookRunner.emitToolCall({
@@ -42,6 +55,8 @@ export class HookToolWrapper<TParameters extends TSchema = TSchema, TDetails = u
 				})) as ToolCallEventResult | undefined;
 
 				if (callResult?.block) {
+					// The model reads this. A hook that blocks WITHOUT a reason gives it
+					// nothing to act on, so the default has to carry the next step.
 					const reason =
 						callResult.reason ||
 						`A hook blocked this ${this.tool.name} call and gave no reason. Do not retry it; tell the ` +
@@ -49,6 +64,7 @@ export class HookToolWrapper<TParameters extends TSchema = TSchema, TDetails = u
 					throw new Error(reason);
 				}
 			} catch (err) {
+				// Hook error or block - throw to mark as error
 				if (err instanceof Error) {
 					throw err;
 				}
@@ -60,9 +76,11 @@ export class HookToolWrapper<TParameters extends TSchema = TSchema, TDetails = u
 			}
 		}
 
+		// Execute the actual tool, forwarding onUpdate for progress streaming
 		try {
 			const result = await this.tool.execute(toolCallId, params, signal, onUpdate, context);
 
+			// Emit tool_result event - hooks can modify the result
 			if (this.hookRunner.hasHandlers("tool_result")) {
 				const resultResult = (await this.hookRunner.emit({
 					type: "tool_result",
@@ -77,6 +95,7 @@ export class HookToolWrapper<TParameters extends TSchema = TSchema, TDetails = u
 					isError: false,
 				})) as ToolResultEventResult | undefined;
 
+				// Apply modifications if any
 				if (resultResult) {
 					return {
 						content: resultResult.content ?? result.content,
@@ -87,6 +106,7 @@ export class HookToolWrapper<TParameters extends TSchema = TSchema, TDetails = u
 
 			return result;
 		} catch (err) {
+			// Emit tool_result event for errors so hooks can observe failures
 			if (this.hookRunner.hasHandlers("tool_result")) {
 				await this.hookRunner.emit({
 					type: "tool_result",

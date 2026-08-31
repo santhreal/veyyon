@@ -1,3 +1,10 @@
+/**
+ * Custom API provider registry.
+ *
+ * Allows extensions to register streaming functions for custom API types
+ * (e.g., "vertex-claude-api") that are not built into stream.ts.
+ */
+
 import * as AIError from "./error";
 import type {
 	Api,
@@ -9,6 +16,12 @@ import type {
 	StreamOptions,
 } from "./types";
 
+/**
+ * Every API a built-in provider implements, and the only run-time authority on
+ * that question: the `_CheckBuiltinApis` assertion below makes the compiler
+ * reject a `KnownApi` member that is missing here, so a sweep enumerating this
+ * array is enumerating the whole union rather than a hand-kept copy of it.
+ */
 export const BUILTIN_API_IDS = [
 	"openai-completions",
 	"openai-responses",
@@ -59,6 +72,9 @@ function assertCustomApiName(api: string): void {
 	}
 }
 
+/**
+ * Register a custom API streaming function.
+ */
 export function registerCustomApi(
 	api: string,
 	streamSimple: CustomStreamSimpleFn,
@@ -73,10 +89,16 @@ export function registerCustomApi(
 	});
 }
 
+/**
+ * Get a custom API provider by API identifier.
+ */
 export function getCustomApi(api: string): RegisteredCustomApi | undefined {
 	return customApiRegistry.get(api);
 }
 
+/**
+ * Remove all custom APIs registered by a specific source (e.g., extension path).
+ */
 export function unregisterCustomApis(sourceId: string): void {
 	for (const [api, entry] of customApiRegistry.entries()) {
 		if (entry.sourceId === sourceId) {
@@ -85,6 +107,9 @@ export function unregisterCustomApis(sourceId: string): void {
 	}
 }
 
+/**
+ * Clear all custom API registrations.
+ */
 export function clearCustomApis(): void {
 	customApiRegistry.clear();
 }

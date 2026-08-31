@@ -1,4 +1,5 @@
 import type { DeviceType } from "@huggingface/transformers";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { $env } from "@veyyon/utils/env";
 
 export type TinyModelDevice = DeviceType;
@@ -99,7 +100,12 @@ export const TINY_MODEL_DEVICE_SETTING_OPTIONS = [
 	description: string;
 }>;
 
-/** Map a `providers.tinyModelDevice` setting value onto a tiny-device env value for the worker. Returns `undefined` for the default sentinel so the */
+/**
+ * Map a `providers.tinyModelDevice` setting value onto a tiny-device env
+ * value for the worker. Returns `undefined` for the default sentinel so the
+ * worker keeps its built-in CPU default; the worker still validates the
+ * forwarded value via {@link normalizeTinyModelDevice}.
+ */
 export function tinyModelDeviceSettingToEnv(value: string | undefined): string | undefined {
 	if (!value || value === TINY_MODEL_DEVICE_DEFAULT) return undefined;
 	return value;

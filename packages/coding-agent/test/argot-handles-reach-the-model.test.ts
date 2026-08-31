@@ -8,7 +8,7 @@
  * actually lives.
  *
  * WHY THIS FILE EXISTS. The first interpretable bench run of the encode arm
- * (`deepswe-bench/runs/argot-smoke-0724`) loaded 551 handles and the model then
+ * (`packages/evals/runs/argot-smoke-0724`) loaded 551 handles and the model then
  * emitted ZERO of them. The recorded system prompt taught the notation and
  * carried no handle at all: the only section-sign bytes in 85kB of prompt
  * belonged to the preamble's invented `§dbconn` example. That prompt also tells

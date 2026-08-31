@@ -1,5 +1,10 @@
+/**
+ * Shared utilities for compaction and branch summarization.
+ */
+
 import type { Message, ToolCall } from "@veyyon/ai";
 import type { Dialect } from "@veyyon/ai/dialect";
+// The factory declares it; the dialect barrel re-exports every definition alongside it.
 import { getDialectDefinition } from "@veyyon/ai/dialect/factory";
 import {
 	containsUrlScheme,
@@ -11,6 +16,10 @@ import {
 } from "@veyyon/utils";
 import { AGENT_PROMPTS } from "../prompts/registry";
 import type { AgentMessage } from "../types";
+
+// ============================================================================
+// File Operation Tracking
+// ============================================================================
 
 export interface FileOperations {
 	read: Set<string>;
@@ -26,12 +35,31 @@ export function createFileOps(): FileOperations {
 	};
 }
 
+// The read-tool selector grammar + splitter live in @veyyon/utils
+// (read-selector.ts), the single owner shared with the coding-agent read tool's
+// `splitPathAndSel`. Re-exported here so existing compaction callers
+// (`stripReadSelector` for the file-operations list, `readToolSupersedeKey`
+// keying on both parts) keep their import site unchanged.
 export { splitReadSelector, stripReadSelector };
 
+/**
+ * Whether `path` references a `scheme://` URL (internal URI or web URL) rather
+ * than a filesystem path that belongs in the compaction `<files>` summary.
+ *
+ * A real filesystem path never contains a `scheme://` URL. Tool-call paths that
+ * do — `conflict://1`, `artifact://3`, `local://ctx.md`, `history://…`,
+ * `issue://12`, `https://…`, and the tolerated `file.ts:conflict://1` prefix
+ * form — are session-scoped or remote resources, not files the post-compaction
+ * agent can re-ground on. Keep them out of the `<files>` summary. Matches a
+ * scheme anywhere (not only at the start) so the tolerated prefix form counts.
+ */
 export function isUrlSchemePath(path: string): boolean {
 	return containsUrlScheme(path);
 }
 
+/**
+ * Extract file operations from tool calls in an assistant message.
+ */
 export function extractFileOpsFromMessage(message: AgentMessage, fileOps: FileOperations): void {
 	if (message.role !== "assistant" || !Array.isArray(message.content)) return;
 	for (const block of message.content) {
@@ -42,7 +70,22 @@ export function extractFileOpsFromMessage(message: AgentMessage, fileOps: FileOp
 	}
 }
 
-function mutatedPathsFromToolResult(
+/**
+ * The files one completed tool result actually mutated, and how.
+ *
+ * The ONE owner of "which paths did this tool change", because two callers need the
+ * same answer from opposite directions: compaction replays a finished transcript to
+ * build its `<files>` list, and the live session counts uncommitted drift as the edits
+ * happen. Deriving it twice would let a tool be added to one reader and missed by the
+ * other, and the reader that missed it would fail silently — a shorter list, never an
+ * error.
+ *
+ * Reads the RESULT details rather than the call arguments, so it reports what the tool
+ * did rather than what it was asked to do: `edit` writes several files from one `input`
+ * payload with no `path` argument at all, and `ast_edit` reports zero paths when it
+ * matched nothing. Returns `null` when the tool mutates nothing.
+ */
+export function mutatedPathsFromToolResult(
 	toolName: string,
 	detailsValue: unknown,
 ): { kind: "written" | "edited"; paths: string[] } | null {
@@ -89,6 +132,11 @@ function mutatedPathsFromToolResult(
 	return { kind: effectiveTool === "write" ? "written" : "edited", paths };
 }
 
+/**
+ * Extract only completed file operations from a chronological message slice.
+ * Read calls remain useful discovery evidence; mutations require a paired,
+ * successful tool result and prefer its exact affected-path details.
+ */
 export function extractFileOpsFromMessages(messages: readonly AgentMessage[], fileOps: FileOperations): void {
 	const calls = new Map<string, { name: string; arguments: Record<string, unknown> | undefined }>();
 	for (const message of messages) {
@@ -127,20 +175,32 @@ export function extractFileOpsFromMessages(messages: readonly AgentMessage[], fi
 	}
 }
 
+/**
+ * Compute final file lists from file operations.
+ * Returns readFiles (files only read, not modified) and modifiedFiles.
+ */
 export function computeFileLists(fileOps: FileOperations): { readFiles: string[]; modifiedFiles: string[] } {
-	const modified = new Set<string>();
-	for (const f of fileOps.edited) if (!isUrlSchemePath(f)) modified.add(f);
-	for (const f of fileOps.written) if (!isUrlSchemePath(f)) modified.add(f);
-	const readOnly = Array.from(fileOps.read)
-		.filter(f => !isUrlSchemePath(f) && !modified.has(f))
-		.sort();
-	const modifiedFiles = Array.from(modified).sort();
+	// Drop any `scheme://` URLs (e.g. legacy `conflict://`/`artifact://` entries
+	// rehydrated straight into `fileOps` from a pre-fix compaction summary) — only
+	// real files belong in `<files>`. New tool-call scans are already filtered.
+	const modified = new Set([...fileOps.edited, ...fileOps.written].filter(f => !isUrlSchemePath(f)));
+	const readOnly = [...fileOps.read].filter(f => !isUrlSchemePath(f) && !modified.has(f)).sort();
+	const modifiedFiles = [...modified].sort();
 	return { readFiles: readOnly, modifiedFiles };
 }
 
+/**
+ * Format file operations as one `<files>` tag: a grouped, prefix-folded
+ * directory tree (search `files` shape — `# dir/` headers, bare basenames) with a
+ * ` (Read)` / ` (Write)` / ` (RW)` marker per file instead of separate
+ * read/modified lists. `readSet` is the cumulative read set (`fileOps.read`),
+ * used to tell modified files that were also read (RW) from blind writes.
+ */
 const FILE_OPERATION_SUMMARY_LIMIT = 20;
 
 function stripFileOperationTags(summary: string): string {
+	// Legacy <read-files>/<modified-files> tags are still stripped so summaries
+	// written before the combined <files> tag self-heal on the next compaction.
 	return summary
 		.replace(/<files>[\s\S]*?<\/files>\s*/g, "")
 		.replace(/<read-files>[\s\S]*?<\/read-files>\s*/g, "")
@@ -156,7 +216,7 @@ export function formatFileOperations(
 	const mode = new Map<string, "Read" | "Write" | "RW">();
 	for (const file of readFiles) mode.set(file, "Read");
 	for (const file of modifiedFiles) mode.set(file, readSet?.has(file) ? "RW" : "Write");
-	const all = Array.from(mode.keys()).sort();
+	const all = [...mode.keys()].sort();
 	let files = formatGroupedPaths(all.slice(0, FILE_OPERATION_SUMMARY_LIMIT), path => ` (${mode.get(path)})`);
 	if (all.length > FILE_OPERATION_SUMMARY_LIMIT) {
 		files += `\n[…${all.length - FILE_OPERATION_SUMMARY_LIMIT} files elided…]`;
@@ -177,8 +237,16 @@ export function upsertFileOperations(
 	return `${baseSummary}\n\n${fileOperations}`;
 }
 
+// ============================================================================
+// Message Serialization
+// ============================================================================
+
+/** Maximum characters for a tool result in serialized summaries. */
 const TOOL_RESULT_MAX_CHARS = 2000;
 
+/**
+ * Truncate tool results to the same representation used in summarization prompts.
+ */
 export function truncateToolResultForSummary(text: string): string {
 	if (text.length <= TOOL_RESULT_MAX_CHARS) return text;
 	const marker = "\n\n[... middle omitted; tail preserved ...]\n\n";
@@ -212,6 +280,9 @@ function transformJsonStringValues(
 	const transformed: Record<string, unknown> = {};
 	seen.set(value, transformed);
 	for (const [key, item] of Object.entries(value)) {
+		// Tool argument keys are user-authored JSON data, not provider protocol
+		// shape. Redact them before JSON serialization, and reject collisions
+		// instead of silently overwriting one argument with another.
 		const transformedKey = transform(key);
 		if (Object.hasOwn(transformed, transformedKey)) {
 			throw new Error("Summary text transformation produced colliding tool argument keys");
@@ -226,6 +297,15 @@ function transformJsonStringValues(
 	return transformed;
 }
 
+/**
+ * Clone summary-bound messages while transforming only provider-visible prose.
+ *
+ * Roles, content discriminants, tool identifiers/names, statuses, signatures,
+ * opaque provider replay payloads, and provider protocol keys stay byte-for-byte
+ * intact. Tool argument keys and string values are transformed recursively
+ * before serialization, so a secret crossing a JSON-escaping or truncation
+ * boundary cannot leave a raw fragment behind.
+ */
 export function transformMessagesForSummary(messages: Message[], transform: SummaryTextTransform): Message[] {
 	return messages.map(message => {
 		if (message.role === "user" || message.role === "developer") {
@@ -268,13 +348,24 @@ export function transformMessagesForSummary(messages: Message[], transform: Summ
 
 const HARMONY_CONTROL_TOKEN_RE = /<\|(start|end|message|channel|constrain|return|call)\|>/g;
 
+/**
+ * Serialize LLM messages as plain summary input without provider control tokens.
+ */
 export function serializeConversationForSummary(messages: Message[], dialect?: Dialect): string {
 	const conversation = serializeConversation(messages, dialect);
 	if (dialect !== "harmony") return conversation;
 	return conversation.replace(HARMONY_CONTROL_TOKEN_RE, "<\\|$1\\|>");
 }
 
+/**
+ * Serialize LLM messages to transcript text.
+ * Call convertToLlm() first to handle custom message types.
+ */
 export function serializeConversation(messages: Message[], dialect?: Dialect): string {
+	// Tool results flagged contextually useless (and their paired calls) are
+	// dropped from the serialized text: the source region is discarded after
+	// summarization anyway, so excluding them costs nothing and keeps garbage
+	// out of the summary input.
 	const uselessCallIds = new Set<string>();
 	for (const msg of messages) {
 		if (msg.role === "toolResult" && msg.useless === true && msg.isError !== true) {
@@ -359,6 +450,10 @@ export function serializeConversation(messages: Message[], dialect?: Dialect): s
 	return parts.join("\n\n");
 }
 
+/**
+ * Render an assistant turn's tool calls as a compact `name(args)` list for the
+ * legacy serializer.
+ */
 function renderToolCalls(calls: ToolCall[]): string {
 	return calls
 		.map(call => {
@@ -369,5 +464,9 @@ function renderToolCalls(calls: ToolCall[]): string {
 		})
 		.join("; ");
 }
+
+// ============================================================================
+// Summarization System Prompt
+// ============================================================================
 
 export const SUMMARIZATION_SYSTEM_PROMPT = prompt.render(AGENT_PROMPTS["compaction/summarization-system"].text);

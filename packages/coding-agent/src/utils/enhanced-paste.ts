@@ -1,16 +1,90 @@
-import { BEL } from "@veyyon/tui/ansi";
-import type { EnhancedPasteHandlers, Osc5522Packet, PasteListingState, PasteState } from "./enhanced-paste-helpers";
-import {
-	choosePasteMime,
-	decodeBase64Utf8,
-	MIME_LISTING_TARGET,
-	OSC5522_PREFIX,
-	PASTE_EVENT_NAME_BASE64,
-	parseOsc5522Packet,
-} from "./enhanced-paste-helpers";
+import type { ImageContent } from "@veyyon/ai";
+import { BEL, ST } from "@veyyon/tui/ansi";
 
-export { isOsc5522Packet } from "./enhanced-paste-helpers";
-export { parseOsc5522Packet };
+const OSC5522_PREFIX = "\x1b]5522;";
+const PASTE_EVENT_NAME_BASE64 = Buffer.from("Paste event", "utf8").toString("base64");
+
+const IMAGE_MIME_PRIORITY = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
+const TEXT_MIME_TYPE = "text/plain";
+/** Kitty's "give me the list of available MIME types" sentinel — see `TARGETS_MIME` in `kitty/clipboard.py`. */
+const MIME_LISTING_TARGET = ".";
+
+type PasteReadKind = "image" | "text";
+
+export interface Osc5522Packet {
+	metadata: Map<string, string>;
+	payload: string;
+}
+
+interface PasteListingState {
+	phase: "listing";
+	mimes: string[];
+	kittyDotPayload?: true;
+	pw?: string;
+	loc?: string;
+}
+
+interface PasteReadState {
+	phase: "reading";
+	kind: PasteReadKind;
+	mimeType: string;
+	chunks: string[];
+}
+
+type PasteState = PasteListingState | PasteReadState;
+
+export interface EnhancedPasteHandlers {
+	write(data: string): void;
+	/** Ask the terminal to arm enhanced paste. Separate from {@link write} because
+	 *  the mode set is gated on a capability report the terminal owns, while the
+	 *  OSC 5522 clipboard replies below are plain writes. */
+	requestMode(): void;
+	pasteText(text: string): void;
+	pasteImage(image: ImageContent): void | Promise<void>;
+	showStatus(message: string): void;
+}
+
+export function isOsc5522Packet(data: string): boolean {
+	return data.startsWith(OSC5522_PREFIX) && (data.endsWith(ST) || data.endsWith(BEL));
+}
+
+function decodeBase64Utf8(value: string): string | undefined {
+	try {
+		return Buffer.from(value, "base64").toString("utf8");
+	} catch {
+		// The payload of a terminal paste escape sequence, which arrives from whatever the terminal chose to
+		// send. Undefined means "this packet carried no text", and the caller falls back to treating the
+		// sequence as ordinary input rather than pasting a mojibake string it invented.
+		return undefined;
+	}
+}
+
+function parseMetadata(raw: string): Map<string, string> {
+	const metadata = new Map<string, string>();
+	for (const part of raw.split(":")) {
+		const eq = part.indexOf("=");
+		if (eq <= 0) continue;
+		metadata.set(part.slice(0, eq), part.slice(eq + 1));
+	}
+	return metadata;
+}
+
+export function parseOsc5522Packet(data: string): Osc5522Packet | undefined {
+	if (!isOsc5522Packet(data)) return undefined;
+	const bodyEnd = data.endsWith(BEL) ? data.length - 1 : data.length - ST.length;
+	const body = data.slice(OSC5522_PREFIX.length, bodyEnd);
+	const separator = body.indexOf(";");
+	const metadataRaw = separator === -1 ? body : body.slice(0, separator);
+	const payload = separator === -1 ? "" : body.slice(separator + 1);
+	return { metadata: parseMetadata(metadataRaw), payload };
+}
+
+function choosePasteMime(mimes: readonly string[]): { kind: PasteReadKind; mimeType: string } | undefined {
+	for (const mimeType of IMAGE_MIME_PRIORITY) {
+		if (mimes.includes(mimeType)) return { kind: "image", mimeType };
+	}
+	return mimes.includes(TEXT_MIME_TYPE) ? { kind: "text", mimeType: TEXT_MIME_TYPE } : undefined;
+}
 
 export class EnhancedPasteController {
 	#state: PasteState | undefined;
@@ -20,10 +94,20 @@ export class EnhancedPasteController {
 		this.#handlers = handlers;
 	}
 
+	/**
+	 * Ask the terminal for enhanced-paste notifications. The escape itself is the
+	 * terminal's to write, and it writes it only after DECRQM confirms DEC private
+	 * mode 5522: this controller used to write `CSI ? 5522 h` at startup on every
+	 * host, which kitty -- the terminal the ancillary spec was written for -- logs
+	 * as `[PARSE ERROR] Unsupported screen mode: 5522 (private)`. A terminal with
+	 * no capability probe never confirms, so the mode is never set there.
+	 */
 	enable(): void {
 		this.#handlers.requestMode();
 	}
 
+	/** Forget any in-flight read. The mode reset belongs to the terminal's teardown,
+	 *  which writes it only if it armed the mode in the first place. */
 	disable(): void {
 		this.#state = undefined;
 	}
@@ -78,6 +162,15 @@ export class EnhancedPasteController {
 		if (!mimeType) return;
 
 		if (state.phase === "listing") {
+			// Kitty (as of writing) implements the "list available MIME types"
+			// response shape by sending a single DATA packet with `mime="."` and
+			// the available types packed into the payload as a whitespace-
+			// separated list (see `fulfill_read_request` in
+			// kovidgoyal/kitty:kitty/clipboard.py). The 5522-mode ancillary
+			// spec instead encodes each type as its own DATA packet with an
+			// empty payload. Support both — fall through to the per-packet
+			// form when the dot sentinel has no payload, or when the packet
+			// already names a concrete MIME type.
 			if (mimeType === MIME_LISTING_TARGET) {
 				if (!packet.payload) return;
 				const listing = decodeBase64Utf8(packet.payload);

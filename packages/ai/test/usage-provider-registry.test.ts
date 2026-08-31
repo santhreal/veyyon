@@ -21,6 +21,7 @@ import path from "node:path";
 import { logger } from "@veyyon/utils";
 import { moduleSpecifiersIn, withoutComments } from "@veyyon/utils/module-reach";
 import { DEFAULT_RANKING_STRATEGIES, DEFAULT_USAGE_PROVIDERS } from "../src/usage/defaults";
+import type * as usageRegistry from "../src/usage/registry";
 import {
 	listRegisteredUsageProviders,
 	resolveRegisteredRankingStrategy,
@@ -130,9 +131,7 @@ describe("the registry reports it when nothing wired it", () => {
 	 * suite above keeps the populated one.
 	 */
 	it("warns once, names the missing import, and still answers honestly", async () => {
-		const fresh = (await import(
-			`../src/usage/registry.ts?unwired=${Math.random()}`
-		)) as typeof import("../src/usage/registry");
+		const fresh = (await import(`../src/usage/registry.ts?unwired=${Math.random()}`)) as typeof usageRegistry;
 		const warnings: string[] = [];
 		const spy = spyOn(logger, "warn").mockImplementation(((message: string) => {
 			warnings.push(message);

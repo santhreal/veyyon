@@ -129,6 +129,13 @@ function getApiLimitDisplayName(scope: unknown): string | undefined {
 	return typeof displayName === "string" && displayName.trim() ? displayName.trim() : undefined;
 }
 
+/**
+ * Anthropic kept the legacy account-wide buckets populated, but as of
+ * 2026-07-02 the legacy per-model weekly buckets (`seven_day_opus` /
+ * `seven_day_sonnet`) are permanently null. Model-scoped weekly caps now arrive
+ * only through generic `limits[]` entries (`kind: "weekly_scoped"`) with the
+ * model family named by `scope.model.display_name`.
+ */
 function parseApiLimitEntries(raw: unknown): ParsedApiLimitEntry[] {
 	if (!Array.isArray(raw)) return [];
 	const entries: ParsedApiLimitEntry[] = [];
@@ -210,6 +217,12 @@ function hasUsageData(payload: ClaudeUsageResponse): boolean {
 	);
 }
 
+/**
+ * What the usage endpoint states for itself: it never retries a 429. The endpoint is informational
+ * and throttled per source IP, so a second attempt inside one poll cannot succeed and only deepens
+ * the throttle; the caller's cool-down and the next poll are the answer. The rest of the verdict is
+ * `retryResponse`'s.
+ */
 const USAGE_RESPONSE_RETRY_POLICY: AIError.ResponseRetryPolicy = { api: "anthropic", neverRetry: [429] };
 
 function isAbortError(error: unknown, signal?: AbortSignal): boolean {
@@ -361,6 +374,9 @@ function buildUsageAmount(utilization: number | undefined): UsageAmount | undefi
 	};
 }
 
+// Claude omits the status field entirely when the used fraction is unknown
+// (rather than emitting "unknown"), so the undefined case stays here; the
+// defined-fraction ladder is the shared owner.
 function buildUsageStatus(usedFraction: number | undefined): UsageStatus | undefined {
 	return usedFraction === undefined ? undefined : usageStatusFromUsedFraction(usedFraction);
 }
@@ -408,6 +424,12 @@ function slugifyClaudeLimitDisplayName(displayName: string): string {
 		.replace(/^-+|-+$/g, "");
 }
 
+/**
+ * Scoped weekly rows are per-model-family counters, not account-wide windows.
+ * They deliberately leave `scope.shared` unset so credential-wide exhaustion
+ * gating only considers the shared umbrella windows; an exhausted Fable weekly
+ * cap must not block Opus or Sonnet requests on the same credential.
+ */
 function buildScopedWeeklyUsageLimits(entries: readonly ParsedApiLimitEntry[]): UsageLimit[] {
 	const seenSlugs = new Set<string>();
 	const limits: UsageLimit[] = [];
@@ -583,6 +605,12 @@ function getClaudeModelKind(context: CredentialRankingContext | undefined): Clau
 	return parseAnthropicModel(bareModelId(modelId))?.kind;
 }
 
+/**
+ * Claude model-scoped rows are only relevant to the matching model family.
+ * Credential-wide exhaustion checks stay on shared umbrella windows unless the
+ * request model parses to a concrete Anthropic kind, preventing a Fable cap from
+ * suppressing unrelated Opus/Sonnet traffic.
+ */
 function scopeClaudeLimitsForModel(report: UsageReport, context: CredentialRankingContext | undefined): UsageLimit[] {
 	const kind = getClaudeModelKind(context);
 	return report.limits.filter(
@@ -590,6 +618,13 @@ function scopeClaudeLimitsForModel(report: UsageReport, context: CredentialRanki
 	);
 }
 
+/**
+ * A Fable/Mythos weekly row is trusted for gating only at full exhaustion
+ * (server `exhausted` status or used fraction >= 1) with a live reset
+ * timestamp. Anything below that stays untrusted: the counters are
+ * notoriously unreliable short of the cap (they report high utilization
+ * while the account can still serve requests).
+ */
 function isConfirmedExhaustedTierRow(limit: UsageLimit, nowMs: number): boolean {
 	const resetsAt = limit.window?.resetsAt;
 	if (typeof resetsAt !== "number" || !Number.isFinite(resetsAt) || resetsAt <= nowMs) return false;
@@ -598,6 +633,14 @@ function isConfirmedExhaustedTierRow(limit: UsageLimit, nowMs: number): boolean 
 	return typeof fraction === "number" && fraction >= 1;
 }
 
+/**
+ * Scope limits for proactive hard-blocking (gating). Fable and Mythos tier
+ * weekly caps participate only when {@link isConfirmedExhaustedTierRow}
+ * confirms them, so a confirmed-dead account is skipped up front and a
+ * reactive 429 block extends to the tier reset in markUsageLimitReached,
+ * while unconfirmed rows remain ranking pressure only via
+ * scopeClaudeLimitsForModel.
+ */
 function scopeClaudeLimitsForModelHardBlock(
 	report: UsageReport,
 	context: CredentialRankingContext | undefined,
@@ -663,6 +706,11 @@ export const claudeRankingStrategy: CredentialRankingStrategy = {
 		return { primary, secondary };
 	},
 	scopeLimits: scopeClaudeLimitsForModelHardBlock,
+	/**
+	 * Fable/Mythos usage-limit errors map to tier-local weekly counters. Scope
+	 * reactive backoff blocks for those tiers, mirroring the per-counter
+	 * precedent in packages/ai/src/usage/google-antigravity.ts:466-497.
+	 */
 	blockScope(context) {
 		const kind = getClaudeModelKind(context);
 		return kind === "fable" || kind === "mythos" ? `tier:${kind}` : undefined;

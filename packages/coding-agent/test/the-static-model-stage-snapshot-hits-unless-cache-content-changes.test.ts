@@ -24,6 +24,16 @@ import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+interface SnapshotHeader {
+	fingerprint: string;
+	stageDigest: string;
+}
+
+interface SnapshotStage {
+	createdAt: number;
+	builtIn: Array<{ contextWindow: number }>;
+}
+
 describe("static model stage snapshot", () => {
 	let tempDir: string;
 	let authStorage: AuthStorage | undefined;
@@ -43,6 +53,21 @@ describe("static model stage snapshot", () => {
 		new ModelRegistry(authStorage!, modelsPath, { snapshotIo: true });
 	};
 	const mtime = (): number => fs.statSync(snapshotPath).mtimeMs;
+	/**
+	 * The snapshot is one header line then the stage payload, so a test that
+	 * wants either half reads them apart rather than parsing the whole file.
+	 */
+	const readSnapshot = (): { header: SnapshotHeader; stage: SnapshotStage } => {
+		const bytes = fs.readFileSync(snapshotPath);
+		const split = bytes.indexOf(0x0a);
+		return {
+			header: JSON.parse(bytes.toString("utf8", 0, split)) as SnapshotHeader,
+			stage: JSON.parse(bytes.toString("utf8", split + 1)) as SnapshotStage,
+		};
+	};
+	const writeSnapshot = (header: SnapshotHeader, stage: SnapshotStage): void => {
+		fs.writeFileSync(snapshotPath, `${JSON.stringify(header)}\n${JSON.stringify(stage)}`);
+	};
 
 	afterEach(() => {
 		vi.restoreAllMocks();
@@ -136,10 +161,10 @@ describe("static model stage snapshot", () => {
 
 		now.mockReturnValue(initialNow + DAY_MS + 1);
 		launch();
-		const expired = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as { stage: { createdAt: number } };
+		const expired = readSnapshot().stage;
 
 		expect(mtime()).not.toBe(fresh);
-		expect(expired.stage.createdAt).toBe(initialNow + DAY_MS + 1);
+		expect(expired.createdAt).toBe(initialNow + DAY_MS + 1);
 	});
 
 	it("restores configured-provider discovery state on a snapshot hit", async () => {
@@ -181,37 +206,41 @@ describe("static model stage snapshot", () => {
 
 		launch();
 
-		const parsed = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as unknown;
-		expect(typeof parsed === "object" && parsed !== null && "fingerprint" in parsed).toBe(true);
+		expect(typeof readSnapshot().header.fingerprint).toBe("string");
 	});
 
 	it("a parseable stage whose content does not match its digest is rebuilt", async () => {
 		await coldLaunch();
-		const parsed = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as {
-			stage: { builtIn: Array<{ contextWindow: number }> };
-		};
-		parsed.stage.builtIn[0]!.contextWindow = 1;
-		fs.writeFileSync(snapshotPath, JSON.stringify(parsed));
+		const { header, stage } = readSnapshot();
+		stage.builtIn[0]!.contextWindow = 1;
+		writeSnapshot(header, stage);
 
 		launch();
 
-		const rebuilt = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as {
-			stage: { builtIn: Array<{ contextWindow: number }> };
-		};
-		expect(rebuilt.stage.builtIn[0]!.contextWindow).not.toBe(1);
+		expect(readSnapshot().stage.builtIn[0]!.contextWindow).not.toBe(1);
+	});
+
+	it("a snapshot in the retired single-object format misses rather than serving", async () => {
+		await coldLaunch();
+		const before = mtime();
+		const { header, stage } = readSnapshot();
+		fs.writeFileSync(snapshotPath, JSON.stringify({ ...header, stage }));
+
+		launch();
+
+		expect(mtime()).not.toBe(before);
+		expect(readSnapshot().stage.builtIn.length).toBeGreaterThan(0);
 	});
 
 	it("a snapshot naming another fingerprint misses rather than serving", async () => {
 		await coldLaunch();
 		const before = mtime();
-		const parsed = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as { fingerprint: string };
-		parsed.fingerprint = "something-else";
-		fs.writeFileSync(snapshotPath, JSON.stringify(parsed));
+		const { header, stage } = readSnapshot();
+		writeSnapshot({ ...header, fingerprint: "something-else" }, stage);
 
 		launch();
 
-		const reread = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as { fingerprint: string };
-		expect(reread.fingerprint).not.toBe("something-else");
+		expect(readSnapshot().header.fingerprint).not.toBe("something-else");
 		expect(mtime()).not.toBe(before);
 	});
 });

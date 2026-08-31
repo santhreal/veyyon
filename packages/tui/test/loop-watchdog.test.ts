@@ -50,6 +50,20 @@ function harness(options: Partial<{ intervalMs: number; thresholdMs: number }> =
 	};
 }
 
+type BlockedContext = { blockedMs: number; phase: string; phaseMs: number; topPhase?: string };
+
+/**
+ * The lines the watchdog logged, in order. Every case below asserts what was reported, which is
+ * the contract this component has with the log, rather than that a spy fired.
+ */
+function captureWarnings(): Array<{ event: string; ctx: BlockedContext }> {
+	const lines: Array<{ event: string; ctx: BlockedContext }> = [];
+	vi.spyOn(logger, "warn").mockImplementation(((event: string, ctx: BlockedContext) => {
+		lines.push({ event, ctx });
+	}) as never);
+	return lines;
+}
+
 afterEach(() => {
 	vi.restoreAllMocks();
 	// The phase stack is a process-global; drain anything these cases pushed.
@@ -61,7 +75,7 @@ afterEach(() => {
 
 describe("LoopWatchdog", () => {
 	test("names the phase that was open for the block, with the cost that earns it", () => {
-		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		const warnings = captureWarnings();
 		// A small threshold keeps the real busy-wait short while still being a block.
 		const { wd, setNow, fireTick } = harness({ intervalMs: 20, thresholdMs: 20 });
 
@@ -71,9 +85,8 @@ describe("LoopWatchdog", () => {
 		setNow(70); // tick fires at 70 → blockedMs = 50, and the phase covers it
 		fireTick();
 
-		expect(warnSpy).toHaveBeenCalledTimes(1);
-		const [event, ctx] = warnSpy.mock.calls[0] as [string, { blockedMs: number; phase: string; phaseMs: number }];
-		expect(event).toBe("ui.loop-blocked");
+		expect(warnings.map(line => line.event)).toEqual(["ui.loop-blocked"]);
+		const ctx = warnings[0]!.ctx;
 		expect(ctx.phase).toBe("render");
 		expect(ctx.blockedMs).toBeGreaterThanOrEqual(20);
 		expect(ctx.phaseMs).toBeGreaterThanOrEqual(25);
@@ -86,7 +99,7 @@ describe("LoopWatchdog", () => {
 	 * a render pass that benchmarks at 0.03ms.
 	 */
 	test("refuses to blame a phase that ran for a sliver of the block", () => {
-		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		const warnings = captureWarnings();
 		const { wd, setNow, fireTick } = harness(); // intervalMs=250, thresholdMs=250
 
 		// Pushed and popped immediately: real cost is microseconds.
@@ -96,11 +109,8 @@ describe("LoopWatchdog", () => {
 		setNow(560); // blockedMs = 310, none of which the render pass spent
 		fireTick();
 
-		expect(warnSpy).toHaveBeenCalledTimes(1);
-		const [, ctx] = warnSpy.mock.calls[0] as [
-			string,
-			{ blockedMs: number; phase: string; phaseMs: number; topPhase?: string },
-		];
+		expect(warnings).toHaveLength(1);
+		const ctx = warnings[0]!.ctx;
 		// The cause is genuinely unknown, and the cheap phase is reported as ruled out.
 		expect(ctx.phase).toBe("unknown");
 		expect(ctx.topPhase).toBe("ui.render");
@@ -108,7 +118,7 @@ describe("LoopWatchdog", () => {
 	});
 
 	test("stays silent when a tick fires on its deadline", () => {
-		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		const warnings = captureWarnings();
 		const { wd, setNow, fireTick } = harness();
 
 		pushLoopPhase("render");
@@ -116,11 +126,11 @@ describe("LoopWatchdog", () => {
 		setNow(250); // blockedMs = 0, not a block
 		fireTick();
 
-		expect(warnSpy).not.toHaveBeenCalled();
+		expect(warnings).toEqual([]);
 	});
 
 	test("dedupes a sustained block: two consecutive late ticks log only once", () => {
-		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		const warnings = captureWarnings();
 		const { wd, setNow, fireTick } = harness();
 
 		pushLoopPhase("render");
@@ -130,28 +140,28 @@ describe("LoopWatchdog", () => {
 		setNow(1200); // blockedMs = 350 again, but still blocked → no second log
 		fireTick();
 
-		expect(warnSpy).toHaveBeenCalledTimes(1);
+		expect(warnings).toHaveLength(1);
 	});
 
 	test("emits nothing for a tick that fires after stop()", () => {
-		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		const warnings = captureWarnings();
 		const { wd, setNow, fireTick } = harness();
 
 		pushLoopPhase("render");
 		wd.start(); // deadline at 250
 		setNow(600); // first block logs once and re-arms a follow-up tick
 		fireTick();
-		expect(warnSpy).toHaveBeenCalledTimes(1);
+		expect(warnings).toHaveLength(1);
 
 		wd.stop();
 		setNow(5000); // the already-armed follow-up tick would otherwise be a huge block
 		fireTick();
 
-		expect(warnSpy).toHaveBeenCalledTimes(1); // stop() short-circuits the stale tick
+		expect(warnings).toHaveLength(1); // stop() short-circuits the stale tick
 	});
 
 	test("a phase popped before the tick still reaches the line, and is attributed when it earns it", () => {
-		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		const warnings = captureWarnings();
 		const { wd, setNow, fireTick } = harness({ intervalMs: 20, thresholdMs: 20 });
 
 		wd.start(); // deadline 20
@@ -164,14 +174,14 @@ describe("LoopWatchdog", () => {
 		setNow(70); // blockedMs = 50, which the filter spent
 		fireTick();
 
-		expect(warnSpy).toHaveBeenCalledTimes(1);
-		const ctx = warnSpy.mock.calls[0]![1] as { phase: string; phaseMs: number };
+		expect(warnings).toHaveLength(1);
+		const ctx = warnings[0]!.ctx;
 		expect(ctx.phase).toBe("ui.select-filter");
 		expect(ctx.phaseMs).toBeGreaterThanOrEqual(25);
 	});
 
 	test("does not misattribute a finished phase to a later phase-less block", () => {
-		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		const warnings = captureWarnings();
 		const { wd, setNow, fireTick } = harness();
 
 		wd.start(); // deadline 250
@@ -182,12 +192,12 @@ describe("LoopWatchdog", () => {
 		setNow(900); // block in the next interval with no phase active
 		fireTick();
 
-		expect(warnSpy).toHaveBeenCalledTimes(1);
-		expect((warnSpy.mock.calls[0]![1] as { phase: string }).phase).toBe("unknown");
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]!.ctx.phase).toBe("unknown");
 	});
 
 	test("re-arms after recovery: late then on-time then late logs twice", () => {
-		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		const warnings = captureWarnings();
 		const { wd, setNow, fireTick } = harness();
 
 		pushLoopPhase("render");
@@ -199,11 +209,11 @@ describe("LoopWatchdog", () => {
 		setNow(1450); // block #2 (350) → logs again
 		fireTick();
 
-		expect(warnSpy).toHaveBeenCalledTimes(2);
+		expect(warnings).toHaveLength(2);
 	});
 
 	test("a pre-stop tick no-ops after start() -> stop() -> start() and arms no parallel chain", () => {
-		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		const warnings = captureWarnings();
 		let nowValue = 0;
 		const callbacks: Array<() => void> = [];
 		const schedule = (cb: () => void) => {
@@ -221,13 +231,16 @@ describe("LoopWatchdog", () => {
 		nowValue = 5000; // the stale callback would otherwise be a huge block
 		stale();
 
-		expect(warnSpy).not.toHaveBeenCalled(); // generation mismatch short-circuits
+		expect(warnings).toEqual([]); // generation mismatch short-circuits
 		expect(callbacks).toHaveLength(2); // and it did NOT re-arm a parallel timer chain
 	});
 
 	test("unrefs every scheduled timer handle so the always-on probe never holds the process open", () => {
-		vi.spyOn(logger, "warn").mockImplementation(() => {});
-		const unref = vi.fn();
+		captureWarnings();
+		let unrefs = 0;
+		const unref = () => {
+			unrefs += 1;
+		};
 		let nowValue = 0;
 		let cb: (() => void) | undefined;
 		const schedule = (c: () => void) => {
@@ -237,20 +250,23 @@ describe("LoopWatchdog", () => {
 		const wd = new LoopWatchdog({ now: () => nowValue, schedule });
 
 		wd.start();
-		expect(unref).toHaveBeenCalledTimes(1); // armed on start
+		expect(unrefs).toBe(1); // armed on start
 		nowValue = 600;
 		cb?.(); // late tick logs and re-arms
-		expect(unref).toHaveBeenCalledTimes(2); // the re-armed handle is unref'd too
+		expect(unrefs).toBe(2); // the re-armed handle is unref'd too
 	});
 
 	test("stop() cancels the armed timer handle so no stale tick is left pending", () => {
-		const cancel = vi.fn();
+		let cancels = 0;
+		const cancel = () => {
+			cancels += 1;
+		};
 		const schedule = (_cb: () => void) => ({ cancel });
 		const wd = new LoopWatchdog({ now: () => 0, schedule });
 
 		wd.start(); // arms a handle exposing cancel()
 		wd.stop();
 
-		expect(cancel).toHaveBeenCalledTimes(1);
+		expect(cancels).toBe(1);
 	});
 });

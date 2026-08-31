@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Glob } from "bun";
+import { SKIP_DIR_NAMES } from "./package-sources";
 
 /**
  * Scan every shipped (`packages/<pkg>/src/**`) TypeScript source line for a
@@ -22,10 +23,14 @@ import { Glob } from "bun";
  *        each line independently
  */
 export function scanShippedSourceLines(repoRoot: string, pattern: RegExp): string[] {
-	const glob = new Glob("packages/**/src/**/*.ts");
+	// `packages/<pkg>/src/**` and nothing deeper: a run directory under a package
+	// (`packages/evals/runs/_bench/_deps/.../node_modules/<dep>/src/x.ts`) also ends
+	// in `src/`, and a vendored dependency is not this repository's shipped source.
+	const glob = new Glob("packages/*/src/**/*.ts");
 	const perLine = new RegExp(pattern.source, pattern.flags.replace("g", ""));
 	const hits: string[] = [];
 	for (const rel of glob.scanSync({ cwd: repoRoot, onlyFiles: true })) {
+		if (rel.split("/").some(segment => SKIP_DIR_NAMES.has(segment))) continue;
 		const lines = fs.readFileSync(path.join(repoRoot, rel), "utf8").split("\n");
 		for (let i = 0; i < lines.length; i++) {
 			if (perLine.test(lines[i])) hits.push(`${rel}:${i + 1}:${lines[i]}`);

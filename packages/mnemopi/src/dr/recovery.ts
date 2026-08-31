@@ -90,7 +90,7 @@ function timestampForBackup(now = new Date()): string {
 	return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
-export function sha256Hex16(bytes: NodeJS.ArrayBufferView): string {
+function sha256Hex16(bytes: NodeJS.ArrayBufferView): string {
 	return createHash("sha256").update(bytes).digest("hex").slice(0, 16);
 }
 
@@ -401,4 +401,8 @@ export class FileNotFoundError extends Error {
 		super(message);
 		this.name = "FileNotFoundError";
 	}
+}
+
+export function resetRecoveryForTests(): void {
+	// Recovery has no module state; exported for test harness symmetry.
 }

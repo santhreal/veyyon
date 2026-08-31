@@ -1,3 +1,16 @@
+/**
+ * The ONE reader for the `subagent.*` settings area.
+ *
+ * Every question about a spawned agent — may I delegate at all, does this agent
+ * exist, what model and effort does it run, and which setting decided that — is
+ * answered here. Before this module the answers were spread across the task tool,
+ * the vibe runtime, the eval bridge and the agent dashboard, each re-deriving
+ * precedence from its own arguments, which is how a per-agent override could
+ * silently outrank the operator's subagent model on one path and not another.
+ *
+ * Import this instead of reading `subagent.*` keys directly.
+ */
+
 import { isRecord, logger } from "@veyyon/utils";
 import { parseConfiguredEffortSetting } from "../config/effort-resolver";
 import { resolveConfiguredModelPatterns } from "../config/model-resolver";
@@ -7,8 +20,8 @@ import {
 	DEFAULT_ENABLED_BUNDLED_AGENT,
 	DEFAULT_SUBAGENT_IDLE_TTL_MS,
 	DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH,
-	DEFAULT_SUBAGENT_PARKED_CLOSE_MS,
-	DEFAULT_SUBAGENT_WAITING_CLOSE_MS,
+	DEFAULT_SUBAGENT_PRUNE_MS,
+	DEFAULT_SUBAGENT_WAITING_PRUNE_MS,
 	isModelByDepthKey,
 } from "../config/settings-domains/subagents";
 import type { SettingPath } from "../config/settings-schema";
@@ -16,57 +29,143 @@ import type { ConfiguredThinkingLevel } from "../thinking";
 import { currentAgentName, type ResolvedSpawnPolicy, resolveSpawnPolicy } from "./spawn-policy";
 import type { AgentDefinition } from "./types";
 
+/**
+ * How hard this session pushes work out to subagents.
+ *
+ * Every value here still ALLOWS delegation. `allowed` is the floor: the model keeps
+ * the task tool and spawns a subagent when that is the sensible move, it is simply
+ * not asked to. Taking the ability away is a different question and a different
+ * setting, {@link subagentsEnabled}. There used to be an `off` value here, which made
+ * one setting answer both questions and left no way to say "you may, but I am not
+ * asking you to" — the state most sessions actually want.
+ */
 export type DelegationStrength = "allowed" | "preferred" | "required";
 
+/** Resolved delegation strength (`subagent.delegation`). */
 export function delegationStrength(settings: Settings): DelegationStrength {
 	return (settings.get("subagent.delegation") ?? "preferred") as DelegationStrength;
 }
 
+/**
+ * Whether subagents exist at all in this session (`subagent.enabled`).
+ *
+ * The one kill switch. False removes the task tool and every delegation section from
+ * the prompt; the delegation strength and the agents table are kept and take effect
+ * again when it is turned back on.
+ */
 export function subagentsEnabled(settings: Settings): boolean {
 	return settings.get("subagent.enabled") ?? true;
 }
 
+/**
+ * Resolve how long a finished subagent remains live before parking.
+ *
+ * This lifecycle budget is intentionally model-independent. Provider cache
+ * policies may change request economics, but they do not justify retaining a
+ * completed agent process past the operator's configured limit.
+ */
 export function resolveSubagentIdleTtlMs(settings: Settings): number {
 	const configured = Number(settings.get("subagent.idleTtlMs") ?? DEFAULT_SUBAGENT_IDLE_TTL_MS);
 	if (!Number.isFinite(configured)) return DEFAULT_SUBAGENT_IDLE_TTL_MS;
 	return Math.max(0, Math.trunc(configured));
 }
 
-export interface SubagentAutoCloseBudget {
-	parkedMs: number;
-	waitingMs: number;
+/** How long a parked subagent survives before it is closed, by whether it was waiting. */
+export interface SubagentPruneBudget {
+	/** Ordinary parked agent. 0 disables closing entirely. */
+	afterMs: number;
+	/** Parked agent whose last message said it was waiting on another agent. */
+	waitingAfterMs: number;
 }
 
-export function resolveSubagentAutoCloseBudget(settings: Settings): SubagentAutoCloseBudget {
-	if ((settings.get("subagent.autoClose.enabled") ?? true) !== true) {
-		return { parkedMs: 0, waitingMs: 0 };
+/**
+ * Resolve when a PARKED subagent stops being listed at all.
+ *
+ * Parking already released the session; this is the second stage, and without it a
+ * long session accumulates every finished agent in `irc list` and the Control
+ * Center forever. Disabled (`subagent.prune.enabled` off) resolves to zero
+ * budgets, which the lifecycle manager reads as "never close", so the operator's
+ * off switch is a real off switch rather than a very long timer.
+ *
+ * A waiting agent gets its own budget because it stopped on purpose to let a peer
+ * finish: closing it on the ordinary timer would drop the one agent most likely to
+ * be messaged next. The waiting budget is floored at the ordinary one, so a
+ * misconfiguration can only ever lengthen a waiting agent's grace, never shorten
+ * it below a quiet agent's.
+ */
+export function resolveSubagentPruneBudget(settings: Settings): SubagentPruneBudget {
+	if ((settings.get("subagent.prune.enabled") ?? true) !== true) {
+		return { afterMs: 0, waitingAfterMs: 0 };
 	}
-	const readMs = (path: "subagent.autoClose.parkedMs" | "subagent.autoClose.waitingMs", fallback: number): number => {
+	const readMs = (path: "subagent.prune.afterMs" | "subagent.prune.waitingAfterMs", fallback: number): number => {
 		const configured = Number(settings.get(path) ?? fallback);
 		if (!Number.isFinite(configured)) return fallback;
 		return Math.max(0, Math.trunc(configured));
 	};
-	const parkedMs = readMs("subagent.autoClose.parkedMs", DEFAULT_SUBAGENT_PARKED_CLOSE_MS);
-	const waitingMs = readMs("subagent.autoClose.waitingMs", DEFAULT_SUBAGENT_WAITING_CLOSE_MS);
-	if (parkedMs === 0) return { parkedMs: 0, waitingMs: 0 };
-	return { parkedMs, waitingMs: Math.max(parkedMs, waitingMs) };
+	const afterMs = readMs("subagent.prune.afterMs", DEFAULT_SUBAGENT_PRUNE_MS);
+	const waitingAfterMs = readMs("subagent.prune.waitingAfterMs", DEFAULT_SUBAGENT_WAITING_PRUNE_MS);
+	// A zero parked budget means "never close", so a waiting budget cannot revive
+	// closing for the waiting case alone.
+	if (afterMs === 0) return { afterMs: 0, waitingAfterMs: 0 };
+	return { afterMs, waitingAfterMs: Math.max(afterMs, waitingAfterMs) };
 }
 
+/**
+ * True when the task tool is offered at all: deliberately the MASTER SWITCH
+ * ({@link subagentsEnabled}) and nothing more.
+ *
+ * The name reads like "delegation can happen", which is a DIFFERENT question:
+ * that one also needs an enabled agent type, and its answer is
+ * {@link resolveDelegation}`(...).possible`. This one exists for tool PRESENCE,
+ * where the wider question would be wrong: the task tool stays built with every
+ * agent row disabled so a `/` command can grant one for a turn. Ask
+ * {@link resolveDelegation} for anything model-facing, and this only when the
+ * subject is whether the tool is offered.
+ */
 export function delegationEnabled(settings: Settings): boolean {
 	return subagentsEnabled(settings);
 }
 
+/**
+ * Why delegation cannot happen, when it cannot.
+ *
+ * Two settings can each stop it on their own, and an operator staring at one of
+ * them has no way to know the other is the reason nothing delegates — so every
+ * surface that reports "no delegation" reports which.
+ */
 export type DelegationBlocker = "subagents-off" | "no-enabled-agents";
 
+/** Delegation as one resolved answer, from both settings that decide it. */
 export interface DelegationState {
 	strength: DelegationStrength;
+	/** Agent types the model may choose, in discovery order. */
 	enabledAgents: readonly string[];
+	/** Delegation can actually happen: the tool is offered AND something can take the work. */
 	possible: boolean;
+	/** The prompt should push substantial work out to a subagent. */
 	preferred: boolean;
+	/** A first-turn reminder to delegate is injected as well. */
 	required: boolean;
+	/** Set exactly when `possible` is false. */
 	blockedBy?: DelegationBlocker;
 }
 
+/**
+ * Resolve delegation from BOTH settings that decide it, in one place.
+ *
+ * `subagent.delegation` and the `subagent.agents` table are one question with two
+ * inputs, and computing them apart produced a pair of states that each looked
+ * right alone and were incoherent together: `required` with every agent disabled
+ * still injected a first-turn "delegate substantial work" reminder, telling the
+ * model to hand work to nothing it was allowed to spawn. Strength decides HOW
+ * HARD to push; the agent table decides whether there is anywhere to push it. If
+ * there is nowhere, the strength cannot matter, and `preferred`/`required` come
+ * back false however hard the setting is turned up.
+ *
+ * The enabled set is passed in rather than re-derived here: the live `task` tool
+ * already filtered its discovered agents through `subagent.agents`, and a second
+ * derivation could name an agent the tool then refuses.
+ */
 export function resolveDelegation(settings: Settings, enabledAgents: readonly string[]): DelegationState {
 	const strength = delegationStrength(settings);
 	const blockedBy: DelegationBlocker | undefined = !subagentsEnabled(settings)
@@ -85,6 +184,14 @@ export function resolveDelegation(settings: Settings, enabledAgents: readonly st
 	};
 }
 
+/**
+ * One sentence saying why nothing will be delegated, for a settings surface.
+ *
+ * Returns `undefined` when delegation is possible, so a caller renders it or
+ * does not without asking a second question. Every surface that shows either
+ * setting shows this, which is what makes each setting visibly the other's
+ * effect rather than an isolated control with an arbitrary-looking value.
+ */
 export function delegationBlockedNotice(state: DelegationState): string | undefined {
 	if (state.blockedBy === "subagents-off") {
 		return "Subagents are off, so nothing here runs until you turn them back on.";
@@ -95,8 +202,20 @@ export function delegationBlockedNotice(state: DelegationState): string | undefi
 	return undefined;
 }
 
+/**
+ * The `subagent.agents` row for `name`, or an empty row when unconfigured.
+ *
+ * Defends against a missing table as well as a missing row: the schema default is
+ * `{}`, but a caller can hold settings that answer `undefined` for everything (the
+ * test stub does, and so does a read of a path the running build has not
+ * registered), and indexing `undefined` here took down the whole Agents table
+ * with "undefined is not an object" where an empty row is the right answer.
+ */
 export function subagentSettingsFor(settings: Settings, name: string): SubagentAgentSettings {
 	const table = settings.get("subagent.agents") as Record<string, SubagentAgentSettings> | undefined;
+	// A row written under a retired name still governs the agent that replaced it.
+	// Without this an operator who had pinned a model on `subagent.agents.task`
+	// would keep the row in their config and silently stop getting the model.
 	const row = table?.[name] ?? table?.[currentAgentName(name)];
 	return isRecord(row) ? (row as SubagentAgentSettings) : {};
 }
@@ -106,8 +225,20 @@ function parseMaxNestedSpawnDepth(setting: string, value: unknown): number {
 	throw new Error(`${setting} must be -1 (unlimited) or a non-negative integer; received ${String(value)}`);
 }
 
-function subagentLaneChain(row: SubagentLaneSettings): SubagentLaneSettings[] {
+/**
+ * The lane chain for an agent: its own lane first, then what it may spawn, then
+ * what THAT may spawn, for as long as the operator kept turning the next level
+ * on.
+ *
+ * The chain stops at the first level that is absent, and absent is not a
+ * decision: a fresh roster row has no `subagents` child at all, so the blanket
+ * ceiling still answers for every level below it.
+ */
+export function subagentLaneChain(row: SubagentLaneSettings): SubagentLaneSettings[] {
 	const chain: SubagentLaneSettings[] = [];
+	// Bounded rather than `while (lane)`, because this walks a structure read
+	// from a settings FILE. A hand-written or merged config can carry a node
+	// that points at itself, and a settings read is not a place to hang.
 	let lane: SubagentLaneSettings | undefined = row;
 	for (let depth = 0; lane !== undefined && depth <= MAX_LANE_DEPTH; depth++) {
 		chain.push(lane);
@@ -116,20 +247,56 @@ function subagentLaneChain(row: SubagentLaneSettings): SubagentLaneSettings[] {
 	return chain;
 }
 
+/**
+ * The deepest lane an operator can build. Not a policy — a spawn ceiling is
+ * `enabled`, not this — but a settings file is untrusted input and a cycle in it
+ * must cost a bounded walk rather than the process.
+ */
 const MAX_LANE_DEPTH = 64;
 
-function laneDepthOf(row: SubagentLaneSettings, blanketMax: number, agentName: string): number {
+/**
+ * How deep `row` lets its agent's tree run, as the inclusive parent-depth cap
+ * {@link canSpawnAtDepth} takes.
+ *
+ * Lane index `i` is the process at task depth `i + 1`: index 0 is the agent
+ * itself, index 1 what it spawns. So a process at depth `d` may spawn exactly
+ * when lane index `d` is enabled, and the cap is the last index reached before
+ * a lane says `false`.
+ *
+ * Where the chain STOPS, nothing is written, and the blanket ceiling answers
+ * from there down — which is what keeps a stock install unchanged: a roster row
+ * with no `subagents` child is not a decision to forbid nesting, it is the
+ * absence of one.
+ *
+ * A row carrying only the pre-tree number is that number: it meant the same
+ * cap, so a config written by the previous release still means what it meant.
+ */
+export function laneDepthOf(row: SubagentLaneSettings, blanketMax: number, agentName: string): number {
 	if (row.subagents === undefined && row.maxNestedSpawnDepth !== undefined) {
+		// The message has to name the row an operator can edit, so the agent is threaded in rather
+		// than printed as a placeholder: a refusal pointing at `<agent>` sends them looking for a
+		// key that is not in their file.
 		return parseMaxNestedSpawnDepth(`subagent.agents.${agentName}.maxNestedSpawnDepth`, row.maxNestedSpawnDepth);
 	}
 	const chain = subagentLaneChain(row);
 	for (let index = 1; index < chain.length; index++) {
+		// Explicitly off: the cap is the depth above, and the blanket does not get
+		// to widen a limit the operator set by hand.
 		if (chain[index]?.enabled === false) return index - 1;
 	}
+	// Unlimited stays unlimited: it is not a number to take the larger of.
 	if (blanketMax < 0) return blanketMax;
 	return Math.max(chain.length - 1, blanketMax);
 }
 
+/**
+ * The absolute task depth at which `agentName` may still spawn.
+ *
+ * The agent's own lane chain answers first, because that is the screen the
+ * operator edits: `deep → Subagents → Enabled` is the control, and the number
+ * here is read off it. Only an agent with NO chain and no migrated number is
+ * the blanket ceiling's answer alone.
+ */
 export function resolveSubagentMaxNestedSpawnDepth(settings: Settings, agentName?: string): number {
 	const blanket = settings.get("subagent.maxNestedSpawnDepth");
 	const blanketMax =
@@ -142,20 +309,58 @@ export function resolveSubagentMaxNestedSpawnDepth(settings: Settings, agentName
 	return laneDepthOf(row, blanketMax, agentName);
 }
 
+/**
+ * Resolve this live session's cap. Child sessions receive the already-resolved
+ * per-agent value without overwriting the blanket setting descendants inherit.
+ */
 export function resolveSessionMaxNestedSpawnDepth(settings: Settings, override?: number): number {
 	return override === undefined
 		? resolveSubagentMaxNestedSpawnDepth(settings)
 		: parseMaxNestedSpawnDepth("session maxNestedSpawnDepth", override);
 }
 
+/**
+ * Whether an agent is spawnable with no row of its own.
+ *
+ * Only the end-to-end delegate ships enabled. The other bundled agents and
+ * user-authored agents are opt-in through onboarding or Settings → Subagents →
+ * Agents. Creating an agent definition makes it available to enable; it does
+ * not grant the model permission to start it on its own.
+ *
+ * Compared after following a retirement, so an agent still carrying the old
+ * name is enabled exactly when the one that replaced it is. Resolving the name
+ * in `getAgent` but not here would give the worst outcome available: the spawn
+ * finds the agent and is then refused as not enabled.
+ */
 export function subagentEnabledByDefault(agent: AgentDefinition): boolean {
 	return currentAgentName(agent.name) === DEFAULT_ENABLED_BUNDLED_AGENT;
 }
 
+/**
+ * Whether `agent` is ENABLED: the model may choose it on its own initiative.
+ *
+ * ONE predicate, and the singular is the point. This used to be two --
+ * `isSubagentAdvertised` (listed in the task tool description) and
+ * `isSubagentSpawnable` (honored when named outright) -- and the gap between them
+ * was a user-visible state reading "Not offered (default) -- still runs when
+ * named". A switch labelled off that still runs is not a switch, it is a
+ * footnote, and it forced the settings copy to apologise for itself.
+ *
+ * The rule is now the one a reader already assumes: enabled means the model may
+ * pick this agent, disabled means it may not, and being disabled is the whole
+ * story. What a disabled agent does NOT block is the user: an ephemeral `/`
+ * command that names an agent is the operator asking directly, and that is
+ * granted per turn by the command itself (see `agentGrantedThisTurn` on the tool
+ * session). A setting that governs the model does not govern the person typing.
+ *
+ * This is also the token-cost switch, unchanged: a disabled agent costs nothing
+ * because it never reaches the tool description.
+ */
 export function isSubagentEnabled(settings: Settings, agent: AgentDefinition): boolean {
 	return subagentSettingsFor(settings, agent.name).enabled ?? subagentEnabledByDefault(agent);
 }
 
+/** Filter a discovered agent list down to the ones the model may choose. */
 export function filterEnabledAgents(settings: Settings, agents: readonly AgentDefinition[]): AgentDefinition[] {
 	return agents.filter(agent => isSubagentEnabled(settings, agent));
 }
@@ -170,9 +375,17 @@ export interface ResolveEnabledSubagentsOptions {
 	settings: Settings;
 	agents: readonly AgentDefinition[];
 	parentSpawns?: string | boolean | null;
+	/** Turn-scoped user grants may expose an otherwise disabled agent to this one invocation. */
 	isGranted?: (agentName: string) => boolean;
 }
 
+/**
+ * Resolve the one effective agent catalog shared by task, eval, and Vibe.
+ *
+ * Global enablement and each agent row are profile policy; the parent spawn
+ * declaration is a recursion capability. Keeping their intersection here makes
+ * model-visible lists, defaults, and execution checks use the same answer.
+ */
 export function resolveEnabledSubagents(options: ResolveEnabledSubagentsOptions): EnabledSubagentCatalog {
 	const spawnPolicy = resolveSpawnPolicy(options.parentSpawns ?? "*");
 	if (!subagentsEnabled(options.settings) || !spawnPolicy.enabled) {
@@ -196,60 +409,180 @@ export function resolveEnabledSubagents(options: ResolveEnabledSubagentsOptions)
 			if (agent) agents.push(agent);
 		}
 	}
+	// Matched through a retirement as well, so a roster still carrying the old
+	// name yields it as the default rather than reporting that no default agent
+	// exists. The name returned is the one the roster actually holds, because
+	// every later lookup and error message quotes it back.
 	const defaultAgent =
 		agents.find(agent => agent.name === spawnPolicy.defaultAgent) ??
 		agents.find(agent => currentAgentName(agent.name) === spawnPolicy.defaultAgent);
 	return { agents, defaultAgent: defaultAgent?.name, spawnPolicy };
 }
 
-export type SubagentEnableState = "on" | "off";
+/**
+ * How an agent's row reads on the agent surfaces. TWO states, because there are
+ * two.
+ *
+ * There were four: `on`, `off`, `default-on`, `default-off`. The two `default-*`
+ * entries encoded "no row of its own", which is a fact about the SETTINGS FILE,
+ * not about what the agent will do, and pairing it with a distinct behaviour is
+ * what produced the state a user read as "off but not off". Whether a value came
+ * from a row or from the shipped default is now a separate boolean the surfaces
+ * may show as a "(default)" hint; it never changes the answer.
+ */
+export type SubagentEnableState =
+	/** The model may choose this agent. */
+	| "on"
+	/** The model may not. A `/` command that names it directly still runs (see the grant). */
+	| "off";
 
+/**
+ * The state above, for display in the Subagents settings tab.
+ *
+ * Takes the row value directly rather than reading settings, so an editor holding
+ * an unsaved value gets the same answer as the saved one — a second copy of this
+ * mapping inside the editor is how the UI and the spawn path drifted apart
+ * before. Pass `subagentSettingsFor(settings, name).enabled` when you have
+ * settings in hand.
+ */
 export function subagentEnableState(agent: AgentDefinition, configured: boolean | undefined): SubagentEnableState {
 	return (configured ?? subagentEnabledByDefault(agent)) ? "on" : "off";
 }
 
+/**
+ * Whether this row is still on the shipped default rather than a choice someone
+ * made. Surfaces may render it as a "(default)" hint; it must never change what
+ * the agent does, which is the mistake the old `default-off` state made.
+ */
 export function isSubagentEnableDefaulted(configured: boolean | undefined): boolean {
 	return configured === undefined;
 }
 
+/**
+ * The words each state is shown as, owned here rather than by the Agents table
+ * that renders them, so the spawn path and the screen describing it cannot
+ * describe the same row differently.
+ */
 export const SUBAGENT_ENABLE_STATE_LABEL: Record<SubagentEnableState, string> = {
 	on: "Enabled",
 	off: "Disabled",
 };
 
+/**
+ * The value written when the operator toggles a row.
+ *
+ * A toggle, not a cycle. The old three-stop cycle (unset → on → off → unset)
+ * existed because "unset" was a third BEHAVIOUR; now it is only a provenance
+ * hint, so cycling back to it would be a keypress that changes nothing visible
+ * and is indistinguishable from the toggle failing. Toggling always writes an
+ * explicit value, which is also what makes the choice survive a change to the
+ * shipped default.
+ */
 export function nextSubagentEnableValue(agent: AgentDefinition, configured: boolean | undefined): boolean {
 	return !(configured ?? subagentEnabledByDefault(agent));
 }
 
+/**
+ * A live spawner that can report the agent types it accepts — the task tool.
+ *
+ * Declared here rather than imported from `task/index` so the system-prompt build
+ * can ask the question without pulling the whole tool (and its executor) into the
+ * startup path.
+ */
 export interface EnabledSubagentSource {
 	readonly enabledAgentNames: string[];
 }
 
+/**
+ * The agent types a live task tool will accept, or `[]` when there is no task
+ * tool at all (delegation off, or recursion depth exhausted).
+ *
+ * The tool is the authority because it holds the discovered set: a project agent
+ * directory changes what exists, and `subagent.agents` changes what is spawnable.
+ * Re-deriving either at prompt-build time would let the prompt name an agent the
+ * tool then refuses.
+ */
 export function enabledSubagentNames(spawner: unknown): string[] {
 	return readNameList(spawner, "enabledAgentNames");
 }
 
+/**
+ * The agent type prose should name when it would rather have `preferred`.
+ *
+ * Prose that names an agent has to name one this session can actually spawn,
+ * and a literal cannot do that: the enabled set is operator-configurable, so a
+ * hardcoded name is correct only for an operator who happens to have that agent
+ * on. Plan mode's research step named `task` unconditionally, which survived the
+ * rename to `deep` as a reference to a name no roster carries, and which pointed
+ * the model at a disabled agent whenever the operator had enabled anything else:
+ * the spawn was then refused by the same enablement check the sentence had just
+ * talked the model past.
+ *
+ * `undefined` when nothing is enabled, so a caller suppresses the sentence
+ * instead of interpolating a name that does not exist. Callers gate the prose on
+ * this result rather than on a separate emptiness test, which is what keeps the
+ * two from disagreeing.
+ */
 export function preferredSubagentName(enabled: readonly string[], preferred: string): string | undefined {
 	return enabled.includes(preferred) ? preferred : enabled[0];
 }
 
+/**
+ * Read one of the spawner's name lists defensively.
+ *
+ * The spawner is `unknown` because the prompt build receives whatever the tool registry holds, which
+ * may be a test stub, a tool from a build that predates the property, or nothing at all. Every element
+ * is type-checked rather than trusted, so a malformed list degrades to the names that ARE strings
+ * instead of putting `undefined` into prompt prose.
+ */
 function readNameList(spawner: unknown, key: keyof EnabledSubagentSource): string[] {
 	const names = (spawner as Partial<EnabledSubagentSource> | undefined)?.[key];
 	return Array.isArray(names) ? names.filter((name): name is string => typeof name === "string") : [];
 }
 
-export type SubagentModelSource = "lane" | "depth" | "blanket" | "frontmatter" | "inherit";
+/** Which setting decided a subagent's model. Shown next to the model on every agent surface. */
+export type SubagentModelSource =
+	/**
+	 * A `subagent.agents.<name>` lane — the agent's own row, or a `subagents`
+	 * level under it. The most specific layer there is: it names both the agent
+	 * and how far down this spawn sits.
+	 */
+	| "lane"
+	/** `subagent.modelByDepth.<n>` — the row for the depth this spawn runs at. */
+	| "depth"
+	/** `subagent.model` — the blanket subagent model setting. */
+	| "blanket"
+	/** The agent definition's `model:` frontmatter. */
+	| "frontmatter"
+	/** No setting named a model: the session's live model is inherited. */
+	| "inherit";
 
+/** A resolved subagent model: the patterns to try, and the layer that chose them. */
 export interface ResolvedSubagentModel {
+	/** Model patterns in preference order. Empty only when nothing at all resolved. */
 	patterns: string[];
 	source: SubagentModelSource;
+	/** The spawn depth whose row decided, when `source` is "depth". */
 	depth?: number;
+	/**
+	 * Set when a CONFIGURED pattern expanded to nothing (a role alias pointing at
+	 * an unset role, or an empty value). The caller must surface this rather than
+	 * fall through to the next layer.
+	 */
 	unresolved?: { source: SubagentModelSource; value: string; depth?: number };
 }
 
+/**
+ * Human-readable name of the setting behind a {@link SubagentModelSource}. For
+ * the `depth` layer, `depth` names the exact row (`subagent.modelByDepth.2`),
+ * which is the row a spawn refusal has to point at.
+ */
 export function subagentModelSourceLabel(source: SubagentModelSource, agentName: string, depth?: number): string {
 	switch (source) {
 		case "lane":
+			// The path an operator can act on. Depth 0 is the agent's own row; below
+			// that, one `.subagents` per level, which is exactly the sequence of
+			// pages walked to set it.
 			return depth === undefined || depth <= 0
 				? `subagent.agents.${agentName}`
 				: `subagent.agents.${agentName}${".subagents".repeat(depth)}`;
@@ -264,17 +597,46 @@ export function subagentModelSourceLabel(source: SubagentModelSource, agentName:
 	}
 }
 
+/**
+ * Superseded per-agent fields, reported once each rather than once per spawn.
+ * Keyed by agent and field so a second agent's leftover row is still named.
+ */
 const reportedSupersededAgentFields = new Set<string>();
 
+/**
+ * The per-agent row fields a newer shape replaced.
+ *
+ * `model` and `thinkingLevel` are NOT here. They were, while a lane had no page of its own and the
+ * table silently outranked the setting an operator had just changed; they are live again now that
+ * every page which shows a lane's model edits that same lane. What is left is the numeric ceiling:
+ * `subagents.enabled` is the depth control, a number beside it is a second answer to one question,
+ * and a config carrying the number is still HONORED through `laneDepthOf` — it is reported
+ * because nothing writes it any more, not because it is ignored.
+ *
+ * Exported so the regression suite enumerates the fields instead of restating them: another
+ * superseded field added here gets its cases without anybody remembering to write them.
+ */
 export const SUPERSEDED_AGENT_ROW_FIELDS = ["maxNestedSpawnDepth"] as const;
 
 export type SupersededAgentRowField = (typeof SUPERSEDED_AGENT_ROW_FIELDS)[number];
 
+/**
+ * Where the value went, per superseded field. A record rather than a conditional so a new entry
+ * does not compile until its replacement is named: a report that points nowhere is worse than none.
+ */
 const SUPERSEDED_FIELD_REPLACEMENT: Record<SupersededAgentRowField, string> = {
 	maxNestedSpawnDepth:
-		"Open Subagents → Subagent Roster → that agent → Subagents and turn each level on or off; the chain is the ceiling.",
+		"Open Subagents → Roster → that agent → Subagents and turn each level on or off; the chain is the ceiling.",
 };
 
+/**
+ * Report a `subagent.agents.<name>` row that still carries a superseded field.
+ *
+ * The value is still honored — a config written by an older release keeps meaning what it meant —
+ * but nothing writes the field any more, and a value no screen can edit is one an operator will
+ * eventually change in the wrong place. So it is said out loud, once, with the control that replaced
+ * it, instead of sitting in the file looking authoritative.
+ */
 function reportSupersededAgentRowField(agentName: string, field: SupersededAgentRowField, value: unknown): void {
 	const key = `${agentName}.${field}`;
 	if (reportedSupersededAgentFields.has(key)) return;
@@ -286,6 +648,23 @@ function reportSupersededAgentRowField(agentName: string, field: SupersededAgent
 	);
 }
 
+/**
+ * Name every superseded field left anywhere in the `subagent.agents` table.
+ * Called from both resolvers so the report happens on the path that reads the
+ * value.
+ *
+ * The WHOLE table rather than the resolving agent's row. Scoped to one row, a
+ * leftover on an agent that is disabled was never mentioned at all: that agent
+ * never resolves, so the value sat in the operator's config looking configured
+ * and doing nothing, which is the exact state retiring the field was meant to
+ * end. Nobody should have to enable an agent to discover its setting is dead.
+ * The per-field dedupe below is what keeps the sweep from costing anything after
+ * the first resolution.
+ *
+ * An unset field is what a cleared row leaves behind, so it is not a value
+ * anyone is losing and gets no report. `0` IS a value — it means this agent
+ * spawns nothing — and is reported like any other.
+ */
 function reportSupersededAgentRows(settings: Settings): void {
 	const table = settings.get("subagent.agents");
 	if (!table || typeof table !== "object") return;
@@ -300,26 +679,45 @@ function reportSupersededAgentRows(settings: Settings): void {
 	}
 }
 
+/** Test seam: forget which superseded rows have been reported. */
 export function resetSupersededAgentRowReports(): void {
 	reportedSupersededAgentFields.clear();
 }
 
+/**
+ * The schema path of the per-depth model map. Exported so the surfaces that
+ * edit or summarize it never restate the literal: this module is the one
+ * reader of `subagent.*`, and a second spelling of the key is how a surface
+ * drifts off the setting it claims to show.
+ */
 export const SUBAGENT_MODEL_BY_DEPTH_PATH: SettingPath = "subagent.modelByDepth";
 
+/** The dotted path of one depth row, which the settings chain picker edits in place. */
 export function subagentModelByDepthRowPath(depth: number): SettingPath {
+	// `settings.get`/`set`/`unset` resolve unregistered dotted sub-paths of a
+	// record setting by splitting; the cast records that this path is a row of
+	// the map, not a schema key of its own.
 	return `${SUBAGENT_MODEL_BY_DEPTH_PATH}.${depth}` as SettingPath;
 }
 
+/** The stored map as a plain table, tolerating a non-record value the validator already reported. */
 function readModelByDepthTable(settings: Settings): Record<string, unknown> {
 	const table: unknown = settings.get(SUBAGENT_MODEL_BY_DEPTH_PATH);
 	return isRecord(table) ? table : {};
 }
 
+/** One configured depth row, for the surfaces that list them. */
 export interface SubagentModelByDepthRow {
 	depth: number;
 	value: string | string[];
 }
 
+/**
+ * The configured depth rows, shallowest first. Keys that can never be a depth
+ * and values that are not a chain are skipped: reporting them is the load-time
+ * validator's job (see the domain's `validateEntry`), and honoring them here
+ * would let a junk row decide a spawn.
+ */
 export function subagentModelByDepthRows(settings: Settings): SubagentModelByDepthRow[] {
 	const rows: SubagentModelByDepthRow[] = [];
 	for (const [key, value] of Object.entries(readModelByDepthTable(settings))) {
@@ -330,6 +728,7 @@ export function subagentModelByDepthRows(settings: Settings): SubagentModelByDep
 	return rows.sort((a, b) => a.depth - b.depth);
 }
 
+/** The smallest spawn depth with no row yet, which is what "Add depth…" appends. */
 export function nextSubagentModelByDepth(settings: Settings): number {
 	const used = new Set(subagentModelByDepthRows(settings).map(row => row.depth));
 	let depth = 1;
@@ -337,15 +736,29 @@ export function nextSubagentModelByDepth(settings: Settings): number {
 	return depth;
 }
 
+/**
+ * Remove one depth row. When it was the last, remove the map itself so the
+ * stored shape is the unset one rather than an empty table.
+ */
 export function clearSubagentModelByDepthRow(settings: Settings, depth: number): void {
 	settings.unset(subagentModelByDepthRowPath(depth));
 	if (subagentModelByDepthRows(settings).length === 0) settings.unset(SUBAGENT_MODEL_BY_DEPTH_PATH);
 }
 
+/** The map's row for `depth`, or undefined when the spawn's own depth has none. */
 function readDepthModelRow(settings: Settings, depth: number): string | string[] | undefined {
 	const value = readModelByDepthTable(settings)[String(depth)];
 	return typeof value === "string" || Array.isArray(value) ? value : undefined;
 }
+/**
+ * The lane governing a spawn: the agent's own row at depth 0 or 1, and one
+ * `subagents` level deeper for each level below that.
+ *
+ * A spawn at task depth 1 is a direct child, which the agent's OWN row describes
+ * — that row is the page titled with the agent's name. Depth 2 is what its
+ * `Subagents` page describes, and so on, so the index into the chain is
+ * `taskDepth - 1`.
+ */
 function laneForSpawn(
 	settings: Settings,
 	agentName: string,
@@ -355,6 +768,15 @@ function laneForSpawn(
 	return { chain, index: Math.max(0, (taskDepth ?? 1) - 1) };
 }
 
+/**
+ * The lane layer for a spawn's model, or undefined when no lane on the way down
+ * names one.
+ *
+ * Reads the governing lane first and walks UP its ancestors, so an unset level
+ * inherits the level above rather than falling past the whole tree to the
+ * blanket setting. The reported `depth` is the level that actually decided,
+ * which is what the badge and a refusal message have to name.
+ */
 function laneModelLayer(
 	settings: Settings,
 	agentName: string,
@@ -371,12 +793,66 @@ function laneModelLayer(
 	return undefined;
 }
 
+/**
+ * Resolve the model patterns one subagent runs, with the deciding layer.
+ *
+ * `subagent.sharedModel` picks between TWO precedence chains, and that is the
+ * whole question the roster's first row asks.
+ *
+ * SHARED (`subagent.sharedModel: true`) — one answer for every agent:
+ *  1. `subagent.model`.
+ *  2. Inherit the session's live model.
+ * Nothing per-agent is consulted, so a lane, a depth row and an agent file's
+ * own `model:` all stop applying. The roster greys those rows while this is on
+ * rather than leaving them to look live, because a row that still shows a model
+ * nobody runs is the duplication this setting exists to end.
+ *
+ * PER-AGENT (the default) — each agent answers for itself, highest first:
+ *  1. The LANE — `subagent.agents.<name>`, or the `subagents` level under it
+ *     that governs this spawn. Deepest lane first, then up the chain: a level
+ *     that names no model inherits the level above, which is what makes
+ *     "inherit" on a nested page mean the page you came from.
+ *  2. `subagent.modelByDepth.<n>` — the row for the depth THIS spawn runs at,
+ *     when the caller passes `taskDepth` (the spawned child's depth, one below
+ *     the calling session) and the map has a row for it.
+ *  3. The agent definition's `model:` frontmatter, which for a user-authored
+ *     agent is that author's deliberate choice.
+ *  4. Inherit the session's live model.
+ *
+ * The lane sits on top because it is the most specific statement anyone can
+ * make: it names the agent AND the depth. An earlier design had no lane layer at
+ * all, after a per-agent `model` field was retired for outranking the blanket
+ * setting from a screen that did not show it. The field is back because the
+ * screen is fixed, not because the hazard was imaginary: every page that shows a
+ * lane's model edits that same lane, and the badge names the exact path
+ * (`subagent.agents.deep.subagents`) that decided.
+ *
+ * A configured layer that expands to NOTHING does not fall through: it comes back
+ * as `unresolved` so the caller can refuse to spawn and say which setting is
+ * wrong. Silently dropping to the next layer is what made "I changed the subagent
+ * model" look like it did nothing, while bundled frontmatter roles decided
+ * instead.
+ *
+ * Bundled specialists intentionally carry no `model:` frontmatter, so on a stock
+ * install every subagent with no lane of its own lands on case 5 and runs the
+ * model the operator is looking at.
+ */
 export function resolveSubagentModel(options: {
 	settings: Settings;
 	agentName: string;
+	/** The agent definition's `model:` frontmatter, if any. */
 	agentModel?: string | string[];
+	/** The session's active model pattern, used for inherit. */
 	activeModelPattern?: string;
+	/** Fallback when the session has no active model yet (headless start). */
 	fallbackModelPattern?: string;
+	/**
+	 * The depth the SPAWNED agent will run at: the calling session's task depth
+	 * plus one. A `subagent.modelByDepth` row applies only at depth >= 1 and
+	 * only at its own depth. Omitting it — depth 0, or a surface that describes
+	 * an agent rather than a spawn — resolves exactly as if the map did not
+	 * exist.
+	 */
 	taskDepth?: number;
 }): ResolvedSubagentModel {
 	const { settings, agentName, agentModel, activeModelPattern, fallbackModelPattern, taskDepth } = options;
@@ -384,14 +860,16 @@ export function resolveSubagentModel(options: {
 	reportSupersededAgentRows(settings);
 	const depthRow = taskDepth !== undefined && taskDepth >= 1 ? readDepthModelRow(settings, taskDepth) : undefined;
 	const lane = laneModelLayer(settings, agentName, taskDepth);
-	const layers: Array<{ source: SubagentModelSource; value: string | string[] | undefined; depth?: number }> = [
-		...(lane === undefined ? [] : [lane]),
-		...(depthRow !== undefined && taskDepth !== undefined
-			? [{ source: "depth" as const, value: depthRow, depth: taskDepth }]
-			: []),
-		{ source: "blanket", value: settings.get("subagent.model") },
-		{ source: "frontmatter", value: agentModel },
-	];
+	const shared = settings.get("subagent.sharedModel") === true;
+	const layers: Array<{ source: SubagentModelSource; value: string | string[] | undefined; depth?: number }> = shared
+		? [{ source: "blanket", value: settings.get("subagent.model") }]
+		: [
+				...(lane === undefined ? [] : [lane]),
+				...(depthRow !== undefined && taskDepth !== undefined
+					? [{ source: "depth" as const, value: depthRow, depth: taskDepth }]
+					: []),
+				{ source: "frontmatter", value: agentModel },
+			];
 
 	for (const layer of layers) {
 		const raw = Array.isArray(layer.value) ? layer.value : layer.value?.trim();
@@ -412,25 +890,50 @@ export function resolveSubagentModel(options: {
 	return { patterns: resolveConfiguredModelPatterns(inherited, settings), source: "inherit" };
 }
 
+/**
+ * Resolve a subagent's thinking level, on the same two chains
+ * {@link resolveSubagentModel} uses, chosen by the same `subagent.sharedModel`
+ * switch — one sentence has to describe both, or the roster's toggle would move
+ * the model and leave the effort behind.
+ *
+ * SHARED: `subagent.thinkingLevel`, else inherit the session's effort.
+ *
+ * PER-AGENT (the default), highest first:
+ *  1. The LANE — the `subagent.agents.<name>` level governing this spawn, then
+ *     up its chain, so a nested page's "inherit" means the page above it.
+ *  2. the agent definition's `thinking-level` frontmatter.
+ *  3. undefined — inherit the session's effort.
+ *
+ * An explicit `:level` suffix on the resolved model pattern still outranks all of
+ * these; the executor applies that, since only it knows whether the suffix was
+ * present (see `resolveEffectiveSubagentThinkingLevel`).
+ *
+ * A configured value that names no level does not silently become "inherited":
+ * it is reported with the setting and the accepted values, then skipped, so the
+ * next layer decides. Guessing a neighbouring level instead would run the agent
+ * at an effort nobody chose.
+ */
 export function resolveSubagentThinkingLevel(options: {
 	settings: Settings;
 	agentName: string;
 	agentThinkingLevel?: ConfiguredThinkingLevel;
+	/** The depth the SPAWNED agent runs at, as {@link resolveSubagentModel} takes it. */
 	taskDepth?: number;
 }): ConfiguredThinkingLevel | undefined {
 	reportSupersededAgentRows(options.settings);
+	if (options.settings.get("subagent.sharedModel") === true) {
+		return parseConfiguredEffortSetting("subagent.thinkingLevel", options.settings.get("subagent.thinkingLevel"));
+	}
 	const { chain, index } = laneForSpawn(options.settings, options.agentName, options.taskDepth);
 	for (let level = Math.min(index, chain.length - 1); level >= 0; level--) {
 		const raw = chain[level]?.thinkingLevel;
 		if (raw === undefined) continue;
 		const path = `subagent.agents.${options.agentName}${".subagents".repeat(level)}.thinkingLevel`;
 		const parsed = parseConfiguredEffortSetting(path, raw);
+		// An empty value is an explicit inherit rather than a level, and a value
+		// naming no level was already reported by the parse. Both mean "this level
+		// decides nothing", so the walk continues up rather than stopping here.
 		if (parsed !== undefined) return parsed;
 	}
-	const fromBlanket = parseConfiguredEffortSetting(
-		"subagent.thinkingLevel",
-		options.settings.get("subagent.thinkingLevel"),
-	);
-	if (fromBlanket !== undefined) return fromBlanket;
 	return options.agentThinkingLevel;
 }

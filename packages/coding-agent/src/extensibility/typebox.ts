@@ -1,8 +1,53 @@
+/**
+ * Minimal `@sinclair/typebox` runtime compatibility shim.
+ *
+ * Historically the coding agent injected the real `@sinclair/typebox` (~5MB
+ * dependency) into extensions, hooks, custom tools, and custom commands so
+ * they could author parameter schemas as `Type.Object({ name: Type.String() })`.
+ *
+ * This module provides the subset those integrations depend on:
+ *
+ *   - TypeBox-style `Type.*` builders.
+ *   - Runtime validation through `schema.safeParse(input)` and `schema.__validator(input)`.
+ *   - Enumerable JSON Schema keywords so `{ ...schema }`, `JSON.stringify(schema)`,
+ *     and `toolWireSchema({ parameters: schema })` all see the same schema.
+ *
+ * Internal validator fields and methods are intentionally non-enumerable. The
+ * object should look like JSON Schema at every serialization/wire boundary and
+ * like a small validator at runtime.
+ */
+
 import { areJsonValuesEqual, isMultipleOf, validateJsonSchemaValue } from "@veyyon/ai/utils/schema";
 import { codePointLength, isDateOnly, isRecord, isUuid } from "@veyyon/utils";
 
+// ---------------------------------------------------------------------------
+// Type aliases — exported so `import type { Static, TSchema } from "..."`
+// patterns keep compiling at the call site.
+// ---------------------------------------------------------------------------
+
 export type TSchema = ArkSchema;
+export type Static<T extends ArkSchema> = T["__infer"];
+export type TAny = ArkSchema;
+export type TUnknown = ArkSchema;
+export type TNever = ArkSchema;
+export type TNull = ArkSchema;
+export type TString = ArkSchema;
+export type TNumber = ArkSchema;
+export type TInteger = ArkSchema;
+export type TBoolean = ArkSchema;
+export type TLiteral<_V extends string | number | boolean> = ArkSchema;
+export type TArray<_E extends ArkSchema> = ArkSchema;
+export type TObject<_P extends Record<string, ArkSchema> = Record<string, ArkSchema>> = ArkSchema;
+export type TOptional<_E extends ArkSchema> = ArkSchema;
+export type TUnion<_T extends readonly ArkSchema[] = readonly ArkSchema[]> = ArkSchema;
+export type TEnum<_T extends readonly (string | number)[] = readonly (string | number)[]> = ArkSchema;
+export type TRecord<_K extends ArkSchema, _V extends ArkSchema> = ArkSchema;
+/** TypeBox-compatible wrapper for raw JSON Schema documents. */
 export type TUnsafe<_T = unknown> = ArkSchema;
+
+// ---------------------------------------------------------------------------
+// ArkSchema wrapper — JSON Schema object with hidden validator metadata
+// ---------------------------------------------------------------------------
 
 const VALIDATION_FAILURE = Symbol("pi.typebox.validationFailure");
 
@@ -29,6 +74,10 @@ interface SchemaInternals {
 	inner?: ArkSchema;
 }
 
+/**
+ * JSON-Schema-shaped object with non-enumerable runtime helpers.
+ * Validators return the validated data or a marked `{ message }` failure.
+ */
 interface ArkSchema {
 	__validator: (data: unknown) => unknown;
 	__metadata?: Record<string, unknown>;
@@ -126,11 +175,17 @@ function withMetadata(schema: ArkSchema, newMeta: Record<string, unknown>): ArkS
 	);
 }
 
+// ---------------------------------------------------------------------------
+// Option shapes — loose subset of JSON Schema metadata + per-type constraints.
+// ---------------------------------------------------------------------------
+
 interface Meta {
 	title?: string;
 	description?: string;
 	default?: unknown;
 	examples?: unknown[];
+	// Real TypeBox accepts arbitrary extra JSON Schema keywords; we tolerate
+	// them silently so callers don't blow up on niche metadata.
 	[key: string]: unknown;
 }
 
@@ -156,8 +211,16 @@ interface ArrayOpts extends Meta {
 }
 
 interface ObjectOpts extends Meta {
+	/**
+	 * TypeBox default: extra keys are preserved. Set `false` to reject unknowns,
+	 * `true` to allow any, or a schema to validate them.
+	 */
 	additionalProperties?: boolean | ArkSchema;
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function applyMeta(schema: ArkSchema, opts: Meta | undefined): ArkSchema {
 	if (!opts) return schema;
@@ -173,6 +236,12 @@ function createStringValidator(
 	baseValidator: (data: unknown) => unknown,
 	opts?: StringOpts,
 ): (data: unknown) => unknown {
+	// Compile the pattern ONCE per schema, not on every validation call, and do
+	// it here rather than inside the returned closure. A pattern that fails to
+	// compile yields a null regex so the validator reports the schema (not the
+	// value) as at fault, instead of throwing uncaught mid-validation the way a
+	// bare `new RegExp(opts.pattern)` in the hot path did. The regex carries no
+	// flags, so its `.test()` stays stateless across reuse.
 	let patternRegex: RegExp | null = null;
 	if (opts?.pattern !== undefined) {
 		try {
@@ -185,6 +254,10 @@ function createStringValidator(
 		const result = baseValidator(data);
 		if (isValidationFailure(result)) return result;
 		if (typeof result !== "string") return validationFailure("Expected string");
+		// Measure in Unicode code points, not UTF-16 units: a `.length` check
+		// double-counts an astral character (an emoji is one code point but two
+		// units) and wrongly rejects a string at maxLength or passes it at
+		// minLength. Same contract as the in-tree JSON Schema validator.
 		const length = opts?.minLength !== undefined || opts?.maxLength !== undefined ? codePointLength(result) : 0;
 		if (opts?.minLength !== undefined && length < opts.minLength) {
 			return validationFailure(`String must have at least ${opts.minLength} characters`);
@@ -202,6 +275,16 @@ function createStringValidator(
 
 const IPV6_HEXTET_RE = /^[0-9a-fA-F]{1,4}$/;
 
+/**
+ * Whether `value` is a valid IPv6 address, including the `::` zero-compressed
+ * form. The old single regex only matched the fully expanded eight-group form,
+ * so every common compressed address (`::1`, `fe80::1`, `::`) was rejected.
+ *
+ * A `::` stands for one or more all-zero groups and may appear at most once, so
+ * the two sides around it together carry at most seven explicit groups. The
+ * fully expanded form is exactly eight groups. Embedded-IPv4 tails
+ * (`::ffff:1.2.3.4`) are not accepted, matching the prior behavior.
+ */
 function isFormatIpv6(value: string): boolean {
 	if (!/^[0-9a-fA-F:]+$/.test(value)) return false;
 	const sides = value.split("::");
@@ -210,7 +293,7 @@ function isFormatIpv6(value: string): boolean {
 		const head = sides[0] === "" ? [] : sides[0].split(":");
 		const tail = sides[1] === "" ? [] : sides[1].split(":");
 		if (head.length + tail.length > 7) return false;
-		return head.concat(tail).every(group => IPV6_HEXTET_RE.test(group));
+		return [...head, ...tail].every(group => IPV6_HEXTET_RE.test(group));
 	}
 	const groups = value.split(":");
 	return groups.length === 8 && groups.every(group => IPV6_HEXTET_RE.test(group));
@@ -241,12 +324,30 @@ function createFormatStringValidator(format: string): (data: unknown) => unknown
 				return Number.isNaN(date.getTime()) ? validationFailure("Invalid date") : data;
 			}
 			case "date-time": {
+				// RFC 3339 date-time is a full-date, a `T` separator, and a full-time
+				// with an optional fraction and offset. `new Date()` alone was far too
+				// lenient: it accepted a bare year ("2024"), an English phrase
+				// ("January 1, 2024"), and a date with no time ("2024-01-01", which is
+				// a `date`, not a `date-time`). Gate on the RFC 3339 shape first, then
+				// use Date to reject impossible calendar values (month 13, day 32).
 				const dateTimeShape = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/;
 				if (!dateTimeShape.test(data)) return validationFailure("Invalid date-time format");
 				const dateTime = new Date(data);
 				return Number.isNaN(dateTime.getTime()) ? validationFailure("Invalid date-time") : data;
 			}
 			case "time": {
+				// The fractional-seconds separator is a literal dot, so it must be
+				// escaped: an unescaped `.` matched any character, wrongly accepting a
+				// value like "12:00:00X123". RFC 3339 defines `time-secfrac` as a dot
+				// followed by ONE OR MORE digits, so match `\d+`, not a fixed `\d{3}`
+				// (which rejected valid times such as "12:00:00.5" and
+				// "12:00:00.123456"). A lone dot with no digits still fails.
+				//
+				// The components are range-bounded (hour 00-23, minute 00-59, second
+				// 00-60 to allow a leap second, and the same bounds on the offset):
+				// with plain `\d{2}` groups a nonsense value like "45:99:99" passed.
+				// Unlike `date-time`, `time` has no Date backstop, so the bounds must
+				// live in the regex.
 				const timeRegex = /^([01]\d|2[0-3]):[0-5]\d:([0-5]\d|60)(\.\d+)?([+-]([01]\d|2[0-3]):[0-5]\d|Z)?$/;
 				return timeRegex.test(data) ? data : validationFailure("Invalid time format");
 			}
@@ -492,6 +593,10 @@ function schemaWithoutOptional(schema: ArkSchema): ArkSchema {
 	});
 }
 
+// ---------------------------------------------------------------------------
+// Builders
+// ---------------------------------------------------------------------------
+
 function tString(opts?: StringOpts): ArkSchema {
 	let validator: (data: unknown) => unknown = opts?.format
 		? createFormatStringValidator(opts.format)
@@ -554,7 +659,7 @@ function tUnion<T extends readonly ArkSchema[]>(schemas: T, opts?: Meta): ArkSch
 			opts,
 		);
 	if (schemas.length === 1) return applyMeta(schemas[0], opts);
-	const validator = createUnionValidator(schemas.slice());
+	const validator = createUnionValidator([...schemas]);
 	return applyMeta(createArkSchema(validator, { anyOf: schemas.map(jsonSchemaOf) }), opts);
 }
 
@@ -565,7 +670,7 @@ function tIntersect(schemas: readonly ArkSchema[], opts?: Meta): ArkSchema {
 			opts,
 		);
 	if (schemas.length === 1) return applyMeta(schemas[0], opts);
-	const validator = createIntersectionValidator(schemas.slice());
+	const validator = createIntersectionValidator([...schemas]);
 	return applyMeta(createArkSchema(validator, { allOf: schemas.map(jsonSchemaOf) }), opts);
 }
 
@@ -609,7 +714,7 @@ function tArray<E extends ArkSchema>(item: E, opts?: ArrayOpts): ArkSchema {
 }
 
 function tTuple(items: readonly ArkSchema[], opts?: Meta): ArkSchema {
-	const validator = createTupleValidator(items.slice());
+	const validator = createTupleValidator([...items]);
 	return applyMeta(
 		createArkSchema(validator, {
 			type: "array",
@@ -679,6 +784,7 @@ function tNullable<E extends ArkSchema>(schema: E, opts?: Meta): ArkSchema {
 }
 
 function tReadonly<E extends ArkSchema>(schema: E): ArkSchema {
+	// TypeBox's `Type.Readonly` is purely a marker; runtime validation is identical.
 	return schema;
 }
 
@@ -718,7 +824,7 @@ function tRequired<_P extends Record<string, ArkSchema>>(obj: ArkSchema): ArkSch
 }
 
 function tPick<P extends Record<string, ArkSchema>, K extends keyof P>(obj: ArkSchema, keys: readonly K[]): ArkSchema {
-	const keySet = new Set(Array.from(keys).map(String));
+	const keySet = new Set([...keys].map(String));
 	if (obj.__properties) {
 		const properties: Record<string, ArkSchema> = {};
 		for (const key of keySet) {
@@ -762,7 +868,7 @@ function tPick<P extends Record<string, ArkSchema>, K extends keyof P>(obj: ArkS
 }
 
 function tOmit<P extends Record<string, ArkSchema>, K extends keyof P>(obj: ArkSchema, keys: readonly K[]): ArkSchema {
-	const keySet = new Set(Array.from(keys).map(String));
+	const keySet = new Set([...keys].map(String));
 	if (obj.__properties) {
 		const properties: Record<string, ArkSchema> = {};
 		for (const key in obj.__properties) {
@@ -807,6 +913,7 @@ function tOmit<P extends Record<string, ArkSchema>, K extends keyof P>(obj: ArkS
 }
 
 function tComposite(objects: readonly ArkSchema[], opts?: Meta): ArkSchema {
+	// Composite flattens object schemas into one
 	if (objects.length === 0) {
 		return applyMeta(
 			createArkSchema(
@@ -836,6 +943,7 @@ function tComposite(objects: readonly ArkSchema[], opts?: Meta): ArkSchema {
 	}
 	if (canFlatten) return tObject(properties, opts as ObjectOpts | undefined);
 
+	// Merge all object validators
 	const validator = (data: unknown) => {
 		if (!data || typeof data !== "object") {
 			return validationFailure("Expected object");
@@ -864,6 +972,10 @@ function tComposite(objects: readonly ArkSchema[], opts?: Meta): ArkSchema {
 
 	return applyMeta(createArkSchema(validator, { allOf: objects.map(jsonSchemaOf) }), opts);
 }
+
+// ---------------------------------------------------------------------------
+// Public `Type` namespace
+// ---------------------------------------------------------------------------
 
 export const Type = {
 	String: tString,
@@ -903,4 +1015,7 @@ export const Type = {
 	Composite: tComposite,
 } as const;
 
+export type TypeBuilder = typeof Type;
+
+/** Default namespace export so `import * as typebox from "./typebox"` still resolves the `Type` key. */
 export default { Type };

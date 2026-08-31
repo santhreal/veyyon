@@ -11,7 +11,7 @@ describe("requiresApproval plan mode matrix", () => {
 		expect(resolveEffectiveApprovalMode("ask", { planModeActive: true })).toBe("plan");
 	});
 
-	const tools = ["bash", "write", "edit", "read", "grep"];
+	const tools = ["bash", "write", "edit", "read", "search"];
 	for (const name of tools) {
 		it(`plan mode decision for ${name} is object`, () => {
 			const mode = resolveEffectiveApprovalMode("yolo", { planModeActive: true });

@@ -16,11 +16,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type * as updateCliModule from "../../src/cli/update-cli";
 import { initTheme } from "../../src/modes/theme/theme";
 import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 
-let verifyBinaryUsable: typeof import("../../src/cli/update-cli").verifyBinaryUsable;
-let replaceBinaryForUpdate: typeof import("../../src/cli/update-cli").replaceBinaryForUpdate;
+let verifyBinaryUsable: typeof updateCliModule.verifyBinaryUsable;
+let replaceBinaryForUpdate: typeof updateCliModule.replaceBinaryForUpdate;
 
 beforeAll(async () => {
 	// `theme` is a mutable global assigned by initTheme(); importing update-cli

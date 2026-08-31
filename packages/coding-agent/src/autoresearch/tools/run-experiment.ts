@@ -27,6 +27,7 @@ import { DEFAULT_HARNESS_COMMAND } from "./init-experiment";
 
 const runExperimentSchema = type({
 	"timeout_seconds?": type("number").describe("timeout in seconds (default 600)"),
+	"arm?": type("string").describe("candidate arm this measurement belongs to, when breadth > 1"),
 });
 
 interface ProcessExecutionResult {
@@ -79,6 +80,10 @@ export function createRunExperimentTool(
 			})();
 
 			const resolvedCommand = DEFAULT_HARNESS_COMMAND;
+			// The pre-run dirty set is what tells the difference between the user's own uncommitted work and
+			// what this experiment changes, and it is recorded on the run for the log and the revert to use
+			// later. An unreadable status used to become an EMPTY set, which claims the tree was clean: every
+			// pre-existing dirty file would then be attributed to the experiment and reverted with it.
 			let preRunDirtyPaths: string[];
 			try {
 				const preRunStatus = await gitStatusPorcelain(ctx.cwd);
@@ -103,6 +108,7 @@ export function createRunExperimentTool(
 				logPath: "", // patched after we know the run id
 				preRunDirtyPaths,
 				startedAt,
+				arm: params.arm?.trim() || undefined,
 			});
 
 			const runDirectory = path.join(storage.projectDir, "runs", String(insertedRun.id).padStart(4, "0"));

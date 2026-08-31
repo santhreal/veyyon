@@ -2,11 +2,16 @@ import { type Component, Container, Markdown, Text, type TUI } from "@veyyon/tui
 import { replaceTabs } from "../../tools/render-utils";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { theme } from "../theme/theme";
-import type { BtwPanelComponentOptions, BtwPanelState } from "./btw-panel-helpers";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 import { mountTranscriptBlock } from "./transcript-block-chrome";
 
-export type { BtwPanelState };
+/** Exported so a caller (and the rail suite) can enumerate every state the panel paints. */
+export type BtwPanelState = "running" | "complete" | "aborted" | "error";
+
+interface BtwPanelComponentOptions {
+	question: string;
+	tui: TUI;
+}
 
 export class BtwPanelComponent extends Container {
 	#question: string;
@@ -82,7 +87,10 @@ export class BtwPanelComponent extends Container {
 			body: this.#contentComponent(),
 			footer: this.#footerLine(),
 		});
-		// Component-scoped: a rebuild replaces only this panel's own children (streaming deltas arrive per token, and a full compose would re-walk
+		// Component-scoped: a rebuild replaces only this panel's own children
+		// (streaming deltas arrive per token, and a full compose would re-walk
+		// the whole transcript each time). Before the panel is mounted the TUI
+		// cannot resolve it and falls back to a full compose on its own.
 		this.#tui.requestComponentRender(this);
 	}
 

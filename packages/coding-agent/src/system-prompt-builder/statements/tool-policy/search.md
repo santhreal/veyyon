@@ -1,0 +1,3 @@
+- Workspace discovery belongs to `{{toolRefs.search}}`. Pass `type` before `input`: `files` for paths and layout, `text` for syntax-irrelevant content, and `structure` for code syntax and relationships.
+- A definition, call, method, type, field, import, operator, or other syntactic question MUST use `type: "structure"`; text matches do not prove code structure.
+- Never substitute shell `grep`, `rg`, `find`, `fd`, `git grep`, or `awk` for workspace search.

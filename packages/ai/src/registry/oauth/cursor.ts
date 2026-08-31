@@ -20,7 +20,7 @@ export interface CursorAuthParams {
 	loginUrl: string;
 }
 
-async function generateCursorAuthParams(): Promise<CursorAuthParams> {
+export async function generateCursorAuthParams(): Promise<CursorAuthParams> {
 	const { verifier, challenge } = await generatePKCE();
 	const uuid = crypto.randomUUID();
 
@@ -36,7 +36,10 @@ async function generateCursorAuthParams(): Promise<CursorAuthParams> {
 	return { verifier, challenge, uuid, loginUrl };
 }
 
-async function pollCursorAuth(uuid: string, verifier: string): Promise<{ accessToken: string; refreshToken: string }> {
+export async function pollCursorAuth(
+	uuid: string,
+	verifier: string,
+): Promise<{ accessToken: string; refreshToken: string }> {
 	let delay = POLL_BASE_DELAY;
 	let consecutiveErrors = 0;
 
@@ -145,4 +148,13 @@ function getTokenExpiry(token: string): number {
 		return credentialExpiryFromJwtExp(decoded.exp, { provider: "cursor" });
 	}
 	return Date.now() + 3600 * 1000;
+}
+
+export function isCursorTokenExpiringSoon(token: string, thresholdSeconds = 300): boolean {
+	const decoded = decodeJwtPayload<{ exp?: number }>(token);
+	if (!decoded) return true;
+	const currentTime = Math.floor(Date.now() / 1000);
+	// A token with no `exp` claim is treated as not expiring soon (NaN < n is false),
+	// matching the prior hand-rolled decode.
+	return (decoded.exp ?? Number.NaN) - currentTime < thresholdSeconds;
 }

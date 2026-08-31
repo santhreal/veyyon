@@ -1,14 +1,32 @@
-import { padding, visibleWidth } from "@veyyon/tui";
+/**
+ * Shared helpers for tool-rendered UI components.
+ */
+import { visibleWidth } from "@veyyon/tui/tui";
+import { padding } from "@veyyon/tui/utils";
 import type { Theme, ThemeBg } from "../modes/theme/theme";
 import type { State } from "./types";
 
-import { hashBytes1, hashBytes4, hashBytes8, hashView } from "./utils-helpers";
+export { Ellipsis, truncateToWidth } from "@veyyon/tui/utils";
 
-export * from "./utils-helpers";
+/** Cached typed-array scratch space for hashing non-string primitives. */
+const hashBuf = new ArrayBuffer(8);
+const hashView = new DataView(hashBuf);
+const hashBytes1 = new Uint8Array(hashBuf, 0, 1);
+const hashBytes4 = new Uint8Array(hashBuf, 0, 4);
+const hashBytes8 = new Uint8Array(hashBuf, 0, 8);
 
+/**
+ * Incremental xxHash64 key builder.
+ *
+ * Chains `Bun.hash.xxHash64` calls via seeding — each fed value
+ * mixes into the running hash without intermediate string allocations.
+ * Accepts strings, numbers (u32), booleans, bigints, and `undefined`/`null`
+ * (hashed as a sentinel byte) natively.
+ */
 export class Hasher {
 	#h = 0n;
 
+	/** Feed a string. */
 	str(s: string): this {
 		hashView.setUint32(0, s.length);
 		this.#h = Bun.hash.xxHash64(hashBytes4, this.#h);
@@ -16,24 +34,28 @@ export class Hasher {
 		return this;
 	}
 
+	/** Feed an unsigned 32-bit integer. */
 	u32(n: number): this {
 		hashView.setUint32(0, n);
 		this.#h = Bun.hash.xxHash64(hashBytes4, this.#h);
 		return this;
 	}
 
+	/** Feed a 64-bit bigint. */
 	u64(n: bigint): this {
 		hashView.setBigUint64(0, n);
 		this.#h = Bun.hash.xxHash64(hashBytes8, this.#h);
 		return this;
 	}
 
+	/** Feed a boolean (single byte: 1 = true, 0 = false). */
 	bool(b: boolean): this {
 		hashView.setUint8(0, b ? 1 : 0);
 		this.#h = Bun.hash.xxHash64(hashBytes1, this.#h);
 		return this;
 	}
 
+	/** Feed a value that may be `undefined` or `null` (hashed as a 0xFF sentinel byte). */
 	optional(v: string | undefined | null): this {
 		if (v == null) {
 			hashView.setUint8(0, 0xff);
@@ -44,16 +66,27 @@ export class Hasher {
 		return this;
 	}
 
+	/** Return the final hash digest. */
 	digest(): bigint {
 		return this.#h;
 	}
 }
 
+/** Render-cache entry used by tool renderers. */
 export interface RenderCache {
 	key: bigint;
 	lines: string[];
 }
 
+/**
+ * The indentation that carries a tree's vertical rules down to a nested row.
+ *
+ * One owner for three renderers (the task tree, the JSON tree and the TUI helpers), which each
+ * had a copy: the JSON one had even drifted to the opposite argument order. Two renderers
+ * disagreeing here means the same nesting draws different rules in two panes of one screen.
+ * `ancestors[i]` says whether the ancestor at that depth has a sibling still to come, so the
+ * rule continues past this row instead of stopping at it.
+ */
 export function buildTreePrefix(ancestors: readonly boolean[], theme: Theme): string {
 	return ancestors.map(hasNext => (hasNext ? `${theme.tree.vertical}  ` : "   ")).join("");
 }

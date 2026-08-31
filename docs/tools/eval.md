@@ -198,6 +198,7 @@ Implemented in `packages/coding-agent/src/eval/py/executor.ts`, `packages/coding
   - execute `PYTHON_PRELUDE`
 - Python cells run in the runner's persistent asyncio event loop, so top-level `await` works; the prompt warns not to use `asyncio.run(...)`
 - The Python prelude defines helpers with the same surface as JS where practical, including `tool.<name>(args)`, `completion(...)`, and `agent(...)` through a per-run loopback bridge
+- `eval.pyWorkspace` defaults to `false`. When enabled, the tool description tells the model to keep large `tool.*` results and reusable repository helpers in Python state and emit compact conclusions. The setting adds guidance, not runtime APIs.
 - Synchronous statement blocks run in the default executor with ContextVar state copied in; the GIL still serializes bytecode execution, but awaited regions can interleave with sibling cells
 - Kernel `display` / `result` frames map to:
   - `application/x-veyyon-status` → status event

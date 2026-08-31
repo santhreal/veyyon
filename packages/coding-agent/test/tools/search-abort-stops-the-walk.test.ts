@@ -39,8 +39,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { GlobTool } from "@veyyon/coding-agent/tools/glob";
-import { GrepTool } from "@veyyon/coding-agent/tools/grep";
+import { SearchTool } from "@veyyon/coding-agent/tools/search";
 import { GrepOutputMode, astGrep as nativeAstGrep, glob as nativeGlob, grep as nativeGrep } from "@veyyon/natives";
 import { removeWithRetries } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
@@ -84,7 +83,7 @@ function session() {
 		hasUI: false,
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
-		settings: Settings.isolated({ "glob.enabled": true }),
+		settings: Settings.isolated(),
 	});
 }
 
@@ -221,8 +220,8 @@ describe("the natives refuse work under a signal that has already fired", () => 
 	});
 });
 
-describe("glob", () => {
-	const globArgs = { path: "**/*.ts", limit: 200 };
+describe("search (files)", () => {
+	const globArgs = { type: "files" as const, input: "**/*.ts", limit: 200 };
 
 	it("rejects with an abort rather than resolving with a short result list", async () => {
 		// The silent-success shape is the dangerous one: a cancelled search that
@@ -231,7 +230,7 @@ describe("glob", () => {
 		// absence claim from a cancelled search is a lie.
 		let error: Error | undefined;
 		try {
-			await new GlobTool(session() as never).execute("g-pre", globArgs, spentSignal());
+			await new SearchTool(session()).execute("g-pre", globArgs, spentSignal());
 		} catch (err) {
 			error = err as Error;
 		}
@@ -241,14 +240,14 @@ describe("glob", () => {
 	});
 
 	it("still returns matches when the signal is never aborted", async () => {
-		const result = await new GlobTool(session() as never).execute("g-ok", globArgs, new AbortController().signal);
+		const result = await new SearchTool(session()).execute("g-ok", globArgs, new AbortController().signal);
 
 		expect(textOf(result)).toContain("mod-0.ts");
 	});
 });
 
-describe("grep", () => {
-	const grepArgs = { pattern: "export const id", path: "." };
+describe("search (text)", () => {
+	const grepArgs = { type: "text" as const, input: "export const id", path: "." };
 
 	it("rejects with an abort rather than reporting no matches", async () => {
 		// Worse than the glob case, because grep's empty result IS its answer: a
@@ -257,7 +256,7 @@ describe("grep", () => {
 		// agent uses to decide a symbol is unused.
 		let error: Error | undefined;
 		try {
-			await new GrepTool(session() as never).execute("s-pre", grepArgs as never, spentSignal());
+			await new SearchTool(session()).execute("s-pre", grepArgs, spentSignal());
 		} catch (err) {
 			error = err as Error;
 		}
@@ -270,11 +269,7 @@ describe("grep", () => {
 		// Non-vacuity, and it also proves the fixture is greppable at all: an
 		// unreadable tree would make every assertion above pass for the wrong
 		// reason.
-		const result = await new GrepTool(session() as never).execute(
-			"s-ok",
-			grepArgs as never,
-			new AbortController().signal,
-		);
+		const result = await new SearchTool(session()).execute("s-ok", grepArgs, new AbortController().signal);
 
 		expect(textOf(result)).toContain("mod-0.ts");
 	});

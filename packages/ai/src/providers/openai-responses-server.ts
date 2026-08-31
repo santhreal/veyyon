@@ -1,12 +1,32 @@
+/**
+ * OpenAI Responses HTTP wire-format ↔ veyyon Context bridge for the auth-gateway.
+ *
+ * Inbound: parses `POST /v1/responses` request bodies into a {@link ParsedRequest}.
+ * Outbound: encodes veyyon's {@link AssistantMessage} (and event stream) back into
+ * the documented `response.*` SSE taxonomy or the non-streaming JSON shape.
+ *
+ * Spec: https://platform.openai.com/docs/api-reference/responses
+ * Inverse direction (source-of-truth for item shapes): ../../providers/openai-responses.ts
+ */
+
 import { isEffort } from "@veyyon/catalog/effort";
 import { emptyUsage } from "@veyyon/catalog/models";
 import * as logger from "@veyyon/utils/logger";
-import { isRecord } from "@veyyon/utils/type-guards";
+import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import { type } from "arktype";
 import { resolvePromptCacheKey } from "../auth-gateway/http";
-import type { AuthGatewayParsedRequest as ParsedRequest } from "../auth-gateway/types";
+import type { AuthGatewayStreamControl, AuthGatewayParsedRequest as ParsedRequest } from "../auth-gateway/types";
 import * as AIError from "../error";
-import type { AssistantMessage, Context, Message, TextContent, ThinkingContent, Tool, ToolCall } from "../types";
+import type {
+	AssistantMessage,
+	AssistantMessageEventStream,
+	Context,
+	Message,
+	TextContent,
+	ThinkingContent,
+	Tool,
+	ToolCall,
+} from "../types";
 import { isServiceTier } from "../types";
 import {
 	type OpenAIResponsesFunctionCallItem,
@@ -19,18 +39,16 @@ import {
 } from "./openai-responses-server-schema";
 import { encodeTextSignatureV1, parseTextSignature } from "./openai-shared";
 
-export {
-	encodeResponse,
-	encodeStream,
-} from "./openai-responses-server-helpers";
 export type { ParsedRequest };
+
+// ─── narrow guards ──────────────────────────────────────────────────────────
 
 function stringOrUndefined(v: unknown): string | undefined {
 	return typeof v === "string" ? v : undefined;
 }
 
 type AssistantItemPhase = "commentary" | "final_answer";
-export type MessageSignature = { id: string; phase?: AssistantItemPhase };
+type MessageSignature = { id: string; phase?: AssistantItemPhase };
 
 function parseAssistantItemPhase(value: unknown): AssistantItemPhase | undefined {
 	return value === "commentary" || value === "final_answer" ? value : undefined;
@@ -43,35 +61,44 @@ function messageTextSignature(id: unknown, phase: unknown): string | undefined {
 	return encodeTextSignatureV1(makeMsgId(), parsedPhase);
 }
 
+// ─── id helpers ─────────────────────────────────────────────────────────────
+
 function uuidNoDashes(): string {
 	return crypto.randomUUID().replace(/-/g, "");
 }
 
-export function makeRespId(): string {
+function makeRespId(): string {
 	return `resp_${uuidNoDashes()}`;
 }
 
-export function makeMsgId(): string {
+function makeMsgId(): string {
 	return `msg_${uuidNoDashes()}`;
 }
 
-export function makeReasoningId(): string {
+function makeReasoningId(): string {
 	return `rs_${uuidNoDashes()}`;
 }
 
-export function makeFuncCallId(): string {
+function makeFuncCallId(): string {
 	return `fc_${uuidNoDashes()}`;
 }
 
-export function makeCustomCallId(): string {
+function makeCustomCallId(): string {
 	return `ctc_${uuidNoDashes()}`;
 }
+
+// ─── once-only warnings ─────────────────────────────────────────────────────
+// Module-scoped so we don't spam logs once per turn.
 
 let warnedImageNotSupported = false;
 let warnedFileNotSupported = false;
 let warnedReasoningSummaryLevel = false;
 
+// ─── inbound parser helpers ─────────────────────────────────────────────────
+
 function extractReasoningTextFromItem(item: OpenAIResponsesReasoningItem): string {
+	// Prefer `summary[]` — mirrors real OpenAI and the openai-responses provider
+	// which writes the surfaced reasoning summary into `summary[].text`.
 	const fromSummary = (item.summary ?? []).map(c => c.text).join("");
 	if (fromSummary) return fromSummary;
 	return (item.content ?? []).map(c => c.text).join("");
@@ -83,6 +110,12 @@ type InputBlockUnion =
 	| { type: "input_image"; detail?: "auto" | "low" | "high"; image_url?: string; file_id?: string }
 	| { type: "input_file"; file_id?: string; filename?: string; file_data?: string };
 
+/**
+ * Walk an input message's content array and produce pi-ai's `TextContent[]`.
+ * `input_image`/`input_file` blocks become bracketed text placeholders since
+ * pi-ai's `ImageContent` only carries inline base64 data and we have no
+ * resolver for OpenAI `image_url` / `file_id` references. Logs once per kind.
+ */
 function inputContentParts(blocks: OpenAIResponsesInputContent[] | string | undefined): string | TextContent[] {
 	if (typeof blocks === "string") return blocks;
 	if (!blocks) return [];
@@ -136,6 +169,7 @@ function outputTextOf(
 		if (block.type === "output_text" || block.type === "text") {
 			parts.push(block.text);
 		} else if (block.type === "refusal") {
+			// Preserve the refusal reason so history replay still carries it.
 			parts.push(`[refusal: ${block.refusal}]`);
 		}
 	}
@@ -143,6 +177,8 @@ function outputTextOf(
 	return text.length > 0 ? [textContent(text)] : [];
 }
 
+// The schema accepts a much wider tool_choice union than the SDK type so the
+// walker narrows against the local schema shape.
 type ParsedToolChoice =
 	| "auto"
 	| "none"
@@ -164,7 +200,12 @@ function mapToolChoice(value: ParsedToolChoice | undefined): ParsedRequest["opti
 	if (value === undefined) return undefined;
 	if (value === "auto" || value === "none" || value === "required") return value;
 	if ("type" in value) {
+		// `custom` (codex apply_patch) and `function` both resolve to the same
+		// pi-ai shape: pi-ai's dispatcher matches `Tool.name` AND `customWireName`,
+		// so passing the wire name works for either.
 		if (value.type === "function" || value.type === "custom") return { name: value.name };
+		// Hosted tools + allowed_tools — we don't surface these to pi-ai; fall
+		// back to letting the model pick a tool freely.
 		return "auto";
 	}
 	return undefined;
@@ -174,6 +215,7 @@ function buildTools(tools: Array<OpenAIResponsesTool | { type: string }> | undef
 	if (!tools) return undefined;
 	const out: Tool[] = [];
 	for (const t of tools) {
+		// Skip non-function tools (web_search, file_search, …).
 		if (t.type !== "function") continue;
 		const fn = t as Extract<OpenAIResponsesTool, { type: "function" }>;
 		const tool: Tool = {
@@ -204,6 +246,7 @@ function ensureAssistantPlaceholder(messages: Message[], modelId: string, now: n
 	return placeholder;
 }
 
+/** Flatten a function_call_output array form (text + refusal) into a single string. */
 function flattenFunctionOutputArray(blocks: readonly unknown[]): string {
 	const parts: string[] = [];
 	for (const raw of blocks) {
@@ -220,7 +263,15 @@ function flattenFunctionOutputArray(blocks: readonly unknown[]): string {
 	return parts.join("");
 }
 
+// ─── parseRequest ───────────────────────────────────────────────────────────
+
 export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
+	// Header capture is centralized in `auth-gateway/server.ts` (the
+	// allow-listed set lands on `options.headers` automatically). We also
+	// consult `headers` here to populate `options.promptCacheKey` when the
+	// client signals a cache identity outside the body — see the
+	// `resolvePromptCacheKey` call further down.
+
 	const data = openaiResponsesRequestSchema(body);
 	if (data instanceof type.errors) {
 		throw new AIError.ValidationError(`openai-responses: ${data.summary}`);
@@ -238,6 +289,7 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 		messages.push({ role: "user", content: data.input, timestamp: now });
 	} else if (data.input) {
 		for (const item of data.input) {
+			// Items may omit `type` and rely on `role` (the convenience shape).
 			const effectiveType = item.type ?? ("role" in item ? "message" : undefined);
 			if (effectiveType === "message") {
 				const msg = item as {
@@ -315,6 +367,9 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 			}
 			if (effectiveType === "custom_tool_call") {
 				const call = item as { id?: string; call_id: string; name: string; input: string };
+				// Custom tools carry a raw input string. We stash it in `arguments.input`
+				// matching pi-ai's openai-shared convention, and tag the call
+				// with `customWireName` so encoders re-emit it as `custom_tool_call`.
 				const toolCall: ToolCall = {
 					type: "toolCall",
 					id: call.call_id,
@@ -357,6 +412,7 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 					timestamp: now,
 				});
 			}
+			// Other item types are tolerated but not bridged.
 		}
 	}
 
@@ -379,6 +435,9 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	if (data.reasoning?.effort && isEffort(data.reasoning.effort)) {
 		options.reasoning = data.reasoning.effort;
 	}
+	// OpenAI summary: `none` → suppress; `auto`/`concise`/`detailed` → request
+	// visible summary. pi-ai has no per-level plumbing — log once and let the
+	// provider default kick in.
 	if (data.reasoning?.summary === "none") {
 		options.hideThinkingSummary = true;
 	} else if (
@@ -404,6 +463,8 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	if (data.previous_response_id !== undefined) options.previousResponseId = data.previous_response_id;
 	if (data.user !== undefined) options.user = data.user;
 	if (isRecord(data.metadata)) options.metadata = data.metadata;
+	// `store` is a stateful-storage hint that veyyon's gateway doesn't honour;
+	// silently accepted by the schema. No typed slot — drop.
 
 	return {
 		modelId: data.model,
@@ -424,7 +485,11 @@ function findToolNameById(messages: Message[], callId: string): string {
 	return "";
 }
 
+// ─── formatError ────────────────────────────────────────────────────────────
+
 export { formatOpenAiError as formatError } from "./openai-shared";
+
+// ─── output item builders (shared by streaming + non-streaming encoders) ────
 
 type ReasoningOutputItem = {
 	type: "reasoning";
@@ -459,17 +524,17 @@ type CustomToolCallOutputItem = {
 	status: "completed";
 };
 
-export type OutputItem = ReasoningOutputItem | MessageOutputItem | FunctionCallOutputItem | CustomToolCallOutputItem;
+type OutputItem = ReasoningOutputItem | MessageOutputItem | FunctionCallOutputItem | CustomToolCallOutputItem;
 
-export type ResponseStatus = "completed" | "in_progress" | "failed" | "incomplete";
+type ResponseStatus = "completed" | "in_progress" | "failed" | "incomplete";
 
-export function responseStatusForStopReason(message: AssistantMessage): ResponseStatus {
+function responseStatusForStopReason(message: AssistantMessage): ResponseStatus {
 	if (message.stopReason === "length") return "incomplete";
 	if (message.stopReason === "error" || message.stopReason === "aborted") return "failed";
 	return "completed";
 }
 
-export function incompleteDetailsForStatus(status: ResponseStatus): { reason: "max_output_tokens" } | null {
+function incompleteDetailsForStatus(status: ResponseStatus): { reason: "max_output_tokens" } | null {
 	return status === "incomplete" ? { reason: "max_output_tokens" } : null;
 }
 
@@ -480,11 +545,18 @@ function buildReasoningItem(part: ThinkingContent): ReasoningOutputItem {
 			const sigParsed: unknown = JSON.parse(part.thinkingSignature);
 			if (isRecord(sigParsed) && sigParsed.type === "reasoning") {
 				const id = part.itemId ?? stringOrUndefined(sigParsed.id) ?? makeReasoningId();
+				// Preserve any extra fields (encrypted_content, …) the original carried,
+				// but normalize the summary into the canonical `{type, text}[]` shape.
 				const merged: Record<string, unknown> = { ...sigParsed, type: "reasoning", id };
 				merged.summary = [{ type: "summary_text", text: part.thinking }];
+				// `content[]` is the encrypted/raw side-channel; leave whatever was
+				// already there. If absent, omit — real OpenAI only emits `content[]`
+				// when `include=['reasoning.encrypted_content']` is set.
 				return merged as ReasoningOutputItem;
 			}
-		} catch {}
+		} catch {
+			// Not a serialized Responses reasoning item; fall through to fresh build.
+		}
 	}
 	return {
 		type: "reasoning",
@@ -493,7 +565,7 @@ function buildReasoningItem(part: ThinkingContent): ReasoningOutputItem {
 	};
 }
 
-export function reasoningItemId(part: ThinkingContent): string {
+function reasoningItemId(part: ThinkingContent): string {
 	if (part.itemId) return part.itemId;
 	if (part.thinkingSignature) {
 		try {
@@ -502,17 +574,29 @@ export function reasoningItemId(part: ThinkingContent): string {
 				const id = stringOrUndefined(sigParsed.id);
 				if (id) return id;
 			}
-		} catch {}
+		} catch {
+			// Not a serialized Responses reasoning item.
+		}
 	}
 	return makeReasoningId();
 }
 
-export function wireCallId(id: string): string {
+/**
+ * pi-ai responses providers mint composite `"{call_id}|{item_id}"` tool-call
+ * ids ({@link encodeResponsesToolCallId}). Only the call_id half belongs on
+ * the wire: third-party clients validate the `call_id` charset
+ * (`^[a-zA-Z0-9_-]+$`) or echo it to other backends, and `|` fails both.
+ */
+function wireCallId(id: string): string {
 	const sep = id.indexOf("|");
 	return sep >= 0 ? id.slice(0, sep) : id;
 }
 
-export function buildOutputItems(message: AssistantMessage): OutputItem[] {
+/**
+ * Walk the assistant content array and group consecutive TextContent into a
+ * single message item; each ThinkingContent / ToolCall is its own item.
+ */
+function buildOutputItems(message: AssistantMessage): OutputItem[] {
 	const out: OutputItem[] = [];
 	let pendingMessage: MessageOutputItem | null = null;
 	let pendingMessageSignature: { id: string; phase?: AssistantItemPhase } | undefined;
@@ -570,12 +654,13 @@ export function buildOutputItems(message: AssistantMessage): OutputItem[] {
 				});
 			}
 		}
+		// RedactedThinking / Image are silently dropped — no direct Responses wire representation.
 	}
 	flushMessage();
 	return out;
 }
 
-export function buildUsage(message: AssistantMessage): Record<string, unknown> {
+function buildUsage(message: AssistantMessage): Record<string, unknown> {
 	const u = message.usage;
 	const inputTokens = u.input + u.cacheRead + u.cacheWrite;
 	return {
@@ -585,4 +670,627 @@ export function buildUsage(message: AssistantMessage): Record<string, unknown> {
 		output_tokens_details: { reasoning_tokens: u.reasoningTokens ?? 0 },
 		total_tokens: inputTokens + u.output,
 	};
+}
+
+function buildResponseEnvelope(
+	message: AssistantMessage,
+	requestedModelId: string,
+	id: string,
+	status: ResponseStatus,
+	items: OutputItem[] | [],
+	usage: Record<string, unknown> | null,
+): Record<string, unknown> {
+	return {
+		id,
+		object: "response",
+		created_at: Math.floor(message.timestamp / 1000),
+		status,
+		model: requestedModelId,
+		output: items,
+		usage,
+		incomplete_details: incompleteDetailsForStatus(status),
+		...(status === "failed" ? { error: { message: message.errorMessage ?? "response failed" } } : {}),
+	};
+}
+
+// ─── encodeResponse (non-streaming) ─────────────────────────────────────────
+
+export function encodeResponse(message: AssistantMessage, requestedModelId: string): Record<string, unknown> {
+	const items = buildOutputItems(message);
+	return buildResponseEnvelope(
+		message,
+		requestedModelId,
+		makeRespId(),
+		responseStatusForStopReason(message),
+		items,
+		buildUsage(message),
+	);
+}
+
+// ─── encodeStream ───────────────────────────────────────────────────────────
+
+interface OpenMessage {
+	kind: "message";
+	itemId: string;
+	outputIndex: number;
+	contentIndex: number;
+	currentPartText: string;
+	content: Array<{ type: "output_text"; text: string; annotations: never[] }>;
+	signature?: MessageSignature;
+}
+interface OpenReasoning {
+	kind: "reasoning";
+	itemId: string;
+	outputIndex: number;
+	reasoningText: string;
+}
+interface OpenFunctionCall {
+	kind: "function_call";
+	itemId: string;
+	outputIndex: number;
+	contentIndex: number;
+	callId: string;
+	name: string;
+	argsText: string;
+	/** Set when the underlying ToolCall is a custom-tool emission. */
+	customWireName?: string;
+}
+type OpenItem = OpenMessage | OpenReasoning | OpenFunctionCall;
+
+function sseEvent(name: string, data: unknown): string {
+	return `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+export function encodeStream(
+	events: AssistantMessageEventStream,
+	requestedModelId: string,
+	_options?: ParsedRequest["options"],
+	control?: AuthGatewayStreamControl,
+): ReadableStream<Uint8Array> {
+	const encoder = new TextEncoder();
+	const responseId = makeRespId();
+	let sequenceNumber = 0;
+	let cancelled = control?.signal?.aborted === true;
+	const markCancelled = () => {
+		cancelled = true;
+	};
+	control?.signal?.addEventListener("abort", markCancelled, { once: true });
+	const seq = () => sequenceNumber++;
+
+	return new ReadableStream<Uint8Array>({
+		async start(controller) {
+			const emit = (name: string, data: Record<string, unknown>) => {
+				if (!cancelled)
+					controller.enqueue(encoder.encode(sseEvent(name, { type: name, sequence_number: seq(), ...data })));
+			};
+			const emitDone = () => {
+				if (!cancelled) controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+			};
+
+			let createdAt = Math.floor(Date.now() / 1000);
+			let outputIndex = 0;
+			const state: { open: OpenItem | null } = { open: null };
+			const openFunctionCalls = new Map<number, OpenFunctionCall>();
+			const finishedItems: OutputItem[] = [];
+			const allocateOutputIndex = (): number => outputIndex++;
+
+			const responseSnapshot = (status: ResponseStatus, output: OutputItem[] | []) => ({
+				id: responseId,
+				object: "response",
+				created_at: createdAt,
+				status,
+				model: requestedModelId,
+				output,
+				usage: null,
+				incomplete_details: incompleteDetailsForStatus(status),
+			});
+
+			const openMessage = (signature?: MessageSignature): OpenMessage => {
+				const itemOutputIndex = allocateOutputIndex();
+				const itemId = signature?.id ?? makeMsgId();
+				const item = {
+					type: "message" as const,
+					id: itemId,
+					status: "in_progress" as const,
+					role: "assistant" as const,
+					content: [] as Array<{ type: "output_text"; text: string; annotations: never[] }>,
+					...(signature?.phase ? { phase: signature.phase } : {}),
+				};
+				emit("response.output_item.added", { output_index: itemOutputIndex, item });
+				const next: OpenMessage = {
+					kind: "message",
+					itemId,
+					outputIndex: itemOutputIndex,
+					contentIndex: 0,
+					currentPartText: "",
+					content: [],
+					...(signature ? { signature } : {}),
+				};
+				state.open = next;
+				return next;
+			};
+
+			const openReasoning = (partial: AssistantMessage, contentIndex: number): OpenReasoning => {
+				const itemOutputIndex = allocateOutputIndex();
+				const part = partial.content[contentIndex];
+				const itemId = part && part.type === "thinking" ? reasoningItemId(part) : makeReasoningId();
+				const item = {
+					type: "reasoning" as const,
+					id: itemId,
+					summary: [] as Array<{ type: "summary_text"; text: string }>,
+				};
+				emit("response.output_item.added", { output_index: itemOutputIndex, item });
+				// Open the summary part. Real OpenAI streams summary text in the
+				// canonical `reasoning_summary_*` lifecycle; pi-ai's own decoder
+				// reads `summary[].text` from the eventual `output_item.done`.
+				emit("response.reasoning_summary_part.added", {
+					item_id: itemId,
+					output_index: itemOutputIndex,
+					summary_index: 0,
+					part: { type: "summary_text", text: "" },
+				});
+				const next: OpenReasoning = { kind: "reasoning", itemId, outputIndex: itemOutputIndex, reasoningText: "" };
+				state.open = next;
+				return next;
+			};
+
+			const openToolCall = (partial: AssistantMessage, contentIndex: number): OpenFunctionCall => {
+				const itemOutputIndex = allocateOutputIndex();
+				const part = partial.content[contentIndex];
+				const tc = part && part.type === "toolCall" ? part : undefined;
+				const customWireName: string | undefined =
+					tc && typeof tc.customWireName === "string" && tc.customWireName.length > 0
+						? tc.customWireName
+						: undefined;
+				const isCustom = customWireName !== undefined;
+				const itemId = tc?.thoughtSignature ?? (isCustom ? makeCustomCallId() : makeFuncCallId());
+				const callId = wireCallId(tc?.id ?? "");
+				const name = customWireName ?? tc?.name ?? "";
+				const item = isCustom
+					? {
+							type: "custom_tool_call" as const,
+							id: itemId,
+							call_id: callId,
+							name,
+							input: "",
+							status: "in_progress",
+						}
+					: {
+							type: "function_call" as const,
+							id: itemId,
+							call_id: callId,
+							name,
+							arguments: "",
+							status: "in_progress",
+						};
+				emit("response.output_item.added", { output_index: itemOutputIndex, item });
+				const next: OpenFunctionCall = {
+					kind: "function_call",
+					itemId,
+					outputIndex: itemOutputIndex,
+					contentIndex,
+					callId,
+					name,
+					argsText: "",
+					...(isCustom ? { customWireName } : {}),
+				};
+				openFunctionCalls.set(contentIndex, next);
+				state.open = next;
+				return next;
+			};
+
+			const closeFunctionCall = (call: OpenFunctionCall): void => {
+				const text = call.argsText ?? "";
+				if (call.customWireName) {
+					const item = {
+						type: "custom_tool_call",
+						id: call.itemId,
+						call_id: call.callId ?? "",
+						name: call.customWireName,
+						input: text,
+						status: "completed",
+					};
+					emit("response.output_item.done", { output_index: call.outputIndex, item });
+					finishedItems.push({
+						type: "custom_tool_call",
+						id: call.itemId,
+						call_id: call.callId ?? "",
+						name: call.customWireName,
+						input: text,
+						status: "completed",
+					});
+				} else {
+					const item = {
+						type: "function_call",
+						id: call.itemId,
+						call_id: call.callId ?? "",
+						name: call.name ?? "",
+						arguments: text,
+						status: "completed",
+					};
+					emit("response.output_item.done", { output_index: call.outputIndex, item });
+					finishedItems.push({
+						type: "function_call",
+						id: call.itemId,
+						call_id: call.callId ?? "",
+						name: call.name ?? "",
+						arguments: text,
+						status: "completed",
+					});
+				}
+				openFunctionCalls.delete(call.contentIndex);
+				if (state.open === call) state.open = null;
+			};
+
+			const closeOpen = () => {
+				if (!state.open) return;
+				if (state.open.kind === "message") {
+					const item = {
+						type: "message" as const,
+						id: state.open.itemId,
+						status: "completed" as const,
+						role: "assistant" as const,
+						content: state.open.content,
+						...(state.open.signature?.phase ? { phase: state.open.signature.phase } : {}),
+					};
+					emit("response.output_item.done", { output_index: state.open.outputIndex, item });
+					finishedItems.push(item);
+					state.open = null;
+				} else if (state.open.kind === "reasoning") {
+					const summary = [{ type: "summary_text" as const, text: state.open.reasoningText ?? "" }];
+					const item = {
+						type: "reasoning",
+						id: state.open.itemId,
+						summary,
+					};
+					emit("response.output_item.done", { output_index: state.open.outputIndex, item });
+					finishedItems.push({
+						type: "reasoning",
+						id: state.open.itemId,
+						summary,
+					});
+					state.open = null;
+				} else {
+					closeFunctionCall(state.open);
+				}
+			};
+
+			const closeOpenFunctionCalls = (): void => {
+				for (const call of [...openFunctionCalls.values()]) {
+					closeFunctionCall(call);
+				}
+			};
+
+			const functionCallForEvent = (contentIndex: number): OpenFunctionCall | undefined => {
+				const byIndex = openFunctionCalls.get(contentIndex);
+				if (byIndex) return byIndex;
+				return state.open?.kind === "function_call" ? state.open : undefined;
+			};
+			let finalMessage: AssistantMessage | undefined;
+			let failureMessage: AssistantMessage | undefined;
+			try {
+				if (cancelled) {
+					controller.close();
+					return;
+				}
+				for await (const ev of events) {
+					if (cancelled) return;
+					switch (ev.type) {
+						case "start": {
+							createdAt = Math.floor((ev.partial.timestamp || Date.now()) / 1000);
+							// response.created — initial envelope.
+							emit("response.created", { response: responseSnapshot("in_progress", []) });
+							// response.in_progress — mirrors real OpenAI; some clients gate
+							// on it before reading items.
+							emit("response.in_progress", { response: responseSnapshot("in_progress", []) });
+							break;
+						}
+						case "text_start": {
+							let cur: OpenMessage;
+							const textBlock = ev.partial.content[ev.contentIndex];
+							const signature =
+								textBlock?.type === "text" ? parseTextSignature(textBlock.textSignature) : undefined;
+							if (state.open && state.open.kind === "message") {
+								const sameSignature =
+									(!signature && !state.open.signature) ||
+									(signature !== undefined &&
+										state.open.signature?.id === signature.id &&
+										state.open.signature.phase === signature.phase);
+								if (sameSignature) {
+									// Continue same message item, new content part.
+									cur = state.open;
+									cur.currentPartText = "";
+								} else {
+									closeOpen();
+									cur = openMessage(signature);
+								}
+							} else {
+								if (state.open && state.open.kind !== "function_call") closeOpen();
+								cur = openMessage(signature);
+							}
+							const contentPart = { type: "output_text", text: "", annotations: [] as never[] };
+							emit("response.content_part.added", {
+								item_id: cur.itemId,
+								output_index: cur.outputIndex,
+								content_index: cur.contentIndex,
+								part: contentPart,
+							});
+							break;
+						}
+						case "text_delta": {
+							if (state.open?.kind !== "message") break;
+							const cur: OpenMessage = state.open;
+							cur.currentPartText += ev.delta;
+							emit("response.output_text.delta", {
+								item_id: cur.itemId,
+								output_index: cur.outputIndex,
+								content_index: cur.contentIndex,
+								delta: ev.delta,
+								logprobs: [],
+							});
+							// TODO: when pi-ai surfaces output_text annotations
+							// (web_search citations, …), emit
+							// `response.output_text.annotation.added` here.
+							break;
+						}
+						case "text_end": {
+							if (state.open?.kind !== "message") break;
+							const cur: OpenMessage = state.open;
+							const text = ev.content ?? cur.currentPartText;
+							emit("response.output_text.done", {
+								item_id: cur.itemId,
+								output_index: cur.outputIndex,
+								content_index: cur.contentIndex,
+								text,
+								logprobs: [],
+							});
+							cur.content.push({ type: "output_text", text, annotations: [] });
+							emit("response.content_part.done", {
+								item_id: cur.itemId,
+								output_index: cur.outputIndex,
+								content_index: cur.contentIndex,
+								part: { type: "output_text", text, annotations: [] },
+							});
+							cur.contentIndex += 1;
+							cur.currentPartText = "";
+							break;
+						}
+						case "thinking_start": {
+							if (state.open && state.open.kind !== "function_call") closeOpen();
+							openReasoning(ev.partial, ev.contentIndex);
+							break;
+						}
+						case "thinking_delta": {
+							if (state.open?.kind !== "reasoning") break;
+							const cur: OpenReasoning = state.open;
+							cur.reasoningText += ev.delta;
+							emit("response.reasoning_summary_text.delta", {
+								item_id: cur.itemId,
+								output_index: cur.outputIndex,
+								summary_index: 0,
+								delta: ev.delta,
+							});
+							break;
+						}
+						case "thinking_end": {
+							if (state.open?.kind !== "reasoning") break;
+							const cur: OpenReasoning = state.open;
+							const text = ev.content ?? cur.reasoningText;
+							cur.reasoningText = text;
+							emit("response.reasoning_summary_text.done", {
+								item_id: cur.itemId,
+								output_index: cur.outputIndex,
+								summary_index: 0,
+								text,
+							});
+							emit("response.reasoning_summary_part.done", {
+								item_id: cur.itemId,
+								output_index: cur.outputIndex,
+								summary_index: 0,
+								part: { type: "summary_text", text },
+							});
+							closeOpen();
+							break;
+						}
+						case "toolcall_start": {
+							if (state.open && state.open.kind !== "function_call") closeOpen();
+							openToolCall(ev.partial, ev.contentIndex);
+							break;
+						}
+						case "toolcall_delta": {
+							const cur = functionCallForEvent(ev.contentIndex);
+							if (!cur) break;
+							cur.argsText += ev.delta;
+							if (cur.customWireName) {
+								emit("response.custom_tool_call_input.delta", {
+									item_id: cur.itemId,
+									output_index: cur.outputIndex,
+									delta: ev.delta,
+								});
+							} else {
+								emit("response.function_call_arguments.delta", {
+									item_id: cur.itemId,
+									output_index: cur.outputIndex,
+									delta: ev.delta,
+								});
+							}
+							break;
+						}
+						case "toolcall_end": {
+							const cur = functionCallForEvent(ev.contentIndex);
+							if (!cur) break;
+							// Promote possibly-late info from the canonical ToolCall.
+							const tc = ev.toolCall;
+							if (tc.customWireName && !cur.customWireName) cur.customWireName = tc.customWireName;
+							if (tc.thoughtSignature) cur.itemId = tc.thoughtSignature;
+							cur.callId = tc.id;
+							cur.name = cur.customWireName ?? tc.name;
+							if (cur.customWireName) {
+								// Custom tool: raw input string. Streamed deltas accumulated
+								// the wire-level body; fall back to `arguments.input` from
+								// the finalized ToolCall when nothing streamed (rare).
+								const rawInput =
+									cur.argsText ||
+									(typeof tc.arguments?.input === "string" ? (tc.arguments.input as string) : "");
+								cur.argsText = rawInput;
+								emit("response.custom_tool_call_input.done", {
+									item_id: cur.itemId,
+									output_index: cur.outputIndex,
+									input: rawInput,
+									name: cur.name,
+								});
+							} else {
+								// Standard JSON tool: arguments object on the veyyon side, the
+								// wire wants the JSON string the model emitted (= streamed deltas).
+								const argsJson = cur.argsText || JSON.stringify(tc.arguments ?? {});
+								cur.argsText = argsJson;
+								emit("response.function_call_arguments.done", {
+									item_id: cur.itemId,
+									output_index: cur.outputIndex,
+									arguments: argsJson,
+									name: cur.name,
+								});
+							}
+							closeFunctionCall(cur);
+							break;
+						}
+						case "done": {
+							finalMessage = ev.message;
+							break;
+						}
+						case "error": {
+							failureMessage = ev.error;
+							break;
+						}
+					}
+				}
+
+				if (failureMessage) {
+					closeOpenFunctionCalls();
+					if (state.open) closeOpen();
+					controller.enqueue(
+						encoder.encode(
+							sseEvent("response.failed", {
+								type: "response.failed",
+								sequence_number: seq(),
+								response: {
+									...responseSnapshot("failed", finishedItems),
+									error: { message: failureMessage.errorMessage ?? "stream failed" },
+								},
+							}),
+						),
+					);
+					emitDone();
+					controller.close();
+					return;
+				}
+
+				closeOpenFunctionCalls();
+				if (state.open) closeOpen();
+				// A stream that produced no `done` event is asked for its result, and a REJECTION there is a
+				// failure like any other. It used to be swallowed to `null`, and every reader below treats a null
+				// message as "no final message" rather than as an error: the status became `completed`, the items
+				// became whatever had streamed so far, and usage became null. So a generation that failed after
+				// emitting some text was reported to the client as a successful response with partial content --
+				// the one outcome a client cannot detect or retry. The reason is kept and reported instead.
+				let resultFailure: string | undefined;
+				const message =
+					finalMessage ??
+					((await events.result().catch((error: unknown) => {
+						resultFailure = errorMessage(error);
+						return null;
+					})) as AssistantMessage | null);
+				if (!message) {
+					// No final message, whether because the result rejected or because the stream simply ended
+					// without one. Neither is a completed response, and `response.failed` is the shape this server
+					// already uses to say so, with the items that did stream still attached for context.
+					closeOpenFunctionCalls();
+					controller.enqueue(
+						encoder.encode(
+							sseEvent("response.failed", {
+								type: "response.failed",
+								sequence_number: seq(),
+								response: {
+									...responseSnapshot("failed", finishedItems),
+									error: {
+										message: resultFailure ?? "stream ended without a final message",
+									},
+								},
+							}),
+						),
+					);
+					emitDone();
+					controller.close();
+					return;
+				}
+
+				// Build the canonical output from the final message so non-streaming
+				// readers see the exact same shape they'd get from encodeResponse().
+				// The message is non-null here: the no-message case failed above, so these no longer need a
+				// fallback that reported a failure as a completed response.
+				const items = buildOutputItems(message);
+				const usage = buildUsage(message);
+				const status = responseStatusForStopReason(message);
+				const terminalEvent =
+					status === "incomplete"
+						? "response.incomplete"
+						: status === "failed"
+							? "response.failed"
+							: "response.completed";
+				controller.enqueue(
+					encoder.encode(
+						sseEvent(terminalEvent, {
+							type: terminalEvent,
+							sequence_number: seq(),
+							response: {
+								id: responseId,
+								object: "response",
+								created_at: createdAt,
+								status,
+								model: requestedModelId,
+								output: items,
+								usage,
+								incomplete_details: incompleteDetailsForStatus(status),
+								...(status === "failed"
+									? { error: { message: message.errorMessage ?? "response failed" } }
+									: {}),
+							},
+						}),
+					),
+				);
+				emitDone();
+				controller.close();
+			} catch (err) {
+				if (!cancelled) {
+					controller.enqueue(
+						encoder.encode(
+							sseEvent("response.failed", {
+								type: "response.failed",
+								sequence_number: seq(),
+								response: {
+									id: responseId,
+									object: "response",
+									created_at: Math.floor(Date.now() / 1000),
+									status: "failed",
+									model: requestedModelId,
+									output: [],
+									error: { message: errorMessage(err) },
+									incomplete_details: null,
+								},
+							}),
+						),
+					);
+					emitDone();
+					controller.close();
+				}
+			} finally {
+				control?.signal?.removeEventListener("abort", markCancelled);
+			}
+		},
+		cancel(reason) {
+			cancelled = true;
+			control?.signal?.removeEventListener("abort", markCancelled);
+			control?.onCancel?.(reason);
+		},
+	});
 }

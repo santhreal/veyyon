@@ -1,21 +1,91 @@
 import { truncateForLog } from "../../util/log-format";
-import type {
-	ErrorSample,
-	ExtractionStatsSnapshot,
-	ExtractionTier,
-	MutableTierStats,
-	TierStatsSnapshot,
-} from "./diagnostics-helpers";
-import {
-	ERROR_MESSAGE_CAP,
-	EXTRACTION_TIERS,
-	emptyTierStats,
-	errorRepr,
-	isTier,
-	MAX_ERROR_SAMPLES_PER_TIER,
-} from "./diagnostics-helpers";
 
-export { safeForLog } from "./diagnostics-helpers";
+/**
+ * The tiers a fact extraction can be attributed to.
+ *
+ * `local` is the deterministic PATTERN extractor, not a local model. It was named for a local-GGUF
+ * backend that never had an implementation: two stubs, `callLocalLlm` returning null and
+ * `localGgufAvailable` declared `(): false`, with no loader behind either. Extraction called them
+ * anyway and recorded a `model_not_loaded` failure on every pass, so this tier reported a missing
+ * model where nothing had ever tried to load one. The stubs are gone and the tier keeps its key,
+ * because these strings appear in operator-facing stats and renaming one silently zeroes whatever
+ * was reading it.
+ */
+export const EXTRACTION_TIERS = ["host", "remote", "local", "cloud", "wrapper"] as const;
+export type ExtractionTier = (typeof EXTRACTION_TIERS)[number];
+
+const MAX_ERROR_SAMPLES_PER_TIER = 10;
+const ERROR_MESSAGE_CAP = 200;
+
+export interface ErrorSample {
+	at: string;
+	type: string;
+	msg: string;
+	reason?: string;
+}
+
+export interface TierStatsSnapshot {
+	attempts: number;
+	successes: number;
+	no_output: number;
+	failures: number;
+	error_samples: ErrorSample[];
+}
+
+export interface ExtractionStatsSnapshot {
+	created_at: string;
+	snapshot_at: string;
+	totals: {
+		calls: number;
+		successes: number;
+		failures: number;
+		empty: number;
+		success_rate: number;
+	};
+	by_tier: Record<ExtractionTier, TierStatsSnapshot>;
+}
+
+interface MutableTierStats {
+	attempts: number;
+	successes: number;
+	no_output: number;
+	failures: number;
+	error_samples: ErrorSample[];
+}
+
+export function safeForLog(value: unknown): string {
+	if (value === null || value === undefined) {
+		return "";
+	}
+	const s = value instanceof Error ? `${value.name}: ${value.message}` : String(value);
+	let out = "";
+	for (let i = 0; i < s.length && out.length < ERROR_MESSAGE_CAP; i += 1) {
+		const code = s.charCodeAt(i);
+		out += code >= 32 && code !== 127 && code !== 27 ? s.charAt(i) : " ";
+	}
+	return out;
+}
+
+function emptyTierStats(): Record<ExtractionTier, MutableTierStats> {
+	return {
+		host: { attempts: 0, successes: 0, no_output: 0, failures: 0, error_samples: [] },
+		remote: { attempts: 0, successes: 0, no_output: 0, failures: 0, error_samples: [] },
+		local: { attempts: 0, successes: 0, no_output: 0, failures: 0, error_samples: [] },
+		cloud: { attempts: 0, successes: 0, no_output: 0, failures: 0, error_samples: [] },
+		wrapper: { attempts: 0, successes: 0, no_output: 0, failures: 0, error_samples: [] },
+	};
+}
+
+function isTier(tier: string): tier is ExtractionTier {
+	return (EXTRACTION_TIERS as readonly string[]).includes(tier);
+}
+
+function errorRepr(exc: unknown): string {
+	if (exc instanceof Error) {
+		return `${exc.name}: ${exc.message}`;
+	}
+	return String(exc);
+}
 
 export class ExtractionDiagnostics {
 	#tierStats: Record<ExtractionTier, MutableTierStats> = emptyTierStats();

@@ -1,3 +1,9 @@
+/**
+ * Google Gemini CLI / Antigravity provider.
+ * Shared implementation for both google-gemini-cli and google-antigravity providers.
+ * Uses the Cloud Code Assist API endpoint to access Gemini and Claude models.
+ */
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { scheduler } from "node:timers/promises";
 import { calculateCost, emptyCost, emptyUsage, inheritUsageCarryovers } from "@veyyon/catalog/models";
 import {
@@ -6,7 +12,12 @@ import {
 	ANTIGRAVITY_SANDBOX_ENDPOINT,
 	CLOUD_CODE_ENDPOINT,
 } from "@veyyon/catalog/provider-endpoints";
-import { getAntigravityUserAgent, getGeminiCliHeaders } from "@veyyon/catalog/wire/gemini-headers";
+import {
+	ANTIGRAVITY_SYSTEM_INSTRUCTION,
+	getAntigravityModelWireProfile,
+	getAntigravityUserAgent,
+	getGeminiCliHeaders,
+} from "@veyyon/catalog/wire/gemini-headers";
 import { extractHttpStatusFromError } from "@veyyon/utils/fetch-retry";
 import { readSseJson } from "@veyyon/utils/stream";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
@@ -24,23 +35,30 @@ import type {
 	ThinkingContent,
 	ToolCall,
 } from "../types";
+import { normalizeSystemPrompts } from "../utils";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { extractGoogleValidationUrl, formatGoogleValidationRequiredMessage } from "../utils/google-validation";
 import { materializeDumpBody, type RawHttpRequestDump } from "../utils/http-inspector";
 
 import { armPreResponseTimeout, getStreamFirstEventTimeoutMs } from "../utils/idle-iterator";
 import { fetchProviderWithRetry } from "../utils/provider-fetch";
+// Refresh is the sole responsibility of AuthStorage (broker-aware, single-flighted);
+// the stream provider trusts the access token threaded through `options.apiKey`.
+import { normalizeSchemaForCCA } from "../utils/schema";
 import { StreamMarkupHealing, type StreamMarkupHealingEvent } from "../utils/stream-markup-healing";
 import { stopReasonForTerminallessEof } from "../utils/terminalless-eof";
 import { interleavedThinkingBeta } from "./anthropic";
-import type { Content, FunctionCallingConfigMode, ThinkingConfig } from "./google-shared";
+import type { Content, FunctionCallingConfigMode, ThinkingConfig, ThinkingLevel } from "./google-shared";
 import {
+	convertMessages,
+	convertTools,
 	EMPTY_STREAM_BASE_DELAY_MS,
 	type GoogleThinkingLevel,
 	hasMeaningfulGoogleContent,
 	isThinkingPart,
 	MAX_EMPTY_STREAM_RETRIES,
 	mapStopReasonString,
+	mapToolChoice,
 	nextToolCallId,
 	pushBlockEndEvent,
 	pushToolCallEvents,
@@ -49,11 +67,11 @@ import {
 	startTextOrThinkingBlock,
 } from "./google-shared";
 
+/**
+ * Thinking level for Gemini 3 models. Re-exported from `google-shared` so existing
+ * `import { GoogleThinkingLevel } from "./google-gemini-cli"` callers keep working.
+ */
 export type { GoogleThinkingLevel };
-
-import { buildRequest } from "./google-gemini-cli-helpers";
-
-export { buildRequest } from "./google-gemini-cli-helpers";
 
 function isPlanningLeakPrefix(text: string): boolean {
 	const trimmed = text.trimStart();
@@ -173,6 +191,21 @@ function splitLeadingJsonObjectIgnoringQuotes(
 	return undefined;
 }
 
+/**
+ * Whether `text` carries a planning-leak signature, matched textually.
+ *
+ * The one owner of what a leak looks like when the JSON cannot be parsed. This
+ * predicate was written out three separate times inside `consumePlanningBuffer`
+ * — once for the EOF-with-no-closing-brace case, once for the unparseable-JSON
+ * case, and the key list again in each — as byte-identical copies. Byte-identical
+ * copies drift: adding a fifth signature to two of the three would leave the
+ * third quietly passing planning JSON through to the user, which is precisely the
+ * failure this function exists to prevent, and no test would have noticed because
+ * each path is reached by a different malformed input.
+ *
+ * `toolNames` is a parameter rather than a module constant because the leak keys
+ * are whatever tools the current request declared.
+ */
 function hasPlanningLeakSignature(text: string, toolNames: Set<string>): boolean {
 	if (text.includes('"thought"')) return true;
 	for (const name of toolNames) {
@@ -191,8 +224,10 @@ function consumePlanningBuffer(text: string, toolNames: Set<string>, isFinal = f
 		return { kind: "plain", visibleText: text };
 	}
 
+	// Try standard brace-balanced slicing first (respecting quotes and escapes)
 	let leading = splitLeadingJsonObject(text);
 
+	// If standard parsing fails (e.g. due to unescaped quotes), fall back to quote-ignoring brace-balanced slicing
 	if (!leading) {
 		leading = splitLeadingJsonObjectIgnoringQuotes(text);
 	}
@@ -212,9 +247,13 @@ function consumePlanningBuffer(text: string, toolNames: Set<string>, isFinal = f
 	try {
 		parsed = JSON.parse(leading.jsonText);
 	} catch {
+		// Unescaped quotes inside the planning object defeat JSON.parse, so fall
+		// back to the textual signature. Same predicate as the EOF case above, one
+		// owner, so the two paths cannot disagree about what a leak is.
 		if (hasPlanningLeakSignature(leading.jsonText, toolNames)) {
 			return { kind: "leak", visibleText: leading.rest };
 		}
+		// Unparseable leading object is not safe to strip; release it as normal text.
 		return { kind: "plain", visibleText: text };
 	}
 
@@ -224,22 +263,55 @@ function consumePlanningBuffer(text: string, toolNames: Set<string>, isFinal = f
 }
 
 export interface GoogleGeminiCliOptions extends StreamOptions {
+	/**
+	 * Tool selection mode. String forms map directly to Gemini
+	 * `FunctionCallingConfigMode`. The object form forces a single named tool —
+	 * `mode: "ANY"` is wire-required when `allowedFunctionNames` is set.
+	 */
 	toolChoice?: "auto" | "none" | "any" | { mode: "ANY"; allowedFunctionNames: [string, ...string[]] };
+	/**
+	 * Thinking/reasoning configuration.
+	 * - Gemini 2.x models: use `budgetTokens` to set the thinking budget
+	 * - Gemini 3 models (gemini-3-pro-*, gemini-3-flash-*): use `level` instead
+	 *
+	 * When using `streamSimple`, this is handled automatically based on the model.
+	 */
 	thinking?: {
 		enabled: boolean;
+		/** Thinking budget in tokens. Use for Gemini 2.x models. */
 		budgetTokens?: number;
+		/** Thinking level. Use for Gemini 3 models (LOW/HIGH for Pro, MINIMAL/LOW/MEDIUM/HIGH for Flash). */
 		level?: GoogleThinkingLevel;
+		/**
+		 * Explicit wire suppression when `enabled` is false. Cloud Code Assist
+		 * re-applies the per-id baked server default when thinkingConfig is
+		 * omitted, so models with `thinking.suppressWhenOff` must send
+		 * `includeThoughts: false` plus a MINIMAL level (or zero budget).
+		 */
 		suppress?: { level: GoogleThinkingLevel } | { budget: number };
 	};
+	/** Request that Cloud Code Assist omit human-readable thought summaries while still allowing internal reasoning. */
 	hideThinkingSummary?: boolean;
+	/**
+	 * Upstream wire model id override for collapsed effort-tier variants.
+	 * Serialized as `requestModelId ?? model.requestModelId ?? model.id`.
+	 */
 	requestModelId?: string;
 	projectId?: string;
+	/** Antigravity endpoint routing mode: "auto" (default with failover), "production", "sandbox". */
 	antigravityEndpointMode?: "auto" | "production" | "sandbox";
 	providerSessionState?: Map<string, ProviderSessionState>;
 }
 
 export interface AntigravityProviderSessionState extends ProviderSessionState {
 	lastGoodEndpoint?: string;
+	/**
+	 * Per-conversation request-envelope identity that mirrors the real
+	 * Antigravity client. `sessionId` is the signed-decimal session id;
+	 * `agentId`/`trajectoryId` are UUIDs; `stepIndex` is the monotonic step
+	 * counter; `lastExecutionId` is the prior response id echoed as
+	 * `labels.last_execution_id`.
+	 */
 	agentId?: string;
 	trajectoryId?: string;
 	sessionId?: string;
@@ -272,13 +344,14 @@ export {
 	getGeminiCliUserAgent,
 } from "@veyyon/catalog/wire/gemini-headers";
 
+// Retry configuration
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 const RATE_LIMIT_BUDGET_MS = 5 * 60 * 1000;
 const GOOGLE_GEMINI_REFRESH_SKEW_MS = 60_000;
 const ANTIGRAVITY_REFRESH_SKEW_MS = 60_000;
 
-export function isClaudeModel(modelId: string): boolean {
+function isClaudeModel(modelId: string): boolean {
 	return modelId.toLowerCase().includes("claude");
 }
 
@@ -286,7 +359,7 @@ function needsClaudeThinkingBetaHeader(model: Model<"google-gemini-cli">): boole
 	return model.provider === "google-antigravity" && model.id.startsWith("claude-") && model.reasoning;
 }
 
-export function shouldInjectAntigravitySystemInstruction(modelId: string): boolean {
+function shouldInjectAntigravitySystemInstruction(modelId: string): boolean {
 	const normalized = modelId.toLowerCase();
 	return normalized.includes("claude") || normalized.includes("gemini-3");
 }
@@ -328,6 +401,11 @@ function normalizeExpiryMs(value: unknown): number | undefined {
 }
 
 export function parseGeminiCliCredentials(apiKeyRaw: string): ParsedGeminiCliCredentials {
+	// `/login` alone was the entire remedy at all three of these sites, and it is
+	// a TUI-only slash command (no `textMode: true` in the coding agent's
+	// `slash-commands/builtin-declarations.ts`), so a headless run, an ACP client
+	// and the model were each told to do something they cannot do, with no
+	// alternative offered. The provider id is `google-gemini-cli`.
 	const invalidCredentialsMessage =
 		"The stored Google Cloud Code Assist credentials could not be parsed, so they cannot be used. Fix: run `veyyon auth-broker login google-gemini-cli` to sign in again from a terminal, or `/login google-gemini-cli` in an interactive veyyon session.";
 	const missingCredentialsMessage =
@@ -375,7 +453,7 @@ export function shouldRefreshGeminiCliCredentials(
 	return nowMs + skewMs >= expiresAt;
 }
 
-export interface CloudCodeAssistRequest {
+interface CloudCodeAssistRequest {
 	project: string;
 	model: string;
 	request: {
@@ -435,6 +513,7 @@ interface CloudCodeAssistResponseChunk {
 		responseId?: string;
 		promptFeedback?: { blockReason?: string; blockReasonMessage?: string };
 	};
+	/** In-band stream failure (quota, internal error) delivered as a final JSON event. */
 	error?: { code?: number; message?: string; status?: string };
 	traceId?: string;
 }
@@ -461,6 +540,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 			timestamp: Date.now(),
 		};
 		let rawRequestDump: RawHttpRequestDump | undefined;
+		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
 		let wireBodyJson: string | undefined;
 
 		try {
@@ -474,6 +554,11 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 			const isAntigravity = model.provider === "google-antigravity";
 			const parsedCredentials = parseGeminiCliCredentials(apiKeyRaw);
 			const { accessToken, projectId } = parsedCredentials;
+			// AuthStorage already refreshed credentials before threading them
+			// here (see {@link OAUTH_REFRESH_SKEW_MS}). If the credential lands
+			// expired we bail rather than POSTing a stale token; the next call
+			// — driven by AuthStorage's invalidate+retry path — will carry a
+			// fresh credential.
 			if (
 				shouldRefreshGeminiCliCredentials(parsedCredentials.expiresAt, isAntigravity) &&
 				parsedCredentials.expiresAt !== undefined &&
@@ -499,13 +584,14 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 					endpoints = [ANTIGRAVITY_PRIMARY_ENDPOINT];
 					if (providerState) providerState.lastGoodEndpoint = undefined;
 				} else {
+					// auto mode
 					if (baseUrl) {
 						const cleanUrl = trimTrailingSlashes(baseUrl);
 						if (cleanUrl !== ANTIGRAVITY_PRIMARY_ENDPOINT && cleanUrl !== ANTIGRAVITY_SANDBOX_ENDPOINT) {
 							endpoints = [baseUrl];
 							if (providerState) providerState.lastGoodEndpoint = undefined;
 						} else {
-							const defaultFallbacks = ANTIGRAVITY_ENDPOINTS.slice() as string[];
+							const defaultFallbacks = [...ANTIGRAVITY_ENDPOINTS] as string[];
 							const lastGood = providerState?.lastGoodEndpoint;
 							if (lastGood && defaultFallbacks.includes(lastGood)) {
 								endpoints = [lastGood, ...defaultFallbacks.filter(e => e !== lastGood)];
@@ -514,7 +600,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 							}
 						}
 					} else {
-						const defaultFallbacks = ANTIGRAVITY_ENDPOINTS.slice() as string[];
+						const defaultFallbacks = [...ANTIGRAVITY_ENDPOINTS] as string[];
 						const lastGood = providerState?.lastGoodEndpoint;
 						if (lastGood && defaultFallbacks.includes(lastGood)) {
 							endpoints = [lastGood, ...defaultFallbacks.filter(e => e !== lastGood)];
@@ -552,6 +638,10 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 			};
 			wireBodyJson = requestBodyJson;
 
+			// Direct callers that skip `register-builtins` (which installs the
+			// iterator-level watchdog) need a pre-response timer alongside
+			// `timeout: false`; otherwise a stalled Cloud Code Assist proxy
+			// would hang forever. Floor matches the lazy wrapper's 5min default.
 			const firstEventTimeoutMs =
 				options?.streamFirstEventTimeoutMs ?? getStreamFirstEventTimeoutMs(undefined, 300_000);
 			const callerSignal = options?.signal;
@@ -570,6 +660,8 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 			};
 
 			const resetOutput = () => {
+				// One owner for the wipe, shared with the Generative AI path: the tokens
+				// an abandoned attempt already billed ride along on the next usage.
 				resetGoogleStreamOutputForRetry(model, output);
 				sawFinishReason = false;
 			};
@@ -582,6 +674,8 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 					});
 				}
 
+				// Scoped per attempt so a failed/empty retry cannot leak its
+				// response id into the next request's last_execution_id.
 				lastResponseId = undefined;
 
 				let currentBlock: TextContent | ThinkingContent | null = null;
@@ -677,7 +771,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 				for await (const chunk of readSseJson<CloudCodeAssistResponseChunk>(
 					activeResponse.body!,
 					options?.signal,
-					event => options?.onSseEvent?.({ event: event.event, data: event.data, raw: event.raw.slice() }, model),
+					event => options?.onSseEvent?.({ event: event.event, data: event.data, raw: [...event.raw] }, model),
 				)) {
 					if (chunk.error) {
 						const detail = chunk.error.message || chunk.error.status || "unknown error";
@@ -777,6 +871,8 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 					if (candidate?.finishReason) {
 						sawFinishReason = true;
 						const mapped = mapStopReasonString(candidate.finishReason);
+						// Only let a trailing tool call upgrade benign finishes; error finishes
+						// (SAFETY, MALFORMED_FUNCTION_CALL, ...) must surface even with tool calls present.
 						if ((mapped === "stop" || mapped === "length") && output.content.some(b => b.type === "toolCall")) {
 							output.stopReason = "toolUse";
 						} else {
@@ -835,6 +931,9 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 					resetOutput();
 
 					const requestUrl = `${endpoint}/v1internal:streamGenerateContent?alt=sse`;
+					// Per attempt: arm a pre-response (TTFT) timer, cleared the instant
+					// headers arrive so it never aborts the actively streaming body —
+					// an absolute `AbortSignal.timeout` would (issue #2422).
 					const watchdog = armPreResponseTimeout(callerSignal, firstEventTimeoutMs);
 					let response: Response;
 					try {
@@ -875,6 +974,11 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 						);
 					}
 
+					// The URL this attempt POSTed to, not `response.url`: a custom
+					// `options.fetch` that answers with a constructed `Response`
+					// leaves that empty, and the empty-stream retry below then
+					// failed with a configuration error naming a URL the provider
+					// had in hand all along.
 					let currentResponse = response;
 
 					for (let emptyAttempt = 0; emptyAttempt <= MAX_EMPTY_STREAM_RETRIES; emptyAttempt++) {
@@ -936,6 +1040,12 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 						throw new AIError.RequestAbortError("Request was aborted");
 					}
 
+					// Same judgement as every other dialect, and for the same reason:
+					// a body that ends without a `finishReason` is a clean EOF, not a
+					// dropped transport, and rejecting all of them failed turns that
+					// had arrived whole. `stopReasonForTerminallessEof` owns it. A
+					// Cloud Code Assist function call arrives whole in one part with
+					// parsed `args`, so a missing name is the only partial shape.
 					if (!sawFinishReason) {
 						const toolBatchIsComplete = output.content.every(
 							block => block.type !== "toolCall" || block.name.length > 0,
@@ -950,12 +1060,16 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 						output.stopReason = stopReason;
 					}
 
+					// Succeeded! Break the endpoints loop.
 					if (
 						providerState &&
 						(options?.antigravityEndpointMode === "auto" || !options?.antigravityEndpointMode)
 					) {
 						providerState.lastGoodEndpoint = endpoint;
 					}
+					// Commit after a fully successful attempt (content + finish reason);
+					// used as the next request's last_execution_id. Overwrite even when
+					// undefined so a response without an id can't leave a stale value.
 					if (providerState) {
 						providerState.lastExecutionId = lastResponseId;
 					}
@@ -1001,3 +1115,282 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 
 	return stream;
 };
+
+const INT63_MASK = (1n << 63n) - 1n;
+const ANTIGRAVITY_RANDOM_BOUND = 9_000_000_000_000_000_000n;
+
+function formatSignedDecimalSessionId(value: bigint): string {
+	return `-${value.toString()}`;
+}
+
+function deriveSignedDecimalFromHash(text: string): string {
+	const digest = createHash("sha256").update(text).digest();
+	let value = 0n;
+	for (let index = 0; index < 8; index += 1) {
+		value = (value << 8n) | BigInt(digest[index] ?? 0);
+	}
+	return formatSignedDecimalSessionId(value & INT63_MASK);
+}
+
+function randomBoundedInt63(maxExclusive: bigint): bigint {
+	while (true) {
+		const bytes = randomBytes(8);
+		let value = 0n;
+		for (const byte of bytes) {
+			value = (value << 8n) | BigInt(byte);
+		}
+		value &= INT63_MASK;
+		if (value < maxExclusive) {
+			return value;
+		}
+	}
+}
+
+function randomSignedDecimalSessionId(): string {
+	return formatSignedDecimalSessionId(randomBoundedInt63(ANTIGRAVITY_RANDOM_BOUND));
+}
+
+function getFirstUserTextForAntigravitySession(context: Context): string | undefined {
+	for (const message of context.messages) {
+		if (message.role !== "user") {
+			continue;
+		}
+
+		if (typeof message.content === "string") {
+			return message.content;
+		}
+
+		if (Array.isArray(message.content)) {
+			const firstTextPart = message.content.find((item): item is TextContent => item.type === "text");
+			return firstTextPart?.text;
+		}
+
+		return undefined;
+	}
+
+	return undefined;
+}
+
+function deriveAntigravitySessionId(context: Context): string {
+	const text = getFirstUserTextForAntigravitySession(context);
+	if (text && text.trim().length > 0) {
+		return deriveSignedDecimalFromHash(text);
+	}
+
+	return randomSignedDecimalSessionId();
+}
+
+function normalizeAntigravityTools(
+	tools: CloudCodeAssistRequest["request"]["tools"],
+): CloudCodeAssistRequest["request"]["tools"] {
+	return tools?.map(tool => ({
+		...tool,
+		functionDeclarations: tool.functionDeclarations.map(declaration => {
+			if ("parameters" in declaration) {
+				return declaration;
+			}
+
+			const { parametersJsonSchema, ...rest } = declaration;
+			return {
+				...rest,
+				parameters: normalizeSchemaForCCA(parametersJsonSchema),
+			};
+		}),
+	}));
+}
+
+interface AntigravityRequestEnvelope {
+	sessionId: string;
+	requestId: string;
+	labels: Record<string, string>;
+}
+
+/**
+ * Build the Antigravity request envelope (sessionId, structured requestId,
+ * labels) advancing the per-conversation session state. Mirrors the real
+ * `antigravity/hub` client: `requestId` is `agent/<agentId>/<ts>/<trajectoryId>/<step>`
+ * and `labels.last_step_index` trails the requestId step by one. Without session
+ * state (direct callers/tests) it falls back to ephemeral ids.
+ */
+function buildAntigravityRequestEnvelope(
+	model: Model<"google-gemini-cli">,
+	context: Context,
+	wireModelId: string,
+	state: AntigravityProviderSessionState | undefined,
+): AntigravityRequestEnvelope {
+	if (state) {
+		state.agentId ??= randomUUID();
+		state.trajectoryId ??= randomUUID();
+		state.sessionId ??= randomSignedDecimalSessionId();
+		state.stepIndex = (state.stepIndex ?? 1) + 1;
+	}
+	const agentId = state?.agentId ?? randomUUID();
+	const trajectoryId = state?.trajectoryId ?? randomUUID();
+	const sessionId = state?.sessionId ?? deriveAntigravitySessionId(context);
+	const step = state?.stepIndex ?? 2;
+	const requestId = `agent/${agentId}/${Date.now()}/${trajectoryId}/${step}`;
+	const isClaude = isClaudeModel(model.id);
+	const profile = getAntigravityModelWireProfile(wireModelId);
+	const labels: Record<string, string> = {};
+	if (state?.lastExecutionId) labels.last_execution_id = state.lastExecutionId;
+	labels.last_step_index = String(step - 1);
+	if (profile?.modelEnum !== undefined) labels.model_enum = profile.modelEnum;
+	labels.trajectory_id = trajectoryId;
+	labels.used_claude = String(isClaude);
+	labels.used_claude_conservative = String(isClaude);
+	return { sessionId, requestId, labels };
+}
+
+export function buildRequest(
+	model: Model<"google-gemini-cli">,
+	context: Context,
+	projectId: string,
+	options: GoogleGeminiCliOptions = {},
+	isAntigravity = false,
+): CloudCodeAssistRequest {
+	const systemPrompts = normalizeSystemPrompts(context.systemPrompt);
+	const contents = convertMessages(model, context);
+	const generationConfig: CloudCodeAssistRequest["request"]["generationConfig"] = {};
+	if (options.temperature !== undefined) {
+		generationConfig.temperature = options.temperature;
+	}
+	if (options.maxTokens !== undefined) {
+		generationConfig.maxOutputTokens = options.maxTokens;
+	}
+	if (options.topP !== undefined) {
+		generationConfig.topP = options.topP;
+	}
+	if (options.topK !== undefined) {
+		generationConfig.topK = options.topK;
+	}
+	if (options.minP !== undefined) {
+		generationConfig.minP = options.minP;
+	}
+	if (options.presencePenalty !== undefined) {
+		generationConfig.presencePenalty = options.presencePenalty;
+	}
+	if (options.repetitionPenalty !== undefined) {
+		generationConfig.repetitionPenalty = options.repetitionPenalty;
+	}
+
+	// Thinking config
+	if (options.thinking?.enabled && model.reasoning) {
+		generationConfig.thinkingConfig = {
+			includeThoughts: !options.hideThinkingSummary,
+		};
+		// Gemini 3 models use thinkingLevel, older models use thinkingBudget
+		if (options.thinking.level !== undefined) {
+			// GoogleThinkingLevel mirrors the SDK's `ThinkingLevel` string enum values 1:1.
+			generationConfig.thinkingConfig.thinkingLevel = options.thinking.level as ThinkingLevel;
+		} else if (options.thinking.budgetTokens !== undefined) {
+			generationConfig.thinkingConfig.thinkingBudget = options.thinking.budgetTokens;
+		}
+	} else if (options.thinking?.suppress && model.reasoning) {
+		// Explicit off: omitting thinkingConfig re-applies the per-id baked
+		// server default (the model silently thinks and bills the tokens).
+		const suppress = options.thinking.suppress;
+		generationConfig.thinkingConfig = { includeThoughts: false };
+		if ("level" in suppress) {
+			// GoogleThinkingLevel mirrors the SDK's `ThinkingLevel` string enum values 1:1.
+			generationConfig.thinkingConfig.thinkingLevel = suppress.level as ThinkingLevel;
+		} else {
+			generationConfig.thinkingConfig.thinkingBudget = suppress.budget;
+		}
+	}
+
+	const request: CloudCodeAssistRequest["request"] = {
+		contents,
+	};
+
+	// System instruction is an object with parts, not a plain string. Antigravity
+	// tags it with role "user" to mirror the real client.
+	if (systemPrompts.length > 0) {
+		request.systemInstruction = {
+			...(isAntigravity ? { role: "user" } : {}),
+			parts: systemPrompts.map(text => ({ text })),
+		};
+	}
+
+	if (isAntigravity && shouldInjectAntigravitySystemInstruction(model.id)) {
+		const existingParts = request.systemInstruction?.parts ?? [];
+		request.systemInstruction = {
+			role: "user",
+			parts: [{ text: ANTIGRAVITY_SYSTEM_INSTRUCTION }, ...existingParts],
+		};
+	}
+
+	if (context.tools && context.tools.length > 0) {
+		const convertedTools = convertTools(context.tools, model);
+		request.tools = isAntigravity ? normalizeAntigravityTools(convertedTools) : convertedTools;
+		if (options.toolChoice) {
+			const choice = options.toolChoice;
+			if (typeof choice === "string") {
+				const mode = mapToolChoice(choice);
+				if (mode !== "AUTO") {
+					request.toolConfig = {
+						functionCallingConfig: { mode },
+					};
+				}
+			} else {
+				request.toolConfig = {
+					functionCallingConfig: {
+						mode: "ANY",
+						allowedFunctionNames: [...choice.allowedFunctionNames],
+					},
+				};
+			}
+		}
+		// Antigravity's default tool mode is VALIDATED (verified for Gemini and
+		// Claude); an explicit non-auto tool choice above wins.
+		if (isAntigravity && !request.toolConfig) {
+			request.toolConfig = {
+				functionCallingConfig: { mode: "VALIDATED" as FunctionCallingConfigMode },
+			};
+		}
+	}
+
+	// Claude on Antigravity always forces VALIDATED, even with no tools declared.
+	if (isAntigravity && isClaudeModel(model.id)) {
+		request.toolConfig = {
+			functionCallingConfig: {
+				mode: "VALIDATED" as FunctionCallingConfigMode,
+			},
+		};
+	}
+
+	const wireModelId = options.requestModelId ?? model.requestModelId ?? model.id;
+
+	if (isAntigravity) {
+		// The real client sends a fixed per-model output cap independent of the
+		// thinking budget; reassign so it keeps its slot ahead of thinkingConfig.
+		const profile = getAntigravityModelWireProfile(wireModelId);
+		if (profile) {
+			generationConfig.maxOutputTokens = profile.maxOutputTokens;
+		}
+		const state = getAntigravityProviderSessionState(options.providerSessionState);
+		const envelope = buildAntigravityRequestEnvelope(model, context, wireModelId, state);
+		request.labels = envelope.labels;
+		if (Object.keys(generationConfig).length > 0) {
+			request.generationConfig = generationConfig;
+		}
+		request.sessionId = envelope.sessionId;
+		return {
+			project: projectId,
+			requestId: envelope.requestId,
+			request,
+			model: wireModelId,
+			userAgent: "antigravity",
+			requestType: "agent",
+		};
+	}
+
+	if (Object.keys(generationConfig).length > 0) {
+		request.generationConfig = generationConfig;
+	}
+
+	return {
+		project: projectId,
+		model: wireModelId,
+		request,
+	};
+}

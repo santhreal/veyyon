@@ -1,3 +1,21 @@
+/**
+ * What machine is this? — the host facts the prompt's environment block reports.
+ *
+ * WHY THIS IS ITS OWN MODULE. All of it lived in `system-prompt.ts`, which is about
+ * ASSEMBLING A PROMPT, and none of this is: it spawns `lspci` and `wmic`, races them
+ * against a deadline, drains a pipe an exited child left behind, caches the answer on
+ * disk, and reads `/proc/cpuinfo`. That is a subsystem with its own failure modes,
+ * and burying it in a 1200-line file about something else is what let two of those
+ * failures be handled at different volumes without anyone noticing: an unreadable GPU
+ * cache warned while an unreadable `/proc/cpuinfo` went to `logger.debug`, the same
+ * fact reported two ways, forty lines apart.
+ *
+ * The prompt's only interest is the finished rows, which is exactly the surface here:
+ * {@link getCpuModel} and {@link getCachedGpu} for the two slow lookups the builder
+ * races, and {@link getEnvironmentInfo} to turn them into labelled rows.
+ * {@link selectGpuFromLspci} is exported for its own tests, which is what it was
+ * already doing from inside the prompt builder.
+ */
 import * as os from "node:os";
 import { errorMessage, firstNonEmpty, getGpuCachePath, isEnoent, logger } from "@veyyon/utils";
 
@@ -10,7 +28,18 @@ function parseWmicTable(output: string, header: string): string | null {
 	return filtered[0] ?? null;
 }
 
+/**
+ * How far inside the caller's budget the probe must finish.
+ *
+ * The invariant is that a probe which times out still has time to write its null
+ * cache, so the next launch does not probe again. That used to be expressed as
+ * `SYSTEM_PROMPT_PREP_TIMEOUT_MS - 500` with both halves in the prompt builder;
+ * the margin belongs to the probe and the budget belongs to the caller, so the
+ * budget is now a parameter and only the margin lives here. Neither value can
+ * drift out from under the other by being edited in the wrong file.
+ */
 const GPU_PROBE_MARGIN_MS = 500;
+/** Drop stdout from a probe descendant that inherited the pipe after the probe exited. */
 const GPU_PROBE_STDOUT_DRAIN_MS = 250;
 
 async function runGpuProbe(cmd: string[], budgetMs: number): Promise<string | null> {
@@ -21,6 +50,8 @@ async function runGpuProbe(cmd: string[], budgetMs: number): Promise<string | nu
 			stderr: "ignore",
 			stdin: "ignore",
 			timeout: Math.max(0, budgetMs - GPU_PROBE_MARGIN_MS),
+			// SIGKILL so a probe ignoring SIGTERM (PATH wrapper, wedged WMI) still
+			// dies at the deadline and lets getCachedGpu reach the null-cache write.
 			killSignal: "SIGKILL",
 		});
 		const stdoutReader = proc.stdout.getReader();
@@ -35,6 +66,9 @@ async function runGpuProbe(cmd: string[], budgetMs: number): Promise<string | nu
 			stdout += decoder.decode();
 		})();
 		const exitCode = await proc.exited;
+		// Even on exit 0, a probe wrapper can leave a descendant holding stdout open.
+		// Bound the EOF wait so getCachedGpu cannot outlive the probe in either path;
+		// keep whatever bytes the reader already captured before cancelling.
 		const drained = await Promise.race([
 			stdoutDone.then(() => "ok" as const).catch(() => "err" as const),
 			Bun.sleep(GPU_PROBE_STDOUT_DRAIN_MS).then(() => "timeout" as const),
@@ -45,6 +79,12 @@ async function runGpuProbe(cmd: string[], budgetMs: number): Promise<string | nu
 		}
 		return exitCode === 0 ? stdout : null;
 	} catch (error) {
+		// `null` means "no GPU information", and the prompt's environment section then simply omits the
+		// GPU -- which on a machine that HAS one is a configuration bug, not a fact (Law 8). Two failures
+		// reach here and they deserve different volumes: a missing probe binary is ordinary (no `lspci` in
+		// a slim container, no `wmic` on a trimmed Windows install), while anything else means the probe
+		// could not run for a reason the operator can fix, and staying quiet about it is how a workstation
+		// with an RTX 5090 ends up describing itself as having no GPU.
 		if (isEnoent(error)) {
 			logger.debug("GPU probe binary is not installed; the prompt will omit the GPU", {
 				cmd: cmd.join(" "),
@@ -59,6 +99,22 @@ async function runGpuProbe(cmd: string[], budgetMs: number): Promise<string | nu
 	}
 }
 
+/**
+ * Pick the best GPU device name from `lspci` default-format output, or null if
+ * none is present. Exported for unit testing.
+ *
+ * lspci lines are `<slot> <class>: <device>`, e.g.
+ * `01:00.0 VGA compatible controller: NVIDIA Corporation Device 2b85 (rev a1)`.
+ * The slot (`01:00.0`) contains colons but never a colon-SPACE, so the first
+ * `": "` is always the class/device separator; the device name is everything
+ * after it. Splitting on a bare `":"` (as an earlier version did) kept the slot
+ * tail and class text, so the prompt showed
+ * `00.0 VGA compatible controller: NVIDIA ...` instead of the device name.
+ *
+ * Among candidates, discrete GPUs (NVIDIA/AMD) outrank an unknown adapter,
+ * which outranks Intel integrated; BMC/server display adapters are skipped. The
+ * sort is stable, so ties keep lspci enumeration order.
+ */
 export function selectGpuFromLspci(output: string): string | null {
 	const gpus: Array<{ name: string; priority: number }> = [];
 	for (const line of output.split("\n")) {
@@ -66,7 +122,13 @@ export function selectGpuFromLspci(output: string): string | null {
 		const sep = line.indexOf(": ");
 		const name = sep >= 0 ? line.slice(sep + 2).trim() : line.trim();
 		const nameLower = name.toLowerCase();
+		// Skip BMC/server management adapters. Real lspci names read
+		// `Matrox Electronics Systems Ltd. MGA G200e`, so the model token is
+		// `MGA G200` with a space: match `mga\s*g200` (the earlier `matrox g200` /
+		// `mgag200` patterns never matched real output and let the BMC adapter
+		// through as the reported GPU).
 		if (/aspeed|mga\s*g200/i.test(name)) continue;
+		// Prioritize discrete GPUs
 		let priority = 0;
 		if (
 			nameLower.includes("nvidia") ||
@@ -117,10 +179,24 @@ function getTerminalName(): string | undefined {
 	return term ?? undefined;
 }
 
+/** Cached GPU probe result. */
 interface GpuCache {
 	gpu: string | null;
 }
 
+/**
+ * Read the GPU probe result cached on disk, or `null` to probe again.
+ *
+ * A damaged file (truncated by a crash mid-write, hand-edited, replaced with a
+ * JSON value that is not an object) must never take the prompt down and must
+ * never be trusted: the caller re-probes and overwrites it, so the cache repairs
+ * itself on the next launch. But it is reported, because a file that fails to
+ * parse on every launch means the probe runs on every launch, and the only
+ * symptom of that is a slower start that nobody attributes to a cache.
+ *
+ * The one silence kept on purpose is a missing file. That is every first run, and
+ * a warning that fires for everyone once is a warning people learn to skip.
+ */
 async function loadGpuCache(): Promise<GpuCache | null> {
 	const cachePath = getGpuCachePath();
 	let content: unknown;
@@ -137,6 +213,10 @@ async function loadGpuCache(): Promise<GpuCache | null> {
 	}
 	if (content && typeof content === "object" && "gpu" in content) {
 		const gpu = (content as { gpu: unknown }).gpu;
+		// `null` is a real cached answer ("probed, found nothing"), so it is a hit.
+		// Anything else that is not a string is damage: normalizing it to `null` and
+		// returning it would leave the bad file on disk forever, because the caller
+		// only rewrites the cache when it re-probes.
 		if (typeof gpu === "string" || gpu === null) return { gpu };
 		logger.warn("GPU cache has a non-string `gpu`; re-probing and rewriting it", {
 			path: cachePath,
@@ -148,6 +228,11 @@ async function loadGpuCache(): Promise<GpuCache | null> {
 	return null;
 }
 
+/**
+ * Persist the probe result. A failed write costs only speed (the probe reruns
+ * next launch), so it must not throw, but it is reported for the same reason the
+ * read failure is: an unwritable cache directory is otherwise invisible.
+ */
 async function saveGpuCache(info: GpuCache): Promise<void> {
 	const cachePath = getGpuCachePath();
 	try {
@@ -160,10 +245,31 @@ async function saveGpuCache(info: GpuCache): Promise<void> {
 	}
 }
 
+/**
+ * How this process answered the GPU question, once. A miss answers `undefined` for the whole
+ * process life even after the background probe lands, because the GPU name sits in the cached
+ * prompt prefix: a value that appeared mid-session would re-anchor that prefix for one line of
+ * hardware trivia, and the prefix is worth more than the line.
+ */
 let processGpu: { value: string | undefined } | undefined;
+/** The probe filling the cache for the NEXT launch, while it runs. */
 let gpuProbe: Promise<void> | undefined;
+/** The CPU line, read once. The hardware cannot change under a running process. */
 let processCpuModel: { value: string | undefined } | undefined;
 
+/**
+ * The GPU name from the on-disk cache, or nothing while the cache is cold.
+ *
+ * A cache miss does NOT wait for the probe. `lspci` and `nvidia-smi` cost 224-557ms on the machine
+ * this was measured on (see docs/internal/startup-budget.md), the lookup runs inside the system
+ * prompt build, and the system prompt build runs before the first frame — so install day paid half
+ * a second of blank terminal for a prompt line no frame displays. The probe now runs unwaited and
+ * writes the cache, so the second launch on a machine has the name and every launch after it too.
+ *
+ * `budgetMs` is the deadline for the probe itself, which is given less by
+ * {@link GPU_PROBE_MARGIN_MS} so a probe that times out still reaches the null-cache write and the
+ * next launch does not probe again.
+ */
 export async function getCachedGpu(budgetMs: number): Promise<string | undefined> {
 	if (processGpu) return processGpu.value;
 	const cached = await logger.time("getCachedGpu:loadGpuCache", loadGpuCache);
@@ -176,6 +282,7 @@ export async function getCachedGpu(budgetMs: number): Promise<string | undefined
 	return undefined;
 }
 
+/** Probe once, cache the answer, and never let either failure reach a caller that has moved on. */
 async function probeGpuInBackground(budgetMs: number): Promise<void> {
 	try {
 		const gpu = await getGpuModel(budgetMs);
@@ -187,14 +294,49 @@ async function probeGpuInBackground(budgetMs: number): Promise<void> {
 	}
 }
 
+/**
+ * Resolves when the background probe has finished writing the cache, or immediately when none is
+ * running. A caller that needs the answer ON DISK rather than in this prompt — a diagnostic, a
+ * scenario driving the real read-probe-write path — awaits this; the prompt build never does.
+ */
 export async function awaitGpuProbe(): Promise<void> {
 	await gpuProbe;
 }
 
+/** Forget this process's answer, so one test file can act as several launches. */
+export function __resetGpuStateForTests(): void {
+	processGpu = undefined;
+	gpuProbe = undefined;
+}
+
+/**
+ * Forget this process's CPU answer, the way `__resetGpuStateForTests` forgets the GPU one.
+ *
+ * The cache below is keyed on nothing, because the hardware cannot change under a running process.
+ * A test that fakes `process.platform` changes the answer anyway, and without this it reads whatever
+ * the first `buildSystemPrompt` in the bucket cached — so the darwin branch was never entered when
+ * an earlier file in the same process had already resolved the real host.
+ */
 export function __resetCpuStateForTests(): void {
 	processCpuModel = undefined;
 }
 
+/**
+ * The CPU line of the environment section, or nothing when it cannot be had.
+ *
+ * Answered from a process-level cache after the first call, the way the GPU
+ * lookup beside it already is. The prompt is rebuilt whenever the active tool
+ * set changes, and MCP tools land mid-startup, so this ran twice before the
+ * composer mounted and spent about 30ms of that window re-reading a file whose
+ * contents cannot change.
+ *
+ * A missing `/proc/cpuinfo` is not a failure: the file is Linux-only and absent in
+ * some containers, and the prompt simply omits the CPU line. Anything else means the
+ * file IS there and could not be read, which is the same fact `loadGpuCache` reports
+ * with `logger.warn` a few functions above — this one used `logger.debug`, a level
+ * nobody runs with, so the identical situation was loud for the GPU and effectively
+ * silent for the CPU. One volume for one class of failure.
+ */
 export async function getCpuModel(): Promise<string | undefined> {
 	if (processCpuModel) return processCpuModel.value;
 	if (process.platform !== "linux") {
@@ -217,12 +359,21 @@ export async function getCpuModel(): Promise<string | undefined> {
 	return processCpuModel.value;
 }
 
+/**
+ * Kernel identity for the workstation block. Prefers the uname build string
+ * from `os.version()`, but Bun on macOS 15+ (Darwin 24/25) returns the literal
+ * `"unknown"` when `uv_os_uname()`'s `version` field is empty — which surfaces
+ * `Kernel: unknown` in the system prompt and makes the model misidentify the
+ * host as Windows (#4141). Fall back to `<type> <release>` (uname -s + -r) so
+ * macOS is always tagged as `Darwin <release>` and Linux keeps its build info.
+ */
 function getKernelIdentity(): string {
 	const version = os.version()?.trim();
 	if (version && version.toLowerCase() !== "unknown") return version;
 	return `${os.type()} ${os.release()}`.trim();
 }
 
+/** The labelled host rows the prompt's environment block renders, empty values dropped. */
 export function getEnvironmentInfo(
 	cpuModel: string | undefined,
 	gpu: string | undefined,

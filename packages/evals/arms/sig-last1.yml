@@ -1,0 +1,65 @@
+# Keep the newest turn's Gemini thought signature; sentinel every older one.
+#
+# WHY THIS ARM EXISTS. Decomposing nine live baseline sessions by what actually
+# occupies the context gave this, over 6,729,784 characters of conversation body:
+#
+#   40.2%  toolCall thoughtSignature
+#   36.4%  tool results
+#   11.4%  toolCall arguments
+#   10.3%  thinking
+#    1.3%  assistant text
+#    0.4%  user text
+#
+# The biggest thing in the context is not the model's output, not the tool
+# results, and not the prompt. It is `thoughtSignature`, an opaque base64 blob
+# Gemini attaches to every function call: 1,295 of them, mean 2,239 characters,
+# p90 5,796, and one single signature of 71,636 characters, about 18k tokens
+# riding in every request for the rest of the session. `buildContents` re-sent
+# every historical one with no age bound.
+#
+# Google's own sentinel, `skip_thought_signature_validator`, is what the API
+# accepts for a call with no signature, and it is 33 characters. Substituting it
+# for everything older than the retention window is a 98.6% cut on 40.2% of the
+# body.
+#
+# WHAT IT PREDICTS. Signatures are 35.3% of prefix bytes, and prefix (input plus
+# cacheRead) is 88.3% of the bill, so this predicts about a 31% cost reduction.
+# Unlike argot that is not a property of the task set: it is a property of the
+# provider's wire format, so it should hold on any Gemini workload that calls
+# tools. If the measured effect lands far from 31%, the pricing model in
+# THOUGHT-SIGNATURES-ARE-40-PERCENT-OF-CONTEXT is wrong and needs correcting
+# before anything else is built on it.
+#
+# THAT 31% IS A GROSS FIGURE AND THE NET IS 30.5%. The simulator now produces it
+# rather than the paragraph above asserting it: 31.2% gross, less 0.7% handed
+# back as cache misses, over the twenty Gemini baseline sessions. The give-back
+# is small here for a reason worth knowing, because it does not generalise to
+# the rest of this family. A one-message window rewrites at the very end of the
+# conversation, where the bytes were not cached anyway; a deeper window rewrites
+# inside the cached region and pays for it, which is why sig-last8 nets 22.0%
+# against a 28.0% gross. Only 2% of turns here keep the previous prefix intact.
+#
+# Reproduce with:
+#
+#   bun prefix-composition.ts runs/<run-id>/jobs
+#
+# WHAT IT COSTS RELATIVE TO THE SIZE CAP, which is the comparison that decides
+# which arm ships. This nets 30.5% by eliding 99% of all signatures.
+# `sig-max4000` nets 22.8% by eliding 15% of them. Eight points of bill for
+# six times the reasoning discarded is a real trade and not an obvious one, so
+# both are run; if reward holds here, this is the cheaper arm and it wins on the
+# number that matters.
+#
+# WHERE IT COULD BREAK, which is the whole reason this is an arm and not a
+# default. The signature exists so the model can replay its own reasoning across
+# turns. Dropping the old ones may cost accuracy on tasks that depend on a long
+# chain of earlier decisions. Reward is the gate, not cost: a 31% saving that
+# loses reward is not a win. Read the paired sign test on reward first, and only
+# then the cost delta.
+#
+# Sweep partner: sig-last8 keeps eight turns. If reward holds at 1 the wider
+# window is unnecessary; if reward drops at 1 but holds at 8, 8 is the default.
+argot:
+  enabled: false
+context:
+  thoughtSignatureRetention: 1

@@ -22,7 +22,10 @@ export async function generateTaskLabel(
 ): Promise<string | null> {
 	const trimmedAssignment = assignment.trim();
 	if (!trimmedAssignment) return null;
-	// Online title generation must receive the raw assignment so its live transform runs before trim/title preprocessing. Keep the established
+	// Online title generation must receive the raw assignment so its live
+	// transform runs before trim/title preprocessing. Keep the established
+	// trimmed input for local-only tiny models, which never cross a provider
+	// boundary and must retain their existing behavior.
 	const text = settings.get("providers.tinyModel") === ONLINE_TINY_TITLE_MODEL_KEY ? assignment : trimmedAssignment;
 	try {
 		return await generateSessionTitle(

@@ -1,4 +1,7 @@
-/** Component for displaying user-initiated eval execution with streaming output. Shares the same kernel session as the agent's eval tool. */
+/**
+ * Component for displaying user-initiated eval execution with streaming output.
+ * Shares the same kernel session as the agent's eval tool.
+ */
 
 import { Container, type Loader, Text, type TUI } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
@@ -37,13 +40,10 @@ export class EvalExecutionComponent extends Container {
 		const prompt = theme.fg(colorKey, theme.bold(">>>"));
 		const continuation = theme.fg(colorKey, "    ");
 		const codeLines = highlightCode(this.code, this.#highlightLang());
-		let headerText = "";
-		for (let li = 0; li < codeLines.length; li++) {
-			const line = codeLines[li]!;
-			const styled = li === 0 ? `${prompt} ${line}` : `${continuation}${line}`;
-			headerText = headerText ? `${headerText}\n${styled}` : styled;
-		}
-		return new Text(headerText, 2, 0);
+		const headerLines = codeLines.map((line, index) =>
+			index === 0 ? `${prompt} ${line}` : `${continuation}${line}`,
+		);
+		return new Text(headerLines.join("\n"), 2, 0);
 	}
 
 	constructor(
@@ -63,7 +63,11 @@ export class EvalExecutionComponent extends Container {
 		this.#contentContainer.addChild(this.#loader);
 	}
 
-	/** Transcript finalization contract (see `FinalizableBlock`): the collapsed streaming preview rewrites its tail window every chunk, so the block must */
+	/**
+	 * Transcript finalization contract (see `FinalizableBlock`): the collapsed
+	 * streaming preview rewrites its tail window every chunk, so the block must
+	 * stay out of native scrollback until the cell completes.
+	 */
 	isTranscriptBlockFinalized(): boolean {
 		return this.#status !== "running";
 	}
@@ -80,16 +84,14 @@ export class EvalExecutionComponent extends Container {
 
 	appendOutput(chunk: string): void {
 		// Chunk is pre-sanitized by OutputSink.push() — no need to sanitize again.
-		const rawLines = chunk.split("\n");
-		const newLines: string[] = new Array(rawLines.length);
-		for (let li = 0; li < rawLines.length; li++) newLines[li] = clampExecutionDisplayLine(rawLines[li]!);
+		const newLines = chunk.split("\n").map(line => clampExecutionDisplayLine(line));
 		if (this.#outputLines.length > 0 && newLines.length > 0) {
 			this.#outputLines[this.#outputLines.length - 1] = clampExecutionDisplayLine(
 				`${this.#outputLines[this.#outputLines.length - 1]}${newLines[0]}`,
 			);
-			for (let li = 1; li < newLines.length; li++) this.#outputLines.push(newLines[li]!);
+			this.#outputLines.push(...newLines.slice(1));
 		} else {
-			for (let li = 0; li < newLines.length; li++) this.#outputLines.push(newLines[li]!);
+			this.#outputLines.push(...newLines);
 		}
 
 		// Same bound bash has always had. Without it a long-running cell grew its retained lines without limit,
@@ -127,18 +129,10 @@ export class EvalExecutionComponent extends Container {
 
 		if (availableLines.length > 0) {
 			if (this.#expanded) {
-				let displayText = "";
-				for (let li = 0; li < availableLines.length; li++) {
-					const styled = theme.fg("muted", availableLines[li]!);
-					displayText = displayText ? `${displayText}\n${styled}` : styled;
-				}
+				const displayText = availableLines.map(line => theme.fg("muted", line)).join("\n");
 				this.#contentContainer.addChild(new Text(`\n${displayText}`, 2, 0));
 			} else {
-				let styledOutput = "";
-				for (let li = 0; li < previewLogicalLines.length; li++) {
-					const styled = theme.fg("muted", previewLogicalLines[li]!);
-					styledOutput = styledOutput ? `${styledOutput}\n${styled}` : styled;
-				}
+				const styledOutput = previewLogicalLines.map(line => theme.fg("muted", line)).join("\n");
 				this.#contentContainer.addChild(createCollapsedPreview(`\n${styledOutput}`, EXECUTION_PREVIEW_LINES));
 			}
 		}
@@ -159,13 +153,7 @@ export class EvalExecutionComponent extends Container {
 
 	#setOutput(output: string): void {
 		const clean = sanitizeText(output);
-		if (!clean) {
-			this.#outputLines = [];
-		} else {
-			const raw = clean.split("\n");
-			this.#outputLines = new Array(raw.length);
-			for (let li = 0; li < raw.length; li++) this.#outputLines[li] = clampExecutionDisplayLine(raw[li]!);
-		}
+		this.#outputLines = clean ? clean.split("\n").map(line => clampExecutionDisplayLine(line)) : [];
 		// The authoritative output replaces whatever streaming kept, so nothing is missing any more.
 		this.#droppedLineCount = 0;
 	}

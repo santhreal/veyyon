@@ -46,8 +46,8 @@ describe("advisor", () => {
 						{
 							type: "toolCall",
 							id: "search-timeout",
-							name: "grep",
-							arguments: { pattern: "needle", path: "packages/coding-agent/src" },
+							name: "search",
+							arguments: { type: "text", input: "needle", path: "packages/coding-agent/src" },
 						},
 					],
 					timestamp: 1,
@@ -55,7 +55,7 @@ describe("advisor", () => {
 				{
 					role: "toolResult",
 					toolCallId: "search-timeout",
-					toolName: "grep",
+					toolName: "search",
 					content: [{ type: "text", text: "timed out after 30s" }],
 					isError: true,
 					timestamp: 2,
@@ -64,14 +64,14 @@ describe("advisor", () => {
 
 			const rendered = formatSessionHistoryMarkdown(messages);
 
-			expect(rendered).toContain("→ grep(needle @ packages/coding-agent/src) ⇒ error");
+			expect(rendered).toContain("→ search(text: needle @ packages/coding-agent/src) ⇒ error");
 			expect(rendered).not.toContain("paths[0]");
 			expect(advisorPrompts["advisor/system"].text).toContain(
 				"Arguments absent from the rendered transcript are UNKNOWN",
 			);
 			expect(advisorPrompts["advisor/system"].text).toContain("NEVER assert concrete values, array indexes");
 			expect(advisorPrompts["advisor/system"].text).toContain(
-				"NEVER claim `paths[0]`, array flattening, or malformed `paths`",
+				"NEVER invent a hidden `path`, flattened array, or malformed scope",
 			);
 		});
 	});
@@ -521,7 +521,7 @@ describe("advisor", () => {
 
 			const errorMessage = quarantineAdvisorUnsafeOutput(
 				message,
-				new Set(["advise", "read", "grep", "glob"]),
+				new Set(["advise", "read", "search"]),
 				"### Session update\n\nThe agent checked a networking design document.",
 			);
 			if (errorMessage === undefined) throw new Error("expected destructive advise-note quarantine");
@@ -601,8 +601,8 @@ describe("advisor", () => {
 
 			const errorMessage = quarantineAdvisorUnsafeOutput(
 				message,
-				new Set(["advise", "read", "grep", "glob"]),
-				"### Session update\n\nGrep found the networking document is internally consistent.",
+				new Set(["advise", "read", "search"]),
+				"### Session update\n\nSearch found the networking document is internally consistent.",
 			);
 			if (errorMessage === undefined) throw new Error("expected destructive-output quarantine");
 
@@ -1451,13 +1451,13 @@ describe("advisor", () => {
 				} as AgentMessage,
 				{
 					role: "assistant",
-					content: [{ type: "toolCall", id: "b", name: "grep", arguments: { pattern: "y" } }],
+					content: [{ type: "toolCall", id: "b", name: "search", arguments: { type: "text", input: "y" } }],
 					timestamp: 4,
 				} as unknown as AgentMessage,
 				{
 					role: "toolResult",
 					toolCallId: "b",
-					toolName: "grep",
+					toolName: "search",
 					content: [{ type: "text", text: "ok" }],
 					isError: false,
 					timestamp: 5,
@@ -2503,12 +2503,12 @@ describe("advisor", () => {
 	});
 
 	describe("advisor default tools", () => {
-		it("defaults to read/grep/glob, a subset of the full grantable tool pool", () => {
-			expect([...ADVISOR_DEFAULT_TOOL_NAMES]).toEqual(["read", "grep", "glob"]);
+		it("defaults to read and search, a subset of the full grantable tool pool", () => {
+			expect([...ADVISOR_DEFAULT_TOOL_NAMES]).toEqual(["read", "search"]);
 			// The advisor is a full agent now: every built tool is grantable (no hard
 			// read-only restriction), including mutating ones like edit/bash/write.
 			const builtin = new Set<string>(BUILTIN_TOOL_NAMES);
-			for (const name of ["read", "grep", "glob", "edit", "bash", "write"]) {
+			for (const name of ["read", "search", "edit", "bash", "write"]) {
 				expect(builtin.has(name)).toBe(true);
 			}
 			for (const name of ADVISOR_DEFAULT_TOOL_NAMES) {
@@ -2728,7 +2728,7 @@ describe("advisor", () => {
 			modelRegistry: {} as unknown as ModelRegistry,
 			settings: {} as unknown as Settings,
 			scopedModels: [],
-			availableToolNames: ["read", "grep", "glob", "lsp", "web_search"],
+			availableToolNames: ["read", "search", "lsp", "web_search"],
 		};
 		const callbacks = {
 			loadDoc: async () => ({ advisors: [] }),
@@ -2766,7 +2766,7 @@ describe("advisor", () => {
 			expect(text).toContain("Save & apply");
 			// Right preview reflects the highlighted (first) advisor.
 			expect(text).toContain("x-ai/grok-code-fast:high");
-			expect(text).toContain("read, grep, glob (default)");
+			expect(text).toContain("read, search (default)");
 		});
 
 		it("renders an explicit no-tools advisor distinctly from the omitted default", async () => {
@@ -2779,7 +2779,7 @@ describe("advisor", () => {
 
 			const text = strip(overlay.render(200));
 			expect(text.toLowerCase()).toContain("no tools");
-			expect(text).not.toContain("read, grep, glob (default)");
+			expect(text).not.toContain("read, search (default)");
 		});
 
 		it("moves the preview with keyboard selection and preserves an explicit tool set", async () => {

@@ -88,7 +88,7 @@ const OFF_THE_BOOT_PATH = [
 	"coding-agent/src/tools/index.ts",
 	"coding-agent/src/tools/read.ts",
 	"coding-agent/src/tools/bash.ts",
-	"coding-agent/src/tools/grep.ts",
+	"coding-agent/src/tools/search.ts",
 	"coding-agent/src/edit/index.ts",
 ] as const;
 

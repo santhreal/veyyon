@@ -1,5 +1,8 @@
+/**
+ * Hook runner - executes hooks and manages their lifecycle.
+ */
 import type { AgentMessage } from "@veyyon/agent-core";
-import type { Model } from "@veyyon/ai";
+import type { ImageContent, Model } from "@veyyon/ai";
 import { errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { SessionManager } from "../../session/session-manager";
@@ -32,10 +35,17 @@ import type {
 	ToolResultEventResult,
 } from "./types";
 
+/**
+ * Listener for hook errors.
+ */
 export type HookErrorListener = (error: HookError) => void;
 
+// Re-export execCommand for backward compatibility
 export { execCommand } from "../../exec/exec";
 
+/**
+ * HookRunner executes hooks and manages event emission.
+ */
 export class HookRunner {
 	#uiContext: HookUIContext;
 	#hasUI: boolean;
@@ -60,19 +70,36 @@ export class HookRunner {
 		this.#hasUI = false;
 	}
 
+	/**
+	 * Initialize HookRunner with all required context.
+	 * Modes call this once the agent session is fully set up.
+	 */
 	initialize(options: {
+		/** Function to get the current model */
 		getModel: () => Model | undefined;
+		/** Handler for hooks to send messages */
 		sendMessageHandler: SendMessageHandler;
+		/** Handler for hooks to append entries */
 		appendEntryHandler: AppendEntryHandler;
+		/** Handler for creating new sessions (for HookCommandContext) */
 		newSessionHandler?: NewSessionHandler;
+		/** Handler for branching sessions (for HookCommandContext) */
 		branchHandler?: BranchHandler;
+		/** Handler for navigating session tree (for HookCommandContext) */
 		navigateTreeHandler?: NavigateTreeHandler;
+		/** Function to check if agent is idle */
 		isIdle?: () => boolean;
+		/** Function to wait for agent to be idle */
 		waitForIdle?: () => Promise<void>;
+		/** Function to abort current operation (fire-and-forget) */
 		abort?: () => void;
+		/** Function to check if there are queued messages */
 		hasQueuedMessages?: () => boolean;
+		/** Live redaction-only transform for hook-owned provider requests */
 		obfuscateProviderText?: (text: string) => string;
+		/** UI context for interactive prompts */
 		uiContext?: HookUIContext;
+		/** Whether UI is available */
 		hasUI?: boolean;
 	}): void {
 		this.#getModel = options.getModel;
@@ -81,6 +108,7 @@ export class HookRunner {
 		this.#abortFn = options.abort ?? (() => {});
 		this.#hasQueuedMessagesFn = options.hasQueuedMessages ?? (() => false);
 		this.#obfuscateProviderTextFn = options.obfuscateProviderText ?? (text => text);
+		// Store session handlers for HookCommandContext
 		if (options.newSessionHandler) {
 			this.#newSessionHandler = options.newSessionHandler;
 		}
@@ -90,6 +118,7 @@ export class HookRunner {
 		if (options.navigateTreeHandler) {
 			this.#navigateTreeHandler = options.navigateTreeHandler;
 		}
+		// Set per-hook handlers for pi.sendMessage() and pi.appendEntry()
 		for (const hook of this.hooks) {
 			hook.setSendMessageHandler(options.sendMessageHandler);
 			hook.setAppendEntryHandler(options.appendEntryHandler);
@@ -98,29 +127,51 @@ export class HookRunner {
 		this.#hasUI = options.hasUI ?? false;
 	}
 
+	/**
+	 * Get the UI context (set by mode).
+	 */
 	getUIContext(): HookUIContext | null {
 		return this.#uiContext;
 	}
 
+	/**
+	 * Get whether UI is available.
+	 */
 	getHasUI(): boolean {
 		return this.#hasUI;
 	}
 
+	/**
+	 * Get the paths of all loaded hooks.
+	 */
 	getHookPaths(): string[] {
 		return this.hooks.map(h => h.path);
 	}
 
+	/**
+	 * Subscribe to hook errors.
+	 * @returns Unsubscribe function
+	 */
 	onError(listener: HookErrorListener): () => void {
 		this.#errorListeners.add(listener);
 		return () => this.#errorListeners.delete(listener);
 	}
 
+	/**
+	 * Emit an error to all listeners.
+	 */
+	/**
+	 * Emit an error to all error listeners.
+	 */
 	emitError(error: HookError): void {
 		for (const listener of this.#errorListeners) {
 			listener(error);
 		}
 	}
 
+	/**
+	 * Check if any hooks have handlers for the given event type.
+	 */
 	hasHandlers(eventType: string): boolean {
 		for (const hook of this.hooks) {
 			const handlers = hook.handlers.get(eventType);
@@ -131,6 +182,10 @@ export class HookRunner {
 		return false;
 	}
 
+	/**
+	 * Get a message renderer for the given customType.
+	 * Returns the first renderer found across all hooks, or undefined if none.
+	 */
 	getMessageRenderer(customType: string): HookMessageRenderer | undefined {
 		for (const hook of this.hooks) {
 			const renderer = hook.messageRenderers.get(customType);
@@ -141,6 +196,9 @@ export class HookRunner {
 		return undefined;
 	}
 
+	/**
+	 * Get all registered commands from all hooks.
+	 */
 	getRegisteredCommands(): RegisteredCommand[] {
 		const commands: RegisteredCommand[] = [];
 		for (const hook of this.hooks) {
@@ -151,6 +209,10 @@ export class HookRunner {
 		return commands;
 	}
 
+	/**
+	 * Get a registered command by name.
+	 * Returns the first command found across all hooks, or undefined if none.
+	 */
 	getCommand(name: string): RegisteredCommand | undefined {
 		for (const hook of this.hooks) {
 			const command = hook.commands.get(name);
@@ -161,6 +223,9 @@ export class HookRunner {
 		return undefined;
 	}
 
+	/**
+	 * Create the event context for handlers.
+	 */
 	#createContext(): HookContext {
 		return {
 			ui: this.#uiContext,
@@ -176,6 +241,10 @@ export class HookRunner {
 		};
 	}
 
+	/**
+	 * Create the command context for slash command handlers.
+	 * Extends HookContext with session control methods that are only safe in commands.
+	 */
 	createCommandContext(): HookCommandContext {
 		return {
 			...this.#createContext(),
@@ -186,6 +255,9 @@ export class HookRunner {
 		};
 	}
 
+	/**
+	 * Check if event type is a session "before_*" event that can be cancelled.
+	 */
 	#isSessionBeforeEvent(
 		type: string,
 	): type is "session_before_switch" | "session_before_branch" | "session_before_compact" | "session_before_tree" {
@@ -197,6 +269,10 @@ export class HookRunner {
 		);
 	}
 
+	/**
+	 * Emit an event to all hooks.
+	 * Returns the result from session before_* / tool_result events (if any handler returns one).
+	 */
 	async emit(
 		event: HookEvent,
 	): Promise<
@@ -218,13 +294,16 @@ export class HookRunner {
 				try {
 					const handlerResult = await handler(event, ctx);
 
+					// For session before_* events, capture the result (for cancellation)
 					if (this.#isSessionBeforeEvent(event.type) && handlerResult) {
 						result = handlerResult as SessionBeforeCompactResult | SessionBeforeTreeResult;
+						// If cancelled, stop processing further hooks
 						if (result.cancel) {
 							return result;
 						}
 					}
 
+					// For tool_result events, capture the result
 					if (event.type === "tool_result" && handlerResult) {
 						result = handlerResult as ToolResultEventResult;
 					}
@@ -245,6 +324,11 @@ export class HookRunner {
 		return result;
 	}
 
+	/**
+	 * Emit a tool_call event to all hooks.
+	 * No timeout - user prompts can take as long as needed.
+	 * Errors are thrown (not swallowed) so caller can block on failure.
+	 */
 	async emitToolCall(event: ToolCallEvent): Promise<ToolCallEventResult | undefined> {
 		const ctx = this.#createContext();
 		let result: ToolCallEventResult | undefined;
@@ -254,10 +338,12 @@ export class HookRunner {
 			if (!handlers || handlers.length === 0) continue;
 
 			for (const handler of handlers) {
+				// No timeout - let user take their time
 				const handlerResult = await handler(event, ctx);
 
 				if (handlerResult) {
 					result = handlerResult as ToolCallEventResult;
+					// If blocked, stop processing further hooks
 					if (result.block) {
 						return result;
 					}
@@ -268,6 +354,13 @@ export class HookRunner {
 		return result;
 	}
 
+	/**
+	 * Emit a context event to all hooks.
+	 * Handlers are chained - each gets the previous handler's output (if any).
+	 * Returns the final modified messages, or the original if no modifications.
+	 *
+	 * Note: Messages are already deep-copied by the caller (pi-ai preprocessor).
+	 */
 	async emitContext(messages: AgentMessage[]): Promise<AgentMessage[]> {
 		const ctx = this.#createContext();
 		let currentMessages = messages;
@@ -298,9 +391,13 @@ export class HookRunner {
 		return currentMessages;
 	}
 
+	/**
+	 * Emit before_agent_start event to all hooks.
+	 * Returns the first message to inject (if any handler returns one).
+	 */
 	async emitBeforeAgentStart(
 		prompt: string,
-		images?: import("@veyyon/ai").ImageContent[],
+		images?: ImageContent[],
 	): Promise<BeforeAgentStartEventResult | undefined> {
 		const ctx = this.#createContext();
 		let result: BeforeAgentStartEventResult | undefined;
@@ -314,6 +411,7 @@ export class HookRunner {
 					const event: BeforeAgentStartEvent = { type: "before_agent_start", prompt, images };
 					const handlerResult = await handler(event, ctx);
 
+					// Take the first message returned
 					if (handlerResult && (handlerResult as BeforeAgentStartEventResult).message && !result) {
 						result = handlerResult as BeforeAgentStartEventResult;
 					}

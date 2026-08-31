@@ -1,14 +1,27 @@
 #!/usr/bin/env bun
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { isRecord } from "@veyyon/utils";
-import type { CliContext } from "./cli-helpers";
+import { isRecord } from "@veyyon/utils/type-guards";
+
 import { dataDir as configuredDataDir, dbPath as configuredDbPath } from "./config";
 import { BankManager, ValueError } from "./core/banks";
 import { BeamMemory } from "./core/beam";
 import type { ImportStats, RecallResult } from "./core/beam/types";
 import { runDiagnostics } from "./diagnose";
 import { main as runMcpMain } from "./mcp-server";
+
+export interface CliIo {
+	write(data: string): void;
+}
+
+export interface CliContext {
+	readonly dataDir?: string;
+	readonly dbPath?: string;
+	readonly memory?: BeamMemory;
+	readonly createMemory?: () => BeamMemory;
+	readonly stdout?: CliIo;
+	readonly stderr?: CliIo;
+}
 
 export class CliError extends Error {
 	constructor(
@@ -22,15 +35,15 @@ export class CliError extends Error {
 
 type CommandHandler = (args: readonly string[], context?: CliContext) => number | Promise<number>;
 
-export function out(context: CliContext | undefined, text = ""): void {
+function out(context: CliContext | undefined, text = ""): void {
 	(context?.stdout ?? Bun.stdout).write(`${text}\n`);
 }
 
-export function err(context: CliContext | undefined, text = ""): void {
+function err(context: CliContext | undefined, text = ""): void {
 	(context?.stderr ?? Bun.stderr).write(`${text}\n`);
 }
 
-export function fail(message: string, exitCode = 2): never {
+function fail(message: string, exitCode = 2): never {
 	throw new CliError(`Error: ${message}`, exitCode);
 }
 
@@ -55,7 +68,7 @@ function resolveDataDir(context?: CliContext): string {
 	return context?.dataDir ?? configuredDataDir();
 }
 
-export function resolveDbPath(context?: CliContext): string {
+function resolveDbPath(context?: CliContext): string {
 	return context?.dbPath ?? (context?.dataDir ? join(context.dataDir, "mnemopi.db") : configuredDbPath());
 }
 

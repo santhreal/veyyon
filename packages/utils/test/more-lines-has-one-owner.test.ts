@@ -4,7 +4,7 @@
  * WHY THIS SUITE EXISTS. Nineteen surfaces across the coding agent fold long output
  * and then say how much they hid: every collapsed tool block, the read tool's
  * continuation notice, the edit preview, the LSP hover, the MCP and eval renderers,
- * the `ssh` output, the Agent Control Center's comms fold. Every one of them wrote
+ * the `ssh` output, the subagent dashboard's comms fold. Every one of them wrote
  * `${n} more lines` inline.
  *
  * So all nineteen were wrong on the commonest case there is. A block that hides

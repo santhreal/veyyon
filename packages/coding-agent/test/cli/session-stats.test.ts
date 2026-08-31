@@ -132,7 +132,7 @@ describe("computeSessionStats", () => {
 				resultBytes: 150,
 				argsHash: "h1",
 			}),
-			toolResult("grep", 1300, true, {
+			toolResult("search", 1300, true, {
 				level: "basic",
 				startedAt: 1200,
 				endedAt: 1300,
@@ -206,9 +206,9 @@ describe("computeSessionStats", () => {
 				},
 			],
 			toolLatency: [
-				// Slowest by total duration first: grep(100) > read(60) > write(0).
+				// Slowest by total duration first: search(100) > read(60) > write(0).
 				{
-					tool: "grep",
+					tool: "search",
 					calls: 1,
 					timed: 1,
 					totalDurationMs: 100,
@@ -242,9 +242,9 @@ describe("computeSessionStats", () => {
 				},
 			],
 			toolCost: [
-				// Highest result-token weight first: read(120) > grep(0) > write(0), ties by name.
+				// Highest result-token weight first: read(120) > search(0) > write(0), ties by name.
 				{ tool: "read", calls: 3, resultTokens: 120, resultBytes: 470 },
-				{ tool: "grep", calls: 1, resultTokens: 0, resultBytes: 0 },
+				{ tool: "search", calls: 1, resultTokens: 0, resultBytes: 0 },
 				{ tool: "write", calls: 1, resultTokens: 0, resultBytes: 0 },
 			],
 			repeatedCalls: [

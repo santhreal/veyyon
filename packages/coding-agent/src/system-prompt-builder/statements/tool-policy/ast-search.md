@@ -1,0 +1,1 @@
+- `{{toolRefs.search}}` with `type: "structure"` for structural discovery.

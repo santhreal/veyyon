@@ -1,0 +1,1 @@
+Output this exact token {{repetitions}} times, separated by single spaces, and write nothing else at all (no quotes, no explanation): {{token}}

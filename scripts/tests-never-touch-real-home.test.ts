@@ -671,6 +671,10 @@ const NOT_NEWLINE = /[^\n]/g;
  * still points at the real one. String and template literals are walked so that a `//`
  * inside a URL does not swallow the rest of the line.
  *
+ * `@veyyon/utils/module-reach` exports this name for a regex that blanks whole-line comments
+ * only. This one preserves offsets and skips a `//` inside a literal, which the reported line
+ * numbers below depend on.
+ *
  * The scan keeps one chunk per span rather than a per-character array. The state machine is
  * the same one, byte for byte in its output; what changed is that a 40 KB file now costs a
  * handful of slices instead of 40,000 single-character strings and a 40,000-element join.
@@ -1045,8 +1049,15 @@ describe("the allowlist", () => {
  * So there are two checks. The first observes the redirect from inside a real test process,
  * which is the only place the answer is honest. The second forbids the specific import that
  * broke it, across the whole preload graph, so the next module added to that graph cannot
- * reintroduce it.
+ * reintroduce it. A type-only import is not that import: the transpiler erases the whole
+ * declaration, so no namespace is loaded and nothing freezes.
  */
+
+/** True when `source` loads the `node:os` namespace at run time, which freezes it. */
+function freezesNodeOsNamespace(source: string): boolean {
+	return /^\s*import\s+(?!type\s)[^;]*from\s*["']node:os["']/m.test(withoutComments(source));
+}
+
 describe("the home redirect", () => {
 	it("has moved os.homedir() into a temp sandbox for this very process", () => {
 		const sandbox = TEMP_HOME;
@@ -1076,7 +1087,7 @@ describe("the home redirect", () => {
 			} catch {
 				return;
 			}
-			if (/^\s*import\s[^;]*from\s*["']node:os["']/m.test(withoutComments(source))) {
+			if (freezesNodeOsNamespace(source)) {
 				offenders.push(path.relative(REPO_ROOT, file));
 			}
 			for (const match of source.matchAll(/^\s*import\s[^;]*from\s*["'](\.[^"']+)["']/gm)) {
@@ -1088,6 +1099,13 @@ describe("the home redirect", () => {
 		// The walk has to have gone somewhere; an empty graph would pass vacuously.
 		expect(seen.size).toBeGreaterThan(3);
 		expect(offenders).toEqual([]);
+	});
+
+	it("reads a run-time import of node:os as a freeze and an erased one as harmless", () => {
+		expect(freezesNodeOsNamespace(`import * as os from "node:os";`)).toBe(true);
+		expect(freezesNodeOsNamespace(`import { homedir } from "node:os";`)).toBe(true);
+		expect(freezesNodeOsNamespace(`import type * as os from "node:os";`)).toBe(false);
+		expect(freezesNodeOsNamespace(`import type { CpuInfo } from "node:os";`)).toBe(false);
 	});
 });
 

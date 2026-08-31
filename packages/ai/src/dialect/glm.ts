@@ -10,8 +10,6 @@ import {
 	setToolArg,
 	type ToolArgShape,
 } from "./coercion";
-import type { OpenCall, State, TagMatch } from "./glm-helpers";
-import { BODY_TAGS, OUTSIDE_TAGS, OUTSIDE_TAGS_NO_THINK } from "./glm-helpers";
 import {
 	assistantTranscriptParts,
 	collectToolResultRun,
@@ -37,8 +35,48 @@ import {
 	THINK_OPEN,
 	TOOL_CALL_CLOSE,
 	TOOL_CALL_OPEN,
+	TOOL_RESPONSE_CLOSE,
 	TOOL_RESPONSE_OPEN,
 } from "./wire-tags";
+
+const OUTSIDE_TAGS = [
+	TOOL_CALL_OPEN,
+	ARG_KEY_OPEN,
+	ARG_KEY_CLOSE,
+	ARG_VALUE_OPEN,
+	ARG_VALUE_CLOSE,
+	TOOL_RESPONSE_OPEN,
+	TOOL_RESPONSE_CLOSE,
+	THINK_OPEN,
+	THINK_CLOSE,
+] as const;
+const OUTSIDE_TAGS_NO_THINK = [
+	TOOL_CALL_OPEN,
+	ARG_KEY_OPEN,
+	ARG_KEY_CLOSE,
+	ARG_VALUE_OPEN,
+	ARG_VALUE_CLOSE,
+	TOOL_RESPONSE_OPEN,
+	TOOL_RESPONSE_CLOSE,
+] as const;
+const BODY_TAGS = [ARG_KEY_OPEN, TOOL_CALL_CLOSE] as const;
+
+type State = "outside" | "thinking" | "name" | "body" | "key" | "afterkey" | "value";
+
+interface OpenCall {
+	id: string;
+	name: string;
+	stringArgs: ReadonlySet<string>;
+	arguments: Record<string, unknown>;
+	key: string | null;
+	valueRaw: string;
+	rawBlock: string;
+}
+
+interface TagMatch {
+	index: number;
+	tag: string;
+}
 
 class GLMInbandScanner implements InbandScanner {
 	#buffer = "";
@@ -365,9 +403,23 @@ function minFound(...values: readonly number[]): number {
 	return best;
 }
 
+/** Max whitespace tolerated between heal-signature tags before giving up. */
 const HEAL_WS_MAX = 32;
+/** Max key length considered plausible for an inlined `<arg_key>…</arg_key>` pair. */
 const HEAL_KEY_MAX = 128;
 
+/**
+ * Result of scanning a streaming `<arg_value>` body for a forgotten or
+ * mistyped `</arg_value>` closer.
+ *
+ * - `heal`: a repair signature starts inside the value; the value ends at
+ *   `valueEnd` and parsing resumes at `resumeAt` in "body" state.
+ *   `trimValue` marks boundaries inferred from separator formatting, whose
+ *   trailing whitespace belongs to the syntax, not the value.
+ * - `partial`: a signature may be forming at `start` but the buffer ends
+ *   before it can be confirmed; the caller must hold `start..` back from
+ *   streaming.
+ */
 type ValueHealScan =
 	| { kind: "none" }
 	| { kind: "partial"; start: number }
@@ -377,6 +429,19 @@ type HealFollow = { kind: "match"; resumeAt: number } | { kind: "partial" } | { 
 
 type TagPrefixMatch = "match" | "partial" | "none";
 
+/**
+ * Finds the earliest heal signature starting before `limit` (the legit
+ * `</arg_value>` close, or end of buffer when absent). Two signatures repair
+ * a value whose closer the model botched:
+ *
+ * - Wrong closer: `</arg_key>` followed by `<arg_key>`, `</tool_call>`, or
+ *   `</arg_value>` — the model closed the value with the wrong tag.
+ * - Missing closer: a complete `<arg_key>…</arg_key>` + `<arg_value>`
+ *   sequence — the model started the next pair without closing the value.
+ *
+ * Without repair, either mistake swallows every following pair into the
+ * current value until the next `</arg_value>` anywhere in the stream.
+ */
 function scanValueHeal(text: string, limit: number): ValueHealScan {
 	for (let at = text.indexOf("<"); at !== -1 && at < limit; at = text.indexOf("<", at + 1)) {
 		const scan = matchHealSignature(text, at);
@@ -416,6 +481,7 @@ function matchHealSignature(text: string, start: number): ValueHealScan {
 	return { kind: "heal", valueEnd: start, resumeAt: start, trimValue: true };
 }
 
+/** Matches the tag expected after a wrong `</arg_key>` closer. */
 function matchHealFollow(text: string, from: number): HealFollow {
 	const at = skipHealWhitespace(text, from);
 	if (at === -1) return { kind: "none" };
@@ -431,6 +497,7 @@ function matchHealFollow(text: string, from: number): HealFollow {
 	return { kind: "none" };
 }
 
+/** Skips whitespace from `from`; -1 when the run exceeds {@link HEAL_WS_MAX}. */
 function skipHealWhitespace(text: string, from: number): number {
 	let at = from;
 	while (at < text.length && " \n\t\r".includes(text[at]!)) {

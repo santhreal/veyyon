@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-How relevant are search/grep results?
+How relevant are workspace-search results?
 
-For every search/grep call we extract the list of distinct file paths the
-result mentioned (in order of first appearance), then look ahead at the
+For every canonical or historical workspace-search call we extract the list of
+distinct file paths the result mentioned (in order of first appearance), then look ahead at the
 session's subsequent tool calls for engagement:
 
   ENGAGED-READ        : the model `read` a file from the result list.
                         We record the deepest index reached (1-based).
-  NEXT-PAGE           : the model issued the same search/grep again with
+  NEXT-PAGE           : the model issued the same search again with
                         `skip` or `offset` > 0 (asked for more results).
-  REFINED             : the model issued a *different* search/grep before
+  REFINED             : the model issued a *different* search before
                         engaging with any result (probably narrowed query).
   ABANDONED           : neither — switched topic / used something else.
 
@@ -43,8 +43,9 @@ import numpy as np
 DB_PATH = Path.home() / ".veyyon" / "stats.db"
 OUT_DIR = Path(__file__).resolve().parent / "out"
 
-DEFAULT_SINCE = "2026-04-01"  # search/grep traffic before this is sparse
+DEFAULT_SINCE = "2026-04-01"  # workspace-search traffic before this is sparse
 LOOKAHEAD = 30  # max tool calls to scan after a search
+SEARCH_TOOL_NAMES = ("search", "grep", "glob", "find", "ast_grep")
 
 
 # --------------------------------------------------------------------------- #
@@ -115,22 +116,39 @@ def extract_paths(result_text: str | None) -> tuple[list[str], dict[str, int]]:
 # Tool-call helpers
 
 
-def search_signature(arg_obj: dict) -> tuple:
-    """Stable identity key for a search/grep call: (pattern, path-scope).
+def search_signature(tool: str, arg_obj: dict) -> tuple:
+    """Stable identity key for a search call: (type, input, path-scope).
 
-    `pattern` is the regex/text query. `path` may be a single string or
-    list. Skip / offset / limit are deliberately excluded — they're the
-    pagination axis we want to detect.
+    Canonical search uses `type` and `input`; historical rows are normalized
+    from their grep, glob, find, or ast_grep argument names. Skip / offset /
+    limit are deliberately excluded because they are the pagination axis we
+    want to detect.
     """
-    pattern = arg_obj.get("pattern")
-    path = arg_obj.get("path") or arg_obj.get("paths")
+    if tool == "search":
+        search_type = arg_obj.get("type")
+        search_input = arg_obj.get("input")
+        path = arg_obj.get("path")
+    elif tool == "grep":
+        search_type = "text"
+        search_input = arg_obj.get("pattern")
+        path = arg_obj.get("path") or arg_obj.get("paths")
+    elif tool == "ast_grep":
+        search_type = "structure"
+        search_input = arg_obj.get("pat") or arg_obj.get("pattern")
+        path = arg_obj.get("path")
+    else:
+        search_type = "files"
+        search_input = arg_obj.get("path") or arg_obj.get("pattern") or arg_obj.get("paths")
+        path = None
+    if isinstance(search_input, list):
+        search_input = tuple(sorted(str(value) for value in search_input))
     if isinstance(path, list):
-        path = tuple(sorted(str(p) for p in path))
+        path = tuple(sorted(str(value) for value in path))
     elif isinstance(path, str):
         path = (path,)
     else:
         path = ()
-    return (pattern, path)
+    return (search_type, search_input, path)
 
 
 def search_offset(arg_obj: dict) -> int:
@@ -194,14 +212,14 @@ def classify_sessions(conn: sqlite3.Connection, since_ms: int) -> list[dict]:
     for sess, calls in by_session.items():
         user_msg_seqs = user_seqs.get(sess, [])
         for idx, (seq, tool, arg_json, result_text) in enumerate(calls):
-            if tool not in ("search", "grep"):
+            if tool not in SEARCH_TOOL_NAMES:
                 continue
             try:
                 arg = json.loads(arg_json) if arg_json else {}
             except json.JSONDecodeError:
                 continue
-            sig = search_signature(arg)
-            if sig[0] is None:
+            sig = search_signature(tool, arg)
+            if sig[1] is None:
                 continue
             paths, match_counts = extract_paths(result_text)
             if not paths:
@@ -212,7 +230,8 @@ def classify_sessions(conn: sqlite3.Connection, since_ms: int) -> list[dict]:
             outcome["session"] = sess
             outcome["seq"] = seq
             outcome["tool"] = tool
-            outcome["pattern"] = sig[0]
+            outcome["search_type"] = sig[0]
+            outcome["pattern"] = sig[1]
             outcome["n_results"] = len(paths)
             outcome["matches_per_file"] = [match_counts.get(p, 0) for p in paths]
             records.append(outcome)
@@ -244,8 +263,8 @@ def walk_ahead(calls, idx, sig, paths, cutoff_seq) -> dict:
                 engaged_count += 1
             continue
 
-        if tool in ("search", "grep"):
-            other_sig = search_signature(arg)
+        if tool in SEARCH_TOOL_NAMES:
+            other_sig = search_signature(tool, arg)
             if other_sig == sig and search_offset(arg) > 0:
                 next_page = True
                 # Don't break — model may also read something afterward.

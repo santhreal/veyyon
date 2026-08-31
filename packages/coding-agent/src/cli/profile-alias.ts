@@ -1,6 +1,11 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+// Leaf subpaths, not the `@veyyon/utils` barrel: cli.ts statically imports this
+// module (for the profile-alias bootstrap), and the barrel re-exports ./env,
+// which eagerly parses the agent-directory .env at import time. Pulling that in
+// here would load .env before `setProfile` runs (see profile-cli.test.ts). Both
+// atomic-write.ts and file-lock.ts are env-free, so importing them eagerly is safe.
 import { atomicWriteFile } from "@veyyon/utils/atomic-write";
 import { normalizeProfileName } from "@veyyon/utils/dirs";
 import { withFileLock } from "@veyyon/utils/file-lock";
@@ -23,6 +28,9 @@ export interface ProfileAliasCommand {
 	powerShell: string;
 }
 
+// New alias blocks are written with "veyyon profile alias" markers; blocks
+// installed by pre-rebrand builds used "omp profile alias" markers and are
+// still found and upgraded in place on the next upsert.
 const DEFAULT_ALIAS_COMMAND: ProfileAliasCommand = {
 	display: "veyyon",
 	posix: "veyyon",
@@ -154,6 +162,14 @@ function validateAliasName(aliasName: string, shell: ProfileAliasShell): string 
 	return normalized;
 }
 
+// On Windows the launching shell is rarely exported through $SHELL, so when it
+// is missing we infer the PowerShell edition from the inherited environment.
+// PowerShell 7 (pwsh) always seeds PSModulePath with separator-delimited
+// ".../PowerShell/..." module directories (plus the Windows PowerShell ones for
+// back-compat), whereas Windows PowerShell 5.1 only ever lists
+// ".../WindowsPowerShell/...". The separator anchors keep "WindowsPowerShell"
+// from matching. POWERSHELL_DISTRIBUTION_CHANNEL is set only by some pwsh
+// distributions, so it stays a secondary hint rather than the primary signal.
 function detectWindowsPowerShell(env: NodeJS.ProcessEnv): ProfileAliasShell {
 	const modulePath = env.PSModulePath ?? env.PSMODULEPATH ?? env.psmodulepath ?? "";
 	if (/[\\/]PowerShell[\\/]/i.test(modulePath)) return "pwsh";
@@ -188,6 +204,8 @@ export function resolveProfileAliasCommandFromProcess(
 	if (!runtime || !script || !/\.[cm]?[jt]s$/.test(script)) return DEFAULT_ALIAS_COMMAND;
 
 	const scriptPath = path.resolve(cwd, script);
+	// Normalize to forward slashes for POSIX shell fields — bash/zsh/fish
+	// can't resolve backslash-separated paths, even on Windows (Git Bash, WSL).
 	const posixScriptPath = scriptPath.replace(/\\/g, "/");
 	const posixRuntime = runtime.replace(/\\/g, "/");
 	const posix = `${quoteForShell(posixRuntime)} ${quoteForShell(posixScriptPath)}`;
@@ -199,12 +217,21 @@ export function resolveProfileAliasCommandFromProcess(
 	};
 }
 
+/** Normalize backslashes to forward slashes for POSIX-shell paths.
+ *  path.posix.join only adds / separators — it preserves existing backslashes
+ *  in input segments like homeDir ("C:\Users\me"), producing mixed paths.
+ *  Windows UNC paths (\\server\share) become //server/share — path.posix.join
+ *  would collapse the leading // to /, so we restore it after joining. */
 function toPosix(p: string): string {
 	return p.replace(/\\/g, "/");
 }
 
+/** Like path.posix.join, but preserves leading // (UNC roots) which
+ *  path.posix.join collapses to a single /. */
 function posixJoinUnc(...segments: string[]): string {
 	const joined = path.posix.join(...segments);
+	// path.posix.join normalizes // at the start to /, breaking UNC roots.
+	// Restore it if any input segment started with // (a toPosix'd UNC path).
 	if (segments.some(s => s.startsWith("//") && !s.startsWith("///"))) {
 		return `/${joined}`;
 	}
@@ -217,6 +244,11 @@ function resolveShellConfigPath(
 	platform: NodeJS.Platform,
 	env: NodeJS.ProcessEnv,
 ): string {
+	// POSIX shells (bash/zsh/fish) always need forward-slash config paths,
+	// even on Windows. path.posix.join adds / separators but preserves existing
+	// backslashes in input segments, so we normalize each component with toPosix.
+	// PowerShell profiles use the platform-native path.join (backslashes on
+	// Windows, forward slashes elsewhere).
 	const posixHome = toPosix(homeDir);
 	switch (shell) {
 		case "zsh":
@@ -224,6 +256,9 @@ function resolveShellConfigPath(
 		case "bash":
 			return platform === "darwin" ? posixJoinUnc(posixHome, ".bash_profile") : posixJoinUnc(posixHome, ".bashrc");
 		case "fish": {
+			// fish sources conf.d from $XDG_CONFIG_HOME/fish (default ~/.config/fish);
+			// a hard-coded ~/.config would be silently ignored when the user relocates
+			// their XDG config root, leaving the alias unsourced after a restart.
 			const configHome = env.XDG_CONFIG_HOME ? toPosix(env.XDG_CONFIG_HOME) : posixJoinUnc(posixHome, ".config");
 			return posixJoinUnc(configHome, "fish", "conf.d", "veyyon-profiles.fish");
 		}
@@ -266,6 +301,7 @@ function renderAliasBlock(
 }
 
 function upsertBlock(content: string, aliasName: string, block: string): string {
+	// An existing managed block for this alias is upgraded in place.
 	const start = `# >>> veyyon profile alias: ${aliasName} >>>`;
 	const end = `# <<< veyyon profile alias: ${aliasName} <<<`;
 	const startIndex = content.indexOf(start);
@@ -315,6 +351,14 @@ export async function installProfileAlias(options: ProfileAliasInstallOptions): 
 	const configPath = resolveShellConfigPath(shell, homeDir, platform, env);
 	const { block, command } = renderAliasBlock(shell, aliasName, profile, options.command ?? DEFAULT_ALIAS_COMMAND);
 
+	// When the caller injects its own I/O (tests, virtual paths) it owns
+	// concurrency and durability, so we run the read-modify-write bare. The
+	// default path touches the user's real shell rc (~/.bashrc, ~/.zshrc, fish
+	// conf.d): serialize it under a cross-process lock so two concurrent
+	// `--alias` installs can't both read the same rc and drop one managed block,
+	// and write atomically (temp + fsync + rename) so a crash never tears the
+	// user's shell startup file. Shell rc files are conventionally group/world
+	// readable, so use 0o644 rather than the token-config default of 0o600.
 	const usingDefaultIO = options.readFile === undefined && options.writeFile === undefined;
 	const readFile = options.readFile ?? readProfileAliasConfigFile;
 	const writeFile = options.writeFile ?? ((filePath, content) => atomicWriteFile(filePath, content, { mode: 0o644 }));
@@ -325,6 +369,9 @@ export async function installProfileAlias(options: ProfileAliasInstallOptions): 
 	};
 
 	if (usingDefaultIO) {
+		// The lock directory lands beside configPath, so its parent (e.g. fish's
+		// conf.d) must exist before we acquire it — matching Bun.write's implicit
+		// parent creation on the old path.
 		await fs.mkdir(path.dirname(configPath), { recursive: true });
 		await withFileLock(configPath, applyBlock);
 	} else {

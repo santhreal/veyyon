@@ -48,6 +48,14 @@ export interface OpenAICompatibleModelRecord {
  * `{ models: [...] }`, `{ result: [...] }`, or direct arrays are also
  * accepted during extraction.
  */
+export interface OpenAICompatibleModelsEnvelope {
+	data?: unknown;
+	models?: unknown;
+	result?: unknown;
+	items?: unknown;
+	[key: string]: unknown;
+}
+
 /**
  * One `/models` record, as far as this reader insists on knowing it.
  *

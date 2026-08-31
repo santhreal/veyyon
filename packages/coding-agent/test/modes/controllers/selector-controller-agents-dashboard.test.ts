@@ -1,5 +1,5 @@
 /**
- * The ONE entry point to the Agent Control Center, and the one gate on it.
+ * The ONE entry point to the subagent dashboard, and the one gate on it.
  *
  * WHY ONE ENTRY POINT. `/agents`, `/cockpit` (alias `/hub`), the `app.agents.hub`
  * and `app.session.observe` keys, and the editor's `←←` gesture used to open
@@ -219,7 +219,7 @@ describe("The requireContent gate on the double-left gesture", () => {
 		const dashboard = h.shown();
 		if (!dashboard) throw new Error("the card was not mounted");
 		const body = dashboard.render(80).join("\n").replace(ANSI_PATTERN, "");
-		expect(body).toContain("Agent Control Center");
+		expect(body).toContain("Subagent Dashboard");
 		expect(body).toContain("Live (1)");
 		expect(body).toContain("Main");
 		dashboard.dispose();

@@ -3,44 +3,39 @@ import {
 	clamp,
 	Ellipsis,
 	HoverFade,
+	Markdown,
+	type MarkdownTheme,
 	matchesKey,
 	padding,
+	renderInlineMarkdown,
+	replaceTabs,
 	routeSgrMouseInput,
 	ScrollView,
 	type Tab,
 	TabBar,
+	Text,
+	type TUI,
 	truncateToWidth,
 	visibleWidth,
+	wrapTextWithAnsi,
 } from "@veyyon/tui";
-import { clampLow, formatCount, formatMoreLines } from "@veyyon/utils";
-import { withRecommendedSuffix } from "@veyyon/wire";
-import type { ExtensionAskDialogQuestion, ExtensionAskDialogResultItem } from "../../extensibility/extensions";
+import { clampLow, collapseWhitespace, formatCount, formatMoreLines, isRecord } from "@veyyon/utils";
+import { stripRecommendedSuffix, withRecommendedSuffix } from "@veyyon/wire";
+import type {
+	ExtensionAskDialogOption,
+	ExtensionAskDialogQuestion,
+	ExtensionAskDialogResultItem,
+	ExtensionAskDialogSubmitResult,
+} from "../../extensibility/extensions";
 import { ASK_OTHER_OPTION_LABEL } from "../../tools/ask-option-labels";
 import { getTabBarTheme } from "../shared";
+import { highlightCode } from "../theme/highlight";
 import { getMarkdownTheme } from "../theme/markdown-theme";
-import { setShimmerActivity } from "../theme/shimmer";
+import { activityColorToken, setShimmerActivity } from "../theme/shimmer";
 import { theme } from "../theme/theme-binding";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
-import {
-	assertRenderableAskQuestions,
-	boundPromptTitle,
-	CHROME_ROWS,
-	clearNoteIfRow,
-	clearNoteUnlessRow,
-	MIN_BODY_ROWS,
-	normalizedInlineInput,
-	noteForSubmittedAnswer,
-	PREVIEW_MIN_WIDTH,
-	questionTabLabel,
-	renderAnswerSummary,
-	renderPreviewContent,
-	renderQuestionTitle,
-	renderRowLabel,
-	SIDE_BY_SIDE_GAP_WIDTH,
-	SIDE_BY_SIDE_LIST_MIN_WIDTH,
-	SUBMIT_OPTION,
-} from "./ask-dialog-helpers";
 import { CountdownTimer } from "./countdown-timer";
+import { HOOK_EDITOR_TEXT_PAD_COLS } from "./hook-editor";
 import {
 	computeModalDims,
 	consumeModalChipHover,
@@ -48,28 +43,408 @@ import {
 	MODAL_SIZING_LARGE,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	minModalChromeRows,
 	pointerMotionEnabled,
 	renderModalShell,
 } from "./modal-shell";
-import { handleTabSwitchKey, hoverBandAt, SCROLL_LIST_THEME } from "./selector-helpers";
+import { handleTabSwitchKey, hoverBandAt } from "./selector-helpers";
 
-export { boundPromptTitle };
+const SUBMIT_OPTION = "Submit";
 
-import type {
-	AskDialogCallbacks,
-	AskDialogOptions,
-	QuestionRow,
-	QuestionState,
-	RenderedList,
-} from "./ask-dialog-helpers";
+/**
+ * Minimum rows kept for the question/submit body on a short terminal.
+ *
+ * Higher than the plan overlay's floor, and deliberately so: this body carries
+ * the question text and its options together, whereas the plan overlay's floor
+ * covers only a scroll region that has its prompt, slider, and options laid out
+ * beneath it. (The doc here used to say "plan-body rows", copied from that
+ * overlay, which made the two look like one number that disagreed with itself.)
+ */
+const MIN_BODY_ROWS = 5;
+/** Rows ModalShell reserves outside the body budget, so the body/list layout
+ *  decision (side-by-side preview vs stacked) is made against a realistic budget
+ *  without duplicating the whole layout pass. Taken from the shell rather than
+ *  restated: this was `3 + footerLines + vPad`, three unnamed rows that happened
+ *  to agree with the shell and would not have failed if the shell grew one. */
+const CHROME_ROWS = minModalChromeRows(MODAL_SIZING_LARGE);
+const PREVIEW_MIN_WIDTH = 40;
+const SIDE_BY_SIDE_LIST_MIN_WIDTH = 30;
+const SIDE_BY_SIDE_GAP_WIDTH = 3;
+const MAX_HEADER_CHIP_WIDTH = 16;
+/** Maximum number of title lines shown in the prompt editor overlay, so a
+ *  long or multi-line question cannot push the input row off-screen. Mirrors
+ *  the bounded-title pattern from the legacy ask path without its option-window
+ *  coupling. */
+const MAX_PROMPT_TITLE_ROWS = 3;
+/**
+ * Columns consumed by the chrome the bounded title is rendered inside.
+ *
+ * The title goes to `onPrompt`, which mounts a `HookEditorComponent` in the
+ * full-width editor container, so the only chrome around the title row is that
+ * component's own horizontal padding. Taken from there rather than restated,
+ * because the same value was independently hardcoded to 4 here and in
+ * `tools/ask.ts`, both described as border plus padding. `DynamicBorder`, the
+ * only border in that component, renders one full-width horizontal rule and
+ * consumes zero columns, so both copies wrapped the title two columns narrower
+ * than the space it had.
+ */
+const PROMPT_TITLE_CHROME_COLUMNS = HOOK_EDITOR_TEXT_PAD_COLS * 2;
+/** Maximum number of wrapped lines for an in-body question header, so a long
+ *  or multi-line question cannot push the option list off-screen. Mirrors the
+ *  row-cap pattern used by boundPromptTitle for the prompt editor overlay. */
+const MAX_HEADER_ROWS = 4;
+
+function promptTitleContentWidth(): number {
+	const cols = process.stdout.columns ?? 80;
+	return Math.max(1, cols - PROMPT_TITLE_CHROME_COLUMNS);
+}
+
+/** Bound a prompt editor title to a fixed row/width budget so long or
+ *  multi-line questions stay usable inside the small prompt overlay. */
+export function boundPromptTitle(prefix: string, question: string): string {
+	const width = promptTitleContentWidth();
+	const flat = normalizedInlineInput(`${prefix}${question}`);
+	const wrapped = wrapTextWithAnsi(flat, width);
+	if (wrapped.length <= MAX_PROMPT_TITLE_ROWS) return wrapped.join("\n");
+	const kept = wrapped.slice(0, MAX_PROMPT_TITLE_ROWS - 1);
+	const last = truncateToWidth(wrapped[MAX_PROMPT_TITLE_ROWS - 1] ?? "", width, Ellipsis.Unicode);
+	return [...kept, last].join("\n");
+}
+
+interface AskDialogCallbacks {
+	onSubmit(result: ExtensionAskDialogSubmitResult): void;
+	onCancel(): void;
+	onPrompt(title: string, prefill?: string): Promise<string | undefined>;
+}
+
+interface AskDialogOptions {
+	timeout?: number;
+	onTimeout?: () => void;
+	tui?: TUI;
+}
+
+interface QuestionState {
+	selectedOptions: Set<string>;
+	customInput: string | undefined;
+	note: string | undefined;
+	noteRowKey: string | undefined;
+	cursorIndex: number;
+	scrollOffset: number;
+	timedOut: boolean;
+}
+
+type QuestionRowKind = "option" | "other";
+
+interface QuestionRow {
+	kind: QuestionRowKind;
+	key: string;
+	label: string;
+	optionIndex: number | undefined;
+}
+
+interface RenderedList {
+	lines: string[];
+	scrollOffset: number;
+	indicator: string;
+	/** Question lists only: per-row start line within the unclipped list, and the
+	 *  total unclipped line count, so pointer rows map back to option rows. */
+	lineStarts?: number[];
+	lineCount?: number;
+}
+
+interface PreviewSegment {
+	kind: "markdown" | "code";
+	text: string;
+	language: string | undefined;
+}
+
+function questionTabLabel(question: ExtensionAskDialogQuestion, index: number): string {
+	const base = question.header?.trim() || question.id || `Q${index + 1}`;
+	return truncateToWidth(replaceTabs(base), MAX_HEADER_CHIP_WIDTH, Ellipsis.Unicode);
+}
+
+function renderQuestionTitle(question: ExtensionAskDialogQuestion, width: number): string[] {
+	const mdTheme = getMarkdownTheme();
+	// The agent is asking, so the question itself carries the living `ask` hue:
+	// the same theme token the `await` breath paints, sourced from ONE place so a
+	// rebrand owns it. This is the visible "your turn" — the prompt reads green.
+	const askToken = activityColorToken("ask");
+	const questionText = renderInlineMarkdown(replaceTabs(question.question), mdTheme, t => theme.fg(askToken, t));
+	const wrapped = wrapTextWithAnsi(questionText, Math.max(1, width));
+	if (wrapped.length <= MAX_HEADER_ROWS) return wrapped;
+	return [
+		...wrapped.slice(0, MAX_HEADER_ROWS - 1),
+		truncateToWidth(wrapped.slice(MAX_HEADER_ROWS - 1).join(" "), Math.max(1, width), Ellipsis.Unicode),
+	];
+}
+
+function splitPreviewSegments(preview: string): PreviewSegment[] {
+	const segments: PreviewSegment[] = [];
+	const markdownBuffer: string[] = [];
+	let fenceChar: string | undefined;
+	let fenceLength = 0;
+	let fenceLanguage: string | undefined;
+	let codeBuffer: string[] = [];
+
+	const flushMarkdown = (): void => {
+		if (markdownBuffer.length === 0) return;
+		segments.push({ kind: "markdown", text: markdownBuffer.join("\n"), language: undefined });
+		markdownBuffer.length = 0;
+	};
+	const flushCode = (): void => {
+		segments.push({ kind: "code", text: codeBuffer.join("\n"), language: fenceLanguage });
+		codeBuffer = [];
+		fenceChar = undefined;
+		fenceLength = 0;
+		fenceLanguage = undefined;
+	};
+
+	for (const line of replaceTabs(preview).split("\n")) {
+		const fenceMatch = /^(\s{0,3})(`{3,}|~{3,})(.*)$/.exec(line);
+		if (fenceChar !== undefined) {
+			if (fenceMatch) {
+				const marker = fenceMatch[2] ?? "";
+				const info = fenceMatch[3]?.trim() ?? "";
+				if (marker.startsWith(fenceChar) && marker.length >= fenceLength && info === "") {
+					flushCode();
+					continue;
+				}
+			}
+			codeBuffer.push(line);
+			continue;
+		}
+		if (fenceMatch) {
+			flushMarkdown();
+			const marker = fenceMatch[2] ?? "";
+			fenceChar = marker[0];
+			fenceLength = marker.length;
+			fenceLanguage = fenceMatch[3]?.trim().split(/\s+/, 1)[0] || undefined;
+			codeBuffer = [];
+			continue;
+		}
+		markdownBuffer.push(line);
+	}
+
+	if (fenceChar !== undefined) {
+		segments.push({ kind: "code", text: codeBuffer.join("\n"), language: fenceLanguage });
+	} else {
+		flushMarkdown();
+	}
+	return segments;
+}
+
+function renderPreviewContent(preview: string, width: number): string[] {
+	const out: string[] = [];
+	const mdTheme = getMarkdownTheme();
+	const accentStyle = { color: (text: string) => theme.fg("muted", text) };
+	for (const segment of splitPreviewSegments(preview)) {
+		if (segment.kind === "code") {
+			const highlighted = highlightCode(segment.text, segment.language);
+			const text = new Text(highlighted.join("\n"), 0, 0);
+			out.push(...text.render(Math.max(1, width)));
+			continue;
+		}
+		const markdown = new Markdown(segment.text, 0, 0, mdTheme, accentStyle);
+		out.push(...markdown.render(Math.max(1, width)));
+	}
+	return out;
+}
+
+function normalizedInlineInput(input: string): string {
+	return collapseWhitespace(replaceTabs(input));
+}
+
+function renderAnswerSummary(question: ExtensionAskDialogQuestion, state: QuestionState): string {
+	const selected = question.options.map(option => option.label).filter(label => state.selectedOptions.has(label));
+	if (question.multi) {
+		const answers = [...selected];
+		if (state.customInput !== undefined) answers.push(`Other: “${normalizedInlineInput(state.customInput)}”`);
+		return answers.length > 0 ? answers.join(", ") : theme.fg("warning", "unanswered");
+	}
+	if (state.customInput !== undefined) return `“${normalizedInlineInput(state.customInput)}”`;
+	if (selected.length === 0) return theme.fg("warning", "unanswered");
+	return selected[0] ?? theme.fg("warning", "unanswered");
+}
+
+function clearNote(state: QuestionState): void {
+	state.note = undefined;
+	state.noteRowKey = undefined;
+}
+
+function clearNoteIfRow(state: QuestionState, rowKey: string): void {
+	if (state.noteRowKey === rowKey) clearNote(state);
+}
+
+function clearNoteUnlessRow(state: QuestionState, rowKey: string): void {
+	if (state.noteRowKey !== undefined && state.noteRowKey !== rowKey) clearNote(state);
+}
+
+function noteForSubmittedAnswer(question: ExtensionAskDialogQuestion, state: QuestionState): string | undefined {
+	if (state.note === undefined || state.noteRowKey === undefined) return undefined;
+	if (state.noteRowKey === "other") return state.customInput !== undefined ? state.note : undefined;
+	const match = /^option:(\d+)$/.exec(state.noteRowKey);
+	const optionIndex = match?.[1] === undefined ? Number.NaN : Number.parseInt(match[1], 10);
+	const option = Number.isInteger(optionIndex) ? question.options[optionIndex] : undefined;
+	return option && state.selectedOptions.has(option.label) ? state.note : undefined;
+}
+
+function optionMarker(question: ExtensionAskDialogQuestion, checked: boolean): string {
+	if (question.multi) return checked ? theme.checkbox.checked : theme.checkbox.unchecked;
+	return checked ? theme.radio.selected : theme.radio.unselected;
+}
+
+function renderRowLabel(
+	rowItem: QuestionRow,
+	question: ExtensionAskDialogQuestion,
+	state: QuestionState,
+	selected: boolean,
+	mdTheme: MarkdownTheme,
+	width: number,
+): string[] {
+	const isOption = rowItem.kind === "option";
+	const isOther = rowItem.kind === "other";
+	const checked = isOption
+		? state.selectedOptions.has(stripRecommendedSuffix(rowItem.label))
+		: isOther && state.customInput !== undefined;
+	const color = selected ? "accent" : checked ? "toolOutput" : "text";
+	const marker = `${theme.fg(checked ? "success" : "dim", optionMarker(question, checked))} `;
+	const cursor = selected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
+	const label = renderInlineMarkdown(rowItem.label, mdTheme, t => theme.fg(color, t));
+	// "✎ note" marker (glyph + word), matching the plan-review annotation mark.
+	const noteMarker =
+		state.note && state.noteRowKey === rowItem.key
+			? `  ${theme.styledSymbol("tool.edit", "success")} ${theme.fg("success", "note")}`
+			: "";
+	const firstLine = `${cursor}${marker}${label}${noteMarker}`;
+	const lines = [truncateToWidth(firstLine, width, Ellipsis.Unicode)];
+	if (rowItem.kind === "option") {
+		const option = question.options[rowItem.optionIndex ?? -1];
+		if (option?.description?.trim()) {
+			const description = renderInlineMarkdown(option.description.trim(), mdTheme, t => theme.fg("muted", t));
+			const wrapped = wrapTextWithAnsi(description, Math.max(1, width - 6));
+			for (const line of wrapped.slice(0, 2)) {
+				lines.push(`      ${truncateToWidth(line, Math.max(1, width - 6), Ellipsis.Unicode)}`);
+			}
+		}
+	}
+	if (isOther && state.customInput !== undefined) {
+		const preview = collapseWhitespace(replaceTabs(state.customInput));
+		lines.push(theme.fg("muted", `      ${truncateToWidth(preview, Math.max(1, width - 6), Ellipsis.Unicode)}`));
+	}
+	return lines;
+}
+
+function describeAskValue(value: unknown): string {
+	if (value === undefined) return "missing";
+	if (typeof value === "string") return `the string ${JSON.stringify(value)}`;
+	if (typeof value === "object") return value === null ? "null" : Array.isArray(value) ? "an array" : "an object";
+	return `the ${typeof value} ${String(value)}`;
+}
+
+function isAskText(value: unknown): boolean {
+	return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * Refuse a question this dialog cannot render, naming the field and the question
+ * that carried it.
+ *
+ * The rendered fields are read with no fallback — `replaceTabs(question.question)`,
+ * `question.options.length` — because the declared type makes them mandatory. That
+ * holds for every in-tree caller and for nobody else: `ExtensionUI.askDialog` is a
+ * published extension API, and the collab and RPC paths hand over JSON that was
+ * decoded rather than type-checked. A question with no `question` field reached the
+ * header renderer and took the process down with `undefined is not an object
+ * (evaluating 'text.replaceAll')` — an uncaught exception thrown from inside a
+ * render pass, so there was no tool error and no notice, just a dead session and
+ * every live subagent with it.
+ *
+ * The precondition is therefore checked once, where the dialog is built, and a
+ * violation is an ordinary rejection: `#presentDialog` catches a throwing
+ * presenter, releases the modal surface, and the caller — a tool call, an
+ * extension command — is handed an error naming what to fix. Refusing beats
+ * substituting a placeholder, because a dialog reading "undefined" asks a question
+ * nobody wrote and records an answer to it.
+ */
+function assertRenderableAskQuestions(questions: readonly ExtensionAskDialogQuestion[]): void {
+	if (!Array.isArray(questions) || questions.length === 0) {
+		throw new Error("Ask dialog needs a non-empty array of questions.");
+	}
+	for (let index = 0; index < questions.length; index++) {
+		const raw: unknown = questions[index];
+		const at = `Ask dialog question ${index}`;
+		if (!isRecord(raw)) {
+			throw new Error(`${at} is ${describeAskValue(raw)}, not an object.`);
+		}
+		const question = raw as Partial<ExtensionAskDialogQuestion>;
+		if (!isAskText(question.id)) {
+			throw new Error(`${at} has no id (${describeAskValue(question.id)}); it must be a non-empty string.`);
+		}
+		const where = `${at} (${question.id})`;
+		if (!isAskText(question.question)) {
+			throw new Error(
+				`${where} has no question text (${describeAskValue(question.question)}); it must be a non-empty string.`,
+			);
+		}
+		if (question.header !== undefined && typeof question.header !== "string") {
+			throw new Error(`${where} has a header that is ${describeAskValue(question.header)}, not a string.`);
+		}
+		if (!Array.isArray(question.options)) {
+			throw new Error(`${where} has options that are ${describeAskValue(question.options)}, not an array.`);
+		}
+		for (let optionIndex = 0; optionIndex < question.options.length; optionIndex++) {
+			const option: unknown = question.options[optionIndex];
+			const optionAt = `${where} option ${optionIndex}`;
+			if (!isRecord(option)) {
+				throw new Error(`${optionAt} is ${describeAskValue(option)}, not an object.`);
+			}
+			const { label, description, preview } = option as Partial<ExtensionAskDialogOption>;
+			if (!isAskText(label)) {
+				throw new Error(`${optionAt} has no label (${describeAskValue(label)}); it must be a non-empty string.`);
+			}
+			if (description !== undefined && typeof description !== "string") {
+				throw new Error(`${optionAt} has a description that is ${describeAskValue(description)}, not a string.`);
+			}
+			if (preview !== undefined && typeof preview !== "string") {
+				throw new Error(`${optionAt} has a preview that is ${describeAskValue(preview)}, not a string.`);
+			}
+		}
+		if (question.multi !== undefined && typeof question.multi !== "boolean") {
+			throw new Error(`${where} has multi set to ${describeAskValue(question.multi)}, not a boolean.`);
+		}
+		if (question.recommended !== undefined && !Number.isFinite(question.recommended)) {
+			throw new Error(`${where} has recommended set to ${describeAskValue(question.recommended)}, not a number.`);
+		}
+		if (question.preselected !== undefined && !Array.isArray(question.preselected)) {
+			throw new Error(
+				`${where} has preselected set to ${describeAskValue(question.preselected)}, not an array of option labels.`,
+			);
+		}
+		for (const label of question.preselected ?? []) {
+			if (typeof label !== "string") {
+				throw new Error(`${where} has a preselected label that is ${describeAskValue(label)}, not a string.`);
+			}
+		}
+	}
+}
 
 export class AskDialogComponent implements Component {
 	#states: QuestionState[];
 	#activeTabIndex = 0;
 	#submitScrollOffset = 0;
+	/** Pointer-highlighted option row on the active question tab (null clears). */
 	#hoveredRowIndex: number | null = null;
+	/** Pointer-highlighted tab id (null clears). Tabs keep hover separate from the active tab: */
+	/** activating on hover would silently change which question is being answered. */
 	#hoveredTabId: string | null = null;
+	/**
+	 * The cross-fade between the row the pointer left and the row it arrived at,
+	 * once the card has a repaint to lend it ({@link setOnRequestRender}). Absent,
+	 * the band is switched on the frame the report lands, which is what every
+	 * other picker stopped doing.
+	 */
 	#hoverFade: HoverFade | undefined;
+	/** Last render's option-list geometry for pointer hit-testing. */
 	#listPointerMap: {
 		frameStart: number;
 		lineStarts: number[];
@@ -108,6 +483,9 @@ export class AskDialogComponent implements Component {
 				timedOut: false,
 			};
 		});
+		// The dialog appearing IS the agent yielding the turn: flip the living
+		// status to `ask` so any concurrent shimmer surface reads the green
+		// "your turn" breath. `dispose()` returns it to rest.
 		setShimmerActivity("ask");
 		if (options.timeout && options.timeout > 0) {
 			this.#countdown = new CountdownTimer(
@@ -129,14 +507,22 @@ export class AskDialogComponent implements Component {
 	dispose(): void {
 		this.#closed = true;
 		this.#countdown?.dispose();
+		// A dismissed card leaves nothing running on the shared clock, and forgets
+		// where the pointer was: the next dialog opens with no band under a pointer
+		// that has since moved.
 		this.#hoverFade?.dispose();
 		this.#hoverFade = undefined;
 		this.#hoveredRowIndex = null;
+		// The user answered (or it timed out): drop the `ask` breath back to rest.
+		// The next agent turn's `agent_start` flips it to `thinking`.
 		setShimmerActivity("idle");
 	}
 
 	setOnRequestRender(callback: () => void): void {
 		this.#onRequestRenderExternal = callback;
+		// The band fades only once the card has a repaint to lend it: the frames
+		// between two mouse reports have no input to hang off. Same ambient gate as
+		// the open unfold; without it the band is switched.
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade({ requestRender: callback, enabled: pointerMotionEnabled() });
 		if (this.#hoveredRowIndex !== null) this.#hoverFade.set(this.#hoveredRowIndex);
@@ -148,6 +534,8 @@ export class AskDialogComponent implements Component {
 			return;
 		}
 		if (this.#closed || this.#promptActive) return;
+		// Reset the inactivity countdown on any key that reaches past the
+		// closed/prompt guards, matching HookSelector/HookInput semantics.
 		this.#countdown?.reset();
 		if (matchesSelectCancel(keyData)) {
 			this.#finishCancel();
@@ -170,6 +558,9 @@ export class AskDialogComponent implements Component {
 		const dims = computeModalDims(width, termHeight, sizing);
 		const contentWidth = dims?.contentWidth ?? Math.max(1, width - 4);
 		const headerLines = this.#renderHeader(contentWidth);
+		// ModalShell's own chrome (top/close bar, footer divider, bottom border,
+		// vertical padding, footer band) reserves CHROME_ROWS outside the body;
+		// the header rows are part of the body we hand it, so subtract those too.
 		const bodyRows = Math.max(MIN_BODY_ROWS, (dims?.modalHeight ?? termHeight) - headerLines.length - CHROME_ROWS);
 		const bodyLines = this.#isSubmitTab()
 			? this.#renderSubmitBody(contentWidth, bodyRows)
@@ -180,12 +571,15 @@ export class AskDialogComponent implements Component {
 			sizing,
 			areaWidth: width,
 			areaHeight: termHeight,
-			body: headerLines.concat(bodyLines.lines),
+			body: [...headerLines, ...bodyLines.lines],
 			shortcuts: this.#buildShortcuts(bodyLines.indicator),
 			hoveredShortcutId: this.#hoveredShortcutId,
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
+		// Pointer map for the option list: frame row of the list's first rendered
+		// line plus the unclipped row starts from this render. Null on the submit
+		// tab, whose body is a scrollable summary with no selectable rows.
 		this.#listPointerMap =
 			bodyLines.lineStarts !== undefined && bodyLines.lineCount !== undefined
 				? {
@@ -198,6 +592,8 @@ export class AskDialogComponent implements Component {
 		return shell.lines;
 	}
 
+	/** Footer chips for the active tab (browse vs submit review), mirroring
+	 *  the old dynamic hint text as clickable/inert ModalShortcut entries. */
 	#buildShortcuts(indicator: string): ModalShortcut[] {
 		const chips: ModalShortcut[] = [];
 		if (this.#isSubmitTab()) {
@@ -264,6 +660,9 @@ export class AskDialogComponent implements Component {
 				this.#requestRender();
 				return true;
 			}
+			// The tab bar is the first header line inside the card, so its own line numbering starts at
+			// the body row. `tabAt` was already implemented and simply never called from here, which is
+			// what made the tab strip an unreachable affordance.
 			const geometry = this.#shellGeometry;
 			const tabBar = this.#tabBar;
 			const hoveredTab =
@@ -285,6 +684,7 @@ export class AskDialogComponent implements Component {
 			const local = map ? event.row - map.frameStart + map.scrollOffset : -1;
 			let rowIndex: number | null = null;
 			if (map && local >= 0 && local < map.lineCount) {
+				// Largest row start at or below the line: the row the pointer is over.
 				for (let index = map.lineStarts.length - 1; index >= 0; index--) {
 					if ((map.lineStarts[index] ?? 0) <= local) {
 						rowIndex = index;
@@ -293,6 +693,8 @@ export class AskDialogComponent implements Component {
 				}
 			}
 			if (event.motion) {
+				// The band paints on every option row, the cursor row included; the pointer never moves
+				// the cursor, so a mouse crossing the card cannot change which option Enter answers.
 				if (rowIndex !== this.#hoveredRowIndex) {
 					this.#hoveredRowIndex = rowIndex;
 					this.#hoverFade?.set(rowIndex);
@@ -301,6 +703,8 @@ export class AskDialogComponent implements Component {
 				return true;
 			}
 			if (event.leftClick && rowIndex !== null) {
+				// Click mirrors the cursor + Enter: an option answers (single) or
+				// toggles (multi), the Other row opens the inline input.
 				const active = this.#activeQuestionState();
 				if (active) {
 					active.state.cursorIndex = rowIndex;
@@ -319,6 +723,9 @@ export class AskDialogComponent implements Component {
 	}
 
 	#hasSubmitTab(): boolean {
+		// Multi questions confirm on the Submit tab (Enter toggles, never
+		// submits), so any multi question forces the tab even when there is
+		// only one question.
 		return this.questions.length > 1 || this.questions.some(question => question.multi);
 	}
 
@@ -342,17 +749,19 @@ export class AskDialogComponent implements Component {
 	#renderHeader(width: number): string[] {
 		const lines: string[] = [];
 		if (this.#hasSubmitTab()) {
-			const questionTabs: Tab[] = new Array<Tab>(this.questions.length + 1);
-			for (let qi = 0; qi < this.questions.length; qi++) {
-				questionTabs[qi] = { id: String(qi), label: questionTabLabel(this.questions[qi]!, qi) };
-			}
-			questionTabs[this.questions.length] = { id: "submit", label: "Submit" };
-			const tabs: Tab[] = questionTabs;
+			const tabs: Tab[] = [
+				...this.questions.map((question, index) => ({
+					id: String(index),
+					label: questionTabLabel(question, index),
+				})),
+				{ id: "submit", label: "Submit" },
+			];
 			this.#tabBar = new TabBar("", tabs, getTabBarTheme(), this.#activeTabIndex);
 			this.#tabBar.showHint = false;
+			// Hover is applied before the render that produces this frame's bytes, and re-applied every
+			// frame because the bar is rebuilt each render; a band set after render would never paint.
 			if (this.#hoveredTabId !== null) this.#tabBar.setHoverTab(this.#hoveredTabId);
-			const tbLines = this.#tabBar.render(width);
-			for (let li = 0; li < tbLines.length; li++) lines.push(tbLines[li]!);
+			lines.push(...this.#tabBar.render(width));
 		}
 		if (this.#isSubmitTab()) {
 			lines.push(theme.bold(theme.fg("accent", "Review answers")));
@@ -361,27 +770,18 @@ export class AskDialogComponent implements Component {
 		const questionIndex = this.#currentQuestionIndex();
 		const question = this.questions[questionIndex];
 		if (!question) return lines;
-		const rl = renderQuestionTitle(question, width);
-		for (let li = 0; li < rl.length; li++) lines.push(rl[li]!);
+		lines.push(...renderQuestionTitle(question, width));
 		return lines;
 	}
 
 	#questionRows(question: ExtensionAskDialogQuestion): QuestionRow[] {
-		const rows: QuestionRow[] = new Array<QuestionRow>(question.options.length + 1);
-		for (let oi = 0; oi < question.options.length; oi++) {
-			rows[oi] = {
-				kind: "option",
-				key: `option:${oi}`,
-				label: this.#optionLabel(question, question.options[oi]!.label, oi),
-				optionIndex: oi,
-			};
-		}
-		rows[question.options.length] = {
-			kind: "other",
-			key: "other",
-			label: ASK_OTHER_OPTION_LABEL,
-			optionIndex: undefined,
-		};
+		const rows: QuestionRow[] = question.options.map((option, index) => ({
+			kind: "option",
+			key: `option:${index}`,
+			label: this.#optionLabel(question, option.label, index),
+			optionIndex: index,
+		}));
+		rows.push({ kind: "other", key: "other", label: ASK_OTHER_OPTION_LABEL, optionIndex: undefined });
 		return rows;
 	}
 
@@ -429,6 +829,8 @@ export class AskDialogComponent implements Component {
 		const option = question.options[rowItem.optionIndex ?? -1];
 		if (!option) return;
 		if (question.multi) {
+			// Multi is toggle-only: Enter and Space both toggle, and the
+			// answer is confirmed from the Submit tab.
 			if (state.selectedOptions.has(option.label)) {
 				state.selectedOptions.delete(option.label);
 				clearNoteIfRow(state, rowItem.key);
@@ -451,6 +853,7 @@ export class AskDialogComponent implements Component {
 			return;
 		}
 		if (matchesSelectDown(keyData)) {
+			// Clamped against the rendered line count in #renderSubmitBody.
 			this.#submitScrollOffset += 1;
 			this.#requestRender();
 			return;
@@ -466,6 +869,10 @@ export class AskDialogComponent implements Component {
 		this.#hoveredRowIndex = null;
 	}
 
+	/**
+	 * Activate the tab a pointer clicked. Tab ids are the question index, or `submit` for the review
+	 * tab, which is the last index.
+	 */
 	#selectTabId(id: string): void {
 		const index = id === "submit" ? this.#submitTabIndex() : Number.parseInt(id, 10);
 		if (!Number.isInteger(index) || index < 0 || index > this.#submitTabIndex()) return;
@@ -500,6 +907,7 @@ export class AskDialogComponent implements Component {
 			);
 			if (input === undefined || this.#closed) return;
 			if (input.trim() === "") {
+				// Submitting an empty value unselects the custom answer.
 				state.customInput = undefined;
 				clearNoteIfRow(state, rowItem.key);
 				return;
@@ -547,6 +955,8 @@ export class AskDialogComponent implements Component {
 		const selectedRow = rowItems[state.cursorIndex];
 		const preview =
 			selectedRow?.kind === "option" ? question.options[selectedRow.optionIndex ?? -1]?.preview : undefined;
+		// The preview pane exists only while the highlighted option carries a
+		// preview; otherwise the list takes the full dialog width.
 		if (!preview?.trim()) return this.#renderQuestionList(question, state, rowItems, width, maxRows);
 		const sideBySide = width >= SIDE_BY_SIDE_LIST_MIN_WIDTH + PREVIEW_MIN_WIDTH + SIDE_BY_SIDE_GAP_WIDTH;
 		if (sideBySide) {
@@ -566,11 +976,16 @@ export class AskDialogComponent implements Component {
 		const previewLines = this.#renderPreviewPane(preview, width, clampLow(Math.floor(maxRows * 0.4), 3, 8));
 		const listRows = Math.max(3, maxRows - previewLines.length - 1);
 		const list = this.#renderQuestionList(question, state, rowItems, width, listRows);
-		const lines = list.lines.concat([theme.fg("borderAccent", "─".repeat(Math.max(1, width)))], previewLines);
+		const lines = [...list.lines, theme.fg("borderAccent", "─".repeat(Math.max(1, width))), ...previewLines];
 		while (lines.length < maxRows) lines.push("");
 		return { lines: lines.slice(0, maxRows), scrollOffset: list.scrollOffset, indicator: list.indicator };
 	}
 
+	/**
+	 * Band strength for an option row. Without a fade — a 256-color terminal, or
+	 * transitions off — the hovered row is at 1 and every other row at 0, which is
+	 * the switched band this replaced, byte for byte.
+	 */
 	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredRowIndex ? 1 : 0;
@@ -590,9 +1005,12 @@ export class AskDialogComponent implements Component {
 			lineStartByRow.push(allLines.length);
 			const rowItem = rowItems[index];
 			if (!rowItem) continue;
-			const rl = renderRowLabel(rowItem, question, state, index === state.cursorIndex, mdTheme, width);
-			for (let li = 0; li < rl.length; li++) allLines.push(rl[li]!);
+			allLines.push(...renderRowLabel(rowItem, question, state, index === state.cursorIndex, mdTheme, width));
 		}
+		// Pointer hover bands the whole row (label + description lines), the cursor row included: the
+		// row the keyboard already sits on has to answer the pointer, or it reads as a dead cell that
+		// cannot be picked. Two rows carry a band on the frames a pointer crosses between them -- the
+		// one it left is still on its way out -- so this walks every row rather than the hovered one.
 		for (let index = 0; index < rowItems.length; index++) {
 			const strength = this.#hoverStrength(index);
 			if (strength <= 0) continue;
@@ -607,10 +1025,10 @@ export class AskDialogComponent implements Component {
 		const scrollView = new ScrollView(allLines, {
 			height: rows,
 			scrollbar: "auto",
-			theme: SCROLL_LIST_THEME,
+			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
 		});
 		scrollView.setScrollOffset(state.scrollOffset);
-		const lines = scrollView.render(width).slice();
+		const lines = [...scrollView.render(width)];
 		while (lines.length < rows) lines.push("");
 		return {
 			lines: lines.slice(0, rows),
@@ -627,9 +1045,7 @@ export class AskDialogComponent implements Component {
 		if (content.length <= maxRows) return content;
 		const visibleCount = Math.max(1, maxRows - 1);
 		const hidden = content.length - visibleCount;
-		const lines = content.slice(0, visibleCount);
-		lines.push(theme.fg("dim", `… ${formatMoreLines(hidden)}`));
-		return lines;
+		return [...content.slice(0, visibleCount), theme.fg("dim", `… ${formatMoreLines(hidden)}`)];
 	}
 
 	#renderSubmitBody(width: number, rows: number): RenderedList {
@@ -660,10 +1076,11 @@ export class AskDialogComponent implements Component {
 		const scrollView = new ScrollView(allLines, {
 			height: rows,
 			scrollbar: "auto",
-			theme: SCROLL_LIST_THEME,
+			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
 		});
 		scrollView.setScrollOffset(this.#submitScrollOffset);
-		const lines = scrollView.render(width).slice();
+		const rendered = scrollView.render(width);
+		const lines = [...rendered];
 		while (lines.length < rows) lines.push("");
 		return {
 			lines: lines.slice(0, rows),
@@ -752,17 +1169,13 @@ export class AskDialogComponent implements Component {
 			const question = this.questions[index];
 			const state = this.#states[index];
 			if (!question || !state) continue;
-			const selectedOptions: string[] = [];
-			const allOptionLabels = new Array<string>(question.options.length);
-			for (let oi = 0; oi < question.options.length; oi++) {
-				const label = question.options[oi]!.label;
-				allOptionLabels[oi] = label;
-				if (state.selectedOptions.has(label)) selectedOptions.push(label);
-			}
+			const selectedOptions = question.options
+				.map(option => option.label)
+				.filter(label => state.selectedOptions.has(label));
 			results.push({
 				id: question.id,
 				question: question.question,
-				options: allOptionLabels,
+				options: question.options.map(option => option.label),
 				multi: question.multi ?? false,
 				selectedOptions,
 				customInput: state.customInput,

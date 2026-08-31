@@ -1,13 +1,89 @@
+import { resolveServerCompactionTransport } from "@veyyon/agent-core/compaction";
+import type { Api, Model } from "@veyyon/ai";
 import { Box, type Component, Markdown } from "@veyyon/tui";
 import { withIcon } from "../../modes/theme/icon-label";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
 import { actionKeyHint } from "../../modes/utils/key-hint";
 import type { BranchSummaryMessage, CompactionSummaryMessage, CustomMessage } from "../../session/messages";
-import type { SummaryDividerOptions } from "./compaction-summary-message-helpers";
 import { renderTranscriptDivider } from "./transcript-divider";
 
-export { compactionActionLabel, willCompactRemotely } from "./compaction-summary-message-helpers";
+/**
+ * Which engine will run the next compaction pass.
+ *
+ * `local` is the in-process summarizer: a real model call against the
+ * configured summarizer, billed and timed like any other turn. The rest are
+ * the provider's own compaction endpoint, one round trip with no summarizer
+ * behind it, and they differ by host: the official OpenAI route, the Azure
+ * deployment route, and the ChatGPT Codex route.
+ */
+export type CompactionKind = "local" | "openai-remote" | "azure-remote" | "codex-remote";
+
+/**
+ * Wire api → the remote compaction host that serves it. Exported so a test
+ * sweeps the set rather than restating it: a new server-compaction api that
+ * lands in `SERVER_COMPACTION_WIRE_APIS` and not here would resolve as
+ * `local` and mislabel every pass on that host.
+ */
+export const REMOTE_COMPACTION_KIND_BY_API: Record<string, CompactionKind> = {
+	"openai-responses": "openai-remote",
+	"azure-openai-responses": "azure-remote",
+	"openai-codex-responses": "codex-remote",
+};
+
+/**
+ * What each kind is called on screen. Exported so a test sweeps every member
+ * and goes red when a new kind arrives without a name of its own.
+ */
+export const COMPACTION_KIND_LABEL: Record<CompactionKind, string> = {
+	local: "local compaction",
+	"openai-remote": "openai remote compaction",
+	"azure-remote": "azure remote compaction",
+	"codex-remote": "codex remote compaction",
+};
+
+/**
+ * Which compaction engine the next pass will use. This mirrors the admission
+ * half of the engine's gate (`AgentSession.#tryServerSideCompaction`):
+ * `compaction.remote` on, plus a session model whose capability data resolves a
+ * server-compaction transport. It is restated here rather than imported because
+ * the gate's method is private and the two primitives it reads are public; the
+ * engine's async remainder (an api key must resolve) means a remote answer can
+ * still fall back to local, and the engine announces that fallback (missing key
+ * or failed pass) with a one-time warning notice.
+ *
+ * A model that resolves a transport but whose api is not in the wire table
+ * cannot happen — `resolveServerCompactionTransport` gates on the same set —
+ * so an unknown api reads as local rather than inventing a host name.
+ */
+export function resolveCompactionKind(session: {
+	settings: { get(key: "compaction.remote"): unknown };
+	model: Model<Api> | undefined;
+}): CompactionKind {
+	if (session.settings.get("compaction.remote") !== true) return "local";
+	const model = session.model;
+	if (!model || resolveServerCompactionTransport(model) === undefined) return "local";
+	return REMOTE_COMPACTION_KIND_BY_API[model.api] ?? "local";
+}
+
+/**
+ * The action part of the compaction loader label. Every pass names its engine,
+ * because the on-screen difference between a provider round trip and a local
+ * summarizer grinding through the history used to be nothing at all, and a
+ * silent minute reads as the wrong one either way. The caller passes the kind
+ * from {@link resolveCompactionKind} and adds its own reason prefix and cancel
+ * hint around this.
+ */
+export function compactionActionLabel(isAuto: boolean, kind: CompactionKind): string {
+	const base = isAuto ? "Auto-compacting context" : "Compacting context...";
+	return `${base} (${COMPACTION_KIND_LABEL[kind]})`;
+}
+
+interface SummaryDividerOptions {
+	label: () => string;
+	detailMarkdown: () => string;
+	hint: () => string;
+}
 
 class SummaryDividerComponent implements Component {
 	#expanded = false;
@@ -24,6 +100,7 @@ class SummaryDividerComponent implements Component {
 
 	invalidate(): void {
 		this.#cache = undefined;
+		// Theme may have changed — rebuild the detail box lazily on next render.
 		this.#detail = undefined;
 	}
 
@@ -53,11 +130,22 @@ class SummaryDividerComponent implements Component {
 	}
 }
 
+/**
+ * Compaction point in the transcript, rendered as the house divider:
+ *
+ *   ────────── 📷 compacted · ctrl+o
+ *
+ * The conversation above the divider stays visible (display transcript keeps
+ * full history); only the LLM context was reset. Expanding (ctrl+o) reveals
+ * the compaction summary below the divider.
+ */
 export class CompactionSummaryMessageComponent implements Component {
 	#divider: SummaryDividerComponent;
 
 	constructor(private readonly message: CompactionSummaryMessage) {
 		this.#divider = new SummaryDividerComponent({
+			// A dead-end warning stamped by the progress guard badges the bar;
+			// the full text lives in the ctrl+o detail block below.
 			label: () =>
 				this.message.warning
 					? withIcon(theme.icon.camera, `compacted ${theme.fg("warning", theme.icon.warning)}`)
@@ -81,6 +169,8 @@ export class CompactionSummaryMessageComponent implements Component {
 
 	#detailMarkdown(): string {
 		const tokenStr = this.message.tokensBefore.toLocaleString();
+		// A server-side compaction names the provider model that did it; a
+		// configured local compaction model did not apply to that compaction.
 		const attribution = this.message.compactedBy ? ` · server-side by ${this.message.compactedBy}` : "";
 		const warningNote = this.message.warning
 			? `\n\n${withIcon(theme.icon.warning, `**Warning:** ${this.message.warning}`)}`
@@ -89,6 +179,11 @@ export class CompactionSummaryMessageComponent implements Component {
 	}
 }
 
+/**
+ * A manual handoff is persisted as a custom message so the replacement session
+ * receives its developer context. Render it with the same divider affordance as
+ * `/compact` instead of the generic `[handoff]` box.
+ */
 export class HandoffSummaryMessageComponent implements Component {
 	#divider: SummaryDividerComponent;
 
@@ -128,6 +223,11 @@ export function createHandoffSummaryMessageComponent(
 	return component;
 }
 
+/**
+ * A branch summary collapses a side branch back into the main line. Render it
+ * with the same slim divider as `/compact` and handoff rather than a `[branch]`
+ * box, so every history-collapse point reads as one consistent banner.
+ */
 export class BranchSummaryMessageComponent implements Component {
 	#divider: SummaryDividerComponent;
 
@@ -156,8 +256,7 @@ function getCustomMessageText(message: CustomMessage<unknown>): string {
 	if (typeof message.content === "string") return message.content;
 	let firstText: string | undefined;
 	let parts: string[] | undefined;
-	for (let ci = 0; ci < message.content.length; ci++) {
-		const content = message.content[ci]!;
+	for (const content of message.content) {
 		if (content.type !== "text") continue;
 		if (firstText === undefined) {
 			firstText = content.text;

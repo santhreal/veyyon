@@ -1,4 +1,18 @@
-/** Cursor Provider Loads configuration from Cursor's config directories. */
+/**
+ * Cursor Provider
+ *
+ * Loads configuration from Cursor's config directories.
+ * Priority: 50 (tool-specific provider)
+ *
+ * Sources:
+ * - User: ~/.cursor
+ * - Project: .cursor/ (cwd only)
+ *
+ * Capabilities:
+ * - mcps: From mcp.json with mcpServers key
+ * - rules: From rules/*.mdc files with MDC frontmatter (description, globs, alwaysApply)
+ * - settings: From settings.json if present
+ */
 
 import { tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "../capability";
@@ -13,6 +27,10 @@ import { buildRuleFromMarkdown, createSourceMeta, getUserPath, loadFilesFromDir 
 const PROVIDER_ID = "cursor";
 const DISPLAY_NAME = "Cursor";
 const PRIORITY = 50;
+
+// =============================================================================
+// MCP Servers
+// =============================================================================
 
 function parseMCPServers(content: string, path: string): LoadResult<MCPServer> {
 	const items: MCPServer[] = [];
@@ -53,6 +71,10 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	return parseMCPServers(userContent, userPath);
 }
 
+// =============================================================================
+// Rules
+// =============================================================================
+
 async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	const userRulesPath = getUserPath(ctx, "cursor", "rules");
 	if (!userRulesPath) return { items: [], warnings: [] };
@@ -66,6 +88,10 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 function transformMDCRule(name: string, content: string, path: string, source: SourceMeta): Rule {
 	return buildRuleFromMarkdown(name, content, path, source, { stripNamePattern: /\.(mdc|md)$/ });
 }
+
+// =============================================================================
+// Provider Registration
+// =============================================================================
 
 registerProvider(mcpCapability.id, {
 	id: PROVIDER_ID,

@@ -25,8 +25,8 @@
  *
  * WHAT IT DOES NOT CATCH. Nothing here says a description still TEACHES. Bytes are not
  * comprehension: a prune that deletes the selector grammar passes this gate and breaks the
- * product. The benches are what answer that (`packages/typescript-edit-benchmark` for the
- * edit/read/grep surface, `packages/deepswe-bench` end to end), and they are the required
+ * product. The benches are what answer that (the TypeScript-edit suite for the
+ * edit/read/search surface, the DeepSWE suite end to end), and they are the required
  * companion to any cut made here. This gate also says nothing about JSON schema bytes, which
  * are structural (field names, enum literals) and not prose to be shortened.
  */
@@ -52,7 +52,10 @@ import { BASE_SETTINGS, HOST_DEPENDENT_TOOL_NAMES } from "./tool-loading-differe
  * Recorded, not derived: every row is a number someone chose to pay. Lower a row when you prune
  * that tool; the gate tells you when a row has gone slack. `examples` are counted with the
  * description because they are appended to it on the wire — a tool that moves prose into an
- * example array has not saved anything.
+ * example array has not saved anything. `search` is one description covering files, text and
+ * structure, so its row carries what the three retired workspace-search tools each spent, and
+ * `read` carries the semicolon-delimited resource list alongside the text-search cross-reference
+ * this branch renamed.
  */
 const TOOL_PROMPT_CEILINGS: Record<string, number> = {
 	edit: 8030,
@@ -64,12 +67,10 @@ const TOOL_PROMPT_CEILINGS: Record<string, number> = {
 	launch: 3561,
 	task: 2720,
 	debug: 2350,
-	ast_grep: 2140,
+	search: 3400,
 	ast_edit: 2120,
 	job: 1700,
 	set_cwd: 1690,
-	glob: 1600,
-	grep: 900,
 	write: 700,
 	goal: 700,
 	resolve: 480,

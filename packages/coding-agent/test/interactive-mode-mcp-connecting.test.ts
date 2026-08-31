@@ -83,7 +83,7 @@ describe("InteractiveMode MCP connection status", () => {
 		mode = new InteractiveMode(session, "test", () => {}, [], undefined, eventBus);
 		// This contract is the banner wiring, not git branch watching; a real
 		// fs.watch in a parallel Bun worker can trip an unrelated-worker SIGTRAP.
-		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
+		vi.spyOn(mode.statusLine, "watchGitState").mockImplementation(() => {});
 	});
 
 	afterEach(async () => {

@@ -1,3 +1,15 @@
+/**
+ * Frameless, reusable model browser: a fuzzy search row, a windowed model
+ * list with role chips and metadata columns, and a selection detail block.
+ *
+ * Hosts own the surrounding chrome and the data scope — the fullscreen
+ * /models hub ({@link ./model-hub}) feeds it scope-filtered items plus role
+ * state, while the advisor config overlay embeds it as a plain "pick one
+ * model" list.
+ */
+import { ThinkingLevel } from "@veyyon/agent-core";
+import type { Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
 import { getModelPricing, modelsAreEqual } from "@veyyon/catalog/models";
 import {
 	type Component,
@@ -7,17 +19,19 @@ import {
 	type HoverFadeOptions,
 	Input,
 	matchesKey,
-	padding,
 	ScrollView,
 	type SgrMouseEvent,
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
 import { clampLow, formatNumber } from "@veyyon/utils";
-import { getRoleInfo, MODEL_ROLE_IDS } from "../../config/model-roles";
+import { resolveEffort, withLegacyDefaultEffort } from "../../config/effort-resolver";
+import { getModelMatchPreferences, resolveModelRoleValue } from "../../config/model-resolver";
+import { DEFAULT_MODEL_SLOT, getKnownRoleIds, getRoleInfo, MODEL_ROLE_IDS } from "../../config/model-roles";
 import type { Settings } from "../../config/settings";
 import type { ModelPerfStats } from "../../session/agent-storage";
-import { theme } from "../theme/theme";
+import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../../thinking";
+import { type ThemeColor, theme } from "../theme/theme";
 import {
 	matchesSelectCancel,
 	matchesSelectDown,
@@ -25,34 +39,365 @@ import {
 	matchesSelectPageUp,
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
-import type { ModelBrowserItem, ModelBrowserOptions, PerfMode, RoleAssignments } from "./model-browser-helpers";
+import { hoverBandAt } from "./selector-helpers";
 
-import {
-	DETAIL_ROWS,
-	formatContext,
-	formatCostPair,
-	formatRoleChip,
-	formatTps,
-	formatTtft,
-	LIST_ROW_START,
-	PERF_FULL_MIN_WIDTH,
-	PERF_TPS_MIN_WIDTH,
-	padLeftVisible,
-	sortModelItems,
-	virtualRowModel,
-} from "./model-browser-helpers";
-import { hoverBandAt, SCROLL_LIST_THEME } from "./selector-helpers";
+/** One selectable row. `selector` is a canonical model key or host-specific virtual key. */
+export interface ModelBrowserItem {
+	provider: string;
+	id: string;
+	model: Model;
+	selector: string;
+	/** Optional foreground color for the row label. */
+	labelColor?: ThemeColor;
+	/** Optional right-of-name badge (e.g. auth status). */
+	badge?: string;
+	/** Color for {@link badge}. */
+	badgeColor?: ThemeColor;
+	/**
+	 * When set, the row renders as a pinned ACTION row (this text, no provider
+	 * prefix, no metadata columns) instead of a model row. Used for virtual
+	 * rows like the clear-to-inherit entry; activation is the host's business.
+	 */
+	virtualLabel?: string;
+	/** Explanation shown in the detail block while a virtual row is selected. */
+	virtualDetail?: string;
+}
 
-export {
-	buildBrowserItems,
-	buildInheritRow,
-	INHERIT_ROW_SELECTOR,
-	resolveRoleAssignments,
-	thinkingLevelGlyph,
-} from "./model-browser-helpers";
-export type { ModelBrowserItem, RoleAssignments };
-export { sortModelItems };
+/** Resolved role assignment as displayed by the browser and the hub. */
+export interface RoleAssignment {
+	model: Model;
+	thinkingLevel: ConfiguredThinkingLevel;
+}
 
+/** Map of role id to its resolved assignment (absent roles are unassigned). */
+export type RoleAssignments = Record<string, RoleAssignment | undefined>;
+
+/**
+ * Resolve every known role that the operator has CONFIGURED to its display
+ * assignment, against `allModels`. Shared by the /models hub and the alt+p
+ * session picker.
+ *
+ * An unset role gets no assignment. It used to get an "auto-selected" one, shown
+ * as a hollow chip, by expanding `@role` through a built-in `priority.json`
+ * chain — so the hub advertised a model for a role the operator never assigned,
+ * and different roles pointed at different models on a stock install. Unset now
+ * means inherit the main model, and the roles view says exactly that, so there
+ * is no second model to display.
+ */
+export function resolveRoleAssignments(settings: Settings, allModels: ReadonlyArray<Model>): RoleAssignments {
+	const resolvedThinkingLevel = (
+		role: string,
+		model: Model,
+		resolved: { explicitThinkingLevel: boolean; thinkingLevel?: ConfiguredThinkingLevel },
+	): ConfiguredThinkingLevel => {
+		if (resolved.explicitThinkingLevel && resolved.thinkingLevel !== undefined) {
+			return resolved.thinkingLevel;
+		}
+		if (role === "default") {
+			// Shown as the default role's effort: resolve against the concrete
+			// assignment so a model-specific row displays exactly what runtime uses.
+			return (
+				resolveEffort({
+					modelSelector: `${model.provider}/${model.id}`,
+					defaultEffort: withLegacyDefaultEffort(
+						settings.isConfigured("defaultEffort") ? settings.get("defaultEffort") : undefined,
+						settings.get("defaultThinkingLevel"),
+					),
+				}).level ?? ThinkingLevel.Inherit
+			);
+		}
+		return ThinkingLevel.Inherit;
+	};
+
+	const roles: RoleAssignments = {};
+	const matchPreferences = getModelMatchPreferences(settings);
+	const catalog = [...allModels];
+
+	for (const role of [DEFAULT_MODEL_SLOT, ...getKnownRoleIds(settings)]) {
+		const roleValue = settings.getModelRole(role);
+		if (!roleValue) continue;
+		const resolved = resolveModelRoleValue(roleValue, catalog, { settings, matchPreferences });
+		if (resolved.model) {
+			roles[role] = {
+				model: resolved.model,
+				thinkingLevel: resolvedThinkingLevel(role, resolved.model, resolved),
+			};
+		}
+	}
+
+	return roles;
+}
+
+/** Wrap raw models into browser items. */
+export function buildBrowserItems(models: ReadonlyArray<Model>): ModelBrowserItem[] {
+	return models.map(model => ({
+		provider: model.provider,
+		id: model.id,
+		model,
+		selector: `${model.provider}/${model.id}`,
+	}));
+}
+
+/** Selector of the pinned clear-to-inherit action row. Never a real `provider/id` key. */
+export const INHERIT_ROW_SELECTOR = "__inherit__";
+
+/** Placeholder model carried by virtual (non-model) rows so `item.model` stays total. */
+function virtualRowModel(): Model {
+	return buildModel({
+		id: "virtual",
+		name: "virtual",
+		api: "ollama-chat",
+		provider: "",
+		baseUrl: "",
+		reasoning: false,
+		input: ["text"],
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 0,
+		maxTokens: 0,
+	});
+}
+
+/**
+ * The pinned top row that returns a model slot to its unset (inheriting or
+ * auto-selected) state. Hosts prepend it to the picker items when clearing is
+ * allowed; the browser renders it as an action row ahead of every model row,
+ * and activating it is the host's clear, never a model pick. Searching keeps
+ * it visible only while the query matches its label.
+ */
+export function buildInheritRow(label: string, detail: string): ModelBrowserItem {
+	return {
+		provider: "",
+		id: INHERIT_ROW_SELECTOR,
+		selector: INHERIT_ROW_SELECTOR,
+		virtualLabel: label,
+		virtualDetail: detail,
+		model: virtualRowModel(),
+	};
+}
+
+/** Extract the first version number from a model ID (e.g. "gemini-2.5-pro" → 2.5, "claude-sonnet-4-6" → 4.6). */
+function extractVersionNumber(id: string): number {
+	// Dot-separated version: "gemini-2.5-pro" → 2.5
+	const dotMatch = id.match(/(?:^|[-_])(\d+\.\d+)/);
+	if (dotMatch) return Number.parseFloat(dotMatch[1]);
+	// Dash-separated short segments: "claude-sonnet-4-6" → 4.6, "llama-3-1-8b" → 3.1
+	const dashMatch = id.match(/(?:^|[-_])(\d{1,2})-(\d{1,2})(?=-|$)/);
+	if (dashMatch) return Number.parseFloat(`${dashMatch[1]}.${dashMatch[2]}`);
+	// Single number after separator: "gpt-4o" → 4
+	const singleMatch = id.match(/(?:^|[-_])(\d+)/);
+	if (singleMatch) return Number.parseFloat(singleMatch[1]);
+	return 0;
+}
+
+/** Rank a model by the first built-in role it is assigned to (lower = earlier role). */
+function computeModelRank(model: Model, roles: RoleAssignments): number {
+	let i = 0;
+	while (i < MODEL_ROLE_IDS.length) {
+		const assigned = roles[MODEL_ROLE_IDS[i]];
+		if (assigned && modelsAreEqual(assigned.model, model)) {
+			break;
+		}
+		i++;
+	}
+	return i;
+}
+
+/** Options for {@link sortModelItems}. */
+export interface SortModelItemsOptions {
+	roles?: RoleAssignments;
+	mruOrder?: ReadonlyArray<string>;
+	/**
+	 * When a search query is narrowing the list, role assignments should NOT
+	 * promote a weakly-matching default model above a perfect text match —
+	 * defer to MRU/version instead so user affinity drives the order.
+	 */
+	skipRoleRank?: boolean;
+}
+
+/**
+ * Order models for display: role-assigned first, then most-recently-used,
+ * then per provider by priority, version, and recency.
+ */
+export function sortModelItems(items: ModelBrowserItem[], options: SortModelItemsOptions = {}): void {
+	const { roles = {}, mruOrder = [], skipRoleRank = false } = options;
+	const mruIndex = new Map(mruOrder.map((key, i) => [key, i]));
+
+	const dateRe = /-(\d{8})$/;
+	const latestRe = /-latest$/;
+
+	items.sort((a, b) => {
+		if (!skipRoleRank) {
+			const aRank = computeModelRank(a.model, roles);
+			const bRank = computeModelRank(b.model, roles);
+			if (aRank !== bRank) return aRank - bRank;
+		}
+
+		// Then MRU order (models in mruIndex come before those not in it)
+		const aMru = mruIndex.get(a.selector) ?? Number.MAX_SAFE_INTEGER;
+		const bMru = mruIndex.get(b.selector) ?? Number.MAX_SAFE_INTEGER;
+		if (aMru !== bMru) return aMru - bMru;
+
+		// By provider, then recency within provider
+		const providerCmp = a.provider.localeCompare(b.provider);
+		if (providerCmp !== 0) return providerCmp;
+
+		// Priority field (lower = better, e.g. Codex priority values)
+		const aPri = a.model.priority ?? Number.MAX_SAFE_INTEGER;
+		const bPri = b.model.priority ?? Number.MAX_SAFE_INTEGER;
+		if (aPri !== bPri) return aPri - bPri;
+
+		// Version number descending (higher version = better model)
+		const aVer = extractVersionNumber(a.id);
+		const bVer = extractVersionNumber(b.id);
+		if (aVer !== bVer) return bVer - aVer;
+
+		const aIsLatest = latestRe.test(a.id);
+		const bIsLatest = latestRe.test(b.id);
+		const aDate = a.id.match(dateRe)?.[1] ?? "";
+		const bDate = b.id.match(dateRe)?.[1] ?? "";
+
+		// Models with recency info come before those without
+		const aHasRecency = aIsLatest || aDate !== "";
+		const bHasRecency = bIsLatest || bDate !== "";
+		if (aHasRecency !== bHasRecency) return aHasRecency ? -1 : 1;
+
+		// If neither has recency info, fall back to alphabetical
+		if (!aHasRecency) return a.id.localeCompare(b.id);
+
+		// -latest always sorts first within recency group
+		if (aIsLatest !== bIsLatest) return aIsLatest ? -1 : 1;
+
+		// Both have dates — descending (newest first)
+		if (aDate && bDate) return bDate.localeCompare(aDate);
+
+		// One has date, other is latest — latest first
+		return aIsLatest ? -1 : bIsLatest ? 1 : a.id.localeCompare(b.id);
+	});
+}
+
+/** Compact glyph for a configured thinking level; empty for `inherit` (nothing to show). */
+export function thinkingLevelGlyph(level: ConfiguredThinkingLevel): string {
+	const glyphOf = (symbol: string) => symbol.split(" ")[0] ?? symbol;
+	switch (level) {
+		case AUTO_THINKING:
+			return glyphOf(theme.thinking.autoPending);
+		case ThinkingLevel.Off:
+			return theme.status.disabled;
+		case ThinkingLevel.Minimal:
+			return glyphOf(theme.thinking.minimal);
+		case ThinkingLevel.Low:
+			return glyphOf(theme.thinking.low);
+		case ThinkingLevel.Medium:
+			return glyphOf(theme.thinking.medium);
+		case ThinkingLevel.High:
+			return glyphOf(theme.thinking.high);
+		case ThinkingLevel.XHigh:
+			return glyphOf(theme.thinking.xhigh);
+		case ThinkingLevel.Max:
+			return glyphOf(theme.thinking.max);
+		case ThinkingLevel.Inherit:
+			return "";
+	}
+}
+
+/**
+ * A slim role chip: `●default ◉` — solid dot for the operator's assignment,
+ * thinking glyph attached when set. Only configured roles produce a chip; an
+ * unset role inherits the main model and has nothing of its own to show.
+ */
+export function formatRoleChip(role: string, assignment: RoleAssignment, settings: Settings): string {
+	const info = getRoleInfo(role, settings);
+	const label = (info.tag ?? info.name ?? role).toLowerCase();
+	const glyph = thinkingLevelGlyph(assignment.thinkingLevel);
+	const suffix = glyph ? ` ${theme.fg("dim", glyph)}` : "";
+	return theme.fg(info.color ?? "muted", `${theme.status.enabled}${label}`) + suffix;
+}
+
+/**
+ * `$in/out` per-million cost pair, `free` for a model we can prove is free, and
+ * `—` for one whose price we were never told.
+ *
+ * The last case used to render as `free` too, which was a false claim about
+ * roughly 1,500 of the bundled models: most providers publish no pricing on
+ * their model endpoint, discovery records zeros, and the browser presented paid
+ * models as costing nothing. `—` says what is true, that the price is not
+ * published here, and leaves the user to check the provider.
+ */
+function formatCostPair(model: Model): string {
+	const pricing = getModelPricing(model);
+	if (pricing === "free") return "free";
+	if (pricing === "unpriced") return "—";
+	const cost = model.cost;
+	const fmt = (n: number): string => {
+		if (n <= 0) return "0";
+		const s = n >= 100 ? String(Math.round(n)) : n >= 10 ? n.toFixed(1) : n.toFixed(2);
+		// Trailing zeros are noise only AFTER a decimal point. Stripping them from a
+		// whole number deletes a digit and moves the decimal: `$150/600` rendered as
+		// `$15/6`, and `azure/gpt-5-pro` at $120 per M output showed as $12. 323 price
+		// legs in the bundled catalog hit this, understating some by 10x.
+		return s.includes(".") ? s.replace(/\.?0+$/, "") : s;
+	};
+	return `$${fmt(cost.input)}/${fmt(cost.output)}`;
+}
+
+/**
+ * `400k ◫` context-window column; empty when the model does not report one.
+ * The icon trails the number so right-alignment pins it to a fixed column
+ * instead of drifting with the number's width. The ascii preset's `ctx:`
+ * label is a prefix form — strip the colon for suffix placement.
+ */
+function formatContext(model: Model): string {
+	const ctx = model.contextWindow ?? 0;
+	if (ctx <= 0) return "";
+	return `${formatNumber(ctx).toLowerCase()} ${theme.icon.context.replace(/:$/, "")}`;
+}
+
+/** `118t/s` average output speed; one decimal below 10 t/s. */
+function formatTps(tps: number): string {
+	const value = tps >= 10 ? String(Math.round(tps)) : tps.toFixed(1);
+	return `${value}t/s`;
+}
+
+/** `0.9s` average time-to-first-token; whole seconds from 10s up. */
+function formatTtft(ms: number): string {
+	const seconds = ms / 1000;
+	return seconds >= 10 ? `${Math.round(seconds)}s` : `${seconds.toFixed(1)}s`;
+}
+
+/** Pad `text` on the left to `width` terminal columns (ANSI/emoji aware). */
+function padLeftVisible(text: string, width: number): string {
+	const missing = width - visibleWidth(text);
+	return missing > 0 ? " ".repeat(missing) + text : text;
+}
+
+/** Behavior switches for {@link ModelBrowser}. */
+export interface ModelBrowserOptions {
+	/** Render the dim `provider/` prefix before model ids. Default true. */
+	showProvider?: boolean;
+	/** Session token count used to disable models whose context window is exceeded. */
+	currentContextTokens?: number;
+	/** When true, rows over the current context are unselectable (session-switch mode). */
+	disableOverContext?: boolean;
+	/** Host-provided empty-state text (e.g. provider discovery status). */
+	emptyText?: () => string | undefined;
+}
+
+/** Rendered rows before the list window: search row + blank. */
+const LIST_ROW_START = 2;
+/** Rendered rows after the list window: blank + two detail rows. */
+const DETAIL_ROWS = 3;
+/** Row width from which the measured-perf column appears (TPS only). */
+const PERF_TPS_MIN_WIDTH = 76;
+/** Row width from which the perf column also includes TTFT. */
+const PERF_FULL_MIN_WIDTH = 96;
+/** What the per-row perf column shows at the current width. */
+type PerfMode = "off" | "tps" | "full";
+
+/**
+ * The reusable browser component. Renders a fixed-height block
+ * (`maxVisible + LIST_ROW_START + DETAIL_ROWS` rows) so host mouse geometry
+ * stays stable across renders.
+ */
 export class ModelBrowser implements Component {
 	#settings: Settings;
 	#searchInput = new Input();
@@ -61,24 +406,49 @@ export class ModelBrowser implements Component {
 	#roles: RoleAssignments = {};
 	#mruOrder: ReadonlyArray<string> = [];
 	#perf: ReadonlyMap<string, ModelPerfStats> = new Map();
+	/**
+	 * Metadata column widths, measured across the WHOLE list rather than the
+	 * visible window, and cached because measuring is per-item work on every
+	 * render.
+	 *
+	 * Measuring per window is what made the context and price columns slide
+	 * sideways while you scrolled: the widest price in view changes as the window
+	 * moves, so the right-aligned block re-flowed on every wheel tick and the
+	 * numbers no longer lined up with the rows they belong to. Widths have to be a
+	 * property of the list, not of where you happen to be looking.
+	 *
+	 * Invalidated by `#invalidateColumnWidths` whenever the item list or the perf
+	 * measurements change; keyed by perf mode because that mode decides whether
+	 * the perf cell renders at all.
+	 */
 	#columnWidths: { perfMode: PerfMode; ctx: number; cost: number; perf: number } | undefined;
 	#selectedIndex = 0;
 	#hoveredIndex: number | null = null;
+	/**
+	 * The cross-fade, once a host has lent this browser a repaint ({@link setHoverMotion}).
+	 * Absent, the band is switched: the browser is an inner list and owns no repaint of its own.
+	 */
 	#hoverFade: HoverFade | undefined;
 	#maxVisible = 10;
 	#showProvider: boolean;
 	#currentContextTokens: number;
 	#disableOverContext: boolean;
 	#emptyText?: () => string | undefined;
+	/** Keep role-like virtual rows in their host-defined order during search. */
 	#preserveQueryOrder = false;
+	/** First visible list row; panned by the wheel, snapped to the selection on keyboard navigation. */
 	#windowStart = 0;
 	#windowCount = 0;
+	/** Whether the host pane owns arrow keys; drives cursor strength and the selected-row band. */
 	#focused = true;
+	/** `provider/id` of the session's active model; marked in rows and detail. */
 	#currentSelector: string | undefined;
 
+	/** Enter or click-on-selected. */
 	onActivate?: (item: ModelBrowserItem) => void;
 	onSelectionChange?: (item: ModelBrowserItem | undefined) => void;
 	onQueryChange?: (query: string) => void;
+	/** Cancel key with an empty query (a non-empty query is cleared first). */
 	onCancel?: () => void;
 
 	constructor(settings: Settings, options: ModelBrowserOptions = {}) {
@@ -90,10 +460,12 @@ export class ModelBrowser implements Component {
 		this.#emptyText = options.emptyText;
 	}
 
+	/** Mark `selector` as the session's active model (undefined clears the mark). */
 	setCurrentSelector(selector: string | undefined): void {
 		this.#currentSelector = selector;
 	}
 
+	/** Replace the scope's base items; the live query re-applies and selection is pinned by selector. */
 	setItems(items: ModelBrowserItem[]): void {
 		const selectedKey = this.getSelected()?.selector;
 		this.#baseItems = items;
@@ -111,28 +483,37 @@ export class ModelBrowser implements Component {
 		this.#mruOrder = order;
 	}
 
+	/** Measured TPS/TTFT averages keyed by `provider/id` selector (see AgentStorage.getModelPerf). */
 	setPerfStats(perf: ReadonlyMap<string, ModelPerfStats>): void {
 		this.#perf = perf;
+		// New measurements can widen the perf cell, which shifts the columns to its
+		// right. Re-measure rather than keep widths taken before the numbers landed.
 		this.#invalidateColumnWidths();
 	}
 
 	setMaxVisible(rows: number): void {
+		// No selection snap here: hosts call this on every render, and it must
+		// not undo wheel panning. render() re-clamps the window.
 		this.#maxVisible = Math.max(1, rows);
 	}
 
 	setShowProvider(show: boolean): void {
 		this.#showProvider = show;
 	}
+	/** Keep the source order after fuzzy filtering instead of applying model-specific ranking. */
 	setPreserveQueryOrder(preserve: boolean): void {
 		this.#preserveQueryOrder = preserve;
 	}
+	/** Allow hosts to toggle context-window eligibility between browser modes. */
 	setDisableOverContext(disable: boolean): void {
 		this.#disableOverContext = disable;
 	}
+	/** Focused: accent cursor + selected-row background band. Unfocused: dim cursor, no band. */
 	setFocused(focused: boolean): void {
 		this.#focused = focused;
 	}
 
+	/** Total rendered height for the current `maxVisible` (host layout budgeting). */
 	get renderedRows(): number {
 		return LIST_ROW_START + this.#maxVisible + DETAIL_ROWS;
 	}
@@ -154,6 +535,7 @@ export class ModelBrowser implements Component {
 		return this.#visibleItems.length;
 	}
 
+	/** Move selection to `selector`; false when it is not in the current view. */
 	selectSelector(selector: string): boolean {
 		const index = this.#visibleItems.findIndex(item => item.selector === selector);
 		if (index < 0) return false;
@@ -186,10 +568,12 @@ export class ModelBrowser implements Component {
 		return clamped;
 	}
 
+	/** Clamp a window start into `[0, total - maxVisible]`. */
 	#clampWindowStart(start: number): number {
 		return clampLow(start, 0, this.#visibleItems.length - this.#maxVisible);
 	}
 
+	/** Scroll just enough to keep the selected row inside the window. */
 	#ensureSelectedVisible(): void {
 		if (this.#selectedIndex < this.#windowStart) {
 			this.#windowStart = this.#selectedIndex;
@@ -199,6 +583,10 @@ export class ModelBrowser implements Component {
 		this.#windowStart = this.#clampWindowStart(this.#windowStart);
 	}
 
+	/**
+	 * Move the selection by `delta` rows, skipping disabled rows. Single steps
+	 * wrap at the ends; `wrap: false` (page/home/end jumps) clamps instead.
+	 */
 	moveSelection(delta: number, options: { wrap?: boolean } = {}): void {
 		const count = this.#visibleItems.length;
 		if (count === 0) return;
@@ -235,6 +623,8 @@ export class ModelBrowser implements Component {
 	}
 	#insertSeparator(items: ModelBrowserItem[]): ModelBrowserItem[] {
 		const filtered = items.filter(item => item.id !== "separator");
+		// Virtual action rows (inherit/clear) pin ahead of the separator and
+		// recents: they are not "recent", but they must not trigger it either.
 		const firstNonRecentIndex = filtered.findIndex(
 			item => item.virtualLabel === undefined && !this.#isRecentOrRole(item),
 		);
@@ -245,7 +635,7 @@ export class ModelBrowser implements Component {
 				selector: "separator",
 				model: virtualRowModel(),
 			};
-			return filtered.slice(0, firstNonRecentIndex).concat([separatorItem], filtered.slice(firstNonRecentIndex));
+			return [...filtered.slice(0, firstNonRecentIndex), separatorItem, ...filtered.slice(firstNonRecentIndex)];
 		}
 		return filtered;
 	}
@@ -254,6 +644,10 @@ export class ModelBrowser implements Component {
 		const query = this.#searchInput.getValue();
 		let items: ModelBrowserItem[];
 		if (query.trim()) {
+			// Match against the displayed "provider/id" string so the user can
+			// type what they see: bare names, provider prefixes, or scoped
+			// queries all flow through the same fuzzy matcher. Virtual action
+			// rows match on their label instead ("inherit" finds the clear row).
 			const ranked = fuzzyRank(this.#baseItems, query, item =>
 				item.virtualLabel !== undefined ? item.virtualLabel : `${item.provider}/${item.id}`,
 			);
@@ -261,6 +655,12 @@ export class ModelBrowser implements Component {
 			if (this.#preserveQueryOrder) {
 				items = matches;
 			} else {
+				// Match quality is the primary key while searching: an exact
+				// "gpt-5.5" must beat the MRU (or role-assigned) "gpt-5.6", so
+				// role rank is skipped and MRU only breaks ties. Scores are
+				// bucketed so sub-point position noise (provider-name length)
+				// can't split equally good matches; within a bucket the stable
+				// sort keeps sortModelItems' MRU/version order.
 				sortModelItems(matches, { roles: this.#roles, mruOrder: this.#mruOrder, skipRoleRank: true });
 				const buckets = new Map<ModelBrowserItem, number>();
 				for (const result of ranked) buckets.set(result.item, Math.round(result.score / 10));
@@ -313,6 +713,7 @@ export class ModelBrowser implements Component {
 			}
 			return;
 		}
+		// Everything else edits the query like a regular single-line editor.
 		const before = this.#searchInput.getValue();
 		this.#searchInput.handleInput(data);
 		const after = this.#searchInput.getValue();
@@ -322,6 +723,7 @@ export class ModelBrowser implements Component {
 		}
 	}
 
+	/** Cancel-key ladder: clear a non-empty query first, then bubble to the host. */
 	handleCancel(): void {
 		if (this.#searchInput.getValue().length > 0) {
 			this.setQuery("");
@@ -331,8 +733,13 @@ export class ModelBrowser implements Component {
 		this.onCancel?.();
 	}
 
+	/**
+	 * Route a mouse event. `line` is relative to the browser's first rendered
+	 * row (the search row).
+	 */
 	routeMouse(event: SgrMouseEvent, line: number): void {
 		if (event.wheel !== null) {
+			// Wheel pans the window; it never moves the selection and never wraps.
 			this.#windowStart = this.#clampWindowStart(this.#windowStart + event.wheel);
 			this.#setHoveredIndex(this.#hoverIndexAt(line));
 			return;
@@ -345,38 +752,48 @@ export class ModelBrowser implements Component {
 		const index = this.#hoverIndexAt(line);
 		const item = index !== null ? this.#visibleItems[index] : undefined;
 		if (index === null || !item) return;
+		// Settings idiom: click selects, click-again activates.
 		if (index === this.#selectedIndex) {
 			this.onActivate?.(item);
 		} else {
 			this.#setSelectedIndex(index);
 		}
 	}
+	/** Drop the hover band. Hosts call this when the pointer leaves the browser pane. */
 	clearHover(): void {
 		this.#setHoveredIndex(null);
 	}
 
+	/** Move the band, and tell the fade so it can carry the old row out as the new one arrives. */
 	#setHoveredIndex(index: number | null): void {
 		this.#hoveredIndex = index;
 		this.#hoverFade?.set(index);
 	}
 
+	/**
+	 * Lend the browser the host card's repaint so its band cross-fades. The browser paints inside
+	 * someone else's frame and has no repaint of its own, so the clock has to come from above.
+	 */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade(options);
 		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
 	}
 
+	/** Settle the band so no timer outlives the host card that owns this list. */
 	disposeHoverMotion(): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = undefined;
 		this.#hoveredIndex = null;
 	}
 
+	/** Band strength for a row; without a fade the hovered row is at 1 and the rest at 0. */
 	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
+	/** List index under a frame-local row, or null when off-list or on a disabled row. */
 	#hoverIndexAt(line: number): number | null {
 		const listLine = line - LIST_ROW_START;
 		if (listLine < 0 || listLine >= this.#windowCount) return null;
@@ -386,10 +803,18 @@ export class ModelBrowser implements Component {
 		return index;
 	}
 
+	/** Drop the cached column widths; the next render re-measures. */
 	#invalidateColumnWidths(): void {
 		this.#columnWidths = undefined;
 	}
 
+	/**
+	 * Widest context, price, and perf cell across every row in the list.
+	 *
+	 * Measured over the whole list so the columns hold still while you scroll,
+	 * and cached so that costs one pass per list change rather than one per
+	 * render.
+	 */
 	#measureColumns(perfMode: PerfMode): { ctx: number; cost: number; perf: number } {
 		const cached = this.#columnWidths;
 		if (cached && cached.perfMode === perfMode) return cached;
@@ -407,6 +832,7 @@ export class ModelBrowser implements Component {
 		return this.#columnWidths;
 	}
 
+	/** `0.9s 118t/s` measured-perf cell for the row's meta block; empty when unmeasured or the column is off. */
 	#perfCell(item: ModelBrowserItem, mode: PerfMode): string {
 		if (mode === "off") return "";
 		const perf = this.#perf.get(item.selector);
@@ -432,6 +858,8 @@ export class ModelBrowser implements Component {
 			return `  ${line}  `;
 		}
 		if (item.virtualLabel !== undefined) {
+			// Action row (e.g. clear-to-inherit): cursor + label + current mark,
+			// no provider prefix and no metadata columns.
 			const prefix = selected && this.#focused ? `${theme.fg("accent", theme.nav.cursor)} ` : "  ";
 			const name = selected ? theme.fg("accent", item.virtualLabel) : theme.fg("muted", item.virtualLabel);
 			const currentMark =
@@ -457,6 +885,7 @@ export class ModelBrowser implements Component {
 			: "";
 		let left = `${prefix}${providerPrefix}${name}${currentMark}${authBadge}${overLimit}`;
 
+		// Perf column collapses entirely when no visible row has measurements.
 		const perfCol =
 			perfWidth > 0 ? `${theme.fg("dim", padLeftVisible(this.#perfCell(item, perfMode), perfWidth))}  ` : "";
 		const meta = `${perfCol}${theme.fg("dim", padLeftVisible(formatContext(item.model), ctxWidth))}  ${theme.fg("dim", padLeftVisible(formatCostPair(item.model), costWidth))}`;
@@ -465,10 +894,12 @@ export class ModelBrowser implements Component {
 		left = truncateToWidth(left, available);
 		const gap = Math.max(0, available - visibleWidth(left));
 
-		let line = `${left}${padding(gap)} ${meta}`;
+		let line = `${left}${" ".repeat(gap)} ${meta}`;
 		if (disabled) {
 			line = theme.fg("dim", Bun.stripANSI(line));
 		}
+		// The bg band is reserved for the mouse: it marks hover, nothing else.
+		// Keyboard selection is the cursor glyph + accent name.
 		if (hoverStrength > 0 && !disabled) {
 			return hoverBandAt(line, width, hoverStrength);
 		}
@@ -494,8 +925,14 @@ export class ModelBrowser implements Component {
 		const facts: string[] = [model.name];
 		if (model.contextWindow) facts.push(`${formatNumber(model.contextWindow).toLowerCase()} ctx`);
 		if (model.maxTokens) facts.push(`${formatNumber(model.maxTokens).toLowerCase()} out`);
+		// The detail line has room for words, so it says the unpriced case outright
+		// rather than repeating the row's `—`, which on its own reads as zero.
 		const pricing = getModelPricing(model);
 		facts.push(
+			// "price unknown" rather than "price not published": the detail line is one
+			// row and the facts after it (measured throughput and time to first token)
+			// get truncated away on a narrow terminal. The longer phrase cost six
+			// characters and pushed the perf figures off at 70 columns.
 			pricing === "unpriced" ? "price unknown" : pricing === "free" ? "free" : `${formatCostPair(model)} per M`,
 		);
 		if (model.reasoning) facts.push("reasoning");
@@ -540,6 +977,9 @@ export class ModelBrowser implements Component {
 		lines.push("");
 
 		const total = this.#visibleItems.length;
+		// The window is persistent state: wheel scrolling panned it, keyboard
+		// navigation snapped it to the selection. Re-clamp here because items
+		// or maxVisible may have changed since.
 		this.#windowStart = this.#clampWindowStart(this.#windowStart);
 		const startIndex = this.#windowStart;
 		const endIndex = Math.min(startIndex + this.#maxVisible, total);
@@ -554,6 +994,9 @@ export class ModelBrowser implements Component {
 			const perfMode: PerfMode = width >= PERF_FULL_MIN_WIDTH ? "full" : width >= PERF_TPS_MIN_WIDTH ? "tps" : "off";
 			const { ctx: ctxWidth, cost: costWidth, perf: perfWidth } = this.#measureColumns(perfMode);
 
+			// ScrollView reserves a 2-column bar band (gap + glyph) when the list
+			// overflows; compose rows inside it so the right-aligned price column
+			// is never ellipsis-truncated against the scrollbar.
 			const barCols = total > this.#windowCount ? 2 : 1;
 			const rows: string[] = [];
 			for (let i = startIndex; i < endIndex; i++) {
@@ -576,11 +1019,10 @@ export class ModelBrowser implements Component {
 				height: rows.length,
 				scrollbar: "auto",
 				totalRows: total,
-				theme: SCROLL_LIST_THEME,
+				theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
 			});
 			scrollView.setScrollOffset(startIndex);
-			const svLines = scrollView.render(width);
-			for (let li = 0; li < svLines.length; li++) lines.push(svLines[li]!);
+			lines.push(...scrollView.render(width));
 			for (let i = rows.length; i < this.#maxVisible; i++) lines.push("");
 		}
 

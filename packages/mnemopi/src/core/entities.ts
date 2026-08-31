@@ -1,4 +1,4 @@
-import { levenshteinDistance } from "@veyyon/utils";
+import { levenshteinDistance } from "@veyyon/utils/levenshtein";
 import { ENTITY_STOPWORDS } from "./stopwords";
 
 // Backed by the canonical entity/mention stopword set in stopwords.ts, which is
@@ -18,7 +18,7 @@ const ENTITY_PATTERNS: readonly RegExp[] = [
 	/\b([A-Z][a-zA-Z]{1,20})\b/g,
 ];
 
-export function chars(value: string): string[] {
+function chars(value: string): string[] {
 	return Array.from(value);
 }
 

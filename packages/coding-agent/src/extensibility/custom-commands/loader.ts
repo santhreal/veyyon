@@ -1,3 +1,9 @@
+/**
+ * Custom command loader - loads TypeScript command modules using native Bun import.
+ *
+ * Dependencies (the arktype validation and coding-agent SDK) are injected via the
+ * CustomCommandAPI to avoid import resolution issues with custom commands loaded from user directories.
+ */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage, getAgentDir, getProjectDir, isEnoent, readdirIfPresent, reportFault } from "@veyyon/utils";
@@ -5,6 +11,7 @@ import * as arktype from "arktype";
 import * as zodModule from "zod/v4";
 import { getConfigDirs } from "../../config";
 import { execCommand, withSessionCpuExec } from "../../exec/exec";
+// Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
 import { loadCodingAgentApi } from "../coding-agent-api";
 import {
 	factoryExportMissingMessage,
@@ -25,6 +32,9 @@ import type {
 	LoadedCustomCommand,
 } from "./types";
 
+/**
+ * Load a single command module using native Bun import.
+ */
 async function loadCommandModule(
 	commandPath: string,
 	_cwd: string,
@@ -41,6 +51,7 @@ async function loadCommandModule(
 		const result = await factory(sharedApi);
 		const commands = Array.isArray(result) ? result : [result];
 
+		// Validate commands
 		for (const cmd of commands) {
 			if (!cmd.name || typeof cmd.name !== "string") {
 				return {
@@ -81,19 +92,32 @@ async function loadCommandModule(
 }
 
 export interface DiscoverCustomCommandsOptions {
+	/** Current working directory. Default: getProjectDir() */
 	cwd?: string;
+	/** Agent config directory. Default: from getAgentDir() */
 	agentDir?: string;
 }
 
 export interface DiscoverCustomCommandsResult {
+	/** Paths to command modules */
 	paths: Array<{ path: string; source: CustomCommandSource }>;
 }
 
+/**
+ * Whether a directory under `commands/` is a MARKDOWN command tree rather than a
+ * broken TypeScript one. `slash-commands.ts` loads `.md` commands and this
+ * loader must not report those as missing an entry point: doing so would fire a
+ * fault on every working Claude-style command directory.
+ */
 async function holdsMarkdownCommand(commandDir: string): Promise<boolean> {
 	const entries = await readdirIfPresent(commandDir, "custom command directory");
 	return entries.some(entry => entry.name.endsWith(".md"));
 }
 
+/**
+ * Discover custom command modules (TypeScript slash commands).
+ * Markdown slash commands are handled by core/slash-commands.ts.
+ */
 export async function discoverCustomCommands(
 	options: DiscoverCustomCommandsOptions = {},
 ): Promise<DiscoverCustomCommandsResult> {
@@ -144,6 +168,13 @@ export async function discoverCustomCommands(
 		}
 		for (const entry of entries) {
 			if (entry.name.startsWith(".")) continue;
+			// A LOOSE FILE IS NOT A COMMAND, AND SAYING SO IS THE POINT. This scan
+			// only ever accepted `<commandsDir>/<name>/index.{ts,js,mjs,cjs}`, and
+			// anything else it met it dropped without a word: a `commands/foo.ts`
+			// written flat, or a `commands/foo/` holding `command.ts`, produced a
+			// session with the command absent and nothing anywhere to explain it.
+			// Markdown is excluded because it is not this loader's job -- a `.md`
+			// slash command is loaded by `slash-commands.ts` and works.
 			if (!entry.isDirectory()) {
 				if (/\.(ts|js|mjs|cjs)$/.test(entry.name)) {
 					reportFault({
@@ -185,15 +216,23 @@ export async function discoverCustomCommands(
 }
 
 export interface LoadCustomCommandsOptions {
+	/** Current working directory. Default: getProjectDir() */
 	cwd?: string;
+	/** Agent config directory. Default: from getAgentDir() */
 	agentDir?: string;
+	/** Session CPU budget hook: processes a command's `exec` spawns join the session's budget group. */
 	adoptSpawnedPid?: (pid: number) => void;
+	/** Session CPU budget gate: refuse `exec` while the group is saturated or uncreated. */
 	gateSpawn?: (what: string) => Promise<void>;
 }
 
+/**
+ * Load bundled commands (shipped with veyyon).
+ */
 function loadBundledCommands(sharedApi: BundledCommandAPI): LoadedCustomCommand[] {
 	const bundled: LoadedCustomCommand[] = [];
 
+	// Add bundled commands here
 	bundled.push({
 		path: "bundled:green",
 		resolvedPath: "bundled:green",
@@ -210,6 +249,9 @@ function loadBundledCommands(sharedApi: BundledCommandAPI): LoadedCustomCommand[
 	return bundled;
 }
 
+/**
+ * Discover and load custom commands from standard locations.
+ */
 export async function loadCustomCommands(options: LoadCustomCommandsOptions = {}): Promise<CustomCommandsLoadResult> {
 	const cwd = options.cwd ?? getProjectDir();
 	const agentDir = options.agentDir ?? getAgentDir();
@@ -220,6 +262,12 @@ export async function loadCustomCommands(options: LoadCustomCommandsOptions = {}
 	const errors: Array<{ path: string; error: string }> = [];
 	const seenNames = new Set<string>();
 
+	// Shared API object - all commands get the same instance.
+	//
+	// Built WITHOUT `pi` first. That field is the whole package barrel, which re-exports every mode and
+	// every component, and this function runs on every launch to register the two bundled commands --
+	// neither of which uses it, since they import this repository directly. So the barrel is loaded only
+	// when a project actually ships a custom command whose author expects `api.pi`.
 	const bundledApi: BundledCommandAPI = {
 		cwd,
 		exec: (command: string, args: string[], execOptions) =>
@@ -234,15 +282,20 @@ export async function loadCustomCommands(options: LoadCustomCommandsOptions = {}
 		zod: zodModule,
 	};
 
+	// 1. Load bundled commands first (lowest priority - can be overridden)
 	for (const loaded of loadBundledCommands(bundledApi)) {
 		seenNames.add(loaded.command.name);
 		commands.push(loaded);
 	}
 
+	// One object for every author-written command, so a command that mutates the API sees what its
+	// neighbours see. Absent entirely when there are none, which is the case that skips the barrel.
 	const sharedApi: CustomCommandAPI | undefined =
 		paths.length > 0 ? { ...bundledApi, pi: await loadCodingAgentApi() } : undefined;
 
+	// 2. Load user/project commands (can override bundled)
 	for (const { path: commandPath, source } of paths) {
+		// `sharedApi` is defined whenever `paths` is non-empty, which is the only way this loop runs.
 		const { commands: loadedCommands, error } = await loadCommandModule(
 			commandPath,
 			cwd,
@@ -256,13 +309,18 @@ export async function loadCustomCommands(options: LoadCustomCommandsOptions = {}
 
 		if (loadedCommands) {
 			for (const command of loadedCommands) {
+				// Allow overriding bundled commands, but not user/project conflicts
 				const existingIdx = commands.findIndex(c => c.command.name === command.name);
 				if (existingIdx !== -1) {
 					const existing = commands[existingIdx];
 					if (existing.source === "bundled") {
+						// Override bundled command
 						commands.splice(existingIdx, 1);
 						seenNames.delete(command.name);
 					} else {
+						// The loser names the WINNER's file. "conflicts with existing
+						// command" left the operator holding two files and no way to
+						// tell which of them is the one that is actually running.
 						errors.push({
 							path: commandPath,
 							error: nameConflictMessage("custom command", command.name, existing.path),

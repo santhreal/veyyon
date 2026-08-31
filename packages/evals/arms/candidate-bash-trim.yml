@@ -1,0 +1,10 @@
+# Config half of the bash-description trim experiment. See
+# `candidate-bash-trim.prompts.yml`, which is where the experiment lives.
+#
+# This file is INTENTIONALLY identical to `baseline.yml`. That is what makes the
+# comparison single-variable: every setting is held equal and the arms differ only
+# in the overridden `tools/bash` prompt. The runner's zero-variable collision
+# check does not fire on the identical config, because the arm fingerprint covers
+# the prompt attachment as well.
+argot:
+  enabled: false

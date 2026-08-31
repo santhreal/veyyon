@@ -60,7 +60,9 @@ const CARDS_WITHOUT_A_TITLE_ROW: Record<string, string> = {
  * block already has. Pinned by exact equality: a renderer that starts drawing a
  * border of its own lands here and the suite goes red until someone records the
  * decision. `vibe_*`, `inspect_image` and an LSP hover code block used to sit in
- * this set, drawing a box, a connector and a code frame inside the rail.
+ * this set, drawing a box, a connector and a code frame inside the rail, and so
+ * did the retired `grep` tool, whose line-number gutter now belongs to the
+ * `search` tool's text mode — a mode the one fixture per tool does not reach.
  *
  * A third case reaches this set without being chrome at all: a renderer that
  * echoes a remote command's stdout carries whatever glyphs that command printed,
@@ -70,7 +72,6 @@ const CARDS_WITHOUT_A_TITLE_ROW: Record<string, string> = {
  */
 const RENDERERS_THAT_DRAW_A_TREE: Record<string, string> = {
 	eval: "a value tree: each row is a child of the expression above it",
-	grep: "a line-number gutter separating the number from its source line",
 	job: "a job tree: an output row belongs to the job row above it",
 	lsp: "a reference tree: a line belongs to the file above it",
 	ssh: "not chrome: the fixture echoes `systemctl status`, which prints a CGroup tree",

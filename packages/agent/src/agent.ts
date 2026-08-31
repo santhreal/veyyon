@@ -1,3 +1,6 @@
+/** Agent class that uses the agent-loop directly.
+ * No transport abstraction - calls streamSimple via the loop.
+ */
 import { isPromise } from "node:util/types";
 import type {
 	ApiKey,
@@ -6,7 +9,6 @@ import type {
 	CacheEnforcement,
 	Context,
 	CursorExecHandlers,
-	CursorRuleInput,
 	CursorToolResultHandler,
 	Effort,
 	ImageContent,
@@ -21,12 +23,13 @@ import type {
 	ToolChoice,
 	ToolResultMessage,
 } from "@veyyon/ai";
+// One runtime name, from the module that declares it: eighteen types alongside it are erased and
+// free, and taking the nineteenth from the entry point was buying the whole package for it.
 import { streamSimple } from "@veyyon/ai/stream";
 import type { HarmonyAuditEvent } from "@veyyon/ai/utils/harmony-leak";
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { emptyUsage, getBundledModel } from "@veyyon/catalog/models";
 import { errorMessage, logger } from "@veyyon/utils";
-import { defaultConvertToLlm, isAnthropicOutputBlockedError, refreshToolChoiceForActiveTools } from "./agent-helpers";
 import {
 	abortReasonText,
 	agentLoop,
@@ -36,6 +39,7 @@ import {
 	resolveConfiguredDialect,
 } from "./agent-loop";
 import type { AppendOnlyContextManager } from "./append-only-context";
+import { isProviderRefusalMessage } from "./replay-policy";
 import type {
 	AgentContext,
 	AgentEvent,
@@ -55,6 +59,40 @@ import type {
 import { isSoftToolRequirement } from "./types";
 import { EventLoopKeepalive } from "./utils/yield";
 
+/**
+ * Default convertToLlm: Keep only LLM-compatible replay messages.
+ */
+function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
+	return messages.filter((m): m is Message => {
+		if (m.role === "assistant") return !isProviderRefusalMessage(m);
+		return m.role === "user" || m.role === "toolResult";
+	});
+}
+
+const ANTHROPIC_OUTPUT_BLOCKED_PREFIX = "Output blocked by conten";
+
+function isAnthropicOutputBlockedError(message: string): boolean {
+	return message.includes(ANTHROPIC_OUTPUT_BLOCKED_PREFIX);
+}
+
+function refreshToolChoiceForActiveTools(
+	toolChoice: ToolChoice | undefined,
+	tools: AgentContext["tools"] = [],
+): ToolChoice | undefined {
+	if (!toolChoice || typeof toolChoice === "string") {
+		return toolChoice;
+	}
+
+	const toolName =
+		toolChoice.type === "tool"
+			? toolChoice.name
+			: "function" in toolChoice
+				? toolChoice.function.name
+				: toolChoice.name;
+
+	return tools.some(tool => tool.name === toolName) ? toolChoice : undefined;
+}
+
 export class AgentBusyError extends Error {
 	constructor(
 		message: string = "Agent is already processing. Use steer() or followUp() to queue messages, or wait for completion.",
@@ -66,80 +104,256 @@ export class AgentBusyError extends Error {
 export interface AgentOptions {
 	initialState?: Partial<AgentState>;
 
+	/**
+	 * Converts AgentMessage[] to LLM-compatible Message[] before each LLM call.
+	 * Default filters to user/assistant/toolResult and converts attachments.
+	 */
 	convertToLlm?: (messages: AgentMessage[]) => Message[] | Promise<Message[]>;
 
+	/**
+	 * Optional transform applied to context before convertToLlm.
+	 * Use for context pruning, injecting external context, etc.
+	 */
 	transformContext?: (messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>;
 
+	/**
+	 * Optional transform applied after provider context assembly and before
+	 * telemetry capture/provider send.
+	 */
 	transformProviderContext?: (context: Context, model: Model) => Context | Promise<Context>;
 
+	/**
+	 * Steering mode: "all" = send all steering messages at once, "one-at-a-time" = one per turn
+	 */
 	steeringMode?: "all" | "one-at-a-time";
 
+	/**
+	 * Follow-up mode: "all" = send all follow-up messages at once, "one-at-a-time" = one per turn
+	 */
 	followUpMode?: "all" | "one-at-a-time";
 
+	/**
+	 * When to interrupt tool execution for steering messages.
+	 * - "immediate": check after each tool call (default)
+	 * - "wait": defer steering until the current turn completes
+	 */
 	interruptMode?: "immediate" | "wait";
 
+	/**
+	 * API format for Kimi Code provider: "openai" or "anthropic" (default: "anthropic")
+	 */
 	kimiApiFormat?: "openai" | "anthropic";
 
+	/** Hint that websocket transport should be preferred when supported by the provider implementation. */
 	preferWebsockets?: boolean;
 
+	/**
+	 * Custom stream function (for proxy backends, etc.). Default uses streamSimple.
+	 */
 	streamFn?: StreamFn;
+	/** Absolute wall-clock deadline in Unix epoch milliseconds. */
 	deadline?: number;
 
+	/**
+	 * Optional session identifier forwarded to LLM providers.
+	 * Used by providers that support session-based caching (e.g., OpenAI Codex).
+	 */
 	sessionId?: string;
+	/**
+	 * Optional prompt cache key forwarded to LLM providers.
+	 * When omitted, providers may fall back to sessionId.
+	 */
 	promptCacheKey?: string;
+	/**
+	 * Shared provider state map for session-scoped transport/session caches.
+	 */
 	providerSessionState?: Map<string, ProviderSessionState>;
 
+	/**
+	 * Resolves an API key or resolver dynamically for each LLM call.
+	 * Useful for expiring tokens and model-scoped credential routing.
+	 */
 	getApiKey?: (model: Model) => Promise<ApiKey | undefined> | ApiKey | undefined;
 
+	/**
+	 * Inspect or replace provider payloads before they are sent.
+	 */
 	onPayload?: SimpleStreamOptions["onPayload"];
+	/**
+	 * Inspect provider response metadata after headers arrive and before streaming body consumption.
+	 */
 	onResponse?: SimpleStreamOptions["onResponse"];
+	/**
+	 * Inspect raw Server-Sent Events from HTTP streaming providers.
+	 */
 	onSseEvent?: SimpleStreamOptions["onSseEvent"];
+	/**
+	 * Inspect assistant streaming events before they are emitted to subscribers.
+	 * Use this when abort decisions must happen before buffered events continue flowing.
+	 */
 	onAssistantMessageEvent?: (message: AssistantMessage, event: AssistantMessageEvent) => void;
 
+	/**
+	 * Called when GPT-5 Harmony protocol leakage is detected and mitigated.
+	 */
 	onHarmonyLeak?: (event: HarmonyAuditEvent) => void | Promise<void>;
+	/**
+	 * Custom token budgets for thinking levels (token-based providers only).
+	 */
 	thinkingBudgets?: ThinkingBudgets;
 
+	/**
+	 * Sampling temperature for LLM calls. `undefined` uses provider default.
+	 */
 	temperature?: number;
 
+	/** Additional sampling controls for providers that support them. */
 	topP?: number;
 	topK?: number;
 	minP?: number;
 	presencePenalty?: number;
 	repetitionPenalty?: number;
 	serviceTier?: ServiceTier;
+	/**
+	 * What to do when a turn's prompt-cache markers demonstrably did not take
+	 * effect. Defaults to reporting; blocking is opt-in. See
+	 * `@veyyon/ai/cache` for why the failure lands on the following request.
+	 */
 	cacheEnforcement?: CacheEnforcement;
+	/**
+	 * Per-call effective service-tier resolver. When set, it authoritatively
+	 * supplies the request's tier (replacing the static `serviceTier` and its
+	 * telemetry) per model — used to scope a provider/model into a priority
+	 * serving path without mutating the shared session `serviceTier`.
+	 */
 	serviceTierResolver?: (model: Model) => ServiceTier | undefined;
+	/**
+	 * If true, request that the underlying provider omit reasoning/thinking summaries
+	 * from the response. The model still reasons internally; only the human-readable
+	 * summary stream is suppressed. Useful when the UI hides thinking blocks anyway.
+	 */
 	hideThinkingSummary?: boolean;
 
+	/**
+	 * Maximum delay in milliseconds to wait for a retry when the server requests a long wait.
+	 * If the server's requested delay exceeds this value, the request fails immediately,
+	 * allowing higher-level retry logic to handle it with user visibility.
+	 * Default: 60000 (60 seconds). Set to 0 to disable the cap.
+	 */
 	maxRetryDelayMs?: number;
 
+	/**
+	 * Provides tool execution context, resolved per tool call.
+	 * Use for late-bound UI or session state access.
+	 */
 	getToolContext?: (toolCall?: ToolCallContext) => AgentToolContext | undefined;
 
+	/**
+	 * Optional transform applied to tool call arguments before execution. Use for
+	 * deobfuscating secrets or rewriting arguments.
+	 *
+	 * Returns the arguments split by audience — see {@link ToolCallArgumentTransform}.
+	 * An expansion whose result must not be shown belongs in `execution` only.
+	 */
 	transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => ToolCallArgumentTransform;
 
+	/**
+	 * Enable intent tracing schema injection/stripping in the harness.
+	 *
+	 * A FUNCTION when the value can change mid-session, which is what a settings-backed flag is. Both
+	 * places the agent reads it -- the provider context it builds per request and the loop config it
+	 * builds per turn -- call the resolver then, so flipping `tools.intentTracing` takes effect on the
+	 * next turn instead of at the next process start. A plain boolean is still accepted for a caller
+	 * whose answer genuinely cannot change; it is normalized to a resolver once, in the constructor, so
+	 * nothing downstream has to know which form arrived.
+	 */
 	intentTracing?: boolean | (() => boolean);
+	/**
+	 * How densely each tool call records a study record on its result message.
+	 * Forwarded verbatim to the loop config (see {@link AgentLoopConfig.instrumentation}).
+	 */
 	instrumentation?: InstrumentationLevel;
+	/**
+	 * Strip tool descriptions from provider-bound tool specs (top-level + nested
+	 * schema annotations). Use when the full catalog is rendered into the system
+	 * prompt so descriptions are not duplicated on the wire. Native tool calling only.
+	 *
+	 * A function is resolved against the active model for every request, so a
+	 * model switch can move descriptors between the prompt and native schemas
+	 * without retaining the previous model's less efficient representation.
+	 */
 	pruneToolDescriptions?: boolean | ((model: Model) => boolean);
+	/**
+	 * Owned tool-calling dialect. Undefined keeps provider-native tool calling.
+	 * A function form is re-evaluated with the active model on every request, so
+	 * mid-session model switches pick the right tool-calling shape.
+	 */
 	dialect?: ConfiguredDialect;
+	/**
+	 * When owned tool calling is active and the model fabricates a tool result
+	 * mid-turn: `true` (default) aborts the provider request immediately; `false`
+	 * drains the request and discards the fabricated continuation. Forwarded to
+	 * the loop's {@link AgentLoopConfig.abortOnFabricatedToolResult}.
+	 */
 	abortOnFabricatedToolResult?: boolean;
+	/** Dynamic tool-choice directive (hard {@link ToolChoice} or {@link SoftToolRequirement}), resolved once per turn. */
 	getToolChoice?: () => ToolChoiceDirective | undefined;
 
+	/**
+	 * Cursor exec handlers for local tool execution.
+	 */
 	cursorExecHandlers?: CursorExecHandlers;
 
+	/**
+	 * Cursor tool result callback for exec tool responses.
+	 */
 	cursorOnToolResult?: CursorToolResultHandler;
 
-	cursorRulesResolver?: () => CursorRuleInput[];
-
+	/** Current working directory used by local tool execution. */
 	cwd?: string;
+	/**
+	 * Resolver for the live working directory, re-read on every turn. When set, it
+	 * overrides the static {@link cwd} at config-build time so a session move
+	 * (`/move`, which updates the host's cwd without reconstructing the Agent) is
+	 * reflected in provider options — e.g. GitLab Duo Agent namespace/project
+	 * discovery keys off this cwd's git remote. Falls back to `cwd` when it returns
+	 * `undefined`.
+	 */
 	cwdResolver?: () => string | undefined;
+	/**
+	 * Schema-based repair for malformed tool arguments, run before validation.
+	 * See {@link AgentLoopConfig.repairToolCallArguments}.
+	 */
 	repairToolCallArguments?: AgentLoopConfig["repairToolCallArguments"];
+	/**
+	 * Called after a tool call has been validated and is about to execute.
+	 * See {@link AgentLoopConfig.beforeToolCall} for full semantics.
+	 */
 	beforeToolCall?: AgentLoopConfig["beforeToolCall"];
 
+	/**
+	 * Called after a tool finishes executing, before `tool_execution_end` and the tool-result
+	 * message are emitted. See {@link AgentLoopConfig.afterToolCall} for full semantics.
+	 */
 	afterToolCall?: AgentLoopConfig["afterToolCall"];
 
+	/**
+	 * Called once an assistant message is finalized, before it reaches the
+	 * context, the UI, or tool dispatch. May mutate the message in place (text +
+	 * tool-call arguments). See {@link AgentLoopConfig.transformAssistantMessage}.
+	 */
 	transformAssistantMessage?: AgentLoopConfig["transformAssistantMessage"];
 
+	/**
+	 * Opt-in OpenTelemetry instrumentation. Passing `{}` enables the loop's
+	 * GenAI-semantic-convention spans using the global tracer provider. See
+	 * {@link AgentLoopConfig.telemetry} for the full surface.
+	 */
 	telemetry?: AgentLoopConfig["telemetry"];
+	/**
+	 * Immutable context mode — stabilizes system prompt + tool spec bytes
+	 * across turns so DeepSeek/Anthropic prefix caches hit at maximum rate.
+	 */
 	appendOnlyContext?: AppendOnlyContextManager;
 }
 
@@ -147,6 +361,7 @@ export interface AgentPromptOptions {
 	toolChoice?: ToolChoice;
 }
 
+/** Buffered Cursor exec-channel tool result waiting to be emitted after the assistant message. */
 interface CursorToolResultEntry {
 	toolResult: ToolResultMessage;
 }
@@ -196,7 +411,6 @@ export class Agent {
 	#getToolContext?: (toolCall?: ToolCallContext) => AgentToolContext | undefined;
 	#cursorExecHandlers?: CursorExecHandlers;
 	#cursorOnToolResult?: CursorToolResultHandler;
-	#cursorRulesResolver?: () => CursorRuleInput[];
 	#cwd?: string;
 	#cwdResolver?: () => string | undefined;
 
@@ -223,13 +437,29 @@ export class Agent {
 	#telemetry?: AgentLoopConfig["telemetry"];
 	#appendOnlyContext?: AppendOnlyContextManager;
 
+	/** Buffered Cursor tool results with text length at time of call (for correct ordering) */
 	#cursorToolResultBuffer: CursorToolResultEntry[] = [];
 
 	streamFn: StreamFn;
 	getApiKey?: (model: Model) => Promise<ApiKey | undefined> | ApiKey | undefined;
+	/**
+	 * Hook invoked after tool arguments are validated and before execution.
+	 * Reassign at any time to swap the implementation (e.g. on extension reload).
+	 */
 	beforeToolCall?: AgentLoopConfig["beforeToolCall"];
+	/**
+	 * Hook invoked after tool execution and before `tool_execution_end` / tool-result
+	 * message emission. Reassign at any time to swap the implementation.
+	 */
 	afterToolCall?: AgentLoopConfig["afterToolCall"];
+	/**
+	 * Hook invoked once an assistant message is finalized, before context append,
+	 * UI emission, and tool dispatch. Reassign at any time to swap the implementation.
+	 */
 	transformAssistantMessage?: AgentLoopConfig["transformAssistantMessage"];
+	/**
+	 * Hook that peeks whether interrupting IRC asides are queued for the next boundary.
+	 */
 	hasIrcInterrupts?: AgentLoopConfig["hasIrcInterrupts"];
 
 	constructor(opts: AgentOptions = {}) {
@@ -266,7 +496,6 @@ export class Agent {
 		this.#getToolContext = opts.getToolContext;
 		this.#cursorExecHandlers = opts.cursorExecHandlers;
 		this.#cursorOnToolResult = opts.cursorOnToolResult;
-		this.#cursorRulesResolver = opts.cursorRulesResolver;
 		this.#cwd = opts.cwd;
 		this.#cwdResolver = opts.cwdResolver;
 		this.#kimiApiFormat = opts.kimiApiFormat;
@@ -293,26 +522,53 @@ export class Agent {
 		this.#transformProviderContext = opts.transformProviderContext;
 	}
 
+	/**
+	 * Get the current session ID used for provider caching.
+	 */
 	get sessionId(): string | undefined {
 		return this.#sessionId;
 	}
 
+	/**
+	 * Set the session ID for provider caching.
+	 * Call this when switching sessions (new session, branch, resume).
+	 */
 	set sessionId(value: string | undefined) {
 		this.#sessionId = value;
 	}
 
+	/**
+	 * Set the telemetry level used when the next model loop starts. An in-flight
+	 * loop keeps its capture level; the host persistence boundary re-applies the
+	 * live policy when that turn finishes.
+	 */
 	set instrumentation(value: InstrumentationLevel) {
 		this.#instrumentation = value;
 	}
 
+	/**
+	 * Get the prompt cache key forwarded to providers.
+	 */
 	get promptCacheKey(): string | undefined {
 		return this.#promptCacheKey;
 	}
 
+	/**
+	 * Set the prompt cache key forwarded to providers.
+	 */
 	set promptCacheKey(value: string | undefined) {
 		this.#promptCacheKey = value;
 	}
 
+	/**
+	 * Static metadata forwarded to every API request when no resolver is installed
+	 * (e.g. `metadata.user_id` for Anthropic session attribution). Setting this
+	 * clears any installed resolver.
+	 *
+	 * For live/provider-aware metadata (e.g. Anthropic OAuth `account_uuid` that
+	 * must reflect the credential selected per-request), use
+	 * {@link setMetadataResolver} and read via {@link metadataForProvider}.
+	 */
 	get metadata(): Record<string, unknown> | undefined {
 		return this.#metadata;
 	}
@@ -322,43 +578,87 @@ export class Agent {
 		this.#metadataResolver = undefined;
 	}
 
+	/**
+	 * Resolve request metadata for the given provider at call time. When a
+	 * resolver is installed via {@link setMetadataResolver}, it is invoked with
+	 * the provider string so the result can be scoped (e.g. `account_uuid` is
+	 * only included for `"anthropic"` requests). Falls back to the static
+	 * {@link metadata} value when no resolver is set.
+	 */
 	metadataForProvider(provider: string): Record<string, unknown> | undefined {
 		if (this.#metadataResolver) return this.#metadataResolver(provider);
 		return this.#metadata;
 	}
 
+	/**
+	 * Install a function that resolves request metadata at call time. The
+	 * resolver receives the target provider string and can gate provider-specific
+	 * fields (e.g. `account_uuid` only for `"anthropic"`). Invoked per LLM
+	 * request by `agent-loop` after `getApiKey` selects the session-sticky
+	 * credential. Pass `undefined` to clear and revert to the static
+	 * {@link metadata} value.
+	 */
 	setMetadataResolver(resolver: ((provider: string) => Record<string, unknown> | undefined) | undefined): void {
 		this.#metadataResolver = resolver;
 	}
 
+	/**
+	 * Read the active OpenTelemetry configuration. Returns `undefined` when
+	 * instrumentation is disabled. Callers spawning child runs (e.g. subagent
+	 * dispatch) forward this to the child's loop so its spans appear under the
+	 * parent's active context with the subagent's own identity stamped.
+	 */
 	get telemetry(): AgentLoopConfig["telemetry"] | undefined {
 		return this.#telemetry;
 	}
 
+	/**
+	 * Replace the active OpenTelemetry configuration. Pass `undefined` to
+	 * disable instrumentation. Applies to the *next* `agentLoop` invocation —
+	 * in-flight loops keep the configuration they started with.
+	 */
 	setTelemetry(telemetry: AgentLoopConfig["telemetry"] | undefined): void {
 		this.#telemetry = telemetry;
 	}
 
+	/**
+	 * Get provider-scoped mutable session state store.
+	 */
 	get providerSessionState(): Map<string, ProviderSessionState> | undefined {
 		return this.#providerSessionState;
 	}
 
+	/**
+	 * Set provider-scoped mutable session state store.
+	 */
 	set providerSessionState(value: Map<string, ProviderSessionState> | undefined) {
 		this.#providerSessionState = value;
 	}
 
+	/**
+	 * Get the current thinking budgets.
+	 */
 	get thinkingBudgets(): ThinkingBudgets | undefined {
 		return this.#thinkingBudgets;
 	}
 
+	/**
+	 * Set custom thinking budgets for token-based providers.
+	 */
 	set thinkingBudgets(value: ThinkingBudgets | undefined) {
 		this.#thinkingBudgets = value;
 	}
 
+	/**
+	 * Get the current sampling temperature.
+	 */
 	get temperature(): number | undefined {
 		return this.#temperature;
 	}
 
+	/**
+	 * Set sampling temperature for LLM calls. `undefined` uses provider default.
+	 */
 	set temperature(value: number | undefined) {
 		this.#temperature = value;
 	}
@@ -435,10 +735,17 @@ export class Agent {
 		this.#hideThinkingSummary = value;
 	}
 
+	/**
+	 * Get the current max retry delay in milliseconds.
+	 */
 	get maxRetryDelayMs(): number | undefined {
 		return this.#maxRetryDelayMs;
 	}
 
+	/**
+	 * Set the maximum delay to wait for server-requested retries.
+	 * Set to 0 to disable the cap.
+	 */
 	set maxRetryDelayMs(value: number | undefined) {
 		this.#maxRetryDelayMs = value;
 	}
@@ -455,6 +762,19 @@ export class Agent {
 		this.#appendOnlyContext = manager;
 	}
 
+	/**
+	 * Assemble the provider Context for a side-channel (no-loop) request, mirroring
+	 * the main loop's prefix (system + normalized tools) so it shares the prompt
+	 * cache. Never touches the append-only log or the tool-choice queue. Owned/
+	 * in-band dialect sessions stay tools-less (matching their no-native-tools wire
+	 * shape and avoiding tool-markup leakage). `llmMessages` is already converted
+	 * (and, in production, obfuscated) by the caller.
+	 *
+	 * `systemPrompt` defaults to the live agent prompt so the side request hits the
+	 * same cached prefix as the main loop. Callers that must pin a different prompt
+	 * (e.g. handoff generation, which uses the base prompt rather than a per-turn
+	 * `before_agent_start` hook override) pass it explicitly.
+	 */
 	async buildSideRequestContext(
 		llmMessages: Message[],
 		systemPrompt: string[] = this.#state.systemPrompt,
@@ -467,6 +787,10 @@ export class Agent {
 			? []
 			: (normalizeTools(
 					this.#state.tools,
+					// Resolved HERE, per request, not captured at construction: this is the read that
+					// decides whether every tool schema carries the intent field, and the system prompt
+					// explains that field. A prompt that describes a field the schemas do not carry is
+					// worse than one that omits it, so the two reads have to see the same answer.
 					this.#resolveIntentTracing(),
 					preferredDialect(model.id),
 					this.#resolvePruneToolDescriptions(model),
@@ -485,6 +809,11 @@ export class Agent {
 		this.#onResponse = fn;
 	}
 
+	/**
+	 * Replace the provider-context transform (e.g. AgentSession wrapping for
+	 * session-local tool-call ID canonicalization). Must be installed after
+	 * construction when the session owns state the transform closes over.
+	 */
 	setTransformProviderContext(fn: ((context: Context, model: Model) => Context | Promise<Context>) | undefined): void {
 		this.#transformProviderContext = fn;
 	}
@@ -510,6 +839,11 @@ export class Agent {
 		this.#onTurnEnd = fn;
 	}
 
+	/**
+	 * Provide a source of non-interrupting "aside" messages (e.g. background-job
+	 * completions, late LSP diagnostics) drained at each step boundary. Never
+	 * aborts in-flight tools. See `AgentLoopConfig.getAsideMessages`.
+	 */
 	setAsideMessageProvider(fn: (() => AsideMessage[] | Promise<AsideMessage[]>) | undefined): void {
 		this.#asideMessageProvider = fn;
 	}
@@ -535,6 +869,7 @@ export class Agent {
 		this.#emit(event);
 	}
 
+	// State mutators
 	setSystemPrompt(v: string[] | string) {
 		this.#state.systemPrompt = typeof v === "string" ? [v] : v;
 	}
@@ -580,6 +915,8 @@ export class Agent {
 	}
 
 	replaceMessages(ms: AgentMessage[]) {
+		// New array assignment is intentional: caller-owned `ms` may be mutated
+		// after handoff; snapshot it so external mutations cannot leak in.
 		this.#state.messages = ms.slice();
 	}
 
@@ -600,10 +937,18 @@ export class Agent {
 		return removed;
 	}
 
+	/**
+	 * Queue a steering message to interrupt the agent mid-run.
+	 * Delivered after current tool execution, skips remaining tools.
+	 */
 	steer(m: AgentMessage) {
 		this.#steeringQueue.push(m);
 	}
 
+	/**
+	 * Queue a follow-up message to be processed after the agent finishes.
+	 * Delivered only when agent has no more tool calls or steering messages.
+	 */
 	followUp(m: AgentMessage) {
 		this.#followUpQueue.push(m);
 	}
@@ -625,10 +970,16 @@ export class Agent {
 		return this.#steeringQueue.length > 0 || this.#followUpQueue.length > 0;
 	}
 
+	/** Non-consuming view of the pending steering queue (insertion order, newest
+	 *  last). The session layer derives its queued-message display/count from
+	 *  this live view instead of a mirror, so the agent-core queue stays the
+	 *  single source of truth. */
 	peekSteeringQueue(): readonly AgentMessage[] {
 		return this.#steeringQueue;
 	}
 
+	/** Non-consuming view of the pending follow-up queue. See
+	 *  {@link peekSteeringQueue}. */
 	peekFollowUpQueue(): readonly AgentMessage[] {
 		return this.#followUpQueue;
 	}
@@ -665,10 +1016,18 @@ export class Agent {
 		return followUp;
 	}
 
+	/**
+	 * Remove and return the last steering message from the queue (LIFO).
+	 * Used by dequeue keybinding.
+	 */
 	popLastSteer(): AgentMessage | undefined {
 		return this.#steeringQueue.pop();
 	}
 
+	/**
+	 * Remove and return the last follow-up message from the queue (LIFO).
+	 * Used by dequeue keybinding.
+	 */
 	popLastFollowUp(): AgentMessage | undefined {
 		return this.#followUpQueue.pop();
 	}
@@ -695,6 +1054,7 @@ export class Agent {
 		this.#followUpQueue = [];
 	}
 
+	/** Send a prompt with an AgentMessage */
 	async prompt(message: AgentMessage | AgentMessage[], options?: AgentPromptOptions): Promise<void>;
 	async prompt(input: string, options?: AgentPromptOptions): Promise<void>;
 	async prompt(input: string, images?: ImageContent[], options?: AgentPromptOptions): Promise<void>;
@@ -726,7 +1086,7 @@ export class Agent {
 			}
 			const content: Array<TextContent | ImageContent> = [{ type: "text", text: input }];
 			if (images && images.length > 0) {
-				for (let ii = 0; ii < images.length; ii++) content.push(images[ii]!);
+				content.push(...images);
 			}
 			msgs = [
 				{
@@ -743,6 +1103,9 @@ export class Agent {
 		await this.#runLoop(msgs, promptOptions);
 	}
 
+	/**
+	 * Continue from current context (used for retries and resuming queued messages).
+	 */
 	async continue() {
 		if (this.#state.isStreaming) {
 			throw new AgentBusyError();
@@ -771,6 +1134,11 @@ export class Agent {
 		await this.#runLoop(undefined);
 	}
 
+	/**
+	 * Run the agent loop.
+	 * If messages are provided, starts a new conversation turn with those messages.
+	 * Otherwise, continues from existing context.
+	 */
 	async #runLoop(messages?: AgentMessage[], options?: AgentPromptOptions & { skipInitialSteeringPoll?: boolean }) {
 		const model = this.#state.model;
 		if (!model) throw new Error("No model configured");
@@ -786,6 +1154,7 @@ export class Agent {
 		this.#state.streamMessage = null;
 		this.#state.error = undefined;
 
+		// Clear Cursor tool result buffer at start of each run
 		this.#cursorToolResultBuffer = [];
 
 		const reasoning = this.#state.thinkingLevel;
@@ -801,11 +1170,18 @@ export class Agent {
 				? async (message: ToolResultMessage) => {
 						let finalMessage = message;
 						if (this.#cursorOnToolResult) {
+							// Host hooks fail closed like convertToLlm/transformContext: a
+							// throw here propagates as a stream error instead of silently
+							// dropping the host's transformation.
 							const updated = await this.#cursorOnToolResult(message);
 							if (updated) {
 								finalMessage = updated;
 							}
 						}
+						// Cursor executes tools server-side during streaming. We buffer
+						// each toolResult and emit them right after the assistant message
+						// closes (see `#emitCursorSplitAssistantMessage`), so replay
+						// receives (assistant with interleaved toolCall blocks) → results.
 						this.#cursorToolResultBuffer.push({ toolResult: finalMessage });
 						return finalMessage;
 					}
@@ -863,7 +1239,6 @@ export class Agent {
 			},
 			cursorExecHandlers: this.#cursorExecHandlers,
 			cursorOnToolResult,
-			cursorRules: this.#cursorRulesResolver?.(),
 			cwd: this.#cwd,
 			getCwd: this.#cwdResolver,
 			transformToolCallArguments: this.#transformToolCallArguments,
@@ -922,6 +1297,7 @@ export class Agent {
 				: agentLoopContinue(context, config, this.#abortController.signal, this.streamFn);
 
 			for await (const event of stream) {
+				// Update internal state based on events
 				switch (event.type) {
 					case "message_start":
 						partial = event.message;
@@ -935,6 +1311,8 @@ export class Agent {
 
 					case "message_end":
 						partial = null;
+						// Check if this is an assistant message with buffered Cursor tool results.
+						// If so, split the message to emit tool results at the correct position.
 						if (event.message.role === "assistant" && this.#cursorToolResultBuffer.length > 0) {
 							this.#emitCursorSplitAssistantMessage(event.message as AssistantMessage);
 							continue; // Skip default emit - split method handles everything
@@ -952,6 +1330,9 @@ export class Agent {
 						break;
 
 					case "turn_end":
+						// `in`-narrowing instead of a role narrow: declaration-merged
+						// CustomAgentMessages members keep AgentMessage from narrowing
+						// to AssistantMessage on `role` alone.
 						if (
 							event.message.role === "assistant" &&
 							"errorMessage" in event.message &&
@@ -967,15 +1348,17 @@ export class Agent {
 						break;
 				}
 
+				// Emit to listeners
 				this.#emit(event);
 			}
 
+			// Handle any remaining partial message
 			if (partial && partial.role === "assistant" && Array.isArray(partial.content) && partial.content.length > 0) {
 				const onlyEmpty = !partial.content.some(
 					c =>
-						(c.type === "thinking" && /\S/.test(c.thinking)) ||
-						(c.type === "text" && /\S/.test(c.text)) ||
-						(c.type === "toolCall" && /\S/.test(c.name)),
+						(c.type === "thinking" && c.thinking.trim().length > 0) ||
+						(c.type === "text" && c.text.trim().length > 0) ||
+						(c.type === "toolCall" && c.name.trim().length > 0),
 				);
 				if (!onlyEmpty) {
 					this.appendMessage(partial);
@@ -987,6 +1370,9 @@ export class Agent {
 			}
 		} catch (err) {
 			const stoppedForAbort = this.#abortController?.signal.aborted === true;
+			// `errorMessage(err)` from `@veyyon/utils`, which this file already imports. The two tail branches
+			// here were that helper hand-rolled, and the local const SHADOWED the import, so the copy was the
+			// only version reachable in this scope. The local is named for what it holds instead.
 			const failureMessage = stoppedForAbort ? abortReasonText(this.#abortController?.signal) : errorMessage(err);
 			const shouldEmitVisibleOutputBlockedError = !stoppedForAbort && isAnthropicOutputBlockedError(failureMessage);
 			const assistantPartial = partial?.role === "assistant" ? partial : undefined;
@@ -1052,6 +1438,21 @@ export class Agent {
 		}
 	}
 
+	/**
+	 * Emit a Cursor assistant message with buffered exec-channel toolResults.
+	 *
+	 * Since the Cursor provider now synthesizes `toolCall` content blocks at the
+	 * point each exec tool starts (issue #4348), the assistant message content
+	 * already interleaves text/thinking with toolCall blocks in execution order.
+	 * We emit the message as-is and let the buffered toolResults follow — the
+	 * transcript rebuild in `renderSessionContext` pairs them by `toolCallId`.
+	 *
+	 * Historical note: this used to split the assistant message at
+	 * `textLengthAtCall` to interpose toolResults between preamble and
+	 * continuation. That workaround existed because native cursor tools had no
+	 * toolCall blocks; it also copied `preambleText` into every text block on
+	 * multi-text turns, producing duplicated text on replay.
+	 */
 	#emitCursorSplitAssistantMessage(assistantMessage: AssistantMessage): void {
 		const buffer = this.#cursorToolResultBuffer;
 		this.#cursorToolResultBuffer = [];

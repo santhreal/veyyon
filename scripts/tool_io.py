@@ -30,7 +30,7 @@ DEFAULT_SESSIONS_DIR = Path.home() / ".veyyon" / "agent" / "sessions"
 
 TOOL_GROUPS: dict[str, tuple[str, ...]] = {
     "edits": ("edit", "ast_edit"),
-    "reads": ("read", "grep", "find", "ast_grep", "lsp"),
+    "reads": ("read", "search", "grep", "find", "ast_grep", "lsp"),
     "writes": ("edit", "ast_edit", "write"),
 }
 
@@ -316,6 +316,10 @@ def extract_result_text(message: dict[str, Any] | None) -> str:
 def extract_path(arguments: dict[str, Any]) -> str:
     for key in ("path", "file", "move"):
         value = arguments.get(key)
+        if isinstance(value, str):
+            return value
+    if arguments.get("type") == "files":
+        value = arguments.get("input")
         if isinstance(value, str):
             return value
     return ""

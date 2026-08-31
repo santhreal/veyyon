@@ -99,7 +99,10 @@ export async function startCpuProfile(): Promise<ProfilerSession> {
 	const v8 = await import("node:v8");
 	try {
 		v8.setFlagsFromString("--allow-natives-syntax");
-	} catch {}
+	} catch {
+		// Documented above: Bun does not implement this, and the profiler works
+		// without it.
+	}
 
 	const { Session } = await import("node:inspector/promises");
 	const session = new Session();

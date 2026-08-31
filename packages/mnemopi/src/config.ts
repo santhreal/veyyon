@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { hostMatchesUrl } from "@veyyon/catalog/hosts";
 import { OPENROUTER_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { getMnemopiRuntimeOptions } from "./core/runtime-options";
 import {
 	type Env,
@@ -19,23 +19,69 @@ import {
 export type { Env };
 export { envBool, envDisabled, envFloat, envInt, envOneOf, envOptionalString, envString, envTruthy };
 
+/**
+ * THE home this package derives every on-disk root from.
+ *
+ * Order: `MNEMOPI_HOME`, then `HOME`, then `os.homedir()`. It is a function, and that
+ * is the whole point of it. The roots used to be module-level constants computed from
+ * `homedir()` at import time, which made them unreachable by any lever: a test could
+ * move `VEYYON_CONFIG_DIR` and `MNEMOPI_DATA_DIR` and still have `storeBlob()` create
+ * `~/.hermes/mnemopi/blobs` in the operator's real home, because that path was decided
+ * before the test ran. `MNEMOPI_HOME` moves every root at once, so isolating this
+ * package is one variable rather than one variable per directory that happens to exist
+ * today.
+ *
+ * The dot-directory names below it are unchanged: this resolves WHERE the home is, not
+ * what the package calls its directories inside it.
+ */
 export function mnemopiHome(env: Env = process.env): string {
 	return envOptionalString("MNEMOPI_HOME", env) ?? envOptionalString("HOME", env) ?? homedir();
 }
 
+/** The `.hermes` root: data, models, blobs, plugins and the embedding cache live under it. */
 export function hermesRoot(env: Env = process.env): string {
 	return join(mnemopiHome(env), ".hermes");
 }
 
 export const DEFAULT_DB_FILENAME = "mnemopi.db";
+
+export function fastembedCacheDir(env: Env = process.env): string {
+	return join(hermesRoot(env), "cache", "fastembed");
+}
+
+export function modelCacheDir(env: Env = process.env): string {
+	return join(hermesRoot(env), "mnemopi", "models");
+}
+
 export const DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5";
+/**
+ * The embedding endpoint used when nothing is configured.
+ *
+ * Read from the owner in `@veyyon/catalog/provider-endpoints` rather than declared: three other modules spelled
+ * the same URL, two of them inline inside an env fallback chain whose variable is itself called
+ * `OPENROUTER_BASE_URL`.
+ */
 export const DEFAULT_EMBEDDING_API_URL = OPENROUTER_API_ENDPOINT;
 export const DEFAULT_LLM_MODEL_REPO = "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF";
 export const DEFAULT_LLM_MODEL_FILE = "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf";
+export const HOST_LLM_TIMEOUT_SECONDS = 15.0;
 
 export type VecType = "float32" | "int8" | "bit";
 
+/**
+ * The width assumed for a model this table does not list.
+ *
+ * Named rather than written as a bare `384` at each site, because both resolvers
+ * (`embeddingDim` here and `embeddingDimFor` in `core/embeddings.ts`) have to fall
+ * back to the SAME number: they size the same vectors, and two different guesses
+ * would corrupt the store rather than merely disagree. It is the dimension of the
+ * default model, so an unlisted model behaves like the default instead of failing.
+ */
 export const FALLBACK_EMBEDDING_DIM = 384;
+
+/**
+ * Dimension by embedding model name. THE one table; `core/embeddings.ts` imports it.
+ */
 export const EMBEDDING_DIMS: Readonly<Record<string, number>> = {
 	"BAAI/bge-small-en-v1.5": 384,
 	"BAAI/bge-base-en-v1.5": 768,
@@ -76,18 +122,42 @@ export function beamOptimizationsEnabled(env: Env = process.env): boolean {
 	return envTruthy("MNEMOPI_BEAM_OPTIMIZATIONS", env);
 }
 
+/**
+ * The embedding model in force right now.
+ *
+ * THE ONE RESOLVER. It reads the active `withMnemopiRuntimeOptions` scope first and
+ * the environment second, which is the order `core/embeddings.ts` uses when it picks
+ * the model to embed WITH. This function used to read the environment alone, so a
+ * caller who set `embeddings.model` on a runtime scope had the embedder produce one
+ * width while `binary-vectors.ts`, which sizes packed vectors from `embeddingDim()`
+ * below, packed a different one. Nothing checked the two against each other, so a
+ * mismatch did not error: it wrote vectors that decode to noise and surfaced as
+ * similarity scores quietly getting worse.
+ *
+ * Reading the scope from `config.ts` costs one module (`node:async_hooks`) and no
+ * cycle: `core/runtime-options.ts` imports nothing from here.
+ */
 export function embeddingModel(env: Env = process.env): string {
 	const scoped = getMnemopiRuntimeOptions()?.embeddings?.model;
 	if (scoped !== undefined) return scoped;
 	return envString("MNEMOPI_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL, env);
 }
 
+/**
+ * The width `modelName` produces, with `MNEMOPI_EMBEDDING_DIM` overriding the table.
+ *
+ * Separate from {@link embeddingDim} because two callers ask two different questions:
+ * this one asks about a NAMED model, the other about the model currently in force.
+ * They must not answer differently for the same name, which is why the override and
+ * the fallback live here once rather than at each site.
+ */
 export function embeddingDimFor(modelName: string, env: Env = process.env): number {
 	const explicit = envInt("MNEMOPI_EMBEDDING_DIM", NaN, env);
 	if (Number.isFinite(explicit)) return explicit;
 	return EMBEDDING_DIMS[modelName] ?? FALLBACK_EMBEDDING_DIM;
 }
 
+/** The width the model in force produces. Scope-aware, because {@link embeddingModel} is. */
 export function embeddingDim(env: Env = process.env): number {
 	return embeddingDimFor(embeddingModel(env), env);
 }
@@ -108,10 +178,33 @@ export function embeddingsViaApi(env: Env = process.env): boolean {
 	return envTruthy("MNEMOPI_EMBEDDINGS_VIA_API", env);
 }
 
+/**
+ * `MNEMOPI_NO_EMBEDDINGS`, read the way every other boolean here is read: a
+ * truthy value turns embeddings off, and `0`, `false`, `no` or `off` leaves them
+ * on. Any non-empty value used to disable them through this reader while the
+ * embedder's own copy used the truthy table, so `MNEMOPI_NO_EMBEDDINGS=0` turned
+ * the API path off and the local path on.
+ */
 export function embeddingsDisabled(env: Env = process.env): boolean {
 	return envTruthy("MNEMOPI_NO_EMBEDDINGS", env);
 }
 
+/**
+ * Per-input character cap applied inside `embed()` before any provider sees the text.
+ *
+ * Long retention transcripts (full multi-turn session windows) routinely outgrow
+ * embedding model context windows: BGE/E5 defaults are 512 tokens, bge-m3 is
+ * 8192, and OpenAI's text-embedding-3-* is 8192. llama.cpp's `/embeddings`
+ * server rejects oversized requests with `request (N tokens) exceeds the
+ * available context size`; OpenAI silently right-truncates. Capping at the
+ * source gives both backends deterministic behavior and prevents the silent
+ * recall degradation we saw in issue #3126.
+ *
+ * Default `8192` chars is intentionally conservative for 8192-token embedding
+ * contexts (bge-m3, OpenAI text-embedding-3) and CJK-heavy transcripts. Raise
+ * it for larger local contexts (for example Qwen3-Embedding with 32k ctx).
+ * `0` disables the cap.
+ */
 export function embeddingMaxInputChars(env: Env = process.env): number {
 	return Math.max(0, envInt("MNEMOPI_EMBEDDING_MAX_INPUT_CHARS", 8192, env));
 }
@@ -155,6 +248,16 @@ export function scratchpadMaxItems(env: Env = process.env): number {
 	return envInt("MNEMOPI_SP_MAX", 1000, env);
 }
 
+/**
+ * Self-Harmonizing Memory Reconciliation, the pass that clusters near-duplicate memories
+ * and reconciles the beliefs they imply. Its five knobs lived in `core/shmr.ts` and were
+ * the only `MNEMOPI_*` family with no accessor here, so `mnemopi diagnose` could not report
+ * them and an operator had no one place to look them up.
+ *
+ * Each falls back to its default rather than to `NaN`: a `NaN` threshold makes every
+ * `>= threshold` comparison false, so clustering would quietly find nothing, and a `NaN`
+ * size corrupts the SQLite `LIMIT` bind.
+ */
 export function shmrBatchSize(env: Env = process.env): number {
 	return envInt("MNEMOPI_SHMR_BATCH_SIZE", 50, env);
 }
@@ -250,11 +353,25 @@ export function vecType(env: Env = process.env): VecType {
 	return envOneOf("MNEMOPI_VEC_TYPE", ["float32", "int8", "bit"] as const, "int8", env);
 }
 
+/** The three recall scoring weights, in the order recall applies them. */
 export type HybridWeights = readonly [vecWeight: number, ftsWeight: number, importanceWeight: number];
 
+/**
+ * The recall weights when nothing overrides them: vector, full-text, importance.
+ *
+ * One triple, because a default written in several places is several defaults. The three
+ * accessors below each read their own slot and `normalizedRecallWeights` falls back to the
+ * whole triple, so retuning recall means editing this line and nothing else.
+ */
 export const DEFAULT_RECALL_WEIGHTS: HybridWeights = [0.5, 0.3, 0.2];
 
-const NORMALIZED_WEIGHT_EPSILON = 1e-6;
+/**
+ * How close a weight sum must be to 1 to count as already normalized. Dividing an
+ * already-normalized triple by its own total is a float round trip that can move a weight
+ * by an ulp, so the exact numbers the caller asked for are returned instead.
+ */
+const NORMALIZED_WEIGHT_EPSILON = 1e-10;
+
 export function vectorWeight(env: Env = process.env): number {
 	return envFloat("MNEMOPI_VEC_WEIGHT", DEFAULT_RECALL_WEIGHTS[0], env);
 }
@@ -267,10 +384,24 @@ export function importanceWeight(env: Env = process.env): number {
 	return envFloat("MNEMOPI_IMPORTANCE_WEIGHT", DEFAULT_RECALL_WEIGHTS[2], env);
 }
 
+/**
+ * A weight that is negative, `NaN` or infinite contributes nothing.
+ *
+ * Recall's weights arrive from `RecallOptions`, which is public and typed only as `number`,
+ * so a caller that computed one with `Number(input)` can hand over `NaN`. Left alone it
+ * poisons the sum, and every weight comes back `NaN`: no memory then out-scores any other
+ * and recall silently returns whatever order the candidates happened to be in.
+ */
 function usableWeight(value: number): number {
 	return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
+/**
+ * The recall weights, non-negative and summing to 1.
+ *
+ * `null` and `undefined` both mean "use the configured weight", so a caller holding an
+ * optional override can pass it straight through.
+ */
 export function normalizedRecallWeights(
 	vec: number | null | undefined = vectorWeight(),
 	fts: number | null | undefined = ftsWeight(),
@@ -299,6 +430,13 @@ let polyphonicRecallDefault = false;
 let enhancedRecallDefault = false;
 let proactiveLinkingDefault = false;
 
+/**
+ * Sets process-wide defaults for the env-gated recall features. Host configuration
+ * (e.g. the coding-agent `mnemopi.polyphonicRecall` / `mnemopi.enhancedRecall` /
+ * `mnemopi.proactiveLinking` settings) lands here; the `MNEMOPI_POLYPHONIC_RECALL` /
+ * `MNEMOPI_ENHANCED_RECALL` / `MNEMOPI_PROACTIVE_LINKING` environment variables still
+ * win whenever they are set.
+ */
 export function configureRecallFeatures(flags: RecallFeatureFlags): void {
 	if (flags.polyphonicRecall !== undefined) polyphonicRecallDefault = flags.polyphonicRecall;
 	if (flags.enhancedRecall !== undefined) enhancedRecallDefault = flags.enhancedRecall;
@@ -332,16 +470,20 @@ export function llmMaxTokens(env: Env = process.env): number {
 	return envInt("MNEMOPI_LLM_MAX_TOKENS", 2048, env);
 }
 
+/** `MNEMOPI_FORCE_LOCAL`: keep extraction on the local tier even when a remote endpoint is configured. */
 export function forceLocalLlm(env: Env = process.env): boolean {
 	return envBool("MNEMOPI_FORCE_LOCAL", false, env);
 }
 
+/** `MNEMOPI_EXTRACTION_PROMPT`: replaces the bundled extraction template when set. */
 export function extractionPromptOverride(env: Env = process.env): string {
 	return envString("MNEMOPI_EXTRACTION_PROMPT", "", env);
 }
 
+/** The model the cloud extraction tier asks for when nothing names another one. */
 export const BUNDLED_EXTRACTION_MODEL = "google/gemini-2.5-flash";
 
+/** `MNEMOPI_EXTRACTION_MODEL`: the model the cloud extraction tier asks for first. */
 export function extractionModel(env: Env = process.env): string {
 	return envString("MNEMOPI_EXTRACTION_MODEL", BUNDLED_EXTRACTION_MODEL, env);
 }

@@ -1,3 +1,18 @@
+/**
+ * Vibe mode worker-session runtime.
+ *
+ * Owns the persistent, addressable worker sessions ("CLIs") the vibe director
+ * drives. Each worker is a real task-executor subagent with full tool access:
+ * spawned once through {@link runSubprocess} (keep-alive), continued
+ * turn-by-turn through {@link runSubagentFollowUpTurn}. Between turns the
+ * worker lives in the AgentRegistry / AgentLifecycleManager as an adopted idle
+ * agent (TTL park + JSONL revive), so its conversation context survives across
+ * turns and even across parking.
+ *
+ * Every turn runs as an AsyncJobManager job, so a completed turn self-delivers
+ * into the director's conversation exactly like an async `task` result, and
+ * `vibe_wait` can block on the first settling turn with `job`-poll semantics.
+ */
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -23,34 +38,197 @@ import {
 	subagentModelSourceLabel,
 	subagentsEnabled,
 } from "../task/subagent-settings";
-import type { AgentProgress, SingleResult } from "../task/types";
+import { type AgentDefinition, type AgentProgress, oneLineLabel, type SingleResult } from "../task/types";
+import type { ConfiguredThinkingLevel } from "../thinking";
 import type { ToolSession } from "../tools";
 import { formatDuration } from "../tools/render-utils";
 import { ToolError } from "../tools/tool-errors";
-import type {
-	VibeCli,
-	VibeKillOutcome,
-	VibeRecord,
-	VibeScreenSnapshot,
-	VibeSendOutcome,
-	VibeSpawnOutcome,
-	VibeTurn,
-	VibeWaitOutcome,
-} from "./runtime-helpers";
-import {
-	DEFAULT_WAIT_TIMEOUT_MS,
-	firstLine,
-	mergeTrace,
-	RESPONSE_PREVIEW_MAX,
-	TRACE_LINE_MAX,
-	VIBE_CLI_AGENT,
-} from "./runtime-helpers";
 
-export type { VibeSessionState } from "./runtime-helpers";
-export type { VibeCli, VibeKillOutcome, VibeScreenSnapshot, VibeSendOutcome, VibeSpawnOutcome, VibeWaitOutcome };
+/** The two worker CLI flavors the director drives. */
+export type VibeCli = "fast" | "good";
 
+/**
+ * CLI flavor → bundled agent type. `sonic` is the low-reasoning worker (medium
+ * effort, mechanical work) and `task` the general-purpose one. Neither pins a
+ * model: resolution goes through {@link resolveSubagentModel} exactly like a
+ * `task` spawn, so the operator's Subagents settings decide — the agent row
+ * first, then the blanket subagent model, then the session's own model.
+ *
+ * File-private: the mapping is read once, by `spawn` below. Exporting it invited
+ * a second caller to resolve an agent name without going through spawn, which is
+ * where the model-resolution comment above would stop being true.
+ */
+const VIBE_CLI_AGENT: Record<VibeCli, string> = {
+	fast: "sonic",
+	good: "deep",
+};
+
+/** Worker session lifecycle as shown to the director. */
+export type VibeSessionState = "starting" | "running" | "idle" | "dead";
+
+/** One completed tool call in the per-turn activity trace. */
+interface VibeTraceEntry {
+	tool: string;
+	args: string;
+	endMs: number;
+}
+
+/** Cap on trace entries retained per turn (the run monitor keeps 5; we widen the window). */
+const TURN_TRACE_CAP = 40;
+/** Cap on a single rendered trace line. */
+const TRACE_LINE_MAX = 120;
+/** Default `vibe_wait` window when no timeout was given (ms). */
+const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
+/** Response text cap inside a delivered turn result; full output stays at agent://<id>. */
+const RESPONSE_PREVIEW_MAX = 6000;
+
+interface VibeTurn {
+	jobId: string;
+	message: string;
+	startedAt: number;
+	/** Trace of tool calls completed during this turn, oldest first. */
+	trace: VibeTraceEntry[];
+	/** Total completed tool calls (trace may be narrower than this). */
+	toolCount: number;
+}
+
+interface VibeRecord {
+	id: string;
+	cli: VibeCli;
+	ownerId: string;
+	agent: AgentDefinition;
+	modelOverride?: string | string[];
+	/**
+	 * Effort resolved from `subagent.*` when the worker started, held beside
+	 * `modelOverride` so both come from one moment's settings. Reading
+	 * `agent.thinkingLevel` at spawn time instead is what made a vibe worker ignore
+	 * both the blanket subagent effort and its own per-agent row.
+	 */
+	thinkingLevel?: ConfiguredThinkingLevel;
+	state: VibeSessionState;
+	createdAt: number;
+	lastActivityAt: number;
+	/** One-line gist of the latest activity (intent, tool, or result preview). */
+	lastActivity?: string;
+	/** Resolved model display string once known. */
+	resolvedModel?: string;
+	turn?: VibeTurn;
+	/** Live view of the in-flight turn (current tool, intent, streamed text tail). */
+	live?: {
+		currentTool?: string;
+		currentToolArgs?: string;
+		lastIntent?: string;
+		/** Latest streamed assistant text lines, oldest first. */
+		outputTail: string[];
+	};
+	/** Job id of the most recently settled turn (wait snapshots after settle). */
+	lastJobId?: string;
+	/** Messages queued while a turn was in flight; drained into the next turn. */
+	queue: string[];
+	turnCount: number;
+	killed: boolean;
+}
+
+/**
+ * Live per-session "screen" for rich rendering: what the worker is doing right
+ * now (tool trace, current tool, streamed text tail) plus roster metadata.
+ * Every string is already one-line sanitized.
+ */
+export interface VibeScreenSnapshot {
+	id: string;
+	cli: VibeCli;
+	state: VibeSessionState;
+	model?: string;
+	turns: number;
+	queued: number;
+	/** Start of the in-flight turn, when running. */
+	turnStartedAt?: number;
+	/** Gist of the message that started the in-flight turn. */
+	turnMessage?: string;
+	currentTool?: string;
+	currentToolArgs?: string;
+	lastIntent?: string;
+	/** Completed tool calls of the in-flight turn, oldest first (tail). */
+	trace: string[];
+	/** Latest streamed worker text lines, oldest first. */
+	outputTail: string[];
+	lastActivity?: string;
+	lastActivityAt: number;
+}
+
+/**
+ * What `VibeSessionRegistry.spawn` resolves to.
+ *
+ * Exported although nothing imports it today, unlike the two symbols above:
+ * `spawn` is a public method of an exported class, so this name is part of the
+ * declaration this package publishes and a caller that wants to hold the result
+ * in a typed binding needs it.
+ */
+export interface VibeSpawnOutcome {
+	id: string;
+	jobId: string;
+}
+
+export interface VibeSendOutcome {
+	id: string;
+	/**
+	 * - `turn`: a new background turn was started (`jobId` set).
+	 * - `steered`: worker was mid-turn and streaming; delivered as steering.
+	 * - `queued`: worker was mid-turn but not steerable; drained into the next turn.
+	 */
+	mode: "turn" | "steered" | "queued";
+	jobId?: string;
+}
+
+export interface VibeKillOutcome {
+	id: string;
+	/** True when an in-flight turn job was cancelled along the way. */
+	cancelledTurn: boolean;
+}
+
+export interface VibeWaitOutcome {
+	/** Watched sessions whose snapshotted turn settled during (or before) the wait.
+	 * May overlap `stillRunning` when a queued follow-up turn already started. */
+	settled: Array<{ id: string; jobId: string; status: "completed" | "failed" | "cancelled"; resultText: string }>;
+	/** Watched sessions with a turn in flight when the wait returned. */
+	stillRunning: string[];
+	timedOut: boolean;
+}
+
+/** Normalize a text fragment to one bounded roster/trace line. */
+function firstLine(text: string, max = 100): string {
+	return oneLineLabel(text, max);
+}
+
+/** Merge the monitor's rolling `recentTools` window (newest first) into the per-turn trace (oldest first). */
+function mergeTrace(turn: VibeTurn, progress: AgentProgress): void {
+	turn.toolCount = progress.toolCount;
+	for (let i = progress.recentTools.length - 1; i >= 0; i--) {
+		const entry = progress.recentTools[i];
+		if (turn.trace.some(seen => seen.endMs === entry.endMs && seen.tool === entry.tool && seen.args === entry.args)) {
+			continue;
+		}
+		turn.trace.push({ tool: entry.tool, args: entry.args, endMs: entry.endMs });
+		if (turn.trace.length > TURN_TRACE_CAP) turn.trace.shift();
+	}
+}
+
+/**
+ * Thrown from a turn job body so the job manager marks the job failed while
+ * carrying the formatted result.
+ *
+ * File-private: it is thrown and caught inside this module, and it appears in no
+ * signature, so a caller has nothing to do with it. A `catch` outside this file
+ * would be reaching into how a turn reports failure, which is what the outcome
+ * types are for.
+ */
 class VibeTurnError extends Error {}
 
+/**
+ * Process-global registry of vibe worker sessions, scoped per owner agent id
+ * (same convention as AsyncJobManager owner filters). The interactive mode
+ * kills an owner's sessions on vibe-mode exit via {@link killAll}.
+ */
 export class VibeSessionRegistry {
 	static #global: VibeSessionRegistry | undefined;
 
@@ -61,6 +239,7 @@ export class VibeSessionRegistry {
 		return VibeSessionRegistry.#global;
 	}
 
+	/** Reset the global registry. Test-only. */
 	static resetGlobalForTests(): void {
 		VibeSessionRegistry.#global = undefined;
 	}
@@ -94,6 +273,12 @@ export class VibeSessionRegistry {
 		return ids;
 	}
 
+	/**
+	 * Live screen snapshots for rich rendering (the "TV wall"): one entry per
+	 * session in creation order, carrying the in-flight turn's trace, current
+	 * tool, and streamed text tail. All strings are one-line sanitized here so
+	 * renderers can print them verbatim.
+	 */
 	screens(owner: string, ids?: string[]): VibeScreenSnapshot[] {
 		const wanted = ids?.length ? new Set(ids.map(id => id.trim())) : undefined;
 		const records: VibeRecord[] = [];
@@ -102,6 +287,7 @@ export class VibeSessionRegistry {
 			if (wanted && !wanted.has(record.id)) continue;
 			records.push(record);
 		}
+		// Stable TV-wall ordering: spawn order, not activity order.
 		records.sort((a, b) => a.createdAt - b.createdAt);
 		return records.map(record => ({
 			id: record.id,
@@ -126,6 +312,7 @@ export class VibeSessionRegistry {
 		}));
 	}
 
+	/** Spawn a persistent worker session and start its first turn in the background. */
 	async spawn(session: ToolSession, args: { cli: VibeCli; name?: string; prompt: string }): Promise<VibeSpawnOutcome> {
 		const owner = session.getAgentId?.() ?? MAIN_AGENT_ID;
 		const manager = this.#manager(session);
@@ -160,6 +347,8 @@ export class VibeSessionRegistry {
 			agentModel: agent.model,
 			activeModelPattern: session.getActiveModelString?.(),
 			fallbackModelPattern: session.getModelString?.(),
+			// The worker session runs one level below its spawner (the executor
+			// derives the same value as `childDepth`), and depth rows key on that.
 			taskDepth: (session.taskDepth ?? 0) + 1,
 		});
 		if (resolvedModel.unresolved) {
@@ -205,6 +394,11 @@ export class VibeSessionRegistry {
 		}
 	}
 
+	/**
+	 * Send a message to a worker. Mid-turn and streaming → steering; mid-turn
+	 * otherwise → queued for the next turn; idle/parked → starts a new
+	 * background turn immediately.
+	 */
 	async send(session: ToolSession, args: { session: string; message: string }): Promise<VibeSendOutcome> {
 		const owner = session.getAgentId?.() ?? MAIN_AGENT_ID;
 		const record = this.#record(owner, args.session);
@@ -231,16 +425,30 @@ export class VibeSessionRegistry {
 		return { id: record.id, mode: "turn", jobId };
 	}
 
+	/**
+	 * Block until one watched session's in-flight turn settles, the timeout
+	 * elapses, or `signal` aborts — `job` poll semantics. Settled turns are
+	 * acknowledged against the job manager so their results are not delivered
+	 * a second time as async follow-ups.
+	 */
 	async wait(
 		session: ToolSession,
 		args: { sessions?: string[]; timeoutMs?: number; signal?: AbortSignal },
 	): Promise<VibeWaitOutcome> {
 		const owner = session.getAgentId?.() ?? MAIN_AGENT_ID;
 		const manager = this.#manager(session);
+		// Named sessions are watched regardless of state (a just-settled turn is
+		// reported from its retained job); the no-args form watches every
+		// session with a turn actually in flight.
 		const watched = args.sessions?.length
 			? args.sessions.map(id => this.#record(owner, id))
-			: Array.from(this.#records.values()).filter(record => record.ownerId === owner && record.turn !== undefined);
+			: [...this.#records.values()].filter(record => record.ownerId === owner && record.turn !== undefined);
 
+		// Snapshot each watched turn's job at entry: #finishTurn installs a
+		// queued follow-up turn inside the settling job's callback (before that
+		// job's promise resolves), so re-reading record.turn after the race
+		// would inspect the *next* running job and silently drop the settled
+		// result — whose async delivery watchJobs is suppressing on our behalf.
 		const snapshots: Array<{ record: VibeRecord; jobId: string }> = [];
 		for (const record of watched) {
 			const jobId = record.turn?.jobId ?? record.lastJobId;
@@ -276,7 +484,7 @@ export class VibeSessionRegistry {
 			manager.watchJobs(watchedJobIds);
 			const { promise: timeoutPromise, resolve: timeoutResolve } = Promise.withResolvers<void>();
 			const timeoutHandle = setTimeout(() => timeoutResolve(), timeoutMs);
-			const racePromises: Promise<unknown>[] = runningJobs.map(job => job.promise).concat([timeoutPromise]);
+			const racePromises: Promise<unknown>[] = [...runningJobs.map(job => job.promise), timeoutPromise];
 			let abortCleanup: (() => void) | undefined;
 			if (args.signal) {
 				const { promise: abortPromise, resolve: abortResolve } = Promise.withResolvers<void>();
@@ -288,6 +496,11 @@ export class VibeSessionRegistry {
 			try {
 				await Promise.race(racePromises);
 			} finally {
+				// Acknowledge BEFORE lifting the watch. `unwatchJobs` re-arms the async
+				// delivery of anything that settled inside the window and was not
+				// acknowledged, which is what stops a dropped return value from losing a
+				// worker's whole result. This wait returns those results itself, so the
+				// acknowledgement has to land first or the operator sees them twice.
 				manager.acknowledgeDeliveries(collectSettled().map(entry => entry.jobId));
 				manager.unwatchJobs(watchedJobIds);
 				clearTimeout(timeoutHandle);
@@ -297,16 +510,20 @@ export class VibeSessionRegistry {
 
 		const settled = collectSettled();
 		manager.acknowledgeDeliveries(settled.map(entry => entry.jobId));
+		// Current in-flight state, independent of the snapshot: a session whose
+		// watched turn settled may already be mid queued follow-up.
 		const stillRunning = watched.filter(record => record.turn !== undefined).map(record => record.id);
 		return { settled, stillRunning, timedOut: waited && settled.length === 0 };
 	}
 
+	/** Terminate a worker: cancel its in-flight turn and dispose + unregister its session. */
 	async kill(session: ToolSession, id: string): Promise<VibeKillOutcome> {
 		const owner = session.getAgentId?.() ?? MAIN_AGENT_ID;
 		const record = this.#record(owner, id);
 		return this.#killRecord(record, session.asyncJobManager);
 	}
 
+	/** Kill every session belonging to `owner` (vibe-mode exit / teardown). Returns the number killed. */
 	async killAll(owner: string, manager?: AsyncJobManager): Promise<number> {
 		let killed = 0;
 		for (const record of this.#records.values()) {
@@ -338,6 +555,7 @@ export class VibeSessionRegistry {
 		return { id: record.id, cancelledTurn };
 	}
 
+	/** Build the ExecutorOptions for a first spawn, mirroring the `task`/eval-bridge plumbing. */
 	async #buildSpawnOptions(
 		session: ToolSession,
 		record: VibeRecord,
@@ -423,6 +641,7 @@ export class VibeSessionRegistry {
 		};
 	}
 
+	/** Register one background job that runs a single worker turn and self-delivers its result. */
 	#registerTurnJob(
 		session: ToolSession,
 		manager: AsyncJobManager,
@@ -441,6 +660,7 @@ export class VibeSessionRegistry {
 		const onProgress = (progress: AgentProgress): void => {
 			mergeTrace(turn, progress);
 			record.resolvedModel = progress.resolvedModel ?? record.resolvedModel;
+			// recentOutput is newest-first; keep the latest lines oldest-first for display.
 			record.live = {
 				currentTool: progress.currentTool,
 				currentToolArgs: progress.currentToolArgs,
@@ -492,6 +712,7 @@ export class VibeSessionRegistry {
 		return jobId;
 	}
 
+	/** Post-turn bookkeeping shared by success and failure paths: clear the in-flight turn, flush the queue. */
 	#finishTurn(session: ToolSession, manager: AsyncJobManager, record: VibeRecord, settledJobId: string): void {
 		record.lastJobId = settledJobId;
 		record.turn = undefined;
@@ -501,12 +722,15 @@ export class VibeSessionRegistry {
 			record.state = "dead";
 			return;
 		}
+		// A spawn that failed before its session ever registered leaves nothing
+		// to continue — mark the record dead so sends fail with clear guidance.
 		record.state = AgentRegistry.global().get(record.id) ? "idle" : "dead";
 		if (record.state === "dead" || record.queue.length === 0) return;
 		const nextMessage = record.queue.splice(0, record.queue.length).join("\n\n");
 		try {
 			this.#registerTurnJob(session, manager, record, nextMessage, { first: false });
 		} catch (error) {
+			// Leave the messages recoverable: a later vibe_send flushes again.
 			record.queue.unshift(nextMessage);
 			logger.warn("vibe: failed to start queued follow-up turn", {
 				id: record.id,
@@ -515,6 +739,7 @@ export class VibeSessionRegistry {
 		}
 	}
 
+	/** Format a settled turn into the self-delivering result text (activity trace + response). */
 	#settleTurn(
 		session: ToolSession,
 		manager: AsyncJobManager,
@@ -566,6 +791,8 @@ export class VibeSessionRegistry {
 				})
 				.trim();
 		} catch (error) {
+			// A formatting bug must never turn a finished worker turn into a false
+			// failure — the work is done; degrade to a plain-text assembly.
 			logger.warn("vibe: turn-result template render failed; using plain fallback", {
 				id: record.id,
 				error: errorMessage(error),

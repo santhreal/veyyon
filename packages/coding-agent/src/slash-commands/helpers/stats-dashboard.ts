@@ -37,22 +37,46 @@ async function loadStats(): Promise<typeof StatsNs> {
 	return statsMod;
 }
 
+/** Sync access below an await of {@link loadStats}; a live server proves it ran. */
+function requireStats(): typeof StatsNs {
+	if (!statsMod) throw new Error("@veyyon/stats not loaded; await loadStats() first.");
+	return statsMod;
+}
+
 const STATS_DASHBOARD_USAGE = "Usage: /stats [<port>]";
 
-/** The option spellings this grammar no longer has, keyed by bare name. Both used to introduce the port and both now resolve to the same plain word. */
+/**
+ * The option spellings this grammar no longer has, keyed by bare name. Both used
+ * to introduce the port and both now resolve to the same plain word.
+ */
 export const STATS_DASHBOARD_REMOVED_OPTIONS: Record<string, string> = {
 	port: "write the port as a plain word, as in `/stats 8080`",
 	p: "write the port as a plain word, as in `/stats 8080`",
 };
 
-/** Parse the argument string of `/stats` into a port. The port is recognized by PATTERN — a run of digits — and here that detection */
+/**
+ * Parse the argument string of `/stats` into a port.
+ *
+ * The port is recognized by PATTERN — a run of digits — and here that detection
+ * is provable rather than a guess: `/stats` reads exactly one thing, so there is
+ * no second token set an integer could also belong to, and no keyword whose shape
+ * an integer could imitate. It follows that a word which is not an integer cannot
+ * be anything this command reads, so it is refused with the usage instead of
+ * being ignored.
+ *
+ * Port 0 is accepted and means "let the OS choose", which is why the lower bound
+ * is the digit test rather than 1.
+ */
 export function parseStatsDashboardArgs(args: string): StatsDashboardArgs | { error: string } {
 	const tokens = args.split(/\s+/).filter(Boolean);
 	if (tokens.length === 0) return { port: DEFAULT_STATS_DASHBOARD_PORT };
 
 	const token = tokens[0]!;
 	if (token.startsWith("-") || Object.hasOwn(STATS_DASHBOARD_REMOVED_OPTIONS, token.toLowerCase())) {
-		// A PLAIN `port` GETS THE SAME REASON AS `--port`. It cannot be a port itself, since a port is digits and these keys are letters, so reading the map here
+		// A PLAIN `port` GETS THE SAME REASON AS `--port`. It cannot be a port itself,
+		// since a port is digits and these keys are letters, so reading the map here
+		// costs nothing and answers `/stats port 8080` with the spelling that works
+		// instead of `Invalid port: port`.
 		return { error: removedOptionMessage(token, STATS_DASHBOARD_REMOVED_OPTIONS, STATS_DASHBOARD_USAGE) };
 	}
 	if (!/^\d+$/.test(token)) return { error: `Invalid port: ${token}. ${STATS_DASHBOARD_USAGE}` };
@@ -88,7 +112,23 @@ export async function launchStatsDashboard(args: StatsDashboardArgs): Promise<St
 	};
 }
 
-/** ACP/text-mode `/stats` handler, and the TUI one: this command has no controller because it has nothing to drive — it starts a server and opens a browser, and */
+export function stopStatsDashboard(): void {
+	if (!activeStatsServer) return;
+	activeStatsServer.stop();
+	activeStatsServer = undefined;
+	requireStats().closeDb();
+}
+
+/**
+ * ACP/text-mode `/stats` handler, and the TUI one: this command has no controller
+ * because it has nothing to drive — it starts a server and opens a browser, and
+ * neither needs the composer.
+ *
+ * The parser and the launcher below were written, exported, and then never
+ * reached: nothing in the product called either, so `Usage: /stats [<port>]`
+ * described a command that did not exist and the dashboard was only reachable as
+ * `veyyon stats` from a shell. This is the seam that was missing.
+ */
 export async function handleStatsAcp(
 	command: ParsedSlashCommand,
 	runtime: SlashCommandRuntime,

@@ -27,6 +27,9 @@ interface MDNDoc {
 	};
 }
 
+/**
+ * Convert MDN body sections to markdown
+ */
 async function convertMDNBody(sections: MDNSection[]): Promise<string> {
 	const parts: string[] = [];
 
@@ -80,12 +83,12 @@ async function convertMDNBody(sections: MDNSection[]): Promise<string> {
 
 			case "table":
 				if (value.rows && value.rows.length > 0) {
-					const mt = await buildMarkdownTableFromHtmlRows(value.rows);
-					for (let pi = 0; pi < mt.length; pi++) parts.push(mt[pi]!);
+					parts.push(...(await buildMarkdownTableFromHtmlRows(value.rows)));
 				}
 				break;
 
 			default:
+				// Skip unknown types
 				break;
 		}
 	}
@@ -93,6 +96,17 @@ async function convertMDNBody(sections: MDNSection[]): Promise<string> {
 	return parts.join("\n\n");
 }
 
+/**
+ * Convert a table's rows (each cell a fragment of HTML) into the lines of a
+ * GitHub-flavored Markdown table. Each cell's HTML is rendered to Markdown, then
+ * the grid is laid out by the shared {@link renderMarkdownTable} owner, which
+ * escapes every cell (so a `|` from an MDN code sample like `a | b`, or a
+ * newline from a multi-paragraph cell, cannot break out of its cell) and squares
+ * ragged rows off to the widest row (so a body row with more cells than the
+ * header cannot overflow the delimiter row and have its surplus cells silently
+ * dropped). The first row is the header. Returns one line per table row, ready
+ * to push into the section list, and `[]` when there are no rows.
+ */
 export async function buildMarkdownTableFromHtmlRows(rows: string[][]): Promise<string[]> {
 	const rendered = await Promise.all(rows.map(row => Promise.all(row.map(cell => htmlToBasicMarkdown(cell)))));
 	const table = renderMarkdownTable(rendered);
@@ -103,16 +117,19 @@ export const handleMDN: SpecialHandler = async (url: string, timeout: number, si
 	const urlObj = tryParseUrl(url);
 	if (!urlObj) return null;
 
+	// Only handle developer.mozilla.org
 	if (!urlObj.hostname.includes("developer.mozilla.org")) {
 		return null;
 	}
 
+	// Only handle docs paths
 	if (!urlObj.pathname.includes("/docs/")) {
 		return null;
 	}
 
 	const notes: string[] = [];
 
+	// Construct JSON API URL
 	const jsonUrl = url.replace(/\/?$/, "/index.json");
 
 	try {
@@ -131,6 +148,7 @@ export const handleMDN: SpecialHandler = async (url: string, timeout: number, si
 
 		const { doc } = data;
 
+		// Build markdown content
 		const parts: string[] = [];
 
 		parts.push(`# ${doc.title}`);

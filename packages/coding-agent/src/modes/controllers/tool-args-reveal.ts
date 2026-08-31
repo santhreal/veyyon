@@ -3,20 +3,95 @@ import { parseStreamingJson, parseStreamingJsonThrottled, STREAMING_JSON_PARSE_M
 import type { ArgotSession } from "argot";
 import { expandToolArguments } from "../../argot-wire";
 import { nextStep, STREAMING_REVEAL_FRAME_MS } from "./streaming-reveal";
-import type {
-	StreamingJsonStringExtractorResult,
-	StreamingJsonStringExtractorState,
-	ToolArgsRevealComponent,
-	ToolArgsRevealControllerOptions,
-} from "./tool-args-reveal-helpers";
-import { decodeJsonStringEscape, isHexDigit } from "./tool-args-reveal-helpers";
 
-export { streamingStringKeysForTool } from "./tool-args-reveal-helpers";
+/** Minimal component surface the reveal pushes frames into. */
+type ToolArgsRevealComponent = Component & {
+	updateArgs(args: unknown, toolCallId?: string): void;
+};
+
+// Top-level string args a renderer reads mid-stream. The streamed-args decode
+// reads these fields incrementally between throttled full-JSON parses so a
+// long payload updates preview args at reveal cadence instead of stalling for
+// STREAMING_JSON_PARSE_MIN_GROWTH bytes at a time. Nested-array modes (edit
+// patch/replace `edits[].diff`) still fall through to the throttled parse.
+// `path`/`file_path` are here for two reasons that happen to want the same
+// thing. A preview's TITLE is the path, and it arrived only when the throttled
+// full parse first recovered it, so a long payload drew an untitled block for
+// its opening bytes; `edit/renderer.ts` still carries a regex fallback that
+// slices the path straight out of the raw buffer for exactly that window. And
+// the extractor's values are argot-expanded while that raw slice is not, so a
+// path carrying a handle rendered as the handle until the parse caught up.
+// KEYED BY TOOL NAME, USED BY RENDERER. `tools/renderers.ts` binds one renderer
+// object to several tool names, so a list written for one name silently leaves
+// its siblings on the throttled parse and on the raw slice. `apply_patch` shares
+// `editToolRenderer` with `edit` and was missing exactly that way: same renderer,
+// same title path, same handle in the preview, no entry. The shared list is one
+// const referenced twice rather than two lists that agree today, and
+// `tool-args-reveal-keys-follow-the-renderer.test.ts` walks the renderer table and
+// fails if any two names sharing a renderer stop sharing their keys.
+const EDIT_RENDERER_STREAMING_KEYS: readonly string[] = ["path", "file_path", "input", "_input"];
+
+const STREAMING_STRING_KEYS_BY_TOOL: Record<string, readonly string[]> = {
+	write: ["path", "file_path", "content"],
+	edit: EDIT_RENDERER_STREAMING_KEYS,
+	apply_patch: EDIT_RENDERER_STREAMING_KEYS,
+	eval: ["code"],
+	launch: ["op", "name", "application", "text", "pattern", "signal"],
+};
+
+/** String fields the streamed-args decode reads incrementally for `toolName`. */
+export function streamingStringKeysForTool(toolName: string, rawInput: boolean): readonly string[] | undefined {
+	if (rawInput) return undefined;
+	return STREAMING_STRING_KEYS_BY_TOOL[toolName];
+}
+
+type ToolArgsRevealControllerOptions = {
+	getSmoothStreaming(): boolean;
+	/** Called after each reveal tick with the component whose subtree changed;
+	 *  callers scope the render to that subtree instead of forcing a full-tree
+	 *  walk at 30fps (issue #4377). */
+	requestRender(component: Component): void;
+};
+
+type StreamingJsonStringExtractorResult = {
+	values: Record<string, string>;
+	changed: boolean;
+};
+
+function decodeJsonStringEscape(ch: string): string {
+	switch (ch) {
+		case '"':
+		case "\\":
+		case "/":
+			return ch;
+		case "b":
+			return "\b";
+		case "f":
+			return "\f";
+		case "n":
+			return "\n";
+		case "r":
+			return "\r";
+		case "t":
+			return "\t";
+		default:
+			return ch;
+	}
+}
+
+function isHexDigit(ch: string): boolean {
+	return (ch >= "0" && ch <= "9") || (ch >= "a" && ch <= "f") || (ch >= "A" && ch <= "F");
+}
+
+type StreamingJsonStringExtractorState = "scan" | "candidate" | "afterCandidate" | "beforeValue" | "target";
 
 class StreamingJsonStringExtractor {
 	readonly #keys: Set<string>;
 	#source = "";
 	#offset = 0;
+	/** `{`/`[` nesting outside strings. Candidate keys match only at depth 1 —
+	 *  the top level of the args object — so a nested object's key (e.g.
+	 *  `{"meta":{"content":…}}`) is never captured as a streamed top-level arg. */
 	#depth = 0;
 	#state: StreamingJsonStringExtractorState = "scan";
 	#candidate = "";
@@ -241,19 +316,33 @@ function sameStringKeys(a: readonly string[], b: readonly string[] | undefined):
 
 type RevealEntry = {
 	component: ToolArgsRevealComponent | undefined;
+	/** Latest raw streamed argument text (JSON for function tools, raw text for custom tools). */
 	target: string;
+	/** Revealed UTF-16 code units of `target`. */
 	revealed: number;
+	/** Custom-tool raw input: display args are `{ input: prefix }`, never parsed as JSON. */
 	rawInput: boolean;
+	/** Whether the renderer observes fresh raw JSON prefixes directly. */
 	exposeRawPartialJson: boolean;
+	/** Last parsed JSON args from the revealed prefix. */
 	parsedArgs: Record<string, unknown>;
+	/** Prefix length covered by `parsedArgs`. */
 	parsedLen: number;
+	/** Last object handed to a component; reused when visible args have not changed. */
 	displayArgs: Record<string, unknown>;
+	/** Raw prefix carried by `displayArgs.__partialJson`. */
 	displayPrefix: string;
+	/** JSON string fields decoded incrementally between full JSON parses. */
 	streamingStringKeys: readonly string[];
 	stringExtractor: StreamingJsonStringExtractor | undefined;
+	/** The session's argot codec, when one is armed. See {@link StreamedToolArgsSource.argot}. */
 	argot: ArgotSession | undefined;
 };
 
+/** Clamp a slice end into `text`, never splitting a surrogate pair: a prefix
+ *  ending on a high surrogate would feed a lone surrogate into the parsed
+ *  preview args (providers decode UTF-8 incrementally, so the raw stream
+ *  itself never contains one). */
 function clampSliceEnd(text: string, end: number): number {
 	if (end <= 0) return 0;
 	if (end >= text.length) return text.length;
@@ -265,6 +354,7 @@ type ToolArgsRevealTarget = {
 	rawInput: boolean;
 	exposeRawPartialJson: boolean;
 	streamingStringKeys?: readonly string[];
+	/** The session's argot codec, when one is armed. See {@link StreamedToolArgsSource.argot}. */
 	argot?: ArgotSession;
 };
 
@@ -285,12 +375,20 @@ function resetDisplayState(entry: RevealEntry): void {
 	entry.stringExtractor?.reset();
 }
 
+/** Display args for a revealed prefix. Function-tool JSON is parsed at the same
+ * growth-throttled cadence providers use, so a long `write` payload cannot make
+ * the reveal loop re-parse the whole growing buffer every frame. Renderers that
+ * read raw JSON directly still receive fresh `__partialJson` prefixes; other
+ * renderers get a stable object reference while parsed fields are unchanged. */
 function displayArgsForPrefix(entry: RevealEntry, prefix: string, forceParse = false): DisplayArgsStep {
 	if (entry.rawInput) {
 		if (prefix === entry.displayPrefix) return { args: entry.displayArgs, changed: false };
+		// Raw text, not JSON: see the same branch in `decodeStreamedToolArgs`.
 		const text = expandStreamedPreviewText(entry.argot, prefix);
 		const args = { input: text, __partialJson: text };
 		entry.displayArgs = args;
+		// The RAW prefix is what the change check compares, so the unexpanded one is
+		// kept: comparing expanded text would re-render whenever a dictionary loaded.
 		entry.displayPrefix = prefix;
 		return { args, changed: true };
 	}
@@ -325,12 +423,42 @@ function displayArgsForPrefix(entry: RevealEntry, prefix: string, forceParse = f
 }
 
 type StreamedToolArgsSource = {
+	/** Custom-tool raw text stream (`customWireName` tools): never JSON-parsed. */
 	rawInput: boolean;
+	/** Provider-parsed arguments, spread UNDER the fresh decode: a dialect
+	 *  projector may carry keys a raw re-parse cannot recover, but any key the
+	 *  fresh parse does recover wins — provider parses lag the stream by up to
+	 *  STREAMING_JSON_PARSE_MIN_GROWTH bytes mid-stream. */
 	fullArgs?: Record<string, unknown>;
+	/** See {@link streamingStringKeysForTool}. */
 	streamingStringKeys?: readonly string[];
+	/**
+	 * The session's argot codec, when one is armed.
+	 *
+	 * A streaming preview renders arguments that have NOT reached the tool yet, so
+	 * they still carry `§handle` fragments: expansion happens at seam 1, just
+	 * before execution. Without this the preview of a write or an edit shows the
+	 * handle instead of the text it stands for, for as long as the call streams.
+	 *
+	 * Undefined when argot is off, and `expandStreamedValues` is identity while the
+	 * codec has no dictionary loaded, so the inert path is byte-for-byte unchanged.
+	 */
 	argot?: ArgotSession;
 };
 
+/**
+ * Expand handles in decoded argument VALUES, never in the buffer they came from.
+ *
+ * THE CONSTRAINT THAT SHAPES THIS. A handle can expand to text containing `"`,
+ * `\` or a newline. Expanding the raw partial JSON as TEXT would splice those
+ * bytes inside the string literal they sit in and corrupt the very JSON the next
+ * frame has to parse. So expansion happens strictly AFTER a value leaves the
+ * partial-JSON layer, which is the same rule seam 1 follows: `expandToolArguments`
+ * maps parsed string values, it does not rewrite a request body.
+ *
+ * Routed through `expandToolArguments` rather than calling `argot.expand` here so
+ * the expansion rule has one owner; see `src/argot-wire.ts`.
+ */
 function expandStreamedValues(
 	argot: ArgotSession | undefined,
 	values: Record<string, unknown>,
@@ -338,13 +466,40 @@ function expandStreamedValues(
 	return argot ? expandToolArguments(argot, values) : values;
 }
 
+/**
+ * Expand handles in a string a `__partialJson` extractor already pulled out.
+ *
+ * Used only for a CUSTOM tool's stream, where `__partialJson` carries raw text
+ * rather than JSON, so both it and `input` are values and neither can be
+ * corrupted by expansion. Module-private on purpose: a caller outside this file
+ * holding a raw buffer would be holding JSON, and expanding that is the one
+ * thing this whole arrangement exists to prevent.
+ *
+ * A handle still arriving at the buffer's edge stays raw for at most one frame,
+ * because the next frame carries more bytes and the frame after that is the
+ * wholesale expansion at execution. This is not a fallback: nothing is skipped
+ * and nothing degrades, the text simply has not been received yet.
+ */
 function expandStreamedPreviewText(argot: ArgotSession | undefined, text: string): string {
 	if (!argot?.loaded) return text;
 	return argot.expand(text);
 }
 
+/**
+ * One-shot decode of a streamed tool-call argument buffer into display args —
+ * the same decode the live reveal applies frame-by-frame, for paths that see
+ * the buffer once (transcript rebuilds on theme change, settings, focus
+ * replay). Keeps a rebuilt preview identical to the live preview: parsed
+ * fields come from a fresh parse of the full buffer, `streamingStringKeys`
+ * fields from the incremental string decoder (which also wins ties in the
+ * live path), never from the provider's throttled `arguments`.
+ */
 export function decodeStreamedToolArgs(partialJson: string, source: StreamedToolArgsSource): Record<string, unknown> {
 	if (source.rawInput) {
+		// A custom tool's stream is raw TEXT, not JSON, so both fields are values and
+		// expanding them cannot corrupt a structure. This is the one place
+		// `__partialJson` is safe to expand, and it has to be: `tool-execution.ts`
+		// recovers a missing `input` from that field directly.
 		const text = expandStreamedPreviewText(source.argot, partialJson);
 		return { input: text, __partialJson: text };
 	}
@@ -355,10 +510,29 @@ export function decodeStreamedToolArgs(partialJson: string, source: StreamedTool
 	const args: Record<string, unknown> = source.fullArgs ? { ...source.fullArgs, ...parsed } : { ...parsed };
 	const extracted = createStringExtractor(source.streamingStringKeys)?.update(partialJson);
 	if (extracted) Object.assign(args, expandStreamedValues(source.argot, extracted.values));
+	// The RAW prefix stays raw on purpose: it is JSON, and expanding it would splice
+	// a quote or a newline into the string literal a handle sits in. A renderer that
+	// slices a field out of it therefore sees the WIRE form, which is why every field
+	// a renderer surfaces belongs in `streamingStringKeys` above: those values are
+	// decoded and expanded here, and a renderer prefers them over its own slice.
 	args.__partialJson = partialJson;
 	return args;
 }
 
+/**
+ * Paces streamed tool-call arguments the same way StreamingRevealController
+ * paces assistant text: providers that deliver `partialJson` in large batches
+ * (or throttle their partial parses) would otherwise make write/edit/bash
+ * streaming previews jump in chunks. Each pending tool call reveals its raw
+ * argument stream at the shared 30fps cadence with the same adaptive
+ * catch-up step. JSON prefixes are parsed only when enough new bytes arrive to
+ * change renderer-visible fields, while raw-prefix consumers still receive
+ * fresh `__partialJson` on every reveal frame.
+ *
+ * Reveal units are UTF-16 code units of the raw stream, not graphemes —
+ * the prefix goes through a JSON parser rather than straight to the screen,
+ * so only surrogate-pair integrity matters (see {@link clampSliceEnd}).
+ */
 export class ToolArgsRevealController {
 	readonly #getSmoothStreaming: () => boolean;
 	readonly #requestRender: (component: Component) => void;
@@ -370,6 +544,15 @@ export class ToolArgsRevealController {
 		this.#requestRender = options.requestRender;
 	}
 
+	/**
+	 * Record the latest streamed argument text for a tool call and return the
+	 * args to render right now. With smoothing disabled nothing is paced — the
+	 * full received buffer decodes in one step — but the entry still runs the
+	 * incremental string decoder + parse throttle, so streamed text fields
+	 * (write `content`, edit bodies, eval `code`) stay fresh between the
+	 * provider's own throttled full-JSON parses instead of lagging up to
+	 * STREAMING_JSON_PARSE_MIN_GROWTH bytes behind.
+	 */
 	setTarget(id: string, partialJson: string, target: ToolArgsRevealTarget): Record<string, unknown> {
 		const { rawInput, exposeRawPartialJson, streamingStringKeys, argot } = target;
 		let entry = this.#entries.get(id);
@@ -401,29 +584,41 @@ export class ToolArgsRevealController {
 				entry.streamingStringKeys = streamingStringKeys ?? [];
 				entry.stringExtractor = createStringExtractor(streamingStringKeys);
 			}
+			// The codec is armed once per session but the entry outlives a settings
+			// change, so it is refreshed rather than captured at creation.
 			entry.argot = argot;
+			// Streams only append; a non-prefix target means a rewind — snap into range.
 			if (!partialJson.startsWith(entry.target)) {
 				entry.revealed = Math.min(entry.revealed, partialJson.length);
 				resetDisplayState(entry);
 			}
 			entry.target = partialJson;
 		}
+		// Toggle may flip mid-call: snap the reveal to everything received so
+		// pacing stops (and never restarts while the toggle stays off).
 		if (!this.#getSmoothStreaming()) entry.revealed = entry.target.length;
 		entry.revealed = clampSliceEnd(entry.target, entry.revealed);
 		this.#syncTimer();
 		return displayArgsForPrefix(entry, entry.target.slice(0, entry.revealed)).args;
 	}
 
+	/** Attach the component future ticks push frames into. */
 	bind(id: string, component: ToolArgsRevealComponent): void {
 		const entry = this.#entries.get(id);
 		if (entry) entry.component = component;
 	}
 
+	/** Final arguments arrived (the JSON closed): drop the reveal so the
+	 *  caller's final-args render wins immediately, mirroring how assistant
+	 *  text snaps to the full message at message_end. */
 	finish(id: string): void {
 		this.#entries.delete(id);
 		if (this.#entries.size === 0) this.#stopTimer();
 	}
 
+	/** Snap every live entry to its full received stream and clear. Used at
+	 *  message_end (abort/error mid-stream) so sealed components freeze showing
+	 *  everything that arrived rather than a mid-reveal prefix. */
 	flushAll(): void {
 		for (const [id, entry] of this.#entries) {
 			if (entry.component && entry.revealed < entry.target.length) {
@@ -434,6 +629,7 @@ export class ToolArgsRevealController {
 		this.#stopTimer();
 	}
 
+	/** Clear without pushing (teardown). */
 	stop(): void {
 		this.#entries.clear();
 		this.#stopTimer();
@@ -465,6 +661,9 @@ export class ToolArgsRevealController {
 
 	#tick(): void {
 		let advanced = false;
+		// Collect components with changed display args; render each subtree once
+		// per tick even when multiple entries share a component (they don't
+		// today, but the API contract doesn't prevent it).
 		const rendered = new Set<ToolArgsRevealComponent>();
 		for (const [id, entry] of this.#entries) {
 			const backlog = entry.target.length - entry.revealed;
@@ -480,6 +679,7 @@ export class ToolArgsRevealController {
 		if (advanced) {
 			for (const component of rendered) this.#requestRender(component);
 		} else {
+			// Every entry caught up (or unbound); setTarget restarts on growth.
 			this.#stopTimer();
 		}
 	}

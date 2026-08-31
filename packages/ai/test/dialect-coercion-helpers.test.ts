@@ -1,213 +1,191 @@
+/**
+ * Contract tests for the small pure helpers in dialect/coercion.ts that the
+ * in-band tool-call parser leans on: partial-suffix overlap (used to withhold a
+ * stream tail that might be the start of a tool tag), Kimi function-name
+ * normalization, and JSON type classification. Each is an off-by-one or
+ * mis-mapping away from leaking tag bytes or misrouting a tool call, so pin them.
+ */
 import { describe, expect, it } from "bun:test";
 import {
-	coerceValue,
-	decodeValue,
-	getArrayItemSchema,
-	getObjectProperties,
-	isArraySchema,
-	isObjectSchema,
-	isStringOnlySchema,
+	getOwnArg,
 	jsonTypeOf,
+	mintToolCallId,
 	normalizeKimiFunctionName,
 	partialSuffixOverlap,
 	partialSuffixOverlapAny,
-	recordOrEmpty,
-} from "../src/dialect/coercion";
-
-describe("jsonTypeOf", () => {
-	it("returns 'null' for null", () => {
-		expect(jsonTypeOf(null)).toBe("null");
-	});
-	it("returns 'number' for number", () => {
-		expect(jsonTypeOf(42)).toBe("number");
-	});
-	it("returns 'number' for bigint", () => {
-		expect(jsonTypeOf(42n)).toBe("number");
-	});
-	it("returns 'boolean' for true", () => {
-		expect(jsonTypeOf(true)).toBe("boolean");
-	});
-	it("returns 'boolean' for false", () => {
-		expect(jsonTypeOf(false)).toBe("boolean");
-	});
-	it("returns 'string' for string", () => {
-		expect(jsonTypeOf("hello")).toBe("string");
-	});
-	it("returns 'object' for array", () => {
-		expect(jsonTypeOf([1, 2])).toBe("object");
-	});
-	it("returns 'object' for plain object", () => {
-		expect(jsonTypeOf({ a: 1 })).toBe("object");
-	});
-	it("returns 'object' for undefined", () => {
-		expect(jsonTypeOf(undefined)).toBe("object");
-	});
-});
-
-describe("decodeValue", () => {
-	it("decodes JSON object string", () => {
-		expect(decodeValue('{"a":1}')).toEqual({ a: 1 });
-	});
-	it("decodes JSON array string", () => {
-		expect(decodeValue("[1,2,3]")).toEqual([1, 2, 3]);
-	});
-	it("decodes JSON number string", () => {
-		expect(decodeValue("42")).toBe(42);
-	});
-	it("decodes JSON boolean string", () => {
-		expect(decodeValue("true")).toBe(true);
-	});
-	it("returns string for non-JSON text", () => {
-		expect(decodeValue("hello")).toBe("hello");
-	});
-	it("decodes JSON null string", () => {
-		expect(decodeValue("null")).toBeNull();
-	});
-});
-
-describe("coerceValue", () => {
-	it("returns raw string for string-only schema", () => {
-		expect(coerceValue("hello", { type: "string" })).toBe("hello");
-	});
-	it("decodes JSON for non-string schema", () => {
-		expect(coerceValue('{"a":1}', { type: "object" })).toEqual({ a: 1 });
-	});
-	it("returns raw for string-only schema even if JSON-like", () => {
-		expect(coerceValue('{"a":1}', { type: "string" })).toBe('{"a":1}');
-	});
-});
-
-describe("isStringOnlySchema", () => {
-	it("returns true for type: string", () => {
-		expect(isStringOnlySchema({ type: "string" })).toBe(true);
-	});
-	it("returns true for type: ['string', 'null']", () => {
-		expect(isStringOnlySchema({ type: ["string", "null"] })).toBe(true);
-	});
-	it("returns false for type: number", () => {
-		expect(isStringOnlySchema({ type: "number" })).toBe(false);
-	});
-	it("returns false for type: ['string', 'number']", () => {
-		expect(isStringOnlySchema({ type: ["string", "number"] })).toBe(false);
-	});
-	it("returns false for empty schema", () => {
-		expect(isStringOnlySchema({})).toBe(false);
-	});
-});
-
-describe("isArraySchema", () => {
-	it("returns true for type: array", () => {
-		expect(isArraySchema({ type: "array" })).toBe(true);
-	});
-	it("returns false for type: object", () => {
-		expect(isArraySchema({ type: "object" })).toBe(false);
-	});
-});
-
-describe("isObjectSchema", () => {
-	it("returns true for type: object", () => {
-		expect(isObjectSchema({ type: "object" })).toBe(true);
-	});
-	it("returns false for type: array", () => {
-		expect(isObjectSchema({ type: "array" })).toBe(false);
-	});
-});
-
-describe("getObjectProperties", () => {
-	it("returns properties from schema", () => {
-		const props = { a: { type: "string" }, b: { type: "number" } };
-		expect(getObjectProperties({ properties: props })).toEqual(props);
-	});
-	it("returns empty object for missing properties", () => {
-		expect(getObjectProperties({})).toEqual({});
-	});
-	it("returns empty object for non-record schema", () => {
-		expect(getObjectProperties("hello")).toEqual({});
-	});
-});
-
-describe("getArrayItemSchema", () => {
-	it("returns items from schema", () => {
-		const items = { type: "string" };
-		expect(getArrayItemSchema({ items })).toBe(items);
-	});
-	it("returns undefined for missing items", () => {
-		expect(getArrayItemSchema({})).toBeUndefined();
-	});
-	it("returns undefined for non-record schema", () => {
-		expect(getArrayItemSchema("hello")).toBeUndefined();
-	});
-});
+	setToolArg,
+} from "@veyyon/ai/dialect/coercion";
 
 describe("partialSuffixOverlap", () => {
-	it("returns 0 for no overlap", () => {
-		expect(partialSuffixOverlap("hello", "world")).toBe(0);
+	it("returns the length of the longest text suffix that is a prefix of the tag", () => {
+		// "hello<tool" ends with "<tool", the first 5 chars of "<tool_call>".
+		expect(partialSuffixOverlap("hello<tool", "<tool_call>")).toBe(5);
+		expect(partialSuffixOverlap("a<", "<b>")).toBe(1);
 	});
-	it("returns overlap length for partial tag at end", () => {
-		expect(partialSuffixOverlap("hello<thi", "<think>")).toBe(4);
+
+	it("returns 0 when no suffix of the text starts the tag", () => {
+		expect(partialSuffixOverlap("hello", "<tool_call>")).toBe(0);
 	});
-	it("returns 0 for exact match (excluded)", () => {
-		expect(partialSuffixOverlap("hello<think>", "<think>")).toBe(0);
+
+	it("never reports a complete tag as a partial overlap (caps at tag.length-1)", () => {
+		// A fully-present tag is handled by the complete-tag path, not this one, so
+		// the overlap must stay strictly shorter than the whole tag.
+		expect(partialSuffixOverlap("<tool_call>", "<tool_call>")).toBe(0);
+		expect(partialSuffixOverlap("x<tool>", "<tool>")).toBe(0);
 	});
-	it("returns 0 for empty text", () => {
-		expect(partialSuffixOverlap("", "<think>")).toBe(0);
-	});
-	it("returns 1 for single char overlap", () => {
-		expect(partialSuffixOverlap("hello<", "<think>")).toBe(1);
+
+	it("handles empty text and empty tag as no overlap", () => {
+		expect(partialSuffixOverlap("", "<x>")).toBe(0);
+		expect(partialSuffixOverlap("abc", "")).toBe(0);
 	});
 });
 
 describe("partialSuffixOverlapAny", () => {
-	it("returns 0 for no overlap with any tag", () => {
-		expect(partialSuffixOverlapAny("hello", ["<think>", "</think>"])).toBe(0);
+	it("returns the best overlap across all candidate tags", () => {
+		// "</too" is a 5-char prefix of "</tool>" and no prefix of "<tool>".
+		expect(partialSuffixOverlapAny("x</too", ["<tool>", "</tool>"])).toBe(5);
 	});
-	it("returns max overlap across tags", () => {
-		expect(partialSuffixOverlapAny("hello<thi", ["<think>", "</think>"])).toBe(4);
-	});
-	it("returns overlap for second tag", () => {
-		expect(partialSuffixOverlapAny("hello</thi", ["<think>", "</think>"])).toBe(5);
+
+	it("returns 0 for an empty tag list", () => {
+		expect(partialSuffixOverlapAny("abc", [])).toBe(0);
 	});
 });
 
 describe("normalizeKimiFunctionName", () => {
-	it("returns simple name unchanged", () => {
-		expect(normalizeKimiFunctionName("getWeather")).toBe("getWeather");
+	it("drops an id suffix after the first colon and keeps the last dotted segment", () => {
+		expect(normalizeKimiFunctionName("functions.get_weather:0")).toBe("get_weather");
+		expect(normalizeKimiFunctionName("a.b.c")).toBe("c");
 	});
-	it("strips namespace prefix with dot", () => {
-		expect(normalizeKimiFunctionName("tools.getWeather")).toBe("getWeather");
-	});
-	it("strips colon suffix", () => {
-		expect(normalizeKimiFunctionName("getWeather:extra")).toBe("getWeather");
-	});
-	it("strips both dot and colon", () => {
-		expect(normalizeKimiFunctionName("ns.getWeather:extra")).toBe("getWeather");
-	});
-	it("handles empty string", () => {
+
+	it("returns a bare name unchanged and trims surrounding whitespace", () => {
+		expect(normalizeKimiFunctionName("foo:1")).toBe("foo");
+		expect(normalizeKimiFunctionName(" a.b : 2")).toBe("b");
 		expect(normalizeKimiFunctionName("")).toBe("");
-	});
-	it("trims whitespace", () => {
-		expect(normalizeKimiFunctionName("  getWeather  ")).toBe("getWeather");
-	});
-	it("handles multiple dots", () => {
-		expect(normalizeKimiFunctionName("a.b.getWeather")).toBe("getWeather");
 	});
 });
 
-describe("recordOrEmpty", () => {
-	it("returns record for object", () => {
-		const obj = { a: 1 };
-		expect(recordOrEmpty(obj)).toBe(obj);
+describe("jsonTypeOf", () => {
+	it("classifies values by their JSON type", () => {
+		expect(jsonTypeOf(null)).toBe("null");
+		expect(jsonTypeOf(3)).toBe("number");
+		expect(jsonTypeOf(3n)).toBe("number");
+		expect(jsonTypeOf(true)).toBe("boolean");
+		expect(jsonTypeOf("x")).toBe("string");
+		expect(jsonTypeOf([1])).toBe("object");
+		expect(jsonTypeOf({})).toBe("object");
 	});
-	it("returns empty object for null", () => {
-		expect(recordOrEmpty(null)).toEqual({});
+
+	it("maps undefined (not a JSON value) to object, the catch-all branch", () => {
+		expect(jsonTypeOf(undefined)).toBe("object");
 	});
-	it("returns empty object for string", () => {
-		expect(recordOrEmpty("hello")).toEqual({});
+});
+
+describe("setToolArg (prototype-safe argument assignment)", () => {
+	// The kv / streaming dialects build a tool call's `arguments` object one
+	// model-supplied key at a time. A bare `obj[key] = value` for the accessor
+	// keys below does NOT create a normal own property: it either mutates the
+	// object's prototype or is silently discarded. `setToolArg` must make every
+	// such key land as an ordinary own data property, matching how `JSON.parse`
+	// (the JSON-body dialects) represents the exact same key. These tests lock
+	// out a regression that would let model output corrupt the arguments object.
+
+	it("stores an object value under a literal __proto__ as an own property without touching the prototype", () => {
+		const args: Record<string, unknown> = {};
+		const payload = { polluted: true };
+		setToolArg(args, "__proto__", payload);
+
+		// A bare `args["__proto__"] = payload` would REPLACE the prototype and drop
+		// the key. The safe path keeps the object's prototype intact.
+		expect(Object.getPrototypeOf(args)).toBe(Object.prototype);
+		expect(Object.hasOwn(args, "__proto__")).toBe(true);
+		expect(Object.getOwnPropertyDescriptor(args, "__proto__")?.value).toBe(payload);
+		expect(Object.keys(args)).toEqual(["__proto__"]);
+		// No phantom inherited members leaked in from the payload.
+		expect((args as { polluted?: unknown }).polluted).toBeUndefined();
 	});
-	it("returns empty object for array", () => {
-		expect(recordOrEmpty([1, 2])).toEqual({});
+
+	it("stores a string value under a literal __proto__ that a bare assignment would silently drop", () => {
+		const args: Record<string, unknown> = {};
+		// `{}["__proto__"] = "x"` is a no-op: the prototype setter ignores non-object
+		// values, so without the fix the argument vanishes entirely.
+		setToolArg(args, "__proto__", "x");
+
+		expect(Object.hasOwn(args, "__proto__")).toBe(true);
+		expect(Object.getOwnPropertyDescriptor(args, "__proto__")?.value).toBe("x");
+		expect(Object.getPrototypeOf(args)).toBe(Object.prototype);
 	});
-	it("returns empty object for undefined", () => {
-		expect(recordOrEmpty(undefined)).toEqual({});
+
+	it("stores literal constructor and prototype keys as own data properties, not built-in shadows", () => {
+		const args: Record<string, unknown> = {};
+		setToolArg(args, "constructor", "c");
+		setToolArg(args, "prototype", "p");
+
+		expect(Object.getOwnPropertyDescriptor(args, "constructor")?.value).toBe("c");
+		expect(Object.getOwnPropertyDescriptor(args, "prototype")?.value).toBe("p");
+		expect(new Set(Object.keys(args))).toEqual(new Set(["constructor", "prototype"]));
+	});
+
+	it("assigns ordinary keys through the plain fast path and overwrites in place", () => {
+		const args: Record<string, unknown> = {};
+		setToolArg(args, "path", "a.ts");
+		setToolArg(args, "path", "b.ts");
+		setToolArg(args, "count", 2);
+
+		expect(args).toEqual({ path: "b.ts", count: 2 });
+		expect(Object.keys(args)).toEqual(["path", "count"]);
+	});
+
+	it("produces the same own-key shape as JSON.parse for a __proto__ argument", () => {
+		// The JSON-body dialects get their arguments from JSON.parse; the kv dialects
+		// must be byte-for-byte equivalent so both representations behave identically.
+		const viaJson = JSON.parse('{"__proto__": {"a": 1}}') as Record<string, unknown>;
+		const viaHelper: Record<string, unknown> = {};
+		setToolArg(viaHelper, "__proto__", { a: 1 });
+
+		expect(Object.hasOwn(viaJson, "__proto__")).toBe(true);
+		expect(Object.hasOwn(viaHelper, "__proto__")).toBe(true);
+		expect(Object.getPrototypeOf(viaHelper)).toBe(Object.getPrototypeOf(viaJson));
+		expect(Object.getOwnPropertyDescriptor(viaHelper, "__proto__")?.value).toEqual(
+			Object.getOwnPropertyDescriptor(viaJson, "__proto__")?.value,
+		);
+	});
+});
+
+describe("getOwnArg (prototype-safe argument read)", () => {
+	it("returns the own value written under __proto__, never the inherited prototype", () => {
+		const args: Record<string, unknown> = {};
+		setToolArg(args, "__proto__", "streamed-so-far");
+
+		// A bare `args["__proto__"]` read returns Object.prototype (an object), which
+		// would defeat the streaming parsers' `typeof prior === "string"` guard.
+		expect(getOwnArg(args, "__proto__")).toBe("streamed-so-far");
+	});
+
+	it("returns undefined for __proto__ before anything is stored, not Object.prototype", () => {
+		const args: Record<string, unknown> = {};
+		expect(getOwnArg(args, "__proto__")).toBeUndefined();
+		// The bare read would have returned the built-in prototype object here.
+		expect(args["__proto__" as keyof typeof args]).toBe(Object.prototype);
+	});
+
+	it("reads ordinary keys and reports undefined for absent ones", () => {
+		const args: Record<string, unknown> = { path: "a.ts" };
+		expect(getOwnArg(args, "path")).toBe("a.ts");
+		expect(getOwnArg(args, "missing")).toBeUndefined();
+	});
+});
+
+describe("mintToolCallId", () => {
+	it("produces the ptc_<base36>_<base36> shape", () => {
+		expect(mintToolCallId()).toMatch(/^ptc_[0-9a-z]+_[0-9a-z]+$/);
+	});
+
+	it("never collides across many consecutive calls in the same millisecond", () => {
+		// The monotonic counter suffix, not the timestamp, is what keeps ids unique
+		// when many are minted within one millisecond. A collision would cross-wire
+		// two tool calls to the same result.
+		const ids = new Set<string>();
+		for (let i = 0; i < 5_000; i++) ids.add(mintToolCallId());
+		expect(ids.size).toBe(5_000);
 	});
 });

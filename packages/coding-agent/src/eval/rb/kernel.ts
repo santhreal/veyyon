@@ -1,26 +1,129 @@
-import { logger, Snowflake } from "@veyyon/utils";
+/**
+ * Subprocess-backed Ruby runner.
+ *
+ * Speaks NDJSON with `runner.rb` over stdin/stdout. One subprocess per kernel
+ * instance; sessions reuse a single subprocess across executions. Cancellation
+ * is delivered as SIGINT (clean interrupt, kernel state preserved) and escalates
+ * to a full shutdown only when the runner ignores it. Mirrors the Python kernel
+ * (eval/py/kernel.ts); the IPC loop, lifecycle, and display rendering are shared
+ * with it via BaseKernel.
+ */
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { $flag, errorMessage, isBunTestRuntime, logger, Snowflake } from "@veyyon/utils";
+import { $ } from "bun";
 import { Settings } from "../../config/settings";
 import {
 	BaseKernel,
-	ensureRunnerScript,
+	DEFAULT_KERNEL_STARTUP_TIMEOUT_MS,
 	getRemainingTimeMs,
 	KERNEL_INTERRUPT_ESCALATION_MS,
 	KERNEL_SHUTDOWN_GRACE_MS,
 	type KernelEnvPatch,
 	type KernelExecuteOptions,
 	type KernelStartOptions,
+	kernelIpcTraceEnvVar,
+	kernelRunnerCacheDir,
 	releaseKernel,
 } from "../kernel-base";
 import { hostHasInheritableConsole, shouldDetachKernel, shouldHideKernelWindow } from "../py/spawn-options";
-import { checkRubyKernelAvailability, RUNNER_CACHE_DIR, STARTUP_TIMEOUT_MS, TRACE_IPC } from "./kernel-helpers";
-
-export * from "./kernel-helpers";
-
 import { RUBY_PRELUDE } from "./prelude";
 import RUNNER_SCRIPT from "./runner.rb" with { type: "text" };
-import { filterEnv, resolveExplicitRubyRuntime, resolveRubyRuntime } from "./runtime";
+import {
+	enumerateRubyRuntimes,
+	filterEnv,
+	type RubyRuntime,
+	resolveExplicitRubyRuntime,
+	resolveRubyRuntime,
+} from "./runtime";
 
-export { checkRubyKernelAvailability };
+export type { KernelExecuteOptions, KernelExecuteResult, KernelRuntimeEnv, KernelShutdownResult } from "../kernel-base";
+export type { KernelDisplayOutput, PythonStatusEvent } from "../py/display";
+export { renderKernelDisplay } from "../py/display";
+
+const TRACE_IPC = $flag(kernelIpcTraceEnvVar("RUBY"));
+
+// Cache the runner script on disk so the subprocess loads it normally. Cached
+// per script hash so installs don't race across versions.
+const RUNNER_CACHE_DIR = kernelRunnerCacheDir(os.tmpdir(), "ruby");
+let RUNNER_SCRIPT_PATH: string | null = null;
+
+async function ensureRunnerScript(): Promise<string> {
+	if (RUNNER_SCRIPT_PATH) return RUNNER_SCRIPT_PATH;
+	await fs.promises.mkdir(RUNNER_CACHE_DIR, { recursive: true });
+	const hash = Bun.hash(RUNNER_SCRIPT).toString(36);
+	const target = path.join(RUNNER_CACHE_DIR, `runner-${hash}.rb`);
+	if (!fs.existsSync(target)) {
+		await Bun.write(target, RUNNER_SCRIPT);
+	}
+	RUNNER_SCRIPT_PATH = target;
+	return target;
+}
+
+const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS;
+// How long to wait after SIGINT for the runner to emit `done` before escalating
+// to a full subprocess shutdown so the host queue unblocks instead of hanging.
+
+export interface RubyKernelAvailability {
+	ok: boolean;
+	rubyPath?: string;
+	reason?: string;
+	/** The probed-working runtime, when one was found. */
+	runtime?: RubyRuntime;
+}
+
+// Cache successful probes per resolved cwd + explicit interpreter. Failures are
+// not cached so installing Ruby mid-session is picked up on the next attempt.
+const availabilityCache = new Map<string, Promise<RubyKernelAvailability>>();
+
+export async function checkRubyKernelAvailability(cwd: string, interpreter?: string): Promise<RubyKernelAvailability> {
+	if (isBunTestRuntime() || $flag("VEYYON_RUBY_SKIP_CHECK")) {
+		return { ok: true };
+	}
+	const resolvedCwd = path.resolve(cwd);
+	const key = `${resolvedCwd}\0${interpreter ?? ""}`;
+	const cached = availabilityCache.get(key);
+	if (cached) return await cached;
+	const probe = probeRubyKernelAvailability(resolvedCwd, interpreter);
+	availabilityCache.set(key, probe);
+	const result = await probe;
+	if (!result.ok && availabilityCache.get(key) === probe) {
+		availabilityCache.delete(key);
+	}
+	return result;
+}
+
+async function probeRubyKernelAvailability(cwd: string, interpreter?: string): Promise<RubyKernelAvailability> {
+	try {
+		const settings = await Settings.init();
+		const { env } = settings.getShellConfig();
+		const baseEnv = filterEnv(env);
+		const runtimes = enumerateRubyRuntimes(cwd, baseEnv, interpreter);
+		if (runtimes.length === 0) {
+			return { ok: false, reason: "Ruby executable not found on PATH" };
+		}
+		const failures: string[] = [];
+		for (const runtime of runtimes) {
+			try {
+				const probe = await $`${runtime.rubyPath} -e ${"exit 0"}`.quiet().nothrow().cwd(cwd).env(runtime.env);
+				if (probe.exitCode === 0) {
+					return { ok: true, rubyPath: runtime.rubyPath, runtime };
+				}
+				failures.push(`${runtime.rubyPath} (exit code ${probe.exitCode})`);
+			} catch (err) {
+				failures.push(`${runtime.rubyPath} (${errorMessage(err)})`);
+			}
+		}
+		return {
+			ok: false,
+			rubyPath: runtimes[0].rubyPath,
+			reason: `No working Ruby interpreter found. Tried: ${failures.join("; ")}`,
+		};
+	} catch (err) {
+		return { ok: false, reason: errorMessage(err) };
+	}
+}
 
 export class RubyKernel extends BaseKernel<KernelExecuteOptions> {
 	private constructor(id: string) {
@@ -53,6 +156,9 @@ export class RubyKernel extends BaseKernel<KernelExecuteOptions> {
 			throw new Error(availability.reason ?? "Ruby kernel unavailable");
 		}
 
+		// Reuse the interpreter the availability probe selected. The fallback
+		// computes a runtime only for the skip-check fast path (test runtime /
+		// VEYYON_RUBY_SKIP_CHECK), where no candidate was probed.
 		let runtime = availability.runtime;
 		if (!runtime) {
 			const { env: shellEnv } = (await Settings.init()).getShellConfig();
@@ -70,7 +176,7 @@ export class RubyKernel extends BaseKernel<KernelExecuteOptions> {
 			if (typeof value === "string") spawnEnv[key] = value;
 		}
 
-		const scriptPath = await ensureRunnerScript(RUNNER_CACHE_DIR, RUNNER_SCRIPT, "rb");
+		const scriptPath = await ensureRunnerScript();
 		const kernel = new RubyKernel(Snowflake.next());
 
 		const proc = Bun.spawn([runtime.rubyPath, scriptPath], {
@@ -103,7 +209,24 @@ export class RubyKernel extends BaseKernel<KernelExecuteOptions> {
 	}
 }
 
+/**
+ * The `cd` + env preamble prepended to a Ruby execution request.
+ *
+ * `null` CLEARS a variable and `undefined` leaves it alone, which is the contract
+ * {@link KernelEnvPatch} documents and the Python runner already honoured. This
+ * function used to take `Record<string, string | undefined>` and test only
+ * `value !== undefined`, so a `null` fell through to `ENV["k"] = null` -- and `null`
+ * is not a Ruby literal, so the whole preamble raised a NameError and took the user's
+ * actual code down with it.
+ *
+ * Exported so the regression suite can assert the emitted bytes directly. The
+ * alternative is a live kernel, which needs the interpreter installed and would not
+ * run in CI, and this contract is precisely about what text gets generated.
+ */
 export function buildInitScript(cwd: string, env?: KernelEnvPatch): string {
+	// JSON string literals are valid Ruby string literals. Emit one
+	// `ENV["k"] = "v"` per key — a `{"k":"v"}` object literal would parse as a
+	// SYMBOL-keyed hash in Ruby (`:"k" => "v"`), which `ENV[]=` rejects.
 	const lines = [`__veyyon_init_cwd = ${JSON.stringify(cwd)}`, "Dir.chdir(__veyyon_init_cwd) rescue nil"];
 	for (const key in env) {
 		const value = env[key];

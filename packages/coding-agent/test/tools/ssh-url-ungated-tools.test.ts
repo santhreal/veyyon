@@ -3,7 +3,7 @@ import * as os from "node:os";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { InternalUrlRouter } from "@veyyon/coding-agent/internal-urls/router";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { GlobTool } from "@veyyon/coding-agent/tools/glob";
+import { SearchTool } from "@veyyon/coding-agent/tools/search";
 import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/search-scope";
 
 // Minimal ToolSession stub (ssh-url-approval.test.ts shape). The ssh:// guard
@@ -48,12 +48,12 @@ describe("ssh:// is rejected before any connection in read/write-tier tools", ()
 		expect(spy).not.toHaveBeenCalled();
 	});
 
-	it("glob throws on ssh:// without resolving", async () => {
+	it("search (files) throws on ssh:// without resolving", async () => {
 		const spy = vi
 			.spyOn(InternalUrlRouter.instance(), "resolve")
 			.mockRejectedValue(new Error("resolve must not run for ssh://"));
-		const tool = new GlobTool(createTestToolSession(os.tmpdir()));
-		await expect(tool.execute("f", { path: "ssh://h/x" })).rejects.toThrow(/ssh:\/\//);
+		const tool = new SearchTool(createTestToolSession(os.tmpdir()));
+		await expect(tool.execute("f", { type: "files", input: "ssh://h/x" })).rejects.toThrow(/ssh:\/\//);
 		expect(spy).not.toHaveBeenCalled();
 	});
 });

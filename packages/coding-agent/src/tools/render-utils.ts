@@ -1,24 +1,37 @@
-import * as os from "node:os";
+/**
+ * Shared utilities and constants for tool renderers.
+ *
+ * Provides consistent formatting, truncation, and display patterns across all
+ * tool renderers to ensure a unified TUI experience.
+ */
+
 import * as path from "node:path";
 import type { ToolCallContext } from "@veyyon/agent-core";
 import type { Ellipsis } from "@veyyon/natives";
-import type { Component } from "@veyyon/tui";
-import { getKeybindings, replaceTabs, truncateToWidth } from "@veyyon/tui";
+import { getKeybindings } from "@veyyon/tui/keybindings";
+import type { Component } from "@veyyon/tui/tui";
+import { replaceTabs, truncateToWidth } from "@veyyon/tui/utils";
+// Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { formatCount, pluralize } from "@veyyon/utils/format";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { formatKeyHints, type KeyId } from "../config/keybindings";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
 import type { Theme } from "../modes/theme/theme";
 import { Hasher } from "../tui/utils";
 import { formatDimensionNote, type ResizedImage } from "../utils/image-resize";
 import { isPathWithinCwd } from "./path-utils";
+import { shortenPath } from "./shorten-path";
 
 export { Ellipsis } from "@veyyon/natives";
-export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
+export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui/utils";
 
-const NON_WHITESPACE_RE = /\S/;
+// =============================================================================
+// Standardized Display Constants
+// =============================================================================
 
+/** Resolve inline image dimension caps from settings and viewport. */
 export function resolveImageOptions(): { maxWidthCells: number; maxHeightCells?: number } {
 	const maxWidthCells = settings.get("tui.maxInlineImageColumns");
 	const rowSetting = Math.max(0, settings.get("tui.maxInlineImageRows"));
@@ -26,67 +39,113 @@ export function resolveImageOptions(): { maxWidthCells: number; maxHeightCells?:
 	const viewportFraction = viewportRows ? Math.floor(viewportRows * 0.6) : 0;
 	let maxHeightCells: number | undefined;
 	if (rowSetting === 0) {
+		// No explicit cap — use viewport fraction as safety bound
 		maxHeightCells = viewportFraction || undefined;
 	} else if (viewportFraction > 0) {
 		maxHeightCells = Math.min(rowSetting, viewportFraction);
 	} else {
+		// Viewport size unknown (transitional state) — honor explicit setting
 		maxHeightCells = rowSetting;
 	}
 	return { maxWidthCells, maxHeightCells };
 }
 
+/** Preview limits for collapsed/expanded views */
 export const PREVIEW_LIMITS = {
+	/** Lines shown in collapsed view */
 	COLLAPSED_LINES: 3,
+	/** Lines shown in expanded view */
 	EXPANDED_LINES: 12,
+	/** Items (files, results) shown in collapsed view */
 	COLLAPSED_ITEMS: 8,
+	/** Output preview lines in collapsed view */
 	OUTPUT_COLLAPSED: 3,
+	/** Output preview lines in expanded view */
 	OUTPUT_EXPANDED: 10,
+	/** Max hunks shown when collapsed (edit tool) */
 	DIFF_COLLAPSED_HUNKS: 8,
+	/** Max diff lines shown when collapsed (edit tool) */
 	DIFF_COLLAPSED_LINES: 40,
 } as const;
 
+/** Default number of terminal output rows shown before expansion. */
 export const DEFAULT_TERMINAL_PREVIEW_LINES = 10;
 
+/** Truncation lengths for different content types */
 export const TRUNCATE_LENGTHS = {
+	/** Short titles, labels */
 	TITLE: 60,
+	/** Medium-length content (messages, previews) */
 	CONTENT: 80,
+	/** Longer content (code, explanations) */
 	LONG: 100,
+	/** Full line content */
 	LINE: 110,
+	/** Very short (task previews, badges) */
 	SHORT: 40,
+	/** Status-line chips (session name in the footline) — the footline shares
+	 *  one row with model, mode, path, git, and the context bar, so a chip may
+	 *  never dominate it */
 	CHIP: 24,
+	/** Idle recap status line (~40-word LLM reply) */
 	RECAP: 280,
 } as const;
 
+/** Keybinding action that toggles tool-output expansion. */
 const EXPAND_ACTION = "app.tools.expand";
+/** Fallback key when no binding is resolvable (e.g. outside an interactive session). */
 const DEFAULT_EXPAND_KEY: KeyId = "ctrl+o";
 
+/** Human-readable key currently bound to tool-output expansion, e.g. `Ctrl+O`. */
 export function expandKeyHint(): string {
 	const keys = getKeybindings().getKeys(EXPAND_ACTION);
 	return formatKeyHints(keys.length > 0 ? keys : [DEFAULT_EXPAND_KEY]);
 }
 
+// =============================================================================
+// Text Truncation Utilities
+// =============================================================================
+
+/**
+ * Get first N lines of text as preview, with each line truncated.
+ */
 export function getPreviewLines(text: string, maxLines: number, maxLineLen: number, ellipsis?: Ellipsis): string[] {
-	const result: string[] = [];
-	let start = 0;
-	for (let i = 0; i <= text.length; i++) {
-		if (i === text.length || text.charCodeAt(i) === 0x0a) {
-			const line = text.slice(start, i);
-			if (line.trim()) {
-				result.push(truncateToWidth(line.trim(), maxLineLen, ellipsis));
-				if (result.length >= maxLines) break;
-			}
-			start = i + 1;
-		}
-	}
-	return result;
+	const lines = text.split("\n").filter(l => l.trim());
+	return lines.slice(0, maxLines).map(l => truncateToWidth(l.trim(), maxLineLen, ellipsis));
 }
 
+/**
+ * Collapse a possibly multi-line string into a single line, then truncate it to
+ * `maxWidth` display cells. {@link truncateToWidth} alone caps width but
+ * newlines are zero-width, so multi-line content (markdown briefs, tool args,
+ * provider errors) would otherwise spill a single status row across several
+ * visual lines. Whitespace runs collapse to one space, so tabs are handled too.
+ */
 export function previewLine(text: string, maxWidth: number, ellipsis?: Ellipsis): string {
 	return truncateToWidth(collapseWhitespace(text), maxWidth, ellipsis);
 }
 
+// =============================================================================
+// Progress-run Collapsing
+// =============================================================================
+
+/**
+ * Minimum consecutive same-shape lines before a run is counted away. A run
+ * collapses to one row plus a count, so anything shorter would trade a saved
+ * row for a lost line.
+ */
 export const PROGRESS_RUN_MIN_LINES = 4;
 
+/**
+ * Leading tokens a run is never keyed on. A diagnostic is the anomaly the
+ * collapsed preview exists to surface, so a wall of DISTINCT warnings keeps
+ * every line even though the lines share a shape. Byte-identical neighbours
+ * still collapse, diagnostic or not: repeating one line eight times says
+ * nothing the count does not. Severity words only here, because the moment this
+ * set learns what one specific tool prints, that knowledge belongs in the shell
+ * minimizer (`crates/veyyon-shell/src/minimizer/`), which owns per-tool output
+ * semantics for the sealed capture.
+ */
 const DIAGNOSTIC_LEAD_TOKENS: ReadonlySet<string> = new Set([
 	"assertion",
 	"err",
@@ -109,11 +168,33 @@ const DIAGNOSTIC_LEAD_TOKENS: ReadonlySet<string> = new Set([
 	"warnings",
 ]);
 
+/** A collapsed preview row: one verbatim line plus the lines it stands in for. */
 export interface CollapsedOutputRow {
+	/** The run's newest line, verbatim. */
 	readonly text: string;
+	/** Lines this row stands in for beyond `text`; 0 when nothing was collapsed. */
 	readonly hidden: number;
 }
 
+/**
+ * Shape key consecutive lines are grouped by: the first whitespace-delimited
+ * token with digit runs normalized, so `[1/47]` and `[2/47]` share a key and so
+ * do `Compiling serde` and `Compiling tokio`. `undefined` means the line can
+ * only extend a run of byte-identical neighbours.
+ *
+ * Three token shapes qualify, because any other leading token is content: a
+ * Capitalized word (`Compiling`, `Downloaded`), a lowercase word ending in a
+ * colon (`remote:`, `info:`), and a bracketed or hashed counter (`[#/#]`, `##`).
+ * `ls -l` mode columns (`-rw-r--r--`, `drwxr-xr-x`) match none of the three, so
+ * a directory listing is never counted away.
+ *
+ * Keyed on the line with its SGR escapes removed, because a real build writes
+ * them: cargo emits `\x1b[1m\x1b[32m   Compiling\x1b[0m serde`, whose first
+ * non-space token starts with the escape rather than with `Compiling`. Keying on
+ * the raw bytes made every colored progress line unshaped, which is to say it
+ * collapsed nothing outside a test fixture. The row still carries the ORIGINAL
+ * line, colors intact.
+ */
 function progressRunKey(line: string): string | undefined {
 	const bare = line.includes("\u001b") ? stripAnsi(line) : line;
 	const token = /^\S+/.exec(bare.trim())?.[0];
@@ -123,6 +204,16 @@ function progressRunKey(line: string): string | undefined {
 	return shaped ? token.replace(/\d+/g, "#") : undefined;
 }
 
+/**
+ * Collapse runs of consecutive progress lines so a viewport-sized tail window is
+ * spent on anomalies instead of on a build's `Compiling …` wall. Each run of
+ * `minRun` or more same-shape lines becomes its newest line plus a count;
+ * every other line survives verbatim, in order.
+ *
+ * Language-agnostic by construction (see `progressRunKey`): the shell minimizer
+ * owns per-tool semantics, but it only ever sees a sealed capture, so a card
+ * that is still streaming has to condense on shape alone.
+ */
 export function collapseProgressRuns(
 	lines: readonly string[],
 	minRun: number = PROGRESS_RUN_MIN_LINES,
@@ -135,7 +226,10 @@ export function collapseProgressRuns(
 		let end = index + 1;
 		while (end < lines.length) {
 			const next = lines[end]!;
-			const extendsRun = next === first ? /\S/.test(first) : key !== undefined && progressRunKey(next) === key;
+			// A blank line never anchors a run: an empty row carries no text to keep,
+			// so counting blanks away would leave a bare `+N earlier` marker.
+			const extendsRun =
+				next === first ? first.trim().length > 0 : key !== undefined && progressRunKey(next) === key;
 			if (!extendsRun) break;
 			end++;
 		}
@@ -150,21 +244,30 @@ export function collapseProgressRuns(
 	return rows;
 }
 
+/**
+ * {@link collapseProgressRuns} themed for a tool card's collapsed output
+ * section: the counted-away lines are named in `dim` so the count reads as
+ * chrome rather than as output. `styleLine` owns per-line styling (a failed eval
+ * cell paints its output in `error`), and defaults to tab-replaced tool output.
+ */
 export function renderCollapsedOutputLines(
 	lines: readonly string[],
 	theme: Theme,
 	styleLine: (line: string) => string = line => theme.fg("toolOutput", replaceTabs(line)),
 ): string[] {
-	const rows = collapseProgressRuns(lines);
-	const result = new Array<string>(rows.length);
-	for (let ri = 0; ri < rows.length; ri++) {
-		const row = rows[ri]!;
+	return collapseProgressRuns(lines).map(row => {
 		const text = styleLine(row.text);
-		result[ri] = row.hidden === 0 ? text : `${text}${theme.fg("dim", ` … +${row.hidden} earlier`)}`;
-	}
-	return result;
+		return row.hidden === 0 ? text : `${text}${theme.fg("dim", ` … +${row.hidden} earlier`)}`;
+	});
 }
 
+// =============================================================================
+// URL Utilities
+// =============================================================================
+
+/**
+ * Extract domain from URL, stripping www. prefix.
+ */
 export function getDomain(url: string): string {
 	try {
 		const u = new URL(url);
@@ -174,10 +277,26 @@ export function getDomain(url: string): string {
 	}
 }
 
+// =============================================================================
+// Formatting Utilities
+// =============================================================================
+
 export { formatAge, formatBytes, formatCount, formatDuration, pluralize } from "@veyyon/utils/format";
 export type { ToolUIStatus } from "./tool-ui-status";
+// The status glyph and its status union live in a leaf, so a status line does not have to import
+// this module's 167. Re-exported because every existing caller asks this file for them.
 export { formatStatusIcon } from "./tool-ui-status";
 
+// =============================================================================
+// Theme Helper Utilities
+// =============================================================================
+
+/**
+ * Format the expand hint with proper theming.
+ * Same fold dialect as settings/ModalShell: collapsed chevron + key, not a
+ * third bracket grammar.
+ * Returns empty string if already expanded or there is nothing more to show.
+ */
 export function formatExpandHint(theme: Theme, expanded?: boolean, hasMore?: boolean): string {
 	if (expanded) return "";
 	if (hasMore === false) return "";
@@ -185,26 +304,55 @@ export function formatExpandHint(theme: Theme, expanded?: boolean, hasMore?: boo
 	return theme.fg("dim", `${chevron} ${expandKeyHint()} expand`);
 }
 
+/**
+ * Format a badge like [done] or [failed] with brackets and color.
+ */
 export function formatBadge(label: string, color: ToolUIColor, theme: Theme): string {
 	const left = theme.format.bracketLeft;
 	const right = theme.format.bracketRight;
 	return theme.fg(color, `${left}${label}${right}`);
 }
 
+/**
+ * Build a "more items" suffix line for truncated lists.
+ * Uses consistent wording pattern.
+ */
 export function formatMoreItems(remaining: number, itemType: string): string {
 	const safeRemaining = Number.isFinite(remaining) ? remaining : 0;
 	return `… ${safeRemaining} more ${pluralize(itemType, safeRemaining)}`;
 }
 
+/**
+ * Collapsed command/code previews render a tail window sized from the live
+ * viewport: terminal rows minus a reserve for the rest of the block (frame,
+ * Output section, stats line) and the editor/status area below the
+ * transcript. This keeps a volatile streaming block from growing past the
+ * viewport and stranding its top, while letting tall terminals show more.
+ */
 const PREVIEW_WINDOW_RESERVED_ROWS = 20;
+/** Floor so tiny or unknown viewports still show a useful window. */
 const PREVIEW_WINDOW_MIN_LINES = 6;
+/** Assumed viewport when rows are unknown (non-TTY, tests). */
 const PREVIEW_WINDOW_FALLBACK_ROWS = 30;
 
+/** Tail-window height for collapsed command/code previews. */
 export function previewWindowRows(): number {
 	const rows = process.stdout.rows || PREVIEW_WINDOW_FALLBACK_ROWS;
 	return Math.max(PREVIEW_WINDOW_MIN_LINES, rows - PREVIEW_WINDOW_RESERVED_ROWS);
 }
 
+/**
+ * Cap a pre-rendered command preview to a viewport-sized tail window: the end
+ * of the command stays visible (it is the live edge while args stream) behind
+ * an "… N earlier lines" marker on top. The same window applies while
+ * streaming and after completion so the block never jumps; only `expanded`
+ * (ctrl+o) uncaps it.
+ *
+ * `prefix` (raw, e.g. a dim tree gutter) is prepended to the marker line so
+ * nested previews stay aligned. `expandHint: false` drops the "ctrl+o: Expand"
+ * suffix for callers that cap even inside the expanded view (task recent
+ * output), where the hint would point the wrong way.
+ */
 export function capPreviewLines(
 	lines: string[],
 	theme: Theme,
@@ -227,6 +375,8 @@ export function formatMeta(meta: string[], theme: Theme): string {
 function sanitizeErrorText(message: string | undefined): string {
 	const clean = (message ?? "").replace(/^Error:\s*/, "").trim();
 	if (!clean) return "Unknown error";
+	// Shorten before truncating: an error that opens with an absolute home path would otherwise
+	// spend the whole line budget on the prefix and leak the home directory into the error card.
 	return replaceTabs(truncateToWidth(shortenEmbeddedPaths(clean), TRUNCATE_LENGTHS.LINE));
 }
 
@@ -234,6 +384,13 @@ export function formatErrorMessage(message: string | undefined, theme: Theme): s
 	return `${theme.styledSymbol("status.error", "error")} ${theme.fg("error", `Error: ${sanitizeErrorText(message)}`)}`;
 }
 
+/**
+ * Error message rendered as a subordinate detail line beneath a status header
+ * that already carries the error icon (e.g. ` Write: <path>`). The header's
+ * icon already signals failure, so this omits the redundant error symbol and
+ * "Error:" prefix that `formatErrorMessage` adds for standalone single-line
+ * errors, indenting two columns to sit under the header title instead.
+ */
 export function formatErrorDetail(message: string | undefined, theme: Theme): string {
 	return `  ${theme.fg("error", sanitizeErrorText(message))}`;
 }
@@ -241,6 +398,10 @@ export function formatErrorDetail(message: string | undefined, theme: Theme): st
 export function formatEmptyMessage(message: string, theme: Theme): string {
 	return `${theme.styledSymbol("status.warning", "warning")} ${theme.fg("muted", message)}`;
 }
+
+// =============================================================================
+// Code Frame Formatting
+// =============================================================================
 
 export type CodeFrameMarker = "" | " " | "*" | "+" | "-" | ">";
 
@@ -256,6 +417,10 @@ export function formatCodeFrameLine(
 	return `${gutterText.padStart(lineNumberWidth + 1, " ")}│${content}`;
 }
 
+// =============================================================================
+// Tool UI Helpers
+// =============================================================================
+
 export type ToolUIColor = "success" | "error" | "warning" | "accent" | "muted";
 
 export interface ToolUITitleOptions {
@@ -267,6 +432,10 @@ export function formatTitle(label: string, theme: Theme, options?: ToolUITitleOp
 	return theme.fg("toolTitle", content);
 }
 
+// =============================================================================
+// Diagnostic Formatting
+// =============================================================================
+
 interface ParsedDiagnostic {
 	filePath: string;
 	line: number;
@@ -277,6 +446,14 @@ interface ParsedDiagnostic {
 	code?: string;
 }
 
+/**
+ * Diagnostic text as it is shown to a reader: tabs replaced, nothing else touched.
+ *
+ * A diagnostic message carries a compiler's own spacing, and a literal tab in a rendered line lands
+ * wherever the terminal's tab stops happen to be, so a column marker under it points at the wrong
+ * column. The LSP renderer had a byte-identical private copy of this, so the two surfaces that show
+ * diagnostics could have disagreed about what "display text" means.
+ */
 export function sanitizeDiagnosticDisplayText(text: string): string {
 	return replaceTabs(text);
 }
@@ -308,6 +485,11 @@ function parseDiagnosticMessage(msg: string): ParsedDiagnostic | null {
 	};
 }
 
+/**
+ * Emits plain railed-ready lines (file header, two-space indented diagnostics, overflow)
+ * without tree connectors. Callers that embed this in a framedBlock (edit/renderer.ts,
+ * tools/write.ts) or display component (late-diagnostics-message.ts) provide the outer rail.
+ */
 export function formatDiagnostics(
 	diag: { errored: boolean; summary: string; messages: string[] },
 	expanded: boolean,
@@ -353,6 +535,7 @@ export function formatDiagnostics(
 
 	const files = Array.from(byFile.entries());
 
+	// Count total diagnostics for "... X more" calculation
 	const totalParsedDiags = files.reduce((sum, [, diags]) => sum + diags.length, 0);
 	const totalDiags = totalParsedDiags + unparsed.length;
 
@@ -396,6 +579,10 @@ export function formatDiagnostics(
 	return output;
 }
 
+// =============================================================================
+// Diff Utilities
+// =============================================================================
+
 export interface DiffStats {
 	added: number;
 	removed: number;
@@ -410,8 +597,7 @@ export function getDiffStats(diffText: string): DiffStats {
 	let hunks = 0;
 	let inHunk = false;
 
-	for (let li = 0; li < lines.length; li++) {
-		const line = lines[li]!;
+	for (const line of lines) {
 		const isAdded = line.startsWith("+");
 		const isRemoved = line.startsWith("-");
 		const isChange = isAdded || isRemoved;
@@ -430,6 +616,14 @@ export function getDiffStats(diffText: string): DiffStats {
 	return { added, removed, hunks, lines: lines.length };
 }
 
+export function formatDiffStats(added: number, removed: number, hunks: number, theme: Theme): string {
+	const parts: string[] = [];
+	if (added > 0) parts.push(theme.fg("toolDiffAdded", `+${added}`));
+	if (removed > 0) parts.push(theme.fg("toolDiffRemoved", `-${removed}`));
+	if (hunks > 0) parts.push(theme.fg("dim", formatCount("hunk", hunks)));
+	return parts.join(theme.fg("dim", " / "));
+}
+
 interface DiffSegment {
 	lines: string[];
 	isChange: boolean;
@@ -439,10 +633,10 @@ interface DiffSegment {
 function parseDiffSegments(lines: string[]): DiffSegment[] {
 	const segments: DiffSegment[] = [];
 	let current: DiffSegment | null = null;
-	for (let li = 0; li < lines.length; li++) {
-		const line = lines[li]!;
+
+	for (const line of lines) {
 		const isChange = line.startsWith("+") || line.startsWith("-");
-		const isEllipsis = line.trimStart().startsWith("...") || !NON_WHITESPACE_RE.test(line);
+		const isEllipsis = line.trimStart().startsWith("...") || line.trim().length === 0;
 
 		if (isEllipsis) {
 			if (current) segments.push(current);
@@ -459,13 +653,6 @@ function parseDiffSegments(lines: string[]): DiffSegment[] {
 	if (current) segments.push(current);
 	return segments;
 }
-function pushAll(dst: string[], src: readonly string[]): void {
-	for (let i = 0; i < src.length; i++) dst.push(src[i]!);
-}
-function pushRange(dst: string[], src: readonly string[], start: number, end: number): void {
-	if (start < 0) start = Math.max(0, src.length + start);
-	for (let i = start; i < end && i < src.length; i++) dst.push(src[i]!);
-}
 
 export function truncateDiffByHunk(
 	diffText: string,
@@ -474,6 +661,11 @@ export function truncateDiffByHunk(
 	options?: { fromTail?: boolean },
 ): { text: string; hiddenHunks: number; hiddenLines: number } {
 	if (options?.fromTail) {
+		// Streaming previews want to track the tail of the diff as new hunks
+		// arrive. Reversing the line buffer reuses the head-mode logic without
+		// duplicating the segment-budget bookkeeping: hunk runs survive
+		// reversal (a continuous `+`/`-` block stays contiguous) and so do the
+		// per-line `+`/`-` markers, so getDiffStats yields identical counts.
 		const reversed = (diffText ?? "").split("\n").reverse().join("\n");
 		const result = truncateDiffByHunk(reversed, maxHunks, maxLines);
 		return {
@@ -491,22 +683,19 @@ export function truncateDiffByHunk(
 
 	const segments = parseDiffSegments(lines);
 
-	let changeLineCount = 0;
-	for (let i = 0; i < segments.length; i++) {
-		if (segments[i]!.isChange) changeLineCount += segments[i]!.lines.length;
-	}
+	const changeSegments = segments.filter(s => s.isChange);
+	const changeLineCount = changeSegments.reduce((sum, s) => sum + s.lines.length, 0);
 
 	if (changeLineCount > maxLines) {
 		const kept: string[] = [];
 		let keptHunks = 0;
 
-		for (let si = 0; si < segments.length; si++) {
-			const seg = segments[si]!;
+		for (const seg of segments) {
 			if (seg.isChange) {
 				keptHunks++;
 				if (keptHunks > maxHunks) break;
 			}
-			pushAll(kept, seg.lines);
+			kept.push(...seg.lines);
 			if (kept.length >= maxLines) break;
 		}
 
@@ -519,30 +708,22 @@ export function truncateDiffByHunk(
 	}
 
 	const contextBudget = maxLines - changeLineCount;
-	let totalContextLines = 0;
-	let contextSegmentCount = 0;
-	for (let i = 0; i < segments.length; i++) {
-		const s = segments[i]!;
-		if (!s.isChange && !s.isEllipsis) {
-			totalContextLines += s.lines.length;
-			contextSegmentCount++;
-		}
-	}
+	const contextSegments = segments.filter(s => !s.isChange && !s.isEllipsis);
+	const totalContextLines = contextSegments.reduce((sum, s) => sum + s.lines.length, 0);
 
 	const kept: string[] = [];
 	let keptHunks = 0;
 
 	if (totalContextLines <= contextBudget) {
-		for (let si = 0; si < segments.length; si++) {
-			const seg = segments[si]!;
+		for (const seg of segments) {
 			if (seg.isChange) {
 				keptHunks++;
 				if (keptHunks > maxHunks) break;
 			}
-			pushAll(kept, seg.lines);
+			kept.push(...seg.lines);
 		}
 	} else {
-		const contextRatio = contextSegmentCount > 0 ? contextBudget / totalContextLines : 0;
+		const contextRatio = contextSegments.length > 0 ? contextBudget / totalContextLines : 0;
 
 		for (let i = 0; i < segments.length; i++) {
 			const seg = segments[i];
@@ -550,9 +731,9 @@ export function truncateDiffByHunk(
 			if (seg.isChange) {
 				keptHunks++;
 				if (keptHunks > maxHunks) break;
-				pushAll(kept, seg.lines);
+				kept.push(...seg.lines);
 			} else if (seg.isEllipsis) {
-				pushAll(kept, seg.lines);
+				kept.push(...seg.lines);
 			} else {
 				const allowedLines = Math.max(1, Math.floor(seg.lines.length * contextRatio));
 				const isBeforeChange = segments[i + 1]?.isChange;
@@ -561,18 +742,18 @@ export function truncateDiffByHunk(
 				if (isBeforeChange && isAfterChange) {
 					const half = Math.ceil(allowedLines / 2);
 					if (seg.lines.length > allowedLines) {
-						pushRange(kept, seg.lines, 0, half);
+						kept.push(...seg.lines.slice(0, half));
 						kept.push("");
-						pushRange(kept, seg.lines, -half, seg.lines.length);
+						kept.push(...seg.lines.slice(-half));
 					} else {
-						pushAll(kept, seg.lines);
+						kept.push(...seg.lines);
 					}
 				} else if (isBeforeChange) {
-					pushRange(kept, seg.lines, -allowedLines, seg.lines.length);
+					kept.push(...seg.lines.slice(-allowedLines));
 				} else if (isAfterChange) {
-					pushRange(kept, seg.lines, 0, allowedLines);
+					kept.push(...seg.lines.slice(0, allowedLines));
 				} else {
-					pushRange(kept, seg.lines, 0, Math.min(allowedLines, 2));
+					kept.push(...seg.lines.slice(0, Math.min(allowedLines, 2)));
 				}
 			}
 		}
@@ -586,29 +767,38 @@ export function truncateDiffByHunk(
 	};
 }
 
-export function shortenPath(filePath: unknown, homeDir?: string): string {
-	if (typeof filePath !== "string") {
-		return "";
-	}
-	const home = homeDir ?? os.homedir();
-	if (home && filePath.startsWith(home)) {
-		const suffix = filePath.slice(home.length);
-		if (suffix === "" || suffix.startsWith(path.posix.sep) || suffix.startsWith(path.win32.sep)) {
-			return `~${suffix.replaceAll(path.win32.sep, path.posix.sep)}`;
-		}
-	}
-	return filePath;
-}
+// =============================================================================
+// Path Utilities
+// =============================================================================
 
+// Re-exported so every existing importer of `render-utils` is unchanged; the
+// launch card reaches the same function through `./shorten-path` directly.
+export { shortenPath };
+
+/**
+ * The comma-separated path list a tool's status line shows.
+ *
+ * Path arguments reach these renderers exactly as the model wrote them, so an
+ * absolute path printed the operator's home directory into the pending header,
+ * and a handful of long paths pushed the row past the terminal width. Both are
+ * the display contract every other tool string already follows.
+ */
 export function formatScopePaths(paths: string | readonly string[]): string {
 	const list = typeof paths === "string" ? [paths] : paths;
 	return truncateToWidth(list.map(entry => shortenPath(entry)).join(", "), TRUNCATE_LENGTHS.CONTENT);
 }
 
+/** The `in <paths>` status-line fragment built from {@link formatScopePaths}. */
 export function formatScopeMeta(paths: string | readonly string[]): string {
 	return `in ${formatScopePaths(paths)}`;
 }
 
+/**
+ * Shorten home-directory paths embedded within a larger string (error messages,
+ * command previews, tool output descriptions). Words surrounded by quotes,
+ * brackets, or standard punctuation have their inner path shortened via
+ * {@link shortenPath}.
+ */
 export function shortenEmbeddedPaths(text: string, homeDir?: string): string {
 	return text
 		.split(" ")
@@ -629,6 +819,11 @@ export function formatToolWorkingDirectory(workdir: string | undefined, projectD
 	if (resolvedWorkdir === resolvedProjectDir) {
 		return undefined;
 	}
+	// `isPathWithinCwd` is the package's containment owner, and it carries the
+	// clause this copy was missing: on win32 `path.relative("C:\\repo", "D:\\o")`
+	// returns `D:\\o`, which is non-empty and does not start with `..`, so the
+	// hand-rolled test called a different drive "inside the project" and printed
+	// an absolute path where a relative one belongs.
 	const relativePath = path.relative(resolvedProjectDir, resolvedWorkdir);
 	const displayWorkdir = isPathWithinCwd(resolvedWorkdir, resolvedProjectDir)
 		? relativePath
@@ -675,10 +870,10 @@ export function dedupeParseErrors(errors: string[] | undefined): string[] {
 	if (!errors || errors.length === 0) return [];
 	const seen = new Set<string>();
 	const deduped: string[] = [];
-	for (let ei = 0; ei < errors.length; ei++) {
-		if (seen.has(errors[ei]!)) continue;
-		seen.add(errors[ei]!);
-		deduped.push(errors[ei]!);
+	for (const error of errors) {
+		if (seen.has(error)) continue;
+		seen.add(error);
+		deduped.push(error);
 	}
 	return deduped;
 }
@@ -689,12 +884,15 @@ export function formatParseErrors(errors: string[], total?: number): string[] {
 	const fullCount = total ?? deduped.length;
 	const capped = deduped.slice(0, PARSE_ERRORS_LIMIT);
 	const header = fullCount > capped.length ? `Parse issues (${capped.length} / ${fullCount}):` : "Parse issues:";
-	const result = new Array<string>(capped.length + 1);
-	result[0] = header;
-	for (let ei = 0; ei < capped.length; ei++) result[ei + 1] = `- ${capped[ei]!}`;
-	return result;
+	return [header, ...capped.map(err => `- ${err}`)];
 }
 
+/**
+ * Cap an upstream parse-error list to {@link PARSE_ERRORS_LIMIT} unique entries,
+ * preserving the original deduplicated total. Use this at the source so tool
+ * details never carry thousands of per-file parse errors into traces or
+ * renderers.
+ */
 export function capParseErrors(
 	errors: string[] | undefined,
 	limit: number = PARSE_ERRORS_LIMIT,
@@ -703,6 +901,15 @@ export function capParseErrors(
 	return { errors: deduped.slice(0, limit), total: deduped.length };
 }
 
+// =============================================================================
+// Renderer helpers shared by search / find / ast tools
+// =============================================================================
+
+/**
+ * Standard width+expand keyed render cache used by every search-style tool
+ * renderer. `compute` re-runs only when the cache key changes; the returned
+ * Component is the canonical `{ render, invalidate }` pair.
+ */
 export function createCachedComponent(
 	getExpanded: () => boolean,
 	compute: (width: number, expanded: boolean) => string[],
@@ -718,14 +925,7 @@ export function createCachedComponent(
 			const innerWidth = Math.max(1, width - paddingX * 2);
 			const lines = compute(innerWidth, expanded);
 			const pad = paddingX === 0 ? "" : " ".repeat(paddingX);
-			const paddedLines =
-				paddingX === 0
-					? lines
-					: (() => {
-							const pl = new Array<string>(lines.length);
-							for (let li = 0; li < lines.length; li++) pl[li] = `${pad}${lines[li]!}${pad}`;
-							return pl;
-						})();
+			const paddedLines = paddingX === 0 ? lines : lines.map(line => `${pad}${line}${pad}`);
 			cached = { key, lines: paddedLines };
 			return paddedLines;
 		},
@@ -735,6 +935,17 @@ export function createCachedComponent(
 	};
 }
 
+/**
+ * Single-slot memo for an expensive rendered string (syntax highlighting, diff
+ * coloring) keyed by the exact inputs that shape the bytes: theme instance,
+ * expanded state, a caller-chosen salt (path/language), and the source content.
+ * Field-wise comparison instead of a concatenated key string: a cache hit costs
+ * one string value-compare (engines short-circuit on length) and a miss never
+ * allocates a key. Comparing the {@link Theme} by reference is sound because
+ * theme switches replace the instance wholesale (`setTheme`/`previewTheme`/
+ * `setSymbolPreset` in modes/theme/theme.ts) — themes are never mutated in
+ * place.
+ */
 export interface RenderedStringCache {
 	theme: Theme | null;
 	expanded: boolean;
@@ -747,6 +958,7 @@ export function createRenderedStringCache(): RenderedStringCache {
 	return { theme: null, expanded: false, salt: "", content: "", value: "" };
 }
 
+/** Drop the memo so the next lookup re-renders (e.g. the render function identity changed). */
 export function invalidateRenderedStringCache(cache: RenderedStringCache): void {
 	cache.theme = null;
 }
@@ -779,6 +991,11 @@ export function cachedRenderedString(
 	return value;
 }
 
+/**
+ * Append the indented bullet list of parse errors (capped at
+ * {@link PARSE_ERRORS_LIMIT}) to `lines`, with an overflow summary line if the
+ * total exceeds the cap. No-op when `parseErrors` is empty.
+ */
 export function appendParseErrorsBulletList(
 	lines: string[],
 	parseErrors: readonly string[] | undefined,
@@ -788,20 +1005,28 @@ export function appendParseErrorsBulletList(
 	if (!parseErrors || parseErrors.length === 0) return;
 	const fullCount = total ?? parseErrors.length;
 	const capped = parseErrors.slice(0, PARSE_ERRORS_LIMIT);
-	for (let ei = 0; ei < capped.length; ei++) {
-		lines.push(theme.fg("warning", `  - ${capped[ei]!}`));
+	for (const err of capped) {
+		lines.push(theme.fg("warning", `  - ${err}`));
 	}
 	if (fullCount > capped.length) {
 		lines.push(theme.fg("dim", `  … ${fullCount - capped.length} more`));
 	}
 }
 
+/**
+ * Human-readable summary string for the parse-issues count, capped by
+ * {@link PARSE_ERRORS_LIMIT}.
+ */
 export function formatParseErrorsCountLabel(parseErrors: readonly string[], total?: number): string {
 	const fullCount = total ?? parseErrors.length;
 	return fullCount > PARSE_ERRORS_LIMIT
 		? `${PARSE_ERRORS_LIMIT} / ${fullCount} parse issues`
 		: formatCount("parse issue", fullCount);
 }
+
+// =============================================================================
+// LSP Batching
+// =============================================================================
 
 const LSP_BATCH_TOOLS = new Set(["edit", "write"]);
 

@@ -1,5 +1,5 @@
 /**
- * The Comms view of the Agent Control Center: agent-to-agent traffic, streaming.
+ * The Comms view of the subagent dashboard: agent-to-agent traffic, streaming.
  *
  * WHY IT READS THE BUS. A subagent's session file shows what THAT agent
  * received, so a view built from transcripts shows each half of a conversation

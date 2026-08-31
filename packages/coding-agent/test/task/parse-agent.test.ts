@@ -15,7 +15,7 @@ describe("parseAgent", () => {
 	const VALID = `---
 name: scout
 description: A scouting agent
-tools: read, grep
+tools: read, search
 ---
 You are a scout.
 Find things.`;
@@ -25,7 +25,7 @@ Find things.`;
 		expect(def.name).toBe("scout");
 		expect(def.description).toBe("A scouting agent");
 		// parseAgentFields lower-cases and always appends yield to an explicit tool list.
-		expect(def.tools).toEqual(["read", "grep", "yield"]);
+		expect(def.tools).toEqual(["read", "search", "yield"]);
 		expect(def.source).toBe("bundled");
 		expect(def.filePath).toBe("embedded:scout.md");
 		// systemPrompt is the body only — no frontmatter, no fence.

@@ -1,3 +1,10 @@
+/**
+ * Fully automated Claude Code /v1/messages capture helper.
+ *
+ * Starts a local CONNECT proxy, MITMs TLS using a local self-signed debug
+ * certificate, drives Claude Code through a headless PTY/xterm, and returns the
+ * first completed /v1/messages request/response exchange.
+ */
 import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as net from "node:net";
@@ -24,6 +31,17 @@ const TEXT_DECODER = new TextDecoder();
 
 const execFileAsync = promisify(execFile);
 
+/**
+ * The local MITM's throwaway certificate, minted on first use.
+ *
+ * Claude is launched with NODE_TLS_REJECT_UNAUTHORIZED=0, so this certificate
+ * carries no trust: it only lets Node's TLS stack complete the CONNECT tunnel
+ * handshake. The pair used to be a PEM literal in this file, which is a real
+ * cost in a public repository even though the key is worthless. Every secret
+ * scanner reports it, and a finding that is always noise trains a reader to
+ * skip the report that matters. A pair minted per process is also the honest
+ * shape: nothing here wants a stable identity.
+ */
 let debugCertificate: Promise<{ cert: string; key: string }> | undefined;
 
 function claudeTraceDebugCertificate(): Promise<{ cert: string; key: string }> {
@@ -36,6 +54,9 @@ async function mintDebugCertificate(): Promise<{ cert: string; key: string }> {
 	const keyPath = path.join(dir, "key.pem");
 	const certPath = path.join(dir, "cert.pem");
 	try {
+		// Node can generate a keypair but cannot sign an X.509 certificate, and a
+		// dependency for one debug helper is worse than requiring the binary that
+		// ships with every platform this helper runs on.
 		await execFileAsync("openssl", [
 			"req",
 			"-x509",
@@ -368,11 +389,18 @@ function isMessagesRequest(message: ParsedHttpMessage): boolean {
 	return pathNameFromRequestTarget(message.path ?? "") === "/v1/messages";
 }
 
+// Claude Code fires a background warmup/classification call on its small fast
+// model (a haiku variant, ANTHROPIC_SMALL_FAST_MODEL) before sending the user's
+// real message. Skip it so the capture lands on the actual prompt.
 function isBackgroundModelRequest(message: ParsedHttpMessage): boolean {
 	try {
 		const parsed = JSON.parse(decodeBody(message.headers, message.body)) as { model?: unknown };
 		return typeof parsed.model === "string" && parsed.model.toLowerCase().includes("haiku");
 	} catch {
+		// The body of a captured HTTP request, which may be gzipped, chunked, or truncated mid-capture. False
+		// means "not the background warmup call", and it is the SAFE direction: a request that cannot be
+		// inspected is kept in the trace rather than dropped from it, and a trace with one extra request is
+		// recoverable while a silently dropped one is not.
 		return false;
 	}
 }
@@ -413,7 +441,7 @@ function formatHeaders(headers: readonly HeaderEntry[]): string {
 	return headers.map(header => `${header.name}: ${header.value}`).join("\n");
 }
 
-function formatCapturedMessagesExchange(exchange: CapturedMessagesExchange): string {
+export function formatCapturedMessagesExchange(exchange: CapturedMessagesExchange): string {
 	const requestHeaders = formatHeaders(exchange.request.headers);
 	const responseHeaders = formatHeaders(exchange.response.headers);
 	const responseLine =
@@ -649,13 +677,18 @@ export class ClaudeMessagesProxy {
 		clientTls.on("end", () => {
 			try {
 				requestParser.finish();
-			} catch {}
+			} catch {
+				// The peer closed mid-message, so the parser has a partial frame. There is
+				// nothing left to capture and the socket is being torn down either way.
+			}
 			upstreamTls.end();
 		});
 		upstreamTls.on("end", () => {
 			try {
 				flushResponses(responseParser.finish());
-			} catch {}
+			} catch {
+				// Same partial-frame case on the response side of the same closing pair.
+			}
 			clientTls.end();
 		});
 		clientTls.on("error", () => upstreamTls.destroy());
@@ -666,17 +699,25 @@ export class ClaudeMessagesProxy {
 async function shutdownPty(session: PtySession, runPromise: Promise<unknown>): Promise<void> {
 	try {
 		session.write("\x03");
-	} catch {}
+	} catch {
+		// Sending Ctrl-C to a PTY that already exited; the kill below is the
+		// guarantee this function actually makes.
+	}
 	await Bun.sleep(100);
 	try {
 		session.kill();
-	} catch {}
+	} catch {
+		// Killing an already-dead session is the expected race in shutdown.
+	}
 	try {
 		await runPromise;
-	} catch {}
+	} catch {
+		// This awaits the run we just interrupted, so it rejecting is the intended
+		// outcome of the two statements above.
+	}
 }
 
-async function runClaudeMessagesCapture(args: ClaudeTraceCommandArgs = {}): Promise<CapturedMessagesExchange> {
+export async function runClaudeMessagesCapture(args: ClaudeTraceCommandArgs = {}): Promise<CapturedMessagesExchange> {
 	const proxy = new ClaudeMessagesProxy({
 		host: args.host ?? DEFAULT_PROXY_HOST,
 		port: args.port ?? DEFAULT_PROXY_PORT,
@@ -694,7 +735,9 @@ async function runClaudeMessagesCapture(args: ClaudeTraceCommandArgs = {}): Prom
 	terminal.onData(data => {
 		try {
 			session.write(data);
-		} catch {}
+		} catch {
+			// Terminal output arriving after the PTY closed; the capture is finished.
+		}
 	});
 	const command = args.command ?? DEFAULT_COMMAND;
 	const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -765,6 +808,7 @@ async function runClaudeMessagesCapture(args: ClaudeTraceCommandArgs = {}): Prom
 		await proxy.stop();
 	}
 }
+
 export async function runClaudeTraceCommand(args: ClaudeTraceCommandArgs = {}): Promise<void> {
 	process.stderr.write(
 		`Starting Claude trace proxy on ${args.host ?? DEFAULT_PROXY_HOST}:${args.port ?? DEFAULT_PROXY_PORT}\n`,

@@ -433,12 +433,12 @@
             const cmd = rawCmd.replace(/[\n\t]/g, ' ').trim().slice(0, 50);
             return `[bash: ${cmd}${rawCmd.length > 50 ? '...' : ''}]`;
           }
-          case 'search':
-          case 'grep':
-            return `[grep: /${args.pattern || ''}/ in ${shortenPath(String((args.paths || [args.path || '.']).join(', ')))}]`;
-          case 'find':
-          case 'glob':
-            return `[glob: ${shortenPath(String((args.paths || [args.pattern || '.']).join(', ')))}]`;
+          case 'search': {
+            const type = String(args.type || '?');
+            const input = String(args.input || '');
+            const scope = args.path ? ` in ${shortenPath(String(args.path))}` : '';
+            return `[search:${type} ${input}${scope}]`;
+          }
           case 'ls':
             return `[ls: ${shortenPath(String(args.path || '.'))}]`;
           default: {

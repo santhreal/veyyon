@@ -1,3 +1,7 @@
+/**
+ * Component for displaying bash command execution with streaming output.
+ */
+
 import { Container, ImageProtocol, type Loader, TERMINAL, Text, type TUI } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
 import { theme } from "../../modes/theme/theme";
@@ -14,6 +18,8 @@ import {
 	resolveExecutionStatus,
 } from "./execution-shared";
 
+// Minimum interval between processing incoming chunks for display (ms).
+// Chunks arriving faster than this are accumulated and processed in one batch.
 const CHUNK_THROTTLE_MS = 50;
 
 export class BashExecutionComponent extends Container {
@@ -36,20 +42,30 @@ export class BashExecutionComponent extends Container {
 	) {
 		super();
 
+		// Use dim border for excluded-from-context commands (!! prefix)
 		const colorKey = excludeFromContext ? "dim" : "bashMode";
 		const { contentContainer, loader } = buildExecutionFrame(this, ui, colorKey);
 		this.#contentContainer = contentContainer;
 		this.#loader = loader;
 
+		// Command header
 		this.#headerText = new Text(theme.fg(colorKey, theme.bold(`$ ${command}`)), 2, 0);
 		this.#contentContainer.addChild(this.#headerText);
 		this.#contentContainer.addChild(this.#loader);
 	}
 
+	/**
+	 * Transcript finalization contract (see `FinalizableBlock`): the collapsed
+	 * streaming preview rewrites its tail window every chunk, so the block must
+	 * stay out of native scrollback until the command completes.
+	 */
 	isTranscriptBlockFinalized(): boolean {
 		return this.#status !== "running";
 	}
 
+	/**
+	 * Set whether the output is expanded (shows full output) or collapsed (preview only).
+	 */
 	setExpanded(expanded: boolean): void {
 		this.#expanded = expanded;
 		this.#updateDisplay();
@@ -62,6 +78,10 @@ export class BashExecutionComponent extends Container {
 	}
 
 	appendOutput(chunk: string): void {
+		// During high-throughput output (e.g. seq 1 500M), processing every
+		// chunk would saturate the event loop. Instead, accept one chunk per
+		// throttle window and drop the rest — the OutputSink captures everything
+		// for the artifact, and setComplete() replaces with the final output.
 		if (this.#chunkGate) return;
 		this.#chunkGate = true;
 		setTimeout(() => {
@@ -71,16 +91,16 @@ export class BashExecutionComponent extends Container {
 		const incomingLines = chunk.split("\n");
 		if (this.#outputLines.length > 0 && incomingLines.length > 0) {
 			const lastIndex = this.#outputLines.length - 1;
-			const mergedLines: string[] = [`${this.#outputLines[lastIndex]}${incomingLines[0]}`];
-			for (let i = 1; i < incomingLines.length; i++) mergedLines.push(incomingLines[i]!);
+			const mergedLines = [`${this.#outputLines[lastIndex]}${incomingLines[0]}`, ...incomingLines.slice(1)];
 			const clampedMergedLines = this.#clampLinesPreservingSixel(mergedLines);
 			this.#outputLines[lastIndex] = clampedMergedLines[0] ?? "";
-			for (let i = 1; i < clampedMergedLines.length; i++) this.#outputLines.push(clampedMergedLines[i]!);
+			this.#outputLines.push(...clampedMergedLines.slice(1));
 		} else {
-			const clamped = this.#clampLinesPreservingSixel(incomingLines);
-			for (let i = 0; i < clamped.length; i++) this.#outputLines.push(clamped[i]!);
+			this.#outputLines.push(...this.#clampLinesPreservingSixel(incomingLines));
 		}
 
+		// Cap stored lines during streaming to avoid unbounded memory growth, and remember how many went, so the
+		// footer can say so instead of folding them into a hidden-line count that promises to reveal them.
 		this.#droppedLineCount += capExecutionOutputLines(this.#outputLines);
 
 		this.#displayDirty = true;
@@ -98,6 +118,7 @@ export class BashExecutionComponent extends Container {
 			this.#setOutput(options.output);
 		}
 
+		// Stop loader
 		this.#loader.stop();
 
 		this.#updateDisplay();
@@ -114,45 +135,36 @@ export class BashExecutionComponent extends Container {
 	#updateDisplay(): void {
 		const availableLines = this.#outputLines;
 
+		// Apply preview truncation based on expanded state
 		const previewLogicalLines = availableLines.slice(-EXECUTION_PREVIEW_LINES);
 		const hiddenLineCount = availableLines.length - previewLogicalLines.length;
 		const sixelLineMask =
 			TERMINAL.imageProtocol === ImageProtocol.Sixel && isSixelPassthroughEnabled()
 				? getSixelLineMask(availableLines)
 				: undefined;
-		let hasSixelOutput = false;
-		if (sixelLineMask) {
-			for (let si = 0; si < sixelLineMask.length; si++) {
-				if (sixelLineMask[si]) {
-					hasSixelOutput = true;
-					break;
-				}
-			}
-		}
+		const hasSixelOutput = sixelLineMask?.some(Boolean) ?? false;
 
+		// Rebuild content container
 		this.#contentContainer.clear();
 
+		// Command header
 		this.#contentContainer.addChild(this.#headerText);
 
+		// Output
 		if (availableLines.length > 0) {
 			if (this.#expanded || hasSixelOutput) {
-				let displayText = "";
-				for (let li = 0; li < availableLines.length; li++) {
-					const line = availableLines[li]!;
-					const styled = sixelLineMask?.[li] ? line : theme.fg("muted", line);
-					displayText = displayText ? `${displayText}\n${styled}` : styled;
-				}
+				const displayText = availableLines
+					.map((line, index) => (sixelLineMask?.[index] ? line : theme.fg("muted", line)))
+					.join("\n");
 				this.#contentContainer.addChild(new Text(`\n${displayText}`, 2, 0));
 			} else {
-				let styledOutput = "";
-				for (let li = 0; li < previewLogicalLines.length; li++) {
-					const styled = theme.fg("muted", previewLogicalLines[li]!);
-					styledOutput = styledOutput ? `${styledOutput}\n${styled}` : styled;
-				}
+				// Use shared visual truncation utility, recomputed per render width
+				const styledOutput = previewLogicalLines.map(line => theme.fg("muted", line)).join("\n");
 				this.#contentContainer.addChild(createCollapsedPreview(`\n${styledOutput}`, EXECUTION_PREVIEW_LINES));
 			}
 		}
 
+		// Loader or status
 		if (this.#status === "running") {
 			this.#contentContainer.addChild(this.#loader);
 		} else {
@@ -171,35 +183,29 @@ export class BashExecutionComponent extends Container {
 	#clampLinesPreservingSixel(lines: string[]): string[] {
 		if (lines.length === 0) return [];
 		const sixelLineMask = getSixelLineMask(lines);
-		let hasSixel = false;
-		for (let si = 0; si < sixelLineMask.length; si++) {
-			if (sixelLineMask[si]) {
-				hasSixel = true;
-				break;
-			}
+		if (!sixelLineMask.some(Boolean)) {
+			return lines.map(line => clampExecutionDisplayLine(line));
 		}
-		if (!hasSixel) {
-			const result = new Array<string>(lines.length);
-			for (let li = 0; li < lines.length; li++) result[li] = clampExecutionDisplayLine(lines[li]!);
-			return result;
-		}
-		const result = new Array<string>(lines.length);
-		for (let li = 0; li < lines.length; li++) {
-			result[li] = sixelLineMask[li] ? lines[li]! : clampExecutionDisplayLine(lines[li]!);
-		}
-		return result;
+		return lines.map((line, index) => (sixelLineMask[index] ? line : clampExecutionDisplayLine(line)));
 	}
 
 	#setOutput(output: string): void {
 		const clean = sanitizeWithOptionalSixelPassthrough(output, sanitizeText);
 		this.#outputLines = clean ? this.#clampLinesPreservingSixel(clean.split("\n")) : [];
+		// The authoritative output replaces whatever streaming kept, so nothing is missing any more.
 		this.#droppedLineCount = 0;
 	}
 
+	/**
+	 * Get the raw output for creating BashExecutionMessage.
+	 */
 	getOutput(): string {
 		return this.#outputLines.join("\n");
 	}
 
+	/**
+	 * Get the command that was executed.
+	 */
 	getCommand(): string {
 		return this.command;
 	}

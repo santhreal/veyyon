@@ -3,23 +3,312 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage, getAutoresearchDbPath, getAutoresearchProjectDir, logger, tryParseJson } from "@veyyon/utils";
 import * as git from "../utils/git";
-import type {
-	InsertRunParams,
-	MarkRunCompletedParams,
-	MarkRunLoggedParams,
-	OpenSessionParams,
-	RunDbRow,
-	RunRow,
-	SessionDbRow,
-	SessionRow,
-	UpdateSessionParams,
-} from "./storage-helpers";
+import type { ASIData, ExperimentStatus, MetricDirection, NumericMetricMap } from "./types";
 
-import { encodeProjectKey, SCHEMA_SQL, SCHEMA_VERSION } from "./storage-helpers";
-import type { ASIData, ExperimentStatus, NumericMetricMap } from "./types";
+/**
+ * Encode an absolute project path into a single filesystem-safe segment.
+ *
+ * Used to key per-project autoresearch state under `~/.veyyon/autoresearch/`.
+ * The `--…--` wrapper is historical — existing on-disk state depends on it,
+ * so changing the format here would orphan every prior autoresearch DB.
+ * Not collision-free for pathological inputs (`/a/b` vs `/a-b`) but matches
+ * the rest of the codebase and stays human-readable for `ls`.
+ */
+function encodeProjectKey(repoRoot: string): string {
+	return `--${repoRoot.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
+}
 
-export type { RunRow, SessionRow };
-export { SCHEMA_VERSION };
+export interface SessionRow {
+	id: number;
+	name: string;
+	goal: string | null;
+	primaryMetric: string;
+	metricUnit: string;
+	direction: MetricDirection;
+	preferredCommand: string | null;
+	branch: string | null;
+	baselineCommit: string | null;
+	currentSegment: number;
+	maxIterations: number | null;
+	scopePaths: string[];
+	offLimits: string[];
+	constraints: string[];
+	secondaryMetrics: string[];
+	notes: string;
+	/** Candidate implementations per segment. 1 is the serial loop. */
+	breadth: number;
+	/** Implementations per hypothesis. */
+	attempts: number;
+	/** Concurrent arms. Ignored when breadth is 1. */
+	maxParallel: number;
+	/** Whether surviving arms certify each other. Skipped when breadth is 1. */
+	certify: boolean;
+	createdAt: number;
+	closedAt: number | null;
+}
+
+export interface RunRow {
+	id: number;
+	sessionId: number;
+	segment: number;
+	command: string;
+	startedAt: number;
+	completedAt: number | null;
+	durationMs: number | null;
+	exitCode: number | null;
+	timedOut: boolean;
+	parsedPrimary: number | null;
+	parsedMetrics: NumericMetricMap | null;
+	parsedAsi: ASIData | null;
+	preRunDirtyPaths: string[];
+	logPath: string;
+	status: ExperimentStatus | null;
+	description: string | null;
+	metric: number | null;
+	metrics: NumericMetricMap | null;
+	asi: ASIData | null;
+	commitHash: string | null;
+	confidence: number | null;
+	modifiedPaths: string[] | null;
+	scopeDeviations: string[] | null;
+	justification: string | null;
+	flagged: boolean;
+	flaggedReason: string | null;
+	/** Arm identity within a segment. Null for a serial run. */
+	arm: string | null;
+	/** Which arm certified this one, when a ring reviewed it. */
+	certifiedBy: string | null;
+	loggedAt: number | null;
+	abandonedAt: number | null;
+}
+
+export interface OpenSessionParams {
+	name: string;
+	goal: string | null;
+	primaryMetric: string;
+	metricUnit: string;
+	direction: MetricDirection;
+	preferredCommand: string | null;
+	branch: string | null;
+	baselineCommit: string | null;
+	maxIterations: number | null;
+	scopePaths: string[];
+	offLimits: string[];
+	constraints: string[];
+	secondaryMetrics: string[];
+	breadth?: number;
+	attempts?: number;
+	maxParallel?: number;
+	certify?: boolean;
+}
+
+export interface UpdateSessionParams {
+	goal?: string | null;
+	preferredCommand?: string | null;
+	maxIterations?: number | null;
+	scopePaths?: string[];
+	offLimits?: string[];
+	constraints?: string[];
+	secondaryMetrics?: string[];
+	primaryMetric?: string;
+	metricUnit?: string;
+	direction?: MetricDirection;
+	branch?: string | null;
+	baselineCommit?: string | null;
+	notes?: string;
+	breadth?: number;
+	attempts?: number;
+	maxParallel?: number;
+	certify?: boolean;
+}
+
+export interface InsertRunParams {
+	sessionId: number;
+	segment: number;
+	command: string;
+	logPath: string;
+	preRunDirtyPaths: string[];
+	startedAt: number;
+	arm?: string | null;
+}
+
+export interface MarkRunCompletedParams {
+	runId: number;
+	completedAt: number;
+	durationMs: number;
+	exitCode: number | null;
+	timedOut: boolean;
+	parsedPrimary: number | null;
+	parsedMetrics: NumericMetricMap | null;
+	parsedAsi: ASIData | null;
+}
+
+export interface MarkRunLoggedParams {
+	runId: number;
+	status: ExperimentStatus;
+	description: string;
+	metric: number;
+	metrics: NumericMetricMap;
+	asi: ASIData | null;
+	commitHash: string | null;
+	confidence: number | null;
+	modifiedPaths: string[];
+	scopeDeviations: string[];
+	justification: string | null;
+	loggedAt: number;
+}
+
+type SessionDbRow = {
+	id: number;
+	name: string;
+	goal: string | null;
+	primary_metric: string;
+	metric_unit: string;
+	direction: string;
+	preferred_command: string | null;
+	branch: string | null;
+	baseline_commit: string | null;
+	current_segment: number;
+	max_iterations: number | null;
+	scope_paths_json: string;
+	off_limits_json: string;
+	constraints_json: string;
+	secondary_metrics_json: string;
+	notes: string;
+	breadth: number;
+	attempts: number;
+	max_parallel: number;
+	certify: number;
+	created_at: number;
+	closed_at: number | null;
+};
+
+type RunDbRow = {
+	id: number;
+	session_id: number;
+	segment: number;
+	command: string;
+	started_at: number;
+	completed_at: number | null;
+	duration_ms: number | null;
+	exit_code: number | null;
+	timed_out: number;
+	parsed_primary: number | null;
+	parsed_metrics_json: string | null;
+	parsed_asi_json: string | null;
+	pre_run_dirty_paths_json: string;
+	log_path: string;
+	status: string | null;
+	description: string | null;
+	metric: number | null;
+	metrics_json: string | null;
+	asi_json: string | null;
+	commit_hash: string | null;
+	confidence: number | null;
+	modified_paths_json: string | null;
+	scope_deviations_json: string | null;
+	justification: string | null;
+	flagged: number;
+	flagged_reason: string | null;
+	arm: string | null;
+	certified_by: string | null;
+	logged_at: number | null;
+	abandoned_at: number | null;
+};
+
+const SCHEMA_VERSION = 2;
+
+const SCHEMA_SQL = `
+PRAGMA journal_mode=WAL;
+PRAGMA synchronous=NORMAL;
+PRAGMA foreign_keys=ON;
+
+CREATE TABLE IF NOT EXISTS sessions (
+	id INTEGER PRIMARY KEY,
+	name TEXT NOT NULL,
+	goal TEXT,
+	primary_metric TEXT NOT NULL,
+	metric_unit TEXT NOT NULL DEFAULT '',
+	direction TEXT NOT NULL DEFAULT 'lower',
+	preferred_command TEXT,
+	branch TEXT,
+	baseline_commit TEXT,
+	current_segment INTEGER NOT NULL DEFAULT 0,
+	max_iterations INTEGER,
+	scope_paths_json TEXT NOT NULL DEFAULT '[]',
+	off_limits_json TEXT NOT NULL DEFAULT '[]',
+	constraints_json TEXT NOT NULL DEFAULT '[]',
+	secondary_metrics_json TEXT NOT NULL DEFAULT '[]',
+	notes TEXT NOT NULL DEFAULT '',
+	breadth INTEGER NOT NULL DEFAULT 1,
+	attempts INTEGER NOT NULL DEFAULT 1,
+	max_parallel INTEGER NOT NULL DEFAULT 8,
+	certify INTEGER NOT NULL DEFAULT 1,
+	created_at INTEGER NOT NULL,
+	closed_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS runs (
+	id INTEGER PRIMARY KEY,
+	session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+	segment INTEGER NOT NULL,
+	command TEXT NOT NULL,
+	started_at INTEGER NOT NULL,
+	completed_at INTEGER,
+	duration_ms INTEGER,
+	exit_code INTEGER,
+	timed_out INTEGER NOT NULL DEFAULT 0,
+	parsed_primary REAL,
+	parsed_metrics_json TEXT,
+	parsed_asi_json TEXT,
+	pre_run_dirty_paths_json TEXT NOT NULL DEFAULT '[]',
+	log_path TEXT NOT NULL,
+	status TEXT,
+	description TEXT,
+	metric REAL,
+	metrics_json TEXT,
+	asi_json TEXT,
+	commit_hash TEXT,
+	confidence REAL,
+	modified_paths_json TEXT,
+	scope_deviations_json TEXT,
+	justification TEXT,
+	flagged INTEGER NOT NULL DEFAULT 0,
+	flagged_reason TEXT,
+	arm TEXT,
+	certified_by TEXT,
+	logged_at INTEGER,
+	abandoned_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS runs_session_segment_idx ON runs(session_id, segment);
+CREATE INDEX IF NOT EXISTS runs_pending_idx ON runs(session_id, status, abandoned_at);
+`;
+
+/**
+ * Bring an existing database up to SCHEMA_VERSION.
+ *
+ * `CREATE TABLE IF NOT EXISTS` leaves an already-created table alone, so a
+ * database opened before a column existed never gains it from SCHEMA_SQL. Each
+ * added column is nullable or carries a default that reproduces the behaviour
+ * from before it existed, so a migrated session keeps running serially.
+ */
+function migrateSchema(db: Database, from: number): void {
+	if (from < 2) {
+		addColumnIfMissing(db, "sessions", "breadth", "INTEGER NOT NULL DEFAULT 1");
+		addColumnIfMissing(db, "sessions", "attempts", "INTEGER NOT NULL DEFAULT 1");
+		addColumnIfMissing(db, "sessions", "max_parallel", "INTEGER NOT NULL DEFAULT 8");
+		addColumnIfMissing(db, "sessions", "certify", "INTEGER NOT NULL DEFAULT 1");
+		addColumnIfMissing(db, "runs", "arm", "TEXT");
+		addColumnIfMissing(db, "runs", "certified_by", "TEXT");
+	}
+}
+
+function addColumnIfMissing(db: Database, table: string, column: string, definition: string): void {
+	const columns = db.query(`PRAGMA table_info(${table})`).all() as { name: string }[];
+	if (columns.some(entry => entry.name === column)) return;
+	db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
 
 export class AutoresearchStorage {
 	#db: Database;
@@ -31,11 +320,13 @@ export class AutoresearchStorage {
 		this.#projectDir = projectDir;
 		fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 		this.#db = new Database(dbPath);
+		// Install the busy handler BEFORE any lock-taking statement. See #2421.
 		this.#db.run("PRAGMA busy_timeout = 5000");
 		this.#db.run(SCHEMA_SQL);
 		const versionRow = this.#db.query("PRAGMA user_version").get() as { user_version: number } | null;
 		const currentVersion = versionRow?.user_version ?? 0;
 		if (currentVersion < SCHEMA_VERSION) {
+			migrateSchema(this.#db, currentVersion);
 			this.#db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
 		}
 	}
@@ -61,6 +352,9 @@ export class AutoresearchStorage {
 	}
 
 	getActiveSessionForBranch(branch: string | null): SessionRow | null {
+		// Most-recent active session whose recorded branch matches the caller's branch.
+		// `branch === null` means "no git repo / no branch info" — treat null on both
+		// sides as a match.
 		if (branch === null) {
 			const stmt = this.#db.prepare<SessionDbRow, []>(
 				"SELECT * FROM sessions WHERE closed_at IS NULL AND branch IS NULL ORDER BY id DESC LIMIT 1",
@@ -87,8 +381,9 @@ export class AutoresearchStorage {
 				name, goal, primary_metric, metric_unit, direction,
 				preferred_command, branch, baseline_commit, max_iterations,
 				scope_paths_json, off_limits_json, constraints_json, secondary_metrics_json,
+				breadth, attempts, max_parallel, certify,
 				created_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 		);
 		const row = stmt.get(
 			params.name,
@@ -104,6 +399,10 @@ export class AutoresearchStorage {
 			JSON.stringify(params.offLimits),
 			JSON.stringify(params.constraints),
 			JSON.stringify(params.secondaryMetrics),
+			params.breadth ?? 1,
+			params.attempts ?? 1,
+			params.maxParallel ?? 8,
+			(params.certify ?? true) ? 1 : 0,
 			Date.now(),
 		);
 		if (!row) throw new Error("Failed to insert autoresearch session");
@@ -190,8 +489,8 @@ export class AutoresearchStorage {
 	insertRun(params: InsertRunParams): RunRow {
 		const stmt = this.#db.prepare<{ id: number }, SQLQueryBindings[]>(
 			`INSERT INTO runs (
-				session_id, segment, command, started_at, log_path, pre_run_dirty_paths_json
-			) VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+				session_id, segment, command, started_at, log_path, pre_run_dirty_paths_json, arm
+			) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 		);
 		const row = stmt.get(
 			params.sessionId,
@@ -200,9 +499,26 @@ export class AutoresearchStorage {
 			params.startedAt,
 			params.logPath,
 			JSON.stringify(params.preRunDirtyPaths),
+			params.arm ?? null,
 		);
 		if (!row) throw new Error("Failed to insert run");
 		return this.getRunByIdRequired(row.id);
+	}
+
+	/** Every run recorded for one segment, oldest first. A round of arms. */
+	listRunsForSegment(sessionId: number, segment: number): RunRow[] {
+		const stmt = this.#db.prepare<RunDbRow, [number, number]>(
+			"SELECT * FROM runs WHERE session_id = ? AND segment = ? ORDER BY id ASC",
+		);
+		return stmt.all(sessionId, segment).map(rowToRun);
+	}
+
+	/** Record a certification verdict against one arm's run. */
+	markRunCertified(runId: number, certifiedBy: string, flagged: boolean, reason: string | null): RunRow {
+		this.#db
+			.prepare("UPDATE runs SET certified_by = ?, flagged = ?, flagged_reason = ? WHERE id = ?")
+			.run(certifiedBy, flagged ? 1 : 0, reason, runId);
+		return this.getRunByIdRequired(runId);
 	}
 
 	updateRunLogPath(runId: number, logPath: string): RunRow {
@@ -336,9 +652,22 @@ export async function openAutoresearchStorageIfExists(cwd: string): Promise<Auto
 	return storage;
 }
 
+async function primaryRootOrNull(cwd: string): Promise<string | null> {
+	try {
+		return await git.repo.primaryRoot(cwd);
+	} catch {
+		return null;
+	}
+}
+
 async function resolveAutoresearchPaths(cwd: string): Promise<{ dbPath: string; projectDir: string }> {
 	const override = process.env.VEYYON_AUTORESEARCH_DB_DIR;
-	const repoRoot = (await git.repo.root(cwd)) ?? cwd;
+	// The primary checkout, never the linked worktree: `rev-parse --show-toplevel`
+	// returns the worktree's own root, which would give every arm of a swarm its
+	// own database and hide its runs from the session that started them. Outside
+	// a repository this throws rather than returning null, and autoresearch still
+	// has to open a database keyed on the plain directory.
+	const repoRoot = (await primaryRootOrNull(cwd)) ?? cwd;
 	const encoded = encodeProjectKey(repoRoot);
 	if (override) {
 		return {
@@ -384,6 +713,10 @@ function rowToSession(row: SessionDbRow): SessionRow {
 		constraints: parseStringArray(row.constraints_json),
 		secondaryMetrics: parseStringArray(row.secondary_metrics_json),
 		notes: row.notes,
+		breadth: row.breadth ?? 1,
+		attempts: row.attempts ?? 1,
+		maxParallel: row.max_parallel ?? 8,
+		certify: (row.certify ?? 1) !== 0,
 		createdAt: row.created_at,
 		closedAt: row.closed_at,
 	};
@@ -417,6 +750,8 @@ function rowToRun(row: RunDbRow): RunRow {
 		justification: row.justification,
 		flagged: row.flagged !== 0,
 		flaggedReason: row.flagged_reason,
+		arm: row.arm ?? null,
+		certifiedBy: row.certified_by ?? null,
 		loggedAt: row.logged_at,
 		abandonedAt: row.abandoned_at,
 	};
@@ -427,6 +762,15 @@ function parseStatus(value: string | null): ExperimentStatus | null {
 	return null;
 }
 
+/**
+ * A JSON string array out of a storage column, or `[]` when the column does not hold one.
+ *
+ * Empty is what an experiment with no scope paths, no off-limits paths and no pre-run dirty paths
+ * legitimately stores, so `[]` is a real value here rather than a failure signal. This storage is written
+ * only by the same module -- the columns are serialized by `insertRun` and friends, never by a user or a
+ * remote -- so unparseable JSON would mean the database was corrupted underneath us, and there is no
+ * better answer available at this layer than the empty set the schema allows.
+ */
 function parseStringArray(json: string): string[] {
 	try {
 		const parsed = JSON.parse(json) as unknown;
@@ -449,6 +793,9 @@ function parseNumericMetricMap(json: string | null): NumericMetricMap | null {
 		}
 		return out;
 	} catch {
+		// Null is distinct from `{}` here and the callers rely on it: null means this run recorded no
+		// secondary metrics at all, while an empty object means it recorded a metric map that turned out to
+		// hold none. Same provenance as `parseStringArray` above -- this column is written by this module.
 		return null;
 	}
 }

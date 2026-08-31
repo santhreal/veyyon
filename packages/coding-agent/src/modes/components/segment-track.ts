@@ -1,3 +1,14 @@
+/**
+ * Shared renderer for a horizontal row of colored "segments" styled after the
+ * status line: each segment is colored by its track position from the theme's
+ * own palette, the active one is filled as a powerline chip (its color as the
+ * background, a luminance-matched label, flanked by triangle caps) and the
+ * rest are plain colored labels joined by a thin separator.
+ *
+ * Used by the plan-mode model-tier slider ({@link HookSelectorComponent}) and
+ * the ctrl+p role-cycle status so both surfaces read identically.
+ */
+
 import { SGR_BG_RESET, SGR_FG_RESET, SGR_INTENSITY_RESET } from "@veyyon/tui/ansi";
 import { type ThemeColor, theme } from "../theme/theme";
 
@@ -5,6 +16,10 @@ export interface TrackSegment {
 	label: string;
 }
 
+/** Vivid theme colors for position-based segment coloring, in preference
+ *  order. Themes alias many of these to the same value (titanium maps most of
+ *  the syntax set onto its accent), so {@link resolveSegmentPalette} dedupes
+ *  by resolved escape and hands position i the i-th distinct color. */
 const SEGMENT_COLOR_CANDIDATES: ThemeColor[] = [
 	"accent",
 	"success",
@@ -20,6 +35,12 @@ const SEGMENT_COLOR_CANDIDATES: ThemeColor[] = [
 	"syntaxVariable",
 ];
 
+/**
+ * Resolve up to `count` theme colors that render distinctly under the active
+ * theme, in candidate preference order. May return fewer than `count` when the
+ * theme has fewer distinct hues (e.g. monochrome themes) — callers wrap with
+ * modulo. Never returns an empty array: `accent` always resolves.
+ */
 export function resolveSegmentPalette(count: number): ThemeColor[] {
 	const palette: ThemeColor[] = [];
 	const seen = new Set<string>();
@@ -33,31 +54,47 @@ export function resolveSegmentPalette(count: number): ThemeColor[] {
 	return palette;
 }
 
+/**
+ * Render `segments` as a colored chip track with `activeIndex` filled. Returns
+ * a single line of styled text with no surrounding caption or arrows — callers
+ * frame it as they need.
+ */
 export function renderSegmentTrack(segments: TrackSegment[], activeIndex: number): string {
+	// Powerline triangles point *into* the chip so the colored caps merge with
+	// the filled body: left cap points left, right cap points right.
 	const capLeft = theme.sep.powerlineRight;
 	const capRight = theme.sep.powerlineLeft;
 	const thinSep = theme.fg("statusLineSep", theme.sep.powerlineThin);
 	const palette = resolveSegmentPalette(segments.length);
 
 	let track = "";
-	for (let i = 0; i < segments.length; i++) {
-		const segment = segments[i]!;
+	segments.forEach((segment, i) => {
 		if (i > 0) {
+			// A thin separator reads cleanly only between two plain labels; the chip
+			// caps already delimit the active segment, so pad around it instead.
 			track += i === activeIndex || i - 1 === activeIndex ? "  " : ` ${thinSep} `;
 		}
 		const color = palette[i % palette.length];
 		const fg = theme.getFgAnsi(color);
 		if (i !== activeIndex) {
 			track += `${fg}${segment.label}${SGR_FG_RESET}`;
-			continue;
+			return;
 		}
 		const bg = fg.replace("\x1b[38;", "\x1b[48;");
 		const label = `${bg}${theme.getContrastFgAnsi(color)}\x1b[1m ${segment.label} ${SGR_INTENSITY_RESET}${SGR_BG_RESET}`;
 		track += `${fg}${capLeft}${label}${fg}${capRight}${SGR_FG_RESET}`;
-	}
+	});
 	return track;
 }
 
+/**
+ * Render the full slider line every segment-slider surface shares: optional
+ * dim caption, prev/next arrows (theme `nav.prev`/`nav.next`, accent while a
+ * step exists in that direction, dim at the ends), the chip track, and an
+ * optional hooked detail line for the active segment. One owner: the
+ * plan-review model slider and the hook selector previously each hand-rolled
+ * this line with raw `◂`/`▸`/`↳` literals that ignored the symbol presets.
+ */
 export function renderSliderLines(
 	segments: Array<TrackSegment & { detail?: string }>,
 	activeIndex: number,

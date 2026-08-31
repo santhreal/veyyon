@@ -37,6 +37,7 @@ function agentPlanModeNames(enabled: readonly string[]): string | undefined {
 		askToolName: "ask",
 		writeToolName: "write",
 		editToolName: "edit",
+		workspaceDiscoveryTools: "`search`, `read`",
 		isHashlineEditMode: false,
 		reentry: false,
 		iterative: false,

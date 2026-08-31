@@ -36,7 +36,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { type Dirent, readdirSync, readFileSync } from "node:fs";
 import * as path from "node:path";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
@@ -55,11 +55,12 @@ const ROOTS = ["packages", "crates", "scripts"];
  *
  * - Generated output. `docs/handbook/book` is mdBook OUTPUT whose minified highlight.js carries 0x7f,
  *   and `devin-gen` is protobuf codegen. Regenerating them is the only way to change them.
- * - Foreign code. `vendor` trees are read-only snapshots, and `repo-cache` is where deepswe-bench
- *   clones upstream repositories to run benchmarks against. Editing either is meaningless: the
- *   vendored copy is clobbered on re-vendor and the cache is re-cloned. Between them they account for
- *   every offender this rule found outside our own source, including test fixtures that contain raw
- *   0x1b on purpose because they are testing a terminal reporter.
+ * - Foreign code. `vendor` trees are read-only snapshots, and `repo-cache` and `.cache` are where the
+ *   evals suites clone upstream repositories and vendor pinned benchmark datasets to run against.
+ *   Editing either is meaningless: the vendored copy is clobbered on re-vendor and the cache is
+ *   re-cloned. Between them they account for every offender this rule found outside our own source,
+ *   including test fixtures that contain raw 0x1b on purpose because they are testing a terminal
+ *   reporter, and a dataset task that ships a minified PDF worker.
  * - Build artefacts: `target`, `dist`, `build`, `node_modules`.
  *
  * Kept as an explicit, short list rather than a pattern, so adding to it is a decision a reader can
@@ -75,6 +76,7 @@ const SKIP_DIRS = new Set([
 	"build",
 	"vendor",
 	"repo-cache",
+	".cache",
 	"devin-gen",
 	"book",
 ]);
@@ -89,13 +91,13 @@ function trackedSources(): Array<{ file: string; bytes: Buffer }> {
 }
 
 function collect(dir: string, found: Array<{ file: string; bytes: Buffer }>): void {
-	let entries: ReturnType<typeof readdirSync>;
+	let entries: Dirent[];
 	try {
-		entries = readdirSync(dir, { withFileTypes: true }) as never;
+		entries = readdirSync(dir, { withFileTypes: true });
 	} catch {
 		return;
 	}
-	for (const entry of entries as unknown as Array<{ name: string; isDirectory(): boolean }>) {
+	for (const entry of entries) {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
 			if (!SKIP_DIRS.has(entry.name)) {

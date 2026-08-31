@@ -1,3 +1,18 @@
+/**
+ * Per-prompt difficulty classifier for the `auto` thinking level.
+ *
+ * Picks a coding-difficulty bucket for a user prompt and maps it to a concrete
+ * {@link Effort}, clamped into the active model's supported range (never below
+ * {@link Effort.Low}). Two backends, selected by `providers.autoThinkingModel`:
+ *
+ * - `online` (default): a smol model classifies into `low|medium|high|xhigh`.
+ * - a local key: an on-device memory model classifies into the coarser
+ *   `trivial|moderate|hard` scheme (3-class is more reliable than 4-way ordinal
+ *   on sub-2B models), mapped to `low|high|xhigh`.
+ *
+ * Throws on any failure (no model, no key, unparseable output, abort/timeout);
+ * the caller falls back to a concrete level and continues the turn.
+ */
 import { type ApiKeyResolver, type Context, completeSimple, type Model } from "@veyyon/ai";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { Effort } from "@veyyon/catalog/effort";
@@ -22,6 +37,7 @@ import { tinyModelClient } from "../tiny/title-client";
 const PLACEHOLDER_SHIELD_START = 0xe100;
 const PLACEHOLDER_SHIELD_END = 0xf8ff;
 
+/** Keep provider placeholders whole across tiny-message cleanup and middle truncation. */
 function preprocessProviderInput(text: string): string {
 	const unavailable = new Set(text);
 	let nextCodePoint = PLACEHOLDER_SHIELD_START;
@@ -55,6 +71,7 @@ function preprocessProviderInput(text: string): string {
 
 const DIFFICULTY_SYSTEM_PROMPT = prompt.render(thinkingPrompts["thinking/difficulty"].text);
 
+/** Local classifiers occasionally need more room for chat-template boilerplate. */
 const LOCAL_ANSWER_MAX_TOKENS = 16;
 
 export interface ClassifyDifficultyDeps {
@@ -64,10 +81,22 @@ export interface ClassifyDifficultyDeps {
 	sessionId?: string;
 	signal?: AbortSignal;
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined;
+	/** Final confidentiality boundary for text sent to an online classifier. */
 	obfuscateProviderText?: (text: string) => string;
+	/**
+	 * Transport for the online classification. Absent means a bare
+	 * `completeSimple`: no watchdog and outside every cap, on a request that runs
+	 * once per prompt while the operator waits for the turn to start.
+	 */
 	completeImpl?: SideCompleteImpl;
 }
 
+/**
+ * Classify `promptText` and return a concrete effort clamped to `deps.model`,
+ * or `undefined` when the model has no controllable effort surface (auto has
+ * nothing to pick — the caller leaves the prior reasoning level in place).
+ * @throws when the backend cannot produce a usable classification.
+ */
 export async function classifyDifficulty(
 	promptText: string,
 	deps: ClassifyDifficultyDeps,
@@ -81,6 +110,7 @@ export async function classifyDifficulty(
 }
 
 async function classifyOnline(input: string, deps: ClassifyDifficultyDeps): Promise<Effort> {
+	// Unset tiny/smol inherits the live main model (the classification prompt is tiny).
 	const resolved = resolveRoleSelectionWithInherit(
 		["tiny", "smol"],
 		deps.settings,
@@ -95,11 +125,14 @@ async function classifyOnline(input: string, deps: ClassifyDifficultyDeps): Prom
 	if (!apiKey) {
 		throw new Error(`auto-thinking: no API key for ${model.provider}/${model.id}`);
 	}
+	// Resolve metadata after getApiKey so the session-sticky credential is recorded first.
 	const metadata = deps.metadataResolver?.(model.provider);
 	const maxTokens = REASONING_SAFE_MAX_TOKENS;
 	const requestContext: Context = { systemPrompt: [], messages: [] };
 	const refreshProviderContext = (): void => {
 		const sanitize = deps.obfuscateProviderText ?? ((text: string) => text);
+		// Exact secret replacement must precede lossy tiny-message preprocessing:
+		// otherwise middle truncation can leave a no-longer-matchable secret prefix.
 		const providerInput = preprocessProviderInput(sanitize(input));
 		requestContext.systemPrompt = [sanitize(DIFFICULTY_SYSTEM_PROMPT)];
 		requestContext.messages = [
@@ -114,6 +147,8 @@ async function classifyOnline(input: string, deps: ClassifyDifficultyDeps): Prom
 	const resolveApiKey = deps.registry.resolver(model, deps.sessionId);
 	const resolveAttemptApiKey: ApiKeyResolver = async options => {
 		const key = await resolveApiKey(options);
+		// Rebuild from raw input after every credential refresh so each physical
+		// auth retry sees the current runtime rather than a stale transformed copy.
 		refreshProviderContext();
 		return key;
 	};
@@ -161,9 +196,12 @@ async function classifyLocal(input: string, modelKey: string, deps: ClassifyDiff
 	return effort;
 }
 
+/** Map the online 4-way level keyword to an {@link Effort}; earliest match wins. */
 export function parseDifficultyLevel(text: string): Effort | undefined {
 	const lower = text.toLowerCase();
 	const candidates: Array<[number, Effort]> = [];
+	// `xhigh` must be probed as its own token: `\bhigh\b` cannot match the "high"
+	// inside "xhigh" (no word boundary between `x` and `h`), so the two never collide.
 	const xhigh = lower.search(/x[\s_-]?high/);
 	if (xhigh >= 0) candidates.push([xhigh, Effort.XHigh]);
 	const high = lower.search(/\bhigh\b/);
@@ -175,6 +213,7 @@ export function parseDifficultyLevel(text: string): Effort | undefined {
 	return earliest(candidates);
 }
 
+/** Map the local 3-way bucket keyword to an {@link Effort}; earliest match wins. */
 export function parseDifficultyBucket(text: string): Effort | undefined {
 	const lower = text.toLowerCase();
 	const candidates: Array<[number, Effort]> = [];

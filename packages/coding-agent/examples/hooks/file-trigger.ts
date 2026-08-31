@@ -1,3 +1,12 @@
+/**
+ * File Trigger Hook
+ *
+ * Watches a trigger file and injects its contents into the conversation.
+ * Useful for external systems to send messages to the agent.
+ *
+ * Usage:
+ *   echo "Run the tests" > /tmp/agent-trigger.txt
+ */
 import * as fs from "node:fs";
 import type { HookAPI } from "@veyyon/coding-agent";
 
@@ -15,11 +24,16 @@ export default function (pi: HookAPI) {
 							content: `External trigger: ${content}`,
 							display: true,
 						},
+						// Second argument is an options object, not a bare boolean: a
+						// bare `true` is a type error, and older copies of this example
+						// silently passed one.
 						{ triggerTurn: true },
 					);
 					await Bun.write(triggerFile, ""); // Clear after reading
 				}
-			} catch {}
+			} catch {
+				// File might not exist yet
+			}
 		});
 
 		if (ctx.hasUI) {

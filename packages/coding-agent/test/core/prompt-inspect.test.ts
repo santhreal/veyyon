@@ -38,7 +38,7 @@ import { prompt } from "@veyyon/utils";
 await Settings.init({ inMemory: true });
 
 /** One assembly, shared: building it runs real workspace discovery. */
-const inspection: PromptInspection = await inspectSystemPrompt({ toolNames: ["read", "edit", "bash", "grep"] });
+const inspection: PromptInspection = await inspectSystemPrompt({ toolNames: ["read", "edit", "bash", "search"] });
 
 describe("the inspection reproduces the prompt rather than approximating it", () => {
 	it("reconstructs every block byte for byte from its sections", () => {

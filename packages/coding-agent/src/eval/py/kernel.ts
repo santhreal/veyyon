@@ -1,24 +1,157 @@
-import { logger, Snowflake } from "@veyyon/utils";
+/**
+ * Subprocess-backed Python runner.
+ *
+ * Speaks NDJSON with `runner.py` over stdin/stdout. One subprocess per kernel
+ * instance; sessions reuse a single subprocess across executions. Cancellation
+ * is `kill("SIGINT")` which raises a real `KeyboardInterrupt` inside user
+ * code. Shutdown writes `{"type":"exit"}` and escalates to SIGTERM/SIGKILL on
+ * timeout.
+ */
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { $flag, errorMessage, isBunTestRuntime, logger, Snowflake } from "@veyyon/utils";
+import { $ } from "bun";
 import { Settings } from "../../config/settings";
 import {
 	BaseKernel,
-	ensureRunnerScript,
+	DEFAULT_KERNEL_STARTUP_TIMEOUT_MS,
 	getRemainingTimeMs,
 	KERNEL_INTERRUPT_ESCALATION_MS,
 	KERNEL_SHUTDOWN_GRACE_MS,
 	type KernelStartOptions,
+	kernelIpcTraceEnvVar,
+	kernelRunnerCacheDir,
 	releaseKernel,
 } from "../kernel-base";
-import { checkPythonKernelAvailability, RUNNER_CACHE_DIR, STARTUP_TIMEOUT_MS, TRACE_IPC } from "./kernel-helpers";
-
-export * from "./kernel-helpers";
-
 import { PYTHON_PRELUDE } from "./prelude";
 import RUNNER_SCRIPT from "./runner.py" with { type: "text" };
-import { filterEnv, resolveExplicitPythonRuntime, resolvePythonRuntime } from "./runtime";
+import {
+	enumeratePythonRuntimes,
+	filterEnv,
+	type PythonRuntime,
+	resolveExplicitPythonRuntime,
+	resolvePythonRuntime,
+} from "./runtime";
 import { hostHasInheritableConsole, shouldDetachKernel, shouldHideKernelWindow } from "./spawn-options";
 
-export { checkPythonKernelAvailability };
+export type {
+	KernelExecuteOptions,
+	KernelExecuteResult,
+	KernelRuntimeEnv,
+	KernelShutdownOptions,
+	KernelShutdownResult,
+} from "../kernel-base";
+
+export type { KernelDisplayOutput, PythonStatusEvent } from "./display";
+export { renderKernelDisplay } from "./display";
+
+const TRACE_IPC = $flag(kernelIpcTraceEnvVar("PYTHON"));
+
+// Cache the runner script on disk so the subprocess loads it normally. Cached
+// per script hash so installs don't race across versions.
+const RUNNER_CACHE_DIR = kernelRunnerCacheDir(os.tmpdir(), "python");
+let RUNNER_SCRIPT_PATH: string | null = null;
+
+async function ensureRunnerScript(): Promise<string> {
+	if (RUNNER_SCRIPT_PATH) return RUNNER_SCRIPT_PATH;
+	await fs.promises.mkdir(RUNNER_CACHE_DIR, { recursive: true });
+	const hash = Bun.hash(RUNNER_SCRIPT).toString(36);
+	const target = path.join(RUNNER_CACHE_DIR, `runner-${hash}.py`);
+	if (!fs.existsSync(target)) {
+		await Bun.write(target, RUNNER_SCRIPT);
+	}
+	RUNNER_SCRIPT_PATH = target;
+	return target;
+}
+
+const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS;
+// How long to wait after SIGINT for the runner to emit `done`. If the cell is
+// stuck in code that ignores Python signals (e.g. a C extension holding the
+// GIL), we escalate to a full subprocess shutdown so the host queue unblocks
+// instead of hanging the session forever. The grace window is intentionally
+// generous: a clean interrupt is far preferable to losing the persistent
+// kernel's state, so we only kill as a last-resort recovery path.
+
+export interface PythonKernelAvailability {
+	ok: boolean;
+	/** The interpreter that answered the probe. Present only when `ok` is true. */
+	pythonPath?: string;
+	reason?: string;
+	/** The probed-working runtime, when one was found. */
+	runtime?: PythonRuntime;
+}
+
+// Cache successful probes per resolved cwd + explicit interpreter: every cell
+// otherwise pays one (or two — backend.isAvailable + ensureKernelAvailable)
+// interpreter spawns even when the kernel is already hot. Failures are not
+// cached so installing a Python mid-session is picked up on the next attempt.
+const availabilityCache = new Map<string, Promise<PythonKernelAvailability>>();
+
+export async function checkPythonKernelAvailability(
+	cwd: string,
+	interpreter?: string,
+): Promise<PythonKernelAvailability> {
+	if (isBunTestRuntime() || $flag("VEYYON_PYTHON_SKIP_CHECK")) {
+		return { ok: true };
+	}
+	const resolvedCwd = path.resolve(cwd);
+	const key = `${resolvedCwd}\0${interpreter ?? ""}`;
+	const cached = availabilityCache.get(key);
+	if (cached) return await cached;
+	const probe = probePythonKernelAvailability(resolvedCwd, interpreter);
+	availabilityCache.set(key, probe);
+	const result = await probe;
+	if (!result.ok && availabilityCache.get(key) === probe) {
+		availabilityCache.delete(key);
+	}
+	return result;
+}
+
+async function probePythonKernelAvailability(cwd: string, interpreter?: string): Promise<PythonKernelAvailability> {
+	try {
+		const settings = await Settings.init();
+		const { env } = settings.getShellConfig();
+		const baseEnv = filterEnv(env);
+		const runtimes = interpreter
+			? [resolveExplicitPythonRuntime(interpreter, cwd, baseEnv)]
+			: enumeratePythonRuntimes(cwd, baseEnv);
+		if (runtimes.length === 0) {
+			return { ok: false, reason: "Python executable not found on PATH" };
+		}
+		// Probe each candidate in priority order and use the first that actually
+		// runs. A managed env left behind by a removed `uv` install can exist on
+		// disk yet fail to execute; falling through to the next candidate lets a
+		// working system Python take over instead of failing the whole session.
+		const failures: string[] = [];
+		for (const runtime of runtimes) {
+			try {
+				const probe = await $`${runtime.pythonPath} -c "import sys;sys.exit(0)"`
+					.quiet()
+					.nothrow()
+					.cwd(cwd)
+					.env(runtime.env);
+				if (probe.exitCode === 0) {
+					return { ok: true, pythonPath: runtime.pythonPath, runtime };
+				}
+				failures.push(`${runtime.pythonPath} (exit code ${probe.exitCode})`);
+			} catch (err) {
+				failures.push(`${runtime.pythonPath} (${errorMessage(err)})`);
+			}
+		}
+		// No `pythonPath` on failure. Every candidate here has already been probed and
+		// none of them ran, so handing one back invites a caller that reads the path
+		// without checking `ok` to launch an interpreter this function just proved is
+		// broken. The reason names every candidate that was tried, which is what a
+		// diagnostic actually needs.
+		return {
+			ok: false,
+			reason: `No working Python interpreter found. Tried: ${failures.join("; ")}`,
+		};
+	} catch (err) {
+		return { ok: false, reason: errorMessage(err) };
+	}
+}
 
 export class PythonKernel extends BaseKernel {
 	private constructor(id: string) {
@@ -68,7 +201,7 @@ export class PythonKernel extends BaseKernel {
 		spawnEnv.PYTHONUNBUFFERED = "1";
 		spawnEnv.PYTHONIOENCODING = "utf-8";
 
-		const scriptPath = await ensureRunnerScript(RUNNER_CACHE_DIR, RUNNER_SCRIPT, "py");
+		const scriptPath = await ensureRunnerScript();
 		const kernel = new PythonKernel(Snowflake.next());
 
 		const proc = Bun.spawn([runtime.pythonPath, "-u", scriptPath], {

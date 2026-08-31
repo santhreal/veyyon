@@ -11,7 +11,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { collapseWhitespace } from "@veyyon/utils";
+import { collapseWhitespace, NON_ALNUM_RUN_RE } from "@veyyon/utils";
 import type { HistoryEntry, HistoryStorage } from "../../session/history-storage";
 import { theme } from "../theme/theme";
 import {
@@ -21,7 +21,6 @@ import {
 	matchesSelectPageUp,
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
-import { highlightTokens, MAX_VISIBLE, queryTokens, relativeTime } from "./history-search-helpers";
 import {
 	computeModalDims,
 	consumeModalChipHover,
@@ -35,13 +34,74 @@ import {
 } from "./modal-shell";
 import { centeredWindow, hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
 
+/** Visible result rows; also the jump distance for PageUp/PageDown. */
+const MAX_VISIBLE = 10;
+
+/** Split a query the same way `HistoryStorage` tokenizes it, so highlights align with matches. */
+function queryTokens(query: string): string[] {
+	return query
+		.toLowerCase()
+		.split(NON_ALNUM_RUN_RE)
+		.filter(tok => tok.length > 0);
+}
+
+/** Wrap every case-insensitive occurrence of any token in `text` with the accent color. */
+function highlightTokens(text: string, tokens: string[]): string {
+	if (tokens.length === 0) return text;
+
+	const lower = text.toLowerCase();
+	const ranges: Array<[number, number]> = [];
+	for (const tok of tokens) {
+		let from = lower.indexOf(tok);
+		while (from !== -1) {
+			ranges.push([from, from + tok.length]);
+			from = lower.indexOf(tok, from + tok.length);
+		}
+	}
+	if (ranges.length === 0) return text;
+
+	ranges.sort((a, b) => a[0] - b[0]);
+	let out = "";
+	let pos = 0;
+	for (const [start, end] of ranges) {
+		if (end <= pos) continue; // fully covered by a previous (merged) range
+		const from = Math.max(start, pos);
+		if (from > pos) out += text.slice(pos, from);
+		out += theme.fg("accent", text.slice(from, end));
+		pos = end;
+	}
+	if (pos < text.length) out += text.slice(pos);
+	return out;
+}
+
+/** Compact "time since" label (e.g. `now`, `5m`, `2h`, `3d`, `2w`, `6mo`, `1y`) from epoch seconds. */
+function relativeTime(epochSeconds: number): string {
+	const seconds = Math.max(0, Math.floor(Date.now() / 1000) - epochSeconds);
+	if (seconds < 60) return "now";
+	const minutes = Math.floor(seconds / 60);
+	if (minutes < 60) return `${minutes}m`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours}h`;
+	const days = Math.floor(hours / 24);
+	if (days < 7) return `${days}d`;
+	if (days < 30) return `${Math.floor(days / 7)}w`;
+	if (days < 365) return `${Math.floor(days / 30)}mo`;
+	return `${Math.floor(days / 365)}y`;
+}
+
 class HistoryResultsList implements Component {
 	#results: HistoryEntry[] = [];
 	#tokens: string[] = [];
 	#selectedIndex = 0;
 	#maxVisible = MAX_VISIBLE;
+	/** Pointer-highlighted row (never the selected one; selection owns its row). */
 	#hoveredIndex: number | null = null;
+	/**
+	 * The cross-fade, once the card has lent this list a repaint
+	 * ({@link setHoverMotion}). Absent, the band is switched.
+	 */
 	#hoverFade?: HoverFade;
+	/** Per-render map of 0-based rendered line → result index. */
 	#hitRows: (number | undefined)[] = [];
 
 	setResults(results: HistoryEntry[], selectedIndex: number, tokens: string[]): void {
@@ -54,10 +114,12 @@ class HistoryResultsList implements Component {
 		this.#selectedIndex = selectedIndex;
 	}
 
+	/** Resolve a rendered line (0-based within this list) to a result index. */
 	hitTest(line: number): number | undefined {
 		return this.#hitRows[line];
 	}
 
+	/** Highlight the row under the pointer (null clears). Returns true on change. */
 	setHoverIndex(index: number | null): boolean {
 		if (this.#hoveredIndex === index) return false;
 		this.#hoveredIndex = index;
@@ -65,25 +127,34 @@ class HistoryResultsList implements Component {
 		return true;
 	}
 
+	/**
+	 * Fade the pointer band instead of switching it. The frames between two mouse
+	 * reports have no input to hang off, so the card lends its repaint.
+	 * `enabled: false` is the switched band.
+	 */
 	setHoverMotion(options: HoverFadeOptions): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = new HoverFade(options);
 		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
 	}
 
+	/** Drop the fade and forget the pointer, so no timer outlives the card. */
 	disposeHoverMotion(): void {
 		this.#hoverFade?.dispose();
 		this.#hoverFade = undefined;
 		this.#hoveredIndex = null;
 	}
 
+	/** Band strength for a result row: 0 for the selected one, which owns its own styling. */
 	#hoverStrength(index: number, isSelected: boolean): number {
 		if (isSelected) return 0;
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
-	invalidate(): void {}
+	invalidate(): void {
+		// No cached state to invalidate currently
+	}
 
 	render(width: number): readonly string[] {
 		const lines: string[] = [];
@@ -123,6 +194,7 @@ class HistoryResultsList implements Component {
 						let line = cursor + (isSelected ? theme.bold(highlighted) : highlighted);
 
 						if (showTime) {
+							// Pad the prompt region so the timestamp sits flush right with a one-cell gap.
 							line = `${truncateToWidth(line, rowWidth - timeWidth - 1, Ellipsis.Unicode, true)} ${theme.fg("dim", timeStr)}`;
 						}
 
@@ -139,6 +211,7 @@ class HistoryResultsList implements Component {
 	}
 }
 
+/** `/history` search — floating ModalShell card with a live search row and result list. */
 export class HistorySearchComponent implements Component {
 	#historyStorage: HistoryStorage;
 	#searchInput: Input;
@@ -149,6 +222,7 @@ export class HistorySearchComponent implements Component {
 	#onCancel: () => void;
 	#resultLimit = 100;
 	#shellGeometry: ModalShellGeometry | null = null;
+	/** Frame row where the results list begins (shell body start; the search line is its own region). */
 	#listRowStart = 0;
 	#hoveredShortcutId: string | null = null;
 	#onRequestRender?: () => void;
@@ -175,9 +249,13 @@ export class HistorySearchComponent implements Component {
 
 	setOnRequestRender(cb: () => void): void {
 		this.#onRequestRender = cb;
+		// The pointer band fades only once the card has a repaint to lend it: the
+		// frames between two mouse reports have no input to hang off. Same ambient
+		// gate as the open unfold; without it the band is switched.
 		this.#resultsList.setHoverMotion({ requestRender: cb, enabled: pointerMotionEnabled() });
 	}
 
+	/** Settle the pointer band so no timer outlives a dismissed card. */
 	dispose(): void {
 		this.#resultsList.disposeHoverMotion();
 	}
@@ -286,6 +364,7 @@ export class HistorySearchComponent implements Component {
 		}
 		const line = event.row - this.#listRowStart;
 		if (event.motion) {
+			// The band paints on every row, the cursor row included; the pointer never moves the cursor.
 			const hovered = this.#resultsList.hitTest(line) ?? null;
 			if (this.#resultsList.setHoverIndex(hovered)) this.#onRequestRender?.();
 			return true;
@@ -317,11 +396,11 @@ export class HistorySearchComponent implements Component {
 		const dims = computeModalDims(width, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return new Array(height).fill(padding(width));
+			return Array.from({ length: height }, () => padding(width));
 		}
 
 		const searchLine = this.#searchInput.render(dims.contentWidth)[0] ?? "";
-		const body = this.#resultsList.render(dims.contentWidth).slice();
+		const body = [...this.#resultsList.render(dims.contentWidth)];
 
 		const shell = renderModalShell({
 			title: "Search History",

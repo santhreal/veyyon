@@ -19,8 +19,8 @@
  * observe either: the variable has to be set BEFORE the process starts, exactly as the
  * bench sets it around a container, because every registry is constructed at import.
  *
- * What it does not catch: delivery of the variable into a Docker container (deepswe-bench
- * stages the JSON, records it in `attachments.json`, and `pier_agent/arm_attachments.py`
+ * What it does not catch: delivery of the variable into a Docker container (the DeepSWE suite
+ * stages the JSON, records it in `attachments.json`, and `agents/pier/arm_attachments.py`
  * turns that into the command prefix), and the per-accessor agreement inside one registry
  * (`@veyyon/utils` `eval-prompts-override-replaces-registry-text.test.ts`).
  */

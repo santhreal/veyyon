@@ -89,7 +89,10 @@ async function isMountedByDeviceBoundary(mountPath: string, stat = readMountPoin
 		const [mountStats, parentStats] = await Promise.all([stat(mountPath), stat(path.dirname(mountPath))]);
 		return mountStats.dev !== parentStats.dev;
 	} catch {
-		// A stat that fails cannot show a device boundary, and false -- "not mounted" -- is the conservative direction here: the caller responds by MOUNTING, which either succeeds or fails loudly with sshfs's
+		// A stat that fails cannot show a device boundary, and false -- "not mounted" -- is the conservative
+		// direction here: the caller responds by MOUNTING, which either succeeds or fails loudly with sshfs's
+		// own message. Answering true on an unexaminable path would instead skip the mount and let every
+		// later read fail against an empty directory.
 		return false;
 	}
 }
@@ -134,6 +137,21 @@ export async function mountRemote(host: SSHConnectionTarget, remotePath = "/"): 
 
 	mountedPaths.add(mountPath);
 	return mountPath;
+}
+
+export async function unmountRemote(host: SSHConnectionTarget): Promise<boolean> {
+	const mountPath = getMountPath(host);
+	if (!(await isMounted(mountPath))) {
+		mountedPaths.delete(mountPath);
+		return false;
+	}
+
+	const success = await unmountPath(mountPath);
+	if (success) {
+		mountedPaths.delete(mountPath);
+	}
+
+	return success;
 }
 
 export async function unmountAll(): Promise<void> {

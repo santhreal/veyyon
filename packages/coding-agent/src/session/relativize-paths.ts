@@ -1,12 +1,30 @@
+/**
+ * Outbound path-prefix canonicalization (TW-10).
+ *
+ * Absolute paths under the session's registered roots are pure carry noise:
+ * a long cwd prefix repeated thousands of times in stored history is re-sent
+ * verbatim every turn. At the request-build boundary we render those paths
+ * relative to their root; persisted history keeps the original absolute bytes
+ * (fidelity/audit) and inbound model output passes through untouched (tools
+ * resolve relative paths against the live cwd).
+ * The active cwd is the single registered root so paths under the current working
+ * directory render relative while paths under other roots stay absolute and distinct.
+ */
+
 import type { AssistantMessage, Message, TextContent, ToolResultMessage } from "@veyyon/ai";
 import { escapeRegExp } from "@veyyon/utils";
 import { SET_CWD_TOOL_NAME } from "../tools/reroot-hint";
 
 export interface RelativizeResult {
 	messages: Message[];
+	/** Total characters removed from the outbound rendering this call. */
 	bytesSaved: number;
 }
 
+/**
+ * Normalize an active working directory root for wire-path relativization.
+ * Trims whitespace and trailing slashes, rejecting non-absolute or root-only paths.
+ */
 export function normalizeRoots(root: string): string[] {
 	let normalized = root.trim();
 	while (normalized.length > 1 && normalized.endsWith("/")) normalized = normalized.slice(0, -1);
@@ -18,7 +36,9 @@ const BOUNDARY_CHARS = new Set([" ", "\t", "\n", "\r", "(", "[", "{", "<", '"', 
 
 interface CompiledRoot {
 	root: string;
+	/** root + "/" anywhere; left boundary enforced during the scan. */
 	prefix: RegExp;
+	/** bare root followed by a token-ending character or end of string. */
 	exact: RegExp;
 }
 
@@ -31,6 +51,7 @@ function compileRoot(root: string): CompiledRoot {
 	};
 }
 
+/** Rewrite absolute paths under roots in free text; undefined when unchanged. */
 function relativizeText(text: string, compiled: readonly CompiledRoot[]): { text: string; saved: number } | undefined {
 	let saved = 0;
 	let out = text;
@@ -51,6 +72,7 @@ function relativizeText(text: string, compiled: readonly CompiledRoot[]): { text
 
 function relativizeArguments(value: unknown, roots: readonly string[], state: { changed: boolean }): unknown {
 	if (typeof value === "string") {
+		// Whole-string path values only: a multiline string is content, not a path.
 		if (value.includes("\n")) return value;
 		for (const root of roots) {
 			if (value === root) {
@@ -69,7 +91,7 @@ function relativizeArguments(value: unknown, roots: readonly string[], state: { 
 		for (let i = 0; i < value.length; i++) {
 			const next = relativizeArguments(value[i], roots, state);
 			if (next !== value[i]) {
-				items ??= value.slice();
+				items ??= [...value];
 				items[i] = next;
 			}
 		}
@@ -101,7 +123,7 @@ function relativizeAssistant(
 		if (block.type === "text") {
 			const next = relativizeText(block.text, compiled);
 			if (next) {
-				content ??= message.content.slice();
+				content ??= [...message.content];
 				content[i] = { ...block, text: next.text };
 				state.saved += next.saved;
 			}
@@ -109,10 +131,11 @@ function relativizeAssistant(
 			const argState = { changed: false };
 			const args = relativizeArguments(block.arguments, roots, argState);
 			if (argState.changed) {
-				content ??= message.content.slice();
+				content ??= [...message.content];
 				content[i] = { ...block, arguments: args as Record<string, unknown> };
 			}
 		}
+		// thinking / redactedThinking blocks are provider-signed: never rewrite.
 	}
 	return content ? { ...message, content } : message;
 }
@@ -127,6 +150,14 @@ function relativizeMessage(
 		return relativizeAssistant(message, roots, compiled, state);
 	}
 	if (message.role === "toolResult") {
+		// The ONE result this optimization must never touch. `set_cwd` reports the move as
+		// `Moved cwd: <from> → <to>`, and both endpoints are roots by construction: the old
+		// cwd is already a root and the new one is appended as this call's target. Rewriting
+		// them collapses the sentence to `Moved cwd: . → ..`, which names neither end and
+		// reads as if the session moved to a parent directory. The model then re-derives its
+		// own cwd with extra tool calls, or acts on the wrong one — costing far more than the
+		// prefix bytes saved. set-cwd.ts resolves both paths to absolute precisely so this
+		// message cannot degenerate; the exemption is what makes that hold end to end.
 		if (message.toolName === SET_CWD_TOOL_NAME) return message;
 		const result: ToolResultMessage = message;
 		let content: ToolResultMessage["content"] | undefined;
@@ -135,13 +166,14 @@ function relativizeMessage(
 			if (block.type !== "text") continue;
 			const next = relativizeText(block.text, compiled);
 			if (next) {
-				content ??= result.content.slice();
+				content ??= [...result.content];
 				content[i] = { ...block, text: next.text } as TextContent;
 				state.saved += next.saved;
 			}
 		}
 		return content ? { ...result, content } : message;
 	}
+	// user / developer: string or block content, same text rewrite.
 	if (typeof message.content === "string") {
 		const next = relativizeText(message.content, compiled);
 		if (!next) return message;
@@ -154,7 +186,7 @@ function relativizeMessage(
 		if (block.type !== "text") continue;
 		const next = relativizeText(block.text, compiled);
 		if (next) {
-			content ??= message.content.slice();
+			content ??= [...message.content];
 			content[i] = { ...block, text: next.text };
 			state.saved += next.saved;
 		}
@@ -166,6 +198,7 @@ export interface PathRelativizer {
 	transform(message: Message): { message: Message; bytesSaved: number };
 }
 
+/** Compile one roots version once, then relativize individual appended messages. */
 export function createPathRelativizer(roots: readonly string[]): PathRelativizer {
 	const compiled = roots.map(compileRoot);
 	return {
@@ -179,6 +212,10 @@ export function createPathRelativizer(roots: readonly string[]): PathRelativizer
 	};
 }
 
+/**
+ * Render absolute paths under `roots` as root-relative in an outbound copy.
+ * Returns the input array untouched when nothing matched.
+ */
 export function relativizePathsUnderRoots(messages: Message[], roots: readonly string[]): RelativizeResult {
 	if (messages.length === 0 || roots.length === 0) return { messages, bytesSaved: 0 };
 	const relativizer = createPathRelativizer(roots);
@@ -188,7 +225,7 @@ export function relativizePathsUnderRoots(messages: Message[], roots: readonly s
 		const next = relativizer.transform(messages[i]);
 		bytesSaved += next.bytesSaved;
 		if (next.message !== messages[i]) {
-			out ??= messages.slice();
+			out ??= [...messages];
 			out[i] = next.message;
 		}
 	}

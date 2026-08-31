@@ -219,7 +219,7 @@ describe("glyphs", () => {
 	 *
 	 * The roster proof exists to show WHICH agents are running, and the status
 	 * glyph is the only cell that says so. `⟳` was unmapped, so every running row
-	 * on the Agent Control Center proof drew a hollow box: the tool reported it,
+	 * on the subagent dashboard proof drew a hollow box: the tool reported it,
 	 * but a reported gap in exactly the column under test is still a proof that
 	 * cannot answer its own question. Adding a fifth status to the card without a
 	 * glyph here fails this rather than surfacing as boxes in the next image.

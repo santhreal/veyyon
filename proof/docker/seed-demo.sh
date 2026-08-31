@@ -280,6 +280,22 @@ cat >"${DEMO}/ship-sim/tsconfig.json" <<'JSON'
 JSON
 
 cp /repo/proof/prompts/demo-hd.md "${DEMO}/ship-sim/TASK.md"
+cat >"${DEMO}/TASK.md" <<'TASK_EOF'
+# TerminalBench: JSONPath Query Engine
+
+Add `Query(doc interface{}, path string) ([]interface{}, error)` and `QueryOne(doc interface{}, path string) (interface{}, bool, error)` to the `orderedmap` package for JSONPath querying.
+
+- Path must start with `$`.
+- Dot-notation `.key`: identifiers may contain letters, digits, underscores, and hyphens (e.g. `$.my-key`).
+- Bracket-notation `['key']` or `["key"]` (supports escaping).
+- Index `[N]`: negative indices count from the end. Out-of-range returns empty results.
+- Union: Selects multiple children (`['key1','key2']`) or indices (`[1,2]`). Results are returned in the order specified.
+- Recursive descent `..key`, `..*`, or `..['key1','key2']`: searches all descendants depth-first.
+- Filter `[?(@.field op value)]`: ops are `==`, `!=`, `<`, `>`, `<=`, `>=`.
+- Any syntax error must return an `*orderedmap.SyntaxError` struct with `Message` (string) and `Position` (int byte offset).
+
+Run the verify test suite with `go test ./pkg/orderedmap/... ./pkg/yttlibrary/...` once complete.
+TASK_EOF
 
 cat >"${DEMO}/ship-sim/SPEC.md" <<'MD'
 # Nebula Drift

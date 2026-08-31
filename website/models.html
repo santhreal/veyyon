@@ -15,9 +15,9 @@
 <meta property="og:title" content="Models | Veyyon" />
 <meta property="og:url" content="https://veyyon.dev/models.html" />
 <link rel="canonical" href="https://veyyon.dev/models.html" />
-<meta name="description" content="Interactive model (modelRoles.default), optional roles, subagent and compaction overrides. Multi-provider catalog." />
+<meta name="description" content="Every provider and model veyyon supports, live from the bundled catalog. Search, filter, and browse the full multi-provider model list." />
 <link rel="preload" href="./fonts/JetBrainsMono-Bold.woff2" as="font" type="font/woff2" crossorigin />
-<link rel="preload" href="./fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="./fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="./site.css" />
 </head>
 <body>
@@ -31,9 +31,8 @@
       <a href="./features.html">Features</a>
       <a href="./install.html">Install</a>
       <a href="./changelog.html">Changelog</a>
-      <a href="./blog/">Blog</a>
       <a href="./docs/">Docs</a>
-      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+      <a href="https://github.com/santhreal/veyyon"><svg class="nav-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
       <a href="./install.html" class="btn">Get started</a>
     <!--NAV:END-->
     </nav>
@@ -44,93 +43,45 @@
         <a href="./features.html">Features</a>
         <a href="./install.html">Install</a>
         <a href="./changelog.html">Changelog</a>
-        <a href="./blog/">Blog</a>
         <a href="./docs/">Docs</a>
-        <a href="https://github.com/santhreal/veyyon">GitHub</a>
+        <a href="https://github.com/santhreal/veyyon"><svg class="nav-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
         <a href="./install.html" class="btn">Get started</a>
       <!--NAV:END-->
       </nav>
     </details>
   </div>
-  <div class="suntrack" aria-hidden="true"><canvas data-sun="progress" width="14" height="14"></canvas></div>
 </header>
 
 <main class="wrap">
 
   <div class="page-head">
     <span class="kicker">Models</span>
-    <h1>Model selection</h1>
-    <p>Provider catalog + credentials on the host. Interactive model, optional roles, and slot overrides.
-      Handbook: Models, roles, and profiles.</p>
+    <h1>Provider catalog</h1>
+    <p>Every provider and model veyyon supports, read live from the bundled catalog.
+      The list auto-refreshes from the repository, so it tracks the catalog veyyon
+      ships without a manual edit. Handbook: Models and providers.</p>
   </div>
 
-  <section class="plain">
-    <div class="lead">
-      <span class="kicker">Config</span>
-      <h2>Interactive, roles, overrides</h2>
-      <p class="sub">Interactive model is persisted as <span class="inline">modelRoles.default</span> (hidden role key).
-        Selectable roles: smol, slow, vision, plan, designer, commit, tiny, task, advisor. Unset roles inherit interactive
-        (except advisor’s own chain). <span class="inline">subagent.model</span> overrides <span class="inline">modelRoles.task</span> when set.</p>
-    </div>
-    <div class="panel">
-      <div class="copy">
-        <ul>
-          <li><b>Interactive</b>: <span class="mono">/model</span>, <span class="mono">--model</span> → <span class="mono">modelRoles.default</span></li>
-          <li><b>Roles</b>: <span class="mono">modelRoles</span> / settings → Model → Roles; flags <span class="mono">--smol</span>, <span class="mono">--slow</span>, <span class="mono">--plan</span></li>
-          <li><b>Overrides</b>: <span class="mono">subagent.model</span>, <span class="mono">compaction.model</span></li>
-          <li><b>Cycle</b>: <span class="mono">cycleOrder</span> default <span class="mono">smol</span>, <span class="mono">slow</span></li>
-        </ul>
+  <section class="plain cat-controls" id="cat-controls" hidden>
+    <div class="cat-search">
+      <input id="cat-q" type="search" placeholder="Search models, providers, ids…" autocomplete="off" aria-label="Search models" />
+      <div class="cat-filters" role="group" aria-label="Filter models">
+        <button class="cat-chip" data-filter="reasoning" aria-pressed="false">Reasoning</button>
+        <button class="cat-chip" data-filter="vision" aria-pressed="false">Vision</button>
+        <button class="cat-chip" data-filter="free" aria-pressed="false">Free</button>
       </div>
-      <pre class="demo" aria-hidden="true"><span class="c"># ~/.veyyon/profiles/default/agent/config.yml</span>
-<span class="k">modelRoles</span>:
-  <span class="k">default</span>: <span class="s">openai/gpt-5</span>
-  <span class="k">smol</span>: <span class="s">openai/gpt-4.1-mini</span>
-<span class="k">subagent</span>:
-  <span class="k">model</span>: <span class="s">deepseek/deepseek-chat</span>
-<span class="k">compaction</span>:
-  <span class="k">model</span>: <span class="s">openai/gpt-5-mini</span></pre>
     </div>
+    <p class="cat-meta" id="cat-meta" aria-live="polite"></p>
   </section>
 
-  <section>
-    <div class="grid two">
-      <div class="card">
-        <div class="ic"><svg viewBox="0 0 20 20"><path d="M4 6h12M4 10h12M4 14h7"/></svg></div>
-        <h3>Roles</h3>
-        <p>Named models in <span class="inline">modelRoles</span> (settings → Model → Roles). Key
-          <span class="inline">default</span> stores the interactive model; it is hidden from role pickers.
-          Custom role names allowed via config.</p>
-      </div>
-      <div class="card">
-        <div class="ic"><svg viewBox="0 0 20 20"><path d="M3 10a7 7 0 0 1 14 0"/><path d="M10 10l4-2"/><circle cx="10" cy="10" r="1.4"/></svg></div>
-        <h3>Compaction</h3>
-        <p><span class="inline">compaction.strategy</span>: <span class="inline">handoff</span> |
-          <span class="inline">snap</span> (default <span class="inline">snap</span>).
-          <span class="inline">compaction.thresholdPercent</span>, <span class="inline">compaction.model</span>.</p>
-      </div>
+  <section class="plain cat-results">
+    <div id="catalog" class="catalog">
+      <p class="cat-loading" id="cat-loading">Loading catalog…</p>
     </div>
-  </section>
-
-  <section>
-    <div class="lead">
-      <span class="kicker">Providers</span>
-      <h2>Catalog and local discovery</h2>
-      <p class="sub">Hosted providers in the bundled catalog; Ollama, LM Studio, and llama.cpp when the local
-        server is running. BYOK keys go to the endpoint you configure.</p>
-    </div>
-    <div class="tbl-wrap">
-      <table class="tbl">
-        <thead><tr><th>Use case</th><th>Setting</th><th>Notes</th></tr></thead>
-        <tbody>
-          <tr><td>Interactive</td><td class="m">/model · modelRoles.default</td><td>Main conversation model</td></tr>
-          <tr><td>Subagents</td><td class="m">subagent.model</td><td>Overrides modelRoles.task when set</td></tr>
-          <tr><td>Compaction</td><td class="m">compaction.model</td><td>Unset inherits interactive</td></tr>
-          <tr><td>Local weights</td><td class="m">ollama · lm-studio · llama.cpp</td><td>Auto-discovered when available</td></tr>
-          <tr><td>CI</td><td class="m">--model provider/id</td><td>Pin exact id; set --approval-mode for headless</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="sub" style="margin-top:22px">Handbook: <a href="./docs/">docs</a> → Models and providers / roles.</p>
+    <noscript>
+      <p>The model catalog needs JavaScript to render. The raw data is at
+        <a href="./models-data.json">models-data.json</a>.</p>
+    </noscript>
   </section>
 
 </main>
@@ -149,16 +100,15 @@
       <a href="./features.html">Features</a>
       <a href="./install.html">Install</a>
       <a href="./changelog.html">Changelog</a>
-      <a href="./blog/">Blog</a>
       <a href="./docs/">Docs</a>
-      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+      <a href="https://github.com/santhreal/veyyon"><svg class="nav-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
     <!--NAV:END-->
     </nav>
   </div>
 </footer>
 
 <script src="./sun-field.js" defer></script>
-<script src="./motion.js" defer></script>
 <script src="./sunmark.js" defer></script>
+<script src="./models.js" defer></script>
 </body>
 </html>

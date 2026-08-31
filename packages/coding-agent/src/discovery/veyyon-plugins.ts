@@ -1,4 +1,21 @@
-/** Veyyon extension-package sub-discovery provider. When a user configures an extension via `extensions:` (in settings) or */
+/**
+ * Veyyon extension-package sub-discovery provider.
+ *
+ * When a user configures an extension via `extensions:` (in settings) or
+ * `--extension`/`-e` (on the CLI), the docs promise that the package's
+ * sibling directories — `skills/`, `hooks/pre|post/`, `tools/`, `commands/`,
+ * `rules/`, `prompts/`, and `.mcp.json` — are picked up by veyyon's standard
+ * discovery surfaces. The native `veyyon` provider in `builtin.ts` only walks
+ * `.veyyon/` and `~/.veyyon/profiles/default/agent/`, so without this provider those sub-trees are
+ * silently ignored.
+ *
+ * Provider priority is set below the native `veyyon` provider (100) so an
+ * extension package never shadows the user's own `.veyyon/` configuration on
+ * dedup.
+ *
+ * @see ./veyyon-extension-roots.ts
+ * @see ../../docs/internal/extension-loading.md
+ */
 
 import * as path from "node:path";
 import { isRecord, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
@@ -23,6 +40,10 @@ const DESCRIPTION =
 	"Sub-discovery (skills, hooks, tools, commands, rules, prompts, .mcp.json) inside extension packages";
 const PRIORITY = 90;
 
+// =============================================================================
+// Skills
+// =============================================================================
+
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
 	const results = await Promise.all(
@@ -40,6 +61,10 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 		warnings: results.flatMap(r => r.warnings ?? []),
 	};
 }
+
+// =============================================================================
+// Slash Commands
+// =============================================================================
 
 async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
 	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
@@ -63,6 +88,10 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 	};
 }
 
+// =============================================================================
+// Rules
+// =============================================================================
+
 async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
 	const results = await Promise.all(
@@ -79,6 +108,10 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 		warnings: results.flatMap(r => r.warnings ?? []),
 	};
 }
+
+// =============================================================================
+// Prompts
+// =============================================================================
 
 async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 	const roots = await listVeyyonExtensionRoots(ctx, { agentDir: ctx.agentDir });
@@ -100,6 +133,10 @@ async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 		warnings: results.flatMap(r => r.warnings ?? []),
 	};
 }
+
+// =============================================================================
+// Hooks
+// =============================================================================
 
 const HOOK_TYPES: ReadonlyArray<"pre" | "post"> = ["pre", "post"];
 
@@ -134,6 +171,10 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 		warnings: results.flatMap(r => r.warnings ?? []),
 	};
 }
+
+// =============================================================================
+// Custom Tools
+// =============================================================================
 
 const TOOL_EXTENSIONS = ["json", "md", "ts", "js", "sh", "bash", "py"];
 
@@ -203,14 +244,15 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 	const items: DiscoveredCustomTool[] = [];
 	const warnings: string[] = [];
 	for (const { filesResult, indexItems } of perRoot) {
-		for (let ii = 0; ii < filesResult.items.length; ii++) items.push(filesResult.items[ii]!);
-		for (let ii = 0; ii < indexItems.length; ii++) items.push(indexItems[ii]!);
-		if (filesResult.warnings) {
-			for (let wi = 0; wi < filesResult.warnings.length; wi++) warnings.push(filesResult.warnings[wi]!);
-		}
+		items.push(...filesResult.items, ...indexItems);
+		if (filesResult.warnings) warnings.push(...filesResult.warnings);
 	}
 	return { items, warnings };
 }
+
+// =============================================================================
+// MCP Servers
+// =============================================================================
 
 const MCP_FILENAMES = [".mcp.json", "mcp.json"] as const;
 
@@ -285,6 +327,10 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 
 	return { items, warnings };
 }
+
+// =============================================================================
+// Provider Registration
+// =============================================================================
 
 registerProvider<DiscoveredSkill>(skillCapability.id, {
 	id: PROVIDER_ID,

@@ -195,6 +195,10 @@ function splitApplyPatchPerFile(input: string): EditMatcherEntry[] {
 		try {
 			entries = expandApplyPatchToPreviewEntries({ input });
 		} catch {
+			// This runs on a PARTIAL envelope while the model is still streaming it, so both parsers failing
+			// means "not enough text to tell which files are touched yet" -- the state of every apply_patch
+			// before its first complete hunk. The empty list only suppresses the per-file highlighting for
+			// this frame; the next frame carries more text and the completed patch is validated by the tool.
 			return [];
 		}
 	}

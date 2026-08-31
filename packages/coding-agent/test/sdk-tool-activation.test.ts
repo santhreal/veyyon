@@ -140,7 +140,7 @@ describe("createAgentSession defaultInactive tool activation", () => {
 
 	it("activates the yield tool when requireYieldTool is set and toolNames is explicit", async () => {
 		// Regression for #1408: plan-mode subagents pass an explicit `toolNames` list
-		// (e.g. `["read", "grep", "glob", "lsp", "web_search"]`). Without this
+		// (e.g. `["read", "search", "lsp", "web_search"]`). Without this
 		// invariant, `yield` ended up registered but not active, and the model
 		// could not satisfy the idle-reminder contract that demands a `yield` call.
 		const tempDir = makeTempDir();
@@ -148,7 +148,7 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		const { session } = await createAgentSession({
 			...baseOptions(tempDir),
 			requireYieldTool: true,
-			toolNames: ["read", "grep", "glob", "web_search"],
+			toolNames: ["read", "search", "web_search"],
 		});
 
 		try {
@@ -158,21 +158,21 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		}
 	});
 
-	it("normalizes legacy builtin toolNames before selecting the active SDK tools", async () => {
+	it("normalizes builtin toolNames before selecting the active SDK tools", async () => {
 		const tempDir = makeTempDir();
 
 		const { session } = await createAgentSession({
 			...baseOptions(tempDir),
-			toolNames: ["read", "search", "find"],
+			toolNames: ["read", "search", "SEARCH"],
 		});
 
 		try {
 			const activeToolNames = session.getActiveToolNames();
 
 			expect(activeToolNames).toContain("read");
-			expect(activeToolNames).toContain("grep");
-			expect(activeToolNames).toContain("glob");
-			expect(activeToolNames).not.toContain("search");
+			expect(activeToolNames).toContain("search");
+			expect(activeToolNames).not.toContain("grep");
+			expect(activeToolNames).not.toContain("glob");
 			expect(activeToolNames).not.toContain("find");
 		} finally {
 			await session.dispose();
@@ -183,7 +183,7 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		// Regression for #1428: plan mode submits its finalized plan via
 		// `resolve { action: "apply" }` dispatched through a standing handler
 		// (interactive-mode.ts: `setStandingResolveHandler`). With an explicit
-		// read-only `toolNames` (e.g. `read`, `search`, `find`, `web_search`)
+		// read-only `toolNames` (e.g. `read`, `search`, `web_search`)
 		// the registry has no `deferrable` tool, so the previous gate dropped
 		// `resolve` from the registry and plan mode silently activated without
 		// it — leaving the agent stuck after drafting the plan.
@@ -191,7 +191,7 @@ describe("createAgentSession defaultInactive tool activation", () => {
 
 		const { session } = await createAgentSession({
 			...baseOptions(tempDir),
-			toolNames: ["read", "grep", "glob", "web_search"],
+			toolNames: ["read", "search", "web_search"],
 		});
 
 		try {
@@ -217,7 +217,7 @@ describe("createAgentSession defaultInactive tool activation", () => {
 		const { session } = await createAgentSession({
 			...baseOptions(tempDir),
 			settings,
-			toolNames: ["read", "grep", "glob", "web_search"],
+			toolNames: ["read", "search", "web_search"],
 		});
 
 		try {

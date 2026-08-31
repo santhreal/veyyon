@@ -1,7 +1,16 @@
 import { THINKING_EFFORTS } from "@veyyon/catalog/effort";
-import { scope } from "arktype";
+import { scope, type Type } from "arktype";
 
+// Schema construction is deferred behind modelsConfigSchemas(): even with the
+// jitless scope below (~65% cheaper than default ArkType codegen), building
+// this schema graph costs ~19ms of import time, yet it is only needed when a
+// models config file actually loads. Built once on first use.
 function buildModelsConfigSchemas() {
+	// Config schemas validate at most a handful of times per process (on config
+	// load), so the eager JIT codegen ArkType runs at definition time is pure
+	// startup tax. A local jitless scope skips that codegen and falls back to
+	// interpreted traversal — ~65% cheaper to construct, validation correctness
+	// unchanged. (No `name`: duplicate module instances would collide.)
 	const { type } = scope({}, { jitless: true });
 
 	const OpenRouterRoutingSchema = type({
@@ -14,6 +23,12 @@ function buildModelsConfigSchemas() {
 		"order?": "string[]",
 	});
 
+	// `"+": "reject"` because every key here NAMES a thinking level, and a key
+	// that names no level cannot do anything. ArkType allows undeclared keys by
+	// default, so `{ hihg: "minimal" }` used to validate, be carried into the
+	// config, and then never match: the remap silently did not happen and the
+	// level went to the server verbatim, which is the failure the map exists to
+	// prevent. Rejecting names the offending key at load instead.
 	const ReasoningEffortMapSchema = type({
 		"+": "reject",
 		"minimal?": "string",
@@ -58,6 +73,7 @@ function buildModelsConfigSchemas() {
 		"strictResponsesPairing?": "boolean",
 		"supportsImageDetailOriginal?": "boolean",
 		"supportsServerCompaction?": "boolean",
+		// anthropic-messages compat flags (same `compat` slot, per-api interpretation)
 		"requiresToolResultId?": "boolean",
 		"replayUnsignedThinking?": "boolean",
 	} as const;
@@ -73,12 +89,27 @@ function buildModelsConfigSchemas() {
 		'"openai-completions" | "openai-responses" | "openai-codex-responses" | "azure-openai-responses" | "anthropic-messages" | "google-generative-ai" | "google-gemini-cli" | "google-vertex"',
 	);
 
+	// ArkType infers a literal union only from a literal definition, so the six
+	// levels are spelled here rather than built from `THINKING_EFFORTS`: a
+	// generated string would infer as `string` and every `defaultLevel` in this
+	// file would stop being checked. The guard below makes the spelling safe.
 	const EffortSchema = type('"minimal" | "low" | "medium" | "high" | "xhigh" | "max"');
 
 	const ThinkingControlModeSchema = type(
 		'"effort" | "budget" | "google-level" | "anthropic-adaptive" | "anthropic-budget-effort"',
 	);
 
+	/**
+	 * Fail closed if the schema's literals and the ladder in
+	 * `@veyyon/catalog/effort` disagree.
+	 *
+	 * Adding a level to the owner and forgetting this file is not a compile
+	 * error, and the result is not an error at runtime either: the new level
+	 * would be rejected as an unknown value, so a user's models config would fail
+	 * to load with a message naming their file rather than ours. This throws at
+	 * schema-build time instead, which happens the first time any models config
+	 * loads, and says which side is behind.
+	 */
 	for (const effort of THINKING_EFFORTS) {
 		if (EffortSchema(effort) instanceof type.errors) {
 			throw new Error(
@@ -89,14 +120,25 @@ function buildModelsConfigSchemas() {
 		}
 	}
 
+	// The ladder itself is not restated. `THINKING_EFFORTS` is `readonly Effort[]`
+	// and TypeScript does not consider a string-enum member assignable to its own
+	// literal type, so the cast is what bridges the enum to ArkType's inferred
+	// union; the loop above is what makes it true rather than assumed.
 	const EFFORT_ORDER = THINKING_EFFORTS as readonly (typeof EffortSchema.infer)[];
 
+	/**
+	 * Accepts the canonical `efforts` vocabulary plus the legacy
+	 * `minLevel`/`maxLevel`/`levels` range shape, normalizing both to
+	 * `ThinkingConfig` (ordered `efforts`, never empty). Precedence mirrors the
+	 * old runtime: explicit `levels` beat the min..max range; `efforts` beats both.
+	 */
 	const ModelThinkingSchema = type({
 		mode: ThinkingControlModeSchema,
 		"efforts?": EffortSchema.array(),
 		"defaultLevel?": EffortSchema,
 		"effortMap?": ReasoningEffortMapSchema,
 		"supportsDisplay?": "boolean",
+		// Legacy range vocabulary (pre-efforts configs).
 		"minLevel?": EffortSchema,
 		"maxLevel?": EffortSchema,
 		"levels?": EffortSchema.array(),
@@ -124,6 +166,14 @@ function buildModelsConfigSchemas() {
 			};
 		});
 
+	// `remoteCompaction` is RETIRED. Nothing has read it since per-provider
+	// compaction configuration went away, so a config that still sets it
+	// configures nothing. Server-side compaction survives as the
+	// `compaction.remote` setting, which takes no per-provider configuration.
+	// It stays declared here — as opaque, unvalidated data — for one reason: an
+	// undeclared key is dropped before validation runs, and a dropped key cannot
+	// be reported. Declaring it keeps the value alive long enough for
+	// `validateProviderConfiguration` to refuse the file and name the retirement.
 	const RetiredRemoteCompactionSchema = type("unknown");
 
 	const ModelDefinitionSchema = type({
@@ -151,6 +201,7 @@ function buildModelsConfigSchemas() {
 		"compactionModel?": "string",
 		"remoteCompaction?": RetiredRemoteCompactionSchema,
 	}).narrow((value, ctx) => {
+		// Enforce id non-empty
 		if (typeof value.id === "string" && value.id.length === 0) {
 			return ctx.mustBe("id a non-empty string");
 		}
@@ -238,6 +289,13 @@ function buildModelsConfigSchemas() {
 		"models?": ModelDefinitionSchema.array(),
 		"modelOverrides?": { "[string]": ModelOverrideSchema },
 		"disableStrictTools?": "boolean",
+		/**
+		 * Streaming transport override. When set to `"pi-native"`, veyyon dispatches
+		 * every model under this provider via the auth-gateway's
+		 * `POST /v1/pi/stream` endpoint instead of the per-provider SDK. The
+		 * provider's `baseUrl` must point at a compatible `veyyon auth-gateway`
+		 * and `apiKey` must carry the gateway bearer.
+		 */
 		"transport?": '"pi-native"',
 	}).narrow((value, ctx) => {
 		if (value.baseUrl !== undefined && typeof value.baseUrl === "string" && value.baseUrl.length === 0) {
@@ -253,19 +311,162 @@ function buildModelsConfigSchemas() {
 		"providers?": { "[string]": ProviderConfigSchema },
 	});
 
-	return { OpenAICompatSchema, ModelOverrideSchema, ProviderDiscoverySchema, ProviderAuthSchema, ModelsConfigSchema };
+	const schemas: ModelsConfigSchemas = {
+		OpenAICompatSchema,
+		ModelOverrideSchema,
+		ProviderDiscoverySchema,
+		ProviderAuthSchema,
+		ModelsConfigSchema,
+	};
+	return schemas;
 }
 
-type Schemas = ReturnType<typeof buildModelsConfigSchemas>;
+export type ProviderAuthMode = "apiKey" | "none" | "oauth";
 
-let schemasCache: Schemas | undefined;
+export interface ProviderDiscovery {
+	type: "ollama" | "llama.cpp" | "lm-studio" | "openai-models-list" | "proxy" | "litellm";
+}
 
-export function modelsConfigSchemas(): Schemas {
+export interface ModelCost {
+	input?: number;
+	output?: number;
+	cacheRead?: number;
+	cacheWrite?: number;
+}
+export interface OpenAICompatOverride {
+	supportsStore?: boolean;
+	supportsDeveloperRole?: boolean;
+	supportsMultipleSystemMessages?: boolean;
+	supportsReasoningEffort?: boolean;
+	reasoningEffortMap?: {
+		minimal?: string;
+		low?: string;
+		medium?: string;
+		high?: string;
+		xhigh?: string;
+		max?: string;
+	};
+	maxTokensField?: "max_completion_tokens" | "max_tokens";
+	supportsUsageInStreaming?: boolean;
+	requiresToolResultName?: boolean;
+	requiresMistralToolIds?: boolean;
+	requiresAssistantAfterToolResult?: boolean;
+	requiresThinkingAsText?: boolean;
+	reasoningContentField?: "reasoning_content" | "reasoning" | "reasoning_text";
+	requiresReasoningContentForToolCalls?: boolean;
+	allowsSyntheticReasoningContentForToolCalls?: boolean;
+	requiresAssistantContentForToolCalls?: boolean;
+	supportsToolChoice?: boolean;
+	supportsForcedToolChoice?: boolean;
+	disableReasoningOnForcedToolChoice?: boolean;
+	disableReasoningOnToolChoice?: boolean;
+	thinkingFormat?: "openai" | "openrouter" | "zai" | "qwen" | "qwen-chat-template";
+	openRouterRouting?: {
+		only?: string[];
+		order?: string[];
+	};
+	vercelGatewayRouting?: {
+		only?: string[];
+		order?: string[];
+	};
+	extraBody?: Record<string, unknown>;
+	cacheControlFormat?: "anthropic";
+	supportsStrictMode?: boolean;
+	toolStrictMode?: "all_strict" | "none";
+	streamIdleTimeoutMs?: number;
+	supportsLongPromptCacheRetention?: boolean;
+	supportsReasoningParams?: boolean;
+	alwaysSendMaxTokens?: boolean;
+	strictResponsesPairing?: boolean;
+	supportsImageDetailOriginal?: boolean;
+	supportsServerCompaction?: boolean;
+	requiresToolResultId?: boolean;
+	replayUnsignedThinking?: boolean;
+	whenThinking?: OpenAICompatOverride;
+}
+
+export interface ModelDefinition {
+	id: string;
+	name?: string;
+	api?: string;
+	baseUrl?: string;
+	reasoning?: boolean;
+	thinking?: {
+		type?: "enabled" | "disabled" | "thought-budget";
+		budgetTokens?: number;
+	};
+	input?: ("text" | "image")[];
+	supportsTools?: boolean;
+	cost?: {
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+	};
+	premiumMultiplier?: number;
+	contextWindow?: number;
+	maxTokens?: number;
+	omitMaxOutputTokens?: boolean;
+	headers?: Record<string, string>;
+	compat?: OpenAICompatOverride;
+	contextPromotionTarget?: string;
+	compactionModel?: string;
+	remoteCompaction?: unknown;
+}
+
+export interface ModelOverride {
+	name?: string;
+	reasoning?: boolean;
+	thinking?: {
+		type?: "enabled" | "disabled" | "thought-budget";
+		budgetTokens?: number;
+	};
+	input?: ("text" | "image")[];
+	supportsTools?: boolean;
+	cost?: ModelCost;
+	premiumMultiplier?: number;
+	contextWindow?: number;
+	maxTokens?: number;
+	omitMaxOutputTokens?: boolean;
+	headers?: Record<string, string>;
+	compat?: OpenAICompatOverride;
+	contextPromotionTarget?: string;
+	compactionModel?: string;
+	remoteCompaction?: unknown;
+}
+
+export interface ProviderConfig {
+	baseUrl?: string;
+	apiKey?: string;
+	api?: string;
+	headers?: Record<string, string>;
+	compat?: OpenAICompatOverride;
+	remoteCompaction?: unknown;
+	authHeader?: boolean;
+	auth?: ProviderAuthMode;
+	discovery?: ProviderDiscovery;
+	models?: ModelDefinition[];
+	modelOverrides?: Record<string, ModelOverride>;
+	disableStrictTools?: boolean;
+	transport?: "pi-native";
+}
+
+export interface ModelsConfig {
+	providers?: Record<string, ProviderConfig>;
+}
+
+export interface ModelsConfigSchemas {
+	OpenAICompatSchema: Type;
+	ModelOverrideSchema: Type;
+	ProviderDiscoverySchema: Type;
+	ProviderAuthSchema: Type;
+	ModelsConfigSchema: Type;
+}
+
+let schemasCache: ModelsConfigSchemas | undefined;
+
+/** The models-config schema set, built lazily on first config load. */
+export function modelsConfigSchemas(): ModelsConfigSchemas {
 	schemasCache ??= buildModelsConfigSchemas();
 	return schemasCache;
 }
-
-export type ModelOverride = Schemas["ModelOverrideSchema"]["infer"];
-export type ProviderAuthMode = Schemas["ProviderAuthSchema"]["infer"];
-export type ProviderDiscovery = Schemas["ProviderDiscoverySchema"]["infer"];
-export type ModelsConfig = Schemas["ModelsConfigSchema"]["infer"];

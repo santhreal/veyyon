@@ -1,3 +1,11 @@
+/**
+ * Kagi API Client
+ *
+ * Implements the Kagi V1 Search API (POST /api/v1/search), the public-preview
+ * successor to the sunset V0 endpoint. Authentication is resolved exclusively
+ * through the shared {@link AuthStorage} broker (Bearer token), and responses
+ * are categorized result buckets rather than the legacy flat object array.
+ */
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import {
@@ -5,15 +13,93 @@ import {
 	resolveProviderTextTransform,
 	transformProviderPayload,
 } from "../provider-boundary";
-import type { KagiSearchRequest, KagiSearchResponse, KagiSearchResultItem } from "./kagi-helpers";
-
-import { KAGI_SEARCH_URL } from "./kagi-helpers";
 import { withHardTimeout } from "./search/providers/utils";
 
-export type { KagiSearchRequest };
+const KAGI_SEARCH_URL = "https://kagi.com/api/v1/search";
+
+// ---------------------------------------------------------------------------
+// Request / Response Types
+// ---------------------------------------------------------------------------
+
+/** V1 search request body. */
+export interface KagiSearchRequest {
+	query: string;
+	/** Workflow mode: "search" | "research". */
+	workflow?: string;
+	/** Number of results (1-100). */
+	limit?: number;
+	/** Lens identifier (e.g. "news", "reddit"). */
+	lens?: string;
+	/** Time-based filters as ISO date strings (YYYY-MM-DD). */
+	filters?: {
+		after?: string;
+		before?: string;
+	};
+}
+
+/** Individual V1 result item. */
+export interface KagiSearchResultItem {
+	url: string;
+	title: string;
+	snippet?: string;
+	/** ISO timestamp or relative string ("2h ago"). */
+	time?: string;
+	/** Thumbnail image. */
+	image?: { url: string; height?: number; width?: number };
+	/** Extra metadata key-value pairs. */
+	props?: Record<string, unknown>;
+}
+
+/** V1 categorizes results into named buckets; only consumed buckets are typed. */
+export interface KagiSearchData {
+	search?: KagiSearchResultItem[];
+	video?: KagiSearchResultItem[];
+	news?: KagiSearchResultItem[];
+	infobox?: KagiSearchResultItem[];
+	adjacent_question?: KagiSearchResultItem[];
+	related_search?: KagiSearchResultItem[];
+	direct_answer?: KagiSearchResultItem[];
+}
+
+/** V1 error entry. */
+export interface KagiErrorEntry {
+	code?: number;
+	url?: string;
+	message?: string;
+	msg?: string;
+	location?: string;
+}
+
+/** V1 success response. */
+export interface KagiSearchResponse {
+	meta?: {
+		trace?: string;
+		id?: string;
+		ms?: number;
+	};
+	data?: KagiSearchData;
+	error?: KagiErrorEntry[];
+}
+
+/** V1 error response. */
+export interface KagiErrorResponse {
+	meta?: Record<string, unknown>;
+	error?: string | KagiErrorEntry[];
+	message?: string;
+	detail?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Error Handling
+// ---------------------------------------------------------------------------
 
 export class KagiApiError extends Error {
 	readonly statusCode?: number;
+	/**
+	 * The upstream error body, kept so the caller can classify a quota or credit message that Kagi
+	 * reports in prose under a status code that carries no such meaning on its own. Capped because a
+	 * thrown error may be logged, and the classifier only reads a short window.
+	 */
 	readonly body: string;
 
 	constructor(message: string, statusCode?: number, body?: string) {
@@ -33,6 +119,10 @@ function createKagiApiError(statusCode: number, body?: string): KagiApiError {
 function parseKagiErrorResponse(statusCode: number, responseText: string): KagiApiError {
 	return createKagiApiError(statusCode, responseText);
 }
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
 export interface KagiSearchOptions {
 	limit?: number;
@@ -57,6 +147,12 @@ export interface KagiSearchResult {
 	answer?: string;
 }
 
+/**
+ * Compute a YYYY-MM-DD date string `recency` units before now, in UTC.
+ * UTC keeps the recency window deterministic regardless of host timezone and
+ * matches Kagi's date-formatted `filters.after`. Date setters handle month
+ * drift (Mar 31 −1mo → Feb 28/29) and leap years correctly.
+ */
 function recencyToDate(recency: "day" | "week" | "month" | "year"): string {
 	const d = new Date();
 	switch (recency) {
@@ -93,6 +189,7 @@ function buildRequestBody(query: string, options: KagiSearchOptions): KagiSearch
 	return req;
 }
 
+/** Push every item in a result bucket as a source, with an optional title tag. */
 function collectSources(sources: KagiSearchSource[], items: KagiSearchResultItem[] | undefined, tag?: string): void {
 	if (!items) return;
 	for (const item of items) {
@@ -105,6 +202,7 @@ function collectSources(sources: KagiSearchSource[], items: KagiSearchResultItem
 	}
 }
 
+/** Pull a related/adjacent question from an item's props or fall back to title. */
 function questionOf(item: KagiSearchResultItem): string | undefined {
 	const q = item.props?.question ?? item.props?.query ?? item.title;
 	return typeof q === "string" && q.length > 0 ? q : undefined;

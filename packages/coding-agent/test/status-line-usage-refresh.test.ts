@@ -4,6 +4,7 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { statusLineSessionParts } from "./helpers/status-line-session";
 
 async function flushMicrotasks(): Promise<void> {
 	await Promise.resolve();
@@ -11,32 +12,9 @@ async function flushMicrotasks(): Promise<void> {
 }
 
 function makeSession(fetchUsageReports: (signal?: AbortSignal) => Promise<unknown>): AgentSession {
-	const messages: unknown[] = [];
 	return {
+		...statusLineSessionParts({ contextWindow: 200_000, contextUsage: undefined, sessionName: "test" }),
 		fetchUsageReports,
-		messages,
-		state: { messages, model: { contextWindow: 200_000 } },
-		model: { contextWindow: 200_000 },
-		isStreaming: false,
-		sessionManager: {
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-			}),
-			getSessionName: () => "test",
-		},
-		getAsyncJobSnapshot: () => ({ running: [] }),
-		getRunningNonTaskJobCount: () => 0,
-		getContextUsage: () => undefined,
-		contextUsageRevision: 0,
 	} as unknown as AgentSession;
 }
 

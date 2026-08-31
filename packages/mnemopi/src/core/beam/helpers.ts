@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
-import { clamp01, logger } from "@veyyon/utils";
+import * as logger from "@veyyon/utils/logger";
+import { clamp01 } from "@veyyon/utils/math";
 import { generateId as generateTimedId, sha256Hex16, stableMemoryId } from "../../util/ids";
 import {
 	cjkFtsTerms,
@@ -19,6 +20,7 @@ import { buildExactVectorIndex, searchExactVectorIndex } from "../vector-index";
 import { decodeEmbeddingJson, encodeEmbeddingJson } from "../vector-math";
 import type { BeamMemoryState, JsonValue, Metadata } from "./types";
 
+// `HybridWeights` is declared in `../../config`, next to the weights it describes.
 export type { HybridWeights } from "../../config";
 
 export interface VectorDistanceResult {
@@ -33,7 +35,7 @@ export interface WorkingVectorResult {
 
 const SPLIT_TOKEN_RE = /[_:/.-]+/g;
 
-export function rowValue<T>(row: unknown, key: string): T | undefined {
+function rowValue<T>(row: unknown, key: string): T | undefined {
 	if (row && typeof row === "object" && key in row) return (row as Record<string, T>)[key];
 	return undefined;
 }
@@ -49,6 +51,10 @@ export function generateStableId(content: string, source = ""): string {
 export function normalizeImportance(importance: number | null | undefined, fallback = 0.5): number {
 	return clamp01(importance ?? fallback);
 }
+
+// The temporal-scoring family (parseIsoDateTimeUtc, parseQueryTime, recencyDecay,
+// temporalBoost, and the timestamp cache) lives in util/datetime.ts, the single
+// owner. Recall scoring reaches it through recall.ts; this module keeps no fork.
 
 export function lexicalRelevance(queryTokens: readonly string[], content: string, queryLower = ""): number {
 	const contentLower = content.toLowerCase();
@@ -120,6 +126,15 @@ export function encodeVector(embedding: readonly number[]): string {
 	return encodeEmbeddingJson(embedding);
 }
 
+/**
+ * The decoded embedding, or null when the column held no usable JSON.
+ *
+ * Spelled `number[]` rather than through a local `Vector` alias, which is what this module
+ * used to export: a third `Vector` in this package, meaning a third thing (a plain array,
+ * against `types.ts`'s wide union and `core/embeddings.ts`'s dense `Float32Array`). The
+ * alias was imported by nothing and bought nothing over the concrete type it stood for,
+ * and `decodeEmbeddingJson` already returns exactly this.
+ */
 export function decodeVector(value: string | null | undefined): number[] | null {
 	return decodeEmbeddingJson(value);
 }
@@ -128,7 +143,7 @@ export function vecAvailable(db: Database): boolean {
 	return tableExists(db, "vec_episodes");
 }
 
-function effectiveVecType(db: Database): "float32" | "int8" | "bit" {
+export function effectiveVecType(db: Database): "float32" | "int8" | "bit" {
 	if (!vecAvailable(db)) return "float32";
 	const row = db.query("SELECT sql FROM sqlite_master WHERE type='table' AND name='vec_episodes'").get() as {
 		sql?: string;
@@ -153,6 +168,33 @@ export function vecInsert(db: Database, rowid: number, embedding: readonly numbe
 		db.query("INSERT INTO vec_episodes(rowid, embedding) VALUES (?, ?)").run(rowid, embJson);
 	}
 }
+
+export function vecSearch(db: Database, embedding: readonly number[], k = 20): VectorDistanceResult[] {
+	if (!vecAvailable(db)) return [];
+	const vecType = effectiveVecType(db);
+	const embJson = encodeVector(embedding);
+	const limit = Math.max(0, Math.trunc(k));
+	let rows: Record<string, unknown>[];
+	if (vecType === "bit") {
+		rows = db
+			.query(
+				`SELECT rowid, distance FROM vec_episodes WHERE embedding MATCH vec_quantize_binary(?) ORDER BY distance LIMIT ${limit}`,
+			)
+			.all(embJson) as Record<string, unknown>[];
+	} else if (vecType === "int8") {
+		rows = db
+			.query(
+				`SELECT rowid, distance FROM vec_episodes WHERE embedding MATCH vec_quantize_int8(?, "unit") AND k=${limit} ORDER BY distance`,
+			)
+			.all(embJson) as Record<string, unknown>[];
+	} else {
+		rows = db
+			.query(`SELECT rowid, distance FROM vec_episodes WHERE embedding MATCH ? ORDER BY distance LIMIT ${limit}`)
+			.all(embJson) as Record<string, unknown>[];
+	}
+	return rows.map(row => ({ rowid: Number(row.rowid), distance: Number(row.distance) }));
+}
+
 export function inMemoryVecSearch(db: Database, queryEmbedding: readonly number[], k = 20): VectorDistanceResult[] {
 	if (queryEmbedding.length === 0 || !tableExists(db, "memory_embeddings")) return [];
 	const rows = db
@@ -199,6 +241,8 @@ export function normalizeMetadata(input: unknown): Metadata {
 		try {
 			return normalizeMetadata(JSON.parse(input) as unknown);
 		} catch {
+			// Metadata that is not JSON has no fields to normalize, and an empty record is what a memory stored
+			// without metadata gives. The memory itself is still returned; only its annotations are absent.
 			return {};
 		}
 	}
@@ -492,7 +536,7 @@ export function detectLanguage(text: string): string {
 	return "en";
 }
 
-export function words(text: string): Set<string> {
+function words(text: string): Set<string> {
 	return new Set(unicodeWordTokens(text));
 }
 
@@ -538,14 +582,30 @@ async function runEmbedding(beam: BeamMemoryState, items: readonly EmbedItem[]):
 		});
 		insertMany(items);
 	} catch (error) {
-		logger[mnemopiDebugEnabled() ? "warn" : "debug"]("mnemopi: background embedding failed", {
+		// Background embedding generation is best-effort: a failing provider, a closed DB
+		// during shutdown, or a transient API error must never disrupt the synchronous
+		// remember()/consolidate() that scheduled it. Production recall silently degrades
+		// to FTS-only for the affected rows, which is the same shape as a misconfigured
+		// provider. Log so the failure is diagnosable (#2322).
+		const logEmbedFailure = mnemopiDebugEnabled() ? logger.warn : logger.debug;
+		logEmbedFailure("mnemopi: background embedding failed", {
 			itemCount: items.length,
 			error: String(error),
 		});
 	}
 }
 
-/** Schedule background embedding generation for stored memories. */
+/**
+ * Schedule background embedding generation for one or more freshly stored memories.
+ *
+ * Mirrors the `scheduleFactExtraction` pattern in `beam/store.ts`: `remember()`,
+ * `rememberBatch()`, and `consolidateToEpisodic()` are synchronous, but `embed()` is
+ * async (it may hit an HTTP provider), so the task is fired-and-forgotten and tracked
+ * on `beam.pendingExtractions` so tests and graceful shutdown can drain it via
+ * `flushExtractions()`. The active runtime options (provider, model, API URL/key) are
+ * captured here and re-entered inside the task because the `AsyncLocalStorage` scope
+ * set by `Mnemopi.#withRuntimeOptions` has already exited by the time the task runs.
+ */
 export function scheduleEmbedding(beam: BeamMemoryState, items: readonly EmbedItem[]): void {
 	const cleaned = items.filter(item => item.content.trim() !== "");
 	if (cleaned.length === 0) return;

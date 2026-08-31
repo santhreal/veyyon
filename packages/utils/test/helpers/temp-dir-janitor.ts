@@ -22,7 +22,6 @@
  * ## What it records, and what it refuses to touch
  *
  * Only paths this process actually created, and only when they resolve inside
- * `os.tmpdir()`. Both halves matter. Recording what `mkdtemp` returned rather than the
  * caller's prefix means the janitor deletes a directory this process was handed and never a
  * directory it merely guessed the name of. The `os.tmpdir()` bound means a test that points
  * `mkdtemp` at a repository path keeps its output: removing that would be deleting the
@@ -39,6 +38,9 @@
  * recovers from the unhealthy ones.
  */
 
+import type * as nodeFs from "node:fs";
+import type { Dirent } from "node:fs";
+import type * as nodeOs from "node:os";
 import * as path from "node:path";
 import { REAL_HOME, TEMP_HOME } from "./sandbox-home";
 
@@ -54,7 +56,7 @@ import { REAL_HOME, TEMP_HOME } from "./sandbox-home";
  * import is what silently defeated the redirect the first time it was written. The `import`
  * inside `typeof` is a type-only reference and produces no runtime import.
  */
-const os = require("node:os") as typeof import("node:os");
+const os = require("node:os") as typeof nodeOs;
 
 /**
  * `node:fs` through `require`, NEVER through `import * as fs from "node:fs"`.
@@ -228,7 +230,7 @@ export function removeRecordedTempDirs(): { removed: string[]; failed: { dir: st
  * a path already inside the tmpdir bound, and only after a removal has failed.
  */
 function restoreWritePermission(dir: string): void {
-	const fs = fsModule() as unknown as typeof import("node:fs");
+	const fs = fsModule() as unknown as typeof nodeFs;
 	fs.chmodSync(dir, 0o700);
 	for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
 		const child = path.join(dir, entry.name);
@@ -304,14 +306,14 @@ export function sweepStaleTempDirs(options: { prefix: string; root?: string; old
 	removed: string[];
 	failed: { dir: string; reason: string }[];
 } {
-	const fs = fsModule() as unknown as typeof import("node:fs");
+	const fs = fsModule() as unknown as typeof nodeFs;
 	const root = options.root ?? TMP_ROOTS[0] ?? path.resolve(os.tmpdir());
 	const olderThanMs = options.olderThanMs ?? STALE_TEMP_DIR_AGE_MS;
 	const now = options.now ?? Date.now();
 	const removed: string[] = [];
 	const failed: { dir: string; reason: string }[] = [];
 
-	let entries: import("node:fs").Dirent[];
+	let entries: Dirent[];
 	try {
 		entries = fs.readdirSync(root, { withFileTypes: true });
 	} catch (err) {

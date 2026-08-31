@@ -4,15 +4,7 @@ import type { Rule } from "../../capability/rule";
 import { sideChannelPrompts } from "../../prompts/side-channel/rows";
 import { shortenPath } from "../../tools/render-utils";
 import { OmfgPanelComponent } from "../components/omfg-panel";
-import type {
-	GenerateCandidateOptions,
-	OmfgCandidate,
-	OmfgControllerContext,
-	OmfgRequest,
-	SaveCandidateResult,
-} from "./omfg-controller-helpers";
-
-import { AMEND_OPTION, MAX_ATTEMPTS, PROFILE_OPTION } from "./omfg-controller-helpers";
+import type { InteractiveModeContext } from "../types";
 import {
 	buildOmfgRuleForPath,
 	extractGeneratedRuleJson,
@@ -21,6 +13,48 @@ import {
 	parseGeneratedRule,
 	validateParsedRuleAgainstAssistantHistory,
 } from "./omfg-rule";
+
+/**
+ * The slice of the interactive context this controller uses: 10 members of the
+ * 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency
+ * legible and lets a test build one without the `as unknown as
+ * InteractiveModeContext` cast the full interface forces (see
+ * `CollabHostContext`).
+ */
+export type OmfgControllerContext = Pick<
+	InteractiveModeContext,
+	| "omfgContainer"
+	| "session"
+	| "sessionManager"
+	| "settings"
+	| "showError"
+	| "showHookConfirm"
+	| "showHookInput"
+	| "showHookSelector"
+	| "showStatus"
+	| "ui"
+>;
+
+interface OmfgRequest {
+	component: OmfgPanelComponent;
+	abortController: AbortController;
+	complaint: string;
+}
+
+interface OmfgCandidate extends ParsedGeneratedRule {
+	validated: boolean;
+}
+
+interface GenerateCandidateOptions {
+	initialFeedback?: string;
+	previousRule?: string;
+}
+
+type SaveCandidateResult = { kind: "saved" | "aborted" | "rejected" } | { kind: "amend"; feedback: string };
+
+const MAX_ATTEMPTS = 3;
+const PROFILE_OPTION = "This profile — every project";
+const AMEND_OPTION = "Amend with feedback…";
 
 export class OmfgController {
 	#activeRequest: OmfgRequest | undefined;
@@ -226,7 +260,18 @@ export class OmfgController {
 		return { kind: "saved" };
 	}
 
-	/** The only save target: the active profile's rules directory. A project `.veyyon/rules/` target used to sit beside this one, but nothing */
+	/**
+	 * The only save target: the active profile's rules directory.
+	 *
+	 * A project `.veyyon/rules/` target used to sit beside this one, but nothing
+	 * discovers that directory — rule discovery reads the HOME-side profile and
+	 * foreign-tool conventions only, deliberately, because a checked-out working
+	 * tree is untrusted input. A rule saved there was live for this session and
+	 * gone at the next launch, and never reached the settings list. The profile
+	 * directory is the location discovery reads, so a forged rule persists,
+	 * appears under "User created" in Settings → Stream Interrupts (TTSR), and is
+	 * toggleable there like any other rule.
+	 */
 	#resolveTarget(ruleName: string): { filePath: string; level: OmfgRuleSourceLevel } {
 		return {
 			filePath: path.join(this.ctx.settings.getAgentDir(), "rules", `${ruleName}.md`),

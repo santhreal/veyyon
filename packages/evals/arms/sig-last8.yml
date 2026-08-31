@@ -1,0 +1,46 @@
+# Keep eight turns of Gemini thought signature; sentinel everything older.
+#
+# The conservative half of the retention sweep. See sig-last1.yml for the
+# measurement that motivates both arms and for what the mechanism is.
+#
+# WHY BOTH ENDS ARE RUN. The saving and the risk move together, and the sweep is
+# how you find out where they cross. A signature is worth resending only if the
+# model still needs to replay that reasoning, and recent reasoning is far more
+# likely to matter than reasoning from forty turns ago.
+#
+#   sig-last1   1 turn    largest saving, most reasoning context dropped
+#   sig-last8   8 turns   most of the saving, a full sub-task of context kept
+#   baseline    all       every signature ever produced, resent forever
+#
+# The saving is close to sig-last1's rather than a fraction of it, which is the
+# point. Signatures accumulate linearly with tool calls, so on a session of
+# sixty turns keeping eight still discards roughly 87% of them.
+#
+# WHAT THE ROW ABOVE MISSED, and it inverts the conclusion this arm was written
+# with. "The cost is barely worse" was true of the GROSS saving and false of the
+# real one. A recency window is keyed on distance from the end of the
+# conversation, so its boundary moves forward every turn and rewrites bytes it
+# already sent; the deeper the window, the deeper into the cached region it
+# rewrites. Measured over the twenty Gemini baseline sessions:
+#
+#   lever         gross    cache give-back    NET     signatures touched
+#   sig-max4000   22.8%              0.0%   22.8%                   15%
+#   sig-last1     31.2%              0.7%   30.5%                   99%
+#   sig-last5     29.3%              3.8%   25.5%                   96%
+#   sig-last8     28.0%              6.0%   22.0%                   93%
+#
+# So a deeper window saves LESS gross and hands back MORE, and this arm ends up
+# net cheaper than nothing but no cheaper than a 4,000-character size cap that
+# leaves 85% of the reasoning chain in place. It is dominated: same saving,
+# six times the reasoning discarded. Run it only to answer whether reward
+# depends on window depth, never as a cost candidate.
+#
+# Reproduce the table on any run with:
+#
+#   bun prefix-composition.ts runs/<run-id>/jobs
+#
+# Reward is the gate. Report the paired sign test on reward first, then cost.
+argot:
+  enabled: false
+context:
+  thoughtSignatureRetention: 8

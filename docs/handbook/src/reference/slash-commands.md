@@ -120,7 +120,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/switch` | Try a model for this session only, without saving it as default (same as alt+p) |
 | `/fast on\|off\|status` | Fast mode |
 | `/effort [level]` (`/thinking`) | Set reasoning effort; no argument opens the picker |
-| `/cpu-limit [cores]` (`/cpu`) | Set this session's CPU budget for spawned commands |
+| `/cpu-limit [status\|lift\|reset]` (`/cpu`) | Report the machine and session resource limits and what is enforcing them, or lift this session's CPU cap. Sets nothing: limits are configured in `/settings` under Resources |
 | `/permissions [rung]` (`/approval`) | Set how much the agent does unasked, for this session only: `ask`, `ask-command`, `auto`, `yolo`, or `plan`. `/permissions status` reports the rung in force and where it came from; `reset` drops the session override and returns to the saved default from Settings. A bare `/permissions` opens the picker |
 | `/yolo on\|off\|status` | Remove this session's permission prompts (a blatantly destructive command, an explicit deny, and plan mode still block; needs confirmation) |
 | `/plan` | Toggle plan mode |
@@ -154,6 +154,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/browser …` | Browser tool mode |
 | `/memory …` | Memory backend view/stats/clear/enqueue |
 | `/copy` | Pick text or code from the conversation to copy |
+| `/rephrase` | Ask for the last reply again, in plainer prose. Needs a finished reply to work from |
 | `/lsp` | Show language server status |
 
 ## Auth and usage
@@ -174,8 +175,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/mcp notifications` | Show notification capabilities and subscriptions |
 | `/plugins …` | Plugin browser |
 | `/extensions`, `/status` | Extension Control Center dashboard. `/status` is an alias for it, not a session-status view |
-| `/agents` (aliases `/cockpit`, `/hub`) | Open the Agent Control Center: live agent roster and the agent-to-agent comms stream |
-| `/process-manager` | Open the Agent Control Center across every conversation this process is running, not only the one on screen. Press `a` in the card to switch between the two scopes |
+| `/agents` (aliases `/cockpit`, `/hub`) | Open the subagent dashboard: live agent roster and the agent-to-agent comms stream |
 | `/ssh …` | SSH host setup. `add` takes the name and host by position, then `user <user>`, a plain port, and `key <keyPath>` in any order: see [Every argument is a plain word](#every-argument-is-a-plain-word) |
 | `/hotkeys` | Active keybinding chords |
 | `/collab …`, `/join`, `/leave` | Live collab sessions |
@@ -209,7 +209,7 @@ own page; typing the bare command lists them with their descriptions.
 | `/fast` | `on`, `off`, `status` |
 | `/permissions` | `status`, `ask`, `ask-command`, `auto`, `yolo`, `plan`, `reset` |
 | `/yolo` | `on`, `off`, `status` |
-| `/cpu-limit` | `status`, `remove`, `reset`, `kill` |
+| `/cpu-limit` | `status`, `lift`, `reset` |
 | `/secret` | `add`, `from-env`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard`, `help` |
 | `/collab` | `start`, `view`, `status`, `stop` |
 | `/browser` | `headless`, `visible` |

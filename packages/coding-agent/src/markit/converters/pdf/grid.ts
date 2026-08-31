@@ -1,3 +1,21 @@
+// Adapted from markit-ai (MIT). See ../../NOTICE.
+
+/**
+ * Table grid detection from vector segments and text boxes.
+ *
+ * Ported from @oharato/pdf2md-ts with TypeScript types and without
+ * CJK-specific borderless table heuristics. The core algorithm:
+ *
+ * 1. Classify segments as horizontal or vertical lines
+ * 2. Group horizontal Y-lines into table groups (split by vertical gaps)
+ * 3. For each group:
+ *    a. Full grid (H+V lines): build cells from grid intersections,
+ *       place text via raycasting
+ *    b. H-line only (no V lines): infer columns from text X positions
+ * 4. Prune empty rows/cols
+ *
+ * Coordinate system: PDF native (bottom-left origin, Y increases upward).
+ */
 import type { Segment, TableCell, TableGrid, TextBox } from "./types";
 
 export interface GridResult {
@@ -56,11 +74,14 @@ function castRaysForTextBox(textBox: TextBox, segments: Segment[]): Ray[] {
 	return [up, down, left, right];
 }
 
+// ---------------------------------------------------------------------------
+// Utility
+// ---------------------------------------------------------------------------
 const AXIS_EPSILON = 0.8;
 const PAGE_MARGIN = 20;
 
 function uniqueSorted(values: number[]): number[] {
-	const sorted = values.slice().sort((a, b) => a - b);
+	const sorted = [...values].sort((a, b) => a - b);
 	const result: number[] = [];
 	for (const v of sorted) {
 		if (result.length === 0 || Math.abs(result[result.length - 1] - v) > 1) result.push(v);
@@ -68,8 +89,11 @@ function uniqueSorted(values: number[]): number[] {
 	return result;
 }
 
+// ---------------------------------------------------------------------------
+// Y-line group splitting
+// ---------------------------------------------------------------------------
 function chainCoversRange(intervals: Interval[], lowerY: number, upperY: number, eps: number): boolean {
-	const sorted = intervals.slice().sort((a, b) => a.min - b.min);
+	const sorted = [...intervals].sort((a, b) => a.min - b.min);
 	let covered = lowerY;
 	for (const iv of sorted) {
 		if (iv.min > covered + eps) break;
@@ -108,6 +132,9 @@ function splitYLinesIntoGroups(yLines: number[], verticals: Segment[]): number[]
 	for (let i = 1; i < yLines.length; i++) {
 		const upperY = yLines[i - 1];
 		const lowerY = yLines[i];
+		// One computation feeds both the count and (when needed) the actual x set:
+		// the number of bridging vertical-line columns is exactly the size of that
+		// set, so a single bridgingXSet call avoids recomputing chainCoversRange.
 		const bxs = bridgingXSet(upperY, lowerY, verticals);
 		const cols = bxs.size;
 		if (cols === 0) {
@@ -117,7 +144,7 @@ function splitYLinesIntoGroups(yLines: number[], verticals: Segment[]): number[]
 			continue;
 		}
 		if (prevBridgingCols >= MIN_RICH_BRIDGING_COLS && cols < MIN_RICH_BRIDGING_COLS) {
-			const isOuterFrameOnly = Array.from(bxs).every(
+			const isOuterFrameOnly = [...bxs].every(
 				x => Math.abs(x - globalXMin) <= eps || Math.abs(x - globalXMax) <= eps,
 			);
 			if (!isOuterFrameOnly) {
@@ -134,6 +161,9 @@ function splitYLinesIntoGroups(yLines: number[], verticals: Segment[]): number[]
 	return groups;
 }
 
+// ---------------------------------------------------------------------------
+// Sub-row Y-cluster expansion
+// ---------------------------------------------------------------------------
 const Y_CLUSTER_GAP = 10;
 const MIN_COLS_IN_TOP_CLUSTER = 2;
 
@@ -168,7 +198,7 @@ function expandSubRowsByYClusters(
 		}
 		if (rowCellInfos.length === 0) continue;
 		const allMidYs = rowCellInfos.flatMap(({ boxes }) => boxes.map(b => (b.bounds.top + b.bounds.bottom) / 2));
-		const sortedY = Array.from(new Set(allMidYs.map(y => Math.round(y * 10) / 10))).sort((a, b) => b - a);
+		const sortedY = [...new Set(allMidYs.map(y => Math.round(y * 10) / 10))].sort((a, b) => b - a);
 		const clusters = [sortedY[0]];
 		for (let i = 1; i < sortedY.length; i++) {
 			if (clusters[clusters.length - 1] - sortedY[i] > Y_CLUSTER_GAP) {
@@ -226,6 +256,13 @@ function expandSubRowsByYClusters(
 	return originalRows + addedRows;
 }
 
+// ---------------------------------------------------------------------------
+// Cross-column text box splitting
+// ---------------------------------------------------------------------------
+/**
+ * Find which column a horizontal position falls into.
+ * Returns -1 if outside the grid.
+ */
 function findCol(x: number, xLines: number[]): number {
 	for (let i = 0; i < xLines.length - 1; i++) {
 		if (x >= xLines[i] && x <= xLines[i + 1]) return i;
@@ -233,16 +270,26 @@ function findCol(x: number, xLines: number[]): number {
 	return -1;
 }
 
+/**
+ * When a text box spans across one or more vertical column boundaries,
+ * split it into multiple virtual text boxes — one per column — with the
+ * text divided proportionally by width.
+ *
+ * We split at word boundaries closest to the proportional split point
+ * so we don't chop words in half.
+ */
 function splitCrossColumnBoxes(textBoxes: TextBox[], xLines: number[]): TextBox[] {
 	const result: TextBox[] = [];
 	const MARGIN = 5; // allow small overlap before considering it cross-column
 	for (const tb of textBoxes) {
 		const leftCol = findCol(tb.bounds.left + MARGIN, xLines);
 		const rightCol = findCol(tb.bounds.right - MARGIN, xLines);
+		// Not spanning columns, or outside grid — keep as-is
 		if (leftCol < 0 || rightCol < 0 || leftCol === rightCol) {
 			result.push(tb);
 			continue;
 		}
+		// Text box spans from leftCol to rightCol — split it
 		const totalWidth = tb.bounds.right - tb.bounds.left;
 		if (totalWidth <= 0) {
 			result.push(tb);
@@ -250,15 +297,18 @@ function splitCrossColumnBoxes(textBoxes: TextBox[], xLines: number[]): TextBox[
 		}
 		const words = tb.text.split(/\s+/);
 		if (words.length <= 1) {
+			// Single word spanning columns — just assign to whichever col has more overlap
 			result.push(tb);
 			continue;
 		}
-		let remainingWords = words.slice();
+		// For each column boundary crossing, find the best word-boundary split
+		let remainingWords = [...words];
 		let currentLeft = tb.bounds.left;
 		for (let col = leftCol; col <= rightCol && remainingWords.length > 0; col++) {
 			const colRight = col < xLines.length - 1 ? xLines[col + 1] : tb.bounds.right;
 			const segmentRight = Math.min(colRight, tb.bounds.right);
 			if (col === rightCol) {
+				// Last column — take all remaining words
 				result.push({
 					...tb,
 					id: `${tb.id}-split${col}`,
@@ -271,9 +321,11 @@ function splitCrossColumnBoxes(textBoxes: TextBox[], xLines: number[]): TextBox[
 				});
 				remainingWords = [];
 			} else {
+				// Find how many words fit in this column segment proportionally
 				const segmentWidth = segmentRight - currentLeft;
 				const fractionOfTotal = segmentWidth / totalWidth;
 				const approxChars = Math.round(fractionOfTotal * tb.text.length);
+				// Walk words to find the split closest to the proportional point
 				let charCount = 0;
 				let splitIdx = 0;
 				for (let w = 0; w < remainingWords.length; w++) {
@@ -284,6 +336,7 @@ function splitCrossColumnBoxes(textBoxes: TextBox[], xLines: number[]): TextBox[
 				}
 				if (splitIdx === 0) splitIdx = 1; // take at least one word
 				if (splitIdx >= remainingWords.length) {
+					// All remaining words fit here
 					result.push({
 						...tb,
 						id: `${tb.id}-split${col}`,
@@ -316,6 +369,9 @@ function splitCrossColumnBoxes(textBoxes: TextBox[], xLines: number[]): TextBox[
 	return result;
 }
 
+// ---------------------------------------------------------------------------
+// Full grid table (H + V lines)
+// ---------------------------------------------------------------------------
 function buildCells(rows: number, cols: number): TableCell[] {
 	const cells: TableCell[] = [];
 	for (let row = 0; row < rows; row++) {
@@ -341,8 +397,15 @@ function buildTableGrid(
 	const yMax = yLines[0];
 	const xMin = xLines[0];
 	const xMax = xLines[xLines.length - 1];
+	// Split text boxes that span multiple columns before placement
 	const splitBoxes = splitCrossColumnBoxes(textBoxes, xLines);
+	// Track which split piece IDs get placed in cells, so we can consume
+	// the original (unsplit) text box IDs too.
 	const placedSplitIds = new Set<string>();
+	// Look for header text boxes just above the grid.
+	// Use the ORIGINAL (unsplit) text boxes for header detection so that
+	// wide paragraph text isn't falsely split into column-sized header chunks.
+	// Reject boxes wider than 1.5 columns — those are paragraph text, not headers.
 	const avgColWidth = (xMax - xMin) / cols;
 	const maxHeaderBoxWidth = avgColWidth * 1.5;
 	const headerBoxes = textBoxes.filter(tb => {
@@ -399,6 +462,7 @@ function buildTableGrid(
 		if (tb.id.includes("-split")) placedSplitIds.add(tb.id);
 	}
 	rows = expandSubRowsByYClusters(rows, cols, cells, cellBoxes);
+	// Merge text boxes within each cell into cell text
 	for (const [cell, boxes] of cellBoxes.entries()) {
 		boxes.sort((a, b) => b.bounds.top - a.bounds.top);
 		const lines: string[] = [];
@@ -424,6 +488,8 @@ function buildTableGrid(
 		warnings: [],
 		topY: yLines[0],
 	});
+	// Also consume the original (unsplit) text box IDs when any of their
+	// split pieces were placed in a cell.
 	for (const splitId of placedSplitIds) {
 		const origId = splitId.replace(/-split\d+$/, "");
 		if (!consumedIds.includes(origId)) {
@@ -433,6 +499,9 @@ function buildTableGrid(
 	return { grid, consumedIds };
 }
 
+// ---------------------------------------------------------------------------
+// H-line-only table (inferred columns)
+// ---------------------------------------------------------------------------
 const COL_GAP_THRESHOLD = 20;
 const HONLY_ROW_GAP = 30;
 const HONLY_ROW_TOLERANCE = 8;
@@ -473,6 +542,7 @@ function buildHLineOnlyTable(
 			cy <= yMax
 		);
 	});
+	// Extend downward below yMin
 	const belowYMin = candidates
 		.filter(tb => {
 			const cx = (tb.bounds.left + tb.bounds.right) / 2;
@@ -488,15 +558,16 @@ function buildHLineOnlyTable(
 		extensionBoxes.push(tb);
 		lastY = cy;
 	}
-	const allBoxes = inRange.concat(extensionBoxes);
+	const allBoxes = [...inRange, ...extensionBoxes];
 	if (allBoxes.length === 0) return null;
 	const leftEdges = allBoxes.map(tb => tb.bounds.left);
 	if (Math.max(...leftEdges) - Math.min(...leftEdges) < MIN_LEFT_SPREAD) return null;
 	const xLines = inferXLinesFromBoxes(allBoxes, xMin, xMax);
 	if (xLines.length < 2) return null;
 	const cols = xLines.length - 1;
+	// Build visual rows
 	const visualRows: Array<{ midY: number; boxes: TextBox[] }> = [];
-	const sortedBoxes = allBoxes.slice().sort((a, b) => {
+	const sortedBoxes = [...allBoxes].sort((a, b) => {
 		const ya = (a.bounds.top + a.bounds.bottom) / 2;
 		const yb = (b.bounds.top + b.bounds.bottom) / 2;
 		if (Math.abs(ya - yb) > 0.5) return yb - ya;
@@ -537,8 +608,7 @@ function buildHLineOnlyTable(
 				rowSpan: 1,
 				colSpan: 1,
 			});
-			const cbIds = cbs.map(b => b.id);
-			for (let ci = 0; ci < cbIds.length; ci++) consumedIds.push(cbIds[ci]!);
+			consumedIds.push(...cbs.map(b => b.id));
 		}
 	}
 	const contentTopY = visualRows.length > 0 ? visualRows[0].midY : yMax;
@@ -553,6 +623,9 @@ function buildHLineOnlyTable(
 	return { grid, consumedIds };
 }
 
+// ---------------------------------------------------------------------------
+// Pruning
+// ---------------------------------------------------------------------------
 function pruneEmptyRowsAndCols(table: TableGrid): TableGrid {
 	const occupiedRows = new Set(table.cells.filter(c => c.text.trim().length > 0).map(c => c.row));
 	const occupiedCols = new Set(table.cells.filter(c => c.text.trim().length > 0).map(c => c.col));
@@ -577,27 +650,53 @@ function pruneEmptyRowsAndCols(table: TableGrid): TableGrid {
 	return { ...table, rows: newRow, cols: newCol, cells: prunedCells };
 }
 
+// ---------------------------------------------------------------------------
+// Diagram vs table discrimination
+// ---------------------------------------------------------------------------
+/** Maximum column count for a plausible data table. */
 const MAX_TABLE_COLS = 25;
 
+/**
+ * Returns true if a grid looks like a vector diagram rather than a data table.
+ *
+ * Heuristics (any match → diagram):
+ *   1. Column count > 25 (diagrams create many X-lines from box edges)
+ *   2. Fill ratio < 25% (most cells empty — scattered boxes)
+ *   3. Fill < 50% AND duplicate text ratio > 30% (repeating labels in a
+ *      diagram layout, e.g. "Hash", "Transaction" appearing in each column)
+ *   4. Fill < 50% AND cols >= 6 (moderate sparseness with wide grid)
+ */
 function isDiagram(grid: TableGrid): boolean {
 	const totalCells = grid.rows * grid.cols;
 	if (totalCells === 0) return true;
 	const filled = grid.cells.filter(c => c.text.trim().length > 0);
 	const fillRatio = filled.length / totalCells;
+	// Very high column count
 	if (grid.cols > MAX_TABLE_COLS) return true;
+	// Very sparse
 	if (fillRatio < 0.25) return true;
+	// Compute duplicate text ratio among non-trivial cells.
+	// Exclude short values (≤3 chars) like "—", "V", "YES", "NO" which
+	// naturally repeat in real data tables.
 	const substantive = filled.filter(c => c.text.trim().length > 3);
 	const uniqueTexts = new Set(substantive.map(c => c.text.trim())).size;
 	const dupRatio = substantive.length > 2 ? 1 - uniqueTexts / substantive.length : 0;
+	// Sparse + highly duplicated substantive text → repeating diagram
 	if (fillRatio < 0.5 && dupRatio > 0.3) return true;
+	// High duplication + wide grid → repeating diagram even at moderate fill
 	if (dupRatio > 0.4 && grid.cols >= 6) return true;
+	// Sparse + wide grid with no substantive text to judge
 	if (fillRatio < 0.4 && grid.cols >= 6) return true;
 	return false;
 }
 
+/**
+ * Detect all table grids on a single page from its text boxes and segments.
+ */
 export function resolveTableGrids(pageNumber: number, textBoxes: TextBox[], segments: Segment[]): GridResult {
 	const vertical = segments.filter(s => Math.abs(s.x1 - s.x2) <= AXIS_EPSILON);
 	const horizontal = segments.filter(s => Math.abs(s.y1 - s.y2) <= AXIS_EPSILON);
+	// Filter segments to the text's visible area
 	const textYValues = textBoxes.flatMap(t => [t.bounds.bottom, t.bounds.top]);
 	const textYMin = textYValues.length > 0 ? Math.min(...textYValues) - PAGE_MARGIN : -Infinity;
 	const textYMax = textYValues.length > 0 ? Math.max(...textYValues) + PAGE_MARGIN : Infinity;
@@ -618,10 +717,11 @@ export function resolveTableGrids(pageNumber: number, textBoxes: TextBox[], segm
 	if (allYLines.length < 2) {
 		return { grids: [], consumedIds: [] };
 	}
-	const filteredSegments = filteredH.concat(filteredV);
+	const filteredSegments = [...filteredH, ...filteredV];
 	const yGroups = splitYLinesIntoGroups(allYLines, filteredV);
 	const grids: TableGrid[] = [];
 	const gridConsumedIds: string[][] = [];
+	// Flat set for the alreadyConsumed check in H-line-only tables
 	const allConsumedIds: string[] = [];
 	for (const yLines of yGroups) {
 		if (yLines.length < 2) continue;
@@ -643,7 +743,7 @@ export function resolveTableGrids(pageNumber: number, textBoxes: TextBox[], segm
 			if (result) {
 				grids.push(result.grid);
 				gridConsumedIds.push(result.consumedIds);
-				for (let ci = 0; ci < result.consumedIds.length; ci++) allConsumedIds.push(result.consumedIds[ci]!);
+				allConsumedIds.push(...result.consumedIds);
 			}
 			continue;
 		}
@@ -651,15 +751,16 @@ export function resolveTableGrids(pageNumber: number, textBoxes: TextBox[], segm
 		const result = buildTableGrid(pageNumber, yLines, groupXLines, filteredSegments, textBoxes);
 		grids.push(result.grid);
 		gridConsumedIds.push(result.consumedIds);
-		for (let ci = 0; ci < result.consumedIds.length; ci++) allConsumedIds.push(result.consumedIds[ci]!);
+		allConsumedIds.push(...result.consumedIds);
 	}
+	// Filter out grids that look like vector diagrams, not data tables.
+	// Their consumed text box IDs are released so the text becomes free text.
 	const filteredGrids: TableGrid[] = [];
 	const filteredConsumedIds: string[] = [];
 	for (let i = 0; i < grids.length; i++) {
 		if (isDiagram(grids[i])) continue;
 		filteredGrids.push(grids[i]);
-		const gci = gridConsumedIds[i]!;
-		for (let ci = 0; ci < gci.length; ci++) filteredConsumedIds.push(gci[ci]!);
+		filteredConsumedIds.push(...gridConsumedIds[i]);
 	}
 	return { grids: filteredGrids, consumedIds: filteredConsumedIds };
 }

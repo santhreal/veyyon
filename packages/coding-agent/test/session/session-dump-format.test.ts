@@ -76,15 +76,15 @@ describe("formatSessionDumpText tool parameters", () => {
 	});
 
 	it("includes tool examples in the model's native syntax", () => {
-		const findSchema = type({ paths: "string[]" });
+		const lookupSchema = type({ paths: "string[]" });
 
 		const out = formatSessionDumpText({
 			messages: [],
 			tools: [
 				{
-					name: "glob",
-					description: "Globs files.",
-					parameters: findSchema,
+					name: "workspace_files",
+					description: "Find workspace files.",
+					parameters: lookupSchema,
 					examples: [{ call: { paths: ["src/**/*.ts"] } }],
 				},
 			],
@@ -92,7 +92,7 @@ describe("formatSessionDumpText tool parameters", () => {
 
 		expect(out).toContain("## Available Tools");
 		expect(out).toContain("<examples>");
-		expect(out).toContain('<invoke name="glob">');
+		expect(out).toContain('<invoke name="workspace_files">');
 	});
 
 	it("omits the Available Tools section if inlineToolDescriptors is true", () => {

@@ -1,4 +1,5 @@
 import type { Usage } from "@veyyon/ai";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { $envpos } from "@veyyon/utils/env";
 import { type BaseType, type } from "arktype";
 import type { RetryRecoveryMode } from "../modes/retry-display";
@@ -7,18 +8,25 @@ import type { ConfiguredThinkingLevel } from "../thinking";
 import { DEFAULT_SPAWN_AGENT } from "./spawn-policy";
 import type { NestedRepoPatch } from "./worktree";
 
+/** Source of an agent definition */
 export type AgentSource = "bundled" | "user" | "project";
 
+/** Maximum output bytes per agent */
 export const MAX_OUTPUT_BYTES = $envpos("VEYYON_TASK_MAX_OUTPUT_BYTES", 500_000);
 
+/** Maximum output lines per agent */
 export const MAX_OUTPUT_LINES = $envpos("VEYYON_TASK_MAX_OUTPUT_LINES", 5000);
 
+/** EventBus channel for raw subagent events */
 export const TASK_SUBAGENT_EVENT_CHANNEL = "task:subagent:event";
 
+/** EventBus channel for aggregated subagent progress */
 export const TASK_SUBAGENT_PROGRESS_CHANNEL = "task:subagent:progress";
 
+/** EventBus channel for subagent lifecycle (start/end) */
 export const TASK_SUBAGENT_LIFECYCLE_CHANNEL = "task:subagent:lifecycle";
 
+/** Payload emitted on TASK_SUBAGENT_PROGRESS_CHANNEL */
 export interface SubagentProgressPayload {
 	index: number;
 	agent: string;
@@ -28,14 +36,17 @@ export interface SubagentProgressPayload {
 	assignment?: string;
 	progress: AgentProgress;
 	sessionFile?: string;
+	/** See {@link SubagentLifecyclePayload.detached}. */
 	detached?: boolean;
 }
 
+/** Payload emitted on TASK_SUBAGENT_EVENT_CHANNEL */
 export interface SubagentEventPayload {
 	id: string;
 	event: AgentSessionEvent;
 }
 
+/** Payload emitted on TASK_SUBAGENT_LIFECYCLE_CHANNEL */
 export interface SubagentLifecyclePayload {
 	id: string;
 	agent: string;
@@ -45,9 +56,16 @@ export interface SubagentLifecyclePayload {
 	sessionFile?: string;
 	parentToolCallId?: string;
 	index: number;
+	/**
+	 * Spawn runs as a detached background job: the parent turn keeps working
+	 * while this agent runs. Sync task spawns (parent blocked on the call) and
+	 * eval `agent()` bridge spawns (rendered inside their eval cell) leave this
+	 * unset — surfaces like the subagent HUD only list detached spawns.
+	 */
 	detached?: boolean;
 }
 
+/** Display cap for a normalized one-line label (roster line, registry `displayName`, prompt field). */
 export const LABEL_MAX = 80;
 
 export const taskItemSchema = type({
@@ -66,11 +84,17 @@ const taskItemSchemaIsolated = type({
 	"+": "delete",
 });
 
+/** Single task item. Fields are optional defensively: args stream in token by token. */
 export interface TaskItem {
+	/** Stable agent name; becomes the registry/IRC id. Default = generated AdjectiveNoun. */
 	name?: string;
+	/** Agent type to run this item (e.g. "scout"). Defaults to the spawn policy's default agent. */
 	agent?: string;
+	/** The work; required by the schema. */
 	task?: string;
+	/** Run this spawn in an isolated worktree (batch form; flat form carries it top-level). */
 	isolated?: boolean;
+	/** Per-spawn cwd override; see {@link TaskParams.cwd}. */
 	cwd?: string;
 }
 
@@ -102,6 +126,8 @@ const taskSchemaBatchNoIsolation = type({
 const ALL_TASK_SCHEMAS = [taskSchema, taskSchemaNoIsolation, taskSchemaBatch, taskSchemaBatchNoIsolation] as const;
 
 type DynamicTaskSchema = (typeof ALL_TASK_SCHEMAS)[number];
+export type TaskSchema = typeof taskSchema;
+/** Active task tool parameter schema for the current isolation / batch flags */
 export type TaskToolSchemaInstance = DynamicTaskSchema | BaseType;
 
 const taskSchemaCache = new Map<string, BaseType>();
@@ -111,7 +137,7 @@ function taskAgentSchemaRule(defaultAgent: string | undefined, enabledAgentNames
 	if (enabledAgentNames === undefined) {
 		return trimmedDefault ? type("string").default(trimmedDefault) : "string";
 	}
-	const names = Array.from(new Set(enabledAgentNames.map(name => name.trim()).filter(Boolean)));
+	const names = [...new Set(enabledAgentNames.map(name => name.trim()).filter(Boolean))];
 	const enabled = type.enumerated(...names);
 	return trimmedDefault ? enabled.default(trimmedDefault) : enabled;
 }
@@ -203,27 +229,64 @@ export function getTaskSchema(options: {
 	return schema;
 }
 
+/**
+ * Runtime params union over both wire shapes. The model sees exactly one shape
+ * (`{ context, tasks[] }` when `task.batch` is on, `{ name?, agent?, task }`
+ * otherwise); runtime stays permissive so internal callers and stale
+ * transcripts using the flat form keep working under either setting.
+ */
 export interface TaskParams {
+	/** Stable agent name (flat form). */
 	name?: string;
+	/** Agent type to spawn (flat form); omitted values resolve from the session spawn policy. */
 	agent?: string;
+	/** The work (flat form). */
 	task?: string;
+	/** Batch form (`task.batch`): one subagent per item. */
 	tasks?: TaskItem[];
+	/** Batch form: shared background prepended to every assignment; required by the batch schema. */
 	context?: string;
+	/** Run in an isolated worktree (flat form; per-item in batch form). */
 	isolated?: boolean;
+	/**
+	 * Working directory for this spawn.
+	 * Default / `"inherit"` = parent's live session cwd at spawn time.
+	 * A relative path resolves against the parent's cwd (e.g. `libs/scanner/rulec`
+	 * from where the parent agent runs); an absolute path is used as-is. Either
+	 * must exist and be a directory.
+	 */
 	cwd?: string;
 }
 
+/**
+ * One-line, length-capped label safe for a single roster line, a registry
+ * `displayName`, or a system-prompt field. Collapses every run of whitespace
+ * AND control/format characters — including U+0085 NEL, ESC/ANSI, and the
+ * zero-width separators that `\s` misses — to a single space, then caps length.
+ * So untrusted text (a generated task label, a peer activity gist) can neither
+ * break the line, inject prompt structure, nor smuggle terminal escapes. Caps at
+ * `max` characters (clamped to >= 1; default `LABEL_MAX`), appending an ellipsis when truncated.
+ */
 export function oneLineLabel(text: string, max = LABEL_MAX): string {
 	const oneLine = text.replace(/[\p{Cc}\p{Cf}\s]+/gu, " ").trim();
 	const cap = Math.max(1, max);
+	// Count/cut by code point, not UTF-16 code unit, so truncation can never
+	// split an astral character into a lone surrogate.
 	const chars = [...oneLine];
 	return chars.length > cap ? `${chars.slice(0, cap - 1).join("")}…` : oneLine;
 }
 
+/**
+ * Whether an agent at `taskDepth` may still spawn children. The configured
+ * value counts nested subagent levels, so zero allows the root session at depth
+ * zero to spawn direct children, but those children at depth one are leaves.
+ * `maxNestedSpawnDepth < 0` disables the cap entirely.
+ */
 export function canSpawnAtDepth(maxNestedSpawnDepth: number, taskDepth: number): boolean {
 	return maxNestedSpawnDepth < 0 || taskDepth <= maxNestedSpawnDepth;
 }
 
+/** A code review finding reported by the reviewer agent */
 export interface ReviewFinding {
 	title: string;
 	body: string;
@@ -234,6 +297,20 @@ export interface ReviewFinding {
 	line_end: number;
 }
 
+/** Review summary submitted by the reviewer agent */
+export interface ReviewSummary {
+	overall_correctness: "correct" | "incorrect";
+	explanation: string;
+	confidence: number;
+}
+
+/** Structured review data extracted from reviewer agent */
+export interface ReviewData {
+	findings: ReviewFinding[];
+	summary?: ReviewSummary;
+}
+
+/** Agent definition (bundled or discovered) */
 export interface AgentDefinition {
 	name: string;
 	description: string;
@@ -245,20 +322,30 @@ export interface AgentDefinition {
 	output?: unknown;
 	blocking?: boolean;
 	autoloadSkills?: string[];
+	/** When `false`, the agent's `read` tool returns verbatim file content instead of structural summaries. */
 	readSummarize?: boolean;
 	source: AgentSource;
 	filePath?: string;
 }
 
+/** Details extracted from a subagent `yield` tool call for final-result assembly and task rendering. */
 export interface YieldItem {
 	data?: unknown;
 	status?: "success" | "aborted";
 	error?: string;
+	/** A string label is terminal; a non-empty array of labels is incremental. */
 	type?: string | string[];
+	/** Resolve this yield's payload from the latest durable assistant text instead of `data`. */
 	useLastTurn?: boolean;
+	/**
+	 * Set by the in-tool yield validator when it exhausted its retry budget and
+	 * accepted schema-invalid data anyway. The executor preserves that override
+	 * during post-mortem validation.
+	 */
 	schemaOverridden?: boolean;
 }
 
+/** Progress tracking for a single agent */
 export interface AgentProgress {
 	index: number;
 	id: string;
@@ -275,32 +362,81 @@ export interface AgentProgress {
 	recentTools: Array<{ tool: string; args: string; endMs: number }>;
 	recentOutput: string[];
 	toolCount: number;
+	/** Count of assistant requests (assistant message_end events) across the run. Drives the soft request budget guard. */
 	requests: number;
+	/** Cumulative input + output + cacheWrite tokens across all turns. Excludes cacheRead (re-reads cached context every turn, making cumulative sum misleading). */
 	tokens: number;
+	/**
+	 * Current per-turn context size: latest assistant message's `usage.totalTokens`.
+	 * This is the number to compare against `contextWindow` — what compaction
+	 * decides on, what the user typically reads as "how full is the context".
+	 * Distinct from `tokens`, which is a lifetime billing-volume counter.
+	 */
 	contextTokens?: number;
+	/** Model's context window in tokens, when known. Lets the UI render `<curr>/<window>` gauges. */
 	contextWindow?: number;
+	/** Cumulative billing cost in USD, accumulated incrementally from message_end events. */
 	cost: number;
 	durationMs: number;
 	modelOverride?: string | string[];
+	/**
+	 * Resolved model display string in the form `<provider>/<id>`, suffixed with `:<thinkingLevel>`
+	 * whenever the effort this agent runs at is known. That includes an effort it INHERITED, not
+	 * only one typed as an explicit suffix: effort resolves on its own axis (the agent's row, the
+	 * blanket subagent effort, frontmatter, then the session), so an agent with no suffix still runs
+	 * at a definite effort and the badge built from this string has to be able to say which.
+	 * Undefined when the model could not be resolved.
+	 */
 	resolvedModel?: string;
+	/**
+	 * The model this agent STARTED on, set only once it has fallen back to
+	 * another entry in its configured chain. `resolvedModel` alone says what it
+	 * runs on now and cannot say that it is not the model you picked, which is
+	 * the question you have when one agent is mysteriously slower than its peers.
+	 */
 	fellBackFrom?: string;
+	/** Data extracted by registered subprocess tool handlers (keyed by tool name) */
 	extractedToolData?: Record<string, unknown[]>;
+	/**
+	 * Auto-retry state when the subagent is sleeping between provider retries
+	 * (e.g. 429 rate-limit with retry-after). Cleared when the retry resolves
+	 * or fails. Surfacing this to the parent prevents the task tool from
+	 * looking indefinitely "in progress" when a child is actually blocked on
+	 * provider quota.
+	 */
 	retryState?: {
 		attempt: number;
 		maxAttempts: number;
 		delayMs: number;
 		errorMessage: string;
 		startedAtMs: number;
+		/** Which recovery is waiting; absent means a retry. */
 		mode?: RetryRecoveryMode;
 	};
+	/**
+	 * Terminal recovery failure surfaced once the subagent gave up (retry-after
+	 * exceeded the cap, all attempts exhausted, or a continuation that ran out
+	 * of allowance). Carries the final error and which recovery gave up, so the
+	 * parent UI can name what happened instead of waiting for a status that
+	 * never arrives.
+	 */
 	retryFailure?: {
 		attempt: number;
 		errorMessage: string;
+		/** Which recovery gave up; absent means a retry. */
 		mode?: RetryRecoveryMode;
 	};
+	/**
+	 * Snapshot of the most recent `task` tool call's in-flight `TaskToolDetails`,
+	 * captured from `tool_execution_update`. Lets the parent UI surface live
+	 * nested-subagent progress while this agent is still inside its own `task`
+	 * call. Cleared when the call ends — finalized data lives in
+	 * `extractedToolData.task` after that.
+	 */
 	inflightTaskDetails?: TaskToolDetails;
 }
 
+/** Result from a single agent execution */
 export interface SingleResult {
 	index: number;
 	id: string;
@@ -315,37 +451,65 @@ export interface SingleResult {
 	stderr: string;
 	truncated: boolean;
 	durationMs: number;
+	/** Cumulative input + output + cacheWrite tokens across all turns. Excludes cacheRead (re-reads cached context every turn, making cumulative sum misleading). */
 	tokens: number;
+	/** Count of assistant requests (assistant message_end events) across the run. */
 	requests: number;
+	/** Latest per-turn context size at task completion. See `AgentProgress.contextTokens`. */
 	contextTokens?: number;
+	/** Model's context window in tokens, when known. */
 	contextWindow?: number;
 	modelOverride?: string | string[];
+	/** Resolved model display string in the form `<provider>/<id>`, suffixed with `:<thinkingLevel>` whenever the effort the agent runs at is known, including an inherited one. Omitted from tool-result JSON when undefined to keep wire payloads small. */
 	resolvedModel?: string;
 	error?: string;
 	aborted?: boolean;
 	abortReason?: string;
+	/** Aggregated usage from the subprocess, accumulated incrementally from message_end events. */
 	usage?: Usage;
+	/** Output path for the task result */
 	outputPath?: string;
+	/** Patch path for isolated worktree output */
 	patchPath?: string;
+	/** Branch name for isolated branch-mode output */
 	branchName?: string;
+	/**
+	 * Baseline commit SHA the task branch was created from. Passed to
+	 * `mergeTaskBranches` so cherry-pick uses the inclusive range
+	 * `branchBaseSha..branchName` and preserves every agent commit's message.
+	 */
 	branchBaseSha?: string;
+	/** Nested repo patches to apply after parent merge */
 	nestedPatches?: NestedRepoPatch[];
+	/** Data extracted by registered subprocess tool handlers (keyed by tool name) */
 	extractedToolData?: Record<string, unknown[]>;
+	/**
+	 * Terminal recovery failure, when the subagent exited because a recovery
+	 * gave up (retry-after exceeded the cap, all attempts exhausted, or a
+	 * continuation that ran out of allowance). The parent copies this onto the
+	 * progress row it renders, so `mode` has to cross the boundary with it: a
+	 * settled background task otherwise reports every continuation as a retry.
+	 */
 	retryFailure?: {
 		attempt: number;
 		errorMessage: string;
+		/** Which recovery gave up; absent means a retry. */
 		mode?: RetryRecoveryMode;
 	};
+	/** Output metadata for agent:// URL integration */
 	outputMeta?: { lineCount: number; charCount: number };
 }
 
+/** Tool details for TUI rendering */
 export interface TaskToolDetails {
 	projectAgentsDir: string | null;
 	results: SingleResult[];
 	totalDurationMs: number;
+	/** Aggregated usage across all subagents. */
 	usage?: Usage;
 	outputPaths?: string[];
 	progress?: AgentProgress[];
+	/** Operator-facing warning for a spawn refused before any agent started. */
 	warning?: {
 		kind: "homogeneous-triage";
 		message: string;

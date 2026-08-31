@@ -1,8 +1,66 @@
-import type { Diagnostic, LinterClient, ServerConfig } from "../../lsp/types";
-import type { SwiftLintViolation } from "./swiftlint-client-helpers";
-import { parseSeverity, runSwiftLint } from "./swiftlint-client-helpers";
+/**
+ * SwiftLint CLI-based linter client.
+ * Parses SwiftLint's JSON reporter output into LSP Diagnostic format.
+ */
 
+import { errorMessage, readPipeText } from "@veyyon/utils";
+import type { Diagnostic, DiagnosticSeverity, LinterClient, ServerConfig } from "../../lsp/types";
+import { adoptIntoPrimarySessionCpuBudget } from "../../session/cpu-limit";
+
+/** Shape of a single violation from `swiftlint lint --reporter json`. */
+interface SwiftLintViolation {
+	character: number;
+	file: string;
+	line: number;
+	reason: string;
+	rule_id: string;
+	severity: "Error" | "Warning";
+	type: string;
+}
+
+function parseSeverity(severity: string): DiagnosticSeverity {
+	switch (severity) {
+		case "Error":
+			return 1;
+		case "Warning":
+			return 2;
+		default:
+			return 2;
+	}
+}
+
+async function runSwiftLint(
+	args: string[],
+	cwd: string,
+	resolvedCommand?: string,
+): Promise<{ stdout: string; stderr: string; success: boolean }> {
+	const command = resolvedCommand ?? "swiftlint";
+
+	try {
+		const proc = Bun.spawn([command, ...args], {
+			cwd,
+			stdout: "pipe",
+			stderr: "pipe",
+			windowsHide: true,
+		});
+		adoptIntoPrimarySessionCpuBudget(proc.pid);
+
+		const [stdout, stderr] = await Promise.all([readPipeText(proc.stdout), readPipeText(proc.stderr)]);
+		await proc.exited;
+
+		// swiftlint exits non-zero when violations found — that's not a failure
+		return { stdout, stderr, success: stdout.length > 0 };
+	} catch (err) {
+		return { stdout: "", stderr: errorMessage(err), success: false };
+	}
+}
+
+/**
+ * SwiftLint CLI-based linter client.
+ * Runs `swiftlint lint --reporter json` and converts violations to LSP diagnostics.
+ */
 export class SwiftLintClient implements LinterClient {
+	/** Factory method for creating SwiftLintClient instances */
 	static create(config: ServerConfig, cwd: string): LinterClient {
 		return new SwiftLintClient(config, cwd);
 	}
@@ -13,6 +71,7 @@ export class SwiftLintClient implements LinterClient {
 	) {}
 
 	async format(_filePath: string, content: string): Promise<string> {
+		// SwiftLint doesn't support formatting
 		return content;
 	}
 
@@ -37,6 +96,7 @@ export class SwiftLintClient implements LinterClient {
 			const violations: SwiftLintViolation[] = JSON.parse(jsonOutput);
 
 			for (const v of violations) {
+				// SwiftLint lines/characters are 1-based; LSP is 0-based
 				const line = Math.max(0, v.line - 1);
 				const character = Math.max(0, v.character - 1);
 
@@ -51,10 +111,14 @@ export class SwiftLintClient implements LinterClient {
 					code: v.rule_id,
 				});
 			}
-		} catch {}
+		} catch {
+			// JSON parse failed, return empty
+		}
 
 		return diagnostics;
 	}
 
-	dispose(): void {}
+	dispose(): void {
+		// Nothing to dispose for CLI client
+	}
 }

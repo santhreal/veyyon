@@ -1,4 +1,7 @@
-/** Proxy stream function for LLM calls routed through a proxy server. */
+/**
+ * Proxy stream function for apps that route LLM calls through a server.
+ * The server manages auth and proxies requests to LLM providers.
+ */
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -15,10 +18,15 @@ import {
 	type StreamingPartialJsonCarrier,
 	setStreamingPartialJson,
 } from "@veyyon/ai/utils/block-symbols";
+// The owner, not the barrel: `EventStream` was the ONE runtime name this file took
+// from `@veyyon/ai`, and taking it from there cost 264 modules of streaming engine,
+// provider registry and model catalogue for a 42-module class. Everything else above
+// is a type, and type imports are erased.
 import { EventStream } from "@veyyon/ai/utils/event-stream";
 import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
 import { errorMessage, parseStreamingJson, readSseJson } from "@veyyon/utils";
 
+// Event stream adapter for proxy SSE events
 export class ProxyMessageEventStream extends EventStream<AssistantMessageEvent, AssistantMessage> {
 	constructor() {
 		super(
@@ -32,7 +40,9 @@ export class ProxyMessageEventStream extends EventStream<AssistantMessageEvent, 
 	}
 }
 
-/** Proxy event types - server sends these with partial field stripped to reduce bandwidth. */
+/**
+ * Proxy event types - server sends these with partial field stripped to reduce bandwidth.
+ */
 export type ProxyAssistantMessageEvent =
 	| { type: "start" }
 	| { type: "text_start"; contentIndex: number }
@@ -65,11 +75,30 @@ export interface ProxyStreamOptions extends SimpleStreamOptions {
 	fetch?: FetchImpl;
 }
 
-/** Stream function that proxies through a server instead of calling LLM providers directly. */
+/**
+ * Stream function that proxies through a server instead of calling LLM providers directly.
+ * The server strips the partial field from delta events to reduce bandwidth.
+ * We reconstruct the partial message client-side.
+ *
+ * Use this as the `streamFn` option when creating an Agent that needs to go through a proxy.
+ *
+ * @example
+ * ```typescript
+ * const agent = new Agent({
+ *   streamFn: (model, context, options) =>
+ *     streamProxy(model, context, {
+ *       ...options,
+ *       authToken: await getAuthToken(),
+ *       proxyUrl: "https://genai.example.com",
+ *     }),
+ * });
+ * ```
+ */
 export function streamProxy(model: Model, context: Context, options: ProxyStreamOptions): ProxyMessageEventStream {
 	const stream = new ProxyMessageEventStream();
 
 	(async () => {
+		// Initialize the partial message that we'll build up from events
 		const partial: AssistantMessage = {
 			role: "assistant",
 			stopReason: "stop",
@@ -85,6 +114,9 @@ export function streamProxy(model: Model, context: Context, options: ProxyStream
 		const abortHandler = () => {
 			const body = response?.body;
 			if (body) {
+				// The user aborted, so there is no caller left to tell. A stream that refuses to cancel -- most
+				// often because it has already ended -- changes nothing about the abort that is in progress, and
+				// the abort's own error is what surfaces to the caller.
 				body.cancel("Request aborted by user").catch(() => {});
 			}
 		};
@@ -123,7 +155,9 @@ export function streamProxy(model: Model, context: Context, options: ProxyStream
 					if (errorData.error) {
 						errorMessage = `Proxy error: ${errorData.error}`;
 					}
-				} catch {}
+				} catch {
+					// Couldn't parse error response
+				}
 				throw new Error(errorMessage);
 			}
 
@@ -172,14 +206,27 @@ export function streamProxy(model: Model, context: Context, options: ProxyStream
 	return stream;
 }
 
-/** Clear the `partialJson` streaming symbol from any tool-call content blocks */
+/**
+ * Clear the `partialJson` streaming symbol from any tool-call content blocks
+ * that still carry it (e.g. when the stream ended without a `toolcall_end`), so
+ * the finalized `AssistantMessage` no longer reads as still-streaming.
+ */
 function scrubPartialJson(partial: AssistantMessage): void {
 	for (const block of partial.content) {
 		if (block?.type === "toolCall") clearStreamingPartialJson(block);
 	}
 }
 
-/** Process a proxy event and update the partial message. */
+/**
+ * Process a proxy event and update the partial message.
+ *
+ * Streaming `partialJson` for in-progress tool calls is accumulated in a
+ * side-channel map keyed by `contentIndex` and also written onto the content
+ * object as a symbol-keyed field so downstream renderers can read it
+ * during streaming. The field is cleared at `toolcall_end` and scrubbed from any
+ * remaining blocks at `done`/`error` so the finalized `AssistantMessage` never
+ * reads as still-streaming.
+ */
 function processProxyEvent(
 	model: Model,
 	proxyEvent: ProxyAssistantMessageEvent,
@@ -277,7 +324,7 @@ function processProxyEvent(
 				partialJsonByIndex.set(proxyEvent.contentIndex, acc);
 				content.arguments = parseStreamingJson(acc) || {};
 				setStreamingPartialJson(content, acc);
-				partial.content[proxyEvent.contentIndex] = { ...content };
+				partial.content[proxyEvent.contentIndex] = { ...content }; // Trigger reactivity
 				return {
 					type: "toolcall_delta",
 					contentIndex: proxyEvent.contentIndex,

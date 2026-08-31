@@ -1,3 +1,13 @@
+/**
+ * TUI renderer for the irc tool — status lines, message cards, inbox and
+ * peer-list trees.
+ *
+ * Split from `irc.ts` on purpose: `renderers.ts` (loaded by the boot-path
+ * `tool-execution` component) needs ONLY the presentation code, while the
+ * tool implementation pulls the IrcBus runtime and the agent registry.
+ * Keeping the renderer here keeps those off the CLI boot path (PERF-6);
+ * every runtime import below is type-only and erased at compile time.
+ */
 import type { Component } from "@veyyon/tui";
 import { formatAge, formatDuration } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -15,6 +25,10 @@ import {
 	replaceTabs,
 	type ToolUIColor,
 } from "./render-utils";
+
+// =============================================================================
+// TUI Renderer
+// =============================================================================
 
 type IrcRenderArgs = Partial<IrcParams>;
 
@@ -41,6 +55,7 @@ function outcomeColor(outcome: IrcDeliveryReceipt["outcome"]): ToolUIColor {
 	}
 }
 
+/** Glyph + status word, matching the agent-hub status conventions. */
 function peerStatusBadge(status: string, theme: Theme): string {
 	switch (status) {
 		case "running":
@@ -63,6 +78,10 @@ function textContent(result: { content: Array<{ type: string; text?: string }> }
 	return result.content.find(part => part.type === "text")?.text?.trim() ?? "";
 }
 
+/**
+ * Quote-bordered message body preview. `tone` separates outbound text (dim)
+ * from received text (toolOutput); a trailing dim counter marks elided lines.
+ */
 function bodyLines(
 	body: string,
 	expanded: boolean,
@@ -72,12 +91,13 @@ function bodyLines(
 	const indent = options.indent ?? "";
 	const tone = options.tone ?? "toolOutput";
 	const max = expanded ? BODY_LINES_EXPANDED : (options.collapsedLines ?? BODY_LINES_COLLAPSED);
-	const total = body.split("\n").filter(line => /\S/.test(line)).length;
-	const previewParts = getPreviewLines(body, max, BODY_LINE_WIDTH, Ellipsis.Unicode);
-	const lines: string[] = new Array(previewParts.length);
-	for (let pi = 0; pi < previewParts.length; pi++) {
-		lines[pi] = `${indent}${theme.fg(tone, replaceTabs(previewParts[pi]!))}`;
-	}
+	const total = body.split("\n").filter(line => line.trim()).length;
+	// A message body is indented text and carries no quote glyph of its own. The
+	// block already hangs from the house rail, and a second `▏` two cells inside
+	// it drew a second left edge for the same rows.
+	const lines = getPreviewLines(body, max, BODY_LINE_WIDTH, Ellipsis.Unicode).map(
+		line => `${indent}${theme.fg(tone, replaceTabs(line))}`,
+	);
 	const hidden = total - Math.min(total, max);
 	if (hidden > 0) {
 		lines.push(`${indent}${theme.fg("dim", `… +${hidden} more ${hidden === 1 ? "line" : "lines"}`)}`);
@@ -85,6 +105,7 @@ function bodyLines(
 	return lines;
 }
 
+/** Header title carrying the op direction: `IRC > peer` out, `IRC ⟵ peer` in. */
 function callTitle(args: IrcRenderArgs | undefined, theme: Theme): string {
 	switch (args?.op) {
 		case "send":
@@ -125,6 +146,13 @@ function renderErrorResult(
 	};
 }
 
+/**
+ * Display-only transcript card for live IRC traffic: `irc:incoming` DMs
+ * delivered to this session, `irc:autoreply` side-channel replies sent on
+ * this session's behalf, and `irc:relay` observations of agent↔agent
+ * traffic. Shares the tool renderer's glyph + quote-border conventions so
+ * cards and `irc` tool output look identical in the transcript.
+ */
 export function createIrcMessageCard(
 	card: {
 		kind: "incoming" | "autoreply" | "relay";
@@ -155,13 +183,9 @@ export function createIrcMessageCard(
 		(width, expanded) => {
 			const lines = [renderStatusLine({ iconOverride: ircGlyph(uiTheme), title, meta }, uiTheme)];
 			if (body.trim()) {
-				const bl = bodyLines(body, expanded, uiTheme, { indent: "  ", collapsedLines: 3 });
-				for (let li = 0; li < bl.length; li++) lines.push(bl[li]!);
+				lines.push(...bodyLines(body, expanded, uiTheme, { indent: "  ", collapsedLines: 3 }));
 			}
-			for (let li = 0; li < lines.length; li++) {
-				lines[li] = truncateToWidth(lines[li]!, width, Ellipsis.Unicode);
-			}
-			return lines;
+			return lines.map(line => truncateToWidth(line, width, Ellipsis.Unicode));
 		},
 		{ paddingX: 1 },
 	);
@@ -178,6 +202,7 @@ function renderSendResult(
 	const to = details.to ?? args?.to?.trim() ?? "?";
 	const title = `IRC ${theme.nav.selected} ${to}`;
 
+	// Pre-delivery failures (validation) and empty broadcasts carry no receipts.
 	if (receipts.length === 0) {
 		const text = textContent(result) || (result.isError ? "Send failed." : "Nothing to deliver.");
 		return {
@@ -212,10 +237,7 @@ function renderSendResult(
 	const body: string[] = [];
 
 	const sent = args?.message?.trim();
-	if (sent) {
-		const bl = bodyLines(sent, expanded, theme, { tone: "dim" });
-		for (let li = 0; li < bl.length; li++) body.push(bl[li]!);
-	}
+	if (sent) body.push(...bodyLines(sent, expanded, theme, { tone: "dim" }));
 
 	if (receipts.length > 1 || failedCount > 0) {
 		const maxItems = expanded ? receipts.length : Math.min(receipts.length, PREVIEW_LIMITS.COLLAPSED_ITEMS);
@@ -239,8 +261,7 @@ function renderSendResult(
 		body.push(
 			`${theme.fg("dim", theme.nav.back)} ${theme.fg("accent", waited.from)}${age ? ` ${theme.fg("dim", age)}` : ""}`,
 		);
-		const bl = bodyLines(waited.body, expanded, theme, { indent: "  " });
-		for (let li = 0; li < bl.length; li++) body.push(bl[li]!);
+		body.push(...bodyLines(waited.body, expanded, theme, { indent: "  " }));
 	} else if (timedOut) {
 		body.push(theme.fg("warning", "No reply yet — they may answer later; check inbox or wait again."));
 	}
@@ -305,8 +326,7 @@ function renderInboxResult(
 		const replyBadge = msg.replyTo ? ` ${formatBadge("reply", "muted", theme)}` : "";
 		const head = `${theme.fg("accent", msg.from)}${age ? ` ${theme.fg("dim", age)}` : ""}${replyBadge}`;
 		body.push(head);
-		const bl = bodyLines(msg.body, expanded, theme, { indent: "  ", collapsedLines: 1 });
-		for (let li = 0; li < bl.length; li++) body.push(bl[li]!);
+		body.push(...bodyLines(msg.body, expanded, theme, { indent: "  ", collapsedLines: 1 }));
 	}
 	if (!expanded && messages.length > maxItems) {
 		const remaining = messages.length - maxItems;
@@ -333,15 +353,8 @@ function renderListResult(
 	}
 	const counts = new Map<string, number>();
 	for (const peer of peers) counts.set(peer.status, (counts.get(peer.status) ?? 0) + 1);
-	const meta: string[] = new Array(counts.size);
-	let mi = 0;
-	for (const [status, count] of counts) {
-		meta[mi++] = `${count} ${status}`;
-	}
-	let unreadTotal = 0;
-	for (let pi = 0; pi < peers.length; pi++) {
-		unreadTotal += peers[pi]!.unread;
-	}
+	const meta = [...counts].map(([status, count]) => `${count} ${status}`);
+	const unreadTotal = peers.reduce((sum, peer) => sum + peer.unread, 0);
 	if (unreadTotal > 0) meta.push(theme.fg("warning", `${unreadTotal} unread`));
 	const header = renderStatusLine({ iconOverride: ircGlyph(theme), title: "IRC peers", meta }, theme);
 	const body: string[] = [];
@@ -407,8 +420,7 @@ export const ircToolRenderer = {
 		);
 		const body: string[] = [];
 		if (args?.op === "send" && args.message?.trim()) {
-			const bl = bodyLines(args.message, false, uiTheme, { tone: "dim", collapsedLines: 1 });
-			for (let li = 0; li < bl.length; li++) body.push(bl[li]!);
+			body.push(...bodyLines(args.message, false, uiTheme, { tone: "dim", collapsedLines: 1 }));
 		}
 		return framedBlock(uiTheme, width => ({
 			header,

@@ -1,46 +1,307 @@
+import * as path from "node:path";
 import { toolResultNeverRan } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
 import { Container, Text } from "@veyyon/tui";
-import { formatCount } from "@veyyon/utils";
+import { formatCount, hasUrlScheme } from "@veyyon/utils";
+import { InternalUrlRouter } from "../../internal-urls";
+import { tryResolveInternalUrlSync } from "../../internal-urls/resolve-sync";
 import { getLanguageFromPath, theme } from "../../modes/theme/theme";
-import { splitPathAndSel } from "../../tools/path-utils";
+import { parseLineRanges, selectorLineRanges, splitPathAndSel } from "../../tools/path-utils";
 import type { ReadRenderArgs } from "../../tools/read";
-import { shortenPath } from "../../tools/render-utils";
+import { PREVIEW_LIMITS, shortenPath } from "../../tools/render-utils";
 import { fileHyperlink, renderCodeCell } from "../../tui";
-import type {
-	ReadDisplayTarget,
-	ReadEntry,
-	ReadSummaryRow,
-	ReadToolGroupOptions,
-	ReadToolResultDetails,
-} from "./read-tool-group-helpers";
-
-import {
-	COLLAPSED_PREVIEW_LINES,
-	displayPathWithSuffixResolution,
-	firstSelectorLine,
-	firstSelectorLineForTargets,
-	formatMergedSelectorParts,
-	getDisplayReadTargets,
-	getSuffixResolution,
-	linkPathForTargets,
-	READ_STATUS_RANK,
-	readArgsTarget,
-	readResultLinkPath,
-	readTargetLinkPath,
-	splitReadDisplayPathSpecs,
-	splitSelectorDisplayParts,
-} from "./read-tool-group-helpers";
 import type { ToolExecutionHandle } from "./tool-execution";
 
-export { readArgsHaveTarget, readArgsTargetInternalUrl } from "./read-tool-group-helpers";
+/**
+ * Read calls whose target is resolved through {@link InternalUrlRouter} are
+ * rendered as full tool executions (not collapsed into the read group) so the
+ * resolved content is visible. `path` is the canonical arg; `file_path` is the
+ * legacy alias still tolerated by the read tool schema.
+ */
+function readArgsTarget(args: unknown): string | undefined {
+	if (!args || typeof args !== "object" || Array.isArray(args)) return undefined;
+	const record = args as Record<string, unknown>;
+	return typeof record.path === "string"
+		? record.path
+		: typeof record.file_path === "string"
+			? record.file_path
+			: undefined;
+}
+
+export function readArgsHaveTarget(args: unknown): args is ReadRenderArgs {
+	return readArgsTarget(args) !== undefined;
+}
+
+export function readArgsTargetInternalUrl(args: unknown): boolean {
+	const target = readArgsTarget(args);
+	if (!target) return false;
+	return InternalUrlRouter.instance().canHandle(target);
+}
+
+type ReadToolSuffixResolution = {
+	from: string;
+	to: string;
+};
+
+type ReadToolResultDetails = {
+	resolvedPath?: string;
+	suffixResolution?: {
+		from?: string;
+		to?: string;
+	};
+	conflictCount?: number;
+	displayReadTargets?: unknown;
+	displayContent?: {
+		text?: string;
+		startLine?: number;
+		lineNumbers?: Array<number | null>;
+	};
+	meta?: {
+		source?: {
+			type?: string;
+			value?: string;
+		};
+	};
+};
+
+type ReadToolGroupOptions = {
+	showContentPreview?: boolean;
+};
+
+function getSuffixResolution(details: ReadToolResultDetails | undefined): ReadToolSuffixResolution | undefined {
+	if (typeof details?.suffixResolution?.from !== "string" || typeof details.suffixResolution.to !== "string") {
+		return undefined;
+	}
+	return { from: details.suffixResolution.from, to: details.suffixResolution.to };
+}
+
+type ReadEntry = {
+	toolCallId: string;
+	path: string;
+	displayPaths?: string[];
+	linkPath?: string;
+	status: "pending" | "success" | "warning" | "notExecuted" | "error";
+	correctedFrom?: string;
+	contentText?: string;
+	conflictCount?: number;
+	codeStartLine?: number;
+	codeLineNumbers?: Array<number | null>;
+};
+
+/** Number of code lines to show in collapsed preview mode */
+const COLLAPSED_PREVIEW_LINES = PREVIEW_LIMITS.OUTPUT_COLLAPSED;
+
+type ReadDisplayTarget = {
+	entry: ReadEntry;
+	targetPath: string;
+	basePath: string;
+	linkPath?: string;
+	selector?: string;
+};
+
+type ReadSummaryRow = {
+	targetPath: string;
+	basePath: string;
+	targets: ReadDisplayTarget[];
+};
+
+const READ_STATUS_RANK: Record<ReadEntry["status"], number> = {
+	success: 0,
+	pending: 1,
+	// A read that never ran is not a failed read: it must not outrank a sibling
+	// that really did fail, and it must still be visible above a plain success.
+	notExecuted: 2,
+	warning: 3,
+	error: 4,
+};
+
+function getDisplayReadTargets(details: ReadToolResultDetails | undefined): string[] | undefined {
+	if (!Array.isArray(details?.displayReadTargets)) return undefined;
+	const targets = details.displayReadTargets
+		.filter((target): target is string => typeof target === "string")
+		.map(target => target.trim())
+		.filter(target => target.length > 0);
+	return targets.length > 0 ? targets : undefined;
+}
+
+function displayPathWithSuffixResolution(currentPath: string, suffixResolution: ReadToolSuffixResolution): string {
+	const currentSelector = splitPathAndSel(currentPath).sel;
+	if (!currentSelector || splitPathAndSel(suffixResolution.to).sel) return suffixResolution.to;
+	return `${suffixResolution.to}:${currentSelector}`;
+}
+
+function readSourceFsPath(details: ReadToolResultDetails | undefined): string | undefined {
+	const source = details?.meta?.source;
+	return source?.type === "path" && typeof source.value === "string" ? source.value : undefined;
+}
+
+function readResultLinkPath(details: ReadToolResultDetails | undefined): string | undefined {
+	return typeof details?.resolvedPath === "string" ? details.resolvedPath : readSourceFsPath(details);
+}
+
+function readTargetLinkPath(basePath: string, entryLinkPath: string | undefined): string | undefined {
+	if (entryLinkPath) return entryLinkPath;
+	const resolvedInternalPath = tryResolveInternalUrlSync(basePath);
+	if (resolvedInternalPath) return resolvedInternalPath;
+	return path.isAbsolute(basePath) ? basePath : undefined;
+}
+
+function firstSelectorLine(selector: string | undefined): number | undefined {
+	try {
+		return selectorLineRanges(selector)?.[0].startLine;
+	} catch {
+		// A selector this renderer cannot parse has no first line to link to, so the row links to the file
+		// instead. The read itself parses the same selector and reports it; a renderer must not raise.
+		return undefined;
+	}
+}
+
+function firstSelectorLineForTargets(targets: ReadDisplayTarget[]): number | undefined {
+	let line: number | undefined;
+	for (const target of targets) {
+		const targetLine = firstSelectorLine(target.selector);
+		if (targetLine === undefined) continue;
+		if (line === undefined || targetLine < line) line = targetLine;
+	}
+	return line;
+}
+
+function linkPathForTargets(targets: ReadDisplayTarget[]): string | undefined {
+	for (const target of targets) {
+		if (target.linkPath) return target.linkPath;
+	}
+	return undefined;
+}
+
+function selectorChunkIsLineRangeList(chunk: string): boolean {
+	const trimmed = chunk.trim();
+	if (!trimmed) return false;
+	try {
+		return parseLineRanges(trimmed) !== null;
+	} catch {
+		// This asks whether a chunk IS a line-range list. A parse failure answers the question with no:
+		// unparseable is not a line-range list, and the caller treats the chunk as something else.
+		return false;
+	}
+}
+
+function nextTopLevelToken(input: string, start: number): string {
+	let braceDepth = 0;
+	for (let i = start; i < input.length; i++) {
+		const ch = input[i];
+		if (ch === "\\" && i + 1 < input.length) {
+			i++;
+			continue;
+		}
+		if (ch === "{") {
+			braceDepth++;
+			continue;
+		}
+		if (ch === "}") {
+			if (braceDepth > 0) braceDepth--;
+			continue;
+		}
+		if (braceDepth === 0 && (ch === "," || ch === ";")) {
+			return input.slice(start, i);
+		}
+	}
+	return input.slice(start);
+}
+
+function commaContinuesLineRangeSelector(input: string, partStart: number, commaIndex: number): boolean {
+	const currentPart = input.slice(partStart, commaIndex).trim();
+	if (!splitPathAndSel(currentPart).sel) return false;
+	return selectorChunkIsLineRangeList(nextTopLevelToken(input, commaIndex + 1));
+}
+
+function splitReadDisplayPathSpecs(rawPath: string): string[] {
+	const normalized = rawPath.trim();
+	if (!normalized || hasUrlScheme(normalized)) return [rawPath];
+
+	const parts: string[] = [];
+	let braceDepth = 0;
+	let partStart = 0;
+	for (let i = 0; i < normalized.length; i++) {
+		const ch = normalized[i];
+		if (ch === "\\" && i + 1 < normalized.length) {
+			i++;
+			continue;
+		}
+		if (ch === "{") {
+			braceDepth++;
+			continue;
+		}
+		if (ch === "}") {
+			if (braceDepth > 0) braceDepth--;
+			continue;
+		}
+		if (braceDepth !== 0 || (ch !== "," && ch !== ";")) continue;
+		if (ch === "," && commaContinuesLineRangeSelector(normalized, partStart, i)) continue;
+		parts.push(normalized.slice(partStart, i).trim());
+		partStart = i + 1;
+	}
+	parts.push(normalized.slice(partStart).trim());
+
+	const cleanParts = parts.filter(part => part.length > 0);
+	if (cleanParts.length <= 1) return [rawPath];
+	return cleanParts.every(part => splitPathAndSel(part).sel !== undefined) ? cleanParts : [rawPath];
+}
+
+function splitSelectorDisplayParts(sel: string | undefined): Array<string | undefined> {
+	if (!sel) return [undefined];
+	const chunks = sel.split(":");
+	if (chunks.length === 1) {
+		if (!selectorChunkIsLineRangeList(sel) || !sel.includes(",")) return [sel];
+		return sel
+			.split(",")
+			.map(chunk => chunk.trim())
+			.filter(chunk => chunk.length > 0);
+	}
+	if (chunks.length === 2) {
+		const [left, right] = chunks as [string, string];
+		const leftIsRange = selectorChunkIsLineRangeList(left);
+		const rightIsRange = selectorChunkIsLineRangeList(right);
+		if (leftIsRange && left.includes(",")) {
+			return left
+				.split(",")
+				.map(chunk => chunk.trim())
+				.filter(chunk => chunk.length > 0)
+				.map(chunk => `${chunk}:${right}`);
+		}
+		if (rightIsRange && right.includes(",")) {
+			return right
+				.split(",")
+				.map(chunk => chunk.trim())
+				.filter(chunk => chunk.length > 0)
+				.map(chunk => `${left}:${chunk}`);
+		}
+	}
+	return [sel];
+}
+
+function formatMergedSelectorParts(selectors: string[]): string {
+	if (selectors.length <= 3) return selectors.join(",");
+	const first = selectors[0]!;
+	const second = selectors[1]!;
+	const last = selectors[selectors.length - 1]!;
+	return `${first},${second},…,${last}`;
+}
 
 export class ReadToolGroupComponent extends Container implements ToolExecutionHandle {
 	#entries = new Map<string, ReadEntry>();
 	#text: Text;
 	#expanded = false;
 	#showContentPreview: boolean;
+	// A read group accretes entries across multiple assistant completions for as
+	// long as the run of reads is uninterrupted. While it is the active group it
+	// must stay in the transcript's repaintable live region — its header line
+	// re-layouts from `Read <path>` to `Read (N)` + tree as entries arrive, so a
+	// frozen snapshot taken on a risk terminal would strand the single-entry form
+	// (see TranscriptContainer / NativeScrollbackLiveRegion). The controller calls
+	// `finalize()` once the run breaks so the block can commit to native scrollback.
 	#finalized = false;
+	// Forced terminal even with a still-pending entry: the turn ended (abort or
+	// completion) so no late result is coming. Set via `seal()`.
 	#sealed = false;
 
 	constructor(options: ReadToolGroupOptions = {}) {
@@ -54,6 +315,11 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 	isTranscriptBlockFinalized(): boolean {
 		if (this.#sealed) return true;
 		if (!this.#finalized) return false;
+		// Closed to new entries, but a still-pending entry means its result is in
+		// flight — parallel reads can finalize the group (a sibling tool starts and
+		// breaks the run) before a read's `tool_execution_end` lands. Stay live so
+		// the late result repaints instead of freezing the pending preview into
+		// native scrollback on ED3-risk terminals (#issue: stuck "Read <path>").
 		return !this.#hasPendingEntries();
 	}
 
@@ -68,6 +334,11 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		this.#finalized = true;
 	}
 
+	/**
+	 * Force the group terminal even if an entry never received its result (the
+	 * turn aborted or ended). Lets it freeze and stop pinning the transcript live
+	 * region instead of lingering on a pending preview until the next thaw.
+	 */
 	seal(): void {
 		this.#sealed = true;
 	}
@@ -95,6 +366,10 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		if (!entry) return;
 		if (isPartial) return;
 		if (toolResultNeverRan(result.details)) {
+			// The placeholder's text is written for the MODEL and names the provider
+			// fault, not the file. Showing it as this row's content would read as the
+			// read having failed on that path, and the row has no content because
+			// nothing was read.
 			entry.status = "notExecuted";
 			this.#updateDisplay();
 			return;
@@ -115,6 +390,8 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 			typeof details?.conflictCount === "number" && details.conflictCount > 0 ? details.conflictCount : undefined;
 		entry.conflictCount = conflictCount;
 		entry.status = result.isError ? "error" : suffixResolution ? "warning" : "success";
+		// Store clean display content for preview/expanded display when the read
+		// tool provides it; fall back to model-facing text for legacy results.
 		const displayContent = details?.displayContent;
 		const textContent = result.content?.find(c => c.type === "text")?.text;
 		if (displayContent !== undefined || textContent !== undefined) {
@@ -139,10 +416,11 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 	}
 
 	#updateDisplay(): void {
-		const entries = Array.from(this.#entries.values());
+		const entries = [...this.#entries.values()];
 		const displayTargets = this.#displayTargetsForEntries(entries);
 		const displayRows = this.#buildSummaryRows(displayTargets);
 
+		// Clear previous children and rebuild the summary and preview blocks.
 		this.clear();
 		this.#text = new Text("", 0, 0);
 
@@ -162,30 +440,25 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 				);
 				this.addChild(this.#text);
 			}
-			const previewEntries = this.#previewEntriesForRow(row);
-			for (let pi = 0; pi < previewEntries.length; pi++) {
-				this.#addContentPreview(previewEntries[pi]!);
+			for (const entry of this.#previewEntriesForRow(row)) {
+				this.#addContentPreview(entry);
 			}
 			return;
 		}
 
 		const header = `${theme.fg("toolTitle", theme.bold("Read"))}${theme.fg("dim", ` (${displayRows.length})`)}`;
 		const lines = [` ${theme.format.bullet} ${header}`];
-		const entriesWithoutPreview: ReadEntry[] = [];
-		for (let ei = 0; ei < entries.length; ei++) {
-			if (!this.#shouldRenderPreview(entries[ei]!)) entriesWithoutPreview.push(entries[ei]!);
-		}
+		const entriesWithoutPreview = entries.filter(entry => !this.#shouldRenderPreview(entry));
 		const summaryTargets = this.#displayTargetsForEntries(entriesWithoutPreview);
 		const rows = this.#buildSummaryRows(summaryTargets);
-		for (let ri = 0; ri < rows.length; ri++) {
-			this.#appendSummaryRow(lines, rows[ri]!, ri, rows.length);
+		for (const [index, row] of rows.entries()) {
+			this.#appendSummaryRow(lines, row, index, rows.length);
 		}
 
 		this.#text.setText(lines.join("\n"));
 		this.addChild(this.#text);
 
-		for (let ei = 0; ei < entries.length; ei++) {
-			const entry = entries[ei]!;
+		for (const entry of entries) {
 			if (this.#shouldRenderPreview(entry)) {
 				this.#addContentPreview(entry);
 			}
@@ -194,17 +467,13 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 
 	#displayTargetsForEntries(entries: ReadEntry[]): ReadDisplayTarget[] {
 		const targets: ReadDisplayTarget[] = [];
-		for (let ei = 0; ei < entries.length; ei++) {
-			const entry = entries[ei]!;
+		for (const entry of entries) {
 			const pathSpecs = entry.displayPaths ?? splitReadDisplayPathSpecs(entry.path);
 			const useEntryLinkPath = pathSpecs.length === 1;
-			for (let pi = 0; pi < pathSpecs.length; pi++) {
-				const pathSpec = pathSpecs[pi]!;
+			for (const pathSpec of pathSpecs) {
 				const split = splitPathAndSel(pathSpec);
 				const linkPath = readTargetLinkPath(split.path, useEntryLinkPath ? entry.linkPath : undefined);
-				const selectors = splitSelectorDisplayParts(split.sel);
-				for (let si = 0; si < selectors.length; si++) {
-					const selector = selectors[si]!;
+				for (const selector of splitSelectorDisplayParts(split.sel)) {
 					targets.push({
 						entry,
 						targetPath: selector ? `${split.path}:${selector}` : pathSpec,
@@ -220,8 +489,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 
 	#buildSummaryRows(targets: ReadDisplayTarget[]): ReadSummaryRow[] {
 		const selectorTargetsByBasePath = new Map<string, ReadDisplayTarget[]>();
-		for (let ti = 0; ti < targets.length; ti++) {
-			const target = targets[ti]!;
+		for (const target of targets) {
 			if (!target.selector) continue;
 			const existing = selectorTargetsByBasePath.get(target.basePath);
 			if (existing) existing.push(target);
@@ -237,18 +505,16 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 
 		const emittedMergedRows = new Set<string>();
 		const rows: ReadSummaryRow[] = [];
-		for (let ti = 0; ti < targets.length; ti++) {
-			const target = targets[ti]!;
+		for (const target of targets) {
 			if (target.selector && mergeableBasePaths.has(target.basePath)) {
 				if (!emittedMergedRows.has(target.basePath)) {
 					const mergedTargets = selectorTargetsByBasePath.get(target.basePath) ?? [target];
-					const selectors: string[] = [];
-					for (let mi = 0; mi < mergedTargets.length; mi++) {
-						const sel = mergedTargets[mi]!.selector;
-						if (sel !== undefined) selectors.push(sel);
-					}
 					rows.push({
-						targetPath: `${target.basePath}:${formatMergedSelectorParts(selectors)}`,
+						targetPath: `${target.basePath}:${formatMergedSelectorParts(
+							mergedTargets
+								.map(mergedTarget => mergedTarget.selector)
+								.filter(selector => selector !== undefined),
+						)}`,
 						basePath: target.basePath,
 						targets: mergedTargets,
 					});
@@ -283,27 +549,26 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 
 	#statusForTargets(targets: ReadDisplayTarget[]): ReadEntry["status"] {
 		let status: ReadEntry["status"] = "success";
-		for (let ti = 0; ti < targets.length; ti++) {
-			if (READ_STATUS_RANK[targets[ti]!.entry.status] > READ_STATUS_RANK[status]) {
-				status = targets[ti]!.entry.status;
+		for (const target of targets) {
+			if (READ_STATUS_RANK[target.entry.status] > READ_STATUS_RANK[status]) {
+				status = target.entry.status;
 			}
 		}
 		return status;
 	}
 
 	#correctedFromForTargets(targets: ReadDisplayTarget[]): string | undefined {
-		for (let ti = 0; ti < targets.length; ti++) {
-			if (targets[ti]!.entry.correctedFrom) return targets[ti]!.entry.correctedFrom;
+		for (const target of targets) {
+			if (target.entry.correctedFrom) return target.entry.correctedFrom;
 		}
 		return undefined;
 	}
 
 	#conflictCountForTargets(targets: ReadDisplayTarget[]): number | undefined {
 		let conflictCount = 0;
-		for (let ti = 0; ti < targets.length; ti++) {
-			const cc = targets[ti]!.entry.conflictCount;
-			if (cc && cc > conflictCount) {
-				conflictCount = cc;
+		for (const target of targets) {
+			if (target.entry.conflictCount && target.entry.conflictCount > conflictCount) {
+				conflictCount = target.entry.conflictCount;
 			}
 		}
 		return conflictCount > 0 ? conflictCount : undefined;
@@ -312,8 +577,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 	#previewEntriesForRow(row: ReadSummaryRow): ReadEntry[] {
 		const entries: ReadEntry[] = [];
 		const seen = new Set<string>();
-		for (let ti = 0; ti < row.targets.length; ti++) {
-			const target = row.targets[ti]!;
+		for (const target of row.targets) {
 			if (seen.has(target.entry.toolCallId) || !this.#shouldRenderPreview(target.entry)) continue;
 			entries.push(target.entry);
 			seen.add(target.entry.toolCallId);
@@ -353,6 +617,11 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		return ` ${theme.fg("warning", `(warn ${formatCount("conflict", conflictCount)})`)}`;
 	}
 
+	/**
+	 * Add a code-cell content preview below the entry summary.
+	 * When collapsed: shows first COLLAPSED_PREVIEW_LINES lines with a "… N more lines ⟨<key>: Expand⟩" hint.
+	 * When expanded: shows full content.
+	 */
 	#addContentPreview(entry: ReadEntry): void {
 		const split = splitPathAndSel(entry.path);
 		const lang = getLanguageFromPath(split.path);
@@ -377,6 +646,9 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 						code: entry.contentText ?? "",
 						language: lang,
 						title,
+						// `notExecuted` is this group's own row state; the code cell knows only
+						// the four render states, and a read that never ran is a warning there
+						// (dimmed by the row glyph), never an error.
 						status:
 							entry.status === "success"
 								? "complete"
@@ -414,6 +686,9 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 			return theme.fg("warning", theme.status.warning);
 		}
 		if (status === "notExecuted") {
+			// Dim, not red: the turn failed, this read did not. It carries the warning
+			// glyph so the row is not read as a completed read, in the dim register
+			// that says nothing happened here.
 			return theme.fg("dim", theme.status.warning);
 		}
 		if (status === "error") {

@@ -1,9 +1,17 @@
-/** SSH CLI command handlers. Handles `veyyon ssh <command>` subcommands for SSH host configuration management. */
+/**
+ * SSH CLI command handlers.
+ *
+ * Handles `veyyon ssh <command>` subcommands for SSH host configuration management.
+ */
 
 import { errorMessage, getSSHConfigPath } from "@veyyon/utils";
 import chalk from "chalk";
 import { addSSHHost, readSSHConfigFile, removeSSHHost, type SSHHostConfig } from "../ssh/config-writer";
 import { EXIT_USAGE } from "./exit-codes";
+
+// =============================================================================
+// Types
+// =============================================================================
 
 export type SSHAction = "add" | "remove" | "list";
 
@@ -24,6 +32,10 @@ export interface SSHCommandArgs {
 	};
 }
 
+// =============================================================================
+// Main dispatcher
+// =============================================================================
+
 export async function runSSHCommand(cmd: SSHCommandArgs): Promise<void> {
 	switch (cmd.action) {
 		case "add":
@@ -41,6 +53,10 @@ export async function runSSHCommand(cmd: SSHCommandArgs): Promise<void> {
 			process.exitCode = EXIT_USAGE;
 	}
 }
+
+// =============================================================================
+// Handlers
+// =============================================================================
 
 async function handleAdd(cmd: SSHCommandArgs): Promise<void> {
 	const name = cmd.args[0];
@@ -128,6 +144,10 @@ async function handleList(cmd: SSHCommandArgs): Promise<void> {
 	process.stdout.write(chalk.bold("SSH Hosts:\n"));
 	printHosts(hosts);
 }
+
+// =============================================================================
+// Helpers
+// =============================================================================
 
 function printHosts(hosts: Record<string, SSHHostConfig>): void {
 	for (const [name, config] of Object.entries(hosts)) {

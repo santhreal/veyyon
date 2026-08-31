@@ -86,6 +86,7 @@ export class StateTracker {
 			this.#state = state;
 			return state;
 		} catch {
+			// Missing/unreadable state file (text() throws) — no persisted state.
 			return null;
 		}
 	}

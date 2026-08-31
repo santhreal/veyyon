@@ -1,5 +1,11 @@
 import type * as BabelParser from "@babel/parser";
 
+// Static ESM `import` declarations are not valid inside vm.runInContext (script-mode parsing),
+// and dynamic `import(...)` would otherwise resolve specifiers against the worker module's URL
+// instead of the session cwd. We rewrite both forms so they route through the worker-injected
+// `__veyyon_import__` helper, which resolves the specifier against the active session cwd. A real
+// parser keeps imports embedded in string literals, template literals, or comments intact.
+
 type BabelImportDeclaration = {
 	type: "ImportDeclaration";
 	start: number;
@@ -49,6 +55,7 @@ type BabelFunctionDeclaration = {
 	id: { start: number; end: number; name: string } | null;
 };
 
+/** Top-level declarations whose bindings must survive the cell (demoted and/or published). */
 type BabelPublishableDecl = BabelLexicalDecl | BabelFunctionDeclaration;
 
 type BabelExpressionStatement = {
@@ -66,6 +73,9 @@ type BabelModuleSourceDeclaration = {
 
 type BabelNode = { type: string; start: number; end: number; [key: string]: unknown };
 
+// @babel/parser sits on the CLI launch graph (tools → eval backend → worker-core →
+// runtime → this module) but only runs when an eval cell executes, so it is loaded
+// lazily and memoized.
 let babelParser: typeof BabelParser | undefined;
 
 async function loadBabelParser(): Promise<typeof BabelParser> {
@@ -90,18 +100,32 @@ async function parseProgram(code: string): Promise<{ program: { body: ReadonlyAr
 			plugins: ["typescript"],
 		}) as unknown as { program: { body: ReadonlyArray<BabelProgramNode> } };
 	} catch {
+		// `errorRecovery` is already on, so reaching here means the source is not recoverable JavaScript at
+		// all. Null tells the caller to leave the code EXACTLY as it was rather than rewrite imports it could
+		// not locate, and the code then fails at evaluation with the runtime's own error, which points at the
+		// real syntax problem far better than a rewrite of half-understood text would.
 		return null;
 	}
 }
 
+// Callee substituted for dynamic `import(...)` calls. Functions handed to puppeteer
+// (`tab.evaluate`, `page.evaluate`, `waitForFunction`, `$$eval`, ...) are serialized with
+// `Function.prototype.toString()` and re-evaluated inside the browser page, where the
+// worker-injected `__veyyon_import__` global does not exist. The swap therefore guards on the
+// helper's presence and falls back to native dynamic import, so serialized code keeps
+// working in foreign realms while in-worker code still resolves against the session cwd.
 const DYNAMIC_IMPORT_CALLEE = '(typeof __veyyon_import__ === "function" ? __veyyon_import__ : (s, o) => import(s, o))';
 
 function buildVeyyonImportCall(sourceLiteral: string, optionsLiteral: string | undefined): string {
+	// Route every static import through the worker-injected `__veyyon_import__` helper so the
+	// specifier resolves against the session cwd (and `with`-attribute imports keep working).
 	return optionsLiteral
 		? `__veyyon_import__(${sourceLiteral}, ${optionsLiteral})`
 		: `__veyyon_import__(${sourceLiteral})`;
 }
 
+// Walks every node in `root`, depth-first, invoking `visit` on each one. Skips Babel's
+// non-AST bookkeeping fields so we don't recurse into source locations or comment arrays.
 function walkNodes(root: unknown, visit: (node: BabelNode) => void): void {
 	const stack: unknown[] = [root];
 	while (stack.length > 0) {
@@ -129,6 +153,8 @@ function buildOptionsLiteral(node: BabelImportDeclaration): string | undefined {
 		const key = attr.key.type === "Identifier" ? attr.key.name : JSON.stringify(attr.key.value);
 		return `${key}: ${JSON.stringify(attr.value.value)}`;
 	});
+	// Native dynamic import takes options as `{ with: { ... } }`. `__veyyon_import__` forwards the
+	// options bag verbatim, so we wrap the attribute pairs accordingly.
 	return `{ with: { ${pairs.join(", ")} } }`;
 }
 
@@ -139,6 +165,10 @@ function rewriteImportNode(node: BabelImportDeclaration): string {
 
 	let defaultName: string | undefined;
 	let namespaceName: string | undefined;
+	// The third field records whether the imported name came from a string literal
+	// (`import { "a-b" as c }`, valid ESM for exotic export names). Such a key is not a
+	// valid identifier, so it must be quoted when it becomes a destructuring key or the
+	// generated `const { a-b: c } = ...` is a syntax error.
 	const namedPairs: Array<[imported: string, local: string, fromString: boolean]> = [];
 	for (const spec of node.specifiers) {
 		if (spec.type === "ImportDefaultSpecifier") {
@@ -172,18 +202,22 @@ export async function rewriteImports(code: string): Promise<string> {
 
 	const ast = await parseProgram(code);
 	if (!ast) {
+		// Parser bailed entirely — let the VM surface the real syntax error.
 		return code;
 	}
 
 	type Edit = { start: number; end: number; text: string };
 	const edits: Edit[] = [];
 
+	// Top-level static `import` declarations become `await __veyyon_import__(...)` calls.
 	for (const node of ast.program.body) {
 		if (node.type !== "ImportDeclaration") continue;
 		const decl = node as unknown as BabelImportDeclaration;
 		edits.push({ start: decl.start, end: decl.end, text: rewriteImportNode(decl) });
 	}
 
+	// Dynamic `import(...)` expressions (anywhere) get their callee swapped for `__veyyon_import__`
+	// so the specifier resolves against the session cwd instead of the worker module's URL.
 	walkNodes(ast, node => {
 		if (node.type !== "CallExpression") return;
 		const call = node as unknown as { callee?: { type?: string; start?: number; end?: number } };
@@ -194,6 +228,7 @@ export async function rewriteImports(code: string): Promise<string> {
 
 	if (edits.length === 0) return code;
 
+	// Splice from the back so earlier offsets stay valid.
 	edits.sort((a, b) => b.start - a.start);
 	let result = code;
 	for (const edit of edits) {
@@ -325,6 +360,24 @@ function appendGlobalBindingPublish(source: string, names: readonly string[]): s
 	return `${source};\n${assignments}`;
 }
 
+/**
+ * Demote top-level `const`/`let`/`class` declarations to `var` so they persist on the
+ * worker's globalThis across indirect `eval` calls. Indirect eval gives each call its own
+ * lexical environment, so `const x = 1` in one cell would be invisible to the next.
+ * `var` and function declarations are stored on the global object and survive across cells.
+ *
+ *   const x = 1;             -> var x = 1;
+ *   let { a, b } = obj;      -> var { a, b } = obj;
+ *   class Foo extends Bar {} -> var Foo = class extends Bar {};
+ *
+ * When the source must run inside the async wrapper (top-level `await`), demoted `var`s —
+ * and the user's own top-level `var` and `function` declarations — would be scoped to the
+ * wrapper function and die with the cell. In that mode we publish every top-level binding
+ * back to the wrapper's lexical `this`, which is the worker global object.
+ *
+ * Nested declarations (inside functions, blocks, classes) are left alone — they're
+ * scoped to their enclosing function/block regardless of `var` vs `let`/`const`.
+ */
 async function demoteTopLevelLexicals(code: string, options: { publishGlobals?: boolean } = {}): Promise<string> {
 	const publishGlobals = options.publishGlobals === true;
 	const fastPath = publishGlobals ? /\b(?:const|let|class|var|function)\b/ : /\b(?:const|let|class)\b/;
@@ -392,6 +445,9 @@ async function returnFinalExpression(code: string): Promise<{ source: string; re
 		return { source: `${prefix}__veyyon_set_final_expr__((${trimmedStatement}));${suffix}`, returned: true };
 	}
 	if (last?.type === "ReturnStatement") {
+		// Top-level `return value;` is otherwise swallowed: it forces the cell into an async IIFE
+		// wrapper that discards the returned value. Rewrite into `__veyyon_set_final_expr__((expr))`
+		// so the runtime can surface the value to the caller just like a trailing expression.
 		const ret = last as unknown as { start: number; end: number; argument?: { start: number; end: number } | null };
 		if (!ret.argument) return { source: code, returned: false };
 		const prefix = code.slice(0, ret.start);
@@ -446,6 +502,16 @@ async function requiresAsyncWrapper(code: string): Promise<boolean> {
 	return false;
 }
 
+/**
+ * Strip TypeScript syntax (type annotations, type-only imports/exports, `interface`, `as`,
+ * `satisfies`, generics in call expressions, etc.) before the import/lexical rewriters parse
+ * the code. Bun's native transpiler preserves `import`/`export` declarations, so downstream
+ * Babel rewrites still control module resolution.
+ *
+ * Eval cells use a cheap "looks like TS" heuristic to avoid transpiling ordinary JS. Known
+ * TypeScript modules pass `force` because a file can contain TS-only module syntax such as
+ * `import type` without any value-level type annotations.
+ */
 type TypeScriptStripLoader = "ts" | "tsx";
 
 const TS_TRANSPILER = new Bun.Transpiler({ loader: "ts" });
@@ -457,6 +523,8 @@ function stripTypeScript(code: string, options: { force?: boolean; loader?: Type
 		const transpiler = options.loader === "tsx" ? TSX_TRANSPILER : TS_TRANSPILER;
 		return transpiler.transformSync(code);
 	} catch {
+		// Transpiler failed (e.g. unrecoverable syntax). Hand the original source back so the
+		// downstream rewriter / VM surfaces the real error to the user.
 		return code;
 	}
 }
@@ -467,6 +535,9 @@ export function stripTypeScriptSyntax(
 	return stripTypeScript(code, options);
 }
 
+// Heuristic: obvious TS-only tokens, including type-only module syntax. Plain JS using `as`
+// only inside strings won't match because we require a leading word boundary plus a
+// colon/keyword neighbor.
 const LOOKS_LIKE_TS =
 	/(?:\bimport\s+type\b|\bexport\s+type\b|\b(?:import|export)\s*\{[^}\n]*\btype\s+\w|\binterface\s+\w|\btype\s+\w+\s*=|\b(?:as|satisfies)\s+(?:[A-Z]|\bconst\b)|:\s*(?:string|number|boolean|any|unknown|void|never|object|[A-Z]\w*)\b|<\s*[A-Z]\w*\s*[,>])/;
 

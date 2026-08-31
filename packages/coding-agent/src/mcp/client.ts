@@ -1,3 +1,9 @@
+/**
+ * MCP Client.
+ *
+ * Handles connection initialization, tool listing, and tool calling.
+ */
+
 import * as path from "node:path";
 import * as url from "node:url";
 import { errorMessage, getProjectDir, logger, withTimeout } from "@veyyon/utils";
@@ -35,11 +41,20 @@ import type {
 } from "./types";
 import { assertNoUnresolvedPlaceholder } from "./unresolved-placeholder";
 
+/** MCP protocol version we support */
+
+/** Client info sent during initialization */
 const CLIENT_INFO = {
 	name: "veyyon-coding-agent",
 	version: "1.0.0",
 };
 
+/**
+ * Default handler for standard MCP server-to-client requests.
+ * Handles `ping` and `roots/list`; rejects unknown methods with -32601.
+ * Reads getProjectDir() at call time so the root stays stable even if
+ * the process cwd changes during tool execution.
+ */
 async function defaultRequestHandler(method: string, _params: unknown): Promise<unknown> {
 	switch (method) {
 		case "ping":
@@ -60,6 +75,12 @@ async function defaultRequestHandler(method: string, _params: unknown): Promise<
 	}
 }
 
+/**
+ * Create a transport for the given server config.
+ *
+ * The placeholder guard runs first: nothing below it may spawn a process or dial a host with the
+ * text of an unset environment variable in place of a value.
+ */
 async function createTransport(config: MCPServerConfig): Promise<MCPTransport> {
 	assertNoUnresolvedPlaceholder(config);
 	const serverType = config.type ?? "stdio";
@@ -78,10 +99,14 @@ async function createTransport(config: MCPServerConfig): Promise<MCPTransport> {
 	}
 }
 
+/**
+ * Initialize connection with MCP server.
+ */
 async function initializeConnection(
 	transport: MCPTransport,
 	options?: {
 		signal?: AbortSignal;
+		/** Called after the initialize response (which sets the session ID) but before notifications/initialized. */
 		onInitialized?: () => void | Promise<void>;
 	},
 ): Promise<MCPInitializeResult> {
@@ -103,13 +128,22 @@ async function initializeConnection(
 		throw options.signal.reason instanceof Error ? options.signal.reason : new Error("Aborted");
 	}
 
+	// Hook point: the transport now has the session ID from the initialize response.
+	// For HTTP, this is the moment to open the SSE stream so server-to-client requests
+	// triggered by notifications/initialized (e.g. roots/list) can be delivered.
 	await options?.onInitialized?.();
 
+	// Send initialized notification
 	await transport.notify("notifications/initialized");
 
 	return result;
 }
 
+/**
+ * Connect to an MCP server.
+ * Has a 30 second timeout by default to prevent blocking startup.
+ * Set VEYYON_MCP_TIMEOUT_MS=0 to disable MCP client-side timeouts.
+ */
 export async function connectToServer(
 	name: string,
 	config: MCPServerConfig,
@@ -117,7 +151,9 @@ export async function connectToServer(
 		signal?: AbortSignal;
 		onNotification?: (method: string, params: unknown) => void;
 		onRequest?: (method: string, params: unknown) => Promise<unknown>;
+		/** Session CPU budget hook: a spawned stdio server's pid is handed here so it joins the session's budget group. */
 		onSpawnPid?: (pid: number) => void;
+		/** Session CPU budget gate: refuse the stdio spawn while the group is saturated or uncreated. */
 		beforeSpawn?: () => Promise<void>;
 	},
 ): Promise<MCPServerConnection> {
@@ -138,12 +174,17 @@ export async function connectToServer(
 			}
 		}
 
+		// Always handle standard MCP server-to-client requests (ping, roots/list).
+		// The initialize request declares roots capability, so we must respond to
+		// roots/list — even for short-lived test connections.
 		transport.onRequest = options?.onRequest ?? defaultRequestHandler;
 
 		try {
 			const initResult = await initializeConnection(transport, {
 				signal: options?.signal,
 				async onInitialized() {
+					// Open the SSE stream before sending initialized, so server-to-client
+					// requests triggered by on_initialized (e.g. roots/list) are delivered.
 					if ("startSSEListener" in transport! && typeof transport!.startSSEListener === "function") {
 						await (transport as { startSSEListener(): Promise<void> }).startSSEListener();
 					}
@@ -175,6 +216,8 @@ export async function connectToServer(
 			options?.signal,
 		);
 	} catch (error) {
+		// If withTimeout rejected (timeout/abort) while connect() was still pending,
+		// the transport may be alive with an open SSE listener. Close it.
 		if (transport) {
 			closeTransportDetached(transport, name, "connect-timeout");
 		}
@@ -182,14 +225,19 @@ export async function connectToServer(
 	}
 }
 
+/**
+ * List tools from a connected server.
+ */
 export async function listTools(
 	connection: MCPServerConnection,
 	options?: { signal?: AbortSignal },
 ): Promise<MCPToolDefinition[]> {
+	// Check if server supports tools
 	if (!connection.capabilities.tools) {
 		return [];
 	}
 
+	// Return cached tools if available
 	if (connection.tools) {
 		return connection.tools;
 	}
@@ -205,12 +253,19 @@ export async function listTools(
 			params.cursor = cursor;
 		}
 
+		// Deliberately NOT cast to the result type and spread. That cast is erased
+		// at runtime, so the old code trusted a third-party server's payload
+		// completely: a missing `tools` threw a bare TypeError, and a `tools` that
+		// was a string got spread into one nameless tool per character.
 		const raw = await connection.transport.request<unknown>("tools/list", params, options);
 		const page = validateToolListPage(raw, connection.name);
-		for (let ti = 0; ti < page.tools.length; ti++) allTools.push(page.tools[ti]!);
+		allTools.push(...page.tools);
 		cursor = page.nextCursor;
 		pages++;
 
+		// A server that answers every page with the same cursor otherwise loops
+		// forever, growing `allTools` until the process dies. No request timeout
+		// catches this, because each individual request answers promptly.
 		if (cursor && seenCursors.has(cursor)) {
 			logger.warn("MCP server repeated a pagination cursor; stopped listing its tools", {
 				path: `mcp:${connection.name}`,
@@ -231,11 +286,15 @@ export async function listTools(
 		}
 	} while (cursor);
 
+	// Cache tools
 	connection.tools = allTools;
 
 	return allTools;
 }
 
+/**
+ * Call a tool on a connected server.
+ */
 export async function callTool(
 	connection: MCPServerConnection,
 	toolName: string,
@@ -254,10 +313,26 @@ export async function callTool(
 	);
 }
 
+/**
+ * Disconnect from a server.
+ */
 export async function disconnectServer(connection: MCPServerConnection): Promise<void> {
 	await connection.transport.close();
 }
 
+/**
+ * Close a transport on a path that cannot report the close's own failure, in one place.
+ *
+ * The callers are all tearing a connection down: a connect that timed out with the transport possibly
+ * alive, a server being replaced by a reconnect, a reconnect abandoned because the manager was reset, a
+ * tool-list that failed after the handshake. Each either throws its own error, which is the one the
+ * operator needs, or is deliberately not awaited because a close can take the transport's full timeout
+ * (an HTTP DELETE at 30s by default) and blocking the reconnect loop on it is worse than not knowing.
+ *
+ * Not knowing is still the wrong default, because a close that fails leaves a zombie: an open SSE
+ * listener, or a stdio subprocess that outlives every reference to it. So the failure is reported with the
+ * server it belonged to, and the caller keeps its own control flow.
+ */
 export function closeTransportDetached(
 	transport: Pick<MCPServerConnection["transport"], "close">,
 	server: string,
@@ -272,10 +347,16 @@ export function closeTransportDetached(
 	});
 }
 
+/**
+ * Check if a server supports tools.
+ */
 export function serverSupportsTools(capabilities: MCPServerCapabilities): boolean {
 	return capabilities.tools !== undefined;
 }
 
+/**
+ * List resources from a connected server.
+ */
 export async function listResources(
 	connection: MCPServerConnection,
 	options?: { signal?: AbortSignal },
@@ -298,7 +379,7 @@ export async function listResources(
 		}
 
 		const result = await connection.transport.request<MCPResourcesListResult>("resources/list", params, options);
-		for (let ri = 0; ri < result.resources.length; ri++) allResources.push(result.resources[ri]!);
+		allResources.push(...result.resources);
 		cursor = result.nextCursor;
 	} while (cursor);
 
@@ -306,11 +387,23 @@ export async function listResources(
 	return allResources;
 }
 
+/** True when an error is a JSON-RPC "method not found" (-32601) response. */
 function isMethodNotFoundError(error: unknown): boolean {
 	const message = errorMessage(error);
 	return message.includes("-32601") || /method not found/i.test(message);
 }
 
+/**
+ * List resource templates from a connected server.
+ *
+ * A server MAY advertise the `resources` capability without implementing the
+ * optional `resources/templates/list` method (it is optional in the MCP spec).
+ * Such servers reject the request with JSON-RPC -32601 ("Method not found").
+ * Treat that as "no templates" and return `[]` rather than throwing — otherwise
+ * a caller that loads resources and templates together (see `MCPManager`'s
+ * `Promise.all([listResources, listResourceTemplates])`) would discard the
+ * server's concrete resources too. Any other error still propagates.
+ */
 export async function listResourceTemplates(
 	connection: MCPServerConnection,
 	options?: { signal?: AbortSignal },
@@ -338,10 +431,13 @@ export async function listResourceTemplates(
 				params,
 				options,
 			);
-			for (let ti = 0; ti < result.resourceTemplates.length; ti++) allTemplates.push(result.resourceTemplates[ti]!);
+			allTemplates.push(...result.resourceTemplates);
 			cursor = result.nextCursor;
 		} while (cursor);
 	} catch (error) {
+		// A server that doesn't implement the optional templates method answers
+		// -32601; cache an empty list so we neither retry nor let the failure
+		// bubble up and discard the server's concrete resources.
 		if (isMethodNotFoundError(error)) {
 			connection.resourceTemplates = [];
 			return [];
@@ -353,6 +449,9 @@ export async function listResourceTemplates(
 	return allTemplates;
 }
 
+/**
+ * Read a resource from a connected server.
+ */
 export async function readResource(
 	connection: MCPServerConnection,
 	uri: string,
@@ -366,6 +465,9 @@ export async function readResource(
 	);
 }
 
+/**
+ * Subscribe to resource update notifications.
+ */
 export async function subscribeToResources(
 	connection: MCPServerConnection,
 	uris: string[],
@@ -389,6 +491,9 @@ export async function subscribeToResources(
 	}
 }
 
+/**
+ * Unsubscribe from resource update notifications.
+ */
 export async function unsubscribeFromResources(
 	connection: MCPServerConnection,
 	uris: string[],
@@ -412,14 +517,23 @@ export async function unsubscribeFromResources(
 	}
 }
 
+/**
+ * Check if a server supports resource subscriptions.
+ */
 export function serverSupportsResourceSubscriptions(capabilities: MCPServerCapabilities): boolean {
 	return capabilities.resources?.subscribe === true;
 }
 
+/**
+ * Check if a server supports resources.
+ */
 export function serverSupportsResources(capabilities: MCPServerCapabilities): boolean {
 	return capabilities.resources !== undefined;
 }
 
+/**
+ * List prompts from a connected server.
+ */
 export async function listPrompts(
 	connection: MCPServerConnection,
 	options?: { signal?: AbortSignal },
@@ -442,7 +556,7 @@ export async function listPrompts(
 		}
 
 		const result = await connection.transport.request<MCPPromptsListResult>("prompts/list", params, options);
-		for (let pi = 0; pi < result.prompts.length; pi++) allPrompts.push(result.prompts[pi]!);
+		allPrompts.push(...result.prompts);
 		cursor = result.nextCursor;
 	} while (cursor);
 
@@ -450,6 +564,9 @@ export async function listPrompts(
 	return allPrompts;
 }
 
+/**
+ * Get a specific prompt from a connected server.
+ */
 export async function getPrompt(
 	connection: MCPServerConnection,
 	name: string,
@@ -468,6 +585,9 @@ export async function getPrompt(
 	);
 }
 
+/**
+ * Check if a server supports prompts.
+ */
 export function serverSupportsPrompts(capabilities: MCPServerCapabilities): boolean {
 	return capabilities.prompts !== undefined;
 }

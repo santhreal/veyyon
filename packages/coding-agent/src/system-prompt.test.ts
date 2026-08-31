@@ -450,7 +450,6 @@ describe.skipIf(process.platform !== "linux")("system prompt CPU model", () => {
 
 describe("non-Linux system prompt CPU model", () => {
 	it("includes the model returned by os.cpus", async () => {
-		__resetCpuStateForTests();
 		const originalPlatform = process.platform;
 		Object.defineProperty(process, "platform", { value: "darwin" });
 		__resetCpuStateForTests();
@@ -592,7 +591,7 @@ describe("system prompt cache prefix", () => {
 					hide: false,
 				},
 			],
-			toolNames: ["read", "bash", "task", "lsp", "ast_grep"],
+			toolNames: ["read", "bash", "task", "lsp", "search"],
 			model: "openai/gpt-5.6",
 			personality: "friendly",
 			eagerTasks: true,

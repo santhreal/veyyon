@@ -171,6 +171,18 @@ export function normalizeForFuzzy(line: string): string {
 	const trimmed = line.trim();
 	if (trimmed.length === 0) return "";
 
+	// Fold the same curly-quote and dash ranges as normalizeUnicode so straight
+	// and smart punctuation compare equal. The ranges cover the COMMON smart
+	// quotes (U+201C/U+201D “ ”, U+2018/U+2019 ‘ ’) that an earlier hand-listed
+	// class silently omitted, plus the low/reversed-9 variants, guillemets, and
+	// the full dash range including U+2015 ―. The final two passes reach whitespace
+	// parity with normalizeUnicode: strip the zero-width characters (U+200B–U+200D,
+	// U+FEFF) it removes, then collapse runs of ASCII space/tab AND the exotic
+	// spaces it folds (non-breaking U+00A0, en/em/thin/hair U+2002–U+200A, and the
+	// narrow/math/ideographic spaces U+202F/U+205F/U+3000) to a single space. Without
+	// this, a line spaced with a non-breaking or zero-width character failed to
+	// fuzzy-match its plain-ASCII twin even though normalizeUnicode treats them as
+	// equal — the same normalizer-parity gap the quote fix above closed.
 	return trimmed
 		.replace(/[“-‟«»]/g, '"')
 		.replace(/[‘-‛`´]/g, "'")

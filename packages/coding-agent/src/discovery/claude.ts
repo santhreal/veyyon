@@ -1,4 +1,9 @@
-/** Claude Code Provider Loads configuration from .claude directories. */
+/**
+ * Claude Code Provider
+ *
+ * Loads configuration from .claude directories.
+ * Priority: 80 (tool-specific, below builtin but above shared standards)
+ */
 import * as path from "node:path";
 import { isMissingPath, tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "../capability";
@@ -36,10 +41,22 @@ function getUserClaude(ctx: LoadContext): string {
 	return path.join(ctx.home, CONFIG_DIR);
 }
 
-/** Get project-level `.claude` path (cwd only). The ONLY thing this still resolves is `CLAUDE.md`, which is a context file: */
+/**
+ * Get project-level `.claude` path (cwd only).
+ *
+ * The ONLY thing this still resolves is `CLAUDE.md`, which is a context file:
+ * prose the model reads. Every other `.claude` surface a repository once
+ * supplied — hooks, tools, commands, skills, extensions, MCP servers and
+ * settings — is gone, because a checked-out working tree does not configure the
+ * agent.
+ */
 function getProjectClaude(ctx: LoadContext): string {
 	return path.join(ctx.cwd, CONFIG_DIR);
 }
+
+// =============================================================================
+// MCP Servers
+// =============================================================================
 
 async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> {
 	const items: MCPServer[] = [];
@@ -80,7 +97,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	for (let i = 0; i < allPaths.length; i++) {
 		const servers = parseMcpServers(contents[i], allPaths[i].path, allPaths[i].level);
 		if (servers.length > 0) {
-			for (let si = 0; si < servers.length; si++) items.push(servers[si]!);
+			items.push(...servers);
 			break;
 		}
 	}
@@ -88,7 +105,27 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	return { items, warnings };
 }
 
-/** Load CLAUDE.md context files. Scopes: a home-level layer emitted as `level: "user"` (`~/.claude/CLAUDE.md`) */
+// =============================================================================
+// Context Files (CLAUDE.md)
+// =============================================================================
+
+/**
+ * Load CLAUDE.md context files.
+ *
+ * Scopes: a home-level layer emitted as `level: "user"` (`~/.claude/CLAUDE.md`)
+ * and PROJECT (`<cwd>/.claude/CLAUDE.md`).
+ *
+ * GLOBAL and PROFILE scope do not apply. Claude Code has no profile concept, so
+ * there is no per-profile location to read, and veyyon's own global layer
+ * (`<globalConfigRoot>/AGENTS.md`) belongs to the native provider. The home-level
+ * file shares the capability's single home slot with the active profile's
+ * AGENTS.md and loses to it on priority (native 100 against this provider's 80),
+ * so it only applies when the profile has no instructions of its own and the
+ * user opted into `discovery.importForeignConfig`.
+ *
+ * The project scope is cwd-only, not a walk-up: this feeds the onboarding import
+ * scan, which is about the checkout the user is standing in.
+ */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
@@ -125,6 +162,10 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 	return { items, warnings };
 }
 
+// =============================================================================
+// Skills
+// =============================================================================
+
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const userSkillsDir = path.join(getUserClaude(ctx), "skills");
 
@@ -136,15 +177,18 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 	const warnings: string[] = [];
 
 	if (userResult.status === "fulfilled") {
-		for (let ii = 0; ii < userResult.value.items.length; ii++) items.push(userResult.value.items[ii]!);
-		const uw = userResult.value.warnings ?? [];
-		for (let wi = 0; wi < uw.length; wi++) warnings.push(uw[wi]!);
+		items.push(...userResult.value.items);
+		warnings.push(...(userResult.value.warnings ?? []));
 	} else if (!isMissingPath(userResult.reason)) {
 		warnings.push(`Failed to scan Claude user skills in ${userSkillsDir}: ${String(userResult.reason)}`);
 	}
 
 	return { items, warnings };
 }
+
+// =============================================================================
+// Extension Modules
+// =============================================================================
 
 async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<ExtensionModule>> {
 	const items: ExtensionModule[] = [];
@@ -176,7 +220,21 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 	return { items, warnings };
 }
 
-/** Whether Claude user commands (`~/.claude/commands/`) load. Falls back to true (current behavior) when settings are not initialized, */
+// =============================================================================
+// Slash Commands
+// =============================================================================
+
+/**
+ * Whether Claude user commands (`~/.claude/commands/`) load.
+ *
+ * Falls back to true (current behavior) when settings are not initialized,
+ * e.g. inside discovery unit tests that run without Settings.init().
+ *
+ * There is no project counterpart. A repo's `.claude/commands/` is repo-authored
+ * content and is not loaded at all, so a toggle for it would gate a branch that
+ * does not exist. One did: `commands.enableClaudeProject` was read here, returned,
+ * and dropped by the only caller, which destructures `enableUser` alone.
+ */
 function claudeUserCommandsEnabled(): boolean {
 	try {
 		return settings.get("commands.enableClaudeUser") ?? true;
@@ -205,7 +263,7 @@ function addClaudeCommandNamespaceAliases(commands: SlashCommand[], commandsDir:
 		aliases.push({ ...command, name: relativeName.replace(/[\\/]+/g, ":") });
 	}
 
-	return nestedCommands.length === 0 ? commands : rootCommands.concat(nestedCommands, aliases);
+	return nestedCommands.length === 0 ? commands : [...rootCommands, ...nestedCommands, ...aliases];
 }
 
 async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
@@ -229,15 +287,16 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 			}),
 		});
 
-		const aliases = addClaudeCommandNamespaceAliases(userResult.items, userCommandsDir);
-		for (let ai = 0; ai < aliases.length; ai++) items.push(aliases[ai]!);
-		if (userResult.warnings) {
-			for (let wi = 0; wi < userResult.warnings.length; wi++) warnings.push(userResult.warnings[wi]!);
-		}
+		items.push(...addClaudeCommandNamespaceAliases(userResult.items, userCommandsDir));
+		if (userResult.warnings) warnings.push(...userResult.warnings);
 	}
 
 	return { items, warnings };
 }
+
+// =============================================================================
+// Hooks
+// =============================================================================
 
 async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	const items: Hook[] = [];
@@ -272,14 +331,16 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	);
 
 	for (const result of results) {
-		for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
-		if (result.warnings) {
-			for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
-		}
+		items.push(...result.items);
+		if (result.warnings) warnings.push(...result.warnings);
 	}
 
 	return { items, warnings };
 }
+
+// =============================================================================
+// Custom Tools
+// =============================================================================
 
 async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
 	const items: DiscoveredCustomTool[] = [];
@@ -301,13 +362,15 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 		},
 	});
 
-	for (let ii = 0; ii < userResult.items.length; ii++) items.push(userResult.items[ii]!);
-	if (userResult.warnings) {
-		for (let wi = 0; wi < userResult.warnings.length; wi++) warnings.push(userResult.warnings[wi]!);
-	}
+	items.push(...userResult.items);
+	if (userResult.warnings) warnings.push(...userResult.warnings);
 
 	return { items, warnings };
 }
+
+// =============================================================================
+// Provider Registration
+// =============================================================================
 
 registerProvider<MCPServer>(mcpCapability.id, {
 	id: PROVIDER_ID,

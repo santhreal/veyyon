@@ -61,7 +61,8 @@ pathIgnorePatterns = [
   # about 1.9G, each with its own test suite. A root `bun test` walked into them
   # and reported their failures as ours — nine test files from a cached Effect
   # checkout, all failing on a dependency this repository does not install.
-  "packages/deepswe-bench/repo-cache/**",
+  "packages/evals/datasets/repo-cache/**",
+  "packages/evals/.cache/**",
   ".wt/**",
   ".worktrees/**",
 ]

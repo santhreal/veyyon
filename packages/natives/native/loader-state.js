@@ -1,9 +1,7 @@
-import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as zlib from "node:zlib";
 import packageJson from "../package.json" with { type: "json" };
 import { embeddedAddon } from "./embedded-addon.js";
 
@@ -99,6 +97,20 @@ function getNativesDir() {
 export function versionedNativeCacheDir(version) {
 	return path.join(getNativesDir(), version);
 }
+
+/**
+ * `node:child_process` and `node:zlib`, resolved on first use rather than imported.
+ *
+ * Every export of this package is a lazy accessor, so a consumer that imports `@veyyon/natives`
+ * for its types or its enum values loads no addon. Those two imports broke that promise for the
+ * platform layer: they were evaluated at import, and they are the two most expensive modules on the
+ * launch path, costing 2.0ms and 4.1ms of a 45ms first frame measured on compiled binaries against
+ * an empty baseline, for a subprocess probe and a gunzip that only `loadNative()` performs.
+ *
+ * `createRequire` rather than `require`, which is not defined in an ES module under Node, and
+ * rather than `await import()`, because both callers are synchronous.
+ */
+const requireRuntime = createRequire(import.meta.url);
 
 function resolveLeafPackageDir(platformTag) {
 	try {
@@ -430,7 +442,7 @@ function runCommand(command, args) {
 		}
 	}
 	try {
-		const result = childProcess.spawnSync(command, args, { encoding: "utf-8" });
+		const result = requireRuntime("node:child_process").spawnSync(command, args, { encoding: "utf-8" });
 		if (result.error) return null;
 		if (result.status !== 0) return null;
 		return (result.stdout || "").trim();
@@ -715,7 +727,7 @@ function trialLoadModernAddon() {
 	startupMarker(`native:avx2:trial:${addonPath}`);
 	let result;
 	try {
-		result = childProcess.spawnSync(process.execPath, ["-e", TRIAL_LOAD_SCRIPT], {
+		result = requireRuntime("node:child_process").spawnSync(process.execPath, ["-e", TRIAL_LOAD_SCRIPT], {
 			env: { ...process.env, VEYYON_TRIAL_ADDON_PATH: addonPath },
 			encoding: "utf-8",
 			timeout: 30_000,
@@ -831,18 +843,35 @@ function resolveCpuVariant(override) {
 	return result.variant;
 }
 
-function selectEmbeddedAddonFile(selectedVariant) {
-	if (!embeddedAddon) return null;
-	const defaultFile = embeddedAddon.files.find(file => file.variant === "default") || null;
-	if (process.arch !== "x64") return defaultFile || embeddedAddon.files[0] || null;
+/**
+ * Split the embedded addon variants into the one this host loads and the ones it
+ * does not, so a cold launch writes a single addon instead of every variant the
+ * binary carries.
+ *
+ * Pure and total: `selected` is null only when no variant is usable on `arch`,
+ * and `selected` plus `remaining` always partition `files` exactly, so a variant
+ * added to the bundle lands in one side or the other and never goes missing.
+ */
+export function planEmbeddedAddonExtraction({ files, arch, selectedVariant }) {
+	const selected = chooseEmbeddedAddonFile({ files, arch, selectedVariant });
+	const remaining = files.filter(file => file !== selected);
+	return { selected, remaining };
+}
+
+function chooseEmbeddedAddonFile({ files, arch, selectedVariant }) {
+	const defaultFile = files.find(file => file.variant === "default") || null;
+	if (arch !== "x64") return defaultFile || files[0] || null;
 	if (selectedVariant === "modern") {
 		return (
-			embeddedAddon.files.find(file => file.variant === "modern") ||
-			embeddedAddon.files.find(file => file.variant === "baseline") ||
-			null
+			files.find(file => file.variant === "modern") || files.find(file => file.variant === "baseline") || null
 		);
 	}
-	return embeddedAddon.files.find(file => file.variant === "baseline") || null;
+	return files.find(file => file.variant === "baseline") || null;
+}
+
+function selectEmbeddedAddonFile(selectedVariant) {
+	if (!embeddedAddon) return null;
+	return planEmbeddedAddonExtraction({ files: embeddedAddon.files, arch: process.arch, selectedVariant }).selected;
 }
 
 function readTarString(buffer, offset, length) {
@@ -918,7 +947,7 @@ export function extractEmbeddedAddonArchive({ archivePath, files, targetDir }) {
 	}
 	if (pending.size === 0) return [];
 
-	const archive = zlib.gunzipSync(fs.readFileSync(archivePath));
+	const archive = requireRuntime("node:zlib").gunzipSync(fs.readFileSync(archivePath));
 	const writtenPaths = [];
 	let offset = 0;
 
@@ -962,11 +991,35 @@ export function extractEmbeddedAddonArchive({ archivePath, files, targetDir }) {
 	return writtenPaths;
 }
 
-function maybeExtractEmbeddedAddon(ctx, errors) {
-	if (!ctx.isCompiledBinary || !embeddedAddon) return null;
-	if (embeddedAddon.platformTag !== ctx.platformTag || embeddedAddon.version !== ctx.packageVersion) return null;
+/**
+ * Extract the embedded addon this host will actually load, and only that one.
+ *
+ * `files` holds every variant the binary carries — on x64 that is `modern` AND
+ * `baseline`, about 130MB each. Extracting the pair wrote ~260MB on the first
+ * launch of a version, in front of the first frame, for a CPU that can use
+ * exactly one of them: measured on Linux x64, first byte at 410ms cold against
+ * 40ms warm. `selectCpuVariant` has already decided which one this is, so the
+ * other is written for nobody.
+ *
+ * The pair did buy one thing by accident: when the selected variant was present
+ * but unloadable, `loadFirstUsableAddon` walked on to the other and booted. That
+ * is preserved deliberately instead — {@link extractRemainingEmbeddedAddons} runs
+ * when the selected one fails, so the fallback costs a retry on a broken install
+ * rather than 130MB on every good one.
+ *
+ * `bundle` defaults to the generated {@link embeddedAddon}, which is null in the
+ * tree and rewritten by `scripts/embed-native.ts` for a binary. It is a parameter
+ * so the write set is observable without building one.
+ */
+export function maybeExtractEmbeddedAddon(ctx, errors, bundle = embeddedAddon) {
+	if (!ctx.isCompiledBinary || !bundle) return null;
+	if (bundle.platformTag !== ctx.platformTag || bundle.version !== ctx.packageVersion) return null;
 
-	const selectedEmbeddedFile = selectEmbeddedAddonFile(ctx.selectedVariant);
+	const { selected: selectedEmbeddedFile } = planEmbeddedAddonExtraction({
+		files: bundle.files,
+		arch: process.arch,
+		selectedVariant: ctx.selectedVariant,
+	});
 	if (!selectedEmbeddedFile) return null;
 	const targetPath = path.join(ctx.versionedDir, selectedEmbeddedFile.filename);
 
@@ -979,21 +1032,22 @@ function maybeExtractEmbeddedAddon(ctx, errors) {
 		return null;
 	}
 
-	if (embeddedAddon.archive) {
+	const archive = selectedEmbeddedFile.archive;
+	if (archive) {
 		try {
 			extractEmbeddedAddonArchive({
-				archivePath: embeddedAddon.archive.filePath,
-				files: embeddedAddon.files,
+				archivePath: archive.filePath,
+				files: [selectedEmbeddedFile],
 				targetDir: ctx.versionedDir,
 			});
 			if (isEmbeddedAddonFileCurrent(targetPath, selectedEmbeddedFile)) {
 				return targetPath;
 			}
-			errors.push(`embedded addon archive (${embeddedAddon.archive.filename}): missing ${selectedEmbeddedFile.filename}`);
+			errors.push(`embedded addon archive (${archive.filename}): missing ${selectedEmbeddedFile.filename}`);
 			return null;
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
-			errors.push(`embedded addon archive (${embeddedAddon.archive.filename}): ${message}`);
+			errors.push(`embedded addon archive (${archive.filename}): ${message}`);
 			return null;
 		}
 	}
@@ -1015,6 +1069,58 @@ function maybeExtractEmbeddedAddon(ctx, errors) {
 		errors.push(`embedded addon write (${selectedEmbeddedFile.filename}): ${message}`);
 		return null;
 	}
+}
+
+/**
+ * Extract the embedded variants {@link maybeExtractEmbeddedAddon} deliberately
+ * skipped, for the one case that needs them: the selected variant was extracted
+ * and would not load. Returns the newly written paths, newest candidate first,
+ * so the caller can retry the load against them.
+ *
+ * Cost lands only on an install that is already failing. A healthy launch never
+ * reaches this.
+ */
+export function extractRemainingEmbeddedAddons(ctx, errors, bundle = embeddedAddon) {
+	if (!ctx.isCompiledBinary || !bundle) return [];
+	if (bundle.platformTag !== ctx.platformTag || bundle.version !== ctx.packageVersion) return [];
+
+	const { remaining } = planEmbeddedAddonExtraction({
+		files: bundle.files,
+		arch: process.arch,
+		selectedVariant: ctx.selectedVariant,
+	});
+	if (remaining.length === 0) return [];
+
+	startupMarker("native:extractRemainingEmbeddedAddons:start");
+	const written = [];
+	for (const file of remaining) {
+		const targetPath = path.join(ctx.versionedDir, file.filename);
+		if (isEmbeddedAddonFileCurrent(targetPath, file)) continue;
+		if (file.archive) {
+			try {
+				written.push(
+					...extractEmbeddedAddonArchive({
+						archivePath: file.archive.filePath,
+						files: [file],
+						targetDir: ctx.versionedDir,
+					}),
+				);
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				errors.push(`embedded addon fallback (${file.archive.filename}): ${message}`);
+			}
+			continue;
+		}
+		if (!file.filePath) continue;
+		try {
+			fs.writeFileSync(targetPath, fs.readFileSync(file.filePath));
+			written.push(targetPath);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			errors.push(`embedded addon fallback write (${file.filename}): ${message}`);
+		}
+	}
+	return written;
 }
 
 /**
@@ -1064,7 +1170,7 @@ let warnedStaleWorkspaceNative = false;
 
 /**
  * The export name the Rust addon emits for `version`, e.g. `1.0.14` ->
- * `__veyyonNativesV1_2_0`. `scripts/release.ts` bumps this name in lock-step
+ * `__veyyonNativesV1_3_0`. `scripts/release.ts` bumps this name in lock-step
  * with the package version, so a `.node` from another release physically cannot
  * expose the symbol this loader looks for. Exported so the version<->sentinel
  * contract can be pinned by a test (the workspace/test env skips the runtime
@@ -1395,14 +1501,67 @@ let loadedNativeBindings;
  */
 let nativeLoadFailure;
 
-/** Load the native addon once (memoized), or throw loudly if it cannot load. */
-export function native() {
+/**
+ * The `code` stamped on every failure that means "this process has no usable
+ * native addon": no `.node` on any candidate path, a GLIBC too old for the one
+ * that shipped, or a copy built for another release.
+ *
+ * It exists so a caller can tell an unavailable addon from a scan that found
+ * nothing. Without it, a directory listing that caught this failure and
+ * returned an empty tree reported an EMPTY WORKSPACE for a full checkout, and
+ * the agent reading that listing searched for a repository it was already
+ * standing in.
+ */
+export const NATIVE_ADDON_UNAVAILABLE_CODE = "VEYYON_NATIVE_ADDON_UNAVAILABLE";
+
+/**
+ * Stamp `NATIVE_ADDON_UNAVAILABLE_CODE` on a load failure and return the same
+ * error, so the memoized failure and the thrown one are one object.
+ *
+ * @param {unknown} error
+ * @returns {unknown}
+ */
+export function markNativeAddonUnavailable(error) {
+	if (error !== null && typeof error === "object") {
+		/** @type {{ code?: unknown }} */ (error).code = NATIVE_ADDON_UNAVAILABLE_CODE;
+	}
+	return error;
+}
+
+/**
+ * True when this error means the native addon could not be loaded at all, so a
+ * result derived from a native call carries no information about the
+ * filesystem and must never be reported as a finding.
+ *
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+export function isNativeAddonUnavailable(error) {
+	return (
+		error !== null &&
+		typeof error === "object" &&
+		/** @type {{ code?: unknown }} */ (error).code === NATIVE_ADDON_UNAVAILABLE_CODE
+	);
+}
+
+/**
+ * Load the native addon once (memoized), or throw loudly if it cannot load.
+ *
+ * `trigger` names the export whose first call is pulling the addon in, for the
+ * `native:firstCall:<name>` marker. On a cold cache the load extracts an addon
+ * before it can return, so which call arrives first decides whether that cost
+ * lands in front of the first frame or behind it; the marker is the only way to
+ * see that from outside.
+ * @param {string} [trigger]
+ */
+export function native(trigger) {
 	if (nativeLoadFailure !== undefined) throw nativeLoadFailure;
 	if (loadedNativeBindings === undefined) {
+		if (trigger) startupMarker(`native:firstCall:${trigger}`);
 		try {
 			loadedNativeBindings = loadNative();
 		} catch (error) {
-			nativeLoadFailure = error ?? new Error("The native addon failed to load.");
+			nativeLoadFailure = markNativeAddonUnavailable(error ?? new Error("The native addon failed to load."));
 			throw nativeLoadFailure;
 		}
 	}
@@ -1428,7 +1587,7 @@ export function lazyNativeFn(name) {
 	let fn;
 	return (...args) => {
 		if (fn === undefined) {
-			const resolved = native()[name];
+			const resolved = native(name)[name];
 			if (typeof resolved !== "function") {
 				throw new TypeError(`@veyyon/natives export "${name}" is not a native function`);
 			}
@@ -1450,13 +1609,13 @@ export function lazyNativeClass(name) {
 	return /** @type {new (...args: unknown[]) => unknown} */ (
 		new Proxy(function () {}, {
 			construct(_target, args) {
-				return Reflect.construct(/** @type {new (...a: unknown[]) => object} */ (native()[name]), args);
+				return Reflect.construct(/** @type {new (...a: unknown[]) => object} */ (native(name)[name]), args);
 			},
 			get(_target, prop, receiver) {
-				return Reflect.get(/** @type {object} */ (native()[name]), prop, receiver);
+				return Reflect.get(/** @type {object} */ (native(name)[name]), prop, receiver);
 			},
 			has(_target, prop) {
-				return Reflect.has(/** @type {object} */ (native()[name]), prop);
+				return Reflect.has(/** @type {object} */ (native(name)[name]), prop);
 			},
 		})
 	);
@@ -1472,12 +1631,20 @@ export function lazyNativeClass(name) {
  * the binary in front of us, and quietly loading a different one is how "my rebuild had no effect"
  * happens with nothing in the log to explain it.
  *
+ * A GLIBC or GLIBCXX version mismatch is classified `"incompatible"` rather than `"broken"`: the
+ * binary is intact, the host's C library is too old. This is an environment limitation (common in
+ * DeepSWE containers that ship older GLIBC), not a stale rebuild, so the "stale binary" warning is
+ * both misleading and noise. The error is still collected in the errors list so the aggregate throw
+ * names it if every candidate fails; only the per-candidate warning is suppressed.
+ *
  * @param {unknown} error
- * @returns {"absent" | "broken"}
+ * @returns {"absent" | "incompatible" | "broken"}
  */
 export function classifyCandidateFailure(error) {
 	const code = /** @type {{ code?: unknown }} */ (error)?.code;
 	if (code === "MODULE_NOT_FOUND" || code === "ENOENT") return "absent";
+	const message = error instanceof Error ? error.message : String(error ?? "");
+	if (/GLIBC[A-Z]*_\d+\.\d+.*not found/.test(message)) return "incompatible";
 	return "broken";
 }
 
@@ -1551,28 +1718,42 @@ export function loadNative() {
 	const prepended = [embeddedCandidate, stagedCandidate].filter(c => typeof c === "string");
 	const runtimeCandidates = prepended.length > 0 ? [...prepended, ...ctx.candidates] : ctx.candidates;
 
-	const { bindings, errors } = loadFirstUsableAddon({
-		candidates: runtimeCandidates,
-		initialErrors: setupErrors,
-		requireAddon: candidate => {
-			// The RESOLVED path, not the basename. The extracted cache copy under
-			// ~/.veyyon/natives/<version>/ and a fresh in-tree build have the same file name, so a
-			// basename marker read identically for both and a developer chasing "my rebuild had no
-			// effect" had nothing to go on. Answering "which binary am I actually running" has to
-			// take one line.
-			startupMarker(`native:require:${path.resolve(candidate)}`);
-			return require_(candidate);
-		},
-		validate: (loaded, candidate) => validateLoadedBindings(ctx, loaded, candidate),
-		onBrokenAddon: skipped => {
-			startupMarker(`native:skippedBrokenAddon:${path.resolve(skipped.candidate)}`);
-			try {
-				fs.writeSync(2, brokenAddonSkippedMessage(skipped));
-			} catch {
-				// stderr unavailable; the warning is best-effort but must never break the load.
-			}
-		},
-	});
+	const attemptLoad = (candidates, initialErrors) =>
+		loadFirstUsableAddon({
+			candidates,
+			initialErrors,
+			requireAddon: candidate => {
+				// The RESOLVED path, not the basename. The extracted cache copy under
+				// ~/.veyyon/natives/<version>/ and a fresh in-tree build have the same file name, so a
+				// basename marker read identically for both and a developer chasing "my rebuild had no
+				// effect" had nothing to go on. Answering "which binary am I actually running" has to
+				// take one line.
+				startupMarker(`native:require:${path.resolve(candidate)}`);
+				return require_(candidate);
+			},
+			validate: (loaded, candidate) => validateLoadedBindings(ctx, loaded, candidate),
+			onBrokenAddon: skipped => {
+				startupMarker(`native:skippedBrokenAddon:${path.resolve(skipped.candidate)}`);
+				try {
+					fs.writeSync(2, brokenAddonSkippedMessage(skipped));
+				} catch {
+					// stderr unavailable; the warning is best-effort but must never break the load.
+				}
+			},
+		});
+
+	let { bindings, errors } = attemptLoad(runtimeCandidates, setupErrors);
+
+	// Only the selected CPU variant was extracted, so a variant that is present but unloadable no
+	// longer has a sibling on disk to walk on to. Write the siblings now and retry once: the 130MB
+	// is spent on the install that needs it instead of on every install that does not.
+	if (bindings === undefined && embeddedCandidate) {
+		const fallbackCandidates = extractRemainingEmbeddedAddons(ctx, errors);
+		if (fallbackCandidates.length > 0) {
+			({ bindings, errors } = attemptLoad(fallbackCandidates, errors));
+		}
+	}
+
 	if (bindings !== undefined) {
 		installNativeTokioRuntime(bindings);
 		// Disk housekeeping is not a reason for a launch to wait. The prune is handed to the event

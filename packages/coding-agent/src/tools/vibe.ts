@@ -1,22 +1,82 @@
+/**
+ * Vibe mode tools — the director's entire non-read surface.
+ *
+ * Five thin tools over {@link VibeSessionRegistry}: spawn/send/wait/kill/list
+ * persistent worker sessions ("fast"/"good" CLIs). Spawns and sends return
+ * immediately; turn results self-deliver through the async job manager.
+ *
+ * The TUI renderers lean into the "you are driving little CLIs" fiction:
+ * spawn/send draw a mini composer (a message typed into a tiny Claude-Code-like
+ * terminal), and wait/list draw the "TV wall" — one live screen per worker,
+ * stacked, each showing its tool calls and streamed text as it works.
+ */
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import { formatCount, prompt } from "@veyyon/utils";
+import { type } from "arktype";
 import { toolsPrompts } from "../prompts/tools/rows";
-import { VibeSessionRegistry, type VibeWaitOutcome } from "../vibe/runtime";
-import type { Tool, ToolSession } from "./index";
-import type { VibeToolDetails } from "./vibe-helpers";
+import { MAIN_AGENT_ID } from "../registry/agent-registry";
 import {
-	screensOf,
-	textResult,
-	vibeKillSchema,
-	vibeListSchema,
-	vibeSendSchema,
-	vibeSpawnSchema,
-	vibeWaitSchema,
-} from "./vibe-helpers";
+	type VibeCli,
+	type VibeKillOutcome,
+	type VibeScreenSnapshot,
+	type VibeSendOutcome,
+	VibeSessionRegistry,
+	type VibeWaitOutcome,
+} from "../vibe/runtime";
+import type { Tool, ToolSession } from "./index";
 
-export type { VibeOp } from "./vibe-helpers";
-export { VIBE_TOOL_NAMES } from "./vibe-helpers";
-export type { VibeToolDetails };
+export const VIBE_TOOL_NAMES = ["vibe_spawn", "vibe_send", "vibe_wait", "vibe_kill", "vibe_list"] as const;
+
+const vibeSpawnSchema = type({
+	cli: type("'fast' | 'good'").describe(
+		"worker flavor: fast = low-latency model for mechanical work; good = strong model for hard work",
+	),
+	"name?": type("string <= 48").describe("optional session name; generated when omitted"),
+	prompt: type("string > 0").describe("first instruction; the worker starts with no other context"),
+});
+
+const vibeSendSchema = type({
+	session: type("string > 0").describe("session id from vibe_spawn / vibe_list"),
+	message: type("string > 0").describe("message for the session; steers mid-turn, else runs as its next turn"),
+});
+
+const vibeWaitSchema = type({
+	"sessions?": type("string[]").describe("session ids to watch; omit to watch every session with a turn in flight"),
+	"timeout?": type("number > 0").describe("max seconds to wait (default 30)"),
+});
+
+const vibeKillSchema = type({
+	session: type("string > 0").describe("session id to terminate"),
+});
+
+const vibeListSchema = type({});
+
+export type VibeOp = "spawn" | "send" | "wait" | "kill" | "list";
+
+/** Details payload shared by every vibe tool for TUI rendering. */
+export interface VibeToolDetails {
+	op: VibeOp;
+	/** Live TV-wall snapshot of the owner's worker sessions at (or during) the call. */
+	screens: VibeScreenSnapshot[];
+	spawned?: { id: string; cli: VibeCli; jobId: string };
+	send?: VibeSendOutcome;
+	wait?: {
+		settled: Array<{ id: string; jobId: string; status: "completed" | "failed" | "cancelled" }>;
+		stillRunning: string[];
+		timedOut: boolean;
+		/** True on interim progress emissions while the wait is still blocking. */
+		waiting?: boolean;
+	};
+	killed?: VibeKillOutcome;
+}
+
+function screensOf(session: ToolSession, ids?: string[]): VibeScreenSnapshot[] {
+	return VibeSessionRegistry.global().screens(session.getAgentId?.() ?? MAIN_AGENT_ID, ids);
+}
+
+function textResult(text: string, details: VibeToolDetails): AgentToolResult<VibeToolDetails> {
+	return { content: [{ type: "text", text }], details };
+}
 
 export class VibeSpawnTool implements AgentTool<typeof vibeSpawnSchema, VibeToolDetails> {
 	readonly name = "vibe_spawn";
@@ -85,6 +145,8 @@ export class VibeWaitTool implements AgentTool<typeof vibeWaitSchema, VibeToolDe
 		onUpdate?: AgentToolUpdateCallback<VibeToolDetails>,
 	): Promise<AgentToolResult<VibeToolDetails>> {
 		const registry = VibeSessionRegistry.global();
+		// Live TV-wall frames while the wait blocks: each tick re-snapshots the
+		// watched workers so their tool calls and streamed text play in place.
 		const emitProgress = (): void => {
 			onUpdate?.({
 				content: [{ type: "text", text: "" }],
@@ -130,6 +192,7 @@ export class VibeWaitTool implements AgentTool<typeof vibeWaitSchema, VibeToolDe
 			lines.push("Wait window elapsed before any turn settled — re-issue vibe_wait to keep waiting.");
 		}
 		const result = textResult(lines.join("\n").trimEnd(), details);
+		// A pure "still waiting" frame is noise once a newer wait exists.
 		return outcome.settled.length === 0 ? { ...result, useless: true } : result;
 	}
 }
@@ -189,6 +252,7 @@ export class VibeListTool implements AgentTool<typeof vibeListSchema, VibeToolDe
 	}
 }
 
+/** Creates the ephemeral tools installed while `/vibe` mode is active. */
 export function createVibeTools(session: ToolSession): Tool[] {
 	return [
 		new VibeSpawnTool(session),
@@ -199,4 +263,7 @@ export function createVibeTools(session: ToolSession): Tool[] {
 	];
 }
 
+// The TUI renderer lives in `vibe-render.ts` (light module, boot-path safe);
+// re-exported here so the library surface (`export * from "./tools/vibe"`)
+// and existing importers keep working.
 export { createVibeToolRenderer } from "./vibe-render";

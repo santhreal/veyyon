@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veyyon.dev/schemas/deepswe-replay-manifest-v1.json",
+  "title": "DeepSWE real-session compaction replay manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "model",
+    "source_session_id",
+    "source_session_artifacts",
+    "repository_checkpoint",
+    "repository_checkpoint_sha256",
+    "compaction_checkpoint",
+    "user_turns",
+    "held_out_continuation"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "model": { "const": "google-antigravity/gemini-3.6-flash" },
+    "source_session_id": { "type": "string", "minLength": 1 },
+    "source_session_artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "pattern": "^/" }
+    },
+    "repository_checkpoint": { "type": "string", "pattern": "^/" },
+    "repository_checkpoint_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "compaction_checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "after_user_turn",
+        "source_boundary_id",
+        "source_threshold_tokens",
+        "source_context_tokens"
+      ],
+      "properties": {
+        "after_user_turn": { "type": "integer", "minimum": 1 },
+        "source_boundary_id": { "type": "string", "minLength": 1 },
+        "source_threshold_tokens": { "type": "integer", "minimum": 1 },
+        "source_context_tokens": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "user_turns": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "content"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "content": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "held_out_continuation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "content"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "content": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

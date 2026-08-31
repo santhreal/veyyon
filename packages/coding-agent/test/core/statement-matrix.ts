@@ -23,12 +23,10 @@ const ALL_TOOLS = [
 	"edit",
 	"write",
 	"lsp",
-	"grep",
-	"glob",
+	"search",
 	"bash",
 	"inspect_image",
 	"report_tool_issue",
-	"ast_grep",
 	"ast_edit",
 ];
 
@@ -125,7 +123,7 @@ export const MATRIX: readonly { readonly label: string; readonly context: Record
 		},
 	},
 	{ label: "a language server and nothing else", context: { tools: ["lsp"], toolRefs: TOOL_REFS } },
-	{ label: "structural search only", context: { tools: ["ast_grep"], toolRefs: TOOL_REFS } },
+	{ label: "unified search only", context: { tools: ["search"], toolRefs: TOOL_REFS } },
 	{ label: "structural edit only", context: { tools: ["ast_edit"], toolRefs: TOOL_REFS } },
 	{ label: "the tool-issue reporter only", context: { tools: ["report_tool_issue"], toolRefs: TOOL_REFS } },
 	{

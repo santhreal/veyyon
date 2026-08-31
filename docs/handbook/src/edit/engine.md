@@ -4,7 +4,7 @@ Default edit mode is **hashline** (`edit.mode: hashline` in `config.yml`), imple
 `@veyyon/hashline`.
 
 Veyyon applies file changes through the **`edit`** tool (hashline patch language by default). The
-model copies `[PATH#TAG]` anchors from `read` / `grep` / `write` output, then emits `SWAP`, `DEL`,
+model copies `[PATH#TAG]` anchors from `read` / `search` / `write` output, then emits `SWAP`, `DEL`,
 and `INS` operations against numbered lines. Snapshot tags detect stale anchors and drive recovery.
 
 Alternate modes (`apply_patch`, `patch`, `replace`) exist for compatibility; hashline is the
@@ -12,7 +12,7 @@ default and the path Veyyon optimizes for.
 
 ## How a hashline edit works
 
-1. **`read` or `grep`** records a whole-file snapshot and prints `[relative/path#TAG]` plus
+1. **`read` or `search`** records a whole-file snapshot and prints `[relative/path#TAG]` plus
    `LINE:content` rows (`TAG` is a four-hex snapshot id).
 2. The model sends **`edit`** with an `input` string: one or more `[PATH#TAG]` sections and hashline
    ops (`SWAP N.=M:`, `DEL N.=M`, `INS.PRE N:` / `INS.POST N:` / `INS.HEAD` / `INS.TAIL`, block ops
@@ -37,7 +37,7 @@ default and the path Veyyon optimizes for.
 
 - User guide: [Editing and repair](../using/editing.md)
 - Tool contract: [`docs/tools/edit.md`](../../../tools/edit.md)
-- Read/grep anchors: [`docs/tools/read.md`](../../../tools/read.md), [`docs/tools/grep.md`](../../../tools/grep.md)
+- Read/search anchors: [`docs/tools/read.md`](../../../tools/read.md), [`docs/tools/search.md`](../../../tools/search.md)
 - Settings: `edit.mode` in [`docs/handbook/src/reference/settings.md`](../reference/settings.md)
 
 There is no `veyyon-edit` Rust crate, no V4A-only write path, and no `make_update_patch` envelope

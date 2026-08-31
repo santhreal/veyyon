@@ -1,12 +1,24 @@
+// Building the corpus the generator learns from: which project files to read,
+// how much of each, and how to keep it bounded and deterministic. This is codec
+// quality, not harness plumbing — the generator ranks a handle by how central a
+// string is (how many distinct files reference it), so what content it sees
+// decides which handles exist. Every harness must gather the corpus the SAME
+// way or its dictionaries diverge, so the policy lives here, once, and a harness
+// supplies only the raw file access it owns (git, the filesystem).
+
 import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { RepoFile } from "./generate.js";
 
+/** Read at most this many bytes from any single file; a longer file is truncated to this prefix. */
 export const MAX_FILE_CONTENT_BYTES = 128 * 1024;
+/** Stop reading content once this many total bytes are scanned; remaining files enter path-only. */
 export const TOTAL_CONTENT_BUDGET_BYTES = 8 * 1024 * 1024;
+/** Upper bound on files gathered from a non-git walk, so a huge tree cannot stall startup. */
 export const WALK_FILE_CAP = 5000;
 
+/** Directory/entry names skipped by the non-git walk: VCS, dependencies, and build output. */
 export const WALK_IGNORE_NAMES: ReadonlySet<string> = new Set([
 	".git",
 	"node_modules",
@@ -17,6 +29,12 @@ export const WALK_IGNORE_NAMES: ReadonlySet<string> = new Set([
 	"vendor",
 ]);
 
+/**
+ * Exact basenames whose content is never scanned: machine-generated lockfiles.
+ * They are enormous, repeat identical lines thousands of times, and a model never
+ * retypes them, so their content is pure noise for handle selection. The path
+ * itself still enters as a candidate.
+ */
 export const CONTENT_SKIP_BASENAMES: ReadonlySet<string> = new Set([
 	"Cargo.lock",
 	"package-lock.json",
@@ -32,6 +50,11 @@ export const CONTENT_SKIP_BASENAMES: ReadonlySet<string> = new Set([
 	"deno.lock",
 ]);
 
+/**
+ * Suffixes whose content is never scanned: assets, fonts, archives, images,
+ * source maps, and pre-minified bundles. None are strings a model re-emits, and
+ * many are binary. Matched case-insensitively against the path suffix.
+ */
 export const CONTENT_SKIP_SUFFIXES: readonly string[] = [
 	".lock",
 	".lockb",
@@ -70,6 +93,28 @@ export const CONTENT_SKIP_SUFFIXES: readonly string[] = [
 	".snap",
 ];
 
+/**
+ * A recall-preserving degrade the corpus builder took, surfaced so the harness
+ * can log it (never a silent truncation). Each case leaves the generated
+ * dictionary correct but built from fewer signals, so the harness must be able to
+ * see it happened rather than silently ship a thinner dictionary.
+ *
+ * - `content-budget-reached`: the total content budget was hit, so the remaining
+ *   files are ranked on their path alone.
+ * - `unreadable-files-skipped`: some listed files could not be read (permissions,
+ *   a race, a dangling symlink), so they contribute their path but no content
+ *   signal. Reported once with a count, not per file, so a widespread permissions
+ *   problem is visible instead of leaving the dictionary silently path-ranked.
+ * - `walk-file-cap-reached`: a non-git project tree had more than
+ *   {@link WALK_FILE_CAP} files, so the listing was truncated and the rest of the
+ *   tree contributes no handles. Without this notice a huge tree would look fully
+ *   covered when it was not.
+ * - `unreadable-directory-skipped`: a directory could not be read while walking a
+ *   non-git project (permissions, a race, a broken symlink), so its whole subtree
+ *   is absent from the corpus. When `isRoot` is true the project root itself was
+ *   unreadable and the listing is empty, which is a total silent recall loss this
+ *   notice makes loud.
+ */
 export type CorpusNotice =
 	| {
 			code: "content-budget-reached";
@@ -92,6 +137,7 @@ export type CorpusNotice =
 			data: { path: string; isRoot: boolean };
 	  };
 
+/** Whether a path's content should be scanned for centrality, or only the path itself proposed. */
 export function shouldScanContent(relPath: string): boolean {
 	const slash = relPath.lastIndexOf("/");
 	const base = slash === -1 ? relPath : relPath.slice(slash + 1);
@@ -103,12 +149,27 @@ export function shouldScanContent(relPath: string): boolean {
 	return true;
 }
 
+/**
+ * Turn repo-relative paths into {@link RepoFile}s carrying bounded content, so
+ * the generator ranks handles by document-frequency centrality rather than by
+ * path length alone.
+ *
+ * Every path always enters as a candidate. For source-like files (see
+ * {@link shouldScanContent}) up to {@link MAX_FILE_CONTENT_BYTES} is read,
+ * stopping altogether once the run has scanned {@link TOTAL_CONTENT_BUDGET_BYTES}.
+ * Content with an embedded NUL byte is treated as binary and dropped to
+ * path-only. When the total budget is reached, the remaining files enter
+ * path-only and `onNotice` is called (never a silent truncation).
+ *
+ * Paths are sorted first so the same repository state always reads the same
+ * prefix under the budget, keeping the generated dictionary deterministic.
+ */
 export async function gatherRepoFiles(
 	root: string,
 	paths: readonly string[],
 	onNotice?: (notice: CorpusNotice) => void,
 ): Promise<RepoFile[]> {
-	const sorted = paths.slice().sort();
+	const sorted = [...paths].sort();
 	const files: RepoFile[] = [];
 	let scannedBytes = 0;
 	let budgetHit = false;
@@ -133,6 +194,11 @@ export async function gatherRepoFiles(
 				scannedBytes += slice.byteLength;
 			}
 		} catch {
+			// Unreadable file (permissions, race, symlink to nowhere): fall back to
+			// path-only for this entry. The path still contributes a candidate, but the
+			// content signal is lost, so count it and surface the total below rather
+			// than swallow it. A NUL-byte (binary) file is NOT counted here: it is
+			// intentionally path-only, not a failure.
 			content = undefined;
 			unreadable++;
 		}
@@ -146,6 +212,9 @@ export async function gatherRepoFiles(
 			data: { budgetBytes: TOTAL_CONTENT_BUDGET_BYTES, totalFiles: sorted.length },
 		});
 	}
+	// One aggregate notice, not one per file: a permissions problem that makes many
+	// listed files unreadable would otherwise be invisible, leaving the dictionary
+	// ranked on paths alone with no signal that content was missing.
 	if (unreadable > 0 && onNotice !== undefined) {
 		onNotice({
 			code: "unreadable-files-skipped",
@@ -156,6 +225,20 @@ export async function gatherRepoFiles(
 	return files;
 }
 
+/**
+ * List a project's files by walking the tree, for a project with no git index
+ * (opted in with a bare `.argot` marker). Bounded by {@link WALK_FILE_CAP} and
+ * ignoring VCS, dependency, and build-output directories ({@link WALK_IGNORE_NAMES})
+ * plus dotfiles other than `.argot`. Returns repo-relative paths;
+ * {@link gatherRepoFiles} reads their bounded content. For a git project use the
+ * harness's `git ls-files` instead, which respects `.gitignore`.
+ *
+ * Both ways the listing can come back incomplete are surfaced through `onNotice`
+ * rather than swallowed: reaching {@link WALK_FILE_CAP} (the tree is truncated) and
+ * an unreadable directory (its subtree is absent). A failed read of the root emits
+ * a notice with `isRoot: true`, because an empty listing there would otherwise be a
+ * silent, total recall loss. The walk still returns whatever it did reach.
+ */
 export async function walkProjectTree(root: string, onNotice?: (notice: CorpusNotice) => void): Promise<string[]> {
 	const out: string[] = [];
 	const stack: string[] = [""];
@@ -191,6 +274,8 @@ export async function walkProjectTree(root: string, onNotice?: (notice: CorpusNo
 			}
 		}
 	}
+	// The while loop can also stop with directories still queued once the cap is
+	// reached; either way the tree was truncated and the rest contributes nothing.
 	if (capHit || stack.length > 0) {
 		onNotice?.({
 			code: "walk-file-cap-reached",

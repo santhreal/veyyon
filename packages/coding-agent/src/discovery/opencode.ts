@@ -1,4 +1,20 @@
-/** OpenCode Discovery Provider Loads configuration from OpenCode's config directories: */
+/**
+ * OpenCode Discovery Provider
+ *
+ * Loads configuration from OpenCode's config directories:
+ * - User: ~/.config/opencode/
+ * - Project: .opencode/ (cwd) and opencode.json (project root)
+ *
+ * Capabilities:
+ * - context-files: AGENTS.md (user-level only at ~/.config/opencode/AGENTS.md)
+ * - mcps: From opencode.json "mcp" key
+ * - settings: From opencode.json
+ * - skills: From skills/ subdirectories
+ * - slash-commands: From commands/ subdirectories
+ * - extension-modules: From plugins/ subdirectories
+ *
+ * Priority: 55 (tool-specific provider)
+ */
 
 import { isRecord, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "../capability";
@@ -27,6 +43,10 @@ const PROVIDER_ID = "opencode";
 const DISPLAY_NAME = "OpenCode";
 const PRIORITY = 55;
 
+// =============================================================================
+// JSON Config Loading
+// =============================================================================
+
 async function loadJsonConfig(configPath: string): Promise<Record<string, unknown> | null> {
 	const content = await readFile(configPath);
 	if (!content) return null;
@@ -39,7 +59,24 @@ async function loadJsonConfig(configPath: string): Promise<Record<string, unknow
 	return parsed;
 }
 
-/** Load OpenCode context files. Scopes: a home-level layer only, emitted as `level: "user"` */
+// =============================================================================
+// Context Files (AGENTS.md)
+// =============================================================================
+
+/**
+ * Load OpenCode context files.
+ *
+ * Scopes: a home-level layer only, emitted as `level: "user"`
+ * (`~/.config/opencode/AGENTS.md`).
+ *
+ * PROFILE scope does not apply: OpenCode has no profile concept, so there is no
+ * per-profile file to read, and the home-level file loses veyyon's single home
+ * slot to a real profile AGENTS.md on priority (native 100 against 55). GLOBAL
+ * scope does not apply either: that layer is veyyon's own
+ * `<globalConfigRoot>/AGENTS.md`, owned by the native provider. PROJECT scope is
+ * absent from the OpenCode convention, which keeps its AGENTS.md under the
+ * user's XDG config directory rather than in the checkout.
+ */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
@@ -60,6 +97,10 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 
 	return { items, warnings };
 }
+
+// =============================================================================
+// MCP Servers (opencode.json → mcp)
+// =============================================================================
 
 /** OpenCode MCP server config (from opencode.json "mcp" key) */
 interface OpenCodeMCPConfig {
@@ -100,7 +141,7 @@ function normalizeCommand(
 	const configuredArgs = stringArray(argsValue);
 	if (Array.isArray(commandValue)) {
 		const [command, ...commandArgs] = commandValue;
-		const args = configuredArgs ? commandArgs.concat(configuredArgs) : commandArgs;
+		const args = configuredArgs ? [...commandArgs, ...configuredArgs] : commandArgs;
 		return {
 			command: typeof command === "string" ? command : undefined,
 			args: args.length > 0 ? args : undefined,
@@ -123,10 +164,8 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 		const config = await loadJsonConfig(userConfigPath);
 		if (config) {
 			const result = extractMCPServers(config, userConfigPath);
-			for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
-			if (result.warnings) {
-				for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
-			}
+			items.push(...result.items);
+			if (result.warnings) warnings.push(...result.warnings);
 		}
 	}
 
@@ -183,6 +222,10 @@ function extractMCPServers(config: Record<string, unknown>, configPath: string):
 	return { items, warnings };
 }
 
+// =============================================================================
+// Skills (skills/)
+// =============================================================================
+
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const userSkillsDir = getUserPath(ctx, "opencode", "skills");
 	if (!userSkillsDir) return { items: [], warnings: [] };
@@ -190,13 +233,25 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 	return await scanSkillsFromDir({ dir: userSkillsDir, providerId: PROVIDER_ID, level: "user" });
 }
 
+// =============================================================================
+// Extension Modules (plugins/)
+// =============================================================================
+
 async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<ExtensionModule>> {
 	const userPluginsDir = getUserPath(ctx, "opencode", "plugins");
 	const userPaths = userPluginsDir ? await discoverExtensionModulePaths(userPluginsDir) : [];
 	return { items: buildExtensionModuleItems(PROVIDER_ID, userPaths, []), warnings: [] };
 }
 
-/** Read the OpenCode command-loading toggle from settings. Falls back to true (current behavior) when settings are not initialized, */
+// =============================================================================
+// Slash Commands (commands/)
+// =============================================================================
+
+/**
+ * Read the OpenCode command-loading toggle from settings.
+ * Falls back to true (current behavior) when settings are not initialized,
+ * e.g. inside discovery unit tests that run without Settings.init().
+ */
 function readOpencodeCommandsEnabled(): boolean {
 	try {
 		return settings.get("commands.enableOpencodeUser") ?? true;
@@ -225,6 +280,10 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 		},
 	});
 }
+
+// =============================================================================
+// Provider Registration
+// =============================================================================
 
 registerProvider(contextFileCapability.id, {
 	id: PROVIDER_ID,

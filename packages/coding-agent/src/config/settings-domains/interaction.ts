@@ -2,7 +2,13 @@ import { DEFAULT_RELAY_URL, DEFAULT_SHARE_URL } from "@veyyon/wire";
 import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS, STT_MODEL_VALUES } from "../../stt/models";
 import { STT_SUBMIT_TRIGGER_OPTIONS, STT_SUBMIT_TRIGGER_VALUES } from "../../stt/submit-trigger";
 
+/** Interaction domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const INTERACTION_SETTINGS = {
+	// ────────────────────────────────────────────────────────────────────────
+	// Interaction
+	// ────────────────────────────────────────────────────────────────────────
+
+	// Conversation flow
 	steeringMode: {
 		type: "enum",
 		values: ["all", "one-at-a-time"] as const,
@@ -64,6 +70,7 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	// Input and startup
 	doubleEscapeAction: {
 		type: "enum",
 		values: ["branch", "tree", "none"] as const,
@@ -160,6 +167,11 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	// Off by default on purpose. The on state emits ED 3, which erases the
+	// terminal's saved scrollback: not just what veyyon drew, but the shell
+	// history and command output that were there before launch, with no undo.
+	// A cleared viewport is enough for the welcome frame to look right, and the
+	// first paint already does that (ED 2) whatever this is set to.
 	"startup.clearScrollback": {
 		type: "boolean",
 		default: false,
@@ -211,6 +223,8 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	// Depends on startup.checkUpdate: the check is what finds the release to
+	// install, so turning the check off turns automatic updating off with it.
 	"startup.autoUpdate": {
 		type: "boolean",
 		default: true,
@@ -218,6 +232,10 @@ export const INTERACTION_SETTINGS = {
 			tab: "interaction",
 			group: "Startup & Updates",
 			label: "Automatic Updates",
+			// The off state is spelled out because the setting reads as "updates
+			// on/off" otherwise, and somebody who wants to stop updates landing on
+			// their own needs to know they still get them on demand rather than
+			// being stranded on whatever version they are on.
 			description: "Install a newer version in the background; off means updates only when you run `veyyon update`",
 		},
 	},
@@ -289,6 +307,12 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	// Notifications.
+	//
+	// The two are not the same kind of event, and they no longer default the same way. A toast is an
+	// interruption, so it is worth one only when the session cannot continue without the operator.
+	// Both shipped on, and completion fired at the end of EVERY turn, dozens per session, announcing
+	// what was already on the screen in front of whoever was watching it.
 	"completion.notify": {
 		type: "enum",
 		values: ["on", "off"] as const,
@@ -322,6 +346,10 @@ export const INTERACTION_SETTINGS = {
 	"ask.notify": {
 		type: "enum",
 		values: ["on", "off"] as const,
+		// ON, and the one notification that earns it: the turn has stopped and will not continue until
+		// the operator answers. Nothing else in the session is waiting on them like this, and the
+		// window-focus gate already withholds it while they are looking at the terminal, so it can only
+		// arrive when they are somewhere else.
 		default: "on",
 		ui: {
 			tab: "interaction",
@@ -360,6 +388,7 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	// Collab
 	"collab.relayUrl": {
 		type: "string",
 		default: DEFAULT_RELAY_URL,
@@ -417,6 +446,27 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	/**
+	 * What `/new` does to a turn that is still streaming.
+	 *
+	 * Two outcomes, and the difference is money: keeping the old conversation
+	 * alive finishes work that would otherwise be thrown away mid-turn, and it
+	 * also keeps spending tokens on a screen nobody is reading. Both are
+	 * defensible, so this states which one happens rather than leaving it to
+	 * whether a turn happened to be in flight.
+	 *
+	 * Default is `false`: `/new` stops the old turn and closes its provider
+	 * stream. A conversation that leaves the screen stops costing money, which
+	 * is what an operator reaching for a clean prompt expects, and it is the
+	 * behavior `/new` had before a background conversation was possible at all.
+	 * Turning it on keeps the old turn running and is the deliberate choice:
+	 * the status line counts the background conversation, which is the only
+	 * surface it has.
+	 *
+	 * A change takes effect on the next launch, not in the running session, so
+	 * the description says so rather than letting the next `/new` disagree with
+	 * the value on screen (issue #928).
+	 */
 	"session.newKeepsBackground": {
 		type: "boolean",
 		default: false,
@@ -425,7 +475,7 @@ export const INTERACTION_SETTINGS = {
 			group: "Session",
 			label: "/new Keeps The Old Session",
 			description:
-				"On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations and /process-manager opens them. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen.",
+				"Requires a restart: switching this on or off changes nothing in the running session. On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen.",
 		},
 	},
 
@@ -476,6 +526,7 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	// Speech-to-text
 	"stt.enabled": {
 		type: "boolean",
 		default: false,

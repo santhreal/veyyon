@@ -60,7 +60,7 @@ describe("InteractiveMode theme scrollback refresh", () => {
 		mode = new InteractiveMode(session, "test");
 		terminal = new VirtualTerminal(100, 20);
 		mode.ui = new TUI(terminal);
-		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
+		vi.spyOn(mode.statusLine, "watchGitState").mockImplementation(() => {});
 		await mode.init();
 	});
 

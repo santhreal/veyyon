@@ -104,6 +104,12 @@ docs/internal/design.md
 packages/*/adv-debug-*/
 adv-debug-*/
 
+
+# Evals run state, trial outputs, and seeded credentials (never commit)
+packages/evals/runs/
+packages/evals/assets/*.db
+packages/evals/assets/*.db-shm
+packages/evals/assets/*.db-wal
 # Local bun install cache (leaks into workspaces; never commit)
 .bun/
 
@@ -211,9 +217,11 @@ scratch-settings-probes/
 /assets/prompt-architecture-shell.png
 
 # Working notes about how the work gets produced: handoffs, lane protocol,
-# requirement ledgers. Never published. README, CONTRIBUTING and RELEASING are
-# the contributor-facing surface; this is the scratch beside them.
-/.internal/
+# requirement ledgers, a lane's commit-message drafts and gate logs. Never
+# published. README, CONTRIBUTING and RELEASING are the contributor-facing
+# surface; this is the scratch beside them. Matched at any depth, because the
+# scratch belongs beside the package a lane is working in.
+.internal/
 
 # The `find` test fixtures, built by crates/vendor/uu-find/src/find/test_fixtures.rs
 # on the first test that reads one. They are provisioned rather than tracked

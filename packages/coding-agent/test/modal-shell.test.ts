@@ -128,7 +128,9 @@ describe("ModalShell", () => {
 		const rows = renderModalShortcuts(SETTINGS_BROWSE_SHORTCUTS, 28).map(line =>
 			stripVTControlCharacters(line).trim(),
 		);
-		expect(rows.length).toBe(3);
+		// Three or more rows is what makes this a cascade rather than a single hop;
+		// the exact count follows the chip list, which grows as the pane does.
+		expect(rows.length).toBeGreaterThanOrEqual(3);
 		// No row after the first may be a solitary chip beneath a fuller row. A row
 		// with the shared `·` separator carries two or more chips.
 		for (let i = 1; i < rows.length; i++) {

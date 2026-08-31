@@ -3,7 +3,7 @@
  *
  * Why this suite exists: all three were declared in both the Agent Hub overlay and the Subagent Inbox with the
  * same values, and the inbox's own comment on the gesture window read "matching the hub", which names the
- * coupling without doing anything about it. Both views were replaced by the Agent Control Center, and the
+ * coupling without doing anything about it. Both views were replaced by the subagent dashboard, and the
  * coupling outlived them: the card owns the age tick and the coalesce window, and the input controller owns the
  * double-tap window for the gesture that opens the card. That is still more than one file agreeing on the same
  * three numbers, which is exactly the condition under which a copy drifts, and a drifted copy is felt rather

@@ -1,3 +1,15 @@
+/**
+ * TTSR CLI command handlers.
+ *
+ * `veyyon ttsr test` — feed a snippet (inline text, `--file`, or stdin) through the
+ * real TTSR matching pipeline (`TtsrManager.checkSnapshot` for regex conditions,
+ * `checkAstSnapshot` for ast-grep conditions) and report which rules would
+ * trigger. The match context (`--source`, `--tool`, `--path`) is honored so
+ * glob/AST/scope-scoped rules evaluate the same way they do in a live session.
+ *
+ * `veyyon ttsr list` — show every TTSR-registered rule the current project/user
+ * config would load, with its conditions, scope, and source.
+ */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AstMatchStrictness, astMatch, FileType, type GlobMatch, glob } from "@veyyon/natives";
@@ -10,12 +22,14 @@ import { Settings } from "../config/settings";
 import type { TtsrSettings } from "../config/settings-schema";
 import { initializeWithSettings, loadCapability } from "../discovery";
 import { buildRuleFromMarkdown, createSourceMeta } from "../discovery/helpers";
-import type { TtsrManager, TtsrMatchSource } from "../export/ttsr";
+import type { TtsrManager } from "../export/ttsr";
 
 export type TtsrAction = "test" | "list" | "scan";
 
 export const TTSR_ACTIONS: TtsrAction[] = ["test", "list", "scan"];
 export const TTSR_SOURCES: TtsrMatchSource[] = ["text", "thinking", "tool"];
+
+export type TtsrMatchSource = "text" | "thinking" | "tool";
 
 interface TtsrMatchContext {
 	source: TtsrMatchSource;
@@ -25,20 +39,32 @@ interface TtsrMatchContext {
 }
 
 export interface TtsrTestArgs {
+	/** Inline snippet text. */
 	snippet?: string;
+	/** Snippet file path, or `-` for stdin. */
 	file?: string;
+	/** Path to a rule markdown file to test in isolation (skips project loading). */
 	rule?: string;
+	/** TTSR match source; when omitted, inferred from --file (tool for source files, text otherwise). */
 	source?: TtsrMatchSource;
+	/** Tool name when `source === "tool"` (e.g. "edit", "write"). */
 	tool?: string;
+	/** Candidate file path used for scope/glob matching and AST language inference. */
 	filePath?: string;
+	/** Show every evaluated rule, not just triggered ones. */
 	verbose?: boolean;
 }
 
 export interface TtsrScanArgs {
+	/** Directory to glob and scan files in. */
 	directory?: string;
+	/** Path to a rule markdown file to test in isolation (skips project loading). */
 	rule?: string;
+	/** Respect gitignore files while discovering scan candidates. Defaults to true. */
 	gitignore?: boolean;
+	/** Maximum file size to scan in bytes; 0 disables the limit. */
 	maxBytes?: number;
+	/** Show details. */
 	verbose?: boolean;
 }
 
@@ -53,7 +79,9 @@ interface RuleMatchDetail {
 	name: string;
 	path: string;
 	sourceProvider?: string;
+	/** Conditions that matched the snippet. */
 	matched: { regex: string[]; ast: string[] };
+	/** All conditions defined on the rule (for verbose display). */
 	defined: { regex: string[]; ast: string[] };
 	skippedAst?: string;
 }
@@ -70,6 +98,7 @@ interface TestReport {
 }
 
 const STDIN_MARKER = "-";
+/** Extensions treated as source files for default tool-context inference. */
 const SOURCE_FILE_EXT =
 	/^\.(ts|tsx|js|jsx|mjs|cjs|rs|py|go|java|kt|swift|c|cc|cpp|h|hpp|rb|php|lua|css|scss|html|json|ya?ml|toml|md|mdc)$/i;
 
@@ -145,7 +174,9 @@ async function regexMatches(rule: Rule, snippet: string): Promise<string[]> {
 	for (const pattern of rule.condition ?? []) {
 		try {
 			if (new RegExp(pattern).test(snippet)) out.push(pattern);
-		} catch {}
+		} catch {
+			// Invalid regex — skip; the manager already warned at registration.
+		}
 	}
 	return out;
 }
@@ -162,11 +193,18 @@ async function astMatches(rule: Rule, snippet: string, lang: string): Promise<st
 				limit: 1,
 			});
 			if (result.totalMatches > 0) out.push(pattern);
-		} catch {}
+		} catch {
+			// Treat as no match (manager logs at runtime).
+		}
 	}
 	return out;
 }
 
+/**
+ * Run the snippet through the manager's real match paths and collect, for each
+ * triggered rule, which of its conditions fired. Returns triggered + the full
+ * evaluated set (so callers can render not-triggered entries too).
+ */
 async function evaluate(
 	manager: TtsrManager,
 	rules: readonly Rule[],
@@ -178,7 +216,7 @@ async function evaluate(
 		context.source === "tool" && context.filePaths && context.filePaths.length > 0
 			? await manager.checkAstSnapshot(snippet, context)
 			: [];
-	const hitNames = new Set<string>(regexHit.concat(astHit).map(r => r.name));
+	const hitNames = new Set<string>([...regexHit, ...astHit].map(r => r.name));
 
 	const lang = deriveLang(context.filePaths);
 	const astEligible = context.source === "tool" && !!lang;
@@ -208,6 +246,13 @@ async function createTtsrManager(settings?: TtsrSettings): Promise<TtsrManager> 
 	return new TtsrManager(settings);
 }
 
+/**
+ * The rules `ttsr scan` reports on: the enabled ones that carry a condition.
+ *
+ * Enablement is `ruleIsEnabled`'s to decide, not this file's. The scan exists
+ * to tell the operator what will fire in a real session, so a filter of its own
+ * that drifts from the session's funnel is worse than no scan at all.
+ */
 function filterTtsrRulesForScan(rules: readonly Rule[], options: BucketRulesOptions = {}): Rule[] {
 	const levers = resolveRuleLevers(options);
 	return rules.filter(rule => {
@@ -289,6 +334,9 @@ async function runTest(args: TtsrTestArgs, json: boolean, cwd: string): Promise<
 
 	const snippet = await readSnippet(args);
 
+	// Infer match context: when the user points --file at a source file and
+	// doesn't pick a source, default to tool/edit with that path so tool-scoped
+	// rules (the common case, e.g. tool:edit(*.ts)) match like they would live.
 	const filePath = args.filePath ?? (args.file && args.file !== STDIN_MARKER ? path.resolve(args.file) : undefined);
 	const source: TtsrMatchSource =
 		args.source ?? (filePath && SOURCE_FILE_EXT.test(path.extname(filePath)) ? "tool" : "text");
@@ -362,6 +410,9 @@ function renderTestReport(report: TestReport, verbose: boolean, isolated: boolea
 function renderRuleDetail(detail: RuleMatchDetail, hit: boolean): void {
 	const mark = hit ? chalk.green("[ok]") : chalk.red("[FAIL]");
 	const condParts: string[] = [];
+	// For triggered rules, show which conditions fired. For not-triggered
+	// rules (verbose), show the rule's full condition set so users can see
+	// what would match.
 	const regex = hit ? detail.matched.regex : detail.defined.regex;
 	const ast = hit ? detail.matched.ast : detail.defined.ast;
 	if (regex.length > 0) {
@@ -515,7 +566,9 @@ function compileScanRulePlans(rules: Rule[]): ScanRulePlan[] {
 		for (const pattern of rule.condition ?? []) {
 			try {
 				regexConditions.push({ pattern, regex: new RegExp(pattern) });
-			} catch {}
+			} catch {
+				// Same behavior as TtsrManager: invalid regex conditions are unusable.
+			}
 		}
 		const astConditions = (rule.astCondition ?? [])
 			.map(pattern => pattern.trim())
@@ -594,8 +647,7 @@ async function scanRulePlanMatchesContent(
 	let astHit = false;
 	if ((includeDetails || !regexHit) && lang && plan.astConditions.length > 0) {
 		if (includeDetails) {
-			const astMatchesResult = await astMatches(plan.rule, fileContent, lang);
-			for (let ai = 0; ai < astMatchesResult.length; ai++) matchedAst.push(astMatchesResult[ai]!);
+			matchedAst.push(...(await astMatches(plan.rule, fileContent, lang)));
 			astHit = matchedAst.length > 0;
 		} else {
 			try {
@@ -650,6 +702,10 @@ async function scanAnyAstConditionMatches(
 		}
 		return result.parseErrors && result.parseErrors.length > 0 ? undefined : false;
 	} catch {
+		// Three answers on purpose: true is a match, false is a confident no-match, and undefined is "could
+		// not tell" -- which is what the line above already returns for a file the parser could not read, and
+		// what a failure of the matcher itself means too. The caller keeps those apart, so a file that cannot
+		// be checked is never counted as a file with no matches.
 		return undefined;
 	}
 }
@@ -684,6 +740,8 @@ async function discoverScanFiles(scanDir: string, cwd: string, gitignore: boolea
 		candidates.sort((a, b) => a.path.localeCompare(b.path));
 		return candidates;
 	} catch (err) {
+		// An empty candidate list reads as "nothing to check", so a failure here would silently narrow the
+		// search rather than report it.
 		logger.warn("Candidate files could not be listed; this search covered none of them", {
 			error: errorMessage(err),
 		});

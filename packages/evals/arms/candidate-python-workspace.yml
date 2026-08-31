@@ -1,0 +1,5 @@
+# Python workspace candidate arm: activate Python workspace mode guidance in eval
+argot:
+  enabled: false
+eval:
+  pyWorkspace: true

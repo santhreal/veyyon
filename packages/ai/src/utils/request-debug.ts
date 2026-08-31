@@ -15,8 +15,15 @@ let nextSessionId = 1;
 type DebugFetch = FetchImpl & { [DEBUG_FETCH_MARKER]?: true };
 type RequestBodyInit = NonNullable<RequestInit["body"]>;
 
+/** What was recorded, when the ceiling stopped the capture short of the whole body. */
 export interface RequestDebugCapture {
+	/** Bytes of the body written to the dump. */
 	readonly capturedBytes: number;
+	/**
+	 * Bytes that were not recorded, or `null` when the sender never said how many there
+	 * were. A streamed request body with no `content-length` is the `null` case: counting
+	 * the rest would mean reading the rest, which is the allocation being avoided.
+	 */
 	readonly omittedBytes: number | null;
 }
 
@@ -76,13 +83,37 @@ function reportRequestDebugFailure(message: string, error: unknown, path?: strin
 			...(path ? { path } : {}),
 			error: errorMessage(error),
 		});
-	} catch {}
+	} catch {
+		// Debug observability is best-effort all the way down. A logger hook must
+		// not become a second route for debug failures to reach the request.
+	}
 }
 
+/**
+ * A ceiling on the bytes one capture may hold, because a debug flag must not be able
+ * to end the session it is diagnosing.
+ *
+ * Two ways it could. A provider or proxy that keeps a response flowing writes every
+ * byte of it to `rr-session-N.res.log` until the filesystem is full, and the failure
+ * lands on the whole machine rather than on the request being debugged. A large
+ * request body — an attachment, a long transcript, a `Blob` — was read into memory in
+ * full by the snapshot, next to the copy the real request is already holding.
+ *
+ * 32 MiB is far above any provider exchange worth reading by hand and far below the
+ * point where either failure is reachable. `VEYYON_REQ_DEBUG_MAX_BYTES` raises or
+ * lowers it for a capture that genuinely needs more.
+ */
 export const DEFAULT_REQUEST_DEBUG_MAX_CAPTURE_BYTES = 32 * 1024 * 1024;
 
 let reportedInvalidCeiling = false;
 
+/**
+ * The ceiling in force, per captured file.
+ *
+ * A value that is not a positive integer is a typo, not a request for no ceiling: it
+ * falls back to the default and says so once. Silently treating `VEYYON_REQ_DEBUG_MAX_BYTES=0`
+ * as unlimited would turn a mistake into the outage this bound exists to prevent.
+ */
 export function requestDebugCaptureCeiling(): number {
 	const raw = Bun.env[REQUEST_DEBUG_MAX_BYTES_ENV];
 	if (raw === undefined || raw.trim() === "") return DEFAULT_REQUEST_DEBUG_MAX_CAPTURE_BYTES;
@@ -96,11 +127,18 @@ export function requestDebugCaptureCeiling(): number {
 				value: raw,
 				ceiling: DEFAULT_REQUEST_DEBUG_MAX_CAPTURE_BYTES,
 			});
-		} catch {}
+		} catch {
+			// Same best-effort contract as every other diagnostic on this path.
+		}
 	}
 	return DEFAULT_REQUEST_DEBUG_MAX_CAPTURE_BYTES;
 }
 
+/**
+ * A capture that stopped at the ceiling is not a failure — the request it was
+ * recording is fine — but it is not something to discover later by finding a file that
+ * ends mid-JSON. It names the file, so the operator knows which dump is short and why.
+ */
 function reportRequestDebugCeiling(path: string, capturedBytes: number, ceiling: number): void {
 	try {
 		logger.warn("Request debug capture reached its ceiling; the rest was not recorded", {
@@ -109,7 +147,9 @@ function reportRequestDebugCeiling(path: string, capturedBytes: number, ceiling:
 			ceiling,
 			variable: REQUEST_DEBUG_MAX_BYTES_ENV,
 		});
-	} catch {}
+	} catch {
+		// Same best-effort contract as every other diagnostic on this path.
+	}
 }
 
 export function wrapFetchForRequestDebug(fetchImpl: FetchImpl): FetchImpl {
@@ -167,6 +207,8 @@ export async function createRequestDebugSession(payload: RequestDebugPayload): P
 	if (payload.bodyText !== undefined) requestDump.bodyText = payload.bodyText;
 	if (payload.bodyBase64 !== undefined) requestDump.bodyBase64 = payload.bodyBase64;
 	if (payload.bodyUnavailable !== undefined) requestDump.bodyUnavailable = payload.bodyUnavailable;
+	// Durable, in the file rather than only in the log: a dump whose body stops early
+	// looks exactly like a request that really sent that much.
 	if (payload.bodyCapture !== undefined) requestDump.bodyCapture = payload.bodyCapture;
 
 	try {
@@ -206,6 +248,9 @@ class FileRequestDebugSession implements RequestDebugSession {
 	async openResponseLog(statusLine: string, headers?: RequestDebugHeaders): Promise<RequestDebugResponseLog> {
 		const handle = await openPrivateDebugFile(this.responsePath);
 		const log = new FileRequestDebugResponseLog(handle, this.responsePath, requestDebugCaptureCeiling());
+		// Through the log's own write, not the raw handle: a failure here is the same
+		// kind of failure as one mid-body and has to be absorbed the same way. Writes
+		// are chained in order, so the header still lands ahead of the first chunk.
 		log.write(formatResponseHeaderBlock(statusLine, headers));
 		return log;
 	}
@@ -218,6 +263,12 @@ class FileRequestDebugSession implements RequestDebugSession {
 			return response;
 		}
 
+		// INFERRED, not annotated. Two `ReadableStreamDefaultReader`s are in scope here: the DOM one
+		// that `response.body.getReader()` actually returns, and Bun's, which is generic over its
+		// buffer and declares an extra `readMany`. Writing either name picked the wrong one: the
+		// bare form resolved to Bun's and rejected the assignment, and deriving the return type
+		// selected a BYOB overload whose `read` wants an argument. Letting the initializer decide
+		// keeps this correct under both lib sets, and nothing here needs the type spelled out.
 		const reader = (() => {
 			try {
 				return response.body.getReader();
@@ -241,6 +292,9 @@ class FileRequestDebugSession implements RequestDebugSession {
 					log.write(value);
 					controller.enqueue(value);
 				} catch (error) {
+					// Closing a DEBUG log that is written only when request debugging is switched on. A failed close cannot be
+					// allowed to fail the request it was recording, which is the whole point of the debug surface being
+					// passive, and the operator who enabled it sees the truncated file.
 					await log.close().catch(() => undefined);
 					controller.error(error);
 				}
@@ -263,6 +317,12 @@ class FileRequestDebugSession implements RequestDebugSession {
 		return wrapped;
 	}
 
+	/**
+	 * Opening the log can fail on its own: a read-only directory, a name already
+	 * taken, or no file descriptors left. That is a reason to stop recording, not
+	 * a reason to fail the request, so the caller gets the untouched response and
+	 * an error in the log saying why nothing was captured.
+	 */
 	async #openResponseLogOrNull(response: Response): Promise<RequestDebugResponseLog | undefined> {
 		try {
 			return await this.openResponseLog(`HTTP ${response.status} ${response.statusText}`.trim(), response.headers);
@@ -277,6 +337,30 @@ class FileRequestDebugSession implements RequestDebugSession {
 	}
 }
 
+/**
+ * Writes the response body to the debug log without ever putting that log
+ * between the user and their response.
+ *
+ * `VEYYON_REQ_DEBUG` is an observability flag, so its failures are reported and
+ * survived rather than propagated. A rejected write used to travel out through
+ * `close()` into the stream `pull` that awaited it, which called
+ * `controller.error(...)` and killed the real model response. Turning on
+ * request logging and then running out of disk ended the session with an error
+ * about a file the user was not reading, in the middle of a request that had
+ * already succeeded.
+ *
+ * Dropping the write instead is only acceptable because it is loud: the first
+ * failure logs at error level naming the file and the cause, and every
+ * subsequent chunk for that log is discarded without repeating the message. The
+ * log is then knowingly incomplete rather than quietly truncated.
+ *
+ * The same reasoning bounds the size. A provider or proxy that keeps a response
+ * flowing wrote every byte of it here, so switching on a debug flag was enough to
+ * fill the disk while the request it was recording stayed perfectly valid. Past the
+ * ceiling the log stops growing, states in the file that it stopped and how much it
+ * never wrote, and warns once naming the path. The response itself is untouched: the
+ * caller keeps receiving every byte.
+ */
 class FileRequestDebugResponseLog implements RequestDebugResponseLog {
 	#handle: fs.FileHandle | undefined;
 	#pending: Promise<void> = Promise.resolve();
@@ -299,6 +383,7 @@ class FileRequestDebugResponseLog implements RequestDebugResponseLog {
 		if (!handle || this.#failed) return;
 		const bytes = typeof chunk === "string" ? textEncoder.encode(chunk) : chunk.slice();
 		if (this.#stopped) {
+			// Counted, not written: the tally at close is what makes the omission durable.
 			this.#omitted += bytes.byteLength;
 			return;
 		}
@@ -347,10 +432,15 @@ class FileRequestDebugResponseLog implements RequestDebugResponseLog {
 		});
 	}
 
+	/**
+	 * Written the moment the ceiling is reached, so a log whose process never got to
+	 * close still says why it ends where it does.
+	 */
 	#ceilingMarker(): string {
 		return `\n[veyyon request debug] capture ceiling reached: recorded ${this.#written} bytes of this response; the rest was not written (${REQUEST_DEBUG_MAX_BYTES_ENV}=${this.#ceiling})\n`;
 	}
 
+	/** The count the ceiling marker cannot know yet: how much went unrecorded in total. */
 	#tallyMarker(): string {
 		return `[veyyon request debug] captured ${this.#written} bytes, omitted ${this.#omitted} bytes\n`;
 	}
@@ -371,11 +461,32 @@ function copyResponseMetadata(target: Response, source: Response): void {
 	if (!sourceUrl) return;
 	try {
 		Object.defineProperty(target, "url", { value: sourceUrl, configurable: true });
-	} catch {}
+	} catch {
+		// Some runtimes may expose Response.url as non-configurable. The body
+		// capture remains correct; callers that need url already tolerate the
+		// platform default on other response wrappers in this package.
+	}
 }
 
+/**
+ * Owner-only, because the dump is the request as it went on the wire. Header values that are
+ * credentials are replaced before they reach the file, but a body still can be one: an OAuth
+ * token exchange posts a refresh token, and a provider error can echo the request back. The
+ * default umask leaves a new file world-readable, so the mode is pinned rather than inherited.
+ */
+const DEBUG_FILE_MODE = 0o600;
+
+/**
+ * Both dump files are created here, so the mode cannot be dropped at one of two call sites.
+ *
+ * `wx` is what makes the mode effective: it creates the file and applies `DEBUG_FILE_MODE` as it
+ * does. Reopening an existing file with `w` would ignore `mode` and inherit whatever permissions a
+ * previous run left, so no caller may name a file it did not create. A name already taken is
+ * reported by the caller and the exchange goes unrecorded, which is the safe direction for an
+ * observability flag. On win32 `mode` does nothing, so the owner-only contract there is an ACL
+ * question this file does not answer.
+ */
 async function openPrivateDebugFile(filePath: string): Promise<fs.FileHandle> {
-	const DEBUG_FILE_MODE = 0o600;
 	return fs.open(filePath, "wx", DEBUG_FILE_MODE);
 }
 
@@ -413,6 +524,9 @@ async function snapshotRequestBody(
 ): Promise<RequestDebugBody | undefined> {
 	const ceiling = requestDebugCaptureCeiling();
 	if (init?.body !== undefined && init.body !== null) return snapshotBodyInit(init.body, contentType, ceiling);
+	// The clone, so the request the caller is about to send keeps its own body. Read
+	// through the stream rather than `arrayBuffer()`: a body larger than the ceiling is
+	// never held here, which is the whole difference between a bound and a report.
 	if (input instanceof Request && input.body) return snapshotRequestStream(input, contentType, ceiling);
 	return undefined;
 }
@@ -426,6 +540,9 @@ async function snapshotBodyInit(
 	if (body instanceof URLSearchParams) return snapshotText(body.toString(), contentType, ceiling);
 	if (body instanceof FormData) return { bodyUnavailable: "FormData" };
 	if (body instanceof Blob) {
+		// `size` is known without reading, and the read goes through the blob's own stream,
+		// so an attachment larger than the ceiling is never held here a second time next to
+		// the copy the request is already carrying.
 		const head = await readBoundedBody(body.stream(), ceiling);
 		return snapshotBytes(head.bytes, body.type || contentType, ceiling, head.more ? body.size : undefined);
 	}
@@ -433,10 +550,19 @@ async function snapshotBodyInit(
 	if (ArrayBuffer.isView(body)) {
 		return snapshotBytes(new Uint8Array(body.buffer, body.byteOffset, body.byteLength), contentType, ceiling);
 	}
+	// Reading it would take it from the request that is about to send it.
 	if (body instanceof ReadableStream) return { bodyUnavailable: "ReadableStream" };
 	return snapshotText(String(body), contentType, ceiling);
 }
 
+/**
+ * Just enough of a stream reader to read a bounded prefix.
+ *
+ * Structural on purpose. Three `ReadableStream` declarations are in scope in this
+ * package — the DOM one, Bun's, and undici's — and a body reached through `Request`,
+ * `Response` or `Blob` arrives as a different one each time. Naming what is used keeps
+ * one reader for all three instead of a cast per call site.
+ */
 interface BoundedBodyReader {
 	read(): Promise<{ done: boolean; value?: Uint8Array }>;
 	cancel(reason?: unknown): Promise<void>;
@@ -444,9 +570,23 @@ interface BoundedBodyReader {
 
 interface BoundedBody {
 	readonly bytes: Uint8Array;
+	/**
+	 * Whether the read stopped because it hit the ceiling rather than because the body
+	 * ended. A body of exactly the ceiling reports `true` as well: distinguishing the
+	 * two costs one more read, and on a `Request` clone that read can block — Bun tees a
+	 * request body, and the branch the real request never consumes stops the source from
+	 * yielding once its queue fills. A capture is not allowed to stall the request it is
+	 * recording, so a body sitting exactly on the ceiling is reported as possibly cut.
+	 */
 	readonly more: boolean;
 }
 
+/**
+ * Read at most `ceiling` bytes, then stop and cancel the rest.
+ *
+ * A body that fails mid-read leaves what it already gave: the capture is a clone or a
+ * blob the caller still owns, so a read error here is not the request's problem.
+ */
 async function readBoundedBody(
 	stream: { getReader(): BoundedBodyReader } | null,
 	ceiling: number,
@@ -474,17 +614,29 @@ async function readBoundedBody(
 		}
 		if (read >= ceiling) more = true;
 	} catch {
+		// Keep the prefix. The status of the capture, not of the request.
 	} finally {
+		// Released, not awaited. On a `Request` clone this cancel settles only once the
+		// branch the real request holds is consumed, which happens after this function has
+		// returned — awaiting it deadlocks the capture and with it the request.
 		void reader.cancel().catch(() => {});
 	}
 	return { bytes: concatChunks(chunks, read), more };
 }
 
+/**
+ * Read at most `ceiling` bytes off a clone of the request body, then stop.
+ *
+ * The total is taken from `content-length` when the caller declared one. Without it the
+ * omitted count is unknown on purpose: measuring it means reading the rest, which is
+ * the allocation this exists to avoid.
+ */
 async function snapshotRequestStream(
 	request: Request,
 	contentType: string | null,
 	ceiling: number,
 ): Promise<RequestDebugBody> {
+	// The clone, so the request the caller is about to send keeps its own body.
 	const clone = request.clone();
 	const declared = declaredContentLength(request.headers);
 	const head = await readBoundedBody(clone.body, ceiling);
@@ -492,6 +644,8 @@ async function snapshotRequestStream(
 }
 
 function concatChunks(chunks: readonly Uint8Array[], total: number): Uint8Array {
+	// Copied rather than handed on: a single chunk is often a view into a much larger
+	// buffer the runtime would then have to keep alive for the life of the dump.
 	const joined = new Uint8Array(total);
 	let at = 0;
 	for (const chunk of chunks) {
@@ -508,6 +662,12 @@ function declaredContentLength(headers: Headers): number | undefined {
 	return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
+/**
+ * A capture note when the body is known to be longer than what was recorded.
+ *
+ * `totalBytes` is `undefined` when `bytes` IS the whole body, a number when the real
+ * size is known, and `null` when the body has more that nobody counted.
+ */
 function captureNote(capturedBytes: number, totalBytes: number | null | undefined): RequestDebugCapture | undefined {
 	if (totalBytes === undefined) return undefined;
 	if (totalBytes === null) return { capturedBytes, omittedBytes: null };
@@ -521,6 +681,11 @@ function snapshotBytes(
 	ceiling: number,
 	totalBytes?: number | null,
 ): RequestDebugBody {
+	// Two bounds guard these bytes, and that is deliberate: the prefix here keeps the
+	// decode from allocating a second copy of a body that may be megabytes, and
+	// `snapshotText` below bounds again for the callers that arrive with a string. Remove
+	// either and the recorded output is unchanged, so a mutation gate cannot separate
+	// them — the allocation is the only difference, and only removing BOTH is a defect.
 	const head = bytes.byteLength > ceiling ? bytes.subarray(0, ceiling) : bytes;
 	const note = captureNote(head.byteLength, bytes.byteLength > ceiling ? bytes.byteLength : totalBytes);
 	if (note === undefined) {
@@ -530,6 +695,8 @@ function snapshotBytes(
 			return { bodyBase64: Buffer.from(head).toString("base64") };
 		}
 	}
+	// A truncated body is no longer the JSON it was, so it is recorded as text — or as
+	// base64 when the cut landed inside a character.
 	try {
 		return { bodyText: utf8Decoder.decode(head), bodyCapture: note };
 	} catch {
@@ -538,6 +705,8 @@ function snapshotBytes(
 }
 
 function snapshotText(text: string, contentType: string | null, ceiling: number): RequestDebugBody {
+	// `byteLength` measures without encoding; `encodeInto` then fills a buffer of exactly
+	// the ceiling and never splits a character across the end of it.
 	const totalBytes = Buffer.byteLength(text, "utf8");
 	if (totalBytes > ceiling) {
 		const room = new Uint8Array(ceiling);
@@ -550,7 +719,9 @@ function snapshotText(text: string, contentType: string | null, ceiling: number)
 	if (isJsonContentType(contentType) || looksLikeJson(text)) {
 		try {
 			return { body: JSON.parse(text) };
-		} catch {}
+		} catch {
+			// Fall through to bodyText: malformed JSON is still useful as raw text.
+		}
 	}
 	return { bodyText: text };
 }
@@ -582,6 +753,17 @@ function formatResponseHeaderBlock(statusLine: string, headers?: RequestDebugHea
 	return `${lines.join("\r\n")}\r\n\r\n`;
 }
 
+/**
+ * Header names whose value is a credential rather than protocol metadata.
+ *
+ * A `VEYYON_REQ_DEBUG` dump is a plain file on disk that the operator may attach to a bug
+ * report, so the bearer value never goes in it. The name and the value's length still do,
+ * which is what a debugging session actually needs: whether the header was sent at all, and
+ * whether the key looks truncated.
+ *
+ * Matching is by exact lowercased name plus a few substrings, so a provider-specific spelling
+ * (`x-goog-api-key`, `openai-api-key`, `x-veyyon-auth-token`) is covered without an entry.
+ */
 const REDACTED_HEADER_NAMES: Record<string, true> = {
 	authorization: true,
 	"proxy-authorization": true,
@@ -598,6 +780,12 @@ export function isCredentialHeaderName(name: string): boolean {
 	return REDACTED_HEADER_SUBSTRINGS.some(fragment => lower.includes(fragment));
 }
 
+/**
+ * The spellings {@link isCredentialHeaderName} recognizes, expanded for a gate that
+ * has to sweep them. A substring is listed as one representative header a provider
+ * really sends, because a gate asserting on the fragment alone would pass while the
+ * header carrying it leaked.
+ */
 export const CREDENTIAL_HEADER_SPELLINGS: readonly string[] = [
 	...Object.keys(REDACTED_HEADER_NAMES),
 	"x-api-key",
@@ -609,6 +797,15 @@ export const CREDENTIAL_HEADER_SPELLINGS: readonly string[] = [
 	"x-client-secret",
 ];
 
+/**
+ * Redacts a header set on its way into a diagnostic log or dump.
+ *
+ * The credential half is {@link isCredentialHeaderName} and nothing else, so a
+ * provider-specific spelling is covered everywhere at once rather than in whichever
+ * list a caller remembered to extend. A caller with headers that are sensitive
+ * without being credentials — an account id, a conversation id — passes
+ * `alsoSensitive`, which receives the lowercased name.
+ */
 export function redactDiagnosticHeaders(
 	headers: Iterable<[string, string]>,
 	alsoSensitive?: (lowercasedName: string) => boolean,

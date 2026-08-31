@@ -1,15 +1,74 @@
 import * as fs from "node:fs/promises";
 import type { ImageContent, Model } from "@veyyon/ai";
 import { formatBytes } from "@veyyon/utils/format";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
+import { SUPPORTED_IMAGE_MIME_TYPES } from "@veyyon/utils/mime";
 import { resolveReadPath } from "../tools/path-utils";
-import type { LoadedImageInput, LoadImageAttachmentInputOptions, LoadImageInputOptions } from "./image-loading-helpers";
-
-import { MAX_IMAGE_INPUT_BYTES, modelLacksWebpSupport } from "./image-loading-helpers";
 import { canonicalizeImageContent, formatDimensionNote, type ImageResizeOptions, resizeImage } from "./image-resize";
 
-export { webpExclusionForModel } from "./image-loading-helpers";
-export type { LoadedImageInput };
-export { MAX_IMAGE_INPUT_BYTES, modelLacksWebpSupport };
+export const MAX_IMAGE_INPUT_BYTES = 20 * 1024 * 1024;
+export const SUPPORTED_INPUT_IMAGE_MIME_TYPES = SUPPORTED_IMAGE_MIME_TYPES;
+
+/**
+ * Ollama and its local-backend family decode image input through llama.cpp /
+ * `stb_image`, which is compiled without WebP support, so a WebP upload fails
+ * with an opaque HTTP 400. Detect those models so the resize pipeline encodes
+ * to PNG/JPEG instead — the automatic equivalent of `VEYYON_NO_WEBP=1`.
+ */
+export function modelLacksWebpSupport(
+	model: Pick<Model, "provider" | "api" | "imageInputDecoder"> | undefined,
+): boolean {
+	if (!model) return false;
+	return (
+		model.imageInputDecoder === "stb" ||
+		model.provider === "ollama" ||
+		model.provider === "ollama-cloud" ||
+		model.provider === "llama.cpp" ||
+		model.provider === "lm-studio" ||
+		model.provider === "local-server" ||
+		model.api === "ollama-chat"
+	);
+}
+
+/**
+ * `true` when `model` cannot decode WebP, otherwise `undefined` so the
+ * `VEYYON_NO_WEBP` env fallback in {@link resizeImage} still applies. Feed straight
+ * into {@link ImageResizeOptions.excludeWebP}.
+ */
+export function webpExclusionForModel(model: Pick<Model, "provider" | "api"> | undefined): true | undefined {
+	return modelLacksWebpSupport(model) ? true : undefined;
+}
+
+export interface LoadImageInputOptions {
+	path: string;
+	cwd: string;
+	autoResize: boolean;
+	maxBytes?: number;
+	resolvedPath?: string;
+	detectedMimeType?: string;
+	/** Force non-WebP output (e.g. for Ollama). Leave unset to honor `VEYYON_NO_WEBP`. */
+	excludeWebP?: boolean;
+}
+
+/** Options for loading an in-memory chat image attachment as a vision-model input. */
+export interface LoadImageAttachmentInputOptions {
+	image: ImageContent;
+	label: string;
+	uri: string;
+	autoResize: boolean;
+	maxBytes?: number;
+	/** Force non-WebP output (e.g. for Ollama). Leave unset to honor `VEYYON_NO_WEBP`. */
+	excludeWebP?: boolean;
+}
+
+export interface LoadedImageInput {
+	resolvedPath: string;
+	mimeType: string;
+	data: string;
+	textNote: string;
+	dimensionNote?: string;
+	bytes: number;
+}
 
 export class ImageInputTooLargeError extends Error {
 	readonly bytes: number;
@@ -33,10 +92,18 @@ export async function ensureSupportedImageInput(image: ImageContent): Promise<Im
 }
 
 export interface NormalizeModelContextImagesOptions {
+	/** Model the images are bound for; used to derive encoder constraints (WebP exclusion for Ollama). */
 	model?: Model;
 	resize?: ImageResizeOptions;
 }
 
+/**
+ * Normalize image blocks before they enter agent/model context. This keeps
+ * provider request construction from having to resize an unbounded batch of
+ * large images on the streaming hot path. Images are processed sequentially on
+ * purpose: `resizeImage` may fan out multiple encoders for one image, so the
+ * outer image batch must stay bounded.
+ */
 export async function normalizeModelContextImages(
 	images: ImageContent[] | undefined,
 	options?: NormalizeModelContextImagesOptions,
@@ -56,6 +123,8 @@ export async function normalizeModelContextImages(
 export async function loadImageInput(options: LoadImageInputOptions): Promise<LoadedImageInput | null> {
 	const maxBytes = options.maxBytes ?? MAX_IMAGE_INPUT_BYTES;
 	const resolvedPath = options.resolvedPath ?? resolveReadPath(options.path, options.cwd);
+	// detectedMimeType is only an earlier probe hint. Provider-bound MIME is
+	// established below from decoded bytes and never inherited from this value.
 
 	const stat = await Bun.file(resolvedPath).stat();
 	if (stat.size > maxBytes) {
@@ -112,6 +181,7 @@ export async function loadImageInput(options: LoadImageInputOptions): Promise<Lo
 	};
 }
 
+/** Loads a chat attachment image through the same size and encoder policy as file-backed image inputs. */
 export async function loadImageAttachmentInput(
 	options: LoadImageAttachmentInputOptions,
 ): Promise<LoadedImageInput | null> {

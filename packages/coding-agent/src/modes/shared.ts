@@ -1,16 +1,17 @@
 import type { TabBarTheme } from "@veyyon/tui";
-import { stripAnsi } from "@veyyon/utils";
 import { hoverBand, theme } from "./theme/theme";
 
-/** Sanitize text for display in a single-line status indicator. Strips all 7-bit and 8-bit ANSI escape sequences via `@veyyon/utils`, maps remaining */
-export function sanitizeStatusText(text: string): string {
-	return stripAnsi(text)
-		.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
-		.replace(/ +/g, " ")
-		.trim();
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// Text Sanitization
+// ═══════════════════════════════════════════════════════════════════════════
 
-/** Shared tab bar theme used by fullscreen overlays (settings, the Agent Control Center). */
+export { sanitizeStatusText } from "./sanitize-status-text";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tab Bar Theme
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Shared tab bar theme used by fullscreen overlays (settings, the subagent dashboard). */
 export function getTabBarTheme(): TabBarTheme {
 	return {
 		label: (text: string) => theme.bold(theme.fg("accent", text)),
@@ -24,7 +25,18 @@ export function getTabBarTheme(): TabBarTheme {
 	};
 }
 
-/** Suffix appended to the loader's working message to remind users they can abort with Esc. Rendered with the active theme's bracket glyphs so it stays */
+// ═══════════════════════════════════════════════════════════════════════════
+// Working-message hint
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Suffix appended to the loader's working message to remind users they can
+ * abort with Esc. Rendered with the active theme's bracket glyphs so it stays
+ * visually consistent with badges and other bracketed UI affordances.
+ *
+ * The leading space separates the hint from the message body and is consumed
+ * by `endsWith`/`slice` matching in the loader renderer.
+ */
 export function interruptHint(): string {
 	return ` ${theme.format.bracketLeft}esc${theme.format.bracketRight}`;
 }

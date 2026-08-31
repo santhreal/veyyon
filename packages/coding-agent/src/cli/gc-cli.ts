@@ -27,14 +27,36 @@ import { FileSessionStorage } from "../session/session-storage";
 
 const HASH_RE = /^[a-f0-9]{64}$/;
 const BLOB_FILE_RE = /^([a-f0-9]{64})(?:\.[A-Za-z0-9][A-Za-z0-9._-]{0,31})?$/;
+// Matches BOTH blob-ref namespaces so GC never deletes a blob a live session
+// still points at: `blob:sha256:<hash>` (images) and `blobtext:sha256:<hash>`
+// (externalized large text). Both are content-addressed by the same hash and
+// stored in the same blob dir, so one referenced-hash set covers both.
 const BLOB_REF_RE = /\bblob(?:text)?:sha256:([a-f0-9]{64})\b/gi;
 const JSONL_GLOB = new Bun.Glob(`**/*${SESSION_FILE_EXTENSION}`);
 const JSONL_GZ_GLOB = new Bun.Glob(`**/*${SESSION_FILE_EXTENSION}.gz`);
 const JSONL_BACKUP_GLOB = new Bun.Glob(`**/*${SESSION_FILE_EXTENSION}.*${SESSION_BACKUP_EXTENSION}`);
 const ACTIVE_STATUSES: ReadonlySet<SessionStatus> = new Set(["pending", "interrupted", "unknown"]);
+/**
+ * Smallest write-grace window an operator may configure.
+ *
+ * The grace exists so GC never deletes a blob or archives a session that a running veyyon is still
+ * writing to. A zero window removes that protection entirely, so a configured value below this floor is
+ * clamped and reported rather than honoured: the setting is a tuning knob, not a way to turn the safety
+ * margin off.
+ */
 const MIN_GC_WRITE_GRACE_MS = MINUTE_MS;
 
+/**
+ * How old a GC lock file must be before another run breaks it.
+ *
+ * Deliberately NOT the write-grace window, even though both were 5 minutes and shared one constant.
+ * They answer different questions: the grace is "might a process still be writing this file", and this
+ * is "is the process that took this lock gone". Tying them together would mean shortening the grace also
+ * made GC steal live locks from other runs.
+ */
 const GC_LOCK_STALE_MS = 5 * MINUTE_MS;
+// The extension comes from its owner, and the compressed form is that extension plus `.gz`, so moving
+// the transcript extension moves the archive form with it rather than leaving it behind.
 const SESSION_SUFFIX = SESSION_FILE_EXTENSION;
 const COMPRESSED_SESSION_SUFFIX = `${SESSION_FILE_EXTENSION}.gz`;
 const GC_LOCK_BREAKER_SUFFIX = ".break";
@@ -126,6 +148,7 @@ interface ResolvedGcOptions {
 	coldArchiveAfterDays: number;
 	retainNewestGlobal: number;
 	retainNewestPerCwd: number;
+	/** How recently a file may have been written and still be left alone, in milliseconds. */
 	writeGraceMs: number;
 }
 
@@ -158,6 +181,14 @@ function numberSetting(value: number | undefined, fallback: unknown, defaultValu
 	return normalizeNumberSetting(fallback, defaultValue);
 }
 
+/**
+ * Turn a configured grace in minutes into milliseconds, never below the floor.
+ *
+ * Clamped and REPORTED rather than accepted: `0` reads like "sweep everything", and what it would
+ * actually do is delete a blob a running veyyon wrote a second ago. Silently substituting the floor
+ * would leave an operator believing a value that is not in effect, which is the other half of the same
+ * mistake, so the substitution is named in the log.
+ */
 function resolveWriteGraceMs(minutes: number): number {
 	const requested = minutes * MINUTE_MS;
 	if (requested >= MIN_GC_WRITE_GRACE_MS) return requested;
@@ -223,6 +254,12 @@ function codeOf(error: unknown): string | undefined {
 		: undefined;
 }
 
+// `pathExists` and `statIfPresent` used to be defined right here, with those exact names and the
+// OPPOSITE contract to `@veyyon/utils`'s exported pair: these threw on a non-ENOENT failure, while the
+// shared ones report the fault and answer "absent". Throwing is the contract gc needs, because every
+// caller below uses the answer to authorise a DELETE or an archive move, where acting on a wrong
+// "absent" destroys something. Both contracts now have one owner each in `fs-optional.ts`, named for
+// what they do, so importing the wrong one is a visible choice rather than an invisible downgrade.
 async function readTextIfPresent(file: string): Promise<string> {
 	try {
 		if (file.endsWith(COMPRESSED_SESSION_SUFFIX)) {
@@ -311,7 +348,7 @@ async function collectBlobCandidates(blobDir: string): Promise<BlobCandidate[]> 
 		candidate.mtimeMs = Math.max(candidate.mtimeMs, stat.mtimeMs);
 		byHash.set(hash, candidate);
 	}
-	return Array.from(byHash.values()).sort((a, b) => a.hash.localeCompare(b.hash));
+	return [...byHash.values()].sort((a, b) => a.hash.localeCompare(b.hash));
 }
 
 async function runBlobGc(options: ResolvedGcOptions, archiveSessionsRoot: string): Promise<BlobGcResult> {
@@ -361,8 +398,7 @@ async function listActiveSessions(sessionsRoot: string): Promise<SessionInfo[]> 
 	const sessions: SessionInfo[] = [];
 	for (const entry of entries) {
 		if (!entry.isDirectory()) continue;
-		const subSessions = await listSessionsReadOnly(path.join(sessionsRoot, entry.name), storage);
-		for (let si = 0; si < subSessions.length; si++) sessions.push(subSessions[si]!);
+		sessions.push(...(await listSessionsReadOnly(path.join(sessionsRoot, entry.name), storage)));
 	}
 	sessions.sort((a, b) => b.modified.getTime() - a.modified.getTime());
 	return sessions;
@@ -370,13 +406,10 @@ async function listActiveSessions(sessionsRoot: string): Promise<SessionInfo[]> 
 
 async function listNestedSessionsReadOnly(artifactsRoot: string): Promise<SessionInfo[]> {
 	const files = await collectJsonlFiles(artifactsRoot);
-	const dirs = Array.from(new Set(files.map(file => path.dirname(file)))).sort();
+	const dirs = [...new Set(files.map(file => path.dirname(file)))].sort();
 	const storage = new FileSessionStorage();
 	const sessions: SessionInfo[] = [];
-	for (const dir of dirs) {
-		const subSessions = await listSessionsReadOnly(dir, storage);
-		for (let si = 0; si < subSessions.length; si++) sessions.push(subSessions[si]!);
-	}
+	for (const dir of dirs) sessions.push(...(await listSessionsReadOnly(dir, storage)));
 	sessions.sort((a, b) => b.modified.getTime() - a.modified.getTime());
 	return sessions;
 }
@@ -464,6 +497,10 @@ function sessionIdFromSessionText(text: string): string | undefined {
 				? record.id
 				: undefined;
 		} catch {
+			// The first record of a session file, which the writer appends to as the session runs, so a torn
+			// or partially flushed line is expected at the head of a file that was still being written.
+			// Undefined means "no session id here", and the caller answers by leaving the file alone -- the
+			// conservative direction for a garbage collector, which must never delete a file it cannot read.
 			return undefined;
 		}
 	}
@@ -480,6 +517,9 @@ async function gzipSessionFile(source: string, destination: string): Promise<voi
 	try {
 		await fs.unlink(source);
 	} catch (error) {
+		// The gzip is durable, but the move isn't complete until the source is
+		// gone. If the unlink fails, roll the archive back so source and
+		// destination don't both linger and a rerun starts clean.
 		await fs.rm(destination, { force: true });
 		throw error;
 	}
@@ -520,7 +560,9 @@ async function moveSessionWithArtifacts(candidate: ArchiveCandidate): Promise<vo
 				} else {
 					await movePath(move.destination, move.source);
 				}
-			} catch {}
+			} catch {
+				// Preserve the original failure; rollback failure is reported by the next scan.
+			}
 		}
 		throw error;
 	}
@@ -567,7 +609,7 @@ async function collectArchivedSessionIds(archiveRoot: string): Promise<string[]>
 		const id = await archivedSessionIdFromFile(file);
 		if (id) ids.add(id);
 	}
-	return Array.from(ids).sort();
+	return [...ids].sort();
 }
 
 async function cleanupHistoryRowsForArchivedSessions(
@@ -587,7 +629,7 @@ async function cleanupHistoryRowsForArchivedSessions(
 	}
 
 	try {
-		const cleanup = deleteHistoryRowsForSessions(dbPath, Array.from(cleanupIds));
+		const cleanup = deleteHistoryRowsForSessions(dbPath, [...cleanupIds]);
 		result.historyRowsDeleted = cleanup.deleted;
 		result.ftsRebuilt = cleanup.ftsRebuilt;
 	} catch (error) {
@@ -815,7 +857,9 @@ async function openNewGcLock(lockPath: string): Promise<fs.FileHandle | null> {
 async function releaseGcLockFile(lockPath: string, handle: fs.FileHandle): Promise<void> {
 	try {
 		await handle.close();
-	} catch {}
+	} catch {
+		// Best effort: stale sidecar locks are recoverable by PID/timestamp.
+	}
 	try {
 		await fs.unlink(lockPath);
 	} catch (error) {

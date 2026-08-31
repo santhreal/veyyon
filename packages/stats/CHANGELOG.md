@@ -18,6 +18,16 @@
 
 - The minimum supported Bun runtime is now 1.4.0.
 
+### Removed
+
+- The `@veyyon/stats/format` entry point. `formatCostTiered` and `normalizePremiumRequests` are now exported by `@veyyon/utils/format`.
+
+## [1.3.0] - 2026-08-28
+
+### Changed
+
+- Migrated dashboard theme toggle to shared `ThemeToggle` from `@veyyon/tool-render`.
+
 ## [16.4.7] - 2026-07-12
 
 ### Fixed
@@ -240,6 +250,12 @@
 ### Fixed
 
 - Include subtask session files in usage stats ([#250](https://github.com/can1357/oh-my-pi/issues/250))
+
+## [1.2.0] - 2026-08-23
+
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
 
 ## [1.0.38] - 2026-07-31
 

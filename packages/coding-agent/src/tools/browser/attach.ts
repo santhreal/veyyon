@@ -79,6 +79,9 @@ async function probeCdpAt(port: number, signal?: AbortSignal): Promise<boolean> 
 		await res.body?.cancel();
 		return res.ok;
 	} catch {
+		// "Nothing is listening on that port" arrives as a thrown fetch, not as a status, so the throw is the
+		// probe's answer rather than a swallowed failure. A timeout lands here too and means the same thing to
+		// the caller: do not attach to this port.
 		return false;
 	} finally {
 		probeTimeout.cancel();
@@ -110,6 +113,8 @@ export async function pickElectronTarget(browser: Browser, matcher?: string): Pr
 	const discoveredPages = await Promise.all(
 		browser.targets().map(async target => {
 			if (String(target.type()) !== "page") return null;
+			// A target that will not hand over its page is not usable, which is the whole question here; the
+			// nulls are filtered below and an empty result falls back to `browser.pages()`, then throws.
 			return await target.page().catch(() => null);
 		}),
 	);
@@ -130,6 +135,8 @@ async function enrichPages(pages: Page[]): Promise<Array<{ page: Page; url: stri
 		pages.map(async page => ({
 			page,
 			url: page.url(),
+			// The title is display-only, used to match a tab by name; a page mid-navigation has no title to give
+			// and an empty one simply does not match, which is the same outcome as a page called nothing.
 			title: ((await page.title().catch(() => "")) ?? "").trim(),
 		})),
 	);

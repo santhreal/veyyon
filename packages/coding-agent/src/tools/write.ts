@@ -7,6 +7,7 @@ import type {
 	AgentToolUpdateCallback,
 	ToolTier,
 } from "@veyyon/agent-core";
+import { BARE_LITERAL_VALUE_RE, formatHashlineHeader } from "@veyyon/hashline";
 import type { Component } from "@veyyon/tui";
 import {
 	atomicWriteFileWith,
@@ -18,10 +19,14 @@ import {
 	untilAborted,
 	urlScheme,
 } from "@veyyon/utils";
+import { type } from "arktype";
+
+import { allLineNumbers, canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapshot-store";
+import { normalizeToLF } from "../edit/normalize";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { InternalUrlRouter } from "../internal-urls";
 import { parseInternalUrl } from "../internal-urls/parse";
-import { createLspWritethrough, type WritethroughCallback, writethroughNoop } from "../lsp";
+import { createLspWritethrough, type FileDiagnosticsResult, type WritethroughCallback, writethroughNoop } from "../lsp";
 import { DeferredDiagnostics } from "../lsp/deferred-diagnostics";
 import { getDiagnosticsLedger } from "../lsp/diagnostics-ledger";
 import { highlightCode } from "../modes/theme/highlight";
@@ -29,9 +34,12 @@ import type { Theme } from "../modes/theme/theme-class";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from "../sdk";
 import { budgetedFileCommit, sessionBudgetLimits } from "../session/cpu-limit";
+// Owners, not the local `../tui` barrel: it re-exports `./file-list`, and that module took
+// `getLanguageFromPath` from the theme ENGINE, so three names cost 282 modules of presentation layer.
 import { fileHyperlink } from "../tui/hyperlink";
 import { framedBlock } from "../tui/output-block";
 import { renderStatusLine } from "../tui/status-line";
+import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import { getLanguageFromPath } from "../utils/lang-from-path";
 import {
 	type ArchiveMemberContent,
@@ -53,7 +61,7 @@ import {
 	spliceConflict,
 } from "./conflict-detect";
 import { invalidateFsScanAfterWrite } from "./fs-cache-invalidation";
-import { outputMeta } from "./output-meta";
+import { type OutputMeta, outputMeta } from "./output-meta";
 import {
 	formatPathRelativeToCwd,
 	isInternalUrlPath,
@@ -90,33 +98,362 @@ import {
 } from "./sqlite-reader";
 import { ToolError, toolFailure } from "./tool-errors";
 import { toolResult } from "./tool-result";
-import type { ResolvedArchiveWritePath, ResolvedSqliteWritePath, WriteParams, WriteToolDetails } from "./write-helpers";
-import {
-	appendNoteToResult,
-	assertValidWriteContent,
-	EXECUTABLE_NOTICE,
-	emitWriteProgress,
-	isArchivePathNotFound,
-	maybeMarkExecutableForShebang,
-	maybeWriteSnapshotHeader,
-	normalizeArchiveWriteSubPath,
-	parseBulkDirectives,
-	parseSqliteWriteTarget,
-	writeFilesystemTargets,
-	writeSchema,
-} from "./write-helpers";
 
-export type { WriteToolInput } from "./write-helpers";
-export { writeFilesystemTargets } from "./write-helpers";
+const HASHLINE_HEADER_RE = /^\s*\[[^#\r\n]+#[0-9a-fA-F]{4}\]\s*$/;
+const LOOSE_HASHLINE_HEADER_RE = /^\s*\[[^#\r\n]+#[^ \t\r\n]*\]\s*$/;
+const HASHLINE_OP_RE =
+	/^\s*(?:SWAP(?:\.BLK)?(?:\s+[1-9]\d*(?:\s*(?:\.\.|\.=|-|…|\s)\s*[1-9]\d*)?)?\s*:|DEL(?:\.BLK)?\s+[1-9]\d*(?:\s*(?:\.\.|\.=|-|…|\s)\s*[1-9]\d*)?\s*$|INS\.(?:PRE\s+[1-9]\d*|POST\s+[1-9]\d*|HEAD|TAIL|BLK\.POST\s+[1-9]\d*)\s*:|REM\s*$|MV\s+\S+)/;
+const UNIFIED_DIFF_HUNK_RE = /^@@\s+[-+]?\d+(?:,\d+)?\s+[-+]?\d+(?:,\d+)?\s+@@/;
+const APPLY_PATCH_MARKER_RE = /^\*\*\*\s+(?:Update File|Add File|Delete File|Move to):/;
+const READ_TRUNCATION_NOTICE_RE = /^\[(?:Showing lines \d+-\d+ of \d+|\d+ more lines? in (?:file|\S+))\b.*\bUse :L?\d+/;
+// The grep match marker sits at column 0 (`*42:code`) and the context marker is
+// exactly one leading space with no space after the colon (` 43:code`). Neither
+// tolerates arbitrary indentation: `^\s*` before the one-space form matched any
+// indented numeric mapping key, so a docker-compose `  80: http` or a k8s
+// manifest port was rejected as pasted search output. The `(?! )` keeps a YAML
+// key, which always separates its value with a space, out of the one-space form.
+const SEARCH_PREFIX_RE = /^(?:\*\d+:|[ ]\d+:(?! )|\s*>>>\s*\d+:)/;
+const LINE_PREFIX_RE = /^\s*(\d+):/;
+const EXECUTABLE_NOTICE = "[Notice: Made executable via chmod +x]";
 
+const BULK_DIRECTIVE_RE = /^#?(\d+)\s*[:=]\s*(@ours|@theirs|@base|@both)$/;
+/**
+ * The head of a per-id directive line — `<id>:` / `<id>=` (optionally `#`-prefixed),
+ * regardless of whether its value is a valid `@side` token. Used only to sharpen the
+ * error message when a directive block is malformed (e.g. `15: some literal text`).
+ */
+const BULK_DIRECTIVE_HEAD_RE = /^#?\d+\s*[:=]/;
+
+function truncateDirectiveLine(line: string): string {
+	return line.length > 60 ? `${line.slice(0, 57)}…` : line;
+}
+
+/**
+ * Parse `conflict://*` per-id directive content: every non-empty line must be
+ * `<id>: @side` (also accepted: `#<id> = @side`), where `@side` is one of
+ * `@ours` / `@theirs` / `@base` / `@both`.
+ *
+ * Returns `null` only when NO line is directive-shaped (→ uniform bulk mode).
+ * Throws on duplicate ids, and — critically — on a *partial* directive block:
+ * content that mixes valid `<id>: @side` lines with lines that aren't. Without
+ * that guard a per-id write carrying any non-token value (a literal or
+ * multi-line replacement, e.g. `15: <multi-line content>`) fell through to
+ * uniform bulk mode, which pasted the raw directive text verbatim into every
+ * block and still reported success. Per-id bulk is token-only; literal or
+ * multi-line replacements must go through individual `conflict://<N>` writes.
+ */
+function parseBulkDirectives(content: string): Map<number, string> | null {
+	const map = new Map<number, string>();
+	const stray: string[] = [];
+	let sawDirective = false;
+	for (const raw of content.split("\n")) {
+		const line = raw.trim();
+		if (line.length === 0) continue;
+		const match = line.match(BULK_DIRECTIVE_RE);
+		if (!match) {
+			stray.push(line);
+			continue;
+		}
+		sawDirective = true;
+		const id = Number.parseInt(match[1], 10);
+		if (map.has(id)) {
+			throw new ToolError(`Bulk directive lists conflict #${id} twice — each id may appear once.`);
+		}
+		map.set(id, match[2]);
+	}
+	// No directive lines at all → not a per-id block; caller uses uniform mode.
+	if (!sawDirective) return null;
+	if (stray.length > 0) {
+		const sample = stray[0]!;
+		const tokenHint = BULK_DIRECTIVE_HEAD_RE.test(sample)
+			? `Per-id bulk only accepts the tokens @ours/@theirs/@base/@both — one side per id, single line. `
+			: "";
+		throw new ToolError(
+			`Malformed \`conflict://*\` per-id block: ${stray.length} line(s) are not \`<id>: @side\` directives (first: \`${truncateDirectiveLine(sample)}\`). ` +
+				tokenHint +
+				`Literal or multi-line replacement content isn't supported in a per-id block — resolve those blocks with individual \`write({ path: "conflict://<N>", content })\` calls (you can issue several at once). ` +
+				`For a pure pick-a-side pass, make every non-empty line \`<id>: @ours\` (or @theirs/@base/@both).`,
+		);
+	}
+	return map;
+}
+
+const writeSchema = type({
+	path: type("string").describe("file path"),
+	content: type("string").describe("file content"),
+});
+
+export type WriteToolInput = typeof writeSchema.infer;
+
+/** Details returned by the write tool for TUI rendering */
+export interface WriteToolDetails {
+	diagnostics?: FileDiagnosticsResult;
+	meta?: OutputMeta;
+	/** Set when the file was auto-chmod'd because content begins with a `#!` shebang. */
+	madeExecutable?: boolean;
+	/** Absolute filesystem path the write resolved to. Used by the renderer to wrap
+	 * the (possibly cwd-relative) header path in an OSC 8 `file://` hyperlink. */
+	resolvedPath?: string;
+}
+
+/**
+ * Validate that write content is a raw file body and not a patch fragment or
+ * read-output display echo.
+ *
+ * Replaces legacy silent prefix stripping with refusal: writing a modified
+ * version of pasted patch content creates invisible file corruption, and
+ * auto-stripping mangled legitimate numbered/prefixed text.
+ */
+function assertValidWriteContent(content: string): void {
+	if (!content) return;
+	const lines = content.split("\n");
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i]!;
+		const lineNum = i + 1;
+		const trimmed = line.trim();
+		if (trimmed.length === 0) continue;
+
+		if (HASHLINE_HEADER_RE.test(line) || LOOSE_HASHLINE_HEADER_RE.test(line)) {
+			throw new ToolError(
+				`Cannot write content: detected hashline section header '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not apply patches or strip display headers. To write the file, pass the raw file content; to apply a patch, use the edit tool.`,
+			);
+		}
+
+		if (HASHLINE_OP_RE.test(line)) {
+			throw new ToolError(
+				`Cannot write content: detected hashline patch operation '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not apply patches. To write the file, pass the complete file content; to apply a patch, use the edit tool.`,
+			);
+		}
+
+		if (UNIFIED_DIFF_HUNK_RE.test(trimmed)) {
+			throw new ToolError(
+				`Cannot write content: detected unified diff hunk header '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not apply diffs. To write the file, pass the complete file content; to apply a patch, use the edit tool.`,
+			);
+		}
+
+		if (APPLY_PATCH_MARKER_RE.test(trimmed)) {
+			throw new ToolError(
+				`Cannot write content: detected patch marker '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not apply patches. To write the file, pass the complete file content; to apply a patch, use the edit tool.`,
+			);
+		}
+
+		if (READ_TRUNCATION_NOTICE_RE.test(trimmed)) {
+			throw new ToolError(
+				`Cannot write content: detected read tool truncation notice '${trimmed}' on line ${lineNum}. The write tool writes whole files and does not strip read display prefixes. Pass the raw file content without read tool output decorations.`,
+			);
+		}
+
+		if (SEARCH_PREFIX_RE.test(line)) {
+			throw new ToolError(
+				`Cannot write content: detected search/read display prefix '${trimmed.slice(0, 10)}' on line ${lineNum}. The write tool writes whole files and does not strip search/read display prefixes. Pass the raw file content without line prefixes.`,
+			);
+		}
+	}
+
+	const nonEmptyLines = lines.map((text, idx) => ({ text, lineNum: idx + 1 })).filter(l => l.text.trim().length > 0);
+
+	if (nonEmptyLines.length >= 2) {
+		const allPrefixed = nonEmptyLines.every(l => LINE_PREFIX_RE.test(l.text));
+		if (allPrefixed) {
+			const isDirectiveBlock = nonEmptyLines.some(
+				l => BULK_DIRECTIVE_HEAD_RE.test(l.text.trim()) && /@\w+/.test(l.text),
+			);
+			const isLiteralMapping = nonEmptyLines.every(l =>
+				BARE_LITERAL_VALUE_RE.test(l.text.replace(LINE_PREFIX_RE, "")),
+			);
+			if (!isDirectiveBlock && !isLiteralMapping) {
+				const first = nonEmptyLines[0]!;
+				const match = first.text.match(LINE_PREFIX_RE);
+				const prefix = match ? match[0] : "";
+				throw new ToolError(
+					`Cannot write content: detected read tool line-number prefix '${prefix}' on line ${first.lineNum}. The write tool writes whole files and does not strip line-number prefixes. Pass the raw file content without line numbers.`,
+				);
+			}
+		}
+	}
+}
+
+/**
+ * Record a snapshot of the freshly-written `content` for `absolutePath`
+ * so subsequent hashline edits address the new file with a current tag,
+ * and return the matching `[displayPath#TAG]` header. Returns `undefined`
+ * when the session is not in hashline mode so callers can no-op cheaply.
+ *
+ * Mirrors the post-commit snapshot recording the hashline patcher performs
+ * after a successful edit: the model gets a tag without an extra `read`.
+ */
+function maybeWriteSnapshotHeader(session: ToolSession, absolutePath: string, content: string): string | undefined {
+	if (!resolveFileDisplayMode(session).hashLines) return undefined;
+	const normalized = normalizeToLF(content);
+	// Every line is recorded as seen: the model authored the bytes, so the
+	// patcher's unseen-anchor gate should RUN and pass rather than be skipped
+	// by an empty provenance set. See allLineNumbers for why that distinction
+	// matters even though the two are indistinguishable today.
+	const tag = getFileSnapshotStore(session).record(
+		canonicalSnapshotKey(absolutePath),
+		normalized,
+		allLineNumbers(normalized),
+	);
+	return formatHashlineHeader(formatPathRelativeToCwd(absolutePath, session.cwd), tag);
+}
+
+/**
+ * Append a trailing note line to the first text block of a tool result.
+ * Mutates `result` in place (the result object is owned by this call).
+ */
+function appendNoteToResult(result: AgentToolResult<WriteToolDetails>, note: string): void {
+	const firstText = result.content.find(
+		(block): block is { type: "text"; text: string } => block.type === "text" && typeof block.text === "string",
+	);
+	if (firstText) {
+		firstText.text = firstText.text.length > 0 ? `${firstText.text}\n${note}` : note;
+	} else {
+		result.content.push({ type: "text", text: note });
+	}
+}
+
+function emitWriteProgress(
+	onUpdate: AgentToolUpdateCallback<WriteToolDetails> | undefined,
+	content: string,
+	displayPath: string,
+	resolvedPath?: string,
+): void {
+	onUpdate?.({
+		content: [{ type: "text", text: `Writing ${content.length} bytes to ${shortenPath(displayPath)}...` }],
+		details: resolvedPath ? { resolvedPath } : {},
+	});
+}
+
+/**
+ * If `content` begins with a `#!` shebang, ensure the file is executable.
+ *
+ * Mirrors `chmod a+x` (adds user/group/other execute bits to existing mode).
+ * Errors are swallowed: chmod failure (e.g. Windows ACL, read-only mount)
+ * MUST NOT fail an otherwise successful write. Returns whether the mode
+ * actually changed so the caller can surface a note.
+ */
+async function maybeMarkExecutableForShebang(absolutePath: string, content: string): Promise<boolean> {
+	if (!content.startsWith("#!")) return false;
+	try {
+		const stat = await fs.stat(absolutePath);
+		const currentMode = stat.mode & 0o7777;
+		const newMode = currentMode | 0o111;
+		if (newMode === currentMode) return false;
+		await fs.chmod(absolutePath, newMode);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tool Class
+// ═══════════════════════════════════════════════════════════════════════════
+
+type WriteParams = WriteToolInput;
+
+interface ResolvedArchiveWritePath {
+	absolutePath: string;
+	archivePath: string;
+	archiveSubPath: string;
+	exists: boolean;
+}
+
+interface ResolvedSqliteWritePath {
+	absolutePath: string;
+	sqlitePath: string;
+	table: string;
+	key?: string;
+	exists: boolean;
+}
+
+function isArchivePathNotFound(error: unknown): boolean {
+	if (isEnoent(error)) return true;
+	return typeof error === "object" && error !== null && "code" in error && error.code === "ENOTDIR";
+}
+
+function normalizeArchiveWriteSubPath(rawPath: string): string {
+	const normalized = rawPath.replace(/\\/g, "/");
+	if (normalized.length === 0) {
+		throw new ToolError("Archive write path must target a file inside the archive");
+	}
+	if (normalized.endsWith("/")) {
+		throw new ToolError("Archive write path must target a file, not a directory");
+	}
+
+	const parts = normalized.split("/");
+	const normalizedParts: string[] = [];
+	for (const part of parts) {
+		if (!part || part === ".") continue;
+		if (part === "..") {
+			throw new ToolError("Archive path cannot contain '..'");
+		}
+		normalizedParts.push(part);
+	}
+
+	if (normalizedParts.length === 0) {
+		throw new ToolError("Archive write path must target a file inside the archive");
+	}
+
+	return normalizedParts.join("/");
+}
+
+function parseSqliteWriteTarget(subPath: string, queryString: string): { table: string; key?: string } {
+	if (queryString.trim().length > 0) {
+		throw new ToolError("SQLite write paths do not support query parameters");
+	}
+
+	const normalized = subPath.replace(/^:+/, "").trim();
+	if (!normalized) {
+		throw new ToolError("SQLite write path must target a table");
+	}
+
+	const separatorIndex = normalized.indexOf(":");
+	const table = separatorIndex === -1 ? normalized : normalized.slice(0, separatorIndex);
+	const key = separatorIndex === -1 ? undefined : normalized.slice(separatorIndex + 1);
+	if (!table) {
+		throw new ToolError("SQLite write path must target a table");
+	}
+	if (key !== undefined && key.length === 0) {
+		throw new ToolError("SQLite row writes require a non-empty row key");
+	}
+
+	return { table, key };
+}
+
+/**
+ * Filesystem path a write call targets, for the cwd boundary (cwd-boundary.ts).
+ * The hashline `[path#TAG]` wrapper is unwrapped (parity with execute) so it
+ * cannot dodge the gate; ssh/internal schemes are filtered by the boundary.
+ */
+export function writeFilesystemTargets(args: unknown): string[] {
+	const raw = (args as Partial<WriteParams>).path;
+	return typeof raw === "string" ? [unwrapHashlineHeaderPath(raw)] : [];
+}
+
+/**
+ * Write tool implementation.
+ *
+ * Creates or overwrites files with optional LSP formatting and diagnostics.
+ */
 export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails> {
 	readonly name = "write";
 	readonly approval = (args: unknown): ToolTier => {
 		const rawPath = (args as Partial<WriteParams>).path;
 		if (typeof rawPath !== "string") return "write";
+		// Unwrap a hashline `[path#TAG]` wrapper first (parity with execute) so a
+		// wrapped `[ssh://h/x#ABCD]` can't dodge scheme detection and the tier checks below.
 		const path = unwrapHashlineHeaderPath(rawPath);
+		// Remote SSH writes open an outbound connection and run a remote shell —
+		// gate them like the exec-tier `ssh` tool, ahead of the handler-write
+		// logic. Substring match also covers selector-suffixed targets.
 		if (pathTargetsSsh(path)) return "exec";
 		if (!isInternalUrlPath(path)) return "write";
+		// Internal URLs are usually session-local artifacts (read tier), but a
+		// scheme whose handler exposes a `write` hook mutates handler-owned user
+		// data (e.g. vault:// notes) and must take the write tier so always-ask
+		// mode actually prompts.
 		const scheme = urlScheme(path.trim());
 		const handler = scheme ? InternalUrlRouter.instance().getHandler(scheme) : undefined;
 		return handler?.write ? "write" : "read";
@@ -127,6 +464,10 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		const content = typeof params.content === "string" ? params.content : "";
 		return [`Path: ${truncateForPrompt(targetPath)}`, `Content:\n${truncateForPrompt(content)}`];
 	};
+	// The cwd boundary reads this to gate out-of-cwd writes in non-yolo modes. The
+	// hashline `[path#TAG]` wrapper is unwrapped (parity with execute) so it can't
+	// dodge the gate; ssh/internal schemes are filtered by the boundary. See
+	// cwd-boundary.ts.
 	readonly filesystemTargets = (args: unknown): string[] => writeFilesystemTargets(args);
 	readonly label = "Write";
 	readonly description: string;
@@ -135,12 +476,19 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 	readonly concurrency = "exclusive";
 	readonly loadMode = "essential";
 
+	/** Stream matchers should see the real file content, not its JSON-escaped argument encoding. */
 	matcherDigest(args: unknown): string | undefined {
 		const content = (args as Partial<WriteParams>).content;
 		return typeof content === "string" ? content : undefined;
 	}
 
 	readonly #writethrough: WritethroughCallback;
+	/**
+	 * The budgeted stand-in for a bare `writethroughNoop`, for the write paths
+	 * that deliberately skip LSP formatting (conflict-marker resolution, SQLite
+	 * and archive members). They still put bytes on the operator's disk, so
+	 * they still spend the session tree's write budget.
+	 */
 	readonly #plainWritethrough: WritethroughCallback;
 	readonly #deferredDiagnostics: DeferredDiagnostics | undefined;
 
@@ -151,6 +499,10 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		const dedup = enableDiagnostics && session.settings.get("lsp.diagnosticsDeduplicate");
 		this.#deferredDiagnostics =
 			enableDiagnostics && session.queueDeferredDiagnostics ? new DeferredDiagnostics(session, dedup) : undefined;
+		// The harness is deliberately never a member of its own budget group, so
+		// no io.stat and no /proc/<pid>/io reading can see a byte the write tool
+		// puts on disk. Wrapping the commit callback is how those bytes reach the
+		// session tree's write budget, and how a write past it is refused.
 		const budgetSource = {
 			sessionId: () => session.getSessionId?.() ?? null,
 			limits: () => sessionBudgetLimits(session.settings),
@@ -213,9 +565,15 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		content: string,
 		resolvedArchivePath: ResolvedArchiveWritePath,
 	): Promise<AgentToolResult<WriteToolDetails>> {
+		// Resolve symlinks before the tmp+rename swap: renaming over a symlink
+		// replaces the link itself with a regular file instead of writing
+		// through to its target.
 		const finalPath = resolvedArchivePath.exists
 			? await fs.realpath(resolvedArchivePath.absolutePath).catch(() => resolvedArchivePath.absolutePath)
 			: resolvedArchivePath.absolutePath;
+		// A realpath swap can land on a name without an archive extension; a
+		// whole-archive rewrite then defaults to an uncompressed tar, matching the
+		// previous `isZip`/`isGzip`/else fallthrough.
 		const format = archiveFormatFromPath(finalPath) ?? "tar";
 
 		const entries = new Map<string, ArchiveMemberContent>();
@@ -231,6 +589,9 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		}
 		entries.set(resolvedArchivePath.archiveSubPath, content);
 
+		// Whole-archive rewrite: writeArchive streams into a temp file that
+		// atomicWriteFileWith renames over the original only on success, so a
+		// crash/disk-full mid-write can't destroy the existing archive.
 		try {
 			await atomicWriteFileWith(finalPath, tmpPath => writeArchive(tmpPath, format, entries));
 		} catch (error) {
@@ -374,6 +735,18 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		}
 	}
 
+	/**
+	 * Resolve a single `conflict://<N>` write by splicing the recorded
+	 * marker region in the registered file with `replacementContent`.
+	 * The write deliberately bypasses the LSP writethrough: the file may
+	 * still hold other unresolved marker blocks, so formatting could
+	 * corrupt them and diagnostics would be marker-noise anyway.
+	 *
+	 * Entry ids are session-stable: they keep working even after later
+	 * writes resolve other blocks in the same file. The recorded range
+	 * is re-validated on disk before splicing so an out-of-band edit
+	 * surfaces as a clear error instead of corrupting the file.
+	 */
 	async #resolveConflict(
 		entry: ConflictEntry,
 		replacementContent: string,
@@ -396,6 +769,11 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		const history = this.session.conflictHistory;
 		history?.invalidate(entry.id);
 		if (history) {
+			// Drop stale duplicate registrations of the same region: a re-read
+			// after an out-of-band shift registers a fresh id at the new
+			// startLine while the stale twin persists at the old one. A DISTINCT
+			// conflict block that is merely byte-identical still occurs in the
+			// post-splice content and must stay addressable.
 			for (const other of history.entries()) {
 				if (
 					other.absolutePath === absolutePath &&
@@ -425,6 +803,10 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		};
 	}
 
+	/**
+	 * Look up a single conflict entry by id and dispatch to {@link #resolveConflict}.
+	 * Throws a clear `not found` error when the id has been invalidated.
+	 */
 	async #resolveSingleConflictById(
 		id: number,
 		replacementContent: string,
@@ -439,6 +821,21 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		return this.#resolveConflict(entry, replacementContent, signal);
 	}
 
+	/**
+	 * Bulk-resolve every registered conflict via `conflict://*`.
+	 *
+	 * Entries are grouped by file and applied bottom-up by recorded start
+	 * line so each splice keeps later anchors valid. `content` tokens are
+	 * expanded *per entry*, so `content: "@ours"` keeps each block's own
+	 * ours side rather than collapsing every conflict to the first
+	 * block's ours.
+	 *
+	 * All-or-nothing semantics within a file: if any splice for a file
+	 * fails (stale anchors, missing base for `@base`, etc.), that file is
+	 * left untouched and the error is surfaced. Files that succeed are
+	 * still written. The result text reports per-file counts so the agent
+	 * can re-read the failed files and retry.
+	 */
 	async #resolveAllConflicts(
 		replacementContent: string,
 		signal: AbortSignal | undefined,
@@ -451,10 +848,16 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			);
 		}
 
+		// Per-id directive mode: content made solely of `<id>: @side` lines
+		// resolves each listed conflict with that side in one call. Ideal for
+		// merge-hell files where dozens of pick-one blocks each need their own
+		// winner — one call instead of one write per conflict. Parsed from the
+		// PRE-strip content: hashline prefix stripping would otherwise eat the
+		// `<id>: ` heads as echoed line numbers.
 		const directives = parseBulkDirectives(replacementContent);
 		if (directives) {
 			const known = new Set(allEntries.map(entry => entry.id));
-			const unknown = Array.from(directives.keys()).filter(id => !known.has(id));
+			const unknown = [...directives.keys()].filter(id => !known.has(id));
 			if (unknown.length > 0) {
 				throw new ToolError(
 					`Bulk directive references unknown conflict id(s) ${unknown.map(id => `#${id}`).join(", ")}. Currently registered: ${allEntries.map(e => `#${e.id}`).join(", ")}.`,
@@ -512,6 +915,9 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 					totalEchoTrimmed += splice.trimmedLeading + splice.trimmedTrailing;
 					resolvedEntries.push(entry);
 				} catch (error) {
+					// A locate-miss for a region an earlier entry already spliced
+					// in this pass is a stale duplicate registration (re-read after
+					// an out-of-band shift) — treat it as already resolved.
 					if (resolvedEntries.some(done => conflictRegionsEqual(done, entry))) {
 						staleEntries.push(entry);
 						continue;
@@ -596,6 +1002,16 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		onUpdate?: AgentToolUpdateCallback<WriteToolDetails>,
 		context?: AgentToolContext,
 	): Promise<AgentToolResult<WriteToolDetails>> {
+		// Strip a hashline `[path#TAG]` wrapper up front so every downstream
+		// decision (scheme routing, internal-URL handler dispatch, plan-mode
+		// guard, plan path resolution, ACP bridge routing) sees the same
+		// filesystem target. Without this, a model that pastes a `read`
+		// header as the `path` arg would slip past `isInternalUrlPath`
+		// (which fails on a leading `[`) and the bridge router would send a
+		// `[local://scratch.md#ABCD]` write to the editor instead of the
+		// session-local sandbox.
+		// Peel a read-tool selector (`:raw`, `:1-20`, …) so the write target matches
+		// what `read` resolves for the same URL; line-range/malformed selectors throw.
 		const path = peelWriteUrlSelector(unwrapHashlineHeaderPath(rawPath));
 		return untilAborted(signal, async () => {
 			assertValidWriteContent(content);
@@ -605,6 +1021,8 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 				const scheme = parsed.protocol.replace(/:$/, "").toLowerCase();
 				const handler = internalRouter.getHandler(scheme);
 				if (handler?.write) {
+					// Handler-owned writes (vault:// notes, host URIs) mutate user
+					// data outside the local sandbox — plan mode must reject them.
 					enforcePlanModeWrite(this.session, path, { op: "update" });
 					emitWriteProgress(onUpdate, content, path);
 					await handler.write(parsed, content, { cwd: this.session.cwd, signal });
@@ -612,6 +1030,9 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 					return { content: [{ type: "text", text: resultText }], details: {} };
 				}
 				if (scheme !== "local") {
+					// Name the tool that DOES mutate this scheme, so the caller has a
+					// next step instead of a dead end. memory:// is edited with the
+					// memory_edit tool; other read-only schemes have no mutation tool.
 					const mutationTool: Record<string, string> = { memory: "memory_edit" };
 					const tool = mutationTool[scheme];
 					throw new ToolError(
@@ -620,6 +1041,8 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 							: `${scheme}:// URLs are read-only; there is no write path for this scheme.`,
 					);
 				}
+				// local:// is backed by the session-local artifact sandbox and is
+				// resolved by resolvePlanPath below so write/read share the same root.
 			}
 
 			const conflictUri = parseConflictUri(path);
@@ -671,15 +1094,23 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			const absolutePath = resolvePlanPath(this.session, path);
 			const batchRequest = getLspBatchRequest(context?.toolCall);
 
+			// Check if file exists and is auto-generated before overwriting
 			const overwritingExistingFile = await fs.exists(absolutePath);
 			if (overwritingExistingFile) {
 				await assertEditableFile(absolutePath, path);
 			}
 
+			// On a case-insensitive filesystem the existing directory entry keeps
+			// its own spelling: writing to `Foo.ts` updates `foo.ts` and does NOT
+			// rename it. Report the name the filesystem actually stores, or the
+			// operator greps for a filename that does not exist. No-op for a new
+			// file (nothing is stored yet) and on a case-sensitive filesystem.
 			const reportedPath = overwritingExistingFile ? resolveStoredPathCase(absolutePath) : absolutePath;
 			const displayPath = formatPathRelativeToCwd(reportedPath, this.session.cwd);
 			emitWriteProgress(onUpdate, content, displayPath, absolutePath);
 
+			// Try ACP bridge first for editor-visible filesystem paths. Internal
+			// artifacts such as local:// plans are owned by veyyon, not the editor.
 			if (await routeWriteThroughBridge(this.session, path, absolutePath, content, signal)) {
 				const madeExecutable = await maybeMarkExecutableForShebang(absolutePath, content);
 				const header = maybeWriteSnapshotHeader(this.session, absolutePath, content);
@@ -729,6 +1160,10 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 	}
 }
 
+// =============================================================================
+// TUI Renderer
+// =============================================================================
+
 interface WriteRenderArgs {
 	path?: unknown;
 	file_path?: unknown;
@@ -740,13 +1175,12 @@ const WRITE_STREAMING_PREVIEW_LINES = 12;
 
 function countLines(text: string): number {
 	if (!text) return 0;
-	let count = 1;
-	for (let i = 0; i < text.length; i++) {
-		if (text.charCodeAt(i) === 0x0a) count++;
-	}
-	return count;
+	return text.split("\n").length;
 }
 
+/** Bounded newline scan: whether `text` spans more than `maxLines` lines.
+ *  Runs on every live compose (the repaint predicate below), so it must not
+ *  materialize the split the way `countLines` does. */
 function exceedsLineCount(text: string, maxLines: number): boolean {
 	if (!text) return false;
 	let lines = 1;
@@ -777,6 +1211,15 @@ function normalizeDisplayText(text: unknown): string {
 	return displayText.replace(/\r/g, "");
 }
 
+/**
+ * Minimum line-number gutter width for write previews. The streaming preview's
+ * gutter must stay byte-stable as the line count grows: a width derived purely
+ * from `String(totalLines).length` widens at the 10/100/1000-line crossings,
+ * rewriting every already-rendered row — which forces the transcript's commit
+ * audit to recommit the block's committed prefix (a full duplicate in native
+ * scrollback). Reserving 3 digits keeps the gutter constant through 999 lines
+ * and keeps the streamed rows byte-identical to the final result render.
+ */
 const WRITE_GUTTER_MIN_WIDTH = 3;
 
 function formatStreamingContent(
@@ -791,6 +1234,10 @@ function formatStreamingContent(
 	const bodyText = cachedRenderedString(cache, uiTheme, expanded, language ?? "", content, () => {
 		const lines = normalizeDisplayText(content).split("\n");
 		const totalLines = lines.length;
+		// Collapsed: follow the streaming edge with a bounded tail window so the box
+		// stays short enough not to strand its scrolled-off head above the viewport
+		// while the block is volatile. `Ctrl+O` (expanded) lifts the cap for a
+		// deliberate full view — matching the eval streaming preview.
 		const startIndex = expanded ? 0 : Math.max(0, totalLines - WRITE_STREAMING_PREVIEW_LINES);
 		const visibleLines = lines.slice(startIndex);
 		const hidden = startIndex;
@@ -809,6 +1256,10 @@ function formatStreamingContent(
 		}
 		return text;
 	});
+	// The animated glyph lives on this trailing line — inside the transcript's
+	// volatile-tail holdback — never in the header: an animating head row pins
+	// the native-scrollback commit boundary at the top of the block, so a long
+	// expanded preview could never scroll-append mid-stream.
 	const spinner = spinnerFrame !== undefined ? `${formatStatusIcon("running", uiTheme, spinnerFrame)} ` : "";
 	return `${bodyText}${spinner}${uiTheme.fg("dim", `… (streaming)`)}`;
 }
@@ -854,6 +1305,10 @@ export const writeToolRenderer = {
 		const lang = rawPath ? (getLanguageFromPath(rawPath) ?? "text") : "text";
 		const langBadge = uiTheme.langBadge(lang);
 		const pathDisplay = filePath ? uiTheme.fg("accent", filePath) : uiTheme.fg("toolOutput", "…");
+		// No status icon on the head row: it's the head of the framed block, and
+		// native-scrollback commits are prefix-only — an animated glyph would pin
+		// the commit boundary at the top, and the pending hourglass just adds
+		// noise. The liveness cue rides the trailing "(streaming)" line instead.
 		const header = renderStatusLine(
 			{
 				title: "Write",
@@ -898,6 +1353,9 @@ export const writeToolRenderer = {
 		const fileContent = normalizeDisplayText(args?.content);
 		const lang = rawPath ? getLanguageFromPath(rawPath) : undefined;
 		const langBadge = uiTheme.langBadge(lang);
+		// The header shows the cwd-relative path but links to the absolute path the
+		// write resolved to (args.path may be relative, which would yield a broken
+		// `file://` URI). Falls back to plain text when the result lacks a path.
 		const linkTarget = result.details?.resolvedPath;
 		const styledPath = filePath ? uiTheme.fg("accent", filePath) : uiTheme.fg("toolOutput", "…");
 		const pathDisplay = filePath && linkTarget ? fileHyperlink(linkTarget, styledPath) : styledPath;
@@ -971,6 +1429,12 @@ export const writeToolRenderer = {
 		});
 	},
 	mergeCallAndResult: true,
+	// The collapsed pending preview follows the streaming edge with a tail
+	// window once the content outgrows it (`… (N earlier lines)` + last rows);
+	// the first partial result re-anchors the frame to the top of the file, so
+	// tail rows already committed to viewport/native scrollback would survive
+	// as stale content above the new frame without a full replay. Expanded and
+	// short previews stay top-anchored and skip the (scrollback-wiping) reset.
 	forceFirstResultViewportRepaint: (args: unknown, options: RenderResultOptions) =>
 		!options.expanded && exceedsLineCount(writeContentOf(args), WRITE_STREAMING_PREVIEW_LINES),
 };

@@ -1,8 +1,14 @@
-import { collapseWhitespace, isRecord } from "@veyyon/utils";
+import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
+import { isRecord } from "@veyyon/utils/type-guards";
 import { extractionPromptOverride, hostLlmModel, hostLlmProvider } from "../config";
 import { extractionDiagnostics, safeForLog } from "./extraction/diagnostics";
 import { callHostLlm } from "./llm-backends";
 import type { RemoteLlmOptions } from "./local-llm";
+// The questions come statically, the CALLS come on demand. Asking whether an LLM is configured, and
+// cleaning what one returned, is configuration and text; performing the call reaches the streaming
+// engine, 299 modules. Extraction asks far more often than it calls, and the memory engine sits
+// behind extraction through `beam/consolidate.ts`, so a static import here put a provider on the
+// graph of every module that can remember something. See {@link llmClient}.
 import {
 	cleanOutput,
 	configuredLlmWillHandleCall,
@@ -11,6 +17,14 @@ import {
 	llmMaxTokens,
 } from "./local-llm-config";
 
+/**
+ * Load the half of the LLM client that performs calls.
+ *
+ * NOT a fallback and nothing degrades: a load failure REJECTS, and every call site here already runs
+ * inside a `try` that records the failure through `diag.recordFailure` before falling through, which
+ * is the same path a provider error takes. The module is cached after the first call, so this costs
+ * one resolution on the first extraction that actually reaches a model.
+ */
 function llmClient() {
 	return import("./local-llm");
 }
@@ -68,12 +82,14 @@ const INSTRUCTION_TEXT_FIELD_KEYS = ["instruction", "rule", ...FACT_TEXT_FIELD_K
 const PREFERENCE_TEXT_FIELD_KEYS = ["preference", ...FACT_TEXT_FIELD_KEYS] as const;
 const TIMELINE_TEXT_FIELD_KEYS = ["description", "event", "timeline", "date", ...FACT_TEXT_FIELD_KEYS] as const;
 
+/** Parsed knowledge-graph edge emitted by the extractor LLM. */
 export interface ExtractedKgTriple {
 	subject: string;
 	predicate: string;
 	object: string;
 }
 
+/** Category-preserving extraction result used by background memory routing. */
 export interface ExtractedFactCategories {
 	facts: string[];
 	instructions: string[];
@@ -88,6 +104,7 @@ function emptyFactCategories(): ExtractedFactCategories {
 
 function normalizeFact(fact: string): string {
 	const trimmed = fact.trim();
+	// Remove trailing sentence punctuation (. ! ?) if present
 	return trimmed.replace(/[.!?]+$/, "");
 }
 
@@ -165,6 +182,7 @@ function normalizeKgArray(items: unknown): ExtractedKgTriple[] {
 	return out;
 }
 
+/** Flatten extracted string categories for legacy fact callers. */
 export function flattenExtractedFactCategories(extracted: ExtractedFactCategories): string[] {
 	const out: string[] = [];
 	for (const category of STRING_CATEGORY_KEYS) {
@@ -175,6 +193,7 @@ export function flattenExtractedFactCategories(extracted: ExtractedFactCategorie
 	return out;
 }
 
+/** Count string facts plus KG triples in a category-preserving extraction result. */
 export function countExtractedFactCategories(extracted: ExtractedFactCategories): number {
 	return (
 		extracted.facts.length +
@@ -185,6 +204,7 @@ export function countExtractedFactCategories(extracted: ExtractedFactCategories)
 	);
 }
 
+/** Parse extractor output without discarding MEMORIA categories or KG triples. */
 export function parseExtractedFactCategories(rawOutput: string | null | undefined): ExtractedFactCategories {
 	if (rawOutput === null || rawOutput === undefined) {
 		return emptyFactCategories();
@@ -233,6 +253,7 @@ export function parseExtractedFactCategories(rawOutput: string | null | undefine
 	return { ...emptyFactCategories(), facts: cleaned };
 }
 
+/** Parse extractor output into the legacy flat string fact list. */
 export function parseFacts(rawOutput: string | null | undefined): string[] {
 	return flattenExtractedFactCategories(parseExtractedFactCategories(rawOutput)).slice(0, FLAT_FACT_LIMIT);
 }
@@ -271,6 +292,14 @@ export function heuristicExtractFacts(text: string): string[] {
 		if (value !== undefined) addUnique(facts, `The user prefers ${value}`);
 		value = /\bi (?:hate|dislike|do not like|don't like)\s+([^,.!?;]+)/i.exec(c)?.[1];
 		if (value !== undefined) addUnique(facts, `The user dislikes ${value}`);
+		// Require an explicit `i` or `you` subject before `always|never`. The
+		// other heuristics in this block all need an `i` subject (`i live in …`,
+		// `i use …`) which keeps them from matching narrative prose; the
+		// `Instruction:` pattern used to match any `always|never` token, so
+		// assistant prose like "the panel never populates" became stored as a
+		// user `Instruction:` memory (coding-agent issue #3372). Subject
+		// constraint mirrors how the rest of the heuristics filter for first- /
+		// second-person assertions and keeps narrative third-person prose out.
 		const instruction = /\b(?:i|you)\s+(always|never)\s+([^,.!?;]+)/i.exec(c);
 		if (instruction?.[1] !== undefined && instruction[2] !== undefined) {
 			addUnique(facts, `Instruction: ${instruction[1].toLowerCase()} ${instruction[2]}`);
@@ -294,6 +323,24 @@ async function tryHostExtraction(prompt: string): Promise<[boolean, string | nul
 	return [true, text === "" ? null : text];
 }
 
+/**
+ * Run the pattern extractor: the ONE owner of the `local` tier.
+ *
+ * This tier used to open by calling `callLocalLlm`, a one-line `return null` with a `_prompt` it did
+ * not read, alongside a `localGgufAvailable(): false` whose return TYPE said it could never be
+ * anything else. There was no GGUF loader anywhere to make either one true. So every extraction that
+ * reached this tier attempted a backend that did not exist, wrote `model_not_loaded` into the
+ * diagnostics, and then ran the pattern extractor that was always going to do the work. An operator
+ * reading those diagnostics saw a missing model where nothing had ever tried to load one, which is
+ * worse than an absent tier: it names a cause that cannot be acted on. Deleted rather than
+ * implemented, because a local GGUF backend is a feature to build, not a stub to keep warm.
+ *
+ * `emptyReason` is the failure reason recorded when the extractor finds nothing. The two call paths
+ * differ there and only there: reaching here after a model produced no usable output is an empty
+ * result, while reaching here because no LLM was configured at all is
+ * `llm_unavailable_at_call_site`. Both paths ran their own copy of this bookkeeping before, which is
+ * how they came to disagree about `recordCall`.
+ */
 function patternFallback(
 	sourceText: string,
 	diag = extractionDiagnostics(),
@@ -315,6 +362,7 @@ function patternFallback(
 	return emptyFactCategories();
 }
 
+/** Extract fact categories from text using configured, host, local, or remote LLMs. */
 export async function extractFactCategories(
 	text: string | null | undefined,
 	options: RemoteLlmOptions = {},
@@ -325,6 +373,10 @@ export async function extractFactCategories(
 	}
 	const prompt = buildExtractionPrompt(text);
 
+	// Configured completion (host-injected runtime LLM, e.g. the coding-agent's smol
+	// or a local on-device model). Mirrors consolidation's precedence: when a
+	// complete() fn is wired, it is the chosen path. Extraction is deterministic
+	// (temperature 0) so re-ingesting the same content does not create near-dupes.
 	if (configuredLlmWillHandleCall()) {
 		diag.recordAttempt("host");
 		try {
@@ -397,11 +449,13 @@ export async function extractFactCategories(
 	return patternFallback(text, diag);
 }
 
+/** Extract legacy flat fact strings from text. */
 export async function extractFacts(text: string | null | undefined, options: RemoteLlmOptions = {}): Promise<string[]> {
 	const extracted = await extractFactCategories(text, options);
 	return flattenExtractedFactCategories(extracted).slice(0, FLAT_FACT_LIMIT);
 }
 
+/** Safely extract category-preserving facts, swallowing best-effort failures. */
 export async function extractFactCategoriesSafe(text: string | null | undefined): Promise<ExtractedFactCategories> {
 	try {
 		return await extractFactCategories(text);
@@ -414,6 +468,7 @@ export async function extractFactCategoriesSafe(text: string | null | undefined)
 	}
 }
 
+/** Safely extract legacy flat fact strings, swallowing best-effort failures. */
 export async function extractFactsSafe(text: string | null | undefined): Promise<string[]> {
 	const extracted = await extractFactCategoriesSafe(text);
 	return flattenExtractedFactCategories(extracted).slice(0, FLAT_FACT_LIMIT);

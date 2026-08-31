@@ -117,6 +117,7 @@ export async function fetchCodexModels(options: CodexModelDiscoveryOptions): Pro
 				signal: options.signal,
 			});
 		} catch (error) {
+			// `continue` moves on to the next route, which is right; the attempt used to leave no trace at all.
 			report("request", errorMessage(error));
 			continue;
 		}
@@ -148,13 +149,13 @@ export async function fetchCodexModels(options: CodexModelDiscoveryOptions): Pro
 
 function normalizePaths(paths: readonly string[] | undefined): string[] {
 	if (!paths || paths.length === 0) {
-		return DEFAULT_MODEL_LIST_PATHS.slice();
+		return [...DEFAULT_MODEL_LIST_PATHS];
 	}
 	const normalized = paths
 		.map(path => path.trim())
 		.filter(path => path.length > 0)
 		.map(path => (path.startsWith("/") ? path : `/${path}`));
-	return normalized.length > 0 ? normalized : DEFAULT_MODEL_LIST_PATHS.slice();
+	return normalized.length > 0 ? normalized : [...DEFAULT_MODEL_LIST_PATHS];
 }
 
 function buildModelsUrl(baseUrl: string, path: string, clientVersion: string | undefined): string {

@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NEXT_PREFERENCE, PREFERENCE_LABEL, ThemeToggle } from "../src/ThemeToggle";
 
@@ -32,15 +32,16 @@ describe("ThemeToggle", () => {
 	});
 
 	it("triggers setPreference with the next preference in cycle when rendered", () => {
-		const setPreference = mock();
+		const chosen: string[] = [];
 		const element = ThemeToggle({
 			preference: "system",
-			setPreference,
+			setPreference: next => chosen.push(next),
 			className: "test-toggle",
 		});
 
-		// Trigger the onClick handler
 		element.props.onClick();
-		expect(setPreference).toHaveBeenCalledWith("light");
+
+		// The list, not the spy: one click sets exactly one preference, and it is the next in cycle.
+		expect(chosen).toEqual(["light"]);
 	});
 });

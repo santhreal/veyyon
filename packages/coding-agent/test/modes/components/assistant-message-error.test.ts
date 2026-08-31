@@ -99,6 +99,19 @@ describe("AssistantMessageComponent error rendering", () => {
 		]);
 	});
 
+	it("reports how many lines the clamp dropped", () => {
+		// The clamp used to be silent: a reader could not tell an abridged error
+		// from a complete one, nor how much was missing. The fixture is the long
+		// line plus 25 markers — 26 populated lines — of which 8 survive.
+		const lines = renderLines(erroredMessage(proxy502));
+		expect(lines.some(line => line.trim() === "… 18 more lines")).toBe(true);
+	});
+
+	it("says nothing about dropped lines when the whole error survives", () => {
+		const lines = renderLines(erroredMessage("first line\nsecond line"));
+		expect(lines.some(line => line.includes("more line"))).toBe(false);
+	});
+
 	it("width-truncates an overlong error line", () => {
 		const lines = renderLines(erroredMessage(proxy502));
 		const head = lines.find(line => line.trim().startsWith("Error:"));

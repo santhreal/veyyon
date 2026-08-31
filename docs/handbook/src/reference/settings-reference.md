@@ -65,7 +65,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `display.collapseCompacted` | Collapse Compacted History | boolean | `true` | Collapse pre-compaction history behind the summary divider on the live transcript; disable to keep the full transcript inline with dividers at each compaction point. |
-| `compaction.remote` | Remote Compaction | boolean | `true` | Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments and ChatGPT Codex sessions; every other model ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text. |
+| `compaction.remote` | Remote Compaction | boolean | `true` | Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments and ChatGPT Codex sessions; every other model ignores this setting and compacts locally. On, veyyon has the provider compact the span and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text. |
 | `compaction.strategy` | Compaction Type | enum | `summary` | Summary condenses history in place and continues the same session. Values: `summary`. |
 | `compaction.threshold` | Auto-Compaction Threshold | string | `auto` | When auto-compaction triggers. Auto uses the model's window minus the reserve; a percent scales with each model's window; a token amount is the same trigger on every model that can reach it, and a smaller model compacts at its own maximum. |
 | `compaction.model` | Compaction Model | modelChain | _(unset)_ | Models used for in-place summary compaction, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small. |
@@ -76,7 +76,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `modelRoles` | Role Models | record | `{}` | Assign a model to each role (task, plan, advisor, …). Opens a searchable picker with auth status. Scoped to the active profile — never edit config by hand. |
+| `modelRoles` | Role Models | record | `{}` | Assign a model to each role (Fast, Thinking, Vision, Architect, Designer, Commit, Tiny). Opens a searchable picker with auth status. The advisor's model is asked for in the Advisor group, and a subagent's in Subagents → Roster, so neither appears here. Scoped to the active profile — never edit config by hand. |
 
 ### Thinking
 
@@ -137,7 +137,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `advisor.enabled` | Enable Advisor | boolean | `false` | Pair a second model (assigned to the 'advisor' role) that passively reviews each turn and injects notes. |
+| `advisor.enabled` | Enable Advisor | boolean | `false` | Pair a second model that passively reviews each turn and injects notes. Which model it runs is Advisor Model, directly below. |
 | `advisor.subagents` | Advisor for Subagents | boolean | `false` | Also enable the advisor on spawned task/eval subagents. |
 | `advisor.syncBacklog` | Advisor Sync Backlog | enum | `off` | Pause the main agent for up to 30 seconds if the advisor falls behind by this many turns. Off disables catch-up delays. Values: `off`, `1`, `3`, `5`. |
 | `advisor.immuneTurns` | Advisor Immune Turns | number | `3` | After an advisor concern or blocker interrupts, route further concerns/blockers non-interruptingly for this many primary turns. |
@@ -176,7 +176,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `session.newKeepsBackground` | /new Keeps The Old Session | boolean | `false` | On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations and /process-manager opens them. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen. |
+| `session.newKeepsBackground` | /new Keeps The Old Session | boolean | `false` | Requires a restart: switching this on or off changes nothing in the running session. On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen. |
 
 ### Approvals
 
@@ -290,7 +290,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `session.maxProcesses` | Max Processes | number | `0` | Hard cap on how many processes may be alive at once across the session tree (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned, all in one budget group, so the cap is not multiplied by delegating. Enforced by the kernel where it can be: cgroup v2 pids.max on Linux and a Job Object process limit on Windows both refuse the fork itself, so a runaway loop stops instead of filling the process table. Elsewhere the cap is policy-only, refusing a new spawn with an error naming the limit and the current count, and a startup notice says the kernel is not holding it. |
+| `session.maxProcesses` | Session Max Processes | number | `0` | Hard cap on how many processes may be alive at once across the session tree (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned, all in one budget group, so the cap is not multiplied by delegating. Enforced by the kernel where it can be: cgroup v2 pids.max on Linux and a Job Object process limit on Windows both refuse the fork itself, so a runaway loop stops instead of filling the process table. Elsewhere the cap is policy-only, refusing a new spawn with an error naming the limit and the current count, and a startup notice says the kernel is not holding it. |
 
 ## Context
 
@@ -398,7 +398,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `readLineNumbers` | Line Numbers | boolean | `false` | Prepend line numbers to read tool output by default. |
-| `read.defaultLimit` | Default Read Limit | number | `300` | Default number of lines returned when agent calls read without a limit. |
+| `read.defaultLimit` | Default Read Limit | number | `300` | Line count returned when read is called without one. The window also stops at the tool output budget, so a file of long lines returns fewer lines than this. |
 | `read.toolResultPreview` | Inline Read Previews | boolean | `false` | Render read tool results inline in the transcript instead of summary rows. |
 
 ### Read Summaries
@@ -462,11 +462,8 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `todo.enabled` | Todos | boolean | `true` | Enable the todo tool for task tracking. |
-| `glob.enabled` | Glob | boolean | `true` | Enable the glob tool for glob-based file lookup. |
-| `grep.enabled` | Grep | boolean | `true` | Enable the grep tool for regex content search. |
-| `astGrep.enabled` | AST Grep | boolean | `true` | Enable the ast_grep tool for structural AST search. |
 | `astEdit.enabled` | AST Edit | boolean | `true` | Enable the ast_edit tool for structural AST rewrites. |
-| `debug.enabled` | Debug | boolean | `true` | Enable the debug tool for DAP-based debugging. |
+| `debug.enabled` | Debug | boolean | `true` | Enable the debug tool for DAP-based debugging. The tool loads only where a configured adapter command resolves. |
 | `launch.enabled` | Launch | boolean | `true` | Enable the launch tool for supervising shared long-running project processes. |
 | `speechgen.enabled` | Speech Generation | boolean | `false` | Enable the tts tool for on-device (Kokoro) or xAI Grok Voice speech-file synthesis. |
 | `generate_image.enabled` | Generate Image | boolean | `false` | Enable the generate_image tool for text-to-image generation and editing. |
@@ -494,12 +491,17 @@ veyyon config get compaction.threshold
 |---|---|---|---|---|
 | `launch.cleanupWaitMs` | Launch Cleanup Wait | number | `900000` | How long an exited process record is retained before being purged from memory and disk (0 = never clean up). |
 
-### Grep & Browser
+### Search Context
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `grep.contextBefore` | Grep Context Before | number | `1` | Lines of context before each grep match. |
-| `grep.contextAfter` | Grep Context After | number | `3` | Lines of context after each grep match. |
+| `search.contextBefore` | Text Context Before | number | `1` | Lines of context before each text search match. |
+| `search.contextAfter` | Text Context After | number | `1` | Lines of context after each text search match. |
+
+### Browser
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
 | `browser.headless` | Headless Browser | boolean | `true` | Launch browser in headless mode (disable to show browser UI). |
 | `browser.cmux` | cmux Browser | boolean | `true` | Use cmux WKWebView surfaces for browser automation when a cmux socket is available. Set VEYYON_BROWSER_CMUX=0 or VEYYON_BROWSER_CMUX=1 to override. |
 | `browser.screenshotDir` | Screenshot Directory | string | _(unset)_ | Directory to save screenshots. If unset, screenshots go to a temp file. Supports ~. Examples: ~/Downloads, ~/Desktop, /sdcard/Download (Android). |
@@ -516,12 +518,12 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `tools.artifactSpillThreshold` | Artifact Spill Threshold (KB) | number | `50` | Tool output above this size is saved as an artifact and the result keeps a head/tail window plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as grep and the browser. |
-| `tools.artifactTailBytes` | Artifact Tail Size (KB) | number | `20` | Amount of tail content kept inline when output spills to artifact. |
-| `tools.artifactHeadBytes` | Artifact Head Size (KB) | number | `20` | Amount of head content kept inline alongside the tail when output spills to artifact (middle elision). 0 disables — keep tail only. |
+| `tools.artifactSpillThreshold` | Artifact Spill Threshold (KB) | number | `50` | Tool output above this size is saved as an artifact and the result keeps a head/tail window no larger than this size, plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as search and the browser. |
+| `tools.artifactTailBytes` | Artifact Tail Size (KB) | number | `20` | Amount of tail content kept inline when output spills to artifact, bounded by the spill threshold. |
+| `tools.artifactHeadBytes` | Artifact Head Size (KB) | number | `20` | Amount of head content kept inline alongside the tail when output spills to artifact (middle elision), bounded with the tail by the spill threshold. 0 disables — keep tail only. |
 | `tools.outputMaxColumns` | Output Column Cap | number | `768` | Per-line byte cap for streaming tool outputs (bash, ssh, python, js eval) and `read`. Lines wider than this are ellipsis-truncated; remaining bytes up to the next newline are dropped. 0 disables. |
 | `tools.artifactTailLines` | Artifact Tail Lines | number | `500` | Maximum lines of tail content kept inline when output spills to artifact. |
-| `tools.inlineOutputFloor` | Inline Output Floor | number | `0.25` | Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as grep and the browser. Shown under the tab's Advanced fold. |
+| `tools.inlineOutputFloor` | Inline Output Floor | number | `0.25` | Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as search and the browser. Shown under the tab's Advanced fold. |
 
 ### Execution
 
@@ -538,7 +540,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `tools.discoveryMode` | Tool Discovery | enum | `auto` | Hide tools behind a search tool to save tokens. 'auto' hides MCP tools once the tool set has more than 40 tools; 'mcp-only' always hides MCP tools; 'all' also hides non-essential built-ins and first-party heavyweight tools such as generate_image. Values: `auto`, `off`, `mcp-only`, `all`. |
-| `tools.essentialOverride` | Essential Tools Override | array | `[]` | Override the always-loaded built-in tools (default: read, bash, launch, edit, write, glob, eval). Leave empty to use defaults. |
+| `tools.essentialOverride` | Essential Tools Override | array | `[]` | Override the always-loaded built-in tools (default: read, bash, launch, edit, write, search, eval). Leave empty to use defaults. |
 | `mcp.discoveryMode` | MCP Tool Discovery | boolean | `false` | Hide MCP tools by default and expose them through a tool discovery tool. |
 | `mcp.discoveryDefaultServers` | MCP Discovery Default Servers | array | `[]` | Keep MCP tools from these servers visible while discovery mode hides other MCP tools. |
 | `mcp.notifications` | MCP Update Injection | boolean | `false` | Inject MCP resource updates into the agent conversation. |
@@ -580,19 +582,17 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.enabled` | Subagents | boolean | `true` | Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Subagent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and Subagent Roster are kept while this is off and take effect again when you turn it back on. |
-| `subagent.delegation` | Subagent Delegation | enum | `preferred` | How strongly this session routes work to the subagent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Subagent Roster is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely. Values: `allowed`, `preferred`, `required`. |
+| `subagent.enabled` | Subagents | boolean | `true` | Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Subagent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and your Roster are kept while this is off and take effect again when you turn it back on. |
+| `subagent.delegation` | Subagent Delegation | enum | `preferred` | How strongly this session routes work to the subagent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Roster is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely. Values: `allowed`, `preferred`, `required`. |
 | `subagent.batch` | Batch Task Calls | boolean | `true` | Switch the task tool to its batch shape: one call carries { agent, context, tasks[] } — one subagent per item (with per-item isolation) and a required shared context prepended to every assignment. With async.enabled=true, each spawn runs as an independent background agent with the normal idle/parked lifecycle; otherwise the call blocks for merged results. Disable to restore the flat single-spawn schema. Shown under the tab's Advanced fold. |
 
 ### Subagents
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.agents` | Subagent Roster | record | `{}` | Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent's page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above. The roster also carries Subagent Model and Subagent Effort, which decide what a subagent with no row of its own runs. |
-| `subagent.maxNestedSpawnDepth` | Max Nested Spawn Depth | number | `0` | How many nested levels subagents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Subagent Roster above, pick a subagent, then Subagents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name. |
-| `subagent.model` | Subagent Model | modelChain | _(unset)_ | Models every enabled subagent runs, tried in order: the rest are used when an earlier one errors. Each entry carries its own effort. Unset means inherit: subagents follow the session's live main model. An agent whose own file names a `model:` uses that when this is unset. Editable from the roster as well, which is the same setting and not a copy. |
-| `subagent.thinkingLevel` | Subagent Effort | string | _(unset)_ | Thinking level for every enabled subagent, applied when the model above names no effort of its own. Inherit follows the session's effort. An explicit `:level` suffix on a model pattern still wins. Editable from the roster as well, which is the same setting and not a copy. |
-| `subagent.modelByDepth` | Models by Depth | record | `{}` | Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row outranks Subagent Model for a spawn at exactly that depth and leaves every other depth to Subagent Model. A row whose chain matches no model refuses the spawn and names the row, exactly like an unresolvable Subagent Model. Shown under the tab's Advanced fold. |
+| `subagent.agents` | Roster | record | `{}` | Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent's page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above. Same Model for All Agents, at the top of the roster, switches those per-agent choices for one shared pair. |
+| `subagent.maxNestedSpawnDepth` | Max Nested Spawn Depth | number | `0` | How many nested levels subagents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Roster above, pick a subagent, then Subagents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name. |
+| `subagent.modelByDepth` | Models by Depth | record | `{}` | Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row applies only while Same Model for All Agents is off, outranks the agent's own frontmatter for a spawn at exactly that depth, and leaves every other depth alone. A row whose chain matches no model refuses the spawn and names the row. Shown under the tab's Advanced fold. |
 | `subagent.showResolvedModelBadge` | Show Resolved Model Badge | boolean | `true` | Show each subagent's resolved model, and the setting that decided it, in the task widget status line and the agent surfaces. Shown under the tab's Advanced fold. |
 
 ### Limits
@@ -605,14 +605,19 @@ veyyon config get compaction.threshold
 | `subagent.softRequestBudgetNotice` | Soft Request Budget Notice | boolean | `true` | Inject one steering notice when a subagent crosses its soft request budget, asking it to wrap up before the 1.5x forced-yield stop. |
 | `subagent.enableLsp` | LSP in Subagents | boolean | `false` | Allow spawned subagents to use the lsp tool. Off by default to keep subagents cheap; enable when LSP-aware delegation is worth the extra tokens. |
 
-### Auto Close
+### Park
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.idleTtlMs` | Park After | number | `300000` | How long a finished subagent stays live before parking (ms). The default is 5 minutes. Parking releases the live session and keeps the transcript, so a parked agent revives automatically when messaged or resumed. Set 'Until exit' to keep idle agents live for the whole session. Counted from the agent's last activity, so a revived agent starts this budget again from the revival. |
-| `subagent.autoClose.enabled` | Close Parked Subagents | boolean | `true` | Close a parked subagent for good once it has been quiet long enough, instead of keeping it in the roster for the whole session. Parking already released the session; this decides whether the revivable reference is eventually dropped too. Turn it off to keep every finished subagent listed and revivable until you exit. |
-| `subagent.autoClose.parkedMs` | Close After | number | `300000` | How long a parked subagent stays listed and revivable before it is closed (ms). Counted from the moment it parked, not from when it started. Its transcript survives either way and stays readable through `history://`. |
-| `subagent.autoClose.waitingMs` | Close After (Waiting) | number | `1800000` | The same budget for a subagent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it gets a longer grace than one that simply went quiet: closing it on the ordinary timer would drop the agent you are most likely to message next. Set it equal to Close After to treat both the same. |
+| `subagent.idleTtlMs` | Park After | number | `300000` | Stage one. How long a finished subagent stays live before it parks (ms). Parking releases the live session — the process, its MCP clients, its memory — and keeps everything else: the row stays in the roster and the agent rebuilds itself when messaged or opened. Counted from the agent's last activity, so a revived agent starts this budget again from the revival. 'Until exit' keeps idle agents live for the whole session. |
+
+### Prune
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `subagent.prune.enabled` | Prune Parked Subagents | boolean | `true` | Stage two, and a different thing from parking. Pruning takes a parked subagent out of the roster and gives up the ability to wake it; parking only released its session. Nothing on disk is touched: the transcript stays where it is and stays readable at `history://\<agent>`. Off keeps every parked subagent listed and wakeable until you exit. |
+| `subagent.prune.afterMs` | Prune After | number | `3600000` | How long a parked subagent stays in the roster before it is pruned (ms). Counted from its last activity, so a subagent read back from a previous run is judged on when its transcript was last written rather than on when this session found it. |
+| `subagent.prune.waitingAfterMs` | Prune After While Waiting | number | `7200000` | The same budget for a subagent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it keeps its row longer than one that simply went quiet: pruning it on the ordinary budget would drop the agent you are most likely to message next. Set it equal to Prune After to treat both the same; a shorter value is raised to it. |
 
 ### Isolation
 
@@ -741,6 +746,15 @@ veyyon config get compaction.threshold
 
 ## Global
 
+### Machine Limits
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
+| `machine.cpuLimitCores` | Machine CPU Limit | number | `0` | Maximum CPU every veyyon process on this machine may use TOGETHER, in cores (0 = no limit). Stored in ~/.veyyon/config.yml rather than in a profile, so it covers every profile and every veyyon running at once, which is what makes it a machine limit: held per profile, two profiles would read their own copy and the machine would get the sum. Each session's budget group is created INSIDE this one, so on Linux the kernel caps the whole subtree and no combination of sessions can exceed it. A per-session limit larger than this one is bounded by it and does not raise it. The machine tier therefore needs a parent that delegates two levels; a host that delegates one, such as a container whose cgroup root holds processes, still holds per-session limits and reports the machine tier as unheld. Where the kernel cannot hold it, a notice says so once at startup rather than reporting a cap that does not exist. Stored machine-wide, not per profile. |
+| `machine.memoryLimitGb` | Machine Memory Limit | number | `0` | Maximum memory every veyyon process on this machine may hold together, in gigabytes (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Every session budget group sits inside this one, so on Linux this is cgroup v2 memory.max on the parent, with memory.swap.max pinned to 0 so the cap is the whole anonymous footprint rather than a resident cap a process escapes by swapping. The kernel reclaims, then OOM-kills, inside the subtree once the total is reached — whichever process the kernel picks, with no warning and no chance to finish. Set it where an OOM kill is preferable to the machine swapping. Where no memory controller is delegated the cap cannot be held, and a notice says so once at startup. Stored machine-wide, not per profile. |
+| `machine.writeBudgetGb` | Machine Write Budget | number | `0` | Cumulative gigabytes every veyyon process on this machine may WRITE before further writes are refused (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Unlike CPU and memory this is a total that accumulates, not a level: it counts bytes written since the machine budget was last reset, across every session, and refuses new commands and harness writes once the total is reached. A write budget is the one limit no kernel enforces on its own — cgroup io accounting MEASURES bytes and caps rate, not a lifetime total — so this is a refusal, and work already writing runs to completion. Stored machine-wide, not per profile. |
+| `machine.maxProcesses` | Machine Max Processes | number | `0` | Hard cap on how many processes every veyyon on this machine may have alive at once (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Every session budget group sits inside this one, so on Linux this is cgroup v2 pids.max on the parent and the kernel refuses the fork itself once the subtree is full, whichever session asked. Where pids is not delegated the cap is a refusal at the spawn path instead, and a notice says so once at startup. Stored machine-wide, not per profile. |
+
 ### Profiles
 
 | Key | Setting | Type | Default | What it does |
@@ -771,7 +785,7 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `auth.broker.token` | string | _(unset)_ |  |
 | `auth.broker.url` | string | _(unset)_ |  |
 | `autolearn.minToolCalls` | number | `5` |  |
-| `bashInterceptor.patterns` | array | `[{"pattern":"^\\s*(cat\|head\|tail\|less\|more)\\s+","tool":"read","message":"Use the `read` tool instead of cat/head/tail. It provides better context and handles binary files."},{"pattern":"^\\s*(grep\|rg\|ripgrep\|ag\|ack)\\s+","tool":"grep","message":"Use the `grep` tool instead of grep/rg. It respects .gitignore and provides structured output."},{"pattern":"^\\s*(find\|fd\|locate)\\s+.*(-name\|-iname\|-type\|--type\|-glob)","tool":"glob","message":"Use the `glob` tool instead of find/fd. It respects .gitignore and is faster for glob patterns."},{"pattern":"^\\s*sed\\s+(-i\|--in-place)","tool":"edit","message":"Use the `edit` tool instead of sed -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*perl\\s+.*-[pn]?i","tool":"edit","message":"Use the `edit` tool instead of perl -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*awk\\s+.*-i\\s+inplace","tool":"edit","message":"Use the `edit` tool instead of awk -i inplace. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*(echo\|printf\|cat\\s*\<\<)\\s+(?:(?:[^\"'>]\|\"[^\"]*\"\|'[^']*')\|(?\<!\\\|)>{1,2}\\\|?\\s*(?:\"/dev/(?:null\|tty\|stdout\|stderr)\"\|'/dev/(?:null\|tty\|stdout\|stderr)'\|/dev/(?:null\|tty\|stdout\|stderr))(?:[\\s;&\|]\|$))*(?\<!\\\|)>{1,2}\\\|?\\s*(?!(?:\"/dev/(?:null\|tty\|stdout\|stderr)\"\|'/dev/(?:null\|tty\|stdout\|stderr)'\|/dev/(?:null\|tty\|stdout\|stderr))(?:[\\s;&\|]\|$))[$\\w./~\"'-]","tool":"write","message":"Use the `write` tool instead of echo/cat redirection. It handles encoding and provides confirmation."},{"pattern":"^\\s*nohup\\s+\|(?\<!&)\\&\\s*$","tool":"launch","message":"Use the `launch` tool instead of nohup or background shell syntax so the process stays observable and managed."},{"pattern":"^\\s*(?:(?:bun\|npm\|pnpm\|yarn)\\s+(?:run\\s+)?(?:dev\|start)(?:\\s\|$)\|(?:vite\|next\\s+dev\|nuxt\\s+dev\|nodemon\|lldb\|gdb\|tail\\s+-f)(?:\\s\|$)\|docker\\s+compose\\s+up(?!.*(?:\\s-d(?:\\s\|$)\|--detach))(?:\\s\|$))","tool":"launch","message":"Use the `launch` tool for services, watchers, and debuggers so other veyyon instances can observe and control them."},{"pattern":"^\\s*(?:(?:bun\|npm\|pnpm\|yarn)\\s+(?:run\\s+)?\\S+\|cargo\\s+watch\|watchexec\|pytest\|vitest\|jest\|tsc)(?:.\|\\n)*(?:--watch\|-w)(?:\\s\|$)","tool":"launch","message":"Use the `launch` tool for watch mode so its output, input, and lifecycle stay managed."}]` |  |
+| `bashInterceptor.patterns` | array | `[{"pattern":"^\\s*(cat\|head\|tail\|less\|more)\\s+","tool":"read","message":"Use the `read` tool instead of cat/head/tail. It provides better context and handles binary files."},{"pattern":"^\\s*(grep\|rg\|ripgrep\|ag\|ack)\\s+","tool":"search","message":"Use `search` with `type: \"text\"` instead of shell grep/rg."},{"pattern":"^\\s*(find\|fd\|locate)\\s+.*(-name\|-iname\|-type\|--type\|-glob)","tool":"search","message":"Use `search` with `type: \"files\"` instead of shell find/fd."},{"pattern":"^\\s*sed\\s+(-i\|--in-place)","tool":"edit","message":"Use the `edit` tool instead of sed -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*perl\\s+.*-[pn]?i","tool":"edit","message":"Use the `edit` tool instead of perl -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*awk\\s+.*-i\\s+inplace","tool":"edit","message":"Use the `edit` tool instead of awk -i inplace. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*(echo\|printf\|cat\\s*\<\<)\\s+(?:(?:[^\"'>]\|\"[^\"]*\"\|'[^']*')\|(?\<!\\\|)>{1,2}\\\|?\\s*(?:\"/dev/(?:null\|tty\|stdout\|stderr)\"\|'/dev/(?:null\|tty\|stdout\|stderr)'\|/dev/(?:null\|tty\|stdout\|stderr))(?:[\\s;&\|]\|$))*(?\<!\\\|)>{1,2}\\\|?\\s*(?!(?:\"/dev/(?:null\|tty\|stdout\|stderr)\"\|'/dev/(?:null\|tty\|stdout\|stderr)'\|/dev/(?:null\|tty\|stdout\|stderr))(?:[\\s;&\|]\|$))[$\\w./~\"'-]","tool":"write","message":"Use the `write` tool instead of echo/cat redirection. It handles encoding and provides confirmation."},{"pattern":"^\\s*nohup\\s+\|(?\<!&)\\&\\s*$","tool":"launch","message":"Use the `launch` tool instead of nohup or background shell syntax so the process stays observable and managed."},{"pattern":"^\\s*(?:(?:bun\|npm\|pnpm\|yarn)\\s+(?:run\\s+)?(?:dev\|start)(?:\\s\|$)\|(?:vite\|next\\s+dev\|nuxt\\s+dev\|nodemon\|lldb\|gdb\|tail\\s+-f)(?:\\s\|$)\|docker\\s+compose\\s+up(?!.*(?:\\s-d(?:\\s\|$)\|--detach))(?:\\s\|$))","tool":"launch","message":"Use the `launch` tool for services, watchers, and debuggers so other veyyon instances can observe and control them."},{"pattern":"^\\s*(?:(?:bun\|npm\|pnpm\|yarn)\\s+(?:run\\s+)?\\S+\|cargo\\s+watch\|watchexec\|pytest\|vitest\|jest\|tsc)(?:.\|\\n)*(?:--watch\|-w)(?:\\s\|$)","tool":"launch","message":"Use the `launch` tool for watch mode so its output, input, and lifecycle stay managed."}]` |  |
 | `branchSummary.reserveTokens` | number | `16384` |  |
 | `commit.changelogMaxDiffChars` | number | `120000` |  |
 | `commit.mapReduceEnabled` | boolean | `true` |  |
@@ -800,6 +814,7 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `disabledProviders` | array | `[]` |  |
 | `edit.modelVariants` | record | `{}` |  |
 | `enabledModels` | array | `[]` |  |
+| `eval.pyWorkspace` | boolean | `false` |  |
 | `extensions` | array | `[]` |  |
 | `gc.archive` | boolean | `true` |  |
 | `gc.blobs` | boolean | `true` |  |
@@ -876,6 +891,9 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `statusLine.separator` | enum | `pipe` | Values: `powerline`, `powerline-thin`, `slash`, `pipe`, `block`, `none`, `ascii`. |
 | `statusLine.transparent` | boolean | `true` |  |
 | `stt.language` | string | `en` |  |
+| `subagent.model` | modelChain | _(unset)_ |  |
+| `subagent.sharedModel` | boolean | `false` |  |
+| `subagent.thinkingLevel` | string | _(unset)_ |  |
 | `thinkingBudgets.high` | number | `16384` |  |
 | `thinkingBudgets.low` | number | `2048` |  |
 | `thinkingBudgets.max` | number | `32768` |  |
@@ -887,4 +905,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-352 settings in /settings, 119 configuration-file keys, 471 in all.
+351 settings in /settings, 123 configuration-file keys, 474 in all.

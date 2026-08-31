@@ -1,19 +1,125 @@
-import { Snowflake } from "@veyyon/utils";
-import type { GoalRuntimeHost, GoalRuntimeSnapshot, GoalTurnSnapshot, GoalWallClockSnapshot } from "./runtime-helpers";
+import { escapeXmlText, prompt, Snowflake } from "@veyyon/utils";
+import { goalsPrompts } from "../prompts/goals/rows";
+import type {
+	Goal,
+	GoalAbortReason,
+	GoalBudgetSteering,
+	GoalModeState,
+	GoalRuntimeEvent,
+	GoalTokenUsage,
+} from "./state";
 
-import {
-	cloneGoal,
-	cloneState,
-	goalTokenDelta,
-	isAccountingStatus,
-	renderGoalPrompt,
-	validateTokenBudget,
-} from "./runtime-helpers";
-import type { Goal, GoalAbortReason, GoalBudgetSteering, GoalModeState, GoalTokenUsage } from "./state";
+export interface GoalRuntimeHost {
+	getState(): GoalModeState | undefined;
+	setState(state: GoalModeState | undefined): void;
+	budgetsEnabled(): boolean;
+	getCurrentUsage(): GoalTokenUsage;
+	emit(event: GoalRuntimeEvent): void | Promise<void>;
+	persist(mode: "goal" | "goal_paused" | "none", state?: GoalModeState): void;
+	sendHiddenMessage(message: {
+		customType: string;
+		content: string;
+		deliverAs?: "steer" | "followUp" | "nextTurn";
+	}): Promise<void>;
+	now?(): number;
+}
 
-export { completionBudgetReport, remainingTokens, renderTrustedObjective } from "./runtime-helpers";
-export type { GoalRuntimeHost };
-export { goalTokenDelta, renderGoalPrompt };
+export interface GoalTurnSnapshot {
+	turnId: string;
+	baselineUsage: GoalTokenUsage;
+	activeGoalId?: string;
+}
+
+export interface GoalWallClockSnapshot {
+	lastAccountedAt: number;
+	activeGoalId?: string;
+}
+
+export interface GoalRuntimeSnapshot {
+	turnSnapshot?: GoalTurnSnapshot;
+	wallClock: GoalWallClockSnapshot;
+	budgetReportedFor?: string;
+}
+
+export type GoalPromptKind = "active" | "continuation" | "budget-limit";
+
+function cloneGoal(goal: Goal): Goal {
+	return { ...goal };
+}
+
+function cloneState(state: GoalModeState): GoalModeState {
+	return { ...state, goal: cloneGoal(state.goal) };
+}
+
+function budgetValue(goal: Goal): string {
+	return goal.tokenBudget === undefined ? "none" : String(goal.tokenBudget);
+}
+
+function remainingValue(goal: Goal): string {
+	return goal.tokenBudget === undefined ? "unbounded" : String(Math.max(0, goal.tokenBudget - goal.tokensUsed));
+}
+
+export function remainingTokens(goal: Goal | null | undefined): number | null {
+	if (!goal || goal.tokenBudget === undefined) return null;
+	return Math.max(0, goal.tokenBudget - goal.tokensUsed);
+}
+
+export function renderTrustedObjective(objective: string): string {
+	return `<objective>\n${escapeXmlText(objective)}\n</objective>`;
+}
+
+export function goalTokenDelta(current: GoalTokenUsage, baseline: GoalTokenUsage): number {
+	// Diverges from codex-rs: codex omits cache creation because its target providers
+	// do not bill cache writes distinctly through the token-usage stream. Pi receives
+	// cacheWrite separately on Anthropic/Bedrock; rotating a 1h ephemeral cache or
+	// re-anchoring a changed system prompt can write 100K+ tokens, which the goal
+	// budget must account for. cacheRead is excluded because it is reused prefix,
+	// not new work consumed by the goal.
+	return (
+		Math.max(0, current.input - baseline.input) +
+		Math.max(0, current.cacheWrite - baseline.cacheWrite) +
+		Math.max(0, current.output - baseline.output)
+	);
+}
+
+export function renderGoalPrompt(kind: GoalPromptKind, goal: Goal, options?: { budgetsEnabled?: boolean }): string {
+	const template =
+		kind === "active"
+			? goalsPrompts["goals/goal-mode-active"].text
+			: kind === "continuation"
+				? goalsPrompts["goals/goal-continuation"].text
+				: goalsPrompts["goals/goal-budget-limit"].text;
+	return prompt.render(template, {
+		budgetsEnabled: options?.budgetsEnabled ?? true,
+		objective: escapeXmlText(goal.objective),
+		tokensUsed: String(goal.tokensUsed),
+		tokenBudget: budgetValue(goal),
+		remainingTokens: remainingValue(goal),
+		timeUsedSeconds: String(goal.timeUsedSeconds),
+	});
+}
+
+export function completionBudgetReport(goal: Goal): string | null {
+	const parts: string[] = [];
+	if (goal.tokenBudget !== undefined) {
+		parts.push(`tokens used: ${goal.tokensUsed} of ${goal.tokenBudget}`);
+	}
+	if (goal.timeUsedSeconds > 0) {
+		parts.push(`time used: ${goal.timeUsedSeconds} seconds`);
+	}
+	if (parts.length === 0) return null;
+	return `Goal achieved. Report final budget usage to the user: ${parts.join("; ")}.`;
+}
+
+function validateTokenBudget(tokenBudget: number | undefined): void {
+	if (tokenBudget !== undefined && (!Number.isInteger(tokenBudget) || tokenBudget <= 0)) {
+		throw new Error("goal token_budget must be a positive integer when provided");
+	}
+}
+
+function isAccountingStatus(goal: Goal): boolean {
+	return goal.status === "active" || goal.status === "budget-limited";
+}
 
 export class GoalRuntime {
 	readonly #host: GoalRuntimeHost;
@@ -21,6 +127,7 @@ export class GoalRuntime {
 	#wallClock: GoalWallClockSnapshot;
 	#budgetReportedFor: string | undefined;
 	#accountingTail: Promise<void> = Promise.resolve();
+	#finalTokenReconciliation: { goalId: string; baselineUsage: GoalTokenUsage } | undefined;
 
 	constructor(host: GoalRuntimeHost) {
 		this.#host = host;
@@ -53,6 +160,8 @@ export class GoalRuntime {
 			() => promise,
 			() => promise,
 		);
+		// Waiting for the previous accounting turn to SETTLE, not for it to succeed: its failure belongs to the
+		// caller that started it, and this turn's own accounting is independent of whether that one worked.
 		await previous.catch(() => {});
 		try {
 			return await fn();
@@ -100,6 +209,7 @@ export class GoalRuntime {
 		this.#turnSnapshot = undefined;
 		this.#clearActiveAccounting();
 		this.#budgetReportedFor = undefined;
+		this.#finalTokenReconciliation = undefined;
 	}
 
 	onTurnStart(turnId: string, baselineUsage: GoalTokenUsage): void {
@@ -125,6 +235,7 @@ export class GoalRuntime {
 	}
 
 	async onAgentEnd(options?: { turnCompleted?: boolean; currentUsage?: GoalTokenUsage }): Promise<void> {
+		await this.#reconcileCompletedGoalTokens(options?.currentUsage);
 		if (!this.#hasAccountingState()) {
 			this.#turnSnapshot = undefined;
 			return;
@@ -134,6 +245,12 @@ export class GoalRuntime {
 		this.#turnSnapshot = undefined;
 	}
 
+	/**
+	 * Bump the goal's completed-turn counter once for the agent turn that just
+	 * ended, but only when that turn was actually accounted to the active goal
+	 * (a `turnSnapshot` bound to this goal id). Turns that ran before the goal
+	 * was created, or under a different/paused goal, do not count.
+	 */
 	async #recordCompletedTurn(): Promise<void> {
 		const accountedGoalId = this.#turnSnapshot?.activeGoalId;
 		if (accountedGoalId === undefined) return;
@@ -146,8 +263,38 @@ export class GoalRuntime {
 		});
 	}
 
+	/**
+	 * A goal stops counting the moment the `goal` tool completes it, which is the
+	 * middle of a turn rather than the end of one. Every token the rest of that
+	 * turn spends — the results of the sibling tool calls in the same batch, a
+	 * subagent among them, and the closing message the model writes once they
+	 * return — is spent on the goal and lands after it stopped counting, so the
+	 * total reported for a completed goal omits the work that finished it.
+	 * Reconcile once at the end of that turn against the usage recorded when the
+	 * goal completed. Only the total moves: a completed goal has no budget left
+	 * to exceed, no steering to send, and no further turns to count.
+	 */
+	async #reconcileCompletedGoalTokens(currentUsage?: GoalTokenUsage): Promise<void> {
+		const pending = this.#finalTokenReconciliation;
+		if (!pending) return;
+		this.#finalTokenReconciliation = undefined;
+		await this.#withAccounting(async () => {
+			const state = this.#getStateClone();
+			if (state?.goal.id !== pending.goalId || state.goal.status !== "complete") return;
+			const tokenDelta = goalTokenDelta(currentUsage ?? this.#host.getCurrentUsage(), pending.baselineUsage);
+			if (tokenDelta <= 0) return;
+			state.goal.tokensUsed += tokenDelta;
+			state.goal.updatedAt = this.#now();
+			await this.#commitState(state, { persist: "goal" });
+		});
+	}
+
 	async onTaskAborted(options?: { reason?: GoalAbortReason }): Promise<void> {
+		await this.#reconcileCompletedGoalTokens();
 		const state = this.#host.getState();
+		// An active goal is always an accounting goal (`isAccountingStatus` covers active and
+		// budget-limited), so this one question gates both the usage flush and the pause. Which
+		// reason actually pauses is decided in one place, below.
 		if (!state?.enabled || !isAccountingStatus(state.goal)) {
 			this.#turnSnapshot = undefined;
 			return;
@@ -261,6 +408,9 @@ export class GoalRuntime {
 		if (this.#wallClock.activeGoalId === state.goal.id && wallSeconds > 0) {
 			this.#wallClock.lastAccountedAt += wallSeconds * 1000;
 		}
+		// Persisting wall-clock-only accounting on every tool event bloats /goal sessions with full
+		// objective snapshots. Keep normal tool flushes in memory/UI only, but make wall-clock
+		// usage durable before internal session switches because the active runtime is leaving.
 		const shouldPersistUsage = tokenDelta > 0 || flippedToBudgetLimited || (persistWallClock && wallSeconds > 0);
 		await this.#commitState(state, { persist: shouldPersistUsage ? "goal" : undefined });
 
@@ -408,6 +558,14 @@ export class GoalRuntime {
 			state.goal.updatedAt = this.#now();
 			state.mode = "exiting";
 			state.reason = "completed";
+			// The flush above brought the goal up to this instant and rebased the snapshot on it,
+			// so that same usage is the baseline for whatever the rest of this turn spends.
+			if (this.#turnSnapshot?.activeGoalId === state.goal.id) {
+				this.#finalTokenReconciliation = {
+					goalId: state.goal.id,
+					baselineUsage: { ...this.#turnSnapshot.baselineUsage },
+				};
+			}
 			this.#clearActiveAccounting();
 			this.#budgetReportedFor = undefined;
 			await this.#commitState(state, { persist: "goal" });

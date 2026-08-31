@@ -8,7 +8,13 @@ type TurndownListParent = {
 	children: ArrayLike<unknown>;
 };
 
-/** Build a Turndown instance configured for GFM with the fixes veyyon relies on: `~~strikethrough~~`, unescaped heading periods, and single-space list markers. */
+/**
+ * Build a Turndown instance configured for GFM with the fixes veyyon relies on:
+ * `~~strikethrough~~`, unescaped heading periods, and single-space list markers.
+ *
+ * Shared by the web scrapers (HTML → markdown) and the markit document engine
+ * (`src/markit`). The rule set must stay identical across both call sites.
+ */
 export function createTurndown(): TurndownService {
 	const turndown = new TurndownService({
 		headingStyle: "atx",
@@ -16,7 +22,15 @@ export function createTurndown(): TurndownService {
 		bulletListMarker: "-",
 	});
 	turndown.use(gfm);
-	// turndown-plugin-gfm's tableCell rule emits `content` verbatim: it does not escape a literal `|` (which would open a phantom column and shift every
+	// turndown-plugin-gfm's tableCell rule emits `content` verbatim: it does not
+	// escape a literal `|` (which would open a phantom column and shift every
+	// later cell) and does not collapse a `<br>`-derived newline (which breaks the
+	// row entirely). turndown core's own escaper omits `|` too, so nothing catches
+	// it upstream. Override the rule to route the cell body through the canonical
+	// escapeMarkdownTableCell before re-applying the plugin's own prefix/suffix
+	// (leading `| ` on the first cell, ` ` otherwise, trailing ` |`). The `---`
+	// alignment separators are generated inside the plugin's tableRow rule, not
+	// through this rule, so they stay untouched.
 	turndown.addRule("tableCell", {
 		filter: ["th", "td"],
 		replacement(content, node) {
@@ -60,7 +74,11 @@ export function createTurndown(): TurndownService {
 	return turndown;
 }
 
-/** Normalize HTML tables so turndown-plugin-gfm can render them: - strip `<p>` tags inside `<td>`/`<th>` cells (joining paragraphs with a space) */
+/**
+ * Normalize HTML tables so turndown-plugin-gfm can render them:
+ * - strip `<p>` tags inside `<td>`/`<th>` cells (joining paragraphs with a space)
+ * - wrap the first row in `<thead>` when missing
+ */
 export function normalizeTablesHtml(html: string): string {
 	let result = html.replace(
 		/<(td|th)([^>]*)>([\s\S]*?)<\/(td|th)>/gi,

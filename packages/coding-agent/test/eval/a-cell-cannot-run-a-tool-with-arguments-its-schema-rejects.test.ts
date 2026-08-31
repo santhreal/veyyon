@@ -121,12 +121,28 @@ function refusingClone(real: ToolUnderTest): AgentTool {
 	};
 }
 
-/** The argument names a tool's own schema declares mandatory. */
+/**
+ * The argument names a tool's own schema declares mandatory.
+ *
+ * A union schema declares nothing at the top level: each branch carries its own
+ * mandatory fields and a payload matching no branch is refused, so reading only
+ * `required` would file a validated tool as unconstrained and stop checking it.
+ * What a caller must supply whatever branch it picks is the INTERSECTION of the
+ * branches, so a union holding one unconstrained branch imposes nothing and is
+ * reported as requiring nothing.
+ */
 function requiredArguments(tool: ToolUnderTest): string[] {
 	const schema = toolWireSchema(tool);
-	const required = schema.required;
-	if (!Array.isArray(required)) return [];
-	return required.filter((key): key is string => typeof key === "string" && key !== INTENT_FIELD);
+	const names = (value: unknown): string[] =>
+		Array.isArray(value) ? value.filter((key): key is string => typeof key === "string" && key !== INTENT_FIELD) : [];
+	const declared = names(schema.required);
+	if (declared.length > 0) return declared;
+	const branches = Array.isArray(schema.anyOf) ? schema.anyOf : [];
+	if (branches.length === 0) return [];
+	const perBranch = branches.map(branch =>
+		names(typeof branch === "object" && branch !== null ? (branch as Record<string, unknown>).required : undefined),
+	);
+	return perBranch.reduce((common, required) => common.filter(name => required.includes(name))).sort();
 }
 
 /**
@@ -285,7 +301,6 @@ const CHECKED_BY_THE_SWEEP: string[] = [
 	"argot_unload",
 	"ask",
 	"ast_edit",
-	"ast_grep",
 	"bash",
 	"browser",
 	"checkpoint",
@@ -294,7 +309,6 @@ const CHECKED_BY_THE_SWEEP: string[] = [
 	"eval",
 	"github",
 	"goal",
-	"grep",
 	"inspect_image",
 	"irc",
 	"launch",
@@ -310,6 +324,7 @@ const CHECKED_BY_THE_SWEEP: string[] = [
 	"resolve",
 	"retain",
 	"rewind",
+	"search",
 	"search_tool_bm25",
 	"set_cwd",
 	"ssh",
@@ -324,8 +339,7 @@ const CHECKED_BY_THE_SWEEP: string[] = [
  * after previously being checked has dropped a required argument, which is
  * exactly the change that should be looked at.
  */
-const NO_REQUIRED_ARGUMENTS: string[] = ["glob", "job", "todo"];
-
+const NO_REQUIRED_ARGUMENTS: string[] = ["job", "todo"];
 /**
  * Tools no session can register, whatever the settings say. Empty, and it has
  * to stay empty: a factory that returns null here is a tool the sweep never
@@ -362,6 +376,12 @@ describe("an eval cell cannot run a tool with arguments its schema rejects", () 
 			path.join(sweepAgentDir.path(), "ssh.json"),
 			JSON.stringify({ hosts: { probe: { host: "127.0.0.1" } } }),
 		);
+		// `debug` is gated the same way on a resolvable adapter command, so a host with no
+		// debugger installed would drop it out of the sweep. This binary is the adapter.
+		await fs.writeFile(
+			path.join(sweepAgentDir.path(), "dap.json"),
+			JSON.stringify({ adapters: { probe: { command: process.execPath, languages: ["javascript"] } } }),
+		);
 	});
 
 	afterAll(async () => {
@@ -391,10 +411,12 @@ describe("an eval cell cannot run a tool with arguments its schema rejects", () 
 		// below turns on every feature that gates a factory: `ask` needs a UI,
 		// `debug`, the four memory tools, `learn`, `manage_skill` and the two
 		// Argot tools read settings, `irc` needs a registry and an agent id,
-		// `search_tool_bm25` needs the three discovery callbacks, and `ssh`
-		// resolves its hosts from `ssh.json` in the profile dir, which
-		// `sweepAgentDir` supplies.
+		// `search_tool_bm25` needs the three discovery callbacks, `ssh`
+		// resolves its hosts from `ssh.json` and `debug` its adapters from
+		// `dap.json`, both in the profile dir `sweepAgentDir` supplies.
 		const session = makeToolSession({
+			// `dap.json` sits here, and `getAdapterConfigs` reads it from the session cwd.
+			cwd: sweepAgentDir.path(),
 			hasUI: true,
 			agentRegistry: new AgentRegistry(),
 			getAgentId: () => "Main",

@@ -1,3 +1,4 @@
+import * as crypto from "node:crypto";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, Context, ImageContent, Message, TextContent, Tool } from "@veyyon/ai";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
@@ -6,39 +7,9 @@ import { errorMessage } from "@veyyon/utils/type-guards";
 import { type JsonWithOptionalFields, mapJsonStrings } from "../json-transform";
 import type { SessionContext } from "../session/session-context";
 import {
-	assertBoundedSecretString,
-	assertBoundedTransformText,
-	assertOneWayReplacement,
-	type CompiledRegexEntry,
-	generateDeterministicReplacement,
-	LiteralMatcher,
-	type LiteralRule,
-	MAX_CONFIGURED_SECRET_BYTES,
-	MAX_LONG_TERMINAL_ALIASES,
-	MAX_PLACEHOLDERS_PER_TEXT,
-	MAX_RUNTIME_SECRET_BYTES,
-	MAX_RUNTIME_SECRET_VALUES,
-	MAX_SECRET_ENTRIES,
-	MAX_SECRET_MATCHES_PER_TEXT,
-	MAX_SECRET_REGEX_ENTRIES,
-	MAX_SECRET_VALUE_BYTES,
-	MAX_TERMINAL_ALIAS_BYTES,
-	MAX_TRANSFORMED_TEXT_BYTES,
-	type MaskedInventory,
-	mayRestoreForDisplay,
-	PROCESS_PLACEHOLDER_KEY,
-	type ProtectedSpan,
-	type ProtectedText,
-	resolveSafeReplacement,
-	type SecretEntry,
-	type SecretExpiryEvent,
-	type SecretObfuscatorOptions,
-	SHORT_ALIAS_TRIE_CODE_UNITS,
-	type TextReplacement,
-} from "./obfuscator-helpers";
-import {
 	buildNamePlaceholder,
 	buildValuePlaceholder,
+	isSecretPlaceholder,
 	isValidSecretName,
 	PLACEHOLDER_RE,
 	placeholderSecretName,
@@ -46,44 +17,530 @@ import {
 import { canObfuscatePlainValue, MIN_OBFUSCATABLE_LENGTH, type SecretRejection, secretCharacterLength } from "./policy";
 import { compileSecretRegex } from "./regex";
 
-export {
-	describeSecretExpiry,
-	MAX_CONFIGURED_SECRET_BYTES,
-	MAX_PLACEHOLDERS_PER_TEXT,
-	MAX_RUNTIME_SECRET_BYTES,
-	MAX_RUNTIME_SECRET_VALUES,
-	MAX_SECRET_ENTRIES,
-	MAX_SECRET_MATCHES_PER_TEXT,
-	MAX_SECRET_REGEX_ENTRIES,
-	MAX_SECRET_VALUE_BYTES,
-	MAX_TRANSFORMED_TEXT_BYTES,
-	type MaskedInventory,
-	SECRET_ORIGINS,
-	type SecretEntry,
-	type SecretExpiryEvent,
-	type SecretObfuscatorOptions,
-	type SecretOrigin,
-} from "./obfuscator-helpers";
+// ═══════════════════════════════════════════════════════════════════════════
+// Types
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Where a configured secret came from.
+ *
+ * An enum rather than a boolean because a boolean invites a default and reads as an afterthought,
+ * while a name forces the construction site to state a fact. A fourth source added later has to
+ * declare itself here instead of quietly inheriting somebody else's meaning.
+ *
+ * ENUMERABLE AT RUN TIME, because the suites that have to hold for EVERY source cannot sweep a
+ * type. A fourth source appended here turns those suites red until somebody records what it does,
+ * which is the only mechanism that makes the paragraph above true rather than aspirational.
+ */
+export const SECRET_ORIGINS = ["vault", "environment", "config"] as const;
+
+/** @see SECRET_ORIGINS */
+export type SecretOrigin = (typeof SECRET_ORIGINS)[number];
+
+/**
+ * Whether a secret may be restored into text that is DRAWN ON SCREEN.
+ *
+ * Phrased positively, around the one case that may be shown, so that an origin or a type added
+ * later withholds by falling off the end of this condition instead of inheriting permission.
+ *
+ * The rule needs BOTH fields because neither alone can express it. A `secrets.yml` plain entry and
+ * a `secrets.yml` regex entry share `origin: "config"` and need opposite answers: the plain one is
+ * a declared exact credential, while the regex one only ever names values discovered in text that
+ * was already flowing through, which is the "show the operator what is actually there" case.
+ * Provenance alone cannot separate those.
+ *
+ * `type` alone cannot do it either, and that is the more important half. "A vault secret is always
+ * plain" is true today and UNENFORCED, so a vault pattern feature added later would silently flip
+ * every vault value to restorable and would pass every test written now. Requiring the origin too
+ * makes that future change fail closed. This is the same class of unenforced guarantee as the
+ * `expiresAt` comment above, which claimed to identify vault entries and did not.
+ *
+ * Why the split exists at all: one mechanism is doing two jobs. The obfuscator redacts values
+ * before they reach the provider AND un-redacts them for local display, and those jobs disagree
+ * about a stored credential. Redaction wants the mapping so the value never goes out. Display
+ * wants it so the operator sees what is there. For a value the operator deliberately put in the
+ * vault, never being shown is the entire reason it went in, so restoring it on screen breaks the
+ * promise `/secret` makes. This predicate is a patch over that overload, not its resolution: a
+ * value the model never receives never needed the provider half of the mechanism in the first
+ * place.
+ */
+function mayRestoreForDisplay(entry: SecretEntry): boolean {
+	return entry.type === "regex" && entry.origin === "config";
+}
+
+export interface SecretEntry {
+	type: "plain" | "regex";
+	content: string;
+	mode?: "obfuscate" | "replace";
+	replacement?: string;
+	flags?: string;
+	/**
+	 * Shortest match this entry will obfuscate, overriding
+	 * {@link MIN_OBFUSCATABLE_LENGTH} for a `regex` entry that legitimately matches
+	 * short values.
+	 *
+	 * Exists so the floor is a declared choice rather than a magic number the author
+	 * cannot reach. A pattern written for a six-character one-time code is a real case,
+	 * and the default floor exists only because a loose pattern would otherwise blank
+	 * out fragments of ordinary words. Lower it deliberately and the entry says so.
+	 */
+	minLength?: number;
+	/**
+	 * Vault name, which becomes this secret's readable placeholder.
+	 *
+	 * A named entry shows the model `#GITHUB_TOKEN#`, so with several secrets loaded it can
+	 * choose the credential a command needs. Unnamed values use a machine-keyed HMAC token.
+	 * Both forms are stable across restarts when production supplies the persisted vault key.
+	 *
+	 * `placeholder.ts` owns the structural separation: names start with a letter and opaque
+	 * value-placeholder bodies start with the reserved digit `0`.
+	 */
+	name?: string;
+	/**
+	 * When this secret stops being substituted, in epoch milliseconds, or `null` for never.
+	 *
+	 * CARRIED IN HERE SO EXPIRY IS ENFORCED AT THE MOMENT OF USE. The vault prunes expired
+	 * entries when it is read, which covers a session that starts after a lifetime lapsed and
+	 * covers nothing else: a session already running holds its values in this object, so before
+	 * this field a credential whose lifetime ended overnight kept being substituted into commands
+	 * until somebody happened to run a `/secret` subcommand. The documentation said the opposite,
+	 * and the reconcile that would have fixed it only ran after a command.
+	 *
+	 * NOT A PROVENANCE SIGNAL. Vault entries are the only ones that ever SET a lifetime, and that
+	 * one-way fact used to be written here as "only vault entries carry one", which reads as a way
+	 * to recognise a vault secret and is not one: a vault secret stored with no lifetime leaves this
+	 * `undefined`, identical to an environment or `secrets.yml` entry. Anything keyed on it would
+	 * have treated every never-expiring vault secret as environment-derived, which is the common
+	 * case, while passing any test that happened to use a TTL. Use {@link SecretEntry.origin}.
+	 */
+	expiresAt?: number | null;
+	/**
+	 * Where this secret came from.
+	 *
+	 * PROVENANCE, NOT A DISPLAY POLICY. Do not read `origin: "config"` as "safe to show": whether a
+	 * secret may be drawn on screen is decided by {@link mayRestoreForDisplay}, which reads this
+	 * field AND {@link SecretEntry.type} together, because a config-plain and a config-regex entry
+	 * share this origin and need opposite answers. Putting the decision in one predicate is what
+	 * keeps four construction sites from holding four opinions about what is safe to display.
+	 *
+	 * Declared by the site that builds the entry, because provenance is a fact that site knows and
+	 * nothing downstream can recover. REQUIRED rather than optional so the compiler names every
+	 * construction site, including one added next year: an optional field would let a new source
+	 * inherit a default silently, and the default is exactly the thing that must be a decision.
+	 */
+	origin: SecretOrigin;
+	/**
+	 * What to CALL this secret in a report, when it has no name to be spent by.
+	 *
+	 * A NAME AND A SOURCE ARE DIFFERENT POWERS. {@link SecretEntry.name} grants an expansion
+	 * right: the model writes `#NAME#` and the boundary substitutes a credential. A source grants
+	 * nothing; it is the label a human needs in order to find the thing being masked. An
+	 * auto-detected environment value has no name on purpose — nothing declared it, so nothing may
+	 * spend it — and before this field it also had no label, which made it unfindable: the footer
+	 * counted ten masked values while `/secret list` answered "No active secrets. Nothing is being
+	 * substituted right now.", and no command in the product could say which ten.
+	 *
+	 * Set it to the variable name, the file, or whatever a person would search for. Never a value,
+	 * and never anything a placeholder is built from.
+	 */
+	source?: string;
+}
+
+/** State reported when a live runtime revokes one expired credential. */
+export interface SecretExpiryEvent {
+	name: string;
+	/** Whether the persisted encrypted entry was removed as part of this same operation. */
+	persistedCiphertextRemoved: boolean;
+}
+
+/** Operator wording derived from what the expiry operation actually changed. */
+export function describeSecretExpiry(event: SecretExpiryEvent): string {
+	const persistedState = event.persistedCiphertextRemoved
+		? "Its encrypted value was deleted from the vault."
+		: "Its encrypted value has not yet been deleted from the vault; a successful vault refresh will prune it.";
+	return (
+		`#${event.name}# has expired and its in-memory expansion has been revoked. ${persistedState} ` +
+		`Store it again with /secret from-env <VAR> if you still need it, or ` +
+		`/secret from-env <VAR> ${event.name} in a client with no terminal.`
+	);
+}
+
+/** How a caller hears about secrets the obfuscator could not protect. */
+export interface SecretObfuscatorOptions {
+	/**
+	 * Called once for every rejection, at the moment it is decided.
+	 *
+	 * Take this rather than polling {@link SecretObfuscator.rejections} after construction.
+	 * Some rejections are only discoverable while obfuscating (a pattern that over-matches
+	 * shows up on the first message it touches, not at startup), so a caller that reads the
+	 * array once has already missed them.
+	 */
+	onRejection?: (rejection: SecretRejection) => void;
+	/**
+	 * Called once per name when a lifetime lapses and the secret stops being substituted.
+	 *
+	 * The event distinguishes in-memory revocation from persisted deletion. Runtime expiry cannot
+	 * perform vault I/O, so it reports `persistedCiphertextRemoved: false`; notice wording must not
+	 * claim the ciphertext is gone until a vault operation actually removed it.
+	 */
+	onExpiry?: (event: SecretExpiryEvent) => void;
+	/**
+	 * Clock, injected so an expiry test does not sleep.
+	 *
+	 * Defaults to `Date.now`. A test that had to wait a real second to prove a one-second lifetime
+	 * would either be slow or be written against a lifetime nobody uses.
+	 */
+	now?: () => number;
+	/**
+	 * Machine-local HMAC key for stable unnamed placeholders.
+	 *
+	 * Production passes the persisted vault key. Direct SDK users that omit it receive a
+	 * process-local key, which keeps tokens opaque and stable for that process.
+	 */
+	placeholderKey?: Uint8Array;
+}
+
+/**
+ * What is masked in this session that nothing can name, as {@link SecretObfuscator.maskedInventory}
+ * reports it.
+ *
+ * Named rather than restated at each reader, because the three counts relate in ways a caller must
+ * not re-derive: `count` is values, `sources` is labels and may be longer or shorter than `count`,
+ * and `unlabelled` is the only honest source of "how many of these can I not identify".
+ */
+export interface MaskedInventory {
+	/** Distinct masked values with no name, counted the way the composer chip counts. */
+	count: number;
+	/** Where those values were found: an environment variable name, or a file path. Sorted. */
+	sources: readonly string[];
+	/** How many of `count` arrived with no label at all, and so can only be counted. */
+	unlabelled: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Deterministic replacement generation
+// ═══════════════════════════════════════════════════════════════════════════
+
+const REPLACEMENT_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+const PROCESS_PLACEHOLDER_KEY = crypto.randomBytes(32);
+
+/** Maximum configured entries; high enough for generated enterprise registries, finite for hostile input. */
+export const MAX_SECRET_ENTRIES = 10_000;
+/** Maximum regex rules scanned over one string. Literal rules use a shared multi-pattern matcher. */
+export const MAX_SECRET_REGEX_ENTRIES = 256;
+/** Maximum UTF-8 bytes retained for one configured or discovered secret or alias. */
+export const MAX_SECRET_VALUE_BYTES = 1024 * 1024;
+/** Maximum UTF-8 bytes accepted or emitted by one text transformation. */
+export const MAX_TRANSFORMED_TEXT_BYTES = 16 * 1024 * 1024;
+/** Maximum regex/literal match events examined while transforming one string. */
+export const MAX_SECRET_MATCHES_PER_TEXT = 20_000;
+/** Maximum placeholder-shaped tokens examined while expanding one string. */
+export const MAX_PLACEHOLDERS_PER_TEXT = 10_000;
+/** Maximum distinct runtime regex values retained by one obfuscator. */
+export const MAX_RUNTIME_SECRET_VALUES = 10_000;
+/** Maximum cumulative UTF-8 bytes retained for runtime regex values. */
+export const MAX_RUNTIME_SECRET_BYTES = 8 * 1024 * 1024;
+/** Maximum cumulative configured source/replacement bytes retained by one obfuscator. */
+export const MAX_CONFIGURED_SECRET_BYTES = 16 * 1024 * 1024;
+/** Long aliases avoid trie-per-character overhead; their count and cumulative bytes stay bounded. */
+const MAX_LONG_TERMINAL_ALIASES = 16;
+const SHORT_ALIAS_TRIE_CODE_UNITS = 256;
+const MAX_TERMINAL_ALIAS_BYTES = 16 * 1024 * 1024;
+
+interface LiteralMatcherNode<T> {
+	children: Map<string, number>;
+	fail: number;
+	outputLink: number;
+	outputs: Array<{ literal: string; value: T }>;
+}
+
+/**
+ * Aho-Corasick matcher shared by literal secrets and terminal aliases.
+ *
+ * Construction is linear in configured characters. Scanning is linear in input plus reported
+ * matches, and callers cap match events before retaining replacement state.
+ */
+class LiteralMatcher<T> {
+	readonly #nodes: Array<LiteralMatcherNode<T>> = [{ children: new Map(), fail: 0, outputLink: 0, outputs: [] }];
+	readonly #longEntries: Array<{ literal: string; value: T }> = [];
+
+	constructor(entries: Iterable<readonly [string, T]>) {
+		for (const [literal, value] of entries) {
+			if (literal.length === 0) continue;
+			if (literal.length > SHORT_ALIAS_TRIE_CODE_UNITS) {
+				if (this.#longEntries.length >= MAX_LONG_TERMINAL_ALIASES) {
+					throw new Error("Refusing too many long literal secret rules.");
+				}
+				this.#longEntries.push({ literal, value });
+				continue;
+			}
+			let nodeIndex = 0;
+			for (let index = 0; index < literal.length; index++) {
+				const character = literal[index];
+				const existing = this.#nodes[nodeIndex].children.get(character);
+				if (existing !== undefined) {
+					nodeIndex = existing;
+					continue;
+				}
+				const childIndex = this.#nodes.length;
+				this.#nodes.push({ children: new Map(), fail: 0, outputLink: 0, outputs: [] });
+				this.#nodes[nodeIndex].children.set(character, childIndex);
+				nodeIndex = childIndex;
+			}
+			this.#nodes[nodeIndex].outputs.push({ literal, value });
+		}
+		this.#buildFailureLinks();
+	}
+
+	#buildFailureLinks(): void {
+		const queue: number[] = [];
+		for (const child of this.#nodes[0].children.values()) queue.push(child);
+		for (let cursor = 0; cursor < queue.length; cursor++) {
+			const nodeIndex = queue[cursor];
+			const node = this.#nodes[nodeIndex];
+			for (const [character, childIndex] of node.children) {
+				let failure = node.fail;
+				while (failure !== 0 && !this.#nodes[failure].children.has(character)) {
+					failure = this.#nodes[failure].fail;
+				}
+				const transition = this.#nodes[failure].children.get(character);
+				if (transition !== undefined && transition !== childIndex) failure = transition;
+				const child = this.#nodes[childIndex];
+				child.fail = failure;
+				child.outputLink = this.#nodes[failure].outputs.length > 0 ? failure : this.#nodes[failure].outputLink;
+				queue.push(childIndex);
+			}
+		}
+	}
+
+	forEachMatch(
+		text: string,
+		visit: (start: number, end: number, value: T, literal: string) => boolean | undefined,
+		maxMatches = MAX_SECRET_MATCHES_PER_TEXT,
+	): void {
+		let nodeIndex = 0;
+		let matchCount = 0;
+		for (let index = 0; index < text.length; index++) {
+			const character = text[index];
+			while (nodeIndex !== 0 && !this.#nodes[nodeIndex].children.has(character)) {
+				nodeIndex = this.#nodes[nodeIndex].fail;
+			}
+			nodeIndex = this.#nodes[nodeIndex].children.get(character) ?? 0;
+			let outputNode = nodeIndex;
+			while (outputNode !== 0) {
+				for (const output of this.#nodes[outputNode].outputs) {
+					if (++matchCount > maxMatches) {
+						throw new Error("Refusing a secret transformation with too many match events.");
+					}
+					if (visit(index + 1 - output.literal.length, index + 1, output.value, output.literal) === false) {
+						return;
+					}
+				}
+				outputNode = this.#nodes[outputNode].outputLink;
+			}
+		}
+		for (const output of this.#longEntries) {
+			for (let start = text.indexOf(output.literal); start >= 0; start = text.indexOf(output.literal, start + 1)) {
+				if (++matchCount > maxMatches) {
+					throw new Error("Refusing a secret transformation with too many match events.");
+				}
+				if (visit(start, start + output.literal.length, output.value, output.literal) === false) return;
+			}
+		}
+	}
+
+	hasMatch(text: string): boolean {
+		let matched = false;
+		this.forEachMatch(
+			text,
+			() => {
+				matched = true;
+				return false;
+			},
+			1,
+		);
+		return matched;
+	}
+}
+
+function assertBoundedSecretString(value: string): void {
+	if (!isWellFormedUtf16(value)) {
+		throw new Error("Refusing ill-formed UTF-16 in secret transformation data.");
+	}
+	if (utf8ByteLength(value) > MAX_SECRET_VALUE_BYTES) {
+		throw new Error("Refusing secret transformation data above the per-value byte limit.");
+	}
+}
+
+function assertBoundedTransformText(value: string): number {
+	const bytes = utf8ByteLength(value);
+	if (bytes > MAX_TRANSFORMED_TEXT_BYTES) {
+		throw new Error("Refusing a secret transformation above the text byte limit.");
+	}
+	return bytes;
+}
+
+/**
+ * Generate a machine-keyed same-length replacement after hashing the source exactly once.
+ *
+ * The fixed-size keyed seed is expanded in counter mode. Runtime is O(source bytes + output bytes),
+ * rather than re-interpolating and re-hashing the whole source for each output block.
+ */
+function generateDeterministicReplacement(secret: string, key: Uint8Array, forbidden: LiteralMatcher<true>): string {
+	const seed = crypto.createHmac("sha256", key).update("replacement-source\0", "utf8").update(secret, "utf8").digest();
+	const counterBytes = Buffer.allocUnsafe(8);
+	for (let attempt = 0; attempt < 256; attempt++) {
+		const chunks: string[] = [];
+		let outputLength = 0;
+		for (let counter = 0; outputLength < secret.length; counter++) {
+			counterBytes.writeUInt32BE(attempt, 0);
+			counterBytes.writeUInt32BE(counter, 4);
+			const digest = crypto
+				.createHmac("sha256", key)
+				.update("replacement-expand\0", "utf8")
+				.update(seed)
+				.update(counterBytes)
+				.digest();
+			let chunk = "";
+			for (const byte of digest) {
+				if (byte >= 248) continue;
+				chunk += REPLACEMENT_CHARS[byte % REPLACEMENT_CHARS.length];
+				if (outputLength + chunk.length === secret.length) break;
+			}
+			chunks.push(chunk);
+			outputLength += chunk.length;
+		}
+		const candidate = chunks.join("");
+		if (candidate !== secret && !forbidden.hasMatch(candidate)) return candidate;
+	}
+	throw new Error("Could not generate a replacement distinct from configured secret sources.");
+}
+
+/** Refuse one-way replacement text that could later be expanded as a live credential. */
+function assertOneWayReplacement(replacement: string): void {
+	assertBoundedSecretString(replacement);
+	PLACEHOLDER_RE.lastIndex = 0;
+	for (;;) {
+		const match = PLACEHOLDER_RE.exec(replacement);
+		if (match === null) break;
+		if (isSecretPlaceholder(match[0])) {
+			PLACEHOLDER_RE.lastIndex = 0;
+			throw new Error("Refusing a secret replacement that contains a reversible secret placeholder.");
+		}
+	}
+	PLACEHOLDER_RE.lastIndex = 0;
+}
+
+/** Refuse a replacement that would put any configured exact secret source back on the wire. */
+function resolveSafeReplacement(
+	secret: string,
+	preferred: string | undefined,
+	forbidden: LiteralMatcher<true>,
+	key: Uint8Array,
+): string {
+	if (preferred !== undefined) {
+		assertOneWayReplacement(preferred);
+		if (forbidden.hasMatch(preferred)) {
+			throw new Error("Refusing a secret replacement that contains a configured secret.");
+		}
+		return preferred;
+	}
+	return generateDeterministicReplacement(secret, key, forbidden);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SecretObfuscator
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface ProtectedSpan {
+	start: number;
+	end: number;
+	/** Only a pre-existing terminal alias may be consumed as part of a larger exact literal source. */
+	allowContainingLiteral?: boolean;
+}
+
+interface ProtectedText {
+	text: string;
+	spans: ProtectedSpan[];
+}
+
+interface TextReplacement extends ProtectedSpan {
+	replacement: string;
+}
+interface LiteralRule {
+	replacement: string;
+}
+
+interface CompiledRegexEntry {
+	regex: RegExp;
+	mode: "obfuscate" | "replace";
+	replacement?: string;
+	minLength: number;
+	entryIndex: number;
+	aliases: Map<string, string>;
+	/**
+	 * Whether values this rule discovers may be restored on a display path.
+	 *
+	 * Resolved once per RULE at construction rather than per match, because every value a rule
+	 * discovers inherits that rule's verdict and a match has no origin of its own to consult.
+	 */
+	displayRestorable: boolean;
+}
 
 export class SecretObfuscator {
+	/** Reversible and retired plain secrets: secret → provider-safe placeholder. */
 	#plainMappings = new Map<string, string>();
 
+	/** Contextual regex matches: secret → placeholder, never applied outside a regex span. */
 	#regexMappings = new Map<string, string>();
 
+	/** Regex entries compiled once at construction. */
 	#regexEntries: CompiledRegexEntry[] = [];
 
+	/** Replace-mode plain mappings: secret → terminal one-way alias. */
 	#replaceMappings = new Map<string, string>();
 
+	/** Reverse lookup for deobfuscation: placeholder → secret. */
 	#deobfuscateMap = new Map<string, string>();
 
+	/**
+	 * Placeholder → every place the value it hides came from, for values with no name.
+	 *
+	 * A parallel map rather than a field on the reverse lookup, because it must be impossible for a
+	 * label to be mistaken for an expansion right: nothing in the spend path reads this, and the only
+	 * consumer is {@link maskedInventory}.
+	 *
+	 * A SET, NOT A STRING, because an unnamed placeholder is a function of the VALUE
+	 * ({@link #buildValuePlaceholder}), so two entries carrying the same bytes share one. That is the
+	 * ordinary shape for a credential declared in `secrets.yml` and also exported into the
+	 * environment, and a single field made the second registration erase the first label: the
+	 * operator was shown one place to look when there were two.
+	 */
 	#sourcesByPlaceholder = new Map<string, Set<string>>();
 
+	/**
+	 * Placeholders that this process used to expand and must now refuse at the tool boundary.
+	 *
+	 * Names stay only in memory. They cross refreshes through {@link retainRedactionsFrom}, but
+	 * are never persisted after removal. This is precise enough to distinguish a stale credential
+	 * such as `#DEPLOY_TOKEN#` from ordinary placeholder-shaped text such as `#TODO#`.
+	 */
 	#retiredPlaceholders = new Set<string>();
 
+	/**
+	 * Placeholders that MAY be expanded again for local display.
+	 *
+	 * A subset of {@link #deobfuscateMap}, never a parallel copy of it: membership here only ever
+	 * grants display, so a placeholder missing from this set is withheld. That direction is the
+	 * point. If the two ever fall out of step the failure is a placeholder shown on screen instead
+	 * of a value, not a credential shown instead of a placeholder.
+	 */
 	#displayRestorable = new Set<string>();
 
+	/** Every live placeholder for a value, used to select a survivor after one alias expires. */
 	#placeholdersBySecret = new Map<string, Set<string>>();
 
+	/** One-way outputs are terminal across calls, not only within the call that created them. */
 	#terminalAliases = new Set<string>();
 	#longTerminalAliases = new Set<string>();
 	#terminalAliasBytes = 0;
@@ -91,18 +548,24 @@ export class SecretObfuscator {
 	#aliasMatcher = new LiteralMatcher<true>([]);
 	#aliasMatcherDirty = false;
 
+	/** Literal sources share one compiled multi-pattern matcher. */
 	#plainMatcher = new LiteralMatcher<LiteralRule>([]);
 	#plainMatcherDirty = false;
 
+	/** Configured exact sources used to prove replacement text cannot contain a secret. */
 	#configuredForbiddenMatcher: LiteralMatcher<true>;
 
+	/** HMAC key snapshot for unnamed placeholders and deterministic aliases. */
 	#placeholderKey: Uint8Array;
 
+	/** Values known to be sensitive, including bounded regex matches discovered at runtime. */
 	#knownSecretValues = new Set<string>();
+	/** Opaque value-placeholder ownership survives retirement so an HMAC collision cannot be reused. */
 	#valuePlaceholderOwners = new Map<string, string>();
 	#runtimeSecretCount = 0;
 	#runtimeSecretBytes = 0;
 
+	/** Whether any secrets were configured. */
 	#hasAny: boolean;
 
 	#rejections: SecretRejection[] = [];
@@ -113,6 +576,16 @@ export class SecretObfuscator {
 	#expiryByPlaceholder = new Map<string, number>();
 	#nextExpiryAt = Number.POSITIVE_INFINITY;
 
+	/**
+	 * Record a rejection and tell the caller in the same breath.
+	 *
+	 * THE ONLY PLACE A REJECTION IS CREATED, because the first version of this appended to
+	 * an array that one startup loop read once, immediately after construction. Rejections
+	 * raised later, during `obfuscate()`, were therefore recorded and never read by anyone:
+	 * the array grew in silence, which is the exact failure this class was being fixed for.
+	 * Notifying here means the moment of the decision and the moment it is surfaced cannot
+	 * drift apart again.
+	 */
 	#reject(rejection: SecretRejection): void {
 		this.#rejections.push(rejection);
 		this.#onRejection?.(rejection);
@@ -316,7 +789,13 @@ export class SecretObfuscator {
 						entry.name === undefined
 							? this.#buildValuePlaceholder(entry.content)
 							: buildNamePlaceholder(entry.name);
+					// Display is decided by origin AND type together; see mayRestoreForDisplay.
 					this.#registerReversible(entry.content, placeholder, entry.expiresAt, mayRestoreForDisplay(entry));
+					// Recorded against the PLACEHOLDER, so the inventory below reports exactly the
+					// values still being masked rather than every entry that was ever handed in. Added
+					// rather than assigned: one value has one placeholder, so a credential declared in
+					// two places arrives twice and both labels are true answers to "where is this
+					// coming from".
 					if (entry.name === undefined && entry.source !== undefined) {
 						const sources = this.#sourcesByPlaceholder.get(placeholder);
 						if (sources === undefined) this.#sourcesByPlaceholder.set(placeholder, new Set([entry.source]));
@@ -371,6 +850,7 @@ export class SecretObfuscator {
 		this.#hasAny = hasRealSecret;
 	}
 
+	/** Build an unnamed placeholder and fail closed on retained or structural collision cases. */
 	#buildValuePlaceholder(secret: string): string {
 		const placeholder = buildValuePlaceholder(secret, this.#placeholderKey);
 		const owner = this.#valuePlaceholderOwners.get(placeholder);
@@ -385,6 +865,7 @@ export class SecretObfuscator {
 		return placeholder;
 	}
 
+	/** Install one reversible mapping, retaining every live alias for duplicate values. */
 	#registerReversible(
 		secret: string,
 		placeholder: string,
@@ -399,6 +880,8 @@ export class SecretObfuscator {
 		this.#knownSecretValues.add(secret);
 		this.#plainMappings.set(secret, placeholder);
 		this.#deobfuscateMap.set(placeholder, secret);
+		// AFTER the forget above, which clears this set: setting it earlier would have the retirement
+		// of a superseded mapping silently revoke the display grant this call is installing.
 		if (displayRestorable) this.#displayRestorable.add(placeholder);
 		else this.#displayRestorable.delete(placeholder);
 		let placeholders = this.#placeholdersBySecret.get(secret);
@@ -415,8 +898,18 @@ export class SecretObfuscator {
 		return this.#hasAny;
 	}
 
+	/**
+	 * Whether one of THIS obfuscator's own obfuscate-mode regex rules already covers the whole value.
+	 *
+	 * Requires the match to span the ENTIRE value, because a rule that covers only part of it leaves
+	 * the rest visible, and a retained full-value mapping is what keeps that rest redacted. Applies
+	 * the same floor the regex pass applies, so a value its rule would reject as too short is not
+	 * mistaken for one the rule protects.
+	 */
 	#regexRuleCoversWholeValue(value: string): boolean {
 		for (const entry of this.#regexEntries) {
+			// Replace mode is one-way by design and registers no reverse mapping, so deferring to it
+			// would drop redaction knowledge rather than enrich it.
 			if (entry.mode !== "obfuscate") continue;
 			entry.regex.lastIndex = 0;
 			const match = entry.regex.exec(value);
@@ -427,6 +920,38 @@ export class SecretObfuscator {
 		return false;
 	}
 
+	/**
+	 * Carry forward the previous obfuscator's redaction and retirement knowledge.
+	 *
+	 * Expansion rights are deliberately not copied. Call this only when refreshing the same
+	 * workspace scope. A removed or expired value remains hidden, while its old readable
+	 * placeholder is remembered only as a name the tool boundary must refuse.
+	 *
+	 * A readable placeholder that was live in `previous` and is absent here was revoked by the
+	 * refresh, so it joins the previously retired set. A placeholder still live here is skipped;
+	 * storing a replacement under the same name deliberately grants a fresh expansion right.
+	 *
+	 * WHY A STILL-COVERED VALUE IS SKIPPED. {@link obfuscate} applies plain rules BEFORE the regex
+	 * pass, so a redact-only plain mapping installed here rewrites the value before its own rule can
+	 * match, and the rule is the only thing that installs the reverse mapping and the display grant.
+	 * Retaining a value that a current rule still covers whole therefore downgraded it permanently:
+	 * it rendered as an opaque token for the rest of the session, on every display path, and each
+	 * later refresh re-installed the same mapping so it could never recover. Skipping the mapping
+	 * costs no redaction, because the rule that covers the value redacts it, and reversibly.
+	 *
+	 * The value stays in {@link #knownSecretValues} either way: that set is knowledge, not a rule,
+	 * and dropping it would lose a leak check for a value that has genuinely flowed.
+	 *
+	 * WHY THE REVERSE MAPPING IS NOT REGISTERED EAGERLY HERE, even though this function holds the
+	 * cleartext and easily could. Lazy registration has a visible cost: a transcript already on screen
+	 * stays opaque until the value next flows outbound, and closing that gap from here looks like a
+	 * four-line improvement. It is not one. The reverse mapping in `#deobfuscateMap` IS the expansion
+	 * right that spend paths read, so installing it here would make a value spendable before this
+	 * obfuscator's own rules had matched it even once, which is precisely what the paragraph above
+	 * refuses to copy. One turn of cosmetic opacity is the deliberate price of never handing out a
+	 * spend authorisation the codec itself did not grant. Making this eager is therefore a change to
+	 * the invariant, argued on purpose and covered by its own tests, not a loose end to tighten.
+	 */
 	retainRedactionsFrom(previous: SecretObfuscator): void {
 		for (const value of previous.#knownSecretValues) {
 			if (this.#plainMappings.has(value) || this.#replaceMappings.has(value)) continue;
@@ -444,6 +969,13 @@ export class SecretObfuscator {
 		this.#plainMatcherDirty = true;
 	}
 
+	/**
+	 * Start protecting one more named secret, mid-session.
+	 *
+	 * A rotation retires the old value to its opaque value placeholder before the name is
+	 * rebound. Historical occurrences therefore stay redacted without expanding to the new
+	 * credential. Returns the readable placeholder the model should use.
+	 */
 	addNamedSecret(name: string, value: string, expiresAt?: number | null): string {
 		assertBoundedSecretString(value);
 		this.#assertValidExpiry(expiresAt);
@@ -469,6 +1001,14 @@ export class SecretObfuscator {
 		return placeholder;
 	}
 
+	/**
+	 * Record, refresh, or clear one placeholder's deadline.
+	 *
+	 * `undefined` and `null` both mean "does not expire", so an environment or `secrets.yml` entry
+	 * needs no special case at the call sites. An entry that used to expire and no longer does has
+	 * its deadline REMOVED rather than left behind, or `/secret extend NAME never` would keep
+	 * the old deadline and drop the secret at it.
+	 */
 	#trackExpiry(placeholder: string, expiresAt: number | null | undefined): void {
 		this.#assertValidExpiry(expiresAt);
 		const previous = this.#expiryByPlaceholder.get(placeholder);
@@ -485,6 +1025,7 @@ export class SecretObfuscator {
 		}
 	}
 
+	/** Refresh the cached soonest deadline. Called whenever the expiry map changes, never per use. */
 	#recomputeNextExpiry(): void {
 		let soonest = Number.POSITIVE_INFINITY;
 		for (const at of this.#expiryByPlaceholder.values()) {
@@ -493,6 +1034,17 @@ export class SecretObfuscator {
 		this.#nextExpiryAt = soonest;
 	}
 
+	/**
+	 * Stop substituting anything whose lifetime has run out.
+	 *
+	 * THE POINT OF THIS METHOD, and it is a security property rather than housekeeping. Expiry
+	 * means the value is no longer used, not that it is no longer hidden, and a long-running
+	 * session used to enforce that only when it happened to reload the vault. A session left open
+	 * over a weekend went on spending a one-day credential.
+	 *
+	 * It returns early on one number comparison, so the check is free on the calls where nothing
+	 * has expired, which is all of them but one per lifetime.
+	 */
 	#forgetExpired(): void {
 		if (this.#nextExpiryAt === Number.POSITIVE_INFINITY) return;
 		const now = this.#now();
@@ -507,10 +1059,25 @@ export class SecretObfuscator {
 		this.#recomputeNextExpiry();
 	}
 
+	/**
+	 * Revoke one placeholder's expansion while retaining a forward redaction tombstone.
+	 *
+	 * Expiry and removal mean "do not spend this value", never "send the value to the
+	 * provider". A named value moves to its opaque HMAC placeholder before the readable name
+	 * can be rebound, so historical old values cannot expand to a newly rotated credential.
+	 */
 	forgetNamedSecret(name: string): void {
 		this.#forgetPlaceholder(buildNamePlaceholder(name));
 	}
 
+	/**
+	 * Mark every advertised placeholder as invalid for tools without changing redaction output.
+	 *
+	 * Used when protection is disabled. The surviving obfuscator is redaction-only, and keeping its
+	 * readable forward mappings stable prevents a prompt from changing names merely because spending
+	 * was turned off. The runtime no longer exposes it as expansion authority; this set supplies the
+	 * separate stale-name refusal.
+	 */
 	markAllPlaceholdersRetired(): void {
 		for (const placeholder of this.#deobfuscateMap.keys()) {
 			this.#retiredPlaceholders.add(placeholder);
@@ -537,32 +1104,43 @@ export class SecretObfuscator {
 		}
 	}
 
+	/** Whether this obfuscator currently protects a secret under that name. */
 	hasNamedSecret(name: string): boolean {
 		this.#forgetExpired();
 		return this.#deobfuscateMap.has(buildNamePlaceholder(name));
 	}
 
+	/**
+	 * Whether this placeholder is one this obfuscator would substitute a value for.
+	 *
+	 * Asked by the audit log, which reads the model's arguments BEFORE expansion and has to tell
+	 * a real placeholder from a `#HELLO#` somebody typed. Recording the second as a spent
+	 * credential would make the log unreadable, and recording nothing at all would make it a lie.
+	 * Both forms answer here, because both forms are substituted from the same map.
+	 */
 	knowsPlaceholder(placeholder: string): boolean {
+		// Checked here too, so the audit log cannot record an expansion the substitution refused. A
+		// log that says a credential was spent when it was not is worse than no log.
 		this.#forgetExpired();
 		return this.#deobfuscateMap.has(placeholder);
 	}
 
-	liveSecrets(): { count: number; named: number; nextExpiryAt: number | undefined } {
-		if (!this.#hasAny) return { count: 0, named: 0, nextExpiryAt: undefined };
-		this.#forgetExpired();
-		const values = new Set<string>();
-		const named = new Set<string>();
-		for (const [placeholder, value] of this.#deobfuscateMap) {
-			values.add(value);
-			if (placeholderSecretName(placeholder) !== undefined) named.add(value);
-		}
-		return {
-			count: values.size,
-			named: named.size,
-			nextExpiryAt: Number.isFinite(this.#nextExpiryAt) ? this.#nextExpiryAt : undefined,
-		};
-	}
-
+	/**
+	 * Names of every secret currently protected under a name placeholder, sorted.
+	 *
+	 * Exists so a caller can reconcile against the vault: whatever is here and no longer live
+	 * has to be forgotten, or an expired credential would keep being substituted into commands
+	 * for the rest of the session. Index-form secrets are not listed, because they have no name
+	 * to reconcile against.
+	 *
+	 * Also the source of the inventory the model is shown, which is why the order is sorted
+	 * rather than whatever order the map happens to hold: that section is part of the system
+	 * prompt, and a section whose bytes shuffle between refreshes would invalidate the provider's
+	 * prompt cache for no reason. Reconciliation does not care about order, so one stable order
+	 * serves both callers.
+	 *
+	 * NEVER RETURNS A VALUE. Names only; the map's values stay inside this class.
+	 */
 	namedSecretNames(): string[] {
 		this.#forgetExpired();
 		const names: string[] = [];
@@ -573,8 +1151,30 @@ export class SecretObfuscator {
 		return names.sort();
 	}
 
+	/**
+	 * What is being masked that nothing can name: how many values, and what to call them.
+	 *
+	 * COUNTED BY DISTINCT VALUE, after the expiry sweep, from {@link #deobfuscateMap}: the set the
+	 * tool boundary actually substitutes from, so a credential scoped to another directory, one
+	 * this process retired, and one that expired ten minutes ago are all absent. A count read off
+	 * the vault file or the configuration instead is how `10 masked` came to sit beside "No active
+	 * secrets. Nothing is being substituted right now."
+	 *
+	 * `sources` is what a person searches for (an environment variable name), and it is not
+	 * required to match `count` in either direction: a value protected by a source-less entry is
+	 * masked and counted with nothing to name it, and one value declared both in `secrets.yml` and
+	 * in the environment is one masked value with two places to look. Sorted, for a stable report.
+	 *
+	 * NEVER RETURNS A VALUE, and never a name: a named secret belongs to `/secret list`, which
+	 * reads the vault.
+	 */
 	maskedInventory(): MaskedInventory {
 		this.#forgetExpired();
+		// TWO PASSES, because one credential can be registered twice: stored in the vault under a name
+		// AND detected in the environment under the same bytes. It is spendable, `/secret list` names
+		// it, and reporting it here as well would tell the operator they have one secret and one
+		// unnameable masked value when they have one credential. The value decides, not the
+		// placeholder, so a credential with both forms is counted once and named by the list.
 		const nameable = new Set<string>();
 		for (const [placeholder, value] of this.#deobfuscateMap) {
 			if (placeholderSecretName(placeholder) !== undefined) nameable.add(value);
@@ -585,17 +1185,29 @@ export class SecretObfuscator {
 		for (const [placeholder, value] of this.#deobfuscateMap) {
 			if (placeholderSecretName(placeholder) !== undefined || nameable.has(value)) continue;
 			values.add(value);
+			// One value has one unnamed placeholder, so this arm runs once per masked value and
+			// `unlabelled` counts values rather than registrations. It is reported separately because
+			// `sources.length` cannot stand in for it in either direction: a value declared twice
+			// contributes two labels, so comparing the two counts would hide a nameless value behind
+			// a well-labelled neighbour.
 			const labels = this.#sourcesByPlaceholder.get(placeholder);
 			if (labels === undefined || labels.size === 0) unlabelled += 1;
 			else for (const source of labels) sources.add(source);
 		}
-		return { count: values.size, sources: Array.from(sources).sort(), unlabelled };
+		return { count: values.size, sources: [...sources].sort(), unlabelled };
 	}
 
+	/**
+	 * Declared secrets this obfuscator refused, in input order.
+	 *
+	 * Read this after construction and tell the operator. An empty array is the only
+	 * state in which every declared secret is actually being protected.
+	 */
 	rejections(): readonly SecretRejection[] {
 		return this.#rejections;
 	}
 
+	/** Obfuscate all secrets in text. Reversible values get placeholders; replace mode stays one-way. */
 	obfuscate(text: string): string {
 		if (!this.#hasAny) return text;
 		assertBoundedTransformText(text);
@@ -687,6 +1299,9 @@ export class SecretObfuscator {
 					if (!this.#deobfuscateMap.has(replacement)) {
 						this.#regexMappings.set(matchValue, replacement);
 						this.#deobfuscateMap.set(replacement, matchValue);
+						// A regex match is a value DISCOVERED in text already flowing through, not a
+						// declared credential, so it carries its rule's verdict rather than looking one
+						// up. See mayRestoreForDisplay for why that case may be shown and others may not.
 						if (entry.displayRestorable) this.#displayRestorable.add(replacement);
 					}
 				}
@@ -700,6 +1315,7 @@ export class SecretObfuscator {
 		return this.#applyPlainRules(state).text;
 	}
 
+	/** Locate already-emitted placeholders and one-way aliases before any source rule runs. */
 	#protectedOutputSpans(text: string): ProtectedSpan[] {
 		const spans: ProtectedSpan[] = [];
 		if (text.includes("#")) {
@@ -746,6 +1362,7 @@ export class SecretObfuscator {
 		return merged;
 	}
 
+	/** Apply non-overlapping replacements while carrying protected output spans forward. */
 	#applyProtectedReplacements(state: ProtectedText, replacements: readonly TextReplacement[]): ProtectedText {
 		let outputBytes = utf8ByteLength(state.text);
 		for (const replacement of replacements) {
@@ -795,6 +1412,13 @@ export class SecretObfuscator {
 		return { text: chunks.join(""), spans };
 	}
 
+	/**
+	 * Apply every literal rule against the same input view.
+	 *
+	 * One-pass selection prevents a replacement from being reinterpreted as another secret.
+	 * At a shared position the longest value wins. Cached next positions make each rule scan the
+	 * input monotonically instead of rescanning the remaining suffix after every match.
+	 */
 	#applyPlainRules(state: ProtectedText): ProtectedText {
 		this.#ensurePlainMatcher();
 		const bestByStart = new Map<number, TextReplacement>();
@@ -806,7 +1430,7 @@ export class SecretObfuscator {
 		});
 		if (bestByStart.size === 0) return state;
 
-		const candidates = Array.from(bestByStart.values()).sort(
+		const candidates = [...bestByStart.values()].sort(
 			(left, right) => left.start - right.start || right.end - left.end,
 		);
 		const replacements: TextReplacement[] = [];
@@ -830,11 +1454,32 @@ export class SecretObfuscator {
 		return replacements.length === 0 ? state : this.#applyProtectedReplacements(state, replacements);
 	}
 
+	/**
+	 * Whether {@link deobfuscate} would actually change this text: does it carry at least one
+	 * placeholder that is LIVE in the reversible map.
+	 *
+	 * Exists so the freshness guard can be asked about a specific payload instead of about the
+	 * session. The guard used to fire whenever the session held any secret at all, so once the vault
+	 * revision moved under a running session EVERY tool call, assistant message and transcript
+	 * rebuild was refused, including text with no placeholder in it and nothing to expand. That is a
+	 * refusal that protects nothing: a text the codec would not touch cannot be expanded wrongly.
+	 *
+	 * Deliberately a predicate, so it NEVER throws. `deobfuscate` refuses a text carrying more
+	 * placeholders than the cap or expanding past the byte limit, and those refusals are correct
+	 * there because it is about to produce output. Raising them from a question about a text would
+	 * put a throw back on the paths this exists to keep from throwing.
+	 *
+	 * Mirrors `deobfuscate`'s own rule rather than restating it: same regex, same map, and the same
+	 * `#` fast path, so a text can never answer false here and then be expanded.
+	 */
 	containsLivePlaceholder(text: string): boolean {
 		if (!this.#hasAny || !text.includes("#")) return false;
 		try {
 			this.#forgetExpired();
 		} catch {
+			// An unusable clock cannot prove a placeholder is dead, and this predicate is called
+			// from render paths that must not unwind. Answer "maybe" so the caller routes the text
+			// through `deobfuscate`, which reports the clock fault where a throw is survivable.
 			return true;
 		}
 		PLACEHOLDER_RE.lastIndex = 0;
@@ -849,6 +1494,12 @@ export class SecretObfuscator {
 		return false;
 	}
 
+	/**
+	 * Refuse a tool argument that tries to spend a placeholder retired in this process.
+	 *
+	 * Unknown tokens remain ordinary text. A stale credential name is actionable only because
+	 * this obfuscator remembers granting, then revoking, that exact expansion right.
+	 */
 	assertNoRetiredPlaceholder(text: string): void {
 		if (!this.#hasAny || !text.includes("#")) return;
 		this.#forgetExpired();
@@ -865,10 +1516,27 @@ export class SecretObfuscator {
 		}
 	}
 
+	/** Deobfuscate live reversible placeholders. Retired and expired placeholders stay opaque. */
 	deobfuscate(text: string): string {
 		return this.#expandPlaceholders(text, placeholder => this.#deobfuscateMap.get(placeholder));
 	}
 
+	/**
+	 * Restore only the placeholders their origin permits showing, for text about to be DRAWN.
+	 *
+	 * The spend direction and the display direction want different answers about the same mapping,
+	 * which is why this is a second entry point rather than a flag on {@link deobfuscate}. A value
+	 * the user typed should come back on screen; they typed it, and obfuscating it was only ever for
+	 * the provider's benefit. A value the operator put in the vault should not, because never being
+	 * shown is the entire reason it went in the vault. Expanding it on a render path put a live
+	 * credential into the terminal and the scrollback, contradicting what `/secret` promises.
+	 *
+	 * NEVER throws. `deobfuscate` refuses text over the placeholder or byte caps, and refusing is
+	 * right when it is about to hand a value to a command. Here the caller is drawing a frame, and a
+	 * throw would unwind the TUI over a display detail, so an over-cap text is drawn with its
+	 * placeholders standing. That degrade is in the safe direction: the worst case shows less than
+	 * it could, and it can never show more.
+	 */
 	deobfuscateForDisplay(text: string): string {
 		if (!this.#hasAny || !text.includes("#")) return text;
 		try {
@@ -880,6 +1548,22 @@ export class SecretObfuscator {
 		}
 	}
 
+	/**
+	 * Whether {@link deobfuscateForDisplay} would actually change this text.
+	 *
+	 * The display-side mirror of {@link containsLivePlaceholder}, and needed for correctness rather
+	 * than speed. Once vault-backed secrets stop expanding on screen, text whose only placeholders
+	 * are vault-backed has nothing left to restore, so asking the live predicate about it would
+	 * report "yes, placeholders" forever: a freshness probe would keep firing and the operator would
+	 * be told their render had degraded on every frame, permanently, over text that is being drawn
+	 * exactly as intended.
+	 *
+	 * Answers FALSE on a broken clock, which is deliberately the opposite of what
+	 * {@link containsLivePlaceholder} does. That one answers "maybe" so its caller routes the text
+	 * through `deobfuscate`, where a clock fault can be reported from a path that survives a throw.
+	 * This one has no such path: its caller is drawing, and "maybe" would mean a permanent warning.
+	 * False means "restore nothing", which is the same fail-closed direction as the transform.
+	 */
 	containsDisplayRestorablePlaceholder(text: string): boolean {
 		if (!this.#hasAny || this.#displayRestorable.size === 0 || !text.includes("#")) return false;
 		try {
@@ -899,6 +1583,13 @@ export class SecretObfuscator {
 		return false;
 	}
 
+	/**
+	 * Whether one placeholder may be restored for display.
+	 *
+	 * For surfaces that already hold a placeholder, such as an inventory or an audit line. Callers
+	 * holding TEXT must use {@link containsDisplayRestorablePlaceholder} instead of finding
+	 * placeholders themselves, so the grammar for what counts as a placeholder stays in one place.
+	 */
 	isDisplayRestorable(placeholder: string): boolean {
 		try {
 			this.#forgetExpired();
@@ -908,6 +1599,12 @@ export class SecretObfuscator {
 		return this.#displayRestorable.has(placeholder) && this.#deobfuscateMap.has(placeholder);
 	}
 
+	/**
+	 * Expand placeholders through one caller-supplied resolver, applying the shared caps.
+	 *
+	 * Both directions share this so the placeholder grammar, the count cap and the output byte cap
+	 * cannot drift between spending and display. The resolver is the ONLY difference between them.
+	 */
 	#expandPlaceholders(text: string, resolve: (placeholder: string) => string | undefined): string {
 		if (!this.#hasAny || !text.includes("#")) return text;
 		const inputBytes = assertBoundedTransformText(text);
@@ -935,6 +1632,18 @@ export class SecretObfuscator {
 	}
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Display restore (inbound, persisted/provider → local display)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Restore secret placeholders for local display. Only message kinds the model
+ * itself authored from obfuscated context carry placeholders, and assistant
+ * content and the LLM-written branch/compaction summaries. User, developer, and
+ * tool-result messages are persisted with their literal text, so a literal
+ * `#ABCD#` the operator typed must survive untouched; those roles are never
+ * walked.
+ */
 export function deobfuscateSessionContext(
 	sessionContext: SessionContext,
 	obfuscator: SecretObfuscator | undefined,
@@ -948,6 +1657,14 @@ export function deobfuscateAgentMessages(obfuscator: SecretObfuscator, messages:
 	return mapAgentMessageStrings(messages, s => obfuscator.deobfuscate(s));
 }
 
+/**
+ * Map every model-authored string in a persisted transcript through `fn`:
+ * assistant content, and the LLM-written branch/compaction summaries (and their
+ * text blocks). User, developer, and tool-result messages are persisted with
+ * literal text and are never walked, so an operator's literal `#ABCD#` survives.
+ * Shared by the secret codec (deobfuscation for display) and the argot expander
+ * so both walk the transcript shape exactly one way.
+ */
 export function mapAgentMessageStrings(
 	messages: AgentMessage[],
 	fn: (s: string) => string,
@@ -985,6 +1702,11 @@ export function mapAgentMessageStrings(
 	return changed ? result : messages;
 }
 
+/**
+ * Restore placeholders in assistant content: visible text and tool-call
+ * arguments/intent/rawBlock. Thinking and signatures are opaque
+ * provider-replay/hidden-reasoning data and pass through byte-identical.
+ */
 export function deobfuscateAssistantContent(
 	obfuscator: SecretObfuscator,
 	content: AssistantMessage["content"],
@@ -993,11 +1715,33 @@ export function deobfuscateAssistantContent(
 	return mapAssistantContentStrings(content, s => obfuscator.deobfuscate(s), { includeToolMetadata: true });
 }
 
+/**
+ * Whether a walk may rewrite thinking text.
+ *
+ * Off by default, and the default is the safe one. A thinking block is replayed
+ * to the provider with its `thinkingSignature`, which is bound to the exact
+ * bytes, so a walk whose output can find its way back into a request must leave
+ * thinking untouched or the next call is rejected. Resume does exactly that: it
+ * deobfuscates the persisted transcript and feeds it back as the starting
+ * messages.
+ *
+ * Turn it on only for a copy that is rendered and then discarded. The argot
+ * display seams do, because a person reading a model's reasoning has to see
+ * `src/db.ts` where the model wrote `§db`, the same as in its prose.
+ */
 export interface ContentWalkOptions {
 	readonly includeThinking?: boolean;
 	readonly includeToolMetadata?: boolean;
 }
 
+/**
+ * Map every model-authored string in assistant content through `fn`: visible
+ * text and tool-call arguments/intent/rawBlock, plus thinking when
+ * {@link ContentWalkOptions.includeThinking} is set. Signatures are opaque
+ * provider-replay data and always pass through byte-identical. Shared by the
+ * secret codec (deobfuscation) and the argot expander so both walk the
+ * assistant-content shape exactly one way.
+ */
 export function mapAssistantContentStrings(
 	content: AssistantMessage["content"],
 	fn: (s: string) => string,
@@ -1045,6 +1789,11 @@ export function mapAssistantContentStrings(
 	return changed ? result : content;
 }
 
+/**
+ * Restore placeholders inside a tool call's arguments. Arguments are arbitrary
+ * model-authored JSON, so tool-call arguments are the ONLY place a recursive
+ * JSON walk runs.
+ */
 export function deobfuscateToolArguments(
 	obfuscator: SecretObfuscator,
 	args: Record<string, unknown>,
@@ -1056,6 +1805,7 @@ export function deobfuscateToolArguments(
 	}) as Record<string, unknown>;
 }
 
+/** Redact secrets inside a tool call's arguments (same JSON-walk exception as {@link deobfuscateToolArguments}). */
 export function obfuscateToolArguments(
 	obfuscator: SecretObfuscator,
 	args: Record<string, unknown>,
@@ -1064,6 +1814,11 @@ export function obfuscateToolArguments(
 	return mapJsonStrings(args as JsonWithOptionalFields, s => obfuscator.obfuscate(s)) as Record<string, unknown>;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Outbound obfuscation (local → provider)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Fail closed rather than modifying authenticated provider replay metadata or sending a secret in it. */
 function assertOpaqueProviderFieldSafe(obfuscator: SecretObfuscator, value: string | undefined, field: string): void {
 	if (value !== undefined && obfuscator.obfuscate(value) !== value) {
 		throw new Error(
@@ -1072,6 +1827,7 @@ function assertOpaqueProviderFieldSafe(obfuscator: SecretObfuscator, value: stri
 	}
 }
 
+/** Native replay payloads may contain authenticated or encrypted strings, so they are validation-only. */
 function assertOpaqueProviderPayloadSafe(obfuscator: SecretObfuscator, payload: unknown): void {
 	if (mapJsonStrings(payload, text => obfuscator.obfuscate(text)) !== payload) {
 		throw new Error(
@@ -1080,6 +1836,7 @@ function assertOpaqueProviderPayloadSafe(obfuscator: SecretObfuscator, payload: 
 	}
 }
 
+/** Obfuscate user/developer/tool-result blocks and validate opaque text signatures. */
 function obfuscateTextBlocks(
 	obfuscator: SecretObfuscator,
 	content: (TextContent | ImageContent)[],
@@ -1096,6 +1853,7 @@ function obfuscateTextBlocks(
 	return changed ? result : content;
 }
 
+/** Obfuscate assistant replay fields while preserving authenticated bytes exactly. */
 function obfuscateAssistantContentForProvider(
 	obfuscator: SecretObfuscator,
 	content: AssistantMessage["content"],
@@ -1142,6 +1900,7 @@ function obfuscateAssistantContentForProvider(
 	return changed ? result : content;
 }
 
+/** Map `text` blocks through `fn`; image and other blocks pass through byte-identical. */
 function mapTextBlockStrings(
 	content: (TextContent | ImageContent)[],
 	fn: (s: string) => string,
@@ -1157,6 +1916,12 @@ function mapTextBlockStrings(
 	return changed ? result : content;
 }
 
+/**
+ * Redact every mutable string field that can reach a provider request.
+ *
+ * Authenticated signatures are never rewritten. If one itself contains a configured secret, or
+ * signed thinking would need rewriting, dispatch fails closed with a credential-free error.
+ */
 export function obfuscateMessages(obfuscator: SecretObfuscator, messages: Message[]): Message[] {
 	if (!obfuscator.hasSecrets()) return messages;
 	let changed = false;
@@ -1218,6 +1983,7 @@ function obfuscateToolDefinition(obfuscator: SecretObfuscator, tool: Tool): Tool
 	return { ...tool, name, description, parameters, customFormat, customWireName, examples };
 }
 
+/** Redact every provider-bound context surface, including prompts and tool schemas. */
 export function obfuscateProviderContext(obfuscator: SecretObfuscator | undefined, context: Context): Context {
 	if (!obfuscator?.hasSecrets()) return context;
 
@@ -1226,7 +1992,7 @@ export function obfuscateProviderContext(obfuscator: SecretObfuscator | undefine
 		for (let index = 0; index < systemPrompt.length; index++) {
 			const text = obfuscator.obfuscate(systemPrompt[index]);
 			if (text === systemPrompt[index]) continue;
-			if (systemPrompt === context.systemPrompt) systemPrompt = systemPrompt.slice();
+			if (systemPrompt === context.systemPrompt) systemPrompt = [...systemPrompt];
 			systemPrompt[index] = text;
 		}
 	}
@@ -1237,7 +2003,7 @@ export function obfuscateProviderContext(obfuscator: SecretObfuscator | undefine
 		for (let index = 0; index < tools.length; index++) {
 			const tool = obfuscateToolDefinition(obfuscator, tools[index]);
 			if (tool === tools[index]) continue;
-			if (tools === context.tools) tools = tools.slice();
+			if (tools === context.tools) tools = [...tools];
 			tools[index] = tool;
 		}
 	}
@@ -1247,6 +2013,12 @@ export function obfuscateProviderContext(obfuscator: SecretObfuscator | undefine
 	return { ...context, systemPrompt, messages, tools };
 }
 
+/**
+ * The JSON walk moved to `../json-transform`, which imports two string measurements and nothing
+ * else. It was never about secrets: `argot-wire.ts` and `provider-boundary.ts` call it too, and
+ * reaching it through this module cost them the secret registry and the 18-module JSON Schema
+ * validator behind `toolWireSchema`. Prefer importing from `@veyyon/coding-agent/json-transform`.
+ */
 export {
 	type JsonRecord,
 	type JsonWithOptionalFields,

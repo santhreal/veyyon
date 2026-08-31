@@ -7,7 +7,7 @@ import type {
 	ToolKind,
 } from "@agentclientprotocol/sdk";
 import type { AgentSessionEvent } from "../../session/agent-session";
-import { resolveToCwd } from "../../tools/path-utils";
+import { resolveToCwd, splitPathAndSel } from "../../tools/path-utils";
 import type { TodoStatus } from "../../tools/todo";
 import { canonicalizeMessage } from "../../utils/thinking-display";
 
@@ -21,6 +21,12 @@ interface AcpEventMapperOptions {
 	getMessageProgress?: (message: unknown) => MessageProgress | undefined;
 	getToolArgs?: (toolCallId: string) => unknown;
 	resolveImageData?: (data: string, mimeType: string | undefined) => string;
+	/**
+	 * Session cwd. Tool call locations sent to ACP clients must be absolute
+	 * (the editor host needs them to open or focus files). When provided,
+	 * the mapper resolves raw `path`/`file`/etc. args against this cwd
+	 * before emitting `ToolCallLocation` entries.
+	 */
 	cwd?: string;
 }
 
@@ -138,9 +144,7 @@ export function mapToolKind(toolName: string): ToolKind {
 		case "exec":
 		case "eval":
 			return "execute";
-		case "grep":
-		case "glob":
-		case "ast_grep":
+		case "search":
 			return "search";
 		case "web_search":
 			return "fetch";
@@ -278,6 +282,8 @@ function mapAssistantMessageUpdate(
 		case "error":
 			sessionUpdate = "agent_message_chunk";
 			text = event.assistantMessageEvent.error.errorMessage ?? "Unknown error";
+			// The surfaced error is the message's visible text: keeps the
+			// message_end / agent_end fallbacks from emitting again.
 			if (text.length > 0 && progress) {
 				progress.textEmitted = true;
 			}
@@ -498,7 +504,7 @@ function mergeToolUpdateContent(startContent: ToolCallContent[], resultContent: 
 	if (startContent.length === 0) {
 		return resultContent;
 	}
-	const merged = startContent.slice();
+	const merged = [...startContent];
 	for (const item of resultContent) {
 		if (
 			item.type === "content" &&
@@ -542,12 +548,25 @@ function buildToolTitle(toolName: string, args: unknown, intent: string | undefi
 	return toolName;
 }
 
+/**
+ * Resolve a single raw path against cwd for an ACP location. When `cwd` is
+ * omitted we pass the value through unchanged (callers without session
+ * context, e.g. some legacy entry points and tests); the ACP-side caller
+ * always supplies cwd so notifications carry absolute paths.
+ *
+ * The read grammar lets a tool call name a range (`src/foo.ts:50-200`), and a
+ * location is a place an editor navigates to, not a range it selects. Peeling
+ * the selector first stops a client that follows the location from opening a
+ * file whose name ends in a colon and a line range. `splitPathAndSel` uses the
+ * strict grammar, so a colon that is part of a real filename survives.
+ */
 function toAcpLocationPath(value: string, cwd?: string): string {
-	if (!cwd) return value;
+	const { path: bare } = splitPathAndSel(value);
+	if (!cwd) return bare;
 	try {
-		return resolveToCwd(value, cwd);
+		return resolveToCwd(bare, cwd);
 	} catch {
-		return value;
+		return bare;
 	}
 }
 
@@ -569,6 +588,7 @@ function extractToolLocations(args: unknown, cwd?: string): ToolCallLocation[] {
 	return locations;
 }
 
+/** Pull locations from a tool result's details (e.g. EditToolDetails.perFileResults[].path). */
 function extractToolLocationsFromResult(result: unknown, cwd?: string): ToolCallLocation[] {
 	if (typeof result !== "object" || result === null) return [];
 	const details = (result as { details?: unknown }).details;
@@ -579,7 +599,7 @@ function extractToolLocationsFromResult(result: unknown, cwd?: string): ToolCall
 		return direct;
 	}
 	const seen = new Set(direct.map(loc => loc.path));
-	const locations = direct.slice();
+	const locations = [...direct];
 	for (const entry of perFile) {
 		const raw = extractStringProperty<PathContainer>(entry, "path");
 		if (!raw) continue;
@@ -591,6 +611,7 @@ function extractToolLocationsFromResult(result: unknown, cwd?: string): ToolCall
 	return locations;
 }
 
+/** Emit a `diff` ToolCallContent for each per-file edit result that carries oldText/newText. */
 function extractDiffToolCallContent(result: unknown): ToolCallContent[] {
 	if (typeof result !== "object" || result === null) return [];
 	const details = (result as { details?: unknown }).details;
@@ -637,11 +658,11 @@ function terminalToolCallContent(terminalId: string): ToolCallContent {
 function extractToolCallContent(value: unknown, options: AcpEventMapperOptions): ToolCallContent[] {
 	const richContent = extractStructuredToolCallContent(value, options);
 	const detailsImageContent = extractDetailsImageToolCallContent(value, options, richContent);
-	const combinedContent = richContent.concat(detailsImageContent);
+	const combinedContent = [...richContent, ...detailsImageContent];
 	const terminalId = extractTerminalId(value);
 	const content =
 		terminalId && !hasTerminalContent(combinedContent, terminalId)
-			? combinedContent.concat([terminalToolCallContent(terminalId)])
+			? [...combinedContent, terminalToolCallContent(terminalId)]
 			: combinedContent;
 	const fallbackText = extractReadableText(value);
 	if (!fallbackText) {
@@ -650,7 +671,7 @@ function extractToolCallContent(value: unknown, options: AcpEventMapperOptions):
 	if (hasEquivalentTextContent(content, fallbackText)) {
 		return content;
 	}
-	return content.concat([textToolCallContent(fallbackText)]);
+	return [...content, textToolCallContent(fallbackText)];
 }
 
 function extractStructuredToolCallContent(value: unknown, options: AcpEventMapperOptions): ToolCallContent[] {
@@ -964,6 +985,15 @@ function extractNumberProperty<T extends object>(value: unknown, key: keyof T): 
 	return typeof property === "number" && Number.isFinite(property) ? property : undefined;
 }
 
+/**
+ * Whether an arbitrary value is shaped like an assistant message.
+ *
+ * A STRUCTURAL check on `unknown`, which is why it is named for what it inspects rather
+ * than for a type it proves: it reads a `role` field and nothing more. Three other modules
+ * used to call their own, stricter predicates `isAssistantMessage` too: one also requires
+ * usage counters, one requires array content, one requires a linkable id. Four different
+ * questions under one name is how a caller reaches for the wrong guarantee.
+ */
 function looksLikeAssistantMessage(value: unknown): boolean {
 	return (
 		typeof value === "object" && value !== null && "role" in value && (value as TextMessageLike).role === "assistant"
@@ -986,6 +1016,8 @@ function safeJsonStringify(value: unknown): string | undefined {
 	try {
 		return JSON.stringify(value);
 	} catch {
+		// A value with a cycle in it has no JSON form. Undefined means the optional field is omitted from
+		// the ACP event, which the protocol allows; the event itself still goes out.
 		return undefined;
 	}
 }

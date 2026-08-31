@@ -98,6 +98,11 @@ export function createLogExperimentTool(
 
 			let allModified: string[];
 			try {
+				// On a dedicated autoresearch branch every iteration starts from a clean
+				// worktree (init_experiment baseline + previous keep commit / discard reset),
+				// so any currently-dirty path is the agent's iteration change. Off-branch we
+				// can't tell user dirt apart from agent edits, so we keep the (lossy)
+				// preRunDirtyPaths filter.
 				if (onAutoresearchBranch) {
 					const statusText = await gitStatusPorcelain(ctx.cwd);
 					const workDirPrefix = await gitWorkDirPrefix(ctx.cwd);
@@ -107,9 +112,12 @@ export function createLogExperimentTool(
 						ctx.cwd,
 						pendingRun.preRunDirtyPaths,
 					);
-					allModified = modifiedTracked.concat(modifiedUntracked);
+					allModified = [...modifiedTracked, ...modifiedUntracked];
 				}
 			} catch (err) {
+				// Refusing to log is the right answer: every field this run would record -- modified paths,
+				// scope deviations, and whether a discard has anything to revert -- is derived from this
+				// status, so logging without it would write an experiment result that is confidently empty.
 				return {
 					content: [
 						{
@@ -208,6 +216,7 @@ export function createLogExperimentTool(
 				loggedAt,
 			});
 
+			// Recompute confidence with this run included
 			const refreshedSession = storage.getSessionById(session.id) ?? session;
 			const loggedRuns = storage.listLoggedRuns(session.id);
 			const stateForConfidence = buildExperimentState(refreshedSession, loggedRuns);
@@ -350,6 +359,9 @@ async function revertFailedExperiment(
 	onAutoresearchBranch: boolean,
 ): Promise<KeepCommitResult> {
 	if (onAutoresearchBranch) {
+		// Discard reverts only the current iteration's uncommitted changes — never
+		// rewinds prior `keep` commits. Reset to HEAD so any kept improvements
+		// already on the branch survive.
 		try {
 			await git.reset(cwd, { hard: true, target: "HEAD" });
 			await git.clean(cwd);
@@ -359,6 +371,9 @@ async function revertFailedExperiment(
 		}
 	}
 
+	// A status this cannot read used to parse as "no dirty paths", so the revert reported "nothing to
+	// revert" and returned success while the experiment's changes stayed in the tree -- the one outcome a
+	// discard must never produce. The caller surfaces this error to the agent instead.
 	let statusText: string;
 	let workDirPrefix: string;
 	try {
@@ -380,11 +395,19 @@ async function revertFailedExperiment(
 	for (const filePath of untracked) {
 		try {
 			fs.rmSync(path.join(cwd, filePath), { force: true, recursive: true });
-		} catch {}
+		} catch {
+			// best effort
+		}
 	}
 	return { note: `reverted ${formatCount("file", total)}` };
 }
 
+/**
+ * The paths this run changed. Failures propagate: an unreadable status used to parse as "nothing
+ * changed", which recorded the experiment with an empty modified-path list and made the
+ * scope-deviation check pass vacuously, so an experiment that touched an `off_limits` file was logged
+ * as staying inside its scope.
+ */
 async function detectModifiedPaths(
 	cwd: string,
 	preRunDirtyPaths: string[],

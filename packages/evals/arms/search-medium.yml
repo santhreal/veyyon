@@ -1,0 +1,5 @@
+# Paired code-change evaluation arm: the model and effort are explicit.
+argot:
+  enabled: false
+defaultEffort:
+  google-antigravity/gemini-3.7-flash: medium

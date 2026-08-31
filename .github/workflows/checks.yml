@@ -232,6 +232,18 @@ jobs:
           # printed "No test files changed" and exited 0, and a push whose suites
           # were never leak-checked reported green. Capture first: a plain
           # assignment is a status `-e` does see.
+          #
+          # A force-push makes `github.event.before` name a commit that no longer
+          # exists, and the diff then dies with "Invalid symmetric difference
+          # expression" and exit 128 — a red gate that measured nothing and says
+          # nothing about the tree. Rewriting history is legitimate, so fall back
+          # to the parent commit and say which base was used. Never fall back to
+          # "nothing changed": that is the silent green this gate exists to stop.
+          if ! git cat-file -e "${LEAK_BASE}^{commit}" 2>/dev/null; then
+            echo "LEAK_BASE ${LEAK_BASE} is unreachable (history was rewritten); using HEAD~1 instead."
+            LEAK_BASE="$(git rev-parse HEAD~1)"
+          fi
+          echo "Leak base: ${LEAK_BASE}"
           changed_list="$(git diff --name-only --diff-filter=d "$LEAK_BASE"...HEAD -- '*.test.ts')"
           if [ -z "$changed_list" ]; then
             echo "No test files changed; nothing to leak-check."

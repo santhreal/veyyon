@@ -65,11 +65,89 @@ describe("OPTIONAL_VALUE_FLAGS table is honored by args.ts parseArgs", () => {
 	}
 });
 
-describe("--tools legacy aliases", () => {
-	it("maps search and find to grep and glob", () => {
-		const result = parseArgs(["--tools", "search,find,grep"]);
+describe("--tools argument parsing", () => {
+	it("accepts canonical tool names", () => {
+		const result = parseArgs(["--tools", "search,read"]);
 
-		expect(result.tools).toEqual(["grep", "glob"]);
+		expect(result.tools).toEqual(["search", "read"]);
+	});
+});
+
+/**
+ * Every enum-valued flag rejects a bad value with a message that NAMES the
+ * accepted set. That message is only useful if the set it prints is the set the
+ * parser will actually take, so this walks each printed value back through the
+ * parser.
+ *
+ * `--thinking` is the reason this exists. Its rejection message lists
+ * `CLI_THINKING_LEVELS` (`[off, auto, ...THINKING_EFFORTS]`), while the value is
+ * validated by `parseCliThinkingLevel` against a separately maintained selector
+ * map. Add a level to `@veyyon/catalog/effort` and it appears in the MESSAGE
+ * without becoming parseable, so the error would confidently advertise a level
+ * the parser refuses. The other three read their list from the same table they
+ * validate against and are here to stay that way.
+ */
+describe("a rejection message only names values the parser accepts", () => {
+	const ACCEPTED_BY_FLAG: Record<string, readonly string[]> = {
+		"--mode": MODE_VALUES,
+		"--approval-mode": APPROVAL_MODE_VALUES,
+		"--thinking": CLI_THINKING_LEVELS,
+		"--tools": BUILTIN_TOOL_NAMES,
+	};
+
+	/**
+	 * Where each flag's value lands, and a value it must always advertise.
+	 *
+	 * WHY the landing site and not just the absence of a throw: a value that
+	 * parses without taking effect is the failure this suite exists to catch. The
+	 * message would name a level the parser silently drops, and the run would go
+	 * ahead on the default while the operator's evidence that the flag worked is
+	 * that they typed it. The canonical member is the non-vacuity guard: an
+	 * advertised set that had gone empty would satisfy the loop below and print
+	 * "Expected one of: ." to the operator.
+	 */
+	const LANDING_BY_FLAG: Record<string, { canonical: string; read: (result: Args, value: string) => unknown }> = {
+		"--mode": { canonical: "text", read: result => result.mode },
+		"--approval-mode": { canonical: "ask", read: result => result.approvalMode },
+		"--thinking": { canonical: "off", read: result => result.thinking },
+		"--tools": { canonical: "read", read: result => result.tools?.join(",") },
+	};
+
+	for (const [flag, accepted] of Object.entries(ACCEPTED_BY_FLAG)) {
+		const { canonical, read } = LANDING_BY_FLAG[flag]!;
+
+		it(`accepts every value ${flag} advertises, and keeps it`, () => {
+			expect(accepted).toContain(canonical);
+			for (const value of accepted) {
+				expect(read(parseArgs([flag, value]), value), `${flag} ${value} must reach the parsed args`).toBe(value);
+			}
+		});
+	}
+
+	it("names the accepted values, and the flag, when it refuses one", () => {
+		expect(() => parseArgs(["--mode", "banana"])).toThrow(CliUsageError);
+		expect(() => parseArgs(["--mode", "banana"])).toThrow(
+			'Invalid --mode value: "banana". Expected one of: text, json, rpc, acp, rpc-ui.',
+		);
+		// Derived, not retyped: the message is built from APPROVAL_MODE_VALUES, so
+		// a literal sentence here would just be a second copy free to drift.
+		expect(() => parseArgs(["--approval-mode", "nonsense"])).toThrow(
+			`Invalid --approval-mode value: "nonsense". Expected one of: ${APPROVAL_MODE_VALUES.join(", ")}.`,
+		);
+		expect(() => parseArgs(["--thinking", "banana"])).toThrow(
+			'Invalid --thinking value: "banana". Expected one of: off, auto, minimal, low, medium, high, xhigh, max.',
+		);
+	});
+
+	/**
+	 * A single typo used to be dropped name-by-name, leaving `tools` EMPTY, so the
+	 * session started with no tools and only the model mentioned it mid-answer.
+	 * `--no-tools` is the way to ask for that.
+	 */
+	it("refuses an unknown --tools name instead of silently emptying the toolset", () => {
+		expect(() => parseArgs(["--tools", "raed"])).toThrow('Unknown tool passed to --tools: "raed"');
+		expect(() => parseArgs(["--tools", "read,raed"])).toThrow('Unknown tool passed to --tools: "raed"');
+		expect(parseArgs(["--tools", "read,bash"]).tools).toEqual(["read", "bash"]);
 	});
 });
 

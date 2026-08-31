@@ -1,7 +1,13 @@
+/**
+ * Workflow commands for orchestrating multi-agent workflows.
+ *
+ * Commands are embedded at build time via Bun's import with { type: "text" }.
+ */
 import * as path from "node:path";
 import { parseFrontmatter, prompt } from "@veyyon/utils";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import { loadCapability } from "../discovery";
+// Embed command markdown files at build time
 import { agentsPrompts } from "../prompts/agents/rows";
 
 const EMBEDDED_COMMANDS: { name: string; content: string }[] = [
@@ -10,6 +16,7 @@ const EMBEDDED_COMMANDS: { name: string; content: string }[] = [
 
 export const EMBEDDED_COMMAND_TEMPLATES: ReadonlyArray<{ name: string; content: string }> = EMBEDDED_COMMANDS;
 
+/** Workflow command definition */
 export interface WorkflowCommand {
 	name: string;
 	description: string;
@@ -18,13 +25,18 @@ export interface WorkflowCommand {
 	filePath: string;
 }
 
+/** Extract string value from frontmatter field */
 function getString(frontmatter: Record<string, unknown>, key: string): string {
 	const value = frontmatter[key];
 	return typeof value === "string" ? value : "";
 }
 
+/** Cache for bundled commands */
 let bundledCommandsCache: WorkflowCommand[] | null = null;
 
+/**
+ * Load all bundled commands from embedded content.
+ */
 export function loadBundledCommands(): WorkflowCommand[] {
 	if (bundledCommandsCache !== null) {
 		return bundledCommandsCache;
@@ -52,14 +64,28 @@ export function loadBundledCommands(): WorkflowCommand[] {
 	return commands;
 }
 
+/**
+ * Discover all available commands.
+ *
+ * Precedence (highest wins): .veyyon > .pi > .claude (project before user), then bundled
+ *
+ * `agentDir` names WHICH profile supplies the user scope (`<agentDir>/commands`
+ * and that profile's plugin roots). It defaults inside `loadCapability`
+ * (`options.agentDir ?? getAgentDir()`), so omitting it still resolves the
+ * process-active profile. Pass it whenever you have one: dropping it is how a
+ * session rooted in another agent dir ended up listing the booted profile's
+ * commands.
+ */
 export async function discoverCommands(cwd: string, agentDir?: string): Promise<WorkflowCommand[]> {
 	const resolvedCwd = path.resolve(cwd);
 
+	// Load slash commands from capability API
 	const result = await loadCapability<SlashCommand>(slashCommandCapability.id, { cwd: resolvedCwd, agentDir });
 
 	const commands: WorkflowCommand[] = [];
 	const seen = new Set<string>();
 
+	// Convert SlashCommand to WorkflowCommand format
 	for (const cmd of result.items) {
 		if (seen.has(cmd.name)) continue;
 
@@ -68,6 +94,7 @@ export async function discoverCommands(cwd: string, agentDir?: string): Promise<
 			level: cmd.level === "native" ? "fatal" : "warn",
 		});
 
+		// Map capability levels to WorkflowCommand source
 		const source: "bundled" | "user" | "project" = cmd.level === "native" ? "bundled" : cmd.level;
 
 		commands.push({
@@ -80,6 +107,7 @@ export async function discoverCommands(cwd: string, agentDir?: string): Promise<
 		seen.add(cmd.name);
 	}
 
+	// Add bundled commands if not already present
 	for (const cmd of loadBundledCommands()) {
 		if (seen.has(cmd.name)) continue;
 		commands.push(cmd);
@@ -89,14 +117,25 @@ export async function discoverCommands(cwd: string, agentDir?: string): Promise<
 	return commands;
 }
 
+/**
+ * Get a command by name.
+ */
 export function getCommand(commands: WorkflowCommand[], name: string): WorkflowCommand | undefined {
 	return commands.find(c => c.name === name);
 }
 
+/**
+ * Expand command instructions with task input.
+ * Replaces $@ with the provided input.
+ */
 export function expandCommand(command: WorkflowCommand, input: string): string {
+	// Function replacement so `$`-patterns in user input ($$, $&, ...) stay literal.
 	return command.instructions.replace(/\$@/g, () => input);
 }
 
+/**
+ * Clear the bundled commands cache (for testing).
+ */
 export function clearBundledCommandsCache(): void {
 	bundledCommandsCache = null;
 }

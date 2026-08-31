@@ -1,5 +1,6 @@
 import { dirname } from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import { assistantTextFromUnknown } from "@veyyon/ai/utils/message-text";
 import type * as MnemopiNs from "@veyyon/mnemopi";
 import type { Mnemopi, RecallResult } from "@veyyon/mnemopi";
@@ -22,9 +23,14 @@ import type { MnemopiBackendConfig, MnemopiScoping } from "./config";
 import { mnemopiEmbedClient } from "./embed-client";
 import type { MnemopiMemoryEditOperation } from "./verbs";
 
+// The mnemopi package pulls the embeddings stack; keep it off the CLI startup
+// module graph by loading it lazily at the async boundaries that need it.
 let mnemopiMod: typeof MnemopiNs | undefined;
 let mnemopiCoreMod: typeof MnemopiCoreNs | undefined;
 
+// `setLocalModelInitializer` writes a single module-level slot shared by
+// both the root and `/core` re-exports, so install at most once across both
+// loaders. Either entry point is enough to wire up the override.
 let localModelInitializerInstalled = false;
 
 function installLocalModelInitializer(setInitializer: (initializer: LocalModelInitializer) => void): void {
@@ -38,6 +44,15 @@ function installLocalModelInitializer(setInitializer: (initializer: LocalModelIn
 	);
 }
 
+/**
+ * Lazily load `@veyyon/mnemopi` (memoized) and route fastembed loads
+ * through the dedicated embeddings subprocess. The override is installed once
+ * — before any consumer gets the chance to call `embed()` — so
+ * `onnxruntime-node`'s NAPI constructor + finalizer never run inside the
+ * agent's address space (issue #3031). Test seams that swap the initializer
+ * with `setLocalModelInitializerForTests` still win because both go through
+ * the same module-level slot.
+ */
 export async function loadMnemopi(): Promise<typeof MnemopiNs> {
 	if (!mnemopiMod) {
 		mnemopiMod = await import("@veyyon/mnemopi");
@@ -46,6 +61,7 @@ export async function loadMnemopi(): Promise<typeof MnemopiNs> {
 	return mnemopiMod;
 }
 
+/** Lazily load `@veyyon/mnemopi/core` (memoized). */
 export async function loadMnemopiCore(): Promise<typeof MnemopiCoreNs> {
 	if (!mnemopiCoreMod) {
 		mnemopiCoreMod = await import("@veyyon/mnemopi/core");
@@ -54,11 +70,13 @@ export async function loadMnemopiCore(): Promise<typeof MnemopiCoreNs> {
 	return mnemopiCoreMod;
 }
 
+/** Sync access for code below an async boundary that already awaited {@link loadMnemopi}. */
 export function requireMnemopi(): typeof MnemopiNs {
 	if (!mnemopiMod) throw new Error("Mnemopi module not loaded; await loadMnemopi() first.");
 	return mnemopiMod;
 }
 
+/** Sync access for code below an async boundary that already awaited {@link loadMnemopiCore}. */
 export function requireMnemopiCore(): typeof MnemopiCoreNs {
 	if (!mnemopiCoreMod) throw new Error("Mnemopi core module not loaded; await loadMnemopiCore() first.");
 	return mnemopiCoreMod;
@@ -99,6 +117,9 @@ export interface MnemopiMemoryEditResult {
 	store?: MnemopiMemoryStore;
 }
 
+/** Which mnemopi table a resolved memory id lives in. `fact` rows are
+ * read-only projections of fact extraction (issue #4725): resolvable for
+ * reads, never editable. */
 export type MnemopiMemoryStore = "working" | "episodic" | "fact";
 
 interface MnemopiStoredMemoryRow {
@@ -116,6 +137,12 @@ interface MnemopiStoredMemoryRow {
 	metadata_json?: unknown;
 }
 
+/**
+ * Full-row lookup result produced by {@link MnemopiSessionState.getScopedMemory}.
+ * Mirrors the shape stored in mnemopi's working/episodic tables, tagged with
+ * the scoped bank that actually held the row so callers can render it with
+ * meaningful context.
+ */
 export interface MnemopiScopedMemoryHit {
 	bank: string;
 	store: MnemopiMemoryStore;
@@ -171,6 +198,15 @@ export interface MnemopiSessionStateOptions {
 	aliasOf?: MnemopiSessionState;
 	lastRetainedTurn?: number;
 	hasRecalledForFirstTurn?: boolean;
+	/**
+	 * The banks to use, instead of opening them from `config`.
+	 *
+	 * The seam a test needs to drive recall against banks that fail on demand.
+	 * Without it the only way in was `Object.create(prototype)` plus an
+	 * `Object.assign`, which builds an object that is not an instance: it skips
+	 * the constructor, so it has no private fields at all and every read of one
+	 * throws. Injecting the bundle keeps the test on the real class.
+	 */
 	scoped?: MnemopiScopedResources;
 }
 
@@ -194,6 +230,9 @@ export class MnemopiSessionState {
 		this.aliasOf = options.aliasOf;
 		this.lastRetainedTurn = options.lastRetainedTurn ?? 0;
 		this.hasRecalledForFirstTurn = options.hasRecalledForFirstTurn ?? false;
+		// An alias shares the primary's banks rather than opening its own, and reads
+		// the sibling's field directly. Written as conditionals because an optional
+		// chain cannot carry a private name.
 		if (options.scoped) {
 			this.#scoped = options.scoped;
 		} else if (options.aliasOf) {
@@ -223,6 +262,19 @@ export class MnemopiSessionState {
 		return this.#scoped.retain;
 	}
 
+	/**
+	 * Read counterpart to {@link editScopedMemory}: fetch a memory row by id
+	 * from any bank this session recalls from (retain, recall, global). First
+	 * hit wins in the same order {@link editScopedMemory} would touch, so the
+	 * shape matches what an `update`/`forget`/`invalidate` on the same id will
+	 * see. Returns `null` when the id is not found anywhere in scope.
+	 *
+	 * Backs the coding-agent `memory://<id>` URL so agents can inspect the
+	 * FULL content of a recall preview (recall clips content — see
+	 * {@link RecallResult.truncated}) before issuing a wholesale
+	 * `memory_edit update` that would otherwise overwrite unseen bytes
+	 * (issue #4443).
+	 */
 	getScopedMemory(id: string): MnemopiScopedMemoryHit | null {
 		const targets = dedupeScopedTargets([
 			this.#scoped.retain,
@@ -272,6 +324,9 @@ export class MnemopiSessionState {
 				row.memory_store === "episodic" || row.memory_store === "fact" ? row.memory_store : "working";
 			const resultContext: Pick<MnemopiMemoryEditResult, "bank" | "store"> = { bank: target.bank, store };
 			if (store === "fact") {
+				// Facts are read-only: no memory_edit op mutates the facts
+				// table, so report that precisely instead of `not_found`
+				// (the id DID resolve — issue #4725).
 				ineligible ??= { status: "not_editable", ...resultContext };
 				continue;
 			}
@@ -336,6 +391,15 @@ export class MnemopiSessionState {
 					}
 				}
 			} catch (error) {
+				// A bank that throws contributes nothing to the merge, so its memories
+				// vanish from the result and the caller cannot tell a broken bank from
+				// a bank with nothing to say. That is a recall loss, and it used to be
+				// reported at debug level AND gated behind `config.debug`, so in a
+				// normal session it was reported nowhere at all (Law 10).
+				//
+				// Carrying on across the remaining banks is still right: one unreadable
+				// bank must not cost the user the others. The loss just has to be
+				// visible.
 				failed.push({ bank: target.bank, error });
 				logger.warn("Memory recall skipped a bank that failed to read", {
 					bank: target.bank,
@@ -346,6 +410,9 @@ export class MnemopiSessionState {
 			}
 		}
 
+		// Every bank failing is not an empty result, it is a broken recall. Returning
+		// `[]` here makes the memory tools answer "No relevant memories found", which
+		// tells the model the search ran and came back clean. It did not run.
 		if (failed.length > 0 && failed.length === this.#scoped.recall.length) {
 			const banks = failed.map(f => f.bank).join(", ");
 			throw new Error(
@@ -402,7 +469,7 @@ export class MnemopiSessionState {
 		const latestPrompt = promptText.trim();
 		if (!latestPrompt) return undefined;
 		const history = extractMessages(this.session.sessionManager);
-		const queryMessages = history.concat([{ role: "user" as const, content: latestPrompt }]);
+		const queryMessages = [...history, { role: "user" as const, content: latestPrompt }];
 		const query = composeRecallQuery(latestPrompt, queryMessages, this.config.recallContextTurns);
 		const truncated = truncateRecallQuery(query, latestPrompt, this.config.recallMaxQueryChars);
 		const context = await this.recallForContext(truncated);
@@ -475,6 +542,18 @@ export class MnemopiSessionState {
 		});
 	}
 
+	/**
+	 * Run background memory work started from a session event without letting it
+	 * reject into nowhere.
+	 *
+	 * `AgentSession#subscribe` delivers events synchronously and ignores whatever
+	 * a listener returns, so an async listener body is a detached promise. This
+	 * process installs a global `unhandledRejection` handler that prints a fatal
+	 * report and calls `process.exit(1)`, so a recall whose embedding worker died
+	 * does not cost the user a recall: it terminates their whole TUI session on
+	 * the first turn. Memory is optional enrichment, so the correct failure is
+	 * this warning plus a turn without the extra context.
+	 */
 	#runDetached(what: string, work: () => Promise<void>): void {
 		const report = (error: unknown): void => {
 			logger.warn(`Mnemopi: background ${what} failed`, {
@@ -501,6 +580,8 @@ export class MnemopiSessionState {
 		if (!context) return;
 		this.lastRecallSnippet = context;
 		try {
+			// The tail, not the system prompt: a recall that rewrote the prompt made the
+			// next request re-read the entire conversation as uncached input.
 			await this.session.publishVolatileMemoryContext("mnemopi:recall");
 		} catch (error) {
 			if (this.config.debug) {
@@ -509,6 +590,23 @@ export class MnemopiSessionState {
 		}
 	}
 
+	/**
+	 * Drain in-flight fact extraction and run beam consolidation on every owned
+	 * bank, after capturing the current transcript. Mirrors the manual
+	 * `/memory enqueue` slash command, but stops short of closing the DBs so
+	 * callers can keep using the state. {@link dispose} composes this with the
+	 * close step so normal session shutdown promotes working memory to
+	 * episodic/gists/graph automatically (see issue #2320).
+	 *
+	 * Aliased subagent states share `scoped` (and therefore the actual SQLite
+	 * banks) with their parent. `consolidate()` deliberately does NOT
+	 * short-circuit on `aliasOf`: `forceRetainCurrentSession` already guards
+	 * itself, and an explicit `/memory enqueue` invoked from within a subagent
+	 * still needs to flush extractions and sleep the parent's shared banks —
+	 * otherwise enqueue would report success while leaving the subagent's
+	 * retained memories unconsolidated until the parent eventually shuts down
+	 * (PR #2327 review).
+	 */
 	async consolidate(): Promise<void> {
 		await this.forceRetainCurrentSession();
 		for (const memory of this.#scoped.owned) {
@@ -517,6 +615,25 @@ export class MnemopiSessionState {
 		}
 	}
 
+	/**
+	 * Release the per-session resources. Defaults to running {@link consolidate}
+	 * before closing handles so normal session shutdown promotes working memory
+	 * into long-term storage. Callers that are about to delete the DB files —
+	 * e.g. `mnemopiBackend.clear` — pass `{ consolidate: false }` to skip the
+	 * extraction/sleep pass, since spending tokens on memories that will be
+	 * wiped on the next line is wasted work (PR #2327 review).
+	 *
+	 * `timeoutMs` caps how long the consolidate await blocks the caller
+	 * (the user-visible `/quit` / `/exit` shutdown path passes this so
+	 * dispose returns within a UX budget — issue #3641). When the cap is
+	 * hit, dispose returns immediately and detaches the still-in-flight
+	 * consolidate; the SQLite handles are closed in the background once
+	 * the consolidate settles so writes never race a closed handle, and
+	 * any pending embeddings are SIGKILL'd along with the embed worker
+	 * (a tolerable loss — working memory rows are durable; only the
+	 * episodic promotion / embedding for the LAST few turns is skipped,
+	 * and `maybeRetainOnAgentEnd` has already retained earlier turns).
+	 */
 	async dispose(options: { consolidate?: boolean; timeoutMs?: number } = {}): Promise<void> {
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
@@ -542,6 +659,11 @@ export class MnemopiSessionState {
 				logger.warn("Mnemopi: consolidate-on-dispose exceeded shutdown budget; detaching to background.", {
 					timeoutMs,
 				});
+				// Defer close until the in-flight consolidate settles so SQLite
+				// writes don't race a closed handle. The process is on the way
+				// to `postmortem.quit(0)`; if it exits first, the OS reclaims
+				// the handles (and a still-pending embed() goes down with the
+				// embed worker the caller is about to SIGKILL).
 				void consolidatePromise.finally(closeOwned);
 				return;
 			}
@@ -552,7 +674,12 @@ export class MnemopiSessionState {
 	}
 }
 
+// `per-project-tagged` is implemented by opening both the project bank and the
+// shared bank, then merging recall results while keeping writes project-local.
 function createScopedResources(config: MnemopiBackendConfig): MnemopiScopedResources {
+	// Env vars (MNEMOPI_POLYPHONIC_RECALL / MNEMOPI_ENHANCED_RECALL) still override
+	// these config-driven defaults inside the core gates. Proactive linking is
+	// per-memory instance below so concurrent sessions cannot clobber each other.
 	requireMnemopi().configureRecallFeatures({
 		polyphonicRecall: config.polyphonicRecall,
 		enhancedRecall: config.enhancedRecall,
@@ -573,7 +700,7 @@ function createScopedResources(config: MnemopiBackendConfig): MnemopiScopedResou
 		retain,
 		recall,
 		global,
-		owned: Array.from(memories.values()).map(entry => entry.memory),
+		owned: [...memories.values()].map(entry => entry.memory),
 	};
 }
 
@@ -612,9 +739,14 @@ function dedupeScopedTargets(targets: readonly MnemopiScopedMemory[]): readonly 
 }
 
 function uniqueBanks(banks: readonly string[]): readonly string[] {
-	return Array.from(new Set(banks));
+	return [...new Set(banks)];
 }
 
+/**
+ * In `per-project-tagged`, shared-bank lexical recall can miss global facts
+ * when the query is packed with project-bank tokens. Strip those literal bank
+ * tokens for one fallback pass so broad user-preference memories still match.
+ */
 function deriveSharedRecallFallbackQuery(
 	query: string,
 	projectBank: string,
@@ -634,7 +766,7 @@ function deriveSharedRecallFallbackQuery(
 }
 
 function tokenizeBankName(bank: string): string[] {
-	return Array.from(new Set(bank.toLowerCase().match(/[a-z0-9]+/g) ?? []));
+	return [...new Set(bank.toLowerCase().match(/[a-z0-9]+/g) ?? [])];
 }
 
 function stripLiteralBankPhrase(query: string, tokens: readonly string[]): string {
@@ -674,7 +806,7 @@ function createMemory(config: MnemopiBackendConfig, bank: string): Mnemopi {
 	} as ConstructorParameters<typeof Mnemopi>[0]);
 }
 
-export function resolveBankDbPath(config: MnemopiBackendConfig, bank: string): string {
+function resolveBankDbPath(config: MnemopiBackendConfig, bank: string): string {
 	const sharedBank = config.globalBank ?? config.baseBank ?? "default";
 	if (bank === sharedBank) return config.dbPath;
 	const { BankManager } = requireMnemopiCore();
@@ -742,3 +874,8 @@ function userText(content: unknown): string {
 	}
 	return parts.join("\n");
 }
+
+// Deliberate loose-`unknown` sibling of userText: it defensively flattens
+// possibly-untyped persisted message content (raw JSON off disk), so it cannot
+// use the typed @veyyon/ai assistantText owner, which requires an
+// AssistantMessage. Mirrors userText's null/non-object guard.

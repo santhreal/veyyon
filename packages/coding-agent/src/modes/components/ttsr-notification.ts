@@ -7,14 +7,24 @@ import { type TranscriptNote, TranscriptNoteComponent } from "./transcript-note"
 /** Collapsed view shows at most this many rules before eliding the rest. */
 const MAX_COLLAPSED_RULES = 4;
 
-/** A TTSR (Time Traveling Stream Rules) notification: a rule matched and the stream is being rewound. One block can carry several rules, since a single event may match */
+/**
+ * A TTSR (Time Traveling Stream Rules) notification: a rule matched and the stream is
+ * being rewound. One block can carry several rules, since a single event may match
+ * more than one and consecutive notifications merge into the previous block through
+ * {@link addRules} while it is still the live transcript tail.
+ *
+ * It is a {@link TranscriptNoteComponent}, so the rule names and descriptions can use
+ * colour: the block used to invert its whole width to get a yellow background, which
+ * spent the foreground and left bold and italic as the only styling available inside
+ * it.
+ */
 export class TtsrNotificationComponent extends TranscriptNoteComponent {
 	#expanded = false;
 	#rules: Rule[];
 
 	constructor(rules: Rule[]) {
 		super({ tone: "warning", headline: "", rows: [] });
-		this.#rules = rules.slice();
+		this.#rules = [...rules];
 		this.#rebuild();
 	}
 
@@ -40,7 +50,13 @@ export class TtsrNotificationComponent extends TranscriptNoteComponent {
 		return this.#expanded;
 	}
 
-	/** How this block names the expand gesture, or `""` when nothing is bound to it. Read at rebuild time rather than at construction, because a rebind takes */
+	/**
+	 * How this block names the expand gesture, or `""` when nothing is bound to it.
+	 *
+	 * Read at rebuild time rather than at construction, because a rebind takes
+	 * effect on the next render and this block outlives one: it merges later rules
+	 * into itself through {@link addRules} while it is still the transcript tail.
+	 */
 	#expandHint(): string {
 		return actionKeyHint("app.tools.expand");
 	}
@@ -57,13 +73,10 @@ export class TtsrNotificationComponent extends TranscriptNoteComponent {
 		let displayText = desc;
 		let truncated = false;
 		if (!this.#expanded) {
-			const firstNl = desc.indexOf("\n");
-			if (firstNl !== -1) {
-				const secondNl = desc.indexOf("\n", firstNl + 1);
-				if (secondNl !== -1) {
-					displayText = `${desc.slice(0, secondNl)}…`;
-					truncated = true;
-				}
+			const lines = desc.split("\n");
+			if (lines.length > 2) {
+				displayText = `${lines.slice(0, 2).join("\n")}…`;
+				truncated = true;
 			}
 		}
 
@@ -78,8 +91,7 @@ export class TtsrNotificationComponent extends TranscriptNoteComponent {
 		const visible = this.#expanded ? this.#rules : this.#rules.slice(0, MAX_COLLAPSED_RULES);
 		const rows: string[] = [];
 		let elidedDetail = false;
-		for (let ri = 0; ri < visible.length; ri++) {
-			const rule = visible[ri]!;
+		for (const rule of visible) {
 			const desc = (rule.description || rule.content)?.trim();
 			let line = theme.bold(theme.fg("text", rule.name));
 			if (desc) {

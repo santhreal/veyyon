@@ -56,21 +56,43 @@ export type SubmittedUserInput = {
 	images?: ImageContent[];
 	imageLinks?: (string | undefined)[];
 	customType?: string;
+	/** Route through `session.prompt(text, { synthetic: true })` so the text lands
+	 *  as a hidden agent-authored `developer` message rather than a visible user
+	 *  turn. Used by the `c`/`.` continue shortcut. */
 	synthetic?: boolean;
+	/** Marks this submission as a deliberate user resume (set by the `.`/`c`
+	 *  continue shortcut, which is also `synthetic`). Forwarded to
+	 *  `session.prompt({ userInitiated })` so it clears advisor auto-resume
+	 *  suppression even though it is synthetic. */
 	userInitiated?: boolean;
 	display?: boolean;
+	/** Queue intent if the session is (or becomes) busy when this submission is
+	 *  dispatched: "steer" (interrupt the active turn) or "followUp" (process after
+	 *  it). Normal user Enter carries "steer" to match the streaming-branch Enter;
+	 *  background/continuation submits omit it and default to "followUp". */
 	streamingBehavior?: "steer" | "followUp";
 	cancelled: boolean;
 	started: boolean;
 };
 
+/**
+ * The todo vocabulary, owned by the tool that writes it.
+ *
+ * These three used to be declared here AS WELL, and the copies had drifted: this file's
+ * `TodoItem` carried `details?: string` and `notes?: string[]`, which the todo tool's arktype
+ * schema has no concept of and no code path ever writes. `interactive-mode.ts` imported this
+ * wider copy and drew a superscript note count from `todo.notes?.length ?? 0`, so the marker was
+ * unreachable: the value it counted could not exist. The narrow copy is the real shape because it
+ * is the one the writer produces, so the tool owns the names and this module re-exports them.
+ */
 import type { TodoItem, TodoPhase } from "../tools/todo";
 
 export type { TodoItem, TodoPhase, TodoStatus } from "../tools/todo";
 
 export type InteractiveSelectorDialogOptions = ExtensionUIDialogOptions & Pick<HookSelectorOptions, "disabledIndices">;
 
-export interface InteractiveModeUi {
+export interface InteractiveModeContext {
+	// UI access
 	ui: TUI;
 	chatContainer: TranscriptContainer;
 	pendingMessagesContainer: Container;
@@ -86,19 +108,31 @@ export interface InteractiveModeUi {
 	hookWidgetContainerAbove: Container;
 	hookWidgetContainerBelow: Container;
 	statusLine: StatusLineComponent;
-}
 
-export interface InteractiveModeSession {
+	// Session access
 	session: AgentSession;
 	sessionManager: SessionManager;
+	/** The current session display name / title. */
 	readonly sessionName: string | undefined;
+	/** Session the transcript/editor/status are attached to: the focused agent's, else `session`. */
 	readonly viewSession: AgentSession;
+	/** Id of the focused agent, undefined when the main session is attached. */
 	readonly focusedAgentId: string | undefined;
+	/** Focus the main view on an agent's live session (delegates to SessionFocusController.focusAgent). */
 	focusAgentSession(id: string): Promise<void>;
+	/** Focus the focused agent's parent session, falling back to main (delegates to focusParent). */
 	focusParentSession(): Promise<void>;
+	/** Return the view to the main session (delegates to SessionFocusController.unfocus). */
 	unfocusSession(): Promise<void>;
+	/**
+	 * Build the session `/new` moves to while the displayed one finishes its
+	 * turn. Absent in a host that cannot create a second session, which makes
+	 * `/new` reset the current session in place as it always has.
+	 */
 	createNextSession?: InteractiveSessionFactory;
+	/** Display `next` and hand the session being displayed to the background keeper. */
 	attachMainSession(next: AgentSession): KeptSession;
+	/** Clear loader, transient HUD/pending containers, streaming state, and pending tools. */
 	clearTransientSessionUi(): void;
 	settings: Settings;
 	keybindings: KeybindingsManager;
@@ -110,10 +144,19 @@ export interface InteractiveModeSession {
 	collabGuest?: CollabGuestLink;
 	eventController: EventController;
 	eventBus?: EventBus;
-}
 
-export interface InteractiveModeState {
+	// State
 	isInitialized: boolean;
+	/**
+	 * `true` once `renderInitialMessages` has rendered the session transcript
+	 * into `chatContainer` at least once.
+	 *
+	 * Extension chat-rebuilds (`ExtensionUiController.#applyCustomMessageDisplay`)
+	 * are gated on this: rebuilding before the initial render would plant a
+	 * session-derived component into the chat that `renderInitialMessages` then
+	 * both re-renders from session entries AND re-appends via
+	 * `preserveExistingChat`, duplicating the message (issue #1955).
+	 */
 	initialChatRendered: boolean;
 	isBashMode: boolean;
 	toolOutputExpanded: boolean;
@@ -127,12 +170,34 @@ export interface InteractiveModeState {
 	loopLimit?: LoopLimitRuntime;
 	planModePlanFilePath?: string;
 	hideThinkingBlock: boolean;
+	/**
+	 * Effective thinking-block visibility: true when hidden by user setting OR
+	 * thinking level is "off" before the session has produced displayable
+	 * thinking content.
+	 */
 	readonly effectiveHideThinkingBlock: boolean;
+	/** Whether this visible session has produced thinking content the user can reveal. */
 	readonly hasDisplayableThinkingContent: boolean;
+	/** Record a message whose thinking content makes Ctrl+T meaningful even at thinking level "off"; returns true on first observation. */
 	noteDisplayableThinkingContent(message: AgentMessage): boolean;
 	proseOnlyThinking: boolean;
 	compactionQueuedMessages: CompactionQueuedMessage[];
 	pendingTools: Map<string, ToolExecutionHandle>;
+	/**
+	 * Tool calls whose transcript card is FINAL: a result landed, or the card was
+	 * sealed at turn end. `pendingTools` cannot answer this — its entry is deleted
+	 * the moment a call resolves, so `pendingTools.has(id)` reads false both before
+	 * a card exists and after it finished, and every mount site that tested it
+	 * happily built a second, pending-shaped card for an already-finished call.
+	 * For `ask` the pending shape IS the question, so a replayed `tool_execution_start`
+	 * re-asked a question the user had already answered ("ghost question").
+	 *
+	 * Resolution therefore lives here, on the transcript's own record of the call,
+	 * and every render path consults it before creating a card. Scope is the
+	 * transcript, NOT the turn: the ghost surfaces after the turn ends, so clearing
+	 * at a turn boundary would reopen the hole. It is cleared only where the
+	 * transcript itself is torn down and re-derived.
+	 */
 	settledToolCalls: Set<string>;
 	pendingBashComponents: BashExecutionComponent[];
 	bashComponent: BashExecutionComponent | undefined;
@@ -141,8 +206,14 @@ export interface InteractiveModeState {
 	isPythonMode: boolean;
 	streamingComponent: AssistantMessageComponent | undefined;
 	streamingMessage: AssistantMessage | undefined;
+	/**
+	 * Usage of the most recently rendered assistant turn, used to detect a
+	 * prompt-cache invalidation on the next turn (cache footprint collapse).
+	 * Reseeded by `renderSessionContext` on every rebuild/session switch.
+	 */
 	lastAssistantUsage: Usage | undefined;
 	loadingAnimation: Loader | undefined;
+	/** Clear the working loader through its one owner (also rises the ghost sun). Returns whether a loader was armed. */
 	clearWorkingLoader(): boolean;
 	autoCompactionLoader: Loader | undefined;
 	retryLoader: Loader | undefined;
@@ -154,6 +225,8 @@ export interface InteractiveModeState {
 	lastEscapeTime: number;
 	lastLeftTapTime: number;
 	shutdownRequested: boolean;
+	/** True once `shutdown()` has started. Read-only from the context;
+	 *  controllers use this to skip work that races with teardown. */
 	readonly isShuttingDown: boolean;
 	hookSelector: HookSelectorComponent | undefined;
 	hookInput: HookInputComponent | undefined;
@@ -164,26 +237,41 @@ export interface InteractiveModeState {
 	skillCommands: Map<string, Skill>;
 	oauthManualInput: OAuthManualInputManager;
 	todoPhases: TodoPhase[];
-}
 
-export interface InteractiveModeLifecycle {
+	// Lifecycle
 	init(): Promise<void>;
 	shutdown(): Promise<void>;
 	checkShutdownRequested(): Promise<void>;
+	/**
+	 * Arrange for a replacement process to take over this terminal after
+	 * shutdown completes (e.g. `/profile <name>` relaunching under another
+	 * profile). The parent waits on the child and exits with its code.
+	 */
 	requestRelaunch(spec: { argv: string[]; env?: Record<string, string | undefined> }): void;
-}
 
-export interface InteractiveModeExtensions {
+	// Extension UI integration
 	setToolUIContext(uiContext: ExtensionUIContext, hasUI: boolean): void;
 	initializeHookRunner(uiContext: ExtensionUIContext, hasUI: boolean): void;
+	/** Stack extension autocomplete behavior on top of the built-in editor provider. */
 	addAutocompleteProvider(factory: AutocompleteProviderFactory): void;
 	setEditorComponent(
 		factory: ((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => CustomEditor) | undefined,
 	): void;
-}
 
-export interface InteractiveModeHelpers {
+	// UI helpers
+	/**
+	 * Mount transcript content and repaint once. The single sink for "show this in
+	 * chat": producers build and return a `Component` (or a `ChatBlock` carrying
+	 * its own lifecycle) and hand it here instead of touching `chatContainer` /
+	 * `ui.requestRender()` directly. `ChatBlock`s are mounted (their `onMount`
+	 * runs) so their timers/subscriptions start.
+	 */
 	present(content: Component | readonly Component[]): void;
+	/**
+	 * Dispose every live block in the transcript (stopping timers/subscriptions)
+	 * and clear it. Used before a full rebuild so animated/streaming blocks do not
+	 * leak.
+	 */
 	resetTranscript(): void;
 	showStatus(message: string, options?: { dim?: boolean }): void;
 	showModelCycleTrack(track: string): void;
@@ -192,16 +280,26 @@ export interface InteractiveModeHelpers {
 	clearPinnedError(): void;
 	showWarning(message: string): void;
 	showNewVersionNotification(newVersion: string): void;
+	/** Confirm an update landed and surface any follow-up repair the user must run. */
 	showUpdateReadyNotification(newVersion: string, warnings?: readonly string[]): void;
 	showUpdateFailedNotification(newVersion: string, error: string): void;
+	/** `marketplace.autoUpdate: notify` found plugin updates the user can install. */
 	showPluginUpdatesNotification(count: number): void;
+	/** `marketplace.autoUpdate: auto` installed plugin updates in the background. */
 	showPluginUpdatesInstalledNotification(count: number): void;
+	/** Report settings files that could not be parsed and are therefore ignored. */
 	showUnparseableSettingsNotification(files: readonly QuarantinedSettingsFile[]): void;
+	/** Report a config file this session repeatedly could not WRITE, so a changed setting is not persisted. */
 	showSettingsSaveFailureNotification(failure: SettingsSaveFailure): void;
 	clearEditor(): void;
+	/** Restore keyboard focus to whatever currently owns the editor slot (the
+	 *  editor itself, or a hook selector/input/editor pushed into it while a
+	 *  fullscreen overlay was up). Delegates to `SelectorController`. */
 	focusActiveEditorArea(): void;
 	updatePendingMessagesDisplay(): void;
+	/** Recompute the composer's contextual shortcut chips from current draft/busy/queue state and repaint. */
 	refreshComposerShortcuts(): void;
+	/** Remove the startup welcome card; the first real keystroke ends the hero moment. Idempotent. */
 	dismissWelcome(): void;
 	queueCompactionMessage(text: string, mode: "steer" | "followUp", images?: ImageContent[]): void;
 	flushCompactionQueue(options?: { willRetry?: boolean }): Promise<void>;
@@ -221,9 +319,22 @@ export interface InteractiveModeHelpers {
 	cancelPendingSubmission(): boolean;
 	markPendingSubmissionStarted(input: SubmittedUserInput): boolean;
 	finishPendingSubmission(input: SubmittedUserInput): void;
+	/**
+	 * Marks a locally-initiated user submission so the eventual `message_start`
+	 * event for that user message does not clobber the editor draft (see #783).
+	 * Returns a dispose function that removes the signature; call it on
+	 * delivery failure so a retry can be re-marked cleanly.
+	 */
 	recordLocalSubmission(text: string, imageCount?: number): () => void;
+	/**
+	 * Wraps `fn` in a `recordLocalSubmission` marker that is automatically
+	 * removed if `fn` rejects. Use this for the common case where a thrown
+	 * delivery error should leave the signature set untouched.
+	 */
 	withLocalSubmission<T>(text: string, fn: () => Promise<T>, options?: { imageCount?: number }): Promise<T>;
+	/** Clears bookkeeping for an optimistic local user message once the matching session event arrives. */
 	clearOptimisticUserMessage(): void;
+	/** Replaces the raw optimistic user render with the canonical message emitted by the session. */
 	replaceOptimisticUserMessage(
 		message: AgentMessage,
 		options?: { imageLinks?: readonly (string | undefined)[] },
@@ -241,15 +352,15 @@ export interface InteractiveModeHelpers {
 	getUserMessageText(message: Message): string;
 	findLastAssistantMessage(): AssistantMessage | undefined;
 	extractAssistantText(message: AssistantMessage): string;
+	/** Refresh the running-subagents status badge from the active local or collab registry. */
 	syncRunningSubagentBadge(): void;
 	updateEditorBorderColor(): void;
 	rebuildChatFromMessages(): void;
 	setTodos(todos: TodoItem[] | TodoPhase[]): void;
 	reloadTodos(): Promise<void>;
 	toggleTodoExpansion(): void;
-}
 
-export interface InteractiveModeCommands {
+	// Command handling
 	handleExportCommand(text: string): Promise<void>;
 	handleShareCommand(): Promise<void>;
 	handleTodoCommand(args: string): Promise<void>;
@@ -278,6 +389,7 @@ export interface InteractiveModeCommands {
 	handleMoveCommand(targetPath?: string): Promise<void>;
 	handleRenameCommand(title: string): Promise<void>;
 	handleMemoryCommand(text: string): Promise<void>;
+	handleRephraseCommand(): void;
 	handleSTTToggle(): Promise<void>;
 	executeCompaction(
 		customInstructionsOrOptions?: string | CompactOptions,
@@ -286,18 +398,28 @@ export interface InteractiveModeCommands {
 	openInBrowser(urlOrPath: string): void;
 	refreshSlashCommandState(cwd?: string): Promise<void>;
 	applyCwdChange(newCwd: string): Promise<void>;
-	showFullWelcome(): Promise<void>;
-}
 
-export interface InteractiveModeSelectors {
+	/** Append the full welcome hero (sun, action menu, recents) to the transcript — `/welcome`. */
+	showFullWelcome(): Promise<void>;
+
+	// Selector handling
+	/** Opens the settings overlay, optionally pre-selecting a setting path on the appearance tab (e.g. `/statusline`). */
 	showSettingsSelector(initialItemId?: string): void;
 	showAdvisorConfigure(): Promise<void>;
 	showHistorySearch(): void;
 	showExtensionsDashboard(): void;
-	showAgentsDashboard(options?: { requireContent?: boolean; processScope?: boolean }): void;
+	showAgentsDashboard(options?: { requireContent?: boolean }): void;
+	/** Prints `/secret list`, which is what the footline's secrets chip is a handle for. */
 	showSecretList(): void;
 	showModelSelector(options?: { temporaryOnly?: boolean }): void;
 	showThinkingSelector(): void;
+	/**
+	 * The card a bare `/cmd` opens when the command declares subcommands.
+	 *
+	 * `onSelect` receives the chosen entry; the dispatcher then runs it through the ordinary
+	 * command path. Cancelling closes and runs nothing, which is the whole point of the escape
+	 * key here: a bare command must be able to end in nothing happening.
+	 */
 	showSubcommandPicker(
 		commandName: string,
 		subcommands: readonly SubcommandDef[],
@@ -310,7 +432,22 @@ export interface InteractiveModeSelectors {
 	showSessionSelector(): void;
 	handleResumeSession(sessionPath: string): Promise<void>;
 	handleSessionDeleteCommand(): Promise<void>;
+	/**
+	 * The account manager: one row per stored CREDENTIAL, grouped by provider.
+	 *
+	 * `showProviderSetup` above is a different surface and stays one: that is onboarding, which
+	 * walks a first-time user into a first login. This manages the accounts an existing user
+	 * already has. `/providers` used to alias the wizard, which is why a multi-account user had
+	 * nowhere to see their accounts at all.
+	 */
 	showAccountManager(providerId?: string): Promise<void>;
+	/**
+	 * `/login` and `/logout`, both of which land in the account card above.
+	 *
+	 * Two entry points rather than one with a mode, because they no longer share a component: a
+	 * login that names its provider runs the login, and everything else is the card, which is the
+	 * only surface that shows what each account IS before you switch to it or remove it.
+	 */
 	showLogin(providerId?: string): Promise<void>;
 	showLogout(providerId?: string): Promise<void>;
 	showResetUsageSelector(): Promise<void>;
@@ -318,14 +455,14 @@ export interface InteractiveModeSelectors {
 	showHookConfirm(title: string, message: string): Promise<boolean>;
 	showDebugSelector(): Promise<void>;
 	resetObserverRegistry(): void;
-}
 
-export interface InteractiveModeInput {
+	// Input handling
 	handleCtrlC(): void;
 	handleCtrlD(): void;
 	handleCtrlZ(): void;
 	handleDequeue(): void;
 	handleImagePaste(): Promise<boolean>;
+	/** Queue a message for delivery only after the active agent turn would stop. */
 	handleQueueCommand(message: string): Promise<void>;
 	handleBtwCommand(question: string): Promise<void>;
 	handleTanCommand(work: string): Promise<void>;
@@ -349,6 +486,7 @@ export interface InteractiveModeInput {
 	handlePlanModeCommand(initialPrompt?: string): Promise<void>;
 	handleVibeModeCommand(initialPrompt?: string): Promise<void>;
 	handleGoalModeCommand(rest?: string): Promise<void>;
+	/** Open the goal detail/action menu for the current goal (down-arrow affordance). */
 	openGoalDetail(): Promise<void>;
 	handleGuidedGoalCommand(rest?: string): Promise<void>;
 	handleLoopCommand(args?: string): Promise<string | undefined>;
@@ -356,9 +494,8 @@ export interface InteractiveModeInput {
 	pauseLoop(): void;
 	handlePlanApproval(details: PlanApprovalDetails): Promise<void>;
 	openPlanReview(): Promise<void>;
-}
 
-export interface InteractiveModeHooks {
+	// Hook UI methods
 	initHooksAndCustomTools(): Promise<void>;
 	emitCustomToolSessionEvent(
 		reason: "start" | "switch" | "branch" | "tree" | "shutdown",
@@ -371,11 +508,20 @@ export interface InteractiveModeHooks {
 		options: ExtensionUISelectItem[],
 		dialogOptions?: InteractiveSelectorDialogOptions,
 	): Promise<string | undefined>;
+	/** Fullscreen multi-question dialog (the `ask` tool surface). `undefined` = cancelled. */
 	showAskDialog(
 		questions: ExtensionAskDialogQuestion[],
 		dialogOptions?: ExtensionUIDialogOptions,
 	): Promise<ExtensionAskDialogResult | undefined>;
 	hideHookSelector(): void;
+	/**
+	 * One line of text from the operator. `undefined` = cancelled.
+	 *
+	 * `inputOptions.mask` renders each character as that one instead of itself, which is how a
+	 * credential is entered without it landing in the scrollback. Local only: unlike the selector
+	 * and editor dialogs, this one is never raced against a collab guest, so a masked prompt
+	 * cannot be answered from another machine.
+	 */
 	showHookInput(
 		title: string,
 		placeholder?: string,
@@ -402,15 +548,3 @@ export interface InteractiveModeHooks {
 	showExtensionError(extensionPath: string, error: string): void;
 	showToolError(toolName: string, error: string): void;
 }
-
-export interface InteractiveModeContext
-	extends InteractiveModeUi,
-		InteractiveModeSession,
-		InteractiveModeState,
-		InteractiveModeLifecycle,
-		InteractiveModeExtensions,
-		InteractiveModeHelpers,
-		InteractiveModeCommands,
-		InteractiveModeSelectors,
-		InteractiveModeInput,
-		InteractiveModeHooks {}

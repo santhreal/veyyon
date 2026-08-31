@@ -4,7 +4,6 @@ import * as logger from "@veyyon/utils/logger";
 import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import { type } from "arktype";
 import { captureRequestHeaders, resolvePromptCacheKey } from "../auth-gateway/http";
-import type { AuthGatewayStreamControl, AuthGatewayParsedRequest as ParsedRequest } from "../auth-gateway/types";
 import * as AIError from "../error";
 import type {
 	AssistantMessage,
@@ -30,10 +29,24 @@ import {
 	anthropicMessagesRequestSchema,
 } from "./anthropic-messages-server-schema";
 
+/**
+ * Anthropic Messages API (https://docs.anthropic.com/en/api/messages) ↔ pi-ai
+ * gateway translation. Inbound: foreign HTTP body → veyyon Context. Outbound:
+ * veyyon AssistantMessage[Stream] → Anthropic-shaped JSON / SSE.
+ */
+
+import type { AuthGatewayStreamControl, AuthGatewayParsedRequest as ParsedRequest } from "../auth-gateway/types";
+
 export type { ParsedRequest };
+
+// ---------------------------------------------------------------------------
+// Inbound parsing
+// ---------------------------------------------------------------------------
 
 type ImageContentPart = { type: "image"; data: string; mimeType: string };
 
+// Dedup noise from unknown-block-type warnings. Module-scoped so the warn
+// fires once per (category, type) pair across the lifetime of the process.
 const WARNED_UNKNOWN_BLOCK_TYPES = new Set<string>();
 function warnUnknownBlockType(category: "user" | "assistant", blockType: string): void {
 	const key = `${category}:${blockType}`;
@@ -45,6 +58,9 @@ function warnUnknownBlockType(category: "user" | "assistant", blockType: string)
 	});
 }
 
+// pi-ai's `ImageContent` only carries base64 + mimeType. When the inbound
+// uses `url` or `file_id` sources we surface a text placeholder so the
+// downstream provider still sees a sane history; warn once per source kind.
 const WARNED_NON_BASE64_IMAGE_SOURCES = new Set<string>();
 function warnNonBase64ImageSource(sourceType: string): void {
 	if (WARNED_NON_BASE64_IMAGE_SOURCES.has(sourceType)) return;
@@ -54,21 +70,22 @@ function warnNonBase64ImageSource(sourceType: string): void {
 	});
 }
 
+// Compact, log-safe stringification for unknown content blocks. Keeps the
+// placeholder informative without dumping multi-KB structures into history.
 function describeUnknownBlock(block: { type: string }): string {
 	try {
 		const json = JSON.stringify(block);
 		if (json !== undefined && json.length <= 200) return `[${block.type}: ${json}]`;
-	} catch {}
+	} catch {
+		// fall through
+	}
 	return `[${block.type}]`;
 }
 
 function buildSystemPrompt(raw: AnthropicSystem): string[] | undefined {
 	if (raw === undefined) return undefined;
 	if (typeof raw === "string") return raw.length > 0 ? [raw] : undefined;
-	const parts: string[] = [];
-	for (const block of raw) {
-		if (block.text.length > 0) parts.push(block.text);
-	}
+	const parts = raw.map(block => block.text).filter(text => text.length > 0);
 	return parts.length > 0 ? [parts.join("\n\n")] : undefined;
 }
 
@@ -91,6 +108,7 @@ function toolResultPartsFromBlocks(
 			out.push({ type: "text", text: block.text });
 			continue;
 		}
+		// block.type === "image" — schema only accepts base64 sources.
 		if (block.source.type === "base64") {
 			out.push({ type: "image", data: block.source.data, mimeType: block.source.media_type });
 		}
@@ -117,6 +135,9 @@ function walkUserContent(
 		if (block.type === "text") {
 			userParts.push({ type: "text", text: block.text });
 		} else if (block.type === "image") {
+			// SDK's typed source covers base64+url; our schema also accepts the
+			// forward-compat `file` variant. Narrow against a widened shape so
+			// every variant is handled at runtime regardless of SDK lag.
 			const source = block.source as {
 				type: string;
 				data?: string;
@@ -133,16 +154,24 @@ function walkUserContent(
 				userParts.push({ type: "text", text: `[image: ${ref}]` });
 			}
 		} else if (block.type === "tool_result") {
+			// Anthropic permits tool_result blocks to follow plain text/image
+			// siblings in the same user message. pi-ai's history is a flat
+			// sequence of typed messages, so flush the accumulated parts as a
+			// separate UserMessage before emitting the ToolResultMessage.
 			flush();
 			messages.push({
 				role: "toolResult",
 				toolCallId: block.tool_use_id,
+				// Anthropic tool_results don't carry the tool name; downstream can rehydrate.
 				toolName: "",
 				content: toolResultPartsFromBlocks(block.content as AnthropicToolResultContent[] | string | undefined),
 				isError: block.is_error === true,
 				timestamp,
 			});
 		} else {
+			// Unknown variant (server_tool_use, mcp_*, document, web_search_tool_result,
+			// container_upload, code_execution_*, …). Flatten to a text placeholder
+			// so the downstream provider still gets a coherent transcript.
 			const unknown = block as { type: string };
 			warnUnknownBlockType("user", unknown.type);
 			userParts.push({ type: "text", text: describeUnknownBlock(unknown) });
@@ -183,6 +212,8 @@ function walkAssistantContent(
 				});
 				break;
 			default: {
+				// Unknown assistant variant (server_tool_use, mcp_tool_use, …).
+				// Flatten to a text placeholder; warn once per unknown type.
 				const unknown = block as { type: string };
 				warnUnknownBlockType("assistant", unknown.type);
 				out.push({ type: "text", text: describeUnknownBlock(unknown) });
@@ -226,6 +257,14 @@ function readCacheControl(value: unknown): AnthropicCacheControl | undefined {
 	return cc;
 }
 
+/**
+ * Anthropic clients annotate caching breakpoints per block via
+ * `cache_control: { type: "ephemeral", ttl?: "1h"|"5m" }`. pi-ai's
+ * `cacheRetention` is per-request, not per-block, and its anthropic provider
+ * re-applies breakpoints itself on the rebuilt outbound wire. Scan every
+ * block once and return the strongest retention requested: any `ttl: "1h"`
+ * promotes the request to "long", anything else ephemeral maps to "short".
+ */
 function deriveCacheRetention(data: {
 	system?: unknown;
 	messages: readonly unknown[];
@@ -252,6 +291,11 @@ function deriveCacheRetention(data: {
 	return strongest;
 }
 
+/**
+ * Inbound `output_config.effort` wire literal → catalog `Effort` (1:1).
+ * Values outside this table (none exist in the schema today) are ignored
+ * rather than guessed at.
+ */
 const REASONING_EFFORT_BY_WIRE: Partial<Record<string, Effort>> = {
 	low: Effort.Low,
 	medium: Effort.Medium,
@@ -295,6 +339,10 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	if (data.stop_sequences) options.stopSequences = data.stop_sequences;
 	const toolChoice = mapToolChoice(data.tool_choice as AnthropicToolChoice | undefined);
 	if (toolChoice !== undefined) options.toolChoice = toolChoice;
+	// `disable_parallel_tool_use === true` means the client wants the model to
+	// emit at most one tool call per turn; map to pi-ai's negated boolean.
+	// Leave undefined when the field is absent or explicitly `false` so we
+	// don't override provider defaults.
 	if (data.tool_choice?.disable_parallel_tool_use === true) {
 		options.parallelToolCalls = false;
 	}
@@ -322,11 +370,20 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	}
 	const cacheRetention = deriveCacheRetention(data);
 	if (cacheRetention !== undefined) options.cacheRetention = cacheRetention;
+	// Anthropic clients commonly send `metadata: { user_id }`; forward verbatim
+	// so downstream providers (and our anthropic-passthrough fast-path) can
+	// preserve abuse-tracking signal.
 	if (data.metadata !== undefined) {
 		options.metadata = data.metadata as Record<string, unknown>;
 	}
 	const cacheKey = resolvePromptCacheKey(body, headers);
 	if (cacheKey !== undefined) options.promptCacheKey = cacheKey;
+	// Allow-listed header capture. The gateway's `handleFormatEndpoint`
+	// already merges its own pre-capture under whatever the parser sets, but
+	// we populate here too so direct callers of `parseRequest` (tests, custom
+	// wrappers) see the same surface. `anthropic-version` is the most
+	// load-bearing — some downstream Anthropic-API targets reject requests
+	// missing it.
 	if (headers) {
 		const captured = captureRequestHeaders(headers);
 		if (Object.keys(captured).length > 0) options.headers = captured;
@@ -344,12 +401,17 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	};
 }
 
+// ---------------------------------------------------------------------------
+// Outbound encoding
+// ---------------------------------------------------------------------------
+
 function newMessageId(): string {
 	const hex = (globalThis.crypto?.randomUUID?.() ?? randomFallback()).replace(/-/g, "").slice(0, 24);
 	return `msg_${hex}`;
 }
 
 function randomFallback(): string {
+	// Sufficient for tests / environments without crypto.randomUUID
 	const buf = new Uint8Array(16);
 	for (let i = 0; i < 16; i++) buf[i] = Math.floor(Math.random() * 256);
 	const hex = Array.from(buf, b => b.toString(16).padStart(2, "0")).join("");
@@ -417,10 +479,17 @@ export function encodeResponse(message: AssistantMessage, requestedModelId: stri
 		model: requestedModelId,
 		content: encodeContentBlocks(message),
 		stop_reason: mapStopReasonOut(message.stopReason),
+		// TODO: surface the matched stop sequence once pi-ai's
+		// `AssistantMessage.stopReason` carries the matched string. Intentionally
+		// `null` for now (Anthropic schema allows it).
 		stop_sequence: null,
 		usage: encodeUsage(message),
 	};
 }
+
+// ---------------------------------------------------------------------------
+// Streaming encoder
+// ---------------------------------------------------------------------------
 
 const ENCODER = new TextEncoder();
 
@@ -435,6 +504,9 @@ interface OpenBlock {
 	kind: BlockKind;
 }
 
+// Keepalive cadence for the SSE encoder. Anthropic's API pings periodically;
+// without frames between message_start and the first content block (slow first
+// token) SDK first-event/idle watchdogs classify the stream as stalled.
 const STREAM_PING_INTERVAL_MS = 15_000;
 
 const ZERO_WIRE_USAGE: Record<string, unknown> = {
@@ -482,6 +554,8 @@ export function encodeStream(
 							model: requestedModelId,
 							content: [],
 							stop_reason: null,
+							// TODO: same as encodeResponse — surface matched stop sequence
+							// once pi-ai propagates it.
 							stop_sequence: null,
 							usage: partial ? encodeUsage(partial) : ZERO_WIRE_USAGE,
 						},
@@ -503,6 +577,7 @@ export function encodeStream(
 					}
 					controller.enqueue(sseFrame("ping", { type: "ping" }));
 				} catch {
+					// Controller already closed/errored (client gone); stop the timer.
 					stopPings();
 				}
 			}, STREAM_PING_INTERVAL_MS);
@@ -608,10 +683,12 @@ export function encodeStream(
 							closeBlock(ev.contentIndex);
 							break;
 						case "done": {
-							for (const idx of Array.from(open.keys())) closeBlock(idx);
+							for (const idx of [...open.keys()]) closeBlock(idx);
 							controller.enqueue(
 								sseFrame("message_delta", {
 									type: "message_delta",
+									// TODO: surface matched stop sequence once pi-ai
+									// propagates it on the `done` event.
 									delta: { stop_reason: mapStopReasonOut(ev.reason), stop_sequence: null },
 									usage: encodeUsage(ev.message),
 								}),
@@ -630,8 +707,11 @@ export function encodeStream(
 						}
 					}
 				}
+				// Stream ended without an explicit done: emit a complete envelope
+				// (message_start + message_delta carrying a stop_reason) so strict
+				// clients don't reject the response as a protocol error.
 				ensureStart(lastPartial);
-				for (const idx of Array.from(open.keys())) closeBlock(idx);
+				for (const idx of [...open.keys()]) closeBlock(idx);
 				controller.enqueue(
 					sseFrame("message_delta", {
 						type: "message_delta",
@@ -665,6 +745,15 @@ export function encodeStream(
 	});
 }
 
+// ---------------------------------------------------------------------------
+// Error envelope
+// ---------------------------------------------------------------------------
+
+/**
+ * Anthropic error envelope: `{ type: "error", error: { type, message } }`.
+ * See https://docs.anthropic.com/en/api/errors. Returned as a `Response` so
+ * the gateway can hand it straight back to the client without extra wrapping.
+ */
 export function formatError(status: number, type: string, message: string): Response {
 	return new Response(JSON.stringify({ type: "error", error: { type, message } }), {
 		status,

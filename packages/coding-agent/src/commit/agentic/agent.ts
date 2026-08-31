@@ -42,7 +42,11 @@ export async function runCommitAgentSession(input: CommitAgentInput): Promise<Co
 		types_description: typesDescription,
 	});
 	const state: CommitAgentState = { diffText: input.diffText };
-	// The session's spawn capability is the SAME resolved name `analyze_files` will request, so the two cannot disagree. It was the literal `"sonic"`,
+	// The session's spawn capability is the SAME resolved name `analyze_files`
+	// will request, so the two cannot disagree. It was the literal `"sonic"`,
+	// which meant an operator with that agent off ran a session permitted to
+	// spawn one agent that the enablement check then refused. An empty string is
+	// the spelling for "spawn nothing", used when nothing at all is enabled.
 	const spawns = commitAnalysisSpawnTarget(input.settings) ?? "";
 	const tools = createCommitTools({
 		cwd: input.cwd,

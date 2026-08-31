@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { Settings } from "@veyyon/coding-agent/config/settings";
+import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings";
 import type { BuiltinToolLoadMode, ToolSession } from "@veyyon/coding-agent/tools";
 import {
 	BUILTIN_TOOLS,
@@ -14,12 +14,9 @@ import { IrcTool } from "@veyyon/coding-agent/tools/irc";
 import { JobTool } from "@veyyon/coding-agent/tools/job";
 import { SshTool } from "@veyyon/coding-agent/tools/ssh";
 
-const allToolsSettings = Settings.isolated({
-	"astGrep.enabled": true,
+const ALL_TOOLS_OVERRIDES: Partial<Record<SettingPath, unknown>> = {
 	"astEdit.enabled": true,
 	"debug.enabled": true,
-	"glob.enabled": true,
-	"grep.enabled": true,
 	"github.enabled": true,
 	"lsp.enabled": true,
 	"inspect_image.enabled": true,
@@ -35,7 +32,9 @@ const allToolsSettings = Settings.isolated({
 	// enabled — not discoverable — because loading is the canonical arming flow.
 	"argot.enabled": true,
 	"tools.discoveryMode": "all",
-});
+};
+
+const allToolsSettings = Settings.isolated(ALL_TOOLS_OVERRIDES);
 
 const toolSession: ToolSession = {
 	cwd: "/tmp/test",
@@ -51,9 +50,15 @@ const toolSession: ToolSession = {
 	getArgotSession: () => ({ loaded: false }) as never,
 };
 
+/**
+ * Every factory in `BUILTIN_TOOLS` is covered by a single settings map because
+ * `eval` and `launch` are always available when their respective settings are on.
+ */
 async function getToolMetadata(): Promise<Map<string, { loadMode?: string; summary?: string }>> {
-	const tools = await createTools(toolSession, Object.keys(BUILTIN_TOOLS));
-	const metadata = new Map(tools.map(tool => [tool.name, { loadMode: tool.loadMode, summary: tool.summary }]));
+	const metadata = new Map<string, { loadMode?: string; summary?: string }>();
+	for (const tool of await createTools(toolSession, Object.keys(BUILTIN_TOOLS))) {
+		metadata.set(tool.name, { loadMode: tool.loadMode, summary: tool.summary });
+	}
 	for (const tool of [
 		new AskTool({ ...toolSession, hasUI: true }),
 		new GithubTool(toolSession),
@@ -186,17 +191,7 @@ describe("loadMode against the shipped default configuration", () => {
 			.map(tool => tool.name)
 			.sort();
 
-		expect(discoverable).toEqual([
-			"ast_edit",
-			"ast_grep",
-			"debug",
-			"grep",
-			"job",
-			"set_cwd",
-			"task",
-			"todo",
-			"web_search",
-		]);
+		expect(discoverable).toEqual(["ast_edit", "debug", "job", "set_cwd", "task", "todo", "web_search"]);
 	});
 
 	it("drops exactly those tools when discovery-all is on, so the mechanism itself works", async () => {
@@ -225,7 +220,7 @@ describe("loadMode against the shipped default configuration", () => {
 			},
 		).sort();
 
-		expect(kept).toEqual(["bash", "edit", "eval", "glob", "goal", "launch", "read", "resolve", "write"]);
+		expect(kept).toEqual(["bash", "edit", "eval", "goal", "launch", "read", "resolve", "search", "write"]);
 		// Every discoverable tool is gone, and nothing essential went with it.
 		for (const tool of tools) {
 			if (tool.loadMode === "discoverable") expect(kept).not.toContain(tool.name);
@@ -233,20 +228,18 @@ describe("loadMode against the shipped default configuration", () => {
 	});
 
 	it("keeps a discoverable tool the caller asked for by name", async () => {
-		// Someone who passes `--tools grep` means it, whatever grep declares. Without
-		// this the explicit request would be silently ignored under discovery-all.
 		const tools = await defaultSessionTools();
 		const loadModes = new Map(tools.map(tool => [tool.name, tool.loadMode as BuiltinToolLoadMode | undefined]));
 
-		const kept = filterInitialToolsForDiscoveryAll(["grep", "ast_grep"], {
+		const kept = filterInitialToolsForDiscoveryAll(["debug", "ast_edit"], {
 			loadModeOf: name => loadModes.get(name),
 			essentialNames: new Set<string>(),
-			explicitlyRequested: new Set(["grep"]),
+			explicitlyRequested: new Set(["debug"]),
 			restored: new Set<string>(),
 			forceActive: new Set<string>(),
 		});
 
-		expect(kept).toEqual(["grep"]);
+		expect(kept).toEqual(["debug"]);
 	});
 });
 
@@ -257,13 +250,8 @@ describe("computeEssentialBuiltinNames", () => {
 	});
 
 	it("respects tools.essentialOverride when provided", () => {
-		const settings = Settings.isolated({ "tools.essentialOverride": ["read", "glob"] });
-		expect(computeEssentialBuiltinNames(settings).sort()).toEqual(["glob", "read"]);
-	});
-
-	it("maps legacy essential override tool names", () => {
-		const settings = Settings.isolated({ "tools.essentialOverride": ["read", "find", "search", "glob"] });
-		expect(computeEssentialBuiltinNames(settings).sort()).toEqual(["glob", "grep", "read"]);
+		const settings = Settings.isolated({ "tools.essentialOverride": ["read", "search"] });
+		expect(computeEssentialBuiltinNames(settings).sort()).toEqual(["read", "search"]);
 	});
 
 	it("filters override entries that are not known built-in tools", () => {
@@ -307,22 +295,22 @@ describe("filterInitialToolsForDiscoveryAll", () => {
 		read: "essential",
 		edit: "essential",
 		todo: "discoverable",
-		grep: "discoverable",
+		debug: "discoverable",
 	};
 	const base = {
 		loadModeOf: (name: string): BuiltinToolLoadMode | undefined => loadModes[name],
-		essentialNames: new Set(["read", "bash", "edit", "write", "glob"]),
+		essentialNames: new Set(["read", "bash", "edit", "write", "search"]),
 		explicitlyRequested: new Set<string>(),
 		restored: new Set<string>(),
 		forceActive: new Set<string>(),
 	};
 
 	it("hides non-essential discoverable built-ins", () => {
-		expect(filterInitialToolsForDiscoveryAll(["read", "edit", "todo", "grep"], base)).toEqual(["read", "edit"]);
+		expect(filterInitialToolsForDiscoveryAll(["read", "edit", "todo", "debug"], base)).toEqual(["read", "edit"]);
 	});
 
 	it("keeps discoverable tools required by a forced tool_choice (eager todo)", () => {
-		const result = filterInitialToolsForDiscoveryAll(["read", "todo", "grep"], {
+		const result = filterInitialToolsForDiscoveryAll(["read", "todo", "debug"], {
 			...base,
 			forceActive: new Set(["todo"]),
 		});
@@ -330,15 +318,15 @@ describe("filterInitialToolsForDiscoveryAll", () => {
 	});
 
 	it("keeps explicitly requested and restored discoverable tools", () => {
-		const result = filterInitialToolsForDiscoveryAll(["todo", "grep"], {
+		const result = filterInitialToolsForDiscoveryAll(["todo", "debug"], {
 			...base,
-			explicitlyRequested: new Set(["grep"]),
+			explicitlyRequested: new Set(["debug"]),
 			restored: new Set(["todo"]),
 		});
-		expect([...result].sort()).toEqual(["grep", "todo"]);
+		expect([...result].sort()).toEqual(["debug", "todo"]);
 	});
 
 	it("never hides tools without a built-in loadMode (MCP/custom/extension)", () => {
-		expect(filterInitialToolsForDiscoveryAll(["mcp__server__tool", "grep"], base)).toEqual(["mcp__server__tool"]);
+		expect(filterInitialToolsForDiscoveryAll(["mcp__server__tool", "debug"], base)).toEqual(["mcp__server__tool"]);
 	});
 });

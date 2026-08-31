@@ -196,7 +196,7 @@ describe("resolveProjectRoot", () => {
  *
  * WHAT DOES NOT SEPARATE THEM, AND THIS IS THE PART WORTH REMEMBERING: counting nested
  * repositories. That was the first rule written here and it is wrong. The project in question
- * carries a benchmark corpus of forty-odd checkouts under `packages/deepswe-bench/repo-cache/`, so
+ * carries a benchmark corpus of forty-odd checkouts under `packages/evals/datasets/repo-cache/`, so
  * a count calls it a container, which is exactly backwards. Manifests and child count separate them
  * no better: both trees carry `AGENTS.md` and `Cargo.toml` at their roots, and they have 59 and 47
  * direct children.
@@ -246,11 +246,11 @@ describe("isRepositoryContainer", () => {
 	 * correct destination.
 	 */
 	it("is false for a project whose many nested repositories are all ignored", async () => {
-		initRepo("veyyon", ["packages/deepswe-bench/repo-cache/", "packages/deepswe-bench/deep-swe/"]);
+		initRepo("veyyon", ["packages/evals/datasets/repo-cache/", "packages/evals/datasets/deep-swe/corpus/"]);
 		for (const name of ["alpha", "beta", "gamma"]) {
-			initRepo(`veyyon/packages/deepswe-bench/repo-cache/${name}`);
+			initRepo(`veyyon/packages/evals/datasets/repo-cache/${name}`);
 		}
-		initRepo("veyyon/packages/deepswe-bench/deep-swe");
+		initRepo("veyyon/packages/evals/datasets/deep-swe/corpus");
 
 		expect(await isRepositoryContainer(path.join(tempRoot, "veyyon"))).toBe(false);
 	});

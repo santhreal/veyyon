@@ -1,3 +1,6 @@
+/**
+ * Extension loader - loads TypeScript extension modules using native Bun import.
+ */
 import type * as fs1 from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -22,17 +25,15 @@ import {
 } from "../../security/project-trust";
 import type { CustomMessagePayload } from "../../session/messages";
 import { EventBus } from "../../utils/event-bus";
+// Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
 import { type CodingAgentApi, loadCodingAgentApi } from "../coding-agent-api";
 import { factoryExportMissingMessage, moduleImportFailedMessage } from "../load-failure";
 import { type ManifestHolder, manifestFromPackageJson } from "../manifest-key";
-import { loadLegacyPiModule } from "../plugins/legacy-pi-compat";
+import { installLegacyPiSpecifierShim, loadLegacyPiModule } from "../plugins/legacy-pi-compat";
 import { getAllPluginExtensionPaths } from "../plugins/loader";
 import * as TypeBox from "../typebox";
 
 import { resolvePath, withExitGuard } from "../utils";
-import type { HandlerFn, LoadedExtensionModule } from "./loader-helpers";
-
-import { getExtensionFactory } from "./loader-helpers";
 import type {
 	AssistantThinkingRenderer,
 	ExtensionAPI,
@@ -47,8 +48,21 @@ import type {
 	ToolDefinition,
 } from "./types";
 
+installLegacyPiSpecifierShim();
+
+type HandlerFn = (...args: unknown[]) => Promise<unknown>;
+type LoadedExtensionModule = ExtensionFactory | { default?: ExtensionFactory };
+
+function getExtensionFactory(module: LoadedExtensionModule): ExtensionFactory | null {
+	const candidate = typeof module === "function" ? module : module.default;
+	return typeof candidate === "function" ? candidate : null;
+}
+
 export class ExtensionRuntimeNotInitializedError extends Error {
 	constructor() {
+		// Read by the EXTENSION AUTHOR, not the operator: the only way to reach it
+		// is to call an action method from the factory body. Say when the runtime
+		// does exist, because "not initialized" reads like a veyyon fault.
 		super(
 			"The extension runtime does not exist yet, so this action method cannot be called from the factory body. " +
 				"Fix: move the call into a handler registered with `api.on(...)`, which runs once the session is up.",
@@ -56,6 +70,10 @@ export class ExtensionRuntimeNotInitializedError extends Error {
 	}
 }
 
+/**
+ * Extension runtime with throwing stubs for action methods.
+ * These are replaced with real implementations during initialization.
+ */
 export class ExtensionRuntime implements IExtensionRuntime {
 	flagValues = new Map<string, boolean | string>();
 	pendingProviderRegistrations: Array<{ name: string; config: ProviderConfig; sourceId: string }> = [];
@@ -113,6 +131,11 @@ export class ExtensionRuntime implements IExtensionRuntime {
 	}
 }
 
+/**
+ * ExtensionAPI implementation for an extension.
+ * Registration methods write to the extension object.
+ * Action methods delegate to the shared runtime.
+ */
 class ConcreteExtensionAPI implements ExtensionAPI, IExtensionRuntime {
 	readonly logger = logger;
 	readonly typebox = TypeBox;
@@ -264,6 +287,9 @@ class ConcreteExtensionAPI implements ExtensionAPI, IExtensionRuntime {
 	}
 }
 
+/**
+ * Create an Extension object with empty collections.
+ */
 function createExtension(extensionPath: string, resolvedPath: string): LoadedExtension {
 	return {
 		path: extensionPath,
@@ -318,6 +344,9 @@ async function loadExtension(
 	}
 }
 
+/**
+ * Create an Extension from an inline factory function.
+ */
 export async function loadExtensionFromFactory(
 	factory: ExtensionFactory,
 	cwd: string,
@@ -341,12 +370,42 @@ export async function loadExtensionFromFactory(
 	return extension;
 }
 
+/**
+ * How the trust gate is resolved for one load.
+ *
+ * `agentDir` names the profile whose decisions apply; omitted means the process-booted one,
+ * resolved by the caller that has it. `trust` lets a caller pass a store it has already loaded
+ * (the session loads one and hands the same instance to the MCP gate) so a startup path reads
+ * the file once.
+ *
+ * `configuredPaths` are paths the OPERATOR named — `extensions:` in their config, a `--config`
+ * overlay, an SDK argument — and they are exempt even when they live inside the project, because
+ * that is where an extension is written while it is being developed. The exemption is sound
+ * because there is no project-level `config.yml`: settings come from the profile and from home
+ * (see `SOURCE_PATHS` in `discovery/helpers.ts`), so a repository cannot put a path in this list.
+ * A caller that forgets to pass it gates MORE, never less, which is the direction a mistake has
+ * to fail in.
+ */
 export interface ExtensionTrustOptions {
 	agentDir?: string;
 	trust?: ProjectTrust;
 	configuredPaths?: readonly string[];
 }
 
+/**
+ * Load extensions from paths.
+ *
+ * THE GATE LIVES HERE, not in the callers, because this is the only function in the product
+ * that imports an extension module: `loadExtension` runs top-level code and then the factory,
+ * and there are five call sites reaching it (the session, the shim, `veyyon models`, the SDK's
+ * `discoverExtensions`, and subagents replaying a parent's path list). A gate in front of one
+ * of them is a gate the other four walk around, and the dangerous default — "this caller
+ * forgot" — has to be a refusal rather than an execution.
+ *
+ * A path OUTSIDE the project is the operator's own: their profile's extensions, an installed
+ * plugin, a path they typed into `extensions:`. Those are unchanged. A path inside the project
+ * is repository-controlled and needs a decision covering its exact bytes.
+ */
 export async function loadExtensions(
 	paths: string[],
 	cwd: string,
@@ -396,6 +455,13 @@ export async function loadExtensions(
 	};
 }
 
+/**
+ * Build the per-path decision function, doing the store read and the root resolution once.
+ *
+ * Returns a function answering with a refusal sentence, or null when the path may load. When no
+ * candidate path is inside the project the store is never opened at all, which is the common
+ * case (a profile's own extensions) and keeps a cold startup free of an extra file read.
+ */
 async function openTrustGate(
 	paths: string[],
 	cwd: string,
@@ -405,6 +471,10 @@ async function openTrustGate(
 	if (paths.length === 0) return allow;
 
 	const root = await canonicalProjectRoot(cwd);
+	// A configured entry may name a FILE or a DIRECTORY, and discovery expands a directory into
+	// the entry files inside it, so exact-path equality exempted the operator's `extensions: [./dev]`
+	// and then gated every file that entry resolved to. Containment is the same claim the operator
+	// made: they named that tree.
 	const exempt = (trustOptions?.configuredPaths ?? []).map(configured => resolvePath(configured, cwd));
 	const isExempt = (resolved: string): boolean =>
 		exempt.some(entry => {
@@ -431,6 +501,13 @@ async function openTrustGate(
 	};
 }
 
+/**
+ * Open the profile's store.
+ *
+ * A caller that names an agent dir gets that profile's decisions; a caller that does not gets
+ * the process-booted profile, which is the only answer available to a free function and is
+ * correct for every path that reaches here without a session.
+ */
 async function loadTrustStore(agentDir?: string): Promise<ProjectTrust> {
 	return await ProjectTrust.load(agentDir ?? getAgentDir());
 }
@@ -467,6 +544,9 @@ function isExtensionFile(name: string): boolean {
 	return name.endsWith(".ts") || name.endsWith(".js");
 }
 
+/**
+ * Resolve extension entry points from a directory.
+ */
 async function resolveExtensionEntries(dir: string): Promise<string[] | null> {
 	const packageJsonPath = path.join(dir, "package.json");
 	const manifest = await readExtensionManifest(packageJsonPath);
@@ -494,6 +574,7 @@ async function resolveExtensionEntries(dir: string): Promise<string[] | null> {
 		return [indexTs];
 	} catch (err) {
 		if (isEnoent(err) || isEacces(err) || hasFsCode(err, "EPERM")) {
+			// Ignore
 		} else {
 			throw err;
 		}
@@ -503,6 +584,7 @@ async function resolveExtensionEntries(dir: string): Promise<string[] | null> {
 		return [indexJs];
 	} catch (err) {
 		if (isEnoent(err) || isEacces(err) || hasFsCode(err, "EPERM")) {
+			// Ignore
 		} else {
 			throw err;
 		}
@@ -511,6 +593,25 @@ async function resolveExtensionEntries(dir: string): Promise<string[] | null> {
 	return null;
 }
 
+/**
+ * Discover absolute paths of extensions to load, without importing or
+ * binding factories. Hot path on session startup — the scan walks native
+ * `.veyyon`/`.pi` extension capabilities, JS/TS hook factories, the
+ * installed-plugin tree, and any configured paths.
+ *
+ * Subagents reuse the parent's collected paths via the SDK's
+ * `preloadedExtensionPaths` option, then call {@link loadExtensions} themselves
+ * so each session rebuilds Extension instances bound to its OWN
+ * `ExtensionAPI` (cwd, eventBus, runtime). Forwarding the parent's
+ * `LoadExtensionsResult` directly would reuse handlers/tools/commands that
+ * closed over the parent's `cwd` and event bus.
+ *
+ * `agentDir` names WHICH profile supplies the user scope for both capabilities
+ * loaded below. It defaults inside `loadCapability` (`options.agentDir ??
+ * getAgentDir()`), so omitting it resolves the process-booted profile: pass it
+ * whenever the caller has one, or a session rooted in another agent dir runs
+ * the booted profile's hooks and extension modules.
+ */
 export async function discoverExtensionPaths(
 	configuredPaths: string[],
 	cwd: string,
@@ -541,6 +642,12 @@ export async function discoverExtensionPaths(
 		}
 	};
 
+	// 1. Discover extension modules via capability API (native .veyyon/.pi only).
+	// Scope the load to the native provider — the extension-module capability
+	// also has claude/codex/gemini/opencode providers, and their items were
+	// discarded here anyway (see #4198). The provider filter skips the walk
+	// entirely instead of running four foreign directory scans and dropping
+	// the results.
 	const discovered = await loadCapability<ExtensionModule>(extensionModuleCapability.id, {
 		...loadOptions,
 		providers: ["native"],
@@ -549,6 +656,19 @@ export async function discoverExtensionPaths(
 		addPath(ext.path);
 	}
 
+	// 2. Discover JS/TS hook factories from hookCapability and bind them through
+	// the extension runner, which owns the current runtime event bus. Hook
+	// capability loading already applies hook-specific disabled ids; do not also
+	// filter them through extension-module names.
+	//
+	// Every hook provider discovers ANY file under `hooks/{pre,post}/`, and the
+	// claude and codex providers strip `.sh`/`.bash`/`.zsh`/`.fish` off the tool
+	// name, so a shell hook is a shape they expect. But this is the only
+	// production consumer of the capability and it can bind nothing but a JS/TS
+	// module. A dropped hook is therefore named out loud: it was discovered, the
+	// `/extensions` panel lists it as active, and running it is the one thing
+	// that does not happen. Staying quiet here left the operator with a hook file
+	// on disk, a row in the panel, and no execution and no explanation.
 	const hooks = await loadCapability<Hook>(hookCapability.id, loadOptions);
 	for (const hook of hooks.items) {
 		if (isExtensionFile(path.basename(hook.path))) {
@@ -562,9 +682,22 @@ export async function discoverExtensionPaths(
 		});
 	}
 
+	// Both loads above answer with `items` AND `warnings`, and only `items` was
+	// read. The warnings are not diagnostics about the scan; they are the user's
+	// own `extensions:` entries failing: `Extension path not found: <path>` for a
+	// mistyped path, `Invalid extension path in <settings>: <entry>` for a
+	// non-string. Dropping them meant a typo in settings produced a session with
+	// the extension absent and not one word about it anywhere.
+	//
+	// Through `reportFault` rather than a return value, because this is a free
+	// function with no session handle — the case `utils/fault-sink.ts` exists
+	// for. `createAgentSession` attaches a sink that lands these in the running
+	// session's operator notices.
 	for (const warning of [...discovered.warnings, ...hooks.warnings]) {
 		reportFault({
 			source: "extensions",
+			// The warning itself is the user's own `extensions:` entry failing, so the
+			// remedy is always the same edit: the settings list that named it.
 			text:
 				`${warning}. That extension is not loaded in this run. ` +
 				"Fix: correct or drop that entry in the `extensions` setting, with " +
@@ -573,8 +706,10 @@ export async function discoverExtensionPaths(
 		});
 	}
 
+	// 3. Discover extension entry points from installed plugins
 	addPaths(await getAllPluginExtensionPaths(cwd));
 
+	// 4. Explicitly configured paths
 	for (const configuredPath of configuredPaths) {
 		const resolved = resolvePath(configuredPath, cwd);
 
@@ -592,6 +727,8 @@ export async function discoverExtensionPaths(
 				continue;
 			}
 
+			// Same three discovery rules as the well-known agent directories, so
+			// configured paths and discovered ones resolve a layout identically.
 			const discovered = await discoverExtensionModulePaths(resolved);
 			if (discovered.length > 0) {
 				addPaths(discovered);
@@ -605,6 +742,11 @@ export async function discoverExtensionPaths(
 	return allPaths;
 }
 
+/**
+ * Discover and load extensions from standard locations. Composed of
+ * {@link discoverExtensionPaths} (FS scan) + {@link loadExtensions}
+ * (per-session binding).
+ */
 export async function discoverAndLoadExtensions(
 	configuredPaths: string[],
 	cwd: string,

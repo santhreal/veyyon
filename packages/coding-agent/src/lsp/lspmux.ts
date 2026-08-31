@@ -4,6 +4,20 @@ import { $flag, $which, errorMessage, logger } from "@veyyon/utils";
 import { TOML } from "bun";
 import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 
+/**
+ * lspmux integration for LSP server multiplexing.
+ *
+ * When lspmux is available and running, this module wraps supported LSP server
+ * commands to use lspmux client mode, enabling server instance sharing across
+ * multiple editor windows.
+ *
+ * Integration is transparent: if lspmux is unavailable, falls back to direct spawning.
+ */
+
+// =============================================================================
+// Types
+// =============================================================================
+
 interface LspmuxConfig {
 	instance_timeout?: number;
 	gc_interval?: number;
@@ -20,12 +34,35 @@ interface LspmuxState {
 	config: LspmuxConfig | null;
 }
 
-const DEFAULT_SUPPORTED_SERVERS = new Set(["rust-analyzer"]);
+// =============================================================================
+// Constants
+// =============================================================================
 
+/**
+ * Servers that benefit from lspmux multiplexing.
+ *
+ * lspmux can multiplex any LSP server, but it's most beneficial for servers
+ * with high startup cost or significant memory usage.
+ */
+const DEFAULT_SUPPORTED_SERVERS = new Set([
+	"rust-analyzer",
+	// Other servers can be added after testing with lspmux
+]);
+
+/** Timeout for liveness check (ms) */
 const LIVENESS_TIMEOUT_MS = 1000;
 
+/** Cache duration for lspmux state (5 minutes) */
 const STATE_CACHE_TTL_MS = 5 * 60 * 1000;
 
+// =============================================================================
+// Config Path
+// =============================================================================
+
+/**
+ * Get the lspmux config path based on platform.
+ * Matches Rust's `dirs::config_dir()` behavior.
+ */
 function getConfigPath(): string {
 	const home = os.homedir();
 	switch (os.platform()) {
@@ -38,9 +75,16 @@ function getConfigPath(): string {
 	}
 }
 
+// =============================================================================
+// State Management
+// =============================================================================
+
 let cachedState: LspmuxState | null = null;
 let cacheTimestamp = 0;
 
+/**
+ * Parse lspmux config.toml file.
+ */
 async function parseConfig(): Promise<LspmuxConfig | null> {
 	try {
 		const file = Bun.file(getConfigPath());
@@ -49,6 +93,10 @@ async function parseConfig(): Promise<LspmuxConfig | null> {
 		}
 		return TOML.parse(await file.text()) as LspmuxConfig;
 	} catch (err) {
+		// Absence is already answered above, so reaching here means the config EXISTS and could not be read or
+		// parsed. That used to be indistinguishable from "lspmux is not configured", so a typo in the TOML
+		// silently reverted every language server to the direct path with no multiplexing. Null still stands
+		// for "no config", because the direct path is a working fallback, but the reason is now visible.
 		logger.warn("The lspmux config could not be parsed; language servers will not be multiplexed", {
 			path: getConfigPath(),
 			error: errorMessage(err),
@@ -57,6 +105,9 @@ async function parseConfig(): Promise<LspmuxConfig | null> {
 	}
 }
 
+/**
+ * Check if lspmux server is running via `lspmux status`.
+ */
 async function checkServerRunning(binaryPath: string): Promise<boolean> {
 	try {
 		const proc = Bun.spawn([binaryPath, "status"], {
@@ -66,6 +117,9 @@ async function checkServerRunning(binaryPath: string): Promise<boolean> {
 		});
 		adoptIntoPrimarySessionCpuBudget(proc.pid);
 
+		// The timer has to be cancelled when the process wins the race. Left
+		// pending it holds its resolve closure and keeps the loop scheduled for the
+		// rest of the timeout on every probe of an already-dead server.
 		let timer: NodeJS.Timeout | undefined;
 		let exited: number | null;
 		try {
@@ -86,10 +140,19 @@ async function checkServerRunning(binaryPath: string): Promise<boolean> {
 
 		return exited === 0;
 	} catch {
+		// A liveness probe: spawning the binary at all failed, which answers the question being asked -- this
+		// lspmux is not usable -- exactly as a non-zero exit does. The caller responds by starting language
+		// servers directly, which is the documented fallback rather than a degraded guess.
 		return false;
 	}
 }
 
+/**
+ * Detect lspmux availability and state.
+ * Results are cached for STATE_CACHE_TTL_MS.
+ *
+ * Set VEYYON_DISABLE_LSPMUX=1 to disable.
+ */
 export async function detectLspmux(): Promise<LspmuxState> {
 	const now = Date.now();
 	if (cachedState && now - cacheTimestamp < STATE_CACHE_TTL_MS) {
@@ -121,7 +184,15 @@ export async function detectLspmux(): Promise<LspmuxState> {
 	return cachedState;
 }
 
+// =============================================================================
+// Command Wrapping
+// =============================================================================
+
+/**
+ * Check if a server command is supported by lspmux.
+ */
 export function isLspmuxSupported(command: string): boolean {
+	// Extract base command name (handle full paths)
 	const baseName = command.split("/").pop() ?? command;
 	return DEFAULT_SUPPORTED_SERVERS.has(baseName);
 }
@@ -132,6 +203,14 @@ export interface LspmuxWrappedCommand {
 	env?: Record<string, string>;
 }
 
+/**
+ * Wrap a server command to use lspmux client mode.
+ *
+ * @param originalCommand - The original LSP server command (e.g., "rust-analyzer")
+ * @param originalArgs - Original command arguments
+ * @param state - lspmux state from detectLspmux()
+ * @returns Wrapped command, args, and env vars; or original if lspmux unavailable
+ */
 export function wrapWithLspmux(
 	originalCommand: string,
 	originalArgs: string[] | undefined,
@@ -149,10 +228,13 @@ export function wrapWithLspmux(
 	const isDefaultRustAnalyzer = baseName === "rust-analyzer" && originalCommand === "rust-analyzer";
 	const hasArgs = originalArgs && originalArgs.length > 0;
 
+	// rust-analyzer from $PATH with no args - lspmux's default, simplest case
 	if (isDefaultRustAnalyzer && !hasArgs) {
 		return { command: state.binaryPath, args: [] };
 	}
 
+	// Use explicit `client` subcommand with LSPMUX_SERVER env var
+	// Use `--` to separate lspmux options from server args
 	const args = hasArgs ? ["client", "--", ...originalArgs] : ["client"];
 	return {
 		command: state.binaryPath,
@@ -161,6 +243,14 @@ export function wrapWithLspmux(
 	};
 }
 
+/**
+ * Get lspmux-wrapped command if available, otherwise return original.
+ * This is the main entry point for config.ts integration.
+ *
+ * @param command - Original LSP server command
+ * @param args - Original command arguments
+ * @returns Command and args to use (possibly wrapped with lspmux)
+ */
 export async function getLspmuxCommand(command: string, args?: string[]): Promise<LspmuxWrappedCommand> {
 	const state = await detectLspmux();
 	return wrapWithLspmux(command, args, state);

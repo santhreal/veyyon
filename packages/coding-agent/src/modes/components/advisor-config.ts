@@ -1,3 +1,20 @@
+/**
+ * Fullscreen `/advisor configure` overlay: a mouse- and keyboard-driven editor
+ * for the `WATCHDOG.yml` advisor roster at project or user level.
+ *
+ * It paints the entire alternate screen from row 0 (so SGR mouse rows index
+ * directly into the rendered frame) using the shared {@link ./overlay-box} chrome.
+ * The list screen is a two-pane split (the `/extensions` idiom): a clickable
+ * advisor/action sidebar on the left, and a scrollable preview of the highlighted
+ * advisor's model / tools / instructions on the right, filling the free space.
+ *
+ * Each screen is backed by a proven primitive — {@link SelectList} (list / detail
+ * / tools / thinking), {@link Input} (name), {@link ModelSelectorComponent} (the
+ * same rich `/model` picker, in direct-select mode), and {@link HookEditorComponent}
+ * (multiline instructions; Ctrl+G opens `$EDITOR`). The overlay edits an in-memory
+ * {@link WatchdogConfigDoc} and only touches disk + the live advisors via the host
+ * `save` callback.
+ */
 import type { Model } from "@veyyon/ai";
 import {
 	type Component,
@@ -20,14 +37,13 @@ import {
 import type { ModelRegistry } from "../../config/model-registry";
 import { formatModelSelectorValue } from "../../config/model-resolver";
 import type { Settings } from "../../config/settings";
+import { AgentStorage } from "../../session/agent-storage";
 import {
 	type ConfiguredThinkingLevel,
 	hasConfigurableThinkingEffort,
 	parseConfiguredThinkingLevel,
 } from "../../thinking";
 import { getSelectListTheme, theme } from "../theme/theme";
-import type { AdvisorConfigCallbacks, AdvisorConfigDeps, Screen } from "./advisor-config-helpers";
-import { commitTools, formatAdvisorTools, previewLine, wrap } from "./advisor-config-helpers";
 import { effortStepItems } from "./effort-picker";
 import { HookEditorComponent } from "./hook-editor";
 import { buildBrowserItems, ModelBrowser, sortModelItems } from "./model-browser";
@@ -42,8 +58,70 @@ import {
 	topBorderSplit,
 } from "./overlay-box";
 
-export type { AdvisorConfigDeps };
+/** Host callbacks: all disk + live-runtime effects flow through these. */
+export interface AdvisorConfigCallbacks {
+	/** Load a scope's `WATCHDOG.yml` into an editable doc (empty when absent). */
+	loadDoc: (scope: AdvisorConfigScope) => Promise<WatchdogConfigDoc>;
+	/** Persist the doc to the scope's file and rebuild the live advisors. */
+	save: (scope: AdvisorConfigScope, doc: WatchdogConfigDoc) => Promise<void>;
+	/** Tear down the overlay and restore the editor. */
+	close: () => void;
+	requestRender: () => void;
+	/** Surface a transient status/warning line to the user. */
+	notify: (message: string) => void;
+}
 
+export interface AdvisorConfigDeps {
+	modelRegistry: ModelRegistry;
+	settings: Settings;
+	scopedModels: ReadonlyArray<{ model: Model; thinkingLevel?: ConfiguredThinkingLevel }>;
+	availableToolNames: string[];
+	/** Formatted advisor-role model shown on the seeded default row (e.g. "anthropic/claude-..."). */
+	defaultModelLabel?: string;
+}
+
+const PREVIEW_WIDTH = 60;
+
+function previewLine(text: string | undefined): string {
+	if (!text?.trim()) return "(none)";
+	const first = text.trim().split("\n", 1)[0] ?? "";
+	return truncateToWidth(first, PREVIEW_WIDTH);
+}
+
+/** Omitted means default read/search; an explicit empty set means no tools. */
+function commitTools(selected: ReadonlySet<string>, all: readonly string[]): string[] | undefined {
+	if (selected.size === 0) return [];
+	if (selected.size === ADVISOR_DEFAULT_TOOL_NAMES.size) {
+		let matchesDefault = true;
+		for (const name of ADVISOR_DEFAULT_TOOL_NAMES) {
+			if (!selected.has(name)) {
+				matchesDefault = false;
+				break;
+			}
+		}
+		if (matchesDefault) return undefined;
+	}
+	return all.filter(name => selected.has(name));
+}
+
+function formatAdvisorTools(tools: readonly string[] | undefined, emptyLabel: string): string {
+	if (tools === undefined) return "read, search (default)";
+	return tools.length > 0 ? tools.join(", ") : emptyLabel;
+}
+
+/** Soft-wrap plain text to `width`, returning at least one (possibly empty) line. */
+function wrap(text: string, width: number): string[] {
+	if (!text) return [""];
+	return Bun.wrapAnsi(text, Math.max(1, width), { trim: false }).split("\n");
+}
+
+type Screen = "list" | "detail" | "name" | "model" | "tools" | "thinking" | "instructions";
+
+/**
+ * Fullscreen advisor-configuration overlay. Implements {@link Component} directly
+ * (rather than extending Container) so it owns the whole frame and the mouse
+ * geometry needed to make every row clickable.
+ */
 export class AdvisorConfigOverlayComponent implements Component {
 	#tui: TUI;
 	#modelRegistry: ModelRegistry;
@@ -57,10 +135,13 @@ export class AdvisorConfigOverlayComponent implements Component {
 	#dirty = false;
 
 	#screen: Screen = "list";
+	/** The interactive element for the current screen. */
 	#active: Component = new SelectList([], 1, getSelectListTheme());
 	#footerHint = "";
 	#previewScroll = 0;
 
+	// Frame geometry from the last render (the frame paints from screen row 0,
+	// so SGR `event.row`/`event.col` — already 0-based — index it directly).
 	#bodyRowStart = 0;
 	#dividerCol = 0;
 
@@ -83,6 +164,8 @@ export class AdvisorConfigOverlayComponent implements Component {
 		this.#ensureRosterVisible();
 		this.#showList();
 	}
+
+	// ───────────────────────────── render ─────────────────────────────
 
 	render(width: number): readonly string[] {
 		const height = Math.max(14, process.stdout.rows || 40);
@@ -115,6 +198,8 @@ export class AdvisorConfigOverlayComponent implements Component {
 		return out;
 	}
 
+	// ───────────────────────────── input ─────────────────────────────
+
 	handleInput(data: string): void {
 		if (data.startsWith("\x1b[<")) {
 			routeSgrMouseInput(data, event => this.#routeMouseEvent(event));
@@ -123,11 +208,14 @@ export class AdvisorConfigOverlayComponent implements Component {
 		this.#active.handleInput?.(data);
 	}
 
+	/** Forward enhanced-paste transports into a multiline instructions editor. */
 	pasteText(text: string): void {
 		if (this.#active instanceof HookEditorComponent) this.#active.pasteText(text);
 	}
 
 	#routeMouseEvent(event: SgrMouseEvent): boolean {
+		// Right pane of the split (the preview) only scrolls; everything left of the
+		// divider routes into the active list/component at frame-local coordinates.
 		if (this.#screen === "list" && event.col >= this.#dividerCol) {
 			if (event.wheel !== null) {
 				this.#previewScroll = Math.max(0, this.#previewScroll + event.wheel);
@@ -142,6 +230,8 @@ export class AdvisorConfigOverlayComponent implements Component {
 		}
 		return false;
 	}
+
+	// ───────────────────────────── preview ───────────────────────────
 
 	#previewWindow(bodyWidth: number, rows: number): string[] {
 		const lines = this.#previewContent(bodyWidth);
@@ -169,11 +259,8 @@ export class AdvisorConfigOverlayComponent implements Component {
 		if (value === "shared") {
 			const lines = [theme.bold("Shared instructions"), ""];
 			const text = this.#doc.instructions?.trim();
-			const wl = text ? wrap(text, bodyWidth) : [theme.fg("muted", "(none)")];
-			for (let li = 0; li < wl.length; li++) lines.push(wl[li]!);
-			const out = new Array<string>(lines.length);
-			for (let li = 0; li < lines.length; li++) out[li] = truncateToWidth(lines[li]!, bodyWidth);
-			return out;
+			lines.push(...(text ? wrap(text, bodyWidth) : [theme.fg("muted", "(none)")]));
+			return lines.map(line => truncateToWidth(line, bodyWidth));
 		}
 		const help =
 			value === "add"
@@ -185,11 +272,7 @@ export class AdvisorConfigOverlayComponent implements Component {
 						: value === "close"
 							? "Close the editor. Unsaved changes are discarded."
 							: "";
-		const helpWrapped = wrap(help, bodyWidth);
-		const helpOut = new Array<string>(helpWrapped.length);
-		for (let hi = 0; hi < helpWrapped.length; hi++)
-			helpOut[hi] = truncateToWidth(theme.fg("muted", helpWrapped[hi]!), bodyWidth);
-		return helpOut;
+		return wrap(help, bodyWidth).map(line => truncateToWidth(theme.fg("muted", line), bodyWidth));
 	}
 
 	#advisorPreview(advisor: AdvisorConfig, bodyWidth: number): string[] {
@@ -204,12 +287,11 @@ export class AdvisorConfigOverlayComponent implements Component {
 			theme.fg("dim", "Instructions:"),
 		];
 		const instr = advisor.instructions?.trim();
-		const wl = instr ? wrap(instr, bodyWidth) : [theme.fg("muted", "(none)")];
-		for (let li = 0; li < wl.length; li++) lines.push(wl[li]!);
-		const out = new Array<string>(lines.length);
-		for (let li = 0; li < lines.length; li++) out[li] = truncateToWidth(lines[li]!, bodyWidth);
-		return out;
+		lines.push(...(instr ? wrap(instr, bodyWidth) : [theme.fg("muted", "(none)")]));
+		return lines.map(line => truncateToWidth(line, bodyWidth));
 	}
+
+	// ───────────────────────────── screens ───────────────────────────
 
 	#setScreen(screen: Screen, active: Component, footerHint: string): void {
 		this.#screen = screen;
@@ -258,6 +340,7 @@ export class AdvisorConfigOverlayComponent implements Component {
 		items.push({ value: "save", label: "Save & apply" });
 		items.push({ value: "close", label: "Close" });
 
+		// Show every row (no internal overflow-search); the split frame supplies height.
 		const list = new SelectList(items, Math.max(1, items.length), getSelectListTheme());
 		list.onSelectionChange = () => {
 			this.#previewScroll = 0;
@@ -298,6 +381,9 @@ export class AdvisorConfigOverlayComponent implements Component {
 			try {
 				await this.#cb.save(this.#scope, this.#isBareDefaultDoc(this.#doc) ? { advisors: [] } : this.#doc);
 			} catch (err) {
+				// A failed write leaves the edit on screen and still dirty. Clearing the flag
+				// here would report a save that did not happen, and the scope switch and Close
+				// both read `#dirty` to decide whether the buffer is safe to discard.
 				this.#cb.notify(`Save failed: ${errorMessage(err)}`);
 				return;
 			}
@@ -351,7 +437,7 @@ export class AdvisorConfigOverlayComponent implements Component {
 			case "tools":
 				this.#showToolsEditor(
 					index,
-					new Set(this.#doc.advisors[index].tools ?? Array.from(ADVISOR_DEFAULT_TOOL_NAMES)),
+					new Set(this.#doc.advisors[index].tools ?? [...ADVISOR_DEFAULT_TOOL_NAMES]),
 					0,
 				);
 				return;
@@ -389,7 +475,7 @@ export class AdvisorConfigOverlayComponent implements Component {
 	}
 
 	#showModelPicker(index: number): void {
-		const storage = this.#settings.getStorage();
+		const storage = AgentStorage.forAgentDir(this.#settings.getAgentDir());
 		const mruOrder = storage?.getModelUsageOrder() ?? [];
 		let models: ReadonlyArray<Model>;
 		if (this.#scopedModels.length > 0) {
@@ -398,6 +484,9 @@ export class AdvisorConfigOverlayComponent implements Component {
 			try {
 				models = this.#modelRegistry.getAvailable();
 			} catch (err) {
+				// A registry failure presented as a picker holding nothing, with no reason given. The
+				// sibling pickers capture it into a visible error; this surface has the notify channel,
+				// so it states what happened instead of showing an empty list as if that were the answer.
 				models = [];
 				this.#cb.notify(`Model list unavailable: ${errorMessage(err)}`);
 			}
@@ -467,10 +556,11 @@ export class AdvisorConfigOverlayComponent implements Component {
 		this.#setScreen(
 			"tools",
 			list,
-			"Enter / click toggle · select Done or Esc to apply (empty = no tools; read/grep/glob = default)",
+			"Enter / click toggle · select Done or Esc to apply (empty = no tools; read/search = default)",
 		);
 	}
 
+	/** `index === -1` edits the shared top-level instructions; otherwise advisor[index]. */
 	#showInstructionsEditor(index: number): void {
 		const shared = index < 0;
 		const current = shared ? this.#doc.instructions : this.#doc.advisors[index].instructions;
@@ -491,6 +581,7 @@ export class AdvisorConfigOverlayComponent implements Component {
 				if (shared) this.#showList();
 				else this.#showDetail(index);
 			},
+			// This overlay owns the card; the editor is a screen inside its body.
 			{ presentation: "embedded" },
 		);
 		this.#setScreen("instructions", editor, "");

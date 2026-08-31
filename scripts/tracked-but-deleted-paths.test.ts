@@ -26,8 +26,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
+import { withoutComments } from "@veyyon/utils/module-reach";
 import { checkFreshness } from "./check-doc-freshness";
 import { existingOnly } from "./check-doc-links";
 
@@ -98,5 +100,49 @@ describe("check-doc-freshness keeps the other answer on purpose", () => {
 		const result = checkFreshness(root, ["docs/internal/kept.md", "docs/internal/vanished.md"]);
 		expect(result.missing).toEqual(["docs/internal/vanished.md"]);
 		expect(result.filesChecked).toBe(1);
+	});
+});
+
+/**
+ * The claim above ("the other listers go through it") held for the doc gates and for nothing else:
+ * three repo-wide sweeps listed the index and read every path themselves, and two of them crashed
+ * with the same ENOENT this suite is named for while a deletion sat unstaged. So the ownership is
+ * pinned rather than stated.
+ *
+ * NAMES_ONLY are the sweeps that never open a listed path. A deleted-but-tracked file is still
+ * tracked, so a rule about file NAMES is right to keep reading the index; each entry is pinned by
+ * exact equality, so a sweep that starts reading contents fails here until it takes the owner.
+ */
+const NAMES_ONLY: Readonly<Record<string, string>> = {
+	"scripts/check-doc-freshness.ts": "reports a listed doc that is gone, the asymmetry asserted above",
+	"scripts/internal-docs-are-tracked.test.ts": "asserts which docs git tracks, opens no listed path",
+	"scripts/root-layout.test.ts": "counts tracked paths per directory, opens none",
+	"scripts/stray-output-path.test.ts": "matches path segments against unset-variable names",
+	"scripts/there-is-only-one-capture-path.test.ts": "matches tape-file names and basenames",
+};
+
+describe("a sweep that reads what git tracks", () => {
+	it("takes the existing-path owner, or states that it opens nothing", async () => {
+		const repoRoot = path.resolve(import.meta.dir, "..");
+		const listed = await readdir(path.join(repoRoot, "scripts"), { withFileTypes: true });
+		const missing: string[] = [];
+		const namesOnly: string[] = [];
+		for (const entry of listed) {
+			if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
+			const rel = `scripts/${entry.name}`;
+			const code = withoutComments(await readFile(path.join(repoRoot, "scripts", entry.name), "utf8"));
+			if (!code.includes('"ls-files"')) continue;
+			if (rel in NAMES_ONLY) {
+				namesOnly.push(rel);
+				continue;
+			}
+			// Comments stripped first: this suite's own prose names the owner, and a sweep that
+			// merely mentions it in a comment while listing the index unguarded is the defect.
+			if (!code.includes("existingOnly(")) missing.push(rel);
+		}
+		// Vacuity: the sweep has to have found the gates, or an empty result reads as clean.
+		expect(namesOnly.length + missing.length).toBeGreaterThan(2);
+		expect(missing).toEqual([]);
+		expect(namesOnly.sort()).toEqual(Object.keys(NAMES_ONLY).sort());
 	});
 });

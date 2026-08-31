@@ -31,16 +31,24 @@ import {
 import type { TtsTransport, TtsWorkerInbound } from "./tts-protocol";
 
 const TTS_TASK = "text-to-speech";
+// kokoro-js is NEVER a dependency of the main tree: its transformers@3.8.1 +
+// onnxruntime-node@1.21 graph must not pollute it (1.21 segfaults Bun on session
+// creation). It is lazily `bun install`ed into a side runtime dir on first use,
+// with onnxruntime-node force-pinned to the Bun-safe version the rest of the
+// stack runs. Bump KOKORO_VERSION to roll the cached runtime + model wrapper.
 
 const ttsDevicePreference = resolveTinyModelDevicePreference();
 const ttsDtypeOverride = resolveTinyModelDtypeOverride();
 
+/** Device values `kokoro-js` accepts; the tiny device order is mapped onto these. */
 type KokoroDevice = "cpu" | "wasm" | "webgpu";
 
+/** A loaded Kokoro voice synthesizer (subset of `kokoro-js`'s `KokoroTTS`). */
 interface KokoroTtsInstance {
 	generate(text: string, options: { voice: string }): Promise<RawAudio>;
 }
 
+/** `KokoroTTS` static surface used to load a model from the Hugging Face Hub. */
 interface KokoroRuntime {
 	KokoroTTS: {
 		from_pretrained(
@@ -54,6 +62,10 @@ interface KokoroRuntime {
 	};
 }
 
+/**
+ * The `@huggingface/transformers` instance `kokoro-js` runs on. We only touch its
+ * `env` (cache dir + log level) and `LogLevel`; inference goes through Kokoro.
+ */
 interface TransformersEnv {
 	env: {
 		cacheDir?: string;
@@ -74,16 +86,30 @@ const models = new Map<TtsLocalModelKey, Promise<KokoroTtsInstance>>();
 let synthesizeQueue = Promise.resolve();
 const kokoroRuntime = new MemoizedRuntime<KokoroRuntime>();
 
+/**
+ * In-flight streaming sessions keyed by request id. A session is created on
+ * `stream-start` and torn down when its run loop finishes. Each `stream-push`
+ * carries one complete speakable segment (the parent's `SpeakableStream` does
+ * all splitting and normalization); segments queue here and the run loop
+ * synthesizes them in arrival order, waking via `wake` when idle.
+ */
 interface StreamSession {
 	modelKey: TtsLocalModelKey;
 	voice: string | undefined;
+	/** Speakable segments awaiting synthesis, in arrival order. */
 	queue: string[];
+	/** Resolves the run loop's idle wait when a push/end/cancel arrives. */
 	wake: (() => void) | null;
 	ended: boolean;
 	cancelled: boolean;
 }
 const streamSessions = new Map<string, StreamSession>();
 
+/**
+ * Map a tiny-model device onto the narrow set `kokoro-js` accepts. The worker
+ * always runs `kokoro-js` on Node, where `cpu` (onnxruntime-node) is the only
+ * safe option; `webgpu`/`wasm` are honored if explicitly requested.
+ */
 function toKokoroDevice(device: TinyModelDevice): KokoroDevice {
 	if (device === "wasm") return "wasm";
 	if (device === "webgpu" || device === "gpu") return "webgpu";
@@ -97,6 +123,16 @@ function configureTransformers(transformers: TransformersEnv): void {
 	if (transformers.env.backends?.onnx) transformers.env.backends.onnx.logLevel = "error";
 }
 
+/**
+ * Lazily `bun install` `kokoro-js` into a side runtime dir (idempotent, version-
+ * keyed) and return its module, with the `@huggingface/transformers` instance it
+ * loads configured (cache dir + quiet logging). `kokoro-js` is NEVER a dependency
+ * of the main tree: its transformers@3.8.1 graph pulls onnxruntime-node@1.21,
+ * which segfaults Bun on session creation, so the runtime manifest force-pins
+ * onnxruntime-node to the Bun-safe version via `overrides`. `sharp` is stubbed —
+ * the TTS pipeline is audio-only, so the native image codec transformers eagerly
+ * requires is dead weight. Memoized so the runtime loads once per process.
+ */
 function loadKokoroRuntime(
 	transport: TtsTransport,
 	requestId: string,
@@ -184,6 +220,13 @@ async function loadModelWithDeviceFallback(
 	throw new Error("No TTS devices configured");
 }
 
+/**
+ * Wait until the repo cache dir's total byte size stops changing (two equal
+ * samples 300ms apart), bounded at 60s. transformers.js flushes its cache file
+ * asynchronously after the model buffer is handed to onnxruntime, so a load
+ * retry right after a failed fresh download can read a file that is still
+ * being written; sampling for quiescence makes the retry deterministic.
+ */
 async function waitForCacheQuiescence(repoDir: string): Promise<void> {
 	const totalSize = async (): Promise<number> => {
 		let sum = 0;
@@ -197,7 +240,9 @@ async function waitForCacheQuiescence(repoDir: string): Promise<void> {
 			try {
 				const stat = await fs.stat(path.join(repoDir, entry));
 				if (stat.isFile()) sum += stat.size;
-			} catch {}
+			} catch {
+				// File vanished mid-scan; the next sample settles it.
+			}
 		}
 		return sum;
 	};
@@ -226,6 +271,12 @@ async function loadModel(
 	const loadOnce = () => loadModelWithDeviceFallback(runtime, spec, modelKey, transport, requestId);
 	const loadWithCorruptCacheRecovery = async () => {
 		const repoDir = path.join(getTinyModelsCacheDir(), ...spec.repo.split("/"));
+		// Recovery ladder for corrupt cached weights: attempt 1 is the normal
+		// load; on a parse failure attempt 2 purges the cache and re-downloads;
+		// attempt 3 retries WITHOUT purging, because a fresh download's parse can
+		// race the async cache write and fail while the on-disk file completes
+		// (observed live: retry failed, file landed at the full size, next load
+		// succeeded). Every recovery step is logged loudly.
 		for (let attempt = 1; ; attempt += 1) {
 			try {
 				return await loadOnce();
@@ -332,6 +383,14 @@ async function handleQueuedRequest(
 	}
 }
 
+/**
+ * Drive one streaming session to completion: load the model, then synthesize
+ * each queued segment in arrival order — one `audio-chunk` per segment,
+ * followed by a single `stream-done`. Chunk sends are drained before the next
+ * segment's inference (see the comment at the send site). Serialized through
+ * {@link synthesizeQueue} so it never interleaves model access with a batch
+ * synthesize/download.
+ */
 async function runStreamSession(transport: TtsTransport, id: string, session: StreamSession): Promise<void> {
 	try {
 		if (session.cancelled) return;
@@ -346,6 +405,7 @@ async function runStreamSession(transport: TtsTransport, id: string, session: St
 				if (session.ended) break;
 				const { promise, resolve } = Promise.withResolvers<void>();
 				session.wake = resolve;
+				// Re-check after arming: a push/end/cancel racing the empty shift.
 				if (session.queue.length > 0 || session.ended || session.cancelled) {
 					session.wake = null;
 					resolve();
@@ -357,6 +417,11 @@ async function runStreamSession(transport: TtsTransport, id: string, session: St
 			if (session.cancelled) break;
 			const audio = Array.isArray(output.audio) ? output.audio[0] : output.audio;
 			if (!audio) continue;
+			// Drain the IPC write before the next segment's inference: ONNX
+			// blocks this event loop for seconds at a time, so a fire-and-forget
+			// send would sit in the pipe queue until the session ends and every
+			// chunk would arrive in one burst (long silence, then all segments
+			// at once) instead of streaming per-segment.
 			await transport.sendAndFlush({
 				type: "audio-chunk",
 				id,
@@ -393,6 +458,7 @@ function startStreamSession(
 	);
 }
 
+/** Wake the session's run loop if it is parked on an empty queue. */
 function wakeStreamSession(session: StreamSession): void {
 	const wake = session.wake;
 	session.wake = null;

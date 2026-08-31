@@ -23,5 +23,5 @@ The test is whether the message changes what somebody DOES. Send when:
 NEVER send:
 - **A bare acknowledgement.** "Understood", "noted", "will do", "thanks", "ack" carry no information and cost the reader a turn. Each also looks like traffic that deserves an ack, which is what a two-agent loop is made of. Silence IS the acknowledgement.
 - A progress report, a plan, a restatement of your assignment, or "starting now". Your spawner reads your result when you yield.
-- Anything a tool answers for you: a grep, a build, a file read. That includes what a peer is doing; ask them, or do not need to know, and never infer it from their files.
+- Anything a tool answers for you: a search, a build, a file read. That includes what a peer is doing; ask them, or do not need to know, and never infer it from their files.
 - The next line of a back-and-forth. Two agents that only answer each other never converge, and the bus refuses the message once a pair has traded 16 in a row with no one else involved. Long before that: decide with what you have, or tell your spawner the exact decision you are stuck on.

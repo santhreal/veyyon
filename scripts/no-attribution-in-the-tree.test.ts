@@ -26,14 +26,22 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import { existingOnly } from "./check-doc-links";
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 
-/** Every text file git tracks, so a new file is scanned the moment it is added. */
+/**
+ * Every text file git tracks, so a new file is scanned the moment it is added. `existingOnly`
+ * because the index still lists a file deleted in the working tree, and reading one killed this
+ * gate with an ENOENT naming the deleted path; see its doc in check-doc-links.ts.
+ */
 async function trackedFiles(): Promise<string[]> {
 	const { stdout } = await execFileAsync("git", ["ls-files", "-z"], { cwd: REPO_ROOT, maxBuffer: 64 * 1024 * 1024 });
-	return stdout.split("\0").filter(entry => entry.length > 0);
+	return existingOnly(
+		REPO_ROOT,
+		stdout.split("\0").filter(entry => entry.length > 0),
+	);
 }
 
 /**
@@ -214,14 +222,14 @@ const BANNED: ReadonlyArray<{ readonly name: string; readonly pattern: RegExp }>
 	},
 	{
 		// Every rule above keys off the words "operator" and "user", so naming the person outright
-		// walked straight past all of them: `reported by @santhreal`, `per Mukund's screenshot`.
+		// walked straight past all of them: `reported by @santhreal`, `per a named person's screenshot`.
 		// A handle or a capitalised name after a credit verb is a person; the ordinary technical
 		// senses put a lowercase common noun there (`reported by the provider`, `requested by the
-		// caller`) and stay legal. The identity list is this repository's own accounts, so a URL
-		// like github.com/santhreal/veyyon does not match: it needs a credit noun behind it.
+		// caller`) and stay legal. The identity list is this repository's own account handles, so a
+		// URL like github.com/santhreal/veyyon does not match: it needs a credit noun behind it.
 		name: "attributing a change to a named person",
 		pattern:
-			/\b(?:reported|requested|approved|reviewed|verified|confirmed|screenshotted)\s+by\s+@[\w-]+|\b(?:mukund|santhreal|santhsecurity|anionicsanth)(?:'s)?\s+(?:report|reports|screenshot|screenshots|review|reviews|request|requests|ask|asks|words|verdict|complaint)\b/i,
+			/\b(?:reported|requested|approved|reviewed|verified|confirmed|screenshotted)\s+by\s+@[\w-]+|\b(?:santhreal|santhsecurity|anionicsanth)(?:'s)?\s+(?:report|reports|screenshot|screenshots|review|reviews|request|requests|ask|asks|words|verdict|complaint)\b/i,
 	},
 ];
 

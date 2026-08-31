@@ -1,3 +1,11 @@
+/**
+ * Pure helpers shared by tool renderers. Host-agnostic; no DOM beyond
+ * `globalThis` feature probes, no host-framework imports. `stripAnsi` is
+ * re-exported from the dependency-free `@veyyon/utils/strip-ansi` subpath
+ * (bypasses the Node-heavy package barrel) so this file stays safe to bundle
+ * for the browser — see BACKLOG SPEC-ONE-PLACE-AUDIT F6.
+ */
+
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { truncate as truncateChars } from "@veyyon/utils/format";
 import { stringifyJsonSafe } from "@veyyon/utils/json";
@@ -5,8 +13,11 @@ import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { isRecord } from "@veyyon/utils/type-guards";
 import type { ToolResultImage, ToolResultLike } from "./types";
 
+// Re-exported from the dependency-free type-guards subpath for the same
+// bundle-safety reason as stripAnsi above.
 export { isRecord, stripAnsi };
 
+/** String passthrough; anything else (including null/undefined) → null. */
 export function str(value: unknown): string | null {
 	return typeof value === "string" ? value : null;
 }
@@ -15,13 +26,32 @@ export function num(value: unknown): number | null {
 	return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/** Coerce unknown to a display string ("" for null/undefined). */
 export function display(value: unknown): string {
 	if (value == null) return "";
 	if (typeof value === "string") return value;
 	if (typeof value === "number" || typeof value === "boolean") return String(value);
+	// The shared owner, so a cyclic or bigint value renders its contents rather
+	// than the literal text "[object Object]".
 	return stringifyJsonSafe(value);
 }
 
+/**
+ * Replace the `/Users/<x>` / `/home/<x>` home prefix with `~` for display.
+ *
+ * Browser-safe: this package bundles for the web, where `os.homedir()` is
+ * unavailable, so the home directory is matched by the `/Users/<user>` and
+ * `/home/<user>` conventions rather than the real `$HOME`. The coding-agent
+ * TUI has its own `shortenPath` in `coding-agent/src/tools/render-utils.ts`
+ * that collapses the real home dir (it runs under Node, where `$HOME` is
+ * known); the two are a deliberate runtime split, not an accidental
+ * duplicate. This is the single owner for every browser surface: collab-web
+ * re-exports it from here rather than keeping its own copy.
+ *
+ * Pass `collapseAfter` to also elide a long middle: a path with more than
+ * `collapseAfter` slash-separated segments renders as `first/…/last-two`.
+ * Omit it (the default) to shorten only the home prefix.
+ */
 export function shortenPath(p: string, opts?: { collapseAfter?: number }): string {
 	let out = p;
 	for (const prefix of ["/Users/", "/home/"]) {
@@ -42,6 +72,12 @@ export function shortenPath(p: string, opts?: { collapseAfter?: number }): strin
 	return out;
 }
 
+/**
+ * Search scope for display: the current `path` argument (else the legacy
+ * `paths`), normalized from a single string, a JSON-encoded string array
+ * (`'["a.ts","b.ts"]'`), or an actual array into a flat `string[]`. Mirrors the
+ * coding-agent `toPathList` so web cards render the same scope the tool searched.
+ */
 export function scopePaths(args: Record<string, unknown>): string[] {
 	const raw = args.path ?? args.paths;
 	if (typeof raw === "string") {
@@ -52,7 +88,16 @@ export function scopePaths(args: Record<string, unknown>): string[] {
 				if (Array.isArray(parsed) && parsed.every((p): p is string => typeof p === "string")) {
 					return parsed;
 				}
-			} catch {}
+			} catch {
+				// Not valid JSON — treat the whole string as one path.
+			}
+		}
+		if (trimmed.includes(";")) {
+			const parts = trimmed
+				.split(";")
+				.map(p => p.trim())
+				.filter(Boolean);
+			if (parts.length > 0) return parts;
 		}
 		return [raw];
 	}
@@ -60,10 +105,12 @@ export function scopePaths(args: Record<string, unknown>): string[] {
 	return [];
 }
 
+/** Differs from `@veyyon/utils/format`: provides default maxLen = 100 for tool renderers. */
 export function truncate(s: string, maxLen = 100): string {
 	return truncateChars(s, maxLen);
 }
 
+/** Collapse all whitespace runs to single spaces (for one-line summaries). */
 export function normalizeWs(s: string): string {
 	return collapseWhitespace(s);
 }
@@ -129,6 +176,7 @@ export function languageFromPath(filePath: string): string | null {
 	return EXT_TO_LANG[ext] ?? null;
 }
 
+/** Joined text blocks of a tool result ("" when absent). */
 export function resultTextOf(result: ToolResultLike | undefined): string {
 	if (!result) return "";
 	const parts: string[] = [];
@@ -152,10 +200,12 @@ export function resultImagesOf(result: ToolResultLike | undefined): ToolResultIm
 	return images;
 }
 
+/** `result.details` when it is a plain object; renderers narrow field-by-field. */
 export function detailsRecord(result: ToolResultLike | undefined): Record<string, unknown> | null {
 	return result && isRecord(result.details) ? result.details : null;
 }
 
+/** Compact one-line JSON digest of arbitrary args (generic summary fallback). */
 export function argsDigest(args: unknown, maxLen = 96): string {
 	if (args == null) return "";
 	if (isRecord(args) && Object.keys(args).length === 0) return "";
@@ -167,6 +217,11 @@ interface HljsLike {
 	highlight(code: string, options: { language: string; ignoreIllegals?: boolean }): { value: string };
 }
 
+/**
+ * Optional syntax highlighter seam. The HTML export page ships highlight.js as
+ * a global; the collab-web app does not bundle it. Renderers degrade to plain
+ * text when absent.
+ */
 export function getHljs(): HljsLike | null {
 	const candidate = (globalThis as { hljs?: HljsLike }).hljs;
 	return candidate && typeof candidate.highlight === "function" ? candidate : null;

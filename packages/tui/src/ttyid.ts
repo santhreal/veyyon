@@ -10,6 +10,9 @@ function getTtyPath(): string | null {
 				return ttyPath;
 			}
 		} catch {
+			// No readable /proc/self/fd/0 means stdin is not a tty we can name (a pipe, a container without
+			// /proc). Null is the documented "no tty path" answer and every caller has a non-tty path
+			// already, because that is also what Windows and a redirected stdin give.
 			return null;
 		}
 	} else if (os.platform() !== "win32") {
@@ -25,6 +28,9 @@ function getTtyPath(): string | null {
 				lib.close();
 			}
 		} catch {
+			// `ttyname(3)` was unavailable or failed: no libc to dlopen, no tty on fd 0. Null is the same
+			// "no tty path" answer as the Linux branch above, and it is what the caller expects when stdin
+			// is not a terminal.
 			return null;
 		}
 	}

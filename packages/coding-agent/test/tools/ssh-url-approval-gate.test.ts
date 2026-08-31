@@ -11,12 +11,12 @@ import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { Snowflake } from "@veyyon/utils";
 import { isolatedAuthStorage } from "../helpers/isolated-auth-storage";
 
-// Exercises the real per-tool approval gate (ExtensionToolWrapper) for read/grep/write,
+// Exercises the real per-tool approval gate (ExtensionToolWrapper) for read/search/write,
 // proving an `ssh://` target is exec-tier (prompts / is denied without a UI) while the
 // equivalent local-path call runs. ssh:// calls are rejected at the approval gate before any
 // connection, so this suite needs no live ssh.
 //
-// The read and grep cases run at `ask-command`, not `ask`. `ask` runs nothing
+// The read and search cases run at `ask-command`, not `ask`. `ask` runs nothing
 // unasked, so a local read would be refused there too and the pair would prove
 // nothing about ssh://. `ask-command` allows the read tier outright, so the only
 // thing that can still stop the ssh:// half is the exec escalation this suite is
@@ -55,7 +55,7 @@ describe("ssh:// tools are exec-gated through the production approval wrapper", 
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			toolNames: ["read", "grep", "write"],
+			toolNames: ["read", "search", "write"],
 		});
 		session = created.session;
 	});
@@ -69,7 +69,7 @@ describe("ssh:// tools are exec-gated through the production approval wrapper", 
 		}
 	});
 
-	function tool(name: "read" | "grep" | "write") {
+	function tool(name: "read" | "search" | "write") {
 		const found = session.getToolByName(name);
 		if (!found) throw new Error(`Expected ${name} tool`);
 		return found;
@@ -95,20 +95,20 @@ describe("ssh:// tools are exec-gated through the production approval wrapper", 
 		expect(JSON.stringify(ok.content)).toContain("hello-local");
 	});
 
-	it("grep: a delimited ssh:// entry requires approval before path expansion", async () => {
-		// The wrapper sees `paths` verbatim (pre-expansion), so the substring scan must trip exec here.
+	it("search: a delimited ssh:// entry requires approval before path expansion", async () => {
+		// The wrapper sees `path` verbatim (pre-expansion), so the substring scan must trip exec here.
 		await expect(
-			tool("grep").execute(
+			tool("search").execute(
 				"s-ssh",
-				{ pattern: "x", paths: "local.txt,ssh://localhost/etc/hosts" },
+				{ type: "text", input: "x", path: "local.txt,ssh://localhost/etc/hosts" },
 				undefined,
 				undefined,
 				ctx("ask-command"),
 			),
 		).rejects.toThrow(APPROVAL_RE);
-		const ok = await tool("grep").execute(
+		const ok = await tool("search").execute(
 			"s-local",
-			{ pattern: "hello", path: "." },
+			{ type: "text", input: "hello", path: "." },
 			undefined,
 			undefined,
 			ctx("ask-command"),

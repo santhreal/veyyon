@@ -1,4 +1,8 @@
-/** Agents CLI command handlers. Handles `veyyon agents unpack` for writing bundled agent definitions to disk. */
+/**
+ * Agents CLI command handlers.
+ *
+ * Handles `veyyon agents unpack` for writing bundled agent definitions to disk.
+ */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getAgentDir, getProjectDir, isEnoent } from "@veyyon/utils";
@@ -77,7 +81,7 @@ async function unpackBundledAgents(flags: AgentsCommandArgs["flags"]): Promise<U
 	const targetDir = resolveTargetDir(flags);
 	await fs.mkdir(targetDir, { recursive: true });
 
-	const bundledAgents = Array.from(loadBundledAgents()).sort((a, b) => a.name.localeCompare(b.name));
+	const bundledAgents = [...loadBundledAgents()].sort((a, b) => a.name.localeCompare(b.name));
 	const written: string[] = [];
 	const skipped: string[] = [];
 

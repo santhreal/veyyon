@@ -38,9 +38,19 @@ export type GuidedGoalTurnResult =
 export interface GuidedGoalTurnOptions {
 	messages: readonly GuidedGoalMessage[];
 	signal?: AbortSignal;
+	/**
+	 * Stable Codex transport session id reused across every turn of one
+	 * interview. `handleGuidedGoalCommand` runs up to six turns; minting a fresh
+	 * id per turn opens a new websocket-only Codex socket each time (kept in
+	 * `providerSessionState` until session dispose), which can trip
+	 * `websocket_connection_limit_reached` and drop back to the SSE path this
+	 * fix avoids. Callers pass one id for the whole interview; omitted for
+	 * one-shot callers, which mint a unique id per call.
+	 */
 	sideSessionId?: string;
 }
 
+/** Mint a guided-goal Codex side-session id keyed off the main session id. */
 export function newGuidedGoalSessionId(session: AgentSession): string {
 	return `${session.sessionId}:guided-goal:${Snowflake.next()}`;
 }
@@ -58,6 +68,9 @@ export function parseGuidedGoalPayload(value: unknown): GuidedGoalTurnResult {
 	if (kind === "question" && question) {
 		return objective ? { kind: "question", question, objective } : { kind: "question", question };
 	}
+	// A turn that answered the right shape under the wrong label still said
+	// something the interview can use. A question outranks a draft objective,
+	// because asking it is what carries the interview to a usable one.
 	if (question) {
 		return objective ? { kind: "question", question, objective } : { kind: "question", question };
 	}
@@ -70,6 +83,8 @@ function parseToolArguments(value: unknown): unknown {
 }
 
 function refreshGuidedContextForApiKey(apiKey: ApiKey, refresh: () => void): ApiKey {
+	// Static credentials still use the same builder. Resolver-backed credentials rebuild after
+	// every awaited resolution, including the credential selected for an authentication retry.
 	refresh();
 	if (typeof apiKey === "string") return apiKey;
 	return async context => {
@@ -111,6 +126,8 @@ export async function runGuidedGoalTurn(
 	const sanitizeLive = (text: string): string => session.obfuscateProviderText(text);
 	const providerContext: Context = { messages: [] };
 	const refreshProviderContext = (): void => {
+		// Retain the raw interview transcript until the physical attempt. Each complete field is
+		// sanitized before prompt rendering so later projection cannot split a secret.
 		const providerMessages = options.messages.map(message => ({
 			label: message.role.toUpperCase(),
 			content: sanitizeLive(message.content),
@@ -137,8 +154,22 @@ export async function runGuidedGoalTurn(
 			reasoning: toReasoningEffort(thinkingLevel),
 			disableReasoning: shouldDisableReasoning(thinkingLevel),
 			toolChoice: { type: "tool", name: RESPOND_TOOL_NAME },
+			// Provider adapters may introduce another serialized string surface. Walk the final
+			// payload with the then-current session runtime for every physical send.
 			onPayload: payload => mapJsonStrings(payload, sanitizeLive),
+			// Route through the session's provider transport so websocket-only Codex
+			// models (gpt-5.6-luna/sol/terra) get a websocket session instead of
+			// falling back to SSE — the Codex SSE /responses endpoint does not serve
+			// those ids and rejects the turn with "Model not found" (#5304, same class
+			// as the /btw regression in #5213). The side session id is minted once per
+			// interview and reused across turns so a multi-question interview shares one
+			// Codex socket instead of opening a fresh one each turn; it stays distinct
+			// from the main session id so the oneshot's append-only turn state never
+			// pollutes the main conversation.
 			sessionId: options.sideSessionId ?? newGuidedGoalSessionId(session),
+			// Providers route on `promptCacheKey ?? sessionId`. Mirror the pinned key
+			// the live turns cache under (fork/tan/shared sessions set one) so the
+			// interview reads that prefix instead of cold-missing it.
 			promptCacheKey: session.agent.promptCacheKey ?? session.sessionId,
 			preferWebsockets: session.preferWebsockets,
 			providerSessionState: session.providerSessionState,
@@ -165,6 +196,7 @@ export async function runGuidedGoalTurn(
 		result = parseGuidedGoalPayload(parseJsonPayload(text));
 	}
 
+	// Reverse the current runtime's placeholders before the result is shown or started.
 	const obfuscator = session.obfuscator;
 	if (!obfuscator?.hasSecrets()) return result;
 	if (result.kind === "question") {

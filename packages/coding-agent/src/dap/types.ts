@@ -1,5 +1,6 @@
 import type { ptree } from "@veyyon/utils";
 
+export type DapMessage = DapRequestMessage | DapResponseMessage | DapEventMessage;
 export type DapSessionStatus = "launching" | "configuring" | "stopped" | "running" | "terminated";
 
 export interface DapProtocolMessage {
@@ -26,6 +27,16 @@ export interface DapEventMessage extends DapProtocolMessage {
 	type: "event";
 	event: string;
 	body?: unknown;
+}
+
+export interface DapErrorBody {
+	id?: number;
+	format: string;
+	variables?: Record<string, string>;
+	showUser?: boolean;
+	sendTelemetry?: boolean;
+	url?: string;
+	urlLabel?: string;
 }
 
 export interface DapSource {
@@ -126,6 +137,28 @@ export interface DapAttachArguments {
 	[key: string]: unknown;
 }
 
+export interface DapConfigurationDoneArguments {
+	threadId?: number;
+}
+
+export interface DapSetBreakpointsArguments {
+	source: DapSource;
+	breakpoints: DapSourceBreakpoint[];
+	sourceModified?: boolean;
+}
+
+export interface DapSetBreakpointsResponse {
+	breakpoints: DapBreakpoint[];
+}
+
+export interface DapSetFunctionBreakpointsArguments {
+	breakpoints: DapFunctionBreakpoint[];
+}
+
+export interface DapSetFunctionBreakpointsResponse {
+	breakpoints: DapBreakpoint[];
+}
+
 export interface DapInstructionBreakpoint {
 	instructionReference: string;
 	offset?: number;
@@ -178,6 +211,16 @@ export interface DapStepArguments {
 	threadId: number;
 	singleThread?: boolean;
 	granularity?: "statement" | "line" | "instruction";
+}
+
+export interface DapTerminateArguments {
+	restart?: boolean;
+}
+
+export interface DapDisconnectArguments {
+	restart?: boolean;
+	terminateDebuggee?: boolean;
+	suspendDebuggee?: boolean;
 }
 
 export interface DapStackTraceArguments {
@@ -381,9 +424,20 @@ export interface DapStoppedEventBody {
 	hitBreakpointIds?: number[];
 }
 
+export interface DapContinuedEventBody {
+	threadId: number;
+	allThreadsContinued?: boolean;
+}
+
 export interface DapExitedEventBody {
 	exitCode?: number;
 }
+
+export interface DapTerminatedEventBody {
+	restart?: boolean | Record<string, unknown>;
+}
+
+export interface DapInitializedEventBody {}
 
 export interface DapRunInTerminalArguments {
 	kind?: "integrated" | "external";
@@ -423,7 +477,12 @@ export interface DapClientState {
 
 export interface DapAdapterConfig {
 	command: string;
-	/** Spellings tried, in order, when `command` does not resolve on PATH. For an interpreter whose name differs across platforms (`python3` on current */
+	/** Spellings tried, in order, when `command` does not resolve on PATH. For
+	 *  an interpreter whose name differs across platforms (`python3` on current
+	 *  Linux and macOS, `python` on Windows and older distributions) this is the
+	 *  difference between an available adapter and none. A config that names its
+	 *  own `command` drops the inherited list, so an explicit choice is never
+	 *  swapped for another binary. */
 	commandFallbacks?: string[];
 	args?: string[];
 	languages?: string[];
@@ -431,7 +490,10 @@ export interface DapAdapterConfig {
 	rootMarkers?: string[];
 	launchDefaults?: Record<string, unknown>;
 	attachDefaults?: Record<string, unknown>;
-	/** "stdio" (default): communicate via stdin/stdout pipes. "socket": adapter uses a network socket instead of stdio. */
+	/** "stdio" (default): communicate via stdin/stdout pipes.
+	 *  "socket": adapter uses a network socket instead of stdio.
+	 *  On Linux, connects via a unix domain socket.
+	 *  On macOS, the adapter dials into a local TCP listener (--client-addr). */
 	connectMode?: "stdio" | "socket";
 	/** When true, the adapter accepts a directory as the launch `program`
 	 *  (e.g. dlv treats it as a Go package path). When false/undefined, the
@@ -539,7 +601,10 @@ export interface DapLaunchSessionOptions {
 	program: string;
 	args?: string[];
 	cwd: string;
-	/** Per-launch overrides merged over `adapter.launchDefaults`. Used to inject adapter-specific values that depend on the resolved program */
+	/** Per-launch overrides merged over `adapter.launchDefaults`. Used to
+	 *  inject adapter-specific values that depend on the resolved program
+	 *  (e.g. dlv's `mode` switches between `debug` and `exec` based on
+	 *  whether `program` is a Go package path or a compiled binary). */
 	extraLaunchArguments?: Record<string, unknown>;
 }
 

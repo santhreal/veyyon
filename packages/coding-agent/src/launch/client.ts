@@ -1,19 +1,11 @@
 import * as fs from "node:fs/promises";
-import type * as net from "node:net";
+import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
-import { postmortem } from "@veyyon/utils";
+import { isEexist, isEnoent, postmortem } from "@veyyon/utils";
 import { isSettingsInitialized, Settings } from "../config/settings";
 import { resolveWorkerSpawnCmd, workerEnvFromParent } from "../subprocess/worker-client";
-import type { DaemonBrokerClient, DaemonBrokerClientOptions, PendingRequest } from "./client-helpers";
-import {
-	BROKER_CONNECT_TIMEOUT_MS,
-	CONNECT_RETRY_MS,
-	openSocket,
-	readOrCreateToken,
-	requestTimeoutMs,
-} from "./client-helpers";
-import { canonicalProjectDir, daemonBrokerEndpoint, daemonRuntimeDir } from "./paths";
+import { canonicalProjectDir, daemonBrokerEndpoint, daemonBrokerTokenPath, daemonRuntimeDir } from "./paths";
 import {
 	DAEMON_BROKER_WORKER_ARG,
 	DAEMON_CLEANUP_WAIT_ENV,
@@ -27,7 +19,110 @@ import {
 	parseDaemonWireResponse,
 } from "./protocol";
 
-export type { DaemonBrokerClient };
+// How long a client waits to reach the LOCAL broker over its unix socket,
+// including spawning one if none is live. A loopback budget, unrelated to the
+// relay connect timeout in collab/host.ts, which crosses the network.
+const BROKER_CONNECT_TIMEOUT_MS = 10_000;
+const CONNECT_RETRY_MS = 50;
+
+interface PendingRequest {
+	operation: DaemonOperation;
+	resolve: (result: DaemonRpcResult) => void;
+	reject: (error: Error) => void;
+	timer: NodeJS.Timeout;
+	removeAbort?: () => void;
+}
+
+/** Broker location and lifecycle overrides used by smoke tests and isolated consumers. */
+export interface DaemonBrokerClientOptions {
+	/** Runtime directory override; defaults to the project-scoped config path. */
+	runtimeDir?: string;
+	/** Last-client shutdown grace override in milliseconds. */
+	idleGraceMs?: number;
+	/** Exited process retention TTL before purge in milliseconds (0 = never clean up). */
+	cleanupWaitMs?: number;
+	/**
+	 * Session CPU budget hook for the broker spawn. The broker is shared per
+	 * project and spawns every managed daemon, so adopting the broker joins
+	 * the whole tree it will ever launch to the spawning session's budget.
+	 */
+	adoptSpawnedPid?: (pid: number) => void;
+}
+
+/** Persistent per-process connection to one project's daemon broker. */
+export interface DaemonBrokerClient {
+	readonly projectDir: string;
+	request(operation: DaemonOperation, signal?: AbortSignal): Promise<DaemonRpcResult>;
+	close(): void;
+}
+
+async function readOrCreateToken(runtimeDir: string): Promise<string> {
+	await fs.mkdir(runtimeDir, { recursive: true, mode: 0o700 });
+	const tokenPath = daemonBrokerTokenPath(runtimeDir);
+	const tokenFile = Bun.file(tokenPath);
+	for (let attempt = 0; attempt < 100; attempt++) {
+		try {
+			const token = (await tokenFile.text()).trim();
+			if (token.length > 0) return token;
+		} catch (error) {
+			if (!isEnoent(error)) throw error;
+		}
+
+		try {
+			const handle = await fs.open(tokenPath, "wx", 0o600);
+			try {
+				const token = crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
+				await handle.writeFile(token, "utf8");
+				return token;
+			} finally {
+				await handle.close();
+			}
+		} catch (error) {
+			if (!isEexist(error)) throw error;
+		}
+		await Bun.sleep(10);
+	}
+	throw new Error(`Timed out initializing daemon broker token in ${runtimeDir}`);
+}
+
+function requestTimeoutMs(operation: DaemonOperation): number {
+	switch (operation.op) {
+		case "start":
+			return (operation.spec.ready?.timeoutMs ?? BROKER_CONNECT_TIMEOUT_MS) + 5_000;
+		case "wait":
+		case "logs":
+		case "stop":
+			return operation.timeoutMs + 5_000;
+		default:
+			return 30_000;
+	}
+}
+
+function openSocket(endpoint: string, timeoutMs: number): Promise<net.Socket> {
+	const { promise, resolve, reject } = Promise.withResolvers<net.Socket>();
+	const socket = net.createConnection({ path: endpoint });
+	const timer = setTimeout(() => {
+		socket.destroy();
+		reject(new Error(`Timed out connecting to daemon broker at ${endpoint}`));
+	}, timeoutMs);
+	const cleanup = (): void => {
+		clearTimeout(timer);
+		socket.off("connect", onConnect);
+		socket.off("error", onError);
+	};
+	const onConnect = (): void => {
+		cleanup();
+		resolve(socket);
+	};
+	const onError = (error: Error): void => {
+		cleanup();
+		socket.destroy();
+		reject(error);
+	};
+	socket.once("connect", onConnect);
+	socket.once("error", onError);
+	return promise;
+}
 
 class SocketDaemonClient implements DaemonBrokerClient {
 	readonly projectDir: string;
@@ -107,7 +202,10 @@ class SocketDaemonClient implements DaemonBrokerClient {
 		try {
 			this.#bindSocket(await openSocket(this.#endpoint, 250));
 			return;
-		} catch {}
+		} catch {
+			// No live broker. Multiple clients may race to spawn; the broker's PID
+			// lease selects one winner before any candidate touches the socket.
+		}
 		this.#spawnBroker();
 		const deadline = Date.now() + BROKER_CONNECT_TIMEOUT_MS;
 		let lastError: Error | undefined;
@@ -148,7 +246,9 @@ class SocketDaemonClient implements DaemonBrokerClient {
 		this.#buffer = "";
 		socket.setEncoding("utf8");
 		socket.on("data", chunk => this.#onData(chunk));
-		socket.on("error", () => {});
+		socket.on("error", () => {
+			// The close handler rejects pending requests with one stable error.
+		});
 		socket.on("close", () => {
 			if (this.#socket === socket) this.#socket = undefined;
 			this.#rejectPending(new Error("Daemon broker connection closed"));
@@ -201,6 +301,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 const sharedClients = new Map<string, Promise<DaemonBrokerClient>>();
 let cancelExitCleanup: (() => void) | undefined;
 
+/** Create an independent socket connection to one project's shared daemon broker. */
 export async function createDaemonBrokerClient(
 	projectDir: string,
 	options: DaemonBrokerClientOptions = {},
@@ -211,6 +312,7 @@ export async function createDaemonBrokerClient(
 	return new SocketDaemonClient(canonical, runtimeDir, token, options);
 }
 
+/** Get the process-shared daemon broker client for one canonical project directory. */
 export async function daemonClientForProject(
 	projectDir: string,
 	options: DaemonBrokerClientOptions = {},
@@ -222,6 +324,12 @@ export async function daemonClientForProject(
 			options.cleanupWaitMs ?? (isSettingsInitialized() ? Settings.instance.get("launch.cleanupWaitMs") : undefined);
 		pending = createDaemonBrokerClient(canonical, { ...options, cleanupWaitMs });
 		sharedClients.set(canonical, pending);
+		// A connection that fails is not cached. `createDaemonBrokerClient` reads
+		// the runtime token and canonicalizes the project directory, and both fail
+		// transiently while a broker is still binding its socket. Caching the
+		// rejected promise made every later `launch` in the process fail with the
+		// first error, with no route back short of a restart. The identity check
+		// leaves a later successful client in place.
 		const attempt = pending;
 		void attempt.catch(() => {
 			if (sharedClients.get(canonical) === attempt) sharedClients.delete(canonical);
@@ -233,9 +341,12 @@ export async function daemonClientForProject(
 	return pending;
 }
 
+/** Close every project broker connection held by this veyyon process. */
 export async function closeDaemonClients(): Promise<void> {
-	const pending = Array.from(sharedClients.values());
+	const pending = [...sharedClients.values()];
 	sharedClients.clear();
+	// One connection that never resolved must not strand the rest: settle every
+	// entry and close the ones that produced a client.
 	for (const result of await Promise.allSettled(pending)) {
 		if (result.status === "fulfilled") result.value.close();
 	}
@@ -243,6 +354,7 @@ export async function closeDaemonClients(): Promise<void> {
 	cancelExitCleanup = undefined;
 }
 
+/** Exercise worker-host broker startup and authenticated RPC for distribution smoke tests. */
 export async function smokeTestDaemonBroker(): Promise<void> {
 	const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-daemon-smoke-project-"));
 	const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-daemon-smoke-run-"));

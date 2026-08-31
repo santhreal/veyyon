@@ -1,4 +1,9 @@
-/** Claude Code Marketplace Plugin Provider Loads configuration from ~/.claude/plugins/cache/ based on installed_plugins.json registry. */
+/**
+ * Claude Code Marketplace Plugin Provider
+ *
+ * Loads configuration from ~/.claude/plugins/cache/ based on installed_plugins.json registry.
+ * Priority: 70 (below claude.ts at 80, so user overrides in .claude/ take precedence)
+ */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage, getAgentDir, isEnoent, isRecord, logger } from "@veyyon/utils";
@@ -93,7 +98,30 @@ function isWithinPluginRoot(rootPath: string, targetPath: string): boolean {
 	return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-/** Resolve a manifest-declared directory field to absolute paths within the plugin root. */
+/**
+ * Resolve a manifest-declared directory field to absolute paths within the
+ * plugin root.
+ *
+ * Manifest path fields may be `string` or `string[]`
+ * (https://code.claude.com/docs/en/plugins-reference#path-behavior-rules);
+ * both shapes are normalized here. The first `manifestKeys` entry that
+ * supplies at least one non-empty path wins (later keys are ignored — used for
+ * the `commands` > `slash-commands` legacy fallback).
+ *
+ * `fallback` is the default subdirectory (e.g. `skills/`, `commands/`) and
+ * `includeFallback` controls the Claude-documented merge semantic per field:
+ *
+ * - `skills` **adds to** the default: `fallback` is always scanned, and any
+ *   manifest entries load alongside it. Callers pass `includeFallback: true`.
+ * - `commands` / `slash-commands` **replace** the default: an explicit
+ *   manifest key means the default `commands/` directory is not scanned.
+ *   Callers pass `includeFallback: false` (the manifest itself may still
+ *   list `./commands` explicitly to keep it).
+ *
+ * When no matching key is set, the fallback is used regardless. Entries that
+ * resolve outside the plugin root are dropped with a warning so misconfigured
+ * manifests remain observable and cannot escape via traversal.
+ */
 async function resolvePluginDir(
 	root: ClaudePluginRoot,
 	manifestKeys: ReadonlyArray<keyof ClaudePluginManifest>,
@@ -130,7 +158,10 @@ async function resolvePluginDir(
 		return { dirs: [fallbackDir], warnings };
 	}
 
-	// Dedup preserves order: default entry (when included) first, then declared entries in manifest order. Deduping the paths themselves means a plugin
+	// Dedup preserves order: default entry (when included) first, then declared
+	// entries in manifest order. Deduping the paths themselves means a plugin
+	// author can still list `./commands` explicitly when they want the default
+	// alongside extras without producing double-loads.
 	const seen = new Set<string>();
 	const dirs: string[] = [];
 	if (includeFallback) {
@@ -153,6 +184,10 @@ async function resolvePluginDir(
 	return { dirs, warnings };
 }
 
+// =============================================================================
+// Skills
+// =============================================================================
+
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>> {
 	const items: DiscoveredSkill[] = [];
 	const warnings: string[] = [];
@@ -162,7 +197,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
 		ctx.agentDir ?? getAgentDir(),
 	);
-	for (let wi = 0; wi < rootWarnings.length; wi++) warnings.push(rootWarnings[wi]!);
+	warnings.push(...rootWarnings);
 	const results = await Promise.all(
 		roots.map(async root => {
 			const resolveWarnings: string[] = [];
@@ -173,7 +208,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 				"skills",
 				includeFallback,
 			);
-			for (let wi = 0; wi < dirWarnings.length; wi++) resolveWarnings.push(dirWarnings[wi]!);
+			resolveWarnings.push(...dirWarnings);
 			const scanResults = await Promise.all(
 				skillsDirs.map(dir =>
 					scanSkillsFromDir({
@@ -188,17 +223,23 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 		}),
 	);
 	for (const { scanResults, resolveWarnings } of results) {
-		for (let wi = 0; wi < resolveWarnings.length; wi++) warnings.push(resolveWarnings[wi]!);
-		// Intentionally do NOT prefix skill names with `root.plugin`. The `plugin:name` format breaks skill:// URL parsing (colons are
+		warnings.push(...resolveWarnings);
+		// Intentionally do NOT prefix skill names with `root.plugin`.
+		// The `plugin:name` format breaks skill:// URL parsing (colons are
+		// ambiguous with port separators) and is unintuitive for callers.
+		// Dedup-by-key in the capability layer already handles name collisions
+		// across providers using priority ordering.
 		for (const result of scanResults) {
-			for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
-			if (result.warnings) {
-				for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
-			}
+			items.push(...result.items);
+			if (result.warnings) warnings.push(...result.warnings);
 		}
 	}
 	return { items, warnings };
 }
+
+// =============================================================================
+// Slash Commands
+// =============================================================================
 
 async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {
 	const items: SlashCommand[] = [];
@@ -210,7 +251,7 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
 		ctx.agentDir ?? getAgentDir(),
 	);
-	for (let wi = 0; wi < rootWarnings.length; wi++) warnings.push(rootWarnings[wi]!);
+	warnings.push(...rootWarnings);
 
 	const results = await Promise.all(
 		roots.map(async root => {
@@ -243,7 +284,12 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 							};
 						}
 					} catch (error) {
-						// A missing entry is the normal case and still falls through to the directory loader below, which reports nothing for a missing dir.
+						// A missing entry is the normal case and still falls through to the
+						// directory loader below, which reports nothing for a missing dir.
+						// Anything else (a permission denial, a broken symlink, a path that
+						// is not a directory) used to be indistinguishable from "this plugin
+						// ships no commands", so the operator's plugin slash commands just
+						// stopped existing with no line anywhere saying why.
 						if (!isEnoent(error)) {
 							return {
 								items: [],
@@ -271,17 +317,19 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 	);
 
 	for (const { commandResults, resolveWarnings } of results) {
-		for (let wi = 0; wi < resolveWarnings.length; wi++) warnings.push(resolveWarnings[wi]!);
+		warnings.push(...resolveWarnings);
 		for (const commandResult of commandResults) {
-			for (let ii = 0; ii < commandResult.items.length; ii++) items.push(commandResult.items[ii]!);
-			if (commandResult.warnings) {
-				for (let wi = 0; wi < commandResult.warnings.length; wi++) warnings.push(commandResult.warnings[wi]!);
-			}
+			items.push(...commandResult.items);
+			if (commandResult.warnings) warnings.push(...commandResult.warnings);
 		}
 	}
 
 	return { items, warnings };
 }
+
+// =============================================================================
+// Hooks
+// =============================================================================
 
 async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	const items: Hook[] = [];
@@ -293,7 +341,7 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
 		ctx.agentDir ?? getAgentDir(),
 	);
-	for (let wi = 0; wi < rootWarnings.length; wi++) warnings.push(rootWarnings[wi]!);
+	warnings.push(...rootWarnings);
 
 	const hookTypes = ["pre", "post"] as const;
 
@@ -324,14 +372,16 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	);
 
 	for (const result of results) {
-		for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
-		if (result.warnings) {
-			for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
-		}
+		items.push(...result.items);
+		if (result.warnings) warnings.push(...result.warnings);
 	}
 
 	return { items, warnings };
 }
+
+// =============================================================================
+// Custom Tools
+// =============================================================================
 
 async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomTool>> {
 	const items: DiscoveredCustomTool[] = [];
@@ -343,7 +393,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
 		ctx.agentDir ?? getAgentDir(),
 	);
-	for (let wi = 0; wi < rootWarnings.length; wi++) warnings.push(rootWarnings[wi]!);
+	warnings.push(...rootWarnings);
 
 	const results = await Promise.all(
 		roots.map(async root => {
@@ -364,14 +414,16 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 	);
 
 	for (const result of results) {
-		for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
-		if (result.warnings) {
-			for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
-		}
+		items.push(...result.items);
+		if (result.warnings) warnings.push(...result.warnings);
 	}
 
 	return { items, warnings };
 }
+
+// =============================================================================
+// MCP Servers
+// =============================================================================
 
 async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> {
 	const items: MCPServer[] = [];
@@ -383,7 +435,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
 		ctx.agentDir ?? getAgentDir(),
 	);
-	for (let wi = 0; wi < rootWarnings.length; wi++) warnings.push(rootWarnings[wi]!);
+	warnings.push(...rootWarnings);
 
 	for (const root of roots) {
 		const mcpPath = path.join(root.path, ".mcp.json");
@@ -402,7 +454,11 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 		if (!isRecord(parsed)) continue;
 		const obj = parsed as Record<string, unknown>;
 
-		// Two shapes are supported: nested: { "mcpServers": { name: cfg, ... } } (Veyyon/Claude Code project shape)
+		// Two shapes are supported:
+		//   nested: { "mcpServers": { name: cfg, ... } }   (Veyyon/Claude Code project shape)
+		//   flat:   { name: cfg, ... }                      (Claude marketplace plugin shape)
+		// If "mcpServers" is present and an object, treat it as the canonical map.
+		// Otherwise, treat the whole object as the server map.
 		let servers: Record<string, unknown>;
 		if (
 			obj.mcpServers !== undefined &&
@@ -474,6 +530,10 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 
 	return { items, warnings };
 }
+
+// =============================================================================
+// Provider Registration
+// =============================================================================
 
 registerProvider<DiscoveredSkill>(skillCapability.id, {
 	id: PROVIDER_ID,

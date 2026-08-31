@@ -230,7 +230,12 @@ describe("subagent settings migration", () => {
 		expect(reported).toContain("scout=openai/gpt-5");
 		expect(reported).toContain("reviewer=anthropic/claude-opus-4-5");
 		expect(reported).toContain("no longer read");
-		expect(reported).toContain("Subagent Model");
+		// The row this used to name is gone. A migration notice that sends the reader
+		// to a deleted screen is worse than none, so it names the surface that still
+		// exists and the two ways to set the value there.
+		expect(reported).toContain("Subagents → Roster");
+		expect(reported).not.toContain("Subagent Model");
+		expect(reported).toContain("model:");
 	});
 
 	/**
@@ -399,7 +404,7 @@ describe("subagent settings migration", () => {
 	/**
 	 * WHERE EVERY SUBAGENT SETTING'S LEGACY VALUE COMES FROM, ENUMERATED AT RUN TIME.
 	 *
-	 * Each case above pins one legacy key, which closes those incidents and nothing else. The next
+	 * Each case above pins one legacy key, which prunes those incidents and nothing else. The next
 	 * setting added to this section arrives with no case at all, and a legacy key it should have
 	 * consumed is then discovered by an operator whose config silently reverted to a default. So the
 	 * section is enumerated from `SETTINGS_SCHEMA` and every path is probed against the real loader,
@@ -437,11 +442,14 @@ describe("subagent settings migration", () => {
 
 		/** Settings that never existed before this section, so there is nothing to carry. */
 		const NO_LEGACY_SOURCE: readonly string[] = [
-			"subagent.autoClose.enabled",
-			"subagent.autoClose.parkedMs",
-			"subagent.autoClose.waitingMs",
+			"subagent.prune.enabled",
+			"subagent.prune.afterMs",
+			"subagent.prune.waitingAfterMs",
 			"subagent.modelByDepth",
 			"subagent.thinkingLevel",
+			// New with the roster's shared switch: nothing older asked this question,
+			// so there is no key to carry from.
+			"subagent.sharedModel",
 		];
 
 		const subagentPaths = Object.keys(SETTINGS_SCHEMA)

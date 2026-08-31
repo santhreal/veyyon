@@ -119,10 +119,10 @@ describe("AgentSession threshold compaction input", () => {
 
 		sessionManager.appendMessage({ role: "user", content: "Run the search too.", timestamp: Date.now() });
 		appendAssistant(
-			[{ type: "toolCall", id: USELESS_ID, name: "grep", arguments: { pattern: "missing" } }],
+			[{ type: "toolCall", id: USELESS_ID, name: "search", arguments: { type: "text", input: "missing" } }],
 			"toolUse",
 		);
-		appendToolResult(USELESS_ID, "grep", USELESS_BYTES, true);
+		appendToolResult(USELESS_ID, "search", USELESS_BYTES, true);
 		session.agent.replaceMessages(session.buildDisplaySessionContext().messages);
 
 		const rewriteSpy = vi.spyOn(sessionManager, "rewriteEntries");

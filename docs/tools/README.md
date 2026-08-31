@@ -24,9 +24,7 @@ these pages:
 | `read` | [read.md](read.md) |
 | `write` | [write.md](write.md) |
 | `edit` | [edit.md](edit.md) |
-| `glob` | [glob.md](glob.md) |
-| `grep` | [grep.md](grep.md) |
-| `ast_grep` | [ast-grep.md](ast-grep.md) |
+| `search` | [search.md](search.md) |
 | `ast_edit` | [ast-edit.md](ast-edit.md) |
 | `resolve` | [resolve.md](resolve.md) (hidden: merge-conflict resolution) |
 

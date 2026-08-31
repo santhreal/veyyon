@@ -1,4 +1,8 @@
-/** Text rendering for `veyyon session stats`. Separated from the pure analysis ({@link computeSessionStats}) so the aggregate math is tested on values while */
+/**
+ * Text rendering for `veyyon session stats`. Separated from the pure analysis
+ * ({@link computeSessionStats}) so the aggregate math is tested on values while
+ * the layout is tested on strings.
+ */
 
 import { formatBytes, formatDuration, formatNumber } from "@veyyon/utils";
 import type { SessionStatsReport, TurnStat } from "./session-stats";
@@ -34,11 +38,15 @@ function table(
 	return [format(header), ...rows.map(format)];
 }
 
-/** Choose which turns to print. Short sessions show every turn in order; long ones show the {@link TURN_CAP} slowest turns (by request time) kept in their */
+/**
+ * Choose which turns to print. Short sessions show every turn in order; long
+ * ones show the {@link TURN_CAP} slowest turns (by request time) kept in their
+ * original order, with a note that says so — the slow turns are where a study
+ * looks first, and `--json` still carries the full sequence.
+ */
 function selectTurns(turns: readonly TurnStat[]): { shown: TurnStat[]; note?: string } {
-	if (turns.length <= TURN_CAP) return { shown: turns.slice() };
-	const slowest = turns
-		.slice()
+	if (turns.length <= TURN_CAP) return { shown: [...turns] };
+	const slowest = [...turns]
 		.sort((a, b) => (b.requestMs ?? 0) - (a.requestMs ?? 0))
 		.slice(0, TURN_CAP)
 		.sort((a, b) => a.index - b.index);

@@ -1,5 +1,5 @@
-import { type Component, matchesKey, parseSgrMouse, ScrollView } from "@veyyon/tui";
-import { clampLow, errorMessage } from "@veyyon/utils";
+import { type Component, matchesKey, parseSgrMouse, replaceTabs, ScrollView, truncateToWidth } from "@veyyon/tui";
+import { clampLow, errorMessage, sanitizeText } from "@veyyon/utils";
 import { bottomBorder, divider, row, topBorder } from "../modes/components/overlay-box";
 import { theme } from "../modes/theme/theme";
 import { copyToClipboard } from "../utils/clipboard";
@@ -9,16 +9,57 @@ import {
 	type RawSseDebugRecord,
 	rawSseRecordLines,
 } from "./raw-sse-buffer";
-import type { RawSseViewerOptions } from "./raw-sse-helpers";
-import {
-	expandPrettyDataLines,
-	MIN_VIEWER_WIDTH,
-	SCROLL_LIST_THEME,
-	sanitizeFrameLine,
-	VIEWER_CHROME_LINES,
-} from "./raw-sse-helpers";
 
-export { expandPrettyDataLines };
+const MIN_VIEWER_WIDTH = 40;
+const VIEWER_CHROME_LINES = 6;
+// `data:` lines below this width render fine on a single row; anything wider gets pretty-printed
+// across multiple `data:` lines so streamed JSON blobs stop getting clipped by `truncateToWidth`.
+const PRETTY_PRINT_DATA_THRESHOLD = 100;
+
+function sanitizeFrameLine(line: string, width: number): string {
+	return truncateToWidth(replaceTabs(sanitizeText(line)), width);
+}
+
+// Walks the SSE wire lines and replaces single-line `data: <json>` payloads with
+// multi-line `data: <indented-json>` entries when the JSON is wide enough to clip.
+// Multi-line `data:` is still valid SSE (the spec joins lines with `\n`), so the
+// transformed view round-trips back to the same event when copied.
+/** @internal Exported for tests. */
+export function expandPrettyDataLines(raw: readonly string[]): string[] {
+	const out: string[] = [];
+	for (const line of raw) {
+		if (!line.startsWith("data: ") || line.length <= PRETTY_PRINT_DATA_THRESHOLD) {
+			out.push(line);
+			continue;
+		}
+		const body = line.slice("data: ".length);
+		const trimmed = body.trim();
+		if (trimmed.length === 0 || (trimmed[0] !== "{" && trimmed[0] !== "[")) {
+			out.push(line);
+			continue;
+		}
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(trimmed);
+		} catch {
+			out.push(line);
+			continue;
+		}
+		const pretty = JSON.stringify(parsed, null, 2);
+		for (const prettyLine of pretty.split("\n")) {
+			out.push(`data: ${prettyLine}`);
+		}
+	}
+	return out;
+}
+
+export interface RawSseViewerOptions {
+	buffer: RawSseDebugBuffer;
+	terminalRows: number;
+	onExit: () => void;
+	onStatus?: (message: string) => void;
+	onUpdate?: () => void;
+}
 
 export class RawSseViewerComponent implements Component {
 	readonly #buffer: RawSseDebugBuffer;
@@ -33,7 +74,11 @@ export class RawSseViewerComponent implements Component {
 	#statusMessage: string | undefined;
 	#bodyRowStart = 0;
 	#bodyRowCount = 0;
-	// Pretty-printed wire lines keyed by `record.sequence`. Pretty-printing is the JSON.parse + JSON.stringify per `data:` line, so we cache the result —
+	// Pretty-printed wire lines keyed by `record.sequence`. Pretty-printing is
+	// the JSON.parse + JSON.stringify per `data:` line, so we cache the result —
+	// the render path runs on every keypress and from `#maxScrollOffset()`.
+	// Sequences are monotonic; we prune entries below the oldest live record
+	// after each render so the cache tracks the buffer's eviction window.
 	readonly #prettyLinesCache = new Map<number, string[]>();
 
 	constructor(options: RawSseViewerOptions) {
@@ -145,7 +190,7 @@ export class RawSseViewerComponent implements Component {
 			height: bodyHeight,
 			scrollbar: "auto",
 			totalRows: rawLines.length,
-			theme: SCROLL_LIST_THEME,
+			theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
 		});
 		sv.setScrollOffset(this.#scrollOffset);
 		const bodyRows = sv.render(contentWidth);

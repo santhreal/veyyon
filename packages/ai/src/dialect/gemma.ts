@@ -1,19 +1,6 @@
 import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlap, partialSuffixOverlapAny, setToolArg } from "./coercion";
-import type { ParsedCall, State } from "./gemma-helpers";
-import {
-	CALL_HEAD,
-	GEMMA_CALL_CLOSE,
-	GEMMA_CALL_OPEN,
-	GEMMA_RESPONSE_CLOSE,
-	GEMMA_RESPONSE_OPEN,
-	GEMMA_THOUGHT_CLOSE,
-	GEMMA_THOUGHT_OPEN,
-	OPEN_TAGS,
-	OPEN_TAGS_THINK,
-	STRING,
-} from "./gemma-helpers";
 import { assistantTranscriptParts, collectToolResultRun, gemmaTurn, messageContentText } from "./rendering";
 import type {
 	DialectDefinition,
@@ -24,6 +11,37 @@ import type {
 	InbandScannerOptions,
 } from "./types";
 
+/**
+ * Gemma's own tags, every one prefixed with the dialect. The bare names collided across this directory: this
+ * file's `GEMMA_CALL_OPEN` was `<|tool_call>` while `pi-native.ts` used the same name for `<call:`, and its
+ * `GEMMA_RESPONSE_OPEN` was `<|tool_response>` while `glm.ts` used the same name for the shared `<tool_response>`.
+ * One name standing for different bytes in sibling files is a latent bug rather than a style nit, since the
+ * next reader carries the wrong meaning across the file boundary.
+ */
+const GEMMA_CALL_OPEN = "<|tool_call>";
+const GEMMA_CALL_CLOSE = "<tool_call|>";
+const STRING = '<|"|>';
+const GEMMA_RESPONSE_OPEN = "<|tool_response>";
+const GEMMA_RESPONSE_CLOSE = "<tool_response|>";
+const OPEN_TAGS = [GEMMA_CALL_OPEN] as const;
+const GEMMA_THOUGHT_OPEN = "<|channel>thought\n";
+const GEMMA_THOUGHT_CLOSE = "<channel|>";
+const OPEN_TAGS_THINK = [GEMMA_CALL_OPEN, GEMMA_THOUGHT_OPEN] as const;
+const CALL_HEAD = /^call:\s*([A-Za-z_]\w*)\s*\{/;
+
+type State = "outside" | "tool" | "thinking";
+
+interface ParsedCall {
+	name: string;
+	arguments: Record<string, unknown>;
+}
+
+/**
+ * Scanner for the Gemma 4 token-delimited tool-calling convention (see
+ * `docs/internal/toolconv/gemma.md`). Each call is one `<|tool_call>call:NAME{…}<tool_call|>`
+ * block whose argument list is `key:value` pairs; string values are wrapped in
+ * the `<|"|>` token rather than ASCII quotes, so splitting must skip those spans.
+ */
 class GemmaInbandScanner implements InbandScanner {
 	#buffer = "";
 	#state: State = "outside";
@@ -199,6 +217,7 @@ function parseGemmaValue(raw: string): unknown {
 	return t;
 }
 
+/** Index just past the `<|"|>`-delimited string starting at `i`. */
 function skipGemmaString(text: string, i: number): number {
 	const close = text.indexOf(STRING, i + STRING.length);
 	return close === -1 ? text.length : close + STRING.length;
@@ -218,6 +237,7 @@ function findCallClose(text: string): number {
 	return -1;
 }
 
+/** Index of the `close` delimiter matching `open` at `openIndex`, skipping strings. */
 function matchDelim(text: string, openIndex: number, open: string, close: string): number {
 	let depth = 0;
 	let i = openIndex;
@@ -235,6 +255,7 @@ function matchDelim(text: string, openIndex: number, open: string, close: string
 	return -1;
 }
 
+/** Split on `sep` at bracket depth 0, skipping `<|"|>` string spans. */
 function splitTopLevel(text: string, sep: string): string[] {
 	const parts: string[] = [];
 	let depth = 0;
@@ -259,6 +280,7 @@ function splitTopLevel(text: string, sep: string): string[] {
 	return parts;
 }
 
+/** First index of `ch` at bracket depth 0, skipping `<|"|>` string spans. */
 function topLevelIndexOf(text: string, ch: string): number {
 	let depth = 0;
 	let i = 0;

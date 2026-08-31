@@ -9,9 +9,12 @@ import { type Component, Text } from "@veyyon/tui";
 import { isCancellation } from "@veyyon/utils/abortable";
 import { formatCount, formatMoreLines, truncate } from "@veyyon/utils/format";
 import { isEnoent } from "@veyyon/utils/fs-error";
+// Owners, not the `@veyyon/utils` barrel: 8 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import * as ptree from "@veyyon/utils/ptree";
 import { errorMessage } from "@veyyon/utils/type-guards";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
+import { $which } from "@veyyon/utils/which";
 import { LRUCache } from "lru-cache/raw";
 import type { Settings } from "../config/settings";
 import { readEditableNotebookText } from "../edit/notebook";
@@ -21,9 +24,11 @@ import { theme } from "../modes/theme/theme-binding";
 import type { Theme } from "../modes/theme/theme-class";
 import { type ProviderTextTransformResolver, resolveProviderTextTransform } from "../provider-boundary";
 import type { ToolSession } from "../sdk";
-import type { AgentStorage } from "../session/agent-storage";
+import { AgentStorage } from "../session/agent-storage";
 import { primarySessionCpuAdoption } from "../session/cpu-limit";
-import { DEFAULT_MAX_BYTES, truncateHead } from "../session/streaming-output";
+import { truncateHead } from "../session/streaming-output";
+// Each from its owner, not the `../tui` barrel: the barrel is 768 modules because it re-exports the
+// hyperlink module, and `read.ts` imports this file.
 import { urlHyperlink } from "../tui/hyperlink";
 import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block";
 import { renderStatusLine } from "../tui/status-line";
@@ -42,57 +47,600 @@ import {
 	MAX_BYTES,
 	MAX_OUTPUT_CHARS,
 	type RenderResult,
+	type ScraperDegrade,
 	type SpecialHandler,
 } from "../web/scrapers/types";
 import { convertWithMarkit, fetchBinary } from "../web/scrapers/utils";
-import {
-	ARCHIVE_EXTENSIONS,
-	ARCHIVE_MIMES,
-	CONVERTIBLE_MIMES,
-	extractHeadHtml,
-	FETCH_DEFAULT_MAX_LINES,
-	getExtensionHint,
-	getFilenameExtensionHint,
-	getHtmlAttribute,
-	hasCommand,
-	hasCredentialBearingUrl,
-	htmlNestingExceeds,
-	isConvertible,
-	isInlineImageMimeTypeSupported,
-	MAX_HTML_NESTING_DEPTH,
-	MAX_INLINE_IMAGE_OUTPUT_BYTES,
-	MAX_INLINE_IMAGE_SOURCE_BYTES,
-	NOTEBOOK_EXTENSIONS,
-	NOTEBOOK_MIMES,
-	normalizeMime,
-	normalizeUrl,
-	parseReadUrlTarget,
-	resolveImageMimeType,
-	SQLITE_EXTENSIONS,
-	SQLITE_MIMES,
-	SUPPORTED_INLINE_IMAGE_MIME_TYPES,
-	tryContentNegotiation,
-	tryLlmEndpoints,
-	tryMdSuffix,
-} from "./fetch-helpers";
 import { applyListLimit } from "./list-limit";
+import { inlineBudgetFor } from "./output-artifact";
 import { formatStyledArtifactReference, type OutputMeta } from "./output-meta";
+import { isReadableUrlPath, type LineRange, parseLineRanges } from "./path-utils";
 import { formatBytes, formatExpandHint, getDomain, replaceTabs } from "./render-utils";
 import { listTables, looksLikeSqlite, renderTableList } from "./sqlite-reader";
 import { ToolError, throwIfAborted } from "./tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout } from "./tool-timeouts";
 
-export {
-	hasCredentialBearingUrl,
-	htmlNestingExceeds,
-	type ParsedReadUrlTarget,
-	parseReadUrlTarget,
-} from "./fetch-helpers";
+// =============================================================================
+// Types and Constants
+// =============================================================================
 
+const FETCH_DEFAULT_MAX_LINES = 300;
+
+// The native `htmlToMarkdown` recurses per nested element and hard-crashes the
+// whole process (unrecoverable native stack overflow, not a catchable throw) on
+// deeply nested HTML — ~2000 nested elements is fine, ~5000 core-dumps. Fetch
+// runs it on attacker-controlled pages, so a hostile/malformed page with deep
+// nesting would take down the agent. Real pages nest well under ~100 deep, so a
+// cap of 500 never rejects legitimate content while keeping the input far below
+// the crash threshold; over-nested HTML skips the native path and falls through
+// to the next extractor. The native binary is prebuilt (no in-repo source), so
+// this boundary guard is the only place to fix it.
+const MAX_HTML_NESTING_DEPTH = 500;
+// HTML void elements never nest (no closing tag), so they must not count toward
+// depth or a page with a long run of them (many <br>/<img>) would false-trip.
+const VOID_HTML_ELEMENTS = new Set([
+	"area",
+	"base",
+	"br",
+	"col",
+	"embed",
+	"hr",
+	"img",
+	"input",
+	"link",
+	"meta",
+	"param",
+	"source",
+	"track",
+	"wbr",
+]);
+const HTML_TAG_RE = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*?(\/?)>/g;
+
+/**
+ * True when `html`'s element nesting exceeds {@link MAX_HTML_NESTING_DEPTH}.
+ * A linear tag scan: opening tags increase depth, closing tags decrease it, and
+ * void/self-closing tags are depth-neutral. Approximate (it does not validate
+ * mismatched tags), but it cannot under-count the pure `<div>`-repeat attack,
+ * and over-counting only matters far above any real page's depth.
+ *
+ * Exported for the DoS regression test (calling htmlToMarkdown on the attack
+ * input would core-dump the test process, so the guard is verified directly).
+ */
+export function htmlNestingExceeds(html: string, limit: number): boolean {
+	let depth = 0;
+	HTML_TAG_RE.lastIndex = 0;
+	for (let m = HTML_TAG_RE.exec(html); m !== null; m = HTML_TAG_RE.exec(html)) {
+		const isClose = m[1] === "/";
+		const selfClosing = m[3] === "/";
+		const name = m[2]!.toLowerCase();
+		if (isClose) {
+			if (depth > 0) depth--;
+		} else if (!selfClosing && !VOID_HTML_ELEMENTS.has(name)) {
+			depth++;
+			if (depth > limit) return true;
+		}
+	}
+	return false;
+}
+
+// Convertible document types handled by markit.
+const CONVERTIBLE_MIMES = new Set([
+	"application/pdf",
+	"application/msword",
+	"application/vnd.ms-powerpoint",
+	"application/vnd.ms-excel",
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	"application/rtf",
+	"application/epub+zip",
+]);
+
+const NOTEBOOK_MIMES = new Set(["application/x-ipynb+json"]);
+const NOTEBOOK_EXTENSIONS = new Set([".ipynb"]);
+
+const SQLITE_MIMES = new Set([
+	"application/vnd.sqlite3",
+	"application/x-sqlite3",
+	"application/sqlite3",
+	"application/sqlite",
+]);
+const SQLITE_EXTENSIONS = new Set([".sqlite", ".sqlite3", ".db", ".db3"]);
+
+const ARCHIVE_MIMES = new Set([
+	"application/zip",
+	"application/x-zip-compressed",
+	"application/x-tar",
+	"application/tar",
+	"application/gzip",
+	"application/x-gzip",
+]);
+const ARCHIVE_EXTENSIONS = new Set([".zip", ".tar", ".tar.gz", ".tgz", ".gz"]);
+
+const IMAGE_MIME_BY_EXTENSION = new Map<string, string>([
+	[".png", "image/png"],
+	[".jpg", "image/jpeg"],
+	[".jpeg", "image/jpeg"],
+	[".gif", "image/gif"],
+	[".webp", "image/webp"],
+]);
+const SUPPORTED_INLINE_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const MAX_INLINE_IMAGE_SOURCE_BYTES = 20 * 1024 * 1024;
+const MAX_INLINE_IMAGE_OUTPUT_BYTES = 300 * 1024;
+
+// =============================================================================
+// Utilities
+// =============================================================================
+
+/**
+ * Check if a command exists (cross-platform)
+ */
+function hasCommand(cmd: string): boolean {
+	return Boolean($which(cmd));
+}
+
+/**
+ * Build llms.txt candidates scoped to the requested URL
+ */
+function buildLlmEndpointCandidates(url: string): string[] {
+	try {
+		const parsed = new URL(url);
+		if (parsed.pathname === "/") {
+			return [`${parsed.origin}/.well-known/llms.txt`, `${parsed.origin}/llms.txt`, `${parsed.origin}/llms.md`];
+		}
+
+		const trimmedPath = trimTrailingSlashes(parsed.pathname);
+		const segments = trimmedPath.split("/").filter(Boolean);
+		const scopeDepth = parsed.pathname.endsWith("/") ? segments.length : Math.max(segments.length - 1, 1);
+		const endpoints: string[] = [];
+
+		for (let depth = scopeDepth; depth >= 1; depth--) {
+			const scope = `/${segments.slice(0, depth).join("/")}/`;
+			endpoints.push(`${parsed.origin}${scope}llms.txt`, `${parsed.origin}${scope}llms.md`);
+		}
+
+		return endpoints;
+	} catch {
+		// `new URL` threw, so there is no origin to hang an llms.txt path off. No endpoints is the honest
+		// answer, and the caller's own fetch of the same URL reports the malformed input.
+		return [];
+	}
+}
+
+/**
+ * Repair a URL whose scheme `//` collapsed to a single `/`. Node's `path.normalize`/
+ * `path.resolve` collapse `//` → `/`, so any URL routed through path normalization arrives
+ * as `https:/host/x` instead of `https://host/x`. No local filesystem path begins with
+ * `http:/` or `https:/`, so repairing the scheme back to `//` is unambiguous.
+ */
+function repairCollapsedScheme(value: string): string {
+	const m = value.match(/^(https?):\/(?!\/)/i);
+	return m ? `${m[1]}://${value.slice(m[0].length)}` : value;
+}
+
+/**
+ * Normalize URL (repair a collapsed scheme, then add a scheme if one is missing).
+ */
+function normalizeUrl(url: string): string {
+	url = repairCollapsedScheme(url);
+	if (!url.match(/^https?:\/\//i)) {
+		return `https://${url}`;
+	}
+	return url;
+}
+
+const URL_CREDENTIAL_LABELS: Record<string, true> = {
+	accesskey: true,
+	accesstoken: true,
+	apikey: true,
+	auth: true,
+	authorization: true,
+	bearer: true,
+	code: true,
+	credential: true,
+	jwt: true,
+	key: true,
+	password: true,
+	passwd: true,
+	secret: true,
+	securitytoken: true,
+	sig: true,
+	signature: true,
+	signed: true,
+	token: true,
+	xamzcredential: true,
+	xamzsecuritytoken: true,
+	xamzsignature: true,
+	xgoogcredential: true,
+	xgoogsignature: true,
+};
+
+function decodeUrlCredentialComponent(component: string): string {
+	let decoded = component;
+	for (let pass = 0; pass < 3; pass += 1) {
+		try {
+			const next = decodeURIComponent(decoded);
+			if (next === decoded) break;
+			decoded = next;
+		} catch {
+			break;
+		}
+	}
+	return decoded;
+}
+
+function isUrlCredentialLabel(label: string): boolean {
+	const normalized = decodeUrlCredentialComponent(label)
+		.toLowerCase()
+		.replace(/[^a-z0-9]/g, "");
+	return (
+		URL_CREDENTIAL_LABELS[normalized] === true ||
+		normalized.endsWith("accesstoken") ||
+		normalized.endsWith("apikey") ||
+		normalized.endsWith("credential") ||
+		normalized.endsWith("password") ||
+		normalized.endsWith("secret") ||
+		normalized.endsWith("signature")
+	);
+}
+
+function looksLikeOpaqueUrlCredential(candidate: string): boolean {
+	const decoded = decodeUrlCredentialComponent(candidate);
+	if (decoded.length < 20 || /\s/.test(decoded)) return false;
+	if (/^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(decoded)) return true;
+	if (/^[a-f0-9]{24,}$/i.test(decoded)) return true;
+	return (
+		/^[A-Za-z0-9_~-]+$/.test(decoded) && /[A-Za-z]/.test(decoded) && /\d/.test(decoded) && /[A-Z_~]/.test(decoded)
+	);
+}
+
+/**
+ * Detect a URL capability that must go only to the target host/local readers.
+ *
+ * Remote reader services need the complete URL to fetch it, so redacting a
+ * credential would both break the URL and still disclose its shape. Detection
+ * is deliberately conservative: false positives merely use the already-loaded
+ * HTML or a direct reader, while a false negative discloses the capability to a
+ * secondary service.
+ */
+export function hasCredentialBearingUrl(value: string): boolean {
+	let parsed: URL;
+	try {
+		parsed = new URL(value);
+	} catch {
+		// Never forward an unparseable URL to a secondary service.
+		return true;
+	}
+	if (parsed.username.length > 0 || parsed.password.length > 0) return true;
+
+	for (const [key, item] of parsed.searchParams) {
+		if (isUrlCredentialLabel(key) || looksLikeOpaqueUrlCredential(item)) return true;
+	}
+
+	let previousWasLabel = false;
+	for (const encodedSegment of parsed.pathname.split("/").filter(Boolean)) {
+		const segment = decodeUrlCredentialComponent(encodedSegment);
+		if (previousWasLabel && segment.length > 0) return true;
+		const separator = segment.search(/[=:]/);
+		if (separator > 0 && isUrlCredentialLabel(segment.slice(0, separator))) return true;
+		if (looksLikeOpaqueUrlCredential(segment)) return true;
+		previousWasLabel = isUrlCredentialLabel(segment);
+	}
+
+	const fragment = decodeUrlCredentialComponent(parsed.hash.slice(1));
+	if (fragment.length > 0) {
+		const separator = fragment.search(/[=:]/);
+		if (
+			(separator > 0 && isUrlCredentialLabel(fragment.slice(0, separator))) ||
+			looksLikeOpaqueUrlCredential(fragment)
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// URL line selectors mirror the file form: `:50`, `:50-100`, `:50+150`, `:5-10,20-30`, `:raw`,
+// or `:raw:N-M` / `:N-M:raw` to combine raw mode with a range. If a URL would otherwise look
+// like `host:port`, add a trailing slash before the selector (e.g. `https://example.com/:80`
+// to read line 80 of the document at `https://example.com/`).
+
+export interface ParsedReadUrlTarget {
+	path: string;
+	raw: boolean;
+	offset?: number;
+	limit?: number;
+	/** Populated only when the selector carries 2+ ranges. Single-range stays on offset/limit. */
+	ranges?: readonly LineRange[];
+}
+
+/** Recognize a single selector token (`raw` or one/many line ranges). */
+function isUrlSelectorToken(token: string): boolean {
+	if (token.toLowerCase() === "raw") return true;
+	try {
+		return parseLineRanges(token) !== null;
+	} catch {
+		// `parseLineRanges` throws `ToolError` for malformed ranges (e.g. `5+0`). Only treat the
+		// token as a selector when it parses cleanly so URL ports like `:80` keep flowing
+		// through to the URL path.
+		return false;
+	}
+}
+
+export function parseReadUrlTarget(readPath: string): ParsedReadUrlTarget | null {
+	const repaired = repairCollapsedScheme(readPath);
+	const embedded = tryExtractEmbeddedUrlSelector(repaired);
+	const urlPath = embedded?.path ?? repaired;
+	if (!isReadableUrlPath(urlPath)) {
+		return null;
+	}
+
+	let raw = false;
+	let ranges: readonly LineRange[] | undefined;
+	for (const sel of embedded?.sels ?? []) {
+		if (sel.toLowerCase() === "raw") {
+			raw = true;
+			continue;
+		}
+		if (ranges !== undefined) {
+			// Two range groups on the same URL (`…:5-10:20-30`) — combine with commas instead.
+			throw new ToolError(
+				`URL selector has multiple range groups; combine them with commas (e.g. \`:5-10,20-30\`).`,
+			);
+		}
+		const parsed = parseLineRanges(sel);
+		if (parsed === null) {
+			// Shouldn't happen — isUrlSelectorToken vetted it. Belt-and-suspenders.
+			throw new ToolError(`Invalid URL line selector: ${sel}`);
+		}
+		ranges = parsed;
+	}
+
+	if (!ranges || ranges.length === 0) return { path: urlPath, raw };
+	if (ranges.length === 1) {
+		const r = ranges[0];
+		return {
+			path: urlPath,
+			raw,
+			offset: r.startLine,
+			limit: r.endLine !== undefined ? r.endLine - r.startLine + 1 : undefined,
+		};
+	}
+	return { path: urlPath, raw, ranges };
+}
+
+/**
+ * Peel one or more selector tokens off the right of a URL string. Walks back through
+ * trailing `:tok` segments while each token (a) looks like a selector and (b) leaves
+ * behind a string that still parses as a URL. Returns selectors left-to-right so callers
+ * can apply them in source order.
+ */
+function tryExtractEmbeddedUrlSelector(readPath: string): { path: string; sels: string[] } | null {
+	let basePath = readPath;
+	const sels: string[] = [];
+	while (true) {
+		const lastColonIndex = basePath.lastIndexOf(":");
+		if (lastColonIndex <= 0) break;
+
+		const candidate = basePath.slice(lastColonIndex + 1);
+		const remainder = basePath.slice(0, lastColonIndex);
+		if (!isReadableUrlPath(remainder)) break;
+		if (!isUrlSelectorToken(candidate)) break;
+
+		try {
+			new URL(
+				remainder.startsWith("http://") || remainder.startsWith("https://") ? remainder : `https://${remainder}`,
+			);
+		} catch {
+			break;
+		}
+
+		sels.unshift(candidate);
+		basePath = remainder;
+	}
+	if (sels.length === 0) return null;
+	return { path: basePath, sels };
+}
+
+/**
+ * Normalize MIME type (lowercase, strip charset/params)
+ */
+function normalizeMime(contentType: string): string {
+	return contentType.split(";")[0].trim().toLowerCase();
+}
+
+function getFilenameExtensionHint(filename: string): string {
+	const lower = filename.toLowerCase();
+	if (lower.endsWith(".tar.gz")) return ".tar.gz";
+	return path.extname(filename).toLowerCase();
+}
+
+/**
+ * Get extension from URL or Content-Disposition
+ */
+function getExtensionHint(url: string, contentDisposition?: string): string {
+	// Try Content-Disposition filename first
+	if (contentDisposition) {
+		const match = contentDisposition.match(/filename[*]?=["']?([^"';\n]+)/i);
+		if (match) {
+			const ext = getFilenameExtensionHint(match[1]);
+			if (ext) return ext;
+		}
+	}
+
+	// Fall back to URL path
+	try {
+		const pathname = new URL(url).pathname;
+		const ext = getFilenameExtensionHint(pathname);
+		if (ext) return ext;
+	} catch {
+		// `new URL` on a caller-supplied string: no parseable path means no
+		// extension hint, which is the empty string below.
+	}
+
+	return "";
+}
+
+/**
+ * Check if content type is convertible via markit.
+ */
+function isConvertible(mime: string, extensionHint: string): boolean {
+	if (CONVERTIBLE_MIMES.has(mime)) return true;
+	if (mime === "application/octet-stream" && CONVERTIBLE_EXTENSIONS.has(extensionHint)) return true;
+	if (CONVERTIBLE_EXTENSIONS.has(extensionHint)) return true;
+	return false;
+}
+
+function resolveImageMimeType(mime: string, extensionHint: string): string | null {
+	if (mime.startsWith("image/")) return mime;
+	const shouldUseExtensionHint =
+		mime.length === 0 || mime === "application/octet-stream" || mime === "binary/octet-stream" || mime === "unknown";
+	if (!shouldUseExtensionHint) return null;
+	return IMAGE_MIME_BY_EXTENSION.get(extensionHint) ?? null;
+}
+
+function isInlineImageMimeTypeSupported(mimeType: string): boolean {
+	return SUPPORTED_INLINE_IMAGE_MIME_TYPES.has(mimeType);
+}
+
+/**
+ * Try fetching URL with .md appended (llms.txt convention)
+ */
+async function tryMdSuffix(url: string, timeout: number, signal?: AbortSignal): Promise<string | null> {
+	const candidates: string[] = [];
+
+	try {
+		const parsed = new URL(url);
+		const pathname = parsed.pathname;
+
+		if (pathname.endsWith("/")) {
+			// /foo/bar/ -> /foo/bar/index.html.md
+			candidates.push(`${parsed.origin}${pathname}index.html.md`);
+		} else if (pathname.includes(".")) {
+			// /foo/bar.html -> /foo/bar.html.md
+			candidates.push(`${parsed.origin}${pathname}.md`);
+		} else {
+			// /foo/bar -> /foo/bar.md
+			candidates.push(`${parsed.origin}${pathname}.md`);
+		}
+	} catch {
+		// Same as above: an unparseable URL has no markdown sibling to guess at, and the fetch that
+		// follows reports the URL itself.
+		return null;
+	}
+
+	if (signal?.aborted) {
+		return null;
+	}
+
+	for (const candidate of candidates) {
+		if (signal?.aborted) {
+			return null;
+		}
+		const result = await loadPage(candidate, { timeout, signal });
+		if (result.ok && result.content.trim().length > 100 && !looksLikeHtml(result.content)) {
+			return result.content;
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Try to fetch LLM-friendly endpoints
+ */
+async function tryLlmEndpoints(
+	url: string,
+	timeout: number,
+	signal?: AbortSignal,
+): Promise<{ content: string; endpoint: string } | null> {
+	const endpoints = buildLlmEndpointCandidates(url);
+
+	if (signal?.aborted || endpoints.length === 0) {
+		return null;
+	}
+
+	for (const endpoint of endpoints) {
+		if (signal?.aborted) {
+			return null;
+		}
+		const result = await loadPage(endpoint, { timeout: Math.min(timeout, 5), signal });
+		if (result.ok && result.content.trim().length > 100 && !looksLikeHtml(result.content)) {
+			return { content: result.content, endpoint };
+		}
+	}
+	return null;
+}
+
+/**
+ * Try content negotiation for markdown/plain
+ */
+async function tryContentNegotiation(
+	url: string,
+	timeout: number,
+	signal?: AbortSignal,
+): Promise<{ content: string; type: string } | null> {
+	if (signal?.aborted) {
+		return null;
+	}
+
+	const result = await loadPage(url, {
+		timeout,
+		headers: { Accept: "text/markdown, text/plain;q=0.9, text/html;q=0.8" },
+		signal,
+	});
+
+	if (!result.ok) return null;
+
+	const mime = normalizeMime(result.contentType);
+	if ((mime.includes("markdown") || mime === "text/plain") && !looksLikeHtml(result.content)) {
+		return { content: result.content, type: result.contentType };
+	}
+
+	return null;
+}
+
+/**
+ * Read a single HTML attribute from a tag string
+ */
+function getHtmlAttribute(tag: string, attribute: string): string | null {
+	const pattern = new RegExp(`\\b${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>]+))`, "i");
+	const match = tag.match(pattern);
+	if (!match) return null;
+	return (match[1] ?? match[2] ?? match[3] ?? "").trim();
+}
+
+/**
+ * Extract bounded <head> markup to avoid expensive whole-page parsing
+ */
+function extractHeadHtml(html: string): string {
+	const lower = html.toLowerCase();
+	const headStart = lower.indexOf("<head");
+	if (headStart === -1) {
+		return html.slice(0, 32 * 1024);
+	}
+
+	const headTagEnd = html.indexOf(">", headStart);
+	if (headTagEnd === -1) {
+		return html.slice(headStart, headStart + 32 * 1024);
+	}
+
+	const headEnd = lower.indexOf("</head>", headTagEnd + 1);
+	const fallbackEnd = Math.min(html.length, headTagEnd + 1 + 32 * 1024);
+	return html.slice(headStart, headEnd === -1 ? fallbackEnd : headEnd + 7);
+}
+
+/**
+ * Parse alternate links from HTML head
+ */
 export function parseAlternateLinks(html: string, pageUrl: string): string[] {
 	const links: string[] = [];
 
+	// Only the URL parse can throw here, and the sole reason it would is a page URL
+	// that is not a URL. Wrapping the whole loop instead meant any later fault
+	// returned however many links had been collected so far, and a truncated list
+	// is indistinguishable from a page that genuinely has no alternates.
 	let pagePath: string;
 	try {
 		pagePath = new URL(pageUrl).pathname;
@@ -112,6 +660,7 @@ export function parseAlternateLinks(html: string, pageUrl: string): string[] {
 		const type = getHtmlAttribute(tag, "type")?.toLowerCase() ?? "";
 		if (!href) continue;
 
+		// Skip site-wide feeds
 		if (
 			href.includes("RecentChanges") ||
 			href.includes("Special:") ||
@@ -134,6 +683,9 @@ export function parseAlternateLinks(html: string, pageUrl: string): string[] {
 	return links;
 }
 
+/**
+ * Extract document links from HTML (for PDF/DOCX wrapper pages)
+ */
 export function extractDocumentLinks(html: string, baseUrl: string): string[] {
 	const links: string[] = [];
 	const seen = new Set<string>();
@@ -146,6 +698,10 @@ export function extractDocumentLinks(html: string, baseUrl: string): string[] {
 		const ext = path.extname(href).toLowerCase();
 		if (!CONVERTIBLE_EXTENSIONS.has(ext)) continue;
 
+		// Per href, not around the loop. Resolving a relative href throws when that
+		// one href is malformed, and catching it outside meant a single broken link
+		// anywhere on the page ended the scan and dropped every document link after
+		// it. On a page listing twenty PDFs, one bad anchor could hide nineteen.
 		let resolved: string;
 		try {
 			resolved = href.startsWith("http") ? href : new URL(href, baseUrl).href;
@@ -161,6 +717,18 @@ export function extractDocumentLinks(html: string, baseUrl: string): string[] {
 	return links;
 }
 
+/**
+ * Strip the CDATA wrapper, decode HTML entities, then strip HTML tags from a
+ * feed text node.
+ *
+ * Entity-decode runs before tag-strip on purpose: a feed that encodes markup as
+ * `&lt;script&gt;` decodes to a real `<script>` tag which the tag-strip then
+ * removes, so encoded markup does not leak into the output. Decoding goes
+ * through the shared {@link decodeHtmlEntities} owner (single pass, `&amp;`-safe,
+ * decimal/hex/named) instead of the four hand-rolled entity replacements this
+ * carried, which decoded `&amp;` before the others and so double-decoded a
+ * literal like `&amp;quot;`.
+ */
 function cleanFeedText(text: string): string {
 	const withoutCdata = text.replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "");
 	return decodeHtmlEntities(withoutCdata)
@@ -168,11 +736,15 @@ function cleanFeedText(text: string): string {
 		.trim();
 }
 
+/**
+ * Parse RSS/Atom feed to markdown
+ */
 async function parseFeedToMarkdown(content: string, maxItems = 10): Promise<string> {
 	const { parseHTML } = await import("linkedom");
 	try {
 		const doc = parseHTML(content).document;
 
+		// Try RSS
 		const channel = doc.querySelector("channel");
 		if (channel) {
 			const title = cleanFeedText(channel.querySelector("title")?.text || "RSS Feed");
@@ -194,6 +766,7 @@ async function parseFeedToMarkdown(content: string, maxItems = 10): Promise<stri
 			return md;
 		}
 
+		// Try Atom
 		const feed = doc.querySelector("feed");
 		if (feed) {
 			const title = cleanFeedText(feed.querySelector("title")?.text || "Atom Feed");
@@ -216,17 +789,41 @@ async function parseFeedToMarkdown(content: string, maxItems = 10): Promise<stri
 			}
 			return md;
 		}
-	} catch {}
+	} catch {
+		// Feed parsing is opportunistic. The raw content returned below is what
+		// the caller asked for, so the operator still sees the document.
+	}
 
 	return content; // Fall back to raw content
 }
 
+/**
+ * Cap on any single remote reader-mode request (Parallel, Jina) so a stalled
+ * remote endpoint cannot consume the whole reader-mode budget and starve the
+ * local fallback renderers (trafilatura, lynx, native). See #1449.
+ */
 const REMOTE_READER_MAX_MS = 10_000;
 
+/** Reader backends for {@link renderHtmlToText}, in default priority order. */
 export type FetchProvider = "native" | "trafilatura" | "lynx" | "parallel" | "jina";
 
 const FETCH_PROVIDER_ORDER: readonly FetchProvider[] = ["native", "trafilatura", "lynx", "parallel", "jina"];
 
+/**
+ * Render HTML to markdown by trying reader backends in priority order: native
+ * (in-process), trafilatura, lynx, Parallel, then Jina. The `providers.fetch`
+ * setting picks the order — `auto` uses the default above; any specific backend
+ * is tried first, then the remaining backends as fallbacks. Every backend's
+ * output must clear the same quality gate (>100 non-whitespace chars and not
+ * {@link isLowQualityOutput}) before it is accepted, otherwise the next backend
+ * is tried.
+ *
+ * The overall `timeout` budget bounds the whole call; remote backends (Parallel,
+ * Jina) are additionally capped at `REMOTE_READER_MAX_MS` so a hung endpoint
+ * cannot starve later renderers — especially the purely-local native converter,
+ * which always works on already-loaded HTML. Only a real `userSignal`
+ * cancellation aborts the chain (#1449).
+ */
 export async function renderHtmlToText(
 	url: string,
 	html: string,
@@ -237,6 +834,8 @@ export async function renderHtmlToText(
 	fetchOverride?: FetchImpl,
 	resolveTextTransform?: ProviderTextTransformResolver,
 ): Promise<{ content: string; ok: boolean; method: string }> {
+	// Scoped so the overall-budget timer is cleared on settle instead of
+	// staying armed like a bare AbortSignal.timeout.
 	const overallTimeout = scopedTimeoutSignal(timeout * 1000, userSignal);
 	const overallSignal = overallTimeout.signal;
 	try {
@@ -250,9 +849,15 @@ export async function renderHtmlToText(
 		};
 		const remoteBudgetMs = Math.min(timeout * 1000, REMOTE_READER_MAX_MS);
 		const fetchImpl = fetchOverride ?? fetch;
+		// Jina/Parallel are unrelated services. Credential-bearing target URLs
+		// stay byte-exact and can only use direct/local readers.
 		const allowSecondaryReaders = !hasCredentialBearingUrl(url);
 
 		const runners: Record<FetchProvider, () => Promise<string | null>> = {
+			// Purely local, no network/subprocess: still works on already-loaded HTML
+			// even after remote/subprocess attempts are aborted by the budget. Deeply
+			// nested HTML crashes the native converter (see MAX_HTML_NESTING_DEPTH), so
+			// skip it for such input and let the chain fall through to another reader.
 			native: () =>
 				htmlNestingExceeds(html, MAX_HTML_NESTING_DEPTH)
 					? Promise.resolve(null)
@@ -272,7 +877,9 @@ export async function renderHtmlToText(
 				if (!allowSecondaryReaders || !findParallelApiKey(storage)) return null;
 				const transform = resolveProviderTextTransform(resolveTextTransform, "Parallel remote reader");
 				if (transform(url) !== url) return null;
-
+				// Per-attempt budget for remote endpoints so one stall cannot consume
+				// the whole reader-mode budget and starve the local fallbacks; scoped
+				// so the timer is cleared when the attempt settles.
 				const remoteTimeout = scopedTimeoutSignal(remoteBudgetMs, userSignal);
 				try {
 					const parallelResult = await extractWithParallel(
@@ -315,9 +922,15 @@ export async function renderHtmlToText(
 				? FETCH_PROVIDER_ORDER
 				: [preference, ...FETCH_PROVIDER_ORDER.filter(method => method !== preference)];
 
+		// Highest-priority output that is substantial but fails the low-quality gate.
+		// Surfaced (ok: true) only when no backend clears the gate, so the caller's
+		// targeted fallbacks (llms.txt / document extraction) still run and we beat
+		// returning the unrendered raw HTML.
 		let lowQuality: { content: string; method: FetchProvider } | null = null;
 
 		for (const method of order) {
+			// Honour real user cancellation between attempts; remote per-attempt and
+			// overall-budget timeouts still fall through to later (local) renderers.
 			userSignal?.throwIfAborted();
 			try {
 				const content = await runners[method]();
@@ -340,9 +953,13 @@ export async function renderHtmlToText(
 	}
 }
 
+/**
+ * Check if lynx output looks JS-gated or mostly navigation
+ */
 function isLowQualityOutput(content: string): boolean {
 	const lower = content.toLowerCase();
 
+	// JS-gated indicators
 	const jsGated = [
 		"enable javascript",
 		"javascript required",
@@ -354,7 +971,8 @@ function isLowQualityOutput(content: string): boolean {
 		return true;
 	}
 
-	const lines = content.split("\n").filter(l => /\S/.test(l));
+	// Mostly navigation (high link/menu density)
+	const lines = content.split("\n").filter(l => l.trim());
 	const shortLines = lines.filter(l => l.trim().length < 40);
 	if (lines.length > 10 && shortLines.length / lines.length > 0.7) {
 		return true;
@@ -363,6 +981,9 @@ function isLowQualityOutput(content: string): boolean {
 	return false;
 }
 
+/**
+ * Format JSON
+ */
 function formatJson(content: string): string {
 	try {
 		return JSON.stringify(JSON.parse(content), null, 2);
@@ -410,6 +1031,11 @@ function isArchiveHint(mime: string, extensionHint: string): boolean {
 	return ARCHIVE_MIMES.has(mime) || ARCHIVE_EXTENSIONS.has(extensionHint);
 }
 
+/**
+ * Content types whose payload renderUrl always re-fetches via fetchBinary.
+ * Skipping the initial body read for them avoids downloading and
+ * string-decoding huge binaries (PDFs, archives, images) twice.
+ */
 function shouldSkipBodyDownload(contentType: string): boolean {
 	return (
 		CONVERTIBLE_MIMES.has(contentType) ||
@@ -530,7 +1156,7 @@ async function tryRenderBinaryPayload(
 		return null;
 	}
 
-	const resultNotes = notes.slice();
+	const resultNotes = [...notes];
 	const binary = await fetchBinary(finalUrl, timeout, signal);
 	if (!binary.ok) {
 		resultNotes.push(binary.error ? `Binary fetch failed: ${binary.error}` : "Binary fetch failed");
@@ -639,13 +1265,25 @@ async function tryRenderBinaryPayload(
 	return null;
 }
 
+// =============================================================================
+// Unified Special Handler Dispatch
+// =============================================================================
+
 let specialHandlersPromise: Promise<SpecialHandler[]> | undefined;
 
+/**
+ * Lazily load the site-specific scraper handlers. The scrapers barrel eagerly
+ * imports ~80 site modules, none of which are needed until the first fetch that
+ * requires a special handler, so we keep them out of the cold-startup graph.
+ */
 function loadSpecialHandlers(): Promise<SpecialHandler[]> {
 	specialHandlersPromise ??= import("../web/scrapers").then(m => m.specialHandlers);
 	return specialHandlersPromise;
 }
 
+/**
+ * Try all special handlers
+ */
 export async function handleSpecialUrls(
 	url: string,
 	timeout: number,
@@ -657,12 +1295,38 @@ export async function handleSpecialUrls(
 	const specialHandlers = handlers ?? (await loadSpecialHandlers());
 	for (const handler of specialHandlers) {
 		throwIfAborted(signal, "fetch");
-		let result: Awaited<ReturnType<SpecialHandler>>;
+		let result: RenderResult | ScraperDegrade | null;
 		try {
 			result = await handler(url, timeout, signal, storage);
 		} catch (error) {
+			// STOP, DO NOT DEGRADE. `isCancellation` is the repo-wide owner of this
+			// test and it covers both halves: the user aborting, AND a deadline
+			// expiring. The deadline half is the one this guard used to miss, and it
+			// is the half that actually fires here. A handler receives `timeout` and
+			// builds its own `scopedTimeoutSignal` from it, so when a slow site
+			// exhausts the budget the rejection is a `TimeoutError` while the USER's
+			// signal is still unaborted. The old condition asked only
+			// `signal?.aborted || error instanceof ToolAbortError`, so a timeout fell
+			// through to the note-and-continue below and the generic fetch then made
+			// the very request that had just run out of time, against the same site,
+			// with the budget already spent. `scraperDegrade` in
+			// `web/scrapers/types.ts` exists to prevent exactly that and rethrows a
+			// cancellation for exactly this reason; the dispatcher's own catch, one
+			// layer above it, never got the same guard, so a handler that threw
+			// rather than returning a degrade bypassed the protection entirely.
+			//
+			// The error is rethrown AS IS rather than replaced with a bare
+			// `new ToolAbortError()`. A minted one carries no reason and no `cause`,
+			// which is what makes a timeout indistinguishable from an abort by the
+			// time it reaches the agent loop -- and those mean different things to a
+			// user: work they stopped, versus work worth retrying with a longer limit.
 			if (isCancellation(error)) throw error;
+			// The signal aborted but the handler threw something else, so it swallowed
+			// the cancellation on the way out. Report the cancellation, keeping the
+			// signal's own reason as the cause.
 			throwIfAborted(signal, "fetch");
+			// A handler must never take the whole fetch down: record the failure
+			// loudly and keep going so the generic fetch still runs.
 			const detail = errorMessage(error);
 			notes.push(`${handler.name || "site"} scraper threw (${detail}); fell back to a generic fetch`);
 			continue;
@@ -670,6 +1334,9 @@ export async function handleSpecialUrls(
 		throwIfAborted(signal, "fetch");
 		if (!result) continue;
 		if (isScraperDegrade(result)) {
+			// The handler matched the URL but could not scrape it. Surface the
+			// degrade on the generic-fetch result — never silently — and stop
+			// probing: no other handler claims this site.
 			notes.push(result.note);
 			return null;
 		}
@@ -678,6 +1345,13 @@ export async function handleSpecialUrls(
 	return null;
 }
 
+// =============================================================================
+// Main Render Function
+// =============================================================================
+
+/**
+ * Main render function implementing the full pipeline
+ */
 async function renderUrl(
 	url: string,
 	timeout: number,
@@ -693,6 +1367,7 @@ async function renderUrl(
 	const fetchedAt = new Date().toISOString();
 	throwIfAborted(signal, "fetch");
 
+	// Handle internal protocol URLs (e.g., pi-internal://) - return empty
 	if (url.startsWith("pi-internal://")) {
 		return {
 			url,
@@ -706,13 +1381,16 @@ async function renderUrl(
 		};
 	}
 
+	// Step 0: Normalize URL (ensure scheme for special handlers)
 	url = normalizeUrl(url);
 
+	// Step 1: Try special handlers for known sites (unless raw mode)
 	if (!raw) {
 		const specialResult = await handleSpecialUrls(url, timeout, signal, storage, notes);
 		if (specialResult) return specialResult;
 	}
 
+	// Step 2: Fetch page
 	const response = await loadPage(url, { timeout, signal, skipBodyForContentType: shouldSkipBodyDownload });
 	throwIfAborted(signal, "fetch");
 	if (!response.ok) {
@@ -840,6 +1518,7 @@ async function renderUrl(
 		}
 	}
 
+	// Step 3: Handle convertible binary files (PDF, DOCX, etc.)
 	if (!skipConvertibleBinaryRetry && isConvertible(mime, extHint)) {
 		const binary = await fetchBinary(finalUrl, timeout, signal);
 		if (binary.ok) {
@@ -887,12 +1566,16 @@ async function renderUrl(
 	);
 	if (binaryPayloadResult) return binaryPayloadResult;
 
+	// Step 4: Handle non-HTML text content
 	const isHtml = mime.includes("html") || mime.includes("xhtml");
 	const isJson = mime.includes("json");
 	const isXml = mime.includes("xml") && !isHtml;
 	const isText = mime.includes("text/plain") || mime.includes("text/markdown");
 	const isFeed = mime.includes("rss") || mime.includes("atom") || mime.includes("feed");
 
+	// Raw mode skips every text-shaping branch below (JSON pretty-print, feed-to-markdown,
+	// HTML extraction) and returns the response body verbatim. Binary-oriented branches
+	// above already ran because raw isn't useful for binary payloads.
 	if (raw) {
 		const output = finalizeOutput(rawContent);
 		return {
@@ -949,7 +1632,9 @@ async function renderUrl(
 		};
 	}
 
+	// Step 5: For HTML, try digestible formats first (unless raw mode)
 	if (isHtml && !raw) {
+		// 5A: Check for page-specific markdown alternate
 		const alternates = parseAlternateLinks(rawContent, finalUrl);
 		const markdownAlt = alternates.find(alt => alt.endsWith(".md") || alt.includes("markdown"));
 		if (markdownAlt) {
@@ -971,6 +1656,7 @@ async function renderUrl(
 			}
 		}
 
+		// 5B: Try URL.md suffix (llms.txt convention)
 		const mdSuffix = await tryMdSuffix(finalUrl, timeout, signal);
 		if (mdSuffix) {
 			notes.push("Found .md suffix version");
@@ -987,6 +1673,7 @@ async function renderUrl(
 			};
 		}
 
+		// 5C: Content negotiation
 		const negotiated = await tryContentNegotiation(url, timeout, signal);
 		if (negotiated) {
 			notes.push(`Content negotiation returned ${negotiated.type}`);
@@ -1003,6 +1690,7 @@ async function renderUrl(
 			};
 		}
 
+		// 5D: Check for feed alternates
 		const feedAlternates = alternates.filter(alt => !alt.endsWith(".md") && !alt.includes("markdown"));
 		for (const altUrl of feedAlternates.slice(0, 2)) {
 			const resolved = altUrl.startsWith("http") ? altUrl : new URL(altUrl, finalUrl).href;
@@ -1026,6 +1714,7 @@ async function renderUrl(
 
 		throwIfAborted(signal, "fetch");
 
+		// 5E: Render HTML via the reader-backend chain (native/trafilatura/lynx/parallel/jina)
 		const htmlResult = await renderHtmlToText(
 			finalUrl,
 			rawContent,
@@ -1068,6 +1757,7 @@ async function renderUrl(
 			};
 		}
 
+		// Step 6: If rendered output is low quality, try more targeted fallbacks
 		if (isLowQualityOutput(htmlResult.content)) {
 			const docLinks = extractDocumentLinks(rawContent, finalUrl);
 			if (docLinks.length > 0) {
@@ -1130,6 +1820,7 @@ async function renderUrl(
 		};
 	}
 
+	// Fallback: return raw content
 	const output = finalizeOutput(rawContent);
 	return {
 		url,
@@ -1142,6 +1833,10 @@ async function renderUrl(
 		notes,
 	};
 }
+
+// =============================================================================
+// Tool Definition
+// =============================================================================
 
 export interface ReadUrlToolDetails {
 	kind: "url";
@@ -1172,6 +1867,11 @@ function getReadUrlCacheKey(session: ToolSession, requestedUrl: string, raw: boo
 	return `${scope}::${raw ? "raw" : "rendered"}::${normalizeUrl(requestedUrl)}`;
 }
 
+/**
+ * Resolve an `artifact://<id>` reference to the file that holds it, or null when there is no such
+ * artifact. Exported for the regression suite that pins what an unreadable artifact directory
+ * reports; production callers reach it through the read_url cache.
+ */
 export async function findArtifactPath(session: ToolSession, artifactId: string): Promise<string | null> {
 	const artifactsDir = session.getArtifactsDir?.();
 	if (!artifactsDir) return null;
@@ -1181,6 +1881,9 @@ export async function findArtifactPath(session: ToolSession, artifactId: string)
 		const match = files.find(file => file.startsWith(`${artifactId}.`));
 		return match ? path.join(artifactsDir, match) : null;
 	} catch (err) {
+		// An absent directory means no artifact has been written yet, which is a genuine miss. A
+		// directory that is there and unreadable is not: returning the same null told the user their
+		// `artifact://` URL pointed at nothing, when it pointed at a file this process could not list.
 		if (!isEnoent(err)) {
 			logger.warn("Artifact directory could not be read; the artifact cannot be resolved", {
 				dir: artifactsDir,
@@ -1249,7 +1952,9 @@ async function ensureReadUrlContentFile(
 		try {
 			await Bun.file(entry.contentPath).stat();
 			return entry;
-		} catch {}
+		} catch {
+			// Recreate below when the cached scratch file was removed.
+		}
 	}
 	const root = session.getArtifactsDir?.();
 	if (!root) {
@@ -1276,11 +1981,15 @@ async function buildReadUrlCacheEntry(
 ): Promise<ReadUrlCacheEntry> {
 	const { path: url, raw = false } = params;
 
+	// The read-url path exposes no per-call timeout, so the fetch tool's
+	// configured default is the single source of truth (TOOL_TIMEOUTS.fetch).
+	// Passing no override keeps the value in ONE place instead of a literal here
+	// that silently diverged from the config's `default`.
 	const effectiveTimeout = clampTimeout("fetch", undefined, session.settings.get("tools.maxTimeout"));
 
 	throwIfAborted(signal, "fetch");
 
-	const storage = session.settings.getStorage();
+	const storage = AgentStorage.forAgentDir(session.settings.getAgentDir());
 	const result = await renderUrl(
 		url,
 		effectiveTimeout,
@@ -1337,6 +2046,7 @@ export async function loadReadUrlCacheEntry(
 	return fresh;
 }
 
+/** Materialize rendered URL body text to a local file for tools that require filesystem paths. */
 export async function materializeReadUrlToFile(
 	session: ToolSession,
 	params: { path: string; raw?: boolean },
@@ -1374,7 +2084,7 @@ export async function executeReadUrl(
 ): Promise<AgentToolResult<ReadUrlToolDetails>> {
 	let cacheEntry = await loadReadUrlCacheEntry(session, params, signal, { preferCached: true });
 	const truncation = truncateHead(cacheEntry.output, {
-		maxBytes: DEFAULT_MAX_BYTES,
+		maxBytes: inlineBudgetFor(session),
 		maxLines: FETCH_DEFAULT_MAX_LINES,
 	});
 	const needsArtifact = truncation.truncated;
@@ -1397,10 +2107,7 @@ export async function executeReadUrl(
 	if (needsArtifact) {
 		resultBuilder.truncation(truncation, { direction: "head", artifactId: cacheEntry.artifactId });
 	} else if (cacheEntry.details.truncated) {
-		let outputLines = 1;
-		for (let i = 0; i < cacheEntry.output.length; i++) {
-			if (cacheEntry.output.charCodeAt(i) === 0x0a) outputLines++;
-		}
+		const outputLines = cacheEntry.output.split("\n").length;
 		const outputBytes = Buffer.byteLength(cacheEntry.output, "utf-8");
 		const totalBytes = Math.max(outputBytes + 1, MAX_OUTPUT_CHARS + 1);
 		const totalLines = outputLines + 1;
@@ -1415,8 +2122,13 @@ export async function executeReadUrl(
 	return resultBuilder.done();
 }
 
+// =============================================================================
+// TUI Rendering
+// =============================================================================
+
+/** Count non-empty lines */
 function countNonEmptyLines(text: string): number {
-	return text.split("\n").filter(l => /\S/.test(l)).length;
+	return text.split("\n").filter(l => l.trim()).length;
 }
 
 function readUrlLinkTarget(input: string): string {
@@ -1440,6 +2152,7 @@ function formatReadUrlMetadataValue(url: string, uiTheme: Theme): string {
 	return urlHyperlink(url, uiTheme.fg("mdLinkUrl", url));
 }
 
+/** Render URL read call (URL preview) */
 export function renderReadUrlCall(
 	args: { path?: string; url?: string; raw?: boolean },
 	_options: RenderResultOptions,
@@ -1453,6 +2166,7 @@ export function renderReadUrlCall(
 	return new Text(text, 0, 0);
 }
 
+/** Render URL read result with tree-based layout */
 export function renderReadUrlResult(
 	result: { content: Array<{ type: string; text?: string }>; details?: ReadUrlToolDetails; isError?: boolean },
 	options: RenderResultOptions,
@@ -1466,9 +2180,7 @@ export function renderReadUrlResult(
 		const urlText = details?.finalUrl ?? details?.url ?? "";
 		const description = urlText ? formatReadUrlDescription(urlText) : undefined;
 		const header = renderStatusLine({ icon: "error", title: "Read", description }, uiTheme);
-		const errorParts = errorText.split("\n");
-		const errorLines: string[] = new Array(errorParts.length);
-		for (let ei = 0; ei < errorParts.length; ei++) errorLines[ei] = uiTheme.fg("error", replaceTabs(errorParts[ei]!));
+		const errorLines = errorText.split("\n").map(line => uiTheme.fg("error", replaceTabs(line)));
 		const outputBlock = new CachedOutputBlock();
 		return markFramedBlockComponent({
 			render: (width: number) =>
@@ -1498,7 +2210,7 @@ export function renderReadUrlResult(
 		: contentText;
 	const lineCount = countNonEmptyLines(contentBody);
 	const charCount = contentBody.trim().length;
-	const contentLines = contentBody.split("\n").filter(l => /\S/.test(l));
+	const contentLines = contentBody.split("\n").filter(l => l.trim());
 
 	const metadataLines: string[] = [
 		`${uiTheme.fg("muted", "Content-Type:")} ${details.contentType || "unknown"}`,
@@ -1531,16 +2243,12 @@ export function renderReadUrlResult(
 			if (contentPreviewLines === undefined || lastExpanded !== expanded) {
 				const previewLimit = expanded ? 12 : 3;
 				const previewList = applyListLimit(contentLines, { headLimit: previewLimit });
-				const previewItems = previewList.items;
-				const remaining = Math.max(0, contentLines.length - previewItems.length);
-				if (previewItems.length > 0) {
-					contentPreviewLines = new Array<string>(previewItems.length);
-					for (let pi = 0; pi < previewItems.length; pi++) {
-						contentPreviewLines[pi] = uiTheme.fg("dim", previewItems[pi]!.trimEnd());
-					}
-				} else {
-					contentPreviewLines = [uiTheme.fg("dim", "(no content)")];
-				}
+				const previewLines = previewList.items.map(line => line.trimEnd());
+				const remaining = Math.max(0, contentLines.length - previewList.items.length);
+				contentPreviewLines =
+					previewLines.length > 0
+						? previewLines.map(line => uiTheme.fg("dim", line))
+						: [uiTheme.fg("dim", "(no content)")];
 				if (remaining > 0) {
 					const hint = formatExpandHint(uiTheme, expanded, true);
 					contentPreviewLines.push(

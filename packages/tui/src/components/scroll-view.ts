@@ -1,9 +1,57 @@
 import { matchesKey } from "../keys";
 import type { Component } from "../tui";
-import { clamp, Ellipsis, replaceTabs, truncateToWidth } from "../utils";
-import type { ScrollbarMode, ScrollViewOptions, ScrollViewTheme } from "./scroll-view-helpers";
-import { DEFAULT_THUMB, DEFAULT_TRACK, firstCellGlyph, normalizeScrollbarMode } from "./scroll-view-helpers";
+import { clamp, Ellipsis, replaceTabs, truncateToWidth, visibleWidth } from "../utils";
 
+const DEFAULT_TRACK = "│";
+const DEFAULT_THUMB = "█";
+
+type ScrollbarMode = "auto" | "always" | "never";
+
+export interface ScrollViewTheme {
+	track?: (text: string) => string;
+	thumb?: (text: string) => string;
+}
+
+export interface ScrollViewOptions {
+	height: number;
+	/** Defaults to "auto". "auto" reserves a scrollbar column only when content overflows. */
+	scrollbar?: ScrollbarMode | boolean;
+	/** Logical row count for pre-windowed line slices. Defaults to lines.length. */
+	totalRows?: number;
+	theme?: ScrollViewTheme;
+	trackChar?: string;
+	thumbChar?: string;
+	/**
+	 * Indicator appended when a row overflows `contentWidth`. Defaults to
+	 * {@link Ellipsis.Unicode}. Pass {@link Ellipsis.Omit} when callers wrap
+	 * lines to width themselves and only trailing padding can overflow (e.g.
+	 * the plan-review overlay), so no stray `…` lands on every padded row.
+	 */
+	ellipsis?: Ellipsis;
+	/**
+	 * Rows moved per keystroke when {@link ScrollView.handleScrollKey} sees a
+	 * Shift+Arrow (the "scroll faster" affordance). Defaults to 5.
+	 */
+	fastScrollLines?: number;
+}
+
+function normalizeScrollbarMode(scrollbar: ScrollViewOptions["scrollbar"]): ScrollbarMode {
+	if (scrollbar === true) return "auto";
+	if (scrollbar === false) return "never";
+	return scrollbar ?? "auto";
+}
+
+function firstCellGlyph(value: string, fallback: string): string {
+	const glyph = Array.from(value)[0] ?? fallback;
+	return visibleWidth(glyph) === 1 ? glyph : fallback;
+}
+
+/**
+ * Fixed-height viewport over pre-rendered lines, with optional right-edge scrollbar.
+ *
+ * ScrollView owns only the row offset. Callers remain responsible for producing
+ * already-wrapped logical lines appropriate for the current render width.
+ */
 export class ScrollView implements Component {
 	#lines: readonly string[];
 	#height: number;
@@ -17,7 +65,7 @@ export class ScrollView implements Component {
 	#fastScrollLines: number;
 
 	constructor(lines: readonly string[], options: ScrollViewOptions) {
-		this.#lines = lines.slice();
+		this.#lines = [...lines];
 		this.#height = Number.isFinite(options.height) ? Math.max(0, Math.trunc(options.height)) : 0;
 		this.#totalRows = options.totalRows === undefined ? undefined : Math.max(0, Math.trunc(options.totalRows));
 		this.#scrollbar = normalizeScrollbarMode(options.scrollbar);
@@ -33,7 +81,13 @@ export class ScrollView implements Component {
 	}
 
 	setLines(lines: readonly string[]): void {
-		this.#lines = lines.slice();
+		// The defensive copy is deliberate and must stay: transcript components
+		// mutate their previously returned render arrays in place (streaming
+		// row caches), so a same-reference fast path here serves STALE rows —
+		// the agent-hub transcript tail froze exactly that way (2026-07-24).
+		// The copy is O(content) but ~20us at 10k rows; render() stays
+		// O(viewport) regardless.
+		this.#lines = [...lines];
 		this.#clampScrollOffset();
 	}
 
@@ -82,6 +136,14 @@ export class ScrollView implements Component {
 		this.#scrollOffset = this.getMaxScrollOffset();
 	}
 
+	/**
+	 * Apply a standard navigation key to the viewport. Shift+Arrow scrolls by
+	 * {@link ScrollViewOptions.fastScrollLines} (the "scroll faster" affordance);
+	 * plain Arrow by one line; PageUp/PageDown by a page; Home/End to the ends.
+	 * Returns true when the key was consumed, so callers can fall through to
+	 * their own (e.g. vim-style) bindings. Generic on purpose: every ScrollView
+	 * consumer gets the same scroll keys, including Shift-to-go-faster.
+	 */
 	handleScrollKey(data: string): boolean {
 		if (matchesKey(data, "shift+up")) {
 			this.scroll(-this.#fastScrollLines);
@@ -118,10 +180,25 @@ export class ScrollView implements Component {
 		return false;
 	}
 
-	invalidate(): void {}
+	invalidate(): void {
+		// No cached layout to invalidate.
+	}
 
+	/**
+	 * Columns a caller may draw into at `width`, once the scrollbar has taken its
+	 * gutter.
+	 *
+	 * Exposed because the reserve is this component's rule, and a caller that
+	 * guessed it is wrong exactly when the guess matters. {@link render}
+	 * truncates every line it is given to this width, and a truncation that lands
+	 * inside a background fill drops the escape that CLOSES the fill, so the
+	 * colour runs on through the gutter and the bar. A caller that pads or fills a
+	 * row to full width asks for this width instead.
+	 */
 	contentWidth(width: number): number {
 		const safeWidth = Number.isFinite(width) ? Math.max(0, Math.trunc(width)) : 0;
+		// Two columns when the bar shows: one breathing-space gap + the bar
+		// itself — right-aligned content must never kiss the scrollbar glyph.
 		return Math.max(0, safeWidth - (safeWidth > 0 && this.#shouldRenderScrollbar() ? 2 : 0));
 	}
 
@@ -136,15 +213,16 @@ export class ScrollView implements Component {
 		for (let row = 0; row < this.#height; row++) {
 			const sourceIndex = this.#totalRows === undefined ? this.#scrollOffset + row : row;
 			const source = this.#lines[sourceIndex] ?? "";
-			const truncated = truncateToWidth(replaceTabs(source), contentWidth, this.#ellipsis, showScrollbar);
+			const truncated = truncateToWidth(replaceTabs(source), contentWidth, this.#ellipsis);
 			if (!showScrollbar) {
 				lines.push(truncated);
 				continue;
 			}
+			const content = `${truncated}${" ".repeat(Math.max(0, contentWidth - visibleWidth(truncated)))}`;
 			const barGlyph = thumb && row >= thumb.start && row < thumb.end ? this.#thumbChar : this.#trackChar;
 			const styledBar =
 				thumb && row >= thumb.start && row < thumb.end ? this.#theme.thumb(barGlyph) : this.#theme.track(barGlyph);
-			lines.push(`${truncated} ${styledBar}`);
+			lines.push(`${content} ${styledBar}`);
 		}
 		return lines;
 	}

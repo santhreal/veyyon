@@ -1,11 +1,22 @@
-/** Shared helpers for /mcp and /ssh command controllers. Captures argument parsing, source grouping, and chat-message rendering that */
+/**
+ * Shared helpers for /mcp and /ssh command controllers.
+ *
+ * Captures argument parsing, source grouping, and chat-message rendering that
+ * was duplicated between mcp-command-controller and ssh-command-controller.
+ * Intentionally kept narrow: subcommand routing, help text, success/error
+ * wording, and add-flow logic stay in the per-controller files because they
+ * diverge in workflow.
+ */
 import type { SourceMeta } from "../../capability/types";
 import { shortenPath } from "../../tools/render-utils";
 import { mountTranscriptBlock, transcriptBlockText } from "../components/transcript-block-chrome";
 import { TranscriptBlock } from "../components/transcript-container";
 import type { InteractiveModeContext } from "../types";
 
-/** Group capability-loaded items by their source provider+path, yielding each group with a display-ready `shortPath`. */
+/**
+ * Group capability-loaded items by their source provider+path, yielding each
+ * group with a display-ready `shortPath`.
+ */
 export function* groupBySource<T>(
 	items: Iterable<T>,
 	getSource: (item: T) => SourceMeta,
@@ -31,7 +42,11 @@ export function* groupBySource<T>(
 	}
 }
 
-/** Present a message block on the transcript rail. Reads one member, so it asks for one: controllers that have been narrowed to their own slice can still */
+/**
+ * Present a message block on the transcript rail. Reads one member, so it asks
+ * for one: controllers that have been narrowed to their own slice can still
+ * call it.
+ */
 export function showCommandMessage(ctx: Pick<InteractiveModeContext, "present">, text: string): void {
 	const block = new TranscriptBlock();
 	mountTranscriptBlock(block, { body: transcriptBlockText(text) });

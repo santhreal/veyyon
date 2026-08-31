@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getRemoteHostDir, getSshControlDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
+// Owners, not the `@veyyon/utils` barrel: 6 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import * as postmortem from "@veyyon/utils/postmortem";
 import * as ptree from "@veyyon/utils/ptree";
@@ -31,21 +32,47 @@ export interface SSHHostInfo {
 	version: number;
 	os: SSHHostOs;
 	shell: SSHHostShell;
+	/**
+	 * Shell name veyyon verified can execute the POSIX transfer snippets
+	 * (`head`/`cat`/`mv`/`test`/`ls`) `ssh://` uses. Probed by running
+	 * `sh -lc` / `bash -lc` / `zsh -lc` against the remote and keeping the
+	 * first one that round-trips a known marker. Independent of `shell`
+	 * (the self-reported login shell), which may be noisy, exotic, or simply
+	 * mis-classified — only `transferShell` gates ssh:// transfers.
+	 */
 	transferShell?: "sh" | "bash" | "zsh";
 	compatShell?: "bash" | "sh";
 	compatEnabled: boolean;
 }
 
+// Resolved per call, never frozen at module load: the dirs resolver is rebuilt
+// after profile/agent `.env` files apply (refreshDirsFromEnv), which happens
+// AFTER this module imports — a frozen const would silently point at the
+// pre-.env location.
 function controlDir(): string {
 	return getSshControlDir();
 }
 
+/**
+ * Longest path an AF_UNIX socket accepts in `sun_path`: 104 bytes on macOS,
+ * 108 on Linux and the BSDs. OpenSSH binds the multiplexed socket at a
+ * temporary `<ControlPath>.<16 random characters>` and renames it into place,
+ * so the usable budget is that limit minus the suffix and the NUL terminator.
+ */
 const CONTROL_TEMP_SUFFIX_BYTES = 17;
 
 function controlPathBudget(platform: SshPlatform): number {
 	return (platform === "darwin" ? 104 : 108) - CONTROL_TEMP_SUFFIX_BYTES - 1;
 }
 
+/**
+ * Socket name for one connection. OpenSSH's own `%C` token expands to a 64-hex
+ * digest, which by itself leaves 27 bytes for the profile directory and put
+ * every control path over the limit, so the digest is computed here and
+ * truncated. The identity is the exact destination handed to ssh plus the port
+ * and key file, which separates connections at least as finely as `%C` does
+ * for these call sites.
+ */
 function controlSocketName(host: SSHConnectionTarget): string {
 	const identity = [buildSshTarget(host.username, host.host), host.port ?? "", host.keyPath ?? ""].join("\0");
 	return `${crypto.createHash("sha256").update(identity).digest("hex").slice(0, 16)}.sock`;
@@ -53,6 +80,12 @@ function controlSocketName(host: SSHConnectionTarget): string {
 
 const overlongControlPaths = new Set<string>();
 
+/**
+ * Control socket for `host`, or null when the platform or the profile path
+ * cannot carry one. A path that does not fit disables multiplexing for that
+ * connection rather than failing it: OpenSSH refuses to bind an overlong
+ * socket, which otherwise takes down every ssh call on the host.
+ */
 function controlMasterPath(host: SSHConnectionTarget, platform: SshPlatform = process.platform): string | null {
 	if (!supportsSshControlMaster(platform)) return null;
 	const socketPath = path.join(controlDir(), controlSocketName(host));
@@ -77,6 +110,7 @@ const hostInfoCache = new Map<string, SSHHostInfo>();
 
 interface SSHArgsOptions {
 	platform?: SshPlatform;
+	/** When true, omit `-n` so the remote command can read from our piped stdin. */
 	allowStdin?: boolean;
 }
 
@@ -145,6 +179,14 @@ function buildCommonArgs(host: SSHConnectionTarget, options?: SSHArgsOptions): s
 	return args;
 }
 
+/**
+ * Per-call timeout for the pre-command SSH setup/probe helpers. These sit on
+ * the `ensureHostInfo` → `probeHostInfo` / `ensureConnection` path that runs
+ * *before* `SshTool.execute` applies the user-provided command timeout, so an
+ * unreachable host or wedged control-master would otherwise hang forever
+ * (#4232). `allowNonZero`/`allowAbort` keep the "return a failure result"
+ * contract that these helpers had under `.quiet().nothrow()`.
+ */
 const SSH_HELPER_TIMEOUT_MS = 30_000;
 
 async function runSshSync(
@@ -179,6 +221,12 @@ async function runSshCaptureSync(
 	};
 }
 
+/**
+ * Test-only surface for exercising the pre-command SSH helpers against a
+ * fake `ssh` binary with a shortened timeout. External code MUST NOT depend
+ * on this — call `ensureConnection` / `ensureHostInfo` instead.
+ * @internal
+ */
 export const _sshHelpersForTests = { runSshSync, runSshCaptureSync };
 
 function ensureSshBinary(): void {
@@ -213,6 +261,9 @@ function parseShell(value: unknown): SSHHostShell | null {
 	if (normalized.includes("zsh")) return "zsh";
 	if (normalized.includes("pwsh") || normalized.includes("powershell")) return "powershell";
 	if (normalized.includes("cmd.exe") || normalized === "cmd") return "cmd";
+	// Only genuine POSIX sh-family by basename — fish/csh/tcsh also end in "sh"
+	// but are non-POSIX (csh/tcsh history-expand `!`), so they fall through to
+	// "unknown" and are refused by the ssh:// transfer guard.
 	const base = normalized.slice(normalized.lastIndexOf("/") + 1);
 	if (base === "sh" || base === "dash" || base === "ash" || base === "ksh" || base === "mksh") return "sh";
 	return "unknown";
@@ -246,6 +297,12 @@ function applyCompatOverride(host: SSHConnectionTarget, info: SSHHostInfo): SSHH
 	return { ...info, version: info.version ?? 0, compatShell, compatEnabled };
 }
 
+/**
+ * Parse a raw cache-file value (or any unknown) into a normalized
+ * {@link SSHHostInfo}, dropping fields that don't pass the per-field guards.
+ * Exported so cache-layer round-tripping (incl. the new `transferShell`
+ * field, #3719) is testable without touching disk.
+ */
 export function parseHostInfo(value: unknown): SSHHostInfo | null {
 	if (!value || typeof value !== "object") return null;
 	const record = value as Record<string, unknown>;
@@ -272,6 +329,10 @@ function shouldRefreshHostInfo(host: SSHConnectionTarget, info: SSHHostInfo): bo
 	if (info.os === "windows" && info.compatEnabled && !info.compatShell) return true;
 	if (info.os === "windows" && info.compatShell === "bash" && info.shell === "unknown") return true;
 	if (host.compat === true && info.os === "windows" && !info.compatShell) return true;
+	// A non-Windows host with no verified POSIX transfer shell is ambiguous —
+	// either the probe never ran capability checks, or every candidate failed.
+	// Re-probe rather than letting the ssh:// transfer guard reject it on a
+	// stale `shell: "unknown"` classification (#3719).
 	if (info.os !== "windows" && !info.transferShell) return true;
 	return false;
 }
@@ -317,12 +378,28 @@ async function persistHostInfo(host: SSHConnectionTarget, info: SSHHostInfo): Pr
 	}
 }
 
+/**
+ * Frame marker emitted by the remote OS/shell probe. The probe wraps its
+ * payload in this prefix so the parser can ignore startup-file noise (banners,
+ * `motd`, login messages, `Last login: …`) instead of trusting only the first
+ * line of stdout. See #3719.
+ */
 export const HOST_PROBE_MARKER = "VEYYON_HOST_PROBE=";
 
+/** Marker for the transfer-shell capability probe. */
 export const TRANSFER_PROBE_MARKER = "VEYYON_TRANSFER_OK|";
 
+/** sh / bash / zsh, in the order we'll try as `transferShell` candidates. */
 const TRANSFER_SHELL_CANDIDATES = ["sh", "bash", "zsh"] as const;
 
+/**
+ * Find the first line of `stdout`/`stderr` that begins with `marker` and
+ * return everything after it. Used by the SSH host probe so noisy login
+ * dotfiles can't corrupt OS/shell classification by emitting text on the
+ * first line of `ssh` output.
+ *
+ * Returns `null` when no marker line is found in either stream.
+ */
 export function extractProbePayload(stdout: string, stderr: string, marker = HOST_PROBE_MARKER): string | null {
 	for (const blob of [stdout, stderr]) {
 		if (!blob) continue;
@@ -336,6 +413,16 @@ export function extractProbePayload(stdout: string, stderr: string, marker = HOS
 	return null;
 }
 
+/**
+ * Find `marker` anywhere in `stdout` or `stderr` and return everything that
+ * follows it, scanning stdout first. Returns `null` when the marker is in
+ * neither stream.
+ *
+ * Used by the transfer-shell capability probe. Some remotes have broken
+ * login dotfiles that swap fd 1/2, so the marker can land on stderr even
+ * though the probe ran the printf successfully (matches the host-info
+ * probe's stderr fallback). See #3719.
+ */
 export function findProbeMarker(stdout: string, stderr: string, marker: string): string | null {
 	for (const blob of [stdout, stderr]) {
 		if (!blob) continue;
@@ -345,6 +432,7 @@ export function findProbeMarker(stdout: string, stderr: string, marker: string):
 	return null;
 }
 
+/** Classify a POSIX-ish `uname -s` payload from the transfer-shell probe. */
 export function osFromUname(value: string): SSHHostOs | undefined {
 	const uname = value.toLowerCase();
 	if (uname.includes("darwin")) return "macos";
@@ -359,6 +447,8 @@ async function probeTransferShell(
 	host: SSHConnectionTarget,
 ): Promise<{ shell: SSHHostInfo["transferShell"]; uname: string }> {
 	for (const candidate of TRANSFER_SHELL_CANDIDATES) {
+		// `printf` is POSIX and emits no trailing newline, so we can pin the
+		// marker right against the uname output and split on it cleanly.
 		const remote = `${candidate} -lc 'printf "${TRANSFER_PROBE_MARKER}"; uname -s 2>/dev/null || true'`;
 		const probe = await runSshCaptureSync(await buildRemoteCommand(host, remote));
 		if (probe.exitCode !== 0) continue;
@@ -418,15 +508,23 @@ async function probeHostInfo(host: SSHConnectionTarget): Promise<SSHHostInfo> {
 		os = "linux";
 	}
 
+	// Reuse parseShell so probe-time and cached classification stay identical.
 	let shell = parseShell(shellLower) ?? "unknown";
 	if (shell === "unknown" && os === "windows" && !shellLower) {
 		shell = "cmd";
 	}
 
+	// For any non-Windows host (including `unknown`, which is often a misclassified
+	// POSIX remote with noisy login output) verify a working transfer shell by
+	// running `sh -lc` / `bash -lc` / `zsh -lc` against it. The first one whose
+	// printf round-trips becomes `transferShell`; ssh:// gates on this rather
+	// than the self-reported login-shell name (#3719).
 	let transferShell: SSHHostInfo["transferShell"];
 	if (os !== "windows") {
 		const probe = await probeTransferShell(host);
 		transferShell = probe.shell;
+		// `uname -s` from the same probe lets us recover the OS when the first
+		// probe couldn't classify it (e.g. the remote silently nuked `$OSTYPE`).
 		if (transferShell && os === "unknown") {
 			os = osFromUname(probe.uname) ?? os;
 		}
@@ -471,6 +569,23 @@ export async function getHostInfo(hostName: string): Promise<SSHHostInfo | undef
 	return loadHostInfoFromDiskByName(hostName);
 }
 
+export async function getHostInfoForHost(host: SSHConnectionTarget): Promise<SSHHostInfo | undefined> {
+	const cached = hostInfoCache.get(host.name);
+	if (cached) {
+		const resolved = applyCompatOverride(host, cached);
+		if (resolved !== cached) hostInfoCache.set(host.name, resolved);
+		return resolved;
+	}
+	return await loadHostInfoFromDisk(host);
+}
+
+/**
+ * Synchronous, probe-free host info lookup for startup paths.
+ *
+ * Checks the in-memory cache, then falls back to a synchronous read of the
+ * persisted host-info cache file. Never opens a connection or probes the
+ * remote host — callers get `undefined` when nothing is cached yet.
+ */
 export function getCachedHostInfoSync(host: SSHConnectionTarget): SSHHostInfo | undefined {
 	const cached = hostInfoCache.get(host.name);
 	if (cached) {
@@ -512,7 +627,7 @@ export async function buildRemoteCommand(
 	options?: SSHArgsOptions,
 ): Promise<string[]> {
 	await validateKeyPermissions(host.keyPath, options?.platform);
-	return buildCommonArgs(host, options).concat([buildSshTarget(host.username, host.host), command]);
+	return [...buildCommonArgs(host, options), buildSshTarget(host.username, host.host), command];
 }
 
 let registered = false;
@@ -576,7 +691,7 @@ export async function ensureConnection(host: SSHConnectionTarget): Promise<void>
 }
 
 export async function invalidateHostMetadata(hostNames: Iterable<string>): Promise<void> {
-	const names = Array.from(hostNames);
+	const names = [...hostNames];
 	for (const hostName of names) {
 		hostInfoCache.delete(hostName);
 		await deleteHostInfoFromDisk(hostName);

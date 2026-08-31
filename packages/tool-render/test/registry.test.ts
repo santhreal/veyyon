@@ -4,15 +4,14 @@ import { stripAnsi } from "../src/util";
 
 /**
  * Every wire name the coding-agent can emit must resolve to a renderer with a
- * Summary. Aliases (apply_patch→edit, find→glob, …) must share the primary
- * renderer. Prototype keys must never resolve as accidental "registered" tools.
+ * Summary. Current aliases (apply_patch→edit, js/python/notebook→eval, …)
+ * must share the primary renderer. Prototype keys must never resolve accidentally.
  */
 const REGISTERED_NAMES = [
 	"argot_load",
 	"argot_unload",
 	"ask",
 	"ast_edit",
-	"ast_grep",
 	"bash",
 	"browser",
 	"puppeteer",
@@ -26,8 +25,6 @@ const REGISTERED_NAMES = [
 	"python",
 	"notebook",
 	"fetch",
-	"glob",
-	"find",
 	"generate_image",
 	"github",
 	"goal",
@@ -49,7 +46,6 @@ const REGISTERED_NAMES = [
 	"report_finding",
 	"report_tool_issue",
 	"resolve",
-	"grep",
 	"search",
 	"search_tool_bm25",
 	"set_cwd",
@@ -67,11 +63,9 @@ const ALIASES: Array<[string, string]> = [
 	["js", "eval"],
 	["python", "eval"],
 	["notebook", "eval"],
-	["find", "glob"],
 	["await", "job"],
 	["poll", "job"],
 	["cancel_job", "job"],
-	["search", "grep"],
 ];
 
 describe("@veyyon/tool-render registry", () => {
@@ -97,6 +91,13 @@ describe("@veyyon/tool-render registry", () => {
 	it("aliases share the primary tool's renderer instance", () => {
 		for (const [alias, primary] of ALIASES) {
 			expect(resolveToolRenderer(alias)).toBe(resolveToolRenderer(primary));
+		}
+	});
+
+	it("retired search tool names do not register and fall back to generic", () => {
+		const generic = resolveToolRenderer("definitely-not-a-real-tool-xyz");
+		for (const retired of ["glob", "grep", "find", "ast_grep"]) {
+			expect(resolveToolRenderer(retired)).toBe(generic);
 		}
 	});
 

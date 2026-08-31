@@ -1,23 +1,135 @@
-import { Snowflake } from "@veyyon/utils";
+/**
+ * Subprocess-backed Julia runner.
+ *
+ * The IPC loop, lifecycle, and display rendering are shared with the Python and
+ * Ruby runners via BaseKernel; this module supplies the Julia binary, runner
+ * script, and the runner's TSV/Base64 wire protocol.
+ */
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { $flag, errorMessage, isBunTestRuntime, Snowflake } from "@veyyon/utils";
+import { $ } from "bun";
 import { Settings } from "../../config/settings";
 import {
 	BaseKernel,
-	ensureRunnerScript,
+	DEFAULT_KERNEL_STARTUP_TIMEOUT_MS,
 	getRemainingTimeMs,
 	KERNEL_INTERRUPT_ESCALATION_MS,
 	KERNEL_SHUTDOWN_GRACE_MS,
 	type KernelEnvPatch,
 	type KernelExecuteOptions,
 	type KernelStartOptions,
+	kernelIpcTraceEnvVar,
+	kernelRunnerCacheDir,
 	releaseKernel,
 } from "../kernel-base";
+import type { KernelDisplayOutput } from "../py/display";
 import { hostHasInheritableConsole, shouldDetachKernel, shouldHideKernelWindow } from "../py/spawn-options";
-import { checkJuliaKernelAvailability, RUNNER_CACHE_DIR, STARTUP_TIMEOUT_MS, TRACE_IPC } from "./kernel-helpers";
 import { JULIA_PRELUDE } from "./prelude";
 import RUNNER_SCRIPT from "./runner.jl" with { type: "text" };
-import { filterEnv, resolveExplicitJuliaRuntime, resolveJuliaRuntime } from "./runtime";
+import {
+	enumerateJuliaRuntimes,
+	filterEnv,
+	type JuliaRuntime,
+	resolveExplicitJuliaRuntime,
+	resolveJuliaRuntime,
+} from "./runtime";
 
-export { checkJuliaKernelAvailability };
+export type { KernelExecuteOptions, KernelExecuteResult, KernelRuntimeEnv } from "../kernel-base";
+export { renderKernelDisplay } from "../py/display";
+export type { KernelDisplayOutput };
+
+const TRACE_IPC = $flag(kernelIpcTraceEnvVar("JULIA"));
+
+// Cache the runner script on disk so the subprocess loads it normally. Cached
+// per script hash so installs don't race across versions.
+const RUNNER_CACHE_DIR = kernelRunnerCacheDir(os.tmpdir(), "julia");
+let RUNNER_SCRIPT_PATH: string | null = null;
+
+async function ensureRunnerScript(): Promise<string> {
+	if (RUNNER_SCRIPT_PATH) return RUNNER_SCRIPT_PATH;
+	await fs.promises.mkdir(RUNNER_CACHE_DIR, { recursive: true });
+	const hash = Bun.hash(RUNNER_SCRIPT).toString(36);
+	const target = path.join(RUNNER_CACHE_DIR, `runner-${hash}.jl`);
+	if (!fs.existsSync(target)) {
+		await Bun.write(target, RUNNER_SCRIPT);
+	}
+	RUNNER_SCRIPT_PATH = target;
+	return target;
+}
+
+// Julia compiles both the runner and the prelude on first load. Clean hosted
+// runners have taken more than 30 seconds before accepting their first cell, so
+// cold starts need a wider budget than cached local launches.
+const STARTUP_TIMEOUT_MS = DEFAULT_KERNEL_STARTUP_TIMEOUT_MS + 50_000;
+
+export interface JuliaKernelAvailability {
+	ok: boolean;
+	juliaPath?: string;
+	runtime?: JuliaRuntime;
+	reason?: string;
+}
+
+// Cache successful probes per resolved cwd + explicit interpreter. Failures are
+// not cached so installing Julia mid-session is picked up on the next attempt.
+const availabilityCache = new Map<string, Promise<JuliaKernelAvailability>>();
+
+export async function checkJuliaKernelAvailability(
+	cwd: string,
+	interpreter?: string,
+): Promise<JuliaKernelAvailability> {
+	// Same fast path Python and Ruby have. Probing spawns the interpreter, so under `bun test` every suite
+	// that touches the executor paid a process spawn and then failed on machines without Julia, which is
+	// most of them: the executor's kernel lifecycle is what those suites are about, not whether this host
+	// can run Julia. Integration suites that need a real kernel reach the probe through the runner.
+	if (isBunTestRuntime() || $flag("VEYYON_JULIA_SKIP_CHECK")) {
+		return { ok: true };
+	}
+	const cacheKey = `${path.resolve(cwd)}::${interpreter ?? ""}`;
+	let cached = availabilityCache.get(cacheKey);
+	if (!cached) {
+		cached = probeJuliaKernelAvailability(cwd, interpreter);
+		availabilityCache.set(cacheKey, cached);
+	}
+	const result = await cached;
+	if (!result.ok) {
+		availabilityCache.delete(cacheKey);
+	}
+	return result;
+}
+
+async function probeJuliaKernelAvailability(cwd: string, interpreter?: string): Promise<JuliaKernelAvailability> {
+	const { env: shellEnv } = (await Settings.init()).getShellConfig();
+	const baseEnv = filterEnv(shellEnv);
+	const runtimes = enumerateJuliaRuntimes(cwd, baseEnv, interpreter);
+
+	if (runtimes.length === 0) {
+		return {
+			ok: false,
+			reason: "Julia executable not found on PATH. Please install Julia (https://julialang.org/).",
+		};
+	}
+
+	const failures: string[] = [];
+	for (const runtime of runtimes) {
+		try {
+			const probe = await $`${runtime.juliaPath} -e "exit(0)"`.quiet().nothrow().cwd(cwd).env(runtime.env);
+			if (probe.exitCode === 0) {
+				return { ok: true, juliaPath: runtime.juliaPath, runtime };
+			}
+			failures.push(`${runtime.juliaPath} (exit code ${probe.exitCode})`);
+		} catch (err) {
+			failures.push(`${runtime.juliaPath} (${errorMessage(err)})`);
+		}
+	}
+
+	return {
+		ok: false,
+		juliaPath: runtimes[0].juliaPath,
+		reason: `No working Julia interpreter found. Tried: ${failures.join("; ")}`,
+	};
+}
 
 export class JuliaKernel extends BaseKernel<KernelExecuteOptions> {
 	private constructor(id: string) {
@@ -28,10 +140,17 @@ export class JuliaKernel extends BaseKernel<KernelExecuteOptions> {
 			interruptEscalationMs: KERNEL_INTERRUPT_ESCALATION_MS,
 			shutdownGraceMs: KERNEL_SHUTDOWN_GRACE_MS,
 			buildPayload: (code, msgId, opts) => {
+				// Convert arguments into a TSV / Base64 payload.
 				const cwdB64 = Buffer.from(opts?.cwd ?? "").toString("base64");
 				const silentVal = opts?.silent ? "1" : "0";
 				const storeHistVal = opts?.storeHistory !== false && !opts?.silent ? "1" : "0";
 
+				// Format environment variables as key1_b64:val1_b64 key2_b64:val2_b64.
+				// A `null` in the patch CLEARS the variable, and the wire needs a way to say
+				// that: the key is prefixed with `!` and the value left empty. `!` is not in
+				// the base64 alphabet, so it cannot collide with an encoded key, and a runner
+				// that predates the marker simply fails to decode that one pair rather than
+				// setting the variable to something wrong.
 				const envPairs: string[] = [];
 				if (opts?.env) {
 					for (const key in opts.env) {
@@ -72,7 +191,7 @@ export class JuliaKernel extends BaseKernel<KernelExecuteOptions> {
 			if (typeof value === "string") spawnEnv[key] = value;
 		}
 
-		const scriptPath = await ensureRunnerScript(RUNNER_CACHE_DIR, RUNNER_SCRIPT, "jl");
+		const scriptPath = await ensureRunnerScript();
 		const kernel = new JuliaKernel(Snowflake.next());
 
 		const proc = Bun.spawn(
@@ -108,6 +227,20 @@ export class JuliaKernel extends BaseKernel<KernelExecuteOptions> {
 	}
 }
 
+/**
+ * The `cd` + env preamble prepended to a Julia execution request.
+ *
+ * `null` CLEARS a variable and `undefined` leaves it alone, which is the contract
+ * {@link KernelEnvPatch} documents and the Python runner already honoured. This
+ * function used to take `Record<string, string | undefined>` and test only
+ * `value !== undefined`, so a `null` reached `Buffer.from(null)` and threw a
+ * TypeError while BUILDING the script -- the request failed before Julia saw a byte
+ * of it.
+ *
+ * Exported so the regression suite can assert the emitted bytes directly. The
+ * alternative is a live kernel, which needs the interpreter installed and would not
+ * run in CI, and this contract is precisely about what text gets generated.
+ */
 export function buildInitScript(cwd: string, env?: KernelEnvPatch): string {
 	const b64 = (text: string) => Buffer.from(text).toString("base64");
 	const lines = [
@@ -122,6 +255,7 @@ export function buildInitScript(cwd: string, env?: KernelEnvPatch): string {
 			value === null ? `delete!(ENV, ${keyExpr})` : `ENV[${keyExpr}] = String(Base64.base64decode("${b64(value)}"))`,
 		);
 	}
+	// Avoid modifying LOAD_PATH if not necessary, but if needed, prepend cwd
 	lines.push("if !(__veyyon_init_cwd in LOAD_PATH); pushfirst!(LOAD_PATH, __veyyon_init_cwd); end");
 	return lines.join("\n");
 }

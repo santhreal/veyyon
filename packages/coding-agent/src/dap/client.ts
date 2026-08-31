@@ -4,9 +4,6 @@ import { NON_INTERACTIVE_ENV } from "../exec/non-interactive-env";
 import { MessageFramer } from "../jsonrpc/message-framing";
 import { primarySessionCpuAdoption } from "../session/cpu-limit";
 import { ToolAbortError } from "../tools/tool-errors";
-import type { DapEventHandler, DapReverseRequestHandler, DapSpawnOptions, DapWriteSink } from "./client-helpers";
-
-import { DEFAULT_REQUEST_TIMEOUT_MS, SOCKET_READY_TIMEOUT_MS, WRITE_MESSAGE_TIMEOUT_MS } from "./client-helpers";
 import type {
 	DapCapabilities,
 	DapClientState,
@@ -18,12 +15,47 @@ import type {
 	DapResponseMessage,
 } from "./types";
 
+interface DapSpawnOptions {
+	adapter: DapResolvedAdapter;
+	cwd: string;
+	/**
+	 * Cap on how long the socket-mode helpers wait for the adapter to open its
+	 * socket (unix) or dial back into our listener (TCP). Exposed for tests;
+	 * production callers rely on the default.
+	 *
+	 * @internal
+	 */
+	socketReadyTimeoutMs?: number;
+}
+
+/** Minimal write interface shared by Bun.FileSink and Bun TCP sockets. */
+interface DapWriteSink {
+	write(data: string | Uint8Array): number | Promise<number>;
+	flush(): number | Promise<number> | undefined;
+}
+
+type DapEventHandler = (body: unknown, event: DapEventMessage) => void | Promise<void>;
+type DapReverseRequestHandler = (args: unknown) => unknown | Promise<unknown>;
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+/**
+ * Hard cap on a single message write. A wedged adapter stdin used to hang the
+ * whole client forever; on hitting this cap the client disposes itself so the
+ * next request fails fast instead of piling more work onto a broken adapter.
+ */
+const WRITE_MESSAGE_TIMEOUT_MS = 30_000;
+/** Default wait for socket-mode adapters to become reachable. */
+const SOCKET_READY_TIMEOUT_MS = 10_000;
+
 export class DapClient {
 	readonly adapter: DapResolvedAdapter;
 	readonly cwd: string;
 	readonly proc: DapClientState["proc"];
+	/** ReadableStream of DAP bytes — from proc.stdout (stdio) or a socket (socket mode). */
 	readonly #readable: ReadableStream<Uint8Array>;
+	/** Write sink — proc.stdin (stdio) or a socket (socket mode). */
 	readonly #writeSink: DapWriteSink;
+	/** Optional socket to close on dispose (socket mode only). */
 	readonly #socket?: { end(): void };
 	#requestSeq = 0;
 	#pendingRequests = new Map<number, DapPendingRequest>();
@@ -60,6 +92,10 @@ export class DapClient {
 		if (adapter.connectMode === "socket") {
 			return DapClient.#spawnSocket({ adapter, cwd, socketReadyTimeoutMs });
 		}
+		// Merge non-interactive env and start in a new session (detached → setsid)
+		// so the adapter process tree has no controlling terminal. Without this,
+		// debuggee children can reach /dev/tty and trigger SIGTTIN, suspending
+		// the parent harness under shell job control.
 		const env = {
 			...Bun.env,
 			...NON_INTERACTIVE_ENV,
@@ -79,6 +115,11 @@ export class DapClient {
 		return client;
 	}
 
+	/**
+	 * Spawn a socket-mode adapter (e.g. dlv).
+	 * Linux: connect to a unix domain socket via --listen=unix:<path>
+	 * macOS/other: the adapter dials into our TCP listener via --client-addr
+	 */
 	static async #spawnSocket({ adapter, cwd, socketReadyTimeoutMs }: DapSpawnOptions): Promise<DapClient> {
 		const env = {
 			...Bun.env,
@@ -93,6 +134,7 @@ export class DapClient {
 		return DapClient.#spawnSocketClientAddr({ adapter, cwd, env, timeoutMs });
 	}
 
+	/** Linux: spawn adapter with --listen=unix:<path>, then connect to the socket. */
 	static async #spawnSocketUnix({
 		adapter,
 		cwd,
@@ -113,6 +155,8 @@ export class DapClient {
 			onSpawnPid: primarySessionCpuAdoption(),
 		});
 
+		// If waitForCondition throws (timeout, or adapter exited early) or the
+		// socket connect fails, we must not leak the detached adapter process.
 		try {
 			await waitForCondition(() => isUnixSocketReady(socketPath), timeoutMs, proc);
 			const { readable, writeSink, socket } = await connectSocket({ unix: socketPath });
@@ -123,11 +167,14 @@ export class DapClient {
 		} catch (error) {
 			try {
 				proc.kill();
-			} catch {}
+			} catch {
+				/* proc may already be dead */
+			}
 			throw error;
 		}
 	}
 
+	/** macOS/other: listen on a random TCP port, spawn adapter with --client-addr, accept connection. */
 	static async #spawnSocketClientAddr({
 		adapter,
 		cwd,
@@ -141,6 +188,7 @@ export class DapClient {
 	}): Promise<DapClient> {
 		const { promise: connPromise, resolve: resolveConn } = Promise.withResolvers<Bun.Socket<undefined>>();
 
+		// Listen on port 0 (OS picks a free port)
 		const server = Bun.listen({
 			hostname: "127.0.0.1",
 			port: 0,
@@ -163,6 +211,9 @@ export class DapClient {
 			onSpawnPid: primarySessionCpuAdoption(),
 		});
 
+		// Wait for the adapter to dial back. On timeout (or any other failure
+		// before we've wired up the client) kill `proc` — otherwise the detached
+		// adapter process is orphaned.
 		const { promise: timeoutPromise, reject: rejectTimeout } = Promise.withResolvers<never>();
 		const connectTimeout = setTimeout(
 			() => rejectTimeout(new Error(`${adapter.name} did not connect within ${timeoutMs}ms`)),
@@ -178,7 +229,9 @@ export class DapClient {
 		} catch (error) {
 			try {
 				proc.kill();
-			} catch {}
+			} catch {
+				/* proc may already be dead */
+			}
 			throw error;
 		} finally {
 			clearTimeout(connectTimeout);
@@ -292,6 +345,10 @@ export class DapClient {
 			arguments: args,
 		};
 		const { promise, resolve, reject } = Promise.withResolvers<TBody>();
+		// Suppress "unhandled rejection" if the request timer or abort fires
+		// before the caller's `await` subscribes — e.g. while #writeMessage is
+		// still racing a wedged stdin flush. The caller's own `await` still
+		// receives the rejection normally; this handler is a passive guard.
 		promise.catch(() => {});
 
 		let timeout: NodeJS.Timeout | undefined;
@@ -327,6 +384,9 @@ export class DapClient {
 			},
 		});
 		this.#lastActivity = Date.now();
+		// Fire the write in the background. Awaiting it here would let a wedged
+		// stdin flush block the caller's `timeoutMs`; if it fails, propagate the
+		// failure into `promise` — the timer or abort may still win the race.
 		void this.#writeMessage(request).catch(error => {
 			if (!this.#pendingRequests.has(requestSeq)) return;
 			this.#pendingRequests.delete(requestSeq);
@@ -349,6 +409,12 @@ export class DapClient {
 		await this.#writeMessage(response);
 	}
 
+	/**
+	 * Framed write to the adapter, bounded by {@link WRITE_MESSAGE_TIMEOUT_MS}
+	 * and by adapter exit. Without this bound a wedged adapter stdin used to
+	 * hang the whole client forever. On timeout or exit-before-flush the client
+	 * disposes itself and rethrows.
+	 */
 	async #writeMessage(message: DapRequestMessage | DapResponseMessage): Promise<void> {
 		const content = JSON.stringify(message);
 		this.#writeSink.write(`Content-Length: ${Buffer.byteLength(content, "utf-8")}\r\n\r\n`);
@@ -376,11 +442,14 @@ export class DapClient {
 		try {
 			await Promise.race([flushResult, guardPromise]);
 		} catch (error) {
+			// The client is now known-broken. Kick off dispose in the background;
+			// callers will see subsequent sendRequest calls fail fast.
 			void this.dispose();
 			throw error;
 		} finally {
 			clearTimeout(timer);
 			this.#pendingWriteExitRejectors.delete(rejectOnExit);
+			// Release the guard so any late timeout callback becomes a no-op.
 			guardResolve();
 		}
 	}
@@ -399,7 +468,9 @@ export class DapClient {
 		this.#rejectPendingRequests(new Error(`DAP adapter ${this.adapter.name} disposed`));
 		try {
 			this.#socket?.end();
-		} catch {}
+		} catch {
+			/* socket may already be closed */
+		}
 		try {
 			this.proc.kill();
 		} catch (error) {
@@ -425,7 +496,11 @@ export class DapClient {
 
 				framer.push(Buffer.from(value));
 
+				// Drain every complete message currently buffered.
 				for (const messageText of framer.drain(headerText => {
+					// Non-protocol bytes (e.g. an adapter printing to stdout).
+					// Drop past the bogus terminator and resync instead of
+					// stalling on the same junk header forever.
 					logger.warn("DAP framing resync: header block without Content-Length", {
 						adapter: this.adapter.name,
 						header: headerText.slice(0, 200),
@@ -433,6 +508,8 @@ export class DapClient {
 				})) {
 					this.#lastActivity = Date.now();
 
+					// A malformed message must not kill the reader — later
+					// messages are still well-framed.
 					try {
 						const message = JSON.parse(messageText) as DapResponseMessage | DapEventMessage | DapRequestMessage;
 						if (message.type === "response") {
@@ -453,6 +530,7 @@ export class DapClient {
 		} catch (error) {
 			this.#rejectPendingRequests(new Error(`DAP connection closed: ${errorMessage(error)}`));
 		} finally {
+			// Persist any unparsed remainder so a restarted reader resumes mid-message.
 			this.#messageBuffer = framer.remainder();
 			reader.releaseLock();
 			this.#isReading = false;
@@ -476,7 +554,7 @@ export class DapClient {
 	async #dispatchEvent(message: DapEventMessage): Promise<void> {
 		const handlers = Array.from(this.#eventHandlers.get(message.event) ?? []);
 		const anyHandlers = Array.from(this.#anyEventHandlers);
-		for (const handler of handlers.concat(anyHandlers)) {
+		for (const handler of [...handlers, ...anyHandlers]) {
 			try {
 				await handler(message.body, message);
 			} catch (error) {
@@ -563,6 +641,7 @@ async function isUnixSocketReady(socketPath: string): Promise<boolean> {
 	}
 }
 
+/** Poll a condition until it returns true, or timeout/process exit. */
 async function waitForCondition(
 	check: () => boolean | Promise<boolean>,
 	timeoutMs: number,
@@ -585,6 +664,7 @@ interface SocketTransport {
 	socket: { end(): void };
 }
 
+/** Adapt a Bun.Socket to DapWriteSink. */
 function socketToSink(socket: Bun.Socket<undefined>): DapWriteSink {
 	return {
 		write(data: string | Uint8Array) {
@@ -597,6 +677,7 @@ function socketToSink(socket: Bun.Socket<undefined>): DapWriteSink {
 	};
 }
 
+/** Connect to a unix domain socket and return DAP transport streams. */
 async function connectSocket(options: { unix: string }): Promise<SocketTransport> {
 	const { promise, resolve } = Promise.withResolvers<SocketTransport>();
 	let streamController: ReadableStreamDefaultController<Uint8Array>;
@@ -623,12 +704,16 @@ async function connectSocket(options: { unix: string }): Promise<SocketTransport
 			close() {
 				try {
 					streamController.close();
-				} catch {}
+				} catch {
+					/* already closed */
+				}
 			},
 			error(_socket, err) {
 				try {
 					streamController.error(err);
-				} catch {}
+				} catch {
+					/* already closed */
+				}
 			},
 		},
 	});
@@ -636,6 +721,7 @@ async function connectSocket(options: { unix: string }): Promise<SocketTransport
 	return promise;
 }
 
+/** Wrap an already-connected Bun.Socket into DAP transport streams. */
 function wrapBunSocket(rawSocket: Bun.Socket<undefined>): SocketTransport {
 	let streamController: ReadableStreamDefaultController<Uint8Array>;
 
@@ -645,6 +731,7 @@ function wrapBunSocket(rawSocket: Bun.Socket<undefined>): SocketTransport {
 		},
 	});
 
+	// Attach data/close/error handlers to the already-open socket
 	rawSocket.reload({
 		socket: {
 			open() {},
@@ -654,12 +741,16 @@ function wrapBunSocket(rawSocket: Bun.Socket<undefined>): SocketTransport {
 			close() {
 				try {
 					streamController.close();
-				} catch {}
+				} catch {
+					/* already closed */
+				}
 			},
 			error(_socket, err) {
 				try {
 					streamController.error(err);
-				} catch {}
+				} catch {
+					/* already closed */
+				}
 			},
 		},
 	});

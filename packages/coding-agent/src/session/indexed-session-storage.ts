@@ -1,15 +1,6 @@
 import { enoentError, toError } from "@veyyon/utils";
 import type { PathState } from "@veyyon/utils/fs-optional";
 import { sessionFileStem } from "@veyyon/utils/session-file";
-import type { EnqueueOptions, IndexEntry, SessionStorageBackend } from "./indexed-session-storage-helpers";
-import {
-	byteLength,
-	matchesGlob,
-	normalizeByteLimit,
-	RESOLVED,
-	titleUpdateForIndex,
-	uniquePaths,
-} from "./indexed-session-storage-helpers";
 import {
 	type SessionFileBody,
 	type SessionStorage,
@@ -26,8 +17,71 @@ import {
 	titleUpdateFromSlot,
 } from "./session-title-slot";
 
-export type { SessionStorageIndexEntry } from "./indexed-session-storage-helpers";
-export type { SessionStorageBackend };
+export interface SessionStorageIndexEntry {
+	path: string;
+	size: number;
+	mtimeMs: number;
+	title?: string;
+	titleSource?: SessionTitleUpdate["source"];
+	titleUpdatedAt?: string;
+}
+
+export interface SessionStorageBackend {
+	init(): Promise<void>;
+	loadIndex(): Promise<Iterable<SessionStorageIndexEntry>>;
+	readFull(path: string): Promise<string | null>;
+	readSlices(path: string, prefixBytes: number, suffixBytes: number): Promise<[string, string]>;
+	writeFull(path: string, content: string, mtimeMs: number, title?: SessionTitleUpdate): Promise<void>;
+	append(path: string, line: string, mtimeMs: number): Promise<void>;
+	updateSessionTitle(path: string, title: SessionTitleUpdate, mtimeMs: number): Promise<void>;
+	truncate(path: string, mtimeMs: number): Promise<void>;
+	remove(paths: string[]): Promise<void>;
+	move(src: string, dst: string, mtimeMs: number): Promise<void>;
+}
+
+interface IndexEntry {
+	size: number;
+	mtimeMs: number;
+	title?: string;
+	titleSource?: SessionTitleUpdate["source"];
+	titleUpdatedAt?: string;
+}
+
+interface EnqueueOptions {
+	trackDrain: boolean;
+}
+
+const RESOLVED = Promise.resolve();
+
+function matchesGlob(name: string, pattern: string): boolean {
+	if (pattern === "*") return true;
+	if (pattern.startsWith("*.")) return name.endsWith(pattern.slice(1));
+	return name === pattern;
+}
+
+function byteLength(text: string): number {
+	return Buffer.byteLength(text, "utf-8");
+}
+
+function normalizeByteLimit(maxBytes: number): number {
+	if (!(maxBytes > 0)) return 0;
+	return Math.trunc(maxBytes);
+}
+
+function uniquePaths(paths: readonly string[]): string[] {
+	const out: string[] = [];
+	const seen = new Set<string>();
+	for (const path of paths) {
+		if (seen.has(path)) continue;
+		seen.add(path);
+		out.push(path);
+	}
+	return out;
+}
+function titleUpdateForIndex(entry: IndexEntry): SessionTitleUpdate | undefined {
+	if (!entry.titleUpdatedAt) return undefined;
+	return { title: entry.title, source: entry.titleSource, updatedAt: entry.titleUpdatedAt };
+}
 
 export class IndexedSessionStorage implements SessionStorage {
 	readonly #backend: SessionStorageBackend;
@@ -69,12 +123,21 @@ export class IndexedSessionStorage implements SessionStorage {
 		if (error) throw error;
 	}
 
-	ensureDirSync(_dir: string): void {}
+	ensureDirSync(_dir: string): void {
+		// Indexed backends are flat: directories are derived from key prefixes.
+	}
 
 	existsSync(path: string): boolean {
 		return this.#index.has(path);
 	}
 
+	/**
+	 * Two answers, for the same reason as the in-memory backend: an index cannot be unreachable.
+	 *
+	 * The third state exists for the filesystem, where a path can be present and unreadable at once. Here
+	 * the index either holds the path or it does not, and a synthesized `unreadable` would be a claim about
+	 * a failure this backend cannot have.
+	 */
 	existsStateSync(path: string): PathState {
 		return this.#index.has(path) ? "present" : "absent";
 	}
@@ -200,7 +263,12 @@ export class IndexedSessionStorage implements SessionStorage {
 		const commitGuard = options?.commitGuard;
 		if (commitGuard && !commitGuard()) return;
 		await this.#awaitPath(path);
+		// A concurrent flushSync (writeTextSync) may have taken over during the
+		// awaitPath yield and bumped the epoch. Re-check before touching the
+		// index or enqueueing the backend publish.
 		if (commitGuard && !commitGuard()) return;
+		// Only now: this backend keeps the whole text (it indexes the byte length and
+		// the title slot), but an abandoned write should not pay to build it.
 		const content = sessionBodyToString(body);
 		const previous = this.#index.get(path);
 		const mtimeMs = this.#allocMtimeMs();
@@ -210,6 +278,11 @@ export class IndexedSessionStorage implements SessionStorage {
 			await this.#enqueuePath(
 				path,
 				async () => {
+					// Final guard immediately before the backend actually publishes.
+					// If a concurrent writer has advanced the index past our
+					// optimistic entry, leave that newer state alone; otherwise
+					// restore the pre-write snapshot so readers do not observe a
+					// body we never wrote.
 					if (commitGuard && !commitGuard()) {
 						const current = this.#index.get(path);
 						if (current?.mtimeMs === mtimeMs) this.#restoreIndex(path, previous);
@@ -439,6 +512,10 @@ export class IndexedSessionStorage implements SessionStorage {
 			if (options.trackDrain && !this.#firstDrainError) this.#firstDrainError = error;
 			throw error;
 		});
+		// `tracked` is what the caller awaits, so the error is delivered there and is NOT swallowed here.
+		// The three guards below exist only to keep the bookkeeping copies of that promise from becoming
+		// unhandled rejections: `tail` is the chain the NEXT write on this path waits on, and it must
+		// resolve so one failed write does not reject every later write to the same file.
 		const tail = tracked.catch(() => {});
 		for (const path of unique) {
 			this.#pathTails.set(path, tail);
@@ -456,6 +533,8 @@ export class IndexedSessionStorage implements SessionStorage {
 				}
 			})
 			.catch(() => {});
+		// A caller that ignores the returned promise (fire-and-forget append) still reaches `#firstDrainError`
+		// above and surfaces at the next drain, so this marks the rejection handled rather than dropping it.
 		tracked.catch(() => {});
 		if (options.trackDrain) {
 			this.#drainPending.add(tracked);
@@ -511,6 +590,9 @@ class IndexedSessionStorageWriter implements SessionStorageWriter {
 				throw this.#recordError(err);
 			}
 		});
+		// The failure travels to the caller through the returned `next`, and `#recordError` also latches it in
+		// `#error` so every later call rethrows it. The chain copy must resolve, or the recorded error would be
+		// re-delivered to unrelated later writers as an unhandled rejection instead of through `#error`.
 		this.#pendingChain = next.catch(() => {});
 		return next;
 	}

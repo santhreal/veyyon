@@ -98,7 +98,7 @@ describe("session-scoped surfaces while the view is focused on an agent", () => 
 		mode = new InteractiveMode(mainSession, "test", undefined, undefined, undefined, eventBus);
 		terminal = new VirtualTerminal(WIDTH, 30);
 		mode.ui = new TUI(terminal);
-		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
+		vi.spyOn(mode.statusLine, "watchGitState").mockImplementation(() => {});
 		await mode.init();
 		await terminal.waitForRender();
 	});

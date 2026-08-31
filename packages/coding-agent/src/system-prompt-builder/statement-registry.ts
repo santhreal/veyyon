@@ -1,3 +1,76 @@
+/**
+ * The system prompt as STATEMENTS, not as a document.
+ *
+ * WHY THIS EXISTS. The prompt subsystem had two mechanisms for structure and only one of them
+ * was real. `section-registry.ts` declares sections as rows, so a section is addressable,
+ * orderable, overridable and testable. The conditions INSIDE those sections were `{{#if}}`
+ * blocks embedded in prose, so they were none of those things.
+ *
+ * Two symptoms show what that cost. `prompt-gate-registry.test.ts` had to REGEX
+ * `system-prompt.md` to discover what the prompt gates on, because there was no list to read.
+ * And `prompt-gate-inputs.test.ts` could only assert `expect(flipped).not.toBe(baseline)` over a
+ * 76KB string, because a single gated line had no name to assert on. A "tiny point of the
+ * prompt" was not addressable at all: sections were, and there are six of them.
+ *
+ * A statement has an id, so it can be named, asserted on, measured, overridden and ablated.
+ *
+ * THE GRANULARITY RULE, which is the whole design:
+ *
+ *   A statement is the smallest unit that can independently be present, absent, or different
+ *   across sessions. If you cannot name a condition or configuration under which it would
+ *   change, it is not a statement, it is part of one.
+ *
+ * That keeps the registry exactly as fine as behaviour requires and no finer. ROLE's fourteen
+ * lines are two rows, not fourteen: the role sentence and five engineering principles are always
+ * present together, so they are ONE statement, and the Mermaid bullet is a second because
+ * `renderMermaid` can remove it.
+ *
+ * ONE ADDITION, which the last two sections forced and which is not a loophole: a unit the PROMPT
+ * ITSELF DELIMITS may be its own statement even when nothing varies it. DELIVERY CONTRACT is five
+ * unconditional XML blocks (`<contract>`, `<completeness>`, `<evidence-and-output>`, `<yielding>`,
+ * `<critical>`) and EXECUTION WORKFLOW is six numbered steps under markdown headings; the rule above
+ * would merge each set into a single row. The reason not to is that those boundaries are declared by
+ * the document rather than invented by the registry, so splitting on them is not the arbitrary split
+ * the rule exists to prevent, and an eval that ablates one contract block or one workflow step needs
+ * each to have a name.
+ *
+ * So the check is: two adjacent `always` rows are a merge to make UNLESS the second one opens a unit
+ * the document declares, meaning its text starts with a markdown heading or an XML tag. Two adjacent
+ * `always` rows of plain prose are still reported, which is the case the rule was written for.
+ *
+ * CONDITIONS COME FROM A CLOSED VOCABULARY. A row names a variable, and the suite checks that
+ * every named variable is either a registered settings gate (`gate-registry.ts`) or one of the
+ * classified non-settings gates. A statement therefore cannot depend on something that does not
+ * exist, which is the setting -> option -> default -> caller -> context -> template chain
+ * collapsing into one row.
+ *
+ * THE TEXT LIVES IN MD FILES, one per statement, in `statements/<section>/<id>.md` beside this
+ * file. The import is the registration, the same contract every other registry in this repo
+ * states.
+ *
+ * They live HERE and not under `prompts/`, which is where they were first put and where they were
+ * wrong: `prompts/registry.ts` owns every `.md` under `src/prompts`, so two registries claimed one
+ * directory tree and `prompt-registry-coverage.test.ts` reported the statement files as prompts
+ * that registry had failed to register. The test was right. A statement is not a prompt in that
+ * sense: a prompt is a standalone document sent to a model, and a statement is a fragment of one.
+ * Keeping statements beside the registry that registers them is also what every other registry in
+ * this repo does.
+ *
+ * THE MODULAR CUTOVER IS COMPLETE. All six static cached-prefix sections are
+ * assembled here, so this registry and its Markdown modules are the only source
+ * of their prompt text. `prompts/session/system-prompt.md` contains one variable
+ * slot and no prose, conditions, or banners.
+ *
+ * {@link STATEMENT_SECTIONS} is derived from the section registry, with a
+ * load-time check that every declared static section owns at least one row.
+ * Deleting the final row of a section therefore fails startup rather than
+ * silently deleting or replacing that region.
+ *
+ * Behavioral tests render the complete modular assembly across the gate matrix,
+ * verify each condition arm, and exercise the production `buildSystemPrompt`
+ * path. There is no duplicate prose document or migration parity fixture.
+ */
+
 import { isRecord } from "@veyyon/utils";
 import { assertNoRegisteredBanners, bannerTable, renderBanner } from "./banner-grammar";
 import { SYSTEM_PROMPT_SECTIONS, TEMPLATE_SECTION_IDS } from "./section-registry";
@@ -26,8 +99,10 @@ import statementExecutionImplement from "./statements/execution-workflow/impleme
 import statementExecutionImplementAskFirst from "./statements/execution-workflow/implement-ask-first.md" with {
 	type: "text",
 };
-import statementExecutionImplementGrep from "./statements/execution-workflow/implement-grep.md" with { type: "text" };
 import statementExecutionImplementNoDestructive from "./statements/execution-workflow/implement-no-destructive.md" with {
+	type: "text",
+};
+import statementExecutionImplementSearch from "./statements/execution-workflow/implement-search.md" with {
 	type: "text",
 };
 import statementExecutionReadRulesOnly from "./statements/execution-workflow/read-rules-only.md" with { type: "text" };
@@ -65,8 +140,7 @@ import statementRuntimeSkillsHeading from "./statements/runtime/skills-rules-hea
 import statementRuntimeInventoryText from "./statements/runtime/tool-inventory-text.md" with { type: "text" };
 import statementToolPolicyAst from "./statements/tool-policy/ast.md" with { type: "text" };
 import statementToolPolicyAstEdit from "./statements/tool-policy/ast-edit.md" with { type: "text" };
-import statementToolPolicyAstGrep from "./statements/tool-policy/ast-grep.md" with { type: "text" };
-import statementToolPolicyAstPlainText from "./statements/tool-policy/ast-plain-text.md" with { type: "text" };
+import statementToolPolicyAstSearch from "./statements/tool-policy/ast-search.md" with { type: "text" };
 import statementToolPolicyBashCwd from "./statements/tool-policy/bash-cwd.md" with { type: "text" };
 import statementToolPolicyDelegation from "./statements/tool-policy/delegation.md" with { type: "text" };
 import statementToolPolicyDelegationAllowed from "./statements/tool-policy/delegation-allowed.md" with { type: "text" };
@@ -93,9 +167,8 @@ import statementToolPolicyDelegationSubagentValue from "./statements/tool-policy
 	type: "text",
 };
 import statementToolPolicyExploration from "./statements/tool-policy/exploration.md" with { type: "text" };
-import statementToolPolicyExplorationGlob from "./statements/tool-policy/exploration-glob.md" with { type: "text" };
-import statementToolPolicyExplorationGrep from "./statements/tool-policy/exploration-grep.md" with { type: "text" };
 import statementToolPolicyExplorationRead from "./statements/tool-policy/exploration-read.md" with { type: "text" };
+import statementToolPolicyExplorationSearch from "./statements/tool-policy/exploration-search.md" with { type: "text" };
 import statementToolPolicyGeneral from "./statements/tool-policy/general.md" with { type: "text" };
 import statementToolPolicyInspectImage from "./statements/tool-policy/inspect-image.md" with { type: "text" };
 import statementToolPolicyIntentField from "./statements/tool-policy/intent-field.md" with { type: "text" };
@@ -105,14 +178,13 @@ import statementToolPolicyParallelMeansSubagents from "./statements/tool-policy/
 };
 import statementToolPolicyReportToolIssue from "./statements/tool-policy/report-tool-issue.md" with { type: "text" };
 import statementToolPolicyResultContract from "./statements/tool-policy/result-contract.md" with { type: "text" };
+import statementToolPolicySearch from "./statements/tool-policy/search.md" with { type: "text" };
 import statementToolPolicySecretsRedaction from "./statements/tool-policy/secrets-redaction.md" with { type: "text" };
 import statementToolPolicySpecializedBash from "./statements/tool-policy/specialized-bash.md" with { type: "text" };
 import statementToolPolicySpecializedBashLitmus from "./statements/tool-policy/specialized-bash-litmus.md" with {
 	type: "text",
 };
 import statementToolPolicySpecializedEdit from "./statements/tool-policy/specialized-edit.md" with { type: "text" };
-import statementToolPolicySpecializedGlob from "./statements/tool-policy/specialized-glob.md" with { type: "text" };
-import statementToolPolicySpecializedGrep from "./statements/tool-policy/specialized-grep.md" with { type: "text" };
 import statementToolPolicySpecializedLsp from "./statements/tool-policy/specialized-lsp.md" with { type: "text" };
 import statementToolPolicySpecializedRead from "./statements/tool-policy/specialized-read.md" with { type: "text" };
 import statementToolPolicySpecializedTools from "./statements/tool-policy/specialized-tools.md" with { type: "text" };
@@ -121,34 +193,91 @@ import statementToolPolicyToolIo from "./statements/tool-policy/tool-io.md" with
 
 const SYSTEM_SECTION_BANNERS = bannerTable(SYSTEM_PROMPT_SECTIONS);
 
+/**
+ * When a statement is included.
+ *
+ * THE FORMS COMPOSE. Full tool descriptors render only when tool information exists AND native
+ * list mode is off. A flat `whenAll: string[]` cannot express that nested negation without either
+ * a second special form per combination or a magic `!name` prefix. Recursion costs one line in
+ * each evaluator and says all of it.
+ *
+ * WHAT IS DELIBERATELY NOT HERE. Most conditionality in the template is INTRA-LINE, such as a
+ * sentence that grows a clause when `taskBatch` is on. Those are not statements. Modelling them
+ * here would shatter sentences into fragments and produce a registry far finer than behaviour
+ * requires, which the granularity rule above forbids. The division is: this registry controls
+ * whether the WHOLE statement is there, and Handlebars inside its text controls what that statement
+ * says.
+ */
 export type StatementCondition =
+	/** Always in the prompt. The absence of a condition is stated rather than left implicit. */
 	| { readonly kind: "always" }
+	/** Included when `variable` is truthy, matching `{{#if variable}}`. */
 	| { readonly kind: "when"; readonly variable: string }
+	/** Included when `collection` contains `member`, matching `{{#has collection "member"}}`. */
 	| { readonly kind: "whenContains"; readonly collection: string; readonly member: string }
+	/** Included when every nested condition holds, matching nested `{{#if}}` blocks. */
 	| { readonly kind: "whenAll"; readonly conditions: readonly StatementCondition[] }
+	/** Included when any nested condition holds, matching `{{#ifAny a b}}`. */
 	| { readonly kind: "whenAny"; readonly conditions: readonly StatementCondition[] }
+	/** Included when the nested condition does NOT hold: a block-level `{{else}}` arm. */
 	| { readonly kind: "not"; readonly condition: StatementCondition };
 
+/**
+ * Row-authoring builders.
+ *
+ * Nested object literals say the same thing, and for a two-level condition they say it in four
+ * lines of braces, while `allOf(when("hasTools"), not(when("toolListMode")))` says it in one. The
+ * rows are the part of this file people read, so they get the readable spelling. These construct
+ * the same values a literal would and are checked against literals in `statement-registry.test.ts`,
+ * so they cannot drift into a second vocabulary.
+ */
 export function when(variable: string): StatementCondition {
 	return { kind: "when", variable };
 }
 
+/** `{{#has collection "member"}}`. */
 export function contains(collection: string, member: string): StatementCondition {
 	return { kind: "whenContains", collection, member };
 }
 
+/** Every condition holds: nested `{{#if}}` blocks. */
 export function allOf(...conditions: readonly StatementCondition[]): StatementCondition {
 	return { kind: "whenAll", conditions };
 }
 
+/** Any condition holds: `{{#ifAny a b}}`. */
 export function anyOf(...conditions: readonly StatementCondition[]): StatementCondition {
 	return { kind: "whenAny", conditions };
 }
 
+/** The condition does not hold: a block-level `{{else}}` arm. */
 export function not(condition: StatementCondition): StatementCondition {
 	return { kind: "not", condition };
 }
 
+/**
+ * The template variables that are FACTS ABOUT THE SESSION rather than settings.
+ *
+ * A statement's condition names a variable, and that variable has to come from somewhere. Most come
+ * from a setting, and `gate-registry.ts` already enumerates those in each gate's `variables`. The
+ * rest are facts the session discovers: whether any skills loaded, whether an Obsidian vault is
+ * attached, what tools were built. Nothing enumerated them, so a condition could name a variable
+ * that nothing ever sets and the statement would simply never appear, silently.
+ *
+ * `statement-registry.test.ts` closes that: every variable a condition names must be either a
+ * registered gate's variable or a row here. The list therefore GROWS as sections convert, and the
+ * failure when it has not is the point rather than a chore. It fails closed, which is why the check
+ * is an equality against this list and not a lookup that shrugs when it misses.
+ *
+ * Each row says where the fact comes from, because "is this a real variable" is a question a reader
+ * should be able to answer here instead of by grepping the builder.
+ *
+ * A VARIABLE BELONGS TO EXACTLY ONE OF THE TWO LISTS, and the suite checks they are disjoint. It
+ * caught `hasSubagentSpecialists` here on the first run: it reads like a session fact, but it is
+ * derived from the agents the task tool will accept and that tool is built from `subagent.agents`,
+ * so the gate row owns it. Two owners would leave a reader unable to tell whether a setting controls
+ * it, which is the question this list exists to answer.
+ */
 export const SESSION_FACT_VARIABLES: Readonly<Record<string, string>> = Object.freeze({
 	skills: "the skills this session loaded, from the skill registry",
 	rules: "domain rules whose globs the session matched",
@@ -166,14 +295,34 @@ export const SESSION_FACT_VARIABLES: Readonly<Record<string, string>> = Object.f
 		"whether an obfuscator is holding secrets, so the redaction note is only shown to a session that can produce `#XXXX#` tokens",
 });
 
+/** One statement of the system prompt. */
 export interface PromptStatement {
+	/**
+	 * Stable, addressable name, `<section>/<slug>`.
+	 *
+	 * This is the handle the whole design exists to provide: a test asserts a statement by id
+	 * rather than by diffing 76KB, an eval ablates one rule by id, and `prompt-inspect` reports
+	 * cost per id. It is also the path of its md file under `statements/`, so a row and its text
+	 * are found from each other by reading, exactly as prompt ids work in `prompts/registry.ts`.
+	 */
 	readonly id: string;
+	/** The section this statement belongs to, from `section-registry.ts`. */
 	readonly section: string;
 	readonly condition: StatementCondition;
+	/** The statement's exact bytes, including its trailing newline. */
 	readonly text: string;
+	/** What this statement tells the model, and why it is its own statement. */
 	readonly purpose: string;
 }
 
+/**
+ * Every system-prompt statement in model-visible order.
+ *
+ * `as const satisfies` preserves literal ids and section names for the derived
+ * unions below. Within a section, statement order is prompt order. Every static
+ * section is required to own at least one row, so the zero-prose outer template
+ * can never become an implicit fallback.
+ */
 export const PROMPT_STATEMENTS = [
 	{
 		id: "conventions/conventions",
@@ -335,6 +484,9 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "tool-policy/inspect-image",
 		section: "tool-policy",
+		// Both tools it names: the statement is a PREFERENCE between them, so with no
+		// `read` tool it would compare the image tool against something the session
+		// cannot call and read as an instruction to use a tool that is not there.
 		condition: allOf(contains("tools", "inspect_image"), contains("tools", "read")),
 		text: statementToolPolicyInspectImage,
 		purpose: "prefers the image tool over a plain read to spare context, when both tools exist",
@@ -375,18 +527,11 @@ export const PROMPT_STATEMENTS = [
 		purpose: "routes code intelligence to the language server rather than to search",
 	},
 	{
-		id: "tool-policy/specialized-grep",
+		id: "tool-policy/search",
 		section: "tool-policy",
-		condition: contains("tools", "grep"),
-		text: statementToolPolicySpecializedGrep,
-		purpose: "routes regex search to the grep tool and names the shell commands it replaces",
-	},
-	{
-		id: "tool-policy/specialized-glob",
-		section: "tool-policy",
-		condition: contains("tools", "glob"),
-		text: statementToolPolicySpecializedGlob,
-		purpose: "routes globbing to the glob tool and names the shell commands it replaces",
+		condition: contains("tools", "search"),
+		text: statementToolPolicySearch,
+		purpose: "makes the unified search tool own workspace paths, text, and code structure",
 	},
 	{
 		id: "tool-policy/specialized-bash",
@@ -434,18 +579,11 @@ export const PROMPT_STATEMENTS = [
 		purpose: "the Exploration heading and the rule against opening files hopefully, true of every tool set",
 	},
 	{
-		id: "tool-policy/exploration-grep",
+		id: "tool-policy/exploration-search",
 		section: "tool-policy",
-		condition: contains("tools", "grep"),
-		text: statementToolPolicyExplorationGrep,
-		purpose: "names grep as the way to locate targets during exploration",
-	},
-	{
-		id: "tool-policy/exploration-glob",
-		section: "tool-policy",
-		condition: contains("tools", "glob"),
-		text: statementToolPolicyExplorationGlob,
-		purpose: "names glob as the way to map structure during exploration",
+		condition: contains("tools", "search"),
+		text: statementToolPolicyExplorationSearch,
+		purpose: "uses search to locate targets and map workspace structure during exploration",
 	},
 	{
 		id: "tool-policy/exploration-read",
@@ -465,17 +603,16 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "tool-policy/ast",
 		section: "tool-policy",
-		condition: anyOf(contains("tools", "ast_grep"), contains("tools", "ast_edit")),
+		condition: anyOf(contains("tools", "search"), contains("tools", "ast_edit")),
 		text: statementToolPolicyAst,
-		purpose: "the AST heading and the prefer-syntax-aware rule, present when either AST tool is built",
+		purpose: "the AST heading and syntax-aware rule for structural search or edits",
 	},
 	{
-		id: "tool-policy/ast-grep",
+		id: "tool-policy/ast-search",
 		section: "tool-policy",
-		condition: contains("tools", "ast_grep"),
-		text: statementToolPolicyAstGrep,
-		purpose:
-			"names the structural discovery tool, separate from the edit tool because either can be built without the other",
+		condition: contains("tools", "search"),
+		text: statementToolPolicyAstSearch,
+		purpose: "names structural search under the AST heading when unified search is active",
 	},
 	{
 		id: "tool-policy/ast-edit",
@@ -485,14 +622,7 @@ export const PROMPT_STATEMENTS = [
 		purpose:
 			"names the codemod tool, its own row because a session can have structural search without structural edit",
 	},
-	{
-		id: "tool-policy/ast-plain-text",
-		section: "tool-policy",
-		condition: anyOf(contains("tools", "ast_grep"), contains("tools", "ast_edit")),
-		text: statementToolPolicyAstPlainText,
-		purpose:
-			"confines plain grep to cases where structure is irrelevant, which only needs saying when a structural tool exists",
-	},
+
 	{
 		id: "tool-policy/delegation",
 		section: "tool-policy",
@@ -557,6 +687,12 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "tool-policy/delegation-allowed",
 		section: "tool-policy",
+		// The floor, and the level that had no sentence at all: the section rendered its heading, its
+		// gates and its subagent-value bullets with nothing saying when spawning is appropriate, so the
+		// capability was described and its trigger was not. `not(eagerTasks)` is exactly `allowed`,
+		// since `eagerTasks` is `preferred`-or-stronger. Codex models take
+		// `delegation-codex-off` in this state instead, which already says the same thing in their
+		// wording, hence `not(useCodexTaskPrompt)` like its two siblings.
 		condition: allOf(
 			contains("tools", "task"),
 			when("hasSpawnableSubagent"),
@@ -570,6 +706,10 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "tool-policy/delegation-subagent-value",
 		section: "tool-policy",
+		// `hasSpawnableSubagent` as well as the tool, because the tool outlives the agents. It stays
+		// built with every row disabled so an ephemeral `/` command can still grant one, and this
+		// prose cannot: with nothing the model may choose, advice about what to delegate is advice it
+		// can only fail to follow.
 		condition: allOf(contains("tools", "task"), when("hasSpawnableSubagent"), not(when("useCodexTaskPrompt"))),
 		text: statementToolPolicyDelegationSubagentValue,
 		purpose:
@@ -585,6 +725,9 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "tool-policy/delegation-gates",
 		section: "tool-policy",
+		// The task tool remains built when every agent row is disabled so a direct
+		// slash command can grant one for a turn. Model-facing role guidance must
+		// disappear in that state because it has no enabled destination.
 		condition: allOf(contains("tools", "task"), when("hasSpawnableSubagent")),
 		text: statementToolPolicyDelegationGates,
 		purpose:
@@ -666,6 +809,11 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "execution-workflow/decompose-todo-batching",
 		section: "execution-workflow",
+		// The only conditioned row of the five restored here, and it is conditioned because it names
+		// a tool. Telling a session with no todo tool to batch its todo calls is instruction the
+		// session cannot act on, paid for on every turn. The tool name interpolates for the same
+		// reason every other tool reference in this registry does: a renamed or wire-renamed tool
+		// must not leave the prompt naming something the model cannot call.
 		condition: contains("tools", "todo"),
 		text: statementExecutionDecomposeTodoBatching,
 		purpose:
@@ -679,11 +827,11 @@ export const PROMPT_STATEMENTS = [
 		purpose: "the Implement heading and the fix-at-source, prefer-existing-files, review-as-the-user rules",
 	},
 	{
-		id: "execution-workflow/implement-grep",
+		id: "execution-workflow/implement-search",
 		section: "execution-workflow",
-		condition: contains("tools", "grep"),
-		text: statementExecutionImplementGrep,
-		purpose: "grep instead of guessing, which needs the tool that makes it possible",
+		condition: contains("tools", "search"),
+		text: statementExecutionImplementSearch,
+		purpose: "search instead of guessing when locating code or affected call sites",
 	},
 	{
 		id: "execution-workflow/implement-ask-first",
@@ -732,6 +880,12 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "delivery-contract/no-partial-yield",
 		section: "delivery-contract",
+		// Unconditional on purpose. A reduced tool set does not make stopping mid-deliverable
+		// acceptable, so any gate here would recreate the defect this row exists to close: an
+		// instruction that is present in the tree and absent from the prompt the agent actually gets.
+		// Its own block rather than a bullet appended to `contract.md`, because the registry's
+		// granularity rule only admits an adjacent unconditional row when that row opens a unit the
+		// document declares.
 		condition: { kind: "always" },
 		text: statementDeliveryNoPartialYield,
 		purpose:
@@ -795,6 +949,10 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "delivery-contract/never-stop-early",
 		section: "delivery-contract",
+		// LAST ROW OF THE LAST STATIC SECTION, deliberately. This is the final recency slot of the
+		// cached prefix, and position is part of why the instruction works; upstream states the same
+		// prohibition twice for that reason, once in the contract and once here. Anything appended
+		// after this row takes the slot away from it.
 		condition: { kind: "always" },
 		text: statementDeliveryNeverStopEarly,
 		purpose:
@@ -802,12 +960,21 @@ export const PROMPT_STATEMENTS = [
 	},
 ] as const satisfies readonly PromptStatement[];
 
+/** One row, with its literal id and section intact. */
 export type PromptStatementEntry = (typeof PROMPT_STATEMENTS)[number];
 
+/** Every statement id, which is what an override, an ablation or an assertion names. */
 export type PromptStatementId = PromptStatementEntry["id"];
 
 export const PROMPT_STATEMENT_IDS: readonly PromptStatementId[] = PROMPT_STATEMENTS.map(statement => statement.id);
 
+/**
+ * Every static section whose text is supplied by statement modules.
+ *
+ * The list comes from the section registry rather than from the rows themselves.
+ * This makes deleting the final statement of a section a startup failure instead
+ * of silently deleting that section from the assembled prompt.
+ */
 export const STATEMENT_SECTIONS: readonly string[] = TEMPLATE_SECTION_IDS;
 
 {
@@ -820,7 +987,7 @@ export const STATEMENT_SECTIONS: readonly string[] = TEMPLATE_SECTION_IDS;
 				"the zero-prose outer template has no fallback content.",
 		);
 	}
-	const stray = Array.from(covered).filter(section => !STATEMENT_SECTIONS.includes(section));
+	const stray = [...covered].filter(section => !STATEMENT_SECTIONS.includes(section));
 	if (stray.length > 0) {
 		throw new Error(
 			`statements name sections the document does not have: ${stray.join(", ")}. ` +
@@ -844,14 +1011,33 @@ const SECTION_BANNERS = new Map(
 	SYSTEM_PROMPT_SECTIONS.map(section => [section.id, section.name ? `${renderBanner(section.name)}\n` : ""] as const),
 );
 
+/** The statements of one section, in order. */
 export function statementsOf(section: string): readonly PromptStatementEntry[] {
 	return STATEMENTS_BY_SECTION.get(section) ?? EMPTY_STATEMENTS;
 }
 
+/** The row for an id, or `undefined`. */
 export function statementById(id: string): PromptStatementEntry | undefined {
 	return STATEMENTS_BY_ID.get(id);
 }
 
+/**
+ * Every template variable the statements depend on, deduplicated.
+ *
+ * This is what replaces regexing `system-prompt.md` to find out what the prompt gates on. A
+ * reader, and a test, can ask the registry.
+ */
+export const STATEMENT_CONDITION_VARIABLES: readonly string[] = [
+	...new Set(PROMPT_STATEMENTS.flatMap(statement => conditionVariables(statement.condition))),
+];
+
+/**
+ * The context variables a condition reads.
+ *
+ * This function takes the full condition union so every condition form stays
+ * exhaustively handled regardless of which forms current rows happen to use.
+ * Exported consumers share this traversal instead of restating it.
+ */
 export function conditionVariables(condition: StatementCondition): readonly string[] {
 	switch (condition.kind) {
 		case "always":
@@ -868,8 +1054,15 @@ export function conditionVariables(condition: StatementCondition): readonly stri
 	}
 }
 
+/** The values a condition is evaluated against: the same context the template is rendered with. */
 export type StatementContext = Readonly<Record<string, unknown>>;
 
+/**
+ * Whether `condition` holds in `context`.
+ *
+ * Truthiness matches Handlebars because statement modules still use Handlebars
+ * for wording-level conditions. An empty array and empty string are false.
+ */
 export function conditionHolds(condition: StatementCondition, context: StatementContext): boolean {
 	switch (condition.kind) {
 		case "always":
@@ -884,19 +1077,40 @@ export function conditionHolds(condition: StatementCondition, context: Statement
 			return false;
 		}
 		case "whenAll":
+			// An empty `whenAll` is `always`, which is `Array.every`'s answer and the right one: a
+			// statement gated on nothing is ungated. `statement-registry.test.ts` pins both empties
+			// so this is a decision rather than an accident of which built-in was reached for.
 			return condition.conditions.every(nested => conditionHolds(nested, context));
 		case "whenAny":
+			// And an empty `whenAny` is never, for the same reason read the other way.
 			return condition.conditions.some(nested => conditionHolds(nested, context));
 		case "not":
 			return !conditionHolds(condition.condition, context);
 	}
 }
 
+/** Handlebars' notion of truthy: `[]` and `""` are false, `0` is false, everything else is JS-truthy. */
 function isTruthy(value: unknown): boolean {
 	if (Array.isArray(value)) return value.length > 0;
 	return Boolean(value);
 }
 
+/**
+ * Assemble one static section's template text from its statements.
+ *
+ * Statement files carry their own trailing newline and are concatenated without
+ * an added separator. `assembleDefaultTemplate` owns separators between sections.
+ *
+ * The section registry owns banner names and `renderBanner` owns their bytes.
+ * `assembleSection` prepends that banner once. Statement files and body-only
+ * operator replacements therefore never contain banners. `conventions` has no
+ * registered name and remains the bannerless preamble.
+ *
+ * The result is template text, not rendered text. Statement modules may contain
+ * Handlebars for wording-level variation. `buildSystemPrompt` renders and
+ * formats the complete assembled document once, so statement boundaries cannot
+ * change normalization behavior.
+ */
 export function assembleSection(
 	section: string,
 	context: StatementContext,
@@ -905,6 +1119,8 @@ export function assembleSection(
 	let out = sectionBanner(section);
 	for (const statement of statementsOf(section)) {
 		if (!conditionHolds(statement.condition, context)) continue;
+		// `Object.hasOwn`, not a truthiness check: `""` is a legitimate override meaning "keep the
+		// statement present and say nothing", and it is distinct from `null`, which ablates the row.
 		if (!Object.hasOwn(overrides, statement.id)) {
 			out += statement.text;
 			continue;
@@ -915,8 +1131,44 @@ export function assembleSection(
 	return out;
 }
 
+/**
+ * A per-statement replacement map: statement id to replacement text, or `null` to ABLATE the row.
+ *
+ * WHY BOTH OPERATIONS SHARE ONE MAP. An eval that wants to know what a rule is worth has exactly two
+ * questions, and they are the same experiment run two ways: remove the rule (does the model get
+ * worse?) and reword it (does a different phrasing do better?). Splitting them into two mechanisms
+ * would mean two precedence orders, two validation paths and two places to declare an arm, for one
+ * concept: this row is not the shipped text.
+ *
+ * `null` ablates and `""` keeps the row present with no text. The difference is not academic. A
+ * statement's neighbours are separated by the newlines the statements themselves carry, so ablating
+ * the row removes its separation with it, while `""` keeps the separation and drops only the words.
+ * An ablation arm wants the first; an arm testing "does this rule need saying at all" may want the
+ * second, and collapsing them would silently pick one.
+ *
+ * A key naming no registered statement is rejected rather than ignored: see
+ * {@link resolveStatementOverrides}. An eval arm that quietly did nothing would report the shipped
+ * prompt's score as the arm's score, which is a false result with no signal that anything failed.
+ */
 export type StatementOverrides = Readonly<Record<string, string | null>>;
 
+/**
+ * Validate a raw `statement id -> replacement` map into a typed one, failing closed on every way it
+ * could silently do nothing.
+ *
+ * Mirrors `resolveSectionOverrides` deliberately, down to the error wording, because the two are the
+ * same instrument at two granularities and an operator who has used one should not have to learn the
+ * other. The section version additionally requires a replacement to keep its banner; there is no
+ * banner inside a statement, so the equivalent check here is only that the id exists.
+ */
+/**
+ * Parse the raw JSON payload of a per-statement override into a validated map.
+ *
+ * Lives here rather than in `system-prompt.ts` for the same reason
+ * `parseSectionOverridesJson` lives with the sections: the registry owns what a valid statement id
+ * is, so it owns rejecting an invalid one. The builder's job is reading the environment and warning
+ * about it, which is a different concern and the only part that differs between the two granularities.
+ */
 export function parseStatementOverridesJson(raw: string | undefined): StatementOverrides {
 	if (raw === undefined || raw.trim() === "") return {};
 	let parsed: unknown;
@@ -939,6 +1191,8 @@ export function resolveStatementOverrides(raw: Readonly<Record<string, unknown>>
 	const out: Record<string, string | null> = {};
 	for (const [id, value] of Object.entries(raw)) {
 		if (statementById(id) === undefined) {
+			// The id list is long, so the message names the section's rows rather than every
+			// registered statement: an operator's typo is almost always inside the section they meant.
 			const section = id.includes("/") ? id.slice(0, id.indexOf("/")) : "";
 			const nearby = statementsOf(section).map(statement => statement.id);
 			throw new Error(
@@ -960,10 +1214,30 @@ export function resolveStatementOverrides(raw: Readonly<Record<string, unknown>>
 	return out;
 }
 
+/**
+ * The bytes a section contributes before any statement does: its banner, or nothing.
+ *
+ * Split out of {@link assembleSection} rather than inlined twice because `prompt-inspect` prices
+ * each statement by assembling the section one statement at a time and measuring what each one
+ * adds. That measurement has to start from the same prefix the real assembly starts from, and a
+ * second copy of `registered?.name ? renderBanner(...)` would be a banner rule with two owners:
+ * the width, the trailing newline and the no-name case would then all be places the two could
+ * disagree, which is exactly the asymmetry the banner ownership note above describes ending.
+ *
+ * Returns "" for `conventions`, which has no name, and for a section the registry does not know.
+ */
 export function sectionBanner(section: string): string {
 	return SECTION_BANNERS.get(section) ?? "";
 }
 
+/**
+ * A condition in one line of English, for the surfaces that show a reader why a statement is here.
+ *
+ * Lives with the condition type rather than in the inspection command because it has to stay
+ * exhaustive over that type: a seventh condition form must fail to compile until this describes
+ * it, which is what the `never` arm below enforces. A describer in the CLI would instead print
+ * "unknown" for the new form and nobody would notice.
+ */
 export function describeCondition(condition: StatementCondition): string {
 	switch (condition.kind) {
 		case "always":
@@ -979,6 +1253,7 @@ export function describeCondition(condition: StatementCondition): string {
 		case "whenAny":
 			return condition.conditions.length === 0 ? "never" : condition.conditions.map(describeCondition).join(" or ");
 		case "not": {
+			// Parenthesised only where it changes the reading: `not (a and b)` is not `not a and b`.
 			const inner = describeCondition(condition.condition);
 			return inner.includes(" and ") || inner.includes(" or ") ? `not (${inner})` : `not ${inner}`;
 		}

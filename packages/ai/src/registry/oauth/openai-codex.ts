@@ -1,33 +1,96 @@
-import { OPENAI_HEADER_VALUES, readCodexTokenIdentity } from "@veyyon/catalog/wire/codex";
+/**
+ * OpenAI Codex (ChatGPT OAuth) flow — browser and device-code flows.
+ */
 
-export { readCodexTokenIdentity };
-
+import { type CodexTokenIdentity, OPENAI_HEADER_VALUES, readCodexTokenIdentity } from "@veyyon/catalog/wire/codex";
 import { withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
+import { isRecord } from "../../utils";
 import { OAuthCallbackFlow, type OAuthCallbackFlowOptions } from "./callback-server";
-import type { PKCE } from "./openai-codex-helpers";
-import {
-	CALLBACK_PATH,
-	CALLBACK_PORT,
-	CLIENT_ID,
-	createOpenAICodexAuthorizationUrl,
-	DEVICE_AUTH_URL,
-	DEVICE_MAX_POLLS,
-	DEVICE_POLL_INTERVAL_MS,
-	DEVICE_POLL_SAFETY_MARGIN_MS,
-	DEVICE_REDIRECT_URI,
-	DEVICE_TOKEN_URL,
-	DEVICE_USERCODE_URL,
-	formatOpenAICodexTokenEndpointError,
-	getTokenProfile,
-	TOKEN_REQUEST_TIMEOUT_MS,
-	TOKEN_URL,
-} from "./openai-codex-helpers";
 import { generatePKCE } from "./pkce";
 import type { OAuthController, OAuthCredentials } from "./types";
 
-export { createOpenAICodexAuthorizationUrl, formatOpenAICodexTokenEndpointError };
+const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+const AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize";
+const TOKEN_URL = "https://auth.openai.com/oauth/token";
+const CALLBACK_PORT = 1455;
+const CALLBACK_PATH = "/auth/callback";
+const SCOPE = "openid profile email offline_access api.connectors.read api.connectors.invoke";
+const TOKEN_REQUEST_TIMEOUT_MS = 15_000;
+const DEVICE_USERCODE_URL = "https://auth.openai.com/api/accounts/deviceauth/usercode";
+const DEVICE_TOKEN_URL = "https://auth.openai.com/api/accounts/deviceauth/token";
+const DEVICE_REDIRECT_URI = "https://auth.openai.com/deviceauth/callback";
+const DEVICE_AUTH_URL = "https://auth.openai.com/codex/device";
+const DEVICE_POLL_INTERVAL_MS = 5_000;
+const DEVICE_POLL_SAFETY_MARGIN_MS = 3_000;
+/** Upper bound on device-code polling to avoid infinite loops on server errors. */
+const DEVICE_MAX_POLLS = 120;
+
+function getTokenProfile(accessToken: string): CodexTokenIdentity {
+	// The claim namespaces and the empty-claim rule live in `@veyyon/catalog/wire/codex`, beside the header name
+	// the account id is sent under. This module used to hand-roll both.
+	return readCodexTokenIdentity(accessToken);
+}
+
+interface PKCE {
+	verifier: string;
+	challenge: string;
+}
+function describeTokenEndpointValue(value: unknown): string | undefined {
+	if (typeof value === "string") {
+		const trimmed = value.trim();
+		return trimmed.length > 0 ? trimmed : undefined;
+	}
+	if (typeof value === "number" || typeof value === "boolean") return String(value);
+	if (!isRecord(value)) return undefined;
+
+	const code = describeTokenEndpointValue(value.code ?? value.error);
+	const message = describeTokenEndpointValue(value.message ?? value.error_description ?? value.description);
+	if (code && message && code !== message) return `${code}: ${message}`;
+	return code ?? message ?? JSON.stringify(value);
+}
+
+/** Formats OpenAI Codex OAuth token endpoint errors for login and refresh failures. */
+export function formatOpenAICodexTokenEndpointError(status: number, bodyText: string): string {
+	const trimmed = bodyText.trim();
+	if (trimmed.length === 0) return `${status}`;
+
+	try {
+		const body: unknown = JSON.parse(trimmed);
+		if (!isRecord(body)) return `${status} ${trimmed}`;
+
+		const error = describeTokenEndpointValue(body.error);
+		const description = describeTokenEndpointValue(body.error_description);
+		if (error && description && error !== description) return `${status} ${error}: ${description}`;
+		return `${status} ${error ?? description ?? describeTokenEndpointValue(body.message) ?? trimmed}`;
+	} catch {
+		return `${status} ${trimmed}`;
+	}
+}
+/** Builds the Codex browser OAuth URL used by browser login; exported for auth regression tests. */
+export function createOpenAICodexAuthorizationUrl(args: {
+	state: string;
+	redirectUri: string;
+	challenge: string;
+	originator?: string;
+}): string {
+	const originator = args.originator?.trim() || OPENAI_HEADER_VALUES.ORIGINATOR_CODEX;
+	const searchParams = new URLSearchParams({
+		response_type: "code",
+		client_id: CLIENT_ID,
+		redirect_uri: args.redirectUri,
+		scope: SCOPE,
+		code_challenge: args.challenge,
+		code_challenge_method: "S256",
+		state: args.state,
+		id_token_add_organizations: "true",
+		codex_cli_simplified_flow: "true",
+		originator,
+	});
+
+	return `${AUTHORIZE_URL}?${searchParams.toString()}`;
+}
 
 class OpenAICodexOAuthFlow extends OAuthCallbackFlow {
 	#pkce: PKCE;
@@ -38,6 +101,10 @@ class OpenAICodexOAuthFlow extends OAuthCallbackFlow {
 		super(ctrl, {
 			preferredPort: CALLBACK_PORT,
 			callbackPath: CALLBACK_PATH,
+			// Enforce the fixed port: OpenAI only allows http://localhost:1455/auth/callback.
+			// Without this, a busy port 1455 falls back to a random port, and the token
+			// exchange would fail with 403 because the redirect_uri no longer matches the
+			// registered allowlist entry.
 			redirectUri: `http://localhost:${CALLBACK_PORT}${CALLBACK_PATH}`,
 		} satisfies OAuthCallbackFlowOptions);
 		this.#pkce = pkce;
@@ -66,6 +133,8 @@ async function exchangeCodeForToken(
 	redirectUri: string,
 	fetchImpl: FetchImpl = fetch,
 ): Promise<OAuthCredentials> {
+	// The fence spans the body read and its timer is cleared on settle
+	// (a bare AbortSignal.timeout stays armed for the full timeout).
 	const tokenData = await withScopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS, async signal => {
 		const tokenResponse = await fetchImpl(TOKEN_URL, {
 			method: "POST",
@@ -113,7 +182,11 @@ async function exchangeCodeForToken(
 	};
 }
 
+/**
+ * Login with OpenAI Codex OAuth
+ */
 export type OpenAICodexLoginOptions = OAuthController & {
+	/** Optional originator value for OpenAI Codex OAuth. Default matches Veyyon Codex request headers. */
 	originator?: string;
 };
 
@@ -125,9 +198,17 @@ export async function loginOpenAICodex(options: OpenAICodexLoginOptions): Promis
 	return flow.login();
 }
 
+/**
+ * Login with OpenAI Codex using the device-code (headless) flow.
+ *
+ * Avoids a local callback server entirely — useful when port 1455 is unavailable
+ * or when the browser callback flow fails with 403 (e.g. network/proxy issues).
+ */
 export async function loginOpenAICodexDevice(ctrl: OAuthController): Promise<OAuthCredentials> {
 	ctrl.onProgress?.("Initiating device authorization…");
 
+	// The fence spans the body read and its timer is cleared on settle
+	// (a bare AbortSignal.timeout stays armed for the full timeout).
 	const initData = await withScopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS, async signal => {
 		const initResponse = await fetch(DEVICE_USERCODE_URL, {
 			method: "POST",
@@ -176,6 +257,9 @@ export async function loginOpenAICodexDevice(ctrl: OAuthController): Promise<OAu
 			throw new AIError.LoginCancelledError("Device authorization cancelled");
 		}
 
+		// The fence spans the body read and its timer is cleared on settle
+		// (a bare AbortSignal.timeout stays armed for the full timeout).
+		// `null` = authorization still pending, keep polling.
 		const pollData = await withScopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS, async signal => {
 			const pollResponse = await fetch(DEVICE_TOKEN_URL, {
 				method: "POST",
@@ -187,6 +271,7 @@ export async function loginOpenAICodexDevice(ctrl: OAuthController): Promise<OAu
 				signal,
 			});
 
+			// 403/404 = authorization pending, keep polling
 			if (pollResponse.status === 403 || pollResponse.status === 404) {
 				return null;
 			}
@@ -222,7 +307,12 @@ export async function loginOpenAICodexDevice(ctrl: OAuthController): Promise<OAu
 	});
 }
 
+/**
+ * Refresh OpenAI Codex OAuth token
+ */
 export async function refreshOpenAICodexToken(refreshToken: string): Promise<OAuthCredentials> {
+	// The fence spans the body read and its timer is cleared on settle
+	// (a bare AbortSignal.timeout stays armed for the full timeout).
 	const tokenData = await withScopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS, async signal => {
 		const response = await fetch(TOKEN_URL, {
 			method: "POST",

@@ -1,3 +1,12 @@
+/**
+ * `veyyon gallery` — render every built-in tool's renderer across its lifecycle.
+ *
+ * For each tool with a registered renderer, the gallery drives a real
+ * {@link ToolExecutionComponent} through four states — streaming arguments,
+ * arguments complete (in progress), success, and failure — and prints the
+ * rendered output to stdout. It exists for visual QA of tool renderers without
+ * having to provoke each state through a live agent session.
+ */
 import type { AgentTool } from "@veyyon/agent-core";
 import type { TUI } from "@veyyon/tui";
 import { clampLow, errorMessage, getProjectDir } from "@veyyon/utils";
@@ -9,9 +18,11 @@ import { toolRenderers } from "../tools/renderers";
 import { EXIT_USAGE } from "./exit-codes";
 import { type GalleryFixture, type GalleryResult, galleryFixtures } from "./gallery-fixtures";
 
+/** Lifecycle states the gallery renders, in display order. */
 export const GALLERY_STATES = ["streaming", "progress", "success", "error"] as const;
 export type GalleryState = (typeof GALLERY_STATES)[number];
 
+/** User-facing labels printed above each rendered lifecycle state. */
 export const GALLERY_STATE_LABELS: Record<GalleryState, string> = {
 	streaming: "streaming args",
 	progress: "in progress",
@@ -30,8 +41,10 @@ const GALLERY_STATE_ALIASES: Record<string, GalleryState> = {
 	failed: "error",
 };
 
+/** Accepted `--state` tokens, including legacy lifecycle names and displayed labels. */
 export const GALLERY_STATE_TOKENS = Object.keys(GALLERY_STATE_ALIASES);
 
+/** Normalize user-provided `--state` tokens to the internal gallery lifecycle states. */
 export function parseGalleryStates(states: readonly string[] | undefined): GalleryState[] | undefined {
 	if (!states || states.length === 0) return undefined;
 	const parsed: GalleryState[] = [];
@@ -46,14 +59,27 @@ export function parseGalleryStates(states: readonly string[] | undefined): Galle
 }
 
 export interface GalleryCommandArgs {
+	/** Render width in columns (defaults to terminal width, clamped). */
 	width?: number;
+	/** Restrict to a single tool name. */
 	tool?: string;
+	/**
+	 * Render in the named theme(s) instead of the profile's active theme. Each
+	 * theme produces its own output (suffixed `-<theme>`), so one invocation
+	 * covers a whole theme matrix. An unknown name fails loudly rather than
+	 * falling back to the active theme. Does not mutate the profile's stored
+	 * theme: the theme is applied in-memory for the render pass only.
+	 */
 	themes?: string[];
+	/** Restrict to specific lifecycle states. */
 	states?: GalleryState[];
+	/** Render the expanded variant of each renderer. */
 	expanded?: boolean;
+	/** Strip ANSI styling from the output (useful when redirecting to a file). */
 	plain?: boolean;
 }
 
+/** One tool's rendered lifecycle, as ANSI lines: a leading blank, the section rule, then each state. */
 export interface GallerySection {
 	heading: string;
 	lines: string[];
@@ -64,6 +90,11 @@ const GENERIC_ERROR: GalleryResult = {
 	isError: true,
 };
 
+/**
+ * Build the fake `AgentTool` the component needs for its label, edit mode, and —
+ * for `customRendered` fixtures — the renderer functions that route it through
+ * the same custom-tool branch production uses (see {@link GalleryFixture}).
+ */
 function fakeToolFor(name: string, fixture: GalleryFixture | undefined): AgentTool | undefined {
 	if (!fixture?.label && !fixture?.editMode && !fixture?.customRendered) return undefined;
 	const tool: Record<string, unknown> = { name, label: fixture.label ?? name, mode: fixture.editMode };
@@ -81,6 +112,7 @@ function fakeToolFor(name: string, fixture: GalleryFixture | undefined): AgentTo
 	return tool as unknown as AgentTool;
 }
 
+/** The curated fixture for a tool, or a generic one for registry tools lacking sample data. */
 export function resolveFixture(name: string): GalleryFixture {
 	return (
 		galleryFixtures[name] ??
@@ -91,6 +123,11 @@ export function resolveFixture(name: string): GalleryFixture {
 	);
 }
 
+/**
+ * Render a single tool/state pair to lines. Builds a fresh component, drives it
+ * to the requested state, settles any async edit preview, then snapshots the
+ * render and stops all animation timers.
+ */
 export async function renderGalleryState(
 	name: string,
 	fixture: GalleryFixture,
@@ -102,9 +139,17 @@ export async function renderGalleryState(
 		return await fixture.renderState(state, width, expanded);
 	}
 
+	// A non-customRendered fixture may borrow another tool's built-in renderer
+	// (e.g. `edit_delete` → `edit`): drive the component under that real tool
+	// name so the sample exercises the exact production branch, not the
+	// custom-tool one (which tints/pads non-framed result rows).
 	const componentName = fixture.customRendered ? name : (fixture.renderer ?? name);
 	const tool = fakeToolFor(componentName, fixture);
 	const streamingArgs = state === "streaming" ? (fixture.streamingArgs ?? fixture.args) : fixture.args;
+	// The component only calls `requestRender`/`requestComponentRender` (via
+	// its loader) during a static render; `imageBudget` is consulted solely
+	// when images render, which the gallery disables. A cast avoids
+	// constructing a real terminal.
 	const ui = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
 	const component = new ToolExecutionComponent(
 		componentName,
@@ -125,8 +170,16 @@ export async function renderGalleryState(
 		component.updateResult(fixture.errorResult ?? GENERIC_ERROR, false);
 	}
 
+	// Edit-like renderers compute their diff preview off the render path; wait
+	// for it to settle so the snapshot is deterministic instead of racing a tick.
 	await component.whenPreviewSettled();
 
+	// A settled result animates nothing, so its snapshot must not depend on how
+	// many ticks elapsed while the preview settled. The todo board's entrance is
+	// exactly that hazard: it runs on a frame counter for about a second after a
+	// result lands, and a gallery that rendered before stopping it captured the
+	// board part-written. Stopped FIRST for a terminal state; a streaming or
+	// in-progress state keeps its live frame, which is what those states are for.
 	if (state === "success" || state === "error") component.stopAnimation();
 
 	const lines = component.render(width);
@@ -146,6 +199,11 @@ function sectionRule(label: string, width: number): string {
 	return theme.fg("accent", theme.bold(`${prefix}${"─".repeat(fill)}`));
 }
 
+/**
+ * Render each requested tool's lifecycle into ANSI section blocks. The block
+ * layout (leading blank, section rule, then a blank + dim label + body per
+ * state) is the one every path prints.
+ */
 async function renderGallerySections(
 	names: string[],
 	states: GalleryState[],
@@ -170,11 +228,22 @@ async function renderGallerySections(
 	return sections;
 }
 
+/** One theme's fully-rendered gallery sections, tagged with the theme name. */
 export interface ThemedGallery {
 	theme: string;
 	sections: GallerySection[];
 }
 
+/**
+ * Render the gallery once per requested theme. Every name is validated against
+ * the available theme set BEFORE any rendering, so an unknown theme fails the
+ * whole invocation loudly (Law 10: no silent fallback to the active theme) with
+ * a message naming the offending theme and the known set. Each theme is applied
+ * in-memory via {@link setTheme} for its render pass only; the caller's profile
+ * theme is never written. Duplicate names in `themes` are rendered once each in
+ * the order given, which is intentional (a caller may want the same theme twice
+ * with different downstream output paths).
+ */
 export async function renderGalleryForThemes(
 	themes: readonly string[],
 	names: string[],
@@ -185,7 +254,7 @@ export async function renderGalleryForThemes(
 	const available = new Set(await getAvailableThemes());
 	const unknown = themes.filter(name => !available.has(name));
 	if (unknown.length > 0) {
-		const known = Array.from(available).sort().join(", ");
+		const known = [...available].sort().join(", ");
 		throw new Error(`Unknown theme '${unknown[0]}'. Known themes: ${known}`);
 	}
 	const rendered: ThemedGallery[] = [];
@@ -196,6 +265,10 @@ export async function renderGalleryForThemes(
 	return rendered;
 }
 
+/**
+ * Render the gallery. Iterates the renderer registry (or a single tool),
+ * printing each requested lifecycle state under a labeled section.
+ */
 export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void> {
 	const settingsInstance = await Settings.init();
 	await initTheme(
@@ -208,9 +281,12 @@ export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void>
 
 	const width = resolveWidth(args.width);
 	const expanded = args.expanded ?? false;
-	const states = args.states && args.states.length > 0 ? args.states : GALLERY_STATES.slice();
+	const states = args.states && args.states.length > 0 ? args.states : [...GALLERY_STATES];
 
-	const allNames = Array.from(new Set(Object.keys(toolRenderers).concat(Object.keys(galleryFixtures)))).sort();
+	// Renderer-registry tools plus fixture-only tools (no dedicated renderer,
+	// e.g. `report_tool_issue` / custom extension tools) so the gallery covers
+	// the generic fallback + custom-tool branches too.
+	const allNames = Array.from(new Set([...Object.keys(toolRenderers), ...Object.keys(galleryFixtures)])).sort();
 	const names = args.tool ? allNames.filter(name => name === args.tool) : allNames;
 	if (args.tool && names.length === 0) {
 		process.stderr.write(`Unknown tool '${args.tool}'. Known tools: ${allNames.join(", ")}\n`);
@@ -220,6 +296,8 @@ export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void>
 
 	const plain = args.plain || chalk.level === 0;
 
+	// Theme-matrix path: render and print once per named theme. Unknown names fail
+	// the whole run before any output.
 	if (args.themes && args.themes.length > 0) {
 		let rendered: ThemedGallery[];
 		try {
@@ -240,6 +318,8 @@ export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void>
 
 	const lines = sections.flatMap(section => section.lines);
 	lines.push("");
+	// --plain forces it, but a piped/redirected stdout (chalk detects non-TTY
+	// and NO_COLOR) also degrades to plain text instead of escape soup.
 	const text = lines.map(line => (plain ? Bun.stripANSI(line) : line)).join("\n");
 	process.stdout.write(`${text}\n`);
 }

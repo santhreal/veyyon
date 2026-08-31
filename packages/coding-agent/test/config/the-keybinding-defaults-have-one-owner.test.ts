@@ -29,7 +29,7 @@ import { KEYBINDINGS as VIA_LOADER } from "@veyyon/coding-agent/config/keybindin
 import { moduleSpecifiersIn, namedImportsFrom, typeOnlyModuleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const SRC = path.resolve(import.meta.dir, "../../src");
-const EDITOR = path.join(SRC, "modes", "components", "custom-editor-helpers.ts");
+const EDITOR = path.join(SRC, "modes", "components", "custom-editor.ts");
 const DEFS = path.join(SRC, "config", "keybinding-defs.ts");
 
 const EDITOR_SOURCE = fs.readFileSync(EDITOR, "utf8");
@@ -52,14 +52,18 @@ describe("the keybinding defaults have one owner", () => {
 	 * table without pulling in yaml, atomic writes, the quarantine path and the
 	 * profile resolver, and one import of the loader from here would undo that
 	 * silently, since everything would still compile and pass.
+	 *
+	 * The specifiers are the TUI's owning leaves rather than its barrel, which is
+	 * the same rule one level down: `@veyyon/tui` re-exports the renderer and every
+	 * component, and this file wants a key table and a key id.
 	 */
-	it("imports nothing but the TUI from the leaf", () => {
+	it("imports nothing but the TUI's key modules from the leaf", () => {
 		const imported = [...moduleSpecifiersIn(DEFS_SOURCE), ...typeOnlyModuleSpecifiersIn(DEFS_SOURCE)];
 
 		expect(
-			imported.sort(),
+			[...new Set(imported)].sort(),
 			"keybinding-defs.ts is the leaf a UI component reads. Keep its imports to @veyyon/tui",
-		).toEqual(["@veyyon/tui", "@veyyon/tui"]);
+		).toEqual(["@veyyon/tui/keybindings", "@veyyon/tui/keys"]);
 	});
 
 	/**

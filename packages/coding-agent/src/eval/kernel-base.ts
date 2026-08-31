@@ -1,4 +1,3 @@
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { errorMessage, isTimeoutError, logger, Snowflake } from "@veyyon/utils";
 import type { Subprocess } from "bun";
@@ -6,11 +5,31 @@ import { type KernelDisplayOutput, renderKernelDisplay } from "./py/display";
 
 export type KernelRuntimeEnv = Record<string, string | null>;
 
+/**
+ * A per-execution environment patch: a string sets the variable, `null` CLEARS it, and
+ * `undefined` leaves it alone. The runner honours exactly that (`os.environ.pop` on null),
+ * so this is the one spelling of the type — `KernelExecuteOptions.env` used to be
+ * `Record<string, string | undefined> | Record<string, string | null>`, a union that could
+ * not express a patch doing both in one call and forced every caller building one to pick
+ * a half.
+ */
 export type KernelEnvPatch = Record<string, string | null | undefined>;
 
+/**
+ * One request to a language kernel, shared by every kernel in `eval/`.
+ *
+ * THE one declaration. Ruby and Julia each carried their own copy and the three had
+ * drifted: the base grew `onDisplay`, Ruby's copy narrowed `env` to
+ * `KernelRuntimeEnv` (no `undefined`, so no "leave this one alone"), and Julia's
+ * widened it to `Record<string, string | undefined>` (no `null`, so no "clear this
+ * one"). Each kernel silently supported a different set of options, and a caller
+ * reading any one declaration learned the wrong contract for the other two.
+ */
 export interface KernelExecuteOptions {
 	id?: string;
+	/** Runtime working directory applied immediately before this request executes. */
 	cwd?: string;
+	/** Managed runtime environment variables applied immediately before this request executes. */
 	env?: KernelEnvPatch;
 	signal?: AbortSignal;
 	onChunk?: (text: string) => Promise<void> | void;
@@ -27,6 +46,11 @@ export interface KernelExecuteResult {
 	cancelled: boolean;
 	timedOut: boolean;
 	stdinRequested: boolean;
+	/**
+	 * True when the kernel subprocess was killed as part of settling this
+	 * execution (e.g. SIGINT was ignored and we escalated to shutdown, or the
+	 * kernel died unexpectedly). When false, the kernel remains reusable.
+	 */
 	kernelKilled?: boolean;
 }
 
@@ -34,7 +58,14 @@ export interface KernelShutdownResult {
 	confirmed: boolean;
 }
 
+/**
+ * A completed subprocess exit, as distinct from "not exited yet". Presence of the
+ * object (not the value of `code`) is what signals the exit: a clean exit reports
+ * `code: 0` and a signal-terminated process reports `code: null`, both of which
+ * are truthy observations, whereas a shutdown timeout resolves to `null` instead.
+ */
 interface KernelExitObservation {
+	/** Exit code, or `null` when the process was terminated by a signal. */
 	code: number | null;
 }
 
@@ -43,21 +74,31 @@ export interface KernelShutdownOptions {
 	timeoutMs?: number;
 }
 
+/** Per-language lifecycle configuration consumed by each kernel's `start()`. */
 export interface KernelStartOptions {
 	cwd: string;
 	env?: Record<string, string | undefined>;
+	/** Explicit interpreter path; skips discovery when set. */
 	interpreter?: string;
 	signal?: AbortSignal;
 	deadlineMs?: number;
+	/** Session CPU budget hook: the kernel subprocess joins the session's budget group. */
 	adoptPid?: (pid: number) => void;
 }
 
+/** Per-language configuration handed to {@link BaseKernel} by each subclass. */
 export interface BaseKernelOptions<TExecuteOptions extends KernelExecuteOptions = KernelExecuteOptions> {
+	/** Human-readable language label used in log messages and errors. */
 	languageName: string;
+	/** When true, every IPC frame is logged at debug level. */
 	traceIpc: boolean;
+	/** Wire payload asking the runner to exit cleanly. */
 	exitPayload: string;
+	/** How long to wait after SIGINT before escalating to subprocess termination. */
 	interruptEscalationMs: number;
+	/** Default grace period applied by {@link BaseKernel.shutdown}. */
 	shutdownGraceMs: number;
+	/** Serializes an execution request into the runner's wire protocol. */
 	buildPayload: (code: string, msgId: string, options?: TExecuteOptions) => string;
 }
 
@@ -91,28 +132,60 @@ interface PendingExecution {
 	finalize?: () => void;
 }
 
+/**
+ * How long a kernel subprocess gets to report `started` before start-up aborts.
+ *
+ * Unlike the MCP startup grace window, this one really does give up: the
+ * subprocess is killed and the start fails. Ten seconds is generous for an
+ * interpreter that only has to boot and write one line, and tight enough that a
+ * wedged runner surfaces as an error rather than a hang.
+ *
+ * A runtime whose interpreter needs longer overrides it locally and says why
+ * (Julia compiles on first load). The shared value lives here so raising the
+ * floor is one edit rather than one edit per language.
+ */
 export const DEFAULT_KERNEL_STARTUP_TIMEOUT_MS = 10_000;
 
+/**
+ * How long a kernel subprocess gets to exit on its own after being asked to shut down, before it is killed.
+ *
+ * One second is the whole budget an interpreter gets to flush and unwind. It was declared four times, once
+ * in each of the three language kernels and again in the Julia executor's session reset, so a language whose
+ * shutdown needed longer would have been given it in one place and killed at one second in another.
+ */
 export const KERNEL_SHUTDOWN_GRACE_MS = 1_000;
 
+/**
+ * How long an interrupt is given to land before the kernel is terminated instead.
+ *
+ * This is the budget behind Ctrl-C in an eval cell: send the interrupt, and if the interpreter is still
+ * running after this, stop being polite. Five seconds across every language, because the number describes a
+ * user's patience rather than anything about the interpreter, and it was written out once per language.
+ */
 export const KERNEL_INTERRUPT_ESCALATION_MS = 5_000;
 
+/**
+ * The environment variable that turns on IPC tracing for one language's kernel, `VEYYON_<LANG>_IPC_TRACE`.
+ *
+ * A user types this name, so the convention is part of the product and not an implementation detail. Each
+ * kernel built the string itself, which left nothing stating the convention and no reason a fourth language
+ * would follow it. `language` is the uppercase name used in the variable (`PYTHON`, `RUBY`, `JULIA`), which
+ * is not always the directory name: the directories are `py`, `rb` and `jl`.
+ */
 export function kernelIpcTraceEnvVar(language: string): string {
 	return `VEYYON_${language}_IPC_TRACE`;
 }
 
+/**
+ * Where one language's kernel caches its generated runner script, `<tmpdir>/veyyon-<language>-runner`.
+ *
+ * Same reasoning as {@link kernelIpcTraceEnvVar}: three kernels each joined this path themselves, so the
+ * layout under the temp directory was a coincidence rather than a rule, and a stale-runner cleanup that
+ * wanted to find all of them had nothing to ask. `language` is the lowercase name in the directory
+ * (`python`, `ruby`, `julia`).
+ */
 export function kernelRunnerCacheDir(tmpDir: string, language: string): string {
 	return path.join(tmpDir, `veyyon-${language}-runner`);
-}
-
-export async function ensureRunnerScript(cacheDir: string, script: string, extension: string): Promise<string> {
-	await fs.promises.mkdir(cacheDir, { recursive: true });
-	const hash = Bun.hash(script).toString(36);
-	const target = path.join(cacheDir, `runner-${hash}.${extension}`);
-	if (!fs.existsSync(target)) {
-		await Bun.write(target, script);
-	}
-	return target;
 }
 
 export function getRemainingTimeMs(deadlineMs?: number): number | undefined {
@@ -126,6 +199,22 @@ export function createAbortError(name: "AbortError" | "TimeoutError", message: s
 	return err;
 }
 
+/**
+ * Throw because a kernel operation's signal is already aborted, PRESERVING the
+ * identity of the reason.
+ *
+ * This is deliberately not `tools/tool-errors.ts`'s `throwIfAborted`, and the
+ * name says so. That one normalizes every abort to a single `ToolAbortError`
+ * because its callers catch one type. A kernel cannot: the timer at
+ * `runWithDeadline` aborts with a `TimeoutError` and the caller has to be able
+ * to tell a deadline from a cancellation, which is the same distinction
+ * `result.timedOut` carries a few lines below. Rethrowing the reason unchanged
+ * is what keeps that distinction alive.
+ *
+ * Both spellings answered to `throwIfAborted` before, in the same package, with
+ * different types and different handling of the reason. A reader who found one
+ * had no way to know the other existed.
+ */
 export function throwIfKernelAborted(signal: AbortSignal | undefined, fallbackReason: string): void {
 	if (!signal?.aborted) return;
 	const reason = signal.reason;
@@ -133,16 +222,59 @@ export function throwIfKernelAborted(signal: AbortSignal | undefined, fallbackRe
 	throw createAbortError("AbortError", typeof reason === "string" ? reason : fallbackReason);
 }
 
+/**
+ * Run code and settle. The one execute-only kernel contract in the codebase.
+ *
+ * There used to be three overlapping spellings of "something I can hand code to":
+ * `PythonKernelExecutor` in py/executor.ts, `GenericKernel<TEnv>` in executor-base.ts,
+ * and the `execute` member of {@link SessionKernel}. All three described the same call
+ * with different amounts of precision, and only one of them could be right about the
+ * result type: `GenericKernel` declared `stdinRequested` optional while every real kernel
+ * always sets it, so a caller written against `GenericKernel` had to handle a case that
+ * cannot happen. One name, one shape, and every kernel-shaped thing (including every test
+ * fake) is checked against it.
+ *
+ * `TExecuteOptions` is the language's own options type, so a runner that accepts a wider
+ * option shape stays typed as such instead of widening this contract for everyone.
+ */
 export interface KernelExecutor<TExecuteOptions extends KernelExecuteOptions = KernelExecuteOptions> {
 	execute(code: string, options?: TExecuteOptions): Promise<KernelExecuteResult>;
 }
 
+/**
+ * The kernel surface a SESSION executor depends on: run a cell, ask whether the process is
+ * still there, and shut it down.
+ *
+ * Exported as a contract rather than left implicit in the concrete class because the
+ * session bookkeeping only ever needs these four members, and because every test fake used
+ * to be cast with `as unknown as PythonKernel` to stand in for the class. Under a cast
+ * nothing checks a fake against reality: four fakes across four suites each implemented a
+ * `ping()` method that no production code has ever called, and nobody could tell. A fake
+ * that declares `implements SessionKernel` fails to typecheck the day this contract moves.
+ */
 export interface SessionKernel<TExecuteOptions extends KernelExecuteOptions = KernelExecuteOptions>
 	extends KernelExecutor<TExecuteOptions> {
+	// No `id` here on purpose: `BaseKernel` has one, but no session code reads it, and a
+	// contract that demands members its consumers never touch pushes busywork into every
+	// implementation (including every fake) without checking anything.
 	isAlive(): boolean;
 	shutdown(options?: KernelShutdownOptions): Promise<KernelShutdownResult>;
 }
 
+/**
+ * Shut a kernel down while tearing a session down, in one place.
+ *
+ * Every teardown path reaches this: a session being replaced, a session evicted for idleness, a startup
+ * that failed after the subprocess was already running, a shutdown of the whole executor. None of them can
+ * usefully throw. The paths that replace a session go on to start the new one, and the startup-failure path
+ * rethrows the error that made it give up, which is the error the operator needs rather than the shutdown
+ * that followed it.
+ *
+ * Both ways it can go wrong are reported, because both leave a language runtime running. A throw means the
+ * shutdown could not be attempted, and an unconfirmed result means the runner never acknowledged it and did
+ * not exit within its grace period, so the subprocess outlives the session that owned it. Discarding either
+ * one leaks a Python, Ruby or Julia process per session with nothing in the log to explain the memory.
+ */
 export async function releaseKernel(
 	kernel: Pick<SessionKernel, "shutdown">,
 	context: string,
@@ -158,6 +290,17 @@ export async function releaseKernel(
 	}
 }
 
+/**
+ * Shared subprocess-backed kernel machinery for the language runners. Each
+ * language subclasses this, supplying its binary/runner via a static `start()`
+ * and its wire protocol via {@link BaseKernelOptions.buildPayload}. The IPC loop
+ * speaks NDJSON: the runner emits one JSON {@link Frame} per line; outbound
+ * requests are serialized by `buildPayload` (which may itself be NDJSON or any
+ * other line-delimited encoding).
+ *
+ * `TExecuteOptions` is the language's own execute-options type so each runner's
+ * `buildPayload` sees its precise option shape (e.g. environment-map variants).
+ */
 export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = KernelExecuteOptions>
 	implements SessionKernel<TExecuteOptions>
 {
@@ -335,27 +478,42 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 
 		try {
 			await this.#writeLine(this.#options.exitPayload).catch(() => {});
-		} catch {}
+		} catch {
+			/* writer may already be closed */
+		}
 
 		try {
 			this.#stdin?.end();
-		} catch {}
+		} catch {
+			/* ignore */
+		}
 
+		// `result === null` means the wait TIMED OUT (process still running) and we
+		// escalate. A truthy result means the process actually exited — including a
+		// clean `code: 0` and a signal's `code: null` — so we must NOT escalate on
+		// those. Branching on code truthiness here (the old `number | null` return)
+		// treated a graceful exit-0 as still-running and hard-killed every kernel.
 		const exited = this.#waitForExitWithTimeout(timeoutMs);
 		let result = await exited;
 		if (!result) {
 			try {
 				proc.kill("SIGTERM");
-			} catch {}
+			} catch {
+				/* ignore */
+			}
 			result = await this.#waitForExitWithTimeout(timeoutMs);
 		}
 		if (!result) {
 			try {
 				proc.kill("SIGKILL");
-			} catch {}
+			} catch {
+				/* ignore */
+			}
 			result = await this.#waitForExitWithTimeout(timeoutMs);
 		}
 
+		// Confirmed whenever the process exited by any means; only a persistent
+		// timeout (still null after SIGKILL + grace) leaves this false.
 		const confirmed = !!result;
 		this.#shutdownConfirmed = confirmed;
 		this.#disposed = true;
@@ -414,7 +572,9 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 			} finally {
 				try {
 					reader.releaseLock();
-				} catch {}
+				} catch {
+					/* ignore */
+				}
 			}
 		};
 		void loop();
@@ -434,10 +594,13 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 					}
 				}
 			} catch {
+				/* ignore */
 			} finally {
 				try {
 					reader.releaseLock();
-				} catch {}
+				} catch {
+					/* ignore */
+				}
 			}
 		};
 		void loop();
@@ -570,6 +733,18 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 		}
 	}
 
+	/**
+	 * Wait for the subprocess to exit, or resolve `null` if `timeoutMs` elapses
+	 * first. The exit result is an OBJECT ({@link KernelExitObservation}) so it is
+	 * always truthy — even when the process exited with code `0` (clean success)
+	 * or was terminated by a signal (which yields a null code). Only a genuine
+	 * timeout resolves to `null`. Callers MUST branch on `=== null` / truthiness,
+	 * never on the code value: a `number | null` return would make code `0` falsy
+	 * and a signal's null code indistinguishable from the timeout sentinel, which
+	 * caused a clean exit to be misread as "still running" and every shutdown to
+	 * escalate to SIGKILL while reporting `confirmed: false` (BACKLOG
+	 * KERNEL-EXIT-CONFIRM).
+	 */
 	#waitForExitWithTimeout(timeoutMs: number): Promise<KernelExitObservation | null> {
 		if (!this.#exitedPromise) return Promise.resolve({ code: 0 });
 		const exitedPromise = this.#exitedPromise;

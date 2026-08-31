@@ -1,4 +1,11 @@
-/** Internal URL router for internal protocols (`agent://`, `artifact://`, `history://`, `issue://`, `local://`, `mcp://`, `memory://`, `veyyon://`, `pr://`, `rule://`, `skill://`, `ssh://`, and `vault://`). One process-global router with one handler per scheme. Access via */
+/**
+ * Internal URL router for internal protocols (`agent://`, `artifact://`, `history://`, `issue://`, `local://`, `mcp://`, `memory://`, `veyyon://`, `pr://`, `rule://`, `skill://`, `ssh://`, and `vault://`).
+ *
+ * One process-global router with one handler per scheme. Access via
+ * `InternalUrlRouter.instance()`. Handlers are stateless; per-session and
+ * shared state lives in `./state.ts`.
+ */
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { urlScheme } from "@veyyon/utils/url";
 import { AgentProtocolHandler } from "./agent-protocol";
 import { ArtifactProtocolHandler } from "./artifact-protocol";
@@ -58,9 +65,13 @@ export class InternalUrlRouter {
 		return this.#handlers.delete(scheme.toLowerCase());
 	}
 
-	/** Every registered scheme, aliases included. Read by the classification gate, which is the only way a new handler can be caught missing from the tables in */
+	/**
+	 * Every registered scheme, aliases included. Read by the classification gate,
+	 * which is the only way a new handler can be caught missing from the tables in
+	 * `tools/path-utils.ts` that decide selector peeling and filesystem-vs-URL.
+	 */
 	schemes(): string[] {
-		return Array.from(this.#handlers.keys());
+		return [...this.#handlers.keys()];
 	}
 
 	getHandler(scheme: string): ProtocolHandler | undefined {
@@ -82,7 +93,10 @@ export class InternalUrlRouter {
 		return schemes;
 	}
 
-	/** Candidate completions for the host/path portion of `scheme://<query>`. Returns `null` when the scheme is unknown or does not support completion. */
+	/**
+	 * Candidate completions for the host/path portion of `scheme://<query>`.
+	 * Returns `null` when the scheme is unknown or does not support completion.
+	 */
 	async complete(scheme: string, query: string, context?: ResolveContext): Promise<UrlCompletion[] | null> {
 		const handler = this.#handlers.get(scheme.toLowerCase());
 		if (!handler?.complete) return null;

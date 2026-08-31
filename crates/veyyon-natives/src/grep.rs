@@ -135,6 +135,8 @@ pub struct ContextLine {
 	pub line_number: u32,
 	/// Raw line content (trimmed line ending).
 	pub line:        String,
+	/// Whether the context line was truncated.
+	pub truncated:   Option<bool>,
 }
 
 /// A single match in the content.
@@ -404,20 +406,25 @@ impl Sink for MatchCollector {
 		}
 
 		let raw_line = bytes_to_trimmed_string(ctx.bytes());
-		let (line, _) = truncate_line(raw_line, self.max_columns);
+		let (line, truncated) = truncate_line(raw_line, self.max_columns);
 		let line_number = ctx.line_number().unwrap_or(0);
+		let truncated = truncated.then_some(true);
 
 		match ctx.kind() {
 			SinkContextKind::Before => {
-				self
-					.context_before
-					.push(ContextLine { line_number: crate::utils::clamp_u32(line_number), line });
+				self.context_before.push(ContextLine {
+					line_number: crate::utils::clamp_u32(line_number),
+					line,
+					truncated,
+				});
 			},
 			SinkContextKind::After => {
 				if let Some(last_match) = self.matches.last_mut() {
-					last_match
-						.context_after
-						.push(ContextLine { line_number: crate::utils::clamp_u32(line_number), line });
+					last_match.context_after.push(ContextLine {
+						line_number: crate::utils::clamp_u32(line_number),
+						line,
+						truncated,
+					});
 				}
 			},
 			SinkContextKind::Other => {},
@@ -3365,6 +3372,7 @@ mod tests {
 							context_before: SmallVec::from_vec(vec![ContextLine {
 								line_number: 1,
 								line:        format!("{} before {index}", file.path),
+								truncated:   None,
 							}]),
 							context_after:  SmallVec::new(),
 							truncated:      index % 2 == 0,
@@ -3617,5 +3625,44 @@ mod tests {
 			assert_eq!(counted.len(), 2, "b.txt reported no match");
 			assert_eq!(counted.capacity(), 3, "the planner bounds by files, not by matches");
 		}
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn context_lines_record_truncation_when_max_columns_exceeded() {
+		let tree = temp_dir_guard();
+		let file_path = tree.path().join("cjk_context.txt");
+		// Line 1: short before-context
+		// Line 2: long before-context (exceeds max_columns 10)
+		// Line 3: match
+		// Line 4: long after-context (exceeds max_columns 10)
+		// Line 5: short after-context
+		let content = "short\nthis is a very long before context line\nTARGET_MATCH\nthis is a very \
+		               long after context line\nend\n";
+		write_file(&file_path, content);
+
+		let mut config = base_grep_config(tree.path());
+		config.pattern = "TARGET_MATCH".to_string();
+		config.max_columns = Some(10);
+		config.context_before = Some(2);
+		config.context_after = Some(2);
+
+		let result = grep_sync(config, None, task::CancelToken::default()).expect("grep search");
+		assert_eq!(result.matches.len(), 1);
+		let mat = &result.matches[0];
+
+		let before = mat.context_before.as_ref().expect("context before");
+		assert_eq!(before.len(), 2);
+		assert_eq!(before[0].line_number, 1);
+		assert_eq!(before[0].truncated, None);
+		assert_eq!(before[1].line_number, 2);
+		assert_eq!(before[1].truncated, Some(true));
+
+		let after = mat.context_after.as_ref().expect("context after");
+		assert_eq!(after.len(), 2);
+		assert_eq!(after[0].line_number, 4);
+		assert_eq!(after[0].truncated, Some(true));
+		assert_eq!(after[1].line_number, 5);
+		assert_eq!(after[1].truncated, None);
 	}
 }

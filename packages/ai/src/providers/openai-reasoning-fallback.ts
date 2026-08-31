@@ -4,31 +4,62 @@ import { escapeRegExp } from "@veyyon/utils/regex";
 import { isRecord } from "@veyyon/utils/type-guards";
 import type { CapturedHttpErrorResponse } from "../utils/http-inspector";
 
+/** @internal */
 export type OpenAIReasoningEffortFallback = string | null;
 
+/** @internal */
 export interface OpenAIReasoningEffortFallbackState {
 	reasoningEffortFallbacks: Map<string, OpenAIReasoningEffortFallback>;
 }
 
+/**
+ * The reasoning values this fallback can step DOWN to, least to most intensive.
+ *
+ * This is the thinking ladder from `@veyyon/catalog/effort`, not a copy of it.
+ * All three tables below used to restate the six levels by hand, which is the
+ * duplicate that `isEffort`'s own doc records shipping once already: two
+ * OpenAI-compatible servers each carried a hand-written chain of six
+ * `value === "..."` comparisons, so adding a level to the ladder left them
+ * silently rejecting it and a request naming the new effort was answered as
+ * though it had named none. The same hazard is worse here, because this module
+ * decides what to RETRY with after a server rejects an effort: a table that has
+ * not learned about a new level cannot offer it as a fallback, so a model whose
+ * only allowed value is the new one falls all the way through to no reasoning
+ * at all, and the request succeeds.
+ */
 const ENABLED_REASONING_VALUES: readonly string[] = THINKING_EFFORTS;
 
+/**
+ * Every value an OpenAI-compatible server may name in a reasoning error, which
+ * is the ladder plus `none`.
+ *
+ * `none` is deliberately NOT on the ladder and must not be added to it: it means
+ * "do not reason", the state this fallback lands in when nothing else is
+ * allowed, and treating it as an effort level would make it a step the clamp
+ * helpers could stop at. It is spelled here because the set of values a SERVER
+ * recognises is a different question from the set of levels veyyon offers.
+ */
 const NO_REASONING_VALUE = "none";
 const KNOWN_REASONING_VALUE: Readonly<Record<string, true>> = Object.freeze(
 	Object.fromEntries<true>([NO_REASONING_VALUE, ...ENABLED_REASONING_VALUES].map(value => [value, true])),
 );
 
+/** Position on the ladder, used to pick the nearest allowed step below the rejected one. */
 const REASONING_VALUE_RANK: Readonly<Record<string, number>> = Object.freeze(
 	Object.fromEntries(ENABLED_REASONING_VALUES.map((value, rank) => [value, rank])),
 );
 
+/** @internal */
 export function createOpenAIReasoningEffortFallbackState(): OpenAIReasoningEffortFallbackState {
 	return { reasoningEffortFallbacks: new Map() };
 }
 
+/** @internal */
 export function clearOpenAIReasoningEffortFallbackState(state: OpenAIReasoningEffortFallbackState): void {
 	state.reasoningEffortFallbacks.clear();
 }
 
+/** @internal */
 export function getOpenAIReasoningEffortFallback(
 	state: OpenAIReasoningEffortFallbackState | undefined,
 	key: string,
@@ -36,6 +67,7 @@ export function getOpenAIReasoningEffortFallback(
 	return state?.reasoningEffortFallbacks.get(key);
 }
 
+/** @internal */
 export function rememberOpenAIReasoningEffortFallback(
 	state: OpenAIReasoningEffortFallbackState | undefined,
 	key: string,
@@ -44,6 +76,7 @@ export function rememberOpenAIReasoningEffortFallback(
 	state?.reasoningEffortFallbacks.set(key, fallback);
 }
 
+/** @internal */
 export function createOpenAIReasoningEffortFallbackKey(
 	endpoint: "chat-completions" | "responses" | "azure-responses",
 	baseUrl: string | undefined,
@@ -52,7 +85,8 @@ export function createOpenAIReasoningEffortFallbackKey(
 	return `${endpoint}:${baseUrl ?? ""}:${wireModelId ?? ""}`;
 }
 
-function readOpenAIReasoningEffort(params: unknown): string | undefined {
+/** @internal */
+export function readOpenAIReasoningEffort(params: unknown): string | undefined {
 	if (!isRecord(params)) return undefined;
 	if (typeof params.reasoning_effort === "string") return params.reasoning_effort;
 	const reasoning = params.reasoning;
@@ -69,6 +103,7 @@ function deleteReasoningEffort(reasoning: Record<string, unknown>, parent: Recor
 	return true;
 }
 
+/** @internal */
 export function applyOpenAIReasoningEffortFallback(params: unknown, fallback: OpenAIReasoningEffortFallback): boolean {
 	if (!isRecord(params)) return false;
 	let changed = false;
@@ -110,7 +145,7 @@ function collectMessageParts(error: unknown, captured: CapturedHttpErrorResponse
 		capturedStringField(captured, "code"),
 		capturedStringField(captured, "type"),
 		captured?.bodyText,
-	].filter((value): value is string => typeof value === "string" && /\S/.test(value));
+	].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
 	return parts.join("\n");
 }
 
@@ -223,6 +258,7 @@ function nearestEnabledReasoningFallback(currentEffort: string, allowed: Set<str
 	return best;
 }
 
+/** @internal */
 export function resolveOpenAIReasoningEffortFallback(
 	error: unknown,
 	captured: CapturedHttpErrorResponse | undefined,

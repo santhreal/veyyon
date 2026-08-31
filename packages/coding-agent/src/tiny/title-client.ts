@@ -1,33 +1,151 @@
-import { errorMessage, logger } from "@veyyon/utils";
+import { $env, errorMessage, logger } from "@veyyon/utils";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../config/settings-instance";
 import {
+	createWorkerSubprocess,
 	logWorkerMessage,
 	type RefCountedWorkerHandle,
+	refCountedUnavailableWorker,
+	resolveWorkerSpawnCmd,
 	SMOKE_TEST_TIMEOUT_MS,
+	type SpawnedSubprocess,
 	smokeTestWorker,
+	spawnWorkerOrUnavailable,
+	workerEnvFromParent,
 	wrapRefCountedSubprocess,
 } from "../subprocess/worker-client";
+import { TINY_WORKER_ARG } from "../worker-args";
+import { tinyModelDeviceSettingToEnv } from "./device";
+import { tinyModelDtypeSettingToEnv } from "./dtype";
 import {
 	isTinyLocalModelKey,
 	isTinyMemoryLocalModelKey,
 	isTinyTitleLocalModelKey,
 	type TinyLocalModelKey,
+	type TinyMemoryLocalModelKey,
+	type TinyTitleLocalModelKey,
 } from "./models";
-import type {
-	PendingRequest,
-	TinyTitleDownloadOptions,
-	TinyTitleDownloadResult,
-	TinyTitleGenerateOptions,
-} from "./title-client-helpers";
-
-import {
-	createTinyTitleSubprocess,
-	normalizeTinyTitleGenerateOptions,
-	spawnTinyTitleWorker,
-} from "./title-client-helpers";
 import type { TinyTitleProgressEvent, TinyTitleWorkerInbound, TinyTitleWorkerOutbound } from "./title-protocol";
 
-export { tinyWorkerEnv, tinyWorkerEnvOverlay } from "./title-client-helpers";
-export { createTinyTitleSubprocess };
+type PendingRequest =
+	| { kind: "generate"; modelKey: TinyTitleLocalModelKey; resolve: (title: string | null) => void }
+	| { kind: "complete"; modelKey: TinyMemoryLocalModelKey; resolve: (text: string | null) => void }
+	| { kind: "download"; modelKey: TinyLocalModelKey; resolve: (result: TinyTitleDownloadResult) => void };
+
+export interface TinyTitleDownloadResult {
+	ok: boolean;
+	error?: string;
+}
+
+export interface TinyTitleDownloadOptions {
+	signal?: AbortSignal;
+	onProgress?: (event: TinyTitleProgressEvent) => void;
+}
+
+/**
+ * Per-request controls for {@link TinyTitleClient.generate}.
+ *
+ * Carries the optional abort signal and title-system-prompt override used by
+ * callers that customize automatic session-title generation.
+ */
+export interface TinyTitleGenerateOptions {
+	signal?: AbortSignal;
+	systemPrompt?: string;
+}
+
+function normalizeTinyTitleGenerateOptions(
+	options: AbortSignal | TinyTitleGenerateOptions | undefined,
+): TinyTitleGenerateOptions {
+	if (!options) return {};
+	if ("aborted" in options && "addEventListener" in options) return { signal: options };
+	return options;
+}
+
+/**
+ * Hidden subcommand on the main CLI that boots the tiny-model worker in the
+ * spawned subprocess. Kept in sync with the dispatch in `cli.ts`.
+ */
+
+function readTinyModelSetting(path: "providers.tinyModelDevice" | "providers.tinyModelDtype"): string | undefined {
+	try {
+		const value = settings.get(path);
+		return typeof value === "string" ? value : undefined;
+	} catch {
+		// Settings may be uninitialized (e.g. `veyyon --smoke-test`); fall back to env/default.
+		return undefined;
+	}
+}
+
+/**
+ * Decide which tiny device/dtype env vars (`VEYYON_TINY_*`) to overlay onto the worker
+ * env. A present env var wins (left untouched); otherwise the mapped persisted
+ * setting is used. Returns only the keys to add — never the default sentinel.
+ * Pure for testability; see {@link tinyWorkerEnv} for the spawn-time glue.
+ * @internal
+ */
+export function tinyWorkerEnvOverlay(
+	env: Record<string, string | undefined>,
+	deviceSetting: string | undefined,
+	dtypeSetting: string | undefined,
+): Record<string, string> {
+	const overlay: Record<string, string> = {};
+	if (!env.VEYYON_TINY_DEVICE) {
+		const device = tinyModelDeviceSettingToEnv(deviceSetting);
+		if (device) {
+			overlay.VEYYON_TINY_DEVICE = device;
+		}
+	}
+	if (!env.VEYYON_TINY_DTYPE) {
+		const dtype = tinyModelDtypeSettingToEnv(dtypeSetting);
+		if (dtype) {
+			overlay.VEYYON_TINY_DTYPE = dtype;
+		}
+	}
+	return overlay;
+}
+
+/**
+ * Env handed to the tiny-model subprocess — and reused verbatim by the STT and
+ * TTS workers, which share the same device/dtype resolution. The
+ * `VEYYON_TINY_DEVICE` / `VEYYON_TINY_DTYPE` env vars win; otherwise the persisted
+ * `providers.tinyModelDevice` / `providers.tinyModelDtype` settings are mapped
+ * onto those vars so the subprocess's env-based resolution picks them up.
+ * Resolved once at spawn (pipelines are cached for the lifetime of the
+ * subprocess).
+ */
+export function tinyWorkerEnv(): Record<string, string> {
+	return workerEnvFromParent(
+		tinyWorkerEnvOverlay(
+			$env,
+			readTinyModelSetting("providers.tinyModelDevice"),
+			readTinyModelSetting("providers.tinyModelDtype"),
+		),
+	);
+}
+
+/**
+ * Spawn the tiny-model worker as a subprocess. Exported for tests and the
+ * smoke probe; production callers go through {@link spawnTinyTitleWorker}.
+ */
+export function createTinyTitleSubprocess(): SpawnedSubprocess<TinyTitleWorkerOutbound> {
+	return createWorkerSubprocess<TinyTitleWorkerOutbound>({
+		spawnCommand: resolveWorkerSpawnCmd(TINY_WORKER_ARG),
+		env: tinyWorkerEnv(),
+		exitLabel: "tiny model subprocess",
+	});
+}
+
+function spawnTinyTitleWorker(): RefCountedWorkerHandle<TinyTitleWorkerInbound, TinyTitleWorkerOutbound> {
+	return spawnWorkerOrUnavailable(
+		() =>
+			wrapRefCountedSubprocess<TinyTitleWorkerInbound, TinyTitleWorkerOutbound>(
+				createTinyTitleSubprocess(),
+				"tiny-title",
+			),
+		error => refCountedUnavailableWorker<TinyTitleWorkerInbound, TinyTitleWorkerOutbound>(error),
+		"Tiny title worker spawn failed; local titles disabled",
+	);
+}
 
 export class TinyTitleClient {
 	#worker: RefCountedWorkerHandle<TinyTitleWorkerInbound, TinyTitleWorkerOutbound> | null = null;
@@ -181,7 +299,9 @@ export class TinyTitleClient {
 		this.#refed = false;
 		try {
 			await worker?.terminate();
-		} catch {}
+		} catch {
+			// Already gone.
+		}
 	}
 
 	#ensureWorker(): RefCountedWorkerHandle<TinyTitleWorkerInbound, TinyTitleWorkerOutbound> {
@@ -193,15 +313,22 @@ export class TinyTitleClient {
 		return worker;
 	}
 
+	/** Register a pending request and keep the worker referenced while work is in flight. */
 	#addPending(id: string, request: PendingRequest): void {
 		this.#pending.set(id, request);
 		this.#syncWorkerRef();
 	}
 
+	/** Drop a pending request and unref the worker once nothing is in flight. */
 	#deletePending(id: string): void {
 		if (this.#pending.delete(id)) this.#syncWorkerRef();
 	}
 
+	/**
+	 * Tiny-model workers are spawned `unref`'d so idle TUI sessions can exit.
+	 * Short-lived CLI downloads need the opposite while awaiting worker IPC, or
+	 * Bun can drain the event loop before the subprocess answers.
+	 */
 	#syncWorkerRef(): void {
 		const worker = this.#worker;
 		if (!worker) return;
@@ -268,6 +395,7 @@ export class TinyTitleClient {
 
 export const tinyTitleClient = new TinyTitleClient();
 
+/** Alias for the shared tiny-model worker client (titles + memory completions). */
 export const tinyModelClient = tinyTitleClient;
 
 export async function shutdownTinyTitleClient(): Promise<void> {

@@ -1,4 +1,5 @@
 import * as path from "node:path";
+// Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import { isEnoent } from "@veyyon/utils/fs-error";
 import { isRecord } from "@veyyon/utils/type-guards";
 
@@ -22,7 +23,12 @@ export interface NotebookDocument {
 }
 
 const CELL_MARKER_RE = /^# %% \[(code|markdown|raw)\](?: cell:(\d+))?$/;
-/** Cell source lines that would themselves parse as (possibly already-escaped) cell markers gain one extra `%` on render and lose it on parse, so a */
+/**
+ * Cell source lines that would themselves parse as (possibly already-escaped)
+ * cell markers gain one extra `%` on render and lose it on parse, so a
+ * notebook that *contains* the literal text `# %% [markdown] cell:3` survives
+ * the editable-text round trip instead of being split into extra cells.
+ */
 const ESCAPABLE_MARKER_RE = /^# %%+ \[(?:code|markdown|raw)\](?: cell:\d+)?$/;
 const ESCAPED_MARKER_RE = /^# %%%+ \[(?:code|markdown|raw)\](?: cell:\d+)?$/;
 
@@ -99,7 +105,7 @@ function validateNotebook(value: unknown, displayPath: string): NotebookDocument
 	return value as unknown as NotebookDocument;
 }
 
-async function readNotebookDocument(absolutePath: string, displayPath: string): Promise<NotebookDocument> {
+export async function readNotebookDocument(absolutePath: string, displayPath: string): Promise<NotebookDocument> {
 	try {
 		return validateNotebook(await Bun.file(absolutePath).json(), displayPath);
 	} catch (error) {

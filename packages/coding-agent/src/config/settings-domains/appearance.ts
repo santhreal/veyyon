@@ -1,7 +1,13 @@
 import type { StatusLineSegmentId } from "../settings-schema";
 import { DEFAULT_ARTIFACT_SPILL_THRESHOLD_KB } from "./shared";
 
+/** Appearance domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const APPEARANCE_SETTINGS = {
+	// ────────────────────────────────────────────────────────────────────────
+	// Appearance
+	// ────────────────────────────────────────────────────────────────────────
+
+	// Theme
 	"theme.dark": {
 		type: "string",
 		default: "titanium",
@@ -54,6 +60,24 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
+	// Status line
+	/**
+	 * The composer footline ships ON.
+	 *
+	 * It shipped off for one release on the argument that everything on it is either already known
+	 * (which model, which mode, which directory) or available on demand through `/context`,
+	 * `/account` and `/usage`. That argument does not survive contact with a session: the row is the
+	 * only standing answer to which directory this window is pointed at, which branch it is on,
+	 * which model and mode are live, and how much context is left, and a long session is exactly
+	 * where "you just chose it" stops being true. Turning it off left an operator opening a second
+	 * window with no way to tell the two apart without typing a command, and the first report of the
+	 * new default read as the binary having broken.
+	 *
+	 * Off is still one keystroke away for a composer that should carry nothing, and off does not
+	 * silence the focus badge: while the view is proxied onto an agent, the footline still renders
+	 * the agent's name and `esc to go back`. See `#composerFootline` in
+	 * `modes/interactive-mode.ts` for why that one line is not configurable.
+	 */
 	"statusLine.enabled": {
 		type: "boolean",
 		default: true,
@@ -84,10 +108,25 @@ export const APPEARANCE_SETTINGS = {
 				{ value: "ascii", label: "ASCII", description: "No special characters" },
 				{ value: "custom", label: "Custom", description: "User-defined segments" },
 			],
+			// Hidden while the footline is off: a preset is a layout for a row that is not
+			// on screen. `statusLine.sessionAccent` deliberately keeps its row — it colors
+			// the editor border and the working-message accent, neither of which is the
+			// footline.
 			condition: "statusLineEnabled",
 		},
 	},
 
+	/**
+	 * NO UI ROW: nothing renders a separator any more.
+	 *
+	 * The separator styles belonged to the filled powerline bar the editor's top
+	 * border used to carry. That bar had zero production callers and was deleted;
+	 * the composer footline that replaced it joins segments with its own fixed
+	 * `  ·  `. A row that offers seven separator styles and changes nothing on
+	 * screen is worse than no row, so the control is gone. The KEY stays only
+	 * because `modes/controllers/selector-controller.ts` still reads it; when
+	 * that file loses its two `statusLine.separator` reads, delete this entry.
+	 */
 	"statusLine.separator": {
 		type: "enum",
 		values: ["powerline", "powerline-thin", "slash", "pipe", "block", "none", "ascii"] as const,
@@ -106,6 +145,14 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
+	/**
+	 * NO UI ROW: there is no painted bar left to make transparent.
+	 *
+	 * Same story as `statusLine.separator` above — the theme's `statusLineBg`
+	 * fill and the powerline end caps this toggled lived only on the deleted top
+	 * border. The key stays for `selector-controller.ts`; delete it with that
+	 * file's two reads.
+	 */
 	"statusLine.transparent": {
 		type: "boolean",
 		default: true,
@@ -124,6 +171,12 @@ export const APPEARANCE_SETTINGS = {
 			advanced: true,
 		},
 	},
+	// The one answer to "how many bytes of tool output stay in the conversation".
+	// It reaches BOTH paths that ask: the centralised spill that runs after a tool
+	// returns, and the inline budget every streaming tool prices itself against
+	// (`inlineOutputPricing`), which used to take a compiled 50KB constant nothing
+	// could reach. `tools.inlineOutputFloor` is the SHARE of this budget an early
+	// result may keep, so the two are one parameter pair.
 	"tools.artifactSpillThreshold": {
 		type: "number",
 		default: DEFAULT_ARTIFACT_SPILL_THRESHOLD_KB,
@@ -132,7 +185,7 @@ export const APPEARANCE_SETTINGS = {
 			group: "Output Limits",
 			label: "Artifact Spill Threshold (KB)",
 			description:
-				"Tool output above this size is saved as an artifact and the result keeps a head/tail window plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as grep and the browser.",
+				"Tool output above this size is saved as an artifact and the result keeps a head/tail window no larger than this size, plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as search and the browser.",
 			options: [
 				{ value: "1", label: "1 KB", description: "~250 tokens" },
 				{ value: "2.5", label: "2.5 KB", description: "~625 tokens" },
@@ -156,7 +209,8 @@ export const APPEARANCE_SETTINGS = {
 			tab: "tools",
 			group: "Output Limits",
 			label: "Artifact Tail Size (KB)",
-			description: "Amount of tail content kept inline when output spills to artifact",
+			description:
+				"Amount of tail content kept inline when output spills to artifact, bounded by the spill threshold.",
 			options: [
 				{ value: "1", label: "1 KB", description: "~250 tokens" },
 				{ value: "2.5", label: "2.5 KB", description: "~625 tokens" },
@@ -177,7 +231,7 @@ export const APPEARANCE_SETTINGS = {
 			group: "Output Limits",
 			label: "Artifact Head Size (KB)",
 			description:
-				"Amount of head content kept inline alongside the tail when output spills to artifact (middle elision). 0 disables — keep tail only.",
+				"Amount of head content kept inline alongside the tail when output spills to artifact (middle elision), bounded with the tail by the spill threshold. 0 disables — keep tail only.",
 			options: [
 				{ value: "0", label: "0 KB", description: "Disabled; tail-only truncation" },
 				{ value: "1", label: "1 KB", description: "~250 tokens" },
@@ -243,6 +297,19 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
+	/**
+	 * Whether the footline names the account serving the next request.
+	 *
+	 * OFF. The chip answers a question most sessions never ask: it is silent for a provider with one
+	 * stored credential, and for a provider with several it is silent about everything except which
+	 * one is being spent. That is worth a permanent slot on the one line that is always on screen
+	 * only for an operator who keeps several accounts of one provider and moves between them, and
+	 * `/account` answers it on demand for everybody else.
+	 *
+	 * A default of on also spends the line's scarcest resource on the reader least able to use it.
+	 * The footline sheds segments from the right as the terminal narrows, so a chip nobody reads
+	 * still costs the width that the model, the mode and the context percentage are competing for.
+	 */
 	"statusLine.showAccount": {
 		type: "boolean",
 		default: false,
@@ -252,6 +319,10 @@ export const APPEARANCE_SETTINGS = {
 			label: "Show Serving Account",
 			description:
 				"Name the account serving the next request on the composer footline, when the active provider stores more than one. Off: /account answers it on demand",
+			// Behind the Advanced fold, beside the other footline display details. The curated
+			// rows of this tab are the ones every session has an opinion about; this one is for
+			// an operator who keeps several accounts of one provider, and it is silent for
+			// everybody else whatever its value.
 			advanced: true,
 			condition: "statusLineEnabled",
 		},
@@ -263,6 +334,7 @@ export const APPEARANCE_SETTINGS = {
 
 	"statusLine.segmentOptions": { type: "record", default: {} as Record<string, unknown> },
 
+	// Images and terminal
 	"terminal.showImages": {
 		type: "boolean",
 		default: true,
@@ -287,6 +359,8 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
+	// Moved from appearance/Images: blocking images is a privacy control
+	// (prevents images reaching providers), not a display preference.
 	"images.blockImages": {
 		type: "boolean",
 		default: false,
@@ -503,6 +577,8 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
+	// Moved from appearance/Display: governs post-compaction transcript
+	// display, so it lives with the rest of the Compaction knobs on model.
 	"display.collapseCompacted": {
 		type: "boolean",
 		default: true,
@@ -515,6 +591,17 @@ export const APPEARANCE_SETTINGS = {
 		},
 	},
 
+	/**
+	 * Whether tool calls start expanded, showing their full input and output
+	 * rather than a short preview.
+	 *
+	 * The transcript collapses tool blocks by default because a single `go test`
+	 * run would otherwise push everything else off the screen. The keyboard toggle
+	 * has always existed, but it lived only in the running session, so anyone who
+	 * prefers to read the full form had to press it again in every new session.
+	 * This is that preference, remembered: the toggle writes here, and a new
+	 * session starts the way the last one was left.
+	 */
 	"display.toolOutputExpanded": {
 		type: "boolean",
 		default: false,

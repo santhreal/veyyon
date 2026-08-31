@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import type * as nodePath from "node:path";
 
 import { rewriteImports, wrapCode } from "@veyyon/coding-agent/eval/js/context-manager";
 import { indirectEval } from "@veyyon/coding-agent/eval/js/shared/indirect-eval";
@@ -107,7 +108,7 @@ describe("rewriteImports", () => {
 
 			// Page realm: puppeteer ships `load.toString()` to a realm without the helper —
 			// the shim must fall back to native dynamic import instead of throwing.
-			const serialized = indirectEval(`(${load.toString()})`) as () => Promise<typeof import("node:path")>;
+			const serialized = indirectEval(`(${load.toString()})`) as () => Promise<typeof nodePath>;
 			delete globals.__veyyon_import__;
 			const mod = await serialized();
 			expect(typeof mod.join).toBe("function");

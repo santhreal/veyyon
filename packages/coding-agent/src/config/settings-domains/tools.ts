@@ -1,7 +1,13 @@
+/** Tools domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 import { DEFAULT_APPROVAL_MODE } from "../../tools/approval-modes";
 import { DEFAULT_INLINE_FLOOR_FRACTION } from "./shared";
 
 export const TOOLS_SETTINGS = {
+	// ────────────────────────────────────────────────────────────────────────
+	// Tools
+	// ────────────────────────────────────────────────────────────────────────
+
+	// Tool approval policies
 	"tools.approval": {
 		type: "record",
 		default: {},
@@ -14,6 +20,13 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
+	// Extra paths the destructive-command guard refuses to delete recursively.
+	//
+	// ADDITIONS ONLY, BY CONSTRUCTION. The compiled set in src/tools/bash-guard.ts
+	// (the home directory, the system roots, the credential directories) is not
+	// reachable from config in any direction, so this setting can make the guard
+	// stricter and can never make it weaker. A setting that could shrink a safety
+	// floor is a setting an agent can be talked into editing.
 	"tools.protectedPaths": {
 		type: "array",
 		default: [] as string[],
@@ -26,9 +39,23 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
+	// Default tool approval mode (interaction tab, but governs the tool wrapper).
+	// The rungs and what each one still stops for live in
+	// `src/tools/approval-modes.ts`; `normalizeApprovalMode` maps the legacy
+	// names ("always-ask" = ask, "write"/"auto-edit" = ask-command), which stay
+	// accepted from stored configs and the CLI but are not offered in the UI.
 	"tools.approvalMode": {
 		type: "enum",
 		values: ["plan", "ask", "ask-command", "auto", "yolo", "always-ask", "write", "auto-edit"] as const,
+		// `DEFAULT_APPROVAL_MODE` is the single place the unset default is
+		// decided; `normalizeApprovalMode`, `resolveEffectiveApprovalMode` and the
+		// tool wrapper all read the same constant rather than spelling a fallback
+		// of their own. It is `auto`: every tier runs out of the box, but the
+		// guards stay on, so per-tool policies, the working-directory boundary,
+		// credential use, and a tool's own critical calls still stop and ask. An
+		// operator who wants a stricter or looser rung says so once, in
+		// onboarding, in `/settings`, or per session with `/permissions`, and the
+		// status line then says which of those is in force.
 		default: DEFAULT_APPROVAL_MODE,
 		ui: {
 			tab: "interaction",
@@ -70,6 +97,7 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
+	// Todo tool
 	"todo.enabled": {
 		type: "boolean",
 		default: true,
@@ -130,28 +158,19 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	"glob.enabled": {
-		type: "boolean",
-		default: true,
-		ui: {
-			tab: "tools",
-			group: "Available Tools",
-			label: "Glob",
-			description: "Enable the glob tool for glob-based file lookup",
-		},
-	},
-
-	"grep.enabled": {
-		type: "boolean",
-		default: true,
-		ui: {
-			tab: "tools",
-			group: "Available Tools",
-			label: "Grep",
-			description: "Enable the grep tool for regex content search",
-		},
-	},
-
+	// How tightly an early tool result is held before it spills to an artifact.
+	//
+	// A tool result is billed once as fresh input and then re-read as a cache
+	// token on every later turn, so the same bytes cost far more arriving at turn
+	// 3 than at turn 55. `inlineCapForTurn` scales the inline budget by the
+	// remaining re-reads, but that curve is steep enough that this floor is what
+	// actually binds for most of a session: the scaled value sits under it until
+	// roughly four turns from the horizon. The floor is therefore the parameter,
+	// and it is a setting rather than a constant so it can be measured on the
+	// bench instead of chosen by taste.
+	//
+	// 1 disables the scaling: the floor becomes the full budget, so every result
+	// gets the flat cap regardless of when it arrives. That is the control arm.
 	"tools.inlineOutputFloor": {
 		type: "number",
 		default: DEFAULT_INLINE_FLOOR_FRACTION,
@@ -160,7 +179,7 @@ export const TOOLS_SETTINGS = {
 			group: "Output Limits",
 			label: "Inline Output Floor",
 			description:
-				"Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as grep and the browser.",
+				"Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as search and the browser.",
 			options: [
 				{ value: "1", label: "Flat cap (no early spill)" },
 				{ value: "0.5", label: "Half budget" },
@@ -214,17 +233,6 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	"astGrep.enabled": {
-		type: "boolean",
-		default: true,
-		ui: {
-			tab: "tools",
-			group: "Available Tools",
-			label: "AST Grep",
-			description: "Enable the ast_grep tool for structural AST search",
-		},
-	},
-
 	"astEdit.enabled": {
 		type: "boolean",
 		default: true,
@@ -236,6 +244,8 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
+	// Optional tools
+
 	"debug.enabled": {
 		type: "boolean",
 		default: true,
@@ -243,7 +253,8 @@ export const TOOLS_SETTINGS = {
 			tab: "tools",
 			group: "Available Tools",
 			label: "Debug",
-			description: "Enable the debug tool for DAP-based debugging",
+			description:
+				"Enable the debug tool for DAP-based debugging. The tool loads only where a configured adapter command resolves.",
 		},
 	},
 
@@ -322,6 +333,7 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
+	// Fetching and browser
 	"fetch.enabled": {
 		type: "boolean",
 		default: true,
@@ -357,6 +369,9 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
+	// The cache and its two TTLs belong to a tool that ships off, so they follow it.
+	// The TTLs read the cache toggle as well: a window on a cache nobody writes to
+	// is a knob with nothing behind it either way.
 	"github.cache.enabled": {
 		type: "boolean",
 		default: true,
@@ -422,6 +437,9 @@ export const TOOLS_SETTINGS = {
 
 	"browser.enabled": {
 		type: "boolean",
+		// Off: it spawns Chromium, and most sessions never touch a page. A tool that ships
+		// on is paid for on every request in the tool array, which Anthropic caches ahead
+		// of the system prompt, so an unused one is rent on every turn of every session.
 		default: false,
 		ui: {
 			tab: "tools",
@@ -431,6 +449,8 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
+	// Headless, cmux and the screenshot directory describe how a Chromium the
+	// session is not running would behave, so they follow the master above.
 	"browser.headless": {
 		type: "boolean",
 		default: true,
@@ -468,6 +488,7 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
+	// Tool execution
 	"tools.intentTracing": {
 		type: "boolean",
 		default: true,
@@ -490,6 +511,12 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
+	// Optional Python eval workspace guidance
+	"eval.pyWorkspace": {
+		type: "boolean",
+		default: false,
+	},
+
 	"tools.maxTimeout": {
 		type: "number",
 		default: 0,
@@ -509,6 +536,7 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
+	// Async jobs
 	"async.enabled": {
 		type: "boolean",
 		default: true,
@@ -620,6 +648,7 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
+	// Tool Discovery
 	"tools.discoveryMode": {
 		type: "enum",
 		values: ["auto", "off", "mcp-only", "all"] as const,
@@ -641,10 +670,11 @@ export const TOOLS_SETTINGS = {
 			group: "Discovery & MCP",
 			label: "Essential Tools Override",
 			description:
-				"Override the always-loaded built-in tools (default: read, bash, launch, edit, write, glob, eval). Leave empty to use defaults.",
+				"Override the always-loaded built-in tools (default: read, bash, launch, edit, write, search, eval). Leave empty to use defaults.",
 		},
 	},
 
+	// MCP
 	"mcp.discoveryMode": {
 		type: "boolean",
 		default: false,

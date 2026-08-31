@@ -43,7 +43,7 @@ DAY_MS = 86_400_000
 WEEK_MS = 7 * DAY_MS
 
 # tool_name normalization: old names → canonical names.
-TOOL_ALIAS = {"grep": "search"}
+TOOL_ALIAS = {"grep": "search", "glob": "search", "find": "search", "ast_grep": "search"}
 
 # 10-class qualitative palette (tab10) — distinct hues for line + area work.
 PALETTE = [

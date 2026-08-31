@@ -1,9 +1,28 @@
+/**
+ * ModalShell — shared floating overlay chrome for Veyyon TUI surfaces.
+ *
+ * Structure mirrors Grok Build's ModalWindow (sizing, title border, tip gap,
+ * centered shortcut footer, content inset math, fold glyphs, chrome mouse).
+ * Brand: silver is the structural chrome — border, title, footer chips, fold
+ * glyphs. The sun/ember accent is rare and reserved for the caret, focus
+ * ring, and links elsewhere in the product; it never paints a modal border
+ * or fill here. Sharp box-drawing only, no rounded corners.
+ *
+ * Product constraint: Veyyon stays transcript + composer; overlays float on
+ * top. This is not a full-screen TUI conversion.
+ */
 import { clamp, clampLow, type Keybinding, padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { transitionsEnabled } from "../theme/shimmer";
 import { theme, visibleGroundHex } from "../theme/theme";
 import { actionKeyHint } from "../utils/key-hint";
 import { emberTick } from "./composer-chrome";
 import { bottomBorder, divider, fit, row, topBorder } from "./overlay-box";
+
+/** Leading decoration width before the title text on the top border. */
+export const TITLE_LEADING_DECORATION_W = 2;
+
+/** Fold indicator always occupies two columns (Grok FoldInfo parity). */
+export const FOLD_COLS = 2;
 
 export interface ModalSizing {
 	widthPct: number;
@@ -12,6 +31,7 @@ export interface ModalSizing {
 	vMargin: number;
 	hPad: number;
 	vPad: number;
+	/** Reserved rows for the footer shortcut band (grows when chips wrap). */
 	footerLines: number;
 }
 
@@ -35,6 +55,7 @@ export const MODAL_SIZING_MEDIUM: ModalSizing = {
 	footerLines: 2,
 };
 
+// Wider than MEDIUM: the vertical category sidebar consumes ~20 columns.
 export const MODAL_SIZING_SETTINGS: ModalSizing = {
 	widthPct: 0.8,
 	maxWidth: 124,
@@ -45,6 +66,25 @@ export const MODAL_SIZING_SETTINGS: ModalSizing = {
 	footerLines: 2,
 };
 
+/**
+ * Rows {@link renderModalShell} reserves outside the body when nothing is
+ * droppable: the top border, the caller's vertical padding ABOVE AND BELOW the
+ * body, the footer divider, the reserved footer band, and the bottom border.
+ *
+ * A caller that decides its own layout before rendering (side-by-side preview
+ * versus stacked, say) needs the body budget, and the only alternative to this is
+ * to restate the arithmetic. `ask-dialog.ts` did restate it, as
+ * `3 + footerLines + vPad`, with a comment admitting it "mirrors the arithmetic
+ * renderModalShell uses internally". That is the same number by coincidence of
+ * three unnamed `1`s, and nothing would have failed if the shell had grown a row.
+ * The terms live here now, next to the loop that shrinks them.
+ *
+ * This is the MINIMUM. The real reservation grows with a search line (two more
+ * rows) and with shortcut chips that wrap past `footerLines`, and shrinks again
+ * when the card is too short: the tip gap goes, then the tip, then `vPad`, then
+ * the caller's reserved footer padding down to the chip rows. A caller sizing a
+ * layout wants the floor, which is what this returns.
+ */
 export function minModalChromeRows(sizing: ModalSizing): number {
 	const topBorder = 1;
 	const footerDivider = 1;
@@ -52,18 +92,41 @@ export function minModalChromeRows(sizing: ModalSizing): number {
 	return topBorder + 2 * sizing.vPad + footerDivider + sizing.footerLines + bottomBorder;
 }
 
+/** What {@link renderModalShell} will reserve outside the body for a given card. */
 export interface ModalChromePlan {
+	/** Laid-out shortcut chip rows (already wrapped to `contentWidth`). */
 	layoutRows: ShortcutLayoutRow[];
 	tipText: string;
 	searchChrome: number;
+	/** Padding rows, charged once ABOVE and once BELOW the body. */
 	vPad: number;
 	tipRows: number;
 	tipGap: number;
 	footerBand: number;
+	/** Every row that is not body: borders, padding, divider, footer band. */
 	nonBody: number;
+	/** Body rows the card can actually show. Content past this is dropped. */
 	maxBodyRows: number;
 }
 
+/**
+ * Resolve the chrome reservation for one card, including the shrink order that
+ * applies when it is too short.
+ *
+ * {@link minModalChromeRows} answers the static question (what does this sizing
+ * cost at minimum). This answers the real one: given these shortcuts, this tip,
+ * and this height, how many body rows will the card show? A caller that builds
+ * its body before rendering needs that number, because the shell SILENTLY
+ * TRUNCATES a body that is too long — `input.body.slice(0, bodyBudget)`.
+ *
+ * `model-hub.ts` learned that the hard way. It sized its split pane against a
+ * restated `3 + footerLines + vPad`, which charges `vPad` once where the card
+ * charges it twice, so its body ran two rows long and the shell silently ate the
+ * tail. The tail was the hub's strip row, which carries the hint line and every
+ * chip strip, so the entire contextual surface of the model hub was missing on
+ * an ordinary 40-row terminal. There must be ONE answer to "how many rows do I
+ * get", and this is it.
+ */
 export function planModalChrome(input: {
 	sizing: ModalSizing;
 	modalHeight: number;
@@ -78,11 +141,20 @@ export function planModalChrome(input: {
 	const tipText = input.tipCandidates?.length ? fitTipLine(input.tipCandidates, contentWidth) : "";
 	const searchChrome = input.hasSearch ? 2 : 0;
 
+	// Chips (or the caller's reserved footer lines) plus the top border, footer
+	// divider, and bottom border are mandatory chrome — they must never be
+	// clipped. The tip line, its gap, and the vertical padding are droppable, in
+	// that order, when the card is too short (e.g. a search+tip overlay on a
+	// 24-row terminal, where a naive slice would shear off the bottom border).
 	const shortcutRows = layoutRows.length;
 	let vPad = sizing.vPad;
 	let tipRows = tipText ? 1 : 0;
 	let tipGap = tipRows > 0 && modalHeight >= 6 ? 1 : 0;
 	let footerBand = Math.max(sizing.footerLines, shortcutRows + tipRows + tipGap);
+	// vPad is charged TWICE: the body gets the same breathing room above and
+	// below. A single top pad was invisible while every card was full height and
+	// padded with filler rows, but a card that hugs its content shows the last
+	// row resting directly on the footer divider.
 	const nonBody = () => 1 + searchChrome + 2 * vPad + 1 + footerBand + 1;
 	const refreshFooterBand = () => {
 		footerBand = Math.max(sizing.footerLines, shortcutRows + tipRows + tipGap);
@@ -96,6 +168,8 @@ export function planModalChrome(input: {
 		refreshFooterBand();
 	}
 	while (nonBody() > modalHeight && vPad > 0) vPad--;
+	// Last resort: give up the caller's reserved footer padding, but keep every
+	// shortcut chip row.
 	while (nonBody() > modalHeight && footerBand > shortcutRows) footerBand--;
 
 	return {
@@ -111,12 +185,55 @@ export function planModalChrome(input: {
 	};
 }
 
+/**
+ * Rows a modal keeps even when its margins would take more.
+ *
+ * 24 because that is the classic terminal height, and it is exactly what the
+ * compact path already hands the card. Matching it is what makes the boundary
+ * continuous: one row taller than compact must not be a smaller card.
+ */
 const MODAL_MIN_TALL_ROWS = 24;
 
+/**
+ * Whether a card at this height is space-starved and should shed its padding.
+ *
+ * The old test was `areaHeight <= 24`, read straight off the terminal, and it
+ * put a step in the middle of ordinary window sizes: a 24-row terminal gave a
+ * full-screen card with no padding, and a 25-row terminal gave a card the same
+ * height that spent four of its rows on padding, so growing the window by one
+ * row cost four rows of list. The question is not how tall the TERMINAL is. It
+ * is whether the card has room to spare, and it does not while its height is
+ * still pinned to the floor by {@link MODAL_MIN_TALL_ROWS}.
+ */
 export function modalNeedsCompactPadding(areaHeight: number, sizing: ModalSizing): boolean {
 	return areaHeight - 2 * sizing.vMargin <= MODAL_MIN_TALL_ROWS;
 }
 
+/**
+ * The sizing a card should actually use in an area this tall.
+ *
+ * This is the ONLY way to reach the compact strip, and it takes the AREA HEIGHT
+ * rather than a decision, because every hand-rolled decision this replaced was
+ * wrong in the same direction. `ModelPicker` carried `termRows < 24` and so kept
+ * its padding for every height from 24 to 32, where {@link modalNeedsCompactPadding}
+ * says the card is still pinned to its floor: the card grew four rows at 33 and
+ * the list lost them, which is precisely the cliff the shared rule exists to
+ * remove. A threshold read off the terminal cannot be right for more than one
+ * sizing, since the answer depends on that sizing's own margins.
+ *
+ * `forceCompact` can only make a card compact EARLIER than the height rule would.
+ * It exists for a card whose own mode already denies it the room (the session
+ * selector when it is not filling the height), and because the height rule is
+ * always applied underneath it, no caller can push the boundary later and bring
+ * the cliff back.
+ *
+ * The strip sheds padding and nothing else. It used to zero `vMargin` too, which
+ * is what made leaving compact mode a cliff rather than a step: a compact card
+ * took the WHOLE screen, so the first height that stopped being compact dropped
+ * it by two full margins at once (14 rows for LARGE) and the list lost more than
+ * half its rows. The margin is now handled continuously by the floor in
+ * {@link computeModalDims}, which already gives a short terminal its whole screen.
+ */
 export function sizingForArea(sizing: ModalSizing, areaHeight: number, forceCompact = false): ModalSizing {
 	if (!forceCompact && !modalNeedsCompactPadding(areaHeight, sizing)) return sizing;
 	return { ...sizing, hPad: 1, vPad: 0 };
@@ -127,13 +244,32 @@ export interface ModalDims {
 	modalHeight: number;
 	leftPad: number;
 	topPad: number;
+	/** Inner content width (between vertical borders and one-space insets). */
 	contentWidth: number;
 }
 
+/**
+ * Compute floating popup geometry. Returns null when the area is too small
+ * to paint meaningful chrome (Grok abort gate: w<20 or h<6).
+ */
 export function computeModalDims(areaWidth: number, areaHeight: number, sizing: ModalSizing): ModalDims | null {
 	const maxWidth = clamp(areaWidth - 4, 0, sizing.maxWidth);
 	const preferred = Math.floor(areaWidth * sizing.widthPct);
 	const modalWidth = Math.min(areaWidth, clampLow(preferred, sizing.minWidth, maxWidth));
+	// A margin is breathing room, never a squeeze. Subtracting `vMargin` from both
+	// ends unconditionally made the card SHRINK as the terminal grew: at 24 rows
+	// the compact path takes the whole screen, and at 25 rows the full LARGE margin
+	// (7 each end) left an 11-row card whose body had no room for a single list row
+	// at all. Opening a list surface on a 25-to-30-row terminal, which is an
+	// ordinary split pane, showed an empty box. The floor keeps the card at
+	// MODAL_MIN_TALL_ROWS (or the whole screen when the screen is smaller than
+	// that), so height is monotonic in terminal height and the compact boundary is
+	// a step of zero rows instead of thirteen.
+	// The floor rises with the padding the card carries. A card that sheds its
+	// padding (the compact path) needs only the base floor; one that pays for
+	// padding is given four rows of height per row of padding BEFORE it starts
+	// paying, so switching the padding on can never cost the body a row. Without
+	// that, the body dropped three rows at the one height where padding came back.
 	const floorRows = Math.min(areaHeight, MODAL_MIN_TALL_ROWS + 4 * sizing.vPad);
 	const modalHeight = Math.max(areaHeight - 2 * sizing.vMargin, floorRows);
 	if (modalWidth < 20 || modalHeight < 6) return null;
@@ -143,28 +279,52 @@ export function computeModalDims(areaWidth: number, areaHeight: number, sizing: 
 	return { modalWidth, modalHeight, leftPad, topPad, contentWidth };
 }
 
+/** The close chip on a card's title row, and the one place its cells are counted. */
 const MODAL_CLOSE_CHIP = " [x] ";
 
+/**
+ * The card width whose CONTENT row is `contentWidth` cells wide — the inverse of the
+ * `contentWidth` {@link computeModalDims} returns. A caller that knows how wide its widest row
+ * has to be raises `minWidth` to this instead of restating the border-and-padding arithmetic.
+ */
 export function modalWidthForContent(contentWidth: number, sizing: ModalSizing): number {
 	return contentWidth + 2 + 2 * Math.max(1, sizing.hPad);
 }
 
+/**
+ * The card width whose TITLE row shows `titleWidth` cells without an ellipsis. The title row is
+ * not the content row: it pays for the two borders, the ember tick that replaces the leading
+ * rule, a space each side of the title, and the close chip. A card sized only by
+ * {@link modalWidthForContent} cuts the last word off its own title, which is how a credential
+ * prompt lost the sentence that told the operator a name comes later.
+ */
 export function modalWidthForTitle(titleWidth: number): number {
 	return titleWidth + 2 + 2 + 2 + visibleWidth(MODAL_CLOSE_CHIP);
 }
 
+/**
+ * How many cells a medium card's content row gets on a terminal this size, or null when the
+ * terminal is too small for a card at all. It exists so a caller that has to pre-wrap text for a
+ * medium card asks the layout owner one question instead of assembling `sizingForArea` and
+ * {@link computeModalDims} itself: the sizing a medium card uses is this module's decision, and a
+ * second copy of it wraps to a width the card then wraps again.
+ */
 export function mediumModalContentWidth(areaWidth: number, areaHeight: number): number | null {
 	const dims = computeModalDims(areaWidth, areaHeight, sizingForArea(MODAL_SIZING_MEDIUM, areaHeight));
 	return dims ? dims.contentWidth : null;
 }
 
+/** One footer chip. `clickable` marks action vs inert hint (mouse targets). */
 export interface ModalShortcut {
+	/** Display text. When `keybindings` is present, the live bound keys are prepended at render time. */
 	label: string;
+	/** Actions that trigger this shortcut. Unbound actions are omitted; an entirely unbound chip disappears. */
 	keybindings?: readonly Keybinding[];
 	clickable?: boolean;
 	id?: string;
 }
 
+/** Screen-space hit rect for a clickable footer chip. */
 export interface ShortcutHitRect {
 	id: string;
 	row: number;
@@ -172,12 +332,19 @@ export interface ShortcutHitRect {
 	colEnd: number;
 }
 
+// One separator grammar across the whole TUI: the middle dot, two spaces each
+// side. The composer status line, welcome hints, and every ceremony footer use
+// `·`; modal footers used to be the lone `|` holdout, which read as a different
+// dialect on the same screen. Same visible width (5 cells), so chip layout math
+// is unchanged.
 const SHORTCUT_SEP = "  ·  ";
 
 function styleShortcutChip(label: string, hovered: boolean): string {
 	const space = label.indexOf(" ");
 	const key = space === -1 ? label : label.slice(0, space);
 	const rest = space === -1 ? "" : label.slice(space);
+	// Keys are bright silver (structure); labels stay muted. Hover keeps silver
+	// weight — never promote sun/ember into the chip band.
 	const keyStyled = theme.bold(theme.fg("accent", key));
 	const restStyled = rest ? theme.fg(hovered ? "muted" : "dim", rest) : "";
 	const chip = `${keyStyled}${restStyled}`;
@@ -187,30 +354,37 @@ function styleShortcutChip(label: string, hovered: boolean): string {
 export interface ShortcutLayoutRow {
 	plain: string;
 	styled: string;
+	/** Chip placements within the content column (before centering pad). */
 	chips: { id?: string; clickable: boolean; offset: number; width: number }[];
 }
 
+/** Chip labels with live keybindings resolved. A chip whose every action is unbound disappears. */
 function resolveShortcutLabels(shortcuts: readonly ModalShortcut[]): ModalShortcut[] {
 	const resolved: ModalShortcut[] = [];
-	for (let si = 0; si < shortcuts.length; si++) {
-		const shortcut = shortcuts[si]!;
+	for (const shortcut of shortcuts) {
 		if (!shortcut.keybindings) {
 			resolved.push(shortcut);
 			continue;
 		}
-		const keys: string[] = [];
-		if (shortcut.keybindings) {
-			for (let ki = 0; ki < shortcut.keybindings.length; ki++) {
-				const hint = actionKeyHint(shortcut.keybindings[ki]!);
-				if (hint) keys.push(hint);
-			}
-		}
+		const keys = shortcut.keybindings.map(actionKeyHint).filter(Boolean);
 		if (keys.length === 0) continue;
 		resolved.push({ ...shortcut, label: `${keys.join("/")} ${shortcut.label}` });
 	}
 	return resolved;
 }
 
+/**
+ * Greedy forward pack of chip widths into rows, in the order given.
+ *
+ * ONE OWNER FOR THE PACKING RULE, because two callers ask about it: the renderer, which needs the
+ * rows, and {@link shortcutBandWidth}, which needs only how many there would be at a candidate
+ * width. A second copy of this loop would let a card size itself against a packing its own footer
+ * does not perform, which paints a row of chips the card is one column too narrow to hold.
+ *
+ * Greedy is optimal for the row COUNT, since the chips cannot be reordered, but it can strand a
+ * lone trailing chip whose row-mates all landed on the row above; the caller that renders fixes
+ * that by borrowing backwards, which never changes the count.
+ */
 function packChipRows(widths: readonly number[], width: number, sepW: number): number[][] {
 	const groups: number[][] = [];
 	let current: number[] = [];
@@ -238,30 +412,30 @@ export function layoutShortcutRows(
 ): ShortcutLayoutRow[] {
 	if (width <= 0 || shortcuts.length === 0) return [];
 	const resolvedShortcuts = resolveShortcutLabels(shortcuts);
-	const chips = new Array<{ id: string | undefined; clickable: boolean; plain: string; styled: string; w: number }>(
-		resolvedShortcuts.length,
-	);
-	for (let si = 0; si < resolvedShortcuts.length; si++) {
-		const s = resolvedShortcuts[si]!;
-		chips[si] = {
-			id: s.id,
-			clickable: Boolean(s.clickable && s.id),
-			plain: s.label,
-			styled: styleShortcutChip(s.label, Boolean(s.id && s.id === hoveredId)),
-			w: visibleWidth(s.label),
-		};
-	}
+	const chips = resolvedShortcuts.map(s => ({
+		id: s.id,
+		clickable: Boolean(s.clickable && s.id),
+		plain: s.label,
+		styled: styleShortcutChip(s.label, Boolean(s.id && s.id === hoveredId)),
+		w: visibleWidth(s.label),
+	}));
 	const sepW = visibleWidth(SHORTCUT_SEP);
-	const chipWidths = new Array<number>(chips.length);
-	for (let ci = 0; ci < chips.length; ci++) chipWidths[ci] = chips[ci]!.w;
-	const groups = packChipRows(chipWidths, width, sepW);
+	const groups = packChipRows(
+		chips.map(c => c.w),
+		width,
+		sepW,
+	);
 
-	const groupWidth = (indices: number[]): number => {
-		let w = 0;
-		for (let ii = 0; ii < indices.length; ii++) w += chips[indices[ii]!]!.w + (ii > 0 ? sepW : 0);
-		return w;
-	};
+	const groupWidth = (indices: number[]): number =>
+		indices.reduce((w, idx, pos) => w + chips[idx]!.w + (pos > 0 ? sepW : 0), 0);
 
+	// Orphan-avoidance pass: borrow chips backward from the previous row's
+	// tail so no row ends up alone beneath a fuller one above it. A donor row
+	// may give up its last chip as long as it keeps at least one for itself —
+	// no special-casing of row 0 needed: sweeping right-to-left means a row
+	// drained down to 1 while donating is re-examined (and refilled from its
+	// own predecessor) on the very next iteration, so a deficiency cascades
+	// as far back as width allows.
 	for (let i = groups.length - 1; i > 0; i--) {
 		while (groups[i]!.length < 2 && groups[i - 1]!.length > 1) {
 			const prev = groups[i - 1]!;
@@ -274,15 +448,13 @@ export function layoutShortcutRows(
 		}
 	}
 
-	const rows = new Array<ShortcutLayoutRow>(groups.length);
-	for (let gi = 0; gi < groups.length; gi++) {
-		const indices = groups[gi]!;
+	return groups.map(indices => {
 		let plain = "";
 		let styled = "";
 		let w = 0;
 		const rowChips: ShortcutLayoutRow["chips"] = [];
-		for (let ii = 0; ii < indices.length; ii++) {
-			const chip = chips[indices[ii]!]!;
+		for (const idx of indices) {
+			const chip = chips[idx]!;
 			if (w === 0) {
 				plain = chip.plain;
 				styled = chip.styled;
@@ -296,52 +468,96 @@ export function layoutShortcutRows(
 				rowChips.push({ id: chip.id, clickable: chip.clickable, offset, width: chip.w });
 			}
 		}
-		rows[gi] = { plain, styled, chips: rowChips };
-	}
-	return rows;
+		return { plain, styled, chips: rowChips };
+	});
 }
 
+/**
+ * Greedy wrap of centered shortcut chips. Returns ANSI-styled lines.
+ */
 export function renderModalShortcuts(
 	shortcuts: readonly ModalShortcut[],
 	width: number,
 	hoveredId?: string | null,
 ): string[] {
-	const rows = layoutShortcutRows(shortcuts, width, hoveredId);
-	const lines = new Array<string>(rows.length);
-	for (let ri = 0; ri < rows.length; ri++) {
-		const { plain, styled } = rows[ri]!;
+	return layoutShortcutRows(shortcuts, width, hoveredId).map(({ plain, styled }) => {
 		const pad = Math.max(0, width - visibleWidth(plain));
 		const left = Math.floor(pad / 2);
-		lines[ri] = padding(left) + styled + padding(pad - left);
-	}
-	return lines;
+		return padding(left) + styled + padding(pad - left);
+	});
 }
 
+/** First tip candidate that fits; else truncate the last. */
 export function fitTipLine(candidates: readonly string[], width: number): string {
 	if (width <= 0 || candidates.length === 0) return "";
-	for (let ci = 0; ci < candidates.length; ci++) {
-		if (visibleWidth(candidates[ci]!) <= width) return candidates[ci]!;
+	for (const c of candidates) {
+		if (visibleWidth(c) <= width) return c;
 	}
 	return truncateToWidth(candidates[candidates.length - 1] ?? "", width);
 }
 
+/** Collapsed fold glyph + trailing space (always {@link FOLD_COLS} columns). */
+export function foldCollapsedGlyph(hovered = false): string {
+	const g = `${theme.nav.expand} `;
+	return hovered ? theme.bold(theme.fg("accent", g)) : theme.fg("dim", g);
+}
+
+/** Expanded fold glyph + trailing space (always {@link FOLD_COLS} columns). */
+export function foldExpandedGlyph(hovered = false): string {
+	const g = `${theme.nav.collapse} `;
+	return hovered ? theme.bold(theme.fg("accent", g)) : theme.fg("dim", g);
+}
+
 export interface ModalShellInput {
 	title: string;
+	/** Breadcrumb suffix shown after title, e.g. " › Theme". */
 	breadcrumb?: string;
+	/**
+	 * When true (and {@link breadcrumb} is set), style the whole title as an
+	 * underlined click target and hit-test it as `{ kind: "breadcrumb" }`
+	 * (peel one sub-pane level back to Browse). Mirrors Grok's clickable
+	 * `settings_breadcrumb_rect`.
+	 */
 	breadcrumbClickable?: boolean;
+	/** Hover state for the clickable breadcrumb title (brighter fg). */
 	breadcrumbHovered?: boolean;
 	sizing: ModalSizing;
 	areaWidth: number;
 	areaHeight: number;
+	/** Body lines already clipped to contentWidth (no outer border). */
 	body: readonly string[];
+	/**
+	 * Body rows this surface actually wants, when the terminal can spare fewer
+	 * than the card's maximum.
+	 *
+	 * Without it the card is always the full height the vertical margins allow,
+	 * so a seven-row list paints into a card sized for twenty and the ten blank
+	 * rows below it read as a list that failed to load the rest rather than as a
+	 * list that is simply short.
+	 *
+	 * Pass the surface's NATURAL row count, not the count currently visible: a
+	 * filtered list that passed its filtered length would resize the card on every
+	 * keystroke, which is worse than the empty space. The value is clamped to what
+	 * fits, so a caller can pass an honest number without also doing the chrome
+	 * arithmetic. Omit it to keep the full-height card.
+	 */
 	preferredBodyRows?: number;
+	/** Optional tip candidates (LONG then SHORT). */
 	tipCandidates?: readonly string[];
 	shortcuts?: readonly ModalShortcut[];
+	/** When set, paint a search chrome row above the body. */
 	searchLine?: string;
 	hoveredShortcutId?: string | null;
 	showClose?: boolean;
 }
 
+/**
+ * Columns between a card's left edge and its body text: the border and one space of padding.
+ *
+ * Owned by the shell because the shell is what draws them. Every card that hit-tests its own body
+ * needs the same number, and each one that spelled it `cardColStart + 2` locally was a separate
+ * place to be wrong the next time the border changes.
+ */
 export const CARD_BODY_COL_INSET = 2;
 
 export interface ModalShellGeometry {
@@ -350,20 +566,26 @@ export interface ModalShellGeometry {
 	modalWidth: number;
 	modalHeight: number;
 	contentWidth: number;
+	/** Screen row (0-based in returned frame) where body content starts. */
 	bodyRowStart: number;
 	bodyRowCount: number;
+	/** Screen row of the search line, or -1. */
 	searchRow: number;
 	footerRowStart: number;
+	/** First row of shortcut chips (after tip + gap). */
 	shortcutRowStart: number;
 	closeColStart: number;
 	closeColEnd: number;
+	/** Clickable breadcrumb title span on {@link titleRow} (-1 when not clickable). */
 	breadcrumbColStart: number;
 	breadcrumbColEnd: number;
 	titleRow: number;
+	/** Absolute screen rect of the floating card. */
 	cardColStart: number;
 	cardColEnd: number;
 	cardRowStart: number;
 	cardRowEnd: number;
+	/** Clickable footer chips in screen coordinates. */
 	shortcutHits: readonly ShortcutHitRect[];
 }
 
@@ -372,11 +594,15 @@ export interface ModalShellResult {
 	geometry: ModalShellGeometry | null;
 }
 
+/**
+ * Paint a floating modal into a full-terminal frame (empty pads around card).
+ * Returns empty lines + null geometry when the terminal is too small.
+ */
 export function renderModalShell(input: ModalShellInput): ModalShellResult {
 	const dims = computeModalDims(input.areaWidth, input.areaHeight, input.sizing);
 	if (!dims) {
 		return {
-			lines: new Array(input.areaHeight).fill(padding(input.areaWidth)),
+			lines: Array.from({ length: input.areaHeight }, () => padding(input.areaWidth)),
 			geometry: null,
 		};
 	}
@@ -395,14 +621,17 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 	});
 	const { layoutRows, tipText, vPad, tipRows, tipGap, footerBand, maxBodyRows } = plan;
 	const hasSearch = input.searchLine !== undefined;
+	// The card is as tall as its content asks for, bounded by what fits. A caller
+	// that asks for nothing gets the full-height card it always got.
 	const bodyBudget =
 		input.preferredBodyRows === undefined
 			? maxBodyRows
 			: clamp(input.preferredBodyRows, Math.min(1, maxBodyRows), maxBodyRows);
 	const cardHeight = plan.nonBody + bodyBudget;
+	// Re-centre: the card shrank, so the pad above it grew by half the difference.
 	const cardTopPad = Math.max(0, Math.floor((input.areaHeight - cardHeight) / 2));
 
-	const body = input.body.slice(0, bodyBudget);
+	const body = [...input.body.slice(0, bodyBudget)];
 	while (body.length < bodyBudget) body.push("");
 
 	const card: string[] = [];
@@ -414,6 +643,7 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 
 	if (input.showClose !== false) {
 		const closePlain = MODAL_CLOSE_CHIP;
+		// Close glyph is silver structure (same as the frame), not dim soup.
 		const closeStyled = theme.fg("accent", closePlain);
 		const closeW = visibleWidth(closePlain);
 		const box = theme.boxSharp;
@@ -427,6 +657,9 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 				: clickableTitle
 			: theme.bold(theme.fg("accent", shown));
 		const frame = (s: string) => theme.fg("borderAccent", s);
+		// The title rail carries one ember tick right after the corner — the
+		// website's progress-sun-on-the-header-rule motif. Geometry is identical:
+		// the tick's cells occupy the space the leading rule + title space used.
 		card.push(
 			frame(box.topLeft) +
 				emberTick(TERMINAL.trueColor, 2) +
@@ -457,8 +690,8 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 	}
 
 	const bodyRowStartInCard = card.length;
-	for (let bi = 0; bi < body.length; bi++) {
-		card.push(row(fit(body[bi]!, contentWidth), modalWidth));
+	for (const line of body) {
+		card.push(row(fit(line, contentWidth), modalWidth));
 	}
 
 	for (let i = 0; i < vPad; i++) {
@@ -472,6 +705,7 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 		if (tipGap) card.push(row("", modalWidth));
 	}
 	const shortcutStartInCard = card.length;
+	// Content inset: border column + one space (matches overlay-box `row`).
 	const contentColStart = leftPad + 2;
 	const shortcutHits: ShortcutHitRect[] = [];
 	for (let i = 0; i < layoutRows.length; i++) {
@@ -480,8 +714,7 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 		const left = Math.floor(pad / 2);
 		card.push(row(padding(left) + layout.styled + padding(pad - left), modalWidth));
 		const screenRow = cardTopPad + shortcutStartInCard + i;
-		for (let ci = 0; ci < layout.chips.length; ci++) {
-			const chip = layout.chips[ci]!;
+		for (const chip of layout.chips) {
 			if (!chip.clickable || !chip.id) continue;
 			shortcutHits.push({
 				id: chip.id,
@@ -504,8 +737,8 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 	const rightPad = Math.max(0, input.areaWidth - leftPad - modalWidth);
 	const frame: string[] = [];
 	for (let i = 0; i < cardTopPad; i++) frame.push(padding(input.areaWidth));
-	for (let ci = 0; ci < clipped.length; ci++) {
-		frame.push(padding(leftPad) + clipped[ci]! + padding(rightPad));
+	for (const line of clipped) {
+		frame.push(padding(leftPad) + line + padding(rightPad));
 	}
 	while (frame.length < input.areaHeight) frame.push(padding(input.areaWidth));
 
@@ -536,6 +769,7 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 	};
 }
 
+/** Sentinel hover id for the clickable breadcrumb title (not a real shortcut chip). */
 export const BREADCRUMB_HOVER_ID = "breadcrumb";
 
 export type ModalChromeAction =
@@ -546,6 +780,10 @@ export type ModalChromeAction =
 	| { kind: "hover-shortcut"; id: string | null }
 	| { kind: "none" };
 
+/**
+ * Hit-test ModalShell chrome: close glyph, click-outside, footer chips.
+ * Body/content routing stays with the host.
+ */
 export function hitTestModalChrome(
 	geometry: ModalShellGeometry | null,
 	row: number,
@@ -599,6 +837,18 @@ export function hitTestModalChrome(
 	return { kind: "none" };
 }
 
+/**
+ * The motion half of chrome hit-testing, with the consumption answer folded
+ * in. {@link hitTestModalChrome} reports EVERY motion as `"hover-shortcut"`
+ * — carrying the hovered chip's id, or `null` as the clear-hover signal — so
+ * a host that early-returns on the kind alone swallows every body-row
+ * motion, which is exactly what every ModalShell host did: pointer hover on
+ * list rows, browser rows, and settings submenu rows never reached the body
+ * until this. Update the host's hovered chip (the setter fires only on
+ * change, which is when a re-render is wanted) and answer whether the chrome
+ * consumed the event: `true` only while the pointer is actually on a chip or
+ * the breadcrumb, `false` to continue into body handling.
+ */
 export function consumeModalChipHover(
 	chrome: ModalChromeAction,
 	currentHoveredId: string | null,
@@ -610,8 +860,17 @@ export function consumeModalChipHover(
 	return next !== null;
 }
 
+/**
+ * Default settings footer chips (Browse layer).
+ *
+ * `left categories` is the only route from the settings pane to another
+ * category, so it is advertised rather than left to be discovered. Without it
+ * the footer named no key that leaves the tab the card opens on, and a reader
+ * who never guessed Left could reach exactly one of the fourteen categories.
+ */
 export const SETTINGS_BROWSE_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "up/down navigate" },
+	{ label: "left categories" },
 	{ label: "enter change" },
 	{ label: "/ search" },
 	{ label: "esc close", clickable: true, id: "close" },
@@ -628,16 +887,27 @@ export const SETTINGS_SUBPANE_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "esc back", clickable: true, id: "back" },
 ];
 
+/** Shared chips for simple list pickers (theme/thinking/queue/…). */
 export const SELECT_LIST_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "navigate", keybindings: ["tui.select.up", "tui.select.down"] },
 	{ label: "select", keybindings: ["tui.select.confirm"], clickable: true, id: "confirm" },
 	{ label: "close", keybindings: ["tui.select.cancel"], clickable: true, id: "close" },
 ];
 
+// --- Pointer-band motion ----------------------------------------------------
+
+/**
+ * Ambient gate for pointer-band motion on modal surfaces:
+ * `display.transitions: off` turns structural motion off, and non-truecolor
+ * terminals skip motion entirely.
+ */
 export function pointerMotionEnabled(): boolean {
 	return TERMINAL.trueColor && transitionsEnabled();
 }
 
+/**
+ * The color the pointer band fades out of on a modal card. One owner, in the theme.
+ */
 export function modalRevealGround(): string {
 	return visibleGroundHex();
 }

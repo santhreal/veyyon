@@ -279,19 +279,24 @@ describe("config/settings, the most imported module in the package", () => {
 
 	/**
 	 * NON-VACUITY, and the control for both assertions above. Settings really does reach `@veyyon/ai`,
-	 * through the sqlite credential store its own storage layer needs, so the walk demonstrably crosses
-	 * the package boundary and "does not reach stream.ts" is a statement about a path that exists to be
-	 * found rather than about a walk that stopped early.
+	 * through the in-flight caps it configures, so the walk demonstrably crosses the package boundary
+	 * and "does not reach stream.ts" is a statement about a path that exists to be found rather than
+	 * about a walk that stopped early.
 	 *
-	 * It reaches `auth-storage-sqlite.ts` and NOT `auth-storage.ts`, which is the split's whole point: the
-	 * store is here because settings persists credentials, and the OAuth machinery is gone because
-	 * persisting a credential never needed it. The floor is 60, well under the 125 measured, because its
-	 * job is to catch a resolution table that stopped resolving and not to forbid the next cut.
+	 * It used to cross through `auth-storage-sqlite.ts` instead, because the store held the agent.db
+	 * handle. It does not any more: the handle belongs to `session/agent-storage.ts`, and the card the
+	 * launch paints reads settings without evaluating a credential store. That absence has its own
+	 * gate in `the-launch-card-opens-no-database.test.ts`; asserted here too, because this is the file
+	 * that watches what settings drags behind it.
+	 *
+	 * The floor is 60, under the 80 measured, because its job is to catch a resolution table that
+	 * stopped resolving and not to forbid the next cut.
 	 */
-	it("still reaches the credential store, which is what makes the two absences meaningful", () => {
+	it("still crosses into @veyyon/ai, which is what makes the two absences meaningful", () => {
 		const names = reachedNames("config/settings.ts");
 
-		expect(names).toContain(path.relative(PACKAGES, path.join(AI_SRC, "auth-storage-sqlite.ts")));
+		expect(names).toContain(path.relative(PACKAGES, path.join(AI_SRC, "provider-inflight-limits.ts")));
+		expect(names).not.toContain(path.relative(PACKAGES, path.join(AI_SRC, "auth-storage-sqlite.ts")));
 		expect(names).not.toContain(path.relative(PACKAGES, path.join(AI_SRC, "auth-storage.ts")));
 		expect(names.length).toBeGreaterThan(60);
 	});
@@ -847,10 +852,8 @@ describe("reading a local file does not load the MCP client, the skill loader or
 		expect(skill).not.toContain("../extensibility/skills");
 
 		const memory = runtimeImportsOf(path.join(SRC, "internal-urls/memory-protocol.ts"));
-		const memoryHelpers = runtimeImportsOf(path.join(SRC, "internal-urls/memory-protocol-helpers.ts"));
-		expect(memoryHelpers).toContain("../memories/paths");
+		expect(memory).toContain("../memories/paths");
 		expect(memory).not.toContain("../memories");
-		expect(memoryHelpers).not.toContain("../memories/index");
 	});
 
 	/**
@@ -1086,7 +1089,7 @@ describe("a cheap value is owned by a leaf, and a file that wants only it names 
  * path. So: the STATIC edge is gone, the DYNAMIC one is present, and the call sites still exist.
  */
 describe("declaring the web-search tool does not load the credential store", () => {
-	const source = fs.readFileSync(path.join(SRC, "web/search/web-search-tool-helpers.ts"), "utf-8");
+	const source = fs.readFileSync(path.join(SRC, "web/search/index.ts"), "utf-8");
 
 	/**
 	 * The four modules by name, because the count is the symptom and these are the cause. Each is a piece of
@@ -1131,11 +1134,7 @@ describe("declaring the web-search tool does not load the credential store", () 
 		expect(dynamicImportSpecifiersIn(source)).toContain("../../session/auth-broker-config");
 		expect(dynamicImportBindings(source, "../../session/auth-broker-config")).toEqual(["discover"]);
 
-		const toolSource = fs.readFileSync(path.join(SRC, "web/search/web-search-tool.ts"), "utf-8");
-		const callSites = [
-			...(withoutComments(source).match(/await discoverAuthStorage\(\)/g) ?? []),
-			...(withoutComments(toolSource).match(/await discoverAuthStorage\(\)/g) ?? []),
-		];
+		const callSites = withoutComments(source).match(/await discoverAuthStorage\(\)/g) ?? [];
 		expect(callSites.length).toBe(3);
 	});
 });

@@ -1,10 +1,15 @@
 #!/usr/bin/env bun
 
 import { parseArgs } from "node:util";
-import { formatDuration, formatNumber, formatPercent } from "@veyyon/utils";
+import {
+	formatCostTiered as formatCost,
+	formatDuration,
+	formatNumber,
+	formatPercent,
+	normalizePremiumRequests,
+} from "@veyyon/utils";
 import { getDashboardStats, getTotalMessageCount, syncAllSessions } from "./aggregator";
 import { closeDb } from "./db";
-import { formatCostTiered as formatCost, normalizePremiumRequests } from "./format";
 import { startServer } from "./server";
 
 export {
@@ -33,6 +38,12 @@ export type {
 	ToolUsageStats,
 } from "./types";
 
+/**
+ * Format cost in dollars.
+ */
+/**
+ * Print stats summary to console.
+ */
 async function printStats(): Promise<void> {
 	const stats = await getDashboardStats();
 	const { overall, byModel, byFolder } = stats;
@@ -73,7 +84,10 @@ async function printStats(): Promise<void> {
 	console.log("");
 }
 
-export async function main(): Promise<void> {
+/**
+ * Main CLI entry point.
+ */
+async function main(): Promise<void> {
 	const { values } = parseArgs({
 		options: {
 			port: { type: "string", short: "p", default: "3847" },
@@ -107,6 +121,7 @@ Examples:
 	}
 
 	try {
+		// Sync first
 		const tty = process.stderr.isTTY === true;
 		process.stderr.write("Syncing session files...\n");
 		let lastWidth = 0;
@@ -143,11 +158,13 @@ Examples:
 			return;
 		}
 
+		// Start server
 		const port = parseInt(values.port || "3847", 10);
 		const { port: actualPort } = await startServer(port);
 		console.log(`Dashboard available at: http://localhost:${actualPort}`);
 		console.log("Press Ctrl+C to stop\n");
 
+		// Keep process running
 		process.on("SIGINT", () => {
 			console.log("\nShutting down...");
 			closeDb();
@@ -160,6 +177,7 @@ Examples:
 	}
 }
 
+// Run if executed directly
 if (import.meta.main) {
 	main();
 }

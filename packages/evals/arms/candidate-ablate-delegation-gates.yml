@@ -1,0 +1,17 @@
+# Config half of the worked prompt-STATEMENT example. See
+# `candidate-ablate-delegation-gates.statements.yml`, which is where the actual
+# experiment lives.
+#
+# This file is INTENTIONALLY identical to `baseline.yml`. That is what makes the
+# comparison single-variable: `baseline ↔ candidate-ablate-delegation-gates` holds
+# every setting equal and differs only in the one ablated rule. If this file also
+# flipped a feature flag, the delta would have two causes and would be
+# unattributable.
+#
+# The runner's zero-IV collision check does not fire on the identical config,
+# because the arm fingerprint covers (config, sections, statements, rule) and the
+# statements file makes this arm distinct. Delete the statements file and the two
+# arms DO collide, and the runner will say so by name rather than quietly
+# reporting noise as a result.
+argot:
+  enabled: false

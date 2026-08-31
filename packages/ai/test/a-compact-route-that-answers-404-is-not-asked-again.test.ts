@@ -10,25 +10,46 @@ import { buildModel } from "@veyyon/catalog/build";
 import type { FetchImpl } from "@veyyon/utils";
 
 /**
- * WHY: a real run compacted on a ChatGPT Codex model whose host does not serve
- * `POST /responses/compact`. The route answered 404 with `{"detail":"Not
- * Found"}`, and it did so on every compaction for the whole session: one
- * request, one warning, one fallback, repeated. The capability flag can only
- * predict support from the host; a 404 is the host answering the question, and
- * that answer was being thrown away.
+ * DO NOT CHANGE THIS TEST WITHOUT OPERATOR PERMISSION.
+ * THIS REGRESSION HAS HAPPENED 50+ TIMES.
  *
- * The class this closes: a permanent negative from the compact route being
+ * WHY: a real run compacted on a ChatGPT Codex model and every compaction
+ * answered 404, so every pass fell back to LOCAL compaction — a paid
+ * summarization call that rewrites the history prefix and busts the prompt
+ * cache, making every following turn re-pay full uncached input.
+ *
+ * READ THIS BEFORE CHANGING THE ROUTE. Both codex routes have answered 404 in
+ * real runs at different times, which is why this has regressed more than fifty
+ * times: someone flips the path, the other 404 appears, someone flips it back.
+ * The path alone was never the decision. The route and the `implementation` the
+ * client metadata declares are ONE decision and must agree:
+ *
+ *   {base}/codex/responses/compact  <->  implementation "responses_compact"
+ *   {base}/codex/responses          <->  implementation "responses_compaction_v2"
+ *
+ * A route from one pairing sent with the other's declaration is a mismatch, and
+ * a mismatch is its own 404. The wire pinned here is the second pairing, and it
+ * is pinned to a live measurement: on 2026-09-01, against a ChatGPT account on
+ * `gpt-5.6-sol`, `{base}/codex/responses/compact` answered 404 while the plain
+ * turn route with a trailing `compaction_trigger` item answered 200 with the
+ * compaction item. Changing either half without the other, or without the
+ * operator saying so, is the regression.
+ *
+ * The class this closes: a permanent negative from the compaction route being
  * treated as a transient failure. It covers every non-2xx status, not the one
  * that was reported, so a sibling status is not quietly given the same
  * treatment — 401, 429 and 500 must stay retryable, because a credential, a
  * rate limit and an outage all resolve on their own.
  *
- * What it does NOT catch: a host that starts serving the route mid-process.
- * The negative is process-scoped and never persisted, so it clears on the next
- * launch, but this run will not notice.
+ * What it does NOT catch: a host that starts serving the route mid-process
+ * inside the stand-down window. The negative expires after that window and is
+ * never persisted, so it also clears on the next launch.
  */
 
-const RECORDED_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses/compact";
+/** The route the host serves. The paired declaration is `responses_compaction_v2`. */
+const CODEX_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses";
+/** The compact endpoint, which answers 404. Nothing may post compaction here. */
+const RETIRED_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses/compact";
 const RECORDED_404_BODY = '{"detail":"Not Found"}';
 function codexModel(id = "gpt-test-codex"): Model<Api> {
 	// Built through the real catalog path so `supportsServerCompaction` is the
@@ -59,6 +80,7 @@ function respondWith(status: number, statusText: string, body: string): { fetch:
 async function compactOnce(model: Model<Api>, impl: FetchImpl): Promise<Error | undefined> {
 	try {
 		await openAIResponsesServerCompaction.compact({
+			sessionId: "route-404-cache-session",
 			model,
 			messages: [{ role: "user", content: "compact this span", timestamp: Date.now() }],
 			apiKey: "test-access-token",
@@ -81,7 +103,10 @@ describe("a compact route that answers 404", () => {
 
 		const error = await compactOnce(model, impl);
 
-		expect(calls).toEqual([RECORDED_COMPACT_URL]);
+		expect(calls).toEqual([CODEX_COMPACT_URL]);
+		// The recorded defect, as a standing negative: this is the route that
+		// produced the 404, and nothing may post to it again.
+		expect(calls).not.toContain(RETIRED_COMPACT_URL);
 		expect(error?.message).toBe(
 			"Server-side compaction is not available for openai-codex/gpt-test-codex (404 Not Found)",
 		);

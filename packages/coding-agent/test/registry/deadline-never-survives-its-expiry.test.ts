@@ -95,7 +95,7 @@ describe("a due deadline is always cleared by the expiry that reads it", () => {
 
 	/**
 	 * The park stage. One deadline in, one park out, and then SILENCE: with the
-	 * close budget disabled a parked agent has no next stage, so the manager must
+	 * prune budget disabled a parked agent has no next stage, so the manager must
 	 * arm nothing more. Advancing fifty further TTLs is the spin detector — the
 	 * defect arms a timer on every one of them.
 	 */
@@ -123,15 +123,15 @@ describe("a due deadline is always cleared by the expiry that reads it", () => {
 
 	/**
 	 * The two-stage walk, which is where a single uncleared entry does the most
-	 * damage: the park expiry hands off to a close deadline, so the timer is armed
+	 * damage: the park expiry hands off to a prune deadline, so the timer is armed
 	 * again on purpose. That makes "the manager armed another timer" legitimate
 	 * here, and the invariant becomes a BOUND: two stages cost a bounded number of
 	 * arms and end with the ref gone, never an unbounded rearm at zero delay.
 	 */
-	it("walks idle → parked → closed on bounded arming, never a zero-delay rearm", async () => {
+	it("walks idle → parked → pruned on bounded arming, never a zero-delay rearm", async () => {
 		const stub = makeSessionStub();
 		registerIdleSub("Walk", stub.session);
-		lifecycle.adopt("Walk", { idleTtlMs: TTL, closeParkedMs: CLOSE });
+		lifecycle.adopt("Walk", { idleTtlMs: TTL, pruneAfterMs: CLOSE });
 
 		vi.advanceTimersByTime(TTL);
 		await flushAsync();
@@ -140,17 +140,17 @@ describe("a due deadline is always cleared by the expiry that reads it", () => {
 		vi.advanceTimersByTime(CLOSE);
 		await flushAsync();
 
-		// Closed for good: the ref is dropped and the adoption released.
+		// Pruned for good: the ref is dropped and the adoption released.
 		expect(registry.get("Walk")).toBeUndefined();
 		expect(lifecycle.has("Walk")).toBe(false);
 		// Two real stages, so a handful of arms. A spin on either stage blows past this.
 		expect(delays.length).toBeLessThanOrEqual(8);
 		expect(delays.filter(delay => delay === 0)).toEqual([]);
 
-		const armedThroughClose = delays.length;
+		const armedThroughPrune = delays.length;
 		vi.advanceTimersByTime(CLOSE * 50);
 		await flushAsync();
-		expect(delays.length).toBe(armedThroughClose);
+		expect(delays.length).toBe(armedThroughPrune);
 	});
 
 	/**

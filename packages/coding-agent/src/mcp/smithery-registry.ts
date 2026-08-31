@@ -1,23 +1,118 @@
 import { clampLow, logger } from "@veyyon/utils";
 import { isRecord } from "@veyyon/utils/type-guards";
-import { resolveProviderTextTransform } from "../provider-boundary";
+import { type ProviderTextTransformResolver, resolveProviderTextTransform } from "../provider-boundary";
 import { isTimeoutError } from "../utils/fetch-timeout";
 import { smitheryTimeoutSignal } from "./smithery-http";
-import type {
-	RegistryInputType,
-	SmitheryConfigSchema,
-	SmitheryConnection,
-	SmitherySearchEntry,
-	SmitherySearchOptions,
-	SmitherySearchResult,
-	SmitheryServerDetails,
-	SmitheryToolDefinition,
-} from "./smithery-registry-helpers";
-
-import { SMITHERY_REGISTRY_BASE_URL } from "./smithery-registry-helpers";
 import type { MCPServerConfig } from "./types";
 
-export type { SmitherySearchResult };
+const SMITHERY_REGISTRY_BASE_URL = "https://registry.smithery.ai";
+
+type SmitherySearchEntry = {
+	id?: string;
+	qualifiedName?: string;
+	namespace?: string;
+	slug?: string;
+	displayName?: string;
+	description?: string;
+	remote?: boolean;
+	score?: number;
+	useCount?: number;
+	homepage?: string;
+	verified?: boolean;
+	isDeployed?: boolean;
+	createdAt?: string;
+	owner?: string;
+	iconUrl?: string;
+};
+
+type SmitheryConnection = {
+	type?: "http" | "stdio";
+	deploymentUrl?: string;
+	configSchema?: SmitheryConfigSchema;
+};
+
+type SmitheryConfigSchema = {
+	type?: string;
+	required?: string[];
+	properties?: Record<string, SmitheryConfigProperty>;
+};
+
+type SmitheryConfigProperty = {
+	type?: string;
+	description?: string;
+	default?: unknown;
+	enum?: unknown[];
+	format?: string;
+};
+
+type SmitheryServerDetails = {
+	qualifiedName?: string;
+	displayName?: string;
+	description?: string;
+	remote?: boolean;
+	deploymentUrl?: string;
+	connections?: SmitheryConnection[];
+	security?: unknown;
+	tools?: unknown;
+};
+
+type SmitheryToolDefinition = {
+	name?: string;
+	description?: string;
+	inputSchema?: {
+		type?: string;
+		properties?: Record<string, unknown>;
+		required?: string[];
+	};
+};
+
+type RegistryInputType = "string" | "number" | "boolean";
+
+export type SmitherySearchResult = {
+	id: string;
+	name: string;
+	title?: string;
+	description?: string;
+	score?: number;
+	useCount?: number;
+	display: {
+		displayName: string;
+		description: string;
+		useCount: number;
+		verified: boolean;
+		deployed: boolean;
+		transport: string;
+		connectionType: string;
+		createdAt?: string;
+		homepage?: string;
+		tools: Array<{
+			name: string;
+			description?: string;
+			params: string[];
+		}>;
+	};
+	sourceType: "remote" | "package";
+	config: MCPServerConfig;
+	warnings: string[];
+	requiredInputs: Array<{
+		key: string;
+		label: string;
+		type: RegistryInputType;
+		required: boolean;
+		defaultValue?: string;
+		description?: string;
+		enumValues?: string[];
+		sensitive: boolean;
+	}>;
+};
+
+export interface SmitherySearchOptions {
+	limit?: number;
+	apiKey?: string;
+	includeSemantic?: boolean;
+	signal?: AbortSignal;
+	resolveProviderTextTransform?: ProviderTextTransformResolver;
+}
 
 export class SmitheryRegistryError extends Error {
 	status: number;
@@ -103,6 +198,9 @@ function isServerDetails(value: unknown): value is SmitheryServerDetails {
 }
 
 function clampRegistryLimit(limit: number | undefined): number {
+	// 0/undefined/NaN mean "unspecified" here, so they fall back to the page-size
+	// default (20) rather than clamping to the low bound; a real value is truncated
+	// and clamped into [1, 100] via the shared clampLow owner.
 	if (!limit || Number.isNaN(limit)) return 20;
 	return clampLow(Math.trunc(limit), 1, 100);
 }
@@ -172,6 +270,8 @@ function unknownToString(value: unknown): string | undefined {
 	try {
 		return JSON.stringify(value);
 	} catch {
+		// A value with a cycle in it has no string form, and this only renders registry metadata for
+		// display. Undefined means the field is not shown, the same as a field that was absent.
 		return undefined;
 	}
 }
@@ -406,12 +506,14 @@ export async function searchSmitheryRegistry(
 
 	const limit = clampRegistryLimit(options?.limit);
 	const isSemantic = options?.includeSemantic === true;
+	// Two pages worth of headroom for the filter below, held inside the API's [20, 100] page bound.
 	const pageSize = clampLow(limit * 2, 20, 100);
 	const headers = new Headers();
 	if (options?.apiKey) {
 		headers.set("Authorization", `Bearer ${options.apiKey}`);
 	}
 
+	// Fetch pages until we have enough filtered entries or run out of results.
 	const maxPages = 3;
 	const allEntries: SmitherySearchEntry[] = [];
 	for (let page = 1; page <= maxPages; page++) {
@@ -466,17 +568,17 @@ export async function searchSmitheryRegistry(
 			);
 		}
 		if (pageEntries.length === 0) break;
-		for (let ei = 0; ei < pageEntries.length; ei++) allEntries.push(pageEntries[ei]!);
+		allEntries.push(...pageEntries);
 
+		// Stop early if we already have enough identity-matching entries.
 		const filtered = isSemantic ? allEntries : allEntries.filter(entry => matchesIdentityQuery(query, entry));
 		if (filtered.length >= limit * 2) break;
 		if (pageEntries.length < pageSize) break;
 	}
 
-	const entries = isSemantic
-		? allEntries.slice()
-		: allEntries.slice().filter(entry => matchesIdentityQuery(query, entry));
+	const entries = isSemantic ? [...allEntries] : [...allEntries].filter(entry => matchesIdentityQuery(query, entry));
 
+	// Only apply local useCount sort when not in semantic mode (preserve API relevance ranking).
 	if (!isSemantic) {
 		entries.sort((a, b) => (b.useCount ?? 0) - (a.useCount ?? 0));
 	}

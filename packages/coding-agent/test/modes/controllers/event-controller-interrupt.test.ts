@@ -45,7 +45,7 @@ function toolStartWithIntent(toolCallId: string, intent: string): AgentSessionEv
 	return {
 		type: "tool_execution_start",
 		toolCallId,
-		toolName: "grep",
+		toolName: "search",
 		args: {},
 		intent,
 	} as unknown as AgentSessionEvent;

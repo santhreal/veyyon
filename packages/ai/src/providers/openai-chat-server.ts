@@ -4,6 +4,10 @@ import { emptyUsage } from "@veyyon/catalog/models";
 import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import { type } from "arktype";
 import { resolvePromptCacheKey } from "../auth-gateway/http";
+/**
+ * Parsed inbound OpenAI chat-completions request, ready to feed into pi-ai
+ * `stream(model, context, options)`.
+ */
 import type { AuthGatewayStreamControl, AuthGatewayParsedRequest as ParsedRequest } from "../auth-gateway/types";
 import * as AIError from "../error";
 import type {
@@ -31,7 +35,16 @@ import {
 
 export type { ParsedRequest };
 
+// ---------------------------------------------------------------------------
+// parseRequest
+// ---------------------------------------------------------------------------
+
 export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
+	// Header capture is centralized in `auth-gateway/server.ts` (allow-listed
+	// headers like openai-organization/openai-project/openai-beta/x-stainless-*
+	// land on `options.headers` automatically). We consult `headers` here too
+	// for `resolvePromptCacheKey` to pull a cache identity out of inbound
+	// vendor-neutral headers when the body doesn't carry one.
 	const parsed = openaiChatRequestSchema(body);
 	if (parsed instanceof type.errors) {
 		throw new AIError.ValidationError(`openai-chat: ${parsed.summary}`);
@@ -41,6 +54,11 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	const now = Date.now();
 	const systemParts: string[] = [];
 	const messages: Message[] = [];
+	// Map of `tool_call_id` → function name, populated as we walk assistant
+	// turns. The OpenAI wire spec drops `name` from `role:"tool"` messages,
+	// but downstream providers (notably Google: `functionResponse.name` is
+	// required) need it. We back-resolve from the matching call. If the
+	// client did send a wire `name` we still prefer that (forward-compat).
 	const toolNamesById = new Map<string, string>();
 
 	for (const m of data.messages as OpenAIChatMessage[]) {
@@ -75,12 +93,18 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 				);
 				break;
 			case "tool": {
+				// Prefer the wire `name` when present; otherwise back-resolve from
+				// the assistant `tool_calls` map. Falls through to "" only when no
+				// prior call shares this id, which is the well-known broken case.
 				const wireName = (m as { name?: string }).name;
 				const resolvedName = wireName ?? (m.tool_call_id ? toolNamesById.get(m.tool_call_id) : undefined);
 				pushToolResultMessages(messages, m.content, m.tool_call_id, resolvedName, now);
 				break;
 			}
 			case "function": {
+				// Legacy `function` role (pre-tools API): the message carries the tool's
+				// name on `name` and its output on `content`. Translate to a canonical
+				// `toolResult` with a synthetic id (no original id on the wire).
 				const fn = m as { role: "function"; name: string; content: string | null };
 				pushToolResultMessages(messages, fn.content ?? "", undefined, fn.name, now);
 				break;
@@ -96,11 +120,17 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 		...(tools ? { tools } : {}),
 	};
 
+	// Prefer max_completion_tokens (newer) over max_tokens.
 	const maxOutputTokens = data.max_completion_tokens ?? data.max_tokens;
 	const stopSequences = normalizeStop(data.stop);
+	// Schema accepts the Anthropic-style {type:'tool', name} variant that the SDK
+	// union doesn't model; the normalizer collapses it to a plain name lookup.
 	const toolChoice = normalizeToolChoice(data.tool_choice as Parameters<typeof normalizeToolChoice>[0]);
 	const includeStreamingUsage = data.stream_options?.include_usage === true;
 
+	// `includeStreamingUsage` is the one genuinely-opaque flag — the streaming
+	// encoder reads it later off `options.extra`. Everything else now lives on
+	// a typed field; `extra` stays undefined when only typed values are set.
 	const extra: Record<string, unknown> = {};
 	let hasExtra = false;
 	if (includeStreamingUsage) {
@@ -162,11 +192,16 @@ function parseUserLikeContent(
 			continue;
 		}
 		if (part.type !== "image_url") continue;
+		// input_audio / file / refusal / unknown-type parts are accepted by the
+		// schema for forward-compat but dropped here — pi-ai's canonical user
+		// content only models text and image today.
 		const url = typeof part.image_url === "string" ? part.image_url : part.image_url.url;
 		const decoded = decodeDataUri(url);
 		if (decoded) {
 			parts.push({ type: "image", data: decoded.data, mimeType: decoded.mimeType });
 		} else {
+			// No image fetcher available in the gateway; surface as a text placeholder so
+			// downstream providers still receive a coherent message.
 			parts.push({ type: "text", text: `[image: ${url}]` });
 		}
 	}
@@ -194,12 +229,17 @@ function buildAssistantMessage(
 ): AssistantMessage {
 	const parts: AssistantMessage["content"] = [];
 	if (reasoningContent !== undefined && reasoningContent.length > 0) {
+		// Replayed reasoning channel. The signature names the wire field so
+		// completions providers that demand exact `reasoning_content` replay
+		// (DeepSeek/Kimi) echo the model's actual reasoning back verbatim.
 		parts.push({ type: "thinking", thinking: reasoningContent, thinkingSignature: "reasoning_content" });
 	}
 	const text = stringifyContent(content);
 	if (text.length > 0) parts.push({ type: "text", text });
 	if (toolCalls) {
 		for (const raw of toolCalls) {
+			// Schema only accepts type:"function" (or omitted); narrow the SDK
+			// union here so the custom-tool variant doesn't trip TS.
 			if (raw.type !== undefined && raw.type !== "function") continue;
 			const fn = (raw as { function: { name: string; arguments: string } }).function;
 			const argsStr = fn.arguments;
@@ -228,6 +268,14 @@ function buildAssistantMessage(
 	};
 }
 
+/**
+ * Walk a wire `tool` (or legacy `function`) message into canonical messages.
+ * Tool-result content may carry images alongside text; pi-ai's
+ * `ToolResultMessage` accepts both, but most downstream providers ignore
+ * images on tool results. To mirror Rust's `encode_messages` behavior we
+ * keep text inside the tool-result message and hoist any image parts into a
+ * follow-up `user` message so they still reach the model.
+ */
 function pushToolResultMessages(
 	messages: Message[],
 	content: string | OpenAIChatContentPart[] | undefined | null,
@@ -252,6 +300,7 @@ function pushToolResultMessages(
 			if (decoded) {
 				imageParts.push({ type: "image", data: decoded.data, mimeType: decoded.mimeType });
 			} else {
+				// No fetcher available; degrade gracefully to a text placeholder.
 				textParts.push({ type: "text", text: `[image: ${url}]` });
 			}
 		}
@@ -260,6 +309,8 @@ function pushToolResultMessages(
 	const toolMsg: ToolResultMessage = {
 		role: "toolResult",
 		toolCallId: toolCallId ?? "",
+		// OpenAI's `tool` role omits the tool name on the wire; the legacy
+		// `function` role supplies it. Downstream providers tolerate empty.
 		toolName: toolName ?? "",
 		content: textParts.length > 0 ? textParts : [{ type: "text", text: "" }],
 		isError: false,
@@ -300,7 +351,9 @@ function normalizeToolChoice(value: OpenAIChatToolChoice | undefined): ParsedReq
 	if (value === undefined) return undefined;
 	if (value === "auto" || value === "none" || value === "required") return value;
 	if (typeof value === "object" && value !== null) {
+		// OpenAI canonical: { type: 'function', function: { name } }
 		if ("function" in value && value.function) return { name: value.function.name };
+		// Anthropic-style passthrough (schema-allowed): { type: 'tool', name }
 		const anthropicLike = value as unknown as { type?: string; name?: string };
 		if (anthropicLike.type === "tool" && typeof anthropicLike.name === "string") {
 			return { name: anthropicLike.name };
@@ -309,15 +362,22 @@ function normalizeToolChoice(value: OpenAIChatToolChoice | undefined): ParsedReq
 	return undefined;
 }
 
+// ---------------------------------------------------------------------------
+// encodeResponse (non-streaming)
+// ---------------------------------------------------------------------------
+
 export function encodeResponse(message: AssistantMessage, requestedModelId: string): Record<string, unknown> {
 	const { text, reasoning, toolCalls } = flattenAssistant(message);
 
 	const responseMessage: Record<string, unknown> = {
 		role: "assistant",
 		content: text.length > 0 ? text : null,
+		// pi-ai does not surface real refusals yet; emit `null` so SDKs that
+		// probe `.refusal` see the documented field shape rather than missing.
 		refusal: null,
 	};
 	if (reasoning.length > 0) {
+		// DeepSeek-style / o-series reasoning channel.
 		responseMessage.reasoning_content = reasoning;
 	}
 	if (toolCalls.length > 0) {
@@ -333,6 +393,8 @@ export function encodeResponse(message: AssistantMessage, requestedModelId: stri
 		object: "chat.completion",
 		created: Math.floor(Date.now() / 1000),
 		model: requestedModelId,
+		// Real OpenAI always emits this key, even when the value is null. Mirror
+		// the contract so probing SDKs do not throw on a missing field.
 		system_fingerprint: null,
 		choices: [
 			{
@@ -377,6 +439,8 @@ function flattenAssistant(message: AssistantMessage): {
 				reasoning += part.thinking;
 				break;
 			case "redactedThinking":
+				// Opaque blob — surface verbatim on the reasoning channel so the
+				// concatenation round-trips through clients that just echo it.
 				reasoning += part.data;
 				break;
 			case "toolCall":
@@ -395,6 +459,7 @@ function isOnlyRaw(args: Record<string, unknown>): boolean {
 }
 
 function stringifyArgs(args: Record<string, unknown>): string {
+	// `__raw` is our fallback marker for un-parseable inbound args; preserve it verbatim on the way out.
 	if (typeof args.__raw === "string" && isOnlyRaw(args)) return args.__raw;
 	try {
 		return JSON.stringify(args);
@@ -406,12 +471,18 @@ function stringifyArgs(args: Record<string, unknown>): string {
 function mapFinishReason(reason: StopReason, hasToolCalls: boolean): string {
 	if (reason === "toolUse" || (hasToolCalls && reason === "stop")) return "tool_calls";
 	if (reason === "length") return "length";
+	// pi-ai's StopReason does not currently carry a content-filter signal;
+	// when it does, map it to "content_filter" here.
 	return "stop";
 }
 
 function makeId(): string {
 	return `chatcmpl-${randomUUID()}`;
 }
+
+// ---------------------------------------------------------------------------
+// encodeStream (SSE)
+// ---------------------------------------------------------------------------
 
 export function encodeStream(
 	events: AssistantMessageEventStream,
@@ -457,7 +528,10 @@ export function encodeStream(
 
 	return new ReadableStream<Uint8Array>({
 		async start(controller) {
+			// contentIndex (from pi-ai events) -> tool_calls index on the wire.
 			const toolIndexByContentIndex = new Map<number, number>();
+			// wire index -> id/name emitted on the start chunk, to detect late-arriving
+			// upstream id/name that needs a corrective chunk before the finish.
 			const sentToolMeta = new Map<number, { id: string; name: string }>();
 			let nextToolIndex = 0;
 			let hasToolCalls = false;
@@ -468,6 +542,7 @@ export function encodeStream(
 					controller.close();
 					return;
 				}
+				// Initial role chunk.
 				writeSse(controller, baseChunk({ role: "assistant" }, null));
 
 				for await (const event of events) {
@@ -480,6 +555,8 @@ export function encodeStream(
 							break;
 
 						case "thinking_delta":
+							// DeepSeek-style / o-series reasoning channel. Clients that don't
+							// understand it ignore the unknown delta key.
 							if (event.delta.length > 0) {
 								writeSse(controller, baseChunk({ reasoning_content: event.delta }, null));
 							}
@@ -526,6 +603,10 @@ export function encodeStream(
 							if (idx === undefined) break;
 							const sent = sentToolMeta.get(idx);
 							if (sent === undefined) break;
+							// Upstream completions providers can receive the real id/name in a
+							// later chunk than toolcall_start. Emit a corrective chunk only when
+							// the streamed value was empty: accumulating clients concatenate
+							// string fields, so "" + value is the only safe correction.
 							const correctId = sent.id === "" && event.toolCall.id !== "" ? event.toolCall.id : undefined;
 							const correctName =
 								sent.name === "" && event.toolCall.name !== "" ? event.toolCall.name : undefined;
@@ -571,11 +652,14 @@ export function encodeStream(
 							return;
 						}
 
+						// Drop start / *_start and text/thinking *_end — chat-completions
+						// wire only surfaces deltas and the terminal finish_reason.
 						default:
 							break;
 					}
 				}
 
+				// Stream ended without a terminal `done` (defensive). Close gracefully.
 				if (!cancelled) {
 					writeSse(controller, baseChunk({}, hasToolCalls ? "tool_calls" : "stop"));
 					controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -599,4 +683,13 @@ export function encodeStream(
 	});
 }
 
+// ---------------------------------------------------------------------------
+// formatError
+// ---------------------------------------------------------------------------
+
+/**
+ * OpenAI chat-completions error envelope:
+ *   `{ error: { message, type } }`
+ * Matches the shape the official SDK auto-parses into `APIError`.
+ */
 export { formatOpenAiError as formatError } from "./openai-shared";

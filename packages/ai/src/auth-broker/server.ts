@@ -1,27 +1,22 @@
+/**
+ * Auth broker HTTP server.
+ *
+ * Wraps an {@link AuthStorage} (backed by a SQLite store on the broker host)
+ * and exposes a minimal REST API for snapshot pulls and explicit refresh /
+ * disable operations. Background refresh of expiring credentials lives in
+ * {@link AuthBrokerRefresher}.
+ *
+ * Transport security is delegated to the operator (Tailscale / Wireguard);
+ * the server only checks a bearer token against an allow-list per request.
+ */
 import * as logger from "@veyyon/utils/logger";
+import { clampLow } from "@veyyon/utils/math";
 import { errorMessage } from "@veyyon/utils/type-guards";
+import { type Type, type } from "arktype";
 import type { AuthStorage, StoredCredentialBlock } from "../auth-storage";
 import { parseBind } from "../utils/parse-bind";
-import type { AuthBrokerServerHandle, AuthBrokerServerOptions } from "./server-helpers";
-
-export type { AuthBrokerServerHandle };
-
-import { parseGenerationTag } from "./generation-tag";
+import { formatGenerationTag, parseGenerationTag } from "./generation-tag";
 import { AuthBrokerRefresher, type AuthBrokerRefresherSchedule } from "./refresher";
-import {
-	BLOCK_ROUTE,
-	BLOCKS_ROUTE,
-	DISABLE_ROUTE,
-	DISABLED_NEXT_SWEEP_IN_MS,
-	delayResult,
-	empty,
-	isAuthorized,
-	json,
-	parseBody,
-	parseWaitMs,
-	REFRESH_ROUTE,
-	snapshotHeaders,
-} from "./server-helpers";
 import type {
 	CredentialBlockResponse,
 	CredentialBlockSnapshot,
@@ -45,6 +40,122 @@ import {
 	DEFAULT_STREAM_KEEPALIVE_MS,
 } from "./types";
 import { wireSchemas } from "./wire-schemas";
+
+export interface AuthBrokerServerOptions {
+	/** Underlying credential storage (wraps the local SQLite store on the broker). */
+	storage: AuthStorage;
+	/** Listen address; accepts `host:port` or just `port`. */
+	bind?: string;
+	/** Accept any of these bearer tokens. Empty disables auth (loopback only). */
+	bearerTokens: string[];
+	/** Broker version string surfaced on `/v1/healthz`. */
+	version?: string;
+	/** Refresh credentials expiring within this window. Default 5 min. */
+	refreshSkewMs?: number;
+	/** Background refresh cadence. Default 60s. */
+	refreshIntervalMs?: number;
+	/** Disable the background refresher (e.g. for tests). */
+	disableRefresher?: boolean;
+	/**
+	 * Override SSE keepalive cadence in milliseconds for `/v1/snapshot/stream`.
+	 * Internal-only — tests use a short interval so they can assert heartbeats
+	 * without long sleeps. Default {@link DEFAULT_STREAM_KEEPALIVE_MS}.
+	 */
+	streamKeepaliveMs?: number;
+}
+
+export interface AuthBrokerServerHandle {
+	/** Bound URL (`http://host:port`). */
+	url: string;
+	port: number;
+	hostname: string;
+	close(): Promise<void>;
+}
+
+function json(status: number, body: unknown, headers?: Record<string, string>): Response {
+	return new Response(JSON.stringify(body), {
+		status,
+		headers: { "Content-Type": "application/json", ...(headers ?? {}) },
+	});
+}
+
+function empty(status: number, headers?: Record<string, string>): Response {
+	return new Response(null, { status, headers });
+}
+
+function isAuthorized(req: Request, tokens: ReadonlySet<string>): boolean {
+	if (tokens.size === 0) return true;
+	const header = req.headers.get("authorization");
+	if (!header) return false;
+	const match = header.match(/^Bearer\s+(.+)$/i);
+	if (!match) return false;
+	return tokens.has(match[1].trim());
+}
+
+/**
+ * Parse + validate a JSON request body against an ArkType schema. Returns a
+ * `Response` (400) on parse/validation failure so handlers can early-return.
+ * When `allowEmpty` is set, an empty request body is validated against `{}`.
+ */
+async function parseBody<t>(
+	req: Request,
+	schema: Type<t>,
+	options: { allowEmpty?: boolean } = {},
+): Promise<{ ok: true; data: typeof schema.infer } | { ok: false; response: Response }> {
+	let raw: string;
+	try {
+		raw = await req.text();
+	} catch (error) {
+		return { ok: false, response: json(400, { error: `Invalid request body: ${String(error)}` }) };
+	}
+	if (raw.length === 0 && !options.allowEmpty) {
+		return { ok: false, response: json(400, { error: "Request body required" }) };
+	}
+	let parsed: unknown;
+	try {
+		parsed = raw.length === 0 ? {} : JSON.parse(raw);
+	} catch (error) {
+		return { ok: false, response: json(400, { error: `Invalid JSON body: ${String(error)}` }) };
+	}
+	const result = schema(parsed);
+	if (result instanceof type.errors) {
+		return { ok: false, response: json(400, { error: result.summary }) };
+	}
+	return { ok: true, data: result };
+}
+
+const REFRESH_ROUTE = /^\/v1\/credential\/(\d+)\/refresh$/;
+const DISABLE_ROUTE = /^\/v1\/credential\/(\d+)\/disable$/;
+const BLOCK_ROUTE = /^\/v1\/credential\/(\d+)\/block$/;
+const BLOCKS_ROUTE = /^\/v1\/credential\/(\d+)\/blocks$/;
+
+const MAX_SNAPSHOT_WAIT_MS = 30_000;
+const DISABLED_NEXT_SWEEP_IN_MS = Number.MAX_SAFE_INTEGER;
+
+function snapshotHeaders(generation: number): Record<string, string> {
+	return {
+		ETag: formatGenerationTag(generation),
+		"Cache-Control": "no-store",
+	};
+}
+
+function parseWaitMs(url: URL): number {
+	const raw = url.searchParams.get("wait");
+	if (raw === null) return 0;
+	const parsed = Number(raw);
+	if (!Number.isFinite(parsed)) return 0;
+	return clampLow(Math.trunc(parsed), 0, MAX_SNAPSHOT_WAIT_MS);
+}
+
+function delayResult(ms: number): { promise: Promise<"timeout">; cancel: () => void } {
+	const done = Promise.withResolvers<"timeout">();
+	const timer = setTimeout(() => done.resolve("timeout"), ms);
+	timer.unref?.();
+	return {
+		promise: done.promise,
+		cancel: () => clearTimeout(timer),
+	};
+}
 
 class GenerationGate {
 	readonly #storage: AuthStorage;
@@ -93,9 +204,9 @@ class GenerationGate {
 	}
 
 	#wake(generation: number): void {
-		for (const [waitingFor, waiters] of Array.from(this.#waiters)) {
+		for (const [waitingFor, waiters] of [...this.#waiters]) {
 			if (generation <= waitingFor) continue;
-			for (const resolve of Array.from(waiters)) resolve();
+			for (const resolve of [...waiters]) resolve();
 		}
 	}
 }
@@ -246,6 +357,15 @@ async function serveSnapshot(
 	return empty(304, snapshotHeaders(currentGeneration));
 }
 
+/**
+ * Stable per-credential fingerprint for SSE delta detection. Field order is
+ * fixed by this serializer (NOT by entry insertion order) so a credential
+ * built by two different paths still produces the same fingerprint.
+ *
+ * `rotatesInMs` is intentionally part of the fingerprint: when it shifts we
+ * want the client to recompute its `prepareForRequest` deadline rather than
+ * keep the stale projection.
+ */
 function fingerprintEntry(entry: SnapshotEntry): string {
 	return JSON.stringify([
 		entry.id,
@@ -297,7 +417,9 @@ function serveSnapshotStream(
 		}
 		try {
 			controller?.close();
-		} catch {}
+		} catch {
+			// Already closed by Bun on client disconnect; harmless.
+		}
 		logger.info("auth-broker stream closed", { peer, durationMs: Date.now() - openedAt });
 	};
 
@@ -326,6 +448,8 @@ function serveSnapshotStream(
 				await storage.reload();
 				if (closed) return;
 				const snapshot = buildSnapshot(storage, refresher);
+				// Generation must move forward; a duplicate listener firing without a
+				// real bump is a no-op below (fingerprints unchanged).
 				if (snapshot.generation < lastGeneration) {
 					logger.warn("auth-broker stream generation went backwards", {
 						peer,
@@ -355,7 +479,7 @@ function serveSnapshotStream(
 						generation: snapshot.generation,
 					});
 				}
-				for (const id of Array.from(lastByCredId.keys())) {
+				for (const id of [...lastByCredId.keys()]) {
 					if (seenIds.has(id)) continue;
 					lastByCredId.delete(id);
 					const payload: SnapshotStreamRemovedEvent = {
@@ -410,6 +534,7 @@ function serveSnapshotStream(
 	});
 }
 
+/** Boot the broker. Caller owns lifecycle; `handle.close()` to stop. */
 export function startAuthBroker(opts: AuthBrokerServerOptions): AuthBrokerServerHandle {
 	const bind = parseBind(opts.bind ?? DEFAULT_AUTH_BROKER_BIND);
 	const tokens = new Set<string>(opts.bearerTokens);
@@ -452,7 +577,15 @@ export function startAuthBroker(opts: AuthBrokerServerOptions): AuthBrokerServer
 				}
 				if (req.method === "GET" && pathname === "/v1/usage") {
 					try {
+						// AuthStorage caches usage reports internally with a 5-minute per-credential
+						// TTL (USAGE_REPORT_TTL_MS) so back-to-back widget polls re-use the
+						// last fetch instead of hitting provider endpoints repeatedly.
+						// `req.signal` propagates HTTP-client disconnects all the way to the
+						// per-caller cancel without touching the shared upstream fetch.
 						const reports = (await opts.storage.fetchUsageReports?.({ signal: req.signal })) ?? [];
+						// Drop the `raw` field — it's the provider-specific upstream body,
+						// large and unstable. Everything UI-relevant lives in `limits` and
+						// `metadata`.
 						const trimmed = reports.map(({ raw: _raw, ...rest }) => rest);
 						logger.info("auth-broker usage served", { peer, reports: trimmed.length });
 						return json(200, { generatedAt: Date.now(), reports: trimmed });

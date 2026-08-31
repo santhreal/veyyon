@@ -778,7 +778,7 @@ describe("InputController double-tap ← gesture", () => {
 		};
 	}
 
-	it("opens the Agent Control Center on a deliberate double-tap", () => {
+	it("opens the subagent dashboard on a deliberate double-tap", () => {
 		const now = vi.spyOn(Date, "now");
 		const { showAgentsDashboard, tap } = setup();
 		now.mockReturnValue(1_000);
@@ -849,11 +849,17 @@ describe("InputController Esc-Esc discards the draft", () => {
 		const { ctx, editor, discardedDrafts } = createContext();
 		const controller = new InputController(ctx);
 		controller.setupKeyHandlers();
+		// The tree openings are recorded rather than left to the spy protocol: what this suite
+		// claims is that the gesture opened nothing, and a list of what it opened says that.
+		const treeOpens: string[] = [];
+		(ctx.showTreeSelector as Spy).mockImplementation(() => {
+			treeOpens.push(editor.getText());
+		});
 		return {
 			ctx,
 			editor,
 			discardedDrafts,
-			showTreeSelector: ctx.showTreeSelector as Spy,
+			treeOpens,
 			pressEscape: () => editor.onEscape?.(),
 		};
 	}
@@ -901,7 +907,7 @@ describe("InputController Esc-Esc discards the draft", () => {
 	/** Arming over a draft must not complete the empty-composer gesture. */
 	it("does not open the tree when the draft is cleared between the two presses", () => {
 		const now = vi.spyOn(Date, "now");
-		const { editor, pressEscape, showTreeSelector } = setup();
+		const { editor, pressEscape, treeOpens } = setup();
 		settings.set("doubleEscapeAction", "tree");
 		editor.setText("armed with a draft");
 		now.mockReturnValue(1_000);
@@ -909,7 +915,7 @@ describe("InputController Esc-Esc discards the draft", () => {
 		editor.setText("");
 		now.mockReturnValue(1_100);
 		pressEscape();
-		expect(showTreeSelector).not.toHaveBeenCalled();
+		expect(treeOpens).toEqual([]);
 	});
 
 	/** And arming over an empty composer must not discard a draft typed after it. */

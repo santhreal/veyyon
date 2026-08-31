@@ -206,19 +206,11 @@
 		},
 		{
 			"id": "search-targets-omitted-empty",
-			"contract": "Missing path/paths yields an empty target list",
+			"contract": "Missing path yields an empty target list",
 			"surface": "search-path-targets",
 			"tags": ["boundary", "negative"],
 			"input": {},
 			"expect": { "targets": [] }
-		},
-		{
-			"id": "search-targets-paths-array",
-			"contract": "Legacy paths array is accepted and split like path",
-			"surface": "search-path-targets",
-			"tags": ["positive", "regression"],
-			"input": { "paths": ["/var/log", "src"] },
-			"expect": { "targets": ["/var/log", "src"] }
 		},
 		{
 			"id": "search-targets-file-path-literal",

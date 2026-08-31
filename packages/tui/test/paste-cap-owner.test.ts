@@ -21,7 +21,7 @@ describe("paste byte cap ownership", () => {
 	});
 
 	it("the cap literal appears exactly once across the two paste layers", async () => {
-		const bracketed = await Bun.file(path.join(srcDir, "bracketed-paste-helpers.ts")).text();
+		const bracketed = await Bun.file(path.join(srcDir, "bracketed-paste.ts")).text();
 		const stdinBuffer = await Bun.file(path.join(srcDir, "stdin-buffer.ts")).text();
 		const occurrences = (bracketed + stdinBuffer).split("64 * 1024 * 1024").length - 1;
 		expect(occurrences).toBe(1);

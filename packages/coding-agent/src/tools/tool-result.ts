@@ -1,9 +1,12 @@
 import type { AgentToolResult } from "@veyyon/agent-core";
+import type { ImageContent, TextContent } from "@veyyon/ai";
 import type { OutputSummary, TruncationResult } from "../session/streaming-output";
-import type { TruncationOptions, TruncationSummaryOptions, TruncationTextOptions } from "./output-meta";
+import type { OutputMeta, TruncationOptions, TruncationSummaryOptions, TruncationTextOptions } from "./output-meta";
 import { outputMeta } from "./output-meta";
 
-import type { DetailsWithMeta, ToolContent } from "./tool-result-helpers";
+type ToolContent = Array<TextContent | ImageContent>;
+
+type DetailsWithMeta = { meta?: OutputMeta };
 
 export class ToolResultBuilder<TDetails extends DetailsWithMeta> {
 	#details: TDetails;
@@ -98,5 +101,8 @@ export function toolResult<TDetails extends DetailsWithMeta>(details?: TDetails)
 	return new ToolResultBuilder(details);
 }
 
-/** Re-exported from its leaf so a caller that only wants to prepend a notice does not load the result builder and the 150 modules behind `tools/output-meta`. See `tools/result-notice.ts`. */
+/**
+ * Re-exported from its leaf so a caller that only wants to prepend a notice does not load the
+ * result builder and the 150 modules behind `tools/output-meta`. See `tools/result-notice.ts`.
+ */
 export { prependResultNotice } from "./result-notice";

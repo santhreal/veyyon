@@ -101,7 +101,6 @@ describe("marker ownership", () => {
 	it("declares each marker literal exactly once, in bracketed-paste.ts", async () => {
 		const files = [
 			path.join(SRC_DIR, "bracketed-paste.ts"),
-			path.join(SRC_DIR, "bracketed-paste-helpers.ts"),
 			path.join(SRC_DIR, "stdin-buffer.ts"),
 			path.join(CODING_AGENT_SRC, "modes/components/custom-editor.ts"),
 			path.join(CODING_AGENT_SRC, "modes/components/custom-editor.test.ts"),
@@ -110,9 +109,9 @@ describe("marker ownership", () => {
 		const joined = texts.join("\n");
 		expect(joined.split('"\\x1b[200~"')).toHaveLength(2);
 		expect(joined.split('"\\x1b[201~"')).toHaveLength(2);
-		const [bracketedPaste, bracketedPasteHelpers] = texts as [string, string];
-		expect(bracketedPaste).toContain('export const PASTE_START = "\\x1b[200~";');
-		expect(bracketedPasteHelpers).toContain('export const PASTE_END = "\\x1b[201~";');
+		const owner = texts[0] as string;
+		expect(owner).toContain('export const PASTE_START = "\\x1b[200~";');
+		expect(owner).toContain('export const PASTE_END = "\\x1b[201~";');
 	});
 
 	/**
@@ -125,7 +124,7 @@ describe("marker ownership", () => {
 		expect(stdinBuffer).not.toContain("const PASTE_START");
 		expect(stdinBuffer).not.toContain("BRACKETED_PASTE_START");
 
-		for (const file of ["modes/components/custom-editor-helpers.ts", "modes/components/custom-editor.test.ts"]) {
+		for (const file of ["modes/components/custom-editor.ts", "modes/components/custom-editor.test.ts"]) {
 			const text = await Bun.file(path.join(CODING_AGENT_SRC, file)).text();
 			expect(text).toMatch(/import \{[^}]*PASTE_START[^}]*\} from "@veyyon\/tui\/bracketed-paste";/);
 			expect(text).not.toContain("BRACKETED_PASTE_START");
@@ -139,10 +138,9 @@ describe("marker ownership", () => {
 	 */
 	it("scans the four modules the copies actually lived in", async () => {
 		const expected: Array<[string, string]> = [
-			[path.join(SRC_DIR, "bracketed-paste.ts"), "PASTE_START"],
-			[path.join(SRC_DIR, "bracketed-paste-helpers.ts"), "PASTE_END"],
+			[path.join(SRC_DIR, "bracketed-paste.ts"), "class BracketedPasteHandler"],
 			[path.join(SRC_DIR, "stdin-buffer.ts"), "class StdinBuffer"],
-			[path.join(CODING_AGENT_SRC, "modes/components/custom-editor-helpers.ts"), "extractExplicitPathSegments"],
+			[path.join(CODING_AGENT_SRC, "modes/components/custom-editor.ts"), "extractExplicitPathSegments"],
 			[path.join(CODING_AGENT_SRC, "modes/components/custom-editor.test.ts"), "describe("],
 		];
 		for (const [file, marker] of expected) {

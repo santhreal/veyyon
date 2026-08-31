@@ -1,7 +1,16 @@
-/** Protocol handler for skill:// URLs. Resolves skill names to their SKILL.md files or relative paths within skill directories. */
+/**
+ * Protocol handler for skill:// URLs.
+ *
+ * Resolves skill names to their SKILL.md files or relative paths within skill directories.
+ *
+ * URL forms:
+ * - skill://<name> - Reads SKILL.md
+ * - skill://<name>/<path> - Reads relative path within skill's baseDir
+ */
 import type * as fsTypes from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { isEnoent } from "@veyyon/utils/fs-error";
 // The slot, not the loader: `../extensibility/skills` discovers and parses skills and reaches 365
 // modules, and this handler only reads which ones are active.
@@ -11,7 +20,12 @@ import { buildDirectoryResource, ensureWithinRoot } from "./filesystem-resource"
 import { validateRelativePath } from "./relative-path";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, UrlCompletion } from "./types";
 
-/** Re-exported from its leaf so the four other schemes that call it do not import this handler. This module reaches 378 modules through `extensibility/skills`; the check itself imports only */
+/**
+ * Re-exported from its leaf so the four other schemes that call it do not import this handler.
+ *
+ * This module reaches 378 modules through `extensibility/skills`; the check itself imports only
+ * `node:path`. It is still named here because `internal-urls/index` re-exports this file.
+ */
 export { validateRelativePath } from "./relative-path";
 
 /**

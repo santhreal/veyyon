@@ -1,5 +1,20 @@
+/**
+ * `veyyon auth-gateway` command handlers.
+ *
+ * Boots a forward-proxy server that lets less-trusted clients (the macOS
+ * usage widget, veybot containers, …) make provider API calls without ever
+ * seeing the access token. The gateway is itself a broker client and
+ * resolves credentials through the configured broker (via the same
+ * `VEYYON_AUTH_BROKER_URL` / `auth.broker.url` precedence used elsewhere).
+ *
+ * Sub-verbs:
+ *   - `serve [--bind=…]` — boots the gateway against the configured broker.
+ *   - `token` / `token --regenerate` — manages the gateway bearer token file.
+ *   - `status` — prints the locally-stored gateway token and bind hint.
+ */
 import {
 	type Api,
+	type AssistantMessage,
 	type CompletionProbe,
 	type CompletionProbeInput,
 	type CredentialCompletionResult,
@@ -24,13 +39,26 @@ export interface AuthGatewayCommandArgs {
 		json?: boolean;
 		bind?: string;
 		regenerate?: boolean;
+		/**
+		 * Disable bearer-token auth on inbound requests. Useful when the gateway
+		 * is bound to loopback (the default `127.0.0.1:4000`) and you don't want
+		 * to wire token-paste plumbing into every local client.
+		 */
 		noAuth?: boolean;
+		/**
+		 * Strict mode for `check` — additionally exercise every credential
+		 * against its provider's chat-completion endpoint. The usage probe (run
+		 * unconditionally) can pass while the chat endpoint still 401s the same
+		 * bearer, so strict mode is the definitive "is this credential
+		 * actually usable" signal. Slower and consumes a tiny amount of quota.
+		 */
 		strict?: boolean;
 	};
 }
 
 const ACTIONS: readonly AuthGatewayAction[] = ["serve", "token", "status", "check"];
 
+/** The gateway's bearer-token file. Behaviour is owned by {@link AuthTokenFile}. */
 const TOKEN_FILE = new AuthTokenFile("auth-gateway.token");
 
 function createBrokerClient(brokerConfig: AuthBrokerClientConfig): AuthBrokerClient {
@@ -53,14 +81,24 @@ async function runServe(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
 	const bind = flags.bind ?? DEFAULT_AUTH_GATEWAY_BIND;
 	const gatewayToken = flags.noAuth ? null : await TOKEN_FILE.ensure();
 
+	// Build a broker-backed AuthStorage — same pattern as discoverAuthStorage()
+	// in sdk.ts. The gateway never touches local SQLite.
 	const client = createBrokerClient(brokerConfig);
 	const initialSnapshot = await fetchBrokerSnapshot(client);
 	const store = new RemoteAuthCredentialStore({ client, initialSnapshot });
+	// Refresh + usage both flow through the store's broker hooks automatically —
+	// `RemoteAuthCredentialStore.refreshOAuthCredential` and `.fetchUsageReports`.
+	// AuthStorage discovers them when no explicit option overrides them, so the
+	// gateway only needs to construct the store and pass it in.
 	const storage = new AuthStorage(store, {
 		sourceLabel: `broker ${brokerConfig.url}`,
 	});
 	await storage.reload();
 
+	// Build the model resolver + catalog from pi-ai's bundled metadata, scoped
+	// to providers we hold credentials for. Format handlers ask `resolveModel`
+	// to translate a client-requested `model` field into a pi-ai `Model<Api>`
+	// before dispatch; `listModels` powers `/v1/models`.
 	const snapshot = storage.exportSnapshot();
 	const providersWithCreds = new Set<string>();
 	for (const entry of snapshot.credentials) providersWithCreds.add(entry.provider);
@@ -68,7 +106,9 @@ async function runServe(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
 	for (const provider of getBundledProviders()) {
 		if (!providersWithCreds.has(provider)) continue;
 		for (const model of getBundledModels(provider as GeneratedProvider)) {
+			// Always set the qualified key (no collision possible)
 			modelById.set(`${model.provider}/${model.id}`, model);
+			// Bare id as fallback for legacy clients (first-write-wins)
 			if (!modelById.has(model.id)) modelById.set(model.id, model);
 		}
 	}
@@ -225,27 +265,53 @@ export async function runAuthGatewayCommand(cmd: AuthGatewayCommandArgs): Promis
 	}
 }
 
+/**
+ * Providers whose chat endpoint expects a JSON-serialized credential blob
+ * (`{ token, projectId, refreshToken, expiresAt, … }`) rather than the raw
+ * access token. Mirrors `getOAuthApiKey` in `packages/ai/src/registry/oauth`.
+ */
 const STRUCTURED_API_KEY_PROVIDERS: ReadonlySet<string> = new Set([
 	"github-copilot",
 	"google-gemini-cli",
 	"google-antigravity",
 ]);
 
+/**
+ * Provider API types that strict-mode chat probes intentionally skip:
+ * - `bedrock-converse-stream` resolves credentials from the AWS env/profile, not the broker bearer.
+ * - `google-vertex` uses Application Default Credentials; the broker bearer is not the right key.
+ * - `cursor-agent` and `pi-native` (gateway forwarding) have transport quirks
+ *   that make a bearer-only "ping" a poor signal.
+ */
 const STRICT_PROBE_SKIPPED_APIS: ReadonlySet<Api> = new Set<Api>([
 	"bedrock-converse-stream",
 	"google-vertex",
 	"cursor-agent",
 ]);
 
+/** Max chat models to try per credential before reporting failure. */
 const STRICT_PROBE_MAX_CANDIDATES = 4;
 
+/** Per-attempt deadline. Each candidate gets its own slice instead of sharing one budget. */
 const STRICT_PROBE_PER_ATTEMPT_TIMEOUT_MS = 15_000;
 
+/**
+ * Overall per-credential budget passed to {@link AuthStorage.checkCredentials}.
+ * Big enough to walk every candidate at the per-attempt cap with a small
+ * margin for refresh/network overhead.
+ */
 const STRICT_PROBE_OVERALL_TIMEOUT_MS = STRICT_PROBE_PER_ATTEMPT_TIMEOUT_MS * (STRICT_PROBE_MAX_CANDIDATES + 1);
 
+/** Match upstream errors that mean "this model is gone, try a different one" so we walk the catalog instead of declaring the credential bad. */
 const RETRYABLE_MODEL_ERROR_RE =
 	/not[_ -]found|invalid[_ -]model|model[_ -]is[_ -]not[_ -]valid|no longer supported|deprecated|404|decommissioned/i;
 
+/**
+ * Rank bundled models for a provider in probe order: cheapest first, then by
+ * id for determinism. Filters out non-bearer-auth APIs (Vertex/Bedrock),
+ * pi-native transport (would loop through the gateway), and placeholder /
+ * router entries with negative/missing cost.
+ */
 function pickProbeCandidates(provider: string): Model<Api>[] {
 	const bundled = getBundledModels(provider as GeneratedProvider);
 	if (bundled.length === 0) return [];
@@ -262,6 +328,12 @@ function pickProbeCandidates(provider: string): Model<Api>[] {
 	return candidates;
 }
 
+/**
+ * Compose the apiKey bytes a provider's chat endpoint expects, given a
+ * post-refresh probe credential. Mirrors `getOAuthApiKey` for the providers
+ * that require a structured blob; otherwise returns the raw access token /
+ * API key.
+ */
 function composeProbeApiKey(provider: string, credential: CompletionProbeInput["credential"]): string {
 	if (credential.type === "api_key") return credential.apiKey;
 	if (!STRUCTURED_API_KEY_PROVIDERS.has(provider)) return credential.accessToken;
@@ -283,7 +355,11 @@ async function probeOneModel(
 ): Promise<CredentialCompletionResult> {
 	const start = Date.now();
 	const attemptTimeout = scopedTimeoutSignal(STRICT_PROBE_PER_ATTEMPT_TIMEOUT_MS, outerSignal);
-	let response: Awaited<ReturnType<typeof completeSimple>>;
+	// `systemPrompt` is mandatory for some providers (Codex 400s "Instructions
+	// are required" without it). `disableReasoning` is intentionally NOT set:
+	// providers like Fireworks reject the "none" effort it maps to, and we'd
+	// rather burn 16 reasoning tokens than misdiagnose a healthy credential.
+	let response: AssistantMessage;
 	try {
 		response = await completeSimple(
 			model,
@@ -312,6 +388,14 @@ async function probeOneModel(
 	return { ok: true, modelId: model.id, latencyMs };
 }
 
+/**
+ * Build the {@link CompletionProbe} consumed by
+ * {@link AuthStorage.checkCredentials} in `--strict` mode. Walks the cheapest
+ * candidates per provider, retrying on "model not found / invalid model"
+ * errors so a stale catalog entry doesn't masquerade as a bad credential.
+ * Stops as soon as one model returns a successful response (the credential
+ * authenticated against at least one model in the catalog).
+ */
 function createStrictCompletionProbe(): CompletionProbe {
 	return async (input: CompletionProbeInput): Promise<CredentialCompletionResult> => {
 		const candidates = pickProbeCandidates(input.provider).slice(0, STRICT_PROBE_MAX_CANDIDATES);
@@ -332,6 +416,8 @@ function createStrictCompletionProbe(): CompletionProbe {
 			if (result.ok === true) return result;
 			lastFailure = result;
 			if (!RETRYABLE_MODEL_ERROR_RE.test(result.reason ?? "")) {
+				// Non-model error (401, 403, 5xx, network) — the credential is the
+				// issue, not the catalog. Stop walking.
 				return result;
 			}
 		}
@@ -351,6 +437,18 @@ function formatCompletionStatus(completion: CredentialCompletionResult | undefin
 	return chalk.yellow(" [chat: skip]");
 }
 
+/**
+ * `veyyon auth-gateway check` — probe each broker-supplied credential and print
+ * per-credential auth health. Use this when the gateway is returning 401s and
+ * you need to find which row in a multi-account pool is the bad one. The
+ * aggregate `/v1/usage` endpoint silently drops failed credentials, so a
+ * dedicated diagnostic is the only way to see which credentials failed.
+ *
+ * Strict mode (`--strict`) additionally exercises each credential against a
+ * cheap chat model from its provider's bundled catalog. This catches the case
+ * where the usage endpoint reports 200 but the chat endpoint 401s the same
+ * bearer (revoked OAuth scope, mislabeled provider row, etc).
+ */
 async function runCheck(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
 	const brokerConfig = await resolveAuthBrokerConfig();
 	if (!brokerConfig) {
@@ -382,7 +480,7 @@ async function runCheck(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
 				list.push(row);
 				grouped.set(row.provider, list);
 			}
-			const providers = Array.from(grouped.keys()).sort();
+			const providers = [...grouped.keys()].sort();
 			process.stdout.write(`broker: ${brokerConfig.url}${flags.strict ? chalk.dim(" [strict]") : ""}\n`);
 			for (const provider of providers) {
 				const rows = grouped.get(provider) ?? [];
@@ -396,6 +494,8 @@ async function runCheck(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
 								: chalk.yellow("unknown ");
 					const base =
 						row.email ?? row.accountId ?? (row.type === "api_key" ? "(api key)" : "(no identity on credential)");
+					// Two subscriptions (orgs) can share one email — without the org a
+					// failed row can't say which subscription needs re-login.
 					const org = row.orgName ?? row.orgId;
 					const identity = org && org !== base ? `${base} (${org})` : base;
 					const remote = row.remoteRefresh ? chalk.dim(" [remote-refresh]") : "";

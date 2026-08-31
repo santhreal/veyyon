@@ -14,6 +14,10 @@ import type { SessionStorage } from "./session-storage";
 
 const migratedSessionRoots = new Set<string>();
 
+/**
+ * Merge or rename a legacy session directory into its canonical target.
+ * Best effort: callers decide whether migration failures should surface.
+ */
 function migrateSessionDirPath(oldPath: string, newPath: string): void {
 	const existing = fs.statSync(newPath, { throwIfNoEntry: false });
 	if (existing?.isDirectory()) {
@@ -61,6 +65,10 @@ function getDefaultSessionDirName(cwd: string): { encodedDirName: string; resolv
 	return { encodedDirName, resolvedCwd };
 }
 
+/**
+ * Migrate old `--<home-encoded>-*--` session dirs to the new `-*` format.
+ * Runs once per sessions root on first access, best-effort.
+ */
 function migrateHomeSessionDirs(sessionsRoot: string): void {
 	if (migratedSessionRoots.has(sessionsRoot)) return;
 	migratedSessionRoots.add(sessionsRoot);
@@ -94,6 +102,9 @@ function migrateHomeSessionDirs(sessionsRoot: string): void {
 		try {
 			migrateSessionDirPath(oldPath, newPath);
 		} catch (error) {
+			// The migration runs once per sessions root, so a failure here is permanent
+			// for this process: the transcripts under the old name are never listed
+			// again and the operator sees a session history that starts empty.
 			logger.warn("Legacy session directory could not be migrated; its transcripts will not be listed", {
 				from: oldPath,
 				to: newPath,
@@ -110,6 +121,8 @@ function migrateLegacyAbsoluteSessionDir(cwd: string, sessionDir: string, sessio
 	try {
 		migrateSessionDirPath(legacyDir, sessionDir);
 	} catch (error) {
+		// Same loss as migrateHomeSessionDirs: the transcripts stay under a directory
+		// name nothing looks at again.
 		logger.warn("Legacy absolute session directory could not be migrated; its transcripts will not be listed", {
 			from: legacyDir,
 			to: sessionDir,
@@ -127,6 +140,11 @@ export function resolveManagedSessionRoot(sessionDir: string, cwd: string): stri
 	return path.dirname(sessionDir);
 }
 
+/**
+ * Compute the default session directory for a cwd.
+ * Classifies cwd by canonical location so symlink/alias paths resolve to the
+ * same home-relative or temp-root directory names as their real targets.
+ */
 export function computeDefaultSessionDir(
 	cwd: string,
 	storage: SessionStorage,
@@ -140,6 +158,15 @@ export function computeDefaultSessionDir(
 	return sessionDir;
 }
 
+// =============================================================================
+// Terminal breadcrumbs: maps terminal (TTY) -> last session file for --continue
+// =============================================================================
+
+/**
+ * Write a breadcrumb linking the current terminal to a session file.
+ * The breadcrumb contains the cwd and session path so --continue can
+ * find "this terminal's last session" even when running concurrent instances.
+ */
 export function writeTerminalBreadcrumb(cwd: string, sessionFile: string): void {
 	const terminalId = getTerminalId();
 	if (!terminalId) return;
@@ -147,6 +174,8 @@ export function writeTerminalBreadcrumb(cwd: string, sessionFile: string): void 
 	const breadcrumbDir = getTerminalSessionsDir();
 	const breadcrumbFile = path.join(breadcrumbDir, terminalId);
 	const content = `${cwd}\n${sessionFile}\n`;
+	// Best-effort — don't break session creation if breadcrumb fails, but say
+	// so: a lost breadcrumb silently breaks `--continue` for this terminal.
 	Bun.write(breadcrumbFile, content).catch(error => {
 		logger.warn("session: terminal breadcrumb write failed; --continue may not find this session", {
 			breadcrumbFile,
@@ -160,6 +189,12 @@ export interface TerminalBreadcrumb {
 	sessionFile: string;
 }
 
+/**
+ * Read the raw terminal breadcrumb for the current terminal.
+ * Returns the recorded cwd + session file (verified to exist) regardless of
+ * whether the recorded cwd still matches the current one. Callers decide how
+ * to interpret a cwd mismatch (e.g. a moved/renamed worktree).
+ */
 export async function readTerminalBreadcrumbEntry(): Promise<TerminalBreadcrumb | null> {
 	const terminalId = getTerminalId();
 	if (!terminalId) return null;
@@ -173,10 +208,12 @@ export async function readTerminalBreadcrumbEntry(): Promise<TerminalBreadcrumb 
 		const breadcrumbCwd = lines[0];
 		const sessionFile = lines[1];
 
+		// Verify the session file still exists
 		const stat = fs.statSync(sessionFile, { throwIfNoEntry: false });
 		if (stat?.isFile()) return { cwd: breadcrumbCwd, sessionFile };
 	} catch (err) {
 		if (!isEnoent(err)) logger.debug("Terminal breadcrumb read failed", { err });
+		// Breadcrumb doesn't exist or is corrupt — fall through
 	}
 	return null;
 }

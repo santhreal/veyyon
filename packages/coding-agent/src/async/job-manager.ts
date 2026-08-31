@@ -1,40 +1,138 @@
 import { clamp, errorMessage, logger } from "@veyyon/utils";
-import type {
-	AsyncJob,
-	AsyncJobDelivery,
-	AsyncJobDeliveryState,
-	AsyncJobFilter,
-	AsyncJobManagerOptions,
-	AsyncJobRegisterOptions,
-	AsyncJobType,
-	PollEscalationState,
-} from "./job-manager-helpers";
 
-export * from "./job-manager-helpers";
+const DELIVERY_RETRY_BASE_MS = 500;
+const DELIVERY_RETRY_MAX_MS = 30_000;
+const DELIVERY_RETRY_JITTER_MS = 200;
+const DEFAULT_RETENTION_MS = 5 * 60 * 1000;
+const DEFAULT_MAX_RUNNING_JOBS = 15;
 
-import {
-	DEFAULT_MAX_RUNNING_JOBS,
-	DEFAULT_RETENTION_MS,
-	DELIVERY_RETRY_BASE_MS,
-	DELIVERY_RETRY_JITTER_MS,
-	DELIVERY_RETRY_MAX_MS,
-	POLL_ESCALATION_RESET_MS,
-	POLL_WAIT_LADDER_MS,
-} from "./job-manager-helpers";
+/**
+ * Adaptive ("smart") `job` poll-wait ladder (ms). A tight poll loop climbs
+ * these rungs so each immediate re-poll backs off and stops spending turns on
+ * "still running" frames. The four-minute ceiling leaves a full minute before
+ * the five-minute prompt-cache boundary, so timer and request-preparation
+ * latency cannot turn the next heartbeat into a full uncached prompt.
+ *
+ * Only used when `async.pollWaitDuration` is set to `smart`; fixed durations
+ * wait verbatim.
+ */
+const POLL_WAIT_LADDER_MS = [30_000, 4 * 60_000] as const;
+/**
+ * Going at least this long between poll calls means the agent stepped out of
+ * the poll loop to do real work — the next poll drops back to the ladder floor.
+ */
+const POLL_ESCALATION_RESET_MS = 60_000;
 
-export type { AsyncJob, AsyncJobRegisterOptions };
+interface PollEscalationState {
+	/** Index into POLL_WAIT_LADDER_MS used for the most recent poll wait. */
+	level: number;
+	/** Timestamp (ms) when the most recent poll wait returned. */
+	lastPollEndAt: number;
+}
+
+/**
+ * What produced a background job: a backgrounded `bash` command, a `task`
+ * subagent, or a supervised process from `launch` whose exit is reported when
+ * it happens.
+ */
+export type AsyncJobType = "bash" | "task" | "launch";
+
+export interface AsyncJob {
+	id: string;
+	type: AsyncJobType;
+	status: "running" | "completed" | "failed" | "cancelled";
+	startTime: number;
+	label: string;
+	abortController: AbortController;
+	promise: Promise<void>;
+	resultText?: string;
+	errorText?: string;
+	/**
+	 * Registry id of the agent that registered the job (e.g. "Main",
+	 * "AuthLoader"). Used by scoped cancel/list APIs so a subagent's teardown
+	 * does not cancel its parent's jobs. Undefined for callers that don't
+	 * supply an id (e.g. legacy tests, SDK consumers without an agent context).
+	 */
+	ownerId?: string;
+	/**
+	 * Registry id of the subagent this job runs (task/tan/vibe jobs). Lets
+	 * job-view code link a job row to its AgentRegistry ref even when the job
+	 * id differs from the agent id (vibe turn jobs, tan clones).
+	 */
+	agentId?: string;
+	/**
+	 * Tool call that started this job, when the registering tool supplied one.
+	 * Lets a late completion attach to its original call when that call is
+	 * still pending in the resumed session instead of forcing a new turn.
+	 */
+	toolCallId?: string;
+	/**
+	 * Job is registered but parked behind a caller-managed gate (e.g. a task
+	 * batch semaphore). Queued jobs do not count toward the running-job limit
+	 * until the caller invokes `markRunning()` from the run context.
+	 */
+	queued?: boolean;
+}
+
+export interface AsyncJobManagerOptions {
+	onJobComplete: (jobId: string, text: string, job?: AsyncJob) => void | Promise<void>;
+	maxRunningJobs?: number;
+	retentionMs?: number;
+}
+
+interface AsyncJobDelivery {
+	jobId: string;
+	text: string;
+	attempt: number;
+	nextAttemptAt: number;
+	lastError?: string;
+	ownerId?: string;
+	promise?: Promise<void>;
+}
+
+export interface AsyncJobDeliveryState {
+	queued: number;
+	delivering: boolean;
+	nextRetryAt?: number;
+	pendingJobIds: string[];
+}
+
+export interface AsyncJobRegisterOptions {
+	id?: string;
+	/** Registry id of the agent that owns this job; used to scope cancelAll. */
+	ownerId?: string;
+	/** Registry id of the subagent this job runs; see {@link AsyncJob.agentId}. */
+	agentId?: string;
+	/** Tool call that started this job; see {@link AsyncJob.toolCallId}. */
+	toolCallId?: string;
+	onProgress?: (text: string, details?: Record<string, unknown>) => void | Promise<void>;
+	/** Register the job in queued state; see {@link AsyncJob.queued}. */
+	queued?: boolean;
+}
+
+/**
+ * Filter applied to job query/cancel APIs. With `ownerId`, results are
+ * restricted to jobs registered by that agent (registry id from
+ * `AgentRegistry`, e.g. "Main", "AuthLoader").
+ */
+export interface AsyncJobFilter {
+	ownerId?: string;
+}
 
 export class AsyncJobManager {
 	static #instance: AsyncJobManager | undefined;
 
+	/** Process-global instance shared by internal URL protocol handlers and tools. */
 	static instance(): AsyncJobManager | undefined {
 		return AsyncJobManager.#instance;
 	}
 
+	/** Install or clear the process-global instance. */
 	static setInstance(value: AsyncJobManager | undefined): void {
 		AsyncJobManager.#instance = value;
 	}
 
+	/** Reset the process-global instance. Test-only. */
 	static resetForTests(): void {
 		AsyncJobManager.#instance = undefined;
 	}
@@ -68,8 +166,10 @@ export class AsyncJobManager {
 		this.#retentionMs = Math.max(0, Math.floor(options.retentionMs ?? DEFAULT_RETENTION_MS));
 	}
 
+	/** True when the running-job count has reached the configured cap. */
 	get atCapacity(): boolean {
 		if (this.#disposed) return true;
+		// Mirror register(): queued jobs hold no execution slot.
 		let activeCount = 0;
 		for (const job of this.#jobs.values()) {
 			if (job.status === "running" && !job.queued) activeCount++;
@@ -84,6 +184,7 @@ export class AsyncJobManager {
 			jobId: string;
 			signal: AbortSignal;
 			reportProgress: (text: string, details?: Record<string, unknown>) => Promise<void>;
+			/** Clear the queued flag once the job actually starts executing. */
 			markRunning: () => void;
 		}) => Promise<string>,
 		options?: AsyncJobRegisterOptions,
@@ -91,6 +192,8 @@ export class AsyncJobManager {
 		if (this.#disposed) {
 			throw new Error("Async job manager is disposed");
 		}
+		// Queued jobs hold no execution slot yet — only count jobs that are
+		// actually running so a large parked batch cannot starve registration.
 		let activeCount = 0;
 		for (const existing of this.#jobs.values()) {
 			if (existing.status === "running" && !existing.queued) activeCount++;
@@ -172,6 +275,11 @@ export class AsyncJobManager {
 		return id;
 	}
 
+	/**
+	 * Cancel a single job by id. When `filter.ownerId` is set and does not
+	 * match the job's owner, the call is treated as not-found (returns false)
+	 * so cross-agent cancellation is rejected at the manager level.
+	 */
 	cancel(id: string, filter?: AsyncJobFilter): boolean {
 		const job = this.#jobs.get(id);
 		if (!job) return false;
@@ -189,17 +297,6 @@ export class AsyncJobManager {
 
 	getRunningJobs(filter?: AsyncJobFilter): AsyncJob[] {
 		return this.#filterJobs(this.#jobs.values(), filter).filter(job => job.status === "running");
-	}
-
-	countRunningJobsExcludingType(excludeType: AsyncJobType, ownerId?: string): number {
-		let count = 0;
-		for (const job of this.#jobs.values()) {
-			if (job.status !== "running") continue;
-			if (job.type === excludeType) continue;
-			if (ownerId !== undefined && job.ownerId !== ownerId) continue;
-			count++;
-		}
-		return count;
 	}
 
 	getRecentJobs(limit = 10, filter?: AsyncJobFilter): AsyncJob[] {
@@ -241,6 +338,24 @@ export class AsyncJobManager {
 		return uniqueJobIds.length;
 	}
 
+	/**
+	 * Lift a watch installed by {@link watchJobs}, re-arming the delivery of anything
+	 * that finished inside the window.
+	 *
+	 * The re-arm is the point. A watch suppresses `#enqueueDelivery` outright, so a
+	 * job that completes while watched has no delivery anywhere: not queued, not
+	 * in-flight, not retained for later. Before this, lifting the watch simply
+	 * forgot about it, and the child's report survived only inside the return value
+	 * of whatever call installed the watch. Any path that dropped that return value
+	 * dropped the subagent's entire output, permanently and silently, and nothing
+	 * could recover it: `resumeDeliveries` lifts `#suppressedDeliveries` and has
+	 * never been able to see a watch.
+	 *
+	 * CALLERS MUST `acknowledgeDeliveries` BEFORE UNWATCHING when they are returning
+	 * the results themselves. That is what keeps delivery exactly-once: the
+	 * acknowledgement is permanent, so the re-arm here sees it and stays quiet. Get
+	 * the order backwards and the operator sees the same report twice.
+	 */
 	unwatchJobs(jobIds: string[]): number {
 		const uniqueJobIds = Array.from(new Set(jobIds.map(id => id.trim()).filter(id => id.length > 0)));
 		let removed = 0;
@@ -255,6 +370,13 @@ export class AsyncJobManager {
 		return removed;
 	}
 
+	/**
+	 * Re-enqueue the completion of a job whose delivery `#enqueueDelivery` skipped
+	 * while it was suppressed. No-op unless the job has actually settled and is not
+	 * already queued or in flight; `#enqueueDelivery` is the single place that
+	 * decides suppression, so an acknowledged job is dropped there rather than
+	 * pre-checked here.
+	 */
 	#requeueSettledDelivery(jobId: string): void {
 		const job = this.#jobs.get(jobId);
 		if (!job || (job.status !== "completed" && job.status !== "failed")) return;
@@ -267,6 +389,14 @@ export class AsyncJobManager {
 		this.#enqueueDelivery(jobId, job.status === "completed" ? (job.resultText ?? "") : (job.errorText ?? ""));
 	}
 
+	/**
+	 * Compute the next adaptive ("smart") wait (ms) for a blocking `job` poll by
+	 * the given owner. Consecutive polls — those starting within
+	 * POLL_ESCALATION_RESET_MS of the previous poll returning — climb
+	 * POLL_WAIT_LADDER_MS so a tight wait loop backs off; a longer gap means the
+	 * agent left to do real work, so the wait resets to the floor. Pair each call
+	 * with `recordPollWaitEnd()` once the wait returns.
+	 */
 	nextPollWaitMs(ownerId: string | undefined, now: number = Date.now()): number {
 		const prev = this.#pollEscalation.get(ownerId);
 		const reset = !prev || now - prev.lastPollEndAt >= POLL_ESCALATION_RESET_MS;
@@ -275,6 +405,11 @@ export class AsyncJobManager {
 		return POLL_WAIT_LADDER_MS[level];
 	}
 
+	/**
+	 * Mark a blocking poll wait as finished so the idle-reset window is measured
+	 * from now. Polling again before POLL_ESCALATION_RESET_MS elapses keeps
+	 * climbing the ladder; waiting longer resets it to the floor.
+	 */
 	recordPollWaitEnd(ownerId: string | undefined, now: number = Date.now()): void {
 		const prev = this.#pollEscalation.get(ownerId);
 		this.#pollEscalation.set(ownerId, { level: prev?.level ?? 0, lastPollEndAt: now });
@@ -305,6 +440,11 @@ export class AsyncJobManager {
 		return before - this.#deliveries.length;
 	}
 
+	/**
+	 * Lift a foreground-wait suppression set via `acknowledgeDeliveries`. If the
+	 * job already finished while suppressed (its delivery enqueue was skipped),
+	 * re-enqueue the completion so the result is still delivered exactly once.
+	 */
 	resumeDeliveries(jobIds: string[]): void {
 		for (const rawId of jobIds) {
 			const jobId = rawId.trim();
@@ -317,6 +457,11 @@ export class AsyncJobManager {
 		}
 	}
 
+	/**
+	 * Cancel running jobs. With `filter.ownerId` set, cancels only jobs the
+	 * matching agent registered; with no filter, cancels every running job
+	 * (used by `dispose()` to nuke the manager's state).
+	 */
 	cancelAll(filter?: AsyncJobFilter): void {
 		for (const job of this.getRunningJobs(filter)) {
 			job.status = "cancelled";
@@ -528,6 +673,7 @@ export class AsyncJobManager {
 	}
 
 	#enqueueDelivery(jobId: string, text: string): void {
+		// Skip delivery if already acknowledged
 		if (this.isDeliverySuppressed(jobId)) {
 			return;
 		}

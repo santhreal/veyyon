@@ -139,10 +139,12 @@ export const MODEL_MAPPINGS: Record<string, GitLabModelMapping> = {
 	},
 };
 
-function getModelMapping(modelId: string): GitLabModelMapping | undefined {
+export function getModelMapping(modelId: string): GitLabModelMapping | undefined {
 	const direct = MODEL_MAPPINGS[modelId];
 	if (direct) return direct;
 
+	// Support canonical model IDs (e.g. "gpt-5-codex", "claude-sonnet-4-5-20250929")
+	// in addition to Duo aliases (e.g. "duo-chat-gpt-5-codex").
 	return Object.values(MODEL_MAPPINGS).find(mapping => mapping.model === modelId);
 }
 
@@ -160,7 +162,7 @@ export function getGitLabDuoModels(): Model<Api>[] {
 			provider: "gitlab-duo",
 			baseUrl: mapping.provider === "anthropic" ? ANTHROPIC_PROXY_URL : OPENAI_PROXY_URL,
 			reasoning: mapping.reasoning,
-			input: mapping.input.slice(),
+			input: [...mapping.input],
 			cost: { ...mapping.cost },
 			contextWindow: mapping.contextWindow,
 			maxTokens: mapping.maxTokens,
@@ -252,6 +254,11 @@ export function streamGitLabDuo(
 		try {
 			const apiKey = typeof options?.apiKey === "string" ? options.apiKey : undefined;
 			if (!apiKey || !options) {
+				// `/login` is a TUI-only slash command: it carries no `textMode: true`
+				// in the coding agent's `slash-commands/builtin-declarations.ts`, so an
+				// ACP client, a `--print` run and the model itself all cannot reach it.
+				// A provider error surfaces in every one of those channels, so the
+				// message names a command for each channel it can actually reach.
 				throw new AIError.MissingApiKeyError(
 					undefined,
 					"Missing GitLab access token, so no GitLab Duo request can be signed. Fix: set GITLAB_TOKEN in the environment, or run `veyyon auth-broker login gitlab-duo` to sign in from a terminal (`/login gitlab-duo` in an interactive veyyon session).",
@@ -386,6 +393,9 @@ export function streamGitLabDuo(
 			for await (const event of inner) {
 				stream.push(event);
 			}
+			// An inner that ends without a terminal event must still settle this
+			// stream; a result-less end rejects inner.result() into the catch,
+			// which emits a terminal error. Otherwise consumers park forever.
 			if (!stream.done) stream.end(await inner.result());
 		} catch (err) {
 			stream.push({

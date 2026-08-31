@@ -2,8 +2,6 @@ import { AI_PROMPTS } from "../prompts/registry";
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlapAny, setToolArg } from "./coercion";
 import { FencedThinkingScanner } from "./fenced-thinking";
-import type { ParsedCall, State } from "./gemini-helpers";
-import { CODE_OPEN, GEMINI_THINK_FENCE_OPEN, OPEN_TAGS, OPEN_TAGS_THINK, OUTPUT_OPEN } from "./gemini-helpers";
 import {
 	assistantTranscriptParts,
 	collectToolResultRun,
@@ -21,10 +19,38 @@ import type {
 } from "./types";
 import { CODE_FENCE } from "./wire-tags";
 
+const CODE_OPEN = "```tool_code";
+const OUTPUT_OPEN = "```tool_outputs";
+const OPEN_TAGS = [CODE_OPEN] as const;
+/**
+ * Gemini's fenced thinking opener. Named for the dialect on purpose: five sibling dialects import a shared
+ * `THINK_OPEN` from `./wire-tags` whose value is `<think>`, and a bare `THINK_OPEN` here meant one name in one
+ * directory standing for two different byte sequences. Adding the shared name to this file's imports would
+ * have silently shadowed it with this value.
+ */
+const GEMINI_THINK_FENCE_OPEN = "```thinking\n";
+const OPEN_TAGS_THINK = [CODE_OPEN, GEMINI_THINK_FENCE_OPEN] as const;
+
+type State = "outside" | "tool" | "thinking";
+
+interface ParsedCall {
+	name: string;
+	arguments: Record<string, unknown>;
+}
+
+/**
+ * Scanner for the hosted-Gemini / Gemma 3 Pythonic tool-calling convention
+ * (see `docs/internal/toolconv/gemini.md`). Tool calls arrive as a ```` ```tool_code ````
+ * fenced block whose body is one or more Python call expressions, e.g.
+ * `print(default_api.search(pattern="x", skip=40))`. Like the qwen3 scanner we
+ * buffer the whole block until its closing fence, then parse all calls at once
+ * (no incremental argument deltas — Python literals are not worth streaming).
+ */
 class GeminiInbandScanner implements InbandScanner {
 	#buffer = "";
 	#state: State = "outside";
 	#thinking = "";
+	/** Fence-aware close-matcher while {@link #state} is "thinking"; undefined otherwise. */
 	#fenced: FencedThinkingScanner | undefined;
 	readonly #parseThinking: boolean;
 
@@ -46,6 +72,8 @@ class GeminiInbandScanner implements InbandScanner {
 		const events: InbandScanEvent[] = [];
 		for (;;) {
 			if (this.#state === "thinking") {
+				// Always run on final so the fenced scanner flushes its held tail even
+				// when #buffer is empty (a partial close held from the previous feed).
 				this.#consumeThinking(final, events);
 				if (this.#state === "thinking") break;
 				continue;
@@ -117,6 +145,8 @@ class GeminiInbandScanner implements InbandScanner {
 	#consumeTool(final: boolean, events: InbandScanEvent[]): void {
 		const close = this.#buffer.indexOf(CODE_FENCE);
 		if (close === -1) {
+			// Inside the fence we emit nothing until it closes; on a truncated
+			// stream the incomplete block is dropped rather than leaked as text.
 			if (final) {
 				this.#buffer = "";
 				this.#state = "outside";
@@ -135,6 +165,7 @@ class GeminiInbandScanner implements InbandScanner {
 	}
 }
 
+/** Extract every top-level call expression in a `tool_code` body. */
 function parseGeminiCalls(body: string): ParsedCall[] {
 	const calls: ParsedCall[] = [];
 	let i = 0;
@@ -165,6 +196,7 @@ function parseGeminiCalls(body: string): ParsedCall[] {
 	return calls;
 }
 
+/** Identifier immediately preceding a `(` (the callee's final name segment). */
 function identBefore(body: string, parenIndex: number): string | undefined {
 	let j = parenIndex - 1;
 	while (j >= 0 && /\s/.test(body[j]!)) j--;
@@ -174,6 +206,7 @@ function identBefore(body: string, parenIndex: number): string | undefined {
 	return /^[A-Za-z_]\w*$/.test(name) ? name : undefined;
 }
 
+/** Index of the `)` matching the `(` at `openIndex`, skipping string contents. */
 function matchParen(body: string, openIndex: number): number {
 	let depth = 0;
 	let i = openIndex;
@@ -195,6 +228,7 @@ function matchParen(body: string, openIndex: number): number {
 	return -1;
 }
 
+/** Index just past the Python string literal starting at `i` (a quote char). */
 function skipString(body: string, i: number): number {
 	const quote = body[i]!;
 	const triple = quote + quote + quote;
@@ -420,6 +454,7 @@ function unescapePythonString(s: string): string {
 	return out;
 }
 
+/** Split on `sep` at bracket depth 0, skipping string literals. */
 function splitTopLevel(text: string, sep: string): string[] {
 	const parts: string[] = [];
 	let depth = 0;
@@ -448,6 +483,7 @@ function splitTopLevel(text: string, sep: string): string[] {
 	return parts;
 }
 
+/** First index of `ch` at bracket depth 0, skipping string literals. */
 function topLevelIndexOf(text: string, ch: string): number {
 	let depth = 0;
 	let i = 0;
@@ -478,10 +514,12 @@ function renderToolCall(call: ToolCall, options: DialectRenderOptions = {}): str
 }
 
 function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRenderOptions = {}): string {
+	// One call renders bare; parallel calls render as a Python list `[a, b]`.
 	const body =
 		calls.length === 1
 			? renderToolCall(calls[0]!, options)
 			: `[${calls.map(call => renderToolCall(call, options)).join(", ")}]`;
+	// Examples show the bare call; the live wire form fences it as `tool_code`.
 	return options.example ? body : `${CODE_OPEN}\n${body}\n${CODE_FENCE}`;
 }
 

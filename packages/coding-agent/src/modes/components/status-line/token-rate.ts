@@ -1,7 +1,24 @@
-/** The shortest turn a tokens-per-second rate is computed for. Below this the rate is nonsense: a cached or instant response divides real output */
+/**
+ * The shortest turn a tokens-per-second rate is computed for.
+ *
+ * Below this the rate is nonsense: a cached or instant response divides real output
+ * tokens by a few milliseconds and reports thousands of tokens per second.
+ *
+ * Exported because two components publish this rate, the status line through
+ * `calculateTokensPerSecond` below and the per-turn usage row, and each used to hold its
+ * own copy. They did not even agree at the boundary: this file rejected a duration
+ * `< MIN_DURATION_MS` while the usage row required `> MIN_DURATION_MS`, so a turn of
+ * exactly 100ms got a rate in one place and not the other.
+ */
 export const MIN_RATE_DURATION_MS = 100;
 
-/** Tokens per second for one turn, or `null` when the turn is too short or too empty to yield a meaningful rate. */
+/**
+ * Tokens per second for one turn, or `null` when the turn is too short or too empty to
+ * yield a meaningful rate.
+ *
+ * THE one owner of that arithmetic and of its guards. Both callers used to divide
+ * inline, which is how the boundary disagreement above went unnoticed.
+ */
 export function tokensPerSecond(outputTokens: number, durationMs: number | null | undefined): number | null {
 	if (!Number.isFinite(outputTokens) || outputTokens <= 0) return null;
 	if (durationMs === null || durationMs === undefined) return null;
@@ -15,7 +32,7 @@ type AssistantUsage = {
 	output: number;
 };
 
-export type AssistantLikeMessage = {
+type AssistantLikeMessage = {
 	role: "assistant";
 	timestamp: number;
 	duration?: number;
@@ -31,7 +48,15 @@ type MaybeAssistantMessage = {
 	};
 };
 
-/** Whether a message is an assistant turn this module can compute a rate from. STRICTER THAN THE ROLE. It also requires a numeric `timestamp` and a numeric */
+/**
+ * Whether a message is an assistant turn this module can compute a rate from.
+ *
+ * STRICTER THAN THE ROLE. It also requires a numeric `timestamp` and a numeric
+ * `usage.output`, because both are inputs to the rate. It was called
+ * `isAssistantMessage`, as were three unrelated predicates in other modules, one of which
+ * checks only the role; a reader carrying that weaker meaning here would expect a rate for
+ * every assistant turn.
+ */
 function isRateableAssistantTurn(message: MaybeAssistantMessage | undefined): message is AssistantLikeMessage {
 	return (
 		message?.role === "assistant" &&
@@ -41,7 +66,7 @@ function isRateableAssistantTurn(message: MaybeAssistantMessage | undefined): me
 	);
 }
 
-function getLastRateableAssistantMessage(messages: ReadonlyArray<MaybeAssistantMessage>): AssistantLikeMessage | null {
+function getLastAssistantMessage(messages: ReadonlyArray<MaybeAssistantMessage>): AssistantLikeMessage | null {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const message = messages[i];
 		if (isRateableAssistantTurn(message)) {
@@ -51,11 +76,14 @@ function getLastRateableAssistantMessage(messages: ReadonlyArray<MaybeAssistantM
 	return null;
 }
 
-function tokensPerSecondForMessage(
-	assistant: AssistantLikeMessage,
+export function calculateTokensPerSecond(
+	messages: ReadonlyArray<MaybeAssistantMessage>,
 	isStreaming: boolean,
 	nowMs: number = Date.now(),
 ): number | null {
+	const assistant = getLastAssistantMessage(messages);
+	if (!assistant) return null;
+
 	const resolvedDurationMs =
 		typeof assistant.duration === "number" && Number.isFinite(assistant.duration) && assistant.duration > 0
 			? assistant.duration
@@ -64,14 +92,4 @@ function tokensPerSecondForMessage(
 				: null;
 
 	return tokensPerSecond(assistant.usage.output, resolvedDurationMs);
-}
-
-export function calculateTokensPerSecond(
-	messages: ReadonlyArray<MaybeAssistantMessage>,
-	isStreaming: boolean,
-	nowMs: number = Date.now(),
-): number | null {
-	const assistant = getLastRateableAssistantMessage(messages);
-	if (!assistant) return null;
-	return tokensPerSecondForMessage(assistant, isStreaming, nowMs);
 }

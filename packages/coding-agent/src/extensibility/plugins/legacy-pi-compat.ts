@@ -18,6 +18,21 @@ import { registerPluginCacheInvalidator } from "../../discovery/helpers";
 
 const IS_COMPILED_BINARY = isCompiledBinary();
 
+// === Bundled host modules (issue #3423) ===
+//
+// Bun 1.3.14 stopped exposing `--compile` extras through any filesystem-style
+// API: `fs.existsSync`, `Bun.file().exists()`, `Bun.resolveSync`, and even
+// `import("/$bunfs/...")` / `import("file:///$bunfs/...")` all fail for the
+// embedded entries. Bun.plugin `onResolve` also no longer fires for transitive
+// imports inside runtime-loaded extensions.
+//
+// Compiled builds therefore keep live JS-heap references to the host packages
+// and serve requested surfaces through `veyyon-legacy-pi-bundled:<key>` synthetic
+// modules. `scripts/legacy-pi-virtual-module.ts` derives the static import edges
+// from current package exports inside a Bun build plugin: no generated source
+// or duplicate key list exists on disk. Runtime extension loading stays lazy —
+// the virtual module is evaluated only when an extension requests a host
+// package — but the compiler still sees every possible edge at build time.
 const BUNDLED_VIRTUAL_SCHEME = "veyyon-legacy-pi-bundled:";
 const BUNDLED_VIRTUAL_NAMESPACE = "veyyon-legacy-pi-bundled";
 const BUNDLED_MODULES_GLOBAL = "__veyyonLegacyPiBundledModules";
@@ -27,6 +42,16 @@ type BundledModules = Readonly<Record<string, Readonly<Record<string, unknown>>>
 
 let bundledModulesPromise: Promise<BundledModules> | null = null;
 
+/**
+ * Lazy-load the build-supplied host modules and stash them on `globalThis` for
+ * the synthetic module source emitted by `synthesizeBundledModuleSource`.
+ *
+ * `globalThis` is the bridge: each `veyyon-legacy-pi-bundled:<key>` source string
+ * becomes a separate ES module and cannot close over this file's lexical scope.
+ * The dynamic import is intentional conditional build code. Dev/test runs
+ * never execute it; binary builds resolve the literal through the in-memory
+ * plugin in `scripts/legacy-pi-virtual-module.ts`.
+ */
 function ensureBundledModulesLoaded(): Promise<BundledModules> {
 	if (!IS_COMPILED_BINARY) {
 		return Promise.reject(new Error("veyyon:legacy-pi-shim: bundled modules are only available in compiled mode"));
@@ -48,6 +73,10 @@ function isBundledVirtualSpecifier(value: string): boolean {
 	return value.startsWith(BUNDLED_VIRTUAL_SCHEME);
 }
 
+/**
+ * Build a synthetic ES module for one live bundled namespace. Every export
+ * reads through the global bridge; no bunfs path or copied package is involved.
+ */
 function synthesizeBundledModuleSourceFromModules(moduleKey: string, modules: BundledModules): string {
 	const mod = modules[moduleKey];
 	if (!mod) {
@@ -71,11 +100,16 @@ function synthesizeBundledModuleSourceFromModules(moduleKey: string, modules: Bu
 	return lines.join("\n");
 }
 
+/**
+ * Build the synthetic source served for one
+ * `veyyon-legacy-pi-bundled:<key>` import.
+ */
 async function synthesizeBundledModuleSource(moduleKey: string): Promise<string> {
 	const modules = await ensureBundledModulesLoaded();
 	return synthesizeBundledModuleSourceFromModules(moduleKey, modules);
 }
 
+/** Test seam for the virtual module's named/default export forwarding. */
 export function __synthesizeLegacyPiBundledSourceWithModules(
 	moduleKey: string,
 	modules: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
@@ -83,14 +117,30 @@ export function __synthesizeLegacyPiBundledSourceWithModules(
 	return synthesizeBundledModuleSourceFromModules(moduleKey, modules);
 }
 
+/** Test seam for the global bridge key shared with synthetic module source. */
 export function __getLegacyPiBundledModulesGlobal(): string {
 	return BUNDLED_MODULES_GLOBAL;
 }
 
+// Canonical scope for in-process pi packages. Plugins published against any of
+// the aliased scopes below (mariozechner's original publish, earendil-works'
+// fork, legacy @oh-my-pi, or the current @veyyon scope) are remapped to this
+// scope and resolved against the bundled copy that ships inside the veyyon binary.
 const CANONICAL_PI_SCOPE = "@veyyon";
 
+// Scopes that have historically been used to publish (or alias) the same set
+// of internal pi-* packages. Legacy scopes remain so older plugin peerDeps
+// still pass through the host-bundled package resolution path.
 const VEYYON_SCOPE_ALIASES = ["veyyon", "oh-my-pi", "mariozechner", "earendil-works"] as const;
 
+// Internal package basenames bundled inside the veyyon binary, matched against
+// any of VEYYON_SCOPE_ALIASES above. Both naming eras are listed: the current
+// canonical basenames (used by `@veyyon/*` self-imports after the pi-*→* rename)
+// and the legacy `pi-*` basenames older third-party plugins published against
+// (`@mariozechner/pi-ai`, `@earendil-works/pi-tui`, `@oh-my-pi/pi-coding-agent`).
+// Keep the two lists in lockstep: every bundled package needs both its `@veyyon`
+// basename and its `pi-` legacy alias so neither self-imports nor legacy plugins
+// fall through the shim to a duplicate copy in the plugin's own node_modules.
 const VEYYON_PACKAGE_NAMES = [
 	"agent-core",
 	"pi-agent-core",
@@ -109,6 +159,12 @@ const VEYYON_PACKAGE_NAMES = [
 const VEYYON_SCOPE_ALTERNATION = VEYYON_SCOPE_ALIASES.join("|");
 const VEYYON_PACKAGE_ALTERNATION = VEYYON_PACKAGE_NAMES.join("|");
 
+// Upstream `@mariozechner/*` packages exposed a few subpaths at the package
+// root that we relocated under a different folder. Each entry rewrites
+// `<pkg>/<from>` → `<pkg>/<to>` after the scope has been canonicalised, so
+// plugins importing the upstream layout still resolve to a real file in our
+// bundled copy. Entries ending in `/` rewrite the whole subtree; add new
+// `pkg/from -> pkg/to` pairs whenever an upstream-only subpath breaks resolution.
 const VEYYON_SUBPATH_REMAPS: ReadonlyMap<string, string> = new Map<string, string>([
 	["pi-ai/utils/oauth", "pi-ai/oauth"],
 	["pi-ai/utils/oauth/", "pi-ai/oauth/"],
@@ -165,8 +221,32 @@ function clearLegacyPiResolutionCaches(): void {
 registerPluginCacheInvalidator(clearLegacyPiResolutionCaches);
 const PACKAGE_IMPORT_EXCLUDED = Symbol("packageImportExcluded");
 
+// Extensions that imported TypeBox directly used to resolve against a real
+// `@sinclair/typebox` or `typebox` install. The runtime dep was replaced with
+// the Zod-backed shim under `extensibility/typebox.ts`; plugins still importing
+// either public name are redirected to that shim so existing extensions keep
+// working without code changes. Submodules like `@sinclair/typebox/compiler`
+// are intentionally not remapped — those expose TypeBox-only APIs the shim does
+// not provide and plugins relying on them must vendor TypeBox directly.
 const TYPEBOX_SPECIFIER_FILTER = /^(?:@sinclair\/typebox|typebox)$/;
 
+// Compat-shim path resolution. In compiled-binary mode every bundled surface
+// is served through the `veyyon-legacy-pi-bundled:` virtual namespace (see the
+// bundled-module block above) — bunfs paths are unreachable on Bun 1.3.14+, so the
+// pre-#3423 helpers that derived `/$bunfs/root/...` paths from
+// `import.meta.dir` are gone. Dev / source-link / installed-package modes
+// still need a real filesystem path for the source shims, which
+// `sourceShimPath` computes either from the npm prebuilt `dist/cli.js`
+// bundle (`VEYYON_BUNDLED=true`) or directly from the monorepo source tree.
+
+/**
+ * Compute the package root for the npm prebuilt `dist/cli.js` bundle.
+ *
+ * `bundle-dist.ts` defines `process.env.VEYYON_BUNDLED="true"`; after bundling,
+ * `import.meta.dir` points at `<package>/dist`. Do not resolve the package via
+ * bare `@veyyon/coding-agent` here: from a global install Bun can pick an
+ * older cache entry, recreating mixed-runtime plugin loading.
+ */
 export function __computeBundledSelfPackageRoot(metaDir: string, pathImpl: typeof path = path): string {
 	const normalizedMetaDir = pathImpl.normalize(metaDir);
 	if (pathImpl.basename(normalizedMetaDir) === "dist") {
@@ -194,6 +274,24 @@ function sourceShimPath(file: string): string {
 		: path.resolve(import.meta.dir, "..", file);
 }
 
+/**
+ * Resolve the path the TypeBox compatibility shim ships at, then drop it when
+ * the source file is missing.
+ *
+ * In compiled-binary mode the shim is served through the
+ * `veyyon-legacy-pi-bundled:` virtual namespace (issue #3423) — bunfs paths are
+ * unreachable on Bun 1.3.14+, so the virtual specifier is always available and
+ * needs no filesystem probe. In dev / source-link / installed-package mode the
+ * shim is an on-disk source file; validation mirrors
+ * `__validateLegacyPiPackageRootOverrides` (#2168): if the computed candidate
+ * doesn't exist (e.g. an install that dropped the source — issue #3414),
+ * `resolveTypeBoxSpecifier` returns `undefined` and
+ * `rewriteLegacyExtensionSource` leaves bare `typebox` / `@sinclair/typebox`
+ * specifiers alone, so Bun falls through to native resolution against the
+ * extension's own `node_modules`.
+ *
+ * Exported for tests; production callers use `TYPEBOX_SHIM_PATH`.
+ */
 export function __resolveTypeBoxShimPath(
 	isCompiled: boolean,
 	sourcePath: string,
@@ -207,14 +305,53 @@ export function __resolveTypeBoxShimPath(
 
 const TYPEBOX_SHIM_PATH = __resolveTypeBoxShimPath(IS_COMPILED_BINARY, sourceShimPath("typebox.ts"));
 
+// Legacy extensions historically imported `Type` (and `Static`/`TSchema`) from
+// the package root of `@(scope)/pi-ai`. pi-ai 15.1.0 removed the runtime `Type`
+// export (see `packages/ai/CHANGELOG.md`), so the bare canonical specifier no
+// longer satisfies those imports. The override below redirects only the bare
+// pi-ai package root onto a sibling shim that re-exports the canonical surface
+// plus the borrowed `Type` runtime from the Zod-backed TypeBox shim. Subpath
+// imports such as `@veyyon/ai/oauth` continue to resolve directly
+// against the bundled pi-ai package.
 const LEGACY_PI_AI_SHIM_PATH = IS_COMPILED_BINARY
 	? bundledModuleVirtualSpecifier(`${CANONICAL_PI_SCOPE}/pi-ai`)
 	: sourceShimPath("legacy-pi-ai-shim.ts");
 
+// The coding-agent's own `./src/index.ts` cannot be listed as an extra
+// `bun --compile` entrypoint alongside the CLI entry without breaking binary
+// startup (issue #1474 follow-up). In compiled-binary mode the legacy
+// `@(scope)/pi-coding-agent` root therefore resolves through the bundled
+// module shim; in dev / source-link / installed-package mode it points at the
+// sibling source shim whose distinct file path avoids the #1474 collision
+// while still re-exporting the canonical package surface.
 const LEGACY_PI_CODING_AGENT_SHIM_PATH = IS_COMPILED_BINARY
 	? bundledModuleVirtualSpecifier(`${CANONICAL_PI_SCOPE}/pi-coding-agent`)
 	: sourceShimPath("legacy-pi-coding-agent-shim.ts");
 
+// Package-root overrides. Shim entries (`pi-ai`, `pi-coding-agent`) always
+// replace the canonical surface so the legacy `Type` runtime and the legacy
+// helpers stay reachable. The bundled host packages (`agent-core`,
+// `natives`, `tui`, `utils`) are added only in compiled-binary mode
+// to route extensions onto the in-process module instance — in dev /
+// source-link / installed-package mode the canonical specifier resolves
+// cleanly through `Bun.resolveSync` and hardcoding a source-tree path would
+// miss installs where the bundled packages live at `node_modules/@veyyon/*`.
+//
+// Compiled-binary entries are `veyyon-legacy-pi-bundled:<key>` specifiers handed
+// to the synthetic onLoad in `installLegacyPiSpecifierShim()` — bunfs paths
+// are unusable on Bun 1.3.14+ (issue #3423). Filesystem-shaped overrides are
+// still validated against on-disk presence so a missing dev-mode shim falls
+// through to `getResolvedSpecifier`.
+
+/**
+ * Drop overrides whose filesystem targets are missing so they can fall
+ * through to the canonical-resolution path. Virtual `veyyon-legacy-pi-bundled:`
+ * entries always pass — live bundled module references are the source of truth
+ * in compiled mode where bunfs paths are unreachable (issue #3423).
+ *
+ * `pathExistsSync` defaults to `fs.existsSync`; tests inject a stub to
+ * simulate the missing-entrypoint failure mode without touching the real FS.
+ */
 export function __validateLegacyPiPackageRootOverrides(
 	candidates: Record<string, string>,
 	pathExistsSync: (p: string) => boolean = fs.existsSync,
@@ -229,10 +366,25 @@ export function __validateLegacyPiPackageRootOverrides(
 	return valid;
 }
 
+/**
+ * Compute the override map keyed by every canonical specifier the host serves
+ * directly: the pi-ai / pi-coding-agent roots (compat shims that re-attach
+ * legacy helpers) plus, in compiled mode, every build-supplied module key.
+ * Subpath coverage stops `@(scope)/pi-ai/oauth` and friends from falling
+ * through to the extension's absent peer install when bunfs walks fail.
+ */
 export function __buildLegacyPiPackageRootOverrides(
 	isCompiled: boolean,
 	bundledModuleKeys: Iterable<string> = [],
 ): Record<string, string> {
+	// Key each shim on BOTH naming eras (see VEYYON_PACKAGE_NAMES). A legacy
+	// alias like `@earendil-works/pi-ai` canonicalizes to `@veyyon/pi-ai`,
+	// but a plugin published against the post-rename canonical scope imports
+	// `@veyyon/ai` directly — `remapLegacyPiSpecifier` canonicalizes the scope
+	// yet preserves the basename, so `ai`/`coding-agent` never fold onto the
+	// `pi-*` keys. Without the canonical-basename entries those imports fall
+	// through to the real `@veyyon/ai`, which no longer exports the legacy
+	// `Type`/`StringEnum`/catalog surface (SyntaxError at extension load).
 	const candidates: Record<string, string> = {
 		[`${CANONICAL_PI_SCOPE}/pi-ai`]: LEGACY_PI_AI_SHIM_PATH,
 		[`${CANONICAL_PI_SCOPE}/ai`]: LEGACY_PI_AI_SHIM_PATH,
@@ -241,6 +393,8 @@ export function __buildLegacyPiPackageRootOverrides(
 	};
 	if (isCompiled) {
 		for (const key of bundledModuleKeys) {
+			// Shim-bearing roots already map to their compat surfaces; TypeBox
+			// has a dedicated TYPEBOX_SHIM_PATH route.
 			if (key in candidates || key === TYPEBOX_BUNDLED_MODULE_KEY) continue;
 			candidates[key] = bundledModuleVirtualSpecifier(key);
 		}
@@ -248,9 +402,12 @@ export function __buildLegacyPiPackageRootOverrides(
 	return __validateLegacyPiPackageRootOverrides(candidates);
 }
 
+// Seeded with compat roots at module init; first compiled extension load adds
+// every key supplied by the in-memory build module.
 let legacyPiPackageRootOverrides = __buildLegacyPiPackageRootOverrides(IS_COMPILED_BINARY);
 let legacyPiOverridesReadyPromise: Promise<void> | null = null;
 
+/** Complete compiled-mode overrides once from the lazily evaluated host modules. */
 function ensureLegacyPiOverridesReady(): Promise<void> {
 	if (!IS_COMPILED_BINARY) {
 		return Promise.resolve();
@@ -270,6 +427,7 @@ function remapLegacyPiSpecifier(specifier: string): string | null {
 		return null;
 	}
 	const slashIdx = specifier.indexOf("/", 1);
+	// Filter guarantees a slash exists, but guard anyway to keep the type narrow.
 	if (slashIdx === -1) {
 		return null;
 	}
@@ -278,6 +436,11 @@ function remapLegacyPiSpecifier(specifier: string): string | null {
 	return `${CANONICAL_PI_SCOPE}/${remappedSubpath}`;
 }
 
+/**
+ * Test seam: expose the scope/basename remap so the legacy-alias filter can be
+ * asserted without loading the native addon or bundling an extension. Returns
+ * `null` when the specifier is not a recognized legacy pi-* alias.
+ */
 export function __remapLegacyPiSpecifier(specifier: string): string | null {
 	return remapLegacyPiSpecifier(specifier);
 }
@@ -293,12 +456,25 @@ function getResolvedSpecifier(specifier: string): string {
 	return resolved;
 }
 
+// Canonical basenames a legacy `pi-*` alias collapses to: the entries in
+// VEYYON_PACKAGE_NAMES whose `pi-<name>` alias is also present. Derived (not
+// hand-listed) so the two eras stay in lockstep with a single source list.
 const CANONICAL_PI_BASENAMES: ReadonlySet<string> = new Set(
 	VEYYON_PACKAGE_NAMES.filter(name => !name.startsWith("pi-") && VEYYON_PACKAGE_NAMES.includes(`pi-${name}` as never)),
 );
 
+// Match the `pi-`-aliased basename in a canonical `@veyyon/pi-<pkg>[/subpath]`
+// specifier so filesystem resolution can target the real published package.
 const CANONICAL_PI_ALIAS_REGEX = new RegExp(`^(${CANONICAL_PI_SCOPE.replace("/", "\\/")}\\/)pi-([^/]+)(\\/.*)?$`);
 
+/**
+ * Collapse a `@veyyon/pi-<pkg>` alias down to its canonical `@veyyon/<pkg>`
+ * form for filesystem resolution. In the dev monorepo both names symlink to the
+ * same workspace folder, but a real `node_modules` install only ships the
+ * canonical `@veyyon/<pkg>` — the `pi-` alias is a source-tree-only artifact.
+ * Resolving the canonical name is therefore correct in both layouts. Only known
+ * bundled basenames are collapsed; anything else passes through untouched.
+ */
 function canonicalizePiPackageSpecifier(specifier: string): string {
 	const match = CANONICAL_PI_ALIAS_REGEX.exec(specifier);
 	if (!match) {
@@ -311,15 +487,29 @@ function canonicalizePiPackageSpecifier(specifier: string): string {
 	return `${scopePrefix}${basename}${subpath ?? ""}`;
 }
 
+/**
+ * Resolve a canonical `@veyyon/*` specifier to a filesystem path, preferring
+ * a bundled compat shim when one is registered for the package root.
+ *
+ * Falls back to `getResolvedSpecifier` (which may throw under compiled binary
+ * mode); callers handle that the same way they would for non-overridden
+ * specifiers.
+ */
 function resolveCanonicalPiSpecifier(remappedSpecifier: string): string {
 	const override = legacyPiPackageRootOverrides[remappedSpecifier];
 	if (override) {
 		return override;
 	}
+	// Non-shim packages resolve against the real published `@veyyon/<pkg>`, not
+	// the `pi-` dev-monorepo alias — so a node_modules install (which ships only
+	// the canonical name) resolves identically (issue #1474).
 	return getResolvedSpecifier(canonicalizePiPackageSpecifier(remappedSpecifier));
 }
 
 function toImportSpecifier(resolvedPath: string): string {
+	// Virtual `veyyon-legacy-pi-bundled:` specifiers are served by the synthetic
+	// onLoad in `installLegacyPiSpecifierShim()`; wrapping them as `file://`
+	// would corrupt the scheme.
 	if (isBundledVirtualSpecifier(resolvedPath)) {
 		return resolvedPath;
 	}
@@ -338,21 +528,49 @@ function rewriteLegacyPiImports(source: string): string {
 			try {
 				return `${prefix}${toImportSpecifier(resolveCanonicalPiSpecifier(remappedSpecifier))}${suffix}`;
 			} catch {
+				// Resolution failed — typically in compiled binary mode where
+				// Bun.resolveSync cannot walk up from /$bunfs/root to find the
+				// bundled node_modules. Leave the specifier unchanged so Bun
+				// resolves it natively against the extension's own peer deps.
 				return match;
 			}
 		},
 	);
 }
 
+// Match the bare TypeBox import specifiers (static + dynamic). Subpath imports
+// like `@sinclair/typebox/compiler` are intentionally excluded — they expose
+// TypeBox-only APIs the Zod-backed shim does not provide.
 const TYPEBOX_IMPORT_SPECIFIER_REGEX = /((?:from\s+|import\s+|import\s*\(\s*)["'])(@sinclair\/typebox|typebox)(["'])/g;
 
+/**
+ * Rewrite the extension-owned specifiers veyyon must host-resolve — legacy
+ * `@(scope)/pi-*`, bare TypeBox packages, package `imports` aliases like
+ * `#src/*`, and extension-local bare dependencies — to absolute `file://` URLs
+ * or compiled-mode virtual specifiers. Relative siblings and built-in modules
+ * are left untouched so Bun resolves them from the extension's real on-disk
+ * location.
+ *
+ * When `mtimeTag` is provided, extension-owned graph specifiers (relative
+ * `./`/`../`, package `#alias/*`, and extension-local bare deps) also carry a
+ * `?mtime=<tag>` cache-bust so Bun rekeys them on same-process reloads. Host
+ * package rewrites (legacy `@(scope)/pi-*`, TypeBox shim) always emit
+ * `file://` URLs because they resolve to in-process host code that never
+ * changes between reloads.
+ */
 async function rewriteLegacyExtensionSource(
 	source: string,
 	importerPath: string,
 	mtimeTag: string | null = null,
 ): Promise<string> {
+	// Compiled mode completes the override map from the build-supplied module
+	// keys on first use; every rewrite path must see the full map.
 	await ensureLegacyPiOverridesReady();
 	const withPi = rewriteLegacyPiImports(source);
+	// When the TypeBox shim is missing (release build dropped the entrypoint —
+	// issue #3414), leave bare specifiers untouched so Bun resolves a real
+	// `typebox` / `@sinclair/typebox` install from the extension's own
+	// `node_modules`. `resolveTypeBoxSpecifier` mirrors the fall-through.
 	const withTypeBox = TYPEBOX_SHIM_PATH
 		? withPi.replace(
 				TYPEBOX_IMPORT_SPECIFIER_REGEX,
@@ -372,6 +590,7 @@ async function rewriteLegacyExtensionSource(
 	);
 }
 
+/** Test seam for compiled-binary legacy extension source rewriting. */
 export async function __rewriteLegacyExtensionSourceForTests(
 	source: string,
 	importerPath: string,
@@ -380,8 +599,20 @@ export async function __rewriteLegacyExtensionSourceForTests(
 	return rewriteLegacyExtensionSource(source, importerPath, mtimeTag);
 }
 
+// Match relative graph specifiers so their `./foo.ts` /`../foo` targets get a
+// `?mtime=<tag>` cache-bust suffix without disturbing already-rewritten
+// `file://` URLs or bare/host specifiers.
 const RELATIVE_GRAPH_IMPORT_SPECIFIER_REGEX = /((?:from\s+|import\s+|import\s*\(\s*)["'])(\.\.?\/[^"'?\s]*)(["'])/g;
 
+/**
+ * Build the import specifier for a graph-resolved absolute path. POSIX
+ * emits a bare filesystem path with an optional `?mtime=<tag>` (Bun keys
+ * query strings for bare-path specifiers), so same-process extension
+ * reloads pick up edits to package-alias (`#foo/*`) and extension-local
+ * bare deps. Windows and bundled virtual specifiers keep the current
+ * `file://` / virtual form — Bun ignores queries on `file://` URLs, so
+ * cache-bust does not reach Windows extensions until Bun changes that.
+ */
 function toGraphImportSpecifier(resolvedPath: string, mtimeTag: string | null): string {
 	if (isBundledVirtualSpecifier(resolvedPath)) {
 		return resolvedPath;
@@ -392,6 +623,22 @@ function toGraphImportSpecifier(resolvedPath: string, mtimeTag: string | null): 
 	return `${stripWindowsExtendedLengthPathPrefix(resolvedPath)}?mtime=${mtimeTag}`;
 }
 
+/**
+ * Whether anything exists at `p`.
+ *
+ * A throwing `stat` is how "absent" arrives, which is the question being asked, and the callers treat
+ * false as "keep looking" rather than as a fact about the filesystem: every use is a candidate path in
+ * a resolution walk that tries several. A permission error also lands here and reaches the same place,
+ * because a path this process cannot examine is one it cannot load from either.
+ */
+/**
+ * Why every path probe in this file is silent about a fault.
+ *
+ * These are resolution WALKS: `findPackageRoot` and the node_modules search climb directory by
+ * directory to the filesystem root, so a miss is the expected answer at nearly every step and a
+ * reported fault per step would bury a real one. Stated once and passed to each call, so the
+ * justification cannot drift between three probes that share it.
+ */
 const PROBE_IS_A_WALK = "a package-root walk climbs to the filesystem root, so most probes are misses by design";
 
 function hasSourceModuleExtension(p: string): boolean {
@@ -403,6 +650,9 @@ async function resolveSourceModuleFile(basePath: string): Promise<string | null>
 	try {
 		const stats = await fs.promises.stat(basePath);
 		if (stats.isFile()) {
+			// Non-source files (JSON, WASM, text assets, etc.) bypass the on-load
+			// rewrite hook so Bun's native loaders handle them; our hook would
+			// otherwise pass them through `getLoader()` which falls back to `js`.
 			return hasSourceModuleExtension(basePath) ? realpathOrSelf(basePath) : null;
 		}
 		if (stats.isDirectory()) {
@@ -411,7 +661,9 @@ async function resolveSourceModuleFile(basePath: string): Promise<string | null>
 				if (resolved) return resolved;
 			}
 		}
-	} catch {}
+	} catch {
+		// Fall through to extension candidates below.
+	}
 
 	if (path.extname(basePath)) {
 		return null;
@@ -659,6 +911,17 @@ async function readPackageManifest(packageRoot: string): Promise<Record<string, 
 	return promise;
 }
 
+/**
+ * A package's manifest, or null when this directory is not a package.
+ *
+ * Null for an ABSENT `package.json` is the ordinary answer and stays silent: resolution walks up
+ * through directories that are not packages, so warning there would fire constantly. A `package.json`
+ * that exists and cannot be PARSED is a different thing entirely -- a broken package -- and it used to
+ * reach the same null, so dependency resolution gave up and the import failed with "cannot resolve
+ * <specifier>", which sends the reader hunting a missing dependency instead of the malformed manifest
+ * sitting in front of them. That case is now reported, once per package root because the caller caches
+ * this promise.
+ */
 async function readPackageManifestUncached(packageRoot: string): Promise<Record<string, unknown> | null> {
 	const manifestPath = path.join(packageRoot, "package.json");
 	try {
@@ -783,14 +1046,26 @@ async function resolveExtensionBareDependencyUncached(specifier: string, importe
 		if (resolved && resolved !== specifier && !resolved.startsWith("node:") && !resolved.startsWith("bun:")) {
 			return resolved;
 		}
-	} catch {}
+	} catch {
+		// Compiled binaries do not reliably resolve runtime extension node_modules.
+	}
 	return resolveNodePackageDependency(specifier, importerPath);
 }
 
 const NATIVE_ADDON_EXTENSION = ".node";
 
+// Match CommonJS require calls so bare native-addon specifiers can be pinned
+// to absolute paths. Only requires whose resolution lands on a `.node` addon
+// are rewritten; everything else stays on Bun's native resolver.
 const NATIVE_ADDON_REQUIRE_SPECIFIER_REGEX = /(\brequire\s*\(\s*["'])([^"'()\s]+)(["']\s*\))/g;
 
+/**
+ * Resolve a bare specifier whose target is a native `.node` addon — either a
+ * package subpath ending in `.node`, or a package whose `main` points at an
+ * addon (the napi-rs per-platform package convention, e.g.
+ * `@yuuang/ffi-rs-darwin-arm64` → `ffi-rs.darwin-arm64.node`). Returns the
+ * addon's absolute realpath, or null when the specifier is not a native addon.
+ */
 async function resolveExtensionNativeAddon(specifier: string, importerPath: string): Promise<string | null> {
 	if (!isBareExtensionDependencySpecifier(specifier)) {
 		return null;
@@ -826,6 +1101,13 @@ async function resolveExtensionNativeAddonUncached(specifier: string, importerPa
 	return realpathOrSelf(target);
 }
 
+/**
+ * Rewrite bare `require()` specifiers that resolve to native `.node` addons
+ * into absolute-path requires. In `bun build --compile` binaries, Bun's bare
+ * resolution fails for packages whose `main` is a `.node` addon ("Cannot find
+ * module '@scope/pkg-<platform>'") even when the package sits in the
+ * extension's own node_modules; requiring the addon by absolute path works.
+ */
 async function rewriteExtensionNativeAddonRequires(source: string, importerPath: string): Promise<string> {
 	let rewritten = "";
 	let lastIndex = 0;
@@ -840,6 +1122,7 @@ async function rewriteExtensionNativeAddonRequires(source: string, importerPath:
 		if (!resolved) continue;
 
 		rewritten += source.slice(lastIndex, matchIndex);
+		// Forward slashes keep Windows paths valid inside single- or double-quoted literals.
 		rewritten += `${prefix}${stripWindowsExtendedLengthPathPrefix(resolved).replaceAll("\\", "/")}${suffix}`;
 		lastIndex = matchIndex + fullMatch.length;
 	}
@@ -850,6 +1133,12 @@ async function rewriteExtensionNativeAddonRequires(source: string, importerPath:
 	return `${rewritten}${source.slice(lastIndex)}`;
 }
 
+/**
+ * Whether a module's source contains a bare require that resolves to a native
+ * `.node` addon — i.e. a napi-rs style loader that must be hooked into the
+ * extension graph so {@link rewriteExtensionNativeAddonRequires} can pin its
+ * platform-package requires to absolute paths.
+ */
 async function moduleRequiresNativeAddon(modulePath: string): Promise<boolean> {
 	const cached = nativeAddonRequireScanCache.get(modulePath);
 	if (cached) return cached;
@@ -862,6 +1151,9 @@ async function moduleRequiresNativeAddon(modulePath: string): Promise<boolean> {
 async function moduleRequiresNativeAddonUncached(modulePath: string): Promise<boolean> {
 	let source: string;
 	try {
+		// A module whose source cannot be read cannot be scanned, and false is the conservative answer: the
+		// requires are left alone rather than rewritten on a guess. Nothing is hidden by staying quiet, since
+		// the very next step is to import this same file, which fails loudly and names it.
 		source = await Bun.file(modulePath).text();
 	} catch {
 		return false;
@@ -903,8 +1195,19 @@ async function rewriteExtensionBareImports(
 	return `${rewritten}${source.slice(lastIndex)}`;
 }
 
+// Match source modules in an extension graph: relative imports, package
+// `imports` aliases such as `#src/*`, and extension-local bare dependency
+// entries. Bare imports inside node_modules dependencies remain native Bun
+// resolutions; once the dependency entry is hooked, its relative children are
+// still collected and rewritten with the reload mtime tag. `require()` calls
+// are scanned too so CJS entries and napi-rs loaders reached without an
+// import statement still join the graph.
 const EXTENSION_GRAPH_SPECIFIER_REGEX = /((?:from\s+|import\s+|import\s*\(\s*)["'])([^"'()\s]+)(["'])/g;
 
+// Extension source realpaths already covered by an installed load-time hook for
+// each entry. `Bun.plugin()` registrations are process-global and permanent, so
+// reloads install supplemental hooks only for modules added to the graph since
+// the previous load.
 const extensionGraphHookModules = new Map<string, Set<string>>();
 
 let legacyPiLoadTag = 0;
@@ -914,6 +1217,7 @@ function nextLegacyPiLoadTag(): string {
 	return String(legacyPiLoadTag);
 }
 
+/** Resolve symlinks in a path, falling back to the input if realpath fails. */
 async function realpathOrSelf(p: string): Promise<string> {
 	const cached = realpathCache.get(p);
 	if (cached) return cached;
@@ -931,6 +1235,17 @@ async function realpathOrSelfUncached(p: string): Promise<string> {
 	}
 }
 
+/**
+ * Walk the extension's import graph starting at `entryRealPath`, returning the
+ * realpath of every reachable source module veyyon must rewrite at load time.
+ * Relative imports and package `imports` aliases are always graph-owned.
+ * Extension-local bare dependency entries are also included so their relative
+ * children receive the reload mtime tag; bare imports inside those dependencies
+ * remain native Bun resolutions to avoid taking over full third-party graphs.
+ * CommonJS modules reached through `require()` stay on Bun's native loader.
+ * The only exception is a module whose bare requires resolve to native addons:
+ * those require a synchronous hook that pins the addon to an absolute path.
+ */
 async function collectExtensionModules(entryRealPath: string): Promise<Map<string, string>> {
 	const modules = new Map<string, string>();
 	const queuedFollowBareDependencies = new Map<string, boolean>([[entryRealPath, true]]);
@@ -1022,7 +1337,9 @@ async function collectExtensionModules(entryRealPath: string): Promise<Map<strin
 					queuedFollowBareDependencies.set(resolved, mergedFollowsBareDependencies);
 					queue.push({ file: resolved, followBareDependencies: mergedFollowsBareDependencies });
 				}
-			} catch {}
+			} catch {
+				// Unresolvable import (e.g. a type-only path); skip it.
+			}
 		}
 	}
 	for (const modulePath of nativeAddonLoaderModulePaths) {
@@ -1034,6 +1351,12 @@ async function collectExtensionModules(entryRealPath: string): Promise<Map<strin
 	return modules;
 }
 
+/**
+ * Install exact-path load hooks for the current extension graph. ESM/TS source
+ * retains the async rewrite path. Native-addon CJS loaders use a synchronous
+ * hook with source pre-rewritten during graph collection; Bun rejects a CJS
+ * `require()` whose onLoad callback returns a promise.
+ */
 function installExtensionGraphHook(
 	entryRealPath: string,
 	modules: Map<string, string>,
@@ -1046,9 +1369,9 @@ function installExtensionGraphHook(
 	}
 
 	if (asyncModules.size > 0) {
-		const alternation = Array.from(asyncModules.keys()).map(escapeRegExp).join("|");
+		const alternation = [...asyncModules.keys()].map(escapeRegExp).join("|");
 		const filter = new RegExp(`^(?:${alternation})(?:\\?mtime=\\d+)?$`);
-		const hookId = Bun.hash(`${entryRealPath}\0async\0${Array.from(asyncModules.keys()).join("\0")}`).toString(36);
+		const hookId = Bun.hash(`${entryRealPath}\0async\0${[...asyncModules.keys()].join("\0")}`).toString(36);
 		Bun.plugin({
 			name: `veyyon:legacy-pi-ext:${hookId}`,
 			setup(build) {
@@ -1059,6 +1382,7 @@ function installExtensionGraphHook(
 					const cached = asyncModules.get(sourcePath);
 					let raw: string;
 					if (cached !== undefined) {
+						// consume-once: preserves ?mtime edit-pickup for re-imports
 						asyncModules.delete(sourcePath);
 						raw = cached;
 					} else {
@@ -1074,11 +1398,9 @@ function installExtensionGraphHook(
 	}
 
 	if (syncCommonJsModules.size > 0) {
-		const alternation = Array.from(syncCommonJsModules.keys()).map(escapeRegExp).join("|");
+		const alternation = [...syncCommonJsModules.keys()].map(escapeRegExp).join("|");
 		const filter = new RegExp(`^(?:${alternation})(?:\\?mtime=\\d+)?$`);
-		const hookId = Bun.hash(
-			`${entryRealPath}\0sync-cjs\0${Array.from(syncCommonJsModules.keys()).join("\0")}`,
-		).toString(36);
+		const hookId = Bun.hash(`${entryRealPath}\0sync-cjs\0${[...syncCommonJsModules.keys()].join("\0")}`).toString(36);
 		Bun.plugin({
 			name: `veyyon:legacy-pi-ext:${hookId}`,
 			setup(build) {
@@ -1097,6 +1419,14 @@ function installExtensionGraphHook(
 	return { asyncModules, syncCommonJsModules };
 }
 
+/**
+ * Ensure every currently reachable extension source module has a load-time
+ * rewrite hook. The entry graph can grow across reloads, so each call collects
+ * the current graph and registers hooks for paths not covered by earlier loads.
+ *
+ * Returns a clearable handle to drop cached sources that weren't consumed
+ * during the initial load; `undefined` when no new modules were discovered.
+ */
 async function ensureExtensionGraphHook(entryRealPath: string): Promise<{ clear(): void } | undefined> {
 	const currentModules = await collectExtensionModules(entryRealPath);
 	let hookedModules = extensionGraphHookModules.get(entryRealPath);
@@ -1127,17 +1457,38 @@ async function ensureExtensionGraphHook(entryRealPath: string): Promise<{ clear(
 	};
 }
 
+/**
+ * Load a legacy Pi extension module from its real on-disk location.
+ *
+ * The extension runs in place, so its `import.meta.url` is the real source file
+ * and `__dirname`-relative `readFileSync` asset loads (HTML/CSS bundled next to
+ * the entry) resolve exactly as they do under the original Pi runtime — no
+ * temp-directory mirroring and no asset copying. An `onLoad` hook scoped to the
+ * entry's source graph rewrites only host-resolved compatibility imports in the
+ * extension's own source; everything else resolves natively.
+ */
 export async function loadLegacyPiModule(resolvedPath: string): Promise<unknown> {
+	// Bun reports the realpath of a loaded module to `onLoad` and exposes it as
+	// `import.meta.url`. Resolve symlinks here too (macOS `/var`→`/private/var`,
+	// `bun link`/pnpm installs) so the rewrite filter matches the path Bun
+	// actually hands the hook.
 	const entryRealPath = await realpathOrSelf(path.resolve(resolvedPath));
 	await ensureLegacyPiOverridesReady();
 	const pendingSources = await ensureExtensionGraphHook(entryRealPath);
 	try {
+		// Dynamic import is required: legacy extension entry paths are user/plugin supplied at runtime.
+		// On POSIX, use the raw filesystem path so Bun keys the `?mtime`
+		// suffix as part of the module identity; Bun ignores query strings on
+		// `file://` specifiers, which would serve stale edited source.
 		const entrySpecifier =
 			process.platform === "win32" || isBundledVirtualSpecifier(entryRealPath)
 				? toImportSpecifier(entryRealPath)
 				: entryRealPath;
 		return await import(`${entrySpecifier}?mtime=${nextLegacyPiLoadTag()}`);
 	} finally {
+		// Drop whatever the initial import didn't consume: graph modules only
+		// reached by lazy dynamic imports must be read from disk at their actual
+		// import time, not served from this load-time snapshot.
 		pendingSources?.clear();
 	}
 }
@@ -1161,9 +1512,17 @@ function resolveLegacyPiSpecifier(args: { path: string; importer: string }): { p
 		return undefined;
 	}
 
+	// Primary: resolve the canonical @veyyon/* specifier from the host binary
+	// location. Works in dev mode and in source-link installs.
 	try {
 		return { path: resolveCanonicalPiSpecifier(remappedSpecifier) };
 	} catch {
+		// Fallback for compiled binary mode: the bundled packages live inside
+		// /$bunfs/root and aren't reachable by filesystem resolution. Prefer the
+		// canonical specifier against the importing file's directory when the
+		// plugin installed @oh-my-pi peer deps, then try the original legacy
+		// specifier for plugins that still vendor only @mariozechner or
+		// @earendil-works peer deps.
 		const importerDir = path.dirname(args.importer);
 		try {
 			return { path: Bun.resolveSync(remappedSpecifier, importerDir) };
@@ -1171,6 +1530,9 @@ function resolveLegacyPiSpecifier(args: { path: string; importer: string }): { p
 			try {
 				return { path: Bun.resolveSync(args.path, importerDir) };
 			} catch {
+				// Every remapping this plugin knows about has been tried. Undefined hands the specifier back to
+				// Bun's own resolver, which either finds it or throws the module-not-found naming the specifier
+				// and the importer -- a better error than anything this shim could invent.
 				return undefined;
 			}
 		}
@@ -1192,6 +1554,8 @@ export function installLegacyPiSpecifierShim(): void {
 		setup(build) {
 			build.onResolve({ filter: LEGACY_PI_SPECIFIER_FILTER, namespace: "file" }, resolveLegacyPiSpecifier);
 			build.onResolve({ filter: TYPEBOX_SPECIFIER_FILTER, namespace: "file" }, resolveTypeBoxSpecifier);
+			// Compiled mode serves `veyyon-legacy-pi-bundled:<key>` imports from
+			// live host module references. No bunfs path leaves this loader.
 			build.onLoad({ filter: /.*/, namespace: BUNDLED_VIRTUAL_NAMESPACE }, async args => {
 				return { contents: await synthesizeBundledModuleSource(args.path), loader: "js" };
 			});
@@ -1199,6 +1563,7 @@ export function installLegacyPiSpecifierShim(): void {
 	});
 }
 
+/** Test seam: clears the memoized canonical specifier resolutions. */
 export function __resetLegacyPiResolutionCache(): void {
 	clearLegacyPiResolutionCaches();
 }

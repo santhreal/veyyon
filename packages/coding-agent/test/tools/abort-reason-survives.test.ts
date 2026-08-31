@@ -94,7 +94,7 @@ describe("the reason reaches the message", () => {
 	 * not say what hit the deadline, and the tool knows.
 	 */
 	it("prefixes the reason with the operation name when both are present", () => {
-		expect(() => throwIfAborted(abortedWith("deadline exceeded"), "grep")).toThrow("grep: deadline exceeded");
+		expect(() => throwIfAborted(abortedWith("deadline exceeded"), "search")).toThrow("search: deadline exceeded");
 	});
 });
 

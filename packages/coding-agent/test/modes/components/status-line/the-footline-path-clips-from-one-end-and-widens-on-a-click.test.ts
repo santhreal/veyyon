@@ -75,17 +75,18 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { settings } from "@veyyon/coding-agent/config/settings-instance";
-import type { QuietPart, QuietSegmentBounds } from "@veyyon/coding-agent/modes/components/status-line/component";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line/component";
+import type { QuietPart, QuietSegmentBounds } from "@veyyon/coding-agent/modes/components/status-line/quiet-row";
 import {
 	CLIP_BOUNDARIES,
 	fitLocation,
 	MIN_LOCATION_PART,
-	StatusLineComponent,
-} from "@veyyon/coding-agent/modes/components/status-line/component";
+} from "@veyyon/coding-agent/modes/components/status-line/quiet-row";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { MOTION, MotionClock, visibleWidth } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
+import { makeStatusLineSession } from "../../../helpers/status-line-session";
 import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";
 
 const ELLIPSIS = "…";
@@ -133,45 +134,7 @@ function pathSpellings(): string[] {
 }
 
 function makeSession(cwd: () => string = () => wideCwd): AgentSession {
-	return {
-		messages: [],
-		model: { id: "claude-3-7-sonnet", name: "claude-3-7-sonnet", contextWindow: 128000 },
-		contextUsageRevision: 0,
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		getContextUsage: () => ({ tokens: 16000, contextWindow: 128000 }),
-		state: {
-			messages: [],
-			model: { id: "claude-3-7-sonnet", name: "claude-3-7-sonnet", contextWindow: 128000 },
-		},
-		sessionManager: {
-			getCwd: cwd,
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-				tokensPerSecond: null,
-			}),
-			getSessionName: () => "ingest-normalizer-session",
-		},
-		getPrewalkState: () => undefined,
-		getAsyncJobSnapshot: () => undefined,
-		getRunningNonTaskJobCount: () => 0,
-		settings: { getGroup: () => ({ enabled: false }) },
-		isAdvisorActive: () => false,
-		isApprovalBypassed: () => false,
-		isFastModeActive: () => false,
-		configuredThinkingLevel: () => undefined,
-		modelRegistry: { isUsingOAuth: () => false },
-	} as unknown as AgentSession;
+	return makeStatusLineSession({ cwd });
 }
 
 /** A slot's painted text, sliced out of the line by the columns it recorded. */

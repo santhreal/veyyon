@@ -1,17 +1,164 @@
-import type { AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
-import type { CursorMcpCall, CursorShellStreamCallbacks, CursorExecHandlers as ICursorExecHandlers } from "@veyyon/ai";
+import { randomUUID } from "node:crypto";
+import * as fs from "node:fs";
+import type {
+	AgentEvent,
+	AgentToolContext,
+	AgentToolResult,
+	AgentToolUpdateCallback,
+	AnyAgentTool,
+} from "@veyyon/agent-core";
+import type {
+	CursorMcpCall,
+	CursorShellStreamCallbacks,
+	CursorExecHandlers as ICursorExecHandlers,
+	ToolResultMessage,
+} from "@veyyon/ai";
 import { errorMessage, sanitizeText } from "@veyyon/utils";
-import type { CursorExecBridgeOptions } from "./cursor-helpers";
+import { resolveToCwd } from "./tools/path-utils";
 
-import {
-	buildToolErrorResult,
-	createToolResultMessage,
-	decodeMcpArgs,
-	decodeToolCallId,
-	executeDelete,
-	executeTool,
-	formatMcpToolErrorMessage,
-} from "./cursor-helpers";
+interface CursorExecBridgeOptions {
+	cwd: string;
+	tools: Map<string, AnyAgentTool>;
+	getToolContext?: () => AgentToolContext | undefined;
+	emitEvent?: (event: AgentEvent) => void;
+}
+
+function createToolResultMessage(
+	toolCallId: string,
+	toolName: string,
+	result: AgentToolResult<unknown>,
+	isError: boolean,
+): ToolResultMessage {
+	return {
+		role: "toolResult",
+		toolCallId,
+		toolName,
+		content: result.content,
+		details: result.details,
+		isError,
+		timestamp: Date.now(),
+	};
+}
+
+function buildToolErrorResult(message: string): AgentToolResult<unknown> {
+	return {
+		content: [{ type: "text", text: message }],
+		details: {},
+	};
+}
+
+async function executeTool(
+	options: CursorExecBridgeOptions,
+	toolName: string,
+	toolCallId: string,
+	args: Record<string, unknown>,
+): Promise<ToolResultMessage> {
+	const tool = options.tools.get(toolName);
+	if (!tool) {
+		const result = buildToolErrorResult(`Tool "${toolName}" not available`);
+		return createToolResultMessage(toolCallId, toolName, result, true);
+	}
+
+	options.emitEvent?.({ type: "tool_execution_start", toolCallId, toolName, args });
+
+	let result: AgentToolResult<unknown>;
+	let isError = false;
+
+	const onUpdate: AgentToolUpdateCallback<unknown> | undefined = options.emitEvent
+		? partialResult => {
+				const sanitizedResult: AgentToolResult<unknown> = {
+					content: partialResult.content.map(c => (c.type === "text" ? { ...c, text: sanitizeText(c.text) } : c)),
+					details: partialResult.details,
+				};
+				options.emitEvent?.({
+					type: "tool_execution_update",
+					toolCallId,
+					toolName,
+					args,
+					partialResult: sanitizedResult,
+				});
+			}
+		: undefined;
+
+	try {
+		result = await tool.execute(
+			toolCallId,
+			args as Record<string, unknown>,
+			undefined,
+			onUpdate,
+			options.getToolContext?.(),
+		);
+	} catch (error) {
+		const message = errorMessage(error);
+		result = buildToolErrorResult(message);
+		isError = true;
+	}
+	isError ||= result.isError === true;
+
+	const sanitizedFinalResult: AgentToolResult<unknown> = {
+		content: result.content.map(c => (c.type === "text" ? { ...c, text: sanitizeText(c.text) } : c)),
+		details: result.details,
+	};
+	options.emitEvent?.({ type: "tool_execution_end", toolCallId, toolName, result: sanitizedFinalResult, isError });
+
+	return createToolResultMessage(toolCallId, toolName, result, isError);
+}
+
+async function executeDelete(options: CursorExecBridgeOptions, pathArg: string, toolCallId: string) {
+	const toolName = "delete";
+	options.emitEvent?.({ type: "tool_execution_start", toolCallId, toolName, args: { path: pathArg } });
+
+	const absolutePath = resolveToCwd(pathArg, options.cwd);
+	let isError = false;
+	let result: AgentToolResult<unknown>;
+
+	try {
+		let fileStat: fs.Stats | undefined;
+		try {
+			fileStat = fs.statSync(absolutePath);
+		} catch {
+			throw new Error(`File not found: ${pathArg}`);
+		}
+		if (!fileStat.isFile()) {
+			throw new Error(`Path is not a file: ${pathArg}`);
+		}
+
+		fs.rmSync(absolutePath);
+
+		const sizeText = fileStat.size ? ` (${fileStat.size} bytes)` : "";
+		const message = `Deleted ${pathArg}${sizeText}`;
+		result = { content: [{ type: "text", text: message }], details: {} };
+	} catch (error) {
+		const message = errorMessage(error);
+		result = buildToolErrorResult(message);
+		isError = true;
+	}
+
+	options.emitEvent?.({ type: "tool_execution_end", toolCallId, toolName, result, isError });
+	return createToolResultMessage(toolCallId, toolName, result, isError);
+}
+
+function decodeToolCallId(toolCallId?: string): string {
+	return toolCallId && toolCallId.length > 0 ? toolCallId : randomUUID();
+}
+
+function decodeMcpArgs(rawArgs: Record<string, Uint8Array>): Record<string, unknown> {
+	const decoded: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(rawArgs)) {
+		const text = new TextDecoder().decode(value);
+		try {
+			decoded[key] = JSON.parse(text);
+		} catch {
+			decoded[key] = text;
+		}
+	}
+	return decoded;
+}
+
+function formatMcpToolErrorMessage(toolName: string, availableTools: string[]): string {
+	const list = availableTools.length > 0 ? availableTools.join(", ") : "none";
+	return `MCP tool "${toolName}" not found. Available tools: ${list}`;
+}
 
 export class CursorExecHandlers implements ICursorExecHandlers {
 	constructor(private options: CursorExecBridgeOptions) {}
@@ -32,8 +179,9 @@ export class CursorExecHandlers implements ICursorExecHandlers {
 	async grep(args: Parameters<NonNullable<ICursorExecHandlers["grep"]>>[0]) {
 		const toolCallId = decodeToolCallId(args.toolCallId);
 		const searchPath = args.glob ? `${args.path || "."}/${args.glob}` : args.path || ".";
-		const toolResultMessage = await executeTool(this.options, "grep", toolCallId, {
-			pattern: args.pattern,
+		const toolResultMessage = await executeTool(this.options, "search", toolCallId, {
+			type: "text",
+			input: args.pattern,
 			path: searchPath,
 			case: args.caseInsensitive === true ? false : undefined,
 		});

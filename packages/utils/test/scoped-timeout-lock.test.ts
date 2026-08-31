@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { withoutComments } from "../src/module-reach";
 import { collectPackageSources } from "./support/package-sources";
 
 // Repo-wide source lock: bare `AbortSignal.timeout(ms)` keeps its backing timer
@@ -19,11 +20,6 @@ import { collectPackageSources } from "./support/package-sources";
 // forces the explanation out of the code it protects is working against itself.
 const GRANDFATHERED = new Set<string>([]);
 
-/** Source with `//` and block comments removed, so prose cannot trip a code lock. */
-function codeOnly(text: string): string {
-	return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
-}
-
 // The monorepo walk + skip-set is shared with every other source-ownership lock
 // (see ./support/package-sources).
 describe("scoped-timeout source lock", () => {
@@ -34,7 +30,7 @@ describe("scoped-timeout source lock", () => {
 		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
 			// scoped-timeout.ts is the one legitimate owner of the raw call.
 			if (rel === "utils/src/scoped-timeout.ts") continue;
-			if (!codeOnly(text).includes("AbortSignal.timeout(")) continue;
+			if (!withoutComments(text).includes("AbortSignal.timeout(")) continue;
 			seen.add(rel);
 			if (!GRANDFATHERED.has(rel)) offenders.push(rel);
 		}

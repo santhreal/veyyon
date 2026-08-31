@@ -13,6 +13,15 @@ export interface RecordingHandle {
 
 const isWindows = process.platform === "win32";
 
+/**
+ * Returns available recording tools in priority order.
+ */
+export function detectRecordingTools(): string[] {
+	return [...new Set(detectRecorders().map(recorder => recorder.tool))];
+}
+
+// ── ffmpeg dshow device detection ──────────────────────────────────
+
 async function detectWindowsAudioDevice(bin: string): Promise<string> {
 	const result = await $`${bin} -f dshow -list_devices true -i dummy`.quiet().nothrow();
 	const output = result.stderr.toString();
@@ -28,7 +37,10 @@ async function detectWindowsAudioDevice(bin: string): Promise<string> {
 	return audioDevices[0];
 }
 
+// ── Recording implementations ──────────────────────────────────────
+
 async function startSoxRecording(bin: string, outputPath: string): Promise<RecordingHandle> {
+	// On Windows, "-d" (default device) often fails. Use "-t waveaudio 0" for the first input.
 	const inputArgs = isWindows ? ["-t", "waveaudio", "0"] : ["-d"];
 
 	const proc = Bun.spawn([bin, ...inputArgs, "-r", "16000", "-c", "1", "-b", "16", "-t", "wav", outputPath], {
@@ -97,7 +109,9 @@ async function startFFmpegRecording(bin: string, outputPath: string): Promise<Re
 			try {
 				proc.stdin.write("q");
 				proc.stdin.end();
-			} catch {}
+			} catch {
+				// stdin may already be closed
+			}
 			const killTimer = setTimeout(() => proc.kill(), 3000);
 			await proc.exited;
 			clearTimeout(killTimer);
@@ -119,6 +133,8 @@ async function startArecordRecording(bin: string, outputPath: string): Promise<R
 		},
 	};
 }
+
+// ── PowerShell mci recorder (Windows zero-dep fallback) ────────────
 
 const PS_RECORD_SCRIPT = `
 param([string]$outPath)
@@ -183,6 +199,19 @@ if (Test-Path $outPath) {
 }
 `;
 
+/**
+ * Read `stdout` until `marker` appears or `timeoutMs` elapses, returning whether
+ * the marker was seen and all text read so far.
+ *
+ * The subtle correctness requirement is the timeout branch: each iteration races
+ * `reader.read()` against a deadline sleep, and when the sleep wins the read is
+ * abandoned while still pending. Releasing the reader lock then rejects that
+ * outstanding read, so the pending promise MUST be defused (`.catch`) or the
+ * rejection escapes unhandled — which, on a subprocess that produces no stdout
+ * before the deadline, would drown out the caller's clean "failed to start"
+ * diagnostic. Attaching the `.catch` does not swallow a genuine mid-loop read
+ * error: the awaited `Promise.race` still rejects and propagates in that case.
+ */
 export async function awaitStartupMarker(
 	stdout: ReadableStream<Uint8Array>,
 	marker: string,
@@ -196,6 +225,8 @@ export async function awaitStartupMarker(
 	try {
 		while (Date.now() < deadline) {
 			const readPromise = reader.read();
+			// The read's failure still reaches the `await Promise.race` below and propagates from there; this
+			// only marks it handled for the case where the timeout branch wins and nobody awaits the read.
 			readPromise.catch(() => {});
 			const timeoutPromise = Bun.sleep(deadline - Date.now()).then(() => ({ done: true, value: undefined }));
 			const { done, value } = await Promise.race([readPromise, timeoutPromise]);
@@ -210,6 +241,13 @@ export async function awaitStartupMarker(
 	return { started: output.includes(marker), output };
 }
 
+/**
+ * Delete the temp PowerShell recording script, reporting a failure instead of leaking it silently.
+ *
+ * Both callers run where they cannot usefully throw: one after the process has already exited, one while
+ * raising the startup failure that is the error the operator needs. A script left in the temp directory is
+ * still worth a line, because it accumulates one file per recording attempt.
+ */
 function removeRecordingScript(scriptPath: string): void {
 	fs.unlink(scriptPath).catch((error: unknown) => {
 		logger.warn("STT temp recording script could not be deleted", { file: scriptPath, error: errorMessage(error) });
@@ -217,6 +255,7 @@ function removeRecordingScript(scriptPath: string): void {
 }
 
 async function startPowerShellRecording(outputPath: string): Promise<RecordingHandle> {
+	// Write script to temp file — avoids quoting/escaping issues with -Command
 	const scriptPath = path.join(os.tmpdir(), `veyyon-stt-record-${Snowflake.next()}.ps1`);
 	await Bun.write(scriptPath, PS_RECORD_SCRIPT);
 
@@ -231,6 +270,7 @@ async function startPowerShellRecording(outputPath: string): Promise<RecordingHa
 		removeRecordingScript(scriptPath);
 	});
 
+	// Wait for "RECORDING" on stdout to confirm it started. PowerShell + Add-Type is slow.
 	const { started, output } = await awaitStartupMarker(proc.stdout as ReadableStream<Uint8Array>, "RECORDING", 8000);
 
 	if (!started) {
@@ -240,6 +280,7 @@ async function startPowerShellRecording(outputPath: string): Promise<RecordingHa
 		if (proc.stderr && typeof proc.stderr !== "number") {
 			stderrText = await readPipeText(proc.stderr);
 		}
+		// Clean up temp script
 		removeRecordingScript(scriptPath);
 		throw new Error(
 			`PowerShell audio recording failed to start: ${stderrText.trim() || output.trim() || "(no output)"}`,
@@ -251,14 +292,20 @@ async function startPowerShellRecording(outputPath: string): Promise<RecordingHa
 			try {
 				proc.stdin.write("stop\n");
 				proc.stdin.end();
-			} catch {}
+			} catch {
+				// stdin may already be closed
+			}
+			// Give PowerShell time to save the file
 			const killTimer = setTimeout(() => proc.kill(), 8000);
 			await proc.exited;
 			clearTimeout(killTimer);
+			// Clean up temp script
 			fs.unlink(scriptPath).catch(() => {});
 		},
 	};
 }
+
+// ── Health check ───────────────────────────────────────────────────
 
 type RecorderProcess = Subprocess<"ignore" | "pipe", "pipe", "ignore">;
 
@@ -276,11 +323,18 @@ async function verifyProcessAlive(proc: RecorderProcess, tool: string): Promise<
 	}
 }
 
+// ── Public API ─────────────────────────────────────────────────────
+
 export interface ResolvedRecorder {
 	tool: "sox" | "ffmpeg" | "arecord" | "powershell";
 	bin: string;
 }
 
+/**
+ * Resolve a usable recorder without triggering any download. Priority:
+ * sox (PATH) → ffmpeg (PATH or previously-downloaded static binary) →
+ * arecord (PATH, non-Windows) → PowerShell mci fallback (Windows) → none.
+ */
 function detectRecorders(): ResolvedRecorder[] {
 	const recorders: ResolvedRecorder[] = [];
 	const sox = $which("sox");
@@ -304,6 +358,10 @@ export function detectRecorder(): ResolvedRecorder | null {
 	return detectRecorders()[0] ?? null;
 }
 
+/**
+ * Ensure a recorder is available, downloading the static ffmpeg binary when
+ * nothing is already present. Returns the resolved recorder.
+ */
 export async function ensureRecorder(
 	onProgress?: (p: { stage: string; percent?: number }) => void,
 	signal?: AbortSignal,
@@ -364,6 +422,10 @@ export async function startRecording(outputPath: string): Promise<RecordingHandl
 	throw new Error(`No audio recorder could start — run \`veyyon setup speech\`.\n${failures.join("\n")}`);
 }
 
+/**
+ * Verify a recorded audio file is usable.
+ * Returns the file size in bytes, or throws.
+ */
 export async function verifyRecordingFile(filePath: string): Promise<number> {
 	try {
 		const stat = await fs.stat(filePath);
@@ -383,10 +445,13 @@ export async function verifyRecordingFile(filePath: string): Promise<number> {
 	}
 }
 
+// ── Streaming (live) capture ───────────────────────────────────────
+
 export interface StreamingRecordingHandle {
 	stop(): Promise<void>;
 }
 
+/** Build the argv for a recorder that emits raw 16 kHz mono s16le PCM to stdout. */
 async function streamingRecorderArgs(recorder: ResolvedRecorder): Promise<string[]> {
 	const { tool, bin } = recorder;
 	switch (tool) {
@@ -409,6 +474,12 @@ async function streamingRecorderArgs(recorder: ResolvedRecorder): Promise<string
 	}
 }
 
+/**
+ * Start a recorder that streams raw 16 kHz mono s16le PCM to stdout, decoding it
+ * to float frames delivered through `onAudio` as they arrive. Returns `null`
+ * when the only available recorder (Windows PowerShell mci) records to a file
+ * and cannot pipe — the caller then falls back to file-based batch capture.
+ */
 async function startStreamingRecordingWithRecorder(
 	recorder: ResolvedRecorder,
 	onAudio: (samples: Float32Array) => void,
@@ -418,6 +489,8 @@ async function startStreamingRecordingWithRecorder(
 	const proc = Bun.spawn(args, { stdin: "pipe", stdout: "pipe", stderr: "ignore" });
 	adoptIntoPrimarySessionCpuBudget(proc.pid);
 
+	// Read s16le bytes off stdout, carrying any trailing odd byte across chunk
+	// boundaries so a sample is never split. Runs until the process closes stdout.
 	const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
 	let leftover: Uint8Array | null = null;
 	const pump = async (): Promise<void> => {
@@ -451,7 +524,9 @@ async function startStreamingRecordingWithRecorder(
 	} catch (error) {
 		try {
 			proc.kill("SIGKILL");
-		} catch {}
+		} catch {
+			// Already gone.
+		}
 		throw error;
 	}
 
@@ -464,7 +539,9 @@ async function startStreamingRecordingWithRecorder(
 				try {
 					proc.stdin.write("q");
 					proc.stdin.end();
-				} catch {}
+				} catch {
+					// stdin may already be closed.
+				}
 				const killTimer = setTimeout(() => proc.kill(), 3000);
 				await proc.exited;
 				clearTimeout(killTimer);
@@ -474,7 +551,9 @@ async function startStreamingRecordingWithRecorder(
 			}
 			try {
 				await reader.cancel();
-			} catch {}
+			} catch {
+				// Reader already released when stdout closed.
+			}
 		},
 	};
 }

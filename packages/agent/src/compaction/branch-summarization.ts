@@ -1,3 +1,10 @@
+/**
+ * Branch summarization for tree navigation.
+ *
+ * When navigating to a different point in the session tree, this generates
+ * a summary of the branch being left so context isn't lost.
+ */
+
 import type { Api, ApiKey, AssistantMessage, Context, Model, ServiceTier, SimpleStreamOptions } from "@veyyon/ai";
 import { detectDegenerateRepetition } from "@veyyon/ai/utils/thinking-loop";
 import { preferredDialect } from "@veyyon/catalog/identity";
@@ -27,6 +34,10 @@ import {
 	upsertFileOperations,
 } from "./utils";
 
+// ============================================================================
+// Types
+// ============================================================================
+
 export interface BranchSummaryResult {
 	summary?: string;
 	readFiles?: string[];
@@ -35,6 +46,7 @@ export interface BranchSummaryResult {
 	error?: string;
 }
 
+/** Details stored in BranchSummaryEntry.details for file tracking */
 export interface BranchSummaryDetails {
 	readFiles: string[];
 	modifiedFiles: string[];
@@ -43,50 +55,107 @@ export interface BranchSummaryDetails {
 export type { FileOperations } from "./utils";
 
 export interface BranchPreparation {
+	/** Messages extracted for summarization, in chronological order */
 	messages: AgentMessage[];
+	/** File operations extracted from tool calls */
 	fileOps: FileOperations;
+	/** Total estimated tokens in messages */
 	totalTokens: number;
 }
 
 export interface CollectEntriesResult {
+	/** Entries to summarize, in chronological order */
 	entries: SessionEntry[];
+	/** Common ancestor between old and new position, if any */
 	commonAncestorId: string | null;
 }
 
 export interface GenerateBranchSummaryOptions {
+	/** Model to use for summarization */
 	model: Model;
+	/** API key for the model */
 	apiKey: ApiKey;
+	/** Abort signal for cancellation */
 	signal: AbortSignal;
+	/** Optional custom instructions for summarization */
 	customInstructions?: string;
+	/** Tokens reserved for prompt + LLM response (default 16384) */
 	reserveTokens?: number;
+	/** Optional metadata forwarded to the underlying API request (e.g. user_id for session attribution). */
 	metadata?: Record<string, unknown>;
+	/** Convert app-specific messages before serializing the branch summary prompt. */
 	convertToLlm?: ConvertToLlm;
+	/**
+	 * Resolve the live provider-text transform after each credential resolution.
+	 * Each physical auth attempt rebuilds its context from the raw entries with
+	 * the returned transform before budgeting or serialization.
+	 */
 	resolveObfuscateProviderText?: () => (text: string) => string;
+	/**
+	 * Optional final provider-payload hook. When a live text transform is
+	 * configured, its result is sanitized with the same attempt transform.
+	 */
 	onPayload?: SimpleStreamOptions["onPayload"];
+	/**
+	 * Optional telemetry handle. When provided, the branch summary LLM call is
+	 * wrapped in an OTEL chat span tagged with `pi.gen_ai.oneshot.kind = "branch_summary"`.
+	 */
 	telemetry?: AgentTelemetry;
+	/**
+	 * Optional completion transport override (same contract as
+	 * {@link SummaryOptions.completeImpl}). Lets the host route the branch
+	 * summary HTTP request through its provider-concurrency limiter instead
+	 * of the default `completeSimple` transport.
+	 */
 	completeImpl?: <TApi extends Api>(
 		model: Model<TApi>,
 		ctx: Context,
 		options: SimpleStreamOptions,
 	) => Promise<AssistantMessage>;
+	/**
+	 * Service tier for the summarization request, resolved by the host from the
+	 * model's provider family (same contract as {@link SummaryOptions.serviceTier}).
+	 */
 	serviceTier?: ServiceTier;
+	/** Session routing key for remote transports and side-request conversation derivation. */
 	sessionId?: string;
+	/** Explicit conversation ID override for the side completion. */
 	conversationId?: string;
+	/** Prompt-cache key for transports that support provider prefix caching. */
 	promptCacheKey?: string;
 }
 
+// ============================================================================
+// Entry Collection
+// ============================================================================
+
+/**
+ * Collect entries that should be summarized when navigating from one position to another.
+ *
+ * Walks from oldLeafId back to the common ancestor with targetId, collecting entries
+ * along the way. Does NOT stop at compaction boundaries - those are included and their
+ * summaries become context.
+ *
+ * @param session - Session manager (read-only access)
+ * @param oldLeafId - Current position (where we're navigating from)
+ * @param targetId - Target position (where we're navigating to)
+ * @returns Entries to summarize and the common ancestor
+ */
 export function collectEntriesForBranchSummary(
 	session: ReadonlySessionManager,
 	oldLeafId: string | null,
 	targetId: string,
 ): CollectEntriesResult {
+	// If no old position, nothing to summarize
 	if (!oldLeafId) {
 		return { entries: [], commonAncestorId: null };
 	}
 
+	// Find common ancestor (deepest node that's on both paths)
 	const oldPath = new Set(session.getBranch(oldLeafId).map(e => e.id));
 	const targetPath = session.getBranch(targetId);
 
+	// targetPath is root-first, so iterate backwards to find deepest common ancestor
 	let commonAncestorId: string | null = null;
 	for (let i = targetPath.length - 1; i >= 0; i--) {
 		if (oldPath.has(targetPath[i].id)) {
@@ -95,6 +164,7 @@ export function collectEntriesForBranchSummary(
 		}
 	}
 
+	// Collect entries from old leaf back to common ancestor
 	const entries: SessionEntry[] = [];
 	let current: string | null = oldLeafId;
 
@@ -107,14 +177,26 @@ export function collectEntriesForBranchSummary(
 		current = entry.parentId;
 	}
 
+	// Reverse to get chronological order
 	entries.reverse();
 
 	return { entries, commonAncestorId };
 }
 
+// ============================================================================
+// Entry to Message Conversion
+// ============================================================================
+
+/**
+ * Extract AgentMessage from a session entry.
+ * Similar to getMessageFromEntry in compaction.ts but also handles compaction entries.
+ */
 function getMessageFromEntry(entry: SessionEntry): AgentMessage | undefined {
 	switch (entry.type) {
 		case "message":
+			// Useless non-error tool results are dropped by serializeConversation()
+			// downstream. Skip them here so a large useless payload can't eat the
+			// branch-summary token budget and starve older useful entries.
 			if (entry.message.role === "toolResult" && entry.message.useless === true && entry.message.isError !== true) {
 				return undefined;
 			}
@@ -136,6 +218,7 @@ function getMessageFromEntry(entry: SessionEntry): AgentMessage | undefined {
 		case "compaction":
 			return createCompactionSummaryMessage(entry.summary, entry.tokensBefore, entry.timestamp, entry.shortSummary);
 
+		// These don't contribute to conversation content
 		case "thinking_level_change":
 		case "model_change":
 		case "custom":
@@ -284,6 +367,15 @@ function transformProviderText(
 	}
 }
 
+/**
+ * Clone provider-bound JSON while transforming free-text string values and
+ * user-authored data keys. Provider protocol keys, roles, discriminants,
+ * statuses, identifiers, and opaque signatures remain byte-for-byte intact.
+ * The strict traversal limits bound work over persisted/provider-shaped data;
+ * cycles, accessors, symbols, transformed-key collisions, and exotic objects
+ * fail closed. Binary buffers/views contain no transformable string surface and
+ * are deliberately passed through unchanged.
+ */
 function transformProviderValue<T>(value: T, transform: ObfuscateProviderText): T {
 	const traversal: ProviderTransformTraversal = {
 		ancestors: new WeakSet<object>(),
@@ -295,6 +387,8 @@ function transformProviderValue<T>(value: T, transform: ObfuscateProviderText): 
 	try {
 		return transformProviderValueBounded(value, transform, traversal, 0);
 	} catch {
+		// Reflection over provider-controlled proxies can itself throw. Collapse
+		// every traversal/transform failure to one credential-free boundary error.
 		throw providerTextTransformError();
 	}
 }
@@ -410,6 +504,19 @@ function estimateBranchSummaryTokens(message: AgentMessage): number {
 	});
 }
 
+/**
+ * Prepare entries for summarization with token budget.
+ *
+ * Walks entries from NEWEST to OLDEST, adding messages until we hit the token budget.
+ * This ensures we keep the most recent context when the branch is too long.
+ *
+ * Also collects file operations from:
+ * - Tool calls in assistant messages
+ * - Existing branch_summary entries' details (for cumulative tracking)
+ *
+ * @param entries - Entries in chronological order
+ * @param tokenBudget - Maximum tokens to include (0 = no limit)
+ */
 function prepareBranchEntriesForProvider(
 	entries: SessionEntry[],
 	tokenBudget: number,
@@ -420,6 +527,9 @@ function prepareBranchEntriesForProvider(
 	const fileMessages: AgentMessage[] = [];
 	let totalTokens = 0;
 
+	// First pass: collect file ops from ALL entries (even if they don't fit in token budget)
+	// This ensures we capture cumulative file tracking from nested branch summaries
+	// Only extract from pi-generated summaries (fromExtension !== true), not extension-generated ones
 	for (const entry of entries) {
 		if (entry.type === "message") fileMessages.push(entry.message);
 		if (entry.type === "branch_summary" && !entry.fromExtension && entry.details) {
@@ -428,6 +538,7 @@ function prepareBranchEntriesForProvider(
 				for (const f of details.readFiles) fileOps.read.add(stripReadSelector(f));
 			}
 			if (Array.isArray(details.modifiedFiles)) {
+				// Modified files go into both edited and written for proper deduplication
 				for (const f of details.modifiedFiles) {
 					fileOps.edited.add(f);
 				}
@@ -436,21 +547,27 @@ function prepareBranchEntriesForProvider(
 	}
 	extractFileOpsFromMessages(fileMessages, fileOps);
 
+	// Second pass: walk from newest to oldest, adding messages until token budget
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
 		const rawMessage = getMessageFromEntry(entry);
 		if (!rawMessage) continue;
 
+		// File tracking above retains raw paths. Clone and transform only the
+		// separately provider-bound message before lossy processing.
 		const message = transform ? transformProviderValue(rawMessage, transform) : rawMessage;
 		const tokens = estimateBranchSummaryTokens(message);
 
+		// Check budget before adding
 		if (tokenBudget > 0 && totalTokens + tokens > tokenBudget) {
+			// If this is a summary entry, try to fit it anyway as it's important context
 			if (entry.type === "compaction" || entry.type === "branch_summary") {
 				if (totalTokens < tokenBudget * 0.9) {
 					messages.unshift(message);
 					totalTokens += tokens;
 				}
 			}
+			// Stop - we've hit the budget
 			break;
 		}
 
@@ -465,20 +582,43 @@ export function prepareBranchEntries(entries: SessionEntry[], tokenBudget: numbe
 	return prepareBranchEntriesForProvider(entries, tokenBudget);
 }
 
+// ============================================================================
+// Summary Generation
+// ============================================================================
+
 const BRANCH_SUMMARY_PREAMBLE = prompt.render(AGENT_PROMPTS["compaction/branch-summary-preamble"].text);
 
 const BRANCH_SUMMARY_PROMPT = prompt.render(AGENT_PROMPTS["compaction/branch-summary"].text);
 
+/**
+ * Generate a summary of abandoned branch entries.
+ *
+ * @param entries - Session entries to summarize (chronological order)
+ * @param options - Generation options
+ */
 export async function generateBranchSummary(
 	entries: SessionEntry[],
 	options: GenerateBranchSummaryOptions,
 ): Promise<BranchSummaryResult> {
 	const { model, apiKey, signal, reserveTokens = 16384, metadata } = options;
 
+	// Token budget = context window minus reserved space for prompt + response.
+	//
+	// A reserve at or above the window leaves a non-positive budget, and a
+	// non-positive budget means "no limit" to prepareBranchEntriesForProvider,
+	// which enforces a budget only when it is `> 0`. An over-large reserve would
+	// therefore send the WHOLE branch — the exact opposite of what the knob asks
+	// for, and an overflow on the small-window models that need the reserve most.
+	// Such a reserve is unsatisfiable, so it falls back to the same 15%
+	// proportional reserve the rest of the compaction code uses for a reserve the
+	// window cannot hold, leaving 85% of the window as the budget.
 	const contextWindow = model.contextWindow || 128000;
 	const configuredBudget = contextWindow - reserveTokens;
 	const tokenBudget = configuredBudget > 0 ? configuredBudget : Math.max(1, Math.floor(contextWindow * 0.85));
 
+	// Preserve the existing empty-branch fast path without retaining this raw,
+	// potentially lossy projection for a provider attempt. Every actual attempt
+	// starts again from `entries`.
 	if (prepareBranchEntries(entries, tokenBudget).messages.length === 0) {
 		return { summary: "No content to summarize" };
 	}
@@ -518,6 +658,8 @@ export async function generateBranchSummary(
 				}
 			: apiKey;
 
+	// A static credential is one immediate physical attempt. Resolver credentials
+	// rebuild only after their awaited resolution, including every auth retry.
 	if (typeof apiKey !== "function") rebuildAttemptContext();
 
 	let onPayload = options.onPayload;
@@ -530,6 +672,7 @@ export async function generateBranchSummary(
 		};
 	}
 
+	// Call LLM for summarization
 	const response = await instrumentedCompleteSimple(
 		model,
 		context,
@@ -547,6 +690,7 @@ export async function generateBranchSummary(
 		{ telemetry: options.telemetry, oneshotKind: "branch_summary", completeImpl: options.completeImpl },
 	);
 
+	// Check if aborted or errored
 	if (response.stopReason === "aborted") {
 		return { aborted: true };
 	}
@@ -559,13 +703,26 @@ export async function generateBranchSummary(
 		.map(c => c.text)
 		.join("\n");
 
+	// A provider can successfully stop without emitting text. Treat whitespace
+	// the same way and do not let the non-empty preamble mask the fallback.
+	//
+	// A generation that repeats one unit until the budget runs out is treated as
+	// no generation for the same reason: it describes nothing about the branch it
+	// stands for, and storing it would make the branch read as that repeat. The
+	// fallback keeps the file lists, which are computed here rather than generated,
+	// so the entry stays useful; a throw would instead block the branch switch on
+	// a provider hiccup, which is why the empty case does not throw either. It is
+	// reported rather than swallowed.
 	const degeneracy = detectDegenerateRepetition(generatedSummary);
 	if (degeneracy) {
 		logger.warn("Branch summary discarded as degenerate", { model: model.id, degeneracy });
 	}
 	let summary =
-		/\S/.test(generatedSummary) && !degeneracy ? BRANCH_SUMMARY_PREAMBLE + generatedSummary : "No summary generated";
+		generatedSummary.trim().length > 0 && !degeneracy
+			? BRANCH_SUMMARY_PREAMBLE + generatedSummary
+			: "No summary generated";
 
+	// Compute file lists and append to summary
 	const { readFiles, modifiedFiles } = computeFileLists(fileOps);
 	summary = upsertFileOperations(summary, readFiles, modifiedFiles, fileOps.read);
 

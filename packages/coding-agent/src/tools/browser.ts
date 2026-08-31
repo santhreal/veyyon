@@ -1,25 +1,102 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import { isCancellation, prompt, stringifyJsonSafe, untilAborted } from "@veyyon/utils";
+import { isCancellation, prompt, stringifyJsonSafe, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
+import { type } from "arktype";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from "../sdk";
 import { enforceInlineByteCap } from "../session/streaming-output";
 import { truncateForPrompt } from "./approval";
-import { acquireBrowser, type BrowserHandle, type BrowserKind } from "./browser/registry";
-import type { BrowserRunError, RunResultOk } from "./browser/tab-protocol";
+import { resolveCmuxKind } from "./browser/cmux/rpc";
+import { acquireBrowser, type BrowserHandle, type BrowserKind, type BrowserKindTag } from "./browser/registry";
+import type { BrowserRunError, Observation, RunResultOk, ScreenshotResult } from "./browser/tab-protocol";
 import { acquireTab, dropHeadlessTabs, getTab, releaseAllTabs, releaseTab, runInTab } from "./browser/tab-supervisor";
-import type { BrowserParams, BrowserToolDetails } from "./browser-helpers";
-
-export * from "./browser-helpers";
-
-import { browserSchema, DEFAULT_TAB_NAME, resolveBrowserKind } from "./browser-helpers";
 import { inlineOutputPricing, saveOutputArtifact } from "./output-artifact";
+import type { OutputMeta } from "./output-meta";
+import { resolveToCwd } from "./path-utils";
 import { ToolAbortError, ToolError, throwIfAborted, toolAbort } from "./tool-errors";
 import { prependResultNotice, toolResult } from "./tool-result";
-import { clampTimeout, formatTimeoutClampNotice } from "./tool-timeouts";
+import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "./tool-timeouts";
 
-export type { BrowserParams, BrowserToolDetails };
+export {
+	type AriaSnapshotOptions,
+	buildAriaSnapshotScript,
+	parseAriaRefSelector,
+} from "./browser/aria/aria-snapshot";
+export { cmuxSnapshotToObservation, mapWaitUntil, resolveCmuxKind, serializeEval } from "./browser/cmux/rpc";
+export { CmuxSocketClient } from "./browser/cmux/socket-client";
+export { extractReadableFromHtml, type ReadableFormat, type ReadableResult } from "./browser/readable";
+export type { Observation, ObservationEntry } from "./browser/tab-protocol";
 
+const DEFAULT_TAB_NAME = "main";
+
+const appSchema = type({
+	"path?": type("string").describe("binary path to spawn"),
+	"cdp_url?": type("string").describe("existing cdp endpoint"),
+	"args?": type("string[]").describe("extra cli args"),
+	"target?": type("string").describe("substring to pick a window"),
+});
+
+const browserSchema = type({
+	action: type("'open' | 'close' | 'run'").describe("operation"),
+	"name?": type("string").describe("tab id (default 'main')"),
+	"url?": type("string").describe("url to open"),
+	"app?": appSchema,
+	"viewport?": {
+		width: "number",
+		height: "number",
+		"scale?": "number",
+	},
+	"wait_until?": type("'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2'").describe(
+		"navigation wait condition",
+	),
+	"dialogs?": type("'accept' | 'dismiss'").describe("auto-handle dialogs"),
+	"code?": type("string").describe("js body to run in tab"),
+	"timeout?": type("number").describe(describeTimeoutParam("browser")),
+	"all?": type("boolean").describe("close every tab"),
+	"kill?": type("boolean").describe("also kill spawned-app browsers"),
+});
+
+/** Input schema for the browser tool. */
+export type BrowserParams = typeof browserSchema.infer;
+
+/** Details describing a browser tool execution result (for renderers + transcript). */
+export interface BrowserToolDetails {
+	action: BrowserParams["action"];
+	name?: string;
+	url?: string;
+	browser?: BrowserKindTag;
+	viewport?: { width: number; height: number; deviceScaleFactor?: number };
+	observation?: Observation;
+	screenshots?: ScreenshotResult[];
+	result?: string;
+	meta?: OutputMeta;
+}
+
+function resolveBrowserKind(params: BrowserParams, session: ToolSession): BrowserKind {
+	const app = params.app;
+	if (app?.cdp_url) {
+		return { kind: "connected", cdpUrl: trimTrailingSlashes(app.cdp_url) };
+	}
+	if (app?.path) {
+		const exe = resolveToCwd(app.path, session.cwd);
+		return { kind: "spawned", path: exe };
+	}
+	const cmuxKind = resolveCmuxKind({
+		settingEnabled: session.settings.get("browser.cmux") as boolean | undefined,
+	});
+	if (cmuxKind) {
+		return cmuxKind;
+	}
+	const headless = session.settings.get("browser.headless") as boolean;
+	return { kind: "headless", headless };
+}
+
+/**
+ * Browser tool: stateful, multi-tab. Three actions:
+ * - `open`  → acquire/create a named tab on a browser kind (headless | spawned | connected) and optionally goto a url.
+ * - `close` → release a named tab (or all tabs); dispose browser when refcount hits 0.
+ * - `run`   → execute JS code against an existing tab with `page`/`browser`/`tab` helpers in scope.
+ */
 export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolDetails> {
 	readonly name = "browser";
 	readonly approval = "exec" as const;
@@ -100,6 +177,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		return this.#description;
 	}
 
+	/** Restart browser to apply mode changes (e.g. headless toggle). Drops only headless browsers. */
 	async restartForModeChange(): Promise<void> {
 		await dropHeadlessTabs();
 	}
@@ -115,6 +193,9 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 			throwIfAborted(signal);
 			const timeoutSeconds = clampTimeout("browser", params.timeout, this.session.settings.get("tools.maxTimeout"));
 			const timeoutMs = timeoutSeconds * 1000;
+			// A clamp changes the budget the agent asked for; surface it on the
+			// result rather than applying it silently (Law 10). Each action builds
+			// its own result, so prepend the notice once around the dispatch.
 			const clampNotice = formatTimeoutClampNotice("browser", params.timeout, timeoutSeconds);
 			const name = params.name ?? DEFAULT_TAB_NAME;
 			const details: BrowserToolDetails = { action: params.action, name };
@@ -136,6 +217,10 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 			return clampNotice ? prependResultNotice(result, clampNotice) : result;
 		} catch (error) {
 			if (error instanceof ToolAbortError) throw error;
+			// `isCancellation`, not `isAbortError`: a deadline now reaches here
+			// wearing its own `TimeoutError` name, and it stops the browser action
+			// just as surely as an interrupt does. `toolAbort` keeps the reason so
+			// the operator learns which of the two happened.
 			if (isCancellation(error)) throw toolAbort(error, "browser");
 			throw error;
 		}
@@ -151,6 +236,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		const kind = resolveBrowserKind(params, this.session);
 		details.browser = kind.kind;
 
+		// If a tab with this name already exists on a different browser kind, fail fast — caller must close first.
 		const existing = getTab(name);
 		if (existing && !sameBrowserKind(existing.browser.kind, kind)) {
 			throw new ToolError(
@@ -248,6 +334,10 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 				session: this.session,
 			});
 		} catch (error) {
+			// A failed run still reports what it managed to produce. The displayed lines are folded
+			// into the error text because that is the only channel a thrown tool error has, and the
+			// screenshots go onto `details` so they still render. An abort is left alone: the
+			// operator cancelled, so there is no failure to explain.
 			const partial = error instanceof ToolAbortError ? undefined : (error as BrowserRunError).partialRunOutput;
 			if (partial !== undefined && error instanceof Error) {
 				if (partial.screenshots.length) details.screenshots = partial.screenshots;
@@ -263,19 +353,21 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 
 		if (screenshots.length) details.screenshots = screenshots;
 
-		const content = displays.slice();
+		const content = [...displays];
 		if (returnValue !== undefined) {
 			content.push({ type: "text", text: stringifyReturnValue(returnValue) });
 		}
 		if (!content.length) {
 			content.push({ type: "text", text: `Ran code on tab ${JSON.stringify(name)}` });
 		}
-		const textParts: string[] = [];
-		for (let ci = 0; ci < content.length; ci++) {
-			const c = content[ci]!;
-			if (c.type === "text") textParts.push(c.text);
-		}
-		const textOnly = textParts.join("\n");
+		const textOnly = content
+			.filter((c): c is { type: "text"; text: string } => c.type === "text")
+			.map(c => c.text)
+			.join("\n");
+		// Final defense at the tool-result boundary: a single run can display
+		// tens of KB (large JSON returns, dumped observations). Cap the combined
+		// text inline; the full text stays recoverable via the artifact footer
+		// when allocation succeeds.
 		const cappedText = await enforceInlineByteCap(textOnly, {
 			...inlineOutputPricing(this.session),
 			saveArtifact: full => saveBrowserOutputArtifact(this.session, full),
@@ -291,6 +383,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 	}
 }
 
+/** Persist over-cap browser run output as a session artifact; mirrors the bash minimizer's save path. */
 function saveBrowserOutputArtifact(session: ToolSession, fullText: string): Promise<string | undefined> {
 	return saveOutputArtifact(session, "browser-original", fullText);
 }

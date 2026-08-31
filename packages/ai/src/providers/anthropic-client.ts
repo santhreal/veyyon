@@ -1,3 +1,26 @@
+/**
+ * Minimal HTTP client for the Anthropic Messages API.
+ *
+ * pi-ai builds every request header itself (`buildAnthropicHeaders`), serializes
+ * the body itself (`buildParams`), and parses SSE frames itself
+ * (`iterateAnthropicEvents`), so the only `@anthropic-ai/sdk` surface this
+ * package ever exercised was URL assembly, auth-header injection, bounded
+ * retries, the pre-response timeout, and HTTP-error-to-status mapping. This
+ * module implements exactly that surface and nothing else.
+ *
+ * Behavioral contract (kept compatible with the SDK so downstream error
+ * classification keeps working):
+ * - Non-2xx responses throw {@link AnthropicApiError} whose `status` property
+ *   carries the HTTP status and whose message is `"<status> <body>"`.
+ * - Pre-response timeouts throw {@link AnthropicConnectionTimeoutError}
+ *   ("Request timed out.").
+ * - Caller aborts throw an `Error` with message "Request was aborted.".
+ * - Retries: connection errors and 408/409/429/5xx (or `x-should-retry: true`)
+ *   are retried up to `maxRetries` times, honoring `retry-after-ms` /
+ *   `retry-after` up to `maxRetryDelayMs` (a longer hint surfaces the refusal
+ *   instead of sleeping on it), otherwise exponential backoff (0.5s * 2^n,
+ *   capped at 8s, with up to 25% jitter).
+ */
 import { scheduler } from "node:timers/promises";
 import * as AIError from "../error";
 import { AnthropicApiError, AnthropicConnectionError, AnthropicConnectionTimeoutError } from "../error";
@@ -7,23 +30,116 @@ export { AnthropicApiError, AnthropicConnectionError, AnthropicConnectionTimeout
 import { ANTHROPIC_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { DEFAULT_MAX_DELAY_MS } from "@veyyon/utils/fetch-retry";
 import type { FetchImpl } from "../types";
-import type { AnthropicClientOptions, AnthropicRequestOptions } from "./anthropic-client-helpers";
-
-import {
-	ANTHROPIC_RESPONSE_RETRY_POLICY,
-	calculateAnthropicRetryDelayMs,
-	createAbortError,
-	DEFAULT_MAX_RETRIES,
-	DEFAULT_TIMEOUT_MS,
-	hasHeaderCaseInsensitive,
-	retryDelayFromHeaders,
-} from "./anthropic-client-helpers";
 import type { MessageCreateParamsStreaming } from "./anthropic-wire";
 
-export type { AnthropicFetchOptions } from "./anthropic-client-helpers";
-export type { AnthropicRequestOptions };
-export { calculateAnthropicRetryDelayMs, retryDelayFromHeaders };
+/** Default pre-response timeout, matching the SDK's 10-minute default. */
+const DEFAULT_TIMEOUT_MS = 600_000;
+/** Default retry budget, matching the SDK's default. */
+const DEFAULT_MAX_RETRIES = 2;
+const INITIAL_RETRY_DELAY_S = 0.5;
+const MAX_RETRY_DELAY_S = 8;
 
+/** Per-request options accepted by {@link AnthropicMessages.create}. */
+export interface AnthropicRequestOptions {
+	signal?: AbortSignal;
+	/** Pre-response timeout in milliseconds. */
+	timeout?: number;
+	/** Per-request retry budget override. */
+	maxRetries?: number;
+	/**
+	 * Longest single server-directed wait this request will sit on. A
+	 * `retry-after` above it surfaces the refusal instead. Defaults to
+	 * {@link DEFAULT_MAX_DELAY_MS}.
+	 */
+	maxRetryDelayMs?: number;
+	/** Per-request headers merged after client defaults. */
+	headers?: Record<string, string>;
+}
+
+/**
+ * Extra `RequestInit` fields merged into every fetch call. Bun extends
+ * `RequestInit` with a `tls` option used for the Claude Code TLS profile and
+ * Foundry mTLS. Core request fields (`method`, `headers`, `body`, `signal`)
+ * are owned by the client and cannot be overridden from here — the timeout
+ * controller's signal in particular must always win.
+ */
+export type AnthropicFetchOptions = RequestInit & {
+	tls?: {
+		rejectUnauthorized?: boolean;
+		serverName?: string;
+		ciphers?: string;
+		ca?: string | string[];
+		cert?: string;
+		key?: string;
+	};
+	/** Bun extension: see {@link FetchWithRetryOptions.timeout} — `false` disables Bun's native fetch TTFT timeout (issue #2422). */
+	timeout?: number | false;
+};
+
+export interface AnthropicClientOptions {
+	/** Sent as `X-Api-Key` unless the header is already present in `defaultHeaders`. */
+	apiKey?: string | null;
+	/** Sent as `Authorization: Bearer <token>` unless the header is already present in `defaultHeaders`. */
+	authToken?: string | null;
+	baseURL?: string | null;
+	maxRetries?: number;
+	/** Pre-response timeout in milliseconds. Defaults to 10 minutes. */
+	timeout?: number;
+	defaultHeaders?: Record<string, string>;
+	fetch?: FetchImpl;
+	fetchOptions?: AnthropicFetchOptions;
+}
+
+function createAbortError(): Error {
+	return new AIError.RequestAbortError("Request was aborted.");
+}
+
+/**
+ * Anthropic's own addition to what a response says: 409, which its client retries and the registry
+ * does not read as transient. Everything else — the `x-should-retry` instruction, the transient set,
+ * and the difference between a 429 that named a spent allowance and one that named a throttle — is
+ * `retryResponse`'s, so this ladder and the credential layer answer the same failure the same way.
+ */
+const ANTHROPIC_RESPONSE_RETRY_POLICY: AIError.ResponseRetryPolicy = { api: "anthropic", alsoRetry: [409] };
+
+/** Server-suggested delay (`retry-after-ms`, then `retry-after` seconds or HTTP date). */
+export function retryDelayFromHeaders(headers: Headers | undefined): number | undefined {
+	if (!headers) return undefined;
+	const retryAfterMs = headers.get("retry-after-ms");
+	if (retryAfterMs) {
+		const ms = Number.parseFloat(retryAfterMs);
+		if (Number.isFinite(ms) && ms >= 0) return ms;
+	}
+	const retryAfter = headers.get("retry-after");
+	if (retryAfter) {
+		const seconds = Number.parseFloat(retryAfter);
+		if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+		const dateMs = Date.parse(retryAfter) - Date.now();
+		if (Number.isFinite(dateMs) && dateMs >= 0) return dateMs;
+	}
+	return undefined;
+}
+
+export function calculateAnthropicRetryDelayMs(attempt: number): number {
+	const sleepSeconds = Math.min(INITIAL_RETRY_DELAY_S * 2 ** attempt, MAX_RETRY_DELAY_S);
+	const jitter = 1 - Math.random() * 0.25;
+	return sleepSeconds * jitter * 1000;
+}
+
+function hasHeaderCaseInsensitive(headers: Record<string, string>, lowerName: string): boolean {
+	for (const key in headers) {
+		if (key.toLowerCase() === lowerName) return true;
+	}
+	return false;
+}
+
+/**
+ * Lazy in-flight request handle. The HTTP request starts on the first
+ * `asResponse()` call; subsequent calls return the same promise.
+ *
+ * Shape-compatible with the SDK's `APIPromise.asResponse()` so
+ * `getAnthropicStreamResponse` treats internal and injected clients uniformly.
+ */
 export class AnthropicApiRequest {
 	#start: () => Promise<Response>;
 	#response: Promise<Response> | undefined;
@@ -38,6 +154,10 @@ export class AnthropicApiRequest {
 	}
 }
 
+/**
+ * `messages` resource. `create` lives on the prototype so tests can intercept
+ * every outgoing request with `vi.spyOn(AnthropicMessages.prototype, "create")`.
+ */
 export class AnthropicMessages {
 	#client: AnthropicMessagesClient;
 	#path: string;
@@ -52,6 +172,11 @@ export class AnthropicMessages {
 	}
 }
 
+/**
+ * Structural interface satisfied by both {@link AnthropicMessagesClient} and
+ * SDK-style clients (e.g. `AnthropicVertex`), so callers can inject an
+ * alternative Messages-API client via `AnthropicOptions.client`.
+ */
 export interface AnthropicMessagesClientLike {
 	messages: { create(params: MessageCreateParamsStreaming, options?: AnthropicRequestOptions): unknown };
 	beta?: { messages: { create(params: MessageCreateParamsStreaming, options?: AnthropicRequestOptions): unknown } };
@@ -131,6 +256,7 @@ export class AnthropicMessagesClient implements AnthropicMessagesClientLike {
 				// header, and the status is what tells the operator to wait.
 				const hintedMs = retryDelayFromHeaders(response.headers);
 				if (hintedMs === undefined || hintedMs <= maxRetryDelayMs) {
+					// Cancelling a body no one will read. The error that matters is raised around this line, and a stream
 					// that refuses to cancel -- usually because it already ended -- changes nothing about it.
 					await response.body?.cancel().catch(() => {});
 					await this.#backoff(attempt, response.headers, callerSignal);

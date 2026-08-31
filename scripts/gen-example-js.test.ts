@@ -107,6 +107,10 @@ describe("generateTwins", () => {
 		expect(twin("examples/extensions/pirate.js").generated).toContain("...event.systemPrompt");
 		expect(twin("examples/hooks/file-trigger.js").generated).toContain("{ triggerTurn: true }");
 		expect(twin("examples/sdk/07-context-files.js").generated).toContain("await discoverContextFiles()");
+		const planMode = twin("examples/extensions/plan-mode.js").generated;
+		expect(planMode).toContain('const PLAN_MODE_TOOLS = ["read", "bash", "search"]');
+		expect(planMode).toContain('const NORMAL_MODE_TOOLS = ["read", "bash", "search", "edit", "write"]');
+		expect(planMode).not.toContain("grep, find");
 	});
 });
 

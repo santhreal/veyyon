@@ -1,7 +1,17 @@
+/**
+ * Exa Web Search Provider
+ *
+ * High-quality neural search via Exa Search API.
+ * Returns structured search results with optional content extraction.
+ * Requests per-result summaries via `contents.summary` and synthesizes
+ * them into a combined `answer` string on the SearchResponse.
+ */
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { asRecord, tryParseJson } from "@veyyon/utils";
+// The two owners rather than the store that re-exports both: the slot leaf for the value, the schema for
+// the default. A web-search provider reading two settings paid 95 modules for the pair.
 import { settings } from "../../../config/settings-instance";
 import { getDefault } from "../../../config/settings-schema";
 import { findApiKey, isSearchResponse } from "../../../exa/mcp-client";
@@ -16,6 +26,9 @@ import { classifyProviderHttpError, withHardTimeout } from "./utils";
 
 const EXA_API_URL = "https://api.exa.ai/search";
 const DEFAULT_EXA_SEARCH_DELAY_MS = getDefault("exa.searchDelayMs");
+// Result-count bounds, matching the house convention every other list provider
+// follows (clampNumResults with a per-provider DEFAULT/MAX). The Exa `/search`
+// API accepts up to 100 results, the same ceiling firecrawl uses.
 const MAX_NUM_RESULTS = 100;
 
 let nextExaSearchRequestAt = 0;
@@ -79,6 +92,8 @@ async function waitForExaSearchSlot(signal: AbortSignal | undefined): Promise<vo
 	const delayMs = configuredExaSearchDelayMs();
 	if (delayMs <= 0) return;
 
+	// This is a rate-limit queue, not a work queue: each waiter cares only that the PREVIOUS waiter's turn has
+	// settled, never whether its search succeeded, and a failure there must not wedge the queue for everyone.
 	const prior = exaSearchThrottle.catch(() => {});
 	const queued = prior.then(async () => {
 		signal?.throwIfAborted();
@@ -89,10 +104,13 @@ async function waitForExaSearchSlot(signal: AbortSignal | undefined): Promise<vo
 		signal?.throwIfAborted();
 		nextExaSearchRequestAt = Date.now() + delayMs;
 	});
+	// `queued` is awaited below and carries an abort to this caller; the stored tail only orders the next
+	// waiter, so it must settle.
 	exaSearchThrottle = queued.catch(() => {});
 	await waitUntilDoneOrAborted(queued, signal);
 }
 
+/** Reset Exa request pacing state for isolated provider tests. */
 export function resetExaSearchThrottleForTest(): void {
 	nextExaSearchRequestAt = 0;
 	exaSearchThrottle = Promise.resolve();
@@ -112,6 +130,10 @@ export interface ExaSearchParams {
 	end_published_date?: string;
 	signal?: AbortSignal;
 	fetch?: FetchImpl;
+	/**
+	 * Credential source. Resolved before falling back to `EXA_API_KEY` so
+	 * Exa works when the key is stored via the broker/auth pipeline.
+	 */
 	authStorage?: AuthStorage;
 	sessionId?: string;
 	resolveProviderTextTransform?: SearchParams["resolveProviderTextTransform"];
@@ -236,8 +258,14 @@ export function normalizeSearchType(type: ExaSearchParamType | undefined): ExaSe
 	return type;
 }
 
+/** Maximum number of per-result summaries to include in the synthesized answer. */
 const MAX_ANSWER_SUMMARIES = 3;
 
+/**
+ * Synthesize an answer string from per-result summaries returned by Exa.
+ * Returns `undefined` when no non-empty summaries are available so callers
+ * can leave `SearchResponse.answer` unset (matching other providers).
+ */
 export function synthesizeAnswer(results: ExaSearchResult[]): string | undefined {
 	const parts: string[] = [];
 	for (const r of results) {
@@ -250,6 +278,7 @@ export function synthesizeAnswer(results: ExaSearchResult[]): string | undefined
 	return parts.length > 0 ? parts.join("\n\n") : undefined;
 }
 
+/** Build the request body for `callExaSearch`. Exported for testing. */
 export function buildExaRequestBody(params: ExaSearchParams): Record<string, unknown> {
 	const body: Record<string, unknown> = {
 		query: params.query,
@@ -276,6 +305,7 @@ export function buildExaRequestBody(params: ExaSearchParams): Record<string, unk
 	return body;
 }
 
+/** Call Exa Search API */
 async function callExaSearch(apiKey: string, params: ExaSearchParams): Promise<ExaSearchResponse> {
 	const fetchImpl = params.fetch ?? fetch;
 	await waitForExaSearchSlot(params.signal);
@@ -375,7 +405,11 @@ async function callExaMcpSearch(params: ExaSearchParams): Promise<ExaSearchRespo
 	});
 }
 
+/** Execute Exa web search */
 export async function searchExa(params: ExaSearchParams): Promise<SearchResponse> {
+	// AuthStorage-backed key takes precedence (existing behavior); probe it once
+	// so the env-key and keyless-MCP fallbacks below stay intact, then drive the
+	// authStorage path through the central force-refresh/rotate retry policy.
 	const storedKey = params.authStorage
 		? await params.authStorage.getApiKey("exa", params.sessionId, { signal: params.signal })
 		: undefined;
@@ -383,6 +417,10 @@ export async function searchExa(params: ExaSearchParams): Promise<SearchResponse
 		storedKey && params.authStorage
 			? params.authStorage.resolver("exa", { sessionId: params.sessionId })
 			: getEnvApiKey("exa");
+	// Clamp once at the shared entry so BOTH call paths (the REST `numResults`
+	// and the MCP `num_results`) and the post-fetch slice below are bounded to
+	// the same cap, regardless of whether the caller reached searchExa directly
+	// or through ExaProvider.search. This mirrors the zai/brave/tavily pattern.
 	const resultCap = clampNumResults(params.num_results, SEARCH_DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 	const cappedParams: ExaSearchParams = { ...params, num_results: resultCap };
 	let response: ExaSearchResponse;
@@ -398,6 +436,7 @@ export async function searchExa(params: ExaSearchParams): Promise<SearchResponse
 		response = await callExaMcpSearch(cappedParams);
 	}
 
+	// Convert to unified SearchResponse
 	const sources: SearchSource[] = [];
 
 	if (response.results) {
@@ -414,8 +453,10 @@ export async function searchExa(params: ExaSearchParams): Promise<SearchResponse
 		}
 	}
 
+	// Bound the returned sources to the same clamped cap used for the request.
 	const limitedSources = sources.length > resultCap ? sources.slice(0, resultCap) : sources;
 
+	// Synthesize answer only from results that have a URL (same guard as sources loop)
 	const answer = response.results ? synthesizeAnswer(response.results.filter(r => !!r.url)) : undefined;
 
 	return {
@@ -426,6 +467,7 @@ export async function searchExa(params: ExaSearchParams): Promise<SearchResponse
 	};
 }
 
+/** Search provider for Exa. */
 export class ExaProvider extends SearchProvider {
 	readonly id = "exa";
 	readonly label = "Exa";
@@ -435,6 +477,13 @@ export class ExaProvider extends SearchProvider {
 		return !!getEnvApiKey("exa") || authStorage.hasAuth("exa");
 	}
 
+	/**
+	 * Exa ships an unauthenticated public MCP fallback, so an explicit
+	 * selection (programmatic or via `providers.webSearch: exa`) routes
+	 * through MCP even when no credential is configured. The auto chain
+	 * still uses {@link isAvailable} so an unrelated configured provider
+	 * keeps priority over the public fallback.
+	 */
 	isExplicitlyAvailable(_authStorage: AuthStorage): boolean {
 		return this.#settingsAllowSearch();
 	}
@@ -444,7 +493,9 @@ export class ExaProvider extends SearchProvider {
 			if (settings.get("exa.enabled") === false || settings.get("exa.enableSearch") === false) {
 				return false;
 			}
-		} catch {}
+		} catch {
+			// Settings may be unavailable before CLI initialization; assume not disabled.
+		}
 		return true;
 	}
 

@@ -5,7 +5,14 @@ export interface HotkeysMarkdownBindings {
 	keybindings: Pick<KeybindingsManager, "getDisplayString">;
 }
 
-/** The live chord for an action, or `Disabled` when the user unbound it. This takes the whole `Keybinding` union rather than only the `app.*` half. The */
+/**
+ * The live chord for an action, or `Disabled` when the user unbound it.
+ *
+ * This takes the whole `Keybinding` union rather than only the `app.*` half. The
+ * editor and composer rows used to hardcode their chords, so `/hotkeys` printed
+ * `Ctrl+U` at a user who had rebound `tui.editor.deleteToLineStart` to something
+ * else, in a panel whose entire purpose is showing what the keys are RIGHT NOW.
+ */
 function key(bindings: HotkeysMarkdownBindings, action: Keybinding): string {
 	return bindings.keybindings.getDisplayString(action) || "Disabled";
 }
@@ -54,7 +61,7 @@ export function buildHotkeysMarkdown(bindings: HotkeysMarkdownBindings): string 
 		`| \`${key(bindings, "app.retry")}\` | Retry last failed assistant turn |`,
 		`| \`${key(bindings, "app.clipboard.pasteImage")}\` | Paste image or text from clipboard |`,
 		"| Hold `Space` | Speech-to-text (push-to-talk): hold to record, release to transcribe |",
-		`| \`${key(bindings, "app.agents.hub")}\` / \`${key(bindings, "app.session.observe")}\` / double-tap \`←\` (empty editor) | Open the Agent Control Center |`,
+		`| \`${key(bindings, "app.agents.hub")}\` / \`${key(bindings, "app.session.observe")}\` / double-tap \`←\` (empty editor) | Open the subagent dashboard |`,
 		"| `#<number>` | GitHub issue/PR reference (e.g. `#3164` → `pr://`/`issue://`) |",
 		"| `#` / `#<text>` | Prompt actions (copy / undo / move cursor) |",
 		"| `/` | Slash commands |",

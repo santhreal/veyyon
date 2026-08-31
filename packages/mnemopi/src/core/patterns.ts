@@ -1,8 +1,16 @@
 import { parseTsFast } from "../util/datetime";
-import type { CompressionStatsInit } from "./patterns-helpers";
-
-import { UTF8_ENCODER } from "./patterns-helpers";
 import { CONTENT_STOPWORDS } from "./stopwords";
+
+const UTF8_ENCODER = new TextEncoder();
+
+export interface CompressionStatsInit {
+	readonly originalSize?: number;
+	readonly compressedSize?: number;
+	readonly ratio?: number;
+	readonly method?: string;
+	readonly patternsFound?: number;
+	readonly memoriesCompressed?: number;
+}
 
 export class CompressionStats {
 	originalSize: number;
@@ -212,7 +220,7 @@ export class DetectedPattern {
 	}
 }
 
-export function increment<K>(counter: Map<K, number>, key: K): void {
+function increment<K>(counter: Map<K, number>, key: K): void {
 	counter.set(key, (counter.get(key) ?? 0) + 1);
 }
 

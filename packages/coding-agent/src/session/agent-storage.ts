@@ -1,52 +1,148 @@
 import { Database, type Statement } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
+// Each name from the module that OWNS it, which for this file is the difference between 86 modules and
+// 345. The credential TYPES are erased, so naming `auth-storage` for them costs nothing; the sqlite
+// store and the busy-error predicate are values, and taking them from the barrel (or even from
+// `auth-storage`, which owns the OAuth machinery) would put the provider registry and the OAuth flows on
+// `config/settings`'s path and therefore on everything that reads a setting.
 import { isSqliteBusyError } from "@veyyon/ai/auth-credential-rows";
 import type { AuthCredential, AuthCredentialStore, StoredAuthCredential } from "@veyyon/ai/auth-storage";
 import { SqliteAuthCredentialStore } from "@veyyon/ai/auth-storage-sqlite";
 import { AsyncDrain } from "@veyyon/utils/async";
 import { getAgentDbPath, getStatsDbPath } from "@veyyon/utils/dirs";
+// Owners, not the `@veyyon/utils` barrel: 5 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { SQLITE_NOW_EPOCH } from "@veyyon/utils/sqlite";
+import { DAY_MS } from "@veyyon/utils/time";
 import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
-import type { RawSettings as Settings } from "../config/settings";
-import type {
-	ModelPerfInsert,
-	ModelPerfRow,
-	ModelPerfSample,
-	ModelPerfStats,
-	ModelUsageRow,
-	PerfAccum,
-	SettingsRow,
-	StatsMessageRow,
-} from "./agent-storage-helpers";
-import {
-	MODEL_PERF_BACKFILL_CHUNK,
-	MODEL_PERF_BACKFILL_KEY,
-	MODEL_PERF_BACKFILL_MAX_AGE_MS,
-	MODEL_PERF_BACKFILL_MAX_ROWS,
-	MODEL_PERF_DECAY_AT,
-	MODEL_PERF_FLUSH_DELAY_MS,
-	normalizeModelPerfSample,
-	SCHEMA_VERSION,
-} from "./agent-storage-helpers";
 
-export type { ModelPerfStats };
-export { SCHEMA_VERSION };
+/** Row shape for model_usage table queries */
+type ModelUsageRow = {
+	model_key: string;
+	last_used_at: number;
+};
 
+/** Row shape for model_perf table queries */
+type ModelPerfRow = {
+	model_key: string;
+	samples: number;
+	output_tokens: number;
+	gen_ms: number;
+	ttft_samples: number;
+	ttft_ms: number;
+};
+
+/** Row shape read from an `veyyon stats` messages table during backfill. */
+type StatsMessageRow = {
+	rowid: number;
+	timestamp: number;
+	provider: string;
+	model: string;
+	output_tokens: number;
+	duration: number;
+	ttft: number | null;
+};
+
+/** Per-model running sums accumulated during a backfill walk. */
+type PerfAccum = {
+	samples: number;
+	outputTokens: number;
+	genMs: number;
+	ttftSamples: number;
+	ttftMs: number;
+};
+
+/** One completed request's timing, folded into the per-model aggregates. */
+export interface ModelPerfSample {
+	/** Output tokens the provider reported for the turn. */
+	outputTokens: number;
+	/** Total request duration in milliseconds. */
+	durationMs: number;
+	/** Time to first token in milliseconds; omit when the provider did not report one. */
+	ttftMs?: number;
+}
+
+/** Validated, insert-ready model_perf sample (see {@link normalizeModelPerfSample}). */
+type ModelPerfInsert = {
+	modelKey: string;
+	outputTokens: number;
+	durationMs: number;
+	ttftSamples: 0 | 1;
+	ttftMs: number;
+};
+
+/** Recency-weighted per-model performance averages. */
+export interface ModelPerfStats {
+	/** Decayed sample count backing the averages. */
+	samples: number;
+	/** Average output tokens/sec over the total request duration. */
+	tps: number;
+	/** Average time-to-first-token in milliseconds; null when no sample reported one. */
+	ttftMs: number | null;
+}
+
+/**
+ * Decay threshold for model_perf running sums: once a model accumulates this
+ * many samples, each new sample first halves every aggregate, turning the
+ * plain average into a recency-weighted one (provider speeds drift over time).
+ */
+const MODEL_PERF_DECAY_AT = 256;
+/** meta-table marker set once historical stats.db rows have been imported into model_perf. */
+const MODEL_PERF_BACKFILL_KEY = "model_perf_backfill";
+/** Batch window for deferred model_perf writes; matches prompt-history's drain cadence. */
+const MODEL_PERF_FLUSH_DELAY_MS = 100;
+/** Backfill ignores stats.db history older than this; decay makes stale provider speeds worthless anyway. */
+const MODEL_PERF_BACKFILL_MAX_AGE_MS = 90 * DAY_MS;
+/** Rows fetched per synchronous backfill chunk — keeps per-chunk event-loop blocking under ~20ms even on cold I/O. */
+const MODEL_PERF_BACKFILL_CHUNK = 2048;
+/** Hard ceiling on rows scanned per backfill run, whatever the age cutoff admits — bounds total CPU on very high-volume databases (models only seen earlier than the newest N measurable rows get no backfill). */
+const MODEL_PERF_BACKFILL_MAX_ROWS = 250_000;
+
+/**
+ * Validates one request timing and shapes it for the model_perf upsert.
+ * Returns null for unmeasurable samples (no tokens, no duration). Out-of-range
+ * TTFT (>= duration) is bogus latency data; the sample still measures throughput.
+ */
+function normalizeModelPerfSample(modelKey: string, sample: ModelPerfSample): ModelPerfInsert | null {
+	const { outputTokens, durationMs } = sample;
+	if (!Number.isFinite(outputTokens) || outputTokens <= 0) return null;
+	if (!Number.isFinite(durationMs) || durationMs <= 0) return null;
+	const ttftMs =
+		sample.ttftMs !== undefined && Number.isFinite(sample.ttftMs) && sample.ttftMs > 0 && sample.ttftMs < durationMs
+			? sample.ttftMs
+			: undefined;
+	return { modelKey, outputTokens, durationMs, ttftSamples: ttftMs !== undefined ? 1 : 0, ttftMs: ttftMs ?? 0 };
+}
+
+/** Current agent.db schema version; bump when schema changes require migration. */
+export const SCHEMA_VERSION = 6;
+
+/** Singleton instances per database path */
 const instances = new Map<string, AgentStorage>();
+
+/** Paths whose open already failed, so a per-turn accessor does not retry-storm. */
+const unopenable = new Set<string>();
+
+/**
+ * Unified SQLite storage for agent settings, model usage, and auth credentials.
+ * Delegates auth credential operations to AuthCredentialStore from @veyyon/ai.
+ * Uses singleton pattern per database path; access via AgentStorage.open().
+ */
 export class AgentStorage {
 	#db: Database;
 	#authStore: AuthCredentialStore;
 
-	#listSettingsStmt: Statement;
 	#upsertModelUsageStmt: Statement;
 	#listModelUsageStmt: Statement;
 	#upsertModelPerfStmt: Statement;
 	#listModelPerfStmt: Statement;
 	#modelUsageCache: string[] | null = null;
+	/** Only the real user db auto-imports stats.db history; custom paths (tests, embedding) opt in explicitly. */
 	#autoPerfBackfill: boolean;
+	/** One backfill *check* per process; the persistent gate is the meta marker. */
 	#perfBackfillChecked = false;
+	/** Coalesces per-turn perf samples into one deferred transaction off the turn's hot path. */
 	#perfDrain = new AsyncDrain<ModelPerfInsert>(MODEL_PERF_FLUSH_DELAY_MS);
 
 	private constructor(dbPath: string) {
@@ -68,15 +164,17 @@ export class AgentStorage {
 		this.#initializeSchema();
 		this.#hardenPermissions(dbPath);
 
+		// Create AuthCredentialStore with our open database
 		this.#authStore = new SqliteAuthCredentialStore(this.#db);
 
-		this.#listSettingsStmt = this.#db.prepare("SELECT key, value FROM settings");
 		this.#upsertModelUsageStmt = this.#db.prepare(
 			`INSERT INTO model_usage (model_key, last_used_at) VALUES (?, ${SQLITE_NOW_EPOCH}) ON CONFLICT(model_key) DO UPDATE SET last_used_at = ${SQLITE_NOW_EPOCH}`,
 		);
 		this.#listModelUsageStmt = this.#db.prepare(
 			"SELECT model_key, last_used_at FROM model_usage ORDER BY last_used_at DESC",
 		);
+		// Recency-weighted upsert: past MODEL_PERF_DECAY_AT samples, every new
+		// sample first halves the aggregates so old measurements fade out.
 		this.#upsertModelPerfStmt = this.#db.prepare(
 			`INSERT INTO model_perf (model_key, samples, output_tokens, gen_ms, ttft_samples, ttft_ms, updated_at)
 VALUES (?1, 1, ?2, ?3, ?4, ?5, ${SQLITE_NOW_EPOCH})
@@ -93,7 +191,15 @@ ON CONFLICT(model_key) DO UPDATE SET
 		);
 	}
 
+	/**
+	 * Creates tables if missing and migrates legacy settings.
+	 * AuthCredentialStore handles auth_credentials and cache tables.
+	 */
 	#initializeSchema(): void {
+		// Install the busy handler BEFORE any lock-taking statement (incl.
+		// `PRAGMA journal_mode=WAL`, which acquires an exclusive lock during WAL
+		// recovery). Without this, concurrent veyyon startups can crash here with
+		// `SQLITE_BUSY` / `SQLITE_BUSY_RECOVERY`. See issue #2421.
 		this.#db.run("PRAGMA busy_timeout = 5000");
 		this.#db.run(`
 PRAGMA journal_mode=WAL;
@@ -136,6 +242,7 @@ CREATE TABLE settings (
 );
 `);
 		} else if (!hasKey || !hasValue) {
+			// Migrate v1 schema: single JSON blob in `data` column → per-key rows
 			let legacySettings: Record<string, unknown> | null = null;
 			const row = this.#db.prepare("SELECT data FROM settings WHERE id = 1").get() as { data?: string } | undefined;
 			if (row?.data) {
@@ -194,11 +301,17 @@ CREATE TABLE settings (
 
 	#migrateSchema(fromVersion: number): void {
 		if (fromVersion < 4) {
+			// v3 → v4: Add disabled column to auth_credentials (handled by AuthCredentialStore)
+			// Nothing to do here - AuthCredentialStore will handle this migration
 		}
 		if (fromVersion < 5) {
 			this.#migrateSchemaV4ToV5();
 		}
 		if (fromVersion < 6) {
+			// v5 → v6: TPS switched from the post-TTFT decode window to total
+			// request duration (hidden reasoning made decode-window rates bogus).
+			// Purge the old aggregates and re-arm the stats.db backfill so
+			// history is re-imported through the corrected fold.
 			this.#db.run("DELETE FROM model_perf");
 			this.#db.prepare("DELETE FROM meta WHERE key = ?").run(MODEL_PERF_BACKFILL_KEY);
 		}
@@ -238,6 +351,13 @@ FROM model_usage_legacy
 		migrate();
 	}
 
+	/**
+	 * Returns singleton instance for the given database path, creating if needed.
+	 * Retries on the `SQLITE_BUSY` family (including `SQLITE_BUSY_RECOVERY`) with
+	 * exponential backoff. See issue #2421.
+	 * @param dbPath - Path to the SQLite database file (defaults to config path)
+	 * @returns AgentStorage instance for the given path
+	 */
 	static async open(dbPath: string = getAgentDbPath()): Promise<AgentStorage> {
 		const existing = instances.get(dbPath);
 		if (existing) return existing;
@@ -267,37 +387,61 @@ FROM model_usage_legacy
 			{ cause: lastError },
 		);
 	}
+
+	/**
+	 * The database under `agentDir`, opened on first use.
+	 *
+	 * This is what a caller wants when it records model usage or reads a
+	 * cached credential mid-turn: the handle for the run, without an await and
+	 * without a second owner caching it. `config/settings` used to hold that
+	 * cache, which put `bun:sqlite` and the credential store in the module
+	 * graph every reader of a setting evaluates — and therefore in front of
+	 * the launch card, which reads settings and nothing from this database.
+	 *
+	 * Synchronous, so the open cannot retry a busy database the way
+	 * {@link open} does. Every caller treats `null` as "not recorded", so a
+	 * database that will not open costs usage statistics rather than the run:
+	 * the reason is logged once per path, and the path is not retried.
+	 */
+	static forAgentDir(agentDir: string): AgentStorage | null {
+		const dbPath = getAgentDbPath(agentDir);
+		const existing = instances.get(dbPath);
+		if (existing) return existing;
+		if (unopenable.has(dbPath)) return null;
+		try {
+			const storage = new AgentStorage(dbPath);
+			instances.set(dbPath, storage);
+			return storage;
+		} catch (error) {
+			unopenable.add(dbPath);
+			logger.warn("AgentStorage: agent database unavailable, usage will not be recorded", {
+				path: dbPath,
+				error: errorMessage(error),
+			});
+			return null;
+		}
+	}
+	/** @internal Reset all singletons and close their databases — test-only. */
 	static resetInstance(): void {
 		for (const storage of instances.values()) storage.#close();
 		instances.clear();
+		unopenable.clear();
 	}
 
 	#close(): void {
-		this.#listSettingsStmt.finalize();
 		this.#upsertModelUsageStmt.finalize();
 		this.#listModelUsageStmt.finalize();
 		this.#upsertModelPerfStmt.finalize();
 		this.#listModelPerfStmt.finalize();
+		// SqliteAuthCredentialStore.close() finalizes its own statements and
+		// closes the shared #db handle — must run after our statements finalize.
 		this.#authStore.close();
 	}
 
-	getSettings(): Settings | null {
-		const rows = (this.#listSettingsStmt.all() as SettingsRow[]) ?? [];
-		if (rows.length === 0) return null;
-		const settings: Record<string, unknown> = {};
-		for (const row of rows) {
-			try {
-				settings[row.key] = JSON.parse(row.value) as unknown;
-			} catch (error) {
-				logger.warn("AgentStorage failed to parse setting", {
-					key: row.key,
-					error: String(error),
-				});
-			}
-		}
-		return settings as Settings;
-	}
-
+	/**
+	 * Records model usage, updating the last-used timestamp.
+	 * @param modelKey - Model key in "provider/modelId" format
+	 */
 	recordModelUsage(modelKey: string): void {
 		try {
 			this.#upsertModelUsageStmt.run(modelKey);
@@ -307,6 +451,11 @@ FROM model_usage_legacy
 		}
 	}
 
+	/**
+	 * Gets model keys ordered by most recently used.
+	 * Results are cached until recordModelUsage is called.
+	 * @returns Array of model keys ("provider/modelId") in MRU order
+	 */
 	getModelUsageOrder(): string[] {
 		if (this.#modelUsageCache) {
 			return this.#modelUsageCache;
@@ -321,6 +470,19 @@ FROM model_usage_legacy
 		}
 	}
 
+	/**
+	 * Folds one completed request's timing into the model's perf aggregates.
+	 * TPS is measured over the total request duration — not the post-TTFT
+	 * decode window, which undercounts generation time (and so inflates the
+	 * rate) when reasoning tokens are generated before the first visible
+	 * token. Invalid samples (no tokens, no duration) are dropped.
+	 *
+	 * Deferred like prompt history: samples are batched and written in one
+	 * transaction after {@link MODEL_PERF_FLUSH_DELAY_MS}, keeping SQLite off
+	 * the turn-completion hot path. Fire-and-forget safe — flush failures are
+	 * logged, never thrown; await the returned promise only to observe the flush.
+	 * @param modelKey - Model key in "provider/modelId" format
+	 */
 	recordModelPerf(modelKey: string, sample: ModelPerfSample): Promise<void> {
 		const row = normalizeModelPerfSample(modelKey, sample);
 		if (!row) return Promise.resolve();
@@ -328,6 +490,9 @@ FROM model_usage_legacy
 	}
 
 	#flushModelPerf(rows: ModelPerfInsert[]): void {
+		// Kick the one-time history import too, so aggregates populate even if
+		// the user never opens /models. Additive merge makes ordering with live
+		// samples irrelevant.
 		this.#kickModelPerfBackfill();
 		try {
 			this.#db.transaction((batch: ModelPerfInsert[]) => {
@@ -342,6 +507,12 @@ FROM model_usage_legacy
 		this.#upsertModelPerfStmt.run(row.modelKey, row.outputTokens, row.durationMs, row.ttftSamples, row.ttftMs);
 	}
 
+	/**
+	 * Returns recency-weighted TPS/TTFT averages for every model with recorded
+	 * requests, keyed by "provider/modelId". Read by the /models browser.
+	 * Also kicks the one-time background stats.db import; until it completes,
+	 * models without live samples are simply absent.
+	 */
 	getModelPerf(): Map<string, ModelPerfStats> {
 		this.#kickModelPerfBackfill();
 		const stats = new Map<string, ModelPerfStats>();
@@ -360,6 +531,16 @@ FROM model_usage_legacy
 		return stats;
 	}
 
+	/**
+	 * One-time, non-blocking import of historical request timings from the
+	 * `veyyon stats` database (`~/.veyyon/stats.db`) into model_perf. Fire-and-forget:
+	 * the walk runs in bounded chunks with event-loop yields between them
+	 * (bun:sqlite is synchronous — an unbounded scan here froze the TUI for
+	 * ~30s on multi-million-row stats databases), and the persistent meta
+	 * marker is only set on success so a crash or error retries next process.
+	 * A missing stats.db leaves the marker unset so a later `veyyon stats` run
+	 * still gets imported. No-op for non-default db paths.
+	 */
 	#kickModelPerfBackfill(): void {
 		if (!this.#autoPerfBackfill || this.#perfBackfillChecked) return;
 		this.#perfBackfillChecked = true;
@@ -383,7 +564,26 @@ FROM model_usage_legacy
 		}
 	}
 
+	/**
+	 * Imports recent measurable request rows from an `veyyon stats` database
+	 * (`messages` table) into the model_perf aggregates. Walks newest-first
+	 * over the timestamp index in {@link MODEL_PERF_BACKFILL_CHUNK}-row chunks,
+	 * yielding to the event loop between chunks, and keeps at most
+	 * {@link MODEL_PERF_DECAY_AT} rows per model within the
+	 * {@link MODEL_PERF_BACKFILL_MAX_AGE_MS} window — beyond either bound the
+	 * live decay would erase the contribution anyway. Errored turns are
+	 * excluded; aborted turns with reported usage count, matching live capture.
+	 * Sums land in one additive transaction at the end, so concurrent live
+	 * samples merge correctly regardless of order.
+	 * @param statsDbPath - Path to a stats.db file; opened read-only
+	 * @returns Number of rows folded in
+	 * @throws When the stats db cannot be opened or queried
+	 */
 	async backfillModelPerfFromStats(statsDbPath: string): Promise<number> {
+		// bun:sqlite opens LAZILY, so a damaged file does not fail at the
+		// constructor: it fails at the first statement. Both the open and that
+		// first access are wrapped together, or the message below would never be
+		// the one a caller sees.
 		let statsDb: Database;
 		let select: Statement;
 		try {
@@ -399,6 +599,11 @@ ORDER BY timestamp DESC, rowid DESC
 LIMIT ?4`,
 			);
 		} catch (error) {
+			// bun:sqlite reports only `file is not a database`, with no path. Veyyon
+			// keeps six SQLite files, so on its own that says which KIND of failure
+			// happened and nothing about which file to do something about. Name the
+			// file and the way out: this database holds usage history, is rebuilt by
+			// `veyyon stats`, and deleting it costs nothing else.
 			throw new Error(
 				`Cannot read the stats database at ${statsDbPath}: ${errorMessage(error)}. ` +
 					`It holds usage history only and is rebuilt by \`veyyon stats\`, so deleting the file is safe and clears this.`,
@@ -442,6 +647,7 @@ LIMIT ?4`,
 					imported++;
 				}
 				if (rows.length < chunk) break;
+				// Yield so a chunked walk never freezes the TUI (bun:sqlite is sync).
 				await Bun.sleep(0);
 			}
 			if (sums.size > 0) {
@@ -468,14 +674,31 @@ ON CONFLICT(model_key) DO UPDATE SET
 		}
 	}
 
+	/**
+	 * Checks if any auth credentials exist in storage.
+	 * @returns True if at least one credential is stored
+	 */
 	hasAuthCredentials(): boolean {
 		return this.#authStore.listAuthCredentials().length > 0;
 	}
 
+	/**
+	 * Returns the underlying {@link AuthCredentialStore} so callers that need
+	 * the lower-level pi-ai abstraction (e.g. `findAnthropicAuth(store)`) can
+	 * reuse this storage's open database connection instead of opening their
+	 * own.
+	 */
 	get authStore(): AuthCredentialStore {
 		return this.#authStore;
 	}
 
+	/**
+	 * Lists auth credentials, optionally filtered by provider.
+	 * Only returns active (non-disabled) credentials by default.
+	 * @param provider - Optional provider name to filter by
+	 * @param includeDisabled - If true, includes disabled credentials
+	 * @returns Array of stored credentials with their database IDs
+	 */
 	listAuthCredentials(provider?: string, includeDisabled = false): StoredAuthCredential[] {
 		const credentials = this.#authStore.listAuthCredentials(provider);
 		if (!includeDisabled) return credentials;
@@ -495,6 +718,12 @@ ON CONFLICT(model_key) DO UPDATE SET
 
 		const results: StoredAuthCredential[] = [];
 		for (const row of rows) {
+			// Every path that drops a row says so. A dropped credential presents to the
+			// user as "you are not signed in to this provider" for an account they did
+			// sign in to, and silently skipping the row leaves them re-authenticating
+			// against a database row that will be skipped again the next time too.
+			// One bad row must not hide the others, so this reports and continues
+			// rather than throwing.
 			let parsed: unknown;
 			try {
 				parsed = JSON.parse(row.data);
@@ -539,44 +768,81 @@ ON CONFLICT(model_key) DO UPDATE SET
 		});
 	}
 
+	/**
+	 * Atomically replaces all credentials for a provider.
+	 * Useful for OAuth token refresh where old tokens should be discarded.
+	 * @param provider - Provider name (e.g., "anthropic", "openai")
+	 * @param credentials - New credentials to store
+	 * @returns Array of newly stored credentials with their database IDs
+	 */
 	replaceAuthCredentialsForProvider(provider: string, credentials: AuthCredential[]): StoredAuthCredential[] {
 		return this.#authStore.replaceAuthCredentialsForProvider(provider, credentials);
 	}
 
+	/**
+	 * Updates an existing auth credential by ID.
+	 * @param id - Database row ID of the credential to update
+	 * @param credential - New credential data
+	 */
 	updateAuthCredential(id: number, credential: AuthCredential): void {
 		this.#authStore.updateAuthCredential(id, credential);
 	}
 
+	/**
+	 * Disables an auth credential by ID with a persisted cause.
+	 * @param id - Database row ID of the credential to disable
+	 * @param disabledCause - Human-readable cause stored with the disabled row
+	 */
 	deleteAuthCredential(id: number, disabledCause: string): void {
 		this.#authStore.deleteAuthCredential(id, disabledCause);
 	}
 
+	/**
+	 * Disables all auth credentials for a provider with a persisted cause.
+	 * @param provider - Provider name whose credentials should be disabled
+	 * @param disabledCause - Human-readable cause stored with the disabled rows
+	 */
 	deleteAuthCredentialsForProvider(provider: string, disabledCause: string): void {
 		this.#authStore.deleteAuthCredentialsForProvider(provider, disabledCause);
 	}
 
+	/**
+	 * Gets a cached value by key. Returns null if not found or expired.
+	 */
 	getCache(key: string): string | null {
 		return this.#authStore.getCache(key);
 	}
 
+	/**
+	 * Sets a cached value with expiry time (unix seconds).
+	 */
 	setCache(key: string, value: string, expiresAtSec: number): void {
 		this.#authStore.setCache(key, value, expiresAtSec);
 	}
 
+	/**
+	 * Deletes expired cache entries. Call periodically for cleanup.
+	 */
 	cleanExpiredCache(): void {
 		this.#authStore.cleanExpiredCache();
 	}
 
+	/**
+	 * Ensures the parent directory for the database file exists.
+	 * @param dbPath - Path to the database file
+	 */
 	#ensureDir(dbPath: string): void {
 		const dir = path.dirname(dbPath);
 		try {
 			fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
 		} catch (err) {
 			const code = (err as NodeJS.ErrnoException).code;
+			// EEXIST is fine - directory already exists
 			if (code !== "EEXIST") {
 				throw new Error(`Failed to create agent storage directory '${dir}': ${code || err}`);
 			}
 		}
+		// Verify directory was created
 		if (!fs.existsSync(dir)) {
 			throw new Error(`Agent storage directory '${dir}' does not exist after creation attempt`);
 		}

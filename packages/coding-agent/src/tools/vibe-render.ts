@@ -1,3 +1,13 @@
+/**
+ * TUI renderers for the vibe tools — the mini composer (spawn/send) and the
+ * "TV wall" (wait/list).
+ *
+ * Split from `vibe.ts` on purpose: `renderers.ts` (loaded by the boot-path
+ * `tool-execution` component) needs ONLY the presentation code, while the tool
+ * implementations pull the whole vibe session runtime. Keeping the renderer in
+ * this light module keeps the vibe runtime off the CLI boot path (PERF-6);
+ * every runtime import below is type-only and erased at compile time.
+ */
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -18,7 +28,9 @@ import {
 } from "./render-utils";
 import type { VibeOp, VibeToolDetails } from "./vibe";
 
-const NON_WHITESPACE_RE = /\S/;
+// =============================================================================
+// TUI Renderer — mini composer (spawn/send) + TV wall (wait/list)
+// =============================================================================
 
 const COMPOSER_LINE_MAX = 96;
 const TV_LINE_MAX = 110;
@@ -63,10 +75,20 @@ interface VibeRenderArgs {
 	sessions?: string[];
 }
 
+/** One-line, escape-stripped fragment for embedding in a frame row. */
 function frameText(text: string, max: number): string {
 	return oneLineLabel(replaceTabs(text), max);
 }
 
+/**
+ * Draw one screen's rows. The transcript frame supplies the block's single left
+ * edge, so these rows carry indentation and no border glyph of their own:
+ * ```
+ * <header>
+ *   <body…>
+ * <footer>
+ * ```
+ */
 function miniFrame(header: string, body: string[], footer?: string): string[] {
 	const lines = [header];
 	for (const row of body) {
@@ -76,35 +98,24 @@ function miniFrame(header: string, body: string[], footer?: string): string[] {
 	return lines;
 }
 
+/** The `>` composer rows of the mini CLI: the director's message being typed in. */
 function composerRows(uiTheme: Theme, message: string, options: { cursor: boolean; expanded: boolean }): string[] {
 	const promptGlyph = uiTheme.fg("accent", ">");
-	const rawAll = message.split(/\r?\n/);
-	const rawLines: string[] = [];
-	for (let li = 0; li < rawAll.length; li++) {
-		if (NON_WHITESPACE_RE.test(rawAll[li]!)) rawLines.push(rawAll[li]!);
-	}
+	const rawLines = message.split(/\r?\n/).filter(line => line.trim().length > 0);
 	const maxRows = options.expanded ? 6 : 2;
-	const rowLimit = Math.min(rawLines.length, maxRows);
-	const visible: string[] = new Array(rowLimit);
-	for (let li = 0; li < rowLimit; li++) {
-		visible[li] = frameText(rawLines[li]!, COMPOSER_LINE_MAX);
-	}
+	const visible = rawLines.slice(0, maxRows).map(line => frameText(line, COMPOSER_LINE_MAX));
 	if (visible.length === 0) visible.push("");
 	if (rawLines.length > maxRows) {
-		visible[visible.length - 1] = `${visible[visible.length - 1]!} …`;
+		visible[visible.length - 1] = `${visible[visible.length - 1]} …`;
 	} else if (options.cursor) {
-		visible[visible.length - 1] = `${visible[visible.length - 1]!}${uiTheme.fg("accent", CURSOR_GLYPH)}`;
+		visible[visible.length - 1] = `${visible[visible.length - 1]}${uiTheme.fg("accent", CURSOR_GLYPH)}`;
 	}
-	const result: string[] = new Array(visible.length);
-	for (let li = 0; li < visible.length; li++) {
-		result[li] =
-			li === 0
-				? `${promptGlyph} ${uiTheme.fg("toolOutput", visible[li]!)}`
-				: `  ${uiTheme.fg("toolOutput", visible[li]!)}`;
-	}
-	return result;
+	return visible.map((line, index) =>
+		index === 0 ? `${promptGlyph} ${uiTheme.fg("toolOutput", line)}` : `  ${uiTheme.fg("toolOutput", line)}`,
+	);
 }
 
+/** Render one worker "TV": header + live tool calls + streamed text tail. */
 function tvScreen(
 	uiTheme: Theme,
 	screen: VibeScreenSnapshot,
@@ -132,6 +143,8 @@ function tvScreen(
 	if (screen.model) headParts.push(uiTheme.fg("muted", frameText(screen.model, 40)));
 
 	const body: string[] = [];
+	// A screen's trace is a flat tail, not a hierarchy, and the block already has
+	// its one left edge, so each row carries a mark rather than a connector.
 	const hook = uiTheme.symbol("format.bullet");
 	if (live) {
 		if (screen.turnMessage) {
@@ -154,7 +167,7 @@ function tvScreen(
 		}
 		const outputCap = options.expanded ? TV_OUTPUT_EXPANDED : TV_OUTPUT_COLLAPSED;
 		for (const line of screen.outputTail.slice(-outputCap)) {
-			if (!NON_WHITESPACE_RE.test(line)) continue;
+			if (line.trim().length === 0) continue;
 			body.push(`  ${uiTheme.fg("muted", frameText(line, TV_LINE_MAX))}`);
 		}
 	} else if (screen.lastActivity) {
@@ -169,15 +182,19 @@ function tvScreen(
 	return miniFrame(headParts.join(" "), body, footer);
 }
 
+/**
+ * Width-aware component over prebuilt lines, or — given a builder — lines
+ * recomputed on every paint. Spinner ticks repaint the tool block WITHOUT
+ * re-invoking renderCall/renderResult, so time-based content (shimmer sweep,
+ * spinner glyph, cursor blink, elapsed turn duration) must be produced inside
+ * a builder that reads the shared mutable `options` at paint time; prebuilt
+ * arrays are for static frames only.
+ */
 function linesComponent(lines: string[] | (() => string[])): Component {
 	return {
 		render(width: number): readonly string[] {
 			const rows = typeof lines === "function" ? lines() : lines;
-			const out: string[] = new Array(rows.length);
-			for (let ri = 0; ri < rows.length; ri++) {
-				out[ri] = truncateToWidth(rows[ri]!, width, Ellipsis.Unicode);
-			}
-			return out;
+			return rows.map(line => truncateToWidth(line, width, Ellipsis.Unicode));
 		},
 		invalidate() {},
 	};
@@ -200,6 +217,7 @@ function describeCall(op: VibeOp, args: VibeRenderArgs | undefined): string {
 	}
 }
 
+/** Build the shared vibe renderer for one tool name. */
 export function createVibeToolRenderer(op: VibeOp) {
 	const composerOp = op === "spawn" || op === "send";
 	return {
@@ -280,6 +298,7 @@ export function createVibeToolRenderer(op: VibeOp) {
 				return new Text(header, 0, 0);
 			}
 
+			// wait/list: the TV wall.
 			const screens = details.screens;
 			if (screens.length === 0) {
 				const fallback = result.content.find(part => part.type === "text")?.text ?? "no sessions";
@@ -295,11 +314,7 @@ export function createVibeToolRenderer(op: VibeOp) {
 			const waiting = details.wait?.waiting === true;
 			const settledById = new Map(details.wait?.settled.map(entry => [entry.id, entry.status] as const) ?? []);
 			return linesComponent(() => {
-				let running = 0;
-				for (let si = 0; si < screens.length; si++) {
-					const state = screens[si]!.state;
-					if (state === "running" || state === "starting") running++;
-				}
+				const running = screens.filter(screen => screen.state === "running" || screen.state === "starting").length;
 				const meta: string[] = [];
 				if (running > 0) meta.push(uiTheme.fg("accent", `${running} on air`));
 				if (settledById.size > 0) meta.push(uiTheme.fg("success", `${settledById.size} settled`));
@@ -321,8 +336,7 @@ export function createVibeToolRenderer(op: VibeOp) {
 				);
 				const lines = [header];
 				for (const screen of screens) {
-					const tvLines = tvScreen(uiTheme, screen, options, settledById.get(screen.id));
-					for (let li = 0; li < tvLines.length; li++) lines.push(tvLines[li]!);
+					lines.push(...tvScreen(uiTheme, screen, options, settledById.get(screen.id)));
 				}
 				return lines;
 			});

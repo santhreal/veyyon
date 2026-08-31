@@ -1,13 +1,23 @@
 import type { TUI } from "../tui";
 import { getPaddingX, sliceByColumn, visibleWidth } from "../utils";
-import type { ColorFn, LoaderMessageColorFn } from "./loader-helpers";
-
-import { RENDER_INTERVAL_MS, SPINNER_ADVANCE_MS } from "./loader-helpers";
 import { Text } from "./text";
 
-export type { LoaderMessageColorFn };
+const RENDER_INTERVAL_MS = 1000 / 30;
+const SPINNER_ADVANCE_MS = 80;
 
+type ColorFn = (str: string) => string;
+
+/**
+ * Styles Loader message fragments without changing their visible text or width.
+ * Set `animated` for colorizers whose ANSI output changes over time.
+ */
+export type LoaderMessageColorFn = ColorFn & {
+	readonly animated?: true;
+};
+
+/** Animates a spinner and colorized message while asynchronous work is pending. */
 export class Loader extends Text {
+	// The breathing pixel: the sun's intensity ramp inhaling and exhaling.
 	#frames = ["·", ":", "░", "▒", "▓", "█", "▓", "▒", "░", ":"];
 	#currentFrame = 0;
 	#intervalId?: NodeJS.Timeout;
@@ -93,6 +103,7 @@ export class Loader extends Text {
 		}
 	}
 
+	/** Lifecycle teardown: stop the animation timer. Idempotent. */
 	dispose() {
 		this.stop();
 	}
@@ -109,6 +120,10 @@ export class Loader extends Text {
 		const frame = this.#frames[this.#currentFrame];
 		const textChanged = this.setText(`${frame} ${this.message}`);
 		if ((textChanged || this.messageColorFn.animated === true) && this.#ui) {
+			// Direct write: a loader tick changes only this component, so the TUI
+			// can update the already-positioned rows without driving the full
+			// compose/prepare/diff pipeline. Lightweight test stubs may not carry
+			// the newer API; keep their legacy component-scoped path working.
 			if (typeof this.#ui.requestDirectWrite === "function") {
 				this.#ui.requestDirectWrite(this);
 			} else {

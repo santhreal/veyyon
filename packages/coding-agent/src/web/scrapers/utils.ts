@@ -1,6 +1,9 @@
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { asRecord, finiteNumber, isRecord, trimmedString } from "@veyyon/utils/type-guards";
 import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 
+// Re-export the @veyyon/utils guards/coercers so scraper modules can import
+// them from this local barrel; each has exactly one definition (the owner).
 export { asRecord, finiteNumber, isRecord, trimmedString };
 
 import { ToolAbortError } from "../../tools/tool-errors";
@@ -47,7 +50,12 @@ async function readResponseWithLimit(response: Response, maxBytes: number, signa
 	return new Uint8Array(Buffer.concat(chunks, totalBytes));
 }
 
+/**
+ * Fetch binary content from a URL
+ */
 export async function fetchBinary(url: string, timeout: number = 20, signal?: AbortSignal): Promise<BinaryFetchResult> {
+	// Scoped so the deadline timer is cleared on settle instead of staying
+	// armed like a bare AbortSignal.timeout; the fence spans the body read.
 	const requestTimeout = scopedTimeoutSignal(timeout * 1000, signal);
 	const requestSignal = requestTimeout.signal;
 	try {
@@ -82,6 +90,21 @@ export async function fetchBinary(url: string, timeout: number = 20, signal?: Ab
 	}
 }
 
+/**
+ * Assemble a partial ISO 8601 calendar date from year, month, and day parts.
+ *
+ * Scholarly metadata reports a date at whatever precision it has: a year alone,
+ * a year and month, or a full date. Missing parts are simply omitted, and each
+ * present part is left-padded to two digits. The parts arrive as numbers (a
+ * Crossref `date-parts` triple) or as strings (an ORCID `{value}` field), so
+ * every part is stringified before padding.
+ *
+ * A part counts as present only when it is truthy, so `0`, `""`, `null`, and
+ * `undefined` all read as absent. A day is only emitted when a month is also
+ * present, because a day without a month is not a valid calendar date; this is
+ * why the month and day checks nest rather than run independently. Returns
+ * `null` when no year is present, since a date must have at least a year.
+ */
 export function partialIsoDate(
 	year: number | string | null | undefined,
 	month?: number | string | null,
@@ -96,6 +119,9 @@ export function partialIsoDate(
 	return out;
 }
 
+/**
+ * Convert binary content to markdown using markit.
+ */
 export async function convertWithMarkit(
 	buffer: Uint8Array,
 	extension: string,

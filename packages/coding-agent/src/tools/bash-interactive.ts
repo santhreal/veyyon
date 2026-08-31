@@ -32,6 +32,8 @@ function normalizeCaptureChunk(chunk: string): string {
 	return sanitizeWithOptionalSixelPassthrough(normalized, sanitizeText);
 }
 
+// @xterm/headless is only needed once an interactive PTY session actually starts,
+// so it is loaded lazily (and memoized) instead of weighing down CLI startup.
 let xtermTerminalCtor: typeof XtermModule.Terminal | undefined;
 
 async function loadXtermTerminal(): Promise<typeof XtermModule.Terminal> {
@@ -84,14 +86,17 @@ function normalizeInputForPty(data: string, applicationCursorKeysMode: boolean):
 	if (altMatch) {
 		return `\x1b${altMatch[1]!}`;
 	}
+	// For any other Kitty sequence with a printable codepoint, emit the character directly
 	if (kitty.codepoint >= 32 && kitty.codepoint < 127) {
 		let ch = String.fromCharCode(kitty.codepoint);
+		// Apply ctrl modifier if present (modifier bit 4 = ctrl)
 		if (kitty.modifier & 4) {
 			const code = kitty.codepoint;
 			if (code >= 97 && code <= 122) {
 				ch = String.fromCharCode(code - 96);
 			}
 		}
+		// Apply alt modifier if present (modifier bit 2 = alt)
 		if (kitty.modifier & 2) {
 			ch = `\x1b${ch}`;
 		}
@@ -222,12 +227,9 @@ class BashInteractiveOverlayComponent implements Component {
 	#readViewport(innerWidth: number, maxContentRows: number): string[] {
 		this.#terminal.resize(innerWidth, maxContentRows);
 		const viewportY = this.#terminal.buffer.active.viewportY;
-		const rawRows = readTerminalRows(this.#terminal, viewportY, maxContentRows);
-		const result = new Array<string>(rawRows.length);
-		for (let ri = 0; ri < rawRows.length; ri++) {
-			result[ri] = truncateToWidth(styleTerminalRow(rawRows[ri]!, this.uiTheme.getFgAnsi("toolOutput")), innerWidth);
-		}
-		return result;
+		return readTerminalRows(this.#terminal, viewportY, maxContentRows).map(line =>
+			truncateToWidth(styleTerminalRow(line, this.uiTheme.getFgAnsi("toolOutput")), innerWidth),
+		);
 	}
 	render(width: number): readonly string[] {
 		const safeWidth = Math.max(20, width);
@@ -235,6 +237,7 @@ class BashInteractiveOverlayComponent implements Component {
 		const maxOverlayRows = Math.max(5, Math.floor(this.getTerminalRows() * 0.8));
 		const chromeRows = 4;
 		const maxContentRows = Math.max(1, maxOverlayRows - chromeRows);
+		// Propagate terminal resize to PTY session
 		const currentCols = innerWidth;
 		const currentRows = maxContentRows;
 		if (this.#session && (currentCols !== this.#lastCols || currentRows !== this.#lastRows)) {
@@ -242,7 +245,9 @@ class BashInteractiveOverlayComponent implements Component {
 			this.#lastRows = currentRows;
 			try {
 				this.#session.resize(currentCols, currentRows);
-			} catch {}
+			} catch {
+				// Session may have ended
+			}
 		}
 		const statusIcon =
 			this.#state === "running"
@@ -269,17 +274,14 @@ class BashInteractiveOverlayComponent implements Component {
 		const borderHorizontal = this.uiTheme.fg("border", this.uiTheme.boxSharp.horizontal.repeat(innerWidth));
 		const borderVertical = this.uiTheme.fg("border", this.uiTheme.boxSharp.vertical);
 		const boxLine = (line: string) =>
-			`${borderVertical}${truncateToWidth(line, innerWidth, undefined, true)}${borderVertical}`;
-		const lines: string[] = [
+			`${borderVertical}${line}${padding(Math.max(0, innerWidth - visibleWidth(line)))}${borderVertical}`;
+		return [
 			`${this.uiTheme.fg("border", this.uiTheme.boxSharp.topLeft)}${borderHorizontal}${this.uiTheme.fg("border", this.uiTheme.boxSharp.topRight)}`,
 			boxLine(header),
-		];
-		for (let ci = 0; ci < content.length; ci++) lines.push(boxLine(content[ci]!));
-		lines.push(
+			...content.map(boxLine),
 			boxLine(footer),
 			`${this.uiTheme.fg("border", this.uiTheme.boxSharp.bottomLeft)}${borderHorizontal}${this.uiTheme.fg("border", this.uiTheme.boxSharp.bottomRight)}`,
-		);
-		return lines;
+		];
 	}
 
 	invalidate(): void {}
@@ -300,11 +302,14 @@ export async function runInteractiveBashPty(
 		env?: Record<string, string>;
 		artifactPath?: string;
 		artifactId?: string;
+		/** Inline byte budget, priced by the caller's session. See `BashExecutorOptions.spillThreshold`. */
 		spillThreshold?: number;
+		/** Session CPU budget name; the PTY command joins that budget group. */
 		cpuBudgetId?: string;
 	},
 ): Promise<BashInteractiveResult> {
 	const settings = await Settings.init();
+	// Load the xterm Terminal ctor here (async boundary) — the ui.custom factory below is sync.
 	const XtermTerminal = await loadXtermTerminal();
 	const { shell: resolvedShell } = settings.getShellConfig();
 	const sink = new OutputSink({
@@ -347,17 +352,23 @@ export async function runInteractiveBashPty(
 				data => {
 					try {
 						session.write(data);
-					} catch {}
+					} catch {
+						// ignore writes after command exits
+					}
 				},
 				() => {
 					try {
 						session.kill();
-					} catch {}
+					} catch {
+						// ignore
+					}
 				},
 				() => {
 					try {
 						session.kill();
-					} catch {}
+					} catch {
+						// ignore
+					}
 				},
 			);
 			void session
@@ -366,6 +377,9 @@ export async function runInteractiveBashPty(
 						command: options.command,
 						cwd: options.cwd,
 						timeoutMs: options.timeoutMs,
+						// Interactive PTY: inherit the user's environment (the Rust side
+						// applies these as overrides), with a real TERM so editors,
+						// pagers, and TUIs behave like a normal terminal.
 						env: {
 							TERM: "xterm-256color",
 							...options.env,

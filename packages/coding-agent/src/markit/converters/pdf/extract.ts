@@ -1,5 +1,17 @@
+// Adapted from markit-ai (MIT). See ../../NOTICE.
+
+/**
+ * PDF content extraction using mupdf.
+ *
+ * Extracts text boxes (with position, font size, bold) and vector line
+ * segments (table borders) from each page. Uses mupdf's native WASM
+ * engine for fast parsing, and reads raw content streams for vector graphics.
+ *
+ * Coordinate system: PDF native (origin = bottom-left, Y increases upward).
+ */
 import * as fs from "node:fs";
 import * as path from "node:path";
+// Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
 import { getAgentDir } from "@veyyon/utils/dirs";
 import { errorMessage } from "@veyyon/utils/type-guards";
@@ -7,8 +19,47 @@ import type * as mupdf from "mupdf";
 import { type EmbeddedMupdfModuleFiles, loadEmbeddedMupdfModuleFiles } from "../../../utils/mupdf-wasm-embed";
 import type { ImageRegion, PageContent, Segment, TextBox } from "./types";
 
+// mupdf instantiates its WASM module via a top-level await. A static
+// `import * as mupdf` would pull that await into this module's init, which makes
+// the whole bundled markit chunk's `__esm` init async — and bun's compiled
+// bundler fails to await that init transitively through the `../markit` barrel,
+// exposing the converter classes before their module-level consts initialize
+// (e.g. `EXTENSIONS` reads as undefined). Importing mupdf lazily keeps the chunk
+// init synchronous and also keeps the ~10MB wasm off non-PDF conversions.
+//
+// Compiled binaries go further: that top-level await is incompatible with
+// bytecode compilation, so the binary build embeds mupdf's JS modules as opaque
+// file assets (scripts/embed-mupdf-wasm.ts) instead of bundling them. On first
+// PDF use they are materialized side by side into a version-keyed cache dir
+// (mupdf.js statically imports `./mupdf-wasm.js`, so the sibling layout must be
+// preserved) and imported by path. The wasm bytes themselves arrive through
+// `$libmupdf_wasm_Module.wasmBinary` (src/utils/markit.ts), so the `.wasm`
+// sibling is never read from disk.
 let mupdfModule: typeof mupdf | undefined;
 
+/**
+ * Materialize the embedded mupdf JS modules into a version-keyed cache dir and
+ * return the entry point to import.
+ *
+ * Two properties are required and neither is optional, because what gets
+ * imported here is executable code:
+ *
+ *  - the write is ATOMIC (temp file plus rename), so a process killed mid-write
+ *    can never leave a half-written module for the next run to import;
+ *  - an existing cache file is reused only when its bytes are IDENTICAL to the
+ *    embedded asset. Matching sizes are not identity. A file whose data blocks
+ *    were lost to an unclean shutdown keeps its size in the inode while its
+ *    contents come back as NULs, and a same-size mismatch also covers anything
+ *    left by an older build that wrote this dir non-atomically. Either way the
+ *    file imports as broken JavaScript, from a cache that looks correct, and it
+ *    never repairs itself because nothing rewrites a file it believes is fine.
+ *
+ * The comparison costs one read of a file already read on this path, and it runs
+ * once per process before a ~10MB wasm load, so exactness is free here.
+ *
+ * Exported for tests: it is otherwise reachable only from compiled binaries,
+ * where the embed is non-empty.
+ */
 export function materializeEmbeddedMupdf(embedded: EmbeddedMupdfModuleFiles): string {
 	const cacheDir = path.join(getAgentDir(), "cache", "mupdf", embedded.version);
 	const targets = [
@@ -19,16 +70,21 @@ export function materializeEmbeddedMupdf(embedded: EmbeddedMupdfModuleFiles): st
 		const target = path.join(cacheDir, name);
 		const bytes = fs.readFileSync(asset);
 		if (cachedFileMatches(target, bytes)) continue;
+		// Atomic so a concurrent process never imports a torn cache asset.
 		atomicWriteFileSync(target, bytes);
 	}
 	return path.join(cacheDir, "mupdf.js");
 }
 
+/** Whether the cache file at `target` is byte-for-byte the asset it stands in for. */
 function cachedFileMatches(target: string, bytes: Buffer): boolean {
 	let existing: Buffer;
 	try {
 		existing = fs.readFileSync(target);
 	} catch {
+		// Absent, or unreadable for any other reason: rewrite it. A read failure
+		// here is not swallowed, it is answered — the atomic write that follows
+		// either fixes the file or throws with the cache-dir guidance in loadMupdf.
 		return false;
 	}
 	return existing.length === bytes.length && existing.equals(bytes);
@@ -57,6 +113,7 @@ async function loadMupdf(): Promise<typeof mupdf> {
 	return mupdfModule;
 }
 
+/** mupdf structured-text JSON bounding box (top-left origin). */
 interface StextBBox {
 	x: number;
 	y: number;
@@ -64,28 +121,33 @@ interface StextBBox {
 	h: number;
 }
 
+/** Font metadata attached to a structured-text line. */
 interface StextFont {
 	size?: number;
 	weight?: string;
 	name?: string;
 }
 
+/** A line within a text block in mupdf structured-text JSON. */
 interface StextLine {
 	text?: string;
 	font?: StextFont;
 	bbox: StextBBox;
 }
 
+/** A block (text or image) in mupdf structured-text JSON. */
 interface StextBlock {
 	type: string;
 	bbox: StextBBox;
 	lines: StextLine[];
 }
 
+/** Parsed mupdf structured-text JSON for a page. */
 interface StructuredTextJSON {
 	blocks: StextBlock[];
 }
 
+/** A raw text fragment before merging into word/phrase boxes. */
 interface RawTextItem {
 	text: string;
 	x: number;
@@ -96,12 +158,22 @@ interface RawTextItem {
 	isBold: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Text extraction
+// ---------------------------------------------------------------------------
+/** Y tolerance for merging text fragments on the same visual line. */
 const SAME_LINE_Y_TOLERANCE = 2;
+/** Max horizontal gap (pts) to merge adjacent fragments into one text box. */
 const MAX_MERGE_GAP = 14;
 
+/**
+ * Merge horizontally adjacent raw text items on the same visual line into
+ * word/phrase-level text boxes.
+ */
 function mergeIntoWords(raws: RawTextItem[]): RawTextItem[] {
 	if (raws.length === 0) return [];
-	const sorted = raws.slice().sort((a, b) => {
+	// Sort by Y descending (top-first in bottom-left coords), then X ascending
+	const sorted = [...raws].sort((a, b) => {
 		const dy = b.y - a.y;
 		return Math.abs(dy) > SAME_LINE_Y_TOLERANCE ? dy : a.x - b.x;
 	});
@@ -128,6 +200,12 @@ function mergeIntoWords(raws: RawTextItem[]): RawTextItem[] {
 	return merged;
 }
 
+/**
+ * Extract text boxes from a mupdf page using structured text output.
+ *
+ * mupdf's structured text JSON uses top-left origin; we convert to
+ * bottom-left (standard PDF coordinates) using the page height.
+ */
 function extractTextBoxes(
 	page: mupdf.Page,
 	pageNumber: number,
@@ -147,6 +225,8 @@ function extractTextBoxes(
 			const weight = line.font?.weight ?? "normal";
 			const fontName = line.font?.name ?? "";
 			const isBold = weight === "bold" || /bold/i.test(fontName) || /Black|Heavy/i.test(fontName);
+			// mupdf bbox: {x, y, w, h} in top-left coords
+			// Convert to bottom-left: pdfY = pageHeight - (bbox.y + bbox.h)
 			const bboxY = line.bbox.y;
 			const bboxH = line.bbox.h;
 			const pdfY = pageHeight - (bboxY + bboxH);
@@ -179,24 +259,39 @@ function extractTextBoxes(
 		.filter(b => b.text.length > 0);
 }
 
+// ---------------------------------------------------------------------------
+// Vector segment extraction from raw content stream
+// ---------------------------------------------------------------------------
+/** Minimum aspect ratio for a filled rect to be considered a line. */
 const LINE_ASPECT_THRESHOLD = 6;
+/** Minimum length (pts) for a segment to count. */
 const MIN_LENGTH = 2;
+/** Maximum thickness (pts) for a border line (filters out filled areas). */
 const MAX_THICKNESS = 3;
 
+/**
+ * Convert a thin filled rectangle to a horizontal or vertical segment.
+ * Returns null if the rect doesn't look like a border line.
+ */
 function thinRectToSegment(id: string, x: number, y: number, w: number, h: number): Segment | null {
 	const aw = Math.abs(w);
 	const ah = Math.abs(h);
 	if (aw > ah * LINE_ASPECT_THRESHOLD && aw >= MIN_LENGTH && ah <= MAX_THICKNESS) {
+		// Horizontal line
 		const cy = y + ah / 2;
 		return { id, x1: x, y1: cy, x2: x + aw, y2: cy };
 	}
 	if (ah > aw * LINE_ASPECT_THRESHOLD && ah >= MIN_LENGTH && aw <= MAX_THICKNESS) {
+		// Vertical line
 		const cx = x + aw / 2;
 		return { id, x1: cx, y1: y, x2: cx, y2: y + ah };
 	}
 	return null;
 }
 
+/**
+ * Emit 4 edge segments from a stroked rectangle.
+ */
 function pushStrokedRectEdges(segments: Segment[], id: string, x: number, y: number, w: number, h: number): void {
 	const aw = Math.abs(w);
 	const ah = Math.abs(h);
@@ -225,6 +320,7 @@ function pushStrokedRectEdges(segments: Segment[], id: string, x: number, y: num
 
 const CTM_IDENTITY = [1, 0, 0, 1, 0, 0];
 
+/** Concatenate two affine matrices: result = parent × child. */
 function ctmConcat(p: number[], c: number[]): number[] {
 	return [
 		p[0] * c[0] + p[2] * c[1],
@@ -240,13 +336,26 @@ function ctmApply(m: number[], x: number, y: number): [number, number] {
 	return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
 }
 
+// ---------------------------------------------------------------------------
+// Content stream parsing
+// ---------------------------------------------------------------------------
+/**
+ * Parse a PDF content stream and extract line segments from thin filled
+ * rectangles (re+f), stroked rectangles (re+S), and explicit lines (m/l+S).
+ * Tracks the CTM via q/Q/cm operators so coordinates are in page space.
+ *
+ * @internal Exported for testing. Operates purely on a content-stream string,
+ * so stroke-width and CTM handling can be verified without a full PDF.
+ */
 export function extractSegmentsFromContentStream(raw: string, pageNumber: number): Segment[] {
 	const segments: Segment[] = [];
 	const tokens = tokenizeContentStream(raw);
 	let idx = 0;
 	let strokeWidth = 1.0;
-	let ctm = CTM_IDENTITY.slice();
+	// Graphics state stack (q/Q): saves CTM + strokeWidth
+	let ctm = [...CTM_IDENTITY];
 	const stateStack: Array<{ ctm: number[]; strokeWidth: number }> = [];
+	// State for path building (in user coordinates, pre-CTM)
 	let curX = 0;
 	let curY = 0;
 	let pathStartX = 0;
@@ -257,6 +366,7 @@ export function extractSegmentsFromContentStream(raw: string, pageNumber: number
 		const sid = () => `p${pageNumber}-s${segments.length}`;
 		if (mode === "fill") {
 			for (const r of pendingRects) {
+				// Transform the rect corners through CTM, then check if it's a thin line
 				const [x0, y0] = ctmApply(ctm, r.x, r.y);
 				const [x1, y1] = ctmApply(ctm, r.x + r.w, r.y + r.h);
 				const seg = thinRectToSegment(
@@ -286,6 +396,7 @@ export function extractSegmentsFromContentStream(raw: string, pageNumber: number
 				const [lx2, ly2] = ctmApply(ctm, l.x2, l.y2);
 				const dx = Math.abs(lx2 - lx1);
 				const dy = Math.abs(ly2 - ly1);
+				// Only keep H/V lines
 				if ((dx >= MIN_LENGTH && dy < 1) || (dy >= MIN_LENGTH && dx < 1)) {
 					segments.push({ id: sid(), x1: lx1, y1: ly1, x2: lx2, y2: ly2 });
 				}
@@ -297,7 +408,7 @@ export function extractSegmentsFromContentStream(raw: string, pageNumber: number
 	while (idx < tokens.length) {
 		const t = tokens[idx];
 		if (t === "q") {
-			stateStack.push({ ctm: ctm.slice(), strokeWidth });
+			stateStack.push({ ctm: [...ctm], strokeWidth });
 		} else if (t === "Q") {
 			const saved = stateStack.pop();
 			if (saved) {
@@ -313,6 +424,10 @@ export function extractSegmentsFromContentStream(raw: string, pageNumber: number
 			const f = Number(tokens[idx - 1]);
 			ctm = ctmConcat(ctm, [a, b, c, d, e, f]);
 		} else if (t === "w" && idx >= 1) {
+			// `0 w` is a valid hairline (rendered as the thinnest device line) and is
+			// common for table rules, so it must set strokeWidth to 0, not be treated
+			// as falsy and dropped. Assign only for a finite number, discarding a
+			// garbage operand — the same guard the `re` operator below uses.
 			const width = Number(tokens[idx - 1]);
 			if (Number.isFinite(width)) strokeWidth = width;
 		} else if (t === "re" && idx >= 4) {
@@ -335,6 +450,7 @@ export function extractSegmentsFromContentStream(raw: string, pageNumber: number
 			curX = x2;
 			curY = y2;
 		} else if (t === "h") {
+			// closePath: line back to start
 			if (curX !== pathStartX || curY !== pathStartY) {
 				pendingLines.push({
 					x1: curX,
@@ -349,6 +465,7 @@ export function extractSegmentsFromContentStream(raw: string, pageNumber: number
 			flushPath("fill");
 		} else if (t === "S" || t === "s") {
 			if (t === "s") {
+				// closeStroke: implicit closePath
 				if (curX !== pathStartX || curY !== pathStartY) {
 					pendingLines.push({
 						x1: curX,
@@ -360,9 +477,11 @@ export function extractSegmentsFromContentStream(raw: string, pageNumber: number
 			}
 			flushPath("stroke");
 		} else if (t === "B" || t === "B*" || t === "b" || t === "b*") {
+			// fill + stroke combined
 			flushPath("fill");
 			flushPath("stroke");
 		} else if (t === "n") {
+			// end path without painting — discard
 			pendingRects.length = 0;
 			pendingLines.length = 0;
 		}
@@ -371,6 +490,10 @@ export function extractSegmentsFromContentStream(raw: string, pageNumber: number
 	return segments;
 }
 
+/**
+ * Fast tokenizer for PDF content streams.
+ * Splits on whitespace, skipping comments, string literals, and inline image payloads.
+ */
 function tokenizeContentStream(raw: string): string[] {
 	const tokens: string[] = [];
 	const len = raw.length;
@@ -378,14 +501,17 @@ function tokenizeContentStream(raw: string): string[] {
 	let inInlineImage = false;
 	while (i < len) {
 		const ch = raw.charCodeAt(i);
+		// Skip whitespace
 		if (ch <= 32) {
 			i++;
 			continue;
 		}
+		// Skip comments
 		if (ch === 37 /* % */) {
 			while (i < len && raw.charCodeAt(i) !== 10) i++;
 			continue;
 		}
+		// Skip string literals (...)
 		if (ch === 40 /* ( */) {
 			let depth = 1;
 			i++;
@@ -402,12 +528,14 @@ function tokenizeContentStream(raw: string): string[] {
 			}
 			continue;
 		}
+		// Skip hex strings <...>
 		if (ch === 60 /* < */ && i + 1 < len && raw.charCodeAt(i + 1) !== 60) {
 			i++;
 			while (i < len && raw.charCodeAt(i) !== 62) i++;
 			i++; // skip >
 			continue;
 		}
+		// Skip dict delimiters << >>
 		if (ch === 60 && i + 1 < len && raw.charCodeAt(i + 1) === 60) {
 			i += 2;
 			continue;
@@ -416,10 +544,13 @@ function tokenizeContentStream(raw: string): string[] {
 			i += 2;
 			continue;
 		}
+		// Skip stray closing delimiters from malformed streams. They cannot start
+		// a token, so leaving i unchanged would spin forever.
 		if (ch === 41 || ch === 62) {
 			i++;
 			continue;
 		}
+		// Regular token: read until whitespace or delimiter
 		const start = i;
 		while (i < len) {
 			const c = raw.charCodeAt(i);
@@ -450,6 +581,10 @@ function tokenizeContentStream(raw: string): string[] {
 	return tokens;
 }
 
+// ---------------------------------------------------------------------------
+// Image region detection
+// ---------------------------------------------------------------------------
+/** Minimum area (pts²) for an image to be considered a diagram, not an icon. */
 const MIN_IMAGE_AREA = 5000;
 
 function extractImageRegions(stext: StructuredTextJSON, pageNumber: number, pageHeight: number): ImageRegion[] {
@@ -458,6 +593,7 @@ function extractImageRegions(stext: StructuredTextJSON, pageNumber: number, page
 		if (block.type !== "image") continue;
 		const { x, y, w, h } = block.bbox;
 		if (w * h < MIN_IMAGE_AREA) continue; // skip tiny icons
+		// Convert Y from mupdf (top-left) to PDF (bottom-left) for ordering
 		const pdfTopY = pageHeight - y;
 		regions.push({
 			id: `p${pageNumber}-img${regions.length}`,
@@ -469,6 +605,13 @@ function extractImageRegions(stext: StructuredTextJSON, pageNumber: number, page
 	return regions;
 }
 
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+/**
+ * Render an image region from a PDF page as a PNG buffer.
+ * Uses mupdf's DrawDevice to render just the cropped area at 2x resolution.
+ */
 export async function renderImageRegion(input: Uint8Array, region: ImageRegion): Promise<Uint8Array> {
 	const m = await loadMupdf();
 	const doc = m.Document.openDocument(input, "application/pdf");
@@ -491,6 +634,9 @@ export async function renderImageRegion(input: Uint8Array, region: ImageRegion):
 	return pix.asPNG();
 }
 
+/**
+ * Extract text boxes and vector segments from all pages of a PDF buffer.
+ */
 export async function extractPages(input: Uint8Array): Promise<PageContent[]> {
 	const m = await loadMupdf();
 	const doc = m.Document.openDocument(input, "application/pdf");
@@ -500,11 +646,14 @@ export async function extractPages(input: Uint8Array): Promise<PageContent[]> {
 		const page = doc.loadPage(i);
 		const bounds = page.getBounds();
 		const pageHeight = bounds[3] - bounds[1];
+		// Single structured text pass with both flags
 		const stext = JSON.parse(
 			page.toStructuredText("preserve-whitespace,preserve-images").asJSON(),
 		) as StructuredTextJSON;
+		// Extract text boxes and image regions from the same parse
 		const textBoxes = extractTextBoxes(page, pageNumber, pageHeight, stext);
 		const images = extractImageRegions(stext, pageNumber, pageHeight);
+		// Extract vector segments from raw content stream
 		let segments: Segment[] = [];
 		try {
 			const pageObj = (page as mupdf.PDFPage).getObject();
@@ -512,6 +661,7 @@ export async function extractPages(input: Uint8Array): Promise<PageContent[]> {
 			if (contents) {
 				let rawBytes: Uint8Array;
 				if (contents.isArray()) {
+					// Multiple content streams — concatenate
 					const parts: Uint8Array[] = [];
 					const len = contents.length ?? 0;
 					for (let j = 0; j < len; j++) {
@@ -533,7 +683,9 @@ export async function extractPages(input: Uint8Array): Promise<PageContent[]> {
 				const raw = new TextDecoder().decode(rawBytes);
 				segments = extractSegmentsFromContentStream(raw, pageNumber);
 			}
-		} catch {}
+		} catch {
+			// Content stream extraction failed — proceed with text only
+		}
 		pages.push({ pageNumber, textBoxes, segments, images });
 	}
 	return pages;

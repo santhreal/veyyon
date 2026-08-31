@@ -3,6 +3,8 @@ export interface EmbeddedAddonFile {
 	filename: string;
 	size?: number;
 	filePath?: string;
+	/** The archive carrying this variant. One per variant, so extracting one inflates only it. */
+	archive?: EmbeddedAddonArchive;
 }
 
 export interface EmbeddedAddonArchive {
@@ -121,6 +123,62 @@ export interface ExtractEmbeddedAddonArchiveInput {
 
 export function extractEmbeddedAddonArchive(input: ExtractEmbeddedAddonArchiveInput): string[];
 
+export interface PlanEmbeddedAddonExtractionInput {
+	files: EmbeddedAddonFile[];
+	arch: string;
+	selectedVariant: "modern" | "baseline";
+}
+
+export interface EmbeddedAddonExtractionPlan {
+	/** The single variant this host loads, or null when no variant is usable on `arch`. */
+	selected: EmbeddedAddonFile | null;
+	/** Every other variant. Written only when `selected` is present but fails to load. */
+	remaining: EmbeddedAddonFile[];
+}
+
+/**
+ * Split embedded variants into the one a host loads and the ones it does not, so a
+ * cold launch writes one addon rather than all of them. `selected` and `remaining`
+ * always partition `files`.
+ */
+export function planEmbeddedAddonExtraction(input: PlanEmbeddedAddonExtractionInput): EmbeddedAddonExtractionPlan;
+
+export interface EmbeddedAddonBundle {
+	platformTag: string;
+	version: string;
+	files: EmbeddedAddonFile[];
+}
+
+/** The loader-context fields the embedded-addon extractors read. */
+export interface EmbeddedAddonExtractionContext {
+	isCompiledBinary: boolean;
+	platformTag: string;
+	packageVersion: string;
+	selectedVariant: "modern" | "baseline";
+	versionedDir: string;
+}
+
+/**
+ * Write the one embedded variant this host loads into `ctx.versionedDir` and return
+ * its path, or null when there is nothing to extract. `bundle` defaults to the
+ * generated embedded addon, which is null outside a compiled binary.
+ */
+export function maybeExtractEmbeddedAddon(
+	ctx: EmbeddedAddonExtractionContext,
+	errors: string[],
+	bundle?: EmbeddedAddonBundle | null,
+): string | null;
+
+/**
+ * Write the variants {@link maybeExtractEmbeddedAddon} skipped, for a retry after the
+ * selected one failed to load. Returns the newly written paths.
+ */
+export function extractRemainingEmbeddedAddons(
+	ctx: EmbeddedAddonExtractionContext,
+	errors: string[],
+	bundle?: EmbeddedAddonBundle | null,
+): string[];
+
 /** Tri-state AVX2 detection: the probe ran and found it, ran and didn't, or could not run. */
 export type Avx2Support = "supported" | "unsupported" | "unknown";
 
@@ -223,14 +281,18 @@ export function staleAddonMessage(stale: StaleAddon, version: string): string;
 export function repoSlugFromRepositoryUrl(raw: string | null | undefined): string;
 
 /**
- * Whether a candidate failed because it is not there or because it is broken.
+ * Whether a candidate failed because it is not there, because the host
+ * environment cannot load it, or because it is broken.
  *
- * `absent` is an ordinary probe result and the loop moves on quietly; `broken`
- * means a file exists where the addon should be and cannot be loaded, which is
- * announced. The two used to be indistinguishable, which is how a corrupt binary
- * read as "not installed".
+ * `absent` is an ordinary probe result and the loop moves on quietly;
+ * `incompatible` means the file exists but the host's C library is too old
+ * (GLIBC/GLIBCXX version mismatch), which is an environment limitation, not
+ * a stale rebuild — the warning is suppressed; `broken` means a file exists
+ * where the addon should be and cannot be loaded for any other reason, which
+ * is announced. The three used to be indistinguishable, which is how a
+ * corrupt binary read as "not installed".
  */
-export function classifyCandidateFailure(error: unknown): "absent" | "broken";
+export function classifyCandidateFailure(error: unknown): "absent" | "incompatible" | "broken";
 
 /** The warning printed when a present addon is skipped, kept beside the classification. */
 export function brokenAddonSkippedMessage(skipped: { candidate: string; reason: string }): string;
@@ -250,8 +312,25 @@ export function loadFirstUsableAddon(input: {
 	initialErrors?: string[];
 }): { bindings?: Record<string, unknown>; candidate?: string; errors: string[] };
 
+/**
+ * The `code` stamped on every failure that means this process has no usable
+ * native addon: no `.node` on any candidate path, a GLIBC too old for the one
+ * that shipped, or a copy built for another release.
+ */
+export const NATIVE_ADDON_UNAVAILABLE_CODE: "VEYYON_NATIVE_ADDON_UNAVAILABLE";
+
+/** Stamp {@link NATIVE_ADDON_UNAVAILABLE_CODE} on a load failure and return the same error. */
+export function markNativeAddonUnavailable(error: unknown): unknown;
+
+/**
+ * True when the native addon could not be loaded at all, so a result derived
+ * from a native call carries no information and must never be reported as a
+ * finding.
+ */
+export function isNativeAddonUnavailable(error: unknown): boolean;
+
 /** The loaded bindings, loading them on first call and once only. */
-export function native(): Record<string, unknown>;
+export function native(trigger?: string): Record<string, unknown>;
 
 /** A function export that resolves its native binding on FIRST CALL, so importing for types alone loads no addon. */
 export function lazyNativeFn(name: string): (...args: unknown[]) => unknown;

@@ -44,7 +44,7 @@ paths = [
   '''(^|/)tests/''',
   '''(^|/)__tests__/''',
   '''\.test\.ts$''',
-  '''(^|/)fixtures?/''',
+  '''_test\.py$''',
   # Demo seeding. The recordings run against a throwaway HOME with fabricated
   # tokens precisely so no recording can capture a real one.
   '''^scripts/demos/''',

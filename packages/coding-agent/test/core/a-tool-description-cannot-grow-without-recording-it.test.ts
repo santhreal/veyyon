@@ -26,40 +26,45 @@
  * per configuration, and the JSON schema each tool serialises alongside its description
  * is not measured at all (`veyyon prompt --tools` reports both together, and the schema
  * is generated rather than written). It also says nothing about whether a description
- * still works after a trim — that is what the deepswe-bench prompt-override arm is for,
+ * still works after a trim — that is what the DeepSWE prompt-override arm is for,
  * and a trim lands on that verdict, not on this number going down.
  */
 import { describe, expect, it } from "bun:test";
 import { toolsPrompts } from "@veyyon/coding-agent/prompts/tools/rows";
+import { hashlinePrompts } from "@veyyon/hashline/prompts/registry";
 import { estimateTokensFromText } from "@veyyon/utils";
 
 /**
- * What each `tools/` description costs today, in `estimateTokensFromText` tokens.
+ * What each tool description costs today, in `estimateTokensFromText` tokens.
  *
  * Lower a number when a trim lands. Do not raise one without saying, in the commit, what
  * the tokens buy.
+ *
+ * `hashline/prompt` is the `edit` tool's description, which ships from hashline's registry
+ * rather than from `prompts/tools/`. It is the largest single tool description in the
+ * product and it sat outside this ratchet, which is the one thing the ratchet exists to
+ * prevent: the description nobody counted is the one that grows.
  */
 const RECORDED_TOKENS: Record<string, number> = {
+	"hashline/prompt": 2013,
 	"tools/apply-patch": 726,
 	"tools/ask": 285,
 	"tools/ast-edit": 375,
-	"tools/ast-grep": 401,
 	"tools/async-result": 105,
-	"tools/bash": 1624,
+	"tools/bash": 1516,
 	"tools/browser": 1439,
-	"tools/checkpoint": 163,
+	"tools/checkpoint": 165,
 	"tools/debug": 414,
-	"tools/eval": 1811,
+	"tools/eval": 2009,
 	"tools/github": 410,
-	"tools/glob": 281,
 	"tools/goal": 162,
-	"tools/grep": 236,
+	"tools/search": 683,
 	"tools/image-attachment-describe": 142,
 	"tools/image-attachment-describe-system": 196,
 	"tools/image-gen": 110,
 	"tools/inspect-image": 255,
 	"tools/inspect-image-system": 192,
-	"tools/irc": 679,
+	"tools/irc": 680,
 	"tools/job": 411,
 	"tools/launch": 711,
 	"tools/learn": 198,
@@ -68,15 +73,15 @@ const RECORDED_TOKENS: Record<string, number> = {
 	"tools/manage-skill": 217,
 	"tools/memory-edit": 243,
 	"tools/patch": 692,
-	"tools/read": 1297,
+	"tools/read": 1288,
 	"tools/recall": 164,
 	"tools/reflect": 98,
 	"tools/replace": 318,
 	"tools/resolve": 104,
 	"tools/retain": 103,
 	"tools/rewind": 181,
-	"tools/search-tool-bm25": 334,
-	"tools/set-cwd": 448,
+	"tools/search-tool-bm25": 359,
+	"tools/set-cwd": 449,
 	"tools/ssh": 236,
 	"tools/task": 1150,
 	"tools/task-summary": 151,
@@ -93,9 +98,14 @@ const RECORDED_TOKENS: Record<string, number> = {
 };
 
 /** The sum the recorded table claims, so the total is in the diff of any trim. */
-const RECORDED_TOTAL = 19657;
+const RECORDED_TOTAL = 21545;
 
-const measured = new Map(Object.entries(toolsPrompts).map(([id, entry]) => [id, estimateTokensFromText(entry.text)]));
+const measured = new Map<string, number>([
+	...Object.entries(toolsPrompts).map(([id, entry]) => [id, estimateTokensFromText(entry.text)] as const),
+	...hashlinePrompts.ids.map(
+		id => [`hashline/${id}`, estimateTokensFromText(hashlinePrompts.require(id).text)] as const,
+	),
+]);
 
 describe("the tools prompt budget", () => {
 	it("measures the shipped text, not an override", () => {

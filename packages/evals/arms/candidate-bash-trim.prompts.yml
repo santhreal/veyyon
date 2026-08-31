@@ -1,0 +1,99 @@
+# The prompt half of the bash-description trim experiment. The config half is
+# `candidate-bash-trim.yml`, which is intentionally identical to `baseline.yml`
+# so the pair differs by exactly one thing: the text of the `bash` tool
+# description.
+#
+# The trim removes four restatements and nothing else: a third copy of the
+# "write a shell program -> use eval" rule, the `timeout` and `backgroundAfter`
+# mechanics the JSON schema already carries, two of the three statements about
+# output truncation, and two headings that each introduced a single bullet. The
+# `timeout: 0` guidance and the reason head/tail is discouraged are kept, because
+# neither appears anywhere else. Rendered under this session's flags the
+# description goes from 4335 to about 3500 bytes.
+#
+# A prompt experiment cannot be run by editing the file in the tree: both arms of
+# a run share one built binary, so the edit reaches both arms and the delta has no
+# cause.
+tools/bash: |
+  Runs commands in the embedded shell — terminal ops: git, bun, cargo, python.
+
+  # When to use bash — and when not to
+
+  The shell invokes **real binaries** with simple args. It is NOT full GNU Bash.
+
+  Use bash ONLY for: a single binary call, or one short pipeline that COMPUTES a fact and does not depend on shell-specific regex/quoting (`wc -l`, `sort | uniq -c`, `comm`, `diff`, a checksum, `git status`).
+
+  {{#if hasEval}}Anything below → `eval` cell, not bash:
+  - Inline interpreter scripts (`-e`/`-c`/`--eval`) when an eval runtime exists for that language
+  - Heredocs (`<<EOF`), `while`/`for`/`if`/`case` shell control flow
+  - `$(…)` command substitution nested inside another command
+  - Pipelines with more than two stages, or stages that need control flow or quote/JSON escaping
+  - Multiline commands, `&&`-chains mixing control flow
+  - Quote/JSON escaping that fights the shell
+  {{else}}Anything below means you are writing a shell program, not invoking one. Prefer a purpose-built tool, a checked-in script, or a single repo command instead:
+  - Inline interpreter scripts (`-e`/`-c`/`--eval`)
+  - Heredocs (`<<EOF`), `while`/`for`/`if`/`case` shell control flow
+  - `$(…)` command substitution nested inside another command
+  - Pipelines with more than two stages, or stages that need control flow or quote/JSON escaping
+  - Multiline commands, `&&`-chains mixing control flow
+  - Quote/JSON escaping that fights the shell
+  {{/if}}
+  {{#if hasSearch}}- Workspace discovery belongs to `search`; use `type: "text"` for content and `type: "structure"` for code syntax.{{else}}- GNU grep BRE extensions are not guaranteed in the embedded shell: use `grep -E 'json|tool'` for alternation{{#if hasEval}}, or use `eval` for exact text processing{{/if}}.{{/if}}
+
+  <instruction>
+  - `env: { NAME: "…" }` for multiline / quote-heavy / untrusted values; reference `$NAME`
+  - Quote expansions (`"$NAME"`) to preserve exact content
+  - `pty: true` only when the command needs a real terminal (`sudo`, `ssh` needing input); default `false`
+  - `;` only when later commands should run despite earlier failures
+  - Multiple bash calls per message run concurrently. NEVER split order-dependent commands across parallel calls — chain with `&&` in one call.
+  - Internal URIs (`skill://`, `agent://`, …) auto-resolve to FS paths
+  {{#if asyncEnabled}}
+  - `async: true` defers reporting for finite commands that need no later input; completion arrives as a follow-up.
+  {{/if}}
+  </instruction>
+
+  <critical>
+  {{#unless hasEval}}
+  - Writing a shell program rather than invoking a binary? Use a purpose-built tool or checked-in script.
+  {{/unless}}
+  {{#if hasSearch}}
+  - `grep`/`rg`/`find`/`fd` are blocked for workspace discovery; use `search`. Use `read` for known files and directories when it is active.
+  {{else}}
+  - Avoid shelling out for broad workspace discovery when a purpose-built tool is active.
+  {{#if hasRead}}
+  - Prefer `read` for known file and directory reads. Keep shell discovery narrow.
+  {{else}}
+  - If no file read or search tool is active, keep shell inspection narrow and state that limitation.
+  {{/if}}
+  {{/if}}
+  - Avoid head/tail/redirections: the output block already merges stderr and keeps the full capture.
+  {{#if hasLaunch}}
+  - Ends on its own? bash, however long it runs{{#if asyncEnabled}} (`async: true` for a slow one){{/if}}. Runs until stopped, or needs later stdin? `launch` — NEVER `cmd &`, `nohup`, or async bash as a process supervisor.
+  {{/if}}
+  </critical>
+
+  <output>
+  - Returns output with stderr merged into stdout; a non-zero exit shows the exit code. Truncated output is linked as `artifact://<id>` in metadata.
+  - Long output is truncated and test/lint runner output filtered to failures. A `[raw output: artifact://<id>]` footer appears whenever visible text changed: read it if a run looks suspicious or you need exact bytes. No footer means you saw exactly what the command emitted.
+  </output>
+
+  # Timeout, async, and backgrounding
+  {{#if asyncEnabled}}
+
+  - `async: true` defers only reporting; it does NOT extend a nonzero timeout. Set `timeout: 0` only for a finite command whose completion is cancellation-owned.
+  {{#unless hasLaunch}}
+  - Need a long-running process or >3600s run? Use an external process supervisor; avoid detached shell jobs you cannot later observe or stop.
+  {{/unless}}
+  {{/if}}
+  {{#if autoBackgroundEnabled}}
+
+  - A long-running foreground call may convert to a background job after {{autoBackgroundSeconds}}s, and the operator can also background one by hand at any time. Either way the final result arrives as a follow-up tool call: NOT a failure, so don't retry or wait synchronously.
+  - Need the result inline (e.g. piping into another command)? Raise `timeout` above expected duration{{#if asyncEnabled}}, or set `async: true` up front{{/if}}.
+  {{/if}}
+  {{#if stallDetectionEnabled}}
+
+  ## Stall detection
+
+  - A call that produces no new output for {{stallSeconds}}s is backgrounded and flagged as possibly stuck. The notice names the job id. This is a heuristic, NOT proof it is hung.
+  - Decide: if the command was expected to be quiet (a long compile, a sleep, a slow network wait), let it run — its result still arrives as a follow-up. If you believe it is genuinely hung, cancel it with the `job` tool (`cancel: ["<jobId>"]`).
+  {{/if}}

@@ -1,3 +1,10 @@
+/**
+ * HTTP discovery protocols for configured and implicit providers — ollama,
+ * llama.cpp, lm-studio, openai-models-list, and new-api/one-api-style proxies.
+ * `ModelRegistry` owns the orchestration (status, state, caching) and calls
+ * `discoverModelsByProviderType` with a `DiscoveryContext`; built-in provider
+ * discovery lives in pi-catalog's provider-models.
+ */
 import type { ApiKey, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import type { Api, Model } from "@veyyon/ai/types";
@@ -20,6 +27,15 @@ import { isRecord, trimTrailingSlashes } from "@veyyon/utils";
 import { withScopedTimeoutSignal } from "../utils/fetch-timeout";
 import type { ProviderDiscovery } from "./models-config-schema";
 
+// Default cap on `max_tokens` for auto-discovered models that do not advertise
+// their own output limit (OpenAI-models-list, Ollama, llama.cpp, new-api/
+// one-api proxies). 32K matches the upper end of what mainstream
+// OpenAI-compatible providers (DeepSeek, MiMo, OpenRouter, etc.) actually
+// accept and keeps `min(contextWindow, …)` honoring smaller local windows.
+// Conservative caps below this caused providers to drop the connection
+// mid-stream when models hit the cap on legitimate large tool calls (see
+// issue #1528: `write` payloads >~5KB on deepseek-v4-pro surfaced as
+// "socket connection was closed unexpectedly").
 export const DISCOVERY_DEFAULT_CONTEXT_WINDOW = OPENAI_COMPAT_DISCOVERY_DEFAULT_CONTEXT_WINDOW;
 export const DISCOVERY_DEFAULT_MAX_TOKENS = OPENAI_COMPAT_DISCOVERY_DEFAULT_MAX_TOKENS;
 
@@ -46,6 +62,9 @@ function normalizeOllamaHostEnv(value: string | undefined): string | undefined {
 		}
 		return `${parsed.protocol}//${parsed.host}`;
 	} catch {
+		// A host string out of an environment variable or a setting, which may be anything. Undefined means
+		// "not a usable host", and the caller answers by not attempting discovery against it rather than by
+		// guessing a URL -- the throw is the shape test, not a swallowed failure.
 		return undefined;
 	}
 }
@@ -62,8 +81,17 @@ export function getOllamaContextLengthOverride(): number | undefined {
 	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+// Anthropic-safe variant of the discovery cap. The Anthropic stream converter
+// in `packages/ai/src/providers/anthropic.ts` derives the request limit as
+// `(model.maxTokens / 3) | 0`, so the 32K default would surface as 10,922
+// requested output tokens — above the 8,192 hard cap on classic Claude 3.x
+// Sonnet/Haiku/Opus endpoints. Discovered models routed through
+// `anthropic-messages` (proxy `supported_endpoint_types: ["anthropic"]` or a
+// custom provider with `api: anthropic-messages` + openai-models-list
+// discovery) fall back to this conservative value.
 const DISCOVERY_DEFAULT_MAX_TOKENS_ANTHROPIC = 8_192;
 
+/** Routes discovered-model `maxTokens` defaults around Anthropic's 3× output divisor. */
 export function discoveryDefaultMaxTokens(api: Api | undefined): number {
 	return api === "anthropic-messages" ? DISCOVERY_DEFAULT_MAX_TOKENS_ANTHROPIC : DISCOVERY_DEFAULT_MAX_TOKENS;
 }
@@ -78,8 +106,16 @@ export interface DiscoveryProviderConfig {
 	optional?: boolean;
 }
 
+/** Registry-provided capabilities the protocol probes need; never the registry itself. */
 export interface DiscoveryContext {
+	/** Injected fetch implementation (tests stub this). */
 	fetch: FetchImpl;
+	/**
+	 * Resolve a provider's bearer credential for `Authorization: Bearer …`.
+	 * Returns undefined when no key is stored or it is a local/no-auth
+	 * sentinel; otherwise an {@link ApiKey} whose resolver participates in the
+	 * central force-refresh/rotate auth-retry policy on 401/usage-limit.
+	 */
 	getBearerApiKeyResolver(provider: string): Promise<ApiKey | undefined>;
 }
 
@@ -105,6 +141,14 @@ type LlamaCppModelListEntry = {
 	id: string;
 	input?: ("text" | "image")[];
 	runtimeContextWindow?: number;
+	/**
+	 * `--ctx-size` extracted from the entry's `status.args` (rendered CLI arg
+	 * vector) or `status.preset` INI. Populated for llama-server router-mode
+	 * presets so unloaded models surface the user's configured window instead
+	 * of falling through to the 128K default — the router-level `/props`
+	 * reports a dummy `n_ctx: 0` and `meta.n_ctx` is only merged in after a
+	 * child instance loads (issue #4190).
+	 */
 	configuredContextWindow?: number;
 	trainingContextWindow?: number;
 };
@@ -132,6 +176,14 @@ function isLlamaCppUnlimitedSentinel(value: unknown): boolean {
 	return false;
 }
 
+/**
+ * llama.cpp `/props.default_generation_settings.params.{max_tokens,n_predict}`
+ * are per-request defaults the server applies when a client omits the field —
+ * clients can still raise them per call. Positive values therefore are NOT
+ * hard model caps; only the `-1` unlimited sentinel reliably tells us the
+ * server bounds generation by the runtime context window. Anything else
+ * leaves the discovery default in place.
+ */
 function extractLlamaCppMaxTokens(payload: Record<string, unknown>): "contextWindow" | undefined {
 	const generationSettings = payload.default_generation_settings;
 	const params = isRecord(generationSettings) ? generationSettings.params : undefined;
@@ -239,6 +291,9 @@ function parseLlamaCppModelList(payload: unknown): LlamaCppModelListEntry[] {
 	});
 }
 
+// llama-server's `to_args()` renders the long form `--ctx-size` (never `-c`),
+// but tolerate the short form and the embedded `--flag=value` shape so a
+// hand-rolled forwarder cannot silently downgrade the discovered window.
 const LLAMA_CPP_CTX_SIZE_FLAGS = new Set(["--ctx-size", "-c"]);
 
 function extractLlamaCppCtxSizeFromArgs(value: unknown): number | undefined {
@@ -258,6 +313,8 @@ function extractLlamaCppCtxSizeFromArgs(value: unknown): number | undefined {
 	return undefined;
 }
 
+// `common_preset::to_ini()` emits one option per line as `<long-arg-without-dashes> = <value>`,
+// so `ctx-size = 8192` is the exact wire form (issue #4190).
 function extractLlamaCppCtxSizeFromIni(value: unknown): number | undefined {
 	if (typeof value !== "string") {
 		return undefined;
@@ -355,6 +412,11 @@ async function discoverOllamaModelMetadata(
 			contextWindow,
 		};
 	} catch {
+		// This is ENRICHMENT of a model that has already been discovered, behind a 150ms probe: null means
+		// "no extra metadata", the model is still offered, and the caller falls back to the documented
+		// defaults for its context window and capabilities. What the reader loses is precision, not the
+		// model, and the defaults are visible in the model record. Carrying the reason back for the
+		// discovery calls that decide whether a model appears AT ALL is a separate, tracked change.
 		return null;
 	}
 }
@@ -432,6 +494,8 @@ async function discoverLlamaCppServerMetadata(
 			input: extractLlamaCppInputCapabilities(payload),
 		};
 	} catch {
+		// Same as the Ollama metadata probe above: optional enrichment behind a 150ms budget, null means the
+		// server's `/props` had nothing to add, and the models it serves are still discovered.
 		return null;
 	}
 }
@@ -551,6 +615,10 @@ export async function discoverLlamaCppModelRuntimeMetadata(
 			? await withAuth(apiKey, key => attempt({ ...baseHeaders, Authorization: `Bearer ${key}` }))
 			: await attempt(baseHeaders);
 	} catch {
+		// A per-model refinement, including the credential lookup it needs: undefined leaves the model with
+		// the values discovery already gave it rather than removing it. Reporting per model per discovery
+		// pass would fire once for every model on an unreachable endpoint, which the discovery-level report
+		// covers in one line instead.
 		return undefined;
 	}
 }
@@ -598,6 +666,15 @@ export async function discoverOpenAIModelsList(
 		const id = item.id;
 		if (!id) continue;
 		const nativeMetadataForModel = nativeMetadata?.get(id);
+		// Thin OpenAI-compatible proxies frequently omit `context_length`/
+		// `max_model_len` on `/v1/models`, leaving discovered models pinned at
+		// the 128K default even when the underlying model is e.g. a proxied
+		// Claude with a 1M window. Resolve the id against the bundled catalog
+		// (same pattern as `discoverProxyModels` and `discoverLiteLLMModels`) so
+		// intrinsic metadata — context/output limits, display name, modality,
+		// reasoning support — flows through when the provider is silent. Local
+		// runtime state and provider-reported values still win; proxy-specific
+		// headers/baseUrl/cost stay local.
 		const reference = resolveModelReference(id, references) as ModelSpec<Api> | undefined;
 		const referenceCompat = reference?.compat as OpenAICompat | undefined;
 		const contextWindow =
@@ -617,8 +694,14 @@ export async function discoverOpenAIModelsList(
 				thinking: reference?.thinking,
 				input: nativeMetadataForModel?.input ?? reference?.input ?? ["text"],
 				...(providerConfig.discovery.type === "lm-studio" ? { imageInputDecoder: "stb" as const } : {}),
+				// Proxy/gateway pricing is provider-specific and rarely matches
+				// upstream bundled catalogs, so keep costs local-unknown even
+				// when we successfully recover the upstream model identity.
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 				contextWindow,
+				// Cap the reference's output limit at the discovered context
+				// window so an ID collision with a larger bundled model can
+				// never request more tokens than the local runtime advertises.
 				maxTokens: Math.min(reference?.maxTokens ?? discoveryDefaultMaxTokens(providerConfig.api), contextWindow),
 				headers,
 				compat: {
@@ -693,6 +776,21 @@ export async function discoverLiteLLMModels(
 	return richModels.map(spec => buildModel({ ...spec, headers }));
 }
 
+/**
+ * Discover models from an Anthropic+OpenAI-compatible reseller proxy that
+ * exposes both `/v1/messages` and `/v1/chat/completions`, advertising each
+ * model's wire capabilities through `supported_endpoint_types` on
+ * `GET /v1/models` (new-api / one-api-style proxies).
+ *
+ * Routing per model:
+ *   supported_endpoint_types: ["anthropic", ...] -> api: "anthropic-messages"
+ *   supported_endpoint_types: ["openai"]         -> api: "openai-completions"
+ *   missing / neither                            -> provider-level api fallback
+ *
+ * Anthropic models share the same baseUrl; the Anthropic SDK strips a
+ * trailing `/v1` itself before appending `/v1/messages`, so the discovery
+ * URL (which ends in `/v1`) round-trips correctly.
+ */
 export async function discoverProxyModels(
 	providerConfig: DiscoveryProviderConfig,
 	ctx: DiscoveryContext,
@@ -750,13 +848,23 @@ export async function discoverProxyModels(
 				reasoning: reference?.reasoning ?? false,
 				thinking: reference?.thinking,
 				input: reference?.input ?? ["text"],
+				// Proxy pricing is provider-specific and usually does not match
+				// upstream bundled catalogs, so keep costs local-unknown even when
+				// we successfully recover the upstream model identity.
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				// Prefer the context_length the API reports for this model; fall
+				// back to the bundled reference, then a sane default.
 				contextWindow:
 					toPositiveNumberOrUndefined(item.context_length) ??
 					reference?.contextWindow ??
 					DISCOVERY_DEFAULT_CONTEXT_WINDOW,
 				maxTokens: reference?.maxTokens ?? discoveryDefaultMaxTokens(api),
 				headers,
+				// OpenAI-compat fields are no-ops on anthropic models; the
+				// Anthropic SDK ignores them. Provider-level disableStrictTools
+				// flows in via #applyProviderCompat for the third-party-Anthropic
+				// path. Cross-wire bundled compat is intentionally not copied:
+				// request-shaping fields are provider-wire specific.
 				compat: isAnthropic
 					? undefined
 					: {
@@ -811,6 +919,14 @@ export function normalizeOpenAIModelsListBaseUrl(baseUrl?: string): string {
 	}
 }
 
+/**
+ * The native-API base URL for an Ollama endpoint.
+ *
+ * This used to return `${protocol}//${host}`, which discards the path. An Ollama behind a reverse
+ * proxy is mounted at a subpath, so a configured `http://gateway:11434/ollama` was discovered at
+ * `http://gateway:11434/api/tags` here and at `http://gateway:11434/ollama/api/tags` by the
+ * catalog's own discovery, and only the second one answered. The catalog owns both spellings now.
+ */
 function normalizeOllamaBaseUrl(baseUrl?: string): string {
 	return toOllamaNativeBaseUrl(catalogNormalizeOllamaBaseUrl(baseUrl || DEFAULT_OLLAMA_BASE_URL));
 }

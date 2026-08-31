@@ -1,4 +1,22 @@
-/** The session-scoped store every eval kernel shares, on disk next to the session's artifacts. continuations cycles sessions, so a value that exists only in a kernel namespace is lost at every */
+/**
+ * The session-scoped store every eval kernel shares, on disk next to the session's artifacts.
+ *
+ * WHY THIS EXISTS. An eval kernel dies with its owning agent session, and a goal that spans
+ * continuations cycles sessions, so a value that exists only in a kernel namespace is lost at every
+ * continuation: a CDP helper, an ephemeral OAST callback handle. Re-creating some values is not
+ * possible (the handle names a live callback the target already knows), and writing them to the
+ * target repository leaks them. This store is the place those values go: keyed by the session,
+ * addressed from inside a kernel by name only, so the value itself never transits a tool argument
+ * or a transcript.
+ *
+ * The file is JSON on purpose: the JavaScript, Python, Ruby and Julia kernels all read the same
+ * store, so a handle saved from one language is loadable from another. Writes are atomic (temp
+ * file + rename) and last-writer-wins; two kernels racing one key get a whole-file winner, never
+ * a torn file.
+ *
+ * The format is versioned. A store whose version this code does not understand is refused, not
+ * served: a stale shape after an upgrade must fail loud rather than hand back half-parsed values.
+ */
 
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
@@ -8,11 +26,27 @@ import { atomicWriteFile } from "@veyyon/utils/atomic-write";
 import { withFileLock } from "@veyyon/utils/file-lock";
 import { isEnoent } from "@veyyon/utils/fs-error";
 import { errorMessage } from "@veyyon/utils/type-guards";
-import type { KernelStore, StoreFile } from "./kernel-store-helpers";
-import { KV_STORE_SIZE_LIMIT, KV_VALUE_SIZE_LIMIT, STORE_VERSION } from "./kernel-store-helpers";
 
-export type { KernelStore };
-export { KV_VALUE_SIZE_LIMIT };
+const STORE_VERSION = 1;
+/** A single value above this is refused: the store is for handles and small state, not payloads. */
+export const KV_VALUE_SIZE_LIMIT = 256 * 1024;
+/** The whole store above this is refused: it rides no hot path, but a runaway loop should not grow it. */
+export const KV_STORE_SIZE_LIMIT = 4 * 1024 * 1024;
+
+export interface KernelStore {
+	/** Absolute path of the backing file, for diagnostics. Never printed with values. */
+	readonly filePath: string;
+	get(key: string): Promise<unknown>;
+	set(key: string, value: unknown): Promise<void>;
+	delete(key: string): Promise<boolean>;
+	/** Key names only: listing must never move a value into a log line or a status event. */
+	list(): Promise<string[]>;
+}
+
+interface StoreFile {
+	version: number;
+	values: Record<string, unknown>;
+}
 
 export class KernelStoreError extends Error {
 	constructor(message: string) {
@@ -20,7 +54,7 @@ export class KernelStoreError extends Error {
 		this.name = "KernelStoreError";
 	}
 }
-function sessionStoreFileName(sessionId: string): string {
+export function sessionStoreFileName(sessionId: string): string {
 	const prefix = sessionId.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 32);
 	const hash = createHash("sha256").update(sessionId, "utf8").digest("hex");
 	return prefix.length > 0 ? `${prefix}_${hash}.json` : `${hash}.json`;
@@ -102,7 +136,11 @@ async function writeFile(filePath: string, values: Record<string, unknown>): Pro
 	await atomicWriteFile(filePath, body);
 }
 
-/** Open the store for one session under `root` (the session's artifacts directory). The session id is the whole scope: two sessions never share a file, and a subagent that should share uses its */
+/**
+ * Open the store for one session under `root` (the session's artifacts directory). The session id
+ * is the whole scope: two sessions never share a file, and a subagent that should share uses its
+ * parent's id, the same rule the artifact manager already follows.
+ */
 export function openKernelStore(root: string, sessionId: string): KernelStore {
 	if (root.length === 0 || sessionId.length === 0) {
 		throw new KernelStoreError(

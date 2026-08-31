@@ -1,4 +1,13 @@
-/** Raw text of an edit preview's target file, cached for the streaming pass. A streamed edit preview recomputes on every chunk the model emits, and each */
+/**
+ * Raw text of an edit preview's target file, cached for the streaming pass.
+ *
+ * A streamed edit preview recomputes on every chunk the model emits, and each
+ * pass needs the same file it needed a frame earlier: re-reading it dominates
+ * the pass on a large file (a 11.7MiB source read ~30 times over two seconds of
+ * 30Hz args). The cache is keyed by mtime+size so any on-disk change
+ * invalidates it, and only the streaming pass consults it -- the args-complete
+ * pass reads fresh, because that is the text the edit will be applied to.
+ */
 import { errorMessage } from "@veyyon/utils";
 import { readEditFileText } from "./read-file";
 
@@ -8,7 +17,11 @@ interface CachedText {
 	rawContent: string;
 }
 
-/** One entry per file, bounded because an entry holds a whole file: a preview only ever revisits the file it is previewing, and a session touching more */
+/**
+ * One entry per file, bounded because an entry holds a whole file: a preview
+ * only ever revisits the file it is previewing, and a session touching more
+ * files than this in one stream evicts the oldest rather than growing.
+ */
 const MAX_ENTRIES = 8;
 const cache = new Map<string, CachedText>();
 
@@ -21,7 +34,10 @@ async function readFresh(absolutePath: string, displayPath: string): Promise<str
 	}
 }
 
-/** Read the preview target. `streaming` reads through the cache; anything else reads from disk and leaves the cache alone. */
+/**
+ * Read the preview target. `streaming` reads through the cache; anything else
+ * reads from disk and leaves the cache alone.
+ */
 export async function readPreviewText(
 	absolutePath: string,
 	displayPath: string,
@@ -51,7 +67,11 @@ export async function readPreviewText(
 	return rawContent;
 }
 
-/** Drop every retained file. Production has no reason to call this -- an entry is invalidated by its own mtime+size -- but a test that writes the same path */
+/**
+ * Drop every retained file. Production has no reason to call this -- an entry
+ * is invalidated by its own mtime+size -- but a test that writes the same path
+ * twice within one filesystem timestamp tick needs the slot cleared.
+ */
 export function clearPreviewTextCache(): void {
 	cache.clear();
 }

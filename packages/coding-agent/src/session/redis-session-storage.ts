@@ -4,14 +4,86 @@ import {
 	type SessionStorageBackend,
 	type SessionStorageIndexEntry,
 } from "./indexed-session-storage";
-import type { RedisSessionStorageClient, RedisSessionStorageOptions } from "./redis-session-storage-helpers";
-
-import { DEFAULT_PREFIX, DEFAULT_SCAN_COUNT, decodeTitleMeta, encodeTitleMeta } from "./redis-session-storage-helpers";
 import type { SessionTitleUpdate } from "./session-title-slot";
 
-export type { RedisSessionStorageClient };
+/**
+ * Minimal subset of the `bun:redis` `RedisClient` surface used by
+ * {@link RedisSessionStorage}. Keeping the contract narrow (and accepting any
+ * client that conforms) lets callers swap in test doubles or shared clients
+ * without dragging the entire Bun typings into this module.
+ */
+export interface RedisSessionStorageClient {
+	get(key: string): Promise<string | null>;
+	getrange(key: string, start: number, end: number): Promise<string>;
+	strlen(key: string): Promise<number>;
+	set(key: string, value: string): Promise<unknown>;
+	append(key: string, value: string): Promise<number>;
+	del(...keys: string[]): Promise<number>;
+	rename(src: string, dst: string): Promise<unknown>;
+	scan(cursor: string, ...args: string[]): Promise<[string, string[]]>;
+	hset(key: string, field: string, value: string): Promise<unknown>;
+	hgetall(key: string): Promise<Record<string, string>>;
+	hdel(key: string, ...fields: string[]): Promise<unknown>;
+}
 
+export interface RedisSessionStorageOptions {
+	/** A connected `bun:redis` RedisClient (or any compatible adapter). */
+	client: RedisSessionStorageClient;
+	/**
+	 * Key prefix applied to every Redis key this storage owns. Default `veyyon:sessions:`.
+	 * Trailing colon is preserved verbatim — set to a project-scoped prefix to share
+	 * one Redis instance between multiple agents.
+	 */
+	prefix?: string;
+	/**
+	 * Maximum number of keys returned per SCAN batch when warming the metadata index.
+	 * Default 500.
+	 */
+	scanCount?: number;
+}
+
+// Override via `prefix` when a deployment needs its own key namespace.
+const DEFAULT_PREFIX = "veyyon:sessions:";
+const DEFAULT_SCAN_COUNT = 500;
+
+function encodeTitleMeta(title: SessionTitleUpdate): string {
+	return JSON.stringify(title);
+}
+
+function decodeTitleMeta(raw: string | undefined): SessionTitleUpdate | undefined {
+	if (!raw) return undefined;
+	try {
+		const parsed = JSON.parse(raw) as unknown;
+		if (typeof parsed !== "object" || parsed === null) return undefined;
+		const record = parsed as Record<string, unknown>;
+		if (typeof record.updatedAt !== "string") return undefined;
+		const source = record.source === "auto" || record.source === "user" ? record.source : undefined;
+		return {
+			title: typeof record.title === "string" ? record.title : undefined,
+			source,
+			updatedAt: record.updatedAt,
+		};
+	} catch {
+		// The stored value is not JSON, so there is no remembered title. Reported by no one on purpose:
+		// a title is decoration, the session loads without it, and the next rename overwrites the value.
+		return undefined;
+	}
+}
+
+/**
+ * Redis-backed implementation of {@link SessionStorage}. Each session JSONL
+ * file maps to a Redis STRING key, with per-key metadata (mtime) tracked in a
+ * single sibling HASH. This process keeps only a metadata index (`size`,
+ * `mtimeMs`) in memory so synchronous `existsSync` / `statSync` /
+ * `listFilesSync` calls remain available without mirroring full content.
+ */
 export class RedisSessionStorage extends IndexedSessionStorage {
+	/**
+	 * Warm the metadata index with every existing session key under the configured
+	 * prefix and return the ready-to-use storage. Must be awaited before passing
+	 * the storage into `SessionManager.create()` so synchronous lookups (session
+	 * resume, recent sessions, EPERM-backup recovery) see the existing keyspace.
+	 */
 	static async create(options: RedisSessionStorageOptions): Promise<RedisSessionStorage> {
 		const storage = new RedisSessionStorage(new RedisSessionStorageBackend(options));
 		await storage.initialize();

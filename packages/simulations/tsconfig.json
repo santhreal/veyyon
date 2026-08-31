@@ -1,4 +1,12 @@
 {
 	"extends": "../tsconfig.workspace.json",
+<<<<<<<< HEAD:packages/argot/tsconfig.json
+	"include": [
+		"src",
+		"test",
+		"bench"
+	]
+========
 	"include": ["src", "test"]
+>>>>>>>> veyyon/main:packages/simulations/tsconfig.json
 }

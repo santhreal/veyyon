@@ -1,4 +1,6 @@
 import { type Component, padding, Text, visibleWidth } from "@veyyon/tui";
+// The owning leaf, not the `@veyyon/utils` barrel: this is the only vocabulary the renderer
+// needs, and the React renderer of the same tool output reads the same one.
 import { classifyGithubCheckRun, githubIssueRefNumber } from "@veyyon/utils/github-check-run";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
@@ -147,10 +149,9 @@ function getRunMeta(run: GhRunWatchRunDetails): string[] {
 function formatRunLine(run: GhRunWatchRunDetails, theme: Theme): string {
 	const title = theme.fg("accent", getRunLabel(run));
 	const metaParts = getRunMeta(run);
-	const meta: string[] = new Array(metaParts.length);
-	for (let mi = 0; mi < metaParts.length; mi++) {
-		meta[mi] = mi === metaParts.length - 1 ? theme.fg("muted", metaParts[mi]!) : theme.fg("text", metaParts[mi]!);
-	}
+	const meta = metaParts.map((part, index) =>
+		index === metaParts.length - 1 ? theme.fg("muted", part) : theme.fg("text", part),
+	);
 	return [title, ...meta].join("  ");
 }
 
@@ -192,8 +193,9 @@ function renderRunBlock(run: GhRunWatchRunDetails, width: number, theme: Theme):
 		lines.push(theme.fg("dim", "waiting for workflow jobs..."));
 		return lines;
 	}
-	for (let ji = 0; ji < run.jobs.length; ji++) {
-		lines.push(renderJobLine(run.jobs[ji]!, width, theme));
+
+	for (const job of run.jobs) {
+		lines.push(renderJobLine(job, width, theme));
 	}
 	return lines;
 }
@@ -209,8 +211,7 @@ function renderFailedLogs(
 	}
 
 	const lines: string[] = [];
-	for (let ei = 0; ei < failedLogs.length; ei++) {
-		const entry = failedLogs[ei]!;
+	for (const entry of failedLogs) {
 		const context = entry.workflowName ? `${entry.workflowName}  #${entry.runId}` : `run #${entry.runId}`;
 		lines.push(
 			theme.fg("error", `${theme.status.error} ${replaceTabs(entry.jobName)}  ${theme.fg("muted", context)}`),
@@ -221,15 +222,12 @@ function renderFailedLogs(
 			continue;
 		}
 
-		const tailRaw = replaceTabs(entry.tail).split("\n");
-		const tailLines: string[] = [];
-		for (let li = 0; li < tailRaw.length; li++) {
-			if (tailRaw[li]!.length > 0) tailLines.push(tailRaw[li]!);
-		}
+		const tailLines = replaceTabs(entry.tail)
+			.split("\n")
+			.filter(line => line.length > 0);
 		const previewLimit = expanded ? tailLines.length : Math.min(PREVIEW_LIMITS.OUTPUT_COLLAPSED, tailLines.length);
-		const tailStart = Math.max(0, tailLines.length - previewLimit);
-		for (let li = tailStart; li < tailLines.length; li++) {
-			lines.push(theme.fg("dim", `  ${truncateVisualWidth(tailLines[li]!, Math.max(8, width - 2))}`));
+		for (const line of tailLines.slice(-previewLimit)) {
+			lines.push(theme.fg("dim", `  ${truncateVisualWidth(line, Math.max(8, width - 2))}`));
 		}
 
 		if (!expanded && tailLines.length > previewLimit) {
@@ -254,20 +252,18 @@ function buildWatchSections(
 	}
 
 	if (watch.mode === "run" && watch.run) {
-		const rb = renderRunBlock(watch.run, width, theme);
-		for (let li = 0; li < rb.length; li++) main.push(rb[li]!);
+		main.push(...renderRunBlock(watch.run, width, theme));
 	} else if (watch.mode === "commit") {
 		const runs = watch.runs ?? [];
 		if (runs.length === 0) {
 			main.push(theme.fg("dim", "waiting for workflow runs..."));
 		} else {
-			for (let ri = 0; ri < runs.length; ri++) {
-				if (ri > 0) {
+			runs.forEach((run, index) => {
+				if (index > 0) {
 					main.push("");
 				}
-				const rb = renderRunBlock(runs[ri]!, width, theme);
-				for (let li = 0; li < rb.length; li++) main.push(rb[li]!);
-			}
+				main.push(...renderRunBlock(run, width, theme));
+			});
 		}
 	}
 
@@ -285,14 +281,11 @@ function buildWatchSections(
 }
 
 function extractText(content: Array<{ type: string; text?: string }>): string {
-	const parts: string[] = [];
-	for (let ci = 0; ci < content.length; ci++) {
-		const part = content[ci]!;
-		if (part.type === "text" && typeof part.text === "string" && part.text.length > 0) {
-			parts.push(part.text);
-		}
-	}
-	return parts.join("\n");
+	return content
+		.filter(part => part.type === "text")
+		.map(part => part.text)
+		.filter((value): value is string => typeof value === "string" && value.length > 0)
+		.join("\n");
 }
 
 function renderFallbackComponent(
@@ -332,6 +325,8 @@ function renderFallbackComponent(
 	while (allLines.length > 0 && allLines[0].trim() === "") allLines.shift();
 	while (allLines.length > 0 && allLines[allLines.length - 1].trim() === "") allLines.pop();
 
+	// Trivial one-line *success* result: a clean status line beats an almost-empty box.
+	// Errors always frame so the message reads as a structured block, never a raw red wrap.
 	if (allLines.length <= 1 && !isError) {
 		const body = allLines[0];
 		if (!body) return new Text(header, 0, 0);
@@ -342,6 +337,8 @@ function renderFallbackComponent(
 	return framedBlock(theme, width => {
 		const lineWidth = Math.max(1, (width || FALLBACK_WIDTH) - 3);
 		const expanded = options.expanded;
+		// Line 257 above already pairs these correctly. This site had them swapped: the COLLAPSED arm
+		// was given OUTPUT_EXPANDED and the expanded arm no ceiling at all.
 		const limit = Math.min(
 			allLines.length,
 			expanded ? PREVIEW_LIMITS.OUTPUT_EXPANDED : PREVIEW_LIMITS.OUTPUT_COLLAPSED,
@@ -376,8 +373,8 @@ function renderWatchCall(args: GithubToolRenderArgs, options: RenderResultOption
 			? formatStatusIcon("running", theme, options.spinnerFrame)
 			: formatStatusIcon("pending", theme);
 
-	const runId = typeof args.run === "string" && /\S/.test(args.run) ? args.run.trim() : undefined;
-	const branch = typeof args.branch === "string" && /\S/.test(args.branch) ? args.branch.trim() : undefined;
+	const runId = typeof args.run === "string" && args.run.trim().length > 0 ? args.run.trim() : undefined;
+	const branch = typeof args.branch === "string" && args.branch.trim().length > 0 ? args.branch.trim() : undefined;
 
 	const titleText = theme.fg("accent", "GitHub Run Watch");
 	let metaText: string;
@@ -395,8 +392,11 @@ function renderWatchCall(args: GithubToolRenderArgs, options: RenderResultOption
 }
 
 export const githubToolRenderer = {
+	// No animatedPendingPreview: renderCall materializes plain Text components
+	// once per display rebuild (no render closure), so a live spinner interval
+	// would request 30fps repaints while the visible glyph stays frozen.
 	renderCall(args: GithubToolRenderArgs, options: RenderResultOptions, uiTheme: Theme): Component {
-		const op = typeof args.op === "string" && /\S/.test(args.op) ? args.op.trim() : undefined;
+		const op = typeof args.op === "string" && args.op.trim().length > 0 ? args.op.trim() : undefined;
 		if (op === "run_watch") {
 			return renderWatchCall({ ...args, op }, options, uiTheme);
 		}

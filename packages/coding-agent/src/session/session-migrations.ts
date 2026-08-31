@@ -1,3 +1,4 @@
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { Snowflake } from "@veyyon/utils/snowflake";
 import { type CompactionEntry, CURRENT_SESSION_VERSION, type FileEntry, type SessionHeader } from "./session-entries";
 
@@ -56,7 +57,10 @@ function migrateV2ToV3(entries: FileEntry[]): void {
 	}
 }
 
-/** Run all necessary migrations to bring entries to current version. Mutates entries in place. Returns true if any migration was applied. */
+/**
+ * Run all necessary migrations to bring entries to current version.
+ * Mutates entries in place. Returns true if any migration was applied.
+ */
 export function migrateToCurrentVersion(entries: FileEntry[]): boolean {
 	const header = entries.find(e => e.type === "session") as SessionHeader | undefined;
 	const version = header?.version ?? 1;

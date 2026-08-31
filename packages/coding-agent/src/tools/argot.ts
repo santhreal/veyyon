@@ -1,17 +1,74 @@
+/**
+ * Agent tools for loading and unloading Argot project shorthand.
+ *
+ * Loading is agent-driven: a session starts UNARMED and the model loads the
+ * project it means to work in through `argot_load` (auto-arming from the launch
+ * directory would pick the wrong project in a monorepo — see the rationale in
+ * sdk.ts). These two tools are that lever: `argot_load` teaches a folder's
+ * shorthand (the cwd project, or a sibling crate / dependency checkout the model
+ * also touches), `argot_unload` stops teaching it again. Re-rooting with
+ * `set_cwd` does NOT arm shorthand — the two are deliberately separate, so a
+ * model working in a fresh project both re-roots (shorter file headers) and
+ * `argot_load`s it (compressed identifiers).
+ *
+ * The tools only ever touch the teach set, never correctness. Every handle is
+ * expanded before it leaves the model's history (a tool call, the saved
+ * transcript), so loading a folder can only save tokens and unloading one can
+ * never strip meaning: anything already written keeps decoding. That is why both
+ * tools are read-tier (they read a repo to build a local cache, they mutate no
+ * working tree) and why unload deliberately keeps decoding on.
+ */
+
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
-import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot/constants";
-import { loadArgotFolder, unloadArgotFolder } from "../argot-cache";
+import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL, type ArgotSession } from "argot";
+import { type } from "arktype";
+import { type ArgotLoadResult, loadArgotFolder, unloadArgotFolder } from "../argot-cache";
 import type { ToolSession } from ".";
-import type { ArgotFolderInput, ArgotLoadDetails, ArgotUnloadDetails } from "./argot-helpers";
-import { folderSchema, requireArgot } from "./argot-helpers";
 import { resolveToCwd } from "./path-utils";
 import { ToolError, toolFailure } from "./tool-errors";
 
-export type { ArgotSession } from "./argot-helpers";
+const folderSchema = type({
+	folder_path: type("string").describe(
+		"Absolute (preferred) or session-relative path to the folder to load. Argot resolves it to the nearest project it belongs to (its .git or .argot marker), never a parent that contains many projects.",
+	),
+});
+
+export type ArgotFolderInput = typeof folderSchema.infer;
+
+export interface ArgotLoadDetails {
+	/** The work-unit root the folder resolved to. */
+	root: string;
+	/** How many handles the loaded project's dictionary carries. */
+	handles: number;
+	/** The path string as it arrived, so the transcript shows what was asked for. */
+	requested: string;
+}
+
+export interface ArgotUnloadDetails {
+	root: string;
+	/** Whether the unload changed anything (false when the folder was never taught). */
+	changed: boolean;
+	requested: string;
+}
+
+/** Read the session's Argot codec, or fail loud when Argot is off for this session. */
+function requireArgot(session: ToolSession): ArgotSession {
+	const argot = session.getArgotSession?.();
+	if (argot === undefined) {
+		throw new ToolError(
+			"Argot shorthand is not enabled for this session, so there is nothing to load. Enable it with the `argot.enabled` setting.",
+		);
+	}
+	return argot;
+}
 
 export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDetails> {
 	readonly name = ARGOT_LOAD_TOOL;
 	readonly label = "ArgotLoad";
+	// Write-tier per argot's SPEC approval contract: loading reads a project tree
+	// (possibly outside the session cwd) and writes the generated dictionary into
+	// the cache directory, so non-yolo modes prompt. Unload stays read-tier (it
+	// mutates no working tree and never strips meaning); expansion is never gated.
 	readonly approval = "write" as const;
 	readonly formatApprovalDetails = (args: unknown): string[] => {
 		const raw = (args as Partial<ArgotFolderInput>).folder_path;
@@ -23,6 +80,9 @@ export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDe
 		"Load a folder's Argot shorthand so you can write its long paths and identifiers as short `§handle` tokens. Resolves the folder to its own project (nearest .git or .argot), reads or builds that project's dictionary, and teaches you its handles. Load the narrowest folder that is your work unit, not a parent holding many projects. Every handle expands losslessly, so this only saves tokens.";
 	readonly parameters = folderSchema;
 	readonly strict = true;
+	// Always active (not discoverable): loading is the canonical arming flow, and
+	// the notation preamble instructs the model to call this tool — you must never
+	// instruct a model to call a tool that is not in its tool list.
 	readonly summary = "Load a folder's Argot shorthand so its paths can be written as short handles";
 	readonly #session: ToolSession;
 
@@ -43,10 +103,14 @@ export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDe
 		const argot = requireArgot(this.#session);
 		const folder = resolveToCwd(requested, this.#session.cwd);
 
-		let loaded: Awaited<ReturnType<typeof loadArgotFolder>>;
+		let loaded: ArgotLoadResult | undefined;
 		try {
+			// Use the session's configured dictionary budget so a folder loaded mid-session
+			// is generated under the same policy as the session's own project.
 			loaded = await loadArgotFolder(argot, folder, signal, this.#session.settings.get("argot.tokenBudget"));
 		} catch (err) {
+			// A genuine conflict (two projects binding one handle name to different
+			// expansions) or a malformed cache surfaces loud, never a silent skip.
 			throw toolFailure(err);
 		}
 
@@ -62,6 +126,10 @@ export class ArgotLoadTool implements AgentTool<typeof folderSchema, ArgotLoadDe
 			};
 		}
 
+		// The handle table is taught through the system prompt, which is built
+		// once and refreshed explicitly — a mid-session load must rebuild it or
+		// the model is told to write §handles it was never shown. Skip the
+		// rebuild for an empty dictionary (nothing new to teach).
 		if (loaded.handles > 0) {
 			await this.#session.refreshBaseSystemPrompt?.("argot-load");
 		}
@@ -122,6 +190,8 @@ export class ArgotUnloadTool implements AgentTool<typeof folderSchema, ArgotUnlo
 			};
 		}
 
+		// The teach set changed; rebuild the prompt so the handle table stops
+		// advertising this project's shorthand next turn.
 		if (result.changed) {
 			await this.#session.refreshBaseSystemPrompt?.("argot-unload");
 		}

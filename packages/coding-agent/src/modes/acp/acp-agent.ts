@@ -9,6 +9,9 @@ import {
 	type ClientCapabilities,
 	type CloseSessionRequest,
 	type CloseSessionResponse,
+	type CreateElicitationResponse,
+	type ElicitationContentValue,
+	type ElicitationPropertySchema,
 	type ForkSessionRequest,
 	type ForkSessionResponse,
 	type InitializeRequest,
@@ -42,14 +45,22 @@ import { clampLow, getBlobsDir, isEnoent, logger, VERSION } from "@veyyon/utils"
 import { disableProvider, enableProvider, reset as resetCapabilities } from "../../capability";
 import { Settings } from "../../config/settings";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
+import {
+	type ExtensionUIContext,
+	type ExtensionUIDialogOptions,
+	getExtensionUISelectOptionLabel,
+} from "../../extensibility/extensions";
 import { runExtensionCompact } from "../../extensibility/extensions/compact-handler";
 import { getSessionSlashCommands } from "../../extensibility/extensions/get-commands-handler";
 import { buildSkillPromptMessage, parseSkillInvocation } from "../../extensibility/skills";
 import { loadSlashCommands } from "../../extensibility/slash-commands";
+// The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
+// handler and reaches hundreds of modules.
 import { listLocalPlanFileUrls } from "../../internal-urls/local-protocol";
 import { MCPManager } from "../../mcp/manager";
 import type { MCPServerConfig } from "../../mcp/types";
 import { loadAllExtensions } from "../../modes/components/extensions/state-manager";
+import { theme } from "../../modes/theme/theme";
 import { type PlanApprovalDetails, resolveApprovedPlan } from "../../plan-mode/approved-plan";
 import { DEFAULT_PLAN_FILE_URL } from "../../plan-mode/plan-file-url";
 import { resolvePlanFilePath } from "../../plan-mode/plan-path";
@@ -62,6 +73,7 @@ import type { SessionInfo as StoredSessionInfo } from "../../session/session-lis
 import { SessionManager } from "../../session/session-manager";
 import { executeAcpBuiltinSlashCommand } from "../../slash-commands/acp-builtins";
 import { buildAvailableSlashCommands, toAcpAvailableCommands } from "../../slash-commands/available-commands";
+import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS } from "../../stt/models";
 import {
 	configuredThinkingLevelsForModel,
 	getConfiguredThinkingLevelMetadata,
@@ -69,6 +81,12 @@ import {
 } from "../../thinking";
 import { runResolveInvocation } from "../../tools/resolve";
 import { ToolError } from "../../tools/tool-errors";
+import {
+	DEFAULT_TTS_LOCAL_MODEL_KEY,
+	DEFAULT_TTS_VOICE,
+	TTS_LOCAL_MODELS,
+	TTS_LOCAL_VOICE_OPTIONS,
+} from "../../tts/models";
 import { canonicalizeMessage } from "../../utils/thinking-display";
 import { createAcpClientBridge } from "./acp-client-bridge";
 import {
@@ -77,38 +95,371 @@ import {
 	mapAgentSessionEventToAcpSessionUpdates,
 	normalizeReplayToolArguments,
 } from "./acp-event-mapper";
-import {
-	ACP_ASYNC_DELIVERY_DRAIN_MAX_PASSES,
-	ACP_ASYNC_DELIVERY_DRAIN_TIMEOUT_MS,
-	ACP_BOOTSTRAP_RACE_GUARD_MS,
-	ACP_CANCEL_CLEANUP_TIMEOUT_MS,
-	ACP_DEFAULT_MODE_ID,
-	ACP_PLAN_MODE_ID,
-	type AgentImageContent,
-	APPROVE_OPTION,
-	buildAcpSpeechModelsCatalog,
-	type CreateAcpSession,
-	createAcpExtensionUiContext,
-	elicitFromAcpClient,
-	isPromptTurnInFlight,
-	type ManagedSessionRecord,
-	type MCPConfigMap,
-	type MCPSourceMap,
-	MODE_CONFIG_ID,
-	MODEL_CONFIG_ID,
-	type PromptLifecycleError,
-	type PromptTurnState,
-	REFINE_OPTION,
-	type ReplayableMessage,
-	type ReplayableToolItem,
-	SESSION_PAGE_SIZE,
-	SPEECH_MODELS_LIST_METHOD,
-	THINKING_CONFIG_ID,
-	THINKING_OFF,
-} from "./acp-helpers";
 import { ACP_TERMINAL_AUTH_FLAG } from "./terminal-auth";
 
-export { ACP_BOOTSTRAP_RACE_GUARD_MS, createAcpExtensionUiContext } from "./acp-helpers";
+const ACP_DEFAULT_MODE_ID = "default";
+const ACP_PLAN_MODE_ID = "plan";
+const APPROVE_OPTION = "Approve and execute";
+const REFINE_OPTION = "Refine plan";
+const MODE_CONFIG_ID = "mode";
+const MODEL_CONFIG_ID = "model";
+const THINKING_CONFIG_ID = "thinking";
+const THINKING_OFF = "off";
+const SESSION_PAGE_SIZE = 50;
+const SPEECH_MODELS_LIST_METHOD = "speech.models.list";
+/**
+ * Delay between `session/new` (or `session/load` / `session/resume` /
+ * `unstable_session/fork`) returning and the agent firing the first
+ * notifications against the new session id. Mitigates Zed's
+ * `Received session notification for unknown session` race — see
+ * `#scheduleBootstrapUpdates`. Exported so the ACP test harness can
+ * wait past this guard without hard-coding the literal.
+ */
+export const ACP_BOOTSTRAP_RACE_GUARD_MS = 50;
+const ACP_CANCEL_CLEANUP_TIMEOUT_MS = 5_000;
+const ACP_ASYNC_DELIVERY_DRAIN_TIMEOUT_MS = 250;
+const ACP_ASYNC_DELIVERY_DRAIN_MAX_PASSES = 3;
+
+type AgentImageContent = {
+	type: "image";
+	data: string;
+	mimeType: string;
+};
+
+type PromptQueueState = {
+	promise: Promise<void>;
+	release: (() => void) | undefined;
+};
+type PromptLifecycleError = Error & { readonly code: "ACP_SESSION_CLOSED" };
+
+type PromptTurnState = {
+	cancelRequested: boolean;
+	settled: boolean;
+	/**
+	 * Delivery of streamed assistant `error` chunks this turn (the mapper
+	 * surfaces them as `agent_message_chunk`s). Resolves `true` once at least
+	 * one error chunk reached the client — the `agent_end` error fallback in
+	 * {@link AcpAgent##flushUnreportedTurnError} awaits it and stays silent on
+	 * success, so a fallback racing an in-flight delivery can neither duplicate
+	 * the error nor drop it when delivery fails.
+	 */
+	errorTextDelivery: Promise<boolean> | undefined;
+	/**
+	 * `abort()` is in-flight (or its bounded-timeout race). `undefined` while the turn is
+	 * running normally and after cleanup completes. The turn occupies `record.promptTurn`
+	 * for as long as either `!settled` or `cleanup` is set — that combined window is the
+	 * "turn in flight" predicate (`isPromptTurnInFlight`) every consumer gates on.
+	 */
+	cleanup: Promise<void> | undefined;
+	usageBaseline: UsageStatistics;
+	unsubscribe: (() => void) | undefined;
+	resolve: (value: PromptResponse) => void;
+	reject: (reason?: unknown) => void;
+	promise: Promise<PromptResponse>;
+};
+
+/**
+ * A turn is "in flight" from the moment `prompt()` reserves the slot until `settled` is
+ * true AND any cancel cleanup has completed. Fork/queue/event gating all depend on this
+ * combined window — a settled-but-still-aborting turn is not safe to fork from, queue
+ * onto, or forward late events for.
+ */
+function isPromptTurnInFlight(turn: PromptTurnState | undefined): turn is PromptTurnState {
+	return turn !== undefined && (!turn.settled || turn.cleanup !== undefined);
+}
+
+type ManagedSessionRecord = {
+	session: AgentSession;
+	mcpManager: MCPManager | undefined;
+	promptTurn: PromptTurnState | undefined;
+	promptQueue: PromptQueueState;
+	liveMessageId: string | undefined;
+	liveMessageProgress: { textEmitted: boolean; thoughtEmitted: boolean } | undefined;
+	toolArgsById: Map<string, unknown>;
+	extensionsConfigured: boolean;
+	// Installed inside `#scheduleBootstrapUpdates` (post-race-guard); released
+	// in `#disposeSessionRecord`. Lives independent of any prompt turn.
+	lifetimeUnsubscribe: (() => void) | undefined;
+	closedError: PromptLifecycleError | undefined;
+	promptEventHandlers: Set<Promise<void>>;
+	extensionUserMessageTasks: Set<Promise<void>>;
+};
+
+type ReplayableMessage = {
+	role: string;
+	content?: unknown;
+	errorMessage?: string;
+	toolCallId?: string;
+	toolName?: string;
+	details?: unknown;
+	isError?: boolean;
+};
+
+type ReplayableToolItem = {
+	type?: unknown;
+	id?: unknown;
+	name?: unknown;
+	arguments?: unknown;
+	input?: unknown;
+};
+
+type MCPConfigMap = {
+	[name: string]: MCPServerConfig;
+};
+
+type MCPSource = {
+	provider: string;
+	providerName: string;
+	path: string;
+	level: "project";
+};
+
+type MCPSourceMap = {
+	[name: string]: MCPSource;
+};
+
+type CreateAcpSession = (cwd: string) => Promise<AgentSession>;
+
+type AcpSpeechOption = {
+	value: string;
+	label: string;
+	description?: string;
+};
+
+type AcpSpeechVoiceOption = {
+	value: string;
+	label: string;
+};
+
+type AcpSpeechTtsModelOption = AcpSpeechOption & {
+	voices: AcpSpeechVoiceOption[];
+};
+
+function buildAcpSpeechModelsCatalog(): Record<string, unknown> {
+	const voices = TTS_LOCAL_VOICE_OPTIONS.map(({ value, label }) => ({ value, label }));
+	return {
+		settings: {
+			speechToTextModel: "stt.modelName",
+			textToSpeechModel: "tts.localModel",
+			textToSpeechVoice: "tts.localVoice",
+			speechVoice: "speech.voice",
+		},
+		defaults: {
+			speechToTextModel: DEFAULT_STT_MODEL_KEY,
+			textToSpeechModel: DEFAULT_TTS_LOCAL_MODEL_KEY,
+			voice: DEFAULT_TTS_VOICE,
+		},
+		speechToText: {
+			setting: "stt.modelName",
+			defaultValue: DEFAULT_STT_MODEL_KEY,
+			models: STT_MODEL_OPTIONS.map(({ value, label, description }) => ({ value, label, description })),
+		},
+		textToSpeech: {
+			modelSetting: "tts.localModel",
+			voiceSetting: "tts.localVoice",
+			speechVoiceSetting: "speech.voice",
+			defaultModel: DEFAULT_TTS_LOCAL_MODEL_KEY,
+			defaultVoice: DEFAULT_TTS_VOICE,
+			models: TTS_LOCAL_MODELS.map(
+				({ key, label, description, voices: modelVoices }): AcpSpeechTtsModelOption => ({
+					value: key,
+					label,
+					description,
+					voices: modelVoices.map(({ id, label: voiceLabel }) => ({ value: id, label: voiceLabel })),
+				}),
+			),
+			voices,
+		},
+	};
+}
+
+/**
+ * Bridge a single ExtensionUIContext call to the ACP `unstable_createElicitation`
+ * surface. Skills/extensions ask for one value at a time (a chosen option, a
+ * confirmation, a piece of text), so every elicitation here uses a one-property
+ * `value` schema; the caller narrows the resulting `ElicitationContentValue`
+ * back to its concrete primitive type.
+ *
+ * `dialogOptions.signal` short-circuits the elicitation if it is already
+ * aborted and races the in-flight request against the abort event. The SDK
+ * exposes no `cancel_elicitation` surface for form-mode elicitations
+ * (`unstable_completeElicitation` is URL-mode only), so the ACP request itself
+ * keeps running on the client side until the user dismisses it — but
+ * resolving the local promise unblocks the caller (matches the RPC mode
+ * pattern in `requestRpcEditor`). The abort listener is removed once the
+ * elicitation settles so that callers which reuse the same signal across many
+ * elicitations (e.g. `ask` multi-select loops) don't accumulate listeners and
+ * trip Node's `MaxListeners` warning.
+ *
+ * `dialogOptions.timeout` mirrors `RpcExtensionUIContext.#createDialogPromise`:
+ * when the timer fires before the client responds, `onTimeout` is invoked and
+ * the caller's promise resolves to the stub fallback. Late SDK responses that
+ * arrive after abort/timeout — both rejections and successful `accept`s —
+ * are dropped silently (no `logger.warn`) to keep operator logs clean.
+ */
+async function elicitFromAcpClient(
+	connection: AgentSideConnection,
+	sessionId: string,
+	method: "select" | "confirm" | "input",
+	message: string,
+	property: ElicitationPropertySchema,
+	dialogOptions: ExtensionUIDialogOptions | undefined,
+): Promise<ElicitationContentValue | undefined> {
+	const signal = dialogOptions?.signal;
+	if (signal?.aborted) {
+		return undefined;
+	}
+	const { promise, resolve } = Promise.withResolvers<CreateElicitationResponse | undefined>();
+	let settled = false;
+	let timeoutId: NodeJS.Timeout | undefined;
+	const finish = (value: CreateElicitationResponse | undefined) => {
+		if (settled) return;
+		settled = true;
+		if (timeoutId !== undefined) clearTimeout(timeoutId);
+		signal?.removeEventListener("abort", onAbort);
+		resolve(value);
+	};
+	const onAbort = () => finish(undefined);
+	signal?.addEventListener("abort", onAbort, { once: true });
+	if (dialogOptions?.timeout !== undefined) {
+		timeoutId = setTimeout(() => {
+			if (settled) return;
+			try {
+				dialogOptions.onTimeout?.();
+			} catch (error) {
+				// A throwing `onTimeout` must not leave the elicitation promise
+				// pending — settle it via `finish` below regardless.
+				logger.warn("ACP elicitation onTimeout threw", { sessionId, method, error });
+			}
+			finish(undefined);
+		}, dialogOptions.timeout);
+		// A long pending timeout alone shouldn't keep the event loop alive when
+		// the rest of the agent has shut down — matches `job-manager.ts` /
+		// `executor.ts` timer hygiene. Connection + session lifetimes keep the
+		// loop alive on the happy path.
+		timeoutId.unref();
+	}
+	connection
+		.unstable_createElicitation({
+			mode: "form",
+			sessionId,
+			message,
+			requestedSchema: {
+				type: "object",
+				properties: { value: property },
+				required: ["value"],
+			},
+		})
+		.then(finish, error => {
+			// Caller may already have moved on via abort/timeout; suppress noise.
+			if (settled) return;
+			logger.warn("ACP elicitation failed", { sessionId, method, error });
+			finish(undefined);
+		});
+	const response = await promise;
+	if (!isAcceptedElicitation(response) || !response.content) {
+		return undefined;
+	}
+	return response.content.value;
+}
+
+/** Narrows a `CreateElicitationResponse` to the accepted-with-content branch; the SDK's `action: string` catch-all arm otherwise defeats literal narrowing on `action !== "accept"`. */
+function isAcceptedElicitation(
+	response: CreateElicitationResponse | undefined,
+): response is Extract<CreateElicitationResponse, { action: "accept" }> {
+	return response?.action === "accept";
+}
+
+/**
+ * Build an {@link ExtensionUIContext} that translates skill/extension UI
+ * requests into ACP elicitations against `connection` for the session
+ * returned by `getSessionId()`. The id is read lazily at each elicitation
+ * because `AgentSession.sessionId` is a getter over `sessionManager` state
+ * that mutates when an extension command calls `ctx.newSession` /
+ * `ctx.switchSession` — snapshotting it once at factory time would route
+ * later elicitations to the pre-switch id. Live reads keep the bridge
+ * symmetric with every other `sessionUpdate` call in this file
+ * (`record.session.sessionId` is always evaluated at emit time).
+ *
+ * The non-elicitation surface (custom components, editor, theming,
+ * terminal input) remains stubbed — ACP clients render those themselves
+ * or not at all. Capability gating respects the client's `initialize`
+ * advertisement.
+ */
+export function createAcpExtensionUiContext(
+	connection: AgentSideConnection,
+	getSessionId: () => string,
+	clientCapabilities: ClientCapabilities | undefined,
+): ExtensionUIContext {
+	const supportsForm = clientCapabilities?.elicitation?.form != null;
+	return {
+		select: async (title, options, dialogOptions) => {
+			if (!supportsForm) return undefined;
+			const value = await elicitFromAcpClient(
+				connection,
+				getSessionId(),
+				"select",
+				title,
+				{ type: "string", enum: options.map(getExtensionUISelectOptionLabel) },
+				dialogOptions,
+			);
+			return typeof value === "string" ? value : undefined;
+		},
+		confirm: async (title, message, dialogOptions) => {
+			if (!supportsForm) return false;
+			const value = await elicitFromAcpClient(
+				connection,
+				getSessionId(),
+				"confirm",
+				message.trim().length > 0 ? `${title}\n\n${message}` : title,
+				{ type: "boolean" },
+				dialogOptions,
+			);
+			return typeof value === "boolean" ? value : false;
+		},
+		input: async (title, placeholder, dialogOptions) => {
+			if (!supportsForm) return undefined;
+			const value = await elicitFromAcpClient(
+				connection,
+				getSessionId(),
+				"input",
+				title,
+				// ACP's `StringPropertySchema` has no `placeholder` field, so we
+				// surface the placeholder text as `description` — the closest
+				// semantic field a client can render alongside the input.
+				// Empty / whitespace-only placeholders are treated as absent.
+				{ type: "string", ...(placeholder?.trim() ? { description: placeholder } : {}) },
+				dialogOptions,
+			);
+			return typeof value === "string" ? value : undefined;
+		},
+		notify: (message, type) => {
+			logger.debug("ACP extension notification", { message, type });
+		},
+		onTerminalInput: () => () => {},
+		setStatus: () => {},
+		setWorkingMessage: () => {},
+		setWidget: () => {},
+		setFooter: () => {},
+		setHeader: () => {},
+		setTitle: () => {},
+		custom: async () => undefined as never,
+		pasteToEditor: () => {},
+		setEditorText: () => {},
+		getEditorText: () => "",
+		editor: async () => undefined,
+		addAutocompleteProvider: () => {},
+		setEditorComponent: () => {},
+		get theme() {
+			return theme;
+		},
+		getAllThemes: async () => [],
+		getTheme: async () => undefined,
+		setTheme: async () => ({ success: false, error: "Theme changes are unavailable in ACP mode" }),
+		getToolsExpanded: () => false,
+		setToolsExpanded: () => {},
+	};
+}
 
 export class AcpAgent implements Agent {
 	#connection: AgentSideConnection;
@@ -180,6 +531,8 @@ export class AcpAgent implements Agent {
 
 	async authenticate(params: AuthenticateRequest): Promise<AuthenticateResponse> {
 		// ACP spec: `methodId` must be one of the methods advertised by `initialize`.
+		// Reject anything else so malformed clients fail fast rather than appearing
+		// authenticated and surfacing a downstream model failure later.
 		const supportsTerminalAuth = this.#clientCapabilities?.auth?.terminal === true;
 		const validMethods = supportsTerminalAuth ? ["agent", "terminal"] : ["agent"];
 		if (!validMethods.includes(params.methodId)) {
@@ -292,6 +645,9 @@ export class AcpAgent implements Agent {
 				throw new Error(`Unknown ACP config option: ${params.configId}`);
 		}
 
+		// When mode is changed via the generic config-option API, mirror the
+		// `current_mode_update` notification that `setSessionMode` emits so
+		// ACP clients tracking session-mode state see a consistent transition.
 		if (params.configId === MODE_CONFIG_ID) {
 			await this.#connection.sessionUpdate({
 				sessionId: record.session.sessionId,
@@ -299,6 +655,9 @@ export class AcpAgent implements Agent {
 			});
 		}
 
+		// For `thinking` the lifetime subscription pushes post-bootstrap; only
+		// push here when it's not yet installed so pre-bootstrap callers still
+		// see the change without a post-bootstrap duplicate.
 		const thinkingHandledBySubscription =
 			params.configId === THINKING_CONFIG_ID && record.lifetimeUnsubscribe !== undefined;
 		if (!thinkingHandledBySubscription) {
@@ -311,6 +670,16 @@ export class AcpAgent implements Agent {
 		const record = this.#getSessionRecord(params.sessionId);
 		const activeTurn = record.promptTurn;
 		if (activeTurn && !activeTurn.settled && record.session.isStreaming) {
+			// New prompt arrived while the previous turn is still in-flight (e.g. the
+			// client sent a message immediately after pressing stop, before or without
+			// a preceding session/cancel notification). Implicitly cancel the running
+			// turn so the new prompt can queue behind the abort cleanup — identical to
+			// what cancel() does when called explicitly. #beginCancelCleanup is
+			// idempotent, so a concurrent session/cancel notification is harmless.
+			// Mirror cancel()'s timeout handling: if abort() hangs past the cleanup
+			// timeout, close the managed session instead of leaving it registered
+			// with a still-streaming AgentSession. The queued prompt below observes
+			// the same cleanup rejection and fails accordingly.
 			this.#beginCancelCleanup(record, activeTurn).catch(async (error: unknown) => {
 				logger.warn("ACP cancel cleanup timed out; closing session", {
 					sessionId: record.session.sessionId,
@@ -322,6 +691,11 @@ export class AcpAgent implements Agent {
 		return await this.#queuePrompt(record, async () => {
 			const previousTurn = record.promptTurn;
 			if (previousTurn) {
+				// Wait for any prompt that's still settling or whose cancel cleanup is
+				// still in flight. We deliberately swallow the prompt rejection (the
+				// owning caller already received it) but let cleanup rejections
+				// propagate — a timed-out cancel must fail this queued prompt instead
+				// of letting it run on a session that is about to be closed.
 				await previousTurn.promise.catch(() => undefined);
 				await previousTurn.cleanup;
 			}
@@ -469,6 +843,11 @@ export class AcpAgent implements Agent {
 
 		const extensionPromptBaseline = new Set(record.extensionUserMessageTasks);
 		const agentInvoked = await record.session.prompt(text, { images });
+		// Extension and custom-TS commands are handled locally inside session.prompt().
+		// An ACP extension command can still call pi.sendUserMessage(), which starts
+		// an async nested prompt through the extension runtime. Keep the ACP turn
+		// subscribed until those scheduled prompts and their event handlers drain;
+		// only then is `false` proof that the slash command was purely local.
 		if (!agentInvoked) {
 			await this.#waitForExtensionUserMessages(record, extensionPromptBaseline);
 			await this.#waitForPromptEventHandlers(record);
@@ -517,6 +896,13 @@ export class AcpAgent implements Agent {
 		}
 	}
 
+	/**
+	 * Transition a still-running turn into cancellation: mark intent, drop the live-event
+	 * subscription, start the bounded `abort()` race, and resolve the ACP prompt response
+	 * with `stopReason: "cancelled"` so the client sees acceptance immediately. The
+	 * returned promise is the cleanup barrier — it resolves when `abort()` completes and
+	 * rejects when the timeout fires. Idempotent: a second call returns the same barrier.
+	 */
 	#beginCancelCleanup(record: ManagedSessionRecord, promptTurn: PromptTurnState): Promise<void> {
 		if (promptTurn.cleanup) {
 			return promptTurn.cleanup;
@@ -541,6 +927,8 @@ export class AcpAgent implements Agent {
 			await Promise.race([record.session.abort({ reason: USER_INTERRUPT_LABEL }), timeout]);
 		} finally {
 			if (timer) clearTimeout(timer);
+			// Order matters: clear `cleanup` before evicting the slot so the slot-eviction
+			// branch matches what `#finishPrompt` saw if it ran first.
 			promptTurn.cleanup = undefined;
 			if (promptTurn.settled && record.promptTurn === promptTurn) {
 				record.promptTurn = undefined;
@@ -549,6 +937,8 @@ export class AcpAgent implements Agent {
 	}
 
 	async extMethod(method: string, params: { [key: string]: unknown }): Promise<{ [key: string]: unknown }> {
+		// Canonical ext methods are `_veyyon/*`; `_omp/*` is accepted for ACP
+		// clients wired up before the rebrand.
 		const canonical = method.startsWith("_omp/") ? `_veyyon/${method.slice("_omp/".length)}` : method;
 		switch (canonical) {
 			case SPEECH_MODELS_LIST_METHOD:
@@ -735,6 +1125,8 @@ export class AcpAgent implements Agent {
 	async #registerPreparedSession(session: AgentSession, mcpServers: McpServer[]): Promise<ManagedSessionRecord> {
 		const record = this.#createManagedSessionRecord(session);
 		session.setClientBridge(createAcpClientBridge(this.#connection, session.sessionId, this.#clientCapabilities));
+		// `record.lifetimeUnsubscribe` is installed in `#scheduleBootstrapUpdates`
+		// so it shares the bootstrap race guard — see that comment for why.
 		try {
 			await this.#configureExtensions(record);
 			await this.#configureMcpServers(record, mcpServers);
@@ -847,6 +1239,8 @@ export class AcpAgent implements Agent {
 		})) {
 			const delivery = this.#connection.sessionUpdate(notification);
 			if (streamedAssistantError) {
+				// Resolves true only once the error chunk actually reached the
+				// client — a failed delivery keeps the agent_end fallback armed.
 				const outcome = delivery.then(
 					() => true,
 					() => false,
@@ -875,6 +1269,22 @@ export class AcpAgent implements Agent {
 		}
 	}
 
+	/**
+	 * Deliver the final visible answer when the assistant `message_end` never
+	 * reached this prompt turn's subscription. Session event handlers are
+	 * fire-and-forget (`Agent#emit` does not await async listeners), and
+	 * `agent_end` is flushed through the session's `#endInFlight` path while the
+	 * assistant `message_end` fan-out can still be parked on extension delivery —
+	 * so `agent_end` can overtake `message_end`. Once the turn finishes,
+	 * `#finishPrompt` unsubscribes and the fallback text emission in
+	 * `mapAssistantMessageEnd` is lost for good: a client that only received
+	 * `agent_thought_chunk`s stays stuck on the thinking block (#4902). The live
+	 * message progress records whether visible text ever reached the client; if
+	 * it has not, emit the last assistant message's text before the prompt
+	 * resolves. A `message_end` that lands during the end-of-turn waits still
+	 * takes the normal mapper path and sees `textEmitted` already set, so the
+	 * answer is delivered exactly once.
+	 */
 	async #flushMissedFinalAssistantText(
 		record: ManagedSessionRecord,
 		event: Extract<AgentSessionEvent, { type: "agent_end" }>,
@@ -883,14 +1293,9 @@ export class AcpAgent implements Agent {
 		if (!progress || progress.textEmitted) {
 			return;
 		}
-		let lastAssistant: AssistantMessage | undefined;
-		for (let mi = event.messages.length - 1; mi >= 0; mi -= 1) {
-			const message = event.messages[mi]!;
-			if (message.role === "assistant") {
-				lastAssistant = message as AssistantMessage;
-				break;
-			}
-		}
+		const lastAssistant = [...event.messages]
+			.reverse()
+			.find((message): message is AssistantMessage => message.role === "assistant");
 		if (!lastAssistant) {
 			return;
 		}
@@ -909,6 +1314,16 @@ export class AcpAgent implements Agent {
 		});
 	}
 
+	/**
+	 * Surface a turn-fatal provider error that never reached the client. A
+	 * request that fails before streaming any assistant events — e.g. GitHub
+	 * Copilot's `HTTP 400 model_not_supported` after retries — emits only
+	 * `agent_end` with an empty assistant message carrying `errorMessage`
+	 * (`Agent#runLoop`'s catch), so no `message_update`/`message_end` ever maps
+	 * to a session update and the client sees the turn end silently. Errors
+	 * that did stream are tracked via {@link PromptTurnState.errorTextDelivery};
+	 * the fallback awaits that delivery and re-sends only when it failed.
+	 */
 	async #flushUnreportedTurnError(
 		record: ManagedSessionRecord,
 		event: Extract<AgentSessionEvent, { type: "agent_end" }>,
@@ -917,14 +1332,9 @@ export class AcpAgent implements Agent {
 		if (streamedDelivery && (await streamedDelivery)) {
 			return;
 		}
-		let lastAssistant: AssistantMessage | undefined;
-		for (let mi = event.messages.length - 1; mi >= 0; mi -= 1) {
-			const message = event.messages[mi]!;
-			if (message.role === "assistant") {
-				lastAssistant = message as AssistantMessage;
-				break;
-			}
-		}
+		const lastAssistant = [...event.messages]
+			.reverse()
+			.find((message): message is AssistantMessage => message.role === "assistant");
 		if (lastAssistant?.stopReason !== "error") {
 			return;
 		}
@@ -967,6 +1377,14 @@ export class AcpAgent implements Agent {
 		}
 	}
 
+	/**
+	 * Reset live-message tracking once the assistant `message_end` is handled.
+	 * The `agent_end` reset happens inside the `agent_end` branch of
+	 * `#handlePromptEvent` — after `#flushMissedFinalAssistantText` — so a
+	 * `message_end` that arrives during the end-of-turn waits maps against the
+	 * real progress instead of resurrecting a fresh one (which would double-emit
+	 * the final answer).
+	 */
 	#clearLiveAssistantMessageAfterEvent(record: ManagedSessionRecord, event: AgentSessionEvent): void {
 		if (event.type === "message_end" && event.message.role === "assistant") {
 			record.liveMessageId = undefined;
@@ -1000,6 +1418,8 @@ export class AcpAgent implements Agent {
 		}
 		promptTurn.settled = true;
 		promptTurn.unsubscribe?.();
+		// Keep the slot occupied until cancel cleanup finishes — `#runCancelCleanup`
+		// evicts the slot in its finally block once both flags say it's safe.
 		if (!promptTurn.cleanup && record.promptTurn === promptTurn) {
 			record.promptTurn = undefined;
 		}
@@ -1017,14 +1437,9 @@ export class AcpAgent implements Agent {
 		if (cancelRequested) {
 			return "cancelled";
 		}
-		let lastAssistant: AssistantMessage | undefined;
-		for (let mi = event.messages.length - 1; mi >= 0; mi -= 1) {
-			const message = event.messages[mi]!;
-			if (message.role === "assistant") {
-				lastAssistant = message as AssistantMessage;
-				break;
-			}
-		}
+		const lastAssistant = [...event.messages]
+			.reverse()
+			.find((message): message is AssistantMessage => message.role === "assistant");
 		const reason = lastAssistant?.stopReason;
 		switch (reason) {
 			case "aborted":
@@ -1078,6 +1493,10 @@ export class AcpAgent implements Agent {
 					if ("text" in block.resource) {
 						textParts.push(block.resource.text);
 					} else if (typeof block.resource.mimeType === "string" && block.resource.mimeType.startsWith("image/")) {
+						// `embeddedContext: true` covers both text and blob resources, but
+						// blobs aren't directly consumable by the LLM. Route image blobs
+						// to the images array so the user's intent survives; everything
+						// else falls back to the URI placeholder below.
 						images.push({ type: "image", data: block.resource.blob, mimeType: block.resource.mimeType });
 					} else {
 						textParts.push(`[embedded resource: ${block.resource.uri}]`);
@@ -1147,6 +1566,9 @@ export class AcpAgent implements Agent {
 		}
 
 		const thinkingOptions = this.#buildThinkingOptions(session);
+		// A model with no controllable effort surface (non-reasoning, or effort
+		// baked into the model id) gets no Thinking option at all: an empty
+		// select would offer choices that all refuse.
 		if (thinkingOptions.length > 0) {
 			configOptions.push({
 				id: THINKING_CONFIG_ID,
@@ -1163,6 +1585,8 @@ export class AcpAgent implements Agent {
 	}
 
 	#buildThinkingOptions(session: AgentSession): Array<{ value: string; name: string; description?: string }> {
+		// The row's declared choices, in cycle order: off/auto only when the row
+		// accepts them, levels exactly as declared. Never the fixed ladder.
 		return configuredThinkingLevelsForModel(session.model).map(level => {
 			const metadata = getConfiguredThinkingLevelMetadata(level);
 			return { value: level, name: metadata.label, description: metadata.description };
@@ -1193,6 +1617,9 @@ export class AcpAgent implements Agent {
 		if (!thinkingLevel) {
 			throw new Error(`Unknown ACP thinking level: ${value}`);
 		}
+		// A session with no resolved model has no row to narrow against, so the
+		// level is stored and clamped when one arrives. The narrowing helper offers
+		// nothing for a model it cannot read, so the skip is stated here.
 		if (!session.model) {
 			session.setThinkingLevel(thinkingLevel);
 			return;
@@ -1241,6 +1668,10 @@ export class AcpAgent implements Agent {
 				workflow: previous?.workflow ?? "parallel",
 				reentry: previous !== undefined,
 			});
+			// Mirror `InteractiveMode.#enterPlanMode`: register the standing resolve
+			// handler that consumes `resolve { action: "apply" }` from plan-mode.
+			// Without this, the agent's resolve call falls through to the "No
+			// pending action to resolve" error (issue #1869).
 			session.setStandingResolveHandler?.(input => this.#runAcpPlanApprovalResolve(session, input));
 		} else {
 			session.setStandingResolveHandler?.(null);
@@ -1248,6 +1679,19 @@ export class AcpAgent implements Agent {
 		}
 	}
 
+	/**
+	 * Standing resolve handler installed while ACP plan mode is active. The agent
+	 * submits the finalized plan via `resolve { action: "apply", extra: { title } }`;
+	 * this handler validates the plan file, normalizes the title, asks the ACP
+	 * client to confirm (via `unstable_createElicitation` when supported), and on
+	 * approval renames the plan to `local://<title>.md`, exits plan mode, and
+	 * notifies the client of both mode surfaces so the agent regains full tools.
+	 *
+	 * Mirrors `InteractiveMode.#runPlanApprovalResolve` for the parts the agent
+	 * sees (same `PlanApprovalDetails` shape, same source tool name `plan_approval`).
+	 * Clients without form-mode elicitation get an auto-approve so plan mode is
+	 * never stranded — the agent always has a way out.
+	 */
 	#runAcpPlanApprovalResolve(session: AgentSession, input: unknown): Promise<AgentToolResult<unknown>> {
 		return runResolveInvocation(input as Parameters<typeof runResolveInvocation>[0], {
 			sourceToolName: "plan_approval",
@@ -1270,6 +1714,8 @@ export class AcpAgent implements Agent {
 					planExists: true,
 				};
 				if (!approved) {
+					// User chose to refine: leave plan mode active so the agent
+					// keeps the read-only toolset and can iterate on the plan file.
 					return {
 						content: [
 							{
@@ -1280,6 +1726,9 @@ export class AcpAgent implements Agent {
 						details,
 					};
 				}
+				// Approved. Set the plan reference so the next turn injects the plan
+				// content as context (the file keeps its agent-chosen name — no
+				// rename), then exit plan mode so the agent regains full tools.
 				session.setPlanReferencePath(planFilePath);
 				session.setStandingResolveHandler?.(null);
 				session.setPlanModeState(undefined);
@@ -1330,16 +1779,29 @@ export class AcpAgent implements Agent {
 		}
 	}
 
+	/** `local://` URLs of plan files in the session-local root, newest first —
+	 *  the `resolveApprovedPlan` fallback for a dropped `extra.title`. */
 	async #listAcpLocalPlanFiles(session: AgentSession): Promise<string[]> {
 		return listLocalPlanFileUrls(this.#resolveAcpPlanFilePath(session, "local://"));
 	}
 
+	/**
+	 * Ask the ACP client to confirm plan approval. Returns `true` only on an
+	 * explicit `APPROVE_OPTION` selection. Refine, dismissal (`undefined`), or
+	 * any unrecognized value falls through to refine semantics — the caller
+	 * keeps plan mode active and surfaces guidance text to the agent. Clients
+	 * without `elicitation.form` support auto-approve because there is no
+	 * confirmation surface available; without that, plan mode would strand
+	 * the agent (the bug this method exists to fix).
+	 */
 	async #requestAcpPlanApprovalChoice(sessionId: string, title: string, planContent: string): Promise<boolean> {
 		const supportsForm = this.#clientCapabilities?.elicitation?.form != null;
 		if (!supportsForm) return true;
-		const allLines = planContent.split("\n");
-		const previewLines = allLines.slice(0, 12).join("\n");
-		const ellipsis = allLines.length > 12 ? "\n…" : "";
+		// Include a short preview of the plan so the user has context in the
+		// dialog. Keep the body bounded — Zed renders elicitation messages
+		// inline and a multi-thousand-line plan blows out the dialog.
+		const previewLines = planContent.split("\n").slice(0, 12).join("\n");
+		const ellipsis = planContent.split("\n").length > 12 ? "\n…" : "";
 		const message = `Approve plan "${title}" and start implementation?\n\n${previewLines}${ellipsis}`;
 		const value = await elicitFromAcpClient(
 			this.#connection,
@@ -1349,6 +1811,9 @@ export class AcpAgent implements Agent {
 			{ type: "string", enum: [APPROVE_OPTION, REFINE_OPTION] },
 			undefined,
 		);
+		// Approve ONLY on the explicit approve selection. Dismissal, cancel,
+		// timeout, or any other non-approve response falls through to refine
+		// semantics so closing the dialog can never grant write access.
 		return value === APPROVE_OPTION;
 	}
 
@@ -1384,7 +1849,25 @@ export class AcpAgent implements Agent {
 	}
 
 	#scheduleBootstrapUpdates(sessionId: string): void {
-		// Defer initial notifications until response reaches client to avoid races.
+		// Defer first notifications until the response has reached the client.
+		// Zed's agent-client-protocol reader dispatches responses and
+		// notifications to different async tasks; sending the first
+		// `available_commands_update` from `setTimeout(0)` reliably loses the
+		// race against the response handler and Zed logs `Received session
+		// notification for unknown session` then drops the update — leaving
+		// the slash-command palette empty (#1015 follow-up; see
+		// zed-industries/zed#55965 for the same race biting other ACP agents).
+		// `ACP_BOOTSTRAP_RACE_GUARD_MS` is invisible to the operator and large
+		// enough that the response future has scheduled before our timer fires
+		// on stdio-only transports.
+		//
+		// The session-lifetime subscription is installed inside the same timer
+		// so it shares this guard — without it, an extension's `session_start`
+		// handler (or any async work it schedules) calling `setThinkingLevel`
+		// would push a `config_option_update` for a session id the client
+		// hasn't been told about yet. The pre-bootstrap thinking level is
+		// reported in the response's `configOptions`, so deferring the
+		// notification loses no state.
 		setTimeout(() => {
 			if (this.#connection.signal.aborted) {
 				return;
@@ -1433,6 +1916,13 @@ export class AcpAgent implements Agent {
 		});
 	}
 
+	/**
+	 * Reload plugin/registry state for an ACP session. Mirrors the interactive
+	 * `/reload-plugins` and `/move` flows: invalidates the plugin-roots cache,
+	 * resets the capability cache, refreshes the session's slash-command state,
+	 * then re-advertises commands so the client sees newly installed/disabled
+	 * plugins.
+	 */
 	async #reloadPluginState(record: ManagedSessionRecord): Promise<void> {
 		const cwd = record.session.sessionManager.getCwd();
 		const projectPath = await resolveActiveProjectRegistryPath(cwd);
@@ -1710,6 +2200,9 @@ export class AcpAgent implements Agent {
 			toolCallId: message.toolCallId,
 			toolName: message.toolName,
 			isError: message.isError === true,
+			// Replayed from persisted session state: the on-disk shape is the
+			// tool-result content the session originally recorded, plus the legacy
+			// `errorMessage` field the ACP mapper still coerces into readable text.
 			result: {
 				content: message.content,
 				details: message.details,
@@ -1724,7 +2217,7 @@ export class AcpAgent implements Agent {
 		if (options.includeStart === false) {
 			return notifications;
 		}
-		return mapAgentSessionEventToAcpSessionUpdates(startEvent, sessionId, { cwd }).concat(notifications);
+		return [...mapAgentSessionEventToAcpSessionUpdates(startEvent, sessionId, { cwd }), ...notifications];
 	}
 
 	#buildReplayToolArgs(details: unknown): { path?: string } {
@@ -1864,6 +2357,14 @@ export class AcpAgent implements Agent {
 				},
 				compact: instructionsOrOptions => runExtensionCompact(record.session, instructionsOrOptions),
 			},
+			// Per-session getter: `record.session.sessionId` reads through to
+			// `sessionManager.getSessionId()` (it's a getter, not a field), so an
+			// extension command that calls `ctx.newSession` / `ctx.switchSession`
+			// — both exposed in the block just above — mutates the underlying id
+			// mid-flight. Reading lazily on each elicitation matches every other
+			// `sessionUpdate` call in this file. Hoisting the factory to an
+			// `AcpAgent` field would still be wrong because it would also lose
+			// the per-`record` binding.
 			createAcpExtensionUiContext(this.#connection, () => record.session.sessionId, this.#clientCapabilities),
 		);
 		await extensionRunner.emit({ type: "session_start" });
@@ -1929,6 +2430,8 @@ export class AcpAgent implements Agent {
 				headers: this.#toNameValueMap(server.headers),
 			};
 		}
+		// The experimental ACP-channel transport (`type: "acp"`) is not advertised in
+		// `mcpCapabilities`, so a spec-compliant client never sends it; reject defensively.
 		throw new Error(`Unsupported MCP server transport: ${server.type}`);
 	}
 

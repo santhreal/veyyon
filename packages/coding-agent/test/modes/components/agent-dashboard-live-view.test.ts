@@ -1,5 +1,5 @@
 /**
- * The Live view of the Agent Control Center: who is running, what kind of agent
+ * The Live view of the subagent dashboard: who is running, what kind of agent
  * each one is, and what happens when you open one.
  *
  * WHY THESE TESTS. Two things about this view were wrong in ways no type check
@@ -323,7 +323,7 @@ describe("Card chrome", () => {
 
 		expect(lines.length).toBe(30);
 		const plain = lines.map(line => line.replace(ANSI_PATTERN, "")).join("\n");
-		expect(plain).toContain("Agent Control Center");
+		expect(plain).toContain("Subagent Dashboard");
 		expect(plain).toContain("esc close");
 		dashboard.dispose();
 	});

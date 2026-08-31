@@ -1,53 +1,147 @@
-import type { Stats } from "node:fs";
+/**
+ * An append-only record of which credential was spent where.
+ *
+ * WHAT THIS IS FOR. Obfuscation is a preventive control: the value never reaches the provider.
+ * This is the detective half, and it answers a question the preventive half cannot: after the
+ * fact, which of your credentials did this agent actually use, and in what command? For
+ * bug-bounty and VDP work that is the difference between "the vault is careful" and "I can
+ * show you exactly what that token touched". Expansion funnels through ONE call site
+ * (`transformToolCallArguments` in `sdk.ts`), so recording it costs one line per tool call that
+ * mentions a secret, and nothing at all for every call that does not.
+ *
+ * A VALUE CANNOT END UP IN HERE, BY CONSTRUCTION RATHER THAN BY CARE. The recorded command is
+ * the arguments as they were BEFORE expansion, which is the form in which every secret is still
+ * a placeholder. There is no redaction step to get wrong, no allow-list of fields to keep in
+ * sync, and no ordering hazard where a later edit moves the write to after the substitution: the
+ * pre-expansion arguments are value-free because the whole point of the obfuscator is that they
+ * are what the model produced. {@link buildExpansionRecord} takes the pre-expansion arguments
+ * and has no access to anything else.
+ *
+ * ONE LINE IS ONE BOUNDED APPEND. {@link MAX_RECORD_BYTES} is not a tidiness cap: every
+ * provider process sharing a profile must be able to append a complete record rather than an
+ * unbounded fragment. The append and the size-check/rotation transaction run under the
+ * repository's cross-process file lock, so rotation cannot race another process's write. A
+ * record too long to fit keeps bounded evidence and reports how many placeholders were omitted.
+ *
+ * IT DOES NOT GROW FOREVER. The log rotates at {@link ROTATE_AT_BYTES}, keeping one previous
+ * generation, and reads span both. An append-only file with no ceiling is a slow leak that also
+ * makes `/secret log` slower every day it is left running.
+ *
+ * WHY A FAILED WRITE DOES NOT STOP THE COMMAND. Refusing to run a tool because a log file could
+ * not be appended turns a full disk into an agent outage, and the preventive control is still
+ * working, so nothing is unsafe. Silence is what is banned (Law 10), not carrying on: a failed
+ * append raises an operator notice, which is a channel the operator actually sees, so a log that
+ * has stopped recording cannot look like a log with nothing to record.
+ */
+import { constants as fsConstants, type Stats } from "node:fs";
+import type { FileHandle } from "node:fs/promises";
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { clamp, escapeTerminalText, isRecord } from "@veyyon/utils";
+import {
+	applyOwnerOnlyWindowsAcl,
+	clamp,
+	errorMessage,
+	escapeTerminalText,
+	isEnoent,
+	isRecord,
+	verifyOwnerOnlyWindowsAcl,
+	withFileLock,
+} from "@veyyon/utils";
+import type { OperatorNotices } from "../session/operator-notices";
 import { PLACEHOLDER_RE } from "./placeholder";
 import type { VaultLocations } from "./vault";
 
+/** Filename of the log, inside the active profile's directory. */
 export const SECRET_AUDIT_FILENAME = "secret-audit.jsonl";
 
+/**
+ * Longest complete JSONL record the log will emit, including the newline.
+ *
+ * The cross-process lock prevents interleaving; this separate cap prevents a single pathological
+ * expansion from turning the append-only evidence stream into an unbounded line.
+ */
 export const MAX_RECORD_BYTES = 2048;
 
-export const MAX_COMMAND_CHARS = 1200;
-export const MAX_RECORDED_SECRETS = 16;
-export const MAX_SECRET_JSON_BYTES = 128;
-export const MAX_METADATA_JSON_BYTES = 256;
-export const MAX_FIELD_CHARS = MAX_RECORD_BYTES;
-export const MAX_AUDIT_DEPTH = 24;
-export const MAX_AUDIT_NODES = 512;
-export const MAX_PLACEHOLDER_CANDIDATES = 4096;
-export const MAX_SCANNED_STRING_BYTES = 256 * 1024;
-export const MAX_TOTAL_SCANNED_STRING_BYTES = 512 * 1024;
-export const MAX_SNAPSHOT_STRING_BYTES = 4096;
-export const MAX_SNAPSHOT_NODES = 128;
-export const MAX_DECODE_LINES = 32_768;
-export const MAX_DECODE_RECORDS = 32_768;
-export const MAX_PENDING_RECORDS = 128;
-export const MAX_PENDING_BYTES = MAX_PENDING_RECORDS * MAX_RECORD_BYTES;
+/** Snapshot and traversal bounds are security limits, not presentation preferences. */
+const MAX_COMMAND_CHARS = 1200;
+const MAX_RECORDED_SECRETS = 16;
+const MAX_SECRET_JSON_BYTES = 128;
+const MAX_METADATA_JSON_BYTES = 256;
+const MAX_FIELD_CHARS = MAX_RECORD_BYTES;
+const MAX_AUDIT_DEPTH = 24;
+const MAX_AUDIT_NODES = 512;
+const MAX_PLACEHOLDER_CANDIDATES = 4096;
+const MAX_SCANNED_STRING_BYTES = 256 * 1024;
+const MAX_TOTAL_SCANNED_STRING_BYTES = 512 * 1024;
+const MAX_SNAPSHOT_STRING_BYTES = 4096;
+const MAX_SNAPSHOT_NODES = 128;
+const MAX_DECODE_LINES = 32_768;
+const MAX_DECODE_RECORDS = 32_768;
+const MAX_PENDING_RECORDS = 128;
+const MAX_PENDING_BYTES = MAX_PENDING_RECORDS * MAX_RECORD_BYTES;
 
+/**
+ * Size at which the log is rotated, keeping one previous generation.
+ *
+ * An append-only file with no ceiling is a slow leak, and this one has a second cost: `read`
+ * parses the whole file to show the last twenty lines, so an unbounded log makes `/secret log`
+ * get slower for the lifetime of a profile (Law 7). Two megabytes is roughly ten thousand
+ * expansions, which is far more history than the question "which credential did this agent use"
+ * ever needs, and small enough that parsing it is imperceptible.
+ *
+ * ROTATION, NOT TRUNCATION. Deleting the oldest history to make room for the newest would throw
+ * away exactly the records an incident asks about. The previous generation is kept as
+ * `secret-audit.jsonl.1` and {@link SecretAuditLog.read} reads through it, so a `/secret log 20`
+ * issued just after a rotation still answers with twenty records rather than with however few
+ * happen to have landed since.
+ */
 export const ROTATE_AT_BYTES = 2 * 1024 * 1024;
 
+/** Suffix of the kept previous generation. */
 export const ROTATED_SUFFIX = ".1";
 
+/** One expansion, as it appears on one line of the log. */
 export interface SecretExpansionRecord {
+	/** Epoch milliseconds at expansion. */
 	at: number;
+	/** Placeholders that were substituted, for example `#GITHUB_TOKEN#`. Never values. */
 	secrets: string[];
+	/** Number of additional placeholders not listed so the record remains bounded. */
 	omittedSecrets?: number;
+	/** Tool that received them. */
 	tool: string;
+	/**
+	 * Session the expansion happened in, so a log shared by a profile can be split by session.
+	 *
+	 * Optional because a session id is optional: a session that has not been persisted has none
+	 * yet, and dropping the whole record over a missing label would lose the part that matters.
+	 */
 	session?: string;
+	/** The command as the model wrote it, with every retained secret still a placeholder. */
 	command: string;
+	/** True when any evidence in this record was cut to fit {@link MAX_RECORD_BYTES}. */
 	truncated?: true;
 }
 
+/** Absolute path of the log for a set of vault locations. */
 export function secretAuditPath(locations: VaultLocations): string {
+	// PROFILE, never project: a project directory is a git worktree, and a log of which
+	// credentials an agent used is not something to invite into a commit.
 	return path.join(locations.profileDir, SECRET_AUDIT_FILENAME);
 }
 
+/**
+ * Placeholders present in a value, in encounter order, without duplicates.
+ *
+ * The walk is iterative and bounded. It deliberately uses the same enumerable string keys and
+ * property reads as argument expansion, but a hostile proxy, getter, depth, or input-size limit
+ * fails closed instead of allowing expansion with incomplete evidence.
+ */
 export function placeholdersIn(value: unknown, known: (placeholder: string) => boolean): string[] {
 	return inspectAuditValue(value, known, text => text, false).secrets;
 }
 
-export type InertSnapshot =
+type InertSnapshot =
 	| null
 	| boolean
 	| number
@@ -55,7 +149,7 @@ export type InertSnapshot =
 	| { kind: "array"; items: InertSnapshot[]; omitted: number }
 	| { kind: "object"; entries: Array<[string, InertSnapshot]>; omitted: number };
 
-export interface InspectionState {
+interface InspectionState {
 	readonly known: (placeholder: string) => boolean;
 	readonly obfuscate: (value: string) => string;
 	readonly found: string[];
@@ -68,19 +162,20 @@ export interface InspectionState {
 	protectionFailed: boolean;
 }
 
-export interface InspectionResult {
+interface InspectionResult {
 	secrets: string[];
 	snapshot: InertSnapshot;
 	truncated: boolean;
 }
 
-export interface PendingInspection {
+interface PendingInspection {
 	value: unknown;
 	depth: number;
 	capture: boolean;
 	assign: (value: InertSnapshot) => void;
 }
 
+/** Build one inert snapshot while discovering placeholders; input objects never reach JSON.stringify. */
 function inspectAuditValue(
 	value: unknown,
 	known: (placeholder: string) => boolean,
@@ -240,6 +335,7 @@ function inspectAuditValue(
 	};
 }
 
+/** Scan without match-array materialisation, then protect the complete string before retaining it. */
 function inspectText(value: string, state: InspectionState): string {
 	if (value.length > MAX_SCANNED_STRING_BYTES) {
 		throw new Error("Refusing secret expansion because an audit string exceeds the byte limit.");
@@ -286,6 +382,7 @@ function inspectText(value: string, state: InspectionState): string {
 	}
 }
 
+/** Build a bounded record from arguments before expansion. */
 export function buildExpansionRecord(options: {
 	args: Record<string, unknown>;
 	tool: string;
@@ -319,6 +416,7 @@ export function buildExpansionRecord(options: {
 	return record;
 }
 
+/** Protect labels without ever retaining attacker text when protection itself is unavailable. */
 function protectMetadata(value: string, obfuscate: (value: string) => string): string {
 	if (value.length > MAX_FIELD_CHARS || Buffer.byteLength(value) > MAX_FIELD_CHARS) {
 		return "[oversized metadata omitted]";
@@ -333,6 +431,7 @@ function protectMetadata(value: string, obfuscate: (value: string) => string): s
 	}
 }
 
+/** Serialize only our inert tagged snapshot; input properties and `toJSON` are never consulted. */
 function stringifySnapshot(value: InertSnapshot): string {
 	if (value === null || typeof value === "boolean" || typeof value === "number") return String(value);
 	if (typeof value === "string") return JSON.stringify(value);
@@ -348,6 +447,7 @@ function stringifySnapshot(value: InertSnapshot): string {
 	return `{${entries.join(",")}}`;
 }
 
+/** Serialise one record to the exact bytes appended, newline included. */
 export function encodeRecord(record: SecretExpansionRecord): string {
 	assertEncodableRecord(record);
 
@@ -390,6 +490,9 @@ export function encodeRecord(record: SecretExpansionRecord): string {
 	let line = serialiseRecord(encoded);
 	if (Buffer.byteLength(line) <= MAX_RECORD_BYTES) return line;
 
+	// Placeholder names are the primary evidence. Keep a bounded ordered prefix plus the exact
+	// omitted count, then spend whatever remains on command context. Tool and session labels are
+	// bounded separately so hostile direct callers cannot crowd both kinds of evidence out.
 	encoded.truncated = true;
 	encoded.tool = capJsonString(encoded.tool, MAX_METADATA_JSON_BYTES);
 	if (encoded.session !== undefined) {
@@ -409,6 +512,8 @@ export function encodeRecord(record: SecretExpansionRecord): string {
 
 	line = serialiseRecord(encoded);
 	if (Buffer.byteLength(line) > MAX_RECORD_BYTES) {
+		// This can only be reached through a typed-but-invalid runtime value whose fixed metadata
+		// cannot fit. Refusing the append is safer than emitting an over-cap or malformed line.
 		throw new Error("The secret audit record metadata exceeds the maximum record size.");
 	}
 
@@ -439,6 +544,7 @@ export function encodeRecord(record: SecretExpansionRecord): string {
 	return line;
 }
 
+/** Fail closed on runtime values that escaped the TypeScript interface. */
 function assertEncodableRecord(record: SecretExpansionRecord): void {
 	const valid =
 		Number.isFinite(record.at) &&
@@ -453,14 +559,17 @@ function assertEncodableRecord(record: SecretExpansionRecord): void {
 	if (!valid) throw new Error("The secret audit record has invalid metadata.");
 }
 
+/** Construct the on-disk line in one field order, discarding unknown runtime properties. */
 function serialiseRecord(record: SecretExpansionRecord): string {
 	return `${JSON.stringify(record)}\n`;
 }
 
+/** Bound a direct-call string before JSON encoding so preflight itself cannot allocate without limit. */
 function boundedPrefix(value: string, maxChars: number): string {
 	return value.length <= maxChars ? value : prefixWithEllipsis(value, maxChars - 1);
 }
 
+/** Keep a UTF-16-safe prefix and record the cut visibly. */
 function prefixWithEllipsis(value: string, requestedEnd: number): string {
 	let end = clamp(requestedEnd, 0, value.length);
 	if (
@@ -476,6 +585,7 @@ function prefixWithEllipsis(value: string, requestedEnd: number): string {
 	return `${value.slice(0, end)}…`;
 }
 
+/** Cap a JSON string by its encoded bytes, not its source character count. */
 function capJsonString(value: string, maxBytes: number): string {
 	if (Buffer.byteLength(JSON.stringify(value)) <= maxBytes) return value;
 	let low = 0;
@@ -494,6 +604,11 @@ function capJsonString(value: string, maxBytes: number): string {
 	return best;
 }
 
+/**
+ * The encoder's JSON escapes protect the file format, not the terminal: JSON.parse restores control
+ * bytes. Normalise every decoded string before it reaches `/secret log`, including hand-edited or
+ * crash-damaged evidence that did not pass through this process's encoder.
+ */
 function terminalSafeRecord(record: SecretExpansionRecord): SecretExpansionRecord {
 	return {
 		...record,
@@ -504,6 +619,7 @@ function terminalSafeRecord(record: SecretExpansionRecord): SecretExpansionRecor
 	};
 }
 
+/** Parse a log back, skipping nothing silently: an unreadable line is reported as such. */
 export function decodeLog(text: string): { records: SecretExpansionRecord[]; malformed: number } {
 	const records: SecretExpansionRecord[] = [];
 	let malformed = 0;
@@ -587,6 +703,23 @@ export function decodeLog(text: string): { records: SecretExpansionRecord[]; mal
 	return { records, malformed };
 }
 
+/**
+ * Whether a parsed line is a secret-expansion record, checking EVERY field the renderer reads.
+ *
+ * The check used to be `typeof at === "number" && Array.isArray(secrets)` followed by a cast, so a
+ * line missing `tool` or `command`, or carrying a `secrets` array of numbers, counted as a valid
+ * record and `/secret log` printed `undefined` in the middle of a security report. Half-checking
+ * and then asserting the type is the same class of mistake as not checking: the renderer trusts
+ * this predicate, so it has to cover what the renderer touches. A line that fails is counted as
+ * malformed, which is reported to the operator rather than dropped.
+ *
+ * It used to be called `isRecord`, which is the name `@veyyon/utils` gives to the plain
+ * "is this an object" guard, and having one name mean two different checks in one tree is worse
+ * than a duplicate: a reader who knows the shared guard reads this call site as a cheap object
+ * test and has no reason to look, and an import of the shared name here would have silently
+ * shadowed the strict check with the loose one, letting a half-formed line through as valid. The
+ * object test IS the shared guard now, and this predicate adds only the fields the renderer reads.
+ */
 function isSecretExpansionRecord(value: unknown): value is SecretExpansionRecord {
 	if (!isRecord(value)) return false;
 	const candidate = value;
@@ -607,7 +740,8 @@ function isSecretExpansionRecord(value: unknown): value is SecretExpansionRecord
 	);
 }
 
-export function assertOwnedRegularFile(filePath: string, stats: Stats): void {
+/** Reject paths an audit write must never follow or reinterpret. */
+function assertOwnedRegularFile(filePath: string, stats: Stats): void {
 	if (!stats.isFile()) {
 		throw new Error(`The secret audit path at ${escapeTerminalText(filePath)} is not a regular file.`);
 	}
@@ -620,5 +754,493 @@ export function assertOwnedRegularFile(filePath: string, stats: Stats): void {
 	}
 }
 
-// circular import: class moved to helpers
-export { SecretAuditLog } from "./audit-helpers";
+interface PinnedParent {
+	path: string;
+	handle: FileHandle;
+	stats: Stats;
+}
+
+interface OpenedAuditFile {
+	handle: FileHandle;
+	stats: Stats;
+	created: boolean;
+}
+
+function sameIdentity(left: Stats, right: Stats): boolean {
+	return left.dev === right.dev && left.ino === right.ino;
+}
+
+async function assertPathIdentity(filePath: string, expected: Stats): Promise<Stats> {
+	const actual = await fs.lstat(filePath);
+	assertOwnedRegularFile(filePath, actual);
+	if (!sameIdentity(actual, expected)) {
+		throw new Error(`The secret audit path at ${escapeTerminalText(filePath)} was replaced during the operation.`);
+	}
+	return actual;
+}
+
+async function openPinnedParent(filePath: string): Promise<PinnedParent> {
+	const parentPath = path.dirname(filePath);
+	const flags = fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0) | (fsConstants.O_NOFOLLOW ?? 0);
+	const handle = await fs.open(parentPath, flags);
+	try {
+		const stats = await handle.stat();
+		if (!stats.isDirectory()) {
+			throw new Error(`The secret audit directory at ${escapeTerminalText(parentPath)} is not a directory.`);
+		}
+		const currentUid = process.getuid?.();
+		if (currentUid !== undefined && stats.uid !== currentUid) {
+			throw new Error(
+				`The secret audit directory at ${escapeTerminalText(parentPath)} is not owned by the current user.`,
+			);
+		}
+		const pinned = { path: parentPath, handle, stats };
+		await assertParentIdentity(pinned);
+		return pinned;
+	} catch (error) {
+		await handle.close();
+		throw error;
+	}
+}
+
+async function assertParentIdentity(parent: PinnedParent): Promise<void> {
+	const opened = await parent.handle.stat();
+	if (!opened.isDirectory() || !sameIdentity(opened, parent.stats)) {
+		throw new Error(`The pinned secret audit directory at ${escapeTerminalText(parent.path)} changed identity.`);
+	}
+	const current = await fs.lstat(parent.path);
+	if (!current.isDirectory() || !sameIdentity(current, parent.stats)) {
+		throw new Error(`The secret audit directory at ${escapeTerminalText(parent.path)} was replaced.`);
+	}
+}
+
+/** Create missing parent components one at a time while every namespace mutation pins its parent. */
+async function ensureAuditParent(filePath: string): Promise<void> {
+	const target = path.dirname(filePath);
+	const parsed = path.parse(target);
+	const segments = target
+		.slice(parsed.root.length)
+		.split(path.sep)
+		.filter(segment => segment.length > 0);
+	const flags = fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0) | (fsConstants.O_NOFOLLOW ?? 0);
+	let currentPath = parsed.root;
+	let currentHandle = await fs.open(currentPath, flags);
+	let currentStats = await currentHandle.stat();
+	try {
+		for (const segment of segments) {
+			const parent: PinnedParent = { path: currentPath, handle: currentHandle, stats: currentStats };
+			await assertParentIdentity(parent);
+			const childPath = path.join(currentPath, segment);
+			let childHandle: FileHandle;
+			let created = false;
+			try {
+				childHandle = await fs.open(childPath, flags);
+			} catch (error) {
+				if (!isEnoent(error)) throw error;
+				await fs.mkdir(childPath, { mode: 0o700 });
+				created = true;
+				childHandle = await fs.open(childPath, flags);
+			}
+			let childStats: Stats;
+			try {
+				childStats = await childHandle.stat();
+				if (!childStats.isDirectory()) {
+					throw new Error(`The secret audit parent at ${escapeTerminalText(childPath)} is not a directory.`);
+				}
+				const childPathStats = await fs.lstat(childPath);
+				if (!childPathStats.isDirectory() || !sameIdentity(childPathStats, childStats)) {
+					throw new Error(`The secret audit parent at ${escapeTerminalText(childPath)} was replaced.`);
+				}
+				if (created) {
+					if (process.platform === "win32") {
+						await applyOwnerOnlyWindowsAcl(childPath);
+						await verifyOwnerOnlyWindowsAcl(childPath);
+					} else {
+						await childHandle.chmod(0o700);
+						childStats = await childHandle.stat();
+						if ((childStats.mode & 0o7777) !== 0o700) {
+							throw new Error(`The secret audit parent at ${escapeTerminalText(childPath)} is not mode 0700.`);
+						}
+					}
+					const securedPathStats = await fs.lstat(childPath);
+					if (!sameIdentity(securedPathStats, childStats)) {
+						throw new Error(`The secret audit parent at ${escapeTerminalText(childPath)} was replaced.`);
+					}
+					await childHandle.sync();
+					await currentHandle.sync();
+				}
+				await assertParentIdentity(parent);
+			} catch (error) {
+				await childHandle.close();
+				throw error;
+			}
+			await currentHandle.close();
+			currentPath = childPath;
+			currentHandle = childHandle;
+			currentStats = childStats;
+		}
+	} finally {
+		await currentHandle.close();
+	}
+}
+
+/** Secure the exact opened descriptor, then prove the pathname still names that inode. */
+async function secureHandle(filePath: string, handle: FileHandle, applyAcl: boolean): Promise<Stats> {
+	let stats = await handle.stat();
+	assertOwnedRegularFile(filePath, stats);
+	await assertPathIdentity(filePath, stats);
+	if (process.platform === "win32") {
+		if (applyAcl) await applyOwnerOnlyWindowsAcl(filePath);
+		await verifyOwnerOnlyWindowsAcl(filePath);
+		await assertPathIdentity(filePath, stats);
+	} else if ((stats.mode & 0o7777) !== 0o600) {
+		await handle.chmod(0o600);
+		stats = await handle.stat();
+		assertOwnedRegularFile(filePath, stats);
+		if ((stats.mode & 0o7777) !== 0o600) {
+			throw new Error(`The secret audit file at ${escapeTerminalText(filePath)} could not be secured to mode 0600.`);
+		}
+		await assertPathIdentity(filePath, stats);
+	}
+	return stats;
+}
+
+async function throwClassifiedOpenError(filePath: string, error: unknown): Promise<never> {
+	let stats: Stats;
+	try {
+		stats = await fs.lstat(filePath);
+	} catch {
+		throw error;
+	}
+	assertOwnedRegularFile(filePath, stats);
+	throw error;
+}
+
+async function openExistingAuditFile(filePath: string, flags: number): Promise<OpenedAuditFile | null> {
+	let handle: FileHandle;
+	try {
+		handle = await fs.open(filePath, flags | (fsConstants.O_NOFOLLOW ?? 0));
+	} catch (error) {
+		if (isEnoent(error)) return null;
+		return await throwClassifiedOpenError(filePath, error);
+	}
+	try {
+		const stats = await secureHandle(filePath, handle, true);
+		return { handle, stats, created: false };
+	} catch (error) {
+		await handle.close();
+		throw error;
+	}
+}
+
+async function openOrCreateAuditFile(filePath: string, flags: number, parent: PinnedParent): Promise<OpenedAuditFile> {
+	await assertParentIdentity(parent);
+	let handle: FileHandle;
+	let created = false;
+	try {
+		handle = await fs.open(
+			filePath,
+			flags | fsConstants.O_CREAT | fsConstants.O_EXCL | (fsConstants.O_NOFOLLOW ?? 0),
+			0o600,
+		);
+		created = true;
+	} catch (error) {
+		if (!isAlreadyExists(error)) return await throwClassifiedOpenError(filePath, error);
+		try {
+			handle = await fs.open(filePath, flags | (fsConstants.O_NOFOLLOW ?? 0));
+		} catch (openError) {
+			return await throwClassifiedOpenError(filePath, openError);
+		}
+	}
+	try {
+		await assertParentIdentity(parent);
+		const stats = await secureHandle(filePath, handle, true);
+		return { handle, stats, created };
+	} catch (error) {
+		await handle.close();
+		throw error;
+	}
+}
+
+function isAlreadyExists(error: unknown): boolean {
+	return isRecord(error) && error.code === "EEXIST";
+}
+
+/** Whether an append needs a boundary before its first JSON byte. */
+async function handleNeedsLineSeparator(handle: FileHandle, stats: Stats): Promise<boolean> {
+	if (stats.size === 0) return false;
+	const lastByte = Buffer.allocUnsafe(1);
+	const { bytesRead } = await handle.read(lastByte, 0, 1, stats.size - 1);
+	if (bytesRead !== 1) throw new Error("The secret audit log's final byte could not be read.");
+	return lastByte[0] !== 0x0a;
+}
+
+async function writeAll(handle: FileHandle, bytes: Buffer, position: number | null): Promise<void> {
+	let offset = 0;
+	while (offset < bytes.length) {
+		const { bytesWritten } = await handle.write(
+			bytes,
+			offset,
+			bytes.length - offset,
+			position === null ? null : position + offset,
+		);
+		if (bytesWritten === 0) throw new Error("The secret audit write made no forward progress.");
+		offset += bytesWritten;
+	}
+}
+
+async function readBounded(handle: FileHandle, cap: number): Promise<Buffer> {
+	const bytes = Buffer.allocUnsafe(cap + 1);
+	let offset = 0;
+	while (offset < bytes.length) {
+		const read = await handle.read(bytes, offset, bytes.length - offset, offset);
+		if (read.bytesRead === 0) break;
+		offset += read.bytesRead;
+	}
+	if (offset > cap) throw new Error(`The secret audit generation is above the ${cap}-byte read limit.`);
+	return bytes.subarray(0, offset);
+}
+
+/**
+ * Ordered, bounded audit queue. Records are encoded synchronously so the queue never retains a
+ * caller object whose getters or fields can change after expansion has begun.
+ */
+export class SecretAuditLog {
+	readonly #logPath: string;
+	readonly #rawRotatedPath: string;
+	readonly #notices: OperatorNotices | undefined;
+	readonly #pending: Array<{ line: string; bytes: number }> = [];
+	#retainedRecords = 0;
+	#retainedBytes = 0;
+	#drainPromise: Promise<void> | null = null;
+	#degraded = false;
+	#queueFullNotified = false;
+
+	constructor(logPath: string, notices?: OperatorNotices) {
+		if (!path.isAbsolute(logPath)) throw new Error("The secret audit log path must be absolute.");
+		this.#logPath = logPath;
+		this.#rawRotatedPath = `${logPath}${ROTATED_SUFFIX}`;
+		this.#notices = notices;
+	}
+
+	get path(): string {
+		return escapeTerminalText(this.#logPath);
+	}
+
+	get rotatedPath(): string {
+		return escapeTerminalText(this.#rawRotatedPath);
+	}
+
+	/**
+	 * Queue one already-sanitized record. Capacity exhaustion throws synchronously, before the
+	 * caller expands placeholders, and emits one visible bounded-loss notice.
+	 */
+	record(record: SecretExpansionRecord): void {
+		const line = encodeRecord(record);
+		const bytes = Buffer.byteLength(line);
+		if (this.#retainedRecords >= MAX_PENDING_RECORDS || this.#retainedBytes + bytes > MAX_PENDING_BYTES) {
+			if (!this.#queueFullNotified) {
+				this.#notices?.error(
+					"secrets",
+					`The secret audit queue at ${escapeTerminalText(this.#logPath)} is full; credential expansion was refused before use.`,
+				);
+				this.#queueFullNotified = true;
+			}
+			throw new Error("The secret audit queue is full; refusing credential expansion.");
+		}
+		this.#pending.push({ line, bytes });
+		this.#retainedRecords++;
+		this.#retainedBytes += bytes;
+		this.#startDrain();
+	}
+
+	#startDrain(): void {
+		if (this.#drainPromise !== null) return;
+		let tracked: Promise<void>;
+		tracked = Promise.resolve()
+			.then(async () => await this.#drainOneBatch())
+			.finally(() => {
+				if (this.#drainPromise === tracked) this.#drainPromise = null;
+				if (this.#pending.length > 0) this.#startDrain();
+			});
+		this.#drainPromise = tracked;
+	}
+
+	async #drainOneBatch(): Promise<void> {
+		const batch = this.#pending.splice(0);
+		if (batch.length === 0) return;
+		try {
+			await ensureAuditParent(this.#logPath);
+			const parent = await openPinnedParent(this.#logPath);
+			try {
+				await withFileLock(this.#logPath, async () => {
+					await assertParentIdentity(parent);
+					for (const entry of batch) {
+						await this.#rotateIfFull(entry.bytes, parent);
+						await this.#appendLine(entry.line, entry.bytes, parent);
+					}
+					await assertParentIdentity(parent);
+				});
+			} finally {
+				await parent.handle.close();
+			}
+			if (this.#degraded) {
+				this.#notices?.warn(
+					"secrets",
+					`The secret audit log at ${escapeTerminalText(this.#logPath)} recovered; recording has resumed.`,
+				);
+			}
+			this.#degraded = false;
+		} catch (error) {
+			if (!this.#degraded) {
+				this.#notices?.error(
+					"secrets",
+					`The secret audit log at ${escapeTerminalText(this.#logPath)} could not be appended to ` +
+						`(${escapeTerminalText(errorMessage(error))}). ${batch.length} bounded queued ` +
+						`record${batch.length === 1 ? " was" : "s were"} not written. Credentials remain protected; ` +
+						`credential use is no longer being recorded until the next append recovers.`,
+				);
+			}
+			this.#degraded = true;
+		} finally {
+			this.#retainedRecords -= batch.length;
+			this.#retainedBytes -= batch.reduce((total, entry) => total + entry.bytes, 0);
+			if (this.#retainedRecords < MAX_PENDING_RECORDS && this.#retainedBytes < MAX_PENDING_BYTES) {
+				this.#queueFullNotified = false;
+			}
+		}
+	}
+
+	async #appendLine(line: string, lineBytes: number, parent: PinnedParent): Promise<void> {
+		const opened = await openOrCreateAuditFile(this.#logPath, fsConstants.O_APPEND | fsConstants.O_RDWR, parent);
+		try {
+			const stats = await opened.handle.stat();
+			assertOwnedRegularFile(this.#logPath, stats);
+			const separator = await handleNeedsLineSeparator(opened.handle, stats);
+			if (stats.size + (separator ? 1 : 0) + lineBytes > ROTATE_AT_BYTES) {
+				throw new Error("The secret audit append would exceed the generation cap.");
+			}
+			const bytes = Buffer.from(separator ? `\n${line}` : line);
+			await writeAll(opened.handle, bytes, null);
+			await opened.handle.datasync();
+			const after = await opened.handle.stat();
+			if (after.size > ROTATE_AT_BYTES || !sameIdentity(after, stats)) {
+				throw new Error("The secret audit file changed during append.");
+			}
+			await assertPathIdentity(this.#logPath, after);
+			await assertParentIdentity(parent);
+			if (opened.created) await parent.handle.sync();
+		} finally {
+			await opened.handle.close();
+		}
+	}
+
+	/**
+	 * Copy the full live generation into the pinned previous-generation descriptor and datasync it
+	 * before truncating the still-open live descriptor. A failed rotation therefore leaves the
+	 * readable live generation untouched, and no rename/unlink can delete a substituted inode.
+	 */
+	async #rotateIfFull(incomingBytes: number, parent: PinnedParent): Promise<void> {
+		const current = await openExistingAuditFile(this.#logPath, fsConstants.O_RDWR);
+		if (current === null) {
+			const old = await openExistingAuditFile(this.#rawRotatedPath, fsConstants.O_RDONLY);
+			if (old !== null) await old.handle.close();
+			return;
+		}
+		try {
+			const separator = await handleNeedsLineSeparator(current.handle, current.stats);
+			if (current.stats.size + (separator ? 1 : 0) + incomingBytes <= ROTATE_AT_BYTES) {
+				const old = await openExistingAuditFile(this.#rawRotatedPath, fsConstants.O_RDONLY);
+				if (old !== null) await old.handle.close();
+				return;
+			}
+			if (current.stats.size > ROTATE_AT_BYTES) {
+				throw new Error("The live secret audit generation is already above its cap.");
+			}
+
+			const rotated = await openOrCreateAuditFile(this.#rawRotatedPath, fsConstants.O_RDWR, parent);
+			try {
+				await assertPathIdentity(this.#logPath, current.stats);
+				await assertPathIdentity(this.#rawRotatedPath, rotated.stats);
+				await assertParentIdentity(parent);
+				const source = await readBounded(current.handle, ROTATE_AT_BYTES);
+				await rotated.handle.truncate(0);
+				await writeAll(rotated.handle, source, 0);
+				await rotated.handle.truncate(source.length);
+				await rotated.handle.datasync();
+				await assertPathIdentity(this.#rawRotatedPath, rotated.stats);
+				await assertPathIdentity(this.#logPath, current.stats);
+				await current.handle.truncate(0);
+				await current.handle.datasync();
+				await assertPathIdentity(this.#logPath, current.stats);
+				await assertParentIdentity(parent);
+				if (rotated.created) await parent.handle.sync();
+			} finally {
+				await rotated.handle.close();
+			}
+		} finally {
+			await current.handle.close();
+		}
+	}
+
+	async flush(): Promise<void> {
+		for (;;) {
+			const drain = this.#drainPromise;
+			if (drain === null) return;
+			await drain;
+		}
+	}
+
+	async read(options?: { limit?: number }): Promise<{ records: SecretExpansionRecord[]; malformed: number }> {
+		let parent: PinnedParent;
+		try {
+			parent = await openPinnedParent(this.#logPath);
+		} catch (error) {
+			if (isEnoent(error)) return { records: [], malformed: 0 };
+			throw error;
+		}
+		try {
+			const generations = await withFileLock(this.#logPath, async () => {
+				await assertParentIdentity(parent);
+				const rotated = await this.#readOne(this.#rawRotatedPath);
+				const current = await this.#readOne(this.#logPath);
+				await assertParentIdentity(parent);
+				return [rotated, current];
+			});
+			const records = generations.flatMap(generation => generation.records);
+			const malformed = generations.reduce((total, generation) => total + generation.malformed, 0);
+			const limit = options?.limit;
+			return { records: limit === undefined ? records : records.slice(-limit), malformed };
+		} finally {
+			await parent.handle.close();
+		}
+	}
+
+	async #readOne(filePath: string): Promise<{ records: SecretExpansionRecord[]; malformed: number }> {
+		try {
+			const opened = await openExistingAuditFile(filePath, fsConstants.O_RDONLY);
+			if (opened === null) return { records: [], malformed: 0 };
+			try {
+				const bytes = await readBounded(opened.handle, ROTATE_AT_BYTES);
+				const after = await opened.handle.stat();
+				if (
+					!sameIdentity(after, opened.stats) ||
+					after.size !== opened.stats.size ||
+					after.size > ROTATE_AT_BYTES
+				) {
+					throw new Error("The secret audit generation changed or grew beyond its read limit.");
+				}
+				await assertPathIdentity(filePath, after);
+				return decodeLog(bytes.toString("utf8"));
+			} finally {
+				await opened.handle.close();
+			}
+		} catch (error) {
+			if (isEnoent(error)) return { records: [], malformed: 0 };
+			throw new Error(
+				`The secret audit log at ${escapeTerminalText(filePath)} could not be read safely ` +
+					`(${escapeTerminalText(errorMessage(error))}).`,
+			);
+		}
+	}
+}

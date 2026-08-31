@@ -137,7 +137,7 @@ describe("the walk this lock depends on", () => {
 	it("distinguishes a referenced field from an invented one", () => {
 		const bash = TEMPLATES.get("tools/bash");
 		expect(bash).toBeDefined();
-		expect(/\bhasGrep\b/.test(bash as string)).toBe(true);
+		expect(/\bhasSearch\b/.test(bash as string)).toBe(true);
 		expect(/\baFieldNoTemplateMentions\b/.test(bash as string)).toBe(false);
 	});
 });

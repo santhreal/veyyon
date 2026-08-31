@@ -19,23 +19,64 @@ import {
 } from "./path-utils";
 import { ToolError } from "./tool-errors";
 
+/**
+ * The shared path-input pipeline for the text and structure search engines and
+ * `ast_edit`: normalize the raw paths, resolve internal URLs to backing files,
+ * and derive the scope those operations walk.
+ *
+ * WHY THIS IS NOT IN `./path-utils`, WHERE IT USED TO LIVE. It is the only thing
+ * there that needs `InternalUrlRouter`, and that one import made `path-utils`
+ * part of a 23-module import cycle: `path-utils` -> `internal-urls` ->
+ * `skill-protocol` -> `extensibility/skills` -> `discovery` -> `builtin` ->
+ * `path-utils`, with `mcp`, `lsp/utils` and `config.ts` pulled in along the way.
+ * A cycle has to be instantiated as one unit, so importing ANY member cost what
+ * the whole component cost. Measured with twenty identical test files that did
+ * nothing but import one module: `path-utils` 51.7 MB per file, `internal-urls`
+ * 51.7, `discovery` 51.5, all the same number because they were the same
+ * component. `path-utils` is imported for `expandTilde`-grade helpers all over
+ * the package, so it spread that cost very widely, and the test runner gives each
+ * test file a fresh realm.
+ *
+ * Splitting it here is also the honest boundary. `path-utils` answers questions
+ * about paths; this answers "what should this tool scan", which is a different
+ * job with different dependencies, and only three tools ask it.
+ *
+ * KEEP THIS MODULE DOWNSTREAM. It may import `./path-utils`; nothing in
+ * `./path-utils` may import it back, or the cycle returns.
+ */
+
+/** Local file materialized from a readable external URL for shared tool-scope resolution. */
 export interface ResolvedExternalSearchUrl {
+	/** Absolute or cwd-relative file path to search. */
 	sourcePath: string;
+	/** True when the materialized file must not mint editable anchors. */
 	immutable?: boolean;
 }
 
 export interface ToolScopeOptions {
 	rawPaths: string[];
 	cwd: string;
+	/** Verb used in the "Cannot {action} internal URL without a backing file: …" message. */
 	internalUrlAction: string;
+	/** Collect absolute paths flagged immutable by their internal-URL handler. */
 	trackImmutableSources?: boolean;
+	/** Honor `exactFilePaths` from {@link resolveExplicitSearchPaths} (search-only). */
 	surfaceExactFilePaths?: boolean;
+	/** Fan plain-file entries out into per-target scans instead of folding them
+	 * into a directory walk's glob union (search-only: the caller must dedupe
+	 * matches from overlapping targets). */
 	fanOutFileTargets?: boolean;
+	/** Extra hint appended to "Path not found" when stat fails and the user supplied multiple paths. */
 	multipathStatHint?: string;
+	/** Calling session's settings — forwarded to the internal-URL router so caller-aware handlers (issue://, pr://) honor it. */
 	settings?: unknown;
+	/** Caller's abort signal — forwarded to the internal-URL router. */
 	signal?: AbortSignal;
+	/** Calling session's `local://` root mapping — pins resolutions to the calling session. */
 	localProtocolOptions?: LocalProtocolOptions;
+	/** Calling session's loaded skills — lets skill:// resolve without process-global state. */
 	skills?: readonly Skill[];
+	/** Materialize readable external URLs to local text files before scope derivation. */
 	resolveExternalUrl?: (rawPath: string) => Promise<ResolvedExternalSearchUrl | undefined>;
 }
 
@@ -50,6 +91,22 @@ export interface ToolScopeResolution {
 	immutableSourcePaths: Set<string>;
 }
 
+/** Whether a resolved match belongs to a source that must not mint editable anchors. */
+export function isImmutableSearchSourcePath(filePath: string, immutableSourcePaths: ReadonlySet<string>): boolean {
+	for (const immutablePath of immutableSourcePaths) {
+		if (filePath === immutablePath || filePath.startsWith(`${immutablePath}${path.sep}`)) return true;
+	}
+	return false;
+}
+
+/**
+ * Shared path-input pipeline for text search, structure search, and `ast_edit`:
+ *  1. normalize + reject empty paths,
+ *  2. resolve internal URLs through {@link InternalUrlRouter} to backing files,
+ *  3. partition existing vs missing when multiple paths are supplied,
+ *  4. derive a single search base path / glob, or a multi-target list,
+ *  5. stat the resolved base path so callers can branch on directory vs file scope.
+ */
 export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<ToolScopeResolution> {
 	const { rawPaths: inputs, cwd, internalUrlAction } = opts;
 	const normalizedRawPaths = inputs.map(normalizePathLikeInput);
@@ -60,6 +117,9 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 	if (rawPaths.some(rawPath => rawPath.length === 0)) {
 		throw new ToolError("Search scope entries must be non-empty paths or globs");
 	}
+	// Strict external-URL schemes. `file://` is intentionally absent: it has
+	// local-path semantics (expandPath strips it downstream), so it flows through
+	// the ordinary filesystem pipeline instead of the external-URL resolver.
 	const strictExternalUrlRe = /^(?:https?|ftp|ws|wss):\/\//i;
 	const internalRouter = InternalUrlRouter.instance();
 	const resolvedPathInputs: string[] = [];
@@ -67,6 +127,12 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 	for (const rawPath of rawPaths) {
 		let externalUrl = strictExternalUrlRe.test(rawPath);
 		if (!externalUrl && isReadableUrlPath(rawPath) && !hasGlobPathChars(rawPath)) {
+			// Fuzzy spelling the read parser accepts (`www.host/…`, collapsed
+			// `https:/host/…`). An existing local path wins over URL
+			// interpretation so a directory literally named `www.foo` stays
+			// searchable; only a definitive ENOENT/ENOTDIR flips to URL handling
+			// (any other stat error means the path exists — let the local
+			// pipeline surface it).
 			try {
 				await fs.promises.stat(resolveToCwd(rawPath, cwd));
 			} catch (err) {
@@ -82,6 +148,9 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 				}
 				continue;
 			}
+			// Resolver missing or declined (e.g. ftp/ws/wss): fail explicitly
+			// instead of letting the local-path fallthrough surface a confusing
+			// "Path not found" for a URL-shaped input.
 			throw new ToolError(
 				`Cannot ${internalUrlAction} external URL: ${rawPath}. Use \`read\` to fetch web content, then search the returned text.`,
 			);
@@ -92,7 +161,7 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 		}
 		if (isSshUrl(rawPath)) {
 			throw new ToolError(
-				`Cannot ${internalUrlAction} a remote ssh:// path (no local file): ${rawPath}. Use \`read ${rawPath}\` to view it, or the \`search\` tool to grep remote files.`,
+				`Cannot ${internalUrlAction} a remote ssh:// path (no local file): ${rawPath}. Use \`read ${rawPath}\` to view it, or \`search\` with \`type: "text"\` to search remote file text.`,
 			);
 		}
 		if (hasGlobPathChars(rawPath)) {
@@ -104,6 +173,9 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 			signal: opts.signal,
 			localProtocolOptions: opts.localProtocolOptions,
 			skills: opts.skills,
+			// Tool-scope resolution only needs `sourcePath`; skip content
+			// materialization so large artifacts (or any handler that separates
+			// path from content) stay searchable without OOM risk.
 			pathOnly: true,
 		});
 		if (!resource.sourcePath) {
@@ -162,6 +234,10 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 		const stat = await Bun.file(searchPath).stat();
 		isDirectory = stat.isDirectory();
 	} catch (err) {
+		// Only a genuinely-missing path is "Path not found". A permission error
+		// (EACCES on a parent dir without +x), EIO, ELOOP, etc. must propagate
+		// loudly rather than be masked as not-found — otherwise the operator hunts
+		// for a path that exists. `isMissingPath` is the repo-wide owner of that split.
 		if (!isMissingPath(err)) throw err;
 		const hint = opts.multipathStatHint && rawPaths.length > 1 ? opts.multipathStatHint : "";
 		throw new ToolError(`Path not found: ${scopePath}${hint}`);

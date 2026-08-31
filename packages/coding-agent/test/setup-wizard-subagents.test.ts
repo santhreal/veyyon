@@ -18,7 +18,7 @@ const agents: AgentDefinition[] = [
 		description: "Review code and report findings",
 		systemPrompt: "",
 		source: "bundled",
-		tools: ["read", "grep", "bash"],
+		tools: ["read", "search", "bash"],
 	},
 ];
 

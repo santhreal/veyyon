@@ -4,17 +4,48 @@ import { getTinyModelsCacheDir } from "@veyyon/utils";
 import { sttClient } from "./asr-client";
 import type { SttProgressStatus } from "./asr-protocol";
 import { resolveSttModelSpec } from "./models";
+import { ensureRecorder } from "./recorder";
 
+export interface DownloadProgress {
+	stage: string;
+	percent?: number;
+}
+
+export interface EnsureOptions {
+	modelName?: string;
+	signal?: AbortSignal;
+	onProgress?: (progress: DownloadProgress) => void;
+}
+
+// ── ONNX Whisper model ─────────────────────────────────────────────
+
+/**
+ * Real-progress event for a speech-model download, surfaced to UI callers.
+ * `percent` is an integer 0–100 aggregated across all model files (encoder +
+ * decoder shards), so it advances monotonically toward completion.
+ */
 export interface SttDownloadProgress {
 	status: SttProgressStatus;
+	/** Integer 0–100 aggregated across files. */
 	percent: number;
+	/** Bytes downloaded so far across all files. */
 	loaded: number;
+	/** Total bytes across all files seen so far. */
 	total: number;
+	/** The file currently downloading, when known. */
 	file?: string;
 	repo: string;
 	label: string;
 }
 
+/**
+ * Whether the selected model is fully present in the local cache. For
+ * transformers.js Whisper tiers a complete download leaves `config.json` plus
+ * matching `encoder*.onnx` and `decoder*.onnx` shards under `onnx/` (a partial
+ * fetch with only one shard, or a bare `config.json`, reads as not-cached); for
+ * sherpa-onnx tiers every model file (encoder/decoder/joiner + tokens) must be
+ * present (`.part` sidecars from an interrupted fetch are ignored).
+ */
 export async function isSttModelCached(key: string): Promise<boolean> {
 	const spec = resolveSttModelSpec(key);
 	const repoDir = path.join(getTinyModelsCacheDir(), spec.repo);
@@ -26,12 +57,20 @@ export async function isSttModelCached(key: string): Promise<boolean> {
 			}
 			return true;
 		} catch {
+			// "Is this model already downloaded": an absent cache directory is the answer on every machine
+			// that has not used speech input yet, and false is also right for a cache that cannot be read,
+			// since the caller responds by downloading, which reports its own failures.
 			return false;
 		}
 	}
 	try {
 		const root = await fs.readdir(repoDir);
 		if (!root.includes("config.json")) return false;
+		// Whisper tiers are encoder-decoder: a complete download leaves both an
+		// `encoder*.onnx` and a `decoder*.onnx` (the dtype suffix varies). Require
+		// both rather than any single `.onnx`, so an interrupted fetch that landed
+		// only one shard reads as not-cached and the caller takes the foreground
+		// download path with progress instead of silently fetching mid-recording.
 		const onnxFiles = await fs.readdir(path.join(repoDir, "onnx")).catch(() => [] as string[]);
 		const hasEncoder = onnxFiles.some(file => file.startsWith("encoder") && file.endsWith(".onnx"));
 		const hasDecoder = onnxFiles.some(file => file.startsWith("decoder") && file.endsWith(".onnx"));
@@ -41,6 +80,12 @@ export async function isSttModelCached(key: string): Promise<boolean> {
 	}
 }
 
+/**
+ * Download (or warm from cache) the selected ONNX Whisper model via the speech
+ * worker, resolving once the model is fully present and loaded. Streams real
+ * Hub progress with an aggregated integer percent. Rejects if the worker cannot
+ * obtain the model. Safe to call non-interactively.
+ */
 export async function downloadSttModel(
 	key: string,
 	onProgress?: (progress: SttDownloadProgress) => void,
@@ -82,4 +127,21 @@ export async function downloadSttModel(
 	if (!(await isSttModelCached(spec.key))) {
 		throw new Error(`Speech model download finished without required files (${spec.repo}).`);
 	}
+}
+
+// ── Public API ─────────────────────────────────────────────────────
+
+export async function ensureSTTDependencies(options?: EnsureOptions): Promise<void> {
+	await ensureRecorder(progress => options?.onProgress?.(progress), options?.signal);
+	await downloadSttModel(
+		resolveSttModelSpec(options?.modelName).key,
+		progress => {
+			const stage =
+				progress.status === "ready" || progress.status === "done"
+					? `Speech model ${progress.label} ready`
+					: `Downloading speech model ${progress.label}`;
+			options?.onProgress?.({ stage, percent: progress.percent });
+		},
+		{ signal: options?.signal },
+	);
 }

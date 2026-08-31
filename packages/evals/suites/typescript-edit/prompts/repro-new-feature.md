@@ -1,0 +1,1 @@
+Create `src/feature-6.ts` following the exact same shape as the other feature files in `src/`: import `helper` from '{{pkg}}', import `pool` from '{{deepPath}}', define `const ENDPOINT = '{{url}}'`, and export a function `feature6()` that returns `helper(pool, ENDPOINT)`. Write only that file.

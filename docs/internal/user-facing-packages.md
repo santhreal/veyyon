@@ -35,18 +35,17 @@ Sources: [`packages/stats/README.md`](../../packages/stats/README.md), [`package
 - Outputs: dashboard metrics and API endpoints including `/api/stats`, `/api/stats/models`, `/api/stats/folders`, `/api/stats/timeseries`, and `/api/sync`.
 - Side effects/limits: syncs session files before output; long-running dashboard stops on `Ctrl+C` and closes the stats database.
 
-### `packages/typescript-edit-benchmark`: TypeScript edit benchmark
+### `packages/evals`: model and agent evaluation
 
-Sources: [`packages/typescript-edit-benchmark/package.json`](../../packages/typescript-edit-benchmark/package.json), [`packages/typescript-edit-benchmark/src/generate.ts`](../../packages/typescript-edit-benchmark/src/generate.ts), [`packages/typescript-edit-benchmark/src/tasks.ts`](../../packages/typescript-edit-benchmark/src/tasks.ts), [`packages/typescript-edit-benchmark/src/verify.ts`](../../packages/typescript-edit-benchmark/src/verify.ts), [`packages/typescript-edit-benchmark/src/in-process-client.ts`](../../packages/typescript-edit-benchmark/src/in-process-client.ts).
+Sources: [`packages/evals/package.json`](../../packages/evals/package.json), [`packages/evals/engine/contracts.ts`](../../packages/evals/engine/contracts.ts), [`packages/evals/suites/typescript-edit/generate.ts`](../../packages/evals/suites/typescript-edit/generate.ts), [`packages/evals/suites/typescript-edit/verify.ts`](../../packages/evals/suites/typescript-edit/verify.ts), [`packages/evals/backends/in-process/client.ts`](../../packages/evals/backends/in-process/client.ts), [`packages/evals/EVALS.md`](../../packages/evals/EVALS.md).
 
-There is no package README at this path today; the manifest and source headers are the cited package-local sources.
+- Package: private `@veyyon/evals`; bins: `evals` (suite runner) and `evals-server` (run store API and dashboard).
+- Feature: one runner over five axes — eval suite, agent harness, configuration arm, prompt variant, and model — across three execution backends (`pier` for DeepSWE containers, `harbor` for Terminal-Bench 3.0, `in-process` for the TypeScript-edit suite).
+- Suites: `suites/deep-swe` (SWE tasks in Pier containers), `suites/terminal-bench` (Terminal-Bench 3.0 through Harbor), `suites/typescript-edit` (in-process TypeScript source mutations).
+- Modules: `engine` holds the suite, harness and backend contracts plus the variant matrix and the run engine; `store` holds the SQLite run store and experiment grouping; `api` serves the REST/SSE API; `dashboard` is the live dashboard; `tools` renders aggregates and markdown tables.
+- TypeScript-edit CLI (`suites/typescript-edit/cli.ts`): `--model` and `--output` (required), `--tasks <ids>`, `--max-tasks` (default 80), `--task-concurrency` (default 32), `--runs`, `--list`.
+- Fixtures: each TypeScript-edit task directory contains `prompt.md`, `input/`, `expected/` and `metadata.json`; the bundled distribution is `datasets/typescript-edit/fixtures.tar.gz`. DeepSWE task lists are `datasets/deep-swe/tasks/*.txt`; Terminal-Bench task lists are `datasets/terminal-bench/tasks/*.txt`.
+- Outputs: trial directories and JSON result snapshots under `packages/evals/runs/`, plus the run rows the dashboard reads.
+- Side effects/limits: extracts fixture archives, clones upstream task repositories into `datasets/repo-cache/`, vendors pinned datasets into `.cache/`, and runs Docker containers for the `pier` and `harbor` backends.
 
-- Package: private `@veyyon/typescript-edit-benchmark`; library only (no `bin` entry: the benchmark runner lives in `packages/metaharness/adapters/edit/{cli,runner}.ts` and imports this package).
-- Feature: fixture generation, task loading, and verification for benchmarking coding-agent edit precision on TypeScript source-code mutations.
-- Modules: `generate.ts` builds fixtures by mutating a TypeScript repo (difficulty modes easy/medium/hard/nightmare; root script `bench:gen-fixtures`), `mutations.ts` defines the mutation catalog, `tasks.ts` loads tasks from a fixtures directory or `fixtures.tar.gz`, `verify.ts` compares output against expected files byte-for-byte (with format-equivalence and indent scoring), `in-process-client.ts` runs `AgentSession`s in-process to avoid per-task CLI startup cost, `formatter.ts`/`shared.ts` are support code.
-- CLI (via the metaharness edit adapter): `--model` and `--output` (required), `--tasks <ids>`, `--max-tasks` (default 80), `--task-concurrency` (default 32), `--runs`, `--list`.
-- Fixtures: each task directory contains `prompt.md`, `input/`, `expected/`, and `metadata.json`; bundled distribution uses `fixtures.tar.gz`.
-- Outputs: JSON result snapshots written to the adapter's `--output` path, plus conversation dumps in a sibling `result.dump/` directory.
-- Side effects/limits: extracts fixture archives to temp space and runs agent sessions against copied fixture inputs.
-
-*Verified against `72090e75` on 2026-07-20.*
+*Verified against `6f9dbe46` on 2026-08-28.*

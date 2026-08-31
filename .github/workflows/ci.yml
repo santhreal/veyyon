@@ -877,6 +877,11 @@ jobs:
          - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
          - name: Regenerate changelog + build site (brand check gates)
            # GITHUB_REPOSITORY is auto-set; gen-changelog reconciles against it.
+           # The releases API call is authenticated: unauthenticated it shares the
+           # runner's 60/hour IP budget, and gen-changelog fails closed on the 403
+           # rather than deploying a changelog whose publication state is unknown.
+           env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            run: node website/build.mjs
          - name: Deploy both Pages projects and verify the served installers
            uses: ./.github/actions/deploy-cloudflare-site
@@ -1209,6 +1214,10 @@ jobs:
               site-autodeploy: ${{ vars.SITE_AUTODEPLOY }}
          - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
          - name: Rebuild changelog after GitHub publication
+           # Authenticated for the same reason as release_site: this rebuild must
+           # see the release that release_github_publish just made public.
+           env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            run: node website/build.mjs
          - name: Deploy the finalized changelog to veyyon.dev
            uses: ./.github/actions/deploy-cloudflare-site

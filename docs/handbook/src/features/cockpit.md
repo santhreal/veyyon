@@ -1,6 +1,6 @@
 # Multi-agent monitoring
 
-The interactive TUI is the main surface for one session. Status line, session tree, background jobs, the Agent Control Center, and optional swarm orchestration cover multi-agent work.
+The interactive TUI is the main surface for one session. Status line, session tree, background jobs, the subagent dashboard, and optional swarm orchestration cover multi-agent work.
 
 ## Status line
 
@@ -15,7 +15,7 @@ Configure under **Settings → Appearance → Status Line** (`/statusline` jumps
 | `statusLine.sessionAccent` | Tint the editor border with the session color |
 | `statusLine.showHookStatus` | Show active hook status when hooks run |
 
-Built-in segment IDs include: `pi` (legacy product mark segment), `profile`, `model`, `account`, `secrets`, `mode`, `path`, `git`, `pr`, `subagents`, `token_in`, `token_out`, `token_total`, `token_rate`, `cost`, `context_pct`, `context_total`, `time_spent`, `time`, `session`, `hostname`, `cache_read`, `cache_write`, `cache_hit`, `session_name`, `usage`, `collab`.
+Built-in segment IDs include: `pi` (legacy product mark segment), `profile`, `model`, `account`, `mode`, `path`, `git`, `pr`, `subagents`, `token_in`, `token_out`, `token_total`, `token_rate`, `cost`, `context_pct`, `context_total`, `time_spent`, `time`, `session`, `hostname`, `cache_read`, `cache_write`, `cache_hit`, `session_name`, `usage`, `collab`.
 
 The `model` segment shows the model you are working with, then two things that are easy to confuse, so they are drawn differently:
 
@@ -69,12 +69,42 @@ named in the log once. `stripWorkPrefix: false` turns the whole step off.
 A project inside a temporary directory is shown relative to that temporary directory instead,
 with its own icon, whatever `displayRoots` says.
 
-The `secrets` segment shows that a stored credential is live where you are working: `2 secrets`. It counts
-what would actually expand at the tool boundary in this directory, not what is in the vault file, so
-a credential scoped elsewhere or already expired is not counted. It hides itself when nothing is
-live, so a session with no vault shows nothing. When the soonest deadline is under an hour it appends
-the time left in the warning color, `2 secrets (34m left)`, which is the window in which extending it
-with `e` in `/secret` still helps; a deadline further out belongs to the card's EXPIRES column.
+The launch card draws the whole row before the session mounts. The working directory comes from the
+process, the branch from `.git/HEAD` and its ref files, and the mode from config. The model name,
+the effort beside it, the dirty marker (`*`) and the context gauge are what a previous launch
+recorded, in `cache/launch-facts.json`.
+
+That file records three kinds of fact. The model's display name, its provider, the effort and the
+at-rest context reading belong to the model, so they are stated in every project you use it in,
+including one you open for the first time. The dirty marker belongs to the project, because it
+describes that working tree. The gauge is recorded under both: a project states its own reading
+where it has one, and the model's reading from wherever it last idled where it does not. Those two
+maps are keyed by the release as well.
+
+The third fact is the terminal's background color, keyed by the terminal and by nothing else. A new
+release does not change what an emulator draws, and it is the same window whichever directory is
+open in it. Veyyon queries the background at startup and the reply arrives after the card is on
+screen, so the card mixes the composer hairline, the composer outline and the transcript rules out
+of the background this terminal reported last time. A reply that contradicts the record takes
+effect on the next frame. Each of the three maps holds its 24 most recently written entries.
+
+Each recorded fact is replaced by a measured one as the session mounts. A tree committed from
+another terminal since the last launch keeps the recorded marker until `git status` answers, about
+130ms in. A project you open for the first time has no dirty marker. The gauge reads `?` only
+until this model has idled somewhere once; after that a new project starts at the reading every
+other project using that model gave, which differs by what this project's `AGENTS.md` adds.
+Configuring a different model resets it to `?` again, because a reading is a fraction of the
+window it was taken against. A model you have never run states its configured id's last path
+segment until the catalog supplies a display name.
+
+A repository whose refs are in a reftable has no ref files to read, so its branch appears with the
+session rather than with the card, as does a detached HEAD with no operation to name.
+
+`/secret list` states what is live where you are working: the credentials the vault holds here, and
+a count of the values being masked that nothing can name, with the environment variable or
+`secrets.yml` path each came from. The status row does not carry a count. It reported one that
+nothing else in the product agreed with, and a number a reader cannot reconcile with `/secret list`
+is worse than no number.
 
 The `context_pct` segment answers one question: how much room is left before the context runs out. "Runs out" means whichever comes first, auto-compaction firing or the model's window filling, so with auto-compaction on the segment measures against the compaction trigger, not the window. The window itself is what `context_total` prints.
 
@@ -92,32 +122,23 @@ Two run clocks tick alongside the segments, both measuring model runtime, never 
 | `/branch` | Branch a new session file from an earlier user message |
 | `/fork` | Duplicate the current session into a new file |
 | `/session info` | Session metadata and stats |
-| `/agents` | Agent Control Center: the live roster (agent type, status, activity; Enter opens one agent's session) and the Comms stream of agent-to-agent messages |
-| `/process-manager` | The same Agent Control Center, opened across every conversation this process is running |
+| `/agents` | Subagent dashboard: the live roster (agent type, status, activity; Enter opens one agent's session) and the Comms stream of agent-to-agent messages |
 | `/jobs` | List background async tool jobs |
 
 `/cockpit` and `/hub` are aliases of `/agents`, as is the `app.agents.hub` keybinding and a double-tap of the left arrow on an empty composer. They used to open a separate screen with its own roster and its own drill-in, which meant "which agents are running" had two answers that could disagree with each other. They all open the one card now.
 
-### One conversation, or every conversation
+### One conversation at a time
 
 A process runs more than one conversation at a time. `/new` stops the previous one
 unless `session.newKeepsBackground` is on, and an ACP client keeps every
-open session in the same process.
+open session in the same process. Changing `session.newKeepsBackground` takes
+effect on the next launch; the running session keeps the value it started with
+([#928](https://github.com/santhreal/veyyon/issues/928)).
 
-`/agents` opens on the conversation on screen. `/process-manager` opens on all of
-them. Press `a` in either card to switch: the roster, the Comms stream and the
-transcripts you can open all move together, and the title reads
-`Agent Control Center — all conversations` at the wider scope. A card with no
-conversation of its own, which is what a collab guest has, already shows everything
-it can reach, so `a` does nothing there and no chip offers it.
-
-Regenerate the capture pair for this behavior with:
-
-```sh
-SCENE_COMMAND='bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b --no-tools' \
-  PROOF_LLM_BASE_URL=http://veyyon-proof-llm:8080/v1 SCENE_MOTION_FLOOR=1 \
-  proof/docker/record-x11.sh proof/scenes/process-manager-scope.sh
-```
+The card is scoped to the conversation on screen: the roster, the Comms stream and
+the transcripts it opens are that conversation's. A conversation this process is
+still running off-screen is counted by the status line's background chip and has no
+card of its own.
 
 ### The Live roster
 

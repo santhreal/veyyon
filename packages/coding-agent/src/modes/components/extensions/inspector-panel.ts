@@ -1,13 +1,58 @@
+/**
+ * InspectorPanel - Detail view for selected extension.
+ *
+ * Shows name, description, origin, status, and kind-specific preview.
+ */
 import * as os from "node:os";
 import { isZodSchema, zodToWireSchema } from "@veyyon/ai/utils/schema";
 import { type Component, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
+import { collapseWhitespace, errorMessage, logger } from "@veyyon/utils";
 import type { ThemeColor } from "../../../modes/theme/color";
 import { theme } from "../../../modes/theme/theme";
-import { replaceTabs, shortenPath } from "../../../tools/render-utils";
-import type { JsonSchemaView, McpConfigView, ParamSpecView, SkillView, ToolDefView } from "./inspector-panel-helpers";
-
-import { unreadableRows } from "./inspector-panel-helpers";
+import { PREVIEW_LIMITS, replaceTabs, shortenPath, TRUNCATE_LENGTHS } from "../../../tools/render-utils";
 import type { ExtensionRow, ExtensionState } from "./types";
+
+/** Structural views over extension payloads whose concrete shape varies by source (zod tool, wire tool, MCP config, skill). Each renderer narrows `unknown` once to the optional fields it reads. */
+interface ToolDefView {
+	parameters?: unknown;
+	inputSchema?: unknown;
+}
+interface ParamSpecView {
+	type?: string;
+	default?: unknown;
+}
+interface JsonSchemaView {
+	properties?: Record<string, unknown>;
+	required?: string[];
+}
+interface SkillView {
+	prompt?: string;
+	instruction?: string;
+	content?: string;
+}
+interface McpConfigView {
+	transport?: string;
+	type?: string;
+	command?: string;
+	cmd?: string;
+	args?: string[];
+	arguments?: string[];
+	env?: Record<string, unknown>;
+}
+
+/**
+ * The row an inspector section shows when it cannot read what it was given.
+ *
+ * These three sections used to print a dim `(unable to parse …)` with no reason
+ * and no log line. Dim is the colour this panel uses for "nothing here", so a
+ * malformed definition read as an extension that simply declares no arguments,
+ * and there was nowhere to look for the cause. The notice is a warning now, it
+ * carries the reason, and it also reaches the log.
+ */
+function unreadableRows(subject: string, error: unknown): string[] {
+	logger.warn("Extension inspector could not read a definition", { subject, error: String(error) });
+	return [theme.fg("warning", `  (unable to read the ${subject}: ${collapseWhitespace(errorMessage(error))})`)];
+}
 
 export class InspectorPanel implements Component {
 	#extension: ExtensionRow | null = null;
@@ -26,42 +71,52 @@ export class InspectorPanel implements Component {
 		const ext = this.#extension;
 		const lines: string[] = [];
 
+		// Name header
 		lines.push(theme.bold(theme.fg("accent", ext.displayName)));
 		lines.push("");
 
+		// Kind badge
 		lines.push(theme.fg("muted", "Type: ") + this.#getKindBadge(ext.kind));
 		lines.push("");
 
+		// Description (wrapped)
 		const desc = ext.description;
 		const isValidDescription = typeof desc === "string" && desc.length > 0;
 		if (isValidDescription && width > 2) {
 			const wrapped = wrapTextWithAnsi(desc, width - 2);
-			for (let li = 0; li < wrapped.length; li++) {
-				lines.push(truncateToWidth(wrapped[li]!, width));
+			for (const line of wrapped) {
+				lines.push(truncateToWidth(line, width));
 			}
 			lines.push("");
 		} else if (isValidDescription) {
+			// Width too small for wrapping, show truncated single line
 			lines.push(truncateToWidth(desc, width));
 			lines.push("");
 		}
 
+		// Origin
 		lines.push(theme.fg("muted", "Origin:"));
 		const levelLabel = ext.source.level === "user" ? "User" : ext.source.level === "project" ? "Project" : "Native";
 		lines.push(`  ${theme.italic(`via ${ext.source.providerName} (${levelLabel})`)}`);
 		const shortened = replaceTabs(shortenPath(ext.path, os.homedir()));
-		const segments = shortened.split("/");
+		const parts = shortened.split(/[/\\]/);
+		const sep = shortened.includes("\\") ? "\\" : "/";
+		// If path is very long, show just the last parts
 		const displayPath =
-			shortened.length > 40 && segments.length > 3 ? `.../${segments.slice(-3).join("/")}` : shortened;
+			shortened.length > TRUNCATE_LENGTHS.SHORT && parts.length > PREVIEW_LIMITS.COLLAPSED_LINES
+				? `...${sep}${parts.slice(-PREVIEW_LIMITS.COLLAPSED_LINES).join(sep)}`
+				: shortened;
 		lines.push(`  ${theme.fg("dim", displayPath)}`);
 		lines.push("");
 
+		// Status badge
 		lines.push(theme.fg("muted", "Status:"));
 		lines.push(`  ${this.#getStatusBadge(ext.state, ext.disabledReason, ext.shadowedBy)}`);
 		lines.push("");
 
+		// Preview section (routed based on kind)
 		const previewLines = this.#renderPreview(ext, width);
-		const pl = previewLines;
-		for (let li = 0; li < pl.length; li++) lines.push(pl[li]!);
+		lines.push(...previewLines);
 
 		return lines;
 	}
@@ -89,8 +144,7 @@ export class InspectorPanel implements Component {
 		}
 
 		if (content.length > 0) {
-			const cl = content;
-			for (let li = 0; li < cl.length; li++) lines.push(cl[li]!);
+			lines.push(...content);
 		}
 
 		return lines;
@@ -109,9 +163,8 @@ export class InspectorPanel implements Component {
 		}
 
 		const fileLines = content.split("\n");
-		const preview = fileLines.slice(0, 20);
-		for (let li = 0; li < preview.length; li++) {
-			const highlighted = this.#highlightMarkdown(preview[li]!);
+		for (const line of fileLines.slice(0, 20)) {
+			const highlighted = this.#highlightMarkdown(line);
 			lines.push(truncateToWidth(highlighted, width - 2));
 		}
 
@@ -132,15 +185,23 @@ export class InspectorPanel implements Component {
 	}
 
 	#highlightMarkdown(line: string): string {
+		// Basic markdown syntax highlighting
 		let highlighted = line;
 
+		// Headers
 		if (/^#{1,6}\s/.test(highlighted)) {
 			highlighted = theme.bold(theme.fg("accent", highlighted));
-		} else if (/^```/.test(highlighted)) {
+		}
+		// Code blocks
+		else if (/^```/.test(highlighted)) {
 			highlighted = theme.fg("dim", highlighted);
-		} else if (/^[\s]*[-*+]\s/.test(highlighted)) {
+		}
+		// Lists
+		else if (/^[\s]*[-*+]\s/.test(highlighted)) {
 			highlighted = highlighted.replace(/^([\s]*[-*+]\s)/, theme.fg("accent", "$1"));
-		} else if (/^[\s]*\d+\.\s/.test(highlighted)) {
+		}
+		// Numbered lists
+		else if (/^[\s]*\d+\.\s/.test(highlighted)) {
 			highlighted = highlighted.replace(/^([\s]*\d+\.\s)/, theme.fg("accent", "$1"));
 		}
 
@@ -183,8 +244,7 @@ export class InspectorPanel implements Component {
 				}
 			}
 		} catch (err) {
-			const ur = unreadableRows("tool definition", err);
-			for (let li = 0; li < ur.length; li++) lines.push(ur[li]!);
+			lines.push(...unreadableRows("tool definition", err));
 		}
 
 		lines.push("");
@@ -203,18 +263,17 @@ export class InspectorPanel implements Component {
 			if (!instruction) {
 				lines.push(theme.fg("dim", "  (no instruction text)"));
 			} else {
-				const allInstructionLines = instruction.split("\n");
-				const instructionLines = allInstructionLines.slice(0, 15);
-				for (let li = 0; li < instructionLines.length; li++) {
-					lines.push(truncateToWidth(instructionLines[li]!, width - 2));
+				const instructionLines = instruction.split("\n").slice(0, 15);
+				for (const line of instructionLines) {
+					lines.push(truncateToWidth(line, width - 2));
 				}
-				if (allInstructionLines.length > 15) {
+
+				if (instruction.split("\n").length > 15) {
 					lines.push(theme.fg("dim", "(truncated at line 15)"));
 				}
 			}
 		} catch (err) {
-			const ur = unreadableRows("skill content", err);
-			for (let li = 0; li < ur.length; li++) lines.push(ur[li]!);
+			lines.push(...unreadableRows("skill content", err));
 		}
 
 		lines.push("");
@@ -242,6 +301,7 @@ export class InspectorPanel implements Component {
 				lines.push(`  ${theme.fg("muted", "Args:")}       ${theme.fg("dim", args.join(" "))}`);
 			}
 
+			// Environment variables if present
 			if (mcp.env && typeof mcp.env === "object") {
 				const envCount = Object.keys(mcp.env).length;
 				if (envCount > 0) {
@@ -249,8 +309,7 @@ export class InspectorPanel implements Component {
 				}
 			}
 		} catch (err) {
-			const ur = unreadableRows("MCP configuration", err);
-			for (let li = 0; li < ur.length; li++) lines.push(ur[li]!);
+			lines.push(...unreadableRows("MCP configuration", err));
 		}
 
 		lines.push("");
@@ -260,6 +319,7 @@ export class InspectorPanel implements Component {
 	#renderDefaultPreview(ext: ExtensionRow, width: number): string[] {
 		const lines: string[] = [];
 
+		// Show trigger pattern if present
 		if (ext.trigger) {
 			lines.push(theme.fg("muted", "Trigger:"));
 			lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));

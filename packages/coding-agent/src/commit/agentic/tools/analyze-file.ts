@@ -59,7 +59,11 @@ export function createAnalyzeFileTool(options: {
 	authStorage: AuthStorage;
 	modelRegistry: ModelRegistry;
 	settings: Settings;
-	/** The agent every spawn from this tool runs as, resolved against the enabled catalog by `commitAnalysisSpawnTarget`. Passed in rather than named here, */
+	/**
+	 * The agent every spawn from this tool runs as, resolved against the enabled
+	 * catalog by `commitAnalysisSpawnTarget`. Passed in rather than named here,
+	 * because a literal here cannot know what the operator has turned on.
+	 */
 	analysisAgent: string;
 	state: CommitAgentState;
 }): CustomTool<typeof analyzeFileSchema> {
@@ -70,7 +74,10 @@ export function createAnalyzeFileTool(options: {
 		parameters: analyzeFileSchema,
 		async execute(toolCallId, params, _onUpdate, ctx, signal) {
 			const toolSession = buildToolSession(ctx, options);
-			// The hand-built ToolSession carries no asyncJobManager, so every execute() below takes the task tool's sync fallback and resolves
+			// The hand-built ToolSession carries no asyncJobManager, so every
+			// execute() below takes the task tool's sync fallback and resolves
+			// with the subagent's result inline — exactly what this flow needs.
+			// The tool's session semaphore bounds the parallel fan-out.
 			const taskTool = await TaskTool.create(toolSession);
 			const numstat = options.state.overview?.numstat ?? [];
 

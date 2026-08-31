@@ -4,6 +4,26 @@ import { findStaleAddon, staleAddonMessage } from "../native/loader-state.js";
 import { metadataModuleFor, STUB_METADATA_MODULE } from "./embedded-metadata";
 
 const reset = process.argv.includes("--reset");
+/*
+ * `--stub-metadata` refreshes the archive but leaves the metadata module as the checked-in stub.
+ *
+ * `embedded-addon.js` is the loader's authoritative "am I a compiled binary?" signal
+ * (`detectCompiledBinary`, issue 823), and that only holds while the premise behind it does:
+ * the module is `null` in a source tree and populated only inside a `--compile` bundle. A
+ * plain `bun run build:native` used to break that premise and leave it populated, after
+ * which every ordinary `bun packages/coding-agent/src/cli.ts` in that checkout believed it
+ * was a standalone binary and extracted 290 MB of addon into `$HOME/.veyyon/natives/`.
+ * Multiplied by a test suite that spawns the CLI with a fresh temp `HOME`, that filled a
+ * 915 GB disk.
+ *
+ * The archive still has to be refreshed by a rebuild, because a compiled binary loads what
+ * the ARCHIVE holds and the two artifacts must not drift. The metadata module does not: the
+ * release path (`scripts/ci-release-build-binaries.ts`) regenerates it immediately before
+ * each `bun build --compile` and resets it in a `finally`. So a rebuild writes the archive
+ * and keeps the stub, and nothing in a source tree ever claims to be compiled.
+ *
+ * The choice itself lives in `./embedded-metadata`, so it is callable.
+ */
 const outputPath = path.join(import.meta.dir, "../native/embedded-addon.js");
 const packageJsonPath = path.join(import.meta.dir, "../package.json");
 const nativeDir = path.join(import.meta.dir, "../native");
@@ -63,28 +83,52 @@ if (available.length === 0) {
 }
 const packageJson = (await Bun.file(packageJsonPath).json()) as { version: string };
 
-const archiveFilename = `${archivePrefix}${platformTag}${archiveSuffix}`;
-const archivePath = path.join(nativeDir, archiveFilename);
-const archiveEntries: Record<string, Uint8Array> = {};
 const addonBytes = await Promise.all(
 	available.map(async addon => ({ filename: addon.filename, bytes: await fs.readFile(addon.path) })),
 );
 
+// Refuse to embed a native built for a DIFFERENT version than this package.
+// The loader keys the addon on `__veyyonNativesV<version>`; a `.node` left
+// stale by a version bump (or a variant rebuilt at a different version, e.g.
+// modern at 1.0.14 while baseline is 1.0.15) carries the wrong sentinel, so
+// the compiled binary would extract it and then hard-fail at first native use
+// — bricking exactly the CPUs that select that variant. Catch it here, at
+// build time, instead of in a user's terminal. (Law 10: fail closed, never
+// ship a fallback that cannot load.) The staleness contract lives in one place
+// (`findStaleAddon`/`staleAddonMessage`) so this guard and the loader can never
+// disagree on what "stale" means.
 const stale = findStaleAddon(addonBytes, packageJson.version);
 if (stale) {
 	throw new Error(staleAddonMessage(stale, packageJson.version));
 }
-for (const addon of addonBytes) {
-	archiveEntries[addon.filename] = addon.bytes;
-}
-await Bun.write(archivePath, await new Bun.Archive(archiveEntries, { compress: "gzip", level: 9 }).bytes());
 
+// One archive per variant. A single archive holding every variant is one gzip stream, so the
+// loader had to inflate all of them to reach the one it loads; splitting them means a cold launch
+// decompresses only the variant this host runs.
+const bytesByFilename = new Map(addonBytes.map(addon => [addon.filename, addon.bytes]));
+const archiveNameFor = (addon: AvailableAddon): string =>
+	`${archivePrefix}${platformTag}-${addon.variant}${archiveSuffix}`;
+await Promise.all(
+	available.map(async addon => {
+		const bytes = bytesByFilename.get(addon.filename);
+		if (!bytes) throw new Error(`No bytes read for ${addon.filename}`);
+		const archive = new Bun.Archive({ [addon.filename]: bytes }, { compress: "gzip", level: 9 });
+		await Bun.write(path.join(nativeDir, archiveNameFor(addon)), await archive.bytes());
+	}),
+);
+
+// The archives above are written unconditionally; only the metadata module is a choice, and the
+// choice lives in one importable place so a test can exercise it without running this script.
 await Bun.write(
 	outputPath,
 	metadataModuleFor(process.argv, {
 		platformTag,
 		version: packageJson.version,
-		archiveFilename,
-		files: available.map(addon => ({ variant: addon.variant, filename: addon.filename, size: addon.size })),
+		files: available.map(addon => ({
+			variant: addon.variant,
+			filename: addon.filename,
+			size: addon.size,
+			archiveFilename: archiveNameFor(addon),
+		})),
 	}),
 );

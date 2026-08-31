@@ -18,13 +18,7 @@ describe("Settings boolean false vs missing", () => {
 		settingsState = undefined;
 	});
 
-	const paths = [
-		"lsp.formatOnWrite",
-		"lsp.diagnosticsOnWrite",
-		"compaction.enabled",
-		"grep.enabled",
-		"glob.enabled",
-	] as const;
+	const paths = ["lsp.formatOnWrite", "lsp.diagnosticsOnWrite", "compaction.enabled"] as const;
 
 	it("false override is returned as false for each path", () => {
 		for (const p of paths) {

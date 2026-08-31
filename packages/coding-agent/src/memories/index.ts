@@ -1,41 +1,770 @@
+import type { Database } from "bun:sqlite";
+import type * as fsNode from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { type ApiKey, type Context, completeSimple, type Model } from "@veyyon/ai";
 import { Effort } from "@veyyon/catalog/effort";
-import { clampLow, errorMessage, isEnoent, isRecord, logger, prompt, readdirIfPresent } from "@veyyon/utils";
+import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
+import { emptyCost } from "@veyyon/catalog/models";
+import {
+	clampLow,
+	errorMessage,
+	getAgentDbPath,
+	isEnoent,
+	isRecord,
+	logger,
+	parseJsonlLenient,
+	prompt,
+	readdirIfPresent,
+} from "@veyyon/utils";
+import { isSessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
+
+/**
+ * Clamp an internal fixed memory-pass effort to the model's ladder, saying so
+ * when the level moves. Memory passes request Low/Medium by convention; rows
+ * with a narrower accepted set (e.g. GLM-5.2 high/max) shift the level, and a
+ * silent shift is how effort drift goes unnoticed.
+ */
+function clampMemoryEffort(model: Model, requested: Effort): Effort | undefined {
+	const clamped = clampThinkingLevelForModel(model, requested);
+	if (clamped !== requested) {
+		logger.warn("Memory pass effort is not accepted by the model; using the nearest supported level", {
+			model: `${model.provider}/${model.id}`,
+			requested,
+			using: clamped ?? "provider default",
+		});
+	}
+	return clamped;
+}
+
 import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
 import { DEFAULT_MODEL_SLOT } from "../config/model-roles";
 import type { Settings } from "../config/settings";
 
+// The path layout lives in its own leaf: this module reaches 558 modules (it asks a model to
+// summarise a session), and `internal-urls/memory-protocol` needs only the root. Re-exported so
+// every existing caller keeps asking this file for it.
 export { getMemoryRoot } from "./paths";
 
 import type { MemoryBackendSaveInput, MemoryBackendSaveResult } from "../memory-backend/types";
 import { memoriesPrompts } from "../prompts/memories/rows";
 import type { AgentSession } from "../session/agent-session";
-import {
-	type ConsolidationOutputSchema,
-	type ConsolidationSkillFileSchema,
-	type ConsolidationSkillSchema,
-	clampMemoryEffort,
-	DEFAULTS,
-	extractPersistableMessages,
-	type MemoryRuntimeConfig,
-	type Stage1OutputSchema,
-} from "./index-helpers";
 import { getMemoryRoot } from "./paths";
-import type { Stage1Claim, Stage1OutputRow } from "./storage";
+import {
+	claimStage1Jobs,
+	clearMemoryData as clearMemoryDataInDb,
+	closeMemoryDb,
+	enqueueGlobalWatermark,
+	heartbeatGlobalJob,
+	listStage1OutputsForGlobal,
+	type MemoryThread,
+	markGlobalPhase2Failed,
+	markGlobalPhase2FailedUnowned,
+	markGlobalPhase2Succeeded,
+	markStage1Failed,
+	markStage1SucceededNoOutput,
+	markStage1SucceededWithOutput,
+	openMemoryDb,
+	type Stage1Claim,
+	type Stage1OutputRow,
+	tryClaimGlobalPhase2Job,
+	upsertThreads,
+} from "./storage";
 
-export {
-	buildMemoryToolDeveloperInstructions,
-	clearMemoryData,
-	clearMemoryToolDeveloperInstructionsCache,
-	enqueueMemoryConsolidation,
-	refreshMemoryToolDeveloperInstructionsCacheAfterStartup,
-	startMemoryStartupTask,
-} from "./index-helpers";
+interface MemoryRuntimeConfig {
+	enabled: boolean;
+	maxRolloutsPerStartup: number;
+	maxRolloutAgeDays: number;
+	minRolloutIdleHours: number;
+	threadScanLimit: number;
+	maxRawMemoriesForGlobal: number;
+	stage1Concurrency: number;
+	stage1LeaseSeconds: number;
+	stage1RetryDelaySeconds: number;
+	phase2LeaseSeconds: number;
+	phase2RetryDelaySeconds: number;
+	phase2HeartbeatSeconds: number;
+	rolloutPayloadPercent: number;
+	phase1InputTokenLimit: number;
+	fallbackTokenLimit: number;
+	summaryInjectionTokenLimit: number;
+}
 
-export async function runStage1Job(options: {
+const DEFAULTS: MemoryRuntimeConfig = {
+	enabled: false,
+	maxRolloutsPerStartup: 64,
+	maxRolloutAgeDays: 30,
+	minRolloutIdleHours: 12,
+	threadScanLimit: 300,
+	maxRawMemoriesForGlobal: 200,
+	stage1Concurrency: 8,
+	stage1LeaseSeconds: 120,
+	stage1RetryDelaySeconds: 120,
+	phase2LeaseSeconds: 180,
+	phase2RetryDelaySeconds: 180,
+	phase2HeartbeatSeconds: 30,
+	rolloutPayloadPercent: 0.7,
+	phase1InputTokenLimit: 4_000,
+	fallbackTokenLimit: 16_000,
+	summaryInjectionTokenLimit: 5_000,
+};
+
+interface Stage1Stats {
+	claimed: number;
+	succeeded: number;
+	succeededNoOutput: number;
+	failed: number;
+	produced: number;
+	usage: {
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+		total: number;
+	};
+}
+
+interface Stage1OutputSchema {
+	raw_memory: string;
+	rollout_summary: string;
+	rollout_slug: string | null;
+}
+
+interface ConsolidationSkillFileSchema {
+	path: string;
+	content: string;
+}
+
+interface ConsolidationSkillSchema {
+	name: string;
+	content?: string;
+	scripts?: ConsolidationSkillFileSchema[];
+	templates?: ConsolidationSkillFileSchema[];
+	examples?: ConsolidationSkillFileSchema[];
+}
+interface ConsolidationOutputSchema {
+	memory_md: string;
+	memory_summary: string;
+	skills: ConsolidationSkillSchema[];
+}
+
+/**
+ * Start the background memory startup pipeline.
+ *
+ * Skips for ephemeral sessions, subagent sessions, disabled settings, or DB failures.
+ */
+export function startMemoryStartupTask(options: {
+	session: AgentSession;
+	settings: Settings;
+	modelRegistry: ModelRegistry;
+	agentDir: string;
+	taskDepth: number;
+}): void {
+	const { session, settings, modelRegistry, agentDir, taskDepth } = options;
+	const cfg = loadMemoryConfig(settings);
+	if (!cfg.enabled) return;
+	if (taskDepth > 0) return;
+	if (!session.sessionManager.getSessionFile()) return;
+
+	const dbPath = getAgentDbPath(agentDir);
+	try {
+		const db = openMemoryDb(dbPath);
+		closeMemoryDb(db);
+	} catch (error) {
+		logger.debug("Memory startup skipped: state DB unavailable", { error: String(error) });
+		return;
+	}
+
+	void runMemoryStartup({ session, settings, modelRegistry, agentDir, config: cfg }).catch(error => {
+		logger.warn("Memory startup failed", { error: String(error) });
+	});
+}
+
+interface MemoryInstructionSession {
+	sessionManager: Pick<AgentSession["sessionManager"], "getSessionFile">;
+}
+
+interface MemoryToolDeveloperInstructionsSnapshot {
+	summary: string;
+	learned: string;
+}
+
+interface CachedMemoryToolDeveloperInstructions {
+	sessionFile: string | undefined;
+	snapshot: MemoryToolDeveloperInstructionsSnapshot | undefined;
+	value: string | undefined;
+}
+
+const memoryToolDeveloperInstructionsBySession = new WeakMap<
+	MemoryInstructionSession,
+	CachedMemoryToolDeveloperInstructions
+>();
+const memoryToolDeveloperInstructionsByRoot = new Map<string, MemoryToolDeveloperInstructionsSnapshot | undefined>();
+
+function getMemoryInstructionRoot(agentDir: string, settings: Settings): string {
+	return getMemoryRoot(agentDir, settings.getCwd());
+}
+
+function getMemoryInstructionSessionFile(session: MemoryInstructionSession): string | undefined {
+	return session.sessionManager.getSessionFile() ?? undefined;
+}
+
+async function readMemoryToolDeveloperInstructionsSnapshot(
+	agentDir: string,
+	settings: Settings,
+): Promise<MemoryToolDeveloperInstructionsSnapshot | undefined> {
+	const cfg = loadMemoryConfig(settings);
+	if (!cfg.enabled) return undefined;
+	const memoryRoot = getMemoryInstructionRoot(agentDir, settings);
+
+	let summary = "";
+	try {
+		summary = (await Bun.file(path.join(memoryRoot, "memory_summary.md")).text()).trim();
+	} catch {
+		// Missing or unreadable summary — injection is best-effort; fall through
+		// so any captured lessons still surface on their own.
+	}
+	const learned = await readLearnedLessons(memoryRoot);
+	return { summary, learned };
+}
+
+function renderMemoryToolDeveloperInstructionsSnapshot(
+	snapshot: MemoryToolDeveloperInstructionsSnapshot | undefined,
+	settings: Settings,
+): string | undefined {
+	if (!snapshot) return undefined;
+	const cfg = loadMemoryConfig(settings);
+	if (!cfg.enabled) return undefined;
+	if (!snapshot.summary && !snapshot.learned) return undefined;
+
+	const summaryOut = snapshot.summary
+		? truncateByApproxTokens(snapshot.summary, cfg.summaryInjectionTokenLimit).trim()
+		: "";
+	// Lessons share ONE injection budget with the summary so the combined block
+	// stays within `summaryInjectionTokenLimit` (~4 chars/token, matching
+	// truncateByApproxTokens). With no summary, lessons get the whole budget.
+	// Clamp to 0: truncateByApproxTokens appends a marker, so a truncated summary
+	// can exceed `limit * 4` chars and drive the remainder negative — when the
+	// summary already fills the budget, lessons are simply dropped.
+	const learnedBudget = Math.max(0, cfg.summaryInjectionTokenLimit - Math.ceil(summaryOut.length / 4));
+	const learnedOut =
+		snapshot.learned && learnedBudget > 0 ? truncateByApproxTokens(snapshot.learned, learnedBudget).trim() : "";
+	if (!summaryOut && !learnedOut) return undefined;
+
+	return prompt.render(memoriesPrompts["memories/read-path"].text, {
+		memory_summary: summaryOut,
+		learned: learnedOut,
+	});
+}
+
+function cacheMemoryToolDeveloperInstructions(
+	session: MemoryInstructionSession,
+	sessionFile: string | undefined,
+	snapshot: MemoryToolDeveloperInstructionsSnapshot | undefined,
+	settings: Settings,
+): string | undefined {
+	const value = renderMemoryToolDeveloperInstructionsSnapshot(snapshot, settings);
+	memoryToolDeveloperInstructionsBySession.set(session, { sessionFile, snapshot, value });
+	return value;
+}
+
+/**
+ * Drop the per-session memory instruction snapshot after explicit memory state
+ * changes that must affect the active conversation immediately, such as
+ * `/memory clear`.
+ */
+export function clearMemoryToolDeveloperInstructionsCache(session: MemoryInstructionSession | undefined): void {
+	if (session) memoryToolDeveloperInstructionsBySession.delete(session);
+}
+
+/**
+ * Refresh the active session's consolidated-memory snapshot after startup maintenance.
+ *
+ * Startup may finish after the first prompt build and write `memory_summary.md`;
+ * the active session should see that summary. It must not reread `learned.md`,
+ * because a `learn` call racing with startup belongs to the next session's
+ * memory prompt, not the active prompt-cache prefix.
+ */
+export async function refreshMemoryToolDeveloperInstructionsCacheAfterStartup(
+	session: MemoryInstructionSession,
+	agentDir: string,
+	settings: Settings,
+): Promise<void> {
+	const sessionFile = getMemoryInstructionSessionFile(session);
+	const cached = memoryToolDeveloperInstructionsBySession.get(session);
+	const current = await readMemoryToolDeveloperInstructionsSnapshot(agentDir, settings);
+	const root = getMemoryInstructionRoot(agentDir, settings);
+	const baseline = memoryToolDeveloperInstructionsByRoot.get(root);
+	const cachedLearned = cached && cached.sessionFile === sessionFile ? cached.snapshot?.learned : undefined;
+	const learned = cachedLearned ?? baseline?.learned ?? "";
+	const snapshot = current ? { summary: current.summary, learned } : undefined;
+	cacheMemoryToolDeveloperInstructions(session, sessionFile, snapshot, settings);
+}
+
+/**
+ * Build memory usage instructions for prompt injection.
+ */
+export async function buildMemoryToolDeveloperInstructions(
+	agentDir: string,
+	settings: Settings,
+	session?: MemoryInstructionSession,
+): Promise<string | undefined> {
+	if (!session) {
+		const snapshot = await readMemoryToolDeveloperInstructionsSnapshot(agentDir, settings);
+		memoryToolDeveloperInstructionsByRoot.set(getMemoryInstructionRoot(agentDir, settings), snapshot);
+		return renderMemoryToolDeveloperInstructionsSnapshot(snapshot, settings);
+	}
+
+	const sessionFile = getMemoryInstructionSessionFile(session);
+	const cached = memoryToolDeveloperInstructionsBySession.get(session);
+	if (cached && cached.sessionFile === sessionFile) return cached.value;
+
+	const snapshot = await readMemoryToolDeveloperInstructionsSnapshot(agentDir, settings);
+	return cacheMemoryToolDeveloperInstructions(session, sessionFile, snapshot, settings);
+}
+
+/**
+ * Clear all persisted memory state and generated artifacts.
+ */
+export async function clearMemoryData(agentDir: string, cwd: string): Promise<void> {
+	const db = openMemoryDb(getAgentDbPath(agentDir));
+	try {
+		clearMemoryDataInDb(db);
+	} finally {
+		closeMemoryDb(db);
+	}
+	await fs.rm(getMemoryRoot(agentDir, cwd), { recursive: true, force: true });
+}
+
+/**
+ * Force-enqueue global consolidation maintenance work.
+ */
+export function enqueueMemoryConsolidation(agentDir: string, cwd: string, sourceUpdatedAt = unixNow()): void {
+	const db = openMemoryDb(getAgentDbPath(agentDir));
+	try {
+		enqueueGlobalWatermark(db, sourceUpdatedAt, cwd, { forceDirtyWhenNotAdvanced: true });
+	} finally {
+		closeMemoryDb(db);
+	}
+}
+
+async function runMemoryStartup(options: {
+	session: AgentSession;
+	settings: Settings;
+	modelRegistry: ModelRegistry;
+	agentDir: string;
+	config: MemoryRuntimeConfig;
+}): Promise<void> {
+	await runPhase1(options);
+	await runPhase2(options);
+	await refreshMemoryToolDeveloperInstructionsCacheAfterStartup(options.session, options.agentDir, options.settings);
+	await options.session.refreshBaseSystemPrompt?.("memory-startup");
+}
+
+async function runPhase1(options: {
+	session: AgentSession;
+	settings: Settings;
+	modelRegistry: ModelRegistry;
+	agentDir: string;
+	config: MemoryRuntimeConfig;
+}): Promise<void> {
+	const { session, modelRegistry, agentDir, config } = options;
+	const db = openMemoryDb(getAgentDbPath(agentDir));
+	const nowSec = unixNow();
+	const workerId = `memory-${process.pid}`;
+	const memoryRoot = getMemoryRoot(agentDir, session.sessionManager.getCwd());
+	const currentThreadId = session.sessionManager.getSessionId();
+
+	try {
+		const threads = await collectThreads(session, currentThreadId);
+		upsertThreads(db, threads);
+
+		const phase1Model = await resolveMemoryModel({
+			modelRegistry,
+			session,
+			fallbackRole: "default",
+		});
+		if (!phase1Model) {
+			logger.debug("Phase1 skipped: no model available");
+			return;
+		}
+		const phase1ApiKey = await modelRegistry.getApiKey(phase1Model, session.sessionId);
+		if (!phase1ApiKey) {
+			logger.debug("Phase1 skipped: no API key for phase1 model", {
+				provider: phase1Model.provider,
+				model: phase1Model.id,
+			});
+			return;
+		}
+
+		const claims = claimStage1Jobs(db, {
+			nowSec,
+			threadScanLimit: config.threadScanLimit,
+			maxRolloutsPerStartup: config.maxRolloutsPerStartup,
+			maxRolloutAgeDays: config.maxRolloutAgeDays,
+			minRolloutIdleHours: config.minRolloutIdleHours,
+			leaseSeconds: config.stage1LeaseSeconds,
+			runningConcurrencyCap: config.stage1Concurrency,
+			workerId,
+			excludeThreadIds: currentThreadId ? [currentThreadId] : [],
+		});
+		if (claims.length === 0) return;
+
+		const stats: Stage1Stats = {
+			claimed: claims.length,
+			succeeded: 0,
+			succeededNoOutput: 0,
+			failed: 0,
+			produced: 0,
+			usage: emptyCost(),
+		};
+		const obfuscateProviderText = (text: string): string => session.obfuscateProviderText(text);
+
+		await runWithConcurrency(claims, config.stage1Concurrency, async claim => {
+			const result = await runStage1Job({
+				claim,
+				model: phase1Model,
+				apiKey: modelRegistry.resolver(phase1Model, session.sessionId),
+				modelMaxTokens: computeModelTokenBudget(phase1Model, config),
+				config,
+				metadata: session.agent?.metadataForProvider(phase1Model.provider),
+				obfuscateProviderText,
+			});
+
+			if (result.kind === "failed") {
+				logger.error("Memory phase1 stage1 job failed", {
+					threadId: claim.threadId,
+					rolloutPath: claim.rolloutPath,
+					reason: result.reason,
+				});
+				markStage1Failed(db, {
+					threadId: claim.threadId,
+					ownershipToken: claim.ownershipToken,
+					retryDelaySeconds: config.stage1RetryDelaySeconds,
+					reason: result.reason,
+					nowSec: unixNow(),
+				});
+				stats.failed += 1;
+				return;
+			}
+
+			if (result.kind === "no_output") {
+				markStage1SucceededNoOutput(db, {
+					threadId: claim.threadId,
+					ownershipToken: claim.ownershipToken,
+					sourceUpdatedAt: claim.sourceUpdatedAt,
+					nowSec: unixNow(),
+					cwd: claim.cwd,
+				});
+				stats.succeededNoOutput += 1;
+				return;
+			}
+
+			markStage1SucceededWithOutput(db, {
+				threadId: claim.threadId,
+				ownershipToken: claim.ownershipToken,
+				sourceUpdatedAt: claim.sourceUpdatedAt,
+				rawMemory: result.output.rawMemory,
+				rolloutSummary: result.output.rolloutSummary,
+				rolloutSlug: result.output.rolloutSlug,
+				nowSec: unixNow(),
+				cwd: claim.cwd,
+			});
+			stats.succeeded += 1;
+			stats.produced += 1;
+			if (result.usage) {
+				stats.usage.input += result.usage.input;
+				stats.usage.output += result.usage.output;
+				stats.usage.cacheRead += result.usage.cacheRead;
+				stats.usage.cacheWrite += result.usage.cacheWrite;
+				stats.usage.total += result.usage.totalTokens || 0;
+			}
+		});
+
+		logger.debug("Memory phase1 completed", {
+			memoryRoot,
+			claimed: stats.claimed,
+			succeeded: stats.succeeded,
+			succeededNoOutput: stats.succeededNoOutput,
+			failed: stats.failed,
+			produced: stats.produced,
+			usage: stats.usage,
+		});
+	} finally {
+		closeMemoryDb(db);
+	}
+}
+
+async function runPhase2(options: {
+	session: AgentSession;
+	settings: Settings;
+	modelRegistry: ModelRegistry;
+	agentDir: string;
+	config: MemoryRuntimeConfig;
+}): Promise<void> {
+	const { session, modelRegistry, agentDir, config } = options;
+	const cwd = session.sessionManager.getCwd();
+	const db = openMemoryDb(getAgentDbPath(agentDir));
+	const nowSec = unixNow();
+	const workerId = `memory-${process.pid}`;
+	const memoryRoot = getMemoryRoot(agentDir, cwd);
+
+	try {
+		const claimResult = tryClaimGlobalPhase2Job(db, {
+			workerId,
+			leaseSeconds: config.phase2LeaseSeconds,
+			nowSec,
+			cwd,
+		});
+		if (claimResult.kind !== "claimed") return;
+
+		const claim = claimResult.claim;
+		const outputs = listStage1OutputsForGlobal(db, config.maxRawMemoriesForGlobal, cwd);
+		const newWatermark = computeCompletionWatermark(claim.inputWatermark, outputs);
+
+		await syncPhase2Artifacts(memoryRoot, outputs);
+		if (outputs.length === 0) {
+			await cleanupConsolidatedArtifacts(memoryRoot);
+			const marked = markGlobalPhase2Succeeded(db, {
+				ownershipToken: claim.ownershipToken,
+				newWatermark,
+				nowSec: unixNow(),
+				cwd,
+			});
+			if (!marked) {
+				logger.warn("Phase2 empty-input completion lost ownership", { memoryRoot });
+			}
+			return;
+		}
+
+		const phase2Model = await resolveMemoryModel({
+			modelRegistry,
+			session,
+			fallbackRole: "smol",
+		});
+		if (!phase2Model) {
+			markPhase2FailureWithFallback(db, {
+				claim,
+				retryDelaySeconds: config.phase2RetryDelaySeconds,
+				reason: "No model available for phase2",
+				memoryRoot,
+				cwd,
+			});
+			return;
+		}
+		const phase2ApiKey = await modelRegistry.getApiKey(phase2Model, session.sessionId);
+		if (!phase2ApiKey) {
+			markPhase2FailureWithFallback(db, {
+				claim,
+				retryDelaySeconds: config.phase2RetryDelaySeconds,
+				reason: "No API key available for phase2",
+				memoryRoot,
+				cwd,
+			});
+			return;
+		}
+
+		let heartbeatLostOwnership = false;
+		const heartbeat = setInterval(() => {
+			const ok = heartbeatGlobalJob(db, {
+				ownershipToken: claim.ownershipToken,
+				leaseSeconds: config.phase2LeaseSeconds,
+				nowSec: unixNow(),
+				cwd,
+			});
+			if (!ok) {
+				heartbeatLostOwnership = true;
+				clearInterval(heartbeat);
+			}
+		}, config.phase2HeartbeatSeconds * 1000);
+
+		const obfuscateProviderText = (text: string): string => session.obfuscateProviderText(text);
+
+		try {
+			const consolidated = await runConsolidationModel({
+				memoryRoot,
+				model: phase2Model,
+				apiKey: modelRegistry.resolver(phase2Model, session.sessionId),
+				metadata: session.agent?.metadataForProvider(phase2Model.provider),
+				obfuscateProviderText,
+			});
+			await applyConsolidation(memoryRoot, consolidated);
+			if (heartbeatLostOwnership) {
+				throw new Error("Phase2 lease ownership lost before completion");
+			}
+			const marked = markGlobalPhase2Succeeded(db, {
+				ownershipToken: claim.ownershipToken,
+				newWatermark,
+				nowSec: unixNow(),
+				cwd,
+			});
+			if (!marked) {
+				throw new Error("Phase2 could not mark success: ownership lost");
+			}
+		} catch (error) {
+			markPhase2FailureWithFallback(db, {
+				claim,
+				retryDelaySeconds: config.phase2RetryDelaySeconds,
+				reason: errorMessage(error),
+				memoryRoot,
+				cwd,
+				error,
+			});
+		} finally {
+			clearInterval(heartbeat);
+		}
+	} finally {
+		closeMemoryDb(db);
+	}
+}
+
+function markPhase2FailureWithFallback(
+	db: Database,
+	params: {
+		claim: { ownershipToken: string; inputWatermark: number };
+		retryDelaySeconds: number;
+		reason: string;
+		memoryRoot: string;
+		cwd: string;
+		error?: unknown;
+	},
+): void {
+	const { claim, retryDelaySeconds, reason, memoryRoot, cwd, error } = params;
+	const nowSec = unixNow();
+	const strictFailed = markGlobalPhase2Failed(db, {
+		ownershipToken: claim.ownershipToken,
+		retryDelaySeconds,
+		reason,
+		nowSec,
+		cwd,
+	});
+	if (strictFailed) return;
+
+	const unownedFailed = markGlobalPhase2FailedUnowned(db, {
+		retryDelaySeconds,
+		reason,
+		nowSec,
+		cwd,
+	});
+	if (!unownedFailed) {
+		logger.warn("Phase2 could not mark failure (ownership lost and unowned fallback skipped)", {
+			error: error ? String(error) : undefined,
+			memoryRoot,
+			reason,
+			inputWatermark: claim.inputWatermark,
+		});
+	}
+}
+
+async function collectThreads(session: AgentSession, currentThreadId?: string): Promise<MemoryThread[]> {
+	const sessionDir = session.sessionManager.getSessionDir();
+	const files = await fs.readdir(sessionDir);
+	const threads: MemoryThread[] = [];
+	for (const name of files) {
+		if (!isSessionFileName(name)) continue;
+		const fullPath = path.join(sessionDir, name);
+		let stat: fsNode.Stats;
+		try {
+			stat = await fs.stat(fullPath);
+		} catch {
+			continue;
+		}
+		let cwd = "";
+		let id = sessionFileStem(name);
+		try {
+			const fileText = await Bun.file(fullPath).text();
+			let sawTitleSlot = false;
+			for (const rawLine of fileText.split(/\r?\n/)) {
+				const line = rawLine.trim();
+				if (!line) continue;
+				const parsed = parseJsonlLenient<Record<string, unknown>>(line);
+				const header = Array.isArray(parsed) && parsed.length > 0 ? parsed[0] : undefined;
+				if (!sawTitleSlot && header?.type === "title") {
+					sawTitleSlot = true;
+					continue;
+				}
+				if (header?.type === "session") {
+					if (typeof header.cwd === "string") cwd = header.cwd;
+					if (typeof header.id === "string") id = header.id;
+				}
+				break;
+			}
+		} catch {
+			// ignore malformed session files
+		}
+
+		if (currentThreadId && id === currentThreadId) continue;
+		threads.push({
+			id,
+			updatedAt: Math.floor(stat.mtimeMs / 1000),
+			rolloutPath: fullPath,
+			cwd,
+			sourceKind: "cli",
+		});
+	}
+	return threads;
+}
+
+type PersistableMemoryRole = "system" | "developer" | "user" | "assistant" | "toolResult";
+
+interface PersistableMemoryMessage {
+	role: PersistableMemoryRole;
+	text: string;
+	toolName?: "bash" | "eval" | "read" | "search" | "grep";
+}
+
+function isPersistableMemoryRole(role: unknown): role is PersistableMemoryRole {
+	return role === "system" || role === "developer" || role === "user" || role === "assistant" || role === "toolResult";
+}
+
+function extractMemoryMessageText(message: Record<string, unknown>): string {
+	const content = message.content;
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	const text: string[] = [];
+	for (const item of content) {
+		if (!isRecord(item) || item.type !== "text" || typeof item.text !== "string") continue;
+		text.push(item.text);
+	}
+	return text.join("\n");
+}
+
+function extractPersistableMessages(payload: string): PersistableMemoryMessage[] {
+	const rows = parseJsonlLenient(payload);
+	if (!Array.isArray(rows)) return [];
+	const messages: PersistableMemoryMessage[] = [];
+	for (const row of rows) {
+		if (!isRecord(row) || row.type !== "message" || !isRecord(row.message)) continue;
+		const role = row.message.role;
+		if (!isPersistableMemoryRole(role)) continue;
+
+		// The memory model is a text-only summarizer. Project the untrusted persisted message onto
+		// this raw allowlist before any provider attempt. Image bytes, provider replay payloads,
+		// tool arguments, details, signatures, and arbitrary nested fields are discarded here;
+		// allowlisted strings stay raw until the per-attempt builder sanitizes them.
+		const text = extractMemoryMessageText(row.message);
+		if (role === "toolResult") {
+			const toolName = row.message.toolName;
+			if (
+				toolName !== "bash" &&
+				toolName !== "eval" &&
+				toolName !== "read" &&
+				toolName !== "search" &&
+				toolName !== "grep"
+			) {
+				continue;
+			}
+			if (text.length === 0) continue;
+			messages.push({ role, toolName, text });
+			continue;
+		}
+		messages.push({ role, text });
+	}
+	return messages;
+}
+
+async function runStage1Job(options: {
 	claim: Stage1Claim;
 	model: Model;
 	apiKey: ApiKey;
@@ -64,6 +793,9 @@ export async function runStage1Job(options: {
 		const rawSystemPrompt = memoriesPrompts["memories/stage_one_system"].text;
 		const providerContext: Context = { messages: [] };
 		const refreshProviderContext = (): void => {
+			// Rebuild from the raw allowlisted projection after every credential await. Sanitizing
+			// each complete string before JSON serialization and head-tail truncation prevents
+			// either lossy step from splitting a secret into no-longer-matchable fragments.
 			const providerItems = rawPersisted.flatMap(item => {
 				const text = sanitize(item.text);
 				if (item.role === "toolResult" && text.length > 32_000) return [];
@@ -128,7 +860,7 @@ export async function runStage1Job(options: {
 	}
 }
 
-export async function syncPhase2Artifacts(memoryRoot: string, outputs: Stage1OutputRow[]): Promise<void> {
+async function syncPhase2Artifacts(memoryRoot: string, outputs: Stage1OutputRow[]): Promise<void> {
 	const summariesDir = path.join(memoryRoot, "rollout_summaries");
 	await fs.mkdir(summariesDir, { recursive: true });
 
@@ -154,7 +886,7 @@ export async function syncPhase2Artifacts(memoryRoot: string, outputs: Stage1Out
 	await Bun.write(path.join(memoryRoot, "raw_memories.md"), rawBody);
 }
 
-export async function cleanupConsolidatedArtifacts(memoryRoot: string): Promise<void> {
+async function cleanupConsolidatedArtifacts(memoryRoot: string): Promise<void> {
 	await fs.rm(path.join(memoryRoot, "MEMORY.md"), { force: true });
 	await fs.rm(path.join(memoryRoot, "memory_summary.md"), { force: true });
 	await fs.rm(path.join(memoryRoot, "skills"), { recursive: true, force: true });
@@ -172,6 +904,23 @@ function buildRawMemoriesMarkdown(outputs: Stage1OutputRow[]): string {
 	return `# Raw Memories\n\n${blocks.join("\n")}`;
 }
 
+/**
+ * The rollout-summary section of the consolidation prompt.
+ *
+ * EVERY SENTENCE THIS RETURNS IS READ BY THE MODEL AS FACT, which is why neither failure below may end
+ * at "No rollout summaries yet.". Two swallows used to do exactly that: `fs.readdir(dir).catch(() => [])`
+ * turned a permission error into an empty listing, and `.text().catch(() => "")` turned an unreadable
+ * summary into an empty one. A run whose summaries were all present but unreadable therefore told the
+ * model that nothing had ever been summarised, and consolidation rewrote long-term memory from that
+ * premise. Memory loss with no operator-visible cause.
+ *
+ * So the distinction is between "asked, and there are none" and "could not ask". A missing directory is
+ * the first and keeps the concise answer, because it is the ordinary first-run state. Anything else is
+ * the second: it reaches the log with the failing path and the reason, AND the returned text says the
+ * section is unknown rather than empty. Exported so
+ * `test/memories/rollout-summaries-never-report-unreadable-as-absent.test.ts` can assert the exact
+ * sentences, since the sentence is what the model reads.
+ */
 export async function readRolloutSummaries(memoryRoot: string): Promise<string> {
 	const summariesDir = path.join(memoryRoot, "rollout_summaries");
 	let names: string[];
@@ -192,6 +941,9 @@ export async function readRolloutSummaries(memoryRoot: string): Promise<string> 
 		try {
 			text = await Bun.file(path.join(summariesDir, name)).text();
 		} catch (error) {
+			// Named individually so an operator can fix the specific file. A summary that is PRESENT and
+			// empty is a different thing and is skipped below without a word: it was written with no
+			// content, and reporting it as unreadable would send someone after a file that is fine.
 			logger.warn("Memory rollout summary could not be read", { file: name, error: String(error) });
 			unreadable.push(name);
 			continue;
@@ -206,6 +958,8 @@ export async function readRolloutSummaries(memoryRoot: string): Promise<string> 
 		return "No rollout summaries yet.";
 	}
 	if (unreadable.length > 0) {
+		// The mixed case is the likely one and the hardest to notice, because the section LOOKS populated.
+		// The gap is named in the same text the model reads, not only in the log.
 		blocks.push(
 			`--- unreadable ---\n${unreadable.length} further summaries could not be read: ${unreadable.join(", ")}`,
 		);
@@ -213,7 +967,7 @@ export async function readRolloutSummaries(memoryRoot: string): Promise<string> 
 	return blocks.join("\n\n");
 }
 
-export async function runConsolidationModel(options: {
+async function runConsolidationModel(options: {
 	memoryRoot: string;
 	model: Model;
 	apiKey: ApiKey;
@@ -232,6 +986,8 @@ export async function runConsolidationModel(options: {
 }> {
 	const { memoryRoot, model, apiKey } = options;
 	const sanitize = options.obfuscateProviderText ?? ((text: string) => text);
+	// Keep the complete source strings intact across awaited I/O. The attempt builder below
+	// resolves the live sanitizer only after credentials and before truncation/rendering.
 	const rawMemories = await Bun.file(path.join(memoryRoot, "raw_memories.md")).text();
 	const rawRolloutSummaries = await readRolloutSummaries(memoryRoot);
 	const rawSystemPrompt = memoriesPrompts["memories/consolidation_system"].text;
@@ -300,7 +1056,7 @@ export async function runConsolidationModel(options: {
 	return { memoryMd, memorySummary, skills };
 }
 
-export async function applyConsolidation(
+async function applyConsolidation(
 	memoryRoot: string,
 	consolidated: {
 		memoryMd: string;
@@ -335,7 +1091,7 @@ export async function applyConsolidation(
 			files.set(path.posix.join("examples", item.path), `${item.content.trim()}\n`);
 		}
 
-		for (const [relativePath, content] of Array.from(files.entries()).sort(([a], [b]) => a.localeCompare(b))) {
+		for (const [relativePath, content] of [...files.entries()].sort(([a], [b]) => a.localeCompare(b))) {
 			await Bun.write(path.join(dir, ...relativePath.split("/")), content);
 		}
 
@@ -355,14 +1111,22 @@ export async function applyConsolidation(
 	}
 }
 
+/**
+ * Every file under `rootDir`, as paths relative to it.
+ *
+ * `readdirIfPresent` rather than a bare catch: absence is an answer here (a memory root with no skills
+ * directory yet), and any OTHER failure is logged with the directory rather than read as "empty". The
+ * caller diffs this list against what consolidation produced and deletes what is missing from it, so an
+ * unlistable directory silently reported as empty would mean nothing gets deleted. That is the safe
+ * direction, and it is still worth a line: the alternative is a stale skill file nobody can explain.
+ */
 async function listRelativeFiles(rootDir: string, prefix = ""): Promise<string[]> {
 	const entries = await readdirIfPresent(rootDir, "existing memory files");
 	const files: string[] = [];
 	for (const entry of entries) {
 		const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
 		if (entry.isDirectory()) {
-			const subFiles = await listRelativeFiles(path.join(rootDir, entry.name), relative);
-			for (let fi = 0; fi < subFiles.length; fi++) files.push(subFiles[fi]!);
+			files.push(...(await listRelativeFiles(path.join(rootDir, entry.name), relative)));
 			continue;
 		}
 		if (entry.isFile()) files.push(relative);
@@ -370,6 +1134,17 @@ async function listRelativeFiles(rootDir: string, prefix = ""): Promise<string[]
 	return files;
 }
 
+/**
+ * Remove directories under `rootDir` that consolidation left empty.
+ *
+ * THE LISTING FAILURE IS NOT AN EMPTY DIRECTORY, and reading it as one deleted live data. The old code
+ * listed the child with `.catch(() => [])` and then removed any child whose listing was empty, so a
+ * directory that could not be listed (a permission change, a half-mounted NFS path) was removed
+ * RECURSIVELY along with everything in it. A skills directory full of captured lessons could go that
+ * way, and the only trace was that it was gone. Now an unlistable directory is reported and SKIPPED:
+ * this function's job is removing what is empty, and it cannot know that about a directory it could not
+ * read.
+ */
 async function pruneEmptyDirectories(rootDir: string): Promise<void> {
 	const entries = await readdirIfPresent(rootDir, "empty memory directories to prune");
 	for (const entry of entries) {
@@ -394,7 +1169,7 @@ async function pruneEmptyDirectories(rootDir: string): Promise<void> {
 	}
 }
 
-export function computeCompletionWatermark(claimedInputWatermark: number, outputs: Stage1OutputRow[]): number {
+function computeCompletionWatermark(claimedInputWatermark: number, outputs: Stage1OutputRow[]): number {
 	const maxOutputWatermark = outputs.reduce((max, row) => Math.max(max, row.sourceUpdatedAt), claimedInputWatermark);
 	return Math.max(claimedInputWatermark, maxOutputWatermark);
 }
@@ -477,7 +1252,7 @@ function parseConsolidationOutputSchema(value: Record<string, unknown>): Consoli
 
 function hasExactKeys(value: Record<string, unknown>, expectedKeys: string[], allowMissing = false): boolean {
 	const sortedKeys = Object.keys(value).sort();
-	const sortedExpected = Array.from(expectedKeys).sort();
+	const sortedExpected = [...expectedKeys].sort();
 	if (!allowMissing && sortedKeys.length !== sortedExpected.length) return false;
 	for (const key of sortedKeys) {
 		if (!sortedExpected.includes(key)) return false;
@@ -495,6 +1270,7 @@ function redactSecrets(input: string): string {
 		/(?:sk|pk|rk|tok|key|secret|token|password)[-_A-Za-z0-9]{12,}/g,
 		/[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}/g,
 		/(?:AKIA|ASIA)[A-Z0-9]{16}/g,
+		// Common provider token prefixes (GitHub, npm, Slack, Google).
 		/(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/g,
 		/github_pat_[A-Za-z0-9_]{20,}/g,
 		/npm_[A-Za-z0-9]{30,}/g,
@@ -542,7 +1318,7 @@ function sanitizeConsolidationSkillFiles(
 		if (!content) continue;
 		sanitized.set(path.posix.join(bucket, relativePath), content);
 	}
-	return Array.from(sanitized.entries())
+	return [...sanitized.entries()]
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([fullPath, content]) => ({
 			path: fullPath.slice(bucket.length + 1),
@@ -566,6 +1342,8 @@ function sanitizeSkillRelativePath(rawPath: string): string | undefined {
 }
 
 function refreshProviderContextForApiKey(apiKey: ApiKey, refresh: () => void): ApiKey {
+	// Populate once for static keys and test seams. Resolver-backed keys refresh again only after
+	// every awaited credential resolution, immediately before completeSimple starts that attempt.
 	refresh();
 	if (typeof apiKey === "string") return apiKey;
 	return async context => {
@@ -575,7 +1353,7 @@ function refreshProviderContextForApiKey(apiKey: ApiKey, refresh: () => void): A
 	};
 }
 
-export function truncateByApproxTokens(text: string, tokenLimit: number): string {
+function truncateByApproxTokens(text: string, tokenLimit: number): string {
 	if (tokenLimit <= 0) return "";
 	const maxChars = tokenLimit * 4;
 	if (text.length <= maxChars) return text;
@@ -584,7 +1362,7 @@ export function truncateByApproxTokens(text: string, tokenLimit: number): string
 	return `${text.slice(0, head)}\n\n...[truncated]...\n\n${text.slice(-tail)}`;
 }
 
-export function computeModelTokenBudget(model: Model, config: MemoryRuntimeConfig): number {
+function computeModelTokenBudget(model: Model, config: MemoryRuntimeConfig): number {
 	const maxTokens =
 		model.contextWindow !== null && Number.isFinite(model.contextWindow) && model.contextWindow > 0
 			? model.contextWindow
@@ -592,7 +1370,7 @@ export function computeModelTokenBudget(model: Model, config: MemoryRuntimeConfi
 	return Math.max(2048, Math.floor(maxTokens));
 }
 
-export async function resolveMemoryModel(options: {
+async function resolveMemoryModel(options: {
 	modelRegistry: ModelRegistry;
 	session: AgentSession;
 	fallbackRole: string;
@@ -610,7 +1388,7 @@ export async function resolveMemoryModel(options: {
 	return session.model ?? modelRegistry.getAll()[0];
 }
 
-export function loadMemoryConfig(settings: Settings): MemoryRuntimeConfig {
+function loadMemoryConfig(settings: Settings): MemoryRuntimeConfig {
 	return {
 		enabled: settings.get("memory.backend") === "local" || settings.get("memories.enabled") === true,
 		maxRolloutsPerStartup: settings.get("memories.maxRolloutsPerStartup") ?? DEFAULTS.maxRolloutsPerStartup,
@@ -632,11 +1410,27 @@ export function loadMemoryConfig(settings: Settings): MemoryRuntimeConfig {
 	};
 }
 
+/**
+ * Filename of the captured-lessons file under a project's memory root.
+ *
+ * Written by the `learn` tool via {@link saveLearnedLesson} and read back by
+ * {@link buildMemoryToolDeveloperInstructions}. Deliberately distinct from the
+ * consolidation artifacts (`MEMORY.md`, `memory_summary.md`, `skills/`) so a
+ * consolidation pass never clobbers manually captured lessons.
+ */
 const LEARNED_LESSONS_FILE = "learned.md";
+/** Newest-first cap on retained lessons, bounding file growth by entry count. */
 const MAX_LEARNED_LESSONS = 100;
+/** Per-field char caps so a single huge capture can't bloat learned.md. */
 const MAX_LEARNED_CONTENT_CHARS = 2000;
 const MAX_LEARNED_CONTEXT_CHARS = 400;
 
+/**
+ * Strip prompt-injection vectors from a single line of lesson text: control/
+ * format chars, angle brackets (`</skills>`), backticks, and `~~~` fences, then
+ * collapse whitespace. Applied on BOTH write and read (the block renders
+ * unescaped into the system prompt), mirroring managed-skill descriptions.
+ */
 function neutralizeInjection(text: string): string {
 	return text
 		.replace(/[\p{Cc}\p{Cf}]/gu, " ")
@@ -646,18 +1440,30 @@ function neutralizeInjection(text: string): string {
 		.trim();
 }
 
+/** Slice to `maxChars`, dropping a trailing unpaired high surrogate. */
 function boundChars(text: string, maxChars: number): string {
 	if (text.length <= maxChars) return text;
 	const sliced = text.slice(0, maxChars);
 	return /[\uD800-\uDBFF]$/.test(sliced) ? sliced.slice(0, -1) : sliced;
 }
 
+/**
+ * Normalize one lesson field for storage: neutralize injection delimiters
+ * FIRST, then redact secrets (so delimiter stripping can't reassemble a token
+ * the redactor would have caught), then bound the length.
+ */
 function normalizeLearnedText(text: string, maxChars: number): string {
 	return boundChars(redactSecrets(neutralizeInjection(text)).trim(), maxChars);
 }
 
+/** Per-path write chains serializing `learned.md` read-modify-write. */
 const learnedWriteChains = new Map<string, Promise<unknown>>();
 
+/**
+ * Append one lesson to the project's `learned.md` (newest-first, deduped,
+ * capped, secret-redacted, injection-neutralized). The file backs the `learn`
+ * tool when `memory.backend` is `local`.
+ */
 export async function saveLearnedLesson(
 	agentDir: string,
 	cwd: string,
@@ -671,12 +1477,20 @@ export async function saveLearnedLesson(
 	const line = context ? `- ${content} _(context: ${context})_` : `- ${content}`;
 	const filePath = path.join(getMemoryRoot(agentDir, cwd), LEARNED_LESSONS_FILE);
 
+	// Serialize the read-modify-write per file: parallel `learn` calls (sibling
+	// subagents, or two shared tool calls in one turn) share the project memory
+	// root, so an unguarded RMW would let the last writer drop the other's lesson.
 	const run = (learnedWriteChains.get(filePath) ?? Promise.resolve()).then(() => appendLearnedLine(filePath, line));
+	// `guarded` only keeps the chain alive for the NEXT writer; the failure itself is not swallowed,
+	// because `await run` below rethrows it to this caller. Without the guard one failed append would
+	// reject every later lesson on the same file.
 	const guarded = run.catch(() => {});
 	learnedWriteChains.set(filePath, guarded);
 	try {
 		await run;
 	} finally {
+		// Drop the entry once this write is the chain tail, so the map does not
+		// retain one promise per distinct memory root for the process lifetime.
 		if (learnedWriteChains.get(filePath) === guarded) learnedWriteChains.delete(filePath);
 	}
 	return { backend: "local", stored: 1, message: `Lesson saved to ${LEARNED_LESSONS_FILE}.` };
@@ -697,7 +1511,12 @@ async function appendLearnedLine(filePath: string, line: string): Promise<void> 
 	await Bun.write(filePath, `${lessons.join("\n")}\n`);
 }
 
-export async function readLearnedLessons(memoryRoot: string): Promise<string> {
+/**
+ * Read `learned.md`, neutralizing each line on read too — a hand-edited or
+ * pre-existing file bypasses write-time normalization and the block renders
+ * unescaped into the system prompt. Returns "" when absent/unreadable.
+ */
+async function readLearnedLessons(memoryRoot: string): Promise<string> {
 	let raw = "";
 	try {
 		raw = (await Bun.file(path.join(memoryRoot, LEARNED_LESSONS_FILE)).text()).trim();
@@ -705,22 +1524,24 @@ export async function readLearnedLessons(memoryRoot: string): Promise<string> {
 		return "";
 	}
 	if (!raw) return "";
+	// Neutralize delimiters THEN redact per line — mirrors the write path so a
+	// hand-edited line cannot reassemble a token after delimiter stripping.
 	return raw
 		.split("\n")
 		.map(line => redactSecrets(neutralizeInjection(line)))
 		.join("\n");
 }
 
-export function unixNow(): number {
+function unixNow(): number {
 	return Math.floor(Date.now() / 1000);
 }
 
-export async function runWithConcurrency<T>(
+async function runWithConcurrency<T>(
 	items: T[],
 	concurrency: number,
 	worker: (item: T) => Promise<void>,
 ): Promise<void> {
-	const queue = items.slice();
+	const queue = [...items];
 	const workers = new Array(Math.max(1, concurrency)).fill(0).map(async () => {
 		while (queue.length > 0) {
 			const item = queue.shift();

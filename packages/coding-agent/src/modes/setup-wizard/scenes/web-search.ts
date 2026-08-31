@@ -1,13 +1,33 @@
-import { routeSelectListMouse, type SelectList, type SgrMouseEvent, truncateToWidth } from "@veyyon/tui";
+import {
+	routeSelectListMouse,
+	type SelectItem,
+	type SelectList,
+	type SgrMouseEvent,
+	truncateToWidth,
+} from "@veyyon/tui";
 import { getSearchProvider, setPreferredSearchProvider } from "../../../web/search/provider";
-import { isSearchProviderPreference, type SearchProviderId } from "../../../web/search/types";
+import { isSearchProviderPreference, SEARCH_PROVIDER_OPTIONS, type SearchProviderId } from "../../../web/search/types";
 import { theme } from "../../theme/theme";
 import type { SetupKeyHint, SetupSceneHost, SetupTab } from "./types";
-import type { Availability } from "./web-search-helpers";
-
-import { MAX_VISIBLE, WEB_SEARCH_ITEMS } from "./web-search-helpers";
 import { createWizardList, filterEscapeHint } from "./wizard-list";
 
+const MAX_VISIBLE = 8;
+
+/** Reuse search provider metadata as the single source of truth for labels/descriptions. */
+const WEB_SEARCH_ITEMS: readonly SelectItem[] = SEARCH_PROVIDER_OPTIONS.map(option => ({
+	value: option.value,
+	label: option.label,
+	description: option.description,
+}));
+
+type Availability = "checking" | boolean;
+
+/**
+ * "Web search" panel: picks the provider the web_search tool should prefer and
+ * reports whether the highlighted provider is ready to use given current
+ * credentials (env keys or OAuth sign-ins from the Sign in tab) or an
+ * unauthenticated fallback.
+ */
 export class WebSearchTab implements SetupTab {
 	readonly id = "web-search";
 	readonly label = "Web search";
@@ -43,7 +63,12 @@ export class WebSearchTab implements SetupTab {
 		this.#list.handleInput(data);
 	}
 
-	/** A dozen providers in the rows an 80x24 terminal leaves makes this list searchable, and its Esc clears the filter. Unclaimed, that Esc reached the */
+	/**
+	 * A dozen providers in the rows an 80x24 terminal leaves makes this list
+	 * searchable, and its Esc clears the filter. Unclaimed, that Esc reached the
+	 * wizard and ended onboarding from inside a panel the user had to press Tab
+	 * to even find.
+	 */
 	escapeAction(): SetupKeyHint | undefined {
 		return filterEscapeHint(this.#list);
 	}
@@ -64,13 +89,17 @@ export class WebSearchTab implements SetupTab {
 	render(width: number, rows?: number): readonly string[] {
 		const lines = [theme.fg("muted", "Choose the provider the web_search tool should prefer."), ""];
 		this.#listRowStart = lines.length;
-		// Sized to the rows the wizard has left, like every other list in setup. This one asked for eight rows regardless, and with a dozen providers plus
+		// Sized to the rows the wizard has left, like every other list in setup.
+		// This one asked for eight rows regardless, and with a dozen providers plus
+		// the readiness line under it the panel overran a 24-row terminal by eight
+		// rows: the tail of the provider list was unreachable and the readiness
+		// line, the only thing that says whether a provider will actually work,
+		// was off-screen.
 		if (rows !== undefined) {
 			const trailingRows = 2 + (this.#status.length > 0 ? this.#status.length + 1 : 0);
 			this.#list.setRowBudget(Math.max(1, rows - lines.length - trailingRows));
 		}
-		const ll = this.#list.render(width);
-		for (let li = 0; li < ll.length; li++) lines.push(ll[li]!);
+		lines.push(...this.#list.render(width));
 		const selected = this.#list.getSelectedItem();
 		if (selected) {
 			lines.push("", ...this.#readinessLines(selected.value).map(line => truncateToWidth(line, width)));

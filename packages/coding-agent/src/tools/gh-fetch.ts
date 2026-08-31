@@ -1,4 +1,30 @@
+/**
+ * Cache-aware GitHub issue, PR and PR-diff fetching. One shared cache row per item, whoever asks.
+ *
+ * WHY THIS IS NOT IN `tools/gh.ts`. It was, and that module is the `github` TOOL: 38 ops, the run-watch
+ * poller, PR checkout with worktrees and remotes, four search renderers, and an arktype schema. It also
+ * imports `PROMPTS` from `prompts/registry.ts` for one string, the tool's own description, which is
+ * correct for a tool and which drags the whole prompt corpus (167 modules) behind it.
+ *
+ * `internal-urls/issue-pr-protocol.ts` wanted none of that. It resolves `issue://123` and `pr://7/diff`,
+ * so it needs exactly the six names below, and it paid 352 modules to reach them. From there the cost
+ * spread the way these always do: `internal-urls/router.ts` builds every handler, `tools/read.ts`
+ * consults the router because reading `pr://7` is a real feature, and 54 test files import `read`.
+ *
+ * WHAT "CACHE-AWARE" MEANS HERE, because it is the reason these three fetchers belong together rather
+ * than beside their callers. Each one renders markdown once and stores it in the SQLite row that
+ * `tools/github-cache.ts` owns, keyed by repo, kind, number and whether comments were included. The
+ * `github` tool and the protocol handlers therefore share a single `gh` invocation for the same item:
+ * open `pr://7`, then ask the tool for PR 7, and the second read is free and identical. Splitting the
+ * fetchers per caller would have quietly given each surface its own row.
+ *
+ * `tools/gh.ts` re-exports every name here, so no existing caller changed.
+ */
+
 import * as path from "node:path";
+// From the module that owns it, not the `@veyyon/utils` barrel: 1 module against 74. This module
+// exists so a `pr://` read does not import a subsystem it never calls; naming the barrel here would
+// have handed most of it straight back.
 import { untilAborted } from "@veyyon/utils/abortable";
 import type { Settings } from "../config/settings";
 import * as git from "../utils/git";
@@ -89,7 +115,7 @@ function ghJsonErrorNamesField(err: unknown, field: string): boolean {
 }
 
 function dropJsonField(args: readonly string[], field: string): string[] | undefined {
-	const next = args.slice();
+	const next = [...args];
 	const jsonIndex = next.indexOf("--json");
 	if (jsonIndex < 0) return undefined;
 	const fields = next[jsonIndex + 1];
@@ -101,6 +127,7 @@ function dropJsonField(args: readonly string[], field: string): string[] | undef
 	return next;
 }
 
+/** Runs `gh --json` for issue data, retrying without optional stateReason on older gh releases. */
 export async function githubIssueJsonWithStateReasonFallback<T>(
 	cwd: string,
 	args: readonly string[],
@@ -108,7 +135,7 @@ export async function githubIssueJsonWithStateReasonFallback<T>(
 	options?: git.GhCommandOptions,
 ): Promise<T> {
 	try {
-		return await git.github.json<T>(cwd, args.slice(), signal, options);
+		return await git.github.json<T>(cwd, [...args], signal, options);
 	} catch (err) {
 		if (!ghJsonErrorNamesField(err, GH_ISSUE_STATE_REASON_FIELD)) throw err;
 		const retryArgs = dropJsonField(args, GH_ISSUE_STATE_REASON_FIELD);
@@ -259,6 +286,17 @@ function normalizePrReviewComment(comment: GhPrReviewCommentApi): GhPrReviewComm
 	};
 }
 
+/**
+ * Process-lifetime cache of `gh repo view --json nameWithOwner` lookups keyed
+ * by absolute cwd. Avoids repeated `gh` chatter when the same protocol handler
+ * or tool call resolves the default repo many times in a row.
+ *
+ * The shared lookup is intentionally **not** bound to any caller's
+ * AbortSignal. Cancelling one caller would otherwise kill the underlying
+ * `gh repo view` for every concurrent waiter on the same cwd. Each caller's
+ * signal is honored at the wait point via `untilAborted` instead, so an abort
+ * unwinds only that caller.
+ */
 const DEFAULT_REPO_RESOLVED = new Map<string, string>();
 
 const DEFAULT_REPO_INFLIGHT = new Map<string, Promise<string>>();
@@ -270,6 +308,8 @@ export async function resolveDefaultRepoMemoized(cwd: string, signal?: AbortSign
 	let pending = DEFAULT_REPO_INFLIGHT.get(key);
 	if (!pending) {
 		pending = (async () => {
+			// No caller signal: this lookup is shared across every concurrent
+			// waiter on the same cwd.
 			const resolved = await git.github.text(cwd, [
 				"repo",
 				"view",
@@ -282,6 +322,8 @@ export async function resolveDefaultRepoMemoized(cwd: string, signal?: AbortSign
 			DEFAULT_REPO_RESOLVED.set(key, value);
 			return value;
 		})();
+		// Drop the in-flight slot on settle so failures don't poison the cache
+		// and so a successful resolution survives only in `DEFAULT_REPO_RESOLVED`.
 		void pending.then(
 			() => DEFAULT_REPO_INFLIGHT.delete(key),
 			() => DEFAULT_REPO_INFLIGHT.delete(key),
@@ -320,8 +362,10 @@ async function fetchPrReviewComments(
 		const pageComments = response
 			.map(comment => normalizePrReviewComment(comment))
 			.filter((comment): comment is GhPrReviewComment => comment !== null);
-		for (let ci = 0; ci < pageComments.length; ci++) reviewComments.push(pageComments[ci]!);
+		reviewComments.push(...pageComments);
 
+		// Compare the raw page length: a dropped malformed item must not end
+		// pagination early and silently lose the remaining pages.
 		if (response.length < REVIEW_COMMENTS_PAGE_SIZE) {
 			break;
 		}
@@ -444,8 +488,7 @@ function formatIssueView(data: GhIssueViewData, input: { issue: string; repo?: s
 		const commentSection = formatCommentsSection(data.comments);
 		if (commentSection.length > 0) {
 			lines.push("");
-			const cs = commentSection;
-			for (let li = 0; li < cs.length; li++) lines.push(cs[li]!);
+			lines.push(...commentSection);
 		}
 	}
 
@@ -494,16 +537,14 @@ function formatPrView(data: GhPrViewData, input: { pr?: string; repo?: string; c
 	const fileSection = formatPrFiles(data.files);
 	if (fileSection.length > 0) {
 		lines.push("");
-		const fs = fileSection;
-		for (let li = 0; li < fs.length; li++) lines.push(fs[li]!);
+		lines.push(...fileSection);
 	}
 
 	if ((input.comments ?? true) && data.reviews) {
 		const reviewSection = formatReviewsSection(data.reviews);
 		if (reviewSection.length > 0) {
 			lines.push("");
-			const rs = reviewSection;
-			for (let li = 0; li < rs.length; li++) lines.push(rs[li]!);
+			lines.push(...reviewSection);
 		}
 	}
 
@@ -511,8 +552,7 @@ function formatPrView(data: GhPrViewData, input: { pr?: string; repo?: string; c
 		const reviewCommentsSection = formatReviewCommentsSection(data.reviewComments);
 		if (reviewCommentsSection.length > 0) {
 			lines.push("");
-			const rcs = reviewCommentsSection;
-			for (let li = 0; li < rcs.length; li++) lines.push(rcs[li]!);
+			lines.push(...reviewCommentsSection);
 		}
 	}
 
@@ -520,8 +560,7 @@ function formatPrView(data: GhPrViewData, input: { pr?: string; repo?: string; c
 		const commentSection = formatCommentsSection(data.comments);
 		if (commentSection.length > 0) {
 			lines.push("");
-			const cs = commentSection;
-			for (let li = 0; li < cs.length; li++) lines.push(cs[li]!);
+			lines.push(...commentSection);
 		}
 	}
 
@@ -531,6 +570,7 @@ function formatPrView(data: GhPrViewData, input: { pr?: string; repo?: string; c
 export interface IssueViewLookupOptions {
 	cwd: string;
 	repo?: string;
+	/** Issue number or GitHub issue URL. */
 	issue: string;
 	includeComments?: boolean;
 	signal?: AbortSignal;
@@ -591,6 +631,10 @@ async function fetchPrViewFresh(
 	return { rendered, sourceUrl: data.url, payload: data };
 }
 
+/**
+ * Cache-aware issue/view fetcher. Used by both the `github` tool op and the
+ * `issue://` protocol handler so a single shared row services both surfaces.
+ */
 export async function getOrFetchIssue(options: IssueViewLookupOptions): Promise<ViewLookupResult<GhIssueViewData>> {
 	const identifier = requireNonEmpty(options.issue, "issue");
 	if (identifier.startsWith("-")) {
@@ -599,6 +643,8 @@ export async function getOrFetchIssue(options: IssueViewLookupOptions): Promise<
 	const includeComments = options.includeComments ?? true;
 	const authKey = options.cacheAuthKey === undefined ? (resolveGithubCacheAuthKey() ?? null) : options.cacheAuthKey;
 	const urlParse = parseIssueUrl(identifier);
+	// Prefer the URL's repo when the identifier is a full URL; fall back to the
+	// explicit `repo` option, then to the cwd's default repo.
 	let repo = urlParse.repo ?? normalizeOptionalString(options.repo);
 	let cacheNumber = urlParse.issueNumber;
 	if (cacheNumber === undefined) {
@@ -608,6 +654,9 @@ export async function getOrFetchIssue(options: IssueViewLookupOptions): Promise<
 		try {
 			repo = await resolveDefaultRepoMemoized(options.cwd, options.signal);
 		} catch {
+			// Resolution failure leaves `repo` undefined: we'll fall through to a
+			// direct fetch below so gh produces its own error message instead of
+			// us masking it with a friendlier one.
 			repo = undefined;
 		}
 	}
@@ -637,6 +686,11 @@ export async function getOrFetchIssue(options: IssueViewLookupOptions): Promise<
 	};
 }
 
+/**
+ * Cache-aware PR view fetcher. Caller must supply a numeric PR number;
+ * branch-name / current-branch lookups bypass the cache entirely upstream
+ * (see `executePrView`).
+ */
 export async function getOrFetchPr(options: PrViewLookupOptions): Promise<ViewLookupResult<GhPrViewData>> {
 	const includeComments = options.includeComments ?? true;
 	const authKey = options.cacheAuthKey === undefined ? (resolveGithubCacheAuthKey() ?? null) : options.cacheAuthKey;
@@ -660,16 +714,21 @@ export async function getOrFetchPr(options: PrViewLookupOptions): Promise<ViewLo
 }
 
 export interface PrDiffFile {
+	/** Display path. Prefers the post-image (`b/<path>`) when present. */
 	path: string;
 	additions: number;
 	deletions: number;
 	changeType: "modified" | "added" | "deleted" | "renamed" | "binary";
+	/** Pre-image path for renames/deletes; same as `path` otherwise. */
 	oldPath?: string;
+	/** Byte offset of the section's `diff --git` line in the unified diff. */
 	startOffset: number;
+	/** Byte offset of the next section (or end-of-text). */
 	endOffset: number;
 }
 
 export interface PrDiffPayload {
+	/** Full unified diff text as returned by `gh pr diff --color never`. */
 	unified: string;
 	files: PrDiffFile[];
 }
@@ -683,17 +742,25 @@ export interface PrDiffLookupOptions {
 	cacheAuthKey?: string | null;
 }
 
+/**
+ * Split `gh pr diff` output on `^diff --git ` boundaries and parse per-file
+ * metadata. The unified diff is preserved verbatim so callers can slice it by
+ * byte offsets without re-running gh.
+ */
 export function parsePrUnifiedDiff(text: string): PrDiffPayload {
 	const files: PrDiffFile[] = [];
 	if (text.length === 0) {
 		return { unified: text, files };
 	}
 
+	// Walk match positions manually so we capture each section's byte range.
 	const sectionStarts: number[] = [];
 	const re = /^diff --git /gm;
 	let m: RegExpExecArray | null = re.exec(text);
 	while (m !== null) {
 		sectionStarts.push(m.index);
+		// Avoid zero-length match infinite loop (regex has fixed prefix, but
+		// be explicit).
 		if (re.lastIndex === m.index) re.lastIndex += 1;
 		m = re.exec(text);
 	}
@@ -903,9 +970,18 @@ async function fetchPrDiffFresh(
 	appendRepoFlag(args, repo, String(number));
 	const text = await git.github.text(cwd, args, signal, { repoProvided: true, trimOutput: false });
 	const payload = parsePrUnifiedDiff(text);
+	// `rendered` already carries the verbatim diff; blank the payload copy so
+	// the cache row stores a potentially huge diff once instead of twice.
+	// `getOrFetchPrDiff` rehydrates `unified` from `rendered`.
 	return { rendered: text, sourceUrl: undefined, payload: { unified: "", files: payload.files } };
 }
 
+/**
+ * Cache-aware PR diff fetcher. Stores the full unified diff plus a parsed
+ * file index in a single `pr-diff` cache row so the listing, full-diff, and
+ * per-file slice variants of `pr://<n>/diff` share one `gh pr diff`
+ * invocation.
+ */
 export async function getOrFetchPrDiff(options: PrDiffLookupOptions): Promise<ViewLookupResult<PrDiffPayload>> {
 	const authKey = options.cacheAuthKey === undefined ? (resolveGithubCacheAuthKey() ?? null) : options.cacheAuthKey;
 	const doFetch = () => fetchPrDiffFresh(options.cwd, options.repo, options.number, options.signal);
@@ -921,6 +997,7 @@ export async function getOrFetchPrDiff(options: PrDiffLookupOptions): Promise<Vi
 	return {
 		rendered: lookup.rendered,
 		sourceUrl: lookup.sourceUrl,
+		// Rehydrate the unified text from `rendered` (stored once per row).
 		payload: { unified: lookup.rendered, files: lookup.payload.files },
 		status: lookup.status,
 		fetchedAt: lookup.fetchedAt,

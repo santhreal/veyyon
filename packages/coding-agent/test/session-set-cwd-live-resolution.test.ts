@@ -33,7 +33,7 @@ function toolSessionFromManager(manager: SessionManager): ToolSession {
 }
 
 describe("setCwd live path resolution", () => {
-	it("resolves read/grep/bash relative paths against the new live session.cwd", async () => {
+	it("resolves read/search/bash relative paths against the new live session.cwd", async () => {
 		const start = makeTempDir("@pi-live-start-");
 		const next = makeTempDir("@pi-live-next-");
 		fs.writeFileSync(path.join(start, "start-only.txt"), "start");

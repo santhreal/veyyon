@@ -48,7 +48,7 @@
  *     asymmetry is the point of running both arms.
  */
 import { afterEach, expect, it } from "bun:test";
-import type { AgentMessage } from "@veyyon/agent-core";
+import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
 import { createSimulation, type Simulation, simTool } from "./harness";
 
 const REDIRECT_TYPE = "tool-call-loop-redirect";
@@ -85,7 +85,7 @@ function injectedText(messages: readonly AgentMessage[]): string {
 	return parts.join("\n");
 }
 
-function loopTool(name = "work"): ReturnType<typeof simTool> {
+function loopTool(name = "work"): AgentTool {
 	return simTool(name, async () => ({ content: [{ type: "text", text: "same output every time" }] }));
 }
 

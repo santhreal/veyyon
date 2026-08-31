@@ -177,6 +177,99 @@ describe("goal runtime", () => {
 		expect(harness.getState()?.goal.tokensUsed).toBe(25);
 	});
 
+	// WHY: a tool flush fires on `tool_execution_end`, which the agent loop emits BEFORE it appends
+	// the tool-result message, so the session totals it reads do not yet include the usage a
+	// subagent reported in that result. Reading early is not a loss, and this is the property that
+	// makes it not one: the flush rebases its baseline on the usage it actually observed, so the
+	// tokens it could not see are still owed and the next flush pays them. Lose this and every
+	// early read becomes a permanent undercount.
+	it("still credits usage a tool flush was too early to see", async () => {
+		const harness = createHarness({
+			state: { enabled: true, mode: "active", goal: createGoal() },
+		});
+		harness.runtime.onTurnStart("turn-1", createUsage());
+
+		// tool_execution_end: the result message carrying the subagent's usage is not in state yet.
+		harness.setUsage(createUsage({ output: 10 }));
+		await harness.runtime.onToolCompleted("task");
+		expect(harness.getState()?.goal.tokensUsed).toBe(10);
+
+		// message_end: the subagent's 300 tokens land in the session totals.
+		harness.setUsage(createUsage({ output: 310 }));
+		await harness.runtime.onAgentEnd({ currentUsage: createUsage({ output: 310 }) });
+		expect(harness.getState()?.goal.tokensUsed).toBe(310);
+	});
+
+	// WHY: the `goal` tool completes a goal in the middle of the turn that completed it, and
+	// accounting stopped right there. Every token the rest of that turn spent — the sibling tool
+	// calls in the same batch, a subagent among them, and the closing message written once they
+	// returned — was spent on the goal and landed after it stopped counting, so the total reported
+	// for the finished goal was short by exactly the work that finished it. These pin the
+	// reconciliation, its bound (once, for that turn only) and what it must NOT reopen. Not
+	// covered: whether the session's own usage total is itself right, which is upstream of this.
+	it("credits a completed goal for what the completing turn spent after the goal tool ran", async () => {
+		const harness = createHarness({
+			state: { enabled: true, mode: "active", goal: createGoal() },
+		});
+		harness.runtime.onTurnStart("turn-1", createUsage());
+
+		// The assistant tokens for the batch that called `goal complete`.
+		harness.setUsage(createUsage({ output: 40 }));
+		await harness.runtime.completeGoalFromTool();
+		expect(harness.getState()?.goal.tokensUsed).toBe(40);
+
+		// The sibling task call in the same batch returns, then the model writes its closing message.
+		harness.setUsage(createUsage({ output: 140 }));
+		await harness.runtime.onAgentEnd({ currentUsage: createUsage({ output: 140 }) });
+		expect(harness.getState()?.goal.tokensUsed).toBe(140);
+		expect(harness.getState()?.goal.status).toBe("complete");
+	});
+
+	it("credits the completing turn even when that turn is interrupted", async () => {
+		const harness = createHarness({
+			state: { enabled: true, mode: "active", goal: createGoal() },
+		});
+		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.setUsage(createUsage({ output: 40 }));
+		await harness.runtime.completeGoalFromTool();
+
+		harness.setUsage(createUsage({ output: 90 }));
+		await harness.runtime.onTaskAborted({ reason: "interrupted" });
+		expect(harness.getState()?.goal.tokensUsed).toBe(90);
+	});
+
+	it("reconciles a completed goal once, and never for a later turn", async () => {
+		const harness = createHarness({
+			state: { enabled: true, mode: "active", goal: createGoal() },
+		});
+		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.setUsage(createUsage({ output: 40 }));
+		await harness.runtime.completeGoalFromTool();
+		harness.setUsage(createUsage({ output: 140 }));
+		await harness.runtime.onAgentEnd({ currentUsage: createUsage({ output: 140 }) });
+
+		harness.runtime.onTurnStart("turn-2", createUsage({ output: 140 }));
+		harness.setUsage(createUsage({ output: 500 }));
+		await harness.runtime.onAgentEnd({ currentUsage: createUsage({ output: 500 }) });
+		expect(harness.getState()?.goal.tokensUsed).toBe(140);
+		expect(harness.getState()?.goal.turnsCompleted).toBe(0);
+	});
+
+	it("does not reopen a budget the completed goal's final tokens pass", async () => {
+		const harness = createHarness({
+			state: { enabled: true, mode: "active", goal: createGoal({ tokenBudget: 100 }) },
+		});
+		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.setUsage(createUsage({ output: 40 }));
+		await harness.runtime.completeGoalFromTool();
+
+		harness.setUsage(createUsage({ output: 400 }));
+		await harness.runtime.onAgentEnd({ currentUsage: createUsage({ output: 400 }) });
+		expect(harness.getState()?.goal.tokensUsed).toBe(400);
+		expect(harness.getState()?.goal.status).toBe("complete");
+		expect(harness.hiddenMessages).toHaveLength(0);
+	});
+
 	it("does not count a turn while the goal is paused (no accounting state)", async () => {
 		const harness = createHarness({
 			state: { enabled: false, mode: "active", goal: createGoal({ status: "paused" }) },

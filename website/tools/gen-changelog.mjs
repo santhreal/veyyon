@@ -403,7 +403,7 @@ export function upstreamNoteMarkdown(forkPointVersion = FORK_POINT_VERSION) {
 }
 
 /** Keep a Changelog section order. Anything unrecognised sorts after these, alphabetically. */
-const SECTION_ORDER = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"];
+const SECTION_ORDER = ["Breaking Changes", "Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"];
 
 function sectionRank(name) {
 	const index = SECTION_ORDER.indexOf(name);

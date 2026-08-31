@@ -1,3 +1,6 @@
+/**
+ * CLI handler for `veyyon grievances` — view, clean, and manually push reported tool issues.
+ */
 import { existsSync } from "node:fs";
 import { subCellBar } from "@veyyon/tui/sub-cell-bar";
 import { formatCount, getAutoQaDbDir, pluralize } from "@veyyon/utils";
@@ -21,15 +24,28 @@ export interface ListGrievancesOptions {
 }
 
 export interface CleanGrievancesOptions {
+	/** Delete a single grievance by id. */
 	id?: number;
+	/** Delete every grievance recorded for this tool name. */
 	tool?: string;
+	/** Delete every grievance regardless of tool/id. */
 	all?: boolean;
+	/** Output the deletion count as JSON instead of a status message. */
 	json?: boolean;
 }
 
 export interface PushGrievancesOptions {
+	/** Emit the {@link FlushResult} as JSON instead of a status line. */
 	json?: boolean;
 }
+/**
+ * The one explanation for a missing database handle, shared by every subcommand.
+ *
+ * `openAutoQaDb` returns null both when auto-QA has never been used and when the database is there
+ * and cannot be opened. Every handler used to print the first explanation for both, so a permissions
+ * problem on an existing database was reported as "enable auto-QA", advice that cannot help and hides
+ * the fact that reports are being dropped. The two cases are told apart by looking for the file.
+ */
 function grievanceDbUnavailable(): { reason: "no_db" | "unreadable_db"; message: string } {
 	const dbPath = getAutoQaDbDir();
 	if (existsSync(dbPath)) {
@@ -44,6 +60,7 @@ function grievanceDbUnavailable(): { reason: "no_db" | "unreadable_db"; message:
 	};
 }
 
+/** Print the explanation above, on stderr in `--json` mode so a machine reader's stdout stays parseable. */
 function reportGrievanceDbUnavailable(json: boolean | undefined, unavailable: { message: string }): void {
 	if (json) console.error(chalk.dim(unavailable.message));
 	else console.log(chalk.dim(unavailable.message));
@@ -93,6 +110,14 @@ export async function listGrievances(options: ListGrievancesOptions): Promise<vo
 	}
 }
 
+/**
+ * Delete grievances from the auto-QA database.
+ *
+ * Selectors are mutually exclusive in intent — exactly one of `id`, `tool`, or
+ * `all` is required. Multiple selectors are rejected to prevent ambiguous deletes
+ * (e.g. `--id 5 --all` would be a footgun). Returns silently when the database
+ * does not exist yet.
+ */
 export async function cleanGrievances(options: CleanGrievancesOptions): Promise<void> {
 	const selectors = [options.id !== undefined, !!options.tool, !!options.all].filter(Boolean).length;
 	if (selectors === 0) {
@@ -124,9 +149,13 @@ export async function cleanGrievances(options: CleanGrievancesOptions): Promise<
 		} else {
 			const result = db.prepare("DELETE FROM grievances").run();
 			deleted = Number(result.changes);
+			// Reset the autoincrement counter so a fresh slate starts at #1 again.
+			// `sqlite_sequence` only exists if AUTOINCREMENT was ever used; ignore failures.
 			try {
 				db.prepare("DELETE FROM sqlite_sequence WHERE name = 'grievances'").run();
-			} catch {}
+			} catch {
+				/* sequence table missing on a brand-new db — nothing to reset */
+			}
 		}
 
 		if (options.json) {
@@ -147,6 +176,16 @@ export async function cleanGrievances(options: CleanGrievancesOptions): Promise<
 	}
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// Manual push (`veyyon grievances push`)
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Single-line ANSI progress reporter. `update(done)` rewrites the line via
+ * `\r`; `finish()` newlines out so subsequent log lines land cleanly. On a
+ * non-TTY stdout (CI, pipes) both calls no-op so log files don't fill with
+ * carriage-return noise.
+ */
 interface ProgressBar {
 	update(done: number): void;
 	finish(): void;
@@ -158,6 +197,9 @@ function makeProgressBar(total: number, width = 30): ProgressBar {
 		return { update: () => undefined, finish: () => undefined };
 	}
 	const render = (done: number): void => {
+		// Eight steps per column through the shared owner. STATIC: a `\r`-rewritten
+		// line driven by the push loop, with no clock and no render loop, so the
+		// value cannot be settled — the resolution is the whole improvement here.
 		const ratio = Math.min(1, done / total);
 		const bar = subCellBar(ratio, width);
 		const pct = `${Math.floor(ratio * 100)
@@ -172,6 +214,14 @@ function makeProgressBar(total: number, width = 30): ProgressBar {
 	};
 }
 
+/**
+ * Manually drain every unpushed grievance to the configured backend,
+ * ignoring the user-facing consent gate (manual push is the user's
+ * explicit "yes ship these now" intent).
+ *
+ * The bundled endpoint is veyyon.dev. An explicit profile setting or
+ * environment override may direct the upload elsewhere.
+ */
 export async function pushGrievances(options: PushGrievancesOptions): Promise<void> {
 	const db = openAutoQaDb();
 	if (!db) {

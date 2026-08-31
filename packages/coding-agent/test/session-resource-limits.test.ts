@@ -23,13 +23,11 @@ import * as path from "node:path";
 import { resetSettingsForTest, Settings } from "../src/config/settings";
 import { setSettingsInstance } from "../src/config/settings-instance";
 import { getUi, SETTINGS_SCHEMA, type SettingPath } from "../src/config/settings-schema";
+import { type CpuLimitEnvironment, type CpuLimitProbe, probeCpuLimitSupport } from "../src/session/cgroup-host";
 import {
 	type CpuBudgetGroupHandle,
 	CpuLimitDeniedError,
-	type CpuLimitEnvironment,
-	type CpuLimitProbe,
 	initSessionCpuLimit,
-	probeCpuLimitSupport,
 	resetSessionCpuLimitsForTests,
 	SessionCpuLimit,
 	sessionCpuBudgetName,
@@ -323,10 +321,22 @@ describe("every backend has a recorded enforceability verdict", () => {
 
 /**
  * The resources tab is the operator-visible contract: one place holding every
- * limit on what a session may consume. A row that reaches the screen without
- * reaching enforcement is the defect this closes.
+ * limit on what veyyon may consume, at both scopes. A row that reaches the
+ * screen without reaching enforcement is the defect this closes.
+ *
+ * The `machine.*` rows are held by the SAME kernel files as their session
+ * twins, one directory up: session groups are created inside the machine
+ * group, so `cpu.max` on the parent bounds the whole subtree. That is why each
+ * entry below names a control file rather than a separate mechanism — there
+ * is no second enforcement path to record, which is the property that makes
+ * the two tiers unable to disagree.
  */
 const RESOURCE_ROW_ENFORCEMENT: Record<string, string> = {
+	"machine.cpuLimitCores": "cpu.max on the machine group every session group is nested inside",
+	"machine.memoryLimitGb": "memory.max on the machine group, bounding the whole subtree",
+	"machine.writeBudgetGb":
+		"the machine group's io.stat plus a cross-process harness tally, refusing writes and spawns",
+	"machine.maxProcesses": "pids.max on the machine group, refusing the fork itself",
 	"session.cpuLimitCores": "cgroup cpu.max / Job Object CPU rate, plus a saturation refusal",
 	"session.cpuLimitKill": "SIGTERM to the saturated group, reported as a budget action",
 	"session.memoryLimitGb": "cgroup memory.max, refusing spawns where it cannot be written",
@@ -335,14 +345,30 @@ const RESOURCE_ROW_ENFORCEMENT: Record<string, string> = {
 	"session.maxProcesses": "cgroup pids.max, plus a refusal at the cap",
 };
 
-describe("the resources tab", () => {
-	it("has an enforcement decision recorded for every row it shows", () => {
+describe("the resource limit rows", () => {
+	it("have an enforcement decision recorded, at both scopes and on both tabs", () => {
+		// Swept from the schema rather than listed: the session rows are the
+		// Resources tab, and the machine rows are the Machine Limits group on
+		// Global, because a limit stored in ~/.veyyon/config.yml is not a
+		// property of the active profile. A row added to either place with no
+		// enforcement decision recorded turns this red.
 		const rows = Object.keys(SETTINGS_SCHEMA)
-			.filter(key => getUi(key as SettingPath)?.tab === "resources")
+			.filter(key => {
+				const ui = getUi(key as SettingPath);
+				return ui?.tab === "resources" || ui?.group === "Machine Limits";
+			})
 			.sort();
 
 		expect(rows.length).toBeGreaterThan(0);
 		expect(rows).toEqual(Object.keys(RESOURCE_ROW_ENFORCEMENT).sort());
+	});
+
+	it("keeps the machine scope off the Resources tab, where it would read as a session limit", () => {
+		const machineRowsOnResources = Object.keys(SETTINGS_SCHEMA).filter(
+			key => key.startsWith("machine.") && getUi(key as SettingPath)?.tab === "resources",
+		);
+
+		expect(machineRowsOnResources).toEqual([]);
 	});
 });
 

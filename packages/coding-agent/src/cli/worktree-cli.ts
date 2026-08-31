@@ -1,3 +1,20 @@
+/**
+ * CLI handler for `veyyon worktree` — list and clean up agent-managed worktrees.
+ *
+ * Layout under `~/.veyyon/wt/`:
+ *
+ *   - **PR-checkout worktrees** (`tools/gh.ts`): a regular git worktree dir
+ *     containing a `.git` *file* that points back at
+ *     `<parent-repo>/.git/worktrees/<name>/`.
+ *   - **Task-isolation dirs** (`task/worktree.ts`): a wrapper dir with a
+ *     compact `m` subdir mounted/cloned by `natives.isoStart`. Legacy `merged`
+ *     subdirs are still recognized. These are ephemeral; `ensureIsolation`
+ *     removes the base before re-creating it, so leftovers are crashed runs.
+ *
+ * Legacy entries from before the encoding change keep working because git still
+ * tracks them by branch name. This command exists to GC them on demand.
+ */
+
 import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -10,11 +27,23 @@ type WorktreeKind = "pr-checkout" | "task-isolation" | "empty" | "stray";
 const TASK_ISOLATION_MOUNT_DIRS = ["m", "merged"] as const;
 
 export interface WorktreeEntry {
+	/** Absolute path to the worktree dir (or stray container) under `~/.veyyon/wt/`. */
 	path: string;
+	/** Classification of what we found on disk. */
 	kind: WorktreeKind;
+	/** Parent repo root, when this is a registered git worktree. */
 	parentRepo?: string;
+	/** Branch name extracted from the parent's tracking file, when available. */
 	branch?: string;
+	/** When set, the entry is unhealthy and `veyyon worktree clear` will remove it. */
 	orphanReason?: string;
+	/**
+	 * When set, something on disk could not be READ, so this entry's health is unknown.
+	 *
+	 * Kept strictly separate from `orphanReason`: an entry with an unknown state must never be deleted, and
+	 * `clear` selects its targets by `orphanReason` alone. The text names the path and the underlying error so
+	 * the operator can fix the permission or remount the volume and re-run.
+	 */
 	undeterminedReason?: string;
 }
 
@@ -23,7 +52,9 @@ export interface ListWorktreesOptions {
 }
 
 export interface ClearWorktreesOptions {
+	/** Remove every entry, including live PR-checkout worktrees. */
 	all: boolean;
+	/** Print what would be removed without touching the filesystem. */
 	dryRun: boolean;
 	json: boolean;
 }
@@ -85,6 +116,9 @@ export async function clearWorktrees(options: ClearWorktreesOptions): Promise<vo
 	for (const target of targets) {
 		try {
 			if (target.kind === "pr-checkout" && target.parentRepo && !target.orphanReason) {
+				// Live worktree: ask git to remove it cleanly. If git refuses (locked,
+				// dirty, etc.), fall back to fs.rm and rely on `worktree prune` to
+				// clean the bookkeeping on the parent side.
 				const removed = await git.worktree.tryRemove(target.parentRepo, target.path, { force: true });
 				if (!removed) {
 					await fs.rm(target.path, { recursive: true, force: true });
@@ -100,10 +134,13 @@ export async function clearWorktrees(options: ClearWorktreesOptions): Promise<vo
 		}
 	}
 
+	// Best-effort: drop stale entries from each affected parent's `.git/worktrees/`.
 	for (const parent of parentsToPrune) {
 		try {
 			await git.worktree.prune(parent);
-		} catch {}
+		} catch {
+			/* parent repo may already be gone or pruned — ignore */
+		}
 	}
 
 	const succeeded = results.filter(r => r.ok).length;
@@ -127,6 +164,10 @@ export async function clearWorktrees(options: ClearWorktreesOptions): Promise<vo
 	if (failed > 0) process.exitCode = 1;
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// Scanner
+// ───────────────────────────────────────────────────────────────────────────
+
 async function scanWorktrees(): Promise<WorktreeEntry[]> {
 	const root = getWorktreesDir();
 	let topLevel: string[];
@@ -142,6 +183,7 @@ async function scanWorktrees(): Promise<WorktreeEntry[]> {
 		const dir = path.join(root, name);
 		const stat = await statPath(dir);
 		if (!stat) {
+			// Unreadable, so its kind is unknown and it must not be swept. Surfaced, never dropped.
 			entries.push({ path: dir, kind: "stray", undeterminedReason: `cannot stat ${dir}` });
 			continue;
 		}
@@ -153,6 +195,7 @@ async function scanWorktrees(): Promise<WorktreeEntry[]> {
 			continue;
 		}
 
+		// Legacy nesting: ~/.veyyon/wt/<encoded-project>/<branch-or-id>
 		let children: string[];
 		try {
 			children = await fs.readdir(dir);
@@ -186,6 +229,18 @@ async function scanWorktrees(): Promise<WorktreeEntry[]> {
 	return entries;
 }
 
+/**
+ * Stat a path, distinguishing "not there" from "could not look".
+ *
+ * This distinction decides whether files get DELETED. `veyyon worktree clear` removes every entry that
+ * carries an `orphanReason`, and each orphan verdict below is reached by failing to stat something: a
+ * missing `.git`, a parent repo that no longer tracks the worktree, a parent repo that is gone. When a
+ * blanket `.catch(() => null)` collapsed both cases, a stat that failed for any other reason -- EACCES on
+ * the parent repo, or a network volume that was briefly unreachable, which is the normal state of a repo
+ * living on a mount -- read as "missing", and a LIVE worktree was reported as "parent repo missing" and
+ * then deleted. Returning `undefined` for the unreadable case lets each caller fail closed toward keeping
+ * the user's files.
+ */
 async function statPath(target: string): Promise<{ found: Stats | null } | undefined> {
 	try {
 		return { found: await fs.stat(target) };
@@ -236,6 +291,7 @@ async function classifyPrCheckout(dir: string, gitEntry: string): Promise<Worktr
 	if (!parentGitDir) {
 		return { path: dir, kind: "pr-checkout", orphanReason: "malformed .git file (no gitdir line)" };
 	}
+	// parentGitDir is `<parent-repo>/.git/worktrees/<name>`; back out the repo root.
 	const parentRepo = path.dirname(path.dirname(path.dirname(parentGitDir)));
 	const branch = await readWorktreeBranch(path.join(parentGitDir, "HEAD"));
 
@@ -280,6 +336,14 @@ async function classifyPrCheckout(dir: string, gitEntry: string): Promise<Worktr
 	return { path: dir, kind: "pr-checkout", parentRepo, branch };
 }
 
+/**
+ * The branch a worktree has checked out, or undefined when it has none to name.
+ *
+ * Undefined already covers a detached HEAD, which the regex declines to match, so a HEAD file that cannot
+ * be read reaches the same answer the listing already handles by showing the worktree without a branch.
+ * The worktree itself is still listed, which matters more: hiding it because its HEAD was unreadable
+ * would leave a directory on disk that the tool claims does not exist.
+ */
 async function readWorktreeBranch(headFile: string): Promise<string | undefined> {
 	try {
 		const head = (await fs.readFile(headFile, "utf8")).trim();

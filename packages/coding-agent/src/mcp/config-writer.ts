@@ -1,3 +1,8 @@
+/**
+ * MCP Configuration File Writer
+ *
+ * Utilities for reading/writing .veyyon/mcp.json files at user or project level.
+ */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { atomicWriteFile, isEnoent, withFileLock } from "@veyyon/utils";
@@ -12,6 +17,10 @@ function withSchema(config: MCPConfigFile): MCPConfigFile {
 	};
 }
 
+/**
+ * Read an MCP config file.
+ * Returns empty config if file doesn't exist.
+ */
 export async function readMCPConfigFile(filePath: string): Promise<MCPConfigFile> {
 	try {
 		const content = await fs.promises.readFile(filePath, "utf-8");
@@ -19,21 +28,43 @@ export async function readMCPConfigFile(filePath: string): Promise<MCPConfigFile
 		return parsed;
 	} catch (error) {
 		if (isEnoent(error)) {
+			// File doesn't exist, return empty config
 			return { mcpServers: {} };
 		}
 		throw error;
 	}
 }
 
-async function writeMCPConfigFile(filePath: string, config: MCPConfigFile): Promise<void> {
+/**
+ * Write an MCP config file atomically.
+ * Creates parent directories if they don't exist.
+ */
+export async function writeMCPConfigFile(filePath: string, config: MCPConfigFile): Promise<void> {
+	// Ensure the parent directory exists and is owner-only (it holds credentials).
 	const dir = path.dirname(filePath);
 	await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
 
 	const content = JSON.stringify(withSchema(config), null, 2);
 	await atomicWriteFile(filePath, content, { mode: 0o600 });
+	// Invalidate the capability fs cache so subsequent reads see the new content
 	invalidateFsCache(filePath);
 }
 
+/**
+ * Read-modify-write an MCP config file under a cross-process lock.
+ *
+ * Every mutation (add/update/remove/toggle) must funnel through here so two
+ * concurrent writers cannot both read the same base config, each apply one
+ * change, and have the last write silently drop the other's change. The lock
+ * serializes the read+mutate+write critical section across processes; the write
+ * itself is still atomic (temp file + rename), so a crash mid-write never tears
+ * the file.
+ *
+ * `mutate` runs inside the lock with the freshly re-read config and returns the
+ * next config. Validation and duplicate/not-found checks that depend on the
+ * current on-disk state must run inside `mutate`, not before the lock, so they
+ * see the latest committed state rather than a stale snapshot.
+ */
 async function mutateMCPConfigFile(filePath: string, mutate: (current: MCPConfigFile) => MCPConfigFile): Promise<void> {
 	await withFileLock(filePath, async () => {
 		const current = await readMCPConfigFile(filePath);
@@ -42,6 +73,10 @@ async function mutateMCPConfigFile(filePath: string, mutate: (current: MCPConfig
 	});
 }
 
+/**
+ * Validate server name.
+ * @returns Error message if invalid, undefined if valid
+ */
 export function validateServerName(name: string): string | undefined {
 	if (!name) {
 		return "Server name cannot be empty. Fix: give the server a short id you will type in `/mcp` commands, for example `filesystem`.";
@@ -49,29 +84,50 @@ export function validateServerName(name: string): string | undefined {
 	if (name.length > 100) {
 		return `Server name is too long: ${name.length} characters, and the maximum is 100. Fix: shorten it to a short id you will type in \`/mcp\` commands, for example \`filesystem\`.`;
 	}
+	// Check for invalid characters. Colon is allowed so namespaced plugin servers
+	// (e.g. "cloudflare:cloudflare-api" from a Claude Code marketplace plugin) can
+	// be persisted: the runtime already accepts colons in server names (tool names
+	// sanitize them via createMCPToolName) and `/mcp reauth` writes such names back
+	// as a user-config override that shadows the discovered entry.
 	if (!/^[a-zA-Z0-9_.:-]+$/.test(name)) {
 		return `Server name "${name}" can only contain letters, numbers, dash, underscore, dot, and colon. Fix: replace the other characters, for example \`my-server\` rather than \`my server\`.`;
 	}
+	// Reject pure dot-path tokens; they are never legitimate server ids and can
+	// confuse filesystem-shaped consumers that treat the name as a path segment.
 	if (name === "." || name === ".." || name.split(/[.:]/).every(p => p === "" || p === "." || p === "..")) {
 		return `Server name "${name}" cannot be a path segment like '.' or '..', because consumers that treat the name as a filename would misread it. Fix: give the server a real id, for example \`local-fs\`.`;
 	}
 	return undefined;
 }
 
+/**
+ * Add an MCP server to a config file.
+ * Validates the config before writing.
+ *
+ * @throws Error if server name already exists or validation fails
+ */
 export async function addMCPServer(filePath: string, name: string, config: MCPServerConfig): Promise<void> {
+	// Validate server name
 	const nameError = validateServerName(name);
 	if (nameError) {
 		throw new Error(nameError);
 	}
 
+	// Validate the config
 	const errors = validateServerConfig(name, config);
 	if (errors.length > 0) {
 		throw new Error(`Cannot add MCP server "${name}" to ${filePath}: ${errors.join("; ")}`);
 	}
 
+	// The duplicate check reads the current on-disk state, so it must run inside
+	// the lock: another writer may have added this name between our validation
+	// and our write.
 	await mutateMCPConfigFile(filePath, existing => {
 		if (existing.mcpServers?.[name]) {
 			throw new Error(
+				// Keep the words "already exists": `#handleWizardComplete` in
+				// `modes/controllers/mcp-command-controller.ts` matches that phrase to
+				// decide which tip to append, so rewording it silently drops the tip.
 				`MCP server "${name}" already exists in ${filePath}, and adding it again would silently replace a working entry. Fix: pick a different name, or run \`/mcp remove ${name}\` first, or edit ${filePath} directly to change the existing entry.`,
 			);
 		}
@@ -85,12 +141,20 @@ export async function addMCPServer(filePath: string, name: string, config: MCPSe
 	});
 }
 
+/**
+ * Update an existing MCP server in a config file.
+ * If the server doesn't exist, this will add it.
+ *
+ * @throws Error if validation fails
+ */
 export async function updateMCPServer(filePath: string, name: string, config: MCPServerConfig): Promise<void> {
+	// Validate server name
 	const nameError = validateServerName(name);
 	if (nameError) {
 		throw new Error(nameError);
 	}
 
+	// Validate the config
 	const errors = validateServerConfig(name, config);
 	if (errors.length > 0) {
 		throw new Error(`Cannot update MCP server "${name}" in ${filePath}: ${errors.join("; ")}`);
@@ -105,7 +169,14 @@ export async function updateMCPServer(filePath: string, name: string, config: MC
 	}));
 }
 
+/**
+ * Remove an MCP server from a config file.
+ *
+ * @throws Error if server doesn't exist
+ */
 export async function removeMCPServer(filePath: string, name: string): Promise<void> {
+	// The existence check reads the current on-disk state, so it must run inside
+	// the lock alongside the removal.
 	await mutateMCPConfigFile(filePath, existing => {
 		if (!existing.mcpServers?.[name]) {
 			throw new Error(
@@ -120,6 +191,37 @@ export async function removeMCPServer(filePath: string, name: string): Promise<v
 	});
 }
 
+/**
+ * Get a specific server config from a file.
+ * Returns undefined if server doesn't exist.
+ */
+export async function getMCPServer(filePath: string, name: string): Promise<MCPServerConfig | undefined> {
+	const config = await readMCPConfigFile(filePath);
+	return config.mcpServers?.[name];
+}
+
+/**
+ * List all server names in a config file.
+ */
+export async function listMCPServers(filePath: string): Promise<string[]> {
+	const config = await readMCPConfigFile(filePath);
+	return Object.keys(config.mcpServers ?? {});
+}
+
+/**
+ * Read a config file for a QUERY: an unparseable file answers "nothing", not an
+ * exception.
+ *
+ * {@link readMCPConfigFile} rethrows a parse failure on purpose, because a
+ * mutation must never overwrite a file it could not read. The two toggle-list
+ * readers below are pure reads on the boot path (`loadAllMCPConfigs` calls both
+ * before it can return anything), and a mistyped comma in the operator's own
+ * `<agentDir>/mcp.json` therefore threw a raw `SyntaxError` out of the loader and
+ * took the whole MCP subsystem down with it. A file that does not parse carries
+ * no denylist and no allowlist. The failure is not swallowed: the `native`
+ * discovery provider reports the same file through `warnings`, which is the
+ * channel `/mcp list` and the boot health zone render.
+ */
 async function readMCPConfigFileForQuery(filePath: string): Promise<MCPConfigFile> {
 	try {
 		return await readMCPConfigFile(filePath);
@@ -129,11 +231,17 @@ async function readMCPConfigFileForQuery(filePath: string): Promise<MCPConfigFil
 	}
 }
 
+/**
+ * Read the disabled servers list from a config file.
+ */
 export async function readDisabledServers(filePath: string): Promise<string[]> {
 	const config = await readMCPConfigFileForQuery(filePath);
 	return Array.isArray(config.disabledServers) ? config.disabledServers : [];
 }
 
+/**
+ * Add or remove a server name from the disabled servers list.
+ */
 export async function setServerDisabled(filePath: string, name: string, disabled: boolean): Promise<void> {
 	await mutateMCPConfigFile(filePath, config => {
 		const current = new Set(config.disabledServers ?? []);
@@ -157,11 +265,20 @@ export async function setServerDisabled(filePath: string, name: string, disabled
 	});
 }
 
+/**
+ * Read the user-level force-enable list (allowlist that overrides a
+ * non-writable source config's `enabled: false`).
+ */
 export async function readEnabledServers(filePath: string): Promise<string[]> {
 	const config = await readMCPConfigFileForQuery(filePath);
 	return Array.isArray(config.enabledServers) ? config.enabledServers : [];
 }
 
+/**
+ * Add or remove a server name from the user-level force-enable list.
+ * The list overrides a discovered server's `enabled: false` flag but does
+ * NOT override the `disabledServers` denylist.
+ */
 export async function setServerForceEnabled(filePath: string, name: string, force: boolean): Promise<void> {
 	await mutateMCPConfigFile(filePath, config => {
 		const current = new Set(config.enabledServers ?? []);
@@ -185,17 +302,46 @@ export async function setServerForceEnabled(filePath: string, name: string, forc
 	});
 }
 
+/** Paths and target state for toggling one MCP server across known config files. */
 export interface SetMcpServerEnabledOptions {
 	userPath: string;
 	projectPath: string;
+	/**
+	 * Absolute path to the loaded row's source mcp.json. Provide ONLY for
+	 * formats this codebase owns (native `.veyyon/mcp.json` and `mcp-json`
+	 * `mcp.json`/`.mcp.json`). Tool-owned configs (opencode.json, claude.json,
+	 * settings.json …) MUST be omitted; we never mutate another tool's file.
+	 */
 	sourcePath?: string;
 	name: string;
 	enabled: boolean;
 }
 
+/**
+ * Flip a server's enabled/disabled state regardless of where it lives.
+ *
+ * Resolution order, mirroring `/mcp enable` / `/mcp disable` plus the dashboard
+ * fix for non-writable source configs:
+ *
+ * - Server found in `sourcePath` (writable) → write `enabled` on that entry.
+ * - Else server in project mcp.json → write `enabled` there.
+ * - Else server in user mcp.json → write `enabled` there.
+ * - Else (server defined in a tool-owned source like opencode.json, OR a
+ *   purely discovered server):
+ *   - Disable → add to the user-level `disabledServers` denylist.
+ *   - Enable → add to the user-level `enabledServers` allowlist so the
+ *     dashboard / runtime override the non-writable source's
+ *     `enabled: false` flag.
+ *
+ * Cleanup invariants — on every call:
+ * - Re-enable clears any stale denylist entry so a server disabled via
+ *   `/mcp disable` and re-enabled here doesn't stay suppressed.
+ * - Disable clears any stale allowlist entry so re-disabling a
+ *   force-enabled server actually takes effect.
+ */
 export async function setMcpServerEnabled(options: SetMcpServerEnabledOptions): Promise<void> {
 	const { userPath, projectPath, sourcePath, name, enabled } = options;
-	const candidatePaths = Array.from(new Set([sourcePath, projectPath, userPath].filter(path => path !== undefined)));
+	const candidatePaths = [...new Set([sourcePath, projectPath, userPath].filter(path => path !== undefined))];
 	let updatedInConfig = false;
 
 	for (const filePath of candidatePaths) {
@@ -209,6 +355,10 @@ export async function setMcpServerEnabled(options: SetMcpServerEnabledOptions): 
 	}
 
 	if (enabled) {
+		// Either we just wrote `enabled: true` on a writable source, or the
+		// server lives in a non-writable source whose `enabled: false` flag we
+		// need to override via the user allowlist. Either way the denylist
+		// entry (if any) must clear so the row becomes active.
 		const denied = await readDisabledServers(userPath);
 		if (denied.includes(name)) {
 			await setServerDisabled(userPath, name, false);
@@ -219,11 +369,15 @@ export async function setMcpServerEnabled(options: SetMcpServerEnabledOptions): 
 		if (!updatedInConfig && !isForced) {
 			await setServerForceEnabled(userPath, name, true);
 		} else if (updatedInConfig && isForced) {
+			// Writable source now carries `enabled: true`; the override is
+			// redundant. Drop it so the user's allowlist stays tidy.
 			await setServerForceEnabled(userPath, name, false);
 		}
 		return;
 	}
 
+	// Disable path. Clear any force-enable override regardless of source so the
+	// disable actually sticks.
 	const forced = await readEnabledServers(userPath);
 	if (forced.includes(name)) {
 		await setServerForceEnabled(userPath, name, false);

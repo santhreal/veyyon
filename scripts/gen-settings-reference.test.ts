@@ -230,13 +230,14 @@ describe("settings reference", () => {
 		const tabHeadings = rendered.split("\n").filter(line => line.startsWith("## "));
 		const groupHeadings = rendered.split("\n").filter(line => line.startsWith("### "));
 
-		// 14 sections (13 tabs plus the config-file one), 66 group sections, 462 rows
-		// as committed. The row floor is above the 344 the `/settings` half alone
-		// renders, so losing the whole config-file section fails here rather than
-		// passing on the strength of the other half.
+		// 14 sections (13 tabs plus the config-file one), 66 group sections, and
+		// 461 rows after the unified search cutover deliberately retired three
+		// per-engine enable flags. The row floor is above the 342 that the
+		// `/settings` half alone renders, so losing the whole config-file section
+		// fails here rather than passing on the strength of the other half.
 		expect(tabHeadings.length).toBeGreaterThanOrEqual(14);
 		expect(groupHeadings.length).toBeGreaterThanOrEqual(66);
-		expect(documentedPaths(rendered).size).toBeGreaterThanOrEqual(462);
+		expect(documentedPaths(rendered).size).toBeGreaterThanOrEqual(461);
 		expect(configOnlyPaths().length).toBeGreaterThanOrEqual(118);
 
 		// And named, so losing one specific tab is a failure rather than a number

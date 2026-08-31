@@ -11,7 +11,11 @@ function taskLabel(item: Pick<TaskItem, "name">): string {
 		.trim();
 }
 
-/** Homogeneous triage is one retrieval and classification operation, not one agent per row. Several substantial reviews may still run independently; this */
+/**
+ * Homogeneous triage is one retrieval and classification operation, not one
+ * agent per row. Several substantial reviews may still run independently; this
+ * rejects only batches whose every item explicitly labels itself as triage.
+ */
 export function isHomogeneousTriageFanout(items: readonly Pick<TaskItem, "name" | "task">[]): boolean {
 	return items.length > 1 && items.every(item => TRIAGE_WORD.test(`${taskLabel(item)}\n${item.task ?? ""}`));
 }

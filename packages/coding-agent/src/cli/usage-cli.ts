@@ -1,3 +1,12 @@
+/**
+ * Usage CLI command handler.
+ *
+ * Handles `veyyon usage` — fetches provider usage reports for every
+ * authenticated account and prints a detailed per-account breakdown
+ * (limits, windows, reset times, plan metadata). Accounts whose
+ * credentials produced no usage report are listed too, so the output
+ * always covers the full credential pool.
+ */
 import type { AuthStorage, UsageHistoryEntry, UsageLimit, UsageReport, UsageUnit } from "@veyyon/ai";
 import { resolveUsedFraction } from "@veyyon/ai/usage";
 import { SUB_CELL_BAR_RAMP, subCellBar } from "@veyyon/tui/sub-cell-bar";
@@ -5,6 +14,8 @@ import { clamp01, DAY_MS, formatCount, formatDuration, formatNumber, pluralize, 
 import chalk from "chalk";
 import { credentialRemedySentence } from "../config/missing-credentials";
 import { ModelRegistry } from "../config/model-registry";
+// `session/auth-broker-config`, which OWNS this, not the `sdk` barrel that re-exports it: the barrel is
+// the whole application and this file wants one function.
 import { discoverAuthStorage } from "../session/auth-broker-config";
 import { formatProviderName } from "../slash-commands/helpers/format";
 
@@ -15,10 +26,13 @@ export interface UsageCommandArgs {
 	json?: boolean;
 	provider?: string;
 	redact?: boolean;
+	/** Show recorded usage-limit history instead of a live snapshot. */
 	history?: boolean;
+	/** History window in days (with `history`). */
 	days?: number;
 }
 
+/** Identity slice of a stored credential, for "every account" coverage. */
 export interface UsageAccountIdentity {
 	provider: string;
 	type: "api_key" | "oauth";
@@ -26,12 +40,24 @@ export interface UsageAccountIdentity {
 	accountId?: string;
 	projectId?: string;
 	enterpriseUrl?: string;
+	/** Organization/workspace the credential is scoped to (Anthropic multi-subscription). */
 	orgId?: string;
 	orgName?: string;
 }
 
+/**
+ * Minimal-reveal masks for identity strings (`--redact`).
+ *
+ * Every mask shows a two-character anchor. When two identities share the
+ * anchor, the mask additionally reveals the shortest "middle-out"
+ * differentiator — the shortest substring (closest to the string's middle on
+ * ties) that no colliding identity contains — as `an*`, `ca*9*`, `ca*nb*`.
+ * Prefix growth is deliberately avoided: it leaks the start of the local
+ * part (`can.boluk@*`) when a couple of mid-string characters suffice.
+ * Duplicate strings (same account on two providers) share a mask.
+ */
 export function buildRedactionMap(values: Iterable<string>): Map<string, string> {
-	const unique = Array.from(new Set(values));
+	const unique = [...new Set(values)];
 	const map = new Map<string, string>();
 	const byAnchor = new Map<string, string[]>();
 	for (const value of unique) {
@@ -50,6 +76,8 @@ export function buildRedactionMap(values: Iterable<string>): Map<string, string>
 		const infix = findDistinguishingInfix(value, peers);
 		map.set(value, infix === undefined ? `${anchor}*` : `${anchor}*${infix}*`);
 	}
+	// Residual collisions (a value whose every substring also occurs in a
+	// peer gets the bare anchor mask) fall back to prefix extension.
 	const byMask = new Map<string, string[]>();
 	for (const value of unique) {
 		const mask = map.get(value)!;
@@ -73,6 +101,13 @@ export function buildRedactionMap(values: Iterable<string>): Map<string, string>
 	return map;
 }
 
+/**
+ * Shortest substring of `value` (past the revealed two-char anchor) that no
+ * peer contains. Among equal-length candidates, picks the one centered
+ * closest to the middle of the string. Returns undefined when every
+ * substring also occurs in a peer (e.g. `value` is contained in a peer —
+ * that peer's own differentiator keeps the masks distinct).
+ */
 function findDistinguishingInfix(value: string, peers: string[]): string | undefined {
 	const start = Math.min(2, value.length);
 	const center = value.length / 2;
@@ -89,6 +124,7 @@ function findDistinguishingInfix(value: string, peers: string[]): string | undef
 	return undefined;
 }
 
+/** Every identity string the output could surface — input for {@link buildRedactionMap}. */
 function collectIdentityStrings(reports: UsageReport[], accounts: UsageAccountIdentity[]): string[] {
 	const values: string[] = [];
 	const add = (value: unknown): void => {
@@ -136,6 +172,7 @@ const STATUS_COLOR: Record<LimitStatus, (text: string) => string> = {
 	unknown: chalk.dim,
 };
 
+/** Worst-of aggregation: exhausted > warning > ok > unknown. */
 function aggregateStatus(limits: UsageLimit[]): LimitStatus {
 	const statuses = limits.map(resolveStatus);
 	if (statuses.includes("exhausted")) return "exhausted";
@@ -180,6 +217,13 @@ function describeAmount(limit: UsageLimit): string {
 	return parts.join(" · ");
 }
 
+/**
+ * One usage bar for the CLI report: fill in the status colour, track dimmed.
+ *
+ * STATIC. This is a one-shot print with no render loop to settle a value on,
+ * and the default (unicode) ramp because a plain CLI carries no theme — the
+ * glyphs it drew before were the same unconditional block glyphs.
+ */
 function renderBar(limit: UsageLimit): string {
 	const fraction = resolveUsedFraction(limit);
 	if (fraction === undefined) return chalk.dim("·".repeat(BAR_WIDTH));
@@ -189,6 +233,7 @@ function renderBar(limit: UsageLimit): string {
 	return trackAt < 0 ? color(bar) : color(bar.slice(0, trackAt)) + chalk.dim(bar.slice(trackAt));
 }
 
+/** Append the window label when the limit label doesn't already carry it. */
 function limitTitle(limit: UsageLimit): string {
 	let label = limit.label;
 	const tier = limit.scope.tier;
@@ -213,6 +258,7 @@ function reportAccountLabel(report: UsageReport, index: number): string {
 	return `account ${index + 1}`;
 }
 
+/** Lowercased identity strings a report can be attributed to. */
 function reportIdentifiers(report: UsageReport): Set<string> {
 	const ids = new Set<string>();
 	const add = (value: unknown): void => {
@@ -231,6 +277,13 @@ function reportIdentifiers(report: UsageReport): Set<string> {
 	return ids;
 }
 
+/**
+ * Stored credentials that no usage report could be attributed to.
+ *
+ * Conservative on purpose: when a provider's reports carry no identity at
+ * all (or the credential is an API key alongside existing reports), we
+ * can't attribute, so we don't claim the account is missing.
+ */
 export function collectUnreportedAccounts(
 	reports: UsageReport[],
 	accounts: UsageAccountIdentity[],
@@ -245,6 +298,17 @@ export function collectUnreportedAccounts(
 		const providerReports = byProvider.get(account.provider) ?? [];
 		if (providerReports.length === 0) return true;
 		if (account.type === "api_key") return false;
+		// Org-decisive attribution when EITHER side carries an org (Anthropic
+		// multi-subscription): two orgs share every other identifier, so an
+		// org-scoped account is covered only by its own org's report, and an
+		// org-less legacy account is never covered by an org-attributed sibling
+		// report — its own fetch failing must surface as "no usage data". The
+		// shared org is a GATE, not a match: two Team members share the org id
+		// while drawing on per-user pools, so coverage also requires the
+		// account's own base identity inside the same-org subset (an org-only
+		// account, with no base identifiers, is covered by any same-org
+		// report). The email/account fallback below applies only when both
+		// sides are org-less.
 		const accountOrg = account.orgId?.toLowerCase();
 		const ids = [account.email, account.accountId, account.projectId]
 			.filter((value): value is string => typeof value === "string" && value.length > 0)
@@ -279,10 +343,14 @@ export function collectUnreportedAccounts(
 	});
 }
 
+/** Compose the account label from parts, masking each part individually so `--redact` cannot be bypassed by the composite string. */
 function accountIdentityLabel(account: UsageAccountIdentity, redaction?: Map<string, string>): string {
 	if (account.type === "api_key") return "API key";
 	const base = account.email ?? account.accountId ?? account.projectId ?? account.enterpriseUrl ?? "OAuth account";
 	const masked = redaction?.get(base) ?? base;
+	// orgId fallback: the uuid is the actual scoped identity; a token response
+	// can carry it without a display name, and two same-email rows must still
+	// be tellable apart.
 	const org = account.orgName ?? account.orgId;
 	if (!org || org === base) return masked;
 	return `${masked} · ${redaction?.get(org) ?? org}`;
@@ -374,14 +442,27 @@ function formatMissingLimitLine(template: ProviderLimitTemplate, labelWidth: num
 	return `      ${chalk.dim("-")} ${padded}  ${chalk.dim("·".repeat(BAR_WIDTH))}  ${chalk.dim("not reported")}`;
 }
 
+/** Per-window capacity stat: how much account quota is burned and left. */
 export interface ProviderWindowStat {
+	/** Compact window label, e.g. "5h", "7d". */
 	window: string;
 	durationMs?: number;
+	/** Accounts reporting a limit in this window. */
 	accounts: number;
+	/** Sum of each account's binding used fraction — accounts' worth of quota burned. */
 	usedAccounts: number;
+	/** Accounts' worth of quota still available across reporting accounts. */
 	remainingAccounts: number;
 }
 
+/**
+ * Aggregate one provider's reports into per-window quota capacity stats.
+ *
+ * Limits are bucketed by window duration (5h, 7d, ...). Within a bucket each
+ * account contributes its single highest used fraction — when an account has
+ * several meters on the same window (tiered/metered limits), the most-burned
+ * one is what binds.
+ */
 export function computeProviderWindowStats(reports: UsageReport[]): ProviderWindowStat[] {
 	const buckets = new Map<string, { window: string; durationMs?: number; fractions: number[] }>();
 	for (const report of reports) {
@@ -404,7 +485,7 @@ export function computeProviderWindowStats(reports: UsageReport[]): ProviderWind
 		}
 		for (const [key, fraction] of accountMax) buckets.get(key)!.fractions.push(fraction);
 	}
-	return Array.from(buckets.values())
+	return [...buckets.values()]
 		.sort((a, b) => (a.durationMs ?? Number.POSITIVE_INFINITY) - (b.durationMs ?? Number.POSITIVE_INFINITY))
 		.map(bucket => {
 			const usedAccounts = bucket.fractions.reduce((sum, fraction) => sum + fraction, 0);
@@ -418,6 +499,11 @@ export function computeProviderWindowStats(reports: UsageReport[]): ProviderWind
 		});
 }
 
+/**
+ * Render the full text breakdown: per provider, per account, every limit
+ * with a bar, amounts, and reset times; unattributed credentials trail
+ * each provider section as "no usage data" rows.
+ */
 export function formatUsageBreakdown(
 	reports: UsageReport[],
 	accounts: UsageAccountIdentity[],
@@ -438,9 +524,9 @@ export function formatUsageBreakdown(
 		unreportedByProvider.set(account.provider, list);
 	}
 
-	const providers = Array.from(
-		new Set(Array.from(reportsByProvider.keys()).concat(Array.from(unreportedByProvider.keys()))),
-	).sort((a, b) => a.localeCompare(b));
+	const providers = [...new Set([...reportsByProvider.keys(), ...unreportedByProvider.keys()])].sort((a, b) =>
+		a.localeCompare(b),
+	);
 
 	const lines: string[] = [];
 	const latestFetchedAt = Math.max(0, ...reports.map(report => report.fetchedAt ?? 0));
@@ -455,7 +541,8 @@ export function formatUsageBreakdown(
 		lines.push(
 			`${chalk.bold.cyan(formatProviderName(provider))} ${chalk.dim(`— ${formatCount("account", accountCount)}`)}`,
 		);
-		const providerNotes = Array.from(new Set(providerReports.flatMap(report => report.notes ?? [])));
+		// Provider-wide disclaimers render once per provider, not per limit.
+		const providerNotes = [...new Set(providerReports.flatMap(report => report.notes ?? []))];
 		for (const note of providerNotes)
 			lines.push(`  ${chalk.dim(sanitizeText(note.replace(/[\r\n]+/g, " ").replace(/\t/g, "  ")))}`);
 
@@ -473,8 +560,7 @@ export function formatUsageBreakdown(
 			for (const template of providerLimitTemplates) {
 				const limit = limitsById.get(template.id);
 				if (limit) {
-					const limitLines = formatLimitLine(limit, labelWidth, nowMs);
-					for (let li = 0; li < limitLines.length; li++) lines.push(limitLines[li]!);
+					lines.push(...formatLimitLine(limit, labelWidth, nowMs));
 				} else {
 					lines.push(formatMissingLimitLine(template, labelWidth));
 				}
@@ -504,6 +590,7 @@ const SPARK_LEVELS = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"] as
 
 interface HistorySeries {
 	title: string;
+	/** Snapshots ascending by recordedAt (listUsageHistory order). */
 	entries: UsageHistoryEntry[];
 }
 
@@ -512,6 +599,7 @@ interface HistoryAccount {
 	series: Map<string, HistorySeries>;
 }
 
+/** Mirror of {@link limitTitle} for history rows (no scope/tier available). */
 function historySeriesTitle(entry: UsageHistoryEntry): string {
 	const label = entry.label;
 	const windowLabel = entry.windowLabel;
@@ -533,6 +621,7 @@ function historyStatus(fraction: number | undefined, status: UsageHistoryEntry["
 	return "ok";
 }
 
+/** Peak-per-bucket sparkline over [sinceMs, nowMs]; empty buckets render dim dots. */
 function renderHistorySparkline(entries: UsageHistoryEntry[], sinceMs: number, nowMs: number): string {
 	const span = Math.max(1, nowMs - sinceMs);
 	const buckets: Array<number | undefined> = new Array(HISTORY_SPARK_WIDTH).fill(undefined);
@@ -553,6 +642,7 @@ function renderHistorySparkline(entries: UsageHistoryEntry[], sinceMs: number, n
 		.join("");
 }
 
+/** Identity strings a history rendering could surface — input for {@link buildRedactionMap}. */
 function collectHistoryIdentityStrings(entries: UsageHistoryEntry[]): string[] {
 	const values: string[] = [];
 	for (const entry of entries) {
@@ -563,6 +653,10 @@ function collectHistoryIdentityStrings(entries: UsageHistoryEntry[]): string[] {
 	return values;
 }
 
+/**
+ * Render recorded usage-limit history: per provider, per account, one
+ * peak-per-bucket sparkline per limit window plus latest/peak percentages.
+ */
 export function formatUsageHistory(
 	entries: UsageHistoryEntry[],
 	sinceMs: number,
@@ -586,6 +680,7 @@ export function formatUsageHistory(
 			series = { title: historySeriesTitle(entry), entries: [] };
 			account.series.set(entry.limitId, series);
 		}
+		// Labels can change across snapshots (provider renames); latest wins.
 		series.title = historySeriesTitle(entry);
 		series.entries.push(entry);
 	}
@@ -595,20 +690,17 @@ export function formatUsageHistory(
 		`${chalk.bold("Usage history")}${chalk.dim(` · last ${formatDuration(nowMs - sinceMs)} · peak per bucket`)}`,
 	);
 
-	for (const provider of Array.from(providers.keys()).sort((a, b) => a.localeCompare(b))) {
+	for (const provider of [...providers.keys()].sort((a, b) => a.localeCompare(b))) {
 		const accounts = providers.get(provider) ?? new Map<string, HistoryAccount>();
 		lines.push("");
 		lines.push(
 			`${chalk.bold.cyan(formatProviderName(provider))} ${chalk.dim(`— ${formatCount("account", accounts.size)}`)}`,
 		);
-		const sortedAccounts = Array.from(accounts.values()).sort((a, b) => a.label.localeCompare(b.label));
+		const sortedAccounts = [...accounts.values()].sort((a, b) => a.label.localeCompare(b.label));
 		for (const account of sortedAccounts) {
 			lines.push(`  ${chalk.bold(redaction?.get(account.label) ?? account.label)}`);
-			const labelWidth = Array.from(account.series.values()).reduce(
-				(max, series) => Math.max(max, series.title.length),
-				0,
-			);
-			const sortedSeries = Array.from(account.series.values()).sort((a, b) => a.title.localeCompare(b.title));
+			const labelWidth = [...account.series.values()].reduce((max, series) => Math.max(max, series.title.length), 0);
+			const sortedSeries = [...account.series.values()].sort((a, b) => a.title.localeCompare(b.title));
 			for (const series of sortedSeries) {
 				const fractions = series.entries
 					.map(entry => entry.usedFraction)
@@ -657,7 +749,20 @@ function collectStoredAccounts(authStorage: AuthStorage): UsageAccountIdentity[]
 	return accounts;
 }
 
-function selectReportableAccounts(
+/**
+ * Keep only accounts worth a usage row: those whose provider has a usage
+ * provider, so a missing report is a real gap rather than the absence of any
+ * usage concept. Providers with no usage endpoint (web-search keys, local /
+ * keyless servers, inference providers without a usage API) would only ever
+ * render as noise, so they are dropped.
+ *
+ * `hasUsageProvider` is injected (in practice {@link AuthStorage.usageProviderFor})
+ * so custom/broker resolvers stay authoritative — no provider list is duplicated
+ * here. An explicit `--provider` request bypasses the cull, so
+ * `veyyon usage --provider xai` can still confirm the stored credential has no
+ * usage endpoint.
+ */
+export function selectReportableAccounts(
 	accounts: UsageAccountIdentity[],
 	hasUsageProvider: (provider: string) => boolean,
 	explicitProvider?: string,
@@ -666,12 +771,14 @@ function selectReportableAccounts(
 	return accounts.filter(account => hasUsageProvider(account.provider));
 }
 
+/** Apply a redaction mask to an optional identity field. */
 function maskIdentity(redaction: Map<string, string>, value: string | undefined): string | undefined {
 	return value === undefined ? undefined : (redaction.get(value) ?? value);
 }
 
 const IDENTITY_METADATA_KEYS = ["email", "accountId", "projectId", "orgId", "orgName"] as const;
 
+/** Mask identity fields in a raw-stripped report for `--redact --json`. */
 function redactReportForJson(
 	report: Omit<UsageReport, "raw">,
 	redaction: Map<string, string>,
@@ -761,6 +868,8 @@ export async function runUsageCommand(cmd: UsageCommandArgs): Promise<void> {
 		const redaction = cmd.redact ? buildRedactionMap(collectIdentityStrings(filteredReports, accounts)) : undefined;
 
 		if (cmd.json) {
+			// Drop the heavy provider-specific `raw` payload — same shape as the
+			// broker/gateway `/v1/usage` endpoints.
 			let trimmed = filteredReports.map(({ raw: _raw, ...rest }) => rest);
 			let unreportedAccounts = collectUnreportedAccounts(filteredReports, accounts);
 			if (redaction) {
@@ -793,6 +902,12 @@ export async function runUsageCommand(cmd: UsageCommandArgs): Promise<void> {
 
 		if (filteredReports.length === 0 && accounts.length === 0) {
 			const scope = cmd.provider ? ` for provider "${cmd.provider}"` : "";
+			// Credentials exist but every one is for a provider without a usage
+			// endpoint — say so rather than implying nothing is logged in.
+			// `veyyon usage` is a terminal command with no TUI, and this said `Run
+			// \`veyyon\` and use /login`: it sent the reader into an interactive
+			// session to reach a menu, when the same sign-in runs headlessly. When a
+			// provider was named, the per-provider owner states its env vars too.
 			const addAccounts = cmd.provider
 				? credentialRemedySentence(cmd.provider)
 				: "Fix: run `veyyon auth-broker login` to pick a provider and sign in, " +

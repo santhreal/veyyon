@@ -50,6 +50,7 @@ export interface BenchCommandArgs {
 		runs?: number;
 		maxTokens?: number;
 		prompt?: string;
+		/** Service-tier setting value (`none` omits); overrides the configured `serviceTier` setting. */
 		serviceTier?: string;
 		json?: boolean;
 		par?: number;
@@ -66,6 +67,7 @@ export interface BenchModelRegistry {
 export interface BenchRuntime {
 	modelRegistry: BenchModelRegistry;
 	settings?: Settings;
+	/** Isolation override for standalone secret-vault resolution. */
 	globalConfigRoot?: string;
 	close?: () => void;
 }
@@ -75,6 +77,7 @@ export interface BenchRunSuccess {
 	ttftMs: number;
 	durationMs: number;
 	outputTokens: number;
+	/** Output tokens/sec over the total request duration. */
 	tokensPerSecond: number;
 }
 
@@ -93,10 +96,14 @@ export interface BenchAverages {
 }
 
 export interface BenchModelReport {
+	/** Selector as the user typed it (e.g. "opus" or "gemini-3.5:low"). */
 	selector: string;
+	/** Resolved `provider/id`. */
 	model: string;
+	/** Explicit thinking level from a `:level` selector suffix; undefined = provider default. */
 	thinking?: ResolvedThinkingLevel;
 	results: BenchRunResult[];
+	/** Averages over successful runs; null when every run failed. */
 	average: BenchAverages | null;
 }
 
@@ -105,6 +112,7 @@ export interface BenchSummary {
 	maxTokens: number;
 	models: BenchModelReport[];
 	failures: number;
+	/** Requested per-family service tiers, resolved per model before reaching the wire. */
 	serviceTierByFamily?: ServiceTierByFamily;
 }
 
@@ -154,6 +162,7 @@ function isFirstTokenEvent(event: AssistantMessageEvent): boolean {
 	}
 }
 
+/** Final message carries visible output — non-empty text/thinking or a tool call. */
 function hasVisibleFinalContent(message: AssistantMessage): boolean {
 	return message.content.some(block => {
 		switch (block.type) {
@@ -174,13 +183,26 @@ interface BenchRequestOptions {
 	apiKey: ApiKeyResolver;
 	sessionId: string;
 	prompt: string;
+	/** Custom prompts are resolved from their raw bytes at the final stream dispatch seam. */
 	sanitizePrompt?: (rawPrompt: string) => Promise<string>;
 	maxTokens: number;
+	/** Explicit effort from a `:level` selector suffix; absent = provider default. */
 	reasoning?: Effort;
+	/** Only set for an explicit `:off` suffix — some endpoints reject disablement. */
 	disableReasoning?: boolean;
+	/** Requested service tier passed to `streamSimple`; absent omits the option. The provider layer applies scope/support gating before it reaches the wire. */
 	serviceTier?: ServiceTier;
 }
 
+/**
+ * Bench does not create a session, but a custom prompt crosses the same provider
+ * boundary. Reload every standalone secret source for every physical stream
+ * dispatch so a long or parallel bench never keeps using a stale confidentiality
+ * snapshot.
+ *
+ * The diagnostic is deliberately constant: source parsers can quote bytes from
+ * declarations, and those lines are exactly where operators put secret values.
+ */
 async function sanitizeBenchCustomPrompt(
 	rawPrompt: string,
 	cwd: string,
@@ -208,8 +230,13 @@ async function runBenchRequest(
 	let firstTokenAt: number | undefined;
 	const providerSessionState = new Map<string, ProviderSessionState>();
 	try {
+		// Raw custom input is transformed before trim or any other lossy
+		// preprocessing, after every preceding await, and with no await between
+		// this transform and streamSimple.
 		const prompt = options.sanitizePrompt ? await options.sanitizePrompt(options.prompt) : options.prompt;
 		const context: Context = {
+			// Codex's Responses endpoint 400s with "Instructions are required" when no
+			// system prompt is present — same guard as eval's completion bridge.
 			systemPrompt: ["You are a helpful assistant."],
 			messages: [{ role: "user", content: prompt, timestamp: Date.now(), attribution: "user" }],
 		};
@@ -225,6 +252,11 @@ async function runBenchRequest(
 			serviceTier: options.serviceTier,
 			providerSessionState,
 			preferWebsockets: true,
+			// pi-ai opts every OpenRouter request into response caching (1h TTL).
+			// Bench sends a byte-identical request each run, so within the TTL
+			// OpenRouter replays the cached generation with zeroed usage — the run
+			// shows "tokens 0, TPS 0.0" at line speed. Opt back out so every run
+			// measures a fresh generation.
 			headers: model.provider === "openrouter" ? { "X-OpenRouter-Cache": "false" } : undefined,
 		});
 		let message: AssistantMessage | undefined;
@@ -248,6 +280,12 @@ async function runBenchRequest(
 		const rawTtft = message.ttft ?? (firstTokenAt === undefined ? durationMs : firstTokenAt - startedAt);
 		const ttftMs = Number.isFinite(rawTtft) && rawTtft > 0 ? rawTtft : 0;
 		const outputTokens = Number.isFinite(message.usage.output) && message.usage.output > 0 ? message.usage.output : 0;
+		// A run that streamed no content (no delta/end event set firstTokenAt),
+		// carries no visible final content, and measured no output tokens
+		// benchmarked nothing — a genuinely empty stream (e.g. a gateway that 200s
+		// with an empty body). Surface it as a failure instead of a misleading
+		// 0-token "[ok]". Streaming and buffered providers that produce content keep
+		// passing even when usage is omitted.
 		if (firstTokenAt === undefined && outputTokens === 0 && !hasVisibleFinalContent(message)) {
 			return {
 				ok: false,
@@ -259,6 +297,11 @@ async function runBenchRequest(
 			ttftMs,
 			durationMs,
 			outputTokens,
+			// TPS over the TOTAL request duration, deliberately not the post-TTFT
+			// decode window: reasoning models can spend seconds generating hidden
+			// thinking tokens (counted in usage.output) before the first visible
+			// byte, so "duration - TTFT" inflates TPS several-fold on providers
+			// that buffer or hide reasoning (e.g. google vs google-vertex).
 			tokensPerSecond: durationMs > 0 ? (outputTokens * 1000) / durationMs : 0,
 		};
 	} catch (error) {
@@ -303,8 +346,8 @@ function formatRunLine(result: BenchRunResult, index: number, total: number): st
 	return `  ${chalk.red("[FAIL]")} ${prefix} ${chalk.red(truncateToWidth(replaceTabs(result.error).replace(/\r?\n/g, " "), ERROR_WIDTH))}`;
 }
 
-function formatBenchTable(summary: BenchSummary): string {
-	const ranked = summary.models.slice().sort((a, b) => {
+export function formatBenchTable(summary: BenchSummary): string {
+	const ranked = [...summary.models].sort((a, b) => {
 		if (a.average === null && b.average === null) return 0;
 		if (a.average === null) return 1;
 		if (b.average === null) return -1;
@@ -355,16 +398,24 @@ interface BenchTarget {
 	thinking: ResolvedThinkingLevel | undefined;
 }
 
+/** Highest-priority provider variant: native/OAuth transports outrank mirrors. */
 function pickHighestPriorityProvider(models: Model<Api>[], providerOrder?: readonly string[]): Model<Api> | undefined {
 	if (models.length <= 1) return models[0];
 	const priority = buildModelProviderPriorityRank(providerOrder);
-	return models.slice().sort((a, b) => {
+	return [...models].sort((a, b) => {
 		const aRank = priority.get(a.provider.toLowerCase()) ?? Number.POSITIVE_INFINITY;
 		const bRank = priority.get(b.provider.toLowerCase()) ?? Number.POSITIVE_INFINITY;
 		return aRank - bRank;
 	})[0];
 }
 
+/**
+ * Bench resolves selectors against the entire catalog (credentials are ignored),
+ * so an ambiguous id shared by several providers can land on one the user never
+ * authenticated. For non-pinned selectors, redirect to an equivalent model under
+ * a provider with configured auth. An explicit `provider/id` selector is honored
+ * verbatim — even unauthenticated — so forced benchmarking keeps working.
+ */
 function resolveAuthenticatedAlternative(
 	selector: string,
 	model: Model<Api>,
@@ -372,6 +423,7 @@ function resolveAuthenticatedAlternative(
 	providerOrder?: readonly string[],
 ): Model<Api> | undefined {
 	if (!modelRegistry.hasConfiguredAuth) return undefined;
+	// A pinned `provider/...` selector is authoritative; never redirect off it.
 	if (selector.trim().toLowerCase().startsWith(`${model.provider.toLowerCase()}/`)) return undefined;
 	if (modelRegistry.hasConfiguredAuth(model)) return undefined;
 
@@ -383,6 +435,7 @@ function resolveAuthenticatedAlternative(
 		seen.add(key);
 		if (modelRegistry.hasConfiguredAuth?.(candidate)) authenticated.push(candidate);
 	};
+	// Same-id fallback for equivalent entries under providers with configured auth.
 	for (const candidate of modelRegistry.getAll()) {
 		if (candidate.id === model.id) consider(candidate);
 	}
@@ -468,6 +521,9 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 					);
 	try {
 		const targets = resolveBenchModels(command.models, runtime.modelRegistry, runtime.settings, writeStderr);
+		// Explicit `--service-tier` (a single value broadcast across families) wins;
+		// otherwise fall back to the configured per-family `tier.*` settings. Each
+		// model resolves its own family's tier below before reaching the wire.
 		const flagTier = command.flags.serviceTier ? serviceTierSettingToTier(command.flags.serviceTier) : undefined;
 		const serviceTierByFamily = command.flags.serviceTier
 			? serviceTierForAllFamilies(flagTier)
@@ -486,9 +542,17 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 			}
 			const results: BenchRunResult[] = [];
 
+			// Preflight check: let's verify credentials before starting any runs.
+			// This matches the old sequential break behavior exactly and avoids launching/printing
+			// multiple failures.
 			const testSessionId = randomSessionId();
 			const preflightKey = await runtime.modelRegistry.getApiKey(model, testSessionId);
 			if (!preflightKey) {
+				// `veyyon bench/throughput` has no TUI, and this string also lands in
+				// `--json` output that a script reads. It said `Run \`veyyon\` and use
+				// /login, or set the provider API key`: a TUI-only command, and an
+				// unnamed variable. `credentialRemedySentence` names the real env vars
+				// for THIS provider and the headless sign-in command.
 				const failure: BenchRunFailure = {
 					ok: false,
 					error: `No credentials for provider "${model.provider}". ${credentialRemedySentence(model.provider)}`,
@@ -499,6 +563,8 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 				continue;
 			}
 
+			// We will launch up to `par` workers/requests concurrently.
+			// To keep output clean, non-JSON output emits entries in correct index order.
 			let nextToPrint = 0;
 
 			const runWorker = async (index: number) => {
@@ -521,6 +587,7 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 				results[index] = result;
 			};
 
+			// Concurrency-limited running pool
 			const queue = Array.from({ length: runs }, (_, i) => i);
 			const activeWorkers: Promise<void>[] = [];
 
@@ -528,12 +595,14 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 				if (queue.length === 0) return;
 				const index = queue.shift()!;
 
+				// Pre-print a status update if requested and interactive
 				if (!json && interactive) {
 					writeStdout(chalk.dim(`  … run ${index + 1}/${runs} streaming\n`));
 				}
 
 				await runWorker(index);
 
+				// Attempt to print completed results that are in-order
 				if (!json) {
 					while (nextToPrint < runs && results[nextToPrint] !== undefined) {
 						const res = results[nextToPrint];

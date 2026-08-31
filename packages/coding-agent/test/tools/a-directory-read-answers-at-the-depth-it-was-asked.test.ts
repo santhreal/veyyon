@@ -2,9 +2,10 @@
 // directory root) and explicit structural exploration (arbitrary depth and limit).
 // This suite closes the class "a directory read answers at a depth, with a cap,
 // in an order, or across a filesystem boundary other than what was requested":
-// 1. The session working directory root must default to a concise top-level listing
-//    with subdirectory entry counts, while preserving full recursive listings for
-//    subdirectories and external paths.
+// 1. A directory read that names no `depth` must answer at the top level with
+//    per-subdirectory entry counts, whichever directory it names. The root used
+//    to be the only one, and the second level cost 12,632 tokens more than the
+//    top level across seven directories of this repository, 46% of the total.
 // 2. Explicit `depth` and `limit` must be honored across single and multi-path reads,
 //    with exact omission counts and remedy hints.
 // 3. Traversal and work must be bounded: native walker bounds depth and total entries,
@@ -51,7 +52,7 @@ function makeSession(cwd: string): ToolSession {
 	};
 }
 
-const ROOT_FOOTER = "Top-level listing of the working directory root";
+const TOP_LEVEL_FOOTER = "Top-level listing. Re-issue read with depth: 2";
 
 describe("a directory read answers at the depth it was asked", () => {
 	let testDir: string;
@@ -82,7 +83,7 @@ describe("a directory read answers at the depth it was asked", () => {
 		removeSyncWithRetries(testDir);
 	});
 
-	it("defaults the session working directory root to a concise top-level listing", async () => {
+	it("lists a directory at its top level with per-subdirectory entry counts", async () => {
 		const result = await tool.execute("call-root", { path: "." });
 		const output = getTextOutput(result);
 
@@ -98,15 +99,15 @@ describe("a directory read answers at the depth it was asked", () => {
 		expect(output).not.toContain("a1.txt");
 		expect(output).not.toContain("alpha-deep.txt");
 		// The footer names the behavior and the arguments that reveal more.
-		expect(output).toContain(ROOT_FOOTER);
+		expect(output).toContain(TOP_LEVEL_FOOTER);
 		expect(output).toContain("depth: 2");
 	});
 
-	it("treats an absolute path equal to the session cwd as the working directory root", async () => {
+	it("lists an absolute path at its top level too", async () => {
 		const result = await tool.execute("call-root-absolute", { path: testDir });
 		const output = getTextOutput(result);
 
-		expect(output).toContain(ROOT_FOOTER);
+		expect(output).toContain(TOP_LEVEL_FOOTER);
 		expect(output).not.toContain("alpha-deep.txt");
 	});
 
@@ -118,7 +119,7 @@ describe("a directory read answers at the depth it was asked", () => {
 		// and the concise footer is gone.
 		expect(output).toContain("a1.txt");
 		expect(output).toContain("nested/");
-		expect(output).not.toContain(ROOT_FOOTER);
+		expect(output).not.toContain(TOP_LEVEL_FOOTER);
 		// alpha-deep.txt sits three levels below the root — only depth: 3 reaches it.
 		expect(output).not.toContain("alpha-deep.txt");
 
@@ -135,16 +136,27 @@ describe("a directory read answers at the depth it was asked", () => {
 		expect(output).not.toContain("alpha-deep.txt");
 	});
 
-	it("leaves non-root directory listings unchanged", async () => {
+	it("lists any directory at its top level when the caller named no depth", async () => {
 		const result = await tool.execute("call-sub-default", { path: "alpha" });
 		const output = getTextOutput(result);
 
-		// Default depth 2 still recurses into nested/ for any directory that is
-		// not the session working directory root.
+		// A selector-free read is orientation, whichever directory it names: the
+		// top level with per-subdirectory counts, and nothing below it.
 		expect(output).toContain("a1.txt");
+		expect(output).toContain("nested/");
+		expect(output).toContain("(1 entry)");
+		expect(output).not.toContain("alpha-deep.txt");
+		expect(output).toContain(TOP_LEVEL_FOOTER);
+		expect(output).toContain("depth: 2");
+	});
+
+	it("recurses into a subdirectory only when depth: 2 asks it to", async () => {
+		const result = await tool.execute("call-sub-depth2", { path: "alpha", depth: 2 });
+		const output = getTextOutput(result);
+
 		expect(output).toContain("alpha-deep.txt");
-		expect(output).not.toContain(ROOT_FOOTER);
-		// Entry-count annotations belong to the concise root listing only.
+		expect(output).not.toContain(TOP_LEVEL_FOOTER);
+		// Entry-count annotations belong to the concise listing only.
 		expect(output).not.toContain("entries)");
 	});
 
@@ -174,19 +186,19 @@ describe("a directory read answers at the depth it was asked", () => {
 		expect(output).not.toContain("beta-deep.txt");
 	});
 
-	it("applies the concise default per entry: root concise, subdirectory full", async () => {
+	it("applies the concise default per entry across a multi-path read", async () => {
 		const result = await tool.execute("call-multi-default", { path: ".; beta" });
 		const output = getTextOutput(result);
 
-		// The root entry is concise…
-		expect(output).toContain(ROOT_FOOTER);
+		// Both entries are concise: neither named a depth.
+		expect(output).toContain(TOP_LEVEL_FOOTER);
 		expect(output).not.toContain("a1.txt");
-		// …while the beta entry keeps the recursive listing.
-		expect(output).toContain("beta-deep.txt");
+		expect(output).not.toContain("beta-deep.txt");
+		expect(output).toContain("beta/");
 	});
 });
 
-describe("a concise root listing caps top-level entries and says how to see more", () => {
+describe("a concise listing caps top-level entries and says how to see more", () => {
 	let testDir: string;
 	let tool: ReadTool;
 
@@ -208,7 +220,10 @@ describe("a concise root listing caps top-level entries and says how to see more
 		const output = getTextOutput(result);
 
 		expect(output).toContain("5 more top-level entries not shown (capped at 100)");
-		expect(output).toContain("depth: 2");
+		// The cheap remedy first: a flat listing of every entry, then the
+		// recursive one. `depth: 2` alone would recurse the whole directory.
+		expect(output).toContain("depth: 1 for every entry");
+		expect(output).toContain("depth: 2 for the recursive listing");
 		expect(output).not.toContain("…");
 	});
 });
@@ -580,7 +595,7 @@ describe("empty directories and path boundaries", () => {
 		const output = getTextOutput(result);
 
 		// Should resolve back to root and use concise root listing
-		expect(output).toContain(ROOT_FOOTER);
+		expect(output).toContain(TOP_LEVEL_FOOTER);
 		expect(output).toContain("empty_sub/");
 	});
 });
@@ -610,7 +625,7 @@ describe("line selector slicing on directory listings", () => {
 		const output = getTextOutput(result);
 
 		expect(output).toContain("item-01.txt");
-		expect(output).toContain(ROOT_FOOTER);
+		expect(output).toContain(TOP_LEVEL_FOOTER);
 		expect(output).toContain("lines in listing. Use :");
 	});
 });

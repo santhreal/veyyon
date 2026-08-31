@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
 import { resolveExplicitSearchPaths } from "@veyyon/coding-agent/tools/path-utils";
-import { removeWithRetries } from "@veyyon/utils";
+import { isRecord, removeWithRetries } from "@veyyon/utils";
 
 const isWindows = process.platform === "win32";
 
@@ -25,6 +25,11 @@ function getText(result: { content: Array<{ type: string; text?: string }> }): s
 		.filter(entry => entry.type === "text")
 		.map(entry => entry.text ?? "")
 		.join("\n");
+}
+
+function searchDetails(result: { details?: unknown }): Record<string, unknown> | undefined {
+	if (!isRecord(result.details) || !isRecord(result.details.result)) return undefined;
+	return result.details.result;
 }
 
 describe.skipIf(isWindows)("resolveExplicitSearchPaths cross-tree degeneracy", () => {
@@ -59,27 +64,27 @@ describe.skipIf(isWindows)("search with omitted paths", () => {
 
 	it("defaults to the workspace root when paths is omitted", async () => {
 		const tools = await createTools(createTestSession(cwd));
-		const tool = tools.find(entry => entry.name === "grep");
-		if (!tool) throw new Error("Missing grep tool");
-
+		const tool = tools.find(entry => entry.name === "search");
+		if (!tool) throw new Error("Missing search tool");
 		// Callers that omit `path` would otherwise be rejected at schema
 		// validation with `path: Invalid input` and never run. Omission must
 		// degrade to a workspace-root scan rather than fail the tool call.
-		const result = await tool.execute("search-default-paths", { pattern: "default-needle" });
+		const result = await tool.execute("search-default-paths", { type: "text", input: "default-needle" });
 
 		const text = getText(result);
-		const details = result.details as { fileCount?: number } | undefined;
+		const details = searchDetails(result);
 		expect(text).toContain("default-needle here");
 		expect(details?.fileCount).toBe(1);
 	});
 
 	it("defaults to the workspace root when path is an empty JSON array", async () => {
 		const tools = await createTools(createTestSession(cwd));
-		const tool = tools.find(entry => entry.name === "grep");
-		if (!tool) throw new Error("Missing grep tool");
+		const tool = tools.find(entry => entry.name === "search");
+		if (!tool) throw new Error("Missing search tool");
 
 		const result = await tool.execute("search-empty-paths", {
-			pattern: "default-needle",
+			type: "text",
+			input: "default-needle",
 			path: "[]",
 		});
 
@@ -109,18 +114,19 @@ describe.skipIf(isWindows)("search across unrelated filesystem trees", () => {
 
 	it("returns matches from both trees without rooting the scan at /", async () => {
 		const tools = await createTools(createTestSession(cwd));
-		const tool = tools.find(entry => entry.name === "grep");
-		if (!tool) throw new Error("Missing grep tool");
+		const tool = tools.find(entry => entry.name === "search");
+		if (!tool) throw new Error("Missing search tool");
 
 		const start = performance.now();
 		const result = await tool.execute("search-cross-tree", {
-			pattern: "shared-needle",
+			type: "text",
+			input: "shared-needle",
 			path: `${dirA}; ${dirB}`,
 		});
 		const durationMs = performance.now() - start;
 
 		const text = getText(result);
-		const details = result.details as { fileCount?: number; matchCount?: number } | undefined;
+		const details = searchDetails(result);
 
 		expect(text).toContain("shared-needle alpha");
 		expect(text).toContain("shared-needle beta");
@@ -203,14 +209,15 @@ describe.skipIf(isWindows)("search with explicit walker-pruned file targets", ()
 		// explicit file into the walk's glob union silently returned 0 matches.
 		// The file must be read directly as its own target.
 		const tools = await createTools(createTestSession(repo));
-		const tool = tools.find(entry => entry.name === "grep");
-		if (!tool) throw new Error("Missing grep tool");
+		const tool = tools.find(entry => entry.name === "search");
+		if (!tool) throw new Error("Missing search tool");
 
 		const result = await tool.execute("search-git-config", {
-			pattern: "followTags",
+			type: "text",
+			input: "followTags",
 			path: ".; .git/config",
 		});
-		const details = result.details as { matchCount?: number; files?: string[] } | undefined;
+		const details = searchDetails(result);
 		expect(getText(result)).toContain("followTags = true");
 		expect(details?.matchCount).toBe(1);
 		expect(details?.files).toEqual([".git/config"]);
@@ -220,14 +227,15 @@ describe.skipIf(isWindows)("search with explicit walker-pruned file targets", ()
 		await fs.mkdir(path.join(repo, "src"), { recursive: true });
 		await Bun.write(path.join(repo, "src", "a.ts"), "needle-dup\n");
 		const tools = await createTools(createTestSession(repo));
-		const tool = tools.find(entry => entry.name === "grep");
-		if (!tool) throw new Error("Missing grep tool");
+		const tool = tools.find(entry => entry.name === "search");
+		if (!tool) throw new Error("Missing search tool");
 
 		const result = await tool.execute("search-overlap", {
-			pattern: "needle-dup",
+			type: "text",
+			input: "needle-dup",
 			path: ".; src/a.ts",
 		});
-		const details = result.details as { matchCount?: number } | undefined;
+		const details = searchDetails(result);
 		expect(details?.matchCount).toBe(1);
 	});
 });

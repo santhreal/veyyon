@@ -200,8 +200,7 @@ async function checkControlArms(facts: CorpusFacts): Promise<string[]> {
 		),
 	);
 	const nativeHiddenOff = nativeFiles(hiddenOff);
-	const df = compareFiles("control hidden-off", nativeHiddenOff.sort(), [...rgHiddenOff].sort());
-	for (let di = 0; di < df.length; di++) differences.push(df[di]!);
+	differences.push(...compareFiles("control hidden-off", nativeHiddenOff.sort(), [...rgHiddenOff].sort()));
 	for (const found of nativeHiddenOff) {
 		if (found.startsWith(`${HIDDEN_DIR}/`)) differences.push(`control hidden-off: addon returned ${found}`);
 	}
@@ -231,8 +230,7 @@ async function checkControlArms(facts: CorpusFacts): Promise<string[]> {
 		),
 	);
 	const nativeIgnoreOn = nativeFiles(ignoreOn);
-	const df2 = compareFiles("control ignore-on", nativeIgnoreOn.sort(), [...rgIgnoreOn].sort());
-	for (let di = 0; di < df2.length; di++) differences.push(df2[di]!);
+	differences.push(...compareFiles("control ignore-on", nativeIgnoreOn.sort(), [...rgIgnoreOn].sort()));
 	for (const found of nativeIgnoreOn) {
 		if (found.startsWith(`${IGNORED_DIR}/`)) differences.push(`control ignore-on: addon returned ${found}`);
 	}

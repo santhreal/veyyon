@@ -44,7 +44,7 @@ describe("task tool homogeneous triage enforcement", () => {
 			description: "Read-only reviewer",
 			systemPrompt: "",
 			source: "bundled",
-			tools: ["read", "grep", "bash"],
+			tools: ["read", "search", "bash"],
 		},
 	];
 	let tempRoot: string;

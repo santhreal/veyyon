@@ -1,8 +1,18 @@
+/**
+ * Plugin CLI command handlers.
+ *
+ * Handles `veyyon plugin <command>` subcommands for plugin lifecycle management.
+ */
+
 import { APP_NAME, errorMessage, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import { PluginManager, parseSettingValue, validateSetting } from "../extensibility/plugins";
 import { createMarketplaceManager, type MarketplaceManager } from "../extensibility/plugins/marketplace/index.js";
 import { theme } from "../modes/theme/theme";
+
+// =============================================================================
+// Types
+// =============================================================================
 
 export type PluginAction =
 	| "install"
@@ -34,6 +44,7 @@ export interface PluginCommandArgs {
 	};
 }
 
+/** Canonical action list; the `plugin` command's options validation imports this. */
 export const PLUGIN_ACTIONS: PluginAction[] = [
 	"install",
 	"uninstall",
@@ -54,6 +65,13 @@ import { EXIT_USAGE } from "./exit-codes";
 
 export { classifyInstallTarget } from "./classify-install-target";
 
+// =============================================================================
+// Command Handlers
+// =============================================================================
+
+/**
+ * Run a plugin command.
+ */
 export async function runPluginCommand(cmd: PluginCommandArgs): Promise<void> {
 	const manager = new PluginManager();
 
@@ -96,6 +114,10 @@ export async function runPluginCommand(cmd: PluginCommandArgs): Promise<void> {
 			break;
 	}
 }
+
+// =============================================================================
+// Marketplace Handlers
+// =============================================================================
 
 function makeMarketplaceManager(): Promise<MarketplaceManager> {
 	return createMarketplaceManager(getProjectDir());
@@ -256,6 +278,7 @@ async function handleInstall(
 		process.exit(EXIT_USAGE);
 	}
 
+	// Build known marketplace set for classification
 	const mktMgr = await makeMarketplaceManager();
 	const knownMarketplaces = new Set((await mktMgr.listMarketplaces()).map(m => m.name));
 
@@ -264,6 +287,10 @@ async function handleInstall(
 
 		if (target.type === "marketplace") {
 			if (flags.dryRun) {
+				// Resolve against the catalog the way the npm path resolves through bun. Echoing the
+				// spec back proves nothing (#911), and this branch used to skip the check entirely:
+				// a marketplace `--dry-run` fetched, extracted, wrote the cache and the registries,
+				// and reported a completed install.
 				const planned = await mktMgr.getPluginInfo(target.name, target.marketplace);
 				if (!planned) {
 					console.error(
@@ -311,6 +338,9 @@ async function handleInstall(
 		}
 
 		if (target.type === "local") {
+			// Local paths route to link(): symlink the directory into the plugins
+			// node_modules tree so source edits show up without a reinstall. Matches
+			// `veyyon plugin link <path>` so users can use either verb interchangeably.
 			if (flags.scope) {
 				console.error(
 					chalk.yellow(
@@ -350,6 +380,7 @@ async function handleInstall(
 			continue;
 		}
 
+		// --scope only applies to marketplace installs; warn when it would be silently no-op'd for npm.
 		if (flags.scope) {
 			console.error(
 				chalk.yellow(
@@ -358,6 +389,7 @@ async function handleInstall(
 			);
 		}
 
+		// npm path
 		try {
 			const result = await manager.install(spec, { force: flags.force, dryRun: flags.dryRun });
 
@@ -365,6 +397,8 @@ async function handleInstall(
 				console.log(JSON.stringify(result, null, 2));
 			} else {
 				if (flags.dryRun) {
+					// Name the version bun resolved: the whole value of the dry run is that
+					// the target was resolved, and echoing the spec back proved nothing (#911).
 					const resolved = result.version ? `${result.name}@${result.version}` : result.name;
 					console.log(chalk.dim(`[dry-run] Would install ${resolved}`));
 				} else {
@@ -394,11 +428,14 @@ async function handleUninstall(
 		process.exit(EXIT_USAGE);
 	}
 
+	// For uninstall, check the installed plugins registry directly.
+	// This works even if the marketplace entry was later removed from marketplaces.json.
 	const mktMgr = await makeMarketplaceManager();
 	const installedPlugins = new Set((await mktMgr.listInstalledPlugins()).map(p => p.id));
 
 	for (const name of packages) {
 		if (installedPlugins.has(name)) {
+			// Exact match against installed marketplace plugin IDs (name@marketplace)
 			try {
 				await mktMgr.uninstallPlugin(name, flags.scope);
 				console.log(chalk.green(`${theme.status.success} Uninstalled ${name}`));
@@ -409,6 +446,7 @@ async function handleUninstall(
 			continue;
 		}
 
+		// npm path
 		try {
 			await manager.uninstall(name);
 			if (flags.json) {
@@ -557,10 +595,12 @@ async function handleFeatures(
 		process.exit(1);
 	}
 
+	// Handle modifications
 	if (flags.enable || flags.disable || flags.set) {
 		let currentFeatures = new Set((await manager.getEnabledFeatures(pluginName)) ?? []);
 
 		if (flags.set) {
+			// --set replaces all features
 			currentFeatures = new Set(
 				flags.set
 					.split(",")
@@ -586,10 +626,11 @@ async function handleFeatures(
 			}
 		}
 
-		await manager.setEnabledFeatures(pluginName, Array.from(currentFeatures));
+		await manager.setEnabledFeatures(pluginName, [...currentFeatures]);
 		console.log(chalk.green(`${theme.status.success} Updated features for ${pluginName}`));
 	}
 
+	// Display current state
 	const updatedFeatures = await manager.getEnabledFeatures(pluginName);
 
 	if (flags.json) {
@@ -640,6 +681,7 @@ async function handleConfig(
 
 	const [subcommand, pluginName, key, ...valueArgs] = args;
 
+	// Special case: validate doesn't need a plugin name
 	if (subcommand === "validate") {
 		await handleConfigValidate(manager, flags);
 		return;
@@ -647,6 +689,9 @@ async function handleConfig(
 
 	const CONFIG_SUBCOMMANDS = ["list", "get", "set", "delete", "validate"];
 	if (!CONFIG_SUBCOMMANDS.includes(subcommand)) {
+		// `plugin config <plugin>` reads as complete, so it arrived here with the
+		// plugin name parsed as the subcommand and reported "Plugin name required"
+		// about a name the operator had just typed.
 		console.error(chalk.red(`Unknown config subcommand "${subcommand}".`));
 		console.error(
 			chalk.dim(`Usage: ${APP_NAME} plugin config <${CONFIG_SUBCOMMANDS.join("|")}> <plugin> [key] [value]`),
@@ -727,10 +772,12 @@ async function handleConfig(
 			const valueStr = valueArgs.join(" ");
 			const schema = plugin.manifest.settings?.[key];
 
+			// Parse value according to type
 			let value: unknown = valueStr;
 			if (schema) {
 				value = parseSettingValue(valueStr, schema);
 
+				// Validate
 				const validation = validateSetting(value, schema);
 				if (!validation.valid) {
 					console.error(chalk.red(validation.error!));
@@ -858,3 +905,7 @@ async function handleSetEnabled(
 		}
 	}
 }
+
+// =============================================================================
+// Help
+// =============================================================================

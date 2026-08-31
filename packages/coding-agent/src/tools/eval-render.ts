@@ -1,6 +1,18 @@
+/**
+ * TUI rendering for the eval tool.
+ *
+ * Split out from `eval.ts` so the renderer can be imported by `renderers.ts`
+ * without dragging the eval *runtime* (JS/Python/Ruby/Julia backends ->
+ * agent bridge -> task executor -> sdk -> extension loader -> root barrel)
+ * into the renderer module graph. That transitive chain re-enters
+ * `renderers.ts` while `eval.ts` is still initializing, which previously
+ * crashed module load with a TDZ `Cannot access 'evalToolRenderer' before
+ * initialization`.
+ */
 import type { Component } from "@veyyon/tui";
 import { Markdown, Text } from "@veyyon/tui";
 import { formatCount, formatMoreLines, formatNumber } from "@veyyon/utils";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
 import type { EvalCellResult, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "../eval/types";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -93,6 +105,12 @@ function getRenderCells(args: EvalRenderArgs | undefined): EvalRenderCell[] {
 
 type AgentEventStatus = "pending" | "running" | "completed" | "failed" | "aborted";
 
+/**
+ * Append or replace a status event. `agent` events are progress snapshots keyed
+ * by `id`, so they coalesce in place (preserving first-seen order); every other
+ * op is a discrete action and simply appends. Keeps the persisted event list
+ * bounded even when a subagent emits hundreds of throttled progress ticks.
+ */
 function eventString(value: unknown): string | undefined {
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
@@ -114,6 +132,7 @@ function agentEventStatus(value: unknown): AgentEventStatus {
 	}
 }
 
+/** Append the toolCount · context · cost · model stat run, mirroring the task tool. */
 function formatAgentStats(event: EvalStatusEvent, theme: Theme): string {
 	let line = "";
 	const toolCount = eventNumber(event.toolCount);
@@ -136,6 +155,11 @@ function formatAgentStats(event: EvalStatusEvent, theme: Theme): string {
 	return line;
 }
 
+/**
+ * Render coalesced `agent()` progress as a Task-tool-style tree, one entry per
+ * subagent: a status line (icon · id · stats) plus, while running, the current
+ * tool/intent. Drawn below the cell box so progress streams live.
+ */
 function renderAgentProgressEvents(events: EvalStatusEvent[], theme: Theme, spinnerFrame?: number): string[] {
 	const lines: string[] = [];
 	for (let i = 0; i < events.length; i++) {
@@ -197,6 +221,7 @@ function renderAgentProgressEvents(events: EvalStatusEvent[], theme: Theme, spin
 	return lines;
 }
 
+/** Format a status event as a single line for display. */
 function formatStatusEvent(event: EvalStatusEvent, theme: Theme): string {
 	const { op, ...data } = event;
 
@@ -315,6 +340,7 @@ function formatStatusEvent(event: EvalStatusEvent, theme: Theme): string {
 	return `${icon} ${theme.fg("muted", op)}${desc ? ` ${theme.fg("dim", desc)}` : ""}`;
 }
 
+/** Format status event with expanded detail lines. */
 function formatStatusEventExpanded(event: EvalStatusEvent, theme: Theme): string[] {
 	const lines: string[] = [];
 	const { op, ...data } = event;
@@ -332,12 +358,13 @@ function formatStatusEventExpanded(event: EvalStatusEvent, theme: Theme): string
 	};
 
 	const addPreview = (preview: string, maxLines = 3) => {
-		const allPreviewLines = String(preview).split("\n");
-		for (let i = 0; i < Math.min(allPreviewLines.length, maxLines); i++) {
-			lines.push(`   ${theme.fg("toolOutput", truncateToWidth(replaceTabs(allPreviewLines[i]!), 80))}`);
+		const previewLines = String(preview).split("\n").slice(0, maxLines);
+		for (const line of previewLines) {
+			lines.push(`   ${theme.fg("toolOutput", truncateToWidth(replaceTabs(line), 80))}`);
 		}
-		if (allPreviewLines.length > maxLines) {
-			lines.push(`   ${theme.fg("dim", `… ${formatMoreLines(allPreviewLines.length - maxLines)}`)}`);
+		const totalLines = String(preview).split("\n").length;
+		if (totalLines > maxLines) {
+			lines.push(`   ${theme.fg("dim", `… ${formatMoreLines(totalLines - maxLines)}`)}`);
 		}
 	};
 
@@ -375,6 +402,12 @@ function formatStatusEventExpanded(event: EvalStatusEvent, theme: Theme): string
 	return lines;
 }
 
+/**
+ * Render status events as tree lines. Shows a tail window (newest events are
+ * the live edge for `log()` progress loops) behind an "… N earlier" marker,
+ * matching the code/output tail-window convention. Collapsed keeps a small
+ * fixed window; expanded widens to the viewport-sized preview window.
+ */
 function renderStatusEvents(events: EvalStatusEvent[], theme: Theme, expanded: boolean): string[] {
 	if (events.length === 0) return [];
 
@@ -416,6 +449,11 @@ function formatCellOutputLines(
 		return { lines: [], hiddenCount: 0 };
 	}
 
+	// Cell output lands in renderCodeCell → renderOutputBlock, which re-wraps it
+	// at the block's inner content width. Bound the collapsed tail by VISUAL rows
+	// at that width so a long-line tail can't wrap into more rows than budgeted
+	// and scroll its mutating preview above the live-region window — the
+	// duplicate "ctrl+o to expand" scrollback spray.
 	const innerWidth = outputBlockContentWidth(width);
 
 	if (cell.hasMarkdown && cell.status !== "error") {
@@ -432,10 +470,11 @@ function formatCellOutputLines(
 	};
 	const outputLines = cell.output.split("\n");
 	if (expanded) {
-		const expandedLines = new Array<string>(outputLines.length);
-		for (let li = 0; li < outputLines.length; li++) expandedLines[li] = styleLine(outputLines[li]!);
-		return { lines: expandedLines, hiddenCount: 0 };
+		return { lines: outputLines.map(styleLine), hiddenCount: 0 };
 	}
+	// Progress runs collapse before the window is measured, so a wall of
+	// same-shape lines cannot spend the whole tail and push the interesting line
+	// out of the cell.
 	const styledOutput = renderCollapsedOutputLines(outputLines, theme, styleLine).join("\n");
 	const { visualLines, skippedCount } = truncateToVisualLines(styledOutput, previewLines, innerWidth);
 	return { lines: visualLines, hiddenCount: skippedCount };
@@ -457,13 +496,7 @@ export const evalToolRenderer = {
 
 		return markFramedBlockComponent({
 			render: (width: number): readonly string[] => {
-				let cellKey = "";
-				for (let ci = 0; ci < cells.length; ci++) {
-					const c = cells[ci]!;
-					if (ci > 0) cellKey += "|";
-					cellKey += `${c.language}:${c.title ?? ""}:${c.code.length}`;
-				}
-				const key = `${options.expanded ? 1 : 0}|${options.spinnerFrame ?? "-"}|${previewWindowRows()}|${cellKey}`;
+				const key = `${options.expanded ? 1 : 0}|${options.spinnerFrame ?? "-"}|${previewWindowRows()}|${cells.map(c => `${c.language}:${c.title ?? ""}:${c.code.length}`).join("|")}`;
 				if (cached && cached.key === key && cached.width === width) {
 					return cached.result;
 				}
@@ -482,13 +515,16 @@ export const evalToolRenderer = {
 							status: options.spinnerFrame !== undefined ? "running" : "pending",
 							spinnerFrame: options.spinnerFrame,
 							width,
+							// Viewport-sized tail window following the newest streamed code
+							// line; renderResult keeps the same cap so the cell never snaps
+							// open on completion. Only ctrl+o uncaps.
 							codeTail: true,
 							codeMaxLines: previewWindowRows(),
 							expanded: options.expanded,
 						},
 						uiTheme,
 					);
-					for (let j = 0; j < cellLines.length; j++) lines.push(cellLines[j]);
+					lines.push(...cellLines);
 					if (i < cells.length - 1) {
 						lines.push("");
 					}
@@ -512,6 +548,8 @@ export const evalToolRenderer = {
 
 		const rawOutput =
 			options.renderContext?.output ?? (result.content?.find(c => c.type === "text")?.text ?? "").trimEnd();
+		// Strip the LLM-facing notice (appended by wrappedExecute) before display;
+		// the styled `warningLine` below carries the same text in ⟨…⟩ form.
 		const output = stripOutputNotice(rawOutput, details?.meta).trimEnd();
 
 		const jsonOutputs = details?.jsonOutputs ?? [];
@@ -520,14 +558,11 @@ export const evalToolRenderer = {
 		const treeLineCap = treeExpanded ? JSON_TREE_MAX_LINES_EXPANDED : JSON_TREE_MAX_LINES_COLLAPSED;
 		const treeScalarLen = treeExpanded ? JSON_TREE_SCALAR_LEN_EXPANDED : JSON_TREE_SCALAR_LEN_COLLAPSED;
 		const labelOutputs = jsonOutputs.length > 1;
-		const jsonLines: string[] = [];
-		for (let ji = 0; ji < jsonOutputs.length; ji++) {
-			const value = jsonOutputs[ji]!;
+		const jsonLines = jsonOutputs.flatMap((value, index) => {
 			const tree = renderJsonTreeLines(value, uiTheme, treeDepth, treeLineCap, treeScalarLen);
-			if (labelOutputs) jsonLines.push(uiTheme.fg("dim", `display[${ji + 1}]`));
-			for (let li = 0; li < tree.lines.length; li++) jsonLines.push(tree.lines[li]!);
-			if (tree.truncated) jsonLines.push(uiTheme.fg("dim", "…"));
-		}
+			const body = tree.truncated ? [...tree.lines, uiTheme.fg("dim", "…")] : tree.lines;
+			return labelOutputs ? [uiTheme.fg("dim", `display[${index + 1}]`), ...body] : body;
+		});
 
 		const timeoutSeconds = options.renderContext?.timeout;
 		const timeoutLine =
@@ -560,15 +595,11 @@ export const evalToolRenderer = {
 					for (let i = 0; i < cellResults.length; i++) {
 						const cell = cellResults[i];
 						const allEvents = cell.statusEvents ?? [];
-						const agentEvents: typeof allEvents = [];
-						const otherEvents: typeof allEvents = [];
-						for (let ei = 0; ei < allEvents.length; ei++) {
-							const e = allEvents[ei]!;
-							(e.op === "agent" ? agentEvents : otherEvents).push(e);
-						}
+						const agentEvents = allEvents.filter(e => e.op === "agent");
+						const otherEvents = agentEvents.length > 0 ? allEvents.filter(e => e.op !== "agent") : allEvents;
 						const statusLines = renderStatusEvents(otherEvents, uiTheme, expanded);
 						const outputContent = formatCellOutputLines(cell, expanded, previewLines, uiTheme, width);
-						const outputLines = outputContent.lines.slice();
+						const outputLines = [...outputContent.lines];
 						if (!expanded && outputContent.hiddenCount > 0) {
 							outputLines.push(
 								uiTheme.fg("dim", `… ${formatMoreLines(outputContent.hiddenCount)}${expandHintSuffix()}`),
@@ -578,7 +609,7 @@ export const evalToolRenderer = {
 							if (outputLines.length > 0) {
 								outputLines.push(uiTheme.fg("dim", "Status"));
 							}
-							for (let j = 0; j < statusLines.length; j++) outputLines.push(statusLines[j]);
+							outputLines.push(...statusLines);
 						}
 						const cellLines = renderCodeCell(
 							{
@@ -593,6 +624,9 @@ export const evalToolRenderer = {
 								duration: cell.durationMs,
 								output: outputLines.length > 0 ? outputLines.join("\n") : undefined,
 								outputMaxLines: outputLines.length,
+								// Same viewport-sized tail window as the pending preview so the
+								// cell never snaps open on completion; only ctrl+o uncaps.
+								// `output` keeps its own preview cap from above.
 								codeTail: true,
 								codeMaxLines: previewWindowRows(),
 								expanded,
@@ -600,19 +634,20 @@ export const evalToolRenderer = {
 							},
 							uiTheme,
 						);
-						for (let j = 0; j < cellLines.length; j++) lines.push(cellLines[j]);
+						lines.push(...cellLines);
 						if (agentEvents.length > 0) {
-							const agentLines = renderAgentProgressEvents(agentEvents, uiTheme, options.spinnerFrame);
-							for (let j = 0; j < agentLines.length; j++) lines.push(agentLines[j]);
+							lines.push(...renderAgentProgressEvents(agentEvents, uiTheme, options.spinnerFrame));
 						}
 						if (i < cellResults.length - 1) {
 							lines.push("");
 						}
 					}
-					const extras = [timeoutLine, noticeLine, warningLine].filter(
+					// The cells drew themselves as railed cards. What follows them belongs
+					// to the same call, so it takes the same rail instead of sitting at the
+					// rail's column with nothing in it.
+					const trailing = [...jsonLines, timeoutLine, noticeLine, warningLine].filter(
 						(line): line is string => line !== undefined,
 					);
-					const trailing = extras.length > 0 ? jsonLines.concat(extras) : jsonLines;
 					if (trailing.length > 0) {
 						if (lines.length > 0) {
 							lines.push("");
@@ -661,12 +696,10 @@ export const evalToolRenderer = {
 		}
 
 		if (options.renderContext?.expanded ?? options.expanded) {
-			const outputParts = combinedOutput.split("\n");
-			let styledOutput = "";
-			for (let oi = 0; oi < outputParts.length; oi++) {
-				if (oi > 0) styledOutput += "\n";
-				styledOutput += uiTheme.fg("toolOutput", outputParts[oi]!);
-			}
+			const styledOutput = combinedOutput
+				.split("\n")
+				.map(line => uiTheme.fg("toolOutput", line))
+				.join("\n");
 			const lines = [
 				styledOutput,
 				...(statusLines.length > 0 ? [uiTheme.fg("dim", "Status"), ...statusLines] : []),
@@ -677,6 +710,9 @@ export const evalToolRenderer = {
 			return new Text(lines.join("\n"), 0, 0);
 		}
 
+		// Same tail window as the bash card, same reason to condense before it is
+		// measured: a run of progress lines must not push the interesting line out
+		// of the collapsed preview. `expanded` above keeps every line.
 		const textContent = `\n${renderCollapsedOutputLines(combinedOutput.split("\n"), uiTheme).join("\n")}`;
 
 		let cachedWidth: number | undefined;
@@ -706,7 +742,7 @@ export const evalToolRenderer = {
 					);
 					outputLines.push(truncateToWidth(skippedLine, width));
 				}
-				for (let li = 0; li < cachedLines.length; li++) outputLines.push(cachedLines[li]!);
+				outputLines.push(...cachedLines);
 				if (statusLines.length > 0) {
 					outputLines.push(truncateToWidth(uiTheme.fg("dim", "Status"), width));
 					for (const statusLine of statusLines) {

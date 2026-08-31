@@ -10,6 +10,9 @@ import {
 	wrapTextWithAnsi,
 } from "../utils";
 
+/**
+ * Text component - displays multi-line text with word wrapping
+ */
 export class Text implements Component {
 	#text: string;
 	#paddingX: number; // Left/right padding
@@ -24,10 +27,16 @@ export class Text implements Component {
 		return this;
 	}
 
+	// Cache for rendered output
 	#cachedText?: string;
 	#cachedWidth?: number;
 	#cachedLines?: string[];
 
+	// Append-aware wrap cache: wrapped rows for every logical line up to the
+	// last "\n" boundary of the previous render, plus the SGR carry open at
+	// that boundary. Streaming appends (the token-by-token assistant path)
+	// re-wrap only the unfinished last line instead of the whole accumulated
+	// text, turning an O(text²) stream into O(text).
 	#wrapPrefixText?: string;
 	#wrapPrefixWidth?: number;
 	#wrapPrefixRows?: string[];
@@ -72,6 +81,13 @@ export class Text implements Component {
 		this.#wrapPrefixCarry = "";
 	}
 
+	/**
+	 * Wrap `normalized` to `contentWidth`, reusing the wrapped rows of every
+	 * logical line that was already complete (ended in "\n") on the previous
+	 * render when the new text extends the old. The carried SGR state is
+	 * baked into the re-wrapped tail, so styling across the reuse boundary
+	 * matches a from-scratch wrap.
+	 */
 	#wrapIncremental(normalized: string, contentWidth: number): string[] {
 		const boundary = normalized.lastIndexOf("\n") + 1; // 0 when single-line
 		const stable = normalized.slice(0, boundary);
@@ -88,6 +104,8 @@ export class Text implements Component {
 			prefixRows = this.#wrapPrefixRows;
 			carry = this.#wrapPrefixCarry;
 			if (boundary > cached.length) {
+				// New complete logical lines appeared since the last render:
+				// wrap just those (with the carry replayed) and commit them.
 				const grown = normalized.slice(cached.length, boundary - 1);
 				prefixRows = prefixRows.concat(wrapTextWithAnsi(carry + grown, contentWidth));
 				carry = sgrCarryAfter(carry, grown);
@@ -110,10 +128,15 @@ export class Text implements Component {
 	}
 
 	render(width: number): readonly string[] {
+		// Check cache
 		if (this.#cachedLines && this.#cachedText === this.#text && this.#cachedWidth === width) {
 			return this.#cachedLines;
 		}
 
+		// Whitespace-only content collapses to zero rows, so a Text is never a way to emit a
+		// blank line: padding and NBSP are both stripped by trim. A deliberate blank row is
+		// Spacer(1), or a newline inside a single multi-line Text ("a\n\nb" keeps its gap).
+		// Callers that iterate a renderer's line array into one Text per line lose the blanks.
 		if (!this.#text || this.#text.trim() === "") {
 			const result: string[] = [];
 			this.#cachedText = this.#text;
@@ -122,29 +145,38 @@ export class Text implements Component {
 			return result;
 		}
 
+		// Replace tabs with 3 spaces; normalize newlines up front so the
+		// incremental wrap's prefix offsets index the exact text that gets
+		// wrapped.
 		const normalizedText = normalizeWrapInput(replaceTabs(this.#text));
 
+		// Calculate content width (subtract left/right margins)
 		const paddingX = this.#ignoreTight ? this.#paddingX : getPaddingX(this.#paddingX);
 		const contentWidth = Math.max(1, width - paddingX * 2);
+		// Wrap text (this preserves ANSI codes but does NOT pad)
 		const wrappedLines = this.#wrapIncremental(normalizedText, contentWidth);
 
+		// Add margins and background to each line
 		const leftMargin = padding(paddingX);
 		const rightMargin = padding(paddingX);
 		const contentLines: string[] = [];
 
-		for (let li = 0; li < wrappedLines.length; li++) {
-			const line = wrappedLines[li]!;
+		for (const line of wrappedLines) {
+			// Add margins
 			const lineWithMargins = leftMargin + line + rightMargin;
 
+			// Apply background if specified (this also pads to full width)
 			if (this.#customBgFn) {
 				contentLines.push(applyBackgroundToLine(lineWithMargins, width, this.#customBgFn));
 			} else {
+				// No background - just pad to width with spaces
 				const visibleLen = visibleWidth(lineWithMargins);
 				const paddingNeeded = Math.max(0, width - visibleLen);
 				contentLines.push(lineWithMargins + padding(paddingNeeded));
 			}
 		}
 
+		// Add top/bottom padding (empty lines)
 		const emptyLine = padding(width);
 		const emptyLines: string[] = [];
 		for (let i = 0; i < this.#paddingY; i++) {
@@ -152,8 +184,9 @@ export class Text implements Component {
 			emptyLines.push(line);
 		}
 
-		const result = emptyLines.concat(contentLines, emptyLines);
+		const result = [...emptyLines, ...contentLines, ...emptyLines];
 
+		// Update cache
 		this.#cachedText = this.#text;
 		this.#cachedWidth = width;
 		this.#cachedLines = result;

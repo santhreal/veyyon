@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { collapseWhitespace, errorMessage, isAbortError, logger, Snowflake } from "@veyyon/utils";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
 import { type SttStreamHandle, sttClient } from "./asr-client";
 import { downloadSttModel, isSttModelCached } from "./downloader";
@@ -15,12 +16,28 @@ import {
 	startStreamingRecording,
 	verifyRecordingFile,
 } from "./recorder";
-import type { Editor, SttState, ToggleOptions } from "./stt-controller-helpers";
-
-export * from "./stt-controller-helpers";
-
 import { evaluateSubmitTrigger } from "./submit-trigger";
 import { transcribe } from "./transcriber";
+
+export type SttState = "idle" | "recording" | "transcribing";
+
+interface ToggleOptions {
+	showWarning(msg: string): void;
+	showStatus(msg: string): void;
+	onStateChange(state: SttState): void;
+	/** Force a redraw after async edits to the composer (live segment/preview inserts). */
+	requestRender?(): void;
+}
+
+/** The slice of the composer editor the controller drives. */
+interface Editor {
+	insertText(text: string): void;
+	setVolatileText(text: string): void;
+	clearVolatileText(): void;
+	commitVolatileText(text: string): void;
+	submit(): void;
+	deleteBeforeCursor(count: number): void;
+}
 
 export class STTController {
 	#state: SttState = "idle";
@@ -29,10 +46,12 @@ export class STTController {
 	#stopAfterStart = false;
 	#disposed = false;
 
+	// Batch (single-shot) capture.
 	#recordingHandle: RecordingHandle | null = null;
 	#tempFile: string | null = null;
 	#transcriptionAbort: AbortController | null = null;
 
+	// Live streaming capture.
 	#stream: SttStreamHandle | null = null;
 	#streamRecorder: StreamingRecordingHandle | null = null;
 	#streamEditor: Editor | null = null;
@@ -80,14 +99,31 @@ export class STTController {
 
 	async #ensureDeps(options: ToggleOptions): Promise<boolean> {
 		const modelKey = resolveSttModelSpec(settings.get("stt.modelName") as string | undefined).key;
+		// Keyed on the model rather than a one-shot flag: switching stt.modelName
+		// mid-session must re-run preflight so an uncached new tier downloads here
+		// (with progress) instead of blocking silently at stop.
 		if (this.#resolvedModelKey === modelKey) return true;
 		try {
+			// Only clear the status line if we actually wrote to it: the cached
+			// fast path (recorder on PATH, model present) emits nothing, so an
+			// unconditional clear would be a stray write.
 			let wroteStatus = false;
 			const status = (msg: string): void => {
 				wroteStatus = true;
 				options.showStatus(msg);
 			};
+			// A recorder is required to capture audio; startRecording /
+			// startStreamingRecording only *detect* a recorder and throw when none
+			// exists, so provision one here. Instant when sox/ffmpeg/arecord is on
+			// PATH — only a first-run static-ffmpeg download actually blocks.
 			await ensureRecorder(p => status(p.stage + (p.percent != null ? ` (${p.percent}%)` : "")));
+			// Loading the multi-hundred-MB speech model into the worker is what made
+			// the old "Checking STT dependencies…" step slow. Don't pay it before
+			// recording: when the weights are already cached, start now and warm the
+			// model in the background — the stream/transcribe paths load it on demand
+			// (memoized in the worker) and it is hot by the time recording stops.
+			// Only a genuine first-use download blocks, with explicit progress, so we
+			// never record silently against missing weights.
 			if (await isSttModelCached(modelKey)) {
 				this.#warmModel(modelKey);
 			} else {
@@ -104,8 +140,15 @@ export class STTController {
 		}
 	}
 
+	/** Warm the speech model in the worker without blocking recording. The worker
+	 *  memoizes the load, so the stream/transcribe path reuses it and the model is
+	 *  hot by the time recording stops. Only called when the weights are already
+	 *  cached, so no network fetch happens. On load failure (corrupt cache, OOM,
+	 *  runtime install) invalidate the resolved key so the next toggle re-runs
+	 *  preflight and retries instead of skipping it forever. */
 	#warmModel(modelKey: string): void {
 		void downloadSttModel(modelKey).catch(err => {
+			// Guard against a concurrent model switch clobbering a newer resolution.
 			if (!this.#disposed && this.#resolvedModelKey === modelKey) this.#resolvedModelKey = null;
 			logger.debug("stt: background model warmup failed", {
 				error: errorMessage(err),
@@ -115,6 +158,8 @@ export class STTController {
 
 	async #start(editor: Editor, options: ToggleOptions): Promise<void> {
 		if (!(await this.#ensureDeps(options))) return;
+		// Live transcription needs a recorder that can pipe PCM; the Windows
+		// PowerShell mci fallback records to a file, so it stays single-shot.
 		if (this.#recorderCanStream()) {
 			await this.#startStreaming(editor, options);
 			return;
@@ -130,11 +175,15 @@ export class STTController {
 		await this.#stopBatch(editor, options);
 	}
 
+	// ── Live streaming ──────────────────────────────────────────────
+
 	#recorderCanStream(): boolean {
 		const recorder = detectRecorder();
 		return recorder !== null && recorder.tool !== "powershell";
 	}
 
+	/** Segment text gets a leading space once a prior segment is committed, so
+	 *  phrases join naturally; the first phrase is inserted at the cursor as-is. */
 	#prefixed(text: string): string {
 		const normalized = collapseWhitespace(text);
 		if (!normalized) return "";
@@ -197,6 +246,7 @@ export class STTController {
 			return;
 		}
 		this.#setState("transcribing", options);
+		// Stop the mic first so no further audio is fed, then flush the worker.
 		try {
 			await recorder?.stop();
 		} catch (err) {
@@ -257,6 +307,8 @@ export class STTController {
 		this.#streamUtterance = "";
 	}
 
+	// ── Batch (single-shot) ─────────────────────────────────────────
+
 	async #startBatchRecording(options: ToggleOptions): Promise<void> {
 		const id = Snowflake.next();
 		this.#tempFile = path.join(os.tmpdir(), `veyyon-stt-${id}.wav`);
@@ -284,6 +336,7 @@ export class STTController {
 
 		try {
 			await handle.stop();
+			// Validate the recording produced a usable file
 			await verifyRecordingFile(tempFile);
 			this.#setState("transcribing", options);
 
@@ -323,7 +376,9 @@ export class STTController {
 		} finally {
 			try {
 				await fs.rm(tempFile, { force: true });
-			} catch {}
+			} catch {
+				// best effort cleanup
+			}
 			this.#tempFile = null;
 		}
 	}
@@ -339,6 +394,9 @@ export class STTController {
 			this.#streamAbort = null;
 		}
 		this.#stream?.cancel();
+		// `dispose()` is synchronous and its callers cannot wait, but each of these failures leaves something
+		// behind that the user would care about: a recorder that will not stop holds the microphone open, and a
+		// temp file that will not delete leaves recorded AUDIO on disk. Both are reported rather than dropped.
 		this.#streamRecorder?.stop().catch((error: unknown) => {
 			logger.warn("STT stream recorder did not stop; the microphone may stay open", {
 				error: errorMessage(error),

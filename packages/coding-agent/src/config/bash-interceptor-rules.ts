@@ -16,13 +16,13 @@ export const DEFAULT_BASH_INTERCEPTOR_RULES: BashInterceptorRule[] = [
 	},
 	{
 		pattern: "^\\s*(grep|rg|ripgrep|ag|ack)\\s+",
-		tool: "grep",
-		message: "Use the `grep` tool instead of grep/rg. It respects .gitignore and provides structured output.",
+		tool: "search",
+		message: 'Use `search` with `type: "text"` instead of shell grep/rg.',
 	},
 	{
 		pattern: "^\\s*(find|fd|locate)\\s+.*(-name|-iname|-type|--type|-glob)",
-		tool: "glob",
-		message: "Use the `glob` tool instead of find/fd. It respects .gitignore and is faster for glob patterns.",
+		tool: "search",
+		message: 'Use `search` with `type: "files"` instead of shell find/fd.',
 	},
 	{
 		pattern: "^\\s*sed\\s+(-i|--in-place)",

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { withoutComments } from "../src/module-reach";
 import { collectPackageSources } from "./support/package-sources";
 
 // Repo-wide source lock on ONE mistake class: a mechanism that stands a watchdog
@@ -60,11 +61,6 @@ const STAND_DOWN_SITES: Record<string, string> = {
 	"ai/src/utils/idle-iterator.ts": "maxLocalWorkHoldMs",
 };
 
-/** Source with `//` and block comments removed, so prose cannot trip a code lock. */
-function codeOnly(text: string): string {
-	return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
-}
-
 /**
  * A. The stand-down: an identifier saying "keep waiting, this silence is ours".
  * Anchored on the shapes this repo actually uses to hold a watchdog off, so
@@ -111,7 +107,7 @@ describe("bounded-wait source lock", () => {
 		const declaredButNeverCompared: string[] = [];
 		const seen: string[] = [];
 		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
-			const code = codeOnly(text);
+			const code = withoutComments(text);
 			if (!STAND_DOWN.test(code) || !DEADLINE_REARM.test(code)) continue;
 			seen.push(rel);
 			if (!CAP_DECLARED.test(code)) uncapped.push(rel);
@@ -129,7 +125,7 @@ describe("bounded-wait source lock", () => {
 		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
 			const named = STAND_DOWN_SITES[rel];
 			if (named === undefined) continue;
-			if (!codeOnly(text).includes(named)) missingNamedCap.push(`${rel} (${named})`);
+			if (!withoutComments(text).includes(named)) missingNamedCap.push(`${rel} (${named})`);
 		}
 		expect(missingNamedCap).toEqual([]);
 	});
@@ -137,7 +133,7 @@ describe("bounded-wait source lock", () => {
 	it("no production source sets a stand-down cap to a value that can never be reached", async () => {
 		const offenders: string[] = [];
 		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
-			if (CAP_DISABLED.test(codeOnly(text))) offenders.push(rel);
+			if (CAP_DISABLED.test(withoutComments(text))) offenders.push(rel);
 		}
 		expect(offenders).toEqual([]);
 	});

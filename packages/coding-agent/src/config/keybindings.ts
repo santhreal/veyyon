@@ -1,30 +1,415 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import {
 	type Keybinding,
 	type KeybindingsConfig,
-	type KeyId,
 	setKeybindings,
 	KeybindingsManager as TuiKeybindingsManager,
-} from "@veyyon/tui";
-import { getAgentDir } from "@veyyon/utils/dirs";
+} from "@veyyon/tui/keybindings";
+import type { KeyId } from "@veyyon/tui/keys";
+import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
+import { getActiveProfile, getAgentDir, getProfileRootDir } from "@veyyon/utils/dirs";
+import { isEnoent } from "@veyyon/utils/fs-error";
+// Owners, not the `@veyyon/utils` barrel: 6 modules against 74.
+import * as logger from "@veyyon/utils/logger";
+import { quarantineUnparseableFileSync } from "@veyyon/utils/quarantine-file";
+import { syncYamlTextToSettings } from "@veyyon/utils/yaml-sync";
+import { JSONC, YAML } from "bun";
 
+/**
+ * The table itself lives in `keybinding-defs.ts`, a leaf that imports only the
+ * TUI types. This module owns the manager, the `keybindings.yml` loader and the
+ * legacy-name migration, so it reaches yaml, atomic writes, the quarantine path
+ * and the profile resolver, and a UI component that only needs the defaults
+ * should not pull all of that in at import time. Re-exported here so every
+ * existing importer of this module is unaffected.
+ */
 export { type AppKeybinding, getDefaultPasteImageKeys, KEYBINDINGS } from "./keybinding-defs";
 
+import type { AppKeybinding } from "./keybinding-defs";
 import { KEYBINDINGS } from "./keybinding-defs";
-import type { KeybindingsCreateOptions } from "./keybindings-helpers";
-import {
-	FOLLOW_UP_KEYBINDING,
-	keyConfigValue,
-	loadKeybindingsConfig,
-	loadProfileKeybindingsConfig,
-	maybeSeedProfileKeybindings,
-	migrateKeybindingsConfigFile,
-	removeKey,
-	userBindingClaimsKey,
-	WINDOWS_FOLLOW_UP_FALLBACK_KEY,
-} from "./keybindings-helpers";
 
-export { profileHasKeybindingsFile, seedKeybindingsFromAgentDir } from "./keybindings-helpers";
+/**
+ * Migration map from old keybinding names to new namespaced IDs.
+ */
+const KEYBINDING_NAME_MIGRATIONS = {
+	// App-specific (old names)
+	interrupt: "app.interrupt",
+	clear: "app.clear",
+	exit: "app.exit",
+	suspend: "app.suspend",
+	displayReset: "app.display.reset",
+	cycleThinkingLevel: "app.thinking.cycle",
+	cycleModelForward: "app.model.cycleForward",
+	cycleModelBackward: "app.model.cycleBackward",
+	selectModel: "app.model.select",
+	selectModelTemporary: "app.model.selectTemporary",
+	togglePlanMode: "app.plan.toggle",
+	historySearch: "app.history.search",
+	expandTools: "app.tools.expand",
+	toggleThinking: "app.thinking.toggle",
+	externalEditor: "app.editor.external",
+	followUp: "app.message.followUp",
+	retry: "app.retry",
+	dequeue: "app.message.dequeue",
+	pasteImage: "app.clipboard.pasteImage",
+	pasteTextRaw: "app.clipboard.pasteTextRaw",
+	copyLine: "app.clipboard.copyLine",
+	copyPrompt: "app.clipboard.copyPrompt",
+	newSession: "app.session.new",
+	tree: "app.session.tree",
+	fork: "app.session.fork",
+	resume: "app.session.resume",
+	observeSessions: "app.session.observe",
+	toggleSTT: "app.stt.toggle",
+	// TUI editor (old names for backward compatibility)
+	cursorUp: "tui.editor.cursorUp",
+	cursorDown: "tui.editor.cursorDown",
+	cursorLeft: "tui.editor.cursorLeft",
+	cursorRight: "tui.editor.cursorRight",
+	cursorWordLeft: "tui.editor.cursorWordLeft",
+	cursorWordRight: "tui.editor.cursorWordRight",
+	cursorLineStart: "tui.editor.cursorLineStart",
+	cursorLineEnd: "tui.editor.cursorLineEnd",
+	jumpForward: "tui.editor.jumpForward",
+	jumpBackward: "tui.editor.jumpBackward",
+	pageUp: "tui.editor.pageUp",
+	pageDown: "tui.editor.pageDown",
+	deleteCharBackward: "tui.editor.deleteCharBackward",
+	deleteCharForward: "tui.editor.deleteCharForward",
+	deleteWordBackward: "tui.editor.deleteWordBackward",
+	deleteWordForward: "tui.editor.deleteWordForward",
+	deleteToLineStart: "tui.editor.deleteToLineStart",
+	deleteToLineEnd: "tui.editor.deleteToLineEnd",
+	yank: "tui.editor.yank",
+	yankPop: "tui.editor.yankPop",
+	undo: "tui.editor.undo",
+	// TUI input (old names for backward compatibility)
+	newLine: "tui.input.newLine",
+	submit: "tui.input.submit",
+	tab: "tui.input.tab",
+	// TUI select (old names for backward compatibility)
+	selectUp: "tui.select.up",
+	selectDown: "tui.select.down",
+	selectPageUp: "tui.select.pageUp",
+	selectPageDown: "tui.select.pageDown",
+	selectConfirm: "tui.select.confirm",
+	selectCancel: "tui.select.cancel",
+} as const satisfies Record<string, Keybinding>;
 
+/**
+ * Check if a key is a legacy keybinding name.
+ */
+function isLegacyKeybindingName(key: string): key is keyof typeof KEYBINDING_NAME_MIGRATIONS {
+	return key in KEYBINDING_NAME_MIGRATIONS;
+}
+
+function toKeybindingsConfig(value: unknown): KeybindingsConfig {
+	if (typeof value !== "object" || value === null) {
+		return {};
+	}
+
+	const config: KeybindingsConfig = {};
+	for (const [key, val] of Object.entries(value)) {
+		if (val === undefined) {
+			config[key] = undefined;
+		} else if (typeof val === "string") {
+			config[key] = val as KeyId;
+		} else if (Array.isArray(val) && val.every(v => typeof v === "string")) {
+			config[key] = val as KeyId[];
+		}
+	}
+	return config;
+}
+
+/**
+ * Migrate old keybinding names to new namespaced IDs.
+ * Returns both the migrated config and a flag indicating if migration occurred.
+ */
+function migrateKeybindingNames(rawConfig: unknown): {
+	config: KeybindingsConfig;
+	migrated: boolean;
+} {
+	const config = toKeybindingsConfig(rawConfig);
+	const migrated: KeybindingsConfig = {};
+	let didMigrate = false;
+
+	for (const [key, value] of Object.entries(config)) {
+		if (isLegacyKeybindingName(key)) {
+			const newKey = KEYBINDING_NAME_MIGRATIONS[key];
+			migrated[newKey] = value;
+			didMigrate = true;
+		} else {
+			// Already a new-style key
+			migrated[key] = value;
+		}
+	}
+
+	return { config: migrated, migrated: didMigrate };
+}
+
+/**
+ * Order keybindings config to match KEYBINDINGS key order.
+ */
+function orderKeybindingsConfig(config: KeybindingsConfig): KeybindingsConfig {
+	const ordered: KeybindingsConfig = {};
+	for (const key of Object.keys(KEYBINDINGS)) {
+		const value = config[key];
+		if (value !== undefined) {
+			ordered[key] = value;
+		}
+	}
+	// Add any remaining keys that aren't in KEYBINDINGS
+	for (const key of Object.keys(config)) {
+		if (!(key in ordered)) {
+			ordered[key] = config[key];
+		}
+	}
+	return ordered;
+}
+
+const KEYBINDINGS_YML = "keybindings.yml";
+const KEYBINDINGS_YAML = "keybindings.yaml";
+const LEGACY_KEYBINDINGS_JSON = "keybindings.json";
+
+interface KeybindingsConfigPaths {
+	readPath: string;
+	writeBackPath: string;
+}
+
+/** Controls inherited keybinding lookup when creating a manager for a named profile. */
+export interface KeybindingsCreateOptions {
+	/** @deprecated Live merge removed; seed keybindings at profile creation instead. */
+	inheritedAgentDir?: string;
+	/** When false, skip the one-time default-profile keybindings seed (tests). */
+	seedFromDefault?: boolean;
+}
+
+/**
+ * Load raw config from a file synchronously.
+ * Returns parsed JSON/YAML or null if file doesn't exist or is invalid.
+ */
+function loadRawConfig(filePath: string): unknown {
+	let content: string;
+	try {
+		content = fs.readFileSync(filePath, "utf-8");
+	} catch (error) {
+		if (isEnoent(error)) return null;
+		logger.warn("Failed to read keybindings config", { path: filePath, error: String(error) });
+		return null;
+	}
+
+	let parsed: unknown;
+	try {
+		if (filePath.endsWith(".json")) {
+			parsed = JSONC.parse(content);
+		} else if (filePath.endsWith(".yml") || filePath.endsWith(".yaml")) {
+			parsed = YAML.parse(content);
+		} else {
+			throw new Error(`Unsupported keybindings config extension: ${filePath}`);
+		}
+	} catch (error) {
+		// Preserve the bytes before anything writes over them. A parse failure
+		// drops the user's whole custom map, and the migration writer would then
+		// put defaults on disk in its place, so the file they were about to fix by
+		// hand would be gone.
+		quarantineUnparseableFileSync(filePath, content, error);
+		return null;
+	}
+
+	// A blank or comments-only file parses to null/undefined: the user has no
+	// custom keybindings, which is normal. Return null so the caller uses defaults
+	// without treating it as a corruption.
+	if (parsed === null || parsed === undefined) {
+		return null;
+	}
+	// A file that parses cleanly but to a NON-mapping (a bare scalar, a YAML
+	// sequence) is malformed exactly like an unparseable one. Left alone,
+	// toKeybindingsConfig would reduce a scalar to {} and turn a sequence into
+	// bogus index-keyed bindings ("0", "1", ...), silently discarding the user's
+	// real map and, on write-back, persisting the garbage over their file (Law 10).
+	// Quarantine + preserve it and fall back to defaults, matching the parse-error
+	// path here and the settings loader's wrong-shape guard.
+	if (typeof parsed !== "object" || Array.isArray(parsed)) {
+		quarantineUnparseableFileSync(
+			filePath,
+			content,
+			new Error("keybindings root must be a mapping, not a scalar or sequence"),
+		);
+		return null;
+	}
+	return parsed;
+}
+
+function writeKeybindingsConfig(filePath: string, config: KeybindingsConfig): boolean {
+	try {
+		// The file's own bytes, so the write EDITS it instead of re-serializing it.
+		// `keybindings.yml` is a file people write by hand — the docs tell them to — and a
+		// re-serialization discards the comments they used to explain their bindings, their
+		// blank-line grouping and their key order. Missing is fine (first write).
+		let existingText = "";
+		try {
+			existingText = fs.readFileSync(filePath, "utf8");
+		} catch (error) {
+			if (!isEnoent(error)) throw error;
+		}
+		// Atomic write (temp + fsync + rename) so a crash or power loss mid-write
+		// never tears keybindings.yml. A torn file would fail YAML.parse in
+		// loadRawConfig, which silently falls back to default bindings and drops
+		// the user's whole custom map — exactly the corruption we prevent here.
+		atomicWriteFileSync(
+			filePath,
+			// The rename map goes with the write, so a migrated binding is relabelled where
+			// the user put it instead of being deleted and re-appended at the end of the file.
+			syncYamlTextToSettings(existingText, config as Record<string, unknown>, {
+				renamedKeys: KEYBINDING_NAME_MIGRATIONS,
+			}),
+		);
+		logger.debug("Migrated keybindings config", { path: filePath });
+		return true;
+	} catch (error) {
+		logger.warn("Failed to write migrated keybindings config", { path: filePath, error: String(error) });
+		return false;
+	}
+}
+
+function resolveKeybindingsConfigPaths(agentDir: string): KeybindingsConfigPaths {
+	const ymlPath = path.join(agentDir, KEYBINDINGS_YML);
+	if (fs.existsSync(ymlPath)) {
+		return { readPath: ymlPath, writeBackPath: ymlPath };
+	}
+
+	const yamlPath = path.join(agentDir, KEYBINDINGS_YAML);
+	if (fs.existsSync(yamlPath)) {
+		return { readPath: yamlPath, writeBackPath: yamlPath };
+	}
+
+	const jsonPath = path.join(agentDir, LEGACY_KEYBINDINGS_JSON);
+	if (fs.existsSync(jsonPath)) {
+		return { readPath: jsonPath, writeBackPath: ymlPath };
+	}
+
+	return { readPath: ymlPath, writeBackPath: ymlPath };
+}
+
+export function profileHasKeybindingsFile(agentDir: string): boolean {
+	for (const filename of [KEYBINDINGS_YML, KEYBINDINGS_YAML, LEGACY_KEYBINDINGS_JSON]) {
+		if (fs.existsSync(path.join(agentDir, filename))) return true;
+	}
+	return false;
+}
+
+/**
+ * Copy keybindings from `sourceAgentDir` into `targetAgentDir` when the target
+ * has none. Returns true when a file was materialized (seed-once semantics).
+ */
+export function seedKeybindingsFromAgentDir(targetAgentDir: string, sourceAgentDir: string): boolean {
+	if (profileHasKeybindingsFile(targetAgentDir)) return false;
+	const sourcePaths = resolveKeybindingsConfigPaths(sourceAgentDir);
+	const rawConfig = loadRawConfig(sourcePaths.readPath);
+	if (rawConfig === null) return false;
+
+	const { config: migratedConfig } = migrateKeybindingNames(rawConfig);
+	fs.mkdirSync(targetAgentDir, { recursive: true });
+	const targetPath = path.join(targetAgentDir, KEYBINDINGS_YML);
+	const ordered = orderKeybindingsConfig(migratedConfig);
+	return writeKeybindingsConfig(targetPath, ordered);
+}
+
+function maybeSeedProfileKeybindings(agentDir: string, options: KeybindingsCreateOptions): void {
+	if (options.seedFromDefault === false) return;
+	if (!getActiveProfile()) return;
+	if (profileHasKeybindingsFile(agentDir)) return;
+
+	const defaultAgentDir = path.join(getProfileRootDir(undefined), "agent");
+	if (path.resolve(defaultAgentDir) === path.resolve(agentDir)) return;
+
+	if (seedKeybindingsFromAgentDir(agentDir, defaultAgentDir)) {
+		logger.info("Seeded profile keybindings from the default profile (one-time)", {
+			profile: getActiveProfile(),
+			path: path.join(agentDir, KEYBINDINGS_YML),
+		});
+	}
+}
+
+function loadProfileKeybindingsConfig(agentDir: string): {
+	config: KeybindingsConfig;
+	profilePath: string;
+} {
+	const profilePaths = resolveKeybindingsConfigPaths(agentDir);
+	const profile = loadKeybindingsConfig(profilePaths.readPath, profilePaths.writeBackPath);
+	return { config: profile.config, profilePath: profile.persistedPath };
+}
+
+/**
+ * Load and migrate keybindings config.
+ * Legacy JSON is read for compatibility, but successful write-back goes to YAML.
+ */
+function loadKeybindingsConfig(
+	filePath: string,
+	writeBackPath: string | undefined,
+): {
+	config: KeybindingsConfig;
+	persistedPath: string;
+} {
+	const rawConfig = loadRawConfig(filePath);
+
+	if (rawConfig === null) {
+		return { config: {}, persistedPath: filePath };
+	}
+
+	const { config: migratedConfig, migrated } = migrateKeybindingNames(rawConfig);
+	const shouldWriteBack = writeBackPath !== undefined && (migrated || writeBackPath !== filePath);
+	if (shouldWriteBack) {
+		const ordered = orderKeybindingsConfig(migratedConfig);
+		const persistedPath = writeKeybindingsConfig(writeBackPath, ordered) ? writeBackPath : filePath;
+		return { config: migratedConfig, persistedPath };
+	}
+
+	return { config: migratedConfig, persistedPath: filePath };
+}
+
+function migrateKeybindingsConfigFile(agentDir: string): void {
+	const { readPath, writeBackPath } = resolveKeybindingsConfigPaths(agentDir);
+	loadKeybindingsConfig(readPath, writeBackPath);
+}
+
+const FOLLOW_UP_KEYBINDING: AppKeybinding = "app.message.followUp";
+const WINDOWS_FOLLOW_UP_FALLBACK_KEY: KeyId = "ctrl+q";
+function keyListIncludes(keys: KeyId | KeyId[] | undefined, target: KeyId): boolean {
+	if (keys === undefined) return false;
+	const keyList = Array.isArray(keys) ? keys : [keys];
+	for (const key of keyList) {
+		if (key.toLowerCase() === target) return true;
+	}
+	return false;
+}
+
+function userBindingClaimsKey(config: KeybindingsConfig, target: KeyId, except: Keybinding): boolean {
+	for (const [keybinding, keys] of Object.entries(config)) {
+		if (!(keybinding in KEYBINDINGS)) continue;
+		if (keybinding === except) continue;
+		if (keyListIncludes(keys, target)) return true;
+	}
+	return false;
+}
+
+function removeKey(keys: KeyId[], target: KeyId): KeyId[] {
+	return keys.filter(key => key !== target);
+}
+
+function keyConfigValue(keys: KeyId[]): KeyId | KeyId[] {
+	if (keys.length === 1) {
+		const key = keys[0];
+		if (key !== undefined) return key;
+	}
+	return [...keys];
+}
+
+/**
+ * Manages all keybindings (app + TUI).
+ * Extends the TUI KeybindingsManager with app-specific functionality.
+ */
 export class KeybindingsManager extends TuiKeybindingsManager {
 	#configPath: string | undefined;
 	#userBindings: KeybindingsConfig;
@@ -35,18 +420,31 @@ export class KeybindingsManager extends TuiKeybindingsManager {
 		this.#userBindings = userBindings;
 	}
 
+	/**
+	 * Create from config files at agentDir/keybindings.yml.
+	 * Legacy keybindings.json is migrated to keybindings.yml on load.
+	 * Named profiles use only their own keybindings file; missing files are
+	 * seeded once from the default profile on first launch.
+	 */
 	static create(agentDir: string = getAgentDir(), options: KeybindingsCreateOptions = {}): KeybindingsManager {
 		maybeSeedProfileKeybindings(agentDir, options);
 		const { config: userBindings, profilePath } = loadProfileKeybindingsConfig(agentDir);
 		const manager = new KeybindingsManager(userBindings, profilePath);
+		// Set globally so getKeybindings() returns this manager
 		setKeybindings(manager);
 		return manager;
 	}
 
+	/**
+	 * Create an in-memory keybindings manager without file persistence.
+	 */
 	static inMemory(userBindings: KeybindingsConfig = {}): KeybindingsManager {
 		return new KeybindingsManager(userBindings);
 	}
 
+	/**
+	 * Reload keybindings from the config files.
+	 */
 	reload(): void {
 		if (!this.#configPath) return;
 		const { config: profileConfig } = KeybindingsManager.#loadFromFile(this.#configPath);
@@ -76,15 +474,24 @@ export class KeybindingsManager extends TuiKeybindingsManager {
 		return resolved;
 	}
 
+	/**
+	 * Get the effective resolved bindings (defaults + user overrides).
+	 */
 	getEffectiveConfig(): KeybindingsConfig {
 		return this.getResolvedBindings();
 	}
 
+	/**
+	 * Get display string for a keybinding (e.g., "ctrl+c/escape").
+	 */
 	getDisplayString(keybinding: Keybinding): string {
 		const keys = this.getKeys(keybinding);
 		return formatKeyHints(keys.length === 0 ? [] : keys);
 	}
 
+	/**
+	 * Load user bindings from a file, migrating old names if needed.
+	 */
 	static #loadFromFile(
 		filePath: string,
 		writeBackPath?: string,
@@ -93,6 +500,9 @@ export class KeybindingsManager extends TuiKeybindingsManager {
 	}
 }
 
+/**
+ * Key hint formatting utilities for UI labels.
+ */
 const MODIFIER_LABELS: Record<string, string> = {
 	ctrl: "Ctrl",
 	shift: "Shift",

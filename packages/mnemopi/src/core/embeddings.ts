@@ -1,20 +1,20 @@
 import { createHmac, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import type { ApiKey } from "@veyyon/ai";
+// The owners, not the barrel. Embedding a query needs a retry wrapper and one
+// header builder; through `@veyyon/ai` it was paying for the whole streaming
+// stack behind them.
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { ProviderHttpError } from "@veyyon/ai/error/classes";
 import { getOpenRouterHeaders } from "@veyyon/ai/utils/openrouter-headers";
 import { hostMatchesUrl } from "@veyyon/catalog/hosts";
 import { OPENROUTER_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
-import {
-	$env,
-	extractHttpStatusFromError,
-	fetchWithRetry,
-	getFastembedCacheDir,
-	logger,
-	trimTrailingSlashes,
-	withScopedTimeoutSignal,
-} from "@veyyon/utils";
+import { getFastembedCacheDir } from "@veyyon/utils/dirs";
+import { $env } from "@veyyon/utils/env";
+import { extractHttpStatusFromError, fetchWithRetry } from "@veyyon/utils/fetch-retry";
+import * as logger from "@veyyon/utils/logger";
+import { withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
+import { trimTrailingSlashes } from "@veyyon/utils/url";
 import type { EmbeddingModel } from "fastembed";
 import { LRUCache } from "lru-cache/raw";
 import {
@@ -33,6 +33,9 @@ import {
 	resolveEmbeddingProvider,
 } from "./runtime-options";
 
+// `Vector` here has always meant the dense `Float32Array` this module produces, which is
+// `DenseVector` in `../types`. Imported for local use and re-exported under the old name
+// so this module's published surface is unchanged; the definition lives in one place.
 export type { DenseVector as Vector } from "../types";
 export type { EmbeddingOutput } from "./runtime-options";
 export { cosineSimilarity } from "./vector-math";
@@ -66,9 +69,14 @@ let localModelInitializerGeneration = 0;
 let apiCallCount = 0;
 const queryCache = new LRUCache<string, Vector>({ max: QUERY_CACHE_MAX });
 const pendingQueryEmbeddings = new Map<string, Promise<Vector | null>>();
+// Per-process HMAC prevents low-entropy query text from being recovered by
+// precomputed/dictionary hashing if a heap or cache-key dump is inspected.
 const queryCacheHmacKey = randomBytes(32);
 let queryCacheGeneration = 0;
 
+// Runtime object identities are process-local cache scope components. A
+// behavior-versioned sanitizer epoch is still mandatory: the same function can
+// close over a mutable obfuscator and change output without changing identity.
 const providerIds = new WeakMap<object, number>();
 const sanitizerIds = new WeakMap<object, number>();
 const credentialIds = new WeakMap<object, number>();
@@ -108,6 +116,11 @@ function sanitizeEmbeddingProviderText(text: string): string {
 	}
 }
 
+/**
+ * Compose the per-query cache key from every input that can change a vector.
+ * Live online sanitizers without a behavior epoch deliberately disable query
+ * caching: function identity cannot reveal changes inside a mutable closure.
+ */
 function queryCacheKey(text: string): string | null {
 	const active = activeEmbeddingOptions();
 	const provider = active?.provider;
@@ -176,6 +189,13 @@ export function embeddingsDisabled(): boolean {
 	return embeddingsDisabledFromEnv();
 }
 
+/**
+ * Resolved per-input character cap for {@link embed}.
+ *
+ * Reads (in order): the active runtime scope's `embeddings.maxInputChars`, then
+ * `MNEMOPI_EMBEDDING_MAX_INPUT_CHARS`, then the bundled `8192` default. `0`
+ * disables the cap entirely.
+ */
 function effectiveMaxInputChars(): number {
 	const override = activeEmbeddingOptions()?.maxInputChars;
 	if (override !== undefined) return Math.max(0, Math.trunc(override));
@@ -184,8 +204,19 @@ function effectiveMaxInputChars(): number {
 	return 8192;
 }
 
+/** Elision marker injected between the retained head and tail of an oversized input. */
 const EMBEDDING_ELISION_MARKER = "\n\n[...]\n\n";
 
+/**
+ * Right-clip a single oversized input to {@link max} chars while preserving
+ * both ends. Retention transcripts are chronological (oldest → newest), so a
+ * naive `slice(0, max)` would drop the most recent — and most semantically
+ * loaded — turns once a session passed the cap, leaving every later retained
+ * episode with essentially the same prefix vector. Keeping a head/tail split
+ * lets the embedding capture the topic setup at the start AND the latest
+ * exchanges at the end. Falls back to a tail-only clip when `max` is too
+ * small to fit the elision marker plus a useful slice on either side.
+ */
 function clipToWindow(text: string, max: number): string {
 	if (text.length <= max) return text;
 	if (max <= EMBEDDING_ELISION_MARKER.length + 16) return text.slice(text.length - max);
@@ -195,6 +226,18 @@ function clipToWindow(text: string, max: number): string {
 	return text.slice(0, headLen) + EMBEDDING_ELISION_MARKER + text.slice(text.length - tailLen);
 }
 
+/**
+ * Clip every input to {@link effectiveMaxInputChars} so a runaway retention
+ * transcript can't blow past the embedding model's context window. Uses a
+ * head/tail split via {@link clipToWindow} so the embedding still sees the
+ * tail of the conversation (where the latest topic shifts live) and not just
+ * the stale prefix. Returns the original array when no input needs trimming
+ * (the common case); the new array is allocated only when at least one input
+ * is oversized so we don't churn arrays for the typical short-query path
+ * through `embedQuery`. Emits one debug-or-warn log per call summarizing how
+ * many inputs were trimmed and by how much — silent truncation was the
+ * original bug (#3126).
+ */
 function capInputs(texts: readonly string[]): readonly string[] {
 	const max = effectiveMaxInputChars();
 	if (max === 0) return texts;
@@ -210,7 +253,8 @@ function capInputs(texts: readonly string[]): readonly string[] {
 		if (text.length > maxOriginalLen) maxOriginalLen = text.length;
 	}
 	if (trimmed === null) return texts;
-	logger[mnemopiDebugEnabled() ? "warn" : "debug"]("mnemopi: embedding input truncated", {
+	const logTruncation = mnemopiDebugEnabled() ? logger.warn : logger.debug;
+	logTruncation("mnemopi: embedding input truncated", {
 		inputCount: texts.length,
 		trimmedCount,
 		maxOriginalLen,
@@ -219,7 +263,7 @@ function capInputs(texts: readonly string[]): readonly string[] {
 	return trimmed;
 }
 
-export function embeddingApiKey(): ApiKey {
+function embeddingApiKey(): ApiKey {
 	const active = activeEmbeddingOptions();
 	if (active?.apiKey !== undefined) {
 		return active.apiKey;
@@ -227,6 +271,7 @@ export function embeddingApiKey(): ApiKey {
 	return $env.MNEMOPI_EMBEDDING_API_KEY || $env.OPENROUTER_API_KEY || $env.OPENAI_API_KEY || "";
 }
 
+/** A resolver always counts as configured; a static key only when non-empty. */
 function embeddingKeyConfigured(key: ApiKey = embeddingApiKey()): boolean {
 	return typeof key === "function" || key !== "";
 }
@@ -239,20 +284,51 @@ function embeddingBaseUrl(): string {
 	return $env.MNEMOPI_EMBEDDING_API_URL || $env.OPENROUTER_BASE_URL || OPENROUTER_API_ENDPOINT;
 }
 
+/**
+ * The model to embed with, from the one resolver in `../config`.
+ *
+ * This used to be its own scope-then-env lookup, byte-for-byte the order
+ * `config.embeddingModel()` now uses, and that was the divergence: `config` read
+ * the environment ALONE, so a runtime scope naming a different model moved the
+ * embedder and left the vector packer on the environment's model. Delegating means
+ * there is one place the precedence is written and the packer cannot fall behind.
+ */
 function defaultModel(): string {
 	return embeddingModel();
 }
 
+/**
+ * Resolve the embedding model name for the currently active runtime scope.
+ *
+ * Reads (in order): the active provider's `model` from `withMnemopiRuntimeOptions`,
+ * the `MNEMOPI_EMBEDDING_MODEL` env var, then the bundled fastembed default. Stored
+ * alongside each row in `memory_embeddings.model` so migrations can re-embed when
+ * the active model changes.
+ */
 export function currentEmbeddingModel(): string {
 	return defaultModel();
 }
 
 export function isApiModel(modelName: string): boolean {
 	const apiUrl = activeEmbeddingOptions()?.apiUrl;
+	// The rule lives in `../config`; a caller that named its own endpoint gets that
+	// endpoint laid over the environment the rule reads, rather than a second copy
+	// of the rule here.
 	const env: Env = apiUrl === undefined ? process.env : { ...process.env, MNEMOPI_EMBEDDING_API_URL: apiUrl };
 	return isApiEmbeddingModel(modelName, env);
 }
 
+/**
+ * The dimension a named embedding model produces.
+ *
+ * Re-exported from `../config`, not implemented here. There were three copies of
+ * this idea at once: a byte-identical seventeen-entry `MODEL_DIMS` table (deleted),
+ * then two functions that shared the table and still disagreed, because this one
+ * read `MNEMOPI_EMBEDDING_DIM` off `$env` while `config.embeddingDim` read it off
+ * the `env` argument it was given, and the model NAME each resolved was different
+ * again. One owner now, in `../config`, so the width the embedder expects and the
+ * width `binary-vectors.ts` packs cannot come apart.
+ */
 export { embeddingDimFor } from "../config";
 
 function toEmbeddingVector(row: unknown): Vector {
@@ -269,6 +345,7 @@ function toEmbeddingVector(row: unknown): Vector {
 	}
 	return vector;
 }
+/** Drain and validate an embedding stream into a matrix matching the requested inputs exactly. */
 async function collectMatrix(batches: EmbeddingOutput, expectedRows: number): Promise<EmbeddingMatrix> {
 	const rows: Vector[] = [];
 	for await (const batch of batches) {
@@ -288,6 +365,17 @@ async function collectMatrix(batches: EmbeddingOutput, expectedRows: number): Pr
 	return rows;
 }
 
+/**
+ * The fastembed identifier for a configured model name, or `null` when mnemopi cannot run
+ * that model locally.
+ *
+ * The name pairs live in `./fastembed-model-cache`, which owns both directions. This file
+ * held `KNOWN_MODEL_NAMES`, the exact inverse of that module's table, written out by hand
+ * a second time: adding a model to one and not the other resolved here and then failed to
+ * find the repository its tokenizer comes from. The values are still fastembed's
+ * `EmbeddingModel` enum strings, and resolving one still never imports `fastembed`, whose
+ * module eagerly loads the `onnxruntime-node` native addon and segfaults in some runtimes.
+ */
 function fastembedModelName(modelName: string): StandardEmbeddingModel | null {
 	const id = FASTEMBED_ID_BY_HF_REPO[modelName];
 	return id === undefined ? null : (id as StandardEmbeddingModel);
@@ -301,6 +389,10 @@ async function getLocalModel(): Promise<LocalEmbeddingModel | null> {
 
 	const modelName = fastembedModelName(configuredModel);
 	if (modelName === null) {
+		// Not "no local model available" but "the model you named does not exist here", and the two produce
+		// the same `null` and so the same keyword-only search. Reported through the one owner because a name
+		// that resolves to nothing is a config typo the operator can fix in one line, and it is otherwise
+		// invisible: semantic recall never starts and no log at any level records why.
 		reportEmbeddingFailure(
 			`the configured local embedding model "${configuredModel}" is not one this build can load`,
 			`local:${configuredModel}`,
@@ -332,7 +424,8 @@ async function getLocalModel(): Promise<LocalEmbeddingModel | null> {
 	try {
 		return await loading;
 	} catch (error) {
-		logger[mnemopiDebugEnabled() ? "warn" : "debug"]("mnemopi: local embedding model failed to load", {
+		const logLoadFailure = mnemopiDebugEnabled() ? logger.warn : logger.debug;
+		logLoadFailure("mnemopi: local embedding model failed to load", {
 			model: modelName,
 			error: String(error),
 		});
@@ -346,11 +439,22 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 	const isCustom = !hostMatchesUrl(baseUrl, "openrouter");
 	const apiKey = embeddingApiKey();
 	if (!isCustom && !embeddingKeyConfigured(apiKey)) {
+		// Bailing before the request meant none of the reporting branches below could be reached, so the one
+		// failure with a one-step remedy -- the remedy this module's own `fix` text names -- was the only one
+		// that said nothing at all. `isCustom` keeps the check scoped to the hosted OpenRouter endpoint,
+		// because a local or proxy embeddings endpoint legitimately takes no key and must stay silent.
 		reportEmbeddingFailure("no embeddings API key is configured", baseUrl);
 		return null;
 	}
 
 	try {
+		// withAuth re-resolves the key on 401 (force-refresh, then sibling
+		// rotation) when `apiKey` is a resolver. The 429 backoff stays inside
+		// the attempt via fetchWithRetry. An empty static key attempts without
+		// an Authorization header (local/proxy setups).
+		// The 30s deadline was already absolute across retry attempts; the
+		// scoped fence keeps that, extends it over the body read, and clears
+		// the timer on settle instead of lingering like AbortSignal.timeout.
 		return await withScopedTimeoutSignal(30000, async signal => {
 			const response = await withAuth(apiKey, async key => {
 				const headers: Record<string, string> = {
@@ -366,6 +470,8 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 					signal,
 					maxAttempts: 3,
 					defaultDelayMs: attempt => 2 ** attempt * 1000,
+					// This runs after every backoff and on every auth attempt. Re-read
+					// the live transform and build a fresh body at the last send seam.
 					prepareInit: () => {
 						const sanitize = activeEmbeddingOptions()?.sanitizeProviderText;
 						const providerTexts = sanitize === undefined ? texts : texts.map(sanitizeEmbeddingProviderText);
@@ -384,6 +490,12 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 				}
 				return res;
 			});
+			// Every `null` below drops memory search back to keyword matching for this
+			// call. That is a real recall loss the user cannot see: results just get
+			// worse, with no error and no marker. The `!response.ok` and missing-rows
+			// branches reported NOTHING at all, and the throw reported at debug level,
+			// so a mistyped base URL or an expired key degraded memory indefinitely in
+			// silence (Law 10).
 			if (!response.ok) {
 				reportEmbeddingFailure(`the embeddings endpoint returned HTTP ${response.status}`, baseUrl);
 				return null;
@@ -414,6 +526,16 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 	}
 }
 
+/**
+ * The one place that reports a failed embedding request.
+ *
+ * Every caller answers the failure the same way, by falling back to keyword-only
+ * search, so every caller owes the operator the same explanation: what broke,
+ * which endpoint or provider, and what it costs them.
+ *
+ * `target` is the embeddings base URL for the HTTP path, or `provider:<name>` for
+ * a registered provider, which has no URL of its own to name.
+ */
 function reportEmbeddingFailure(cause: string, target: string): void {
 	logger.warn("Memory embedding failed, falling back to keyword-only search", {
 		cause,
@@ -430,6 +552,9 @@ async function providerAvailable(provider: EmbeddingProvider): Promise<boolean> 
 	try {
 		return (await provider.available()) === true;
 	} catch {
+		// A provider whose own availability check throws is not available, which is the answer this asks for.
+		// Quiet here on purpose: the caller that then tries to embed reports the loss through
+		// `reportEmbeddingFailure`, and warning twice for one unusable provider trains the reader to ignore it.
 		return false;
 	}
 }
@@ -451,6 +576,14 @@ export function setLocalModelInitializerForTests(initializer: LocalModelInitiali
 	pendingQueryEmbeddings.clear();
 }
 
+/**
+ * Override the function used to construct the local fastembed model the next
+ * time `embed()` is called. Lets a host (e.g. the agent CLI) keep
+ * `onnxruntime-node` out of its own address space by routing every fastembed
+ * load + inference through a dedicated subprocess. Same wipe semantics as the
+ * `*ForTests` form: clears the cached model promise and the query cache so
+ * subsequent embeds run through the new initializer immediately.
+ */
 export const setLocalModelInitializer = setLocalModelInitializerForTests;
 
 export function resetEmbeddingProviderForTests(): void {
@@ -463,6 +596,9 @@ export function resetEmbeddingProviderForTests(): void {
 	queryCache.clear();
 	pendingQueryEmbeddings.clear();
 }
+
+export const resetEmbeddingStateForTests = resetEmbeddingProviderForTests;
+
 export async function available(): Promise<boolean> {
 	if (embeddingsDisabled()) {
 		return false;
@@ -537,6 +673,9 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 		try {
 			return await collectMatrix(await activeProvider.embed(texts), texts.length);
 		} catch (error) {
+			// Null makes every caller fall back to keyword-only search, which is the same thing "embeddings are
+			// switched off" produces, so a provider that is failing looked exactly like a provider nobody
+			// configured. Reported through the one owner so the operator learns semantic recall is gone.
 			reportEmbeddingFailure(String(error), `provider:${activeEmbeddingOptions()?.provider ?? "active"}`);
 			return null;
 		}
@@ -546,11 +685,16 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 		try {
 			return await collectMatrix(await providerOverride.embed(texts), texts.length);
 		} catch (error) {
+			// Same loss through the override path, which tests and embedders set: silent null here made a
+			// broken override indistinguishable from embeddings being disabled.
 			reportEmbeddingFailure(String(error), "provider:override");
 			return null;
 		}
 	}
 	if (isApiModel(defaultModel())) {
+		// Keep raw bytes intact until embedApi's credential-resolved physical
+		// attempt. Sanitizing here would freeze an obsolete projection across an
+		// auth or transient retry, and clipping here could split exact secrets.
 		return embedApi(texts);
 	}
 	texts = capInputs(texts);
@@ -575,7 +719,8 @@ export async function embed(texts: readonly string[]): Promise<EmbeddingMatrix |
 		}
 		return vectors;
 	} catch (error) {
-		logger[mnemopiDebugEnabled() ? "warn" : "debug"]("mnemopi: local embedding failed", {
+		const logEmbedFailure = mnemopiDebugEnabled() ? logger.warn : logger.debug;
+		logEmbedFailure("mnemopi: local embedding failed", {
 			textCount: texts.length,
 			error: String(error),
 		});
@@ -587,6 +732,14 @@ export function getEmbeddingApiCallCountForTests(): number {
 	return apiCallCount;
 }
 
+/** Test-only cache-key visibility; values contain an HMAC digest, never raw query text. */
 export function getEmbeddingQueryCacheKeysForTests(): readonly string[] {
 	return [...queryCache.keys()];
 }
+
+// `DEFAULT_MODEL` and `EMBEDDING_DIM` used to be exported from here, evaluated once
+// at module load. Nothing imported either of them, and both were a trap: a scope
+// activated after this file was first imported could not move them, so the two
+// values that named the current model and its width were frozen to whatever the
+// process happened to look like at import time. Ask `embeddingModel()` and
+// `embeddingDim()` in `../config` instead, which answer at the moment of the call.

@@ -1,3 +1,6 @@
+/**
+ * Generate session titles using a smol, fast model.
+ */
 import * as path from "node:path";
 
 import {
@@ -28,11 +31,25 @@ const TITLE_MARKER_INSTRUCTION = prompt.render(titlesPrompts["titles/marker-inst
 const DEFAULT_TERMINAL_TITLE = "vey";
 const TERMINAL_TITLE_CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/g;
 
+// Cover the "backend ignores `disableReasoning`" case unconditionally: the
+// static `model.reasoning` catalog flag can't distinguish a thinking model that
+// was declared with `reasoning: false` (e.g. Qwen3 served locally via llama.cpp,
+// whose bundled jinja chat template forces `enable_thinking: true`) from one
+// that never emits thinking. `maxTokens` is a hard cap, not a target — the
+// happy-path completion still returns in a handful of tokens, so raising the
+// ceiling costs nothing when thinking is genuinely suppressed and keeps the
+// `<title>` marker output reachable when it isn't (issue #4355).
 const TITLE_MAX_TOKENS = 1024;
 
 const PLACEHOLDER_SHIELD_START = 0xe100;
 const PLACEHOLDER_SHIELD_END = 0xf8ff;
 
+/**
+ * Run lossy title preprocessing while treating every real secret placeholder
+ * as one indivisible token. Same-width padding preserves the truncation budget;
+ * any half retained around an elision is removed, while the one-character
+ * marker expands back only as a complete placeholder.
+ */
 function withAtomicSecretPlaceholders(text: string, transform: (value: string) => string): string {
 	const unavailable = new Set(text);
 	let nextCodePoint = PLACEHOLDER_SHIELD_START;
@@ -64,6 +81,7 @@ function withAtomicSecretPlaceholders(text: string, transform: (value: string) =
 	return transformed;
 }
 
+/** Matches the title the model wraps in `<title>...</title>`. */
 const TITLE_MARKER_GLOBAL_RE = /<title>([\s\S]*?)<\/title>|<title\s*\/>|<title>\s*$/gi;
 const TITLE_VISIBILITY_SENTINEL = "\uE000veyyon-title-visible\uE000";
 const THINKING_TAG_ENVELOPE_RE = /<(think|thinking|reasoning)>\s*[\s\S]*?<\/\1>/gi;
@@ -80,6 +98,31 @@ function getTitleModel(registry: ModelRegistry, settings: Settings, currentModel
 	return resolveRoleSelectionWithInherit(["tiny", "commit", "smol"], settings, availableModels, currentModel)?.model;
 }
 
+/**
+ * Generate a title for a session based on the first user message.
+ *
+ * @param firstMessage The first user message
+ * @param registry Model registry
+ * @param settings Settings used to resolve the smol role
+ * @param sessionId Optional session id for sticky API key selection
+ * @param currentModel Current model (used to derive title model)
+ * @param metadataResolver Optional resolver evaluated after credential selection
+ *   to produce request metadata (e.g. user_id for session attribution). Using a
+ *   resolver instead of a pre-evaluated value ensures the metadata's account_uuid
+ *   reflects the credential actually selected for this request.
+ * @param customSystemPrompt Optional title-specific system prompt override
+ * @param obfuscateProviderText Final confidentiality boundary for text sent to an online title model
+ * @param completeImpl Transport for the request; defaults to a bare `completeSimple` that reads no
+ *   operator settings (see {@link SideCompleteImpl})
+ */
+/**
+ * Whether auto-titling is disabled for this process. The `--no-title` flag (and
+ * the rpc / rpc-ui / acp embedder modes) set `VEYYON_NO_TITLE=1`. Every
+ * auto-title path — first-input titling, the replan title refresh, and the
+ * plan-approved seed — routes its decision through this ONE predicate so the
+ * flag can never be bypassed by a path that forgot to read the env directly
+ * (the bug this consolidates: only the first-input path used to check it).
+ */
 export function autoTitleDisabled(): boolean {
 	return Boolean($env.VEYYON_NO_TITLE);
 }
@@ -95,10 +138,17 @@ export async function generateSessionTitle(
 	obfuscateProviderText?: (text: string) => string,
 	completeImpl?: SideCompleteImpl,
 ): Promise<string | null> {
+	// Hard off switch: --no-title / VEYYON_NO_TITLE disables auto-titling for
+	// every caller of this function (first-input AND replan refresh), so no
+	// title model is ever invoked. Checked before anything else.
 	if (autoTitleDisabled()) {
 		logger.debug("title-generator: skipped, auto-titling disabled", { sessionId, reason: "no-title" });
 		return null;
 	}
+	// Defer titling for greetings / acknowledgements / empty input. The default
+	// tiny title model can't reliably decline trivial input, so this happens
+	// deterministically before any model is invoked; the caller retries on the
+	// next user message while the session stays unnamed.
 	if (isLowSignalTitleInput(firstMessage)) {
 		logger.debug("title-generator: skipped low-signal input", { sessionId, reason: "low-signal" });
 		return null;
@@ -120,6 +170,12 @@ export async function generateSessionTitle(
 		);
 	}
 
+	// User explicitly picked a local tiny model. NEVER fall back to the online
+	// smol path (issue #3187): the smol role resolves through priority.json and
+	// silently bills whatever provider holds the resolved API key — OpenRouter
+	// in the reporter's case, leaking real credits without consent. If the
+	// local worker fails (unknown key, download missing, transformers.js
+	// crash, abort), leave the session untitled; the next user turn retries.
 	if (!isTinyTitleLocalModelKey(tinyModel)) {
 		logger.warn("title-generator: unknown local tiny model; skipping title (will not fall back to online)", {
 			sessionId,
@@ -154,7 +210,7 @@ export async function generateSessionTitle(
 	}
 }
 
-async function generateTitleOnline(
+export async function generateTitleOnline(
 	firstMessage: string,
 	registry: ModelRegistry,
 	settings: Settings,
@@ -187,10 +243,16 @@ async function generateTitleOnline(
 			logger.warn("title-generator: no API key", { ...modelContext, reason: "missing-api-key" });
 			return null;
 		}
+		// Resolve metadata after getApiKey so the session-sticky credential for this
+		// request is already recorded; metadataResolver can then return the correct
+		// account_uuid rather than the snapshot-at-call-site value.
 		const metadata = metadataResolver?.(model.provider);
 
 		const requestContext: Context = { systemPrompt: [], messages: [] };
 		const refreshProviderContext = (): void => {
+			// Sanitize the raw fields before title cleanup/truncation. Applying the
+			// transform after formatTitleUserMessage can strand a secret prefix at
+			// either side of its middle-elision boundary.
 			const sanitize = obfuscateProviderText ?? ((text: string) => text);
 			const providerFirstMessage = sanitize(firstMessage);
 			const providerCustomPrompt = customSystemPrompt ? sanitize(customSystemPrompt).trim() || undefined : undefined;
@@ -205,14 +267,21 @@ async function generateTitleOnline(
 				},
 			];
 		};
+		// Materialize once only after the credential/metadata awaits. completeSimple
+		// mocks and transports without a resolver still receive the protected form.
 		refreshProviderContext();
 		const resolveApiKey = registry.resolver(model, sessionId);
 		const resolveAttemptApiKey: ApiKeyResolver = async options => {
 			const key = await resolveApiKey(options);
+			// Auth retries resolve credentials before every physical attempt. Re-read
+			// the live transform at that same seam and rebuild from raw input so a
+			// runtime refresh cannot leave a stale request snapshot.
 			refreshProviderContext();
 			return key;
 		};
 
+		// Title generation is a 3-7 word task, but the ceiling has to survive
+		// backends that ignore `disableReasoning` (see TITLE_MAX_TOKENS above).
 		const maxTokens = TITLE_MAX_TOKENS;
 		logger.debug("title-generator: request", { ...modelContext, maxTokens });
 
@@ -270,6 +339,11 @@ function extractGeneratedTitle(contentBlocks: AssistantMessage["content"]): stri
 			textTitle += content.text;
 		}
 	}
+	// Stay lenient: prefer the first closed title marker in visible text, then
+	// fall back to a plain sentence after stripping only known leading leaked
+	// thinking envelopes plus any stray/unclosed title tag fragment. Reject a
+	// prose thinking preamble only on the markerless path: a later marked title
+	// remains authoritative.
 	const markedTitle = extractVisibleMarkedTitle(textTitle);
 	if (markedTitle !== undefined) return unwrapJsonTitle(markedTitle);
 	const cleanedTextTitle = stripLeadingLeakedThinkingMarkup(textTitle)
@@ -332,6 +406,12 @@ function stripLeakedThinkingMarkup(text: string): string {
 	return healer.feed(text) + healer.flushPending();
 }
 
+/**
+ * Unwrap a JSON-shaped response (`{"title": "..."}`, optionally code-fenced)
+ * into the bare title. Models occasionally emit the structured shape they were
+ * trained on for title tasks instead of plain text; without this the raw JSON
+ * became the session title.
+ */
 function unwrapJsonTitle(candidate: string): string {
 	const text = candidate
 		.replace(/^```(?:json)?\s*/i, "")
@@ -344,6 +424,7 @@ function unwrapJsonTitle(candidate: string): string {
 			return parsed.title.trim();
 		}
 	} catch {
+		// Truncated/malformed JSON: salvage the quoted title value if present.
 		const quoted = /"title"\s*:\s*("(?:[^"\\]|\\.)*")/.exec(text);
 		if (quoted) {
 			const salvaged: unknown = JSON.parse(quoted[1]);
@@ -353,6 +434,9 @@ function unwrapJsonTitle(candidate: string): string {
 	return candidate;
 }
 
+/**
+ * Remove control characters so model-generated titles cannot inject terminal escapes.
+ */
 function sanitizeTerminalTitlePart(value: string | undefined): string | undefined {
 	if (!value) return undefined;
 	const sanitized = value.replace(TERMINAL_TITLE_CONTROL_CHARS, "").trim();
@@ -367,11 +451,14 @@ function getFallbackTerminalTitle(cwd: string | undefined): string | undefined {
 	return sanitizeTerminalTitlePart(baseName);
 }
 
-function formatSessionTerminalTitle(sessionName: string | undefined, cwd?: string): string {
+export function formatSessionTerminalTitle(sessionName: string | undefined, cwd?: string): string {
 	const label = sanitizeTerminalTitlePart(sessionName) ?? getFallbackTerminalTitle(cwd);
 	return label ? `${DEFAULT_TERMINAL_TITLE}: ${label}` : DEFAULT_TERMINAL_TITLE;
 }
 
+/**
+ * Set the terminal title using OSC 0 (sets both tab and window title). Unsupported terminals ignore it.
+ */
 export function setTerminalTitle(title: string): void {
 	if (!process.stdout.isTTY || isTerminalHeadless()) return;
 	process.stdout.write(`\x1b]0;${sanitizeTerminalTitlePart(title) ?? DEFAULT_TERMINAL_TITLE}\x07`);
@@ -381,11 +468,17 @@ export function setSessionTerminalTitle(sessionName: string | undefined, cwd?: s
 	setTerminalTitle(formatSessionTerminalTitle(sessionName, cwd));
 }
 
+/**
+ * Save the current terminal title on terminals that support xterm window ops.
+ */
 export function pushTerminalTitle(): void {
 	if (!process.stdout.isTTY || isTerminalHeadless()) return;
 	process.stdout.write("\x1b[22;2t");
 }
 
+/**
+ * Restore the previously saved terminal title on terminals that support xterm window ops.
+ */
 export function popTerminalTitle(): void {
 	if (!process.stdout.isTTY || isTerminalHeadless()) return;
 	process.stdout.write("\x1b[23;2t");

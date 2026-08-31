@@ -1,26 +1,112 @@
+/**
+ * Output-loop guard.
+ *
+ * Gemini models (notably `gemini-3.5-flash` via OpenRouter) occasionally fall
+ * into a degenerate reasoning loop: they re-emit the same paragraph intent over
+ * and over with cosmetic wording drift ("Confirming Safety", "Verifying
+ * Completion", …), burning the entire output budget without ever calling a tool
+ * or answering. The runaway is *not* byte-identical, so a cheap verbatim
+ * tail-repeat check alone misses it.
+ *
+ * This guard watches the streamed `thinking` deltas and, on a match, terminates
+ * the stream with a synthetic `error` {@link AssistantMessage} that carries
+ * **no observable content**. An empty-content `stopReason: "error"` message tagged
+ * with `AIError.Flag.ThinkingLoop` lets result consumers and `AgentSession` discard
+ * the runaway and re-sample instead of committing garbage transcript.
+ *
+ * Three failure shapes are detected:
+ * 1. **Verbatim tail repetition** — a short unit repeated back-to-back (e.g.
+ *    "🌊 🌊 🌊 …"). Caught from a rolling 250-char tail.
+ * 2. **Near-duplicate segments** — paragraphs that normalize to the same
+ *    word-trigram fingerprint. Caught with a Jaccard window over recent
+ *    paragraphs. Thresholds were calibrated on a real loop transcript plus
+ *    13.5k non-loop thinking blocks (zero false positives; hardest negative
+ *    scored 3 against the trigger of 4).
+ * 3. **Progress-lexicon stall** — paragraphs that keep reshuffling the same
+ *    motivational filler ("just doing it, pushing ahead, maintaining momentum")
+ *    into fresh word order, so trigrams never match, yet introduce no new
+ *    vocabulary and name nothing concrete. Caught by a run of low-novelty,
+ *    anchor-free segments; a segment naming a path/identifier resets the run, so
+ *    genuine but vocabulary-repetitive work (per-file templates) is spared.
+ *
+ * Every model's stream is guarded, up to its first tool call. Native
+ * thinking is checked first; assistant text can also be checked for providers
+ * that surface reasoning as visible prose. On a hit the failed turn is emitted as
+ * an empty retryable stream-stall error; result-awaiting callers (`complete`,
+ * `completeSimple`) re-sample it a few times and then let a stubborn loop cook
+ * through one unguarded pass. Disable detection with `VEYYON_NO_THINKING_LOOP_GUARD=1`.
+ */
 import { discardAttemptUsage, emptyUsage } from "@veyyon/catalog/models";
 import * as logger from "@veyyon/utils/logger";
 import * as AIError from "../error";
 import type { Api, AssistantMessage, Model, StreamOptions } from "../types";
 import { AssistantMessageEventStream } from "./event-stream";
 
+/** Stable lead phrase of the guard's error message; exported for tests. The
+ *  message also carries "stream stall" so the session + transport retry
+ *  classifiers treat it as a transient (retryable) stop without bespoke rules. */
 export const THINKING_LOOP_ERROR_MARKER = "Thinking loop detected";
 
+/**
+ * Rolling tail (chars) inspected for verbatim back-to-back repetition.
+ *
+ * Wide enough to hold four repeats of the longest unit probed, and then some: the detector requires
+ * four, so a window that cannot fit four of a length it claims to probe makes that length dead code.
+ * At 250 it held three repeats of an 80-char sentence, which is exactly the shape a real session
+ * streamed fifty times with nothing stopping it.
+ */
 const VERBATIM_TAIL_WINDOW = 900;
+/** Minimum total repeated chars before a verbatim run counts as a loop. */
 const VERBATIM_MIN_REPEATED_CHARS = 180;
+/**
+ * Longest unit length probed for a verbatim repeat.
+ *
+ * A sentence is the unit a degenerate sampler repeats, and a sentence is longer than the 60 chars
+ * this used to allow, so the cheap detector was blind to the commonest runaway shape and the only
+ * fallback was the segment path, which cannot fire until eight substantial segments (up to 5600
+ * chars, about seventy repeats) have gone past. Raised to two full lines; past that a repeat still
+ * reaches the segment path.
+ */
 const VERBATIM_MAX_UNIT = 200;
 
+/** Char cap for an unterminated segment; forces a flush so a wall-of-text loop
+ *  (no blank lines / headings) still segments. */
 const SEGMENT_CHAR_CAP = 700;
+/** Normalized-length floor below which a segment is ignored (too short to be a
+ *  meaningful paragraph; bare headings must not trip detection). */
 const SEGMENT_MIN_NORM_CHARS = 60;
+/** How many recent substantial segments are kept for similarity comparison. */
 const SEGMENT_WINDOW = 16;
+/** Word-trigram Jaccard at/above which two segments count as near-duplicates. */
 const SEGMENT_SIMILARITY = 0.8;
+/** Substantial segments required before detection may fire (warm-up). */
 const SEGMENT_MIN_COUNT = 8;
+/** Near-duplicate cluster size (current + matches) that trips the loop. */
 const SEGMENT_MIN_CLUSTER = 4;
 
+/** Recent segments whose pooled unigram vocabulary is the novelty baseline for
+ *  progress-lexicon stall detection. */
 const LEX_NOVELTY_WINDOW = 8;
+/** Novelty (fraction of a segment's content words unseen across the recent
+ *  window) at/below which a segment counts as recycling earlier wording.
+ *  Calibrated against 536k real non-Gemini reasoning blocks: at 0.2 the longest
+ *  low-information run any legitimate block reached was 7. */
 const LEX_STALL_NOVELTY_FLOOR = 0.2;
+/** Consecutive low-information segments that trip a progress-lexicon stall. Set
+ *  to 8 (one above the worst legitimate run observed in the 536k-block corpus) so
+ *  the heuristic stays clear of focused reasoning that briefly recycles wording;
+ *  the real reasoning-summarizer loop sustains far longer runs (10+). */
 const LEX_STALL_MIN_RUN = 8;
 
+/** A concrete reference the model is actually reasoning about: a code span, a
+ *  file extension / dotted member, a multi-segment path, or a snake/camel/Pascal
+ *  identifier. A segment that introduces a NEW one resets the lexical-stall run —
+ *  this spares genuine per-target work (per-file templates, focused single-symbol
+ *  debugging) while still catching reworded filler that names nothing new ("just
+ *  doing it, pushing ahead") or fixates on one unchanging reference. Excludes bare
+ *  digits, abbreviations, and decimals (e.g. "Step 2", "i.e.", "1.2") so numbered
+ *  or punctuated filler is not self-anchoring. Global flag: collected with
+ *  matchAll, so never used with the stateful test(). */
 const CONCRETE_ANCHOR =
 	/`[^`]+`|\b\w{2,}\.[a-zA-Z]\w{0,4}\b|[\w-]+(?:\/[\w-]+){2,}|\b\w+_\w+\b|\b[a-z]+[A-Z]\w*\b|\b[A-Z][a-z]+[A-Z]\w*\b/g;
 
@@ -31,6 +117,14 @@ const OPENAI_COMPAT_GUARDED_APIS: Partial<Record<Api, true>> = {
 	"openai-codex-responses": true,
 };
 
+/**
+ * True when `model` is a Gemini model whose native thinking stream surfaces the
+ * "thought summary" titles this module's header guard counts.
+ *
+ * OpenAI-compat transports can serve Gemini under an arbitrary provider/id, so they
+ * carry the explicit `compat.enableGeminiThinkingLoopGuard` flag; direct Gemini
+ * transports carry a clearly shaped id/provider, so a string match is sufficient.
+ */
 export function isGeminiThinkingModel(model: Model<Api>): boolean {
 	if (OPENAI_COMPAT_GUARDED_APIS[model.api]) {
 		const compat = model.compat as { enableGeminiThinkingLoopGuard?: boolean } | undefined;
@@ -39,14 +133,52 @@ export function isGeminiThinkingModel(model: Model<Api>): boolean {
 	return /gemini/i.test(`${model.provider}/${model.id}`);
 }
 
+/**
+ * True when a stream should be watched for a degenerate output loop.
+ *
+ * Every model is, unless the caller turns the guard off. The guard used to be
+ * armed only for Gemini and DeepSeek, on the theory that those were the models
+ * observed looping — which meant a Claude or GPT stream could repeat one word
+ * five hundred times and nothing was even looking. The detectors below are
+ * model-agnostic (verbatim repetition, near-duplicate paragraphs, recycled
+ * vocabulary) and were calibrated to zero false positives against 536k real
+ * reasoning blocks from every provider, and a false hit costs a re-sample
+ * rather than a lost turn, so the narrow scope bought nothing and hid loops.
+ *
+ * The Gemini-specific *header-run* detector is separate and still keyed on
+ * {@link isGeminiThinkingModel}; only the general loop guard is universal.
+ */
 export function isLoopGuardEnabled(options?: StreamOptions): boolean {
 	return options?.loopGuard?.enabled !== false;
 }
 
+/** How the guard names a verbatim repeat. One owner, so the streamed path and the completed-text
+ *  path cannot describe the same shape in two different ways. */
 function describeVerbatimRepeat(unit: string, count: number): string {
 	return `repeated "${unit.trim()}" ${count}× back-to-back`;
 }
 
+/**
+ * Reason `text` is a degenerate sampler run, or null.
+ *
+ * Same predicate {@link ThinkingLoopDetector} applies while streaming — a unit repeated at least
+ * four times with nothing between the repeats, {@link VERBATIM_MIN_REPEATED_CHARS} chars of it, and
+ * a letter or emoji somewhere in the unit — asked of a text that is already complete.
+ *
+ * It needs its own scan rather than a call into the streamed detector, because that one is anchored
+ * to the END of what it has seen: the unit is the last `len` chars, which is exactly right for a
+ * stream that aborts on the first hit and never right for a run buried mid-text behind a tidy
+ * closing paragraph. Re-asking the tail question at every offset would be quadratic (900-char window
+ * × 200 candidate lengths × every position), so the run is found directly: for each unit length,
+ * walk the positions where `text[i]` equals `text[i + len]` and measure how far that agreement
+ * holds. An unbroken agreement of `n` chars means the text is periodic with period `len` across
+ * `n + len` chars, which is `(n + len) / len` back-to-back repeats. The shortest length that clears
+ * the floors wins, so the reported unit is the repeat itself and not a multiple of it.
+ *
+ * Only this verbatim path applies. The segment-similarity and lexical-stall heuristics are
+ * calibrated against reasoning streams, where restating a paragraph is itself the defect; a summary
+ * restates by construction, so those two would reject good summaries.
+ */
 export function detectDegenerateRepetition(text: string): string | null {
 	if (text.length < VERBATIM_MIN_REPEATED_CHARS) return null;
 	for (let len = 2; len <= VERBATIM_MAX_UNIT && text.length >= len * 4; len++) {
@@ -81,23 +213,40 @@ export function detectDegenerateRepetition(text: string): string | null {
 	return null;
 }
 
+/**
+ * Stateful detector fed the streamed thinking deltas. `push` returns a
+ * human-readable reason the first time a loop shape is recognized; the caller
+ * is responsible for stopping after the first hit.
+ */
 export class ThinkingLoopDetector {
+	/** Rolling char tail for verbatim repeat detection. */
 	#tail = "";
+	/** Pending thinking text not yet split into completed segments. */
 	#pending = "";
+	/** Fingerprints of the most recent substantial segments (≤ SEGMENT_WINDOW). */
 	#window: Set<string>[] = [];
+	/** Count of substantial segments seen so far (warm-up gate). */
 	#count = 0;
+	/** Unigram word sets of the most recent segments (≤ LEX_NOVELTY_WINDOW); the
+	 *  novelty baseline for progress-lexicon stall detection. */
 	#wordWindow: Set<string>[] = [];
+	/** Consecutive low-information (low-novelty, anchor-free) segments seen. */
 	#lexStallRun = 0;
+	/** Concrete anchors seen per recent segment (≤ LEX_NOVELTY_WINDOW). A stall is
+	 *  only broken by a *new* reference, so filler repeating one fixed
+	 *  path/identifier every paragraph is still caught. */
 	#anchorWindow: Set<string>[] = [];
 
 	push(delta: string): string | null {
 		if (!delta) return null;
 
+		// 1. Verbatim back-to-back repetition over the rolling tail.
 		this.#tail += delta;
 		if (this.#tail.length > VERBATIM_TAIL_WINDOW) this.#tail = this.#tail.slice(-VERBATIM_TAIL_WINDOW);
 		const verbatim = detectVerbatimRepetition(this.#tail);
 		if (verbatim) return describeVerbatimRepeat(verbatim[0], verbatim[1]);
 
+		// 2. Near-duplicate paragraph loop. Append, then drain completed segments.
 		this.#pending += delta;
 		while (true) {
 			const boundary = /\n\s*\n/.exec(this.#pending);
@@ -106,11 +255,13 @@ export class ThinkingLoopDetector {
 				raw = this.#pending.slice(0, boundary.index);
 				this.#pending = this.#pending.slice(boundary.index + boundary[0].length);
 			} else if (this.#pending.length > SEGMENT_CHAR_CAP) {
+				// No boundary yet but the segment is runaway-long: force a flush.
 				raw = this.#pending.slice(0, SEGMENT_CHAR_CAP);
 				this.#pending = this.#pending.slice(SEGMENT_CHAR_CAP);
 			} else {
 				return null;
 			}
+			// An over-long segment is chunked so each piece stays comparable.
 			for (let rest = raw; rest.length > 0; ) {
 				const chunk = rest.length > SEGMENT_CHAR_CAP ? rest.slice(0, SEGMENT_CHAR_CAP) : rest;
 				rest = rest.slice(chunk.length);
@@ -120,6 +271,9 @@ export class ThinkingLoopDetector {
 		}
 	}
 
+	/** Process the buffered trailing paragraph (one with no blank-line / heading
+	 *  terminator). Called when the thinking block ends so the final segment —
+	 *  which may be the one that completes a duplicate cluster — is not dropped. */
 	flush(): string | null {
 		if (!this.#pending) return null;
 		let rest = this.#pending;
@@ -134,16 +288,30 @@ export class ThinkingLoopDetector {
 	}
 
 	#consumeSegment(raw: string): string | null {
+		// Reasoning-summarizer titles ("**Maintaining Momentum**", "## Heading")
+		// are per-thought formatting, not chain-of-thought; their ever-changing
+		// wording would otherwise mask a loop by inflating novelty. Strip them
+		// before analysis (a title-only segment then falls below the length gate).
 		const segment = raw.replace(/^[ \t]*#{1,6}[ \t].*$/gm, "").replace(/^[ \t]*\*{2,3}.+?\*{2,3}[ \t]*$/gm, "");
 		const normalized = normalizeSegment(segment);
 		if (normalized.length < SEGMENT_MIN_NORM_CHARS) return null;
 
+		// (a) Near-duplicate trigram cluster: the same paragraph reused with
+		// cosmetic wording drift (high word-trigram overlap).
 		const fingerprint = trigramShingles(normalized);
 		let cluster = 1;
 		for (const prev of this.#window) {
 			if (jaccard(fingerprint, prev) >= SEGMENT_SIMILARITY) cluster++;
 		}
 
+		// (b) Progress-lexicon stall: paragraphs that recycle the recent
+		// vocabulary (low novelty) and add no *new* concrete reference — reworded
+		// filler that burns budget without advancing. The trigram check above
+		// already claims high-overlap near-duplicates; this catches the
+		// low-overlap, reshuffled-wording shape it misses. Requiring a NEW anchor
+		// (not merely any anchor) still catches filler that name-drops one fixed
+		// path/identifier every paragraph, while sparing genuine per-target work
+		// that names a fresh file/symbol each time.
 		const words = new Set<string>(normalized.split(" ").filter(Boolean));
 		const priorVocab = new Set<string>();
 		for (const set of this.#wordWindow) for (const w of set) priorVocab.add(w);
@@ -152,6 +320,8 @@ export class ThinkingLoopDetector {
 		const novelty = priorVocab.size === 0 ? 1 : unseen / words.size;
 
 		const anchors = new Set<string>();
+		// Canonicalize so the same reference written as `Foo`, Foo, or FOO is one
+		// anchor and cannot masquerade as "new" to keep a fixed-reference stall alive.
 		for (const match of segment.matchAll(CONCRETE_ANCHOR)) anchors.add(match[0].replace(/`/g, "").toLowerCase());
 		let newAnchor = false;
 		for (const anchor of anchors) {
@@ -187,17 +357,52 @@ export class ThinkingLoopDetector {
 	}
 }
 
+/**
+ * Consecutive Gemini thought-summary headers in one uninterrupted reasoning
+ * stream that trips the tool-call reminder. Gemini occasionally narrates a long
+ * chain of titled summaries ("Examining Result Handling", "Refining Result
+ * Rendering", …) without ever calling a tool, burning the whole budget on
+ * planning. This is the over-planning shape {@link ThinkingLoopDetector} misses —
+ * those titles are stripped before its similarity analysis precisely because their
+ * wording keeps changing, so a genuinely-distinct planning runaway never trips it.
+ *
+ * Set well above legitimate hard-problem depth: a capable model can emit ~10
+ * distinct, progressing hypotheses in a single reasoning block before acting (and
+ * a false trip is costly — the interrupt discards the whole reasoning turn). A
+ * real narration runaway burns dozens-to-hundreds of titles, so this still trips
+ * fast on the actual pathology.
+ */
 export const GEMINI_HEADER_RUNAWAY_THRESHOLD = 24;
 
+/**
+ * True when a single trimmed line is a Gemini reasoning-summary title: a markdown
+ * ATX heading (`## …`) or a whole-line bold / bold-italic run (`**Title**`,
+ * `***Title***`). Inline emphasis inside prose never matches — the bold run must
+ * span the entire line. Mirrors the title shapes {@link ThinkingLoopDetector}
+ * strips before similarity analysis.
+ */
 export function isReasoningSummaryHeader(line: string): boolean {
 	return /^#{1,6}[ \t]+\S/.test(line) || /^\*{2,3}.+\*{2,3}$/.test(line);
 }
 
+/**
+ * Counts consecutive Gemini reasoning-summary headers across a streamed thinking
+ * block. {@link push} returns true exactly once — when the running header count
+ * first reaches {@link GEMINI_HEADER_RUNAWAY_THRESHOLD} — and the caller then
+ * interrupts the stream and reminds the model to issue a tool call. Paragraph
+ * lines between titles do NOT reset the run (Gemini emits header + paragraph per
+ * thought, so the run IS the number of summaries); leaving the reasoning channel
+ * does, via {@link reset} on a new thinking block / prose / tool call.
+ */
 export class GeminiHeaderRunDetector {
+	/** Thinking text not yet split into completed lines. */
 	#pending = "";
+	/** Summary-title lines seen in the current run. */
 	#count = 0;
+	/** Latches after the first threshold hit so each run fires at most once. */
 	#fired = false;
 
+	/** Feed a thinking delta. Returns true the first time the run hits the threshold. */
 	push(delta: string): boolean {
 		if (this.#fired || !delta) return false;
 		this.#pending += delta;
@@ -214,10 +419,12 @@ export class GeminiHeaderRunDetector {
 		return false;
 	}
 
+	/** Number of summary titles counted in the current run (for the reminder/log). */
 	get count(): number {
 		return this.#count;
 	}
 
+	/** Re-arm for a fresh reasoning block: clears the buffer, count, and latch. */
 	reset(): void {
 		this.#pending = "";
 		this.#count = 0;
@@ -225,7 +432,13 @@ export class GeminiHeaderRunDetector {
 	}
 }
 
-function guardThinkingLoopStream(
+/**
+ * Wrap a provider stream with the loop guard. `controller` is the guard's own
+ * abort handle: aborting it (after wiring it into the provider's signal via
+ * {@link withGeminiThinkingLoopGuard}) tears down the upstream once a loop
+ * trips.
+ */
+export function guardThinkingLoopStream(
 	inner: AssistantMessageEventStream,
 	model: Model<Api>,
 	controller: AbortController,
@@ -239,6 +452,9 @@ function guardThinkingLoopStream(
 	void (async () => {
 		let thinkingArmed = true;
 		let textArmed = checkAssistantContent;
+		// Last streamed view of the attempt, kept for its usage: a loop that gets
+		// aborted still billed every token it sampled, and the stall message this
+		// guard raises replaces the attempt entirely.
 		let partial: AssistantMessage | undefined;
 		try {
 			for await (const event of inner) {
@@ -310,6 +526,14 @@ function guardThinkingLoopStream(
 	return outer;
 }
 
+/**
+ * Apply the loop guard around a provider dispatch. For non-guarded models
+ * (or when disabled) this is a transparent pass-through. For guarded models it injects a
+ * guard abort signal into the provider call so a detected loop tears down the
+ * upstream, then wraps the returned stream. The guard only raises the retryable
+ * stall; bounding the re-samples and the final cook pass lives in the
+ * result-awaiting caller.
+ */
 export function withGeminiThinkingLoopGuard<
 	O extends { signal?: AbortSignal; loopGuard?: { enabled?: boolean; checkAssistantContent?: boolean } },
 >(
@@ -330,30 +554,52 @@ export function withGeminiThinkingLoopGuard<
 function buildThinkingLoopError(model: Model<Api>, detail: string): AssistantMessage {
 	return {
 		role: "assistant",
+		// Empty content is load-bearing: loop-guard output is replay garbage, even
+		// when it arrived as assistant text instead of native thinking. Keeping it
+		// would persist the failed attempt before AgentSession retries.
 		content: [],
 		api: model.api,
 		provider: model.provider,
 		model: model.id,
 		usage: emptyUsage(),
 		stopReason: "error",
+		// "stream stall" makes the transport/session retry classifiers treat this
+		// as a transient (retryable) failure with no bespoke rule.
 		errorMessage: `${THINKING_LOOP_ERROR_MARKER}: the model repeated near-identical content (${detail}). Treating as a stream stall and retrying.`,
 		errorId: AIError.create(AIError.Flag.ThinkingLoop),
 		timestamp: Date.now(),
 	};
 }
 
+/** A letter or pictographic emoji: a unit without one is a run of digits, whitespace or punctuation,
+ *  which is legitimate in tabular / hex / numeric output. Not stateful, so `test` is safe here. */
 const VERBATIM_UNIT_CONTENT = /[\p{L}\p{Extended_Pictographic}]/u;
 
+/**
+ * Detect a unit repeated back-to-back at the tail (verbatim loop). Only a unit carrying a letter or
+ * pictographic emoji counts.
+ *
+ * The ladder walks every unit length rather than guessing one, so it costs a comparison per length
+ * per delta. Two things keep that cheap at a 200-char cap: the character test is answered once for
+ * the whole window by measuring how far the nearest letter sits from the end (a unit of length `len`
+ * carries content exactly when it reaches that far back), rather than re-scanning each candidate;
+ * and the repeat walk stops at the first mismatch, which is the common case on the first comparison.
+ */
 function detectVerbatimRepetition(text: string): [unit: string, count: number] | null {
 	if (text.length < VERBATIM_MIN_REPEATED_CHARS) return null;
 	const windowSize = Math.min(text.length, VERBATIM_TAIL_WINDOW);
 	const searchSpace = text.slice(-windowSize);
 
+	// Distance from the end to the nearest letter/emoji, capped at the longest unit probed. Any unit
+	// shorter than this is punctuation, digits or whitespace and is skipped without a regex call.
 	let contentAt = VERBATIM_MAX_UNIT + 1;
 	const scan = Math.min(searchSpace.length, VERBATIM_MAX_UNIT);
 	for (let back = 1; back <= scan; back++) {
 		const at = searchSpace.length - back;
 		const code = searchSpace.charCodeAt(at);
+		// An emoji is two code units and a lone surrogate carries no Unicode property, so a low
+		// surrogate is tested together with the high half in front of it, and a unit has to reach one
+		// char further back to hold the whole pair.
 		const isLowSurrogate = code >= 0xdc00 && code <= 0xdfff && at > 0;
 		const char = isLowSurrogate ? searchSpace.slice(at - 1, at + 1) : (searchSpace[at] as string);
 		if (VERBATIM_UNIT_CONTENT.test(char)) {
@@ -391,6 +637,7 @@ function detectVerbatimRepetition(text: string): [unit: string, count: number] |
 	return null;
 }
 
+/** Lowercase and tokenize prose plus code/path payloads, dropping pure numbers. */
 function normalizeSegment(segment: string): string {
 	return segment
 		.toLowerCase()
@@ -402,6 +649,7 @@ function normalizeSegment(segment: string): string {
 		.trim();
 }
 
+/** Word-trigram shingle set of a normalized segment. */
 function trigramShingles(normalized: string): Set<string> {
 	const words = normalized.split(" ").filter(Boolean);
 	if (words.length < 3) return new Set(words.length > 0 ? [words.join(" ")] : []);

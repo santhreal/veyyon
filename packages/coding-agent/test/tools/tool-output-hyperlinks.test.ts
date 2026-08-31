@@ -7,11 +7,11 @@ import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/c
 import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
 import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { astGrepToolRenderer } from "@veyyon/coding-agent/tools/ast-grep";
 import { ReadTool, readToolRenderer } from "@veyyon/coding-agent/tools/read";
 import { WriteTool, writeToolRenderer } from "@veyyon/coding-agent/tools/write";
 import { removeSyncWithRetries } from "@veyyon/utils";
-import { grepToolRenderer } from "../../src/tools/grep";
+import { structureSearchRenderer } from "../../src/tools/structure-search";
+import { textSearchRenderer } from "../../src/tools/text-search";
 
 // 1x1 PNG so the read tool takes its image branch.
 const TINY_PNG_BASE64 =
@@ -129,8 +129,8 @@ describe("tool output OSC 8 file:// hyperlinks", () => {
 				displayContent: ["# src/", "## interactive-mode.ts#abcd", "*12│const needle = true;"].join("\n"),
 			},
 		};
-		const rendered = grepToolRenderer
-			.renderResult(result as never, { expanded: true, isPartial: false }, theme, { pattern: "needle" })
+		const rendered = textSearchRenderer
+			.renderResult(result as never, { expanded: true, isPartial: false }, theme, { input: "needle" })
 			.render(240)
 			.join("\n");
 		const interactiveModeUri = url.pathToFileURL(path.resolve(interactiveModePath)).href;
@@ -161,8 +161,8 @@ describe("tool output OSC 8 file:// hyperlinks", () => {
 				displayContent: ["# src/", "## interactive-mode.ts", "  *12│const needle = true;"].join("\n"),
 			},
 		};
-		const rendered = astGrepToolRenderer
-			.renderResult(result as never, { expanded: true, isPartial: false }, theme, { pat: "needle" })
+		const rendered = structureSearchRenderer
+			.renderResult(result as never, { expanded: true, isPartial: false }, theme, { input: "needle" })
 			.render(240)
 			.join("\n");
 		const interactiveModeUri = url.pathToFileURL(path.resolve(interactiveModePath)).href;

@@ -43,16 +43,19 @@ export interface CustomMessage<T = unknown> {
 	content: string | (TextContent | ImageContent)[];
 	display: boolean;
 	details?: T;
+	/** Who initiated this message for billing/attribution semantics. */
 	attribution?: MessageAttribution;
 	timestamp: number;
 }
 
+/** Legacy hook message type (pre-extensions). Kept for session migration. */
 export interface HookMessage<T = unknown> {
 	role: "hookMessage";
 	customType: string;
 	content: string | (TextContent | ImageContent)[];
 	display: boolean;
 	details?: T;
+	/** Who initiated this message for billing/attribution semantics. */
 	attribution?: MessageAttribution;
 	timestamp: number;
 }
@@ -70,9 +73,20 @@ export interface CompactionSummaryMessage {
 	shortSummary?: string;
 	tokensBefore: number;
 	providerPayload?: ProviderPayload;
+	/**
+	 * Attribution when the provider compacted server-side, e.g.
+	 * `openai/gpt-5.6-sol`. Set from the entry's remote-compaction data at
+	 * rebuild; the divider shows it so the operator is never left believing a
+	 * configured local compaction model did a compaction the provider did.
+	 */
 	compactedBy?: string;
+	/** Legacy runtime-only archive blocks from the removed image-archive engine:
+	 *  old text region, imaged middle, then new text region. Never written by new
+	 *  sessions; retained so old persisted summaries still deserialize and count. */
 	blocks?: (TextContent | ImageContent)[];
+	/** Legacy image-archive blocks, kept for display counts / old-session consumers. */
 	images?: ImageContent[];
+	/** Post-pass dead-end warning attached to this compaction (progress guard). */
 	warning?: string;
 	timestamp: number;
 }
@@ -227,6 +241,16 @@ type CachedConvertedMessage =
 
 const convertedMessageCache = new WeakMap<AgentMessage, CachedConvertedMessage>();
 
+/**
+ * Transform a single core-domain agent message to its LLM form; `undefined`
+ * drops it from the provider request.
+ *
+ * Single source of truth for the core roles (user/developer/assistant/
+ * toolResult) and the compaction messages owned by this package. Embedders
+ * with their own app messages (e.g. the coding agent) handle their custom
+ * roles and delegate every core role here — duplicating these cases is how
+ * compaction-summary image blocks once silently fell off the provider request.
+ */
 export function convertMessageToLlm(message: AgentMessage): Message | undefined {
 	if (isCoreCompactionMessage(message)) {
 		switch (message.role) {
@@ -404,6 +428,13 @@ export function convertMessageToLlm(message: AgentMessage): Message | undefined 
 	}
 }
 
+/**
+ * Default compaction-domain transformer.
+ *
+ * Embedders with their own app messages should pass a richer transformer through
+ * `SummaryOptions.convertToLlm`; this default intentionally preserves only the
+ * core LLM roles and the compaction messages owned by this package.
+ */
 export function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
 	return messages.map(convertMessageToLlm).filter(message => message !== undefined);
 }

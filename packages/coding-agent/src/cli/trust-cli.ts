@@ -1,3 +1,21 @@
+/**
+ * The operator's side of project trust: see what a repository wants to run, and decide.
+ *
+ * WHY THIS IS A COMMAND AND NOT A STARTUP PROMPT. The gate refuses first and reports what it
+ * withheld, so the decision is never racing a side effect. That ordering is the safety property,
+ * and it holds only because nothing asks before the refusal — an early prompt would have to run
+ * before the TUI exists, from a path that also serves print mode, ACP and subagents, and the
+ * caller who cannot answer is exactly the caller that must not load project code. So the answer
+ * is given out of band, once, and remembered.
+ *
+ * WHAT IT DECIDES. Project-controlled files that grant execution: the project plugin registry,
+ * whose entries name install directories that then supply extensions, hooks, custom tools, slash
+ * commands and MCP servers, plus any path the operator names explicitly (that is how a file the
+ * gate withheld by name is approved, without this module having to predict every discovery
+ * route). A path outside the project root is the operator's own and is refused as out of scope
+ * rather than recorded, because a decision about `~/.veyyon` would be a decision about their own
+ * configuration.
+ */
 import * as path from "node:path";
 import { pathExists } from "@veyyon/utils";
 import { clearClaudePluginRootsCache, resolveActiveProjectRegistryPath } from "../discovery/helpers";
@@ -15,6 +33,7 @@ export interface TrustCommandArgs {
 	cwd: string;
 	agentDir: string;
 	action: TrustAction;
+	/** Paths named on the command line; empty means "everything discovered". */
 	paths: readonly string[];
 }
 
@@ -22,6 +41,7 @@ export interface TrustCandidate {
 	relativePath: string;
 	absolutePath: string;
 	verdict: ProjectTrustVerdict;
+	/** What this file grants, in the operator's terms. */
 	grants: string;
 }
 
@@ -31,10 +51,20 @@ export interface TrustCommandResult {
 	storePath: string;
 	decision: "trusted" | "denied" | "undecided";
 	candidates: TrustCandidate[];
+	/** Paths the caller named that are not inside the project root. */
 	outOfScope: string[];
+	/** Paths the caller named that do not exist or cannot be read. */
 	unreadable: string[];
 }
 
+/**
+ * Every project-controlled file that grants execution, whether or not it is decided.
+ *
+ * Discovery is deliberately narrow: this lists the doors, not everything behind them. The plugin
+ * registry's install directories are usually outside the tree — an approved registry is consent
+ * to the plugins it names — so listing them here would ask the operator to approve files the
+ * project does not control.
+ */
 async function discoverCandidatePaths(cwd: string): Promise<string[]> {
 	const registry = await resolveActiveProjectRegistryPath(cwd);
 	return registry ? [registry] : [];
@@ -62,6 +92,10 @@ export async function runTrustCommand(args: TrustCommandArgs): Promise<TrustComm
 			executables.push(executable);
 			continue;
 		}
+		// describeProjectExecutable folds "outside the project" and "cannot be read" into one
+		// null, and the operator's next move differs: one is the wrong directory, the other is a
+		// typo. Distinguishing costs one stat and is the difference between an actionable message
+		// and a shrug.
 		if (await pathExists(absolutePath, "a path named for a trust decision")) outOfScope.push(absolutePath);
 		else unreadable.push(absolutePath);
 	}
@@ -89,6 +123,7 @@ export async function runTrustCommand(args: TrustCommandArgs): Promise<TrustComm
 	};
 }
 
+/** The report an operator reads. One line per file, decision first. */
 export function renderTrustReport(result: TrustCommandResult): string {
 	const lines: string[] = [];
 	lines.push(`Project: ${result.projectRoot}`);
@@ -116,6 +151,15 @@ export function renderTrustReport(result: TrustCommandResult): string {
 	return `${lines.join("\n")}\n`;
 }
 
+/**
+ * The `/trust` verb, for a session that is already running.
+ *
+ * Same authority and same report as the CLI command; only the parsing differs, because a slash
+ * command has one argument string rather than flags and positionals. A bare `/trust` reports and
+ * changes nothing: approving project code is not something a bare keystroke should do. Paths
+ * after the verb are decided instead of the discovered set, which is how a file the gate named in
+ * a refusal gets approved without leaving the session.
+ */
 export async function runTrustSlashCommand(args: string, agentDir: string, cwd: string): Promise<string> {
 	const words = args.trim().split(/\s+/).filter(Boolean);
 	const verb = (words[0] ?? "").toLowerCase();
@@ -127,6 +171,8 @@ export async function runTrustSlashCommand(args: string, agentDir: string, cwd: 
 				: null;
 	if (action === null) return `Unknown /trust verb "${verb}". Use approve, deny, forget, or nothing to report.\n`;
 	const result = await runTrustCommand({ cwd, agentDir, action, paths: words.slice(1) });
+	// A decision changes what discovery may read, and plugin roots are cached for the life of the
+	// process; without this the operator would have to restart to see their own answer take effect.
 	if (action !== "list") clearClaudePluginRootsCache();
 	return renderTrustReport(result);
 }

@@ -34,6 +34,9 @@ interface GitHubIssueComment {
 	body: string;
 }
 
+/**
+ * Parse GitHub URL into components
+ */
 export function parseGitHubUrl(url: string): GitHubUrl | null {
 	const parsed = tryParseUrl(url);
 	if (!parsed) return null;
@@ -74,6 +77,9 @@ export function parseGitHubUrl(url: string): GitHubUrl | null {
 		case "pulls":
 			return { type: "pulls", owner, repo };
 		case "actions": {
+			// /actions/runs/{runId}                      → run summary + jobs
+			// /actions/runs/{runId}/job/{jobId}          → single job (web URL uses singular "job")
+			// /actions/runs/{runId}/jobs/{jobId}         → single job (API-style plural)
 			if (subParts[0] === "runs" && /^\d+$/.test(subParts[1] ?? "")) {
 				const runId = parseInt(subParts[1], 10);
 				const seg = subParts[2];
@@ -94,15 +100,23 @@ export function parseGitHubUrl(url: string): GitHubUrl | null {
 	}
 }
 
+/**
+ * Convert GitHub blob URL to raw URL
+ */
 function toRawGitHubUrl(gh: GitHubUrl): string {
 	return `https://raw.githubusercontent.com/${gh.owner}/${gh.repo}/${gh.ref}/${gh.path}`;
 }
 
+/**
+ * Fetch from GitHub API
+ */
 export async function fetchGitHubApi(
 	endpoint: string,
 	timeout: number,
 	signal?: AbortSignal,
 ): Promise<{ data: unknown; ok: boolean }> {
+	// Scoped so the deadline timer is cleared on settle instead of staying
+	// armed like a bare AbortSignal.timeout; the fence spans the body read.
 	const requestTimeout = scopedTimeoutSignal(timeout * 1000, signal);
 	try {
 		const headers: Record<string, string> = {
@@ -110,6 +124,7 @@ export async function fetchGitHubApi(
 			"User-Agent": "veyyon-web-fetch/1.0",
 		};
 
+		// Use GITHUB_TOKEN if available
 		const token = $env.GITHUB_TOKEN || $env.GH_TOKEN;
 		if (token) {
 			headers.Authorization = `Bearer ${token}`;
@@ -132,6 +147,9 @@ export async function fetchGitHubApi(
 	}
 }
 
+/**
+ * Fetch all issue comments with pagination.
+ */
 async function fetchGitHubIssueComments(
 	owner: string,
 	repo: string,
@@ -158,7 +176,7 @@ async function fetchGitHubIssueComments(
 			break;
 		}
 
-		for (let ci = 0; ci < pageComments.length; ci++) comments.push(pageComments[ci]!);
+		comments.push(...pageComments);
 		if (pageComments.length < perPage) {
 			break;
 		}
@@ -167,6 +185,9 @@ async function fetchGitHubIssueComments(
 	return comments;
 }
 
+/**
+ * Render GitHub issue/PR to markdown
+ */
 async function renderGitHubIssue(
 	gh: GitHubUrl,
 	timeout: number,
@@ -203,6 +224,7 @@ async function renderGitHubIssue(
 	md += issue.body || "*No description provided.*";
 	md += `\n\n---\n\n`;
 
+	// Fetch comments if any
 	if (issue.comments > 0) {
 		const comments = await fetchGitHubIssueComments(gh.owner, gh.repo, issue.number, issue.comments, timeout, signal);
 		if (comments.length > 0) {
@@ -229,6 +251,13 @@ interface GitHubCommitFile {
 	previous_filename?: string;
 }
 
+/**
+ * Render a GitHub commit (metadata, message, and per-file diff) to markdown.
+ *
+ * The commits API (`/repos/{owner}/{repo}/commits/{ref}`) returns the full
+ * unified diff inline via `files[].patch`, so a single request yields both the
+ * summary and the diff. Binary files have no `patch` and are flagged instead.
+ */
 async function renderGitHubCommit(
 	gh: GitHubUrl,
 	timeout: number,
@@ -293,6 +322,9 @@ async function renderGitHubCommit(
 	return { content: md, ok: true };
 }
 
+/**
+ * Render GitHub issues list to markdown
+ */
 async function renderGitHubIssuesList(
 	gh: GitHubUrl,
 	timeout: number,
@@ -324,11 +356,15 @@ async function renderGitHubIssuesList(
 	return { content: md, ok: true };
 }
 
+/**
+ * Render GitHub tree (directory) to markdown
+ */
 async function renderGitHubTree(
 	gh: GitHubUrl,
 	timeout: number,
 	signal?: AbortSignal,
 ): Promise<{ content: string; ok: boolean }> {
+	// Fetch repo info first to get default branch if ref not specified
 	const repoResult = await fetchGitHubApi(`/repos/${gh.owner}/${gh.repo}`, timeout, signal);
 	if (!repoResult.ok) return { content: "", ok: false };
 
@@ -343,6 +379,7 @@ async function renderGitHubTree(
 	let md = `# ${repo.full_name}/${dirPath || "(root)"}\n\n`;
 	md += `**Branch:** ${ref}\n\n`;
 
+	// Fetch directory contents
 	const contentsResult = await fetchGitHubApi(
 		`/repos/${gh.owner}/${gh.repo}/contents/${dirPath}?ref=${ref}`,
 		timeout,
@@ -357,6 +394,7 @@ async function renderGitHubTree(
 			path: string;
 		}>;
 
+		// Sort: directories first, then files, alphabetically
 		items.sort((a, b) => {
 			if (a.type === "dir" && b.type !== "dir") return -1;
 			if (a.type !== "dir" && b.type === "dir") return 1;
@@ -372,6 +410,7 @@ async function renderGitHubTree(
 		}
 		md += "```\n\n";
 
+		// Look for README in this directory
 		const readmeFile = items.find(item => item.type === "file" && /^readme\.md$/i.test(item.name));
 		if (readmeFile) {
 			const readmePath = dirPath ? `${dirPath}/${readmeFile.name}` : readmeFile.name;
@@ -386,11 +425,15 @@ async function renderGitHubTree(
 	return { content: md, ok: true };
 }
 
+/**
+ * Render GitHub repo to markdown (file list + README)
+ */
 async function renderGitHubRepo(
 	gh: GitHubUrl,
 	timeout: number,
 	signal?: AbortSignal,
 ): Promise<{ content: string; ok: boolean }> {
+	// Fetch repo info
 	const repoResult = await fetchGitHubApi(`/repos/${gh.owner}/${gh.repo}`, timeout, signal);
 	if (!repoResult.ok) return { content: "", ok: false };
 
@@ -412,6 +455,7 @@ async function renderGitHubRepo(
 	if (repo.license) md += `License: ${repo.license.name}\n`;
 	md += `\n---\n\n`;
 
+	// Fetch file tree
 	const treeResult = await fetchGitHubApi(
 		`/repos/${gh.owner}/${gh.repo}/git/trees/${repo.default_branch}?recursive=1`,
 		timeout,
@@ -431,6 +475,7 @@ async function renderGitHubRepo(
 		md += "```\n\n";
 	}
 
+	// Fetch README
 	const readmeResult = await fetchGitHubApi(`/repos/${gh.owner}/${gh.repo}/readme`, timeout, signal);
 	if (readmeResult.ok && readmeResult.data) {
 		const readme = readmeResult.data as { content: string; encoding: string };
@@ -443,6 +488,7 @@ async function renderGitHubRepo(
 	return { content: md, ok: true };
 }
 
+/** @internal Exported for testing the table-cell escaping in {@link renderActionsSteps}. */
 export interface GitHubActionsStep {
 	name: string;
 	status: string;
@@ -488,10 +534,12 @@ interface GitHubActionsRun {
 	triggering_actor?: { login: string };
 }
 
+/** Combine status + conclusion into a single label, e.g. `completed (failure)`. */
 function statusLabel(status: string, conclusion: string | null | undefined): string {
 	return conclusion ? `${status} (${conclusion})` : status;
 }
 
+/** Wall-clock duration between two ISO timestamps, formatted HH:MM:SS / MM:SS. Empty when unknown. */
 function actionDuration(start?: string | null, end?: string | null): string {
 	if (!start || !end) return "";
 	const ms = Date.parse(end) - Date.parse(start);
@@ -499,10 +547,21 @@ function actionDuration(start?: string | null, end?: string | null): string {
 	return formatMediaDuration(Math.round(ms / 1000));
 }
 
+/**
+ * Strip the per-line ISO-8601 timestamp prefix GitHub prepends to every job log line.
+ * Cuts ~28 bytes/line of noise while preserving the message text. Also drops the leading
+ * UTF-8 BOM GitHub puts at the start of the log file (otherwise the first line's timestamp
+ * survives because `^` no longer sits before a digit).
+ */
 export function stripActionsLogTimestamps(logs: string): string {
 	return logs.replace(/^\uFEFF/, "").replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z /gm, "");
 }
 
+/**
+ * Render a job's steps as a markdown table. Empty string when there are no steps.
+ *
+ * @internal Exported for regression testing of table-cell escaping.
+ */
 export function renderActionsSteps(steps?: GitHubActionsStep[]): string {
 	if (!steps || steps.length === 0) return "";
 	let md = "| # | Step | Status | Conclusion | Duration |\n";
@@ -514,6 +573,7 @@ export function renderActionsSteps(steps?: GitHubActionsStep[]): string {
 	return `${md}\n`;
 }
 
+/** Run-level metadata lines shared by the run and job renderers. */
 function renderActionsRunMeta(run: GitHubActionsRun): string {
 	let md = `**Workflow:** ${run.name ?? "(unknown)"}\n`;
 	md += `**Run:** #${run.run_number}`;
@@ -531,6 +591,7 @@ function renderActionsRunMeta(run: GitHubActionsRun): string {
 	return md;
 }
 
+/** Fetch a job's plain-text logs. Returns null when unavailable (no token / expired / private). */
 async function fetchGitHubJobLogs(
 	owner: string,
 	repo: string,
@@ -545,6 +606,7 @@ async function fetchGitHubJobLogs(
 	const token = $env.GITHUB_TOKEN || $env.GH_TOKEN;
 	if (token) headers.Authorization = `Bearer ${token}`;
 
+	// 302 → signed log URL on a different origin; fetch strips Authorization on the cross-origin hop.
 	const result = await loadPage(`https://api.github.com/repos/${owner}/${repo}/actions/jobs/${jobId}/logs`, {
 		timeout,
 		headers,
@@ -553,6 +615,10 @@ async function fetchGitHubJobLogs(
 	return result.ok && result.content ? result.content : null;
 }
 
+/**
+ * Render a workflow run: run metadata plus a per-job breakdown. Steps are listed for any job that
+ * did not succeed (the debugging-relevant ones); successful jobs collapse to a single line.
+ */
 async function renderGitHubActionsRun(
 	gh: GitHubUrl,
 	timeout: number,
@@ -586,6 +652,9 @@ async function renderGitHubActionsRun(
 	return { content: md, ok: true };
 }
 
+/**
+ * Render a single workflow job: run context, step table, and the full job logs.
+ */
 async function renderGitHubActionsJob(
 	gh: GitHubUrl,
 	timeout: number,
@@ -596,6 +665,7 @@ async function renderGitHubActionsJob(
 
 	const job = jobResult.data as GitHubActionsJob;
 
+	// Best-effort run context for nicer headers; the job render stands on its own without it.
 	const runResult = await fetchGitHubApi(`/repos/${gh.owner}/${gh.repo}/actions/runs/${job.run_id}`, timeout, signal);
 	const run = runResult.ok && runResult.data ? (runResult.data as GitHubActionsRun) : null;
 
@@ -624,6 +694,9 @@ async function renderGitHubActionsJob(
 	return { content: md, ok: true };
 }
 
+/**
+ * Handle GitHub URLs specially
+ */
 export const handleGitHub: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -637,6 +710,7 @@ export const handleGitHub: SpecialHandler = async (
 
 	switch (gh.type) {
 		case "blob": {
+			// Convert to raw URL and fetch
 			const rawUrl = toRawGitHubUrl(gh);
 			notes.push(`Fetched raw: ${rawUrl}`);
 			const result = await loadPage(rawUrl, { timeout, signal });
@@ -723,5 +797,7 @@ export const handleGitHub: SpecialHandler = async (
 		}
 	}
 
+	// Matched a GitHub URL but every API path failed: degrade loudly so the
+	// generic fetch result records why the rich rendering is missing.
 	return scraperDegrade("github", "GitHub API requests failed");
 };

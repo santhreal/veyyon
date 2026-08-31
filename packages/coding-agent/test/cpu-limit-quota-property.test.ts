@@ -4,13 +4,10 @@
  * (the native spawn-hook key). Grid/unit cases for the same functions live
  * in cpu-limit.test.ts; this file is the exhaustive grid.
  */
+
 import { describe, expect, it } from "bun:test";
-import {
-	CPU_LIMIT_PERIOD_USEC,
-	formatCpuMaxValue,
-	formatSystemdCpuQuota,
-	sessionCpuBudgetName,
-} from "../src/session/cpu-limit";
+import { CGROUP_CPU_PERIOD_USEC, formatCpuMaxValue, formatSystemdCpuQuota } from "../src/session/cgroup-format";
+import { sessionCpuBudgetName } from "../src/session/cpu-limit";
 
 describe("formatCpuMaxValue property", () => {
 	it("never writes a freeze quota for any IEEE input", () => {
@@ -50,16 +47,16 @@ describe("formatCpuMaxValue property", () => {
 		for (const cores of inputs) {
 			const line = formatCpuMaxValue(cores);
 			const [quota, period] = line.split(" ");
-			expect(period).toBe(String(CPU_LIMIT_PERIOD_USEC));
+			expect(period).toBe(String(CGROUP_CPU_PERIOD_USEC));
 			if (!Number.isFinite(cores) || cores <= 0) {
-				expect(line).toBe(`max ${CPU_LIMIT_PERIOD_USEC}`);
+				expect(line).toBe(`max ${CGROUP_CPU_PERIOD_USEC}`);
 			} else {
 				expect(quota).not.toBe("max");
 				expect(quota).not.toBe("0");
 				const n = Number(quota);
 				expect(Number.isInteger(n)).toBe(true);
 				expect(n).toBeGreaterThanOrEqual(1);
-				expect(n).toBe(Math.max(1, Math.round(cores * CPU_LIMIT_PERIOD_USEC)));
+				expect(n).toBe(Math.max(1, Math.round(cores * CGROUP_CPU_PERIOD_USEC)));
 			}
 		}
 	});

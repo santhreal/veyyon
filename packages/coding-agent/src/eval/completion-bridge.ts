@@ -1,3 +1,16 @@
+/**
+ * Host-side handler for the eval `completion()` helper.
+ *
+ * Both eval runtimes (JS worker + Python kernel) route helper→host calls
+ * through {@link callSessionTool}. Reserving the synthetic tool name
+ * {@link EVAL_COMPLETION_BRIDGE_NAME} lets a single host handler serve both
+ * transports without registering an agent-visible tool: cell code calls
+ * `completion(prompt, opts)`, the prelude forwards `{ prompt, model, system?, schema? }`
+ * through the bridge, and this module performs one stateless completion.
+ *
+ * The call is oneshot and toolless from the model's perspective — pure text
+ * in, text (or, with `schema`, a structured object) out.
+ */
 import { instrumentedCompleteSimple, resolveTelemetry } from "@veyyon/agent-core";
 import type { Api, Model, Tool } from "@veyyon/ai";
 import { Effort } from "@veyyon/catalog/effort";
@@ -16,8 +29,10 @@ import { ToolError } from "../tools/tool-errors";
 import { withBridgeTimeoutPause } from "./bridge-timeout";
 import type { JsStatusEvent } from "./js/shared/types";
 
+/** Synthetic bridge name reserved for the `completion()` helper across both runtimes. */
 export const EVAL_COMPLETION_BRIDGE_NAME = "__completion__";
 
+/** Synthetic tool the model is forced to call when a `schema` is supplied. */
 const STRUCTURED_TOOL_NAME = "respond";
 
 type CompletionTier = "smol" | "default" | "slow";
@@ -46,6 +61,11 @@ export interface EvalCompletionResult {
 	details: { model: string; tier: CompletionTier; structured: boolean };
 }
 
+/**
+ * Resolve a tier to a concrete {@link Model}. `default` prefers the session's
+ * active model and falls back to the `@default` role; `smol`/`slow` resolve
+ * their respective role patterns. Returns `undefined` when nothing matches.
+ */
 function resolveTierModel(tier: CompletionTier, session: ToolSession): Model<Api> | undefined {
 	const modelRegistry = session.modelRegistry;
 	if (!modelRegistry) return undefined;
@@ -66,6 +86,12 @@ function resolveTierModel(tier: CompletionTier, session: ToolSession): Model<Api
 	return resolve(TIER_TO_PATTERN[tier]);
 }
 
+/**
+ * Choose the reasoning effort for a tier. Only `slow` opts into thinking, and
+ * only on reasoning-capable models — guarding against `requireSupportedEffort`
+ * throwing downstream on models that cannot reason. Clamps to the highest
+ * supported effort so a reasoning model without `high` does not 400.
+ */
 function reasoningForTier(tier: CompletionTier, model: Model<Api>): Effort | undefined {
 	if (tier !== "slow" || !model.reasoning) return undefined;
 	const efforts = getSupportedEfforts(model);
@@ -73,6 +99,15 @@ function reasoningForTier(tier: CompletionTier, model: Model<Api>): Effort | und
 	return efforts.includes(Effort.High) ? Effort.High : efforts[efforts.length - 1];
 }
 
+/**
+ * Clone provider-bound JSON metadata while applying the current confidentiality
+ * transform to every string value and object key.
+ *
+ * JSON Schema property names are references: the same transform is therefore
+ * applied to both `properties` keys and the corresponding `required` strings.
+ * If two distinct keys collapse to the same redacted name, forwarding either
+ * schema would silently change its meaning, so the request fails closed.
+ */
 function sanitizeProviderJson(
 	value: unknown,
 	sanitize: (text: string) => string,
@@ -109,6 +144,11 @@ function sanitizeProviderJson(
 	}
 }
 
+/**
+ * Run a single stateless completion on behalf of an eval cell's `completion()` call.
+ * Returns a `{ text, details }` value shaped like a {@link callSessionTool}
+ * result so the existing bridge transport carries it to either runtime.
+ */
 export async function runEvalCompletion(
 	args: unknown,
 	options: EvalCompletionBridgeOptions,
@@ -118,6 +158,7 @@ export async function runEvalCompletion(
 		throw new ToolError(`completion() received invalid arguments: ${parsed.summary}`);
 	}
 	const { prompt, model: modelTier, system, schema } = parsed;
+	// Apply default value for model if not provided
 	const finalTier: CompletionTier = modelTier ?? "default";
 
 	const model = resolveTierModel(finalTier, options.session);
@@ -135,7 +176,12 @@ export async function runEvalCompletion(
 		);
 	}
 
+	// Dereference the session callback at invocation time: credential resolution
+	// and auth retry may install a newer secret runtime while this request waits.
 	const sanitizeLive = (text: string): string => options.session.obfuscateProviderText?.(text) ?? text;
+	// Sanitize caller-controlled raw fields before provider adapters can perform
+	// any lossy normalization. The per-payload pass below repeats this at the
+	// final physical-send seam with the then-current runtime.
 	const providerPrompt = sanitizeLive(prompt);
 	const providerSystem = sanitizeLive(system ?? "You are a helpful assistant.");
 	const providerSchema = schema ? (sanitizeProviderJson(schema, sanitizeLive) as Record<string, unknown>) : undefined;
@@ -153,8 +199,16 @@ export async function runEvalCompletion(
 
 	const telemetry = resolveTelemetry(options.session.getTelemetry?.(), options.session.getSessionId?.() ?? undefined);
 
+	// Some providers (notably openai-codex) require a non-empty `instructions`
+	// field on every Responses request and 400 with "Instructions are required"
+	// when it is missing. Fall back to a minimal default so `completion(prompt)` works
+	// without forcing every caller to pass a `system` prompt.
 	const systemPrompt = [providerSystem];
 
+	// Suspend eval timeout accounting while the model request owns control. The
+	// timeout clock restarts once the bridge returns to the cell runtime.
+	// `onPayload` is invoked after each credential resolution and for every
+	// auth retry, so a runtime swapped by a 401 protects the next wire body.
 	const response = await withBridgeTimeoutPause(options.emitStatus, () =>
 		instrumentedCompleteSimple(
 			model,

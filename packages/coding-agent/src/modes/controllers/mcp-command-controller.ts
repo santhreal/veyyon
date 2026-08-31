@@ -1,4 +1,9 @@
-import { type OverlayHandle, Spacer, Text } from "@veyyon/tui";
+/**
+ * MCP Command Controller
+ *
+ * Handles /mcp subcommands for managing MCP servers.
+ */
+import { type Component, type OverlayHandle, replaceTabs, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, getMCPConfigPath, getProjectDir, isAbortError } from "@veyyon/utils";
 import type { SourceMeta } from "../../capability/types";
 import { expandEnvVarsDeep, unresolvedRefusedDownstream } from "../../discovery/env-expansion";
@@ -43,48 +48,270 @@ import {
 } from "../../mcp/smithery-registry";
 import { sanitizeMcpStatusError } from "../../mcp/startup-events";
 import type { MCPAuthConfig, MCPServerConfig, MCPServerConnection } from "../../mcp/types";
-import { removedOptionMessage } from "../../slash-commands/helpers/parse";
+import { MCP_SCOPE_REMOVED_REPLACEMENT, removedOptionMessage } from "../../slash-commands/helpers/parse";
 import { shortenPath } from "../../tools/render-utils";
+import { urlHyperlinkAlways } from "../../tui";
 import { copyToClipboard } from "../../utils/clipboard";
 import { openPath } from "../../utils/open";
+import { ChatBlock } from "../components/chat-block";
 import { MCPAddWizard } from "../components/mcp-add-wizard";
 import { TranscriptBlock } from "../components/transcript-container";
 import { parseCommandArgs } from "../shared";
 import { withIcon } from "../theme/icon-label";
 import { theme } from "../theme/theme";
+import type { InteractiveModeContext } from "../types";
 import { groupBySource, showCommandMessage } from "./command-controller-shared";
 
-import {
-	MCP_ADD_REMOVED_OPTIONS,
-	MCP_ADD_USAGE,
-	MCP_MANUAL_INPUT_PROVIDER_ID,
-	MCP_MANUAL_LOGIN_TIP,
-	MCP_OAUTH_USER_CANCEL_REASON,
-	MCP_REMOVE_REMOVED_OPTIONS,
-	MCP_REMOVE_USAGE,
-	MCP_SEARCH_REMOVED_OPTIONS,
-	MCP_SEARCH_USAGE,
-	type MCPAddParsed,
-	type MCPAddTransport,
-	MCPAuthorizationLinkPrompt,
-	MCPOAuthCancelledError,
-	type MCPSearchParsed,
-	type McpCommandControllerContext,
-	McpConnectingBlock,
-	type OAuthFlowResult,
-	raceAbortSignal,
-	withTimeout,
-} from "./mcp-command-controller-helpers";
+/**
+ * The slice of the interactive context this controller uses: 12 members of the
+ * 215 `InteractiveModeContext` requires. Naming the slice keeps the dependency
+ * legible and lets a test build one without the `as unknown as
+ * InteractiveModeContext` cast the full interface forces (see
+ * `CollabHostContext`).
+ */
+export type McpCommandControllerContext = Pick<
+	InteractiveModeContext,
+	| "editor"
+	| "editorContainer"
+	| "mcpManager"
+	| "oauthManualInput"
+	| "present"
+	| "session"
+	| "showError"
+	| "showHookInput"
+	| "showHookSelector"
+	| "showStatus"
+	| "showWarning"
+	| "ui"
+>;
 
-export {
-	MCPAuthorizationLinkPrompt,
-	MCPOAuthCancelledError,
-	type McpCommandControllerContext,
-} from "./mcp-command-controller-helpers";
+const MCP_MANUAL_INPUT_PROVIDER_ID = "mcp";
+const MCP_MANUAL_LOGIN_TIP = "Headless? Paste the redirect URL or code with /login <value>.";
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string, onTimeout?: () => void): Promise<T> {
+	const { promise: timeoutPromise, reject } = Promise.withResolvers<T>();
+	const timer = setTimeout(() => {
+		onTimeout?.();
+		reject(new Error(message));
+	}, timeoutMs);
+	return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+}
+function raceAbortSignal<T>(promise: Promise<T>, signal: AbortSignal, createError: () => Error): Promise<T> {
+	if (signal.aborted) return Promise.reject(createError());
+
+	const aborted = Promise.withResolvers<never>();
+	const onAbort = (): void => aborted.reject(createError());
+	signal.addEventListener("abort", onAbort, { once: true });
+	return Promise.race([promise, aborted.promise]).finally(() => {
+		signal.removeEventListener("abort", onAbort);
+	});
+}
+
+/**
+ * Minimum column budget for URL wrapping. Below this the terminal is
+ * effectively unusable, but we still emit chunks so no character is silently
+ * dropped and the user can widen and reflow.
+ */
+const MCP_AUTH_MIN_WRAP_WIDTH = 16;
+
+/**
+ * Wrap `url` into rows that each fit inside `width`. When the label + URL fit
+ * on one line, returns a single indented row; otherwise puts the label on its
+ * own indented row and slices the URL into fixed-width chunks that start at
+ * column 0. Continuation chunks carry ZERO leading bytes on purpose: a
+ * multi-row terminal selection includes the newline plus any leading indent,
+ * and while address bars strip newlines they preserve or percent-encode
+ * embedded spaces — an indent would corrupt the URL at every chunk boundary
+ * (silently, when the damage lands inside a query value).
+ */
+function wrapUrlRows(label: string, url: string, width: number): string[] {
+	const indent = " ";
+	const sanitized = replaceTabs(url);
+	const effective = Math.max(MCP_AUTH_MIN_WRAP_WIDTH, Math.trunc(width));
+	const inlineWidth = indent.length + label.length + 1 + sanitized.length;
+	if (inlineWidth <= effective) {
+		return [`${indent}${theme.fg("muted", `${label} ${sanitized}`)}`];
+	}
+	const rows: string[] = [`${indent}${theme.fg("muted", label)}`];
+	for (let i = 0; i < sanitized.length; i += effective) {
+		rows.push(theme.fg("muted", sanitized.slice(i, i + effective)));
+	}
+	return rows;
+}
+
+/**
+ * Renders the MCP OAuth fallback URL. Always shows the full authorization URL
+ * as the primary `Copy URL:` target — that works from any machine, including
+ * SSH/WSL/headless sessions where the Veyyon-hosted `/launch` loopback URL would
+ * resolve against the user's local browser and fail.
+ *
+ * The render is `width`-aware: on any viewport narrower than the composed row
+ * ({@link TUI#prepareLine} truncates anything wider with `Ellipsis.Omit`, no
+ * marker), the URL is hard-wrapped into width-fitted rows so the primary copy
+ * target can never silently lose trailing OAuth parameters — the failure mode
+ * that motivated #4418 in the first place. Browsers strip whitespace when a
+ * multi-row selection is pasted into the address bar, so the reassembled URL
+ * is byte-identical to what we rendered.
+ *
+ * When the flow's callback server hosts a short `launchUrl`, it is offered
+ * as an additional local shortcut for wide-terminal local users. The OSC 8
+ * hyperlink continues to carry the full URL for terminals that support it.
+ */
+export class MCPAuthorizationLinkPrompt implements Component {
+	readonly #fullUrl: string;
+	readonly #launchUrl: string | undefined;
+
+	constructor(url: string, launchUrl?: string) {
+		this.#fullUrl = url;
+		this.#launchUrl = launchUrl && launchUrl !== url ? launchUrl : undefined;
+	}
+
+	invalidate(): void {}
+
+	render(width: number): readonly string[] {
+		const link = urlHyperlinkAlways(this.#fullUrl, "Click here to authorize");
+		const lines: string[] = [
+			` ${theme.fg("success", "Open authorization URL:")}`,
+			` ${theme.fg("accent", link)}`,
+			...wrapUrlRows("Copy URL:", this.#fullUrl, width),
+		];
+		if (this.#launchUrl) {
+			lines.push(...wrapUrlRows("Local shortcut (this machine only):", this.#launchUrl, width));
+		}
+		return lines;
+	}
+}
+
+/**
+ * Animated "Connecting to …" transcript block. Owns its spinner interval: it
+ * starts on mount and is cleared on {@link ChatBlock.finish}/dispose, so callers
+ * never juggle `setInterval`/`clearInterval` or `requestRender` by hand.
+ */
+class McpConnectingBlock extends ChatBlock {
+	readonly #text: Text;
+
+	constructor(private readonly serverName: string) {
+		super();
+		this.addChild(new Spacer(1));
+		const frame = theme.spinnerFrames[0] ?? "|";
+		this.#text = new Text(theme.fg("muted", `${frame} Connecting to "${serverName}"...`), 1, 0);
+		this.addChild(this.#text);
+	}
+
+	override onMount(): void {
+		const frames = theme.spinnerFrames;
+		let frame = 0;
+		const interval = setInterval(() => {
+			frame++;
+			this.#text.setText(
+				theme.fg("muted", `${frames[frame % frames.length] ?? "|"} Connecting to "${this.serverName}"...`),
+			);
+			this.requestRender();
+		}, 80);
+		this.onCleanup(() => clearInterval(interval));
+	}
+
+	/** Replace the spinner line with a terminal status; pair with {@link finish}. */
+	setStatus(text: string): void {
+		this.#text.setText(text);
+		this.requestRender();
+	}
+}
+
+/**
+ * Outcome of {@link MCPCommandController}'s OAuth handler.
+ *
+ * `credentialId` is deterministic per server URL when the URL was supplied, so
+ * every profile resolves its own credential row under the same id. Refresh
+ * material (token URL, client id/secret) is embedded in the stored credential;
+ * the returned `clientId` may be folded into `mcp.json` for pre-auth reuse.
+ * DCR-issued client secrets stay embedded in the stored credential and are
+ * deliberately not surfaced here, so they cannot leak into config files.
+ */
+interface OAuthFlowResult {
+	credentialId: string;
+	clientId?: string;
+	resource?: string;
+}
+
+/**
+ * Thrown by {@link MCPCommandController}'s OAuth handler when the user (or a
+ * caller-supplied {@link AbortSignal}) cancels the in-flight flow. Distinct
+ * from network/timeout failures so callers can surface a neutral
+ * "cancelled" status instead of an error banner.
+ */
+export class MCPOAuthCancelledError extends Error {
+	constructor(message = "OAuth flow cancelled") {
+		super(message);
+		this.name = "MCPOAuthCancelledError";
+	}
+}
+
+/** Reason recorded on the OAuth flow's AbortController when the user hits Esc. */
+const MCP_OAUTH_USER_CANCEL_REASON = "MCP OAuth flow cancelled by user";
+
+type MCPAddTransport = "http" | "sse";
+
+const MCP_ADD_USAGE = "Usage: /mcp add <name> [http|sse] [url <url>] [token <token>] [run <command...>]";
+
+const MCP_SEARCH_USAGE = "Usage: /mcp smithery-search <keyword...> [<limit 1-100>] [semantic]";
+
+const MCP_REMOVE_USAGE = "Usage: /mcp remove <name>";
+
+/**
+ * The option spellings `/mcp add` no longer has, keyed by bare name. The empty key
+ * is the separator that used to mean "everything after this is a command to run",
+ * which is what the `run` keyword means now. The scope words are keys too, so a
+ * plain `project` is refused with the reason rather than read as something else;
+ * that reason is {@link MCP_SCOPE_REMOVED_REPLACEMENT}, which the text/ACP
+ * handler delivers word for word from the same constant.
+ */
+const MCP_ADD_REMOVED_OPTIONS: Record<string, string> = {
+	"": "write `run <command...>`, which takes the whole rest of the line",
+	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
+	project: MCP_SCOPE_REMOVED_REPLACEMENT,
+	user: MCP_SCOPE_REMOVED_REPLACEMENT,
+	url: "write `url <url>`",
+	transport: "write `http` or `sse` as a plain word",
+	token: "write `token <token>`",
+};
+
+/** The option spellings `/mcp smithery-search` no longer has, keyed by bare name. */
+const MCP_SEARCH_REMOVED_OPTIONS: Record<string, string> = {
+	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
+	project: MCP_SCOPE_REMOVED_REPLACEMENT,
+	user: MCP_SCOPE_REMOVED_REPLACEMENT,
+	limit: "write the limit as a plain integer",
+	semantic: "write `semantic` as a plain word",
+};
+
+/** The option spellings `/mcp remove` no longer has, keyed by bare name. */
+const MCP_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
+	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
+	project: MCP_SCOPE_REMOVED_REPLACEMENT,
+	user: MCP_SCOPE_REMOVED_REPLACEMENT,
+};
+
+type MCPAddParsed = {
+	initialName?: string;
+	quickConfig?: MCPServerConfig;
+	isCommandQuickAdd?: boolean;
+	hasAuthToken?: boolean;
+	error?: string;
+};
+
+type MCPSearchParsed = {
+	keyword: string;
+	limit: number;
+	semantic: boolean;
+	error?: string;
+};
 
 export class MCPCommandController {
 	constructor(private ctx: McpCommandControllerContext) {}
 
+	/**
+	 * Handle /mcp command and route to subcommands
+	 */
 	async handle(text: string): Promise<void> {
 		const parts = text.trim().split(/\s+/);
 		const subcommand = parts[1]?.toLowerCase();
@@ -149,6 +376,9 @@ export class MCPCommandController {
 		}
 	}
 
+	/**
+	 * Show help text
+	 */
 	#showHelp(): void {
 		const helpText = [
 			"",
@@ -182,6 +412,22 @@ export class MCPCommandController {
 		this.#showMessage(helpText);
 	}
 
+	/**
+	 * Parse the argument tail of `/mcp add`.
+	 *
+	 * Every argument is a plain word, disambiguated two ways and no others. The
+	 * name is POSITION: token 1 is the name whatever it spells, so a server called
+	 * `url` or `run` is named without ceremony. Everything after it is either a
+	 * CLOSED SET word that is its own value (`http|sse`, the transport) or a
+	 * leading keyword introducing text no set could describe (`url <url>`,
+	 * `token <token>`, `run <command...>`).
+	 *
+	 * Those token sets cannot overlap, which is what makes reading a word by its
+	 * own shape sound here: the closed set and the three keywords are five literal
+	 * spellings, all distinct, and a keyword's value is consumed by position rather
+	 * than examined. `run` takes the whole remainder, so a command's own arguments
+	 * are never read as this grammar's words.
+	 */
 	#parseAddCommand(text: string): MCPAddParsed {
 		const prefixMatch = text.match(/^\/mcp\s+add\b\s*(.*)$/i);
 		const tokens = parseCommandArgs(prefixMatch?.[1]?.trim() ?? "");
@@ -264,6 +510,24 @@ export class MCPCommandController {
 		};
 	}
 
+	/**
+	 * Parse the argument tail of `/mcp smithery-search`.
+	 *
+	 * The keyword is arbitrary text and the two options are words, so the keyword
+	 * is required FIRST and the options are read from the END. Token 1 is always
+	 * part of the keyword, which is what keeps a one-word search for `semantic` or
+	 * for a number searching for it; scanning backwards then stops at the first
+	 * word that belongs to no option, and everything up to there is the keyword.
+	 *
+	 * The two cannot be confused: `semantic` is one literal word and the limit is
+	 * the only integer the command reads. A trailing scope word is refused there
+	 * rather than joined to the keyword, because a scope is what an operator who
+	 * writes one means, and this surface has none.
+	 *
+	 * What this does NOT resolve, because no rule can: a keyword whose LAST word is
+	 * `semantic` or an integer in range has that word read as the option. Put it
+	 * anywhere but last, or search for the single word alone.
+	 */
 	#parseSearchCommand(text: string): MCPSearchParsed {
 		const prefixMatch = text.match(/^\/mcp\s+smithery-search\b\s*(.*)$/i);
 		const tokens = parseCommandArgs(prefixMatch?.[1]?.trim() ?? "");
@@ -309,6 +573,9 @@ export class MCPCommandController {
 		return { keyword: tokens.slice(0, end).join(" "), limit, semantic };
 	}
 
+	/**
+	 * Handle /mcp add - Launch interactive wizard or quick-add from args
+	 */
 	async #handleAdd(text: string): Promise<void> {
 		const parsed = this.#parseAddCommand(text);
 		if (parsed.error) {
@@ -318,6 +585,8 @@ export class MCPCommandController {
 		if (parsed.quickConfig && parsed.initialName) {
 			let finalConfig = parsed.quickConfig;
 
+			// Quick-add with URL should still perform auth detection and OAuth flow,
+			// matching wizard behavior. Command quick-add intentionally skips this.
 			if (!parsed.isCommandQuickAdd && (finalConfig.type === "http" || finalConfig.type === "sse")) {
 				try {
 					await this.#handleTestConnection(finalConfig);
@@ -337,9 +606,13 @@ export class MCPCommandController {
 									authResult.resourceMetadataUrl,
 									{ protectedScopes: authResult.scopes },
 								);
-							} catch {}
+							} catch {
+								// Ignore discovery error and handle below.
+							}
 						}
 						if (oauth && !oauth.scopes && authResult.resourceMetadataUrl) {
+							// JSON-error-body path skips `discoverOAuthEndpoints`; fetch the
+							// advertised protected-resource metadata for the required scopes.
 							const scopes = await fetchResourceMetadataScopes(authResult.resourceMetadataUrl);
 							if (scopes) oauth = { ...oauth, scopes };
 						}
@@ -395,7 +668,11 @@ export class MCPCommandController {
 			return;
 		}
 
+		// The wizard is a floating card on the alternate screen, so its close
+		// glyph and chips have somewhere to live and the transcript stays put.
 		let overlayHandle: OverlayHandle | undefined;
+		// The wizard holds a pointer band on the shared motion clock, and hiding an overlay only
+		// stops painting it. The show site created the card, so the show site hands it back.
 		let card: MCPAddWizard | undefined;
 		let closed = false;
 		const done = () => {
@@ -407,6 +684,7 @@ export class MCPCommandController {
 			this.ctx.ui.requestRender();
 		};
 
+		// Create wizard with OAuth handler and connection test
 		const wizard = new MCPAddWizard(
 			async (name: string, config: MCPServerConfig) => {
 				done();
@@ -441,6 +719,9 @@ export class MCPCommandController {
 		this.ctx.ui.requestRender();
 	}
 
+	/**
+	 * Handle OAuth authentication flow for MCP server
+	 */
 	async #handleOAuthFlow(
 		authUrl: string,
 		tokenUrl: string,
@@ -456,12 +737,20 @@ export class MCPCommandController {
 			registrationUrl?: string;
 			resource?: string;
 			stripSameOriginResource?: boolean;
+			/**
+			 * External cancellation source: when this signal aborts, the in-flight
+			 * OAuth flow is torn down and {@link MCPOAuthCancelledError} is thrown.
+			 * Wizards (which own focus and absorb Esc themselves) pass their own
+			 * controller here; editor-focused callers rely on the Esc hook
+			 * installed below instead.
+			 */
 			abortSignal?: AbortSignal;
 		},
 	): Promise<OAuthFlowResult> {
 		const authStorage = this.ctx.session.modelRegistry.authStorage;
 		let parsedAuthUrl: URL;
 
+		// Validate OAuth URLs
 		try {
 			parsedAuthUrl = new URL(authUrl);
 			new URL(tokenUrl);
@@ -483,7 +772,9 @@ export class MCPCommandController {
 		}
 		let manualInputClaim: { promise: Promise<string>; clear: (reason?: string) => void } | undefined;
 		const oauthTimeout = new AbortController();
-
+		// User Esc and external aborts route through here; the timeout path sets
+		// its own reason and leaves this flag false so the catch can distinguish
+		// "user cancelled" (status) from "deadline elapsed" (error).
 		let userCancelled = false;
 		const requestUserCancel = (reason: string): void => {
 			userCancelled = true;
@@ -502,6 +793,7 @@ export class MCPCommandController {
 			externalSignal?.addEventListener("abort", onExternalAbort, { once: true });
 		}
 		try {
+			// Create OAuth flow
 			const flow = new MCPOAuthFlow(
 				{
 					authorizationUrl: authUrl,
@@ -519,6 +811,7 @@ export class MCPCommandController {
 				},
 				{
 					onAuth: (info: { url: string; launchUrl?: string; instructions?: string }) => {
+						// Show auth URL prominently in chat as one block
 						const block = new TranscriptBlock();
 						this.ctx.present(block);
 						block.addChild(new Text(theme.fg("accent", "━━━ OAuth Authorization Required ━━━"), 1, 0));
@@ -535,8 +828,18 @@ export class MCPCommandController {
 						block.addChild(new Text(theme.fg("muted", MCP_MANUAL_LOGIN_TIP), 1, 0));
 						block.addChild(new Spacer(1));
 						block.addChild(new Text(theme.fg("accent", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"), 1, 0));
-
+						// `openPath` is best-effort — it logs spawn failures but never
+						// throws, so we always render the copy-URL fallback beneath the
+						// "attempting to open browser" line and no earlier try/catch is
+						// worth keeping.
 						openPath(info.url);
+						// Stage the FULL authorization URL on the clipboard via OSC 52.
+						// The full URL works from any machine (unlike `launchUrl`, which
+						// only resolves against the Veyyon host), and OSC 52 is a
+						// wire-level protocol — the terminal writes it to the user's
+						// LOCAL clipboard even when Veyyon is on a remote SSH box.
+						// Best-effort: falls back to the visible copy-URL rows below
+						// whether or not the terminal honors OSC 52.
 						void copyToClipboard(info.url).catch(() => {});
 						block.addChild(new Spacer(1));
 						block.addChild(new Text(theme.fg("success", "→ Attempting to open browser..."), 1, 0));
@@ -570,6 +873,10 @@ export class MCPCommandController {
 			};
 			if (oauthTimeout.signal.aborted) throw createAbortError();
 
+			// Execute OAuth flow with 5 minute timeout. Race the login itself
+			// against the abort signal because Esc/external abort may fire before
+			// MCPOAuthFlow reaches OAuthCallbackFlow.#waitForCallback, where the
+			// underlying callback server normally observes the signal.
 			const credentials = await withTimeout(
 				raceAbortSignal(flow.login(), oauthTimeout.signal, createAbortError),
 				5 * 60 * 1000,
@@ -582,10 +889,14 @@ export class MCPCommandController {
 				new Text(theme.fg("success", "ok Authorization completed in browser."), 1, 0),
 			]);
 
+			// Deterministic per-URL id: every profile resolves its own credential row
+			// under the same key, so shared project configs stay profile-isolated.
+			// Random fallback only for flows that never knew the server URL.
 			const credentialId = opts?.serverUrl
 				? mcpOAuthCredentialId(opts.serverUrl)
 				: `mcp_oauth_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
+			// Embed refresh material so the credential is self-contained: token
 			// refresh must work for configs that carry no auth block at all.
 			const oauthCredential: MCPStoredOAuthCredential = {
 				type: "oauth",
@@ -605,12 +916,17 @@ export class MCPCommandController {
 				resource: flow.resource,
 			};
 		} catch (error) {
+			// User-initiated cancel (Esc or external signal) → neutral status, not
+			// a failure. Check the flag we set in `requestUserCancel`, not the
+			// abort reason: the timeout path also aborts but with a different
+			// reason, and we want it to surface as a timeout error below.
 			if (userCancelled) {
 				throw new MCPOAuthCancelledError();
 			}
 
 			const errorMsg = errorMessage(error);
 
+			// Provide helpful error messages based on failure type
 			if (errorMsg.includes("timeout") || errorMsg.includes("timed out")) {
 				throw new Error("OAuth flow timed out. Please try again.");
 			} else if (errorMsg.includes("403") || errorMsg.includes("unauthorized")) {
@@ -629,6 +945,14 @@ export class MCPCommandController {
 		}
 	}
 
+	/**
+	 * Fold a completed OAuth flow back into a server config. Owns the
+	 * persistence policy in one place: the auth block records the credential
+	 * pointer plus refresh material, the oauth block echoes the client id for
+	 * pre-auth reuse, and only a user-supplied client secret is ever written —
+	 * DCR-issued secrets stay embedded in the stored credential so they cannot
+	 * leak into (possibly shared/committed) config files.
+	 */
 	#persistOAuthResult(
 		config: MCPServerConfig,
 		result: OAuthFlowResult,
@@ -660,7 +984,12 @@ export class MCPCommandController {
 		};
 	}
 
+	/**
+	 * Test connection to an MCP server.
+	 * Throws an error if connection fails (used for auto-detection).
+	 */
 	async #handleTestConnection(config: MCPServerConfig, options?: { oauth?: boolean }): Promise<void> {
+		// Create temporary connection using a test name
 		const testName = `test_${Date.now()}`;
 		let resolvedConfig: MCPServerConfig;
 		if (this.ctx.mcpManager) {
@@ -675,6 +1004,19 @@ export class MCPCommandController {
 		await disconnectServer(connection);
 	}
 
+	/**
+	 * Find `name` in the one MCP config file `/mcp` owns: the active profile's
+	 * `<agentDir>/mcp.json`.
+	 *
+	 * Three working-tree candidates used to sit behind that file —
+	 * `<cwd>/.veyyon/mcp.json`, `<cwd>/mcp.json` and `<cwd>/.mcp.json`, matching
+	 * the since-deleted project-scope discovery providers. Nothing loads them at
+	 * boot any more, but this function still resolved them, so `/mcp test` and
+	 * `/mcp reauth` would have CONNECTED to a server a repository declared and
+	 * `/mcp enable` would have written `enabled: true` into a repository file.
+	 * Operator-initiated is not consent: typing `/mcp test` is not agreement to
+	 * reach a server the operator never configured.
+	 */
 	async #findConfiguredServer(
 		name: string,
 	): Promise<{ filePath: string; scope: "user"; config: MCPServerConfig } | null> {
@@ -685,6 +1027,22 @@ export class MCPCommandController {
 		return { filePath: userPath, scope: "user", config };
 	}
 
+	/**
+	 * Resolve a server for an auth/test operation.
+	 *
+	 * Unlike {@link #findConfiguredServer} (which only reads writable Veyyon config
+	 * files), this also recognizes runtime-discovered servers that `/mcp list`
+	 * surfaces but that live in no writable config — e.g. servers from a Claude
+	 * Code marketplace plugin (`cloudflare:cloudflare-api`), `.cursor/mcp.json`,
+	 * etc. Without this, `/mcp reauth|test|unauth` reports "not found" for a
+	 * server the list just showed.
+	 *
+	 * For a discovered server, any persisted change is written into the *user*
+	 * config under the same (namespaced) name; the native provider (priority 100)
+	 * shadows the discovered entry on the next reload, so an OAuth `auth` block
+	 * persisted by `/mcp reauth` takes effect. `discovered` lets callers tailor
+	 * messaging and skip pointless writes when there is nothing to persist.
+	 */
 	async #resolveServerForAuth(name: string): Promise<{
 		filePath: string;
 		scope: "user";
@@ -713,6 +1071,11 @@ export class MCPCommandController {
 	}
 
 	async #resolveOAuthEndpointsFromServer(config: MCPServerConfig): Promise<OAuthEndpoints> {
+		// Stdio servers manage credentials inside the child process; Veyyon's OAuth
+		// flow only applies to http/sse transports. Without this guard the
+		// unauthenticated preflight below spawns the child, which happily reuses
+		// its own cached tokens (e.g. mcp-remote's machine-wide ~/.mcp-auth) and
+		// produces the misleading "reauthorization is not required".
 		if (config.type !== "http" && config.type !== "sse") {
 			const remoteUrl = config.args?.find(arg => /^https?:\/\//.test(arg));
 			const httpHint = `{ "type": "http", "url": ${JSON.stringify(remoteUrl ?? "<remote url>")} }`;
@@ -723,6 +1086,7 @@ export class MCPCommandController {
 					: `stdio servers manage their own credentials, so Veyyon has no OAuth to reauthorize. If the service supports OAuth over HTTP, configure it as ${httpHint} instead.`,
 			);
 		}
+		// First test if server actually needs auth by connecting without OAuth
 		let connectionSucceeded = false;
 		let connectionError: Error | undefined;
 		try {
@@ -732,10 +1096,12 @@ export class MCPCommandController {
 			connectionError = error as Error;
 		}
 
+		// Server connected fine without auth — reauth is not needed
 		if (connectionSucceeded) {
 			throw new Error("Server connection succeeded without OAuth; reauthorization is not required.");
 		}
 
+		// Analyze the connection error to extract OAuth endpoints
 		const authResult = analyzeAuthError(connectionError!, "url" in config ? config.url : undefined);
 		let oauth = authResult.authType === "oauth" ? (authResult.oauth ?? null) : null;
 
@@ -745,6 +1111,8 @@ export class MCPCommandController {
 			});
 		}
 		if (oauth && !oauth.scopes && authResult.resourceMetadataUrl) {
+			// JSON-error-body path skips `discoverOAuthEndpoints`; fetch the
+			// advertised protected-resource metadata for the required scopes.
 			const scopes = await fetchResourceMetadataScopes(authResult.resourceMetadataUrl);
 			if (scopes) oauth = { ...oauth, scopes };
 		}
@@ -768,9 +1136,12 @@ export class MCPCommandController {
 		try {
 			try {
 				await withTimeout(this.ctx.mcpManager.waitForConnection(name), 10_000, "Connection still pending");
-			} catch {}
+			} catch {
+				// Ignore timeout/errors here and use status check below.
+			}
 			const state = this.ctx.mcpManager.getConnectionStatus(name);
 			if (state === "connected") {
+				// Connection may complete after initial reload; rebind runtime MCP tools now.
 				await this.ctx.session.refreshMCPTools(this.ctx.mcpManager.getTools());
 			}
 			if (state === "connected") {
@@ -803,8 +1174,10 @@ export class MCPCommandController {
 		try {
 			const filePath = getMCPConfigPath("user", getProjectDir());
 
+			// Add server to config
 			await addMCPServer(filePath, name, config);
 
+			// Reload MCP manager
 			await this.#reloadMCP();
 			const state =
 				config.enabled === false
@@ -813,25 +1186,33 @@ export class MCPCommandController {
 			let isConnected = state === "connected";
 			const isConnecting = state === "connecting";
 
+			// Fallback: if manager state is still disconnected but direct test works,
+			// report as connected to avoid false-negative messaging.
 			if (!isConnected && !isConnecting && config.enabled !== false) {
 				try {
 					await this.#handleTestConnection(config);
 					isConnected = true;
 					await this.#syncManagerConnection(name, config);
-				} catch {}
+				} catch {
+					// Keep disconnected status
+				}
 			}
 
+			// refreshMCPTools preserves the prior MCP tool selection, so tools from
+			// brand-new servers are registered in the registry but never activated.
+			// Explicitly activate the newly added server's tools now.
 			if (isConnected && this.ctx.mcpManager) {
 				const serverTools = this.ctx.mcpManager.getTools().filter(t => t.mcpServerName === name);
 				if (serverTools.length > 0) {
 					const currentActive = this.ctx.session.getActiveToolNames();
 					const toActivate = serverTools.map(t => t.name).filter(n => this.ctx.session.getToolByName(n));
 					if (toActivate.length > 0) {
-						await this.ctx.session.setActiveToolsByName(Array.from(new Set(currentActive.concat(toActivate))));
+						await this.ctx.session.setActiveToolsByName([...new Set([...currentActive, ...toActivate])]);
 					}
 				}
 			}
 
+			// Show success message
 			const lines = ["", theme.fg("success", `+ Added server "${name}" to ${shortenPath(filePath)}`), ""];
 
 			if (isConnected) {
@@ -854,6 +1235,7 @@ export class MCPCommandController {
 		} catch (error) {
 			const errorMsg = errorMessage(error);
 
+			// Provide helpful error messages
 			let helpText = "";
 			if (errorMsg.includes("EACCES") || errorMsg.includes("permission denied")) {
 				helpText = "\n\nTip: Check file permissions for the config directory.";
@@ -879,6 +1261,16 @@ export class MCPCommandController {
 		);
 	}
 
+	/**
+	 * Handle /mcp list - Show all configured servers
+	 */
+	/**
+	 * One server's rows in `/mcp list`: the name + status glyph, and — when the
+	 * server is not connected and the manager retained a failure — an indented
+	 * dim line with the actual error. This is the honest home for the detail the
+	 * compact startup banner deliberately omits (Law 10: don't hide failures,
+	 * surface them where the operator looks).
+	 */
 	#serverStatusRows(name: string, state: string, type?: string): string[] {
 		const status =
 			state === "inactive"
@@ -899,12 +1291,17 @@ export class MCPCommandController {
 
 	async #handleList(): Promise<void> {
 		try {
+			// The profile's own `<agentDir>/mcp.json` is the only writable config.
+			// A second read of `<cwd>/.veyyon/mcp.json` used to render a "Project
+			// level" section here; nothing loads that file, so the section listed
+			// servers no session would ever connect to.
 			const userPath = getMCPConfigPath("user", getProjectDir());
 			const userPathLabel = shortenPath(userPath);
 			const userConfig = await readMCPConfigFile(userPath);
 
 			const userServers = Object.keys(userConfig.mcpServers ?? {});
 
+			// Collect runtime-discovered servers not in config files
 			const configServerNames = new Set(userServers);
 			const disabledServerNames = new Set(await readDisabledServers(userPath));
 			const discoveredServers: { name: string; source: SourceMeta }[] = [];
@@ -934,6 +1331,7 @@ export class MCPCommandController {
 
 			const lines: string[] = ["", theme.bold("Configured MCP Servers"), ""];
 
+			// Show user-level servers
 			if (userServers.length > 0) {
 				lines.push(theme.fg("accent", "User level") + theme.fg("muted", ` (${userPathLabel}):`));
 				for (const name of userServers) {
@@ -943,25 +1341,25 @@ export class MCPCommandController {
 						config.enabled === false
 							? "inactive"
 							: (this.ctx.mcpManager?.getConnectionStatus(name) ?? "disconnected");
-					const ss = this.#serverStatusRows(name, state, type);
-					for (let li = 0; li < ss.length; li++) lines.push(ss[li]!);
+					lines.push(...this.#serverStatusRows(name, state, type));
 				}
 				lines.push("");
 			}
 
+			// Show discovered servers (from .claude.json, .cursor/mcp.json, .vscode/mcp.json, etc.)
 			if (discoveredServers.length > 0) {
 				for (const { providerName, shortPath, items: entries } of groupBySource(discoveredServers, e => e.source)) {
 					lines.push(theme.fg("accent", providerName) + theme.fg("muted", ` (${shortPath}):`));
 					for (const { name } of entries) {
 						const state = this.ctx.mcpManager!.getConnectionStatus(name);
-						const ss = this.#serverStatusRows(name, state);
-						for (let li = 0; li < ss.length; li++) lines.push(ss[li]!);
+						lines.push(...this.#serverStatusRows(name, state));
 					}
 					lines.push("");
 				}
 			}
 
-			const relevantDisabled = Array.from(disabledServerNames).filter(n => !configServerNames.has(n));
+			// Show servers disabled via /mcp disable (from third-party configs)
+			const relevantDisabled = [...disabledServerNames].filter(n => !configServerNames.has(n));
 			if (relevantDisabled.length > 0) {
 				lines.push(theme.fg("accent", "Disabled") + theme.fg("muted", " (discovered servers):"));
 				for (const name of relevantDisabled) {
@@ -977,6 +1375,9 @@ export class MCPCommandController {
 		}
 	}
 
+	/**
+	 * Handle /mcp remove <name> - Remove a server
+	 */
 	async #handleRemove(text: string): Promise<void> {
 		const match = text.match(/^\/mcp\s+(?:remove|rm)\b\s*(.*)$/i);
 		const rest = match?.[1]?.trim() ?? "";
@@ -1006,12 +1407,15 @@ export class MCPCommandController {
 				return;
 			}
 
+			// Disconnect if connected
 			if (this.ctx.mcpManager?.getConnection(name)) {
 				await this.ctx.mcpManager.disconnectServer(name);
 			}
 
+			// Remove from config
 			await removeMCPServer(filePath, name);
 
+			// Reload MCP manager
 			await this.#reloadMCP();
 
 			this.#showMessage(
@@ -1022,6 +1426,9 @@ export class MCPCommandController {
 		}
 	}
 
+	/**
+	 * Handle /mcp test <name> - Test connection to a server
+	 */
 	async #handleTest(name: string | undefined): Promise<void> {
 		if (!name) {
 			this.ctx.showError("Server name required. Usage: /mcp test <name>");
@@ -1055,6 +1462,7 @@ export class MCPCommandController {
 				["", theme.fg("muted", `Testing connection to "${name}"... (esc to cancel)`), ""].join("\n"),
 			);
 
+			// Resolve auth config if needed
 			let resolvedConfig: MCPServerConfig;
 			if (this.ctx.mcpManager) {
 				resolvedConfig = await this.ctx.mcpManager.prepareConfig(config);
@@ -1064,8 +1472,10 @@ export class MCPCommandController {
 				resolvedConfig = await tempManager.prepareConfig(config);
 			}
 
+			// Create temporary connection
 			connection = await connectToServer(name, resolvedConfig, { signal: abortController.signal });
 
+			// List tools to verify connection
 			const tools = await listTools(connection, { signal: abortController.signal });
 
 			const lines = [
@@ -1076,6 +1486,7 @@ export class MCPCommandController {
 				`  Tools: ${tools.length}`,
 			];
 
+			// Show tool names if there are any
 			if (tools.length > 0 && tools.length <= 10) {
 				lines.push("");
 				lines.push("  Available tools:");
@@ -1095,6 +1506,7 @@ export class MCPCommandController {
 
 			const errorMsg = errorMessage(error);
 
+			// Provide helpful error messages
 			let helpText = "";
 			if (errorMsg.includes("ENOENT") || errorMsg.includes("not found")) {
 				helpText = "\n\nTip: Check that the command or URL is correct.";
@@ -1112,6 +1524,7 @@ export class MCPCommandController {
 		} finally {
 			this.ctx.editor.onEscape = originalOnEscape;
 			if (connection) {
+				// Best-effort: don't block UI on cleanup.
 				void disconnectServer(connection);
 			}
 		}
@@ -1126,11 +1539,16 @@ export class MCPCommandController {
 		try {
 			const found = await this.#findConfiguredServer(name);
 			if (!found) {
+				// Check if this is a discovered server from a third-party config
 				const userConfigPath = getMCPConfigPath("user", getProjectDir());
 				const disabledServers = new Set(await readDisabledServers(userConfigPath));
 				const isDiscovered = this.ctx.mcpManager?.getSource(name);
 				const isCurrentlyDisabled = disabledServers.has(name);
 				if (!isDiscovered && !isCurrentlyDisabled) {
+					// Naming the file is the whole point: the operator who typed this
+					// is usually looking at a `mcp.json` in the repository they are
+					// standing in, and nothing reads that. Silently reporting "not
+					// found" left them re-editing a file no session ever loads.
 					this.ctx.showError(
 						`MCP server "${name}" is not configured, so there is nothing to ${enabled ? "enable" : "disable"}. ` +
 							`Veyyon reads MCP servers from ${shortenPath(userConfigPath)} and from the editor configs ` +
@@ -1238,7 +1656,10 @@ export class MCPCommandController {
 			if (currentAuth?.type === "oauth") {
 				await removeManagedMcpOAuthCredential(authStorage, currentAuth.credentialId);
 			}
-
+			// Also drop this profile's url-keyed binding so the server is truly
+			// signed out even when the config carries no auth block. Runtime
+			// discovery expands `${...}` URL values before MCPManager looks up the
+			// deterministic credential row, so unauth must clear that same key.
 			let removedUrlKeyedCredential = false;
 			if ((found.config.type === "http" || found.config.type === "sse") && found.config.url) {
 				removedUrlKeyedCredential = await removeManagedMcpOAuthCredentials(
@@ -1294,14 +1715,23 @@ export class MCPCommandController {
 			const currentAuth = (found.config as MCPServerConfig & { auth?: MCPAuthConfig }).auth;
 			const authStorage = this.ctx.session.modelRegistry.authStorage;
 			const baseConfig = this.#stripOAuthAuth(found.config);
+			// The connect guard is the enforcement point and names the field and the variable in the
+			// refusal the operator sees, so reporting here would say it twice.
 			const refusedAtConnect = unresolvedRefusedDownstream(
 				"the MCP connect guard refuses an unresolved structural field before a transport exists",
 			);
 			const runtimeBaseConfig = expandEnvVarsDeep(baseConfig, refusedAtConnect);
+			// Resolve endpoints first: this fails fast for stdio transports and
+			// probes http/sse with { oauth: false }, so nothing destructive has
+			// happened yet if the server turns out not to need (or support) OAuth.
+			// Use the same env-expanded config shape runtime discovery passes to
+			// MCPManager; the raw file value may contain `${...}` placeholders.
 			const oauth = await this.#resolveOAuthEndpointsFromServer(runtimeBaseConfig);
 			const serverUrl =
 				runtimeBaseConfig.type === "http" || runtimeBaseConfig.type === "sse" ? runtimeBaseConfig.url : undefined;
-
+			// A user-supplied client secret may live in either block (the wizard
+			// writes it to auth.clientSecret); DCR secrets are embedded in the
+			// stored credential and never echoed back into config files.
 			const configuredClientId = found.config.oauth?.clientId ?? currentAuth?.clientId;
 			const existingCredential = lookupMcpOAuthCredentialForServer(authStorage, currentAuth, serverUrl)?.credential;
 			const flowClientId = oauth.clientId ?? configuredClientId ?? existingCredential?.clientId ?? "";
@@ -1337,10 +1767,16 @@ export class MCPCommandController {
 				},
 			);
 
+			// The flow overwrote (or minted) this profile's row; a superseded
+			// pointer row from the legacy random-id era is now orphaned. GC only
+			// after success so cancelling the browser step leaves the previous
+			// session signed in.
 			if (currentAuth?.type === "oauth" && currentAuth.credentialId !== oauthResult.credentialId) {
 				await removeManagedMcpOAuthCredential(authStorage, currentAuth.credentialId);
 			}
 
+			// Definition-only entries resolve through the url-keyed binding alone;
+			// skip the write-back so a committed project mcp.json stays clean.
 			const urlKeyedId = serverUrl ? mcpOAuthCredentialId(serverUrl) : undefined;
 			if (currentAuth || oauthResult.credentialId !== urlKeyedId) {
 				const updated = this.#persistOAuthResult(baseConfig, oauthResult, {
@@ -1396,6 +1832,9 @@ export class MCPCommandController {
 		}
 	}
 
+	/**
+	 * Handle /mcp reconnect <name> - Reconnect to a specific server.
+	 */
 	async #handleReconnect(name: string | undefined): Promise<void> {
 		if (!name) {
 			this.ctx.showError("Server name required. Usage: /mcp reconnect <name>");
@@ -1411,6 +1850,9 @@ export class MCPCommandController {
 		try {
 			const connection = await this.ctx.mcpManager.reconnectServer(name, { manual: true });
 			if (connection) {
+				// refreshMCPTools re-registers tools and preserves the user's prior
+				// MCP tool selection. No need to call activateDiscoveredMCPTools —
+				// that would broaden the selection to all server tools.
 				await this.ctx.session.refreshMCPTools(this.ctx.mcpManager.getTools());
 				const serverTools = this.ctx.mcpManager.getTools().filter(t => t.mcpServerName === name);
 				this.#showMessage(
@@ -1460,21 +1902,33 @@ export class MCPCommandController {
 		this.#showMessage(errorLines.join("\n"));
 	}
 
+	/**
+	 * Reload MCP manager with new configs
+	 */
 	async #reloadMCP(): Promise<void> {
 		if (!this.ctx.mcpManager) {
 			return;
 		}
 
+		// A reload re-reads the config files, so the credentials a `!command` in them mints or
+		// reads are re-read too. Nothing else can notice that kind of secret rotated: the cache is
+		// keyed by the command text, which is identical before and after. Scoped to MCP configs,
+		// so a command that resolves a provider key elsewhere keeps its value.
 		this.ctx.mcpManager.invalidateCommandCredentials();
 
+		// Disconnect all existing servers
 		await this.ctx.mcpManager.disconnectAll();
 
+		// Rediscover and connect
 		const result = await this.ctx.mcpManager.discoverAndConnect();
 		await this.ctx.session.refreshMCPTools(this.ctx.mcpManager.getTools());
 
 		this.#showMCPConnectionErrors(result.errors);
 	}
 
+	/**
+	 * Handle /mcp resources - Show available resources from connected servers
+	 */
 	async #handleResources(): Promise<void> {
 		if (!this.ctx.mcpManager) {
 			this.ctx.showError("No MCP manager available.");
@@ -1515,6 +1969,9 @@ export class MCPCommandController {
 		this.#showMessage(lines.join("\n"));
 	}
 
+	/**
+	 * Handle /mcp prompts - Show available prompts from connected servers
+	 */
 	async #handlePrompts(): Promise<void> {
 		if (!this.ctx.mcpManager) {
 			this.ctx.showError("No MCP manager available.");
@@ -1553,6 +2010,9 @@ export class MCPCommandController {
 		this.#showMessage(lines.join("\n"));
 	}
 
+	/**
+	 * Handle /mcp notifications - Show notification and subscription state
+	 */
 	async #handleNotifications(): Promise<void> {
 		if (!this.ctx.mcpManager) {
 			this.ctx.showError("No MCP manager available.");
@@ -1689,7 +2149,9 @@ export class MCPCommandController {
 		);
 		try {
 			openPath(session.authUrl);
-		} catch {}
+		} catch {
+			// URL is already shown above.
+		}
 
 		const apiKey = await this.#waitForSmitheryCliApiKey(session.sessionId, new AbortController().signal);
 		await this.#validateSmitheryApiKey(apiKey);
@@ -1921,6 +2383,9 @@ export class MCPCommandController {
 		}
 	}
 
+	/**
+	 * Show a message in the chat
+	 */
 	#showMessage(text: string): void {
 		showCommandMessage(this.ctx, text);
 	}

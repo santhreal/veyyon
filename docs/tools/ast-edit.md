@@ -22,7 +22,7 @@
 | `ops` | `{ pat: string; out: string }[]` | Yes | One or more rewrite rules. `pat` must be non-empty. Duplicate `pat` values fail before native execution. Empty `out` deletes the matched node. |
 | `paths` | `string[]` | Yes | One or more files, directories, globs, or internal URLs with backing files. Empty entries are rejected. Globs are forbidden for internal URLs. |
 
-Shared AST pattern grammar and language catalog: see [`ast_grep`](./ast-grep.md#inputs).
+Shared structural pattern grammar and language catalog: see [`search` (`type: "structure"`)](./search.md#modes--variants).
 
 - `ast_edit` uses the same `$NAME`, `$_`, `$$$NAME`, and `$$$` metavariable semantics.
 - The tool prompt adds rewrite-specific constraints:
@@ -50,7 +50,7 @@ Shared AST pattern grammar and language catalog: see [`ast_grep`](./ast-grep.md#
    - duplicate `pat` values fail,
    - ops are converted to a `Record<pattern, replacement>`.
 2. The wrapper reads `VEYYON_MAX_AST_FILES` via `$envpos(..., 1000)` and uses that as the native `maxFiles` cap for both preview and apply.
-3. Path normalization, internal URL handling, missing-path partitioning, and multi-path resolution follow the same `path-utils.ts` flow as `ast_grep`.
+3. Path normalization, internal URL handling, missing-path partitioning, and multi-path resolution follow the same `path-utils.ts` flow as `search`.
 4. The scope's `isDirectory` flag (set by a stat in `resolveToolSearchScope`) decides whether to render grouped directory output.
 5. `runAstEditOnce(...)` always runs native `astEdit(...)` with `dryRun: true` and `failOnParseError: false` on the first pass.
 6. Native `ast_edit` in `crates/veyyon-natives/src/ast.rs`:
@@ -114,7 +114,7 @@ Shared AST pattern grammar and language catalog: see [`ast_grep`](./ast-grep.md#
 
 ## Notes
 - `ast_edit` does not expose the native `lang`, `strictness`, `selector`, `maxReplacements`, `failOnParseError`, or `timeoutMs` fields to the model. The runtime fixes the call shape to a preview-first, smart-strictness, best-effort parse mode.
-- Because the wrapper does not expose `lang`, mixed-language rewrites only succeed when every candidate infers to the same canonical language. This is stricter than `ast_grep`.
+- Because the wrapper does not expose `lang`, mixed-language rewrites only succeed when every candidate infers to the same canonical language. This is stricter than `search` (`type: "structure"`).
 - Idempotency is not enforced syntactically. A rewrite like `foo($A) -> foo($A)` previews zero changes because output equals input; a rewrite that keeps matching its own output may still produce replacements on repeated calls.
 - Rewrites are accumulated per file, then applied from the end of the file backward after an overlap check. Independent matches can coexist; overlapping matches abort the run.
 - Native rewrite rule order is by pattern-string sort, not by the original `ops` array order, because `normalize_rewrite_map(...)` sorts the `(pattern, rewrite)` pairs.

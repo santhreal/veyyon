@@ -181,12 +181,16 @@ describe("the modules that were repointed stay cut", () => {
 		["stats/src/db.ts", 120],
 		["stats/src/sync-worker.ts", 120],
 		["mnemopi/src/core/embeddings.ts", 131],
-		["mnemopi/src/core/extraction/client.ts", 126],
+		// Re-measured 2026-08-28 at 66, from 127. The file took `trimTrailingSlashes` and
+		// `withScopedTimeoutSignal` from the `@veyyon/utils` entry point, so every module that entry
+		// re-exports rode along and each new one raised this count by hand; both names are now taken
+		// from `@veyyon/utils/url` and `@veyyon/utils/scoped-timeout`, which own them.
+		["mnemopi/src/core/extraction/client.ts", 70],
 		["coding-agent/src/config/api-key-resolver.ts", 55],
 		// Re-measured 2026-07-27 at 184, from 112. The file gained a real `completeSimple` call, and the
 		// engine is 72 modules whichever specifier reaches it. Raised only after the barrel import was
 		// repointed and the number stopped moving; the 325 it sat at before that was the leak, not this.
-		["coding-agent/src/commit/shared-llm.ts", 212],
+		["coding-agent/src/commit/shared-llm.ts", 201],
 		// The agent's hot loop and the `Agent` class. Both STREAM, so both reach the engine whatever
 		// specifier they use; the ceilings are what the other ten names cost when taken from the entry
 		// point. 378 -> 321 and 380 -> 323.

@@ -35,21 +35,55 @@
  * Skips, with the reason stated, when the host has no cgroup v2 delegation, and
  * on non-Linux where the budget is not a kernel throttle at all.
  */
+
 import { describe, expect, it } from "bun:test";
-import {
-	CPU_LIMIT_PERIOD_USEC,
-	type CpuBudgetGroupHandle,
-	defaultCpuLimitEnvironment,
-	probeCpuLimitSupport,
-	SessionCpuLimit,
-} from "../src/session/cpu-limit";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import * as YAML from "yaml";
+import { CGROUP_CPU_PERIOD_USEC } from "../src/session/cgroup-format";
+import { probeCpuLimitSupport, resolveCpuLimitEnvironment } from "../src/session/cgroup-host";
+import { type CpuBudgetGroupHandle, SessionCpuLimit } from "../src/session/cpu-limit";
+import { resetMachineWriteTally } from "../src/session/machine-budget";
 import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 
+/**
+ * Report that the kernel assertions below could not run, and decide whether
+ * that is acceptable.
+ *
+ * A skip printed beside "4 pass" reads as a proof that ran. It is not one, and
+ * the ordinary place this suite executes cannot run it at all: the test sandbox
+ * mounts `/sys/fs/cgroup` read-only and answers no systemd user bus, so every
+ * kernel assertion here skipped while the file reported green. Somewhere has to
+ * fail instead, and that somewhere sets VEYYON_REQUIRE_CGROUP_PROOF=1 — a host
+ * with real cgroup v2 delegation, which is what `bun run test:cgroup-proof`
+ * runs on.
+ */
+function cannotProve(reason: string): void {
+	if (process.env.VEYYON_REQUIRE_CGROUP_PROOF === "1") {
+		throw new Error(
+			`VEYYON_REQUIRE_CGROUP_PROOF is set and the kernel proof could not run: ${reason}. ` +
+				`Run this on a host with cgroup v2 delegation, or unset the variable and accept that ` +
+				`this run proves nothing about kernel enforcement.`,
+		);
+	}
+	console.log(`NOT PROOF, skipped: ${reason}`);
+}
 /** Wall window the burner spins for. Long enough to span 30 quota periods. */
 const WINDOW_MS = 3_000;
 
 /** The cap under test, in cores. Half a core against a full-core demand. */
 const CAP_CORES = 0.5;
+
+/** The machine memory cap under test, in gigabytes. */
+const MEMORY_CAP_GB = 0.25;
+
+/**
+ * Where the hog gives up. Eight times the cap: far enough past it that no
+ * tolerance explains reaching it, close enough that a regression costs bounded
+ * swap on the host running the suite rather than however much it has.
+ */
+const HOG_CEILING_MB = MEMORY_CAP_GB * 1024 * 8;
 
 /**
  * The burner: a single thread that spins for exactly WINDOW_MS of WALL time,
@@ -114,6 +148,46 @@ async function runBurner(adopt?: (pid: number) => void): Promise<BurnResult> {
 	}
 }
 
+/**
+ * The hog: allocates 16 MB at a time, TOUCHING every page (an untouched
+ * allocation is not charged to the cgroup at all), and prints its high-water
+ * mark as it goes so the parent can read how far it got from a child the kernel
+ * killed without warning.
+ */
+const MEMORY_HOG = `
+const chunks = [];
+const ceilingMb = ${HOG_CEILING_MB};
+while (chunks.length * 16 < ceilingMb) {
+	chunks.push(Buffer.alloc(16 * 1024 * 1024, chunks.length % 251));
+	console.log("mb " + chunks.length * 16);
+}
+console.log("CEILING");
+`;
+
+interface HogResult {
+	/** The largest allocation the child reported before it stopped, megabytes. */
+	highWaterMb: number;
+	/** True when the child reached HOG_CEILING_MB under its own power. */
+	survived: boolean;
+}
+
+async function runMemoryHog(adopt: (pid: number) => void): Promise<HogResult> {
+	const hermetic = hermeticSpawnEnv();
+	const proc = Bun.spawn([process.execPath, "-e", MEMORY_HOG], {
+		stdout: "pipe",
+		stderr: "pipe",
+		env: hermetic.env,
+	});
+	adopt(proc.pid);
+	try {
+		const [stdout] = await Promise.all([new Response(proc.stdout as ReadableStream<Uint8Array>).text(), proc.exited]);
+		const marks = [...stdout.matchAll(/mb (\d+)/g)].map(match => Number(match[1]));
+		return { highWaterMb: marks.at(-1) ?? 0, survived: stdout.includes("CEILING") };
+	} finally {
+		hermetic.cleanup();
+	}
+}
+
 /** `usageUsec()` and `throttledPeriods()`, or a failure naming which one the backend withheld. */
 function meter(group: CpuBudgetGroupHandle): { usageUsec: number; throttledPeriods: number } {
 	const usageUsec = group.usageUsec();
@@ -146,14 +220,14 @@ describe("real cgroup enforcement", () => {
 	 * adopted pid is the pid being metered rather than some other process.
 	 */
 	it("holds a CPU-bound child to the configured quota and reports the throttling", async () => {
-		const env = { ...defaultCpuLimitEnvironment() };
+		const env = resolveCpuLimitEnvironment();
 		if (env.platform !== "linux") {
-			console.log(`SKIP: kernel CPU throttling is Linux-only; this host is ${env.platform}`);
+			cannotProve(`kernel CPU throttling is Linux-only; this host is ${env.platform}`);
 			return;
 		}
 		const probe = await probeCpuLimitSupport(env);
 		if (!probe.supported) {
-			console.log(`SKIP: no cgroup delegation available: ${probe.detail}`);
+			cannotProve(`no cgroup delegation available: ${probe.detail}`);
 			return;
 		}
 		console.log(`backend under test: ${probe.detail}`);
@@ -169,7 +243,7 @@ describe("real cgroup enforcement", () => {
 		try {
 			const group = await limiter.ensureGroup();
 			if (!group) {
-				console.log("SKIP: the probed backend could not create a budget group");
+				cannotProve("the probed backend could not create a budget group");
 				return;
 			}
 			expect(group.throttles).toBe(true);
@@ -190,7 +264,7 @@ describe("real cgroup enforcement", () => {
 			// periods is the honest bound. At 0.5 cores over a 100ms period that
 			// is 100_000us against a ~1_500_000us expectation, under 7%. It is
 			// derived from the period, not tuned until the test went green.
-			const slackUsec = 2 * CAP_CORES * CPU_LIMIT_PERIOD_USEC;
+			const slackUsec = 2 * CAP_CORES * CGROUP_CPU_PERIOD_USEC;
 			const ceilingUsec = CAP_CORES * burn.wallUsec + slackUsec;
 			// The burner demands a full core for the whole window, so a working
 			// quota is nearly all spent. The 15% shortfall covers the runtime's
@@ -230,14 +304,14 @@ describe("real cgroup enforcement", () => {
 	 * exemption list in cpu-limit-spawn-sites.test.ts depends on.
 	 */
 	it("an unadopted child is neither metered nor throttled by the group", async () => {
-		const env = { ...defaultCpuLimitEnvironment() };
+		const env = resolveCpuLimitEnvironment();
 		if (env.platform !== "linux") {
-			console.log(`SKIP: kernel CPU throttling is Linux-only; this host is ${env.platform}`);
+			cannotProve(`kernel CPU throttling is Linux-only; this host is ${env.platform}`);
 			return;
 		}
 		const probe = await probeCpuLimitSupport(env);
 		if (!probe.supported) {
-			console.log(`SKIP: no cgroup delegation available: ${probe.detail}`);
+			cannotProve(`no cgroup delegation available: ${probe.detail}`);
 			return;
 		}
 
@@ -252,7 +326,7 @@ describe("real cgroup enforcement", () => {
 		try {
 			const group = await limiter.ensureGroup();
 			if (!group) {
-				console.log("SKIP: the probed backend could not create a budget group");
+				cannotProve("the probed backend could not create a budget group");
 				return;
 			}
 			const before = meter(group);
@@ -275,4 +349,178 @@ describe("real cgroup enforcement", () => {
 			await limiter.dispose();
 		}
 	}, 30_000);
+});
+
+/**
+ * The machine tier's one load-bearing claim, against a real kernel.
+ *
+ * ## What would be fiction without this
+ *
+ * A machine limit is not enforced by a watcher of its own. It is a parent
+ * cgroup that session groups are created inside, and the entire design rests on
+ * the kernel bounding a child that carries no cap of its own. Every session
+ * limit defaults to zero, so the common case for a machine limit IS an uncapped
+ * child: if the parent does not bound it, the feature caps nothing on the one
+ * configuration operators will actually run, while the settings row, the status
+ * output and the whole fake-cgroup suite stay green.
+ *
+ * The fake-cgroup suite proves the bytes reach the right files. Only a kernel
+ * proves the bytes mean anything.
+ *
+ * ## What this does not catch
+ *
+ * It skips where no delegation exists, so a host without cgroup v2 delegation
+ * gets no machine-tier proof from this file. `pids.max` inherits the same
+ * nesting and its enforcement is not measured here.
+ */
+describe("a machine limit bounds a session that has no limit of its own", () => {
+	it("throttles an uncapped session group to the machine cap", async () => {
+		const env = resolveCpuLimitEnvironment();
+		if (env.platform !== "linux") {
+			cannotProve(`kernel CPU throttling is Linux-only; this host is ${env.platform}`);
+			return;
+		}
+		const probe = await probeCpuLimitSupport(env);
+		if (!probe.supported) {
+			cannotProve(`no cgroup delegation available: ${probe.detail}`);
+			return;
+		}
+
+		// Seed the machine limit the way an operator does — the global config
+		// file — rather than handing the limiter a directory. The nesting is then
+		// the production path's own work, so this fails if configuration stops
+		// reaching it, not only if the kernel stops enforcing.
+		const configRoot = fs.mkdtempSync(path.join(os.tmpdir(), "vey-machine-kernel-"));
+		fs.writeFileSync(path.join(configRoot, "config.yml"), YAML.stringify({ machine: { cpuLimitCores: CAP_CORES } }));
+		const previousConfigDir = process.env.VEYYON_CONFIG_DIR;
+		process.env.VEYYON_CONFIG_DIR = configRoot;
+
+		// The session carries NO cap. Its group exists only to hold the pid, and
+		// its own cpu.max reads `max`. Anything that throttles the burner below
+		// comes from the machine group above it.
+		const limiter = new SessionCpuLimit({
+			sessionId: `real-machine-${process.pid}`,
+			cores: 0,
+			kill: false,
+			probe,
+			env,
+			windowSamples: 3,
+		});
+		try {
+			// The session group must exist even though every session limit is off:
+			// a machine limit with no group beneath it bounds an empty set.
+			const group = await limiter.ensureGroup();
+			expect(group, "a machine limit must still create a session group to hold the pid").toBeDefined();
+			if (!group) return;
+
+			const before = meter(group);
+			const burn = await runBurner(pid => {
+				void limiter.adoptPid(pid);
+			});
+			const after = meter(group);
+			const groupUsec = after.usageUsec - before.usageUsec;
+
+			// Same tolerance derivation as the session case: two refill periods
+			// of slack, because the sample straddles a period boundary at each
+			// end. An unbounded child lands at roughly twice the ceiling.
+			const slackUsec = 2 * CAP_CORES * CGROUP_CPU_PERIOD_USEC;
+			const ceilingUsec = CAP_CORES * burn.wallUsec + slackUsec;
+			const floorUsec = 0.85 * CAP_CORES * WINDOW_MS * 1_000;
+
+			console.log(
+				`machine cap ${CAP_CORES} cores, session uncapped | group ${groupUsec}us over ` +
+					`${Math.round(burn.wallUsec)}us wall | ceiling ${Math.round(ceilingUsec)}us | floor ${floorUsec}us`,
+			);
+
+			expect(groupUsec).toBeLessThanOrEqual(ceilingUsec);
+			// Rules out "the burner never ran", which would satisfy the ceiling
+			// while proving nothing about the parent.
+			expect(groupUsec).toBeGreaterThanOrEqual(floorUsec);
+		} finally {
+			await limiter.dispose();
+			resetMachineWriteTally();
+			if (previousConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+			else process.env.VEYYON_CONFIG_DIR = previousConfigDir;
+			fs.rmSync(configRoot, { recursive: true, force: true });
+		}
+	}, 30_000);
+
+	/**
+	 * A memory cap is a MEMORY cap, not a resident-set cap with a swap escape.
+	 *
+	 * `memory.max` on its own bounds resident pages. At the limit the kernel
+	 * reclaims and pushes anonymous pages to swap, so a process allocating past
+	 * the cap keeps running: measured on a host with 8 GB of swap, a group
+	 * capped at 256 MB reached 5,520 MB and pushed 2.9 GB into swap before the
+	 * kernel OOM-killed it. Both memory settings exist to stop the machine
+	 * swapping, so that reading of the cap is the opposite of the feature.
+	 * `memoryCapControls` pairs `memory.swap.max` with every cap, and this is
+	 * what says the pair reaches the kernel and means something.
+	 *
+	 * The hog stops itself at HOG_CEILING_MB so a regression costs bounded swap
+	 * rather than the host's: reaching the ceiling IS the failure, and the
+	 * assertion reads the high-water mark rather than the exit status, because
+	 * a process killed at 5 GB and a process killed at 272 MB both die.
+	 */
+	it("kills an uncapped session's memory hog at the machine cap instead of swapping past it", async () => {
+		const env = resolveCpuLimitEnvironment();
+		if (env.platform !== "linux") {
+			cannotProve(`cgroup memory caps are Linux-only; this host is ${env.platform}`);
+			return;
+		}
+		const probe = await probeCpuLimitSupport(env);
+		if (!probe.supported) {
+			cannotProve(`no cgroup delegation available: ${probe.detail}`);
+			return;
+		}
+		if (!probe.kernelLimits.memory) {
+			cannotProve(`the memory controller is not delegated here: ${probe.detail}`);
+			return;
+		}
+
+		const configRoot = fs.mkdtempSync(path.join(os.tmpdir(), "vey-machine-memory-"));
+		fs.writeFileSync(
+			path.join(configRoot, "config.yml"),
+			YAML.stringify({ machine: { memoryLimitGb: MEMORY_CAP_GB } }),
+		);
+		const previousConfigDir = process.env.VEYYON_CONFIG_DIR;
+		process.env.VEYYON_CONFIG_DIR = configRoot;
+
+		const limiter = new SessionCpuLimit({
+			sessionId: `real-machine-memory-${process.pid}`,
+			cores: 0,
+			kill: false,
+			probe,
+			env,
+			windowSamples: 3,
+		});
+		try {
+			const group = await limiter.ensureGroup();
+			expect(group, "a machine memory limit must still create a session group to hold the pid").toBeDefined();
+			if (!group) return;
+
+			const hog = await runMemoryHog(pid => {
+				void limiter.adoptPid(pid);
+			});
+			const capMb = MEMORY_CAP_GB * 1024;
+			console.log(
+				`machine memory cap ${capMb} MB, session uncapped | hog high-water ${hog.highWaterMb} MB | ` +
+					`survived to ceiling: ${hog.survived}`,
+			);
+
+			// The child dies. A hog that finishes its allocation is a cap that
+			// held nothing, whatever the group's own counters say.
+			expect(hog.survived, `the hog reached ${HOG_CEILING_MB} MB under a ${capMb} MB cap`).toBe(false);
+			// Twice the cap is slack for the runtime's own footprint and for the
+			// chunk in flight when the kernel fires. A swap escape lands an order
+			// of magnitude above this, not just outside it.
+			expect(hog.highWaterMb).toBeLessThanOrEqual(2 * capMb);
+		} finally {
+			await limiter.dispose();
+			resetMachineWriteTally();
+			if (previousConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+			else process.env.VEYYON_CONFIG_DIR = previousConfigDir;
+			fs.rmSync(configRoot, { recursive: true, force: true });
+		}
+	}, 60_000);
 });

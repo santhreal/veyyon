@@ -209,7 +209,7 @@ describe("evaluateChangelogRequirement", () => {
 describe("require-changelog.ts end to end against a real repo", () => {
 	const scriptPath = path.join(import.meta.dir, "require-changelog.ts");
 
-	async function makeRepo(): Promise<{ root: string; git: (...a: string[]) => ReturnType<typeof $> }> {
+	async function makeRepo(): Promise<{ root: string; git: (...a: string[]) => $.ShellPromise }> {
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), "clog-gate-"));
 		const git = (...args: string[]) =>
 			$`git ${args}`

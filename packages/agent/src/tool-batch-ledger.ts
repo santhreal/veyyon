@@ -1,28 +1,79 @@
+/**
+ * Partial-completion ledger for a batch of tool calls that was cut short.
+ *
+ * When a turn's tool calls stop part-way (a provider stream reset such as
+ * `NGHTTP2_INTERNAL_ERROR`, a user abort, or a mid-batch steering interrupt),
+ * every unexecuted call gets its own placeholder result. On its own that tells
+ * the model nothing about the batch: it cannot see which siblings produced real
+ * results and which never ran, so the cheapest safe move looks like re-running
+ * discovery from scratch. That rediscovery, not the failed turn, is the
+ * expensive part of the failure.
+ *
+ * The ledger is one bounded summary emitted once per cut-short batch. It lists
+ * tool-call ids and a one-word outcome, never tool output, so it can never
+ * become a second echo of the payload it is describing.
+ *
+ * The outcome vocabulary is the point of the whole structure: "the tool ran and
+ * failed" and "the tool never ran" call for opposite responses from the model,
+ * and a transport reset produces only the second kind.
+ */
+
+// The owner, not the `@veyyon/utils` barrel. `truncate` cuts by CODE POINT; the private `clip`
+// this replaced sliced by UTF-16 code unit, so a ledger field ending mid-surrogate-pair emitted a
+// lone surrogate that `JSON.stringify` writes to the wire as a bare `\udXXX` escape.
 import { truncate } from "@veyyon/utils/format";
 
+/**
+ * What happened to one call in a cut-short batch.
+ *
+ * - `ok` / `failed`: the tool executed. Its result is already in the
+ *   transcript, so re-running it repeats work and any side effects.
+ * - `interrupted`: execution began and no result was recorded. Side effects may
+ *   be partially applied, so state must be checked before a retry.
+ * - `dropped`: the call was never dispatched. Nothing happened, so it is safe
+ *   to retry verbatim.
+ */
 export type ToolBatchCallOutcome = "ok" | "failed" | "interrupted" | "dropped";
 
 export interface ToolBatchCallEntry {
 	toolCallId: string;
 	toolName: string;
 	outcome: ToolBatchCallOutcome;
+	/**
+	 * The call's arguments were still streaming when the batch was cut short, so
+	 * its `toolCall` block was removed from the assistant message and there is
+	 * nothing in the transcript to re-read. Only ever set alongside `dropped`:
+	 * an argument stream that never closed was never dispatched. The model has
+	 * to reconstruct the arguments rather than copy them back.
+	 */
 	argumentsIncomplete?: boolean;
 }
 
+/** Why the batch stopped, which decides the cause line and the retry advice. */
 export type ToolBatchLedgerCause = "stream_error" | "aborted" | "interrupted";
 
 export interface ToolBatchLedger {
 	cause: ToolBatchLedgerCause;
 	entries: ToolBatchCallEntry[];
+	/** Calls that executed to completion, successfully or not. */
 	completed: number;
+	/** Calls whose execution began and was cut off. */
 	interrupted: number;
+	/** Calls that were never dispatched. */
 	dropped: number;
+	/** Entries beyond {@link TOOL_BATCH_LEDGER_MAX_ENTRIES}, counted but not listed. */
 	omitted: number;
 }
 
+/** Listed entries. Beyond this the ledger reports a count instead of more lines. */
 export const TOOL_BATCH_LEDGER_MAX_ENTRIES = 24;
+/** Per-field character budget, so one hostile id or tool name cannot unbound a line. */
 export const TOOL_BATCH_LEDGER_MAX_FIELD_WIDTH = 48;
 
+/**
+ * Build a ledger from the batch's per-call outcomes. Order is preserved: the
+ * model reads the batch in the order it emitted the calls.
+ */
 export function buildToolBatchLedger(
 	cause: ToolBatchLedgerCause,
 	calls: ReadonlyArray<ToolBatchCallEntry>,
@@ -65,8 +116,23 @@ const CAUSE_LINE: Record<ToolBatchLedgerCause, string> = {
 	interrupted: "Cause: the batch was interrupted before the remaining calls were dispatched.",
 };
 
+/**
+ * The opening of the ledger's headline, exported so a reader can recognize a
+ * rendered ledger it has no ledger data for.
+ *
+ * A cut-short batch that left no placeholder result (every call exec-resolved or
+ * its arguments never finished) carries the ledger as a synthetic user message
+ * instead, which stores no `batchLedger` to re-render from. Recognizing it by
+ * this prefix is the only handle there is, and the prefix belongs here rather
+ * than at the reader, so a reworded headline breaks the render and the
+ * recognition together instead of silently retiring the recognition.
+ */
 export const TOOL_BATCH_LEDGER_HEADLINE_PREFIX = "Partial completion ledger for this tool batch (";
 
+/**
+ * Render the ledger as the bounded text block attached to one placeholder
+ * result per batch. Ids and outcomes only: no arguments, no tool output.
+ */
 export function renderToolBatchLedger(ledger: ToolBatchLedger): string {
 	const total = ledger.completed + ledger.interrupted + ledger.dropped;
 	const counts = [`${ledger.completed} ran`];

@@ -3,11 +3,23 @@ import { createRequire } from "node:module";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import * as vm from "node:vm";
+// Subpath import, not the `@veyyon/utils` barrel: the barrel eagerly loads
+// dotenv at import time, which must not happen inside the eval worker's import
+// graph before profile bootstrap (see eval/__tests__/process-entry-import.test.ts).
 import { hasUriScheme } from "@veyyon/utils/url";
-import type { LocalImportResolution, LocalModuleEntry } from "./local-module-loader-helpers";
-
-import { LOCAL_MODULE_EXTENSIONS } from "./local-module-loader-helpers";
 import { collectModuleSourceSpecifiers, stripTypeScriptSyntax } from "./rewrite-imports";
+
+interface LocalModuleEntry {
+	version: number;
+	identifier: string;
+	module: vm.SourceTextModule;
+	/** Memoized link+evaluate of this module as a graph root; set lazily by `#loadLocalModule`. */
+	loaded?: Promise<void>;
+}
+
+export type LocalImportResolution = { mode: "local"; value: unknown } | { mode: "external"; target: string };
+
+const LOCAL_MODULE_EXTENSIONS = new Set([".js", ".jsx", ".mjs", ".ts", ".tsx", ".mts"]);
 
 export class LocalModuleLoader {
 	#context: vm.Context;
@@ -82,6 +94,11 @@ export class LocalModuleLoader {
 		return await buildPromise;
 	}
 
+	// Construct (parse + register) a local module WITHOUT linking or evaluating it.
+	// Linking and evaluation are driven once from the graph root in `#linkAndEvaluate`;
+	// doing them per-module inside the recursive linker re-enters Bun's node:vm linker
+	// mid-instantiation, which segfaults JSC (getImportedModule on a null record) whenever
+	// the local graph contains an import cycle.
 	async #buildLocalModule(modulePath: string): Promise<LocalModuleEntry> {
 		const rawSource = fs.readFileSync(modulePath, "utf8");
 		const stripped = stripTypeScriptSyntax(rawSource, {
@@ -121,6 +138,10 @@ export class LocalModuleLoader {
 		return entry;
 	}
 
+	// Construct (if needed) then link+evaluate a local module as a graph root, returning
+	// the evaluated module. Link and evaluate run exactly once over the whole reachable
+	// graph; the static linker only constructs dependencies, letting node:vm instantiate
+	// cyclic graphs in a single pass.
 	async #loadLocalModule(modulePath: string): Promise<vm.SourceTextModule> {
 		const entry = await this.#ensureLocalModule(modulePath);
 		entry.loaded ??= this.#linkAndEvaluate(entry, modulePath);
@@ -131,6 +152,14 @@ export class LocalModuleLoader {
 	async #linkAndEvaluate(entry: LocalModuleEntry, modulePath: string): Promise<void> {
 		const { module } = entry;
 		try {
+			// Serialize the link phase across every graph root. Bun's node:vm linker
+			// segfaults (getImportedModule on a null record) when two link passes
+			// instantiate overlapping module instances concurrently — e.g.
+			// Promise.all([import("./a"), import("./b")]) over a graph that shares
+			// dependencies. Holding the lock for the whole module.link() (including its
+			// async resolver callbacks) guarantees the linker is never re-entered
+			// mid-instantiation. The lock is released before evaluate(), so a dynamic
+			// import during evaluation can re-acquire it without deadlock.
 			await this.#serializeLink(async () => {
 				if (module.status === "unlinked") await module.link(this.#linkResolve);
 			});
@@ -145,6 +174,8 @@ export class LocalModuleLoader {
 		}
 	}
 
+	// Promise-chain mutex serializing node:vm link passes (see #linkAndEvaluate).
+	// #linkChain is kept non-rejecting so a failed link never wedges the queue.
 	#serializeLink<T>(run: () => Promise<T>): Promise<T> {
 		const result = this.#linkChain.then(run);
 		this.#linkChain = result.then(
@@ -154,6 +185,11 @@ export class LocalModuleLoader {
 		return result;
 	}
 
+	// Shared static-link resolver for `module.link()`. node:vm passes the referencing
+	// module and reuses this one resolver for the entire graph, so the referrer path is
+	// recovered from `#modulePaths`. Local dependencies are constructed but NOT linked or
+	// evaluated here (the root drives that); externals are loaded eagerly — they carry no
+	// imports and cannot participate in a cycle.
 	#linkResolve = async (specifier: string, referencingModule: vm.Module): Promise<vm.Module> => {
 		const referrerPath = this.#modulePaths.get(referencingModule);
 		if (referrerPath === undefined) {
@@ -166,6 +202,8 @@ export class LocalModuleLoader {
 		return await this.#ensureExternalModule(normalizeImportTarget(resolved));
 	};
 
+	// Resolver for runtime `import()` inside evaluated module code: the result must be a
+	// fully linked+evaluated module, so local targets are loaded as graph roots.
 	async #resolveDynamicImport(referrerPath: string, specifier: string): Promise<vm.Module> {
 		const resolved = resolveImportSpecifier(path.dirname(referrerPath), specifier);
 		if (isLocalPathSpecifier(specifier) && isManagedLocalModulePath(resolved)) {
@@ -174,6 +212,9 @@ export class LocalModuleLoader {
 		return await this.#ensureExternalModule(normalizeImportTarget(resolved));
 	}
 
+	// A failed link/evaluate can leave a partial graph cached. Drop every reachable module
+	// that is not fully evaluated so the next attempt reconstructs it; fully evaluated
+	// modules keep valid namespaces and stay cached.
 	#invalidateFailedLoad(rootPath: string): void {
 		const stack = [rootPath];
 		const seen = new Set<string>();

@@ -7,6 +7,11 @@
 
 - `codec.ts`, `corpus.ts`, `generate.ts`, and `session.ts` replace array spreads with `.concat()`, `Array.from()`, and `.slice()` to avoid iterator allocation on hot paths.
 
+## [1.3.0] - 2026-08-28
+
+### Changed
+
+- The dictionary generator and its constants name the `packages/evals/datasets/dicts/` corpus path instead of the retired deepswe-bench path. No behavior change.
 
 ## [1.2.0] - 2026-08-23
 

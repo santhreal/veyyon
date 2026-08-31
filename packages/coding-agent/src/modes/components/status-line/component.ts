@@ -1,16 +1,16 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { UsageLimit, UsageReport } from "@veyyon/ai";
-import {
-	type Component,
-	MOTION,
-	type MotionClock,
-	padding,
-	SettleValue,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
-import { formatClock, getProjectDir, scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils";
+import type { AgentMessage } from "@veyyon/agent-core";
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
+import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";
+import { MOTION, type MotionClock } from "@veyyon/tui/motion";
+import { SettleValue } from "@veyyon/tui/motion-settle";
+import type { Component } from "@veyyon/tui/tui";
+import { visibleWidth } from "@veyyon/tui/tui";
+import { truncateToWidth } from "@veyyon/tui/utils";
+import { getProjectDir } from "@veyyon/utils/dirs";
+import { formatClock } from "@veyyon/utils/format";
+import { scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import { resolveContextLimit } from "../../../config/compaction-strategy";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../config/settings-instance";
@@ -18,66 +18,259 @@ import { accountDisplayLabel, accountsForProvider, buildAccountInventory } from 
 import type { AgentSession } from "../../../session/agent-session";
 import type { OAuthAccountIdentity } from "../../../session/auth-storage";
 import { limitMatchesActiveAccount } from "../../../slash-commands/helpers/active-oauth-account";
-import { resolveActiveRepoContextSync } from "../../../utils/active-repo-context";
+import { AUTO_THINKING } from "../../../thinking";
+import { type ActiveRepoContext, resolveActiveRepoContextSync } from "../../../utils/active-repo-context";
 import * as git from "../../../utils/git";
+import { type LaunchFactsUpdate, readLaunchFacts, recordLaunchFacts } from "../../launch-facts";
 import { sanitizeStatusText } from "../../shared";
 import { withIcon } from "../../theme/icon-label";
 import { transitionsEnabled } from "../../theme/shimmer";
 import { theme } from "../../theme/theme";
+import { isTreeDirty } from "./branch";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
-import { getPreset } from "./presets";
-import { focusExitBadge, renderSegment, type SegmentContext } from "./segments";
-import { segmentSeparator, stateSeparator } from "./state-grammar";
+import {
+	composeQuietLines,
+	composeQuietRow,
+	effectiveStatusLineSettings,
+	gatherQuietSegments,
+	hasGitSegment,
+	hasPrSegment,
+	type QuietRowInput,
+	type QuietSegmentBounds,
+	subagentBadgeText,
+} from "./quiet-row";
+import { focusExitBadge, type SegmentContext } from "./segments";
+import type { SessionFacts } from "./session-facts";
+import { stateSeparator } from "./state-grammar";
 import { calculateTokensPerSecond } from "./token-rate";
-import type {
-	CollabStatus,
-	EffectiveStatusLineSettings,
-	StatusLineSegmentId,
-	StatusLineSegmentOptions,
-	StatusLineSettings,
-} from "./types";
+import type { CollabStatus, EffectiveStatusLineSettings, StatusLineSegmentId, StatusLineSettings } from "./types";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Context-usage memo
+// ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Gap between the location group and the total-elapsed clock. Deliberately
- * wider than the standard `  ·  ` separator and dot-free, so the clock reads
- * as its own quiet zone at the end of the line rather than one more segment.
+ * Allocation-free structural size of a tool call's arguments: the sum of every
+ * nested string length plus a fixed weight per primitive and per key. Tool-call
+ * arguments come from JSON (acyclic), so a plain recursive walk is safe. This
+ * replaces a per-redraw `JSON.stringify` of the full arguments object — a
+ * streaming Write with a 100KB file body was re-serialized on every render
+ * tick just to detect in-place growth of the tail.
  */
+function structuralTextSize(value: unknown): number {
+	if (typeof value === "string") return value.length;
+	if (typeof value === "number" || typeof value === "bigint") return 8;
+	if (typeof value === "boolean" || value === null || value === undefined) return 1;
+	if (Array.isArray(value)) {
+		let sum = 2;
+		for (const item of value) sum += 1 + structuralTextSize(item);
+		return sum;
+	}
+	if (typeof value === "object") {
+		let sum = 2;
+		for (const key in value as Record<string, unknown>) {
+			sum += key.length + 1 + structuralTextSize((value as Record<string, unknown>)[key]);
+		}
+		return sum;
+	}
+	return 1;
+}
 
-import {
-	type ActiveMeter,
-	type ActiveRepoCache,
-	type ContextUsageMemo,
-	EMPTY_MESSAGES,
-	fitLocation,
-	hasContextSegment,
-	hasGitBackedSegment,
-	hasGitSegment,
-	hasPathSegment,
-	hasPrSegment,
-	MIN_LOCATION_PART,
-	MIN_READABLE_PART,
-	messageFingerprint,
-	type QuietPart,
-	type QuietSegmentBounds,
-	RIGHT_PART_SHED_RANK,
-	resolveWorktreeContext,
-	SESSION_CLOCK_GAP,
-	STATUS_USAGE_REFRESH_TIMEOUT_MS,
-	STATUS_USAGE_START_DELAY_MS,
-	weakestRightPart,
-	weakestSpendablePart,
-} from "./component-helpers";
+/**
+ * Cheap structural fingerprint of a message's tokenizable content. O(blocks) —
+ * only reads string `.length` and primitives, never copies or serializes.
+ * Detects in-place growth of the streaming tail (and other in-place mutations)
+ * so the cached `getContextUsage()` result is recomputed when — and only when —
+ * the numbers it depends on change. Exported for its dedicated test suite.
+ */
+export function messageFingerprint(msg: AgentMessage): string {
+	const role = (msg as { role?: string }).role ?? "";
+	const ts = (msg as { timestamp?: number }).timestamp ?? 0;
+	let textLen = 0;
+	let blocks = 0;
+	let images = 0;
+	if (role === "bashExecution") {
+		const b = msg as { command?: unknown; output?: unknown };
+		if (typeof b.command === "string") textLen += b.command.length;
+		if (typeof b.output === "string") textLen += b.output.length;
+	} else if (role === "user") {
+		const content = (msg as { content?: unknown }).content;
+		if (typeof content === "string") {
+			textLen += content.length;
+		} else if (Array.isArray(content)) {
+			blocks = content.length;
+			for (const block of content) {
+				if (block?.type === "text" && typeof block.text === "string") textLen += block.text.length;
+			}
+		}
+	} else if (role === "assistant") {
+		const assistantMsg = msg as AssistantMessage;
+		const usageExt = assistantMsg.usage as unknown as { promptTokensDetails?: unknown };
+		const usageTotal = assistantMsg.usage?.totalTokens ?? 0;
+		const promptBuckets = usageExt?.promptTokensDetails ? 1 : 0;
+		const stopReason = assistantMsg.stopReason ?? "";
 
-export {
-	CLIP_BOUNDARIES,
-	FLOOR_SPENDABLE,
-	fitLocation,
-	MIN_LOCATION_PART,
-	messageFingerprint,
-	type QuietPart,
-	type QuietSegmentBounds,
-} from "./component-helpers";
+		let signatureLen = 0;
+		let redactedLen = 0;
+		const msgExt = assistantMsg as unknown as {
+			thinkingSignature?: string;
+			textSignature?: string;
+			thoughtSignature?: string;
+			redactedThinking?: { data?: string };
+		};
+		const thinkingSignature = msgExt.thinkingSignature;
+		if (typeof thinkingSignature === "string") {
+			signatureLen += thinkingSignature.length;
+		}
+		const textSignature = msgExt.textSignature;
+		if (typeof textSignature === "string") {
+			signatureLen += textSignature.length;
+		}
+		const thoughtSignature = msgExt.thoughtSignature;
+		if (typeof thoughtSignature === "string") {
+			signatureLen += thoughtSignature.length;
+		}
+		const redactedData = msgExt.redactedThinking?.data;
+		if (typeof redactedData === "string") {
+			redactedLen += redactedData.length;
+		}
 
+		const content = (msg as { content?: unknown }).content;
+		if (Array.isArray(content)) {
+			blocks = content.length;
+			for (const block of content) {
+				if (!block || typeof block !== "object") continue;
+				const b = block as {
+					type?: string;
+					text?: string;
+					thinking?: string;
+					thinkingSignature?: string;
+					signature?: string;
+					textSignature?: string;
+					thoughtSignature?: string;
+					data?: string;
+					name?: string;
+					arguments?: unknown;
+				};
+				if (b.type === "text" && typeof b.text === "string") textLen += b.text.length;
+				else if (b.type === "thinking") {
+					if (typeof b.thinking === "string") textLen += b.thinking.length;
+					if (typeof b.thinkingSignature === "string") signatureLen += b.thinkingSignature.length;
+					if (typeof b.signature === "string") signatureLen += b.signature.length;
+					if (typeof b.textSignature === "string") signatureLen += b.textSignature.length;
+					if (typeof b.thoughtSignature === "string") signatureLen += b.thoughtSignature.length;
+				} else if (b.type === "redactedThinking" && typeof b.data === "string") {
+					redactedLen += b.data.length;
+				} else if (b.type === "toolCall") {
+					if (typeof b.name === "string") textLen += b.name.length;
+					if (b.arguments !== undefined) {
+						textLen += structuralTextSize(b.arguments);
+					}
+				}
+			}
+		}
+		return `${role}:${ts}:${textLen}:${blocks}:${images}:${signatureLen}:${redactedLen}:${usageTotal}:${promptBuckets}:${stopReason}`;
+	} else if (role === "toolResult" || role === "hookMessage") {
+		const content = (msg as { content?: unknown }).content;
+		if (typeof content === "string") {
+			textLen += content.length;
+		} else if (Array.isArray(content)) {
+			blocks = content.length;
+			for (const block of content) {
+				if (!block || typeof block !== "object") continue;
+				const b = block as { type?: string; text?: string };
+				if (b.type === "text" && typeof b.text === "string") textLen += b.text.length;
+				else if (b.type === "image") images++;
+			}
+		}
+	} else if (role === "branchSummary" || role === "compactionSummary") {
+		const s = (msg as { summary?: unknown }).summary;
+		if (typeof s === "string") textLen += s.length;
+	}
+	return `${role}:${ts}:${textLen}:${blocks}:${images}`;
+}
+
+interface ContextUsageMemo {
+	messagesRef: readonly AgentMessage[];
+	length: number;
+	lastFingerprint: string | undefined;
+	modelContextWindow: number;
+	contextUsageRevision: number;
+	usedTokens: number | null;
+	contextWindow: number;
+	systemPromptRef: readonly string[] | undefined;
+	toolsRef: readonly any[] | undefined;
+	skillsRef: readonly any[] | undefined;
+}
+
+interface ActiveRepoCache {
+	projectDir: string;
+	activeRepo: ActiveRepoContext | null;
+	effectiveGitCwd: string;
+	/** Project + worktree dir name when `projectDir` is a linked worktree, else null. */
+	worktree: WorktreeContext | null;
+}
+
+interface WorktreeContext {
+	/** Primary-checkout (project) name shown by the path segment. */
+	projectName: string;
+	/** Worktree directory name — suppressed from the path when it equals the branch. */
+	worktreeName: string;
+}
+
+/**
+ * Project + worktree-dir names when `cwd` is a linked git worktree, else null.
+ * The project name comes from the shared primary checkout; bare-repo worktrees
+ * resolve to the shared `foo.git` dir, so a trailing `.git` is stripped.
+ */
+function resolveWorktreeContext(cwd: string): WorktreeContext | null {
+	const worktree = git.repo.linkedWorktreeSync(cwd);
+	if (!worktree) return null;
+	const base = path.basename(worktree.primaryRoot);
+	const projectName = base.endsWith(".git") ? base.slice(0, -4) : base;
+	if (!projectName) return null;
+	return { projectName, worktreeName: path.basename(worktree.root) };
+}
+
+/**
+ * Per-{@link AgentSession} active-processing meter for the `time_spent`
+ * segment. `activeMs` is the union of every completed `agent_start`→
+ * `agent_end` window; `activeStartedAt` is the start timestamp of the
+ * currently-running window, or `null` when idle.
+ *
+ * `sessionFile` snapshots the loaded session-file path at meter-creation
+ * time. `AgentSession.switchSession` (/resume, /move, ACP fork, RPC
+ * `switch_session`, extension `switchSession`) mutates the loaded file
+ * under the same {@link AgentSession} ref, so the WeakMap key alone
+ * cannot tell two conversations apart. `#meter()` compares this snapshot
+ * against the live `session.sessionFile`, and a real-to-real change
+ * starts the meter fresh instead of crediting the new conversation with
+ * the previous one's accumulated active time. The undefined → real
+ * first-save transition does not reset, since the session identity has
+ * not changed.
+ */
+interface ActiveMeter {
+	activeMs: number;
+	activeStartedAt: number | null;
+	/** Duration of the most recently COMPLETED run window — what the location
+	 * line's stopped clock (`✓ 0:21`) shows once the agent yields. */
+	lastRunMs: number;
+	sessionFile: string | undefined;
+}
+
+const EMPTY_MESSAGES: readonly AgentMessage[] = [];
+const STATUS_USAGE_START_DELAY_MS = 0;
+const STATUS_USAGE_REFRESH_TIMEOUT_MS = 2_000;
+
+function hasGitBackedSegment(segments: readonly StatusLineSegmentId[]): boolean {
+	return hasGitSegment(segments) || hasPrSegment(segments);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// StatusLineComponent
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** How the host paints the footline's motion. */
 export interface StatusLineMotionOptions {
 	/**
 	 * Repaint hook for the frames between a click and the row it lands on. Without one the
@@ -101,7 +294,23 @@ export class StatusLineComponent implements Component {
 	#cachedBranchRepoId: string | null | undefined = undefined;
 	#cachedBranchCwd: string | undefined = undefined;
 	#gitWatcher: fs.FSWatcher | null = null;
-	#onBranchChange: (() => void) | null = null;
+	/**
+	 * Repaint the row, because something the git segments read has landed.
+	 *
+	 * Named for the callers rather than for the watcher that came first: a
+	 * HEAD change fires it, and so do the three lookups that cannot answer on
+	 * the frame that asked — the default branch, the pull request, and
+	 * `git status`. All four leave a row on screen that no longer matches what
+	 * the component would render, and the host has no other reason to repaint
+	 * a resting session.
+	 *
+	 * `dispose()` clears it, and that is the whole of how a landing that
+	 * arrives after the row is gone is stopped: the callback re-renders the
+	 * host, the re-render reads `settings`, and a test has usually reset those
+	 * by then. A second `#disposed` check at each call site would be a
+	 * mechanism that can disagree with this one.
+	 */
+	#onGitStateChange: (() => void) | null = null;
 	#disposed = false;
 	#autoCompactEnabled: boolean = true;
 	#hookStatuses: Map<string, string> = new Map();
@@ -276,7 +485,7 @@ export class StatusLineComponent implements Component {
 	updateSettings(settings: StatusLineSettings): void {
 		this.#settings = settings;
 		this.#effectiveSettings = undefined;
-		if (this.#onBranchChange) this.#setupGitWatcher();
+		if (this.#onGitStateChange) this.#setupGitWatcher();
 	}
 
 	getEffectiveSettingsForTest(): EffectiveStatusLineSettings {
@@ -432,8 +641,15 @@ export class StatusLineComponent implements Component {
 		}
 	}
 
-	watchBranch(onBranchChange: () => void): void {
-		this.#onBranchChange = onBranchChange;
+	/**
+	 * Register the row's repaint request and start watching HEAD.
+	 *
+	 * One callback for every git-backed reason the row goes stale, so a host
+	 * wires a repaint once instead of learning which of the four lookups it has
+	 * to subscribe to.
+	 */
+	watchGitState(onChange: () => void): void {
+		this.#onGitStateChange = onChange;
 		this.#setupGitWatcher();
 	}
 
@@ -460,9 +676,7 @@ export class StatusLineComponent implements Component {
 			this.#gitWatcher = fs.watch(watchPath, () => {
 				if (this.#disposed) return;
 				this.#invalidateGitCaches();
-				if (this.#onBranchChange) {
-					this.#onBranchChange();
-				}
+				this.#onGitStateChange?.();
 			});
 		} catch {
 			this.#invalidateGitCaches();
@@ -471,7 +685,7 @@ export class StatusLineComponent implements Component {
 
 	dispose(): void {
 		this.#disposed = true;
-		this.#onBranchChange = null;
+		this.#onGitStateChange = null;
 		this.#clearUsageStartTimer();
 		// A travel with no row left to paint is a repaint loop for a component that is gone.
 		this.#expansion?.dispose();
@@ -552,9 +766,7 @@ export class StatusLineComponent implements Component {
 					if (this.#disposed || this.#defaultBranchCwd !== lookupCwd) return;
 					if (resolved) {
 						this.#defaultBranch = resolved;
-						if (this.#onBranchChange) {
-							this.#onBranchChange();
-						}
+						this.#onGitStateChange?.();
 					}
 				} catch {
 					// Keep the `"main"` fallback; a decoration cannot fail a render.
@@ -564,10 +776,37 @@ export class StatusLineComponent implements Component {
 		return branch === this.#defaultBranch;
 	}
 
+	/**
+	 * The working tree's dirtiness, or `null` while nothing has asked git yet.
+	 *
+	 * `git status` is a subprocess and cannot answer on the frame that asked, so the landing
+	 * repaints. The repaint is conditional on {@link isTreeDirty} moving, not on the counts moving,
+	 * so a refetch triggered by that very repaint cannot ask for another one and spin.
+	 *
+	 * THE FIRST ANSWER IS THE ONE THE CARD ALREADY GAVE. The launch card paints the recorded
+	 * marker, so a mounted row that started from `null` took the `*` away for the 90ms until the
+	 * subprocess answered and then put it back. That is not a marker arriving late, it is the
+	 * branch changing colour twice on a tree that never changed: `renderBranch` styles the whole
+	 * segment `statusLineGitDirty` or `statusLineGitClean`, so the flicker is the width of the
+	 * branch, not of one asterisk. Seeding the cache with what the card painted makes the mount
+	 * silent, and the scan below still runs and still repaints if the tree really did move.
+	 *
+	 * SPENT ON THE FIRST RENDER, recorded marker or not, and only for the directory the facts
+	 * describe. `gitCwd` follows the active repo, which a worktree hop or a subagent's cwd can move
+	 * off the project the recorder keyed on. Reading the file again later would let a record another
+	 * veyyon process wrote in this project land on a row that has already painted, which is the
+	 * arriving marker this seed exists to remove rather than a second copy of it.
+	 */
 	#getGitStatus(effectiveGitCwd?: string): git.GitStatusSummary | null {
 		if (!this.#gitEnabled()) return null;
 
 		const gitCwd = effectiveGitCwd ?? this.#resolveActiveRepoCache().effectiveGitCwd;
+		if (this.#cachedGitStatusCwd === undefined && gitCwd === getProjectDir()) {
+			// `#gitStatusLastFetch` stays 0, so this is a value to render and never a fetch that
+			// happened: the scan below runs on this same call and replaces it.
+			this.#cachedGitStatusCwd = gitCwd;
+			this.#cachedGitStatus = readLaunchFacts().gitStatus;
+		}
 		if (this.#gitStatusInFlightCwd !== undefined) {
 			return this.#cachedGitStatusCwd === gitCwd ? this.#cachedGitStatus : null;
 		}
@@ -585,10 +824,12 @@ export class StatusLineComponent implements Component {
 				nextStatus = null;
 			} finally {
 				if (this.#gitStatusInFlightCwd === gitCwd) {
+					const moved = isTreeDirty(this.#cachedGitStatus) !== isTreeDirty(nextStatus);
 					this.#cachedGitStatus = nextStatus;
 					this.#cachedGitStatusCwd = gitCwd;
 					this.#gitStatusLastFetch = Date.now();
 					this.#gitStatusInFlightCwd = undefined;
+					if (moved) this.#onGitStateChange?.();
 				}
 			}
 		})();
@@ -664,9 +905,7 @@ export class StatusLineComponent implements Component {
 				setCachedPr(null);
 			} finally {
 				this.#prLookupInFlight = false;
-				if (!this.#disposed && this.#onBranchChange) {
-					this.#onBranchChange();
-				}
+				this.#onGitStateChange?.();
 			}
 		})();
 
@@ -976,6 +1215,130 @@ export class StatusLineComponent implements Component {
 		return { usedTokens, contextWindow };
 	}
 
+	/**
+	 * The session, reduced to the values the segments read.
+	 *
+	 * THE ONE PLACE the status row touches `AgentSession`. Every segment used to
+	 * reach through `ctx.session` for a boolean or a name, which is what made the
+	 * row unrenderable before a session existed and forced the launch card to
+	 * keep a hand-written copy of half of it. Read once per render, like every
+	 * other cached value on the context: a segment cannot call back into the
+	 * session, so it cannot observe a state that changed mid-row.
+	 */
+	#facts(): SessionFacts {
+		const state = this.session.state;
+		const model = state.model;
+		const sessionManager = this.session.sessionManager;
+		return {
+			model: model ? { id: model.id, name: model.name ?? "", supportsThinking: Boolean(model.thinking) } : null,
+			thinkingLevel: state.thinkingLevel ?? ThinkingLevel.Off,
+			autoThinking: this.session.isAutoThinking
+				? { resolved: this.session.autoResolvedThinkingLevel() ?? null }
+				: null,
+			advisorActive: this.session.isAdvisorActive(),
+			fastMode: this.session.isFastModeActive(),
+			subscription: model ? this.session.modelRegistry.isUsingOAuth(model) : false,
+			streaming: this.session.isStreaming,
+			// Optional-called: the accessor is non-optional on `AgentSession`, but
+			// embedders and test stubs satisfy the narrower shape, and a rung is
+			// worth defaulting rather than throwing the whole row.
+			approvalMode: this.session.effectiveApprovalMode?.(),
+			approvalBypassed: this.session.isApprovalBypassed(),
+			cwd: sessionManager?.getCwd?.() ?? null,
+			sessionId: sessionManager?.getSessionId?.() ?? null,
+			sessionName: sessionManager?.getSessionName() ?? null,
+			goal: this.session.getGoalModeState()?.goal ?? null,
+			goalModelBudgets: this.session.settings.get("goal.modelBudgetsEnabled") === true,
+			goalVerbose: this.session.settings.get("goal.statusInFooter") === true,
+		};
+	}
+
+	/**
+	 * Keep what this row knows for the next launch of this project.
+	 *
+	 * Four of the things the launch card draws cannot be computed inside its budget — a model's
+	 * display name needs the catalog, the dirty marker needs a `git status` subprocess, the gauge
+	 * needs a prompt that has not been assembled, and the effort is clamped to what the resolved
+	 * model supports — and this method runs at the one moment all four are resolved and agree with
+	 * each other. They are written together so the next card paints one consistent row rather than
+	 * a mix of two sessions.
+	 *
+	 * WHAT EACH ONE REQUIRES.
+	 *
+	 * The percentage is recorded only while the conversation is EMPTY, which is what makes it the
+	 * at-rest cost the next card is asking about; with messages in it, it measures this
+	 * conversation and means nothing to a fresh one. The name and the git summary have no such
+	 * condition: they describe the model and the working tree, neither of which the conversation
+	 * moves.
+	 *
+	 * The name is recorded only when the session is running the model the settings store names as
+	 * the default, because that is the id the next launch will key on. A runtime switch that was
+	 * not persisted would otherwise file this model's name under the other model's id.
+	 *
+	 * Called from {@link StatusLineComponent.#buildSegmentContext} rather than from session start
+	 * because that is the one place that resolves the limit the percentage is taken against, and
+	 * called AFTER the collab override is applied: a guest's percentage describes the host's
+	 * machine and must never become the baseline for the next launch on this one. The guest flag
+	 * is a parameter so that ordering is stated at the call site instead of implied by it.
+	 *
+	 * Every redraw of an idle session reaches this; the recorder collapses them to one write.
+	 */
+	#recordLaunchFacts(contextPercent: number | null, isCollabGuest: boolean): void {
+		if (isCollabGuest) return;
+		const update: LaunchFactsUpdate = {};
+
+		// `session.state.model` is the one the row itself renders from, via `#facts()`;
+		// `session.model` is undefined here and recorded nothing at all.
+		//
+		// Both model facts are filed under the DEFAULT ROLE, because that string is what the next
+		// launch keys on, so they are recorded only when the session is running that role's model.
+		// The role is `provider/id` — comparing it to the bare `model.id` never matched and left
+		// the card printing the raw id — and it carries an optional `:thinking` or `@route`
+		// suffix, which is why this tests the qualified id as a PREFIX at a delimiter rather than
+		// splitting on a colon the id is itself allowed to contain.
+		const model = this.session.state.model;
+		const role = settings.getModelRole("default");
+		const qualified = model?.provider ? `${model.provider}/${model.id}` : model?.id;
+		const isDefaultRole =
+			!!role &&
+			!!qualified &&
+			(role === qualified || role.startsWith(`${qualified}:`) || role.startsWith(`${qualified}@`));
+
+		// A percentage is a fraction of the window of the model that measured it. A session runs a
+		// model other than the configured role whenever `--model` names one, `/model` switches
+		// before anything is sent, or the role does not resolve and the fallback answers — and
+		// recording that reading under the role's key hands the next launch a gauge drawn against
+		// a window its model does not have. Left absent, the card states `?` and is right.
+		if (isDefaultRole && contextPercent !== null && (this.session.messages?.length ?? 0) === 0) {
+			update.contextPercent = contextPercent;
+		}
+
+		if (model?.name && isDefaultRole) {
+			update.modelName = model.name;
+			if (model.provider) update.providerName = model.provider;
+		}
+
+		// The effort is model-scoped for the same reason the gauge is: it is clamped to the rungs
+		// this model supports, so the level one model ran at states nothing about another's. Sent as
+		// an explicit `null` when the row printed no tail, so a model whose thinking was turned off
+		// stops the next launch printing the rung it used to run at.
+		if (isDefaultRole && model) {
+			const supportsThinking = Boolean(model.thinking);
+			const level = this.session.state.thinkingLevel ?? ThinkingLevel.Off;
+			if (!supportsThinking) {
+				update.thinking = null;
+			} else if (this.session.isAutoThinking) {
+				update.thinking = AUTO_THINKING;
+			} else {
+				update.thinking = level === ThinkingLevel.Off ? null : level;
+			}
+		}
+
+		if (this.#cachedGitStatus) update.gitStatus = this.#cachedGitStatus;
+
+		if (Object.keys(update).length > 0) void recordLaunchFacts(update);
+	}
+
 	#buildSegmentContext(
 		width: number,
 		segmentOptions: StatusLineSettings["segmentOptions"],
@@ -1061,6 +1424,8 @@ export class StatusLineComponent implements Component {
 			contextLimitKind = "window";
 		}
 
+		this.#recordLaunchFacts(contextPercent, collabState?.contextUsage != null);
+
 		const shouldResolveActiveRepo = this.#gitEnabled() && (includePath || includeGit || includePr);
 		const projectDir = this.session.sessionManager?.getCwd?.() ?? getProjectDir();
 		const activeRepoCache = shouldResolveActiveRepo
@@ -1070,7 +1435,7 @@ export class StatusLineComponent implements Component {
 		const gitStatus = includeGit ? this.#getGitStatus(activeRepoCache.effectiveGitCwd) : null;
 		const gitPr = includePr ? this.#lookupPr(activeRepoCache.effectiveGitCwd) : null;
 		return {
-			session: this.session,
+			facts: this.#facts(),
 			focusedAgentId: this.#focusedAgentId,
 			activeRepo: activeRepoCache.activeRepo,
 			width,
@@ -1113,40 +1478,11 @@ export class StatusLineComponent implements Component {
 	}
 
 	#computeEffectiveSettings(): EffectiveStatusLineSettings {
-		const preset = this.#settings.preset ?? "default";
-		const presetDef = getPreset(preset);
-		const useCustomSegments = preset === "custom";
-		const mergedSegmentOptions: StatusLineSettings["segmentOptions"] = {};
-
-		for (const [segment, options] of Object.entries(presetDef.segmentOptions ?? {})) {
-			mergedSegmentOptions[segment as keyof StatusLineSegmentOptions] = { ...(options as Record<string, unknown>) };
-		}
-
-		for (const [segment, options] of Object.entries(this.#settings.segmentOptions ?? {})) {
-			const current = mergedSegmentOptions[segment as keyof StatusLineSegmentOptions] ?? {};
-			mergedSegmentOptions[segment as keyof StatusLineSegmentOptions] = {
-				...(current as Record<string, unknown>),
-				...(options as Record<string, unknown>),
-			};
-		}
-
-		const leftSegments = useCustomSegments
-			? (this.#settings.leftSegments ?? presetDef.leftSegments)
-			: presetDef.leftSegments;
-		const rightSegments = useCustomSegments
-			? (this.#settings.rightSegments ?? presetDef.rightSegments)
-			: presetDef.rightSegments;
-
-		return {
-			...this.#settings,
-			leftSegments,
-			rightSegments,
-			segmentOptions: mergedSegmentOptions,
-		};
+		return effectiveStatusLineSettings(this.#settings);
 	}
 
 	#subagentBadgeText(): string {
-		return theme.fg("statusLineSubagents", withIcon(theme.icon.agents, `${this.#subagentCount}`));
+		return subagentBadgeText(this.#subagentCount);
 	}
 
 	/**
@@ -1180,93 +1516,6 @@ export class StatusLineComponent implements Component {
 	 * both the two-line selector layout ({@link renderQuietLines}) and the
 	 * composer's single footline ({@link renderQuietLine}) read from here.
 	 */
-	#gatherQuietSegments(width: number): { location: QuietPart[]; capLeft: QuietPart[]; capRight: QuietPart[] } {
-		const effectiveSettings = this.#resolveSettings();
-		const gitEnabled = this.#gitEnabled();
-		const leftCfg = effectiveSettings.leftSegments;
-		const rightCfg = effectiveSettings.rightSegments;
-		const includePath = hasPathSegment(leftCfg) || hasPathSegment(rightCfg);
-		const includeContext = hasContextSegment(leftCfg) || hasContextSegment(rightCfg);
-		const includeGit = gitEnabled && (hasGitSegment(leftCfg) || hasGitSegment(rightCfg));
-		const includePr = gitEnabled && (hasPrSegment(leftCfg) || hasPrSegment(rightCfg));
-		// The footline reads at a glance, so the model-effort gap is roomy. The
-		// per-kind git counts and the token-text context gauge that the other
-		// options here used to switch between are gone: nothing could reach
-		// them, because this is the only place a segment is ever rendered.
-		//
-		// `path.maxLength` was pinned to 30 here, which quietly overrode every
-		// preset's own budget (40 on `default`, 60 on `nerd`) AND any
-		// `statusLine.segmentOptions.path.maxLength` the operator set — picking
-		// `nerd` for its long paths changed nothing on screen. The preset wins
-		// now; 30 is only the fallback for a preset that names no budget.
-		//
-		// EXPANDED PATH. A click on the path toggles `#pathExpanded`: the location zone
-		// gives up its clamp and takes the room the model chip vacates, so a path too long
-		// for the footline can be read without resizing the terminal. The shed loop below
-		// still clips the location to the row, so this widens the budget rather than
-		// promising the whole path.
-		//
-		// The clamp travels between the two budgets rather than switching between them, so
-		// the path grows a cell at a time out of the room the chip is giving back. Both ends
-		// of the trade are driven by ONE progress value, so the row can never be mid-way
-		// through widening while the chip is already gone.
-		const expansion = this.#expansionProgress();
-		const collapsedPathBudget = effectiveSettings.segmentOptions?.path?.maxLength ?? 30;
-		// A row narrower than the clamp has nothing to widen INTO, and interpolating toward it
-		// would make the click cut the path shorter than the clamp already had it.
-		const expandedPathBudget = Math.max(collapsedPathBudget, width);
-		const pathBudget = Math.round(collapsedPathBudget + (expandedPathBudget - collapsedPathBudget) * expansion);
-		const quietOptions = {
-			...effectiveSettings.segmentOptions,
-			path: {
-				...effectiveSettings.segmentOptions?.path,
-				maxLength: pathBudget,
-			},
-			model: { ...effectiveSettings.segmentOptions?.model, roomy: true },
-		};
-		const ctx = this.#buildSegmentContext(width, quietOptions, includePath, includeContext, includeGit, includePr);
-		const LOCATION_IDS: Record<string, true> = { path: true, git: true, pr: true };
-		const CONTEXT_IDS: Record<string, true> = { context_pct: true, context_total: true };
-		const subagentBadge = this.#subagentBadgeText();
-		const location: QuietPart[] = [];
-		const capLeft: QuietPart[] = [];
-		const capRight: QuietPart[] = [];
-		const push = (id: StatusLineSegmentId, out: QuietPart[]) => {
-			if (id === "subagents") return;
-			const rendered = renderSegment(id, ctx);
-			if (!rendered.visible || !rendered.content) return;
-			out.push({ id, content: rendered.content, pin: rendered.pin });
-		};
-		// The context gauge is the footline's one LIVE value; everything else on the
-		// right is standing state. A gauge configured on the left still belongs in the
-		// right group (it is a capability reading, not a location), but pushing it there
-		// during this first loop put it AHEAD of every right-configured segment, so the
-		// default preset read `model · gauge · session-name`: the number that changes
-		// every turn sandwiched between two that do not. Nobody chose that order; it
-		// fell out of which loop ran first. Held aside and appended after the right
-		// group instead, so the live value is the line's last word. A gauge the user
-		// configured on the RIGHT keeps the position they gave it.
-		const contextFromLeft: QuietPart[] = [];
-		for (const id of leftCfg) {
-			if (LOCATION_IDS[id]) push(id, location);
-			else if (CONTEXT_IDS[id]) push(id, contextFromLeft);
-			else push(id, capLeft);
-		}
-		for (const id of rightCfg) {
-			if (LOCATION_IDS[id]) push(id, location);
-			else push(id, capRight);
-		}
-		capRight.push(...contextFromLeft);
-		const runningBackgroundJobs = this.#backgroundJobBadgeCount();
-		const badgeParts: string[] = [];
-		if (runningBackgroundJobs > 0) {
-			badgeParts.push(theme.fg("statusLineSubagents", withIcon(theme.icon.job, `${runningBackgroundJobs}`)));
-		}
-		const badgeSlot = this.#animatedBadgeSlot(badgeParts);
-		if (badgeSlot !== null) capRight.unshift({ id: "badges", content: badgeSlot });
-		capRight.unshift({ id: "subagents", content: subagentBadge });
-		return { location, capLeft, capRight };
-	}
 
 	// Layout of the last rendered quiet footline, for click hit-testing
 	// (quietSegmentAt). Rewritten on every renderQuietLine call, so it always
@@ -1356,14 +1605,6 @@ export class StatusLineComponent implements Component {
 	 * branch, with a decent amount of space). Dim; the mode's 1s heartbeat
 	 * keeps the running form ticking between agent events.
 	 */
-	#locationWithRunClock(location: string[], sep: string, gap: string = SESSION_CLOCK_GAP): string {
-		const left = location.join(sep);
-		if (!left) return left;
-		const { runningMs, lastRunMs } = this.getRunClock();
-		const readout = runningMs !== null ? formatClock(runningMs) : lastRunMs > 0 ? `✓ ${formatClock(lastRunMs)}` : "";
-		if (!readout) return left;
-		return `${left}${gap}${theme.fg("dim", readout)}`;
-	}
 
 	/**
 	 * The focus badge on its own, with no segments: the footline row a composer renders while
@@ -1384,303 +1625,69 @@ export class StatusLineComponent implements Component {
 		return truncateToWidth(focusExitBadge(this.#focusedAgentId), Math.max(1, width));
 	}
 
+	/**
+	 * The composer's ONE metadata footline: location (path · git) on the left,
+	 * capability (model · mode · badges · context, then MCP health via
+	 * `extras.locationRight`) on the right.
+	 *
+	 * The live state is gathered here and the LAYOUT belongs to `quiet-row.ts`,
+	 * which the launch card renders the pre-session row through. Two renderers
+	 * for one row is what let the card ship a hand-written `path · git` that
+	 * omitted every segment added after it was written.
+	 */
 	renderQuietLine(width: number, extras?: { locationRight?: string | null }): string | null {
 		// The focus badge rides the footline while the view is proxied onto an
-		// agent. It was built for `getTopBorder`, but the borderless composer
-		// never asks for a top border: the editor's border is hidden and this
-		// quiet footline is the one persistent status surface, so an agent view
-		// announced itself nowhere. Prefixed the same way `getTopBorder` does it:
-		// the line is built into what the badge leaves, so no width pressure can
-		// shed the one line of text that says whose session this is and that Esc
-		// leaves it.
+		// agent, clamped to the row exactly as `renderFocusBadge` clamps it: an
+		// agent id long enough to outrun the terminal wrapped the footline and
+		// pushed the composer up a row on every render.
 		const rawBadge = this.#focusedAgentId ? focusExitBadge(this.#focusedAgentId) : "";
-		// The badge is prefixed verbatim, so it has to be clamped to the row exactly as
-		// `renderFocusBadge` clamps it: an agent id long enough to outrun the terminal wrapped the
-		// footline and pushed the composer up a row on every render.
 		const badge = rawBadge === "" ? "" : truncateToWidth(rawBadge, Math.max(1, width));
-		const badgeWidth = visibleWidth(badge);
-		const { location, capLeft, capRight } = this.#gatherQuietSegments(Math.max(0, width - badgeWidth));
-		const sep = segmentSeparator();
-		// One cell of right margin, always — nothing kisses the terminal edge. Floored at ZERO, not
-		// at one: a badge that already fills the row leaves no room to compete for, and clamping to
-		// one cell is what let a 28-cell badge plus a segment render onto an 8-cell row.
-		const budget = Math.max(0, width - 1 - badgeWidth);
-		if (budget === 0) {
-			this.#quietLineBounds = [];
-			return badge === "" ? null : badge;
+		const row = composeQuietRow(this.#rowInput(width, badge, extras?.locationRight));
+		this.#quietLineBounds = row.bounds;
+		return row.line;
+	}
+
+	/**
+	 * This session's live values, gathered into the shape both row layouts take.
+	 *
+	 * The gather runs against the width the badge leaves, because a segment
+	 * budget measured against the whole row is a budget the badge has already
+	 * spent. The two-line layout carries no badge and passes an empty one.
+	 */
+	#rowInput(width: number, badge: string, locationRight?: string | null): QuietRowInput {
+		const runningBackgroundJobs = this.#backgroundJobBadgeCount();
+		const badgeParts: string[] = [];
+		if (runningBackgroundJobs > 0) {
+			badgeParts.push(theme.fg("statusLineSubagents", withIcon(theme.icon.job, `${runningBackgroundJobs}`)));
 		}
-		const locationContents = location.map(part => part.content);
-		let left = this.#locationWithRunClock(locationContents, sep);
-		const rightParts = [...capLeft, ...capRight];
-		if (extras?.locationRight) rightParts.push({ id: "location_right", content: extras.locationRight });
-		let right = rightParts.map(part => part.content).join(sep);
-		// The run clock is comfort chrome; the capability segments (context
-		// gauge, mode, badges) are operating data. On a tight width the clock
-		// degrades FIRST — its roomy gap shrinks to two cells, then the clock
-		// drops entirely — so it can never squeeze a segment off the line.
-		let clockStage = 0;
-		let locationShortened = false;
-		// Painted extents of the location parts once the fitter has had them, or null while
-		// the location is still whole and its parts sit where the join put them.
-		let locationSlots: QuietSegmentBounds[] | null = null;
-		// Whether the fitter had to cut the location below its own floors to fit it.
-		let locationCramped = false;
-		// Fit the location into the room the CURRENT right group leaves, for the caller to take.
-		// Asked again every time the group loses a part on the zone's behalf, because the room a
-		// shed frees belongs to the location: fitting once and latching a flag is what put an
-		// empty zone on a row with twenty-one cells of slack. The zone was fitted to the budget
-		// left by a right group that still held the session name and the context gauge -- a
-		// budget of ZERO -- and when those two left a moment later nothing asked the fitter
-		// again, so the row rendered the directory and the branch as nothing at all.
-		const favour = this.#expansionProgress() > 0 ? this.#expandedHalf : undefined;
-		const fitToTheRoomLeft = () =>
-			fitLocation(location, sep, Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0)), favour);
-		while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + (left && right ? 2 : 0) > budget) {
-			if (clockStage === 0) {
-				clockStage = 1;
-				left = this.#locationWithRunClock(locationContents, sep, "  ");
-				continue;
-			}
-			if (clockStage === 1) {
-				clockStage = 2;
-				left = locationContents.join(sep);
-				continue;
-			}
-			// Shed the LOWEST-RANKED remaining part, walking from the end so equally
-			// ranked parts still go right-to-left. Everything unlisted ranks 0 and goes
-			// first; see RIGHT_PART_SHED_RANK for why the four ranked ids outrank it.
-			//
-			// Every unranked part goes before the location is touched at all, so nothing here
-			// has to be re-fitted: the zone is still whole.
-			const weakest = weakestRightPart(rightParts);
-			const dropIndex = weakest.index;
-			const dropRank = weakest.rank;
-			if (dropRank === 0 && dropIndex >= 0) {
-				rightParts.splice(dropIndex, 1);
-				right = rightParts.map(part => part.content).join(sep);
-				continue;
-			}
-			// Only ranked parts are left. Shorten the location before touching any of
-			// them: a clipped path still says where you are, and these do not degrade.
-			if (!locationShortened) {
-				locationShortened = true;
-				const fitted = fitToTheRoomLeft();
-				left = fitted.text;
-				locationSlots = fitted.slots;
-				locationCramped = fitted.cramped;
-				continue;
-			}
-			// The ranked parts still do not fit, so the ranking has to resolve. Shedding the
-			// weakest is the whole point of having one: the alternative is what shipped before
-			// it existed, where the return below truncated the joined group and a budget of one
-			// cell rendered a bare `…` — every ranked part destroyed at once, including the
-			// persistent subagent count that outranks all of them.
-			//
-			// The zone is not re-fitted inside this branch: a shed that does not end the overflow
-			// is followed by another, so there is nothing settled to fit against yet. The shed
-			// that DOES end it is accounted for below, once the group has stopped moving.
-			if (rightParts.length > 1 && dropIndex >= 0) {
-				rightParts.splice(dropIndex, 1);
-				right = rightParts.map(part => part.content).join(sep);
-				continue;
-			}
-			break;
-		}
-		// The group has stopped shedding, so the room it leaves is final -- and the shed that
-		// ended the loop above freed cells nobody has handed over yet. The zone was fitted
-		// against the group as it stood BEFORE that shed, which on a narrow row is two parts
-		// wider, so it kept a width the row had already outgrown: the same latch as the reported
-		// defect, one shed later. At 40 columns it left the zone blank with the model chip and a
-		// mode rung standing in the middle of the row.
-		if (locationShortened) {
-			const settled = fitToTheRoomLeft();
-			left = settled.text;
-			locationSlots = settled.slots;
-			locationCramped = settled.cramped;
-		}
-		// A location squeezed under its floors is a zone that no longer reads: `…izer  ·  …g-path`
-		// says neither where the session is nor what it is on. At that point the budget is what
-		// has to move, so the row pays the zone out of what it can re-read on the next frame --
-		// the context gauge, the draft token estimate, owner-pinned right content (see
-		// FLOOR_SPENDABLE) -- and asks the fitter again after each one. It never pays with the
-		// model chip, which is what this row exists to retain, never with a mode rung, which says
-		// what the next keystroke does, and never with the running-subagent count, which the row
-		// sheds last of everything.
-		while (locationCramped && locationShortened && rightParts.length > 0) {
-			const index = weakestSpendablePart(rightParts);
-			if (index < 0) break;
-			rightParts.splice(index, 1);
-			right = rightParts.map(part => part.content).join(sep);
-			const fitted = fitToTheRoomLeft();
-			left = fitted.text;
-			locationSlots = fitted.slots;
-			locationCramped = fitted.cramped;
-		}
-		// THE CLICK'S TRADE, settled last.
-		//
-		// A click says "show me this half". So the row shows it WHOLE, and it may spend the rest
-		// of the bar to do it: the model chip first, then whatever is weakest, until the clicked
-		// half is whole or the bar has nothing left to give. Only a half longer than the entire
-		// row is still clipped. The second click returns every cell and every part.
-		//
-		// Settled AFTER the ladders above, and that ordering is the trade. The ladders decide
-		// what the row holds while the right group is still standing at full width, so they
-		// reach the same decisions the collapsed row reached, and the cells freed here have
-		// nowhere to go but the location. Retracting first is what shipped, and at 78 columns it
-		// moved the zone by ONE cell: the collapsed row had shed the context gauge under
-		// pressure, the narrower chip took that pressure off, and the gauge came back and ate
-		// all twenty cells. On screen the click flashed a gauge in and a chip out and left the
-		// directory exactly where it was. Nothing the collapsed row gave up may return because
-		// the click freed room -- the room is the location's.
-		//
-		// The spend TRAVELS with the progress value instead of switching on it. Whole parts
-		// leaving the row the instant a click lands is the other way this reads as a flash: the
-		// cells have to slide out of the group and into the zone across the same frames, so each
-		// part in turn narrows and only then goes.
 		const expansion = this.#expansionProgress();
-		if (expansion > 0 && rightParts.length > 0) {
-			// What the row is short of showing the CLICKED half whole, with the other half at the
-			// width a name still reads at. Targeting both halves whole is the greedier answer and
-			// the wrong one: it spent the mode rungs to lengthen a branch nobody pointed at. The
-			// fitter hands any cells left over back to the other half afterwards, so this is a
-			// floor on what it keeps, not a cap.
-			const sepWidth = visibleWidth(sep);
-			const wanted =
-				location.reduce(
-					(sum, part) =>
-						sum +
-						(part.id === favour
-							? visibleWidth(part.content)
-							: Math.min(visibleWidth(part.content), MIN_LOCATION_PART)),
-					0,
-				) +
-				sepWidth * Math.max(0, location.length - 1);
-			const held = budget - visibleWidth(right) - (right ? 2 : 0);
-			// The chip goes first: it is the biggest single readout and the one the reader is
-			// trading away knowingly. After that the row gives up its weakest, which is the same
-			// order it uses under width pressure.
-			const order: number[] = [];
-			const chip = rightParts.findIndex(part => part.id === "model");
-			if (chip >= 0) order.push(chip);
-			const remaining = rightParts.map((_, index) => index).filter(index => index !== chip);
-			remaining.sort((a, b) => {
-				const rankA = RIGHT_PART_SHED_RANK[rightParts[a]?.id ?? ""] ?? 0;
-				const rankB = RIGHT_PART_SHED_RANK[rightParts[b]?.id ?? ""] ?? 0;
-				return rankA === rankB ? b - a : rankA - rankB;
-			});
-			order.push(...remaining);
-			const onOffer = order.reduce(
-				(sum, index) => sum + visibleWidth(rightParts[index]?.content ?? "") + sepWidth,
-				0,
-			);
-			// NOT scaled by the progress a second time. `wanted` is measured from the location's
-			// CURRENT text, and that text is already on the curve -- the path's own clamp travels
-			// from the preset budget out to the row. Scaling here as well put two interpolations
-			// of one progress value in a race, and the text won it: the clamp lengthened the path
-			// four cells before any room had been freed for it, so the ladders clipped the zone
-			// and its right edge stepped BACKWARD at the start of every expansion. The room now
-			// covers exactly what the text is asking for, frame by frame, which is one motion.
-			const spend = Math.min(Math.max(0, wanted - held), onOffer);
-			if (spend > 0) {
-				let owed = spend;
-				const spent: number[] = [];
-				for (const index of order) {
-					if (owed <= 0) break;
-					const part = rightParts[index];
-					if (part === undefined) continue;
-					const width = visibleWidth(part.content);
-					// A part is narrowed cell by cell while the row is travelling, because that is
-					// the motion: the readout is visibly standing down. Where it lands is a
-					// different question -- `clau…` is not a model name, and a row that RESTS on a
-					// fragment has not stood the readout down, it has broken it. So at rest a part
-					// that cannot keep the width a name reads at goes instead, and every cell it
-					// was holding goes to the location.
-					const floor = expansion >= 1 ? MIN_LOCATION_PART : MIN_READABLE_PART;
-					if (owed >= width - floor) {
-						spent.push(index);
-						owed -= width + sepWidth;
-						continue;
-					}
-					rightParts[index] = { ...part, content: truncateToWidth(part.content, width - owed) };
-					owed = 0;
-				}
-				// Descending, so an earlier removal cannot shift a later index.
-				for (const index of spent.sort((a, b) => b - a)) rightParts.splice(index, 1);
-				right = rightParts.map(part => part.content).join(sep);
-				const widened = fitToTheRoomLeft();
-				left = widened.text;
-				locationSlots = widened.slots;
-				locationCramped = widened.cramped;
-			}
-		}
-		if (!left && !right) {
-			this.#quietLineBounds = [];
-			return badge === "" ? null : badge;
-		}
-		// Record where each surviving segment landed, in 0-based columns of the
-		// returned line, so a footer click can be resolved back to a segment id
-		// (see quietSegmentAt). The math mirrors the assembly exactly: location
-		// parts start at column 0 and are sep-joined; the right group is
-		// right-aligned at the budget when a left group exists, else it renders
-		// from column 0 and truncates.
-		const sepWidth = visibleWidth(sep);
-		const bounds: QuietSegmentBounds[] = [];
-		if (left) {
-			// Once the fitter has run it is the authority on where the parts landed: it is
-			// what dropped a part and what clipped the head, so it knows the painted columns
-			// and this loop would only be guessing at them. Otherwise the location is whole
-			// and each part sits where the join put it.
-			if (locationSlots !== null) {
-				bounds.push(...locationSlots);
-			} else {
-				let col = 0;
-				const leftWidth = visibleWidth(left);
-				for (const part of location) {
-					const partWidth = visibleWidth(part.content);
-					if (col >= leftWidth) break;
-					bounds.push({ id: part.id, start: col, end: Math.min(col + partWidth, leftWidth) });
-					col += partWidth + sepWidth;
-				}
-			}
-		}
-		// The right group is anchored to the right edge whether or not a location shares the
-		// row with it. Anchoring it only when a location survived is what left a row of state
-		// hanging off the LEFT margin at the widths where the zone could not fit: the model
-		// chip, the rungs and the counters all jumped a screen-width left, and the eye that
-		// had learnt where to find them on every other row had to hunt for them on this one.
-		const rightStart = right ? Math.max(0, budget - visibleWidth(right)) : 0;
-		if (right) {
-			let col = rightStart;
-			for (const part of rightParts) {
-				const partWidth = visibleWidth(part.content);
-				bounds.push({ id: part.id, start: col, end: col + partWidth });
-				col += partWidth + sepWidth;
-			}
-		}
-		// Single-group lines truncate to the budget: clamp bounds the same way.
-		// The badge shifts every segment right by its width; the recorded bounds
-		// answer in columns of the RETURNED line (quietSegmentAt hit-testing), so
-		// they shift with it.
-		this.#quietLineBounds = bounds
-			.filter(entry => entry.start < budget)
-			.map(entry => ({
-				...entry,
-				start: entry.start + badgeWidth,
-				end: Math.min(entry.end, budget) + badgeWidth,
-			}));
-		if (left && right) {
-			return badge + left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
-		}
-		// A location alone on the row is what a click on a name longer than the whole bar comes
-		// to: the reader asked for that name, and the row spent every readout it had to show as
-		// much of it as fits. Before the click could spend the last part this was unreachable --
-		// the subagent badge is appended to `capRight` unconditionally, so `right` was never
-		// empty -- and the lone-group return below dropped the location on the floor, painting
-		// an empty row on the one click that most needed to answer.
-		if (left) return badge + truncateToWidth(left, budget);
-		// A lone right group has no head worth keeping, so it loses its tail -- and it keeps the
-		// right edge, so the state it carries sits where the eye already looks for it.
-		return badge + padding(rightStart) + truncateToWidth(right, budget);
+		const groups = gatherQuietSegments({
+			width: Math.max(0, width - visibleWidth(badge)),
+			effectiveSettings: this.#resolveSettings(),
+			gitEnabled: this.#gitEnabled(),
+			expansion,
+			buildContext: request =>
+				this.#buildSegmentContext(
+					request.width,
+					request.options,
+					request.includePath,
+					request.includeContext,
+					request.includeGit,
+					request.includePr,
+				),
+			subagentBadge: this.#subagentBadgeText(),
+			badgeSlot: this.#animatedBadgeSlot(badgeParts),
+		});
+		const { runningMs, lastRunMs } = this.getRunClock();
+		return {
+			...groups,
+			width,
+			badge,
+			clock: runningMs !== null ? formatClock(runningMs) : lastRunMs > 0 ? `✓ ${formatClock(lastRunMs)}` : "",
+			expansion,
+			expandedHalf: this.#expandedHalf,
+			locationRight,
+		};
 	}
 
 	/**
@@ -1739,45 +1746,7 @@ export class StatusLineComponent implements Component {
 		width: number,
 		extras?: { locationRight?: string | null },
 	): { locationLine: string | null; capabilityLine: string | null } {
-		const gathered = this.#gatherQuietSegments(width);
-		const location = gathered.location.map(part => part.content);
-		const capLeft = gathered.capLeft.map(part => part.content);
-		const capRight = gathered.capRight.map(part => part.content);
-		const sep = segmentSeparator();
-		// One cell of right margin, always — nothing kisses the terminal edge.
-		const budget = Math.max(1, width - 1);
-		let locationLine: string | null = null;
-		if (location.length > 0) {
-			const left = this.#locationWithRunClock(location, sep);
-			const right = extras?.locationRight ?? null;
-			if (right && visibleWidth(left) + visibleWidth(right) + 2 <= budget) {
-				locationLine = left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
-			} else if (visibleWidth(left) <= budget) {
-				locationLine = left;
-			} else {
-				// Same fitter as the one-line row: the branch goes before the directory does.
-				// The run clock is dropped with it, since it is chrome and this row is full.
-				locationLine = fitLocation(gathered.location, sep, budget).text;
-			}
-		}
-		let capabilityLine: string | null = null;
-		if (capLeft.length > 0 || capRight.length > 0) {
-			const left = capLeft.join(sep);
-			const rightParts = [...capRight];
-			let right = rightParts.join(sep);
-			// Free space between the groups is the design; on narrow terminals the
-			// right group sheds parts before the gap closes below breathing room.
-			while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + 2 > budget) {
-				rightParts.pop();
-				right = rightParts.join(sep);
-			}
-			if (left && right) {
-				capabilityLine = left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
-			} else {
-				capabilityLine = truncateToWidth(left || right, budget);
-			}
-		}
-		return { locationLine, capabilityLine };
+		return composeQuietLines(this.#rowInput(width, "", extras?.locationRight));
 	}
 
 	render(width: number): readonly string[] {

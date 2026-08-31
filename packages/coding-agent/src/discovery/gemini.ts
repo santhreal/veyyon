@@ -1,4 +1,19 @@
-/** Gemini CLI Provider Loads configuration from Gemini CLI's config directories. */
+/**
+ * Gemini CLI Provider
+ *
+ * Loads configuration from Gemini CLI's config directories.
+ * Priority: 60 (tool-specific provider)
+ *
+ * Sources:
+ * - User: ~/.gemini
+ * - Project: .gemini/ (cwd only)
+ *
+ * Capabilities:
+ * - mcps: From settings.json with mcpServers key
+ * - context-files: GEMINI.md files
+ * - extensions: From extensions/STAR/gemini-extension.json manifests (STAR = wildcard)
+ * - settings: From settings.json
+ */
 import * as path from "node:path";
 import { tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "../capability";
@@ -21,6 +36,10 @@ const PROVIDER_ID = "gemini";
 const DISPLAY_NAME = "Gemini CLI";
 const PRIORITY = 60;
 
+// =============================================================================
+// MCP Servers
+// =============================================================================
+
 async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> {
 	const items: MCPServer[] = [];
 	const warnings: string[] = [];
@@ -29,10 +48,8 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	const userPath = getUserPath(ctx, "gemini", "settings.json");
 	if (userPath) {
 		const result = await loadMCPFromSettings(ctx, userPath);
-		for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
-		if (result.warnings) {
-			for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
-		}
+		items.push(...result.items);
+		if (result.warnings) warnings.push(...result.warnings);
 	}
 
 	return { items, warnings };
@@ -85,7 +102,22 @@ async function loadMCPFromSettings(_ctx: LoadContext, path: string): Promise<Loa
 	return { items, warnings };
 }
 
-/** Load GEMINI.md context files. Scopes: a home-level layer emitted as `level: "user"` (`~/.gemini/GEMINI.md`) */
+// =============================================================================
+// Context Files
+// =============================================================================
+
+/**
+ * Load GEMINI.md context files.
+ *
+ * Scopes: a home-level layer emitted as `level: "user"` (`~/.gemini/GEMINI.md`)
+ * and PROJECT (`<cwd>/.gemini/GEMINI.md`).
+ *
+ * GLOBAL and PROFILE scope do not apply. Gemini CLI has no profile concept, so
+ * there is no per-profile file to read, and veyyon's global layer
+ * (`<globalConfigRoot>/AGENTS.md`) belongs to the native provider. The home-level
+ * file shares veyyon's single home slot with the active profile's AGENTS.md and
+ * loses to it on priority (native 100 against 60).
+ */
 async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFile>> {
 	const items: ContextFile[] = [];
 	const warnings: string[] = [];
@@ -107,6 +139,10 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 	return { items, warnings };
 }
 
+// =============================================================================
+// Extensions
+// =============================================================================
+
 async function loadExtensions(ctx: LoadContext): Promise<LoadResult<ManifestExtension>> {
 	const items: ManifestExtension[] = [];
 	const warnings: string[] = [];
@@ -115,10 +151,8 @@ async function loadExtensions(ctx: LoadContext): Promise<LoadResult<ManifestExte
 	const userExtPath = getUserPath(ctx, "gemini", "extensions");
 	if (userExtPath) {
 		const result = await loadExtensionsFromDir(userExtPath, "user");
-		for (let ii = 0; ii < result.items.length; ii++) items.push(result.items[ii]!);
-		if (result.warnings) {
-			for (let wi = 0; wi < result.warnings.length; wi++) warnings.push(result.warnings[wi]!);
-		}
+		items.push(...result.items);
+		if (result.warnings) warnings.push(...result.warnings);
 	}
 
 	return { items, warnings };
@@ -164,11 +198,19 @@ async function loadExtensionsFromDir(
 	return { items, warnings };
 }
 
+// =============================================================================
+// Extension Modules
+// =============================================================================
+
 async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<ExtensionModule>> {
 	const userExtensionsDir = getUserPath(ctx, "gemini", "extensions");
 	const userPaths = userExtensionsDir ? await discoverExtensionModulePaths(userExtensionsDir) : [];
 	return { items: buildExtensionModuleItems(PROVIDER_ID, userPaths, []), warnings: [] };
 }
+
+// =============================================================================
+// Provider Registration
+// =============================================================================
 
 registerProvider(mcpCapability.id, {
 	id: PROVIDER_ID,

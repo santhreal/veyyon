@@ -1,13 +1,20 @@
 import * as path from "node:path";
 import { FileType, type GlobMatch, listWorkspace } from "@veyyon/natives";
+import { isNativeAddonUnavailable } from "@veyyon/natives/loader-state";
+// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { formatAge, formatBytes } from "@veyyon/utils/format";
 
+/** Defaults for the workspace tree shown in the system prompt. */
 const WORKSPACE_DEFAULTS = {
 	maxDepth: 3,
 	perDirLimit: 12,
 	lineCap: 120,
 } as const;
 
+/**
+ * Hard cap on AGENTS.md files surfaced by `buildWorkspaceTree`. Mirrors the
+ * native cap so the system-prompt builder does not need a second pass.
+ */
 export const AGENTS_MD_LIMIT = 200;
 
 export interface DirectoryTree {
@@ -18,50 +25,85 @@ export interface DirectoryTree {
 }
 
 export interface WorkspaceTree extends DirectoryTree {
+	/** AGENTS.md files beneath the root whose rules may apply to subdirectories. */
 	agentsMdFiles: string[];
 }
 
 export interface BuildDirectoryTreeOptions {
+	/** Directory depth below the root to include. Root itself is depth 0. Default: 1. */
 	maxDepth?: number;
+	/** Per-directory child cap. `null` disables the cap. Default: `null`. */
 	perDirLimit?: number | null;
+	/** Optional override for the root level. Defaults to `perDirLimit`. */
 	rootLimit?: number | null;
+	/** Hard rendered line cap. `null` disables. Default: `null`. */
 	lineCap?: number | null;
 }
 
 export interface BuildWorkspaceTreeOptions {
+	/** Abort the native workspace scan after this many milliseconds. */
 	timeoutMs?: number;
 }
 
+/**
+ * Build a generic directory tree using a single native scan. Hidden files are
+ * shown, .gitignore is not consulted, and the standard non-source directories
+ * (`node_modules`, `.git`, build outputs, caches…) are pruned by the native
+ * walker. Used by the read tool's directory-listing path.
+ *
+ * A scan that fails refuses unless the directory is simply not there. This
+ * answers a directory the caller asked to see, so reporting one that nothing
+ * could be read out of as empty states something false about the tree.
+ * `buildWorkspaceTree` below degrades instead, because it fills a block of the
+ * system prompt that no one asked for.
+ */
 export async function buildDirectoryTree(cwd: string, options: BuildDirectoryTreeOptions = {}): Promise<DirectoryTree> {
 	const rootPath = path.resolve(cwd);
 	const maxDepth = options.maxDepth ?? 1;
 	const perDirLimit = options.perDirLimit === undefined ? null : options.perDirLimit;
 	const rootLimit = options.rootLimit === undefined ? perDirLimit : options.rootLimit;
 
-	const { entries, truncated: nativeTruncated } = await listWorkspace({
-		path: rootPath,
-		maxDepth,
-		hidden: true,
-		gitignore: false,
-	});
+	try {
+		const { entries, truncated: nativeTruncated } = await listWorkspace({
+			path: rootPath,
+			maxDepth,
+			hidden: true,
+			gitignore: false,
+		});
 
-	return assembleTree(rootPath, entries, {
-		perDirLimit,
-		rootLimit,
-		lineCap: options.lineCap === undefined ? null : options.lineCap,
-		nativeTruncated,
-		ageMode: "relative",
-	});
+		return assembleTree(rootPath, entries, {
+			perDirLimit,
+			rootLimit,
+			lineCap: options.lineCap === undefined ? null : options.lineCap,
+			nativeTruncated,
+			// Tool output (read tool directory listing), not a cached prefix —
+			// the human-friendly relative "ago" is appropriate here.
+			ageMode: "relative",
+		});
+	} catch (error) {
+		if (!isAbsentDirectory(error)) throw error;
+		return emptyTree(rootPath);
+	}
 }
 
 export interface TopLevelDirectoryListing extends DirectoryTree {
+	/** Top-level entries omitted by `entryLimit`. */
 	omittedTopLevel: number;
 }
 
 export interface BuildTopLevelDirectoryListingOptions {
+	/** Top-level entry cap. `null` disables the cap. Default: `null`. */
 	entryLimit?: number | null;
 }
 
+/**
+ * Build a concise, depth-1 listing of a directory: every top-level entry on
+ * one line, each subdirectory annotated with its direct-child count. The scan
+ * still walks two levels so the counts come from the same native pass; nothing
+ * below the top level is rendered. Used by the read tool for any directory read
+ * that names no depth, where the model needs the top-level convention rather
+ * than a recursive tree.
+ */
 export async function buildTopLevelDirectoryListing(
 	cwd: string,
 	options: BuildTopLevelDirectoryListingOptions = {},
@@ -69,58 +111,69 @@ export async function buildTopLevelDirectoryListing(
 	const rootPath = path.resolve(cwd);
 	const entryLimit = options.entryLimit === undefined ? null : options.entryLimit;
 
-	const { entries, truncated: nativeTruncated } = await listWorkspace({
-		path: rootPath,
-		maxDepth: 2,
-		hidden: true,
-		gitignore: false,
-	});
-
-	const childCounts = new Map<string, number>();
-	const topLevel: Array<{ name: string; isDir: boolean; mtimeMs: number; size: number }> = [];
-	for (const entry of entries) {
-		const slash = entry.path.lastIndexOf("/");
-		const parentPath = slash === -1 ? "" : entry.path.slice(0, slash);
-		if (parentPath === "") {
-			topLevel.push({
-				name: entry.path,
-				isDir: entry.fileType === FileType.Dir,
-				mtimeMs: entry.mtime ?? 0,
-				size: entry.size ?? 0,
-			});
-		} else if (!parentPath.includes("/")) {
-			childCounts.set(parentPath, (childCounts.get(parentPath) ?? 0) + 1);
-		}
-	}
-	topLevel.sort((a, b) => b.mtimeMs - a.mtimeMs || a.name.localeCompare(b.name));
-
-	const capped = entryLimit !== null && topLevel.length > entryLimit;
-	const shown = capped && entryLimit !== null ? topLevel.slice(0, entryLimit) : topLevel;
-	const omitted = topLevel.length - shown.length;
-
-	const formatNodeAge = makeAgeFormatter("relative");
-	const lines: RenderedLine[] = [{ label: ".", depth: 0, isRoot: true }];
-	for (const node of shown) {
-		const count = childCounts.get(node.name) ?? 0;
-		const countText = node.isDir ? `  (${count} ${count === 1 ? "entry" : "entries"})` : "";
-		lines.push({
-			label: `  - ${node.name}${node.isDir ? "/" : ""}${countText}`,
-			depth: 1,
-			isRoot: false,
-			size: node.isDir ? undefined : formatBytes(node.size),
-			age: formatNodeAge(node.mtimeMs),
+	try {
+		const { entries, truncated: nativeTruncated } = await listWorkspace({
+			path: rootPath,
+			maxDepth: 2,
+			hidden: true,
+			gitignore: false,
 		});
-	}
 
-	return {
-		rootPath,
-		rendered: formatLines(lines),
-		truncated: nativeTruncated || capped,
-		totalLines: lines.length,
-		omittedTopLevel: omitted,
-	};
+		// Direct-child count per top-level directory, from the same depth-2 scan.
+		const childCounts = new Map<string, number>();
+		const topLevel: Array<{ name: string; isDir: boolean; mtimeMs: number; size: number }> = [];
+		for (const entry of entries) {
+			const slash = entry.path.lastIndexOf("/");
+			const parentPath = slash === -1 ? "" : entry.path.slice(0, slash);
+			if (parentPath === "") {
+				topLevel.push({
+					name: entry.path,
+					isDir: entry.fileType === FileType.Dir,
+					mtimeMs: entry.mtime ?? 0,
+					size: entry.size ?? 0,
+				});
+			} else if (!parentPath.includes("/")) {
+				childCounts.set(parentPath, (childCounts.get(parentPath) ?? 0) + 1);
+			}
+		}
+		topLevel.sort((a, b) => b.mtimeMs - a.mtimeMs || a.name.localeCompare(b.name));
+
+		const capped = entryLimit !== null && topLevel.length > entryLimit;
+		const shown = capped && entryLimit !== null ? topLevel.slice(0, entryLimit) : topLevel;
+		const omitted = topLevel.length - shown.length;
+
+		const formatNodeAge = makeAgeFormatter("relative");
+		const lines: RenderedLine[] = [{ label: ".", depth: 0, isRoot: true }];
+		for (const node of shown) {
+			const count = childCounts.get(node.name) ?? 0;
+			const countText = node.isDir ? `  (${count} ${count === 1 ? "entry" : "entries"})` : "";
+			lines.push({
+				label: `  - ${node.name}${node.isDir ? "/" : ""}${countText}`,
+				depth: 1,
+				isRoot: false,
+				size: node.isDir ? undefined : formatBytes(node.size),
+				age: formatNodeAge(node.mtimeMs),
+			});
+		}
+
+		return {
+			rootPath,
+			rendered: formatLines(lines),
+			truncated: nativeTruncated || capped,
+			totalLines: lines.length,
+			omittedTopLevel: omitted,
+		};
+	} catch (error) {
+		if (!isAbsentDirectory(error)) throw error;
+		return { ...emptyTree(rootPath), omittedTopLevel: 0 };
+	}
 }
 
+/**
+ * Build the workspace tree shown in the system prompt. Returns the rendered
+ * tree plus the AGENTS.md files surfaced by the same native walk so callers
+ * never need to do a second filesystem scan.
+ */
 export async function buildWorkspaceTree(cwd: string, options: BuildWorkspaceTreeOptions = {}): Promise<WorkspaceTree> {
 	const rootPath = path.resolve(cwd);
 	try {
@@ -137,13 +190,19 @@ export async function buildWorkspaceTree(cwd: string, options: BuildWorkspaceTre
 			rootLimit: WORKSPACE_DEFAULTS.perDirLimit,
 			lineCap: WORKSPACE_DEFAULTS.lineCap,
 			nativeTruncated: result.truncated,
+			// This tree is embedded in the cached system prompt. Render absolute
+			// mtimes so the block is byte-identical across sessions and does not
+			// bust the prompt cache (a relative "Nm ago" drifts every build).
 			ageMode: "absolute",
 		});
 		return { ...tree, agentsMdFiles: result.agentsMdFiles };
-	} catch {
+	} catch (error) {
+		refuseWithoutAddon(error);
 		return { ...emptyTree(rootPath), agentsMdFiles: [] };
 	}
 }
+
+// ─── internals ──────────────────────────────────────────────────────────────
 
 interface Node {
 	name: string;
@@ -152,6 +211,7 @@ interface Node {
 	size: number;
 	depth: number;
 	children: Node[];
+	/** When > 0, `children` is laid out as `[recent…, oldest]`. */
 	droppedCount: number;
 }
 
@@ -168,10 +228,19 @@ interface AssembleOptions {
 	rootLimit: number | null;
 	lineCap: number | null;
 	nativeTruncated: boolean;
+	/**
+	 * How per-entry modification times are rendered.
+	 * - "relative": render-time "Nm ago" (fine for tool output).
+	 * - "absolute": deterministic UTC timestamp (prompt-cache-stable; used for
+	 *   the system-prompt workspace tree). See {@link makeAgeFormatter}.
+	 */
 	ageMode: "relative" | "absolute";
 }
 
 function assembleTree(rootPath: string, entries: readonly GlobMatch[], opts: AssembleOptions): DirectoryTree {
+	// Bucket entries by parent path. The native walker may yield siblings in
+	// any order across worker threads, so we group by string key and sort once
+	// per directory below.
 	const byParent = new Map<string, Node[]>();
 	for (const entry of entries) {
 		const slash = entry.path.lastIndexOf("/");
@@ -236,12 +305,27 @@ function byRecency(a: Node, b: Node): number {
 	return b.mtimeMs - a.mtimeMs || a.name.localeCompare(b.name);
 }
 
+/**
+ * Build the per-node age formatter for a single render pass.
+ *
+ * - "relative": a render-time "Nm ago" string (computed once from `Date.now()`).
+ *   Used for tool output that is not part of any cached prefix.
+ * - "absolute": a deterministic UTC `YYYY-MM-DD HH:MM` derived purely from the
+ *   file's mtime. Used for the system-prompt workspace tree so the rendered
+ *   block stays byte-identical across sessions. A relative age is recomputed on
+ *   every build, so two sessions seconds apart differ ("9m ago" → "10m ago");
+ *   because KV cache is contextual, that early change invalidates the cache for
+ *   everything after the tree — including the multi-thousand-token tool block —
+ *   forcing a full prompt re-prefill on every new session. An absolute mtime
+ *   only changes when the file itself changes, which is the correct trigger.
+ */
 function makeAgeFormatter(mode: "relative" | "absolute"): (mtimeMs: number) => string {
 	if (mode === "absolute") return formatMtimeStable;
 	const nowMs = Date.now();
 	return (mtimeMs: number) => formatAge(Math.max(0, Math.floor((nowMs - mtimeMs) / 1000)));
 }
 
+/** Deterministic, render-time-independent timestamp: UTC `YYYY-MM-DD HH:MM`. */
 function formatMtimeStable(mtimeMs: number): string {
 	if (!mtimeMs) return "";
 	return new Date(mtimeMs).toISOString().slice(0, 16).replace("T", " ");
@@ -267,6 +351,7 @@ function renderNode(node: Node, formatNodeAge: (mtimeMs: number) => string, out:
 		return;
 	}
 
+	// Layout: recent children, then "… N more" marker, then the oldest child.
 	const recent = node.children.slice(0, -1);
 	const oldest = node.children.at(-1);
 	for (const child of recent) renderNode(child, formatNodeAge, out);
@@ -279,11 +364,16 @@ function renderNode(node: Node, formatNodeAge: (mtimeMs: number) => string, out:
 	if (oldest) renderNode(oldest, formatNodeAge, out);
 }
 
+/**
+ * Cap the rendered tree at `lineCap` lines by removing the deepest trailing
+ * entries first. Root and root children (depth ≤ 1) are always preserved so
+ * the structural overview stays intact.
+ */
 function applyLineCap(
 	lines: readonly RenderedLine[],
 	lineCap: number | null,
 ): { lines: RenderedLine[]; elidedCount: number } {
-	if (lineCap === null || lines.length <= lineCap) return { lines: lines.slice(), elidedCount: 0 };
+	if (lineCap === null || lines.length <= lineCap) return { lines: [...lines], elidedCount: 0 };
 
 	const PROTECTED_DEPTH = 1;
 	const target = Math.max(1, lineCap - 1);
@@ -292,7 +382,7 @@ function applyLineCap(
 		.filter(({ line }) => !line.isRoot && line.depth > PROTECTED_DEPTH)
 		.sort((a, b) => b.line.depth - a.line.depth || b.index - a.index)
 		.slice(0, lines.length - target);
-	if (removable.length === 0) return { lines: lines.slice(), elidedCount: 0 };
+	if (removable.length === 0) return { lines: [...lines], elidedCount: 0 };
 
 	const removed = new Set(removable.map(item => item.index));
 	const kept = lines.filter((_, index) => !removed.has(index));
@@ -313,6 +403,32 @@ function formatLines(lines: readonly RenderedLine[]): string {
 			return `${line.label.padEnd(maxLabelLength + 2)}${sizeColumn}  ${line.age.padEnd(4)}`.trimEnd();
 		})
 		.join("\n");
+}
+
+/**
+ * Re-throw a scan failure that means the native addon could not load.
+ *
+ * A missing or unreadable directory is a finding: an empty tree is the honest
+ * answer and every caller renders it as one. An addon that never loaded is not
+ * a finding, because the scan did not run. Returning an empty tree for it
+ * rendered a full checkout as an empty workspace, both in the tool's directory
+ * listing and in the workspace tree the system prompt carries.
+ */
+function refuseWithoutAddon(error: unknown): void {
+	if (isNativeAddonUnavailable(error)) throw error;
+}
+
+/**
+ * Whether a scan failure means the directory is not there.
+ *
+ * A directory that does not exist has no entries, so an empty tree states the
+ * truth about it. Every other failure — an addon that will not load, a
+ * directory this process cannot open — produced no information at all, and
+ * answering `empty` for one of those reports a full directory as an empty one.
+ */
+function isAbsentDirectory(error: unknown): boolean {
+	if (typeof error !== "object" || error === null || !("code" in error)) return false;
+	return error.code === "ENOENT";
 }
 
 function emptyTree(rootPath: string): DirectoryTree {
