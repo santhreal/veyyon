@@ -1,21 +1,25 @@
 /**
- * Terminal drawing for the read_url tool. The tool half in `fetch.ts` decides what
- * happened; this half decides how a terminal shows it, and is the only one of the two
- * that reaches the TUI.
+ * Differential oracle: the read_url renderer from origin/main.
+ *
+ * Source SHA: 80cf11d2f49c9535a7e4d51a38506619035b4720, `packages/coding-agent/src/tools/fetch.ts`.
+ * Frozen: never edited to make a test pass.
+ *
+ * The one edit against that source is the theme parameter, which defaulted to the module-level theme
+ * binding and is required here, so the oracle draws with the theme the differential hands it rather
+ * than with a second instance.
  */
 
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import { applyListLimit } from "@veyyon/coding-agent/tools/core/list-limit";
+import { formatStyledArtifactReference } from "@veyyon/coding-agent/tools/core/output-meta";
+import { formatExpandHint, getDomain, replaceTabs } from "@veyyon/coding-agent/tools/core/render-utils";
+import { parseReadUrlTarget, type ReadUrlToolDetails } from "@veyyon/coding-agent/tools/web/fetch";
+import { urlHyperlink } from "@veyyon/coding-agent/tui/hyperlink";
+import { CachedOutputBlock, markFramedBlockComponent } from "@veyyon/coding-agent/tui/output-block";
+import { renderStatusLine } from "@veyyon/coding-agent/tui/status-line";
 import { type Component, Text } from "@veyyon/tui";
 import { formatCount, formatMoreLines, truncate } from "@veyyon/utils/format";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import { theme } from "../../theme/theme-binding";
-import type { Theme } from "../../theme/theme-class";
-import { urlHyperlink } from "../../tui/hyperlink";
-import { CachedOutputBlock, markFramedBlockComponent } from "../../tui/output-block";
-import { renderStatusLine } from "../../tui/status-line";
-import { applyListLimit } from "../core/list-limit";
-import { formatStyledArtifactReference } from "../core/output-meta";
-import { formatExpandHint, getDomain, replaceTabs } from "../core/render-utils";
-import { parseReadUrlTarget, type ReadUrlToolDetails } from "./fetch";
 
 /** Count non-empty lines */
 function countNonEmptyLines(text: string): number {
@@ -47,7 +51,7 @@ function formatReadUrlMetadataValue(url: string, uiTheme: Theme): string {
 export function renderReadUrlCall(
 	args: { path?: string; url?: string; raw?: boolean },
 	_options: RenderResultOptions,
-	uiTheme: Theme = theme,
+	uiTheme: Theme,
 ): Component {
 	const url = args.path ?? args.url ?? "";
 	const description = formatReadUrlDescription(url);
@@ -61,7 +65,7 @@ export function renderReadUrlCall(
 export function renderReadUrlResult(
 	result: { content: Array<{ type: string; text?: string }>; details?: ReadUrlToolDetails; isError?: boolean },
 	options: RenderResultOptions,
-	uiTheme: Theme = theme,
+	uiTheme: Theme,
 ): Component {
 	const details = result.details;
 

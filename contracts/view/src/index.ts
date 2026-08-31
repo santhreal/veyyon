@@ -29,10 +29,21 @@ export type ViewStatus = "success" | "done" | "error" | "warning" | "info" | "pe
  * The role a run of text plays, which a host maps to its own appearance.
  *
  * `title` is the name of the thing, `accent` its subject, `output` the text the tool itself
- * produced, `muted` and `dim` are secondary detail at two strengths, and the remaining four carry
- * outcome. A tone is a meaning, so a host is free to draw two of them the same way.
+ * produced, `link` a target the reader can follow, `muted` and `dim` are secondary detail at two
+ * strengths, and the remaining four carry outcome. A tone is a meaning, so a host is free to draw
+ * two of them the same way.
  */
-export type ViewTone = "title" | "accent" | "output" | "muted" | "dim" | "success" | "warning" | "error" | "info";
+export type ViewTone =
+	| "title"
+	| "accent"
+	| "output"
+	| "link"
+	| "muted"
+	| "dim"
+	| "success"
+	| "warning"
+	| "error"
+	| "info";
 
 /**
  * A run of text with one tone.
@@ -56,6 +67,15 @@ export interface ViewSpan {
 	 * the line does not.
 	 */
 	symbol?: string;
+	/**
+	 * A target this run names, which the host makes reachable however it can.
+	 *
+	 * A terminal wraps the run in an OSC 8 hyperlink, a browser draws an anchor and a transcript export
+	 * writes a Markdown link, so the tool states the URL and never the escape bytes. It is separate
+	 * from `tone` because the two are separate decisions: a run may be a link drawn in the host's link
+	 * colour, a link drawn as ordinary text, or link-coloured text that goes nowhere.
+	 */
+	link?: string;
 }
 
 /**
@@ -83,6 +103,14 @@ export interface StatusRowView {
 	titleTone?: ViewTone;
 	/** Secondary text after the title, describing what happened. */
 	description?: string;
+	/**
+	 * A target the description names, which the host makes reachable.
+	 *
+	 * The description of a row that reports on a URL or a file IS the thing it names, so the link
+	 * belongs to the whole of it rather than to a run inside it, and a row states the target without
+	 * stating how a reader follows it.
+	 */
+	descriptionLink?: string;
 	/** A short parenthetical label, such as a mode or a count. */
 	badge?: { label: string; tone: ViewTone };
 	/** Trailing detail. A host joins these with its own separator. */
@@ -109,17 +137,6 @@ export interface TextBlockView {
 export type ViewLine = readonly ViewSpan[];
 
 /**
- * A labelled group of lines inside a block.
- *
- * The label is text, not chrome: the host decides whether it draws as a heading, a divider or a
- * legend, and a section with no label is a group the host separates its own way.
- */
-export interface ViewSection {
-	label?: string;
-	lines: readonly ViewLine[];
-}
-
-/**
  * What a card held back, so the host is the one that names the gesture for seeing it.
  *
  * A tool that trims its own output to a preview knows how much it dropped and knows nothing about
@@ -136,6 +153,25 @@ export interface ViewHiddenCount {
 	noun?: { one: string; many: string };
 	/** False once the reader has everything, so the host offers no gesture it cannot honour. */
 	revealable: boolean;
+}
+
+/**
+ * A labelled group of lines inside a block.
+ *
+ * The label is text, not chrome: the host decides whether it draws as a heading, a divider or a
+ * legend, and a section with no label is a group the host separates its own way.
+ */
+export interface ViewSection {
+	label?: string;
+	lines: readonly ViewLine[];
+	/**
+	 * What this section trimmed away, when the hold-back belongs to one group rather than the card.
+	 *
+	 * A panel whose metadata is complete and whose content is a three-line preview holds nothing back
+	 * at the card level and everything back in one section, so the note goes where the missing lines
+	 * are and the host still writes it.
+	 */
+	hidden?: ViewHiddenCount;
 }
 
 /**
@@ -175,6 +211,19 @@ export interface FramedBlockView {
 	/** Omitted means the block reports nothing beyond its contents. */
 	state?: ViewStatus;
 	sections: readonly ViewSection[];
+	/**
+	 * What the block's body IS, which decides WHERE the host states the block's state.
+	 *
+	 * `report` (the default) is a card whose body states the outcome -- an error message, a summary,
+	 * a settled row of counts -- so a host may carry the state across the whole card and leave its
+	 * edge quiet. `data` is a card whose body is content the tool fetched or read, where the same
+	 * treatment reads as highlighting text nobody highlighted: a host states the outcome on the
+	 * card's edge instead and leaves the body on its ordinary ground.
+	 *
+	 * Either way the state is stated once. This is not a request for chrome, and a host with one way
+	 * of drawing a panel may ignore it.
+	 */
+	contents?: "report" | "data";
 }
 
 /** Everything a host knows how to draw. */

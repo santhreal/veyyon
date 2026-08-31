@@ -13,6 +13,7 @@ import type { RenderResultOptions } from "../../extensibility/custom-tools/types
 import { tryResolveInternalUrlSync } from "../../internal-urls/resolve-sync";
 import type { Theme } from "../../theme/theme-class";
 import { renderCodeCell, renderMarkdownCell } from "../../tui/code-cell";
+import { drawToolView } from "../../tui/draw-tool-view";
 import { fileHyperlink } from "../../tui/hyperlink";
 import { CachedOutputBlock, markFramedBlockComponent } from "../../tui/output-block";
 import { renderStatusLine } from "../../tui/status-line";
@@ -21,7 +22,7 @@ import { formatFullOutputReference, formatStyledTruncationWarning, stripOutputNo
 import { isReadableUrlPath, splitInternalUrlSel, splitPathAndSel } from "../core/path-utils";
 import { formatBytes, replaceTabs, shortenPath, wrapBrackets } from "../core/render-utils";
 import type { ReadUrlToolDetails } from "../web/fetch";
-import { renderReadUrlCall, renderReadUrlResult } from "../web/fetch-render";
+import { readUrlToolView } from "../web/fetch-view";
 import { isRawSelector, parseSel, type ReadRenderArgs, type ReadToolDetails, readSourceFsPath } from "./read";
 
 function splitReadRenderPath(rawPath: string): { path: string; sel?: string } {
@@ -75,7 +76,7 @@ export const readToolRenderer = {
 		const rawPath =
 			typeof args.file_path === "string" ? args.file_path : typeof args.path === "string" ? args.path : "";
 		if (isReadableUrlPath(rawPath)) {
-			return renderReadUrlCall({ path: rawPath, raw: args.raw }, _options, uiTheme);
+			return drawToolView(readUrlToolView.renderCall({ path: rawPath, raw: args.raw }, _options), uiTheme);
 		}
 
 		const offset = args.offset;
@@ -102,13 +103,15 @@ export const readToolRenderer = {
 		const baseRawPathForKind =
 			typeof args?.file_path === "string" ? args.file_path : typeof args?.path === "string" ? args.path : "";
 		if (urlDetails?.kind === "url" || isReadableUrlPath(baseRawPathForKind)) {
-			return renderReadUrlResult(
-				result as {
-					content: Array<{ type: string; text?: string }>;
-					details?: ReadUrlToolDetails;
-					isError?: boolean;
-				},
-				options,
+			return drawToolView(
+				readUrlToolView.renderResult(
+					result as {
+						content: Array<{ type: string; text?: string }>;
+						details?: ReadUrlToolDetails;
+						isError?: boolean;
+					},
+					options,
+				),
 				uiTheme,
 			);
 		}

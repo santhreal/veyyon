@@ -14,3 +14,6 @@
 - `ViewSpan.symbol` names a symbol a host resolves from its own registry for one span inside a line, drawn in that span's tone; `text` is what a host without such a symbol draws instead.
 - `HeadedBlockView` states a frameless card: an optional `StatusRowView` header, `ViewLine`s under it, and a `ViewHiddenCount` naming what a preview held back, so a terse tool card describes its rows without picking an indent, a width or the gesture that reveals the rest.
 - `ViewTone` carries an `output` tone for text the tool itself produced, so a card that shows tool output states that rather than reaching for a colour name.
+- `ViewSpan.link` and `StatusRowView.descriptionLink` name a target a run of text points at, so a card states where a URL leads without writing a terminal escape sequence, and `ViewTone` carries a `link` tone for text that is a target.
+- `ViewSection.hidden` states what a section held back as a `ViewHiddenCount`, so a framed card discloses the rows it did not draw the same way a headed card already did.
+- `FramedBlockView.contents` distinguishes a card whose body is a status report from one whose body is fetched data, so a host paints the outcome across a report and leaves fetched content on its own ground.

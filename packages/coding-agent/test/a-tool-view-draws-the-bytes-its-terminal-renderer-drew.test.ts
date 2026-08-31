@@ -44,7 +44,7 @@
  * predicate is private to a controller this suite does not drive.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { AnyAgentTool } from "@veyyon/agent-core";
 import { createExperimentState, createSessionRuntime } from "@veyyon/coding-agent/autoresearch/state";
@@ -63,6 +63,7 @@ import type {
 	LogDetails,
 	RunDetails,
 } from "@veyyon/coding-agent/autoresearch/types";
+import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import type { ExtensionAPI, ToolDefinition } from "@veyyon/coding-agent/extensibility/extensions";
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { RegisteredToolAdapter } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
@@ -90,10 +91,19 @@ beforeAll(async () => {
 	await initTheme();
 	entryPolicy = getAnsiPolicy();
 	setAnsiPolicy("full");
+	// One cell asks what a link target draws as, which the `tui.hyperlinks` setting answers and which
+	// reads false until the store exists.
+	resetSettingsForTest();
+	await Settings.init({ inMemory: true });
+});
+
+afterEach(() => {
+	settings.clearOverride("tui.hyperlinks");
 });
 
 afterAll(() => {
 	setAnsiPolicy(entryPolicy);
+	resetSettingsForTest();
 });
 
 /**
@@ -191,6 +201,7 @@ describe("the measurement itself", () => {
 			warning: "warning",
 			error: "error",
 			info: "infoAccent",
+			link: "mdLinkUrl",
 		};
 		const probe = {
 			fg: (color: ThemeColor, text: string) => `<${color}>${text}`,
@@ -205,11 +216,49 @@ describe("the measurement itself", () => {
 				`<${color}:status.error>`,
 			);
 		}
-		// Anti-vacuity: nine tones, nine distinct roles, so no assertion above passes by collision.
+		// Anti-vacuity: ten tones, ten distinct roles, so no assertion above passes by collision.
 		expect(new Set(Object.values(expected)).size).toBe(Object.keys(expected).length);
 		// An untoned span is raw text, and an untoned glyph is the accent one.
 		expect(drawSpan({ text: "x" }, probe)).toBe("x");
 		expect(drawSpan({ symbol: "status.error", text: "!" }, probe)).toBe("<accent:status.error>");
+	});
+
+	/**
+	 * A link is a target in the view and an escape sequence in the host.
+	 *
+	 * A view states where a run of text points; whether that reaches the screen as OSC 8 is the
+	 * terminal's question, answered by `tui.hyperlinks` and the terminal's own capability. The cell
+	 * drives both answers so a host that dropped the target, or one that emitted it while links are
+	 * off, fails here rather than in one tool's differential.
+	 */
+	it("turns a span's link target into an OSC 8 sequence only while the terminal takes them", () => {
+		const target = "https://example.com/docs";
+		settings.override("tui.hyperlinks", "always");
+		const linked = drawSpan({ text: "example.com /docs", tone: "link", link: target }, theme);
+		expect(linked).toContain("\u001b]8;");
+		expect(linked).toContain(target);
+		expect(stripVTControlCharacters(linked)).toBe("example.com /docs");
+		const row = drawStatusRow(
+			{ kind: "statusRow", title: "Fetch", description: "example.com /docs", descriptionLink: target },
+			theme,
+		);
+		expect(row).toContain("\u001b]8;");
+		expect(row).toContain(target);
+
+		settings.override("tui.hyperlinks", "off");
+		const plain = drawSpan({ text: "example.com /docs", tone: "link", link: target }, theme);
+		expect(plain).not.toContain("\u001b]8;");
+		expect(plain).toBe(theme.fg("mdLinkUrl", "example.com /docs"));
+		expect(
+			drawStatusRow(
+				{ kind: "statusRow", title: "Fetch", description: "example.com /docs", descriptionLink: target },
+				theme,
+			),
+		).not.toContain("\u001b]8;");
+		// A span with no target is never wrapped, whatever the setting says, so the sequence above
+		// came from the target rather than from the tone.
+		settings.override("tui.hyperlinks", "always");
+		expect(drawSpan({ text: "example.com /docs", tone: "link" }, theme)).not.toContain("\u001b]8;");
 	});
 });
 

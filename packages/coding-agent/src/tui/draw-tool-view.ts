@@ -33,6 +33,7 @@ import { type SymbolKey, UNICODE_SYMBOLS } from "../theme/symbols";
 import type { Theme, ThemeColor } from "../theme/theme";
 import { createCachedComponent, formatExpandHint } from "../tools/core/render-utils";
 import type { ToolUIStatus } from "../tools/core/tool-ui-status";
+import { urlHyperlink } from "./hyperlink";
 import { framedBlock } from "./output-block";
 import { renderStatusLine } from "./status-line";
 import type { State } from "./types";
@@ -47,6 +48,7 @@ import type { State } from "./types";
 const TONE_COLORS: Record<ViewTone, ThemeColor> = {
 	title: "toolTitle",
 	accent: "accent",
+	link: "mdLinkUrl",
 	output: "toolOutput",
 	muted: "muted",
 	dim: "dim",
@@ -107,16 +109,25 @@ const BLOCK_STATES: Record<ViewStatus, { state: State; rail: ThemeColor }> = {
  * for every hand-written row that marks a line. Emphasis is dropped on a glyph, since no renderer
  * here bolds one. A symbol this build has never heard of falls back to `text`, so an extension naming
  * an unknown mark loses the mark and never the line.
+ *
+ * A span with a link is wrapped in OSC 8 AFTER it is styled, which is the order every hand-written
+ * renderer used (`urlHyperlink(url, theme.fg("mdLinkUrl", url))`): the escape that opens the link
+ * carries no colour, so a colour started inside it ends inside it.
  */
 export function drawSpan(span: ViewSpan, theme: Theme): string {
 	if (span.symbol !== undefined && Object.hasOwn(UNICODE_SYMBOLS, span.symbol)) {
 		const color = span.tone === undefined ? "accent" : TONE_COLORS[span.tone];
-		return theme.styledSymbol(span.symbol as SymbolKey, color);
+		return linked(span, theme.styledSymbol(span.symbol as SymbolKey, color));
 	}
 	let text = span.text;
 	if (span.bold) text = theme.bold(text);
 	if (span.italic) text = theme.italic(text);
-	return span.tone === undefined ? text : theme.fg(TONE_COLORS[span.tone], text);
+	return linked(span, span.tone === undefined ? text : theme.fg(TONE_COLORS[span.tone], text));
+}
+
+/** The drawn run, reachable when the span named a target and this terminal offers hyperlinks. */
+function linked(span: ViewSpan, drawn: string): string {
+	return span.link === undefined ? drawn : urlHyperlink(span.link, drawn);
 }
 
 /** Every span concatenated, with no separator the tool did not ask for. */
@@ -144,7 +155,9 @@ function drawEmblem(emblem: string | undefined, theme: Theme): string | undefine
  * every tool that builds its header by hand.
  *
  * The row's metadata spans are drawn first and handed over as strings, which is how the existing
- * callers of `renderStatusLine` already pass styled metadata.
+ * callers of `renderStatusLine` already pass styled metadata. A description that names a target is
+ * wrapped in OSC 8 before the status line colours it, so the link covers the description and nothing
+ * around it.
  */
 export function drawStatusRow(view: StatusRowView, theme: Theme, spinnerFrame?: number): string {
 	const emblem = drawEmblem(view.emblem, theme);
@@ -155,7 +168,10 @@ export function drawStatusRow(view: StatusRowView, theme: Theme, spinnerFrame?: 
 			spinnerFrame,
 			title: view.title,
 			titleColor: view.titleTone === undefined ? undefined : TONE_COLORS[view.titleTone],
-			description: view.description,
+			description:
+				view.descriptionLink === undefined || view.description === undefined
+					? view.description
+					: urlHyperlink(view.descriptionLink, view.description),
 			badge: view.badge === undefined ? undefined : { label: view.badge.label, color: TONE_COLORS[view.badge.tone] },
 			meta: view.meta?.map(span => drawSpan(span, theme)),
 		},
@@ -179,19 +195,30 @@ export function drawToolViewText(view: LineToolView, theme: Theme, spinnerFrame?
  * The width arrives from the host and never from the tool, which is the whole reason this kind
  * exists: the block re-reads it on every frame through `framedBlock`'s closure, so a terminal resize
  * re-wraps the same view rather than asking the tool to lay itself out again.
+ *
+ * A section label is the terminal's chrome, so it is drawn in the tool-title colour here rather than
+ * arriving styled: `renderOutputBlock` takes a label's colour from its caller, and this is that
+ * caller for every view-returning tool.
+ *
+ * The state shows in ONE place, and the view says which: a card of fetched data leaves the plate
+ * alone and takes the rail colour the outcome asks for, and a card that is itself a report keeps the
+ * settled muted rail and carries the outcome across the plate.
  */
 export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFrame?: number): Component {
 	const header = drawStatusRow(view.header, theme, spinnerFrame);
 	const frame = view.state === undefined ? undefined : BLOCK_STATES[view.state];
-	const sections = view.sections.map(section => ({
-		label: section.label,
-		lines: section.lines.map(line => drawSpans(line, theme)),
-	}));
+	const sections = view.sections.map(section => {
+		const lines = section.lines.map(line => drawSpans(line, theme));
+		const note = section.hidden === undefined ? undefined : drawHiddenNote(section.hidden, theme);
+		if (note !== undefined) lines.push(note);
+		return { label: section.label === undefined ? undefined : theme.fg("toolTitle", section.label), lines };
+	});
 	return framedBlock(theme, width => ({
 		header,
 		sections,
 		state: frame?.state,
-		borderColor: frame?.rail,
+		borderColor: view.contents === "data" ? undefined : frame?.rail,
+		applyBg: view.contents !== "data",
 		width,
 	}));
 }
@@ -214,12 +241,8 @@ export function drawHeadedBlock(view: HeadedBlockView, theme: Theme, spinnerFram
 			const rows: string[] = [];
 			if (header !== undefined) rows.push(truncateToWidth(header, width, Ellipsis.Omit));
 			for (const line of lines) rows.push(`  ${drawLineToWidth(line, theme, Math.max(1, width - INDENT))}`);
-			if (hidden !== undefined && (hidden.count > 0 || hidden.revealable)) {
-				const hint = formatExpandHint(theme, !hidden.revealable, true);
-				const note =
-					hidden.count > 0 ? `${theme.fg("dim", `… ${hidden.count} more${nounSuffix(hidden)}`)} ${hint}` : hint;
-				rows.push(truncateToWidth(`  ${note}`, width, Ellipsis.Omit));
-			}
+			const note = hidden === undefined ? undefined : drawHiddenNote(hidden, theme);
+			if (note !== undefined) rows.push(truncateToWidth(`  ${note}`, width, Ellipsis.Omit));
 			return rows;
 		},
 	);
@@ -259,6 +282,20 @@ function drawLineToWidth(line: ViewLine, theme: Theme, width: number): string {
 function nounSuffix(hidden: ViewHiddenCount): string {
 	if (hidden.noun === undefined) return "";
 	return ` ${hidden.count === 1 ? hidden.noun.one : hidden.noun.many}`;
+}
+
+/**
+ * The sentence the terminal writes for what a card or one of its sections held back, or nothing when
+ * it held nothing back and has nothing left to offer.
+ *
+ * One sentence for both kinds: a tool states a count and the host words it, so a panel and a terse
+ * card say `… 3 more lines` the same way and a reader learns one gesture.
+ */
+function drawHiddenNote(hidden: ViewHiddenCount, theme: Theme): string | undefined {
+	if (hidden.count <= 0 && !hidden.revealable) return undefined;
+	const hint = formatExpandHint(theme, !hidden.revealable, true);
+	if (hidden.count <= 0) return hint;
+	return `${theme.fg("dim", `… ${hidden.count} more${nounSuffix(hidden)}`)} ${hint}`;
 }
 
 /**

@@ -41,7 +41,6 @@ const TOOLS = path.join(SRC, "tools");
  */
 const ALLOWED = new Map<string, string>([
 	["theme/theme", "The palette and symbol set. What every coloured tool block is coloured with."],
-	["theme/theme-binding", "The live `theme` binding, one type and no values."],
 	["theme/markdown-theme", "Markdown styling for tools that print markdown."],
 	["theme/highlight", "Syntax highlighting for code a tool prints."],
 	["theme/shimmer", "The in-progress shimmer, a text effect."],
@@ -237,7 +236,7 @@ describe("tools reach the terminal UI only to draw", () => {
  * `@veyyon/tui` and get a widget it can draw. Same concern, different boundary, so
  * it lives beside its sibling instead of in a file of its own.
  *
- * WHAT THE ROWS SAY NOW. Twenty-four of the twenty-six are `-render.ts` /
+ * WHAT THE ROWS SAY NOW. Twenty-three of the twenty-five are `-render.ts` /
  * `-renderer.ts` siblings, which is where drawing belongs: a tool module decides what
  * happened, its sibling decides how a terminal shows it, and only the sibling names
  * the renderer package. The two that are not siblings, `bash-interactive.ts` and
@@ -265,7 +264,6 @@ const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/web/browser/render.ts", ["Text", "type Component"]],
 	["tools/shell/debug-render.ts", ["Text", "type Component"]],
 	["tools/shell/eval-render.ts", ["Markdown", "Text", "type Component"]],
-	["tools/web/fetch-render.ts", ["Text", "type Component"]],
 	["tools/search/file-search-render.ts", ["Text", "type Component"]],
 	["tools/web/gh-renderer.ts", ["Text", "type Component"]],
 	["tools/fs/inspect-image-renderer.ts", ["Text", "type Component"]],
@@ -409,9 +407,11 @@ function renderDeclaringModules(dir: string): string[] {
  * grew the contract the one member it needed: a `framedBlock` kind for the goal
  * card's header and sections, and a symbol span for the review row's per-priority
  * mark, which is a registry key the host resolves rather than a glyph the tool picked.
- * `tools/fs/set-cwd.ts` joined them from the other direction: its card was a `-render.ts`
- * sibling rather than an in-place renderer, and converting it deleted that sibling instead
- * of moving code out of the tool.
+ * `tools/fs/set-cwd.ts` and `tools/web/fetch-view.ts` joined them from the other direction: each
+ * card was a `-render.ts` sibling rather than an in-place renderer, and converting it deleted that
+ * sibling instead of moving code out of the tool. The fetch card grew the contract the members a
+ * fetched page needs: a link target on a span and on a row, a section-level count of what a preview
+ * held back, and a card that states whether its body is a report or the data it fetched.
  * One row remains, and it is not waiting on effort: the compatibility shim reproduces
  * the old `pi` API, whose renderers were declared in place, so drawing in place is the
  * contract it exists to keep.
@@ -478,6 +478,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"tools/agent/memory-view.ts",
 			"tools/agent/review.ts",
 			"tools/fs/set-cwd.ts",
+			"tools/web/fetch-view.ts",
 		]);
 		for (const file of converted) {
 			expect([...IN_PLACE_ANYWHERE.keys()]).not.toContain(file);
