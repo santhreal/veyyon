@@ -42,17 +42,24 @@ const ASSEMBLER = path.join(SRC, "system-prompt.ts");
 const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
 
 /**
- * Measured at 1576, down from 1605. A ratchet, not a target: nothing breaks when it grows,
- * which is exactly why it is pinned. The margin is small on purpose — 24 modules is a
- * barrel someone reached for, not a feature.
+ * Measured at 1612 against the merge base's 1581, and the growth is decomposition rather than
+ * reach: `agent-session.ts`, `tui.ts` and the flat `tools/` directory became 30 smaller modules
+ * that the launch path already evaluated as one file each, and the source bytes the walk reaches
+ * move 0.26% for it. The number is modules, so a split raises it while the code the launch runs
+ * is the same, and re-pinning here is the decision that growth is supposed to force.
+ *
+ * A ratchet, not a target: nothing breaks when it grows, which is exactly why it is pinned. There
+ * is no margin left on purpose — the decomposition is finished, so the next module on this graph
+ * is a barrel someone reached for and owes a line here.
  */
-const LAUNCH_REACH_CEILING = 1600;
+const LAUNCH_REACH_CEILING = 1612;
 
 /**
- * Measured at 528, down from 718. The assembler is the module the edge was on, so this is
- * the number that moved, and a subprocess that imports it alone pays it directly.
+ * Measured at 498, down from 538 at the merge base and 718 before the aggregate edge was cut. The
+ * assembler is the module the edge was on, so this is the number that moved, and a subprocess that
+ * imports it alone pays it directly.
  */
-const ASSEMBLER_REACH_CEILING = 560;
+const ASSEMBLER_REACH_CEILING = 520;
 
 function reached(entry: string): string[] {
 	return [...moduleReach(entry, RESOLUTION, CACHE)].map(file => path.relative(REPO_ROOT, file)).sort();

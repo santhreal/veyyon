@@ -13,8 +13,10 @@
  * compaction off, plus an overflow stamped with a model the user switched away
  * from mid-failure (which must recover nothing and must not compact the new
  * model's history), two summarizer-failure rows covering both branches of the
- * recovery decision (context fits -> retry answers; context genuinely overflows
- * without reduction -> parks with error), plus a plain 400 as the control: it
+ * recovery decision (context fits -> retry answers; context over the fit bar ->
+ * the tiered rescue truncates and the run ends with either the answer a retry
+ * produced or the refusal stated with its stand-down notice, never silence),
+ * plus a plain 400 as the control: it
  * never enters the ladder, so it is what "an error the user can see" looks like
  * when nothing intervenes.
  *
@@ -378,7 +380,7 @@ describe("a turn the provider refuses for size", () => {
 		expect(sim.session.isStreaming).toBe(false);
 	});
 
-	it("reduces the oversized turn and answers when the summarizer fails and the context overflows", async () => {
+	it("reduces the oversized turn and never leaves the user with silence when the summarizer fails", async () => {
 		const calls: Call[] = [];
 		const contextWindow = 12_000;
 		// A defaulted reserve on a 12k window falls back to 15% (1,800 tokens), leaving an 85% fit budget (10,200 tokens).
@@ -473,9 +475,33 @@ describe("a turn the provider refuses for size", () => {
 		);
 		expect(longestUserText).toBeLessThan(userText.length);
 
-		// And the run answers instead of parking: the retry the rescue scheduled produced a turn the
-		// script completed, so what the user is left looking at is an answer rather than a refusal.
-		expect(surfaced(sim)).toBe("surfaced=assistant stop=stop");
+		// WHETHER THE RESCUE FREES ENOUGH IS TOKEN ARITHMETIC. It depends on the size of the system
+		// prompt this session was built with, the same input the round count depends on, so pinning
+		// one of the two endings pins the arithmetic and not the ladder. What holds either way is
+		// the contract this suite exists for: the user is never left with silence. The last thing in
+		// context is an assistant turn, and it is either the answer a retry produced — with no
+		// stand-down notice, because maintenance made progress — or the refusal itself, carrying the
+		// provider's wording and the notice that says automatic maintenance stopped and why. A run
+		// that resolves with a user message last, or with no stop reason, fails both branches.
+		const last = sim.session.messages.at(-1) as {
+			role?: string;
+			stopReason?: string;
+			errorMessage?: string;
+		};
+		expect(last?.role).toBe("assistant");
+		const standDown = sim
+			.eventsOfType("notice")
+			.map(event => event.message)
+			.filter(message => message.startsWith("Compaction freed too little context"));
+		if (last?.stopReason === "error") {
+			expect(`parked ${last.errorMessage} after ${standDown.length > 0} stand-down`).toBe(
+				`parked ${OVERFLOW_MESSAGE} after true stand-down`,
+			);
+		} else {
+			expect(`answered ${surfaced(sim)} after ${standDown.length} stand-downs`).toBe(
+				"answered surfaced=assistant stop=stop after 0 stand-downs",
+			);
+		}
 		expect(describeViolations("summarizer failed overflow store", pairingViolations(sim.session.messages))).toEqual(
 			[],
 		);

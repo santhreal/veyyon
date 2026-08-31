@@ -39,6 +39,8 @@ const PEER_DIRECTORIES: Readonly<Record<string, string>> = {
 /** Loose modules at the root of `modes/`, with what each one is. */
 const ROOT_MODULES: Readonly<Record<string, string>> = {
 	"index.ts": "the mode barrel; it names the interactive mode to dispatch to it",
+	"launch-facts.ts":
+		"the last launch's model label, git state and context percentage, read by the launch card and written by the session",
 	"loop-limit.ts": "the turn-loop ceiling, read by the slash-command registry",
 	"print-mode.ts": "the non-interactive print runtime",
 	"print-mode.test.ts": "the print runtime's own suite",
