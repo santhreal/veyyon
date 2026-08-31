@@ -4,21 +4,19 @@
  * The pages under `website/` are hand-authored HTML with no template engine, so
  * the header nav, the mobile disclosure nav, and the footer nav used to be twelve
  * hand-copied blocks across six files. They drifted exactly the way duplicated
- * code drifts: 404.html silently lost the Blog link, and the generated blog pages
- * never marked Blog as the current page. Both were invisible because nothing
- * compared the copies.
+ * code drifts: 404.html silently lost a link, and nothing compared the copies.
  *
  * So the links live here and `build.mjs` writes them into every page's
- * `<!--NAV:START-->` / `<!--NAV:END-->` region, the same way it writes the blog
- * region of `sitemap.xml`. Add a link once, in `LINKS`, and every surface gets it.
- * A page missing its markers is a hard build error, never a skipped page.
+ * `<!--NAV:START-->` / `<!--NAV:END-->` region. Add a link once, in `LINKS`,
+ * and every surface gets it. A page missing its markers is a hard build error,
+ * never a skipped page.
  */
 
 /**
  * Every nav destination, in display order.
  *
  * - `href` is relative to the site root, without a leading `./`; the renderer adds
- *   the prefix a page needs (`./` at the root, `../` for `/blog/`).
+ *   the prefix a page needs (`./` at the root).
  * - `absolute` links out and takes no prefix.
  * - `page` is the identity a page passes as `current` to get `aria-current="page"`.
  */
