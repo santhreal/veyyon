@@ -466,6 +466,18 @@ export const repoScriptTests = [
 	// it enforces stops being enforced the moment nobody reruns it by hand.
 	"scripts/an-off-screen-raster-never-enters-assets.test.ts",
 	"scripts/one-owner-answers-a-command-lookup.test.ts",
+	// A plugin never imports another plugin: the derived gate behind the `plugins/*`
+	// root. Unwired it enforces nothing, because the coupling it forbids is added by
+	// an ordinary import that type-checks.
+	"scripts/a-plugin-never-imports-another-plugin.test.ts",
+	// The PR-wide equivalence proof: a moved file kept its bytes, a formatted file kept its tokens,
+	// every published subpath and every command survived, and the kernel names no tool and no host.
+	// Each reads git rather than the tree alone, so none of them is covered by a package bucket.
+	"scripts/a-moved-file-keeps-every-byte-but-its-paths.test.ts",
+	"scripts/a-formatting-change-keeps-every-token.test.ts",
+	"scripts/a-published-surface-survives-the-move.test.ts",
+	"scripts/every-command-and-flag-survives-the-move.test.ts",
+	"scripts/the-kernel-names-no-tool-and-no-host.test.ts",
 ];
 
 /**

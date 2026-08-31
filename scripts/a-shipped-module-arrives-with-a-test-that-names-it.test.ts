@@ -410,7 +410,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/web/search/providers/jina.ts",
 	"packages/coding-agent/src/web/search/providers/synthetic.ts",
 	"packages/collab-web/src/lib/use-guest.ts",
-	"plugins/mnemopi/src/util/ids.ts",
 	"packages/stats/src/client/components/range-meta.ts",
 	"packages/stats/src/client/data/charts.ts",
 	"packages/stats/src/client/data/useHashRoute.ts",
@@ -438,6 +437,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/utils/src/vendor/mermaid-ascii/text-metrics.ts",
 	"packages/utils/src/vendor/mermaid-ascii/xychart/colors.ts",
 	"packages/utils/src/windows-acl.ts",
+	"plugins/mnemopi/src/util/ids.ts",
 ];
 
 describe("a shipped module arrives with a test that names it", () => {

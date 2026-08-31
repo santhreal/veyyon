@@ -34,8 +34,12 @@ import {
 
 const LEDGER_PATH = resolve(REPO_ROOT, "scripts/fixtures/token-equivalence.json");
 
-/** The commit every ledger in this proof set was measured against. */
-const BASELINE_COMMIT = "e9467ab12c976cd830eb7a61e30bfd6adc4bff1f";
+/**
+ * The commit every ledger in this proof set was measured against: the MERGE BASE of this branch and
+ * `main`, not the tip of `main`. A tip moves under the measurement, and a ledger measured half
+ * against one tree and half against another charges main's own edits to this branch.
+ */
+const BASELINE_COMMIT = "0db5badf93ea3d2cb11addc2c905ceb0e210d6e5";
 
 function loadLedger(): TokenEquivalenceLedger {
 	const raw = readFileSync(LEDGER_PATH, "utf-8");
@@ -101,9 +105,9 @@ describe("token equivalence differential suite", () => {
 		// asserted as a floor cannot see a new formatting-only file arrive. Both are pinned exactly, so
 		// regenerating the ledger against another commit, or reclassifying a file, needs a decision here.
 		expect(ledger.generatedFrom).toBe(BASELINE_COMMIT);
-		expect(formattingEntries).toHaveLength(30);
+		expect(formattingEntries).toHaveLength(31);
 		expect(importReorderEntries).toHaveLength(0);
-		expect(ledger.changedCount).toBe(2110);
+		expect(ledger.changedCount).toBe(3938);
 	});
 
 	it("passes anti-vacuity: a token mutation in a verified file changes its hash (cell f)", () => {

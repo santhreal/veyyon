@@ -1,11 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import * as path from "node:path";
 import {
 	collectPackageSourceFiles,
 	collectPackageSources,
 	EXEMPT_PACKAGE_NAMES,
 	MEMBER_ROOTS,
+	MEMBERS,
 	memberDirOf,
 	memberKeyOf,
 	memberRelative,
@@ -15,6 +16,27 @@ import {
 	resolveExemptPackageDirs,
 	SKIP_DIR_NAMES,
 } from "./package-sources";
+
+/**
+ * The member that declares the one exempt package, pinned so a move is a recorded decision rather
+ * than a silent change in what the ownership locks scan. The resolution under test finds it by
+ * published name across every root; this constant only says where it is today.
+ */
+const EXEMPT_MEMBER = "plugins/argot";
+
+/** The `name` a member's manifest declares, narrowed rather than asserted. */
+async function manifestNameOf(memberDir: string): Promise<string | undefined> {
+	const parsed: unknown = JSON.parse(await readFile(path.join(memberDir, "package.json"), "utf8"));
+	if (parsed === null || typeof parsed !== "object" || !("name" in parsed)) return undefined;
+	return typeof parsed.name === "string" ? parsed.name : undefined;
+}
+
+async function exists(target: string): Promise<boolean> {
+	return await stat(target).then(
+		() => true,
+		() => false,
+	);
+}
 
 /**
  * The shared traversal every `@veyyon/utils` single-owner lock is built on.
@@ -39,14 +61,20 @@ import {
  */
 describe("the shared package-source traversal", () => {
 	describe("exemptions resolve by published name, not by directory name", () => {
-		it("resolves `argot` to the directory that actually declares it", async () => {
+		it("resolves `argot` to the directory that actually declares it, under whichever root holds it", async () => {
 			const dirs = await resolveExemptPackageDirs();
 			// Resolved from the manifest, never assumed from the directory string: the
 			// two agree today and the mechanism must not depend on that.
 			expect([...dirs]).toEqual(["argot"]);
 
-			const manifest = JSON.parse(await readFile(path.join(PACKAGES_DIR, "argot", "package.json"), "utf8"));
-			expect(manifest.name).toBe("argot");
+			// And resolved across every declared member rather than the contents of one root. The
+			// resolution read `packages/` only, so moving the exempt package to `plugins/argot` made
+			// the entry match nothing, the resolution threw, and every lock built on this traversal
+			// went red at once. The declaring member is located, not assumed.
+			const declaring = MEMBERS.filter(member => member.slice(member.lastIndexOf("/") + 1) === "argot");
+			expect(declaring).toEqual([EXEMPT_MEMBER]);
+			expect(await manifestNameOf(path.join(REPO_ROOT, EXEMPT_MEMBER))).toBe("argot");
+			expect(EXEMPT_MEMBER.startsWith("packages/")).toBe(false);
 		});
 
 		it("fails loudly when an exempt name matches no package, instead of silently skipping nothing", async () => {
@@ -73,12 +101,19 @@ describe("the shared package-source traversal", () => {
 			const rels = files.map(memberRelative);
 
 			// Exact files, not a count: the exempt package's sources are the ones the six
-			// ownership locks were failing on, so their absence is the fix being asserted.
-			expect(rels).not.toContain("argot/src/codec.ts");
-			expect(rels).not.toContain("argot/src/generate.ts");
-			expect(rels).not.toContain("argot/src/parse.ts");
-			expect(rels).not.toContain("argot/src/cache.ts");
-			expect(rels.some(rel => rel.startsWith("argot/"))).toBe(false);
+			// ownership locks were failing on, so their absence is the fix being asserted. Keyed off
+			// the member's real path, so the assertions cannot pass by naming a directory that no
+			// longer exists.
+			expect(rels).not.toContain(`${EXEMPT_MEMBER}/src/codec.ts`);
+			expect(rels).not.toContain(`${EXEMPT_MEMBER}/src/generate.ts`);
+			expect(rels).not.toContain(`${EXEMPT_MEMBER}/src/parse.ts`);
+			expect(rels).not.toContain(`${EXEMPT_MEMBER}/src/cache.ts`);
+			expect(rels.some(rel => rel.startsWith(`${EXEMPT_MEMBER}/`))).toBe(false);
+			// The files exist on disk, so the four absences above are exclusions rather than
+			// assertions about a path that was renamed out from under them.
+			for (const rel of ["src/codec.ts", "src/generate.ts", "src/parse.ts", "src/cache.ts"]) {
+				expect(await exists(path.join(REPO_ROOT, EXEMPT_MEMBER, rel))).toBe(true);
+			}
 
 			// And it is still scanning real code, so the exclusion above cannot pass by
 			// the walk having collapsed to nothing.

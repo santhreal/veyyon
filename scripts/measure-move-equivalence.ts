@@ -160,6 +160,14 @@ export function structuralHash(text: string, filePath: string): string {
  * Each pair contributes the directory prefix that changed once the common suffix is stripped, and a
  * prefix that moved to two places keeps the destination most of its files went to. A hand-written
  * table would go stale on the next move; this one is a function of the move itself.
+ *
+ * A prefix keeps at least two segments. Stripping the whole shared suffix of
+ * `packages/hashline/src/prompts/registry.ts` -> `plugins/hashline/src/prompts/registry.ts` leaves
+ * the bare root `packages`, and one root moved to several others in this branch, so the table kept
+ * whichever destination had the most files and rewrote `packages/hashline` to `contracts/hashline`
+ * in main's text. Every path string in a moved member then read as a real content change: the
+ * generator refused the ledger, naming a file whose only difference is the prefix it moved to. A
+ * member-scoped rule is unambiguous, because one member moves to one place.
  */
 export function derivePrefixRewrites(pairs: readonly [string, string][]): [string, string][] {
 	const targets = new Map<string, Map<string, number>>();
@@ -174,6 +182,7 @@ export function derivePrefixRewrites(pairs: readonly [string, string][]): [strin
 		) {
 			shared++;
 		}
+		if (shared > 0) shared = Math.min(shared, oldParts.length - 2, newParts.length - 2);
 		const oldPrefix = shared > 0 ? oldParts.slice(0, -shared).join("/") : oldPath;
 		const newPrefix = shared > 0 ? newParts.slice(0, -shared).join("/") : newPath;
 		if (oldPrefix === "" || newPrefix === "" || oldPrefix === newPrefix) continue;
@@ -281,7 +290,21 @@ function git(repoRoot: string, args: string[]): Buffer {
 	return execFileSync("git", args, { cwd: repoRoot, maxBuffer: 256 * 1024 * 1024 });
 }
 
-export function renamePairs(repoRoot: string, baseSha: string): [string, string][] {
+/**
+ * Build output, which this ledger cannot make a claim about.
+ *
+ * `docs/handbook/book/` is mdBook's render of `docs/handbook/src/`. Its search index and asset file
+ * names carry a content hash, so a rebuild renames the file and rewrites it in the same step, and
+ * git pairs the two names as a rename that moved nothing. A row for one of those files is stale the
+ * next time the handbook is built, on a branch that renamed nothing further — it reported a missing
+ * path and took three cells red for a rebuild. Equivalence for generated output is proved by
+ * regenerating it from the source this ledger does compare, not by hashing the render.
+ */
+function isGeneratedOutput(relative: string): boolean {
+	return relative.startsWith("docs/handbook/book/");
+}
+
+export function renamePairs(repoRoot: string, baseSha: string, headRef = "HEAD"): [string, string][] {
 	// 25%, not the default 50%: a module that changes directory has every relative import rewritten,
 	// so an honest move can fall under half-similar and then sits outside this ledger entirely, which
 	// is the one place a lost byte would not be seen. `-l0` removes the rename-detection cap.
@@ -291,14 +314,16 @@ export function renamePairs(repoRoot: string, baseSha: string): [string, string]
 		"-l0",
 		"--diff-filter=R",
 		"--name-status",
-		`${baseSha}...HEAD`,
+		`${baseSha}...${headRef}`,
 	])
 		.toString("utf-8")
 		.split("\n");
 	const pairs: [string, string][] = [];
 	for (const row of raw) {
 		const parts = row.split("\t");
-		if (parts.length === 3 && parts[0].startsWith("R")) pairs.push([parts[1], parts[2]]);
+		if (parts.length !== 3 || !parts[0].startsWith("R")) continue;
+		if (isGeneratedOutput(parts[1]) || isGeneratedOutput(parts[2])) continue;
+		pairs.push([parts[1], parts[2]]);
 	}
 	return pairs;
 }
@@ -340,9 +365,73 @@ export function baselineImportAttributes(
 	return inventory;
 }
 
-export function generateLedger(repoRoot: string): MoveEquivalenceLedger {
-	const baseSha = git(repoRoot, ["rev-parse", "origin/main"]).toString("utf-8").trim();
-	const pairs = renamePairs(repoRoot, baseSha);
+/**
+ * Prove the working tree IS the commit the rows are attributed to, for the paths the rows read.
+ *
+ * `git diff <ref>` cannot answer this: it enumerates the index, so a file the checked-out commit
+ * never had reads as deleted even while it sits on disk. That is not a corner case here — the whole
+ * reason to name a ref is that the commit is not checked out — so the comparison is made against the
+ * ref's own tree, object id by object id, over exactly the files this ledger hashes.
+ *
+ * The working-tree side is hashed by `git hash-object`, not by hashing the bytes: `.gitattributes`
+ * gives `*.cmd` `eol=crlf`, so twenty-one fixtures sit on disk with line endings their blob does not
+ * have, and a raw hash calls every one of them a difference.
+ */
+function assertWorktreeIs(repoRoot: string, headRef: string, paths: readonly string[]): void {
+	const blobs = new Map<string, string>();
+	for (const row of git(repoRoot, ["ls-tree", "-r", headRef]).toString("utf-8").split("\n")) {
+		const [meta, filePath] = row.split("\t");
+		if (filePath === undefined) continue;
+		const parts = meta.split(" ");
+		if (parts[1] === "blob") blobs.set(filePath, parts[2]);
+	}
+
+	const drifted: string[] = [];
+	const present: string[] = [];
+	for (const relative of paths) {
+		if (!blobs.has(relative)) drifted.push(`${relative}: ${headRef} does not carry it`);
+		else if (!fs.existsSync(path.join(repoRoot, relative)))
+			drifted.push(`${relative}: missing from the working tree`);
+		else present.push(relative);
+	}
+
+	for (let start = 0; start < present.length; start += 400) {
+		const chunk = present.slice(start, start + 400);
+		const hashed = git(repoRoot, ["hash-object", "--", ...chunk])
+			.toString("utf-8")
+			.trim()
+			.split("\n");
+		if (hashed.length !== chunk.length)
+			throw new Error(`git hash-object answered ${hashed.length} of ${chunk.length}`);
+		for (const [index, actual] of hashed.entries()) {
+			const recorded = blobs.get(chunk[index]);
+			if (actual !== recorded) drifted.push(`${chunk[index]}: ${actual} on disk, ${recorded} in ${headRef}`);
+		}
+	}
+
+	if (drifted.length > 0) {
+		const shown = drifted.slice(0, 5).join("; ");
+		throw new Error(
+			`the working tree does not match ${headRef} for ${drifted.length} of ${paths.length} files: ${shown}`,
+		);
+	}
+}
+
+export function generateLedger(repoRoot: string, headRef = "HEAD"): MoveEquivalenceLedger {
+	// The MERGE BASE, not the tip of main. `renamePairs` asks git for `base...head`, which is already
+	// the merge base by definition, and every row then reads the old path out of `baseSha`. While
+	// this named the tip, the two disagreed the moment main moved: main deleted
+	// `packages/coding-agent/src/modes/magic-keyword-notices.ts` five commits past the base, and the
+	// generator died on `git show <tip>:<a path only the base has>`. One commit answers both halves.
+	const baseSha = git(repoRoot, ["merge-base", "origin/main", headRef]).toString("utf-8").trim();
+	const pairs = renamePairs(repoRoot, baseSha, headRef);
+	const importAttributes = baselineImportAttributes(repoRoot, baseSha, pairs);
+	if (headRef !== "HEAD") {
+		// Every row below hashes the working tree, so a ref named here has to BE the tree on disk: a
+		// ledger measured against one commit's renames and another commit's bytes would be wrong in a
+		// way no row could show.
+		assertWorktreeIs(repoRoot, headRef, [...pairs.map(([, newPath]) => newPath), ...Object.keys(importAttributes)]);
+	}
 	const rewrites = derivePrefixRewrites(pairs);
 	const files: Record<string, FileRecord> = {};
 
@@ -394,13 +483,13 @@ export function generateLedger(repoRoot: string): MoveEquivalenceLedger {
 		generatedFrom: baseSha,
 		rewrites,
 		files,
-		importAttributes: baselineImportAttributes(repoRoot, baseSha, pairs),
+		importAttributes,
 	};
 }
 
 if (import.meta.main) {
 	const repoRoot = path.resolve(import.meta.dirname, "..");
-	const ledger = generateLedger(repoRoot);
+	const ledger = generateLedger(repoRoot, process.argv[2] ?? "HEAD");
 	const target = path.join(repoRoot, "scripts", "fixtures", "move-equivalence.json");
 	fs.writeFileSync(target, `${JSON.stringify(ledger, null, "\t")}\n`);
 	const rows = Object.values(ledger.files);

@@ -65,8 +65,9 @@ describe("bunfig preload coverage across packages", () => {
 		expect(packagesWithTests).toContain("utils");
 		expect(packagesWithTests).toContain("coding-agent");
 		// The exempt package is included on purpose: exempting it here would be a
-		// hole in the guard, not a courtesy.
-		expect(packagesWithTests).toContain("argot");
+		// hole in the guard, not a courtesy. Keyed by member path, because the
+		// package is exempt from the ownership locks and not from its root.
+		expect(packagesWithTests).toContain("plugins/argot");
 		// And a member outside `packages/`, which is where this gate went blind.
 		expect(packagesWithTests).toContain("contracts/wire");
 	});

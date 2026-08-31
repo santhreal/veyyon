@@ -1,5 +1,5 @@
 /**
- * WHY. This branch renames 1563 tracked files. A reviewer cannot read a diff that size, and the
+ * WHY. This branch renames 3071 tracked files. A reviewer cannot read a diff that size, and the
  * failure mode of a wide move is silent: one file arrives with an accidental edit, a helper is copied
  * instead of moved, or a hunk from another lane lands inside the rename. Nothing about a green type
  * check would catch it, because a stale copy of a helper compiles.
@@ -62,19 +62,21 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("reads a ledger covering the whole move", () => {
 		expect(ledger.generatedFrom).toMatch(/^[0-9a-f]{40}$/);
-		expect(rows.length).toBe(1563);
+		expect(rows.length).toBe(3071);
 		const buckets = new Map<string, number>();
 		for (const [, record] of rows) buckets.set(record.differs, (buckets.get(record.differs) ?? 0) + 1);
 		expect([...buckets].sort()).toEqual([
-			["changed", 96],
-			["imports-and-comments-only", 306],
-			["none", 1161],
+			["changed", 111],
+			["imports-and-comments-only", 316],
+			["none", 2644],
 		]);
 		expect(rewrites.length).toBeGreaterThan(50);
 		const paths = rows.map(([relative]) => relative);
 		expect(paths.some(relative => relative.startsWith("natives/"))).toBe(true);
 		expect(paths.some(relative => relative.startsWith("hosts/terminal/engine/"))).toBe(true);
 		expect(paths.some(relative => relative.startsWith("contracts/"))).toBe(true);
+		expect(paths.some(relative => relative.startsWith("plugins/"))).toBe(true);
+		expect(paths.some(relative => relative.startsWith("kernel/"))).toBe(true);
 		expect(paths.some(relative => relative.endsWith(".rs"))).toBe(true);
 	});
 
@@ -114,7 +116,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.hash || hash !== record.mainHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(unchanged).toBe(1161);
+		expect(unchanged).toBe(2644);
 	});
 
 	/**
@@ -133,7 +135,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.structuralHash || hash !== record.mainStructuralHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(importOnly).toBe(306);
+		expect(importOnly).toBe(316);
 	});
 
 	/**
@@ -143,7 +145,7 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("explains every file whose content really changed", () => {
 		const changed = rows.filter(([, record]) => record.differs === "changed");
-		expect(changed.length).toBe(96);
+		expect(changed.length).toBe(111);
 		const unexplained: string[] = [];
 		const drifted: string[] = [];
 		for (const [relative, record] of changed) {

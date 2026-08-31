@@ -243,8 +243,17 @@ export function checkImportReorder(
 export function measureTokenEquivalence(options: MeasureOptions = {}): TokenEquivalenceLedger {
 	const repoRoot = options.repoRoot ?? REPO_ROOT;
 	const baseRef = options.baseRef ?? "origin/main";
+	// ONE commit answers both halves. The sweep asks git for `base...HEAD`, which is the MERGE BASE by
+	// definition, and every candidate below reads its baseline text with `git show <base>:<path>`.
+	// While that second half named the moving ref, the two disagreed as soon as main advanced: a file
+	// main deleted past the merge base could not be shown, so it was classified as changed by this
+	// branch, which is main's edit charged to this diff.
+	const baseSha = execFileSync("git", ["merge-base", baseRef, "HEAD"], {
+		cwd: repoRoot,
+		encoding: "utf-8",
+	}).trim();
 
-	const diffOutput = execFileSync("git", ["diff", "--name-only", `${baseRef}...HEAD`], {
+	const diffOutput = execFileSync("git", ["diff", "--name-only", `${baseSha}...HEAD`], {
 		cwd: repoRoot,
 		encoding: "utf-8",
 		maxBuffer: 20 * 1024 * 1024,
@@ -269,7 +278,7 @@ export function measureTokenEquivalence(options: MeasureOptions = {}): TokenEqui
 
 		let mainCode: string;
 		try {
-			mainCode = execFileSync("git", ["show", `${baseRef}:${relPath}`], {
+			mainCode = execFileSync("git", ["show", `${baseSha}:${relPath}`], {
 				cwd: repoRoot,
 				encoding: "utf-8",
 				maxBuffer: 20 * 1024 * 1024,
@@ -299,13 +308,6 @@ export function measureTokenEquivalence(options: MeasureOptions = {}): TokenEqui
 			changed.push(relPath);
 		}
 	}
-
-	// The ledger records the commit, never the ref that named it: `origin/main` moves, and a ledger
-	// stamped with a moving name cannot say which tree its hashes were taken against.
-	const baseSha = execFileSync("git", ["rev-parse", baseRef], {
-		cwd: repoRoot,
-		encoding: "utf-8",
-	}).trim();
 
 	return {
 		generatedFrom: baseSha,

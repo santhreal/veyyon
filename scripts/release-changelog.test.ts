@@ -319,6 +319,7 @@ describe("the release changelog gate", () => {
 		expect([...new Set(withChangelog.map(member => member.split("/")[0]))].sort()).toEqual([
 			"contracts",
 			"hosts",
+			"kernel",
 			"natives",
 			"packages",
 			"plugins",

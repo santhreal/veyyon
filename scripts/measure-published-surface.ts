@@ -643,14 +643,11 @@ export function generateLedger(baseRef = mergeBaseWithMain(), headRef = "HEAD"):
 	// 39% similar to where it landed, so the default read it as a deletion beside an unrelated
 	// addition. `-l0` removes the rename-detection cap, which a diff this size otherwise exceeds.
 	const renamedFiles = new Map<string, string>();
-	const renameLines = execSync(
-		`git diff --find-renames=25% -l0 --diff-filter=R --name-status ${baseRef} ${headRef}`,
-		{
-			cwd: REPO_ROOT,
-			encoding: "utf-8",
-			maxBuffer: 64 * 1024 * 1024,
-		},
-	)
+	const renameLines = execSync(`git diff --find-renames=25% -l0 --diff-filter=R --name-status ${baseRef} ${headRef}`, {
+		cwd: REPO_ROOT,
+		encoding: "utf-8",
+		maxBuffer: 64 * 1024 * 1024,
+	})
 		.split("\n")
 		.filter(Boolean);
 	for (const line of renameLines) {
@@ -832,11 +829,13 @@ export function generateLedger(baseRef = mergeBaseWithMain(), headRef = "HEAD"):
  *
  * The first argument names the base commit. It exists because `merge-base` needs both histories, and
  * a partial or shallow clone has neither: the regeneration then names the commit outright rather
- * than reporting every module the shallow boundary hid as a removed surface.
+ * than reporting every module the shallow boundary hid as a removed surface. The second names the
+ * head, for the same reason in reverse: both sides are read from git, so the measurement does not
+ * need the commit checked out.
  */
 export function main(): void {
 	const baseRef = process.argv[2] ?? mergeBaseWithMain();
-	const ledger = generateLedger(baseRef, "HEAD");
+	const ledger = generateLedger(baseRef, process.argv[3] ?? "HEAD");
 	mkdirSync(dirname(FIXTURE_PATH), { recursive: true });
 	writeFileSync(FIXTURE_PATH, `${JSON.stringify(ledger, null, "\t")}\n`, "utf-8");
 	process.stdout.write(

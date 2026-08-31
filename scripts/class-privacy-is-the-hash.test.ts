@@ -376,9 +376,14 @@ describe("the scan covers the packages it claims to", () => {
 	 * two roots share one exemption.
 	 */
 	it("keys files by root, member and forward slash", () => {
-		const key = relativeKey(path.join(PACKAGES, "mnemopi", "src", "core", "binary-vectors.ts"));
+		const key = relativeKey(path.join(REPO_ROOT, "plugins", "mnemopi", "src", "core", "binary-vectors.ts"));
 
 		expect(key).toBe("plugins/mnemopi/src/core/binary-vectors.ts");
+		// A member under `packages/` keys with its root too, so two members of the same name in two
+		// roots cannot share one exemption.
+		expect(relativeKey(path.join(PACKAGES, "utils", "src", "type-guards.ts"))).toBe(
+			"packages/utils/src/type-guards.ts",
+		);
 	});
 
 	/**

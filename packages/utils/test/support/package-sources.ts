@@ -50,42 +50,46 @@ export const SKIP_DIR_NAMES: ReadonlySet<string> = new Set(["node_modules", "dis
  */
 export const EXEMPT_PACKAGE_NAMES: ReadonlySet<string> = new Set(["argot"]);
 
-/** The `name` declared by `packages/<dir>/package.json`, or undefined. */
-async function packageNameFor(dirName: string): Promise<string | undefined> {
-	const manifest = path.join(PACKAGES_DIR, dirName, "package.json");
-	const text = await readFile(manifest, "utf8").catch(() => undefined);
+/** The `name` declared by `<member>/package.json`, or undefined. */
+async function packageNameFor(memberDir: string): Promise<string | undefined> {
+	const text = await readFile(path.join(memberDir, "package.json"), "utf8").catch(() => undefined);
 	if (text === undefined) return undefined;
 	const parsed: unknown = JSON.parse(text);
-	const name = (parsed as { name?: unknown }).name;
+	if (parsed === null || typeof parsed !== "object" || !("name" in parsed)) return undefined;
+	const name = parsed.name;
 	return typeof name === "string" ? name : undefined;
 }
 
 /**
- * Directory names under `packages/` whose package is exempt.
+ * Leaf directory names of the workspace members whose package is exempt.
  *
- * Throws when an {@link EXEMPT_PACKAGE_NAMES} entry matches no package, because
- * the only two ways that happens are both defects: the package was deleted (the
- * entry is stale and must go) or it was renamed (the exemption is dead and the
- * locks are now scanning a package they must not judge). Either way the fix is a
- * source edit, never a silent skip.
+ * Resolved across EVERY declared workspace member, not the contents of one root. The exemption read
+ * `packages/` only, so moving the exempt package to another root (`plugins/argot`) made the entry
+ * match nothing and the resolution threw, taking every lock built on this traversal red — the same
+ * class of failure the name-keyed resolution below exists to prevent, one level up.
+ *
+ * Throws when an {@link EXEMPT_PACKAGE_NAMES} entry matches no member, because the only two ways
+ * that happens are both defects: the package was deleted (the entry is stale and must go) or it was
+ * renamed (the exemption is dead and the locks are now scanning a package they must not judge).
+ * Either way the fix is a source edit, never a silent skip.
  */
 export async function resolveExemptPackageDirs(): Promise<ReadonlySet<string>> {
 	const dirs = new Set<string>();
 	const matched = new Set<string>();
-	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-		if (!pkg.isDirectory()) continue;
-		const name = (await packageNameFor(pkg.name)) ?? pkg.name;
+	for (const member of MEMBERS) {
+		const leaf = member.slice(member.lastIndexOf("/") + 1);
+		const name = (await packageNameFor(path.join(REPO_ROOT, member))) ?? leaf;
 		if (!EXEMPT_PACKAGE_NAMES.has(name)) continue;
-		dirs.add(pkg.name);
+		dirs.add(leaf);
 		matched.add(name);
 	}
 	const missing = [...EXEMPT_PACKAGE_NAMES].filter(name => !matched.has(name));
 	if (missing.length > 0) {
 		throw new Error(
-			`package-sources: EXEMPT_PACKAGE_NAMES names no package under ${PACKAGES_DIR}: ${missing.join(", ")}. ` +
-				`Either the package was removed (delete the entry) or it was renamed (update the entry to its new ` +
-				`package.json "name"). Leaving it would make every @veyyon/utils ownership lock scan a package that ` +
-				`is exempt by design.`,
+			`package-sources: EXEMPT_PACKAGE_NAMES names no workspace member under ${REPO_ROOT}: ` +
+				`${missing.join(", ")}. Either the package was removed (delete the entry) or it was renamed ` +
+				`(update the entry to its new package.json "name"). Leaving it would make every @veyyon/utils ` +
+				`ownership lock scan a package that is exempt by design.`,
 		);
 	}
 	return dirs;
