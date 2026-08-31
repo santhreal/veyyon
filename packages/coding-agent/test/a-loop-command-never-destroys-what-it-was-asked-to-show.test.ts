@@ -29,7 +29,7 @@ import { closeAllAutoresearchStorages, openAutoresearchStorage } from "@veyyon/c
 import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent/extensibility/extensions";
 import * as git from "@veyyon/coding-agent/utils/git";
 import type { AutocompleteItem } from "@veyyon/tui";
-import { TempDir } from "@veyyon/utils";
+import { stripAnsi, TempDir } from "@veyyon/utils";
 import { $ } from "bun";
 import { useTruecolorTheme } from "./helpers/theme-assertions";
 
@@ -58,13 +58,15 @@ interface Surface {
 	screens: string[][];
 	/** Status-row texts pushed through `ui.setStatus`. */
 	statuses: Array<string | undefined>;
+	/** Widgets pushed above the composer, which this loop must never do. */
+	widgets: number;
 	/** Confirmations asked, and the answer this surface gives. */
 	confirms: Array<{ title: string; message: string }>;
 	answer: boolean;
 }
 
 function newSurface(answer = true): Surface {
-	return { screens: [], statuses: [], confirms: [], answer };
+	return { screens: [], statuses: [], widgets: 0, confirms: [], answer };
 }
 
 function buildHarness(): Harness {
@@ -114,6 +116,9 @@ function makeCtx(cwd: string, harness: Harness, surface: Surface): ExtensionCont
 			},
 			setStatus: (_key: string, text: string | undefined) => {
 				surface.statuses.push(text);
+			},
+			setWidget: (): void => {
+				surface.widgets += 1;
 			},
 			confirm: async (title: string, message: string): Promise<boolean> => {
 				surface.confirms.push({ title, message });
@@ -296,5 +301,47 @@ describe("a loop command never destroys what it was asked to show", () => {
 		expect(await Bun.file(dirty).exists()).toBe(true);
 		expect(harness.notices.at(-1)?.text).toBe("Autoresearch session cleared.");
 		expect(harness.activeTools).toEqual([]);
+	});
+
+	it("occupies one status row and no widget above the composer", async () => {
+		// The row replaced an eighteen-row table charged to the conversation on
+		// every frame. One line, and the chord that opens the rest.
+		const harness = buildHarness();
+		const surface = newSurface();
+		const ctx = makeCtx(cwdDir.path(), harness, surface);
+
+		await harness.commands.get("autoresearch")?.handler("make it faster", ctx);
+
+		const row = surface.statuses.at(-1);
+		expect(row).toBeDefined();
+		expect(row).not.toContain("\n");
+		expect(stripAnsi(row ?? "")).toContain("autoresearch");
+		expect(stripAnsi(row ?? "")).toContain("ctrl+x runs");
+		expect(surface.widgets).toBe(0);
+	});
+
+	it("clears the status row when the mode is left", async () => {
+		// A row that outlives its loop is a row nobody can act on: the chord it
+		// advertises opens a screen for a session that is over.
+		const harness = buildHarness();
+		const surface = newSurface();
+		const ctx = makeCtx(cwdDir.path(), harness, surface);
+		await harness.commands.get("autoresearch")?.handler("make it faster", ctx);
+
+		await harness.commands.get("autoresearch")?.handler("off", ctx);
+
+		expect(surface.statuses.at(-1)).toBeUndefined();
+	});
+
+	it("lists its subcommands before a letter is typed", async () => {
+		// An empty prefix used to return nothing, so the two words that reach
+		// every remaining behaviour were discoverable only from the handbook.
+		const harness = buildHarness();
+		for (const name of ["autoresearch", "autoswarm"]) {
+			const completions = harness.commands.get(name)?.getArgumentCompletions?.("") ?? [];
+			expect(completions.map(item => item.value)).toEqual(["off", "clear"]);
+		}
+		const flags = harness.commands.get("autoresearch")?.getArgumentCompletions?.("clear ") ?? [];
+		expect(flags.map(item => item.value)).toEqual(["clear --keep-tree", "clear --reset-tree"]);
 	});
 });
