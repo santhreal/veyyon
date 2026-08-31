@@ -1,122 +1,257 @@
 import { describe, expect, it } from "bun:test";
+import type { Effort } from "@veyyon/catalog/effort";
 import {
 	applyOpenAIExtraBody,
+	applyOpenAIGatewayRouting,
 	formatOpenAiError,
+	isCompiledGrammarTooLargeStrictError,
 	mapOpenAIReasoningEffort,
 	normalizeOpenAIStableId,
+	type OpenAIGatewayRoutingCompat,
+	type OpenAIGatewayRoutingParams,
+	shouldRetryWithoutStrictTools,
 } from "../src/providers/openai-shared-helpers";
+import type { Model } from "../src/types";
 
-describe("normalizeOpenAIStableId", () => {
-	it("returns undefined for undefined input", () => {
-		expect(normalizeOpenAIStableId(undefined, 64, "h_")).toBeUndefined();
+describe("applyOpenAIGatewayRouting", () => {
+	it("sets provider when isOpenRouterHost and openRouterRouting provided", () => {
+		const params: OpenAIGatewayRoutingParams = {};
+		const compat: OpenAIGatewayRoutingCompat = {
+			isOpenRouterHost: true,
+			openRouterRouting: "openrouter/auto",
+		};
+		applyOpenAIGatewayRouting(params, compat);
+		expect(params.provider).toBe("openrouter/auto");
 	});
-	it("returns undefined for empty string", () => {
-		expect(normalizeOpenAIStableId("", 64, "h_")).toBeUndefined();
+	it("does not set provider when not OpenRouter host", () => {
+		const params: OpenAIGatewayRoutingParams = {};
+		const compat: OpenAIGatewayRoutingCompat = {
+			isOpenRouterHost: false,
+			openRouterRouting: "openrouter/auto",
+		};
+		applyOpenAIGatewayRouting(params, compat);
+		expect(params.provider).toBeUndefined();
 	});
-	it("returns value when within max length", () => {
-		expect(normalizeOpenAIStableId("short", 64, "h_")).toBe("short");
+	it("does not set provider when openRouterRouting missing", () => {
+		const params: OpenAIGatewayRoutingParams = {};
+		const compat: OpenAIGatewayRoutingCompat = {
+			isOpenRouterHost: true,
+		};
+		applyOpenAIGatewayRouting(params, compat);
+		expect(params.provider).toBeUndefined();
 	});
-	it("replaces lone surrogates with replacement character", () => {
-		const result = normalizeOpenAIStableId("test\uD800", 64, "h_");
-		expect(result).toBe("test\uFFFD");
+	it("sets gateway.only when Vercel gateway with only routing", () => {
+		const params: OpenAIGatewayRoutingParams = {};
+		const compat: OpenAIGatewayRoutingCompat = {
+			isVercelGatewayHost: true,
+			vercelGatewayRouting: { only: ["openai"] },
+		};
+		applyOpenAIGatewayRouting(params, compat);
+		expect(params.providerOptions?.gateway?.only).toEqual(["openai"]);
 	});
-	it("hashes when value exceeds max length", () => {
-		const long = "a".repeat(100);
-		const result = normalizeOpenAIStableId(long, 10, "h_");
-		expect(result).toMatch(/^h_/);
-		expect(result!.length).toBeLessThan(20);
+	it("sets gateway.order when Vercel gateway with order routing", () => {
+		const params: OpenAIGatewayRoutingParams = {};
+		const compat: OpenAIGatewayRoutingCompat = {
+			isVercelGatewayHost: true,
+			vercelGatewayRouting: { order: ["openai", "anthropic"] },
+		};
+		applyOpenAIGatewayRouting(params, compat);
+		expect(params.providerOptions?.gateway?.order).toEqual(["openai", "anthropic"]);
 	});
-	it("returns value when exactly at max length", () => {
-		const exact = "a".repeat(10);
-		expect(normalizeOpenAIStableId(exact, 10, "h_")).toBe(exact);
+	it("sets both gateway.only and gateway.order when both provided", () => {
+		const params: OpenAIGatewayRoutingParams = {};
+		const compat: OpenAIGatewayRoutingCompat = {
+			isVercelGatewayHost: true,
+			vercelGatewayRouting: { only: ["openai"], order: ["anthropic"] },
+		};
+		applyOpenAIGatewayRouting(params, compat);
+		expect(params.providerOptions?.gateway?.only).toEqual(["openai"]);
+		expect(params.providerOptions?.gateway?.order).toEqual(["anthropic"]);
 	});
-	it("hashes when one char over max length", () => {
-		const over = "a".repeat(11);
-		const result = normalizeOpenAIStableId(over, 10, "h_");
-		expect(result).toMatch(/^h_/);
+	it("does not set gateway when Vercel routing has neither only nor order", () => {
+		const params: OpenAIGatewayRoutingParams = {};
+		const compat: OpenAIGatewayRoutingCompat = {
+			isVercelGatewayHost: true,
+			vercelGatewayRouting: {},
+		};
+		applyOpenAIGatewayRouting(params, compat);
+		expect(params.providerOptions).toBeUndefined();
 	});
-});
-
-describe("formatOpenAiError", () => {
-	it("creates a Response with the given status", async () => {
-		const res = formatOpenAiError(429, "rate_limit", "too many requests");
-		expect(res.status).toBe(429);
-	});
-	it("includes error message and type in JSON body", async () => {
-		const res = formatOpenAiError(400, "invalid_request", "bad input");
-		const body = await res.json();
-		expect(body.error.message).toBe("bad input");
-		expect(body.error.type).toBe("invalid_request");
-	});
-	it("sets Content-Type to application/json", () => {
-		const res = formatOpenAiError(500, "server_error", "oops");
-		expect(res.headers.get("Content-Type")).toBe("application/json");
+	it("does not set gateway when not Vercel host", () => {
+		const params: OpenAIGatewayRoutingParams = {};
+		const compat: OpenAIGatewayRoutingCompat = {
+			isVercelGatewayHost: false,
+			vercelGatewayRouting: { only: ["openai"] },
+		};
+		applyOpenAIGatewayRouting(params, compat);
+		expect(params.providerOptions).toBeUndefined();
 	});
 });
 
 describe("applyOpenAIExtraBody", () => {
 	it("does nothing when extraBody is undefined", () => {
-		const params = { foo: 1 };
+		const params = { foo: "bar" };
 		applyOpenAIExtraBody(params, undefined);
-		expect(params).toEqual({ foo: 1 });
-	});
-	it("does nothing when extraBody is null", () => {
-		const params = { foo: 1 };
-		applyOpenAIExtraBody(params, null as unknown as undefined);
-		expect(params).toEqual({ foo: 1 });
+		expect(params).toEqual({ foo: "bar" });
 	});
 	it("merges extraBody into params", () => {
-		const params = { foo: 1 };
-		applyOpenAIExtraBody(params, { bar: 2 });
-		expect(params).toEqual({ foo: 1, bar: 2 });
+		const params = { foo: "bar" };
+		applyOpenAIExtraBody(params, { baz: "qux" });
+		expect(params).toEqual({ foo: "bar", baz: "qux" });
 	});
-	it("overwrites existing keys", () => {
-		const params = { foo: 1 };
-		applyOpenAIExtraBody(params, { foo: 99 });
-		expect(params).toEqual({ foo: 99 });
+	it("overwrites existing params with extraBody", () => {
+		const params = { foo: "bar" };
+		applyOpenAIExtraBody(params, { foo: "overwritten" });
+		expect(params.foo).toBe("overwritten");
 	});
-	it("drops thinking when reasoning_effort present and option set", () => {
-		const params: { reasoning_effort?: string; thinking?: unknown } = { thinking: { budget: 100 } };
-		applyOpenAIExtraBody(params, { reasoning_effort: "high" }, { dropThinkingWhenReasoningEffort: true });
-		expect(params.reasoning_effort).toBe("high");
+	it("drops thinking when reasoning_effort is set and option enabled", () => {
+		const params: { reasoning_effort?: string; thinking?: unknown } = {
+			reasoning_effort: "high",
+			thinking: { type: "enabled" },
+		};
+		applyOpenAIExtraBody(params, {}, { dropThinkingWhenReasoningEffort: true });
 		expect(params.thinking).toBeUndefined();
-	});
-	it("does not drop thinking when reasoning_effort absent", () => {
-		const params: { thinking?: unknown } = { thinking: { budget: 100 } };
-		applyOpenAIExtraBody(params, { foo: 1 }, { dropThinkingWhenReasoningEffort: true });
-		expect(params.thinking).toEqual({ budget: 100 });
-	});
-	it("does not drop thinking when option not set", () => {
-		const params: { reasoning_effort?: string; thinking?: unknown } = { thinking: { budget: 100 } };
-		applyOpenAIExtraBody(params, { reasoning_effort: "high" });
 		expect(params.reasoning_effort).toBe("high");
-		expect(params.thinking).toEqual({ budget: 100 });
+	});
+	it("does not drop thinking when reasoning_effort not set", () => {
+		const params: { reasoning_effort?: string; thinking?: unknown } = {
+			thinking: { type: "enabled" },
+		};
+		applyOpenAIExtraBody(params, {}, { dropThinkingWhenReasoningEffort: true });
+		expect(params.thinking).toEqual({ type: "enabled" });
+	});
+	it("does not drop thinking when option not enabled", () => {
+		const params: { reasoning_effort?: string; thinking?: unknown } = {
+			reasoning_effort: "high",
+			thinking: { type: "enabled" },
+		};
+		applyOpenAIExtraBody(params, {});
+		expect(params.thinking).toEqual({ type: "enabled" });
+	});
+	it("merges nested objects by assignment", () => {
+		const params = { config: { a: 1 } };
+		applyOpenAIExtraBody(params, { config: { b: 2 } });
+		expect(params.config).toEqual({ b: 2 });
 	});
 });
 
 describe("mapOpenAIReasoningEffort", () => {
-	it("returns effort when no map provided", () => {
-		const model = { thinking: {} };
+	it("returns effort as-is when no compat or model map", () => {
+		const model = { thinking: {} } as Pick<Model, "thinking">;
 		expect(mapOpenAIReasoningEffort(model, undefined, "high")).toBe("high");
 	});
-	it("returns effort when map has no matching key", () => {
-		const model = { thinking: {} };
-		expect(mapOpenAIReasoningEffort(model, { reasoningEffortMap: { low: "1" } }, "high")).toBe("high");
+	it("returns mapped effort from compat map", () => {
+		const model = { thinking: {} } as Pick<Model, "thinking">;
+		const compat = { reasoningEffortMap: { high: "max" } as Partial<Record<Effort, string>> };
+		expect(mapOpenAIReasoningEffort(model, compat, "high")).toBe("max");
 	});
-	it("returns compat map value when present", () => {
-		const model = { thinking: {} };
-		expect(mapOpenAIReasoningEffort(model, { reasoningEffortMap: { high: "MAX" } }, "high")).toBe("MAX");
-	});
-	it("returns model map value when compat map missing", () => {
-		const model = { thinking: { effortMap: { high: "ULTRA" } } };
-		expect(mapOpenAIReasoningEffort(model, undefined, "high")).toBe("ULTRA");
+	it("returns mapped effort from model thinking map", () => {
+		const model = { thinking: { effortMap: { high: "ultra" } } } as unknown as Pick<Model, "thinking">;
+		expect(mapOpenAIReasoningEffort(model, undefined, "high")).toBe("ultra");
 	});
 	it("prefers compat map over model map", () => {
-		const model = { thinking: { effortMap: { high: "MODEL" } } };
-		expect(mapOpenAIReasoningEffort(model, { reasoningEffortMap: { high: "COMPAT" } }, "high")).toBe("COMPAT");
+		const model = { thinking: { effortMap: { high: "ultra" } } } as unknown as Pick<Model, "thinking">;
+		const compat = { reasoningEffortMap: { high: "max" } as Partial<Record<Effort, string>> };
+		expect(mapOpenAIReasoningEffort(model, compat, "high")).toBe("max");
 	});
-	it("returns effort when both maps missing the key", () => {
-		const model = { thinking: { effortMap: { low: "L" } } };
-		expect(mapOpenAIReasoningEffort(model, { reasoningEffortMap: { low: "C" } }, "high")).toBe("high");
+	it("returns effort as-is when not in either map", () => {
+		const model = { thinking: { effortMap: { low: "min" } } } as unknown as Pick<Model, "thinking">;
+		const compat = { reasoningEffortMap: { low: "min" } as Partial<Record<Effort, string>> };
+		expect(mapOpenAIReasoningEffort(model, compat, "high")).toBe("high");
+	});
+});
+
+describe("normalizeOpenAIStableId", () => {
+	it("returns undefined for undefined input", () => {
+		expect(normalizeOpenAIStableId(undefined, 64, "id_")).toBeUndefined();
+	});
+	it("returns undefined for empty string", () => {
+		expect(normalizeOpenAIStableId("", 64, "id_")).toBeUndefined();
+	});
+	it("returns well-formed string when within maxLength", () => {
+		expect(normalizeOpenAIStableId("abc123", 64, "id_")).toBe("abc123");
+	});
+	it("returns hash-prefixed id when exceeding maxLength", () => {
+		const longId = "a".repeat(100);
+		const result = normalizeOpenAIStableId(longId, 64, "id_");
+		expect(result).toMatch(/^id_/);
+		expect(result!.length).toBeLessThan(longId.length);
+	});
+	it("returns string as-is when exactly maxLength", () => {
+		const exact = "a".repeat(64);
+		expect(normalizeOpenAIStableId(exact, 64, "id_")).toBe(exact);
+	});
+	it("normalizes lone surrogates via toWellFormed", () => {
+		const malformed = "a\uD800b";
+		const result = normalizeOpenAIStableId(malformed, 64, "id_");
+		expect(result).toBe(malformed.toWellFormed());
+	});
+	it("produces deterministic hash for same input", () => {
+		const longId = "a".repeat(100);
+		const r1 = normalizeOpenAIStableId(longId, 64, "id_");
+		const r2 = normalizeOpenAIStableId(longId, 64, "id_");
+		expect(r1).toBe(r2);
+	});
+	it("produces different hashes for different inputs", () => {
+		const id1 = "a".repeat(100);
+		const id2 = "b".repeat(100);
+		expect(normalizeOpenAIStableId(id1, 64, "id_")).not.toBe(normalizeOpenAIStableId(id2, 64, "id_"));
+	});
+});
+
+describe("formatOpenAiError", () => {
+	it("returns a Response with correct status", () => {
+		const response = formatOpenAiError(400, "invalid_request_error", "Bad request");
+		expect(response.status).toBe(400);
+	});
+	it("returns JSON content type", () => {
+		const response = formatOpenAiError(500, "server_error", "Internal error");
+		expect(response.headers.get("Content-Type")).toBe("application/json");
+	});
+	it("body contains error object with message and type", async () => {
+		const response = formatOpenAiError(429, "rate_limit_error", "Too many requests");
+		const body = await response.json();
+		expect(body.error.message).toBe("Too many requests");
+		expect(body.error.type).toBe("rate_limit_error");
+	});
+});
+
+describe("isCompiledGrammarTooLargeStrictError", () => {
+	it("returns false for non-400 status errors", () => {
+		expect(isCompiledGrammarTooLargeStrictError(new Error("some error"), { status: 500 } as never)).toBe(false);
+	});
+	it("returns false for undefined error and response", () => {
+		expect(isCompiledGrammarTooLargeStrictError(undefined, undefined)).toBe(false);
+	});
+	it("returns false for 400 with non-matching text", () => {
+		expect(isCompiledGrammarTooLargeStrictError(new Error("some other error"), { status: 400 } as never)).toBe(false);
+	});
+});
+
+describe("shouldRetryWithoutStrictTools", () => {
+	it("returns false when no tools provided", () => {
+		expect(shouldRetryWithoutStrictTools(new Error("err"), undefined, true, undefined)).toBe(false);
+	});
+	it("returns false when tools array is empty", () => {
+		expect(shouldRetryWithoutStrictTools(new Error("err"), undefined, true, [])).toBe(false);
+	});
+	it("returns false when strictToolsApplied is false", () => {
+		expect(shouldRetryWithoutStrictTools(new Error("err"), undefined, false, [{ type: "function" } as never])).toBe(
+			false,
+		);
+	});
+	it("returns false for non-400/422 status", () => {
+		expect(
+			shouldRetryWithoutStrictTools(new Error("err"), { status: 500 } as never, true, [
+				{ type: "function" } as never,
+			]),
+		).toBe(false);
+	});
+	it("returns false for 400 with non-matching text", () => {
+		expect(
+			shouldRetryWithoutStrictTools(new Error("some error"), { status: 400 } as never, true, [
+				{ type: "function" } as never,
+			]),
+		).toBe(false);
 	});
 });
