@@ -18,6 +18,10 @@ OUT="${OUT_DIR:-${REPO_ROOT}/proof/captures/x11}"
 mkdir -p "${OUT}"
 OUT="$(cd "${OUT}" && pwd)"
 
+# shellcheck source=proof/docker/native-addon.sh
+source "${REPO_ROOT}/proof/docker/native-addon.sh"
+require_native_addon "${REPO_ROOT}"
+
 # A model served by this host answers on loopback here and on the gateway alias in
 # there. proof/docker/host-endpoint.sh owns the substitution.
 # shellcheck source=proof/docker/host-endpoint.sh
