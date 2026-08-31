@@ -5,7 +5,7 @@ import { padLineToWidth } from "@veyyon/utils/padding";
 import { encodeTextSized } from "@veyyon/utils/text-sizing";
 import { extractSegments, sliceWithWidth, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { replaceTabs, sanitizeSingleLine } from "@veyyon/utils/wrap";
-import { Glob } from "bun";
+import { collectPackageSources } from "./support/package-sources";
 
 describe("text utils", () => {
 	it("computes visible width for ANSI and tabs", () => {
@@ -180,26 +180,13 @@ describe("sanitizeSingleLine", () => {
 
 	// ONE-PLACE lock: this helper was copy-pasted byte-for-byte into select-list
 	// and settings-list. It now lives only in utils.ts — a second definition must
-	// re-import, not re-declare, or copies drift. Every package that depends on
-	// `@veyyon/utils` is scanned, not just the two that had the copies: the next
-	// copy will be made wherever the next list component is written.
+	// re-import, not re-declare, or copies drift. Every workspace member is scanned, not the
+	// seven packages that used to be named here: the next copy will be made wherever the next list
+	// component is written, which is no longer necessarily under `packages/`.
 	it("is defined in exactly one source file", async () => {
-		const root = `${import.meta.dir}/../..`;
 		const definitions: string[] = [];
-		for (const pkg of [
-			"utils/src",
-			"tui/src",
-			"coding-agent/src",
-			"collab-web/src",
-			"tool-render/src",
-			"agent/src",
-			"ai/src",
-		]) {
-			const glob = new Glob("**/*.ts");
-			for await (const rel of glob.scan({ cwd: `${root}/${pkg}` })) {
-				const src = await Bun.file(`${root}/${pkg}/${rel}`).text();
-				if (/function\s+sanitizeSingleLine\b/.test(src)) definitions.push(`${pkg}/${rel}`);
-			}
+		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
+			if (/function\s+sanitizeSingleLine\b/.test(text)) definitions.push(rel);
 		}
 		expect(definitions).toEqual(["utils/src/wrap.ts"]);
 	});
@@ -243,15 +230,16 @@ describe("clamp", () => {
 	});
 
 	// ONE-PLACE lock: clamp now has a single owner, @veyyon/utils (utils/src/math.ts),
-	// which tui re-exports through utils.ts. No file in tui/src may re-declare it as a
+	// which tui re-exports through utils.ts. No other module may re-declare it as a
 	// function or const, or the two copies drift again (they once disagreed on NaN).
-	it("has no local definition in tui/src (only the re-export)", async () => {
-		const root = `${import.meta.dir}/../..`;
+	// The sweep reads every workspace member rather than `tui/src`, which is where the copy
+	// happened to be: the terminal renderer has since left `packages/`, and the next copy will be
+	// written wherever the next component is.
+	it("has no local definition outside the owner", async () => {
 		const definitions: string[] = [];
-		const glob = new Glob("**/*.ts");
-		for await (const rel of glob.scan({ cwd: `${root}/tui/src` })) {
-			const src = await Bun.file(`${root}/tui/src/${rel}`).text();
-			if (/(?:function\s+clamp\b|(?:const|let)\s+clamp\s*=)/.test(src)) definitions.push(`tui/src/${rel}`);
+		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
+			if (rel === "utils/src/math.ts") continue;
+			if (/(?:function\s+clamp\b|(?:const|let)\s+clamp\s*=)/.test(text)) definitions.push(rel);
 		}
 		expect(definitions).toEqual([]);
 	});

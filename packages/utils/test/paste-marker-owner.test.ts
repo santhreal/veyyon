@@ -16,10 +16,12 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { BracketedPasteHandler, PASTE_END, PASTE_START } from "@veyyon/utils/bracketed-paste";
+import { memberSrcNamed } from "./support/package-sources";
 
 const UTILS_SRC = path.join(import.meta.dir, "..", "src");
-const TUI_SRC = path.resolve(import.meta.dir, "../../tui/src");
-const CODING_AGENT_SRC = path.resolve(import.meta.dir, "../../coding-agent/src");
+// By published name, not by directory: `@veyyon/tui` is `hosts/terminal/engine`.
+const TUI_SRC = memberSrcNamed("@veyyon/tui");
+const CODING_AGENT_SRC = memberSrcNamed("@veyyon/coding-agent");
 
 describe("the bracketed-paste markers", () => {
 	/**

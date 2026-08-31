@@ -60,19 +60,59 @@ function exportTarget(value: unknown, depth = 0): string | undefined {
 	return undefined;
 }
 
-/** Every directory under `<repoRoot>/packages` that holds a `package.json`, sorted for a stable table. */
+/**
+ * Every workspace member directory that holds a `package.json`, sorted for a stable table.
+ *
+ * The member list is read from the root manifest's `workspaces.packages` rather than assumed to be
+ * the contents of `packages/`. That assumption cost the table nine of its rows the day members
+ * moved out: `contracts/*`, `hosts/terminal/engine`, `kernel`, `natives/bridge/bindings` and
+ * `plugins/*` stopped resolving, and because every gate built on this resolution is an upper bound,
+ * each one kept passing while measuring less.
+ */
 function packageDirs(repoRoot: string): string[] {
-	const root = path.join(repoRoot, "packages");
-	let names: string[];
+	let patterns: unknown;
 	try {
-		names = fs.readdirSync(root);
+		const manifest: unknown = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf-8"));
+		const workspaces = (manifest as { workspaces?: unknown }).workspaces;
+		patterns = Array.isArray(workspaces) ? workspaces : (workspaces as { packages?: unknown })?.packages;
 	} catch {
 		return [];
 	}
-	return names
-		.map(name => path.join(root, name))
-		.filter(dir => fs.existsSync(path.join(dir, "package.json")))
-		.sort();
+	if (!Array.isArray(patterns)) return [];
+
+	const dirs = new Set<string>();
+	for (const pattern of patterns) {
+		if (typeof pattern !== "string") continue;
+		for (const dir of expandPattern(repoRoot, pattern.split("/"))) {
+			if (fs.existsSync(path.join(dir, "package.json"))) dirs.add(dir);
+		}
+	}
+	return [...dirs].sort();
+}
+
+/**
+ * The directories a member pattern's segments name, with `*` expanded one level per segment.
+ *
+ * A literal pattern (`kernel`, `natives/bridge/bindings`) names one directory and a globbed one
+ * (`packages/*`, or a nested glob two levels down) names every match, so a member arrives at
+ * whatever depth it sits.
+ */
+function expandPattern(base: string, segments: readonly string[]): string[] {
+	const [head, ...rest] = segments;
+	if (head === undefined) return [base];
+	const heads =
+		head === "*"
+			? fs
+					.readdirSync(base, { withFileTypes: true })
+					.filter(entry => entry.isDirectory() && !entry.name.startsWith("."))
+					.map(entry => path.join(base, entry.name))
+			: [path.join(base, head)];
+	const found: string[] = [];
+	for (const dir of heads) {
+		if (!fs.existsSync(dir)) continue;
+		found.push(...expandPattern(dir, rest));
+	}
+	return found;
 }
 
 /** One workspace package's declared name and its `exports` map, normalized to `{ ".": main }` if absent. */

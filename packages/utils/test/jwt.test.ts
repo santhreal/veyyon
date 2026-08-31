@@ -1,9 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { Dirent } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
-import * as path from "node:path";
 import { decodeJwtPayload } from "../src/jwt";
-import { MEMBER_ROOTS, memberRelative, memberRootOf, REPO_ROOT } from "./support/package-sources";
+import { collectPackageSources, MEMBER_ROOTS, memberRootOf, type PackageSource } from "./support/package-sources";
 
 /** Build a JWT-shaped string from a payload object (header and signature are opaque). */
 function makeJwt(payload: unknown): string {
@@ -64,38 +61,15 @@ describe("JWT-decode source lock", () => {
 		return JWT_DECODE_IDIOMS.some(re => re.test(text));
 	}
 
-	async function walk(dir: string, out: { rel: string; body: string }[]): Promise<void> {
-		let entries: Dirent[];
-		try {
-			entries = await readdir(dir, { withFileTypes: true });
-		} catch {
-			return;
-		}
-		for (const entry of entries) {
-			const full = path.join(dir, entry.name);
-			if (entry.isDirectory()) {
-				if (entry.name === "node_modules" || entry.name === "test" || entry.name === "__tests__") continue;
-				await walk(full, out);
-				continue;
-			}
-			if (!entry.isFile() || !entry.name.endsWith(".ts") || entry.name.endsWith(".test.ts")) continue;
-			out.push({ rel: memberRelative(full), body: await readFile(full, "utf8") });
-		}
-	}
-
-	async function sourceFiles(): Promise<{ rel: string; body: string }[]> {
-		const out: { rel: string; body: string }[] = [];
-		for (const memberRoot of MEMBER_ROOTS) {
-			const rootDir = path.join(REPO_ROOT, memberRoot);
-			for (const pkg of await readdir(rootDir, { withFileTypes: true })) {
-				if (!pkg.isDirectory()) continue;
-				// Walk both shipped source and build scripts — a codegen script hand-rolled
-				// this decode too, so scripts are in scope for the lock.
-				await walk(path.join(rootDir, pkg.name, "src"), out);
-				await walk(path.join(rootDir, pkg.name, "scripts"), out);
-			}
-		}
-		return out;
+	// The sweep is the shared collector, which walks every declared member at whatever depth it
+	// sits. The walk here read `<root>/<package>/src`, one level under each root, so
+	// `hosts/terminal/engine`, `natives/bridge/bindings`, `python/veybot/web` and `kernel` itself
+	// contributed nothing while the roots assertion below still listed them.
+	//
+	// Both shipped source and build scripts are in scope — a codegen script hand-rolled this decode
+	// too.
+	function sourceFiles(): Promise<PackageSource[]> {
+		return collectPackageSources({ dirs: ["src", "scripts"] });
 	}
 
 	it("matches the hand-rolled idioms but not the owner or a plain byte decode", () => {
@@ -126,10 +100,9 @@ describe("JWT-decode source lock", () => {
 
 	it("no production source hand-rolls JWT payload decoding", async () => {
 		const offenders: string[] = [];
-		for (const { rel, body } of await sourceFiles()) {
-			const key = rel.split(path.sep).join("/");
-			if (EXEMPT.has(key)) continue;
-			if (hasIdiom(body)) offenders.push(key);
+		for (const { rel, text } of await sourceFiles()) {
+			if (EXEMPT.has(rel)) continue;
+			if (hasIdiom(text)) offenders.push(rel);
 		}
 		expect(offenders, "hand-rolled JWT decode — call decodeJwtPayload from @veyyon/utils instead").toEqual([]);
 	});

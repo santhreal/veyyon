@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import { typeScriptMembersOf } from "../../../../scripts/workspace-layout";
@@ -147,6 +148,53 @@ export function memberKeyOf(file: string): string {
 /** The directory a {@link memberKeyOf} key names. */
 export function memberDirOf(key: string): string {
 	return key.includes("/") ? path.join(REPO_ROOT, key) : path.join(PACKAGES_DIR, key);
+}
+
+/**
+ * The absolute path a {@link memberRelative} key names, which is that function's inverse.
+ *
+ * A key whose head is a declared workspace root (`hosts/terminal/engine/src/x.ts`) resolves against
+ * the repository root; any other key is under `packages/`, where the prefix was dropped.
+ */
+export function memberFileOf(key: string): string {
+	const head = key.split("/")[0] ?? "";
+	return MEMBER_ROOTS.includes(head) ? path.join(REPO_ROOT, key) : path.join(PACKAGES_DIR, key);
+}
+
+/**
+ * The directory of the member whose `package.json` declares {@link name}, absolute.
+ *
+ * A suite that reads one other package's sources used to spell that package's directory as a
+ * relative path (`../../tui/src`). A published name is the package's stable identity and its
+ * directory is not: `@veyyon/tui` is `hosts/terminal/engine`, `@veyyon/hashline` is
+ * `plugins/hashline`, and a suite anchored on the old path fails with ENOENT the day the directory
+ * moves — six suites here did, all at once, for exactly that reason.
+ *
+ * Throws when no member declares the name, because the two ways that happens are both defects: the
+ * package was renamed (the caller is now locking nothing) or removed (the caller's subject is gone).
+ */
+export function memberDirNamed(name: string): string {
+	for (const member of MEMBERS) {
+		const manifest = path.join(REPO_ROOT, member, "package.json");
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(readFileSync(manifest, "utf8"));
+		} catch {
+			continue;
+		}
+		if (parsed !== null && typeof parsed === "object" && (parsed as { name?: unknown }).name === name) {
+			return path.join(REPO_ROOT, member);
+		}
+	}
+	throw new Error(
+		`package-sources: no workspace member under ${REPO_ROOT} declares the package name ${name}. ` +
+			`Either it was renamed (update the caller to the new name) or removed (drop the caller's subject).`,
+	);
+}
+
+/** The `src` directory of the member whose `package.json` declares {@link name}, absolute. */
+export function memberSrcNamed(name: string): string {
+	return path.join(memberDirNamed(name), "src");
 }
 
 /**

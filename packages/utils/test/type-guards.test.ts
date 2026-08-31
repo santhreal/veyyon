@@ -202,16 +202,21 @@ const ERRORMESSAGE_GRANDFATHERED = new Set<string>([]);
 
 // Inline `X instanceof Error ? X.message : String(X)` sites remaining after the
 // 2026-07 codemod converted every convertible production `.ts` source to
-// errorMessage(). Four legitimately remain: ptree.ts keeps a deliberate
+// errorMessage(). Five legitimately remain: ptree.ts keeps a deliberate
 // `String(reason ?? "aborted")` fallback ternary; type-guards.ts is the owner
-// definition itself; hashline and collab-web are standalone packages with no
-// `@veyyon/utils` dependency (hashline ships only `diff`/`lru-cache`; collab-web is
-// a browser bundle), so importing the util for one ternary would add an unwanted
-// workspace dep and is worse than the local copy. Convert a file, remove its entry.
+// definition itself; hashline, collab-web and the veybot web UI are standalone packages with no
+// `@veyyon/utils` dependency (hashline ships only `diff`/`lru-cache`; the other two are browser
+// bundles, veybot-web on solid-js alone), so importing the util for one ternary would add an
+// unwanted workspace dep and is worse than the local copy. Convert a file, remove its entry.
 // Shrink-only.
+//
+// Keys are member-relative, so a package outside `packages/` carries its root. `plugins/hashline`
+// is the same entry under its current directory; `python/veybot/web` is a member the sweep could
+// not previously reach, and its copy predates this list.
 const INLINE_ERRORMESSAGE_GRANDFATHERED = new Set([
 	"collab-web/src/lib/client.ts",
-	"hashline/src/patcher.ts",
+	"plugins/hashline/src/patcher.ts",
+	"python/veybot/web/src/state.ts",
 	"utils/src/ptree.ts",
 	"utils/src/type-guards.ts",
 ]);

@@ -1,9 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { Dirent } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
-import * as path from "node:path";
 import { stringifyJson, tryParseJson } from "../src/json";
-import { MEMBER_ROOTS, memberRelative, memberRootOf, REPO_ROOT } from "./support/package-sources";
+import { collectPackageSources, MEMBER_ROOTS, memberRootOf, type PackageSource } from "./support/package-sources";
 
 describe("tryParseJson", () => {
 	it("parses valid JSON to the exact value", () => {
@@ -58,36 +55,12 @@ describe("tryParseJson source lock", () => {
 	// Only the owner is allowed to write the shape.
 	const EXEMPT = new Set(["utils/src/json.ts"]);
 
-	// Keys and roots come from the shared owner: this walk named `packages/` and could not see a
-	// clone of the owner's shape under any other root.
-
-	async function sourceFiles(): Promise<{ rel: string; body: string }[]> {
-		const out: { rel: string; body: string }[] = [];
-		async function walk(dir: string): Promise<void> {
-			let entries: Dirent[];
-			try {
-				entries = await readdir(dir, { withFileTypes: true });
-			} catch {
-				return;
-			}
-			for (const entry of entries) {
-				const full = path.join(dir, entry.name);
-				if (entry.isDirectory()) {
-					if (entry.name === "node_modules" || entry.name === "test" || entry.name === "__tests__") continue;
-					await walk(full);
-					continue;
-				}
-				if (!entry.isFile() || !entry.name.endsWith(".ts") || entry.name.endsWith(".test.ts")) continue;
-				out.push({ rel: memberRelative(full), body: await readFile(full, "utf8") });
-			}
-		}
-		for (const memberRoot of MEMBER_ROOTS) {
-			const rootDir = path.join(REPO_ROOT, memberRoot);
-			for (const pkg of await readdir(rootDir, { withFileTypes: true })) {
-				if (pkg.isDirectory()) await walk(path.join(rootDir, pkg.name, "src"));
-			}
-		}
-		return out;
+	// The sweep is the shared collector, which walks every declared member at whatever depth it
+	// sits. The walk here read `<root>/<package>/src`, one level under each root, so
+	// `hosts/terminal/engine`, `natives/bridge/bindings`, `python/veybot/web` and `kernel` itself
+	// contributed nothing while the roots assertion below still listed them.
+	function sourceFiles(): Promise<PackageSource[]> {
+		return collectPackageSources({ dirs: ["src"] });
 	}
 
 	it("catches the clone shape but not other catch contracts", () => {
@@ -110,10 +83,9 @@ describe("tryParseJson source lock", () => {
 
 	it("no production source rebuilds tryParseJson", async () => {
 		const offenders: string[] = [];
-		for (const { rel, body } of await sourceFiles()) {
-			const key = rel.split(path.sep).join("/");
-			if (EXEMPT.has(key)) continue;
-			if (TRYPARSE_CLONE.test(body)) offenders.push(key);
+		for (const { rel, text } of await sourceFiles()) {
+			if (EXEMPT.has(rel)) continue;
+			if (TRYPARSE_CLONE.test(text)) offenders.push(rel);
 		}
 		expect(offenders, "try/JSON.parse/catch-return-null — call tryParseJson from @veyyon/utils instead").toEqual([]);
 	});

@@ -32,10 +32,14 @@ import {
 	sgrSequence,
 } from "@veyyon/utils/ansi";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
+import { memberSrcNamed } from "./support/package-sources";
 
 const UTILS_SRC = path.join(import.meta.dir, "..", "src");
-const TUI_SRC = path.resolve(import.meta.dir, "../../tui/src");
-const CODING_AGENT_SRC = path.resolve(import.meta.dir, "../../coding-agent/src");
+// Resolved by published package name rather than by a relative directory: `@veyyon/tui` is
+// `hosts/terminal/engine` since the terminal renderer moved out of `packages/`, and a directory
+// spelled here goes stale the next time a member moves.
+const TUI_SRC = memberSrcNamed("@veyyon/tui");
+const CODING_AGENT_SRC = memberSrcNamed("@veyyon/coding-agent");
 
 describe("the ANSI primitives", () => {
 	/** The escape byte. Every sequence in this module and every caller's composition starts with it. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { fuzzyFilter, fuzzyMatch, isSubsequenceMatch, subsequenceScore } from "@veyyon/utils/fuzzy";
-import { Glob } from "bun";
+import { collectPackageSources } from "./support/package-sources";
 
 describe("fuzzyFilter", () => {
 	it("does not satisfy long tokens by scattering letters across unrelated words", () => {
@@ -94,18 +94,17 @@ describe("isSubsequenceMatch", () => {
 	// autocomplete.ts. It now lives only in fuzzy.ts. A re-declared boolean
 	// `fuzzyMatch(query, target)` copy or a second isSubsequenceMatch must fail
 	// here, not silently drift.
+	//
+	// The sweep reads every workspace member's `src`, not three named packages: the three-package
+	// list broke on the day `@veyyon/tui` left `packages/`, and it could never have seen a copy in
+	// `kernel` or under `plugins/` at all.
 	it("is defined in exactly one source file and has no boolean-fuzzyMatch twins", async () => {
-		const root = `${import.meta.dir}/../..`;
 		const subsequenceDefs: string[] = [];
 		const booleanFuzzyMatchDefs: string[] = [];
-		for (const pkg of ["utils/src", "tui/src", "coding-agent/src"]) {
-			const glob = new Glob("**/*.ts");
-			for await (const rel of glob.scan({ cwd: `${root}/${pkg}` })) {
-				const src = await Bun.file(`${root}/${pkg}/${rel}`).text();
-				if (/function\s+isSubsequenceMatch\b/.test(src)) subsequenceDefs.push(`${pkg}/${rel}`);
-				if (/function\s+fuzzyMatch\s*\(\s*query:\s*string,\s*target:\s*string\s*\):\s*boolean/.test(src)) {
-					booleanFuzzyMatchDefs.push(`${pkg}/${rel}`);
-				}
+		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
+			if (/function\s+isSubsequenceMatch\b/.test(text)) subsequenceDefs.push(rel);
+			if (/function\s+fuzzyMatch\s*\(\s*query:\s*string,\s*target:\s*string\s*\):\s*boolean/.test(text)) {
+				booleanFuzzyMatchDefs.push(rel);
 			}
 		}
 		expect(subsequenceDefs).toEqual(["utils/src/fuzzy.ts"]);
@@ -127,17 +126,12 @@ describe("subsequenceScore", () => {
 	// ONE-PLACE lock: the same score() was hand-rolled in all three autocomplete
 	// files. It now lives only in fuzzy.ts.
 	it("is defined in exactly one source file", async () => {
-		const root = `${import.meta.dir}/../..`;
 		const defs: string[] = [];
-		for (const pkg of ["utils/src", "tui/src", "coding-agent/src"]) {
-			const glob = new Glob("**/*.ts");
-			for await (const rel of glob.scan({ cwd: `${root}/${pkg}` })) {
-				const src = await Bun.file(`${root}/${pkg}/${rel}`).text();
-				if (/function\s+subsequenceScore\b/.test(src)) defs.push(`${pkg}/${rel}`);
-				// The old local copies were named `fuzzyScore(query, target): number`.
-				if (/function\s+fuzzyScore\s*\(\s*query:\s*string,\s*target:\s*string\s*\):\s*number/.test(src)) {
-					defs.push(`STRAY:${pkg}/${rel}`);
-				}
+		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
+			if (/function\s+subsequenceScore\b/.test(text)) defs.push(rel);
+			// The old local copies were named `fuzzyScore(query, target): number`.
+			if (/function\s+fuzzyScore\s*\(\s*query:\s*string,\s*target:\s*string\s*\):\s*number/.test(text)) {
+				defs.push(`STRAY:${rel}`);
 			}
 		}
 		expect(defs).toEqual(["utils/src/fuzzy.ts"]);

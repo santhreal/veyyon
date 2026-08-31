@@ -1,8 +1,9 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, it } from "bun:test";
-import * as path from "node:path";
+import { readFile } from "node:fs/promises";
 import { moduleSpecifiersIn } from "../src/module-reach";
 import { escapeLike, SQLITE_NOW_EPOCH, sqlPlaceholders, tableExists } from "../src/sqlite";
+import { collectPackageSources, memberFileOf } from "./support/package-sources";
 
 // One in-memory database per assertion group; each closes in afterEach so a
 // leaked handle can never mask the closed-handle propagation test below.
@@ -201,17 +202,16 @@ describe("SQLITE_NOW_EPOCH", () => {
 	 * the move each simply kept its own copy.
 	 */
 	it("is declared here and in no other module across the packages that use it", async () => {
-		const packagesDir = path.resolve(import.meta.dir, "../..");
-		const files = [...new Bun.Glob("{utils,ai,coding-agent}/src/**/*.ts").scanSync(packagesDir)]
-			.map(file => file.split(path.sep).join("/"))
-			.sort();
-		expect(files.length).toBeGreaterThan(1_000);
+		// Every member, not the three packages that write these columns today: the store that holds
+		// the third use has since moved to `kernel/`, and a glob naming directories would have
+		// stopped reading it without failing.
+		const sources = await collectPackageSources({ dirs: ["src"] });
+		expect(sources.length).toBeGreaterThan(1_000);
 		const declarers: string[] = [];
-		for (const file of files) {
-			const text = await Bun.file(path.join(packagesDir, file)).text();
-			if (text.includes(`= "${SQLITE_NOW_EPOCH}"`)) declarers.push(file);
+		for (const { rel, text } of sources) {
+			if (text.includes(`= "${SQLITE_NOW_EPOCH}"`)) declarers.push(rel);
 		}
-		expect(declarers).toEqual(["utils/src/sqlite.ts"]);
+		expect(declarers.sort()).toEqual(["utils/src/sqlite.ts"]);
 	});
 
 	/**
@@ -226,13 +226,13 @@ describe("SQLITE_NOW_EPOCH", () => {
 	 * gates now agree the module has no business with SQL.
 	 */
 	it("is imported by every module that builds SQL with it", async () => {
-		const packagesDir = path.resolve(import.meta.dir, "../..");
-		for (const file of [
+		for (const key of [
 			"ai/src/auth-storage-sqlite.ts",
 			"coding-agent/src/session/agent-storage.ts",
-			"coding-agent/src/session/history-storage.ts",
+			// The session history store moved to the kernel with the rest of the session spine.
+			"kernel/src/session/history-storage.ts",
 		]) {
-			const text = await Bun.file(path.join(packagesDir, file)).text();
+			const text = await readFile(memberFileOf(key), "utf8");
 			expect(text).toContain("SQLITE_NOW_EPOCH");
 			expect(moduleSpecifiersIn(text)).toContain("@veyyon/utils/sqlite");
 		}

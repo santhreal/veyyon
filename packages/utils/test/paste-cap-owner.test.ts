@@ -12,9 +12,11 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { PASTE_MAX_BYTES } from "@veyyon/utils/bracketed-paste";
+import { memberSrcNamed } from "./support/package-sources";
 
 const UTILS_SRC = path.join(import.meta.dir, "..", "src");
-const TUI_SRC = path.resolve(import.meta.dir, "../../tui/src");
+// By published name, not by directory: `@veyyon/tui` is `hosts/terminal/engine`.
+const TUI_SRC = memberSrcNamed("@veyyon/tui");
 
 describe("paste byte cap ownership", () => {
 	it("the exported owner carries the intended 64 MiB value", () => {
