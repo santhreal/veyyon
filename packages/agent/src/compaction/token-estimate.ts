@@ -23,7 +23,8 @@ export function estimateTokens(message: AgentMessage, options?: { excludeEncrypt
 	const hit = cached?.[slotKey];
 	if (hit !== undefined && hit.shape === shape) return hit.value;
 	const value = estimateTokensUncached(message, options);
-	tokenEstimateCache.set(message, { ...cached, [slotKey]: { value, shape } });
+	if (cached) cached[slotKey] = { value, shape };
+	else tokenEstimateCache.set(message, { [slotKey]: { value, shape } });
 	return value;
 }
 
