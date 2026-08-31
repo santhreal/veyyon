@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-9b847423.js";
+            window.path_to_searchindex_js = "searchindex-4c0eaf73.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0d6bf2a1.js"></script>
@@ -6464,6 +6464,36 @@ off-limits path is logged with a scope deviation, and keeping it without a
 justification is reported in the next iteration.</p>
 <p>The harness itself belongs in <code>off_limits</code>. A loop that is allowed to edit its
 own benchmark can improve the number without improving the code.</p>
+<h2 id="reading-a-run"><a class="header" href="#reading-a-run">Reading a run</a></h2>
+<p>A live loop occupies one status row:</p>
+<pre><code>autoswarm · run #5 · 1m 12s · 4 runs · 3 kept · 3 arms · best 168.40ms · conf 3.2x · ctrl+x runs
+</code></pre>
+<p><code>ctrl+x</code> opens the run screen, and so does <code>/autoresearch</code> with nothing after
+it:</p>
+<pre><code>┌─ Autoswarm · tokenizer-laten…┬───────────────────────────────────────────────────┐
+│   OVERVIEW ───────────────── │ Session     tokenizer-latency                     │
+│ › Session                    │ Goal        make the tokenizer faster             │
+│   Playbook                   │ Metric      duration  lower is better             │
+│   #5 running                 │                                                   │
+│   SEGMENT 1 ──────────────── │ Baseline    192.78ms  (#1)                        │
+│   #4 168.40ms                │ Best        168.40ms  (#4)  -12.6%                │
+│   #3 210.10ms                │ Confidence  3.2x                                  │
+│   #2 188.40ms                │                                                   │
+│   #1 192.78ms                │ Breadth     3 arms per iteration                  │
+├──────────────────────────────┴───────────────────────────────────────────────────┤
+│ up/down select   pgup/pgdn page   esc close                                      │
+└──────────────────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<p>The list holds the session, the playbook, the run in flight and every logged
+run, newest first, grouped by segment. The pane beside it shows the highlighted
+entry in full: metric and percentage change against the segment baseline,
+secondary metrics, confidence, the arm that produced the run and the arm that
+certified it, the flag reason, scope deviations, the change description, the
+commit and the files it touched.</p>
+<p>Up and down move through the list, page up and page down scroll the detail pane,
+typing filters the list, and Escape closes the screen. It is readable before the
+first run, where it shows the goal, the scope and the metric the session was
+configured with.</p>
 <h2 id="going-wider"><a class="header" href="#going-wider">Going wider</a></h2>
 <p><code>/autoresearch</code> tries one change per iteration. <a href="#autoswarm">Autoswarm</a> is
 the same loop with several candidate arms per iteration, cross-reviewed before
@@ -6495,9 +6525,25 @@ degenerate cases.</p>
 </table>
 </div>
 <h2 id="ending-a-session"><a class="header" href="#ending-a-session">Ending a session</a></h2>
-<p><code>/autoresearch off</code> leaves the mode and keeps the session. <code>/autoresearch clear</code>
-resets the worktree to the baseline and closes the session; <code>--keep-tree</code> leaves
-your files alone. <code>/autoswarm</code> takes the same two.</p>
+<p><code>/autoresearch off</code> leaves the mode and keeps the session. A bare
+<code>/autoresearch</code> opens the run screen; it does not end anything.</p>
+<p><code>/autoresearch clear</code> resets the worktree to the segment baseline, deletes
+untracked files and closes the session. It asks first, naming the commit it
+resets to and how many files hold uncommitted changes. Two flags:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--keep-tree</code></td><td>Close the session and leave every file alone. Nothing to confirm.</td></tr>
+<tr><td><code>--reset-tree</code></td><td>Reset even when the branch is not an <code>autoresearch/*</code> one.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Any other argument after <code>clear</code> is rejected and nothing is reset, so a
+misspelled <code>--keep-tree</code> cannot fall through to the reset.</p>
+<p><code>/autoswarm</code> takes the same subcommands.</p>
 <p>State is stored per repository, under the profile directory. The database is
 keyed on the primary checkout, so worktrees of one repository share it.
 <code>VEYYON_AUTORESEARCH_DB_DIR</code> overrides the location.</p>
@@ -6512,12 +6558,13 @@ trusted, has the survivors review each other, and keeps at most one.</p>
 <pre><code>Autoswarm setup
 Autoresearch with breadth. The model derives the metric from your harness.
 
-› Goal          make the tokenizer faster▌  type to edit
-  Breadth       3                           candidate arms per iteration
-  Attempts      1                           retries before an arm is abandoned
-  Certification on                          arms cross-review before one is kept
+› Goal          make the tokenizer faster▌
+  Breadth       3    candidate arms per iteration
+  Attempts      1    retries before an arm is abandoned
+  Certification on   arms cross-review before one is kept
 
-3 arms in a review ring: each arm is reviewed by another, and no pair reviews each other.
+3 arms in a review ring: each arm is reviewed by another, and no pair reviews
+each other.
 
 ↑↓ field   ←→ adjust   space toggle   enter start   esc cancel
 </code></pre>
@@ -6527,6 +6574,9 @@ one. Text typed after the command prefills the goal, so <code>/autoswarm make th
 <p>The console opens on whatever the current branch is already doing, so running it
 during a session shows that session’s breadth rather than the default, and
 starting applies the new values from the next iteration.</p>
+<p>A bare <code>/autoswarm</code> reopens the console rather than the run screen, because the
+console is where a live swarm is reconfigured. <code>ctrl+x</code> opens the run screen from
+either loop.</p>
 <p>Everything autoresearch provides is unchanged underneath: the same
 <code>autoresearch.sh</code> harness, the same metric lines, the same segments, the same
 scope rules, the same database. Read that page first; this one covers only what
@@ -6534,7 +6584,8 @@ breadth adds.</p>
 <p><code>/autoresearch</code> is still there and still serial. Autoswarm does not replace it.</p>
 <h2 id="breadth"><a class="header" href="#breadth">Breadth</a></h2>
 <p>Breadth is 1 to 8 and opens at 3, the fewest arms a review ring needs. The
-dashboard shows <code>breadth N</code> whenever it is above 1.</p>
+status row states <code>N arms</code> whenever breadth is above 1, and the run screen
+states it per session.</p>
 <p>Arms share one worktree. They are built one at a time, measured, and reverted,
 so breadth costs iteration time rather than disk. An arm is a different idea:
 two arms that produce the same diff are counted once.</p>
@@ -6610,8 +6661,12 @@ reviewer concludes; the judgement on top of them does not.</p>
 <h2 id="session-state"><a class="header" href="#session-state">Session state</a></h2>
 <p>Breadth, attempts and certification belong to the session rather than the
 installation, so the setup console sets them per investigation and <code>/settings</code>
-does not carry them. A run records which arm produced it and which reviewer
-certified it.</p>
+does not carry them. A run records which arm produced it and which arm certified
+it, both stated on the run screen’s entry for that run.</p>
+<p>A winning arm has to beat the segment’s baseline, not merely the other arms of
+its iteration. An iteration where every arm regressed is a null round.</p>
+<p><code>certify_arms</code> attaches only while breadth is above 1. A serial session has one
+candidate and no ring, so there is nothing for it to triage.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="eval-tool-python-backend"><a class="header" href="#eval-tool-python-backend">Eval Tool Python Backend</a></h1>
 <p>The Python execution stack in <code>packages/coding-agent</code>: tool behavior, runner lifecycle,
