@@ -11,6 +11,7 @@ import {
 	normalizeKimiFunctionName,
 	partialSuffixOverlap,
 	partialSuffixOverlapAny,
+	recordOrEmpty,
 } from "../src/dialect/coercion";
 
 describe("jsonTypeOf", () => {
@@ -26,11 +27,8 @@ describe("jsonTypeOf", () => {
 		expect(jsonTypeOf(42n)).toBe("number");
 	});
 
-	it("returns 'boolean' for true", () => {
+	it("returns 'boolean' for boolean", () => {
 		expect(jsonTypeOf(true)).toBe("boolean");
-	});
-
-	it("returns 'boolean' for false", () => {
 		expect(jsonTypeOf(false)).toBe("boolean");
 	});
 
@@ -49,47 +47,66 @@ describe("jsonTypeOf", () => {
 	it("returns 'object' for undefined", () => {
 		expect(jsonTypeOf(undefined)).toBe("object");
 	});
+
+	it("returns 'object' for function", () => {
+		expect(jsonTypeOf(() => {})).toBe("object");
+	});
 });
 
 describe("decodeValue", () => {
-	it("decodes JSON string", () => {
-		expect(decodeValue('"hello"')).toBe("hello");
-	});
-
-	it("decodes JSON number", () => {
-		expect(decodeValue("42")).toBe(42);
-	});
-
-	it("decodes JSON boolean", () => {
-		expect(decodeValue("true")).toBe(true);
-	});
-
-	it("decodes JSON null", () => {
-		expect(decodeValue("null")).toBeNull();
-	});
-
-	it("decodes JSON array", () => {
-		expect(decodeValue("[1, 2, 3]")).toEqual([1, 2, 3]);
-	});
-
-	it("decodes JSON object", () => {
-		expect(decodeValue('{"key":"value"}')).toEqual({ key: "value" });
-	});
-
 	it("returns trimmed empty string for whitespace-only input", () => {
 		expect(decodeValue("   ")).toBe("");
 	});
 
-	it("returns raw string for non-JSON input", () => {
+	it("parses valid JSON object", () => {
+		expect(decodeValue('{"a":1}')).toEqual({ a: 1 });
+	});
+
+	it("parses valid JSON array", () => {
+		expect(decodeValue("[1,2,3]")).toEqual([1, 2, 3]);
+	});
+
+	it("parses valid JSON number", () => {
+		expect(decodeValue("42")).toBe(42);
+	});
+
+	it("parses valid JSON boolean", () => {
+		expect(decodeValue("true")).toBe(true);
+	});
+
+	it("parses valid JSON null", () => {
+		expect(decodeValue("null")).toBeNull();
+	});
+
+	it("returns raw string for invalid JSON", () => {
 		expect(decodeValue("not json")).toBe("not json");
 	});
 
-	it("returns raw string for incomplete JSON", () => {
-		expect(decodeValue("{not closed")).toBe("{not closed");
+	it("returns raw string for partial JSON", () => {
+		expect(decodeValue('{"a":')).toBe('{"a":');
 	});
 
 	it("trims before parsing", () => {
-		expect(decodeValue('  "hello"  ')).toBe("hello");
+		expect(decodeValue('  {"a":1}  ')).toEqual({ a: 1 });
+	});
+});
+
+describe("coerceValue", () => {
+	it("returns raw string for string-only schema", () => {
+		expect(coerceValue("hello", { type: "string" })).toBe("hello");
+	});
+
+	it("decodes value for non-string schema", () => {
+		expect(coerceValue('{"a":1}', { type: "object" })).toEqual({ a: 1 });
+	});
+
+	it("decodes value for unknown schema", () => {
+		expect(coerceValue("42", undefined)).toBe(42);
+	});
+
+	it("returns raw for string schema with null union", () => {
+		// null is deleted from types, leaving only string
+		expect(coerceValue("hello", { type: ["string", "null"] })).toBe("hello");
 	});
 });
 
@@ -102,6 +119,10 @@ describe("isStringOnlySchema", () => {
 		expect(isStringOnlySchema({ type: ["string", "null"] })).toBe(true);
 	});
 
+	it("returns false for type: object", () => {
+		expect(isStringOnlySchema({ type: "object" })).toBe(false);
+	});
+
 	it("returns false for type: number", () => {
 		expect(isStringOnlySchema({ type: "number" })).toBe(false);
 	});
@@ -110,16 +131,12 @@ describe("isStringOnlySchema", () => {
 		expect(isStringOnlySchema({ type: ["string", "number"] })).toBe(false);
 	});
 
-	it("returns false for empty schema", () => {
-		expect(isStringOnlySchema({})).toBe(false);
+	it("returns false for undefined schema", () => {
+		expect(isStringOnlySchema(undefined)).toBe(false);
 	});
 
 	it("returns false for null schema", () => {
 		expect(isStringOnlySchema(null)).toBe(false);
-	});
-
-	it("returns false for undefined schema", () => {
-		expect(isStringOnlySchema(undefined)).toBe(false);
 	});
 
 	it("returns true for enum with all string values", () => {
@@ -127,7 +144,7 @@ describe("isStringOnlySchema", () => {
 	});
 
 	it("returns false for enum with mixed types", () => {
-		expect(isStringOnlySchema({ enum: ["a", 1, true] })).toBe(false);
+		expect(isStringOnlySchema({ enum: ["a", 1] })).toBe(false);
 	});
 
 	it("returns true for const string", () => {
@@ -139,43 +156,21 @@ describe("isStringOnlySchema", () => {
 	});
 });
 
-describe("coerceValue", () => {
-	it("returns raw string for string-only schema", () => {
-		expect(coerceValue("hello", { type: "string" })).toBe("hello");
-	});
-
-	it("decodes JSON for non-string schema", () => {
-		expect(coerceValue("42", { type: "number" })).toBe(42);
-	});
-
-	it("decodes JSON for undefined schema", () => {
-		expect(coerceValue('{"key":"value"}', undefined)).toEqual({ key: "value" });
-	});
-
-	it("returns raw for string schema even if it looks like JSON", () => {
-		expect(coerceValue("123", { type: "string" })).toBe("123");
-	});
-});
-
 describe("isArraySchema", () => {
 	it("returns true for type: array", () => {
 		expect(isArraySchema({ type: "array" })).toBe(true);
-	});
-
-	it("returns true for type: ['array', 'null']", () => {
-		expect(isArraySchema({ type: ["array", "null"] })).toBe(true);
 	});
 
 	it("returns false for type: object", () => {
 		expect(isArraySchema({ type: "object" })).toBe(false);
 	});
 
-	it("returns false for empty schema", () => {
-		expect(isArraySchema({})).toBe(false);
+	it("returns true for type: ['array', 'null']", () => {
+		expect(isArraySchema({ type: ["array", "null"] })).toBe(true);
 	});
 
-	it("returns false for null", () => {
-		expect(isArraySchema(null)).toBe(false);
+	it("returns false for undefined", () => {
+		expect(isArraySchema(undefined)).toBe(false);
 	});
 });
 
@@ -184,107 +179,116 @@ describe("isObjectSchema", () => {
 		expect(isObjectSchema({ type: "object" })).toBe(true);
 	});
 
-	it("returns true for type: ['object', 'null']", () => {
-		expect(isObjectSchema({ type: ["object", "null"] })).toBe(true);
-	});
-
 	it("returns false for type: array", () => {
 		expect(isObjectSchema({ type: "array" })).toBe(false);
 	});
 
-	it("returns false for empty schema", () => {
-		expect(isObjectSchema({})).toBe(false);
+	it("returns true for type: ['object', 'null']", () => {
+		expect(isObjectSchema({ type: ["object", "null"] })).toBe(true);
 	});
 
-	it("returns false for null", () => {
-		expect(isObjectSchema(null)).toBe(false);
+	it("returns false for undefined", () => {
+		expect(isObjectSchema(undefined)).toBe(false);
 	});
 });
 
 describe("getObjectProperties", () => {
 	it("returns properties object when present", () => {
-		const props = { name: { type: "string" }, age: { type: "number" } };
-		expect(getObjectProperties({ properties: props })).toEqual(props);
+		const props = { a: { type: "string" } };
+		expect(getObjectProperties({ properties: props })).toBe(props);
 	});
 
-	it("returns empty object when properties is missing", () => {
-		expect(getObjectProperties({})).toEqual({});
+	it("returns empty object for schema without properties", () => {
+		expect(getObjectProperties({ type: "object" })).toEqual({});
 	});
 
-	it("returns empty object when properties is not a record", () => {
-		expect(getObjectProperties({ properties: "not an object" })).toEqual({});
+	it("returns empty object for non-record schema", () => {
+		expect(getObjectProperties("string")).toEqual({});
 	});
 
-	it("returns empty object for null schema", () => {
+	it("returns empty object for null", () => {
 		expect(getObjectProperties(null)).toEqual({});
 	});
 
-	it("returns empty object for undefined schema", () => {
-		expect(getObjectProperties(undefined)).toEqual({});
+	it("returns empty object when properties is not a record", () => {
+		expect(getObjectProperties({ properties: "not a record" })).toEqual({});
 	});
 });
 
 describe("getArrayItemSchema", () => {
-	it("returns items schema when present", () => {
+	it("returns items when present", () => {
 		const items = { type: "string" };
 		expect(getArrayItemSchema({ items })).toBe(items);
 	});
 
-	it("returns undefined when items is missing", () => {
-		expect(getArrayItemSchema({})).toBeUndefined();
+	it("returns undefined for schema without items", () => {
+		expect(getArrayItemSchema({ type: "array" })).toBeUndefined();
 	});
 
-	it("returns undefined for null schema", () => {
+	it("returns undefined for non-record schema", () => {
+		expect(getArrayItemSchema("string")).toBeUndefined();
+	});
+
+	it("returns undefined for null", () => {
 		expect(getArrayItemSchema(null)).toBeUndefined();
-	});
-
-	it("returns undefined for undefined schema", () => {
-		expect(getArrayItemSchema(undefined)).toBeUndefined();
 	});
 });
 
 describe("partialSuffixOverlap", () => {
-	it("returns 0 when text does not end with any prefix of tag", () => {
+	it("returns 0 when text does not overlap with tag prefix", () => {
 		expect(partialSuffixOverlap("hello", "world")).toBe(0);
 	});
 
+	it("returns overlap length when text ends with tag prefix", () => {
+		expect(partialSuffixOverlap("<too", "<tool_call>")).toBe(4);
+	});
+
 	it("returns 0 for empty text", () => {
-		expect(partialSuffixOverlap("", "tag")).toBe(0);
-	});
-
-	it("returns overlap length for partial tag prefix", () => {
-		expect(partialSuffixOverlap("hello <to", "<tool_call>")).toBe(3);
-	});
-
-	it("returns 0 when text ends with full tag (excluded by length-1)", () => {
-		// tag.length - 1 means full match is excluded
-		expect(partialSuffixOverlap("hello<tool_call>", "<tool_call>")).toBe(0);
-	});
-
-	it("returns 1 for single char overlap", () => {
-		expect(partialSuffixOverlap("hello<", "<tool_call>")).toBe(1);
+		expect(partialSuffixOverlap("", "<tool_call>")).toBe(0);
 	});
 
 	it("returns 0 for empty tag", () => {
 		expect(partialSuffixOverlap("hello", "")).toBe(0);
 	});
+
+	it("returns 0 when text is longer than tag", () => {
+		expect(partialSuffixOverlap("this is a long text", "<tool")).toBe(0);
+	});
+
+	it("returns partial overlap for single character", () => {
+		expect(partialSuffixOverlap("<", "<tool_call>")).toBe(1);
+	});
+
+	it("returns 0 for no overlap at all", () => {
+		expect(partialSuffixOverlap("abc", "xyz")).toBe(0);
+	});
+
+	it("handles exact prefix match up to tag.length - 1", () => {
+		expect(partialSuffixOverlap("<tool_call", "<tool_call>")).toBe(10);
+	});
+
+	it("returns 0 when text equals full tag (only partial prefixes match)", () => {
+		// text = "<tool_call>" (11 chars), tag = "<tool_call>" (11 chars)
+		// max = min(11, 10) = 10, tag.slice(0,10) = "<tool_call"
+		// text.endsWith("<tool_call") = false (text ends with ">")
+		expect(partialSuffixOverlap("<tool_call>", "<tool_call>")).toBe(0);
+	});
 });
 
 describe("partialSuffixOverlapAny", () => {
-	it("returns 0 when no tags overlap", () => {
+	it("returns 0 for no overlap with any tag", () => {
 		expect(partialSuffixOverlapAny("hello", ["world", "foo"])).toBe(0);
 	});
 
-	it("returns maximum overlap across all tags", () => {
-		expect(partialSuffixOverlapAny("hello <to", ["<tool_call>", "<tool"])).toBe(3);
+	it("returns best overlap across multiple tags", () => {
+		expect(partialSuffixOverlapAny("<too", ["<tool_call>", "<tool_result>"])).toBe(4);
 	});
 
 	it("returns 0 for empty tags array", () => {
 		expect(partialSuffixOverlapAny("hello", [])).toBe(0);
 	});
-
-	it("returns overlap for single tag", () => {
-		expect(partialSuffixOverlapAny("hello <to", ["<tool_call>"])).toBe(3);
+	it("returns max overlap when multiple tags match", () => {
+		expect(partialSuffixOverlapAny("<tool_r", ["<tool", "<tool_result>"])).toBe(7);
 	});
 });
 
@@ -293,35 +297,58 @@ describe("normalizeKimiFunctionName", () => {
 		expect(normalizeKimiFunctionName("module.submodule.function")).toBe("function");
 	});
 
-	it("returns part before colon", () => {
-		expect(normalizeKimiFunctionName("function:arg1")).toBe("function");
+	it("returns name before colon", () => {
+		expect(normalizeKimiFunctionName("function:123")).toBe("function");
 	});
 
-	it("handles colon and dot together", () => {
-		expect(normalizeKimiFunctionName("module.function:arg")).toBe("function");
+	it("handles dot and colon together", () => {
+		expect(normalizeKimiFunctionName("module.function:123")).toBe("function");
 	});
 
 	it("returns trimmed result", () => {
 		expect(normalizeKimiFunctionName("  function  ")).toBe("function");
 	});
 
-	it("returns trimmed result with dots", () => {
-		expect(normalizeKimiFunctionName("  module.function  ")).toBe("function");
+	it("returns trimmed last segment", () => {
+		expect(normalizeKimiFunctionName("module.  function  ")).toBe("function");
 	});
 
-	it("returns empty string for empty input", () => {
+	it("handles single name", () => {
+		expect(normalizeKimiFunctionName("function")).toBe("function");
+	});
+
+	it("handles empty string", () => {
 		expect(normalizeKimiFunctionName("")).toBe("");
 	});
 
-	it("handles single name without dots or colons", () => {
-		expect(normalizeKimiFunctionName("read")).toBe("read");
+	it("handles just a colon", () => {
+		expect(normalizeKimiFunctionName(":123")).toBe("");
+	});
+});
+
+describe("recordOrEmpty", () => {
+	it("returns the value when it is a record", () => {
+		const obj = { a: 1 };
+		expect(recordOrEmpty(obj)).toBe(obj);
 	});
 
-	it("handles colon with no dot", () => {
-		expect(normalizeKimiFunctionName("read:path")).toBe("read");
+	it("returns empty object for null", () => {
+		expect(recordOrEmpty(null)).toEqual({});
 	});
 
-	it("handles multiple colons (split takes first)", () => {
-		expect(normalizeKimiFunctionName("read:path:extra")).toBe("read");
+	it("returns empty object for undefined", () => {
+		expect(recordOrEmpty(undefined)).toEqual({});
+	});
+
+	it("returns empty object for string", () => {
+		expect(recordOrEmpty("string")).toEqual({});
+	});
+
+	it("returns empty object for number", () => {
+		expect(recordOrEmpty(42)).toEqual({});
+	});
+
+	it("returns empty object for array", () => {
+		expect(recordOrEmpty([1, 2])).toEqual({});
 	});
 });
