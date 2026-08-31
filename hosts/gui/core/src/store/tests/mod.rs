@@ -1,5 +1,6 @@
 //! Regression tests for store transitions, reducers, and command dispatch.
 
+mod a_window_that_just_attached_asks_for_what_it_draws;
 mod drafts_and_submissions;
 mod helpers;
 mod lifecycle;

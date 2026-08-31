@@ -1,7 +1,11 @@
 //! Snapshot section assimilation into replica state.
 
 use super::Store;
-use crate::{host::SnapshotSection, model::*};
+use crate::{
+	host::{HostAction, SnapshotSection},
+	model::*,
+	store::{CommandTarget, Completion, Effects},
+};
 
 impl Store {
 	pub(super) fn apply_snapshot(&mut self, section: SnapshotSection) -> bool {
@@ -72,9 +76,34 @@ impl Store {
 			SnapshotSection::Lifecycle(value) => replace_newer(&mut self.replica.lifecycle, value),
 			SnapshotSection::Capabilities(values) => {
 				self.replica.capabilities = values.into_iter().collect();
+				self.ask_for_what_the_window_opens_on();
 				true
 			},
 		}
+	}
+
+	/// Ask for the values the opening route draws, once the engine has stated
+	/// what it can answer.
+	///
+	/// A window that attaches and asks for nothing draws an empty product with a
+	/// reload control on it, which reads as an engine with no sessions rather
+	/// than a window that never asked. Nothing requested this, so it is silent:
+	/// an engine that does not report the capability, or a replica that already
+	/// holds the value, is left alone rather than reported as a refusal.
+	fn ask_for_what_the_window_opens_on(&mut self) {
+		if !matches!(self.replica.sessions.sessions, RemoteData::Unrequested)
+			|| self.request_pending(&CommandTarget::Sessions)
+			|| !matches!(self.replica.capability(Capability::Sessions), CapabilityStatus::Available)
+		{
+			return;
+		}
+		let mut discarded = Effects::default();
+		self.emit(
+			HostAction::ListSessions,
+			CommandTarget::Sessions,
+			Completion::None,
+			&mut discarded,
+		);
 	}
 }
 

@@ -52,11 +52,19 @@ impl Bridge {
 	/// adapter. Detached mode consumes intent without performing I/O and reports
 	/// no invented success event.
 	pub fn drain(&mut self, store: &mut Store, mut on_changes: impl FnMut(Changes)) {
-		for request in store.drain_requests() {
-			self.adapter.submit(request);
-		}
+		self.submit(store);
 		while let Some(event) = self.adapter.next_event() {
 			on_changes(self.apply(store, event));
+		}
+		// An applied event raises intent of its own: a capability snapshot asks
+		// for the values the opening route draws. Written on this pass rather
+		// than the next one, because the next one is a poll interval away.
+		self.submit(store);
+	}
+
+	fn submit(&mut self, store: &mut Store) {
+		for request in store.drain_requests() {
+			self.adapter.submit(request);
 		}
 	}
 
