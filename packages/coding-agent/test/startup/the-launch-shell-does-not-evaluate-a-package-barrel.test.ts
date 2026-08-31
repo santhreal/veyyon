@@ -21,7 +21,10 @@
  * WHAT IT DOES NOT CATCH. A leaf that grows expensive on its own -- importing `@veyyon/tui/utils`
  * is legal here however heavy that file becomes. It also says nothing about a fourth shell entry:
  * a module that joins the launch path has to be added to ENTRIES by hand, which is why the budget
- * case below measures the graph as a whole rather than trusting the list to stay complete.
+ * case below measures the graph as a whole rather than trusting the list to stay complete. And the
+ * budget is a comparison, so a barrel that grows buys the graph room: the four barrels growing by
+ * as much as the graph does leaves the ratio where it was. The per-barrel cases are what catch the
+ * launch paying for a barrel at all, and this one catches the graph outgrowing what it declined.
  */
 
 import { describe, expect, it } from "bun:test";
