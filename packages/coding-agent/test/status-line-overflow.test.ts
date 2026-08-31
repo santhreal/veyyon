@@ -5,6 +5,7 @@ import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/st
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { getProjectDir, setProjectDir } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
+import { NO_SESSION_FACTS } from "../src/modes/terminal/components/status-line/session-facts";
 import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 
 // Tracked temp directories: the factory deletes what it made when this file finishes.
@@ -31,12 +32,7 @@ afterAll(() => {
 /** Minimal SegmentContext factory — only path/git fields matter for these tests. */
 function createCtx(overrides?: { pathMaxLength?: number; branch?: string | null }): SegmentContext {
 	return {
-		session: {
-			state: {},
-			isFastModeEnabled: () => false,
-			modelRegistry: { isUsingOAuth: () => false },
-			sessionManager: undefined,
-		} as unknown as SegmentContext["session"],
+		facts: NO_SESSION_FACTS,
 		width: 120,
 		compactThinkingLevel: false,
 		options: {

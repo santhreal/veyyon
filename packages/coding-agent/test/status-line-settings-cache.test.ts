@@ -4,16 +4,16 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import {
-	StatusLineComponent,
-	type StatusLineSettings,
-} from "@veyyon/coding-agent/modes/terminal/components/status-line";
+import type { StatusLineSettings } from "@veyyon/coding-agent/modes/terminal/components/status-line/index";
 import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/terminal/components/status-line/presets";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { withIcon } from "@veyyon/coding-agent/theme/icon-label";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import * as git from "@veyyon/coding-agent/utils/git";
 import { removeSyncWithRetries, setProjectDir } from "@veyyon/utils";
+import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
+import { makeStatusLineSession } from "./helpers/status-line-session";
 
 let settingsState: SettingsTestState | undefined;
 let projectDir = "";
@@ -35,43 +35,14 @@ afterEach(() => {
 	projectDir = "";
 });
 
-function makeSession(sessionName = "Cache Session") {
-	const messages: unknown[] = [];
-	const model = { id: "test-model", name: "Test Model", contextWindow: 100_000 };
-	return {
-		state: { messages, model },
-		messages,
-		model,
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		isStreaming: false,
-		isAutoThinking: false,
-		autoResolvedThinkingLevel: () => undefined,
-		isFastModeActive: () => false,
-		isAdvisorActive: () => false,
-		isApprovalBypassed: () => false,
-		getGoalModeState: () => null,
-		getAsyncJobSnapshot: () => ({ running: [] }),
-		settings: { get: () => false, getGroup: () => ({ enabled: false }) },
-		modelRegistry: { isUsingOAuth: () => false },
-		sessionManager: {
-			getSessionName: () => sessionName,
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-			}),
-		},
-		getContextUsage: () => undefined,
-	} as unknown as ConstructorParameters<typeof StatusLineComponent>[0];
+function makeSession(sessionName = "Cache Session"): AgentSession {
+	return makeStatusLineSession({
+		modelId: "test-model",
+		modelName: "Test Model",
+		contextWindow: 100_000,
+		contextUsage: undefined,
+		sessionName,
+	});
 }
 
 function makeComponent(statusLineSettings: StatusLineSettings): StatusLineComponent {

@@ -4,9 +4,9 @@ import { Settings } from "../../../../config/settings";
 import { collectEnvSecrets } from "../../../../secrets";
 import { BUNDLED_ENV_KEYWORDS, buildEnvSecretPattern } from "../../../../secrets/env-keywords";
 import { SECRET_ORIGINS, type SecretEntry, SecretObfuscator } from "../../../../secrets/obfuscator";
-import type { AgentSession } from "../../../../session/agent-session";
 import { getThemeByName, setThemeInstance } from "../../../../theme/theme";
 import { renderSegment } from "./segments";
+import { NO_SESSION_FACTS } from "./session-facts";
 import type { SegmentContext } from "./types";
 
 /**
@@ -39,7 +39,7 @@ function obfuscatorFor(entries: SecretEntry[]): SecretObfuscator {
 
 function chip(obfuscator: SecretObfuscator | undefined): string {
 	const ctx = {
-		session: { obfuscator } as unknown as AgentSession,
+		facts: { ...NO_SESSION_FACTS, secrets: obfuscator?.liveSecrets() ?? null },
 		activeRepo: null,
 		width: 200,
 		options: {},

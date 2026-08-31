@@ -39,17 +39,16 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
-import {
-	FLOOR_SPENDABLE,
-	StatusLineComponent,
-} from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
 import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/terminal/components/status-line/presets";
+import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/terminal/components/status-line/quiet-row";
+import { FLOOR_SPENDABLE } from "@veyyon/coding-agent/modes/terminal/components/status-line/quiet-row";
 import { BASE_MODE_STATES } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import type { StatusLinePreset } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/core/approval-modes";
+import { makeStatusLineSession } from "../../../helpers/status-line-session";
 import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";
 
 /**
@@ -109,41 +108,7 @@ const makeTempDir = useTrackedTempDirs("veyyon-statusline-wide-location-");
 let wideCwd = "";
 
 function makeSession(modelId: string): AgentSession {
-	return {
-		messages: [],
-		model: { id: modelId, name: modelId, contextWindow: 128000 },
-		contextUsageRevision: 0,
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		getContextUsage: () => ({ tokens: 16000, contextWindow: 128000 }),
-		state: { messages: [], model: { id: modelId, name: modelId, contextWindow: 128000 } },
-		sessionManager: {
-			getCwd: () => wideCwd,
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-				tokensPerSecond: null,
-			}),
-			getSessionName: () => "ingest-normalizer-session",
-		},
-		getPrewalkState: () => undefined,
-		getAsyncJobSnapshot: () => undefined,
-		settings: { getGroup: () => ({ enabled: false }) },
-		isAdvisorActive: () => false,
-		isApprovalBypassed: () => false,
-		isFastModeActive: () => false,
-		configuredThinkingLevel: () => undefined,
-		modelRegistry: { isUsingOAuth: () => false },
-	} as unknown as AgentSession;
+	return makeStatusLineSession({ cwd: () => wideCwd, modelId });
 }
 
 /** The right edge of the location zone on the line just rendered, in columns. */

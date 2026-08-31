@@ -24,10 +24,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { ContextUsage } from "@veyyon/coding-agent/extensibility/extensions/types";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line";
 import type { StatusLineSegmentId } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
+import { statusLineSessionParts } from "./helpers/status-line-session";
 
 beforeAll(async () => {
 	resetSettingsForTest();
@@ -64,35 +65,19 @@ function makeSession(options: SessionOptions): AgentSession {
 		...options.compaction,
 	};
 	return {
-		messages: [{ role: "user", content: "hi" }],
-		systemPrompt: ["You are a helpful assistant."],
-		agent: { state: { tools: [] } },
-		skills: [],
-		model: { id: "test-model", contextWindow },
-		state: { messages: [{ role: "user", content: "hi" }], model: { contextWindow } },
-		sessionManager: {
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-			}),
-			getSessionName: () => "test",
-		},
-		getAsyncJobSnapshot: () => ({ running: [] }),
-		settings: { getGroup: () => compaction },
-		getContextUsage: (): ContextUsage => ({
-			tokens: options.usedTokens,
+		...statusLineSessionParts({
+			messages: [{ role: "user", content: "hi" }],
 			contextWindow,
-			percent: (options.usedTokens / contextWindow) * 100,
+			contextUsage: {
+				tokens: options.usedTokens,
+				contextWindow,
+				percent: (options.usedTokens / contextWindow) * 100,
+			} as ContextUsage,
 		}),
-		contextUsageRevision: 0,
+		systemPrompt: ["You are a helpful assistant."],
+		// The one fact these cases vary: compaction is ON, so the gauge denominates
+		// against the compaction threshold rather than the raw window.
+		settings: { getGroup: () => compaction, get: () => undefined },
 	} as unknown as AgentSession;
 }
 

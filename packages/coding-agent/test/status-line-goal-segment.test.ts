@@ -5,6 +5,7 @@ import { stateSeparator } from "@veyyon/coding-agent/modes/terminal/components/s
 import { initTheme, type ThemeColor, theme } from "@veyyon/coding-agent/theme/theme";
 import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/core/approval";
 import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/core/approval-modes";
+import { NO_SESSION_FACTS } from "../src/modes/terminal/components/status-line/session-facts";
 import { useFullColor } from "./helpers/theme-assertions";
 
 // Every assertion below names a colour, so the policy is declared rather than
@@ -41,18 +42,25 @@ function createGoalContext(opts: {
 }): SegmentContext {
 	const goal = opts.goal;
 	return {
-		session: {
-			isApprovalBypassed: () => false,
-			isStreaming: opts.streaming ?? false,
-			getGoalModeState: () => (goal ? { goal } : undefined),
-			settings: {
-				get: (key: string) => {
-					if (key === "goal.statusInFooter") return opts.verbose ?? false;
-					if (key === "goal.modelBudgetsEnabled") return opts.modelBudgetsEnabled ?? true;
-					return false;
-				},
-			},
-		} as unknown as SegmentContext["session"],
+		facts: {
+			...NO_SESSION_FACTS,
+			streaming: opts.streaming ?? false,
+			goal: goal
+				? {
+						id: "g",
+						objective: "o",
+						status: goal.status ?? "active",
+						tokensUsed: goal.tokensUsed,
+						tokenBudget: goal.tokenBudget,
+						timeUsedSeconds: 0,
+						turnsCompleted: 0,
+						createdAt: 0,
+						updatedAt: 0,
+					}
+				: null,
+			goalVerbose: opts.verbose ?? false,
+			goalModelBudgets: opts.modelBudgetsEnabled ?? true,
+		},
 		width: 120,
 		compactThinkingLevel: false,
 		options: {},

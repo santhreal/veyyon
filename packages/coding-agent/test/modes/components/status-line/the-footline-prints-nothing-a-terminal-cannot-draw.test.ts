@@ -66,9 +66,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line";
-import { fitLocation } from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
 import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/terminal/components/status-line/presets";
+import { fitLocation } from "@veyyon/coding-agent/modes/terminal/components/status-line/quiet-row";
 import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import type {
 	SegmentContext,
@@ -79,6 +79,8 @@ import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { stripAnsi } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
+import { NO_SESSION_FACTS } from "../../../../src/modes/terminal/components/status-line/session-facts";
+import { makeStatusLineSession } from "../../../helpers/status-line-session";
 import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";
 
 const makeTempDir = useTrackedTempDirs("veyyon-statusline-terminal-safety-");
@@ -108,45 +110,14 @@ function given(columns: number): number {
  * filesystem. A model name is provider text; a session name is a generated title.
  */
 function stubSession(cwd: string, modelName = "claude\x1b[31m-3-7-sonnet"): AgentSession {
-	return {
-		messages: [],
-		model: { id: "claude-3-7-sonnet", name: modelName, contextWindow: 128000 },
-		contextUsageRevision: 0,
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		getContextUsage: () => ({ tokens: 16000, contextWindow: 128000 }),
-		state: {
-			messages: [],
-			model: { id: "claude-3-7-sonnet", name: modelName, contextWindow: 128000 },
-		},
-		sessionManager: {
-			getCwd: () => cwd,
-			// Hostile too, for the same reason.
-			getSessionName: () => "ingest\r-normalizer\x07-session",
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 17_000,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 2,
-				cost: 0.42,
-				tokensPerSecond: null,
-			}),
-		},
-		getPrewalkState: () => undefined,
-		getAsyncJobSnapshot: () => undefined,
-		settings: { getGroup: () => ({ enabled: false }) },
-		isAdvisorActive: () => false,
-		isApprovalBypassed: () => false,
-		isFastModeActive: () => false,
-		configuredThinkingLevel: () => undefined,
-		modelRegistry: { isUsingOAuth: () => false },
-	} as unknown as AgentSession;
+	// Hostile by default: the model name is provider text and the session name is
+	// a generated title, so the row sweep reaches every segment printing text
+	// this process did not author, not only the two that read the filesystem.
+	return makeStatusLineSession({
+		cwd: () => cwd,
+		modelName,
+		sessionName: "ingest\r-normalizer\x07-session",
+	});
 }
 
 /**
@@ -269,9 +240,14 @@ describe("the footline prints nothing a terminal cannot draw", () => {
 	 */
 	it("lets no name it prints contribute an escape of its own", () => {
 		const hostile = "plat\rform\x07services\x1b[2J\x1b[31m";
+		const factsFor = (modelName: string): SegmentContext["facts"] => ({
+			...NO_SESSION_FACTS,
+			cwd: "/home/you/code/veyyon",
+			model: { id: "claude-3-7-sonnet", name: modelName, supportsThinking: false },
+		});
 		const context = (over: Partial<SegmentContext>): SegmentContext =>
 			({
-				session: stubSession("/home/you/code/veyyon"),
+				facts: factsFor("claude\x1b[31m-3-7-sonnet"),
 				activeRepo: null,
 				worktree: null,
 				width: 120,
@@ -279,8 +255,6 @@ describe("the footline prints nothing a terminal cannot draw", () => {
 				git: { branch: "main", status: null, pr: null },
 				...over,
 			}) as unknown as SegmentContext;
-
-		const hostileModel = stubSession("/home/you/code/veyyon", hostile);
 
 		const routes = [
 			[
@@ -303,7 +277,7 @@ describe("the footline prints nothing a terminal cannot draw", () => {
 				),
 			],
 			["refname", renderSegment("git", context({ git: { branch: hostile, status: null, pr: null } }))],
-			["model name", renderSegment("model", context({ session: hostileModel }))],
+			["model name", renderSegment("model", context({ facts: factsFor(hostile) }))],
 		] as const;
 
 		const bad: string[] = [];

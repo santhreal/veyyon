@@ -34,12 +34,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line";
 import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/terminal/components/status-line/presets";
 import type { StatusLinePreset } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { visibleWidth } from "@veyyon/utils/width";
+import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
+import { statusLineSessionParts } from "./helpers/status-line-session";
 
 beforeAll(async () => {
 	resetSettingsForTest();
@@ -69,42 +70,24 @@ function given(columns: number): number {
  */
 function stubSession(cwd = "/home/you/code/veyyon"): AgentSession {
 	return {
-		state: { messages: [{ role: "user", content: "hi" }], model: { contextWindow: 200_000 } },
-		messages: [{ role: "user", content: "hi" }],
-		model: { id: "gpt-5", name: "gpt-5", contextWindow: 200_000 },
-		contextUsageRevision: 0,
-		systemPrompt: ["You are helpful."],
-		agent: { state: { tools: [] } },
-		skills: [],
-		isStreaming: false,
-		isAutoThinking: false,
-		autoResolvedThinkingLevel: () => undefined,
-		isAdvisorActive: () => false,
-		isFastModeActive: () => false,
-		isFastModeEnabled: () => false,
-		isApprovalBypassed: () => false,
-		getGoalModeState: () => null,
-		getAsyncJobSnapshot: () => ({ running: [] }),
-		getCurrentModel: () => undefined,
-		getContextUsage: () => ({ tokens: 84_000, contextWindow: 200_000, percent: 42 }),
-		modelRegistry: { isUsingOAuth: () => false },
-		settings: { getGroup: () => ({ enabled: false, strategy: "off", threshold: "85%" }) },
-		sessionManager: {
-			getSessionName: () => "parser-rewrite",
-			getCwd: () => cwd,
-			getUsageStatistics: () => ({
+		...statusLineSessionParts({
+			modelId: "gpt-5",
+			contextWindow: 200_000,
+			contextUsage: { tokens: 84_000, contextWindow: 200_000 },
+			usage: {
 				input: 12_000,
 				output: 5_000,
 				cacheRead: 40_000,
 				cacheWrite: 1_000,
 				totalTokens: 17_000,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
 				premiumRequests: 2,
 				cost: 0.42,
-			}),
-		},
+			},
+			sessionName: "parser-rewrite",
+			cwd: () => cwd,
+			messages: [{ role: "user", content: "hi" }],
+		}),
+		systemPrompt: ["You are helpful."],
 	} as unknown as AgentSession;
 }
 

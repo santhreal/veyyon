@@ -14,10 +14,10 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { SEGMENTS } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
-import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/theme/theme";
 import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/core/approval-modes";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
+import { NO_SESSION_FACTS } from "../../../../src/modes/terminal/components/status-line/session-facts";
 
 interface ModeOverrides {
 	/** Configured `tools.approvalMode`; omit to leave it unset. */
@@ -37,20 +37,16 @@ interface ModeOverrides {
 
 function makeContext(over: ModeOverrides): SegmentContext {
 	const configured = over.unsetApprovalMode ? undefined : over.approvalMode;
-	const session = {
-		settings: {
-			get: (path: string) => (path === "tools.approvalMode" ? configured : undefined),
-		},
+	return {
 		// The segment reads the rung the session is ENFORCING, not the stored
 		// setting, because `--yolo` and plan mode both outrank the stored value
 		// and neither is visible in it. `AgentSession.effectiveApprovalMode`
-		// applies exactly this resolution; the stub mirrors it.
-		effectiveApprovalMode: () => over.enforcedMode ?? configured,
-		isApprovalBypassed: () => over.bypassed === true,
-	} as unknown as AgentSession;
-
-	return {
-		session,
+		// applies exactly this resolution; the fact mirrors its answer.
+		facts: {
+			...NO_SESSION_FACTS,
+			approvalMode: over.enforcedMode ?? configured,
+			approvalBypassed: over.bypassed === true,
+		},
 		activeRepo: null,
 		width: 120,
 		options: {},

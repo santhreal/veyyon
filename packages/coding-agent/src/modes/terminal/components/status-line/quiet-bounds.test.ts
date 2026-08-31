@@ -18,47 +18,15 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { visibleWidth } from "@veyyon/utils/width";
+import { makeStatusLineSession } from "../../../../../test/helpers/status-line-session";
 import { resetSettingsForTest, Settings } from "../../../../config/settings";
 import { settings } from "../../../../config/settings-instance";
 import type { AgentSession } from "../../../../session/agent-session";
 import { getThemeByName, setThemeInstance } from "../../../../theme/theme";
 import { StatusLineComponent } from "./component";
 
-function makeSession() {
-	return {
-		messages: [],
-		model: { contextWindow: 128000 },
-		contextUsageRevision: 0,
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		getContextUsage: () => ({ tokens: 42, contextWindow: 128000 }),
-		state: { messages: [], model: { contextWindow: 128000 } },
-		sessionManager: {
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-				tokensPerSecond: null,
-			}),
-			getSessionName: () => "test-session",
-		},
-		getPrewalkState: () => undefined,
-		getAsyncJobSnapshot: () => undefined,
-		settings: { getGroup: () => ({ enabled: false }) },
-		isAdvisorActive: () => false,
-		isApprovalBypassed: () => false,
-		isFastModeActive: () => false,
-		configuredThinkingLevel: () => undefined,
-		modelRegistry: { isUsingOAuth: () => false },
-	} as unknown as AgentSession;
+function makeSession(): AgentSession {
+	return makeStatusLineSession({ contextUsage: { tokens: 42, contextWindow: 128_000 } });
 }
 
 beforeAll(async () => {

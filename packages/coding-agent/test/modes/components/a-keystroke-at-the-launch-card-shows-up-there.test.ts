@@ -23,8 +23,9 @@
  * `test/what-you-type-at-the-launch-card-reaches-the-composer.test.ts`.
  */
 
-import { beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	applyComposerChrome,
 	COMPOSER_PLACEHOLDER,
@@ -39,7 +40,14 @@ import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { Component } from "@veyyon/tui";
 
 beforeAll(async () => {
+	// The card's footline is the configured status row, so this suite owns its own settings store
+	// rather than inheriting whatever a neighbouring file in the bucket left initialized.
+	await Settings.init({ inMemory: true });
 	await initTheme();
+});
+
+afterAll(() => {
+	resetSettingsForTest();
 });
 
 /** The launch composer and the live editor inside it, built the launch way. */

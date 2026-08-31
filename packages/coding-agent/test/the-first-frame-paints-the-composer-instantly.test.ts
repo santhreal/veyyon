@@ -54,12 +54,12 @@ import { visibleWidth } from "@veyyon/utils/width";
  * that stops collapsing, an extra pad row inside mountComposerZone or a
  * changed bottom margin all move that sum and fail here.
  *
- * The launch shape also paints the footline row, which is the row the live
- * status line takes over. Measured on a pty before it did: the card and its
- * composer at 84-102ms, the status row still blank at 1067ms. The half of that
- * row which needs no session — where you are and what branch you are on — is
- * rendered by the same owners the live row renders it through, so the
- * session's arrival adds segments to the right of text that does not move.
+ * The launch shape also paints the footline row, and that row is the real
+ * status row rather than a sketch of it. Measured on a pty before it was: the
+ * card and its composer at 84-102ms, the status row still blank at 1067ms. The
+ * card now resolves the configured preset and renders every segment it can
+ * answer for through the same gather-and-fit the live row uses, so the
+ * session's arrival replaces values in place instead of adding segments.
  *
  * WHAT IT DOES NOT CATCH, stated plainly: it measures the resting state of a
  * fresh session on the home screen at three widths. A zone height that only
@@ -67,9 +67,10 @@ import { visibleWidth } from "@veyyon/utils/width";
  * message, a multi-line draft, a mounted hook widget — is outside it, and so
  * is a divergence that appears only at a width not in the list. The location's
  * final WIDTH under a live row is outside it too: the live component refits
- * the path against the segments competing for the row, which do not exist yet
- * when the card paints. That the card's branch bytes equal the live segment's
- * is held next door, in
+ * the path against the segments competing for the row, which carry measured
+ * values the card does not have. That every segment the preset declares
+ * reaches the card is held in `the-card-and-the-live-row-are-one-row.test.ts`,
+ * and that the card's branch bytes equal the live segment's is held in
  * `modes/components/status-line/the-branch-reads-the-same-on-the-card-and-the-live-row.test.ts`.
  */
 
@@ -93,8 +94,13 @@ function launchRows(width: number): string[] {
 	return launchComposer().flatMap(child => child.render(width));
 }
 
-/** The branch the fixture checkout's HEAD names. */
-const FIXTURE_BRANCH = "launch-card-fixture";
+/**
+ * The branch the fixture checkout's HEAD names. Short on purpose, like the fixture directory: the
+ * card now paints the whole status row, so the left group competes for the row with every other
+ * segment, and a 32-character temp directory plus a 19-character branch is clipped out of the row
+ * this asserts on.
+ */
+const FIXTURE_BRANCH = "card-fixture";
 
 /**
  * Run `body` with the project directory pointed at a checkout whose HEAD names {@link
@@ -107,7 +113,7 @@ const FIXTURE_BRANCH = "launch-card-fixture";
  * the withheld case are decided by this file.
  */
 function onABranch(body: (branch: string) => void): void {
-	const dir = TempDir.createSync("veyyon-launch-card-branch-");
+	const dir = TempDir.createSync("vy-card-");
 	const gitDir = path.join(dir.path(), ".git");
 	fs.mkdirSync(path.join(gitDir, "refs", "heads"), { recursive: true });
 	fs.writeFileSync(path.join(gitDir, "HEAD"), `ref: refs/heads/${FIXTURE_BRANCH}\n`);
@@ -180,11 +186,19 @@ describe("the launch composer", () => {
 		// A 300-column terminal must not paint a 300-column path: the live row
 		// clamps at the preset's `maxLength`, and a card that did not would
 		// shorten the path the moment the session mounted.
+		//
+		// The ROW is 300 wide, because the row is now the real status row and its
+		// right-hand group sits against the right edge exactly as the live one
+		// does. The location inside it is what the budget governs.
 		const narrowOptions = resolveLocationOptions();
 		const expected = renderLocation({ projectDir: getProjectDir(), options: narrowOptions }).content;
 		const row = launchRows(300).find(candidate => candidate.includes(expected));
 		expect(row).toBeDefined();
-		expect(visibleWidth(row as string)).toBeLessThan(300);
+		expect(visibleWidth(row as string)).toBeLessThanOrEqual(300);
+		expect(visibleWidth(expected)).toBeLessThan(300);
+		// The unclipped path is absent: a row that had simply been given more room
+		// would carry it, and would then shrink at the handover.
+		expect(row).not.toContain(getProjectDir());
 	});
 
 	it("honors a path budget the session overrides the preset with", () => {
@@ -201,22 +215,28 @@ describe("the launch composer", () => {
 	});
 
 	it("names the branch, after the location, joined the way the live row joins segments", () => {
-		onABranch(branch => {
-			const rendered = renderBranch(branch, false);
-			expect(rendered).not.toBe("");
+		onABranch(fixtureBranch => {
+			const branch = renderBranch(fixtureBranch, false);
+			expect(branch).not.toBe("");
 			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
 			const row = launchRows(100).find(candidate => candidate.includes(located));
-			expect(row).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}${located}${segmentSeparator()}${rendered}`);
+			// `toStartWith`, not `toBe`: the rest of the row is the preset's remaining
+			// segments, which is the point of the card rendering the real row. What is
+			// pinned here is the left group's content and its order.
+			expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}${segmentSeparator()}${branch}`);
 		});
 	});
 
 	it("leaves the branch off the card when the row will not show one", () => {
-		onABranch(() => {
+		onABranch(fixtureBranch => {
 			settings.set("git.enabled", false);
 			try {
 				const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
 				const row = launchRows(100).find(candidate => candidate.includes(located));
-				expect(row).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
+				expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
+				// Nothing after the location is a branch: no separator-then-label, and
+				// no bare label anywhere else on the row.
+				expect(row).not.toContain(fixtureBranch);
 			} finally {
 				settings.set("git.enabled", true);
 			}
@@ -228,10 +248,10 @@ describe("the launch composer", () => {
 		// branch the way the live row renders it before its own asynchronous
 		// lookup lands: clean, unmarked. A card that guessed differently would
 		// change colour at the handover for no reason the reader can see.
-		onABranch(branch => {
-			const row = launchRows(100).find(candidate => candidate.includes(branch));
+		onABranch(fixtureBranch => {
+			const row = launchRows(100).find(candidate => candidate.includes(fixtureBranch));
 			expect(row).toBeDefined();
-			expect(row).toContain(renderBranch(branch, false));
+			expect(row).toContain(renderBranch(fixtureBranch, false));
 			expect(row).not.toContain("*");
 		});
 	});

@@ -3,10 +3,10 @@ import { ThinkingLevel } from "@veyyon/agent-core";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { PRIORITY_TIER_COMMAND_LABEL, PRIORITY_TIER_LABEL } from "../../../../config/service-tier";
 import { Settings } from "../../../../config/settings";
-import type { AgentSession } from "../../../../session/agent-session";
 import { SYMBOL_PRESETS, type SymbolKey } from "../../../../theme/symbols";
 import { getThemeByName, setThemeInstance, theme } from "../../../../theme/theme";
 import { renderSegment } from "./segments";
+import { NO_SESSION_FACTS } from "./session-facts";
 import type { SegmentContext } from "./types";
 
 /**
@@ -34,19 +34,13 @@ const EFFORT_SYMBOL_KEYS: readonly SymbolKey[] = [
 const strip = (text: string): string => stripAnsi(text);
 
 function makeContext(over: { fast: boolean; thinking?: ThinkingLevel; compact?: boolean }): SegmentContext {
-	const session = {
-		state: {
-			model: { name: "Sonnet 4.5", id: "claude-sonnet-4-5", thinking: { levels: ["high"] } },
-			thinkingLevel: over.thinking ?? ThinkingLevel.Off,
-		},
-		isAutoThinking: false,
-		autoResolvedThinkingLevel: () => undefined,
-		isAdvisorActive: () => false,
-		isFastModeActive: () => over.fast,
-	} as unknown as AgentSession;
-
 	return {
-		session,
+		facts: {
+			...NO_SESSION_FACTS,
+			model: { id: "claude-sonnet-4-5", name: "Sonnet 4.5", supportsThinking: true },
+			thinkingLevel: over.thinking ?? ThinkingLevel.Off,
+			fastMode: over.fast,
+		},
 		activeRepo: null,
 		width: 120,
 		options: { model: { showThinkingLevel: true } },

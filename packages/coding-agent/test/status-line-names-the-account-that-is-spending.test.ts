@@ -40,15 +40,14 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { APPEARANCE_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/appearance";
 import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import type { StatusLineSegmentId } from "@veyyon/coding-agent/config/settings-schema";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line";
 import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/terminal/components/status-line/presets";
+import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
-import type {
-	SegmentContext,
-	StatusLinePreset,
-} from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
+import type { StatusLinePreset } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
+import { statusLineSessionParts } from "./helpers/status-line-session";
 
 const SESSION_ID = "session-serving-account";
 
@@ -132,41 +131,20 @@ function makeSession(providers: { live?: string; configured?: string } = {}): Ag
 	const live = providers.live ?? "anthropic";
 	const configured = providers.configured ?? "anthropic";
 	return {
+		...statusLineSessionParts({
+			contextWindow: 200_000,
+			contextUsage: { tokens: 1_000, contextWindow: 200_000 },
+			sessionName: undefined,
+			cwd: () => tempDir,
+		}),
 		sessionId: SESSION_ID,
+		// The account chip reads the provider that is SERVING the turn, which is the
+		// live model's, not the one configured on the session. These two differ here on
+		// purpose, so a segment reading the wrong one is visible.
 		state: { messages: [], model: { provider: live, contextWindow: 200_000 } },
-		messages: [],
 		model: { id: "claude-sonnet-4-6", name: "sonnet", provider: configured, contextWindow: 200_000 },
-		contextUsageRevision: 0,
-		isStreaming: false,
-		isAutoThinking: false,
-		autoResolvedThinkingLevel: () => undefined,
-		isAdvisorActive: () => false,
-		isFastModeActive: () => false,
-		isFastModeEnabled: () => false,
-		isApprovalBypassed: () => false,
-		getGoalModeState: () => null,
-		getAsyncJobSnapshot: () => ({ running: [] }),
-		getCurrentModel: () => undefined,
-		getContextUsage: () => ({ tokens: 1_000, contextWindow: 200_000, percent: 1 }),
 		fetchUsageReports: async () => [],
 		modelRegistry: { authStorage, isUsingOAuth: () => true },
-		settings: { getGroup: () => ({ enabled: false, strategy: "off", threshold: "85%" }) },
-		sessionManager: {
-			getSessionName: () => undefined,
-			getCwd: () => tempDir,
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-			}),
-		},
 	} as unknown as AgentSession;
 }
 

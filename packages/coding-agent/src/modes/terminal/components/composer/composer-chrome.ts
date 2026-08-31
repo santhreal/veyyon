@@ -9,19 +9,27 @@
 
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import { Spacer } from "@veyyon/tui/components/spacer";
-import type { Component } from "@veyyon/tui/core/component-types";
 import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import type { Component } from "@veyyon/tui/tui";
 import { getProjectDir } from "@veyyon/utils/dirs";
 import { clampLow } from "@veyyon/utils/math";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
 import { truncateToWidth } from "@veyyon/utils/width";
+import { isThresholdCompactionDisabled } from "../../../../config/compaction-strategy";
+import { settings } from "../../../../config/settings-instance";
 import { groundHairlineHex, groundTintFgAnsi } from "../../../../theme/ground-tints";
 import { theme } from "../../../../theme/theme";
 import { branchLabelFromFiles } from "../../../../utils/git-head";
 import { EMBER } from "../chrome/sun";
-import { isBranchOnTheRow, renderBranch } from "../status-line/branch";
-import { renderLocation, resolveLocationOptions } from "../status-line/location";
-import { segmentSeparator } from "../status-line/state-grammar";
+import { isBranchOnTheRow } from "../status-line/branch";
+import {
+	composeQuietRow,
+	effectiveStatusLineSettings,
+	gatherQuietSegments,
+	statusLineSettingsFromConfig,
+	subagentBadgeText,
+} from "../status-line/quiet-row";
+import { launchSegmentContext } from "../status-line/session-facts";
 
 /**
  * Left inset of the composer zone's content (the `›` gutter and the metadata
@@ -413,15 +421,23 @@ export class LaunchComposerHead implements Component {
  * The launch composer's chrome below the input: one pad row, the metadata
  * footline, the shortcuts row and the bottom margin.
  *
- * The footline row is where the session's status line lands, and it landed
- * about a second after the composer above it: measured on a pty, the card and
- * its composer at 84-102ms and the status row at 1067-1083ms. The row is not
- * blank in the meantime. The half of it that does not need a session — where
- * you are and what branch you are on — is rendered here through the same
- * owners the live row renders it through ({@link renderLocation},
- * {@link renderBranch}), joined by the same {@link segmentSeparator}, so the
- * session's arrival ADDS the model, the mode and the context gauge to the
- * right of text that does not move.
+ * THE FOOTLINE ROW IS THE REAL STATUS ROW, rendered before a session exists.
+ * It resolves the configured preset, gathers the same segments in the same
+ * order and hands them to the same fitter the live row uses
+ * ({@link statusLineSettingsFromConfig}, {@link gatherQuietSegments},
+ * {@link composeQuietRow}), differing only in the facts it can supply:
+ * {@link launchSegmentContext} reads config, so the row states where you are,
+ * what branch you are on, which profile is live, which model config names and
+ * which approval rung is enforced, and leaves the measured values — the context
+ * gauge, the live secret count, the session name — in their own absent states
+ * until the session replaces the whole block.
+ *
+ * It was a hand-written `path · git`, and the session's row landed on top of it
+ * about a second later: measured on a pty, the card and its composer at
+ * 84-102ms and the status row at 1067-1083ms. Half a row for a second was the
+ * visible half of the defect. The invisible half was that the copy had to be
+ * kept in step with the real row by hand, so every segment added after it was
+ * written was missing here and nothing failed.
  */
 export class LaunchComposerFoot implements Component {
 	render(width: number): string[] {
@@ -431,11 +447,10 @@ export class LaunchComposerFoot implements Component {
 	}
 
 	/**
-	 * Where you are and what branch you are on, on the row the live status line
-	 * takes over.
+	 * The status row at rest, from config alone.
 	 *
 	 * `QuietZoneLine` indents the live footline by the same inset and hands the
-	 * segment the width that leaves, so the two rows are clipped against the
+	 * segments the width that leaves, so the two rows are clipped against the
 	 * same budget and the path breaks at the same column.
 	 *
 	 * The branch is read from `.git/HEAD` and its ref files, never by running
@@ -444,17 +459,46 @@ export class LaunchComposerFoot implements Component {
 	 * reftable has no ref files to read, so it has no branch here and the live
 	 * row fills it in when it arrives.
 	 *
-	 * Dirtiness is passed as `false` because that is what the live row renders
-	 * until its own asynchronous `git status` lands, so the handover is
-	 * byte-identical. Both are optimistic before the lookup answers; that is one
-	 * defect in one place, not a difference between two rows.
+	 * Dirtiness is `false` because that is what the live row renders until its
+	 * own asynchronous `git status` lands, so the handover is byte-identical.
+	 * Both are optimistic before the lookup answers; that is one defect in one
+	 * place, not a difference between two rows.
 	 */
 	#footline(avail: number): string {
-		const projectDir = getProjectDir();
-		const location = renderLocation({ projectDir, options: resolveLocationOptions() }).content;
-		const branch = isBranchOnTheRow() ? renderBranch(branchLabelFromFiles(projectDir), false) : "";
-		const row = branch ? `${location}${segmentSeparator()}${branch}` : location;
-		return truncateToWidth(row, avail);
+		const effectiveSettings = effectiveStatusLineSettings(statusLineSettingsFromConfig());
+		const gitEnabled = isBranchOnTheRow();
+		const branch = gitEnabled ? branchLabelFromFiles(getProjectDir()) : null;
+		// The endless-session `∞` is a CONFIGURED fact, not a measured one, so the
+		// row states it now rather than letting it appear beside the gauge a
+		// second later. Same predicate the session mirrors into the live row.
+		const compaction = settings.getGroup("compaction");
+		const autoCompactEnabled = !isThresholdCompactionDisabled(compaction.enabled, compaction.strategy);
+		const groups = gatherQuietSegments({
+			width: avail,
+			effectiveSettings,
+			gitEnabled,
+			expansion: 0,
+			buildContext: request =>
+				launchSegmentContext({
+					width: request.width,
+					options: request.options,
+					compactThinkingLevel: effectiveSettings.compactThinkingLevel ?? false,
+					branch,
+					autoCompactEnabled,
+				}),
+			subagentBadge: subagentBadgeText(0),
+			badgeSlot: null,
+		});
+		return (
+			composeQuietRow({
+				...groups,
+				width: avail + 1,
+				badge: "",
+				clock: "",
+				expansion: 0,
+				expandedHalf: "path",
+			}).line ?? ""
+		);
 	}
 
 	invalidate(): void {}

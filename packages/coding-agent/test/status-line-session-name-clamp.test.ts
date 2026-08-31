@@ -10,16 +10,15 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import {
-	renderSegment,
-	type SegmentContext,
-} from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/core/render-utils";
 import { stripAnsi } from "@veyyon/utils";
+import { NO_SESSION_FACTS } from "../src/modes/terminal/components/status-line/session-facts";
 
 function ctxWithSessionName(name: string): SegmentContext {
-	return { session: { sessionManager: { getSessionName: () => name } } } as unknown as SegmentContext;
+	return { facts: { ...NO_SESSION_FACTS, sessionName: name } } as unknown as SegmentContext;
 }
 
 describe("session_name footline chip", () => {

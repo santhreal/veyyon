@@ -22,6 +22,7 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
+import { makeStatusLineSession } from "../../../../../test/helpers/status-line-session";
 import { Settings } from "../../../../config/settings";
 import type { AgentSession } from "../../../../session/agent-session";
 import { getThemeByName, setThemeInstance } from "../../../../theme/theme";
@@ -29,41 +30,23 @@ import { StatusLineComponent } from "./component";
 
 /** A session with a session name, a cost, and a context reading, all fixed. */
 function makeSession(): AgentSession {
-	return {
-		messages: [],
-		model: { contextWindow: 200_000, id: "gpt-5", name: "gpt-5" },
-		contextUsageRevision: 0,
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		getContextUsage: () => ({ tokens: 84_000, contextWindow: 200_000 }),
-		state: { messages: [], model: { contextWindow: 200_000, id: "gpt-5", name: "gpt-5" } },
-		sessionManager: {
-			getUsageStatistics: () => ({
-				input: 12_000,
-				output: 3_400,
-				cacheRead: 48_000,
-				cacheWrite: 1_200,
-				totalTokens: 64_600,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 2,
-				cost: 0.42,
-				tokensPerSecond: 58.4,
-			}),
-			getSessionName: () => "parser-rewrite",
-			getCwd: () => "/tmp",
+	return makeStatusLineSession({
+		modelId: "gpt-5",
+		contextWindow: 200_000,
+		contextUsage: { tokens: 84_000, contextWindow: 200_000 },
+		usage: {
+			input: 12_000,
+			output: 3_400,
+			cacheRead: 48_000,
+			cacheWrite: 1_200,
+			totalTokens: 64_600,
+			premiumRequests: 2,
+			cost: 0.42,
+			tokensPerSecond: 58.4,
 		},
-		getPrewalkState: () => undefined,
-		getAsyncJobSnapshot: () => undefined,
-		settings: { getGroup: () => ({ enabled: false }) },
-		isAdvisorActive: () => false,
-		isApprovalBypassed: () => false,
-		isFastModeActive: () => false,
-		configuredThinkingLevel: () => undefined,
-		modelRegistry: { isUsingOAuth: () => false },
-	} as unknown as AgentSession;
+		sessionName: "parser-rewrite",
+		cwd: () => "/tmp",
+	});
 }
 
 beforeAll(async () => {

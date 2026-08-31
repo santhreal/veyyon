@@ -51,15 +51,16 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
+import type { QuietSegmentBounds } from "@veyyon/coding-agent/modes/terminal/components/status-line/quiet-row";
 import {
 	FLOOR_SPENDABLE,
 	MIN_LOCATION_PART,
-	StatusLineComponent,
-} from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
+} from "@veyyon/coding-agent/modes/terminal/components/status-line/quiet-row";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { stripAnsi } from "@veyyon/utils";
+import { makeStatusLineSession } from "../../../helpers/status-line-session";
 import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";
 
 /** The branch the reported frame was recorded on. */
@@ -81,43 +82,8 @@ let deepCwd = "";
 let plainCwd = "";
 
 function makeSession(cwd: () => string): AgentSession {
-	const model = { id: "Qwen2.5 1.5B (local)", name: "Qwen2.5 1.5B (local)", contextWindow: 128000 };
-	return {
-		messages: [],
-		model,
-		contextUsageRevision: 0,
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		getContextUsage: () => ({ tokens: 16000, contextWindow: 128000 }),
-		state: { messages: [], model },
-		sessionManager: {
-			getCwd: cwd,
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-				tokensPerSecond: null,
-			}),
-			getSessionName: () => "ingest-normalizer-session",
-		},
-		getPrewalkState: () => undefined,
-		getAsyncJobSnapshot: () => undefined,
-		settings: { getGroup: () => ({ enabled: false }) },
-		isAdvisorActive: () => false,
-		// The rung in the frame: `! YOLO`, which widens the mode part to `! YOLO · Plan`.
-		isApprovalBypassed: () => true,
-		isFastModeActive: () => false,
-		configuredThinkingLevel: () => undefined,
-		modelRegistry: { isUsingOAuth: () => false },
-	} as unknown as AgentSession;
+	// The rung in the frame: `! YOLO`, which widens the mode part to `! YOLO · Plan`.
+	return makeStatusLineSession({ cwd, modelId: "Qwen2.5 1.5B (local)", approvalBypassed: true });
 }
 
 /** The component in the state the frame was recorded in: plan mode, a rung, a draft estimate. */

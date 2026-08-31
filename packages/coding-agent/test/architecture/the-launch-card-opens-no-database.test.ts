@@ -74,12 +74,16 @@ const ADMITTED_ON_THE_CARD_PATH = [path.join("coding-agent", "src", "config", "l
 
 /**
  * What the card costs, measured 2026-08-30 with the workspace resolved to source, down from 311 when
- * the settings store still carried a storage handle.
+ * the settings store still carried a storage handle, and up from 290 when the card stopped
+ * hand-writing its own `path · git` row and started rendering the real status row through
+ * `status-line/quiet-row.ts` and `status-line/session-facts.ts`. Those two modules are the whole
+ * increase: the segment table the row composes was already reachable, because the hand-written copy
+ * called into it for the location and the branch.
  *
  * The floor is what stops a resolution table that stopped resolving from satisfying the ceiling with
  * a handful of modules while measuring nothing.
  */
-const LAUNCH_CARD_CEILING = 290;
+const LAUNCH_CARD_CEILING = 292;
 const LAUNCH_CARD_FLOOR = 150;
 
 describe("the launch card opens no database", () => {

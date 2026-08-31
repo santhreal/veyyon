@@ -27,7 +27,8 @@
  * the flash: this asserts the mount frame is already correct, not how quickly a
  * wrong one would have been repaired.
  */
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { mountLaunchComposer } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
 import { HomeAnchorLayout } from "@veyyon/coding-agent/modes/terminal/controllers/home-anchor-layout";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
@@ -81,7 +82,14 @@ function mountMode(tui: TUI): HomeAnchorLayout {
 
 describe("a launch card handover does not strand the composer mid-screen", () => {
 	beforeAll(async () => {
+		// The launch composer's footline reads the settings store, so this suite owns its own
+		// rather than inheriting whatever a neighbouring file in the bucket left initialized.
+		await Settings.init({ inMemory: true });
 		await initTheme(false, "unicode", false, "titanium", "dark");
+	});
+
+	afterAll(() => {
+		resetSettingsForTest();
 	});
 
 	test("the mode's first frame pins the composer to the bottom after adopting the launch card", async () => {

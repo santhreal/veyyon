@@ -1,51 +1,17 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
+import { makeStatusLineSession } from "../../../../../test/helpers/status-line-session";
 import { Settings } from "../../../../config/settings";
 import type { AgentSession } from "../../../../session/agent-session";
 import { getThemeByName, setThemeInstance } from "../../../../theme/theme";
 import { StatusLineComponent } from "./component";
 
-function makeSessionWithLastMessage(lastMessage: unknown, prewalkArmed: boolean = false) {
-	return {
+function makeSessionWithLastMessage(lastMessage: unknown, prewalkArmed = false): AgentSession {
+	return makeStatusLineSession({
 		messages: lastMessage ? [lastMessage] : [],
-		model: { contextWindow: 128000 },
-		contextUsageRevision: 0,
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		getContextUsage: () => ({ tokens: 42, contextWindow: 128000 }),
-		state: {
-			messages: lastMessage ? [lastMessage] : [],
-			model: { contextWindow: 128000 },
-		},
-		sessionManager: {
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-				tokensPerSecond: null,
-			}),
-			getSessionName: () => "test-session",
-		},
-		getPrewalkState: () => (prewalkArmed ? { target: { id: "cheap-model", provider: "openai" } } : undefined),
-		getAsyncJobSnapshot: () => undefined,
-		// Compaction disabled: the gauge denominates against the raw model window.
-		settings: { getGroup: () => ({ enabled: false }) },
-		isAdvisorActive: () => false,
-		isApprovalBypassed: () => false,
-		isFastModeActive: () => false,
-		configuredThinkingLevel: () => undefined,
-		modelRegistry: {
-			isUsingOAuth: () => false,
-		},
-	};
+		contextUsage: { tokens: 42, contextWindow: 128_000 },
+		prewalk: prewalkArmed ? { target: { id: "cheap-model", provider: "openai" } } : undefined,
+	});
 }
 
 beforeAll(async () => {

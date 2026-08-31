@@ -13,6 +13,7 @@ import { Settings } from "../src/config/settings";
 import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
 import type { AgentSession } from "../src/session/agent-session";
 import { getThemeByName, setThemeInstance } from "../src/theme/theme";
+import { statusLineSessionParts } from "./helpers/status-line-session";
 
 interface FakeJob {
 	id: string;
@@ -22,44 +23,10 @@ interface FakeJob {
 	startTime: number;
 }
 
-function makeSession(runningJobs: FakeJob[]) {
+function makeSession(runningJobs: FakeJob[]): AgentSession {
 	return {
-		messages: [],
-		model: { contextWindow: 128000, id: "test-model", provider: "test" },
-		contextUsageRevision: 0,
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		getContextUsage: () => ({ tokens: 42, contextWindow: 128000 }),
-		state: { messages: [], model: { contextWindow: 128000 } },
-		sessionManager: {
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-				tokensPerSecond: null,
-			}),
-			getSessionName: () => "test-session",
-		},
-		getPrewalkState: () => undefined,
-		getAsyncJobSnapshot: () => ({
-			running: runningJobs,
-			recent: [],
-			delivery: { pending: [] },
-		}),
-		settings: { getGroup: () => ({ enabled: false }) },
-		isAdvisorActive: () => false,
-		isApprovalBypassed: () => false,
-		isFastModeActive: () => false,
-		configuredThinkingLevel: () => undefined,
-		modelRegistry: { isUsingOAuth: () => false },
+		...statusLineSessionParts({ contextUsage: { tokens: 42, contextWindow: 128_000 } }),
+		getAsyncJobSnapshot: () => ({ running: runningJobs, recent: [], delivery: { pending: [] } }),
 	} as unknown as AgentSession;
 }
 

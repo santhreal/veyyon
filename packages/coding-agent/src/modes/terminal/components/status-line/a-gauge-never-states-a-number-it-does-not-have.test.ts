@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
+import { makeStatusLineSession } from "../../../../../test/helpers/status-line-session";
 import { contextUsageFrame } from "../../../../collab/protocol";
 import { Settings } from "../../../../config/settings";
 import type { AgentSession } from "../../../../session/agent-session";
@@ -36,46 +37,11 @@ interface UsageShape {
 	contextWindow: number;
 }
 
-function sessionWith(usage: UsageShape | undefined) {
-	return {
+function sessionWith(usage: UsageShape | undefined): AgentSession {
+	return makeStatusLineSession({
 		messages: [{ role: "assistant", timestamp: 1, content: [{ type: "text", text: "hi" }] }],
-		model: { contextWindow: 128000 },
-		contextUsageRevision: 0,
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		getContextUsage: () => usage,
-		state: {
-			messages: [],
-			model: { contextWindow: 128000 },
-		},
-		sessionManager: {
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-				tokensPerSecond: null,
-			}),
-			getSessionName: () => "test-session",
-		},
-		getPrewalkState: () => undefined,
-		getAsyncJobSnapshot: () => undefined,
-		// Compaction off: the gauge denominates against the raw model window, so the
-		// percentages below are the arithmetic and nothing else.
-		settings: { getGroup: () => ({ enabled: false }) },
-		isAdvisorActive: () => false,
-		isApprovalBypassed: () => false,
-		isFastModeActive: () => false,
-		configuredThinkingLevel: () => undefined,
-		modelRegistry: { isUsingOAuth: () => false },
-	} as unknown as AgentSession;
+		contextUsage: usage,
+	});
 }
 
 /** The rendered footline, ANSI stripped: what a reader actually sees. */

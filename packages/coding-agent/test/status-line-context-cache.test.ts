@@ -16,9 +16,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { ContextUsage } from "@veyyon/coding-agent/extensibility/extensions/types";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
+import { statusLineSessionParts } from "./helpers/status-line-session";
 
 beforeAll(async () => {
 	resetSettingsForTest();
@@ -46,31 +47,10 @@ function makeSession(opts: { messages: unknown[]; contextWindow?: number; usage?
 	let calls = 0;
 	let revision = 0;
 	const session = {
-		messages: opts.messages,
+		...statusLineSessionParts({ messages: opts.messages, contextWindow, sessionName: "test" }),
 		systemPrompt: ["You are a helpful assistant."],
-		agent: { state: { tools: [] } },
-		skills: [],
-		model: { id: "test-model", contextWindow },
-		state: { messages: opts.messages, model: { contextWindow } },
-		sessionManager: {
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-			}),
-			getSessionName: () => "test",
-		},
-		getAsyncJobSnapshot: () => ({ running: [] }),
-		// Compaction disabled: the context gauge denominates against the raw
-		// model window, which is what these breakdown tests pin.
-		settings: { getGroup: () => ({ enabled: false }) },
+		// Counted and mutable: these cases assert the breakdown is recomputed
+		// exactly when the revision moves, so the reading has to be observable.
 		getContextUsage: () => {
 			calls++;
 			return usage;

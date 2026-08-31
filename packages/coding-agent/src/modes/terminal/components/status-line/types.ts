@@ -4,9 +4,9 @@ import type {
 	StatusLineSegmentId,
 	StatusLineSeparatorStyle,
 } from "../../../../config/settings-schema";
-import type { AgentSession } from "../../../../session/agent-session";
 import type { ActiveRepoContext } from "../../../../utils/active-repo-context";
 import type { GitStatusSummary } from "../../../../utils/git";
+import type { SessionFacts } from "./session-facts";
 
 export type { StatusLinePreset, StatusLineSegmentId, StatusLineSeparatorStyle };
 
@@ -77,7 +77,12 @@ export type EffectiveStatusLineSettings = Required<
 export type RGB = readonly [number, number, number];
 
 export interface SegmentContext {
-	session: AgentSession;
+	/**
+	 * What a running session would tell the row, as values. `NO_SESSION_FACTS`
+	 * and `factsAtLaunch()` fill it before one exists; nothing here reaches back
+	 * into a session, which is what lets the launch card render this same row.
+	 */
+	facts: SessionFacts;
 	/** Focused subagent id while the view is proxied at its session, undefined otherwise. */
 	focusedAgentId?: string | undefined;
 	activeRepo: ActiveRepoContext | null;

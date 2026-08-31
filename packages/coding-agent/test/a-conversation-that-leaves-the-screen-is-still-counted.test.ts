@@ -35,6 +35,7 @@ import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/st
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { BackgroundSessions } from "@veyyon/coding-agent/session/background-sessions";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { NO_SESSION_FACTS } from "../src/modes/terminal/components/status-line/session-facts";
 
 beforeAll(async () => {
 	await initTheme();
@@ -42,11 +43,7 @@ beforeAll(async () => {
 
 function contextWith(backgroundSessionCount: number): SegmentContext {
 	return {
-		session: {
-			isApprovalBypassed: () => false,
-			getGoalModeState: () => undefined,
-			settings: { get: () => false },
-		} as unknown as SegmentContext["session"],
+		facts: NO_SESSION_FACTS,
 		width: 120,
 		compactThinkingLevel: false,
 		options: {},
