@@ -221,9 +221,12 @@ describe("formatCostTiered", () => {
 	});
 
 	// The tier is chosen from the input, and the input rounds INTO the next tier here:
-	// 0.00999 is under a cent, so it is shown with four decimals as $0.0100.
+	// 0.00999 is under a cent, so it is shown with four decimals as $0.0100, and 0.9999 is
+	// under a dollar, so it is shown with three as $1.000. Deciding the tier from the ROUNDED
+	// value would print $0.010 and $1.00 instead, flipping a status-row segment's width mid-run.
 	it("keeps the tier of the value it was given at the boundary", () => {
 		expect(formatCostTiered(0.00999)).toBe("$0.0100");
+		expect(formatCostTiered(0.9999)).toBe("$1.000");
 		expect(formatCostTiered(0.01)).toBe("$0.010");
 		expect(formatCostTiered(0.999)).toBe("$0.999");
 		expect(formatCostTiered(1)).toBe("$1.00");

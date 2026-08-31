@@ -137,7 +137,7 @@ describe("website deploy runtime selection", () => {
 		}
 	});
 
-	/** A missing real Node runtime must fail with an operator-actionable fix. */
+	/** A missing real Node runtime must fail with a developer-actionable fix. */
 	it("rejects a path that contains only the Bun node shim", () => {
 		const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-node-runtime-test-"));
 		const bunExecutable = path.join(fixtureRoot, "bun");
