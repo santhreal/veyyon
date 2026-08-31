@@ -64,13 +64,18 @@ impl Command {
 		match self {
 			Command::NewSession => {
 				moves::new_session(store);
-				Outcome { draft_changed: true, ..Outcome::focus(Focus::Composer) }
+				Outcome {
+					draft_changed: true,
+					reveal_selection: true,
+					..Outcome::focus(Focus::Composer)
+				}
 			},
 			Command::SelectSession(id) => {
 				moves::select(store, &id);
 				Outcome {
 					draft_changed: true,
 					scroll_to_latest: true,
+					reveal_selection: true,
 					..Outcome::focus(Focus::Composer)
 				}
 			},
@@ -80,13 +85,18 @@ impl Command {
 			},
 			Command::DeleteSession(id) => {
 				moves::delete_session(store, &id);
-				Outcome { draft_changed: true, ..Outcome::focus(Focus::Composer) }
+				Outcome {
+					draft_changed: true,
+					reveal_selection: true,
+					..Outcome::focus(Focus::Composer)
+				}
 			},
 			Command::CycleSession { forward } => {
 				moves::cycle(store, forward);
 				Outcome {
 					draft_changed: true,
 					scroll_to_latest: true,
+					reveal_selection: true,
 					..Outcome::focus(Focus::Composer)
 				}
 			},
@@ -114,7 +124,7 @@ impl Command {
 
 			Command::OpenPalette => {
 				palette::open(store);
-				Outcome::focus(Focus::Palette)
+				Outcome { reveal_selection: true, ..Outcome::focus(Focus::Palette) }
 			},
 			// The palette first, then the page under it. One keystroke backs out
 			// of one thing at a time, which is what a reader holding Escape
@@ -131,11 +141,13 @@ impl Command {
 			},
 			Command::MovePaletteCursor { down } => {
 				palette::move_cursor(store, if down { 1 } else { -1 });
-				Outcome::nothing()
+				Outcome { reveal_selection: true, ..Outcome::nothing() }
 			},
 			Command::PaletteQuery(query) => {
 				palette::query(store, query);
-				Outcome::nothing()
+				// A query puts the cursor back on the first row, and the list is
+				// still where the last walk left it.
+				Outcome { reveal_selection: true, ..Outcome::nothing() }
 			},
 			Command::AcceptPalette => {
 				let taken = palette::accept(store);

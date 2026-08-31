@@ -18,10 +18,13 @@
 
 use veyyon_gui_core::{
 	command::Command,
-	store::{model::Store, moves},
+	store::{
+		model::{Project, ProjectId, Session, SessionId, Store},
+		moves,
+	},
 };
 
-use super::logic;
+use super::{logic, selected_child};
 
 fn store() -> Store {
 	Store::opened_in("veyyon", "/repo/veyyon")
@@ -144,4 +147,82 @@ fn a_conversation_with_nothing_in_it_has_no_second_line() {
 	// untouched row taller than the one under it.
 	let store = store();
 	assert_eq!(logic::columns(&store)[0].rows[0].preview, None);
+}
+
+/// A second checkout holding one conversation, so grouping has something to
+/// group and the second column has a row to address.
+fn second_checkout(store: &mut Store) -> SessionId {
+	let project = ProjectId::new("second");
+	store.projects.push(Project {
+		id:        project.clone(),
+		name:      "second".to_owned(),
+		path:      "/repo/second".to_owned(),
+		collapsed: false,
+	});
+	let session = Session::new("second-1", &project, "over there");
+	let id = session.id.clone();
+	store.sessions.push(session);
+	id
+}
+
+#[test]
+fn a_row_under_a_heading_is_addressed_past_that_heading() {
+	// The column is drawn as one box of rows so the keyboard can put a row back
+	// in view, and a heading is a child of that box like a row is. The active
+	// conversation is the newest, which is the first row under the heading.
+	let mut store = store();
+	Command::NewSession.run(&mut store);
+	Command::NewSession.run(&mut store);
+
+	assert_eq!(selected_child(&store), 1, "the newest row is the first under the heading");
+	Command::CycleSession { forward: true }.run(&mut store);
+	assert_eq!(selected_child(&store), 2, "a cycle addressed the wrong row");
+	Command::CycleSession { forward: true }.run(&mut store);
+	assert_eq!(selected_child(&store), 3);
+}
+
+#[test]
+fn a_second_ungrouped_checkout_counts_its_own_heading() {
+	// Grouping off with two checkouts is two quiet headings, so the row in the
+	// second one is past both of them and past every row of the first: heading,
+	// two rows, heading, row.
+	let mut store = store();
+	Command::NewSession.run(&mut store);
+	let over_there = second_checkout(&mut store);
+	store.settings.group_by_folder = false;
+
+	let columns = logic::columns(&store);
+	assert_eq!(columns.len(), 2);
+	assert_eq!(columns[0].rows.len(), 2);
+	assert_eq!(columns[1].rows.len(), 1);
+	assert!(columns.iter().all(|column| !column.foldable), "grouping is off");
+
+	Command::SelectSession(over_there).run(&mut store);
+	assert_eq!(selected_child(&store), 4, "the second checkout's row was addressed as the first's");
+}
+
+#[test]
+fn a_row_inside_a_fold_addresses_the_fold_that_holds_it() {
+	// A folded checkout is one child holding its rows, so the row itself is not
+	// a child of the box that scrolls. Bringing the fold into view is what is
+	// available, and it is what the window does.
+	let mut store = store();
+	let over_there = second_checkout(&mut store);
+	store.settings.group_by_folder = true;
+
+	let columns = logic::columns(&store);
+	assert!(columns.iter().all(|column| column.foldable), "grouping is on with two checkouts");
+	assert_eq!(selected_child(&store), 0, "the first fold holds the conversation on screen");
+
+	Command::SelectSession(over_there).run(&mut store);
+	assert_eq!(selected_child(&store), 1, "a row in the second fold addressed the first fold");
+}
+
+#[test]
+fn nothing_selected_addresses_the_first_child() {
+	// Reachable while the last selected conversation is being deleted. The
+	// first child is a heading, and scrolling to it is the top of the list.
+	let mut store = store();
+	store.selected = None;
+	assert_eq!(selected_child(&store), 0);
 }

@@ -20,6 +20,8 @@
 //! suite), whether a surface actually offers it (the surface's own suite), and
 //! whether the words are the right words, which only a reader can say.
 
+mod asks;
+
 use super::*;
 use crate::{
 	palette,
@@ -375,15 +377,5 @@ fn no_command_panics_from_any_state_it_is_offered_in() {
 				assert_eq!(command, Command::Quit, "{command:?} asked the window to close");
 			}
 		}
-	}
-}
-
-#[test]
-fn only_quitting_asks_the_window_to_close() {
-	let store = two();
-	for command in every_command(&store) {
-		let mut store = two();
-		let asks = command.clone().run(&mut store).quit;
-		assert_eq!(asks, command == Command::Quit, "{command:?} disagrees about quitting");
 	}
 }

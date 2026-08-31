@@ -19,7 +19,7 @@
 pub mod logic;
 mod view;
 
-pub use view::render;
+pub use view::{render, selected_child};
 
 #[cfg(test)]
 mod tests;

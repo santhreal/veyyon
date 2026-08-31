@@ -63,28 +63,34 @@ pub struct Drag {
 }
 
 pub struct Shell {
-	pub store:      Store,
+	pub store:         Store,
 	/// The composer's field. Lives here rather than in the composer surface
 	/// because it outlives any one frame and holds the caret.
-	pub composer:   Entity<Editor>,
+	pub composer:      Entity<Editor>,
 	/// The palette's field.
-	pub search:     Entity<Editor>,
+	pub search:        Entity<Editor>,
 	/// The window's own clock. Every deadline in the store and every channel in
 	/// the motion registry is measured against it.
-	opened:         Instant,
+	opened:            Instant,
 	/// This frame's instant, in milliseconds since the window opened.
-	pub now:        u64,
+	pub now:           u64,
 	/// The transcript's scroll, held here because a send has to move it and a
 	/// surface drawn from a value cannot hold it between frames.
-	pub transcript: ScrollHandle,
+	pub transcript:    ScrollHandle,
 	/// The settings page's scroll.
-	pub page:       ScrollHandle,
+	pub page:          ScrollHandle,
+	/// The conversation list's scroll, so a cycle can put the row it selected
+	/// back on screen.
+	pub conversations: ScrollHandle,
+	/// The palette's list scroll, for the same reason: the list is walked with
+	/// the arrow keys and holds more rows than it shows.
+	pub results:       ScrollHandle,
 	/// The window's own focus target, for a route that draws no field. Without
 	/// it the settings pages would take no keystrokes at all: a binding
 	/// dispatches along the focused element's ancestors, and with the composer
 	/// unmounted there is no focused element to walk up from.
-	focus:          FocusHandle,
-	pub drag:       Option<Drag>,
+	focus:             FocusHandle,
+	pub drag:          Option<Drag>,
 }
 
 impl Shell {
@@ -107,6 +113,8 @@ impl Shell {
 			now: 0,
 			transcript: ScrollHandle::new(),
 			page: ScrollHandle::new(),
+			conversations: ScrollHandle::new(),
+			results: ScrollHandle::new(),
 			focus: cx.focus_handle(),
 			drag: None,
 		};
@@ -137,7 +145,8 @@ impl Shell {
 		let appearance = self.store.settings.appearance;
 		let opening_palette = matches!(command, Command::OpenPalette);
 
-		let Outcome { focus, draft_changed, scroll_to_latest, quit } = command.run(&mut self.store);
+		let Outcome { focus, draft_changed, scroll_to_latest, reveal_selection, quit } =
+			command.run(&mut self.store);
 
 		if self.store.settings.appearance != appearance {
 			Theme::set(self.store.settings.appearance, cx);
@@ -155,6 +164,9 @@ impl Shell {
 		if scroll_to_latest {
 			self.transcript.scroll_to_bottom();
 		}
+		if reveal_selection {
+			self.reveal_selection();
+		}
 		if opening_palette {
 			// The field is emptied when the palette opens rather than when it
 			// closes: a palette that reopens holding the last query answers a
@@ -170,6 +182,23 @@ impl Shell {
 			cx.quit();
 		}
 		cx.notify();
+	}
+
+	/// Put the selected row of the list on screen back in view.
+	///
+	/// The palette's list while the sheet is up, the conversation list under it
+	/// otherwise. Only one of the two holds a selection a keystroke can move,
+	/// and the other is behind a sheet nobody is walking.
+	fn reveal_selection(&self) {
+		if self.store.overlay.palette().is_some() {
+			self
+				.results
+				.scroll_to_item(palette::selected_child(&self.store));
+		} else {
+			self
+				.conversations
+				.scroll_to_item(sidebar::selected_child(&self.store));
+		}
 	}
 
 	// ---- the two fields report through here ----
@@ -199,7 +228,10 @@ impl Shell {
 		match event {
 			EditorEvent::Changed => {
 				let query = editor.read(cx).text().to_owned();
-				Command::PaletteQuery(query).run(&mut self.store);
+				let outcome = Command::PaletteQuery(query).run(&mut self.store);
+				if outcome.reveal_selection {
+					self.reveal_selection();
+				}
 			},
 			EditorEvent::Submit => {
 				// The palette's own Return. Its outcome may carry anything the
@@ -227,6 +259,9 @@ impl Shell {
 		}
 		if outcome.scroll_to_latest {
 			self.transcript.scroll_to_bottom();
+		}
+		if outcome.reveal_selection {
+			self.reveal_selection();
 		}
 		if outcome.quit {
 			cx.quit();
