@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-962237f3.js";
+            window.path_to_searchindex_js = "../searchindex-499800d3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -204,7 +204,7 @@ can dump enough text to fill the whole context window. These tools apply line, b
 result caps instead, and they surface truncation rather than dropping output silently. This
 page documents each tool’s parameters and the limits it enforces. The implementations live
 under <code>packages/coding-agent/src/tools/{read,search,write}.ts</code>.</p>
-<h2 id="the-read-tool-toolsreadts"><a class="header" href="#the-read-tool-toolsreadts">The <code>read</code> tool (<code>tools/read.ts</code>)</a></h2>
+<h2 id="the-read-tool-toolsfsreadts"><a class="header" href="#the-read-tool-toolsfsreadts">The <code>read</code> tool (<code>tools/fs/read.ts</code>)</a></h2>
 <p><code>read</code> takes a single <code>path</code> string (no separate <code>offset</code>/<code>limit</code> arguments) and bounds every read
 to a budget:</p>
 <ul>
@@ -261,7 +261,7 @@ listing. Orientation is what a selector-free listing is for, and the recursive o
 tokens for <code>packages/coding-agent/src</code> against 962 for its top level. A directory wider than 100
 entries states how many it held back and names <code>depth: 1</code> for the flat listing of all of them.
 <code>depth</code> and <code>limit</code> are honored in full when named.</p>
-<h2 id="the-search-tool-toolssearchts"><a class="header" href="#the-search-tool-toolssearchts">The <code>search</code> tool (<code>tools/search.ts</code>)</a></h2>
+<h2 id="the-search-tool-toolssearchsearchts"><a class="header" href="#the-search-tool-toolssearchsearchts">The <code>search</code> tool (<code>tools/search/search.ts</code>)</a></h2>
 <p>Workspace discovery and searching are unified in the <code>search</code> tool, covering file path lookup,
 text/regex search, and structural code search through one canonical model-facing interface. It
 takes two required ordered fields followed by type-specific options:</p>
@@ -317,7 +317,7 @@ takes two required ordered fields followed by type-specific options:</p>
 <li><code>search.contextBefore</code>: number, default <code>1</code> (lines of context before each text match).</li>
 <li><code>search.contextAfter</code>: number, default <code>1</code> (lines of context after each text match).</li>
 </ul>
-<h2 id="the-write-tool-toolswritets"><a class="header" href="#the-write-tool-toolswritets">The <code>write</code> tool (<code>tools/write.ts</code>)</a></h2>
+<h2 id="the-write-tool-toolsfswritets"><a class="header" href="#the-write-tool-toolsfswritets">The <code>write</code> tool (<code>tools/fs/write.ts</code>)</a></h2>
 <p><code>read</code> and <code>search</code> are the read side; <code>write {path, content}</code> creates or replaces a whole file. It
 shares infrastructure with the edit engine rather than touching the filesystem directly:</p>
 <ul>
@@ -334,7 +334,7 @@ that burns tokens.</li>
 <h2 id="sanitizing-exec-output-for-the-model"><a class="header" href="#sanitizing-exec-output-for-the-model">Sanitizing exec output for the model</a></h2>
 <p>Bash/exec tool output is sanitized before it reaches the model, via <code>sanitizeText()</code>
 (<code>packages/utils/src/sanitize-text.ts</code>), used from <code>session/streaming-output.ts</code> and the interactive PTY
-capture path (<code>tools/bash-interactive.ts</code>):</p>
+capture path (<code>tools/shell/bash-interactive.ts</code>):</p>
 <ul>
 <li><strong>ANSI stripping is Bun-native, not a hand-rolled parser.</strong> <code>sanitizeText()</code> calls Bun’s built-in
 <code>Bun.stripANSI()</code> when an ESC byte is present, then strips C0/C1 control bytes and DEL with a single

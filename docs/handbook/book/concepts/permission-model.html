@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-962237f3.js";
+            window.path_to_searchindex_js = "../searchindex-499800d3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -305,7 +305,7 @@ tools:
 <p>Here the mode is <code>ask-command</code>, so writes run without a prompt. The override then pulls <code>bash</code>
 back to <code>prompt</code>, so commands still stop for your approval.</p>
 <h2 id="critical-bash-commands"><a class="header" href="#critical-bash-commands">Critical bash commands</a></h2>
-<p>Within the exec tier, a guard (<code>packages/coding-agent/src/tools/bash-guard.ts</code>) forces a prompt in
+<p>Within the exec tier, a guard (<code>packages/coding-agent/src/tools/shell/bash-guard.ts</code>) forces a prompt in
 <code>plan</code>, <code>ask</code>, <code>ask-command</code> and <code>auto</code>, even over a per-tool <code>allow</code>. It has two halves.</p>
 <p>The first half judges what a command would DELETE, and it judges the paths after expansion rather
 than the command as text. A tilde and <code>$HOME</code> are resolved, so <code>rm -rf ~/</code> and <code>rm -rf "$HOME"/</code>

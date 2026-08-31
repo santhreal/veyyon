@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-962237f3.js";
+            window.path_to_searchindex_js = "../searchindex-499800d3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -196,7 +196,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="the-repair-cascade"><a class="header" href="#the-repair-cascade">The repair cascade</a></h1>
-<p>Before argument validation, the agent loop runs <code>packages/coding-agent/src/tools/repair/schema-repair.ts</code> in this order:</p>
+<p>Before argument validation, the agent loop runs <code>packages/coding-agent/src/tools/core/repair/schema-repair.ts</code> in this order:</p>
 <ol>
 <li><strong>Parse leniency</strong>: trailing commas / relaxed JSON; stringified argument blobs.</li>
 <li><strong>Alias / typo key rename</strong>: unknown keys that match a common alias (<code>filepath</code> → <code>path</code>, <code>contents</code> → <code>content</code>) or a casing/separator typo of a declared property are renamed to the declared name. Refuse when the rename would be ambiguous (two unknown keys map to the same property, one unknown key matches more than one declared property, or the alias target already has a value).</li>

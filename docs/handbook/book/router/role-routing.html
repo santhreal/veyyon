@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-962237f3.js";
+            window.path_to_searchindex_js = "../searchindex-499800d3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -213,7 +213,7 @@ Edit roles under Settings → Model → Roles and subagent policy under Settings
 (<code>advisor.enabled</code> and related settings, in <code>packages/coding-agent/src/advisor/</code>) is a background
 continuous-review mechanism rather than a mode you invoke; <code>/advisor</code> reports and configures it.
 See <code>docs/handbook/src/features/advisor.md</code>.</li>
-<li><strong>Addressed inter-agent messaging</strong> via the <code>irc</code> tool (<code>packages/coding-agent/src/tools/irc.ts</code>,
+<li><strong>Addressed inter-agent messaging</strong> via the <code>irc</code> tool (<code>packages/coding-agent/src/tools/agent/irc.ts</code>,
 <code>packages/coding-agent/src/task/irc-bus.ts</code>): <code>send</code>/<code>wait</code>/<code>inbox</code>/<code>list</code> ops over a process-global bus.
 <code>send</code> is fire-and-forget with delivery receipts; the bus wakes an idle recipient with a real turn,
 revives a parked one, or injects a non-interrupting aside into a busy one, the shipped analogue of

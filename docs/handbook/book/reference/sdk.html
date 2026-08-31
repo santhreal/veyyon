@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-962237f3.js";
+            window.path_to_searchindex_js = "../searchindex-499800d3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -458,7 +458,7 @@ const { session } = await createAgentSession({
 });
 </code></pre>
 <h3 id="tool-names-have-one-owner"><a class="header" href="#tool-names-have-one-owner">Tool names have one owner</a></h3>
-<p>Every tool name is declared once, in <code>packages/coding-agent/src/tools/builtin-names.ts</code>:
+<p>Every tool name is declared once, in <code>packages/coding-agent/src/tools/core/builtin-names.ts</code>:
 <code>BUILTIN_TOOL_NAMES</code> for the tools offered by default, <code>HIDDEN_TOOL_NAMES</code> for the ones a caller or
 a mode turns on, and <code>TOOL</code>, a map derived from both.</p>
 <p>Use <code>TOOL</code> inside the package rather than writing the name again:</p>
