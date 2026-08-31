@@ -27,7 +27,7 @@ function renderFallbackText(contentText: string, expanded: boolean, theme: Theme
 		},
 		theme,
 	);
-	const lines = contentText.split("\n").filter(line => line.trim());
+	const lines = contentText.split("\n").filter(line => /\S/.test(line));
 	return framedBlock(theme, width => {
 		const maxLines = expanded ? lines.length : 6;
 		const contentWidth = outputBlockContentWidth(width);
