@@ -44,11 +44,6 @@ import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils"
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { boundProviderErrorDetail, ProviderHttpError, readProviderErrorDetail } from "../error";
 import type { Api, CodexCompactionRequestContext, FetchImpl, Message, Model, ProviderSessionState } from "../types";
-import {
-	buildCodexCompactionV2Window,
-	CODEX_COMPACTION_TRIGGER_ITEM,
-	collectCodexCompactionV2Stream,
-} from "./openai-codex/compaction-v2";
 import { applyCodexResponsesLiteShape, resolveCodexResponsesLite } from "./openai-codex/request-transformer";
 import { createOpenAICodexDirectRequest } from "./openai-codex-responses";
 import type { ResponseInput } from "./openai-responses-wire";
@@ -332,7 +327,10 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 			if (resolveCodexResponsesLite(model, undefined)) {
 				applyCodexResponsesLiteShape(body);
 				body.include = Array.from(
-					new Set([...(Array.isArray(body.include) ? (body.include as string[]) : []), "reasoning.encrypted_content"]),
+					new Set([
+						...(Array.isArray(body.include) ? (body.include as string[]) : []),
+						"reasoning.encrypted_content",
+					]),
 				);
 			}
 		}
