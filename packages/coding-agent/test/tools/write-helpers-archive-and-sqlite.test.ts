@@ -14,7 +14,11 @@
  */
 import { describe, expect, it } from "bun:test";
 import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
-import { normalizeArchiveWriteSubPath, parseSqliteWriteTarget } from "@veyyon/coding-agent/tools/write-helpers";
+import {
+	isArchivePathNotFound,
+	normalizeArchiveWriteSubPath,
+	parseSqliteWriteTarget,
+} from "@veyyon/coding-agent/tools/write-helpers";
 
 // ─── normalizeArchiveWriteSubPath ─────────────────────────────────
 
@@ -156,5 +160,48 @@ describe("parseSqliteWriteTarget", () => {
 			expect(() => parseSqliteWriteTarget("users:", "")).toThrow(ToolError);
 			expect(() => parseSqliteWriteTarget("users:", "")).toThrow("non-empty row key");
 		});
+	});
+});
+
+// ─── isArchivePathNotFound ────────────────────────────────────────
+
+describe("isArchivePathNotFound", () => {
+	it("returns true for an ENOENT error", () => {
+		const err = Object.assign(new Error("not found"), { code: "ENOENT" });
+		expect(isArchivePathNotFound(err)).toBe(true);
+	});
+
+	it("returns true for an ENOTDIR error", () => {
+		const err = Object.assign(new Error("not a directory"), { code: "ENOTDIR" });
+		expect(isArchivePathNotFound(err)).toBe(true);
+	});
+
+	it("returns false for other error codes", () => {
+		const err = Object.assign(new Error("permission denied"), { code: "EACCES" });
+		expect(isArchivePathNotFound(err)).toBe(false);
+	});
+
+	it("returns false for a plain Error without code", () => {
+		expect(isArchivePathNotFound(new Error("something"))).toBe(false);
+	});
+
+	it("returns false for null", () => {
+		expect(isArchivePathNotFound(null)).toBe(false);
+	});
+
+	it("returns false for undefined", () => {
+		expect(isArchivePathNotFound(undefined)).toBe(false);
+	});
+
+	it("returns false for a string", () => {
+		expect(isArchivePathNotFound("ENOENT")).toBe(false);
+	});
+
+	it("returns false for an object without code property", () => {
+		expect(isArchivePathNotFound({ message: "fail" })).toBe(false);
+	});
+
+	it("returns false for an object with code but wrong value", () => {
+		expect(isArchivePathNotFound({ code: "EISDIR" })).toBe(false);
 	});
 });
