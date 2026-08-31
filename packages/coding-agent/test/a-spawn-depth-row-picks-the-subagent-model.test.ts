@@ -20,6 +20,11 @@
  *  3. A caller that passes no depth (depth 0, the root session, or a surface
  *     describing an agent rather than a spawn) sees today's behavior exactly,
  *     whatever rows are configured.
+ *  4. `subagent.sharedModel` chooses which chain answers at all. On, one
+ *     `subagent.model` answers for every agent at every depth and the depth
+ *     rows stop applying; off, `subagent.model` is not a layer of the
+ *     per-agent chain, which is lane, then depth row, then the agent file's
+ *     `model:` frontmatter, then the session's own model.
  *
  * Every case drives `resolveSubagentModel` — the one owner of "what model does
  * a subagent run" — the way the task executor and the eval agent-bridge call
@@ -75,15 +80,13 @@ describe("a depth row outranks every existing layer at exactly its own depth", (
 	 * different name: the "1" row must not leak into a grandchild spawn.
 	 */
 	it("decides nothing at any other depth", () => {
-		const settings = Settings.isolated({
-			"subagent.model": BLANKET,
-			"subagent.modelByDepth": { "1": DEPTH_ONE },
-		});
+		const settings = Settings.isolated({ "subagent.modelByDepth": { "1": DEPTH_ONE } });
 
 		for (const taskDepth of [2, 3, 10]) {
-			const resolved = resolveSubagentModel({ settings, agentName: AGENT, taskDepth });
-			expect(resolved.source, `depth ${taskDepth}`).toBe("blanket");
-			expect(resolved.patterns, `depth ${taskDepth}`).toEqual([BLANKET]);
+			const resolved = resolveSubagentModel({ settings, agentName: AGENT, agentModel: FRONTMATTER, taskDepth });
+			expect(resolved.source, `depth ${taskDepth}`).toBe("frontmatter");
+			expect(resolved.patterns, `depth ${taskDepth}`).toEqual([FRONTMATTER]);
+			expect(resolved.depth, `depth ${taskDepth}`).toBeUndefined();
 		}
 	});
 
@@ -101,32 +104,47 @@ describe("a depth row outranks every existing layer at exactly its own depth", (
 	});
 
 	/**
-	 * Depths without a row keep the old order, in full: blanket, then
-	 * frontmatter, then the session. Pinning only "miss → blanket" would leave
-	 * the rest of the chain free to rot.
+	 * Depths without a row keep the rest of the per-agent chain, in full:
+	 * frontmatter, then the session. Pinning only "miss → frontmatter" would
+	 * leave the tail of the chain free to rot. `subagent.model` is deliberately
+	 * absent from this chain — it answers only under
+	 * `subagent.sharedModel`, which the describe below drives.
 	 */
-	it("leaves blanket, frontmatter and inherit in their old order when no row matches", () => {
-		const withBlanket = Settings.isolated({
-			"subagent.model": BLANKET,
-			"subagent.modelByDepth": { "2": DEPTH_TWO },
-		});
-		const withoutBlanket = Settings.isolated({ "subagent.modelByDepth": { "2": DEPTH_TWO } });
+	it("leaves frontmatter and inherit in their old order when no row matches", () => {
+		const settings = Settings.isolated({ "subagent.modelByDepth": { "2": DEPTH_TWO } });
 
-		expect(
-			resolveSubagentModel({ settings: withBlanket, agentName: AGENT, agentModel: FRONTMATTER, taskDepth: 1 })
-				.patterns,
-		).toEqual([BLANKET]);
-		expect(
-			resolveSubagentModel({ settings: withoutBlanket, agentName: AGENT, agentModel: FRONTMATTER, taskDepth: 1 }),
-		).toEqual({ patterns: [FRONTMATTER], source: "frontmatter", depth: undefined, unresolved: undefined });
+		expect(resolveSubagentModel({ settings, agentName: AGENT, agentModel: FRONTMATTER, taskDepth: 1 })).toEqual({
+			patterns: [FRONTMATTER],
+			source: "frontmatter",
+			depth: undefined,
+			unresolved: undefined,
+		});
 		expect(
 			resolveSubagentModel({
-				settings: withoutBlanket,
+				settings,
 				agentName: AGENT,
 				activeModelPattern: SESSION,
 				taskDepth: 1,
 			}),
 		).toEqual({ patterns: [SESSION], source: "inherit", depth: undefined, unresolved: undefined });
+	});
+
+	/**
+	 * The blanket setting is not a layer of this chain. It was one, and a spawn
+	 * then answered to a roster-level model that the agent's own page never
+	 * showed; it now answers only while `subagent.sharedModel` is on, which is
+	 * the describe below. A row configured beside it must not resurrect it.
+	 */
+	it("does not consult subagent.model while the shared switch is off", () => {
+		const settings = Settings.isolated({
+			"subagent.model": BLANKET,
+			"subagent.modelByDepth": { "2": DEPTH_TWO },
+		});
+
+		const resolved = resolveSubagentModel({ settings, agentName: AGENT, agentModel: FRONTMATTER, taskDepth: 1 });
+
+		expect(resolved.source).toBe("frontmatter");
+		expect(resolved.patterns).toEqual([FRONTMATTER]);
 	});
 
 	/**
@@ -148,19 +166,25 @@ describe("a depth row outranks every existing layer at exactly its own depth", (
 
 describe("a depth row that matches no model refuses, naming its own row", () => {
 	/**
-	 * The same contract the blanket and frontmatter layers already keep: a
-	 * configured value that expands to nothing comes back `unresolved` so the
-	 * spawn is refused and the setting named, rather than silently dropping to
-	 * the next layer. Here the blanket IS configured, so a fallthrough would
-	 * have something to fall to — which is exactly what must not happen.
+	 * The same contract the frontmatter layer already keeps: a configured value
+	 * that expands to nothing comes back `unresolved` so the spawn is refused
+	 * and the setting named, rather than silently dropping to the next layer.
+	 * Here the frontmatter IS set and the session HAS a model, so a fallthrough
+	 * would have something to fall to — which is exactly what must not happen.
 	 */
-	it("does not fall through to the blanket", () => {
+	it("does not fall through to the layer below it", () => {
 		const settings = Settings.isolated({
 			"subagent.model": BLANKET,
 			"subagent.modelByDepth": { "2": "@no-such-role" },
 		});
 
-		const resolved = resolveSubagentModel({ settings, agentName: AGENT, taskDepth: 2 });
+		const resolved = resolveSubagentModel({
+			settings,
+			agentName: AGENT,
+			agentModel: FRONTMATTER,
+			activeModelPattern: SESSION,
+			taskDepth: 2,
+		});
 
 		expect(resolved.patterns).toEqual([]);
 		expect(resolved.source).toBe("depth");
@@ -182,13 +206,65 @@ describe("a depth row that matches no model refuses, naming its own row", () => 
 	});
 });
 
+describe("the shared switch replaces the per-agent chain, depth rows included", () => {
+	/**
+	 * `subagent.sharedModel` is the switch that decides WHICH chain answers, and
+	 * it is where `subagent.model` lives. On, one model answers for every agent
+	 * at every depth, so a configured depth row stops applying — the roster greys
+	 * those rows for exactly this reason, and a row that still decided while the
+	 * screen said it did not would be the disagreement the switch exists to end.
+	 */
+	it("answers with subagent.model even where a depth row is configured", () => {
+		const settings = Settings.isolated({
+			"subagent.sharedModel": true,
+			"subagent.model": BLANKET,
+			"subagent.modelByDepth": { "1": DEPTH_ONE },
+		});
+
+		const resolved = resolveSubagentModel({
+			settings,
+			agentName: AGENT,
+			agentModel: FRONTMATTER,
+			activeModelPattern: SESSION,
+			taskDepth: 1,
+		});
+
+		expect(resolved.source).toBe("blanket");
+		expect(resolved.patterns).toEqual([BLANKET]);
+		expect(resolved.depth).toBeUndefined();
+	});
+
+	/**
+	 * Shared with nothing shared: the switch is on and `subagent.model` is unset,
+	 * so the session's model is inherited rather than the per-agent chain being
+	 * consulted again behind the switch's back.
+	 */
+	it("inherits the session model rather than reopening the per-agent chain", () => {
+		const settings = Settings.isolated({
+			"subagent.sharedModel": true,
+			"subagent.modelByDepth": { "1": DEPTH_ONE },
+		});
+
+		const resolved = resolveSubagentModel({
+			settings,
+			agentName: AGENT,
+			agentModel: FRONTMATTER,
+			activeModelPattern: SESSION,
+			taskDepth: 1,
+		});
+
+		expect(resolved.source).toBe("inherit");
+		expect(resolved.patterns).toEqual([SESSION]);
+	});
+});
+
 describe("a caller with no depth keeps today's behavior", () => {
 	/**
 	 * Depth 0 is the root session and an omitted depth is a surface describing
 	 * an agent rather than a spawn (the Agents table). Both must resolve
 	 * exactly as if the map did not exist, even with rows configured — a depth
 	 * row that reached the root would re-decide the SESSION's own delegates
-	 * behind the blanket's back.
+	 * from a screen that never named it.
 	 */
 	it("ignores every row at depth 0 and at no depth at all", () => {
 		const settings = Settings.isolated({
@@ -204,8 +280,8 @@ describe("a caller with no depth keeps today's behavior", () => {
 				activeModelPattern: SESSION,
 				taskDepth,
 			});
-			expect(resolved.source, `taskDepth ${String(taskDepth)}`).toBe("blanket");
-			expect(resolved.patterns, `taskDepth ${String(taskDepth)}`).toEqual([BLANKET]);
+			expect(resolved.source, `taskDepth ${String(taskDepth)}`).toBe("frontmatter");
+			expect(resolved.patterns, `taskDepth ${String(taskDepth)}`).toEqual([FRONTMATTER]);
 			expect(resolved.depth, `taskDepth ${String(taskDepth)}`).toBeUndefined();
 		}
 	});

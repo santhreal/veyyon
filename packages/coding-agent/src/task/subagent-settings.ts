@@ -834,7 +834,7 @@ function laneModelLayer(
  * instead.
  *
  * Bundled specialists intentionally carry no `model:` frontmatter, so on a stock
- * install every subagent with no lane of its own lands on case 5 and runs the
+ * install every subagent with no lane of its own lands on case 4 and runs the
  * model the operator is looking at.
  */
 export function resolveSubagentModel(options: {
