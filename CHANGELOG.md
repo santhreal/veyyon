@@ -51,6 +51,7 @@
 
 ### Fixed
 
+- The launch card lays its status row out against the same width the live row uses, so a narrow terminal no longer shows the card keeping a segment the running session immediately drops.
 - Context budgeting is unchanged from 1.3.0: the unreleased reserve for the model's output allocation is withdrawn, because subtracting it from the usable window moved every model's compaction threshold, roughly doubling how often compaction fired and invalidating the prompt cache on each pass.
 - A turn too large for compaction to summarize is truncated in the middle, keeping the head and the tail, instead of pausing automatic maintenance; the removed text is written to a recovery artifact the notice names. A session whose newest turn was a single oversized message could previously make no progress, and rewinding the tree did not clear it.
 - A payload the outbound secret scan refuses for its size is treated as a context overflow, so the session compacts and retries instead of stopping at "the provider request exceeds the confidentiality scan byte limit" on every attempt. The scan runs before the request is sent, so nothing else had reported the turn as too large.
