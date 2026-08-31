@@ -1593,10 +1593,12 @@ function buildToolResultBlock(
 ): ContentBlockParam {
 	let content = convertContentBlocks(msg.content, model.input.includes("image"));
 	if (msg.isError && typeof content !== "string" && content.some(block => block.type === "image")) {
+		const filtered: typeof content = [];
 		for (const block of content) {
 			if (block.type === "image") hoistedImages.push(block);
+			else filtered.push(block);
 		}
-		content = content.filter(block => block.type === "text");
+		content = filtered;
 	}
 	content = ensureErrorToolResultWireContent(content, msg.isError);
 	const block: ContentBlockParam = {
