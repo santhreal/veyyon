@@ -91,6 +91,14 @@ function planted(content: unknown): void {
 	resetLaunchFactsForTest();
 }
 
+/** Overwrite THIS project's entry, keeping the file shape and the other keys the reader needs. */
+function plantedEntry(fields: Record<string, unknown>): void {
+	const file = onDisk();
+	const projects = file.projects as Record<string, Record<string, unknown>>;
+	const key = Object.keys(projects)[0] as string;
+	planted({ ...file, projects: { ...projects, [key]: { ...projects[key], ...fields } } });
+}
+
 /** The card's own status-row context, which is what the segments actually render from. */
 function cardContext() {
 	return launchSegmentContext({
@@ -219,12 +227,10 @@ describe("what the launch card knows before a session exists", () => {
 	it("drops every fact when the project changed", async () => {
 		await record({ modelName: "Claude Sonnet 4", contextPercent: 40, gitStatus: DIRTY });
 		const file = onDisk();
+		const projects = file.projects as Record<string, unknown>;
+		const [key, entry] = Object.entries(projects)[0] as [string, unknown];
 
-		planted({
-			...file,
-			projectKey: `${String(file.projectKey)}-elsewhere`,
-			modelKey: `${String(file.modelKey)}-elsewhere`,
-		});
+		planted({ ...file, projects: { [`${key}-elsewhere`]: entry } });
 
 		expect(readLaunchFacts()).toEqual({
 			gitStatus: null,
@@ -237,12 +243,12 @@ describe("what the launch card knows before a session exists", () => {
 	it("drops every fact when the release changed", async () => {
 		await record({ modelName: "Claude Sonnet 4", contextPercent: 40, gitStatus: DIRTY });
 		const file = onDisk();
+		const projects = file.projects as Record<string, unknown>;
+		const [key, entry] = Object.entries(projects)[0] as [string, unknown];
 
-		planted({
-			...file,
-			projectKey: `0.0.0-other|${String(file.projectKey)}`,
-			modelKey: `0.0.0-other|${String(file.modelKey)}`,
-		});
+		// The release is the head of the project key, so an entry written by another release is
+		// filed under a key this one never looks up.
+		planted({ ...file, projects: { [`0.0.0-other|${key}`]: entry } });
 
 		expect(readLaunchFacts()).toEqual({
 			gitStatus: null,
@@ -253,12 +259,66 @@ describe("what the launch card knows before a session exists", () => {
 	});
 
 	/**
+	 * THE DEFECT THIS CLOSES. The file held ONE project's facts, so a launch here erased what the
+	 * project next door knew and the gauge read `?` on every start for anyone who works in two.
+	 * Recording under a second project must leave the first's entry intact.
+	 */
+	it("keeps each project's facts when another project records its own", async () => {
+		await record({ modelName: "Claude Sonnet 4", contextPercent: 40, gitStatus: DIRTY });
+		const mine = onDisk();
+		const projects = mine.projects as Record<string, unknown>;
+		const [key, entry] = Object.entries(projects)[0] as [string, unknown];
+
+		// A neighbouring project's entry, as its own launch would have written it.
+		planted({ ...mine, projects: { [`${key}-next-door`]: entry, [key]: entry } });
+		await record({ contextPercent: 55 });
+
+		const after = (onDisk().projects as Record<string, Record<string, unknown>>) ?? {};
+		expect(Object.keys(after).sort()).toEqual([key, `${key}-next-door`].sort());
+		expect(after[`${key}-next-door`]?.contextPercent).toBe(40);
+		expect(readLaunchFacts().contextPercent).toBe(55);
+	});
+
+	/**
+	 * The map is a cache, so it is bounded: a machine that opens hundreds of directories must not
+	 * grow a file the first frame reads. The oldest WRITE leaves, not the oldest key, so the
+	 * projects someone returns to stay and the one-off checkout is what goes. This asserts the
+	 * bound holds and that the entry written now is inside it, which is the pair a test that only
+	 * counted keys would miss.
+	 */
+	it("keeps the file bounded, evicting the oldest write", async () => {
+		await record({ contextPercent: 40 });
+		const mine = onDisk();
+		const projects = mine.projects as Record<string, Record<string, unknown>>;
+		const [key, entry] = Object.entries(projects)[0] as [string, Record<string, unknown>];
+		const crowd: Record<string, unknown> = {};
+		for (let i = 0; i < 60; i++) crowd[`${key}-other-${i}`] = { ...entry, recordedAt: 1_000 + i };
+
+		planted({ ...mine, projects: { ...crowd, [key]: { ...entry, recordedAt: 1 } } });
+		await record({ contextPercent: 55 });
+
+		const after = onDisk().projects as Record<string, Record<string, unknown>>;
+		const keys = Object.keys(after);
+		expect(keys.length).toBeLessThanOrEqual(24);
+		// This project just wrote, so it survives however old its previous entry was, and the
+		// oldest of the crowd is gone.
+		expect(keys).toContain(key);
+		expect(keys).not.toContain(`${key}-other-0`);
+		expect(readLaunchFacts().contextPercent).toBe(55);
+	});
+
+	/**
 	 * A file truncated by a crash mid-write, hand-edited, or replaced with the wrong shape. The
 	 * card must fall back to placeholders rather than throw on the frame it is painting.
+	 *
+	 * The single-slot shape an earlier release wrote is in the list. It parses, and its facts read
+	 * as this project's under a reader that only checked they were present, so a stale copy must be
+	 * REJECTED rather than served: that file filed one project's facts with no map to look them up
+	 * in, and every key it carries means something else here.
 	 */
 	it("knows nothing from a damaged file, whatever the damage", async () => {
 		await record({ modelName: "Claude Sonnet 4", contextPercent: 40, gitStatus: DIRTY });
-		const { projectKey, modelKey } = onDisk();
+		const key = Object.keys(onDisk().projects as Record<string, unknown>)[0] as string;
 
 		for (const damaged of [
 			"",
@@ -266,9 +326,11 @@ describe("what the launch card knows before a session exists", () => {
 			"null",
 			"[]",
 			'"40"',
-			JSON.stringify({ projectKey }),
-			JSON.stringify({ modelKey }),
-			JSON.stringify({ projectKey: 7, modelKey }),
+			JSON.stringify({ projects: { [key]: { modelRole: MODEL_A, contextPercent: 40 } } }),
+			JSON.stringify({ version: 1, projects: { [key]: { modelRole: MODEL_A, contextPercent: 40 } } }),
+			JSON.stringify({ version: 2, projects: "not a map" }),
+			// The shape before the map: one project's facts under top-level keys.
+			JSON.stringify({ projectKey: key, modelKey: `${key}|${MODEL_A}`, contextPercent: 40, modelName: "Stale" }),
 		]) {
 			planted(damaged);
 
@@ -287,7 +349,6 @@ describe("what the launch card knows before a session exists", () => {
 	 */
 	it("rejects a git summary that is not one", async () => {
 		await record({ gitStatus: DIRTY });
-		const { projectKey, modelKey } = onDisk();
 
 		for (const bad of [
 			{ staged: "1", unstaged: 0, untracked: 0, truncated: false },
@@ -297,7 +358,7 @@ describe("what the launch card knows before a session exists", () => {
 			"dirty",
 			[],
 		]) {
-			planted({ projectKey, modelKey, gitStatus: bad });
+			plantedEntry({ gitStatus: bad });
 
 			expect(readLaunchFacts().gitStatus).toBeNull();
 		}
@@ -309,12 +370,11 @@ describe("what the launch card knows before a session exists", () => {
 	 */
 	it("clamps a percentage from outside the band", async () => {
 		await record({ contextPercent: 40 });
-		const { projectKey, modelKey } = onDisk();
 
-		planted({ projectKey, modelKey, contextPercent: 140 });
+		plantedEntry({ contextPercent: 140 });
 		expect(readLaunchFacts().contextPercent).toBe(100);
 
-		planted({ projectKey, modelKey, contextPercent: -20 });
+		plantedEntry({ contextPercent: -20 });
 		expect(readLaunchFacts().contextPercent).toBe(0);
 	});
 
