@@ -52,3 +52,5 @@ Nothing replays the directory. A case that survives a run is a defect to fix or 
 ## Exclusions
 
 The oracles measure character grid cell placement and line boundaries. They do not evaluate color values, styling attributes, image protocol placement, or terminal emulator implementations outside Ghostty WASM.
+
+*Verified against `954eace449` on 2026-08-31.*

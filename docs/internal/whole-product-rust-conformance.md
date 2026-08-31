@@ -916,7 +916,8 @@ target/conformance-reports/
 
 ### 3. Standalone Reproduction CLI
 
-Any failure is replayed locally with a single self-contained command:
+Planned, and the one binary that exists today is `campaign`. A failure will
+replay locally with a single self-contained command:
 
 ```sh
 cargo run -p veyyon-conformance --bin replay -- --case [CASE_ID]
@@ -945,3 +946,5 @@ The conformance migration is complete when all the following quantitative criter
 - [ ] **TypeScript Product-Test Deletion**: Zero superseded `*.test.ts` files remain in `packages/`; repository-governance checks under `scripts/` are retained or ported with parity.
 - [ ] **CI Performance**: Direct-Rust p95 is <= 1.5 ms, compiled-product p95 is <= 500 ms, three cold calibrations of every exact shard finish in <= 144 seconds, and the complete 250,000-case CI run finishes in < 180 seconds across eight runners.
 - [ ] **Zero Unresolved Mismatches**: Every corpus mismatch is fixed or represented by an explicit reviewed contract change across Linux x86_64, Linux aarch64, macOS x86_64, macOS aarch64, and Windows x86_64.
+
+*Verified against `954eace449` on 2026-08-31.*
