@@ -68,6 +68,7 @@ const ABSENT: LaunchFacts = {
 	providerName: null,
 	contextPercent: null,
 	thinking: null,
+	terminalGround: null,
 };
 
 const MODEL_A = "anthropic/claude-sonnet-4";
@@ -108,7 +109,7 @@ function planted(content: unknown): void {
 }
 
 /** Overwrite this project's or this model's entry, keeping the file shape the reader needs. */
-function plantedEntry(map: "projects" | "models", fields: Record<string, unknown>): void {
+function plantedEntry(map: "projects" | "models" | "terminals", fields: Record<string, unknown>): void {
 	const file = onDisk();
 	const rows = file[map] as Record<string, Record<string, unknown>>;
 	const key = Object.keys(rows)[0] as string;
@@ -365,7 +366,7 @@ describe("what the launch card knows before a session exists", () => {
 		const mine = onDisk();
 		const maps = Object.keys(mine).filter(name => name !== "version");
 
-		expect(maps.sort()).toEqual(["models", "projects"]);
+		expect(maps.sort()).toEqual(["models", "projects", "terminals"]);
 		for (const map of maps) {
 			const rows = mine[map] as Record<string, Record<string, unknown>>;
 			const [key, entry] = Object.entries(rows)[0] as [string, Record<string, unknown>];
@@ -396,8 +397,16 @@ describe("what the launch card knows before a session exists", () => {
 	 * rather than served.
 	 */
 	it("knows nothing from a damaged file, whatever the damage", async () => {
-		await record({ modelName: "Claude Sonnet 4", contextPercent: 40, gitStatus: DIRTY });
-		const key = Object.keys(onDisk().projects as Record<string, unknown>)[0] as string;
+		await record({ modelName: "Claude Sonnet 4", contextPercent: 40, gitStatus: DIRTY, terminalGround: "#0d1117" });
+		const file = onDisk();
+		const key = Object.keys(file.projects as Record<string, unknown>)[0] as string;
+		const model = Object.keys(file.models as Record<string, unknown>)[0] as string;
+		const terminal = Object.keys(file.terminals as Record<string, unknown>)[0] as string;
+		// Every shape below carries a fact under a key this reader resolves, so a shape that slips
+		// past the check is a fact SERVED and not merely a file accepted.
+		const project = { modelRole: MODEL_A, contextPercent: 40, gitStatus: DIRTY };
+		const named = { name: "Stale", contextPercent: 40 };
+		const ground = { ground: "#0d1117" };
 
 		for (const damaged of [
 			"",
@@ -405,13 +414,17 @@ describe("what the launch card knows before a session exists", () => {
 			"null",
 			"[]",
 			'"40"',
-			JSON.stringify({ projects: { [key]: { modelRole: MODEL_A, contextPercent: 40 } } }),
-			JSON.stringify({ version: 1, projects: { [key]: { modelRole: MODEL_A, contextPercent: 40 } } }),
-			JSON.stringify({ version: 3, projects: "not a map", models: {} }),
-			JSON.stringify({ version: 3, projects: {}, models: "not a map" }),
+			JSON.stringify({ projects: { [key]: project } }),
+			JSON.stringify({ version: 1, projects: { [key]: project } }),
+			JSON.stringify({ version: 4, projects: "not a map", models: { [model]: named }, terminals: {} }),
+			JSON.stringify({ version: 4, projects: { [key]: project }, models: "not a map", terminals: {} }),
+			JSON.stringify({ version: 4, projects: { [key]: project }, models: {}, terminals: "not a map" }),
 			// A map the reader would index into without checking it is there.
-			JSON.stringify({ version: 3, projects: {} }),
-			JSON.stringify({ version: 3, models: {} }),
+			JSON.stringify({ version: 4, projects: { [key]: project }, terminals: {} }),
+			JSON.stringify({ version: 4, models: { [model]: named }, terminals: { [terminal]: ground } }),
+			JSON.stringify({ version: 4, projects: { [key]: project }, models: {} }),
+			// The shape before the terminal map, which filed no background at all.
+			JSON.stringify({ version: 3, projects: { [key]: project }, models: { [model]: named } }),
 			// The shape before the model map: name, provider and effort filed under the project.
 			JSON.stringify({
 				version: 2,
@@ -424,6 +437,20 @@ describe("what the launch card knows before a session exists", () => {
 
 			expect(readLaunchFacts()).toEqual(ABSENT);
 		}
+	});
+
+	/**
+	 * The number is what invalidates a file whose SHAPE still parses: a field added inside an
+	 * existing map, or a key whose meaning moved, leaves a stale copy that every check above
+	 * accepts. So the number is pinned to the shape rather than derived from it, and adding to the
+	 * file turns this red until someone moves it.
+	 */
+	it("files the maps under a shape number the previous release does not claim", async () => {
+		await record({ modelName: "Claude Sonnet 4", terminalGround: "#0d1117" });
+
+		expect(onDisk().version, "the file shape changed without moving its version").toBe(4);
+		planted({ ...onDisk(), version: 3 });
+		expect(readLaunchFacts()).toEqual(ABSENT);
 	});
 
 	/**
@@ -922,5 +949,130 @@ describe("the effort the card prints before a session resolves one", () => {
 	it("states no effort when none was recorded", () => {
 		expect(factsAtLaunch().model?.supportsThinking).toBe(false);
 		expect(factsAtLaunch().thinkingLevel).toBe(ThinkingLevel.Off);
+	});
+});
+
+/**
+ * WHY THIS EXISTS. The card paints before the terminal has answered the OSC 11 query for its
+ * background, so the first frame drew on the theme's ground and the answer, arriving ~550ms later,
+ * restyled the composer hairline from `#202329` to `#2a2e33` under a card already on screen. The
+ * background is the one fact on the card that belongs to the WINDOW rather than to the project or
+ * the model, so it is keyed to the terminal and survives everything that invalidates the others.
+ *
+ * THE CLASS. A fact recorded under the wrong key is served to a launch it does not describe, and a
+ * fact this reader accepts unchecked is spliced into an SGR sequence: this string reaches the
+ * frame as `\x1b[48;2;r;g;bm`, so a damaged file that can put arbitrary bytes there writes escape
+ * sequences into the terminal of whoever launches next.
+ *
+ * WHAT IT DOES NOT CATCH. Whether the recorded background is still the emulator's. Changing a
+ * terminal theme between launches paints one card on the previous ground; the query answers on
+ * that same launch and the session settles on the new one, which is the same one-row correction
+ * this cache exists to shrink.
+ */
+describe("the background the card paints on before the terminal answers", () => {
+	const GROUND = "#0d1117";
+
+	it("replays the background the last launch was told", async () => {
+		await record({ terminalGround: GROUND });
+
+		expect(readLaunchFacts().terminalGround).toBe(GROUND);
+	});
+
+	/** Uppercase is what several emulators report, and it is the same colour. */
+	it("replays a background reported in uppercase", async () => {
+		await record({ terminalGround: "#0D1117" });
+
+		expect(readLaunchFacts().terminalGround).toBe("#0D1117");
+	});
+
+	/**
+	 * The key that must NOT invalidate it. A model change wipes the display name and the gauge,
+	 * because both were measured against the model; the window's background was not.
+	 */
+	it("keeps the background when the model the card names changes", async () => {
+		settings.setModelRole("default", MODEL_A);
+		await record({ terminalGround: GROUND, modelName: "Claude Sonnet 4", contextPercent: 40 });
+		settings.setModelRole("default", MODEL_B);
+
+		const facts = readLaunchFacts();
+		expect(facts.modelName).toBeNull();
+		expect(facts.contextPercent).toBeNull();
+		expect(facts.terminalGround).toBe(GROUND);
+	});
+
+	/** And the reverse: recording a project's facts must not drop the window's. */
+	it("keeps the background when a later launch records only project facts", async () => {
+		await record({ terminalGround: GROUND });
+		await record({ gitStatus: DIRTY, contextPercent: 55 });
+
+		expect(readLaunchFacts().terminalGround).toBe(GROUND);
+	});
+
+	/**
+	 * The write collapse, for the map that arrives on every launch. The background is reported once
+	 * per session and is the same value each time, so re-recording it must not touch the disk.
+	 */
+	it("writes nothing when the terminal reports the background it already recorded", async () => {
+		await record({ terminalGround: GROUND, modelName: "Claude Sonnet 4" });
+		const write = vi.spyOn(atomicWrite, "atomicWriteJson");
+
+		await record({ terminalGround: GROUND, modelName: "Claude Sonnet 4" });
+
+		expect(write).not.toHaveBeenCalled();
+	});
+
+	/** A window whose emulator changed theme reports a different colour, and that one is the fact. */
+	it("replaces the background when the terminal reports a different one", async () => {
+		await record({ terminalGround: GROUND });
+		await record({ terminalGround: "#1c1c1c" });
+
+		expect(readLaunchFacts().terminalGround).toBe("#1c1c1c");
+	});
+
+	/**
+	 * Anything that is not `#rrggbb` is read as no background at all, so the card falls back to the
+	 * theme's ground rather than painting bytes from the file. The escape sequence in the list is
+	 * the reason the check is a whole-string match and not a `startsWith("#")`.
+	 */
+	it.each([
+		"red",
+		"#fff",
+		"#0d11177",
+		"#gggggg",
+		"#0d1117 ",
+		" #0d1117",
+		"#0d1117\u001b[31m",
+		"\u001b]11;rgb:00/00/00\u0007",
+		"",
+		5,
+		null,
+		true,
+		{},
+		// Wrapped, because `it.each` spreads an array row into the arguments.
+		[["#0d1117"]],
+	])("states no background for %p on disk", async damaged => {
+		await record({ terminalGround: GROUND });
+		plantedEntry("terminals", { ground: damaged });
+
+		expect(readLaunchFacts().terminalGround).toBeNull();
+	});
+
+	/** A launch that was never told a background records the entry without inventing one. */
+	it("states no background when the terminal never answered", async () => {
+		await record({ modelName: "Claude Sonnet 4" });
+
+		expect(readLaunchFacts().terminalGround).toBeNull();
+		expect(Object.keys(onDisk().terminals as Record<string, unknown>)).toHaveLength(1);
+	});
+
+	/** A background under another window's key describes that window, and this one paints without it. */
+	it("states no background recorded under another terminal", async () => {
+		await record({ modelName: "Claude Sonnet 4" });
+		const file = onDisk();
+		const rows = file.terminals as Record<string, Record<string, unknown>>;
+		const key = Object.keys(rows)[0] as string;
+		planted({ ...file, terminals: { [`${key}-other`]: { recordedAt: Date.now(), ground: GROUND } } });
+
+		expect(readLaunchFacts().terminalGround).toBeNull();
 	});
 });

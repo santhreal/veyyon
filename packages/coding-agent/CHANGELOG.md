@@ -48,6 +48,7 @@
 
 ### Fixed
 
+- The composer hairline and the transcript rules no longer change shade about half a second after the launch card appears: the card mixes them out of the background this terminal reported on the previous launch instead of a static token, and `tui.paintGround` on `auto` decides the paint from that same recorded background rather than repainting the whole window when the terminal answers. The background is recorded per terminal in `cache/launch-facts.json`, whose shape version is now 4.
 - The session mount no longer forces a full-viewport repaint over the launch card, so the screen no longer flashes and darkens at handover; the mount now writes only the rows whose content changed.
 - The launch card states the model name, git state and context percentage recorded at the end of the last launch instead of placeholders, so the status row and hero do not change when the session mounts; each fact falls back to its placeholder when the release, the model or the project changed.
 - The launch card records what a project knows and what a model knows separately, so working in two projects no longer erases both and leaves the context gauge reading `?` on every start, and a project opened for the first time states the model's display name and effort instead of a raw id. The file is versioned, each map is bounded to its 24 most recently written entries, and a copy written by a previous shape is discarded rather than read.

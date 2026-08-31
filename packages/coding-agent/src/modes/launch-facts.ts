@@ -33,6 +33,7 @@
 
 import { readFileSync } from "node:fs";
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
+import { TERMINAL_ID } from "@veyyon/tui/terminal-capabilities";
 import { atomicWriteJson } from "@veyyon/utils/atomic-write";
 import { getLaunchFactsCachePath, getProjectDir, VERSION } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
@@ -52,29 +53,36 @@ import type { GitStatusSummary } from "../utils/git";
 const RECORDABLE_THINKING: ReadonlySet<string> = new Set<string>([...Object.values(ThinkingLevel), AUTO_THINKING]);
 
 /**
- * The file on disk: what a project knows, and what a model knows, in two maps.
+ * The file on disk: what a project knows, what a model knows, and what a terminal looks like, in
+ * three maps.
  *
  * A single set of facts was enough for one project and made every launch cold for anyone who works
  * in two: the second project's launch overwrote the first's, so alternating between them meant the
  * card never had a fact to state and the gauge read `?` on every start.
  *
- * The two maps exist because the facts have two different scopes, and filing them together made
- * each one as narrow as the narrowest. A display name, its provider and the effort belong to the
- * MODEL: they are the same in every directory, so a first launch in a new project can state them
- * rather than printing a raw id and growing an effort tail 600ms later. The dirty marker and the
- * gauge belong to the PROJECT: one describes its working tree and the other is measured against
- * the prompt this project assembles, so neither says anything about the directory next door.
+ * The maps exist because the facts have different scopes, and filing them together made each one
+ * as narrow as the narrowest. A display name, its provider and the effort belong to the MODEL:
+ * they are the same in every directory, so a first launch in a new project can state them rather
+ * than printing a raw id and growing an effort tail 600ms later. The dirty marker and the gauge
+ * belong to the PROJECT: one describes its working tree and the other is measured against the
+ * prompt this project assembles, so neither says anything about the directory next door. The
+ * background color belongs to the TERMINAL: it is a property of the emulator the card is drawn
+ * into, identical in every project and under every model, and it is the only fact here that the
+ * card cannot obtain for itself at paint time.
  *
- * Both maps are bounded and evict the oldest write, because this is a cache of what is worth
+ * Every map is bounded and evicts the oldest write, because this is a cache of what is worth
  * stating on a first frame, not a record of every directory ever opened.
  *
  * `version` is checked on read. A file written by an older shape is dropped rather than
  * reinterpreted, since its facts were filed under keys this reader would resolve differently.
  */
-const FACTS_VERSION = 3;
+const FACTS_VERSION = 4;
 
 /** How many entries each map keeps. Each is a few hundred bytes and the file is read on paint. */
 const MAX_ENTRIES = 24;
+
+/** The one shape a recorded background may hold, checked on read and on write. */
+const GROUND_HEX_RE = /^#[0-9a-f]{6}$/i;
 
 /**
  * What one project knows.
@@ -112,10 +120,33 @@ interface ModelFacts {
 	recordedAt: number;
 }
 
+/**
+ * What one terminal looks like.
+ *
+ * The emulator's own background, as it last reported it (OSC 11). Every structural chrome color
+ * is derived from it -- the hairline above the composer, the composer outline, the transcript
+ * rules -- and the query that obtains it is answered milliseconds AFTER the card is already on
+ * screen, so a card with no recorded ground draws that chrome from the static token and then
+ * restyles it once the answer lands.
+ *
+ * Keyed by terminal id and not by release: the background of an emulator is not a property of the
+ * version painting into it, and putting the release in the key would throw the fact away on every
+ * upgrade. Two profiles of the SAME emulator with different backgrounds share one entry, so
+ * alternating between them mis-seeds one card and corrects it on the report, which is the state
+ * every launch was in before this was recorded at all.
+ */
+interface TerminalFacts {
+	/** `#rrggbb`, as the terminal reported it. */
+	ground?: string;
+	/** Milliseconds since the epoch, used only to decide which entry leaves when the map is full. */
+	recordedAt: number;
+}
+
 interface LaunchFactsFile {
 	version: number;
 	projects: Record<string, ProjectFacts>;
 	models: Record<string, ModelFacts>;
+	terminals: Record<string, TerminalFacts>;
 }
 
 /** The facts that survived validation, each null when it did not. */
@@ -148,6 +179,14 @@ export interface LaunchFacts {
 	 * about the next, and every project using this model ran at the same one.
 	 */
 	thinking: ConfiguredThinkingLevel | null;
+	/**
+	 * The background this terminal last reported, or null before it has reported one here.
+	 *
+	 * Seeds the ground-relative chrome so the card draws the hairline, the composer outline and
+	 * the transcript rules in the shade the session settles on, instead of drawing them from the
+	 * static token and restyling once the OSC 11 answer arrives.
+	 */
+	terminalGround: string | null;
 }
 
 /** What a caller can contribute; anything omitted keeps its recorded value. */
@@ -164,6 +203,8 @@ export interface LaunchFactsUpdate {
 	 * itself, and carrying the previous one forward would print `@high` on a row that has none.
 	 */
 	thinking?: ConfiguredThinkingLevel | null;
+	/** The background the terminal reported (`#rrggbb`), recorded for the next launch's card. */
+	terminalGround?: string;
 }
 
 /**
@@ -190,6 +231,16 @@ function projectKey(): string {
  */
 function modelKey(): string {
 	return `${VERSION}|${settings.getModelRole("default") ?? ""}`;
+}
+
+/**
+ * The terminal, and nothing else.
+ *
+ * Not the release, because an emulator's background does not change when this ships a new version,
+ * and not the project, because it is the same window whichever directory is open in it.
+ */
+function terminalKey(): string {
+	return TERMINAL_ID;
 }
 
 /** The configured default model, which is what a project's gauge was measured against. */
@@ -251,12 +302,14 @@ function load(): LaunchFactsFile | null {
 		!file.projects ||
 		typeof file.projects !== "object" ||
 		!file.models ||
-		typeof file.models !== "object"
+		typeof file.models !== "object" ||
+		!file.terminals ||
+		typeof file.terminals !== "object"
 	) {
 		memo = null;
 		return memo;
 	}
-	memo = { version: FACTS_VERSION, projects: file.projects, models: file.models };
+	memo = { version: FACTS_VERSION, projects: file.projects, models: file.models, terminals: file.terminals };
 	return memo;
 }
 
@@ -273,6 +326,16 @@ function asGitStatus(value: unknown): GitStatusSummary | null {
 	if (![staged, unstaged, untracked].every(n => typeof n === "number" && Number.isFinite(n) && n >= 0)) return null;
 	if (typeof truncated !== "boolean") return null;
 	return { staged, unstaged, untracked, truncated } as GitStatusSummary;
+}
+
+/**
+ * A parsed value shaped like a `#rrggbb` background, or null.
+ *
+ * The same reason the scan summary is checked: this string is spliced straight into an SGR
+ * sequence, so a damaged file must not be able to write escape bytes of its own into the frame.
+ */
+function asGroundHex(value: unknown): string | null {
+	return typeof value === "string" && GROUND_HEX_RE.test(value) ? value : null;
 }
 
 /**
@@ -304,6 +367,7 @@ export function readLaunchFacts(): LaunchFacts {
 			model && typeof model.thinking === "string" && RECORDABLE_THINKING.has(model.thinking)
 				? (model.thinking as ConfiguredThinkingLevel)
 				: null,
+		terminalGround: asGroundHex(file?.terminals[terminalKey()]?.ground),
 	};
 }
 
@@ -363,6 +427,8 @@ export function recordLaunchFacts(update: LaunchFactsUpdate): Promise<void> {
 	const recordedProject = previous?.projects[key];
 	const recordedModel = previous?.models[model];
 	const sameModel = recordedProject?.modelRole === role;
+	const terminal = terminalKey();
+	const recordedTerminal = previous?.terminals[terminal];
 
 	const nextProject: ProjectFacts = {
 		modelRole: role,
@@ -402,13 +468,24 @@ export function recordLaunchFacts(update: LaunchFactsUpdate): Promise<void> {
 		nextModel.thinking = update.thinking;
 	}
 
+	// A background arrives once per launch, from the terminal's own report, and it is the same
+	// value every time until the emulator's theme changes. Recorded rather than re-derived because
+	// the card that needs it paints before the query it answers can be asked.
+	const nextTerminal: TerminalFacts = {
+		recordedAt: Date.now(),
+		...(asGroundHex(recordedTerminal?.ground) ? { ground: recordedTerminal?.ground } : {}),
+	};
+	if (asGroundHex(update.terminalGround)) nextTerminal.ground = update.terminalGround;
+
 	// `recordedAt` moves on every call, so it is left out of the comparison: a redraw that changed
 	// no fact must not rewrite the file, which is what keeps an idle session off the disk.
 	if (
 		recordedProject &&
 		recordedModel &&
+		recordedTerminal &&
 		sameFacts(recordedProject, nextProject) &&
-		sameFacts(recordedModel, nextModel)
+		sameFacts(recordedModel, nextModel) &&
+		sameFacts(recordedTerminal, nextTerminal)
 	) {
 		return Promise.resolve();
 	}
@@ -417,6 +494,7 @@ export function recordLaunchFacts(update: LaunchFactsUpdate): Promise<void> {
 		version: FACTS_VERSION,
 		projects: evictOldest({ ...previous?.projects, [key]: nextProject }),
 		models: evictOldest({ ...previous?.models, [model]: nextModel }),
+		terminals: evictOldest({ ...previous?.terminals, [terminal]: nextTerminal }),
 	};
 	memo = file;
 	return atomicWriteJson(getLaunchFactsCachePath(), file, { fsync: false }).catch((err: unknown) => {
