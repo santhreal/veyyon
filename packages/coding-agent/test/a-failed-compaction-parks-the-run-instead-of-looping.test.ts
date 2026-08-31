@@ -242,7 +242,9 @@ describe("a failed compaction parks the run instead of looping", () => {
 		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
 		expect(noProgress.length).toBe(1);
 		expect(noProgress[0]!.level).toBe("warning");
-		expect(noProgress[0]!.message).toContain("clear large tool output");
+		// The warning leaves the reader with something to run. Every automatic reducer has already
+		// fired by the time this fires, so the remedy is a command and not another cleanup pass.
+		expect(noProgress[0]!.message).toContain("/new");
 	});
 
 	it("does not warn or block continuation when rescue after summarizer failure creates headroom", async () => {
