@@ -194,7 +194,17 @@ export interface LaunchFactsUpdate {
 	gitStatus?: GitStatusSummary;
 	modelName?: string;
 	providerName?: string;
+	/** The resting cost measured in THIS project, as a percentage of the limit it runs out at. */
 	contextPercent?: number;
+	/**
+	 * The same reading with this project's context files taken out, filed under the model.
+	 *
+	 * What a project that has never been measured states. Recorded separately because a reading
+	 * taken in one directory is not one taken in another: the difference is whatever `AGENTS.md`
+	 * and the rest of that project's context contribute, which on a large repository is enough to
+	 * move the bar a cell and the number by ten points.
+	 */
+	modelContextPercent?: number;
 	/**
 	 * The effort, or null to record that there was none.
 	 *
@@ -450,14 +460,20 @@ export function recordLaunchFacts(update: LaunchFactsUpdate): Promise<void> {
 	if (update.modelName !== undefined && update.modelName.length > 0) nextModel.name = update.modelName;
 	if (update.providerName !== undefined && update.providerName.length > 0) nextModel.provider = update.providerName;
 
-	// A reading lands under BOTH keys. The project's is the exact one it will state next time; the
-	// model's is what a project that has never been measured states instead of an empty bar. Only
-	// an at-rest reading reaches here (the recorder's own guard), so the model's copy stays a
-	// resting cost rather than the size of somebody's conversation.
+	// A reading lands under BOTH keys, and they are NOT the same number. The project's is the exact
+	// resting cost measured in this directory. The model's stands in for a project that has never
+	// been measured, so it carries the model FLOOR: the same reading with this project's context
+	// files taken out. Recording the whole reading under the model key served one project's
+	// `AGENTS.md` to the next -- a card seeded in a heavy repository stated 77% left where the
+	// session settled at 88%, an eleven-point correction on a settled screen. The floor is a lower
+	// bound every project shares, so the settle only ever moves the bar toward MORE spent, by
+	// exactly what this project's context adds. Only an at-rest reading reaches here (the
+	// recorder's own guard), so neither number is the size of somebody's conversation.
 	if (update.contextPercent !== undefined && Number.isFinite(update.contextPercent)) {
-		const percent = clampPercent(Math.round(update.contextPercent));
-		nextProject.contextPercent = percent;
-		nextModel.contextPercent = percent;
+		nextProject.contextPercent = clampPercent(Math.round(update.contextPercent));
+	}
+	if (update.modelContextPercent !== undefined && Number.isFinite(update.modelContextPercent)) {
+		nextModel.contextPercent = clampPercent(Math.round(update.modelContextPercent));
 	}
 
 	// The one fact a caller can erase: `null` states that the row printed no effort, which is a

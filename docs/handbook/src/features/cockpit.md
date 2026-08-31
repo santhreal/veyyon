@@ -77,9 +77,11 @@ recorded, in `cache/launch-facts.json`.
 That file records three kinds of fact. The model's display name, its provider, the effort and the
 at-rest context reading belong to the model, so they are stated in every project you use it in,
 including one you open for the first time. The dirty marker belongs to the project, because it
-describes that working tree. The gauge is recorded under both: a project states its own reading
-where it has one, and the model's reading from wherever it last idled where it does not. Those two
-maps are keyed by the release as well.
+describes that working tree. The gauge is recorded under both, as two different numbers: the
+project keeps the whole reading measured in that directory, and the model keeps the same reading
+with that project's context files subtracted. A project that has never been measured states the
+model's number, so it starts from a cost every project shares rather than from the last
+directory's `AGENTS.md`. Those two maps are keyed by the release as well.
 
 The third fact is the terminal's background color, keyed by the terminal and by nothing else. A new
 release does not change what an emulator draws, and it is the same window whichever directory is
@@ -91,11 +93,11 @@ effect on the next frame. Each of the three maps holds its 24 most recently writ
 Each recorded fact is replaced by a measured one as the session mounts. A tree committed from
 another terminal since the last launch keeps the recorded marker until `git status` answers, about
 130ms in. A project you open for the first time has no dirty marker. The gauge reads `?` only
-until this model has idled somewhere once; after that a new project starts at the reading every
-other project using that model gave, which differs by what this project's `AGENTS.md` adds.
-Configuring a different model resets it to `?` again, because a reading is a fraction of the
-window it was taken against. A model you have never run states its configured id's last path
-segment until the catalog supplies a display name.
+until this model has idled somewhere once; after that a new project starts at the model's
+subtracted reading and the session adds what this project's own context costs, so the bar fills
+rather than empties when the session lands. Configuring a different model resets it to `?` again,
+because a reading is a fraction of the window it was taken against. A model you have never run
+states its configured id's last path segment until the catalog supplies a display name.
 
 A repository whose refs are in a reftable has no ref files to read, so its branch appears with the
 session rather than with the card, as does a detached HEAD with no operation to name.

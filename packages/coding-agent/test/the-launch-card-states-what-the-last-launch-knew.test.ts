@@ -46,6 +46,7 @@ import {
 } from "@veyyon/coding-agent/modes/launch-facts";
 import { resetGroundTintsForTest } from "@veyyon/coding-agent/modes/theme/ground-tints";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { computeNonMessageBreakdown } from "@veyyon/coding-agent/session/context-usage";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 import type { GitStatusSummary } from "@veyyon/coding-agent/utils/git";
 import { getLaunchFactsCachePath, stripAnsi } from "@veyyon/utils";
@@ -114,6 +115,28 @@ function plantedEntry(map: "projects" | "models" | "terminals", fields: Record<s
 	const rows = file[map] as Record<string, Record<string, unknown>>;
 	const key = Object.keys(rows)[0] as string;
 	planted({ ...file, [map]: { ...rows, [key]: { ...rows[key], ...fields } } });
+}
+
+/**
+ * The file the recorder wrote while `act` ran, taken from the write itself.
+ *
+ * The product discards the recorder's promise, so a render leaves nothing on disk to read within
+ * the test's turn. This captures the payload the writer was handed, which is the same object the
+ * next launch parses, and awaits the write so the spy is not still in flight at teardown.
+ */
+async function written(act: () => void): Promise<{
+	projects: Record<string, Record<string, unknown>>;
+	models: Record<string, Record<string, unknown>>;
+}> {
+	const write = vi.spyOn(atomicWrite, "atomicWriteJson");
+	act();
+	const call = write.mock.calls.at(-1);
+	if (!call) throw new Error("the render wrote no launch facts");
+	await write.mock.results.at(-1)?.value;
+	return call[1] as {
+		projects: Record<string, Record<string, unknown>>;
+		models: Record<string, Record<string, unknown>>;
+	};
 }
 
 /** The card's own status-row context, which is what the segments actually render from. */
@@ -238,6 +261,10 @@ describe("what the launch card knows before a session exists", () => {
 	 * states them rather than printing a raw id, growing an effort tail, and drawing an empty bar
 	 * when the session lands. The working tree is the one fact that stays absent, because a marker
 	 * from another directory would be a claim about this one.
+	 *
+	 * The reading the model carries is the FLOOR, not the total: 40 was measured with this
+	 * project's context files in it, and 28 is the same reading without them. A project that has
+	 * never been measured states 28.
 	 */
 	it("states what the model knows in a project it has never been used in, and no tree marker", async () => {
 		await record({
@@ -245,6 +272,7 @@ describe("what the launch card knows before a session exists", () => {
 			providerName: "anthropic",
 			thinking: ThinkingLevel.High,
 			contextPercent: 40,
+			modelContextPercent: 28,
 			gitStatus: DIRTY,
 		});
 		const file = onDisk();
@@ -258,7 +286,7 @@ describe("what the launch card knows before a session exists", () => {
 			modelName: "Claude Sonnet 4",
 			providerName: "anthropic",
 			thinking: ThinkingLevel.High,
-			contextPercent: 40,
+			contextPercent: 28,
 		});
 	});
 
@@ -270,18 +298,37 @@ describe("what the launch card knows before a session exists", () => {
 	 * so the fallback is what an unmeasured project states and never an override of a measured one.
 	 */
 	it("prefers this project's reading to the model's, and states the model's when it has none", async () => {
-		await record({ contextPercent: 40 });
+		await record({ contextPercent: 40, modelContextPercent: 28 });
 		const file = onDisk();
 		const projects = file.projects as Record<string, Record<string, unknown>>;
 		const [key, entry] = Object.entries(projects)[0] as [string, Record<string, unknown>];
 
-		// This project measured 55 while the model last rested at 40 somewhere else.
+		// This project measured 55 while the model's floor, taken elsewhere, is 28.
 		planted({ ...file, projects: { [key]: { ...entry, contextPercent: 55 } } });
 		expect(readLaunchFacts().contextPercent).toBe(55);
 
 		// The same model, in a directory that has measured nothing.
 		planted({ ...file, projects: { [`${key}-elsewhere`]: entry } });
-		expect(readLaunchFacts().contextPercent).toBe(40);
+		expect(readLaunchFacts().contextPercent).toBe(28);
+	});
+
+	/**
+	 * THE DEFECT THIS CLOSES. Filing the whole reading under the model key handed one project's
+	 * `AGENTS.md` to the next: a card seeded from a heavy repository stated 77% left where the
+	 * session settled at 88%, an eleven-point correction on a screen that had been still for half
+	 * a second. A project reading on its own therefore leaves the model's copy ALONE -- the
+	 * recorder is the one place that knows what to subtract, and a caller that supplies only the
+	 * total is not offering a floor.
+	 */
+	it("never files a project's own reading under the model", async () => {
+		await record({ contextPercent: 40 });
+		const file = onDisk();
+		const projects = file.projects as Record<string, unknown>;
+		const [key, entry] = Object.entries(projects)[0] as [string, unknown];
+
+		planted({ ...file, projects: { [`${key}-elsewhere`]: entry } });
+
+		expect(readLaunchFacts().contextPercent).toBeNull();
 	});
 
 	/**
@@ -522,7 +569,7 @@ describe("what the launch card knows before a session exists", () => {
 	 * some later redraw mentioned something else.
 	 */
 	it("keeps the model's reading when a later update does not mention it", async () => {
-		await record({ contextPercent: 40 });
+		await record({ contextPercent: 40, modelContextPercent: 28 });
 		await record({ modelName: "Claude Sonnet 4" });
 
 		const file = onDisk();
@@ -530,7 +577,7 @@ describe("what the launch card knows before a session exists", () => {
 		const [key, entry] = Object.entries(projects)[0] as [string, unknown];
 		planted({ ...file, projects: { [`${key}-elsewhere`]: entry } });
 
-		expect(readLaunchFacts().contextPercent).toBe(40);
+		expect(readLaunchFacts().contextPercent).toBe(28);
 	});
 
 	/**
@@ -807,6 +854,62 @@ describe("what a running session records for the next launch", () => {
 		settings.setModelRole("default", "anthropic/claude-sonnet-45");
 
 		expect(recordedAfterRender(RUNS_THE_ROLE).contextPercent).toBeNull();
+	});
+
+	/**
+	 * THE DEFECT. The row filed one number under both keys, so the next launch in a DIFFERENT
+	 * project was handed this project's `AGENTS.md`. Measured on the built binary in this
+	 * repository: the card stated 77% left from a reading taken here, and the session in a light
+	 * project settled at 88%, an eleven-point correction on a screen that had been still for half
+	 * a second.
+	 *
+	 * The two numbers are now taken apart at the one place that can: the project's is the whole
+	 * resting cost, the model's is that cost without the parts after the first system prompt part,
+	 * which is where a project's own context lands. The expected floor is derived from
+	 * `computeNonMessageBreakdown`, the owner of that split, so this asserts the recorder used it
+	 * rather than restating an estimate that would agree with itself.
+	 *
+	 * WHAT THIS DOES NOT CATCH: the floor is the reading minus what THIS session filed as system
+	 * context, so a directory that contributes none records its own total as the floor. That still
+	 * bounds the error in one direction -- the card can only understate what a project spends, so
+	 * the bar fills rather than empties when the session lands -- but it is not a floor derived
+	 * from the model alone.
+	 */
+	it("files the project's whole reading and the model's floor as different numbers", async () => {
+		const session = makeStatusLineSession({
+			...RUNS_THE_ROLE,
+			contextUsage: { tokens: 32_000, contextWindow: 128_000 },
+			systemPrompt: ["the model's own prompt", "PROJECT CONTEXT ".repeat(2_000)],
+		});
+		const projectContext = computeNonMessageBreakdown(session).systemContextTokens;
+		expect(projectContext, "the fixture contributed no project context, so nothing is subtracted").toBeGreaterThan(0);
+
+		const file = await written(() => new StatusLineComponent(session).renderQuietLine(120));
+
+		const project = Object.values(file.projects)[0];
+		const model = Object.values(file.models)[0];
+		expect(project?.contextPercent).toBe(25);
+		expect(model?.contextPercent).toBe(Math.round(25 - (projectContext / 128_000) * 100));
+		// And the two really are different, so a recorder that subtracted nothing is red here even
+		// if the arithmetic above were ever to agree by rounding.
+		expect(model?.contextPercent).not.toBe(project?.contextPercent);
+	});
+
+	/**
+	 * A project heavy enough to cost more than the whole window still files a floor of zero rather
+	 * than a negative percentage, which would clamp to 0 on read and print a full bar for a model
+	 * that has none.
+	 */
+	it("files a floor of zero when the project's context exceeds the reading", async () => {
+		const session = makeStatusLineSession({
+			...RUNS_THE_ROLE,
+			contextUsage: { tokens: 1_000, contextWindow: 128_000 },
+			systemPrompt: ["the model's own prompt", "PROJECT CONTEXT ".repeat(20_000)],
+		});
+
+		const file = await written(() => new StatusLineComponent(session).renderQuietLine(120));
+
+		expect(Object.values(file.models)[0]?.contextPercent).toBe(0);
 	});
 });
 
