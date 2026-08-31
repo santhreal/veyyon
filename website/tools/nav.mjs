@@ -27,7 +27,6 @@ export const LINKS = [
 	{ label: "Features", href: "features.html", page: "features" },
 	{ label: "Install", href: "install.html", page: "install" },
 	{ label: "Changelog", href: "changelog.html", page: "changelog" },
-	{ label: "Blog", href: "blog/", page: "blog" },
 	{ label: "Docs", href: "docs/", page: "docs" },
 	{ label: "GitHub", href: "https://github.com/santhreal/veyyon", absolute: true },
 ];

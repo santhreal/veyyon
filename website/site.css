@@ -2,13 +2,13 @@
    JetBrains Mono as the display/brand voice, Inter for reading.
    Near-black ground, silver structure, ember-sun accent (veyyōn = the sun). Sharp edges, no gradients. */
 
-@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Regular.woff2) format("woff2");font-weight:400;font-display:swap}
-@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Medium.woff2) format("woff2");font-weight:500;font-display:swap}
-@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-SemiBold.woff2) format("woff2");font-weight:600;font-display:swap}
-@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Bold.woff2) format("woff2");font-weight:700;font-display:swap}
-@font-face{font-family:"InterV";src:url(./fonts/Inter-Regular.woff2) format("woff2");font-weight:400;font-display:swap}
-@font-face{font-family:"InterV";src:url(./fonts/Inter-Medium.woff2) format("woff2");font-weight:500;font-display:swap}
-@font-face{font-family:"InterV";src:url(./fonts/Inter-SemiBold.woff2) format("woff2");font-weight:600;font-display:swap}
+@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Regular.woff2) format("woff2");font-weight:400;font-display:optional}
+@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Medium.woff2) format("woff2");font-weight:500;font-display:optional}
+@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-SemiBold.woff2) format("woff2");font-weight:600;font-display:optional}
+@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Bold.woff2) format("woff2");font-weight:700;font-display:optional}
+@font-face{font-family:"InterV";src:url(./fonts/Inter-Regular.woff2) format("woff2");font-weight:400;font-display:optional}
+@font-face{font-family:"InterV";src:url(./fonts/Inter-Medium.woff2) format("woff2");font-weight:500;font-display:optional}
+@font-face{font-family:"InterV";src:url(./fonts/Inter-SemiBold.woff2) format("woff2");font-weight:600;font-display:optional}
 
 :root{
   --bg:#000000; --raised:#000000; --inset:#000000; --hover:#000000;
@@ -40,11 +40,9 @@ img{max-width:100%;display:block}
 .mono,.inline{font-family:var(--mono)}
 .accent{color:var(--sun-hi)}
 
-/* kicker — mono, spaced, leading diamond */
+/* kicker — mono, spaced label */
 .kicker{display:inline-flex;align-items:center;gap:12px;font-family:var(--mono);font-weight:500;
   font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--silver)}
-.kicker::before{content:"";width:6px;height:6px;background:var(--sun);transform:rotate(45deg);
-  box-shadow:0 0 9px rgba(240,134,46,.45);flex:none}
 
 /* ---------- header ---------- */
 header.site{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 80%,transparent);
@@ -286,9 +284,6 @@ html{scrollbar-color:#232327 #000}
 .cta-band .cta{justify-content:center;margin:36px 0 0}
 
 /* ——— the sun as a brand, outside the journey ——— */
-/* header progress sun: the header hairline is the horizon; the sun glides along it */
-.suntrack{position:absolute;left:0;right:0;bottom:0;height:0;pointer-events:none}
-.suntrack canvas{position:absolute;bottom:-6px;left:10px;transform:translateX(-50%);display:block}
 /* the sunset: a blood-orange pixel sky closing the page; the ember horizon line is
    drawn in-canvas, so the footer's own hairline is dropped when they meet */
 .sunset{position:relative;height:250px;overflow:hidden}
@@ -398,3 +393,61 @@ footer.site{border-top:1px solid var(--line);padding:52px 0;color:var(--dim);fon
   letter-spacing:-.024em;margin:0 0 12px;line-height:1.16;text-wrap:balance}
 .post-card p{margin:0;color:var(--fg-2);max-width:62ch;font-size:16px;line-height:1.55;text-wrap:pretty}
 .post-empty{color:var(--muted);font-family:var(--mono);font-size:15px;max-width:62ch;line-height:1.75}
+
+/* ---------- models catalog ---------- */
+.cat-controls{padding:40px 0 0}
+.cat-search{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.cat-search input[type="search"]{
+  flex:1;min-width:200px;max-width:420px;
+  background:var(--inset);border:1px solid var(--line-2);color:var(--fg);
+  font-family:var(--mono);font-size:14px;padding:11px 16px;
+  transition:border-color .14s,box-shadow .14s}
+.cat-search input[type="search"]:focus{outline:none;border-color:var(--sun-hi);
+  box-shadow:0 0 0 1px var(--sun-hi)}
+.cat-search input[type="search"]::placeholder{color:var(--dim)}
+.cat-filters{display:flex;gap:8px;flex-wrap:wrap}
+.cat-chip{
+  border:1px solid var(--line-2);background:transparent;color:var(--muted);
+  padding:7px 14px;font:500 12px/1 var(--mono);letter-spacing:.04em;
+  cursor:pointer;transition:.14s}
+.cat-chip:hover{border-color:var(--silver);color:var(--silver-hi)}
+.cat-chip[aria-pressed="true"]{border-color:var(--sun-hi);background:rgba(240,134,46,.12);color:var(--fg)}
+.cat-meta{margin:18px 0 0;font-family:var(--mono);font-size:12px;color:var(--dim);letter-spacing:.02em}
+.cat-results{padding-top:24px}
+.catalog{display:flex;flex-direction:column;gap:0}
+.cat-prov{border-top:1px solid var(--line)}
+.cat-prov:last-child{border-bottom:1px solid var(--line)}
+.cat-prov-head{
+  display:flex;align-items:center;gap:14px;padding:16px 4px;cursor:pointer;
+  transition:background .14s;user-select:none}
+.cat-prov-head:hover{background:rgba(255,255,255,.015)}
+.cat-prov-head:focus-visible{outline:2px solid var(--sun);outline-offset:2px}
+.cat-prov-name{font-weight:600;font-size:15.5px;color:var(--fg);flex:none}
+.cat-prov-count{
+  font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.06em;
+  border:1px solid var(--line);padding:3px 8px;flex:none}
+.cat-prov-chevron{font-family:var(--mono);font-size:16px;color:var(--dim);flex:none;width:18px;text-align:center;margin-left:auto}
+.cat-prov-body{padding:0 4px 20px;overflow-x:auto}
+.cat-tbl{width:100%;border-collapse:collapse;font-size:13.5px;min-width:560px}
+.cat-tbl th{text-align:left;padding:8px 14px 10px;border-bottom:1px solid var(--line);
+  color:var(--silver);font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;font-weight:500}
+.cat-tbl th:nth-child(n+3){text-align:right}
+.cat-tbl td{padding:7px 14px;border-bottom:1px solid rgba(198,203,212,.06);color:var(--fg-2)}
+.cat-tbl td:nth-child(n+3){text-align:right}
+.cat-tbl tr:last-child td{border-bottom:none}
+.cat-tbl tr:hover td{background:rgba(255,255,255,.02)}
+.m-name{color:var(--fg);font-weight:500}
+.m-id{font-family:var(--mono);font-size:11px;color:var(--dim);margin-left:8px}
+.m-num{font-family:var(--mono);font-size:12.5px;color:var(--silver)}
+.mb{display:inline-block;font-family:var(--mono);font-size:9.5px;font-weight:600;
+  padding:2px 5px;margin-right:4px;letter-spacing:.05em;vertical-align:1px}
+.mb-r{background:rgba(240,134,46,.14);color:var(--sun-hi)}
+.mb-v{background:rgba(63,182,168,.14);color:var(--teal)}
+.cat-local{color:var(--muted);font-size:14px;line-height:1.6;max-width:52ch;margin:4px 0 0}
+.cat-empty{color:var(--muted);font-family:var(--mono);font-size:15px;padding:40px 0}
+.cat-loading{color:var(--muted);font-family:var(--mono);font-size:15px;padding:40px 0}
+@media(max-width:860px){
+  .cat-search{flex-direction:column;align-items:stretch}
+  .cat-search input[type="search"]{max-width:none}
+}
