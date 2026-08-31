@@ -130,6 +130,7 @@ pub enum UiCommand {
 	CancelThemePreview,
 	SetDarkAppearance(bool),
 	SetFontSize { milli_px: u16 },
+	StepFontSize { larger: bool },
 	SetReducedMotion(bool),
 	SetDiffLayout(DiffLayout),
 	SetDiffWrap(bool),

@@ -28,6 +28,7 @@
 - The GPU front end draws a streamed reply as the shape it is becoming, so an unterminated fence, table row or inline span renders as itself rather than as its markup.
 - The GPU front end selects transcript text by dragging across it and copies what the pointer crossed.
 - The GPU front end's theme is chosen in Appearance, previewed while the pointer rests on a row, persisted on press, and drawn on the next frame.
+- The GPU front end's interface text size steps through the sizes the Appearance page offers, from `secondary-=` and `secondary--`, the View menu and the command palette.
 
 ### Changed
 

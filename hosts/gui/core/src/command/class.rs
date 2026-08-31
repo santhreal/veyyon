@@ -107,6 +107,7 @@ impl UiCommand {
 			| Self::CancelThemePreview
 			| Self::SetDarkAppearance(_)
 			| Self::SetFontSize { .. }
+			| Self::StepFontSize { .. }
 			| Self::SetReducedMotion(_)
 			| Self::SetDiffLayout(_)
 			| Self::SetDiffWrap(_)

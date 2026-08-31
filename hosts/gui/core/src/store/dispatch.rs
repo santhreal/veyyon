@@ -19,6 +19,8 @@ mod every_space_and_tab_command_changes_state_or_is_refused;
 mod switching_spaces_restores_tabs_and_panel_layout;
 #[cfg(test)]
 mod the_active_session_always_equals_the_active_tab_or_both_none;
+#[cfg(test)]
+mod the_interface_text_size_steps_through_the_sizes_the_page_offers;
 
 use crate::{
 	command::UiCommand,

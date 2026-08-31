@@ -44,6 +44,11 @@ impl Store {
 				self.frontend.preferences.font_size_milli_px =
 					(*milli_px).clamp(font_size::MIN_MILLI_PX, font_size::MAX_MILLI_PX)
 			},
+			UiCommand::StepFontSize { larger } => {
+				let current = self.frontend.preferences.font_size_milli_px;
+				self.frontend.preferences.font_size_milli_px = font_size::stepped(current, *larger)
+					.clamp(font_size::MIN_MILLI_PX, font_size::MAX_MILLI_PX)
+			},
 			UiCommand::SetReducedMotion(value) => self.frontend.preferences.reduced_motion = *value,
 			UiCommand::SetDiffLayout(value) => self.frontend.preferences.diff_layout = *value,
 			UiCommand::SetDiffWrap(value) => self.frontend.preferences.wrap_diff = *value,
