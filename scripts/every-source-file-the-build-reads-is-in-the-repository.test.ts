@@ -2,12 +2,11 @@
 //
 // `.gitignore` held `changes/`, with no leading slash, for a scratch directory
 // at the repository root. A pattern with no slash in it matches at every depth,
-// so it also swallowed `hosts/gui/features/src/changes/` - ten source files of
-// the GPU front end's diff route, declared `pub mod changes;` by a committed
-// `lib.rs`. The working tree compiled, every gate was green, and a clean clone
-// could not build, because the module the manifest declares was never in the
-// repository. Nothing reported it: `git status` hides an ignored file, and the
-// gates read the working tree.
+// so it also swallowed a source directory named `changes/` several levels down,
+// whose ten files a committed manifest declared. The working tree compiled,
+// every gate was green, and a clean clone could not build, because the module
+// the manifest declares was never in the repository. Nothing reported it:
+// `git status` hides an ignored file, and the gates read the working tree.
 //
 // THE CLASS IT CLOSES. Source the build reads and the repository does not
 // carry, whichever direction the mistake comes from: a pattern broad enough to
