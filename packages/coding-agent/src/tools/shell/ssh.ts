@@ -18,6 +18,7 @@ import type { OutputMeta } from "../core/output-meta";
 import { ToolError } from "../core/tool-errors";
 import { toolResult } from "../core/tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "../core/tool-timeouts";
+import { sshToolView } from "./ssh-view";
 
 const sshSchema = type({
 	host: type("string").describe("ssh host"),
@@ -144,6 +145,7 @@ export class SshTool implements AgentTool<typeof sshSchema, SSHToolDetails> {
 	readonly parameters = sshSchema;
 	readonly concurrency = "exclusive";
 	readonly strict = true;
+	readonly view = sshToolView;
 
 	readonly examples: readonly ToolExample<SshToolParams>[] = [
 		{

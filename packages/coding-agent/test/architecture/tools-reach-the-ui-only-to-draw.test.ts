@@ -274,7 +274,6 @@ const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/renderers.ts", ["type Component"]],
 	["tools/search/search-renderer.ts", ["Text", "type Component"]],
 	["tools/search/search-tool-bm25-render.ts", ["Text", "type Component"]],
-	["tools/shell/ssh-render.ts", ["type Component"]],
 	["tools/search/structure-search-render.ts", ["Text", "type Component"]],
 	["tools/search/text-search-render.ts", ["Text", "type Component"]],
 	["tools/agent/todo-render.ts", ["Text", "type Component"]],
@@ -478,6 +477,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"tools/agent/review.ts",
 			"tools/fs/set-cwd.ts",
 			"tools/shell/debug-view.ts",
+			"tools/shell/ssh-view.ts",
 			"tools/web/fetch-view.ts",
 		]);
 		for (const file of converted) {

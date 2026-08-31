@@ -19,3 +19,4 @@
 - `FramedBlockView.contents` distinguishes a card whose body is a status report from one whose body is fetched data, so a host paints the outcome across a report and leaves fetched content on its own ground.
 - `NoticeView` states a short notice whose whole body carries one state — a headline, an optional tag and lines under it — so a tool describes a decision without filling a plate itself; a span inside a notice states emphasis and structure, never colour.
 - `ToolViewContext.partial` states whether the result in hand is the tool's last word or an update it will replace, so a card that streams reports running rather than reading an outcome off a half-finished result.
+- `ViewSection.tail` states that a section is a window onto the end of its lines, measured by the host in the rows the lines occupy after wrapping, so a tool that cannot know a width or a viewport height still keeps the end of a long command or a long output on screen.

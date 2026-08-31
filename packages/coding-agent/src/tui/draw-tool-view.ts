@@ -13,7 +13,9 @@
 
 import { Ellipsis } from "@veyyon/natives";
 import { type Component, Text } from "@veyyon/tui";
+import { pluralize } from "@veyyon/utils/format";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type {
 	FramedBlockView,
 	HeadedBlockView,
@@ -27,15 +29,17 @@ import type {
 	ViewLine,
 	ViewSpan,
 	ViewStatus,
+	ViewTailWindow,
 	ViewTone,
 } from "@veyyon/view";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { type SymbolKey, UNICODE_SYMBOLS } from "../theme/symbols";
 import type { Theme, ThemeColor } from "../theme/theme";
-import { createCachedComponent, formatExpandHint } from "../tools/core/render-utils";
+import { createCachedComponent, formatExpandHint, previewWindowRows } from "../tools/core/render-utils";
 import type { ToolUIStatus } from "../tools/core/tool-ui-status";
+import type { FirstResultViewportRepaint } from "../tools/renderers";
 import { urlHyperlink } from "./hyperlink";
-import { framedBlock } from "./output-block";
+import { framedBlock, outputBlockContentWidth } from "./output-block";
 import { renderStatusLine } from "./status-line";
 import type { State } from "./types";
 import { padToWidth } from "./utils";
@@ -209,20 +213,46 @@ export function drawToolViewText(view: LineToolView, theme: Theme, spinnerFrame?
 export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFrame?: number): Component {
 	const header = drawStatusRow(view.header, theme, spinnerFrame);
 	const frame = view.state === undefined ? undefined : BLOCK_STATES[view.state];
-	const sections = view.sections.map(section => {
-		const lines = section.lines.map(line => drawSpans(line, theme));
-		const note = section.hidden === undefined ? undefined : drawHiddenNote(section.hidden, theme);
-		if (note !== undefined) lines.push(note);
-		return { label: section.label === undefined ? undefined : theme.fg("toolTitle", section.label), lines };
-	});
+	const sections = view.sections.map(section => ({
+		label: section.label === undefined ? undefined : theme.fg("toolTitle", section.label),
+		lines: section.lines.map(line => drawSpans(line, theme)),
+		// Held back by the TOOL, so it stands outside the window the host cuts: a section that says
+		// what it dropped must keep saying it however few rows are left.
+		note: section.hidden === undefined ? undefined : drawHiddenNote(section.hidden, theme),
+		tail: section.tail,
+	}));
 	return framedBlock(theme, width => ({
 		header,
-		sections,
+		sections: sections.map(section => {
+			const lines =
+				section.tail === undefined
+					? section.lines
+					: drawTailWindow(section.lines, section.tail, theme, outputBlockContentWidth(width));
+			return { label: section.label, lines: section.note === undefined ? lines : [...lines, section.note] };
+		}),
 		state: frame?.state,
 		borderColor: view.contents === "data" ? undefined : frame?.rail,
 		applyBg: view.contents !== "data",
 		width,
 	}));
+}
+
+/**
+ * The end of a section, in the rows it is allowed, with a line saying what came before it.
+ *
+ * Measured in WRAPPED rows rather than in the tool's lines, because one long command line occupies
+ * four rows of an eighty-column terminal and a window counted in tool lines overruns the viewport it
+ * exists to fit. The note is one of those rows, so a section given ten rows shows nine of its own.
+ */
+function drawTailWindow(lines: readonly string[], window: ViewTailWindow, theme: Theme, width: number): string[] {
+	const rows: string[] = [];
+	for (const line of lines) rows.push(...wrapTextWithAnsi(line.trimEnd(), width));
+	const max = window.max ?? previewWindowRows();
+	if (rows.length <= max) return rows;
+	const kept = max <= 1 ? [] : rows.slice(rows.length - (max - 1));
+	const earlier = rows.length - kept.length;
+	const note = `… ${earlier} earlier ${pluralize("line", earlier)} ${formatExpandHint(theme, false, true)}`;
+	return [theme.fg("dim", note), ...kept];
 }
 
 /**
@@ -400,6 +430,22 @@ export function drawToolView(view: ToolView, theme: Theme, spinnerFrame?: number
 }
 
 /**
+ * The card policies a converted tool's registry entry carries, which the component reads from the
+ * entry for both render paths.
+ *
+ * They are the terminal's, not the tool's: whether the result replaces the call row, whether either
+ * render consumes a spinner frame, and whether a shape change needs the viewport replayed. A view
+ * states none of them, so a conversion moves them here from the deleted renderer object.
+ */
+export interface ViewToolRendererPolicy {
+	mergeCallAndResult?: boolean;
+	animatedPendingPreview?: boolean | ((args: unknown) => boolean);
+	animatedPartialResult?: boolean | ((args: unknown) => boolean);
+	forceFirstResultViewportRepaint?: FirstResultViewportRepaint;
+	forceResultViewportRepaintOnSettle?: boolean;
+}
+
+/**
  * A view-only tool's card for the terminal's own renderer registry.
  *
  * A tool that describes a view needs no entry here: the card reads `tool.view` off the live tool.
@@ -413,12 +459,10 @@ export function drawToolView(view: ToolView, theme: Theme, spinnerFrame?: number
  */
 export function viewToolRenderer<Args, Result>(
 	view: Required<ToolViewRenderer<Args, Result>>,
-	extras?: { mergeCallAndResult?: boolean; animatedPartialResult?: boolean },
-): {
+	extras?: ViewToolRendererPolicy,
+): ViewToolRendererPolicy & {
 	renderCall: (args: unknown, options: RenderResultOptions, theme: Theme) => Component;
 	renderResult: (result: unknown, options: RenderResultOptions, theme: Theme, args?: unknown) => Component;
-	mergeCallAndResult?: boolean;
-	animatedPartialResult?: boolean;
 } {
 	return {
 		renderCall: (args, options, theme) =>
@@ -437,8 +481,7 @@ export function viewToolRenderer<Args, Result>(
 				theme,
 				options.spinnerFrame,
 			),
-		mergeCallAndResult: extras?.mergeCallAndResult,
-		animatedPartialResult: extras?.animatedPartialResult,
+		...extras,
 	};
 }
 

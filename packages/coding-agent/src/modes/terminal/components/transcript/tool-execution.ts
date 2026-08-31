@@ -1230,7 +1230,18 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#displayBuilt = true;
 	}
 
-	#rendererFlag(name: "forceResultViewportRepaintOnSettle"): boolean {
+	/**
+	 * A card policy the tool states, or the one its registry entry states.
+	 *
+	 * The two branches below draw the same tool: a tool that draws itself renders through its own
+	 * renderer or its view, and a tool that does not renders through `toolRenderers`. The policy is the
+	 * terminal's either way -- whether the call row survives the result, whether the call render is a
+	 * live widget -- so it is stated once, in the registry entry, and a tool that states its own wins.
+	 * A converted tool ships a `view` and no renderer, which moves it to the tool branch while its
+	 * policy stays in the entry; reading the policy off the tool alone drew its call row and its result
+	 * card one under the other, and only on the live path, where a rebuilt transcript merged them.
+	 */
+	#rendererFlag(name: "forceResultViewportRepaintOnSettle" | "mergeCallAndResult" | "callIsLiveWidget"): boolean {
 		const toolValue = (this.#tool as Record<string, unknown> | undefined)?.[name];
 		const rendererValue = toolRenderers[this.#toolName]?.[name];
 		return toolValue === true || (toolValue === undefined && rendererValue === true);
@@ -1318,7 +1329,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		// Check for custom tool rendering
 		if (this.#tool && toolDrawsItself(this.#tool)) {
 			const tool = this.#tool;
-			const mergeCallAndResult = Boolean((tool as { mergeCallAndResult?: boolean }).mergeCallAndResult);
+			const mergeCallAndResult = this.#rendererFlag("mergeCallAndResult");
 			// Custom tools use Box for flexible component rendering
 			this.#contentBox.setBgFn(undefined);
 			this.#contentBox.clear();
@@ -1339,7 +1350,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			// that was never asked, which is the ghost this component's own suite exists to prevent.
 			// A command or diff preview is NOT suppressed, because in that state the call is the one
 			// fact the card has left to show.
-			const suppressMergedWidget = neverRan && Boolean((tool as { callIsLiveWidget?: boolean }).callIsLiveWidget);
+			const suppressMergedWidget = neverRan && this.#rendererFlag("callIsLiveWidget");
 			const shouldRenderCall = !renderableResult || !mergeCallAndResult;
 			if (shouldRenderCall) {
 				const viewCall = tool.view?.renderCall;

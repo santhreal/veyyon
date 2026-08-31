@@ -256,11 +256,11 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 	{
 		name: "view-conversion",
 		matches: relative =>
-			/(goals\/goal-tool\.ts|transcript\/tool-execution\.ts|tools\/agent\/(review|memory-view|memory-retain|memory-recall|memory-reflect)\.ts|tools\/fs\/set-cwd\.ts)$/.test(
+			/(goals\/goal-tool\.ts|transcript\/tool-execution\.ts|tools\/agent\/(review|memory-view|memory-retain|memory-recall|memory-reflect)\.ts|tools\/fs\/set-cwd\.ts|test\/tools\/an-ssh-block-keeps-its-header-on-one-line\.test\.ts)$/.test(
 				relative,
 			),
 		reason:
-			"A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. Byte identity of the drawn output is proved by the oracle suite, not here.",
+			"A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
 	},
 	{
 		name: "shared-mode-seed",

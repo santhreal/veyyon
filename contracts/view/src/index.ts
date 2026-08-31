@@ -156,6 +156,29 @@ export interface ViewHiddenCount {
 }
 
 /**
+ * A section the host shows the END of, cut to the rows it has room for.
+ *
+ * The other way a card holds lines back, and the one a tool cannot do itself: how many rows a
+ * command or a stream of output occupies is known only after the host wraps it to a width the tool
+ * never sees, and how many rows are available is the host's viewport. So the tool states the whole
+ * section and says which end matters -- for a command still arriving and for output a process is
+ * writing, that is the end -- and the host cuts the front off and states what it dropped.
+ *
+ * `ViewHiddenCount` is the other case and stays separate: there the tool trimmed its own payload and
+ * knows exactly what it kept back. Here nothing is trimmed, and a wide enough terminal shows all of
+ * it.
+ */
+export interface ViewTailWindow {
+	/**
+	 * The rows the section may spend, the host's note among them.
+	 *
+	 * Omitted leaves the bound to the host, which is what a card whose preview should follow the
+	 * window the reader has states: a taller terminal shows more of it.
+	 */
+	max?: number;
+}
+
+/**
  * A labelled group of lines inside a block.
  *
  * The label is text, not chrome: the host decides whether it draws as a heading, a divider or a
@@ -172,6 +195,12 @@ export interface ViewSection {
 	 * are and the host still writes it.
 	 */
 	hidden?: ViewHiddenCount;
+	/**
+	 * That this section is a window onto its end, cut by the host rather than by the tool.
+	 *
+	 * Omitted means the lines are the section, and a host draws every one of them.
+	 */
+	tail?: ViewTailWindow;
 }
 
 /**

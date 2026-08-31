@@ -1,14 +1,17 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/core/render-utils";
-import { sshToolRenderer } from "@veyyon/coding-agent/tools/shell/ssh-render";
+import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import { sanitizeText } from "@veyyon/utils";
 
 beforeAll(async () => {
 	await initTheme();
 });
 
-describe("sshToolRenderer", () => {
+// The card the terminal draws for the ssh tool, which is its view drawn by the host.
+const sshToolRenderer = toolRenderers.ssh!;
+
+describe("the ssh card", () => {
 	it("keeps the status header on one line when the command spans multiple lines", async () => {
 		const uiTheme = (await getThemeByName("dark"))!;
 		expect(uiTheme).toBeDefined();

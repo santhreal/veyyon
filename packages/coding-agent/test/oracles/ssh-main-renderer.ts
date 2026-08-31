@@ -1,19 +1,27 @@
 /**
- * Terminal drawing for the ssh tool. The tool half in `ssh.ts` decides what
- * happened; this half decides how a terminal shows it, and is the only one of the two
- * that reaches the TUI.
+ * Differential oracle: the ssh renderer this branch deleted.
+ *
+ * Source: `packages/coding-agent/src/tools/shell/ssh-render.ts` at `912a1936b7`.
+ * Frozen: never edited to make a test pass.
+ *
+ * The only edits against that source are the import paths, which are absolute here because the file
+ * sits two directories away from where it was written. The lines it draws are the same lines.
  */
 
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { truncateToVisualLines } from "@veyyon/coding-agent/modes/terminal/components/transcript/visual-truncate";
+import { expandHintSuffix } from "@veyyon/coding-agent/modes/terminal/utils/key-hint";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import { formatStyledTruncationWarning, stripOutputNotice } from "@veyyon/coding-agent/tools/core/output-meta";
+import { capPreviewLines, PREVIEW_LIMITS, replaceTabs } from "@veyyon/coding-agent/tools/core/render-utils";
+import type { SSHToolDetails } from "@veyyon/coding-agent/tools/shell/ssh";
+import {
+	CachedOutputBlock,
+	markFramedBlockComponent,
+	outputBlockContentWidth,
+} from "@veyyon/coding-agent/tui/output-block";
+import { renderStatusLine } from "@veyyon/coding-agent/tui/status-line";
 import type { Component } from "@veyyon/tui";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import { truncateToVisualLines } from "../../modes/terminal/components/transcript/visual-truncate";
-import { expandHintSuffix } from "../../modes/terminal/utils/key-hint";
-import type { Theme } from "../../theme/theme";
-import { renderStatusLine } from "../../tui";
-import { CachedOutputBlock, markFramedBlockComponent, outputBlockContentWidth } from "../../tui/output-block";
-import { formatStyledTruncationWarning, stripOutputNotice } from "../core/output-meta";
-import { capPreviewLines, PREVIEW_LIMITS, replaceTabs } from "../core/render-utils";
-import type { SSHToolDetails } from "./ssh";
 
 // =============================================================================
 // TUI Renderer
@@ -48,7 +56,7 @@ function formatSshCommandLines(command: string, uiTheme: Theme): string[] {
 	return rawLines.map((line, i) => (i === 0 ? `${prefix}${line}` : line));
 }
 
-export const sshToolRenderer = {
+export const sshMainRenderer = {
 	animatedPendingPreview: true,
 	renderCall(args: SshRenderArgs, options: RenderResultOptions, uiTheme: Theme): Component {
 		const host = args.host || "…";
