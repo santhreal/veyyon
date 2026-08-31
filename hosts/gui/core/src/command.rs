@@ -114,6 +114,13 @@ pub struct Outcome {
 	pub draft_changed:    bool,
 	/// Put the transcript at the latest message.
 	pub scroll_to_latest: bool,
+	/// Bring the selected row of the list that is on screen back into view: the
+	/// palette's rows while it is open, the conversation list otherwise.
+	///
+	/// Set by the commands that move a selection rather than read every frame,
+	/// because a list that is put back on its selection during render fights the
+	/// wheel: the reader scrolls away and the next frame drags it back.
+	pub reveal_selection: bool,
 	/// Close the window.
 	pub quit:             bool,
 }

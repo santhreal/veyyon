@@ -24,7 +24,7 @@ impl Render for Shell {
 		self.settle_focus(window, cx);
 
 		let sidebar_header = chrome::sidebar_header(self, window, cx);
-		let sidebar = sidebar::render(&self.store, cx);
+		let sidebar = sidebar::render(&self.store, &self.conversations, cx);
 		let content_header = chrome::content_header(self, window, cx);
 		let main = match self.store.route {
 			Route::Chat => transcript::render(&self.store, &self.transcript, cx),
@@ -38,7 +38,7 @@ impl Render for Shell {
 		};
 		let composer = matches!(self.store.route, Route::Chat)
 			.then(|| composer::render(&self.store, &self.composer, window, cx));
-		let overlay = palette::render(&self.store, &self.search, cx);
+		let overlay = palette::render(&self.store, &self.search, &self.results, cx);
 
 		let body = div()
 			.flex()

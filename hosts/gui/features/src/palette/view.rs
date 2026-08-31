@@ -1,7 +1,7 @@
 //! Drawing the sheet, the field and the rows.
 
 use gpui::{
-	AnyElement, App, Div, Entity, InteractiveElement, IntoElement, ParentElement,
+	AnyElement, App, Div, Entity, InteractiveElement, IntoElement, ParentElement, ScrollHandle,
 	StatefulInteractiveElement, Styled, div, px,
 };
 use veyyon_gui_core::{
@@ -14,7 +14,7 @@ use veyyon_gui_kit::{
 	motion::{self, Channel, Key},
 	paint,
 	theme::{Theme, layout, size, space},
-	ui::{Empty, Icon, Row, Sheet, Tone, icon, kbd, square, text},
+	ui::{Empty, Icon, Row, Sheet, Tone, icon, kbd, scrollbar::Scrollbar, square, text},
 };
 
 use super::logic;
@@ -38,7 +38,12 @@ const LIST_MAX: f32 = 13.0 * layout::ROW;
 /// ancestor that asked to be positioned, so a wrapper around the sheet is a
 /// wrapper the sheet then fills: a flex item of no height, drawn nowhere. The
 /// caller hangs this on the window root, which is the box the sheet covers.
-pub fn render(store: &Store, field: &Entity<Editor>, cx: &mut App) -> Option<AnyElement> {
+pub fn render(
+	store: &Store,
+	field: &Entity<Editor>,
+	scroll: &ScrollHandle,
+	cx: &mut App,
+) -> Option<AnyElement> {
 	let open = store.overlay.palette().is_some();
 	let arrival = paint::toward(
 		cx,
@@ -66,7 +71,7 @@ pub fn render(store: &Store, field: &Entity<Editor>, cx: &mut App) -> Option<Any
 			.width(layout::SHEET)
 			.on_dismiss(act::click(Command::Back))
 			.child(search(field, cx))
-			.child(list(&rows, selected, cx))
+			.child(list(&rows, selected, scroll, cx))
 			.into_any_element(),
 	)
 }
@@ -94,8 +99,29 @@ fn search(field: &Entity<Editor>, cx: &mut App) -> Div {
 		)
 }
 
+/// Where the selected row is in the box that scrolls, for the window to put it
+/// back in view after a walk.
+///
+/// Here rather than in the surface because the count belongs to the list this
+/// file draws: the rows and their headings are children of one box, and a
+/// heading is a child like any other.
+pub fn selected_child(store: &Store) -> usize {
+	let rows = palette::rows(store);
+	let selected = store
+		.overlay
+		.palette()
+		.map(|palette| palette.selected)
+		.unwrap_or(0);
+	logic::selected_child(&rows, selected)
+}
+
 /// The rows, in the order the list decided, under a heading per run.
-fn list(rows: &[PaletteRow], selected: usize, cx: &mut App) -> AnyElement {
+///
+/// The list is walked with the arrow keys, so it is tracked: the window brings
+/// the selection back into view through [`selected_child`] when a walk leaves
+/// it. It is not put back during render, which would drag the list away from
+/// wherever the wheel had taken it on the next frame.
+fn list(rows: &[PaletteRow], selected: usize, scroll: &ScrollHandle, cx: &mut App) -> AnyElement {
 	let theme = Theme::get(cx);
 	if rows.is_empty() {
 		// Not an error, and not a row: a list with nothing in it says so where
@@ -114,6 +140,7 @@ fn list(rows: &[PaletteRow], selected: usize, cx: &mut App) -> AnyElement {
 		.gap(px(space::ROWS))
 		.max_h(px(LIST_MAX))
 		.overflow_y_scroll()
+		.track_scroll(scroll)
 		.border_t_1()
 		.border_color(theme.stroke)
 		.pt(px(space::SNUG));
@@ -131,7 +158,18 @@ fn list(rows: &[PaletteRow], selected: usize, cx: &mut App) -> AnyElement {
 		}
 		list = list.child(entry(row, index, index == selected, cx));
 	}
-	list.into_any_element()
+
+	// The bar sits over the rows rather than beside them, so the wrapper is the
+	// box it measures itself against: a bar hung on the sheet would draw its
+	// thumb from the top of the field.
+	div()
+		.relative()
+		.flex()
+		.flex_col()
+		.min_h(px(0.0))
+		.child(list)
+		.child(Scrollbar::new("palette-bar", scroll.clone()))
+		.into_any_element()
 }
 
 /// One row: what it is, what it is in, and the chord that does it.

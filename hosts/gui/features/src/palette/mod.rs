@@ -15,7 +15,7 @@ pub mod logic;
 pub mod view;
 
 pub use logic::{chord, mark};
-pub use view::render;
+pub use view::{render, selected_child};
 
 #[cfg(test)]
 mod tests;

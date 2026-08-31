@@ -40,3 +40,25 @@ pub fn chord(row: &Row) -> Option<&'static str> {
 pub fn current(row: &Row) -> bool {
 	row.current
 }
+
+/// Where the selected row sits among the list's own children.
+///
+/// The list draws a heading above each run of one kind, and gpui counts a
+/// heading as a child like any other, so a row's place among the rows is not
+/// its place in the box that scrolls. Out of range collapses to the first
+/// child, which is what an empty list and a stale cursor both mean.
+pub fn selected_child(rows: &[Row], selected: usize) -> usize {
+	let mut kind = None;
+	let mut children = 0usize;
+	for (index, row) in rows.iter().enumerate() {
+		if kind != Some(row.kind) {
+			kind = Some(row.kind);
+			children += 1;
+		}
+		if index == selected {
+			return children;
+		}
+		children += 1;
+	}
+	0
+}

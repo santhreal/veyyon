@@ -219,6 +219,18 @@ These are checked, not trusted.
   hover wash and the mark that says it can be pressed: a `Disclosure` with no `on_toggle` is a
   label, and a tool row whose call produced no output has no chevron. What it keeps is the chevron's
   track, so a column of headers with and without bodies still reads as one column.
+- **A list the keyboard walks is tracked, and its selection is put back in view by the command that
+  moved it.** The box that scrolls takes a `ScrollHandle`, the surface says where the selected row
+  sits among that box's children (`palette::selected_child`, `sidebar::selected_child`), and
+  `Outcome::reveal_selection` is what asks the window to scroll. Not during render: a list put back
+  on its selection every frame fights the wheel, and the reader watches it drag itself back.
+  `only_a_command_that_moves_a_selection_asks_for_it_to_be_revealed` pins the set of commands that
+  ask, so a new one that moves a selection turns red until it is decided. A heading is a child of
+  the box like a row is, which is why the count is a function and not the row's own index.
+- **Every box that scrolls draws a bar.** gpui's `overflow_y_scroll` scrolls and draws nothing, so a
+  region without a [`Scrollbar`] gives no sign that there is more of it. The bar is a sibling of the
+  scrolling box inside a `relative()` wrapper, because it measures its thumb against its own parent:
+  hung one level out, it draws the thumb from the top of whatever header is above the list.
 
 ## State
 

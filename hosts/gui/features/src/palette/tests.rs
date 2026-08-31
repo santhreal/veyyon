@@ -10,7 +10,9 @@
 //! table is checked here without anybody remembering to.
 //!
 //! WHAT IT DOES NOT CATCH. Whether the sheet is drawn where the eye is after
-//! the keystroke, and whether the highlighted row is visible without scrolling.
+//! the keystroke. Whether the highlighted row is inside the box that scrolls is
+//! arithmetic now, and checked below; whether the box then draws it is a
+//! window's question.
 
 use veyyon_gui_core::{
 	command::{self, Command},
@@ -22,7 +24,7 @@ use veyyon_gui_core::{
 	},
 };
 
-use super::logic::{chord, current, mark};
+use super::logic::{chord, current, mark, selected_child};
 
 fn store() -> Store {
 	let mut store = Store::opened_in("veyyon", "/repo/veyyon");
@@ -124,4 +126,77 @@ fn a_filtered_list_never_leaves_the_cursor_on_a_row_it_does_not_draw() {
 			assert!(selected < rows.len(), "{query:?}: the highlight is off the end of the list");
 		}
 	}
+}
+
+/// Rows of the given kinds, in order. Only the kind matters here: the child
+/// index is decided by where a run of one kind ends and the next begins.
+fn rows_of(kinds: &[Kind]) -> Vec<Row> {
+	kinds
+		.iter()
+		.map(|kind| Row {
+			kind:    *kind,
+			label:   "a row".to_owned(),
+			detail:  String::new(),
+			current: false,
+			command: Command::FocusComposer,
+		})
+		.collect()
+}
+
+#[test]
+fn the_child_index_counts_the_heading_above_every_run() {
+	// The invariant, derived rather than copied from the view: a row's place
+	// among the children of the box that scrolls is its own index plus one
+	// heading for every run of a kind up to and including its own. Off by one
+	// here scrolls to the row above the selection, which reads as a list that
+	// stops one short of the bottom.
+	let kinds =
+		[Kind::Conversation, Kind::Conversation, Kind::Command, Kind::Command, Kind::Command];
+	let rows = rows_of(&kinds);
+	for selected in 0..rows.len() {
+		let runs = 1
+			+ kinds[..=selected]
+				.windows(2)
+				.filter(|pair| pair[0] != pair[1])
+				.count();
+		assert_eq!(
+			selected_child(&rows, selected),
+			selected + runs,
+			"row {selected} of {kinds:?} is addressed at the wrong child"
+		);
+	}
+}
+
+#[test]
+fn one_run_of_rows_still_carries_its_heading() {
+	// The list heads every run, including the only one, so even the first row
+	// is the second child.
+	let rows = rows_of(&[Kind::Command, Kind::Command]);
+	assert_eq!(selected_child(&rows, 0), 1);
+	assert_eq!(selected_child(&rows, 1), 2);
+}
+
+#[test]
+fn a_cursor_off_the_end_of_the_list_addresses_the_first_child() {
+	// Reachable between a query and the frame that draws it: the rows are the
+	// new ones and the cursor is the old one. The first child is a heading, and
+	// scrolling to it is the top of the list.
+	let rows = rows_of(&[Kind::Command]);
+	assert_eq!(selected_child(&rows, 7), 0);
+	assert_eq!(selected_child(&[], 0), 0);
+}
+
+#[test]
+fn walking_the_palette_moves_the_child_the_window_scrolls_to() {
+	// The store-level helper, against the commands a reader presses. Both rows
+	// and cursor come from the store, so this is the arithmetic the sheet draws
+	// with.
+	let mut store = store();
+	let first = super::selected_child(&store);
+	Command::MovePaletteCursor { down: true }.run(&mut store);
+	let second = super::selected_child(&store);
+	assert!(second > first, "a walk down addressed the same child or an earlier one");
+
+	Command::MovePaletteCursor { down: false }.run(&mut store);
+	assert_eq!(super::selected_child(&store), first, "walking back addressed a different child");
 }
