@@ -25,7 +25,7 @@
  * ONE DELIBERATE EXCEPTION. `@veyyon/coding-agent`'s `utils/qrcode.ts` keeps its own `ANSI_RESET`. That
  * module's own doc states it is dependency-free so the collab join-code command can render without pulling
  * anything into the bundle, and importing even a zero-import leaf would end that property for five bytes.
- * The exemption is recorded in `hosts/terminal/engine/test/ansi-owner.test.ts` so it stays a decision rather than
+ * The exemption is recorded in `packages/utils/test/ansi-owner.test.ts` so it stays a decision rather than
  * becoming the precedent for the next copy.
  */
 
