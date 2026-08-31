@@ -18,8 +18,8 @@
  *   statusrow    the same launch, timed to the status row being on screen — the row carrying where
  *                you are, the model, the mode and the context gauge.
  *
- * A FIRST BYTE IS NOT A USABLE SCREEN, which is why the last four exist. `first-frame` was the
- * whole answer here and it reads 46ms on a warm binary: optimizing against it alone declares
+ * A FIRST BYTE IS NOT A USABLE SCREEN, which is why the last three exist. `first-frame` was the
+ * whole answer here and it reads 45-46ms on a warm binary: optimizing against it alone declares
  * victory on a frame the operator cannot yet read.
  *
  * `statusrow` used to trail the frame by about a second, because the row belonged to the session

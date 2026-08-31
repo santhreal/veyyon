@@ -17,22 +17,26 @@
  * is either proven present in the card's own row bytes or recorded below as silent. A preset that
  * gains an id, or a whole new preset, turns this red until someone puts it in one bucket.
  *
- * WHAT WAS TRIED AGAINST IT. Three ways to reintroduce the class, each injected into the source
+ * WHAT WAS TRIED AGAINST IT. Four ways to reintroduce the class, each injected into the source
  * and reverted: reverting the card to the hand-written `path · git` (red on every preset), making
  * `launchSegmentContext` start from `NO_SESSION_FACTS` instead of config (red on the model and rung
  * case — and green before this suite seeded a model and an approval mode, which is why it does),
- * and freezing the card's preset to `default` (red on the presets that differ from it, and on the
- * repaint case).
+ * freezing the card's preset to `default` (red on the presets that differ from it, and on the
+ * repaint case), and widening the card's compose budget by one column (red on the budget case
+ * only — the row's own width cannot see it, because the card truncates its line to the terminal
+ * afterwards and the extra column is spent on a shedding decision, not on a wider row).
  *
- * WHAT IT DOES NOT CATCH. It proves the id's launch content reaches the card, not that the live
- * row later renders the same bytes for it: the live row has facts the card cannot have (a session
- * name, a measured gauge), which is the whole reason the two rows differ at all. Byte agreement
- * for the one fact both rows have before any lookup — the branch — is held in
- * `modes/components/status-line/the-branch-reads-the-same-on-the-card-and-the-live-row.test.ts`,
+ * WHAT IT DOES NOT CATCH. It proves the id's launch content reaches the card and that the card
+ * fits it into the live row's budget, not that the live row later renders the same bytes for it:
+ * the live row has facts the card cannot have (a session name, a measured gauge), which is the
+ * whole reason the two rows differ at all. Byte agreement for the one fact both rows have before
+ * any lookup — the branch — is held in
+ * `test/modes/components/status-line/the-branch-reads-the-same-on-the-card-and-the-live-row.test.ts`,
  * and that the rows land on the same SCREEN ROW is held in
- * `the-first-frame-paints-the-composer-instantly.test.ts`. Every case here runs wide enough that
- * the fitter sheds nothing, because what a narrow row drops is the fitter's contract and is
- * asserted against the fitter.
+ * `the-first-frame-paints-the-composer-instantly.test.ts`. The preset cases here run wide enough
+ * that the fitter sheds nothing, because what a narrow row drops is the fitter's contract and is
+ * asserted against the fitter; the budget case is the one that sweeps narrow, and it asserts the
+ * budget rather than what the fitter did with it.
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, type Mock, spyOn } from "bun:test";
@@ -41,17 +45,15 @@ import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import {
 	COMPOSER_INSET_COLS,
 	LaunchComposerFoot,
+	QuietZoneLine,
 } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
 import {
 	resolvePresetSegments,
 	STATUS_LINE_PRESETS,
 } from "@veyyon/coding-agent/modes/terminal/components/status-line/presets";
-import {
-	effectiveStatusLineSettings,
-	gatherQuietSegments,
-	statusLineSettingsFromConfig,
-	subagentBadgeText,
-} from "@veyyon/coding-agent/modes/terminal/components/status-line/quiet-row";
+// Namespace-imported throughout: the budget case spies on `composeQuietRow`, and a named import
+// beside the namespace would be a second binding onto the same module for no reason.
+import * as quietRow from "@veyyon/coding-agent/modes/terminal/components/status-line/quiet-row";
 import { launchSegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/session-facts";
 import type { StatusLinePreset } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
@@ -141,9 +143,9 @@ function cardRow(): string {
  * the location segment disagree with itself.
  */
 function launchParts(): Map<string, string> {
-	const effective = effectiveStatusLineSettings(statusLineSettingsFromConfig());
+	const effective = quietRow.effectiveStatusLineSettings(quietRow.statusLineSettingsFromConfig());
 	const branch = branchLabelFromFiles(getProjectDir());
-	const groups = gatherQuietSegments({
+	const groups = quietRow.gatherQuietSegments({
 		width: SEGMENT_WIDTH,
 		effectiveSettings: effective,
 		gitEnabled: true,
@@ -156,7 +158,7 @@ function launchParts(): Map<string, string> {
 				branch,
 				autoCompactEnabled: false,
 			}),
-		subagentBadge: subagentBadgeText(0),
+		subagentBadge: quietRow.subagentBadgeText(0),
 		badgeSlot: null,
 	});
 	const parts = new Map<string, string>();
@@ -168,7 +170,7 @@ function launchParts(): Map<string, string> {
 
 /** The ids the card resolves for `preset`, which is not the table's list when config overrides it. */
 function resolvedIds(preset: StatusLinePreset): string[] {
-	const configured = statusLineSettingsFromConfig();
+	const configured = quietRow.statusLineSettingsFromConfig();
 	const resolved = resolvePresetSegments(preset, {
 		left: configured.leftSegments,
 		right: configured.rightSegments,
@@ -282,5 +284,43 @@ describe("the card and the live row are one row", () => {
 
 		expect(row).toContain(CONFIGURED_MODEL);
 		expect(row.toLowerCase()).toContain(CONFIGURED_APPROVAL);
+	});
+
+	/**
+	 * The card composes against the budget the live provider is handed, to the column.
+	 *
+	 * `QuietZoneLine` pads the live footline by the composer inset and calls its provider with
+	 * `width - inset`; the card reproduces that pad itself. A card that hands the composer one
+	 * more column than that believes it can afford a segment the live row cannot, so it sheds one
+	 * segment later and the handover re-lays the line. The final row is truncated to the terminal
+	 * either way, which is why the row's own WIDTH cannot see this and the budget is asserted at
+	 * the call instead.
+	 *
+	 * Both numbers are read at run time from the two production paths, so neither side can be
+	 * satisfied by a constant that drifts from what the components do.
+	 */
+	it("hands the composer the same budget QuietZoneLine hands the live provider", () => {
+		const composeSpy = spyOn(quietRow, "composeQuietRow");
+		try {
+			const disagreeing = [40, 64, 80, 100, 120, 200]
+				.map(terminal => {
+					let live = -1;
+					new QuietZoneLine(width => {
+						live = width;
+						return "";
+					}, COMPOSER_INSET_COLS).render(terminal);
+
+					composeSpy.mockClear();
+					new LaunchComposerFoot().render(terminal);
+					const card = composeSpy.mock.calls.at(-1)?.[0].width ?? -1;
+
+					return { terminal, card, live };
+				})
+				.filter(measured => measured.card !== measured.live);
+
+			expect(disagreeing).toEqual([]);
+		} finally {
+			composeSpy.mockRestore();
+		}
 	});
 });

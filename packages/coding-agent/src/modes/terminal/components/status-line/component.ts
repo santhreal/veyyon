@@ -33,6 +33,7 @@ import {
 	hasPrSegment,
 	type QuietRowInput,
 	type QuietSegmentBounds,
+	subagentBadgeText,
 } from "./quiet-row";
 import { focusExitBadge, type SegmentContext } from "./segments";
 import type { SessionFacts } from "./session-facts";
@@ -1376,7 +1377,7 @@ export class StatusLineComponent implements Component {
 	}
 
 	#subagentBadgeText(): string {
-		return theme.fg("statusLineSubagents", withIcon(theme.icon.agents, `${this.#subagentCount}`));
+		return subagentBadgeText(this.#subagentCount);
 	}
 
 	/**
