@@ -12,7 +12,7 @@
  * fullscreen card, so it stayed green through the entire life of the bug. A guide
  * is not a gate, which is why this file exists.
  *
- * WHAT IT DOES NOT CATCH: the 398 files already holding 2407 of these assertions.
+ * WHAT IT DOES NOT CATCH: the 397 files already holding 2396 of these assertions.
  * A blanket ban would be switched off within the week, so they are grandfathered
  * with exact counts. What is rejected is growth: a new test file with one, or one
  * more in a file that already has some. It also cannot judge whether a spy
@@ -110,7 +110,6 @@ const GRANDFATHERED: Readonly<Record<string, number>> = {
 	"packages/coding-agent/src/ssh/__tests__/file-transfer-posix-guard.test.ts": 2,
 	"packages/coding-agent/src/system-prompt.test.ts": 2,
 	"packages/coding-agent/test/a-failed-compaction-parks-the-run-instead-of-looping.test.ts": 21,
-	"packages/coding-agent/test/a-git-read-that-lands-late-repaints-the-status-row.test.ts": 8,
 	"packages/coding-agent/test/a-retry-walks-the-fallback-chain-before-it-gives-up.test.ts": 4,
 	"packages/coding-agent/test/a-superseded-prompt-stops-before-classifying-thinking.test.ts": 4,
 	"packages/coding-agent/test/a-turn-too-large-to-summarize-is-truncated-not-parked.test.ts": 3,
