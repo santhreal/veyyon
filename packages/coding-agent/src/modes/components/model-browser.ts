@@ -19,6 +19,7 @@ import {
 	type HoverFadeOptions,
 	Input,
 	matchesKey,
+	SCROLLBAR_RESERVE_COLS,
 	ScrollView,
 	type SgrMouseEvent,
 	truncateToWidth,
@@ -838,6 +839,65 @@ export class ModelBrowser implements Component {
 		return tps;
 	}
 
+	/**
+	 * The naming half of a model row: cursor gutter, provider prefix, id, the
+	 * current mark, the auth badge and the over-context note. Painted, since
+	 * width measurement is escape-aware and a second unpainted copy of this
+	 * composition is the drift the extraction exists to prevent.
+	 *
+	 * ONE MEASUREMENT FOR BOTH READERS: the row that draws it, and
+	 * {@link naturalWidth}, which reports the width at which none of it is cut.
+	 */
+	#rowNaming(item: ModelBrowserItem, selected: boolean, disabled: boolean): string {
+		const prefix = selected && this.#focused ? `${theme.fg("accent", theme.nav.cursor)} ` : "  ";
+		const providerPrefix = this.#showProvider ? theme.fg("dim", `${item.provider}/`) : "";
+		const name = item.labelColor
+			? theme.fg(item.labelColor, item.id)
+			: selected
+				? theme.fg("accent", item.id)
+				: item.id;
+		const currentMark =
+			item.selector === this.#currentSelector ? ` ${theme.fg("success", theme.status.enabled)}` : "";
+		const authBadge = item.badge ? ` ${theme.fg(item.badgeColor ?? "dim", item.badge)}` : "";
+		const overLimit = disabled
+			? ` ${theme.status.disabled} context>${formatNumber(item.model.contextWindow ?? 0).toLowerCase()}`
+			: "";
+		return `${prefix}${providerPrefix}${name}${currentMark}${authBadge}${overLimit}`;
+	}
+
+	/**
+	 * The pane width at which no model row is cut: the widest row's name, its
+	 * metadata columns, the cell between them, and the bar the scroll view
+	 * reserves once the list overflows.
+	 *
+	 * A HOST THAT SPLITS ITS CARD HAS TO ASK WHAT THE ROWS COST. The model hub
+	 * sized its scope column from its own scope names and handed this pane the
+	 * remainder, so a narrow card drew a full-width `Recently used` beside rows
+	 * reading `anthropic/claude-…`. The reserve is counted here rather than by
+	 * the caller, for the same reason the rows compose their own columns.
+	 *
+	 * `rowWidth` is the widest pane the caller could hand over. The perf column
+	 * is dropped below its own thresholds, so the answer depends on the width
+	 * being considered, and measuring at the upper bound returns the largest
+	 * width the rows could ask for.
+	 */
+	naturalWidth(rowWidth: number): number {
+		const perfMode: PerfMode =
+			rowWidth >= PERF_FULL_MIN_WIDTH ? "full" : rowWidth >= PERF_TPS_MIN_WIDTH ? "tps" : "off";
+		const { ctx: ctxWidth, cost: costWidth, perf: perfWidth } = this.#measureColumns(perfMode);
+		const metaWidth = ctxWidth + costWidth + 2 + (perfWidth > 0 ? perfWidth + 2 : 0);
+		let widest = 0;
+		for (const item of this.#visibleItems) {
+			if (!item || item.id === "separator") continue;
+			if (item.virtualLabel !== undefined) {
+				widest = Math.max(widest, visibleWidth(`  ${item.virtualLabel}`) + 2);
+				continue;
+			}
+			widest = Math.max(widest, visibleWidth(this.#rowNaming(item, false, this.#isDisabled(item))) + metaWidth + 1);
+		}
+		return widest === 0 ? 0 : widest + SCROLLBAR_RESERVE_COLS;
+	}
+
 	#renderRow(
 		item: ModelBrowserItem,
 		width: number,
@@ -868,20 +928,7 @@ export class ModelBrowser implements Component {
 				: truncateToWidth(line, width, Ellipsis.Omit, true);
 		}
 		const disabled = this.#isDisabled(item);
-		const prefix = selected && this.#focused ? `${theme.fg("accent", theme.nav.cursor)} ` : "  ";
-		const providerPrefix = this.#showProvider ? theme.fg("dim", `${item.provider}/`) : "";
-		const name = item.labelColor
-			? theme.fg(item.labelColor, item.id)
-			: selected
-				? theme.fg("accent", item.id)
-				: item.id;
-		const currentMark =
-			item.selector === this.#currentSelector ? ` ${theme.fg("success", theme.status.enabled)}` : "";
-		const authBadge = item.badge ? ` ${theme.fg(item.badgeColor ?? "dim", item.badge)}` : "";
-		const overLimit = disabled
-			? ` ${theme.status.disabled} context>${formatNumber(item.model.contextWindow ?? 0).toLowerCase()}`
-			: "";
-		let left = `${prefix}${providerPrefix}${name}${currentMark}${authBadge}${overLimit}`;
+		let left = this.#rowNaming(item, selected, disabled);
 
 		// Perf column collapses entirely when no visible row has measurements.
 		const perfCol =

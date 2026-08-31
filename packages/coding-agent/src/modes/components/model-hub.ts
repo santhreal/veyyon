@@ -29,7 +29,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { clampLow, errorMessage } from "@veyyon/utils";
+import { clamp, clampLow, errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import { getKnownRoleIds, getRoleInfo, ROLE_INHERIT_LABEL } from "../../config/model-roles";
 import type { Settings } from "../../config/settings";
@@ -164,6 +164,18 @@ const PROVIDER_REFRESH_DEBOUNCE_MS = 120;
 const RECENT_LIMIT = 15;
 const SIDEBAR_MIN_WIDTH = 18;
 const SIDEBAR_MAX_WIDTH = 26;
+/** Columns the ` │ ` hairline between the scope column and the pane takes. */
+const PANE_SEP_COLS = 3;
+
+/**
+ * Narrowest pane worth drawing beside the scope column.
+ *
+ * Below this a model row is a name and an ellipsis: the rows carry a provider
+ * prefix, an effort and a badge strip, and the pane also has to hold the status
+ * row above them. The card gives the scope column away rather than draw a pane
+ * this narrow, and shows one pane at a time when even the floor cannot buy it.
+ */
+const MIN_BODY_WIDTH = 34;
 
 /**
  * Providers already auto-refreshed this process. Selecting a provider fetches
@@ -249,7 +261,12 @@ export class ModelHubComponent implements Component {
 	#contentRowStart = 1;
 	/** Number of split (sidebar|body) rows rendered — excludes the strip/hint row. */
 	#splitRowCount = 0;
-	#sidebarWidthLast = SIDEBAR_MIN_WIDTH;
+	/** Columns the scope column occupies on screen, 0 while it is stacked out of the frame. */
+	#sidebarCols = SIDEBAR_MIN_WIDTH;
+	/** Column the pane's own first cell sits at, 0 while the pane holds the whole frame. */
+	#bodyColStart = SIDEBAR_MIN_WIDTH + PANE_SEP_COLS;
+	/** Whether the pane is on screen at all: a stacked card shows it or the scopes, never both. */
+	#bodyOnScreen = true;
 	/** Screen row of the full-width strip/hint row (last body row, below the split). */
 	#stripRow = 0;
 	#chipRanges: ChipRange[] = [];
@@ -1415,9 +1432,12 @@ export class ModelHubComponent implements Component {
 		const innerCol = event.col - contentColInset;
 		const contentLine = event.row - this.#contentRowStart;
 		const overSplitRows = contentLine >= 0 && contentLine < this.#splitRowCount;
-		const bodyColStart = this.#sidebarWidthLast + 3; // sidebar + " │ " separator
-		const overSidebar = overSplitRows && innerCol >= 0 && innerCol < this.#sidebarWidthLast;
-		const overBody = overSplitRows && innerCol >= bodyColStart;
+		// Both panes answer where the last frame actually drew them: a stacked card
+		// holds one of them, so a column that was the scope column a frame ago may
+		// be a model row now, and arithmetic from the natural widths would hand a
+		// click to a pane that is not on screen.
+		const overSidebar = overSplitRows && innerCol >= 0 && innerCol < this.#sidebarCols;
+		const overBody = overSplitRows && this.#bodyOnScreen && innerCol >= this.#bodyColStart;
 		const bodyLine = contentLine - 1; // body row 0 is the status row
 		const entry = this.#activeEntry();
 
@@ -1527,13 +1547,28 @@ export class ModelHubComponent implements Component {
 	// Rendering
 	// ═══════════════════════════════════════════════════════════════════════
 
-	#sidebarWidth(): number {
+	/**
+	 * The columns the scope column takes.
+	 *
+	 * THE CHROME YIELDS BEFORE THE CONTENT DOES. Measured from the scope names
+	 * alone, the column took its full width and handed the pane the remainder,
+	 * so a narrow card spent 26 columns on `Recently used` while the model rows
+	 * beside it fell to a name and an ellipsis. The column keeps its natural
+	 * width only while the pane has what it asked for, and gives the surplus
+	 * back down to {@link SIDEBAR_MIN_WIDTH} before a row is cut.
+	 *
+	 * `contentWidth` and `paneNeed` are omitted by a caller that only wants the
+	 * natural width.
+	 */
+	#sidebarWidth(contentWidth?: number, paneNeed?: number): number {
 		let longest = 0;
 		for (const entry of this.#entries) {
 			const annotation = entry.annotation ?? "";
 			longest = Math.max(longest, visibleWidth(entry.label) + visibleWidth(annotation) + 5);
 		}
-		return clampLow(longest, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH);
+		const natural = clampLow(longest, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH);
+		if (contentWidth === undefined || paneNeed === undefined) return natural;
+		return clamp(contentWidth - PANE_SEP_COLS - paneNeed, SIDEBAR_MIN_WIDTH, natural);
 	}
 
 	#renderSidebar(width: number, rows: number): string[] {
@@ -2095,14 +2130,37 @@ export class ModelHubComponent implements Component {
 			return Array.from({ length: height }, () => padding(width));
 		}
 		const contentWidth = dims.contentWidth;
-		const sidebarWidth = this.#sidebarWidth();
-		this.#sidebarWidthLast = sidebarWidth;
 		// One paint for every rule inside a card. The comment below already called this a
 		// hairline while it was painted `dim`, a static token: on a grey terminal the frame
 		// derives from the ground and this did not, so the two lines of the same card's
 		// joinery read as two different weights.
 		const paneSep = theme.fg("dim", ` ${theme.boxSharp.vertical} `);
-		const bodyWidth = Math.max(1, contentWidth - sidebarWidth - 3);
+		const entry = this.#activeEntry();
+		// ONE PANE AT A TIME WHEN TWO WILL NOT FIT. A card too narrow to carry the
+		// scope column and a readable pane side by side showed both starved: an
+		// 18-column list of scopes beside model rows cut to `anthropic/claude-…`.
+		// It shows one full-width pane instead — the scopes, or the rows once `→`
+		// asks for them — with the scope named in the title so the pane still says
+		// where it is. The keys are unchanged: `←` and `→` already move between
+		// the two panes, and now they swap which one holds the frame.
+		const stacked = contentWidth - SIDEBAR_MIN_WIDTH - PANE_SEP_COLS < MIN_BODY_WIDTH;
+		const showSidebar = !stacked || this.#focus === "scope";
+		// THE ROWS DECIDE THE SPLIT. Measured at the widest pane this card could
+		// hand them, which is the upper bound on what they want, so the scope
+		// column yields only as far as the rows actually need. The roles and
+		// locked-provider panes report no demand yet, so nothing is claimed for
+		// them and the column keeps its natural width there.
+		const paneNeed = this.#isBrowserView(entry)
+			? this.#browser.naturalWidth(clampLow(contentWidth - SIDEBAR_MIN_WIDTH - PANE_SEP_COLS, 1, contentWidth))
+			: 0;
+		const sidebarWidth = stacked ? contentWidth : this.#sidebarWidth(contentWidth, paneNeed);
+		const bodyWidth = stacked ? contentWidth : Math.max(1, contentWidth - sidebarWidth - PANE_SEP_COLS);
+		// What the pointer needs to know about this frame: how many columns the
+		// scope column holds (none while it is stacked away), where the pane's
+		// first cell is, and whether the pane is on screen at all.
+		this.#sidebarCols = showSidebar ? sidebarWidth : 0;
+		this.#bodyColStart = stacked ? 0 : sidebarWidth + PANE_SEP_COLS;
+		this.#bodyOnScreen = !stacked || !showSidebar;
 
 		// The strip row is the LAST body line, and the shell silently truncates a
 		// body that overruns its budget, so the split above the strip has to be
@@ -2129,30 +2187,40 @@ export class ModelHubComponent implements Component {
 		// a missing strip row takes the key hints with it.
 		const splitRows = Math.max(0, bodyBudget - 1);
 
-		const entry = this.#activeEntry();
-		const paneLines: string[] = [this.#statusRow(bodyWidth)];
-		if (entry.kind === "roles" && this.#assigning === null) {
-			paneLines.push(...this.#renderRolesView(bodyWidth, splitRows - 1));
-		} else if (entry.kind === "provider" && entry.locked && this.#assigning === null) {
-			paneLines.push(...this.#renderLockedView(entry, bodyWidth, splitRows - 1));
-		} else {
-			this.#browser.setMaxVisible(Math.max(1, splitRows - 1 - 5));
-			this.#browser.setFocused(this.#focus === "list");
-			paneLines.push(...this.#browser.render(bodyWidth));
+		const paneLines: string[] = [];
+		if (this.#bodyOnScreen) {
+			paneLines.push(this.#statusRow(bodyWidth));
+			if (entry.kind === "roles" && this.#assigning === null) {
+				paneLines.push(...this.#renderRolesView(bodyWidth, splitRows - 1));
+			} else if (entry.kind === "provider" && entry.locked && this.#assigning === null) {
+				paneLines.push(...this.#renderLockedView(entry, bodyWidth, splitRows - 1));
+			} else {
+				this.#browser.setMaxVisible(Math.max(1, splitRows - 1 - 5));
+				this.#browser.setFocused(this.#focus === "list");
+				paneLines.push(...this.#browser.render(bodyWidth));
+			}
 		}
 
-		const sidebarLines = this.#renderSidebar(sidebarWidth, splitRows);
+		const sidebarLines = showSidebar ? this.#renderSidebar(sidebarWidth, splitRows) : [];
 
 		const body: string[] = [];
-		for (let i = 0; i < splitRows; i++) {
-			// The hairline is what separates the scope column from the pane beside it.
-			body.push(fit(sidebarLines[i] ?? "", sidebarWidth) + paneSep + fit(paneLines[i] ?? "", bodyWidth));
+		if (stacked) {
+			const only = showSidebar ? sidebarLines : paneLines;
+			for (let i = 0; i < splitRows; i++) body.push(fit(only[i] ?? "", contentWidth));
+		} else {
+			for (let i = 0; i < splitRows; i++) {
+				// The hairline is what separates the scope column from the pane beside it.
+				body.push(fit(sidebarLines[i] ?? "", sidebarWidth) + paneSep + fit(paneLines[i] ?? "", bodyWidth));
+			}
 		}
 		this.#splitRowCount = splitRows;
 		body.push(this.#renderStripRow(contentWidth));
 
 		const shell = renderModalShell({
-			title: "Models",
+			// A stacked pane has no scope column beside it, so the title carries the
+			// scope: `Models › Anthropic` rather than a list of models belonging to
+			// nothing on screen.
+			title: stacked && !showSidebar ? `Models › ${entry.label}` : "Models",
 			sizing,
 			areaWidth: width,
 			areaHeight: height,
