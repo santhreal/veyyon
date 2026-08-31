@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "7e6b8a72f09c3807aab750419777a50fd824d7ce",
+	"generatedFrom": "e848c707b7af4de30362f941ec1b19ab5e0d6649",
 	"packages": {
 		"@veyyon/agent-core": {
 			"name": "@veyyon/agent-core",
@@ -2755,10 +2755,14 @@
 				"./modes/components/status-line/quiet-bounds.test.js",
 				"./modes/components/status-line/quiet-live-value-order.test",
 				"./modes/components/status-line/quiet-live-value-order.test.js",
+				"./modes/components/status-line/quiet-row",
+				"./modes/components/status-line/quiet-row.js",
 				"./modes/components/status-line/segments",
 				"./modes/components/status-line/segments.js",
 				"./modes/components/status-line/service-tier-chip.test",
 				"./modes/components/status-line/service-tier-chip.test.js",
+				"./modes/components/status-line/session-facts",
+				"./modes/components/status-line/session-facts.js",
 				"./modes/components/status-line/state-grammar",
 				"./modes/components/status-line/state-grammar.js",
 				"./modes/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test",
@@ -6813,10 +6817,14 @@
 				"./modes/terminal/components/status-line/quiet-bounds.test.js",
 				"./modes/terminal/components/status-line/quiet-live-value-order.test",
 				"./modes/terminal/components/status-line/quiet-live-value-order.test.js",
+				"./modes/terminal/components/status-line/quiet-row",
+				"./modes/terminal/components/status-line/quiet-row.js",
 				"./modes/terminal/components/status-line/segments",
 				"./modes/terminal/components/status-line/segments.js",
 				"./modes/terminal/components/status-line/service-tier-chip.test",
 				"./modes/terminal/components/status-line/service-tier-chip.test.js",
+				"./modes/terminal/components/status-line/session-facts",
+				"./modes/terminal/components/status-line/session-facts.js",
 				"./modes/terminal/components/status-line/state-grammar",
 				"./modes/terminal/components/status-line/state-grammar.js",
 				"./modes/terminal/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test",
@@ -9278,6 +9286,14 @@
 					"to": "@veyyon/coding-agent/modes/terminal/components/status-line/quiet-live-value-order.test.js",
 					"why": "packages/coding-agent/src/modes/components/status-line/quiet-live-value-order.test.ts moved to packages/coding-agent/src/modes/terminal/components/status-line/quiet-live-value-order.test.ts, which @veyyon/coding-agent publishes as ./modes/terminal/components/status-line/quiet-live-value-order.test.js"
 				},
+				"./modes/components/status-line/quiet-row": {
+					"to": "@veyyon/coding-agent/modes/terminal/components/status-line/quiet-row",
+					"why": "packages/coding-agent/src/modes/components/status-line/quiet-row.ts moved to packages/coding-agent/src/modes/terminal/components/status-line/quiet-row.ts, which @veyyon/coding-agent publishes as ./modes/terminal/components/status-line/quiet-row"
+				},
+				"./modes/components/status-line/quiet-row.js": {
+					"to": "@veyyon/coding-agent/modes/terminal/components/status-line/quiet-row.js",
+					"why": "packages/coding-agent/src/modes/components/status-line/quiet-row.ts moved to packages/coding-agent/src/modes/terminal/components/status-line/quiet-row.ts, which @veyyon/coding-agent publishes as ./modes/terminal/components/status-line/quiet-row.js"
+				},
 				"./modes/components/status-line/segments": {
 					"to": "@veyyon/coding-agent/modes/terminal/components/status-line/segments",
 					"why": "packages/coding-agent/src/modes/components/status-line/segments.ts moved to packages/coding-agent/src/modes/terminal/components/status-line/segments.ts, which @veyyon/coding-agent publishes as ./modes/terminal/components/status-line/segments"
@@ -9293,6 +9309,14 @@
 				"./modes/components/status-line/service-tier-chip.test.js": {
 					"to": "@veyyon/coding-agent/modes/terminal/components/status-line/service-tier-chip.test.js",
 					"why": "packages/coding-agent/src/modes/components/status-line/service-tier-chip.test.ts moved to packages/coding-agent/src/modes/terminal/components/status-line/service-tier-chip.test.ts, which @veyyon/coding-agent publishes as ./modes/terminal/components/status-line/service-tier-chip.test.js"
+				},
+				"./modes/components/status-line/session-facts": {
+					"to": "@veyyon/coding-agent/modes/terminal/components/status-line/session-facts",
+					"why": "packages/coding-agent/src/modes/components/status-line/session-facts.ts moved to packages/coding-agent/src/modes/terminal/components/status-line/session-facts.ts, which @veyyon/coding-agent publishes as ./modes/terminal/components/status-line/session-facts"
+				},
+				"./modes/components/status-line/session-facts.js": {
+					"to": "@veyyon/coding-agent/modes/terminal/components/status-line/session-facts.js",
+					"why": "packages/coding-agent/src/modes/components/status-line/session-facts.ts moved to packages/coding-agent/src/modes/terminal/components/status-line/session-facts.ts, which @veyyon/coding-agent publishes as ./modes/terminal/components/status-line/session-facts.js"
 				},
 				"./modes/components/status-line/state-grammar": {
 					"to": "@veyyon/coding-agent/modes/terminal/components/status-line/state-grammar",

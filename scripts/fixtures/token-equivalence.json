@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "7e6b8a72f09c3807aab750419777a50fd824d7ce",
+	"generatedFrom": "e848c707b7af4de30362f941ec1b19ab5e0d6649",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -71,7 +71,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4574,
+	"changedCount": 4577,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -815,8 +815,10 @@
 		"packages/coding-agent/src/modes/terminal/components/status-line/profile-segment.test.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/quiet-bounds.test.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/quiet-live-value-order.test.ts",
+		"packages/coding-agent/src/modes/terminal/components/status-line/quiet-row.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/segments.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/service-tier-chip.test.ts",
+		"packages/coding-agent/src/modes/terminal/components/status-line/session-facts.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/state-grammar.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test.ts",
 		"packages/coding-agent/src/modes/terminal/components/status-line/token-rate.ts",
@@ -2515,6 +2517,7 @@
 		"packages/coding-agent/test/tcinv-tool-throw-becomes-error-result.test.ts",
 		"packages/coding-agent/test/text-reformats-itself-against-the-width-it-is-drawn-at.test.ts",
 		"packages/coding-agent/test/the-autoswarm-console-configures-a-run-before-it-starts.test.ts",
+		"packages/coding-agent/test/the-card-and-the-live-row-are-one-row.test.ts",
 		"packages/coding-agent/test/the-composer-footline-ships-on.test.ts",
 		"packages/coding-agent/test/the-composer-owns-the-bottom-rows-and-appears-once.test.ts",
 		"packages/coding-agent/test/the-first-frame-paints-the-composer-instantly.test.ts",

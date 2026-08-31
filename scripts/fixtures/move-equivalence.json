@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "7e6b8a72f09c3807aab750419777a50fd824d7ce",
+	"generatedFrom": "e848c707b7af4de30362f941ec1b19ab5e0d6649",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -10721,10 +10721,10 @@
 			"old": "packages/coding-agent/src/modes/components/composer-chrome.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "ecf522cb7a1043bbdcae315cf485a3e44e5106e9bbf38ef59d26bde50171a985",
-			"mainHash": "6a0d009d738c644cc6eabc5c72b34568f675a313496b401ac13294822e239776",
-			"structuralHash": "3e0ef86c6b63f7c22440e35b97f10775c02bf1428d00128e71d4633bf9e18a40",
-			"mainStructuralHash": "3e0ef86c6b63f7c22440e35b97f10775c02bf1428d00128e71d4633bf9e18a40"
+			"hash": "e64843305d02f8dbe969c8b5efa67d5e180c1334964ceb3ad10430b96fe3ea7c",
+			"mainHash": "813c6f4098bd9b6aec89e7113a5d4de24cfe2c84c9a64c727951c97322bf54d0",
+			"structuralHash": "34d553878760b99c055530f5c7edde6a0c032a704708ce85364f658b3585e4ad",
+			"mainStructuralHash": "34d553878760b99c055530f5c7edde6a0c032a704708ce85364f658b3585e4ad"
 		},
 		"packages/coding-agent/src/modes/terminal/components/composer/composer-defect-oracle.ts": {
 			"old": "packages/coding-agent/src/modes/components/composer-defect-oracle.ts",
@@ -11272,10 +11272,10 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/a-gauge-never-states-a-number-it-does-not-have.test.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "10561f7bac00041e1e2720744e752422637444a0e738bb2daeaf6d78f67bf513",
-			"mainHash": "10561f7bac00041e1e2720744e752422637444a0e738bb2daeaf6d78f67bf513",
-			"structuralHash": "0fd3d9592019d5934b404d388fddbb4d85f8b9e2809db7efc9741da232f4c88c",
-			"mainStructuralHash": "0fd3d9592019d5934b404d388fddbb4d85f8b9e2809db7efc9741da232f4c88c"
+			"hash": "a0313e83cc26c0c033927448a49a8f69f65d97a9569d29c8e9c892925272ea1c",
+			"mainHash": "a0313e83cc26c0c033927448a49a8f69f65d97a9569d29c8e9c892925272ea1c",
+			"structuralHash": "2eb88d2f22ecf86c20737877f3bc923b4b9eca85f9ce5afe577f4f5f990b140c",
+			"mainStructuralHash": "2eb88d2f22ecf86c20737877f3bc923b4b9eca85f9ce5afe577f4f5f990b140c"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/branch.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/branch.ts",
@@ -11290,19 +11290,19 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/component.test.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "2b0f41aa93865748edde50e60c2de707d212f2867215b9d264fb1db7f2b3a4ac",
-			"mainHash": "2b0f41aa93865748edde50e60c2de707d212f2867215b9d264fb1db7f2b3a4ac",
-			"structuralHash": "cf4eacb9dabe12518bca990869d9278daf132d2af6f5c7a0aefce8d33e2fce67",
-			"mainStructuralHash": "cf4eacb9dabe12518bca990869d9278daf132d2af6f5c7a0aefce8d33e2fce67"
+			"hash": "38559c072d20d66fc8651d34a865f52446331754e6bcfc5a94a755fdd4210955",
+			"mainHash": "38559c072d20d66fc8651d34a865f52446331754e6bcfc5a94a755fdd4210955",
+			"structuralHash": "fc7973a33878703757e8b2e4fd823044e4b9e16dd1e257cd356a5f50327a567e",
+			"mainStructuralHash": "fc7973a33878703757e8b2e4fd823044e4b9e16dd1e257cd356a5f50327a567e"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/component.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/component.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "8a157149165856f59e4be0c66f5939e90f9a02c25a5f9f31cc02677c3d4d1409",
-			"mainHash": "31b507fd80fc9258cb9227fb2e228c3f2ed1b827f49598110666b3afdb6adb56",
-			"structuralHash": "e8ff39f0f5e15a40218a9771a0e0513064a92cbb116710eb72b6b6414f1a201a",
-			"mainStructuralHash": "e8ff39f0f5e15a40218a9771a0e0513064a92cbb116710eb72b6b6414f1a201a"
+			"hash": "70ff36197965d47441a632be38845e105f671911e167e9028824cae098904e69",
+			"mainHash": "58c3cfebe76cb2c008218969c3428f75d9e8825ee44e1709d0098206065eb806",
+			"structuralHash": "a4a9c74fdb15058982d76340f983e03ec7dc534dc99fe923f8ae32554cf87daa",
+			"mainStructuralHash": "a4a9c74fdb15058982d76340f983e03ec7dc534dc99fe923f8ae32554cf87daa"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/context-thresholds.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/context-thresholds.ts",
@@ -11362,37 +11362,55 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/quiet-bounds.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "2b66e83ce8cd9ab99ff8fafb272d25d26bc12853c4c51ff8532c3f8b856edc9f",
-			"mainHash": "6a1df4211965bf13373957807e75fceeb4762cd44b21957678b9e2fd05e9a025",
-			"structuralHash": "3d1523aa7d61fbd619bfd9600ed27aed7bb4f544e9a411f14e932be7cc5a1750",
-			"mainStructuralHash": "3d1523aa7d61fbd619bfd9600ed27aed7bb4f544e9a411f14e932be7cc5a1750"
+			"hash": "ff016000de66da3e585589cf67b78beeb907f315a39ba9fea81688814eae0b59",
+			"mainHash": "36daf40383c1285e3a88c52d9df7b375036a5a6ffbb0aa0c1674324d5badecac",
+			"structuralHash": "c82ae0faf8bf6220a20759bf8c313f2fb7e7c688b54856db84b17cf852eed492",
+			"mainStructuralHash": "c82ae0faf8bf6220a20759bf8c313f2fb7e7c688b54856db84b17cf852eed492"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/quiet-live-value-order.test.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/quiet-live-value-order.test.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "fe9659d3077f17c6950dce3e5de361eac349a3d126149301e33eea7c80d5fc31",
-			"mainHash": "fe9659d3077f17c6950dce3e5de361eac349a3d126149301e33eea7c80d5fc31",
-			"structuralHash": "67fbd214ffcd32c2a70ae1b0b934a3d21a76b3b618309dfa78ee25ea8ffe57a1",
-			"mainStructuralHash": "67fbd214ffcd32c2a70ae1b0b934a3d21a76b3b618309dfa78ee25ea8ffe57a1"
+			"hash": "1b6dfd2a3a8bd4b05122d696a912f9aeec74c3496cdf176c8bbd57c8c2500d42",
+			"mainHash": "1b6dfd2a3a8bd4b05122d696a912f9aeec74c3496cdf176c8bbd57c8c2500d42",
+			"structuralHash": "62bec16a35193752c205c87de7d2cbe03cb0d80c1e01867cd3ae154e2ee00cd9",
+			"mainStructuralHash": "62bec16a35193752c205c87de7d2cbe03cb0d80c1e01867cd3ae154e2ee00cd9"
+		},
+		"packages/coding-agent/src/modes/terminal/components/status-line/quiet-row.ts": {
+			"old": "packages/coding-agent/src/modes/components/status-line/quiet-row.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "5ccef81e83b70adaab0ac2bf817d59a0cac4f75eaa7402e41351c6486f067482",
+			"mainHash": "dfad89a49bfc9060edffd3cfbda28c6ef50c3bccdae3d20c758b7970af181eb5",
+			"structuralHash": "8379fd1ddb83cec5f7b87bd315a2408c9b3d884e509d78cf6c46fe88b32e764f",
+			"mainStructuralHash": "8379fd1ddb83cec5f7b87bd315a2408c9b3d884e509d78cf6c46fe88b32e764f"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/segments.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/segments.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "742476901fa7e0b239d3796644d40317aa519274ec9dbfad69f95d4508b455f7",
-			"mainHash": "2657057956e9601ab29cb7cd151d2f41629764c42555ceaf1aa664fe6d9da102",
-			"structuralHash": "b2c4507d2cc4a38fbd4277be7d2c345cd0a3819e504b4c099244cefba7c99460",
-			"mainStructuralHash": "b2c4507d2cc4a38fbd4277be7d2c345cd0a3819e504b4c099244cefba7c99460"
+			"hash": "11549455d8d72757d24b62a161f3953c8dd30ed5a115e8bc30568db2b4dd5871",
+			"mainHash": "18ef3f76577a00d0abd263364aa971b4b6397d9ac94ddec08c3b02ffd9cba2f6",
+			"structuralHash": "473d19ff18f01154007267b76b61da64330f7fb542bcec6b4842ef31aa36109d",
+			"mainStructuralHash": "473d19ff18f01154007267b76b61da64330f7fb542bcec6b4842ef31aa36109d"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/service-tier-chip.test.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/service-tier-chip.test.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "c48cd1f4167a71b8b6d0667292fcf60b470f5b12759a1b6ca3005548fc5872d3",
-			"mainHash": "c48cd1f4167a71b8b6d0667292fcf60b470f5b12759a1b6ca3005548fc5872d3",
-			"structuralHash": "a5767f28accc35e69280f29fe72fe51351da2dbcf100a74696002e3a6fbed4c0",
-			"mainStructuralHash": "a5767f28accc35e69280f29fe72fe51351da2dbcf100a74696002e3a6fbed4c0"
+			"hash": "c54d9dac3287cb96e8a3c74fc47345f26b1bb5cc82247e6ee07c7a207bcde011",
+			"mainHash": "c54d9dac3287cb96e8a3c74fc47345f26b1bb5cc82247e6ee07c7a207bcde011",
+			"structuralHash": "d61912a57d26512de8b50d1fb16f0fdaadca849cf405c023343b15779f844c6a",
+			"mainStructuralHash": "d61912a57d26512de8b50d1fb16f0fdaadca849cf405c023343b15779f844c6a"
+		},
+		"packages/coding-agent/src/modes/terminal/components/status-line/session-facts.ts": {
+			"old": "packages/coding-agent/src/modes/components/status-line/session-facts.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "cdfcba8f726bca101e6e87d001affefc4ffac11e3c96d03a2951c3b196129ba7",
+			"mainHash": "18364ac8f35c428783e6af0ad615eb02578c863562961aa19e1d331c01ad3b4a",
+			"structuralHash": "68bee17abc30e14ba584121bb55dba7254794582459c4b689c83f7214ca4ca17",
+			"mainStructuralHash": "68bee17abc30e14ba584121bb55dba7254794582459c4b689c83f7214ca4ca17"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/state-grammar.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/state-grammar.ts",
@@ -11407,10 +11425,10 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "b371fd90df6be472c8dcfc6b732f6eaa358d17b90e425cca02068d18f37a8113",
-			"mainHash": "b371fd90df6be472c8dcfc6b732f6eaa358d17b90e425cca02068d18f37a8113",
-			"structuralHash": "c833f803989859acb041ca224372c4a394a83a33b697e5dc4cb1ba745fb22fd4",
-			"mainStructuralHash": "c833f803989859acb041ca224372c4a394a83a33b697e5dc4cb1ba745fb22fd4"
+			"hash": "58c6e0b27ef8ca3000c50e4f1e8dce6712542b83f8f8033a6803f6033cd97c00",
+			"mainHash": "58c6e0b27ef8ca3000c50e4f1e8dce6712542b83f8f8033a6803f6033cd97c00",
+			"structuralHash": "f917bdc6a12e7f7f1e857c6606457045e0b2cafd4cf94edd75112860726d020e",
+			"mainStructuralHash": "f917bdc6a12e7f7f1e857c6606457045e0b2cafd4cf94edd75112860726d020e"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/token-rate.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/token-rate.ts",
@@ -11425,10 +11443,10 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/types.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "f47ac36b11a36a5da2e05f98509c23311ef2c80729744ce212fffc6b0b91e067",
-			"mainHash": "653d202a2b8b13c3d7aaf425a709cb964cba37738f017cd69f2d3824f5b075f1",
-			"structuralHash": "a411407db82cd384591b86f4b50b927293360fff51b1f52487a030c4c620c700",
-			"mainStructuralHash": "a411407db82cd384591b86f4b50b927293360fff51b1f52487a030c4c620c700"
+			"hash": "ef86973f5e69d8333f8f3e913c8d91010a3302e40d641c8966b2885112bc210a",
+			"mainHash": "f93f51d9e1f0ed0589534ac239e4c72e6c8bc4dbf7befa9da049d24adcf98d5d",
+			"structuralHash": "ba88b5d1a42261527a6274bbff4341274f26d25a3f1d76ef78c3d3c5bb05b9ae",
+			"mainStructuralHash": "ba88b5d1a42261527a6274bbff4341274f26d25a3f1d76ef78c3d3c5bb05b9ae"
 		},
 		"packages/coding-agent/src/modes/terminal/components/tips.txt": {
 			"old": "packages/coding-agent/src/modes/components/tips.txt",
@@ -14957,7 +14975,7 @@
 			"old": "packages/tui/src/ansi.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "c26f89cefebb28011c3b40e63d8bb5e6a8c0fbcc675a93672b91b5c6eb6bf3e6",
+			"hash": "b3d85123c2aa57693a3fd88b11d011bc489ea02981a98339afb3f7bf2466ceff",
 			"mainHash": "2a0a79f2c7267081dff5902ced7a986243aaddf60b367a23ae358e92b422afc7",
 			"structuralHash": "3848c40f4e0369146806ddfd19163d18537abdedb173de869f26436454d8c98a",
 			"mainStructuralHash": "3848c40f4e0369146806ddfd19163d18537abdedb173de869f26436454d8c98a"
@@ -15152,7 +15170,7 @@
 			"differs": "changed",
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
-			"hash": "90e2c7865b3a3b6582b7b45c35898012367b8a9a0f03015f25fab7d35e8e4421",
+			"hash": "72c25d98a9bcf46261124701e972fd7a30b798d281e073a8d5f1dc85ce3babfb",
 			"mainHash": "b9b57471d3038e113e4f21eb75100b776102d18e2d22cb46d46db953fb5e579b",
 			"structuralHash": "a7c5b390912bef7416c0bee72acb4ecd804a218ee7f561ba765266f7f56e406f",
 			"mainStructuralHash": "33079c46aaa83309efc5ae6fc27a5294e0208af9cf71dc96c883b6d4347165e3"
@@ -15533,7 +15551,7 @@
 			"old": "packages/tui/test/tab-width-crosses-ffi.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "3d049ade4094dcc48c3061dde8e3a4be4ded752a05ab195f9203b4c2a9174bae",
+			"hash": "d358ae62257e943bfc91db0cb602c8904aa992c33a6030dc74c5f13ce34c2b53",
 			"mainHash": "b7bf59a2a90f5d1e85e06b9d208f16e982b47c99bb86b81f37e33e17eda31fba",
 			"structuralHash": "5396ae7da96f8819f35350e8db2ae0ca266b8024d63f8bd92a9d5634a7b796db",
 			"mainStructuralHash": "5396ae7da96f8819f35350e8db2ae0ca266b8024d63f8bd92a9d5634a7b796db"
@@ -15598,7 +15616,7 @@
 			"old": "packages/tui/test/visible-width-osc66-spans.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "0223b23c38b5695894875f93d50aa3f3db101cd54ca3ef8691b94dbb2b30899b",
+			"hash": "c52d2edc10a12654f4658448f2afc2e97ca39ce34bec59a3e19b1495dedc18ed",
 			"mainHash": "10d3a30e91ae6aef6a17c5705b08937ac277f2bcea0eee3ffa1d755b7c55a8bb",
 			"structuralHash": "9587579b9952c0116f61592f5397247c0c63e4ff454d814c252ca51529de6d18",
 			"mainStructuralHash": "9587579b9952c0116f61592f5397247c0c63e4ff454d814c252ca51529de6d18"
