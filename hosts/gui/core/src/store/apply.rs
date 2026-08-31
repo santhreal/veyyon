@@ -42,7 +42,14 @@ impl Store {
 					self.replica.notifications.push(notification);
 				}
 			},
-			HostEvent::Snapshot(section) => changes.replica = self.apply_snapshot(section),
+			HostEvent::Snapshot(section) => {
+				// A section keeps the newest revision it has seen, so a snapshot
+				// at or behind that revision is discarded. Reported rather than
+				// silent: a caller replaying recorded events has no other way to
+				// learn that the state it thinks it installed is not there.
+				changes.replica = self.apply_snapshot(section);
+				changes.ignored_stale_event = !changes.replica;
+			},
 			HostEvent::TranscriptAppended { revision, entries } => {
 				changes.replica = apply_vec_event(
 					&mut self.replica.transcript,

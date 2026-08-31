@@ -83,9 +83,13 @@ pub mod scene {
 	};
 
 	use serde_json::{Value, json};
-	use veyyon_gui_core::host::HostEvent;
+	use veyyon_gui_core::{Store, host::HostEvent};
 
 	pub const SCHEMA: u64 = 1;
+
+	/// How much of a discarded event's line the refusal quotes. Enough to name
+	/// the variant and the revision that was refused.
+	const HEAD: usize = 120;
 
 	#[derive(Debug)]
 	pub struct Error(String);
@@ -101,18 +105,22 @@ pub mod scene {
 	pub fn load(path: &Path) -> Result<Vec<HostEvent>, Error> {
 		let file = File::open(path)
 			.map_err(|error| Error(format!("cannot open scene {}: {error}", path.display())))?;
-		let mut lines = BufReader::new(file).lines();
+		decode(&path.display().to_string(), BufReader::new(file))
+	}
+
+	/// The whole of what a scene file means, over anything that yields its
+	/// lines.
+	pub fn decode(source: &str, reader: impl BufRead) -> Result<Vec<HostEvent>, Error> {
+		let mut lines = reader.lines();
 		let header = lines
 			.next()
-			.ok_or_else(|| Error(format!("scene {} is empty", path.display())))?
-			.map_err(|error| Error(format!("cannot read scene {} line 1: {error}", path.display())))?;
-		let value: Value = serde_json::from_str(&header).map_err(|error| {
-			Error(format!("invalid scene header {} line 1: {error}", path.display()))
-		})?;
+			.ok_or_else(|| Error(format!("scene {source} is empty")))?
+			.map_err(|error| Error(format!("cannot read scene {source} line 1: {error}")))?;
+		let value: Value = serde_json::from_str(&header)
+			.map_err(|error| Error(format!("invalid scene header {source} line 1: {error}")))?;
 		if value != json!({ "schema": SCHEMA }) {
 			return Err(Error(format!(
-				"unsupported scene header {} line 1: expected {{\"schema\":{SCHEMA}}}",
-				path.display()
+				"unsupported scene header {source} line 1: expected {{\"schema\":{SCHEMA}}}"
 			)));
 		}
 
@@ -120,22 +128,41 @@ pub mod scene {
 		for (index, line) in lines.enumerate() {
 			let line_number = index + 2;
 			let line = line.map_err(|error| {
-				Error(format!("cannot read scene {} line {line_number}: {error}", path.display()))
+				Error(format!("cannot read scene {source} line {line_number}: {error}"))
 			})?;
 			if line.trim().is_empty() {
 				return Err(Error(format!(
-					"invalid HostEvent in scene {} line {line_number}: blank lines are not events",
-					path.display()
+					"invalid HostEvent in scene {source} line {line_number}: blank lines are not events"
 				)));
 			}
 			let event = serde_json::from_str::<HostEvent>(&line).map_err(|error| {
-				Error(format!(
-					"invalid HostEvent in scene {} line {line_number}: {error}",
-					path.display()
-				))
+				Error(format!("invalid HostEvent in scene {source} line {line_number}: {error}"))
 			})?;
-			events.push(event);
+			events.push((line_number, line, event));
 		}
-		Ok(events)
+		assimilable(source, &events)?;
+		Ok(events.into_iter().map(|(_, _, event)| event).collect())
+	}
+
+	/// Whether every decoded event reaches the replica.
+	///
+	/// A well-formed event is still discarded when its revision is not the one
+	/// the section is waiting for, and a discarded event is silent: the window
+	/// opens, draws the state before the event, and the capture records a frame
+	/// that does not hold what the scene names. The events are replayed against
+	/// a throwaway store here, before a window exists, so the refusal is a
+	/// preflight error on stderr rather than a plausible screenshot.
+	fn assimilable(source: &str, events: &[(usize, String, HostEvent)]) -> Result<(), Error> {
+		let mut store = Store::detached();
+		for (line_number, line, event) in events {
+			if store.apply(event.clone()).ignored_stale_event {
+				let head: String = line.chars().take(HEAD).collect();
+				return Err(Error(format!(
+					"discarded HostEvent in scene {source} line {line_number}: the store dropped it, \
+					 so the frame this scene records is not the state it names: {head}"
+				)));
+			}
+		}
+		Ok(())
 	}
 }
