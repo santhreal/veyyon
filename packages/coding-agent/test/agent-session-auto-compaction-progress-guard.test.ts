@@ -89,10 +89,12 @@ describe("AgentSession auto-compaction progress guard", () => {
 		if (!bundled) {
 			throw new Error("Expected built-in anthropic model to exist");
 		}
-		// Pin the window and output reservation: every usage figure below is tuned
-		// to a 200k/64k threshold, so catalog regeneration must not shift the
-		// headroom math.
-		const model = { ...bundled, contextWindow: 200_000, maxTokens: 64_000 };
+		// Pin the window and output reservation: every usage figure below is tuned to
+		// 200k of USABLE input against a 64k output reservation, so the declared
+		// window is the sum. Budgeting subtracts the reservation (the provider
+		// charges both against one window), and catalog regeneration must not shift
+		// the headroom math.
+		const model = { ...bundled, contextWindow: 264_000, maxTokens: 64_000 };
 
 		const agent = new Agent({
 			initialState: {

@@ -889,6 +889,16 @@ function declaredContextWindow(model: Model | undefined): number | undefined {
 	return usableInputWindow(contextWindow, model?.maxTokens);
 }
 
+/**
+ * The input room a model actually offers, for every budgeting decision in this
+ * file. `model.contextWindow` is the catalog figure and includes the output
+ * allocation the provider will not let a prompt use; reading it directly is what
+ * let history grow into a request the provider rejects.
+ */
+function usableWindowOf(model: Model | undefined | null): number {
+	return usableInputWindow(model?.contextWindow ?? 0, model?.maxTokens);
+}
+
 function createCodexCompactionContext(options: {
 	trigger: CodexCompactionContext["trigger"];
 	reason: CodexCompactionContext["reason"];
@@ -11361,7 +11371,7 @@ export class AgentSession {
 
 			const agentPromptOptions = options?.toolChoice ? { toolChoice: options.toolChoice } : undefined;
 			const nonMessageTokens = computeNonMessageTokens(this);
-			const contextWindow = this.model?.contextWindow ?? 0;
+			const contextWindow = usableWindowOf(this.model);
 			const breakdown = this.getContextBreakdown({ contextWindow, pendingMessages: messages });
 			const promptTokens =
 				breakdown?.usedTokens ??
@@ -14119,7 +14129,7 @@ export class AgentSession {
 			return;
 
 		const model = this.model;
-		const contextWindow = model?.contextWindow ?? 0;
+		const contextWindow = usableWindowOf(model);
 		if (contextWindow <= 0) return;
 
 		const compactionSettings = this.settings.getGroup("compaction");
@@ -14208,7 +14218,7 @@ export class AgentSession {
 	): Promise<CompactionCheckResult> {
 		// Skip if message was aborted (user cancelled) - unless skipAbortedCheck is false
 		if (skipAbortedCheck && assistantMessage.stopReason === "aborted") return COMPACTION_CHECK_NONE;
-		const contextWindow = this.model?.contextWindow ?? 0;
+		const contextWindow = usableWindowOf(this.model);
 		const generation = this.#promptGeneration;
 		// Skip overflow check if the message came from a different model.
 		// This handles the case where user switched from a smaller-context model (e.g. opus)
@@ -16552,7 +16562,7 @@ export class AgentSession {
 	 * reserved on purpose.
 	 */
 	#compactionBudget(bar: CompactionBar): CompactionBudget | undefined {
-		const contextWindow = this.model?.contextWindow ?? 0;
+		const contextWindow = usableWindowOf(this.model);
 		if (contextWindow <= 0) return undefined;
 		const compactionSettings = this.settings.getGroup("compaction");
 		const residualTokens = this.#residualContextTokens(contextWindow);
@@ -16592,7 +16602,7 @@ export class AgentSession {
 	 * unnecessary.
 	 */
 	#thresholdStillTrips(compactionSettings: Parameters<typeof shouldCompact>[2]): boolean {
-		const contextWindow = this.model?.contextWindow ?? 0;
+		const contextWindow = usableWindowOf(this.model);
 		if (contextWindow <= 0) return true;
 		return shouldCompact(this.#residualContextTokens(contextWindow), contextWindow, compactionSettings);
 	}
@@ -17557,7 +17567,7 @@ export class AgentSession {
 
 		const id = this.#classifyRetryMessage(message);
 		// Context overflow is handled by compaction, not retry
-		const contextWindow = this.model?.contextWindow ?? 0;
+		const contextWindow = usableWindowOf(this.model);
 		if (AIError.isContextOverflow(message, contextWindow)) return false;
 
 		if (this.#isClassifierRefusal(message)) return true;

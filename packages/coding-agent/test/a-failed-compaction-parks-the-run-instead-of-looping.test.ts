@@ -53,7 +53,9 @@ describe("a failed compaction parks the run instead of looping", () => {
 
 		const bundled = getBundledModel("anthropic", "claude-sonnet-4-5");
 		if (!bundled) throw new Error("Expected built-in anthropic/claude-sonnet-4-5 to exist");
-		const model = { ...bundled, contextWindow: 200_000, maxTokens: 64_000 };
+		// 200k of USABLE input beside a 64k output reservation, which the provider
+		// charges against the same declared window.
+		const model = { ...bundled, contextWindow: 264_000, maxTokens: 64_000 };
 
 		sessionManager.appendMessage({ role: "user", content: "hello", timestamp: Date.now() });
 		seedPriorTurns(sessionManager);
@@ -242,7 +244,11 @@ describe("a failed compaction parks the run instead of looping", () => {
 		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
 		expect(noProgress.length).toBe(1);
 		expect(noProgress[0]!.level).toBe("warning");
-		expect(noProgress[0]!.message).toContain("clear large tool output");
+		// The warning must name a remedy the operator can act on, not just report the
+		// stall. The wording moved when the tiered rescue landed; what is pinned is
+		// that both routes out are still offered.
+		expect(noProgress[0]!.message).toContain("/new");
+		expect(noProgress[0]!.message).toContain("larger-context model");
 	});
 
 	it("does not warn or block continuation when rescue after summarizer failure creates headroom", async () => {
