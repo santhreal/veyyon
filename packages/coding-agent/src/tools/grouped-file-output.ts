@@ -2,6 +2,8 @@ import path from "node:path";
 
 import { buildPathTree, isUrlLikePath, type PathTreeInput, walkPathTree } from "@veyyon/utils/path-tree";
 
+const NON_WHITESPACE_RE = /\S/;
+
 export interface GroupedFileSection {
 	headerSuffix?: string;
 	modelLines: string[];
@@ -123,12 +125,12 @@ export function classifyGroupedLines(
 }
 
 export function groupLineIndicesByBlank(rawLines: readonly string[]): number[][] {
-	const hasSeparators = rawLines.some(line => line.trim().length === 0);
+	const hasSeparators = rawLines.some(line => !NON_WHITESPACE_RE.test(line));
 	const groups: number[][] = [];
 	if (hasSeparators) {
 		let current: number[] = [];
 		for (let i = 0; i < rawLines.length; i++) {
-			if (rawLines[i]!.trim().length === 0) {
+			if (!NON_WHITESPACE_RE.test(rawLines[i]!)) {
 				if (current.length > 0) {
 					groups.push(current);
 					current = [];
@@ -141,7 +143,7 @@ export function groupLineIndicesByBlank(rawLines: readonly string[]): number[][]
 	} else {
 		const current: number[] = [];
 		for (let i = 0; i < rawLines.length; i++) {
-			if (rawLines[i]!.trim().length > 0) current.push(i);
+			if (NON_WHITESPACE_RE.test(rawLines[i]!)) current.push(i);
 		}
 		if (current.length > 0) groups.push(current);
 	}

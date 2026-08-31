@@ -17,6 +17,8 @@ import { isPathWithinCwd } from "./path-utils";
 export { Ellipsis } from "@veyyon/natives";
 export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
 
+const NON_WHITESPACE_RE = /\S/;
+
 export function resolveImageOptions(): { maxWidthCells: number; maxHeightCells?: number } {
 	const maxWidthCells = settings.get("tui.maxInlineImageColumns");
 	const rowSetting = Math.max(0, settings.get("tui.maxInlineImageRows"));
@@ -441,7 +443,7 @@ function parseDiffSegments(lines: string[]): DiffSegment[] {
 	for (let li = 0; li < lines.length; li++) {
 		const line = lines[li]!;
 		const isChange = line.startsWith("+") || line.startsWith("-");
-		const isEllipsis = line.trimStart().startsWith("...") || line.trim().length === 0;
+		const isEllipsis = line.trimStart().startsWith("...") || !NON_WHITESPACE_RE.test(line);
 
 		if (isEllipsis) {
 			if (current) segments.push(current);
