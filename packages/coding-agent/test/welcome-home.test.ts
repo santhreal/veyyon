@@ -42,8 +42,11 @@ function frameOf(welcome: WelcomeComponent): string {
 }
 
 describe("welcome home screen", () => {
-	beforeAll(() => {
-		initTheme();
+	// Awaited: `initTheme` is async, and every cell here renders through the resolved theme. The
+	// unawaited call left the palette unset for whichever cell ran first, which throws on
+	// `isLight` — the ordering that hid it is the runtime's, not this suite's to bet on.
+	beforeAll(async () => {
+		await initTheme();
 	});
 
 	/**
