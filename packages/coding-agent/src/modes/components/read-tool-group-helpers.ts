@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { hasUrlScheme } from "@veyyon/utils";
+import { hasUrlScheme, isRecord } from "@veyyon/utils";
 import { InternalUrlRouter } from "../../internal-urls";
 import { parseLineRanges, selectorLineRanges, splitPathAndSel } from "../../tools/path-utils";
 import type { ReadRenderArgs } from "../../tools/read";
@@ -7,7 +7,7 @@ import { PREVIEW_LIMITS } from "../../tools/render-utils";
 import { tryResolveInternalUrlSync } from "../../tui";
 
 export function readArgsTarget(args: unknown): string | undefined {
-	if (!args || typeof args !== "object" || Array.isArray(args)) return undefined;
+	if (!isRecord(args)) return undefined;
 	const record = args as Record<string, unknown>;
 	return typeof record.path === "string"
 		? record.path

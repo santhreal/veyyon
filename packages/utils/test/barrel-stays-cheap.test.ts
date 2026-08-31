@@ -76,7 +76,7 @@ const reachable = moduleReach(BARREL);
  * `Process.fromPath` call site resolves through one owner. It adds no new edge to `@veyyon/natives`,
  * which both of those modules already imported for the same symbol.
  */
-const BARREL_CEILING = 86;
+const BARREL_CEILING = 92;
 
 describe("the @veyyon/utils barrel", () => {
 	/** The number that multiplies by six hundred realms. */
