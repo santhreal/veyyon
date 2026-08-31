@@ -311,6 +311,7 @@ export const repoScriptTests = [
 	"scripts/a-package-exports-its-public-surface.test.ts",
 	"scripts/a-test-proves-behavior-not-that-a-spy-was-called.test.ts",
 	"scripts/a-production-site-deploy-has-one-owner.test.ts",
+	"scripts/a-restructured-module-still-behaves.test.ts",
 	"scripts/a-third-party-action-is-pinned-in-one-place.test.ts",
 	"scripts/ci-concurrency.test.ts",
 	"scripts/ci-test-partitioning-preserves-global-state-isolation.test.ts",
