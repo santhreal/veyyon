@@ -2,7 +2,7 @@ import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
 import type { Component } from "@veyyon/tui/core/component-types";
 import { visibleWidth, truncateToWidth } from "@veyyon/utils/width";
 import { centerLine, padding } from "@veyyon/utils/padding";
-import { Ellipsis } from "../../../../tui";
+import { Ellipsis } from "@veyyon/natives";
 import { replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 
 import { APP_NAME, DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault } from "@veyyon/utils/dirs";

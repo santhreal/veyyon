@@ -80,6 +80,7 @@
 
 ### Fixed
 
+- The launch shell no longer evaluates the prompt registries: `modes/keywords/{orchestrate,ultrathink,workflow}-keyword.ts` kept imports of `prompts/subagent/rows`, `prompts/turn-control/rows` and the `@veyyon/utils` barrel after the notices they fed moved to `magic-keyword-notices.ts`, which pulled 62 extra modules into the first frame's import graph.
 - HTML export works again: the five assets `export/html/index.ts` loads as strings — the markdown renderer, the template CSS, HTML and JS, and the generated tool views — lost their `with { type: "text" }` import attributes while unreleased, so each one loaded as a module and every export threw `Missing 'default' export in module`.
 - Seven published entry points the reorganization dropped are served again at their new paths: `./modes/terminal/components/*`, `./modes/terminal/components/extensions/*`, `./modes/terminal/components/status-line/*`, `./modes/terminal/controllers/*`, `./modes/terminal/setup-wizard/*`, `./modes/terminal/utils/*` and `./export/markit/*`. Every subpath `1.3.0` published now has a successor key.
 - An image a kitty-protocol terminal cannot be handed reports the format as the reason instead of claiming images are switched off, and a picture whose conversion is still running no longer prints a placeholder that a moment later becomes the picture.

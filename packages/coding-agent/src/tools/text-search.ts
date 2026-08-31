@@ -7,7 +7,6 @@ import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@veyyon/n
 import { errorMessage, isRecord, logger, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { LocalProtocolOptions } from "../internal-urls/local-protocol";
-import { tryResolveInternalUrlSync } from "../internal-urls/resolve-sync";
 import { InternalUrlRouter } from "../internal-urls/router";
 import type { InternalResource, ResolveContext } from "../internal-urls/types";
 import {
@@ -17,10 +16,9 @@ import {
 	truncateHead,
 	truncateLine,
 } from "../session/streaming-output";
-import { Ellipsis, fileHyperlink, framedBlock, outputBlockContentWidth, renderStatusLine, truncateToWidth, uriHyperlink } from "../tui";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import { type ArchiveReader, type ExtractedArchiveFile, openArchive, parseArchivePathCandidates } from "../utils/zip";
-import type { ToolSession } from "./index";
+import type { ToolSession } from ".";
 import { materializeReadUrlToFile, parseReadUrlTarget } from "./fetch";
 import { createFileRecorder, formatResultPath } from "./file-recorder";
 import { classifyGroupedLines, formatGroupedFiles } from "./grouped-file-output";
