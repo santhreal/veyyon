@@ -10,7 +10,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { type ParseResult, parse } from "@babel/parser";
 import type { File, Statement } from "@babel/types";
@@ -41,6 +41,12 @@ export interface TokenEquivalenceLedger {
 export interface MeasureOptions {
 	readonly repoRoot?: string;
 	readonly baseRef?: string;
+	/**
+	 * The branch side of the comparison. `HEAD` reads each candidate from the working tree, which is
+	 * what a checkout of the branch has on disk; any other ref reads the file out of that commit, so
+	 * a mirror whose HEAD is not the branch still measures the branch.
+	 */
+	readonly headRef?: string;
 	readonly ledgerPath?: string;
 }
 
@@ -248,12 +254,13 @@ export function measureTokenEquivalence(options: MeasureOptions = {}): TokenEqui
 	// While that second half named the moving ref, the two disagreed as soon as main advanced: a file
 	// main deleted past the merge base could not be shown, so it was classified as changed by this
 	// branch, which is main's edit charged to this diff.
-	const baseSha = execFileSync("git", ["merge-base", baseRef, "HEAD"], {
+	const headRef = options.headRef ?? "HEAD";
+	const baseSha = execFileSync("git", ["merge-base", baseRef, headRef], {
 		cwd: repoRoot,
 		encoding: "utf-8",
 	}).trim();
 
-	const diffOutput = execFileSync("git", ["diff", "--name-only", `${baseSha}...HEAD`], {
+	const diffOutput = execFileSync("git", ["diff", "--name-only", `${baseSha}...${headRef}`], {
 		cwd: repoRoot,
 		encoding: "utf-8",
 		maxBuffer: 20 * 1024 * 1024,
@@ -271,7 +278,18 @@ export function measureTokenEquivalence(options: MeasureOptions = {}): TokenEqui
 
 	for (const relPath of candidatePaths) {
 		const fullPath = resolve(repoRoot, relPath);
-		if (!existsSync(fullPath)) {
+		let headCode: string;
+		try {
+			headCode =
+				headRef === "HEAD"
+					? readFileSync(fullPath, "utf-8")
+					: execFileSync("git", ["show", `${headRef}:${relPath}`], {
+							cwd: repoRoot,
+							encoding: "utf-8",
+							maxBuffer: 20 * 1024 * 1024,
+							stdio: ["pipe", "pipe", "ignore"],
+						});
+		} catch {
 			changed.push(relPath);
 			continue;
 		}
@@ -289,7 +307,6 @@ export function measureTokenEquivalence(options: MeasureOptions = {}): TokenEqui
 			continue;
 		}
 
-		const headCode = readFileSync(fullPath, "utf-8");
 		let res1: TokenizeResult;
 		let res2: TokenizeResult;
 		try {
@@ -329,6 +346,13 @@ export function generateLedger(options: MeasureOptions = {}): TokenEquivalenceLe
 	return ledger;
 }
 
+/**
+ * `bun scripts/measure-token-equivalence.ts [baseRef] [headRef]`. Both arguments are optional and
+ * default to `origin/main` and the working tree, which is what a checkout of the branch measures.
+ */
 if (import.meta.main) {
-	generateLedger();
+	const ledger = generateLedger({ baseRef: process.argv[2], headRef: process.argv[3] });
+	console.log(
+		`wrote the token ledger against ${ledger.generatedFrom}: ${Object.keys(ledger.formattingOnly).length} formatting-only, ${Object.keys(ledger.importReorder).length} import-reorder, ${ledger.changedCount} changed`,
+	);
 }

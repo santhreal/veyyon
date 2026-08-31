@@ -399,7 +399,7 @@ describe("the session layer, the next two entries in the same ranking", () => {
 	});
 
 	it("forwards the credential names from their own module, not the barrel", () => {
-		const imports = runtimeImportsOf(path.join(SRC, "session/auth-storage.ts"));
+		const imports = runtimeImportsOf(path.join(PACKAGES, "..", "kernel/src/session/auth-storage.ts"));
 
 		expect(imports).toContain("@veyyon/ai/auth-storage");
 		expect(imports).not.toContain("@veyyon/ai");

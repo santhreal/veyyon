@@ -1000,8 +1000,16 @@ describe("no test reaches outside its sandbox", () => {
 
 		// And the walk reaches every root the workspace declares. A root it never opened contributes
 		// no file, so its suites are excused by absence and the rule below still reports nothing.
+		//
+		// A root may hold no test module at all, which is indistinguishable from a root the walk
+		// missed, so the silent ones are named. `kernel` is silent because it is extracted code whose
+		// suites stayed with the host that drives them end to end, under
+		// `packages/coding-agent/test`. Exact equality is the point: a new silent root, or a `kernel`
+		// that grows its own `test/` directory, turns this red until someone records the reason.
 		const roots = new Set(files.map(file => file.split("/")[0]));
-		expect([...roots].sort()).toEqual([...typeScriptMemberTopLevels()].sort());
+		const declared = typeScriptMemberTopLevels();
+		expect(declared.filter(root => !roots.has(root))).toEqual(["kernel"]);
+		expect([...roots].every(root => declared.includes(root))).toBe(true);
 		expect(files).toContain("contracts/wire/test/seal.test.ts");
 		// The two shapes a `<member>/test` walk could not see: a suite beside its subject in `src`, and
 		// a member three levels down that no root glob reaches.

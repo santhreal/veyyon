@@ -21,10 +21,23 @@ import {
 	buildRootChangelog,
 	changelogSources,
 	orphanedRootEntries,
-	PACKAGES_DIR,
 	REPO_ROOT,
 	ROOT_PATH,
 } from "./sync-root-changelog";
+
+/**
+ * A member's changelog bytes, resolved through the same sweep the renderer uses.
+ *
+ * A test that joined `packages/<name>` instead broke the day `hashline` and `swarm-extension` moved
+ * to `plugins/`, and it broke with ENOENT on a path the product no longer has, which says nothing
+ * about the contract under test. The sweep reaches a member at whatever depth it is declared, so
+ * the precondition below follows the package instead of its directory.
+ */
+function memberChangelog(name: string): string {
+	const source = changelogSources().find(candidate => candidate.name === name);
+	if (!source) throw new Error(`no workspace member declares a changelog named ${name}`);
+	return source.md;
+}
 
 describe("buildRootChangelog", () => {
 	it("renders through the shared renderRootChangelog core, not a private copy", () => {
@@ -73,7 +86,7 @@ describe("the root changelog covers every package", () => {
 	 * both the multi-source read and the fork-point cut to arrive.
 	 */
 	it("carries an entry that lives only in a non-lead package", () => {
-		const hashline = readFileSync(join(PACKAGES_DIR, "hashline", "CHANGELOG.md"), "utf8");
+		const hashline = memberChangelog("hashline");
 		expect(hashline).toContain("`MV DEST` no longer silently overwrites");
 
 		expect(buildRootChangelog()).toContain("`MV DEST` no longer silently overwrites");
@@ -131,7 +144,7 @@ describe("the root changelog covers every package", () => {
 	 * than fifteen thousand lines of another project's releases.
 	 */
 	it("drops upstream history that dips below the fork major", () => {
-		const swarm = readFileSync(join(PACKAGES_DIR, "swarm-extension", "CHANGELOG.md"), "utf8");
+		const swarm = memberChangelog("swarm-extension");
 		// The precondition: a pre-16 upstream entry sitting below a 16.x one.
 		expect(swarm.indexOf("## [16.3.7]")).toBeLessThan(swarm.indexOf("## [15.9.0]"));
 

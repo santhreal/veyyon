@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "0db5badf93ea3d2cb11addc2c905ceb0e210d6e5",
+	"generatedFrom": "8a981c275ca931af5eb5f27020b9ecbcabd53d0f",
 	"packages": {
 		"@veyyon/agent-core": {
 			"name": "@veyyon/agent-core",
@@ -1763,6 +1763,8 @@
 				"./config/keybinding-defs.js",
 				"./config/keybindings",
 				"./config/keybindings.js",
+				"./config/legacy-agent-db-settings",
+				"./config/legacy-agent-db-settings.js",
 				"./config/missing-credentials",
 				"./config/missing-credentials.js",
 				"./config/model-discovery",
@@ -2867,8 +2869,6 @@
 				"./modes/loop-limit.js",
 				"./modes/magic-keyword-boundary",
 				"./modes/magic-keyword-boundary.js",
-				"./modes/magic-keyword-notices",
-				"./modes/magic-keyword-notices.js",
 				"./modes/magic-keywords",
 				"./modes/magic-keywords.js",
 				"./modes/markdown-prose",
@@ -3184,6 +3184,8 @@
 				"./session/indexed-session-storage.js",
 				"./session/machine-budget",
 				"./session/machine-budget.js",
+				"./session/magic-keyword-notices",
+				"./session/magic-keyword-notices.js",
 				"./session/messages",
 				"./session/messages.js",
 				"./session/messages.test",
@@ -6606,8 +6608,6 @@
 				"./modes/keywords/gradient-highlight.js",
 				"./modes/keywords/magic-keyword-boundary",
 				"./modes/keywords/magic-keyword-boundary.js",
-				"./modes/keywords/magic-keyword-notices",
-				"./modes/keywords/magic-keyword-notices.js",
 				"./modes/keywords/magic-keywords",
 				"./modes/keywords/magic-keywords.js",
 				"./modes/keywords/markdown-prose",
@@ -9431,14 +9431,6 @@
 				"./modes/magic-keyword-boundary.js": {
 					"to": "@veyyon/coding-agent/modes/keywords/magic-keyword-boundary.js",
 					"why": "packages/coding-agent/src/modes/magic-keyword-boundary.ts moved to packages/coding-agent/src/modes/keywords/magic-keyword-boundary.ts, which @veyyon/coding-agent publishes as ./modes/keywords/magic-keyword-boundary.js"
-				},
-				"./modes/magic-keyword-notices": {
-					"to": "@veyyon/coding-agent/modes/keywords/magic-keyword-notices",
-					"why": "packages/coding-agent/src/modes/magic-keyword-notices.ts moved to packages/coding-agent/src/modes/keywords/magic-keyword-notices.ts, which @veyyon/coding-agent publishes as ./modes/keywords/magic-keyword-notices"
-				},
-				"./modes/magic-keyword-notices.js": {
-					"to": "@veyyon/coding-agent/modes/keywords/magic-keyword-notices.js",
-					"why": "packages/coding-agent/src/modes/magic-keyword-notices.ts moved to packages/coding-agent/src/modes/keywords/magic-keyword-notices.ts, which @veyyon/coding-agent publishes as ./modes/keywords/magic-keyword-notices.js"
 				},
 				"./modes/magic-keywords": {
 					"to": "@veyyon/coding-agent/modes/keywords/magic-keywords",

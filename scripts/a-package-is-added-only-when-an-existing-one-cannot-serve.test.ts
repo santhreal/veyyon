@@ -59,8 +59,15 @@ import { typeScriptMembers } from "./workspace-layout";
  * 18 members while the workspace held 19. The member list reaches it, and the budget now states the
  * real number. A future rise still needs the sentence above: which existing package was considered
  * and why it could not serve.
+ *
+ * The count went 19 -> 20 with `kernel`. It is the plugin loader, the contribution registry and the
+ * session spine, and it names no tool and no host, which is the property every other member fails:
+ * `coding-agent` is the CLI and owns every tool, `contracts/*` may hold no runtime at all, and
+ * `utils` is imported by the plugins the loader has to stay above, so a registry there would be a
+ * cycle. A future rise still needs the sentence above: which existing package was considered and
+ * why it could not serve.
  */
-const PACKAGE_BUDGET = 19;
+const PACKAGE_BUDGET = 20;
 
 /**
  * Every workspace member, as `<root>/<name>`.
