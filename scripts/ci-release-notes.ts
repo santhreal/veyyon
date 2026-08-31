@@ -28,7 +28,8 @@
  * workflow does not ask GitHub to append a second, duplicate generated list.
  */
 
-import { $, Glob } from "bun";
+import { existsSync } from "node:fs";
+import { $ } from "bun";
 // Import compareSemver by RELATIVE PATH, not the "@veyyon/utils/semver"
 // workspace specifier. The release_github job that runs this script checks out
 // the repo and sets up bun but does NOT `bun install`, so the workspace symlink
@@ -39,8 +40,37 @@ import { $, Glob } from "bun";
 // needs no install and cannot regress this way.
 import { compareSemver } from "../packages/utils/src/semver";
 import { versionHeadings } from "./changelog-unreleased";
+import { typeScriptMembersOf } from "./workspace-layout";
 
-const changelogGlob = new Glob("packages/*/CHANGELOG.md");
+/**
+ * Every member `CHANGELOG.md`, resolved from the root manifest's member list.
+ *
+ * This was `new Glob("packages/*​/CHANGELOG.md")`, which is the one shape that
+ * cannot see a member outside `packages/`. Nine of them keep a changelog today --
+ * `kernel`, `contracts/view`, `contracts/wire`, `hosts/terminal/engine`,
+ * `natives/bridge/bindings` and the four under `plugins/` -- so a release body
+ * silently omitted every entry those packages wrote, including the terminal
+ * engine's, which used to be `packages/tui`. The member list is resolved, so a
+ * member at any depth and one declared as a literal path are both in it.
+ *
+ * Members are resolved against the WORKING DIRECTORY, not the directory this
+ * script sits in: the release job runs it at the root of the checkout being
+ * released, and the suite runs it against a fixture repository. Reading the
+ * member list from the script's own location would describe this checkout while
+ * the changelogs came from another.
+ *
+ * `workspace-layout` imports only node builtins, which the relative
+ * `compareSemver` import above explains is the constraint here: the release job
+ * checks out the repo without `bun install`, so a workspace specifier would not
+ * resolve.
+ */
+function memberChangelogPaths(): string[] {
+	return typeScriptMembersOf(process.cwd())
+		.map(member => `${member}/CHANGELOG.md`)
+		.filter(existsSync)
+		.sort();
+}
+
 const REPO = process.env.VEYYON_REPO ?? process.env.GITHUB_REPOSITORY ?? "santhreal/veyyon";
 
 /**
@@ -462,8 +492,7 @@ async function main(): Promise<void> {
 	}
 
 	const sections: string[] = [];
-	const changelogPaths = await Array.fromAsync(changelogGlob.scan("."));
-	changelogPaths.sort();
+	const changelogPaths = memberChangelogPaths();
 	for (const changelogPath of changelogPaths) {
 		const content = await Bun.file(changelogPath).text();
 		const merged = mergePackageSection(content, floor, version);

@@ -369,7 +369,7 @@ if (import.meta.main) {
 			(result.unknownPackages.length > 0 ? ` (${result.unknownPackages.length} unknown specifiers)` : ""),
 	);
 	for (const specifier of result.unknownPackages) {
-		console.error(`  unknown package specifier (not under packages/): ${specifier}`);
+		console.error(`  unknown package specifier (no workspace member declares it): ${specifier}`);
 	}
 	// Loud, and not fatal. The declared types still answered every question this
 	// gate asks, so the documentation is not at fault; but an entry point that

@@ -430,6 +430,13 @@ describe("ci-release-notes end-to-end against a real tagged git repo", () => {
 	beforeEach(() => {
 		repo = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-notes-e2e-"));
 		git(["init", "-q", "-b", "main"], repo);
+		// The generator resolves member changelogs from the root manifest, the way the
+		// real repository declares them, so the fixture is a workspace rather than a
+		// bare `packages/` directory.
+		fs.writeFileSync(
+			path.join(repo, "package.json"),
+			JSON.stringify({ workspaces: { packages: ["packages/*", "plugins/*"] } }),
+		);
 		fs.mkdirSync(path.join(repo, "packages", "alpha"), { recursive: true });
 		fs.writeFileSync(path.join(repo, "packages", "alpha", "package.json"), JSON.stringify({ name: "@veyyon/alpha" }));
 	});
@@ -440,6 +447,14 @@ describe("ci-release-notes end-to-end against a real tagged git repo", () => {
 
 	function writeChangelog(body: string): void {
 		fs.writeFileSync(path.join(repo, "packages", "alpha", "CHANGELOG.md"), body);
+	}
+
+	/** The same changelog, for a member that does not live under `packages/`. */
+	function writePluginChangelog(body: string): void {
+		const dir = path.join(repo, "plugins", "beta");
+		fs.mkdirSync(dir, { recursive: true });
+		fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "@veyyon/beta" }));
+		fs.writeFileSync(path.join(dir, "CHANGELOG.md"), body);
 	}
 
 	it("emits curated sections then the commit summary for the (floor, target] range", () => {
@@ -487,6 +502,39 @@ describe("ci-release-notes end-to-end against a real tagged git repo", () => {
 		expect(body).not.toContain("initial alpha release");
 		// Ordering: curated package section precedes the derived summary.
 		expect(body.indexOf("## @veyyon/alpha")).toBeLessThan(body.indexOf("## What changed"));
+	});
+
+	/**
+	 * WHY THIS CELL EXISTS. The generator globbed `packages/*​/CHANGELOG.md`, so a
+	 * release body carried entries from members under `packages/` and silently dropped
+	 * every other one. Nine members keep a changelog outside it -- `kernel`, both
+	 * `contracts/*`, `hosts/terminal/engine`, `natives/bridge/bindings` and the four
+	 * `plugins/*` -- and the terminal engine's was `packages/tui` until it moved, so
+	 * the omission arrived with a directory rename and nothing failed. The member list
+	 * comes from the root manifest now, which is the same authority the root changelog
+	 * and the changelog gate read.
+	 *
+	 * What it does not catch: a member whose manifest declares no `name`, which falls
+	 * back to its directory name in the heading rather than failing.
+	 */
+	it("carries the curated section of a member that does not live under packages/", () => {
+		writeChangelog(["# Changelog", "", "## [1.1.0]", "", "### Added", "", "- Added an alpha flag.", ""].join("\n"));
+		writePluginChangelog(
+			["# Changelog", "", "## [1.1.0]", "", "### Fixed", "", "- Stopped dropping a plugin hook.", ""].join("\n"),
+		);
+		git(["add", "-A"], repo);
+		commit("feat: seed");
+		git(["tag", "v1.0.0"], repo);
+		commit("fix(plugin): stop dropping a plugin hook");
+		git(["tag", "v1.1.0"], repo);
+
+		const { code, body } = runNotes("v1.1.0", "1.0.0");
+		expect(code).toBe(0);
+		expect(body).toContain("## @veyyon/beta");
+		expect(body).toContain("- Stopped dropping a plugin hook.");
+		// Both members appear, so the widening added a source rather than replacing one.
+		expect(body).toContain("## @veyyon/alpha");
+		expect(body).toContain("- Added an alpha flag.");
 	});
 
 	it("still writes a real body from commits alone when no changelog bullet exists", () => {

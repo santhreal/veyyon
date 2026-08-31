@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { $ } from "bun";
-import { collectPromotableAddedItemLines, fixChangelogContent, runChangelogFixer } from "./fix-changelogs";
+import { changelogPaths, collectPromotableAddedItemLines, fixChangelogContent, runChangelogFixer } from "./fix-changelogs";
 
 describe("collectPromotableAddedItemLines", () => {
 	it("keeps new changelog item additions while ignoring moves and edits", () => {
@@ -294,6 +294,13 @@ describe("runChangelogFixer baseline pin", () => {
 				});
 		try {
 			const changelogPath = path.join(repoRoot, "packages/foo/CHANGELOG.md");
+			// A member is a package, and the fixer resolves the member list from the root
+			// manifest rather than globbing one directory, so the fixture declares both.
+			await Bun.write(
+				path.join(repoRoot, "package.json"),
+				JSON.stringify({ workspaces: { packages: ["packages/*", "plugins/*"] } }),
+			);
+			await Bun.write(path.join(repoRoot, "packages/foo/package.json"), JSON.stringify({ name: "foo" }));
 			await git("init", "-b", "main");
 			await Bun.write(changelogPath, RELEASED_ONLY);
 			await git("add", "-A");
@@ -320,6 +327,48 @@ describe("runChangelogFixer baseline pin", () => {
 			const withPin = await runChangelogFixer({ repoRoot, write: false });
 			expect(withPin.since).toBe("refs/clog");
 			expect(withPin.changedFiles).toHaveLength(0);
+		} finally {
+			await fs.rm(repoRoot, { recursive: true, force: true });
+		}
+	});
+});
+
+/**
+ * WHY THIS CELL EXISTS. `changelogPaths` globbed `packages/*​/CHANGELOG.md`, so the
+ * release cut normalized section order for members under `packages/` and silently
+ * skipped every member anywhere else -- `kernel`, both `contracts/*`,
+ * `hosts/terminal/engine`, `natives/bridge/bindings` and the four `plugins/*`, nine
+ * changelogs whose released sections the cut is supposed to fix. The member list
+ * comes from the manifest now, so this closes the class rather than the incident:
+ * any member the workspace declares is swept at whatever depth it sits.
+ *
+ * What it does not catch: a package that keeps a changelog and is not a declared
+ * workspace member is invisible here, deliberately, since nothing else in the
+ * release path would find it either.
+ */
+describe("changelogPaths", () => {
+	it("finds a member changelog at any depth, and ignores a directory the workspace does not declare", async () => {
+		const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), "clog-paths-"));
+		try {
+			await Bun.write(
+				path.join(repoRoot, "package.json"),
+				JSON.stringify({ workspaces: { packages: ["packages/*", "plugins/*", "hosts/terminal/engine", "kernel"] } }),
+			);
+			for (const member of ["packages/foo", "plugins/bar", "hosts/terminal/engine", "kernel"]) {
+				await Bun.write(path.join(repoRoot, member, "package.json"), JSON.stringify({ name: member }));
+				await Bun.write(path.join(repoRoot, member, "CHANGELOG.md"), RELEASED_ONLY);
+			}
+			// Declared, and keeps no changelog: not every member publishes one.
+			await Bun.write(path.join(repoRoot, "packages/quiet/package.json"), JSON.stringify({ name: "quiet" }));
+			// A changelog in a directory no member pattern reaches.
+			await Bun.write(path.join(repoRoot, "vendor/upstream/CHANGELOG.md"), RELEASED_ONLY);
+
+			expect(await changelogPaths(repoRoot)).toEqual([
+				"hosts/terminal/engine/CHANGELOG.md",
+				"kernel/CHANGELOG.md",
+				"packages/foo/CHANGELOG.md",
+				"plugins/bar/CHANGELOG.md",
+			]);
 		} finally {
 			await fs.rm(repoRoot, { recursive: true, force: true });
 		}

@@ -44,7 +44,6 @@ import { typeScriptMembers } from "./workspace-layout";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(HERE, "..");
-export const PACKAGES_DIR = join(REPO_ROOT, "packages");
 export const ROOT_PATH = join(REPO_ROOT, "CHANGELOG.md");
 
 /**
