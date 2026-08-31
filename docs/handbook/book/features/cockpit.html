@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9b847423.js";
+            window.path_to_searchindex_js = "../searchindex-129a2b98.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-0d6bf2a1.js"></script>
@@ -214,7 +214,7 @@
 </tbody>
 </table>
 </div>
-<p>Built-in segment IDs include: <code>pi</code> (legacy product mark segment), <code>profile</code>, <code>model</code>, <code>account</code>, <code>secrets</code>, <code>mode</code>, <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>token_in</code>, <code>token_out</code>, <code>token_total</code>, <code>token_rate</code>, <code>cost</code>, <code>context_pct</code>, <code>context_total</code>, <code>time_spent</code>, <code>time</code>, <code>session</code>, <code>hostname</code>, <code>cache_read</code>, <code>cache_write</code>, <code>cache_hit</code>, <code>session_name</code>, <code>usage</code>, <code>collab</code>.</p>
+<p>Built-in segment IDs include: <code>pi</code> (legacy product mark segment), <code>profile</code>, <code>model</code>, <code>account</code>, <code>mode</code>, <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>token_in</code>, <code>token_out</code>, <code>token_total</code>, <code>token_rate</code>, <code>cost</code>, <code>context_pct</code>, <code>context_total</code>, <code>time_spent</code>, <code>time</code>, <code>session</code>, <code>hostname</code>, <code>cache_read</code>, <code>cache_write</code>, <code>cache_hit</code>, <code>session_name</code>, <code>usage</code>, <code>collab</code>.</p>
 <p>The <code>model</code> segment shows the model you are working with, then two things that are easy to confuse, so they are drawn differently:</p>
 <ul>
 <li>The <strong>thinking effort</strong> joins the model label as one unit (<code>Sonnet 4.5 @high</code> in the quiet footline, <code>Sonnet 4.5 · high</code> elsewhere), in the model’s own color. It is how much reasoning the model does per turn. Change it with <code>/effort</code> (its alias is <code>/thinking</code>), or set a per-model default under Settings → Model → Default Effort.
@@ -258,23 +258,35 @@ named in the log once. <code>stripWorkPrefix: false</code> turns the whole step 
 with its own icon, whatever <code>displayRoots</code> says.</p>
 <p>The launch card draws the whole row before the session mounts. The working directory comes from the
 process, the branch from <code>.git/HEAD</code> and its ref files, and the mode from config. The model name,
-the dirty marker (<code>*</code>) and the context gauge are what the previous launch of this project recorded,
-in <code>cache/launch-facts.json</code>, keyed by the release, the project and the configured model; a change
-to any of those drops the facts it invalidates and the card shows the placeholder instead. Token
-counts start at zero, because nothing has been spent.</p>
+the effort beside it, the dirty marker (<code>*</code>) and the context gauge are what a previous launch
+recorded, in <code>cache/launch-facts.json</code>.</p>
+<p>That file records three kinds of fact. The model’s display name, its provider, the effort and the
+at-rest context reading belong to the model, so they are stated in every project you use it in,
+including one you open for the first time. The dirty marker belongs to the project, because it
+describes that working tree. The gauge is recorded under both: a project states its own reading
+where it has one, and the model’s reading from wherever it last idled where it does not. Those two
+maps are keyed by the release as well.</p>
+<p>The third fact is the terminal’s background color, keyed by the terminal and by nothing else. A new
+release does not change what an emulator draws, and it is the same window whichever directory is
+open in it. Veyyon queries the background at startup and the reply arrives after the card is on
+screen, so the card mixes the composer hairline, the composer outline and the transcript rules out
+of the background this terminal reported last time. A reply that contradicts the record takes
+effect on the next frame. Each of the three maps holds its 24 most recently written entries.</p>
 <p>Each recorded fact is replaced by a measured one as the session mounts. A tree committed from
 another terminal since the last launch keeps the recorded marker until <code>git status</code> answers, about
-130ms in. The first launch of a project has nothing recorded: the model reads as the configured
-id’s last path segment until the catalog supplies a display name, and the gauge reads <code>?</code> until a
-prompt has been assembled.</p>
+130ms in. A project you open for the first time has no dirty marker. The gauge reads <code>?</code> only
+until this model has idled somewhere once; after that a new project starts at the reading every
+other project using that model gave, which differs by what this project’s <code>AGENTS.md</code> adds.
+Configuring a different model resets it to <code>?</code> again, because a reading is a fraction of the
+window it was taken against. A model you have never run states its configured id’s last path
+segment until the catalog supplies a display name.</p>
 <p>A repository whose refs are in a reftable has no ref files to read, so its branch appears with the
 session rather than with the card, as does a detached HEAD with no operation to name.</p>
-<p>The <code>secrets</code> segment shows that a stored credential is live where you are working: <code>2 secrets</code>. It counts
-what would actually expand at the tool boundary in this directory, not what is in the vault file, so
-a credential scoped elsewhere or already expired is not counted. It hides itself when nothing is
-live, so a session with no vault shows nothing. When the soonest deadline is under an hour it appends
-the time left in the warning color, <code>2 secrets (34m left)</code>, which is the window in which extending it
-with <code>e</code> in <code>/secret</code> still helps; a deadline further out belongs to the card’s EXPIRES column.</p>
+<p><code>/secret list</code> states what is live where you are working: the credentials the vault holds here, and
+a count of the values being masked that nothing can name, with the environment variable or
+<code>secrets.yml</code> path each came from. The status row does not carry a count. It reported one that
+nothing else in the product agreed with, and a number a reader cannot reconcile with <code>/secret list</code>
+is worse than no number.</p>
 <p>The <code>context_pct</code> segment answers one question: how much room is left before the context runs out. “Runs out” means whichever comes first, auto-compaction firing or the model’s window filling, so with auto-compaction on the segment measures against the compaction trigger, not the window. The window itself is what <code>context_total</code> prints.</p>
 <p>In the composer’s quiet footline the segment renders as an 8-cell bar with a labelled percentage: <code>▰▰▰▰▰▰▱▱ 76% left ∞</code>. The bar drains, one cell per eighth of the room remaining, so the bar and the number always agree. Filled cells take the usage hue (silver, then gold, ember, and red as room runs out). While the model is running, the last remaining cell pulses between filled and empty, faster once you are past 90 percent used; at rest the bar never moves, so an idle screen is still. A session-accent <code>∞</code> after the bar means auto-compaction is on, so the session continues past the trigger.</p>
 <p>Classic status-line presets render the same measurement as text, in tokens on both sides of the slash: <code>47K/170K</code>. For a full picture of what is in the window, and how it is divided between the system prompt, tools, skills, and messages, run <code>/context</code>.</p>
