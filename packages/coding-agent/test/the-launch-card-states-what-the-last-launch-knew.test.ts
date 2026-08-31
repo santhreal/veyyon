@@ -29,6 +29,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import {
@@ -48,6 +49,7 @@ import {
 import { paintFirstFrame, takeFirstFrame } from "@veyyon/coding-agent/modes/terminal/first-frame";
 import { resetGroundTintsForTest } from "@veyyon/coding-agent/theme/ground-tints";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 import type { GitStatusSummary } from "@veyyon/coding-agent/utils/git";
 import { getLaunchFactsCachePath, stripAnsi } from "@veyyon/utils";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
@@ -55,6 +57,20 @@ import { makeStatusLineSession, type StubSessionOptions } from "./helpers/status
 
 const DIRTY: GitStatusSummary = { staged: 1, unstaged: 2, untracked: 3, truncated: false };
 const CLEAN: GitStatusSummary = { staged: 0, unstaged: 0, untracked: 0, truncated: false };
+
+/**
+ * Every fact absent, which is what a first launch and an invalidated key both read as.
+ *
+ * Typed, so a fact added to {@link LaunchFacts} fails to compile here until someone states what
+ * its absent value is, and every whole-shape assertion in this suite picks it up.
+ */
+const ABSENT: LaunchFacts = {
+	gitStatus: null,
+	modelName: null,
+	providerName: null,
+	contextPercent: null,
+	thinking: null,
+};
 
 const MODEL_A = "anthropic/claude-sonnet-4";
 const MODEL_B = "openai/gpt-5";
@@ -91,6 +107,14 @@ function onDisk(): Record<string, unknown> {
 function planted(content: unknown): void {
 	writeFileSync(getLaunchFactsCachePath(), typeof content === "string" ? content : JSON.stringify(content));
 	resetLaunchFactsForTest();
+}
+
+/** Overwrite THIS project's entry, keeping the file shape and the other keys the reader needs. */
+function plantedEntry(fields: Record<string, unknown>): void {
+	const file = onDisk();
+	const projects = file.projects as Record<string, Record<string, unknown>>;
+	const key = Object.keys(projects)[0] as string;
+	planted({ ...file, projects: { ...projects, [key]: { ...projects[key], ...fields } } });
 }
 
 /** The card's own status-row context, which is what the segments actually render from. */
@@ -145,12 +169,7 @@ afterEach(() => {
 describe("what the launch card knows before a session exists", () => {
 	/** Every first launch in a project: no file, and each fact absent as itself. */
 	it("knows nothing before anything has been recorded", () => {
-		expect(readLaunchFacts()).toEqual({
-			gitStatus: null,
-			modelName: null,
-			providerName: null,
-			contextPercent: null,
-		});
+		expect(readLaunchFacts()).toEqual(ABSENT);
 	});
 
 	/** The round trip, through the real file, for every fact the card draws. */
@@ -158,6 +177,7 @@ describe("what the launch card knows before a session exists", () => {
 		await record({ modelName: "Claude Sonnet 4", providerName: "anthropic", contextPercent: 17.6, gitStatus: DIRTY });
 
 		expect(readLaunchFacts()).toEqual({
+			...ABSENT,
 			gitStatus: DIRTY,
 			modelName: "Claude Sonnet 4",
 			providerName: "anthropic",
@@ -209,57 +229,94 @@ describe("what the launch card knows before a session exists", () => {
 
 		settings.setModelRole("default", MODEL_B);
 
-		expect(readLaunchFacts()).toEqual({
-			gitStatus: DIRTY,
-			modelName: null,
-			providerName: null,
-			contextPercent: null,
-		});
+		expect(readLaunchFacts()).toEqual({ ...ABSENT, gitStatus: DIRTY });
 	});
 
 	it("drops every fact when the project changed", async () => {
 		await record({ modelName: "Claude Sonnet 4", contextPercent: 40, gitStatus: DIRTY });
 		const file = onDisk();
+		const projects = file.projects as Record<string, unknown>;
+		const [key, entry] = Object.entries(projects)[0] as [string, unknown];
 
-		planted({
-			...file,
-			projectKey: `${String(file.projectKey)}-elsewhere`,
-			modelKey: `${String(file.modelKey)}-elsewhere`,
-		});
+		planted({ ...file, projects: { [`${key}-elsewhere`]: entry } });
 
-		expect(readLaunchFacts()).toEqual({
-			gitStatus: null,
-			modelName: null,
-			providerName: null,
-			contextPercent: null,
-		});
+		expect(readLaunchFacts()).toEqual(ABSENT);
 	});
 
 	it("drops every fact when the release changed", async () => {
 		await record({ modelName: "Claude Sonnet 4", contextPercent: 40, gitStatus: DIRTY });
 		const file = onDisk();
+		const projects = file.projects as Record<string, unknown>;
+		const [key, entry] = Object.entries(projects)[0] as [string, unknown];
 
-		planted({
-			...file,
-			projectKey: `0.0.0-other|${String(file.projectKey)}`,
-			modelKey: `0.0.0-other|${String(file.modelKey)}`,
-		});
+		// The release is the head of the project key, so an entry written by another release is
+		// filed under a key this one never looks up.
+		planted({ ...file, projects: { [`0.0.0-other|${key}`]: entry } });
 
-		expect(readLaunchFacts()).toEqual({
-			gitStatus: null,
-			modelName: null,
-			providerName: null,
-			contextPercent: null,
-		});
+		expect(readLaunchFacts()).toEqual(ABSENT);
+	});
+
+	/**
+	 * THE DEFECT THIS CLOSES. The file held ONE project's facts, so a launch here erased what the
+	 * project next door knew and the gauge read `?` on every start for anyone who works in two.
+	 * Recording under a second project must leave the first's entry intact.
+	 */
+	it("keeps each project's facts when another project records its own", async () => {
+		await record({ modelName: "Claude Sonnet 4", contextPercent: 40, gitStatus: DIRTY });
+		const mine = onDisk();
+		const projects = mine.projects as Record<string, unknown>;
+		const [key, entry] = Object.entries(projects)[0] as [string, unknown];
+
+		// A neighbouring project's entry, as its own launch would have written it.
+		planted({ ...mine, projects: { [`${key}-next-door`]: entry, [key]: entry } });
+		await record({ contextPercent: 55 });
+
+		const after = (onDisk().projects as Record<string, Record<string, unknown>>) ?? {};
+		expect(Object.keys(after).sort()).toEqual([key, `${key}-next-door`].sort());
+		expect(after[`${key}-next-door`]?.contextPercent).toBe(40);
+		expect(readLaunchFacts().contextPercent).toBe(55);
+	});
+
+	/**
+	 * The map is a cache, so it is bounded: a machine that opens hundreds of directories must not
+	 * grow a file the first frame reads. The oldest WRITE leaves, not the oldest key, so the
+	 * projects someone returns to stay and the one-off checkout is what goes. This asserts the
+	 * bound holds and that the entry written now is inside it, which is the pair a test that only
+	 * counted keys would miss.
+	 */
+	it("keeps the file bounded, evicting the oldest write", async () => {
+		await record({ contextPercent: 40 });
+		const mine = onDisk();
+		const projects = mine.projects as Record<string, Record<string, unknown>>;
+		const [key, entry] = Object.entries(projects)[0] as [string, Record<string, unknown>];
+		const crowd: Record<string, unknown> = {};
+		for (let i = 0; i < 60; i++) crowd[`${key}-other-${i}`] = { ...entry, recordedAt: 1_000 + i };
+
+		planted({ ...mine, projects: { ...crowd, [key]: { ...entry, recordedAt: 1 } } });
+		await record({ contextPercent: 55 });
+
+		const after = onDisk().projects as Record<string, Record<string, unknown>>;
+		const keys = Object.keys(after);
+		expect(keys.length).toBeLessThanOrEqual(24);
+		// This project just wrote, so it survives however old its previous entry was, and the
+		// oldest of the crowd is gone.
+		expect(keys).toContain(key);
+		expect(keys).not.toContain(`${key}-other-0`);
+		expect(readLaunchFacts().contextPercent).toBe(55);
 	});
 
 	/**
 	 * A file truncated by a crash mid-write, hand-edited, or replaced with the wrong shape. The
 	 * card must fall back to placeholders rather than throw on the frame it is painting.
+	 *
+	 * The single-slot shape an earlier release wrote is in the list. It parses, and its facts read
+	 * as this project's under a reader that only checked they were present, so a stale copy must be
+	 * REJECTED rather than served: that file filed one project's facts with no map to look them up
+	 * in, and every key it carries means something else here.
 	 */
 	it("knows nothing from a damaged file, whatever the damage", async () => {
 		await record({ modelName: "Claude Sonnet 4", contextPercent: 40, gitStatus: DIRTY });
-		const { projectKey, modelKey } = onDisk();
+		const key = Object.keys(onDisk().projects as Record<string, unknown>)[0] as string;
 
 		for (const damaged of [
 			"",
@@ -267,18 +324,15 @@ describe("what the launch card knows before a session exists", () => {
 			"null",
 			"[]",
 			'"40"',
-			JSON.stringify({ projectKey }),
-			JSON.stringify({ modelKey }),
-			JSON.stringify({ projectKey: 7, modelKey }),
+			JSON.stringify({ projects: { [key]: { modelRole: MODEL_A, contextPercent: 40 } } }),
+			JSON.stringify({ version: 1, projects: { [key]: { modelRole: MODEL_A, contextPercent: 40 } } }),
+			JSON.stringify({ version: 2, projects: "not a map" }),
+			// The shape before the map: one project's facts under top-level keys.
+			JSON.stringify({ projectKey: key, modelKey: `${key}|${MODEL_A}`, contextPercent: 40, modelName: "Stale" }),
 		]) {
 			planted(damaged);
 
-			expect(readLaunchFacts()).toEqual({
-				gitStatus: null,
-				modelName: null,
-				providerName: null,
-				contextPercent: null,
-			});
+			expect(readLaunchFacts()).toEqual(ABSENT);
 		}
 	});
 
@@ -288,7 +342,6 @@ describe("what the launch card knows before a session exists", () => {
 	 */
 	it("rejects a git summary that is not one", async () => {
 		await record({ gitStatus: DIRTY });
-		const { projectKey, modelKey } = onDisk();
 
 		for (const bad of [
 			{ staged: "1", unstaged: 0, untracked: 0, truncated: false },
@@ -298,7 +351,7 @@ describe("what the launch card knows before a session exists", () => {
 			"dirty",
 			[],
 		]) {
-			planted({ projectKey, modelKey, gitStatus: bad });
+			plantedEntry({ gitStatus: bad });
 
 			expect(readLaunchFacts().gitStatus).toBeNull();
 		}
@@ -310,12 +363,11 @@ describe("what the launch card knows before a session exists", () => {
 	 */
 	it("clamps a percentage from outside the band", async () => {
 		await record({ contextPercent: 40 });
-		const { projectKey, modelKey } = onDisk();
 
-		planted({ projectKey, modelKey, contextPercent: 140 });
+		plantedEntry({ contextPercent: 140 });
 		expect(readLaunchFacts().contextPercent).toBe(100);
 
-		planted({ projectKey, modelKey, contextPercent: -20 });
+		plantedEntry({ contextPercent: -20 });
 		expect(readLaunchFacts().contextPercent).toBe(0);
 	});
 
@@ -330,6 +382,7 @@ describe("what the launch card knows before a session exists", () => {
 		await record({ contextPercent: 55 });
 
 		expect(readLaunchFacts()).toEqual({
+			...ABSENT,
 			gitStatus: DIRTY,
 			modelName: "Claude Sonnet 4",
 			providerName: "anthropic",
@@ -386,12 +439,7 @@ describe("what the launch card knows before a session exists", () => {
 		settings.setModelRole("default", MODEL_B);
 		await record({ contextPercent: 40, modelName: "Claude Sonnet 4" });
 
-		expect(readLaunchFacts()).toEqual({
-			gitStatus: null,
-			modelName: "Claude Sonnet 4",
-			providerName: null,
-			contextPercent: 40,
-		});
+		expect(readLaunchFacts()).toEqual({ ...ABSENT, modelName: "Claude Sonnet 4", contextPercent: 40 });
 	});
 
 	/**
@@ -405,12 +453,7 @@ describe("what the launch card knows before a session exists", () => {
 		settings.setModelRole("default", MODEL_B);
 		await record({ gitStatus: DIRTY });
 
-		expect(readLaunchFacts()).toEqual({
-			gitStatus: DIRTY,
-			modelName: null,
-			providerName: null,
-			contextPercent: null,
-		});
+		expect(readLaunchFacts()).toEqual({ ...ABSENT, gitStatus: DIRTY });
 	});
 });
 
@@ -601,7 +644,7 @@ describe("what a running session records for the next launch", () => {
 	it("records no reading measured by a model the role does not name", () => {
 		const recorded = recordedAfterRender({ modelId: "deepseek-r1", modelName: "DeepSeek-R1" });
 
-		expect(recorded).toEqual({ gitStatus: null, modelName: null, providerName: null, contextPercent: null });
+		expect(recorded).toEqual(ABSENT);
 	});
 
 	/** A role carrying a thinking level or a route still names the same model, and still records. */
@@ -620,5 +663,147 @@ describe("what a running session records for the next launch", () => {
 		settings.setModelRole("default", "anthropic/claude-sonnet-45");
 
 		expect(recordedAfterRender(RUNS_THE_ROLE).contextPercent).toBeNull();
+	});
+});
+
+/**
+ * WHY THIS EXISTS. The status row prints the effort beside the model (`GLM-5.2 High @high`), and
+ * the card could not: the level is resolved per model and then CLAMPED to the rungs that model
+ * supports, so neither `defaultEffort` nor the role's `:thinking` suffix states what the row will
+ * print. The card drew the model with no tail and grew one 600ms later, which shifted every
+ * segment right of it.
+ *
+ * THE CLASS. Any fact whose value depends on the resolved model, recorded under a key that does
+ * not name that model, or carried forward after the state that produced it went away. The effort
+ * is the first one that can be turned OFF while its model stays, which is why it is the one fact
+ * with an explicit clear.
+ *
+ * WHAT IT DOES NOT CATCH: whether the clamp itself is right. That belongs to the resolver; this
+ * proves the card states whatever the row settled on and nothing else.
+ */
+describe("the effort the card prints before a session resolves one", () => {
+	const ROLE = "anthropic/claude-sonnet-4";
+	const THINKS = { modelId: "claude-sonnet-4", modelProvider: "anthropic", modelThinking: true };
+
+	function recordedAfterRender(options: StubSessionOptions): LaunchFacts {
+		new StatusLineComponent(makeStatusLineSession(options)).renderQuietLine(120);
+		return readLaunchFacts();
+	}
+
+	beforeEach(async () => {
+		await initTheme(false);
+		settings.setModelRole("default", ROLE);
+	});
+
+	it("records the rung the row settled on", () => {
+		expect(recordedAfterRender({ ...THINKS, thinkingLevel: ThinkingLevel.High }).thinking).toBe(ThinkingLevel.High);
+	});
+
+	/** `auto` is a mode: the rung it resolves to belongs to a turn, and no turn has run. */
+	it("records auto as itself rather than the rung it happened to resolve to", () => {
+		const recorded = recordedAfterRender({ ...THINKS, thinkingLevel: ThinkingLevel.High, autoThinking: true });
+
+		expect(recorded.thinking).toBe(AUTO_THINKING);
+	});
+
+	/** Each way a row prints no tail, and each must read back as no tail rather than as unknown. */
+	it.each([
+		["a model with no controllable effort", { modelId: "claude-sonnet-4", modelProvider: "anthropic" }],
+		["thinking turned off", { ...THINKS, thinkingLevel: ThinkingLevel.Off }],
+	])("records nothing for %s", (_label, options) => {
+		expect(recordedAfterRender(options as StubSessionOptions).thinking).toBeNull();
+	});
+
+	/**
+	 * THE CLEAR, once per reason the tail can disappear. Every other fact is kept when an update
+	 * omits it, because it describes something that exists and was merely unresolved. A row with no
+	 * effort is a fact, and a recorder that treated it as silence would print `@high` on a row that
+	 * no longer has one, forever. Both arms matter: the rung can be turned off while the ladder
+	 * stays, and the ladder itself goes when a provider stops offering one for the same id.
+	 */
+	it.each([
+		["the rung is turned off", { ...THINKS, thinkingLevel: ThinkingLevel.Off }],
+		["the model loses its ladder", { modelId: "claude-sonnet-4", modelProvider: "anthropic" }],
+	])("erases the rung it recorded when %s", async (_label, options) => {
+		await record({ thinking: ThinkingLevel.High });
+
+		expect(recordedAfterRender(options as StubSessionOptions).thinking).toBeNull();
+	});
+
+	/**
+	 * The counterpart to the clear. A launch that resolves no effort at all — the row rendered
+	 * before the session settled, a redraw that carried only a git summary — leaves the recorded
+	 * one alone, or the card would lose the tail to every write that was not about it.
+	 */
+	it("keeps the rung when a later update does not mention it", async () => {
+		await record({ thinking: ThinkingLevel.High });
+		await record({ contextPercent: 40 });
+
+		expect(readLaunchFacts().thinking).toBe(ThinkingLevel.High);
+	});
+
+	/**
+	 * The same key discipline the gauge has, from the writer's side: an effort measured on a
+	 * fallback model, or on one `/model` switched to without persisting, is filed under the role's
+	 * key by a recorder that skips the gate, and the next launch prints a rung its model may not
+	 * have.
+	 */
+	it("records no rung resolved on a model the role does not name", () => {
+		const recorded = recordedAfterRender({
+			modelId: "deepseek-r1",
+			modelThinking: true,
+			thinkingLevel: ThinkingLevel.High,
+		});
+
+		expect(recorded.thinking).toBeNull();
+	});
+
+	/** Model-scoped like the gauge: a rung is clamped to one model's ladder and states nothing of another's. */
+	it("drops the rung when the role names another model", () => {
+		recordedAfterRender({ ...THINKS, thinkingLevel: ThinkingLevel.High });
+		settings.setModelRole("default", "openai/gpt-5");
+
+		expect(readLaunchFacts().thinking).toBeNull();
+	});
+
+	/**
+	 * The row prints this value through a theme table keyed by the rung. A file someone edited, or
+	 * one written by a release with a rung this one dropped, must not put its own text on the row.
+	 */
+	it.each(["ultra", "", "high ", "HIGH", 4, null, {}])("rejects %p from a damaged file", async damaged => {
+		await record({ thinking: ThinkingLevel.High });
+		plantedEntry({ thinking: damaged });
+
+		expect(readLaunchFacts().thinking).toBeNull();
+	});
+
+	/**
+	 * The seam that made the row shift. The recorded rung has to reach the segment context the
+	 * card renders from, and `supportsThinking` has to come with it: the segment gates the tail on
+	 * that flag, so a replayed rung with the flag left false prints nothing and proves nothing.
+	 */
+	it("reaches the row the card paints", async () => {
+		await record({ thinking: ThinkingLevel.High, modelName: "Claude Sonnet 4" });
+
+		const facts = factsAtLaunch();
+		expect(facts.model?.supportsThinking).toBe(true);
+		expect(facts.thinkingLevel).toBe(ThinkingLevel.High);
+		expect(facts.autoThinking).toBeNull();
+		expect(stripAnsi(cardContext().facts.model?.name ?? "")).toBe("Claude Sonnet 4");
+	});
+
+	/** Auto replays as the pending marker, which is what a session that has classified no turn prints. */
+	it("replays auto as pending rather than as a rung", async () => {
+		await record({ thinking: AUTO_THINKING });
+
+		const facts = factsAtLaunch();
+		expect(facts.autoThinking).toEqual({ resolved: null });
+		expect(facts.thinkingLevel).toBe(ThinkingLevel.Off);
+	});
+
+	/** Nothing recorded is a model with no tail, not a model whose tail is unknown. */
+	it("states no effort when none was recorded", () => {
+		expect(factsAtLaunch().model?.supportsThinking).toBe(false);
+		expect(factsAtLaunch().thinkingLevel).toBe(ThinkingLevel.Off);
 	});
 });

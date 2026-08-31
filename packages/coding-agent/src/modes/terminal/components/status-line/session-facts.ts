@@ -23,6 +23,7 @@
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import { settings } from "../../../../config/settings-instance";
 import type { Goal } from "../../../../goals/state";
+import { AUTO_THINKING } from "../../../../thinking";
 import type { ApprovalMode } from "../../../../tools/core/approval-modes";
 import { isKnownApprovalMode } from "../../../../tools/core/approval-modes";
 import { launchModelLabel, readLaunchFacts } from "../../../launch-facts";
@@ -105,12 +106,12 @@ export const NO_SESSION_FACTS: SessionFacts = {
  * What config alone knows, for the row the launch card paints before a session
  * exists.
  *
- * CONFIG ONLY, and deliberately nothing else. This runs on the path whose whole
- * budget is the first frame, so it reads the settings store that is already
- * loaded and touches no registry, no catalog, no auth storage and no
- * filesystem. A fact that costs a lookup is left absent, and the segment that
- * wanted it renders its own absent state — the account chip and the secrets
- * chip are silent, the gauge says it does not know yet — until
+ * CONFIG AND THE LAUNCH FACTS FILE, deliberately nothing else. This runs on the
+ * path whose whole budget is the first frame, so it reads the settings store
+ * that is already loaded and one small JSON file, and touches no registry, no
+ * catalog and no auth storage. A fact that costs a lookup is left absent, and
+ * the segment that wanted it renders its own absent state — the account chip
+ * and the secrets chip are silent, the gauge says it does not know yet — until
  * `factsFromSession` replaces the block with the measured answer.
  *
  * The model is the persisted default ROLE, which is the id the session itself
@@ -119,6 +120,13 @@ export const NO_SESSION_FACTS: SessionFacts = {
  * display name the last launch recorded, or the role's final path segment,
  * because config stores no display name and resolving one needs the catalog
  * this path may not touch.
+ *
+ * The effort comes from the same file rather than from `defaultEffort`, because
+ * the setting is one input to it: the level is resolved per model and then
+ * clamped to the efforts that model supports, and a row that printed the
+ * configured value would state `@high` for a model that has no such rung.
+ * Absent, the segment prints no tail, which is what a model without thinking
+ * prints anyway.
  *
  * `approvalBypassed` is false rather than derived: `/yolo` is a runtime toggle
  * that no launch has had the chance to set. A configured `yolo` rung still
@@ -129,9 +137,15 @@ export function factsAtLaunch(): SessionFacts {
 	const configuredMode = settings.getModelRole("default");
 	const approvalMode = settings.get("tools.approvalMode");
 	const modelName = launchModelLabel();
+	const { thinking } = readLaunchFacts();
 	return {
 		...NO_SESSION_FACTS,
-		model: configuredMode ? { id: configuredMode, name: modelName ?? "", supportsThinking: false } : null,
+		model: configuredMode ? { id: configuredMode, name: modelName, supportsThinking: thinking !== null } : null,
+		// `auto` is a session mode rather than a rung: a session that starts in it has classified no
+		// turn yet, so the row states the pending marker, which is what the settled row states at
+		// this same moment. A concrete rung is replayed as itself.
+		thinkingLevel: thinking !== null && thinking !== AUTO_THINKING ? thinking : ThinkingLevel.Off,
+		autoThinking: thinking === AUTO_THINKING ? { resolved: null } : null,
 		approvalMode: isKnownApprovalMode(approvalMode) ? approvalMode : undefined,
 		goalModelBudgets: settings.get("goal.modelBudgetsEnabled") === true,
 		goalVerbose: settings.get("goal.statusInFooter") === true,
