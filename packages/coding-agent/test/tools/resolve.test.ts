@@ -3,7 +3,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ResolveTool } from "@veyyon/coding-agent/tools/agent/resolve";
-import { resolveToolRenderer } from "@veyyon/coding-agent/tools/agent/resolve-render";
+import { resolveToolView } from "@veyyon/coding-agent/tools/agent/resolve-view";
+import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { sanitizeText } from "@veyyon/utils";
 import { useFullColor } from "../helpers/theme-assertions";
 
@@ -146,17 +147,19 @@ it("renders a highlighted apply summary", async () => {
 	expect(theme).toBeDefined();
 	const uiTheme = theme!;
 
-	const component = resolveToolRenderer.renderResult(
-		{
-			content: [{ type: "text", text: "Applied 2 replacements in 1 file." }],
-			details: {
-				action: "apply",
-				reason: "All replacements are correct",
-				sourceToolName: "ast_edit",
-				label: "AST Edit: 2 replacements in 1 file",
+	const component = drawToolView(
+		resolveToolView.renderResult(
+			{
+				content: [{ type: "text", text: "Applied 2 replacements in 1 file." }],
+				details: {
+					action: "apply",
+					reason: "All replacements are correct",
+					sourceToolName: "ast_edit",
+					label: "AST Edit: 2 replacements in 1 file",
+				},
 			},
-		},
-		{ expanded: false, isPartial: false },
+			{ expanded: false },
+		),
 		uiTheme,
 	);
 
@@ -174,17 +177,19 @@ it("keeps the inverse block color across the full line (no mid-line fg reset)", 
 	expect(theme).toBeDefined();
 	const uiTheme = theme!;
 
-	const component = resolveToolRenderer.renderResult(
-		{
-			content: [{ type: "text", text: "Applied 2 replacements in 1 file." }],
-			details: {
-				action: "apply",
-				reason: "All replacements are correct",
-				sourceToolName: "ast_edit",
-				label: "AST Edit: 2 replacements in 1 file",
+	const component = drawToolView(
+		resolveToolView.renderResult(
+			{
+				content: [{ type: "text", text: "Applied 2 replacements in 1 file." }],
+				details: {
+					action: "apply",
+					reason: "All replacements are correct",
+					sourceToolName: "ast_edit",
+					label: "AST Edit: 2 replacements in 1 file",
+				},
 			},
-		},
-		{ expanded: false, isPartial: false },
+			{ expanded: false },
+		),
 		uiTheme,
 	);
 

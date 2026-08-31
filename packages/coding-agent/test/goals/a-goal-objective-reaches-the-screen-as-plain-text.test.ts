@@ -202,6 +202,8 @@ function textOf(view: ToolView): string[] {
 				...textOf(view.header),
 				...view.sections.flatMap(section => [section.label ?? "", ...section.lines.flatMap(line => spans(line))]),
 			];
+		case "notice":
+			return [...spans(view.headline), view.tag ?? "", ...(view.body ?? []).flatMap(line => spans(line))];
 	}
 }
 

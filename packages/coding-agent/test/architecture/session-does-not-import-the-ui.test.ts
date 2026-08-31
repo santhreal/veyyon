@@ -259,10 +259,13 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 	 * registry that reaches a dialog. Each is a front-end concern filed outside the
 	 * front end, and each is its own piece of work.
 	 *
-	 * `session/image-visibility.ts` and `tools/agent/todo.ts` used to be on this list.
-	 * That is the delta two probes bought: a question about a pipe is no longer
-	 * answered by loading a renderer, and the todo tool's drawing moved to
-	 * `tools/agent/todo-render.ts`, which print mode never reaches. Shrink-only -- a row
+	 * `session/image-visibility.ts`, `tools/agent/todo.ts` and
+	 * `slash-commands/builtin-registry.ts` used to be on this list.
+	 * That is the delta three probes bought: a question about a pipe is no longer
+	 * answered by loading a renderer, the todo tool's drawing moved to
+	 * `tools/agent/todo-render.ts`, which print mode never reaches, and the `/collab`
+	 * QR block draws its own spacing instead of the registry stacking a terminal
+	 * component above it. Shrink-only -- a row
 	 * leaves when the edge is cut, and none is added, so a new module reaching the
 	 * package from print mode's graph reds this.
 	 *
@@ -273,7 +276,6 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 	 */
 	const PRINT_MODE_TUI_EDGES = [
 		"packages/coding-agent/src/modes/terminal/components/dialogs/pause-screen.ts -> @veyyon/tui",
-		"packages/coding-agent/src/slash-commands/builtin-registry.ts -> @veyyon/tui",
 		"packages/coding-agent/src/theme/theme-class.ts -> @veyyon/tui/terminal-capabilities",
 		"packages/coding-agent/src/theme/theme.ts -> @veyyon/tui/terminal-capabilities",
 		"packages/coding-agent/src/tui/code-cell.ts -> @veyyon/tui",

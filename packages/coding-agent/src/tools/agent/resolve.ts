@@ -10,6 +10,7 @@ import { type } from "arktype";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
 import { ToolError } from "../core/tool-errors";
+import { resolveToolView } from "./resolve-view";
 
 const resolveSchema = type({
 	action: "'apply' | 'discard'",
@@ -182,6 +183,7 @@ export class ResolveTool implements AgentTool<typeof resolveSchema, ResolveToolD
 	readonly description: string;
 	readonly parameters = resolveSchema;
 	readonly strict = true;
+	readonly view = resolveToolView;
 	readonly intent = (args: Partial<ResolveParams>) => {
 		if (args.action === "discard") {
 			return args.reason ? `discarding: ${args.reason}` : "discarding changes";

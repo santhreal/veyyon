@@ -18,6 +18,7 @@ import type {
 	FramedBlockView,
 	HeadedBlockView,
 	LineToolView,
+	NoticeView,
 	StatusRowView,
 	TextBlockView,
 	ToolView,
@@ -37,6 +38,7 @@ import { urlHyperlink } from "./hyperlink";
 import { framedBlock } from "./output-block";
 import { renderStatusLine } from "./status-line";
 import type { State } from "./types";
+import { padToWidth } from "./utils";
 
 /**
  * The theme colour each tone draws as.
@@ -299,6 +301,91 @@ function drawHiddenNote(hidden: ViewHiddenCount, theme: Theme): string | undefin
 }
 
 /**
+ * The theme colour a notice's plate carries for each state.
+ *
+ * Total in `ViewStatus` for the same reason every other record here is: a status added to the
+ * contract fails the build until the terminal states what a plate of it looks like, rather than
+ * painting it in whatever the last branch returned. The three the resolve card reaches are the
+ * outcome colours; the rest reduce to them, because a plate is a settled decision and nothing
+ * pending or running ever fills one.
+ */
+const NOTICE_COLORS: Record<ViewStatus, ThemeColor> = {
+	success: "success",
+	done: "success",
+	error: "error",
+	warning: "warning",
+	info: "infoAccent",
+	pending: "muted",
+	running: "accent",
+	aborted: "warning",
+};
+
+/**
+ * One span of a notice, whose colour the plate already answered.
+ *
+ * Emphasis is kept and tone is dropped: the whole plate is `inverse(fg(state, …))`, so a colour
+ * started inside it carries its own reset and drops the row back to the default background at that
+ * column. For the same reason a symbol is drawn bare rather than through `styledSymbol`, which
+ * would wrap the glyph in a colour of its own.
+ */
+function drawNoticeSpan(span: ViewSpan, theme: Theme): string {
+	if (span.symbol !== undefined && Object.hasOwn(UNICODE_SYMBOLS, span.symbol)) {
+		return theme.symbol(span.symbol as SymbolKey);
+	}
+	let text = span.text;
+	if (span.bold) text = theme.bold(text);
+	if (span.italic) text = theme.italic(text);
+	return text;
+}
+
+/** Every span of one notice line, with no separator the tool did not ask for. */
+function drawNoticeLine(line: ViewLine, theme: Theme): string {
+	let drawn = "";
+	for (const span of line) drawn += drawNoticeSpan(span, theme);
+	return drawn;
+}
+
+/**
+ * A notice as the full-width plate the terminal fills.
+ *
+ * The blank row above the headline, the blank row between it and the body, the trailing row and the
+ * one column of inset are the terminal's answer to "a notice", not lines the tool sent: a tool that
+ * had to state them would be laying out a card it cannot measure. Each row is cut to the width and
+ * padded back out to it, so the plate is a rectangle at every width and a resize re-cuts it.
+ */
+export function drawNotice(view: NoticeView, theme: Theme): Component {
+	const color = NOTICE_COLORS[view.state];
+	const mark =
+		view.mark !== undefined && Object.hasOwn(UNICODE_SYMBOLS, view.mark)
+			? `${theme.symbol(view.mark as SymbolKey)} `
+			: "";
+	const tag =
+		view.tag === undefined
+			? ""
+			: ` ${theme.bold(`${theme.format.bracketLeft}${view.tag}${theme.format.bracketRight}`)}`;
+	const lines = ["", `${mark}${drawNoticeLine(view.headline, theme)}${tag}`];
+	// The blank row is the gap between the headline and what follows it, so a notice that is a
+	// headline alone is three rows rather than a headline with two empty rows under it.
+	if (view.body !== undefined && view.body.length > 0) {
+		lines.push("");
+		for (const line of view.body) lines.push(drawNoticeLine(line, theme));
+	}
+	lines.push("");
+	return createCachedComponent(
+		() => false,
+		width => {
+			const lineWidth = Math.max(3, width);
+			const innerWidth = Math.max(1, lineWidth - 2);
+			return lines.map(line => {
+				const truncated = truncateToWidth(line, innerWidth, Ellipsis.Omit);
+				const padded = padToWidth(` ${padToWidth(truncated, innerWidth)} `, lineWidth);
+				return theme.inverse(theme.fg(color, padded));
+			});
+		},
+	);
+}
+
+/**
  * A view as a terminal component.
  *
  * A one-line view is `Text` with zero padding, which is what every tool renderer converted to a view
@@ -308,6 +395,7 @@ function drawHiddenNote(hidden: ViewHiddenCount, theme: Theme): string | undefin
 export function drawToolView(view: ToolView, theme: Theme, spinnerFrame?: number): Component {
 	if (view.kind === "framedBlock") return drawFramedBlock(view, theme, spinnerFrame);
 	if (view.kind === "headedBlock") return drawHeadedBlock(view, theme, spinnerFrame);
+	if (view.kind === "notice") return drawNotice(view, theme);
 	return new Text(drawToolViewText(view, theme, spinnerFrame), 0, 0);
 }
 

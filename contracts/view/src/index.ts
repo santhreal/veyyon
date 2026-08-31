@@ -226,8 +226,33 @@ export interface FramedBlockView {
 	contents?: "report" | "data";
 }
 
+/**
+ * A short notice whose whole body carries one state.
+ *
+ * The shape a decision takes: an action was applied or rejected, and the card says so across its
+ * full width rather than in a coloured mark at the start of a row. A framed block is the wrong kind
+ * for it, because a notice has no sections to group and no header row to sit above them, and a text
+ * block is the wrong kind too, because a run of styled text states no state at all.
+ *
+ * A span inside a notice states EMPHASIS and structure, never colour: the whole notice is one
+ * state, so a host that let a span carry its own tone would be drawing two answers to the same
+ * question. A tone on such a span is the tool overriding the notice, and a host is free to ignore
+ * it.
+ */
+export interface NoticeView {
+	kind: "notice";
+	state: ViewStatus;
+	/** A symbol the notice opens with, as a registry key the host resolves; unknown to a host, it is dropped. */
+	mark?: string;
+	headline: ViewLine;
+	/** A short label set off at the end of the headline, naming what the notice is about. */
+	tag?: string;
+	/** Lines under the headline, inside the same notice. */
+	body?: readonly ViewLine[];
+}
+
 /** Everything a host knows how to draw. */
-export type ToolView = StatusRowView | TextBlockView | HeadedBlockView | FramedBlockView;
+export type ToolView = StatusRowView | TextBlockView | HeadedBlockView | FramedBlockView | NoticeView;
 
 /**
  * The views that are one line of text, which a host can draw without a width.

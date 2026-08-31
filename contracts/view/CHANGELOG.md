@@ -17,3 +17,4 @@
 - `ViewSpan.link` and `StatusRowView.descriptionLink` name a target a run of text points at, so a card states where a URL leads without writing a terminal escape sequence, and `ViewTone` carries a `link` tone for text that is a target.
 - `ViewSection.hidden` states what a section held back as a `ViewHiddenCount`, so a framed card discloses the rows it did not draw the same way a headed card already did.
 - `FramedBlockView.contents` distinguishes a card whose body is a status report from one whose body is fetched data, so a host paints the outcome across a report and leaves fetched content on its own ground.
+- `NoticeView` states a short notice whose whole body carries one state — a headline, an optional tag and lines under it — so a tool describes a decision without filling a plate itself; a span inside a notice states emphasis and structure, never colour.

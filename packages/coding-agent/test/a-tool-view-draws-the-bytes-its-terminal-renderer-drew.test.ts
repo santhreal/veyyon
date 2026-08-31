@@ -69,12 +69,18 @@ import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensi
 import { RegisteredToolAdapter } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import type { ThemeColor } from "@veyyon/coding-agent/theme/color";
 import { initTheme, type Theme as TerminalTheme, theme } from "@veyyon/coding-agent/theme/theme";
-import { drawSpan, drawStatusRow, drawToolViewText, toolDrawsItself } from "@veyyon/coding-agent/tui/draw-tool-view";
+import {
+	drawNotice,
+	drawSpan,
+	drawStatusRow,
+	drawToolViewText,
+	toolDrawsItself,
+} from "@veyyon/coding-agent/tui/draw-tool-view";
 import { renderStatusLine } from "@veyyon/coding-agent/tui/status-line";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
-import { truncateToWidth } from "@veyyon/utils/width";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
-import type { LineToolView, ToolView, ViewTone } from "@veyyon/view";
+import type { LineToolView, ToolView, ViewStatus, ViewTone } from "@veyyon/view";
 import { createToolExecution } from "./helpers/tool-execution";
 
 // `theme` is a live module binding the engine assigns, so it is undefined until a theme loads. Every
@@ -114,7 +120,7 @@ afterAll(() => {
  * drawer that cannot lay it out.
  */
 function lineView(view: ToolView): LineToolView {
-	if (view.kind === "framedBlock" || view.kind === "headedBlock") {
+	if (view.kind === "framedBlock" || view.kind === "headedBlock" || view.kind === "notice") {
 		throw new Error(`expected a one-line view, got ${view.kind}`);
 	}
 	return view;
@@ -259,6 +265,51 @@ describe("the measurement itself", () => {
 		// came from the target rather than from the tone.
 		settings.override("tui.hyperlinks", "always");
 		expect(drawSpan({ text: "example.com /docs", tone: "link" }, theme)).not.toContain("\u001b]8;");
+	});
+
+	/**
+	 * Which colour a notice's plate carries for each state, and what the plate is made of.
+	 *
+	 * `NOTICE_COLORS: Record<ViewStatus, ThemeColor>` in `tui/draw-tool-view.ts` is total, so a status
+	 * added to the contract fails the type check there rather than falling into whichever branch ran
+	 * last. This is the runtime half of that: the three outcome states a decision reaches draw in
+	 * three different colours, the reductions draw as the state they reduce to, and every state fills
+	 * a rectangle rather than leaving a ragged row.
+	 */
+	it("fills a notice's plate in one colour per state, and pins the states that share one", () => {
+		const statuses: readonly ViewStatus[] = [
+			"success",
+			"done",
+			"error",
+			"warning",
+			"info",
+			"pending",
+			"running",
+			"aborted",
+		];
+		const plateFor = (state: ViewStatus): readonly string[] =>
+			drawNotice({ kind: "notice", state, headline: [{ text: "Accept:", bold: true }] }, theme).render(24);
+		const rows = new Map(statuses.map(state => [state, plateFor(state)]));
+		for (const plate of rows.values()) {
+			// Three rows, every one of them the full width: a plate with a short row has a hole in it.
+			expect(plate).toHaveLength(3);
+			for (const row of plate) expect(visibleWidth(stripVTControlCharacters(row))).toBe(24);
+			expect(stripVTControlCharacters(plate[1] ?? "")).toContain("Accept:");
+		}
+		const colourOf = (state: ViewStatus): string => (rows.get(state)?.[1] ?? "").replace(/[^\u001b[;0-9m]/g, "");
+		// The reductions, pinned by equality rather than described: a settled decision and a completed
+		// one look the same, and an aborted one looks like a warning.
+		expect(colourOf("done")).toBe(colourOf("success"));
+		expect(colourOf("aborted")).toBe(colourOf("warning"));
+		// The three a resolution reaches are three different colours, so the parity cells in the
+		// differential suite cannot be passing on one colour for everything.
+		expect(new Set([colourOf("success"), colourOf("error"), colourOf("warning")]).size).toBe(3);
+		// A tone inside a notice is the tool arguing with the plate, and the plate wins.
+		const toned = drawNotice(
+			{ kind: "notice", state: "success", headline: [{ text: "Accept:", tone: "error" }] },
+			theme,
+		).render(24);
+		expect(toned[1]).toBe(plateFor("success")[1]?.replace(theme.bold("Accept:"), "Accept:"));
 	});
 });
 

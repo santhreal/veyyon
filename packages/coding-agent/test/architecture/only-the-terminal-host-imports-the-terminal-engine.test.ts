@@ -88,7 +88,6 @@ const ENGINE_IMPORTERS = [
 	"theme/theme-class.ts",
 	"theme/theme.ts",
 	"tools/agent/ask-render.ts",
-	"tools/agent/resolve-render.ts",
 	"tools/agent/todo-render.ts",
 	"tools/agent/vibe-render.ts",
 	"tools/fs/inspect-image-renderer.ts",
