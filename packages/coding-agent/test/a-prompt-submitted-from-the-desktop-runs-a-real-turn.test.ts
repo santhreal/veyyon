@@ -26,6 +26,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as net from "node:net";
 import * as path from "node:path";
+import type { AssistantMessage } from "@veyyon/ai";
 import * as ai from "@veyyon/ai/stream";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { getAgentDbPath, TempDir } from "@veyyon/utils";
@@ -153,7 +154,7 @@ describe("a prompt submitted from the desktop runs a real turn", () => {
 
 	function createMockStream(deltaText: string, fullText: string): AssistantMessageEventStream {
 		const stream = new AssistantMessageEventStream();
-		const baseMessage: ai.AssistantMessage = {
+		const baseMessage: AssistantMessage = {
 			role: "assistant",
 			content: [{ type: "text", text: fullText }],
 			api: "openai-chat",
@@ -284,6 +285,26 @@ describe("a prompt submitted from the desktop runs a real turn", () => {
 		const assistantEntry = assistantAppends[0].TranscriptAppended.entries.find(e => e.role === "Assistant");
 		expect(assistantEntry?.content).toEqual([{ Text: { text: "Hello from engine!" } }]);
 
+		// One reply is one accumulating entry. The desktop replaces the entry
+		// named here on each frame, so a name minted per frame turns one streamed
+		// reply into a column of duplicates; a wire entry with no name at all
+		// leaves the desktop nothing to replace.
+		const streamNames = new Set(
+			receivedFrames
+				.filter(
+					(f): f is { StreamingChanged: { entry: string } } =>
+						"StreamingChanged" in f && f.StreamingChanged !== null,
+				)
+				.map(f => f.StreamingChanged.entry),
+		);
+		expect(streamNames.size).toBe(1);
+		expect([...streamNames][0]).toBeTruthy();
+
+		// The reply ends by clearing the accumulating entry, or the desktop draws
+		// a reply that never finished under the one it appended.
+		const streamingFrames = receivedFrames.filter(f => "StreamingChanged" in f);
+		expect(streamingFrames.at(-1)).toEqual({ StreamingChanged: null });
+
 		client.destroy();
 	});
 
@@ -328,7 +349,7 @@ describe("a prompt submitted from the desktop runs a real turn", () => {
 	test("AbortTurn during active streaming turn aborts execution and answers RequestSucceeded", async () => {
 		vi.spyOn(ai, "streamSimple").mockImplementation((_model, _ctx, options) => {
 			const stream = new AssistantMessageEventStream();
-			const baseMessage: ai.AssistantMessage = {
+			const baseMessage: AssistantMessage = {
 				role: "assistant",
 				content: [{ type: "text", text: "Thinking deeply..." }],
 				api: "openai-chat",
@@ -445,6 +466,7 @@ describe("a prompt submitted from the desktop runs a real turn", () => {
 		existingSm.appendMessage({
 			role: "user",
 			content: [{ type: "text", text: "Initial question" }],
+			timestamp: Date.now(),
 		});
 		existingSm.appendMessage({
 			role: "assistant",
