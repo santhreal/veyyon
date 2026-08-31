@@ -98,8 +98,13 @@ const PANE_SEP_COLS = 3;
  * three rows, and the accounts it applies to were pushed under the fold. Below
  * this the card gives the column away instead, and shows one pane at a time when
  * even the floor cannot buy it.
+ *
+ * The floor is 40 rather than the 46 that wrap measured: an 80-column terminal —
+ * the width every other surface here is drawn against — leaves the card 68
+ * content columns, and 20 + 3 + 46 asks for 69. A floor that stacks the standard
+ * terminal trades a wrapped sentence for a pane nobody asked to hide.
  */
-const MIN_BODY_WIDTH = 46;
+const MIN_BODY_WIDTH = 40;
 /**
  * Rows the sidebar spends below its provider list: a blank gap, a rule, and the account tally.
  *

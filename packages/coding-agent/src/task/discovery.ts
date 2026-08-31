@@ -35,7 +35,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getGlobalSubagentsDir, readdirIfPresent, reportFault } from "@veyyon/utils";
+import { agreeWith, getGlobalSubagentsDir, readdirIfPresent, reportFault } from "@veyyon/utils";
 import { isProviderEnabled } from "../capability";
 import { listClaudePluginRoots, pluginsRootFor } from "../discovery/helpers";
 import { listVeyyonExtensionRoots } from "../discovery/veyyon-extension-roots";
@@ -91,7 +91,7 @@ async function loadAgentsFromDir(dir: string, source: AgentSource): Promise<Agen
 						if (unknown.length > 0) {
 							reportFault({
 								source: "agents",
-								text: `${filePath} lists ${unknown.length === 1 ? "a tool" : "tools"} veyyon does not recognize (${unknown.join(", ")}), so ${unknown.length === 1 ? "it grants" : "they grant"} nothing and the matching guidance is left out of the agent's system prompt. Check the spelling against the built-in tool names, or namespace a third-party tool as mcp__<server>__<tool>.`,
+								text: `${filePath} lists ${unknown.length === 1 ? "a tool" : "tools"} veyyon does not recognize (${unknown.join(", ")}), so ${agreeWith("it/they", unknown.length)} ${agreeWith("does/do", unknown.length)} nothing and the matching guidance is left out of the agent's system prompt. Check the spelling against the built-in tool names, or namespace a third-party tool as mcp__<server>__<tool>.`,
 								context: { filePath, tools: unknown },
 							});
 						}

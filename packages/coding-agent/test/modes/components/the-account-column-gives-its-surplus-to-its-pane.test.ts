@@ -9,16 +9,17 @@
  * `a-split-card-yields-its-column-before-it-starves-its-pane.test.ts` holds every
  * split card to a pane of thirty columns, and a pane can clear thirty and still
  * wrap this card's sentences. The column here keeps its natural width only while
- * the pane holds forty-six, yields down to twenty to keep it there, and the card
+ * the pane holds forty, yields down to twenty to keep it there, and the card
  * shows one pane at a time when even that cannot be bought. Every width from the
  * narrowest the shell draws upward is measured, so the yield cannot be correct at
- * a handful of round numbers and wrong between them.
+ * a handful of round numbers and wrong between them, and 80 columns is pinned on
+ * its own, since that is the width the floor was first set too high for.
  *
  * The inventory below names providers at the maximum column width, because a
  * short name makes the yield unobservable: the column asks for less than the pane
  * would have given back, and a build that never yields looks identical.
  *
- * WHAT IT DOES NOT CATCH: legibility. A forty-six-column pane can still wrap a
+ * WHAT IT DOES NOT CATCH: legibility. A forty-column pane can still wrap a
  * long account name badly, and a twenty-column provider list still truncates
  * `Anthropic (subscription)`. It also measures the frame at rest — no search
  * band open, no add-account flow — so a pane reachable only through those states
@@ -32,7 +33,7 @@ import type { AccountInventory } from "@veyyon/coding-agent/session/account-inve
 import { CURSOR_MARKER } from "@veyyon/tui";
 
 /** The card's own floor for the pane, mirrored from `MIN_BODY_WIDTH`. */
-const MIN_BODY_WIDTH = 46;
+const MIN_BODY_WIDTH = 40;
 /** The narrowest provider column the card will draw, mirrored from `SIDEBAR_MIN_WIDTH`. */
 const SIDEBAR_MIN_WIDTH = 20;
 /** The widest, mirrored from `SIDEBAR_MAX_WIDTH`. */
@@ -187,6 +188,17 @@ describe("the account manager column gives its surplus to its pane", () => {
 			return previous && row.columnCols < previous.columnCols ? [`${previous.width}->${row.width}`] : [];
 		});
 		expect(shrinking).toEqual([]);
+	});
+
+	test("an eighty-column terminal still draws both panes", () => {
+		// The floor is a trade, and this is the side of it that a number chosen from
+		// the wrap alone got wrong: 46 stacked the card at 80 columns, which is the
+		// width every other surface here is measured at, and `/account` opened onto
+		// a provider list with the accounts one keystroke away instead of beside it.
+		const geometry = split(80);
+		expect(geometry).toBeDefined();
+		expect(geometry?.paneCols).toBeGreaterThanOrEqual(MIN_BODY_WIDTH);
+		expect(frame(80).some(line => stripVTControlCharacters(line).includes("Accounts › "))).toBe(false);
 	});
 
 	test("below the floor the card shows one pane, not two starved ones", () => {

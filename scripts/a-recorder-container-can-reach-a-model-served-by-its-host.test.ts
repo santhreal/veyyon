@@ -61,7 +61,6 @@ async function translate(url: string): Promise<string> {
 
 interface StubRun {
 	argv: string[];
-	joined: string;
 }
 
 /** Run a recorder with a stub `docker` and return the argv it was handed. */
@@ -70,7 +69,10 @@ async function recorderArgv(recorder: string, endpoint: string | undefined): Pro
 	try {
 		const argvFile = path.join(dir, "argv.txt");
 		const stub = path.join(dir, "docker");
-		await fs.writeFile(stub, '#!/bin/sh\nfor a in "$@"; do printf "%s\\n" "$a" >>"$ARGV_FILE"; done\n');
+		// NUL between arguments, not a newline: the last argument is the container's
+		// whole bootstrap script, and a newline separator split it into one argv entry
+		// per line, so the entry the assertions below read was its closing line.
+		await fs.writeFile(stub, '#!/bin/sh\nfor a in "$@"; do printf "%s\\0" "$a" >>"$ARGV_FILE"; done\n');
 		await fs.chmod(stub, 0o755);
 		// wlroots refuses to start without a render node and the recorder checks for
 		// one before it spawns anything, so the wayland arm needs a path that exists.
@@ -86,8 +88,8 @@ async function recorderArgv(recorder: string, endpoint: string | undefined): Pro
 		if (endpoint === undefined) delete env.PROOF_LLM_BASE_URL;
 		else env.PROOF_LLM_BASE_URL = endpoint;
 		await run("bash", [path.join(DOCKER_DIR, recorder), "proof/scenes/demo-hd.sh"], { env });
-		const argv = (await fs.readFile(argvFile, "utf8")).split("\n").filter(line => line.length > 0);
-		return { argv, joined: argv.join("\n") };
+		const argv = (await fs.readFile(argvFile, "utf8")).split("\0").filter(entry => entry.length > 0);
+		return { argv };
 	} finally {
 		await fs.rm(dir, { recursive: true, force: true });
 	}
@@ -125,13 +127,23 @@ describe("a recorder container can reach a model served by its host", () => {
 
 	describe.each(ENDPOINT_FORWARDERS)("%s", recorder => {
 		it("hands the container the gateway endpoint and the route to it", async () => {
-			const { argv, joined } = await recorderArgv(recorder, "http://127.0.0.1:11434/v1");
+			const { argv } = await recorderArgv(recorder, "http://127.0.0.1:11434/v1");
 			expect(argv).toContain(`PROOF_LLM_BASE_URL=http://${ALIAS}:11434/v1`);
 			expect(argv).toContain(`${ALIAS}:host-gateway`);
 			expect(argv).toContain("--add-host");
-			// The whole point: nothing the container is handed resolves to itself.
-			expect(joined).not.toContain("127.0.0.1");
-			expect(joined).not.toContain("localhost:");
+			// The whole point: nothing the container is HANDED resolves to itself. The
+			// flags and env are swept whole; the bootstrap is judged separately,
+			// because a scene may start a stub provider inside this container and dial
+			// it on loopback, and there the loopback address is the right one. Such a
+			// URL still has to name a port the same bootstrap serves, so a host
+			// loopback written into the script is red exactly as it was before.
+			const bootstrap = argv[argv.length - 1] ?? "";
+			const handed = argv.slice(0, -1).join("\n");
+			expect(handed).not.toContain("127.0.0.1");
+			expect(handed).not.toContain("localhost:");
+			const dialled = [...bootstrap.matchAll(/(?:127\.0\.0\.1|localhost):(\d+)/g)].map(match => match[1]);
+			const served = new Set([...bootstrap.matchAll(/stub-[\w-]+\.ts (\d+)/g)].map(match => match[1]));
+			expect(dialled.filter(port => !served.has(port))).toEqual([]);
 		});
 
 		it("passes a hostname the bridge already resolves through untouched", async () => {
