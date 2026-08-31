@@ -27,7 +27,7 @@ import {
 	DEFAULT_FILE_LIMIT,
 	MULTI_FILE_PER_FILE_MATCHES,
 	SINGLE_FILE_MATCHES,
-} from "@veyyon/coding-agent/tools/text-search";
+} from "@veyyon/coding-agent/tools/search/text-search";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
 

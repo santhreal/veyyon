@@ -86,12 +86,37 @@ describe("tool results that read as failures are marked as failures", () => {
 		return violations;
 	}
 
-	const toolFiles = readdirSync(TOOLS_DIR).filter(f => f.endsWith(".ts") && !f.endsWith(".test.ts"));
+	/**
+	 * Every tool module, at any depth. A flat `readdirSync` read the tools directory when every tool
+	 * was a file in it; the tools now sit in domain directories, so a flat read finds `index.ts`,
+	 * `renderers.ts` and nothing else, and every assertion below passes for want of a subject. The
+	 * floor in the next cell is what turns that back into a red run.
+	 */
+	function toolModules(dir: string, prefix = ""): string[] {
+		const found: string[] = [];
+		for (const entry of readdirSync(dir, { withFileTypes: true })) {
+			const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+			if (entry.isDirectory()) {
+				if (entry.name === "__tests__") continue;
+				found.push(...toolModules(path.join(dir, entry.name), rel));
+				continue;
+			}
+			if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) found.push(rel);
+		}
+		return found;
+	}
+
+	const toolFiles = toolModules(TOOLS_DIR);
 
 	it("scans a tool surface large enough for the check to mean something", () => {
 		// If the directory moves or the filter breaks, every assertion below passes
 		// vacuously. This is the tripwire for that.
 		expect(toolFiles.length).toBeGreaterThan(20);
+		// And it reaches into the domain directories rather than stopping at the two modules that
+		// stayed at the top: a sweep that lost the tools themselves would still clear the floor above.
+		expect(toolFiles).toContain("fs/read.ts");
+		expect(toolFiles).toContain("shell/bash.ts");
+		expect(toolFiles).toContain("agent/ask.ts");
 	});
 
 	it("finds no unmarked failure result in any tool", () => {

@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { TodoReminderComponent } from "@veyyon/coding-agent/modes/terminal/components/dashboard/todo-reminder";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import type { TodoItem } from "@veyyon/coding-agent/tools/todo";
+import type { TodoItem } from "@veyyon/coding-agent/tools/agent/todo";
 
 function render(todos: TodoItem[]): string {
 	return Bun.stripANSI(new TodoReminderComponent(todos, 1, 3).render(100).join("\n"));

@@ -3,13 +3,13 @@
 > Send a local image file to a vision-capable model and return text analysis.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/inspect-image.ts`
+- Entry: `packages/coding-agent/src/tools/fs/inspect-image.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/inspect-image.md`
 - Key collaborators:
-  - `packages/coding-agent/src/tools/inspect-image-renderer.ts`: TUI call/result rendering.
+  - `packages/coding-agent/src/tools/fs/inspect-image-renderer.ts`: TUI call/result rendering.
   - `packages/coding-agent/src/utils/image-loading.ts`: path resolution, type detection, size gate, optional resize.
   - `packages/coding-agent/src/utils/image-resize.ts`: downscale and recompress oversized images.
-  - `packages/coding-agent/src/tools/path-utils.ts`: resolve input path relative to session cwd.
+  - `packages/coding-agent/src/tools/core/path-utils.ts`: resolve input path relative to session cwd.
   - `packages/utils/src/mime.ts`: detect supported image formats from file bytes.
 
 ## Inputs
@@ -30,7 +30,7 @@ The tool returns a single `AgentToolResult`:
 
 Model-visible output is single-shot, not streamed by this tool.
 
-TUI rendering adds presentation-only truncation from `packages/coding-agent/src/tools/inspect-image-renderer.ts`:
+TUI rendering adds presentation-only truncation from `packages/coding-agent/src/tools/fs/inspect-image-renderer.ts`:
 
 - call preview truncates `question` to 100 columns,
 - result view shows 4 lines collapsed or 16 lines expanded,
@@ -39,7 +39,7 @@ TUI rendering adds presentation-only truncation from `packages/coding-agent/src/
 
 ## Flow
 1. `InspectImageTool.execute(...)` rejects immediately if `images.blockImages` is enabled in session settings.
-2. It reads `session.modelRegistry`; missing registry, empty registry, missing API key, or unresolved model each raise `ToolError` from `packages/coding-agent/src/tools/inspect-image.ts`.
+2. It reads `session.modelRegistry`; missing registry, empty registry, missing API key, or unresolved model each raise `ToolError` from `packages/coding-agent/src/tools/fs/inspect-image.ts`.
 3. Model selection tries, in order, `@vision`, `@default`, the active model string from the session, then `availableModels[0]`. `expandRoleAlias(...)` and `resolveModelFromString(...)` handle each lookup.
 4. The chosen model must advertise `input.includes("image")`; otherwise execution fails before reading the file.
 5. `loadImageInput(...)` in `packages/coding-agent/src/utils/image-loading.ts` resolves the path with `resolveReadPath(...)`, detects MIME type with `readImageMetadata(...)`, and rejects files larger than `MAX_IMAGE_INPUT_BYTES` (`20 * 1024 * 1024`, 20 MiB) using `ImageInputTooLargeError`.

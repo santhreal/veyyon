@@ -13,7 +13,7 @@ import { formatMoreLines } from "@veyyon/utils/format";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { getSymbolTheme } from "../../../../theme/symbol-theme";
 import { theme } from "../../../../theme/theme-binding";
-import { formatTruncationMetaNotice, type TruncationMeta } from "../../../../tools/output-meta";
+import { formatTruncationMetaNotice, type TruncationMeta } from "../../../../tools/core/output-meta";
 import { expandHintSuffix } from "../../utils/key-hint";
 import { truncateToVisualLines } from "./visual-truncate";
 

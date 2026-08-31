@@ -8,8 +8,8 @@ import { resetActiveSkillsForTests, type Skill, setActiveSkills } from "@veyyon/
 import type { HindsightSessionState } from "@veyyon/coding-agent/memory/hindsight/state";
 import type { MnemopiSessionState } from "@veyyon/coding-agent/memory/mnemopi/state";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
-import { LearnTool } from "@veyyon/coding-agent/tools/learn";
-import { ManageSkillTool } from "@veyyon/coding-agent/tools/manage-skill";
+import { LearnTool } from "@veyyon/coding-agent/tools/agent/learn";
+import { ManageSkillTool } from "@veyyon/coding-agent/tools/agent/manage-skill";
 import { removeWithRetries } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides, setAgentDir } from "@veyyon/utils/dirs";
 import { type } from "arktype";

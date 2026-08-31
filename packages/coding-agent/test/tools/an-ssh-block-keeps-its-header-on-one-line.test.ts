@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
-import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
-import { sshToolRenderer } from "@veyyon/coding-agent/tools/ssh-render";
+import { previewWindowRows } from "@veyyon/coding-agent/tools/core/render-utils";
+import { sshToolRenderer } from "@veyyon/coding-agent/tools/shell/ssh-render";
 import { sanitizeText } from "@veyyon/utils";
 
 beforeAll(async () => {

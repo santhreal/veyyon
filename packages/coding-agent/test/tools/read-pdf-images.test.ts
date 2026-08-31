@@ -12,7 +12,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import * as markit from "@veyyon/coding-agent/utils/markit";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";

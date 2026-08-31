@@ -17,9 +17,9 @@ import {
 	JSON_TREE_SCALAR_LEN_COLLAPSED,
 	JSON_TREE_SCALAR_LEN_EXPANDED,
 	renderJsonTreeLines,
-} from "../tools/json-tree-render";
-import { formatStyledTruncationWarning, stripOutputNotice } from "../tools/output-meta";
-import { formatExpandHint, truncateToWidth } from "../tools/render-utils";
+} from "../tools/core/json-tree-render";
+import { formatStyledTruncationWarning, stripOutputNotice } from "../tools/core/output-meta";
+import { formatExpandHint, truncateToWidth } from "../tools/core/render-utils";
 import { renderStatusLine, WidthAwareText } from "../tui";
 import type { MCPToolDetails } from "./tool-bridge";
 

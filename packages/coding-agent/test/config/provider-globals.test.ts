@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import { applyProviderGlobalsFromSettings } from "@veyyon/coding-agent/config/provider-globals";
-import * as imageGen from "@veyyon/coding-agent/tools/image-gen";
+import * as imageGen from "@veyyon/coding-agent/tools/web/image-gen";
 import * as webSearch from "@veyyon/coding-agent/web/search";
 
 describe("applyProviderGlobalsFromSettings", () => {

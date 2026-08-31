@@ -3,11 +3,11 @@
 > Wait for or cancel background jobs managed by the session async runtime.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/job.ts`
+- Entry: `packages/coding-agent/src/tools/shell/job.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/job.md`
 - Key collaborators:
   - `packages/coding-agent/src/async/job-manager.ts`: job registry, cancellation, delivery suppression.
-  - `packages/coding-agent/src/tools/bash.ts`: explicit async bash and auto-backgrounded bash jobs.
+  - `packages/coding-agent/src/tools/shell/bash.ts`: explicit async bash and auto-backgrounded bash jobs.
   - `packages/coding-agent/src/task/index.ts`: async task-job scheduling.
   - `packages/coding-agent/src/sdk.ts`: automatic follow-up delivery for unsuppressed completions.
   - `packages/coding-agent/src/config/settings-schema.ts`: `async.pollWaitDuration` options.
@@ -78,7 +78,7 @@ Read-only snapshot path:
 - Read-only inspection: call with `list: true` for the same snapshot data without waiting on completion.
 
 Spawn paths that produce jobs:
-- `packages/coding-agent/src/tools/bash.ts`
+- `packages/coding-agent/src/tools/shell/bash.ts`
   - `async: true` always registers a `type: "bash"` job with `AsyncJobManager.register(...)` and returns a start message.
   - auto-background mode (`bash.autoBackground.enabled`) starts the same managed job path for non-PTY commands, waits up to `min(bash.autoBackground.thresholdMs, timeoutMs - 1000)`, and if the command is still running returns a background-job start result instead of inline command output.
 - `packages/coding-agent/src/task/index.ts`
@@ -111,7 +111,7 @@ Lifecycle and exact state names:
   - allowed values: `5s`, `10s`, `30s`, `1m`, `5m`, `smart`
   - default: `smart`
   - fixed values block for exactly that long; `smart` uses the adaptive ladder `POLL_WAIT_LADDER_MS = [30s, 4m]` in `packages/coding-agent/src/async/job-manager.ts`, climbing one rung per back-to-back poll and resetting to the 30s floor after `POLL_ESCALATION_RESET_MS = 60_000` ms without polling. The 4-minute ceiling stays below the 5-minute prompt-cache boundary. Per-owner state is driven by `nextPollWaitMs(...)` / `recordPollWaitEnd(...)`.
-- Progress update cadence while polling: `PROGRESS_INTERVAL_MS = 500` in `packages/coding-agent/src/tools/job.ts`.
+- Progress update cadence while polling: `PROGRESS_INTERVAL_MS = 500` in `packages/coding-agent/src/tools/shell/job.ts`.
 - Async job retention default: `DEFAULT_RETENTION_MS = 5 * 60 * 1000` in `packages/coding-agent/src/async/job-manager.ts`.
 - Manager fallback max-running limit: `DEFAULT_MAX_RUNNING_JOBS = 15` in `packages/coding-agent/src/async/job-manager.ts`.
 - Session wiring clamps `async.maxJobs` to `1..100` before constructing the manager in `packages/coding-agent/src/sdk.ts`; settings default is `100` in `packages/coding-agent/src/config/settings-schema.ts`.

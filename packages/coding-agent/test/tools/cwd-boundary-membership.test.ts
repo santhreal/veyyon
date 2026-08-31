@@ -20,7 +20,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { hasFilesystemTargets } from "@veyyon/coding-agent/tools/cwd-boundary";
+import { hasFilesystemTargets } from "@veyyon/coding-agent/tools/core/cwd-boundary";
 
 /**
  * Every tool that declares filesystem targets, by the `name` its class exposes.
@@ -40,14 +40,14 @@ const BOUND_TOOLS = ["ast_edit", "bash", "edit", "inspect_image", "read", "searc
 
 /** Source files that implement a tool class, keyed by the tool's `name`. */
 const TOOL_SOURCES: ReadonlyArray<readonly [name: string, file: string]> = [
-	["ast_edit", "ast-edit.ts"],
-	["bash", "bash.ts"],
+	["ast_edit", "search/ast-edit.ts"],
+	["bash", "shell/bash.ts"],
 	["edit", "../edit/index.ts"],
-	["inspect_image", "inspect-image.ts"],
-	["read", "read.ts"],
-	["search", "search.ts"],
-	["set_cwd", "set-cwd.ts"],
-	["write", "write.ts"],
+	["inspect_image", "fs/inspect-image.ts"],
+	["read", "fs/read.ts"],
+	["search", "search/search.ts"],
+	["set_cwd", "fs/set-cwd.ts"],
+	["write", "fs/write.ts"],
 ];
 
 const SRC_TOOLS = path.join(import.meta.dir, "..", "..", "src", "tools");
@@ -72,15 +72,26 @@ describe("boundary membership", () => {
 	it("finds no tool source declaring filesystemTargets outside the pinned set", () => {
 		const known = new Set(TOOL_SOURCES.map(([, file]) => path.basename(file)));
 		const stray: string[] = [];
-		for (const entry of fs.readdirSync(SRC_TOOLS)) {
-			if (!entry.endsWith(".ts") || entry.endsWith(".test.ts")) continue;
-			// `cwd-boundary.ts` DEFINES the interface and the shared search helper,
-			// so it names the symbol without being a tool.
-			if (entry === "cwd-boundary.ts") continue;
-			if (known.has(entry)) continue;
-			const source = fs.readFileSync(path.join(SRC_TOOLS, entry), "utf8");
-			if (source.includes("readonly filesystemTargets")) stray.push(entry);
-		}
+		// Recursive, because the tools live in domain directories. A flat read of the tools directory
+		// finds `index.ts` and `renderers.ts`, neither of which declares a target, so it reported an
+		// empty stray set for a tree it never opened.
+		const walk = (dir: string, prefix: string): void => {
+			for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+				const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+				if (entry.isDirectory()) {
+					if (entry.name !== "__tests__") walk(path.join(dir, entry.name), rel);
+					continue;
+				}
+				if (!entry.name.endsWith(".ts") || entry.name.endsWith(".test.ts")) continue;
+				// `core/cwd-boundary.ts` DEFINES the interface and the shared search helper,
+				// so it names the symbol without being a tool.
+				if (entry.name === "cwd-boundary.ts") continue;
+				if (known.has(entry.name)) continue;
+				const source = fs.readFileSync(path.join(dir, entry.name), "utf8");
+				if (source.includes("readonly filesystemTargets")) stray.push(rel);
+			}
+		};
+		walk(SRC_TOOLS, "");
 		expect(stray).toEqual([]);
 	});
 

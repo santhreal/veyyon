@@ -1021,7 +1021,7 @@ export async function getThemeExportColors(themeName?: string): Promise<{
  *
  * It moved because `./markdown-theme` took it from here for one field, and this module is 144 marginal
  * modules on that graph: the whole presentation layer arrived in every rendered code cell and, through
- * `tools/read.ts`, in every file read. `symbol-theme.ts` needs the live binding and a type.
+ * `tools/fs/read.ts`, in every file read. `symbol-theme.ts` needs the live binding and a type.
  */
 export { getSymbolTheme } from "./symbol-theme";
 

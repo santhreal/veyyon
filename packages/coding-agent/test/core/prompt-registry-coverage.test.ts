@@ -90,7 +90,7 @@ const CODING_AGENT_REGISTRY_MODULE = registryModuleOf(codingAgentPrompts);
  * The row modules `registry.ts` aggregates, READ OFF ITS OWN IMPORTS rather than listed here.
  *
  * WHY THE CODING AGENT'S REGISTRY LOOKS DIFFERENT FROM THE OTHER THREE. Its 163 rows used to sit in one
- * module, which meant a consumer of one prompt statically reached all 163: `tools/read.ts` imported the
+ * module, which meant a consumer of one prompt statically reached all 163: `tools/fs/read.ts` imported the
  * registry to render its own description and paid 167 modules for one string, the largest single edge that
  * file had. The rows now live one per prompt DIRECTORY (`prompts/tools/rows.ts` and twenty siblings), and
  * `registry.ts` spreads them into the same `PROMPTS` it always exported, so nothing about the registry's

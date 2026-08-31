@@ -21,7 +21,7 @@
 import { describe, expect, it } from "bun:test";
 import type { AgentTool, AgentToolContext, AgentToolResult } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { wrapToolWithMetaNotice } from "@veyyon/coding-agent/tools/output-meta";
+import { wrapToolWithMetaNotice } from "@veyyon/coding-agent/tools/core/output-meta";
 
 const LINE_WIDTH = 200;
 const LINE_COUNT = 2_000;

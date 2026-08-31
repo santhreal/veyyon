@@ -1,6 +1,6 @@
 import type { LocalProtocolOptions } from "../internal-urls/local-protocol";
 import { resolveLocalUrlToPath } from "../internal-urls/local-protocol";
-import { normalizeLocalScheme, resolveToCwd } from "../tools/path-utils";
+import { normalizeLocalScheme, resolveToCwd } from "../tools/core/path-utils";
 
 /**
  * The one rule for turning a plan file reference into a filesystem path.

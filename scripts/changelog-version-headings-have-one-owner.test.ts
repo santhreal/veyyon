@@ -17,8 +17,8 @@
 
 import { describe, expect, it } from "bun:test";
 import { RELEASE_VERSION_BODY } from "@veyyon/utils/semver";
-import { hasVersionHeading, versionHeadings } from "./changelog-unreleased.ts";
-import { applyReleaseToChangelog } from "./release.ts";
+import { hasVersionHeading, versionHeadings } from "./changelog-unreleased";
+import { applyReleaseToChangelog } from "./release";
 
 describe("versionHeadings", () => {
 	it("returns every version heading in document order with its 1-based line", () => {

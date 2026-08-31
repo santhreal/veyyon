@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { applyOpsToPhases, nextActionableTask } from "@veyyon/coding-agent/tools/todo";
+import { applyOpsToPhases, nextActionableTask } from "@veyyon/coding-agent/tools/agent/todo";
 
 /**
  * Multi-op todo sequences: init → start → done → append → rm with exact statuses.

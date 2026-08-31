@@ -63,8 +63,8 @@ import {
 	theme,
 } from "../../../theme/theme";
 import { type ConfiguredThinkingLevel, hasConfigurableThinkingEffort } from "../../../thinking";
-import { isImageProviderPreference, setPreferredImageProvider } from "../../../tools/image-gen";
-import { shortenPath } from "../../../tools/render-utils";
+import { shortenPath } from "../../../tools/core/render-utils";
+import { isImageProviderPreference, setPreferredImageProvider } from "../../../tools/web/image-gen";
 import { copyToClipboard } from "../../../utils/clipboard";
 import { openPath } from "../../../utils/open";
 import { setSessionTerminalTitle } from "../../../utils/title-generator";

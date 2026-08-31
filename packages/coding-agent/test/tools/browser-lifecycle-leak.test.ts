@@ -17,16 +17,16 @@
  */
 
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
-import type { CmuxKind } from "@veyyon/coding-agent/tools/browser/cmux/rpc";
-import { CmuxSocketClient } from "@veyyon/coding-agent/tools/browser/cmux/socket-client";
-import { acquireBrowser, getBrowsersMapForTest } from "@veyyon/coding-agent/tools/browser/registry";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/core/tool-errors";
+import type { CmuxKind } from "@veyyon/coding-agent/tools/web/browser/cmux/rpc";
+import { CmuxSocketClient } from "@veyyon/coding-agent/tools/web/browser/cmux/socket-client";
+import { acquireBrowser, getBrowsersMapForTest } from "@veyyon/coding-agent/tools/web/browser/registry";
 import {
 	acquireTab,
 	getTabsMapForTest,
 	releaseTab,
 	releaseTabsForOwner,
-} from "@veyyon/coding-agent/tools/browser/tab-supervisor";
-import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
+} from "@veyyon/coding-agent/tools/web/browser/tab-supervisor";
 
 function makeKind(socketSuffix: string): CmuxKind {
 	return { kind: "cmux", socketPath: `/tmp/veyyon-test-${socketSuffix}.sock`, surface: `surface-${socketSuffix}` };

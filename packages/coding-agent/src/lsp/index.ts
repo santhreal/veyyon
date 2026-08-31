@@ -25,13 +25,13 @@ import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import { theme } from "../theme/theme-binding";
 import type { Theme } from "../theme/theme-class";
 import type { ToolSession } from "../tools";
-import { truncateForPrompt } from "../tools/approval";
-import { formatPathRelativeToCwd, resolveToCwd } from "../tools/path-utils";
+import { truncateForPrompt } from "../tools/core/approval";
+import { formatPathRelativeToCwd, resolveToCwd } from "../tools/core/path-utils";
 // The leaf, not `tools/tool-result`: that module builds results and reaches 151 modules through
 // `tools/output-meta`, and this only prepends a string to one already built.
-import { prependResultNotice } from "../tools/result-notice";
-import { ToolAbortError, ToolError, throwIfAborted } from "../tools/tool-errors";
-import { clampTimeout, formatTimeoutClampNotice } from "../tools/tool-timeouts";
+import { prependResultNotice } from "../tools/core/result-notice";
+import { ToolAbortError, ToolError, throwIfAborted } from "../tools/core/tool-errors";
+import { clampTimeout, formatTimeoutClampNotice } from "../tools/core/tool-timeouts";
 import { isTimeoutError, scopedTimeoutSignal } from "../utils/fetch-timeout";
 import {
 	ensureFileOpen,

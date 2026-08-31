@@ -8,7 +8,7 @@
  * it. They are the reason the two were merged rather than left alone.
  */
 import { describe, expect, it } from "bun:test";
-import { unreleasedEntries } from "./changelog-unreleased.ts";
+import { unreleasedEntries } from "./changelog-unreleased";
 
 describe("unreleasedEntries", () => {
 	it("collects only entries under Unreleased, stopping at the next release heading", () => {

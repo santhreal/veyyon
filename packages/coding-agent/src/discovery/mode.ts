@@ -1,5 +1,5 @@
 import type { Settings } from "../config/settings";
-import { type EffectiveToolDiscoveryMode, resolveToolDiscoveryMode } from "../tools/loading";
+import { type EffectiveToolDiscoveryMode, resolveToolDiscoveryMode } from "../tools/core/loading";
 
 /**
  * Settings adapter for the discovery-mode rule.
@@ -14,7 +14,7 @@ export {
 	TOOL_DISCOVERY_AUTO_THRESHOLD,
 	TOOL_DISCOVERY_SEARCH_TOOL_NAME,
 	type ToolDiscoveryModeSetting,
-} from "../tools/loading";
+} from "../tools/core/loading";
 
 export function resolveEffectiveToolDiscoveryMode(settings: Settings, toolCount: number): EffectiveToolDiscoveryMode {
 	return resolveToolDiscoveryMode({

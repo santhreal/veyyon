@@ -1,8 +1,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
-import type { SearchToolDetails } from "@veyyon/coding-agent/tools/search";
-import { SearchTool } from "@veyyon/coding-agent/tools/search";
+import type { SearchToolDetails } from "@veyyon/coding-agent/tools/search/search";
+import { SearchTool } from "@veyyon/coding-agent/tools/search/search";
 import { errorMessage } from "@veyyon/utils";
 import { type FlagGrammar, parseFlags } from "../../engine/flag-grammar";
 import { internalScratchDir } from "../../engine/package-paths";

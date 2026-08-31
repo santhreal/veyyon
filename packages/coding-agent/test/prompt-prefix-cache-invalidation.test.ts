@@ -32,7 +32,7 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { usesCodexTaskPrompt } from "@veyyon/coding-agent/task/prompt-policy";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ArgotUnloadTool } from "@veyyon/coding-agent/tools/argot";
+import { ArgotUnloadTool } from "@veyyon/coding-agent/tools/agent/argot";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries } from "@veyyon/utils";
 import type { Vocabulary } from "argot";

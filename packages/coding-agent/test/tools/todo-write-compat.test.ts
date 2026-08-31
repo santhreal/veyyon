@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { adaptTodoWriteBatch, type TodoPhase, TodoTool } from "@veyyon/coding-agent/tools/todo";
+import { adaptTodoWriteBatch, type TodoPhase, TodoTool } from "@veyyon/coding-agent/tools/agent/todo";
 
 /**
  * Models trained on the Claude/Cursor `TodoWrite` tool send a whole-board write

@@ -10,8 +10,8 @@ import type { AgentSession } from "../../../session/agent-session";
 import { BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE } from "../../../session/messages";
 import { SessionManager } from "../../../session/session-manager";
 import { createMCPProxyTools, createSubagentSettings } from "../../../task/executor";
-import { previewLine } from "../../../tools/render-utils";
-import { USER_TODO_EDIT_CUSTOM_TYPE } from "../../../tools/todo";
+import { USER_TODO_EDIT_CUSTOM_TYPE } from "../../../tools/agent/todo";
+import { previewLine } from "../../../tools/core/render-utils";
 import type { InteractiveModeContext } from "../types";
 
 /**

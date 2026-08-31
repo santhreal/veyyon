@@ -28,8 +28,8 @@ import {
 	resolveProviderTextTransform,
 	transformProviderPayload,
 } from "../../../provider-boundary";
-import type { SearchCitation, SearchResponse, SearchSource } from "../../../web/search/types";
-import { SearchProviderError } from "../../../web/search/types";
+import type { SearchCitation, SearchResponse, SearchSource } from "../types";
+import { SearchProviderError } from "../types";
 import { sanitizeResultLimit } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";

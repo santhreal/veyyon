@@ -37,8 +37,8 @@ import {
 	type TodoPhase,
 	TodoTool,
 	type TodoToolDetails,
-} from "@veyyon/coding-agent/tools/todo";
-import { todoToolRenderer } from "@veyyon/coding-agent/tools/todo-render";
+} from "@veyyon/coding-agent/tools/agent/todo";
+import { todoToolRenderer } from "@veyyon/coding-agent/tools/agent/todo-render";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
 import {

@@ -20,7 +20,7 @@ const readSnippet = [
 
 const writtenContent = [
 	'import { describe, expect, it } from "bun:test";',
-	'import { parseSel } from "../src/tools/read";',
+	'import { parseSel } from "../src/tools/fs/read";',
 	"",
 	'describe("parseSel", () => {',
 	'\tit("parses a single line range", () => {',
@@ -115,14 +115,14 @@ export const fsFixtures: Record<string, GalleryFixture> = {
 	read: {
 		label: "Read",
 		// Streaming: path still being typed, selector not yet appended.
-		streamingArgs: { path: "packages/coding-agent/src/tools/file-search" },
-		args: { path: "packages/coding-agent/src/tools/file-search.ts:478-495" },
+		streamingArgs: { path: "packages/coding-agent/src/tools/search/file-search" },
+		args: { path: "packages/coding-agent/src/tools/search/file-search.ts:478-495" },
 		result: {
 			content: [
 				{
 					type: "text",
 					text: [
-						"[packages/coding-agent/src/tools/file-search.ts#E48E]",
+						"[packages/coding-agent/src/tools/search/file-search.ts#E48E]",
 						"478:export const fileSearchRenderer = {",
 						"479:\tinline: true,",
 						"480:\trenderCall(args: FileSearchRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {",
@@ -140,7 +140,7 @@ export const fsFixtures: Record<string, GalleryFixture> = {
 			],
 			details: {
 				kind: "file",
-				resolvedPath: "/Users/dev/Projects/veyyon/packages/coding-agent/src/tools/file-search.ts",
+				resolvedPath: "/Users/dev/Projects/veyyon/packages/coding-agent/src/tools/search/file-search.ts",
 				contentType: "text/typescript",
 				displayContent: { text: readSnippet, startLine: 478 },
 			},
@@ -150,7 +150,7 @@ export const fsFixtures: Record<string, GalleryFixture> = {
 			content: [
 				{
 					type: "text",
-					text: "Error: ENOENT: no such file or directory, open 'packages/coding-agent/src/tools/file-search.ts'",
+					text: "Error: ENOENT: no such file or directory, open 'packages/coding-agent/src/tools/search/file-search.ts'",
 				},
 			],
 		},
@@ -169,7 +169,8 @@ export const fsFixtures: Record<string, GalleryFixture> = {
 		// Streaming: path known, content still arriving (only the imports so far).
 		streamingArgs: {
 			path: "packages/coding-agent/test/parse-sel.test.ts",
-			content: 'import { describe, expect, it } from "bun:test";\nimport { parseSel } from "../src/tools/read";\n',
+			content:
+				'import { describe, expect, it } from "bun:test";\nimport { parseSel } from "../src/tools/fs/read";\n',
 		},
 		args: {
 			path: "packages/coding-agent/test/parse-sel.test.ts",

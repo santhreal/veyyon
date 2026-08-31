@@ -9,7 +9,7 @@ import type { ModelRegistry } from "../../config/model-registry";
 import { Settings } from "../../config/settings";
 import { SecretObfuscator } from "../../secrets/obfuscator";
 import type { ToolSession } from "../../tools";
-import { ToolError } from "../../tools/tool-errors";
+import { ToolError } from "../../tools/core/tool-errors";
 import { EVAL_TIMEOUT_PAUSE_OP, EVAL_TIMEOUT_RESUME_OP } from "../bridge-timeout";
 import { EVAL_COMPLETION_BRIDGE_NAME, runEvalCompletion } from "../completion-bridge";
 import { IdleTimeout } from "../idle-timeout";

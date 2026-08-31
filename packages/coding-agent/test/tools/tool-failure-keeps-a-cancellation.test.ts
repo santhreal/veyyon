@@ -27,7 +27,7 @@
  * worth seeing.
  */
 import { describe, expect, it } from "bun:test";
-import { ToolAbortError, ToolError, toolFailure } from "@veyyon/coding-agent/tools/tool-errors";
+import { ToolAbortError, ToolError, toolFailure } from "@veyyon/coding-agent/tools/core/tool-errors";
 import { isAbortError } from "@veyyon/utils";
 
 describe("toolFailure", () => {

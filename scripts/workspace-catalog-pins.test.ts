@@ -29,7 +29,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
-import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout.ts";
+import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
 

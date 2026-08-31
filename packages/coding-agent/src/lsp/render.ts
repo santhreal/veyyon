@@ -21,7 +21,7 @@ import {
 	shortenPath,
 	TRUNCATE_LENGTHS,
 	truncateToWidth,
-} from "../tools/render-utils";
+} from "../tools/core/render-utils";
 import { renderStatusLine } from "../tui";
 import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block";
 import { getLanguageFromPath } from "../utils/lang-from-path";

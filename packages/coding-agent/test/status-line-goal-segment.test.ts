@@ -3,8 +3,8 @@ import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/compone
 import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import { stateSeparator } from "@veyyon/coding-agent/modes/terminal/components/status-line/state-grammar";
 import { initTheme, type ThemeColor, theme } from "@veyyon/coding-agent/theme/theme";
-import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/approval";
-import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/approval-modes";
+import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/core/approval";
+import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/core/approval-modes";
 import { useFullColor } from "./helpers/theme-assertions";
 
 // Every assertion below names a colour, so the policy is declared rather than

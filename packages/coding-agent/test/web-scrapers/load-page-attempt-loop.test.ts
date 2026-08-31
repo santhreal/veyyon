@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/core/tool-errors";
 import { loadPage } from "@veyyon/coding-agent/web/scrapers/types";
 import { CHROME_WINDOWS_USER_AGENT } from "@veyyon/coding-agent/web/search/providers/browser-fingerprint-constants";
 

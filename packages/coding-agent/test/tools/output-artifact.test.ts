@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { saveOutputArtifact } from "@veyyon/coding-agent/tools/core/output-artifact";
 import type { ToolSession } from "@veyyon/coding-agent/tools/index";
-import { saveOutputArtifact } from "@veyyon/coding-agent/tools/output-artifact";
 import { makeToolSession } from "../helpers/tool-session";
 
 /**

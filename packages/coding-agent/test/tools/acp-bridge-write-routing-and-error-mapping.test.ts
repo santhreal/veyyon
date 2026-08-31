@@ -1,6 +1,6 @@
 // WHY THIS SUITE EXISTS
 // --------------------
-// `packages/coding-agent/src/tools/acp-bridge.ts` owns the boundary between
+// `packages/coding-agent/src/tools/core/acp-bridge.ts` owns the boundary between
 // agent file-writing tools (write, edit, replace, patch) and external ACP
 // editor clients (e.g. Zed). When an ACP client advertises `fs.writeTextFile`,
 // writes must route to the editor's live buffer instead of writing directly to
@@ -47,8 +47,8 @@ import * as lspClient from "@veyyon/coding-agent/lsp/client";
 import { createAcpClientBridge } from "@veyyon/coding-agent/modes/acp/acp-client-bridge";
 import type { PlanModeState } from "@veyyon/coding-agent/plan-mode/state";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { routeWriteThroughBridge, shouldRouteWriteThroughBridge } from "@veyyon/coding-agent/tools/acp-bridge";
-import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
+import { routeWriteThroughBridge, shouldRouteWriteThroughBridge } from "@veyyon/coding-agent/tools/core/acp-bridge";
+import { ToolError } from "@veyyon/coding-agent/tools/core/tool-errors";
 import type { ClientBridge } from "@veyyon/kernel/session/client-bridge";
 import { removeWithRetries } from "@veyyon/utils";
 

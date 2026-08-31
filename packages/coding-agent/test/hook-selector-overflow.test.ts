@@ -2,8 +2,8 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { HookSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/hook-selector";
 import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/theme/theme";
 import { visibleWidth } from "@veyyon/utils/width";
-import { useFullColor } from "../test/helpers/theme-assertions";
 import { cardBodyLines } from "./helpers/modal-card";
+import { useFullColor } from "./helpers/theme-assertions";
 
 /**
  * Terminal width these cases render at. The selector is a floating card, so the

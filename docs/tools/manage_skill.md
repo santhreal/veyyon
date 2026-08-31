@@ -3,7 +3,7 @@
 > Create, update, or delete an isolated managed skill.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/manage-skill.ts`
+- Entry: `packages/coding-agent/src/tools/agent/manage-skill.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/manage-skill.md`
 - Managed-skill helper: `packages/coding-agent/src/autolearn/managed-skills.ts`
 - Skill discovery: `packages/coding-agent/src/extensibility/skills.ts`

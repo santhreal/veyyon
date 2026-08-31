@@ -1,7 +1,6 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, ApiKey, Model } from "@veyyon/ai";
 import { prompt } from "@veyyon/utils";
-import type { ConventionalAnalysis, FileObservation } from "../../commit/types";
 import { commitPrompts } from "../../prompts/commit/rows";
 import { toReasoningEffort } from "../../thinking";
 import {
@@ -10,6 +9,7 @@ import {
 	parseConventionalAnalysisResponse,
 	type ResolveObfuscateProviderText,
 } from "../shared-llm";
+import type { ConventionalAnalysis, FileObservation } from "../types";
 
 const ReduceTool = createConventionalAnalysisTool("Synthesize file observations into a conventional commit analysis.");
 

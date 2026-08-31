@@ -6,7 +6,7 @@ import type { CustomMessage, SkillPromptDetails } from "../../../../session/mess
 import { withIcon } from "../../../../theme/icon-label";
 import { getMarkdownTheme } from "../../../../theme/markdown-theme";
 import { theme } from "../../../../theme/theme";
-import { shortenPath } from "../../../../tools/render-utils";
+import { shortenPath } from "../../../../tools/core/render-utils";
 import { fileHyperlink } from "../../../../tui";
 import { cardOutlineColor } from "./message-frame";
 

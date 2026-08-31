@@ -1,7 +1,7 @@
 // Gallery fixtures for the agentic orchestration tools (task, irc, goal, job).
 import type { Usage } from "@veyyon/ai";
 import type { TaskToolDetails } from "../../task/types";
-import type { IrcDetails } from "../../tools/irc";
+import type { IrcDetails } from "../../tools/agent/irc";
 import type { GalleryFixture } from "./types";
 
 /** Message/activity timestamps are offsets from load time so gallery ages stay plausible. */

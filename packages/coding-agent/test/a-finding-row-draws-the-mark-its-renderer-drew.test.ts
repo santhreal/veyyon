@@ -1,7 +1,7 @@
 /**
  * The review tool states a finding row, and the terminal draws the row its renderer drew.
  *
- * WHY THIS SUITE EXISTS. `tools/review.ts` was the last module under `src/tools/` that constructed a
+ * WHY THIS SUITE EXISTS. `tools/agent/review.ts` was the last module under `src/tools/` that constructed a
  * terminal value in place, and the thing that kept it there was one glyph: a finding carries a
  * per-priority mark, `ViewStatus` names an outcome rather than a priority, and a host asked for the
  * icon of a status would not draw the P0..P3 symbol. The contract grew `ViewSpan.symbol` for it -- a
@@ -36,7 +36,7 @@ import {
 	getPriorityInfo,
 	PRIORITY_LABELS,
 	reportFindingTool,
-} from "@veyyon/coding-agent/tools/review";
+} from "@veyyon/coding-agent/tools/agent/review";
 import { drawSpan, drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { type AnsiPolicy, type Component, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import type { ToolView } from "@veyyon/view";

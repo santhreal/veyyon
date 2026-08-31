@@ -2,8 +2,8 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
-import type { FileSearchDetails } from "@veyyon/coding-agent/tools/file-search";
-import type { SearchToolDetails } from "@veyyon/coding-agent/tools/search";
+import type { FileSearchDetails } from "@veyyon/coding-agent/tools/search/file-search";
+import type { SearchToolDetails } from "@veyyon/coding-agent/tools/search/search";
 import { materializeCorpus } from "../../../benches/search/corpus";
 import {
 	canonicalizeResultContent,

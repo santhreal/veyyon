@@ -7,8 +7,8 @@ import type {
 	ToolKind,
 } from "@agentclientprotocol/sdk";
 import type { AgentSessionEvent } from "../../session/agent-session-types";
-import { resolveToCwd, splitPathAndSel } from "../../tools/path-utils";
-import type { TodoStatus } from "../../tools/todo";
+import type { TodoStatus } from "../../tools/agent/todo";
+import { resolveToCwd, splitPathAndSel } from "../../tools/core/path-utils";
 import { canonicalizeMessage } from "../../utils/thinking-display";
 
 interface MessageProgress {

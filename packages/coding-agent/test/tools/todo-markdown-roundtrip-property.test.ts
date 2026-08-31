@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { applyOpsToPhases, markdownToPhases, phasesToMarkdown, type TodoPhase } from "@veyyon/coding-agent/tools/todo";
+import {
+	applyOpsToPhases,
+	markdownToPhases,
+	phasesToMarkdown,
+	type TodoPhase,
+} from "@veyyon/coding-agent/tools/agent/todo";
 
 /**
  * phasesToMarkdown ↔ markdownToPhases round-trip over generated lists.

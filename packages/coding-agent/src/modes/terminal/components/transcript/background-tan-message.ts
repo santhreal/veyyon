@@ -2,7 +2,7 @@ import { Text } from "@veyyon/tui";
 import type { BackgroundTanDispatchDetails, CustomMessage } from "../../../../session/messages";
 import { withIcon } from "../../../../theme/icon-label";
 import { theme } from "../../../../theme/theme";
-import { previewLine } from "../../../../tools/render-utils";
+import { previewLine } from "../../../../tools/core/render-utils";
 import { TranscriptBlock } from "./transcript-container";
 
 const TAN_WORK_PREVIEW_LENGTH = 56;

@@ -48,7 +48,7 @@ import {
 	type InlinePricingSource,
 	inlineBudgetFor,
 	inlineOutputPricing,
-} from "@veyyon/coding-agent/tools/output-artifact";
+} from "@veyyon/coding-agent/tools/core/output-artifact";
 import { logger } from "@veyyon/utils";
 
 /** A pricing source with no turn index, which is the flat-cap path. */

@@ -1,5 +1,5 @@
 import { sanitizeText } from "@veyyon/utils";
-import { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "../tools/render-utils";
+import { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "../tools/core/render-utils";
 
 export function formatDebugLogLine(line: string, maxWidth: number): string {
 	const sanitized = sanitizeText(line);

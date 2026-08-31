@@ -49,7 +49,7 @@ import {
 	type Theme,
 	theme,
 } from "@veyyon/coding-agent/theme/theme";
-import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/approval-modes";
+import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/core/approval-modes";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { visibleWidth } from "@veyyon/utils/width";
 

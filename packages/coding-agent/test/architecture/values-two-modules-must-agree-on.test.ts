@@ -194,7 +194,7 @@ describe("each value is declared once", () => {
 	 * interesting part of this suite.
 	 *
 	 * The same eight bytes appear elsewhere and mean different things, so a tree-wide scan for them would be
-	 * wrong rather than merely noisy. `tools/builtin-names.ts` lists veyyon's OWN tool called `web_search`, the
+	 * wrong rather than merely noisy. `tools/core/builtin-names.ts` lists veyyon's OWN tool called `web_search`, the
 	 * one the model calls; `ai/providers/openai-responses-wire.ts` has it as a member of an OpenAI wire type
 	 * union, beside `web_search_2025_08_26`; `web/search/providers/xai.ts` and `.../codex.ts` each name their
 	 * own vendor's server tool. Folding those into one constant would assert that four independent vendors and
@@ -222,7 +222,7 @@ describe("each value is declared once", () => {
 	 */
 	it("leaves the other vendors' identical tool names alone", async () => {
 		const others: ReadonlyArray<[string, string]> = [
-			[path.join(SRC, "tools/builtin-names.ts"), "veyyon's own tool"],
+			[path.join(SRC, "tools/core/builtin-names.ts"), "veyyon's own tool"],
 			[path.join(AI_SRC, "providers/openai-responses-wire.ts"), "OpenAI's wire type"],
 			[path.join(SRC, "web/search/providers/xai.ts"), "xAI's server tool"],
 		];

@@ -28,8 +28,8 @@ const repoRoot = path.join(import.meta.dir, "..", "..", "..");
  */
 const BANNED_ON_BOOT = [
 	"src/vibe/runtime",
-	"src/tools/vibe.ts",
-	"src/tools/irc.ts",
+	"src/tools/agent/vibe.ts",
+	"src/tools/agent/irc.ts",
 	"src/irc/bus",
 	"src/session/agent-session",
 ];

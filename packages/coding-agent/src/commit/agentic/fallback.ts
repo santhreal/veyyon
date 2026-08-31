@@ -1,6 +1,6 @@
 import * as path from "node:path";
-import type { CommitType, ConventionalAnalysis, NumstatEntry } from "../../commit/types";
-import { isTestFilePath } from "../../commit/utils/test-paths";
+import type { CommitType, ConventionalAnalysis, NumstatEntry } from "../types";
+import { isTestFilePath } from "../utils/test-paths";
 import type { CommitProposal } from "./state";
 
 const DOC_EXTENSIONS = new Set([".md", ".txt", ".rst", ".adoc"]);

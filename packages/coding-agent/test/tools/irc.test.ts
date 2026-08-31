@@ -10,7 +10,7 @@ import type { CustomMessage } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { IrcBus, type IrcMessage } from "@veyyon/coding-agent/task/irc-bus";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { IrcTool } from "@veyyon/coding-agent/tools/irc";
+import { IrcTool } from "@veyyon/coding-agent/tools/agent/irc";
 
 interface FakeSession {
 	session: AgentSession;

@@ -21,7 +21,7 @@ import {
 } from "../../packages/coding-agent/src/extensibility/extensions/wrapper";
 import { HookSelectorComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/hook-selector";
 import { initTheme } from "../../packages/coding-agent/src/theme/theme";
-import { formatApprovalCard } from "../../packages/coding-agent/src/tools/approval";
+import { formatApprovalCard } from "../../packages/coding-agent/src/tools/core/approval";
 import { flag, hasFlag, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

@@ -23,7 +23,7 @@ import {
 	type ReleaseTagFacts,
 	releaseTagRefusal,
 	verifyPublishedReleaseAssets,
-} from "./release-policy.ts";
+} from "./release-policy";
 
 const MAIN = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");

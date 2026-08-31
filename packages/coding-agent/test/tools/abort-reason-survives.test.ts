@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { ToolAbortError, throwIfAborted } from "@veyyon/coding-agent/tools/tool-errors";
+import { ToolAbortError, throwIfAborted } from "@veyyon/coding-agent/tools/core/tool-errors";
 
 /**
  * When work is cancelled, the reason has to reach the person who cancelled it.

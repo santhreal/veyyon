@@ -7,7 +7,7 @@ import {
 	formatTimeoutClampNotice,
 	TOOL_TIMEOUTS,
 	type ToolWithTimeout,
-} from "@veyyon/coding-agent/tools/tool-timeouts";
+} from "@veyyon/coding-agent/tools/core/tool-timeouts";
 import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
 
 // Every tool's timeout is derived through `clampTimeout`, which is the single

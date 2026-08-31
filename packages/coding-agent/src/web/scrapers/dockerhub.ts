@@ -1,5 +1,5 @@
 import { tryParseJson } from "@veyyon/utils";
-import { formatBytes } from "../../tools/render-utils";
+import { formatBytes } from "../../tools/core/render-utils";
 import { escapeMarkdownTableCell } from "../../utils/markdown-table";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatIsoDate, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";

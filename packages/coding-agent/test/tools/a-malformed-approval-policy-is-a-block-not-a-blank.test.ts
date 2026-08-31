@@ -38,8 +38,8 @@ import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensi
 import { ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { APPROVAL_POLICY_VALUES, validateApprovalPolicySettings } from "@veyyon/coding-agent/tools/approval";
-import { APPROVAL_MODE_VALUES } from "@veyyon/coding-agent/tools/approval-modes";
+import { APPROVAL_POLICY_VALUES, validateApprovalPolicySettings } from "@veyyon/coding-agent/tools/core/approval";
+import { APPROVAL_MODE_VALUES } from "@veyyon/coding-agent/tools/core/approval-modes";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { type } from "arktype";
 import * as YAML from "yaml";

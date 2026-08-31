@@ -31,8 +31,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { findArtifactPath } from "@veyyon/coding-agent/tools/fetch";
-import { summarizeFailureReport } from "@veyyon/coding-agent/tools/read";
+import { summarizeFailureReport } from "@veyyon/coding-agent/tools/fs/read";
+import { findArtifactPath } from "@veyyon/coding-agent/tools/web/fetch";
 import { errorMessage, logger } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
 

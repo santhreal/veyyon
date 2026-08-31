@@ -25,7 +25,7 @@ import {
 	resolveModelFromString,
 } from "../config/model-resolver";
 import type { ToolSession } from "../tools";
-import { ToolError } from "../tools/tool-errors";
+import { ToolError } from "../tools/core/tool-errors";
 import { withBridgeTimeoutPause } from "./bridge-timeout";
 import type { JsStatusEvent } from "./js/shared/types";
 

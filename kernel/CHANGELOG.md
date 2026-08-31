@@ -10,3 +10,4 @@
 - `@veyyon/kernel/session/*` publishes the session spine: entries, storage backends, persistence, migrations, listing, paths, retry policy, compaction policy, machine budget and the turn's owned resources.
 - `@veyyon/kernel/loader/*` publishes plugin discovery, manifest parsing, the installed registry, the marketplace client and load-failure reporting.
 - `@veyyon/kernel/registry/*` publishes the contribution surface a plugin is resolved through: the tool proxy, the tool event input, the widget and host-view declarations, and the TypeBox schema conversion.
+- `@veyyon/kernel/registry/tool-domain` declares `ToolDomainManifest`, the name and lazy-factory table a tool domain contributes, so a host reads a domain's tools without depending on the coding agent.

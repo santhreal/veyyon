@@ -9,7 +9,7 @@ import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { TreeFilterMode } from "../../../../config/settings-schema";
 import { theme } from "../../../../theme/theme";
-import { shortenPath, TRUNCATE_LENGTHS } from "../../../../tools/render-utils";
+import { shortenPath, TRUNCATE_LENGTHS } from "../../../../tools/core/render-utils";
 import { canonicalizeMessage } from "../../../../utils/thinking-display";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import { resolveAssistantErrorPresentation } from "../../utils/transcript-render-helpers";

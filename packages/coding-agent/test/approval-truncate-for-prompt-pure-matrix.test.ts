@@ -3,7 +3,7 @@
  * Why: prompt truncation must preserve prefix and report exact omitted char count.
  */
 import { describe, expect, it } from "bun:test";
-import { truncateForPrompt } from "../src/tools/approval";
+import { truncateForPrompt } from "../src/tools/core/approval";
 
 describe("truncateForPrompt pure matrix", () => {
 	it("under max returns identity", () => {

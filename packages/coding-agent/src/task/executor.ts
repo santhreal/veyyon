@@ -80,19 +80,19 @@ import { SessionManager } from "../session/session-manager";
 import { truncateTail } from "../session/streaming-output";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import type { ContextFileEntry, ToolSession } from "../tools";
-import { resolveEvalBackends } from "../tools/eval-backends";
-import { isIrcEnabled } from "../tools/irc";
-import { normalizeSchema } from "../tools/jtd-to-json-schema";
+import { isIrcEnabled } from "../tools/agent/irc";
+import { type ReportFindingDetails, toReviewFinding } from "../tools/agent/review";
+import { normalizeSchema } from "../tools/core/jtd-to-json-schema";
 import {
 	buildOutputValidator,
 	type OutputValidator,
 	summarizeValidationFailure,
-} from "../tools/output-schema-validator";
-import { type ReportFindingDetails, toReviewFinding } from "../tools/review";
-import { ToolAbortError } from "../tools/tool-errors";
+} from "../tools/core/output-schema-validator";
+import { ToolAbortError } from "../tools/core/tool-errors";
+import { resolveEvalBackends } from "../tools/shell/eval-backends";
 // SIDE-EFFECT IMPORT, and it is load-bearing.
 //
-// `tools/yield.ts` registers the `yield` handler on `subprocessToolRegistry` at module load, and
+// `tools/agent/yield.ts` registers the `yield` handler on `subprocessToolRegistry` at module load, and
 // this file's entire completion path reads it: no handler means `recordExtractedToolData` is never
 // called, so `yieldCalled` stays false, the subagent is prompted again for a result it already
 // returned, and the run finally reports a missing yield with exit code 1. Nothing in the extracted
@@ -103,7 +103,7 @@ import { ToolAbortError } from "../tools/tool-errors";
 // emit a yield event. The dependency was real, unstated and unenforced, and it broke the moment the
 // child session was a stub rather than a real one. Stating it here is what makes the parent's
 // interpretation of a yield independent of who built the child.
-import "../tools/yield";
+import "../tools/agent/yield";
 import type { EventBus } from "../utils/event-bus";
 import { buildNamedToolChoice } from "../utils/tool-choice";
 import type { WorkspaceTree } from "../workspace-tree";
@@ -1594,7 +1594,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 					logger.error(
 						`Subagent ${id} returned a ${YIELD_TOOL_NAME} result and no ${YIELD_TOOL_NAME} handler is registered on subprocessToolRegistry. ` +
 							`The result cannot be read, so this run will report a missing yield. This is a build wiring fault, not a subagent fault: ` +
-							`task/executor.ts must import tools/yield.ts for its registration side effect.`,
+							`task/executor.ts must import tools/agent/yield.ts for its registration side effect.`,
 					);
 				}
 				const eventRecord: unknown = event;

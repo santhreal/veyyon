@@ -20,9 +20,9 @@ import type {
 import { resolveLocalUrlToFile } from "../internal-urls/local-protocol";
 import { resolveProviderTextTransform, transformProviderPayload } from "../provider-boundary";
 import type { Theme } from "../theme/theme";
-import type { OutputMeta } from "../tools/output-meta";
-import { normalizeLocalScheme } from "../tools/path-utils";
-import { ToolAbortError, throwIfAborted, toolAbort } from "../tools/tool-errors";
+import type { OutputMeta } from "../tools/core/output-meta";
+import { normalizeLocalScheme } from "../tools/core/path-utils";
+import { ToolAbortError, throwIfAborted, toolAbort } from "../tools/core/tool-errors";
 import { callTool } from "./client";
 import { renderMCPCall, renderMCPResult } from "./render";
 import { retainMCPToolArgsAttemptFactory } from "./transports/http";

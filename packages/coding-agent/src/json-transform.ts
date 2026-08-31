@@ -11,7 +11,7 @@
  * modules, 18 of them `@veyyon/ai/utils/schema` (a JSON Schema validator, imported for
  * `toolWireSchema`), and `provider-boundary.ts` imported ONE function from it. So every module
  * that reaches the provider boundary paid for the schema validator and the secret registry to
- * get a JSON walk: `tools/read.ts` was 24 modules over its ceiling and all 24 were this edge.
+ * get a JSON walk: `tools/fs/read.ts` was 24 modules over its ceiling and all 24 were this edge.
  * The walker itself needs two string measurements and nothing else.
  *
  * WHAT IT REFUSES, and why refusing is the whole design. The input is a tool call's arguments,

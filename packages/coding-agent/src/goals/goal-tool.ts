@@ -6,8 +6,8 @@ import { type } from "arktype";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { formatDurationCoarse } from "../slash-commands/helpers/format";
 import type { ToolSession } from "../tools";
-import { sanitizeErrorText, TRUNCATE_LENGTHS } from "../tools/render-utils";
-import { ToolError } from "../tools/tool-errors";
+import { sanitizeErrorText, TRUNCATE_LENGTHS } from "../tools/core/render-utils";
+import { ToolError } from "../tools/core/tool-errors";
 import { completionBudgetReport, remainingTokens } from "./runtime";
 import type { Goal, GoalStatus, GoalToolDetails } from "./state";
 

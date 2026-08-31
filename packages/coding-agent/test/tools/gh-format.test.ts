@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { formatShortSha } from "@veyyon/coding-agent/tools/gh-format";
+import { formatShortSha } from "@veyyon/coding-agent/tools/web/gh-format";
 
 /**
  * formatShortSha is shared between GitHub tool argument normalization and the

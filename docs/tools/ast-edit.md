@@ -3,14 +3,14 @@
 > Preview and apply structural rewrites over source files via native ast-grep.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/ast-edit.ts`
+- Entry: `packages/coding-agent/src/tools/search/ast-edit.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/ast-edit.md`
 - Key collaborators:
   - `natives/bridge/addon/src/ast.rs`: native rewrite planning and file mutation
   - `natives/code/ast/src/language/mod.rs`: language aliases and extension inference used by the native wrapper.
-  - `packages/coding-agent/src/tools/path-utils.ts`: path/glob parsing and multi-path resolution
-  - `packages/coding-agent/src/tools/resolve.ts`: preview/apply queueing
-  - `packages/coding-agent/src/tools/render-utils.ts`: parse-error dedupe and display caps
+  - `packages/coding-agent/src/tools/core/path-utils.ts`: path/glob parsing and multi-path resolution
+  - `packages/coding-agent/src/tools/agent/resolve.ts`: preview/apply queueing
+  - `packages/coding-agent/src/tools/core/render-utils.ts`: parse-error dedupe and display caps
   - `packages/coding-agent/src/utils/file-display-mode.ts`: hashline vs line-number diff references
   - `plugins/hashline/src/format.ts`: stable hashline header formatting for preview anchors
   - `natives/bridge/bindings/native/index.d.ts`: JS-visible native binding contract
@@ -44,7 +44,7 @@ Shared structural pattern grammar and language catalog: see [`search` (`type: "s
 - When preview produced replacements, `ast_edit` also queues a pending `resolve` action. Successful apply returns a separate `resolve` result, not another `ast_edit` result.
 
 ## Flow
-1. `AstEditTool.execute()` validates each op in `packages/coding-agent/src/tools/ast-edit.ts`:
+1. `AstEditTool.execute()` validates each op in `packages/coding-agent/src/tools/search/ast-edit.ts`:
    - empty `pat` fails,
    - at least one op is required,
    - duplicate `pat` values fail,
@@ -89,13 +89,13 @@ Shared structural pattern grammar and language catalog: see [`search` (`type: "s
   - Cancellation and optional native timeout are cooperative through `CancelToken::heartbeat()`.
 
 ## Limits & Caps
-- File cap exposed by the wrapper: `VEYYON_MAX_AST_FILES`, default `1000`, in `packages/coding-agent/src/tools/ast-edit.ts`.
+- File cap exposed by the wrapper: `VEYYON_MAX_AST_FILES`, default `1000`, in `packages/coding-agent/src/tools/search/ast-edit.ts`.
 - Native `maxFiles` and `maxReplacements` are both clamped to at least `1` when provided in `natives/bridge/addon/src/ast.rs`.
 - The wrapper never sets `maxReplacements`; native behavior therefore defaults to effectively unbounded replacements for a run.
-- Parse issues are deduplicated and capped at `PARSE_ERRORS_LIMIT = 20` entries via `capParseErrors(...)` in `packages/coding-agent/src/tools/render-utils.ts`; `details.parseErrors` carries the capped list and `details.parseErrorsTotal` the pre-cap deduplicated count.
+- Parse issues are deduplicated and capped at `PARSE_ERRORS_LIMIT = 20` entries via `capParseErrors(...)` in `packages/coding-agent/src/tools/core/render-utils.ts`; `details.parseErrors` carries the capped list and `details.parseErrorsTotal` the pre-cap deduplicated count.
 - Directory scans use `include_hidden: true`, `use_gitignore: true`, and skip `node_modules` unless the glob text explicitly mentions `node_modules` in `natives/bridge/addon/src/ast.rs`.
 - No separate glob-expansion count cap exists. Candidate count is whatever the resolved path/glob expands to after gitignore filtering, then native `maxFiles` stops mutations after the configured number of touched files.
-- Preview text truncates each rendered `before` and `after` first line to 120 characters in `packages/coding-agent/src/tools/ast-edit.ts`.
+- Preview text truncates each rendered `before` and `after` first line to 120 characters in `packages/coding-agent/src/tools/search/ast-edit.ts`.
 
 ## Errors
 - TS wrapper throws `ToolError` for empty patterns, duplicate rewrite patterns, empty path entries, unsupported internal-URL globs, internal URLs without `sourcePath`, and missing paths.

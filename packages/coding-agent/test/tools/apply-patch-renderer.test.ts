@@ -187,7 +187,7 @@ describe("apply_patch rendering", () => {
 		const uiStub = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
 		const component = createToolExecution(
 			"edit",
-			{ path: "packages/coding-agent/src/tools/image-gen.ts" },
+			{ path: "packages/coding-agent/src/tools/web/image-gen.ts" },
 			{},
 			undefined,
 			uiStub,
@@ -197,7 +197,7 @@ describe("apply_patch rendering", () => {
 			{
 				content: [{ type: "text", text: "" }],
 				details: {
-					path: "packages/coding-agent/src/tools/image-gen.ts",
+					path: "packages/coding-agent/src/tools/web/image-gen.ts",
 					op: "update",
 					diff: [
 						" 10|}",

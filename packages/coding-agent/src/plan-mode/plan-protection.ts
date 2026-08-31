@@ -1,5 +1,5 @@
 import { getReadToolPath, type ProtectedToolContext } from "@veyyon/agent-core/compaction/tool-protection";
-import { normalizeLocalScheme } from "../tools/path-utils";
+import { normalizeLocalScheme } from "../tools/core/path-utils";
 import { DEFAULT_PLAN_FILE_URL } from "./plan-file-url";
 
 /** Canonical plan alias every session's `local://` root resolves. */

@@ -2,7 +2,7 @@
  * formatMatchLine property grid: plain vs hashline × match vs context × lines.
  */
 import { describe, expect, it } from "bun:test";
-import { formatMatchLine } from "../src/tools/match-line-format";
+import { formatMatchLine } from "../src/tools/search/match-line-format";
 
 describe("formatMatchLine pure property grid", () => {
 	for (const line of [1, 2, 9, 10, 42, 100, 1000]) {

@@ -23,7 +23,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
-import { META_VALUE_MAX_BYTES } from "@veyyon/coding-agent/tools/structure-search";
+import { META_VALUE_MAX_BYTES } from "@veyyon/coding-agent/tools/search/structure-search";
 import { astGrep } from "@veyyon/natives";
 import { removeWithRetries } from "@veyyon/utils";
 

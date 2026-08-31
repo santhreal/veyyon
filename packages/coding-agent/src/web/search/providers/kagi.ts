@@ -4,9 +4,9 @@
  * Thin wrapper that adapts shared Kagi API utilities to SearchResponse shape.
  */
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
-import type { SearchResponse } from "../../../web/search/types";
-import { SearchProviderError } from "../../../web/search/types";
 import { KagiApiError, searchWithKagi } from "../../kagi";
+import type { SearchResponse } from "../types";
+import { SearchProviderError } from "../types";
 import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";

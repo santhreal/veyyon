@@ -45,7 +45,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import type { AgentTool } from "@veyyon/agent-core";
 import { SUPERSEDED_NOTICE } from "@veyyon/agent-core/compaction/pruning";
-import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
+import { TOOL } from "@veyyon/coding-agent/tools/core/builtin-names";
 import { createSimulation, type Simulation, scriptTurns, simTool } from "./harness";
 
 let sim: Simulation | undefined;

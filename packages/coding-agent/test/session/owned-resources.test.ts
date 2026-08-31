@@ -317,7 +317,7 @@ describe("the real subsystems", () => {
 		await import("@veyyon/coding-agent/eval/rb/executor");
 		await import("@veyyon/coding-agent/eval/jl/executor");
 		await import("@veyyon/coding-agent/eval/js/context-manager");
-		await import("@veyyon/coding-agent/tools/browser/tab-supervisor");
+		await import("@veyyon/coding-agent/tools/web/browser/tab-supervisor");
 
 		const registered = registeredOwnedResourceDisposers();
 

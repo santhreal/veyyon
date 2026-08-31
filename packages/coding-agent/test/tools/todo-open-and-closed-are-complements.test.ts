@@ -40,7 +40,7 @@ import {
 	type TodoPhase,
 	type TodoTaskStateCounts,
 	TodoTool,
-} from "@veyyon/coding-agent/tools/todo";
+} from "@veyyon/coding-agent/tools/agent/todo";
 import { isTerminalTodoStatus, TODO_STATUSES, type TodoStatus } from "@veyyon/wire";
 import { makeToolSession } from "../helpers/tool-session";
 

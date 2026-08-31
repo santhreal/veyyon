@@ -11,7 +11,7 @@ import { errorMessage, getAgentDir, isMissingPath, isRecord, logger, once } from
 import { YAML } from "bun";
 import type { Settings } from "../config/settings";
 import { type PromptSectionName, promptSectionNames } from "../system-prompt-builder/prompt-sections";
-import { applyHarnessToolAllowlist } from "../tools/loading";
+import { applyHarnessToolAllowlist } from "../tools/core/loading";
 
 export interface HarnessModelProfile {
 	/** When false, schema repair is skipped for this model. Default: true. */

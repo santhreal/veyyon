@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as utils from "@veyyon/utils";
-import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./settings-test-state";
 
 /**
  * Order-lock for FINDING-FULL-SUITE-ORDER-DEPENDENT-POLLUTION:

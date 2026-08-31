@@ -7,7 +7,7 @@ import { Container, type Loader, Text, type TUI } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
 import { highlightCode } from "../../../../theme/highlight";
 import { theme } from "../../../../theme/theme-binding";
-import type { TruncationMeta } from "../../../../tools/output-meta";
+import type { TruncationMeta } from "../../../../tools/core/output-meta";
 import {
 	buildExecutionFrame,
 	buildStatusFooter,

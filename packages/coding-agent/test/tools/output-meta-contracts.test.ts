@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "@veyyon/coding-agent/tools/list-limit";
+import { applyListLimit } from "@veyyon/coding-agent/tools/core/list-limit";
 
 /**
  * Residual tool-matrix depth for truncation meta used by glob/grep/search

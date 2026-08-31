@@ -2,7 +2,7 @@
  * ONE-PLACE lock for the option labels the ask runtime adds to a question.
  *
  * Why this suite exists: these three strings are compared by STRING EQUALITY to decide behaviour, and they were
- * declared in three modules under two sets of names. `tools/ask.ts` had `OTHER_OPTION`,
+ * declared in three modules under two sets of names. `tools/agent/ask.ts` had `OTHER_OPTION`,
  * `CHAT_ABOUT_THIS_OPTION` and `NEXT_OPTION`; `modes/terminal/controllers/extension-ui-controller.ts` had
  * `ASK_OTHER_OPTION`, `ASK_CHAT_OPTION` and `ASK_NEXT_OPTION` with identical values;
  * `modes/terminal/components/dialogs/ask-dialog.ts` held a third copy of the first one because it draws the row.
@@ -12,7 +12,7 @@
  * the user had typed it. So a user who picks "Other (type your own)" to answer in their own words gets no
  * prompt, and the model is told their answer was the words "Other (type your own)".
  *
- * The reserved-label contract made the split sharper rather than harmless: `tools/ask.ts` REJECTS a question
+ * The reserved-label contract made the split sharper rather than harmless: `tools/agent/ask.ts` REJECTS a question
  * whose own options collide with one of these labels, so the validator and the renderer had to agree about the
  * same three strings while reading two different declarations of them. Two of ask.ts's three copies existed
  * only to populate that record, while the module that actually renders and compares them is the controller.
@@ -26,16 +26,16 @@ import {
 	ASK_OTHER_OPTION_LABEL,
 	isReservedAskOptionLabel,
 	RESERVED_ASK_OPTION_LABELS,
-} from "@veyyon/coding-agent/tools/ask-option-labels";
+} from "@veyyon/coding-agent/tools/agent/ask-option-labels";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import { RECOMMENDED_SUFFIX, stripRecommendedSuffix, withRecommendedSuffix } from "@veyyon/wire";
 
 const SRC = path.resolve(import.meta.dir, "../../src");
-const OWNER_REL = "tools/ask-option-labels.ts";
+const OWNER_REL = "tools/agent/ask-option-labels.ts";
 
 /** The modules that used to declare a label and must now import it. */
 const FORMER_DECLARERS: readonly string[] = [
-	"tools/ask.ts",
+	"tools/agent/ask.ts",
 	"modes/terminal/components/dialogs/ask-dialog.ts",
 	"modes/terminal/controllers/extension-ui-controller.ts",
 ];
@@ -182,11 +182,11 @@ describe("the ask option labels have one owner", () => {
 
 	/**
 	 * The validator and the renderers now read one declaration. Asserted structurally because the consequence is
-	 * invisible at runtime: `tools/ask.ts` rejects a question whose options collide with a reserved label, and
+	 * invisible at runtime: `tools/agent/ask.ts` rejects a question whose options collide with a reserved label, and
 	 * while that check read its own copy it could have been rejecting a string no UI ever rendered.
 	 */
 	it("has the question validator using the shared predicate", async () => {
-		const ask = await Bun.file(path.join(SRC, "tools/ask.ts")).text();
+		const ask = await Bun.file(path.join(SRC, "tools/agent/ask.ts")).text();
 		expect(ask).toContain("isReservedAskOptionLabel(option.label)");
 		expect(ask).not.toContain("RESERVED_OPTION_LABELS[option.label]");
 	});
@@ -202,7 +202,7 @@ describe("the ask option labels have one owner", () => {
 	});
 
 	/**
-	 * The owner is a leaf. The dialog and the controller are UI modules, and reaching `tools/ask.ts` for a label
+	 * The owner is a leaf. The dialog and the controller are UI modules, and reaching `tools/agent/ask.ts` for a label
 	 * would have meant importing the whole ask flow, its arktype schema and its renderers, to read a string.
 	 * That cost is exactly why the labels were retyped, so an import here brings the pressure back.
 	 */
@@ -219,7 +219,7 @@ describe("the ask option labels have one owner", () => {
  *
  * ` (Recommended)` is not a reserved label: the runtime does not add a row for it, it EDITS the label of a row
  * the caller supplied, and then compares the edited text back. That makes the writer/reader split worse than
- * the three above rather than milder. `tools/ask.ts` appended it and stripped it; `modes/terminal/components/dialogs/ask-dialog.ts`
+ * the three above rather than milder. `tools/agent/ask.ts` appended it and stripped it; `modes/terminal/components/dialogs/ask-dialog.ts`
  * appended it a SECOND time from a bare template literal (`${label} (Recommended)`) and stripped it with a
  * private copy of the string; `@veyyon/tool-render` stripped it with a third copy when rendering an answer for
  * HTML export and collab. Four spellings, two of them writers.
@@ -228,7 +228,7 @@ describe("the ask option labels have one owner", () => {
  * matching, so the marker survives into the answer and the model is told the user chose
  * "Deploy to production (Recommended)" rather than "Deploy to production". Nothing throws.
  *
- * The owner is `@veyyon/wire` rather than `tools/ask-option-labels.ts` because tool-render has to read it and
+ * The owner is `@veyyon/wire` rather than `tools/agent/ask-option-labels.ts` because tool-render has to read it and
  * cannot import from coding-agent. wire is dependency-free and both packages already depend on it.
  */
 describe("the recommended-option marker", () => {
@@ -270,7 +270,7 @@ describe("the recommended-option marker has one owner", () => {
 	const HAND_APPEND = /`\$\{[^}]+\} \(Recommended\)`/;
 
 	/** The former declarers, one of them in another package. */
-	const MARKER_READERS: readonly string[] = ["tools/ask.ts", "modes/terminal/components/dialogs/ask-dialog.ts"];
+	const MARKER_READERS: readonly string[] = ["tools/agent/ask.ts", "modes/terminal/components/dialogs/ask-dialog.ts"];
 
 	it("declares the marker nowhere in coding-agent", async () => {
 		const offenders = (await sources()).filter(({ text }) => MARKER_DECL.test(text)).map(({ file }) => file);

@@ -3,7 +3,7 @@
  * Why: under-ceiling must not invent limitReached or truncate.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("list-limit items shorter than limit 1 to 200", () => {
 	for (let n = 1; n <= 100; n++) {

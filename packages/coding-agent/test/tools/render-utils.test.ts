@@ -24,7 +24,7 @@ import {
 	previewLine,
 	shortenPath,
 	truncateDiffByHunk,
-} from "@veyyon/coding-agent/tools/render-utils";
+} from "@veyyon/coding-agent/tools/core/render-utils";
 import { sanitizeText } from "@veyyon/utils";
 import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
 

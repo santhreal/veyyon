@@ -35,8 +35,8 @@
  * the other is work worth retrying with a longer limit.
  */
 import { describe, expect, it } from "bun:test";
-import { handleSpecialUrls } from "@veyyon/coding-agent/tools/fetch";
-import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/core/tool-errors";
+import { handleSpecialUrls } from "@veyyon/coding-agent/tools/web/fetch";
 import type { RenderResult } from "@veyyon/coding-agent/web/scrapers/types";
 
 /** The exact rejection `scopedTimeoutSignal` produces when its budget runs out. */

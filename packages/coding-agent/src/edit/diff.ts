@@ -7,7 +7,7 @@
 
 import { errorMessage } from "@veyyon/utils";
 import * as Diff from "diff";
-import { resolveToCwd } from "../tools/path-utils";
+import { resolveToCwd } from "../tools/core/path-utils";
 import { type BlockContextSource, exceedsBlockContextScanCeiling, findBlockContextLines } from "../utils/block-context";
 import { parseUnifiedHunkHeader } from "../utils/unified-hunk-header";
 import { EOF_MARKER, FILE_OP_MARKERS, PATCH_WRAPPER_MARKERS } from "./apply-patch/markers";

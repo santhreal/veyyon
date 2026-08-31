@@ -24,7 +24,7 @@
 
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { REROOT_FILE_THRESHOLD, RerootDetector } from "@veyyon/coding-agent/tools/reroot-hint";
+import { REROOT_FILE_THRESHOLD, RerootDetector } from "@veyyon/coding-agent/tools/fs/reroot-hint";
 
 const CWD = path.join(path.sep, "home", "dev", "launch");
 

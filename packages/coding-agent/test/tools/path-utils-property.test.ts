@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { globSearchBase, isPathWithinCwd, resolveToCwd } from "@veyyon/coding-agent/tools/path-utils";
+import { globSearchBase, isPathWithinCwd, resolveToCwd } from "@veyyon/coding-agent/tools/core/path-utils";
 
 /**
  * Fixed-seed grid over pure path predicates (no fast-check dep).

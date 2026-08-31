@@ -21,7 +21,7 @@ import type { ToolRenderProps, ToolResultLike } from "../src/types";
  *
  * The suite drives the real registry entry through real React, so a renderer
  * that is registered but reads a field the engine does not emit fails here.
- * Field names are pinned against `coding-agent/src/tools/vibe.ts`
+ * Field names are pinned against `coding-agent/src/tools/agent/vibe.ts`
  * (`VibeToolDetails`) and `src/session/vibe-runtime.ts` (`VibeScreenSnapshot`,
  * `VibeSendOutcome`, `VibeKillOutcome`).
  *

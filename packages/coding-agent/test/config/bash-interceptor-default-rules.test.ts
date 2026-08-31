@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { DEFAULT_BASH_INTERCEPTOR_RULES } from "@veyyon/coding-agent/config/bash-interceptor-rules";
-import { checkBashInterception } from "@veyyon/coding-agent/tools/bash-interceptor";
+import { checkBashInterception } from "@veyyon/coding-agent/tools/shell/bash-interceptor";
 
 /**
  * The redirect and launch default rules already have coverage; this suite fills the

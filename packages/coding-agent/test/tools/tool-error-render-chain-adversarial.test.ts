@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { renderError, ToolAbortError, ToolError, throwIfAborted } from "@veyyon/coding-agent/tools/tool-errors";
+import { renderError, ToolAbortError, ToolError, throwIfAborted } from "@veyyon/coding-agent/tools/core/tool-errors";
 
 /**
  * ToolError render chains and abort interaction with exact messages.

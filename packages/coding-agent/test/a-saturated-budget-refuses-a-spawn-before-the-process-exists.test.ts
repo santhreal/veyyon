@@ -37,8 +37,8 @@ import { ExtensionRuntime, loadExtensionFromFactory } from "@veyyon/coding-agent
 import type { DaemonBrokerClient } from "@veyyon/coding-agent/launch/client";
 import * as launchClient from "@veyyon/coding-agent/launch/client";
 import type { DaemonOperation, DaemonRpcResult, DaemonSnapshot } from "@veyyon/coding-agent/launch/protocol";
-import type { LaunchParams } from "@veyyon/coding-agent/tools/launch";
-import { LaunchTool } from "@veyyon/coding-agent/tools/launch";
+import type { LaunchParams } from "@veyyon/coding-agent/tools/shell/launch";
+import { LaunchTool } from "@veyyon/coding-agent/tools/shell/launch";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { TempDir } from "@veyyon/utils";
 import { CpuLimitDeniedError, initSessionCpuLimit, resetSessionCpuLimitsForTests } from "../src/session/cpu-limit";

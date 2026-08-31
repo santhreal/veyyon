@@ -1,7 +1,7 @@
 // The walker's own module, not `./secrets/obfuscator`, which re-exports it. This file is the final
 // seam every outbound request passes through, so it is on the graph of everything that can make one:
 // through the obfuscator it also pulled in the secret registry and 18 modules of JSON Schema
-// validator, 24 modules for one function, and `tools/read.ts` was over its reach ceiling by exactly
+// validator, 24 modules for one function, and `tools/fs/read.ts` was over its reach ceiling by exactly
 // that. See `test/architecture/leveraged-imports-stay-cut.test.ts`.
 import { JsonTransformError, type JsonTransformFailureCode, mapJsonStrings } from "./json-transform";
 

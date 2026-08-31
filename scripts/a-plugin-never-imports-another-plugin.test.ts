@@ -22,7 +22,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { dynamicImportSpecifiersIn, moduleSpecifiersIn, typeOnlyModuleSpecifiersIn } from "@veyyon/utils/module-reach";
-import { REPO_ROOT, typeScriptMembers } from "./workspace-layout.ts";
+import { REPO_ROOT, typeScriptMembers } from "./workspace-layout";
 
 /** One plugin: its member directory (`plugins/mnemopi`) and the package name it publishes. */
 interface Plugin {
@@ -202,8 +202,8 @@ describe("a plugin never imports another plugin", () => {
 		expect(classifyPluginEdge("../../../../plugins/future-plugin/src/index", file, mnemopi, siblings)).toBe(
 			"climbs into another plugins/ member",
 		);
-		expect(classifyPluginEdge("../../../../packages/coding-agent/src/tools/read", file, mnemopi, siblings)).toBe(
-			"climbs out of plugins/mnemopi to packages/coding-agent/src/tools/read, which is not a recorded escape",
+		expect(classifyPluginEdge("../../../../packages/coding-agent/src/tools/fs/read", file, mnemopi, siblings)).toBe(
+			"climbs out of plugins/mnemopi to packages/coding-agent/src/tools/fs/read, which is not a recorded escape",
 		);
 
 		expect(classifyPluginEdge("./types", file, mnemopi, siblings)).toBe(null);

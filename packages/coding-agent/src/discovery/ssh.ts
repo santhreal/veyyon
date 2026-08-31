@@ -6,7 +6,7 @@
  */
 import * as path from "node:path";
 import { getAgentDir, tryParseJson } from "@veyyon/utils";
-import { expandTilde } from "../tools/path-utils";
+import { expandTilde } from "../tools/core/path-utils";
 import { registerProvider } from "./capability";
 import { readFile } from "./capability/fs";
 import { type SSHHost, sshCapability } from "./capability/ssh";

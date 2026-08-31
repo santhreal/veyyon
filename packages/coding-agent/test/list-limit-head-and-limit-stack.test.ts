@@ -2,7 +2,7 @@
  * applyListLimit stacking limit then headLimit exact meta.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("applyListLimit stack limit+head", () => {
 	it("limit 5 head 2 on 6 items", () => {

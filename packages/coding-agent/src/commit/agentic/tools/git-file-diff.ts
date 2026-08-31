@@ -1,8 +1,8 @@
 import { type } from "arktype";
-import type { CommitAgentState } from "../../../commit/agentic/state";
-import { isTestFilePath } from "../../../commit/utils/test-paths";
 import type { CustomTool } from "../../../extensibility/custom-tools/types";
 import * as git from "../../../utils/git";
+import { isTestFilePath } from "../../utils/test-paths";
+import type { CommitAgentState } from "../state";
 
 const TARGET_TOKENS = 30000;
 const CHARS_PER_TOKEN = 4;

@@ -8,7 +8,7 @@
  * per-op line the Summary states and the outcome the Body leads with.
  *
  * Field names track the engine's `VibeToolDetails` and the five argument
- * schemas in `coding-agent/src/tools/vibe.ts`; the shapes are re-declared
+ * schemas in `coding-agent/src/tools/agent/vibe.ts`; the shapes are re-declared
  * structurally rather than imported, so this package keeps its dependency set
  * at `@veyyon/utils`, `@veyyon/wire`, `lucide-react` and `react`.
  */

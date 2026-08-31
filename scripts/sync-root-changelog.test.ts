@@ -16,14 +16,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-expect-error — plain .mjs module, no types; imported for its exports.
 import { renderRootChangelog } from "../website/tools/gen-changelog.mjs";
-import { unreleasedEntries } from "./changelog-unreleased.ts";
-import {
-	buildRootChangelog,
-	changelogSources,
-	orphanedRootEntries,
-	REPO_ROOT,
-	ROOT_PATH,
-} from "./sync-root-changelog";
+import { unreleasedEntries } from "./changelog-unreleased";
+import { buildRootChangelog, changelogSources, orphanedRootEntries, REPO_ROOT, ROOT_PATH } from "./sync-root-changelog";
 
 /**
  * A member's changelog bytes, resolved through the same sweep the renderer uses.

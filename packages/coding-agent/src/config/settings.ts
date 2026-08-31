@@ -44,7 +44,6 @@ import { type QuarantinedFile, quarantineUnparseableFile } from "@veyyon/utils/q
 import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import { syncYamlTextToSettings } from "@veyyon/utils/yaml-sync";
 import { JSONC, YAML } from "bun";
-import type { ModelRole } from "../config/model-roles";
 // The classifier leaf, NOT `../theme/theme` and NOT `../theme/builtin-themes`. The barrel
 // imports `./shimmer`, which imports this file, and that cycle had to be instantiated as one unit:
 // importing `config/settings` anywhere cost 51 MB, paid once per test file because the runner gives each
@@ -53,10 +52,11 @@ import type { ModelRole } from "../config/model-roles";
 // them again to every one of the ~1,500 files that import `Settings`. `theme-luminance` owns the same
 // boolean as a table and carries no theme JSON.
 import { isLightTheme } from "../theme/theme-luminance";
-import { normalizeToolName } from "../tools/builtin-names";
+import { normalizeToolName } from "../tools/core/builtin-names";
 import { type EditMode, normalizeEditMode } from "../utils/edit-mode";
 import { type CompactionStrategySetting, migrateCompactionStrategyValue } from "./compaction-strategy";
 import { readLegacyAgentDbSettings } from "./legacy-agent-db-settings";
+import type { ModelRole } from "./model-roles";
 import { UNSET_NUMBER } from "./optional-number";
 import { GLOBAL_SETTING_BINDINGS } from "./settings-domains/global";
 // The slot, not a second copy of it: this module FILLS the slot that `./settings-instance.ts` owns, and

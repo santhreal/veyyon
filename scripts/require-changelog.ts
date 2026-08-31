@@ -32,8 +32,8 @@
 import * as path from "node:path";
 import { $ } from "bun";
 
-import { UNRELEASED_HEADING, unreleasedEntries } from "./changelog-unreleased.ts";
-import { typeScriptMembersOf } from "./workspace-layout.ts";
+import { UNRELEASED_HEADING, unreleasedEntries } from "./changelog-unreleased";
+import { typeScriptMembersOf } from "./workspace-layout";
 
 /** A publishable package that participates in the changelog/release system. */
 export interface ChangelogPackage {

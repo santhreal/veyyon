@@ -30,7 +30,7 @@ import { describe, expect, it } from "bun:test";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
-import { ToolAbortError, ToolError } from "@veyyon/coding-agent/tools/tool-errors";
+import { ToolAbortError, ToolError } from "@veyyon/coding-agent/tools/core/tool-errors";
 import { type } from "arktype";
 
 /** Replacement content a `tool_result` handler hands back. */

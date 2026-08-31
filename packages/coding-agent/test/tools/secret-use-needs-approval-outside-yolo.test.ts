@@ -19,7 +19,7 @@
  * mishandles the string. The suite asserts that directly, in both the named and unnamed cases.
  */
 import { describe, expect, it } from "bun:test";
-import { secretUseApprovalReason } from "@veyyon/coding-agent/tools/secret-use-boundary";
+import { secretUseApprovalReason } from "@veyyon/coding-agent/tools/core/secret-use-boundary";
 
 const TOKEN = "ghp_realcredentialvalue1234567890";
 const OTHER = "sk-anothercredentialvalue0987654321";

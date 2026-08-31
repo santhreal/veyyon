@@ -20,7 +20,12 @@
 import { Text } from "@veyyon/tui";
 import { collapseWhitespace, errorMessage, logger } from "@veyyon/utils";
 import { theme } from "../../../../theme/theme";
-import { replaceTabs, shortenEmbeddedPaths, TRUNCATE_LENGTHS, truncateToWidth } from "../../../../tools/render-utils";
+import {
+	replaceTabs,
+	shortenEmbeddedPaths,
+	TRUNCATE_LENGTHS,
+	truncateToWidth,
+} from "../../../../tools/core/render-utils";
 
 /**
  * The notice text, as one line.

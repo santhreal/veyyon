@@ -1,4 +1,4 @@
-import type { UnreleasedSection } from "../../commit/types";
+import type { UnreleasedSection } from "../types";
 
 const UNRELEASED_PATTERN = /^##\s+\[?Unreleased\]?/i;
 const SECTION_PATTERN = /^###\s+(.*)$/;

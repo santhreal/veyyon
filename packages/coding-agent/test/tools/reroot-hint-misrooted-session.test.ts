@@ -34,7 +34,7 @@ import {
 	REROOT_FILE_THRESHOLD,
 	RerootDetector,
 	SET_CWD_TOOL_NAME,
-} from "@veyyon/coding-agent/tools/reroot-hint";
+} from "@veyyon/coding-agent/tools/fs/reroot-hint";
 
 const HOME = "/home/someone";
 const TMP = "/tmp";

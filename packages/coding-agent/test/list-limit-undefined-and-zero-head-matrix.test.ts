@@ -2,7 +2,7 @@
  * applyListLimit: limit 0/negative/undefined never truncates; head same.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("list-limit undefined and zero head matrix", () => {
 	const items = Array.from({ length: 50 }, (_, i) => i);

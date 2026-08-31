@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "@veyyon/coding-agent/tools/list-limit";
+import { applyListLimit } from "@veyyon/coding-agent/tools/core/list-limit";
 
 /**
  * Locks applyListLimit truncation metadata: hosts and renderers depend on

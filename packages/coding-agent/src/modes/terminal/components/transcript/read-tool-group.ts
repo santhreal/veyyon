@@ -6,9 +6,9 @@ import { formatCount, hasUrlScheme } from "@veyyon/utils";
 import { InternalUrlRouter } from "../../../../internal-urls";
 import { tryResolveInternalUrlSync } from "../../../../internal-urls/resolve-sync";
 import { getLanguageFromPath, theme } from "../../../../theme/theme";
-import { parseLineRanges, selectorLineRanges, splitPathAndSel } from "../../../../tools/path-utils";
-import type { ReadRenderArgs } from "../../../../tools/read";
-import { PREVIEW_LIMITS, shortenPath } from "../../../../tools/render-utils";
+import { parseLineRanges, selectorLineRanges, splitPathAndSel } from "../../../../tools/core/path-utils";
+import { PREVIEW_LIMITS, shortenPath } from "../../../../tools/core/render-utils";
+import type { ReadRenderArgs } from "../../../../tools/fs/read";
 import { fileHyperlink, renderCodeCell } from "../../../../tui";
 import type { ToolExecutionHandle } from "./tool-execution";
 

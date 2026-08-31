@@ -2,10 +2,10 @@ import { describe, expect, it } from "bun:test";
 import type { AgentToolContext } from "@veyyon/agent-core";
 import { validateToolArguments } from "@veyyon/ai/utils/validation";
 import { type BashInterceptorRule, DEFAULT_BASH_INTERCEPTOR_RULES } from "@veyyon/coding-agent/config/settings-schema";
-import { BashTool, type BashToolInput } from "@veyyon/coding-agent/tools/bash";
-import { checkBashInterception, UNIFIED_SEARCH_REDIRECTS } from "@veyyon/coding-agent/tools/bash-interceptor";
-import { normalizeToolName } from "@veyyon/coding-agent/tools/builtin-names";
-import { searchSchema } from "@veyyon/coding-agent/tools/search";
+import { normalizeToolName } from "@veyyon/coding-agent/tools/core/builtin-names";
+import { searchSchema } from "@veyyon/coding-agent/tools/search/search";
+import { BashTool, type BashToolInput } from "@veyyon/coding-agent/tools/shell/bash";
+import { checkBashInterception, UNIFIED_SEARCH_REDIRECTS } from "@veyyon/coding-agent/tools/shell/bash-interceptor";
 import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
 import { makeToolSession } from "../helpers/tool-session";
 

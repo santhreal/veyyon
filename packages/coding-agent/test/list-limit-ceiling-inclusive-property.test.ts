@@ -3,7 +3,7 @@
  * Why: off-by-one on the inclusive boundary silently drops limitReached meta.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("applyListLimit ceiling inclusive property", () => {
 	for (let limit = 1; limit <= 40; limit++) {

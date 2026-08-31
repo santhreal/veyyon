@@ -29,11 +29,16 @@
  */
 
 import { afterEach, describe, expect, it, spyOn, vi } from "bun:test";
-import type { CmuxKind } from "@veyyon/coding-agent/tools/browser/cmux/rpc";
-import { CmuxSocketClient } from "@veyyon/coding-agent/tools/browser/cmux/socket-client";
-import { acquireBrowser } from "@veyyon/coding-agent/tools/browser/registry";
-import { acquireTab, getTabsMapForTest, releaseTab, runInTab } from "@veyyon/coding-agent/tools/browser/tab-supervisor";
 import type { ToolSession } from "@veyyon/coding-agent/tools/index";
+import type { CmuxKind } from "@veyyon/coding-agent/tools/web/browser/cmux/rpc";
+import { CmuxSocketClient } from "@veyyon/coding-agent/tools/web/browser/cmux/socket-client";
+import { acquireBrowser } from "@veyyon/coding-agent/tools/web/browser/registry";
+import {
+	acquireTab,
+	getTabsMapForTest,
+	releaseTab,
+	runInTab,
+} from "@veyyon/coding-agent/tools/web/browser/tab-supervisor";
 import { makeToolSession } from "../helpers/tool-session";
 
 function makeKind(socketSuffix: string): CmuxKind {

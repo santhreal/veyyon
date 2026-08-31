@@ -42,8 +42,8 @@ import type {
 	ObjectPattern,
 	RestElement,
 } from "@babel/types";
-import { expandExportsToSubpaths, type PublishedSurfaceLedger } from "./measure-published-surface.ts";
-import { REPO_ROOT, typeScriptMembers } from "./workspace-layout.ts";
+import { expandExportsToSubpaths, type PublishedSurfaceLedger } from "./measure-published-surface";
+import { REPO_ROOT, typeScriptMembers } from "./workspace-layout";
 
 interface WorkspacePackageSnapshot {
 	readonly name: string;

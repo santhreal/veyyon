@@ -10,9 +10,9 @@ import { getDiagnosticsLedger } from "../lsp/diagnostics-ledger";
 import { PROMPTS } from "../prompts/registry";
 import { budgetedFileCommit, sessionBudgetLimits } from "../session/cpu-limit";
 import type { ToolSession } from "../tools";
-import { abortedPartway } from "../tools/aborted-partway";
-import { truncateForPrompt } from "../tools/approval";
-import { isInternalUrlPath } from "../tools/path-utils";
+import { abortedPartway } from "../tools/core/aborted-partway";
+import { truncateForPrompt } from "../tools/core/approval";
+import { isInternalUrlPath } from "../tools/core/path-utils";
 import { type EditMode, normalizeEditMode, resolveEditMode } from "../utils/edit-mode";
 import { executeHashlineSingle, hashlineEditParamsSchema } from "./hashline";
 import { type ApplyPatchParams, applyPatchSchema, expandApplyPatchToEntries } from "./modes/apply-patch";
@@ -150,7 +150,7 @@ function createEditWritethrough(session: ToolSession): WritethroughCallback {
  * text of something that looked like an ordinary failure.
  *
  * So the abort keeps its type AND carries the summary in its message. The
- * sentence itself is built by `tools/aborted-partway.ts`, which `pr_checkout`
+ * sentence itself is built by `tools/core/aborted-partway.ts`, which `pr_checkout`
  * and `retain` also use: the per-file loop and the per-entry loop must not word
  * this differently, and neither must the other tools that can stop halfway. This
  * function supplies the nouns and the advice, which are the parts only the edit

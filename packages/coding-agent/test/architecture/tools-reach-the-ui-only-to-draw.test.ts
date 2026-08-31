@@ -258,34 +258,34 @@ describe("tools reach the terminal UI only to draw", () => {
  * still be unusable by a GUI.
  */
 const TUI_SURFACE = new Map<string, readonly string[]>([
-	["tools/ask-render.ts", ["Markdown", "Text", "renderInlineMarkdown", "type Component", "type MarkdownTheme"]],
-	["tools/ast-edit-render.ts", ["Text", "type Component"]],
-	["tools/bash-interactive.ts", ["type Component"]],
-	["tools/bash-render.ts", ["ImageProtocol", "TERMINAL", "type Component"]],
+	["tools/agent/ask-render.ts", ["Markdown", "Text", "renderInlineMarkdown", "type Component", "type MarkdownTheme"]],
+	["tools/search/ast-edit-render.ts", ["Text", "type Component"]],
+	["tools/shell/bash-interactive.ts", ["type Component"]],
+	["tools/shell/bash-render.ts", ["ImageProtocol", "TERMINAL", "type Component"]],
 	["tools/browser/render.ts", ["Text", "type Component"]],
-	["tools/debug-render.ts", ["Text", "type Component"]],
-	["tools/eval-render.ts", ["Markdown", "Text", "type Component"]],
-	["tools/fetch-render.ts", ["Text", "type Component"]],
-	["tools/file-search-render.ts", ["Text", "type Component"]],
-	["tools/gh-renderer.ts", ["Text", "type Component"]],
-	["tools/inspect-image-renderer.ts", ["Text", "type Component"]],
-	["tools/irc-render.ts", ["type Component"]],
-	["tools/job-render.ts", ["Text", "type Component"]],
-	["tools/launch-render.ts", ["Text", "type Component"]],
-	["tools/memory-render.ts", ["Text", "type Component"]],
-	["tools/read-render.ts", ["Text", "type Component"]],
-	["tools/render-utils.ts", ["type Component"]],
+	["tools/shell/debug-render.ts", ["Text", "type Component"]],
+	["tools/shell/eval-render.ts", ["Markdown", "Text", "type Component"]],
+	["tools/web/fetch-render.ts", ["Text", "type Component"]],
+	["tools/search/file-search-render.ts", ["Text", "type Component"]],
+	["tools/web/gh-renderer.ts", ["Text", "type Component"]],
+	["tools/fs/inspect-image-renderer.ts", ["Text", "type Component"]],
+	["tools/agent/irc-render.ts", ["type Component"]],
+	["tools/shell/job-render.ts", ["Text", "type Component"]],
+	["tools/shell/launch-render.ts", ["Text", "type Component"]],
+	["tools/agent/memory-render.ts", ["Text", "type Component"]],
+	["tools/fs/read-render.ts", ["Text", "type Component"]],
+	["tools/core/render-utils.ts", ["type Component"]],
 	["tools/renderers.ts", ["type Component"]],
-	["tools/resolve-render.ts", ["Text", "type Component"]],
-	["tools/search-renderer.ts", ["Text", "type Component"]],
-	["tools/search-tool-bm25-render.ts", ["Text", "type Component"]],
-	["tools/set-cwd-render.ts", ["Text", "type Component"]],
-	["tools/ssh-render.ts", ["type Component"]],
-	["tools/structure-search-render.ts", ["Text", "type Component"]],
-	["tools/text-search-render.ts", ["Text", "type Component"]],
-	["tools/todo-render.ts", ["Text", "type Component"]],
-	["tools/vibe-render.ts", ["Text", "type Component"]],
-	["tools/write-render.ts", ["type Component"]],
+	["tools/agent/resolve-render.ts", ["Text", "type Component"]],
+	["tools/search/search-renderer.ts", ["Text", "type Component"]],
+	["tools/search/search-tool-bm25-render.ts", ["Text", "type Component"]],
+	["tools/fs/set-cwd-render.ts", ["Text", "type Component"]],
+	["tools/shell/ssh-render.ts", ["type Component"]],
+	["tools/search/structure-search-render.ts", ["Text", "type Component"]],
+	["tools/search/text-search-render.ts", ["Text", "type Component"]],
+	["tools/agent/todo-render.ts", ["Text", "type Component"]],
+	["tools/agent/vibe-render.ts", ["Text", "type Component"]],
+	["tools/fs/write-render.ts", ["type Component"]],
 ]);
 
 /**
@@ -315,10 +315,10 @@ function tuiNamesIn(source: string): string[] {
  * place. A row here is a decision, not a backlog entry: deleting it is how the
  * split finishes.
  *
- * `tools/ask.ts` used to sit here for reading `TERMINAL` to send a notification.
+ * `tools/agent/ask.ts` used to sit here for reading `TERMINAL` to send a notification.
  * It now emits a `HostNotification` through `ToolSession.notify`, which the running
  * host installs and a host without one leaves undefined, so the row is gone rather
- * than reworded. `tools/review.ts` held the last row: its call and result rows are a
+ * than reworded. `tools/agent/review.ts` held the last row: its call and result rows are a
  * `TextBlockView` whose priority mark is a symbol span, so the glyph it needed from
  * the terminal is now a registry key the host resolves.
  *
@@ -435,7 +435,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 		expect(declaring.length).toBeGreaterThan(30);
 		const directories = new Set(declaring.map(file => file.split("/")[0]));
 		expect(directories.size).toBeGreaterThan(4);
-		expect(declaring).toContain("tools/review.ts");
+		expect(declaring).toContain("tools/agent/review.ts");
 		expect(declaring).toContain("autoresearch/tools/run-experiment.ts");
 	});
 
@@ -463,7 +463,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"autoresearch/tools/run-experiment.ts",
 			"autoresearch/tools/update-notes.ts",
 			"goals/goal-tool.ts",
-			"tools/review.ts",
+			"tools/agent/review.ts",
 		]);
 		for (const file of converted) {
 			expect([...IN_PLACE_ANYWHERE.keys()]).not.toContain(file);
@@ -523,7 +523,7 @@ describe("a tool names the terminal package only where it is recorded", () => {
 	 */
 	it("extracts both erased and runtime names from a real tool", () => {
 		expect(files.length).toBeGreaterThan(50);
-		expect(tuiNamesIn(fs.readFileSync(path.join(TOOLS, "ask-render.ts"), "utf-8"))).toEqual([
+		expect(tuiNamesIn(fs.readFileSync(path.join(TOOLS, "agent", "ask-render.ts"), "utf-8"))).toEqual([
 			"Markdown",
 			"Text",
 			"renderInlineMarkdown",

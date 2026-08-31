@@ -4,10 +4,10 @@ import { validateToolCall } from "@veyyon/ai/utils/validation";
 import { prompt } from "@veyyon/utils";
 import { isRecord } from "@veyyon/utils/type-guards";
 import { type } from "arktype";
-import type { ChangelogGenerationResult } from "../../commit/types";
 import { commitPrompts } from "../../prompts/commit/rows";
 import { toReasoningEffort } from "../../thinking";
 import { completeCommitSimple, type ResolveObfuscateProviderText } from "../shared-llm";
+import type { ChangelogGenerationResult } from "../types";
 import { extractTextContent, extractToolCall, parseJsonPayload } from "../utils";
 
 // Build the changelog entry schema with arktype

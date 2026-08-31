@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { OutputMeta } from "@veyyon/coding-agent/tools/output-notice";
+import type { OutputMeta } from "@veyyon/coding-agent/tools/core/output-notice";
 import {
 	formatFullOutputReference,
 	formatOutputNotice,
@@ -8,19 +8,19 @@ import {
 	stripGeneratedOutputNotice,
 	stripOutputNotice,
 	stripRawOutputArtifactNotice,
-} from "@veyyon/coding-agent/tools/output-notice";
+} from "@veyyon/coding-agent/tools/core/output-notice";
 
 /**
  * Contracts: the notice a tool appends to its output has ONE wording, and one module owns it.
  *
  * WHY THIS SUITE EXISTS. `formatOutputNotice` and the two strippers used to live in
- * `tools/output-meta.ts` beside the fluent builder, the tool wrapper and the spill configuration, so
+ * `tools/core/output-meta.ts` beside the fluent builder, the tool wrapper and the spill configuration, so
  * that module reaches `config/settings`, the streaming output sink and the artifact store: 177 modules.
  * `session/messages.ts` needs the WORDING only, to append a notice when it converts a message for the
  * model, and it is imported by `session/session-context.ts` and through it by
  * `session/session-manager.ts`, which 206 test files import. So one string formatter was priced at 97
  * extra modules across most of the suite. The wording, the metadata shape and the strippers moved to
- * `tools/output-notice.ts` (81 modules); `output-meta.ts` re-exports every one of them, so no caller
+ * `tools/core/output-notice.ts` (81 modules); `output-meta.ts` re-exports every one of them, so no caller
  * changed.
  *
  * THE RISK THE MOVE CREATES, and what is pinned here. `stripOutputNotice` removes a notice by REBUILDING

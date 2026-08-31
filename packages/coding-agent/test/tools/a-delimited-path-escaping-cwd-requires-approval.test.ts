@@ -42,9 +42,9 @@ import {
 	expandDelimitedPathEntriesSync,
 	splitDelimitedPathEntry,
 	splitDelimitedPathEntrySync,
-} from "@veyyon/coding-agent/tools/path-utils";
-import { readToolRenderer } from "@veyyon/coding-agent/tools/read-render";
-import { shortenPath } from "@veyyon/coding-agent/tools/render-utils";
+} from "@veyyon/coding-agent/tools/core/path-utils";
+import { shortenPath } from "@veyyon/coding-agent/tools/core/render-utils";
+import { readToolRenderer } from "@veyyon/coding-agent/tools/fs/read-render";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 describe("a delimited path escaping cwd requires approval", () => {

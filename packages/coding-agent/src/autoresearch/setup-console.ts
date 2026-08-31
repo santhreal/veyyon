@@ -2,7 +2,7 @@ import { matchesKey } from "@veyyon/utils/keys";
 import { clamp } from "@veyyon/utils/math";
 import { bottomBorder, divider, keyLegend, row, topBorder } from "../modes/terminal/components/chrome/overlay-box";
 import type { Theme } from "../theme/theme";
-import { replaceTabs, truncateToWidth } from "../tools/render-utils";
+import { replaceTabs, truncateToWidth } from "../tools/core/render-utils";
 import { certifierFor, MAX_ATTEMPTS, MAX_BREADTH, MIN_ATTEMPTS, MIN_BREADTH } from "./swarm";
 import type { SwarmSetup } from "./types";
 

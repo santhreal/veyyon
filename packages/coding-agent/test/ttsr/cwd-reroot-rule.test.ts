@@ -22,7 +22,7 @@
  * file CONTENT, and content mentions absolute paths constantly: a doc, a config, a fixture, a path
  * constant. Scoping those tools in would fire the nudge on where a file TALKS about rather than
  * where it LIVES, and would advise re-rooting into a directory the session never touched. The
- * write side is covered instead by `RerootDetector` in `src/tools/reroot-hint.ts`, which observes
+ * write side is covered instead by `RerootDetector` in `src/tools/fs/reroot-hint.ts`, which observes
  * each tool's declared `filesystemTargets` and so sees where the edit actually lands.
  */
 

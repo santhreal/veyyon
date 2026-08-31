@@ -6,8 +6,8 @@ import { Settings } from "../config/settings";
 import { gateSessionCpuSpawn } from "../session/cpu-limit";
 import { OutputSink } from "../session/streaming-output";
 import type { ToolSession } from "../tools";
-import { inlineBudgetFor } from "../tools/output-artifact";
-import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/output-meta";
+import { inlineBudgetFor } from "../tools/core/output-artifact";
+import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/core/output-meta";
 import { EVAL_TIMEOUT_PAUSE_OP, EVAL_TIMEOUT_RESUME_OP, isEvalTimeoutControlEvent } from "./bridge-timeout";
 import type { JsStatusEvent } from "./js/shared/types";
 import {

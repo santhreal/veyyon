@@ -24,9 +24,9 @@ import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { MnemopiSessionState } from "@veyyon/coding-agent/memory/mnemopi/state";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { MemoryEditTool } from "@veyyon/coding-agent/tools/memory-edit";
-import { MemoryRetainTool } from "@veyyon/coding-agent/tools/memory-retain";
-import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
+import { MemoryEditTool } from "@veyyon/coding-agent/tools/agent/memory-edit";
+import { MemoryRetainTool } from "@veyyon/coding-agent/tools/agent/memory-retain";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/core/tool-errors";
 import { makeToolSession } from "../helpers/tool-session";
 
 /** A recording stand-in for the mnemopi session state the two tools reach for. */

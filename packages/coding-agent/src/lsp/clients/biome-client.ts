@@ -4,8 +4,8 @@
  */
 import path from "node:path";
 import { errorMessage, logger, readPipeText } from "@veyyon/utils";
-import type { Diagnostic, DiagnosticSeverity, LinterClient, ServerConfig } from "../../lsp/types";
 import { adoptIntoPrimarySessionCpuBudget } from "../../session/cpu-limit";
+import type { Diagnostic, DiagnosticSeverity, LinterClient, ServerConfig } from "../types";
 
 // =============================================================================
 // Biome JSON Output Types

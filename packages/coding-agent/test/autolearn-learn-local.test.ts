@@ -12,7 +12,7 @@ import {
 import { localBackend } from "@veyyon/coding-agent/memory/local-backend";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { LearnTool } from "@veyyon/coding-agent/tools/learn";
+import { LearnTool } from "@veyyon/coding-agent/tools/agent/learn";
 import { removeWithRetries } from "@veyyon/utils";
 
 // No `VEYYON_PYTHON_SKIP_CHECK` here on purpose: `checkPythonKernelAvailability`

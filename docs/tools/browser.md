@@ -3,39 +3,39 @@
 > Open, reuse, close, and script browser tabs against headless Chromium, CDP-attached apps, or cmux surfaces.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/browser.ts`
+- Entry: `packages/coding-agent/src/tools/web/browser`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/browser.md`
 - Key collaborators:
-  - `packages/coding-agent/src/tools/browser/tab-supervisor.ts`: global tab registry; worker lifecycle; run/close coordination.
-  - `packages/coding-agent/src/tools/browser/tab-worker.ts`: executes `run` code; implements the `tab` helper API.
-  - `packages/coding-agent/src/tools/browser/tab-worker-entry.ts`: worker-thread transport bootstrap.
-  - `packages/coding-agent/src/tools/browser/registry.ts`: browser-handle registry keyed by browser kind.
-  - `packages/coding-agent/src/tools/browser/launch.ts`: Puppeteer loading, Chromium resolution/download, headless launch, stealth injection.
-  - `packages/coding-agent/src/tools/browser/attach.ts`: CDP attach/reuse, target picking, spawned-app process handling.
-  - `packages/coding-agent/src/tools/browser/tab-protocol.ts`: worker init/run/result message schema.
-  - `packages/coding-agent/src/tools/browser/readable.ts`: `tab.extract()` readability extraction.
-  - `packages/coding-agent/src/tools/browser/aria-snapshot.ts`: `captureAriaSnapshot()` (puppeteer/CDP path) and `buildAriaSnapshotScript()` (cmux path); imports the committed `aria-snapshot.bundle.txt`.
-  - `packages/coding-agent/src/tools/browser/aria-snapshot.bundle.txt`: generated, committed artifact: Playwright's injected ARIA-snapshot sources (Apache-2.0, (c) Microsoft; ARIA tree + W3C accessible-name computation) bundled to a CJS module. Upstream sources are not vendored into the repo.
+  - `packages/coding-agent/src/tools/web/browser/tab-supervisor.ts`: global tab registry; worker lifecycle; run/close coordination.
+  - `packages/coding-agent/src/tools/web/browser/tab-worker.ts`: executes `run` code; implements the `tab` helper API.
+  - `packages/coding-agent/src/tools/web/browser/tab-worker-entry.ts`: worker-thread transport bootstrap.
+  - `packages/coding-agent/src/tools/web/browser/registry.ts`: browser-handle registry keyed by browser kind.
+  - `packages/coding-agent/src/tools/web/browser/launch.ts`: Puppeteer loading, Chromium resolution/download, headless launch, stealth injection.
+  - `packages/coding-agent/src/tools/web/browser/attach.ts`: CDP attach/reuse, target picking, spawned-app process handling.
+  - `packages/coding-agent/src/tools/web/browser/tab-protocol.ts`: worker init/run/result message schema.
+  - `packages/coding-agent/src/tools/web/browser/readable.ts`: `tab.extract()` readability extraction.
+  - `packages/coding-agent/src/tools/web/browser/aria-snapshot.ts`: `captureAriaSnapshot()` (puppeteer/CDP path) and `buildAriaSnapshotScript()` (cmux path); imports the committed `aria-snapshot.bundle.txt`.
+  - `packages/coding-agent/src/tools/web/browser/aria-snapshot.bundle.txt`: generated, committed artifact: Playwright's injected ARIA-snapshot sources (Apache-2.0, (c) Microsoft; ARIA tree + W3C accessible-name computation) bundled to a CJS module. Upstream sources are not vendored into the repo.
   - `packages/coding-agent/scripts/generate-aria-snapshot.ts`: fetches the pinned Playwright sources to a temp dir and bundles them into `aria-snapshot.bundle.txt` (CJS, browser target). Dev-time, network-bound; only the bundle is committed.
-  - `packages/coding-agent/src/tools/browser/cmux/rpc.ts`: cmux browser-kind resolution plus snapshot/eval/wait-state helpers for the cmux backend.
-  - `packages/coding-agent/src/tools/browser/cmux/socket-client.ts`: `CmuxSocketClient`: JSON-RPC over the cmux unix socket.
-  - `packages/coding-agent/src/tools/browser/cmux/cmux-tab.ts`: `CmuxTab` surface helper API and `runCmuxCode()` execution path.
+  - `packages/coding-agent/src/tools/web/browser/cmux/rpc.ts`: cmux browser-kind resolution plus snapshot/eval/wait-state helpers for the cmux backend.
+  - `packages/coding-agent/src/tools/web/browser/cmux/socket-client.ts`: `CmuxSocketClient`: JSON-RPC over the cmux unix socket.
+  - `packages/coding-agent/src/tools/web/browser/cmux/cmux-tab.ts`: `CmuxTab` surface helper API and `runCmuxCode()` execution path.
   - `packages/coding-agent/src/eval/js/shared/runtime.ts`: shared `JsRuntime` that executes `run` code (same engine as the `eval` JS tool); both the worker and cmux backends delegate to it.
-  - `packages/coding-agent/src/tools/browser/render.ts`: TUI rendering for `open`/`close` status lines and `run` JS cells.
-  - `packages/coding-agent/src/tools/puppeteer/00_stealth_tampering.txt`: mask patched functions/descriptors as native.
-  - `packages/coding-agent/src/tools/puppeteer/01_stealth_activity.txt`: synthesize visibility/focus/scroll activity.
-  - `packages/coding-agent/src/tools/puppeteer/02_stealth_hairline.txt`: fix Modernizr hairline detection.
-  - `packages/coding-agent/src/tools/puppeteer/03_stealth_botd.txt`: spoof `navigator.webdriver`, `window.chrome`, and Chrome fingerprint surfaces.
-  - `packages/coding-agent/src/tools/puppeteer/04_stealth_iframe.txt`: patch iframe `contentWindow`/`srcdoc` behavior.
-  - `packages/coding-agent/src/tools/puppeteer/05_stealth_webgl.txt`: spoof WebGL vendor/renderer/precision.
-  - `packages/coding-agent/src/tools/puppeteer/06_stealth_screen.txt`: normalize screen/viewport/device-pixel-ratio values.
-  - `packages/coding-agent/src/tools/puppeteer/07_stealth_fonts.txt`: spoof local fonts and perturb canvas text rendering.
-  - `packages/coding-agent/src/tools/puppeteer/08_stealth_audio.txt`: spoof audio latency/sample-rate and perturb offline rendering.
-  - `packages/coding-agent/src/tools/puppeteer/09_stealth_locale.txt`: force locale/languages/timezone/date strings.
-  - `packages/coding-agent/src/tools/puppeteer/10_stealth_plugins.txt`: synthesize `navigator.plugins`/`navigator.mimeTypes`.
-  - `packages/coding-agent/src/tools/puppeteer/11_stealth_hardware.txt`: spoof `navigator.hardwareConcurrency`.
-  - `packages/coding-agent/src/tools/puppeteer/12_stealth_codecs.txt`: spoof media codec support.
-  - `packages/coding-agent/src/tools/puppeteer/13_stealth_worker.txt`: carry UA/platform spoofing into `Worker`/`SharedWorker`.
+  - `packages/coding-agent/src/tools/web/browser/render.ts`: TUI rendering for `open`/`close` status lines and `run` JS cells.
+  - `packages/coding-agent/src/tools/web/puppeteer/00_stealth_tampering.txt`: mask patched functions/descriptors as native.
+  - `packages/coding-agent/src/tools/web/puppeteer/01_stealth_activity.txt`: synthesize visibility/focus/scroll activity.
+  - `packages/coding-agent/src/tools/web/puppeteer/02_stealth_hairline.txt`: fix Modernizr hairline detection.
+  - `packages/coding-agent/src/tools/web/puppeteer/03_stealth_botd.txt`: spoof `navigator.webdriver`, `window.chrome`, and Chrome fingerprint surfaces.
+  - `packages/coding-agent/src/tools/web/puppeteer/04_stealth_iframe.txt`: patch iframe `contentWindow`/`srcdoc` behavior.
+  - `packages/coding-agent/src/tools/web/puppeteer/05_stealth_webgl.txt`: spoof WebGL vendor/renderer/precision.
+  - `packages/coding-agent/src/tools/web/puppeteer/06_stealth_screen.txt`: normalize screen/viewport/device-pixel-ratio values.
+  - `packages/coding-agent/src/tools/web/puppeteer/07_stealth_fonts.txt`: spoof local fonts and perturb canvas text rendering.
+  - `packages/coding-agent/src/tools/web/puppeteer/08_stealth_audio.txt`: spoof audio latency/sample-rate and perturb offline rendering.
+  - `packages/coding-agent/src/tools/web/puppeteer/09_stealth_locale.txt`: force locale/languages/timezone/date strings.
+  - `packages/coding-agent/src/tools/web/puppeteer/10_stealth_plugins.txt`: synthesize `navigator.plugins`/`navigator.mimeTypes`.
+  - `packages/coding-agent/src/tools/web/puppeteer/11_stealth_hardware.txt`: spoof `navigator.hardwareConcurrency`.
+  - `packages/coding-agent/src/tools/web/puppeteer/12_stealth_codecs.txt`: spoof media codec support.
+  - `packages/coding-agent/src/tools/web/puppeteer/13_stealth_worker.txt`: carry UA/platform spoofing into `Worker`/`SharedWorker`.
 
 ## Inputs
 
@@ -79,7 +79,7 @@ The tool returns one result per call; no streaming partial output is emitted fro
   1. every structured display output in execution order (object/image `display(value)` calls plus helper status events),
   2. final return value, JSON-stringified unless already a string,
   3. or `Ran code on tab "..."` if nothing else was produced.
-- `display(value)` is handled by the shared runtime's `displayValue()` (`src/eval/js/shared/runtime.ts`), then mapped to content by `WorkerCore.#pushDisplay()` (`packages/coding-agent/src/tools/browser/tab-worker.ts`):
+- `display(value)` is handled by the shared runtime's `displayValue()` (`src/eval/js/shared/runtime.ts`), then mapped to content by `WorkerCore.#pushDisplay()` (`packages/coding-agent/src/tools/web/browser/tab-worker.ts`):
   - `{ type: "image", data, mimeType }` with decodable base64 becomes image content; an unrecognized `data` shape is dropped with a debug note.
   - any other object/array becomes pretty JSON text (`JSON.stringify(value, null, 2)`); a value that is not structured-cloneable is dropped with a debug note.
   - helper side effects (`read`/`write`/`tree`/...) emit `status` events that surface as compact JSON text.
@@ -88,21 +88,21 @@ The tool returns one result per call; no streaming partial output is emitted fro
 - `run` `details` includes `action`, `name`, current `browser`/`url` when the tab exists, optional `screenshots`, and `details.result` containing only the concatenated text outputs. Combined run text is capped at the inline byte limit via `enforceInlineByteCap()`; over-cap text is saved as a session artifact (`saveBrowserOutputArtifact()`) and the capped text replaces it in content and `details.result`.
 
 ## Flow
-1. `BrowserTool.execute()` (`packages/coding-agent/src/tools/browser.ts`) abort-checks, clamps `timeout` via `clampTimeout("browser", ...)`, defaults `name` to `"main"`, and dispatches on `action`.
+1. `BrowserTool.execute()` (`packages/coding-agent/src/tools/web/browser`) abort-checks, clamps `timeout` via `clampTimeout("browser", ...)`, defaults `name` to `"main"`, and dispatches on `action`.
 2. `open` resolves browser kind with `resolveBrowserKind()`:
    - `app.cdp_url` → `{ kind: "connected" }` after trimming trailing slashes.
    - `app.path` → `{ kind: "spawned" }` after resolving against session cwd.
    - otherwise, `resolveCmuxKind()` → `{ kind: "cmux", socketPath, password?, surface? }` when `CMUX_SOCKET_PATH` is set and cmux is enabled (`browser.cmux` setting, overridable by `VEYYON_BROWSER_CMUX`).
    - otherwise → `{ kind: "headless", headless: session.settings.get("browser.headless") }`.
 3. `open` rejects reusing the same tab name across different browser kinds (`sameBrowserKind()`); callers must close first.
-4. `open` acquires a browser handle through `acquireBrowser()` (`packages/coding-agent/src/tools/browser/registry.ts`):
+4. `open` acquires a browser handle through `acquireBrowser()` (`packages/coding-agent/src/tools/web/browser/registry.ts`):
    - existing connected handle is reused by browser-kind key;
    - stale disconnected handles are disposed and recreated;
    - headless launches via `launchHeadlessBrowser()`;
    - `connected` waits for `${cdpUrl}/json/version`, then `puppeteer.connect()`;
    - `spawned` first tries `findReusableCdp()`, else kills same-path processes, allocates a free loopback port, spawns the executable with `--remote-debugging-port=<port>`, waits for CDP, then connects.
    - `cmux` connects a `CmuxSocketClient` to the cmux unix socket; existing cmux handles are reused unconditionally (no connection-liveness recheck).
-5. `open` acquires a tab through `acquireTab()` (`packages/coding-agent/src/tools/browser/tab-supervisor.ts`):
+5. `open` acquires a tab through `acquireTab()` (`packages/coding-agent/src/tools/web/browser/tab-supervisor.ts`):
    - same-name + same-browser + alive tab is reused unless `dialogs` changed;
    - same-name but different browser handle, dead state, or changed dialog policy forces release and recreation;
    - reusing with a new `url` navigates by issuing `await tab.goto(...)` through the worker, defaulting to `waitUntil: "load"` when `wait_until` is omitted.
@@ -110,7 +110,7 @@ The tool returns one result per call; no streaming partial output is emitted fro
    - headless mode sends `url`, `waitUntil`, `viewport`, `dialogs`, and timeout; the worker defaults missing `waitUntil` to `"load"`.
    - attach mode resolves a page with `pickElectronTarget()`, gets its target id, and sends `targetId` plus `dialogs`.
 7. `acquireTab()` spawns a dedicated Bun `Worker` from `tab-worker-entry.ts`; if that fails it falls back to inline execution in the main thread (`spawnInlineWorker()`), preserving behavior but losing protection against synchronous infinite loops.
-8. `WorkerCore.#init()` (`packages/coding-agent/src/tools/browser/tab-worker.ts`) connects back to the browser websocket endpoint. Headless mode opens a new page, applies stealth patches, applies viewport, installs dialog handling if requested, and optionally navigates. Attach mode resolves the requested target page and optionally installs dialog handling.
+8. `WorkerCore.#init()` (`packages/coding-agent/src/tools/web/browser/tab-worker.ts`) connects back to the browser websocket endpoint. Headless mode opens a new page, applies stealth patches, applies viewport, installs dialog handling if requested, and optionally navigates. Attach mode resolves the requested target page and optionally installs dialog handling.
 9. On success the worker sends `ready` with `{ url, title, viewport, targetId }`; the supervisor stores a `TabSession`, increments browser-handle refcount with `holdBrowser()`, and keeps the tab in a process-global `Map<string, TabSession>`.
 10. `run` requires non-empty `code`, looks up the tab with `getTab()`, then delegates to `runInTab()`.
 11. `runInTabWithSnapshot()` rejects dead tabs and concurrent runs (`Tab ... is busy`), captures session cwd plus optional `browser.screenshotDir`, registers an abort hook, sends a `run` message to the worker, and races the result against `timeoutMs + 750` ms. Timeouts on dedicated-worker tabs recycle the worker (the old worker is terminated and a fresh worker adopts the same page, so the tab and page target survive); force-kill plus orphaned page close happens only for inline-mode tabs, failed recycles, or when the worker stays unresponsive past the 750 ms grace.
@@ -146,7 +146,7 @@ The tool returns one result per call; no streaming partial output is emitted fro
    - `tab.ref(id)`
 14. Selector handling in `normalizeSelector()` accepts plain CSS and Puppeteer query handlers, and rewrites legacy Playwright-style prefixes `p-text/`, `p-xpath/`, `p-pierce/`, `p-aria/`; other `p-*` prefixes throw a `ToolError`. Playwright-only engines/pseudos (`:has-text()`, `:text()`, `:visible`, `:nth-match()`, `:near()`/`:above()`/…) on a CSS selector throw a `ToolError` pointing at the `text/`/`aria/` equivalents instead of stalling the action timeout.
 15. `tab.observe()` clears the element cache, takes a Puppeteer accessibility snapshot, filters to interactive nodes unless `includeAll`, optionally filters to viewport-visible nodes, assigns numeric ids, caches `ElementHandle`s, and returns URL/title/viewport/scroll metadata plus `elements`.
-15a. `tab.ariaSnapshot()` resolves the optional `selector` (via `normalizeSelector()` → `page.$`, defaulting to the whole document) and runs the generated Playwright ARIA-snapshot bundle (`src/tools/browser/aria/aria-snapshot.bundle.txt`) via `captureAriaSnapshot()`. The bundle is wrapped in a `new Function` built worker-side (so page CSP never applies) and serialized to a CDP `page.evaluate` in the page's **main world**, returning Playwright-format YAML. It always runs in `ai` mode: every node gets a `[ref=eN]` id, clickables get `[cursor=pointer]`, and matched DOM nodes are tagged with an `_ariaRef` expando. Existing `_ariaRef` expandos are cleared before each snapshot so ids renumber deterministically from e1 (the fresh module's counter resets each call); refs stay valid until the next snapshot. The cmux backend uses `buildAriaSnapshotScript()` over `browser.eval` instead (no `ElementHandle`; CSS selectors only for the root).
+15a. `tab.ariaSnapshot()` resolves the optional `selector` (via `normalizeSelector()` → `page.$`, defaulting to the whole document) and runs the generated Playwright ARIA-snapshot bundle (`src/tools/web/browser/aria/aria-snapshot.bundle.txt`) via `captureAriaSnapshot()`. The bundle is wrapped in a `new Function` built worker-side (so page CSP never applies) and serialized to a CDP `page.evaluate` in the page's **main world**, returning Playwright-format YAML. It always runs in `ai` mode: every node gets a `[ref=eN]` id, clickables get `[cursor=pointer]`, and matched DOM nodes are tagged with an `_ariaRef` expando. Existing `_ariaRef` expandos are cleared before each snapshot so ids renumber deterministically from e1 (the fresh module's counter resets each call); refs stay valid until the next snapshot. The cmux backend uses `buildAriaSnapshotScript()` over `browser.eval` instead (no `ElementHandle`; CSS selectors only for the root).
 16. `tab.id(n)` resolves the cached `ElementHandle`, verifies `el.isConnected`, and throws a stale-id error after cache invalidation if the DOM changed or the cache was cleared.
 16a. `tab.ref(id)` resolves a `[ref=eN]` id from the latest `ariaSnapshot()` to a live `ElementHandle` via `resolveAriaRefHandle()` (`page.evaluateHandle` in the main world, walking the document + shadow roots for the matching `_ariaRef`), throwing if no element matches; it accepts a bare `eN` or a prefixed form. For inline selector use, `parseAriaRefSelector()` recognizes only the explicit `aria-ref=eN` / `aria-ref/eN` / `ariaref/eN` forms inside `tab.click/type/fill/waitFor/scrollIntoView`, a bare `eN` is intentionally rejected there so it does not collide with cmux's native observe ids. The cmux backend resolves the same explicit forms through its `aria-ref` `SelectorSpec` kind in `findElement`.
 17. `tab.goto()` clears the cached element ids before navigating. Any new `tab.observe()` also clears and rebuilds the cache.
@@ -197,8 +197,8 @@ The tool returns one result per call; no streaming partial output is emitted fro
   - `killExistingByPath()` / `gracefulKillTreeOnce()` use `@veyyon/natives` process inspection/termination.
   - Worker mode uses Bun `Worker`; fallback mode does not.
 - Session state (transcript, memory, jobs, checkpoints, registries)
-  - Browser handles are cached in a process-global `Map` keyed by browser kind in `packages/coding-agent/src/tools/browser/registry.ts`.
-  - Tabs are cached in a process-global `Map` keyed by `name` in `packages/coding-agent/src/tools/browser/tab-supervisor.ts`.
+  - Browser handles are cached in a process-global `Map` keyed by browser kind in `packages/coding-agent/src/tools/web/browser/registry.ts`.
+  - Tabs are cached in a process-global `Map` keyed by `name` in `packages/coding-agent/src/tools/web/browser/tab-supervisor.ts`.
   - `run` captures session cwd and optional `browser.screenshotDir` for screenshot/save path resolution.
   - `restartForModeChange()` drops only headless tabs.
 - User-visible prompts / interactive UI
@@ -208,17 +208,17 @@ The tool returns one result per call; no streaming partial output is emitted fro
   - A timed-out `run` aborts the worker execution path and can tear down the tab.
 
 ## Limits & Caps
-- Tool timeout clamp: default `30` s, min `1` s, max `300` s (`TOOL_TIMEOUTS.browser` in `packages/coding-agent/src/tools/tool-timeouts.ts`).
-- Supervisor grace period around init/run/close: `750` ms (`GRACE_MS` in `packages/coding-agent/src/tools/browser/tab-supervisor.ts`).
-- Puppeteer protocol timeout for launch/connect operations: `60_000` ms (`BROWSER_PROTOCOL_TIMEOUT_MS` in `packages/coding-agent/src/tools/browser/launch.ts`).
-- Connected-browser CDP readiness wait: `5_000` ms before `puppeteer.connect()` (`packages/coding-agent/src/tools/browser/registry.ts`).
-- Spawned-app CDP readiness wait after spawn: `30_000` ms (`packages/coding-agent/src/tools/browser/registry.ts`).
-- CDP polling cadence: 150 ms in `waitForCdp()` (`packages/coding-agent/src/tools/browser/attach.ts`).
-- Headless default viewport: `1365x768` at `deviceScaleFactor: 1.25` (`DEFAULT_VIEWPORT` in `packages/coding-agent/src/tools/browser/launch.ts`).
-- Screenshot model-attachment resize cap: `maxWidth 1024`, `maxHeight 1024`, `maxBytes 150 * 1024`, `jpegQuality 70` (`packages/coding-agent/src/tools/browser/tab-worker.ts`).
-- `tab.waitForUrl()` polling interval: `200` ms (`packages/coding-agent/src/tools/browser/tab-worker.ts`).
-- Drag simulation uses `12` mouse-move steps (`packages/coding-agent/src/tools/browser/tab-worker.ts`).
-- Per-op fail-fast ceilings (`packages/coding-agent/src/tools/browser/tab-worker.ts`): quick page reads (`observe`/`screenshot`/`extract`/`ariaSnapshot`) `min(cellBudget − 1s, 20s)`; interactive actions + default waits `min(cellBudget − 1s, 8s)`; an explicit `{ timeout }` on a `waitFor*` is clamped to `cellBudget − 1s` (`0`/`Infinity` → that bound). See `resolveOpTimeouts()` / `resolveWaitTimeout()`.
+- Tool timeout clamp: default `30` s, min `1` s, max `300` s (`TOOL_TIMEOUTS.browser` in `packages/coding-agent/src/tools/core/tool-timeouts.ts`).
+- Supervisor grace period around init/run/close: `750` ms (`GRACE_MS` in `packages/coding-agent/src/tools/web/browser/tab-supervisor.ts`).
+- Puppeteer protocol timeout for launch/connect operations: `60_000` ms (`BROWSER_PROTOCOL_TIMEOUT_MS` in `packages/coding-agent/src/tools/web/browser/launch.ts`).
+- Connected-browser CDP readiness wait: `5_000` ms before `puppeteer.connect()` (`packages/coding-agent/src/tools/web/browser/registry.ts`).
+- Spawned-app CDP readiness wait after spawn: `30_000` ms (`packages/coding-agent/src/tools/web/browser/registry.ts`).
+- CDP polling cadence: 150 ms in `waitForCdp()` (`packages/coding-agent/src/tools/web/browser/attach.ts`).
+- Headless default viewport: `1365x768` at `deviceScaleFactor: 1.25` (`DEFAULT_VIEWPORT` in `packages/coding-agent/src/tools/web/browser/launch.ts`).
+- Screenshot model-attachment resize cap: `maxWidth 1024`, `maxHeight 1024`, `maxBytes 150 * 1024`, `jpegQuality 70` (`packages/coding-agent/src/tools/web/browser/tab-worker.ts`).
+- `tab.waitForUrl()` polling interval: `200` ms (`packages/coding-agent/src/tools/web/browser/tab-worker.ts`).
+- Drag simulation uses `12` mouse-move steps (`packages/coding-agent/src/tools/web/browser/tab-worker.ts`).
+- Per-op fail-fast ceilings (`packages/coding-agent/src/tools/web/browser/tab-worker.ts`): quick page reads (`observe`/`screenshot`/`extract`/`ariaSnapshot`) `min(cellBudget − 1s, 20s)`; interactive actions + default waits `min(cellBudget − 1s, 8s)`; an explicit `{ timeout }` on a `waitFor*` is clamped to `cellBudget − 1s` (`0`/`Infinity` → that bound). See `resolveOpTimeouts()` / `resolveWaitTimeout()`.
 
 ## Errors
 - `BrowserTool.execute()` converts DOM-style `AbortError` into `ToolAbortError`; other errors propagate.

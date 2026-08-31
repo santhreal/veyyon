@@ -86,9 +86,9 @@ const OFF_THE_BOOT_PATH = [
 	"coding-agent/src/session/agent-session.ts",
 	"coding-agent/src/session/session-manager.ts",
 	"coding-agent/src/tools/index.ts",
-	"coding-agent/src/tools/read.ts",
-	"coding-agent/src/tools/bash.ts",
-	"coding-agent/src/tools/search.ts",
+	"coding-agent/src/tools/fs/read.ts",
+	"coding-agent/src/tools/shell/bash.ts",
+	"coding-agent/src/tools/search/search.ts",
 	"coding-agent/src/edit/index.ts",
 ] as const;
 
@@ -108,12 +108,12 @@ const ON_THE_BOOT_PATH = [
 /**
  * The one module under `tools/` the boot path may reach.
  *
- * `tools/approval-modes.ts` is the approval-mode value list, and `cli/flag-tables.ts` imports it to
+ * `tools/core/approval-modes.ts` is the approval-mode value list, and `cli/flag-tables.ts` imports it to
  * validate `--approval`. Its own header says it is kept free of runtime dependencies for exactly
  * this reason, so it reaches nothing and costs one module. Any OTHER `tools/` module appearing here
  * means a tool implementation is being parsed at startup.
  */
-const BOOT_TOOL_MODULES = ["coding-agent/src/tools/approval-modes.ts"];
+const BOOT_TOOL_MODULES = ["coding-agent/src/tools/core/approval-modes.ts"];
 
 /** A `/`-written path in the shape `reachedNames` produces, so the lists read the same on Windows. */
 function asPath(name: string): string {

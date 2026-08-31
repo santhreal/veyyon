@@ -20,7 +20,7 @@
  * and never conflates them.
  */
 import { describe, expect, it } from "bun:test";
-import { TodoTool } from "@veyyon/coding-agent/tools/todo";
+import { TodoTool } from "@veyyon/coding-agent/tools/agent/todo";
 import { TODO_STATUS_IS_TERMINAL, TODO_STATUSES, type TodoStatus } from "@veyyon/wire";
 
 /** A session whose board is whatever the test hands it, and which records writes. */

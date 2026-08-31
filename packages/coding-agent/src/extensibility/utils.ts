@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import { theme } from "../theme/theme";
-import { expandPath, normalizeLocalScheme } from "../tools/path-utils";
+import { expandPath, normalizeLocalScheme } from "../tools/core/path-utils";
 import type { HookUIContext } from "./hooks/types";
 
 /**

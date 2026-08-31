@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { formatPhaseDisplayName, phaseRomanNumeral } from "@veyyon/coding-agent/tools/todo";
+import { formatPhaseDisplayName, phaseRomanNumeral } from "@veyyon/coding-agent/tools/agent/todo";
 
 /**
  * Roman numeral phase labels for 1..20 and display name format.

@@ -20,7 +20,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout.ts";
+import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
@@ -385,10 +385,10 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/speech/tts/downloader.ts",
 	"packages/coding-agent/src/speech/tts/tts-worker.ts",
 	"packages/coding-agent/src/theme/before-markdown-theme.ts",
-	"packages/coding-agent/src/tools/browser/handle-release.ts",
-	"packages/coding-agent/src/tools/browser/tab-worker-entry.ts",
-	"packages/coding-agent/src/tools/result-notice.ts",
-	"packages/coding-agent/src/tools/text-search-scope.ts",
+	"packages/coding-agent/src/tools/web/browser/handle-release.ts",
+	"packages/coding-agent/src/tools/web/browser/tab-worker-entry.ts",
+	"packages/coding-agent/src/tools/core/result-notice.ts",
+	"packages/coding-agent/src/tools/search/text-search-scope.ts",
 	"packages/coding-agent/src/web/scrapers/choosealicense.ts",
 	"packages/coding-agent/src/web/scrapers/cisa-kev.ts",
 	"packages/coding-agent/src/web/scrapers/clojars.ts",

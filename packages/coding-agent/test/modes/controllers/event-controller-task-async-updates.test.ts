@@ -21,7 +21,7 @@ import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import type { TaskToolDetails } from "@veyyon/coding-agent/task/types";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import type { BashToolDetails } from "@veyyon/coding-agent/tools/bash";
+import type { BashToolDetails } from "@veyyon/coding-agent/tools/shell/bash";
 
 function taskResult(asyncState: "running" | "completed" | "failed" | undefined, text: string) {
 	const details: TaskToolDetails = {

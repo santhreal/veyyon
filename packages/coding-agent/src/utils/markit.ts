@@ -3,7 +3,7 @@ import { isCancellation, untilAborted } from "@veyyon/utils/abortable";
 // Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import type { ConversionResult, Markit, StreamInfo } from "../export/markit";
-import { ToolAbortError, toolAbort } from "../tools/tool-errors";
+import { ToolAbortError, toolAbort } from "../tools/core/tool-errors";
 import {
 	type MarkitConversionCacheStatus,
 	markitConversionCacheKey,

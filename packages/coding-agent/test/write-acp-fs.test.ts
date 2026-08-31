@@ -7,7 +7,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { resolveLocalUrlToPath } from "@veyyon/coding-agent/internal-urls";
 import type { PlanModeState } from "@veyyon/coding-agent/plan-mode/state";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { WriteTool } from "@veyyon/coding-agent/tools/write";
+import { WriteTool } from "@veyyon/coding-agent/tools/fs/write";
 import type { ClientBridge } from "@veyyon/kernel/session/client-bridge";
 import { removeWithRetries } from "@veyyon/utils";
 

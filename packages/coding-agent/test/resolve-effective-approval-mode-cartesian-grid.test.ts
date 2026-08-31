@@ -3,7 +3,7 @@
  * Why: cli yolo > plan cap > configured; every cell must be exact.
  */
 import { describe, expect, it } from "bun:test";
-import { resolveEffectiveApprovalMode } from "../src/tools/approval";
+import { resolveEffectiveApprovalMode } from "../src/tools/core/approval";
 
 describe("resolveEffectiveApprovalMode cartesian grid", () => {
 	const configs = [

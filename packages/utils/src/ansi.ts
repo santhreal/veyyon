@@ -120,7 +120,7 @@ export const OSC66 = `${OSC}66;`;
  * A pattern rather than a `RegExp`, because the four call sites need three different flag
  * sets and a shared `RegExp` object carries `lastIndex` between them: `tui.ts` strips with
  * `g`, `utils.ts` collects with `g`, `markdown.ts` scans with `y`, and
- * `coding-agent/src/tools/terminal-output.ts` reads the parameters out. Each builds its own
+ * `coding-agent/src/tools/shell/terminal-output.ts` reads the parameters out. Each builds its own
  * through {@link sgrSequence}.
  *
  * WHY IT IS HERE. Those four spelled it out themselves, under four names, and the fourth had

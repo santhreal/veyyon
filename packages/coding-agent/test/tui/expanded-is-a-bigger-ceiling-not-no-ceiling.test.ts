@@ -9,12 +9,12 @@
  * THE CONVENTION THIS ENFORCES, which is why the two fixes below are violations rather than opinions.
  * Five separate families in this package already pair a collapsed limit with a NAMED expanded one:
  *
- *   - `JSON_TREE_MAX_LINES_COLLAPSED` / `JSON_TREE_MAX_LINES_EXPANDED` (6 / 200) in `tools/json-tree-render.ts`,
- *     used by `mcp/render.ts`, `modes/terminal/components/transcript/tool-execution.ts` and `tools/eval-render.ts`
- *   - `COLLAPSED_TEXT_LIMIT` / `EXPANDED_TEXT_LIMIT` in `tools/text-search.ts`
+ *   - `JSON_TREE_MAX_LINES_COLLAPSED` / `JSON_TREE_MAX_LINES_EXPANDED` (6 / 200) in `tools/core/json-tree-render.ts`,
+ *     used by `mcp/render.ts`, `modes/terminal/components/transcript/tool-execution.ts` and `tools/shell/eval-render.ts`
+ *   - `COLLAPSED_TEXT_LIMIT` / `EXPANDED_TEXT_LIMIT` in `tools/search/text-search.ts`
  *   - `INSPECT_OUTPUT_COLLAPSED_LINES` / `INSPECT_OUTPUT_EXPANDED_LINES` (4 / 16)
- *   - `TV_OUTPUT_COLLAPSED` / `TV_OUTPUT_EXPANDED` (1 / 3) in `tools/vibe-render.ts`
- *   - `PREVIEW_LIMITS.OUTPUT_COLLAPSED` / `PREVIEW_LIMITS.OUTPUT_EXPANDED` (3 / 10) in `tools/render-utils.ts`
+ *   - `TV_OUTPUT_COLLAPSED` / `TV_OUTPUT_EXPANDED` (1 / 3) in `tools/agent/vibe-render.ts`
+ *   - `PREVIEW_LIMITS.OUTPUT_COLLAPSED` / `PREVIEW_LIMITS.OUTPUT_EXPANDED` (3 / 10) in `tools/core/render-utils.ts`
  *
  * TWO MODULES DEVIATED, and both had zero behavioural tests (checked by filename and by grepping
  * `test/` for the module specifier; the only hits were prose in an architecture gate).
@@ -22,8 +22,8 @@
  *   1. `tui/code-cell.ts` at four sites read `expanded ? raw.length : Math.min(raw.length, max)`, so
  *      `outputMaxLines = 6`, `codeMaxLines = 12` and `contentMaxLines = 12` -- all DEFAULT PARAMETERS,
  *      the path every test takes unless it says otherwise -- were bypassed entirely on expand. This
- *      cell is reached by `tools/read.ts`, which 54 test files import.
- *   2. `tools/gh-renderer.ts:369` gave its COLLAPSED arm `OUTPUT_EXPANDED` and its expanded arm no
+ *      cell is reached by `tools/fs/read.ts`, which 54 test files import.
+ *   2. `tools/web/gh-renderer.ts:369` gave its COLLAPSED arm `OUTPUT_EXPANDED` and its expanded arm no
  *      ceiling. Line 257 of the same file pairs them correctly, so one file disagreed with itself.
  *
  * WHY `it.each` OVER THE BRANCH VALUES rather than a second copy of the test. One assertion applied to
@@ -34,7 +34,7 @@
 import { describe, expect, it } from "bun:test";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { theme } from "@veyyon/coding-agent/theme/theme-binding";
-import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/render-utils";
+import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/core/render-utils";
 import { renderCodeCell, renderMarkdownCell } from "@veyyon/coding-agent/tui/code-cell";
 
 /** Far larger than any ceiling in play, so an unbounded arm is unmistakable in the line count. */

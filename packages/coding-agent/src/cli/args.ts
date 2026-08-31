@@ -10,7 +10,7 @@ import { pluralize } from "@veyyon/utils/format";
 import { nearestNames } from "@veyyon/utils/levenshtein";
 import chalk from "chalk";
 import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseCliThinkingLevel } from "../thinking";
-import { BUILTIN_TOOL_NAMES, type BuiltinToolName, normalizeToolNames } from "../tools/builtin-names";
+import { BUILTIN_TOOL_NAMES, type BuiltinToolName, normalizeToolNames } from "../tools/core/builtin-names";
 import {
 	OPTIONAL_FLAGS,
 	OPTIONAL_VALUE_FLAGS,

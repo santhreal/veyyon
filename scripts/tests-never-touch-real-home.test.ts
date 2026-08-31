@@ -91,7 +91,7 @@ import { type Dirent, readdirSync, readFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { TEMP_HOME } from "../packages/utils/test/helpers/sandbox-home";
-import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout.ts";
+import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 

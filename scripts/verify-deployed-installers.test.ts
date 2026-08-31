@@ -15,7 +15,7 @@ import { describe, expect, it } from "bun:test";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { DEPLOYED_INSTALLERS, describeMismatch, sha256 } from "./verify-deployed-installers.ts";
+import { DEPLOYED_INSTALLERS, describeMismatch, sha256 } from "./verify-deployed-installers";
 
 const repoRoot = path.join(import.meta.dir, "..");
 

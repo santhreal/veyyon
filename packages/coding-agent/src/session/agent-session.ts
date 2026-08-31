@@ -427,30 +427,30 @@ import {
 } from "../thinking";
 import { formatTitleConversationContext, type TitleConversationTurn } from "../tiny/message-preproc";
 import { shutdownTinyTitleClient } from "../tiny/title-client";
-import {
-	resolveEffectiveApprovalMode,
-	validateApprovalModeSetting,
-	validateApprovalPolicySettings,
-} from "../tools/approval";
-import type { ApprovalMode, SessionToolApprovals } from "../tools/approval-modes";
-import { assertEditableFile } from "../tools/auto-generated-guard";
-import { normalizeToolNames, TOOL } from "../tools/builtin-names";
-import type { CheckpointState, CompletedRewindState } from "../tools/checkpoint";
-import { reportLostOutputArtifact } from "../tools/output-artifact";
-import { outputMeta, wrapToolWithMetaNotice } from "../tools/output-meta";
-import { normalizeLocalScheme, resolveToCwd } from "../tools/path-utils";
-import { shortenPath } from "../tools/render-utils";
-import { isAutoQaEnabled } from "../tools/report-tool-issue";
-import { buildResolveReminderMessage, type ResolveToolDetails, runResolveInvocation } from "../tools/resolve";
+import { isAutoQaEnabled } from "../tools/agent/report-tool-issue";
+import { buildResolveReminderMessage, type ResolveToolDetails, runResolveInvocation } from "../tools/agent/resolve";
 import {
 	boundedTodoPreviewText,
 	prioritizeTodoItems,
 	TODO_ITEM_PREVIEW_WIDTH,
 	type TodoPhase,
 	USER_TODO_EDIT_CUSTOM_TYPE,
-} from "../tools/todo";
-import { ToolAbortError, ToolError } from "../tools/tool-errors";
-import { clampTimeout } from "../tools/tool-timeouts";
+} from "../tools/agent/todo";
+import {
+	resolveEffectiveApprovalMode,
+	validateApprovalModeSetting,
+	validateApprovalPolicySettings,
+} from "../tools/core/approval";
+import type { ApprovalMode, SessionToolApprovals } from "../tools/core/approval-modes";
+import { normalizeToolNames, TOOL } from "../tools/core/builtin-names";
+import { reportLostOutputArtifact } from "../tools/core/output-artifact";
+import { outputMeta, wrapToolWithMetaNotice } from "../tools/core/output-meta";
+import { normalizeLocalScheme, resolveToCwd } from "../tools/core/path-utils";
+import { shortenPath } from "../tools/core/render-utils";
+import { ToolAbortError, ToolError } from "../tools/core/tool-errors";
+import { clampTimeout } from "../tools/core/tool-timeouts";
+import { assertEditableFile } from "../tools/fs/auto-generated-guard";
+import type { CheckpointState, CompletedRewindState } from "../tools/fs/checkpoint";
 import { parseCommandArgs } from "../utils/command-args";
 import { type EditMode, resolveEditMode } from "../utils/edit-mode";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";

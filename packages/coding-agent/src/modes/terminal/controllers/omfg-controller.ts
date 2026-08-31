@@ -2,7 +2,7 @@ import * as path from "node:path";
 import { errorMessage, prompt } from "@veyyon/utils";
 import type { Rule } from "../../../discovery/capability/rule";
 import { sideChannelPrompts } from "../../../prompts/side-channel/rows";
-import { shortenPath } from "../../../tools/render-utils";
+import { shortenPath } from "../../../tools/core/render-utils";
 import { OmfgPanelComponent } from "../components/dialogs/omfg-panel";
 import type { InteractiveModeContext } from "../types";
 import {

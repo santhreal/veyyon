@@ -1,8 +1,8 @@
 import type { FetchImpl } from "@veyyon/ai";
 import { untilAborted } from "@veyyon/utils";
 import type { Page } from "puppeteer-core";
-import { applyStealthPatches, applyViewport } from "../../../tools/browser/launch";
-import { acquireBrowser, holdBrowser, releaseBrowser } from "../../../tools/browser/registry";
+import { applyStealthPatches, applyViewport } from "../../../tools/web/browser/launch";
+import { acquireBrowser, holdBrowser, releaseBrowser } from "../../../tools/web/browser/registry";
 import { buildBrowserNavigationHeaders } from "./browser-headers";
 import { SEARCH_HARD_TIMEOUT_MS } from "./utils";
 

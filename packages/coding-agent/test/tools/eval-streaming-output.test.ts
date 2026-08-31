@@ -3,7 +3,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import * as evalIndex from "@veyyon/coding-agent/eval";
 import type { EvalToolDetails } from "@veyyon/coding-agent/eval/types";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { EvalTool } from "@veyyon/coding-agent/tools/eval";
+import { EvalTool } from "@veyyon/coding-agent/tools/shell/eval";
 
 function makeSession(): ToolSession {
 	return {

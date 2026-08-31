@@ -15,8 +15,8 @@ import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ProviderTextTransformResolver } from "../../provider-boundary";
 import type { Theme } from "../../theme/theme";
 import type { ToolSession } from "../../tools";
-import { formatAge } from "../../tools/render-utils";
-import { throwIfAborted } from "../../tools/tool-errors";
+import { formatAge } from "../../tools/core/render-utils";
+import { throwIfAborted } from "../../tools/core/tool-errors";
 import {
 	formatSearchProviderFailure,
 	formatSearchProviderFailures,

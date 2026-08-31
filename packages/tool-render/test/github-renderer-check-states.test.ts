@@ -8,7 +8,7 @@ import type { ToolRenderProps, ToolResultLike } from "../src/types";
  * The web view of a GitHub Actions run watch, over the shared check-run vocabulary.
  *
  * WHY THIS SUITE EXISTS. This renderer used to carry its own copy of the conclusion tables
- * that `coding-agent/src/tools/gh-renderer.ts` also carried, and the two had drifted: the
+ * that `coding-agent/src/tools/web/gh-renderer.ts` also carried, and the two had drifted: the
  * terminal side knew a queued/requested/waiting/pending group, this one did not. Both now read
  * `@veyyon/utils/github-check-run`, so a conclusion taught to one view is taught to both. These
  * cases drive the real renderer for each state so the shared classification is proven where a

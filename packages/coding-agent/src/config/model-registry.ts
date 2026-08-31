@@ -43,7 +43,6 @@ import {
 	logger,
 	wrapFetchForExtraCa,
 } from "@veyyon/utils";
-import { parseModelString, resolveProviderModelReference } from "../config/model-resolver";
 import { type ApiKeyResolverModel, type ApiKeyResolverOptions, createApiKeyResolver } from "./api-key-resolver";
 import { isAuthenticated, kNoAuth } from "./auth-state";
 import type { ConfigError, ConfigFile } from "./config-file";
@@ -66,6 +65,7 @@ import {
 	getOllamaContextLengthOverride,
 	normalizeLiteLLMDiscoveryBaseUrl,
 } from "./model-discovery";
+import { parseModelString, resolveProviderModelReference } from "./model-resolver";
 import { ModelsConfigFile, type ProviderValidationModel, validateProviderConfiguration } from "./models-config";
 import type { ModelOverride, ModelsConfig, ProviderAuthMode } from "./models-config-schema";
 import { settings } from "./settings";

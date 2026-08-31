@@ -281,4 +281,4 @@ export default function extension(pi: ExtensionAPI): void {
 - `packages/coding-agent/src/extensibility/hooks/types.ts`: hook UI contract (legacy custom signature).
 - `packages/coding-agent/src/extensibility/custom-tools/types.ts`: custom tool execute/render contracts.
 - `packages/coding-agent/src/modes/terminal/components/transcript/tool-execution.ts`: mounting `renderCall`/`renderResult` components and partial-state options.
-- `packages/coding-agent/src/tools/context.ts`: tool UI context propagation (`hasUI`, `ui`).
+- `packages/coding-agent/src/tools/core/context.ts`: tool UI context propagation (`hasUI`, `ui`).

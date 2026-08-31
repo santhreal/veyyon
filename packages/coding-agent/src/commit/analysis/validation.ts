@@ -1,4 +1,4 @@
-import type { ConventionalAnalysis } from "../../commit/types";
+import type { ConventionalAnalysis } from "../types";
 
 /**
  * The outcome of validating one part of a conventional-commit message.

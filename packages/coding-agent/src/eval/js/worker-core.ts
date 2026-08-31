@@ -4,7 +4,7 @@
 // fails if this becomes a barrel import again.
 import { isAbortError } from "@veyyon/utils/abortable";
 import { errorMessage } from "@veyyon/utils/type-guards";
-import { ToolError } from "../../tools/tool-errors";
+import { ToolError } from "../../tools/core/tool-errors";
 import { JsRuntime, type RuntimeHooks } from "./shared/runtime";
 import type {
 	EvalRunErrorPayload,

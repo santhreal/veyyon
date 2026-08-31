@@ -1,5 +1,5 @@
 /** Tools domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
-import { DEFAULT_APPROVAL_MODE } from "../../tools/approval-modes";
+import { DEFAULT_APPROVAL_MODE } from "../../tools/core/approval-modes";
 import { DEFAULT_INLINE_FLOOR_FRACTION } from "./shared";
 
 export const TOOLS_SETTINGS = {
@@ -22,7 +22,7 @@ export const TOOLS_SETTINGS = {
 
 	// Extra paths the destructive-command guard refuses to delete recursively.
 	//
-	// ADDITIONS ONLY, BY CONSTRUCTION. The compiled set in src/tools/bash-guard.ts
+	// ADDITIONS ONLY, BY CONSTRUCTION. The compiled set in src/tools/shell/bash-guard.ts
 	// (the home directory, the system roots, the credential directories) is not
 	// reachable from config in any direction, so this setting can make the guard
 	// stricter and can never make it weaker. A setting that could shrink a safety
@@ -41,7 +41,7 @@ export const TOOLS_SETTINGS = {
 
 	// Default tool approval mode (interaction tab, but governs the tool wrapper).
 	// The rungs and what each one still stops for live in
-	// `src/tools/approval-modes.ts`; `normalizeApprovalMode` maps the legacy
+	// `src/tools/core/approval-modes.ts`; `normalizeApprovalMode` maps the legacy
 	// names ("always-ask" = ask, "write"/"auto-edit" = ask-command), which stay
 	// accepted from stored configs and the CLI but are not offered in the UI.
 	"tools.approvalMode": {

@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
-import { structureSearchRenderer } from "@veyyon/coding-agent/tools/structure-search-render";
+import { structureSearchRenderer } from "@veyyon/coding-agent/tools/search/structure-search-render";
 import { removeWithRetries, sanitizeText } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
 import { useFullColor } from "../helpers/theme-assertions";

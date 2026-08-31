@@ -3,14 +3,14 @@
 > Applies one mutation to the session todo list and returns a text summary plus the full phase/task state.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/todo.ts`
+- Entry: `packages/coding-agent/src/tools/agent/todo.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/todo.md`
 - Key collaborators:
   - `packages/coding-agent/src/tools/index.ts`: registers tool, exposes session hooks, gates availability.
   - `packages/coding-agent/src/modes/terminal/controllers/event-controller.ts`: updates the visible todo UI on tool completion.
   - `packages/coding-agent/src/session/agent-session.ts`: stores cached phases, strips done/dropped tasks on session resume, emits failure reminders.
   - `packages/coding-agent/src/modes/terminal/controllers/todo-command-controller.ts`: `/todo` command path, custom-entry persistence, transcript reminder injection.
-  - `packages/coding-agent/src/tools/render-utils.ts`: collapsed-preview cap for renderer trees.
+  - `packages/coding-agent/src/tools/core/render-utils.ts`: collapsed-preview cap for renderer trees.
 
 ## Inputs
 
@@ -56,7 +56,7 @@ The tool returns a single-shot `AgentToolResult`:
 The TUI renderer (`todoToolRenderer`) merges call and result into one transcript block and renders phases as a tree. Collapsed transcript previews cap tree items at `PREVIEW_LIMITS.COLLAPSED_ITEMS` (`8`).
 
 ## Flow
-1. `TodoTool.execute(...)` clones the current cached phases from `session.getTodoPhases?.() ?? []` (`packages/coding-agent/src/tools/todo.ts`).
+1. `TodoTool.execute(...)` clones the current cached phases from `session.getTodoPhases?.() ?? []` (`packages/coding-agent/src/tools/agent/todo.ts`).
 2. `applyParams(...)` applies the single op (`params`) with `applyEntry(...)`.
 3. Each op mutates the working phase array:
    - `initPhases(...)` rebuilds the list from scratch.
@@ -117,13 +117,13 @@ The same file also exposes non-tool helpers used by `/todo`:
 - `init.list`: applies to a single op (`todoSchema`). The params object carries exactly one op.
 - `init.list[*].items`: `minItems: 1`.
 - `append.items`: non-empty enforced per op at runtime (`Missing items for append operation`); the schema carries no `minItems` on the flat `items` field.
-- Renderer collapsed preview: `PREVIEW_LIMITS.COLLAPSED_ITEMS = 8` (`packages/coding-agent/src/tools/render-utils.ts`).
+- Renderer collapsed preview: `PREVIEW_LIMITS.COLLAPSED_ITEMS = 8` (`packages/coding-agent/src/tools/core/render-utils.ts`).
 - Auto-clear delay: `tasks.todoClearDelay` default `-1`, which never clears; `0` clears immediately and any positive value is a delay in seconds. At the default no timer is armed at all. Display-only: applied by the TUI widget (`packages/coding-agent/src/modes/terminal/interactive-mode.ts`); the setting is inert at the session level.
 - Tool execution mode: `concurrency = "exclusive"`, `strict = true`, `loadMode = "discoverable"`.
 
 ## Errors
 - Ordinary bad op payloads are accumulated as human-readable strings in `errors`; the result is marked `isError: true` and the mutation is discarded: the returned and persisted state stay at the pre-call list.
-- Error strings come from the helpers in `packages/coding-agent/src/tools/todo.ts`, including:
+- Error strings come from the helpers in `packages/coding-agent/src/tools/agent/todo.ts`, including:
   - `Missing list for init operation`
   - `Missing task content`
   - `Duplicate phase "..." in init list` / `Duplicate task "..." in init list`

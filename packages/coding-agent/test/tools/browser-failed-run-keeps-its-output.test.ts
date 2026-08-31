@@ -15,9 +15,9 @@
  */
 import { describe, expect, it } from "bun:test";
 import { JsRuntime } from "@veyyon/coding-agent/eval/js/shared/runtime";
-import { type CmuxTab, runCmuxCode } from "@veyyon/coding-agent/tools/browser/cmux/cmux-tab";
-import type { BrowserRunError, SessionSnapshot } from "@veyyon/coding-agent/tools/browser/tab-protocol";
-import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
+import { ToolError } from "@veyyon/coding-agent/tools/core/tool-errors";
+import { type CmuxTab, runCmuxCode } from "@veyyon/coding-agent/tools/web/browser/cmux/cmux-tab";
+import type { BrowserRunError, SessionSnapshot } from "@veyyon/coding-agent/tools/web/browser/tab-protocol";
 
 const SNAPSHOT = { cwd: process.cwd() } as unknown as SessionSnapshot;
 

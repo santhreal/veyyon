@@ -31,8 +31,11 @@ import {
 	type DiscoverableToolSearchIndex,
 } from "@veyyon/coding-agent/discovery/tool-index";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { renderSearchToolBm25Description, SearchToolBm25Tool } from "@veyyon/coding-agent/tools/search-tool-bm25";
-import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
+import { ToolError } from "@veyyon/coding-agent/tools/core/tool-errors";
+import {
+	renderSearchToolBm25Description,
+	SearchToolBm25Tool,
+} from "@veyyon/coding-agent/tools/search/search-tool-bm25";
 import { logger } from "@veyyon/utils";
 
 /** The exact refusal, so a reword that drops the reason from the transcript fails here. */

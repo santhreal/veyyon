@@ -11,8 +11,8 @@ import { type ContentBlockLike, contentText } from "@veyyon/kernel/session/conte
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { isRecord } from "@veyyon/utils";
 import type { TitleConversationTurn } from "../tiny/message-preproc";
-import { TOOL } from "../tools/builtin-names";
-import type { CompletedRewindState } from "../tools/checkpoint";
+import { TOOL } from "../tools/core/builtin-names";
+import type { CompletedRewindState } from "../tools/fs/checkpoint";
 import { getStringProperty } from "./agent-session-permissions";
 
 /** `customType` for the hidden mid-run todo nudge; `display: false`, so it reaches

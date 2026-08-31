@@ -26,7 +26,7 @@ These are genuinely good patterns. Refactors must preserve behavior.
    resized in place before every acquire), `packages/coding-agent/src/task/agents.ts` (bundled
    subagent definitions) and the `task` tool registered in
    `packages/coding-agent/src/tools/index.ts`.
-3. **Addressed inter-agent messaging**: the `irc` tool (`packages/coding-agent/src/tools/irc.ts`,
+3. **Addressed inter-agent messaging**: the `irc` tool (`packages/coding-agent/src/tools/agent/irc.ts`,
    bus in `packages/coding-agent/src/task/irc-bus.ts`): `send`/`wait`/`inbox`/`list` ops, delivery receipts,
    reply-to threading. This is the shipped equivalent of the old point-to-point
    `InterAgentCommunication`/`send_message`/`wait` model, `send` wakes an idle recipient with a real
@@ -38,8 +38,8 @@ These are genuinely good patterns. Refactors must preserve behavior.
    beyond the single `/agents` subagent dashboard card that `/cockpit` and
    `/hub` are aliases of. The messaging primitive itself is built; the dashboard UI around it is not.
 4. **Subagent + todo-list interaction model**: the `todo` tool
-   (`packages/coding-agent/src/tools/todo.ts`) plus plan-mode guardrails
-   (`packages/coding-agent/src/tools/plan-mode-guard.ts`). Agents maintain a checklist across
+   (`packages/coding-agent/src/tools/agent/todo.ts`) plus plan-mode guardrails
+   (`packages/coding-agent/src/tools/core/plan-mode-guard.ts`). Agents maintain a checklist across
    multi-step work; this model is frozen and any TUI presentation work extends it without replacing it.
 5. **Prompt Cache Stability Law (System & Workstation Prompt Caching)**: Prefix prompt caching hashes
    from line 1 of the system prompt downwards. Never mutate or re-render system prompt templates or
@@ -69,8 +69,8 @@ the shipped model-slots-plus-3-knob-compaction design (see [Compaction & project
 | Layer | KEEP or CUT | Where it lives |
 | --- | --- | --- |
 | How agents are spawned and report back | **KEEP** | `task/executor.ts`, `task` tool |
-| How agents message each other directly (send/wait/inbox) | **KEEP** | `tools/irc.ts`, `irc/bus.ts` |
-| How agents track work (todo/checklist discipline) | **KEEP** | `tools/todo.ts` + prompt guidance |
+| How agents message each other directly (send/wait/inbox) | **KEEP** | `tools/agent/irc.ts`, `irc/bus.ts` |
+| How agents track work (todo/checklist discipline) | **KEEP** | `tools/agent/todo.ts` + prompt guidance |
 | How compaction hands off context | **KEEP** | `packages/agent/src/compaction/compaction.ts` |
 | Which model runs for which role (matrix + popups) | **CUT** | Replaced by plain `subagent.model` / `compaction.model` fields |
 | Forced role reassignment on model change | **CUT** | `/model` only changes the interactive model |

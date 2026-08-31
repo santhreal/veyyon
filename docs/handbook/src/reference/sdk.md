@@ -307,7 +307,7 @@ const { session } = await createAgentSession({
 
 ### Tool names have one owner
 
-Every tool name is declared once, in `packages/coding-agent/src/tools/builtin-names.ts`:
+Every tool name is declared once, in `packages/coding-agent/src/tools/core/builtin-names.ts`:
 `BUILTIN_TOOL_NAMES` for the tools offered by default, `HIDDEN_TOOL_NAMES` for the ones a caller or
 a mode turns on, and `TOOL`, a map derived from both.
 

@@ -4,7 +4,7 @@ import type { TUI } from "@veyyon/tui";
 import type { ExtensionUIDialogOptions, ExtensionUISelectItem } from "../src/extensibility/extensions";
 import { HookSelectorComponent } from "../src/modes/terminal/components/selectors/hook-selector";
 import { getThemeByName, setThemeInstance } from "../src/theme/theme";
-import { AskTool, type AskToolDetails } from "../src/tools/ask";
+import { AskTool, type AskToolDetails } from "../src/tools/agent/ask";
 import { makeToolSession } from "./helpers/tool-session";
 
 type AskExecutionResult = AgentToolResult<AskToolDetails>;

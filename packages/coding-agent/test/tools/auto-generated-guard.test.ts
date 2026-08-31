@@ -3,8 +3,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { assertEditableFile, assertEditableFileContent } from "@veyyon/coding-agent/tools/auto-generated-guard";
-import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
+import { ToolError } from "@veyyon/coding-agent/tools/core/tool-errors";
+import { assertEditableFile, assertEditableFileContent } from "@veyyon/coding-agent/tools/fs/auto-generated-guard";
 
 let tempDir: string;
 

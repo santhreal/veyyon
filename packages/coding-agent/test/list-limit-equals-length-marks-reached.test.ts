@@ -2,7 +2,7 @@
  * When items.length === limit, limitReached fires.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("applyListLimit equals length marks reached", () => {
 	for (const n of [1, 2, 3, 5, 10]) {

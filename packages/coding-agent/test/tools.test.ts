@@ -10,17 +10,21 @@ import { DEFAULT_BASH_INTERCEPTOR_RULES, Settings } from "@veyyon/coding-agent/c
 import { EditTool } from "@veyyon/coding-agent/edit";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { BashTool } from "@veyyon/coding-agent/tools/bash";
-import { JobTool } from "@veyyon/coding-agent/tools/job";
-import { wrapToolWithMetaNotice } from "@veyyon/coding-agent/tools/output-meta";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
-import * as toolTimeouts from "@veyyon/coding-agent/tools/tool-timeouts";
-import { WriteTool } from "@veyyon/coding-agent/tools/write";
+import { wrapToolWithMetaNotice } from "@veyyon/coding-agent/tools/core/output-meta";
+import * as toolTimeouts from "@veyyon/coding-agent/tools/core/tool-timeouts";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
+import { WriteTool } from "@veyyon/coding-agent/tools/fs/write";
+import { BashTool } from "@veyyon/coding-agent/tools/shell/bash";
+import { JobTool } from "@veyyon/coding-agent/tools/shell/job";
 import { unzip } from "@veyyon/coding-agent/utils/zip";
 import { $which, errorMessage, removeSyncWithRetries, Snowflake } from "@veyyon/utils";
-import type { FileSearchDetails } from "../src/tools/file-search";
-import { SearchTool, type SearchToolDetails } from "../src/tools/search";
-import { DEFAULT_FILE_LIMIT, MULTI_FILE_PER_FILE_MATCHES, type TextSearchDetails } from "../src/tools/text-search";
+import type { FileSearchDetails } from "../src/tools/search/file-search";
+import { SearchTool, type SearchToolDetails } from "../src/tools/search/search";
+import {
+	DEFAULT_FILE_LIMIT,
+	MULTI_FILE_PER_FILE_MATCHES,
+	type TextSearchDetails,
+} from "../src/tools/search/text-search";
 import { useIsolatedGlobalSettings } from "./helpers/isolated-global-settings";
 
 // Helper to extract text from content blocks

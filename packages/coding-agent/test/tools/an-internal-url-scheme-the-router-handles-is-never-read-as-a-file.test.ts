@@ -4,7 +4,7 @@
  * THE DEFECT. `read` with `history://Main:160-220` answered
  * `Unknown agent: Main:160-220` and then listed `Main` among the known agents,
  * because `history` was missing from `INTERNAL_SCHEMES_WITH_SELECTORS` in
- * `tools/path-utils.ts`. The selector was never peeled, so the whole
+ * `tools/core/path-utils.ts`. The selector was never peeled, so the whole
  * `<id>:<selector>` string was handed to the handler as an agent id. It happened
  * 46 times across the recorded sessions, on the one surface whose whole purpose is
  * reading a long transcript in pieces, and the error text pointed at the agent
@@ -36,8 +36,8 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { InternalUrlRouter } from "@veyyon/coding-agent/internal-urls/router";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { isInternalUrlPath, splitInternalUrlSel } from "@veyyon/coding-agent/tools/path-utils";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { isInternalUrlPath, splitInternalUrlSel } from "@veyyon/coding-agent/tools/core/path-utils";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import { makeToolSession } from "../helpers/tool-session";
 
 /** Schemes whose resource URIs are server-defined, so a selector-shaped tail is theirs. */

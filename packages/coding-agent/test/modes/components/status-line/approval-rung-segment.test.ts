@@ -16,7 +16,7 @@ import { SEGMENTS } from "@veyyon/coding-agent/modes/terminal/components/status-
 import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/theme/theme";
-import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/approval-modes";
+import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/core/approval-modes";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 
 interface ModeOverrides {

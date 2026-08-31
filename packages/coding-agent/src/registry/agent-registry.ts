@@ -10,7 +10,7 @@
  */
 
 // Owner subpaths, not the "@veyyon/utils" barrel. This module is the SOLE path by which
-// `tools/read.ts` reaches that barrel, and the barrel brings 23 modules onto the file-read
+// `tools/fs/read.ts` reaches that barrel, and the barrel brings 23 modules onto the file-read
 // closure that nothing there asks for. See the barrel absence in
 // `test/architecture/leveraged-imports-stay-cut.test.ts`.
 import * as logger from "@veyyon/utils/logger";

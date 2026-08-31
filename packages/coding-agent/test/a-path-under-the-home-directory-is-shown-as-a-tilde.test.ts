@@ -2,7 +2,7 @@
  * A displayed path collapses the operator's home directory to `~`, and only when the path is really
  * under it.
  *
- * WHY THIS SUITE EXISTS. `src/tools/shorten-path.ts` is the node-side owner of that collapse: the
+ * WHY THIS SUITE EXISTS. `src/tools/core/shorten-path.ts` is the node-side owner of that collapse: the
  * launch card's status row and every tool renderer reach it, and a leaked absolute path carries the
  * operator's username into a transcript, an export and a shared session. Nothing named the module.
  * It was covered only through whatever a status-row suite happened to render, so the boundary case
@@ -13,7 +13,7 @@
  * `@veyyon/tool-render`, deliberately, and this says nothing about that one.
  */
 import { describe, expect, it } from "bun:test";
-import { shortenPath } from "@veyyon/coding-agent/tools/shorten-path";
+import { shortenPath } from "@veyyon/coding-agent/tools/core/shorten-path";
 
 describe("a displayed path hides the home directory", () => {
 	it("shows a path under the home directory as a tilde path", () => {

@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
 import * as themeModule from "@veyyon/coding-agent/theme/theme";
-import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/render-utils";
+import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/core/render-utils";
 
 /**
  * WHY:

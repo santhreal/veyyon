@@ -17,7 +17,7 @@ import {
 	PREVIEW_LIMITS,
 	replaceTabs,
 	truncateToWidth,
-} from "../../tools/render-utils";
+} from "../../tools/core/render-utils";
 import { framedBlock, outputBlockContentWidth, renderStatusLine, urlHyperlink } from "../../tui";
 import { getSearchProviderLabel } from "./provider";
 import type { SearchResponse } from "./types";

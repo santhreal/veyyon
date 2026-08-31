@@ -5,7 +5,7 @@
 > **Notice:** Do not shell out to `python -c`/`python -e`, `bun -e`, or `node -e` via the `bash` tool for ad-hoc code execution. Use this tool instead: it gives you persistent state across calls, structured `display()` output, image/JSON capture, and proper cancellation/timeout handling that one-shot `-e`/`-c` invocations cannot provide.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/eval.ts`
+- Entry: `packages/coding-agent/src/tools/shell/eval.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/eval.md`
 - Key collaborators:
   - `packages/coding-agent/src/eval/backend.ts`: backend execution contract
@@ -23,14 +23,14 @@
 
 ## Inputs
 
-One call runs one cell. The parameters are a single cell object, validated by the arktype `evalSchema` in `packages/coding-agent/src/tools/eval.ts` (`EvalCellInput` is a type alias for the inferred params). There is no `*** Cell` header parsing, no language sniffing, and no cell array. State persists within each language across separate calls, so you build a session by making several calls in sequence: later calls reuse what earlier ones defined.
+One call runs one cell. The parameters are a single cell object, validated by the arktype `evalSchema` in `packages/coding-agent/src/tools/shell/eval.ts` (`EvalCellInput` is a type alias for the inferred params). There is no `*** Cell` header parsing, no language sniffing, and no cell array. State persists within each language across separate calls, so you build a session by making several calls in sequence: later calls reuse what earlier ones defined.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `language` | `"py" \| "js" \| "rb" \| "jl"` | Yes | Backend selector. `"py"` maps to the IPython-style subprocess kernel (`python` backend), `"js"` to the persistent JavaScript VM, `"rb"` to the Ruby kernel, `"jl"` to the Julia kernel. `"rb"` and `"jl"` are opt-in: they are gated on the `eval.rb` and `eval.jl` settings, which default to `false`, and the per-session wire schema narrows the enum so disabled backends are never advertised to the model. |
 | `code` | `string` | Yes | Cell body, verbatim. JSON-encoded, embed newlines, quotes, and indentation directly; no fences, no headers. |
 | `title` | `string` | No | Short label shown in the transcript (e.g. `"imports"`, `"load config"`). |
-| `timeout` | `number` | No | Cell timeout in seconds. Defaults to 30 when omitted, `0` disables the deadline entirely, and any other value is clamped to `1..3600` at runtime (see `TOOL_TIMEOUTS.eval` in `packages/coding-agent/src/tools/tool-timeouts.ts`). |
+| `timeout` | `number` | No | Cell timeout in seconds. Defaults to 30 when omitted, `0` disables the deadline entirely, and any other value is clamped to `1..3600` at runtime (see `TOOL_TIMEOUTS.eval` in `packages/coding-agent/src/tools/core/tool-timeouts.ts`). |
 | `reset` | `boolean` | No | Wipe this language's kernel before running. Reset is per-language: resetting `py` does not touch the JS VM, and vice versa. Defaults to `false`. |
 
 A typical session is a chain of single-cell calls. First call, set up once:
@@ -68,7 +68,7 @@ Returned shape:
   - `meta`: truncation metadata
   - `isError`: set on cell failure or cancellation
 
-Renderer behavior in `packages/coding-agent/src/tools/eval.ts`:
+Renderer behavior in `packages/coding-agent/src/tools/shell/eval.ts`:
 
 - call preview renders the cell's `code` with syntax highlighting based on its declared `language`
 - result view renders the cell with its status, duration, and output
@@ -117,7 +117,7 @@ full, so the transcript still shows you every line.
 
 ## Flow
 
-1. `EvalTool.execute()` in `packages/coding-agent/src/tools/eval.ts` receives `params` already validated by the arktype schema (`evalSchema`, or the session-scoped copy from `buildEvalSchema()`): no string parsing step, and exactly one cell per call.
+1. `EvalTool.execute()` in `packages/coding-agent/src/tools/shell/eval.ts` receives `params` already validated by the arktype schema (`evalSchema`, or the session-scoped copy from `buildEvalSchema()`): no string parsing step, and exactly one cell per call.
 2. `execute()` maps `params.language` to an `EvalLanguage` (`"py"` → `"python"`, `"js"` → `"js"`, `"rb"` → `"ruby"`, `"jl"` → `"julia"`) and calls `resolveBackend(session, language)`:
    - `python` is gated on `resolveEvalBackends(session).python` (the `eval.py` setting, overridden by the `VEYYON_PY` env flag) and `pythonBackend.isAvailable(session)`.
    - `js` is gated on `resolveEvalBackends(session).js` (the `eval.js` setting, overridden by the `VEYYON_JS` env flag).
@@ -281,13 +281,13 @@ One call runs one cell in one language. You mix languages by making separate cal
 
 ## Limits & Caps
 
-- Timeout default: 30s (applied when `timeout` is omitted in `EvalTool.execute()`; `TOOL_TIMEOUTS.eval` in `packages/coding-agent/src/tools/tool-timeouts.ts`)
+- Timeout default: 30s (applied when `timeout` is omitted in `EvalTool.execute()`; `TOOL_TIMEOUTS.eval` in `packages/coding-agent/src/tools/core/tool-timeouts.ts`)
 - Timeout `0`: disables the deadline entirely (no idle timer is armed)
-- Timeout clamp at runtime: 1s minimum, 3600s maximum, plus the `tools.maxTimeout` global ceiling when configured (`TOOL_TIMEOUTS.eval` in `packages/coding-agent/src/tools/tool-timeouts.ts`). A clamped request is reported through `details.notice`, not silently adjusted.
-- Transcript code/output preview: 10 lines by default (`EVAL_DEFAULT_PREVIEW_LINES` in `packages/coding-agent/src/tools/eval-render.ts`, re-exported from `eval.ts`)
+- Timeout clamp at runtime: 1s minimum, 3600s maximum, plus the `tools.maxTimeout` global ceiling when configured (`TOOL_TIMEOUTS.eval` in `packages/coding-agent/src/tools/core/tool-timeouts.ts`). A clamped request is reported through `details.notice`, not silently adjusted.
+- Transcript code/output preview: 10 lines by default (`EVAL_DEFAULT_PREVIEW_LINES` in `packages/coding-agent/src/tools/shell/eval-render.ts`, re-exported from `eval.ts`)
 - Output truncation window: 50KB default, set by `tools.artifactSpillThreshold`
 - Output line cap inside truncation helpers: 3000 lines (`DEFAULT_MAX_LINES` in `packages/coding-agent/src/session/streaming-output.ts`)
-- Streaming tail buffer for live updates: `DEFAULT_MAX_BYTES * 2` = 100KB (`packages/coding-agent/src/tools/eval.ts`)
+- Streaming tail buffer for live updates: `DEFAULT_MAX_BYTES * 2` = 100KB (`packages/coding-agent/src/tools/shell/eval.ts`)
 - JS/Python `parallel()` / `pipeline()` helper pool width: the `subagent.maxConcurrency` setting (default 32; `0` = unbounded), resolved live via the `__concurrency__` bridge (`packages/coding-agent/src/eval/concurrency-bridge.ts`)
 - Eval-driven `agent()` recursion cap: task depth 3 (`EVAL_AGENT_MAX_DEPTH`)
 - Python kernel startup wait: 10s (`STARTUP_TIMEOUT_MS` in `packages/coding-agent/src/eval/py/kernel.ts`)

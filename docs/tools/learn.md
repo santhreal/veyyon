@@ -3,7 +3,7 @@
 > Capture a reusable lesson into long-term memory and optionally create or update a managed skill.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/learn.ts`
+- Entry: `packages/coding-agent/src/tools/agent/learn.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/learn.md`
 - Managed-skill helper: `packages/coding-agent/src/autolearn/managed-skills.ts`
 - Local memory backend: `packages/coding-agent/src/memory/local-backend.ts`

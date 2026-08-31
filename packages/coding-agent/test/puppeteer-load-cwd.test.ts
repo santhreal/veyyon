@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as path from "node:path";
-import { loadPuppeteer } from "@veyyon/coding-agent/tools/browser/launch";
+import { loadPuppeteer } from "@veyyon/coding-agent/tools/web/browser/launch";
 import { getProjectDir, getPuppeteerDir } from "@veyyon/utils";
 
 /**

@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
-import { jobToolRenderer } from "@veyyon/coding-agent/tools/job-render";
+import { jobToolRenderer } from "@veyyon/coding-agent/tools/shell/job-render";
 import { prompt } from "@veyyon/utils";
 
 function renderLines(resultText: string): string {

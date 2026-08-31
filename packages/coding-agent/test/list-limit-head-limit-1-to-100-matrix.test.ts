@@ -3,7 +3,7 @@
  * Why: head stacks after result limit; suggestion always doubles head.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("list-limit head limit 1 to 100 matrix", () => {
 	const items = Array.from({ length: 200 }, (_, i) => `v${i}`);

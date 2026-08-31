@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { parseLineRangeChunk, parseLineRanges } from "@veyyon/coding-agent/tools/path-utils";
-import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
+import { parseLineRangeChunk, parseLineRanges } from "@veyyon/coding-agent/tools/core/path-utils";
+import { ToolError } from "@veyyon/coding-agent/tools/core/tool-errors";
 
 /**
  * Regression lock for the spaced multi-range selector bug. A selector like

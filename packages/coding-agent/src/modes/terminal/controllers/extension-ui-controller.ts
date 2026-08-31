@@ -25,7 +25,11 @@ import { createExtensionModelQuery } from "../../../extensibility/extensions/mod
 import type { TerminalWidgetContent } from "../../../extensibility/terminal-capability";
 import { normalizeCustomMessagePayload, USER_INTERRUPT_LABEL } from "../../../session/messages";
 import { getAvailableThemesWithPaths, getThemeByName, setTheme, type Theme, theme } from "../../../theme/theme";
-import { ASK_CHAT_OPTION_LABEL, ASK_NEXT_OPTION_LABEL, ASK_OTHER_OPTION_LABEL } from "../../../tools/ask-option-labels";
+import {
+	ASK_CHAT_OPTION_LABEL,
+	ASK_NEXT_OPTION_LABEL,
+	ASK_OTHER_OPTION_LABEL,
+} from "../../../tools/agent/ask-option-labels";
 import { setSessionTerminalTitle, setTerminalTitle } from "../../../utils/title-generator";
 import { AskDialogComponent, boundPromptTitle } from "../components/dialogs/ask-dialog";
 import { HookEditorComponent } from "../components/dialogs/hook-editor";

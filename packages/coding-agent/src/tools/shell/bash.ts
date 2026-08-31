@@ -1,0 +1,1413 @@
+import * as fs from "node:fs";
+import type {
+	AgentTool,
+	AgentToolContext,
+	AgentToolResult,
+	AgentToolUpdateCallback,
+	ToolApprovalDecision,
+} from "@veyyon/agent-core";
+import type { ClientBridgeTerminalExitStatus, ClientBridgeTerminalOutput } from "@veyyon/kernel/session/client-bridge";
+import { clampLow, errorMessage, isEnoent, logger, prompt, SIGNAL_EXIT_BASE, signalNumber } from "@veyyon/utils";
+import { type } from "arktype";
+import { type BashResult, executeBash } from "../../exec/bash-executor";
+import { formatExitCodeNotice } from "../../exec/exit-notice";
+import { InternalUrlRouter } from "../../internal-urls";
+import { toolsPrompts } from "../../prompts/tools/rows";
+import { sessionBudgetLimits, sessionCpuLimit } from "../../session/cpu-limit";
+import {
+	artifactFooter,
+	DEFAULT_MAX_BYTES,
+	enforceInlineByteCap,
+	type OutputSummary,
+	streamTailUpdates,
+	TailBuffer,
+} from "../../session/streaming-output";
+import { statementById } from "../../system-prompt-builder/statement-registry";
+// The owner, not the local `../tui` barrel, which re-exports `./file-list` and through it the theme engine.
+import type { ToolSession } from "..";
+import { truncateForPrompt } from "../core/approval";
+import { invalidateGithubCacheForBashCommand } from "../core/gh-cache-invalidation";
+import { inlineBudgetFor, inlineOutputPricing, saveOutputArtifact } from "../core/output-artifact";
+import { foldToolOutputBookkeeping } from "../core/output-fold";
+import type { OutputMeta } from "../core/output-meta";
+import { resolveToCwd } from "../core/path-utils";
+import { DEFAULT_TERMINAL_PREVIEW_LINES, shortenPath } from "../core/render-utils";
+import { ToolAbortError, ToolError } from "../core/tool-errors";
+import { toolResult } from "../core/tool-result";
+import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "../core/tool-timeouts";
+import { registerForegroundBashWait } from "./bash-foreground-registry";
+import {
+	bashCredentialTargets,
+	findCriticalBashRisk,
+	findFlaggedBashPattern,
+	hostReachableCommand,
+} from "./bash-guard";
+import { type BashInteractiveResult, runInteractiveBashPty } from "./bash-interactive";
+import { checkBashInterception } from "./bash-interceptor";
+import { canUseInteractiveBashPty } from "./bash-pty-selection";
+import { expandInternalUrls, type InternalUrlExpansionOptions } from "./bash-skill-urls";
+import { resolveEvalBackends } from "./eval-backends";
+
+export const BASH_DEFAULT_PREVIEW_LINES = DEFAULT_TERMINAL_PREVIEW_LINES;
+
+const BASH_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const DEFAULT_AUTO_BACKGROUND_THRESHOLD_MS = 300_000;
+const DEFAULT_STALL_DETECTION_MS = 30_000;
+
+/**
+ * Shape a shell command line for an ACP-conformant `terminal/create` request.
+ *
+ * ACP's `command` field is documented as the executable and `args` as its
+ * argv tail (see https://agentclientprotocol.com/protocol/v1/terminals), so a
+ * spec-conformant client `spawn(command, args)`s them directly — no implicit
+ * shell. A raw `bash` tool line ("git status && echo x | head") therefore has
+ * to be wrapped in an explicit shell invocation, otherwise the client tries
+ * to spawn the whole line as argv[0] and fails with `ENOENT` for anything
+ * containing a space, pipe, `&&`, redirect, or `$(...)`.
+ *
+ * The wrap reuses the same shell binary + args the local `bash-executor` would
+ * pick via `settings.getShellConfig()` — Git Bash / `bash.exe` on Windows,
+ * `$SHELL` (bash/zsh) with the `sh` fallback on POSIX — so the ACP path
+ * preserves `bash` tool semantics (`$VAR`, `$(...)`, `source`, POSIX quoting,
+ * `-l`) instead of dropping to `cmd.exe` on Windows. The agent host's shell
+ * path is used as a proxy for the client's, matching the near-universal
+ * ACP deployment shape of an editor spawning veyyon as a co-hosted subprocess.
+ */
+export function wrapShellLineForClientTerminal(
+	line: string,
+	shellConfig: { shell: string; args: string[]; prefix?: string | undefined },
+): { command: string; args: string[] } {
+	const finalLine = shellConfig.prefix ? `${shellConfig.prefix} ${line}` : line;
+	return { command: shellConfig.shell, args: [...shellConfig.args, finalLine] };
+}
+
+export { FLAGGED_BASH_PATTERNS } from "./bash-guard";
+
+/**
+ * How the bash tool classifies one call.
+ *
+ * A named function rather than an inline class field so it can be exercised
+ * without constructing a session. `BashTool.approval` is an instance field, so
+ * a test reaching for `BashTool.prototype.approval` silently gets `undefined`
+ * and measures the default tier instead of the guard: the suite passes while
+ * proving nothing, which is the worst kind of green.
+ *
+ * The decisions are `critical` rather than `override`, because these are the
+ * calls that must still stop in yolo, which is the mode every published
+ * home-directory wipe happened in.
+ */
+/**
+ * The environment a bash call will actually run with: the process environment
+ * with the call's own `env` argument spread over it, which is exactly what
+ * `buildNonInteractiveEnv` hands the child.
+ *
+ * Both judgements that read variables (`findCriticalBashRisk` and
+ * `bashCredentialTargets`) go through this. Judging against `process.env`
+ * alone let a caller hand the guard one value and the shell another, so
+ * `bash({command:"rm -rf $LANG", env:{LANG:"/"}})` was approved and deleted the
+ * root. Only string values are taken; anything else is not something the child
+ * would receive either.
+ */
+function bashJudgementEnv(args: unknown): NodeJS.ProcessEnv {
+	const rawEnv = (args as Partial<BashToolInput>).env;
+	const merged: NodeJS.ProcessEnv = { ...process.env };
+	if (rawEnv && typeof rawEnv === "object") {
+		for (const [name, value] of Object.entries(rawEnv as Record<string, unknown>)) {
+			if (typeof value === "string") merged[name] = value;
+		}
+	}
+	return merged;
+}
+
+/**
+ * Extract leading `cd <path> && ...` into cwd when no explicit `cwd` was supplied.
+ * Constrained to a single line so a `&&` that sits on a later line of a multiline
+ * script cannot pull the entire script into the "cwd" capture. Skips extraction when
+ * the path needs shell expansion ($VAR, $(...), backticks).
+ */
+export function extractEffectiveBashCommand(rawCommand: string, rawCwd?: string): { command: string; cwd?: string } {
+	let command = rawCommand;
+	let cwd = rawCwd;
+	if (!cwd) {
+		const cdMatch = command.match(/^cd[ \t]+((?:[^&\\\n\r]|\\.)+?)[ \t]*&&[ \t]*/);
+		// Skip extraction when the path needs shell expansion ($VAR, $(...),
+		// backticks) — resolveToCwd only expands `~`, so routing those through
+		// cwd would reject commands the shell itself handles fine.
+		if (cdMatch) {
+			const target = cdMatch[1].trim().replace(/^["']|["']$/g, "");
+			// `cd -` is $OLDPWD, not a directory named "-". Extracting it resolved
+			// to `<cwd>/-`, so the existence check below rejected `cd - && ...`
+			// with a path the operator never typed, before the shell ever ran.
+			if (target !== "-" && !/[$`(]/.test(cdMatch[1])) {
+				cwd = target;
+				command = command.slice(cdMatch[0].length);
+			}
+		}
+	}
+	return { command, cwd };
+}
+
+export function bashApprovalDecision(
+	args: unknown,
+	extraProtectedPaths: readonly string[] = [],
+	sessionCwd = "",
+): ToolApprovalDecision {
+	const rawCommand = (args as Partial<BashToolInput>).command;
+	const initialCommand = typeof rawCommand === "string" ? rawCommand : "";
+	const argCwd = (args as Partial<BashToolInput>).cwd;
+	const initialCwd = typeof argCwd === "string" ? argCwd : undefined;
+	const { command, cwd: effectiveCwd } = extractEffectiveBashCommand(initialCommand, initialCwd);
+	// A relative delete resolves against the directory the command will run in:
+	// the call's own `cwd` (including one extracted from a leading `cd`) when it
+	// names one, else the session's. Without it `rm -rf ../../../../../..` was
+	// judged as "relative, therefore fine" and reached the root from any depth
+	// of six or less.
+	let cwd = sessionCwd;
+	if (effectiveCwd) {
+		try {
+			cwd = resolveToCwd(effectiveCwd, sessionCwd);
+		} catch {
+			cwd = sessionCwd;
+		}
+	}
+	const judgementEnv = bashJudgementEnv(args);
+	const risk =
+		command === "" ? undefined : findCriticalBashRisk(command, undefined, extraProtectedPaths, judgementEnv, cwd);
+	// Same split as the flagged patterns below: `critical` is the floor yolo
+	// keeps, `override` is a prompt every rung below yolo raises. A delete whose
+	// verdict rests on ASSUMING an unknown variable holds `/` is `dangerous`, so
+	// `rm -rf "$BUILD_DIR"` no longer stops a yolo session while `rm -rf /`,
+	// `rm -rf ~` and `rm -rf "$OUT"/*` still do. See judgeUnsettledDeleteTarget.
+	if (risk) {
+		return risk.severity === "destroys"
+			? { tier: "exec", critical: true, reason: risk.reason }
+			: { tier: "exec", override: true, reason: risk.reason };
+	}
+	// The patterns are about TEXT, so they are matched against the part of the
+	// line that can reach this host. A `curl … | sh` inside a throwaway container
+	// with no volume, privilege, device or host namespace is the container's
+	// business; the same pipeline outside one is still flagged.
+	const hostText = command === "" ? "" : hostReachableCommand(command, undefined, judgementEnv);
+	const flagged = findFlaggedBashPattern(hostText);
+	if (flagged) {
+		// `critical` is the floor yolo keeps; `override` is a prompt every rung
+		// below yolo raises and yolo does not. Splitting them is what stops yolo
+		// from asking about an install the operator typed: see `BashRiskSeverity`.
+		return flagged.severity === "destroys"
+			? { tier: "exec", critical: true, reason: flagged.reason }
+			: { tier: "exec", override: true, reason: flagged.reason };
+	}
+	return "exec";
+}
+
+function saveBashOriginalArtifact(session: ToolSession, originalText: string): Promise<string | undefined> {
+	return saveOutputArtifact(session, "bash-original", originalText);
+}
+
+const BASH_TIMEOUT_DESCRIPTION = describeTimeoutParam("bash", { zeroDisablesNoun: "command deadline" });
+const bashCwdStatement = statementById("tool-policy/bash-cwd");
+if (!bashCwdStatement) throw new Error("Missing required tool-policy/bash-cwd prompt statement");
+const BASH_CWD_DESCRIPTION = bashCwdStatement.text.trim();
+
+const bashSchemaBase = type({
+	command: type("string").describe("command to execute"),
+	"env?": type({ "[string]": "string" }).describe("extra env vars"),
+	"timeout?": type("number").describe(BASH_TIMEOUT_DESCRIPTION),
+	"cwd?": type("string").describe(BASH_CWD_DESCRIPTION),
+	"pty?": type("boolean").describe("run in pty mode"),
+	"backgroundAfter?": type("number").describe(
+		"seconds this command may hold the foreground before it moves to a background job; 0 backgrounds it immediately. Overrides the auto-background setting for this one call, and applies even when that setting is off.",
+	),
+});
+
+const bashSchemaWithAsync = type({
+	command: "string",
+	"env?": { "[string]": "string" },
+	"timeout?": type("number").describe(BASH_TIMEOUT_DESCRIPTION),
+	"cwd?": type("string").describe(BASH_CWD_DESCRIPTION),
+	"pty?": "boolean",
+	"async?": type("boolean").describe("run in background"),
+	"backgroundAfter?": type("number").describe(
+		"seconds this command may hold the foreground before it moves to a background job; 0 backgrounds it immediately. Overrides the auto-background setting for this one call, and applies even when that setting is off.",
+	),
+});
+
+type BashToolSchema = typeof bashSchemaBase | typeof bashSchemaWithAsync;
+
+export interface BashToolInput {
+	command: string;
+	env?: Record<string, string>;
+	timeout?: number;
+	cwd?: string;
+
+	async?: boolean;
+	pty?: boolean;
+	backgroundAfter?: number;
+}
+
+export interface BashToolDetails {
+	meta?: OutputMeta;
+	timeoutSeconds?: number;
+	requestedTimeoutSeconds?: number;
+	timeoutDisabled?: boolean;
+	wallTimeMs?: number;
+	/** Exit code of a command that ran to completion but failed (non-zero). */
+	exitCode?: number;
+	/**
+	 * The signal that killed the command, when it died from one.
+	 *
+	 * Present only for a real signalled death, never for a program that exited
+	 * with `128 + n` itself. Those two produce the same `exitCode`, and the
+	 * difference decides whether a retry can possibly help.
+	 */
+	signal?: number;
+	terminalId?: string;
+	async?: {
+		state: "running" | "completed" | "failed";
+		jobId: string;
+		type: "bash";
+		/**
+		 * Why a still-running call was backgrounded: `threshold` (wall-clock
+		 * auto-background), `stall` (no output for the stall window, possibly
+		 * stuck), or `manual` (the operator pressed the background key). Drives
+		 * the operator notice; absent for non-background states.
+		 */
+		reason?: BackgroundReason;
+	};
+}
+
+/** Why a still-running bash call was moved to the background. */
+type BackgroundReason = "threshold" | "stall" | "manual";
+
+export interface BashToolOptions {}
+
+type ManagedBashJobCompletion =
+	| {
+			kind: "completed";
+			result: AgentToolResult<BashToolDetails>;
+	  }
+	| {
+			kind: "failed";
+			error: unknown;
+	  };
+
+interface ManagedBashJobHandle {
+	jobId: string;
+	completion: Promise<ManagedBashJobCompletion>;
+	getLatestText: () => string;
+	/** `performance.now()` timestamp of the most recent output chunk (job start if none yet). */
+	getLastOutputAt: () => number;
+	stopUpdates: () => void;
+}
+
+/**
+ * The output text for a bash result, with runner and build bookkeeping folded out.
+ *
+ * The fold lives HERE, in the one function every model-facing bash path reads its text
+ * through, rather than at each return. It used to sit on the completed-command path only, so
+ * a run that was cancelled, timed out, or came back with no exit status carried its
+ * bookkeeping into context in full — and a `go test ./...` that had to be killed at the
+ * timeout is exactly the kind of result worth folding. A no-op unless the output holds a real
+ * run's worth of bookkeeping, and failures are never folded.
+ */
+function normalizeResultOutput(result: BashResult | BashInteractiveResult): string {
+	return foldToolOutputBookkeeping(result.output || "").text;
+}
+
+function isInteractiveResult(result: BashResult | BashInteractiveResult): result is BashInteractiveResult {
+	return "timedOut" in result;
+}
+
+/**
+ * Turn an ACP `terminal/output` reply into the size summary the rest of the bash
+ * tool reads.
+ *
+ * TWO THINGS THIS OWNS, both of which were previously written out by hand at
+ * each of the bridge's two exits and were wrong in the same way at both.
+ *
+ * First, byte counts. `text.length` is UTF-16 code units, not bytes, so any
+ * non-ASCII output under-reported its own size (a screen of box-drawing
+ * characters reported a third of what it actually cost).
+ *
+ * Second, and this is the one that misleads the agent: the ACP response carries
+ * `{output, truncated}` and NO pre-truncation size, so when the client has
+ * truncated there is no total to report. Copying the kept length into
+ * `totalBytes` made every consumer compute an elision of zero and print
+ * "Showing lines 1-N of N" over output that was demonstrably incomplete. The
+ * totals are therefore left equal to the kept size deliberately, and
+ * `truncationFromSummary` recognises that shape and says the elided amount is
+ * unknown rather than deriving a range from it.
+ */
+function summarizeBridgeOutput<T extends { exitCode: number | undefined; cancelled: boolean; timedOut?: boolean }>(
+	output: ClientBridgeTerminalOutput,
+	rest: T,
+): T & OutputSummary {
+	const text = output.output;
+	const lines = text.length > 0 ? text.split("\n").length : 0;
+	return {
+		...rest,
+		output: text,
+		truncated: output.truncated,
+		totalLines: lines,
+		totalBytes: Buffer.byteLength(text, "utf-8"),
+		outputLines: lines,
+		outputBytes: Buffer.byteLength(text, "utf-8"),
+	};
+}
+
+function normalizeBashEnv(env: Record<string, string> | undefined): Record<string, string> | undefined {
+	if (!env || Object.keys(env).length === 0) return undefined;
+	const normalized: Record<string, string> = {};
+	for (const [key, value] of Object.entries(env)) {
+		if (!BASH_ENV_NAME_PATTERN.test(key)) {
+			throw new ToolError(`Invalid bash env name: ${key}`);
+		}
+		normalized[key] = value;
+	}
+	return normalized;
+}
+
+export function formatBackgroundNotice(jobId: string, reason: BackgroundReason = "threshold"): string {
+	if (reason === "stall") {
+		return (
+			`No new output for a while, so this command may be stuck. Backgrounded as job ${jobId}; ` +
+			`its result will still be delivered automatically if it finishes. If you believe it is hung, ` +
+			`cancel it with the job tool (cancel: ["${jobId}"]).`
+		);
+	}
+	if (reason === "manual") {
+		return `Backgrounded as job ${jobId} at the operator's request; result will be delivered automatically.`;
+	}
+	return `Backgrounded as job ${jobId}; result will be delivered automatically.`;
+}
+
+/**
+ * Reported when a bash call uses `skill://` but the session never resolved its skill list, so
+ * the resolution ran against the process-wide active set rather than this session's scope.
+ * Exported for the regression test that locks out the old silent `?? []`.
+ */
+export const SKILL_SCOPE_UNRESOLVED_NOTICE =
+	"(skill:// resolved against the process-wide skill set: this session never resolved its own skills, so a skill:// that did not resolve was left as a literal path)";
+
+/**
+ * Whether this bash call actually asks for a `skill://` URL, in the command, the extracted
+ * cwd, or any env value. Used to keep the unresolved-skill-scope notice off the 99% of calls
+ * that never touch the protocol: a session with genuinely zero skills is legitimate and must
+ * stay quiet, only an unresolvable REQUEST is worth reporting.
+ */
+function referencesSkillUrl(
+	command: string,
+	cwd: string | undefined,
+	env: Record<string, string> | undefined,
+): boolean {
+	if (command.includes("skill://")) return true;
+	if (cwd?.includes("skill://")) return true;
+	if (env) {
+		for (const value of Object.values(env)) if (value.includes("skill://")) return true;
+	}
+	return false;
+}
+
+/**
+ * The command text a stream rule should be matched against.
+ *
+ * A tool without this hook has its rules matched against the RAW streamed argument
+ * JSON, which for bash is the wrong text in both directions. `{"command":"grep -rn foo
+ * src"}` never satisfies a rule anchored at the start of a command, because the command
+ * begins mid-string after `"command":"`; and the `&&` inside a quoted remote command
+ * (`ssh box "ls x && grep y"`) reads as a shell operator to a rule that has no idea it is
+ * looking at JSON. Both were live: the search nudge fired on remote searches it cannot
+ * replace and stayed silent on the plain local search it exists for.
+ *
+ * Heredoc bodies are dropped because they are DATA the command writes, not commands it
+ * runs: a script generated with `cat <<'EOF'` mentions whatever it mentions, and a rule
+ * firing on that text is advising the model about a file it is authoring. An unterminated
+ * heredoc (the normal state mid-stream) drops everything after the opener for the same
+ * reason.
+ */
+export function bashMatcherDigest(args: unknown): string {
+	const command = (args as Partial<BashToolInput> | undefined)?.command;
+	// Never `undefined`: that would hand the raw argument JSON back to the matcher, which
+	// is exactly the wire form no bash rule is written against.
+	if (typeof command !== "string") return "";
+	return stripHeredocBodies(command);
+}
+
+/**
+ * `<<MARK`, `<<-MARK`, `<<'MARK'`, `<<"MARK"` — but never the `<<<` herestring. Both guards
+ * are needed: without the trailing one `<<<yes` matches from the first angle bracket, and
+ * without the leading one it matches from the second, taking `yes` for a marker whose
+ * terminator never comes and swallowing every later command as its body.
+ */
+const HEREDOC_OPENER = /(?<!<)<<(?!<)(-?)\s*(["']?)([A-Za-z_][A-Za-z0-9_]*)\2/g;
+
+function stripHeredocBodies(command: string): string {
+	HEREDOC_OPENER.lastIndex = 0;
+	let result = "";
+	let copiedTo = 0;
+	for (let opener = HEREDOC_OPENER.exec(command); opener; opener = HEREDOC_OPENER.exec(command)) {
+		const bodyStart = command.indexOf("\n", HEREDOC_OPENER.lastIndex);
+		if (bodyStart === -1) break;
+		const marker = opener[3] as string;
+		// `<<-` lets the terminator be indented with tabs; a plain `<<` requires column zero.
+		const terminator = new RegExp(`^${opener[1] === "-" ? "\\t*" : ""}${marker}[ \\t]*$`, "m");
+		terminator.lastIndex = 0;
+		const rest = command.slice(bodyStart + 1);
+		const hit = terminator.exec(rest);
+		result += command.slice(copiedTo, bodyStart);
+		if (!hit) {
+			// Unterminated: the rest of the text is body, so nothing after it is a command.
+			copiedTo = command.length;
+			break;
+		}
+		copiedTo = bodyStart + 1 + hit.index + hit[0].length;
+		HEREDOC_OPENER.lastIndex = copiedTo;
+	}
+	return result + command.slice(copiedTo);
+}
+
+/**
+ * Bash tool implementation.
+ *
+ * Executes bash commands with optional timeout and working directory.
+ */
+export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSchemaWithAsync, BashToolDetails> {
+	readonly name = "bash";
+	// An arrow rather than the bare function so `this.session` is read at CALL
+	// time: the operator's `tools.protectedPaths` additions are settings, and a
+	// field initializer cannot be relied on to see the constructor's parameter
+	// property. `bashApprovalDecision` stays exported and takes the paths
+	// explicitly, so the rule is testable without constructing a session.
+	readonly approval = (args: unknown): ToolApprovalDecision =>
+		bashApprovalDecision(args, this.session.settings.get("tools.protectedPaths") ?? [], this.session.cwd);
+	readonly formatApprovalDetails = (args: unknown): string[] => {
+		const rawCommand = (args as Partial<BashToolInput>).command;
+		const command = typeof rawCommand === "string" ? rawCommand : "(missing)";
+		return [`Command: ${truncateForPrompt(command)}`];
+	};
+	// The cwd/secret boundary only sees tools that declare filesystem targets, so
+	// without this `bash cat ~/.ssh/id_rsa` ran unasked at every rung where
+	// `read` of the same path prompts. Credential paths only; see
+	// `bashCredentialTargets` for why this is not the whole command's path set.
+	readonly filesystemTargets = (args: unknown): string[] =>
+		bashCredentialTargets(String((args as Partial<BashToolInput>).command ?? ""), bashJudgementEnv(args));
+	readonly label = "Bash";
+	readonly loadMode = "essential";
+	get description(): string {
+		const evalBackends = resolveEvalBackends(this.session);
+		const isToolActive = (name: string, fallback: boolean): boolean => this.session.isToolActive?.(name) ?? fallback;
+		return prompt.render(toolsPrompts["tools/bash"].text, {
+			asyncEnabled: this.#asyncEnabled,
+			autoBackgroundEnabled: this.#autoBackgroundEnabled,
+			autoBackgroundSeconds: Math.max(0, Math.floor(this.#autoBackgroundThresholdMs / 1000)),
+			stallDetectionEnabled: this.#stallDetectionEnabled,
+			stallSeconds: Math.max(0, Math.floor(this.#stallMs / 1000)),
+			hasSearch: isToolActive("search", true),
+			hasRead: isToolActive("read", true),
+			hasLaunch: isToolActive("launch", this.session.settings.get("launch.enabled")),
+			hasEval: isToolActive(
+				"eval",
+				evalBackends.python || evalBackends.js || evalBackends.ruby || evalBackends.julia,
+			),
+		});
+	}
+	readonly parameters: BashToolSchema;
+	// Non-pty calls run alongside each other (the executor isolates overlapping
+	// runs on the same shell session); pty takes over the terminal UI and must
+	// run alone.
+	readonly concurrency = (args: Partial<BashToolInput>): "shared" | "exclusive" =>
+		args.pty === true ? "exclusive" : "shared";
+	readonly strict = true;
+	// Stream rules match the COMMAND, never the argument JSON carrying it; see
+	// `bashMatcherDigest` for the two ways the wire form got the answer wrong.
+	readonly matcherDigest = (args: unknown): string => bashMatcherDigest(args);
+	readonly #asyncEnabled: boolean;
+	readonly #autoBackgroundEnabled: boolean;
+	readonly #autoBackgroundThresholdMs: number;
+	readonly #stallDetectionEnabled: boolean;
+	readonly #stallMs: number;
+
+	constructor(private readonly session: ToolSession) {
+		this.#asyncEnabled = this.session.settings.get("async.enabled");
+		this.#autoBackgroundEnabled = this.session.settings.get("bash.autoBackground.enabled");
+		this.#autoBackgroundThresholdMs = Math.max(
+			0,
+			Math.floor(
+				this.session.settings.get("bash.autoBackground.thresholdMs") ?? DEFAULT_AUTO_BACKGROUND_THRESHOLD_MS,
+			),
+		);
+		this.#stallDetectionEnabled = this.session.settings.get("bash.stallDetection.enabled");
+		this.#stallMs = Math.max(
+			0,
+			Math.floor(this.session.settings.get("bash.stallDetection.stallMs") ?? DEFAULT_STALL_DETECTION_MS),
+		);
+		this.parameters = this.#asyncEnabled ? bashSchemaWithAsync : bashSchemaBase;
+	}
+
+	#formatResultOutput(result: BashResult | BashInteractiveResult): string {
+		return normalizeResultOutput(result) || "(no output)";
+	}
+
+	/**
+	 * Bound a bash output body through the SAME artifact-spill path the
+	 * completed-command path uses ({@link enforceInlineByteCap}). A no-op when the
+	 * text already fits the inline budget; otherwise it keeps a head/tail window
+	 * and offloads the full text to a `bash-original` artifact with a recoverable
+	 * `[raw output: artifact://<id>]` footer. Without this, the abort/timeout/
+	 * missing-status error paths returned the full untruncated output (a >50KB
+	 * killed command carried the whole buffer for every later turn), while a
+	 * completed command of the same size was capped.
+	 *
+	 * When the executor sink already spilled (`existingArtifactId`), reuse that
+	 * handle instead of re-saving a possibly middle-elided body as a second
+	 * artifact — the sink's file holds the full pre-truncation stream.
+	 */
+	async #boundBashOutput(text: string, existingArtifactId?: string): Promise<string> {
+		const capped = await enforceInlineByteCap(text, {
+			...inlineOutputPricing(this.session),
+			saveArtifact: existingArtifactId
+				? async () => existingArtifactId
+				: full => saveBashOriginalArtifact(this.session, full),
+		});
+		// enforceInlineByteCap only appends a footer when it itself truncated. If
+		// the sink already truncated into the budget (and wrote the full stream
+		// to its artifact), still advertise the recoverable handle.
+		if (existingArtifactId && !capped.includes(`artifact://${existingArtifactId}`)) {
+			const sep = capped.length === 0 || capped.endsWith("\n") ? "" : "\n";
+			return `${capped}${sep}${artifactFooter(existingArtifactId)}`;
+		}
+		return capped;
+	}
+
+	/**
+	 * Throw for outcomes that are *not* a completed command: user/timeout
+	 * aborts and a missing exit status. The foreground and bridge callers plus
+	 * the async job manager rely on these throwing so cancellations surface as
+	 * aborts and jobs are recorded as failed. A definite non-zero exit is a
+	 * completed command that failed; #buildCompletedResult surfaces it as an
+	 * error *result* (carrying execution details) rather than a throw.
+	 *
+	 * Every branch caps the output body first: a killed command can never return
+	 * more than the inline budget, matching the completed path.
+	 */
+	async #throwIfUnfinished(
+		result: BashResult | BashInteractiveResult,
+		timeoutSec: number | undefined,
+		outputText: string,
+	): Promise<void> {
+		if (result.cancelled) {
+			// executeBash output already carries a `[Command cancelled]` notice from
+			// the sink; PTY/bridge interactive output does not, so annotate it here.
+			// The annotation is appended AFTER the cap so it is never elided.
+			const out = await this.#boundBashOutput(normalizeResultOutput(result), result.artifactId);
+			const annotated = isInteractiveResult(result) && out ? `${out}\n\n[Command aborted]` : out;
+			throw new ToolError(annotated || "Command aborted");
+		}
+		if (isInteractiveResult(result) && result.timedOut) {
+			const out = await this.#boundBashOutput(normalizeResultOutput(result), result.artifactId);
+			const message =
+				timeoutSec === undefined ? "Command timed out" : `Command timed out after ${timeoutSec} seconds`;
+			throw new ToolError(out ? `${out}\n\n[${message}]` : message);
+		}
+		if (result.exitCode === undefined) {
+			const out = await this.#boundBashOutput(outputText, result.artifactId);
+			throw new ToolError(`${out}\n\nCommand failed: missing exit status`);
+		}
+	}
+
+	async #buildCompletedResult(
+		result: BashResult | BashInteractiveResult,
+		timeoutSec: number | undefined,
+		options: {
+			requestedTimeoutSec?: number;
+			notices?: readonly string[];
+			terminalId?: string;
+			wallTimeMs?: number;
+		} = {},
+	): Promise<AgentToolResult<BashToolDetails>> {
+		const exitCode = result.exitCode;
+		const signal = "signal" in result ? result.signal : undefined;
+		const failedExit = exitCode !== undefined && exitCode !== 0;
+
+		const outputLines = [this.#formatResultOutput(result)];
+		const notices: string[] = [];
+		if (options.notices) {
+			for (const notice of options.notices) {
+				if (notice) notices.push(notice);
+			}
+		}
+		if (notices.length > 0) outputLines.push("", ...notices);
+		if (failedExit) outputLines.push("", formatExitCodeNotice(exitCode, signal));
+		const outputText = outputLines.join("\n");
+
+		// Aborts / timeouts / missing-status still propagate as thrown errors.
+		await this.#throwIfUnfinished(result, timeoutSec, outputText);
+
+		const details: BashToolDetails = {};
+		if (timeoutSec === undefined) {
+			details.timeoutDisabled = true;
+		} else {
+			details.timeoutSeconds = timeoutSec;
+		}
+		if (options.requestedTimeoutSec !== undefined && options.requestedTimeoutSec !== timeoutSec) {
+			details.requestedTimeoutSeconds = options.requestedTimeoutSec;
+		}
+		if (options.terminalId !== undefined) {
+			details.terminalId = options.terminalId;
+		}
+		if (options.wallTimeMs !== undefined) {
+			details.wallTimeMs = options.wallTimeMs;
+		}
+		if (failedExit) {
+			details.exitCode = exitCode;
+			if (signal !== undefined) details.signal = signal;
+		}
+		// Final defense at the tool-result boundary: no bash path (client bridge,
+		// head-retention spill, minimizer miss) may emit more than
+		// ~DEFAULT_MAX_BYTES inline. No-op for already-bounded output.
+		const cappedOutputText = await enforceInlineByteCap(outputText, {
+			// Scale the inline budget by how long this result will sit in context:
+			// an early result is re-read for the rest of the session, a late one
+			// barely at all.
+			...inlineOutputPricing(this.session),
+			saveArtifact: full => saveBashOriginalArtifact(this.session, full),
+		});
+
+		const resultBuilder = toolResult(details)
+			.text(cappedOutputText)
+			.truncationFromSummary(result, { direction: "tail" });
+		if (failedExit) resultBuilder.error();
+		return resultBuilder.done();
+	}
+
+	#buildBackgroundStartResult(
+		jobId: string,
+		previewText: string,
+		timeoutSec: number | undefined,
+		options: { requestedTimeoutSec?: number; notices?: readonly string[]; reason?: BackgroundReason } = {},
+	): AgentToolResult<BashToolDetails> {
+		const reason: BackgroundReason = options.reason ?? "threshold";
+		const details: BashToolDetails = {
+			async: { state: "running", jobId, type: "bash", reason },
+		};
+		if (timeoutSec === undefined) {
+			details.timeoutDisabled = true;
+		} else {
+			details.timeoutSeconds = timeoutSec;
+		}
+		if (options.requestedTimeoutSec !== undefined && options.requestedTimeoutSec !== timeoutSec) {
+			details.requestedTimeoutSeconds = options.requestedTimeoutSec;
+		}
+		const lines: string[] = [];
+		const trimmedPreview = previewText.trimEnd();
+		if (trimmedPreview.length > 0) {
+			lines.push(trimmedPreview, "");
+		}
+		if (options.notices?.length) {
+			lines.push(...options.notices, "");
+		}
+		lines.push(formatBackgroundNotice(jobId, reason));
+		return {
+			content: [{ type: "text", text: lines.join("\n") }],
+			details,
+		};
+	}
+
+	#extractTextResult(result: AgentToolResult<BashToolDetails>): string {
+		return result.content.find(block => block.type === "text")?.text ?? "";
+	}
+
+	#startManagedBashJob(options: {
+		command: string;
+		commandCwd: string;
+		timeoutMs: number | undefined;
+		timeoutSec: number | undefined;
+		requestedTimeoutSec?: number;
+		notices?: readonly string[];
+
+		resolvedEnv?: Record<string, string>;
+		onUpdate?: AgentToolUpdateCallback<BashToolDetails>;
+		forwardUpdates: boolean;
+	}): ManagedBashJobHandle {
+		const manager = this.session.asyncJobManager;
+		if (!manager) {
+			throw new ToolError("Background job manager unavailable for this session.");
+		}
+
+		const label = options.command.length > 120 ? `${options.command.slice(0, 117)}...` : options.command;
+		let latestText = "";
+		// Stall detection measures idle time as (now - lastOutputAt). Start the
+		// clock at registration so a command that never emits still counts as
+		// quiet from the moment it begins.
+		let lastOutputAt = performance.now();
+		let forwardUpdates = options.forwardUpdates;
+		const completion = Promise.withResolvers<ManagedBashJobCompletion>();
+
+		const jobId = manager.register(
+			"bash",
+			label,
+			async ({ jobId, signal: runSignal, reportProgress }) => {
+				const { path: artifactPath, id: artifactId } = (await this.session.allocateOutputArtifact?.("bash")) ?? {};
+				const tailBuffer = new TailBuffer(DEFAULT_MAX_BYTES);
+				const wallTimeStart = performance.now();
+				try {
+					const result = await executeBash(options.command, {
+						cwd: options.commandCwd,
+						// The shell session key is per JOB so a background command gets its
+						// own brush session, but the budget is per SESSION: without the
+						// explicit id the executor would look the limiter up under
+						// `<id>:async:<jobId>`, find nothing, and run the job uncapped.
+						cpuSessionId: this.session.getSessionId?.() ?? undefined,
+						sessionKey: `${this.session.getSessionId?.() ?? ""}:async:${jobId}`,
+						timeout: options.timeoutMs ?? 0,
+						signal: runSignal,
+						env: options.resolvedEnv,
+						artifactPath,
+						artifactId,
+						spillThreshold: inlineBudgetFor(this.session),
+						onChunk: chunk => {
+							lastOutputAt = performance.now();
+							tailBuffer.append(chunk);
+							latestText = tailBuffer.text();
+							void reportProgress(latestText, { async: { state: "running", jobId, type: "bash" } });
+						},
+						onMinimizedSave: originalText => saveBashOriginalArtifact(this.session, originalText),
+					});
+					const wallTimeMs = performance.now() - wallTimeStart;
+					const finalResult = await this.#buildCompletedResult(result, options.timeoutSec, {
+						requestedTimeoutSec: options.requestedTimeoutSec,
+						notices: options.notices ?? [],
+						wallTimeMs,
+					});
+					const finalText = this.#extractTextResult(finalResult);
+					latestText = finalText;
+					// Hand the detailed result to the foreground auto-background
+					// waiter (which renders it, footer included) before deciding
+					// the job's terminal state.
+					completion.resolve({ kind: "completed", result: finalResult });
+					if (finalResult.isError === true) {
+						// A non-zero exit is a completed command that failed. Re-enter
+						// the failure path so the job manager records it as failed and
+						// delivers the error text, matching prior throw-based behavior.
+						throw new ToolError(finalText);
+					}
+					await reportProgress(finalText, { async: { state: "completed", jobId, type: "bash" } });
+					return finalText;
+				} catch (error) {
+					const message = errorMessage(error);
+					latestText = message;
+					completion.resolve({ kind: "failed", error });
+					await reportProgress(message, { async: { state: "failed", jobId, type: "bash" } });
+					throw error;
+				}
+			},
+			{
+				ownerId: this.session.getAgentId?.() ?? undefined,
+				onProgress: async text => {
+					latestText = text;
+					if (!forwardUpdates) return;
+					await options.onUpdate?.({
+						content: [{ type: "text", text }],
+						details: {},
+					});
+				},
+			},
+		);
+
+		return {
+			jobId,
+			completion: completion.promise,
+			getLatestText: () => latestText,
+			getLastOutputAt: () => lastOutputAt,
+			stopUpdates: () => {
+				forwardUpdates = false;
+			},
+		};
+	}
+
+	/**
+	 * Foreground-wait on a managed job until one of: it completes/fails, the
+	 * wall-clock threshold elapses (auto-background), the output goes quiet for
+	 * the stall window (stall detection), or the caller aborts.
+	 *
+	 * A `thresholdMs` of `0` disables the wall-clock timer and a `stallMs` of `0`
+	 * disables stall detection. Both may be `0`: with neither lever on, this still
+	 * races completion against the operator's manual key, which is the whole
+	 * reason the key works on a stock install. The `background` result carries the
+	 * reason so the operator notice can name it.
+	 */
+	async #waitForManagedBashJob(
+		job: ManagedBashJobHandle,
+		opts: { thresholdMs: number; stallMs: number; signal?: AbortSignal },
+	): Promise<ManagedBashJobCompletion | { kind: "background"; reason: BackgroundReason } | { kind: "aborted" }> {
+		const { thresholdMs, stallMs, signal } = opts;
+		if (signal?.aborted) {
+			return { kind: "aborted" };
+		}
+
+		// Cancels the stall watcher once the race settles so its poll loop does
+		// not spin after a winner is chosen.
+		const internal = new AbortController();
+		const waiters: Array<
+			Promise<ManagedBashJobCompletion | { kind: "background"; reason: BackgroundReason } | { kind: "aborted" }>
+		> = [job.completion];
+		if (thresholdMs > 0) {
+			waiters.push(
+				Bun.sleep(thresholdMs).then(() => ({ kind: "background" as const, reason: "threshold" as const })),
+			);
+		}
+		if (stallMs > 0) {
+			waiters.push(this.#watchStall(job, stallMs, internal.signal));
+		}
+		// The operator's manual "background this now" key: the TUI resolves this
+		// waiter through the foreground-wait registry. Registered for exactly the
+		// duration of the race (the finally below), so the composer hint only
+		// advertises the key while it can actually win.
+		const manual = Promise.withResolvers<{ kind: "background"; reason: BackgroundReason }>();
+		const unregisterManual = registerForegroundBashWait(() =>
+			manual.resolve({ kind: "background", reason: "manual" }),
+		);
+		waiters.push(manual.promise);
+
+		let onAbort: (() => void) | undefined;
+		if (signal) {
+			const { promise: abortedPromise, resolve: resolveAborted } = Promise.withResolvers<{ kind: "aborted" }>();
+			onAbort = () => resolveAborted({ kind: "aborted" });
+			signal.addEventListener("abort", onAbort, { once: true });
+			waiters.push(abortedPromise);
+		}
+
+		try {
+			return await Promise.race(waiters);
+		} finally {
+			internal.abort();
+			unregisterManual();
+			if (signal && onAbort) {
+				signal.removeEventListener("abort", onAbort);
+			}
+		}
+	}
+
+	/**
+	 * Resolve to a `stall` background result once the job has produced no new
+	 * output for `stallMs`. Every output chunk pushes `getLastOutputAt()`
+	 * forward, resetting the idle window, so a command that keeps printing never
+	 * stalls. The poll is capped so the loop exits promptly after `signal`
+	 * fires (the race already having a winner).
+	 */
+	async #watchStall(
+		job: ManagedBashJobHandle,
+		stallMs: number,
+		signal: AbortSignal,
+	): Promise<{ kind: "background"; reason: BackgroundReason }> {
+		const POLL_CAP_MS = 500;
+		while (!signal.aborted) {
+			const idleMs = performance.now() - job.getLastOutputAt();
+			const remainingMs = stallMs - idleMs;
+			if (remainingMs <= 0) {
+				return { kind: "background", reason: "stall" };
+			}
+			await Bun.sleep(Math.min(remainingMs, POLL_CAP_MS));
+		}
+		// The race is already settled; never resolve so this loser is discarded.
+		return await new Promise<never>(() => {});
+	}
+
+	/**
+	 * The foreground wait for a `baseMs` timer, capped just under the hard
+	 * timeout: there is no point backgrounding (or flagging a stall) a second
+	 * before the command would time out anyway. `baseMs <= 0` disables the
+	 * timer (returns `0`). Shared by the auto-background and stall timers so the
+	 * clamp lives in ONE place.
+	 */
+	#resolveWaitMs(baseMs: number, timeoutMs: number | undefined): number {
+		if (baseMs <= 0) return 0;
+		if (timeoutMs === undefined) return baseMs;
+		const timeoutBufferMs = 1_000;
+		return clampLow(timeoutMs - timeoutBufferMs, 0, baseMs);
+	}
+
+	#resolveStallWaitMs(timeoutMs: number | undefined): number {
+		return this.#resolveWaitMs(this.#stallMs, timeoutMs);
+	}
+
+	async execute(
+		_toolCallId: string,
+		{
+			command: rawCommand,
+			env: rawEnv,
+			timeout: rawTimeout,
+			cwd,
+
+			async: asyncRequested = false,
+			pty = false,
+			backgroundAfter: rawBackgroundAfter,
+		}: BashToolInput,
+		signal?: AbortSignal,
+		onUpdate?: AgentToolUpdateCallback<BashToolDetails>,
+		ctx?: AgentToolContext,
+	): Promise<AgentToolResult<BashToolDetails>> {
+		const extracted = extractEffectiveBashCommand(rawCommand, cwd);
+		let command = extracted.command;
+		cwd = extracted.cwd;
+		const env = normalizeBashEnv(rawEnv);
+		if (asyncRequested && !this.#asyncEnabled) {
+			throw new ToolError("Async bash execution is disabled. Enable async.enabled to use async mode.");
+		}
+
+		// Check both the original command and the cwd-normalized command so
+		// leading `cd ... &&` wrappers do not hide either shell-navigation rules
+		// or the dedicated-tool command that follows the directory change.
+		if (this.session.settings.get("bashInterceptor.enabled")) {
+			const rules = this.session.settings.getBashInterceptorRules();
+			const commandsToCheck = rawCommand === command ? [command] : [rawCommand, command];
+			for (const commandToCheck of commandsToCheck) {
+				const interception = checkBashInterception(commandToCheck, ctx?.toolNames ?? [], rules);
+				if (interception.block) {
+					throw new ToolError(interception.message ?? "Command blocked");
+				}
+			}
+		}
+
+		// `skills: this.session.skills ?? []` used to sit here, and the `?? []` is a lie about
+		// scope: `[]` asserts this session HAS no skills, which `skill-protocol.ts` honors
+		// (`context?.skills ?? getActiveSkills()`). So an unresolved parent suppressed the
+		// process-wide snapshot, every `skill://` resolved to "Unknown skill: X / Available:
+		// none", and `expandInternalUrls` swallowed that and left the URL as a literal path,
+		// which bash then reported as a missing file. Pass the absence through, and when the
+		// command actually asked for a `skill://`, name the gap in the notices this tool
+		// already returns instead of letting the model debug a phantom path.
+		const skillScopeUnresolved = this.session.skills === undefined && referencesSkillUrl(rawCommand, cwd, env);
+		if (skillScopeUnresolved) {
+			logger.warn("bash: session skills are unresolved, skill:// URLs resolve against the process-wide set", {
+				cwd: this.session.cwd,
+			});
+		}
+		const internalUrlOptions: InternalUrlExpansionOptions = {
+			skills: this.session.skills,
+			internalRouter: InternalUrlRouter.instance(),
+			cwd: this.session.cwd,
+			localOptions: {
+				getArtifactsDir: this.session.getArtifactsDir,
+				getSessionId: this.session.getSessionId,
+			},
+		};
+		command = await expandInternalUrls(command, { ...internalUrlOptions, ensureLocalParentDirs: true });
+		const resolvedEnv = env
+			? Object.fromEntries(
+					await Promise.all(
+						Object.entries(env).map(async ([key, value]) => [
+							key,
+							await expandInternalUrls(value, {
+								...internalUrlOptions,
+								ensureLocalParentDirs: true,
+								noEscape: true,
+							}),
+						]),
+					),
+				)
+			: undefined;
+
+		// Resolve protocol URLs (skill://, agent://, etc.) in extracted cwd.
+		if (cwd?.includes("://") || cwd?.includes("local:/")) {
+			cwd = await expandInternalUrls(cwd, { ...internalUrlOptions, noEscape: true });
+		}
+
+		// Best-effort cache invalidation: drop github-cache rows for any issue/PR
+		// number touched by a mutating `gh` subcommand inside this bash call so
+		// subsequent issue:// / pr:// reads pick up the post-mutation state
+		// instead of the cached pre-mutation snapshot.
+		invalidateGithubCacheForBashCommand(command);
+
+		const commandCwd = cwd ? resolveToCwd(cwd, this.session.cwd) : this.session.cwd;
+		let cwdStat: fs.Stats;
+		try {
+			cwdStat = await fs.promises.stat(commandCwd);
+		} catch (err) {
+			if (isEnoent(err)) {
+				throw new ToolError(`Working directory does not exist: ${shortenPath(commandCwd)}`);
+			}
+			throw err;
+		}
+		if (!cwdStat.isDirectory()) {
+			throw new ToolError(`Working directory is not a directory: ${shortenPath(commandCwd)}`);
+		}
+
+		// A timeout of 0 is an explicit long-running-command contract: the user
+		// must still cancel the call or job, but veyyon does not impose a deadline.
+		const requestedTimeoutSec = rawTimeout;
+		const timeoutDisabled = requestedTimeoutSec === 0;
+		const timeoutSec = timeoutDisabled
+			? undefined
+			: clampTimeout("bash", requestedTimeoutSec, this.session.settings.get("tools.maxTimeout"));
+		const timeoutMs = timeoutSec === undefined ? undefined : timeoutSec * 1000;
+		const pendingNotices: string[] = [];
+		// The session tree's budget group: pick up live settings for every limit,
+		// then refuse while any of them says so (CPU saturated, write budget
+		// spent, process cap reached, or a memory cap that cannot be enforced
+		// here). Every spawn path below (PTY, executor, bridge) is gated by this
+		// one check.
+		const cpuLimit = sessionCpuLimit(this.session.getSessionId?.() ?? null);
+		if (cpuLimit) {
+			await cpuLimit.update(
+				this.session.settings.get("session.cpuLimitCores"),
+				this.session.settings.get("session.cpuLimitKill"),
+				sessionBudgetLimits(this.session.settings),
+			);
+			await cpuLimit.gateSpawn("a bash command");
+		}
+		if (timeoutSec !== undefined) {
+			const timeoutClampNotice = formatTimeoutClampNotice("bash", requestedTimeoutSec, timeoutSec);
+			if (timeoutClampNotice) pendingNotices.push(timeoutClampNotice);
+		}
+		if (skillScopeUnresolved) {
+			pendingNotices.push(SKILL_SCOPE_UNRESOLVED_NOTICE);
+		}
+
+		if (asyncRequested) {
+			if (!this.session.asyncJobManager) {
+				throw new ToolError("Async job manager unavailable for this session.");
+			}
+			const job = this.#startManagedBashJob({
+				command,
+				commandCwd,
+				timeoutMs,
+				timeoutSec,
+				requestedTimeoutSec,
+				notices: pendingNotices,
+
+				resolvedEnv,
+				onUpdate,
+				forwardUpdates: false,
+			});
+			return this.#buildBackgroundStartResult(job.jobId, "", timeoutSec, {
+				requestedTimeoutSec,
+				notices: pendingNotices,
+			});
+		}
+
+		// The client-bridge terminal provides a live terminal card in the editor;
+		// when available it wins over auto-backgrounding (both are opt-in, and
+		// auto-background would otherwise silently disable the terminal route).
+		const clientBridge = this.session.getClientBridge?.();
+		const bridgeTerminalAvailable = Boolean(
+			clientBridge?.capabilities.terminal && clientBridge.createTerminal && !pty,
+		);
+
+		const autoBgManager = this.session.asyncJobManager;
+		// A per-call `backgroundAfter` is the model's own deadline. It overrides the
+		// configured threshold and arms the wall-clock timer even when the setting
+		// is off, because asking for it IS the opt-in.
+		const requestedBackgroundAfterMs =
+			rawBackgroundAfter === undefined ? undefined : Math.max(0, Math.floor(rawBackgroundAfter * 1000));
+		const autoBackgroundActive = requestedBackgroundAfterMs !== undefined || this.#autoBackgroundEnabled;
+		const configuredThresholdMs = requestedBackgroundAfterMs ?? this.#autoBackgroundThresholdMs;
+		// EVERY non-PTY, non-bridge call routes through the managed-job machinery,
+		// not only one with a timer armed. That registration is what gives the
+		// operator's manual background key something to win: the foreground wait
+		// publishes a resolver for its duration, and that same registration raises
+		// the `ctrl+b background` chip. Gating this on the two auto levers meant
+		// that with both off, which was the default, the key was dead and the chip
+		// never appeared, so a documented shortcut did nothing on a stock install.
+		// At the running-job cap, fall through to direct foreground execution
+		// instead of failing every bash call until a slot frees up.
+		if (!pty && !bridgeTerminalAvailable && autoBgManager && !autoBgManager.atCapacity) {
+			// Wall-clock timer only when auto-background is on, stall timer only
+			// when stall detection is on. With neither, the race still runs so the
+			// manual key and the completion path stay live, just without a timer.
+			const wallThresholdMs = autoBackgroundActive ? this.#resolveWaitMs(configuredThresholdMs, timeoutMs) : 0;
+			const stallMs = this.#stallDetectionEnabled ? this.#resolveStallWaitMs(timeoutMs) : 0;
+			// "Immediately" is a CONFIGURED zero, never a clamped one. `#resolveWaitMs`
+			// collapses the timer to 0 when the command's own timeout would fire
+			// first, and reading that as "background now" would shunt every
+			// short-timeout command straight to a background job the moment
+			// auto-background became the default.
+			const startBackgrounded = autoBackgroundActive && configuredThresholdMs === 0;
+			const job = this.#startManagedBashJob({
+				command,
+				commandCwd,
+				timeoutMs,
+				timeoutSec,
+				requestedTimeoutSec,
+				notices: pendingNotices,
+
+				resolvedEnv,
+				onUpdate,
+				forwardUpdates: !startBackgrounded,
+			});
+			if (startBackgrounded) {
+				return this.#buildBackgroundStartResult(job.jobId, "", timeoutSec, {
+					requestedTimeoutSec,
+					notices: pendingNotices,
+					reason: "threshold",
+				});
+			}
+			// Suppress the completion delivery up front so a job finishing while we
+			// foreground-wait cannot also be injected by the delivery loop. Lifted
+			// via resumeDeliveries() if we end up backgrounding after all.
+			autoBgManager.acknowledgeDeliveries([job.jobId]);
+			const waitResult = await this.#waitForManagedBashJob(job, { thresholdMs: wallThresholdMs, stallMs, signal });
+			if (waitResult.kind === "completed") {
+				autoBgManager.acknowledgeDeliveries([job.jobId]);
+				return waitResult.result;
+			}
+			if (waitResult.kind === "failed") {
+				autoBgManager.acknowledgeDeliveries([job.jobId]);
+				throw waitResult.error;
+			}
+			if (waitResult.kind === "aborted") {
+				autoBgManager.cancel(job.jobId);
+				autoBgManager.resumeDeliveries([job.jobId]);
+				throw new ToolAbortError(job.getLatestText() || "Command aborted");
+			}
+			job.stopUpdates();
+			autoBgManager.resumeDeliveries([job.jobId]);
+			return this.#buildBackgroundStartResult(job.jobId, job.getLatestText(), timeoutSec, {
+				requestedTimeoutSec,
+				notices: pendingNotices,
+				reason: waitResult.reason,
+			});
+		}
+
+		// Route through the client terminal when the client advertises the terminal capability.
+		// Skip when pty=true (PTY needs the local terminal UI).
+		if (clientBridge?.capabilities.terminal && clientBridge.createTerminal && !pty) {
+			const bridgeWallTimeStart = performance.now();
+			const shellSpawn = wrapShellLineForClientTerminal(command, this.session.settings.getShellConfig());
+			const handle = await clientBridge.createTerminal({
+				command: shellSpawn.command,
+				args: shellSpawn.args,
+				cwd: commandCwd,
+				env: resolvedEnv
+					? Object.entries(resolvedEnv).map(([name, value]) => ({ name, value: value as string }))
+					: undefined,
+				outputByteLimit: DEFAULT_MAX_BYTES,
+			});
+
+			// Emit partial update so the editor can embed the live terminal card.
+			onUpdate?.({ content: [], details: { terminalId: handle.terminalId } });
+
+			const exitPromise = handle.waitForExit();
+			let exitStatus!: ClientBridgeTerminalExitStatus;
+
+			type BridgeRaceResult =
+				| { kind: "exit"; status: ClientBridgeTerminalExitStatus }
+				| { kind: "poll" }
+				| { kind: "timeout" }
+				| { kind: "aborted" };
+
+			// Set up abort listener before entering the poll loop. The listener
+			// kicks off `handle.kill()` synchronously so a `session/cancel`
+			// arriving mid-poll terminates the remote command immediately,
+			// instead of waiting for the next `currentOutput()` to return.
+			const { promise: abortedP, resolve: resolveAborted } = Promise.withResolvers<void>();
+			let killStarted = false;
+			const fireKill = (): Promise<void> => {
+				if (killStarted) return Promise.resolve();
+				killStarted = true;
+				return handle.kill().catch((error: unknown) => {
+					logger.warn("ACP terminal kill failed", { terminalId: handle.terminalId, error });
+				});
+			};
+			const onAbortSignal = () => {
+				resolveAborted();
+				void fireKill();
+			};
+			signal?.addEventListener("abort", onAbortSignal, { once: true });
+
+			try {
+				try {
+					if (signal?.aborted) {
+						await fireKill();
+						throw new ToolAbortError("Command aborted");
+					}
+
+					const timeoutPromise = timeoutMs
+						? Bun.sleep(timeoutMs).then(() => ({ kind: "timeout" as const }))
+						: undefined;
+					// Poll until the process exits, times out, or the caller aborts.
+					for (;;) {
+						const racers: Array<Promise<BridgeRaceResult>> = [
+							exitPromise.then(s => ({ kind: "exit" as const, status: s })),
+							Bun.sleep(250).then(() => ({ kind: "poll" as const })),
+						];
+						if (timeoutPromise) racers.push(timeoutPromise);
+						if (signal) {
+							racers.push(abortedP.then(() => ({ kind: "aborted" as const })));
+						}
+						const raced = await Promise.race(racers);
+
+						if (raced.kind === "aborted" || signal?.aborted) {
+							await fireKill();
+							throw new ToolAbortError("Command aborted");
+						}
+
+						if (raced.kind === "timeout") {
+							// Kill before reading final output so a slow `terminal/output`
+							// RPC cannot let a timed-out command keep running past the
+							// enforced timeout. The handle stays valid post-kill so the
+							// buffered output is still readable.
+							await fireKill();
+							let current = { output: "", truncated: false };
+							try {
+								current = await handle.currentOutput();
+							} catch (error) {
+								logger.warn("ACP terminal final output read failed", {
+									terminalId: handle.terminalId,
+									error,
+								});
+							}
+							const timedOutResult: BashInteractiveResult = summarizeBridgeOutput(current, {
+								exitCode: undefined,
+								cancelled: false,
+								timedOut: true,
+							});
+							return this.#buildCompletedResult(timedOutResult, timeoutSec, {
+								requestedTimeoutSec,
+								notices: pendingNotices,
+								terminalId: handle.terminalId,
+								wallTimeMs: performance.now() - bridgeWallTimeStart,
+							});
+						}
+
+						if (raced.kind === "exit") {
+							exitStatus = raced.status;
+							break;
+						}
+
+						// Poll tick: push current output so agent-loop transcript stays consistent.
+						// Race the read against abort so a stuck `terminal/output` RPC does not
+						// delay cancellation.
+						const pollOutput = await Promise.race([
+							handle.currentOutput(),
+							abortedP.then(() => undefined as ClientBridgeTerminalOutput | undefined),
+						]);
+						if (pollOutput === undefined) {
+							// Abort fired during the poll-tick read; let the next loop iteration
+							// observe `signal?.aborted` and exit via the abort branch.
+							continue;
+						}
+						onUpdate?.({
+							content: [{ type: "text", text: pollOutput.output }],
+							details: { terminalId: handle.terminalId },
+						});
+					}
+				} finally {
+					signal?.removeEventListener("abort", onAbortSignal);
+				}
+
+				// Fetch final output; the terminal is released in the outer finally.
+				const finalOutput = await handle.currentOutput();
+
+				// Map exit status. A null exitCode with a signal is a signalled death, so
+				// report the shell's 128+N for that specific signal and carry the raw
+				// number alongside it. This used to hardcode 137 for every signal, which
+				// reported an ordinary SIGTERM (143) as a SIGKILL.
+				const rawExitCode = exitStatus.exitCode;
+				const bridgeSignal = exitStatus.signal ? signalNumber(exitStatus.signal) : undefined;
+				if (exitStatus.signal && bridgeSignal === undefined) {
+					// Guessing a number here would put a fabricated exit code in front of the
+					// agent. Refuse instead: an unresolvable status is a missing status, and
+					// the caller already treats that as an error rather than as success.
+					throw new Error(
+						`Terminal reported termination by signal "${exitStatus.signal}", which is not a signal this platform knows. No exit status can be derived from it.`,
+					);
+				}
+				const exitCode: number | undefined =
+					rawExitCode != null
+						? rawExitCode
+						: bridgeSignal !== undefined
+							? SIGNAL_EXIT_BASE + bridgeSignal
+							: undefined;
+
+				const bridgeResult: BashResult = {
+					...summarizeBridgeOutput(finalOutput, { exitCode, cancelled: false }),
+					signal: bridgeSignal,
+				};
+
+				const bridgeNotices: string[] = [];
+				if (finalOutput.truncated) bridgeNotices.push("(output truncated)");
+				for (const notice of pendingNotices) bridgeNotices.push(notice);
+
+				return this.#buildCompletedResult(bridgeResult, timeoutSec, {
+					requestedTimeoutSec,
+					notices: bridgeNotices,
+					terminalId: handle.terminalId,
+					wallTimeMs: performance.now() - bridgeWallTimeStart,
+				});
+			} finally {
+				try {
+					await handle.release();
+				} catch (error) {
+					logger.warn("ACP terminal release failed", { terminalId: handle.terminalId, error });
+				}
+			}
+		}
+
+		// Track output for streaming updates (tail only)
+		const tailBuffer = new TailBuffer(DEFAULT_MAX_BYTES);
+
+		// Allocate artifact for truncated output storage
+		const { path: artifactPath, id: artifactId } = (await this.session.allocateOutputArtifact?.("bash")) ?? {};
+
+		const interactiveUi = canUseInteractiveBashPty(pty, ctx) ? ctx?.ui?.terminal : undefined;
+		if (pty && !interactiveUi) {
+			pendingNotices.push("pty requested but unavailable in this environment; ran without a terminal");
+		}
+		const wallTimeStart = performance.now();
+		const cpuBudgetId = cpuLimit && (await cpuLimit.ensureGroup()) ? cpuLimit.budgetName : undefined;
+		const result: BashResult | BashInteractiveResult = interactiveUi
+			? await runInteractiveBashPty(interactiveUi, {
+					command,
+					cwd: commandCwd,
+					timeoutMs,
+					signal,
+					env: resolvedEnv,
+					artifactPath,
+					artifactId,
+					spillThreshold: inlineBudgetFor(this.session),
+					...(cpuBudgetId ? { cpuBudgetId } : {}),
+				})
+			: await executeBash(command, {
+					cwd: commandCwd,
+					sessionKey: this.session.getSessionId?.() ?? undefined,
+					timeout: timeoutMs ?? 0,
+					signal,
+					env: resolvedEnv,
+					artifactPath,
+					artifactId,
+					spillThreshold: inlineBudgetFor(this.session),
+					onChunk: streamTailUpdates(tailBuffer, onUpdate),
+					onMinimizedSave: originalText => saveBashOriginalArtifact(this.session, originalText),
+				});
+		const wallTimeMs = performance.now() - wallTimeStart;
+		// A SIGTERM'd command might be the CPU budget's kill, not a crash: when
+		// the watcher fired one, say so on the result.
+		if (("signal" in result ? result.signal : undefined) === 15) {
+			const killReport = cpuLimit?.consumeKillReport();
+			if (killReport) pendingNotices.push(killReport);
+		}
+		if (result.cancelled) {
+			// PTY output carries no cancel/timeout notice of its own; annotate so
+			// the model can tell an abort from a plain failure. Cap first so a
+			// killed command's output cannot exceed the inline budget.
+			const out = await this.#boundBashOutput(normalizeResultOutput(result), result.artifactId);
+			const message = isInteractiveResult(result) && out ? `${out}\n\n[Command aborted]` : out || "Command aborted";
+			if (signal?.aborted) {
+				throw new ToolAbortError(message);
+			}
+			throw new ToolError(message);
+		}
+		if (isInteractiveResult(result) && result.timedOut) {
+			const out = await this.#boundBashOutput(normalizeResultOutput(result), result.artifactId);
+			const message =
+				timeoutSec === undefined ? "Command timed out" : `Command timed out after ${timeoutSec} seconds`;
+			throw new ToolError(out ? `${out}\n\n[${message}]` : message);
+		}
+		return this.#buildCompletedResult(result, timeoutSec, {
+			requestedTimeoutSec,
+			notices: pendingNotices,
+			wallTimeMs,
+		});
+	}
+}

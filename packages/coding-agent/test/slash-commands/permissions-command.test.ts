@@ -24,7 +24,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
-import { resolveEffectiveApprovalMode } from "@veyyon/coding-agent/tools/approval";
+import { resolveEffectiveApprovalMode } from "@veyyon/coding-agent/tools/core/approval";
 
 const USAGE = "Usage: /permissions [ask|ask-command|auto|yolo|plan|reset]";
 

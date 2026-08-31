@@ -21,7 +21,7 @@ import type { SessionEntry, SessionTreeNode } from "@veyyon/kernel/session/sessi
 import { ToolChoiceQueue } from "@veyyon/kernel/session/tool-choice-queue";
 import { Text } from "@veyyon/tui";
 import { isRecord, removeWithRetries } from "@veyyon/utils";
-import { searchToolRenderer } from "../../src/tools/search-renderer";
+import { searchToolRenderer } from "../../src/tools/search/search-renderer";
 
 function createTestSession(cwd: string, overrides: Partial<ToolSession> = {}): ToolSession {
 	return {

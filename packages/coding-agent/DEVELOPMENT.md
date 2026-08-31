@@ -90,7 +90,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 | `presentation/`, `theme/` | View-model builders over `@veyyon/wire/presentation`, and the palette every output surface reads | [tui-design-language.md](../../docs/internal/tui-design-language.md) |
 | `session/` | Turn loop, session composition, and prompt rendering (session spine lives in `@veyyon/kernel/session`) | [session.md](../../docs/internal/session.md), [session-tree-architecture.md](../../docs/internal/session-tree-architecture.md) |
 | `config/`, `registry/`, `secrets/` | Settings, model/provider registry, secret obfuscation | [settings.md](../../docs/handbook/src/reference/settings.md), [config-usage.md](../../docs/handbook/src/architecture/config.md), [models.md](../../docs/handbook/src/reference/models-yml.md), [secrets.md](../../docs/handbook/src/architecture/secrets.md) |
-| `tools/` | Built-in tool implementations + render/meta helpers | [custom-tools.md](../../docs/handbook/src/using/custom-tools.md), [`tools/`](../../docs/tools/) |
+| `tools/` | Built-in tool implementations, grouped one directory per domain: `core/` is the shared plumbing every domain reads, then `fs/`, `search/`, `shell/`, `web/` and `agent/`. Each domain declares a `manifest.ts` (lazy tool factories, no terminal import) and a `renderers.ts` (its TUI renderers); `index.ts` and `renderers.ts` at the root compose them | [custom-tools.md](../../docs/handbook/src/using/custom-tools.md), [`tools/`](../../docs/tools/) |
 | `exec/`, `eval/`, `ssh/`, `debug/` | Execution backends (shell, py/js kernels, ssh, debugger; `debug/dap/` is the adapter protocol) | [bash-tool-runtime.md](../../docs/internal/bash-tool-runtime.md), [python-repl.md](../../docs/handbook/src/features/python-repl.md) |
 | `lsp/` | Language-server client/runtime | [lsp-config.md](../../docs/handbook/src/features/lsp.md), [tools/lsp.md](../../docs/tools/lsp.md) |
 | `task/`, `swarm/`, `goals/`, `plan-mode/` | Subagent delegation, parallelism, inter-agent IRC (`task/irc-bus.ts`), plan mode | [task-agent-discovery.md](../../docs/internal/task-agent-discovery.md), [tools/task.md](../../docs/tools/task.md) |
@@ -216,7 +216,7 @@ Center dashboard's.
 
 | To add… | Start here |
 |---|---|
-| A built-in tool | `src/tools/index.ts` (`BUILTIN_TOOLS` / `HIDDEN_TOOLS`) + [custom-tools.md](../../docs/handbook/src/using/custom-tools.md) |
+| A built-in tool | `src/tools/<domain>/manifest.ts` (the domain's `tools` / `hidden` factories) and `src/tools/<domain>/renderers.ts`, both composed by `src/tools/index.ts` and `src/tools/renderers.ts` + [custom-tools.md](../../docs/handbook/src/using/custom-tools.md) |
 | An extension (TS/JS module) | [extensions.md](../../docs/handbook/src/features/extensions.md), [extension-loading.md](../../docs/internal/extension-loading.md), [skills/authoring-extensions.md](../../docs/handbook/src/features/extensions-authoring.md) |
 | A hook | `src/extensibility/hooks/types.ts` + [hooks.md](../../docs/handbook/src/reference/hooks.md), [skills/authoring-hooks.md](../../docs/handbook/src/features/hooks-authoring.md) |
 | A slash command | [slash-command-internals.md](../../docs/internal/slash-command-internals.md) |

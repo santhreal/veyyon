@@ -35,7 +35,7 @@ import type { TranscriptNote } from "../../packages/coding-agent/src/modes/termi
 import { TtsrNotificationComponent } from "../../packages/coding-agent/src/modes/terminal/components/transcript/ttsr-notification";
 import { setDetectedTerminalGround } from "../../packages/coding-agent/src/theme/ground-tints";
 import { theme } from "../../packages/coding-agent/src/theme/theme";
-import type { TodoItem } from "../../packages/coding-agent/src/tools/todo";
+import type { TodoItem } from "../../packages/coding-agent/src/tools/agent/todo";
 import { GREY_GROUND } from "./lib/ansi-raster";
 import { flag, hasFlag, initRender, renderWidth } from "./render-args";
 

@@ -3,14 +3,14 @@
 > Search workspace files, text, or code structure.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/search.ts`
+- Entry: `packages/coding-agent/src/tools/search/search.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/search.md`
 - Key collaborators:
-  - `packages/coding-agent/src/tools/file-search.ts`: file/path search (`executeFileSearch`).
-  - `packages/coding-agent/src/tools/text-search.ts`: regex/literal text search (`executeTextSearch`).
-  - `packages/coding-agent/src/tools/structure-search.ts`: structural code search (`executeStructureSearch`).
-  - `packages/coding-agent/src/tools/search-scope.ts`: shared search scope resolution.
-  - `packages/coding-agent/src/tools/cwd-boundary.ts`: filesystem targets for search scoping and permissions.
+  - `packages/coding-agent/src/tools/search/file-search.ts`: file/path search (`executeFileSearch`).
+  - `packages/coding-agent/src/tools/search/text-search.ts`: regex/literal text search (`executeTextSearch`).
+  - `packages/coding-agent/src/tools/search/structure-search.ts`: structural code search (`executeStructureSearch`).
+  - `packages/coding-agent/src/tools/search/search-scope.ts`: shared search scope resolution.
+  - `packages/coding-agent/src/tools/core/cwd-boundary.ts`: filesystem targets for search scoping and permissions.
   - `natives/bridge/addon/src/grep.rs`: native regex search.
   - `natives/bridge/addon/src/glob.rs`: native file discovery and glob matching.
   - `natives/bridge/addon/src/ast.rs`: native structural pattern matching.

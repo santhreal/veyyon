@@ -26,8 +26,8 @@
 
 import { visibleWidth } from "@veyyon/utils/width";
 import { theme } from "../../../../theme/theme";
-import type { TodoItem, TodoPhase } from "../../../../tools/todo";
-import { boundedTodoPreviewText, formatPhaseDisplayName, todoStrikeReveal } from "../../../../tools/todo";
+import type { TodoItem, TodoPhase } from "../../../../tools/agent/todo";
+import { boundedTodoPreviewText, formatPhaseDisplayName, todoStrikeReveal } from "../../../../tools/agent/todo";
 import { renderTreeList } from "../../../../tui/tree-list";
 
 /** Stages listed after the active one when the board is collapsed. */

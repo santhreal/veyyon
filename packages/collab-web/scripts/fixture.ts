@@ -142,7 +142,7 @@ export const fixtureEntries: WireSessionEntry[] = [
 			content: [
 				{
 					type: "text",
-					text: "ENOENT: no such file or directory\n  open 'packages/coding-agent/src/collab/relay-clinet.ts'\n    at open (node:internal/fs/promises:642:23)\n    at readRange (src/tools/read.ts:88:9)",
+					text: "ENOENT: no such file or directory\n  open 'packages/coding-agent/src/collab/relay-clinet.ts'\n    at open (node:internal/fs/promises:642:23)\n    at readRange (src/tools/fs/read.ts:88:9)",
 				},
 			],
 			isError: true,

@@ -24,14 +24,8 @@ import {
 } from "@veyyon/catalog/wire/perplexity";
 import { $env, asRecord, readSseJson, tryParseJson } from "@veyyon/utils";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
-import type {
-	PerplexityRequest,
-	PerplexitySearchResult,
-	SearchCitation,
-	SearchResponse,
-	SearchSource,
-} from "../../../web/search/types";
-import { SearchProviderError } from "../../../web/search/types";
+import type { PerplexityRequest, PerplexitySearchResult, SearchCitation, SearchResponse, SearchSource } from "../types";
+import { SearchProviderError } from "../types";
 import { dateToAgeSeconds, sanitizeResultLimit } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";

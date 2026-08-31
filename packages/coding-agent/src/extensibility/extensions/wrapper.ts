@@ -15,9 +15,9 @@ import {
 	formatApprovalCard,
 	requiresApproval,
 	resolveEffectiveApprovalMode,
-} from "../../tools/approval";
-import { cwdEscapingTargets, formatCwdBoundaryReason } from "../../tools/cwd-boundary";
-import { secretUseApprovalReason } from "../../tools/secret-use-boundary";
+} from "../../tools/core/approval";
+import { cwdEscapingTargets, formatCwdBoundaryReason } from "../../tools/core/cwd-boundary";
+import { secretUseApprovalReason } from "../../tools/core/secret-use-boundary";
 import type { ExtensionRunner } from "./runner";
 import type {
 	ExtensionUIDialogOptions,

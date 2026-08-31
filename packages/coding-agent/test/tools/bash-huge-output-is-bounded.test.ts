@@ -33,11 +33,11 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { DEFAULT_MAX_BYTES } from "@veyyon/coding-agent/session/streaming-output";
-import { BashTool } from "@veyyon/coding-agent/tools/bash";
 // The real shape the tool emits. A local all-optional copy used to stand here,
 // which let every assertion in this file read a field the type said might not
 // exist, so nothing could prove one was actually populated.
-import type { TruncationMeta } from "@veyyon/coding-agent/tools/output-meta";
+import type { TruncationMeta } from "@veyyon/coding-agent/tools/core/output-meta";
+import { BashTool } from "@veyyon/coding-agent/tools/shell/bash";
 import { removeWithRetries } from "@veyyon/utils";
 import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
 import { makeToolSession } from "../helpers/tool-session";

@@ -7,7 +7,7 @@ import * as lspConfig from "@veyyon/coding-agent/lsp/config";
 import type { Diagnostic, LspClient, ServerConfig } from "@veyyon/coding-agent/lsp/types";
 import { fileToUri } from "@veyyon/coding-agent/lsp/utils";
 import type { DeferredDiagnosticsEntry, ToolSession } from "@veyyon/coding-agent/tools";
-import { WriteTool } from "@veyyon/coding-agent/tools/write";
+import { WriteTool } from "@veyyon/coding-agent/tools/fs/write";
 import { type ptree, TempDir } from "@veyyon/utils";
 
 const TEST_SERVER: ServerConfig = {

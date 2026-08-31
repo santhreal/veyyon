@@ -6,7 +6,7 @@ operational failure modes.
 
 ## Scope and Key Files
 
-- Tool surface: `src/tools/eval.ts`
+- Tool surface: `src/tools/shell/eval.ts`
 - Session/per-call kernel orchestration: `src/eval/py/executor.ts`
 - Subprocess kernel client: `src/eval/py/kernel.ts`
 - Python wrapper / NDJSON server: `src/eval/py/runner.py`

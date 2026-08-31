@@ -39,10 +39,10 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cwdEscapingTargets, searchPathFilesystemTargets } from "@veyyon/coding-agent/tools/cwd-boundary";
-import { inspectImageFilesystemTargets } from "@veyyon/coding-agent/tools/inspect-image";
-import { readFilesystemTargets } from "@veyyon/coding-agent/tools/read";
-import { writeFilesystemTargets } from "@veyyon/coding-agent/tools/write";
+import { cwdEscapingTargets, searchPathFilesystemTargets } from "@veyyon/coding-agent/tools/core/cwd-boundary";
+import { inspectImageFilesystemTargets } from "@veyyon/coding-agent/tools/fs/inspect-image";
+import { readFilesystemTargets } from "@veyyon/coding-agent/tools/fs/read";
+import { writeFilesystemTargets } from "@veyyon/coding-agent/tools/fs/write";
 
 /** A minimal tool whose filesystem targets are just the paths handed to it. */
 const pathTool = { filesystemTargets: (args: unknown) => (args as { paths: string[] }).paths };

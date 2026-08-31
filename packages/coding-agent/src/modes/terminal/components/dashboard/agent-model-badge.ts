@@ -15,7 +15,7 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Theme } from "../../../../theme/theme";
 import { parseThinkingLevel } from "../../../../thinking";
-import { replaceTabs } from "../../../../tools/render-utils";
+import { replaceTabs } from "../../../../tools/core/render-utils";
 
 /**
  * `sonnet-4-6 ◒ high`: the model id, then the reasoning level in the colour the

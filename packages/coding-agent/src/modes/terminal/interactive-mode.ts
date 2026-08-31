@@ -134,10 +134,10 @@ import {
 } from "../../theme/theme";
 import type { ConfiguredThinkingLevel } from "../../thinking";
 import type { LspStartupServerInfo } from "../../tools";
-import { hasForegroundBashWait, onForegroundBashWaitChange } from "../../tools/bash-foreground-registry";
-import { type ResolveToolDetails, runResolveInvocation } from "../../tools/resolve";
-import { todoMatchesAnyDescription } from "../../tools/todo";
-import { ToolError } from "../../tools/tool-errors";
+import { type ResolveToolDetails, runResolveInvocation } from "../../tools/agent/resolve";
+import { todoMatchesAnyDescription } from "../../tools/agent/todo";
+import { ToolError } from "../../tools/core/tool-errors";
+import { hasForegroundBashWait, onForegroundBashWaitChange } from "../../tools/shell/bash-foreground-registry";
 import {
 	paintRailMotion,
 	RAIL_IDLE_STEP_MS,

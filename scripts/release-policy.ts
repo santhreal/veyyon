@@ -25,7 +25,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isReleaseTag } from "@veyyon/utils/semver";
-import { hasVersionHeading, unreleasedEntries } from "./changelog-unreleased.ts";
+import { hasVersionHeading, unreleasedEntries } from "./changelog-unreleased";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 

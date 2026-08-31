@@ -30,7 +30,7 @@ import {
 	credentialStateNote,
 	selectedButRotated,
 } from "../../session/account-inventory";
-import { TRUNCATE_LENGTHS } from "../../tools/render-utils";
+import { TRUNCATE_LENGTHS } from "../../tools/core/render-utils";
 import { formatDurationCoarse, formatUsageWindowLine, usageWindowLabelColumn } from "./format";
 
 /** Left margin of every account row, matching the other inline report blocks. */

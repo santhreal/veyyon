@@ -3,9 +3,9 @@
  */
 import type { Theme, ThemeColor } from "../theme/theme";
 // From the leaf that owns them. `../tools/render-utils` re-exports both and reaches 167 modules, which
-// this file paid for one glyph, and `tui/index.ts` re-exports this file into `tools/fetch.ts`.
-import type { ToolUIStatus } from "../tools/tool-ui-status";
-import { formatStatusIcon } from "../tools/tool-ui-status";
+// this file paid for one glyph, and `tui/index.ts` re-exports this file into `tools/web/fetch.ts`.
+import type { ToolUIStatus } from "../tools/core/tool-ui-status";
+import { formatStatusIcon } from "../tools/core/tool-ui-status";
 
 export interface StatusLineOptions {
 	icon?: ToolUIStatus;

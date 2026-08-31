@@ -1,6 +1,6 @@
 # The repair cascade
 
-Before argument validation, the agent loop runs `packages/coding-agent/src/tools/repair/schema-repair.ts` in this order:
+Before argument validation, the agent loop runs `packages/coding-agent/src/tools/core/repair/schema-repair.ts` in this order:
 
 1. **Parse leniency**: trailing commas / relaxed JSON; stringified argument blobs.
 2. **Alias / typo key rename**: unknown keys that match a common alias (`filepath` → `path`, `contents` → `content`) or a casing/separator typo of a declared property are renamed to the declared name. Refuse when the rename would be ambiguous (two unknown keys map to the same property, one unknown key matches more than one declared property, or the alias target already has a value).

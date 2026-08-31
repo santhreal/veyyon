@@ -67,7 +67,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/search-scope";
+import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/search/search-scope";
 import { moduleGraph, moduleSpecifiersIn, resolveModuleSpecifier } from "@veyyon/utils/module-reach";
 
 const SRC = path.join(import.meta.dir, "..", "..", "src");
@@ -174,14 +174,14 @@ function findCycles(graph: Graph): string[][] {
 const ACYCLIC_ENTRIES = [
 	["discovery", "discovery/index.ts"],
 	["config/settings", "config/settings.ts"],
-	["tools/path-utils", "tools/path-utils.ts"],
+	["tools/path-utils", "tools/core/path-utils.ts"],
 	["theme/theme", "theme/theme.ts"],
 	["config/model-registry", "config/model-registry.ts"],
 	["config/model-resolver", "config/model-resolver.ts"],
 	["internal-urls", "internal-urls/index.ts"],
 	["session/agent-session", "session/agent-session.ts"],
 	// Added after a full runner pass failed six chunks with two errors of one shape:
-	// `Export named 'formatOutputNotice' not found in module tools/output-meta.ts` and
+	// `Export named 'formatOutputNotice' not found in module tools/core/output-meta.ts` and
 	// `Export named 'wrapSteeringForModel' not found in module session/messages.ts`. Both
 	// names exist in the source, and a name that is present at rest and absent at
 	// resolution time is what a re-export through a module caught mid-initialization looks
@@ -190,8 +190,8 @@ const ACYCLIC_ENTRIES = [
 	// entries are the graphs those two modules sit in.
 	["session/messages", "session/messages.ts"],
 	["session/steering-envelope", "session/steering-envelope.ts"],
-	["tools/output-meta", "tools/output-meta.ts"],
-	["tools/output-notice", "tools/output-notice.ts"],
+	["tools/output-meta", "tools/core/output-meta.ts"],
+	["tools/output-notice", "tools/core/output-notice.ts"],
 ] as const;
 
 /**
@@ -239,7 +239,7 @@ const GRAPH_SIZE_CEILINGS = [
 	// Measured 2026-07-26 at 2, down from the 51-MB-per-realm component it used to sit inside. This is
 	// the module imported for small helpers throughout the package, so it is the most leveraged number
 	// in the list.
-	["tools/path-utils", "tools/path-utils.ts", 6],
+	["tools/path-utils", "tools/core/path-utils.ts", 6],
 	// Measured 2026-07-26 at 36, down from 139 when the light/dark classifier left
 	// `theme/builtin-themes` for `theme/theme-luminance` and stopped dragging one JSON
 	// module per bundled theme. ~1,500 test files import `Settings`, so this is the second most
@@ -270,7 +270,7 @@ const GRAPH_SIZE_CEILINGS = [
 	// Measured 2026-07-26 at 18.
 	["eval/js/tool-bridge", "eval/js/tool-bridge.ts", 25],
 	// Measured 2026-07-26 at 47.
-	["tools/plan-mode-guard", "tools/plan-mode-guard.ts", 60],
+	["tools/plan-mode-guard", "tools/core/plan-mode-guard.ts", 60],
 	// Measured 2026-07-26 at 183.
 	["utils/image-vision-fallback", "utils/image-vision-fallback.ts", 200],
 	// Measured 2026-07-26 at 199.
@@ -405,7 +405,7 @@ describe("the specific edges that closed the two cycles stay gone", () => {
 	 * new line in it.
 	 */
 	it("keeps tools/path-utils out of internal-urls", () => {
-		const imports = staticImports("tools/path-utils.ts");
+		const imports = staticImports("tools/core/path-utils.ts");
 
 		expect(imports.some(specifier => specifier.includes("internal-urls"))).toBe(false);
 	});
@@ -431,7 +431,7 @@ describe("the specific edges that closed the two cycles stay gone", () => {
 	});
 
 	/**
-	 * Locks out: deleting `tools/search-scope.ts` outright, which would satisfy every absence above.
+	 * Locks out: deleting `tools/search/search-scope.ts` outright, which would satisfy every absence above.
 	 * The function that needed the router still lives there and still names it.
 	 *
 	 * Asserted by importing the module and checking the export, not by searching its text for
@@ -440,7 +440,7 @@ describe("the specific edges that closed the two cycles stay gone", () => {
 	 * rather than the surface.
 	 */
 	it("still resolves internal URLs, from tools/search-scope", () => {
-		const imports = staticImports("tools/search-scope.ts");
+		const imports = staticImports("tools/search/search-scope.ts");
 
 		expect(imports).toContain("../internal-urls");
 		expect(imports).toContain("./path-utils");

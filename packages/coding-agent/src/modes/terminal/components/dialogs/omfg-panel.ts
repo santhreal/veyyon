@@ -7,7 +7,7 @@ import {
 	shortenPath,
 	TRUNCATE_LENGTHS,
 	truncateToWidth,
-} from "../../../../tools/render-utils";
+} from "../../../../tools/core/render-utils";
 import { COMPOSER_INSET_COLS } from "../composer/composer-chrome";
 import { mountTranscriptBlock } from "../transcript/transcript-block-chrome";
 

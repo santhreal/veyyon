@@ -17,7 +17,7 @@
   - `packages/coding-agent/src/lsp/clients/biome-client.ts`: Biome CLI diagnostics/formatting adapter
   - `packages/coding-agent/src/lsp/clients/swiftlint-client.ts`: SwiftLint CLI diagnostics adapter
   - `packages/coding-agent/src/tools/index.ts`: tool registration; `lsp.enabled` starts servers, `lsp.tool` exposes the agent tool
-  - `packages/coding-agent/src/tools/tool-timeouts.ts`: timeout defaults and clamping
+  - `packages/coding-agent/src/tools/core/tool-timeouts.ts`: timeout defaults and clamping
   - `packages/coding-agent/src/lsp/defaults.json`: built-in server definitions for auto-detect
 
 ## Inputs
@@ -268,7 +268,7 @@ Same as `definition`, but sends `textDocument/implementation` and reports `imple
   - Background message readers persist for each live client until process exit/shutdown.
 
 ## Limits & Caps
-- Tool timeout clamp: default `20`, min `5`, max `60` seconds: `TOOL_TIMEOUTS.lsp` in `packages/coding-agent/src/tools/tool-timeouts.ts`.
+- Tool timeout clamp: default `20`, min `5`, max `60` seconds: `TOOL_TIMEOUTS.lsp` in `packages/coding-agent/src/tools/core/tool-timeouts.ts`.
 - LSP request default timeout inside `sendRequest()`: `30_000ms`: `DEFAULT_REQUEST_TIMEOUT_MS` in `packages/coding-agent/src/lsp/client.ts`.
 - Warmup initialize timeout default: `5_000ms`: `WARMUP_TIMEOUT_MS` in `packages/coding-agent/src/lsp/client.ts`.
 - Project-load wait fallback: `15_000ms`: `PROJECT_LOAD_TIMEOUT_MS` in `packages/coding-agent/src/lsp/client.ts`.

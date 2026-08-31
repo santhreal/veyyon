@@ -3,7 +3,7 @@
  * Why: inclusive ceiling must fire when length equals limit.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("list-limit equals length 1 to 200 matrix", () => {
 	for (let n = 1; n <= 200; n++) {

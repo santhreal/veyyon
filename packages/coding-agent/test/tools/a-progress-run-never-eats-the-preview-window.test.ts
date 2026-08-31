@@ -15,7 +15,7 @@
  * control that the uncollapsed tail really did hide the anomaly.
  *
  * What it does NOT catch: the ssh card's fixed five-line fallback preview
- * (`tools/ssh.ts`, no tail window at all), the interactive `!command` execution
+ * (`tools/shell/ssh.ts`, no tail window at all), the interactive `!command` execution
  * block (`modes/terminal/components/transcript/execution-shared.ts:createCollapsedPreview`, which is
  * handed pre-styled text and so cannot key on a leading token), a markdown eval
  * cell (rendered by `Markdown` before the tail is taken), and the Rust
@@ -25,13 +25,13 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:te
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { truncateToVisualLines } from "@veyyon/coding-agent/modes/terminal/components/transcript/visual-truncate";
 import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
-import { bashToolRenderer } from "@veyyon/coding-agent/tools/bash-render";
-import { evalToolRenderer } from "@veyyon/coding-agent/tools/eval-render";
 import {
 	collapseProgressRuns,
 	PROGRESS_RUN_MIN_LINES,
 	previewWindowRows,
-} from "@veyyon/coding-agent/tools/render-utils";
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import { bashToolRenderer } from "@veyyon/coding-agent/tools/shell/bash-render";
+import { evalToolRenderer } from "@veyyon/coding-agent/tools/shell/eval-render";
 import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
 
 const ORIGINAL_ROWS = Object.getOwnPropertyDescriptor(process.stdout, "rows");

@@ -1,6 +1,10 @@
 import { type } from "arktype";
-import type { CommitAgentState, SplitCommitGroup, SplitCommitPlan } from "../../../commit/agentic/state";
-import { computeDependencyOrder } from "../../../commit/agentic/topo-sort";
+import type { CustomTool } from "../../../extensibility/custom-tools/types";
+import * as git from "../../../utils/git";
+import { validateScope } from "../../analysis/validation";
+import { normalizeDetails } from "../../utils";
+import type { CommitAgentState, SplitCommitGroup, SplitCommitPlan } from "../state";
+import { computeDependencyOrder } from "../topo-sort";
 import {
 	capDetails,
 	MAX_DETAIL_ITEMS,
@@ -8,11 +12,7 @@ import {
 	SUMMARY_MAX_CHARS,
 	validateSummaryRules,
 	validateTypeConsistency,
-} from "../../../commit/agentic/validation";
-import { validateScope } from "../../../commit/analysis/validation";
-import { normalizeDetails } from "../../../commit/utils";
-import type { CustomTool } from "../../../extensibility/custom-tools/types";
-import * as git from "../../../utils/git";
+} from "../validation";
 import { commitTypeSchema, detailSchema } from "./schemas.js";
 
 const hunkSelectorSchema = type({ type: "'all'" })

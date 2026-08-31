@@ -10,7 +10,7 @@ import {
 } from "../../subprocess/worker-client";
 import { logWorkerMessage } from "../../subprocess/worker-log";
 import type { ToolSession } from "../../tools";
-import { ToolAbortError, ToolError } from "../../tools/tool-errors";
+import { ToolAbortError, ToolError } from "../../tools/core/tool-errors";
 import { raceWithTimeout } from "../../utils/fetch-timeout";
 import { safeSend as safeSendIpc } from "../../utils/ipc";
 import { JS_EVAL_PROCESS_ARG, JS_EVAL_WORKER_ARG } from "../../worker-args";

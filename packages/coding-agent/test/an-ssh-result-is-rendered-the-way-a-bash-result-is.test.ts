@@ -33,7 +33,7 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/render-utils";
+import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { TUI } from "@veyyon/tui";
 import { createToolExecution } from "./helpers/tool-execution";
 

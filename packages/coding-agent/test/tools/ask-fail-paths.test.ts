@@ -4,8 +4,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ExtensionUISelectItem } from "@veyyon/coding-agent/extensibility/extensions";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { AskTool } from "@veyyon/coding-agent/tools/ask";
-import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
+import { AskTool } from "@veyyon/coding-agent/tools/agent/ask";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/core/tool-errors";
 
 /**
  * AskTool fail-path contract. Ask is the one tool that must NEVER invent an

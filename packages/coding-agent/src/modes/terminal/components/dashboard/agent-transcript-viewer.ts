@@ -32,7 +32,7 @@ import type { AgentLifecycleManager } from "../../../../registry/agent-lifecycle
 import type { AgentRegistry } from "../../../../registry/agent-registry";
 import { parseSessionEntries } from "../../../../session/session-loader";
 import { getEditorTheme, theme } from "../../../../theme/theme";
-import { replaceTabs, shortenPath, truncateToWidth } from "../../../../tools/render-utils";
+import { replaceTabs, shortenPath, truncateToWidth } from "../../../../tools/core/render-utils";
 import type { ObservableSession, SessionObserverRegistry } from "../../session-observer-registry";
 import { matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import {

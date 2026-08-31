@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { gunzipSync } from "node:zlib";
 import { getDocsRsCacheDir, isEnoent, logger, trimTrailingSlashes, truncate, tryParseJson } from "@veyyon/utils";
-import { ToolAbortError } from "../../tools/tool-errors";
+import { ToolAbortError } from "../../tools/core/tool-errors";
 import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, MAX_BYTES, scraperDegrade, tryParseUrl } from "./types";

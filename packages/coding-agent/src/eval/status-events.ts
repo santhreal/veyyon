@@ -2,8 +2,8 @@
  * How a cell's status-event list is updated as the backend reports progress.
  *
  * This lives beside the event type rather than with the renderer that draws it, because the module that PRODUCES
- * the events is `tools/eval.ts`, which runs code and has nothing to draw. It used to import this from
- * `tools/eval-render.ts`, and that one import cost 367 modules: the renderer pulls in `Markdown` and `Text` from
+ * the events is `tools/shell/eval.ts`, which runs code and has nothing to draw. It used to import this from
+ * `tools/shell/eval-render.ts`, and that one import cost 367 modules: the renderer pulls in `Markdown` and `Text` from
  * `@veyyon/tui`, the theme engine, the markdown theme, the settings store and the framed-block helpers. A tool
  * that starts a Python kernel paid all of it to append to an array.
  */

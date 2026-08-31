@@ -42,8 +42,8 @@ import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme, stopThemeWatcher, theme } from "@veyyon/coding-agent/theme/theme";
-import type { TodoPhase } from "@veyyon/coding-agent/tools/todo";
-import { todoToolRenderer } from "@veyyon/coding-agent/tools/todo-render";
+import type { TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
+import { todoToolRenderer } from "@veyyon/coding-agent/tools/agent/todo-render";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";

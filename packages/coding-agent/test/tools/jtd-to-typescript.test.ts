@@ -15,7 +15,7 @@
  * and only a finitely-but-absurdly deep schema is refused.
  */
 import { describe, expect, it } from "bun:test";
-import { jtdToTypeScript, jtdToTypeScriptParts } from "@veyyon/coding-agent/tools/jtd-to-typescript";
+import { jtdToTypeScript, jtdToTypeScriptParts } from "@veyyon/coding-agent/tools/core/jtd-to-typescript";
 
 describe("jtdToTypeScript", () => {
 	describe("primitive types", () => {

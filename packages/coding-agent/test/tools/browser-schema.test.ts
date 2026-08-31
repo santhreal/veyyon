@@ -10,7 +10,7 @@ import {
 import { validateToolCall } from "@veyyon/ai/utils/validation";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/sdk";
-import { type BrowserParams, BrowserTool } from "@veyyon/coding-agent/tools/browser";
+import { type BrowserParams, BrowserTool } from "@veyyon/coding-agent/tools/web/browser";
 import { INTENT_FIELD } from "@veyyon/wire";
 
 function makeSession(): ToolSession {

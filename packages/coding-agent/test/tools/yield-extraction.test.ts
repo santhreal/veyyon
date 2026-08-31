@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import "@veyyon/coding-agent/tools/yield";
+import "@veyyon/coding-agent/tools/agent/yield";
 import { subprocessToolRegistry } from "@veyyon/coding-agent/task/subprocess-tool-registry";
 
 describe("yield subprocess extraction", () => {

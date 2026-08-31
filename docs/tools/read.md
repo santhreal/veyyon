@@ -3,13 +3,13 @@
 > Read files, directories, archives, SQLite databases, internal resources, images, documents, and URLs through one `path` string.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/read.ts`
+- Entry: `packages/coding-agent/src/tools/fs/read.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/read.md`
 - Key collaborators:
-  - `packages/coding-agent/src/tools/path-utils.ts`: split `path` from trailing selectors; normalize local paths.
+  - `packages/coding-agent/src/tools/core/path-utils.ts`: split `path` from trailing selectors; normalize local paths.
   - `packages/coding-agent/src/utils/zip.ts`: the unified ZIP/tar wrapper: detect `archive.ext:inner/path`, index archives, list/read entries.
-  - `packages/coding-agent/src/tools/sqlite-reader.ts`: detect SQLite targets, parse selectors, render tables.
-  - `packages/coding-agent/src/tools/fetch.ts`: URL parsing, fetch/render pipeline, URL cache/artifacts.
+  - `packages/coding-agent/src/tools/core/sqlite-reader.ts`: detect SQLite targets, parse selectors, render tables.
+  - `packages/coding-agent/src/tools/web/fetch.ts`: URL parsing, fetch/render pipeline, URL cache/artifacts.
   - `packages/coding-agent/src/internal-urls/router.ts`: resolve `agent://`, `artifact://`, `history://`, `issue://`, `local://`, `mcp://`, `memory://`, `pr://`, `rule://`, `skill://`, `ssh://`, `vault://`, and `veyyon://`.
   - `packages/coding-agent/src/edit/notebook.ts`: convert `.ipynb` to editable `# %% [...] cell:N` text.
   - `packages/coding-agent/src/utils/file-display-mode.ts`: decide hashline vs line-number vs raw display.
@@ -25,7 +25,7 @@
 
 ### Selector grammar
 
-For normal file-like reads, `splitPathAndSel()` in `packages/coding-agent/src/tools/path-utils.ts` recognizes the final suffix only when it matches one of these forms:
+For normal file-like reads, `splitPathAndSel()` in `packages/coding-agent/src/tools/core/path-utils.ts` recognizes the final suffix only when it matches one of these forms:
 
 | Suffix | Meaning |
 | --- | --- |
@@ -44,10 +44,10 @@ Validation in `parseLineRangeChunk()`:
 
 Selector parsing intentionally falls through for unrecognized trailing `:...`; archive and SQLite paths consume their own colon syntax.
 
-URL selectors are parsed separately in `packages/coding-agent/src/tools/fetch.ts`, but use the same line-range parser for `:raw`, `:N`, `:A-B`, `:A+C`, `:5-10,20-30`, and `:range:raw` / `:raw:range`. Because URL ports also use `:`, add a trailing slash before a selector on a host/port URL, e.g. `https://example.com/:80`.
+URL selectors are parsed separately in `packages/coding-agent/src/tools/web/fetch.ts`, but use the same line-range parser for `:raw`, `:N`, `:A-B`, `:A+C`, `:5-10,20-30`, and `:range:raw` / `:raw:range`. Because URL ports also use `:`, add a trailing slash before a selector on a host/port URL, e.g. `https://example.com/:80`.
 
 ## Outputs
-- Single-shot `AgentToolResult` built through `toolResult()` in `packages/coding-agent/src/tools/tool-result.ts`.
+- Single-shot `AgentToolResult` built through `toolResult()` in `packages/coding-agent/src/tools/core/tool-result.ts`.
 - `content` is usually one text block. Image reads may return `[text, image]`.
 - `details` is path-dependent. `ReadToolDetails` may include:
   - `kind: "file" | "url"` (URL path uses `kind: "url"`; file reads usually omit `kind`)
@@ -58,14 +58,14 @@ URL selectors are parsed separately in `packages/coding-agent/src/tools/fetch.ts
   - `truncation`
   - `displayContent` (unprefixed text + starting line for TUI rendering)
   - `summary` (`lines`, `elidedSpans`, `elidedLines`) for structural summaries
-  - `meta` from `packages/coding-agent/src/tools/output-meta.ts`
+  - `meta` from `packages/coding-agent/src/tools/core/output-meta.ts`
 - `details.meta.source` is set to the backing path, URL, or internal URL.
 - `details.meta.truncation` carries shown range, total lines/bytes, next offset, and optional `artifactId` for cached URL output.
 - Directory/archive listings and SQLite table lists also set `details.meta.limits` when list limits trigger.
 
 ## Flow
 1. `ReadTool.execute()` accepts `{ path }`. `file://...` inputs are expanded first with `expandPath()`.
-2. It tries URL handling first via `parseReadUrlTarget()` from `packages/coding-agent/src/tools/fetch.ts`.
+2. It tries URL handling first via `parseReadUrlTarget()` from `packages/coding-agent/src/tools/web/fetch.ts`.
    - Plain URL reads call `executeReadUrl()`.
    - URL reads with line selectors load or refresh the URL cache with `loadReadUrlCacheEntry()` and paginate the cached text locally with `#buildInMemoryTextResult()`.
 3. If not a web URL, it checks `InternalUrlRouter.instance().canHandle(...)`.
@@ -164,13 +164,13 @@ URL selectors are parsed separately in `packages/coding-agent/src/tools/fetch.ts
 - Empty `q` throws.
 - `executeReadQuery()` prepares the SQL, rejects bound parameters, and collects rows from `statement.iterate()` capped at `MAX_RAW_QUERY_ROWS = 1000`; it does not verify that the SQL starts with `SELECT`.
 
-- Rendering caps in `packages/coding-agent/src/tools/sqlite-reader.ts`:
+- Rendering caps in `packages/coding-agent/src/tools/core/sqlite-reader.ts`:
   - ASCII table width `120` (`MAX_RENDER_WIDTH`)
   - per-column width `40` (`MAX_COLUMN_WIDTH`)
 - `#readSqlite()` opens Bun SQLite in `{ readonly: true, strict: true }` and sets `PRAGMA busy_timeout = 3000`.
 
 ### Documents
-- `CONVERTIBLE_EXTENSIONS` in `packages/coding-agent/src/tools/read.ts` covers `.pdf`, `.doc`, `.docx`, `.ppt`, `.pptx`, `.xls`, `.xlsx`, `.rtf`, `.epub`.
+- `CONVERTIBLE_EXTENSIONS` in `packages/coding-agent/src/tools/fs/read.ts` covers `.pdf`, `.doc`, `.docx`, `.ppt`, `.pptx`, `.xls`, `.xlsx`, `.rtf`, `.epub`.
 - `convertFileWithMarkit()` converts the file to text/markdown; line-range and `:raw` selectors then apply to the converted output (`file.pdf:50-100`, `:5-16,40-80`).
 - For PDFs, embedded images are surfaced as browsable handles. markit emits a `<!-- image: <id> (page N, WxHpt) -->` region for each embedded image; `read.ts` rewrites it into a `read <pdf>:<id>.png` hint (as inline code, so spaces/parens in the path can't break markdown). Reading that handle (`doc.pdf:p11-img0.png`) extracts the image, passing markit an `imageDir` that lands in a session-artifact cache (`<artifacts>/pdf-assets/<key>/`, keyed by size+mtime, converted once per file), and returns it through the normal image-loading path. `doc.pdf:` lists the extractable members; an unknown member errors with the available list. Requested members are matched against extracted basenames, so `..`/separators cannot escape the cache.
 - Conversion failures return a text block like `[Cannot read .pdf file: ...]`.
@@ -208,7 +208,7 @@ URL selectors are parsed separately in `packages/coding-agent/src/tools/fetch.ts
 
 ### Web URLs
 - `parseReadUrlTarget()` accepts `http://`, `https://`, or `www.` targets.
-- Plain URL reads call `executeReadUrl()` in `packages/coding-agent/src/tools/fetch.ts`.
+- Plain URL reads call `executeReadUrl()` in `packages/coding-agent/src/tools/web/fetch.ts`.
 - `:raw` means raw HTML/body fallback path; plain URL reads prefer rendered/reader-friendly output.
 - `:N`, `:A-B`, `:A+C`, and comma-separated multi-ranges do not refetch when cached output is usable. They page over cached output from the prior or current URL render.
 - URL render pipeline in `renderUrl()`:
@@ -244,7 +244,7 @@ Notes: ...
 - Subprocesses / native bindings
   - Uses Bun SQLite for `.db`/`.sqlite*`.
   - Uses `Bun.Archive` for tar/tgz; ZIP is framed in `packages/coding-agent/src/utils/zip.ts` over the `node:zlib` DEFLATE codec.
-  - URL HTML rendering can delegate into site handlers and HTML-to-text backends from `packages/coding-agent/src/tools/fetch.ts`.
+  - URL HTML rendering can delegate into site handlers and HTML-to-text backends from `packages/coding-agent/src/tools/web/fetch.ts`.
 - Session state
   - Records whole-file snapshots of local text reads into `session.fileSnapshotStore` for later stale-anchor recovery.
   - Passes session `cwd`, `settings`, and `localProtocolOptions` into the process-global `InternalUrlRouter.instance().resolve()` for internal URLs.

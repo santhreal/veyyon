@@ -10,7 +10,7 @@ import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
 import { withIcon } from "../../../../theme/icon-label";
 import { theme } from "../../../../theme/theme";
-import { shortenPath } from "../../../../tools/render-utils";
+import { shortenPath } from "../../../../tools/core/render-utils";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import {
 	computeModalDims,

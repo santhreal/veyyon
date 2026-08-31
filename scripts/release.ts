@@ -15,7 +15,7 @@ import * as path from "node:path";
  */
 import { isReleaseTag, isReleaseVersion, RELEASE_VERSION_BODY } from "@veyyon/utils/semver";
 import { $, Glob, JSONC } from "bun";
-import { hasVersionHeading, unreleasedEntries } from "./changelog-unreleased.ts";
+import { hasVersionHeading, unreleasedEntries } from "./changelog-unreleased";
 import { runChangelogFixer } from "./fix-changelogs";
 import {
 	assertPreparedReleaseChangelogs,
@@ -25,7 +25,7 @@ import {
 	verifyReleaseTagIsOnMain,
 } from "./release-policy";
 import { orphanRefusalLines, writeRootChangelog } from "./sync-root-changelog";
-import { memberTopLevels, typeScriptMembers } from "./workspace-layout.ts";
+import { memberTopLevels, typeScriptMembers } from "./workspace-layout";
 
 /**
  * Every member file of one name, across the workspace members the manifests declare.

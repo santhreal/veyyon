@@ -18,7 +18,7 @@ import type {
 	SubagentLifecyclePayload,
 	SubagentProgressPayload,
 } from "../../task";
-import type { TodoPhase } from "../../tools/todo";
+import type { TodoPhase } from "../../tools/agent/todo";
 
 // ============================================================================
 // RPC Commands (stdin)

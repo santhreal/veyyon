@@ -25,13 +25,13 @@ import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import type { Rule } from "../../discovery/capability/rule";
 import type { ExecOptions, ExecResult } from "../../exec/exec";
-import type { HookUIContext } from "../../extensibility/hooks/types";
 import type * as PiCodingAgent from "../../index";
 import type { LocalProtocolOptions } from "../../internal-urls/local-protocol";
 import type { ReadonlySessionManager } from "../../session/session-manager";
 import type { Theme } from "../../theme/theme";
-import type { SessionToolApprovals } from "../../tools/approval-modes";
-import type { TodoItem } from "../../tools/todo";
+import type { TodoItem } from "../../tools/agent/todo";
+import type { SessionToolApprovals } from "../../tools/core/approval-modes";
+import type { HookUIContext } from "../hooks/types";
 import type { RecoveredRetryError } from "../shared-events";
 
 /** Alias for clarity */

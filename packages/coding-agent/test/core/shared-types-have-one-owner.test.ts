@@ -201,7 +201,7 @@ const UNIFIED = [
 	},
 	{
 		name: "TabWorkerTransport",
-		owner: "packages/coding-agent/src/tools/browser/tab-protocol.ts",
+		owner: "packages/coding-agent/src/tools/web/browser/tab-protocol.ts",
 		resolution: "the other one; its `send` also takes a transfer list, so the two were never interchangeable",
 	},
 	{
@@ -211,7 +211,7 @@ const UNIFIED = [
 	},
 	{
 		name: "TabWorkerOutbound",
-		owner: "packages/coding-agent/src/tools/browser/tab-protocol.ts",
+		owner: "packages/coding-agent/src/tools/web/browser/tab-protocol.ts",
 		resolution:
 			"the tab worker's outbound union, which carries `tool-call` and `init-failed` the eval one has no idea about",
 	},
@@ -233,7 +233,7 @@ const UNIFIED = [
 	},
 	{
 		name: "TodoPhase",
-		owner: "packages/coding-agent/src/tools/todo.ts",
+		owner: "packages/coding-agent/src/tools/agent/todo.ts",
 		resolution:
 			"the todo vocabulary was declared twice in ONE package; `modes/terminal/types.ts`'s `TodoItem` carried `details?` and `notes?`, which the tool's arktype schema has no concept of and nothing ever wrote, so the HUD's superscript note count was unreachable code. The writer owns the shape and `modes/terminal/types.ts` re-exports it. `TodoItem` itself is not listed here because generated Cursor protobuf declares that name too",
 	},
@@ -241,7 +241,7 @@ const UNIFIED = [
 		name: "TodoStatus",
 		owner: "contracts/wire/src/index.ts",
 		resolution:
-			"byte-identical in both copies, which is how the two `TodoItem`s looked interchangeable. The union then moved OUT of the coding agent entirely: it is derived from `TODO_STATUS_IS_TERMINAL` in `@veyyon/wire`, so a new status cannot join it without a terminality decision landing beside it, and both renderers of a todo board read the same vocabulary. `tools/todo.ts` and `modes/terminal/types.ts` re-export the name and declare nothing",
+			"byte-identical in both copies, which is how the two `TodoItem`s looked interchangeable. The union then moved OUT of the coding agent entirely: it is derived from `TODO_STATUS_IS_TERMINAL` in `@veyyon/wire`, so a new status cannot join it without a terminality decision landing beside it, and both renderers of a todo board read the same vocabulary. `tools/agent/todo.ts` and `modes/terminal/types.ts` re-export the name and declare nothing",
 	},
 	{
 		name: "Usage",

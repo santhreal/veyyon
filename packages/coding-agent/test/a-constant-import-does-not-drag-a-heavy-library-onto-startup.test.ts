@@ -6,7 +6,7 @@ import { dirname, join, relative, resolve } from "node:path";
  * WHY: importing a string constant is enough to evaluate the module that holds it, and twice now a
  * module that wanted one literal has put a multi-megabyte library on the session startup path.
  *
- * `tools/read.ts`, `tools/fetch.ts` and `cli/file-processor.ts` imported `CONVERTIBLE_EXTENSIONS`, a
+ * `tools/fs/read.ts`, `tools/web/fetch.ts` and `cli/file-processor.ts` imported `CONVERTIBLE_EXTENSIONS`, a
  * nine-string set, from the `markit` barrel. The barrel reaches `markit/registry.ts`, which statically
  * imports five document converters and through them mammoth, jszip, turndown, domino, bluebird and
  * xmlbuilder: 104ms of module evaluation to read nine strings, while `utils/markit.ts` was already

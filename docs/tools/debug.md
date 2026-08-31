@@ -3,7 +3,7 @@
 > Drive one DAP debug session; adjacent debug UI code reuses the same subsystem for logs, raw SSE capture, reports, profiling, and system diagnostics.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/debug.ts`
+- Entry: `packages/coding-agent/src/tools/shell/debug.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/debug.md`
 - Key collaborators:
   - `packages/coding-agent/src/debug/dap/session.ts`: session lifecycle, breakpoint/state cache
@@ -11,7 +11,7 @@
   - `packages/coding-agent/src/debug/dap/config.ts`: adapter resolution and auto-selection
   - `packages/coding-agent/src/debug/dap/defaults.json`: built-in adapter definitions
   - `packages/coding-agent/src/debug/dap/types.ts`: request/response/capability shapes
-  - `packages/coding-agent/src/tools/tool-timeouts.ts`: per-tool timeout clamp
+  - `packages/coding-agent/src/tools/core/tool-timeouts.ts`: per-tool timeout clamp
   - `packages/coding-agent/src/debug/index.ts`: interactive debug selector menu
   - `packages/coding-agent/src/debug/log-viewer.ts`: recent-log TUI viewer
   - `packages/coding-agent/src/debug/raw-sse.ts`: raw SSE TUI viewer
@@ -26,7 +26,7 @@
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `action` | `"launch" \| "attach" \| "set_breakpoint" \| "remove_breakpoint" \| "set_instruction_breakpoint" \| "remove_instruction_breakpoint" \| "data_breakpoint_info" \| "set_data_breakpoint" \| "remove_data_breakpoint" \| "continue" \| "step_over" \| "step_in" \| "step_out" \| "pause" \| "evaluate" \| "stack_trace" \| "threads" \| "scopes" \| "variables" \| "disassemble" \| "read_memory" \| "write_memory" \| "modules" \| "loaded_sources" \| "custom_request" \| "output" \| "terminate" \| "sessions"` | Yes | Dispatch key for the tool switch in `packages/coding-agent/src/tools/debug.ts`. |
+| `action` | `"launch" \| "attach" \| "set_breakpoint" \| "remove_breakpoint" \| "set_instruction_breakpoint" \| "remove_instruction_breakpoint" \| "data_breakpoint_info" \| "set_data_breakpoint" \| "remove_data_breakpoint" \| "continue" \| "step_over" \| "step_in" \| "step_out" \| "pause" \| "evaluate" \| "stack_trace" \| "threads" \| "scopes" \| "variables" \| "disassemble" \| "read_memory" \| "write_memory" \| "modules" \| "loaded_sources" \| "custom_request" \| "output" \| "terminate" \| "sessions"` | Yes | Dispatch key for the tool switch in `packages/coding-agent/src/tools/shell/debug.ts`. |
 | `program` | `string` | No | Launch target path. Required for `launch`. Resolved relative to `cwd` if provided, otherwise session cwd. |
 | `args` | `string[]` | No | Program argv for `launch`. |
 | `adapter` | `string` | No | Explicit adapter name. Otherwise `selectLaunchAdapter()` / `selectAttachAdapter()` auto-pick from `packages/coding-agent/src/debug/dap/config.ts`. |
@@ -83,7 +83,7 @@
 `packages/coding-agent/src/debug/index.ts` also exposes a fixed UI-only selector with values `open-artifacts`, `performance`, `work`, `dump`, `memory`, `logs`, `system`, `terminal`, `protocols`, `raw-sse`, `remote-debugger`, `transcript`, `clear-cache`. These are not model-callable through `debugSchema`; they are local TUI menu routes.
 
 ## Outputs
-The agent tool returns a standard `toolResult()` payload from `packages/coding-agent/src/tools/debug.ts`:
+The agent tool returns a standard `toolResult()` payload from `packages/coding-agent/src/tools/shell/debug.ts`:
 - `content`: one text block. Every action renders human-readable text; there is no structured JSON block in `content`.
 - `details.action`: echoed action.
 - `details.success`: always initialized `true`; failures surface by throwing before a result is returned.
@@ -119,7 +119,7 @@ Side-channel artifacts outside the model tool result:
 - `RawSseViewerComponent` and `DebugLogViewerComponent` can copy captured text to the clipboard.
 
 ## Flow
-1. Tool registration is conditional: `DebugTool.createIf()` in `packages/coding-agent/src/tools/debug.ts` returns `null` unless `session.settings.get("debug.enabled")` is true. `packages/coding-agent/src/tools/index.ts` wires the factory and rechecks the same setting in tool filtering.
+1. Tool registration is conditional: `DebugTool.createIf()` in `packages/coding-agent/src/tools/shell/debug.ts` returns `null` unless `session.settings.get("debug.enabled")` is true. `packages/coding-agent/src/tools/index.ts` wires the factory and rechecks the same setting in tool filtering.
 2. `DebugTool.execute()` clamps `params.timeout` through `clampTimeout("debug", params.timeout)` and composes the caller `AbortSignal` with `AbortSignal.timeout(...)`.
 3. `launch` and `attach` resolve cwd/program paths, select an adapter in `packages/coding-agent/src/debug/dap/config.ts`, then delegate to `dapSessionManager.launch()` / `.attach()`.
 4. `DapSessionManager.launch()` / `.attach()` enforce the single-session rule with `#ensureLaunchSlot()`, spawn the adapter through `DapClient.spawn()`, register listeners, send `initialize`, cache capabilities, start listening for an initial stop event before sending `launch`/`attach`, then complete the `initialized` → `configurationDone` handshake in `#completeConfigurationHandshake()`.
@@ -265,7 +265,7 @@ Example `.veyyon/dap.json`:
   - Raw SSE viewers subscribe to buffer updates until closed.
 
 ## Limits & Caps
-- Tool timeout clamp: `default=30`, `min=5`, `max=300` in `packages/coding-agent/src/tools/tool-timeouts.ts`.
+- Tool timeout clamp: `default=30`, `min=5`, `max=300` in `packages/coding-agent/src/tools/core/tool-timeouts.ts`.
 - Per-request DAP default timeout: `DEFAULT_REQUEST_TIMEOUT_MS = 30_000` in `packages/coding-agent/src/debug/dap/client.ts`.
 - Single active session: enforced by `#ensureLaunchSlot()` in `packages/coding-agent/src/debug/dap/session.ts`.
 - Idle session cleanup: `IDLE_TIMEOUT_MS = 10 * 60 * 1000`, checked every `CLEANUP_INTERVAL_MS = 30 * 1000`.
@@ -289,7 +289,7 @@ Example `.veyyon/dap.json`:
 - Artifact cache pruning default: `30` days in `clearArtifactCache()` and the selector confirmation text.
 
 ## Errors
-- Parameter validation in `packages/coding-agent/src/tools/debug.ts` throws `ToolError` with explicit messages such as:
+- Parameter validation in `packages/coding-agent/src/tools/shell/debug.ts` throws `ToolError` with explicit messages such as:
   - `launch requires "program" (the target to debug).`
   - `attach requires pid or port`
   - `set_breakpoint requires file+line or function`

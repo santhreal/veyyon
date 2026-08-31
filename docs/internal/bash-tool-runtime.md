@@ -74,7 +74,7 @@ Before execution, the tool allocates an artifact path/id (best-effort) for trunc
 
 ## 5) PTY vs non-PTY execution selection
 
-PTY eligibility is decided by `canUseInteractiveBashPty(pty, ctx)` (`src/tools/bash-pty-selection.ts`); the local PTY overlay runs only when all are true:
+PTY eligibility is decided by `canUseInteractiveBashPty(pty, ctx)` (`src/tools/shell/bash-pty-selection.ts`); the local PTY overlay runs only when all are true:
 
 - tool input `pty === true`
 - `VEYYON_NO_PTY !== "1"`
@@ -272,14 +272,14 @@ This component is wired by `CommandController.handleBashCommand()` and fed from 
 
 ## Implementation files
 
-- [`src/tools/bash.ts`](../../packages/coding-agent/src/tools/bash.ts): tool entrypoint, input handling/interception, async and PTY/non-PTY selection, result/error mapping, bash tool renderer.
-- [`src/tools/bash-pty-selection.ts`](../../packages/coding-agent/src/tools/bash-pty-selection.ts): `canUseInteractiveBashPty` predicate for choosing the local PTY overlay.
-- [`src/tools/bash-interceptor.ts`](../../packages/coding-agent/src/tools/bash-interceptor.ts): interceptor rule matching and blocked-command messages.
+- [`src/tools/shell/bash.ts`](../../packages/coding-agent/src/tools/shell/bash.ts): tool entrypoint, input handling/interception, async and PTY/non-PTY selection, result/error mapping, bash tool renderer.
+- [`src/tools/shell/bash-pty-selection.ts`](../../packages/coding-agent/src/tools/shell/bash-pty-selection.ts): `canUseInteractiveBashPty` predicate for choosing the local PTY overlay.
+- [`src/tools/shell/bash-interceptor.ts`](../../packages/coding-agent/src/tools/shell/bash-interceptor.ts): interceptor rule matching and blocked-command messages.
 - [`src/exec/bash-executor.ts`](../../packages/coding-agent/src/exec/bash-executor.ts): non-PTY executor, shell session reuse, cancellation wiring, output sink integration.
 - [`src/exec/non-interactive-env.ts`](../../packages/coding-agent/src/exec/non-interactive-env.ts): non-interactive child-process env defaults (`buildNonInteractiveEnv`) used by the non-PTY executor.
-- [`src/tools/bash-interactive.ts`](../../packages/coding-agent/src/tools/bash-interactive.ts): PTY runtime, overlay UI, input normalization, and interactive `TERM` setup.
+- [`src/tools/shell/bash-interactive.ts`](../../packages/coding-agent/src/tools/shell/bash-interactive.ts): PTY runtime, overlay UI, input normalization, and interactive `TERM` setup.
 - [`src/session/streaming-output.ts`](../../packages/coding-agent/src/session/streaming-output.ts): `OutputSink`, `TailBuffer`, truncation/artifact spill, and summary metadata.
-- [`src/tools/output-meta.ts`](../../packages/coding-agent/src/tools/output-meta.ts): truncation metadata shape + notice injection wrapper.
+- [`src/tools/core/output-meta.ts`](../../packages/coding-agent/src/tools/core/output-meta.ts): truncation metadata shape + notice injection wrapper.
 - [`src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts): session-level `executeBash`, message recording, abort lifecycle.
 - [`src/modes/terminal/components/transcript/bash-execution.ts`](../../packages/coding-agent/src/modes/terminal/components/transcript/bash-execution.ts): interactive `!` command execution component.
 - [`src/modes/terminal/controllers/command-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/command-controller.ts): wiring for interactive `!` command UI stream/update completion.

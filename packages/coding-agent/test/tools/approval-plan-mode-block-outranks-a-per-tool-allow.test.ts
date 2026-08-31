@@ -20,7 +20,7 @@
  * every direction and is never relaxed by any of this.
  */
 import { describe, expect, it } from "bun:test";
-import { resolveApproval } from "@veyyon/coding-agent/tools/approval";
+import { resolveApproval } from "@veyyon/coding-agent/tools/core/approval";
 
 const bash = { name: "bash", approval: () => ({ tier: "exec" as const }) };
 const write = { name: "write", approval: () => ({ tier: "write" as const }) };

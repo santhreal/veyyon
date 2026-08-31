@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "@veyyon/coding-agent/tools/list-limit";
+import { applyListLimit } from "@veyyon/coding-agent/tools/core/list-limit";
 
 /**
  * applyListLimit suggestion field is 2x the reached limit.

@@ -18,7 +18,7 @@ import {
 	isSentinelRewriteExcluded,
 	planSentinelRewrite,
 	sentinelExportName,
-} from "./release.ts";
+} from "./release";
 
 describe("sentinelExportName", () => {
 	it("maps a clean semver to its sentinel export symbol", () => {

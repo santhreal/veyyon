@@ -2,7 +2,7 @@
  * yolo allows exec; user deny still denies under yolo.
  */
 import { describe, expect, it } from "bun:test";
-import { resolveApproval } from "../src/tools/approval";
+import { resolveApproval } from "../src/tools/core/approval";
 
 describe("resolveApproval yolo vs deny", () => {
 	const tools = [

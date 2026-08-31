@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import { computeFileHash } from "@veyyon/hashline";
 import { removeWithRetries } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";

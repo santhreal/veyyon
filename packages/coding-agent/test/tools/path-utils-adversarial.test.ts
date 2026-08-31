@@ -12,7 +12,7 @@ import {
 	resolveToCwd,
 	splitPathAndSel,
 	toPathList,
-} from "@veyyon/coding-agent/tools/path-utils";
+} from "@veyyon/coding-agent/tools/core/path-utils";
 
 /**
  * path-utils: resolveToCwd, selectors, containment, ssh peel, path lists.

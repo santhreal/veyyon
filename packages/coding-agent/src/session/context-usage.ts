@@ -19,7 +19,7 @@ import type { Tool as AiTool, ContextSnapshot, Model } from "@veyyon/ai";
 import type { SessionTelemetryDetail } from "@veyyon/ai/instrumentation";
 import { stripSchemaDescriptions, toolWireSchema } from "@veyyon/ai/utils/schema";
 // Imported from their owners rather than the `@veyyon/utils` barrel: this module is
-// on `tools/read.ts`'s reach graph through `session/agent-session.ts`, and
+// on `tools/fs/read.ts`'s reach graph through `session/agent-session.ts`, and
 // `test/architecture/leveraged-imports-stay-cut.test.ts` asserts that graph does not
 // pull the barrel's 81 leaves in behind two names.
 import * as logger from "@veyyon/utils/logger";

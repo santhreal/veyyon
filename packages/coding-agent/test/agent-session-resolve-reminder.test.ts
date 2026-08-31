@@ -10,7 +10,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { queueResolveHandler, ResolveTool } from "@veyyon/coding-agent/tools/resolve";
+import { queueResolveHandler, ResolveTool } from "@veyyon/coding-agent/tools/agent/resolve";
 import { buildNamedToolChoice } from "@veyyon/coding-agent/utils/tool-choice";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";

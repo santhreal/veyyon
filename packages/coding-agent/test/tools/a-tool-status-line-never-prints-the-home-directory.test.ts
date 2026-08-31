@@ -24,12 +24,12 @@ import os from "node:os";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { sanitizeText } from "@veyyon/utils";
-import { astEditToolRenderer } from "../../src/tools/ast-edit-render";
-import { fileSearchRenderer } from "../../src/tools/file-search-render";
-import { formatScopeMeta, TRUNCATE_LENGTHS } from "../../src/tools/render-utils";
+import { formatScopeMeta, TRUNCATE_LENGTHS } from "../../src/tools/core/render-utils";
 import { toolRenderers } from "../../src/tools/renderers";
-import { structureSearchRenderer } from "../../src/tools/structure-search-render";
-import { textSearchRenderer } from "../../src/tools/text-search-render";
+import { astEditToolRenderer } from "../../src/tools/search/ast-edit-render";
+import { fileSearchRenderer } from "../../src/tools/search/file-search-render";
+import { structureSearchRenderer } from "../../src/tools/search/structure-search-render";
+import { textSearchRenderer } from "../../src/tools/search/text-search-render";
 
 const HOME = os.homedir();
 const RENDER_WIDTH = 240;

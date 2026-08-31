@@ -26,7 +26,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { APPROVAL_SELECT_OPTIONS } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import { HookSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/hook-selector";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import { formatApprovalCard } from "@veyyon/coding-agent/tools/approval";
+import { formatApprovalCard } from "@veyyon/coding-agent/tools/core/approval";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 

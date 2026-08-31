@@ -13,7 +13,7 @@ import type {
 	DapResolvedAdapter,
 } from "@veyyon/coding-agent/debug/dap/types";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { DebugTool } from "@veyyon/coding-agent/tools/debug";
+import { DebugTool } from "@veyyon/coding-agent/tools/shell/debug";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
 

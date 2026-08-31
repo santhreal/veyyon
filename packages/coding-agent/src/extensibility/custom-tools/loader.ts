@@ -19,10 +19,10 @@ import { type DiscoveredCustomTool, loadCapability } from "../../discovery";
 import { toolCapability } from "../../discovery/capability/tool";
 import { pluginsRootFor } from "../../discovery/helpers";
 import { type ExecOptions, execCommand, withSessionCpuExec } from "../../exec/exec";
-import type { HookUIContext } from "../../extensibility/hooks/types";
-import { getAllPluginToolPaths } from "../../extensibility/plugins/loader";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
 import { type CodingAgentApi, loadCodingAgentApi } from "../coding-agent-api";
+import type { HookUIContext } from "../hooks/types";
+import { getAllPluginToolPaths } from "../plugins/loader";
 import { createNoOpUIContext, resolvePath, withExitGuard } from "../utils";
 import type { CustomToolAPI, CustomToolFactory, LoadedCustomTool, ToolLoadError } from "./types";
 

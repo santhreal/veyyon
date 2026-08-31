@@ -9,7 +9,7 @@ import {
 	replaceTabs,
 	type ToolUIColor,
 	wrapTextWithAnsi,
-} from "../../../../tools/render-utils";
+} from "../../../../tools/core/render-utils";
 import { Ellipsis, truncateToWidth } from "../../../../tui";
 
 const COLLAPSED_NOTES = 3;

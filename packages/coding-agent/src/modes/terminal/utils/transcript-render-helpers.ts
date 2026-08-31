@@ -16,8 +16,8 @@ import {
 	shouldRenderAbortReason,
 } from "../../../session/messages";
 import { theme } from "../../../theme/theme";
-import { createIrcMessageCard } from "../../../tools/irc";
-import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
+import { createIrcMessageCard } from "../../../tools/agent/irc";
+import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/core/render-utils";
 import { canonicalizeMessage } from "../../../utils/thinking-display";
 import { COMPOSER_INSET_COLS } from "../components/composer/composer-chrome";
 import { TranscriptBlock } from "../components/transcript/transcript-container";

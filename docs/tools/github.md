@@ -3,11 +3,11 @@
 > Dispatch GitHub CLI operations for repositories, issues, pull requests, search, and Actions run watching.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/gh.ts`
+- Entry: `packages/coding-agent/src/tools/web/gh.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/github.md`
 - Key collaborators:
-  - `packages/coding-agent/src/tools/gh-format.ts`: shorten commit SHAs for summaries.
-  - `packages/coding-agent/src/tools/gh-renderer.ts`: TUI rendering, especially `run_watch` live/result views.
+  - `packages/coding-agent/src/tools/web/gh-format.ts`: shorten commit SHAs for summaries.
+  - `packages/coding-agent/src/tools/web/gh-renderer.ts`: TUI rendering, especially `run_watch` live/result views.
   - `packages/coding-agent/src/utils/git.ts`: `gh`/`git` process wrappers, repo locking, branch config writes.
   - `packages/utils/src/dirs.ts`: base directory for dedicated PR worktrees.
   - `packages/coding-agent/src/sdk.ts`: session artifact allocation hook.
@@ -41,14 +41,14 @@
 | `tail` | `number` | No | Used only by `run_watch`. Defaults to `15`, floored, clamped to `200`, and must be `> 0`. |
 
 ## Outputs
-The tool returns a single text result built by `buildTextResult()` in `packages/coding-agent/src/tools/gh.ts`.
+The tool returns a single text result built by `buildTextResult()` in `packages/coding-agent/src/tools/web/gh.ts`.
 
 - `content`: one text block. Multi-item ops join sections with blank lines and `---` separators.
 - `sourceUrl`: set for single repo/PR/run results when a canonical URL is known.
 - `details`: optional structured metadata used by the TUI renderer.
   - Common fields: `artifactId`, `repo`, `branch`, `worktreePath`, `remote`, `remoteBranch`, `headSha`, `runId`, `runIds`, `status`, `conclusion`, `failedJobs`.
   - `pr_checkout` adds `checkouts: GhPrCheckoutSummary[]`.
-  - `run_watch` adds `watch: GhRunWatchViewDetails`, which drives the custom live/result renderer in `packages/coding-agent/src/tools/gh-renderer.ts`.
+  - `run_watch` adds `watch: GhRunWatchViewDetails`, which drives the custom live/result renderer in `packages/coding-agent/src/tools/web/gh-renderer.ts`.
 - Artifact trailer: when `artifactId` is present, the text body gets an appended line like `Full failed-job logs: artifact://<id>`.
   - `run_watch` allocates artifacts with `session.allocateOutputArtifact("github")`; persistent sessions therefore save failed-log bodies as `<artifact-dir>/<id>.github.log`.
 
@@ -57,7 +57,7 @@ The tool returns a single text result built by `buildTextResult()` in `packages/
 ## Flow
 1. `GithubTool.createIf()` exposes the tool only when `git.github.available()` finds `gh` on `PATH`.
 2. `GithubTool.execute()` wraps dispatch in `untilAborted()` and switches on `params.op`.
-3. Each op normalizes optional strings, arrays, booleans, and numeric caps locally in `packages/coding-agent/src/tools/gh.ts`.
+3. Each op normalizes optional strings, arrays, booleans, and numeric caps locally in `packages/coding-agent/src/tools/web/gh.ts`.
 4. CLI execution goes through `git.github.run/json/text()` in `packages/coding-agent/src/utils/git.ts`:
    - spawns `gh ...` with `Bun.spawn()`;
    - trims stdout/stderr unless `trimOutput: false`;
@@ -219,7 +219,7 @@ Watch flow:
 - Failed-job logs are fetched with `gh api /repos/<repo>/actions/jobs/<jobId>/logs` via `git.github.run()`, not `json()`. Non-zero exit leaves `available: false` instead of failing the whole watch.
 - Inline result includes only the last `tail` lines per failed job. The saved artifact contains full logs (`mode: "full"`).
 - In commit mode, success is intentionally double-checked: once all known runs are successful, the tool waits one more poll interval and succeeds only if the set of run IDs is unchanged. This avoids returning before late workflow runs appear for the same commit.
-- `details.watch` drives a specialized renderer in `packages/coding-agent/src/tools/gh-renderer.ts`; non-watch results fall back to generic text rendering.
+- `details.watch` drives a specialized renderer in `packages/coding-agent/src/tools/web/gh-renderer.ts`; non-watch results fall back to generic text rendering.
 
 ## Side Effects
 - Filesystem
@@ -251,7 +251,7 @@ Watch flow:
   - `git.github.run()` forwards the abort signal into `Bun.spawn()`.
 
 ## Limits & Caps
-- Search result default: `10` (`SEARCH_LIMIT_DEFAULT` in `packages/coding-agent/src/tools/gh.ts`).
+- Search result default: `10` (`SEARCH_LIMIT_DEFAULT` in `packages/coding-agent/src/tools/web/gh.ts`).
 - Search result max: `50` (`SEARCH_LIMIT_MAX`).
 - PR file preview inside the `pr://` view: first `50` files only (`FILE_PREVIEW_LIMIT` in `gh.ts`).
 - Run-watch poll interval: `3s` for the first `60s`, then `15s` (`RUN_WATCH_INTERVAL_DEFAULT`, `RUN_WATCH_FAST_WINDOW_MS`, `RUN_WATCH_INTERVAL_SLOW`); commit mode with no runs gives up after `90s` (`RUN_WATCH_NO_RUNS_GIVE_UP_MS`); up to `5` consecutive rate-limited poll failures are tolerated (`RUN_WATCH_MAX_POLL_FAILURES`).

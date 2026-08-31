@@ -3,17 +3,17 @@
 > Execute a shell command in the session workspace, with optional PTY or background-job handling.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/bash.ts`
+- Entry: `packages/coding-agent/src/tools/shell/bash.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/bash.md`
 - Key collaborators:
-  - `packages/coding-agent/src/tools/bash-interactive.ts`: PTY/TUI execution path.
-  - `packages/coding-agent/src/tools/bash-interceptor.ts`: blocks tool-better shell patterns.
-  - `packages/coding-agent/src/tools/bash-skill-urls.ts`: expands internal URLs to paths.
-  - `packages/coding-agent/src/tools/bash-pty-selection.ts`: `canUseInteractiveBashPty()` decides whether a call may use the local PTY overlay.
-  - `packages/coding-agent/src/tools/gh-cache-invalidation.ts`: drops `github-cache` rows for mutating `gh issue`/`gh pr` subcommands.
+  - `packages/coding-agent/src/tools/shell/bash-interactive.ts`: PTY/TUI execution path.
+  - `packages/coding-agent/src/tools/shell/bash-interceptor.ts`: blocks tool-better shell patterns.
+  - `packages/coding-agent/src/tools/shell/bash-skill-urls.ts`: expands internal URLs to paths.
+  - `packages/coding-agent/src/tools/shell/bash-pty-selection.ts`: `canUseInteractiveBashPty()` decides whether a call may use the local PTY overlay.
+  - `packages/coding-agent/src/tools/core/gh-cache-invalidation.ts`: drops `github-cache` rows for mutating `gh issue`/`gh pr` subcommands.
   - `packages/coding-agent/src/exec/bash-executor.ts`: non-PTY shell execution.
   - `packages/coding-agent/src/session/streaming-output.ts`: tail buffer, truncation, artifact spill.
-  - `packages/coding-agent/src/tools/tool-timeouts.ts`: timeout clamp bounds.
+  - `packages/coding-agent/src/tools/core/tool-timeouts.ts`: timeout clamp bounds.
   - `packages/coding-agent/src/config/settings-schema.ts`: default interceptor rules.
   - `docs/internal/bash-tool-runtime.md`: deeper executor/runtime notes; use as the companion doc for shell-session internals.
 
@@ -92,7 +92,7 @@ In `bash` there is one output string, so a folded run shows you the marker line 
 model. `eval` keeps your copy raw.
 
 ## Flow
-1. `BashTool.execute()` in `packages/coding-agent/src/tools/bash.ts` reads `command`, normalizes `env`, and defaults `timeout` to `300`. Commands execute exactly as written: there is no pre-execution rewrite pass.
+1. `BashTool.execute()` in `packages/coding-agent/src/tools/shell/bash.ts` reads `command`, normalizes `env`, and defaults `timeout` to `300`. Commands execute exactly as written: there is no pre-execution rewrite pass.
 2. If `cwd` is absent, it rewrites a leading `cd <path> && ...` into the structured `cwd` field and strips that prefix from `command`.
 3. If `async: true` is requested while `async.enabled` is off, it throws `ToolError` before any execution.
 4. If `bashInterceptor.enabled` is on, `checkBashInterception()` runs against both the original command and the `cd`-stripped command. A matching enabled rule throws before URL expansion or execution.
@@ -105,7 +105,7 @@ model. `eval` keeps your copy raw.
    3. Non-PTY client-terminal bridge, when the session advertises terminal capability and `pty` is false -> creates a remote terminal, streams/polls current output, and releases the terminal after completion.
    4. Otherwise runs foreground execution.
 9. Foreground non-PTY without client terminal calls `executeBash()` from `packages/coding-agent/src/exec/bash-executor.ts`.
-10. Foreground PTY calls `runInteractiveBashPty()` from `packages/coding-agent/src/tools/bash-interactive.ts`.
+10. Foreground PTY calls `runInteractiveBashPty()` from `packages/coding-agent/src/tools/shell/bash-interactive.ts`.
 11. Local non-PTY and PTY paths allocate an output artifact first when `session.allocateOutputArtifact` is available. The artifact path/id are passed into the sink so large output can spill to disk.
 12. `executeBash()` loads shell settings, optional shell snapshot, and shell minimizer settings, then runs via a persistent native `Shell` session or one-shot `executeShell()`. `docs/internal/bash-tool-runtime.md` covers that path in detail.
 13. `runInteractiveBashPty()` creates a `PtySession`, overlays an xterm-backed console UI, forwards user key input into the PTY, captures output through `OutputSink`, and kills the PTY on dismiss/dispose.
@@ -162,10 +162,10 @@ model. `eval` keeps your copy raw.
   - Cancellation aborts the native run; PTY overlay dismissal also kills the PTY.
 
 ## Limits & Caps
-- Default timeout: `300s` (`TOOL_TIMEOUTS.bash.default` in `packages/coding-agent/src/tools/tool-timeouts.ts`).
+- Default timeout: `300s` (`TOOL_TIMEOUTS.bash.default` in `packages/coding-agent/src/tools/core/tool-timeouts.ts`).
 - Timeout clamp: `1..3600s` (`TOOL_TIMEOUTS.bash.min/max`).
-- Auto-background default threshold: `60_000ms` (`DEFAULT_AUTO_BACKGROUND_THRESHOLD_MS` in `packages/coding-agent/src/tools/bash.ts`), further capped to `timeoutMs - 1000` by `#resolveAutoBackgroundWaitMs()`.
-- Stall-detection default window: `30_000ms` (`DEFAULT_STALL_DETECTION_MS` in `packages/coding-agent/src/tools/bash.ts`), capped to `timeoutMs - 1000` by `#resolveStallWaitMs()`. Both timers share the `#resolveWaitMs()` clamp. The stall watcher polls idle time on a `500ms` cap.
+- Auto-background default threshold: `60_000ms` (`DEFAULT_AUTO_BACKGROUND_THRESHOLD_MS` in `packages/coding-agent/src/tools/shell/bash.ts`), further capped to `timeoutMs - 1000` by `#resolveAutoBackgroundWaitMs()`.
+- Stall-detection default window: `30_000ms` (`DEFAULT_STALL_DETECTION_MS` in `packages/coding-agent/src/tools/shell/bash.ts`), capped to `timeoutMs - 1000` by `#resolveStallWaitMs()`. Both timers share the `#resolveWaitMs()` clamp. The stall watcher polls idle time on a `500ms` cap.
 - Non-PTY executor timeout: `executeBash()` arms a host-side timer at `max(1_000, timeoutMs)` that aborts the run and quarantines the persistent shell session; the same timeout is also passed to the native run as `timeoutMs` (`packages/coding-agent/src/exec/bash-executor.ts`).
 - In-memory output tail cap: 50 KB by default, set by `tools.artifactSpillThreshold`. Once exceeded, the sink keeps only the tail window in memory.
 - Streaming callback throttle in `executeBash()`: `50ms` between `onChunk` calls when streaming is enabled.
@@ -182,7 +182,7 @@ model. `eval` keeps your copy raw.
   - matched command -> `ToolError` with `Blocked: <rule.message>` and the original command.
   - invalid interceptor regexes are silently skipped by `compileRules()`.
 - Internal URL expansion:
-  - unsupported scheme, unknown skill, path traversal, missing router support, or router resolution failures all throw `ToolError` from `packages/coding-agent/src/tools/bash-skill-urls.ts`.
+  - unsupported scheme, unknown skill, path traversal, missing router support, or router resolution failures all throw `ToolError` from `packages/coding-agent/src/tools/shell/bash-skill-urls.ts`.
 - Execution:
   - non-zero exit -> returned tool result marked `isError`, with `details.exitCode` and text ending in `Command exited with code <n>`.
   - missing exit code -> thrown `ToolError` with `Command failed: missing exit status`.

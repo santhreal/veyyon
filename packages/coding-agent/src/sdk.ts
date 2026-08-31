@@ -182,16 +182,16 @@ import {
 	type Tool,
 	type ToolSession,
 } from "./tools";
-import { normalizeToolNames, TOOL } from "./tools/builtin-names";
-import { ToolContextStore } from "./tools/context";
-import { getImageGenTools, isImageProviderPreference, setPreferredImageProvider } from "./tools/image-gen";
-import { resolveDiscoveryAllForceActive, resolveInitialActiveToolNames } from "./tools/loading";
-import { wrapToolWithMetaNotice } from "./tools/output-meta";
-import { createRepairToolCallArgumentsHook } from "./tools/repair/agent-hook";
-import { queueResolveHandler } from "./tools/resolve";
-import { renderSearchToolBm25Description, SearchToolBm25Tool } from "./tools/search-tool-bm25";
-import { ttsTool } from "./tools/tts";
-import { createVibeTools } from "./tools/vibe";
+import { queueResolveHandler } from "./tools/agent/resolve";
+import { createVibeTools } from "./tools/agent/vibe";
+import { normalizeToolNames, TOOL } from "./tools/core/builtin-names";
+import { ToolContextStore } from "./tools/core/context";
+import { resolveDiscoveryAllForceActive, resolveInitialActiveToolNames } from "./tools/core/loading";
+import { wrapToolWithMetaNotice } from "./tools/core/output-meta";
+import { createRepairToolCallArgumentsHook } from "./tools/core/repair/agent-hook";
+import { renderSearchToolBm25Description, SearchToolBm25Tool } from "./tools/search/search-tool-bm25";
+import { getImageGenTools, isImageProviderPreference, setPreferredImageProvider } from "./tools/web/image-gen";
+import { ttsTool } from "./tools/web/tts";
 import { resolveActiveRepoContext } from "./utils/active-repo-context";
 import { EventBus } from "./utils/event-bus";
 import { buildNamedToolChoice } from "./utils/tool-choice";
@@ -2479,7 +2479,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 		const reloadSshTool = async (): Promise<AgentTool | null> => {
 			if (!requestedToolNameSet.has(TOOL.ssh)) return null;
-			const { loadSshTool } = await import("./tools/ssh");
+			const { loadSshTool } = await import("./tools/shell/ssh");
 			const sshTool = (await loadSshTool({
 				...toolSession,
 				cwd: sessionManager.getCwd(),

@@ -49,8 +49,8 @@ const CLEAN = [
 /** Modules that still reach it, and are allowed to. */
 const HOLDERS = [
 	"packages/coding-agent/src/task/types.ts",
-	"packages/coding-agent/src/tools/irc.ts",
-	"packages/coding-agent/src/tools/review.ts",
+	"packages/coding-agent/src/tools/agent/irc.ts",
+	"packages/coding-agent/src/tools/agent/review.ts",
 ] as const;
 
 async function arktypeIsEvaluatedAfterImporting(moduleFile: string): Promise<boolean> {
@@ -91,8 +91,8 @@ describe("a launch does not load a schema library it will not use", () => {
 	it("keeps the exemption list to the modules whose wire format is owned elsewhere", () => {
 		expect([...HOLDERS]).toEqual([
 			"packages/coding-agent/src/task/types.ts",
-			"packages/coding-agent/src/tools/irc.ts",
-			"packages/coding-agent/src/tools/review.ts",
+			"packages/coding-agent/src/tools/agent/irc.ts",
+			"packages/coding-agent/src/tools/agent/review.ts",
 		]);
 	});
 });

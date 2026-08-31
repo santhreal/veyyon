@@ -11,7 +11,7 @@ import {
 } from "@veyyon/coding-agent/edit";
 import { NOOP_HARD_LIMIT } from "@veyyon/coding-agent/edit/hashline/noop-loop-guard";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
+import { ToolError } from "@veyyon/coding-agent/tools/core/tool-errors";
 import { removeWithRetries } from "@veyyon/utils";
 
 beforeAll(async () => {

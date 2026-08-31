@@ -233,7 +233,8 @@ model is actually told, and why enablement is inert". Read it before touching th
 - Never `ReturnType<>`. Name the type.
 - Imports are top-level, and a type is never imported dynamically: no `import("pkg").Type`. A
   dynamic `await import()` is allowed only where a lazy boundary already exists, which is the tool
-  dispatch table (`packages/coding-agent/src/tools/index.ts`), CLI command dispatch, and the
+  dispatch table (`packages/coding-agent/src/tools/index.ts` and the per-domain manifests it unions,
+  `packages/coding-agent/src/tools/<domain>/manifest.ts`), CLI command dispatch, and the
   barrels held out of TUI startup. `scripts/a-module-is-imported-at-the-top-of-its-file.test.ts`
   pins that set, so a new site elsewhere fails.
 - Check `node_modules` for external API types instead of guessing.

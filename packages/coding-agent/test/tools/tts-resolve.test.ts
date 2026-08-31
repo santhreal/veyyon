@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { resolveLocalWavPath, resolveTtsBackend } from "../../src/tools/tts";
+import { resolveLocalWavPath, resolveTtsBackend } from "../../src/tools/web/tts";
 
 /**
  * resolveTtsBackend and resolveLocalWavPath are the two pure decision functions

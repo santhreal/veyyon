@@ -4,10 +4,10 @@
  * WHY THIS SUITE EXISTS. `config/settings.ts` is 2,768 lines and reaches 95 modules, and the thing most
  * callers wanted from it was one value. `internal-urls/vault-protocol.ts` asks whether the vault is enabled
  * and paid 32 marginal modules for the question; `theme/markdown-theme.ts` registers one test-teardown
- * hook and paid 95; `tools/render-utils.ts` reads two image-size settings and reached 167 modules; twenty
+ * hook and paid 95; `tools/core/render-utils.ts` reads two image-size settings and reached 167 modules; twenty
  * more modules in the package imported the store and used nothing but `settings`. Splitting the slot into
  * `config/settings-instance.ts` made asking cost one module, and the settings store is now entirely off the
- * graphs of `tools/read.ts`, `tools/fetch.ts` and `web/search/index.ts`.
+ * graphs of `tools/fs/read.ts`, `tools/web/fetch.ts` and `web/search/index.ts`.
  *
  * WHAT COULD GO WRONG WITH A SPLIT LIKE THIS, which is what the cases below are for:
  *

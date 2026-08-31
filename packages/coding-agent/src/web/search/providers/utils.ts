@@ -3,7 +3,7 @@ import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { AgentStorage } from "../../../session/agent-storage";
 import { scopedTimeoutSignal } from "../../../utils/fetch-timeout";
-import { SearchProviderError, type SearchProviderId, type SearchSource } from "../../../web/search/types";
+import { SearchProviderError, type SearchProviderId, type SearchSource } from "../types";
 import { dateToAgeSeconds } from "../utils";
 
 /**

@@ -21,7 +21,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { dynamicImportSpecifiersIn, moduleSpecifiersIn, typeOnlyModuleSpecifiersIn } from "@veyyon/utils/module-reach";
-import { REPO_ROOT, typeScriptMembers } from "./workspace-layout.ts";
+import { REPO_ROOT, typeScriptMembers } from "./workspace-layout";
 
 export interface SpecifierViolation {
 	file: string;

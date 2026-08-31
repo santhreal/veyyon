@@ -13,7 +13,7 @@
 
 import type { AssistantMessage, Message, TextContent, ToolResultMessage } from "@veyyon/ai";
 import { escapeRegExp } from "@veyyon/utils";
-import { SET_CWD_TOOL_NAME } from "../tools/reroot-hint";
+import { SET_CWD_TOOL_NAME } from "../tools/fs/reroot-hint";
 
 export interface RelativizeResult {
 	messages: Message[];

@@ -18,7 +18,7 @@ import chalk from "chalk";
 import type { AssistantThinkingRenderer } from "../../../../extensibility/extensions/types";
 import { getMarkdownTheme } from "../../../../theme/markdown-theme";
 import { theme } from "../../../../theme/theme";
-import { getPreviewLines, resolveImageOptions, TRUNCATE_LENGTHS } from "../../../../tools/render-utils";
+import { getPreviewLines, resolveImageOptions, TRUNCATE_LENGTHS } from "../../../../tools/core/render-utils";
 import {
 	canonicalizeMessage,
 	formatThinkingForDisplay,

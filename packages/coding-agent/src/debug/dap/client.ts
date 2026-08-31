@@ -3,7 +3,7 @@ import * as timers from "node:timers/promises";
 import { errorMessage, isEnoent, logger, ptree } from "@veyyon/utils";
 import { NON_INTERACTIVE_ENV } from "../../exec/non-interactive-env";
 import { primarySessionCpuAdoption } from "../../session/cpu-limit";
-import { ToolAbortError } from "../../tools/tool-errors";
+import { ToolAbortError } from "../../tools/core/tool-errors";
 import { MessageFramer } from "../../utils/jsonrpc-framing";
 import type {
 	DapCapabilities,

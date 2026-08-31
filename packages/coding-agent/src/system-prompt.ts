@@ -65,8 +65,8 @@ import {
 import { normalizeConcurrencyLimit } from "./task/parallel";
 import { usesCodexTaskPrompt } from "./task/prompt-policy";
 import type { ContextFileEntry } from "./tools";
-import { shortenPath } from "./tools/render-utils";
-import { isNonProjectRoot, NON_PROJECT_REASON_TEXT, type NonProjectReason } from "./tools/reroot-hint";
+import { shortenPath } from "./tools/core/render-utils";
+import { isNonProjectRoot, NON_PROJECT_REASON_TEXT, type NonProjectReason } from "./tools/fs/reroot-hint";
 import { type ActiveRepoContext, resolveActiveRepoContext } from "./utils/active-repo-context";
 import { getCachedGpu, getCpuModel, getEnvironmentInfo } from "./utils/host-environment";
 import { normalizePromptPath } from "./utils/prompt-path";

@@ -18,7 +18,7 @@ Veyyon is provider-agnostic: roles are not hard-coded provider assumptions.
   (`advisor.enabled` and related settings, in `packages/coding-agent/src/advisor/`) is a background
   continuous-review mechanism rather than a mode you invoke; `/advisor` reports and configures it.
   See `docs/handbook/src/features/advisor.md`.
-- **Addressed inter-agent messaging** via the `irc` tool (`packages/coding-agent/src/tools/irc.ts`,
+- **Addressed inter-agent messaging** via the `irc` tool (`packages/coding-agent/src/tools/agent/irc.ts`,
   `packages/coding-agent/src/task/irc-bus.ts`): `send`/`wait`/`inbox`/`list` ops over a process-global bus.
   `send` is fire-and-forget with delivery receipts; the bus wakes an idle recipient with a real turn,
   revives a parked one, or injects a non-interrupting aside into a busy one, the shipped analogue of

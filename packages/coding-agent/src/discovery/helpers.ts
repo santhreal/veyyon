@@ -23,7 +23,7 @@ import {
 	ProjectTrust,
 } from "../config/project-trust";
 import { type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
-import { normalizeToolNames, TOOL } from "../tools/builtin-names";
+import { normalizeToolNames, TOOL } from "../tools/core/builtin-names";
 import type { ExtensionModule } from "./capability/extension-module";
 import { invalidate as invalidateFsCache, readDirEntries, readFile } from "./capability/fs";
 import { parseRuleConditionAndScope, type Rule, type RuleFrontmatter } from "./capability/rule";

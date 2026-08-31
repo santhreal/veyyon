@@ -33,14 +33,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error — plain .mjs module, no types; imported for its exports.
 import { renderRootChangelog } from "../website/tools/gen-changelog.mjs";
-import { unreleasedEntries, versionHeadings } from "./changelog-unreleased.ts";
-import { applyReleaseToChangelog, bumpVersion } from "./release.ts";
-import {
-	buildRootChangelog,
-	changelogSources,
-	orphanedRootEntries,
-	writeRootChangelog,
-} from "./sync-root-changelog.ts";
+import { unreleasedEntries, versionHeadings } from "./changelog-unreleased";
+import { applyReleaseToChangelog, bumpVersion } from "./release";
+import { buildRootChangelog, changelogSources, orphanedRootEntries, writeRootChangelog } from "./sync-root-changelog";
 
 /**
  * The version the next release would cut, derived from the lead changelog rather

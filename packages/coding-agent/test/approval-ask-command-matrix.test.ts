@@ -5,7 +5,7 @@
  * here as landing on the same rung rather than on a rung of their own.
  */
 import { describe, expect, it } from "bun:test";
-import { resolveApproval } from "../src/tools/approval";
+import { resolveApproval } from "../src/tools/core/approval";
 
 describe("resolveApproval ask-command matrix", () => {
 	it("allows read", () => {

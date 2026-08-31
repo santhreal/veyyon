@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import type { AgentToolResult } from "@veyyon/agent-core";
-import { prependResultNotice } from "@veyyon/coding-agent/tools/tool-result";
+import { prependResultNotice } from "@veyyon/coding-agent/tools/core/tool-result";
 
 // `prependResultNotice` is the ONE-PLACE injector that four tools (ssh, lsp,
 // debug, browser) use to surface a clamped-timeout notice on a result their

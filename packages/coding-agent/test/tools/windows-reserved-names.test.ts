@@ -21,7 +21,7 @@
  * on the machines where they are actually written.
  */
 import { describe, expect, it } from "bun:test";
-import { assertNoWindowsReservedName, resolveToCwd } from "@veyyon/coding-agent/tools/path-utils";
+import { assertNoWindowsReservedName, resolveToCwd } from "@veyyon/coding-agent/tools/core/path-utils";
 
 const check = (p: string, platform: NodeJS.Platform = "win32") => assertNoWindowsReservedName(p, p, platform);
 

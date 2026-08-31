@@ -18,17 +18,17 @@ import {
 } from "../../lsp";
 import { FileChangeType, notifyWorkspaceWatchedFiles } from "../../lsp/client";
 import type { ToolSession } from "../../tools";
-import { routeWriteThroughBridge } from "../../tools/acp-bridge";
-import { assertEditableFile } from "../../tools/auto-generated-guard";
+import { routeWriteThroughBridge } from "../../tools/core/acp-bridge";
 import {
 	invalidateFsScanAfterDelete,
 	invalidateFsScanAfterRename,
 	invalidateFsScanAfterWrite,
-} from "../../tools/fs-cache-invalidation";
-import { outputMeta } from "../../tools/output-meta";
-import { resolveToCwd } from "../../tools/path-utils";
-import { enforcePlanModeWrite, resolvePlanPath } from "../../tools/plan-mode-guard";
-import { ToolError } from "../../tools/tool-errors";
+} from "../../tools/core/fs-cache-invalidation";
+import { outputMeta } from "../../tools/core/output-meta";
+import { resolveToCwd } from "../../tools/core/path-utils";
+import { enforcePlanModeWrite, resolvePlanPath } from "../../tools/core/plan-mode-guard";
+import { ToolError } from "../../tools/core/tool-errors";
+import { assertEditableFile } from "../../tools/fs/auto-generated-guard";
 import {
 	ApplyPatchError,
 	type DiffHunk,

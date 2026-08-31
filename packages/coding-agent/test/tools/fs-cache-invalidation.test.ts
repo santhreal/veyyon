@@ -3,7 +3,7 @@ import {
 	invalidateFsScanAfterDelete,
 	invalidateFsScanAfterRename,
 	invalidateFsScanAfterWrite,
-} from "@veyyon/coding-agent/tools/fs-cache-invalidation";
+} from "@veyyon/coding-agent/tools/core/fs-cache-invalidation";
 import * as natives from "@veyyon/natives";
 
 /**

@@ -14,8 +14,8 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { abortedPartway } from "@veyyon/coding-agent/tools/aborted-partway";
-import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
+import { abortedPartway } from "@veyyon/coding-agent/tools/core/aborted-partway";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/core/tool-errors";
 
 const FILES = { one: "file", many: "files" };
 

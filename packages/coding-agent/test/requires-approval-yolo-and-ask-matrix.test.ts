@@ -3,7 +3,7 @@
  * Why: fail-closed ask vs yolo must not invert on plain tools without userConfig.
  */
 import { describe, expect, it } from "bun:test";
-import { requiresApproval } from "../src/tools/approval";
+import { requiresApproval } from "../src/tools/core/approval";
 
 describe("requiresApproval yolo and ask matrix", () => {
 	const tools = ["bash", "read", "write", "edit", "search", "fetch"].map(name => ({

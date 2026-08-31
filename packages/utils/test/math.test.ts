@@ -265,7 +265,7 @@ function hasFloorFirst(text: string): boolean {
 // and the row exempted a path that did not exist. `sourceRootsFor` is what makes
 // the current spelling reachable.
 const FLOOR_FIRST_GRANDFATHERED = new Set([
-	"coding-agent/src/tools/browser/tab-worker.ts",
+	"coding-agent/src/tools/web/browser/tab-worker.ts",
 	"evals/store/experiments.ts",
 ]);
 

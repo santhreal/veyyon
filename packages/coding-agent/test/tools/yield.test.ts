@@ -6,7 +6,7 @@ import { validateToolArguments } from "@veyyon/ai/utils/validation";
 import { buildModel } from "@veyyon/catalog/build";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { YieldTool } from "@veyyon/coding-agent/tools/yield";
+import { YieldTool } from "@veyyon/coding-agent/tools/agent/yield";
 import { arrayValuedLabels } from "../../src/task/yield-assembly";
 
 function createSession(overrides: Partial<ToolSession> = {}): ToolSession {

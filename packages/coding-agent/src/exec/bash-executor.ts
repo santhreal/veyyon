@@ -9,8 +9,8 @@ import { isExecutable, type ShellConfig } from "@veyyon/utils/procmgr";
 import { Settings, type ShellMinimizerSettings } from "../config/settings";
 import { sessionCpuLimit } from "../session/cpu-limit";
 import { OutputSink } from "../session/streaming-output";
-import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/output-meta";
-import { TOOL_TIMEOUTS } from "../tools/tool-timeouts";
+import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/core/output-meta";
+import { TOOL_TIMEOUTS } from "../tools/core/tool-timeouts";
 import { getOrCreateSnapshot } from "../utils/shell-snapshot";
 import { buildNonInteractiveEnv } from "./non-interactive-env";
 

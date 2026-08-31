@@ -3,7 +3,7 @@
  * Signature: (tool, args, mode, userConfig, options).
  */
 import { describe, expect, it } from "bun:test";
-import { resolveApproval } from "@veyyon/coding-agent/tools/approval";
+import { resolveApproval } from "@veyyon/coding-agent/tools/core/approval";
 
 function tool(name: string, tier: "read" | "write" | "exec") {
 	return { name, approval: tier };

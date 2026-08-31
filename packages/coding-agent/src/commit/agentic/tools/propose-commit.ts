@@ -1,5 +1,10 @@
 import { type } from "arktype";
-import type { CommitAgentState } from "../../../commit/agentic/state";
+import type { CustomTool } from "../../../extensibility/custom-tools/types";
+import * as git from "../../../utils/git";
+import { validateAnalysis } from "../../analysis/validation";
+import type { CommitType, ConventionalAnalysis, ConventionalDetail } from "../../types";
+import { normalizeDetails } from "../../utils";
+import type { CommitAgentState } from "../state";
 import {
 	capDetails,
 	MAX_DETAIL_ITEMS,
@@ -7,12 +12,7 @@ import {
 	SUMMARY_MAX_CHARS,
 	validateSummaryRules,
 	validateTypeConsistency,
-} from "../../../commit/agentic/validation";
-import { validateAnalysis } from "../../../commit/analysis/validation";
-import type { CommitType, ConventionalAnalysis, ConventionalDetail } from "../../../commit/types";
-import { normalizeDetails } from "../../../commit/utils";
-import type { CustomTool } from "../../../extensibility/custom-tools/types";
-import * as git from "../../../utils/git";
+} from "../validation";
 import { commitTypeSchema, detailSchema } from "./schemas.js";
 
 const proposeCommitSchema = type({

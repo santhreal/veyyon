@@ -25,9 +25,9 @@ import { resetActiveSkillsForTests, setActiveSkills } from "@veyyon/coding-agent
 import { InternalUrlRouter, LocalProtocolHandler } from "@veyyon/coding-agent/internal-urls";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { cwdEscapingTargets } from "@veyyon/coding-agent/tools/cwd-boundary";
-import { splitDelimitedPathEntry } from "@veyyon/coding-agent/tools/path-utils";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { cwdEscapingTargets } from "@veyyon/coding-agent/tools/core/cwd-boundary";
+import { splitDelimitedPathEntry } from "@veyyon/coding-agent/tools/core/path-utils";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import { removeWithRetries } from "@veyyon/utils";
 
 function resultText(result: { content: Array<{ type: string; text?: string }> }): string {

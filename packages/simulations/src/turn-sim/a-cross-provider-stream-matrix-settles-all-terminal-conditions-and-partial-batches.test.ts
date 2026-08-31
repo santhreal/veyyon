@@ -34,7 +34,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as AIError from "@veyyon/ai/error";
 import type { KnownApi } from "@veyyon/catalog";
-import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
+import { TOOL } from "@veyyon/coding-agent/tools/core/builtin-names";
 import { type } from "arktype";
 import { createSimulation, lastAssistantText, type Simulation, scriptTurns, simTool, toolResultTexts } from "./harness";
 import { describeViolations, pairingViolations, turnViolations } from "./invariants";

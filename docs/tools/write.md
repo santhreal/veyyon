@@ -3,16 +3,16 @@
 > Create or overwrite a file, writable internal resource, archive entry, SQLite row, or merge-conflict resolution.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/write.ts`
+- Entry: `packages/coding-agent/src/tools/fs/write.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/write.md`
 - Key collaborators:
   - `packages/coding-agent/src/utils/zip.ts`: the unified ZIP/tar wrapper: parse `archive.ext:entry` selectors and rewrite the archive whole.
-  - `packages/coding-agent/src/tools/sqlite-reader.ts`: detect SQLite paths and perform row insert/update/delete.
-  - `packages/coding-agent/src/tools/conflict-detect.ts`: parse `conflict://` URIs and splice recorded merge-conflict regions.
+  - `packages/coding-agent/src/tools/core/sqlite-reader.ts`: detect SQLite paths and perform row insert/update/delete.
+  - `packages/coding-agent/src/tools/fs/conflict-detect.ts`: parse `conflict://` URIs and splice recorded merge-conflict regions.
   - `packages/coding-agent/src/lsp/index.ts`: format-on-write and diagnostics writethrough.
-  - `packages/coding-agent/src/tools/auto-generated-guard.ts`: block overwriting generated files.
-  - `packages/coding-agent/src/tools/fs-cache-invalidation.ts`: invalidate shared FS scan caches after writes.
-  - `packages/coding-agent/src/tools/plan-mode-guard.ts`: resolve paths and enforce plan-mode write policy.
+  - `packages/coding-agent/src/tools/fs/auto-generated-guard.ts`: block overwriting generated files.
+  - `packages/coding-agent/src/tools/core/fs-cache-invalidation.ts`: invalidate shared FS scan caches after writes.
+  - `packages/coding-agent/src/tools/core/plan-mode-guard.ts`: resolve paths and enforce plan-mode write policy.
 
 ## Inputs
 | Field | Type | Required | Description |
@@ -57,19 +57,19 @@ Single-shot result.
 - Archive writes set `details.resolvedPath` to the archive's absolute path; internal URL writes return empty `details`.
 
 ## Flow
-1. `WriteTool.execute()` in `packages/coding-agent/src/tools/write.ts` strips pasted `[PATH#HASH]` headers and `LINE:` hashline prefixes from `content` when the session is in hashline display mode.
+1. `WriteTool.execute()` in `packages/coding-agent/src/tools/fs/write.ts` strips pasted `[PATH#HASH]` headers and `LINE:` hashline prefixes from `content` when the session is in hashline display mode.
 2. If `path` is an internal URL whose handler exposes `write`, the tool delegates directly to `handler.write(...)` and returns.
 3. `conflict://...` paths are handled next by the merge-conflict resolver. Scope reads such as `conflict://<id>/ours` are rejected as read-only; writable conflict URIs must omit the scope.
 4. It calls `#resolveArchiveWritePath()` next. That uses `parseArchivePathCandidates()` from `packages/coding-agent/src/utils/zip.ts`, checks candidate archive files on disk (longest match first), and falls back to the shortest candidate archive path even when the archive file does not exist yet.
 5. Archive writes call `enforcePlanModeWrite(..., { op: exists ? "update" : "create" })`, then `#writeArchiveEntry()`.
    - Existing entries are loaded with `readArchiveEntries()`, the target entry is replaced in an in-memory map, and the archive is rewritten whole with `writeArchive()` (both in `packages/coding-agent/src/utils/zip.ts`) via `atomicWriteFileWith()`, which streams to a temp file and renames over the original only on success.
    - `invalidateFsScanAfterWrite()` runs on the archive file path.
-6. If the path is not treated as an archive, `execute()` calls `#resolveSqliteWritePath()`. That uses `parseSqlitePathCandidates()` and `isSqliteFile()` from `packages/coding-agent/src/tools/sqlite-reader.ts`. Existing non-SQLite files suppress the SQLite path interpretation.
+6. If the path is not treated as an archive, `execute()` calls `#resolveSqliteWritePath()`. That uses `parseSqlitePathCandidates()` and `isSqliteFile()` from `packages/coding-agent/src/tools/core/sqlite-reader.ts`. Existing non-SQLite files suppress the SQLite path interpretation.
 7. SQLite writes call `enforcePlanModeWrite(..., { op: "update" })`, then `#writeSqliteRow()`.
    - The database must already exist; missing DBs throw `SQLite database '<path>' not found`.
    - The tool opens `new Database(..., { create: false, strict: true })` and sets `PRAGMA busy_timeout = 3000`.
    - Whitespace-only `content` with a row key deletes a row.
-   - Non-empty `content` is parsed with `Bun.JSON5.parse()`, must be a JSON object, and is routed to insert/update helpers from `packages/coding-agent/src/tools/sqlite-reader.ts`.
+   - Non-empty `content` is parsed with `Bun.JSON5.parse()`, must be a JSON object, and is routed to insert/update helpers from `packages/coding-agent/src/tools/core/sqlite-reader.ts`.
    - `invalidateFsScanAfterWrite()` runs on the DB path and the connection is closed in `finally`.
 8. Otherwise the tool treats `path` as a plain filesystem file.
    - `enforcePlanModeWrite(..., { op: "create" })` runs before path resolution.
@@ -160,7 +160,7 @@ content: ""
 
 ## Limits & Caps
 - `WriteTool` itself exposes no byte cap beyond storing `content` in memory and, for archives, rebuilding the archive in memory.
-- Generated-file detection reads at most `CHECK_BYTE_COUNT = 1024` bytes and `HEADER_LINE_LIMIT = 40` header lines from an existing file in `packages/coding-agent/src/tools/auto-generated-guard.ts`.
+- Generated-file detection reads at most `CHECK_BYTE_COUNT = 1024` bytes and `HEADER_LINE_LIMIT = 40` header lines from an existing file in `packages/coding-agent/src/tools/fs/auto-generated-guard.ts`.
 - SQLite writes set `PRAGMA busy_timeout = 3000`.
 - LSP writethrough uses a `5_000` ms operation timeout in `runLspWritethrough()` and may schedule a deferred diagnostics fetch with `AbortSignal.timeout(25_000)` in `scheduleDeferredDiagnosticsFetch()`.
 - Shebang executable handling depends on host filesystem chmod support.

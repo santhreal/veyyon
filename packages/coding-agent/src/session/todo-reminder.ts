@@ -7,7 +7,7 @@ import {
 	TODO_TOTAL_PREVIEW_WIDTH,
 	type TodoItem,
 	type TodoPhase,
-} from "../tools/todo";
+} from "../tools/agent/todo";
 
 export interface IncompleteTodoItem {
 	phase: string;

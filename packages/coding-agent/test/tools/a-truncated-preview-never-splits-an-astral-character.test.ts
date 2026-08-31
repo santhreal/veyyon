@@ -4,8 +4,8 @@
 // surrogate: invalid text that renders as U+FFFD in the terminal and reaches
 // the model as a broken token. The class is "cut a display budget without
 // going through a code-point-safe helper", and it was live in
-// `tools/approval.ts` (approval card), `tools/ast-edit.ts` (diff preview),
-// `tools/eval.ts` (display() value) and `hashline/src/patcher.ts` (covered by
+// `tools/core/approval.ts` (approval card), `tools/search/ast-edit.ts` (diff preview),
+// `tools/shell/eval.ts` (display() value) and `hashline/src/patcher.ts` (covered by
 // the sibling suite in that package).
 //
 // Each site now routes through `truncate` from `@veyyon/utils`, which cuts by
@@ -22,9 +22,9 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { truncateForPrompt } from "@veyyon/coding-agent/tools/approval";
-import { AstEditTool } from "@veyyon/coding-agent/tools/ast-edit";
-import { formatDisplayJsonForText } from "@veyyon/coding-agent/tools/eval";
+import { truncateForPrompt } from "@veyyon/coding-agent/tools/core/approval";
+import { AstEditTool } from "@veyyon/coding-agent/tools/search/ast-edit";
+import { formatDisplayJsonForText } from "@veyyon/coding-agent/tools/shell/eval";
 import { removeWithRetries } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { makeToolSession } from "../helpers/tool-session";

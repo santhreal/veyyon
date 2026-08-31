@@ -22,11 +22,7 @@ import { recordImageDisplay } from "../../../../session/image-visibility";
 import { transitionsEnabled } from "../../../../theme/shimmer";
 import type { Theme } from "../../../../theme/theme";
 import { getThemeEpoch, theme } from "../../../../theme/theme";
-import { BASH_DEFAULT_PREVIEW_LINES } from "../../../../tools/bash";
-// From the renderer that owns the number, not from `tools/eval`, which is the tool that RUNS a cell: reading
-// a preview height should not instantiate the Python kernel machinery.
-import { EVAL_DEFAULT_PREVIEW_LINES } from "../../../../tools/eval-render";
-import { isWaitingPollDetails } from "../../../../tools/job";
+import type { TodoToolDetails } from "../../../../tools/agent/todo";
 import {
 	formatArgsInline,
 	JSON_TREE_MAX_DEPTH_COLLAPSED,
@@ -36,7 +32,7 @@ import {
 	JSON_TREE_SCALAR_LEN_COLLAPSED,
 	JSON_TREE_SCALAR_LEN_EXPANDED,
 	renderJsonTreeLines,
-} from "../../../../tools/json-tree-render";
+} from "../../../../tools/core/json-tree-render";
 import {
 	formatExpandHint,
 	formatStatusIcon,
@@ -44,9 +40,13 @@ import {
 	resolveImageOptions,
 	shortenPath,
 	truncateToWidth,
-} from "../../../../tools/render-utils";
+} from "../../../../tools/core/render-utils";
 import { type FirstResultViewportRepaint, toolRenderers } from "../../../../tools/renderers";
-import type { TodoToolDetails } from "../../../../tools/todo";
+import { BASH_DEFAULT_PREVIEW_LINES } from "../../../../tools/shell/bash";
+// From the renderer that owns the number, not from `tools/eval`, which is the tool that RUNS a cell: reading
+// a preview height should not instantiate the Python kernel machinery.
+import { EVAL_DEFAULT_PREVIEW_LINES } from "../../../../tools/shell/eval-render";
+import { isWaitingPollDetails } from "../../../../tools/shell/job";
 import { renderStatusLine, WidthAwareText } from "../../../../tui";
 import { drawToolView, toolDrawsItself } from "../../../../tui/draw-tool-view";
 import {

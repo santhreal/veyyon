@@ -9,7 +9,7 @@ import {
 	isMissingPath,
 	logger,
 } from "@veyyon/utils";
-import { expandTilde } from "./tools/path-utils";
+import { expandTilde } from "./tools/core/path-utils";
 
 export * from "./config/config-file";
 

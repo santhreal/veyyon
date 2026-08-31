@@ -2,7 +2,7 @@
  * unwrapHashlineHeaderPath pure matrix — exact path rewrites.
  */
 import { describe, expect, it } from "bun:test";
-import { unwrapHashlineHeaderPath } from "../src/tools/plan-mode-guard";
+import { unwrapHashlineHeaderPath } from "../src/tools/core/plan-mode-guard";
 
 describe("unwrapHashlineHeaderPath matrix", () => {
 	const cases: Array<[string, string]> = [

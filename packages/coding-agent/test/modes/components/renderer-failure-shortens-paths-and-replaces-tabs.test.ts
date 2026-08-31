@@ -22,7 +22,7 @@ import {
 	reportRendererFailure,
 } from "@veyyon/coding-agent/modes/terminal/components/transcript/renderer-failure";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import { TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/render-utils";
+import { TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/core/render-utils";
 
 describe("rendererFailureNotice sanitization", () => {
 	const homedir = os.homedir();

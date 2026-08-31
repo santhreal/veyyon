@@ -29,7 +29,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import * as workspaceTree from "@veyyon/coding-agent/workspace-tree";
 import * as natives from "@veyyon/natives";
 import { markNativeAddonUnavailable } from "@veyyon/natives/loader-state";

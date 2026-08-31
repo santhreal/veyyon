@@ -1,6 +1,6 @@
 import { Container, Text } from "@veyyon/tui";
 import { getLanguageFromPath, theme } from "../../../../theme/theme";
-import { formatDiagnostics } from "../../../../tools/render-utils";
+import { formatDiagnostics } from "../../../../tools/core/render-utils";
 
 /** One file's worth of late LSP diagnostics, as carried on the transcript message. */
 export interface LateDiagnosticsFile {

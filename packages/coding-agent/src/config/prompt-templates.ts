@@ -9,7 +9,7 @@ import {
 	parseFrontmatter,
 	prompt,
 } from "@veyyon/utils";
-import { jtdToTypeScript, jtdToTypeScriptParts } from "../tools/jtd-to-typescript";
+import { jtdToTypeScript, jtdToTypeScriptParts } from "../tools/core/jtd-to-typescript";
 import { parseCommandArgs, substituteArgs } from "../utils/command-args";
 
 /**

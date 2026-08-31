@@ -37,9 +37,9 @@ import { planModePrompts } from "../prompts/plan-mode/rows";
 import { subagentPrompts } from "../prompts/subagent/rows";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { Theme } from "../theme/theme";
-import { truncateForPrompt } from "../tools/approval";
-import { isIrcEnabled } from "../tools/irc";
-import { formatBytes, formatDuration } from "../tools/render-utils";
+import { isIrcEnabled } from "../tools/agent/irc";
+import { truncateForPrompt } from "../tools/core/approval";
+import { formatBytes, formatDuration } from "../tools/core/render-utils";
 import { inheritContextFiles } from "./context-inheritance";
 import { homogeneousTriageRefusal, isHomogeneousTriageFanout } from "./delegation-policy";
 import { inheritResolvedCollection, resolveAutoloadSkills } from "./inherited-collections";
@@ -68,12 +68,12 @@ import {
 	type TaskToolSchemaInstance,
 } from "./types";
 // Import review tools for side effects (registers subagent tool handlers)
-import "../tools/review";
+import "../tools/agent/review";
 import type { AsyncJobManager } from "../async";
 import type { LocalProtocolOptions } from "../internal-urls";
 import { loadOverallPlanReference } from "../plan-mode/plan-handoff";
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
-import { TOOL } from "../tools/builtin-names";
+import { TOOL } from "../tools/core/builtin-names";
 import { type DiscoveryResult, discoverAgents, getAgent } from "./discovery";
 import { runSubprocess } from "./executor";
 import {

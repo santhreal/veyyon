@@ -134,7 +134,7 @@
 import { expect, it } from "bun:test";
 import * as AIError from "@veyyon/ai/error";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
-import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
+import { TOOL } from "@veyyon/coding-agent/tools/core/builtin-names";
 import { createSimulation, type ScriptedTurn, simTool } from "./harness";
 
 /** The watchdog's own stall text, transient from its prose alone. */

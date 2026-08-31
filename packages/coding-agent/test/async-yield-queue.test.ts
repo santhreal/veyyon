@@ -3,7 +3,7 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import { type AsyncJob, AsyncJobManager, type AsyncJobType } from "@veyyon/coding-agent/async";
 import type { CustomMessage } from "@veyyon/coding-agent/session/messages";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { JobTool } from "@veyyon/coding-agent/tools/job";
+import { JobTool } from "@veyyon/coding-agent/tools/shell/job";
 import { YieldQueue } from "@veyyon/kernel/session/yield-queue";
 import { makeToolSession } from "./helpers/tool-session";
 

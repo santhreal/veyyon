@@ -10,7 +10,7 @@ import {
 	type SearchToolInput,
 	type SearchType,
 	searchSchema,
-} from "@veyyon/coding-agent/tools/search";
+} from "@veyyon/coding-agent/tools/search/search";
 import { removeWithRetries } from "@veyyon/utils";
 
 /** One value per field `searchSchema` declares beyond `type` and `input`. */

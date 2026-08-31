@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import * as scrapers from "@veyyon/coding-agent/web/scrapers/types";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 

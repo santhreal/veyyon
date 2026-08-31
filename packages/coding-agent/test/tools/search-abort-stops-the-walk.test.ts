@@ -39,7 +39,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { SearchTool } from "@veyyon/coding-agent/tools/search";
+import { SearchTool } from "@veyyon/coding-agent/tools/search/search";
 import { GrepOutputMode, astGrep as nativeAstGrep, glob as nativeGlob, grep as nativeGrep } from "@veyyon/natives";
 import { removeWithRetries } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";

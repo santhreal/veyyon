@@ -3,7 +3,7 @@
  * Why: operator prompt must not drop reason or invent MCP origin for local tools.
  */
 import { describe, expect, it } from "bun:test";
-import { formatApprovalPrompt } from "../src/tools/approval";
+import { formatApprovalPrompt } from "../src/tools/core/approval";
 
 describe("formatApprovalPrompt reason and details matrix", () => {
 	it("bare tool name only", () => {

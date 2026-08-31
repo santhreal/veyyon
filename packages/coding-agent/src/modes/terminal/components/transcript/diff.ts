@@ -3,7 +3,7 @@ import { SGR_INTENSITY_RESET } from "@veyyon/utils/ansi";
 import * as Diff from "diff";
 import { highlightCode } from "../../../../theme/highlight";
 import { theme } from "../../../../theme/theme-binding";
-import { type CodeFrameMarker, formatCodeFrameLine, replaceTabs } from "../../../../tools/render-utils";
+import { type CodeFrameMarker, formatCodeFrameLine, replaceTabs } from "../../../../tools/core/render-utils";
 import { getLanguageFromPath } from "../../../../utils/lang-from-path";
 
 /** SGR dim on / normal intensity — additive, preserves fg/bg colors. */

@@ -49,7 +49,7 @@ import { BASE_MODE_STATES } from "@veyyon/coding-agent/modes/terminal/components
 import type { StatusLinePreset } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
-import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/approval-modes";
+import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/core/approval-modes";
 import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";
 
 /**

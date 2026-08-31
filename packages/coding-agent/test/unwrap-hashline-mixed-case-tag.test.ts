@@ -2,7 +2,7 @@
  * unwrapHashlineHeaderPath accepts mixed-case 4-hex tags.
  */
 import { describe, expect, it } from "bun:test";
-import { unwrapHashlineHeaderPath } from "../src/tools/plan-mode-guard";
+import { unwrapHashlineHeaderPath } from "../src/tools/core/plan-mode-guard";
 
 describe("unwrapHashlineHeaderPath tag case", () => {
 	const tags = ["abcd", "ABCD", "AbCd", "aBcD", "12ef", "12EF"];

@@ -3,7 +3,7 @@
 > End an active checkpoint by pruning exploratory context and retaining a concise report.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/checkpoint.ts`
+- Entry: `packages/coding-agent/src/tools/fs/checkpoint.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/rewind.md`
 - Key collaborators:
   - `packages/coding-agent/src/session/agent-session.ts`: validates pending rewind state, applies the actual rewind, and injects the retained report.
@@ -30,7 +30,7 @@ The tool returns a single text result plus structured details:
 The returned tool result is not the final rewind. `AgentSession` waits until `turn_end`, then applies the rewind side effects asynchronously.
 
 ## Flow
-1. `RewindTool.createIf()` in `packages/coding-agent/src/tools/checkpoint.ts` hides the tool from subagents.
+1. `RewindTool.createIf()` in `packages/coding-agent/src/tools/fs/checkpoint.ts` hides the tool from subagents.
 2. `RewindTool.execute()` rejects subagent calls with `ToolError("Checkpoint not available in subagents.")`.
 3. With no active checkpoint, it throws `ToolError("Checkpoint already completed; continue from the retained rewind report instead of calling rewind again.")` when a completed rewind report exists for the branch, otherwise `ToolError("No active checkpoint. Create a checkpoint before calling rewind.")`.
 4. It trims `params.report`; if empty, it throws `ToolError("Report cannot be empty.")`.

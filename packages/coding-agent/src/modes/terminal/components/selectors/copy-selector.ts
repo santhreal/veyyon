@@ -8,7 +8,7 @@ import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { highlightCode } from "../../../../theme/highlight";
 import { theme } from "../../../../theme/theme-binding";
-import { replaceTabs } from "../../../../tools/render-utils";
+import { replaceTabs } from "../../../../tools/core/render-utils";
 import type { CopyTarget } from "../../utils/copy-targets";
 import {
 	matchesSelectCancel,

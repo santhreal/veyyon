@@ -21,8 +21,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
-import { WriteTool } from "@veyyon/coding-agent/tools/write";
+import { ToolError } from "@veyyon/coding-agent/tools/core/tool-errors";
+import { WriteTool } from "@veyyon/coding-agent/tools/fs/write";
 import { BARE_LITERAL_VALUE_RE } from "@veyyon/hashline";
 import { removeWithRetries } from "@veyyon/utils";
 

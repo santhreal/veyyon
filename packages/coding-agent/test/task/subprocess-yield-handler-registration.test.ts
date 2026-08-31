@@ -8,7 +8,7 @@
  * and the run ends with `SYSTEM WARNING: Subagent exited without calling yield tool` and exit code
  * 1. The subagent did nothing wrong and nothing says so.
  *
- * WHY THAT WAS REACHABLE. The handler is registered as a side effect of loading `tools/yield.ts`,
+ * WHY THAT WAS REACHABLE. The handler is registered as a side effect of loading `tools/agent/yield.ts`,
  * and `task/executor.ts` did not import it. In production the registration arrived by luck of import
  * order: a spawned session builds its own `yield` tool, which loads the module, and an in-process
  * child does that before it can emit a yield event. The requirement was real, unstated and

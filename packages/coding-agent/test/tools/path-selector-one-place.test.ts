@@ -18,7 +18,7 @@
 import { describe, expect, it } from "bun:test";
 import { splitReadSelector as compactionSplitReadSelector } from "@veyyon/agent-core/compaction/utils";
 import { splitReadSelector as utilsSplitReadSelector } from "@veyyon/utils";
-import { splitPathAndSel } from "../../src/tools/path-utils";
+import { splitPathAndSel } from "../../src/tools/core/path-utils";
 
 describe("read-tool selector splitter has exactly one owner", () => {
 	it("the read tool's splitPathAndSel IS the @veyyon/utils owner (same reference)", () => {

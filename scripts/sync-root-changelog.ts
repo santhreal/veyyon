@@ -39,8 +39,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error — plain .mjs module, no types; imported for its exports.
 import { renderRootChangelog } from "../website/tools/gen-changelog.mjs";
-import { allEntries, unreleasedEntries } from "./changelog-unreleased.ts";
-import { typeScriptMembers } from "./workspace-layout.ts";
+import { allEntries, unreleasedEntries } from "./changelog-unreleased";
+import { typeScriptMembers } from "./workspace-layout";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(HERE, "..");

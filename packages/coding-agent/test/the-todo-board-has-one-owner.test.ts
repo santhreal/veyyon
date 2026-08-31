@@ -30,7 +30,7 @@ import type {
 } from "@veyyon/coding-agent/session/agent-session-types";
 import type { TodoRuntimeHost, TodoSettingsSnapshot } from "@veyyon/coding-agent/session/runtime/todo-runtime";
 import { TodoRuntime } from "@veyyon/coding-agent/session/runtime/todo-runtime";
-import type { TodoPhase } from "@veyyon/coding-agent/tools/todo";
+import type { TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 
 /** Enough landed work to arm the mid-run nudge, read from the behavior rather

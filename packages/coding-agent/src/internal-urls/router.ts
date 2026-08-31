@@ -68,7 +68,7 @@ export class InternalUrlRouter {
 	/**
 	 * Every registered scheme, aliases included. Read by the classification gate,
 	 * which is the only way a new handler can be caught missing from the tables in
-	 * `tools/path-utils.ts` that decide selector peeling and filesystem-vs-URL.
+	 * `tools/core/path-utils.ts` that decide selector peeling and filesystem-vs-URL.
 	 */
 	schemes(): string[] {
 		return [...this.#handlers.keys()];

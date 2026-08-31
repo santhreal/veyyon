@@ -22,7 +22,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { bashApprovalDecision } from "../src/tools/bash";
+import { bashApprovalDecision } from "../src/tools/shell/bash";
 import {
 	expandWord,
 	FLAGGED_BASH_PATTERNS,
@@ -33,7 +33,7 @@ import {
 	resolveGuardHome,
 	splitCommandSegments,
 	splitWords,
-} from "../src/tools/bash-guard";
+} from "../src/tools/shell/bash-guard";
 
 /** A stable home directory, so the rule is stated independently of the machine. */
 const HOME = "/home/agent";

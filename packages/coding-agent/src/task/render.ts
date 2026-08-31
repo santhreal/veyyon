@@ -17,7 +17,15 @@ import { modelBadgeFromSelector } from "../modes/terminal/components/dashboard/a
 import { formatContextUsage } from "../modes/terminal/components/status-line/context-thresholds";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import type { Theme } from "../theme/theme";
-import { stripGeneratedOutputNotice, stripRawOutputArtifactNotice } from "../tools/output-meta";
+import {
+	type FindingPriority,
+	getPriorityInfo,
+	PRIORITY_LABELS,
+	parseReportFindingDetails,
+	type ReportFindingDetails,
+	type SubmitReviewDetails,
+} from "../tools/agent/review";
+import { stripGeneratedOutputNotice, stripRawOutputArtifactNotice } from "../tools/core/output-meta";
 import {
 	capPreviewLines,
 	formatBadge,
@@ -30,15 +38,7 @@ import {
 	replaceTabs,
 	type ToolUIStatus,
 	truncateToWidth,
-} from "../tools/render-utils";
-import {
-	type FindingPriority,
-	getPriorityInfo,
-	PRIORITY_LABELS,
-	parseReportFindingDetails,
-	type ReportFindingDetails,
-	type SubmitReviewDetails,
-} from "../tools/review";
+} from "../tools/core/render-utils";
 import { framedBlock, renderStatusLine } from "../tui";
 import { buildTreePrefix } from "../tui/utils";
 import { classifySubagentOutcome } from "./outcome";

@@ -13,7 +13,7 @@ import {
 	portCandidateKind,
 	renderPortIssue,
 	titleType,
-} from "./upstream-radar.ts";
+} from "./upstream-radar";
 
 /**
  * This representative policy proves the intake split: fixes always receive

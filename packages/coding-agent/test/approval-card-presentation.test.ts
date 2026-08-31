@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { APPROVAL_DIALOG_OPTIONS, APPROVAL_SELECT_OPTIONS } from "../src/extensibility/extensions/wrapper";
-import { formatApprovalCard } from "../src/tools/approval";
+import { formatApprovalCard } from "../src/tools/core/approval";
 
 describe("interactive permission card presentation", () => {
 	/**

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { ToolError } from "@veyyon/coding-agent/tools/core/tool-errors";
 import {
 	type ConflictEntry,
 	ConflictHistory,
@@ -12,8 +13,7 @@ import {
 	renderConflictRegion,
 	scanConflictLines,
 	spliceConflict,
-} from "@veyyon/coding-agent/tools/conflict-detect";
-import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
+} from "@veyyon/coding-agent/tools/fs/conflict-detect";
 
 describe("scanConflictLines", () => {
 	it("detects a 2-way conflict with correct line numbers and labels", () => {

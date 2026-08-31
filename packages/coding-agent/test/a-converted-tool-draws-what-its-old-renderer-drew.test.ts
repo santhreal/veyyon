@@ -54,7 +54,7 @@ import type { ExtensionAPI } from "@veyyon/coding-agent/extensibility/extensions
 import { goalToolView } from "@veyyon/coding-agent/goals/goal-tool";
 import type { Goal, GoalToolDetails } from "@veyyon/coding-agent/goals/state";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
-import { TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/render-utils";
+import { TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/core/render-utils";
 import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { type AnsiPolicy, type Component, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { truncateToWidth } from "@veyyon/utils/width";

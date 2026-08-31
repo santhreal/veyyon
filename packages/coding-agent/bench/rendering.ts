@@ -17,7 +17,7 @@ import {
 } from "../src/modes/terminal/controllers/streaming-reveal";
 import { getEditorTheme, initTheme } from "../src/theme/theme";
 import type { ToolSession } from "../src/tools";
-import { ReadTool } from "../src/tools/read";
+import { ReadTool } from "../src/tools/fs/read";
 
 const ITERATIONS = 500;
 const WIDTH = 100;

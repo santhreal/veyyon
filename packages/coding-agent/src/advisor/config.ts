@@ -11,7 +11,7 @@ import {
 import { type } from "arktype";
 import { YAML } from "bun";
 import { expandAtImports } from "../discovery/at-imports";
-import { BUILTIN_TOOL_NAMES, normalizeToolNames } from "../tools/builtin-names";
+import { BUILTIN_TOOL_NAMES, normalizeToolNames } from "../tools/core/builtin-names";
 import { collectConfigCandidates } from "./watchdog";
 
 /**

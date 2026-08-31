@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { createFileRecorder, formatResultPath } from "@veyyon/coding-agent/tools/file-recorder";
+import { createFileRecorder, formatResultPath } from "@veyyon/coding-agent/tools/core/file-recorder";
 
 /**
  * createFileRecorder collects the paths a tool touched (deduplicated, insertion-ordered)

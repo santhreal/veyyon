@@ -10,7 +10,7 @@ import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, TailBuffer, truncateTail } from "
 // `shortenPath` is defined here and nowhere else: it collapses the real home directory, which the
 // browser-side owner in `@veyyon/tool-render` cannot do. The module binds no runtime value from
 // `@veyyon/tui`, so taking a string helper from it leaves this tool host-agnostic.
-import { shortenPath } from "../../tools/render-utils";
+import { shortenPath } from "../../tools/core/render-utils";
 import * as git from "../../utils/git";
 import { parseWorkDirDirtyPaths } from "../git";
 import {

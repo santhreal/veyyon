@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyReleaseToChangelog, loadPackageChangelogs } from "./release.ts";
+import { applyReleaseToChangelog, loadPackageChangelogs } from "./release";
 import {
 	assertPreparedReleaseChangelogs,
 	assertReleaseIsDocumented,
@@ -11,8 +11,8 @@ import {
 	preparedReleaseChangelogFailures,
 	RELEASE_NOTES_CHANGELOG,
 	undocumentedReleaseFailures,
-} from "./release-policy.ts";
-import { typeScriptMembers } from "./workspace-layout.ts";
+} from "./release-policy";
+import { typeScriptMembers } from "./workspace-layout";
 
 /**
  * Pins the changelog-roll contract: turning `## [Unreleased]` into a dated

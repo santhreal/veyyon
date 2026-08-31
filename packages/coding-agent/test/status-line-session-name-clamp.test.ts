@@ -15,7 +15,7 @@ import {
 	type SegmentContext,
 } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import { TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/render-utils";
+import { TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/core/render-utils";
 import { stripAnsi } from "@veyyon/utils";
 
 function ctxWithSessionName(name: string): SegmentContext {

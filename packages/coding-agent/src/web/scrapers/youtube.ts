@@ -6,7 +6,7 @@ import { collapseWhitespace, errorMessage, ptree, Snowflake, truncate } from "@v
 import { settings } from "../../config/settings-instance";
 import type { AgentStorage } from "../../session/agent-storage";
 import { primarySessionCpuAdoption } from "../../session/cpu-limit";
-import { throwIfAborted } from "../../tools/tool-errors";
+import { throwIfAborted } from "../../tools/core/tool-errors";
 import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 import { ensureTool } from "../../utils/tools-manager";
 import { extractWithParallel, findParallelApiKey, getParallelExtractContent } from "../parallel";

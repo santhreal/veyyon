@@ -7,6 +7,7 @@
 import * as AIError from "@veyyon/ai/error";
 import { isAbortError, logger, readSseJson, Snowflake } from "@veyyon/utils";
 import { isRecord } from "@veyyon/utils/type-guards";
+import { createMCPTimeout, getNeverAbortSignal, isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "../timeout";
 import type {
 	JsonRpcError,
 	JsonRpcMessage,
@@ -16,9 +17,8 @@ import type {
 	MCPRequestOptions,
 	MCPSseServerConfig,
 	MCPTransport,
-} from "../../mcp/types";
-import { toJsonRpcError } from "../../mcp/types";
-import { createMCPTimeout, getNeverAbortSignal, isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "../timeout";
+} from "../types";
+import { toJsonRpcError } from "../types";
 import { mcpHttpFailureMessage } from "./http-failure";
 import { reportUndeliveredServerResponse } from "./server-response-delivery";
 import {

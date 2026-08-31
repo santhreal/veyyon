@@ -60,7 +60,7 @@ import type {
 	SearchToolInput,
 	WriteToolInput,
 } from "../../tools";
-import type { ApprovalMode } from "../../tools/approval";
+import type { ApprovalMode } from "../../tools/core/approval";
 import type { EventBus } from "../../utils/event-bus";
 import type {
 	AgentEndEvent,

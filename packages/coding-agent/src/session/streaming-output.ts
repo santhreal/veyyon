@@ -7,7 +7,7 @@ import { sanitizeText, splitTrailingPartialEscape } from "@veyyon/utils/sanitize
 export { type ByteTruncationResult, truncateHeadBytes, truncateTailBytes } from "@veyyon/utils/byte-truncate";
 
 import { DEFAULT_INLINE_FLOOR_FRACTION, DEFAULT_INLINE_OUTPUT_MAX_BYTES } from "../config/settings-domains/shared";
-import { formatBytes } from "../tools/render-utils";
+import { formatBytes } from "../tools/core/render-utils";
 import { sanitizeWithOptionalSixelPassthrough } from "../utils/sixel";
 
 // =============================================================================

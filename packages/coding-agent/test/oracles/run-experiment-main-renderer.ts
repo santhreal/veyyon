@@ -10,7 +10,7 @@ import { DEFAULT_HARNESS_COMMAND } from "@veyyon/coding-agent/autoresearch/tools
 import type { RunDetails, RunExperimentProgressDetails } from "@veyyon/coding-agent/autoresearch/types";
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
-import { shortenPath } from "@veyyon/coding-agent/tools/render-utils";
+import { shortenPath } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { replaceTabs } from "@veyyon/utils/wrap";

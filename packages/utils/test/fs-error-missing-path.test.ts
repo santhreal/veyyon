@@ -3,10 +3,10 @@
  *
  * WHY THIS SUITE EXISTS. That question decides whether a probe stays quiet or complains, and it was
  * answered in at least six places, in four different spellings, under three different names:
- * `isNotFoundError` in `tools/read.ts` compared raw code strings, `isMissingDirectoryError` in
+ * `isNotFoundError` in `tools/fs/read.ts` compared raw code strings, `isMissingDirectoryError` in
  * `discovery/claude.ts` called `hasFsCode` twice, `internal-urls/registry-helpers.ts` used
  * `isEnoent` for one half and a cast to `NodeJS.ErrnoException` for the other, and `capability/fs.ts`
- * and `tools/path-utils.ts` each wrote `!isEnoent(e) && !isEnotdir(e)` inline.
+ * and `tools/core/path-utils.ts` each wrote `!isEnoent(e) && !isEnotdir(e)` inline.
  *
  * The consequence of a copy drifting is not cosmetic. Every one of those call sites uses the answer
  * to decide whether to swallow the error: a copy that counted `EACCES` as "absent" would turn a

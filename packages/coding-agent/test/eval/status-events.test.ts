@@ -9,7 +9,7 @@
  * rendered progress block, so a change to the replacement rule would have shown up as a wrong count in a
  * screenful of text rather than as a failing assertion.
  *
- * It also pins where the function lives. It used to sit in `tools/eval-render.ts`, so `tools/eval.ts` imported
+ * It also pins where the function lives. It used to sit in `tools/shell/eval-render.ts`, so `tools/shell/eval.ts` imported
  * the module that DRAWS status events in order to append to an array, and paid 105 modules for it: `Markdown`
  * and `Text` from `@veyyon/tui`, the theme engine, the markdown theme, the settings store and the framed-block
  * helpers, all instantiated by a tool that starts a Python kernel. That single edge put the eval tool at 801
@@ -177,7 +177,7 @@ describe("the status-event helper stays out of the renderer", () => {
 	 * and the leaf imports nothing but the event type.
 	 */
 	it("is imported by the eval tool from the leaf", async () => {
-		const tool = await Bun.file(path.join(SRC, "tools/eval.ts")).text();
+		const tool = await Bun.file(path.join(SRC, "tools/shell/eval.ts")).text();
 		expect(tool).toContain('import { upsertStatusEvent } from "../eval/status-events";');
 		// And the tool has no edge to the renderer left at all. Moving the helper alone bought nothing, because
 		// `eval.ts` also re-exported the renderer, and `export ... from` instantiates a module just like an

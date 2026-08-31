@@ -7,7 +7,7 @@
  * `registry/persisted-subagents.ts`, `internal-urls/registry-helpers.ts` and `@veyyon/stats`'s parser all
  * DISCOVER transcripts by matching it. It was spelled inline at dozens of sites in four packages, plus three
  * constants that shared no name: `JSONL_SUFFIX`, `SESSION_SUFFIX` and `JSONL_SUFFIX_LENGTH`, the last of which
- * was the value expressed as a number so a grep for the extension never found it. `tools/read.ts` had a fourth
+ * was the value expressed as a number so a grep for the extension never found it. `tools/fs/read.ts` had a fourth
  * form, `slice(0, -6)`.
  *
  * THE FAILURE IS SILENT AND IT LOSES DATA FROM THE USER'S POINT OF VIEW. Nothing throws when a scanner stops
@@ -46,7 +46,7 @@ describe("the session file extension", () => {
 		expect(SESSION_FILE_EXTENSION).toBe(".jsonl");
 	});
 
-	/** Six characters. The old `slice(0, -6)` in `tools/read.ts` was this length written as a magic number. */
+	/** Six characters. The old `slice(0, -6)` in `tools/fs/read.ts` was this length written as a magic number. */
 	it("is six characters long, which is what the magic 6 in read.ts used to be", () => {
 		expect(SESSION_FILE_EXTENSION.length).toBe(6);
 	});

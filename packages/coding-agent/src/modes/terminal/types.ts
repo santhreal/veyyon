@@ -86,9 +86,9 @@ export type SubmittedUserInput = {
  * unreachable: the value it counted could not exist. The narrow copy is the real shape because it
  * is the one the writer produces, so the tool owns the names and this module re-exports them.
  */
-import type { TodoItem, TodoPhase } from "../../tools/todo";
+import type { TodoItem, TodoPhase } from "../../tools/agent/todo";
 
-export type { TodoItem, TodoPhase, TodoStatus } from "../../tools/todo";
+export type { TodoItem, TodoPhase, TodoStatus } from "../../tools/agent/todo";
 
 export type InteractiveSelectorDialogOptions = ExtensionUIDialogOptions & Pick<HookSelectorOptions, "disabledIndices">;
 

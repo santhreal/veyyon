@@ -12,10 +12,10 @@
  */
 import type { AgentToolResult } from "@veyyon/agent-core";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { executeFileSearch, type FileSearchDetails } from "@veyyon/coding-agent/tools/file-search";
-import { SearchTool, type SearchToolDetails, type SearchToolInput } from "@veyyon/coding-agent/tools/search";
-import { executeStructureSearch, type StructureSearchDetails } from "@veyyon/coding-agent/tools/structure-search";
-import { executeTextSearch, type TextSearchDetails } from "@veyyon/coding-agent/tools/text-search";
+import { executeFileSearch, type FileSearchDetails } from "@veyyon/coding-agent/tools/search/file-search";
+import { SearchTool, type SearchToolDetails, type SearchToolInput } from "@veyyon/coding-agent/tools/search/search";
+import { executeStructureSearch, type StructureSearchDetails } from "@veyyon/coding-agent/tools/search/structure-search";
+import { executeTextSearch, type TextSearchDetails } from "@veyyon/coding-agent/tools/search/text-search";
 
 /** What every arm returns: a tool result whose details are one of the four search shapes. */
 export type SearchArmResult = AgentToolResult<

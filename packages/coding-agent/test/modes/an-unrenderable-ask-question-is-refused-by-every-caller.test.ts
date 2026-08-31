@@ -48,7 +48,7 @@ import type { ExtensionUiControllerContext } from "@veyyon/coding-agent/modes/te
 import { ExtensionUiController } from "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { BUILTIN_TOOLS, HIDDEN_TOOLS, type ToolSession } from "@veyyon/coding-agent/tools";
-import { AskTool, type AskToolInput } from "@veyyon/coding-agent/tools/ask";
+import { AskTool, type AskToolInput } from "@veyyon/coding-agent/tools/agent/ask";
 import type { Component, OverlayHandle } from "@veyyon/tui";
 import { isRecord } from "@veyyon/utils";
 import { setKeybindings } from "@veyyon/utils/keybindings";

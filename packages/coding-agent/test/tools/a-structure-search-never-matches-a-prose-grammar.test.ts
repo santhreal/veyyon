@@ -22,7 +22,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
-import { PROSE_GRAMMARS } from "@veyyon/coding-agent/tools/structure-search";
+import { PROSE_GRAMMARS } from "@veyyon/coding-agent/tools/search/structure-search";
 import { getLanguageFromPath } from "@veyyon/coding-agent/utils/lang-from-path";
 import { astGrep } from "@veyyon/natives";
 import { removeWithRetries } from "@veyyon/utils";

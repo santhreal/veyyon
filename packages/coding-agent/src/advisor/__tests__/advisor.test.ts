@@ -16,7 +16,7 @@ import { advisorPrompts } from "../../prompts/advisor/rows";
 import { SecretObfuscator } from "../../secrets/obfuscator";
 import { formatSessionHistoryMarkdown } from "../../session/session-history-format";
 import { getThemeByName, setThemeInstance } from "../../theme/theme";
-import { BUILTIN_TOOL_NAMES } from "../../tools/builtin-names";
+import { BUILTIN_TOOL_NAMES } from "../../tools/core/builtin-names";
 import {
 	ADVISOR_DEFAULT_TOOL_NAMES,
 	AdviseTool,

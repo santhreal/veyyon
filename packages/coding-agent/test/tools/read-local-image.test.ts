@@ -14,7 +14,7 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { InternalUrlRouter, LocalProtocolHandler, parseInternalUrl } from "@veyyon/coding-agent/internal-urls";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
 

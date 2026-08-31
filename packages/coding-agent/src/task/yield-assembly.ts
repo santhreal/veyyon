@@ -10,7 +10,7 @@
  */
 import { dereferenceJsonSchema } from "@veyyon/ai/utils/schema";
 import { isRecord } from "@veyyon/utils";
-import { buildOutputValidator } from "../tools/output-schema-validator";
+import { buildOutputValidator } from "../tools/core/output-schema-validator";
 import type { YieldItem } from "./types";
 
 /** Outcome of folding a run's yield calls into one payload, with provenance flags. */

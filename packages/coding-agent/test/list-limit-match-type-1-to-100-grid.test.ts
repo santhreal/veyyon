@@ -3,7 +3,7 @@
  * Why: grep match ceilings must not land under resultLimit.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("list-limit match type 1 to 100 grid", () => {
 	const items = Array.from({ length: 150 }, (_, i) => i);

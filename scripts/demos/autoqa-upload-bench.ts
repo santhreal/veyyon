@@ -17,7 +17,7 @@
  */
 import { Database } from "bun:sqlite";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { __resetAutoQaFlushStateForTests, flushGrievances } from "@veyyon/coding-agent/tools/report-tool-issue";
+import { __resetAutoQaFlushStateForTests, flushGrievances } from "@veyyon/coding-agent/tools/agent/report-tool-issue";
 
 interface ArmResult {
 	requests: number;

@@ -1,11 +1,11 @@
 import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { logger } from "@veyyon/utils";
-import type { CommitAgentState } from "../../../commit/agentic/state";
 import type { ModelRegistry } from "../../../config/model-registry";
 import type { Settings } from "../../../config/settings";
 import type { CustomTool } from "../../../extensibility/custom-tools/types";
 import { loadBundledAgents } from "../../../task/agents";
 import { preferredSubagentName, resolveEnabledSubagents } from "../../../task/subagent-settings";
+import type { CommitAgentState } from "../state";
 import { createAnalyzeFileTool } from "./analyze-file";
 import { createGitFileDiffTool } from "./git-file-diff";
 import { createGitHunkTool } from "./git-hunk";

@@ -7,7 +7,7 @@
 import { APP_NAME, errorMessage, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import { PluginManager, parseSettingValue, validateSetting } from "../extensibility/plugins";
-import { createMarketplaceManager, type MarketplaceManager } from "../extensibility/plugins/marketplace/index.js";
+import { createMarketplaceManager, type MarketplaceManager } from "../extensibility/plugins/marketplace";
 import { theme } from "../theme/theme";
 
 // =============================================================================

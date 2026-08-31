@@ -6,7 +6,7 @@ import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 // them from this local barrel; each has exactly one definition (the owner).
 export { asRecord, finiteNumber, isRecord, trimmedString };
 
-import { ToolAbortError } from "../../tools/tool-errors";
+import { ToolAbortError } from "../../tools/core/tool-errors";
 import { convertBufferWithMarkit } from "../../utils/markit";
 import { MAX_BYTES } from "./types";
 

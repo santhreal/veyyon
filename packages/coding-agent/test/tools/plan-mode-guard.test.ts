@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { targetsLocalSandbox, unwrapHashlineHeaderPath } from "@veyyon/coding-agent/tools/plan-mode-guard";
+import { targetsLocalSandbox, unwrapHashlineHeaderPath } from "@veyyon/coding-agent/tools/core/plan-mode-guard";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
 

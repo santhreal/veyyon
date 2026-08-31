@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
 import * as themeModule from "@veyyon/coding-agent/theme/theme";
-import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
+import { previewWindowRows } from "@veyyon/coding-agent/tools/core/render-utils";
 
 /**
  * WHY:

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { isIrcEnabled } from "@veyyon/coding-agent/tools/irc-enabled";
+import { isIrcEnabled } from "@veyyon/coding-agent/tools/agent/irc-enabled";
 
 /**
  * isIrcEnabled decides whether the IRC tool is offered: IRC needs a peer to talk to.

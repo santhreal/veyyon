@@ -304,7 +304,7 @@ describe("the real workspace resolves completely", () => {
 	 * the repository would jump by thousands of modules and stop describing this codebase's own graph.
 	 */
 	it("leaves an external package unresolved", () => {
-		const from = path.join(REPO_ROOT, "packages", "coding-agent", "src", "tools", "fetch.ts");
+		const from = path.join(REPO_ROOT, "packages", "coding-agent", "src", "tools", "web", "fetch.ts");
 
 		expect(resolveModuleSpecifier(from, "lru-cache/raw", resolution)).toBeUndefined();
 		expect(resolveModuleSpecifier(from, "zod", resolution)).toBeUndefined();
@@ -312,7 +312,7 @@ describe("the real workspace resolves completely", () => {
 
 	/** Subpath and bare name of the same package resolve to different files, which is the whole point. */
 	it("separates a package's barrel from its leaves", () => {
-		const from = path.join(REPO_ROOT, "packages", "coding-agent", "src", "tools", "fetch.ts");
+		const from = path.join(REPO_ROOT, "packages", "coding-agent", "src", "tools", "web", "fetch.ts");
 
 		expect(resolveModuleSpecifier(from, "@veyyon/utils", resolution)).toBe(
 			path.join(REPO_ROOT, "packages", "utils", "src", "index.ts"),

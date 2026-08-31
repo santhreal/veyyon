@@ -2,11 +2,11 @@
  * LSP-based linter client.
  * Uses the Language Server Protocol for formatting and diagnostics.
  */
-import { getOrCreateClient, notifySaved, sendRequest, syncContent } from "../../lsp/client";
-import { applyTextEditsToString } from "../../lsp/edits";
-import { resolveFormatOptions } from "../../lsp/format-options";
-import type { Diagnostic, LinterClient, LspClient, ServerConfig, TextEdit } from "../../lsp/types";
-import { fileToUri } from "../../lsp/utils";
+import { getOrCreateClient, notifySaved, sendRequest, syncContent } from "../client";
+import { applyTextEditsToString } from "../edits";
+import { resolveFormatOptions } from "../format-options";
+import type { Diagnostic, LinterClient, LspClient, ServerConfig, TextEdit } from "../types";
+import { fileToUri } from "../utils";
 
 /**
  * LSP-based linter client implementation.

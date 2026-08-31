@@ -52,7 +52,7 @@ import type { MCPAuthConfig, MCPServerConfig, MCPServerConnection } from "../../
 import { MCP_SCOPE_REMOVED_REPLACEMENT, removedOptionMessage } from "../../../slash-commands/helpers/parse";
 import { withIcon } from "../../../theme/icon-label";
 import { theme } from "../../../theme/theme";
-import { shortenPath } from "../../../tools/render-utils";
+import { shortenPath } from "../../../tools/core/render-utils";
 import { urlHyperlinkAlways } from "../../../tui";
 import { copyToClipboard } from "../../../utils/clipboard";
 import { openPath } from "../../../utils/open";

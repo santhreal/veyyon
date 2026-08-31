@@ -10,10 +10,10 @@ import {
 	resolveToCwd,
 	splitPathAndSel,
 	splitPathAndSelPreferringLiteral,
-} from "@veyyon/coding-agent/tools/path-utils";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+} from "@veyyon/coding-agent/tools/core/path-utils";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import { removeWithRetries } from "@veyyon/utils";
-import { SearchTool } from "../../src/tools/search";
+import { SearchTool } from "../../src/tools/search/search";
 import { makeToolSession } from "../helpers/tool-session";
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {

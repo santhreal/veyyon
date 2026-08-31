@@ -3,7 +3,7 @@
  * name starts with mcp__ and approval unset, reason, formatApprovalDetails.
  */
 import { describe, expect, it } from "bun:test";
-import { formatApprovalPrompt } from "@veyyon/coding-agent/tools/approval";
+import { formatApprovalPrompt } from "@veyyon/coding-agent/tools/core/approval";
 
 describe("formatApprovalPrompt pure matrix", () => {
 	it("bare tool name only", () => {

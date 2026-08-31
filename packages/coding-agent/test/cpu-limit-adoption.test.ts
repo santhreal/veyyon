@@ -71,11 +71,11 @@
  *   - utils/jj.ts: `ensureAvailable()` calls `$which("jj")` before spawning,
  *     and that answer is fixed at process start (constraint 2).
  *   - tools/browser/registry.ts: needs a real Chromium and a CDP endpoint.
- *   - tools/fetch.ts, web/scrapers/youtube.ts, utils/tools-manager.ts,
+ *   - tools/web/fetch.ts, web/scrapers/youtube.ts, utils/tools-manager.ts,
  *     extensibility/plugins/manager.ts: every entry point performs network I/O
  *     or a tool download first, and the sandbox has no network.
  *   - modes/rpc/rpc-client.ts: spawns another copy of the harness.
- *   - exec/bash-executor.ts, tools/bash-interactive.ts: the native brush spawn
+ *   - exec/bash-executor.ts, tools/shell/bash-interactive.ts: the native brush spawn
  *     observer and the PTY spawner adopt inside Rust, not through a JS hook,
  *     so a stub here would prove nothing about that path.
  */

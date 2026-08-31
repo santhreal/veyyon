@@ -23,7 +23,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import { Glob } from "bun";
-import { REPO_ROOT, typeScriptMembers } from "./workspace-layout.ts";
+import { REPO_ROOT, typeScriptMembers } from "./workspace-layout";
 
 interface Manifest {
 	name?: string;

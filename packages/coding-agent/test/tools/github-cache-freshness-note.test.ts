@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { formatFreshnessNote } from "@veyyon/coding-agent/tools/github-cache";
+import { formatFreshnessNote } from "@veyyon/coding-agent/tools/web/github-cache";
 
 /**
  * formatFreshnessNote turns a GitHub cache status plus a fetch timestamp into the

@@ -1,6 +1,6 @@
 import { errorMessage, logger } from "@veyyon/utils";
 import xterm, { type Terminal as XtermTerminal } from "@xterm/headless";
-import { readTerminalRows } from "../tools/terminal-output";
+import { readTerminalRows } from "../tools/shell/terminal-output";
 import { DAEMON_PTY_COLUMNS, DAEMON_PTY_ROWS } from "./protocol";
 
 const VIRTUAL_SCROLLBACK_ROWS = 4_096;

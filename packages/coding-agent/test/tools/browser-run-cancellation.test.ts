@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { postmortem } from "@veyyon/utils";
 import { JsRuntime, type RuntimeHooks } from "../../src/eval/js/shared/runtime";
-import { bindBrowserRunFacade, markHandled, waitForBrowserRun } from "../../src/tools/browser/run-cancellation";
-import { ToolAbortError } from "../../src/tools/tool-errors";
+import { ToolAbortError } from "../../src/tools/core/tool-errors";
+import { bindBrowserRunFacade, markHandled, waitForBrowserRun } from "../../src/tools/web/browser/run-cancellation";
 
 async function collectUnhandledRejections(action: () => void | Promise<void>): Promise<unknown[]> {
 	const reasons: unknown[] = [];

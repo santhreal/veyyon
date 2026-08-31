@@ -3,7 +3,7 @@
 > Mark the current top-level conversation state so later `rewind` can collapse exploratory context into a report.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/checkpoint.ts`
+- Entry: `packages/coding-agent/src/tools/fs/checkpoint.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/checkpoint.md`
 - Key collaborators:
   - `packages/coding-agent/src/session/agent-session.ts`: captures the active checkpoint after tool success.
@@ -31,7 +31,7 @@ The tool returns a single text result plus structured details:
 No checkpoint ID, artifact URI, job handle, file path, or restore token is returned.
 
 ## Flow
-1. `CheckpointTool.createIf()` in `packages/coding-agent/src/tools/checkpoint.ts` returns `null` for subagents by checking `session.taskDepth`; only top-level sessions can see the tool.
+1. `CheckpointTool.createIf()` in `packages/coding-agent/src/tools/fs/checkpoint.ts` returns `null` for subagents by checking `session.taskDepth`; only top-level sessions can see the tool.
 2. `CheckpointTool.execute()` rejects subagent calls again with `ToolError("Checkpoint not available in subagents.")`.
 3. It rejects nested checkpoints with `ToolError("Checkpoint already active.")` when `session.getCheckpointState?.()` is already set.
 4. It creates `startedAt = new Date().toISOString()` and returns a normal `toolResult()` payload. The tool itself does not persist anything.

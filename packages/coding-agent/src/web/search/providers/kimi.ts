@@ -13,8 +13,8 @@ import {
 	transformProviderPayload,
 } from "../../../provider-boundary";
 
-import type { SearchResponse, SearchSource } from "../../../web/search/types";
-import { SearchProviderError } from "../../../web/search/types";
+import type { SearchResponse, SearchSource } from "../types";
+import { SearchProviderError } from "../types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";

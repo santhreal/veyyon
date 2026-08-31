@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { formatMatchLine } from "@veyyon/coding-agent/tools/match-line-format";
+import { formatMatchLine } from "@veyyon/coding-agent/tools/search/match-line-format";
 
 /**
  * Grep/ast-grep renderers depend on the exact marker + separator so hashline

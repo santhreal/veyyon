@@ -31,7 +31,7 @@ import {
 	stripBom,
 } from "@veyyon/hashline";
 import { errorMessage } from "@veyyon/utils";
-import { resolveToCwd } from "../../tools/path-utils";
+import { resolveToCwd } from "../../tools/core/path-utils";
 import { generateDiffString } from "../diff";
 import { canonicalSnapshotKey } from "../file-snapshot-store";
 import { readPreviewText } from "../preview-text-cache";

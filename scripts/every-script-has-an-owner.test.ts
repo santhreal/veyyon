@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import { $ } from "bun";
-import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout.ts";
+import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
 
 /**
  * Every script under `scripts/` is either called by something automated, or says

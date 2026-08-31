@@ -31,7 +31,7 @@ import {
 	MAX_INTERPRETED_SHELL_DEPTH,
 	SCRIPT_FLAG,
 	type ScriptArgumentShape,
-} from "../src/tools/bash-guard";
+} from "../src/tools/shell/bash-guard";
 
 const HOME = "/home/agent";
 

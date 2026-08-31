@@ -1,8 +1,8 @@
 import { errorMessage, isCancellation, isTimeoutError } from "@veyyon/utils";
 import { OutputSink } from "../../session/streaming-output";
 import type { ToolSession } from "../../tools";
-import { inlineBudgetFor } from "../../tools/output-artifact";
-import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../../tools/output-meta";
+import { inlineBudgetFor } from "../../tools/core/output-artifact";
+import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../../tools/core/output-meta";
 import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 import { isEvalTimeoutControlEvent } from "../bridge-timeout";
 import { executeInVmContext, type JsDisplayOutput } from "./context-manager";

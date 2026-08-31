@@ -29,7 +29,7 @@ import {
 	todoBoardRailTravels,
 } from "@veyyon/coding-agent/modes/terminal/components/dashboard/todo-board";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
-import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/todo";
+import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
 import {
 	RAIL_IDLE_ROW_MS,
 	RAIL_IDLE_ROWS_PER_STEP,

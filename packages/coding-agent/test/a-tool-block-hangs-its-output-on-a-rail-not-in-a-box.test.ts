@@ -25,7 +25,7 @@
  * time, so a sixth state cannot arrive with a rail nobody coloured.
  *
  * WHAT THIS DOES NOT CATCH. A renderer that hand-rolls its own frame instead of going
- * through the owner. There is exactly one, `tools/bash-interactive.ts`, and it is
+ * through the owner. There is exactly one, `tools/shell/bash-interactive.ts`, and it is
  * deliberate: that block mirrors a live PTY whose width IS the terminal's, so a hugged
  * or railed frame would misreport the geometry the program inside it draws to. A second
  * hand-rolled frame added elsewhere would be a second definition of what a block looks

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { extractReadableFromHtml } from "@veyyon/coding-agent/tools/browser/readable";
+import { extractReadableFromHtml } from "@veyyon/coding-agent/tools/web/browser/readable";
 
 /**
  * extractReadableFromHtml turns a raw HTML page into the isolated article content the

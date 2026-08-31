@@ -25,9 +25,8 @@
 // deliberately: the guard names them as the raw escape hatch.
 
 import { describe, expect, test } from "bun:test";
-
-import { guardTabApi, TAB_REQUIRED_ARGUMENTS } from "../../../src/tools/browser/tab-api-guard";
-import { ToolError } from "../../../src/tools/tool-errors";
+import { ToolError } from "../../../src/tools/core/tool-errors";
+import { guardTabApi, TAB_REQUIRED_ARGUMENTS } from "../../../src/tools/web/browser/tab-api-guard";
 
 /** A stand-in facade carrying every method the argument table governs. */
 function facade(): Record<string, unknown> {

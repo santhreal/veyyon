@@ -2,7 +2,7 @@
  * unwrapHashlineHeaderPath with line selectors and tags.
  */
 import { describe, expect, it } from "bun:test";
-import { unwrapHashlineHeaderPath } from "../src/tools/plan-mode-guard";
+import { unwrapHashlineHeaderPath } from "../src/tools/core/plan-mode-guard";
 
 describe("unwrapHashlineHeaderPath selectors", () => {
 	it("path:selector without tag peels brackets", () => {

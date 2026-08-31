@@ -26,14 +26,8 @@ import {
 	resolveProviderTextTransform,
 	transformProviderPayload,
 } from "../../../provider-boundary";
-import type {
-	AnthropicApiResponse,
-	AnthropicCitation,
-	SearchCitation,
-	SearchResponse,
-	SearchSource,
-} from "../../../web/search/types";
-import { SearchProviderError } from "../../../web/search/types";
+import type { AnthropicApiResponse, AnthropicCitation, SearchCitation, SearchResponse, SearchSource } from "../types";
+import { SearchProviderError } from "../types";
 import { applyResultLimit } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";

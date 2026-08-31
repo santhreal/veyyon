@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { BashTool } from "@veyyon/coding-agent/tools/bash";
-import { bashToolRenderer } from "@veyyon/coding-agent/tools/bash-render";
+import { BashTool } from "@veyyon/coding-agent/tools/shell/bash";
+import { bashToolRenderer } from "@veyyon/coding-agent/tools/shell/bash-render";
 import { sanitizeText } from "@veyyon/utils";
 import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
 import { makeToolSession } from "../helpers/tool-session";

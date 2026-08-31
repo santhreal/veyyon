@@ -8,11 +8,11 @@ import {
 	DEFAULT_ESSENTIAL_TOOL_NAMES,
 	filterInitialToolsForDiscoveryAll,
 } from "@veyyon/coding-agent/tools";
-import { AskTool } from "@veyyon/coding-agent/tools/ask";
-import { GithubTool } from "@veyyon/coding-agent/tools/gh";
-import { IrcTool } from "@veyyon/coding-agent/tools/irc";
-import { JobTool } from "@veyyon/coding-agent/tools/job";
-import { SshTool } from "@veyyon/coding-agent/tools/ssh";
+import { AskTool } from "@veyyon/coding-agent/tools/agent/ask";
+import { IrcTool } from "@veyyon/coding-agent/tools/agent/irc";
+import { JobTool } from "@veyyon/coding-agent/tools/shell/job";
+import { SshTool } from "@veyyon/coding-agent/tools/shell/ssh";
+import { GithubTool } from "@veyyon/coding-agent/tools/web/gh";
 
 const ALL_TOOLS_OVERRIDES: Partial<Record<SettingPath, unknown>> = {
 	"astEdit.enabled": true,

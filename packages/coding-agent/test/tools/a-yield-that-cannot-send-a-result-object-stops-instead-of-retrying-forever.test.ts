@@ -38,7 +38,7 @@
 import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { YieldTool } from "@veyyon/coding-agent/tools/yield";
+import { YieldTool } from "@veyyon/coding-agent/tools/agent/yield";
 
 function session(): ToolSession {
 	return {

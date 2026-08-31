@@ -19,7 +19,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { InternalUrlRouter } from "../../../packages/coding-agent/src/internal-urls/router";
+import { InternalUrlRouter } from "../../coding-agent/src/internal-urls/router";
 import type { AssistantMessage } from "../src/types";
 import { ToolCallLoopGuard, type ToolCallLoopTurn } from "../src/utils/tool-call-loop-guard";
 

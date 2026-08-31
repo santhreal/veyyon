@@ -9,7 +9,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout.ts";
+import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const BASELINE_PATH = path.join(REPO_ROOT, "scripts", "data", "module-named-suites.txt");

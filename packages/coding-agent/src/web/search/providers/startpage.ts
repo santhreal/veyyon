@@ -1,8 +1,8 @@
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import { parseHTML } from "linkedom";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
-import type { SearchResponse, SearchSource } from "../../../web/search/types";
-import { SearchProviderError } from "../../../web/search/types";
+import type { SearchResponse, SearchSource } from "../types";
+import { SearchProviderError } from "../types";
 import { clampNumResults, collapseWhitespace, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";

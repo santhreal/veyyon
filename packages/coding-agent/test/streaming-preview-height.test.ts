@@ -8,7 +8,7 @@ import { EDIT_MODE_STRATEGIES } from "@veyyon/coding-agent/edit";
 import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
 import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
-import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
+import { previewWindowRows } from "@veyyon/coding-agent/tools/core/render-utils";
 import { TUI } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";

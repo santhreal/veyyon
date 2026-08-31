@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { EvalStatusEvent, EvalToolDetails } from "@veyyon/coding-agent/eval/types";
 import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/theme/theme";
-import { evalToolRenderer } from "@veyyon/coding-agent/tools/eval-render";
+import { evalToolRenderer } from "@veyyon/coding-agent/tools/shell/eval-render";
 
 /**
  * Defends the contract that `agent()` calls inside an eval cell surface as a

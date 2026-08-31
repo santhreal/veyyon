@@ -9,7 +9,7 @@
  *
  * That is exactly what had happened, one function away. `./markdown-theme` took `getSymbolTheme` from
  * `./theme` for one field of the markdown theme it builds, and `./theme` was 144 MARGINAL modules on its
- * graph. `tui/code-cell.ts` renders a markdown cell, `tools/read.ts` renders a code cell, and 54 test
+ * graph. `tui/code-cell.ts` renders a markdown cell, `tools/fs/read.ts` renders a code cell, and 54 test
  * files import `read`, so a box-drawing character set dragged the whole presentation layer into every file
  * read. This function needs the binding and a type, nothing else, so it belongs beside the binding.
  *

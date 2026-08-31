@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
-import { recallToolRenderer, reflectToolRenderer, retainToolRenderer } from "@veyyon/coding-agent/tools/memory-render";
+import {
+	recallToolRenderer,
+	reflectToolRenderer,
+	retainToolRenderer,
+} from "@veyyon/coding-agent/tools/agent/memory-render";
 import { sanitizeText } from "@veyyon/utils";
 
 async function theme() {

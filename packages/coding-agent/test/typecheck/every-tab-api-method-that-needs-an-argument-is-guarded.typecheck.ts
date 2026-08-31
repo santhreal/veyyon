@@ -1,5 +1,5 @@
-import type { TAB_REQUIRED_ARGUMENTS } from "@veyyon/coding-agent/tools/browser/tab-api-guard";
-import type { TabApi } from "@veyyon/coding-agent/tools/browser/tab-worker";
+import type { TAB_REQUIRED_ARGUMENTS } from "@veyyon/coding-agent/tools/web/browser/tab-api-guard";
+import type { TabApi } from "@veyyon/coding-agent/tools/web/browser/tab-worker";
 
 // A tab method that cannot be called with no arguments at all must be listed in
 // TAB_REQUIRED_ARGUMENTS, or a caller that omits the argument crashes several
@@ -9,8 +9,8 @@ import type { TabApi } from "@veyyon/coding-agent/tools/browser/tab-worker";
 // method without a row in the table fails `bun check` here, at the declaration,
 // rather than in a session months later.
 //
-// It forces the checker through src/tools/browser/tab-api-guard.ts (the
-// TAB_REQUIRED_ARGUMENTS table) against src/tools/browser/tab-worker.ts (the
+// It forces the checker through src/tools/web/browser/tab-api-guard.ts (the
+// TAB_REQUIRED_ARGUMENTS table) against src/tools/web/browser/tab-worker.ts (the
 // TabApi surface those rows have to cover), so the two stay in step.
 
 /** True when the call cannot be made with no arguments at all. */

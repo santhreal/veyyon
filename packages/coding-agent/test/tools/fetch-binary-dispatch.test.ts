@@ -6,7 +6,7 @@ import * as path from "node:path";
 import type { ImageContent, TextContent } from "@veyyon/ai";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import { zip } from "@veyyon/coding-agent/utils/zip";
 import * as scrapers from "@veyyon/coding-agent/web/scrapers/types";
 import * as scraperUtils from "@veyyon/coding-agent/web/scrapers/utils";

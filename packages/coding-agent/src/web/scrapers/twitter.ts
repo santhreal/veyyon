@@ -1,6 +1,6 @@
 import { errorMessage, isAbortError } from "@veyyon/utils";
 import type { HTMLElement } from "linkedom";
-import { throwIfAborted } from "../../tools/tool-errors";
+import { throwIfAborted } from "../../tools/core/tool-errors";
 import type { RenderResult, SpecialHandler } from "./types";
 import { buildResult, loadPage, tryParseUrl } from "./types";
 

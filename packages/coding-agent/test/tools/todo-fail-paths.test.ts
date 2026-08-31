@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { TodoTool } from "@veyyon/coding-agent/tools/todo";
+import { TodoTool } from "@veyyon/coding-agent/tools/agent/todo";
 import { makeToolSession } from "../helpers/tool-session";
 
 /**

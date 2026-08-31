@@ -6,8 +6,8 @@ import path from "node:path";
 import { isEnoent } from "@veyyon/utils/fs-error";
 import { theme } from "../theme/theme-binding";
 import type { Theme } from "../theme/theme-class";
-import { formatGroupedFiles } from "../tools/grouped-file-output";
-import { formatPathRelativeToCwd, resolveToCwd } from "../tools/path-utils";
+import { formatGroupedFiles } from "../tools/core/grouped-file-output";
+import { formatPathRelativeToCwd, resolveToCwd } from "../tools/core/path-utils";
 import type {
 	CodeAction,
 	Command,

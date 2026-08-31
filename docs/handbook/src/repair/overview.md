@@ -16,7 +16,7 @@ Repair runs in the agent loop **before** argument validation. Clear malformation
 | Size bound | Inputs over 1 MiB are not repaired |
 | Disable | `VEYYON_REPAIR_DISABLE=1`, or per-model `harness.profiles` with `repair: false` |
 
-Implementation: `packages/coding-agent/src/tools/repair/schema-repair.ts`  
+Implementation: `packages/coding-agent/src/tools/core/repair/schema-repair.ts`  
 Tests: `packages/coding-agent/test/repair/schema-repair.test.ts`
 
 ## Related

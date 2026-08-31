@@ -1,8 +1,6 @@
 import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
-import type { CommitAgentState } from "../../../commit/agentic/state";
-import type { NumstatEntry } from "../../../commit/types";
 import type { ModelRegistry } from "../../../config/model-registry";
 import type { Settings } from "../../../config/settings";
 import type { CustomTool, CustomToolContext } from "../../../extensibility/custom-tools/types";
@@ -10,6 +8,8 @@ import { commitAgenticPrompts } from "../../../prompts/commit-agentic/rows";
 import { TaskTool } from "../../../task";
 import type { TaskParams } from "../../../task/types";
 import type { ToolSession } from "../../../tools";
+import type { NumstatEntry } from "../../types";
+import type { CommitAgentState } from "../state";
 import { getFilePriority } from "./git-file-diff";
 
 const analyzeFileSchema = type({

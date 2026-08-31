@@ -1,4 +1,4 @@
-import * as imageGen from "../tools/image-gen";
+import * as imageGen from "../tools/web/image-gen";
 // The LEAVES that own these, not the `../web/search` barrel. The barrel is the
 // search tool: it reaches 426 modules, including the theme engine, and this file
 // applies three settings. `./provider` and `./types` reach four between them.

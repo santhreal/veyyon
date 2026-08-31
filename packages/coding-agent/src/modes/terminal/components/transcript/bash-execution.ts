@@ -5,7 +5,7 @@
 import { Container, ImageProtocol, type Loader, TERMINAL, Text, type TUI } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
 import { theme } from "../../../../theme/theme";
-import type { TruncationMeta } from "../../../../tools/output-meta";
+import type { TruncationMeta } from "../../../../tools/core/output-meta";
 import {
 	getSixelLineMask,
 	isSixelPassthroughEnabled,

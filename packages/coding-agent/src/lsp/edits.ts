@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { formatPathRelativeToCwd } from "../tools/path-utils";
-import { ToolError } from "../tools/tool-errors";
+import { formatPathRelativeToCwd } from "../tools/core/path-utils";
+import { ToolError } from "../tools/core/tool-errors";
 import type { CreateFile, DeleteFile, Range, RenameFile, TextDocumentEdit, TextEdit, WorkspaceEdit } from "./types";
 import { comparePosition, positionsEqual, rangesEqual, uriToFile } from "./utils";
 

@@ -41,8 +41,8 @@ import {
 import { type AgentDefinition, type AgentProgress, oneLineLabel, type SingleResult } from "../task/types";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import type { ToolSession } from "../tools";
-import { formatDuration } from "../tools/render-utils";
-import { ToolError } from "../tools/tool-errors";
+import { formatDuration } from "../tools/core/render-utils";
+import { ToolError } from "../tools/core/tool-errors";
 
 /**
  * Vibe mode session-level state. A single flag rather than a discriminated union

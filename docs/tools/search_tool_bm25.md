@@ -3,7 +3,7 @@
 > Search the hidden tool-discovery index and activate the top matches for the current session.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/search-tool-bm25.ts`
+- Entry: `packages/coding-agent/src/tools/search/search-tool-bm25.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/search-tool-bm25.md`
 - Key collaborators:
   - `packages/coding-agent/src/discovery/tool-index.ts`: discoverable-tool metadata and BM25 index/search.
@@ -42,7 +42,7 @@
 - The renderer shows a status line plus up to 5 collapsed tree items by default (`COLLAPSED_MATCH_LIMIT`), each with label, optional server name, score to 3 decimals, and truncated description. The ranked match list is not serialized into `content`.
 
 ## Flow
-1. `SearchToolBm25Tool.createIf()` in `packages/coding-agent/src/tools/search-tool-bm25.ts` exposes the tool for explicit discovery modes (`"mcp-only"` / `"all"`) or legacy `mcp.discoveryMode === true`. The default `"auto"` mode is resolved later by `createAgentSession()` after MCP/extension tools are registered, which also injects the tool for local discovery.
+1. `SearchToolBm25Tool.createIf()` in `packages/coding-agent/src/tools/search/search-tool-bm25.ts` exposes the tool for explicit discovery modes (`"mcp-only"` / `"all"`) or legacy `mcp.discoveryMode === true`. The default `"auto"` mode is resolved later by `createAgentSession()` after MCP/extension tools are registered, which also injects the tool for local discovery.
 2. `description` is rendered from `packages/coding-agent/src/prompts/tools/search-tool-bm25.md` via `renderSearchToolBm25Description()`, using the current discoverable-tool list plus per-server summary/count.
 3. `execute()` re-checks capability and settings:
    - missing discovery hooks -> `ToolError("Tool discovery is unavailable in this session.")`
@@ -82,7 +82,7 @@
   - The TUI renderer shows ranked matches, but the model-visible text summary does not.
 
 ## Limits & Caps
-- Default result cap: `8` (`DEFAULT_LIMIT` in `packages/coding-agent/src/tools/search-tool-bm25.ts`).
+- Default result cap: `8` (`DEFAULT_LIMIT` in `packages/coding-agent/src/tools/search/search-tool-bm25.ts`).
 - `limit` must be a positive integer; no tool-level upper bound beyond corpus size.
 - Renderer collapsed list cap: `5` (`COLLAPSED_MATCH_LIMIT`).
 - Renderer truncation widths:

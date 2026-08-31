@@ -3,7 +3,7 @@
 > Send and receive messages between agents over a process-global mailbox bus.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/irc.ts`
+- Entry: `packages/coding-agent/src/tools/agent/irc.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/irc.md`
 - Key collaborators:
   - `packages/coding-agent/src/task/irc-bus.ts`: process-global `IrcBus`: per-agent mailboxes, delivery, waiter matching.

@@ -27,7 +27,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveReadPath, resolveToCwd } from "@veyyon/coding-agent/tools/path-utils";
+import { resolveReadPath, resolveToCwd } from "@veyyon/coding-agent/tools/core/path-utils";
 
 /** `é` composed: one code point, two UTF-8 bytes. */
 const NFC_NAME = "caf\u00E9.txt";

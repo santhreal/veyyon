@@ -4,8 +4,8 @@ This document explains how preview/apply workflows are modeled in coding-agent a
 
 ## Scope and key files
 
-- [`src/tools/resolve.ts`](../../packages/coding-agent/src/tools/resolve.ts)
-- [`src/tools/ast-edit.ts`](../../packages/coding-agent/src/tools/ast-edit.ts)
+- [`src/tools/agent/resolve.ts`](../../packages/coding-agent/src/tools/agent/resolve.ts)
+- [`src/tools/search/ast-edit.ts`](../../packages/coding-agent/src/tools/search/ast-edit.ts)
 - [`src/extensibility/custom-tools/types.ts`](../../packages/coding-agent/src/extensibility/custom-tools/types.ts)
 - [`src/extensibility/custom-tools/loader.ts`](../../packages/coding-agent/src/extensibility/custom-tools/loader.ts)
 - [`src/sdk.ts`](../../packages/coding-agent/src/sdk.ts)

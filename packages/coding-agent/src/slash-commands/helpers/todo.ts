@@ -1,6 +1,6 @@
 import { titleCaseSentence, titleCaseWords } from "@veyyon/utils";
 import { tokenizeQuotedArgs } from "@veyyon/utils/cli";
-import type { TodoPhase } from "../../tools/todo";
+import type { TodoPhase } from "../../tools/agent/todo";
 import {
 	applyOpsToPhases,
 	getLatestTodoPhasesFromEntries,
@@ -8,7 +8,7 @@ import {
 	phasesToMarkdown,
 	resolveTodoMarkdownPath,
 	USER_TODO_EDIT_CUSTOM_TYPE,
-} from "../../tools/todo";
+} from "../../tools/agent/todo";
 import type { ParsedSlashCommand, SlashCommandResult, SlashCommandRuntime } from "../types";
 import { commandConsumed, errorMessage, parseSubcommand, usage } from "./parse";
 

@@ -13,7 +13,11 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { classifyLine, foldToolOutputBookkeeping, MIN_FOLDABLE_LINES } from "@veyyon/coding-agent/tools/output-fold";
+import {
+	classifyLine,
+	foldToolOutputBookkeeping,
+	MIN_FOLDABLE_LINES,
+} from "@veyyon/coding-agent/tools/core/output-fold";
 
 /** Build a run of `n` distinct `=== RUN` lines, enough to clear the threshold. */
 function runLines(n: number): string[] {

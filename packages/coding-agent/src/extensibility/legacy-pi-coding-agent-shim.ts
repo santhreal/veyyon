@@ -46,11 +46,11 @@ import {
 	truncateTail,
 } from "../session/streaming-output";
 import type { Tool, ToolSession } from "../tools";
-import { BashTool } from "../tools/bash";
-import { ReadTool } from "../tools/read";
-import { formatBytes } from "../tools/render-utils";
-import { SearchTool } from "../tools/search";
-import { WriteTool } from "../tools/write";
+import { formatBytes } from "../tools/core/render-utils";
+import { ReadTool } from "../tools/fs/read";
+import { WriteTool } from "../tools/fs/write";
+import { SearchTool } from "../tools/search/search";
+import { BashTool } from "../tools/shell/bash";
 import { EventBus } from "../utils/event-bus";
 import { loadExtensionFromFactory, loadExtensions } from "./extensions";
 import { ExtensionRuntime } from "./extensions/loader";
@@ -1213,4 +1213,4 @@ export async function createAgentSession(
 
 export { Type } from "@veyyon/kernel/registry/typebox";
 export * from "../index";
-export { formatBytes as formatSize } from "../tools/render-utils";
+export { formatBytes as formatSize } from "../tools/core/render-utils";

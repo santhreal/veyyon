@@ -18,7 +18,7 @@
 import { describe, expect, it } from "bun:test";
 import type { SyntheticToolResultDetails } from "@veyyon/agent-core";
 import * as AIError from "@veyyon/ai/error";
-import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
+import { TOOL } from "@veyyon/coding-agent/tools/core/builtin-names";
 import { createSimulation, type ScriptedTurn, simTool } from "./harness";
 import { describeViolations, turnViolations } from "./invariants";
 

@@ -8,7 +8,7 @@ import { GrepArgsSchema, ReadArgsSchema, ShellArgsSchema } from "@veyyon/catalog
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { CursorExecHandlers } from "@veyyon/coding-agent/cursor";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { SearchTool } from "@veyyon/coding-agent/tools/search";
+import { SearchTool } from "@veyyon/coding-agent/tools/search/search";
 import { isRecord, removeWithRetries } from "@veyyon/utils";
 import { type } from "arktype";
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { canUseInteractiveBashPty } from "@veyyon/coding-agent/tools/bash-pty-selection";
+import { canUseInteractiveBashPty } from "@veyyon/coding-agent/tools/shell/bash-pty-selection";
 
 const originalPlatform = process.platform;
 const originalNoPty = Bun.env.VEYYON_NO_PTY;

@@ -56,7 +56,7 @@ function makeLspSession(cwd: string): ToolSession {
 	return makeToolSession({ cwd });
 }
 
-import { clampTimeout } from "@veyyon/coding-agent/tools/tool-timeouts";
+import { clampTimeout } from "@veyyon/coding-agent/tools/core/tool-timeouts";
 import * as piUtils from "@veyyon/utils";
 import { sanitizeText, TempDir } from "@veyyon/utils";
 import type { Subprocess } from "bun";

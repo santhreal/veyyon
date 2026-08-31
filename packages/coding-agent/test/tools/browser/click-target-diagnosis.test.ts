@@ -20,7 +20,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { describeMissingClickTarget } from "../../../src/tools/browser/tab-worker";
+import { describeMissingClickTarget } from "../../../src/tools/web/browser/tab-worker";
 
 describe("nothing matched the selector", () => {
 	/** No matches at all is a different message from matches that could not be used. */

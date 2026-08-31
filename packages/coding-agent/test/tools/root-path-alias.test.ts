@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
-import { resolveToCwd } from "@veyyon/coding-agent/tools/path-utils";
+import { resolveToCwd } from "@veyyon/coding-agent/tools/core/path-utils";
 import { ToolChoiceQueue } from "@veyyon/kernel/session/tool-choice-queue";
 import { removeWithRetries } from "@veyyon/utils";
 

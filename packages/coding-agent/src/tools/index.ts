@@ -15,7 +15,6 @@ import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import type { ToolChoiceQueue } from "@veyyon/kernel/session/tool-choice-queue";
 import { logger } from "@veyyon/utils";
 import type { HostNotifier } from "@veyyon/utils/host-notification";
-import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot/constants";
 import type { ArgotSession } from "argot/session";
 import type { AsyncJobManager } from "../async/job-manager";
 import type { ModelRegistry } from "../config/model-registry";
@@ -43,11 +42,10 @@ import { canSpawnAtDepth } from "../task/types";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import type { EventBus } from "../utils/event-bus";
 import type { WorkspaceTree } from "../workspace-tree";
-import { type BuiltinToolName, type HiddenToolName, normalizeToolNames, TOOL } from "./builtin-names";
-import type { CheckpointState, CompletedRewindState } from "./checkpoint";
-import type { ConflictHistory } from "./conflict-detect";
-import { resolveEvalBackends } from "./eval-backends";
-import { isIrcEnabled } from "./irc-enabled";
+import { isIrcEnabled } from "./agent/irc-enabled";
+import { agentHiddenTools, agentTools } from "./agent/manifest";
+import type { TodoPhase } from "./agent/todo";
+import { type BuiltinToolName, type HiddenToolName, normalizeToolNames, TOOL } from "./core/builtin-names";
 import {
 	augmentRequestedToolNames,
 	type BuiltinToolPermissionInputs,
@@ -57,25 +55,31 @@ import {
 	resolveEvalToolAvailability,
 	selectBaseToolNames,
 	withYieldToolAppended,
-} from "./loading";
-import { wrapToolWithMetaNotice } from "./output-meta";
-import { RerootDetector, wrapToolWithRerootHint } from "./reroot-hint";
-import type { TodoPhase } from "./todo";
+} from "./core/loading";
+import { wrapToolWithMetaNotice } from "./core/output-meta";
+import type { CheckpointState, CompletedRewindState } from "./fs/checkpoint";
+import type { ConflictHistory } from "./fs/conflict-detect";
+import { fsTools } from "./fs/manifest";
+import { RerootDetector, wrapToolWithRerootHint } from "./fs/reroot-hint";
+import { searchTools } from "./search/manifest";
+import { resolveEvalBackends } from "./shell/eval-backends";
+import { shellTools } from "./shell/manifest";
+import { webTools } from "./web/manifest";
 
 // Builtin implementation modules remain lazy so the CLI boot path does not
 // parse tools this session never activates.
 export type { LspStartupServerInfo } from "../lsp";
-export type { BashToolDetails, BashToolInput } from "./bash";
 // Tool-loading rules now live in `./loading`. Re-exported here because `@veyyon/coding-agent/tools`
 // is the documented import path for them and the SDK plus several suites use it.
 export {
 	type BuiltinToolLoadMode,
 	DEFAULT_ESSENTIAL_TOOL_NAMES,
 	filterInitialToolsForDiscoveryAll,
-} from "./loading";
-export type { ReadToolDetails, ReadToolInput } from "./read";
-export type { SearchToolDetails, SearchToolInput } from "./search";
-export type { WriteToolInput } from "./write";
+} from "./core/loading";
+export type { ReadToolDetails, ReadToolInput } from "./fs/read";
+export type { WriteToolInput } from "./fs/write";
+export type { SearchToolDetails, SearchToolInput } from "./search/search";
+export type { BashToolDetails, BashToolInput } from "./shell/bash";
 
 /** Tool type (AgentTool from pi-ai) */
 export type Tool = AgentTool<any, any, any>;
@@ -483,49 +487,32 @@ export function computeEssentialBuiltinNames(settings: Settings): string[] {
 /**
  * Public callable factory map. External callers may invoke `BUILTIN_TOOLS.read(session)` or
  * `BUILTIN_TOOLS[name](session)` to construct a tool directly.
+ *
+ * The rows come from the domain manifests rather than being listed here. This map WAS the list, and
+ * it was the one place a tool's own directory could not answer for itself: `tools/fs` could be read
+ * end to end without learning that it contributes `read`, and a host that wanted the filesystem
+ * tools and nothing else had to import a table naming all thirty-three. Each domain now declares its
+ * own rows next to the tools they construct, and this map is their union plus the four whose
+ * implementation lives outside `tools/`.
+ *
+ * Still annotated `Record<BuiltinToolName, ToolFactory>`, and each manifest table still satisfies
+ * `Partial<Record<BuiltinToolName, ToolFactory>>`, so the union of the spreads is checked for
+ * completeness exactly as the hand-written literal was: a name added to `BuiltinToolName` with no
+ * domain claiming it fails here, and a domain claiming a name that is not one fails there.
  */
 export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
-	read: async s => new (await import("./read")).ReadTool(s),
-	bash: async s => new (await import("./bash")).BashTool(s),
-	launch: async s => new (await import("./launch")).LaunchTool(s),
+	...fsTools,
+	...searchTools,
+	...shellTools,
+	...webTools,
+	...agentTools,
+	// The four whose implementation is not a tool directory: the edit tool is the hashline
+	// executor, `lsp` and `task` are subsystems of their own, and `web_search` is the provider
+	// search client under `../web`.
 	edit: async s => new (await import("../edit")).EditTool(s),
-	search: async s => new (await import("./search")).SearchTool(s),
-	ast_edit: async s => new (await import("./ast-edit")).AstEditTool(s),
-	ask: async s => (await import("./ask")).AskTool.createIf(s),
-	debug: async s => (await import("./debug")).DebugTool.createIf(s),
-	eval: async s => (await import("./eval")).EvalTool.create(s),
-	ssh: async s => (await import("./ssh")).loadSshTool(s),
-	github: async s => (await import("./gh")).GithubTool.createIf(s),
 	lsp: async s => (await import("../lsp")).LspTool.createIf(s),
-	inspect_image: async s => new (await import("./inspect-image")).InspectImageTool(s),
-	browser: async s => new (await import("./browser")).BrowserTool(s),
-	checkpoint: async s => (await import("./checkpoint")).CheckpointTool.createIf(s),
-	rewind: async s => (await import("./checkpoint")).RewindTool.createIf(s),
 	task: async s => (await import("../task")).TaskTool.create(s),
-	job: async s => new (await import("./job")).JobTool(s),
-	irc: async s => (await import("./irc")).IrcTool.createIf(s),
-	todo: async s => new (await import("./todo")).TodoTool(s),
 	web_search: async s => new (await import("../web/search")).WebSearchTool(s),
-	search_tool_bm25: async s => (await import("./search-tool-bm25")).SearchToolBm25Tool.createIf(s),
-	set_cwd: async s => new (await import("./set-cwd")).SetCwdTool(s),
-	write: async s => new (await import("./write")).WriteTool(s),
-	memory_edit: async s => (await import("./memory-edit")).MemoryEditTool.createIf(s),
-	retain: async s => (await import("./memory-retain")).MemoryRetainTool.createIf(s),
-	recall: async s => (await import("./memory-recall")).MemoryRecallTool.createIf(s),
-	reflect: async s => (await import("./memory-reflect")).MemoryReflectTool.createIf(s),
-	learn: async s => (await import("./learn")).LearnTool.createIf(s),
-	manage_skill: async s => (await import("./manage-skill")).ManageSkillTool.createIf(s),
-	// The two Argot folder tools exist only when the session holds a codec; with
-	// the feature off, or for a subagent under `argot.subagents: off`, there is no
-	// session to load into, so the factory returns null and the tool is absent.
-	[ARGOT_LOAD_TOOL]: async s =>
-		s.settings.get("argot.enabled") && s.getArgotSession?.() !== undefined
-			? new (await import("./argot")).ArgotLoadTool(s)
-			: null,
-	[ARGOT_UNLOAD_TOOL]: async s =>
-		s.settings.get("argot.enabled") && s.getArgotSession?.() !== undefined
-			? new (await import("./argot")).ArgotUnloadTool(s)
-			: null,
 };
 
 // Keyed by `HiddenToolName` rather than `string` for the same reason `BUILTIN_TOOLS` is keyed by
@@ -533,10 +520,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 // a rename against. Typed as `string` it accepted any key, and a hidden tool renamed in one place
 // stayed registered under the old name with nothing to say so.
 export const HIDDEN_TOOLS: Record<HiddenToolName, ToolFactory> = {
-	yield: async s => new (await import("./yield")).YieldTool(s),
-	report_finding: async () => (await import("./review")).reportFindingTool,
-	report_tool_issue: async s => (await import("./report-tool-issue")).createReportToolIssueTool(s),
-	resolve: async s => new (await import("./resolve")).ResolveTool(s),
+	...agentHiddenTools,
 	goal: async s => new (await import("../goals/goal-tool")).GoalTool(s),
 };
 
@@ -708,7 +692,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 
 	// Auto-inject report_tool_issue when autoqa is enabled (env or setting).
 	// Injected unconditionally into every agent, regardless of requested tool list.
-	const { createReportToolIssueTool, isAutoQaEnabled } = await import("./report-tool-issue");
+	const { createReportToolIssueTool, isAutoQaEnabled } = await import("./agent/report-tool-issue");
 	const autoQA = isAutoQaEnabled(session.settings);
 	if (autoQA && !tools.some(t => t.name === TOOL.report_tool_issue)) {
 		// Build the enum from tools we just constructed via BUILTIN_TOOLS / HIDDEN_TOOLS.

@@ -34,14 +34,14 @@
 
 import { describe, expect, it } from "bun:test";
 
-import { resolveApproval } from "../src/tools/approval";
-import { bashApprovalDecision } from "../src/tools/bash";
+import { resolveApproval } from "../src/tools/core/approval";
+import { bashApprovalDecision } from "../src/tools/shell/bash";
 import {
 	CONTAINER_BOOLEAN_LETTERS,
 	CONTAINER_RUN_FLAGS,
 	CONTAINER_RUNTIMES,
 	CONTAINER_VALUE_LETTERS,
-} from "../src/tools/bash-guard";
+} from "../src/tools/shell/bash-guard";
 
 /** A stable home directory, so the rule is stated independently of the machine. */
 const HOME = "/home/agent";

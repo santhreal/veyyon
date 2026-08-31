@@ -25,7 +25,7 @@ import { describe, expect, it } from "bun:test";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import * as path from "node:path";
 import { existingOnly, readIfPresent } from "./check-doc-links";
-import { typeScriptMembers } from "./workspace-layout.ts";
+import { typeScriptMembers } from "./workspace-layout";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
 /**

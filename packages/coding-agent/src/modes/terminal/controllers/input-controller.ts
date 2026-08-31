@@ -22,8 +22,8 @@ import { isTinyTitleLocalModelKey } from "../../../tiny/models";
 import { isLowSignalTitleInput } from "../../../tiny/text";
 import { tinyTitleClient } from "../../../tiny/title-client";
 import type { TinyTitleProgressEvent } from "../../../tiny/title-protocol";
-import { requestManualBackground } from "../../../tools/bash-foreground-registry";
-import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
+import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/core/render-utils";
+import { requestManualBackground } from "../../../tools/shell/bash-foreground-registry";
 import {
 	copyToClipboard,
 	readImageFromClipboard,

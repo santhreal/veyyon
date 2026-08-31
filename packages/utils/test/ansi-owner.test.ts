@@ -3,7 +3,7 @@
  *
  * Why this suite exists: five byte strings were declared sixteen times across `@veyyon/tui` and
  * `@veyyon/coding-agent` under eleven names. `\x1b[0m` was `SEGMENT_RESET` in `tui.ts` and `deccara.ts`,
- * `RESET` in `tools/terminal-output.ts` and `modes/terminal/components/chrome/sun.ts`, and `RESERVED_IMAGE_ROW` in
+ * `RESET` in `tools/shell/terminal-output.ts` and `modes/terminal/components/chrome/sun.ts`, and `RESERVED_IMAGE_ROW` in
  * `components/image.ts`. `\x1b[39m` was `FG_RESET` three times and `ANSI_FG_RESET` once. `\x1b\\` was `ST`,
  * `OSC_TERMINATOR_ST` and `SIXEL_END_SEQUENCE`. `\x1b]` was `OSC` and `OSC_INTRODUCER`. `\x1b` was `ESC`
  * twice.
@@ -248,7 +248,7 @@ describe("primitive ownership", () => {
 		[path.join(CODING_AGENT_SRC, "modes/keywords/gradient-highlight.ts"), "SGR_FG_RESET"],
 		[path.join(CODING_AGENT_SRC, "modes/terminal/components/chrome/segment-track.ts"), "SGR_FG_RESET"],
 		[path.join(CODING_AGENT_SRC, "theme/shimmer.ts"), "SGR_FG_RESET"],
-		[path.join(CODING_AGENT_SRC, "tools/terminal-output.ts"), "SGR_RESET"],
+		[path.join(CODING_AGENT_SRC, "tools/shell/terminal-output.ts"), "SGR_RESET"],
 		[path.join(CODING_AGENT_SRC, "modes/terminal/components/chrome/sun.ts"), "SGR_RESET"],
 		[path.join(CODING_AGENT_SRC, "utils/sixel.ts"), "ST"],
 		[path.join(CODING_AGENT_SRC, "utils/enhanced-paste.ts"), "ST"],
@@ -363,7 +363,7 @@ describe("primitive ownership", () => {
  * The SGR PATTERN, which is the same disease one level up: a grammar rather than a byte string.
  *
  * `\x1b\[[0-9;:]*m` was written out four times under four names, in `utils.ts`, `tui.ts`,
- * `components/markdown.ts` and `coding-agent/src/tools/terminal-output.ts`. Three were
+ * `components/markdown.ts` and `coding-agent/src/tools/shell/terminal-output.ts`. Three were
  * byte-identical and differed only in flags; the fourth had already drifted to `[0-9;]` with no
  * colon, so a truecolor SGR written with colon subparameters did not match it at all and the
  * row it was re-rendering lost its colour. That is the copies-drift failure stated as a fact

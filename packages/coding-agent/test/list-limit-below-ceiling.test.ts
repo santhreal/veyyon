@@ -2,7 +2,7 @@
  * When length < limit, limitReached unset and meta empty for limit alone.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("applyListLimit below ceiling", () => {
 	for (const n of [1, 2, 5]) {

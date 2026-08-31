@@ -6,7 +6,10 @@ import {
 	type DiscoverableToolSearchIndex,
 } from "@veyyon/coding-agent/discovery/tool-index";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { renderSearchToolBm25Description, SearchToolBm25Tool } from "@veyyon/coding-agent/tools/search-tool-bm25";
+import {
+	renderSearchToolBm25Description,
+	SearchToolBm25Tool,
+} from "@veyyon/coding-agent/tools/search/search-tool-bm25";
 
 type DiscoveryToolSession = ToolSession & {
 	isMCPDiscoveryEnabled: () => boolean;

@@ -8,7 +8,7 @@ import {
 	normalizeLocalScheme,
 	parseSearchPath,
 	selectorLineRanges,
-} from "@veyyon/coding-agent/tools/path-utils";
+} from "@veyyon/coding-agent/tools/core/path-utils";
 
 /**
  * A cluster of pure path/glob/URL helpers in path-utils.ts had no direct test even though

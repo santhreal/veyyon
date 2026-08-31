@@ -17,7 +17,7 @@
 
 import { describe, expect, it } from "bun:test";
 
-import { requiresApproval, resolveApproval } from "../src/tools/approval";
+import { requiresApproval, resolveApproval } from "../src/tools/core/approval";
 
 /** A tool whose every call is ordinary. */
 const ordinary = { name: "bash", approval: "exec" as const };
@@ -185,7 +185,7 @@ describe("the bash tool's own decisions", () => {
 	 * `BashTool.approval`.
 	 */
 	it("marks a home-directory delete critical", async () => {
-		const { bashApprovalDecision } = await import("../src/tools/bash");
+		const { bashApprovalDecision } = await import("../src/tools/shell/bash");
 		const tool = { name: "bash", approval: bashApprovalDecision };
 
 		const resolved = resolveApproval(tool, { command: "rm -rf ~/" }, "yolo", {});
@@ -196,7 +196,7 @@ describe("the bash tool's own decisions", () => {
 
 	/** And leaves ordinary work alone in the same mode. */
 	it("leaves an ordinary command allowed in yolo", async () => {
-		const { bashApprovalDecision } = await import("../src/tools/bash");
+		const { bashApprovalDecision } = await import("../src/tools/shell/bash");
 		const tool = { name: "bash", approval: bashApprovalDecision };
 
 		expect(resolveApproval(tool, { command: "rm -rf node_modules" }, "yolo", {}).policy).toBe("allow");
@@ -211,7 +211,7 @@ describe("the bash tool's own decisions", () => {
 	 * `bashApprovalDecision(args, paths)` would pass with the setting unread.
 	 */
 	it("reads tools.protectedPaths off the session", async () => {
-		const { BashTool } = await import("../src/tools/bash");
+		const { BashTool } = await import("../src/tools/shell/bash");
 		const { makeToolSession } = await import("./helpers/tool-session");
 		const session = makeToolSession({
 			settings: { get: (path: string) => (path === "tools.protectedPaths" ? ["/mnt/photos"] : undefined) },
@@ -226,7 +226,7 @@ describe("the bash tool's own decisions", () => {
 
 	/** With no such setting the same command is ordinary work. */
 	it("leaves the same command alone when nothing is configured", async () => {
-		const { BashTool } = await import("../src/tools/bash");
+		const { BashTool } = await import("../src/tools/shell/bash");
 		const { makeToolSession } = await import("./helpers/tool-session");
 		const bash = new BashTool(makeToolSession());
 
@@ -238,7 +238,7 @@ describe("the bash tool's own decisions", () => {
 	 * the property that makes an unreadable or empty configuration harmless.
 	 */
 	it("still refuses the home directory with no setting at all", async () => {
-		const { BashTool } = await import("../src/tools/bash");
+		const { BashTool } = await import("../src/tools/shell/bash");
 		const { makeToolSession } = await import("./helpers/tool-session");
 		const bash = new BashTool(makeToolSession());
 

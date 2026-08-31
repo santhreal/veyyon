@@ -21,7 +21,7 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { buildSystemPrompt, type SystemPromptToolMetadata } from "@veyyon/coding-agent/system-prompt";
-import { SET_CWD_TOOL_NAME } from "@veyyon/coding-agent/tools/reroot-hint";
+import { SET_CWD_TOOL_NAME } from "@veyyon/coding-agent/tools/fs/reroot-hint";
 import { useTempHome } from "./helpers/temp-home";
 import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 

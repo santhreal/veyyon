@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { DEFAULT_MAX_BYTES } from "@veyyon/coding-agent/session/streaming-output";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { BashTool } from "@veyyon/coding-agent/tools/bash";
+import { BashTool } from "@veyyon/coding-agent/tools/shell/bash";
 import { useIsolatedGlobalSettings } from "./helpers/isolated-global-settings";
 import { makeToolSession } from "./helpers/tool-session";
 import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";

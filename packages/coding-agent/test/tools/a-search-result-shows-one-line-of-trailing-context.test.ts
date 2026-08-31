@@ -8,7 +8,7 @@ import {
 	invalidateSettingDefsCache,
 } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { SearchTool } from "@veyyon/coding-agent/tools/search";
+import { SearchTool } from "@veyyon/coding-agent/tools/search/search";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
 

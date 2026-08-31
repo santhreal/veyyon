@@ -27,7 +27,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 function getTextOutput(result: { content: Array<{ type: string; text?: string }> }): string {

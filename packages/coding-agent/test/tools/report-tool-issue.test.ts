@@ -5,7 +5,7 @@ import {
 	__resetAutoQaFlushStateForTests,
 	flushGrievances,
 	isAutoQaEnabled,
-} from "@veyyon/coding-agent/tools/report-tool-issue";
+} from "@veyyon/coding-agent/tools/agent/report-tool-issue";
 import * as piUtils from "@veyyon/utils";
 import { mockFetch } from "../helpers/fetch-mock";
 

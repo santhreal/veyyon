@@ -32,7 +32,7 @@ import { isBlobRef, isTextBlobRef } from "@veyyon/kernel/session/blob-store";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { isRecord } from "@veyyon/utils/type-guards";
 import { formatExitCodeNotice } from "../exec/exit-notice";
-import { ToolAbortError } from "../tools/tool-errors";
+import { ToolAbortError } from "../tools/core/tool-errors";
 import { imageDisplayStateForCall, imageVisibilityNotice, isImageVisibilityNotice } from "./image-visibility";
 
 export {
@@ -46,7 +46,7 @@ export {
 // The notice text, not the tool layer that builds it: `../tools/output-meta` reaches 177 modules
 // because it owns the builder, the tool wrapper and the spill configuration, and appending a notice to
 // a message needs none of them. `../tools/output-notice` owns the wording and the metadata shape.
-import { formatOutputNotice, type OutputMeta } from "../tools/output-notice";
+import { formatOutputNotice, type OutputMeta } from "../tools/core/output-notice";
 
 export const SKILL_PROMPT_MESSAGE_TYPE = "skill-prompt";
 export const LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE = "lsp-late-diagnostic";

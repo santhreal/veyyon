@@ -2,8 +2,8 @@
  * resolveApproval tier × mode matrix with exact policy outcomes.
  */
 import { describe, expect, it } from "bun:test";
-import { type ApprovalMode, resolveApproval } from "../src/tools/approval";
-import { APPROVAL_MODE_VALUES } from "../src/tools/approval-modes";
+import { type ApprovalMode, resolveApproval } from "../src/tools/core/approval";
+import { APPROVAL_MODE_VALUES } from "../src/tools/core/approval-modes";
 
 const tiers = ["read", "write", "exec"] as const;
 const modes: readonly ApprovalMode[] = APPROVAL_MODE_VALUES;

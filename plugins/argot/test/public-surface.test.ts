@@ -14,8 +14,8 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import type { Vocabulary } from "../src/index.js";
-import * as argot from "../src/index.js";
+import type { Vocabulary } from "../src";
+import * as argot from "../src";
 
 /** An empty runtime Vocabulary, built entirely from barrel exports. */
 function emptyVocab(): Vocabulary {
@@ -208,7 +208,7 @@ import type {
 	ResolvedProjectVocab,
 	ResolveProjectOptions,
 	ResolveProjectVocabOptions,
-} from "../src/index.js";
+} from "../src";
 
 // A value typed as each imported type export, referenced so the imports are
 // "used" and tsc must resolve every one of them.

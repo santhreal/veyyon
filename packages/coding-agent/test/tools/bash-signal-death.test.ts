@@ -25,7 +25,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { BashTool } from "@veyyon/coding-agent/tools/bash";
+import { BashTool } from "@veyyon/coding-agent/tools/shell/bash";
 import { removeWithRetries, SIGNAL_EXIT_BASE, signalName, signalNumber } from "@veyyon/utils";
 import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
 import { makeToolSession } from "../helpers/tool-session";

@@ -1,4 +1,4 @@
-import { ToolError } from "../tools/tool-errors";
+import { ToolError } from "../tools/core/tool-errors";
 
 /** Shape forwarded from the plan-mode resolve handler to InteractiveMode's
  *  approval popup. Populated by the standing handler that the resolve tool

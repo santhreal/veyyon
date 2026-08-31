@@ -2,8 +2,6 @@ import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
-import type { SearchResponse } from "../../../web/search/types";
-import { SearchProviderError } from "../../../web/search/types";
 import {
 	PARALLEL_BETA_HEADER,
 	PARALLEL_SEARCH_URL,
@@ -12,6 +10,8 @@ import {
 	parseParallelErrorResponse,
 	parseParallelSearchPayload,
 } from "../../parallel";
+import type { SearchResponse } from "../types";
+import { SearchProviderError } from "../types";
 import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";

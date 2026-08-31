@@ -30,11 +30,11 @@ import {
 	MnemopiSessionState,
 	setMnemopiSessionState,
 } from "@veyyon/coding-agent/memory/mnemopi/state";
+import { MemoryEditTool } from "@veyyon/coding-agent/tools/agent/memory-edit";
+import { MemoryRecallTool } from "@veyyon/coding-agent/tools/agent/memory-recall";
+import { MemoryReflectTool } from "@veyyon/coding-agent/tools/agent/memory-reflect";
+import { MemoryRetainTool } from "@veyyon/coding-agent/tools/agent/memory-retain";
 import type { ToolSession } from "@veyyon/coding-agent/tools/index";
-import { MemoryEditTool } from "@veyyon/coding-agent/tools/memory-edit";
-import { MemoryRecallTool } from "@veyyon/coding-agent/tools/memory-recall";
-import { MemoryReflectTool } from "@veyyon/coding-agent/tools/memory-reflect";
-import { MemoryRetainTool } from "@veyyon/coding-agent/tools/memory-retain";
 import { resetMemoryForTests } from "@veyyon/mnemopi";
 import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";

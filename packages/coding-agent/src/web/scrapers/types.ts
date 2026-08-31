@@ -8,7 +8,7 @@ import { clamp } from "@veyyon/utils/math";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type TurndownService from "turndown";
 import type { AgentStorage } from "../../session/agent-storage";
-import { ToolAbortError, throwIfAborted } from "../../tools/tool-errors";
+import { ToolAbortError, throwIfAborted } from "../../tools/core/tool-errors";
 import { isTimeoutError, scopedTimeoutSignal } from "../../utils/fetch-timeout";
 import type * as turndownModule from "../../utils/turndown";
 import { CHROME_WINDOWS_USER_AGENT } from "../search/providers/browser-fingerprint-constants";

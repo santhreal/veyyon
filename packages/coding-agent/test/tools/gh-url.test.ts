@@ -9,9 +9,9 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { invalidateGithubCacheForBashCommand } from "@veyyon/coding-agent/tools/gh-cache-invalidation";
-import { parseIssueUrl, parsePrUrl } from "@veyyon/coding-agent/tools/gh-url";
-import { getCached, putCached, resetForTests } from "@veyyon/coding-agent/tools/github-cache";
+import { invalidateGithubCacheForBashCommand } from "@veyyon/coding-agent/tools/core/gh-cache-invalidation";
+import { parseIssueUrl, parsePrUrl } from "@veyyon/coding-agent/tools/web/gh-url";
+import { getCached, putCached, resetForTests } from "@veyyon/coding-agent/tools/web/github-cache";
 import { removeWithRetries } from "@veyyon/utils";
 
 describe("parseIssueUrl / parsePrUrl (F5)", () => {

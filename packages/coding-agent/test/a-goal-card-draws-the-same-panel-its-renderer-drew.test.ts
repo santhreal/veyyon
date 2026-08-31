@@ -40,7 +40,7 @@ import type { Goal, GoalToolDetails } from "@veyyon/coding-agent/goals/state";
 import type { ThemeColor } from "@veyyon/coding-agent/theme/color";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/render-utils";
+import { TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/core/render-utils";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import { drawStatusRow, drawToolView, toolDrawsItself } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { framedBlock } from "@veyyon/coding-agent/tui/output-block";

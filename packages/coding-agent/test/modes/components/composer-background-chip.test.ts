@@ -39,7 +39,7 @@ import {
 	registerForegroundBashWait,
 	requestManualBackground,
 	resetForegroundBashRegistryForTest,
-} from "@veyyon/coding-agent/tools/bash-foreground-registry";
+} from "@veyyon/coding-agent/tools/shell/bash-foreground-registry";
 import { useFullColor } from "../../helpers/theme-assertions";
 
 await initTheme(false, "unicode", false, "titanium", "light");

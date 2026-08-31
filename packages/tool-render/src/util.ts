@@ -42,7 +42,7 @@ export function display(value: unknown): string {
  * Browser-safe: this package bundles for the web, where `os.homedir()` is
  * unavailable, so the home directory is matched by the `/Users/<user>` and
  * `/home/<user>` conventions rather than the real `$HOME`. The coding-agent
- * TUI has its own `shortenPath` in `coding-agent/src/tools/render-utils.ts`
+ * TUI has its own `shortenPath` in `coding-agent/src/tools/core/render-utils.ts`
  * that collapses the real home dir (it runs under Node, where `$HOME` is
  * known); the two are a deliberate runtime split, not an accidental
  * duplicate. This is the single owner for every browser surface: collab-web

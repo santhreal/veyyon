@@ -4,7 +4,7 @@ import { routeSelectListMouse, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { truncateToWidth } from "@veyyon/utils/width";
 import { type ImportCandidate, importForeignItems, scanForeignConfig } from "../../../../discovery/import-scan";
 import { theme } from "../../../../theme/theme";
-import { shortenPath } from "../../../../tools/render-utils";
+import { shortenPath } from "../../../../tools/core/render-utils";
 import type { SetupKeyHint, SetupScene, SetupSceneController, SetupSceneHost, SetupWizardContext } from "./types";
 import { createWizardList, filterEscapeHint } from "./wizard-list";
 

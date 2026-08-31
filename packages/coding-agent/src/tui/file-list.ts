@@ -2,10 +2,10 @@
  * Render file listings with optional icons and metadata.
  */
 // Owners, not `../theme/theme`: the engine is 282 modules and forwards both of these. This file is
-// reached from the local `./index` barrel, which `tools/bash.ts` and `tools/write.ts` import, so the engine
+// reached from the local `./index` barrel, which `tools/shell/bash.ts` and `tools/fs/write.ts` import, so the engine
 // arrived in both of them through one name.
 import type { Theme } from "../theme/theme-class";
-import { formatMoreItems } from "../tools/render-utils";
+import { formatMoreItems } from "../tools/core/render-utils";
 import { getLanguageFromPath } from "../utils/lang-from-path";
 
 export interface FileEntry {

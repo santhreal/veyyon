@@ -11,7 +11,7 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { Markit } from "@veyyon/coding-agent/export/markit";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import * as markit from "@veyyon/coding-agent/utils/markit";
 import { __resetDirsFromEnvForTests, removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/utils";
 

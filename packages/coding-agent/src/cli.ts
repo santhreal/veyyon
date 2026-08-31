@@ -165,7 +165,7 @@ async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 	// module binds the real handler once loaded.
 	if (arg === TAB_WORKER_ARG) {
 		if (parentPort) installWorkerInbox(parentPort);
-		await import("./tools/browser/tab-worker-entry");
+		await import("./tools/web/browser/tab-worker-entry");
 		return true;
 	}
 	if (arg === JS_EVAL_WORKER_ARG) {

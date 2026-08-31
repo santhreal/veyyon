@@ -8,7 +8,7 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TASK_SUBAGENT_LIFECYCLE_CHANNEL } from "@veyyon/coding-agent/task";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
-import type { TodoPhase } from "@veyyon/coding-agent/tools/todo";
+import type { TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { NativeScrollbackLiveRegion } from "@veyyon/tui";

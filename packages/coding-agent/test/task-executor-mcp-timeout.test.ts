@@ -3,7 +3,7 @@ import type { CustomTool, CustomToolContext } from "../src/extensibility/custom-
 import { MCPManager } from "../src/mcp/manager";
 import type { MCPRequestOptions, MCPServerConnection, MCPTransport } from "../src/mcp/types";
 import { createMCPProxyTools } from "../src/task/executor";
-import { ToolAbortError } from "../src/tools/tool-errors";
+import { ToolAbortError } from "../src/tools/core/tool-errors";
 
 function createFakeConnection() {
 	let capturedSignal: AbortSignal | undefined;

@@ -2,7 +2,7 @@
  * plan mode with planModeActive true/false for write and exec.
  */
 import { describe, expect, it } from "bun:test";
-import { resolveApproval } from "../src/tools/approval";
+import { resolveApproval } from "../src/tools/core/approval";
 
 describe("resolveApproval planModeActive matrix", () => {
 	it("write denied without planModeActive", () => {

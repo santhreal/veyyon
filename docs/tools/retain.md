@@ -3,7 +3,7 @@
 > Store durable facts through the active long-term memory backend.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/memory-retain.ts`
+- Entry: `packages/coding-agent/src/tools/agent/memory-retain.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/retain.md`
 - Hindsight collaborators:
   - `packages/coding-agent/src/memory/hindsight/state.ts`: per-session queue, flush, auto-retain.

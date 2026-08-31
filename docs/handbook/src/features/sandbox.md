@@ -73,7 +73,7 @@ process exit status follows the run.
 ## Critical bash commands
 
 Some shell commands always prompt in `plan`, `ask`, `ask-command` and `auto`, even over a per-tool
-`allow` override. The guard lives in `packages/coding-agent/src/tools/bash-guard.ts` and has
+`allow` override. The guard lives in `packages/coding-agent/src/tools/shell/bash-guard.ts` and has
 two halves.
 
 The first half judges what a command would delete, after expansion rather than as text. It

@@ -8,7 +8,7 @@ import {
 	isKnownApprovalMode,
 	normalizeApprovalMode,
 	validateApprovalModeSetting,
-} from "../src/tools/approval";
+} from "../src/tools/core/approval";
 
 describe("normalizeApprovalMode exhaustive aliases", () => {
 	const table: [string | undefined, string][] = [

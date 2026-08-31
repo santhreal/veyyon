@@ -454,7 +454,7 @@ describe("the hosts have one owner", () => {
 		);
 		expect(scanned).toContain("ai/src/providers/google-gemini-cli.ts");
 		expect(scanned).toContain("mnemopi/src/config.ts");
-		expect(scanned).toContain("coding-agent/src/tools/image-gen.ts");
+		expect(scanned).toContain("coding-agent/src/tools/web/image-gen.ts");
 		expect(scanned.length).toBeGreaterThan(1_000);
 		const owner = await Bun.file(path.join(PACKAGES_DIR, OWNER)).text();
 		for (const host of HOSTS) expect(owner).toContain(`"https://${host}"`);
@@ -475,7 +475,7 @@ describe("the hosts have one owner", () => {
 			"ai/src/registry/oauth/google-antigravity.ts",
 			"ai/src/registry/oauth/google-gemini-cli.ts",
 			"coding-agent/src/web/search/providers/gemini.ts",
-			"coding-agent/src/tools/image-gen.ts",
+			"coding-agent/src/tools/web/image-gen.ts",
 			"coding-agent/src/session/agent-session.ts",
 			"catalog/src/discovery/gitlab-duo-workflow.ts",
 			"ai/src/providers/gitlab-duo.ts",

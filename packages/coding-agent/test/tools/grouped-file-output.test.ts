@@ -4,7 +4,7 @@ import {
 	classifyGroupedLines,
 	formatGroupedFiles,
 	groupLineIndicesByBlank,
-} from "@veyyon/coding-agent/tools/grouped-file-output";
+} from "@veyyon/coding-agent/tools/core/grouped-file-output";
 
 const REPO_ROOT = path.resolve("repo");
 const OUTSIDE_DIR = path.resolve(path.parse(REPO_ROOT).root, "outside", "dir");

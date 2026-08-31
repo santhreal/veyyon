@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import * as AIError from "@veyyon/ai/error";
-import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
+import { TOOL } from "@veyyon/coding-agent/tools/core/builtin-names";
 import { createSimulation, simTool } from "./harness";
 
 const PLACEHOLDER_MARKER = "was not executed because the provider stream ended";

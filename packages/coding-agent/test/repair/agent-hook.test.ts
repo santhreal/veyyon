@@ -5,7 +5,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	createRepairToolCallArgumentsHook,
 	formatUnrepairableToolError,
-} from "@veyyon/coding-agent/tools/repair/agent-hook";
+} from "@veyyon/coding-agent/tools/core/repair/agent-hook";
 
 const tool = {
 	name: "demo",

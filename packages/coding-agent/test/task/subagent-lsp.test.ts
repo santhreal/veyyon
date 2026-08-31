@@ -16,7 +16,7 @@ import type { IsolationHandle, WorktreeBaseline } from "@veyyon/coding-agent/tas
 import * as worktreeModule from "@veyyon/coding-agent/task/worktree";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { removeWithRetries } from "@veyyon/utils";
-import "@veyyon/coding-agent/tools/yield";
+import "@veyyon/coding-agent/tools/agent/yield";
 import type { AgentSessionEvent, PromptOptions } from "@veyyon/coding-agent/session/agent-session-types";
 import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "@veyyon/coding-agent/session/factory-options";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";

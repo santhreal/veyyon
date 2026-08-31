@@ -39,7 +39,7 @@ import { getGlobalSubagentsDir, readdirIfPresent, reportFault } from "@veyyon/ut
 import { isProviderEnabled } from "../discovery/capability";
 import { listClaudePluginRoots, pluginsRootFor } from "../discovery/helpers";
 import { listVeyyonExtensionRoots } from "../discovery/veyyon-extension-roots";
-import { isKnownToolName } from "../tools/builtin-names";
+import { isKnownToolName } from "../tools/core/builtin-names";
 import { loadBundledAgents, parseAgent } from "./agents";
 import { currentAgentName } from "./spawn-policy";
 import type { AgentDefinition, AgentSource } from "./types";

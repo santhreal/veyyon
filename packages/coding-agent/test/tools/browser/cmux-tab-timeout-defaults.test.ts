@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { CmuxTab } from "@veyyon/coding-agent/tools/browser/cmux/cmux-tab";
+import { CmuxTab } from "@veyyon/coding-agent/tools/web/browser/cmux/cmux-tab";
 
 /**
  * Single-owner lock for the cmux-tab per-operation timeout default.

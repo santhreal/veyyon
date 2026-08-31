@@ -3,10 +3,10 @@ import type { Api, ApiKey, AssistantMessage, Model } from "@veyyon/ai";
 import { validateToolCall } from "@veyyon/ai/utils/validation";
 import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
-import type { CommitSummary } from "../../commit/types";
 import { commitPrompts } from "../../prompts/commit/rows";
 import { toReasoningEffort } from "../../thinking";
 import { completeCommitSimple, type ResolveObfuscateProviderText } from "../shared-llm";
+import type { CommitSummary } from "../types";
 import { extractTextContent, extractToolCall } from "../utils";
 
 const SummaryToolSchema = type({

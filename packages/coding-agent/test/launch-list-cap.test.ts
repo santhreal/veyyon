@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { DaemonSnapshot } from "@veyyon/coding-agent/launch/protocol";
-import { toolContent } from "@veyyon/coding-agent/tools/launch";
+import { toolContent } from "@veyyon/coding-agent/tools/shell/launch";
 
 // WHY THIS SUITE EXISTS (BACKLOG DOG-1)
 // -------------------------------------

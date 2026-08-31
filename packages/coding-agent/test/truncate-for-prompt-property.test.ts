@@ -3,7 +3,7 @@
  * omitted-char elision marker. Default max is 2000.
  */
 import { describe, expect, it } from "bun:test";
-import { truncateForPrompt } from "@veyyon/coding-agent/tools/approval";
+import { truncateForPrompt } from "@veyyon/coding-agent/tools/core/approval";
 
 describe("truncateForPrompt property", () => {
 	it("identity when length <= max", () => {

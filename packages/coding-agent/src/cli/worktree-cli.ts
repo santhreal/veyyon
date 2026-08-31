@@ -3,7 +3,7 @@
  *
  * Layout under `~/.veyyon/wt/`:
  *
- *   - **PR-checkout worktrees** (`tools/gh.ts`): a regular git worktree dir
+ *   - **PR-checkout worktrees** (`tools/web/gh.ts`): a regular git worktree dir
  *     containing a `.git` *file* that points back at
  *     `<parent-repo>/.git/worktrees/<name>/`.
  *   - **Task-isolation dirs** (`task/worktree.ts`): a wrapper dir with a

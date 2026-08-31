@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { clampTimeout, formatTimeoutClampNotice, TOOL_TIMEOUTS } from "@veyyon/coding-agent/tools/tool-timeouts";
+import { clampTimeout, formatTimeoutClampNotice, TOOL_TIMEOUTS } from "@veyyon/coding-agent/tools/core/tool-timeouts";
 
 /**
  * SWEEP-LSP-STUB, second half: the `tools.maxTimeout` setting must actually

@@ -3,7 +3,7 @@
 > Search the active long-term memory backend and return matching memories.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/memory-recall.ts`
+- Entry: `packages/coding-agent/src/tools/agent/memory-recall.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/recall.md`
 - Hindsight collaborators:
   - `packages/coding-agent/src/memory/hindsight/state.ts`: session state, recall query defaults, prompt-side auto-recall.

@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { formatCliFatal } from "@veyyon/coding-agent/cli";
-import { renderError, ToolError, toolFailure } from "@veyyon/coding-agent/tools/tool-errors";
+import { renderError, ToolError, toolFailure } from "@veyyon/coding-agent/tools/core/tool-errors";
 import { errorMessage } from "@veyyon/utils";
 
 describe("error rendering choke points surface readable error text", () => {

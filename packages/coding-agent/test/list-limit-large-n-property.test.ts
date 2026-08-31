@@ -2,7 +2,7 @@
  * applyListLimit on large item arrays: exact slice lengths and meta.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("list-limit large n property", () => {
 	for (const n of [100, 500, 1000, 5000]) {

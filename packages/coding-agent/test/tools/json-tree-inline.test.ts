@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { formatArgsInline, formatScalar } from "@veyyon/coding-agent/tools/json-tree-render";
+import { formatArgsInline, formatScalar } from "@veyyon/coding-agent/tools/core/json-tree-render";
 
 /**
  * formatScalar and formatArgsInline render tool-call arguments into the single collapsed

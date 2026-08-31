@@ -7,8 +7,8 @@
  * remedy-you-can-run.test.ts` pins those. It left four sites behind, in three
  * files, all of the same shape:
  *
- *  - `tools/tts.ts` said `Run /login -> xAI Grok OAuth (SuperGrok or X Premium+)
- *    or set XAI_API_KEY.` Its sibling `tools/image-gen.ts` had the identical
+ *  - `tools/web/tts.ts` said `Run /login -> xAI Grok OAuth (SuperGrok or X Premium+)
+ *    or set XAI_API_KEY.` Its sibling `tools/web/image-gen.ts` had the identical
  *    sentence and was corrected; this twin was not. `/login` carries no
  *    `textMode: true`, so it is a TUI menu, and the arrow named a submenu entry
  *    rather than an argument. The first reader of a tool error is the MODEL,
@@ -37,7 +37,7 @@ import {
 	BUILTIN_SLASH_COMMAND_DECLARATIONS,
 	type BuiltinSlashCommandDeclaration,
 } from "@veyyon/coding-agent/slash-commands/builtin-declarations";
-import { missingXAICredentialsMessage } from "@veyyon/coding-agent/tools/xai-http";
+import { missingXAICredentialsMessage } from "@veyyon/coding-agent/tools/web/xai-http";
 import { errorMessage } from "@veyyon/utils";
 
 const REGISTERED_COMMANDS: ReadonlySet<string> = new Set(
@@ -130,7 +130,7 @@ describe("the Google Cloud Code Assist credential errors", () => {
 describe("the xAI tool credential error", () => {
 	/**
 	 * ONE OWNER, exercised directly. The sentence lived twice, in
-	 * `tools/image-gen.ts` and `tools/tts.ts`, and the two copies had already
+	 * `tools/web/image-gen.ts` and `tools/web/tts.ts`, and the two copies had already
 	 * drifted: image-gen's was corrected and tts's still said `Run /login -> xAI
 	 * Grok OAuth`. It now lives beside `resolveXAIHttpCredentials`, the function
 	 * whose `null` return is the failure, so both tools state the same thing and

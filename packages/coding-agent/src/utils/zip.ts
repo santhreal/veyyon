@@ -10,7 +10,7 @@ import * as zlib from "node:zlib";
 import { formatBytes } from "@veyyon/utils/format";
 // Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import * as logger from "@veyyon/utils/logger";
-import { ToolError, toolFailure } from "../tools/tool-errors";
+import { ToolError, toolFailure } from "../tools/core/tool-errors";
 
 /** A ZIP archive decoded to a `path → bytes` map of its file members. */
 export type Unzipped = Record<string, Uint8Array>;

@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { applyOpsToPhases, type TodoPhase, TodoTool } from "@veyyon/coding-agent/tools/todo";
+import { applyOpsToPhases, type TodoPhase, TodoTool } from "@veyyon/coding-agent/tools/agent/todo";
 
 /**
  * `init` MERGES repeated phase entries and rejects duplicate task contents.

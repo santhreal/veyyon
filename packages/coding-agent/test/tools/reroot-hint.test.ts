@@ -26,7 +26,7 @@ import {
 	REROOT_FILE_THRESHOLD,
 	RerootDetector,
 	wrapToolWithRerootHint,
-} from "@veyyon/coding-agent/tools/reroot-hint";
+} from "@veyyon/coding-agent/tools/fs/reroot-hint";
 
 const CWD = "/work/here";
 const OTHER = "/elsewhere/project";

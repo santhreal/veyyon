@@ -1,10 +1,10 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, ApiKey, Model } from "@veyyon/ai";
 import { $env } from "@veyyon/utils";
-import type { ConventionalAnalysis } from "../../commit/types";
-import { isExcludedFile } from "../../commit/utils/exclusions";
 import { parseFileDiffs } from "../git-diff";
 import type { ResolveObfuscateProviderText } from "../shared-llm";
+import type { ConventionalAnalysis } from "../types";
+import { isExcludedFile } from "../utils/exclusions";
 import { runMapPhase } from "./map-phase";
 import { runReducePhase } from "./reduce-phase";
 import { estimateTokens, MAX_FILE_TOKENS } from "./utils";

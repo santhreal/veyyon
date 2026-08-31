@@ -5,8 +5,8 @@ import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import type { ReadToolDetails } from "@veyyon/coding-agent/tools/read";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import type { ReadToolDetails } from "@veyyon/coding-agent/tools/fs/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "./helpers/tool-session";
 

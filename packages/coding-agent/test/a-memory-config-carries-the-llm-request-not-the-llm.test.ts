@@ -4,7 +4,7 @@ import { mnemopiBackend } from "@veyyon/coding-agent/memory/mnemopi/backend";
 import { loadMnemopiConfig } from "@veyyon/coding-agent/memory/mnemopi/config";
 import { getMnemopiSessionState, setMnemopiSessionState } from "@veyyon/coding-agent/memory/mnemopi/state";
 import { MNEMOPI_MEMORY_EDIT_OPERATIONS } from "@veyyon/coding-agent/memory/mnemopi/verbs";
-import { MemoryEditTool } from "@veyyon/coding-agent/tools/memory-edit";
+import { MemoryEditTool } from "@veyyon/coding-agent/tools/agent/memory-edit";
 import { TempDir } from "@veyyon/utils";
 
 /**

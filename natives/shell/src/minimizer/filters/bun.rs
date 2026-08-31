@@ -654,7 +654,7 @@ mod tests {
 			"@veyyon/utils check: $ tsgo -p tsconfig.json --noEmit\n",
 			"@veyyon/utils check: Exited with code 0\n",
 			"@veyyon/coding-agent check: $ tsgo -p tsconfig.json --noEmit\n",
-			"src/tools/bash.ts(42,7): error TS2322: Type 'string' is not assignable to type \
+			"src/tools/shell/bash.ts(42,7): error TS2322: Type 'string' is not assignable to type \
 			 'number'.\n",
 			"@veyyon/coding-agent check: Exited with code 1\n",
 		);

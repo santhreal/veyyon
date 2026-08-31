@@ -30,7 +30,7 @@ import {
 	PROJECT_ROOT_MARKERS,
 	RerootDetector,
 	resolveProjectRoot,
-} from "@veyyon/coding-agent/tools/reroot-hint";
+} from "@veyyon/coding-agent/tools/fs/reroot-hint";
 
 let tempRoot = "";
 

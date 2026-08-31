@@ -3,7 +3,7 @@ import { validateToolArguments } from "@veyyon/ai/utils/validation";
 import { errorMessage, isRecord } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import type { ToolSession } from "../../tools";
-import { ToolError } from "../../tools/tool-errors";
+import { ToolError } from "../../tools/core/tool-errors";
 import { EVAL_AGENT_BRIDGE_NAME } from "../agent-bridge-name";
 import { EVAL_BUDGET_BRIDGE_NAME, type EvalBudgetResult, runEvalBudget } from "../budget-bridge";
 import { EVAL_COMPLETION_BRIDGE_NAME, runEvalCompletion } from "../completion-bridge";

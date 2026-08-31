@@ -5,7 +5,7 @@ import {
 	prioritizeTodoItems,
 	TODO_REMINDER_PREVIEW_LIMIT,
 	type TodoItem,
-} from "../../../../tools/todo";
+} from "../../../../tools/agent/todo";
 import { type TranscriptNote, TranscriptNoteComponent } from "../transcript/transcript-note";
 
 /**

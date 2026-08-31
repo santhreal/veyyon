@@ -30,7 +30,7 @@
  * that invents detail is its own kind of wrong.
  */
 import { describe, expect, it } from "bun:test";
-import { ToolAbortError, throwIfAborted, toolAbort } from "@veyyon/coding-agent/tools/tool-errors";
+import { ToolAbortError, throwIfAborted, toolAbort } from "@veyyon/coding-agent/tools/core/tool-errors";
 
 describe("toolAbort", () => {
 	it("carries a TimeoutError's message and keeps the original on cause", () => {

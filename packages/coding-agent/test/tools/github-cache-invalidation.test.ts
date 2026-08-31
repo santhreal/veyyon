@@ -18,7 +18,7 @@ import {
 	invalidateAllForRepo,
 	putCached,
 	resetForTests,
-} from "@veyyon/coding-agent/tools/github-cache";
+} from "@veyyon/coding-agent/tools/web/github-cache";
 import { removeWithRetries } from "@veyyon/utils";
 
 let tempDir: string;

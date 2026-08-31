@@ -25,7 +25,7 @@ import { CATALOG_PROVIDERS, type ProviderCatalogEntry } from "@veyyon/catalog/pr
 // The owner, not the `@veyyon/utils` barrel: `@veyyon/utils/env` is 21 modules against 82, and both names
 // are defined there. It matters here more than in most places. Eighteen web-search providers in
 // `@veyyon/coding-agent` import this module for one env-var lookup, and so does `web/parallel.ts`, which
-// `tools/fetch.ts` and therefore `tools/read.ts` reach; the barrel was 61 of those modules and none of them
+// `tools/web/fetch.ts` and therefore `tools/fs/read.ts` reach; the barrel was 61 of those modules and none of them
 // were the catalog table this lookup actually needs.
 import { $env, $pickenv } from "@veyyon/utils/env";
 // The overrides table, NOT `./registry`. The registry is 121 modules and was 95 MARGINAL on this lookup,

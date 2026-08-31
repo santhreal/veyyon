@@ -9,7 +9,7 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { normalizeCustomMessagePayload } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import type { TodoPhase } from "@veyyon/coding-agent/tools/todo";
+import type { TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir, withTimeout } from "@veyyon/utils";
 

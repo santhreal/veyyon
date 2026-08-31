@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { isWaitingPollDetails } from "@veyyon/coding-agent/tools/job";
+import { isWaitingPollDetails } from "@veyyon/coding-agent/tools/shell/job";
 
 /**
  * isWaitingPollDetails decides whether a job-tool result still represents an in-progress wait: it is

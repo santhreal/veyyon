@@ -38,7 +38,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { EditTool } from "@veyyon/coding-agent/edit";
-import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/core/tool-errors";
 import { removeWithRetries } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 import { makeToolSession } from "../helpers/tool-session";

@@ -10,7 +10,7 @@ result caps instead, and they surface truncation rather than dropping output sil
 page documents each tool's parameters and the limits it enforces. The implementations live
 under `packages/coding-agent/src/tools/{read,search,write}.ts`.
 
-## The `read` tool (`tools/read.ts`)
+## The `read` tool (`tools/fs/read.ts`)
 
 `read` takes a single `path` string (no separate `offset`/`limit` arguments) and bounds every read
 to a budget:
@@ -73,7 +73,7 @@ tokens for `packages/coding-agent/src` against 962 for its top level. A director
 entries states how many it held back and names `depth: 1` for the flat listing of all of them.
 `depth` and `limit` are honored in full when named.
 
-## The `search` tool (`tools/search.ts`)
+## The `search` tool (`tools/search/search.ts`)
 
 Workspace discovery and searching are unified in the `search` tool, covering file path lookup,
 text/regex search, and structural code search through one canonical model-facing interface. It
@@ -118,7 +118,7 @@ The tool is part of the default inventory. Text matching uses two settings:
 - `search.contextBefore`: number, default `1` (lines of context before each text match).
 - `search.contextAfter`: number, default `1` (lines of context after each text match).
 
-## The `write` tool (`tools/write.ts`)
+## The `write` tool (`tools/fs/write.ts`)
 
 `read` and `search` are the read side; `write {path, content}` creates or replaces a whole file. It
 shares infrastructure with the edit engine rather than touching the filesystem directly:
@@ -137,7 +137,7 @@ shares infrastructure with the edit engine rather than touching the filesystem d
 
 Bash/exec tool output is sanitized before it reaches the model, via `sanitizeText()`
 (`packages/utils/src/sanitize-text.ts`), used from `session/streaming-output.ts` and the interactive PTY
-capture path (`tools/bash-interactive.ts`):
+capture path (`tools/shell/bash-interactive.ts`):
 
 - **ANSI stripping is Bun-native, not a hand-rolled parser.** `sanitizeText()` calls Bun's built-in
   `Bun.stripANSI()` when an ESC byte is present, then strips C0/C1 control bytes and DEL with a single

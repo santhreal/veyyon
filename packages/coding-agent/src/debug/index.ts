@@ -25,7 +25,7 @@ import {
 import { TranscriptBlock } from "../modes/terminal/components/transcript/transcript-container";
 import type { InteractiveModeContext } from "../modes/terminal/types";
 import { getSelectListTheme, getSymbolTheme, theme } from "../theme/theme";
-import { formatBytes } from "../tools/render-utils";
+import { formatBytes } from "../tools/core/render-utils";
 import { openPath } from "../utils/open";
 import { DebugLogViewerComponent } from "./log-viewer";
 import { generateHeapSnapshotData, type ProfilerSession, startCpuProfile } from "./profiler";

@@ -10,7 +10,7 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
 import type { SessionEntry, SessionHeader } from "@veyyon/kernel/session/session-entries";
 import { obfuscateToolArguments, type SecretObfuscator } from "../secrets/obfuscator";
-import type { OutputMeta } from "../tools/output-meta";
+import type { OutputMeta } from "../tools/core/output-meta";
 import type { SessionData, SubSession } from "./html";
 
 function redactShareHeader(o: SecretObfuscator, header: SessionHeader | null): SessionHeader | null {

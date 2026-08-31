@@ -19,7 +19,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { styleTerminalRow } from "@veyyon/coding-agent/tools/terminal-output";
+import { styleTerminalRow } from "@veyyon/coding-agent/tools/shell/terminal-output";
 
 /** The colour the TUI applies underneath whatever the row asks for. */
 const BASE = "\x1b[38;5;250m";

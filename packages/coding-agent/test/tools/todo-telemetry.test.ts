@@ -8,7 +8,7 @@ import {
 	type TodoTaskStateCounts,
 	type TodoTaskTransitionCounts,
 	TodoTool,
-} from "@veyyon/coding-agent/tools/todo";
+} from "@veyyon/coding-agent/tools/agent/todo";
 
 function createSession(level: InstrumentationLevel, initialPhases: TodoPhase[] = []): ToolSession {
 	let phases = initialPhases;

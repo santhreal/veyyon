@@ -8,7 +8,7 @@
  * `internal-urls/mcp-protocol.ts` only ever needed the slot. It uses `MCPManager` as a TYPE everywhere
  * else, and its one value use was `MCPManager.instance()`, so a `mcp://` handler that asks "is there a
  * manager, and if so read this resource from it" pulled the whole client in. `internal-urls/router.ts`
- * constructs every handler, `tools/read.ts` consults the router (a `read` of `mcp://…` is a real
+ * constructs every handler, `tools/fs/read.ts` consults the router (a `read` of `mcp://…` is a real
  * feature), and 54 test files import `read`. So 796 modules reached only through that one edge.
  *
  * `MCPManager.instance()` and `MCPManager.setInstance()` still exist and still work; they delegate here,

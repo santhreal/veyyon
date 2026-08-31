@@ -15,7 +15,7 @@ import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import { VIBE_TOOL_NAMES } from "@veyyon/coding-agent/tools/vibe";
+import { VIBE_TOOL_NAMES } from "@veyyon/coding-agent/tools/agent/vibe";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";

@@ -19,7 +19,7 @@ import type { BranchSummaryEntry, CompactionEntry, SessionEntry } from "@veyyon/
 import type { CompactionEngineAction } from "../config/compaction-strategy";
 import type { Rule } from "../discovery/capability/rule";
 import type { Goal, GoalModeState } from "../goals/state";
-import type { TodoItem } from "../tools/todo";
+import type { TodoItem } from "../tools/agent/todo";
 
 // ============================================================================
 // Session Events

@@ -1004,7 +1004,7 @@ export function stripRecommendedSuffix(label: string): string {
  *
  * It lives in `@veyyon/wire` because both renderers of a todo board need it and
  * they sit on opposite sides of a runtime boundary: the TUI renderer in
- * `@veyyon/coding-agent` (`src/tools/todo.ts`) and the HTML/collab renderer in
+ * `@veyyon/coding-agent` (`src/tools/agent/todo.ts`) and the HTML/collab renderer in
  * `@veyyon/tool-render`, which cannot import from coding-agent. Two private
  * copies of the vocabulary is how one renderer ends up calling a board finished
  * while the other still draws it open.

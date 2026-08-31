@@ -15,7 +15,7 @@ import { matchesKey } from "@veyyon/utils/keys";
 import { PluginManager } from "../../../../extensibility/plugins/manager";
 import type { InstalledPluginSummary, MarketplaceManager } from "../../../../extensibility/plugins/marketplace";
 import { getSelectListTheme, getSettingsListTheme, theme } from "../../../../theme/theme";
-import { shortenPath } from "../../../../tools/render-utils";
+import { shortenPath } from "../../../../tools/core/render-utils";
 import { type ModalShortcut, SETTINGS_SUBPANE_SHORTCUTS } from "../chrome/modal-shell";
 import { MouseRoutedSubmenu, type TrackedMouseTarget } from "../selectors/select-list-mouse-routing";
 

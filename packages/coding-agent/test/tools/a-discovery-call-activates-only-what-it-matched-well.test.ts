@@ -34,8 +34,8 @@ import {
 import {
 	resolveDiscoveryAllForceActive,
 	resolveInitialActiveToolNames,
-} from "@veyyon/coding-agent/tools/loading/policy";
-import { SearchToolBm25Tool } from "@veyyon/coding-agent/tools/search-tool-bm25";
+} from "@veyyon/coding-agent/tools/core/loading/policy";
+import { SearchToolBm25Tool } from "@veyyon/coding-agent/tools/search/search-tool-bm25";
 import { makeToolSession } from "../helpers/tool-session";
 
 interface DiscoveryResult {

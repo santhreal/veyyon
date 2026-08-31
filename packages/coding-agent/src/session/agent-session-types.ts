@@ -52,7 +52,7 @@ import type { Goal, GoalModeState } from "../goals/state";
 import type { RetryRecoveryMode } from "../modes/retry-display";
 import type { SecretObfuscator } from "../secrets/obfuscator";
 import type { ConfiguredThinkingLevel } from "../thinking";
-import type { TodoItem } from "../tools/todo";
+import type { TodoItem } from "../tools/agent/todo";
 import type { CustomMessage } from "./messages";
 import type { SessionManager } from "./session-manager";
 

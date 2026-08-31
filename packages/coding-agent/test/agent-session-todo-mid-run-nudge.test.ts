@@ -10,7 +10,7 @@ import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-sessi
 import type { CustomMessage } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { TodoTool } from "@veyyon/coding-agent/tools/todo";
+import { TodoTool } from "@veyyon/coding-agent/tools/agent/todo";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 

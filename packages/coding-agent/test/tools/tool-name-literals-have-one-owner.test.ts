@@ -7,7 +7,7 @@
  * tool leaves every literal compiling and simply not matching any more: the code still runs, the
  * session still starts, and the tool is quietly absent. The `yield` handler broke exactly this way.
  *
- * `TOOL` in `src/tools/builtin-names.ts` is the one owner. It is derived from `BUILTIN_TOOL_NAMES`
+ * `TOOL` in `src/tools/core/builtin-names.ts` is the one owner. It is derived from `BUILTIN_TOOL_NAMES`
  * and `HIDDEN_TOOL_NAMES` rather than written out a third time, so a rename removes the key and
  * every consumer stops compiling.
  *
@@ -20,7 +20,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { BUILTIN_TOOL_NAMES, HIDDEN_TOOL_NAMES, TOOL } from "@veyyon/coding-agent/tools/builtin-names";
+import { BUILTIN_TOOL_NAMES, HIDDEN_TOOL_NAMES, TOOL } from "@veyyon/coding-agent/tools/core/builtin-names";
 
 const SRC = join(import.meta.dir, "..", "..", "src");
 
@@ -147,7 +147,7 @@ describe("what the constant must not change", () => {
 
 	/** The leaf itself must not pull a tool module in, or the point above is lost one level down. */
 	it("keeps the owner free of tool-module imports", () => {
-		const source = read("tools/builtin-names.ts");
+		const source = read("tools/core/builtin-names.ts");
 		const imports = [...source.matchAll(/^import .* from "([^"]+)";$/gm)].map(match => match[1]);
 
 		expect(imports).toEqual(["argot/constants"]);

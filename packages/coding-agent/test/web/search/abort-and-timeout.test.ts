@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import type { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/core/tool-errors";
 import { WebSearchTool } from "@veyyon/coding-agent/web/search";
 import * as provider from "@veyyon/coding-agent/web/search/provider";
 import { searchAnthropic } from "@veyyon/coding-agent/web/search/providers/anthropic";

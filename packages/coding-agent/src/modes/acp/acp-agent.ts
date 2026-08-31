@@ -86,8 +86,8 @@ import {
 	getConfiguredThinkingLevelMetadata,
 	parseConfiguredThinkingLevel,
 } from "../../thinking";
-import { runResolveInvocation } from "../../tools/resolve";
-import { ToolError } from "../../tools/tool-errors";
+import { runResolveInvocation } from "../../tools/agent/resolve";
+import { ToolError } from "../../tools/core/tool-errors";
 import { canonicalizeMessage } from "../../utils/thinking-display";
 import { createAcpClientBridge } from "./acp-client-bridge";
 import {

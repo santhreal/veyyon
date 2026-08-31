@@ -19,13 +19,13 @@
  *
  * THE ROWS LIVE ONE MODULE PER DIRECTORY, and this file aggregates them. It held
  * all 163 `import … with { type: "text" }` specifiers itself, which made importing
- * ONE prompt reach all 163: `tools/read.ts` needs `PROMPTS["tools/read"]` to render
+ * ONE prompt reach all 163: `tools/fs/read.ts` needs `PROMPTS["tools/read"]` to render
  * its own description and paid 167 modules for that string, the largest single edge
  * it had, and 95 files in this package import a prompt the same way. Each directory
  * now owns its rows in `<directory>/rows.ts`, this file spreads them into the same
  * `PROMPTS`, and a consumer imports the directory it belongs to:
  *
- *   import { toolsPrompts } from "../prompts/tools/rows";
+ *   import { toolsPrompts } from "./tools/rows";
  *   const description = toolsPrompts["tools/read"].text;
  *
  * Take the aggregate instead when a module genuinely spans directories, which three

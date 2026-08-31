@@ -33,8 +33,8 @@ import {
 	enforceInlineByteCap,
 	inlineCapForTurn,
 } from "../src/session/streaming-output";
+import { inlineOutputPricing } from "../src/tools/core/output-artifact";
 import type { ToolSession } from "../src/tools/index";
-import { inlineOutputPricing } from "../src/tools/output-artifact";
 import { makeToolSession } from "./helpers/tool-session";
 
 const BUDGET = DEFAULT_MAX_BYTES;

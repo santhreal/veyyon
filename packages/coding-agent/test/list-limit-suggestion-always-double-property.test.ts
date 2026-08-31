@@ -2,7 +2,7 @@
  * applyListLimit suggestion is always 2× reached for limit and headLimit.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "@veyyon/coding-agent/tools/list-limit";
+import { applyListLimit } from "@veyyon/coding-agent/tools/core/list-limit";
 
 describe("applyListLimit suggestion always double", () => {
 	for (const limit of [1, 2, 5, 10, 50, 100]) {

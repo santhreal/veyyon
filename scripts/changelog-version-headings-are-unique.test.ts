@@ -7,8 +7,8 @@
 import { describe, expect, it } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import * as path from "node:path";
-import { versionHeadings } from "./changelog-unreleased.ts";
-import { typeScriptMembers } from "./workspace-layout.ts";
+import { versionHeadings } from "./changelog-unreleased";
+import { typeScriptMembers } from "./workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 

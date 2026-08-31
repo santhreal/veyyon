@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { stealthIgnoreDefaultArgsForTest } from "@veyyon/coding-agent/tools/browser/launch";
+import { stealthIgnoreDefaultArgsForTest } from "@veyyon/coding-agent/tools/web/browser/launch";
 
 const AUTOMATION_FLAG = "--enable-automation";
 

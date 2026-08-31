@@ -4,7 +4,7 @@ import {
 	streamingStringKeysForTool,
 } from "@veyyon/coding-agent/modes/terminal/controllers/tool-args-reveal";
 import * as themeModule from "@veyyon/coding-agent/theme/theme";
-import { writeToolRenderer } from "@veyyon/coding-agent/tools/write-render";
+import { writeToolRenderer } from "@veyyon/coding-agent/tools/fs/write-render";
 import type { TUI } from "@veyyon/tui";
 import { createToolExecution } from "./helpers/tool-execution";
 

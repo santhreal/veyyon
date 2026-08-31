@@ -17,7 +17,7 @@ useIsolatedAgentDir();
  * WHAT THIS IS. Every literal below was CAPTURED from the pre-consolidation code by booting a
  * real `createAgentSession` for each matrix cell and recording two things: the exact ordered
  * list of active tool names, and the contents of the discoverable index. The consolidation in
- * `src/tools/loading/` then had to reproduce them byte for byte. That is the entire safety
+ * `src/tools/core/loading/` then had to reproduce them byte for byte. That is the entire safety
  * argument for a refactor that touches the code path deciding whether the agent has `read`,
  * `bash` and `edit` at all.
  *

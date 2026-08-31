@@ -51,7 +51,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import { ONLINE_TINY_TITLE_MODEL_KEY } from "@veyyon/coding-agent/tiny/models";
-import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
+import { TOOL } from "@veyyon/coding-agent/tools/core/builtin-names";
 import { createSimulation, type Simulation, simTool } from "./harness";
 
 /** What the title model answers with, and therefore what the session must end up named. */

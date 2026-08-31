@@ -2,7 +2,7 @@
  * truncateForPrompt boundary: max-1, max, max+1 for several max values.
  */
 import { describe, expect, it } from "bun:test";
-import { truncateForPrompt } from "../src/tools/approval";
+import { truncateForPrompt } from "../src/tools/core/approval";
 
 describe("truncateForPrompt boundary grid", () => {
 	for (const max of [1, 2, 5, 10, 20, 50, 100, 200]) {

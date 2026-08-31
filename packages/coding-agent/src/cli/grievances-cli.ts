@@ -6,7 +6,7 @@ import { formatCount, getAutoQaDbDir, pluralize } from "@veyyon/utils";
 import { subCellBar } from "@veyyon/utils/bar";
 import chalk from "chalk";
 import { Settings } from "../config/settings";
-import { flushGrievances, openAutoQaDb } from "../tools/report-tool-issue";
+import { flushGrievances, openAutoQaDb } from "../tools/agent/report-tool-issue";
 import { EXIT_USAGE } from "./exit-codes";
 
 interface GrievanceRow {

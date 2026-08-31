@@ -1,6 +1,6 @@
 /**
  * WHY: two constants named `BARE_LITERAL_VALUE_RE` existed — one in `plugins/hashline/src/parser.ts`
- * and one in `packages/coding-agent/src/tools/write.ts` — deciding the same question with different
+ * and one in `packages/coding-agent/src/tools/fs/write.ts` — deciding the same question with different
  * answers. Both ask whether a numeric-prefixed body is a numeric-keyed literal mapping (`1: "one",`)
  * rather than content pasted out of `read` output. The hashline copy omitted `true`, `false` and
  * `null`, so a hashline body of those keywords had its `N:` keys stripped as read-paste noise and

@@ -13,7 +13,7 @@
  */
 import { errorMessage, isRecord, prompt } from "@veyyon/utils";
 import { requestsPrompts } from "../../../prompts/requests/rows";
-import * as gh from "../../../tools/gh";
+import * as gh from "../../../tools/web/gh";
 import * as git from "../../../utils/git";
 import * as jj from "../../../utils/jj";
 import type { HookCommandContext } from "../../hooks/types";

@@ -1,6 +1,6 @@
 import { Container, Spacer, Text } from "@veyyon/tui";
 import { theme } from "../../../../theme/theme";
-import { getPreviewLines, TRUNCATE_LENGTHS } from "../../../../tools/render-utils";
+import { getPreviewLines, TRUNCATE_LENGTHS } from "../../../../tools/core/render-utils";
 import { COMPOSER_INSET_COLS } from "../composer/composer-chrome";
 
 /** Max lines of the error message shown in the pinned banner. */

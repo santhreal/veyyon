@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { resolveApproval } from "@veyyon/coding-agent/tools/approval";
-import { SetCwdTool } from "@veyyon/coding-agent/tools/set-cwd";
+import { resolveApproval } from "@veyyon/coding-agent/tools/core/approval";
+import { SetCwdTool } from "@veyyon/coding-agent/tools/fs/set-cwd";
 
 function session(cwd: string): ToolSession {
 	return {

@@ -3,7 +3,7 @@
 > Execute one remote command on a discovered SSH host.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/ssh.ts`
+- Entry: `packages/coding-agent/src/tools/shell/ssh.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/ssh.md`
 - Key collaborators:
   - `packages/coding-agent/src/ssh/ssh-executor.ts`: runs `ssh`, captures output
@@ -12,7 +12,7 @@
   - `packages/coding-agent/src/discovery/ssh.ts`: discovers host configs
   - `packages/coding-agent/src/discovery/capability/ssh.ts`: canonical host shape
   - `packages/coding-agent/src/session/streaming-output.ts`: tail streaming, truncation, artifacts
-  - `packages/coding-agent/src/tools/tool-timeouts.ts`: timeout clamp rules
+  - `packages/coding-agent/src/tools/core/tool-timeouts.ts`: timeout clamp rules
   - `packages/utils/src/dirs.ts`: user/project ssh config paths
 
 ## Inputs
@@ -25,7 +25,7 @@
 | `timeout` | `number` | No | Timeout in seconds. Default `60`; clamped to `1..3600`. |
 
 ## Outputs
-The tool returns a standard text tool result built in `packages/coding-agent/src/tools/ssh.ts`:
+The tool returns a standard text tool result built in `packages/coding-agent/src/tools/shell/ssh.ts`:
 
 - `content`: one text block containing combined remote stdout+stderr, or `"(no output)"` when empty.
 - `details.meta.truncation`: present when output exceeded the in-memory tail window; derived from the executor summary.
@@ -46,19 +46,19 @@ Failure behavior:
 - Non-zero remote exit includes captured output plus `Command exited with code N`.
 
 ## Flow
-1. `loadSshTool()` in `packages/coding-agent/src/tools/ssh.ts` calls `loadCapability(sshCapability.id, { cwd: session.cwd })` to discover hosts.
+1. `loadSshTool()` in `packages/coding-agent/src/tools/shell/ssh.ts` calls `loadCapability(sshCapability.id, { cwd: session.cwd })` to discover hosts.
 2. `packages/coding-agent/src/discovery/ssh.ts` loads host entries from, in this order: project managed ssh config, user managed ssh config, `ssh.json` in the repo root, `.ssh.json` in the repo root.
 3. `getSSHConfigPath("project")` and `getSSHConfigPath("user")` in `packages/utils/src/dirs.ts` resolve those managed files to `.veyyon/ssh.json` in the project and `~/.veyyon/profiles/<active-profile>/agent/ssh.json` in the user config dir (`profiles/default` when no named profile is active). This tool does not read `~/.ssh/config`.
 4. Capability loading deduplicates by host name with first item winning; provider order is priority-sorted and the SSH JSON provider registers at priority `5`.
-5. `loadHosts()` in `packages/coding-agent/src/tools/ssh.ts` builds `hostsByName` and drops later duplicates again with `if (!hostsByName.has(host.name))`.
+5. `loadHosts()` in `packages/coding-agent/src/tools/shell/ssh.ts` builds `hostsByName` and drops later duplicates again with `if (!hostsByName.has(host.name))`.
 6. Tool description text is built from `packages/coding-agent/src/prompts/tools/ssh.md` plus an `Available hosts:` list. Each host entry calls `getCachedHostInfoSync()` to show detected shell/OS when cached; otherwise it renders `detecting...`.
 7. On execute, `SshTool.execute()` rejects any `host` not in the discovered host-name set.
 8. `ensureHostInfo()` in `packages/coding-agent/src/ssh/connection-manager.ts` ensures an SSH master connection exists, loads cached host info from disk if present, and probes remote OS/shell when cache is missing or stale.
-9. `buildRemoteCommand()` in `packages/coding-agent/src/tools/ssh.ts` prepends a cwd change when `cwd` is provided:
+9. `buildRemoteCommand()` in `packages/coding-agent/src/tools/shell/ssh.ts` prepends a cwd change when `cwd` is provided:
    - Unix-like or Windows compat shells: `cd -- '<cwd>' && <command>`
    - Windows PowerShell: `Set-Location -Path '<cwd>'; <command>`
    - Windows cmd: `cd /d "<cwd>" && <command>`
-10. `clampTimeout("ssh", rawTimeout)` applies the `1..3600` second clamp from `packages/coding-agent/src/tools/tool-timeouts.ts`.
+10. `clampTimeout("ssh", rawTimeout)` applies the `1..3600` second clamp from `packages/coding-agent/src/tools/core/tool-timeouts.ts`.
 11. `executeSSH()` in `packages/coding-agent/src/ssh/ssh-executor.ts` calls `ensureConnection(host)` again, opportunistically mounts the remote host root with `sshfs` if available, optionally wraps the command in `bash -c` or `sh -c` for Windows compat mode, then spawns `ssh` with `ptree.spawn`.
 12. Output from both stdout and stderr is piped into one `OutputSink`; chunks are sanitized and forwarded to streaming updates through `streamTailUpdates()`.
 13. On normal exit, the sink returns combined output plus truncation counters. On timeout or abort, `executeSSH()` returns `cancelled: true` and prefixes the output with a notice line such as `[SSH: ...]` or `[Command aborted: ...]`.
@@ -95,7 +95,7 @@ Failure behavior:
   - Cancellation/timeout ends the running ssh process and returns a cancelled result that the tool turns into an error.
 
 ## Limits & Caps
-- Timeout defaults/clamps: `default=60`, `min=1`, `max=3600` in `packages/coding-agent/src/tools/tool-timeouts.ts`.
+- Timeout defaults/clamps: `default=60`, `min=1`, `max=3600` in `packages/coding-agent/src/tools/core/tool-timeouts.ts`.
 - Output tail window: 50 KB by default, set by `tools.artifactSpillThreshold`.
 - Output sink spill threshold defaults to the same `50 KiB`; once exceeded, only the tail remains in memory.
 - SSH master reuse persistence: `ControlPersist=3600` in `packages/coding-agent/src/ssh/connection-manager.ts` and `packages/coding-agent/src/ssh/sshfs-mount.ts`.

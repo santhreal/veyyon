@@ -26,7 +26,7 @@ import type {
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { type SymbolKey, UNICODE_SYMBOLS } from "../theme/symbols";
 import type { Theme, ThemeColor } from "../theme/theme";
-import type { ToolUIStatus } from "../tools/tool-ui-status";
+import type { ToolUIStatus } from "../tools/core/tool-ui-status";
 import { framedBlock } from "./output-block";
 import { renderStatusLine } from "./status-line";
 import type { State } from "./types";

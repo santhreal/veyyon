@@ -25,7 +25,7 @@ Primary goals:
   - `natives/bridge/bindings/native/index.d.ts` (`invalidateFsScanCache`)
   - `natives/bridge/bindings/native/index.js`
 - Coding-agent mutation invalidation helpers:
-  - `packages/coding-agent/src/tools/fs-cache-invalidation.ts`
+  - `packages/coding-agent/src/tools/core/fs-cache-invalidation.ts`
 
 ## Cache key partitioning (hard contract)
 
@@ -118,7 +118,7 @@ Current callers:
 
 - `@`-mention fuzzy file autocomplete enables cache (`fuzzyFind` with `cache: true`):
   - `packages/utils/src/autocomplete.ts`
-- Mutation flows invalidate through `packages/coding-agent/src/tools/fs-cache-invalidation.ts`.
+- Mutation flows invalidate through `packages/coding-agent/src/tools/core/fs-cache-invalidation.ts`.
 
 ## Invalidation contract
 
@@ -147,8 +147,8 @@ Central helpers:
 
 Current mutation callsites include:
 
-- `packages/coding-agent/src/tools/write.ts`
-- `packages/coding-agent/src/tools/acp-bridge.ts`
+- `packages/coding-agent/src/tools/fs/write.ts`
+- `packages/coding-agent/src/tools/core/acp-bridge.ts`
 - `packages/coding-agent/src/edit/hashline/filesystem.ts`
 - `packages/coding-agent/src/edit/modes/patch.ts`
 - `packages/coding-agent/src/edit/modes/replace.ts`

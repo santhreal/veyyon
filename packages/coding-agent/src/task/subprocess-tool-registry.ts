@@ -8,12 +8,12 @@
  */
 import type { Component } from "@veyyon/tui";
 import type { Theme } from "../theme/theme";
-import { TOOL } from "../tools/builtin-names";
+import { TOOL } from "../tools/core/builtin-names";
 
 /**
  * The tool a spawned agent uses to return its result, by name.
  *
- * It lives here rather than in `tools/yield.ts` because the name is part of the SUBPROCESS
+ * It lives here rather than in `tools/agent/yield.ts` because the name is part of the SUBPROCESS
  * PROTOCOL, not just a tool's label: a `tool_execution_end` carrying it is how the executor learns
  * a subagent is finished, the reminder loop forces a named tool_choice with it, and the renderer
  * gives its extracted data a section of its own. All three read it, and the tool module cannot be

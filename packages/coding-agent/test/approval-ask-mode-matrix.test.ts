@@ -2,7 +2,7 @@
  * ask mode prompts for every tier, reads included.
  */
 import { describe, expect, it } from "bun:test";
-import { resolveApproval } from "../src/tools/approval";
+import { resolveApproval } from "../src/tools/core/approval";
 
 describe("resolveApproval ask mode", () => {
 	it("prompts read", () => {

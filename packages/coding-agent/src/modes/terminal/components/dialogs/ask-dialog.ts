@@ -29,7 +29,7 @@ import { highlightCode } from "../../../../theme/highlight";
 import { getMarkdownTheme } from "../../../../theme/markdown-theme";
 import { activityColorToken, setShimmerActivity } from "../../../../theme/shimmer";
 import { theme } from "../../../../theme/theme-binding";
-import { ASK_OTHER_OPTION_LABEL } from "../../../../tools/ask-option-labels";
+import { ASK_OTHER_OPTION_LABEL } from "../../../../tools/agent/ask-option-labels";
 import { getTabBarTheme } from "../../shared";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import { CountdownTimer } from "../chrome/countdown-timer";
@@ -81,7 +81,7 @@ const MAX_PROMPT_TITLE_ROWS = 3;
  * full-width editor container, so the only chrome around the title row is that
  * component's own horizontal padding. Taken from there rather than restated,
  * because the same value was independently hardcoded to 4 here and in
- * `tools/ask.ts`, both described as border plus padding. `DynamicBorder`, the
+ * `tools/agent/ask.ts`, both described as border plus padding. `DynamicBorder`, the
  * only border in that component, renders one full-width horizontal rule and
  * consumes zero columns, so both copies wrapped the title two columns narrower
  * than the space it had.

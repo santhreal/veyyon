@@ -3,7 +3,7 @@
 > Synthesize an answer over the active long-term memory backend.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/memory-reflect.ts`
+- Entry: `packages/coding-agent/src/tools/agent/memory-reflect.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/reflect.md`
 - Hindsight collaborators:
   - `packages/coding-agent/src/memory/hindsight/bank.ts`: best-effort first-use bank/mission setup (`ensureBankExists`).

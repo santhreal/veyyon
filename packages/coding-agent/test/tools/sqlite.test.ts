@@ -6,7 +6,6 @@ import * as path from "node:path";
 import { removeWithRetries } from "@veyyon/utils";
 import "@veyyon/coding-agent/tools/renderers";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import {
 	listTables,
 	looksLikeSqlite,
@@ -14,8 +13,9 @@ import {
 	parseSqliteSelector,
 	renderTable,
 	renderTableList,
-} from "@veyyon/coding-agent/tools/sqlite-reader";
-import { WriteTool } from "@veyyon/coding-agent/tools/write";
+} from "@veyyon/coding-agent/tools/core/sqlite-reader";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
+import { WriteTool } from "@veyyon/coding-agent/tools/fs/write";
 
 type ToolTextResult = {
 	content: Array<{ type: string; text?: string }>;

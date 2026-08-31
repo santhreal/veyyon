@@ -16,7 +16,7 @@
  */
 import { APP_ALIAS, collapseWhitespace } from "@veyyon/utils";
 import type { ArgDescriptor, CliConfig, CommandCtor, FlagDescriptor } from "@veyyon/utils/cli";
-import { BUILTIN_TOOL_NAMES } from "../tools/builtin-names";
+import { BUILTIN_TOOL_NAMES } from "../tools/core/builtin-names";
 
 export type Shell = "bash" | "zsh" | "fish" | "powershell";
 

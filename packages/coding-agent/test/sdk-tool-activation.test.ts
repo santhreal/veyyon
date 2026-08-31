@@ -8,7 +8,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
 import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/session/factory-options";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { VIBE_TOOL_NAMES } from "@veyyon/coding-agent/tools/vibe";
+import { VIBE_TOOL_NAMES } from "@veyyon/coding-agent/tools/agent/vibe";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { type } from "arktype";
 import { isolatedAuthStorage } from "./helpers/isolated-auth-storage";

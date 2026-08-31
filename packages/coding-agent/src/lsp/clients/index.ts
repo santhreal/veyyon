@@ -1,4 +1,4 @@
-import type { LinterClient, ServerConfig } from "../../lsp/types";
+import type { LinterClient, ServerConfig } from "../types";
 import { LspLinterClient } from "./lsp-linter-client";
 
 /**

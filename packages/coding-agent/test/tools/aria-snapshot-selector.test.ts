@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { buildAriaSnapshotScript, parseAriaRefSelector } from "@veyyon/coding-agent/tools/browser/aria-snapshot";
+import { buildAriaSnapshotScript, parseAriaRefSelector } from "@veyyon/coding-agent/tools/web/browser/aria-snapshot";
 
 /**
  * parseAriaRefSelector decides whether an action selector (`tab.click(...)`) is an

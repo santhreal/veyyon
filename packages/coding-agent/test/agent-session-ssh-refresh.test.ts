@@ -13,7 +13,7 @@ import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { addSSHHost, removeSSHHost, updateSSHHost } from "@veyyon/coding-agent/ssh/config-writer";
 import * as connectionManager from "@veyyon/coding-agent/ssh/connection-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { loadSshTool } from "@veyyon/coding-agent/tools/ssh";
+import { loadSshTool } from "@veyyon/coding-agent/tools/shell/ssh";
 import {
 	captureDirOverrides,
 	type DirOverridesSnapshot,

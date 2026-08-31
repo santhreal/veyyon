@@ -24,8 +24,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
-import { type SearchToolInput, type SearchType, searchSchema, TYPE_FIELDS } from "@veyyon/coding-agent/tools/search";
-import { MULTI_FILE_PER_FILE_MATCHES } from "@veyyon/coding-agent/tools/text-search";
+import {
+	type SearchToolInput,
+	type SearchType,
+	searchSchema,
+	TYPE_FIELDS,
+} from "@veyyon/coding-agent/tools/search/search";
+import { MULTI_FILE_PER_FILE_MATCHES } from "@veyyon/coding-agent/tools/search/text-search";
 import { removeWithRetries } from "@veyyon/utils";
 
 const SCHEMA_FIELDS = Object.keys(searchSchema.shape);

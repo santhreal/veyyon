@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { WriteTool } from "@veyyon/coding-agent/tools/write";
+import { WriteTool } from "@veyyon/coding-agent/tools/fs/write";
 import { makeToolSession } from "./helpers/tool-session";
 
 // NOTE: this suite deliberately does NOT call the global `Settings.init(...)`.

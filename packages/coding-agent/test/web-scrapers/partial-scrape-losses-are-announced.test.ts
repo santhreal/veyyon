@@ -30,7 +30,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/core/tool-errors";
 import { handleOpenVsx } from "@veyyon/coding-agent/web/scrapers/open-vsx";
 import { handleOpenLibrary } from "@veyyon/coding-agent/web/scrapers/openlibrary";
 import { isScraperDegrade } from "@veyyon/coding-agent/web/scrapers/types";

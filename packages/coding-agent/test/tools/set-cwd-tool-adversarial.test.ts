@@ -4,8 +4,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { SetCwdTool } from "@veyyon/coding-agent/tools/set-cwd";
-import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
+import { ToolError } from "@veyyon/coding-agent/tools/core/tool-errors";
+import { SetCwdTool } from "@veyyon/coding-agent/tools/fs/set-cwd";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
 

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { handleSpecialUrls } from "@veyyon/coding-agent/tools/fetch";
-import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/core/tool-errors";
+import { handleSpecialUrls } from "@veyyon/coding-agent/tools/web/fetch";
 import { handleCratesIo } from "@veyyon/coding-agent/web/scrapers/crates-io";
 import { handleMastodon } from "@veyyon/coding-agent/web/scrapers/mastodon";
 import { isScraperDegrade, scraperDegrade, tryParseUrl } from "@veyyon/coding-agent/web/scrapers/types";

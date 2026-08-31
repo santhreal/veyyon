@@ -27,9 +27,12 @@ import * as path from "node:path";
 import { AsyncJobManager } from "@veyyon/coding-agent/async";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import type { BashToolDetails } from "@veyyon/coding-agent/tools/bash";
-import { BashTool } from "@veyyon/coding-agent/tools/bash";
-import { hasForegroundBashWait, requestManualBackground } from "@veyyon/coding-agent/tools/bash-foreground-registry";
+import type { BashToolDetails } from "@veyyon/coding-agent/tools/shell/bash";
+import { BashTool } from "@veyyon/coding-agent/tools/shell/bash";
+import {
+	hasForegroundBashWait,
+	requestManualBackground,
+} from "@veyyon/coding-agent/tools/shell/bash-foreground-registry";
 import { removeSyncWithRetries } from "@veyyon/utils";
 import { useIsolatedGlobalSettings } from "./helpers/isolated-global-settings";
 import { makeToolSession } from "./helpers/tool-session";

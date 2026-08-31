@@ -5,10 +5,10 @@ import { buildSystemPrompt } from "./system-prompt";
 import { RUNTIME_SECTIONS } from "./system-prompt-builder/section-registry";
 import { PROMPT_STATEMENTS, type StatementCondition } from "./system-prompt-builder/statement-registry";
 import { delegationEnabled } from "./task/subagent-settings";
-import { TOOL } from "./tools/builtin-names";
+import { TOOL } from "./tools/core/builtin-names";
+import { type BuiltinToolPermissionInputs, isBuiltinToolAllowed } from "./tools/core/loading/policy";
 import type { ToolSession } from "./tools/index";
-import { type BuiltinToolPermissionInputs, isBuiltinToolAllowed } from "./tools/loading/policy";
-import { SearchTool } from "./tools/search";
+import { SearchTool } from "./tools/search/search";
 import type { ActiveRepoContext } from "./utils/active-repo-context";
 
 /**

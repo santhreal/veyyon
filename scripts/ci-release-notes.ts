@@ -37,8 +37,8 @@ import { $, Glob } from "bun";
 // first release_github run to completion (v1.0.20) and blocked the publish.
 // semver.ts is self-contained (no imports of its own), so a direct file import
 // needs no install and cannot regress this way.
-import { compareSemver } from "../packages/utils/src/semver.ts";
-import { versionHeadings } from "./changelog-unreleased.ts";
+import { compareSemver } from "../packages/utils/src/semver";
+import { versionHeadings } from "./changelog-unreleased";
 
 const changelogGlob = new Glob("packages/*/CHANGELOG.md");
 const REPO = process.env.VEYYON_REPO ?? process.env.GITHUB_REPOSITORY ?? "santhreal/veyyon";

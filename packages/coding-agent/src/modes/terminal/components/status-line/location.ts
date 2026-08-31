@@ -21,7 +21,7 @@ import { sliceWithWidth, visibleWidth } from "@veyyon/utils/width";
 import { settingsOrNull } from "../../../../config/settings-instance";
 import { withIcon } from "../../../../theme/icon-label";
 import { theme } from "../../../../theme/theme";
-import { shortenPath } from "../../../../tools/shorten-path";
+import { shortenPath } from "../../../../tools/core/shorten-path";
 import { sanitizeStatusText } from "../../sanitize-status-text";
 import { getPreset } from "./presets";
 import type { StatusLineSegmentOptions } from "./types";

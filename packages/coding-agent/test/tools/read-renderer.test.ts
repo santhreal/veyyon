@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { theme as activeTheme, getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
-import { readToolRenderer } from "@veyyon/coding-agent/tools/read-render";
+import { readToolRenderer } from "@veyyon/coding-agent/tools/fs/read-render";
 import type { TUI } from "@veyyon/tui";
 import { createToolExecution } from "../helpers/tool-execution";
 

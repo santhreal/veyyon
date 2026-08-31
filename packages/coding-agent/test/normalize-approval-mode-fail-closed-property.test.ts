@@ -3,7 +3,7 @@
  * aliases exact; unrecognized non-empty → ask (fail closed, never the default).
  */
 import { describe, expect, it } from "bun:test";
-import { normalizeApprovalMode, validateApprovalModeSetting } from "@veyyon/coding-agent/tools/approval";
+import { normalizeApprovalMode, validateApprovalModeSetting } from "@veyyon/coding-agent/tools/core/approval";
 
 describe("normalizeApprovalMode fail-closed property", () => {
 	it("undefined maps to the shipped default", () => {

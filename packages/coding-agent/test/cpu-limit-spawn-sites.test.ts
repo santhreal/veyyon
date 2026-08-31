@@ -73,7 +73,7 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 		wired: true,
 		reason: "brush Shell runs receive cpuBudgetId; the native spawn observer adopts every external child",
 	},
-	"tools/bash-interactive.ts": {
+	"tools/shell/bash-interactive.ts": {
 		wired: true,
 		reason: "PtySession.start receives cpuBudgetId; the PTY spawner adopts the child",
 	},
@@ -138,7 +138,7 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 	"ssh/ssh-executor.ts": { wired: true, reason: "the ssh client process is adopted" },
 	"ssh/file-transfer.ts": { wired: true, reason: "every ssh read/write/stat/list child is adopted" },
 	"ssh/connection-manager.ts": { wired: true, reason: "the ssh pre-command helpers are adopted" },
-	"tools/fetch.ts": { wired: true, reason: "the trafilatura and lynx reader-mode extractors are adopted" },
+	"tools/web/fetch.ts": { wired: true, reason: "the trafilatura and lynx reader-mode extractors are adopted" },
 	"web/scrapers/youtube.ts": { wired: true, reason: "yt-dlp metadata and subtitle runs are adopted" },
 	"utils/tools-manager.ts": { wired: true, reason: "the uv/pip on-demand tool installs are adopted" },
 	"utils/git.ts": {

@@ -31,7 +31,7 @@ import {
 	CmuxTab,
 	type CmuxTabClient,
 	RESPONSE_OBSERVER_SCRIPT,
-} from "@veyyon/coding-agent/tools/browser/cmux/cmux-tab";
+} from "@veyyon/coding-agent/tools/web/browser/cmux/cmux-tab";
 
 interface StubHeaders {
 	forEach(fn: (value: string, name: string) => void): void;

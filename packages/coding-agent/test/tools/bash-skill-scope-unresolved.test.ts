@@ -2,7 +2,7 @@
  * Contract: "this session never resolved its skills" and "this session has no skills" are
  * different states, and the first one is reported.
  *
- * `tools/bash.ts` used to build the internal-URL options with
+ * `tools/shell/bash.ts` used to build the internal-URL options with
  * `skills: this.session.skills ?? []`. An empty array is not a neutral default here: the
  * `skill://` handler resolves against `context?.skills ?? getActiveSkills()`, so `[]`
  * SUPPRESSES the process-wide snapshot and reports `Unknown skill: X / Available: none`,
@@ -17,7 +17,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { resetActiveSkillsForTests, setActiveSkills } from "@veyyon/coding-agent/extensibility/active-skills";
 import type { Skill } from "@veyyon/coding-agent/extensibility/skills";
-import { BashTool, SKILL_SCOPE_UNRESOLVED_NOTICE } from "@veyyon/coding-agent/tools/bash";
+import { BashTool, SKILL_SCOPE_UNRESOLVED_NOTICE } from "@veyyon/coding-agent/tools/shell/bash";
 import { removeWithRetries } from "@veyyon/utils";
 import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
 import { makeToolSession } from "../helpers/tool-session";
@@ -74,7 +74,7 @@ describe("bash skill:// scope resolution", () => {
 	});
 
 	/**
-	 * LOCKS OUT: `skills: this.session.skills ?? []` at `tools/bash.ts`.
+	 * LOCKS OUT: `skills: this.session.skills ?? []` at `tools/shell/bash.ts`.
 	 *
 	 * Driven THROUGH the tool, not through `expandInternalUrls` directly: the `??` lived in
 	 * bash's construction of the expansion options, so a test that calls the boundary with

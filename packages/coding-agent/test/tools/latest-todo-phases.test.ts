@@ -3,7 +3,7 @@ import {
 	getLatestTodoPhasesFromEntries,
 	type TodoPhase,
 	USER_TODO_EDIT_CUSTOM_TYPE,
-} from "@veyyon/coding-agent/tools/todo";
+} from "@veyyon/coding-agent/tools/agent/todo";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 
 /**

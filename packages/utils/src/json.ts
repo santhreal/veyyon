@@ -133,7 +133,7 @@ function isPlainObject(val: object): val is Record<string, unknown> {
  * package that is supposed to own nothing. Anything that wanted this one function
  * had to import the barrel, and the barrel is eighty-one leaves: five files in
  * `@veyyon/ai` were pulling all of them in for a deep copy, which is what put the
- * barrel on `tools/read.ts`'s module graph and turned a landed reach cut red.
+ * barrel on `tools/fs/read.ts`'s module graph and turned a landed reach cut red.
  *
  * `structuredClone` is tried first and only for plain objects and arrays, because it
  * is the faster path and the only one that preserves a value JSON cannot express. It

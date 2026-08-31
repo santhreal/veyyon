@@ -9,9 +9,9 @@ import { getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import { Settings } from "../config/settings";
 import type { ToolSession } from "../tools";
-import { wrapToolWithMetaNotice } from "../tools/output-meta";
-import { ReadTool } from "../tools/read";
-import { renderError } from "../tools/tool-errors";
+import { wrapToolWithMetaNotice } from "../tools/core/output-meta";
+import { renderError } from "../tools/core/tool-errors";
+import { ReadTool } from "../tools/fs/read";
 import { EXIT_USAGE } from "./exit-codes";
 
 export interface ReadCommandArgs {

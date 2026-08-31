@@ -29,7 +29,7 @@ import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme, stopThemeWatcher } from "@veyyon/coding-agent/theme/theme";
-import { TODO_STRIKE_TOTAL_FRAMES, type TodoPhase } from "@veyyon/coding-agent/tools/todo";
+import { TODO_STRIKE_TOTAL_FRAMES, type TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
 import { RAIL_IDLE_STEP_MS, RAIL_SETTLE_FRAMES } from "@veyyon/coding-agent/tui/rail-motion";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";

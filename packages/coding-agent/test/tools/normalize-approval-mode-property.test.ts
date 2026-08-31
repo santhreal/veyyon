@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/approval";
-import { APPROVAL_MODE_VALUES, isKnownApprovalMode } from "@veyyon/coding-agent/tools/approval-modes";
+import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/core/approval";
+import { APPROVAL_MODE_VALUES, isKnownApprovalMode } from "@veyyon/coding-agent/tools/core/approval-modes";
 
 /**
  * normalizeApprovalMode: known modes map correctly; unknowns never become yolo.

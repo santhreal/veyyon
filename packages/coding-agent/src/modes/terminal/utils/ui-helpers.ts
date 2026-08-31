@@ -16,7 +16,7 @@ import {
 } from "../../../session/messages";
 import type { SessionContext, StrippedToolCallsMarker } from "../../../session/session-context";
 import { theme } from "../../../theme/theme";
-import { replaceTabs } from "../../../tools/render-utils";
+import { replaceTabs } from "../../../tools/core/render-utils";
 import { createAdvisorMessageCard } from "../components/transcript/advisor-message";
 import { AssistantMessageComponent } from "../components/transcript/assistant-message";
 import { createBackgroundTanDispatchBlock } from "../components/transcript/background-tan-message";

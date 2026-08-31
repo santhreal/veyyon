@@ -10,7 +10,7 @@ import type { Subprocess } from "bun";
 import { parseDiffFileHunks, parseFileDiffs, parseFileHunks, parseNumstat } from "../commit/git-diff";
 import type { FileDiff, FileHunks, NumstatEntry } from "../commit/types";
 import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
-import { ToolAbortError, ToolError, throwIfAborted } from "../tools/tool-errors";
+import { ToolAbortError, ToolError, throwIfAborted } from "../tools/core/tool-errors";
 import type { EntryType, GitHeadState, GitInProgressOperation, GitRepository } from "./git-head";
 import {
 	EINTR_MAX_RETRIES,

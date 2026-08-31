@@ -2,7 +2,7 @@
  * unwrapHashlineHeaderPath adversarial grid: valid peel, invalid leave intact.
  */
 import { describe, expect, it } from "bun:test";
-import { unwrapHashlineHeaderPath } from "../src/tools/plan-mode-guard";
+import { unwrapHashlineHeaderPath } from "../src/tools/core/plan-mode-guard";
 
 describe("unwrapHashlineHeaderPath adversarial grid", () => {
 	const ok: Array<[string, string]> = [

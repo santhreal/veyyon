@@ -255,10 +255,10 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 	 * registry that reaches a dialog. Each is a front-end concern filed outside the
 	 * front end, and each is its own piece of work.
 	 *
-	 * `session/image-visibility.ts` and `tools/todo.ts` used to be on this list.
+	 * `session/image-visibility.ts` and `tools/agent/todo.ts` used to be on this list.
 	 * That is the delta two probes bought: a question about a pipe is no longer
 	 * answered by loading a renderer, and the todo tool's drawing moved to
-	 * `tools/todo-render.ts`, which print mode never reaches. Shrink-only -- a row
+	 * `tools/agent/todo-render.ts`, which print mode never reaches. Shrink-only -- a row
 	 * leaves when the edge is cut, and none is added, so a new module reaching the
 	 * package from print mode's graph reds this.
 	 *
