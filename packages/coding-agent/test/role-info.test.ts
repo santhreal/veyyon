@@ -124,17 +124,7 @@ describe("getKnownRoleIds", () => {
 				modelTags: { taggedRole: { name: "T" }, smol: { name: "x" } },
 			}),
 		);
-		expect(roles).toEqual([
-			"smol",
-			"slow",
-			"vision",
-			"plan",
-			"designer",
-			"commit",
-			"tiny",
-			"myCustom",
-			"taggedRole",
-		]);
+		expect(roles).toEqual(["smol", "slow", "vision", "plan", "designer", "commit", "tiny", "myCustom", "taggedRole"]);
 	});
 
 	test("appends custom roles assigned in modelRoles, skipping the legacy 'default'", () => {
