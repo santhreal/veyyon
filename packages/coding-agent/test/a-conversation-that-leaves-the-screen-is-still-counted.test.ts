@@ -32,6 +32,7 @@ import { stripVTControlCharacters } from "node:util";
 import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/components/status-line/presets";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import { NO_SESSION_FACTS } from "@veyyon/coding-agent/modes/components/status-line/session-facts";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { BackgroundSessions } from "@veyyon/coding-agent/session/background-sessions";
@@ -42,11 +43,7 @@ beforeAll(async () => {
 
 function contextWith(backgroundSessionCount: number): SegmentContext {
 	return {
-		session: {
-			isApprovalBypassed: () => false,
-			getGoalModeState: () => undefined,
-			settings: { get: () => false },
-		} as unknown as SegmentContext["session"],
+		facts: NO_SESSION_FACTS,
 		width: 120,
 		compactThinkingLevel: false,
 		options: {},

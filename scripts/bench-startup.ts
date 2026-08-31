@@ -1,7 +1,7 @@
 /**
  * Startup benchmark: how long veyyon takes to put something on the screen.
  *
- * Four arms, cheapest first, so a regression can be attributed to a layer:
+ * Seven arms, cheapest first, so a regression can be attributed to a layer:
  *
  *   version      `--version`, which returns before the command registry loads. Runtime init plus
  *                the entry module's own graph, and nothing else.
@@ -10,7 +10,22 @@
  *                and exits at the point the TUI would take the terminal. Everything the boot path
  *                does before the first frame, minus the frame itself.
  *   first-frame  an interactive launch under a pty, timed from spawn to the first byte the process
- *                writes. This is what a person waits for.
+ *                writes.
+ *   composer     the same launch, timed to the composer's own placeholder row being on screen.
+ *   editable     the same launch, timed to a character typed after the first byte coming back
+ *                echoed. This is the moment the terminal answers the operator, and no output-only
+ *                timer can observe it.
+ *   statusrow    the same launch, timed to the status row being on screen — the row carrying where
+ *                you are, the model, the mode and the context gauge.
+ *
+ * A FIRST BYTE IS NOT A USABLE SCREEN, which is why the last four exist. `first-frame` was the
+ * whole answer here and it reads 46ms on a warm binary: optimizing against it alone declares
+ * victory on a frame the operator cannot yet read.
+ *
+ * `statusrow` used to trail the frame by about a second, because the row belonged to the session
+ * and the card painted a hand-written `path · git` in its place. The card now renders the real row
+ * from config, so the arm reads at the frame instead. A run where it trails again means the card
+ * stopped painting it.
  *
  * Each arm runs against an isolated agent home so the numbers do not depend on the machine's
  * accumulated caches, sessions, or vault, and so a run cannot touch them. `--cold` throws that home
@@ -82,6 +97,76 @@ function ptyWrapper(command: string, args: string[]): { command: string; args: s
 interface RunOutcome {
 	ms: number;
 	stdout: string;
+}
+
+/**
+ * Typed into the launch composer to prove it answers. Three characters that occur nowhere in the
+ * launch card's art, its copy or a path, so an echo cannot be mistaken for the card repainting.
+ */
+const PROBE = "qjq";
+/**
+ * How long a recorded launch is held open before it is killed. Generous rather than tight: an arm
+ * that has not fired by the kill is reported as absent rather than slow, which reads as the arm
+ * disappearing from the table instead of as a regression.
+ */
+const FRAME_HOLD_MS = 4000;
+
+interface FrameMarks {
+	firstByte?: number;
+	composer?: number;
+	editable?: number;
+	statusrow?: number;
+}
+
+/**
+ * Record one interactive launch under a pty and timestamp the moments a person waits for.
+ *
+ * Stdin is a pipe rather than `ignore` because the editable arm has to type: the probe goes in as
+ * soon as the first byte lands, so the echo timestamp measures when the composer became able to
+ * answer and not how long this harness waited before asking.
+ *
+ * The markers are read off a recorded stream rather than assumed:
+ *   composer    the composer's placeholder row, which nothing else draws
+ *   statusrow   the context gauge, which is on every preset's status row and nowhere else on the
+ *               screen. Matched as the glyph OR the words, so a preset rendering the ascii bar
+ *               still trips it.
+ */
+async function recordFrame(
+	command: string,
+	args: string[],
+	env: Record<string, string>,
+	holdMs: number,
+): Promise<FrameMarks> {
+	const marks: FrameMarks = {};
+	const started = performance.now();
+	const child = spawn(command, args, {
+		cwd: REPO_ROOT,
+		stdio: ["pipe", "pipe", "pipe"],
+		env: { ...process.env, ...env },
+	});
+
+	let seen = "";
+	const at = (): number => performance.now() - started;
+	const onData = (chunk: string): void => {
+		seen += chunk;
+		if (marks.firstByte === undefined) {
+			marks.firstByte = at();
+			child.stdin.write(PROBE);
+		}
+		if (marks.composer === undefined && seen.includes("ask anything")) marks.composer = at();
+		if (marks.editable === undefined && seen.includes(PROBE)) marks.editable = at();
+		if (marks.statusrow === undefined && /▰|% left/.test(seen)) marks.statusrow = at();
+	};
+	child.stdout.setEncoding("utf8");
+	child.stdout.on("data", onData);
+	child.stderr.setEncoding("utf8");
+	child.stderr.on("data", onData);
+
+	const held = Promise.withResolvers<void>();
+	setTimeout(held.resolve, holdMs);
+	await held.promise;
+	child.kill("SIGKILL");
+	return marks;
 }
 
 /**
@@ -232,10 +317,27 @@ async function main(): Promise<void> {
 
 		env = await envFor();
 		const framePty = ptyWrapper(command, prefix);
-		push("first-frame", (await timeRun(framePty.command, framePty.args, env, "first-byte", options.timeoutMs)).ms);
+		// One recorded launch answers all four: the arms are moments in a single
+		// frame's life, and timing them separately would spend four launches to
+		// compare numbers from four different processes.
+		const marks = await recordFrame(framePty.command, framePty.args, env, FRAME_HOLD_MS);
+		if (marks.firstByte !== undefined) push("first-frame", marks.firstByte);
+		if (marks.composer !== undefined) push("composer", marks.composer);
+		if (marks.editable !== undefined) push("editable", marks.editable);
+		if (marks.statusrow !== undefined) push("statusrow", marks.statusrow);
 	}
 
-	const arms = ["version", "help", "ready:load", "ready:boot", "ready", "first-frame"];
+	const arms = [
+		"version",
+		"help",
+		"ready:load",
+		"ready:boot",
+		"ready",
+		"first-frame",
+		"composer",
+		"editable",
+		"statusrow",
+	];
 	const lines = [
 		`veyyon startup — ${options.bin ? `binary ${options.bin}` : "bun source"}, ${options.cold ? "cold" : "warm"} home, ${options.runs} run(s)`,
 		...arms.map(arm =>

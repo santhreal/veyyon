@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import { NO_SESSION_FACTS } from "@veyyon/coding-agent/modes/components/status-line/session-facts";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { visibleWidth } from "@veyyon/tui";
 import { getProjectDir, setProjectDir } from "@veyyon/utils";
@@ -31,12 +32,7 @@ afterAll(() => {
 /** Minimal SegmentContext factory — only path/git fields matter for these tests. */
 function createCtx(overrides?: { pathMaxLength?: number; branch?: string | null }): SegmentContext {
 	return {
-		session: {
-			state: {},
-			isFastModeEnabled: () => false,
-			modelRegistry: { isUsingOAuth: () => false },
-			sessionManager: undefined,
-		} as unknown as SegmentContext["session"],
+		facts: NO_SESSION_FACTS,
 		width: 120,
 		compactThinkingLevel: false,
 		options: {

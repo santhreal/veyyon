@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import { NO_SESSION_FACTS } from "@veyyon/coding-agent/modes/components/status-line/session-facts";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {
@@ -10,13 +11,11 @@ beforeAll(async () => {
 
 function createModelContext(advisorActive: boolean): SegmentContext {
 	return {
-		session: {
-			state: { model: { id: "test-model", name: "Test Model" } },
-			isFastModeActive: () => false,
-			isAutoThinking: false,
-			autoResolvedThinkingLevel: () => undefined,
-			isAdvisorActive: () => advisorActive,
-		} as unknown as SegmentContext["session"],
+		facts: {
+			...NO_SESSION_FACTS,
+			model: { id: "test-model", name: "Test Model", supportsThinking: false },
+			advisorActive,
+		},
 		width: 120,
 		compactThinkingLevel: false,
 		options: {},
@@ -75,16 +74,11 @@ describe("status line model segment compact thinking level", () => {
 	function createThinkingContext(compactThinkingLevel: boolean): SegmentContext {
 		return {
 			...createModelContext(false),
-			session: {
-				state: {
-					model: { id: "test-model", name: "Test Model", thinking: true },
-					thinkingLevel: ThinkingLevel.High,
-				},
-				isFastModeActive: () => false,
-				isAutoThinking: false,
-				autoResolvedThinkingLevel: () => undefined,
-				isAdvisorActive: () => false,
-			} as unknown as SegmentContext["session"],
+			facts: {
+				...NO_SESSION_FACTS,
+				model: { id: "test-model", name: "Test Model", supportsThinking: true },
+				thinkingLevel: ThinkingLevel.High,
+			},
 			compactThinkingLevel,
 		};
 	}

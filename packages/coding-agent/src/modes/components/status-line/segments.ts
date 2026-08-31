@@ -112,12 +112,12 @@ const piSegment: StatusLineSegment = {
 const modelSegment: StatusLineSegment = {
 	id: "model",
 	render(ctx) {
-		const state = ctx.session.state;
+		const { model, thinkingLevel, autoThinking } = ctx.facts;
 		const opts = ctx.options.model ?? {};
 
 		// A model name is provider text: it arrives from a `/models` listing or from a custom
 		// endpoint's config, so it is no more trusted than a directory name.
-		let modelName = sanitizeStatusText(state.model?.name || state.model?.id || "") || "no-model";
+		let modelName = sanitizeStatusText(model?.name || model?.id || "") || "no-model";
 		if (modelName.startsWith("Claude ")) {
 			modelName = modelName.slice(7);
 		}
@@ -125,19 +125,15 @@ const modelSegment: StatusLineSegment = {
 		// Resolve the current thinking-level display ("◉ xhigh", "◐ auto", …)
 		// when the model supports thinking and the segment isn't hiding it.
 		let thinkingDisplay = "";
-		if (opts.showThinkingLevel !== false && state.model?.thinking) {
-			if (ctx.session.isAutoThinking) {
+		if (opts.showThinkingLevel !== false && model?.supportsThinking) {
+			if (autoThinking) {
 				// Pending (no turn classified yet / classifying) shows a symbol-theme
 				// question-box marker; once resolved it shows `<level>`.
-				const resolved = ctx.session.autoResolvedThinkingLevel();
-				thinkingDisplay = resolved
-					? (theme.thinking[resolved as keyof typeof theme.thinking] ?? resolved)
+				thinkingDisplay = autoThinking.resolved
+					? (theme.thinking[autoThinking.resolved as keyof typeof theme.thinking] ?? autoThinking.resolved)
 					: `${theme.thinking.autoPending} auto`;
-			} else {
-				const level = state.thinkingLevel ?? ThinkingLevel.Off;
-				if (level !== ThinkingLevel.Off) {
-					thinkingDisplay = theme.thinking[level as keyof typeof theme.thinking] ?? "";
-				}
+			} else if (thinkingLevel !== ThinkingLevel.Off) {
+				thinkingDisplay = theme.thinking[thinkingLevel as keyof typeof theme.thinking] ?? "";
 			}
 		}
 
@@ -162,7 +158,7 @@ const modelSegment: StatusLineSegment = {
 		// `statusLineModel` is aliased to `accent` in many themes, so the badge
 		// uses `success` to stay visibly distinct from the model name color.
 		let content = theme.fg("statusLineModel", withIcon(modelIcon, modelName));
-		if (ctx.session.isAdvisorActive()) {
+		if (ctx.facts.advisorActive) {
 			content += theme.fg("success", "++");
 		}
 		if (tail) {
@@ -175,7 +171,7 @@ const modelSegment: StatusLineSegment = {
 		// its own `warning`-colored chip, and it names itself wherever there is room,
 		// so it reads as a serving choice. Naming it also makes the tier visible in
 		// symbol themes whose `icon.fast` is empty, where it used to show nothing.
-		if (ctx.session.isFastModeActive()) {
+		if (ctx.facts.fastMode) {
 			content += theme.fg("warning", ` ${formatServiceTierChip(compact)}`);
 		}
 
@@ -237,8 +233,7 @@ function goalSpinnerIcon(activeMs: number): string {
 }
 
 function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: boolean }): string {
-	const goal = ctx.session.getGoalModeState()?.goal;
-	const modelBudgetsEnabled = ctx.session.settings.get("goal.modelBudgetsEnabled");
+	const { goal, goalModelBudgets: modelBudgetsEnabled } = ctx.facts;
 	const persistedStatus = goal?.status ?? (mode.paused ? "paused" : "active");
 	const status = !modelBudgetsEnabled && persistedStatus === "budget-limited" ? "active" : persistedStatus;
 
@@ -279,12 +274,12 @@ function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: b
 	if (running && nearBudget) color = "warning";
 
 	// Live motion while the agent streams under a running goal; steady otherwise.
-	if (running && ctx.session.isStreaming) icon = goalSpinnerIcon(ctx.activeMs);
+	if (running && ctx.facts.streaming) icon = goalSpinnerIcon(ctx.activeMs);
 
 	// The goal's own values are bound to it with a plain space: the budget and
 	// percent are this state's readout, not further states, and the separator
 	// grammar reserves `·` for a boundary between independent states.
-	const verbose = ctx.session.settings.get("goal.statusInFooter") === true;
+	const verbose = ctx.facts.goalVerbose;
 	const parts: string[] = [withIcon(icon, "Goal")];
 	if (goal) parts.push(formatGoalProgress(tokensUsed, tokenBudget, verbose));
 	return theme.fg(color, parts.join(" "));
@@ -391,10 +386,10 @@ function renderApprovalRung(ctx: SegmentContext): string {
 	// nothing, and the whole segment disappeared — in the one state where every
 	// write tool is denied and the operator most needs to know why.
 	if (ctx.planMode?.enabled) return "";
-	// A host that supplies no session accessor gets no rung rather than a thrown
-	// status line. The accessor is non-optional on `AgentSession`; this guard is
-	// for the embedders and stubs that satisfy the narrower `SegmentContext`.
-	const level = normalizeApprovalMode(ctx.session.effectiveApprovalMode?.());
+	// An absent mode is the ordinary launch state, not an error: config may name
+	// no rung, and `normalizeApprovalMode` answers `undefined` with the default
+	// the session will enforce. The row states a rung from the first frame.
+	const level = normalizeApprovalMode(ctx.facts.approvalMode);
 	const color: ThemeColor =
 		level === "yolo" ? "error" : level === "auto" ? "warning" : level === "plan" ? "warning" : "modeAccent";
 	return theme.fg(color, AUTONOMY_LABEL[level]);
@@ -411,7 +406,7 @@ function renderApprovalRung(ctx: SegmentContext): string {
  * the always-on guarantee and this text is the label.
  */
 function renderBypassMarker(ctx: SegmentContext): string {
-	if (!ctx.session.isApprovalBypassed()) return "";
+	if (!ctx.facts.approvalBypassed) return "";
 	// `withIcon`, not a template: a symbol preset is allowed to render this glyph
 	// as the empty string, and the hand-written form then emitted a leading space
 	// that the join above would carry into the middle of the line.
@@ -444,7 +439,7 @@ const modeSegment: StatusLineSegment = {
 const pathSegment: StatusLineSegment = {
 	id: "path",
 	render(ctx) {
-		const projectDir = ctx.session.sessionManager?.getCwd?.() ?? ctx.activeRepo?.cwd ?? getProjectDir();
+		const projectDir = ctx.facts.cwd ?? ctx.activeRepo?.cwd ?? getProjectDir();
 		const { content, pin } = renderLocation({
 			projectDir,
 			worktree: ctx.worktree,
@@ -565,8 +560,7 @@ const costSegment: StatusLineSegment = {
 	render(ctx) {
 		const { cost, premiumRequests } = ctx.usageStats;
 		const normalizedPremiumRequests = normalizePremiumRequests(premiumRequests);
-		const state = ctx.session.state;
-		const usingSubscription = state.model ? ctx.session.modelRegistry.isUsingOAuth(state.model) : false;
+		const usingSubscription = ctx.facts.subscription;
 
 		if (!cost && !usingSubscription && !normalizedPremiumRequests) {
 			return { content: "", visible: false };
@@ -648,7 +642,7 @@ const contextPctSegment: StatusLineSegment = {
 		// footline is the only renderer and it always asked for the bar, so the
 		// readout, both options and the ramp were unreachable.
 		const remainingRatio = pct === null || pct === undefined ? 1 : Math.max(0, 100 - pct) / 100;
-		const bar = renderContextBar(remainingRatio, level, Date.now(), ctx.session.isStreaming);
+		const bar = renderContextBar(remainingRatio, level, Date.now(), ctx.facts.streaming);
 		const pctText = formatContextRemainingPercent(pct);
 		const autoIcon =
 			ctx.autoCompactEnabled && theme.icon.auto ? ` ${theme.fg("sessionAccent", theme.icon.auto)}` : "";
@@ -719,9 +713,7 @@ const timeSegment: StatusLineSegment = {
 const sessionSegment: StatusLineSegment = {
 	id: "session",
 	render(ctx) {
-		const sessionManager = ctx.session.sessionManager;
-		const sessionId = sessionManager?.getSessionId?.();
-		const display = sessionId?.slice(0, 8) || "new";
+		const display = ctx.facts.sessionId?.slice(0, 8) || "new";
 
 		// Session identity reads in the cool arc's session hue (teal on titanium).
 		return { content: theme.fg("sessionAccent", withIcon(theme.icon.session, display)), visible: true };
@@ -812,7 +804,7 @@ const accountSegment: StatusLineSegment = {
 const secretsSegment: StatusLineSegment = {
 	id: "secrets",
 	render(ctx) {
-		const live = ctx.session.obfuscator?.liveSecrets();
+		const live = ctx.facts.secrets;
 		if (!live || live.count === 0) return { content: "", visible: false };
 		const masked = live.count - live.named;
 		const parts: string[] = [];
@@ -877,8 +869,7 @@ const cacheHitSegment: StatusLineSegment = {
 const sessionNameSegment: StatusLineSegment = {
 	id: "session_name",
 	render(ctx) {
-		const sessionManager = ctx.session.sessionManager;
-		const name = sessionManager?.getSessionName();
+		const name = ctx.facts.sessionName;
 		if (!name) return { content: "", visible: false };
 
 		const ansi =

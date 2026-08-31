@@ -33,6 +33,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { BASE_MODE_STATES, SEGMENTS } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import { NO_SESSION_FACTS } from "@veyyon/coding-agent/modes/components/status-line/session-facts";
 import {
 	joinStates,
 	segmentSeparator,
@@ -48,7 +49,6 @@ import {
 	type Theme,
 	theme,
 } from "@veyyon/coding-agent/modes/theme/theme";
-import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/approval-modes";
 import { visibleWidth } from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
@@ -72,22 +72,26 @@ interface Load {
 }
 
 function makeContext(load: Load): SegmentContext {
-	const goalState = load.withBudget
-		? { goal: { tokensUsed: 12_345, tokenBudget: 50_000, status: "active" } }
-		: undefined;
-	const session = {
-		settings: {
-			get: (path: string) => (path === "goal.modelBudgetsEnabled" ? true : undefined),
-			getGroup: () => ({ enabled: false }),
-		},
-		effectiveApprovalMode: () => load.rung,
-		isApprovalBypassed: () => load.bypassed,
-		getGoalModeState: () => goalState,
-		isStreaming: false,
-	} as unknown as AgentSession;
-
 	return {
-		session,
+		facts: {
+			...NO_SESSION_FACTS,
+			approvalMode: load.rung,
+			approvalBypassed: load.bypassed,
+			goalModelBudgets: true,
+			goal: load.withBudget
+				? {
+						id: "g",
+						objective: "o",
+						status: "active",
+						tokensUsed: 12_345,
+						tokenBudget: 50_000,
+						timeUsedSeconds: 0,
+						turnsCompleted: 0,
+						createdAt: 0,
+						updatedAt: 0,
+					}
+				: null,
+		},
 		activeRepo: null,
 		width: 160,
 		options: {},

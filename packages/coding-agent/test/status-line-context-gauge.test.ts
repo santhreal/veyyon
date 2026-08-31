@@ -29,6 +29,7 @@ import {
 } from "@veyyon/coding-agent/modes/components/status-line/context-thresholds";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import { NO_SESSION_FACTS } from "@veyyon/coding-agent/modes/components/status-line/session-facts";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {
@@ -51,14 +52,11 @@ function gaugeContext(overrides: GaugeOverrides = {}): SegmentContext {
 	const contextLimit = overrides.contextLimit ?? contextWindow;
 	const contextTokens = overrides.contextTokens ?? 0;
 	return {
-		session: {
-			state: { model: { id: "test-model", name: "Test Model" } },
-			isFastModeActive: () => false,
-			isAutoThinking: false,
-			isStreaming: overrides.streaming ?? false,
-			autoResolvedThinkingLevel: () => undefined,
-			isAdvisorActive: () => false,
-		} as unknown as SegmentContext["session"],
+		facts: {
+			...NO_SESSION_FACTS,
+			model: { id: "test-model", name: "Test Model", supportsThinking: false },
+			streaming: overrides.streaming ?? false,
+		},
 		width: 120,
 		compactThinkingLevel: false,
 		options: overrides.bar ? { context_pct: { bar: true } } : {},

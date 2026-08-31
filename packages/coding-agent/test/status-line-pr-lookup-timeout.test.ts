@@ -16,9 +16,11 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import type { StatusLineSettings } from "@veyyon/coding-agent/modes/components/status-line";
 import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { GitRefHead } from "@veyyon/coding-agent/utils/git";
 import * as git from "@veyyon/coding-agent/utils/git";
 import { getProjectDir, setProjectDir } from "@veyyon/utils";
+import { makeStatusLineSession } from "./helpers/status-line-session";
 
 const originalProjectDir = getProjectDir();
 
@@ -46,39 +48,10 @@ const gitSegmentSettings: StatusLineSettings = {
 	transparent: false,
 };
 
-function makeSession() {
-	return {
-		state: { messages: [], model: undefined },
-		messages: [],
-		model: undefined,
-		systemPrompt: [],
-		agent: { state: { tools: [] } },
-		skills: [],
-		isStreaming: false,
-		isAutoThinking: false,
-		autoResolvedThinkingLevel: () => undefined,
-		isFastModeActive: () => false,
-		isApprovalBypassed: () => false,
-		isFastModeEnabled: () => false,
-		getGoalModeState: () => null,
-		getAsyncJobSnapshot: () => ({ running: [] }),
-		modelRegistry: { isUsingOAuth: () => false },
-		sessionManager: {
-			getSessionName: () => "pr-lookup-timeout test",
-			getUsageStatistics: () => ({
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				orchestrationInput: 0,
-				orchestrationOutput: 0,
-				orchestrationCacheRead: 0,
-				premiumRequests: 0,
-				cost: 0,
-			}),
-		},
-	} as unknown as ConstructorParameters<typeof StatusLineComponent>[0];
+function makeSession(): AgentSession {
+	// No model resolved yet: these cases are about the PR lookup's abort plumbing,
+	// which runs whatever the model segment can print.
+	return makeStatusLineSession({ contextUsage: undefined, sessionName: "pr-lookup-timeout test" });
 }
 
 beforeAll(async () => {
