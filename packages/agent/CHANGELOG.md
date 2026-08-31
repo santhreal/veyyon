@@ -17,3 +17,4 @@
 - `entryTokens` in `shake.ts` collects text fragments in a single loop instead of chaining `.filter().map()`.
 - `generateHandoffFromContext`, `tailToolResultText`, and `generateTurnPrefixSummary` in `compaction.ts` collect text fragments in a single loop instead of chaining `.filter().map().join()`.
 - `assertValidCompactionResult` and `generateHandoffFromContext` use regex tests instead of `trim().length` to avoid string allocations.
+- `agent.ts` empty-content check uses regex tests instead of `trim().length` for thinking, text, and tool call name blocks.

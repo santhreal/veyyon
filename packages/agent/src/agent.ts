@@ -973,9 +973,9 @@ export class Agent {
 			if (partial && partial.role === "assistant" && Array.isArray(partial.content) && partial.content.length > 0) {
 				const onlyEmpty = !partial.content.some(
 					c =>
-						(c.type === "thinking" && c.thinking.trim().length > 0) ||
-						(c.type === "text" && c.text.trim().length > 0) ||
-						(c.type === "toolCall" && c.name.trim().length > 0),
+						(c.type === "thinking" && /\S/.test(c.thinking)) ||
+						(c.type === "text" && /\S/.test(c.text)) ||
+						(c.type === "toolCall" && /\S/.test(c.name)),
 				);
 				if (!onlyEmpty) {
 					this.appendMessage(partial);
