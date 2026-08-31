@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "b2631903643856aed5ec46f93a95bd32b2fecbb5",
+	"generatedFrom": "5173da1ab6df1405dcbd06504a1b53a599de4650",
 	"packages": {
 		"@veyyon/agent-core": {
 			"name": "@veyyon/agent-core",
@@ -2765,8 +2765,6 @@
 				"./modes/components/status-line/session-facts.js",
 				"./modes/components/status-line/state-grammar",
 				"./modes/components/status-line/state-grammar.js",
-				"./modes/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test",
-				"./modes/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test.js",
 				"./modes/components/status-line/token-rate",
 				"./modes/components/status-line/token-rate.js",
 				"./modes/components/status-line/types",
@@ -6827,8 +6825,6 @@
 				"./modes/terminal/components/status-line/session-facts.js",
 				"./modes/terminal/components/status-line/state-grammar",
 				"./modes/terminal/components/status-line/state-grammar.js",
-				"./modes/terminal/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test",
-				"./modes/terminal/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test.js",
 				"./modes/terminal/components/status-line/token-rate",
 				"./modes/terminal/components/status-line/token-rate.js",
 				"./modes/terminal/components/status-line/types",
@@ -9325,14 +9321,6 @@
 				"./modes/components/status-line/state-grammar.js": {
 					"to": "@veyyon/coding-agent/modes/terminal/components/status-line/state-grammar.js",
 					"why": "packages/coding-agent/src/modes/components/status-line/state-grammar.ts moved to packages/coding-agent/src/modes/terminal/components/status-line/state-grammar.ts, which @veyyon/coding-agent publishes as ./modes/terminal/components/status-line/state-grammar.js"
-				},
-				"./modes/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test": {
-					"to": "@veyyon/coding-agent/modes/terminal/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test",
-					"why": "packages/coding-agent/src/modes/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test.ts moved to packages/coding-agent/src/modes/terminal/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test.ts, which @veyyon/coding-agent publishes as ./modes/terminal/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test"
-				},
-				"./modes/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test.js": {
-					"to": "@veyyon/coding-agent/modes/terminal/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test.js",
-					"why": "packages/coding-agent/src/modes/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test.ts moved to packages/coding-agent/src/modes/terminal/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test.ts, which @veyyon/coding-agent publishes as ./modes/terminal/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test.js"
 				},
 				"./modes/components/status-line/token-rate": {
 					"to": "@veyyon/coding-agent/modes/terminal/components/status-line/token-rate",

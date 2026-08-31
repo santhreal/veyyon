@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "b2631903643856aed5ec46f93a95bd32b2fecbb5",
+	"generatedFrom": "5173da1ab6df1405dcbd06504a1b53a599de4650",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -11281,8 +11281,8 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/branch.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "12b1be44f9828a86a28fde605c654229aeeb10c4b600d97b3c30757bc0e4242e",
-			"mainHash": "5f0db024b53108d9f0806687c4dffa36315a13e0e9a3e382200fcb8dd9da7046",
+			"hash": "a5e49617133a4dad8fa2d8947bc52730a801225c72f8f13ecbf1925a163f2915",
+			"mainHash": "ac126c6e8cc815c5491e2c0e8376b4955d3ade772ffc111d44f09d4d1222361a",
 			"structuralHash": "79d07447ea589ef7cf0e1e0803114cb5bd3e0cbe6c00429c6fcea9dcfbb4f956",
 			"mainStructuralHash": "79d07447ea589ef7cf0e1e0803114cb5bd3e0cbe6c00429c6fcea9dcfbb4f956"
 		},
@@ -11299,10 +11299,10 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/component.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "2d63aec59d3a9e740f2d961ddeabb708b66094e7ca0b52de59c1783f97422657",
-			"mainHash": "9d0df0d62e347b3d465100478fe7e670403024375d2c1598e8ce0281bfad75ff",
-			"structuralHash": "30664c5a866464423e90d25804c554ba8a5bfda43a321ad10ea0de52e5df4866",
-			"mainStructuralHash": "30664c5a866464423e90d25804c554ba8a5bfda43a321ad10ea0de52e5df4866"
+			"hash": "aec4777052ad17d01fc8ba7f4c5a83c7b9023349dc4a58a07345c26b811fedbb",
+			"mainHash": "13c183f711fdef43d334408875f384d832d356d289627d4cdfacfcf0bb99871c",
+			"structuralHash": "2088a5abff3b91bd72c00d3b3ee54e278a3189e3166af49deea13194a3daa2de",
+			"mainStructuralHash": "2088a5abff3b91bd72c00d3b3ee54e278a3189e3166af49deea13194a3daa2de"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/context-thresholds.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/context-thresholds.ts",
@@ -11344,10 +11344,10 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/presets.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "74f847fe9f310b33a3ff288d1b4e98d4af0e83600a07ceb9586002621c316e12",
-			"mainHash": "74f847fe9f310b33a3ff288d1b4e98d4af0e83600a07ceb9586002621c316e12",
-			"structuralHash": "ce58e6acb9e7863def179669a94256e7b1ee6a3e8dc1493272de8c183d47625e",
-			"mainStructuralHash": "ce58e6acb9e7863def179669a94256e7b1ee6a3e8dc1493272de8c183d47625e"
+			"hash": "0c9fb7fb793594983f8a4bef7fbc4c63d270858424d810de8a6c4bab7eeb246d",
+			"mainHash": "0c9fb7fb793594983f8a4bef7fbc4c63d270858424d810de8a6c4bab7eeb246d",
+			"structuralHash": "cda093f039cdb1e9b8ad94f198a1bf9418952da9f28598edaefdba3346a81f26",
+			"mainStructuralHash": "cda093f039cdb1e9b8ad94f198a1bf9418952da9f28598edaefdba3346a81f26"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/profile-segment.test.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/profile-segment.test.ts",
@@ -11389,10 +11389,10 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/segments.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "7ca2b8f43fc81e443c00b8784531b6ba22d56c10f5941cfc58103f41bbffdec4",
-			"mainHash": "95b990e719705ca4386ae76fd67285820ea6ea4009594dbe524ecfd88b87852c",
-			"structuralHash": "bad167d8e9dec00fcef0288c22b23745868a3a77dfcf35d559594117282d1d30",
-			"mainStructuralHash": "bad167d8e9dec00fcef0288c22b23745868a3a77dfcf35d559594117282d1d30"
+			"hash": "683b602e726279dad24d213aea9e639dfdf60b69fa761e91e7bbd068de9fdc52",
+			"mainHash": "e921441761a0c991b81a52bdd1a124a70acd687c6b610283fae8ee740f5c62f0",
+			"structuralHash": "e1e0fd6a1487d0184c5485c3eb7bd450381933fc682ea00e96deec05d0096104",
+			"mainStructuralHash": "e1e0fd6a1487d0184c5485c3eb7bd450381933fc682ea00e96deec05d0096104"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/service-tier-chip.test.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/service-tier-chip.test.ts",
@@ -11407,10 +11407,10 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/session-facts.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "a31597bceb68492b5bc8292dbad2339f80088269e9eef620a360af51465dca96",
-			"mainHash": "3288e12af235aac08052e9554b22abc79e6473b9736ce4f3f33eb17290eddc51",
-			"structuralHash": "1dbda2251ae8a3be41c7b45b99858af7b85a66e56e978f0edc523e1e34ca730e",
-			"mainStructuralHash": "1dbda2251ae8a3be41c7b45b99858af7b85a66e56e978f0edc523e1e34ca730e"
+			"hash": "a87f8580cf9dc4434affb8819734ff9fabc40e185ccc284af09bac2815df9adc",
+			"mainHash": "8bd5fcea68f772f84d2a55a194e77abf1b878cbfa2f7fcebe93b680e1313a9ad",
+			"structuralHash": "2a56d603315589c19b1910700d9e432837988f9b142a0c028030964386bdb109",
+			"mainStructuralHash": "2a56d603315589c19b1910700d9e432837988f9b142a0c028030964386bdb109"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/state-grammar.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/state-grammar.ts",
@@ -11420,15 +11420,6 @@
 			"mainHash": "17d58ff920a4e3d5adc0604da23327c915a8a4d244071b93422bab4639cf6bf0",
 			"structuralHash": "a0bf1daee4a4a4a030abb6970678f593d436a7f9bef49418474de108b0e922f6",
 			"mainStructuralHash": "a0bf1daee4a4a4a030abb6970678f593d436a7f9bef49418474de108b0e922f6"
-		},
-		"packages/coding-agent/src/modes/terminal/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test.ts": {
-			"old": "packages/coding-agent/src/modes/components/status-line/the-footer-counts-only-the-secrets-something-can-name.test.ts",
-			"kind": "normalized",
-			"differs": "none",
-			"hash": "58c6e0b27ef8ca3000c50e4f1e8dce6712542b83f8f8033a6803f6033cd97c00",
-			"mainHash": "58c6e0b27ef8ca3000c50e4f1e8dce6712542b83f8f8033a6803f6033cd97c00",
-			"structuralHash": "f917bdc6a12e7f7f1e857c6606457045e0b2cafd4cf94edd75112860726d020e",
-			"mainStructuralHash": "f917bdc6a12e7f7f1e857c6606457045e0b2cafd4cf94edd75112860726d020e"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/token-rate.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/token-rate.ts",
@@ -11952,10 +11943,10 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "dba512953f79e837be5b9c9f1e46abf358696ff0ada934270bf541374a96f670",
-			"mainHash": "665ce3bd6ecd30d1cfa8ea867c86f774b97d54776224d6a5147dbabe77be194b",
-			"structuralHash": "74ac61bfaeb970a1225aff544c975a15f9756252ee27f0ff1176f61a586fdd75",
-			"mainStructuralHash": "ad4e14af0e4c1366cf2850d17beb7432b71b2674f0cdbfb833b0782f01b63644"
+			"hash": "08cb643d265c38c466d58dfb1b21bc3ac45c20b5bf89426169e8d4815e296b8c",
+			"mainHash": "63258ea2bd4d357c319d06d6a699f49f44231ffefd1d6cb4a7057073ba7fa401",
+			"structuralHash": "2dd04f88c03c913943e51860ec2ed5277a8964aa0d0a6dffc170c132c9e336cd",
+			"mainStructuralHash": "6f205c499ee48ce21c75d53c592f5ee18beab6f77114347747907914ebea2f30"
 		},
 		"packages/coding-agent/src/modes/terminal/oauth-manual-input.ts": {
 			"old": "packages/coding-agent/src/modes/oauth-manual-input.ts",

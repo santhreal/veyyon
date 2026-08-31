@@ -429,7 +429,7 @@ describe("a published surface survives the move", () => {
 		}
 
 		expect(unserved).toEqual([]);
-		expect(compared).toBe(5205);
+		expect(compared).toBe(5203);
 	});
 
 	/**
@@ -437,7 +437,7 @@ describe("a published surface survives the move", () => {
 	 * documented key relocation, or a recorded absorption — so a rule that started matching more than
 	 * it should would otherwise pass as a wider set of correct-looking rows.
 	 *
-	 * 1021 coding-agent subpaths relocated, 100 of them into `@veyyon/kernel`: 53 modules moved and
+	 * 1019 coding-agent subpaths relocated, 100 of them into `@veyyon/kernel`: 53 modules moved and
 	 * each is served twice, extensionless and under a `.js` alias, less the three that this branch
 	 * added rather than moved (`extensibility/host-view`, `extensibility/widget`,
 	 * `session/agent-session-compaction-policy`) and so were never part of the baseline surface. The
@@ -448,13 +448,17 @@ describe("a published surface survives the move", () => {
 	 * `@veyyon/stats` carries no row: `./format` was a relocation while this branch alone had moved
 	 * the two cost formatters to `@veyyon/utils/format`, and the baseline stopped serving that
 	 * subpath once main made the same move, so there is nothing left to relocate.
+	 *
+	 * Two rows left the same way: the status row's secrets footer suite was published under both
+	 * spellings and this branch relocated them with the directory, and main then deleted the segment
+	 * the suite covers along with the suite, so the baseline serves neither.
 	 */
 	it("(b4) resolved-subpath relocations are pinned by exact equality", () => {
 		const rows = LEDGER.relocations.resolvedSubpaths;
 		expect(Object.keys(rows).sort()).toEqual(["@veyyon/coding-agent", "@veyyon/tui"]);
 
 		const codingAgent = rows["@veyyon/coding-agent"] ?? {};
-		expect(Object.keys(codingAgent).length).toBe(1021);
+		expect(Object.keys(codingAgent).length).toBe(1019);
 		const intoKernel = Object.values(codingAgent).filter(note => note.to.startsWith("@veyyon/kernel/"));
 		expect(intoKernel.length).toBe(100);
 		const kernelConcerns = new Set(intoKernel.map(note => note.to.split("/").slice(0, 3).join("/")));
