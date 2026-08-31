@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "7ef8c9fee115de390a747115a87e9da9477a5628",
+	"generatedFrom": "45906bc1350201f90816d199e7dc0939ff5b3ad6",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -70,7 +70,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4584,
+	"changedCount": 4585,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -2441,6 +2441,7 @@
 		"packages/coding-agent/test/spawn-concurrency-is-one-ceiling-per-tree.test.ts",
 		"packages/coding-agent/test/startup-module-graph.test.ts",
 		"packages/coding-agent/test/startup-splash.test.ts",
+		"packages/coding-agent/test/startup/a-launch-does-not-build-every-prompt-registry.test.ts",
 		"packages/coding-agent/test/startup/a-launch-does-not-load-a-schema-library-it-will-not-use.test.ts",
 		"packages/coding-agent/test/startup/the-first-turn-waits-for-hydration-the-first-frame-does-not.test.ts",
 		"packages/coding-agent/test/startup/the-launch-shell-does-not-evaluate-a-package-barrel.test.ts",
