@@ -526,7 +526,13 @@ describe("ModelHub roles list windowing", () => {
 	 * right. A role added or withdrawn now moves this list with the screen.
 	 */
 	function chainRowLabels(): string[] {
-		const rows = SELECTABLE_MODEL_ROLE_IDS.map(role => MODEL_ROLES[role].tag);
+		const rows = SELECTABLE_MODEL_ROLE_IDS.map(role => {
+			// A selectable role with no tag has no bytes to find its row by, which would silently
+			// drop it from the sweep. Fail instead: the sweep is the reason this list is derived.
+			const tag = MODEL_ROLES[role].tag;
+			if (tag === undefined) throw new Error(`selectable role ${role} carries no tag`);
+			return tag;
+		});
 		rows.push("+ New role…");
 		for (let i = 0; i < CHAIN_COUNT; i++) rows.push(`test/pattern-${i}`, `↳ test/model-${i}`);
 		rows.push("+ New fallback…");
