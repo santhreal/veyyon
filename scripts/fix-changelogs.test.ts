@@ -3,7 +3,12 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { $ } from "bun";
-import { changelogPaths, collectPromotableAddedItemLines, fixChangelogContent, runChangelogFixer } from "./fix-changelogs";
+import {
+	changelogPaths,
+	collectPromotableAddedItemLines,
+	fixChangelogContent,
+	runChangelogFixer,
+} from "./fix-changelogs";
 
 describe("collectPromotableAddedItemLines", () => {
 	it("keeps new changelog item additions while ignoring moves and edits", () => {
@@ -352,7 +357,9 @@ describe("changelogPaths", () => {
 		try {
 			await Bun.write(
 				path.join(repoRoot, "package.json"),
-				JSON.stringify({ workspaces: { packages: ["packages/*", "plugins/*", "hosts/terminal/engine", "kernel"] } }),
+				JSON.stringify({
+					workspaces: { packages: ["packages/*", "plugins/*", "hosts/terminal/engine", "kernel"] },
+				}),
 			);
 			for (const member of ["packages/foo", "plugins/bar", "hosts/terminal/engine", "kernel"]) {
 				await Bun.write(path.join(repoRoot, member, "package.json"), JSON.stringify({ name: member }));
