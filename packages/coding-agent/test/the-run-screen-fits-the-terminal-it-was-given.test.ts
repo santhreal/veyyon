@@ -272,6 +272,25 @@ describe("the run screen fits the terminal it was given", () => {
 		for (const line of frame) expect(visibleWidth(line)).toBeLessThanOrEqual(80);
 	});
 
+	it("fits a terminal narrower than the sidebar wants", () => {
+		// The sidebar asks for 22 columns and the pane for what is left, so a
+		// terminal narrower than the pair writes a frame wider than the window and
+		// the border wraps into a second row nothing accounts for. Every row of
+		// every frame stays inside the width it was handed, down to the narrowest
+		// terminal a reader can produce.
+		for (const width of [10, 20, 29, 40]) {
+			const screen = new AutoresearchScreenComponent({
+				runtime: runtimeWith(3),
+				close: () => {},
+				requestRender: () => {},
+				rows: () => 12,
+			});
+			for (const line of screen.render(width)) {
+				expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+			}
+		}
+	});
+
 	it("pages the detail pane, and pages back to where it started", () => {
 		// The pane holds a playbook longer than the card, so the rows past the
 		// bottom are reachable only through the page keys the footer advertises.

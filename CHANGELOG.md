@@ -78,6 +78,7 @@
 - The run screen lists each metric once: the primary metric a log call repeats among its secondary metrics is no longer stored or rendered as a secondary of itself, which printed a second unitless copy of every measurement and a `-100.0%` row for a crashed run.
 - The run screen prints the artifacts directory with the home directory collapsed to `~`, so a screenshot of a loop no longer states the account name and profile layout it ran under.
 - The run screen fits a terminal shorter than fourteen rows: it wrote a fixed fourteen rows whatever the height, so a ten-row terminal lost the four rows that carry the footer and the border.
+- The run screen fits a terminal narrower than 29 columns: the sidebar takes what the width can pay for instead of its own floor, and every row is cut to the width it was handed, so the border no longer wraps into rows the card did not count.
 - The run screen names an autoswarm the setup console configured before the first `init_experiment` call, instead of titling it "Autoresearch" and reporting "serial, no arms and no review" for a swarm the user had already set breadth on.
 - `/autoresearch clear` resets to the baseline of the session on the branch it is standing on rather than the newest open session, so a second worktree on another branch no longer decides which commit this one is reset to, nor has its session closed instead.
 - The run screen pages its detail pane with pgup and pgdn, and closes on escape only: `q` closed the surface, so filtering the run list for a label containing a q lost the screen mid-keystroke.

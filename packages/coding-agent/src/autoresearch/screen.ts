@@ -403,12 +403,22 @@ export function renderRunScreen(
 	out.push(dividerSplit(width, sidebarWidth));
 	out.push(row(theme.fg("dim", FOOTER_HINT), width));
 	out.push(bottomBorder(width));
-	return out;
+	// The chrome has a floor of its own — two borders and the insets between
+	// them — so a terminal narrower than that still gets rows it can print.
+	return out.map(line => truncateToWidth(line, width));
 }
 
-/** Sidebar column width for a card of `width` columns. */
+/**
+ * Sidebar column width for a card of `width` columns.
+ *
+ * Two panes cost seven columns of chrome, so a sidebar sized only by its own
+ * bounds wrote a 29-column frame into a 10-column terminal and the border
+ * wrapped. A terminal that cannot pay for the sidebar's floor and one body
+ * column gives the sidebar whatever is left instead.
+ */
 export function screenSidebarWidth(width: number): number {
-	return clampLow(Math.floor(width * 0.28), SIDEBAR_MIN, SIDEBAR_MAX);
+	const wanted = clampLow(Math.floor(width * 0.28), SIDEBAR_MIN, SIDEBAR_MAX);
+	return Math.max(0, Math.min(wanted, width - 8));
 }
 
 /**
