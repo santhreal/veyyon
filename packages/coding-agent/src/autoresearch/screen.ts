@@ -425,7 +425,7 @@ export function screenStacks(width: number): boolean {
  * page keys move through and a one-row list cannot show a cursor in context.
  */
 export function screenListRows(bodyRows: number): number {
-	return Math.max(1, Math.min(bodyRows - 1, Math.ceil(bodyRows / 2)));
+	return clampLow(Math.ceil(bodyRows / 2), 1, bodyRows - 1);
 }
 
 /** Body rows of a stacked card: two dividers rather than one. */

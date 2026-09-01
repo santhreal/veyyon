@@ -12,12 +12,19 @@
  * numbers without inheriting the grid's palette.
  */
 
-import { type AgentMessage, countTokens } from "@veyyon/agent-core";
+import type { AgentMessage } from "@veyyon/agent-core";
 import type { CompactionSettings } from "@veyyon/agent-core/compaction";
-import { estimateTokens } from "@veyyon/agent-core/compaction";
+// Both value imports come from the leaf that declares them rather than from
+// `@veyyon/agent-core` or its `compaction` barrel. The status row imports
+// `computeNonMessageBreakdown` from this module, so a barrel edge here evaluates the
+// agent runtime -- and, through `compaction/utils.ts`, the `@veyyon/utils` barrel too --
+// before the composer takes a keystroke.
+// `test/startup/the-launch-shell-does-not-evaluate-a-package-barrel.test.ts` pins that.
+import { estimateTokens } from "@veyyon/agent-core/compaction/token-estimate";
+import { countTokens } from "@veyyon/agent-core/tokenizer";
 import type { Tool as AiTool, ContextSnapshot, Model } from "@veyyon/ai";
 import type { SessionTelemetryDetail } from "@veyyon/ai/instrumentation";
-import { stripSchemaDescriptions, toolWireSchema } from "@veyyon/ai/utils/schema";
+import { stripSchemaDescriptions, toolWireSchema } from "@veyyon/ai/utils/schema/wire";
 // Imported from their owners rather than the `@veyyon/utils` barrel: this module is
 // on `tools/read.ts`'s reach graph through `session/agent-session.ts`, and
 // `test/architecture/leveraged-imports-stay-cut.test.ts` asserts that graph does not
