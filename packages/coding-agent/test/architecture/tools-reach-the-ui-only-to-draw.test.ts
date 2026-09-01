@@ -258,7 +258,6 @@ describe("tools reach the terminal UI only to draw", () => {
  * still be unusable by a GUI.
  */
 const TUI_SURFACE = new Map<string, readonly string[]>([
-	["tools/agent/ask-render.ts", ["Markdown", "Text", "renderInlineMarkdown", "type Component", "type MarkdownTheme"]],
 	["tools/shell/bash-interactive.ts", ["type Component"]],
 	["tools/shell/bash-render.ts", ["ImageProtocol", "TERMINAL", "type Component"]],
 	["tools/shell/eval-render.ts", ["Markdown", "Text", "type Component"]],
@@ -470,6 +469,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"autoresearch/tools/run-experiment.ts",
 			"autoresearch/tools/update-notes.ts",
 			"goals/goal-tool.ts",
+			"tools/agent/ask-view.ts",
 			"tools/agent/irc-view.ts",
 			"tools/agent/memory-view.ts",
 			"tools/agent/resolve-view.ts",
@@ -555,12 +555,10 @@ describe("a tool names the terminal package only where it is recorded", () => {
 	 */
 	it("extracts both erased and runtime names from a real tool", () => {
 		expect(files.length).toBeGreaterThan(50);
-		expect(tuiNamesIn(fs.readFileSync(path.join(TOOLS, "agent", "ask-render.ts"), "utf-8"))).toEqual([
+		expect(tuiNamesIn(fs.readFileSync(path.join(TOOLS, "shell", "eval-render.ts"), "utf-8"))).toEqual([
 			"Markdown",
 			"Text",
-			"renderInlineMarkdown",
 			"type Component",
-			"type MarkdownTheme",
 		]);
 	});
 
@@ -654,7 +652,6 @@ describe("a registry entry either describes its card or is recorded as drawing o
 		const drawing = entries.filter(name => toolRenderers[name]?.view === undefined);
 		expect(drawing).toEqual([
 			"apply_patch",
-			"ask",
 			"bash",
 			"edit",
 			"eval",
@@ -673,6 +670,7 @@ describe("a registry entry either describes its card or is recorded as drawing o
 	it("has a view on every converted entry, and that view draws both halves of the card", () => {
 		const described = entries.filter(name => toolRenderers[name]?.view !== undefined);
 		expect(described).toEqual([
+			"ask",
 			"ast_edit",
 			"browser",
 			"debug",

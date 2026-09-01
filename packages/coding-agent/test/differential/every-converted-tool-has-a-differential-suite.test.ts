@@ -84,6 +84,7 @@ describe("differential coverage", () => {
 			"github",
 			"browser",
 			"read",
+			"ask",
 		]);
 	});
 

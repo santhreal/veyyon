@@ -139,6 +139,27 @@ export interface ViewSpan {
 	 */
 	language?: string;
 	/**
+	 * That the run is Markdown written for one line, which the host renders however it can.
+	 *
+	 * The inline twin of `ViewSection.markdown`, for a run whose emphasis is the author's rather than
+	 * the tool's: the label of an offered choice is a person's words, and `**pick this**` in it is a
+	 * decision the person made about their own text. A tool that toned the run itself would be
+	 * deciding what bold looks like, and a tool that stripped the syntax would be editing what was
+	 * asked.
+	 *
+	 * The run is one line, which is what separates this from a section: a document has paragraphs, a
+	 * list and fenced code, and none of them fit inside a row beside a marker glyph. A terminal
+	 * renders the inline subset over the span's tone, a browser host mounts the same subset as HTML,
+	 * and a host with no renderer draws the source, which is the text a reader would have seen either
+	 * way.
+	 *
+	 * `tone` is the ground the rendered run sits on rather than a colour applied over it: the tone
+	 * carries the run's own words and whatever the Markdown asks for -- a code span, a link -- takes
+	 * the host's own appearance for that. Meaningless with `symbol` or `captured`, each of which
+	 * states that the run is not the tool's prose at all.
+	 */
+	markdown?: boolean;
+	/**
 	 * That this run, and every run after it on the same line, is trailing detail rather than the
 	 * subject of the row.
 	 *
@@ -412,6 +433,13 @@ export interface ViewSection {
 	 * colours and numbers, never a document it formats. A section that states both is a tool
 	 * contradicting itself, and a host resolves the pair by drawing the code, which is the reading
 	 * that never invents layout.
+	 *
+	 * The document's ordinary text takes the TONE of the span carrying it, which is the one thing a
+	 * tool states about the appearance of a document it did not write: a question put to a reader is
+	 * the card's subject and is toned as such, while a file's contents are body text. Nothing else on
+	 * the span reaches the rows -- the source is joined from the spans' text -- so a section that
+	 * tones its first span states the ground the whole document sits on, and one that tones none
+	 * takes the host's own body text.
 	 */
 	markdown?: boolean;
 	/**

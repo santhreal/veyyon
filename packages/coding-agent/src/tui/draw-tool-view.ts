@@ -12,7 +12,7 @@
  */
 
 import { Ellipsis } from "@veyyon/natives";
-import { type Component, Markdown, Text } from "@veyyon/tui";
+import { type Component, Markdown, renderInlineMarkdown, Text } from "@veyyon/tui";
 import { pluralize } from "@veyyon/utils/format";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
@@ -134,6 +134,12 @@ const BLOCK_STATES: Record<ViewStatus, { state: State; rail: ThemeColor }> = {
  * renderer used (`urlHyperlink(url, theme.fg("mdLinkUrl", url))`): the escape that opens the link
  * carries no colour, so a colour started inside it ends inside it.
  *
+ * A markdown run is rendered through the inline half of the terminal's own document renderer, over
+ * the span's tone: the words take the tone and the syntax takes the markdown theme, which is what
+ * every hand-written row that offered a person's own label already drew. A run cut to fit is cut on
+ * its SOURCE, so a cut that lands inside a `**` renders the asterisks; the alternative is measuring
+ * a rendered string whose bytes are not the ones the cut is counted in.
+ *
  * A captured run is another program's own output, so it is replayed rather than styled: the theme
  * supplies the colour the row sits on and `styleTerminalRow` keeps whichever of the program's styles
  * this terminal can reproduce. Tone and emphasis are ignored there, because a tool that observed a
@@ -145,11 +151,24 @@ export function drawSpan(span: ViewSpan, theme: Theme): string {
 		return linked(span, theme.styledSymbol(span.symbol as SymbolKey, color));
 	}
 	if (span.captured) return styleTerminalRow(span.text, theme.getFgAnsi(TONE_COLORS.output));
+	const ground = span.tone === undefined ? undefined : TONE_COLORS[span.tone];
+	// A markdown run is rendered rather than styled: the tone is the ground its words sit on, and
+	// whatever the source asks for -- a code span, a link, emphasis -- takes the markdown theme's own
+	// appearance for that. Emphasis flags are dropped, because the source is what carries emphasis
+	// here and a tool that set both would be answering the same question twice.
+	if (span.markdown) {
+		const rendered = renderInlineMarkdown(
+			span.text,
+			getMarkdownTheme(),
+			ground === undefined ? undefined : text => theme.fg(ground, text),
+		);
+		return linked(span, rendered);
+	}
 	let text = span.text;
 	if (span.bold) text = theme.bold(text);
 	if (span.italic) text = theme.italic(text);
 	if (span.strike) text = theme.strikethrough(text);
-	const drawn = linked(span, span.tone === undefined ? text : theme.fg(TONE_COLORS[span.tone], text));
+	const drawn = linked(span, ground === undefined ? text : theme.fg(ground, text));
 	// The badge sits outside the link, because it names the file rather than being part of the target
 	// a reader follows, and the theme owns both the glyph and the space after it.
 	return span.language === undefined ? drawn : `${theme.langBadge(span.language)}${drawn}`;
@@ -258,10 +277,16 @@ export function drawToolViewText(view: LineToolView, theme: Theme, spinnerFrame?
  * The width is the block's content width, so the document wraps inside the frame rather than against
  * the terminal's edge, and a resize re-lays it out. A section whose source is blank draws nothing at
  * all rather than one empty row, which is what a document with no text is.
+ *
+ * A tone is the ground the document's ordinary text sits on, which the section states by toning the
+ * span that carries the source: a question put to a reader is the subject of its card, where a file's
+ * contents are body text. Everything the source itself asks for -- a heading, a code span, a link --
+ * still takes the markdown theme's own colours.
  */
-function drawMarkdownRows(source: string, width: number): readonly string[] {
+function drawMarkdownRows(source: string, width: number, theme: Theme, tone: ViewTone | undefined): readonly string[] {
 	if (!source.trim()) return [];
-	return new Markdown(source, 0, 0, getMarkdownTheme()).render(Math.max(1, width));
+	const ground = tone === undefined ? undefined : { color: (text: string) => theme.fg(TONE_COLORS[tone], text) };
+	return new Markdown(source, 0, 0, getMarkdownTheme(), ground).render(Math.max(1, width));
 }
 
 /**
@@ -297,6 +322,12 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 			// A document is laid out at the host's width, so its rows are composed inside the closure
 			// below from the source the section carries rather than drawn once here.
 			markdown: markdown ? section.lines.map(line => line.map(span => span.text).join("")).join("\n") : undefined,
+			// The ground the document's own text sits on, which the section states by toning the span it
+			// carries the source in. Read from the first toned span, so a document stated as several
+			// spans of one line is one document with one ground rather than a run-by-run palette.
+			markdownTone: markdown
+				? section.lines.flat().find(span => span.tone !== undefined)?.tone
+				: undefined,
 			// A plain section's rows, drawn here when the whole row is its subject and left as spans when
 			// it carries a trailing run: a tail sits at the END of the row, so the words before it are cut
 			// to what the tail leaves and the gap between the two is whatever columns are left. That is
@@ -335,7 +366,7 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 				const contentWidth = outputBlockContentWidth(width);
 				const drawn =
 					section.markdown !== undefined
-						? drawMarkdownRows(section.markdown, contentWidth)
+						? drawMarkdownRows(section.markdown, contentWidth, theme, section.markdownTone)
 						: section.rows === undefined
 							? section.lines
 							: section.rows.map(row =>
@@ -767,6 +798,11 @@ export interface ViewToolRendererPolicy {
 	mergeCallAndResult?: boolean;
 	/** Drawn in the response flow rather than in the card's own box, which is the row's placement. */
 	inline?: boolean;
+	/**
+	 * That the call render IS the live control a reader answers, so a call that never ran must not
+	 * paint it: a question nobody can answer any more draws its plain label instead.
+	 */
+	callIsLiveWidget?: boolean;
 	animatedPendingPreview?: boolean | ((args: unknown) => boolean);
 	animatedPartialResult?: boolean | ((args: unknown) => boolean);
 	forceFirstResultViewportRepaint?: FirstResultViewportRepaint;

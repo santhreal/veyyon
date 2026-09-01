@@ -1,18 +1,24 @@
 /**
- * Terminal drawing for the ask tool. The tool half in `ask.ts` decides what
- * happened; this half decides how a terminal shows it, and is the only one of the two
- * that reaches the TUI.
+ * Differential oracle: the ask tool renderer from origin/main.
+ *
+ * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/tools/ask.ts`, where the renderer sat
+ * before this branch split it into `src/tools/agent/ask-render.ts` unchanged).
+ * Frozen: never edited to make a test pass.
+ *
+ * Only the import specifiers are rewritten to the package subpaths this branch publishes, and
+ * `optionMarker` is imported from the tool rather than declared here, which is where the split moved
+ * it.
  */
 
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { getMarkdownTheme } from "@veyyon/coding-agent/theme/markdown-theme";
+import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
+import { type AskToolDetails, optionMarker } from "@veyyon/coding-agent/tools/agent/ask";
+import { formatErrorMessage, formatMeta, formatTitle } from "@veyyon/coding-agent/tools/core/render-utils";
+import { framedBlock, renderStatusLine } from "@veyyon/coding-agent/tui";
 import { type Component, Markdown, type MarkdownTheme, renderInlineMarkdown, Text } from "@veyyon/tui";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import { getMarkdownTheme } from "../../theme/markdown-theme";
-import type { Theme } from "../../theme/theme";
-import { framedBlock, renderStatusLine } from "../../tui";
-import { formatErrorMessage, formatMeta, formatTitle } from "../core/render-utils";
-import { type AskToolDetails, optionMarker } from "./ask";
 
 // =============================================================================
 // TUI Renderer
@@ -169,7 +175,7 @@ function renderAnswerOptionLines(
 	return out;
 }
 
-export const askToolRenderer = {
+export const askMainRenderer = {
 	mergeCallAndResult: true,
 	callIsLiveWidget: true,
 	renderCall(args: AskRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {

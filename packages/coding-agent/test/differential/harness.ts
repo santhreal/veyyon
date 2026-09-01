@@ -76,6 +76,7 @@ export const CONVERTED_TOOLS = [
 	"github",
 	"browser",
 	"read",
+	"ask",
 ] as const;
 
 export const WIDTH = 80;

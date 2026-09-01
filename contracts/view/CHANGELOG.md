@@ -24,3 +24,4 @@
 - `StatusRowView.descriptionFileLine` states the line inside `descriptionFile` a row names, so a card that read one window of a file sends a reader to that window rather than to the file's first line.
 - `ViewCodeLines.lineNumbers` states the number each line has in the file, one entry per line, for a section that is several windows onto one file: the rows are in file order and the numbers jump, and a `null` entry is a row standing in for an elided span.
 - `ViewSection.markdown` states that a section's lines are a document rather than source, so a tool that read a `.md` file says what the text is and leaves headings, emphasis and layout to the host.
+- `ViewSpan.markdown` states that one run of a line is Markdown written for a single line, so the label of an offered choice keeps the emphasis its author wrote without the tool deciding what bold looks like; a host with no renderer draws the source.
