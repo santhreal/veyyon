@@ -709,21 +709,6 @@ export function resetSupersededAgentRowReports(): void {
 }
 
 /**
- * The version of the `subagent.*` model shape this build reads.
- *
- * Version 1 layered one blanket answer under the per-agent rows, so the roster
- * and the blanket row each showed a model and neither said which a spawn would
- * use. Version 2 removed the blanket scope entirely. Version 3 has both and
- * makes them EXCLUSIVE: `subagent.sharedModel` selects which one exists, and
- * the surfaces of the scope that is off are not drawn.
- *
- * `subagent.modelByDepth` is retired in every version from 2 on. It keyed a
- * chain to a spawn depth rather than to an agent, so it decided for whatever
- * agent happened to run there, which neither scope has a reading of.
- */
-export const SUBAGENT_MODEL_SCOPE_VERSION = 3;
-
-/**
  * Keys that stay declared and decide nothing, each with the control that
  * answers instead.
  *
@@ -739,7 +724,7 @@ export const RETIRED_SUBAGENT_MODEL_SETTINGS: Readonly<Record<string, string>> =
 const reportedRetiredModelSettings = new Set<string>();
 
 /**
- * The version-1 keys a config still carries and this build ignores.
+ * The keys a config still carries and this build ignores.
  *
  * A key holding its unset value is not a stale entry and is not listed: `false`
  * for the switch, an empty chain, an empty map. Anything else is a choice
@@ -774,7 +759,7 @@ function reportRejectedSubagentModelSettings(settings: Settings): void {
 		logger.warn(
 			`Settings: ${path} is set and is no longer read — a model and an effort are chosen for one agent, ` +
 				`or for every agent through Same Model for All Subagents. Open ${RETIRED_SUBAGENT_MODEL_SETTINGS[path]} and choose it there.`,
-			{ setting: path, scopeVersion: SUBAGENT_MODEL_SCOPE_VERSION },
+			{ setting: path },
 		);
 	}
 }
@@ -835,22 +820,34 @@ export function subagentScopeIsShared(settings: Settings): boolean {
 	return settings.get("subagent.sharedModel") === true;
 }
 
+/** One layer of the model search, with the level that decided when a lane did. */
+type SubagentModelLayer = { source: SubagentModelSource; value: string | string[] | undefined; depth?: number };
+
 /**
- * The blanket model layer, or undefined while the roster is on per-agent scope.
+ * The layers the shared scope offers: the blanket chain, or none.
  *
- * Reads `subagent.model` only when the switch is on. An unset chain under an on
- * switch is not an error and is not a layer: it means every agent runs the
- * default model role, which is the same thing the switch being off with no lane
- * anywhere would produce.
+ * An unset chain is not an error and is not a layer: it means every agent runs the default model
+ * role, which is the same thing the switch being off with no lane anywhere would produce. It is
+ * NOT a fall-through to the per-agent layers, which the scope has turned off.
  */
-function sharedModelLayer(settings: Settings): { source: "shared"; value: string | string[] } | undefined {
-	if (!subagentScopeIsShared(settings)) return undefined;
+function sharedModelLayers(settings: Settings): SubagentModelLayer[] {
 	const value: unknown = settings.get("subagent.model");
-	if (typeof value === "string" && value.trim().length > 0) return { source: "shared", value };
+	if (typeof value === "string" && value.trim().length > 0) return [{ source: "shared", value }];
 	if (Array.isArray(value) && value.length > 0) {
-		return { source: "shared", value: value.filter((entry): entry is string => typeof entry === "string") };
+		return [{ source: "shared", value: value.filter((entry): entry is string => typeof entry === "string") }];
 	}
-	return undefined;
+	return [];
+}
+
+/** The layers the per-agent scope offers: the lane governing this spawn, then the definition. */
+function perAgentModelLayers(
+	settings: Settings,
+	agentName: string,
+	agentModel: string | string[] | undefined,
+	taskDepth: number | undefined,
+): SubagentModelLayer[] {
+	const lane = laneModelLayer(settings, agentName, taskDepth);
+	return [...(lane === undefined ? [] : [lane]), { source: "frontmatter", value: agentModel }];
 }
 
 /**
@@ -900,18 +897,11 @@ export function resolveSubagentModel(options: {
 
 	reportSupersededAgentRows(settings);
 	reportRejectedSubagentModelSettings(settings);
-	// The scope decides which layers exist at all. Shared with no chain set is
-	// not a fall-through to the agent's own layers — it is every agent on the
-	// default model role, which is what the row says an unset chain means.
-	const sharedScope = subagentScopeIsShared(settings);
-	const shared = sharedScope ? sharedModelLayer(settings) : undefined;
-	const lane = sharedScope ? undefined : laneModelLayer(settings, agentName, taskDepth);
-	const layers: Array<{ source: SubagentModelSource; value: string | string[] | undefined; depth?: number }> =
-		sharedScope
-			? shared
-				? [shared]
-				: []
-			: [...(lane === undefined ? [] : [lane]), { source: "frontmatter", value: agentModel }];
+	// The scope decides which layers exist at all, and is read once here so no
+	// layer can be built from a second reading of the switch.
+	const layers = subagentScopeIsShared(settings)
+		? sharedModelLayers(settings)
+		: perAgentModelLayers(settings, agentName, agentModel, taskDepth);
 
 	for (const layer of layers) {
 		const raw = Array.isArray(layer.value) ? layer.value : layer.value?.trim();

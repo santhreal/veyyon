@@ -4,29 +4,38 @@
  * The defect: Settings → Subagents → Agents → <agent> carried its own Model and Effort rows, and both
  * outranked the blanket Subagent Model and Subagent Effort settings. Two screens answered one question
  * and disagreed on screen — the per-agent Model row printed an inherited value with an effort suffix
- * while the Effort row under it said inherit. The rows were DELETED rather than hidden, because a hidden
- * layer that outranks the visible setting is the same drift wearing a different hat.
+ * while the Effort row under it said inherit.
  *
- * The class is: what a subagent RUNS has exactly one owner per axis, and nothing may reintroduce a
- * second one. A test that pins the two retired field names closes the incident and nothing else — the
- * next `subagent.agents.<name>.effort`, or a fourth precedence layer under a new name, lands green.
- * So every case here derives its variant space at run time and fails by default:
+ * The fix is two EXCLUSIVE scopes rather than a precedence ladder. `subagent.sharedModel` selects
+ * which one is in force: off, each agent's lane decides and the blanket pair is inert; on, the
+ * blanket pair decides for every agent, every lane is inert, and the per-agent rows are not drawn.
+ * A lane keeps its value across the switch and decides again when it goes off.
  *
- *  1. WHICH SETTINGS DECIDE. Every `subagent.*` path in `SETTINGS_SCHEMA` is probed against the real
- *     resolvers, and the set that changes the answer must be exactly `subagent.agents`, whose scope
- *     is one agent. A new setting that reaches either resolver turns this RED.
+ * The class is: what a subagent RUNS has exactly one owner per axis IN EACH SCOPE, and neither scope
+ * may read a setting the other owns. A test that pins the two field names closes the incident and
+ * nothing else — the next `subagent.agents.<name>.effort`, or a fourth precedence layer under a new
+ * name, lands green. So every case here derives its variant space at run time and fails by default:
+ *
+ *  1. WHICH SETTINGS DECIDE, PER SCOPE. Every `subagent.*` path in `SETTINGS_SCHEMA` is probed against
+ *     the real resolvers in both scopes, and the set that changes the answer is pinned by equality for
+ *     each: `subagent.agents` plus the switch while it is off, the blanket pair plus the switch while
+ *     it is on. A new setting that reaches either resolver turns this RED, and so does a lane that
+ *     keeps deciding under an on switch.
  *  2. WHAT A PER-AGENT ROW MAY DECIDE. Row field names are derived from the schema's own `subagent.*`
- *     leaf names, so the sweep grows with the settings area rather than with someone's memory. No field
- *     may change the resolved model or effort; exactly one may change enablement and exactly one the
+ *     leaf names, so the sweep grows with the settings area rather than with someone's memory. Exactly
+ *     three fields may move the resolved model or effort, exactly one enablement and exactly one the
  *     nested spawn depth, pinned by equality in both directions.
  *  3. WHICH LAYER ANSWERED. The `SubagentModelSource` values a combinatorial sweep can actually produce
- *     must be exactly depth, blanket, frontmatter and inherit. Re-adding an `agent` layer produces a fifth.
+ *     must be exactly shared, lane, frontmatter and default. A fifth layer under any name produces a
+ *     member this list does not name.
  *  4. WHAT THE SCREEN OFFERS. The real Agents editor is driven and its editable rows are pinned by
- *     exact equality, so adding a per-agent Model or Effort row back to the UI turns this RED even if
- *     no resolver reads it yet.
+ *     exact equality, so a row that shows a value the scope in force does not read turns this RED.
+ *     The shared-scope half of that screen — the rows replaced by a signpost — is driven in
+ *     `modes/components/subagent-agents-surface.test.ts`.
  *  5. THE STALE COPY. A config already carrying the retired fields is loaded through the real loader,
  *     resolved, reloaded, and edited, because a persisted shape is how a fixed bug comes back after the
- *     fix ships.
+ *     fix ships. `subagent.modelByDepth` is swept in BOTH scopes, since a scope switch is exactly where
+ *     a retired key gets read again.
  *
  * WHAT THIS DOES NOT CATCH: a precedence layer that reaches the executor without going through
  * `resolveSubagentModel` / `resolveSubagentThinkingLevel`. Those two functions are the choke point every
@@ -46,6 +55,8 @@ import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { resolveEffectiveSubagentThinkingLevel } from "@veyyon/coding-agent/task/executor";
 import {
+	AGENT_DEFAULT_EFFORT,
+	configuredSubagentModelChains,
 	isSubagentEnabled,
 	resetSupersededAgentRowReports,
 	resolveSubagentMaxNestedSpawnDepth,
@@ -330,6 +341,81 @@ describe("exactly one setting decides what a subagent runs, in each scope", () =
 	});
 
 	/**
+	 * The scope is off, not empty. A shared scope whose chain names nothing runs every agent on the
+	 * default model role at the documented effort — it does NOT reach past the switch for a lane or
+	 * a definition, which is the fall-through that reopens the ladder the switch replaced. Asserted
+	 * at every depth the lane chain can answer at, and against a definition too, because a
+	 * fall-through would show up as `lane` at one depth and `frontmatter` at another.
+	 */
+	it("runs the documented default when the shared scope names nothing", () => {
+		const store = Settings.isolated({
+			"subagent.sharedModel": true,
+			"subagent.agents": {
+				[AGENT]: { model: BLANKET_MODEL, thinkingLevel: ThinkingLevel.High, subagents: { model: DEPTH_MODEL } },
+			},
+		});
+		store.setModelRole("default", SESSION_MODEL);
+
+		for (const taskDepth of [undefined, 1, 2]) {
+			const resolved = resolveSubagentModel({
+				settings: store,
+				agentName: AGENT,
+				agentModel: FRONTMATTER_MODEL,
+				taskDepth,
+			});
+			expect(resolved.source, `depth ${taskDepth}`).toBe("default");
+			expect(resolved.patterns, `depth ${taskDepth}`).toEqual([SESSION_MODEL]);
+			expect(
+				resolveSubagentThinkingLevel({ settings: store, agentName: AGENT, taskDepth }),
+				`depth ${taskDepth}`,
+			).toBe(AGENT_DEFAULT_EFFORT);
+		}
+	});
+
+	/**
+	 * The shared scope carries a CHAIN, not one model, and keeps its order. A build that read only a
+	 * single string would silently drop every fallback under the first entry while still answering
+	 * `shared`, so the resolved patterns are pinned rather than the source alone.
+	 */
+	it("keeps the shared chain in order, and says the shared scope decided", () => {
+		const store = Settings.isolated({
+			"subagent.sharedModel": true,
+			"subagent.model": [FALLBACK_MODEL, FRONTMATTER_MODEL],
+			"subagent.agents": { [AGENT]: { model: BLANKET_MODEL } },
+		});
+
+		const resolved = resolveSubagentModel({ settings: store, agentName: AGENT, taskDepth: 1 });
+
+		expect(resolved.source).toBe("shared");
+		expect(resolved.patterns).toEqual([FALLBACK_MODEL, FRONTMATTER_MODEL]);
+	});
+
+	/**
+	 * The union a provider surface reads names every chain a spawn can land on WITHOUT anyone
+	 * editing a setting: the default model role, the shared chain, and each lane at every level.
+	 * Both scopes are in it deliberately — the switch is one keystroke, and re-annotating providers
+	 * on it would make the badges flicker — so a chain missing from the union is a provider
+	 * `/account status` never mentions. Pinned by equality, in both scope states.
+	 */
+	it("names every chain a spawn can land on, in both scopes", () => {
+		for (const sharedModel of [false, true]) {
+			const store = Settings.isolated({
+				"subagent.sharedModel": sharedModel,
+				"subagent.model": [FALLBACK_MODEL, FRONTMATTER_MODEL],
+				"subagent.agents": { [AGENT]: { model: BLANKET_MODEL, subagents: { model: DEPTH_MODEL } } },
+			});
+			store.setModelRole("default", SESSION_MODEL);
+
+			expect(configuredSubagentModelChains(store), `shared ${sharedModel}`).toEqual([
+				SESSION_MODEL,
+				[FALLBACK_MODEL, FRONTMATTER_MODEL],
+				BLANKET_MODEL,
+				DEPTH_MODEL,
+			]);
+		}
+	});
+
+	/**
 	 * Effort follows the model's scope rather than its own. A switch that moved every agent's model
 	 * and left each agent's effort behind would run the shared model at whatever level the hidden
 	 * per-agent row named, which is a value on nobody's screen deciding what a spawn costs.
@@ -497,7 +583,7 @@ describe("a per-agent row decides exactly what its own page shows", () => {
 // Which layer answered.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("the layer that chose a subagent's model is one of exactly three", () => {
+describe("the layer that chose a subagent's model is one of exactly four", () => {
 	/**
 	 * Enumerated by driving the resolver over every combination rather than by reading the union: a
 	 * fourth member added to the type is only a defect once something can produce it, and a fourth

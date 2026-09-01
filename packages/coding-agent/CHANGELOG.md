@@ -18,6 +18,7 @@
 ### Changed
 
 - The hidden messages a session injects and the gates that fire them live in `session/nudges.ts` rather than as file-private literals in `agent-session.ts`, and the mid-run todo and prewalk gates key their tool tables through the `TOOL` registry so renaming a tool now fails to compile instead of silently disabling the nudge.
+- The subagent model resolver reads the shared-model switch once and builds the layers of whichever scope that selects, instead of gating each layer against a second reading of it, and the unread `SUBAGENT_MODEL_SCOPE_VERSION` constant is gone from the rejected-setting log record. No change to what any subagent runs.
 - The compaction policy vocabulary (check outcomes, the bar a pass is measured against, the truncation edge budget, the prune cache window and idle flush, and the recovery band) lives in `session/compaction-policy.ts` rather than interleaved with shutdown timeouts and credential backoffs in `agent-session.ts`, with no behavior change.
 - The thinking display's hidden-code fence marker is named `hiddenCodeMarker`, no longer colliding with the unrelated `elisionMarker` in `@veyyon/utils/byte-truncate`; the marker text is unchanged.
 - The `read` tool's URL routing, internal-URL routing, notebook reading, document conversion and structural summarizing each live in their own named method instead of inline branches of one 758-line `execute`, with no change to what any read returns.
