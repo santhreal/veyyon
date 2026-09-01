@@ -1,0 +1,23 @@
+[package]
+name = "veyyon-desktop-tokens"
+version.workspace = true
+publish = false
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+flume.workspace = true
+notify.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+veyyon-ast.workspace = true
+veyyon-test-scratch.workspace = true

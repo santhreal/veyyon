@@ -1,0 +1,55 @@
+[meta]
+version = 1
+name = "scale"
+
+# Spacing scale: 14 steps (0, 2, 4, 6, 8, 10, 12, 14, 16, 20, 24, 32, 48, 64). Hard ceiling: 16 steps (§6.1).
+[spacing]
+s0  = 0
+s1  = 2
+s2  = 4
+s3  = 6
+s4  = 8
+s5  = 10
+s6  = 12
+s7  = 14
+s8  = 16
+s9  = 20
+s10 = 24
+s11 = 32
+s12 = 48
+s13 = 64
+
+# Corner radii: 6 numeric steps + full. Hard ceiling: 7 numeric steps + full (§6.2).
+[radius]
+none = 0
+xs   = 4
+sm   = 6
+md   = 8
+lg   = 10
+xl   = 14
+xxl  = 18
+full = 9999
+
+# Typographic scale: 6 sizes, 3 weights (§6.3). Hard ceiling: 6 sizes, 3 weights.
+[type.size]
+micro = { size = 11, line_height = 16, tracking_em = 0.04 }
+small = { size = 12, line_height = 16, tracking_em = 0.00 }
+body  = { size = 13, line_height = 18, tracking_em = 0.00 }
+read  = { size = 14, line_height = 22, tracking_em = 0.00 }
+head  = { size = 18, line_height = 24, tracking_em = -0.01 }
+lead  = { size = 26, line_height = 32, tracking_em = -0.02 }
+
+[type.weight]
+regular  = 400
+medium   = 500
+semibold = 600
+
+[type.mono]
+small = { size = 11, line_height = 16 }
+body  = { size = 12, line_height = 18 }
+
+# Stroke widths for borders, rules, and icon geometry (§6.8).
+[stroke]
+hairline = 1.0
+icon     = 1.5
+heavy    = 2.0

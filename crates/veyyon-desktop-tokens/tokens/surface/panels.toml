@@ -1,0 +1,39 @@
+[meta]
+version = 1
+name = "surface_panels"
+
+[right_panel]
+min_width_px = 360
+default_width_px = 540
+max_viewport_ratio = 0.70
+container_margin_px = 360
+overlay_breakpoint_px = 980
+overlay_scrim_blur_px = 4
+
+[terminal_drawer]
+min_height_px = 180
+default_height_px = 280
+max_viewport_ratio = 0.75
+
+[tabs]
+height_px = 24
+gap_px = 2
+max_width_px = 160
+close_hit_px = 16
+pending_dot_px = 6
+
+[chrome]
+row_height_px = 28
+resize_handle_hit_px = 8
+resize_handle_line_px = 1
+
+[tree]
+indent_base_px = 8
+indent_step_px = 14
+row_height_px = 24
+font_size = "micro"
+
+[diff]
+row_height_px = 18
+font_size = "body"
+gutter_width_px = 44

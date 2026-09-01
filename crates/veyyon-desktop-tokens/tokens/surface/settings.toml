@@ -1,0 +1,13 @@
+[meta]
+version = 1
+name = "surface_settings"
+
+[layout]
+row_height_px = 44
+row_gap = "s4"
+group_gap = "s10"
+control_column_width_px = 240
+
+[typography]
+label_size = "read"
+description_size = "small"
