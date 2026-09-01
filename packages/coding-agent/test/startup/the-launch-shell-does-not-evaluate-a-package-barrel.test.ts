@@ -51,11 +51,29 @@ const ENTRIES = [
 const BARRELS = ["@veyyon/tui", "@veyyon/utils", "@veyyon/agent-core", "@veyyon/ai"] as const;
 
 /**
- * Total module evaluation for the three entries, loaded in the order a launch loads them. Measured
- * at 63ms after the barrel edges came out, against 147ms before. The ceiling leaves room for an
- * honest new dependency and still fails on a re-introduced barrel, the cheapest of which is 21ms.
+ * The barrel the whole-graph case measures the machine with, and the cheapest of the four: a
+ * re-introduced edge to any other one costs more, so calibrating against this one is the strict
+ * choice.
  */
-const SHELL_GRAPH_CEILING_MS = 100;
+const CALIBRATION_BARREL = "@veyyon/tui";
+
+/**
+ * What the shell graph may cost, counted in evaluations of {@link CALIBRATION_BARREL} on the SAME
+ * machine rather than in milliseconds.
+ *
+ * A millisecond ceiling measures the hardware. The same graph evaluates in 59ms on the workstation
+ * it was tuned on and 112ms on a GitHub-hosted runner, so a 100ms ceiling failed every CI run while
+ * the graph had not moved, which is a gate that reports the runner. The barrel is the right unit
+ * because a re-introduced barrel edge is the failure this case exists to catch, and it inflates on
+ * a slow machine exactly as the graph does.
+ *
+ * Measured cold on the workstation: the barrel 36.9ms, the graph 58.6ms (1.59 barrels), and the
+ * graph with the barrel evaluated inside it 71.6ms (1.94 barrels) -- the cheapest regression there
+ * is, since the barrel shares most of its modules with the graph already. The bound is the midpoint
+ * of those two, so a clean graph clears it by a tenth and the cheapest re-introduced edge misses it
+ * by a tenth.
+ */
+const SHELL_GRAPH_BARRELS = 1.75;
 
 async function probe(code: string): Promise<number> {
 	const { stdout } = await run("bun", ["-e", code], { cwd: repoRoot, maxBuffer: 1 << 24 });
@@ -84,14 +102,23 @@ describe("the launch shell does not evaluate a package barrel", () => {
 	 * The whole-graph number, so a cost that arrives through a leaf rather than a barrel is still
 	 * visible. This is the figure the shell is actually budgeted against; the per-barrel cases above
 	 * name the usual cause when it moves.
+	 *
+	 * Both numbers are the FASTER of two cold processes, because a probe that lost the machine for a
+	 * scheduling quantum reports the loss and not the graph, in either direction.
 	 */
-	it("evaluates the whole shell graph within its budget", async () => {
+	it("evaluates the whole shell graph in under the barrels it is budgeted at", async () => {
 		const imports = ENTRIES.map(entry => `await import(${JSON.stringify(`./${entry}`)});`).join("\n");
-		const elapsedMs = await probe(`const started = performance.now();
+		const graphCode = `const started = performance.now();
 ${imports}
-console.log(performance.now() - started);`);
-		expect(elapsedMs).toBeLessThan(SHELL_GRAPH_CEILING_MS);
-	}, 60_000);
+console.log(performance.now() - started);`;
+		const barrelCode = `const started = performance.now();
+await import(${JSON.stringify(CALIBRATION_BARREL)});
+console.log(performance.now() - started);`;
+		const graphMs = Math.min(await probe(graphCode), await probe(graphCode));
+		const barrelMs = Math.min(await probe(barrelCode), await probe(barrelCode));
+
+		expect(graphMs).toBeLessThan(barrelMs * SHELL_GRAPH_BARRELS);
+	}, 120_000);
 
 	/**
 	 * Pinned by exact equality rather than by a count, so a fourth entry or a dropped barrel is a
