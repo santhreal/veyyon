@@ -17,14 +17,26 @@ const WEBSITE = join(dirname(import.meta.dir), ".");
 type Link = { label: string; href: string; page?: string; absolute?: boolean };
 const links: Link[] = LINKS;
 
-/** Link labels and hrefs found inside a page's nav region. */
+/**
+ * The accessible name of an anchor: its text when it has any, otherwise its `aria-label`.
+ *
+ * The GitHub link renders an aria-hidden glyph and no text, so reading text nodes alone drops it
+ * and every count below is quietly one short.
+ */
+function accessibleName(anchor: string): string {
+	const text = anchor.replace(/<[^>]*>/g, "").trim();
+	if (text !== "") return text;
+	return /aria-label="([^"]*)"/.exec(anchor)?.[1] ?? "";
+}
+
+/** Link names and hrefs found inside a page's nav region. */
 function navRegions(html: string): { links: { href: string; label: string; current: boolean }[]; raw: string }[] {
 	const regions = [...html.matchAll(/<!--NAV:START-->([\s\S]*?)<!--NAV:END-->/g)];
 	return regions.map(([, raw]) => ({
 		raw,
-		links: [...raw.matchAll(/<a href="([^"]+)"([^>]*)>([^<]+)<\/a>/g)].map(([, href, attrs, label]) => ({
+		links: [...raw.matchAll(/<a href="([^"]+)"([^>]*)>([\s\S]*?)<\/a>/g)].map(([whole, href, attrs]) => ({
 			href,
-			label,
+			label: accessibleName(whole),
 			current: attrs.includes('aria-current="page"'),
 		})),
 	}));
@@ -36,7 +48,7 @@ describe("renderNav", () => {
 	 *  to stop. */
 	it("renders every link in order, with the CTA last in header navs", () => {
 		const html = renderNav({ prefix: "./", current: "install" });
-		const labels = [...html.matchAll(/>([^<]+)<\/a>/g)].map(m => m[1]);
+		const labels = [...html.matchAll(/<a\b[\s\S]*?<\/a>/g)].map(([anchor]) => accessibleName(anchor));
 		expect(labels).toEqual([...links.map(l => l.label), CTA.label]);
 	});
 
@@ -116,6 +128,7 @@ describe("built pages", () => {
 			expect(marked[0]!.href).toBe(expected);
 		}
 	});
+});
 
 /**
  * The pixel dimensions recorded in an image file's own header: webp (all three
