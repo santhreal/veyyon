@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "9d4cccdbbb7d372de9cc36f3327b065cd64b4561",
+	"generatedFrom": "541de2ec15a6a77fda8bda181e0b1ddb865ea3e9",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -11430,8 +11430,8 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/segments.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "683b602e726279dad24d213aea9e639dfdf60b69fa761e91e7bbd068de9fdc52",
-			"mainHash": "e921441761a0c991b81a52bdd1a124a70acd687c6b610283fae8ee740f5c62f0",
+			"hash": "71d345e2a2c91bbec885d7185ccee3842eed43a20dac3ff419e1b5f8590f0da5",
+			"mainHash": "140e176989ed35cab5ef1728d987e3da4250a2adffb8324aeb58c253d4c030d1",
 			"structuralHash": "e1e0fd6a1487d0184c5485c3eb7bd450381933fc682ea00e96deec05d0096104",
 			"mainStructuralHash": "e1e0fd6a1487d0184c5485c3eb7bd450381933fc682ea00e96deec05d0096104"
 		},
@@ -14086,16 +14086,25 @@
 			"structuralHash": "2dd30174645b9a551c0a23cdfe0abd893c7d491a348fe06025e4a70ecaf93ffd",
 			"mainStructuralHash": "2dd30174645b9a551c0a23cdfe0abd893c7d491a348fe06025e4a70ecaf93ffd"
 		},
+		"packages/coding-agent/src/tools/core/render-limits.ts": {
+			"old": "packages/coding-agent/src/tools/render-limits.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "a41dff1d1dd5c60febd162f14dfb573de86998aaf60dd6234572758eefe07a02",
+			"mainHash": "f2a5c6d5bdaafc2970a06bb40b665973f2f03bbcaa88c6ef38e3ad20ca3484d5",
+			"structuralHash": "d861d795134b495f2108e77d2e23ad2f6cd0668024d8ba69bf56e214dade2532",
+			"mainStructuralHash": "d861d795134b495f2108e77d2e23ad2f6cd0668024d8ba69bf56e214dade2532"
+		},
 		"packages/coding-agent/src/tools/core/render-utils.ts": {
 			"old": "packages/coding-agent/src/tools/render-utils.ts",
 			"kind": "normalized",
 			"differs": "changed",
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "567c4c4c4c836f1f5f83602ff9ca5a73c1642bc7e84356521d6459e0b6178bdb",
-			"mainHash": "6b3b0b0b787c4ecb114a0e99f2cfef2203c99b6ca2170e961d76f0ece5077d58",
-			"structuralHash": "34110290937a43e8b3d99392d05ca1577a88779d6792e2796a5665693028de4a",
-			"mainStructuralHash": "a8c7425ef4bc0e2d1d8bca0e16eb76042f056ad20dc4e1f61fcf2ddd5ce0f356"
+			"hash": "066ea9f054155c06af5f3175db7ee7c4ce334030dc83098b352b589a33958501",
+			"mainHash": "cc67f3d0401dca1eaae8035fd22b1d2a30e1cdeba2f2bdba80870dc354afed77",
+			"structuralHash": "0b5fe1e5acc19fda524bd0f76aaaa4cfd20d5d0ceb3808eca46a28143a693b21",
+			"mainStructuralHash": "9a33bd6baad329cd473c13a893ab7cc870a31c7f7c29d0f38fa6d5c8a7e1e96d"
 		},
 		"packages/coding-agent/src/tools/core/repair/agent-hook.ts": {
 			"old": "packages/coding-agent/src/repair/agent-hook.ts",

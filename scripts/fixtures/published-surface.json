@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "9d4cccdbbb7d372de9cc36f3327b065cd64b4561",
+	"generatedFrom": "541de2ec15a6a77fda8bda181e0b1ddb865ea3e9",
 	"packages": {
 		"@veyyon/agent-core": {
 			"name": "@veyyon/agent-core",
@@ -3681,6 +3681,8 @@
 				"./tools/plan-mode-guard.js",
 				"./tools/read",
 				"./tools/read.js",
+				"./tools/render-limits",
+				"./tools/render-limits.js",
 				"./tools/render-utils",
 				"./tools/render-utils.js",
 				"./tools/renderers",
@@ -7279,6 +7281,8 @@
 				"./tools/core/path-utils.js",
 				"./tools/core/plan-mode-guard",
 				"./tools/core/plan-mode-guard.js",
+				"./tools/core/render-limits",
+				"./tools/core/render-limits.js",
 				"./tools/core/render-utils",
 				"./tools/core/render-utils.js",
 				"./tools/core/repair/agent-hook",
@@ -11471,6 +11475,14 @@
 				"./tools/read.js": {
 					"to": "@veyyon/coding-agent/tools/fs/read.js",
 					"why": "packages/coding-agent/src/tools/read.ts moved to packages/coding-agent/src/tools/fs/read.ts, which @veyyon/coding-agent publishes as ./tools/fs/read.js"
+				},
+				"./tools/render-limits": {
+					"to": "@veyyon/coding-agent/tools/core/render-limits",
+					"why": "packages/coding-agent/src/tools/render-limits.ts moved to packages/coding-agent/src/tools/core/render-limits.ts, which @veyyon/coding-agent publishes as ./tools/core/render-limits"
+				},
+				"./tools/render-limits.js": {
+					"to": "@veyyon/coding-agent/tools/core/render-limits.js",
+					"why": "packages/coding-agent/src/tools/render-limits.ts moved to packages/coding-agent/src/tools/core/render-limits.ts, which @veyyon/coding-agent publishes as ./tools/core/render-limits.js"
 				},
 				"./tools/render-utils": {
 					"to": "@veyyon/coding-agent/tools/core/render-utils",
