@@ -89,7 +89,7 @@ describe("a revive racing a close leaks no session", () => {
 		});
 		lifecycle.adopt(id, {
 			idleTtlMs: 0,
-			closeParkedMs: 0,
+		pruneAfterMs: 0,
 			revive: async () => {
 				reviverRuns.n++;
 				await gate;
@@ -118,7 +118,7 @@ describe("a revive racing a close leaks no session", () => {
 		expect(registry.get("Waking")?.status).toBe("parked");
 
 		// The close deadline fires right here.
-		await lifecycle.close("Waking");
+		await lifecycle.prune("Waking");
 		// Refused: the ref is still registered and still adopted.
 		expect(registry.get("Waking")).toBeDefined();
 		expect(lifecycle.has("Waking")).toBe(true);
@@ -254,7 +254,7 @@ describe("a revive racing a close leaks no session", () => {
 		const session = await lifecycle.ensureLive("Awake");
 		expect(registry.get("Awake")?.status).toBe("idle");
 
-		await lifecycle.close("Awake");
+		await lifecycle.prune("Awake");
 
 		expect(registry.get("Awake")?.session).toBe(session);
 		expect(registry.get("Awake")?.status).toBe("idle");

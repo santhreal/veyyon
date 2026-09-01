@@ -6,7 +6,7 @@ import {
 } from "../src/provider-models/bundled-references";
 import type { Api, Model } from "../src/types";
 
-function makeModel(id: string, overrides: Partial<Model<Api>> = {}): Model<Api> {
+function makeModel(id: string, overrides: Partial<Model<Api>> & { compatConfig?: Record<string, unknown> } = {}): Model<Api> {
 	return {
 		id,
 		provider: "test",
@@ -24,7 +24,7 @@ describe("toModelSpec", () => {
 		const model = makeModel("test-model", { compatConfig: { supportsTools: true } });
 		const spec = toModelSpec(model);
 		expect(spec.id).toBe("test-model");
-		expect(spec.compat).toEqual({ supportsTools: true });
+	expect(spec.compat as unknown).toEqual({ supportsTools: true });
 	});
 	it("drops compatConfig from spec", () => {
 		const model = makeModel("test-model", { compatConfig: { supportsTools: true } });

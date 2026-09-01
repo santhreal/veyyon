@@ -33,7 +33,7 @@ import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { finalizeSubagentLifecycle, runSubprocess, saysItIsWaitingOnAPeer } from "@veyyon/coding-agent/task/executor";
-import { resolveSubagentAutoCloseBudget } from "@veyyon/coding-agent/task/subagent-settings";
+import { resolveSubagentPruneBudget } from "@veyyon/coding-agent/task/subagent-settings";
 import {
 	createAssistantStopMessage,
 	createAssistantToolCallMessage,
@@ -92,8 +92,8 @@ function adoptIdleAgent(
 	registry.setStatus(id, "idle");
 	AgentLifecycleManager.global().adopt(id, {
 		idleTtlMs: IDLE_TTL_MS,
-		closeParkedMs: options.closeParkedMs ?? CLOSE_PARKED_MS,
-		closeWaitingMs: options.closeWaitingMs ?? CLOSE_WAITING_MS,
+	pruneAfterMs: options.closeParkedMs ?? CLOSE_PARKED_MS,
+	pruneWaitingAfterMs: options.closeWaitingMs ?? CLOSE_WAITING_MS,
 		revive: options.revive ?? (async () => fakeSession()),
 	});
 }
@@ -125,7 +125,7 @@ async function advance(ms: number): Promise<void> {
  *
  * Every other case in this file hands `adopt()` a budget directly, so the suite proves the
  * MECHANISM works GIVEN a budget and says nothing about whether a budget ever arrives. The supply
- * line is `resolveSubagentAutoCloseBudget(settings)` -> `autoClose` -> `finalizeSubagentLifecycle`
+ * line is `resolveSubagentPruneBudget(settings)` -> `autoClose` -> `finalizeSubagentLifecycle`
  * -> `adopt`. Drop the `autoClose` argument at the executor call site, or return zeros from the
  * resolver, and nothing closes an agent ever again while this suite stays fully green.
  */
@@ -151,10 +151,10 @@ describe("the operator's setting reaches the close stage", () => {
 	 * number wherever somebody moves it.
 	 */
 	it("resolves five minutes quiet and thirty minutes waiting on a default install", () => {
-		const budget = resolveSubagentAutoCloseBudget(Settings.isolated({}));
+		const budget = resolveSubagentPruneBudget(Settings.isolated({}));
 
-		expect(budget.parkedMs).toBe(5 * 60_000);
-		expect(budget.waitingMs).toBe(30 * 60_000);
+		expect(budget.afterMs).toBe(5 * 60_000);
+		expect(budget.waitingAfterMs).toBe(30 * 60_000);
 	});
 
 	/**
@@ -165,7 +165,7 @@ describe("the operator's setting reaches the close stage", () => {
 	 * the argument stops being passed.
 	 */
 	it("closes an agent finished through the real finalizer with the resolved budget", async () => {
-		const budget = resolveSubagentAutoCloseBudget(Settings.isolated({}));
+		const budget = resolveSubagentPruneBudget(Settings.isolated({}));
 		const registry = AgentRegistry.global();
 		const session = fakeSession();
 		registry.register({
@@ -183,7 +183,7 @@ describe("the operator's setting reaches the close stage", () => {
 			keepAlive: true,
 			isolated: false,
 			agentIdleTtlMs: IDLE_TTL_MS,
-			autoClose: budget,
+			prune: budget,
 			reviveSession: async () => fakeSession(),
 		});
 
@@ -192,7 +192,7 @@ describe("the operator's setting reaches the close stage", () => {
 		await advance(IDLE_TTL_MS);
 		expect(registry.get("Wired")?.status).toBe("parked");
 
-		await advance(budget.parkedMs);
+		await advance(budget.afterMs);
 		expect(registry.get("Wired")).toBeUndefined();
 	});
 
@@ -202,8 +202,8 @@ describe("the operator's setting reaches the close stage", () => {
 	 * Pairs with the case above so neither can pass by closing unconditionally.
 	 */
 	it("never closes when the operator turned auto-close off", async () => {
-		const budget = resolveSubagentAutoCloseBudget(Settings.isolated({ "subagent.autoClose.enabled": false }));
-		expect(budget).toEqual({ parkedMs: 0, waitingMs: 0 });
+		const budget = resolveSubagentPruneBudget(Settings.isolated({ "subagent.prune.enabled": false }));
+	expect(budget).toEqual({ afterMs: 0, waitingAfterMs: 0 });
 
 		const registry = AgentRegistry.global();
 		const session = fakeSession();
@@ -222,7 +222,7 @@ describe("the operator's setting reaches the close stage", () => {
 			keepAlive: true,
 			isolated: false,
 			agentIdleTtlMs: IDLE_TTL_MS,
-			autoClose: budget,
+			prune: budget,
 			reviveSession: async () => fakeSession(),
 		});
 
@@ -503,7 +503,7 @@ describe("a finished run arms the close through the executor", () => {
 			keepAlive: true,
 			isolated,
 			agentIdleTtlMs: IDLE_TTL_MS,
-			autoClose: { parkedMs: CLOSE_PARKED_MS, waitingMs: CLOSE_WAITING_MS },
+			prune: { afterMs: CLOSE_PARKED_MS, waitingAfterMs: CLOSE_WAITING_MS },
 			signOff,
 			reviveSession: isolated ? null : async () => fakeSession(),
 		});
@@ -956,7 +956,7 @@ describe("an aborted subagent refuses a wake", () => {
 			keepAlive: true,
 			isolated: false,
 			agentIdleTtlMs: IDLE_TTL_MS,
-			autoClose: { parkedMs: CLOSE_PARKED_MS, waitingMs: CLOSE_WAITING_MS },
+			prune: { afterMs: CLOSE_PARKED_MS, waitingAfterMs: CLOSE_WAITING_MS },
 			signOff: "Waiting on ReviewBot before I can continue.",
 			reviveSession: async () => fakeSession(),
 		});

@@ -55,7 +55,6 @@ describe("write→glob→read chain adversarial", () => {
 				"lsp.formatOnWrite": false,
 				"lsp.diagnosticsOnWrite": false,
 				"read.summarize.enabled": false,
-				"glob.enabled": true,
 			}),
 			enableLsp: false,
 			getPlanModeState: () => ({ enabled: false }),

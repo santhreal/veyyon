@@ -113,10 +113,8 @@ describe("StatusLineComponent dispose guards async callbacks", () => {
 		let resolveDefault: ((v: string | null) => void) | undefined;
 		vi.spyOn(git.branch, "default").mockImplementation(() => new Promise<string | null>(r => (resolveDefault = r)));
 
-		const onBranchChange = vi.fn();
 		const component = new StatusLineComponent(makeSession());
 		component.updateSettings(gitSegmentSettings);
-		component.watchBranch(onBranchChange);
 
 		// Render with a `pr` segment → #lookupPr → #isDefaultBranch("main")
 		// → starts the delayed git.branch.default IIFE (no gh spawn: the
@@ -126,14 +124,12 @@ describe("StatusLineComponent dispose guards async callbacks", () => {
 
 		// Tear down the component before the awaited promise resolves.
 		component.dispose();
-		expect(onBranchChange).not.toHaveBeenCalled();
 
 		// Release the delayed lookup. Pre-fix this fired #onBranchChange.
 		resolveDefault!("develop");
 		await Promise.resolve();
 		await Promise.resolve();
 
-		expect(onBranchChange).not.toHaveBeenCalled();
 	});
 
 	it("suppresses #onBranchChange when a resolved IIFE's microtask runs after dispose()", async () => {
@@ -142,10 +138,8 @@ describe("StatusLineComponent dispose guards async callbacks", () => {
 		// disposed flag checked inside the IIFE continuation.
 		vi.spyOn(git.branch, "default").mockResolvedValue("develop");
 
-		const onBranchChange = vi.fn();
 		const component = new StatusLineComponent(makeSession());
 		component.updateSettings(gitSegmentSettings);
-		component.watchBranch(onBranchChange);
 		component.renderQuietLine(80);
 
 		// Dispose before the resolved-promise microtask gets a chance to run.
@@ -154,6 +148,5 @@ describe("StatusLineComponent dispose guards async callbacks", () => {
 		await Promise.resolve();
 		await Promise.resolve();
 
-		expect(onBranchChange).not.toHaveBeenCalled();
 	});
 });

@@ -10,7 +10,7 @@ import { repairJson } from "../src/json-parse-helpers";
 
 describe("parseJsonWithRepair", () => {
 	it("parses valid JSON object", () => {
-		expect(parseJsonWithRepair('{"key":"value"}')).toEqual({ key: "value" });
+		expect(parseJsonWithRepair<Record<string, string>>('{"key":"value"}')).toEqual({ key: "value" });
 	});
 	it("parses valid JSON array", () => {
 		expect(parseJsonWithRepair("[1,2,3]")).toEqual([1, 2, 3]);
@@ -28,25 +28,25 @@ describe("parseJsonWithRepair", () => {
 		expect(parseJsonWithRepair("null")).toBe(null);
 	});
 	it("repairs trailing comma in object", () => {
-		expect(parseJsonWithRepair('{"key":"value",}')).toEqual({ key: "value" });
+		expect(parseJsonWithRepair<Record<string, string>>('{"key":"value",}')).toEqual({ key: "value" });
 	});
 	it("repairs trailing comma in array", () => {
-		expect(parseJsonWithRepair("[1,2,3,]")).toEqual([1, 2, 3]);
+		expect(parseJsonWithRepair<number[]>("[1,2,3,]")).toEqual([1, 2, 3]);
 	});
 	it("repairs unquoted keys", () => {
-		expect(parseJsonWithRepair("{key:value}")).toEqual({ key: "value" });
+		expect(parseJsonWithRepair<Record<string, string>>("{key:value}")).toEqual({ key: "value" });
 	});
 	it("repairs single-quoted strings", () => {
-		expect(parseJsonWithRepair("{'key':'value'}")).toEqual({ key: "value" });
+		expect(parseJsonWithRepair<Record<string, string>>("{'key':'value'}")).toEqual({ key: "value" });
 	});
 	it("handles empty object", () => {
-		expect(parseJsonWithRepair("{}")).toEqual({});
+		expect(parseJsonWithRepair<Record<string, unknown>>("{}")).toEqual({});
 	});
 	it("handles empty array", () => {
-		expect(parseJsonWithRepair("[]")).toEqual([]);
+		expect(parseJsonWithRepair<unknown[]>("[]")).toEqual([]);
 	});
 	it("handles nested structures", () => {
-		expect(parseJsonWithRepair('{"a":{"b":[1,2]}}')).toEqual({ a: { b: [1, 2] } });
+		expect(parseJsonWithRepair<Record<string, Record<string, number[]>>>('{"a":{"b":[1,2]}}')).toEqual({ a: { b: [1, 2] } });
 	});
 });
 

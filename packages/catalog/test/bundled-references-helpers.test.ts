@@ -16,7 +16,7 @@ describe("toModelSpec", () => {
 			compatConfig: { some: "config" },
 		} as unknown as Model<Api>;
 		const spec = toModelSpec(model);
-		expect(spec.compat).toEqual({ some: "config" });
+	expect(spec.compat as unknown).toEqual({ some: "config" });
 	});
 	it("removes compatConfig from rest", () => {
 		const model = {

@@ -39,7 +39,7 @@ describe("GrepTool fail paths and matches", () => {
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
 			getArtifactsDir: () => path.join(tmpDir, "artifacts"),
-			settings: Settings.isolated({ "grep.enabled": true }),
+   settings: Settings.isolated({}),
 		});
 	}
 

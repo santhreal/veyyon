@@ -49,7 +49,7 @@ describe("write→glob chain adversarial", () => {
 			settings: Settings.isolated({
 				"lsp.formatOnWrite": false,
 				"lsp.diagnosticsOnWrite": false,
-				"glob.enabled": true,
+
 			}),
 			enableLsp: false,
 			getPlanModeState: () => ({ enabled: false }),

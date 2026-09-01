@@ -35,7 +35,7 @@ describe("GlobTool limit exact adversarial", () => {
 			hasUI: false,
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
-			settings: Settings.isolated({ "glob.enabled": true }),
+   settings: Settings.isolated({}),
 		});
 	}
 

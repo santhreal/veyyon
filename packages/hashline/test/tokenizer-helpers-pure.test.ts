@@ -144,14 +144,14 @@ describe("cloneCursor", () => {
 		const cloned = cloneCursor(cursor);
 		expect(cloned).toEqual(cursor);
 		expect(cloned).not.toBe(cursor);
-		expect(cloned.anchor).not.toBe(cursor.anchor);
+		expect((cloned as { anchor: { line: number } }).anchor).not.toBe((cursor as { anchor: { line: number } }).anchor);
 	});
 	it("clones after_anchor cursor", () => {
 		const cursor = { kind: "after_anchor" as const, anchor: { line: 10 } };
 		const cloned = cloneCursor(cursor);
 		expect(cloned).toEqual(cursor);
 		expect(cloned).not.toBe(cursor);
-		expect(cloned.anchor).not.toBe(cursor.anchor);
+		expect((cloned as { anchor: { line: number } }).anchor).not.toBe((cursor as { anchor: { line: number } }).anchor);
 	});
 	it("clones bof cursor", () => {
 		const cursor = { kind: "bof" as const };

@@ -35,7 +35,7 @@ describe("GlobTool fail paths and matches", () => {
 			hasUI: false,
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
-			settings: Settings.isolated({ "glob.enabled": true }),
+   settings: Settings.isolated({}),
 		});
 	}
 

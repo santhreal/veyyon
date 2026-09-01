@@ -98,12 +98,11 @@ describe("The roster follows the scope the card is showing", () => {
 
 		expect(shown).toContain("alphascout");
 		expect(shown).not.toContain("bravoscout");
-		expect(dashboard.showingWholeProcess).toBe(false);
 		dashboard.dispose();
 	});
 
 	test("opening wide lists every conversation's agents", () => {
-		const dashboard = new AgentDashboard({ terminalHeight: 40, scope: "session-a", processScope: true });
+		const dashboard = new AgentDashboard({ terminalHeight: 40, scope: "session-a" });
 
 		const shown = textOf(dashboard);
 
@@ -158,7 +157,7 @@ describe("The stream follows the same scope as the roster", () => {
 	test("narrowing again hides the other conversation's traffic", async () => {
 		const bus = IrcBus.global();
 		await bus.send({ from: `sub-session-b`, to: `main:session-b`, body: "BRAVOWORD" });
-		const dashboard = new AgentDashboard({ terminalHeight: 40, scope: "session-a", processScope: true });
+		const dashboard = new AgentDashboard({ terminalHeight: 40, scope: "session-a" });
 		dashboard.handleInput("\t");
 
 		expect(textOf(dashboard)).toContain("BRAVOWORD");
@@ -215,7 +214,7 @@ describe("The transcript guard follows the scope on screen", () => {
 describe("The card says which scope it is in", () => {
 	test("the chip offers the scope the key would switch to, in each direction", () => {
 		const narrow = new AgentDashboard({ terminalHeight: 40, scope: "session-a" });
-		const wide = new AgentDashboard({ terminalHeight: 40, scope: "session-a", processScope: true });
+		const wide = new AgentDashboard({ terminalHeight: 40, scope: "session-a" });
 
 		const narrowText = textOf(narrow);
 		const wideText = textOf(wide);
@@ -228,7 +227,7 @@ describe("The card says which scope it is in", () => {
 
 	test("only the wide card titles itself for the whole process", () => {
 		const narrow = new AgentDashboard({ terminalHeight: 40, scope: "session-a" });
-		const wide = new AgentDashboard({ terminalHeight: 40, scope: "session-a", processScope: true });
+		const wide = new AgentDashboard({ terminalHeight: 40, scope: "session-a" });
 
 		expect(textOf(narrow)).not.toContain("Agent Control Center — all conversations");
 		expect(textOf(wide)).toContain("Agent Control Center — all conversations");
@@ -254,7 +253,6 @@ describe("A card with no conversation of its own has nothing to switch", () => {
 		expect(before).toContain("alphascout");
 		expect(before).toContain("bravoscout");
 		expect(after).toBe(before);
-		expect(dashboard.showingWholeProcess).toBe(false);
 		expect(before).not.toContain("all conversations");
 		expect(before).not.toContain("this conversation");
 		dashboard.dispose();

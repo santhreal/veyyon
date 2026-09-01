@@ -56,7 +56,7 @@ describe("write→grep→edit→grep chain adversarial", () => {
 				"lsp.formatOnWrite": false,
 				"lsp.diagnosticsOnWrite": false,
 				"read.summarize.enabled": false,
-				"grep.enabled": true,
+
 			}),
 			enableLsp: false,
 			getPlanModeState: () => ({ enabled: false }),
