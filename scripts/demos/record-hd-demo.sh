@@ -58,7 +58,12 @@ CAPTURES="proof/captures/${DEMO_SERVER}"
 
 # The terminal runs the app unless a scene needs a shell, which one of them does.
 SCENE_WORKDIR="${SCENE_CWD:-/sandbox/home/demo}"
-SCENE_CMD="bun /repo/packages/coding-agent/src/cli.ts --model ${DEMO_MODEL}"
+if [ -x "${REPO_ROOT}/packages/coding-agent/dist/vey" ]; then
+	DEFAULT_SCENE_CMD="/repo/packages/coding-agent/dist/vey --model ${DEMO_MODEL}"
+else
+	DEFAULT_SCENE_CMD="bun /repo/packages/coding-agent/src/cli.ts --model ${DEMO_MODEL}"
+fi
+SCENE_CMD="${SCENE_CMD:-${DEFAULT_SCENE_CMD}}"
 # Cloud rows can drop thinking effort so the take is a session, not a thinking
 # stream. Gemini 3.7 Flash honours `low`.
 if [[ -n "${DEMO_THINKING:-}" ]]; then
@@ -464,7 +469,9 @@ curl -s --max-time 180 "${PROOF_LLM_BASE_URL%/}/chat/completions" \
 else
 	echo "record-hd-demo.sh: cloud model ${DEMO_MODEL}${DEMO_THINKING:+ thinking ${DEMO_THINKING}}" >&2
 	MODEL_IS_LOCAL=0
-	if [[ -d "${HOME}/.veyyon/shared-auth" ]]; then
+	if [[ -d "${REPO_ROOT}/.internal/recording-auth" ]]; then
+		export PROOF_AUTH_DIR="${PROOF_AUTH_DIR:-${REPO_ROOT}/.internal/recording-auth}"
+	elif [[ -d "${HOME}/.veyyon/shared-auth" ]]; then
 		export PROOF_AUTH_DIR="${PROOF_AUTH_DIR:-${HOME}/.veyyon/shared-auth}"
 	fi
 fi

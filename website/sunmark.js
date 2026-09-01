@@ -1,6 +1,5 @@
 /* Veyyon — the sun as a brand, outside the journey (sunmark.js).
    The wordmark never carries an icon; the sun shows up structurally instead:
-     data-sun="progress" — a small sun gliding along the header's baseline as you scroll
      data-sun="sunset"   — a blood-orange pixel sunset closing the page above the footer
      data-sun="rest"     — the night sun on the 404 page
    Same stepped ember bands and ordered dither as the journey sun (sun.js). */
@@ -109,23 +108,11 @@
     return { el: el, ctx: ctx, mode: mode, w: w, h: h };
   }
 
-  function positionProgress(t) {
-    if (t.mode !== "progress") return;
-    var track = t.el.parentElement;
-    var max = document.documentElement.scrollHeight - window.innerHeight;
-    var pct = max > 0 ? clamp01(window.scrollY / max) : 0;
-    t.el.style.left = (10 + pct * (track.clientWidth - 20)) + "px";
-  }
-
   function render(t, time) {
     if (t.mode === "sunset") sunset(t.ctx, t.w, t.h, time);
     else if (t.mode === "rest") {
       t.ctx.clearRect(0, 0, t.w, t.h);
       disc(t.ctx, t.w, t.h, t.w / 24, t.w / 2, t.h / 2, t.w * 0.42, time * 0.6, 1);
-    } else if (t.mode === "progress") {
-      t.ctx.clearRect(0, 0, t.w, t.h);
-      positionProgress(t);
-      disc(t.ctx, t.w, t.h, t.w / 8, t.w / 2, t.h / 2, t.w * 0.44, time, 1);
     }
   }
 
@@ -146,9 +133,6 @@
     requestAnimationFrame(loop);
   }
 
-  window.addEventListener("scroll", function () {
-    for (var m = 0; m < targets.length; m++) positionProgress(targets[m]);
-  }, { passive: true });
   window.addEventListener("resize", function () {
     for (var n = 0; n < targets.length; n++) { targets[n] = fit(targets[n].el); render(targets[n], 0.6); }
   });

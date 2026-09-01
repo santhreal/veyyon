@@ -36,6 +36,7 @@ import {
 	invalidateSettingDefsCache,
 } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 import {
+	AGENT_DEFAULT_EFFORT,
 	delegationBlockedNotice,
 	delegationEnabled,
 	delegationStrength,
@@ -43,6 +44,9 @@ import {
 	isSubagentEnableDefaulted,
 	isSubagentEnabled,
 	nextSubagentEnableValue,
+	RETIRED_SUBAGENT_MODEL_SETTINGS,
+	rejectedSubagentModelSettings,
+	resetRejectedSubagentModelSettingReports,
 	resetSupersededAgentRowReports,
 	resolveDelegation,
 	resolveSubagentMaxNestedSpawnDepth,
@@ -239,134 +243,74 @@ describe("subagent enable states: on, off, and nothing in between", () => {
 	});
 });
 
-describe("subagent model precedence: two chains, one switch", () => {
+describe("subagent model precedence: one scope, the agent", () => {
 	const LANE_ROW = "openai/gpt-5";
-	const BLANKET = "anthropic/claude-sonnet-4-5";
+	const NESTED = "anthropic/claude-sonnet-4-5";
 	const FRONTMATTER = "google/gemini-2.5-pro";
-	const SESSION = "anthropic/claude-opus-4-5";
+	const PROFILE_DEFAULT = "anthropic/claude-opus-4-5";
 
 	/**
-	 * A stock install runs EVERY subagent on the model the operator is looking at.
+	 * A stock install runs every subagent on the profile's default model.
 	 *
-	 * This is the headline fix. Before it, scout ran a small model, reviewer a
-	 * thinking model and designer a third, all decided by frontmatter aliases the
-	 * operator never saw, which is why "I changed the subagent model" changed
-	 * nothing.
+	 * The documented default, and the only fallback: it is the model the main
+	 * assistant starts on, so a fresh roster is coherent without anyone
+	 * configuring a row. What it is NOT is the live session model, which moves on
+	 * a temporary pick, on role cycling and on prewalk.
 	 */
-	it("inherits the session model when nothing is configured", () => {
+	it("falls back to the profile default model role when nothing is configured", () => {
 		const settings = Settings.isolated();
+		settings.setModelRole("default", PROFILE_DEFAULT);
 
 		for (const name of ["task", "scout", "reviewer", "designer", "librarian", "sonic"]) {
-			const resolved = resolveSubagentModel({ settings, agentName: name, activeModelPattern: SESSION });
-			expect(resolved.patterns, `${name} must inherit the session model`).toEqual([SESSION]);
-			expect(resolved.source).toBe("inherit");
+			const resolved = resolveSubagentModel({ settings, agentName: name });
+			expect(resolved.patterns, `${name} must fall back to the default role`).toEqual([PROFILE_DEFAULT]);
+			expect(resolved.source).toBe("default");
 			expect(resolved.unresolved).toBeUndefined();
 		}
 	});
 
 	/**
-	 * SHARED MODE. The blanket setting moves every subagent at once, which is the
-	 * knob the operator reached for, and it is live only while the roster's first
-	 * row is on. Off, this same store must resolve as if the setting were unset.
+	 * THE HEADLINE CONTRACT. Choosing a model for one agent moves that agent and
+	 * nothing else. The old shape had a switch that put every agent on one chain,
+	 * which is why "I changed the model" and "my subagents changed model" were the
+	 * same event.
 	 */
-	it("uses subagent.model over the definition's frontmatter while shared is on", () => {
-		const settings = Settings.isolated({ "subagent.sharedModel": true, "subagent.model": BLANKET });
-
-		const resolved = resolveSubagentModel({
-			settings,
-			agentName: "scout",
-			agentModel: FRONTMATTER,
-			activeModelPattern: SESSION,
-		});
-
-		expect(resolved.patterns).toEqual([BLANKET]);
-		expect(resolved.source).toBe("blanket");
-	});
-
-	/**
-	 * THE SAME STORE WITH THE SWITCH OFF. This is the pair that makes the switch
-	 * mean something: one store, two answers. Without it, a regression that reads
-	 * `subagent.model` unconditionally still passes the shared case above.
-	 */
-	it("ignores the blanket chain entirely while shared is off", () => {
-		const settings = Settings.isolated({ "subagent.model": BLANKET });
-
-		const resolved = resolveSubagentModel({
-			settings,
-			agentName: "scout",
-			agentModel: FRONTMATTER,
-			activeModelPattern: SESSION,
-		});
-
-		expect(resolved.patterns).toEqual([FRONTMATTER]);
-		expect(resolved.source).toBe("frontmatter");
-	});
-
-	/**
-	 * SHARED OUTRANKS THE LANE, and outranks the depth row and the frontmatter
-	 * with it. "One answer for every agent" is not a default the lane can
-	 * override — a lane that still decided while the switch was on would put the
-	 * model back in two places, which is the duplication the switch exists to end.
-	 *
-	 * The roster greys the lane rows in this mode for the same reason. A visible
-	 * row showing a model nobody runs is the defect, not the cure.
-	 */
-	it("puts the shared chain above every per-agent layer", () => {
+	it("moves exactly the agent whose lane names a model", () => {
 		const settings = Settings.isolated({
-			"subagent.sharedModel": true,
-			"subagent.model": BLANKET,
-			"subagent.modelByDepth": { "1": FRONTMATTER },
 			"subagent.agents": { scout: { model: LANE_ROW } },
 		} as Parameters<typeof Settings.isolated>[0]);
+		settings.setModelRole("default", PROFILE_DEFAULT);
 
-		const resolved = resolveSubagentModel({
-			settings,
-			agentName: "scout",
-			agentModel: FRONTMATTER,
-			activeModelPattern: SESSION,
-			taskDepth: 1,
-		});
-
-		expect(resolved.patterns).toEqual([BLANKET]);
-		expect(resolved.source).toBe("blanket");
-		expect(subagentModelSourceLabel(resolved.source, "scout", resolved.depth)).toBe("subagent.model");
+		expect(resolveSubagentModel({ settings, agentName: "scout" }).patterns).toEqual([LANE_ROW]);
+		for (const other of ["task", "reviewer", "librarian"]) {
+			const resolved = resolveSubagentModel({ settings, agentName: other });
+			expect(resolved.patterns, `${other} must not move with scout`).toEqual([PROFILE_DEFAULT]);
+			expect(resolved.source).toBe("default");
+		}
 	});
 
 	/**
-	 * PER-AGENT MODE, the default: the lane is the top layer, because it is the
-	 * most specific statement anyone can make — it names the agent and the depth.
-	 *
-	 * This field spent a release retired: it sat above the blanket setting while
-	 * being edited from the Agents screen and read from the Models screen, so the
-	 * table quietly outranked the setting the operator had just changed. What
-	 * fixed that was the screen, and now the switch — the two chains never run at
-	 * once. The badge below is the part that must not regress.
+	 * The lane is the top layer, because it is the most specific statement anyone
+	 * can make: it names the agent and the depth. The badge naming the deciding
+	 * layer is the part that must not regress — an operator who cannot see WHICH
+	 * level decided is back to editing one screen and reading another.
 	 */
-	it("puts the agent's own lane on top while shared is off", () => {
+	it("puts the agent's own lane above its frontmatter", () => {
 		const settings = Settings.isolated({
 			"subagent.agents": { scout: { model: LANE_ROW } },
 		} as Parameters<typeof Settings.isolated>[0]);
 
-		const resolved = resolveSubagentModel({
-			settings,
-			agentName: "scout",
-			agentModel: FRONTMATTER,
-			activeModelPattern: SESSION,
-		});
+		const resolved = resolveSubagentModel({ settings, agentName: "scout", agentModel: FRONTMATTER });
 
 		expect(resolved.patterns).toEqual([LANE_ROW]);
 		expect(resolved.source).toBe("lane");
 		expect(subagentModelSourceLabel(resolved.source, "scout", resolved.depth)).toBe("subagent.agents.scout");
 	});
 
-	/**
-	 * A nested lane names itself, not its agent. The badge is the whole defense
-	 * against the old defect: an operator who cannot see WHICH level decided is
-	 * back to editing one screen and reading another.
-	 */
+	/** A nested lane names itself, not its agent, and decides for the depth it governs. */
 	it("lets a nested lane decide for the depth it governs, and names that level", () => {
 		const settings = Settings.isolated({
-			"subagent.agents": { scout: { model: LANE_ROW, subagents: { model: FRONTMATTER } } },
+			"subagent.agents": { scout: { model: LANE_ROW, subagents: { model: NESTED } } },
 		} as Parameters<typeof Settings.isolated>[0]);
 
 		const child = resolveSubagentModel({ settings, agentName: "scout", taskDepth: 1 });
@@ -374,16 +318,16 @@ describe("subagent model precedence: two chains, one switch", () => {
 		expect(subagentModelSourceLabel(child.source, "scout", child.depth)).toBe("subagent.agents.scout");
 
 		const grandchild = resolveSubagentModel({ settings, agentName: "scout", taskDepth: 2 });
-		expect(grandchild.patterns).toEqual([FRONTMATTER]);
+		expect(grandchild.patterns).toEqual([NESTED]);
 		expect(subagentModelSourceLabel(grandchild.source, "scout", grandchild.depth)).toBe(
 			"subagent.agents.scout.subagents",
 		);
 	});
 
 	/**
-	 * Unset on a nested page means the level above, never the session: that is the
-	 * only reading under which a nested page needs no absolute value to be
-	 * understood, and the walk is upward for exactly that reason.
+	 * Unset on a nested page means the level above, never the profile default:
+	 * that is the only reading under which a nested page needs no absolute value
+	 * to be understood, and the walk is upward for exactly that reason.
 	 */
 	it("inherits the level above when a nested lane names no model", () => {
 		const settings = Settings.isolated({
@@ -397,125 +341,176 @@ describe("subagent model precedence: two chains, one switch", () => {
 	});
 
 	/**
-	 * An empty lane declines rather than answering, so the walk continues down the
-	 * chain it is on. In per-agent mode that is the frontmatter, never the blanket
-	 * pair, which this mode does not read at all.
+	 * Frontmatter still decides for a user-authored agent that asks for a specific
+	 * model, but only after the lane has declined. It is the author's default, not
+	 * an override of the operator.
 	 */
-	it("falls through an empty lane to the frontmatter, not the blanket chain", () => {
+	it("falls to the definition's frontmatter when no lane names a model", () => {
 		const settings = Settings.isolated({
-			"subagent.model": BLANKET,
 			"subagent.agents": { scout: { enabled: true } },
 		} as Parameters<typeof Settings.isolated>[0]);
 
-		const resolved = resolveSubagentModel({
-			settings,
-			agentName: "scout",
-			agentModel: FRONTMATTER,
-			activeModelPattern: SESSION,
-		});
+		const resolved = resolveSubagentModel({ settings, agentName: "scout", agentModel: FRONTMATTER });
 
 		expect(resolved.patterns).toEqual([FRONTMATTER]);
 		expect(resolved.source).toBe("frontmatter");
 	});
 
-	/**
-	 * Frontmatter still decides for a user-authored agent that asks for a specific
-	 * model, but only after both settings layers have declined. It is the author's
-	 * default, not an override of the operator.
-	 */
-	it("falls to the definition's frontmatter when no setting names a model", () => {
-		const settings = Settings.isolated();
-
-		const resolved = resolveSubagentModel({
-			settings,
-			agentName: "my-agent",
-			agentModel: FRONTMATTER,
-			activeModelPattern: SESSION,
-		});
-
-		expect(resolved.patterns).toEqual([FRONTMATTER]);
-		expect(resolved.source).toBe("frontmatter");
-	});
-
-	/** Layer order is total on each chain, with all layers populated at once. */
-	it("orders each chain end to end", () => {
-		const populated = {
-			"subagent.model": BLANKET,
-			"subagent.modelByDepth": { "1": SESSION },
+	/** Layer order is total, with every layer populated at once. */
+	it("orders the chain end to end", () => {
+		const settings = Settings.isolated({
 			"subagent.agents": { scout: { model: LANE_ROW } },
-		} as Parameters<typeof Settings.isolated>[0];
-		const spawn = { agentName: "scout", agentModel: FRONTMATTER, activeModelPattern: SESSION, taskDepth: 1 };
+		} as Parameters<typeof Settings.isolated>[0]);
+		settings.setModelRole("default", PROFILE_DEFAULT);
+		const spawn = { agentName: "scout", agentModel: FRONTMATTER, taskDepth: 1 } as const;
 
-		expect(resolveSubagentModel({ settings: Settings.isolated(populated), ...spawn }).source).toBe("lane");
-		expect(
-			resolveSubagentModel({
-				settings: Settings.isolated({ ...populated, "subagent.sharedModel": true }),
-				...spawn,
-			}).source,
-		).toBe("blanket");
+		expect(resolveSubagentModel({ settings, ...spawn }).source).toBe("lane");
+
+		const withoutLane = Settings.isolated();
+		withoutLane.setModelRole("default", PROFILE_DEFAULT);
+		expect(resolveSubagentModel({ settings: withoutLane, ...spawn }).source).toBe("frontmatter");
+		expect(resolveSubagentModel({ settings: withoutLane, agentName: "scout", taskDepth: 1 }).source).toBe("default");
 	});
 
 	/** A comma list or YAML list is a preference order, preserved as given. */
 	it("keeps a multi-pattern value in order", () => {
 		const settings = Settings.isolated({
-			"subagent.sharedModel": true,
-			"subagent.model": `${BLANKET}, ${LANE_ROW}`,
-		});
+			"subagent.agents": { scout: { model: `${NESTED}, ${LANE_ROW}` } },
+		} as Parameters<typeof Settings.isolated>[0]);
 
-		expect(resolveSubagentModel({ settings, agentName: "scout" }).patterns).toEqual([BLANKET, LANE_ROW]);
+		expect(resolveSubagentModel({ settings, agentName: "scout" }).patterns).toEqual([NESTED, LANE_ROW]);
 	});
 
-	/** With no session model yet (a headless start), the caller's fallback stands in. */
-	it("inherits the fallback pattern when the session has no active model", () => {
-		const settings = Settings.isolated();
-
-		const resolved = resolveSubagentModel({
-			settings,
+	/**
+	 * A profile that has never recorded a default model role (a headless start
+	 * before onboarding) takes the caller's bootstrap pattern. It is not a layer:
+	 * a recorded role always outranks it.
+	 */
+	it("uses the caller's bootstrap pattern only when the default role is unset", () => {
+		const empty = Settings.isolated();
+		const bootstrapped = resolveSubagentModel({
+			settings: empty,
 			agentName: "task",
-			fallbackModelPattern: SESSION,
+			fallbackModelPattern: PROFILE_DEFAULT,
 		});
+		expect(bootstrapped.patterns).toEqual([PROFILE_DEFAULT]);
+		expect(bootstrapped.source).toBe("default");
 
-		expect(resolved.patterns).toEqual([SESSION]);
-		expect(resolved.source).toBe("inherit");
+		const recorded = Settings.isolated();
+		recorded.setModelRole("default", LANE_ROW);
+		expect(
+			resolveSubagentModel({ settings: recorded, agentName: "task", fallbackModelPattern: PROFILE_DEFAULT })
+				.patterns,
+		).toEqual([LANE_ROW]);
+	});
+});
+
+describe("subagent model: the retired cross-agent settings decide nothing", () => {
+	/**
+	 * A config written by an older release still carries the four keys that moved
+	 * every agent at once. They must be inert: serving one would put a single key
+	 * back in charge of the whole roster, which is the defect this scope change
+	 * exists to end. Each is asserted on its own, so a resolver that kept reading
+	 * one of the four cannot hide behind the other three.
+	 */
+	it.each([
+		["subagent.sharedModel", { "subagent.sharedModel": true, "subagent.model": "openai/gpt-5" }],
+		["subagent.model", { "subagent.model": "openai/gpt-5" }],
+		["subagent.modelByDepth", { "subagent.modelByDepth": { "1": "openai/gpt-5" } }],
+	] as Array<[string, Parameters<typeof Settings.isolated>[0]]>)("ignores %s", (_name, stored) => {
+		const settings = Settings.isolated(stored);
+		settings.setModelRole("default", "anthropic/claude-opus-4-5");
+
+		const resolved = resolveSubagentModel({ settings, agentName: "scout", taskDepth: 1 });
+
+		expect(resolved.patterns).toEqual(["anthropic/claude-opus-4-5"]);
+		expect(resolved.source).toBe("default");
+	});
+
+	/** The retired effort key is inert on its own axis for the same reason. */
+	it("ignores subagent.thinkingLevel", () => {
+		const settings = Settings.isolated({ "subagent.thinkingLevel": "low" });
+
+		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout" })).toBe(AGENT_DEFAULT_EFFORT);
+	});
+
+	/**
+	 * Inert is not the same as silent. A file that still names a model looks
+	 * configured, so each stale key is listed with the page that replaced it;
+	 * otherwise the operator reads a value on disk and watches something else run.
+	 */
+	it("lists every stale key that is still set, and nothing that is unset", () => {
+		const stale = Settings.isolated({
+			"subagent.sharedModel": true,
+			"subagent.model": "openai/gpt-5",
+			"subagent.thinkingLevel": "low",
+			"subagent.modelByDepth": { "1": "openai/gpt-5" },
+		} as Parameters<typeof Settings.isolated>[0]);
+
+		expect(rejectedSubagentModelSettings(stale).sort()).toEqual(Object.keys(RETIRED_SUBAGENT_MODEL_SETTINGS).sort());
+		expect(rejectedSubagentModelSettings(Settings.isolated())).toEqual([]);
+	});
+
+	/**
+	 * A key holding its unset value is not a choice somebody made, so it is not
+	 * reported. Without this, every profile that ever opened the old screen would
+	 * be told to migrate settings it never used.
+	 */
+	it("says nothing about a key left at its unset value", () => {
+		const settings = Settings.isolated({
+			"subagent.sharedModel": false,
+			"subagent.model": "",
+			"subagent.modelByDepth": {},
+		} as Parameters<typeof Settings.isolated>[0]);
+
+		expect(rejectedSubagentModelSettings(settings)).toEqual([]);
+	});
+
+	/** Every retired key names a live control, so the report is actionable. */
+	it("points each retired key at a per-agent control", () => {
+		for (const [path, pointer] of Object.entries(RETIRED_SUBAGENT_MODEL_SETTINGS)) {
+			expect(pointer, `${path} must name where to set it now`).toContain("Roster");
+		}
+	});
+
+	/**
+	 * The report reaches the operator once per key, on the path that would have
+	 * read the value. Once, because a spawn-rate warning is noise nobody reads.
+	 */
+	it("reports a stale key once, naming the key and its replacement", () => {
+		resetRejectedSubagentModelSettingReports();
+		const warnings: string[] = [];
+		const restore = captureLoggerWarnings(warnings);
+		try {
+			const settings = Settings.isolated({ "subagent.model": "openai/gpt-5" });
+			resolveSubagentModel({ settings, agentName: "scout" });
+			resolveSubagentModel({ settings, agentName: "reviewer" });
+		} finally {
+			restore();
+			resetRejectedSubagentModelSettingReports();
+		}
+
+		const reported = warnings.filter(message => message.includes("subagent.model"));
+		expect(reported).toHaveLength(1);
+		expect(reported[0]).toContain(RETIRED_SUBAGENT_MODEL_SETTINGS["subagent.model"]);
 	});
 });
 
 describe("subagent model: a configured value that resolves to nothing refuses", () => {
 	/**
-	 * NO SILENT FALL-THROUGH. This is the third leg of the original defect: a
-	 * configured value that expanded to nothing quietly handed the decision to the
-	 * next layer, so a typo in the subagent model looked exactly like the setting
-	 * having no effect — the operator's own value vanished without a word.
+	 * NO SILENT FALL-THROUGH. A configured value that expanded to nothing quietly
+	 * handed the decision to the next layer, so a typo in an agent's model looked
+	 * exactly like the setting having no effect — the operator's own value
+	 * vanished without a word.
 	 *
 	 * The resolver reports the layer and the value instead, and every caller
 	 * refuses the spawn with that text.
 	 */
-	it("reports an unresolvable blanket model instead of using the frontmatter", () => {
-		const settings = Settings.isolated({ "subagent.sharedModel": true, "subagent.model": "@smol" });
-
-		const resolved = resolveSubagentModel({
-			settings,
-			agentName: "scout",
-			agentModel: "google/gemini-2.5-pro",
-			activeModelPattern: "anthropic/claude-opus-4-5",
-		});
-
-		expect(resolved.patterns).toEqual([]);
-		expect(resolved.unresolved).toEqual({ source: "blanket", value: "@smol" });
-	});
-
-	/**
-	 * A lane IS a layer, so a lane that expands to nothing refuses like every
-	 * other configured layer, and the refusal names the lane rather than the
-	 * setting below it. Falling through to the blanket chain here is the exact
-	 * failure this whole area exists to prevent: the operator changed one thing,
-	 * something else ran, and nothing said so.
-	 */
 	it("refuses over a lane whose value resolves to nothing", () => {
 		const settings = Settings.isolated({
-			"subagent.model": "anthropic/claude-sonnet-4-5",
 			"subagent.agents": { scout: { model: "@designer" } },
 		} as Parameters<typeof Settings.isolated>[0]);
+		settings.setModelRole("default", "anthropic/claude-sonnet-4-5");
 
 		const resolved = resolveSubagentModel({ settings, agentName: "scout" });
 
@@ -532,12 +527,7 @@ describe("subagent model: a configured value that resolves to nothing refuses", 
 	it("reports a retired role alias left in an agent definition", () => {
 		const settings = Settings.isolated();
 
-		const resolved = resolveSubagentModel({
-			settings,
-			agentName: "old-agent",
-			agentModel: "@task",
-			activeModelPattern: "anthropic/claude-opus-4-5",
-		});
+		const resolved = resolveSubagentModel({ settings, agentName: "old-agent", agentModel: "@task" });
 
 		expect(resolved.unresolved).toEqual({ source: "frontmatter", value: "@task" });
 	});
@@ -555,10 +545,8 @@ describe("subagent model: a configured value that resolves to nothing refuses", 
 			// agent's own row and each step down adds one `.subagents`, so the label spells
 			// the exact sequence of pages an operator walked to set it.
 			lane: "subagent.agents.scout.subagents.subagents",
-			depth: "subagent.modelByDepth.2",
-			blanket: "subagent.model",
 			frontmatter: "scout agent frontmatter",
-			inherit: "inherited from the session model",
+			default: "the default model role",
 		};
 		for (const [source, label] of Object.entries(expected)) {
 			expect(subagentModelSourceLabel(source as SubagentModelSource, "scout", 2)).toBe(label);
@@ -568,13 +556,11 @@ describe("subagent model: a configured value that resolves to nothing refuses", 
 
 describe("subagent thinking level", () => {
 	/**
-	 * The effort axis rides the SAME switch as the model axis, so per-agent mode
-	 * never reads the blanket effort and a lane's effort answers instead — and a
-	 * nested lane that names none takes the level above rather than the setting.
+	 * Effort rides the same one scope as the model, so a lane's effort answers for
+	 * that agent and a nested lane that names none takes the level above.
 	 */
-	it("puts a lane's effort above the blanket setting, and inherits upward", () => {
+	it("puts a lane's effort above the definition's, and inherits upward", () => {
 		const settings = Settings.isolated({
-			"subagent.thinkingLevel": "low",
 			"subagent.agents": { scout: { thinkingLevel: "high", subagents: { enabled: true } } },
 		} as Parameters<typeof Settings.isolated>[0]);
 
@@ -587,7 +573,6 @@ describe("subagent thinking level", () => {
 	/** A nested lane that names its own effort decides for the depth it governs. */
 	it("lets a nested lane set an effort its parent does not use", () => {
 		const settings = Settings.isolated({
-			"subagent.thinkingLevel": "low",
 			"subagent.agents": { scout: { thinkingLevel: "high", subagents: { thinkingLevel: "minimal" } } },
 		} as Parameters<typeof Settings.isolated>[0]);
 
@@ -596,47 +581,21 @@ describe("subagent thinking level", () => {
 	});
 
 	/**
-	 * SHARED MODE: the blanket effort beats frontmatter, and this case used to
-	 * assert the opposite. It was the reported bug surviving in the effort axis:
-	 * bundled agents carry a `thinking-level` even though they carry no `model:`
-	 * (scout `medium`, librarian `minimal`), so with frontmatter ranked higher,
-	 * setting the shared effort did nothing for exactly those agents while
-	 * appearing to be set.
+	 * An effort set on one agent moves that agent only. The pair with the model
+	 * case above is the point: both axes have the same scope, so a roster row
+	 * cannot move the model and leave the effort behind.
 	 */
-	it("prefers the blanket setting over the definition's own level while shared is on", () => {
-		const settings = Settings.isolated({ "subagent.sharedModel": true, "subagent.thinkingLevel": "low" });
+	it("moves exactly the agent whose lane names an effort", () => {
+		const settings = Settings.isolated({
+			"subagent.agents": { scout: { thinkingLevel: "high" } },
+		} as Parameters<typeof Settings.isolated>[0]);
 
-		expect(
-			resolveSubagentThinkingLevel({ settings, agentName: "scout", agentThinkingLevel: ThinkingLevel.Medium }),
-		).toBe(ThinkingLevel.Low);
-		expect(resolveSubagentThinkingLevel({ settings, agentName: "task", agentThinkingLevel: AUTO_THINKING })).toBe(
-			ThinkingLevel.Low,
-		);
+		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout" })).toBe(ThinkingLevel.High);
+		expect(resolveSubagentThinkingLevel({ settings, agentName: "reviewer" })).toBe(AGENT_DEFAULT_EFFORT);
 	});
 
-	/**
-	 * THE SAME STORE WITH THE SWITCH OFF, which is the pair that proves the effort
-	 * axis moved with the model axis instead of being left behind. Off, the
-	 * blanket effort decides nothing and the definition's own level stands.
-	 */
-	it("ignores the blanket thinking level while shared is off", () => {
-		const settings = Settings.isolated({ "subagent.thinkingLevel": "low" });
-
-		expect(
-			resolveSubagentThinkingLevel({ settings, agentName: "scout", agentThinkingLevel: ThinkingLevel.Medium }),
-		).toBe(ThinkingLevel.Medium);
-		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout" })).toBeUndefined();
-	});
-
-	/** In shared mode one value raises effort across every subagent at once. */
-	it("falls back to the blanket thinking level", () => {
-		const settings = Settings.isolated({ "subagent.sharedModel": true, "subagent.thinkingLevel": "low" });
-
-		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout" })).toBe(ThinkingLevel.Low);
-	});
-
-	/** With no setting at all, the definition's own level is what is left to use. */
-	it("uses the definition's level when no setting names one", () => {
+	/** With no lane, the definition's own level is what is left to use. */
+	it("uses the definition's level when no lane names one", () => {
 		expect(
 			resolveSubagentThinkingLevel({
 				settings: Settings.isolated(),
@@ -647,64 +606,34 @@ describe("subagent thinking level", () => {
 	});
 
 	/**
-	 * Effort and model must answer on the SAME chain, chosen by the same switch,
-	 * because the docs describe them with one sentence and an operator reasons
-	 * about them together. Asserted in both modes and as a shape rather than one
-	 * pair of values, so the two cannot drift apart again the way they had — a
-	 * switch wired to the model alone would leave the effort on the wrong chain
-	 * and pass a single-mode check.
+	 * Nothing configured resolves to a concrete documented effort rather than
+	 * undefined. An agent that resolved to "no effort" was an agent whose effort
+	 * was decided somewhere else, which is the coupling this scope change removes.
 	 */
-	it("resolves on the same chain as the model, in both modes", () => {
-		const configured = { "subagent.model": "openai/gpt-5", "subagent.thinkingLevel": "low" };
-		const spawn = {
-			agentName: "scout",
-			agentModel: "anthropic/claude-opus-4-5",
-			activeModelPattern: "anthropic/claude-sonnet-4-5",
-		} as const;
-
-		const shared = Settings.isolated({ ...configured, "subagent.sharedModel": true });
-		expect(resolveSubagentModel({ settings: shared, ...spawn }).source).toBe("blanket");
-		expect(
-			resolveSubagentThinkingLevel({
-				settings: shared,
-				agentName: "scout",
-				agentThinkingLevel: ThinkingLevel.Medium,
-			}),
-		).toBe(ThinkingLevel.Low);
-
-		// Off, BOTH axes decline the blanket pair and land on the definition.
-		const perAgent = Settings.isolated(configured);
-		expect(resolveSubagentModel({ settings: perAgent, ...spawn }).source).toBe("frontmatter");
-		expect(
-			resolveSubagentThinkingLevel({
-				settings: perAgent,
-				agentName: "scout",
-				agentThinkingLevel: ThinkingLevel.Medium,
-			}),
-		).toBe(ThinkingLevel.Medium);
-	});
-
-	/** Nothing configured means inherit, reported as undefined rather than a guess. */
-	it("returns undefined when nothing sets a level", () => {
-		expect(resolveSubagentThinkingLevel({ settings: Settings.isolated(), agentName: "scout" })).toBeUndefined();
+	it("returns the documented default when nothing sets a level", () => {
+		expect(resolveSubagentThinkingLevel({ settings: Settings.isolated(), agentName: "scout" })).toBe(
+			AGENT_DEFAULT_EFFORT,
+		);
 	});
 
 	/**
-	 * A typo must read as "inherited", never as a neighbouring level. Silently
-	 * running at an effort nobody chose is both a wrong answer and an invisible
-	 * one, and effort changes cost.
+	 * A typo must not become a neighbouring level. Silently running at an effort
+	 * nobody chose is both a wrong answer and an invisible one, and effort changes
+	 * cost.
 	 */
-	it("ignores an unparseable level instead of guessing one", () => {
-		const settings = Settings.isolated({ "subagent.thinkingLevel": "hihg" });
+	it("falls to the default instead of guessing at an unparseable level", () => {
+		const settings = Settings.isolated({
+			"subagent.agents": { scout: { thinkingLevel: "hihg" } },
+		} as Parameters<typeof Settings.isolated>[0]);
 
-		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout" })).toBeUndefined();
+		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout" })).toBe(AGENT_DEFAULT_EFFORT);
 	});
 
 	/**
-	 * Ignoring it silently is the other half of the bug: "inherited" is exactly what
-	 * an operator sees when they set nothing, so a typo left them with a setting that
-	 * looked configured and did nothing. The value is named, and so are the levels
-	 * that would have worked.
+	 * Ignoring it silently is the other half of the bug: the default is exactly
+	 * what an operator sees when they set nothing, so a typo left them with a
+	 * setting that looked configured and did nothing. The value is named, and so
+	 * are the levels that would have worked.
 	 */
 	it("reports an unparseable level rather than ignoring it quietly", () => {
 		const warnings: string[] = [];
@@ -712,7 +641,9 @@ describe("subagent thinking level", () => {
 		try {
 			// A value no other case uses, because the report fires once per process.
 			resolveSubagentThinkingLevel({
-				settings: Settings.isolated({ "subagent.sharedModel": true, "subagent.thinkingLevel": "hgih" }),
+				settings: Settings.isolated({
+					"subagent.agents": { scout: { thinkingLevel: "hgih" } },
+				} as Parameters<typeof Settings.isolated>[0]),
 				agentName: "scout",
 			});
 		} finally {
@@ -721,28 +652,8 @@ describe("subagent thinking level", () => {
 
 		const reported = warnings.find(message => message.includes("hgih"));
 		expect(reported).toBeDefined();
-		expect(reported).toContain("subagent.thinkingLevel");
-		expect(reported).toContain("inherited");
+		expect(reported).toContain("subagent.agents.scout.thinkingLevel");
 		for (const level of CLI_THINKING_LEVELS) expect(reported).toContain(level);
-	});
-
-	/** The blanket setting is named too, so the message points at the right key. */
-	it("names the blanket setting when that is the value at fault", () => {
-		const warnings: string[] = [];
-		const restore = captureLoggerWarnings(warnings);
-		try {
-			resolveSubagentThinkingLevel({
-				settings: Settings.isolated({ "subagent.sharedModel": true, "subagent.thinkingLevel": "extreme" }),
-				agentName: "scout",
-			});
-		} finally {
-			restore();
-		}
-
-		const reported = warnings.find(message => message.includes("extreme"));
-		expect(reported).toBeDefined();
-		expect(reported).toContain("subagent.thinkingLevel");
-		expect(reported).not.toContain("subagent.agents");
 	});
 
 	/**
@@ -755,10 +666,9 @@ describe("subagent thinking level", () => {
 		const restore = captureLoggerWarnings(warnings);
 		try {
 			const settings = Settings.isolated({
-				"subagent.thinkingLevel": "",
 				"subagent.agents": { scout: { thinkingLevel: "   " } },
 			} as Parameters<typeof Settings.isolated>[0]);
-			expect(resolveSubagentThinkingLevel({ settings, agentName: "scout" })).toBeUndefined();
+			expect(resolveSubagentThinkingLevel({ settings, agentName: "scout" })).toBe(AGENT_DEFAULT_EFFORT);
 		} finally {
 			restore();
 		}
@@ -1076,11 +986,20 @@ describe("subagent effort choices", () => {
 	 * The value the inherit row stores must be one the resolver reads as unset, or
 	 * choosing Inherit would write a level that resolves to nothing while looking
 	 * like a choice — the same defect this list replaced.
+	 *
+	 * Asserted on a NESTED lane, because that is where "inherit" has a visible
+	 * answer: the level above. On the agent's own row it would be indistinguishable
+	 * from the documented default, and a stored value that happened to equal the
+	 * default would pass while deciding nothing.
 	 */
 	it("stores an inherit value the resolver treats as unset", () => {
-		const settings = Settings.isolated({ "subagent.thinkingLevel": INHERIT_EFFORT_OPTION_VALUE });
+		const settings = Settings.isolated({
+			"subagent.agents": {
+				scout: { thinkingLevel: "high", subagents: { thinkingLevel: INHERIT_EFFORT_OPTION_VALUE } },
+			},
+		} as Parameters<typeof Settings.isolated>[0]);
 
-		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout" })).toBeUndefined();
+		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout", taskDepth: 2 })).toBe(ThinkingLevel.High);
 	});
 });
 

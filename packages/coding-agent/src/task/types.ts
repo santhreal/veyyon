@@ -382,9 +382,9 @@ export interface AgentProgress {
 	/**
 	 * Resolved model display string in the form `<provider>/<id>`, suffixed with `:<thinkingLevel>`
 	 * whenever the effort this agent runs at is known. That includes an effort it INHERITED, not
-	 * only one typed as an explicit suffix: effort resolves on its own axis (the agent's row, the
-	 * blanket subagent effort, frontmatter, then the session), so an agent with no suffix still runs
-	 * at a definite effort and the badge built from this string has to be able to say which.
+	 * only one typed as an explicit suffix: effort resolves on its own axis (the agent's lane, its
+	 * frontmatter, then the default effort), so an agent with no suffix still runs at a definite
+	 * effort and the badge built from this string has to be able to say which.
 	 * Undefined when the model could not be resolved.
 	 */
 	resolvedModel?: string;

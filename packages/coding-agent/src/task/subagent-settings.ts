@@ -11,9 +11,11 @@
  * Import this instead of reading `subagent.*` keys directly.
  */
 
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import { isRecord, logger } from "@veyyon/utils";
 import { parseConfiguredEffortSetting } from "../config/effort-resolver";
 import { resolveConfiguredModelPatterns } from "../config/model-resolver";
+import { DEFAULT_MODEL_SLOT } from "../config/model-roles";
 import type { Settings } from "../config/settings";
 import type { SubagentAgentSettings, SubagentLaneSettings } from "../config/settings-domains/subagents";
 import {
@@ -22,7 +24,6 @@ import {
 	DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH,
 	DEFAULT_SUBAGENT_PRUNE_MS,
 	DEFAULT_SUBAGENT_WAITING_PRUNE_MS,
-	isModelByDepthKey,
 } from "../config/settings-domains/subagents";
 import type { SettingPath } from "../config/settings-schema";
 import type { ConfiguredThinkingLevel } from "../thinking";
@@ -540,7 +541,7 @@ function readNameList(spawner: unknown, key: keyof EnabledSubagentSource): strin
 	return Array.isArray(names) ? names.filter((name): name is string => typeof name === "string") : [];
 }
 
-/** Which setting decided a subagent's model. Shown next to the model on every agent surface. */
+/** Which setting decided an agent's model. Shown next to the model on every agent surface. */
 export type SubagentModelSource =
 	/**
 	 * A `subagent.agents.<name>` lane — the agent's own row, or a `subagents`
@@ -548,21 +549,17 @@ export type SubagentModelSource =
 	 * and how far down this spawn sits.
 	 */
 	| "lane"
-	/** `subagent.modelByDepth.<n>` — the row for the depth this spawn runs at. */
-	| "depth"
-	/** `subagent.model` — the blanket subagent model setting. */
-	| "blanket"
 	/** The agent definition's `model:` frontmatter. */
 	| "frontmatter"
-	/** No setting named a model: the session's live model is inherited. */
-	| "inherit";
+	/** Nothing named a model for this agent, so the documented default answered. */
+	| "default";
 
-/** A resolved subagent model: the patterns to try, and the layer that chose them. */
+/** A resolved agent model: the patterns to try, and the layer that chose them. */
 export interface ResolvedSubagentModel {
 	/** Model patterns in preference order. Empty only when nothing at all resolved. */
 	patterns: string[];
 	source: SubagentModelSource;
-	/** The spawn depth whose row decided, when `source` is "depth". */
+	/** The lane level that decided, when `source` is "lane". */
 	depth?: number;
 	/**
 	 * Set when a CONFIGURED pattern expanded to nothing (a role alias pointing at
@@ -573,9 +570,30 @@ export interface ResolvedSubagentModel {
 }
 
 /**
+ * The model an agent runs when neither its lane nor its definition names one:
+ * the profile's default model role, which is also the model the main assistant
+ * starts on.
+ *
+ * The PERSISTED slot, not the model on screen. The live session model moves on
+ * a temporary pick, on role cycling, on prewalk and on a plan-mode switch, and
+ * an agent that followed it changed model with nobody having chosen that for
+ * the agent — one keystroke aimed at the main assistant moved the whole roster.
+ * The slot moves only when someone picks a model to keep, and an agent that
+ * should not move with it names its own model on its roster page.
+ */
+export const AGENT_DEFAULT_MODEL_ROLE = DEFAULT_MODEL_SLOT;
+
+/**
+ * The effort an agent runs at when neither its lane nor its definition names
+ * one. Clamped against the model at dispatch, so a model with a shorter ladder
+ * still runs at a level it declares.
+ */
+export const AGENT_DEFAULT_EFFORT: ConfiguredThinkingLevel = ThinkingLevel.Medium;
+
+/**
  * Human-readable name of the setting behind a {@link SubagentModelSource}. For
- * the `depth` layer, `depth` names the exact row (`subagent.modelByDepth.2`),
- * which is the row a spawn refusal has to point at.
+ * a lane, `depth` names the level that decided, which is the row a spawn
+ * refusal has to point at.
  */
 export function subagentModelSourceLabel(source: SubagentModelSource, agentName: string, depth?: number): string {
 	switch (source) {
@@ -586,14 +604,10 @@ export function subagentModelSourceLabel(source: SubagentModelSource, agentName:
 			return depth === undefined || depth <= 0
 				? `subagent.agents.${agentName}`
 				: `subagent.agents.${agentName}${".subagents".repeat(depth)}`;
-		case "depth":
-			return `subagent.modelByDepth.${depth ?? "?"}`;
-		case "blanket":
-			return "subagent.model";
 		case "frontmatter":
 			return `${agentName} agent frontmatter`;
-		case "inherit":
-			return "inherited from the session model";
+		case "default":
+			return `the ${AGENT_DEFAULT_MODEL_ROLE} model role`;
 	}
 }
 
@@ -685,71 +699,80 @@ export function resetSupersededAgentRowReports(): void {
 }
 
 /**
- * The schema path of the per-depth model map. Exported so the surfaces that
- * edit or summarize it never restate the literal: this module is the one
- * reader of `subagent.*`, and a second spelling of the key is how a surface
- * drifts off the setting it claims to show.
+ * The version of the `subagent.*` model shape this build reads.
+ *
+ * Version 1 decided a model for MANY agents at once: `subagent.sharedModel`
+ * switched every agent onto `subagent.model` and `subagent.thinkingLevel`, and
+ * `subagent.modelByDepth` bound a chain to a spawn depth whatever agent ran
+ * there. Version 2 has one scope, the agent, so those keys are stale rather
+ * than superseded: version 2 has no reading of "the model for everybody".
  */
-export const SUBAGENT_MODEL_BY_DEPTH_PATH: SettingPath = "subagent.modelByDepth";
-
-/** The dotted path of one depth row, which the settings chain picker edits in place. */
-export function subagentModelByDepthRowPath(depth: number): SettingPath {
-	// `settings.get`/`set`/`unset` resolve unregistered dotted sub-paths of a
-	// record setting by splitting; the cast records that this path is a row of
-	// the map, not a schema key of its own.
-	return `${SUBAGENT_MODEL_BY_DEPTH_PATH}.${depth}` as SettingPath;
-}
-
-/** The stored map as a plain table, tolerating a non-record value the validator already reported. */
-function readModelByDepthTable(settings: Settings): Record<string, unknown> {
-	const table: unknown = settings.get(SUBAGENT_MODEL_BY_DEPTH_PATH);
-	return isRecord(table) ? table : {};
-}
-
-/** One configured depth row, for the surfaces that list them. */
-export interface SubagentModelByDepthRow {
-	depth: number;
-	value: string | string[];
-}
+export const SUBAGENT_MODEL_SCOPE_VERSION = 2;
 
 /**
- * The configured depth rows, shallowest first. Keys that can never be a depth
- * and values that are not a chain are skipped: reporting them is the load-time
- * validator's job (see the domain's `validateEntry`), and honoring them here
- * would let a junk row decide a spawn.
+ * The version-1 keys, each with the version-2 control that answers instead.
+ *
+ * They stay in the schema, marked `retiredBy`, so an existing `config.yml` still
+ * loads. They are REJECTED rather than served: no resolver reads them, and each
+ * one left in a file is reported once with the page that replaced it. Serving
+ * one would keep a single key deciding for every agent.
  */
-export function subagentModelByDepthRows(settings: Settings): SubagentModelByDepthRow[] {
-	const rows: SubagentModelByDepthRow[] = [];
-	for (const [key, value] of Object.entries(readModelByDepthTable(settings))) {
-		if (!isModelByDepthKey(key)) continue;
-		if (typeof value !== "string" && !Array.isArray(value)) continue;
-		rows.push({ depth: Number(key), value });
+export const RETIRED_SUBAGENT_MODEL_SETTINGS: Readonly<Record<string, string>> = {
+	"subagent.sharedModel": "Subagents → Roster → that agent → Model",
+	"subagent.model": "Subagents → Roster → that agent → Model",
+	"subagent.thinkingLevel": "Subagents → Roster → that agent → Effort",
+	"subagent.modelByDepth": "Subagents → Roster → that agent → Subagents → Model",
+};
+
+/** Retired paths reported once each, rather than once per spawn. */
+const reportedRetiredModelSettings = new Set<string>();
+
+/**
+ * The version-1 keys a config still carries and this build ignores.
+ *
+ * A key holding its unset value is not a stale entry and is not listed: `false`
+ * for the switch, an empty chain, an empty map. Anything else is a choice
+ * somebody made through a control that no longer exists, and the caller's job is
+ * to say so rather than let it look live.
+ */
+export function rejectedSubagentModelSettings(settings: Settings): string[] {
+	const rejected: string[] = [];
+	for (const path of Object.keys(RETIRED_SUBAGENT_MODEL_SETTINGS)) {
+		const value: unknown = settings.get(path as SettingPath);
+		if (value === undefined || value === null || value === false) continue;
+		if (typeof value === "string" && value.trim().length === 0) continue;
+		if (Array.isArray(value) && value.length === 0) continue;
+		if (isRecord(value) && Object.keys(value).length === 0) continue;
+		rejected.push(path);
 	}
-	return rows.sort((a, b) => a.depth - b.depth);
-}
-
-/** The smallest spawn depth with no row yet, which is what "Add depth…" appends. */
-export function nextSubagentModelByDepth(settings: Settings): number {
-	const used = new Set(subagentModelByDepthRows(settings).map(row => row.depth));
-	let depth = 1;
-	while (used.has(depth)) depth++;
-	return depth;
+	return rejected;
 }
 
 /**
- * Remove one depth row. When it was the last, remove the map itself so the
- * stored shape is the unset one rather than an empty table.
+ * Say once, per key, that a version-1 model setting decides nothing now.
+ *
+ * Called from both resolvers, so the report lands on the path that would have
+ * read the value. Silence here is what a rejected setting looks like from the
+ * operator's chair: a file that still names a model, and a roster that runs
+ * something else.
  */
-export function clearSubagentModelByDepthRow(settings: Settings, depth: number): void {
-	settings.unset(subagentModelByDepthRowPath(depth));
-	if (subagentModelByDepthRows(settings).length === 0) settings.unset(SUBAGENT_MODEL_BY_DEPTH_PATH);
+function reportRejectedSubagentModelSettings(settings: Settings): void {
+	for (const path of rejectedSubagentModelSettings(settings)) {
+		if (reportedRetiredModelSettings.has(path)) continue;
+		reportedRetiredModelSettings.add(path);
+		logger.warn(
+			`Settings: ${path} is set and is no longer read — model and effort are chosen per agent. ` +
+				`Open ${RETIRED_SUBAGENT_MODEL_SETTINGS[path]} and choose it for the agent that needs it.`,
+			{ setting: path, scopeVersion: SUBAGENT_MODEL_SCOPE_VERSION },
+		);
+	}
 }
 
-/** The map's row for `depth`, or undefined when the spawn's own depth has none. */
-function readDepthModelRow(settings: Settings, depth: number): string | string[] | undefined {
-	const value = readModelByDepthTable(settings)[String(depth)];
-	return typeof value === "string" || Array.isArray(value) ? value : undefined;
+/** Test seam: forget which retired settings have been reported. */
+export function resetRejectedSubagentModelSettingReports(): void {
+	reportedRetiredModelSettings.clear();
 }
+
 /**
  * The lane governing a spawn: the agent's own row at depth 0 or 1, and one
  * `subagents` level deeper for each level below that.
@@ -794,82 +817,59 @@ function laneModelLayer(
 }
 
 /**
- * Resolve the model patterns one subagent runs, with the deciding layer.
+ * Resolve the model patterns one agent runs, with the deciding layer.
  *
- * `subagent.sharedModel` picks between TWO precedence chains, and that is the
- * whole question the roster's first row asks.
- *
- * SHARED (`subagent.sharedModel: true`) — one answer for every agent:
- *  1. `subagent.model`.
- *  2. Inherit the session's live model.
- * Nothing per-agent is consulted, so a lane, a depth row and an agent file's
- * own `model:` all stop applying. The roster greys those rows while this is on
- * rather than leaving them to look live, because a row that still shows a model
- * nobody runs is the duplication this setting exists to end.
- *
- * PER-AGENT (the default) — each agent answers for itself, highest first:
+ * ONE SCOPE, the agent. Highest first:
  *  1. The LANE — `subagent.agents.<name>`, or the `subagents` level under it
  *     that governs this spawn. Deepest lane first, then up the chain: a level
  *     that names no model inherits the level above, which is what makes
  *     "inherit" on a nested page mean the page you came from.
- *  2. `subagent.modelByDepth.<n>` — the row for the depth THIS spawn runs at,
- *     when the caller passes `taskDepth` (the spawned child's depth, one below
- *     the calling session) and the map has a row for it.
- *  3. The agent definition's `model:` frontmatter, which for a user-authored
+ *  2. The agent definition's `model:` frontmatter, which for a user-authored
  *     agent is that author's deliberate choice.
- *  4. Inherit the session's live model.
+ *  3. {@link AGENT_DEFAULT_MODEL_ROLE}, the documented default.
  *
- * The lane sits on top because it is the most specific statement anyone can
- * make: it names the agent AND the depth. An earlier design had no lane layer at
- * all, after a per-agent `model` field was retired for outranking the blanket
- * setting from a screen that did not show it. The field is back because the
- * screen is fixed, not because the hazard was imaginary: every page that shows a
- * lane's model edits that same lane, and the badge names the exact path
- * (`subagent.agents.deep.subagents`) that decided.
+ * No layer answers for more than one agent. `subagent.sharedModel`,
+ * `subagent.model`, `subagent.thinkingLevel` and `subagent.modelByDepth` were
+ * those layers and are rejected now ({@link RETIRED_SUBAGENT_MODEL_SETTINGS}).
+ * Nor does a spawn follow the model the operator is looking at: that made every
+ * agent without a choice of its own move on a keystroke aimed at one agent, and
+ * it is why "I changed the model" and "my subagents changed model" were one
+ * event.
  *
- * A configured layer that expands to NOTHING does not fall through: it comes back
- * as `unresolved` so the caller can refuse to spawn and say which setting is
- * wrong. Silently dropping to the next layer is what made "I changed the subagent
- * model" look like it did nothing, while bundled frontmatter roles decided
- * instead.
+ * A configured layer that expands to NOTHING does not fall through: it comes
+ * back as `unresolved` so the caller can refuse to spawn and name the setting
+ * that is wrong.
  *
- * Bundled specialists intentionally carry no `model:` frontmatter, so on a stock
- * install every subagent with no lane of its own lands on case 4 and runs the
- * model the operator is looking at.
+ * Bundled specialists carry no `model:` frontmatter, so on a stock install every
+ * agent with no lane of its own lands on the default role.
  */
 export function resolveSubagentModel(options: {
 	settings: Settings;
 	agentName: string;
 	/** The agent definition's `model:` frontmatter, if any. */
 	agentModel?: string | string[];
-	/** The session's active model pattern, used for inherit. */
-	activeModelPattern?: string;
-	/** Fallback when the session has no active model yet (headless start). */
+	/**
+	 * Bootstrap for a profile that has never recorded a default model role. Not
+	 * a layer: it is read only when {@link AGENT_DEFAULT_MODEL_ROLE} is unset.
+	 */
 	fallbackModelPattern?: string;
 	/**
 	 * The depth the SPAWNED agent will run at: the calling session's task depth
-	 * plus one. A `subagent.modelByDepth` row applies only at depth >= 1 and
-	 * only at its own depth. Omitting it — depth 0, or a surface that describes
-	 * an agent rather than a spawn — resolves exactly as if the map did not
-	 * exist.
+	 * plus one. It selects which level of the agent's own lane chain answers.
+	 * Omitting it — depth 0, or a surface describing an agent rather than a
+	 * spawn — reads the agent's own row.
 	 */
 	taskDepth?: number;
 }): ResolvedSubagentModel {
-	const { settings, agentName, agentModel, activeModelPattern, fallbackModelPattern, taskDepth } = options;
+	const { settings, agentName, agentModel, fallbackModelPattern, taskDepth } = options;
 
 	reportSupersededAgentRows(settings);
-	const depthRow = taskDepth !== undefined && taskDepth >= 1 ? readDepthModelRow(settings, taskDepth) : undefined;
+	reportRejectedSubagentModelSettings(settings);
 	const lane = laneModelLayer(settings, agentName, taskDepth);
-	const shared = settings.get("subagent.sharedModel") === true;
-	const layers: Array<{ source: SubagentModelSource; value: string | string[] | undefined; depth?: number }> = shared
-		? [{ source: "blanket", value: settings.get("subagent.model") }]
-		: [
-				...(lane === undefined ? [] : [lane]),
-				...(depthRow !== undefined && taskDepth !== undefined
-					? [{ source: "depth" as const, value: depthRow, depth: taskDepth }]
-					: []),
-				{ source: "frontmatter", value: agentModel },
-			];
+	const layers: Array<{ source: SubagentModelSource; value: string | string[] | undefined; depth?: number }> = [
+		...(lane === undefined ? [] : [lane]),
+		{ source: "frontmatter", value: agentModel },
+	];
 
 	for (const layer of layers) {
 		const raw = Array.isArray(layer.value) ? layer.value : layer.value?.trim();
@@ -886,29 +886,30 @@ export function resolveSubagentModel(options: {
 		};
 	}
 
-	const inherited = activeModelPattern?.trim() || fallbackModelPattern?.trim() || "";
-	return { patterns: resolveConfiguredModelPatterns(inherited, settings), source: "inherit" };
+	const recorded = settings.getModelRole(AGENT_DEFAULT_MODEL_ROLE)?.trim();
+	const fallback = recorded || fallbackModelPattern?.trim() || "";
+	return { patterns: resolveConfiguredModelPatterns(fallback, settings), source: "default" };
 }
 
 /**
- * Resolve a subagent's thinking level, on the same two chains
- * {@link resolveSubagentModel} uses, chosen by the same `subagent.sharedModel`
- * switch — one sentence has to describe both, or the roster's toggle would move
- * the model and leave the effort behind.
- *
- * SHARED: `subagent.thinkingLevel`, else inherit the session's effort.
- *
- * PER-AGENT (the default), highest first:
+ * Resolve an agent's thinking level, on the same one-scope chain
+ * {@link resolveSubagentModel} uses. Highest first:
  *  1. The LANE — the `subagent.agents.<name>` level governing this spawn, then
  *     up its chain, so a nested page's "inherit" means the page above it.
- *  2. the agent definition's `thinking-level` frontmatter.
- *  3. undefined — inherit the session's effort.
+ *  2. The agent definition's `thinkingLevel` frontmatter, or `thinking`. The
+ *     bundled definitions spell it `thinking-level`, which `normalizeKeys`
+ *     folds onto the same field.
+ *  3. {@link AGENT_DEFAULT_EFFORT}, the documented default.
  *
- * An explicit `:level` suffix on the resolved model pattern still outranks all of
- * these; the executor applies that, since only it knows whether the suffix was
- * present (see `resolveEffectiveSubagentThinkingLevel`).
+ * One sentence has to describe model and effort, or a roster row would move the
+ * model and leave the effort behind. So effort is per agent too, and the parent
+ * session's live effort no longer reaches a child.
  *
- * A configured value that names no level does not silently become "inherited":
+ * An explicit `:level` suffix on the resolved model pattern still outranks all
+ * of these; the executor applies that, since only it knows whether the suffix
+ * was present (see `resolveEffectiveSubagentThinkingLevel`).
+ *
+ * A configured value that names no level does not silently become the default:
  * it is reported with the setting and the accepted values, then skipped, so the
  * next layer decides. Guessing a neighbouring level instead would run the agent
  * at an effort nobody chose.
@@ -919,11 +920,9 @@ export function resolveSubagentThinkingLevel(options: {
 	agentThinkingLevel?: ConfiguredThinkingLevel;
 	/** The depth the SPAWNED agent runs at, as {@link resolveSubagentModel} takes it. */
 	taskDepth?: number;
-}): ConfiguredThinkingLevel | undefined {
+}): ConfiguredThinkingLevel {
 	reportSupersededAgentRows(options.settings);
-	if (options.settings.get("subagent.sharedModel") === true) {
-		return parseConfiguredEffortSetting("subagent.thinkingLevel", options.settings.get("subagent.thinkingLevel"));
-	}
+	reportRejectedSubagentModelSettings(options.settings);
 	const { chain, index } = laneForSpawn(options.settings, options.agentName, options.taskDepth);
 	for (let level = Math.min(index, chain.length - 1); level >= 0; level--) {
 		const raw = chain[level]?.thinkingLevel;
@@ -935,5 +934,34 @@ export function resolveSubagentThinkingLevel(options: {
 		// decides nothing", so the walk continues up rather than stopping here.
 		if (parsed !== undefined) return parsed;
 	}
-	return options.agentThinkingLevel;
+	return options.agentThinkingLevel ?? AGENT_DEFAULT_EFFORT;
+}
+
+/**
+ * Every model chain a spawn in this profile can land on without anyone editing
+ * a setting: the default model role, plus each lane's own chain at every
+ * nesting level.
+ *
+ * There is no single "the subagent model" to read now that scope is the agent,
+ * so a surface that annotates providers by role reads the union instead of one
+ * key. Unresolvable patterns stay in the list; the caller resolves and drops
+ * what its registry cannot match.
+ */
+export function configuredSubagentModelChains(settings: Settings): Array<string | string[]> {
+	const chains: Array<string | string[]> = [];
+	const role = settings.getModelRole(AGENT_DEFAULT_MODEL_ROLE)?.trim();
+	if (role) chains.push(role);
+	const table: unknown = settings.get("subagent.agents");
+	if (!isRecord(table)) return chains;
+	for (const row of Object.values(table)) {
+		if (!isRecord(row)) continue;
+		for (const lane of subagentLaneChain(row as SubagentLaneSettings)) {
+			const value = lane.model;
+			if (value === undefined) continue;
+			if (typeof value === "string" && value.trim().length === 0) continue;
+			if (Array.isArray(value) && value.length === 0) continue;
+			chains.push(value);
+		}
+	}
+	return chains;
 }

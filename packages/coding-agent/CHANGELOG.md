@@ -112,6 +112,9 @@
 - The settings store holds no database handle. `AgentStorage.forAgentDir` is the one owner of the run's agent.db and opens it on first use, `config/legacy-agent-db-settings.ts` owns the first-run read of the pre-config.yml `settings` table, and the launch card no longer evaluates `bun:sqlite` or the SQLite credential store to read a setting. Measured warm on a pty, the card's first byte goes from 50.5ms to 42.4ms and a keystroke is echoed at 45.6ms instead of 53.6ms; a database that will not open now costs usage statistics with a logged reason rather than failing the launch.
 - The three hidden magic-keyword notices are in `session/magic-keyword-notices.ts` rather than under `modes/`, which was the one edge from the session into the UI directory with no drawing behind it. No behavior change.
 - The status row no longer carries the secrets segment. The `secrets` id is gone from every preset and from `statusLine.segments`, and a configuration naming it is rejected; `/secret list` states what a session has masked.
+- Model and effort are chosen per agent. Each agent's page under `/settings` → Subagents → Roster sets the model and effort that agent runs, an agent naming neither runs the profile's default model role at medium effort, and no setting changes the model of more than one agent.
+- The roster states that an operator may write an agent, and names `docs/features/subagents-authoring` as the instructions.
+- The subagent authoring page states which frontmatter key spellings are read: `thinkingLevel` and `thinking-level` reach the same field, an underscore does not, and the bundled definitions use the dashed form.
 
 ### Fixed
 
@@ -184,6 +187,11 @@
 - A turn that calls a tool and then stops with text is treated as ending in text: the todo reminder fires again as the board changes instead of falling silent after the first one, and the rewind, plan-mode, verification and code-review checks run at that stop.
 - The goal report from `/goal show` and the goal detail menu states the goal's status once: a paused goal read `Status: paused (paused)`, and a finished one `Status: complete (paused)`. Goal mode being off is now named only where the status does not already carry it, as `active (mode off)`.
 - A goal objective reaches every surface that shows it as one plain line: the `/goal show` report, the `/goal` menu title, the warning a disabled Goal Mode prints over a stored goal, the `/goal` autocomplete row and the goal tool's own card each formatted the objective raw, so an escape sequence in one styled or moved the rest of the surface, a tab opened a hole in it, and a newline split it across two fields.
+
+### Removed
+
+- `subagent.sharedModel`, `subagent.model`, `subagent.thinkingLevel` and `subagent.modelByDepth` decided the model and effort for every subagent at once and are rejected; a config still holding one is reported once, naming the agent page that replaces it.
+- The `--subagent-model` launch flag, which set the model for every subagent in the session.
 
 ## [1.3.0] - 2026-08-28
 

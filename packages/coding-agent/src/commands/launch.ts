@@ -33,9 +33,6 @@ export default class Index extends Command {
 		plan: Flags.string({
 			description: "Plan model for architectural planning (or VEYYON_PLAN_MODEL env)",
 		}),
-		"subagent-model": Flags.string({
-			description: "Model subagents run on for this session (overrides subagent.model)",
-		}),
 		"compaction-model": Flags.string({
 			description: "Model that summarizes the conversation when it is compacted (overrides compaction.model)",
 		}),

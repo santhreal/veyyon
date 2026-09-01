@@ -401,23 +401,23 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 	const parentThinkingLevel = options.session.getActiveThinkingLevel?.();
 	// An explicit `agent(..., { model })` call is the caller speaking for this one
 	// spawn, so it outranks the settings layers; everything else goes through the
-	// one owner (depth row -> blanket -> frontmatter -> inherit). The spawned
-	// agent runs one level below this session, and depth rows key on that child
-	// depth — the same value the executor derives as `childDepth`.
+	// one owner, whose only scope is this agent (lane row -> frontmatter ->
+	// default model role). The spawned agent runs one level below this session,
+	// and lane rows key on that child depth — the same value the executor derives
+	// as `childDepth`.
 	const resolvedModel = parsed.model
 		? { patterns: resolveConfiguredModelPatterns(parsed.model, options.session.settings), source: "agent" as const }
 		: resolveSubagentModel({
 				settings: options.session.settings,
 				agentName,
 				agentModel: effectiveAgent.model,
-				activeModelPattern: parentActiveModelPattern,
 				fallbackModelPattern: options.session.getModelString?.(),
 				taskDepth: (options.session.taskDepth ?? 0) + 1,
 			});
 	if ("unresolved" in resolvedModel && resolvedModel.unresolved) {
 		const { source, value, depth } = resolvedModel.unresolved;
 		throw new ToolError(
-			`Cannot spawn "${agentName}": ${subagentModelSourceLabel(source, agentName, depth)} is set to "${value}", which matches no available model. Fix that setting (or clear it to inherit the session model) and try again.`,
+			`Cannot spawn "${agentName}": ${subagentModelSourceLabel(source, agentName, depth)} is set to "${value}", which matches no available model. Fix that setting in Subagents → Roster → ${agentName} (or clear it to fall back to the default model role) and try again.`,
 		);
 	}
 	if (parsed.model && resolvedModel.patterns.length === 0) {
@@ -515,12 +515,13 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		parentActiveModelPattern,
 		parentThinkingLevel,
 		// Through the one owner, like the model above. Passing the frontmatter level
-		// straight through made an eval `agent()` spawn ignore both `subagent.thinkingLevel`
-		// and this agent's own `thinkingLevel` row.
+		// straight through made an eval `agent()` spawn ignore this agent's own
+		// `thinkingLevel` row.
 		thinkingLevel: resolveSubagentThinkingLevel({
 			settings: options.session.settings,
 			agentName,
 			agentThinkingLevel: effectiveAgent.thinkingLevel,
+			taskDepth: (options.session.taskDepth ?? 0) + 1,
 		}),
 		...(structured ? { outputSchema: parsed.schema, outputSchemaOverridesAgent: true } : {}),
 		sessionFile,

@@ -242,7 +242,6 @@ class VeyyonReplayDriverTest(unittest.TestCase):
             for command in commands:
                 self.assertEqual(command[command.index("--model") + 1], EXACT_MODEL)
                 self.assertEqual(command[command.index("--compaction-model") + 1], EXACT_MODEL)
-                self.assertEqual(command[command.index("--subagent-model") + 1], EXACT_MODEL)
 
     def test_model_drift_fails_loud(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
