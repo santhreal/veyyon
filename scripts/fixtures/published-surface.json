@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "90ac7c1e589ad3ca068f7b95da560839f469b9bb",
+	"generatedFrom": "26dc69529c717ffa597feeb29244386afb511fa1",
 	"packages": {
 		"@veyyon/agent-core": {
 			"name": "@veyyon/agent-core",
@@ -7304,8 +7304,8 @@
 				"./tools/fs/conflict-detect",
 				"./tools/fs/conflict-detect.js",
 				"./tools/fs/inspect-image",
-				"./tools/fs/inspect-image-renderer",
-				"./tools/fs/inspect-image-renderer.js",
+				"./tools/fs/inspect-image-view",
+				"./tools/fs/inspect-image-view.js",
 				"./tools/fs/inspect-image.js",
 				"./tools/fs/manifest",
 				"./tools/fs/manifest.js",
@@ -11225,12 +11225,12 @@
 					"why": "packages/coding-agent/src/tools/inspect-image.ts moved to packages/coding-agent/src/tools/fs/inspect-image.ts, which @veyyon/coding-agent publishes as ./tools/fs/inspect-image"
 				},
 				"./tools/inspect-image-renderer": {
-					"to": "@veyyon/coding-agent/tools/fs/inspect-image-renderer",
-					"why": "packages/coding-agent/src/tools/inspect-image-renderer.ts moved to packages/coding-agent/src/tools/fs/inspect-image-renderer.ts, which @veyyon/coding-agent publishes as ./tools/fs/inspect-image-renderer"
+					"to": "./tools/fs/inspect-image-view",
+					"why": "the inspect_image call row, answer panel and failure card are declared in tools/fs/inspect-image-view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./tools/inspect-image-renderer.js": {
-					"to": "@veyyon/coding-agent/tools/fs/inspect-image-renderer.js",
-					"why": "packages/coding-agent/src/tools/inspect-image-renderer.ts moved to packages/coding-agent/src/tools/fs/inspect-image-renderer.ts, which @veyyon/coding-agent publishes as ./tools/fs/inspect-image-renderer.js"
+					"to": "./tools/fs/inspect-image-view.js",
+					"why": "the inspect_image call row, answer panel and failure card are declared in tools/fs/inspect-image-view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./tools/inspect-image.js": {
 					"to": "@veyyon/coding-agent/tools/fs/inspect-image.js",

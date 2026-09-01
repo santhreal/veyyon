@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "90ac7c1e589ad3ca068f7b95da560839f469b9bb",
+	"generatedFrom": "26dc69529c717ffa597feeb29244386afb511fa1",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -49,7 +49,6 @@
 		"packages/coding-agent/src/session/context-usage.ts": "8ac2c3a6c6914e734bdd6a5883f3fd45084ba6291b8d6af04d4f478be9755124",
 		"packages/coding-agent/src/slash-commands/category-order.ts": "df1229f13d908a053b75055eebe5e28e04df611ae13be554bdc67ab383d1a1ea",
 		"packages/coding-agent/src/system-prompt-builder/gate-registry.ts": "5c6f14ede4d5b270bd07c399620ff3d37392b1292262222a1b92cf93270445d1",
-		"packages/coding-agent/src/task/subagent-settings.ts": "59b5c3e914a45dee30303a7971fd78f3e18e8f5cad3b481b7cb0666386118b2e",
 		"packages/coding-agent/src/utils/block-context.ts": "8d737a9e6b3af56064e6333e5bbd69256d4deac355edf7f1e19c523afcd9b6ce",
 		"packages/coding-agent/src/utils/fetch-timeout.ts": "efa46b1c72081638cf3a776e2e5b8b62f473383b7e4ccc1b9c153759650df566",
 		"packages/coding-agent/src/web/search/utils.ts": "4f3146dd3d58e492f267564c317dd0949566b255ef37835afddc77ba596e6682",
@@ -70,7 +69,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4613,
+	"changedCount": 4614,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -1109,7 +1108,7 @@
 		"packages/coding-agent/src/tools/fs/auto-generated-guard.ts",
 		"packages/coding-agent/src/tools/fs/checkpoint.ts",
 		"packages/coding-agent/src/tools/fs/conflict-detect.ts",
-		"packages/coding-agent/src/tools/fs/inspect-image-renderer.ts",
+		"packages/coding-agent/src/tools/fs/inspect-image-view.ts",
 		"packages/coding-agent/src/tools/fs/inspect-image.ts",
 		"packages/coding-agent/src/tools/fs/manifest.ts",
 		"packages/coding-agent/src/tools/fs/read-render.ts",
@@ -1274,6 +1273,7 @@
 		"packages/coding-agent/test/a-machine-limit-needs-a-parent-that-delegates-twice.test.ts",
 		"packages/coding-agent/test/a-memory-cap-cannot-be-escaped-through-swap.test.ts",
 		"packages/coding-agent/test/a-memory-config-carries-the-llm-request-not-the-llm.test.ts",
+		"packages/coding-agent/test/a-model-chosen-for-one-agent-does-not-move-another.test.ts",
 		"packages/coding-agent/test/a-model-is-told-when-the-user-cannot-see-the-image.test.ts",
 		"packages/coding-agent/test/a-name-the-command-line-assigns-is-not-an-unknown-expansion.test.ts",
 		"packages/coding-agent/test/a-parked-subagent-is-pruned-on-its-own-budget.test.ts",
@@ -1287,7 +1287,6 @@
 		"packages/coding-agent/test/a-saturated-budget-refuses-a-spawn-before-the-process-exists.test.ts",
 		"packages/coding-agent/test/a-settings-write-rebuilds-the-prompt-it-changes.test.ts",
 		"packages/coding-agent/test/a-spawn-cannot-outrun-the-budget-registration.test.ts",
-		"packages/coding-agent/test/a-spawn-depth-row-picks-the-subagent-model.test.ts",
 		"packages/coding-agent/test/a-status-row-shows-one-line-of-plain-text.test.ts",
 		"packages/coding-agent/test/a-superseded-prompt-stops-before-classifying-thinking.test.ts",
 		"packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts",
@@ -2185,6 +2184,7 @@
 		"packages/coding-agent/test/oracles/fetch-main-renderer.ts",
 		"packages/coding-agent/test/oracles/goal-main-renderer.ts",
 		"packages/coding-agent/test/oracles/init-experiment-main-renderer.ts",
+		"packages/coding-agent/test/oracles/inspect-image-main-renderer.ts",
 		"packages/coding-agent/test/oracles/log-experiment-main-renderer.ts",
 		"packages/coding-agent/test/oracles/memory-main-renderer.ts",
 		"packages/coding-agent/test/oracles/resolve-main-renderer.ts",
