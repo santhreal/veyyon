@@ -44,7 +44,19 @@ impl RenderOnce for Palette {
 			.flex()
 			.flex_col()
 			.gap(gap)
-			.child(div().w_full().min_w_0().overflow_hidden().child(self.search))
-			.child(div().w_full().min_w_0().overflow_hidden().child(self.results))
+			.child(
+				div()
+					.w_full()
+					.min_w_0()
+					.overflow_hidden()
+					.child(self.search),
+			)
+			.child(
+				div()
+					.w_full()
+					.min_w_0()
+					.overflow_hidden()
+					.child(self.results),
+			)
 	}
 }

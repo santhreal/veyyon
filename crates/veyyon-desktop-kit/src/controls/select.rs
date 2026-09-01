@@ -110,13 +110,11 @@ impl RenderOnce for Select {
 					.child(current_label),
 			)
 			.child(
-				div()
-					.flex_shrink_0()
-					.child(
-						Icon::new(icon)
-							.size(IconSize::Size12)
-							.color(tokens.color(ColorRole::Secondary)),
-					),
+				div().flex_shrink_0().child(
+					Icon::new(icon)
+						.size(IconSize::Size12)
+						.color(tokens.color(ColorRole::Secondary)),
+				),
 			);
 
 		if let Some(handler) = self.on_select {

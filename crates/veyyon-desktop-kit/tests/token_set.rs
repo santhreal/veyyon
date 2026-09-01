@@ -5,8 +5,10 @@
 //! `TokenSet` bridges `veyyon-desktop-tokens` to GPUI rendering types.
 //!
 //! THE CLASS THIS CLOSES:
-//! 1. `TokenSet` diverging from theme files or baking competing palettes into Rust.
-//! 2. `TokenSet` failing open on a missing role or defaulting to a fallback color.
+//! 1. `TokenSet` diverging from theme files or baking competing palettes into
+//!    Rust.
+//! 2. `TokenSet` failing open on a missing role or defaulting to a fallback
+//!    color.
 //!
 //! WHAT IT DOES NOT CATCH:
 //! GPUI shader-level rendering bugs or display-server color space conversions.
@@ -23,7 +25,11 @@ fn the_token_set_reports_bundled_dark_theme_colours() {
 	let token_set = TokenSet::from_tokens(&tokens, &theme).expect("valid token set");
 
 	for role in ColorRole::all() {
-		let theme_rgb = theme.roles.get(&role).copied().expect("theme declares role");
+		let theme_rgb = theme
+			.roles
+			.get(&role)
+			.copied()
+			.expect("theme declares role");
 		let token_color = token_set.color(role);
 
 		assert_eq!(token_color.a, theme_rgb.a, "alpha mismatch for role {role:?}");
@@ -57,7 +63,8 @@ fn the_token_set_reports_bundled_dark_theme_colours() {
 
 		assert!(
 			delta_r < 0.01 && delta_g < 0.01 && delta_b < 0.01,
-			"Color mismatch for role {role:?}: expected RGB ({:.4}, {:.4}, {:.4}), got reconstructed ({:.4}, {:.4}, {:.4})",
+			"Color mismatch for role {role:?}: expected RGB ({:.4}, {:.4}, {:.4}), got reconstructed \
+			 ({:.4}, {:.4}, {:.4})",
 			theme_rgb.r,
 			theme_rgb.g,
 			theme_rgb.b,
@@ -83,11 +90,7 @@ fn the_token_set_cannot_be_built_from_a_theme_missing_a_role() {
 		match result {
 			Err(TokenError::MissingKey { key, section, .. }) => {
 				assert_eq!(section, "role", "error section must be 'role'");
-				assert_eq!(
-					key,
-					role_to_remove.as_str(),
-					"error key must match the removed role name"
-				);
+				assert_eq!(key, role_to_remove.as_str(), "error key must match the removed role name");
 			},
 			Err(other) => {
 				panic!(
@@ -95,9 +98,7 @@ fn the_token_set_cannot_be_built_from_a_theme_missing_a_role() {
 				);
 			},
 			Ok(_) => {
-				panic!(
-					"TokenSet::from_tokens must fail when role {role_to_remove:?} is missing"
-				);
+				panic!("TokenSet::from_tokens must fail when role {role_to_remove:?} is missing");
 			},
 		}
 	}
