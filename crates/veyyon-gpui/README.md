@@ -45,17 +45,24 @@ Every patch has a corresponding golden test or invariant assertion in the reposi
 
 ## Patch Series Status
 
-The `veyyon` branch is currently an exact ancestor of upstream: zero commits ahead. None of P1
-through P10 is written. This crate therefore re-exports GPUI unmodified, and declares no patch
-extension module until the patch it wraps exists on the branch. A module whose body is a comment
-describing an unwritten patch is worse than an absent one, because it makes the crate look finished
-to a reader and to a grep.
+The `veyyon` branch carries one commit over upstream:
+`32dbf750f659546fad3c99b0b6a3406f88b466b7`, which is P10 and is what the workspace pins.
+
+P10 adds `WgpuContext::new_surfaceless`, `WgpuRenderer::new_offscreen`, `WgpuRenderer::read_pixels`
+and `HeadlessAppContext::render_frame`, the last returning a `HeadlessFrame` of tightly-packed
+straight-alpha RGBA8 at a given size and scale factor. Output is byte-identical across renders and
+across processes: adapter selection scores discrete GPUs, the target is cleared to transparent
+black before each frame, and wgpu's 256-byte row alignment is unpadded on readback.
+
+P1 through P9 are unwritten. This crate declares no patch extension module until the patch it wraps
+exists on the branch. A module whose body is a comment describing an unwritten patch is worse than
+an absent one, because it makes the crate look finished to a reader and to a grep.
 
 ## Build Requirements
 
-GPUI is a required dependency, not a cargo feature. Blade reaches Vulkan through ash's dynamically
-loaded entry point, so the build needs no Vulkan headers: `libvulkan-dev` and `vulkan-tools` are not
-prerequisites. What is required:
+GPUI is a required dependency, not a cargo feature. The renderer is wgpu, which reaches Vulkan
+through ash's dynamically loaded entry point, so the build needs no Vulkan headers: `libvulkan-dev`
+and `vulkan-tools` are not prerequisites. What is required:
 
 - The Vulkan loader at run time, `libvulkan.so.1` (Debian/Ubuntu package `libvulkan1`).
 - A Vulkan ICD, such as the NVIDIA proprietary driver or Mesa.
