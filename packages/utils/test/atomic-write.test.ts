@@ -762,6 +762,16 @@ const HANDROLLED_ATOMIC_ALLOWED = new Map<string, string>([
 		"plugins/hashline/src/fs.ts",
 		"lean dependency-free patch library; documented node:fs-only copy, cannot import the owner",
 	],
+	// The replay module writes the previous launch's recording, and it runs before the import graph
+	// loads: it imports node builtins only, so reaching the owner would pull `@veyyon/utils` onto the
+	// pre-paint path and cost the launch the speedup the recording exists to provide. The write is a
+	// same-directory temp plus rename with no fsync, which is the whole requirement here — a torn
+	// recording is discarded by the reader's validity check, so durability is not part of the
+	// contract.
+	[
+		"coding-agent/src/cli/first-frame-replay.ts",
+		"pre-paint launch path, node builtins only; cannot import the owner",
+	],
 ]);
 
 // A CALL to rename, not a DECLARATION of one. The lookbehinds matter: `SecretVault.rename` is a

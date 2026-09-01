@@ -277,25 +277,29 @@ describe("an invalid release is refused before it touches the system", () => {
 	});
 
 	it("nothing the user can see is written before the version gate", () => {
-		// The alias, PATH edit and completions are one owner now, `finish_install`,
-		// which `install_binary` calls after `finalize_binary`. The invariant is the
-		// same: the earliest gate precedes every user-visible write, so it has to
-		// precede the call that follows a download, and the owner has to be where
-		// those writes live. The FIRST call in the function is the already-current
-		// branch, which returns before downloading anything and replaces no file;
-		// there the gate has already run against the installed binary, which is how
-		// that branch knows it is current.
+		// The alias, PATH edit and completions are all done by `finish_install`. It is reached from
+		// two places, and each is behind a version check of its own: the already-current path runs
+		// only when `installed_version_is "$LATEST"` already held, and the download path runs only
+		// after `require_release_version` cleared the staged file.
 		const body = shFn("install_binary");
 		const preflight = body.indexOf('require_release_version "$tmpbin" "$LATEST" "downloaded"');
 		expect(preflight).toBeGreaterThan(-1);
-		expect(body.lastIndexOf("finish_install")).toBeGreaterThan(preflight);
-		const owner = shFn("finish_install");
+
+		const early = body.indexOf("finish_install");
+		const afterDownload = body.lastIndexOf("finish_install");
+		expect(afterDownload).toBeGreaterThan(preflight);
+		// The early one is not ungated: it sits inside the already-current branch.
+		expect(body.lastIndexOf('installed_version_is "$LATEST"', early)).toBeGreaterThan(-1);
+
+		// And those three are what `finish_install` does, so the ordering above is about them.
+		const finish = shFn("finish_install");
 		for (const mutation of [
 			'link_alias "$(install_dir)"',
 			'install_completions "$(install_dir)/$BIN_NAME"',
 			'ensure_on_path "$(install_dir)"',
 		]) {
-			expect(owner.indexOf(mutation), mutation).toBeGreaterThan(-1);
+			expect(finish, mutation).toContain(mutation);
+			// And nowhere else: a copy of the write back in `install_binary` would run before the gate.
 			expect(body.indexOf(mutation), mutation).toBe(-1);
 		}
 	});

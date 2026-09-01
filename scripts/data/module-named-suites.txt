@@ -265,7 +265,7 @@ packages/coding-agent/test/modes/controllers/todo-command-controller.test.ts
 packages/coding-agent/test/modes/controllers/transcript-composer.test.ts
 packages/coding-agent/test/modes/controllers/welcome-controller.test.ts
 packages/coding-agent/test/modes/github-ref-autocomplete.test.ts
-packages/coding-agent/test/modes/image-reference-markers.test.ts
+
 packages/coding-agent/test/modes/internal-url-autocomplete.test.ts
 packages/coding-agent/test/modes/magic-keyword-boundary.test.ts
 packages/coding-agent/test/modes/magic-keywords.test.ts

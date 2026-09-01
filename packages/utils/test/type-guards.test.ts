@@ -207,13 +207,15 @@ const ERRORMESSAGE_GRANDFATHERED = new Set<string>([]);
 // definition itself; hashline, collab-web and the veybot web UI are standalone packages with no
 // `@veyyon/utils` dependency (hashline ships only `diff`/`lru-cache`; the other two are browser
 // bundles, veybot-web on solid-js alone), so importing the util for one ternary would add an
-// unwanted workspace dep and is worse than the local copy. Convert a file, remove its entry.
-// Shrink-only.
+// unwanted workspace dep and is worse than the local copy; `first-frame-replay.ts` runs before the
+// import graph loads and imports node builtins only, so the import would put `@veyyon/utils` on the
+// pre-paint path for one ternary in a debug string. Convert a file, remove its entry. Shrink-only.
 //
 // Keys are member-relative, so a package outside `packages/` carries its root. `plugins/hashline`
 // is the same entry under its current directory; `python/veybot/web` is a member the sweep could
 // not previously reach, and its copy predates this list.
 const INLINE_ERRORMESSAGE_GRANDFATHERED = new Set([
+	"coding-agent/src/cli/first-frame-replay.ts",
 	"collab-web/src/lib/client.ts",
 	"plugins/hashline/src/patcher.ts",
 	"python/veybot/web/src/state.ts",

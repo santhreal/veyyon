@@ -65,5 +65,6 @@ commands, and vendored trees are not prose pages and are not listed.
 | [`packages/evals/EVALS.md`](../packages/evals/EVALS.md) | The eval harness reference: the `evals` CLI grammar, the suites, the harness adapters, the execution backends, the benches and the run store. It lives with the package it documents, which is private and ships no page here. |
 | [`scripts/rewrite-system-prompt.style.md`](../scripts/rewrite-system-prompt.style.md), [`scripts/session-stats/audit-prompt.md`](../scripts/session-stats/audit-prompt.md), [`scripts/upstream-port-issue.md`](../scripts/upstream-port-issue.md) | Prompt text a script feeds to a model. Markdown because the model reads markdown, not because a human does. |
 
+
 Runnable examples are code, not prose: they live in `packages/coding-agent/examples/` beside the
 package they extend.
