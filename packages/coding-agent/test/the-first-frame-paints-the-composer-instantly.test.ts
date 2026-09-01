@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, setSystemTime, vi } from "bun:test";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -28,7 +29,7 @@ import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { branchLabelFromFiles } from "@veyyon/coding-agent/utils/git-head";
 import type { Component } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/tui/utils";
-import { getProjectDir, TempDir } from "@veyyon/utils";
+import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 
 /**
@@ -205,15 +206,32 @@ describe("the launch composer", () => {
 		// The ROW is 300 wide, because the row is now the real status row and its
 		// right-hand group sits against the right edge exactly as the live one
 		// does. The location inside it is what the budget governs.
-		const narrowOptions = resolveLocationOptions();
-		const expected = renderLocation({ projectDir: getProjectDir(), options: narrowOptions }).content;
-		const row = launchRows(300).find(candidate => candidate.includes(expected));
-		expect(row).toBeDefined();
-		expect(visibleWidth(row as string)).toBeLessThanOrEqual(300);
-		expect(visibleWidth(expected)).toBeLessThan(300);
-		// The unclipped path is absent: a row that had simply been given more room
-		// would carry it, and would then shrink at the handover.
-		expect(row).not.toContain(getProjectDir());
+		//
+		// The directory is a deep temporary one rather than this checkout, because
+		// the budget only bites on a path longer than it: on a short checkout
+		// (`/srv/veyyon/packages/coding-agent` on the CI runner) the clipped and
+		// unclipped spellings are the same string, and the case passed having
+		// proved nothing while failing wherever the checkout was long enough to
+		// clip. The path below exceeds any preset budget on every machine.
+		const deep = TempDir.createSync("@pi-first-frame-deep-project-");
+		const nested = deep.join("a-directory-named-at-length", "and-another-one-below-it", "leaf");
+		fs.mkdirSync(nested, { recursive: true });
+		const previousProjectDir = getProjectDir();
+		setProjectDir(nested);
+		try {
+			const expected = renderLocation({ projectDir: nested, options: resolveLocationOptions() }).content;
+			const row = launchRows(300).find(candidate => candidate.includes(expected));
+			expect(row).toBeDefined();
+			expect(visibleWidth(row as string)).toBeLessThanOrEqual(300);
+			// The clip happened at all: the segment is shorter than the directory it names.
+			expect(visibleWidth(expected)).toBeLessThan(nested.length);
+			// The unclipped path is absent: a row that had simply been given more room
+			// would carry it, and would then shrink at the handover.
+			expect(row).not.toContain(nested);
+		} finally {
+			setProjectDir(previousProjectDir);
+			deep.removeSync();
+		}
 	});
 
 	it("honors a path budget the session overrides the preset with", () => {
