@@ -45,12 +45,13 @@ const HANGING_INDENT_MIN_TEXT = 4;
  * A section row carries the block's content indent, so it starts one cell
  * further in than a title does. Pinned by exact equality: a renderer that drops
  * its title, or one that gains an indent it did not mean to, lands here and the
- * suite goes red until someone records the decision.
+ * suite goes red until someone records the decision. `debug` and `lsp` used to
+ * sit here, opening a settled result on its stack rows and its findings; both
+ * cards are now views whose header row states the tool and the outcome in every
+ * lifecycle state, so neither opens on a section any more.
  */
 const CARDS_WITHOUT_A_TITLE_ROW: Record<string, string> = {
 	bash: "the `$ command` row says what a title would repeat, so the shell card draws no title",
-	debug: "a settled debug result opens on its stack rows",
-	lsp: "a settled LSP result opens on its findings",
 };
 
 /**
@@ -63,6 +64,9 @@ const CARDS_WITHOUT_A_TITLE_ROW: Record<string, string> = {
  * this set, drawing a box, a connector and a code frame inside the rail, and so
  * did the retired `grep` tool, whose line-number gutter now belongs to the
  * `search` tool's text mode — a mode the one fixture per tool does not reach.
+ * `eval` and `job` left it the other way: both cards are now views that state a
+ * structure as depth, two columns per level, and the host draws no connector for
+ * them.
  *
  * A third case reaches this set without being chrome at all: a renderer that
  * echoes a remote command's stdout carries whatever glyphs that command printed,
@@ -71,9 +75,8 @@ const CARDS_WITHOUT_A_TITLE_ROW: Record<string, string> = {
  * spot; an entry of that kind says so and names the command its fixture runs.
  */
 const RENDERERS_THAT_DRAW_A_TREE: Record<string, string> = {
-	eval: "a value tree: each row is a child of the expression above it",
-	job: "a job tree: an output row belongs to the job row above it",
 	lsp: "a reference tree: a line belongs to the file above it",
+	search_tool_bm25: "a match tree: a discovered tool belongs to the query row above it",
 	ssh: "not chrome: the fixture echoes `systemctl status`, which prints a CGroup tree",
 };
 
