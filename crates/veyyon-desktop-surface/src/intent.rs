@@ -29,13 +29,24 @@ pub enum Intent {
 		card:     usize,
 		/// Whether the operator approved it.
 		approved: bool,
+		/// Whether the decision holds for every later call to the same tool
+		/// in this session, rather than for this call alone.
+		standing: bool,
 	},
-	/// Answer the question attached at this position.
+	/// Answer the question attached at this position with one of its options.
 	Answer {
 		/// The card's position in the stack.
 		card:   usize,
 		/// The chosen option's position.
 		option: usize,
+	},
+	/// Answer the free-text question attached at this position with what the
+	/// composer holds.
+	Reply {
+		/// The card's position in the stack.
+		card: usize,
+		/// The text given as the answer.
+		text: String,
 	},
 	/// Accept or revise the plan attached at this position.
 	Plan {
@@ -91,6 +102,14 @@ impl Intent {
 			Self::Approval { card, .. } | Self::Answer { card, .. } | Self::Plan { card, .. } => {
 				if state.cards.get(card).is_some() {
 					state.cards.remove(card);
+				}
+			},
+			// A reply takes the composer's text with it: the text was the
+			// answer, and leaving it in place offers it again as a prompt.
+			Self::Reply { card, .. } => {
+				if state.cards.get(card).is_some() {
+					state.cards.remove(card);
+					state.composed.clear();
 				}
 			},
 			Self::Send(_) => state.composed.clear(),

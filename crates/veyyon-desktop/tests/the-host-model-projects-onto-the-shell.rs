@@ -396,12 +396,20 @@ fn store_with_decisions() -> (Store, SessionIndex) {
 				detail:          "rm -rf build\nthen rebuild".to_string(),
 				requested_at_ms: NOW_MS,
 			}],
-			questions: vec![QuestionInteraction {
-				id:              InteractionId::from("i-ask"),
-				prompt:          "Which?".to_string(),
-				options:         vec!["left".to_string(), "right".to_string()],
-				requested_at_ms: NOW_MS,
-			}],
+			questions: vec![
+				QuestionInteraction {
+					id:              InteractionId::from("i-ask"),
+					prompt:          "Which?".to_string(),
+					options:         vec!["left".to_string(), "right".to_string()],
+					requested_at_ms: NOW_MS,
+				},
+				QuestionInteraction {
+					id:              InteractionId::from("i-free"),
+					prompt:          "Name it".to_string(),
+					options:         Vec::new(),
+					requested_at_ms: NOW_MS,
+				},
+			],
 			plans:     vec![PlanInteraction {
 				id:              InteractionId::from("i-plan"),
 				markdown_plan:   "# Ship it\n- step".to_string(),
@@ -412,12 +420,17 @@ fn store_with_decisions() -> (Store, SessionIndex) {
 	let mut state = ShellState::default();
 	project(&store, &mut index, NOW_MS, &mut state);
 	assert!(
-		matches!(&state.cards[..], [Card::Approval { .. }, Card::Question { .. }, Card::Plan { .. }]),
+		matches!(&state.cards[..], [
+			Card::Approval { .. },
+			Card::Question { .. },
+			Card::Question { .. },
+			Card::Plan { .. }
+		]),
 		"approvals, then questions, then plans: {:?}",
 		state.cards
 	);
 	assert!(
-		matches!(&state.cards[2], Card::Plan { title, body } if title == "Ship it" && body == &["- step"])
+		matches!(&state.cards[3], Card::Plan { title, body } if title == "Ship it" && body == &["- step"])
 	);
 	(store, index)
 }
@@ -444,9 +457,9 @@ fn every_intent_maps_to_the_action_the_host_answers_or_to_none_on_purpose() {
 	assert_eq!(action_for(&Intent::SelectTab(0), &index, &mut store), None);
 	assert_eq!(action_for(&Intent::ToggleDrawer, &index, &mut store), None);
 
-	// Answer the plan (position 2) first: its id is the plan's, and the two
+	// Answer the plan (position 3) first: its id is the plan's, and the
 	// cards before it keep their positions.
-	let plan = action_for(&Intent::Plan { card: 2, accepted: true }, &index, &mut store);
+	let plan = action_for(&Intent::Plan { card: 3, accepted: true }, &index, &mut store);
 	assert_eq!(
 		plan,
 		Some(HostAction::RespondToInteraction {
@@ -464,18 +477,33 @@ fn every_intent_maps_to_the_action_the_host_answers_or_to_none_on_purpose() {
 			response:       serde_json::json!({ "option": 1, "text": "right" }),
 		})
 	);
+	// The free-text question moved up to position 1 and takes the composer's
+	// text as its answer.
+	let reply = action_for(&Intent::Reply { card: 1, text: "widget".into() }, &index, &mut store);
+	assert_eq!(
+		reply,
+		Some(HostAction::RespondToInteraction {
+			session:        session.clone(),
+			interaction_id: "i-free".into(),
+			response:       serde_json::json!({ "text": "widget" }),
+		})
+	);
 	// The approval is now the only card, at position 0, in both stacks.
-	let approval = action_for(&Intent::Approval { card: 0, approved: false }, &index, &mut store);
+	let approval = action_for(
+		&Intent::Approval { card: 0, approved: false, standing: false },
+		&index,
+		&mut store,
+	);
 	assert_eq!(
 		approval,
 		Some(HostAction::RespondToInteraction {
 			session:        session.clone(),
 			interaction_id: "i-approve".into(),
-			response:       serde_json::json!({ "approved": false }),
+			response:       serde_json::json!({ "approved": false, "scope": "once" }),
 		})
 	);
 	assert_eq!(
-		action_for(&Intent::Approval { card: 0, approved: true }, &index, &mut store),
+		action_for(&Intent::Approval { card: 0, approved: true, standing: true }, &index, &mut store),
 		None,
 		"an answered card is not answered twice"
 	);
@@ -490,6 +518,11 @@ fn a_decision_at_a_position_of_the_wrong_kind_is_dropped_not_misdelivered() {
 	assert_eq!(action_for(&Intent::Answer { card: 0, option: 0 }, &index, &mut store), None);
 	assert_eq!(action_for(&Intent::Plan { card: 1, accepted: true }, &index, &mut store), None);
 	assert_eq!(
+		action_for(&Intent::Reply { card: 0, text: "no".into() }, &index, &mut store),
+		None,
+		"a reply is a question's answer, never an approval's"
+	);
+	assert_eq!(
 		action_for(&Intent::Answer { card: 1, option: 5 }, &index, &mut store),
 		None,
 		"an option that does not exist is not sent"
@@ -497,7 +530,7 @@ fn a_decision_at_a_position_of_the_wrong_kind_is_dropped_not_misdelivered() {
 	let pending = &store.interactions[&SessionId::from("s")];
 	assert_eq!(
 		(pending.approvals.len(), pending.questions.len(), pending.plans.len()),
-		(1, 0, 1),
+		(1, 1, 1),
 		"the mis-kinded answers took nothing; the bad option took its question"
 	);
 }

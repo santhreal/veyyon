@@ -4,6 +4,7 @@ use crate::{
 	capabilities::{Capability, CapabilityStatus},
 	connection::{ConnectionState, RequestId, SessionId, Versioned},
 	error::BackendError,
+	interaction::PendingDecisions,
 	streaming::StreamingMessageState,
 	transcript::TranscriptEntry,
 };
@@ -58,12 +59,21 @@ pub struct SessionHeaderView {
 
 /// Domain sections received during initial connection or snapshot
 /// synchronization.
+///
+/// Each section is the whole of its domain as the host holds it at that
+/// moment, so reducing one replaces rather than merges.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SnapshotSection {
 	Sessions(Versioned<Vec<SessionSummary>>, Vec<SessionLoadError>),
 	ActiveSession(Versioned<SessionHeaderView>),
 	Transcript(Versioned<Vec<TranscriptEntry>>),
 	Capabilities(Vec<(Capability, CapabilityStatus)>),
+	/// Every decision a session is waiting on. Sent whenever one is raised or
+	/// answered, and empty once none remain.
+	Interactions {
+		session: SessionId,
+		pending: PendingDecisions,
+	},
 	Settings(serde_json::Value),
 	Diagnostics(serde_json::Value),
 }

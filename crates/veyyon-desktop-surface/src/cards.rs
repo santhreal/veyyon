@@ -143,8 +143,12 @@ fn approval(
 		.child(pane)
 		.child(answers(
 			&[
-				("Reject", Intent::Approval { card, approved: false }),
-				("Approve", Intent::Approval { card, approved: true }),
+				("Reject", Choice::Fixed(Intent::Approval { card, approved: false, standing: false })),
+				(
+					"Approve for session",
+					Choice::Fixed(Intent::Approval { card, approved: true, standing: true }),
+				),
+				("Approve", Choice::Fixed(Intent::Approval { card, approved: true, standing: false })),
 			],
 			tokens,
 			cx,
@@ -201,7 +205,38 @@ fn question(
 		);
 	}
 
+	// A question with no options is answered in prose. The composer is the
+	// place the operator already types, so the answer is what it holds when
+	// the row is clicked, and the card says so rather than growing a second
+	// text field above the first.
+	if options.is_empty() {
+		element = element.child(answers(
+			&[("Reply with the composer's text", Choice::Reply { card })],
+			tokens,
+			cx,
+		));
+	}
+
 	element
+}
+
+/// What clicking an answer dispatches.
+///
+/// Most answers are decided when the card is drawn. A reply is not: its text
+/// is whatever the composer holds at the click, so it is built then.
+#[derive(Clone)]
+enum Choice {
+	Fixed(Intent),
+	Reply { card: usize },
+}
+
+impl Choice {
+	fn intent(&self, view: &ShellView) -> Intent {
+		match self {
+			Self::Fixed(intent) => intent.clone(),
+			Self::Reply { card } => Intent::Reply { card: *card, text: view.state().composed.clone() },
+		}
+	}
 }
 
 /// A plan: what the agent intends, capped in height and faded at the cut.
@@ -249,8 +284,8 @@ fn plan(
 		.child(markdown)
 		.child(answers(
 			&[
-				("Revise", Intent::Plan { card, accepted: false }),
-				("Accept", Intent::Plan { card, accepted: true }),
+				("Revise", Choice::Fixed(Intent::Plan { card, accepted: false })),
+				("Accept", Choice::Fixed(Intent::Plan { card, accepted: true })),
 			],
 			tokens,
 			cx,
@@ -259,7 +294,7 @@ fn plan(
 
 /// The answer row every card ends with. A decision surface that states the
 /// question without offering the answers is a notification.
-fn answers(choices: &[(&str, Intent)], tokens: &TokenSet, cx: &Context<ShellView>) -> Div {
+fn answers(choices: &[(&str, Choice)], tokens: &TokenSet, cx: &Context<ShellView>) -> Div {
 	let mut row = div()
 		.w_full()
 		.flex()
@@ -270,7 +305,7 @@ fn answers(choices: &[(&str, Intent)], tokens: &TokenSet, cx: &Context<ShellView
 	// The last choice is the affirmative one and carries the accent; the rest
 	// are quiet, so the default reading of the card is what it will do.
 	let last = choices.len().saturating_sub(1);
-	for (index, (label, intent)) in choices.iter().enumerate() {
+	for (index, (label, choice)) in choices.iter().enumerate() {
 		let affirmative = index == last;
 		let (ground, ink) = if affirmative {
 			(tokens.color(ColorRole::Accent), tokens.color(ColorRole::AccentForeground))
@@ -278,13 +313,14 @@ fn answers(choices: &[(&str, Intent)], tokens: &TokenSet, cx: &Context<ShellView
 			(tokens.color(ColorRole::Inset), tokens.color(ColorRole::Secondary))
 		};
 		let hover = tokens.row_hover();
-		let intent = intent.clone();
+		let choice = choice.clone();
 
 		row = row.child(
 			div()
 				.id(("choice", index))
 				.on_click(cx.listener(move |view, _event, _window, cx| {
-					view.dispatch(intent.clone());
+					let intent = choice.intent(view);
+					view.dispatch(intent);
 					cx.notify();
 				}))
 				.hover(move |style| style.bg(hover))

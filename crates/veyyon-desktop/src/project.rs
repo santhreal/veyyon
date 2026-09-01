@@ -425,14 +425,19 @@ fn take_interaction(
 	let approvals = pending.approvals.len();
 	let questions = pending.questions.len();
 	match *answer {
-		Intent::Approval { approved, .. } if card < approvals => {
+		Intent::Approval { approved, standing, .. } if card < approvals => {
 			let approval = pending.approvals.remove(card);
-			Some((approval.id, json!({ "approved": approved })))
+			let scope = if standing { "session" } else { "once" };
+			Some((approval.id, json!({ "approved": approved, "scope": scope })))
 		},
 		Intent::Answer { option, .. } if (approvals..approvals + questions).contains(&card) => {
 			let question = pending.questions.remove(card - approvals);
 			let text = question.options.get(option)?.clone();
 			Some((question.id, json!({ "option": option, "text": text })))
+		},
+		Intent::Reply { ref text, .. } if (approvals..approvals + questions).contains(&card) => {
+			let question = pending.questions.remove(card - approvals);
+			Some((question.id, json!({ "text": text })))
 		},
 		Intent::Plan { accepted, .. }
 			if card >= approvals + questions && card - approvals - questions < pending.plans.len() =>
@@ -460,7 +465,10 @@ pub fn action_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> O
 			text:        text.clone(),
 			attachments: Vec::new(),
 		}),
-		Intent::Approval { card, .. } | Intent::Answer { card, .. } | Intent::Plan { card, .. } => {
+		Intent::Approval { card, .. }
+		| Intent::Answer { card, .. }
+		| Intent::Reply { card, .. }
+		| Intent::Plan { card, .. } => {
 			let session = active?;
 			let pending = store.interactions.get_mut(&session)?;
 			let (id, response) = take_interaction(pending, *card, intent)?;
