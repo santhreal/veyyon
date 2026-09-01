@@ -10098,7 +10098,7 @@
 			"old": "packages/coding-agent/src/markit/converters/docx.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "ac05b16bdcf5a3d3eb72413e69422bf6b067f4aad48350a5b4686b6cf396e4c0",
+			"hash": "231de1b5ba18673d9137c18be252fa412bc75b551608e5c40c548b73e190ed37",
 			"mainHash": "dc2b40afc3ee611437e3aca64d4d8d5477ede9d9f986e2698db20f0f4a58161c",
 			"structuralHash": "a6dde958feb15da74e8ac792bb033917bdad17e75a915bd8aa060cf7291a7135",
 			"mainStructuralHash": "a6dde958feb15da74e8ac792bb033917bdad17e75a915bd8aa060cf7291a7135"
@@ -10107,7 +10107,7 @@
 			"old": "packages/coding-agent/src/markit/converters/epub.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "987b9577842980476031676b79b153ffa291548087fea3bb8a5f9b245f74858f",
+			"hash": "611fdbcecd6a87be6853b486baad5b85a235865dcbba654ff410220aea093ec5",
 			"mainHash": "d4f1bb6d88fd5b2b0580a25adcf45e6ea9e095b7243a2b7683cac56490aab062",
 			"structuralHash": "3bcff5bc9819782853caadec4b5f6236c6f10312bc808b64435bcb2ada0849e9",
 			"mainStructuralHash": "3bcff5bc9819782853caadec4b5f6236c6f10312bc808b64435bcb2ada0849e9"
@@ -10188,7 +10188,7 @@
 			"old": "packages/coding-agent/src/markit/converters/pptx.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "f65fd0c4623df99491ba821c645c426da341d7304a2ef54309748e9b444b9589",
+			"hash": "08743583283bc0ddeed5303a052d7886da42761120ba7f2bf12a7ea5ae87c42e",
 			"mainHash": "8385e1e5a9122a7110b3965cdb893025fedb6fca194e22e3ff736db663bdce9b",
 			"structuralHash": "0f2cdfa809ebe7e59c07405861a3a0f2df71891911abd0f1ed5f442fa0724100",
 			"mainStructuralHash": "0f2cdfa809ebe7e59c07405861a3a0f2df71891911abd0f1ed5f442fa0724100"
@@ -10197,7 +10197,7 @@
 			"old": "packages/coding-agent/src/markit/converters/xlsx.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "1c88346b2b322c995aa2febd9d25bccfe23c39cbf79caa2b28f7cf265ab5eead",
+			"hash": "0a0b98524eb5d75b9316fb7b93f44cb1d8f8f7d353be75ccb0d0e4ab4b574cee",
 			"mainHash": "9d6fd79272e4324d46888a84b806c41087d7023ff1e2df76e64e527e1d887ff9",
 			"structuralHash": "35c92ee5fbfc03b26a4ee108435fdbee8c9109eff1374e7f18228dde00a1714c",
 			"mainStructuralHash": "35c92ee5fbfc03b26a4ee108435fdbee8c9109eff1374e7f18228dde00a1714c"
@@ -10442,7 +10442,7 @@
 			"old": "packages/coding-agent/src/mnemopi/backend.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "99c264020ccda8afe7d14cb87d6e291e017d7eac7e6a6707a86dd50d69f36f1a",
+			"hash": "3d33991857a79e61a7df93d191268a8fe9e52952ef4fc42aab58fa3d8e8ca7fc",
 			"mainHash": "a5b51a2a75c469666859f9e5fb960cb6d55377faa742ef7fd1dc33f1526f3034",
 			"structuralHash": "f5055ea942114bafc170f4bda3a6404da6278a7ee511487f55e20d218e7a4f15",
 			"mainStructuralHash": "f5055ea942114bafc170f4bda3a6404da6278a7ee511487f55e20d218e7a4f15"
@@ -12367,7 +12367,7 @@
 			"old": "packages/coding-agent/src/modes/utils/tools-markdown.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "5b976c844adf0da2933ef9b4b00df9dfc4d81ec89e0a3ce5802b9d37e1fa9f06",
+			"hash": "3de2c68a333e754ae80f7f7281add195859921518704e4bac563ce6be8449cdf",
 			"mainHash": "d01747015a8e34348060631a05c6fdd47b688c2b72884fcc5058d571f1c77349",
 			"structuralHash": "0e590a1374370505105606dc2f980a55e4b7d8668625b05c419787c802705f90",
 			"mainStructuralHash": "0e590a1374370505105606dc2f980a55e4b7d8668625b05c419787c802705f90"
@@ -15042,7 +15042,7 @@
 			"old": "packages/coding-agent/src/tools/browser/render.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "ba1d8a257175e97cb29ee11c39716dcd51ba503acda46e9392267f7fc13e9f2c",
+			"hash": "2ac7a98f4844c4c61feb482f93ff381a3c083e89e82a7a34005799b78e27a7f1",
 			"mainHash": "7978dbf0f841d19d403986ac0a03622a108b1b88e5dc2625a94cff895f180d7f",
 			"structuralHash": "17b56f852eebde0066ffc3e4d437b53c11609bef6b3d5f8d24510869de05cd05",
 			"mainStructuralHash": "17b56f852eebde0066ffc3e4d437b53c11609bef6b3d5f8d24510869de05cd05"
@@ -29881,6 +29881,15 @@
 			"mainHash": "6eef1bf9efbb88e3ade9b4bc256abd8b7d51682fc62b69f1a54b105e82308825",
 			"structuralHash": "9b5ee2455f5d02e2588fcbd2a1539b676a18eafd8070c6d8684e5267f0c129ec",
 			"mainStructuralHash": "9b5ee2455f5d02e2588fcbd2a1539b676a18eafd8070c6d8684e5267f0c129ec"
+		},
+		"plugins/web/test/markdown-link.test.ts": {
+			"old": "packages/coding-agent/test/utils/markdown-link.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "a9d9fc898c9c9a02cb4ccd131ce7d88e1f3f17a7c7ad2af3cc3533755c00f97e",
+			"mainHash": "7cced146079268b2440b572570b0ba17809ac2fb3c86bc8e5447929c82efc78d",
+			"structuralHash": "f3ebee222fdd48ea914c1c8ce7e82580070d7801ae16634900243bca500eddaf",
+			"mainStructuralHash": "f3ebee222fdd48ea914c1c8ce7e82580070d7801ae16634900243bca500eddaf"
 		},
 		"plugins/web/test/parallel-parsers.test.ts": {
 			"old": "packages/coding-agent/test/web/parallel-parsers.test.ts",

@@ -91,12 +91,12 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("reads a ledger covering the whole move", () => {
 		expect(ledger.generatedFrom).toMatch(/^[0-9a-f]{40}$/);
-		expect(rows.length).toBe(3331);
+		expect(rows.length).toBe(3332);
 		const buckets = new Map<string, number>();
 		for (const [, record] of rows) buckets.set(record.differs, (buckets.get(record.differs) ?? 0) + 1);
 		expect([...buckets].sort()).toEqual([
 			["changed", 158],
-			["imports-and-comments-only", 444],
+			["imports-and-comments-only", 445],
 			["none", 2729],
 		]);
 		expect(rewrites.length).toBeGreaterThan(50);
@@ -208,7 +208,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.structuralHash || hash !== record.mainStructuralHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(importOnly).toBe(444);
+		expect(importOnly).toBe(445);
 	});
 
 	/**
