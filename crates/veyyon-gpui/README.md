@@ -1,11 +1,15 @@
 # veyyon-gpui
 
-Contains the GPUI renderer pin and patch extension interfaces for the veyyon desktop surface.
+Contains the GPUI renderer snapshot and patch extension interfaces for the veyyon desktop surface.
 
 ## Upstream and Fork Topology
 
 GPUI is tracked as a fork of `zed-industries/zed` hosted at `santhreal/zed` on branch `veyyon`.
-The dependency is pinned by commit revision in the workspace `Cargo.toml`.
+The workspace consumes a snapshot of that branch: `scripts/vendor-gpui.ts` extracts the 23-crate
+GPUI closure from one commit into `crates/vendor/<crate>` and records the commit in
+`crates/vendor/GPUI_VENDOR_REV`. The vendored crates are excluded from the workspace and from
+`cargo fmt --all`; their own suite runs in the fork. A renderer change is made in the fork, gated
+there, pushed, and re-vendored. An edit made directly under `crates/vendor` is lost on the next run.
 
 ## Rebase Policy
 
@@ -13,7 +17,7 @@ The dependency is pinned by commit revision in the workspace `Cargo.toml`.
 2. The branch contains no merge commits and no squashed patch sequences.
 3. Rebases occur on demand when upstream capabilities or fixes are required.
 4. Each rebase reapplies the landed patches, in the order the status table below lists them, on top of the target upstream revision.
-5. The commit advancing the workspace `Cargo.toml` revision pin lists any patch adjustments required during the rebase.
+5. The commit advancing the snapshot lists any patch adjustments required during the rebase.
 
 ## Patch Series Specification
 
@@ -45,23 +49,45 @@ Every patch has a corresponding golden test or invariant assertion in the reposi
 
 ## Patch Series Status
 
-The workspace pins `4682106fc840da107787cd2e1722a280d0c8eefe`. Seven commits sit over upstream
+The snapshot is `8a8c65c89c6cd92e1791f35f7d9a655ffac2e7e7`. Sixteen commits sit over upstream
 `399258feeaf90ad8a3a208c99221ee87b6452f38`:
 
 |series patch|commit|
 |---|---|
+|P10, headless deterministic surface|`32dbf750f6`, `86edfba9ba`, `9d4553735d`, `8a8c65c89c`|
 |P1, affine transforms|`8253f6ed3b`|
 |P2, animator identity|`d01551a128`|
 |P3, spring integrator and native delay|`acd0490a45`|
+|P4, animatable style properties|`95b7c37139`|
+|P5, damage-scoped frame driver|`b1086a2089` (invalidation bounds), `dde119f7bb` (retained-frame scissored redraw)|
 |P6, backdrop material|`4682106fc8`|
-|P10, headless deterministic surface|`9d4553735d`|
+|P7, z-order within a layer|`bfdaa917b1`|
+|P8, rounded and path clipping|`dde119f7bb`|
+|P9, text advance cache|`5697924d66`|
 |(outside the series) inner shadow and inset hairline on a rounded rect|`c2518a463b`|
 |(outside the series) per-corner radii on one quad primitive|`449fe47412`|
+|(outside the series) rustfmt pass over P5, P8 and P9|`717335f6b2`|
 
 Three commit subjects on the branch state a patch number the series does not assign them:
-`4682106fc8` says P4 and is P6, and the last two say P5 and P6 and are neither. Read the table
-above, not the subject lines. A rebase reapplies the capabilities in this order and does not
-reproduce those numbers.
+`4682106fc8` says P4 and is P6, and `c2518a463b` and `449fe47412` say P5 and P6 and are neither.
+Read the table above, not the subject lines. A rebase reapplies the capabilities in this order and
+does not reproduce those numbers. P5 and P8 share `window.rs`, `scene.rs`, `shaders.wgsl` and
+`wgpu_renderer.rs` and landed as one commit.
+
+P5 renders every frame into a retained texture whenever the target accepts `COPY_DST`. A scene
+that declares damage is drawn under a device-pixel scissor: the rectangle is cleared by a scissored
+full-screen pipeline, only the affected primitives are drawn, and the retained frame is copied to
+the acquired target. `Context::notify_within`, `Window::declare_damage`,
+`Window::request_animation_frame_at_paint` and `Window::notify_at_paint` declare bounded
+invalidation; `refresh`, plain `notify` and a resize repaint the whole viewport.
+
+P8 gives `ContentMask` corner radii, so an `overflow_hidden` rounded element clips its children
+with the same SDF as its border, and adds `Window::with_clip_path`, which rasterizes a path into an
+intermediate texture and composites the clipped subtree through it.
+
+P9 shapes each distinct (text, font size, runs) once and reuses the shaped line across frames
+through a bounded LRU on `TextSystem`; `TextSystem::shaping_calls` counts the shapes a caller
+observes.
 
 P10 adds `WgpuContext::new_surfaceless`, `WgpuRenderer::new_offscreen`, `WgpuRenderer::read_pixels`
 and `HeadlessAppContext::render_frame`, the last returning a `HeadlessFrame` of tightly-packed
@@ -75,9 +101,10 @@ The renderer is a process-wide resource: a third live `HeadlessAppContext` in on
 with SIGSEGV. `veyyon_desktop_scene::headless_context` hands back a context bound to a permit that
 admits one at a time, and every consumer takes it from there.
 
-P4, P5, P7, P8 and P9 are unwritten. This crate declares no patch extension module until the patch
-it wraps exists on the branch. A module whose body is a comment describing an unwritten patch is
-worse than an absent one, because it makes the crate look finished to a reader and to a grep.
+The golden tests under `tests/` prove P8 (`a_path_clipped_subtree_clips_at_the_path_boundary_at_1x_and_2x`),
+P9 (`a_row_that_fits_its_text_shapes_it_once`) and P10
+(`the_headless_surface_renders_the_same_bytes_twice`) through the snapshot. P5's invariants are
+asserted in the fork (`crates/gpui/src/window.rs`, `crates/gpui_wgpu/src/wgpu_renderer.rs`).
 
 ## Build Requirements
 

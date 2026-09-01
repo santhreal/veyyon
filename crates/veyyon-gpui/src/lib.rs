@@ -1,9 +1,10 @@
 //! The desktop front end's view of GPUI.
 //!
-//! GPUI is pinned in the workspace manifest to the `santhreal/zed` fork, branch
-//! `veyyon`, by revision. That branch carries the patch series; the README
-//! states which patch is landed and under which commit, the golden assertion
-//! each one owes, and the rebase policy.
+//! GPUI is a vendored snapshot of the `santhreal/zed` fork, branch `veyyon`,
+//! under `crates/vendor`, at the commit recorded in
+//! `crates/vendor/GPUI_VENDOR_REV`. That branch carries the patch series;
+//! `scripts/vendor-gpui.ts` extracts one commit of it. The golden tests under
+//! `tests/` prove each patch through the snapshot.
 //!
 //! Every patch extension gets a module here WHEN the patch exists on the
 //! branch. Until then this crate is a re-export and nothing more, so that the
@@ -14,12 +15,13 @@ pub use gpui::*;
 
 #[cfg(test)]
 mod tests {
-	/// The pin is only useful if the symbols the desktop front end builds on are
-	/// actually reachable through this crate. A re-export that resolves to
-	/// nothing still compiles, so name the types the surfaces are written
-	/// against and let a failed rebase break here rather than in every consumer.
+	/// The snapshot is only useful if the symbols the desktop front end builds
+	/// on are actually reachable through this crate. A re-export that resolves
+	/// to nothing still compiles, so name the types the surfaces are written
+	/// against and let a failed re-vendor break here rather than in every
+	/// consumer.
 	#[test]
-	fn the_pinned_renderer_exports_the_types_the_surfaces_are_built_on() {
+	fn the_vendored_renderer_exports_the_types_the_surfaces_are_built_on() {
 		use crate::{Bounds, Hsla, Pixels, Point, Size, px};
 
 		let origin = Point { x: px(12.0), y: px(52.0) };
