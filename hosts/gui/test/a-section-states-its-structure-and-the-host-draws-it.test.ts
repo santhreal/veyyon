@@ -229,6 +229,21 @@ describe("a section states its structure and the host draws it", () => {
 		expect(drawn).toContain("3 earlier lines");
 	});
 
+	/**
+	 * A tool that states both its own bound and the host's asks for the smaller. This host has no
+	 * viewport, so the smaller is always the tool's, and a host that read `viewport` as "the bound is
+	 * mine now" would keep every row of a section that asked for two.
+	 */
+	it("honours the tool's own bound even when the tool also offered the host's", () => {
+		const drawn = drawFramedBlock({
+			kind: "framedBlock",
+			sections: [{ lines: lines("1", "2", "3", "4"), tail: { max: 2, viewport: true, reserve: 1 } }],
+		});
+
+		expect(drawn).toContain('data-dropped="2"');
+		expect(drawn).not.toContain(">1<");
+	});
+
 	it("keeps every row when the window is the host's to choose", () => {
 		const viewportOnly = drawFramedBlock({
 			kind: "framedBlock",
@@ -267,8 +282,12 @@ describe("a section states its structure and the host draws it", () => {
 
 		expect(revealable).toContain("<button");
 		expect(revealable).toContain("4 more files");
+		expect(revealable).toContain('data-revealable="true"');
 		expect(closed).not.toContain("<button");
-		expect(closed).toContain("1 more file");
+		expect(closed).toContain("1 more file<");
+		expect(closed).not.toContain("files");
+		// Stated either way, never by absence: a bare `data-revealable` reads back as the empty string.
+		expect(closed).toContain('data-revealable="false"');
 		expect(none).not.toContain("v-hidden");
 	});
 

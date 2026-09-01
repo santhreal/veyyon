@@ -18,7 +18,7 @@
 import { describe, expect, it } from "bun:test";
 import type { ViewSpan } from "@veyyon/view";
 import { drawLine, drawSpan } from "../src/draw-tool-view";
-import { TONE_CLASSES, VIEW_TONES } from "../src/tokens";
+import { STATUS_CLASSES, TONE_CLASSES, VIEW_TONES } from "../src/tokens";
 
 describe("a span carries its meaning and never its bytes", () => {
 	it("escapes every character a document would read as markup", () => {
@@ -59,12 +59,9 @@ describe("a span carries its meaning and never its bytes", () => {
 	it("keeps the words of a captured screen and drops the sequences that drew it", () => {
 		const drawn = drawSpan({ text: "\x1b[1;31mFAILED\x1b[0m\x1b]0;title\x07 build\x08", captured: true });
 
-		expect(drawn).toContain("FAILED");
-		expect(drawn).toContain("build");
-		expect(drawn).not.toContain("\x1b");
-		expect(drawn).not.toContain("\x07");
-		expect(drawn).not.toContain("\x08");
-		expect(drawn).toContain("<code");
+		// The whole body, not a substring of it: a strip that eats the escape byte and leaves `[1;31m`
+		// behind satisfies every "no escape byte" assertion while putting the parameters on the screen.
+		expect(drawn).toBe('<code class="v-captured">FAILED build</code>');
 	});
 
 	it("follows a link only when its scheme addresses a document", () => {
@@ -102,6 +99,18 @@ describe("a span carries its meaning and never its bytes", () => {
 		expect(drawn).toContain('data-status="running"');
 		expect(drawn).toContain('aria-label="running"');
 		expect(drawn).toContain('role="img"');
+		expect(drawn).toContain(STATUS_CLASSES.running);
+	});
+
+	/**
+	 * Two rows reporting the same state look the same however the tool toned the words beside them,
+	 * which is only true while a mark takes the mark's appearance and never the tone on its span.
+	 */
+	it("draws a mark in the state's own appearance, never the tone beside it", () => {
+		const drawn = drawSpan({ text: "", status: "error", tone: "success" });
+
+		expect(drawn).toContain(STATUS_CLASSES.error);
+		expect(drawn).not.toContain(TONE_CLASSES.success);
 	});
 
 	it("draws a mark from the embedder's icon set when it has one", () => {

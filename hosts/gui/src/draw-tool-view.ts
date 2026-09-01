@@ -101,6 +101,19 @@ function renderMarkdownInline(source: string): string {
 	}
 }
 
+/**
+ * A fact a row states either way, as the attribute value that says which.
+ *
+ * `element` writes `true` as the bare attribute HTML defines for `disabled` and `checked`, and that
+ * spelling is wrong for a `data-` attribute: a bare `data-opens` reads back as the empty string,
+ * which is falsy, so a node that opens its subtree would be read as one that does not, and `false`
+ * would drop the attribute and be indistinguishable from a tool that said nothing. Both answers are
+ * written out, so a stylesheet can select either and `dataset.opens === "true"` is the whole read.
+ */
+function stated(fact: boolean): string {
+	return fact ? "true" : "false";
+}
+
 /** The text a span draws, before emphasis and before the element that carries its tone. */
 function spanContent(span: ViewSpan, options: GuiViewOptions): string {
 	if (span.symbol !== undefined) return options.symbols?.[span.symbol] ?? escapeHtml(span.text);
@@ -290,7 +303,11 @@ function drawHidden(hidden: ViewHiddenCount): string {
 	const body = hidden.revealable
 		? element("button", { type: "button", class: "v-reveal" }, escapeHtml(sentence))
 		: escapeHtml(sentence);
-	return element("p", { class: "v-hidden", "data-count": hidden.count, "data-revealable": hidden.revealable }, body);
+	return element(
+		"p",
+		{ class: "v-hidden", "data-count": hidden.count, "data-revealable": stated(hidden.revealable) },
+		body,
+	);
 }
 
 /**
@@ -348,7 +365,7 @@ function drawCodeSection(lines: readonly ViewLine[], code: ViewCodeLines): strin
 				class: "v-code",
 				"data-language": code.language,
 				"data-total-lines": code.totalLines,
-				"data-numbered": code.firstLineNumber !== undefined || code.lineNumbers !== undefined,
+				"data-numbered": stated(code.firstLineNumber !== undefined || code.lineNumbers !== undefined),
 			},
 			rows.join(""),
 		)
@@ -396,8 +413,8 @@ function drawTreeSection(lines: readonly ViewLine[], tree: ViewTreeLines, option
 			{
 				class: "v-tree-node",
 				"data-depth": tree.depth[index] ?? 0,
-				"data-opens": tree.opens[index] === true,
-				"data-last": tree.last[index] === true,
+				"data-opens": stated(tree.opens[index] === true),
+				"data-last": stated(tree.last[index] === true),
 			},
 			drawLine(line, options),
 		),

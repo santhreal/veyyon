@@ -63,22 +63,20 @@ export function safeHref(target: string): string | null {
 }
 
 /** An attribute value, or `undefined` for an attribute the element does not carry. */
-export type AttributeValue = string | number | boolean | undefined;
+export type AttributeValue = string | number | undefined;
 
 /**
  * One element with its attributes escaped and its children already safe.
  *
- * `false` and `undefined` drop the attribute rather than writing an empty one, and `true` writes the
- * bare attribute HTML defines for a boolean, so a caller states presence without spelling a value.
+ * `undefined` drops the attribute rather than writing an empty one. A boolean is not a value here:
+ * a bare `data-opens` reads back as the empty string, which is falsy, so a caller states a fact
+ * either way as the string that says which, and the two HTML boolean attributes a card uses --
+ * `disabled`, `checked` -- would state themselves the same way rather than by absence.
  */
 export function element(tag: string, attributes: Readonly<Record<string, AttributeValue>>, children = ""): string {
 	let open = tag;
 	for (const [name, value] of Object.entries(attributes)) {
-		if (value === undefined || value === false) continue;
-		if (value === true) {
-			open += ` ${name}`;
-			continue;
-		}
+		if (value === undefined) continue;
 		open += ` ${name}="${escapeHtml(String(value))}"`;
 	}
 	return `<${open}>${children}</${tag}>`;
