@@ -462,11 +462,7 @@ const TREND_LEVELS = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"] as
  * which is the same defect as printing its logged zero as a measurement: a
  * segfault would draw as the best result of a session where lower is better.
  */
-function metricTrend(
-	current: readonly ExperimentResult[],
-	best: ExperimentResult | null,
-	room: number,
-): string | null {
+function metricTrend(current: readonly ExperimentResult[], best: ExperimentResult | null, room: number): string | null {
 	if (room < 8) return null;
 	// The tail, not the head: the question in front of a long segment is where it
 	// is going, and the oldest runs are the ones already answered by Best. One

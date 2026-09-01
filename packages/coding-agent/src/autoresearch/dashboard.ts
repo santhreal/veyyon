@@ -16,7 +16,7 @@ import { formatElapsed, formatNum, formatPercentChange } from "./helpers";
 import { AutoresearchScreenComponent } from "./screen";
 import { AUTORESEARCH_SCREEN_KEY } from "./shortcuts";
 import { currentResults, effectiveBreadth, findBaselineMetric, findBestKeptResult } from "./state";
-import type { AutoresearchRuntime, DashboardController, ExperimentState } from "./types";
+import type { AutoresearchRuntime, DashboardController } from "./types";
 
 export function createDashboardController(): DashboardController {
 	let screenTui: { requestRender(): void } | null = null;
