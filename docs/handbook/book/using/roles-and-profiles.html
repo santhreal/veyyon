@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a71f7782.js";
+            window.path_to_searchindex_js = "../searchindex-29255d79.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -258,15 +258,17 @@ modelRoles:
 <tr><th>Setting</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td><code>subagent.model</code></td><td>Ordered model chain for every subagent that has no model of its own. The first entry is primary and later entries are fallbacks. Unset inherits the interactive model.</td></tr>
-<tr><td><code>subagent.thinkingLevel</code></td><td>Blanket subagent effort. Unset inherits the live parent effort.</td></tr>
-<tr><td><code>subagent.agents</code></td><td>Per-agent <code>enabled</code>, <code>model</code>, <code>thinkingLevel</code>, and <code>maxNestedSpawnDepth</code> choices. Per-agent values win over the blanket policy.</td></tr>
+<tr><td><code>subagent.sharedModel</code></td><td>Which scope decides a subagent’s model and effort. Off, each agent’s own row does. On, the two rows below do, for every agent.</td></tr>
+<tr><td><code>subagent.model</code></td><td>Ordered model chain every subagent runs while <code>subagent.sharedModel</code> is on. The first entry is primary and later entries are fallbacks. Unset runs every agent on the <code>default</code> model role.</td></tr>
+<tr><td><code>subagent.thinkingLevel</code></td><td>Effort every subagent runs at while <code>subagent.sharedModel</code> is on.</td></tr>
+<tr><td><code>subagent.agents</code></td><td>Per-agent <code>enabled</code>, <code>model</code>, <code>thinkingLevel</code>, and <code>maxNestedSpawnDepth</code> choices. The <code>model</code> and <code>thinkingLevel</code> on a row decide while <code>subagent.sharedModel</code> is off, and are not read while it is on.</td></tr>
 <tr><td><code>subagent.delegation</code></td><td>How strongly the model is prompted to delegate: <code>allowed</code>, <code>preferred</code>, or <code>required</code>.</td></tr>
 <tr><td><code>compaction.model</code></td><td>Ordered model chain for compaction. Unset inherits the interactive model.</td></tr>
 </tbody>
 </table>
 </div>
 <pre><code class="language-yaml">subagent:
+  sharedModel: true
   model: deepseek/deepseek-chat:high,anthropic/claude-sonnet-5:low
   agents:
     scout:
