@@ -32,6 +32,7 @@ import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { ProcessTerminal } from "@veyyon/tui/terminal";
 import {
 	clearFirstFrameRecording,
 	isBareInteractiveLaunch,
@@ -534,7 +535,6 @@ describe("the size the replay reads", () => {
 			setEnv("LINES", envLines);
 
 			// The renderer's own answer, from the module that owns it.
-			const { ProcessTerminal } = await import("@veyyon/tui/terminal");
 			const terminal = new ProcessTerminal();
 
 			// The replay's answer, observed through the only thing it exposes: a recording written at
