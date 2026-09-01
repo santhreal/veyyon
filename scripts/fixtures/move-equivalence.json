@@ -86,8 +86,16 @@
 			"packages/coding-agent/test/oracles/gh-main-renderer.ts"
 		],
 		[
+			"packages/coding-agent/src/web/search/providers",
+			"plugins/web/src"
+		],
+		[
 			"packages/coding-agent/src/tools/irc-render.ts",
 			"packages/coding-agent/test/oracles/irc-main-renderer.ts"
+		],
+		[
+			"packages/coding-agent/test/tools/web-scrapers",
+			"plugins/web/test/integration"
 		],
 		[
 			"packages/coding-agent/src/commit/git/diff.ts",
@@ -124,6 +132,10 @@
 		[
 			"packages/coding-agent/src/extensibility",
 			"kernel/src/loader"
+		],
+		[
+			"packages/coding-agent/test/web-scrapers",
+			"plugins/web/test/scrapers"
 		],
 		[
 			"packages/coding-agent/src/cli/commands",
@@ -174,6 +186,14 @@
 			"packages/coding-agent/src/cli"
 		],
 		[
+			"packages/coding-agent/test/tools",
+			"plugins/web/test/scrapers"
+		],
+		[
+			"packages/coding-agent/test/utils",
+			"packages/utils/test"
+		],
+		[
 			"packages/tui/src/sub-cell-bar.ts",
 			"packages/utils/src/bar.ts"
 		],
@@ -186,8 +206,20 @@
 			"packages/coding-agent/src/tools/web"
 		],
 		[
+			"packages/coding-agent/src/utils",
+			"packages/utils/src"
+		],
+		[
+			"packages/coding-agent/test/web",
+			"plugins/web/test"
+		],
+		[
 			"packages/coding-agent/src/lib",
 			"packages/coding-agent/src/tools/web"
+		],
+		[
+			"packages/coding-agent/src/web",
+			"plugins/web/src"
 		],
 		[
 			"crates/veyyon-test-scratch",
@@ -236,6 +268,10 @@
 		[
 			"crates/veyyon-uu-grep",
 			"natives/search/uu-grep"
+		],
+		[
+			"packages/coding-agent",
+			"plugins/web"
 		],
 		[
 			"crates/veyyon-walker",
@@ -314,8 +350,8 @@
 			"differs": "changed",
 			"group": "changelog-or-readme",
 			"reason": "A moved package records the move in its own changelog or names its new path in its readme.",
-			"hash": "d2a50aa55c77c00a8f2718628d20021af7a426215f88aa252b1320819f735dbf",
-			"mainHash": "fbef0f1ed9432264ba615a62638e9207b68eaa08cda5344b332cb1be5c5ccd52",
+			"hash": "f65b19d9594b511ee0ce7e89635730bc80286d6721fa73f596bedc8585ca903d",
+			"mainHash": "4ce253c589906e6c926be3e1aa405f9a0663591ac6274d66e9791faa37bc9014",
 			"structuralHash": "a4f5ea179374643c489c726bc5f65a555aa4be97ff19e6a7cf65a595f4bee364",
 			"mainStructuralHash": "ef0e2e94ea74541bac8b63f9326b7b07b0c2ec6cd412113a8c5d8c423925ae90"
 		},
@@ -354,8 +390,8 @@
 			"old": "packages/wire/src/index.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "b1030af425df5c75d202540c2b7731056ddb5cff5b5be79851d2328aa999b0f7",
-			"mainHash": "126de5028f97f17763bc872e12c6dc29a493a7831c358902a8827da310ff83d0",
+			"hash": "23e98d93160f3828eb49dfe668376961715bf318d6d7dc38326fb80b33340f0b",
+			"mainHash": "f73aca0b0311b1f6ad5363e8317576f854afbb2020ac9dad77052cec62db67f6",
 			"structuralHash": "578d11a36611b85b59f518965ece9bf5122e0c1cc5f3ec526d092cd4dc28ba45",
 			"mainStructuralHash": "578d11a36611b85b59f518965ece9bf5122e0c1cc5f3ec526d092cd4dc28ba45"
 		},
@@ -430,8 +466,8 @@
 			"old": "packages/wire/test/the-task-result-envelope-has-one-reader.test.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "e326081d4dd80dcb3451e85f69e8c2bc7af3e1aabc37941f7d9d3ddd78a58fc6",
-			"mainHash": "e326081d4dd80dcb3451e85f69e8c2bc7af3e1aabc37941f7d9d3ddd78a58fc6",
+			"hash": "af65256f2293f36b06166bdc5b189c02069a213da8a4280cfe7cc085b25f464b",
+			"mainHash": "af65256f2293f36b06166bdc5b189c02069a213da8a4280cfe7cc085b25f464b",
 			"structuralHash": "52a99d992303939444d43fdb5b5f44eae390320179433607dda281efd6bada05",
 			"mainStructuralHash": "52a99d992303939444d43fdb5b5f44eae390320179433607dda281efd6bada05"
 		},
@@ -439,8 +475,8 @@
 			"old": "packages/wire/test/todo-terminality-has-one-owner.test.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "e21580bba30bdff98e474a148a258a18a362d92ddadae294229271c9569c4275",
-			"mainHash": "e21580bba30bdff98e474a148a258a18a362d92ddadae294229271c9569c4275",
+			"hash": "19887a6cd09a00322b85c3f24f82dc05007f226f577ac497af484458e43b43ee",
+			"mainHash": "19887a6cd09a00322b85c3f24f82dc05007f226f577ac497af484458e43b43ee",
 			"structuralHash": "73d48a842ccb978af567eb02d339ab5f5fc6240e93d0465cd58a30cf454c177d",
 			"mainStructuralHash": "73d48a842ccb978af567eb02d339ab5f5fc6240e93d0465cd58a30cf454c177d"
 		},
@@ -858,8 +894,8 @@
 			"old": "packages/tui/test/a-dropped-history-row-slides-the-tracked-cursor.test.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "fb4081e0a968c201ea14a42784a6945f3ba7dcf35570111150f03a082c9c0395",
-			"mainHash": "fb4081e0a968c201ea14a42784a6945f3ba7dcf35570111150f03a082c9c0395",
+			"hash": "36ff329be4c23d080b5fc85ae73e4904cfc429911679729c5033b167a6401724",
+			"mainHash": "36ff329be4c23d080b5fc85ae73e4904cfc429911679729c5033b167a6401724",
 			"structuralHash": "b2456166153cf4f5cf0a0d52b4dd0bca5b60fb46f6552d6b4db395c7f5ed1cc6",
 			"mainStructuralHash": "b2456166153cf4f5cf0a0d52b4dd0bca5b60fb46f6552d6b4db395c7f5ed1cc6"
 		},
@@ -867,8 +903,8 @@
 			"old": "packages/tui/test/a-footer-click-target-holds-the-mouse-in-a-session-that-never-scrolls.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "a62bea177afd34f9eaaa4a9068e22fb1498d9d390ca735fe498231ec863f1be3",
-			"mainHash": "8ca83d7a469220ad29e0b5331dc01088ae0bc1ec08b420f47af4d4508f6e527d",
+			"hash": "4d31f13fb55b740a19d83477952af835719728f20099f0ec17a6bf73508a197f",
+			"mainHash": "deac9bc3ae1962300ef704d71bdf08200be0071aaa022dd6ca09f1451d23e601",
 			"structuralHash": "9f3276046e0b5528816d4caa106804f6b82e8ad773b5b45a2f353e4330d0d8f5",
 			"mainStructuralHash": "9f3276046e0b5528816d4caa106804f6b82e8ad773b5b45a2f353e4330d0d8f5"
 		},
@@ -1083,8 +1119,8 @@
 			"old": "packages/tui/test/discarding-a-draft-leaves-it-on-the-undo-stack.test.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "ac90b6a13dab95956c92bbafe146cb74799ff05de3b97cc92a97c352b8101e86",
-			"mainHash": "ac90b6a13dab95956c92bbafe146cb74799ff05de3b97cc92a97c352b8101e86",
+			"hash": "707c267fd7c3ee0305a09a781a2aa8a0117f79e0aa05ca5e54ce5b58741dcc9e",
+			"mainHash": "707c267fd7c3ee0305a09a781a2aa8a0117f79e0aa05ca5e54ce5b58741dcc9e",
 			"structuralHash": "3157ebf547eb8f19a9774b0c5f38c55246b2ec6ce2c5d47e8fa9726992cbcf64",
 			"mainStructuralHash": "3157ebf547eb8f19a9774b0c5f38c55246b2ec6ce2c5d47e8fa9726992cbcf64"
 		},
@@ -2738,8 +2774,8 @@
 			"old": "crates/veyyon-natives/src/iso.rs",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "19278fbf742630287670612dbcba4dd50b49b92d404426f20570dd933d12d5ca",
-			"mainHash": "19278fbf742630287670612dbcba4dd50b49b92d404426f20570dd933d12d5ca",
+			"hash": "15c4dde5369a0fb5d3a7c09d8012882e4f84b8a08b6f08429964db71d00cf1ad",
+			"mainHash": "15c4dde5369a0fb5d3a7c09d8012882e4f84b8a08b6f08429964db71d00cf1ad",
 			"structuralHash": "e0e1cae67b76b9287cb3e9865d4bb9acef267f02608c343c17c1dd7a5c501493",
 			"mainStructuralHash": "e0e1cae67b76b9287cb3e9865d4bb9acef267f02608c343c17c1dd7a5c501493"
 		},
@@ -2765,8 +2801,8 @@
 			"old": "crates/veyyon-natives/src/napi_error.rs",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "78fd8c8c0627ff02c3d9327988f9394c093224a384d661052c8f68af9f7d8d60",
-			"mainHash": "78fd8c8c0627ff02c3d9327988f9394c093224a384d661052c8f68af9f7d8d60",
+			"hash": "2aa5bdd5a77547203aa5d07738cad2c4b065c084f27d4f478066f90815a7885e",
+			"mainHash": "2aa5bdd5a77547203aa5d07738cad2c4b065c084f27d4f478066f90815a7885e",
 			"structuralHash": "25a4d5af21a60749a7da24f59602c4807212aee5c9fe349606d443f86fe0ea66",
 			"mainStructuralHash": "25a4d5af21a60749a7da24f59602c4807212aee5c9fe349606d443f86fe0ea66"
 		},
@@ -4880,10 +4916,10 @@
 			"old": "crates/veyyon-shell/src/minimizer/filters/git.rs",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "77531741afc9ae52f9ec8326907ced4fd82d011bae7b7fd81a6aceff50946a33",
-			"mainHash": "77531741afc9ae52f9ec8326907ced4fd82d011bae7b7fd81a6aceff50946a33",
-			"structuralHash": "245e0527135d580198ab2dedfe9e16ab843ea8dfde7a471c9f4c02dfe878508e",
-			"mainStructuralHash": "245e0527135d580198ab2dedfe9e16ab843ea8dfde7a471c9f4c02dfe878508e"
+			"hash": "ec2487d79f651471ad51233783a1999f270600046921daab69c9a6c8ba0b54a1",
+			"mainHash": "ec2487d79f651471ad51233783a1999f270600046921daab69c9a6c8ba0b54a1",
+			"structuralHash": "3af6b4f157f522f40f3c92b17acb8647228d184443b95c154ad6278949553e04",
+			"mainStructuralHash": "3af6b4f157f522f40f3c92b17acb8647228d184443b95c154ad6278949553e04"
 		},
 		"natives/shell/src/minimizer/filters/glab.rs": {
 			"old": "crates/veyyon-shell/src/minimizer/filters/glab.rs",
@@ -9750,8 +9786,8 @@
 			"old": "packages/coding-agent/src/startup/first-frame-replay.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "adab98480867ee27c76a9d4265053cd863fab590dbb549c8ae92038300f8a302",
-			"mainHash": "adab98480867ee27c76a9d4265053cd863fab590dbb549c8ae92038300f8a302",
+			"hash": "d006c32d9f247edcafe788bb2472a578c9ec62d4d6e3fcaf26b048f603b6b6d4",
+			"mainHash": "d006c32d9f247edcafe788bb2472a578c9ec62d4d6e3fcaf26b048f603b6b6d4",
 			"structuralHash": "8b7ec4423d40b9d96665bc904ab5571833da38df7ce21e9e103212edc18fb0b3",
 			"mainStructuralHash": "8b7ec4423d40b9d96665bc904ab5571833da38df7ce21e9e103212edc18fb0b3"
 		},
@@ -10061,8 +10097,8 @@
 		"packages/coding-agent/src/export/markit/converters/docx.ts": {
 			"old": "packages/coding-agent/src/markit/converters/docx.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "dc2b40afc3ee611437e3aca64d4d8d5477ede9d9f986e2698db20f0f4a58161c",
+			"differs": "imports-and-comments-only",
+			"hash": "ac05b16bdcf5a3d3eb72413e69422bf6b067f4aad48350a5b4686b6cf396e4c0",
 			"mainHash": "dc2b40afc3ee611437e3aca64d4d8d5477ede9d9f986e2698db20f0f4a58161c",
 			"structuralHash": "a6dde958feb15da74e8ac792bb033917bdad17e75a915bd8aa060cf7291a7135",
 			"mainStructuralHash": "a6dde958feb15da74e8ac792bb033917bdad17e75a915bd8aa060cf7291a7135"
@@ -10070,8 +10106,8 @@
 		"packages/coding-agent/src/export/markit/converters/epub.ts": {
 			"old": "packages/coding-agent/src/markit/converters/epub.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "d4f1bb6d88fd5b2b0580a25adcf45e6ea9e095b7243a2b7683cac56490aab062",
+			"differs": "imports-and-comments-only",
+			"hash": "987b9577842980476031676b79b153ffa291548087fea3bb8a5f9b245f74858f",
 			"mainHash": "d4f1bb6d88fd5b2b0580a25adcf45e6ea9e095b7243a2b7683cac56490aab062",
 			"structuralHash": "3bcff5bc9819782853caadec4b5f6236c6f10312bc808b64435bcb2ada0849e9",
 			"mainStructuralHash": "3bcff5bc9819782853caadec4b5f6236c6f10312bc808b64435bcb2ada0849e9"
@@ -10151,8 +10187,8 @@
 		"packages/coding-agent/src/export/markit/converters/pptx.ts": {
 			"old": "packages/coding-agent/src/markit/converters/pptx.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "8385e1e5a9122a7110b3965cdb893025fedb6fca194e22e3ff736db663bdce9b",
+			"differs": "imports-and-comments-only",
+			"hash": "f65fd0c4623df99491ba821c645c426da341d7304a2ef54309748e9b444b9589",
 			"mainHash": "8385e1e5a9122a7110b3965cdb893025fedb6fca194e22e3ff736db663bdce9b",
 			"structuralHash": "0f2cdfa809ebe7e59c07405861a3a0f2df71891911abd0f1ed5f442fa0724100",
 			"mainStructuralHash": "0f2cdfa809ebe7e59c07405861a3a0f2df71891911abd0f1ed5f442fa0724100"
@@ -10160,8 +10196,8 @@
 		"packages/coding-agent/src/export/markit/converters/xlsx.ts": {
 			"old": "packages/coding-agent/src/markit/converters/xlsx.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "9d6fd79272e4324d46888a84b806c41087d7023ff1e2df76e64e527e1d887ff9",
+			"differs": "imports-and-comments-only",
+			"hash": "1c88346b2b322c995aa2febd9d25bccfe23c39cbf79caa2b28f7cf265ab5eead",
 			"mainHash": "9d6fd79272e4324d46888a84b806c41087d7023ff1e2df76e64e527e1d887ff9",
 			"structuralHash": "35c92ee5fbfc03b26a4ee108435fdbee8c9109eff1374e7f18228dde00a1714c",
 			"mainStructuralHash": "35c92ee5fbfc03b26a4ee108435fdbee8c9109eff1374e7f18228dde00a1714c"
@@ -10406,7 +10442,7 @@
 			"old": "packages/coding-agent/src/mnemopi/backend.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "151b52740aa94d416abf884506cf93f4efc4724161bc4d55f02d9b3e32e51c0e",
+			"hash": "99c264020ccda8afe7d14cb87d6e291e017d7eac7e6a6707a86dd50d69f36f1a",
 			"mainHash": "a5b51a2a75c469666859f9e5fb960cb6d55377faa742ef7fd1dc33f1526f3034",
 			"structuralHash": "f5055ea942114bafc170f4bda3a6404da6278a7ee511487f55e20d218e7a4f15",
 			"mainStructuralHash": "f5055ea942114bafc170f4bda3a6404da6278a7ee511487f55e20d218e7a4f15"
@@ -12330,8 +12366,8 @@
 		"packages/coding-agent/src/modes/terminal/utils/tools-markdown.ts": {
 			"old": "packages/coding-agent/src/modes/utils/tools-markdown.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "d01747015a8e34348060631a05c6fdd47b688c2b72884fcc5058d571f1c77349",
+			"differs": "imports-and-comments-only",
+			"hash": "5b976c844adf0da2933ef9b4b00df9dfc4d81ec89e0a3ce5802b9d37e1fa9f06",
 			"mainHash": "d01747015a8e34348060631a05c6fdd47b688c2b72884fcc5058d571f1c77349",
 			"structuralHash": "0e590a1374370505105606dc2f980a55e4b7d8668625b05c419787c802705f90",
 			"mainStructuralHash": "0e590a1374370505105606dc2f980a55e4b7d8668625b05c419787c802705f90"
@@ -13651,8 +13687,8 @@
 			"old": "packages/coding-agent/src/modes/theme/symbol-theme.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "23392b314c908e234ae6c8957294194f9e2ba57f9065ee53f64f8a90a55a751b",
-			"mainHash": "26826cddfa8ffb5afad18ab2b5ab4ec5924ea91cb247fc5f6945e26d403478d3",
+			"hash": "b49405272707f1f66862168e0809e40509d6b5d5aa91a4a2e0b83642a96fec01",
+			"mainHash": "3649032569f6e3518a150538cfa8e5bb602e26b19e4ed3dc3fd3803f13706b3c",
 			"structuralHash": "41273b1454f154c2651f2e0929c177bb42a0a09cb59ee429b4aa50a25311a199",
 			"mainStructuralHash": "41273b1454f154c2651f2e0929c177bb42a0a09cb59ee429b4aa50a25311a199"
 		},
@@ -14679,8 +14715,8 @@
 		"packages/coding-agent/src/tools/web/browser/readable.ts": {
 			"old": "packages/coding-agent/src/tools/browser/readable.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "6b3bd6055b71fbe548695421922a3738ed394e5240ce530e1232e57856d53a5c",
+			"differs": "imports-and-comments-only",
+			"hash": "c4db1b4c73ee8a8ab1954d8d6f194fab0ff08aa640545cd0b4917795331b9c14",
 			"mainHash": "6b3bd6055b71fbe548695421922a3738ed394e5240ce530e1232e57856d53a5c",
 			"structuralHash": "fbd3021aad26b15f8db2c699822d00587a16c146291c40d1c4511c5e678a7876",
 			"mainStructuralHash": "fbd3021aad26b15f8db2c699822d00587a16c146291c40d1c4511c5e678a7876"
@@ -14770,11 +14806,11 @@
 			"old": "packages/coding-agent/src/tools/fetch.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"group": "engine-consumer",
-			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "aaefb9459bee0016ac5e697a654ab5f61c748bf3b2be16aa49703c0e09fcfcff",
+			"group": "web-extraction",
+			"reason": "The site scrapers are `@veyyon/web`. A handler states the host capabilities it needs -- the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch preference -- through `ScrapeServices` instead of importing the agent's settings, storage and process modules, and throws a name-preserving `AbortError` rather than the agent's cancellation class. On this side the call sites name the new owner and build the services object.",
+			"hash": "68cdad5fcd0282868afa30478674edfd48c894c84fc199faaa2f983b6fca03e6",
 			"mainHash": "5cd878da48a13d6658325c63999e237c99416a3cc0941d2fdbd7876f7516593c",
-			"structuralHash": "eb08dbcbccf66feda40331acb18488ad6b5efe940601ab52d6e909cc161cae29",
+			"structuralHash": "089653eb548ec7a3ba03adcc6e2bde373fc3efe627c16dedfd74302d10533918",
 			"mainStructuralHash": "7cfd7642ee2ef956c177d02214d62be3b3194fe9c4d995a1b3a3cc1dc47a55ff"
 		},
 		"packages/coding-agent/src/tools/web/gh-fetch.ts": {
@@ -15197,6 +15233,15 @@
 			"structuralHash": "a9004b06159091d20a228a89d052a8ab558fd422c5e6a7e410f43bd9726530d3",
 			"mainStructuralHash": "a9004b06159091d20a228a89d052a8ab558fd422c5e6a7e410f43bd9726530d3"
 		},
+		"packages/utils/src/markdown-table.ts": {
+			"old": "packages/coding-agent/src/utils/markdown-table.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "f84c791830a6820cb969f87488dd6b60f9e11ea170af07dd7c92556ca809bb68",
+			"mainHash": "f84c791830a6820cb969f87488dd6b60f9e11ea170af07dd7c92556ca809bb68",
+			"structuralHash": "91d0a951a8597b8c1a39645560dd12243344fc092e4f20135f7534bb8ca2439a",
+			"mainStructuralHash": "91d0a951a8597b8c1a39645560dd12243344fc092e4f20135f7534bb8ca2439a"
+		},
 		"packages/utils/src/motion.ts": {
 			"old": "packages/tui/src/motion.ts",
 			"kind": "normalized",
@@ -15270,6 +15315,15 @@
 			"mainHash": "cfdc124ab18c6fc84582a8dca51e9a9eedf24f8efb0e6317327a97fe4f12928b",
 			"structuralHash": "12bdd9079b084bd9a07f131ff5f8aca32db8422eff3f33d6aeff0c121358de77",
 			"mainStructuralHash": "12bdd9079b084bd9a07f131ff5f8aca32db8422eff3f33d6aeff0c121358de77"
+		},
+		"packages/utils/src/turndown.ts": {
+			"old": "packages/coding-agent/src/utils/turndown.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "edbd73b81383a29299b7446156366584a9200dd852e60108a94997666785a4fd",
+			"mainHash": "edbd73b81383a29299b7446156366584a9200dd852e60108a94997666785a4fd",
+			"structuralHash": "1b49225a00eb769516e23d595485071ad8acb93705a22c1c5a18d5b161202209",
+			"mainStructuralHash": "1b49225a00eb769516e23d595485071ad8acb93705a22c1c5a18d5b161202209"
 		},
 		"packages/utils/src/width.ts": {
 			"old": "packages/tui/src/utils.ts",
@@ -15587,6 +15641,15 @@
 			"structuralHash": "ce3fbcebf2ba3fed437fc8f8a254b25905ac5c39d9df8477e0ba90ce4ec2bb20",
 			"mainStructuralHash": "ce3fbcebf2ba3fed437fc8f8a254b25905ac5c39d9df8477e0ba90ce4ec2bb20"
 		},
+		"packages/utils/test/markdown-table.test.ts": {
+			"old": "packages/coding-agent/test/utils/markdown-table.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "5fc64882d94e3cb73b2db0e80ac4053aa690d71e6a71fcc753de7d24ef371500",
+			"mainHash": "7fc8c9cd637c97a3dd0965fdaad4af59511c55023dec169f73dc51e601ec2770",
+			"structuralHash": "e2df79ba8d97f50d4b3c54f89688d10fd8afc615a03a4fda291b0762d09a26dc",
+			"mainStructuralHash": "e2df79ba8d97f50d4b3c54f89688d10fd8afc615a03a4fda291b0762d09a26dc"
+		},
 		"packages/utils/test/mouse.test.ts": {
 			"old": "packages/tui/test/mouse.test.ts",
 			"kind": "normalized",
@@ -15701,6 +15764,24 @@
 			"structuralHash": "17eeb27cc1dc486271abdcc29455b582d40c18b8239b80dc4c7f7239bfb59a95",
 			"mainStructuralHash": "17eeb27cc1dc486271abdcc29455b582d40c18b8239b80dc4c7f7239bfb59a95"
 		},
+		"packages/utils/test/turndown-table.test.ts": {
+			"old": "packages/coding-agent/test/utils/turndown-table.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "cd9e3980b3439de695f2f5cc9fe6c8ff502235ff689f1dd30b4ec4baa4c78416",
+			"mainHash": "4e5e647d4d17d910f42c507cfa0411453dc27c82640e816e481ff5e1073776c9",
+			"structuralHash": "f490e5c39de7311df53f35b81bd0ae83e55de0f00e7f8647e2846e13af0cba6d",
+			"mainStructuralHash": "f490e5c39de7311df53f35b81bd0ae83e55de0f00e7f8647e2846e13af0cba6d"
+		},
+		"packages/utils/test/turndown.test.ts": {
+			"old": "packages/coding-agent/test/utils/turndown.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "fc881acefc5dfb3b8e9ebf56aa7e924d34cba26d58294fc9467bb62331d0d463",
+			"mainHash": "5adfda60aea9ab2ef9dbb66a2e2b1e40096e270f3db22161005fe2c4b7fe0b8e",
+			"structuralHash": "29cc5fa8f34009a61088ecf2ee71ba753d0885d3e2c3c25178cf5475601646f5",
+			"mainStructuralHash": "29cc5fa8f34009a61088ecf2ee71ba753d0885d3e2c3c25178cf5475601646f5"
+		},
 		"packages/utils/test/visible-width-enclosing-marks.test.ts": {
 			"old": "packages/tui/test/visible-width-enclosing-marks.test.ts",
 			"kind": "normalized",
@@ -15788,19 +15869,19 @@
 			"old": "packages/argot/README.md",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "332e6c0769ec6b11382dc36f866a76c4446efe9bbccd5aedea4910152e73841b",
-			"mainHash": "332e6c0769ec6b11382dc36f866a76c4446efe9bbccd5aedea4910152e73841b",
-			"structuralHash": "fdac7fc3e4acb11db505b93019efb2bd97f852137a0909cc4bf322e7d710c7e6",
-			"mainStructuralHash": "fdac7fc3e4acb11db505b93019efb2bd97f852137a0909cc4bf322e7d710c7e6"
+			"hash": "94ee61252a1d7034c68448e78c907f05fce96013642f2fa64c3807a0f1721798",
+			"mainHash": "94ee61252a1d7034c68448e78c907f05fce96013642f2fa64c3807a0f1721798",
+			"structuralHash": "9e29da65067f68ef94a76bdb95834890a54928088e86fdf8a325f78e6076de75",
+			"mainStructuralHash": "9e29da65067f68ef94a76bdb95834890a54928088e86fdf8a325f78e6076de75"
 		},
 		"plugins/argot/SPEC.md": {
 			"old": "packages/argot/SPEC.md",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "1d4c355f08495987ae05029960b57409a10bea40063f0768e534aa8f69362eaf",
-			"mainHash": "1d4c355f08495987ae05029960b57409a10bea40063f0768e534aa8f69362eaf",
-			"structuralHash": "e922e4f589ad61c058f046c7db345ea34142a541f2aabf750bd65a49af60d540",
-			"mainStructuralHash": "e922e4f589ad61c058f046c7db345ea34142a541f2aabf750bd65a49af60d540"
+			"hash": "bda301ba2fcbb54e40eb75cc67515860600f204f8dbbf865ff7db1057674ed17",
+			"mainHash": "bda301ba2fcbb54e40eb75cc67515860600f204f8dbbf865ff7db1057674ed17",
+			"structuralHash": "8fc23718de07aee9910f374e64fc4784252f51713c714a8c6ec570abddfddb6f",
+			"mainStructuralHash": "8fc23718de07aee9910f374e64fc4784252f51713c714a8c6ec570abddfddb6f"
 		},
 		"plugins/argot/bench/argot-bench.ts": {
 			"old": "packages/argot/bench/argot-bench.ts",
@@ -16096,10 +16177,10 @@
 			"old": "packages/argot/test/generate.test.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "e35af5570cdd451c52271d9307e69b826182135fdce707d29712945510410724",
-			"mainHash": "e35af5570cdd451c52271d9307e69b826182135fdce707d29712945510410724",
-			"structuralHash": "2ec85095b262f64872777fa45ea6acdcbc62b73d6c925e320ddb7687b0677154",
-			"mainStructuralHash": "2ec85095b262f64872777fa45ea6acdcbc62b73d6c925e320ddb7687b0677154"
+			"hash": "5ad39f7e9231903b41fa81953b705f87390d21c9a2bd7feaddd959b4789e7e3a",
+			"mainHash": "5ad39f7e9231903b41fa81953b705f87390d21c9a2bd7feaddd959b4789e7e3a",
+			"structuralHash": "d99202adde35dff0662b325950f94ae9c21c877676c46cb683313811e64ea16c",
+			"mainStructuralHash": "d99202adde35dff0662b325950f94ae9c21c877676c46cb683313811e64ea16c"
 		},
 		"plugins/argot/test/load.test.ts": {
 			"old": "packages/argot/test/load.test.ts",
@@ -16345,8 +16426,8 @@
 			"old": "packages/hashline/src/fs.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "6b7380b885505d00e8723681c3ef6274e80b40cf7bf6fe115a48cfeec986b713",
-			"mainHash": "6b7380b885505d00e8723681c3ef6274e80b40cf7bf6fe115a48cfeec986b713",
+			"hash": "dfa75191533633de98efe51e3eebed80627dfffeec694cf850e329f45311f72e",
+			"mainHash": "dfa75191533633de98efe51e3eebed80627dfffeec694cf850e329f45311f72e",
 			"structuralHash": "0d451d25a3846077dadaa79e8f7b07021e6bbf78be212386d01eea8234f90501",
 			"mainStructuralHash": "0d451d25a3846077dadaa79e8f7b07021e6bbf78be212386d01eea8234f90501"
 		},
@@ -25372,8 +25453,8 @@
 			"old": "packages/hashline/test/one-reader-decides-what-a-bare-literal-row-looks-like.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "ab7cee1fe9db109eee9c4603e7bc3b38efed682bec752f51f6189516507f1353",
-			"mainHash": "967471ea0e7692476e044596a0610f53d0de785a8abd9d12a1503605444882c9",
+			"hash": "16f585614822d32f2b837ee7082159fb509c0de362e8addaee1d2b7875789629",
+			"mainHash": "9175be4a383f2a3df7c0aa8e1478e83e5a3d67055e5e55d71262dcbbea1f86a1",
 			"structuralHash": "d1993a4ad0f831c221d477888babc21ea5d5180fdd7eb09530c629939a0c63e6",
 			"mainStructuralHash": "d1993a4ad0f831c221d477888babc21ea5d5180fdd7eb09530c629939a0c63e6"
 		},
@@ -28862,6 +28943,1089 @@
 			"mainHash": "f40fa814236faa31c703d22cb23e42611a115d7c4feac5171faf837b43beb161",
 			"structuralHash": "903e923c5951b80e9c9b54e6091748c88aba3d0334987deddf9d7373f30984fd",
 			"mainStructuralHash": "903e923c5951b80e9c9b54e6091748c88aba3d0334987deddf9d7373f30984fd"
+		},
+		"plugins/web/src/browser-fingerprint-constants.ts": {
+			"old": "packages/coding-agent/src/web/search/providers/browser-fingerprint-constants.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "da2732118a73505e4968fdd96e13f403e232ebfea49b1d261e26a57fc7aa9964",
+			"mainHash": "da2732118a73505e4968fdd96e13f403e232ebfea49b1d261e26a57fc7aa9964",
+			"structuralHash": "c25828b8247b0a0427162db7e8fd2477c4a44ad2089d4c118671f05e6f6b6a32",
+			"mainStructuralHash": "c25828b8247b0a0427162db7e8fd2477c4a44ad2089d4c118671f05e6f6b6a32"
+		},
+		"plugins/web/src/markdown-link.ts": {
+			"old": "packages/coding-agent/src/utils/markdown-link.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "4baa11c34554202610ce73e37fb8a2da28ab3a88cdffb87f1bf58ea4435f635f",
+			"mainHash": "4baa11c34554202610ce73e37fb8a2da28ab3a88cdffb87f1bf58ea4435f635f",
+			"structuralHash": "733d5590b3d079b7777161e4b7e55682c478b8998ce3c78441ac0c0001a57f42",
+			"mainStructuralHash": "733d5590b3d079b7777161e4b7e55682c478b8998ce3c78441ac0c0001a57f42"
+		},
+		"plugins/web/src/parallel.ts": {
+			"old": "packages/coding-agent/src/web/parallel.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "web-extraction",
+			"reason": "The site scrapers are `@veyyon/web`. A handler states the host capabilities it needs -- the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch preference -- through `ScrapeServices` instead of importing the agent's settings, storage and process modules, and throws a name-preserving `AbortError` rather than the agent's cancellation class. On this side the call sites name the new owner and build the services object.",
+			"hash": "dcbce6e54c9a0635eb4234a8064467029752fe2cc0cf49bef9a9310ff2a4c943",
+			"mainHash": "30f7ae98776f090db9a59af4061bf17e442b2a3454da09fec033b117376b7b5b",
+			"structuralHash": "05bcc8bd27076158c71a60d9a38c471673e7f4fef39af88ba32c3f70530e7872",
+			"mainStructuralHash": "b9569511b5ce43d7a53750716c755f616e086c5fe4824b79eeff4ab7295700f8"
+		},
+		"plugins/web/src/scrapers/artifacthub.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/artifacthub.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "317987f418e20d00ce5f9c3cd65a111448ad64cf6adb93607abd021620f6787a",
+			"mainHash": "0d9d5a5e03a23b4b125d04ce8c11addc5f19d5ab620e730e75a2f5e7496d9ab4",
+			"structuralHash": "89a1f8821b1965dc20c634f465660f2d1da3d31678f8ac015e7737d92135dcf6",
+			"mainStructuralHash": "89a1f8821b1965dc20c634f465660f2d1da3d31678f8ac015e7737d92135dcf6"
+		},
+		"plugins/web/src/scrapers/arxiv.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/arxiv.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "web-extraction",
+			"reason": "The site scrapers are `@veyyon/web`. A handler states the host capabilities it needs -- the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch preference -- through `ScrapeServices` instead of importing the agent's settings, storage and process modules, and throws a name-preserving `AbortError` rather than the agent's cancellation class. On this side the call sites name the new owner and build the services object.",
+			"hash": "2a7f78f963cdbeb8015a19c7a0449f5d0e1e9f5a10413a062509dabacb028b88",
+			"mainHash": "a2653b5732eab769d0dfabb4ecf4ec22ef62c8b73b8ff578615c43ec497df8a5",
+			"structuralHash": "21061e6cbac5ebd1637b976b47d90bc88c5fc3d739598acfc5fe2c430d4afb42",
+			"mainStructuralHash": "d9a51d110423d2093d33f1fcaaf53419554decbb46cbe3851cc5f2e5490410ed"
+		},
+		"plugins/web/src/scrapers/aur.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/aur.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "2f1c9e60d5e2de72b8382e2824151925a465c8d63e2d6df5c93b0dcc95fb6761",
+			"mainHash": "dbd7de86b89f4761e08828e43198d40f7a0029621224d87af04952af1a287e7e",
+			"structuralHash": "030482922122150549fd0f300fda5480c58cc9d9381f5908d95348e34baea4f1",
+			"mainStructuralHash": "030482922122150549fd0f300fda5480c58cc9d9381f5908d95348e34baea4f1"
+		},
+		"plugins/web/src/scrapers/biorxiv.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/biorxiv.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "520e5638e61b27b304a36049fb24560465a8e79a882eb6981a65f7d3b66acf22",
+			"mainHash": "a09791b8464670a1c9c68b5f84437743d5e71dff9bf230716a3355a50b245401",
+			"structuralHash": "ea4869788c3cb6c35e8471a1d1f4bf6d9fcd6cfbbb0217b0f2046e96786b3f52",
+			"mainStructuralHash": "ea4869788c3cb6c35e8471a1d1f4bf6d9fcd6cfbbb0217b0f2046e96786b3f52"
+		},
+		"plugins/web/src/scrapers/bluesky.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/bluesky.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "1265be48f9534db37e2ade834a40e35b673e57e6241632443a516a26cc2a27f6",
+			"mainHash": "497f83b6e27f2cb8713acdd033a67dda7c31929738f9aed2a9cd8d3534c1d9f5",
+			"structuralHash": "b01d186648ad078207b88b7dd95558186c2b0363aa4a6656502bead4f3c81202",
+			"mainStructuralHash": "b01d186648ad078207b88b7dd95558186c2b0363aa4a6656502bead4f3c81202"
+		},
+		"plugins/web/src/scrapers/brew.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/brew.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "8b7a075e3436ff6334648990eaea162d16c8eac4913e2344a13cceb8a2bba637",
+			"mainHash": "8b7a075e3436ff6334648990eaea162d16c8eac4913e2344a13cceb8a2bba637",
+			"structuralHash": "1decb866fb3710b75b55c1345c2934f1deae2775545243ad4b8f0b3d09ba9353",
+			"mainStructuralHash": "1decb866fb3710b75b55c1345c2934f1deae2775545243ad4b8f0b3d09ba9353"
+		},
+		"plugins/web/src/scrapers/cheatsh.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/cheatsh.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "0852ed315711ed29a3775bad6c56e20e5ef60f69887c639a7f00fbc94ceb6673",
+			"mainHash": "0852ed315711ed29a3775bad6c56e20e5ef60f69887c639a7f00fbc94ceb6673",
+			"structuralHash": "2b96ad783d760efd385120bb322e90c21f9fbf374f4de73bcdcdd672ebf0913b",
+			"mainStructuralHash": "2b96ad783d760efd385120bb322e90c21f9fbf374f4de73bcdcdd672ebf0913b"
+		},
+		"plugins/web/src/scrapers/chocolatey.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/chocolatey.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "6f8e822a1a83ae909daa8ee9da6a110f02270ddbab518394d391f0b53017a9a0",
+			"mainHash": "6f8e822a1a83ae909daa8ee9da6a110f02270ddbab518394d391f0b53017a9a0",
+			"structuralHash": "f58a6055080de42540b088676cf29fb6b1071dafb4922e21204150dce26896f9",
+			"mainStructuralHash": "f58a6055080de42540b088676cf29fb6b1071dafb4922e21204150dce26896f9"
+		},
+		"plugins/web/src/scrapers/choosealicense.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/choosealicense.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "8c9538cddf05e70b86cbdc118917672af8e8c42fbb9833316d4145bfed8565d6",
+			"mainHash": "8c9538cddf05e70b86cbdc118917672af8e8c42fbb9833316d4145bfed8565d6",
+			"structuralHash": "a43cfb72f00ab0daea651dd53ec33f6975bc0cf57a63df11ccc747556d6c81e7",
+			"mainStructuralHash": "a43cfb72f00ab0daea651dd53ec33f6975bc0cf57a63df11ccc747556d6c81e7"
+		},
+		"plugins/web/src/scrapers/cisa-kev.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/cisa-kev.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "72cb10abb32474c7d37cf248705e24aed21f83c283c7e895a2ec7e69c0a42dd0",
+			"mainHash": "72cb10abb32474c7d37cf248705e24aed21f83c283c7e895a2ec7e69c0a42dd0",
+			"structuralHash": "fdd5340565ea445ff501809041e96e833d0ae79db3d763849ed1e98c738dbfa4",
+			"mainStructuralHash": "fdd5340565ea445ff501809041e96e833d0ae79db3d763849ed1e98c738dbfa4"
+		},
+		"plugins/web/src/scrapers/clojars.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/clojars.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "f7019dd67b8823e052c69896be7eef696bec9cc94f3e744f5fd33a2526452b97",
+			"mainHash": "f7019dd67b8823e052c69896be7eef696bec9cc94f3e744f5fd33a2526452b97",
+			"structuralHash": "2c2615114807fd194fb71ff8780d03fb018f64b092c0110b03794462d04ca934",
+			"mainStructuralHash": "2c2615114807fd194fb71ff8780d03fb018f64b092c0110b03794462d04ca934"
+		},
+		"plugins/web/src/scrapers/coingecko.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/coingecko.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "33c81429a80cabe4011a5257feb98b826eb72a92ac5dec3f4a06c98db240ed35",
+			"mainHash": "be4d2cbbff569e0e2b1e6ef17ed070e4497ea4702dbe565ffd99a4b44a478f71",
+			"structuralHash": "27a84649a6bbd49198ae6a3fc4060bff8c173ae566cac1ede9804336ccb59a6e",
+			"mainStructuralHash": "27a84649a6bbd49198ae6a3fc4060bff8c173ae566cac1ede9804336ccb59a6e"
+		},
+		"plugins/web/src/scrapers/crates-io.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/crates-io.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "02857572c6b924614741161e08db6a6fdfe889e35921608fcdc453c6eba0d4de",
+			"mainHash": "02857572c6b924614741161e08db6a6fdfe889e35921608fcdc453c6eba0d4de",
+			"structuralHash": "dd13dc2536d2916cb6e9a16113ce51fbe1f49786608242cac6f78f0391cc6770",
+			"mainStructuralHash": "dd13dc2536d2916cb6e9a16113ce51fbe1f49786608242cac6f78f0391cc6770"
+		},
+		"plugins/web/src/scrapers/crossref.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/crossref.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "5643be2188c3fec83bcfc08f118c15ca7751ba97196f3c561f5580f38956c3b4",
+			"mainHash": "5643be2188c3fec83bcfc08f118c15ca7751ba97196f3c561f5580f38956c3b4",
+			"structuralHash": "214dc5cd0a5ba33fc111f92502d7bb47887c3a9b8803e5703a5ddb00cff04c5e",
+			"mainStructuralHash": "214dc5cd0a5ba33fc111f92502d7bb47887c3a9b8803e5703a5ddb00cff04c5e"
+		},
+		"plugins/web/src/scrapers/devto.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/devto.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "531b7ef6fa42cd2b57a64c5e0b6628052fd1ae1d4197b7ae1384a28fd8bfdb62",
+			"mainHash": "531b7ef6fa42cd2b57a64c5e0b6628052fd1ae1d4197b7ae1384a28fd8bfdb62",
+			"structuralHash": "effe433ad5aaf088d5544b6fe4071e35a290faa8fae0f76b97f1b497815dc2e0",
+			"mainStructuralHash": "effe433ad5aaf088d5544b6fe4071e35a290faa8fae0f76b97f1b497815dc2e0"
+		},
+		"plugins/web/src/scrapers/discogs.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/discogs.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "93bfc0cbc520f3d6d8606c84161899d0c9315097e0c6396d0d1023a17c347d03",
+			"mainHash": "93bfc0cbc520f3d6d8606c84161899d0c9315097e0c6396d0d1023a17c347d03",
+			"structuralHash": "67edc35ad62f7d31334227847fcc359b5cccdf7c8b8d7541776b580f32efdce3",
+			"mainStructuralHash": "67edc35ad62f7d31334227847fcc359b5cccdf7c8b8d7541776b580f32efdce3"
+		},
+		"plugins/web/src/scrapers/discourse.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/discourse.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "333ecb3238b9ea7430f391876a96f8b5e2e844067f1f1acab16521018e269d60",
+			"mainHash": "333ecb3238b9ea7430f391876a96f8b5e2e844067f1f1acab16521018e269d60",
+			"structuralHash": "9b2668ff252e331d2161cb77d872ca4ac210e1561656417e3c6487eeff0f89d9",
+			"mainStructuralHash": "9b2668ff252e331d2161cb77d872ca4ac210e1561656417e3c6487eeff0f89d9"
+		},
+		"plugins/web/src/scrapers/dockerhub.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/dockerhub.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "8648c67afb9307fbb5d60b503498c8cf7d8205490c1d7ef4634326c8f8653a96",
+			"mainHash": "a825e96ec170a84686a1b1fac101419473174cf28a733b5e46d01f89a99cbfd4",
+			"structuralHash": "9be8e0115fc13e2d099bab4df6bb8737cdbaee429b02ac711d963f9405aae2fc",
+			"mainStructuralHash": "9be8e0115fc13e2d099bab4df6bb8737cdbaee429b02ac711d963f9405aae2fc"
+		},
+		"plugins/web/src/scrapers/docs-rs.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/docs-rs.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "web-extraction",
+			"reason": "The site scrapers are `@veyyon/web`. A handler states the host capabilities it needs -- the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch preference -- through `ScrapeServices` instead of importing the agent's settings, storage and process modules, and throws a name-preserving `AbortError` rather than the agent's cancellation class. On this side the call sites name the new owner and build the services object.",
+			"hash": "0c49922bde40089432dbd5ddd5a7d6e121fa206d3697e20224837a20ac5b48f1",
+			"mainHash": "63eab0457418dc379abb6f5514dfaf98c3680f24bbf085ea50c142706e0b616c",
+			"structuralHash": "4644aa1b56207d88b8266b5beaa2b42f87f4487cec0e1d3bbfcda0ab1ee2ea87",
+			"mainStructuralHash": "22041eb55dbc781be17f10b918de3925eca3309f8379b435d7c4c9fa47293327"
+		},
+		"plugins/web/src/scrapers/fdroid.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/fdroid.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "832317e4a5ec1cff6779e002eccd11d0366c5bb579f2d8ea9588a7695b7c9d9f",
+			"mainHash": "832317e4a5ec1cff6779e002eccd11d0366c5bb579f2d8ea9588a7695b7c9d9f",
+			"structuralHash": "95f9c9f21773269c731fc5ff9961ab51fb4e5692c3f8a03e75b7a3e0bbb529a7",
+			"mainStructuralHash": "95f9c9f21773269c731fc5ff9961ab51fb4e5692c3f8a03e75b7a3e0bbb529a7"
+		},
+		"plugins/web/src/scrapers/firefox-addons.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/firefox-addons.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "2fc0b86380873374d66239465981a597237d84c3e31de184758b0300747ab3ae",
+			"mainHash": "249c16e3e2e6394b27cd45e5a051707d70196d35b7e4c38cfdd6ed043923cae1",
+			"structuralHash": "2fa495de541125b17269264ab5d9e658d51df7516e093ab5e24607077bcf3062",
+			"mainStructuralHash": "2fa495de541125b17269264ab5d9e658d51df7516e093ab5e24607077bcf3062"
+		},
+		"plugins/web/src/scrapers/flathub.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/flathub.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "4ba603ef484acdcc888d98c1df895a2f311ec26b01151e5f8fb6a4b1f36664f7",
+			"mainHash": "4ba603ef484acdcc888d98c1df895a2f311ec26b01151e5f8fb6a4b1f36664f7",
+			"structuralHash": "cc0eb68553065d950c07c12cc5260d5e39e8752cd10fa1de88c906edf8393d1d",
+			"mainStructuralHash": "cc0eb68553065d950c07c12cc5260d5e39e8752cd10fa1de88c906edf8393d1d"
+		},
+		"plugins/web/src/scrapers/github-gist.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/github-gist.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "9771a46a58196c0fede25807d58a06da789e8e794788b6eba9a7292e1fc06fb5",
+			"mainHash": "9771a46a58196c0fede25807d58a06da789e8e794788b6eba9a7292e1fc06fb5",
+			"structuralHash": "4a0669c2e599382e9e046b76a02efc369594787178a4e398874867a3d3ff124b",
+			"mainStructuralHash": "4a0669c2e599382e9e046b76a02efc369594787178a4e398874867a3d3ff124b"
+		},
+		"plugins/web/src/scrapers/github.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/github.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "b780d7a82df24ec883ad521fe280c83d53b023afc2a0de462bf50f3895db35e1",
+			"mainHash": "e5787401f77c6fc5545c3636a94cfda618cc424998dc8c28a7c2d59b62771d4b",
+			"structuralHash": "7605d6708b15480604bd9ed0775d7bbc1ba7364be6eabfc0dc0b99a6080478fc",
+			"mainStructuralHash": "7605d6708b15480604bd9ed0775d7bbc1ba7364be6eabfc0dc0b99a6080478fc"
+		},
+		"plugins/web/src/scrapers/gitlab.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/gitlab.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "2ed4b59b32690fcf77bea7004f4df4ee9b18f9e67393bd7d5fb36d080cce226f",
+			"mainHash": "2ed4b59b32690fcf77bea7004f4df4ee9b18f9e67393bd7d5fb36d080cce226f",
+			"structuralHash": "927034a769dd4957f6dcc4f180f0a8ffeabe84f48a25329239bc9799c71ce0d2",
+			"mainStructuralHash": "927034a769dd4957f6dcc4f180f0a8ffeabe84f48a25329239bc9799c71ce0d2"
+		},
+		"plugins/web/src/scrapers/go-pkg.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/go-pkg.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "764d4e8db79164a226bdb9ab7d962c06f02d634d5a00b7f88da3f7d3dbd0fb1c",
+			"mainHash": "764d4e8db79164a226bdb9ab7d962c06f02d634d5a00b7f88da3f7d3dbd0fb1c",
+			"structuralHash": "e462fa64b0b973ab6c5de494974975bca246dfb1184834929933f999e95ece11",
+			"mainStructuralHash": "e462fa64b0b973ab6c5de494974975bca246dfb1184834929933f999e95ece11"
+		},
+		"plugins/web/src/scrapers/hackage.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/hackage.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "f0e911b7dda99b43923b57451bf163f56fbd4413ba04131a6e47997677a46aef",
+			"mainHash": "f0e911b7dda99b43923b57451bf163f56fbd4413ba04131a6e47997677a46aef",
+			"structuralHash": "582872dd329411ec63bbd49b317a7c37c025cbaa8232b26b663f76026137ae19",
+			"mainStructuralHash": "582872dd329411ec63bbd49b317a7c37c025cbaa8232b26b663f76026137ae19"
+		},
+		"plugins/web/src/scrapers/hackernews.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/hackernews.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "2b8a9a3486a1cc7c6c9117c1393485052aeb53ba7bcb03e3ac13f14bf2bdfe73",
+			"mainHash": "4962931451c23ce752e451d43f6a6e0e3b6a2b6b5635a6c99608a33081a8872b",
+			"structuralHash": "1e116f55c3836ad5c8b13270e28eb2a1e5aee91e17131ebe77cdfe3c50e767e9",
+			"mainStructuralHash": "1e116f55c3836ad5c8b13270e28eb2a1e5aee91e17131ebe77cdfe3c50e767e9"
+		},
+		"plugins/web/src/scrapers/hex.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/hex.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "e4dedf0f9459572e823c9cead044d8e50386f127e5a65015234a7b83196f461d",
+			"mainHash": "e4dedf0f9459572e823c9cead044d8e50386f127e5a65015234a7b83196f461d",
+			"structuralHash": "860b2f8840105854b3b5569cffaaed493356f6b199b689c3bcaeb2bfceb3e7ad",
+			"mainStructuralHash": "860b2f8840105854b3b5569cffaaed493356f6b199b689c3bcaeb2bfceb3e7ad"
+		},
+		"plugins/web/src/scrapers/huggingface.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/huggingface.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "312939696670dcba527ab3e8030c4f6859b43025debf8f26bb27386e5754876d",
+			"mainHash": "312939696670dcba527ab3e8030c4f6859b43025debf8f26bb27386e5754876d",
+			"structuralHash": "7f51788916a860ba441cdb3b1fdf10f7adac3f1c05fe31b9b2c377a5096bfc8f",
+			"mainStructuralHash": "7f51788916a860ba441cdb3b1fdf10f7adac3f1c05fe31b9b2c377a5096bfc8f"
+		},
+		"plugins/web/src/scrapers/iacr.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/iacr.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "web-extraction",
+			"reason": "The site scrapers are `@veyyon/web`. A handler states the host capabilities it needs -- the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch preference -- through `ScrapeServices` instead of importing the agent's settings, storage and process modules, and throws a name-preserving `AbortError` rather than the agent's cancellation class. On this side the call sites name the new owner and build the services object.",
+			"hash": "3321df301643fde175732239f9387869c52496903a6eceb0d7134ac569d2c858",
+			"mainHash": "1a84d4df6b7f972933747a0956e712bb5146fb0bfae7c4638cffbf230a3bf6aa",
+			"structuralHash": "89deb85b7cb9e3c341e573b0ade817962254740db865ebd8268817d02a9d019c",
+			"mainStructuralHash": "3adfafde0ac73d830f875b6f65287b557a20e1ed64db7ca23e28fc9ff247c0b1"
+		},
+		"plugins/web/src/scrapers/index.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/index.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "87aa153523fc782f6eb61130b76dacdba350ff5b6eb6cd282018df964cb01096",
+			"mainHash": "87aa153523fc782f6eb61130b76dacdba350ff5b6eb6cd282018df964cb01096",
+			"structuralHash": "bbb086298f9f4eb282eaa7a417417e20a8024c9512397c9c5555de0fa418a4ee",
+			"mainStructuralHash": "bbb086298f9f4eb282eaa7a417417e20a8024c9512397c9c5555de0fa418a4ee"
+		},
+		"plugins/web/src/scrapers/jetbrains-marketplace.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/jetbrains-marketplace.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "f888620e4a92d51d2ec1ac863a9dec3fa7fb437b471fd506ccf1f7bb7f2dfad5",
+			"mainHash": "f888620e4a92d51d2ec1ac863a9dec3fa7fb437b471fd506ccf1f7bb7f2dfad5",
+			"structuralHash": "55a1e5abdde672fc928103e36056a947ca692680c959dd0e53c8e5ba779b4d36",
+			"mainStructuralHash": "55a1e5abdde672fc928103e36056a947ca692680c959dd0e53c8e5ba779b4d36"
+		},
+		"plugins/web/src/scrapers/lemmy.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/lemmy.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "c7ccc6e6216129c5ff95c12a52eb1ed0d3158af453e342b4eebf15724ca95178",
+			"mainHash": "c7ccc6e6216129c5ff95c12a52eb1ed0d3158af453e342b4eebf15724ca95178",
+			"structuralHash": "c45fdb5d7106839f72e838eb17aa7d1179003b6dca82b4d81eeeac50fd1bb400",
+			"mainStructuralHash": "c45fdb5d7106839f72e838eb17aa7d1179003b6dca82b4d81eeeac50fd1bb400"
+		},
+		"plugins/web/src/scrapers/lobsters.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/lobsters.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "46ca6277404cda52e0ae6465c7e82de88855f69de10ebc88c2a746d75d8ce06f",
+			"mainHash": "46ca6277404cda52e0ae6465c7e82de88855f69de10ebc88c2a746d75d8ce06f",
+			"structuralHash": "54b6bcad3aeecb72be4964c8347f6da1851cbace2eed448d1cc61b36e3045328",
+			"mainStructuralHash": "54b6bcad3aeecb72be4964c8347f6da1851cbace2eed448d1cc61b36e3045328"
+		},
+		"plugins/web/src/scrapers/mastodon.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/mastodon.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "7b5d918da59cecbb301aba22c425bbd866b778a272784522053c2b59cd978425",
+			"mainHash": "1a52ad23233ebbcd08cbccbc05cf13d2a52b0d95ff94cdcadfac163032ce7b11",
+			"structuralHash": "6d19dd3ec293768715f66a5c39f78f10ff35b3711026686f07e4d027a99ee78a",
+			"mainStructuralHash": "6d19dd3ec293768715f66a5c39f78f10ff35b3711026686f07e4d027a99ee78a"
+		},
+		"plugins/web/src/scrapers/maven.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/maven.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "7ca16cde28b35ad08afccda2cb537313b9737be9f8695f42b7562de8e2a78171",
+			"mainHash": "7ca16cde28b35ad08afccda2cb537313b9737be9f8695f42b7562de8e2a78171",
+			"structuralHash": "793d520c90b9d6d635dd188c907548a7f9d2e7e32aa0cf3bc74f45dc0887a639",
+			"mainStructuralHash": "793d520c90b9d6d635dd188c907548a7f9d2e7e32aa0cf3bc74f45dc0887a639"
+		},
+		"plugins/web/src/scrapers/mdn.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/mdn.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "7f71f549d3bcff8daea124aba31b7b4e5145ff1f538c1a3c5466c61138842ddd",
+			"mainHash": "6a7ed7246f3cea198c9c258c1c7890fd1e958c9a58e21b16d9ff266e6ca13955",
+			"structuralHash": "c148cad7adc18ae31edced00149dd01db0cc043660dafd9ba3d7a9af3657099a",
+			"mainStructuralHash": "c148cad7adc18ae31edced00149dd01db0cc043660dafd9ba3d7a9af3657099a"
+		},
+		"plugins/web/src/scrapers/metacpan.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/metacpan.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "00b709cb78f86090f5b667da64f010889b96b600dcb1b279e77ac20c2dbe886c",
+			"mainHash": "e157e0e02aa279883ee5769c5a2d48503cba4ce42f1ca9820de699fb17d0066b",
+			"structuralHash": "cae79ce777b1eb313d0b068f073f3a4d50b6f32e87a58bfe3c582c37c63e56c9",
+			"mainStructuralHash": "cae79ce777b1eb313d0b068f073f3a4d50b6f32e87a58bfe3c582c37c63e56c9"
+		},
+		"plugins/web/src/scrapers/musicbrainz.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/musicbrainz.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "bfe3b6c6103e528c019b3a240ad6d41cb6042a6ece8bf12bd3f91930c15e3633",
+			"mainHash": "bfe3b6c6103e528c019b3a240ad6d41cb6042a6ece8bf12bd3f91930c15e3633",
+			"structuralHash": "4b10cae87b8e7df5ebb04369d35532bf4db95979ecd9456de6704ebcf75d2e86",
+			"mainStructuralHash": "4b10cae87b8e7df5ebb04369d35532bf4db95979ecd9456de6704ebcf75d2e86"
+		},
+		"plugins/web/src/scrapers/npm.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/npm.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "3bb36fa99d0d8a305fb65d7e43a25d3d2da0ffa22ed7db25c8692418a14016bf",
+			"mainHash": "3bb36fa99d0d8a305fb65d7e43a25d3d2da0ffa22ed7db25c8692418a14016bf",
+			"structuralHash": "7bd49c3f2c21f732f9630300671d19ab2c48152db1069f1af5e51923d199a7d9",
+			"mainStructuralHash": "7bd49c3f2c21f732f9630300671d19ab2c48152db1069f1af5e51923d199a7d9"
+		},
+		"plugins/web/src/scrapers/nuget.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/nuget.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "855b50fb79f2506ae69f27f15238fbf2c1a6aca1490c5ac16d9d8bee57b52dc0",
+			"mainHash": "6a14fd7972975ac8d2b794e8ff3936557e621011c3996af9d52b6f4ee4fedb56",
+			"structuralHash": "cbb708ddc2a84034bf64da5132e23b4164b7add9e92f14f200d2416b7b75be99",
+			"mainStructuralHash": "cbb708ddc2a84034bf64da5132e23b4164b7add9e92f14f200d2416b7b75be99"
+		},
+		"plugins/web/src/scrapers/nvd.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/nvd.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "45c0646e76a7696878b537a41a4837accb24beeac8f12f29c486c5e607d9b54f",
+			"mainHash": "45c0646e76a7696878b537a41a4837accb24beeac8f12f29c486c5e607d9b54f",
+			"structuralHash": "14deaf8db3f32bf376c8e5c06f7cefacdcdb36f4624bb799e614deb4b4755b39",
+			"mainStructuralHash": "14deaf8db3f32bf376c8e5c06f7cefacdcdb36f4624bb799e614deb4b4755b39"
+		},
+		"plugins/web/src/scrapers/ollama.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/ollama.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "845bbccc4056609e2c4da801bef8c4dd7683f2349ac1f70ec3c243af6cf7978b",
+			"mainHash": "9ebc5db189b42d0aa9aee40dc2bda6ff0d33d2b74aa9416aeabcbba06a6aeeb4",
+			"structuralHash": "de9a00ace8e7cc7f161afc7612680ca4261825c64e71820d1ae4d347af13fcb6",
+			"mainStructuralHash": "de9a00ace8e7cc7f161afc7612680ca4261825c64e71820d1ae4d347af13fcb6"
+		},
+		"plugins/web/src/scrapers/open-vsx.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/open-vsx.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "53c9e2d5c41c4475c00925f6c08fe968e53616769b2b289407d9c87d8dd5cd78",
+			"mainHash": "53c9e2d5c41c4475c00925f6c08fe968e53616769b2b289407d9c87d8dd5cd78",
+			"structuralHash": "982d9dc479db715e4d2741beeffe5181353391c3c7f1b7aa9b71efc1d6eebd11",
+			"mainStructuralHash": "982d9dc479db715e4d2741beeffe5181353391c3c7f1b7aa9b71efc1d6eebd11"
+		},
+		"plugins/web/src/scrapers/opencorporates.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/opencorporates.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "4c5b0307c0a636f23e289816ba522381da4ebf0bae920cc626c8eb62b69ea7c5",
+			"mainHash": "a8d6f25c77c7bd4e96bb334cf9e5c54910fe527a0e4aa648cdd3f52f75e832a6",
+			"structuralHash": "613bea17849975ecbd18aef0930239b9af350619788b0fb5e2f85be79aad7a08",
+			"mainStructuralHash": "613bea17849975ecbd18aef0930239b9af350619788b0fb5e2f85be79aad7a08"
+		},
+		"plugins/web/src/scrapers/openlibrary.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/openlibrary.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "55df533b5dc6ad1930047cfc1add589d63fcc937c31ed3c11f2325a89bea3c99",
+			"mainHash": "55df533b5dc6ad1930047cfc1add589d63fcc937c31ed3c11f2325a89bea3c99",
+			"structuralHash": "21ba551c04457286f1dccc9409236d9328e5668280efac749eef73648794fe16",
+			"mainStructuralHash": "21ba551c04457286f1dccc9409236d9328e5668280efac749eef73648794fe16"
+		},
+		"plugins/web/src/scrapers/orcid.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/orcid.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "d5f964342d3bf4a810b3c5d9a29ba036ec6f284ff163450aa58ea29bc3ef9f30",
+			"mainHash": "d5f964342d3bf4a810b3c5d9a29ba036ec6f284ff163450aa58ea29bc3ef9f30",
+			"structuralHash": "b8fdc21fd3203e63c11d5accf89a3e54a511b3bed980ffdab4f92c6c85e942bb",
+			"mainStructuralHash": "b8fdc21fd3203e63c11d5accf89a3e54a511b3bed980ffdab4f92c6c85e942bb"
+		},
+		"plugins/web/src/scrapers/osv.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/osv.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "28881edcd99e2706e295ab1932ed50270fb63798e77cc8a2030ff251f9b798a2",
+			"mainHash": "39fd998f7095629950e24a25d5457295e6cd839d46f25567c71120d43d90cea6",
+			"structuralHash": "3d0b6661894ac5966a9ed205ad11c6aff8db548b6b79cd7a5af8ef8eae5857ee",
+			"mainStructuralHash": "3d0b6661894ac5966a9ed205ad11c6aff8db548b6b79cd7a5af8ef8eae5857ee"
+		},
+		"plugins/web/src/scrapers/packagist.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/packagist.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "e475afb0a452fb5b781f17e214be3e3264a0061f488b3a17bc37adac3b58d6f8",
+			"mainHash": "e475afb0a452fb5b781f17e214be3e3264a0061f488b3a17bc37adac3b58d6f8",
+			"structuralHash": "dcc8079adb52985b18586bdca41eab227ec84cfc0edccf7ab7e977de6e7411e8",
+			"mainStructuralHash": "dcc8079adb52985b18586bdca41eab227ec84cfc0edccf7ab7e977de6e7411e8"
+		},
+		"plugins/web/src/scrapers/pub-dev.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/pub-dev.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "039f48ce127db073868776670b1a6d7073024061f43f82cb206beebd03a96f30",
+			"mainHash": "039f48ce127db073868776670b1a6d7073024061f43f82cb206beebd03a96f30",
+			"structuralHash": "6204942ee275c5345dcc0fc43576b64e834ca3461c4906e8682168ab22809704",
+			"mainStructuralHash": "6204942ee275c5345dcc0fc43576b64e834ca3461c4906e8682168ab22809704"
+		},
+		"plugins/web/src/scrapers/pubmed.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/pubmed.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "648b14c128eb5d63b543533966ecf1df7c5b49c80bb223e103c970beedc01984",
+			"mainHash": "648b14c128eb5d63b543533966ecf1df7c5b49c80bb223e103c970beedc01984",
+			"structuralHash": "e19ab4cf45338e537c1814ad5ea75f88a49e799029b1e18312b2cf86e5bbaf95",
+			"mainStructuralHash": "e19ab4cf45338e537c1814ad5ea75f88a49e799029b1e18312b2cf86e5bbaf95"
+		},
+		"plugins/web/src/scrapers/pypi.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/pypi.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "9ecfa9731d951f58f5e3d4a833dd8a543cd3144afde1974a6de57485a116b106",
+			"mainHash": "9ecfa9731d951f58f5e3d4a833dd8a543cd3144afde1974a6de57485a116b106",
+			"structuralHash": "6475ef261f431e29b45e83a747e8bf745783aff67e820b0a5a2337034bdab5e7",
+			"mainStructuralHash": "6475ef261f431e29b45e83a747e8bf745783aff67e820b0a5a2337034bdab5e7"
+		},
+		"plugins/web/src/scrapers/rawg.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/rawg.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "73deffcd44047d4c704f08c66b410ccfeb5faec6b9ce375d1b3da4cab433c399",
+			"mainHash": "73deffcd44047d4c704f08c66b410ccfeb5faec6b9ce375d1b3da4cab433c399",
+			"structuralHash": "2ce3cd8823c5ed02d8013f2753ae9dea30d99922adbd15ca076835f9db851602",
+			"mainStructuralHash": "2ce3cd8823c5ed02d8013f2753ae9dea30d99922adbd15ca076835f9db851602"
+		},
+		"plugins/web/src/scrapers/readthedocs.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/readthedocs.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "web-extraction",
+			"reason": "The site scrapers are `@veyyon/web`. A handler states the host capabilities it needs -- the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch preference -- through `ScrapeServices` instead of importing the agent's settings, storage and process modules, and throws a name-preserving `AbortError` rather than the agent's cancellation class. On this side the call sites name the new owner and build the services object.",
+			"hash": "dab3dc6ac6a2160e94fc80a0f6c83bacc22f3e1aa48f01247a1d1aab7db39f24",
+			"mainHash": "a21de0b87f91fb2cfc2860deb638cb2072a7fba3e1223c2d642700c1bd3d602b",
+			"structuralHash": "189ce434660e9266d6851475ea7a2140f904d91ad2d3a8900a539381ece98c46",
+			"mainStructuralHash": "a7fda9b206546d8e41f86a09287c278986937461125d0fc39b773c89c449ee45"
+		},
+		"plugins/web/src/scrapers/reddit.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/reddit.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "8291147eda74025ca4f45db509718415a4c0e882af4d0dfe879a513ae6333d55",
+			"mainHash": "8291147eda74025ca4f45db509718415a4c0e882af4d0dfe879a513ae6333d55",
+			"structuralHash": "64c62e73066ede14f72f85bcebf64a23bcbce100852cb9b6a11bacd54f6a41e9",
+			"mainStructuralHash": "64c62e73066ede14f72f85bcebf64a23bcbce100852cb9b6a11bacd54f6a41e9"
+		},
+		"plugins/web/src/scrapers/repology.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/repology.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "40c7b146bfb95faf57bf4c7eb35d3a7f287344f8621cfc75d4c0f7816661f3ed",
+			"mainHash": "03d44a1df3854b5f34ac2da74d5eb8b9009bd9a9782428161046048abf9a5ed9",
+			"structuralHash": "72b4bfbd586b9882aecb3511357aadd0103fdb3cce7b5b91d7a522c6d6dc71cc",
+			"mainStructuralHash": "72b4bfbd586b9882aecb3511357aadd0103fdb3cce7b5b91d7a522c6d6dc71cc"
+		},
+		"plugins/web/src/scrapers/rfc.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/rfc.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "5c53fff5fcc1acf9194998e1e3a0f33c854960bec87f7a55978b695d25ce6822",
+			"mainHash": "5c53fff5fcc1acf9194998e1e3a0f33c854960bec87f7a55978b695d25ce6822",
+			"structuralHash": "99b22686cd132cd21c61173e205dd675f7f755b90fc7d74ede6fe84e8ffb6cf9",
+			"mainStructuralHash": "99b22686cd132cd21c61173e205dd675f7f755b90fc7d74ede6fe84e8ffb6cf9"
+		},
+		"plugins/web/src/scrapers/rubygems.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/rubygems.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "8d5c0454e9c12e61a9df1fda2f4e027a901c60141bde2e04b5bb7cf883b38392",
+			"mainHash": "8d5c0454e9c12e61a9df1fda2f4e027a901c60141bde2e04b5bb7cf883b38392",
+			"structuralHash": "be62e37a26c81d789f6778a4a1af26fedd0f913651f01c19ed7d643cb1d281ab",
+			"mainStructuralHash": "be62e37a26c81d789f6778a4a1af26fedd0f913651f01c19ed7d643cb1d281ab"
+		},
+		"plugins/web/src/scrapers/searchcode.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/searchcode.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "b415ce078e7e53b737070fb234cb4e1986bc21394fc6afc3d16ab1c61baf8d46",
+			"mainHash": "b415ce078e7e53b737070fb234cb4e1986bc21394fc6afc3d16ab1c61baf8d46",
+			"structuralHash": "f7c57fae065931194045ab430256d77db035e62b74ac3dba7cb0ed5dbce9c3fd",
+			"mainStructuralHash": "f7c57fae065931194045ab430256d77db035e62b74ac3dba7cb0ed5dbce9c3fd"
+		},
+		"plugins/web/src/scrapers/sec-edgar.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/sec-edgar.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "8af175267f91abca650aad00018b552fe814e7a1a8ab87ddba4c295061aaf5ce",
+			"mainHash": "014ceaa776d25676241b34db3ebe3a2c69778eb77333fc94cd6a888d5a32cfe4",
+			"structuralHash": "6055a39378ed9574be8ef698a7420108a772edeb47bdd7381c1230338171e13f",
+			"mainStructuralHash": "6055a39378ed9574be8ef698a7420108a772edeb47bdd7381c1230338171e13f"
+		},
+		"plugins/web/src/scrapers/semantic-scholar.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/semantic-scholar.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "e8f3e3370fdeb924344ba60e3872c2bc6768f8c9086b9c7c52354e5e129c17ac",
+			"mainHash": "0f1317492f37e24a4a844d841a85131fcb106541b5745eaf9b312ec99106b944",
+			"structuralHash": "a4777cf03ae17989d87bc675d375f4785ca1ecfa850e8b73032fef61ac6903f3",
+			"mainStructuralHash": "a4777cf03ae17989d87bc675d375f4785ca1ecfa850e8b73032fef61ac6903f3"
+		},
+		"plugins/web/src/scrapers/snapcraft.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/snapcraft.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "c9694773edb520bab4a07f0a78a4742cafe04e9ac6958472ea933129a125588e",
+			"mainHash": "c9694773edb520bab4a07f0a78a4742cafe04e9ac6958472ea933129a125588e",
+			"structuralHash": "da7da63a4339f2f4e35c95ae95a75f1356da8a52e31bea28049e8c5b049a08d6",
+			"mainStructuralHash": "da7da63a4339f2f4e35c95ae95a75f1356da8a52e31bea28049e8c5b049a08d6"
+		},
+		"plugins/web/src/scrapers/sourcegraph.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/sourcegraph.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "2b0a1b736609205ba844efe4ef49b4c517d0716bbfe12f8b692fbb17e2839ed3",
+			"mainHash": "2b0a1b736609205ba844efe4ef49b4c517d0716bbfe12f8b692fbb17e2839ed3",
+			"structuralHash": "565e7a6a3a5989f9adfac7906b813290a921f7e16687b5f52e71b90cd991652c",
+			"mainStructuralHash": "565e7a6a3a5989f9adfac7906b813290a921f7e16687b5f52e71b90cd991652c"
+		},
+		"plugins/web/src/scrapers/spdx.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/spdx.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "968309ddc966f8930bdeec396069723093edd5d927016d030ab334636c9f3b26",
+			"mainHash": "968309ddc966f8930bdeec396069723093edd5d927016d030ab334636c9f3b26",
+			"structuralHash": "05dee6ef2b32e77597782e6865fe8a990b1567425c9e98c67986e27d743ed67d",
+			"mainStructuralHash": "05dee6ef2b32e77597782e6865fe8a990b1567425c9e98c67986e27d743ed67d"
+		},
+		"plugins/web/src/scrapers/spotify.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/spotify.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "8cc1c83d81293991584e6a32c9fdb64eb80b445ff4dd23c1ef898ea8137df523",
+			"mainHash": "8cc1c83d81293991584e6a32c9fdb64eb80b445ff4dd23c1ef898ea8137df523",
+			"structuralHash": "80271182d26b221c6869b593e977d01b038e68548e310477a6f60eb8485c7883",
+			"mainStructuralHash": "80271182d26b221c6869b593e977d01b038e68548e310477a6f60eb8485c7883"
+		},
+		"plugins/web/src/scrapers/stackoverflow.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/stackoverflow.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "2ffe14af7e2a4a66b7dbb0e58923247910e4dafa1f9610cbb24bd12ca2d7ef82",
+			"mainHash": "2ffe14af7e2a4a66b7dbb0e58923247910e4dafa1f9610cbb24bd12ca2d7ef82",
+			"structuralHash": "0e7842eaa7dea7076db51fd7de812e6e6ac4c0990d7492559d49b965abc2b202",
+			"mainStructuralHash": "0e7842eaa7dea7076db51fd7de812e6e6ac4c0990d7492559d49b965abc2b202"
+		},
+		"plugins/web/src/scrapers/terraform.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/terraform.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "756157c592ebc2318d340a17ac4013b352fb078725ae1fb05e51b0452247ac7c",
+			"mainHash": "079512b8bd4b38daef699b6eeb22dfea1fefc54bb2fc7e416a79b62fc92a8b8a",
+			"structuralHash": "ecf566287ea0229cca9284c11e387b7a410a40ca50d1a541f2e8c4babc7cd16f",
+			"mainStructuralHash": "ecf566287ea0229cca9284c11e387b7a410a40ca50d1a541f2e8c4babc7cd16f"
+		},
+		"plugins/web/src/scrapers/tldr.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/tldr.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "d122f6c6157e8ce07ff368515e552cfd23ce9952844826e1fb313211dc035e96",
+			"mainHash": "d122f6c6157e8ce07ff368515e552cfd23ce9952844826e1fb313211dc035e96",
+			"structuralHash": "24b3600c2a0af2ae01a628291e8251c04346808a743412c9ffec582dab43609b",
+			"mainStructuralHash": "24b3600c2a0af2ae01a628291e8251c04346808a743412c9ffec582dab43609b"
+		},
+		"plugins/web/src/scrapers/twitter.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/twitter.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "web-extraction",
+			"reason": "The site scrapers are `@veyyon/web`. A handler states the host capabilities it needs -- the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch preference -- through `ScrapeServices` instead of importing the agent's settings, storage and process modules, and throws a name-preserving `AbortError` rather than the agent's cancellation class. On this side the call sites name the new owner and build the services object.",
+			"hash": "9404099390f952a16aae45295f5cd7a6a17606251a1eb197a8f9a9461a7a653e",
+			"mainHash": "ff1ca07864080a0fb43c630b7e9e0d089ff73b2b164c51f50823f57e26b80392",
+			"structuralHash": "e721638c8b013947a4e21e171e7360b624b6f1e34bd627bfe06bf4d3e68f5af5",
+			"mainStructuralHash": "dc4be6f6a5210b9964efaaffe866217ff7b654011d482bb0512d8662530c5b4d"
+		},
+		"plugins/web/src/scrapers/types.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/types.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "web-extraction",
+			"reason": "The site scrapers are `@veyyon/web`. A handler states the host capabilities it needs -- the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch preference -- through `ScrapeServices` instead of importing the agent's settings, storage and process modules, and throws a name-preserving `AbortError` rather than the agent's cancellation class. On this side the call sites name the new owner and build the services object.",
+			"hash": "9bd9f2526ae17b9aa970109b070093bef739facb3331c4a57d75cc5a768dd7ee",
+			"mainHash": "25d5ed9673b02939acec343c7d02ae9bb4ea236eca2be24bdeb46da1c0eff964",
+			"structuralHash": "3222727f942a86a79711c33833506f98646e1b83cfe5a75b414f60cf03fa5085",
+			"mainStructuralHash": "7967a1927431dadbfd88b40840836b28d31e21cea4cc344c721b32ae3e9dcb3d"
+		},
+		"plugins/web/src/scrapers/utils.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/utils.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "web-extraction",
+			"reason": "The site scrapers are `@veyyon/web`. A handler states the host capabilities it needs -- the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch preference -- through `ScrapeServices` instead of importing the agent's settings, storage and process modules, and throws a name-preserving `AbortError` rather than the agent's cancellation class. On this side the call sites name the new owner and build the services object.",
+			"hash": "5617ae4b22934ffbe5ebc1b7b0332e07c7e3252f32f458e80bda1cdc0be863d6",
+			"mainHash": "a41e54d6019e5f9e104a8f768d1392b74c752da7f7f457c83fe70969b392ad51",
+			"structuralHash": "9d9a795d4198b9521839909da6d682dead149aff928f1241a54c7672fa3f46f3",
+			"mainStructuralHash": "2dcd3d0b9392b1cbde5a162fb14e0ea56976acc93e4e3d7a85d4905ccd3656a9"
+		},
+		"plugins/web/src/scrapers/vimeo.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/vimeo.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "6ee1914e94310f6db49890705e258b9bccec54a4575f44bd818f36725544cb90",
+			"mainHash": "ed809b349cbad2219cca8f29f3f216053e185fce45e17d51cbb31de19a63a9bc",
+			"structuralHash": "5630dc9a1894b08795e1c955b0d724ee865c27ec491a93189d15db97897b1d17",
+			"mainStructuralHash": "5630dc9a1894b08795e1c955b0d724ee865c27ec491a93189d15db97897b1d17"
+		},
+		"plugins/web/src/scrapers/vscode-marketplace.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/vscode-marketplace.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "eeef65fef66d0816620d279380f490212d9984a49ca49fa4f786e5b038033dcb",
+			"mainHash": "eeef65fef66d0816620d279380f490212d9984a49ca49fa4f786e5b038033dcb",
+			"structuralHash": "96c61999e2600c61abf1af0449b304f7ad2b09215eca434e0d27711e0b6bdd69",
+			"mainStructuralHash": "96c61999e2600c61abf1af0449b304f7ad2b09215eca434e0d27711e0b6bdd69"
+		},
+		"plugins/web/src/scrapers/w3c.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/w3c.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "af9148d8693761f044b1d2b57d225d579581ee64851b3a3ffea6720cde0818e6",
+			"mainHash": "af9148d8693761f044b1d2b57d225d579581ee64851b3a3ffea6720cde0818e6",
+			"structuralHash": "732c0a21b31bca1ae815210157f647749b5cfd442373f8f16cee95ffc938669e",
+			"mainStructuralHash": "732c0a21b31bca1ae815210157f647749b5cfd442373f8f16cee95ffc938669e"
+		},
+		"plugins/web/src/scrapers/wikidata.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/wikidata.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "a27707b8654a2ff1f029df955a07a1c094039a515775cceab51c0319be349cbf",
+			"mainHash": "06a17d719415ef43d34791e58ef0956e71e7eb94861709655fc7475e4006d868",
+			"structuralHash": "9759b85614377e472e8d65265fefff366e8ad5470d6422b22d69c63aa96bb53c",
+			"mainStructuralHash": "9759b85614377e472e8d65265fefff366e8ad5470d6422b22d69c63aa96bb53c"
+		},
+		"plugins/web/src/scrapers/wikipedia.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/wikipedia.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "c0b3ac3ad2cc09422b0cd0ba4d6a7da8a4b8aaba676ddddafd882e725593d7d8",
+			"mainHash": "c0b3ac3ad2cc09422b0cd0ba4d6a7da8a4b8aaba676ddddafd882e725593d7d8",
+			"structuralHash": "3f8de7d5f7592788fabf45e6c99bda0ea69c3771cd6a34318ebe776866729109",
+			"mainStructuralHash": "3f8de7d5f7592788fabf45e6c99bda0ea69c3771cd6a34318ebe776866729109"
+		},
+		"plugins/web/src/scrapers/youtube.ts": {
+			"old": "packages/coding-agent/src/web/scrapers/youtube.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "web-extraction",
+			"reason": "The site scrapers are `@veyyon/web`. A handler states the host capabilities it needs -- the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch preference -- through `ScrapeServices` instead of importing the agent's settings, storage and process modules, and throws a name-preserving `AbortError` rather than the agent's cancellation class. On this side the call sites name the new owner and build the services object.",
+			"hash": "8a47234221c5e4621351ac299f9233d9105d87654df74aa6de51b0a8548b2a4f",
+			"mainHash": "033b3d36a8a1d755350722bcb6f2c555ee46a0001790de6e268ffa654684158e",
+			"structuralHash": "367834d2fdb98e836f51b17c41abbfb4698b3b3ac3d6dd29210713c2ab5a3ebd",
+			"mainStructuralHash": "a8e3138f090df7d6be06ff71cbaa659552081589b8d2130e607846c14c211ab2"
+		},
+		"plugins/web/test/hackernews-comment-text.test.ts": {
+			"old": "packages/coding-agent/test/web/hackernews-comment-text.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "b122088d20240e1f300f8b661e932b9e5c606070608370238008f8c90e76d24b",
+			"mainHash": "4b2268f535fe60451608515e8de55c94a437f538cce71ac4b74330c1738a3f6e",
+			"structuralHash": "900fef1573be865011427c417b1146376a9c33593876bba0bbe08ca514047b33",
+			"mainStructuralHash": "900fef1573be865011427c417b1146376a9c33593876bba0bbe08ca514047b33"
+		},
+		"plugins/web/test/helpers/scrapers.ts": {
+			"old": "packages/coding-agent/test/helpers/scrapers.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "02b18bb9ee85a103fab5f4b2902df9e73a040df717f4ef03b862509a160f12a8",
+			"mainHash": "acff0c7f0d1a5ff9e056ac7a41ee7e0c8eaf564db127c91e1f548f2b766a63a7",
+			"structuralHash": "c8840bbad890aee092fd420ec09bbd9684634904dd74f318b428585dd18399f6",
+			"mainStructuralHash": "c8840bbad890aee092fd420ec09bbd9684634904dd74f318b428585dd18399f6"
+		},
+		"plugins/web/test/integration/academic.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/academic.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "a90113386be93558b9ed974d019834ea30744d50601331385b938e01a88758b5",
+			"mainHash": "26cfb135c5506d6795acde914992334af64456cfd22a3bd873fe8148442d25e7",
+			"structuralHash": "01847a5aa55d75f58d51601033a6c3cbae29a1eb907f17343153878127898af3",
+			"mainStructuralHash": "01847a5aa55d75f58d51601033a6c3cbae29a1eb907f17343153878127898af3"
+		},
+		"plugins/web/test/integration/business.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/business.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "423c36229b0f2394ca88c7a7af2305dbd32e8e298bd6d815b3f9cf69712ebf37",
+			"mainHash": "769b21eb97671e037939623e87104b76a2f18e7001dac2405a47af115506fa1e",
+			"structuralHash": "33d860702a1f7b19a3477c96bc862375a345a14245e84fbc5f77fa1ce0a1cd66",
+			"mainStructuralHash": "33d860702a1f7b19a3477c96bc862375a345a14245e84fbc5f77fa1ce0a1cd66"
+		},
+		"plugins/web/test/integration/dev-platforms.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/dev-platforms.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "28a55a3743edeb371ca792010fabc3d20ac2c2cde3f99147ab7434df1b2433ea",
+			"mainHash": "7345ead4332c52439e210af1e95ad7839fabc11a0ba1ea56633f391a7d0611bb",
+			"structuralHash": "e48e70f4f24fb437720753ed6a38639d0d39195484e78bdbc1984ac629689f31",
+			"mainStructuralHash": "e48e70f4f24fb437720753ed6a38639d0d39195484e78bdbc1984ac629689f31"
+		},
+		"plugins/web/test/integration/documentation.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/documentation.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "fa969e44cbf09b1c85a54e30ff4b0e8ad02933421d9428d2eef7c508c154c275",
+			"mainHash": "373342c2b9100f9eed2be560cdc76408bad55e07fee1f2008245d26b31641e24",
+			"structuralHash": "c1a8ef28645bcd01cd251bbb9c30ca330662c1d0e6e2391ef3f452f993f3c9dc",
+			"mainStructuralHash": "c1a8ef28645bcd01cd251bbb9c30ca330662c1d0e6e2391ef3f452f993f3c9dc"
+		},
+		"plugins/web/test/integration/finance-media.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/finance-media.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "3bdab11ce8d73c6257a73f7587c9445a7bfce11c7a7d4e4b6a95966401185867",
+			"mainHash": "9bac35ce0670a167c8bf70d62c87e941c13ad4c90c2b0d358157d4a14b50926b",
+			"structuralHash": "9cafe7127499f3cb74f8f0429074eeee6c8be311e3aeaeab0224655b71e222e9",
+			"mainStructuralHash": "9cafe7127499f3cb74f8f0429074eeee6c8be311e3aeaeab0224655b71e222e9"
+		},
+		"plugins/web/test/integration/git-hosting.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/git-hosting.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "030b165318049e66ab426cb81b17f70636710d585dbfcbb0c5f6d28a149597fd",
+			"mainHash": "e72e7a79f7c9a34f149768aa939bf472c633697a47445412d79c09472d0df61a",
+			"structuralHash": "d04d33c0c7f77ab1b34859362dd3e10fcfbe930a84d0c8aaf580fc71d1abd477",
+			"mainStructuralHash": "d04d33c0c7f77ab1b34859362dd3e10fcfbe930a84d0c8aaf580fc71d1abd477"
+		},
+		"plugins/web/test/integration/media.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/media.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "22be3ad9f9d8e107fe99cda3ea2bada01e924dffd3feb112afcbfacd2bce08c1",
+			"mainHash": "d67f92698670aebc67b8815a21eebb0bd522c4e722bb204dbfddb48a41b8955c",
+			"structuralHash": "98109d987a2fc4dbf26e418f3cbdaa23474a2699f20c77a5eabaf7af20e299df",
+			"mainStructuralHash": "98109d987a2fc4dbf26e418f3cbdaa23474a2699f20c77a5eabaf7af20e299df"
+		},
+		"plugins/web/test/integration/package-managers-2.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/package-managers-2.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "2beade7108252ce5472457f3c3c4626a07ade2e7df3c49852a62351e1eb8eb06",
+			"mainHash": "656d75b57d6e55780769a0ee5f6e5a9a0dae9d68d29d94f028dd8846129d5525",
+			"structuralHash": "1809b40ce972ce74e2c5b174f2a776735f7975712974f692a5ef0fa2b8649ff1",
+			"mainStructuralHash": "1809b40ce972ce74e2c5b174f2a776735f7975712974f692a5ef0fa2b8649ff1"
+		},
+		"plugins/web/test/integration/package-managers.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/package-managers.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "9b7d8e12c2093cca4ff20f1a52434506b848e1dff70f812041c5f5282ed30189",
+			"mainHash": "8ab174d3ec6947d11d3e9ae8232b11325aa80b795604d5142dcc24eeb25842be",
+			"structuralHash": "402b7a43d8efa5635730eea826c2a3018b8f57f44c40b31059658de17e45098b",
+			"mainStructuralHash": "402b7a43d8efa5635730eea826c2a3018b8f57f44c40b31059658de17e45098b"
+		},
+		"plugins/web/test/integration/package-registries.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/package-registries.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "a05b44c29713020722ca444d0c520fbd106b06810665e7eca110a5b9ebb0c570",
+			"mainHash": "b146f348dae408f6866344039732a0201183fe981decb4b6f9c07f84ea1e16f3",
+			"structuralHash": "fb2fb335bc876dd014470155cca047c87a6cc97bcabe9eb12ae9ceb5821f4b70",
+			"mainStructuralHash": "fb2fb335bc876dd014470155cca047c87a6cc97bcabe9eb12ae9ceb5821f4b70"
+		},
+		"plugins/web/test/integration/research.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/research.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "5b9f37763ae5a442f827a51d3e49da9e95172a728cd1eaa98b06265562d148bb",
+			"mainHash": "2f0640492f59396a81f84a46349ab1a7222f92b248f3bd45e4fd892c9fcdadea",
+			"structuralHash": "3d76297bfea019069c43029dc308eb509852028698fb79df1af2bd7ab1937288",
+			"mainStructuralHash": "3d76297bfea019069c43029dc308eb509852028698fb79df1af2bd7ab1937288"
+		},
+		"plugins/web/test/integration/security.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/security.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "386d089591d880e6f3bef84152b3b3b0e48fae568ca0a5471d6186aa54d98303",
+			"mainHash": "ee6aebad9e06b9d69b8f1ef279f0f665c332247f2dd4be5ab42fd836e4889540",
+			"structuralHash": "6026efcf8ab8be97ca1ec324b576640f3bf16c0db0b3e3be0241b88ad9257c91",
+			"mainStructuralHash": "6026efcf8ab8be97ca1ec324b576640f3bf16c0db0b3e3be0241b88ad9257c91"
+		},
+		"plugins/web/test/integration/social-extended.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/social-extended.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "6d79aae6fcfa472eb43e71ba32eaf97fa75b72bbdb89dac5d4395dc4fec3a149",
+			"mainHash": "d9fa9b244b3d791f5c6e60236f34888a3beb1f5b1624c2177d6add01f4520b4c",
+			"structuralHash": "7bcd6e84c10df1dafc7163e48b27f1873d9687fc56798c0e2611ede9d02486f0",
+			"mainStructuralHash": "7bcd6e84c10df1dafc7163e48b27f1873d9687fc56798c0e2611ede9d02486f0"
+		},
+		"plugins/web/test/integration/social.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/social.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "315d29b67c6b4889627eaa752514371e370354dce4c0e83ec6d46af8cb1859e3",
+			"mainHash": "e91b376343a97d94454124ff489a8c0612abf67c34a8338134d2dd6fbde5fb3c",
+			"structuralHash": "df10dd2d1a4580202e8c14a9f40ffdba79e2903c0235ffc67a504b439741804c",
+			"mainStructuralHash": "df10dd2d1a4580202e8c14a9f40ffdba79e2903c0235ffc67a504b439741804c"
+		},
+		"plugins/web/test/integration/stackexchange.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/stackexchange.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "0400206bb347bbd95b04143f226edede1b8b17b1f32eec9fd926021517e8597f",
+			"mainHash": "1fefb2f3602693207ba5f9b79a20a574250a1ad30bd824130e3987a248ac0d65",
+			"structuralHash": "593e976369119097ea84b422ad08daf78da54672db02439cd30abd96a9852e85",
+			"mainStructuralHash": "593e976369119097ea84b422ad08daf78da54672db02439cd30abd96a9852e85"
+		},
+		"plugins/web/test/integration/standards.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/standards.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "2122ba5e622a9dea1afba6ef677a1e47b22e5e5f9cc7cae520c8c34a8099aee4",
+			"mainHash": "797f9a4b7ae87d4f67cefbf2ba98e3362678456c74dd10e3329b7f6bab2495fa",
+			"structuralHash": "c5bca68332e0eeeeb315c450e1d2ab756aa59ed28eef89d871d6401aa771ad57",
+			"mainStructuralHash": "c5bca68332e0eeeeb315c450e1d2ab756aa59ed28eef89d871d6401aa771ad57"
+		},
+		"plugins/web/test/integration/wikipedia.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/wikipedia.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "7d0b805ca5ad4ae4f21d4541a37a983c1b8e708d92f23e610f6d0e361cf8521d",
+			"mainHash": "4cf2d7e625fcaedfd495810e9c630264017c067515687ae9878c16043bd96b16",
+			"structuralHash": "f5a3527671aca072d580e15c99bf95803faf650c538acec09ac03fa499f37fe1",
+			"mainStructuralHash": "f5a3527671aca072d580e15c99bf95803faf650c538acec09ac03fa499f37fe1"
+		},
+		"plugins/web/test/integration/youtube-parallel.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/youtube-parallel.test.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "plugin-path-expectation",
+			"reason": "A plugin's own suite asserts on the module paths of the package it tests, which moved out of `packages/`. The assertion derives them from the package root instead of spelling the old prefix.",
+			"hash": "70bf156c7fb0f9af29e3872395d50b10dd6db0123598d182acd2b67e448f638d",
+			"mainHash": "dd5e5f7e9a870e20554a2c58388c6d09bdae1ea490d7af478e8aa616083f2687",
+			"structuralHash": "49262cc84a9fdb62ab20fa152dcf7758301724a8b42fd1e420289fab80a14906",
+			"mainStructuralHash": "7c4c5f0b5f75438b42b98176406925d36e31940346ab79743499a7c89f587cea"
+		},
+		"plugins/web/test/integration/youtube.test.ts": {
+			"old": "packages/coding-agent/test/tools/web-scrapers/youtube.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "5f4c6ecd6c5449c11d0b7435c3bd9eb10edb9c31e78bff02c8c32dd3914a46ea",
+			"mainHash": "6eef1bf9efbb88e3ade9b4bc256abd8b7d51682fc62b69f1a54b105e82308825",
+			"structuralHash": "9b5ee2455f5d02e2588fcbd2a1539b676a18eafd8070c6d8684e5267f0c129ec",
+			"mainStructuralHash": "9b5ee2455f5d02e2588fcbd2a1539b676a18eafd8070c6d8684e5267f0c129ec"
+		},
+		"plugins/web/test/parallel-parsers.test.ts": {
+			"old": "packages/coding-agent/test/web/parallel-parsers.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "c8a8d4c69fff70c40237ee911374d2afa6e88dbcdc4e27f19f99d1f7f8b26431",
+			"mainHash": "cc37dc8ca7c0059af506281099ca7ca17ad5aed11707b5d4fa993aa8e5798698",
+			"structuralHash": "80ee75a54e2ec8e39bd079d342f80caff6fc7b662cd1205787627ded2eb8e4ee",
+			"mainStructuralHash": "80ee75a54e2ec8e39bd079d342f80caff6fc7b662cd1205787627ded2eb8e4ee"
+		},
+		"plugins/web/test/scraper-text-utils.test.ts": {
+			"old": "packages/coding-agent/test/web/scraper-text-utils.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "83a5f5a674b93ed982a44841685e7373f5e9c6fd7db982db14720e93fadd5175",
+			"mainHash": "d76dfbc4b3742f8143bbdbe6a6938481108abb84630f4b196c10ff7cf441c8b6",
+			"structuralHash": "eff42b4fa8c06da51d106824f29027cec6ba4ab2bb108a247b8133aabd94e7d0",
+			"mainStructuralHash": "eff42b4fa8c06da51d106824f29027cec6ba4ab2bb108a247b8133aabd94e7d0"
+		},
+		"plugins/web/test/scrapers/docs-rs-gunzip-cap.test.ts": {
+			"old": "packages/coding-agent/test/web-scrapers/docs-rs-gunzip-cap.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "fcf08dfdafd04d7853b3305f84d1953f232c532f06881e74a4c5b16d8b16426c",
+			"mainHash": "ecd639e5710d6e394c7d0f1cc13f267e282b7bb21b06cbce62e534cc3a0cd388",
+			"structuralHash": "5c4bc56b2c2481af676e928712df52287e6e884aa8c8f9cce13ce87a5e809747",
+			"mainStructuralHash": "5c4bc56b2c2481af676e928712df52287e6e884aa8c8f9cce13ce87a5e809747"
+		},
+		"plugins/web/test/scrapers/github-actions-steps-table.test.ts": {
+			"old": "packages/coding-agent/test/web-scrapers/github-actions-steps-table.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "d8bb039fe8a52d096d20514ff559c776ea5c95b86766a083918f44b62de02c68",
+			"mainHash": "43af67e4e88dc8b0aa4f2cdbe461747a0a72e5284b8f23b026aa258457db459c",
+			"structuralHash": "8b2cc790784883e5c46472a8c5b0ab11964741bdb577cc8dba7ea3d8ef3a7c77",
+			"mainStructuralHash": "8b2cc790784883e5c46472a8c5b0ab11964741bdb577cc8dba7ea3d8ef3a7c77"
+		},
+		"plugins/web/test/scrapers/github-url-classification.test.ts": {
+			"old": "packages/coding-agent/test/web-scrapers/github-url-classification.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "8eaae0e1cb680fe97f9ed1e5e27525e011804d10dce9a333d8ba3a5c25e5c703",
+			"mainHash": "aa8215d617a791b3a49db49163abcc2f4a248a197dbe70e493c6086a782b675a",
+			"structuralHash": "06072211bcef0d2f8f95a937652334134fe9777c9c658ce93fb51a7f04feb8e1",
+			"mainStructuralHash": "06072211bcef0d2f8f95a937652334134fe9777c9c658ce93fb51a7f04feb8e1"
+		},
+		"plugins/web/test/scrapers/html-to-basic-markdown-table.test.ts": {
+			"old": "packages/coding-agent/test/web-scrapers/html-to-basic-markdown-table.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "57b51c58c4c7b35c1bb938b636e4e60624750826114dd0b937d533fac6035d0d",
+			"mainHash": "5ec138fa6e4ace7d756f9f4be87e4c79f469d4634da8d131be99c6520e802773",
+			"structuralHash": "958e647dd59d240164a3e8a922e49c53c2c3c3ad856fd5c9a3b468c591ecafa0",
+			"mainStructuralHash": "958e647dd59d240164a3e8a922e49c53c2c3c3ad856fd5c9a3b468c591ecafa0"
+		},
+		"plugins/web/test/scrapers/load-page-attempt-loop.test.ts": {
+			"old": "packages/coding-agent/test/web-scrapers/load-page-attempt-loop.test.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "plugin-path-expectation",
+			"reason": "A plugin's own suite asserts on the module paths of the package it tests, which moved out of `packages/`. The assertion derives them from the package root instead of spelling the old prefix.",
+			"hash": "2f0a87abd0554caf93078bb99d609660838041e0d25f85d49bd6872b7f5dfbf8",
+			"mainHash": "8bf9c17cc2bdbd57f210f33808c44a515997d3c95fdba12b5bd95e536124bccc",
+			"structuralHash": "ff07abbf73487882f09dafd6298729dd0d7bda3e25b6a1734fda0516099274ec",
+			"mainStructuralHash": "2fd6e144685d50b7ff0f048ccf4951aaa79b32c52f08a4b4105ab632d8ae5d31"
+		},
+		"plugins/web/test/scrapers/mdn-table.test.ts": {
+			"old": "packages/coding-agent/test/web-scrapers/mdn-table.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "d61b49094e86dd7bc439177557a031689cba41134d581f663c1ac903d9c913a5",
+			"mainHash": "0c8dd7a6cf8b8e065c41c314906853b634cd6bf995fe1d37a7dcb03459ebd62a",
+			"structuralHash": "0891578980dd327e3a217ca72896c1a53f925fa727a9a23ebf86e2161a5ed742",
+			"mainStructuralHash": "0891578980dd327e3a217ca72896c1a53f925fa727a9a23ebf86e2161a5ed742"
+		},
+		"plugins/web/test/scrapers/media-duration.test.ts": {
+			"old": "packages/coding-agent/test/web-scrapers/media-duration.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "98d280e1d215e90e234ff12f80243734907eb0b8189e1681521a96ff2907f773",
+			"mainHash": "052138afc94b43776433cd647d997a5ca06247dec926e76b1936f52025d8d280",
+			"structuralHash": "ada0df5bfe4e8e6241aed3682a20b0e7b488a416bc89f8d2bc228de13c61c2b6",
+			"mainStructuralHash": "ada0df5bfe4e8e6241aed3682a20b0e7b488a416bc89f8d2bc228de13c61c2b6"
+		},
+		"plugins/web/test/scrapers/opencorporates-info-table.test.ts": {
+			"old": "packages/coding-agent/test/web-scrapers/opencorporates-info-table.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "4b3b832337fb651eca5aa8dd3c334a1f94f8898f21424155cf62c3e55dba8191",
+			"mainHash": "bcab841ba925f63e8482c9c3896843fa05625f7f056275089755f855c2a87ad8",
+			"structuralHash": "3893edd4a7625b4f6f9604ca74e0d70427343565fa5a4b18980a19533b72cfe9",
+			"mainStructuralHash": "3893edd4a7625b4f6f9604ca74e0d70427343565fa5a4b18980a19533b72cfe9"
+		},
+		"plugins/web/test/scrapers/partial-iso-date.test.ts": {
+			"old": "packages/coding-agent/test/web-scrapers/partial-iso-date.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "e8be811d6bc573f62a97a541ab4bcc77a66915ad93980c1a3f2c057538e33065",
+			"mainHash": "27935178d606be832782e0263d9b429b37eb03782c087d3ebabb94d333c0bdae",
+			"structuralHash": "ecf8e497d6ae70d719e8c8deb262a5dabca6f9f1de73e28c8f825ff60ba00221",
+			"mainStructuralHash": "ecf8e497d6ae70d719e8c8deb262a5dabca6f9f1de73e28c8f825ff60ba00221"
+		},
+		"plugins/web/test/scrapers/partial-scrape-losses-are-announced.test.ts": {
+			"old": "packages/coding-agent/test/web-scrapers/partial-scrape-losses-are-announced.test.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "plugin-path-expectation",
+			"reason": "A plugin's own suite asserts on the module paths of the package it tests, which moved out of `packages/`. The assertion derives them from the package root instead of spelling the old prefix.",
+			"hash": "216c8f970659d7672cc977edac3f731bcb08867e50f4079bef6eb4478b9b96b9",
+			"mainHash": "8f80c16677ae13e16e853a3dc93f1ebe4d73c6ec128e09bd09e732605b29a145",
+			"structuralHash": "5e55b9f332272b38b30d25269d262c48dfbcde6266ca8b456d93c5fcd0b66430",
+			"mainStructuralHash": "3f3f61b7c2e523400678aa09bafca311fee5caf4dcc7d456616cc0b4858c0ab6"
+		},
+		"plugins/web/test/scrapers/scraper-degrade.test.ts": {
+			"old": "packages/coding-agent/test/web-scrapers/scraper-degrade.test.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "plugin-path-expectation",
+			"reason": "A plugin's own suite asserts on the module paths of the package it tests, which moved out of `packages/`. The assertion derives them from the package root instead of spelling the old prefix.",
+			"hash": "f5ebf3dea143882fa84138ac45aacdfb8c049f82fe8ce72dd4dbc62f7c1fab86",
+			"mainHash": "d41dd049c669c70305b0302d6a54873e22ca893089bb22e2a9a6141250df8e40",
+			"structuralHash": "be38d770646a891a175cb76e5b2c875adf07ee349030387392e7349d93d245a0",
+			"mainStructuralHash": "cf6fe742065147ccb4331e6222a31fdba30b24d2106bc61bd1d4c1f61843078b"
+		},
+		"plugins/web/test/scrapers/scraper-wiring-lock.test.ts": {
+			"old": "packages/coding-agent/test/web-scrapers/scraper-wiring-lock.test.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "plugin-path-expectation",
+			"reason": "A plugin's own suite asserts on the module paths of the package it tests, which moved out of `packages/`. The assertion derives them from the package root instead of spelling the old prefix.",
+			"hash": "df539178c45a843761639495efca9a2c4c92315f25a9ff45a3be6b075e93ccf3",
+			"mainHash": "9481a001fbcf2a179294761548519492fd19aa1969f1ede6043d8b4e55dcac37",
+			"structuralHash": "2d4dc23b6f06a6b108ab4916f95777b93b70c842e568ef5ea5e02863f6f04675",
+			"mainStructuralHash": "13149ea45f5693c2d93aeafd87c82a289c85ba198c361bc8ac1ebd97f0c5d4e9"
+		},
+		"plugins/web/test/scrapers/twitter-scraper-tries-every-instance.test.ts": {
+			"old": "packages/coding-agent/test/tools/twitter-scraper-tries-every-instance.test.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "plugin-path-expectation",
+			"reason": "A plugin's own suite asserts on the module paths of the package it tests, which moved out of `packages/`. The assertion derives them from the package root instead of spelling the old prefix.",
+			"hash": "4f494b1e931ba58e89d2472a729e734830e486fd11e4e7bfd78f9de6c776d449",
+			"mainHash": "26b16568b92c3a344f7a3462007b50fc8dcbdf2c798bd648583d896ef004cebe",
+			"structuralHash": "57648df14f16150e7cec44f8c7ca7e4fed29a02ca9c337f4de56d7d7c31101c7",
+			"mainStructuralHash": "5f77e6424d2319b89043e26b5c51d8033ff97a0561f33717ae24b5d2f311e77d"
 		},
 		"tests/conformance/Cargo.toml": {
 			"old": "crates/veyyon-conformance/Cargo.toml",

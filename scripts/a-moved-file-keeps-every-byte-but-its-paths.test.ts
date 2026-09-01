@@ -91,13 +91,13 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("reads a ledger covering the whole move", () => {
 		expect(ledger.generatedFrom).toMatch(/^[0-9a-f]{40}$/);
-		expect(rows.length).toBe(3209);
+		expect(rows.length).toBe(3331);
 		const buckets = new Map<string, number>();
 		for (const [, record] of rows) buckets.set(record.differs, (buckets.get(record.differs) ?? 0) + 1);
 		expect([...buckets].sort()).toEqual([
-			["changed", 143],
-			["imports-and-comments-only", 383],
-			["none", 2683],
+			["changed", 158],
+			["imports-and-comments-only", 444],
+			["none", 2729],
 		]);
 		expect(rewrites.length).toBeGreaterThan(50);
 		const paths = rows.map(([relative]) => relative);
@@ -189,7 +189,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.hash || hash !== record.mainHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(unchanged).toBe(2683);
+		expect(unchanged).toBe(2729);
 	});
 
 	/**
@@ -208,7 +208,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.structuralHash || hash !== record.mainStructuralHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(importOnly).toBe(383);
+		expect(importOnly).toBe(444);
 	});
 
 	/**
@@ -218,7 +218,7 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("explains every file whose content really changed", () => {
 		const changed = rows.filter(([, record]) => record.differs === "changed");
-		expect(changed.length).toBe(143);
+		expect(changed.length).toBe(158);
 		const unexplained: string[] = [];
 		const drifted: string[] = [];
 		for (const [relative, record] of changed) {
@@ -255,6 +255,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			"terminal-readout",
 			"vendored-manifest",
 			"view-conversion",
+			"web-extraction",
 		]);
 		const used = new Set(rows.map(([, record]) => record.group).filter((name): name is string => name !== undefined));
 		for (const name of used) expect(GROUP_NAMES).toContain(name);

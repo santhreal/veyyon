@@ -287,6 +287,16 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 			"A plugin's own suite asserts on the module paths of the package it tests, which moved out of `packages/`. The assertion derives them from the package root instead of spelling the old prefix.",
 	},
 	{
+		name: "web-extraction",
+		matches: relative =>
+			relative.startsWith("plugins/web/src/") ||
+			/^packages\/coding-agent\/src\/(tools\/web\/|web\/|eval\/py\/display\.ts|export\/markit\/converters\/)/.test(
+				relative,
+			),
+		reason:
+			"The site scrapers are `@veyyon/web`. A handler states the host capabilities it needs -- the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch preference -- through `ScrapeServices` instead of importing the agent's settings, storage and process modules, and throws a name-preserving `AbortError` rather than the agent's cancellation class. On this side the call sites name the new owner and build the services object.",
+	},
+	{
 		name: "host-boundary",
 		matches: relative => relative.startsWith("packages/coding-agent/src/modes/terminal/"),
 		reason:
