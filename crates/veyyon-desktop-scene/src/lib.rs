@@ -22,8 +22,8 @@ pub use fixtures::{
 };
 pub use frame::{FrameError, PerceptualDiff, RgbaColor, RgbaFrame};
 pub use headless::{
-	Appearance, Captured, RenderError, RenderOptions, distinct_pixel_values, headless_context,
-	render_view, render_view_captured, render_view_with_layout, write_png,
+	Appearance, Captured, Headless, RenderError, RenderOptions, distinct_pixel_values,
+	headless_context, render_view, render_view_captured, render_view_with_layout, write_png,
 };
 pub use layout::{
 	BorderPaint, BoxBounds, BoxId, DividerAxis, LayoutBox, LayoutBoxSpec, LayoutBoxTree,

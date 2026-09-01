@@ -9,11 +9,7 @@
 //! made by looking at the rendered sheet, nor does it check colour fidelity
 //! beyond regions being distinguishable from one another.
 
-use std::{
-	collections::BTreeMap,
-	path::Path,
-	sync::{Mutex, MutexGuard},
-};
+use std::{collections::BTreeMap, path::Path};
 
 use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_scene::{
@@ -32,26 +28,8 @@ fn options() -> RenderOptions {
 	RenderOptions { width: WIDTH, height: HEIGHT, scale_factor: 1.0, ..RenderOptions::default() }
 }
 
-/// The headless renderer is a process-wide resource in this fork: opening a
-/// third context while two are live aborts the process with SIGSEGV. Tests in
-/// one binary run on parallel threads, so every test that renders takes this
-/// lock and exactly one context is live at a time.
-static RENDERER: Mutex<()> = Mutex::new(());
-
-/// Claims the renderer for one test.
-///
-/// A failing test leaves the lock poisoned, which would turn one real failure
-/// into two by aborting the next test on `lock`. The guard is recovered
-/// instead, so each test reports its own result.
-fn renderer() -> MutexGuard<'static, ()> {
-	RENDERER
-		.lock()
-		.unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
 #[test]
 fn the_shell_draws_its_regions_where_the_tokens_put_them() {
-	let _renderer = renderer();
 	let mut cx = headless_context().expect("a headless renderer is required to render the shell");
 	let tokens = load_bundled_tokens().expect("the bundled tokens load");
 	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
@@ -140,7 +118,6 @@ fn the_shell_draws_its_regions_where_the_tokens_put_them() {
 
 #[test]
 fn a_notice_adds_the_attention_strip() {
-	let _renderer = renderer();
 	let mut cx = headless_context().expect("a headless renderer is required to render the shell");
 	let tokens = load_bundled_tokens().expect("the bundled tokens load");
 	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
@@ -182,7 +159,6 @@ fn a_notice_adds_the_attention_strip() {
 
 #[test]
 fn the_drawer_docks_under_the_session_surface() {
-	let _renderer = renderer();
 	let mut cx = headless_context().expect("a headless renderer is required to render the shell");
 	let tokens = load_bundled_tokens().expect("the bundled tokens load");
 	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");

@@ -14,8 +14,9 @@
 use std::{
 	fs,
 	io::BufWriter,
+	ops::{Deref, DerefMut},
 	path::{Path, PathBuf},
-	sync::Arc,
+	sync::{Arc, Mutex, MutexGuard, PoisonError},
 };
 
 use veyyon_gpui::{App, Bounds, Entity, HeadlessAppContext, Pixels, Render, Size, Window, px};
@@ -167,19 +168,58 @@ pub fn distinct_pixel_values(frame: &RgbaFrame) -> usize {
 	seen.len()
 }
 
+/// One live headless context at a time, process-wide.
+///
+/// `gpui_platform::current_headless_renderer` resolves to a renderer owned by
+/// the process, not by the caller. Building a third context while two are live
+/// aborts with SIGSEGV, and a test binary runs its tests on parallel threads,
+/// so concurrent callers have to queue rather than race. The permit is taken
+/// when a context is built and released when it drops.
+static RENDERER: Mutex<()> = Mutex::new(());
+
+/// A headless context holding the process-wide renderer permit.
+///
+/// Dereferences to [`HeadlessAppContext`], so a caller renders through it
+/// directly and the permit is released when the context is dropped. The permit
+/// is declared after the context so the context is torn down first.
+pub struct Headless {
+	cx:      HeadlessAppContext,
+	_permit: MutexGuard<'static, ()>,
+}
+
+impl Deref for Headless {
+	type Target = HeadlessAppContext;
+
+	fn deref(&self) -> &Self::Target {
+		&self.cx
+	}
+}
+
+impl DerefMut for Headless {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.cx
+	}
+}
+
 /// A context wired to this platform's headless renderer.
 ///
 /// `HeadlessAppContext::new` hands back a context with no renderer attached,
 /// which renders nothing and reports success, so the renderer is supplied
 /// explicitly and its absence is reported here.
-pub fn headless_context() -> Result<HeadlessAppContext, RenderError> {
+///
+/// Blocks while another [`Headless`] is alive in this process. A permit
+/// poisoned by a panicking caller is recovered rather than propagated, so one
+/// failed render does not turn every later one into a panic of its own.
+pub fn headless_context() -> Result<Headless, RenderError> {
+	let permit = RENDERER.lock().unwrap_or_else(PoisonError::into_inner);
 	if gpui_platform::current_headless_renderer().is_none() {
 		return Err(RenderError::NoRenderer);
 	}
 	let text_system = Arc::new(gpui_wgpu::CosmicTextSystem::new("sans-serif"));
-	Ok(HeadlessAppContext::with_platform(text_system, Arc::new(()), || {
+	let cx = HeadlessAppContext::with_platform(text_system, Arc::new(()), || {
 		gpui_platform::current_headless_renderer()
-	}))
+	});
+	Ok(Headless { cx, _permit: permit })
 }
 
 /// Rasterises one root view offscreen and captures the rendered frame and

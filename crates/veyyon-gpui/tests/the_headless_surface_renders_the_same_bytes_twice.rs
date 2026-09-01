@@ -30,10 +30,14 @@
 //! developers seeing the same bytes. It does not judge whether the frame is
 //! CORRECT, only that it is stable, non-empty and the size that was asked for.
 //!
-//! Ignored by default: it needs a GPU with a Vulkan ICD, which a CI runner does
-//! not have. Run with `--ignored` on a machine that has one.
+//! A GPU with a Vulkan ICD is required, and its absence fails the render rather
+//! than skipping the assertions: a renderer this front end cannot reach is the
+//! defect above, not an environment to tolerate quietly.
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+	collections::BTreeSet,
+	sync::{Arc, Mutex, MutexGuard, PoisonError},
+};
 
 use veyyon_gpui::{
 	App, AppContext, Context, HeadlessAppContext, IntoElement, ParentElement, Pixels, Render, Size,
@@ -61,14 +65,25 @@ const fn frame_size() -> Size<Pixels> {
 	Size { width: px(320.0), height: px(200.0) }
 }
 
-/// A context wired to the current platform's headless renderer.
+/// One live context at a time. The renderer is owned by the process, not by
+/// the caller, and this binary runs its tests on parallel threads. The desktop
+/// crates take this permit through `veyyon-desktop-scene`; this suite builds a
+/// context directly, because what it asserts is the re-export itself, so it
+/// carries its own.
+static RENDERER: Mutex<()> = Mutex::new(());
+
+/// A context wired to the current platform's headless renderer, holding the
+/// permit for as long as it is alive.
+///
 /// `HeadlessAppContext::new` hands back a context with no renderer at all,
 /// which renders nothing.
-fn headless_context() -> HeadlessAppContext {
+fn headless_context() -> (HeadlessAppContext, MutexGuard<'static, ()>) {
+	let permit = RENDERER.lock().unwrap_or_else(PoisonError::into_inner);
 	let text_system = Arc::new(gpui_wgpu::CosmicTextSystem::new("sans-serif"));
-	HeadlessAppContext::with_platform(text_system, Arc::new(()), || {
+	let cx = HeadlessAppContext::with_platform(text_system, Arc::new(()), || {
 		gpui_platform::current_headless_renderer()
-	})
+	});
+	(cx, permit)
 }
 
 fn render_probe(cx: &mut HeadlessAppContext, scale_factor: f32) -> (Vec<u8>, u32, u32) {
@@ -79,9 +94,8 @@ fn render_probe(cx: &mut HeadlessAppContext, scale_factor: f32) -> (Vec<u8>, u32
 }
 
 #[test]
-#[ignore = "requires a GPU with a Vulkan ICD; run with --ignored on a machine that has one"]
 fn the_same_scene_renders_identical_bytes_twice_in_one_process() {
-	let mut cx = headless_context();
+	let (mut cx, _permit) = headless_context();
 	let (first, width, height) = render_probe(&mut cx, 1.0);
 	let (second, ..) = render_probe(&mut cx, 1.0);
 
@@ -121,12 +135,11 @@ fn the_same_scene_renders_identical_bytes_twice_in_one_process() {
 }
 
 #[test]
-#[ignore = "requires a GPU with a Vulkan ICD; run with --ignored on a machine that has one"]
 fn the_scale_factor_changes_the_device_pixels_and_not_the_logical_size() {
 	// A contact sheet renders one scene at several densities. If the scale
 	// factor were ignored every cell would come back the same size, and the
 	// sweep would compare 1x frames while reporting 2x.
-	let mut cx = headless_context();
+	let (mut cx, _permit) = headless_context();
 	let (_, one_w, one_h) = render_probe(&mut cx, 1.0);
 	let (_, two_w, two_h) = render_probe(&mut cx, 2.0);
 
@@ -139,7 +152,6 @@ fn the_scale_factor_changes_the_device_pixels_and_not_the_logical_size() {
 }
 
 #[test]
-#[ignore = "requires a GPU with a Vulkan ICD; run with --ignored on a machine that has one"]
 fn the_platform_supplies_a_headless_renderer_on_this_machine() {
 	// The direct form of the defect above. P10's renderer existed for a
 	// revision during which this returned None off macOS, and every headless
