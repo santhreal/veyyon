@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9b847423.js";
+            window.path_to_searchindex_js = "../searchindex-2e794e8c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-0d6bf2a1.js"></script>
+        <script src="../toc-b613f6a6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -249,6 +249,10 @@ uses (see <code>docs/handbook/src/reference/theme.md</code>). Every built-in the
 </tbody>
 </table>
 </div>
+<p>On <code>auto</code>, the decision is taken before the launch card paints, from the background this terminal
+reported on the previous launch (<code>cache/launch-facts.json</code>). The first launch in a terminal has no
+record and inherits; the report that follows paints the ground if it is close enough. A report that
+contradicts the record takes effect on the next frame.</p>
 <p>A custom theme that declares no page background has no ground to paint, so Veyyon inherits
 the terminal’s own background regardless of this setting. With <code>always</code>, it also logs once
 that the active theme declares no ground, since that is the one case you asked to paint and

@@ -51,10 +51,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-9b847423.js";
+            window.path_to_searchindex_js = "searchindex-2e794e8c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-0d6bf2a1.js"></script>
+        <script src="toc-b613f6a6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -2902,8 +2902,9 @@ other. It does not configure anything.</p>
 <pre><code class="language-yaml">subagent:
   delegation: preferred   # the default; the prompt requests that substantial work be delegated
 </code></pre>
-<p>Every subagent runs the model you are working with. Change the model you are talking
-to and your subagents follow it.</p>
+<p>Each subagent runs the model and effort set on its own page in the roster. An agent
+that names neither runs the profile’s default model at medium effort. Changing the
+model you are talking to moves that session and nothing else.</p>
 <p>Veyyon also ships five specialists (<code>scout</code>, <code>reviewer</code>, <code>designer</code>, <code>librarian</code>,
 <code>sonic</code>), and they are <strong>disabled</strong> by default. During first-run setup, the
 <strong>Choose subagents</strong> step shows every available role with only <code>task</code> checked.
@@ -2964,7 +2965,9 @@ resolved model, and deciding setting. Enter opens one agent to set its state,
 model, and effort, or reset it to defaults.</p>
 <p>To add an agent, put a markdown definition in <code>~/.veyyon/subagents/</code>, or start
 from the shipped definitions by running <code>veyyon agents unpack</code>. The definition
-makes the role available. Enable its row before the model may start it.</p>
+makes the role available. Enable its row before the model may start it.
+<a href="#writing-a-subagent">Writing a subagent</a> covers the frontmatter fields, the
+system prompt and enabling the result.</p>
 <p>That directory is read by every profile, and the file is the whole definition.
 Which profile may spawn the agent is a separate, per-profile answer:
 <code>subagent.agents.&lt;name&gt;.enabled</code>. Write the agent once, enable it where you want
@@ -2991,58 +2994,62 @@ you (“use the scout agent to map the parser”).</p>
 <p>Writing an agent file makes the role available but does not grant spawn
 permission. Enable the role during setup or in the Agents settings table.</p>
 <h2 id="choosing-models"><a class="header" href="#choosing-models">Choosing models</a></h2>
-<p>The first row of the roster, <strong>Same Model for All Agents</strong>, decides which of two
-rules answers. It is off by default.</p>
-<p><strong>Off — each agent answers for itself.</strong> The first of these that names a model
-wins:</p>
+<p>Model and effort belong to one agent. There is no setting that answers for the whole
+roster: open <strong>Subagents → Roster</strong>, press Enter on an agent, and set the model and
+the effort on that agent’s own page.</p>
+<p>For one agent, the first of these that names a model wins:</p>
 <ol>
-<li>that agent’s own row, <code>subagent.agents.&lt;name&gt;.model</code></li>
-<li><code>subagent.modelByDepth.&lt;n&gt;</code>, for a spawn at exactly that depth</li>
+<li>that agent’s lane, <code>subagent.agents.&lt;name&gt;.model</code>, and for a nested spawn the
+<code>subagents</code> level under it that governs that depth</li>
 <li>the agent definition’s own <code>model:</code> frontmatter, for an agent you wrote</li>
-<li>otherwise the subagent inherits the model you are working with</li>
+<li>the profile’s <code>default</code> model role</li>
 </ol>
 <pre><code class="language-yaml">subagent:
   agents:
     reviewer:
       enabled: true
       model: anthropic/claude-opus-4-5
+      thinkingLevel: high
 </code></pre>
-<p><strong>On — one model answers for all of them.</strong> <code>subagent.model</code> and
-<code>subagent.thinkingLevel</code> decide, and nothing per-agent is consulted: a row’s own
-model, a depth row, and an agent file’s <code>model:</code> all stop applying. The roster
-greys the agent rows while this is on, because their models are not what runs.
-Unset still inherits the model you are working with.</p>
-<pre><code class="language-yaml">subagent:
-  sharedModel: true
-  model: openai/gpt-5:high
-</code></pre>
-<p>No bundled agent pins a model, so a stock install inherits your session model
-either way. <strong>Inherit</strong> passes the current session’s effective effort into the
-child, while an explicit <code>auto</code> requests that the provider choose. An explicit
-<code>:effort</code> suffix on a model pattern always wins over an agent’s own default.</p>
+<p>Effort resolves on the same three layers, ending at <code>medium</code>. An explicit <code>:effort</code>
+suffix on the resolved model pattern outranks all of them.</p>
+<p>The <code>default</code> model role is the model the main assistant starts on, and it is the
+one keystroke path for the common case: <code>/model</code> writes it, and every agent with no
+model of its own follows it. A temporary pick, role cycling and plan mode move the
+live session model only, so an agent never changes model because of a keystroke
+aimed at the main assistant.</p>
+<p><code>subagent.sharedModel</code>, <code>subagent.model</code>, <code>subagent.thinkingLevel</code> and
+<code>subagent.modelByDepth</code> decided for every agent at once and no longer apply. A config
+still holding one is reported once, naming the roster page that replaces it.</p>
 <h3 id="fallback-models"><a class="header" href="#fallback-models">Fallback models</a></h3>
-<p>Every one of those four places takes a list, not just one model:</p>
+<p>Every one of those places takes a list, not just one model:</p>
 <pre><code class="language-yaml">subagent:
-  model: anthropic/claude-opus-4-5,openai/gpt-5
+  agents:
+    reviewer:
+      model: anthropic/claude-opus-4-5,openai/gpt-5
 </code></pre>
-<p>The first entry is what subagents run on. The rest are held in reserve: when a run errors on the
+<p>The first entry is what that agent runs on. The rest are held in reserve: when a run errors on the
 model in use, that agent retries on the next entry rather than failing. The settings picker writes
 the value for you: open the model row, add a fallback, and press Enter on any entry to move it up
 the list.</p>
 <p>A longer chain reads better as a list, and both spellings mean the same thing:</p>
 <pre><code class="language-yaml">subagent:
-  model:
-    - anthropic/claude-opus-4-5
-    - openai/gpt-5
+  agents:
+    reviewer:
+      model:
+        - anthropic/claude-opus-4-5
+        - openai/gpt-5
 </code></pre>
 <p>Write it whichever way suits the file. <code>compaction.model</code> takes a chain the same two ways.</p>
 <p>A chain only covers errors at run time. A model pattern that matches nothing is still a
 configuration mistake, so veyyon will not spawn the agent and states the setting, rather than
-quietly running it on the next entry: a typo must not silently downgrade every subagent you spawn.</p>
+quietly running it on the next entry: a typo must not silently downgrade the agent you spawn.</p>
 <p>In the <code>Subagents</code> block above the composer, an agent that fell back is marked with <code>↓</code> before its
 model badge, so you can tell a deliberate model from a retried one at a glance.</p>
 <p>Effort is chosen from a list: <code>off</code>, <code>minimal</code> through <code>max</code>, <code>auto</code>, or <code>Inherit</code>.
-The same list appears in both places, so you cannot set a level that does not exist. If a hand-written config
+<code>Inherit</code> on an agent’s own page means the default effort; on a nested page it means the
+page above it. <code>auto</code> requests that the provider choose. The same list appears in both
+places, so you cannot set a level that does not exist. If a hand-written config
 holds one that does not, veyyon reports the levels that work, rather than
 treating it as <code>Inherit</code> and leaving you with a setting that reads as configured and
 changes nothing.</p>
@@ -3050,7 +3057,7 @@ changes nothing.</p>
 the next layer. The spawn is rejected and the message states the setting to fix, because
 falling through is indistinguishable from your setting having no effect. Both agent
 surfaces show, for the selected agent, the pattern, the model it resolves to, and
-which of the four layers decided.</p>
+which of the three layers decided.</p>
 <h2 id="watching-a-run"><a class="header" href="#watching-a-run">Watching a run</a></h2>
 <p>While a spawn is in flight, the <code>Subagents</code> block sits above the composer with one
 lane per agent. A lane reads left to right: a rail, the agent’s id, what it is doing,
@@ -3171,6 +3178,97 @@ subagent a task in another project only when the work is self-contained, and re-
 your own session instead when you want that project’s configuration to apply.</p>
 <p>The full key list is in the <a href="#subagents-2">settings reference</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
+<h1 id="writing-a-subagent"><a class="header" href="#writing-a-subagent">Writing a subagent</a></h1>
+<p>A subagent is one markdown file: YAML frontmatter that states its name, what it is
+for and what it may use, and a body that is its system prompt. Veyyon reads the file
+at startup, the roster lists it beside the bundled agents, and the <code>task</code> tool can
+spawn it once its row is enabled.</p>
+<h2 id="where-the-file-goes"><a class="header" href="#where-the-file-goes">Where the file goes</a></h2>
+<pre><code class="language-console">$ mkdir -p ~/.veyyon/subagents
+$ $EDITOR ~/.veyyon/subagents/accessibility-reviewer.md
+</code></pre>
+<p><code>~/.veyyon/subagents/*.md</code> is the only place veyyon reads user-authored agents from.
+Every profile reads that directory, so an agent is written once. Whether a profile
+may spawn it is a separate answer, <code>subagent.agents.&lt;name&gt;.enabled</code>, stored per
+profile.</p>
+<p>There is no project-level directory. A definition supplied by a repository could
+shadow a bundled agent by name, and first-run setup would then offer that role as an
+ordinary row.</p>
+<p>Extensions ship agents in their own <code>agents/</code> directory, which veyyon discovers from
+the extension roots. That spelling is the plugin-author contract and is not a path
+to type by hand.</p>
+<h2 id="the-shape-of-the-file"><a class="header" href="#the-shape-of-the-file">The shape of the file</a></h2>
+<pre><code class="language-markdown">---
+name: accessibility-reviewer
+description: Reviews terminal interfaces for accessibility problems and reports findings.
+tools: read, search, bash
+model: anthropic/claude-opus-4-5
+thinkingLevel: high
+---
+
+You review terminal interfaces for accessibility problems.
+
+Report each finding with the file, the line and the input that reproduces it.
+Report nothing you have not reproduced.
+</code></pre>
+<p><code>name</code> and <code>description</code> are required; a file missing either is skipped. Everything
+else is optional.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>name</code></td><td>The name the model spawns, and the roster row. Match the filename to keep the two findable together.</td></tr>
+<tr><td><code>description</code></td><td>What the role covers. This is the text the model routes on, so state the work, not the job title.</td></tr>
+<tr><td><code>tools</code></td><td>The tools this agent may call, as a list or a comma-separated string. Omitted grants the default set. <code>yield</code> is added if you list any tools at all.</td></tr>
+<tr><td><code>spawns</code></td><td>Which agents this one may spawn: a list, or <code>*</code> for any. Omitted means none.</td></tr>
+<tr><td><code>model</code></td><td>The model this agent runs when its roster row names none. A list is a fallback chain.</td></tr>
+<tr><td><code>thinkingLevel</code></td><td>The effort it runs at when its roster row names none: <code>off</code>, <code>minimal</code>, <code>low</code>, <code>medium</code>, <code>high</code>, <code>max</code>, <code>auto</code>, or <code>inherit</code>. <code>thinking</code> is accepted as a synonym.</td></tr>
+<tr><td><code>blocking</code></td><td><code>true</code> runs the agent to completion before the parent continues.</td></tr>
+<tr><td><code>autoloadSkills</code></td><td>Skills loaded into the agent’s context at spawn.</td></tr>
+<tr><td><code>readSummarize</code></td><td><code>false</code> makes its <code>read</code> tool return verbatim file content instead of structural summaries.</td></tr>
+<tr><td><code>output</code></td><td>A JSON schema the agent’s <code>yield</code> payload is validated against.</td></tr>
+</tbody>
+</table>
+</div>
+<p>A two-word key is read in either spelling: <code>thinkingLevel</code> and <code>thinking-level</code> reach
+the same field, and so do <code>autoloadSkills</code> and <code>readSummarize</code>. An underscore does
+not, so <code>thinking_level</code> is ignored. The bundled definitions use the dashed form, so
+an unpacked agent reads <code>thinking-level: medium</code> where the table above says
+<code>thinkingLevel</code>.</p>
+<p>A name in <code>tools</code> that matches no built-in tool and carries no <code>mcp__</code> or extension
+namespace is reported at startup. The tool grants nothing and its guidance is left
+out of the system prompt, so a typo reads as an agent that chose to do nothing.</p>
+<h2 id="the-body-is-the-system-prompt"><a class="header" href="#the-body-is-the-system-prompt">The body is the system prompt</a></h2>
+<p>Everything after the frontmatter is the agent’s system prompt, rendered with
+Handlebars. Write it as instructions to the worker: what it owns, what it must not
+touch, what it returns. The worker sees this instead of the main assistant’s prompt,
+not in addition to it, so state the constraints that matter for the lane.</p>
+<h2 id="enable-it"><a class="header" href="#enable-it">Enable it</a></h2>
+<p>Discovery makes the role available. Spawning it needs the row enabled in the profile
+you want it in:</p>
+<pre><code class="language-console">$ veyyon config set subagent.agents.accessibility-reviewer.enabled true
+</code></pre>
+<p>Or open <strong><code>/settings</code> → Subagents → Roster</strong>, select the agent, and set its state
+there. The same page sets that agent’s model and effort, which outrank the <code>model:</code>
+and <code>thinkingLevel:</code> in the file.</p>
+<h2 id="start-from-a-bundled-agent"><a class="header" href="#start-from-a-bundled-agent">Start from a bundled agent</a></h2>
+<p><code>veyyon agents unpack</code> writes the shipped definitions to disk as ordinary markdown
+files, frontmatter and all. Copy one into <code>~/.veyyon/subagents/</code> under a new name
+and edit it.</p>
+<pre><code class="language-console">$ veyyon agents unpack --dir ./unpacked-agents
+</code></pre>
+<p>A definition that keeps a bundled agent’s <code>name</code> replaces that agent: a file in
+<code>~/.veyyon/subagents/</code> outranks the bundled definition of the same name, so writing
+<code>reviewer.md</code> there means your reviewer is the reviewer.</p>
+<h2 id="check-the-result"><a class="header" href="#check-the-result">Check the result</a></h2>
+<p>Open <strong><code>/settings</code> → Subagents → Roster</strong>. The agent is listed there with its state,
+the model it resolves to, and which setting decided. An agent that is discovered but
+not enabled is listed and refused when named, with the setting to change.</p>
+<p>A file that is skipped says why on startup: a missing <code>name</code> or <code>description</code>, a
+file that cannot be read, or a tool name that matches nothing.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="multi-agent-monitoring"><a class="header" href="#multi-agent-monitoring">Multi-agent monitoring</a></h1>
 <p>The interactive TUI is the main surface for one session. Status line, session tree, background jobs, the subagent dashboard, and optional swarm orchestration cover multi-agent work.</p>
 <h2 id="status-line"><a class="header" href="#status-line">Status line</a></h2>
@@ -3190,7 +3288,7 @@ your own session instead when you want that project’s configuration to apply.<
 </tbody>
 </table>
 </div>
-<p>Built-in segment IDs include: <code>pi</code> (legacy product mark segment), <code>profile</code>, <code>model</code>, <code>account</code>, <code>secrets</code>, <code>mode</code>, <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>token_in</code>, <code>token_out</code>, <code>token_total</code>, <code>token_rate</code>, <code>cost</code>, <code>context_pct</code>, <code>context_total</code>, <code>time_spent</code>, <code>time</code>, <code>session</code>, <code>hostname</code>, <code>cache_read</code>, <code>cache_write</code>, <code>cache_hit</code>, <code>session_name</code>, <code>usage</code>, <code>collab</code>.</p>
+<p>Built-in segment IDs include: <code>pi</code> (legacy product mark segment), <code>profile</code>, <code>model</code>, <code>account</code>, <code>mode</code>, <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>token_in</code>, <code>token_out</code>, <code>token_total</code>, <code>token_rate</code>, <code>cost</code>, <code>context_pct</code>, <code>context_total</code>, <code>time_spent</code>, <code>time</code>, <code>session</code>, <code>hostname</code>, <code>cache_read</code>, <code>cache_write</code>, <code>cache_hit</code>, <code>session_name</code>, <code>usage</code>, <code>collab</code>.</p>
 <p>The <code>model</code> segment shows the model you are working with, then two things that are easy to confuse, so they are drawn differently:</p>
 <ul>
 <li>The <strong>thinking effort</strong> joins the model label as one unit (<code>Sonnet 4.5 @high</code> in the quiet footline, <code>Sonnet 4.5 · high</code> elsewhere), in the model’s own color. It is how much reasoning the model does per turn. Change it with <code>/effort</code> (its alias is <code>/thinking</code>), or set a per-model default under Settings → Model → Default Effort.
@@ -3234,23 +3332,37 @@ named in the log once. <code>stripWorkPrefix: false</code> turns the whole step 
 with its own icon, whatever <code>displayRoots</code> says.</p>
 <p>The launch card draws the whole row before the session mounts. The working directory comes from the
 process, the branch from <code>.git/HEAD</code> and its ref files, and the mode from config. The model name,
-the dirty marker (<code>*</code>) and the context gauge are what the previous launch of this project recorded,
-in <code>cache/launch-facts.json</code>, keyed by the release, the project and the configured model; a change
-to any of those drops the facts it invalidates and the card shows the placeholder instead. Token
-counts start at zero, because nothing has been spent.</p>
+the effort beside it, the dirty marker (<code>*</code>) and the context gauge are what a previous launch
+recorded, in <code>cache/launch-facts.json</code>.</p>
+<p>That file records three kinds of fact. The model’s display name, its provider, the effort and the
+at-rest context reading belong to the model, so they are stated in every project you use it in,
+including one you open for the first time. The dirty marker belongs to the project, because it
+describes that working tree. The gauge is recorded under both, as two different numbers: the
+project keeps the whole reading measured in that directory, and the model keeps the same reading
+with that project’s context files subtracted. A project that has never been measured states the
+model’s number, so it starts from a cost every project shares rather than from the last
+directory’s <code>AGENTS.md</code>. Those two maps are keyed by the release as well.</p>
+<p>The third fact is the terminal’s background color, keyed by the terminal and by nothing else. A new
+release does not change what an emulator draws, and it is the same window whichever directory is
+open in it. Veyyon queries the background at startup and the reply arrives after the card is on
+screen, so the card mixes the composer hairline, the composer outline and the transcript rules out
+of the background this terminal reported last time. A reply that contradicts the record takes
+effect on the next frame. Each of the three maps holds its 24 most recently written entries.</p>
 <p>Each recorded fact is replaced by a measured one as the session mounts. A tree committed from
 another terminal since the last launch keeps the recorded marker until <code>git status</code> answers, about
-130ms in. The first launch of a project has nothing recorded: the model reads as the configured
-id’s last path segment until the catalog supplies a display name, and the gauge reads <code>?</code> until a
-prompt has been assembled.</p>
+130ms in. A project you open for the first time has no dirty marker. The gauge reads <code>?</code> only
+until this model has idled somewhere once; after that a new project starts at the model’s
+subtracted reading and the session adds what this project’s own context costs, so the bar fills
+rather than empties when the session lands. Configuring a different model resets it to <code>?</code> again,
+because a reading is a fraction of the window it was taken against. A model you have never run
+states its configured id’s last path segment until the catalog supplies a display name.</p>
 <p>A repository whose refs are in a reftable has no ref files to read, so its branch appears with the
 session rather than with the card, as does a detached HEAD with no operation to name.</p>
-<p>The <code>secrets</code> segment shows that a stored credential is live where you are working: <code>2 secrets</code>. It counts
-what would actually expand at the tool boundary in this directory, not what is in the vault file, so
-a credential scoped elsewhere or already expired is not counted. It hides itself when nothing is
-live, so a session with no vault shows nothing. When the soonest deadline is under an hour it appends
-the time left in the warning color, <code>2 secrets (34m left)</code>, which is the window in which extending it
-with <code>e</code> in <code>/secret</code> still helps; a deadline further out belongs to the card’s EXPIRES column.</p>
+<p><code>/secret list</code> states what is live where you are working: the credentials the vault holds here, and
+a count of the values being masked that nothing can name, with the environment variable or
+<code>secrets.yml</code> path each came from. The status row does not carry a count. It reported one that
+nothing else in the product agreed with, and a number a reader cannot reconcile with <code>/secret list</code>
+is worse than no number.</p>
 <p>The <code>context_pct</code> segment answers one question: how much room is left before the context runs out. “Runs out” means whichever comes first, auto-compaction firing or the model’s window filling, so with auto-compaction on the segment measures against the compaction trigger, not the window. The window itself is what <code>context_total</code> prints.</p>
 <p>In the composer’s quiet footline the segment renders as an 8-cell bar with a labelled percentage: <code>▰▰▰▰▰▰▱▱ 76% left ∞</code>. The bar drains, one cell per eighth of the room remaining, so the bar and the number always agree. Filled cells take the usage hue (silver, then gold, ember, and red as room runs out). While the model is running, the last remaining cell pulses between filled and empty, faster once you are past 90 percent used; at rest the bar never moves, so an idle screen is still. A session-accent <code>∞</code> after the bar means auto-compaction is on, so the session continues past the trigger.</p>
 <p>Classic status-line presets render the same measurement as text, in tokens on both sides of the slash: <code>47K/170K</code>. For a full picture of what is in the window, and how it is divided between the system prompt, tools, skills, and messages, run <code>/context</code>.</p>
@@ -3537,6 +3649,10 @@ uses (see <code>docs/handbook/src/reference/theme.md</code>). Every built-in the
 </tbody>
 </table>
 </div>
+<p>On <code>auto</code>, the decision is taken before the launch card paints, from the background this terminal
+reported on the previous launch (<code>cache/launch-facts.json</code>). The first launch in a terminal has no
+record and inherits; the report that follows paints the ground if it is close enough. A report that
+contradicts the record takes effect on the next frame.</p>
 <p>A custom theme that declares no page background has no ground to paint, so Veyyon inherits
 the terminal’s own background regardless of this setting. With <code>always</code>, it also logs once
 that the active theme declares no ground, since that is the one case you asked to paint and
@@ -8287,7 +8403,6 @@ $ veyyon "fix the failing test in auth.rs"
 <tr><td><code>--approval-mode &lt;policy&gt;</code></td><td>When to ask before running commands</td></tr>
 <tr><td><code>--profile &lt;name&gt;</code></td><td>Use an isolated profile agent directory</td></tr>
 <tr><td><code>--model &lt;id&gt;</code></td><td>Interactive model (<code>provider/model</code>)</td></tr>
-<tr><td><code>--subagent-model &lt;id&gt;</code></td><td>Model for spawned task subagents</td></tr>
 <tr><td><code>--compaction-model &lt;id&gt;</code></td><td>Model for context compaction</td></tr>
 </tbody>
 </table>
