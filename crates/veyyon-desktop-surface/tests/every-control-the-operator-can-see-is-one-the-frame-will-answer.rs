@@ -17,10 +17,7 @@
 //! judge whether a hit area is comfortable, only that it exists, lies inside
 //! the window and has area.
 
-use std::{
-	path::Path,
-	sync::{Mutex, MutexGuard},
-};
+use std::path::Path;
 
 use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_scene::headless::{
@@ -38,20 +35,6 @@ const HEIGHT: u32 = 900;
 
 fn options() -> RenderOptions {
 	RenderOptions { width: WIDTH, height: HEIGHT, scale_factor: 1.0, ..RenderOptions::default() }
-}
-
-/// The headless renderer is a process-wide resource in this fork: opening a
-/// third context while two are live aborts the process with SIGSEGV. Tests in
-/// one binary run on parallel threads, so every test that renders takes this
-/// lock and exactly one context is live at a time.
-static RENDERER: Mutex<()> = Mutex::new(());
-
-/// Claims the renderer for one test, recovering a lock poisoned by an earlier
-/// failure so one real failure does not abort the next test.
-fn renderer() -> MutexGuard<'static, ()> {
-	RENDERER
-		.lock()
-		.unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Renders one state and hands back everything the frame captured.
@@ -123,7 +106,6 @@ fn reachable(rect: &Bounds<Pixels>) -> bool {
 
 #[test]
 fn the_frame_answers_a_click_on_every_control_the_state_puts_on_screen() {
-	let _renderer = renderer();
 	let state = fixture::populated();
 	let expected = expected_controls(&state);
 
@@ -148,8 +130,6 @@ fn the_frame_answers_a_click_on_every_control_the_state_puts_on_screen() {
 
 #[test]
 fn taking_the_cards_away_takes_exactly_their_answers_away() {
-	let _renderer = renderer();
-
 	let with_cards = fixture::populated();
 	let answers = expected_controls(&with_cards)
 		- expected_controls(&ShellState { cards: Vec::new(), ..fixture::populated() });
@@ -171,8 +151,6 @@ fn taking_the_cards_away_takes_exactly_their_answers_away() {
 
 #[test]
 fn closing_the_right_panel_takes_its_tabs_out_of_reach() {
-	let _renderer = renderer();
-
 	let open = fixture::populated();
 	let tabs = open.tabs.len();
 	assert!(tabs > 0, "the fixture has no tabs, so this proves nothing");
@@ -192,7 +170,6 @@ fn closing_the_right_panel_takes_its_tabs_out_of_reach() {
 
 #[test]
 fn a_dispatched_intent_reaches_the_frame_the_operator_then_looks_at() {
-	let _renderer = renderer();
 	let mut cx = headless_context().expect("a headless renderer is required to render the shell");
 	let tokens = load_bundled_tokens().expect("the bundled tokens load");
 	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");

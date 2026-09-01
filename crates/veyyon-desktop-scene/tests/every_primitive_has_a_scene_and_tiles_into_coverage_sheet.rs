@@ -71,7 +71,6 @@ fn removing_a_primitive_scene_turns_completeness_validation_red() {
 }
 
 #[test]
-#[ignore = "requires a GPU with a Vulkan ICD; run with --ignored on a machine that has one"]
 fn every_primitive_renders_distinct_pixels_on_headless_surface() {
 	let mut cx = headless_context().expect("headless renderer is required");
 	let opt = options();
@@ -99,7 +98,6 @@ fn every_primitive_renders_distinct_pixels_on_headless_surface() {
 }
 
 #[test]
-#[ignore = "requires a GPU with a Vulkan ICD; run with --ignored on a machine that has one"]
 fn generate_and_save_kit_coverage_contact_sheet() {
 	let mut cx = headless_context().expect("headless renderer is required");
 	let opt = options();
@@ -148,7 +146,6 @@ fn generate_and_save_kit_coverage_contact_sheet() {
 }
 
 #[test]
-#[ignore = "requires a GPU with a Vulkan ICD; run with --ignored on a machine that has one"]
 fn rendered_primitive_scenes_use_bundled_dark_theme_colours() {
 	let mut cx = headless_context().expect("headless renderer is required");
 	let opt = options();

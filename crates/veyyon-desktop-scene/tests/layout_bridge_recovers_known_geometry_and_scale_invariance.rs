@@ -67,7 +67,6 @@ impl Render for KnownGeometryScene {
 }
 
 #[test]
-#[ignore = "requires a GPU with a Vulkan ICD; run with --ignored on a machine that has one"]
 fn known_geometry_scene_yields_matching_tree_boxes_and_metrics() {
 	let mut cx = headless_context().expect("headless renderer required");
 	let options = RenderOptions {
@@ -180,7 +179,6 @@ fn known_geometry_scene_yields_matching_tree_boxes_and_metrics() {
 }
 
 #[test]
-#[ignore = "requires a GPU with a Vulkan ICD; run with --ignored on a machine that has one"]
 fn scale_factor_invariance_preserves_logical_tree_bounds_while_device_dimensions_double() {
 	let mut cx = headless_context().expect("headless renderer required");
 
@@ -270,7 +268,6 @@ fn scale_factor_invariance_preserves_logical_tree_bounds_while_device_dimensions
 }
 
 #[test]
-#[ignore = "requires a GPU with a Vulkan ICD; run with --ignored on a machine that has one"]
 fn contact_sheet_with_layout_bridge_reports_six_metrics_in_caption() {
 	let mut cx = headless_context().expect("headless renderer required");
 	let options = RenderOptions {

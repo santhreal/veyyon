@@ -93,7 +93,6 @@ fn holds_colour(frame: &veyyon_desktop_scene::RgbaFrame, packed: u32, tolerance:
 }
 
 #[test]
-#[ignore = "requires a GPU with a Vulkan ICD; run with --ignored on a machine that has one"]
 fn the_probe_surface_rasterises_and_writes_a_png() {
 	let options = options();
 	let mut cx = headless_context().expect("a headless renderer is required");
@@ -153,7 +152,6 @@ fn the_probe_surface_rasterises_and_writes_a_png() {
 }
 
 #[test]
-#[ignore = "requires a GPU with a Vulkan ICD; run with --ignored on a machine that has one"]
 fn both_appearances_produce_different_frames() {
 	// A sweep renders the same scene in both appearances. If the appearance did
 	// not reach the render, every light cell would be a copy of its dark one and

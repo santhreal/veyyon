@@ -19,7 +19,6 @@ use veyyon_gpui::{
 };
 
 #[test]
-#[ignore = "requires a GPU with a Vulkan ICD; run with --ignored on a machine that has one"]
 fn the_desktop_kit_primitives_render_distinct_pixels_on_headless_surface()
 -> Result<(), Box<dyn std::error::Error>> {
 	let text_system = Arc::new(gpui_wgpu::CosmicTextSystem::new("sans-serif"));

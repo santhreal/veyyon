@@ -90,7 +90,6 @@ const fn candidate_gap(step: usize) -> f32 {
 }
 
 #[test]
-#[ignore = "requires a GPU with a Vulkan ICD; run with --ignored on a machine that has one"]
 fn twelve_gap_candidates_render_and_tile_within_the_budget() {
 	let started = Instant::now();
 
@@ -182,7 +181,6 @@ fn twelve_gap_candidates_render_and_tile_within_the_budget() {
 }
 
 #[test]
-#[ignore = "requires a GPU with a Vulkan ICD; run with --ignored on a machine that has one"]
 fn a_sheet_with_no_cells_is_reported_rather_than_rendered_empty() {
 	// An empty sheet has no size. Returning a zero-sized or uniform image here
 	// would read as "the sweep found no differences" rather than "the sweep was
