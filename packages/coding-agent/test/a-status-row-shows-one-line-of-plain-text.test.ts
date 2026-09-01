@@ -24,6 +24,22 @@ describe("status text is reduced to one plain line", () => {
 		expect(sanitizeStatusText("\u009b31mfailed")).toBe("failed");
 	});
 
+	it("strips a cursor move, which would reposition unrelated output", () => {
+		// Not colour: `ESC [ 2 A` moves the cursor two rows up, so a row that kept it repaints
+		// over whatever the renderer drew above.
+		expect(sanitizeStatusText("a\u001b[2Ab")).toBe("ab");
+	});
+
+	it("turns a tab into a space rather than a variable-width hole", () => {
+		// A tab measures one character and paints up to eight columns, so the differ accounts for
+		// a row narrower than the one on screen.
+		expect(sanitizeStatusText("name\tvalue")).toBe("name value");
+	});
+
+	it("answers with the empty string when nothing printable is left", () => {
+		expect(sanitizeStatusText("\u001b[0m\n\t")).toBe("");
+	});
+
 	it("maps a C1 control that introduces nothing to a space", () => {
 		// NEL is not an escape introducer, so the strip leaves it and the control-character rule owns
 		// it. Left alone it moves the cursor to the next line inside a one-line row.

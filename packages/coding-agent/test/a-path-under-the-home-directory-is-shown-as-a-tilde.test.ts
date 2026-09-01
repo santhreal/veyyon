@@ -13,6 +13,7 @@
  * `@veyyon/tool-render`, deliberately, and this says nothing about that one.
  */
 import { describe, expect, it } from "bun:test";
+import { shortenPath as reExported } from "@veyyon/coding-agent/tools/core/render-utils";
 import { shortenPath } from "@veyyon/coding-agent/tools/core/shorten-path";
 
 describe("a displayed path hides the home directory", () => {
@@ -35,6 +36,26 @@ describe("a displayed path hides the home directory", () => {
 
 	it("collapses a Windows home directory and reports forward slashes", () => {
 		expect(shortenPath("C:\\Users\\operator\\src\\app.ts", "C:\\Users\\operator")).toBe("~/src/app.ts");
+	});
+
+	it("leaves a win32 sibling that merely shares the prefix", () => {
+		// The boundary rule holds in the backslash dialect too, where a separator check written for
+		// `/` alone would rewrite a second account to `~2`. A path that is not collapsed is returned
+		// as it arrived, separators included.
+		expect(shortenPath("C:\\Users\\operator2\\src\\app.ts", "C:\\Users\\operator")).toBe(
+			"C:\\Users\\operator2\\src\\app.ts",
+		);
+	});
+
+	it("collapses nothing when the home directory is empty", () => {
+		// An empty home matches the start of every path, so a bare prefix test would answer `~` for
+		// all of them.
+		expect(shortenPath("/srv/veyyon/app.ts", "")).toBe("/srv/veyyon/app.ts");
+	});
+
+	it("is the same binding the render-utils barrel re-exports", () => {
+		// One owner: a second copy behind the barrel drifts from the boundary rule above.
+		expect(reExported).toBe(shortenPath);
 	});
 
 	it("answers with the empty string for input that is not a path", () => {
