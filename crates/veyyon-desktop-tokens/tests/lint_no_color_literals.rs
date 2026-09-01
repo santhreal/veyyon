@@ -12,15 +12,16 @@
 //! runtime so newly added desktop crates are checked automatically.
 //!
 //! WHAT IT DOES NOT CATCH: Colour values constructed via dynamic arithmetic,
-//! tokens loaded from theme TOML files, or string-based colour conversions outside
-//! the scanner's pattern list.
+//! tokens loaded from theme TOML files, or string-based colour conversions
+//! outside the scanner's pattern list.
 
 use std::{
 	fs,
 	path::{Path, PathBuf},
 };
 
-/// The tokens crate's hex parser file is exempt as it converts hex strings to color types.
+/// The tokens crate's hex parser file is exempt as it converts hex strings to
+/// color types.
 const EXEMPT_FILES: [&str; 1] = ["color.rs"];
 
 #[test]
@@ -49,7 +50,8 @@ fn no_desktop_crate_writes_a_color_literal() {
 
 		for file in files {
 			let is_exempt = EXEMPT_FILES.iter().any(|exempt| {
-				file.file_name()
+				file
+					.file_name()
 					.and_then(|n| n.to_str())
 					.is_some_and(|name| name == *exempt)
 			});
@@ -102,7 +104,9 @@ fn the_sweep_reaches_the_crates_that_hold_the_surfaces() {
 		"veyyon-desktop-scene is a desktop crate and must be swept; discovered {discovered:?}",
 	);
 	assert!(
-		discovered.iter().any(|name| name == "veyyon-desktop-surface"),
+		discovered
+			.iter()
+			.any(|name| name == "veyyon-desktop-surface"),
 		"veyyon-desktop-surface is a desktop crate and must be swept; discovered {discovered:?}",
 	);
 }
@@ -110,11 +114,7 @@ fn the_sweep_reaches_the_crates_that_hold_the_surfaces() {
 #[test]
 fn a_color_literal_is_recognised_and_a_token_reference_is_not() {
 	let mut violations = Vec::new();
-	scan_source(
-		Path::new("probe.rs"),
-		"let c = hsla(0.12, 0.80, 0.52, 1.0);",
-		&mut violations,
-	);
+	scan_source(Path::new("probe.rs"), "let c = hsla(0.12, 0.80, 0.52, 1.0);", &mut violations);
 	assert_eq!(violations.len(), 1, "hsla literal must be caught: {violations:?}");
 
 	let mut hex_rgb = Vec::new();
@@ -131,7 +131,11 @@ fn a_color_literal_is_recognised_and_a_token_reference_is_not() {
 		"let c = Rgba { r: 1.0, g: 0.0, b: 0.0, a: 1.0 };",
 		&mut struct_rgba,
 	);
-	assert_eq!(struct_rgba.len(), 1, "Rgba {{ ... }} struct literal must be caught: {struct_rgba:?}");
+	assert_eq!(
+		struct_rgba.len(),
+		1,
+		"Rgba {{ ... }} struct literal must be caught: {struct_rgba:?}"
+	);
 
 	let mut ok_fn_sig = Vec::new();
 	scan_source(
@@ -139,7 +143,10 @@ fn a_color_literal_is_recognised_and_a_token_reference_is_not() {
 		"pub fn ground(&self) -> Rgba { self.color(ColorRole::Ground) }",
 		&mut ok_fn_sig,
 	);
-	assert!(ok_fn_sig.is_empty(), "fn signature returning -> Rgba {{ is not a struct literal: {ok_fn_sig:?}");
+	assert!(
+		ok_fn_sig.is_empty(),
+		"fn signature returning -> Rgba {{ is not a struct literal: {ok_fn_sig:?}"
+	);
 
 	let mut ok_field_copy = Vec::new();
 	scan_source(
@@ -147,30 +154,21 @@ fn a_color_literal_is_recognised_and_a_token_reference_is_not() {
 		"Rgba { r: rgb.r, g: rgb.g, b: rgb.b, a: rgb.a }",
 		&mut ok_field_copy,
 	);
-	assert!(ok_field_copy.is_empty(), "Rgba conversion from variables is not a literal: {ok_field_copy:?}");
+	assert!(
+		ok_field_copy.is_empty(),
+		"Rgba conversion from variables is not a literal: {ok_field_copy:?}"
+	);
 
 	let mut ok = Vec::new();
-	scan_source(
-		Path::new("probe.rs"),
-		"let c = tokens.color(ColorRole::Foreground);",
-		&mut ok,
-	);
+	scan_source(Path::new("probe.rs"), "let c = tokens.color(ColorRole::Foreground);", &mut ok);
 	assert!(ok.is_empty(), "a token reference is not a violation: {ok:?}");
 
 	let mut ok_helper = Vec::new();
-	scan_source(
-		Path::new("probe.rs"),
-		"fn rgb_to_hsla(rgb: RgbColor) -> Hsla {",
-		&mut ok_helper,
-	);
+	scan_source(Path::new("probe.rs"), "fn rgb_to_hsla(rgb: RgbColor) -> Hsla {", &mut ok_helper);
 	assert!(ok_helper.is_empty(), "helper function name is not a color literal: {ok_helper:?}");
 
 	let mut commented = Vec::new();
-	scan_source(
-		Path::new("probe.rs"),
-		"// hsla(0.12, 0.80, 0.52, 1.0) in comment",
-		&mut commented,
-	);
+	scan_source(Path::new("probe.rs"), "// hsla(0.12, 0.80, 0.52, 1.0) in comment", &mut commented);
 	assert!(commented.is_empty(), "a comment is not a violation: {commented:?}");
 }
 
@@ -228,7 +226,8 @@ fn is_banned_color_pattern(line: &str) -> Option<&'static str> {
 		return Some("rgba(0x");
 	}
 
-	// 4. Rgba { r: ... (struct literal with literal values, not fn return type -> Rgba { or impl)
+	// 4. Rgba { r: ... (struct literal with literal values, not fn return type ->
+	//    Rgba { or impl)
 	for pattern in &["Rgba {", "Rgba{"] {
 		if let Some(pos) = line.find(pattern) {
 			let before = &line[..pos];
@@ -253,7 +252,10 @@ fn scan_source(file: &Path, content: &str, violations: &mut Vec<String>) {
 			continue;
 		}
 
-		if trimmed.contains("#[cfg(test)]") || trimmed.starts_with("mod tests {") || trimmed.starts_with("mod tests;") {
+		if trimmed.contains("#[cfg(test)]")
+			|| trimmed.starts_with("mod tests {")
+			|| trimmed.starts_with("mod tests;")
+		{
 			in_test_module = true;
 		}
 		if in_test_module {

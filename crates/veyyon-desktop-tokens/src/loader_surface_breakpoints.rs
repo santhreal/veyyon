@@ -58,20 +58,18 @@ fn req_bool(
 			key:     key.to_string(),
 		});
 	};
-	match value.as_bool() {
-		Some(b) => Ok(b),
-		None => {
-			let (line, column) = find_key_line_col(text, section, key);
-			Err(TokenError::OffScale {
-				path: path.to_path_buf(),
-				line,
-				column,
-				value: value.to_string(),
-				scale_name: format!("{section}.{key}"),
-				allowed: "true or false".to_string(),
-			})
-		},
+	if let Some(b) = value.as_bool() {
+		return Ok(b);
 	}
+	let (line, column) = find_key_line_col(text, section, key);
+	Err(TokenError::OffScale {
+		path: path.to_path_buf(),
+		line,
+		column,
+		value: value.to_string(),
+		scale_name: format!("{section}.{key}"),
+		allowed: "true or false".to_string(),
+	})
 }
 
 /// Reads a required string out of a breakpoint row, for the same reason.
@@ -89,20 +87,18 @@ fn req_str(
 			key:     key.to_string(),
 		});
 	};
-	match value.as_str() {
-		Some(s) => Ok(s.to_string()),
-		None => {
-			let (line, column) = find_key_line_col(text, section, key);
-			Err(TokenError::OffScale {
-				path: path.to_path_buf(),
-				line,
-				column,
-				value: value.to_string(),
-				scale_name: format!("{section}.{key}"),
-				allowed: "a string".to_string(),
-			})
-		},
+	if let Some(s) = value.as_str() {
+		return Ok(s.to_string());
 	}
+	let (line, column) = find_key_line_col(text, section, key);
+	Err(TokenError::OffScale {
+		path: path.to_path_buf(),
+		line,
+		column,
+		value: value.to_string(),
+		scale_name: format!("{section}.{key}"),
+		allowed: "a string".to_string(),
+	})
 }
 
 fn parse_bp(

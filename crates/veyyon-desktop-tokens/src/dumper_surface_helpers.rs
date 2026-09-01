@@ -1,6 +1,4 @@
-use crate::schema::{
-	RadiusStep, ScaleTokens, SpacingStep, StrokeStep, TypeSize, TypeSizeStep,
-};
+use crate::schema::{RadiusStep, ScaleTokens, SpacingStep, StrokeStep, TypeSize, TypeSizeStep};
 
 pub fn step_spacing(scale: &ScaleTokens, val: f32) -> &'static str {
 	for step in SpacingStep::all() {
