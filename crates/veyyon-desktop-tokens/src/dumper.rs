@@ -4,7 +4,7 @@ use crate::{
 	Tokens,
 	dumper_surface::{
 		dump_attached_cards, dump_breakpoints, dump_composer, dump_palette, dump_panels, dump_queue,
-		dump_settings, dump_transcript,
+		dump_settings, dump_shell, dump_transcript,
 	},
 	error::TokenError,
 	schema::SpacingStep,
@@ -27,6 +27,7 @@ pub fn dump_to_dir(tokens: &Tokens, dir: &Path) -> Result<(), TokenError> {
 	dump_palette(tokens, &dir.join("surface/palette.toml"))?;
 	dump_settings(tokens, &dir.join("surface/settings.toml"))?;
 	dump_breakpoints(tokens, &dir.join("surface/breakpoints.toml"))?;
+	dump_shell(tokens, &dir.join("surface/shell.toml"))?;
 
 	Ok(())
 }

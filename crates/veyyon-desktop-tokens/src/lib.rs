@@ -11,6 +11,7 @@ pub mod loader_scale;
 pub mod loader_surface;
 pub mod loader_surface_primary;
 pub mod loader_surface_secondary;
+pub mod loader_surface_shell;
 pub mod loader_theme;
 pub mod motion;
 pub mod schema;
@@ -34,7 +35,7 @@ pub use schema::{
 pub use surface::{
 	AttachedCardsSurfaceTokens, BreakpointConfig, BreakpointsSurfaceTokens, ComposerSurfaceTokens,
 	PaletteSurfaceTokens, PanelsSurfaceTokens, QueueSurfaceTokens, SettingsSurfaceTokens,
-	SurfaceTokens, TranscriptSurfaceTokens,
+	ShellSurfaceTokens, SurfaceTokens, TranscriptSurfaceTokens,
 };
 pub use watcher::{TokenReloadMessage, TokenWatcher};
 

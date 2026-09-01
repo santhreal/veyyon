@@ -288,3 +288,31 @@ run_bar_labels = false
 "#;
 	write_file(path, out)
 }
+
+/// Writes surface/shell.toml.
+//
+// Like every dumper here, the content is a literal rather than a serialisation
+// of `tokens`, so this file and `tokens/surface/shell.toml` are two copies of
+// one truth and have to be edited together.
+pub fn dump_shell(_tokens: &Tokens, path: &Path) -> Result<(), TokenError> {
+	let out = r#"[meta]
+version = 1
+name = "surface_shell"
+
+[window]
+min_width_px = 800
+min_height_px = 560
+
+[titlebar]
+height_px = 52
+control_px = 28
+control_gap_px = "s4"
+inset_left_px = "s6"
+inset_right_px = "s6"
+
+[grain]
+tile_px = 128
+opacity = 0.025
+"#;
+	write_file(path, out)
+}
