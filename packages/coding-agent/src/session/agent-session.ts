@@ -180,6 +180,7 @@ import {
 	withScopedTimeoutSignal,
 	withTimeout,
 } from "@veyyon/utils";
+import { contentText } from "@veyyon/utils/content-text";
 import { startupMarker } from "@veyyon/utils/startup-marker";
 import type { ArgotSession } from "argot";
 import {
@@ -447,7 +448,6 @@ import {
 	shouldPromptCodexAutoRedeem,
 } from "./codex-auto-reset";
 import { findCompactMode } from "./compact-modes";
-import { type ContentBlockLike, contentText } from "./content-text";
 // The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
 // terminal UI on the session engine's graph and cost the layering gate a standing exception each.
 import {
@@ -1699,7 +1699,7 @@ type SetSessionNameWithTrigger = (
 function textFromContent(content: unknown): string {
 	if (typeof content === "string") return content.trim();
 	if (!Array.isArray(content)) return "";
-	return contentText(content as readonly ContentBlockLike[], { separator: "\n\n", trimBlocks: true });
+	return contentText(content, { separator: "\n\n", trimBlocks: true });
 }
 
 function thinkingFromContent(content: unknown): string {

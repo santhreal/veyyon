@@ -143,7 +143,7 @@ function entryParentId(entry: SessionLogEntry): string | null {
 function extractUserStats(sessionFile: string, folder: string, entry: SessionMessageEntry): UserMessageStats | null {
 	const msg = entry.message as { role: "user"; content?: unknown; synthetic?: boolean };
 	if (msg.role !== "user" || msg.synthetic) return null;
-	const text = contentText(msg.content, "");
+	const text = contentText(msg.content, { separator: "" });
 	if (!text.trim()) return null;
 	const metrics = computeUserMessageMetrics(text);
 	const ts = Date.parse(entry.timestamp);
