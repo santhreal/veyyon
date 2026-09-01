@@ -86,7 +86,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 	) {
 		this.#customOps = options?.operations;
 		this.#rootPathAlias = options?.rootPathAlias === true;
-		this.description = prompt.render(toolsPrompts["tools/glob"].text);
+		this.description = prompt.render(toolsPrompts["tools/search"].text);
 	}
 
 	async execute(

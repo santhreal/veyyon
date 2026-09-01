@@ -25,9 +25,9 @@ import {
 	outputBlockContentWidth,
 	renderStatusLine,
 	truncateToWidth,
-	tryResolveInternalUrlSync,
 	uriHyperlink,
 } from "../tui";
+import { tryResolveInternalUrlSync } from "../internal-urls/resolve-sync";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import type { ToolSession } from ".";
 import { searchPathFilesystemTargets } from "./cwd-boundary";
@@ -102,7 +102,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 
 	constructor(private readonly session: ToolSession) {
 		const displayMode = resolveFileDisplayMode(session);
-		this.description = prompt.render(toolsPrompts["tools/grep"].text, {
+		this.description = prompt.render(toolsPrompts["tools/search"].text, {
 			IS_HL_MODE: displayMode.hashLines,
 			IS_LINE_NUMBER_MODE: !displayMode.hashLines && displayMode.lineNumbers,
 		});

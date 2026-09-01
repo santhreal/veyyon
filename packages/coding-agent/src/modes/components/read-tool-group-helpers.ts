@@ -4,7 +4,7 @@ import { InternalUrlRouter } from "../../internal-urls";
 import { parseLineRanges, selectorLineRanges, splitPathAndSel } from "../../tools/path-utils";
 import type { ReadRenderArgs } from "../../tools/read";
 import { PREVIEW_LIMITS } from "../../tools/render-utils";
-import { tryResolveInternalUrlSync } from "../../tui";
+import { tryResolveInternalUrlSync } from "../../internal-urls/resolve-sync";
 
 export function readArgsTarget(args: unknown): string | undefined {
 	if (!isRecord(args)) return undefined;
