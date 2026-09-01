@@ -25,6 +25,14 @@ import { ANY_MODEL_EFFORT_KEY } from "@veyyon/coding-agent/config/effort-resolve
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { getRoleInfo, SELECTABLE_MODEL_ROLE_IDS } from "@veyyon/coding-agent/config/model-roles";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
+import {
+	hasUi,
+	isSettingPath,
+	retiredBy,
+	SETTING_TABS,
+	SETTINGS_SCHEMA,
+	type SettingPath,
+} from "@veyyon/coding-agent/config/settings-schema";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
@@ -218,19 +226,33 @@ describe("settings submenus answer the pointer", () => {
 		{ timeout: 30_000 },
 	);
 
-	it("subagent models by depth: hover lights the add row, click opens the depth chain", () => {
-		// A configured depth row: the empty map's lone Add row is the selected
-		// one, and SelectList paints no hover band over the selection.
-		settings.set("subagent.modelByDepth", { "1": "anthropic/claude-opus-4-1" });
+	it("a retired setting is on no tab, so the pointer never reaches a submenu that is gone", () => {
+		// This replaced a case that opened `subagent.modelByDepth` and clicked its
+		// depth chain. That setting is now `retiredBy: "subagent.agents"` and has
+		// no `ui` block, so there is no row to hover and no submenu to open, and
+		// the case asserted a surface the product had removed.
+		//
+		// The sweep reads the schema at run time rather than naming that one key,
+		// so retiring another setting is covered the moment it is retired: the
+		// invariant is universal, and a new retired key needs no decision recorded
+		// here. What it does need is to be off every tab, which is what fails.
+		const retired = Object.keys(SETTINGS_SCHEMA).filter(path => isSettingPath(path) && retiredBy(path) !== undefined);
+		// A vacuous sweep would pass forever, so prove there is something to sweep.
+		expect(retired.length).toBeGreaterThan(0);
+
 		const { component } = createSelector();
-		component.openTab("subagents");
-		expect(component.selectSetting("subagent.modelByDepth")).toBe(true);
-		component.handleInput("\n");
+		const onScreen: string[] = [];
+		for (const tab of SETTING_TABS) {
+			component.openTab(tab);
+			for (const path of retired) {
+				if (component.selectSetting(path)) onScreen.push(`${tab}:${path}`);
+			}
+		}
+		expect(onScreen, "a retired setting still has a row on the settings screen").toEqual([]);
 
-		expectHoverBand(component, "Add depth…");
-
-		component.handleInput(clickAt(rowIndex(component, "Depth 1") + 1));
-		expect(frameText(component)).toContain("Depth 1");
+		// And the schema half: a retired setting declares no UI at all, which is
+		// what keeps it off every tab in the first place.
+		expect(retired.filter(path => hasUi(path as SettingPath))).toEqual([]);
 	});
 
 	it("default effort: hover lights the add row, click opens the model picker", () => {
