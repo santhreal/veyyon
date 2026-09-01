@@ -218,7 +218,7 @@ describe("isValidJsonSchema", () => {
 	});
 	it("handles circular references", () => {
 		const schema: Record<string, unknown> = { type: "object", properties: {} };
-		schema.properties.self = schema;
+		(schema.properties as Record<string, unknown>).self = schema;
 		expect(isValidJsonSchema(schema)).toBe(true);
 	});
 });

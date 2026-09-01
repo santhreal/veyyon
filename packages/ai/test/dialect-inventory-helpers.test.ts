@@ -28,6 +28,7 @@ describe("renderToolInventory", () => {
 	it("handles tool without description", () => {
 		const tool = {
 			name: "noop",
+			description: "",
 			parameters: { type: "object" },
 		};
 		const result = renderToolInventory([tool], "deepseek/deepseek-chat");

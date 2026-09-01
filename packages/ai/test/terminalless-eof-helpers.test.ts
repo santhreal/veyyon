@@ -10,8 +10,8 @@ function thinkingBlock(thinking: string): { type: "thinking"; thinking: string }
 	return { type: "thinking", thinking };
 }
 
-function toolCallBlock(id: string, name: string): { type: "toolCall"; id: string; name: string; arguments: string } {
-	return { type: "toolCall", id, name, arguments: "{}" };
+function toolCallBlock(id: string, name: string): { type: "toolCall"; id: string; name: string; arguments: Readonly<Record<string, unknown>> } {
+	return { type: "toolCall", id, name, arguments: {} };
 }
 
 describe("stopReasonForTerminallessEof", () => {

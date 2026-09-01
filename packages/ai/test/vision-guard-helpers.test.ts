@@ -17,7 +17,7 @@ describe("NON_VISION_IMAGE_PLACEHOLDER", () => {
 
 describe("partitionVisionContent", () => {
 	const textBlock: TextContent = { type: "text", text: "hello" };
-	const imageBlock: ImageContent = { type: "image", source: { kind: "base64", mediaType: "image/png", data: "" } };
+	const imageBlock: ImageContent = { type: "image", data: "", mimeType: "image/png" };
 
 	it("partitions text and image blocks with vision support", () => {
 		const result = partitionVisionContent([textBlock, imageBlock], true);

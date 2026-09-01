@@ -14,16 +14,16 @@ describe("minimaxCodeUsageProvider", () => {
 		expect(minimaxCodeUsageProvider.id).toBe("minimax-code");
 	});
 	it("supports minimax-code with api_key", () => {
-		expect(minimaxCodeUsageProvider.supports(makeParams("minimax-code"))).toBe(true);
+	expect(minimaxCodeUsageProvider.supports?.(makeParams("minimax-code"))).toBe(true);
 	});
 	it("supports minimax-code-cn with api_key", () => {
-		expect(minimaxCodeUsageProvider.supports(makeParams("minimax-code-cn"))).toBe(true);
+	expect(minimaxCodeUsageProvider.supports?.(makeParams("minimax-code-cn"))).toBe(true);
 	});
 	it("does not support other providers", () => {
-		expect(minimaxCodeUsageProvider.supports(makeParams("anthropic"))).toBe(false);
+	expect(minimaxCodeUsageProvider.supports?.(makeParams("anthropic"))).toBe(false);
 	});
 	it("does not support non-api_key credentials", () => {
-		expect(minimaxCodeUsageProvider.supports(makeParams("minimax-code", "oauth"))).toBe(false);
+	expect(minimaxCodeUsageProvider.supports?.(makeParams("minimax-code", "oauth"))).toBe(false);
 	});
 	it("fetchUsage returns null for minimax-code", async () => {
 		const result = await minimaxCodeUsageProvider.fetchUsage(

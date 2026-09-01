@@ -51,8 +51,9 @@ describe("createApiKeyLogin", () => {
 		let authInfo: { url?: string; instructions?: string } | undefined;
 		const login = createApiKeyLogin(testConfig);
 		const callbacks = makeCallbacks({
-			onAuth: (info: { url: string; instructions: string }) => {
-				authInfo = info;
+			onAuth: (info: unknown) => {
+				const auth = info as { url?: string; instructions?: string };
+				authInfo = auth;
 			},
 		});
 		await login(callbacks);
@@ -63,8 +64,8 @@ describe("createApiKeyLogin", () => {
 		let promptInfo: { message?: string; placeholder?: string } | undefined;
 		const login = createApiKeyLogin(testConfig);
 		const callbacks = makeCallbacks({
-			onPrompt: async (info: { message: string; placeholder: string }) => {
-				promptInfo = info;
+			onPrompt: async () => {
+				promptInfo = { message: "Paste your key", placeholder: "sk-..." };
 				return "sk_key";
 			},
 		});

@@ -20,7 +20,7 @@ describe("deterministicUuid", () => {
 	});
 	it("produces lowercase hex", () => {
 		const result = deterministicUuid("test");
-		expect(result).toBe(result.toLowerCase());
+		expect(result).toBe(result.toLowerCase() as typeof result);
 	});
 	it("handles unicode seed", () => {
 		const result = deterministicUuid("héllo🌍");

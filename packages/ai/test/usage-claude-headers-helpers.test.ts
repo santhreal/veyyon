@@ -48,7 +48,7 @@ describe("parseClaudeRateLimitHeaders", () => {
 			1000,
 		);
 		expect(result).not.toBeNull();
-		expect(result!.limits[0]!.window.resetsAt).toBe(3600000);
+	expect(result!.limits[0]!.window!.resetsAt).toBe(3600000);
 	});
 	it("ignores reset of 0", () => {
 		const result = parseClaudeRateLimitHeaders({ "anthropic-ratelimit-unified-5h-reset": "0" }, 1000);
@@ -100,10 +100,10 @@ describe("parseClaudeRateLimitHeaders", () => {
 	});
 	it("window durationMs is 5h for 5h window", () => {
 		const result = parseClaudeRateLimitHeaders({ "anthropic-ratelimit-unified-5h-utilization": "0.5" }, 1000);
-		expect(result!.limits[0]!.window.durationMs).toBe(5 * 60 * 60 * 1000);
+	expect(result!.limits[0]!.window!.durationMs).toBe(5 * 60 * 60 * 1000);
 	});
 	it("window durationMs is 7d for 7d window", () => {
 		const result = parseClaudeRateLimitHeaders({ "anthropic-ratelimit-unified-7d-utilization": "0.5" }, 1000);
-		expect(result!.limits[0]!.window.durationMs).toBe(7 * 24 * 60 * 60 * 1000);
+	expect(result!.limits[0]!.window!.durationMs).toBe(7 * 24 * 60 * 60 * 1000);
 	});
 });

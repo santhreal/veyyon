@@ -37,7 +37,7 @@ describe("hasVisibleAssistantContent", () => {
 		expect(hasVisibleAssistantContent(msg([{ type: "text", text: "" }]))).toBe(false);
 	});
 	it("returns true for tool call", () => {
-		expect(hasVisibleAssistantContent(msg([{ type: "toolCall", id: "1", name: "read", arguments: "{}" }]))).toBe(
+		expect(hasVisibleAssistantContent(msg([{ type: "toolCall", id: "1", name: "read", arguments: {} }]))).toBe(
 			true,
 		);
 	});
@@ -69,7 +69,7 @@ describe("hasVisibleAssistantContent", () => {
 			hasVisibleAssistantContent(
 				msg([
 					{ type: "text", text: "" },
-					{ type: "toolCall", id: "1", name: "write", arguments: "{}" },
+				{ type: "toolCall", id: "1", name: "write", arguments: {} },
 				]),
 			),
 		).toBe(true);

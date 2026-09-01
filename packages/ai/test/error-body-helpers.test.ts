@@ -73,7 +73,7 @@ describe("redactProviderSecrets", () => {
 
 describe("providerErrorMessage", () => {
 	it("returns detail for non-JSON text", () => {
-		const body: ProviderErrorBody = { text: "plain error", detail: "plain error", bytesRead: 11, truncated: false };
+		const body: ProviderErrorBody = { text: "plain error", detail: "plain error", bytesRead: 11, truncated: false, declaredBytes: undefined };
 		expect(providerErrorMessage(body)).toBe("plain error");
 	});
 	it("extracts message from JSON with error.message", () => {
@@ -82,6 +82,7 @@ describe("providerErrorMessage", () => {
 			detail: "raw detail",
 			bytesRead: 40,
 			truncated: false,
+			declaredBytes: undefined,
 		};
 		expect(providerErrorMessage(body)).toBe("something failed");
 	});
@@ -91,6 +92,7 @@ describe("providerErrorMessage", () => {
 			detail: "raw detail",
 			bytesRead: 25,
 			truncated: false,
+			declaredBytes: undefined,
 		};
 		expect(providerErrorMessage(body)).toBe("string error");
 	});
@@ -100,6 +102,7 @@ describe("providerErrorMessage", () => {
 			detail: "raw detail",
 			bytesRead: 30,
 			truncated: false,
+			declaredBytes: undefined,
 		};
 		expect(providerErrorMessage(body)).toBe("top level message");
 	});
@@ -109,6 +112,7 @@ describe("providerErrorMessage", () => {
 			detail: "raw detail",
 			bytesRead: 25,
 			truncated: false,
+			declaredBytes: undefined,
 		};
 		expect(providerErrorMessage(body)).toBe("detail field");
 	});
@@ -118,6 +122,7 @@ describe("providerErrorMessage", () => {
 			detail: "raw detail",
 			bytesRead: 13,
 			truncated: false,
+			declaredBytes: undefined,
 		};
 		expect(providerErrorMessage(body)).toBe("raw detail");
 	});
@@ -127,6 +132,7 @@ describe("providerErrorMessage", () => {
 			detail: "raw detail",
 			bytesRead: 25,
 			truncated: false,
+			declaredBytes: undefined,
 		};
 		expect(providerErrorMessage(body)).toBe("raw detail");
 	});
@@ -136,6 +142,7 @@ describe("providerErrorMessage", () => {
 			detail: "raw detail",
 			bytesRead: 9,
 			truncated: false,
+			declaredBytes: undefined,
 		};
 		expect(providerErrorMessage(body)).toBe("raw detail");
 	});
@@ -145,6 +152,7 @@ describe("providerErrorMessage", () => {
 			detail: "raw detail",
 			bytesRead: 0,
 			truncated: false,
+			declaredBytes: undefined,
 		};
 		expect(providerErrorMessage(body)).toBe("raw detail");
 	});

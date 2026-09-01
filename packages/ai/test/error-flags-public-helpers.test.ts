@@ -132,7 +132,7 @@ describe("classifyMessage", () => {
 		expect(is(id, Flag.AuthFailed)).toBe(true);
 	});
 	it("stores errorId on message", () => {
-		const msg = { errorMessage: "usage limit exceeded" };
+	const msg: { errorMessage: string; errorId?: number } = { errorMessage: "usage limit exceeded" };
 		classifyMessage(msg);
 		expect(typeof msg.errorId).toBe("number");
 	});

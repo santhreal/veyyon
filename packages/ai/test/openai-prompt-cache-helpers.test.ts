@@ -111,7 +111,7 @@ describe("resolveOpenAIPromptCachePolicy", () => {
 	});
 	it("does not return 24h retention when model does not support it", () => {
 		const input: OpenAIPromptCachePolicyInput = {
-			model: makeModel({ id: "unknown-model-id", compat: { supportsLongPromptCacheRetention: false } }),
+		model: makeModel({ id: "unknown-model-id", compat: { supportsLongPromptCacheRetention: false } as never }),
 			promptCacheKey: "cache-key",
 			cacheRetention: "long",
 		};

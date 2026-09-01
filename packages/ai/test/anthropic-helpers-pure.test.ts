@@ -230,7 +230,7 @@ describe("dropAnthropicFastMode", () => {
 		expect((params as { speed?: unknown }).speed).toBeUndefined();
 	});
 	it("does nothing when speed not present", () => {
-		const params = {} as never;
+		const params = {} as Record<string, unknown>;
 		dropAnthropicFastMode(params);
 		expect(params).toEqual({});
 	});
@@ -243,13 +243,13 @@ describe("dropAnthropicStrictTools", () => {
 				{ name: "a", strict: true },
 				{ name: "b", strict: true },
 			],
-		} as never;
+		} as Record<string, unknown>;
 		dropAnthropicStrictTools(params);
-		expect((params.tools[0] as { strict?: unknown }).strict).toBeUndefined();
-		expect((params.tools[1] as { strict?: unknown }).strict).toBeUndefined();
+		expect(((params.tools as unknown[])[0] as { strict?: unknown }).strict).toBeUndefined();
+		expect(((params.tools as unknown[])[1] as { strict?: unknown }).strict).toBeUndefined();
 	});
 	it("does nothing when no tools", () => {
-		const params = {} as never;
+		const params = {} as Record<string, unknown>;
 		dropAnthropicStrictTools(params);
 		expect(params).toEqual({});
 	});

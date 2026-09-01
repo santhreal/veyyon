@@ -73,10 +73,10 @@ describe("normalizeEmptySchemas", () => {
 		expect(schema.properties.name).toBe(true);
 	});
 	it("replaces empty objects in anyOf array", () => {
-		const schema = { anyOf: [{}, { type: "string" }] };
+		const schema: Record<string, unknown> = { anyOf: [{}, { type: "string" }] };
 		normalizeEmptySchemas(schema);
-		expect(schema.anyOf[0]).toBe(true);
-		expect(schema.anyOf[1]).toEqual({ type: "string" });
+		expect((schema.anyOf as unknown[])[0]).toBe(true);
+		expect((schema.anyOf as unknown[])[1]).toEqual({ type: "string" });
 	});
 	it("does not replace non-empty objects", () => {
 		const schema = { type: "array", items: { type: "string" } };

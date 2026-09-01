@@ -50,31 +50,31 @@ describe("hasCopilotVisionInput", () => {
 		expect(hasCopilotVisionInput([])).toBe(false);
 	});
 	it("returns true for user message with image content", () => {
-		const messages: Message[] = [
-			{ role: "user", content: [{ type: "image", source: { kind: "base64", mediaType: "image/png", data: "" } }] },
-		];
+		const messages = [
+			{ role: "user", content: [{ type: "image", data: "", mimeType: "image/png" }] },
+		] as unknown as Message[];
 		expect(hasCopilotVisionInput(messages)).toBe(true);
 	});
 	it("returns false for user message with only text", () => {
-		const messages: Message[] = [{ role: "user", content: [{ type: "text", text: "hello" }] }];
+		const messages = [{ role: "user", content: [{ type: "text", text: "hello" }] }] as unknown as Message[];
 		expect(hasCopilotVisionInput(messages)).toBe(false);
 	});
 	it("returns true for toolResult message with image content", () => {
-		const messages: Message[] = [
+		const messages = [
 			{
 				role: "toolResult",
 				toolCallId: "1",
-				content: [{ type: "image", source: { kind: "base64", mediaType: "image/png", data: "" } }],
+				content: [{ type: "image", data: "", mimeType: "image/png" }],
 			},
-		];
+		] as unknown as Message[];
 		expect(hasCopilotVisionInput(messages)).toBe(true);
 	});
 	it("returns false for assistant message with image (not checked)", () => {
-		const messages: Message[] = [
+		const messages = [
 			{
 				role: "assistant",
-				content: [{ type: "image", source: { kind: "base64", mediaType: "image/png", data: "" } }],
-			} as Message,
+				content: [{ type: "image", data: "", mimeType: "image/png" }],
+			} as unknown as Message,
 		];
 		expect(hasCopilotVisionInput(messages)).toBe(false);
 	});

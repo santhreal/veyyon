@@ -19,7 +19,7 @@ describe("isAuthRetryableError", () => {
 	});
 	it("returns false for local evidence Error", () => {
 		const err = new Error("some error");
-		(err as { [x: string]: unknown })[AUTH_EVIDENCE_LOCAL] = true;
+		(err as unknown as { [x: string]: unknown })[AUTH_EVIDENCE_LOCAL] = true;
 		expect(isAuthRetryableError(err)).toBe(false);
 	});
 	it("returns true for 401 status", () => {

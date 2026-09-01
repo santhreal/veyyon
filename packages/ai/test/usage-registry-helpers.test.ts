@@ -63,7 +63,7 @@ describe("registerUsageProviders", () => {
 			fetchUsage: async () => null,
 			supports: () => false,
 		};
-		const testStrategy: CredentialRankingStrategy = { rankCredentials: () => [] };
+		const testStrategy: CredentialRankingStrategy = { findWindowLimits: () => ({}), windowDefaults: { primaryMs: 0, secondaryMs: 0 } };
 		registerUsageProviders({
 			providers: [testProvider],
 			rankingStrategies: [["test-provider-extra" as never, testStrategy]],

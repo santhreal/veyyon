@@ -28,7 +28,7 @@ describe("assistantTextBlocks", () => {
 				msg([
 					{ type: "thinking", thinking: "thoughts" },
 					{ type: "text", text: "response" },
-					{ type: "toolCall", id: "1", name: "read", arguments: "{}" },
+				{ type: "toolCall", id: "1", name: "read", arguments: {} },
 				]),
 			),
 		).toEqual(["response"]);

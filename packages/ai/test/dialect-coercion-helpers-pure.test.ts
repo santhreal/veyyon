@@ -77,8 +77,8 @@ describe("collectSchemaTypes", () => {
 		expect([...collectSchemaTypes("not a record")]).toEqual([]);
 	});
 	it("respects depth limit", () => {
-		const deep = { type: "string" };
-		let current = deep;
+		const deep: Record<string, unknown> = { type: "string" };
+		let current: Record<string, unknown> = deep;
 		for (let i = 0; i < 20; i++) {
 			current = { anyOf: [current] };
 		}

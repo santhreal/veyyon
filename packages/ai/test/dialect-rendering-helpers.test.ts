@@ -162,33 +162,33 @@ describe("messageContentText", () => {
 
 describe("assistantTranscriptParts", () => {
 	it("extracts text from simple message", () => {
-		const msg: AssistantMessage = {
+		const msg = {
 			role: "assistant",
 			content: [{ type: "text", text: "hello" }],
-		};
+		} as unknown as AssistantMessage;
 		const parts = assistantTranscriptParts(msg);
 		expect(parts.text).toBe("hello");
 		expect(parts.thinking).toBe("");
 		expect(parts.toolCalls).toEqual([]);
 	});
 	it("extracts thinking blocks", () => {
-		const msg: AssistantMessage = {
+		const msg = {
 			role: "assistant",
 			content: [
 				{ type: "thinking", thinking: "hmm" },
 				{ type: "thinking", thinking: "ah" },
 			],
-		};
+		} as unknown as AssistantMessage;
 		const parts = assistantTranscriptParts(msg);
 		expect(parts.thinking).toBe("hmm\nah");
 		expect(parts.text).toBe("");
 	});
 	it("extracts tool calls", () => {
-		const call: ToolCall = { name: "getWeather", arguments: { city: "NYC" }, id: "call_1" };
-		const msg: AssistantMessage = {
+		const call: ToolCall = { type: "toolCall", name: "getWeather", arguments: { city: "NYC" }, id: "call_1" };
+		const msg = {
 			role: "assistant",
 			content: [{ type: "toolCall", name: call.name, arguments: call.arguments, id: call.id }],
-		};
+		} as unknown as AssistantMessage;
 		const parts = assistantTranscriptParts(msg);
 		expect(parts.toolCalls).toHaveLength(1);
 		expect(parts.toolCalls[0]!.name).toBe("getWeather");
@@ -197,27 +197,27 @@ describe("assistantTranscriptParts", () => {
 
 describe("collectToolResultRun", () => {
 	it("collects consecutive tool result messages", () => {
-		const messages: Message[] = [
+		const messages = [
 			{ role: "toolResult", toolCallId: "1", toolName: "foo", content: "result1", isError: false },
 			{ role: "toolResult", toolCallId: "2", toolName: "bar", content: "result2", isError: false },
 			{ role: "user", content: "next" },
-		];
+		] as unknown as Message[];
 		const { results, next } = collectToolResultRun(messages, 0);
 		expect(results).toHaveLength(2);
 		expect(next).toBe(2);
 	});
 	it("returns empty for non-toolResult start", () => {
-		const messages: Message[] = [{ role: "user", content: "hello" }];
+		const messages = [{ role: "user", content: "hello" }] as unknown as Message[];
 		const { results, next } = collectToolResultRun(messages, 0);
 		expect(results).toEqual([]);
 		expect(next).toBe(0);
 	});
 	it("stops at first non-toolResult", () => {
-		const messages: Message[] = [
+		const messages = [
 			{ role: "toolResult", toolCallId: "1", toolName: "foo", content: "r1", isError: false },
 			{ role: "user", content: "break" },
 			{ role: "toolResult", toolCallId: "2", toolName: "bar", content: "r2", isError: false },
-		];
+		] as unknown as Message[];
 		const { results, next } = collectToolResultRun(messages, 0);
 		expect(results).toHaveLength(1);
 		expect(next).toBe(1);
@@ -226,13 +226,13 @@ describe("collectToolResultRun", () => {
 
 describe("renderToolResponseResults", () => {
 	it("renders single result", () => {
-		const result = renderToolResponseResults([{ name: "foo", text: "output", index: 0, isError: false }]);
+		const result = renderToolResponseResults([{ id: "1", name: "foo", text: "output", index: 0, isError: false }]);
 		expect(result).toBe(`${TOOL_RESPONSE_OPEN}\noutput\n${TOOL_RESPONSE_CLOSE}`);
 	});
 	it("renders multiple results joined with newline", () => {
 		const result = renderToolResponseResults([
-			{ name: "foo", text: "out1", index: 0, isError: false },
-			{ name: "bar", text: "out2", index: 1, isError: false },
+			{ id: "1", name: "foo", text: "out1", index: 0, isError: false },
+			{ id: "2", name: "bar", text: "out2", index: 1, isError: false },
 		]);
 		expect(result).toContain("out1");
 		expect(result).toContain("out2");
@@ -244,13 +244,13 @@ describe("renderToolResponseResults", () => {
 
 describe("renderFunctionResults", () => {
 	it("renders success result", () => {
-		const result = renderFunctionResults([{ name: "foo", text: "output", index: 0, isError: false }]);
+		const result = renderFunctionResults([{ id: "1", name: "foo", text: "output", index: 0, isError: false }]);
 		expect(result).toContain("<result>");
 		expect(result).toContain("<tool_name>foo</tool_name>");
 		expect(result).toContain("<stdout>output</stdout>");
 	});
 	it("renders error result", () => {
-		const result = renderFunctionResults([{ name: "foo", text: "error msg", index: 0, isError: true }]);
+		const result = renderFunctionResults([{ id: "1", name: "foo", text: "error msg", index: 0, isError: true }]);
 		expect(result).toContain("<error>");
 		expect(result).toContain("<stderr>error msg</stderr>");
 	});
@@ -258,19 +258,19 @@ describe("renderFunctionResults", () => {
 
 describe("renderInvoke", () => {
 	it("renders invoke with arguments", () => {
-		const call: ToolCall = { name: "getWeather", arguments: { city: "NYC" }, id: "1" };
+		const call: ToolCall = { type: "toolCall", name: "getWeather", arguments: { city: "NYC" }, id: "1" };
 		const result = renderInvoke(call, undefined);
 		expect(result).toContain('name="getWeather"');
 		expect(result).toContain('name="city"');
 		expect(result).toContain('"NYC"');
 	});
 	it("renders empty invoke for no arguments", () => {
-		const call: ToolCall = { name: "noop", arguments: {}, id: "1" };
+		const call: ToolCall = { type: "toolCall", name: "noop", arguments: {}, id: "1" };
 		const result = renderInvoke(call, undefined);
 		expect(result).toBe('<invoke name="noop"></invoke>');
 	});
 	it("escapes XML in name", () => {
-		const call: ToolCall = { name: "a<b", arguments: {}, id: "1" };
+		const call: ToolCall = { type: "toolCall", name: "a<b", arguments: {}, id: "1" };
 		const result = renderInvoke(call, undefined);
 		expect(result).toContain("a&lt;b");
 	});
@@ -279,8 +279,8 @@ describe("renderInvoke", () => {
 describe("renderInvokes", () => {
 	it("renders multiple invokes", () => {
 		const calls: ToolCall[] = [
-			{ name: "foo", arguments: { x: 1 }, id: "1" },
-			{ name: "bar", arguments: {}, id: "2" },
+			{ type: "toolCall", name: "foo", arguments: { x: 1 }, id: "1" },
+			{ type: "toolCall", name: "bar", arguments: {}, id: "2" },
 		];
 		const result = renderInvokes(calls, []);
 		expect(result).toContain('name="foo"');

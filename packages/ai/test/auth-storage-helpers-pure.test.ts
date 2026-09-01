@@ -49,7 +49,7 @@ describe("isAbortSignalOption", () => {
 		expect(isAbortSignalOption(undefined)).toBe(false);
 	});
 	it("returns false for null", () => {
-		expect(isAbortSignalOption(null)).toBe(false);
+		expect(isAbortSignalOption(null as unknown as undefined)).toBe(false);
 	});
 	it("returns false for plain object", () => {
 		expect(isAbortSignalOption({})).toBe(false);

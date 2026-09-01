@@ -107,11 +107,11 @@ describe("retriable", () => {
 
 describe("classifySignal", () => {
 	it("returns 0 for empty signal", () => {
-		const result = classifySignal({ text: "", status: undefined, api: undefined });
+		const result = classifySignal({ text: "", status: undefined, api: undefined, http2: undefined, code: undefined });
 		expect(result).toBe(0);
 	});
 	it("returns 0 for signal with no matching rules", () => {
-		const result = classifySignal({ text: "completely unknown error", status: undefined, api: undefined });
+		const result = classifySignal({ text: "completely unknown error", status: undefined, api: undefined, http2: undefined, code: undefined });
 		expect(result).toBeGreaterThanOrEqual(0);
 	});
 });

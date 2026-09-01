@@ -15,7 +15,7 @@ import {
 	repairOrphanResponsesToolCalls,
 	repairOrphanResponsesToolOutputs,
 } from "../src/providers/openai-responses-codec-helpers";
-import type { ResponseInput, ResponseReasoningItem } from "./openai-responses-wire-types";
+import type { ResponseInput, ResponseReasoningItem } from "../src/providers/openai-responses-wire";
 
 describe("encodeTextSignatureV1", () => {
 	it("encodes id without phase", () => {

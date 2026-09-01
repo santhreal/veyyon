@@ -18,7 +18,7 @@ describe("applyOpenAIGatewayRouting", () => {
 		const params: OpenAIGatewayRoutingParams = {};
 		const compat: OpenAIGatewayRoutingCompat = {
 			isOpenRouterHost: true,
-			openRouterRouting: "openrouter/auto",
+		openRouterRouting: { order: ["auto"] },
 		};
 		applyOpenAIGatewayRouting(params, compat);
 		expect(params.provider).toBe("openrouter/auto");
@@ -27,7 +27,7 @@ describe("applyOpenAIGatewayRouting", () => {
 		const params: OpenAIGatewayRoutingParams = {};
 		const compat: OpenAIGatewayRoutingCompat = {
 			isOpenRouterHost: false,
-			openRouterRouting: "openrouter/auto",
+		openRouterRouting: { order: ["auto"] },
 		};
 		applyOpenAIGatewayRouting(params, compat);
 		expect(params.provider).toBeUndefined();
@@ -43,6 +43,7 @@ describe("applyOpenAIGatewayRouting", () => {
 	it("sets gateway.only when Vercel gateway with only routing", () => {
 		const params: OpenAIGatewayRoutingParams = {};
 		const compat: OpenAIGatewayRoutingCompat = {
+			isOpenRouterHost: false,
 			isVercelGatewayHost: true,
 			vercelGatewayRouting: { only: ["openai"] },
 		};
@@ -52,6 +53,7 @@ describe("applyOpenAIGatewayRouting", () => {
 	it("sets gateway.order when Vercel gateway with order routing", () => {
 		const params: OpenAIGatewayRoutingParams = {};
 		const compat: OpenAIGatewayRoutingCompat = {
+			isOpenRouterHost: false,
 			isVercelGatewayHost: true,
 			vercelGatewayRouting: { order: ["openai", "anthropic"] },
 		};
@@ -61,6 +63,7 @@ describe("applyOpenAIGatewayRouting", () => {
 	it("sets both gateway.only and gateway.order when both provided", () => {
 		const params: OpenAIGatewayRoutingParams = {};
 		const compat: OpenAIGatewayRoutingCompat = {
+			isOpenRouterHost: false,
 			isVercelGatewayHost: true,
 			vercelGatewayRouting: { only: ["openai"], order: ["anthropic"] },
 		};
@@ -69,8 +72,8 @@ describe("applyOpenAIGatewayRouting", () => {
 		expect(params.providerOptions?.gateway?.order).toEqual(["anthropic"]);
 	});
 	it("does not set gateway when Vercel routing has neither only nor order", () => {
-		const params: OpenAIGatewayRoutingParams = {};
 		const compat: OpenAIGatewayRoutingCompat = {
+			isOpenRouterHost: false,
 			isVercelGatewayHost: true,
 			vercelGatewayRouting: {},
 		};
@@ -80,7 +83,8 @@ describe("applyOpenAIGatewayRouting", () => {
 	it("does not set gateway when not Vercel host", () => {
 		const params: OpenAIGatewayRoutingParams = {};
 		const compat: OpenAIGatewayRoutingCompat = {
-			isVercelGatewayHost: false,
+		isOpenRouterHost: false,
+		isVercelGatewayHost: false,
 			vercelGatewayRouting: { only: ["openai"] },
 		};
 		applyOpenAIGatewayRouting(params, compat);
@@ -210,7 +214,7 @@ describe("formatOpenAiError", () => {
 	});
 	it("body contains error object with message and type", async () => {
 		const response = formatOpenAiError(429, "rate_limit_error", "Too many requests");
-		const body = await response.json();
+		const body = (await response.json()) as { error: { message: string; type: string } };
 		expect(body.error.message).toBe("Too many requests");
 		expect(body.error.type).toBe("rate_limit_error");
 	});
