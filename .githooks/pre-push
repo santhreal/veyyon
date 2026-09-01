@@ -83,6 +83,7 @@ link_node_modules() {
 	mkdir -p "$dst/@veyyon"
 	for entry in "$src/@veyyon"/*; do
 		[ -e "$entry" ] || continue
+		name=${entry##*/}
 		target=$(readlink "$entry" 2>/dev/null || true)
 		# Every workspace member is linked relative to the repository root, whatever root it sits
 		# under: `../../packages/ai`, `../../hosts/terminal/engine`, `../../plugins/web`,
