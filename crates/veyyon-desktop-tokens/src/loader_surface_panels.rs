@@ -74,10 +74,6 @@ pub fn load_panels(path: &Path, scale: &ScaleTokens) -> Result<PanelsSurfaceToke
 		.get("min_height_px")
 		.and_then(Value::as_integer)
 		.unwrap_or(180) as f32;
-	let terminal_drawer_default_height_px = td
-		.get("default_height_px")
-		.and_then(Value::as_integer)
-		.unwrap_or(280) as f32;
 	let terminal_drawer_max_viewport_ratio = td
 		.get("max_viewport_ratio")
 		.and_then(Value::as_float)
@@ -194,7 +190,6 @@ pub fn load_panels(path: &Path, scale: &ScaleTokens) -> Result<PanelsSurfaceToke
 		right_panel_overlay_breakpoint_px,
 		right_panel_overlay_scrim_blur_px,
 		terminal_drawer_min_height_px,
-		terminal_drawer_default_height_px,
 		terminal_drawer_max_viewport_ratio,
 		tabs_height_px,
 		tabs_gap_px,

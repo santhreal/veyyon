@@ -164,7 +164,14 @@ fn the_drawer_docks_under_the_session_surface() {
 	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
 
 	let queue_width = tokens.surface.queue.width_default_px;
-	let drawer_height = tokens.surface.panels.terminal_drawer_default_height_px;
+	// The height belongs to the breakpoint row the window resolves, not to the
+	// panels group: the row is what the shed reads, and the panels default is
+	// what a resized drawer starts from.
+	let drawer_height = tokens
+		.surface
+		.breakpoints
+		.resolve(WIDTH as f32)
+		.terminal_drawer_height_px;
 
 	let build = |state: veyyon_desktop_surface::ShellState| {
 		let tokens = tokens.clone();

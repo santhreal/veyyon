@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use veyyon_desktop_tokens::{
-	MonoSizeStep, RadiusStep, SpacingStep, StrokeStep, TypeSizeStep, TypeWeightStep, load_from_dir,
+	DrawerPlacement, MonoSizeStep, RadiusStep, RightPanelMode, SpacingStep, StrokeStep,
+	TypeSizeStep, TypeWeightStep, load_from_dir,
 };
 
 #[test]
@@ -88,4 +89,48 @@ fn test_load_shipped_tokens() {
 	assert_eq!(tokens.surface.composer.padding_top, 14.0); // "s7" -> 14
 	assert_eq!(tokens.surface.composer.padding_bottom, 12.0); // "s6" -> 12
 	assert_eq!(tokens.surface.composer.padding_horizontal, 16.0); // "s8" -> 16
+
+	// §5.7 Breakpoint modes
+	assert_eq!(
+		tokens.surface.breakpoints.wide.right_panel_mode,
+		RightPanelMode::Inline { width_px: 540.0 }
+	);
+	assert_eq!(
+		tokens.surface.breakpoints.standard.right_panel_mode,
+		RightPanelMode::Inline { width_px: 360.0 }
+	);
+	assert_eq!(tokens.surface.breakpoints.compact.right_panel_mode, RightPanelMode::Overlay);
+	assert_eq!(tokens.surface.breakpoints.collapsed.right_panel_mode, RightPanelMode::Overlay);
+
+	// §5.7 row 4: the collapsed width is the one that overlays the drawer,
+	// because at 800px the transcript has no 180px to give it.
+	assert_eq!(
+		[
+			tokens.surface.breakpoints.wide.terminal_drawer_placement,
+			tokens.surface.breakpoints.standard.terminal_drawer_placement,
+			tokens.surface.breakpoints.compact.terminal_drawer_placement,
+			tokens.surface.breakpoints.collapsed.terminal_drawer_placement,
+		],
+		[
+			DrawerPlacement::Row,
+			DrawerPlacement::Row,
+			DrawerPlacement::Row,
+			DrawerPlacement::Overlay,
+		]
+	);
+
+	// Breakpoint resolution across viewport thresholds
+	let bp = &tokens.surface.breakpoints;
+	assert_eq!(bp.resolve(1920.0).min_width_px, 1440.0);
+	assert_eq!(bp.resolve(1440.0).min_width_px, 1440.0);
+	assert_eq!(bp.resolve(1439.0).min_width_px, 1180.0);
+	assert_eq!(bp.resolve(1180.0).min_width_px, 1180.0);
+	assert_eq!(bp.resolve(1179.0).min_width_px, 980.0);
+	assert_eq!(bp.resolve(980.0).min_width_px, 980.0);
+	assert_eq!(bp.resolve(979.0).min_width_px, 800.0);
+	assert_eq!(bp.resolve(800.0).min_width_px, 800.0);
+	assert_eq!(bp.resolve(799.0).min_width_px, 800.0);
+	assert_eq!(bp.resolve(0.0).min_width_px, 800.0);
+	assert_eq!(bp.resolve(-50.0).min_width_px, 800.0);
+	assert_eq!(bp.resolve(f32::NAN).min_width_px, 800.0);
 }

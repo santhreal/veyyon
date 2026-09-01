@@ -11,27 +11,24 @@
 //! literal, so a density change is a token edit and the hot-reload loop shows
 //! it without a rebuild.
 
-use veyyon_desktop_kit::{
-	Badge as BadgeChip, ColorRole, RadiusStep, SpacingStep, TextRamp, TextWeight, TokenSet,
-};
+use veyyon_desktop_kit::{ColorRole, TokenSet};
 use veyyon_desktop_tokens::QueueSurfaceTokens;
-use veyyon_gpui::{
-	Context, Div, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
-	Styled, div, px,
-};
+use veyyon_gpui::{Context, IntoElement, ParentElement, Styled, div, px};
+
+mod rows;
 
 use crate::{
 	ShellView,
-	intent::Intent,
 	model::{Row, Section},
+	queue::rows::{card_row, line_row, more_row, section_header},
 };
 
-/// How many of a section's rows the rail draws.
+/// How many of a section's rows the rail pages in.
 ///
 /// `Parked` is paged because it is unbounded — a queue running for a week holds
 /// more parked sessions than a rail has height, and the rest are reached by the
-/// page control rather than by scrolling past them. Every other section is
-/// drawn whole.
+/// page control rather than by scrolling past them. Every other section offers
+/// all of its rows to the height budget below.
 pub fn visible_rows(section: Section, count: usize, geometry: &QueueSurfaceTokens) -> usize {
 	if section == Section::Parked {
 		geometry.parked_initial_page_size.min(count)
@@ -40,10 +37,102 @@ pub fn visible_rows(section: Section, count: usize, geometry: &QueueSurfaceToken
 	}
 }
 
-/// Builds the queue rail.
+/// How many rows of each section the rail has the height to draw, and how many
+/// rows it therefore does not draw at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RailFill {
+	/// Rows drawn per section, index-aligned with the sections given.
+	pub drawn:  Vec<usize>,
+	/// Rows not drawn, from paging and from the height together.
+	pub hidden: usize,
+}
+
+/// Fits the sections into the rail's height.
+///
+/// The rail cannot scroll — this fork exposes no scroll on a plain container —
+/// so a rail holding more rows than it has height must stop drawing rows rather
+/// than lay them out past the window's lower edge, where they are painted
+/// clipped and still answer a click nobody can aim. The remainder is stated in
+/// one row instead, and that row's own height is taken out of the budget before
+/// any section is fitted.
+#[must_use]
+pub fn rail_fill(
+	sections: &[(Section, Vec<Row>)],
+	height_px: f32,
+	geometry: &QueueSurfaceTokens,
+) -> RailFill {
+	let total: usize = sections.iter().map(|(_, rows)| rows.len()).sum();
+	if !height_px.is_finite() || height_px <= 0.0 {
+		// A height nobody can measure is no height to draw in.
+		return RailFill { drawn: vec![0; sections.len()], hidden: total };
+	}
+
+	let paged: Vec<usize> = sections
+		.iter()
+		.map(|(section, rows)| visible_rows(*section, rows.len(), geometry))
+		.collect();
+	let row_height = |section: Section| {
+		if section.draws_cards() {
+			geometry.card_px
+		} else {
+			geometry.line_px
+		}
+	};
+
+	let mut budget = height_px - geometry.content_inset * 2.0;
+	let wanted: f32 = sections
+		.iter()
+		.zip(&paged)
+		.filter(|((_, rows), _)| !rows.is_empty())
+		.map(|((section, _), count)| {
+			geometry.section_header_px + row_height(*section) * *count as f32
+		})
+		.sum();
+	let paged_out: usize = paged
+		.iter()
+		.zip(sections)
+		.map(|(count, (_, rows))| rows.len() - count)
+		.sum();
+	if wanted > budget || paged_out > 0 {
+		budget -= geometry.line_px;
+	}
+
+	let mut drawn = Vec::with_capacity(sections.len());
+	for ((section, rows), offered) in sections.iter().zip(&paged) {
+		if rows.is_empty() {
+			drawn.push(0);
+			continue;
+		}
+		let each = row_height(*section);
+		// A header with no row under it states a section the rail is not
+		// showing, which is chrome for nothing.
+		if budget < geometry.section_header_px + each {
+			drawn.push(0);
+			continue;
+		}
+		budget -= geometry.section_header_px;
+		let mut count = 0;
+		while count < *offered && budget >= each {
+			budget -= each;
+			count += 1;
+		}
+		drawn.push(count);
+	}
+
+	let shown: usize = drawn.iter().sum();
+	RailFill { drawn, hidden: total - shown }
+}
+
+/// Builds the queue rail at the width and height the shed allots it.
+///
+/// Neither measure is the rail's own: §5.7 sheds the rail from 256 to 208 and
+/// then to nothing as the window narrows, and the height is the columns row's,
+/// which is what decides how many rows there is room to answer a click on.
 pub fn queue_rail(
 	sections: &[(Section, Vec<Row>)],
 	current: u64,
+	width: f32,
+	height: f32,
 	geometry: &QueueSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
@@ -52,8 +141,7 @@ pub fn queue_rail(
 		.flex()
 		.flex_col()
 		.h_full()
-		.w(px(geometry.width_default_px))
-		.min_w(px(geometry.width_min_px))
+		.w(px(width))
 		.flex_shrink_0()
 		.bg(tokens.color(ColorRole::Rail))
 		.border_r(px(geometry.outer_edge_stroke))
@@ -62,17 +150,18 @@ pub fn queue_rail(
 		.pb(px(geometry.content_inset))
 		.overflow_hidden();
 
-	for (section, rows) in sections {
-		// A section with no rows draws nothing at all. An empty header is a
-		// line of chrome that states only that there is nothing to state.
-		if rows.is_empty() {
+	let fill = rail_fill(sections, height, geometry);
+
+	for ((section, rows), drawn) in sections.iter().zip(&fill.drawn) {
+		// A section with no drawn row draws nothing at all, header included: an
+		// empty header is a line of chrome that states only that there is
+		// nothing to state.
+		if *drawn == 0 {
 			continue;
 		}
 		rail = rail.child(section_header(*section, rows.len(), geometry, tokens));
 
-		let visible = visible_rows(*section, rows.len(), geometry);
-
-		for row in rows.iter().take(visible) {
+		for row in rows.iter().take(*drawn) {
 			let selected = row.id == current;
 			rail = if section.draws_cards() {
 				rail.child(card_row(row, selected, geometry, tokens, cx))
@@ -80,242 +169,13 @@ pub fn queue_rail(
 				rail.child(line_row(row, selected, geometry, tokens, cx))
 			};
 		}
+	}
 
-		// `saturating_sub` rather than a subtraction: `visible` is already
-		// clamped to the row count, but an underflow here would be a panic in
-		// the render path.
-		let hidden = rows.len().saturating_sub(visible);
-		if hidden > 0 {
-			rail = rail.child(more_row(hidden, geometry, tokens));
-		}
+	// One row states everything the rail is not showing, whether it was paged
+	// out or ran out of height.
+	if fill.hidden > 0 {
+		rail = rail.child(more_row(fill.hidden, geometry, tokens));
 	}
 
 	rail
-}
-
-/// A section header: the label, and the number of rows under it.
-fn section_header(
-	section: Section,
-	count: usize,
-	geometry: &QueueSurfaceTokens,
-	tokens: &TokenSet,
-) -> Div {
-	div()
-		.h(px(geometry.section_header_px))
-		.px(px(geometry.content_inset))
-		.flex()
-		.flex_row()
-		.items_center()
-		.gap(tokens.spacing(SpacingStep::S2))
-		.child(
-			div()
-				.text_size(tokens.font_size(TextRamp::Micro))
-				.line_height(tokens.line_height(TextRamp::Micro))
-				.font_weight(tokens.font_weight(TextWeight::Medium))
-				.text_color(tokens.color(ColorRole::Muted))
-				.child(section.label().to_owned()),
-		)
-		.child(
-			div()
-				.text_size(tokens.font_size(TextRamp::Micro))
-				.line_height(tokens.line_height(TextRamp::Micro))
-				.text_color(tokens.color(ColorRole::Placeholder))
-				.child(count.to_string()),
-		)
-}
-
-/// A card row: badge, elapsed time, title and subtitle.
-fn card_row(
-	row: &Row,
-	selected: bool,
-	geometry: &QueueSurfaceTokens,
-	tokens: &TokenSet,
-	cx: &Context<ShellView>,
-) -> impl IntoElement {
-	let ground = if selected {
-		tokens.row_selected()
-	} else {
-		tokens.transparent()
-	};
-
-	let mut header = div()
-		.h(px(geometry.card_badge_height))
-		.flex()
-		.flex_row()
-		.items_center()
-		.gap(tokens.spacing(SpacingStep::S2))
-		.child(
-			div().flex_shrink_0().children(
-				row.badge
-					.map(|badge| BadgeChip::new(badge.label(), badge.tint())),
-			),
-		);
-
-	if let Some(meta) = &row.meta {
-		header = header.child(
-			div()
-				.flex_1()
-				.min_w_0()
-				.overflow_hidden()
-				.whitespace_nowrap()
-				.truncate()
-				.text_right()
-				.text_size(tokens.font_size(TextRamp::Micro))
-				.line_height(tokens.line_height(TextRamp::Micro))
-				.text_color(tokens.color(ColorRole::Muted))
-				.child(meta.clone()),
-		);
-	}
-
-	let id = row.id;
-	let hover = tokens.row_hover();
-
-	div()
-		// The whole row is the target, not the title inside it. A hit area
-		// smaller than the row is the defect an operator experiences as the
-		// click that did nothing.
-		.id(("queue-card", id as usize))
-		.on_click(cx.listener(move |view, _event, _window, cx| {
-			view.dispatch(Intent::SelectSession(id));
-			cx.notify();
-		}))
-		.hover(move |style| style.bg(hover))
-		.h(px(geometry.card_px))
-		.mx(px(geometry.row_inset))
-		.pt(px(geometry.card_padding_top))
-		.pb(px(geometry.card_padding_bottom))
-		.px(px(geometry.card_padding_horizontal))
-		.rounded(tokens.radius(RadiusStep::Md))
-		.bg(ground)
-		.flex()
-		.flex_col()
-		.gap(px(geometry.card_header_gap))
-		.overflow_hidden()
-		.child(header)
-		.child(
-			div()
-				.flex()
-				.flex_col()
-				.gap(px(geometry.card_body_gap))
-				.child(
-					div()
-						.h(px(geometry.card_title_height))
-						.w_full()
-						.min_w_0()
-						.overflow_hidden()
-						.whitespace_nowrap()
-						.truncate()
-						.text_size(tokens.font_size(TextRamp::Body))
-						.line_height(tokens.line_height(TextRamp::Body))
-						.font_weight(tokens.font_weight(TextWeight::Medium))
-						.text_color(tokens.color(ColorRole::Foreground))
-						.child(row.title.clone()),
-				)
-				.child(
-					div()
-						.h(px(geometry.card_subtitle_height))
-						.w_full()
-						.min_w_0()
-						.overflow_hidden()
-						.whitespace_nowrap()
-						.truncate()
-						.text_size(tokens.font_size(TextRamp::Small))
-						.line_height(tokens.line_height(TextRamp::Small))
-						.text_color(tokens.color(ColorRole::Secondary))
-						.child(row.subtitle.clone()),
-				),
-		)
-}
-
-/// A line row: a title, and the badge reduced to a dot of its tint.
-fn line_row(
-	row: &Row,
-	selected: bool,
-	geometry: &QueueSurfaceTokens,
-	tokens: &TokenSet,
-	cx: &Context<ShellView>,
-) -> impl IntoElement {
-	let dot_size = tokens.spacing(SpacingStep::S2);
-	let id = row.id;
-	let hover = tokens.row_hover();
-	let ground = if selected {
-		tokens.row_selected()
-	} else {
-		tokens.transparent()
-	};
-	let mut line = div()
-		.id(("queue-line", id as usize))
-		.on_click(cx.listener(move |view, _event, _window, cx| {
-			view.dispatch(Intent::SelectSession(id));
-			cx.notify();
-		}))
-		.hover(move |style| style.bg(hover))
-		.h(px(geometry.line_px))
-		.mx(px(geometry.row_inset))
-		.px(px(geometry.card_padding_horizontal))
-		.rounded(tokens.radius(RadiusStep::Sm))
-		.bg(ground)
-		.flex()
-		.flex_row()
-		.items_center()
-		.gap(tokens.spacing(SpacingStep::S2))
-		.overflow_hidden();
-
-	// A line row has no space for a badge, so the badge's tint becomes a dot.
-	// The colour still carries the state; only the label is dropped.
-	//
-	// The slot is reserved whether or not there is a badge, because a dot that
-	// appears only on some rows indents only those titles, and a ragged left
-	// edge down the rail reads as breakage rather than as state.
-	let dot = row
-		.badge
-		.map_or_else(|| tokens.transparent(), |badge| tokens.tint(badge.tint()).fill);
-	line = line.child(
-		div()
-			.flex_shrink_0()
-			.w(dot_size)
-			.h(dot_size)
-			.rounded_full()
-			.bg(dot),
-	);
-
-	line = line.child(
-		div()
-			.flex_1()
-			.min_w_0()
-			.overflow_hidden()
-			.whitespace_nowrap()
-			.truncate()
-			.text_size(tokens.font_size(TextRamp::Small))
-			.line_height(tokens.line_height(TextRamp::Small))
-			.text_color(tokens.color(ColorRole::Secondary))
-			.child(row.title.clone()),
-	);
-
-	if let Some(meta) = &row.meta {
-		line = line.child(
-			div()
-				.flex_shrink_0()
-				.text_size(tokens.font_size(TextRamp::Micro))
-				.line_height(tokens.line_height(TextRamp::Micro))
-				.text_color(tokens.color(ColorRole::Muted))
-				.child(meta.clone()),
-		);
-	}
-
-	line
-}
-
-/// The row that states how many rows a section is not showing.
-fn more_row(hidden: usize, geometry: &QueueSurfaceTokens, tokens: &TokenSet) -> Div {
-	div()
-		.h(px(geometry.line_px))
-		.mx(px(geometry.row_inset))
-		.px(px(geometry.card_padding_horizontal))
-		.flex()
-		.items_center()
-		.text_size(tokens.font_size(TextRamp::Micro))
-		.line_height(tokens.line_height(TextRamp::Micro))
-		.text_color(tokens.color(ColorRole::Muted))
-		.child(format!("{hidden} more"))
 }

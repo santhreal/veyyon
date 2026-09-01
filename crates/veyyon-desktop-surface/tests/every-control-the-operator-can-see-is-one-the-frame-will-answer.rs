@@ -11,6 +11,11 @@
 //! compare that set against the controls the state implies, counted from the
 //! state and the tokens rather than from a number written here.
 //!
+//! `reachable` closes the other half: a control laid out past the window's edge
+//! is registered, is hit-tested, and cannot be clicked. That is how a rail with
+//! more rows than height fails — flex lays the overflow out below the lower
+//! edge, the frame paints it clipped, and the count still matches.
+//!
 //! The class this closes is "a control was drawn but not wired". It does not
 //! catch a control wired to the wrong intent — that is the state-side sweep in
 //! `an-interaction-changes-the-state-and-reaches-the-host.rs` — and it does not
@@ -24,7 +29,7 @@ use veyyon_desktop_scene::headless::{
 	Captured, RenderOptions, headless_context, render_view_captured,
 };
 use veyyon_desktop_surface::{
-	Intent, ShellState, ShellView, fixture, install_tokens, queue::visible_rows,
+	Intent, ShellState, ShellView, fixture, install_tokens, queue::rail_fill,
 };
 use veyyon_gpui::{App, AppContext, Bounds, Pixels};
 
@@ -61,15 +66,17 @@ fn expected_controls(state: &ShellState) -> usize {
 	let queue = &tokens.surface.queue;
 	let cards = &tokens.surface.attached_cards;
 
-	// Every drawn queue row is a way to open a session.
-	let rows: usize = state
-		.sections
+	// Every drawn queue row is a way to open a session, and the rail draws only
+	// the rows the columns row has height for: it cannot scroll, so a row laid
+	// out past the window's lower edge would be painted clipped and still
+	// answer a click nobody can aim. No notice is shown here, so the chrome
+	// above the columns row is the titlebar alone.
+	let columns_px = HEIGHT as f32 - tokens.surface.shell.titlebar_height_px;
+	let rows: usize = rail_fill(&state.sections, columns_px, queue)
+		.drawn
 		.iter()
-		.map(|(section, rows)| visible_rows(*section, rows.len(), queue))
 		.sum();
-
-	// The panel is drawn only when it has a tree, and its tabs are its only
-	// controls.
+	// A tab is a control only while the panel it sits in is present.
 	let tabs = if state.tree.is_empty() {
 		0
 	} else {

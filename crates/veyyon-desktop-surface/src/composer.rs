@@ -11,7 +11,8 @@
 //! than that belongs in the transcript, where it can be read at leisure.
 
 use veyyon_desktop_kit::{
-	Badge as BadgeChip, ColorRole, RadiusStep, SpacingStep, TextRamp, TextWeight, TokenSet,
+	Badge as BadgeChip, ColorRole, Icon, IconName, IconSize, RadiusStep, SpacingStep, TextRamp,
+	TextWeight, TokenSet,
 };
 use veyyon_desktop_tokens::ComposerSurfaceTokens;
 use veyyon_gpui::{
@@ -24,6 +25,8 @@ use crate::{ShellView, intent::Intent, model::Badge};
 /// Builds the composer.
 pub fn composer(
 	composed: &str,
+	width: f32,
+	labels: bool,
 	geometry: &ComposerSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
@@ -47,8 +50,7 @@ pub fn composer(
 
 	div().flex().flex_row().justify_center().w_full().child(
 		div()
-			.w_full()
-			.max_w(px(geometry.max_width_px))
+			.w(px(width))
 			.min_h(px(geometry.rest_height_px))
 			.max_h(px(geometry.growth_cap_px))
 			.bg(ground)
@@ -81,21 +83,28 @@ pub fn composer(
 					.text_color(tokens.color(ink))
 					.child(text.to_owned()),
 			)
-			.child(footer(composed, geometry, tokens, cx)),
+			.child(footer(composed, labels, geometry, tokens, cx)),
 	)
 }
 
 /// The composer's footer: what the next send will use, and the send itself.
 fn footer(
 	composed: &str,
+	labels: bool,
 	geometry: &ComposerSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> Div {
 	// The footer states the settings that change what a send does, capped at
 	// the token's control count so a narrow window sheds the least important
-	// rather than wrapping to a second row.
-	let controls = ["claude-sonnet-4-6", "Plan mode", "3 files"];
+	// rather than wrapping to a second row. Below the label breakpoint each
+	// control is its icon alone: the row keeps every control instead of
+	// dropping the ones that no longer fit (§5.7).
+	let controls = [
+		(IconName::Settings, "claude-sonnet-4-6"),
+		(IconName::Edit, "Plan mode"),
+		(IconName::File, "3 files"),
+	];
 
 	let mut row = div()
 		.w_full()
@@ -105,15 +114,21 @@ fn footer(
 		.gap(tokens.spacing(SpacingStep::S3))
 		.overflow_hidden();
 
-	for control in controls.iter().take(geometry.footer_max_controls) {
-		row = row.child(
+	for (icon, control) in controls.iter().take(geometry.footer_max_controls) {
+		row = row.child(if labels {
 			div()
 				.flex_shrink_0()
 				.text_size(tokens.font_size(TextRamp::Micro))
 				.line_height(tokens.line_height(TextRamp::Micro))
 				.text_color(tokens.color(ColorRole::Muted))
-				.child((*control).to_owned()),
-		);
+				.child((*control).to_owned())
+		} else {
+			div().flex_shrink_0().child(
+				Icon::new(*icon)
+					.size(IconSize::Size12)
+					.color(tokens.color(ColorRole::Muted)),
+			)
+		});
 	}
 
 	// An empty composer has nothing to send, and a send control that looks
@@ -151,13 +166,14 @@ fn footer(
 /// Builds the run bar: one line stating what the session is doing.
 pub fn run_bar(
 	status: Option<(Badge, String)>,
+	width: f32,
+	labels: bool,
 	geometry: &ComposerSurfaceTokens,
 	tokens: &TokenSet,
 ) -> impl IntoElement {
 	let mut bar = div()
 		.h(px(geometry.run_bar_height_px))
-		.w_full()
-		.max_w(px(geometry.max_width_px))
+		.w(px(width))
 		.flex()
 		.flex_row()
 		.items_center()
@@ -183,14 +199,20 @@ pub fn run_bar(
 					.text_color(tokens.color(ColorRole::Secondary))
 					.child(line),
 			)
-			.child(
+			.child(if labels {
 				div()
 					.flex_shrink_0()
 					.text_size(px(geometry.run_bar_label_size.size))
 					.line_height(px(geometry.run_bar_label_size.line_height))
 					.text_color(tokens.color(ColorRole::Muted))
-					.child("Stop"),
-			);
+					.child("Stop")
+			} else {
+				div().flex_shrink_0().child(
+					Icon::new(IconName::Stop)
+						.size(IconSize::Size12)
+						.color(tokens.color(ColorRole::Muted)),
+				)
+			});
 	}
 
 	div().flex().flex_row().justify_center().w_full().child(bar)

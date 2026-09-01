@@ -121,6 +121,7 @@ pub struct TokenSet {
 	row_hover:    Hsla,
 	row_selected: Hsla,
 	row_active:   Hsla,
+	scrim:        Hsla,
 	scale:        ScaleTokens,
 	elevation:    Option<ElevationTokens>,
 }
@@ -160,12 +161,19 @@ impl TokenSet {
 		row_selected.a = 0.70;
 		let mut row_active = hairline;
 		row_active.a = 0.80;
+		// An overlay's scrim is the window's own ground at partial opacity, so
+		// what it covers stays perceptible as shape without staying readable as
+		// text. A separate opaque role would hide the surface instead, and an
+		// operator cannot tell a covered panel from a closed one.
+		let mut scrim = colors[ColorRole::Ground as usize];
+		scrim.a = 0.60;
 
 		Ok(Self {
 			colors,
 			row_hover,
 			row_selected,
 			row_active,
+			scrim,
 			scale: tokens.scale.clone(),
 			elevation: Some(tokens.elevation.clone()),
 		})
@@ -205,6 +213,12 @@ impl TokenSet {
 	#[must_use]
 	pub const fn row_active(&self) -> Hsla {
 		self.row_active
+	}
+
+	/// Resolves the background an overlay draws over what it covers.
+	#[must_use]
+	pub const fn scrim(&self) -> Hsla {
+		self.scrim
 	}
 
 	/// Resolves tint pair for a semantic tint role.

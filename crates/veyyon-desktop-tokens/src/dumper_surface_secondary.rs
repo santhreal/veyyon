@@ -27,7 +27,6 @@ overlay_scrim_blur_px = {}
 
 [terminal_drawer]
 min_height_px = {}
-default_height_px = {}
 max_viewport_ratio = {:.2}
 
 [tabs]
@@ -60,7 +59,6 @@ gutter_width_px = {}
 		p.right_panel_overlay_breakpoint_px as i64,
 		p.right_panel_overlay_scrim_blur_px as i64,
 		p.terminal_drawer_min_height_px as i64,
-		p.terminal_drawer_default_height_px as i64,
 		p.terminal_drawer_max_viewport_ratio,
 		p.tabs_height_px as i64,
 		p.tabs_gap_px as i64,
@@ -154,10 +152,13 @@ description_size = "{}"
 fn format_bp(out: &mut String, name: &str, c: &BreakpointConfig) {
 	let _ = write!(
 		out,
-		"[breakpoint.{name}]\nmin_width_px = {}\nqueue_width_px = {}\nright_panel_mode = \"{}\"\nterminal_drawer_height_px = {}\ncomposer_footer_labels = {}\nrun_bar_labels = {}\n\n",
+		"[breakpoint.{name}]\nmin_width_px = {}\nqueue_width_px = {}\nright_panel_mode = \
+		 \"{}\"\nterminal_drawer_placement = \"{}\"\nterminal_drawer_height_px = \
+		 {}\ncomposer_footer_labels = {}\nrun_bar_labels = {}\n\n",
 		c.min_width_px as i64,
 		c.queue_width_px as i64,
 		c.right_panel_mode,
+		c.terminal_drawer_placement,
 		c.terminal_drawer_height_px as i64,
 		c.composer_footer_labels,
 		c.run_bar_labels

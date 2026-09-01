@@ -18,16 +18,16 @@ use veyyon_gpui::{
 	StatefulInteractiveElement, Styled, Window, div, px,
 };
 
+mod session;
+
 use crate::{
-	cards::card_stack,
-	composer::{composer, opening_line, run_bar},
-	drawer::terminal_drawer,
 	intent::{Intent, Intents},
+	layout::{LabelState, RightPanelPlacement, ShedInput, shell_widths},
 	model::ShellState,
 	panel::right_panel,
 	queue::queue_rail,
+	shell::session::session_surface,
 	tokens::InstalledTokens,
-	transcript::transcript_column,
 };
 
 /// The window's root view.
@@ -36,12 +36,22 @@ pub struct ShellView {
 	state:     ShellState,
 	notice:    Option<String>,
 	intents:   Intents,
+	/// What the last frame settled the composer's labels on. Carried because
+	/// the decision has hysteresis, so it is a function of the previous frame
+	/// as well as of this width (§5.4).
+	labels:    LabelState,
 }
 
 impl ShellView {
 	/// Builds the root view from an installed token set and a state to draw.
-	pub const fn new(installed: InstalledTokens, state: ShellState) -> Self {
-		Self { installed, state, notice: None, intents: Intents::new() }
+	pub fn new(installed: InstalledTokens, state: ShellState) -> Self {
+		Self {
+			installed,
+			state,
+			notice: None,
+			intents: Intents::new(),
+			labels: LabelState::default(),
+		}
 	}
 
 	/// Replaces the token set, after a reload applied a new one.
@@ -90,6 +100,32 @@ impl ShellView {
 
 impl Render for ShellView {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		// The shed runs first: it settles the label state this frame draws
+		// with, and settling it needs `self` mutably, which the token borrows
+		// below would prevent.
+		//
+		// The session column's horizontal inset is what separates the window
+		// from the composer's measure, so the shed is told the same value the
+		// column applies rather than deriving its own.
+		let chrome_px = self.installed.surface.shell.titlebar_height_px
+			+ if self.notice.is_some() {
+				attention_strip_height(&self.installed.set)
+			} else {
+				0.0
+			};
+		let widths = shell_widths(
+			ShedInput {
+				viewport_px:        f32::from(window.viewport_size().width),
+				viewport_height_px: f32::from(window.viewport_size().height),
+				chrome_height_px:   chrome_px,
+				gutter_px:          f32::from(self.installed.set.spacing(SpacingStep::S4)),
+				panel_open:         !self.state.tree.is_empty(),
+				labels:             self.labels,
+			},
+			&self.installed.surface,
+		);
+		self.labels = widths.labels;
+
 		let tokens = &self.installed.set;
 		let surface = &self.installed.surface;
 
@@ -106,44 +142,61 @@ impl Render for ShellView {
 			root = root.child(attention_strip(notice, tokens));
 		}
 
-		root.child(
-			div()
-				.flex()
-				.flex_row()
-				.w_full()
-				.flex_1()
-				.overflow_hidden()
-				.child(queue_rail(
-					&self.state.sections,
-					self.state.current_id,
-					&surface.queue,
-					tokens,
-					cx,
-				))
-				.child(session_surface(&self.state, &self.installed, cx))
-				.children((!self.state.tree.is_empty()).then(|| {
-					// The panel's default width is what it takes when there is
-					// room. On a narrow window it takes a share of the viewport
-					// instead, because a fixed panel plus a fixed queue leaves
-					// the transcript with whatever is left, and what is left is
-					// the surface being read.
-					let viewport = f32::from(window.viewport_size().width);
-					let panels = &surface.panels;
-					let width = panels
-						.right_panel_default_width_px
-						.min(viewport * panels.right_panel_max_viewport_ratio)
-						.max(panels.right_panel_min_width_px);
-					right_panel(
-						&self.state.tabs,
-						self.state.active_tab,
-						&self.state.tree,
-						width,
-						panels,
-						tokens,
-						cx,
-					)
-				})),
-		)
+		let panels = &surface.panels;
+
+		// The columns row is the overlay's positioning parent, so an overlaid
+		// right panel covers the queue and the transcript and leaves the
+		// titlebar and the attention strip reachable above it.
+		let mut columns = div()
+			.relative()
+			.flex()
+			.flex_row()
+			.w_full()
+			.flex_1()
+			.overflow_hidden();
+
+		// A collapsed rail is absent, not zero-width: a zero-width column still
+		// draws its right border, leaving a hairline against the window edge
+		// with nothing behind it.
+		if let Some(queue_px) = widths.queue_px {
+			columns = columns.child(queue_rail(
+				&self.state.sections,
+				self.state.current_id,
+				queue_px,
+				widths.columns_px,
+				&surface.queue,
+				tokens,
+				cx,
+			));
+		}
+
+		columns = columns.child(session_surface(&self.state, &widths, &self.installed, cx));
+
+		let tree = &self.state.tree;
+		let tabs = &self.state.tabs;
+		let active_tab = self.state.active_tab;
+		columns = match widths.right_panel {
+			RightPanelPlacement::Absent => columns,
+			RightPanelPlacement::Inline { width_px } => {
+				columns.child(right_panel(tabs, active_tab, tree, width_px, panels, tokens, cx))
+			},
+			// The panel takes its width from the window rather than from the
+			// transcript, over a blurred scrim stating that what it covers is
+			// still there (§5.6).
+			RightPanelPlacement::Overlay { width_px } => columns.child(
+				div()
+					.absolute()
+					.inset_0()
+					.flex()
+					.flex_row()
+					.justify_end()
+					.backdrop_blur(px(panels.right_panel_overlay_scrim_blur_px))
+					.bg(tokens.scrim())
+					.child(right_panel(tabs, active_tab, tree, width_px, panels, tokens, cx)),
+			),
+		};
+
+		root.child(columns)
 	}
 }
 
@@ -240,6 +293,15 @@ fn drawer_control(
 		.bg(ground)
 }
 
+/// What the attention strip takes off the top of the window.
+///
+/// The strip is one line of micro text between two insets, so its height is
+/// those three values and never a literal. The shed needs it to know what the
+/// columns row is left with, and the strip and this must not drift apart.
+fn attention_strip_height(tokens: &TokenSet) -> f32 {
+	f32::from(tokens.spacing(SpacingStep::S1)) * 2.0 + f32::from(tokens.line_height(TextRamp::Micro))
+}
+
 /// The attention strip: one line, above everything, that something is wrong.
 fn attention_strip(notice: &str, tokens: &TokenSet) -> Div {
 	let tint = tokens.tint(TintRole::Error);
@@ -257,93 +319,4 @@ fn attention_strip(notice: &str, tokens: &TokenSet) -> Div {
 		.line_height(tokens.line_height(TextRamp::Micro))
 		.text_color(tint.ink)
 		.child(notice.to_owned())
-}
-
-/// The middle column: the transcript, the composer and the run bar.
-fn session_surface(
-	state: &ShellState,
-	installed: &InstalledTokens,
-	cx: &Context<ShellView>,
-) -> Div {
-	let tokens = &installed.set;
-	let surface = &installed.surface;
-
-	// The transcript is anchored to the bottom of its region, so a short run
-	// sits against the composer rather than stranded at the top of the window,
-	// and a long run keeps its most recent end visible.
-	//
-	// A long run's older turns are clipped rather than scrolled. This fork
-	// exposes no scroll on a plain container, so scrolling needs the
-	// virtualized transcript list, which is not built yet; until it is, the
-	// region shows the tail and nothing reaches the turns above it.
-	let mut body = div()
-		.flex()
-		.flex_col()
-		.justify_end()
-		.w_full()
-		.flex_1()
-		.overflow_hidden()
-		.px(tokens.spacing(SpacingStep::S4))
-		.pt(tokens.spacing(SpacingStep::S4));
-
-	body = if state.transcript.is_empty() {
-		body.justify_center().child(opening_line(
-			"What should this session do?",
-			&surface.composer,
-			tokens,
-		))
-	} else {
-		body.child(transcript_column(
-			&state.transcript,
-			&surface.transcript,
-			installed.user_turn_ground,
-			tokens,
-		))
-	};
-
-	div()
-		.flex()
-		.flex_col()
-		.flex_1()
-		.min_w_0()
-		.h_full()
-		.overflow_hidden()
-		.gap(tokens.spacing(SpacingStep::S3))
-		.pb(tokens.spacing(SpacingStep::S3))
-		.child(body)
-		.children((!state.cards.is_empty()).then(|| {
-			// The stack shares the composer's measure and sits directly above
-			// it, so a decision and the reply to it occupy one column.
-			div()
-				.w_full()
-				.px(tokens.spacing(SpacingStep::S4))
-				.flex()
-				.flex_row()
-				.justify_center()
-				.child(
-					div()
-						.w_full()
-						.max_w(px(surface.composer.max_width_px))
-						.child(card_stack(&state.cards, &surface.attached_cards, tokens, cx)),
-				)
-		}))
-		.child(
-			div()
-				.w_full()
-				.px(tokens.spacing(SpacingStep::S4))
-				.child(composer(&state.composed, &surface.composer, tokens, cx)),
-		)
-		.child(
-			div()
-				.w_full()
-				.px(tokens.spacing(SpacingStep::S4))
-				.child(run_bar(state.run_status.clone(), &surface.composer, tokens)),
-		)
-		// The drawer docks at the bottom of the session column only, so the
-		// queue and the right panel keep their full height beside it.
-		.children(
-			state
-				.drawer_open
-				.then(|| terminal_drawer(&state.drawer_lines, &surface.panels, tokens)),
-		)
 }
