@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 publish = false
-description = "The veyyon desktop front end's view of GPUI, pinned to the santhreal/zed fork by revision"
+description = "The veyyon desktop front end's view of GPUI, vendored under crates/vendor"
 
 [lints]
 workspace = true
@@ -22,7 +22,7 @@ workspace = true
 # `cargo check` compiled none of the renderer, so the Rust gate stayed green
 # across a front end that did not build.
 #
-# `gpui_platform` and `gpui_wgpu` come from the same pinned revision. The
+# `gpui_platform` and `gpui_wgpu` come from the same vendored tree. The
 # headless offscreen path needs both: the platform crate builds the renderer
 # for the current OS, and the wgpu crate supplies the text system a frame is
 # shaped with. Without them P10 is reachable only as a type.
