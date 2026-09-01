@@ -1,41 +1,17 @@
-/**
- * Color manipulation utilities for hex colors.
- *
- * @example
- * ```ts
- * import { hexToHsv, hsvToHex } from "@veyyon/utils";
- *
- * // Rotate the hue by 90°
- * const hsv = hexToHsv("#4ade80");
- * hsv.h = (hsv.h + 90) % 360;
- * const newHex = hsvToHex(hsv);
- * ```
- */
-
 import { clamp, clamp01 } from "./math";
 
 export interface HSV {
-	/** Hue in degrees (0-360) */
 	h: number;
-	/** Saturation (0-1) */
 	s: number;
-	/** Value/brightness (0-1) */
 	v: number;
 }
 
 export interface RGB {
-	/** Red (0-255) */
 	r: number;
-	/** Green (0-255) */
 	g: number;
-	/** Blue (0-255) */
 	b: number;
 }
 
-/**
- * Parse a hex color string to RGB.
- * Supports #RGB, #RRGGBB formats.
- */
 export function hexToRgb(hex: string): RGB {
 	const h = hex.startsWith("#") ? hex.slice(1) : hex;
 	if (h.length === 3) {
@@ -52,17 +28,11 @@ export function hexToRgb(hex: string): RGB {
 	};
 }
 
-/**
- * Convert RGB to hex color string.
- */
 export function rgbToHex(rgb: RGB): string {
 	const toHex = (n: number) => clamp(Math.round(n), 0, 255).toString(16).padStart(2, "0");
 	return `#${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`;
 }
 
-/**
- * Convert RGB to HSV.
- */
 export function rgbToHsv(rgb: RGB): HSV {
 	const r = rgb.r / 255;
 	const g = rgb.g / 255;
@@ -86,9 +56,6 @@ export function rgbToHsv(rgb: RGB): HSV {
 	};
 }
 
-/**
- * Convert HSV to RGB.
- */
 export function hsvToRgb(hsv: HSV): RGB {
 	const { s, v } = hsv;
 	const h = ((hsv.h % 360) + 360) % 360; // Normalize to 0-360
@@ -140,23 +107,14 @@ export function hsvToRgb(hsv: HSV): RGB {
 	};
 }
 
-/**
- * Convert hex color to HSV.
- */
 export function hexToHsv(hex: string): HSV {
 	return rgbToHsv(hexToRgb(hex));
 }
 
-/**
- * Convert HSV to hex color.
- */
 export function hsvToHex(hsv: HSV): string {
 	return rgbToHex(hsvToRgb(hsv));
 }
 
-/**
- * Shift the hue of a hex color by a given number of degrees.
- */
 export function shiftHue(hex: string, degrees: number): string {
 	const hsv = hexToHsv(hex);
 	hsv.h = (hsv.h + degrees) % 360;
@@ -164,27 +122,11 @@ export function shiftHue(hex: string, degrees: number): string {
 	return hsvToHex(hsv);
 }
 export interface HSVAdjustment {
-	/** Hue shift in degrees (additive) */
 	h?: number;
-	/** Saturation multiplier */
 	s?: number;
-	/** Value/brightness multiplier */
 	v?: number;
 }
 
-/**
- * Adjust HSV components of a hex color.
- *
- * @param hex - Hex color string (#RGB or #RRGGBB)
- * @param adj - Adjustments: h is additive degrees, s and v are multipliers
- * @returns New hex color string
- *
- * @example
- * ```ts
- * // Shift hue +60°, reduce saturation to 71%
- * adjustHsv("#00ff88", { h: 60, s: 0.71 }) // "#4a9eff"
- * ```
- */
 export function adjustHsv(hex: string, adj: HSVAdjustment): string {
 	const hsv = hexToHsv(hex);
 	if (adj.h !== undefined) {
@@ -200,9 +142,6 @@ export function adjustHsv(hex: string, adj: HSVAdjustment): string {
 	return hsvToHex(hsv);
 }
 
-/**
- * Convert HSL (h: 0-360, s: 0-1, l: 0-1) to a CSS hex string.
- */
 export function hslToHex(h: number, s: number, l: number): string {
 	const a = s * Math.min(l, 1 - l);
 	const f = (n: number) => {
@@ -215,8 +154,6 @@ export function hslToHex(h: number, s: number, l: number): string {
 	return `#${f(0)}${f(8)}${f(4)}`;
 }
 
-// Conventional xterm RGB for the 16 base ANSI colors. Terminals may remap these,
-// so they're a best-effort approximation for light/dark classification.
 const ANSI_16: readonly (readonly [number, number, number])[] = [
 	[0, 0, 0],
 	[128, 0, 0],
@@ -237,7 +174,6 @@ const ANSI_16: readonly (readonly [number, number, number])[] = [
 ];
 const CUBE_STEPS = [0, 95, 135, 175, 215, 255] as const;
 
-/** Parse a 256-color palette index (0–255) to RGB (0..255). */
 function paletteToRgb(index: number): RGB | undefined {
 	if (!Number.isInteger(index) || index < 0 || index > 255) return undefined;
 	if (index < 16) {
@@ -256,7 +192,6 @@ function paletteToRgb(index: number): RGB | undefined {
 	return { r: gray, g: gray, b: gray };
 }
 
-/** Parse a theme color value — `#rgb`/`#rrggbb` hex or 256-color palette index — to RGB (0..255). */
 function toRgb(value: string | number): RGB | undefined {
 	if (typeof value === "number") return paletteToRgb(value);
 	if (typeof value !== "string" || value[0] !== "#") return undefined;
@@ -266,34 +201,17 @@ function toRgb(value: string | number): RGB | undefined {
 	return rgb;
 }
 
-/** Gamma-decode a single 0..255 sRGB channel to linear 0..1. */
 function linearizeChannel(channel: number): number {
 	const c = channel / 255;
 	return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
 }
 
-/**
- * Perceptual luma (gamma-encoded BT.709 weights over raw sRGB), normalized to 0..1.
- *
- * Accepts a hex string (`#rgb` / `#rrggbb`) or a 256-color palette index; returns
- * `undefined` for var refs, empty strings, or anything unparseable.
- *
- * Cheap and good enough for a light/dark *classification* threshold. NOT suitable
- * for contrast ratios — use {@link relativeLuminance} for those.
- */
 export function colorLuma(value: string | number): number | undefined {
 	const rgb = toRgb(value);
 	if (!rgb) return undefined;
 	return (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
 }
 
-/**
- * WCAG 2.x relative luminance (BT.709 weights over linearized sRGB), normalized to
- * 0..1. This is the value the WCAG contrast-ratio formula expects.
- *
- * Accepts a hex string (`#rgb` / `#rrggbb`) or a 256-color palette index; returns
- * `undefined` for var refs, empty strings, or anything unparseable.
- */
 export function relativeLuminance(value: string | number): number | undefined {
 	const rgb = toRgb(value);
 	if (!rgb) return undefined;

@@ -1,8 +1,4 @@
-/**
- * Prompts Capability
- *
- * Reusable prompt templates (Codex format) available via /prompts: menu.
- */
+/** Prompts Capability Reusable prompt templates (Codex format) available via /prompts: menu. */
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 

@@ -59,7 +59,7 @@ export function mergeCompatibleEnumSchemas(existing: unknown, incoming: unknown)
 		}
 	}
 
-	const mergedEnum = [...existingEnum];
+	const mergedEnum = existingEnum.slice();
 	for (const enumValue of incomingEnum) {
 		if (!mergedEnum.some(existingValue => areJsonValuesEqual(existingValue, enumValue))) {
 			mergedEnum.push(enumValue);
@@ -87,7 +87,7 @@ export function mergePropertySchemas(existing: unknown, incoming: unknown): unkn
 		return mergedEnumSchema;
 	}
 
-	const mergedAnyOf = [...getAnyOfVariants(existing)];
+	const mergedAnyOf = getAnyOfVariants(existing).slice();
 	for (const variant of getAnyOfVariants(incoming)) {
 		if (!mergedAnyOf.some(existingVariant => areJsonValuesEqual(existingVariant, variant))) {
 			mergedAnyOf.push(variant);

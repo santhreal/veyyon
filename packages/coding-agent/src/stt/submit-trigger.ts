@@ -29,10 +29,7 @@ export const STT_SUBMIT_TRIGGER_OPTIONS = [
 	},
 ] satisfies ReadonlyArray<{ value: SttSubmitTrigger; label: string; description: string }>;
 
-/**
- * Evaluate the submit trigger against a transcribed utterance.
- * Returns whether to submit, and the number of characters to trim from the end of the utterance.
- */
+/** Evaluate the submit trigger against a transcribed utterance. Returns whether to submit, and the number of characters to trim from the end of the utterance. */
 export function evaluateSubmitTrigger(
 	utterance: string,
 	trigger: SttSubmitTrigger,

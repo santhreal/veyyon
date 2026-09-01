@@ -1,27 +1,15 @@
 import { getKeybindings } from "../keybindings";
 import { Loader } from "./loader";
 
-/**
- * Loader that can be cancelled with Escape.
- * Extends Loader with an AbortSignal for cancelling async operations.
- *
- * @example
- * const loader = new CancellableLoader(tui, cyan, dim, "Working...");
- * loader.onAbort = () => done(null);
- * doWork(loader.signal).then(done);
- */
 export class CancellableLoader extends Loader {
 	#abortController = new AbortController();
 
-	/** Called when user presses Escape */
 	onAbort?: () => void;
 
-	/** AbortSignal that is aborted when user presses Escape */
 	get signal(): AbortSignal {
 		return this.#abortController.signal;
 	}
 
-	/** Whether the loader was aborted */
 	get aborted(): boolean {
 		return this.#abortController.signal.aborted;
 	}

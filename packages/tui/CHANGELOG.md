@@ -1,6 +1,124 @@
 # Changelog
 
 ## [Unreleased]
+### Changed
+- Free functions, consts, and types extracted from `src/components/loader.ts` into companion `src/components/loader-helpers.ts`.
+- Free functions, consts, and types extracted from `src/components/spacer.ts` into companion `src/components/spacer-helpers.ts`.
+- Free functions, consts, and types extracted from `src/components/tab-bar.ts` into companion `src/components/tab-bar-helpers.ts`.
+- Free functions, consts, and types extracted from `src/components/box.ts` into companion `src/components/box-helpers.ts`.
+- Free functions, consts, and types extracted from `src/components/input.ts` into companion `src/components/input-helpers.ts`.
+- Free functions, consts, and types extracted from `src/loop-watchdog.ts` into companion `src/loop-watchdog-helpers.ts`.
+- Free functions, consts, and types extracted from `src/components/select-list.ts` into companion `src/components/select-list-helpers.ts`.
+- Free functions, consts, and types extracted from `src/components/settings-list.ts` into companion `src/components/settings-list-helpers.ts`.
+- Free functions, consts, and types extracted from `src/components/scroll-view.ts` and `src/bracketed-paste.ts` into companion `src/components/scroll-view-helpers.ts` and `src/bracketed-paste-helpers.ts`.
+- Free functions, consts, and types extracted from `src/motion.ts` into companion `src/motion-helpers.ts`.
+- Free functions, consts, and types extracted from `src/terminal-capabilities.ts` into companion `src/terminal-capabilities-helpers.ts`.
+- Free functions, consts, and types extracted from `stdin-buffer.ts` into `stdin-buffer-helpers.ts`.
+- Free functions, consts, and types extracted from `keybindings.ts` (332→104 lines) into `keybindings-helpers.ts`.
+- Free functions, consts, and types extracted from `fuzzy.ts` (477→83 lines) into `fuzzy-helpers.ts`.
+- Free functions, consts, and types extracted from `latex-to-unicode.ts` (1,911→782 lines) into `latex-to-unicode-helpers.ts`.
+- Free functions, consts, and types extracted from `autocomplete.ts` (941→608 lines) into `autocomplete-helpers.ts`.
+- `editor.ts` imports 16 duplicate definitions from `editor-helpers.ts` instead of redefining them; `wordWrapLine` stays in `editor.ts` (different implementation). Dead `wordWrapLine` removed from `editor-helpers.ts`.
+
+- Removed export keyword from 52 functions across components, terminal, motion, and keybinding subsystems that were used locally but never imported by any other module.
+
+### Changed
+- 46 additional type definitions and functions appended to `components/markdown-helpers.ts` from `components/markdown.ts` (1,987→1,679 lines).
+- Deep comment strip pass on `tui.ts`, `editor.ts`, and `markdown.ts`.
+- Free helper functions, types, and constants extracted from `editor.ts` (2,771→2,494 lines) into `editor-helpers.ts`.
+- 27 free helper functions, types, and constants extracted from `markdown.ts` (2,290→2,002 lines) into `markdown-helpers.ts`.
+- 71 free helper functions, types, and constants extracted from `tui.ts` (3,709→3,558 lines) into `tui-helpers.ts`.
+- Verbose inline comments stripped from `latex-to-unicode.ts`, `terminal-capabilities.ts`, `settings-list.ts`, `utils.ts`, `select-list.ts`, `keys.ts`, `stdin-buffer.ts`, `fuzzy.ts`, `input.ts`, `image.ts`, `tab-bar.ts`, `motion.ts`, `deccara.ts`.
+- `TUI.#doRender` frame composition extracted into helper methods.
+- Verbose inline comments stripped from `tui.ts`, `editor.ts`, `markdown.ts`, `latex-block.ts`, `autocomplete.ts`, and `terminal.ts`.
+- `utils.ts` `reopenBackgroundAfterResets` returns the input unchanged when it contains no escape byte, skipping three `replaceAll` scans and three string allocations on plain-text lines.
+- `utils.ts` `sgrCarryAfter` skips the regex scan and match-array allocation when the text contains no escape byte, returning the compacted carry directly.
+- `utils.ts` `replaceTabs` returns the input unchanged when it contains no tab, skipping a full `replaceAll` scan on tab-free text.
+
+- Table column width calculation in `markdown.ts` replaces 10 `.reduce()` and `.map()` closures with `for` loops and pre-allocated arrays, eliminating 10 closure allocations and 3 intermediate arrays per table render.
+
+- Free functions, types, and constants extracted from `latex-block.ts` (1,132→598 lines) into `latex-block-helpers.ts`.
+
+### Added
+
+- `TUI.onBeforeCompose` runs at the top of every frame, before any root child renders, so a layout whose height is a function of its siblings' heights is sized against the children about to render rather than the previous frame's.
+- `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
+- `MOTION.reflow` states the curve for a row that reflows its content sideways: 320ms, symmetric, where `expand` is 180ms and front-loaded.
+- `TUI.composedFrameLines` exposes the rows of the frame just composed, so a check can tell a row the layout composed blank from a row the renderer composed with content and failed to paint.
+- `Editor.discardDraft()` clears the composer and records an undo state first, so the discarded draft comes back with undo; `setText` still drops the undo history, because it loads text from elsewhere rather than editing what was typed.
+
+### Changed
+
+- `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
+- Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
+- `paint-columns.ts` and `tui.ts` replace `" ".repeat(n)` with `padding(n)` in line background padding and overlay compositing, using the pre-allocated space buffer for widths up to 512.
+- `motion-paint.ts` pre-computes a `HEX_BYTE` lookup table for `toHexColor`, eliminating `toString(16).padStart(2, "0")` per channel per truecolor SGR during animation.
+- `motion-paint.ts` exports `CHANNEL_STR` so callers in `coding-agent` can share the pre-computed 0–255 string table for truecolor SGR emission.
+- `motion-paint.ts` delegates `fadeLineTowards` to the already-optimized `fadeLineWithParsedGround`, eliminating a duplicate `split(/([;:])/)` + `tokens.join("")` code path that allocated a tokens array per SGR sequence.
+- `tui.ts` replaces `Array.from(Set)` with direct `for...of` iteration in partial compose root resolution and input listener dispatch, eliminating an intermediate array allocation per render frame.
+- `motion.ts` replaces `Array.from(Set)` snapshot with `for...of` and deferred delete in the animation tick, eliminating a per-tick array allocation.
+- `motion-hover.ts` replaces `Array.from(Map)` with direct `for...of` in `HoverFade.set`, eliminating an intermediate array allocation per hover change.
+- `tui.ts` skips `window.slice()` in overlay compositing when no visible overlays are present, using copy-on-write so the array is only copied when an overlay actually modifies a row.
+- `latex-block.ts` replaces `" ".repeat(n)` with `padding(n)` in the `spaces` function, using the pre-allocated space buffer for widths up to 512.
+- `deccara.ts` scans SGR parameters in-place in `nextBackground` via `charCodeAt`, eliminating `line.slice()` and `params.split(";")` allocations per SGR sequence in `analyzeBgFillLine`.
+- `deccara.ts` parses SGR parameter integers via `charCodeAt` in `parseSgrInt`, avoiding `line.slice()` + `Number()` for every token; the slice is now allocated only for basic color tokens that become the background state.
+- `tui.ts` removes a dead `" ".repeat(afterPad)` expression in overlay compositing, a no-op left from the `padding()` migration.
+- `select-list.ts` and `settings-list.ts` replace `Array.from(filterQuery).pop().join("")` in the backspace handler with a `charCodeAt` surrogate-pair check and `slice`, eliminating an intermediate array allocation per backspace.
+- `fuzzy.ts` replaces `Array.from(needed)` with `for...of` in `hasDistinctWordsForRepeatedTokens`, avoiding an intermediate array allocation per fuzzy match.
+- `matchPositions` in `fuzzy.ts` replaces `Array.from(hits).sort()` with a pre-sized array filled via `for...of` and sorted in-place, avoiding an intermediate array allocation.
+- `image.ts` replaces `Array.from(Set)` with a pre-sized array in `takeAllTransmittedIds`, avoiding an intermediate array allocation.
+
+- `editor.ts` replaces `Array.from(segmenter.segment())` with direct `for...of` iteration at seven call sites that only need the first or last grapheme, avoiding an intermediate array allocation per keystroke.
+- `input.ts` replaces `Array.from(segmenter.segment())` with direct `for...of` iteration at five call sites that only need the first or last grapheme, avoiding an intermediate array allocation per keystroke.
+- `editor.ts` and `input.ts` replace `Array.from(segmenter.segment()).every()` in `#insertCharacter` with a `for...of` loop that breaks early on the first whitespace grapheme, avoiding an intermediate array allocation per keystroke.
+
+
+
+
+
+
+
+- `motion-paint.ts` uses `CHANNEL_STR` lookup instead of `String()` for channel value emission in `fadeLineTowards`, avoiding per-channel string conversion during truecolor SGR fading.
+
+
+- The `ui.loop-blocked` warning reports `phase` with the `phaseMs` that earns it, and names the phase only when it held at least half the block; a phase that ran for a sliver of it is reported as `unknown` with the observed label carried as `topPhase`.
+
+### Fixed
+
+- A tab bar holding no tabs keeps its active index at 0, instead of reporting tab -1 and handing an undefined tab to the change callback.
+- `SelectList.setSelectedIndex` holds its low bound on an empty list rather than storing an inverted -1; no behavior changes today, since no caller can distinguish the two.
+- Derive scroll-isolation pinned footer hit-test boundaries from the rendered window top and clamp child frame-local mouse coordinates within valid segment bounds.
+- Nested optional-argument LaTeX constructs parse in linear time without character-by-character concatenation allocations.
+- Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
+- Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
+- `padLineToWidth` and `ScrollView` scrollbar rows pad to width in the native `truncateToWidth` call instead of a separate `visibleWidth` scan plus `padding` concatenation, removing a redundant width measurement from every padded row.
+- `padLineToWidth`, `ScrollView` scrollbar rows, and `TabBar` vertical render pad to width in the native `truncateToWidth` call instead of a separate `visibleWidth` scan plus `padding` concatenation, removing a redundant width measurement from every padded row.
+- `editor.ts` replaces `visibleWidth` + `padding` with `padLineToWidth` for gutter continuation, eliminating a redundant width scan per editor render frame.
+- `autocomplete.ts`, `fuzzy.ts`, `keybindings.ts`, `latex-block.ts`, `motion-hover.ts`, `paint-surface.ts`, `terminal-capabilities.ts`, `tui.ts`, `scroll-view.ts`, `image.ts`, and `editor.ts` replace array spreads with `.slice()`/`.concat()`/`Array.from()` in line copying, Set/Map iteration, scroll tape merging, and OSC99 chunking.
+- `terminal-capabilities.ts`, `components/editor.ts`, `components/input.ts`, `components/select-list.ts`, and `components/settings-list.ts` replace array/string spreads with `Array.from()` and `.concat()` across OSC99 hyperlink construction, grapheme segmenter iteration, and filter query character manipulation.
+- `keybindings.ts` and `utils.ts` replace remaining `Set`/`Segment` spreads with `Array.from()`.
+- `toHexColor` in `motion-paint.ts` emits hex channels via three direct template interpolations, eliminating an intermediate array allocation per truecolor color construction.
+- `latex-block.ts` replaces `[...spec.text].filter()` with a `charCodeAt` loop for array column spec extraction, eliminating a character array allocation.
+- `isBlankRow` in `tui.ts` uses a regex test instead of `trim().length` to avoid a string allocation during render resync.
+
+## [1.2.0] - 2026-08-23
+
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
+
+### Changed
+
+- A streamed markdown frame reads, scans and copies only what arrived. The renderer re-read the settled transcript on every token: two whole-text regex scans for reference definitions and over-nesting, a whole-text normalization pass, a rescan of the frozen token range for a new freeze boundary, three whole-prefix string comparisons, and three copies of every settled row. All of it is now bounded by the arrived tail or answered by string identity, and the settled rows are held as one immutable array copied once, into the array the frame returns — that array is what the render contract hands to callers, so that one copy stays. Streaming 10,000 prose tokens through one component falls from 624ms to 216ms, and the marginal frame at the end of that stream from 0.082ms to 0.010ms. Rendered bytes are unchanged: every frame still byte-matches a cold full render, reference definitions and CR input still fall back to a full lex, and settled-row exposure still resets on a rewritten lineage. `packages/tui/bench/markdown-stream.bench.ts` fails if a frame starts scanning or normalizing the settled prefix again.
+- `sweepSurface`, `SweepSpec` and the sweep entry in `MOTION` are gone: a surface no longer carries a travelling specular highlight, and `fillSurface` is the one material treatment left.
+
+### Fixed
+
+- A pinned footer's rows are excluded from the history ceiling even when no root child claims the native-scrollback replay contract. The ceiling was derived from the last replay-capable child alone, so a host that declares a pinned footer over a plain container — no transcript implementing replay — had no ceiling at all: growth that pushed the viewport top past the footer's first row committed that chrome into immutable native scrollback and, in the tallest cases, took a destructive erase-and-replay of the whole screen to repair the prefix it had just violated. A host whose transcript does implement replay was already bounded and is unaffected.
+- The tracked hardware cursor row slides with a virtualized root's compaction, so an incremental paint after a drop lands on the row it names. The drop renumbering moved the commit index, the committed prefix, the window top and the previous frame length onto the compacted frame and left the cursor row in the old coordinates, where it stayed too large for the rest of the session; every cursor-relative paint after that — the seam rewrite, the in-window partial, the direct write — moved up from a stale origin, so new rows overwrote live output above them and the previous paint's tail stayed on screen below, which reads as two stacked copies of an anchored block with the transcript rows it covered gone.
+- An Fp escape sequence costs no display width, on the fallback measurer as well as the native one. Fp is the two-byte private class `ESC 0x30`-`ESC 0x3f` — `ESC 7` and `ESC 8` for cursor save and restore, `ESC =` and `ESC >` for keypad mode — which every terminal consumes and draws nothing for. The fallback pattern only recognised the Fe range, so a string carrying `ESC 7` measured two columns wider than it draws, and until Bun 1.4 taught `Bun.stringWidth` to skip the class the two oracles disagreed with each other. A block sized by the wrong one wraps a row early and leaves the column short for the rest of the frame.
+- A `ui.loop-blocked` warning names the span that blocked. The render pass and terminal input dispatch — the two synchronous spans an interactive session spends its time in — now push a loop-phase breadcrumb, so the watchdog reports `ui.render` or `ui.input` instead of `unknown`. Across 56 local session logs the watchdog recorded 2249 blocks of up to 11 seconds and 2182 of them carried no phase at all, because only three call sites in the product pushed one: a stall was reported as having happened and nothing more. The cost is two array operations per frame and per keystroke.
+- One expensive paint no longer holds back the cheap frame behind it. The render loop's adaptive floor targets a 50% duty cycle and read the previous frame's cost to get there, so one full paint — a scrolled viewport, where the frame diff has nothing to reuse — put a 66ms floor under the cheap diff after it. A duty cycle belongs to a window, so the floor comes from a decayed estimate: a loop that paints slowly on every frame still converges to half the CPU, while an isolated spike does not delay the frame behind it. A published recording averaged 14.2 fps with 68% of its moving frames on the 30 fps capture interval.
 
 ### Added
 

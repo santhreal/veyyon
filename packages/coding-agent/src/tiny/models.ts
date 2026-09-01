@@ -1,6 +1,4 @@
-/** Default session-title model: the online @smol path (no local download / on-device inference). */
 export const ONLINE_TINY_TITLE_MODEL_KEY = "online";
-/** Local model the `tiny-models` CLI downloads when none is named. Not the session-title default — that is {@link ONLINE_TINY_TITLE_MODEL_KEY}. */
 export const DEFAULT_TINY_TITLE_LOCAL_MODEL_KEY = "lfm2-700m";
 
 export interface TinyTitleLocalModelSpec {
@@ -10,9 +8,7 @@ export interface TinyTitleLocalModelSpec {
 	label: string;
 	description: string;
 	contextNote: string;
-	/** Model family emits hidden reasoning unless the chat template disables it. */
 	reasoning?: boolean;
-	/** Reason this model is blocked before loading the ONNX runtime. */
 	unsupportedReason?: string;
 }
 
@@ -108,17 +104,9 @@ export function getTinyTitleModelSpec(key: TinyTitleLocalModelKey): (typeof TINY
 	return spec;
 }
 
-/** Default memory model: the online path (the configured smol / remote LLM; no local download). */
 export const ONLINE_MEMORY_MODEL_KEY = "online";
-/** Recommended local model for memory tasks when none is named. */
 export const DEFAULT_MEMORY_LOCAL_MODEL_KEY = "lfm2-1.2b";
 
-/**
- * Local models for Mnemopi memory tasks (fact extraction + consolidation).
- * These are larger (1B-1.7B) than the title models: structured extraction and
- * faithful summarization need more capacity than 3-6 word titles. All q4.
- * Ranking/recipe rationale lives in docs/internal/local-tiny-models.md.
- */
 export const TINY_MEMORY_LOCAL_MODELS = [
 	{
 		key: "qwen3-1.7b",
@@ -215,16 +203,13 @@ export function getTinyMemoryModelSpec(key: TinyMemoryLocalModelKey): (typeof TI
 	return spec;
 }
 
-/** Return whether a memory local model may emit reasoning tokens before answers. */
 export function isTinyMemoryReasoningModelKey(key: TinyMemoryLocalModelKey): boolean {
 	const spec = getTinyMemoryModelSpec(key);
 	return "reasoning" in spec && spec.reasoning === true;
 }
 
-/** Any local model key (title or memory), used by the shared inference worker. */
 export type TinyLocalModelKey = TinyTitleLocalModelKey | TinyMemoryLocalModelKey;
 
-/** Resolve a local model spec by key across both the title and memory registries. */
 export function getTinyLocalModelSpec(key: string): TinyTitleLocalModelSpec | undefined {
 	return (
 		TINY_TITLE_LOCAL_MODELS.find(model => model.key === key) ??
@@ -236,19 +221,11 @@ export function isTinyLocalModelKey(value: string): value is TinyLocalModelKey {
 	return getTinyLocalModelSpec(value) !== undefined;
 }
 
-/** Combined local model registry (title + memory) for the shared tiny-models CLI. */
 export const TINY_LOCAL_MODELS = [
 	...TINY_TITLE_LOCAL_MODELS,
 	...TINY_MEMORY_LOCAL_MODELS,
 ] as const satisfies readonly TinyTitleLocalModelSpec[];
 
-/**
- * Difficulty-classifier model for the `auto` thinking level. Defaults to the
- * online smol path; the local options reuse the memory-model registry because
- * the shared worker's `complete()` only accepts memory local keys, and the
- * 1B+ memory models classify coding difficulty far more reliably than the
- * sub-1B title models.
- */
 export const ONLINE_AUTO_THINKING_MODEL_KEY = ONLINE_MEMORY_MODEL_KEY;
 export const AUTO_THINKING_MODEL_VALUES = TINY_MEMORY_MODEL_VALUES;
 export type AutoThinkingModelKey = TinyMemoryModelKey;

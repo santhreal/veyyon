@@ -6,10 +6,7 @@ import type { EvalWorkerInbound, EvalWorkerOutbound, EvalWorkerTransport } from 
 if (!parentPort) throw new Error("js worker-entry: missing parentPort");
 
 const port = parentPort;
-// When the CLI host pre-buffered messages (it imports this module dynamically),
-// bind that inbox so the parent's already-delivered `init` is replayed. Loaded
-// directly (test/SDK fallback), this module's top-level runs synchronously at
-// worker start, so the direct `parentPort.on` below wins the flush on its own.
+// When the CLI host pre-buffered messages (it imports this module dynamically), bind that inbox so the parent's already-delivered `init` is replayed. Loaded
 const inbox = consumeWorkerInbox();
 const transport: EvalWorkerTransport = {
 	send: (msg: EvalWorkerOutbound) => port.postMessage(msg),
@@ -26,10 +23,7 @@ const transport: EvalWorkerTransport = {
 			// Already closed.
 		}
 
-		// `parentPort.close()` only disconnects the channel in Bun; it does not
-		// make the Worker emit `close` or reap ref'ed user handles. Exit from
-		// inside the worker after `WorkerCore` has sent the `closed` ack so the
-		// host can observe real worker exit without calling `Worker.terminate()`.
+		// `parentPort.close()` only disconnects the channel in Bun; it does not make the Worker emit `close` or reap ref'ed user handles. Exit from
 		setTimeout(() => process.exit(0), 0);
 	},
 };

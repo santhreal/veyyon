@@ -1,0 +1,1254 @@
+#!/usr/bin/env bun
+import { spawnSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { escapeMarkdownTableCell } from "@veyyon/coding-agent/utils/markdown-table";
+import { clampLow, errorMessage, isRecord, trimTrailingSlashes, tryParseJson } from "@veyyon/utils";
+import type { Server } from "bun";
+import { harborRunnerArgs, type LaunchRequest } from "./launch-args";
+
+import { REPO_ROOT } from "./paths";
+
+import {
+	AGENT_DIR,
+	AGENT_IMPORT_PATH,
+	CODING_AGENT_DIR,
+	CONTAINER_DNS,
+	type Config,
+	DOCKER_GATEWAY_URL,
+	defaultConfig,
+	parseArgs,
+	SOURCE_BIN_MOUNT,
+	SOURCE_SRC_MOUNT,
+	VMNET_GATEWAY_URL,
+	VMNET_HOST_IP,
+} from "./runner-helpers";
+
+export {
+	type Config,
+	parseArgs,
+} from "./runner-helpers";
+
+interface ManagerRecord {
+	benchmark?: string;
+	dataset?: string;
+	config?: LaunchRequest;
+}
+
+export function resolveResumeConfig(cli: Config): Config {
+	const spec = cli.resume as string;
+	const jobsDir = spec.includes(path.sep) ? path.dirname(path.resolve(spec)) : cli.jobsDir;
+	const jobName = path.basename(spec);
+	const jobDir = path.join(jobsDir, jobName);
+	const jobConfig = readJson(path.join(jobDir, "config.json")) as { environment?: { type?: string } } | null;
+	if (!jobConfig) throw new Error(`--resume: ${jobDir} has no harbor config.json (not a harbor job dir)`);
+
+	let cfg: Config | null = null;
+	const saved = readJson(path.join(jobsDir, "_bench", jobName, "runner-config.json"));
+	if (saved && typeof saved === "object") {
+		cfg = { ...defaultConfig(), ...(saved as Partial<Config>) };
+	} else {
+		const manager = readJson(path.join(jobDir, "manager.json")) as ManagerRecord | null;
+		if (manager?.config) {
+			if (manager.benchmark && manager.benchmark !== "harbor") {
+				throw new Error(`--resume supports only harbor runs (${jobName} is ${manager.benchmark})`);
+			}
+			const dataset = manager.config.dataset ?? manager.dataset ?? "terminal-bench@2.0";
+			cfg = parseArgs(harborRunnerArgs(manager.config, { jobsDir, jobName, dataset }));
+		}
+	}
+	if (!cfg) {
+		throw new Error(
+			`--resume: no recorded launch config for ${jobName} ` +
+				`(missing both _bench/${jobName}/runner-config.json and ${jobName}/manager.json)`,
+		);
+	}
+	cfg.jobsDir = jobsDir;
+	cfg.jobName = jobName;
+	cfg.resume = spec;
+	const recorded = jobConfig.environment?.type;
+	if ((recorded === "docker" || recorded === "apple-container") && cfg.envType !== recorded) {
+		if (recorded === "apple-container" && cfg.gatewayUrl === DOCKER_GATEWAY_URL) cfg.gatewayUrl = VMNET_GATEWAY_URL;
+		else if (recorded === "docker" && cfg.gatewayUrl === VMNET_GATEWAY_URL) cfg.gatewayUrl = DOCKER_GATEWAY_URL;
+		cfg.envType = recorded;
+	}
+	cfg.filterErrorTypes = cli.filterErrorTypes;
+	cfg.passthrough = cli.passthrough;
+	cfg.dryRun = cli.dryRun;
+	cfg.cleanup = cli.cleanup;
+	cfg.cleanupForce = cli.cleanupForce;
+	return cfg;
+}
+
+const isTTY = Boolean(process.stdout.isTTY);
+const useColor = isTTY && !process.env.NO_COLOR;
+const CSI = "\x1b[";
+function c(code: string, s: string): string {
+	return useColor ? `${CSI}${code}m${s}${CSI}0m` : s;
+}
+const dim = (s: string): string => c("2", s);
+const bold = (s: string): string => c("1", s);
+const green = (s: string): string => c("32", s);
+const red = (s: string): string => c("31", s);
+const yellow = (s: string): string => c("33", s);
+const cyan = (s: string): string => c("36", s);
+const gray = (s: string): string => c("90", s);
+
+function fmtUsd(n: number): string {
+	if (n >= 100) return `$${n.toFixed(0)}`;
+	if (n >= 1) return `$${n.toFixed(2)}`;
+	return `$${n.toFixed(3)}`;
+}
+function fmtNum(n: number): string {
+	if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+	if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
+	return `${n}`;
+}
+function fmtDur(ms: number): string {
+	if (!Number.isFinite(ms) || ms < 0) return "—";
+	const s = Math.floor(ms / 1000);
+	const h = Math.floor(s / 3600);
+	const m = Math.floor((s % 3600) / 60);
+	const sec = s % 60;
+	if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+	return `${m}:${String(sec).padStart(2, "0")}`;
+}
+function bar(frac: number, width: number): string {
+	const f = clampLow(frac, 0, 1);
+	const filled = Math.round(f * width);
+	return "█".repeat(filled) + "░".repeat(width - filled);
+}
+function pad(s: string, w: number): string {
+	return s.length >= w ? s.slice(0, w) : s + " ".repeat(w - s.length);
+}
+
+function agentArgsLabel(cfg: Config): string | null {
+	return cfg.agentArgs.length > 0 ? cfg.agentArgs.join(" ") : null;
+}
+
+export type TrialStatus = "pass" | "fail" | "error" | "running";
+
+export interface Trial {
+	name: string;
+	status: TrialStatus;
+	reward: number | null;
+	costUsd: number;
+	tokIn: number;
+	tokOut: number;
+	tokCache: number;
+	durationMs: number;
+	detail: string;
+}
+
+interface AgentCtxLike {
+	n_input_tokens?: unknown;
+	n_cache_tokens?: unknown;
+	n_output_tokens?: unknown;
+	cost_usd?: unknown;
+}
+
+function num(v: unknown): number {
+	return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+function resolveReward(rewards: Record<string, number> | null): number | null {
+	if (!rewards) return null;
+	const vals = Object.values(rewards).filter(v => typeof v === "number");
+	if (vals.length === 0) return null;
+	if (typeof rewards.reward === "number") return rewards.reward;
+	return Math.max(...vals);
+}
+
+function readJson(file: string): unknown {
+	try {
+		return tryParseJson(fs.readFileSync(file, "utf8"));
+	} catch {
+		return null;
+	}
+}
+
+interface CostProbe {
+	offset: number;
+	remainder: Buffer;
+	discarding: boolean;
+	costUsd: number;
+	tokIn: number;
+	tokOut: number;
+	tokCache: number;
+}
+
+const costProbes = new Map<string, CostProbe>();
+
+const COST_PROBE_FIRST_SCAN_BYTES = 16 * 1024 * 1024;
+const COST_PROBE_MAX_LINE_BYTES = 4 * 1024 * 1024;
+const COST_PROBE_CHUNK_BYTES = 1024 * 1024;
+
+function probeLine(line: string, probe: CostProbe): void {
+	const trimmed = line.trim();
+	if (!trimmed) return;
+	try {
+		const event = JSON.parse(trimmed);
+		if (event?.type !== "message_end") return;
+		const message = event.message;
+		if (!message || typeof message !== "object" || message.role !== "assistant") return;
+		const usage = message.usage;
+		if (!usage || typeof usage !== "object") return;
+		probe.tokIn += num(usage.input) + num(usage.cacheRead);
+		probe.tokOut += num(usage.output);
+		probe.tokCache += num(usage.cacheRead);
+		const cost = usage.cost;
+		if (cost && typeof cost === "object") probe.costUsd += num(cost.total);
+	} catch {}
+}
+
+function probeTrialCost(ompLogPath: string): CostProbe | null {
+	let size: number;
+	try {
+		size = fs.statSync(ompLogPath).size;
+	} catch {
+		return costProbes.get(ompLogPath) ?? null;
+	}
+	let probe = costProbes.get(ompLogPath);
+	if (!probe || size < probe.offset) {
+		probe = {
+			offset: Math.max(0, size - COST_PROBE_FIRST_SCAN_BYTES),
+			remainder: Buffer.alloc(0),
+			discarding: size > COST_PROBE_FIRST_SCAN_BYTES, // resync to the next full line
+			costUsd: 0,
+			tokIn: 0,
+			tokOut: 0,
+			tokCache: 0,
+		};
+		costProbes.set(ompLogPath, probe);
+	}
+	if (size === probe.offset) return probe;
+	let fd: number;
+	try {
+		fd = fs.openSync(ompLogPath, "r");
+	} catch {
+		return probe;
+	}
+	try {
+		const chunk = Buffer.allocUnsafe(COST_PROBE_CHUNK_BYTES);
+		for (;;) {
+			const read = fs.readSync(fd, chunk, 0, chunk.length, probe.offset);
+			if (read <= 0) break;
+			probe.offset += read;
+			const data = Buffer.concat([probe.remainder, chunk.subarray(0, read)]);
+			let start = 0;
+			for (;;) {
+				const nl = data.indexOf(0x0a, start);
+				if (nl === -1) break;
+				if (probe.discarding) probe.discarding = false;
+				else probeLine(data.subarray(start, nl).toString("utf8"), probe);
+				start = nl + 1;
+			}
+			probe.remainder = data.subarray(start);
+			if (probe.remainder.length > COST_PROBE_MAX_LINE_BYTES) {
+				probe.remainder = Buffer.alloc(0);
+				probe.discarding = true;
+			}
+		}
+	} catch {
+	} finally {
+		fs.closeSync(fd);
+	}
+	return probe;
+}
+
+function parseTrial(dir: string, name: string): Trial | null {
+	const resultPath = path.join(dir, "result.json");
+	if (!fs.existsSync(resultPath)) {
+		let started = Date.now();
+		try {
+			started = fs.statSync(dir).mtimeMs;
+		} catch {}
+
+		const probe = probeTrialCost(path.join(dir, "agent", "veyyon.txt"));
+		const costUsd = probe?.costUsd ?? 0;
+		const tokIn = probe?.tokIn ?? 0;
+		const tokOut = probe?.tokOut ?? 0;
+		const tokCache = probe?.tokCache ?? 0;
+
+		return {
+			name,
+			status: "running",
+			reward: null,
+			costUsd,
+			tokIn,
+			tokOut,
+			tokCache,
+			durationMs: Date.now() - started,
+			detail: "",
+		};
+	}
+	costProbes.delete(path.join(dir, "agent", "veyyon.txt"));
+	const raw = readJson(resultPath);
+	if (!raw || typeof raw !== "object") return null;
+	const r = raw as Record<string, unknown>;
+
+	const ctxs: AgentCtxLike[] = [];
+	if (r.agent_result && typeof r.agent_result === "object") ctxs.push(r.agent_result as AgentCtxLike);
+	if (Array.isArray(r.step_results)) {
+		for (const st of r.step_results) {
+			if (st && typeof st === "object") {
+				const ar = (st as Record<string, unknown>).agent_result;
+				if (ar && typeof ar === "object") ctxs.push(ar as AgentCtxLike);
+			}
+		}
+	}
+	let costUsd = 0,
+		tokIn = 0,
+		tokOut = 0,
+		tokCache = 0;
+	for (const ctx of ctxs) {
+		costUsd += num(ctx.cost_usd);
+		tokIn += num(ctx.n_input_tokens);
+		tokOut += num(ctx.n_output_tokens);
+		tokCache += num(ctx.n_cache_tokens);
+	}
+
+	let rewards: Record<string, number> | null = null;
+	const collectRewards = (vr: unknown): void => {
+		if (vr && typeof vr === "object") {
+			const rw = (vr as Record<string, unknown>).rewards;
+			if (rw && typeof rw === "object") rewards = rw as Record<string, number>;
+		}
+	};
+	collectRewards(r.verifier_result);
+	if (!rewards && Array.isArray(r.step_results)) {
+		for (const st of r.step_results) {
+			if (st && typeof st === "object") collectRewards((st as Record<string, unknown>).verifier_result);
+		}
+	}
+	const reward = resolveReward(rewards);
+
+	const exc =
+		r.exception_info && typeof r.exception_info === "object" ? (r.exception_info as Record<string, unknown>) : null;
+
+	let durationMs = 0;
+	const start = typeof r.started_at === "string" ? Date.parse(r.started_at) : NaN;
+	const end = typeof r.finished_at === "string" ? Date.parse(r.finished_at) : NaN;
+	if (Number.isFinite(start) && Number.isFinite(end)) durationMs = end - start;
+
+	let status: TrialStatus;
+	let detail = "";
+	if (exc) {
+		status = "error";
+		detail = typeof exc.exception_type === "string" ? exc.exception_type : "error";
+	} else if (reward !== null && reward >= 1 - 1e-9) {
+		status = "pass";
+	} else {
+		status = "fail";
+	}
+	return { name, status, reward, costUsd, tokIn, tokOut, tokCache, durationMs, detail };
+}
+
+export function readTrials(jobDir: string): Trial[] {
+	let entries: fs.Dirent[] = [];
+	try {
+		entries = fs.readdirSync(jobDir, { withFileTypes: true });
+	} catch {
+		return [];
+	}
+	const trials: Trial[] = [];
+	for (const e of entries) {
+		if (!e.isDirectory()) continue;
+		const t = parseTrial(path.join(jobDir, e.name), e.name);
+		if (t) trials.push(t);
+	}
+	return trials;
+}
+
+export interface JobInfo {
+	nTotal: number;
+	running: number | null;
+	pending: number | null;
+	finishedAt: number | null;
+}
+
+export function readJobResult(jobDir: string): JobInfo | null {
+	const raw = readJson(path.join(jobDir, "result.json"));
+	if (!raw || typeof raw !== "object") return null;
+	const r = raw as Record<string, unknown>;
+	const nTotal = typeof r.n_total_trials === "number" ? r.n_total_trials : 0;
+	let running: number | null = null;
+	let pending: number | null = null;
+	if (r.stats && typeof r.stats === "object") {
+		const s = r.stats as Record<string, unknown>;
+		if (typeof s.n_running_trials === "number") running = s.n_running_trials;
+		if (typeof s.n_pending_trials === "number") pending = s.n_pending_trials;
+	}
+	const finishedRaw = typeof r.finished_at === "string" ? Date.parse(r.finished_at) : NaN;
+	const finishedAt = Number.isFinite(finishedRaw) ? finishedRaw : null;
+	return nTotal > 0 ? { nTotal, running, pending, finishedAt } : null;
+}
+
+export interface Totals {
+	total: number;
+	done: number;
+	pass: number;
+	fail: number;
+	error: number;
+	running: number;
+	pending: number;
+	costUsd: number;
+	tokIn: number;
+	tokOut: number;
+	tokCache: number;
+	durationMs: number;
+}
+
+export function aggregate(trials: Trial[], job: JobInfo | null, fallbackExpected: number): Totals {
+	const t: Totals = {
+		total: fallbackExpected,
+		done: 0,
+		pass: 0,
+		fail: 0,
+		error: 0,
+		running: 0,
+		pending: 0,
+		costUsd: 0,
+		tokIn: 0,
+		tokOut: 0,
+		tokCache: 0,
+		durationMs: 0,
+	};
+	for (const tr of trials) {
+		t.costUsd += tr.costUsd;
+		t.tokIn += tr.tokIn;
+		t.tokOut += tr.tokOut;
+		t.tokCache += tr.tokCache;
+		if (tr.status === "running") {
+			t.running++;
+			continue;
+		}
+		t.durationMs += tr.durationMs;
+
+		t.done++;
+		if (tr.status === "pass") t.pass++;
+		else if (tr.status === "error") t.error++;
+		else t.fail++;
+	}
+	t.total = job ? job.nTotal : Math.max(fallbackExpected, trials.length);
+	if (job && job.running !== null) t.running = job.running;
+	t.pending = Math.max(0, t.total - t.done - t.running);
+	return t;
+}
+
+const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+function statusIcon(s: TrialStatus, tick: number): string {
+	switch (s) {
+		case "pass":
+			return green("✓");
+		case "fail":
+			return red("✗");
+		case "error":
+			return yellow("!");
+		case "running":
+			return cyan(SPINNER[tick % SPINNER.length]);
+	}
+}
+
+function tailFile(file: string, maxLines: number): string[] {
+	try {
+		const buf = fs.readFileSync(file, "utf8");
+		const lines = buf.split("\n").filter(l => l.trim().length > 0);
+		return lines.slice(-maxLines);
+	} catch {
+		return [];
+	}
+}
+
+interface RenderState {
+	cfg: Config;
+	jobDir: string;
+	logPath: string;
+	startMs: number;
+	expected: number;
+	tick: number;
+}
+
+function render(st: RenderState): void {
+	const trials = readTrials(st.jobDir);
+	const tot = aggregate(trials, readJobResult(st.jobDir), st.expected);
+	const elapsed = Date.now() - st.startMs;
+	const rate = tot.done > 0 ? elapsed / tot.done : 0;
+	const eta = rate > 0 && tot.done < tot.total ? rate * (tot.total - tot.done) : 0;
+	const successPct = tot.done > 0 ? (tot.pass / tot.done) * 100 : 0;
+
+	const rows: string[] = [];
+	const argsLabel = agentArgsLabel(st.cfg);
+	const argsTag = argsLabel ? `${dim(" · args ")}${argsLabel}` : "";
+	const header = `${bold(st.cfg.dataset)} ${dim("·")} ${cyan(st.cfg.agent)} ${dim("·")} ${st.cfg.models.join(",")}${argsTag} ${dim(`· conc=${st.cfg.concurrency} k=${st.cfg.attempts}`)}`;
+	rows.push(header);
+	const width = 28;
+	rows.push(
+		`${bar(tot.total > 0 ? tot.done / tot.total : 0, width)} ${bold(`${tot.done}/${tot.total}`)}  ${dim("elapsed")} ${fmtDur(elapsed)}  ${dim("eta")} ${eta > 0 ? `~${fmtDur(eta)}` : "—"}`,
+	);
+	rows.push(
+		`${green(`pass ${tot.pass}`)} ${dim(`(${successPct.toFixed(0)}%)`)}   ${red(`fail ${tot.fail}`)}   ${yellow(`err ${tot.error}`)}   ${cyan(`run ${tot.running}`)}   ${gray(`pend ${tot.pending}`)}`,
+	);
+	rows.push(
+		`${bold("spend")} ${fmtUsd(tot.costUsd)}   ${dim("in")} ${fmtNum(tot.tokIn)}  ${dim("out")} ${fmtNum(tot.tokOut)}  ${dim("cache")} ${fmtNum(tot.tokCache)}`,
+	);
+	rows.push(dim("─".repeat(54)));
+
+	const order: Record<TrialStatus, number> = { running: 0, error: 1, fail: 2, pass: 3 };
+	const sorted = [...trials].sort((a, b) => order[a.status] - order[b.status] || a.name.localeCompare(b.name));
+	const maxRows = isTTY ? Math.max(6, (process.stdout.rows ?? 40) - rows.length - 4) : sorted.length;
+	for (const tr of sorted.slice(0, maxRows)) {
+		const rw = tr.reward !== null ? `r${tr.reward.toFixed(2)}` : tr.status === "running" ? "·" : "—";
+		const right = `${pad(rw, 6)} ${pad(fmtUsd(tr.costUsd), 7)} ${pad(fmtDur(tr.durationMs), 7)}`;
+		const detail = tr.detail ? ` ${yellow(tr.detail)}` : "";
+		rows.push(` ${statusIcon(tr.status, st.tick)} ${pad(tr.name, 28)} ${dim(right)}${detail}`);
+	}
+	if (sorted.length > maxRows) rows.push(dim(`  … ${sorted.length - maxRows} more`));
+	rows.push(dim("─".repeat(54)));
+	const lastLog = tailFile(st.logPath, 1)[0] ?? "";
+	rows.push(gray(`harbor: ${lastLog.slice(0, 70)}`));
+
+	if (isTTY) {
+		let out = `${CSI}H${CSI}J`;
+		out += rows.join(`${CSI}K\n`);
+		process.stdout.write(out);
+	} else {
+		process.stdout.write(
+			`[harbor] ${tot.done}/${tot.total} pass=${tot.pass}(${successPct.toFixed(0)}%) fail=${tot.fail} err=${tot.error} run=${tot.running} spend=${fmtUsd(tot.costUsd)} elapsed=${fmtDur(elapsed)}\n`,
+		);
+	}
+}
+
+function trialStatusLabel(status: TrialStatus): string {
+	switch (status) {
+		case "pass":
+			return "✅ pass";
+		case "fail":
+			return "❌ fail";
+		case "error":
+			return "⚠️ error";
+		default:
+			return "⏳ running";
+	}
+}
+
+export function renderTrialRow(t: Trial): string {
+	const reward = t.reward !== null ? t.reward.toFixed(2) : "—";
+	return `| ${escapeMarkdownTableCell(t.name)} | ${trialStatusLabel(t.status)} | ${reward} | ${fmtUsd(t.costUsd)} | ${fmtDur(t.durationMs)} | ${escapeMarkdownTableCell(t.detail)} |`;
+}
+
+function writeReport(st: RenderState, benchDir: string, exitCode: number): string {
+	const trials = readTrials(st.jobDir).sort((a, b) => a.name.localeCompare(b.name));
+	const tot = aggregate(trials, readJobResult(st.jobDir), st.expected);
+	const successPct = tot.done > 0 ? (tot.pass / tot.done) * 100 : 0;
+	const lines: string[] = [];
+	const isOmp = st.cfg.agent === "veyyon";
+	const argsLabel = agentArgsLabel(st.cfg);
+	const baseModelLine = st.cfg.models.join(", ");
+	const modelLine = argsLabel ? `${baseModelLine} (${argsLabel})` : baseModelLine;
+	lines.push(`# ${st.cfg.dataset} — ${st.cfg.agent} — ${modelLine}`);
+	lines.push("");
+	lines.push(`- dataset: \`${st.cfg.dataset}\``);
+	lines.push(`- tasks: ${st.cfg.tasks} · attempts: ${st.cfg.attempts} · concurrency: ${st.cfg.concurrency}`);
+	if (isOmp) {
+		lines.push(
+			`- install: ${st.cfg.install} · auth: ${st.cfg.gateway ? "host gateway (no keys in container)" : "direct provider keys"}`,
+		);
+		lines.push(`- tools: web_search=${st.cfg.webSearch ? "on" : "off"}`);
+		if (argsLabel) lines.push(`- agent args: ${argsLabel}`);
+	}
+	lines.push(`- elapsed: ${fmtDur(Date.now() - st.startMs)} · harbor exit: ${exitCode}`);
+	lines.push("");
+	lines.push(
+		`**${tot.pass}/${tot.done} passed (${successPct.toFixed(1)}%)** · fail ${tot.fail} · error ${tot.error} · spend ${fmtUsd(tot.costUsd)}`,
+	);
+	lines.push(`tokens: in ${fmtNum(tot.tokIn)} · out ${fmtNum(tot.tokOut)} · cache ${fmtNum(tot.tokCache)}`);
+	lines.push("");
+	lines.push("| task | result | reward | cost | duration | detail |");
+	lines.push("|---|---|---|---|---|---|");
+	for (const t of trials) {
+		lines.push(renderTrialRow(t));
+	}
+	lines.push("");
+	const reportPath = path.join(benchDir, "report.md");
+	fs.writeFileSync(reportPath, lines.join("\n"));
+	return reportPath;
+}
+
+function which(bin: string): string | null {
+	const r = spawnSync("bash", ["-lc", `command -v ${bin}`], { encoding: "utf8" });
+	const out = r.stdout?.trim();
+	return r.status === 0 && out ? out : null;
+}
+
+function readPkgVersion(): string {
+	const raw = readJson(path.join(CODING_AGENT_DIR, "package.json"));
+	if (raw && typeof raw === "object") {
+		const v = (raw as Record<string, unknown>).version;
+		if (typeof v === "string") return v;
+	}
+	return "latest";
+}
+
+function buildTarball(benchDir: string): string {
+	process.stdout.write(dim("packing local veyyon (bun pm pack)…\n"));
+	const r = spawnSync("bun", ["pm", "pack", "--destination", benchDir], {
+		cwd: CODING_AGENT_DIR,
+		encoding: "utf8",
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+	if (r.status !== 0) {
+		process.stderr.write((r.stdout ?? "") + (r.stderr ?? ""));
+		throw new Error("bun pm pack failed");
+	}
+	const tgz = fs
+		.readdirSync(benchDir)
+		.filter(f => f.endsWith(".tgz"))
+		.map(f => ({ f, m: fs.statSync(path.join(benchDir, f)).mtimeMs }))
+		.sort((a, b) => b.m - a.m)[0];
+	if (!tgz) throw new Error("no .tgz produced by bun pm pack");
+	return path.join(benchDir, tgz.f);
+}
+
+function newestTarball(benchDir: string): string | null {
+	try {
+		const tgz = fs
+			.readdirSync(benchDir)
+			.filter(f => f.endsWith(".tgz"))
+			.map(f => ({ f, m: fs.statSync(path.join(benchDir, f)).mtimeMs }))
+			.sort((a, b) => b.m - a.m)[0];
+		return tgz ? path.join(benchDir, tgz.f) : null;
+	} catch {
+		return null;
+	}
+}
+
+export interface SourceMount {
+	arch: "arm64" | "x64";
+	depsDir: string;
+	nodeModules: string[];
+}
+
+function repoBunVersion(): string {
+	const raw = readJson(path.join(REPO_ROOT, "package.json"));
+	if (raw && typeof raw === "object") {
+		const pm = (raw as Record<string, unknown>).packageManager;
+		if (typeof pm === "string" && pm.startsWith("bun@")) return pm.slice("bun@".length);
+	}
+	return "1.4.0";
+}
+
+function dockerServerArch(): "arm64" | "x64" {
+	const r = spawnSync("docker", ["version", "--format", "{{.Server.Arch}}"], { encoding: "utf8" });
+	const a = (r.stdout ?? "").trim();
+	if (a === "arm64" || a === "aarch64") return "arm64";
+	if (a === "amd64" || a === "x86_64") return "x64";
+	throw new Error(`cannot detect docker server arch (got ${a || "nothing"}); is docker running?`);
+}
+
+function workspacePackageDirs(): string[] {
+	const raw = readJson(path.join(REPO_ROOT, "package.json")) as {
+		workspaces?: { packages?: string[] };
+	} | null;
+	const dirs = new Set<string>();
+	for (const pattern of raw?.workspaces?.packages ?? []) {
+		for (const match of new Bun.Glob(`${pattern}/package.json`).scanSync({ cwd: REPO_ROOT })) {
+			dirs.add(path.dirname(match));
+		}
+	}
+	return [...dirs].sort();
+}
+
+function sourceManifestFiles(pkgDirs: string[]): string[] {
+	const files = ["package.json", "bun.lock"];
+	if (fs.existsSync(path.join(REPO_ROOT, "bunfig.toml"))) files.push("bunfig.toml");
+	const patchesDir = path.join(REPO_ROOT, "patches");
+	if (fs.existsSync(patchesDir)) {
+		for (const f of fs.readdirSync(patchesDir).sort()) files.push(path.join("patches", f));
+	}
+	for (const dir of pkgDirs) files.push(path.join(dir, "package.json"));
+	return files;
+}
+
+function sourceDepsStamp(manifests: string[], bunVersion: string): string {
+	const h = new Bun.CryptoHasher("sha256");
+	h.update(`bun@${bunVersion}\0source-deps-v1\0`);
+	for (const rel of manifests) {
+		h.update(rel);
+		h.update("\0");
+		h.update(fs.readFileSync(path.join(REPO_ROOT, rel)));
+		h.update("\0");
+	}
+	return h.digest("hex");
+}
+
+export function prepareSourceDeps(cfg: Config): SourceMount {
+	const arch = cfg.envType === "apple-container" ? "arm64" : dockerServerArch();
+	const bunVersion = repoBunVersion();
+	const depsDir = path.join(cfg.jobsDir, "_bench", "_deps", `linux-${arch}`);
+	const pkgDirs = workspacePackageDirs();
+	const manifests = sourceManifestFiles(pkgDirs);
+	const stamp = sourceDepsStamp(manifests, bunVersion);
+	const stampFile = path.join(depsDir, ".stamp");
+	let current: string | null = null;
+	try {
+		current = fs.readFileSync(stampFile, "utf8").trim();
+	} catch {}
+	if (current !== stamp) {
+		process.stdout.write(dim(`building linux-${arch} deps tree for source mount (one-time per lockfile change)…\n`));
+		fs.rmSync(depsDir, { recursive: true, force: true });
+		fs.mkdirSync(depsDir, { recursive: true });
+		for (const rel of manifests) {
+			const dst = path.join(depsDir, rel);
+			fs.mkdirSync(path.dirname(dst), { recursive: true });
+			fs.copyFileSync(path.join(REPO_ROOT, rel), dst);
+		}
+		const script =
+			'mkdir -p /deps/bin && cp "$(command -v bun)" /deps/bin/bun && cd /deps && bun install --production --omit=optional --ignore-scripts';
+		const image = `oven/bun:${bunVersion}`;
+		const runArgv =
+			cfg.envType === "apple-container"
+				? [
+						"container",
+						"run",
+						"--rm",
+						"--dns",
+						CONTAINER_DNS,
+						"-e",
+						"HOME=/tmp",
+						"-v",
+						`${depsDir}:/deps`,
+						image,
+						"sh",
+						"-c",
+						script,
+					]
+				: [
+						"docker",
+						"run",
+						"--rm",
+						"--platform",
+						`linux/${arch === "x64" ? "amd64" : "arm64"}`,
+						"-e",
+						"HOME=/tmp",
+						"-v",
+						`${depsDir}:/deps`,
+						image,
+						"sh",
+						"-c",
+						script,
+					];
+		const r = spawnSync(runArgv[0], runArgv.slice(1), { stdio: ["ignore", "inherit", "inherit"] });
+		if (r.status !== 0) {
+			fs.rmSync(stampFile, { force: true });
+			throw new Error(`source deps install failed (${runArgv[0]} exit ${r.status})`);
+		}
+		fs.writeFileSync(stampFile, `${stamp}\n`);
+	}
+	if (!fs.existsSync(path.join(depsDir, "node_modules"))) {
+		throw new Error(`source deps tree has no node_modules (${depsDir}); delete it and retry`);
+	}
+	const nodeModules = ["node_modules"];
+	for (const dir of pkgDirs) {
+		const rel = path.join(dir, "node_modules");
+		const inHost = fs.existsSync(path.join(REPO_ROOT, rel));
+		const inDeps = fs.existsSync(path.join(depsDir, rel));
+		if (!inHost && !inDeps) continue;
+		if (!inDeps) fs.mkdirSync(path.join(depsDir, rel), { recursive: true });
+		if (!inHost) fs.mkdirSync(path.join(REPO_ROOT, rel), { recursive: true });
+		nodeModules.push(rel);
+	}
+	return { arch, depsDir, nodeModules };
+}
+
+function writeComposeOverlay(benchDir: string, cfg: Config, source: SourceMount | null): string | null {
+	const lines: string[] = [];
+	if (cfg.hostNetwork) lines.push('    network_mode: "host"');
+	if (source) {
+		lines.push("    volumes:");
+		lines.push(`      - ${REPO_ROOT}:${SOURCE_SRC_MOUNT}:ro`);
+		for (const rel of source.nodeModules) {
+			lines.push(`      - ${path.join(source.depsDir, rel)}:${SOURCE_SRC_MOUNT}/${rel}:ro`);
+		}
+		lines.push(`      - ${path.join(source.depsDir, "bin")}:${SOURCE_BIN_MOUNT}:ro`);
+	}
+	if (lines.length === 0) return null;
+	const file = path.join(benchDir, "veyyon-compose-overlay.yaml");
+	fs.writeFileSync(file, `${["services:", "  main:", ...lines].join("\n")}\n`);
+	return file;
+}
+
+function buildMountsJson(source: SourceMount | null): string | null {
+	if (!source) return null;
+	const mounts: Array<{ type: "bind"; source: string; target: string; read_only: true }> = [
+		{ type: "bind", source: REPO_ROOT, target: SOURCE_SRC_MOUNT, read_only: true },
+	];
+	for (const rel of source.nodeModules) {
+		mounts.push({
+			type: "bind",
+			source: path.join(source.depsDir, rel),
+			target: `${SOURCE_SRC_MOUNT}/${rel}`,
+			read_only: true,
+		});
+	}
+	mounts.push({ type: "bind", source: path.join(source.depsDir, "bin"), target: SOURCE_BIN_MOUNT, read_only: true });
+	return JSON.stringify(mounts);
+}
+
+function deriveProviders(cfg: Config): string[] {
+	if (cfg.providers.length > 0) return [...new Set(cfg.providers)];
+	const set = new Set<string>();
+	for (const m of cfg.models) {
+		const slash = m.indexOf("/");
+		if (slash > 0) set.add(m.slice(0, slash));
+	}
+	if (set.size === 0) {
+		set.add("anthropic");
+		set.add("openai-codex");
+	}
+	return [...set];
+}
+
+function writeModelsYaml(benchDir: string, cfg: Config): string {
+	const providers = deriveProviders(cfg);
+	const lines = ["# Generated by metaharness — auth via host pm2 gateway.", "providers:"];
+	for (const p of providers) {
+		lines.push(`  ${p}:`);
+		lines.push(`    baseUrl: ${cfg.gatewayUrl}`);
+		lines.push("    auth: oauth");
+		lines.push("    transport: pi-native");
+		lines.push(`    apiKey: ${cfg.gatewayToken}`);
+	}
+	const file = path.join(benchDir, "models.yml");
+	fs.writeFileSync(file, `${lines.join("\n")}\n`);
+	return file;
+}
+
+function gatewayHealthOk(url: string): boolean {
+	const hostUrl = trimTrailingSlashes(
+		url.replace("host.docker.internal", "127.0.0.1").replace(VMNET_HOST_IP, "127.0.0.1"),
+	);
+	const r = spawnSync("curl", ["-s", "--max-time", "4", `${hostUrl}/healthz`], { encoding: "utf8" });
+	return r.status === 0 && (r.stdout ?? "").includes('"ok":true');
+}
+
+function startVmnetGatewayForward(cfg: Config): { stop(): void } | null {
+	if (cfg.envType !== "apple-container" || !cfg.gateway) return null;
+	const url = new URL(cfg.gatewayUrl);
+	if (url.hostname !== VMNET_HOST_IP) return null;
+	const port = Number(url.port || "80");
+	let server: Server<undefined> | null = null;
+	let timer: Timer | undefined;
+	let stopped = false;
+	const bind = (): void => {
+		if (stopped) return;
+		try {
+			server = Bun.serve({
+				hostname: VMNET_HOST_IP,
+				port,
+				idleTimeout: 0,
+				fetch(req) {
+					const target = new URL(req.url);
+					target.hostname = "127.0.0.1";
+					return fetch(target, { method: req.method, headers: req.headers, body: req.body, redirect: "manual" });
+				},
+			});
+			process.stdout.write(dim(`gateway forward: ${VMNET_HOST_IP}:${port} → 127.0.0.1:${port}\n`));
+		} catch {
+			timer = setTimeout(bind, 2000);
+		}
+	};
+	bind();
+	return {
+		stop(): void {
+			stopped = true;
+			clearTimeout(timer);
+			server?.stop(true);
+		},
+	};
+}
+
+function buildHarborArgs(
+	cfg: Config,
+	jobName: string,
+	modelsYaml: string,
+	tarball: string | null,
+	composeOverlayPath: string | null,
+	mountsJson: string | null,
+): string[] {
+	const a: string[] = ["run", "-d", cfg.dataset, "-o", cfg.jobsDir, "--job-name", jobName];
+	a.push("-n", String(cfg.concurrency), "-k", String(cfg.attempts), "-l", String(cfg.tasks));
+	for (const m of cfg.models) a.push("-m", m);
+	for (const inc of cfg.include) a.push("-i", inc);
+	for (const exc of cfg.exclude) a.push("-x", exc);
+	for (const h of cfg.allowHosts) a.push("--allow-agent-host", h);
+	if (cfg.timeoutMultiplier !== null) a.push("--timeout-multiplier", String(cfg.timeoutMultiplier));
+	if (cfg.yes) a.push("-y");
+	if (composeOverlayPath) {
+		a.push("--extra-docker-compose", composeOverlayPath);
+	}
+	if (cfg.envType !== "docker") a.push("-e", cfg.envType);
+	if (mountsJson) a.push("--mounts", mountsJson);
+	if (cfg.agent === "veyyon") {
+		a.push("--agent-import-path", AGENT_IMPORT_PATH);
+		void modelsYaml;
+		void tarball;
+	} else {
+		a.push("-a", cfg.agent);
+	}
+	for (let pi = 0; pi < cfg.passthrough.length; pi++) a.push(cfg.passthrough[pi]!);
+	return a;
+}
+export function buildResumeArgs(cfg: Config, jobDir: string): string[] {
+	const a: string[] = ["job", "resume", "-p", jobDir];
+	if (cfg.filterErrorTypes.length > 0) {
+		for (const t of new Set(["CancelledError", ...cfg.filterErrorTypes])) a.push("-f", t);
+	}
+	for (let pi = 0; pi < cfg.passthrough.length; pi++) a.push(cfg.passthrough[pi]!);
+	return a;
+}
+
+const FORWARD_ENV_DENYLIST = new Set([
+	"VEYYON_CODING_AGENT_DIR",
+	"VEYYON_CODING_AGENT_DIR",
+	"VEYYON_CONFIG_DIR",
+	"VEYYON_PROFILE",
+	"VEYYON_PACKAGE_DIR",
+	"VEYYON_SESSION_FILE",
+	"VEYYON_ARTIFACTS_DIR",
+	"VEYYON_TOOL_BRIDGE_URL",
+	"VEYYON_TOOL_BRIDGE_TOKEN",
+	"VEYYON_TOOL_BRIDGE_SESSION",
+	"VEYYON_EVAL_LOCAL_ROOTS",
+]);
+
+export function collectForwardEnv(cfg: Config): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const [k, v] of Object.entries(process.env)) {
+		if (v === undefined || !k.startsWith("VEYYON_") || FORWARD_ENV_DENYLIST.has(k)) continue;
+		out[k] = v;
+	}
+	for (const [k, v] of Object.entries(cfg.env)) out[k] = v;
+	return out;
+}
+
+export function buildHarborEnv(
+	cfg: Config,
+	modelsYaml: string,
+	tarball: string | null,
+	version: string,
+	source: SourceMount | null = null,
+): Record<string, string> {
+	const env: Record<string, string> = { ...(process.env as Record<string, string>) };
+	delete env.VEYYON_BENCH_FORWARD_ENV;
+	if (cfg.agent !== "veyyon") return env;
+	const prepend = (k: string, v: string): void => {
+		env[k] = env[k] ? `${v}:${env[k]}` : v;
+	};
+	prepend("PYTHONPATH", AGENT_DIR);
+	env.VEYYON_BENCH_INSTALL = cfg.install;
+	env.VEYYON_BENCH_VERSION = cfg.version ?? version;
+	if (tarball) env.VEYYON_BENCH_TARBALL = tarball;
+	if (source) {
+		env.VEYYON_BENCH_SOURCE_DIR = SOURCE_SRC_MOUNT;
+		env.VEYYON_BENCH_SOURCE_BUN = `${SOURCE_BIN_MOUNT}/bun`;
+		env.VEYYON_BENCH_SOURCE_ARCH = source.arch;
+	}
+	if (cfg.binaryArm64) env.VEYYON_BENCH_BINARY_ARM64 = cfg.binaryArm64;
+	if (cfg.binaryX64) env.VEYYON_BENCH_BINARY_X64 = cfg.binaryX64;
+	if (cfg.thinking) env.VEYYON_BENCH_THINKING = cfg.thinking;
+	if (cfg.agentArgs.length > 0) env.VEYYON_BENCH_AGENT_ARGS = JSON.stringify(cfg.agentArgs);
+	if (cfg.webSearch) env.VEYYON_BENCH_WEB_SEARCH = "1";
+	env.VEYYON_BENCH_GATEWAY = cfg.gateway ? "1" : "0";
+	if (cfg.gateway) {
+		env.VEYYON_BENCH_MODELS_YAML = modelsYaml;
+		env.VEYYON_BENCH_GATEWAY_URL = cfg.gatewayUrl;
+		env.VEYYON_BENCH_GATEWAY_TOKEN = cfg.gatewayToken;
+		env.VEYYON_BENCH_GATEWAY_PROVIDERS = deriveProviders(cfg).join(",");
+	}
+	if (cfg.envType === "apple-container") env.VEYYON_BENCH_CONTAINER_DNS = CONTAINER_DNS;
+	const forward = collectForwardEnv(cfg);
+	if (Object.keys(forward).length > 0) env.VEYYON_BENCH_FORWARD_ENV = JSON.stringify(forward);
+	return env;
+}
+
+const HARBOR_PROJECT_RE = /^[a-z0-9_.-]+__[a-zA-Z0-9]{7}$/;
+
+interface DockerContainer {
+	id: string;
+	state: string;
+	project: string;
+	workingDir: string;
+}
+
+function listHarborContainers(): DockerContainer[] {
+	const res = spawnSync(
+		"docker",
+		[
+			"ps",
+			"-a",
+			"--format",
+			'{{.ID}}\t{{.State}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.project.working_dir"}}',
+		],
+		{ encoding: "utf8" },
+	);
+	if (res.status !== 0 || !res.stdout) return [];
+	const out: DockerContainer[] = [];
+	for (const line of res.stdout.trim().split("\n")) {
+		if (!line.trim()) continue;
+		const [id, state, project, workingDir] = line.split("\t");
+		if (!id) continue;
+		const harbor = HARBOR_PROJECT_RE.test(project ?? "") || (workingDir ?? "").includes(".cache/harbor/tasks");
+		if (harbor) out.push({ id, state: state ?? "", project: project ?? "", workingDir: workingDir ?? "" });
+	}
+	return out;
+}
+
+function runDockerCleanup(force: boolean): void {
+	try {
+		process.stdout.write(dim("Running harbor-targeted Docker cleanup...\n"));
+		const containers = listHarborContainers();
+		const removable = force ? containers : containers.filter(c => ["exited", "created", "dead"].includes(c.state));
+		if (removable.length > 0) {
+			const ids = removable.map(c => c.id);
+			process.stdout.write(
+				dim(`${force ? "Force-removing" : "Removing"} ${ids.length} leftover Harbor container(s)...\n`),
+			);
+			const rm = spawnSync("docker", force ? ["rm", "-f", ...ids] : ["rm", ...ids], { encoding: "utf8" });
+			if (rm.status !== 0) {
+				process.stdout.write(yellow(`  docker rm failed: ${(rm.stderr ?? "").trim() || `exit ${rm.status}`}\n`));
+			}
+		}
+
+		const activeProjects = new Set<string>();
+		if (!force) {
+			for (const c of containers) {
+				if (c.state === "running" && c.project) activeProjects.add(c.project);
+			}
+		}
+
+		const netInspect = spawnSync("docker", ["network", "ls", "--format", "{{.ID}}\t{{.Labels}}"], {
+			encoding: "utf8",
+		});
+		if (netInspect.status === 0 && netInspect.stdout) {
+			const netIdsToRemove: string[] = [];
+			for (const netLine of netInspect.stdout.trim().split("\n")) {
+				const [netId, labels] = netLine.split("\t");
+				if (!netId) continue;
+				const projMatch = (labels ?? "").match(/com\.docker\.compose\.project=([^,]+)/);
+				if (!projMatch) continue;
+				if (HARBOR_PROJECT_RE.test(projMatch[1]) && !activeProjects.has(projMatch[1])) {
+					netIdsToRemove.push(netId);
+				}
+			}
+			if (netIdsToRemove.length > 0) {
+				process.stdout.write(dim(`Removing ${netIdsToRemove.length} stale trial Docker network(s)...\n`));
+				for (const netId of netIdsToRemove) {
+					const rmNet = spawnSync("docker", ["network", "rm", netId], { encoding: "utf8" });
+					if (rmNet.status !== 0) {
+						process.stdout.write(
+							yellow(
+								`  docker network rm ${netId} failed: ${(rmNet.stderr ?? "").trim() || `exit ${rmNet.status}`}\n`,
+							),
+						);
+					}
+				}
+			}
+		}
+		process.stdout.write("Docker cleanup completed.\n");
+	} catch (err: unknown) {
+		process.stdout.write(`\nwarning: failed to run docker cleanup: ${errorMessage(err)}\n`);
+	}
+}
+
+interface BenchmarkRun {
+	exitCode: number;
+	jobName: string;
+	jobDir: string;
+	benchDir: string;
+	tarball: string | null;
+	elapsedMs: number;
+	totals: Totals | null;
+	reportPath: string | null;
+}
+
+async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
+	if (!which("harbor")) {
+		throw new Error("harbor not found on PATH. Install with: uv tool install harbor");
+	}
+	if (cfg.agent === "veyyon" && cfg.envType === "docker" && !which("docker")) {
+		throw new Error("docker not found on PATH (required to run task containers).");
+	}
+	if (cfg.envType === "apple-container" && !which("container")) {
+		throw new Error(
+			"Apple 'container' CLI not found. Install with: brew install container && container system start",
+		);
+	}
+
+	const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+	const modelSlug = (cfg.models[0] ?? "model").replace(/[^a-zA-Z0-9]+/g, "-");
+	const jobName = cfg.jobName ?? `${modelSlug}-${stamp}`;
+	const jobDir = path.join(cfg.jobsDir, jobName);
+	const benchDir = path.join(cfg.jobsDir, "_bench", jobName);
+	fs.mkdirSync(benchDir, { recursive: true });
+	if (!cfg.resume && !cfg.dryRun) {
+		fs.writeFileSync(path.join(benchDir, "runner-config.json"), JSON.stringify({ ...cfg, jobName }, null, "\t"));
+	}
+
+	const version = readPkgVersion();
+
+	let tarball: string | null = cfg.tarball;
+	if (cfg.agent === "veyyon" && cfg.install === "local" && !cfg.binaryArm64 && !cfg.binaryX64) {
+		if (tarball) {
+			process.stdout.write(dim(`using tarball ${tarball}\n`));
+		} else if (cfg.build) {
+			tarball = buildTarball(path.join(cfg.jobsDir, "_bench"));
+		} else {
+			tarball = newestTarball(path.join(cfg.jobsDir, "_bench"));
+			if (!tarball) throw new Error("--no-build but no tarball found; pass --tarball or drop --no-build");
+		}
+	}
+
+	let source: SourceMount | null = null;
+	if (cfg.agent === "veyyon" && cfg.install === "source" && !cfg.binaryArm64 && !cfg.binaryX64) {
+		source = prepareSourceDeps(cfg);
+	}
+
+	let modelsYaml = "";
+	if (cfg.agent === "veyyon" && cfg.gateway) {
+		modelsYaml = writeModelsYaml(benchDir, cfg);
+		if (!gatewayHealthOk(cfg.gatewayUrl)) {
+			process.stderr.write(
+				yellow(
+					`warning: gateway ${cfg.gatewayUrl} health check failed (continuing). Is the pm2 'veyyon-auth-gateway' running?\n`,
+				),
+			);
+		}
+	}
+	const composeOverlayPath = cfg.envType === "docker" ? writeComposeOverlay(benchDir, cfg, source) : null;
+	const mountsJson = cfg.envType === "docker" ? null : buildMountsJson(source);
+
+	const harborArgs = cfg.resume
+		? buildResumeArgs(cfg, jobDir)
+		: buildHarborArgs(cfg, jobName, modelsYaml, tarball, composeOverlayPath, mountsJson);
+	const harborEnv = buildHarborEnv(cfg, modelsYaml, tarball, version, source);
+	const logPath = path.join(benchDir, "harbor.log");
+	if (cfg.dryRun) {
+		process.stdout.write(bold("\nharbor command:\n"));
+		process.stdout.write(`harbor ${harborArgs.join(" ")}\n\n`);
+		if (modelsYaml) {
+			process.stdout.write(bold("models.yml:\n"));
+			process.stdout.write(`${fs.readFileSync(modelsYaml, "utf8")}\n`);
+		}
+		process.stdout.write(bold("veyyon env:\n"));
+		for (const key in harborEnv) {
+			if (key === "VEYYON_BENCH_FORWARD_ENV") continue;
+			if (key.startsWith("VEYYON_BENCH_") || key === "PYTHONPATH")
+				process.stdout.write(`  ${key}=${harborEnv[key]}\n`);
+		}
+		if (harborEnv.VEYYON_BENCH_FORWARD_ENV) {
+			const parsedForwardEnv: unknown = JSON.parse(harborEnv.VEYYON_BENCH_FORWARD_ENV);
+			if (isRecord(parsedForwardEnv)) {
+				const keys: string[] = [];
+				for (const key in parsedForwardEnv) keys.push(key);
+				process.stdout.write(`  VEYYON_BENCH_FORWARD_ENV=${keys.join(",")} (values hidden)\n`);
+			}
+		}
+		process.stdout.write(`\njob dir: ${jobDir}\nbench dir: ${benchDir}\n`);
+		return { exitCode: 0, jobName, jobDir, benchDir, tarball, elapsedMs: 0, totals: null, reportPath: null };
+	}
+
+	if ((cfg.cleanup || cfg.cleanupForce) && cfg.envType === "docker" && which("docker")) {
+		runDockerCleanup(cfg.cleanupForce);
+	}
+	const gatewayForward = startVmnetGatewayForward(cfg);
+	process.stdout.write(dim(`launching harbor → ${logPath}\n`));
+	const logFd = fs.openSync(logPath, "a");
+	const proc = Bun.spawn(["harbor", ...harborArgs], {
+		env: harborEnv,
+		stdout: logFd,
+		stderr: logFd,
+		stdin: "ignore",
+	});
+
+	const expected = cfg.resume
+		? (readJobResult(jobDir)?.nTotal ?? Math.max(1, cfg.tasks * cfg.attempts * cfg.models.length))
+		: Math.max(1, cfg.tasks * cfg.attempts * cfg.models.length);
+	const st: RenderState = { cfg, jobDir, logPath, startMs: Date.now(), expected, tick: 0 };
+
+	if (isTTY) process.stdout.write(`${CSI}?1049h${CSI}?25l`); // alt screen, hide cursor
+	let exitCode = 0;
+	let finished = false;
+	proc.exited.then((code: number) => {
+		exitCode = code;
+		finished = true;
+	});
+
+	const onSig = (): void => {
+		try {
+			proc.kill("SIGINT");
+		} catch {}
+	};
+	process.on("SIGINT", onSig);
+	process.on("SIGTERM", onSig);
+
+	try {
+		while (!finished) {
+			render(st);
+			st.tick++;
+			await Bun.sleep(isTTY ? 700 : 10000);
+		}
+		render(st); // final frame
+	} finally {
+		gatewayForward?.stop();
+		if (isTTY) process.stdout.write(`${CSI}?25h${CSI}?1049l`); // restore cursor + screen
+		try {
+			fs.closeSync(logFd);
+		} catch {}
+		process.off("SIGINT", onSig);
+		process.off("SIGTERM", onSig);
+	}
+
+	const trials = readTrials(jobDir);
+	const totals = aggregate(trials, readJobResult(jobDir), expected);
+	const successPct = totals.done > 0 ? (totals.pass / totals.done) * 100 : 0;
+	const elapsedMs = Date.now() - st.startMs;
+	const reportPath = writeReport(st, benchDir, exitCode);
+	process.stdout.write("\n");
+	process.stdout.write(
+		`${bold(`${st.cfg.dataset} complete`)} — ${green(`${totals.pass}/${totals.done} passed (${successPct.toFixed(1)}%)`)}\n`,
+	);
+	process.stdout.write(
+		`fail ${totals.fail} · error ${totals.error} · spend ${fmtUsd(totals.costUsd)} · elapsed ${fmtDur(elapsedMs)}\n`,
+	);
+	process.stdout.write(
+		`tokens: in ${fmtNum(totals.tokIn)} · out ${fmtNum(totals.tokOut)} · cache ${fmtNum(totals.tokCache)}\n`,
+	);
+	process.stdout.write(`${dim("report:")} ${reportPath}\n`);
+	process.stdout.write(`${dim("logs:  ")} ${logPath}\n`);
+	process.stdout.write(`${dim("trials:")} ${jobDir}\n`);
+	if (exitCode !== 0) process.stdout.write(yellow(`harbor exited ${exitCode}; see harbor.log\n`));
+	return { exitCode, jobName, jobDir, benchDir, tarball, elapsedMs, totals, reportPath };
+}
+
+async function main(): Promise<void> {
+	const argv = process.argv.slice(2);
+	if (argv[0] === "cleanup") {
+		if (!which("docker")) throw new Error("docker not found on PATH (required for cleanup).");
+		runDockerCleanup(true);
+		return;
+	}
+	let cfg = parseArgs(argv);
+	if (cfg.resume) cfg = resolveResumeConfig(cfg);
+	const exitCode = (await runBenchmark(cfg)).exitCode;
+	process.exit(exitCode);
+}
+
+if (import.meta.main) {
+	main().catch((err: unknown) => {
+		if (isTTY) process.stdout.write(`${CSI}?25h${CSI}?1049l`);
+		process.stderr.write(red(`\nerror: ${errorMessage(err)}\n`));
+		process.exit(1);
+	});
+}

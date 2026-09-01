@@ -1,17 +1,7 @@
-/**
- * Read the first `maxBytes` of a file (offset 0) and pass that slice to `op`.
- *
- * Buffers are reused to avoid allocating on every peek: sync uses one growable
- * `Uint8Array`; async uses a small fixed pool of `Buffer`s with a bounded wait
- * queue, falling back to a fresh allocation when the pool and queue are saturated
- * or when `maxBytes` exceeds the pool slot size.
- */
 import * as fs from "node:fs";
 
-/** Async pool slot size; larger peeks allocate ad hoc. */
 const POOLED_BUFFER_SIZE = 512;
 const ASYNC_POOL_SIZE = 10;
-/** Cap waiter queue so heavy concurrency does not queue unbounded; overflow uses alloc. */
 const MAX_ASYNC_WAITERS = 4;
 const INITIAL_SYNC_BUFFER_SIZE = 1024;
 const EMPTY_BUFFER = Buffer.alloc(0);
@@ -21,7 +11,6 @@ const availableAsyncPoolIndexes = Array.from({ length: ASYNC_POOL_SIZE }, (_, in
 const asyncPoolWaiters: Array<(index: number) => void> = [];
 let syncPool = new Uint8Array(INITIAL_SYNC_BUFFER_SIZE);
 
-/** Returns a pool slot index, or `-1` when the caller should use a standalone buffer. */
 function acquireAsyncPoolIndex(): Promise<number> | number {
 	const index = availableAsyncPoolIndexes.pop();
 	if (index !== undefined) {
@@ -74,10 +63,6 @@ function withSyncPoolBuffer<T>(maxBytes: number, op: (buffer: Uint8Array) => T):
 	return op(syncPool.subarray(0, maxBytes));
 }
 
-/**
- * Synchronously reads up to `maxBytes` from the start of `filePath` and returns `op(header)`.
- * If the file is shorter, `header` is only the bytes actually read.
- */
 export function peekFileSync<T>(filePath: string, maxBytes: number, op: (header: Uint8Array) => T): T {
 	if (maxBytes <= 0) {
 		return op(EMPTY_BUFFER);
@@ -94,9 +79,6 @@ export function peekFileSync<T>(filePath: string, maxBytes: number, op: (header:
 	}
 }
 
-/**
- * Like {@link peekFileSync} but uses async I/O.
- */
 export async function peekFile<T>(filePath: string, maxBytes: number, op: (header: Uint8Array) => T): Promise<T> {
 	if (maxBytes <= 0) {
 		return op(EMPTY_BUFFER);
@@ -113,16 +95,6 @@ export async function peekFile<T>(filePath: string, maxBytes: number, op: (heade
 	}
 }
 
-/**
- * Read up to the last `maxBytes` of `filePath` and pass that slice to `op`.
- *
- * The tail mirror of {@link peekFile}: same pooled-buffer strategy (no per-call
- * allocation for small reads), but the read is positioned at `size - len` so the
- * window ends at EOF. When the file is shorter than `maxBytes`, the whole file is
- * returned. A multi-byte codepoint straddling the leading cut decodes to a
- * replacement char — callers that parse line-oriented tails drop the partial
- * leading line anyway.
- */
 export async function peekFileTail<T>(filePath: string, maxBytes: number, op: (tail: Uint8Array) => T): Promise<T> {
 	if (maxBytes <= 0) {
 		return op(EMPTY_BUFFER);
@@ -144,14 +116,6 @@ export async function peekFileTail<T>(filePath: string, maxBytes: number, op: (t
 	}
 }
 
-/**
- * Read up to the first `prefixBytes` and last `suffixBytes` of `filePath`, then
- * pass both slices to `op`.
- *
- * Uses a single open/stat sequence. When the whole file fits in the head window,
- * the tail is sliced from the already-read head bytes instead of issuing a
- * second read.
- */
 export async function peekFileEnds<T>(
 	filePath: string,
 	prefixBytes: number,

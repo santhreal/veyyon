@@ -135,7 +135,7 @@ function LocationRows({ text, rows }: { text: string; rows: LocRow[] }): ReactNo
 	);
 }
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	const action = str(args.action);
 	const file = str(args.file);
 	const line = num(args.line);
@@ -155,7 +155,7 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const details = detailsRecord(result);
 	const file = str(args.file);
 	const line = num(args.line);

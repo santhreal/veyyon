@@ -71,9 +71,6 @@ interface NvdResponse {
 	vulnerabilities?: Array<{ cve: CveItem }>;
 }
 
-/**
- * Handle NVD (National Vulnerability Database) CVE URLs
- */
 export const handleNvd: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -84,14 +81,12 @@ export const handleNvd: SpecialHandler = async (
 		if (!parsed) return null;
 		if (!parsed.hostname.includes("nvd.nist.gov")) return null;
 
-		// Extract CVE ID from /vuln/detail/{CVE-ID}
 		const match = parsed.pathname.match(/\/vuln\/detail\/(CVE-\d{4}-\d+)/i);
 		if (!match) return null;
 
 		const cveId = match[1].toUpperCase();
 		const fetchedAt = new Date().toISOString();
 
-		// Fetch from NVD API
 		const apiUrl = `https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=${cveId}`;
 		const result = await loadPage(apiUrl, {
 			timeout,
@@ -109,20 +104,17 @@ export const handleNvd: SpecialHandler = async (
 
 		let md = `# ${vuln.id}\n\n`;
 
-		// Status and dates
 		if (vuln.vulnStatus) {
 			md += `**Status:** ${vuln.vulnStatus}\n`;
 		}
 		md += `**Published:** ${formatIsoDate(vuln.published)}`;
 		md += ` · **Modified:** ${formatIsoDate(vuln.lastModified)}\n\n`;
 
-		// Description
 		const desc = vuln.descriptions.find(d => d.lang === "en")?.value;
 		if (desc) {
 			md += `## Description\n\n${desc}\n\n`;
 		}
 
-		// CVSS Scores
 		const cvss31 = vuln.metrics?.cvssMetricV31?.[0];
 		const cvss30 = vuln.metrics?.cvssMetricV30?.[0];
 		const cvss2 = vuln.metrics?.cvssMetricV2?.[0];
@@ -161,7 +153,6 @@ export const handleNvd: SpecialHandler = async (
 			}
 		}
 
-		// Weaknesses (CWE)
 		const cwes = vuln.weaknesses
 			?.flatMap(w => w.description)
 			.filter(d => d.lang === "en" && d.value !== "NVD-CWE-Other" && d.value !== "NVD-CWE-noinfo");
@@ -174,7 +165,6 @@ export const handleNvd: SpecialHandler = async (
 			md += "\n";
 		}
 
-		// Affected Products (CPE)
 		const cpes = extractCpes(vuln.configurations);
 		if (cpes.length > 0) {
 			md += `## Affected Products\n\n`;
@@ -188,7 +178,6 @@ export const handleNvd: SpecialHandler = async (
 			md += "\n";
 		}
 
-		// References
 		if (vuln.references?.length) {
 			md += `## References\n\n`;
 			for (const ref of vuln.references.slice(0, 15)) {

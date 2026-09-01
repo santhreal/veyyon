@@ -1,0 +1,36 @@
+# WORKED EXAMPLE of a prompt-STATEMENT arm. Copy this file, not the prose.
+#
+# WHY THIS LANE EXISTS ALONGSIDE `.sections.yml`. A section override is the right
+# instrument for "is this section's wording better", and the wrong one for "is
+# this RULE worth its tokens". TOOL POLICY is one banner region and 34 rules, so
+# a delta measured across a rewritten TOOL POLICY cannot be attributed to any of
+# them. The system prompt is assembled from named statements, one per rule, so a
+# statement override changes exactly one rule and a delta has one candidate cause.
+#
+# HOW IT WORKS. `arms/<arm>.statements.yml` is a mapping of statement id to the
+# replacement text for that rule, or to `null` to REMOVE the rule. The runner
+# stages it as `statements/<arm>.json` and the agent reads those exact bytes
+# through the eval-only `VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS` environment
+# variable. It is not a config key, so it cannot leak into a normal run, and `vey`
+# prints a loud warning naming the ablated and replaced rules whenever it is
+# active.
+#
+# `null` REMOVES the rule and the separation it carried. An empty string is a
+# different experiment: it keeps the rule present and silent, which is how you ask
+# whether a rule needs saying at all rather than whether it should be there.
+#
+# FINDING THE IDS. `veyyon prompt --statements` lists every rule with what it
+# costs and the condition that decides whether it is in the prompt at all;
+# `veyyon prompt --statement <id>` prints one rule's rendered text. An id that
+# does not exist is refused loudly before the run, so a typo cannot quietly bench
+# the production prompt under a treatment's name.
+#
+# THE CONTROL for this arm is `baseline`: `candidate-ablate-delegation-gates.yml`
+# is deliberately identical to `baseline.yml`, so the only variable between them is
+# this file.
+#
+# WHAT THIS ARM MEASURES. The delegation gates are eight bullets telling the model
+# how to decide what to delegate. They are the largest single rule in TOOL POLICY.
+# The question is whether the model delegates better with them than without: if the
+# ablated arm scores the same, the rule is paying tokens for nothing.
+tool-policy/delegation-gates: null

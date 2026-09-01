@@ -1053,9 +1053,7 @@ describe("Settings", () => {
 				search: { enabled: false },
 				grep: { enabled: true },
 				"find.enabled": false,
-				"glob.enabled": true,
 				"search.enabled": false,
-				"grep.enabled": true,
 			});
 
 			const settings = await Settings.init({ cwd: projectDir, agentDir });

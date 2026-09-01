@@ -184,7 +184,9 @@ function buildModelPreferenceSeries(
 		}
 	}
 
-	const sorted = [...totals.entries()].map(([key, value]) => ({ key, ...value })).sort((a, b) => b.total - a.total);
+	const sorted = Array.from(totals.entries())
+		.map(([key, value]) => ({ key, ...value }))
+		.sort((a, b) => b.total - a.total);
 	const topEntries = sorted.slice(0, topN);
 	const topKeys = new Set(topEntries.map(entry => entry.key));
 
@@ -214,11 +216,11 @@ function buildModelPreferenceSeries(
 	}
 
 	const series = topEntries.map(entry => labelByKey.get(entry.key) ?? entry.model);
-	if ([...dataMap.values()].some(row => (row.Other ?? 0) > 0)) {
+	if (Array.from(dataMap.values()).some(row => (row.Other ?? 0) > 0)) {
 		series.push("Other");
 	}
 
-	const data = [...dataMap.values()]
+	const data = Array.from(dataMap.values())
 		.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
 		.map(row => {
 			const total = row.total ?? 0;
@@ -254,9 +256,9 @@ function ModelsTable({
 	const chartTheme = TABLE_CHART_THEMES[theme];
 
 	const sortedModels = useMemo(() => {
-		return [...models].sort(
-			(a, b) => b.totalInputTokens + b.totalOutputTokens - (a.totalInputTokens + a.totalOutputTokens),
-		);
+		return models
+			.slice()
+			.sort((a, b) => b.totalInputTokens + b.totalOutputTokens - (a.totalInputTokens + a.totalOutputTokens));
 	}, [models]);
 
 	return (

@@ -4,7 +4,7 @@ import { Badge, Badges, Kv, KvGrid, Note, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, isRecord, normalizeWs, str, truncate } from "../util";
 
-function Summary({ args, result }: ToolRenderProps): ReactNode {
+export function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const action = str(args.action);
 	const reason = str(args.reason);
 	const tone = result?.isError ? "err" : action === "apply" ? "ok" : "warn";
@@ -15,7 +15,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const action = str(args.action);
 	const reason = str(args.reason);
 	const tone = result?.isError ? "err" : action === "apply" ? "ok" : "warn";

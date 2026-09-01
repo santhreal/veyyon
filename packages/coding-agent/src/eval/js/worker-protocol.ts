@@ -5,11 +5,7 @@ export type { JsDisplayOutput } from "./shared/types";
 export interface SessionSnapshot {
 	cwd: string;
 	sessionId: string;
-	/**
-	 * On-disk roots the helpers substitute for internal-URL schemes
-	 * (e.g. `{ local: "/…/artifacts/local" }`). Lets `read`/`write`
-	 * accept `local://…` paths instead of writing a literal `local:/` directory.
-	 */
+	/** On-disk roots the helpers substitute for internal-URL schemes (e.g. `{ local: "/…/artifacts/local" }`). Lets `read`/`write` */
 	localRoots?: Record<string, string>;
 	/** Session artifacts directory for the `kv` store; null when the host has none. */
 	artifactsDir?: string | null;

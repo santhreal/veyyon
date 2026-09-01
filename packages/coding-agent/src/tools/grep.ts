@@ -1,0 +1,1174 @@
+import type { Stats } from "node:fs";
+import { stat } from "node:fs/promises";
+import * as path from "node:path";
+import type {
+	AgentTool,
+	AgentToolContext,
+	AgentToolResult,
+	AgentToolUpdateCallback,
+	ToolTier,
+} from "@veyyon/agent-core";
+import { formatHashlineHeader } from "@veyyon/hashline";
+import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@veyyon/natives";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { errorMessage, prompt, untilAborted } from "@veyyon/utils";
+import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
+import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import type { Theme } from "../modes/theme/theme";
+import { toolsPrompts } from "../prompts/tools/rows";
+import { artifactFooter, DEFAULT_MAX_COLUMN, truncateHead } from "../session/streaming-output";
+import {
+	Ellipsis,
+	fileHyperlink,
+	framedBlock,
+	outputBlockContentWidth,
+	renderStatusLine,
+	truncateToWidth,
+	tryResolveInternalUrlSync,
+	uriHyperlink,
+} from "../tui";
+import { resolveFileDisplayMode } from "../utils/file-display-mode";
+import type { ToolSession } from ".";
+import { searchPathFilesystemTargets } from "./cwd-boundary";
+import { materializeReadUrlToFile, parseReadUrlTarget } from "./fetch";
+import { createFileRecorder, formatResultPath } from "./file-recorder";
+import {
+	DEFAULT_FILE_LIMIT,
+	type GrepExecutionOutput,
+	type GrepToolDetails,
+	INTERNAL_TOTAL_CAP,
+	isImmutableSourcePath,
+	lineRangeFetchCap,
+	MULTI_FILE_PER_FILE_MATCHES,
+	matchAbsolutePath,
+	mergeGrepResults,
+	mergeRangesInto,
+	NATIVE_GREP_MAX_FILE_BYTES,
+	type PaginatedGrepMatches,
+	parsePathSpecs,
+	type ResolvedGrepScope,
+	resolveArchiveSearchPaths,
+	resolveInternalSearchInputs,
+	SEARCH_GREP_TIMEOUT_MS,
+	type SearchParams,
+	SINGLE_FILE_MATCHES,
+	searchSchema,
+	searchVirtualResources,
+} from "./grep-helpers";
+import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
+import { formatMatchLine } from "./match-line-format";
+import { inlineBudgetFor, saveOutputArtifact } from "./output-artifact";
+import {
+	expandDelimitedPathEntries,
+	isLineInRanges,
+	type LineRange,
+	pathTargetsSsh,
+	type ResolvedSearchTarget,
+	resolveReadPath,
+	toPathList,
+} from "./path-utils";
+import {
+	formatCodeFrameLine,
+	formatCount,
+	formatEmptyMessage,
+	formatErrorMessage,
+	formatMoreItems,
+	formatScopeMeta,
+	PREVIEW_LIMITS,
+	replaceTabs,
+} from "./render-utils";
+import { resolveToolSearchScope } from "./search-scope";
+import { ToolError } from "./tool-errors";
+import { toolResult } from "./tool-result";
+
+export type { GrepToolDetails, GrepToolInput } from "./grep-helpers";
+export { DEFAULT_FILE_LIMIT, MULTI_FILE_PER_FILE_MATCHES, SINGLE_FILE_MATCHES } from "./grep-helpers";
+
+export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails> {
+	readonly name = "grep";
+	readonly approval = (args: unknown): ToolTier => {
+		const a = args as { path?: string | string[]; paths?: string | string[] };
+		return toPathList(a.path ?? a.paths).some(pathTargetsSsh) ? "exec" : "read";
+	};
+	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] =>
+		searchPathFilesystemTargets(args, cwd);
+	readonly label = "Grep";
+	readonly loadMode = "discoverable";
+	readonly summary = "Grep file contents using ripgrep (fast regex search)";
+	readonly description: string;
+	readonly parameters = searchSchema;
+	readonly strict = true;
+
+	constructor(private readonly session: ToolSession) {
+		const displayMode = resolveFileDisplayMode(session);
+		this.description = prompt.render(toolsPrompts["tools/grep"].text, {
+			IS_HL_MODE: displayMode.hashLines,
+			IS_LINE_NUMBER_MODE: !displayMode.hashLines && displayMode.lineNumbers,
+		});
+	}
+
+	#validateParams(
+		pattern: string,
+		skip: number | null | undefined,
+	): { normalizedPattern: string; normalizedSkip: number } {
+		if (!pattern.trim()) {
+			throw new ToolError("Pattern must not be empty");
+		}
+		const normalizedSkip =
+			skip === undefined || skip === null ? 0 : Number.isFinite(skip) ? Math.floor(skip) : Number.NaN;
+		if (normalizedSkip < 0 || !Number.isFinite(normalizedSkip)) {
+			throw new ToolError("Skip must be a non-negative number");
+		}
+		return { normalizedPattern: pattern, normalizedSkip };
+	}
+
+	async #expandScope(rawPath: string | string[] | undefined, signal?: AbortSignal): Promise<ResolvedGrepScope> {
+		const scopedPaths = toPathList(rawPath);
+		const effectivePaths = scopedPaths.length > 0 ? scopedPaths : ["."];
+		const rawEntries = await expandDelimitedPathEntries(effectivePaths, this.session.cwd);
+		const pathSpecs = await parsePathSpecs(rawEntries, this.session.cwd);
+		const materializedExternalPaths = new Map<string, string>();
+		const materializeExternalUrlForSearch = async (targetPath: string) => {
+			const target = parseReadUrlTarget(targetPath);
+			if (!target) return undefined;
+			const materialized = await materializeReadUrlToFile(
+				this.session,
+				{ path: target.path, raw: target.raw },
+				signal,
+			);
+			materializedExternalPaths.set(targetPath, materialized.path);
+			return { sourcePath: materialized.path, immutable: true };
+		};
+		const {
+			resolvedPaths,
+			displayMap: archiveDisplayMap,
+			displaySet: archiveDisplaySet,
+			unreadable: archiveUnreadable,
+			cleanup: cleanupArchiveScratch,
+		} = await resolveArchiveSearchPaths(pathSpecs, this.session.cwd);
+
+		try {
+			const internalResolution = await resolveInternalSearchInputs({
+				pathSpecs,
+				resolvedPaths,
+				cwd: this.session.cwd,
+				settings: this.session.settings,
+				signal,
+				archiveDisplayMap,
+				localProtocolOptions: this.session.localProtocolOptions,
+				skills: this.session.skills,
+			});
+			const searchablePaths = internalResolution.paths;
+			const { virtualResources, virtualPathSet, virtualInputIndexes } = internalResolution;
+			const rangesByAbsPath = new Map<string, LineRange[]>();
+
+			if (
+				archiveUnreadable.length > 0 &&
+				searchablePaths.length === archiveUnreadable.length &&
+				virtualResources.length === 0
+			) {
+				throw new ToolError(
+					`Cannot search archive member(s): ${archiveUnreadable.join(", ")}. ` +
+						`Read the member with \`read <archive>:<member>\` and inspect the returned text, ` +
+						`or pass a UTF-8 text member.`,
+				);
+			}
+
+			let searchPath: string;
+			let scopePath: string;
+			let globFilter: string | undefined;
+			let isDirectory: boolean;
+			let multiTargets: ResolvedSearchTarget[] | undefined;
+			let exactFilePaths: string[] | undefined;
+			let missingPaths: string[];
+			const immutableSourcePaths = new Set(internalResolution.immutableSourcePaths);
+
+			if (searchablePaths.length > 0) {
+				const scope = await resolveToolSearchScope({
+					rawPaths: searchablePaths,
+					cwd: this.session.cwd,
+					internalUrlAction: "search",
+					trackImmutableSources: true,
+					surfaceExactFilePaths: true,
+					fanOutFileTargets: true,
+					multipathStatHint: " (`path` list entries must each exist relative to cwd)",
+					settings: this.session.settings,
+					signal,
+					localProtocolOptions: this.session.localProtocolOptions,
+					skills: this.session.skills,
+					resolveExternalUrl: materializeExternalUrlForSearch,
+				});
+				searchPath = scope.searchPath;
+				isDirectory = scope.isDirectory;
+				multiTargets = scope.multiTargets;
+				exactFilePaths = scope.exactFilePaths;
+				missingPaths = scope.missingPaths;
+				globFilter = scope.globFilter;
+				for (const immutablePath of scope.immutableSourcePaths) {
+					immutableSourcePaths.add(immutablePath);
+				}
+				for (let idx = 0; idx < pathSpecs.length; idx++) {
+					const spec = pathSpecs[idx];
+					if (!spec.ranges) continue;
+					if (virtualInputIndexes.has(idx)) continue;
+					const resolved = internalResolution.resolvedPathsByInput[idx];
+					if (!resolved) continue;
+					const materializedExternalPath = materializedExternalPaths.get(spec.clean);
+					if (materializedExternalPath) {
+						mergeRangesInto(rangesByAbsPath, path.resolve(materializedExternalPath), spec.ranges);
+						continue;
+					}
+					if (resolved === spec.clean && !archiveDisplayMap.has(resolved)) {
+						const absKey = path.resolve(resolveReadPath(resolved, this.session.cwd));
+						let stats: Stats | undefined;
+						try {
+							stats = await stat(absKey);
+						} catch (error) {
+							const code = (error as { code?: string }).code;
+							if (code === "ENOENT") {
+								throw new ToolError(`Path not found for line-range selector: ${spec.original}`);
+							}
+							throw new ToolError(
+								`Could not read path for line-range selector: ${spec.original}: ${errorMessage(error)}`,
+							);
+						}
+						if (!stats.isFile()) {
+							throw new ToolError(`Line-range selector requires a single file: ${spec.original} is a directory`);
+						}
+						mergeRangesInto(rangesByAbsPath, absKey, spec.ranges);
+					} else {
+						mergeRangesInto(rangesByAbsPath, path.resolve(resolved), spec.ranges);
+					}
+				}
+				const physicalScopePath =
+					searchablePaths.length === 1 && archiveDisplayMap.get(searchPath)
+						? (archiveDisplayMap.get(searchPath) as string)
+						: scope.scopePath;
+				scopePath = internalResolution.virtualScopePath
+					? `${physicalScopePath}, ${internalResolution.virtualScopePath}`
+					: physicalScopePath;
+			} else {
+				searchPath = this.session.cwd;
+				scopePath = internalResolution.virtualScopePath ?? ".";
+				globFilter = undefined;
+				isDirectory = false;
+				multiTargets = undefined;
+				exactFilePaths = undefined;
+				missingPaths = [];
+			}
+
+			if (
+				missingPaths.length > 0 &&
+				missingPaths.length === searchablePaths.length &&
+				virtualResources.length === 0
+			) {
+				const archiveHint =
+					archiveUnreadable.length > 0
+						? ` (archive members were not searchable: ${archiveUnreadable.join(", ")})`
+						: "";
+				throw new ToolError(
+					`Path not found: ${missingPaths.join(", ")}; list each target in the semicolon-delimited \`path\`${archiveHint}`,
+				);
+			}
+
+			const isMultiScope =
+				isDirectory ||
+				Boolean(exactFilePaths) ||
+				Boolean(multiTargets) ||
+				(virtualResources.length > 0 && (virtualResources.length > 1 || searchablePaths.length > 0));
+			const perFileMatchCap = isMultiScope ? MULTI_FILE_PER_FILE_MATCHES : SINGLE_FILE_MATCHES;
+
+			return {
+				pathSpecs,
+				searchablePaths,
+				virtualResources,
+				virtualPathSet,
+				archiveDisplayMap,
+				archiveDisplaySet,
+				archiveUnreadable,
+				cleanupArchiveScratch,
+				rangesByAbsPath,
+				searchPath,
+				scopePath,
+				globFilter,
+				isDirectory,
+				multiTargets,
+				exactFilePaths,
+				missingPaths,
+				immutableSourcePaths,
+				isMultiScope,
+				perFileMatchCap,
+			};
+		} catch (error) {
+			await cleanupArchiveScratch();
+			throw error;
+		}
+	}
+
+	async #executeGrep(
+		scope: ResolvedGrepScope,
+		normalizedPattern: string,
+		caseSensitive: boolean | undefined,
+		gitignore: boolean | undefined,
+		signal?: AbortSignal,
+	): Promise<GrepExecutionOutput> {
+		const normalizedContextBefore = this.session.settings.get("search.contextBefore");
+		const normalizedContextAfter = this.session.settings.get("search.contextAfter");
+		const ignoreCase = !(caseSensitive ?? true);
+		const useGitignore = gitignore ?? true;
+		const effectiveMultiline = normalizedPattern.includes("\n") || normalizedPattern.includes("\\n");
+		const effectiveOutputMode = GrepOutputMode.Content;
+
+		const hasLineRangeFilters = scope.pathSpecs.some(spec => spec.ranges);
+		const nativeMaxCountPerFile = hasLineRangeFilters
+			? Math.max(scope.perFileMatchCap + 1, lineRangeFetchCap(scope.pathSpecs, scope.perFileMatchCap + 1))
+			: scope.perFileMatchCap + 1;
+		const nativeMaxCount = hasLineRangeFilters
+			? Math.ceil(INTERNAL_TOTAL_CAP / (scope.perFileMatchCap + 1)) * nativeMaxCountPerFile
+			: INTERNAL_TOTAL_CAP;
+
+		let result: GrepResult = {
+			matches: [],
+			totalMatches: 0,
+			filesWithMatches: 0,
+			filesSearched: 0,
+			limitReached: false,
+		};
+		let skippedOversizedCount = 0;
+		let literalFallbackError: string | undefined;
+
+		try {
+			if (scope.searchablePaths.length > 0) {
+				if (scope.exactFilePaths || scope.multiTargets) {
+					const matches: GrepMatch[] = [];
+					const seenMatchKeys = new Set<string>();
+					let limitReached = false;
+					let totalMatches = 0;
+					let filesSearched = 0;
+					const targets = scope.exactFilePaths
+						? scope.exactFilePaths.map(filePath => ({
+								basePath: filePath,
+								glob: undefined as string | undefined,
+							}))
+						: (scope.multiTargets ?? []);
+					for (const target of targets) {
+						const targetResult = await grep(
+							{
+								pattern: normalizedPattern,
+								path: target.basePath,
+								glob: target.glob,
+								ignoreCase,
+								multiline: effectiveMultiline,
+								hidden: true,
+								gitignore: useGitignore,
+								maxCount: nativeMaxCount,
+								contextBefore: normalizedContextBefore,
+								contextAfter: normalizedContextAfter,
+								maxColumns: DEFAULT_MAX_COLUMN,
+								mode: effectiveOutputMode,
+								maxCountPerFile: nativeMaxCountPerFile,
+								signal,
+								timeoutMs: SEARCH_GREP_TIMEOUT_MS,
+							},
+							undefined,
+						);
+						skippedOversizedCount += targetResult.skippedOversized ?? 0;
+						literalFallbackError ??= targetResult.patternTreatedAsLiteral ?? undefined;
+						limitReached = limitReached || Boolean(targetResult.limitReached);
+						totalMatches += targetResult.totalMatches;
+						filesSearched += targetResult.filesSearched;
+						for (const match of targetResult.matches) {
+							const absolute = path.resolve(target.basePath, match.path);
+							const matchKey = `${absolute}\0${match.lineNumber}`;
+							if (seenMatchKeys.has(matchKey)) {
+								totalMatches = Math.max(0, totalMatches - 1);
+								continue;
+							}
+							seenMatchKeys.add(matchKey);
+							const rebased = path.relative(scope.searchPath, absolute).replace(/\\/g, "/");
+							matches.push({ ...match, path: rebased });
+						}
+					}
+					result = {
+						matches,
+						totalMatches: scope.exactFilePaths ? matches.length : totalMatches,
+						filesWithMatches: new Set(matches.map(match => match.path)).size,
+						filesSearched: scope.exactFilePaths ? scope.exactFilePaths.length : filesSearched,
+						limitReached,
+					};
+				} else {
+					result = await grep(
+						{
+							pattern: normalizedPattern,
+							path: scope.searchPath,
+							glob: scope.globFilter,
+							ignoreCase,
+							multiline: effectiveMultiline,
+							hidden: true,
+							gitignore: useGitignore,
+							maxCount: nativeMaxCount,
+							contextBefore: normalizedContextBefore,
+							contextAfter: normalizedContextAfter,
+							maxColumns: DEFAULT_MAX_COLUMN,
+							mode: effectiveOutputMode,
+							maxCountPerFile: nativeMaxCountPerFile,
+							signal,
+							timeoutMs: SEARCH_GREP_TIMEOUT_MS,
+						},
+						undefined,
+					);
+					skippedOversizedCount = result.skippedOversized ?? 0;
+					literalFallbackError ??= result.patternTreatedAsLiteral ?? undefined;
+				}
+			}
+		} catch (err) {
+			if (err instanceof Error && /^regex(?: parse)? error/i.test(err.message)) {
+				throw new ToolError(err.message.replace(/^regex(?: parse)? error:?\s*/i, "Invalid regex: "));
+			}
+			if (err instanceof Error && err.message.includes("Aborted: Timeout")) {
+				throw new ToolError(
+					`Grep timed out after ${SEARCH_GREP_TIMEOUT_MS / 1000}s; narrow paths or pattern, or scope with \`glob\` first`,
+				);
+			}
+			throw err;
+		}
+
+		let virtualResult: GrepResult;
+		try {
+			virtualResult = await searchVirtualResources(
+				scope.virtualResources,
+				normalizedPattern,
+				ignoreCase,
+				effectiveMultiline,
+				normalizedContextBefore,
+				normalizedContextAfter,
+				INTERNAL_TOTAL_CAP,
+				signal,
+			);
+		} catch (err) {
+			if (err instanceof Error && /^regex(?: parse)? error/i.test(err.message)) {
+				throw new ToolError(err.message.replace(/^regex(?: parse)? error:?\s*/i, "Invalid regex: "));
+			}
+			if (err instanceof SyntaxError) {
+				throw new ToolError(`Invalid regex: ${err.message}`);
+			}
+			throw err;
+		}
+
+		result = mergeGrepResults(result, virtualResult, nativeMaxCount);
+
+		if (scope.rangesByAbsPath.size > 0) {
+			const filteredMatches: GrepMatch[] = [];
+			for (const match of result.matches) {
+				const abs = matchAbsolutePath(match.path, scope.searchPath);
+				const ranges = scope.rangesByAbsPath.get(abs);
+				if (!ranges) {
+					filteredMatches.push(match);
+					continue;
+				}
+				if (!isLineInRanges(match.lineNumber, ranges)) continue;
+				const trimBefore = match.contextBefore?.filter(c => isLineInRanges(c.lineNumber, ranges));
+				const trimAfter = match.contextAfter?.filter(c => isLineInRanges(c.lineNumber, ranges));
+				filteredMatches.push({
+					...match,
+					contextBefore: trimBefore && trimBefore.length > 0 ? trimBefore : undefined,
+					contextAfter: trimAfter && trimAfter.length > 0 ? trimAfter : undefined,
+				});
+			}
+			result = {
+				matches: filteredMatches,
+				totalMatches: filteredMatches.length,
+				filesWithMatches: new Set(filteredMatches.map(match => match.path)).size,
+				filesSearched: result.filesSearched,
+				limitReached: result.limitReached,
+			};
+		}
+
+		if (scope.archiveDisplayMap.size > 0) {
+			for (const match of result.matches) {
+				const abs = matchAbsolutePath(match.path, scope.searchPath);
+				const display = scope.archiveDisplayMap.get(abs);
+				if (display) match.path = display;
+			}
+		}
+
+		return { result, skippedOversizedCount, literalFallbackError };
+	}
+
+	#paginateMatches(result: GrepResult, scope: ResolvedGrepScope, normalizedSkip: number): PaginatedGrepMatches {
+		const fileOrder: string[] = [];
+		const matchesByPath = new Map<string, GrepMatch[]>();
+		for (const match of result.matches) {
+			if (!matchesByPath.has(match.path)) {
+				fileOrder.push(match.path);
+				matchesByPath.set(match.path, []);
+			}
+			matchesByPath.get(match.path)!.push(match);
+		}
+		let perFileLimitReached = false;
+		for (const file of fileOrder) {
+			const list = matchesByPath.get(file)!;
+			if (list.length > scope.perFileMatchCap) {
+				perFileLimitReached = true;
+				list.length = scope.perFileMatchCap;
+			}
+		}
+		const totalFiles = fileOrder.length;
+		const totalFilesLabel = result.limitReached ? `${totalFiles}+` : `${totalFiles}`;
+		const canPaginate = scope.isMultiScope;
+		const skipFiles = canPaginate ? Math.min(normalizedSkip, totalFiles) : 0;
+		const windowFiles = canPaginate ? fileOrder.slice(skipFiles, skipFiles + DEFAULT_FILE_LIMIT) : fileOrder;
+		const fileLimitReached = canPaginate && totalFiles > skipFiles + DEFAULT_FILE_LIMIT;
+		const selectedMatches: GrepMatch[] = [];
+		if (windowFiles.length > 0) {
+			const lists = windowFiles.map(file => matchesByPath.get(file) ?? []);
+			const cursors = new Array<number>(lists.length).fill(0);
+			let anyAdded = true;
+			while (anyAdded) {
+				anyAdded = false;
+				for (let i = 0; i < lists.length; i++) {
+					if (cursors[i] < lists[i].length) {
+						selectedMatches.push(lists[i][cursors[i]++]);
+						anyAdded = true;
+					}
+				}
+			}
+		}
+		const nextSkip = skipFiles + windowFiles.length;
+		const limitMessage = fileLimitReached
+			? `Showing files ${skipFiles + 1}-${nextSkip} of ${totalFilesLabel}. Use skip=${nextSkip} for the next page, or narrow paths/pattern.`
+			: "";
+
+		return {
+			selectedMatches,
+			fileOrder,
+			matchesByPath,
+			totalFiles,
+			totalFilesLabel,
+			canPaginate,
+			skipFiles,
+			fileLimitReached,
+			perFileLimitReached,
+			nextSkip,
+			limitMessage,
+		};
+	}
+
+	async #detectOversizedFiles(scope: ResolvedGrepScope): Promise<string | undefined> {
+		const explicitFileTargets: string[] = [];
+		if (scope.exactFilePaths) {
+			for (let ei = 0; ei < scope.exactFilePaths.length; ei++) explicitFileTargets.push(scope.exactFilePaths[ei]!);
+		} else if (scope.searchablePaths.length > 0 && !scope.isDirectory && !scope.multiTargets) {
+			explicitFileTargets.push(scope.searchPath);
+		}
+		if (explicitFileTargets.length === 0) return undefined;
+		const oversized: string[] = [];
+		await Promise.all(
+			explicitFileTargets.map(async target => {
+				try {
+					const st = await stat(target);
+					if (st.isFile() && st.size > NATIVE_GREP_MAX_FILE_BYTES) {
+						oversized.push(path.relative(this.session.cwd, target) || target);
+					}
+				} catch {}
+			}),
+		);
+		if (oversized.length === 0) return undefined;
+		const limitMb = Math.floor(NATIVE_GREP_MAX_FILE_BYTES / (1024 * 1024));
+		return `Searched only the first ${limitMb}MB of large files (matches past the ${limitMb}MB window are not shown; use \`read\` for the rest): ${oversized.join(", ")}`;
+	}
+
+	#renderFileMatches(
+		relativePath: string,
+		matchesByFile: Map<string, GrepMatch[]>,
+		hashContexts: Map<string, { tag: string }>,
+		fileMatchCounts: Map<string, number>,
+	): { model: string[]; display: string[]; linesTruncated: boolean } {
+		const modelOut: string[] = [];
+		const displayOut: string[] = [];
+		let linesTruncated = false;
+		const fileMatches = matchesByFile.get(relativePath) ?? [];
+		const hashContext = hashContexts.get(relativePath);
+		const useHashLines = hashContext !== undefined;
+		const lineNumberWidth = fileMatches.reduce((width, match) => {
+			let nextWidth = Math.max(width, String(match.lineNumber).length);
+			for (const ctx of match.contextBefore ?? []) {
+				nextWidth = Math.max(nextWidth, String(ctx.lineNumber).length);
+			}
+			for (const ctx of match.contextAfter ?? []) {
+				nextWidth = Math.max(nextWidth, String(ctx.lineNumber).length);
+			}
+			return nextWidth;
+		}, 0);
+		let lastEmittedLine: number | undefined;
+		const gutterPad = " ".repeat(lineNumberWidth + 1);
+		const clippedLines = new Set<number>();
+		const isNativeTruncated = (line: string): boolean => line.length >= DEFAULT_MAX_COLUMN && line.endsWith("...");
+
+		for (const match of fileMatches) {
+			const pushLine = (lineNumber: number, line: string, isMatch: boolean) => {
+				if (lastEmittedLine !== undefined && lineNumber > lastEmittedLine + 1) {
+					modelOut.push("...");
+					displayOut.push(`${gutterPad}│...`);
+				}
+				modelOut.push(formatMatchLine(lineNumber, line, isMatch, { useHashLines }));
+				displayOut.push(formatCodeFrameLine(isMatch ? "*" : " ", lineNumber, line, lineNumberWidth));
+				lastEmittedLine = lineNumber;
+			};
+			if (match.contextBefore) {
+				for (const ctx of match.contextBefore) {
+					pushLine(ctx.lineNumber, ctx.line, false);
+					if (isNativeTruncated(ctx.line)) clippedLines.add(ctx.lineNumber);
+				}
+			}
+			pushLine(match.lineNumber, match.line, true);
+			if (match.truncated) {
+				linesTruncated = true;
+				clippedLines.add(match.lineNumber);
+			}
+			if (match.contextAfter) {
+				for (const ctx of match.contextAfter) {
+					pushLine(ctx.lineNumber, ctx.line, false);
+					if (isNativeTruncated(ctx.line)) clippedLines.add(ctx.lineNumber);
+				}
+			}
+			fileMatchCounts.set(relativePath, (fileMatchCounts.get(relativePath) ?? 0) + 1);
+		}
+		if (hashContext?.tag) {
+			const absoluteFilePath = path.resolve(this.session.cwd, relativePath);
+			recordSeenLinesFromBody(this.session, absoluteFilePath, hashContext.tag, modelOut.join("\n"), clippedLines);
+		}
+		return { model: modelOut, display: displayOut, linesTruncated };
+	}
+
+	async #formatResult(
+		paginated: PaginatedGrepMatches,
+		searchOutput: GrepExecutionOutput,
+		scope: ResolvedGrepScope,
+		normalizedSkip: number,
+	): Promise<AgentToolResult<GrepToolDetails>> {
+		const {
+			selectedMatches,
+			totalFiles,
+			totalFilesLabel,
+			canPaginate,
+			skipFiles,
+			fileLimitReached,
+			perFileLimitReached,
+			limitMessage,
+		} = paginated;
+		const { result, skippedOversizedCount, literalFallbackError } = searchOutput;
+		const {
+			searchPath,
+			scopePath,
+			isDirectory,
+			isMultiScope,
+			archiveDisplaySet,
+			virtualPathSet,
+			archiveUnreadable,
+			missingPaths,
+			immutableSourcePaths,
+			perFileMatchCap,
+		} = scope;
+
+		const oversizedNote = await this.#detectOversizedFiles(scope);
+		const oversizedScanNote =
+			!oversizedNote && skippedOversizedCount > 0
+				? `Skipped ${skippedOversizedCount} unreadable large file(s); target them directly with \`read\``
+				: undefined;
+		const archiveNote =
+			archiveUnreadable.length > 0
+				? `Skipped archive entries (search supports text members only): ${archiveUnreadable.join(", ")}`
+				: undefined;
+		const archiveUnreadablePaths = new Set(archiveUnreadable.map(s => s.replace(/ \(.*\)$/, "")));
+		const missingPathsForNote = missingPaths.filter(p => !archiveUnreadablePaths.has(p));
+		const missingPathsNote =
+			missingPathsForNote.length > 0 ? `Skipped missing paths: ${missingPathsForNote.join(", ")}` : undefined;
+		const literalFallbackNote = literalFallbackError
+			? `Pattern did not compile as a regex (${literalFallbackError}); searched for it literally instead. Matches reflect the exact text, not the intended pattern — fix the regex or escape it if a literal search was intended.`
+			: undefined;
+		const warningNote =
+			[literalFallbackNote, missingPathsNote, archiveNote, oversizedNote, oversizedScanNote]
+				.filter((s): s is string => Boolean(s))
+				.join("\n") || undefined;
+
+		if (selectedMatches.length === 0) {
+			const details: GrepToolDetails = {
+				scopePath,
+				searchPath,
+				cwd: this.session.cwd,
+				matchCount: 0,
+				fileCount: 0,
+				files: [],
+				truncated: false,
+				missingPaths: missingPaths.length > 0 ? missingPaths : undefined,
+			};
+			const skipPastEnd = canPaginate && normalizedSkip > 0 && totalFiles > 0 && skipFiles >= totalFiles;
+			const noMatchText = skipPastEnd
+				? `No more results (${totalFilesLabel} files total; skip=${normalizedSkip} is past the end)`
+				: "No matches found";
+			const text = warningNote ? `${noMatchText}\n${warningNote}` : noMatchText;
+			return toolResult(details).text(text).useless().done();
+		}
+
+		const formatPath = (filePath: string): string =>
+			archiveDisplaySet.has(filePath) || virtualPathSet.has(filePath)
+				? filePath
+				: formatResultPath(filePath, isDirectory, searchPath, this.session.cwd);
+
+		const { record: recordFile, list: fileList } = createFileRecorder();
+		const matchesByFile = new Map<string, GrepMatch[]>();
+		for (const match of selectedMatches) {
+			const relativePath = formatPath(match.path);
+			recordFile(relativePath);
+			if (!matchesByFile.has(relativePath)) {
+				matchesByFile.set(relativePath, []);
+			}
+			matchesByFile.get(relativePath)!.push(match);
+		}
+
+		const baseDisplayMode = resolveFileDisplayMode(this.session);
+		const hashContexts = new Map<string, { tag: string }>();
+		if (baseDisplayMode.hashLines) {
+			for (const relativePath of fileList) {
+				if (archiveDisplaySet.has(relativePath) || virtualPathSet.has(relativePath)) continue;
+				const absoluteFilePath = path.resolve(this.session.cwd, relativePath);
+				if (isImmutableSourcePath(absoluteFilePath, immutableSourcePaths)) continue;
+				const tag = await recordFileSnapshot(this.session, absoluteFilePath);
+				if (tag) hashContexts.set(relativePath, { tag });
+			}
+		}
+
+		const outputLines: string[] = [];
+		const displayLines: string[] = [];
+		const fileMatchCounts = new Map<string, number>();
+		let anyLinesTruncated = false;
+
+		const useGroupedOutput = isDirectory || isMultiScope;
+		if (useGroupedOutput) {
+			const grouped = formatGroupedFiles(fileList, relativePath => {
+				const rendered = this.#renderFileMatches(relativePath, matchesByFile, hashContexts, fileMatchCounts);
+				if (rendered.linesTruncated) anyLinesTruncated = true;
+				const hashContext = hashContexts.get(relativePath);
+				return {
+					modelLines: rendered.model,
+					displayLines: rendered.display,
+					headerSuffix: hashContext?.tag ? `#${hashContext.tag}` : "",
+					skip: rendered.model.length === 0,
+				};
+			});
+			for (let gi = 0; gi < grouped.model.length; gi++) outputLines.push(grouped.model[gi]!);
+			for (let gi = 0; gi < grouped.display.length; gi++) displayLines.push(grouped.display[gi]!);
+		} else {
+			for (const relativePath of fileList) {
+				const rendered = this.#renderFileMatches(relativePath, matchesByFile, hashContexts, fileMatchCounts);
+				if (rendered.linesTruncated) anyLinesTruncated = true;
+				if (rendered.model.length === 0) continue;
+				if (outputLines.length > 0) {
+					outputLines.push("");
+					displayLines.push("");
+				}
+				const hashContext = hashContexts.get(relativePath);
+				if (hashContext?.tag) {
+					outputLines.push(formatHashlineHeader(relativePath, hashContext.tag));
+				}
+				for (let li = 0; li < rendered.model.length; li++) outputLines.push(rendered.model[li]!);
+				for (let li = 0; li < rendered.display.length; li++) displayLines.push(rendered.display[li]!);
+			}
+		}
+
+		if (limitMessage) outputLines.push("", limitMessage);
+		if (warningNote) outputLines.push("", warningNote);
+
+		const rawOutput = outputLines.join("\n");
+		const truncation = truncateHead(rawOutput, {
+			maxLines: Number.MAX_SAFE_INTEGER,
+			maxBytes: inlineBudgetFor(this.session),
+		});
+		let output = truncation.content;
+		let spillArtifactId: string | undefined;
+		if (truncation.truncated) {
+			spillArtifactId = await saveOutputArtifact(this.session, "grep", rawOutput);
+			if (spillArtifactId) {
+				const sep = output.endsWith("\n") ? "" : "\n";
+				output += `${sep}${artifactFooter(spillArtifactId)}`;
+			}
+		}
+
+		const displayText = displayLines.join("\n");
+		const truncated = Boolean(
+			fileLimitReached || perFileLimitReached || result.limitReached || truncation.truncated || anyLinesTruncated,
+		);
+		const details: GrepToolDetails = {
+			scopePath,
+			searchPath,
+			cwd: this.session.cwd,
+			matchCount: selectedMatches.length,
+			fileCount: fileList.length,
+			files: fileList,
+			fileMatches: fileList.map(p => ({
+				path: p,
+				count: fileMatchCounts.get(p) ?? 0,
+			})),
+			truncated,
+			fileLimitReached: fileLimitReached ? DEFAULT_FILE_LIMIT : undefined,
+			perFileLimitReached: perFileLimitReached ? perFileMatchCap : undefined,
+			displayContent: displayText,
+			missingPaths: missingPaths.length > 0 ? missingPaths : undefined,
+		};
+		if (truncation.truncated) details.truncation = truncation;
+		if (anyLinesTruncated) details.linesTruncated = true;
+		const resultBuilder = toolResult(details)
+			.text(output)
+			.limits({ columnMax: anyLinesTruncated ? DEFAULT_MAX_COLUMN : undefined });
+		if (truncation.truncated) {
+			resultBuilder.truncation(truncation, { direction: "head", artifactId: spillArtifactId });
+		}
+		return resultBuilder.done();
+	}
+
+	async execute(
+		_toolCallId: string,
+		params: SearchParams,
+		signal?: AbortSignal,
+		_onUpdate?: AgentToolUpdateCallback<GrepToolDetails>,
+		_toolContext?: AgentToolContext,
+	): Promise<AgentToolResult<GrepToolDetails>> {
+		const { pattern, path: rawPath, case: caseSensitive, gitignore, skip } = params;
+
+		return untilAborted(signal, async () => {
+			const { normalizedPattern, normalizedSkip } = this.#validateParams(pattern, skip);
+			const scope = await this.#expandScope(rawPath, signal);
+			try {
+				const searchOutput = await this.#executeGrep(scope, normalizedPattern, caseSensitive, gitignore, signal);
+				const paginated = this.#paginateMatches(searchOutput.result, scope, normalizedSkip);
+				return await this.#formatResult(paginated, searchOutput, scope, normalizedSkip);
+			} finally {
+				await scope.cleanupArchiveScratch();
+			}
+		});
+	}
+}
+
+interface GrepRenderArgs {
+	pattern: string;
+	path?: string | string[];
+	paths?: string | string[];
+	case?: boolean;
+	gitignore?: boolean;
+	skip?: number;
+}
+
+const COLLAPSED_TEXT_LIMIT = PREVIEW_LIMITS.COLLAPSED_LINES * 2;
+const EXPANDED_TEXT_LIMIT = PREVIEW_LIMITS.EXPANDED_LINES * 2;
+
+const SEARCH_CODE_FRAME_LINE_RE = /^\s*\*?(\d+)│/;
+
+function searchScopeMeta(details: GrepToolDetails | undefined): string | undefined {
+	if (!details?.scopePath) return undefined;
+	const label = details.searchPath ? fileHyperlink(details.searchPath, details.scopePath) : details.scopePath;
+	return `in ${label}`;
+}
+
+function linkUrlLikeSearchHeader(raw: string, styled: string): { line: string; absPath?: string } {
+	const resolvedPath = tryResolveInternalUrlSync(raw);
+	if (resolvedPath) return { line: fileHyperlink(resolvedPath, styled), absPath: resolvedPath };
+	return { line: uriHyperlink(raw, styled) };
+}
+
+function parseSearchDisplayLineNumber(line: string): number | undefined {
+	const match = SEARCH_CODE_FRAME_LINE_RE.exec(line);
+	if (!match) return undefined;
+	return Number.parseInt(match[1]!, 10);
+}
+
+const SEARCH_MATCH_LINE_RE = /^\s*\*\d+(?:│|[:|])/;
+
+interface RenderedSearchLine {
+	raw: string;
+	styled: string;
+}
+
+function isSearchMatchLine(line: string): boolean {
+	return SEARCH_MATCH_LINE_RE.test(line);
+}
+
+function isSearchHeaderLine(line: string): boolean {
+	return /^#+ /.test(line);
+}
+
+const URL_HEADER_PREFIX_RE = /^#+\s+/;
+
+function renderSearchDisplayLines(
+	lines: readonly string[],
+	headerBase: string | undefined,
+	fileScope: string | undefined,
+	uiTheme: Theme,
+): RenderedSearchLine[] {
+	const contexts = classifyGroupedLines(lines, headerBase, fileScope);
+	let urlFile: string | undefined;
+	return lines.map((line, index) => {
+		const ctx = contexts[index]!;
+		if (ctx.kind === "dir") {
+			urlFile = undefined;
+			const styled = uiTheme.fg("accent", line);
+			return { raw: line, styled: ctx.headerPath ? fileHyperlink(ctx.headerPath, styled) : styled };
+		}
+		if (ctx.kind === "file") {
+			if (ctx.isUrl) {
+				const raw = line
+					.replace(URL_HEADER_PREFIX_RE, "")
+					.trimEnd()
+					.replace(/\s+\([^)]*\)\s*$/, "");
+				const linked = linkUrlLikeSearchHeader(raw, uiTheme.fg("accent", line));
+				urlFile = linked.absPath;
+				return { raw: line, styled: linked.line };
+			}
+			urlFile = undefined;
+			const styled = uiTheme.fg(ctx.depth === 1 ? "accent" : "dim", line);
+			return { raw: line, styled: ctx.headerPath ? fileHyperlink(ctx.headerPath, styled) : styled };
+		}
+		const styled = uiTheme.fg("toolOutput", line);
+		const lineNumber = parseSearchDisplayLineNumber(line);
+		const filePath = ctx.filePath ?? urlFile;
+		return {
+			raw: line,
+			styled: filePath && lineNumber !== undefined ? fileHyperlink(filePath, styled, { line: lineNumber }) : styled,
+		};
+	});
+}
+
+function compactSearchPreviewGroup(group: RenderedSearchLine[]): RenderedSearchLine[] {
+	const compact = group.filter(line => isSearchHeaderLine(line.raw) || isSearchMatchLine(line.raw));
+	return compact.length > 0 ? compact : group;
+}
+
+function countPreviewMatches(lines: readonly RenderedSearchLine[], hasMarkedMatches: boolean): number {
+	if (hasMarkedMatches) return lines.reduce((count, line) => count + (isSearchMatchLine(line.raw) ? 1 : 0), 0);
+	return lines.reduce((count, line) => count + (!isSearchHeaderLine(line.raw) && line.raw.length > 0 ? 1 : 0), 0);
+}
+
+function renderBudgetedSearchGroups(
+	groups: RenderedSearchLine[][],
+	maxLines: number,
+	matchCount: number,
+	uiTheme: Theme,
+	compact: boolean,
+): string[] {
+	if (maxLines <= 0) return [];
+	const renderedGroups = groups
+		.map(group => (compact ? compactSearchPreviewGroup(group) : group))
+		.filter(group => group.length > 0);
+	if (renderedGroups.length === 0) return [];
+
+	let totalLines = 0;
+	let totalMarkedMatches = 0;
+	let totalFallbackMatches = 0;
+	for (const group of renderedGroups) {
+		totalLines += group.length;
+		totalMarkedMatches += countPreviewMatches(group, true);
+		totalFallbackMatches += countPreviewMatches(group, false);
+	}
+	const hasMarkedMatches = totalMarkedMatches > 0;
+	const needsSummary = totalLines > maxLines;
+	const contentBudget = needsSummary ? Math.max(maxLines - 1, 0) : maxLines;
+	const visibleGroups: RenderedSearchLine[][] = [];
+	let visibleLineCount = 0;
+	let visibleMatches = 0;
+	for (const group of renderedGroups) {
+		if (visibleLineCount >= contentBudget) break;
+		const available = contentBudget - visibleLineCount;
+		const take = Math.min(group.length, available);
+		if (take <= 0) break;
+		const visibleGroup = group.slice(0, take);
+		visibleGroups.push(visibleGroup);
+		visibleLineCount += visibleGroup.length;
+		visibleMatches += countPreviewMatches(visibleGroup, hasMarkedMatches);
+	}
+
+	const totalMatches = hasMarkedMatches ? totalMarkedMatches : Math.max(matchCount, totalFallbackMatches);
+	const hiddenMatches = Math.max(totalMatches - visibleMatches, 0);
+	const hiddenLines = Math.max(totalLines - visibleLineCount, 0);
+	const hasSummary = needsSummary && (hiddenMatches > 0 || hiddenLines > 0);
+	const lines: string[] = [];
+	for (let i = 0; i < visibleGroups.length; i++) {
+		const group = visibleGroups[i]!;
+		lines.push(replaceTabs(group[0]!.styled));
+		for (let j = 1; j < group.length; j++) {
+			lines.push(`  ${replaceTabs(group[j]!.styled)}`);
+		}
+	}
+	if (hasSummary) {
+		const hiddenLabel =
+			hiddenMatches > 0 ? formatMoreItems(hiddenMatches, "match") : formatMoreItems(hiddenLines, "line");
+		lines.push(uiTheme.fg("dim", hiddenLabel));
+	}
+	return lines;
+}
+
+function grepStatusIcon(uiTheme: Theme): string {
+	return uiTheme.fg("toolTitle", uiTheme.symbol("icon.search"));
+}
+
+export const grepToolRenderer = {
+	inline: true,
+	renderCall(args: GrepRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
+		const paths = toPathList(args.path ?? args.paths);
+		const meta: string[] = [];
+		if (paths.length) meta.push(formatScopeMeta(paths));
+		if (args.case === false) meta.push("case:insensitive");
+		if (args.gitignore === false) meta.push("gitignore:false");
+		if (args.skip !== undefined && args.skip > 0) meta.push(`skip:${args.skip}`);
+
+		const text = renderStatusLine(
+			{ icon: "pending", title: "Grep", titleColor: "toolTitle", description: args.pattern || "?", meta },
+			uiTheme,
+		);
+		return new Text(text, 1, 0);
+	},
+
+	renderResult(
+		result: { content: Array<{ type: string; text?: string }>; details?: GrepToolDetails; isError?: boolean },
+		options: RenderResultOptions,
+		uiTheme: Theme,
+		args?: GrepRenderArgs,
+	): Component {
+		const details = result.details;
+
+		if (result.isError || details?.error) {
+			const errorText = details?.error || result.content?.find(c => c.type === "text")?.text || "Unknown error";
+			return new Text(formatErrorMessage(errorText, uiTheme), 1, 0);
+		}
+
+		const hasDetailedData = details?.matchCount !== undefined || details?.fileCount !== undefined;
+
+		if (!hasDetailedData) {
+			const textContent = result.details?.displayContent ?? result.content?.find(c => c.type === "text")?.text;
+			if (!textContent || textContent === "No matches found") {
+				return new Text(formatEmptyMessage("No matches found", uiTheme), 1, 0);
+			}
+			const lines = textContent.split("\n").filter(line => /\S/.test(line));
+			const description = args?.pattern ?? undefined;
+			const header = renderStatusLine(
+				{
+					iconOverride: grepStatusIcon(uiTheme),
+					title: "Grep",
+					titleColor: "toolTitle",
+					description,
+					meta: [formatCount("item", lines.length)],
+				},
+				uiTheme,
+			);
+			return framedBlock(uiTheme, width => {
+				const maxLines = options.expanded ? lines.length : COLLAPSED_TEXT_LIMIT;
+				const needsSummary = !options.expanded && lines.length > maxLines;
+				const contentBudget = needsSummary ? Math.max(maxLines - 1, 0) : maxLines;
+				const visible = lines.slice(0, contentBudget);
+				const remaining = lines.length - visible.length;
+				const bodyLines: string[] = new Array(visible.length);
+				for (let vi = 0; vi < visible.length; vi++)
+					bodyLines[vi] = uiTheme.fg("toolOutput", replaceTabs(visible[vi]!));
+				if (needsSummary && remaining > 0) {
+					bodyLines.push(uiTheme.fg("dim", formatMoreItems(remaining, "item")));
+				}
+				const innerWidth = outputBlockContentWidth(width);
+				const truncatedLines: string[] = new Array(bodyLines.length);
+				for (let ti = 0; ti < bodyLines.length; ti++) {
+					truncatedLines[ti] = truncateToWidth(bodyLines[ti]!, innerWidth, Ellipsis.Omit);
+				}
+				return {
+					header,
+					sections: [{ lines: truncatedLines }],
+					state: "success",
+					width,
+				};
+			});
+		}
+
+		const matchCount = details?.matchCount ?? 0;
+		const fileCount = details?.fileCount ?? 0;
+		const truncation = details?.meta?.truncation;
+		const limits = details?.meta?.limits;
+		const truncated = Boolean(details?.truncated || truncation || limits?.columnTruncated);
+
+		const missingPathsList = details?.missingPaths ?? [];
+		const missingNote =
+			missingPathsList.length > 0
+				? uiTheme.fg("warning", `skipped missing: ${missingPathsList.join(", ")}`)
+				: undefined;
+
+		if (matchCount === 0) {
+			const meta = ["0 matches"];
+			const scopeMeta = searchScopeMeta(details);
+			if (scopeMeta) meta.push(scopeMeta);
+			const header = renderStatusLine(
+				{ icon: "warning", title: "Grep", titleColor: "toolTitle", description: args?.pattern, meta },
+				uiTheme,
+			);
+			const lines = [header, formatEmptyMessage("No matches found", uiTheme)];
+			if (missingNote) lines.push(missingNote);
+			return new Text(lines.join("\n"), 1, 0);
+		}
+
+		const summaryParts = [formatCount("match", matchCount), formatCount("file", fileCount)];
+		const meta = summaryParts.slice();
+		const scopeMeta = searchScopeMeta(details);
+		if (scopeMeta) meta.push(scopeMeta);
+		if (truncated) meta.push(uiTheme.fg("warning", "truncated"));
+		const description = args?.pattern ?? undefined;
+		const header = renderStatusLine(
+			{
+				...(truncated ? { icon: "warning" as const } : { iconOverride: grepStatusIcon(uiTheme) }),
+				title: "Grep",
+				titleColor: "toolTitle",
+				description,
+				meta,
+			},
+			uiTheme,
+		);
+
+		const textContent = result.details?.displayContent ?? result.content?.find(c => c.type === "text")?.text ?? "";
+		const allLines = textContent.split("\n");
+		const renderedLines = renderSearchDisplayLines(
+			allLines,
+			details?.cwd ?? details?.searchPath,
+			details?.searchPath,
+			uiTheme,
+		);
+		const groupIndices = groupLineIndicesByBlank(allLines);
+		const matchGroups: RenderedSearchLine[][] = new Array(groupIndices.length);
+		for (let gi = 0; gi < groupIndices.length; gi++) {
+			const indices = groupIndices[gi]!;
+			const group: RenderedSearchLine[] = new Array(indices.length);
+			for (let ii = 0; ii < indices.length; ii++) group[ii] = renderedLines[indices[ii]!]!;
+			matchGroups[gi] = group;
+		}
+
+		const extraLines: string[] = [];
+		if (missingNote) extraLines.push(missingNote);
+
+		return framedBlock(uiTheme, width => {
+			const budget = Math.max(
+				(options.expanded ? EXPANDED_TEXT_LIMIT : COLLAPSED_TEXT_LIMIT) - extraLines.length,
+				0,
+			);
+			const matchLines = renderBudgetedSearchGroups(matchGroups, budget, matchCount, uiTheme, !options.expanded);
+			const innerWidth = outputBlockContentWidth(width);
+			const bodyLines: string[] = new Array(matchLines.length + extraLines.length);
+			for (let mi = 0; mi < matchLines.length; mi++) {
+				bodyLines[mi] = truncateToWidth(matchLines[mi]!, innerWidth, Ellipsis.Omit);
+			}
+			for (let ei = 0; ei < extraLines.length; ei++) {
+				bodyLines[matchLines.length + ei] = truncateToWidth(extraLines[ei]!, innerWidth, Ellipsis.Omit);
+			}
+			return {
+				header,
+				sections: [{ lines: bodyLines }],
+				state: truncated ? "warning" : "success",
+				width,
+			};
+		});
+	},
+	mergeCallAndResult: true,
+};

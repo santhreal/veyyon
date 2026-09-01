@@ -1,0 +1,591 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { ToolExample } from "@veyyon/ai";
+import * as natives from "@veyyon/natives";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { formatGroupedPaths, isCancellation, isEnoent, prompt, untilAborted } from "@veyyon/utils";
+import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import { InternalUrlRouter } from "../internal-urls";
+import type { Theme } from "../modes/theme/theme";
+import { toolsPrompts } from "../prompts/tools/rows";
+import { truncateHead } from "../session/streaming-output";
+import {
+	Ellipsis,
+	fileHyperlink,
+	framedBlock,
+	outputBlockContentWidth,
+	renderFileList,
+	renderStatusLine,
+	truncateToWidth,
+} from "../tui";
+import { isTimeoutError, scopedTimeoutSignal } from "../utils/fetch-timeout";
+import type { ToolSession } from ".";
+import { searchPathFilesystemTargets } from "./cwd-boundary";
+import type { GlobOperations, GlobTarget, GlobToolDetails, GlobToolOptions } from "./glob-helpers";
+
+export * from "./glob-helpers";
+
+import { DEFAULT_GLOB_TIMEOUT_MS, DEFAULT_LIMIT, findSchema, MAX_LIMIT } from "./glob-helpers";
+import { applyListLimit } from "./list-limit";
+import { formatFullOutputReference } from "./output-meta";
+import {
+	expandDelimitedPathEntries,
+	formatPathRelativeToCwd,
+	hasGlobPathChars,
+	isSshUrl,
+	normalizePathLikeInput,
+	parseFindPattern,
+	partitionExistingPaths,
+	resolveExplicitFindPatterns,
+	resolveToCwd,
+	toPathList,
+} from "./path-utils";
+import {
+	formatCount,
+	formatEmptyMessage,
+	formatErrorMessage,
+	formatMoreItems,
+	formatScopeMeta,
+	formatScopePaths,
+	PREVIEW_LIMITS,
+} from "./render-utils";
+import { ToolError, throwIfAborted, toolAbort } from "./tool-errors";
+import { toolResult } from "./tool-result";
+
+export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
+	readonly name = "glob";
+	readonly approval = "read" as const;
+	readonly loadMode = "essential";
+	readonly label = "Glob";
+	readonly description: string;
+	readonly parameters = findSchema;
+
+	readonly examples: readonly ToolExample<typeof findSchema.infer>[] = [
+		{
+			caption: "Multiple targets — semicolon-delimited list",
+			call: { path: "src/**/*.ts; test/**/*.ts" },
+		},
+		{
+			caption: "Glob gitignored files like .env",
+			call: { path: ".env*", gitignore: false },
+		},
+	];
+	readonly strict = true;
+
+	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] =>
+		searchPathFilesystemTargets(args, cwd);
+
+	readonly #customOps?: GlobOperations;
+	readonly #rootPathAlias: boolean;
+
+	constructor(
+		private readonly session: ToolSession,
+		options?: GlobToolOptions,
+	) {
+		this.#customOps = options?.operations;
+		this.#rootPathAlias = options?.rootPathAlias === true;
+		this.description = prompt.render(toolsPrompts["tools/glob"].text);
+	}
+
+	async execute(
+		_toolCallId: string,
+		params: typeof findSchema.infer,
+		signal?: AbortSignal,
+		onUpdate?: AgentToolUpdateCallback<GlobToolDetails>,
+		_context?: AgentToolContext,
+	): Promise<AgentToolResult<GlobToolDetails>> {
+		const { path: pathInput, limit, hidden, gitignore } = params;
+
+		return untilAborted(signal, async () => {
+			const formatScopePath = (targetPath: string): string => formatPathRelativeToCwd(targetPath, this.session.cwd);
+			const scopedPaths = toPathList(pathInput);
+			const effectivePaths = scopedPaths.length > 0 ? scopedPaths : ["."];
+			const rawPatternInputs = this.#customOps
+				? effectivePaths
+				: await expandDelimitedPathEntries(effectivePaths, this.session.cwd, { splitter: parseFindPattern });
+			const rawPatterns = rawPatternInputs.map(input => normalizePathLikeInput(input).replace(/\\/g, "/"));
+			const aliasResolvedPatterns = this.#rootPathAlias
+				? rawPatterns.map(pattern => (/^\/+$/.test(pattern) ? "." : pattern))
+				: rawPatterns;
+			if (aliasResolvedPatterns.some(pattern => /^\/+$/.test(pattern))) {
+				throw new ToolError("Searching from root directory '/' is not allowed");
+			}
+			const internalRouter = InternalUrlRouter.instance();
+			const normalizedPatterns: string[] = [];
+			for (const rawPattern of aliasResolvedPatterns) {
+				if (!internalRouter.canHandle(rawPattern)) {
+					normalizedPatterns.push(rawPattern);
+					continue;
+				}
+				if (isSshUrl(rawPattern)) {
+					throw new ToolError(
+						`find cannot operate on a remote ssh:// path: ${rawPattern}. ssh:// has no local file to glob; use \`read ${rawPattern}\` to list or inspect the remote path.`,
+					);
+				}
+				if (hasGlobPathChars(rawPattern)) {
+					throw new ToolError(`Glob patterns are not supported for internal URLs: ${rawPattern}`);
+				}
+				const resource = await internalRouter.resolve(rawPattern, {
+					cwd: this.session.cwd,
+					settings: this.session.settings,
+					signal,
+					localProtocolOptions: this.session.localProtocolOptions,
+					skills: this.session.skills,
+					pathOnly: true,
+				});
+				if (!resource.sourcePath) {
+					throw new ToolError(`Cannot find internal URL without a backing file: ${rawPattern}`);
+				}
+				normalizedPatterns.push(resource.sourcePath);
+			}
+			if (normalizedPatterns.some(pattern => pattern.length === 0)) {
+				throw new ToolError("`path` must contain non-empty globs or paths");
+			}
+
+			let missingPaths: string[] = [];
+			let effectivePatterns = normalizedPatterns;
+			if (normalizedPatterns.length > 1 && !this.#customOps) {
+				const partition = await partitionExistingPaths(normalizedPatterns, this.session.cwd, parseFindPattern);
+				if (partition.valid.length === 0) {
+					throw new ToolError(`Path not found: ${partition.missing.join(", ")}`);
+				}
+				effectivePatterns = partition.valid;
+				missingPaths = partition.missing;
+			}
+
+			const multiPattern = await resolveExplicitFindPatterns(effectivePatterns, this.session.cwd);
+			const isSingle = !multiPattern;
+			const targets: GlobTarget[] = multiPattern
+				? multiPattern.targets.map(target => ({
+						searchPath: resolveToCwd(target.basePath, this.session.cwd),
+						globPattern: target.globPattern,
+						hasGlob: target.hasGlob,
+					}))
+				: [
+						(() => {
+							const parsed = parseFindPattern(effectivePatterns[0] ?? ".");
+							return {
+								searchPath: resolveToCwd(parsed.basePath, this.session.cwd),
+								globPattern: parsed.globPattern,
+								hasGlob: parsed.hasGlob,
+							};
+						})(),
+					];
+			const scopePath = multiPattern?.scopePath ?? formatScopePath(targets[0].searchPath);
+
+			for (const target of targets) {
+				if (target.searchPath === "/") {
+					throw new ToolError("Searching from root directory '/' is not allowed");
+				}
+			}
+
+			const requestedLimit = limit ?? DEFAULT_LIMIT;
+			if (!Number.isFinite(requestedLimit) || requestedLimit <= 0) {
+				throw new ToolError("Limit must be a positive number");
+			}
+			const effectiveLimit = Math.min(MAX_LIMIT, Math.max(1, Math.floor(requestedLimit)));
+			const includeHidden = hidden ?? true;
+			const useGitignore = gitignore ?? true;
+			const timeoutMs = DEFAULT_GLOB_TIMEOUT_MS;
+			const scopedTimeout = scopedTimeoutSignal(timeoutMs, signal);
+			const combinedSignal = scopedTimeout.signal;
+			const formatMatchPath = (matchPath: string, base: string, fileType?: natives.FileType): string => {
+				const hadTrailingSlash = matchPath.endsWith("/") || matchPath.endsWith("\\");
+				const absolutePath = path.isAbsolute(matchPath) ? matchPath : path.resolve(base, matchPath);
+				return formatPathRelativeToCwd(absolutePath, this.session.cwd, {
+					trailingSlash: fileType === natives.FileType.Dir || hadTrailingSlash,
+				});
+			};
+
+			const missingPathsNote =
+				missingPaths.length > 0 ? `Skipped missing paths: ${missingPaths.join(", ")}` : undefined;
+
+			const buildResult = (
+				files: string[],
+				opts?: { notice?: string; forceTruncated?: boolean; timedOut?: boolean },
+			): AgentToolResult<GlobToolDetails> => {
+				const notice = opts?.notice;
+				const forceTruncated = opts?.forceTruncated ?? false;
+				if (files.length === 0) {
+					const details: GlobToolDetails = {
+						scopePath,
+						fileCount: 0,
+						files: [],
+						truncated: forceTruncated,
+						cwd: this.session.cwd,
+						missingPaths: missingPaths.length > 0 ? missingPaths : undefined,
+					};
+					const parts = opts?.timedOut ? [] : ["No files found matching pattern"];
+					if (notice) parts.push(notice);
+					if (missingPathsNote) parts.push(missingPathsNote);
+					return toolResult(details).text(parts.join("\n")).useless().done();
+				}
+
+				const listLimit = applyListLimit(files, { limit: effectiveLimit });
+				const limited = listLimit.items;
+				const limitMeta = listLimit.meta;
+				const baseOutput = formatGroupedPaths(limited);
+				const trailingNotes: string[] = [];
+				if (notice) trailingNotes.push(notice);
+				if (missingPathsNote) trailingNotes.push(missingPathsNote);
+				const rawOutput = trailingNotes.length > 0 ? `${baseOutput}\n\n${trailingNotes.join("\n")}` : baseOutput;
+				const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
+
+				const details: GlobToolDetails = {
+					scopePath,
+					fileCount: limited.length,
+					files: limited,
+					truncated: Boolean(forceTruncated || limitMeta.resultLimit || truncation.truncated),
+					resultLimitReached: limitMeta.resultLimit?.reached,
+					truncation: truncation.truncated ? truncation : undefined,
+					cwd: this.session.cwd,
+					missingPaths: missingPaths.length > 0 ? missingPaths : undefined,
+				};
+
+				const resultBuilder = toolResult(details)
+					.text(truncation.content)
+					.limits({ resultLimit: limitMeta.resultLimit?.reached });
+				if (truncation.truncated) {
+					resultBuilder.truncation(truncation, { direction: "head" });
+				}
+
+				return resultBuilder.done();
+			};
+
+			if (this.#customOps?.glob) {
+				const customOps = this.#customOps;
+				const perTarget = await Promise.all(
+					targets.map(async target => {
+						if (!(await customOps.exists(target.searchPath))) {
+							if (isSingle) throw new ToolError(`Path not found: ${scopePath}`);
+							return [] as string[];
+						}
+						if (!target.hasGlob && customOps.stat) {
+							const stat = await customOps.stat(target.searchPath);
+							if (stat.isFile()) return [formatScopePath(target.searchPath)];
+						}
+						const results = await customOps.glob(target.globPattern, target.searchPath, {
+							ignore: ["**/node_modules/**", "**/.git/**"],
+							limit: effectiveLimit,
+						});
+						return results.map(matchPath => formatMatchPath(matchPath, target.searchPath));
+					}),
+				);
+				const seen = new Set<string>();
+				const merged: string[] = [];
+				for (const group of perTarget) {
+					for (const entry of group) {
+						if (seen.has(entry)) continue;
+						seen.add(entry);
+						merged.push(entry);
+					}
+				}
+				return buildResult(merged);
+			}
+
+			const onUpdateMatches: string[] = [];
+			const onUpdateMtimes: number[] = [];
+			const updateIntervalMs = 200;
+			let lastUpdate = 0;
+			const emitUpdate = () => {
+				if (!onUpdate) return;
+				const now = Date.now();
+				if (now - lastUpdate < updateIntervalMs) return;
+				lastUpdate = now;
+				const details: GlobToolDetails = {
+					scopePath,
+					fileCount: onUpdateMatches.length,
+					files: onUpdateMatches.slice(),
+					truncated: false,
+				};
+				onUpdate({
+					content: [{ type: "text", text: onUpdateMatches.join("\n") }],
+					details,
+				});
+			};
+			const streamed = new Set<string>();
+			const makeOnMatch =
+				(base: string) =>
+				(err: Error | null, match: natives.GlobMatch | null): void => {
+					if (err || combinedSignal.aborted || !match?.path) return;
+					const relativePath = formatMatchPath(match.path, base, match.fileType);
+					if (streamed.has(relativePath)) return;
+					streamed.add(relativePath);
+					onUpdateMatches.push(relativePath);
+					onUpdateMtimes.push(match.mtime ?? 0);
+					emitUpdate();
+				};
+
+			let timedOut = false;
+			const runTarget = async (target: GlobTarget): Promise<Array<{ path: string; mtime: number }>> => {
+				throwIfAborted(signal);
+				let stat: fs.Stats;
+				try {
+					stat = await fs.promises.stat(target.searchPath);
+				} catch (err) {
+					if (isEnoent(err)) {
+						if (isSingle) throw new ToolError(`Path not found: ${scopePath}`);
+						return [];
+					}
+					throw err;
+				}
+				if (!target.hasGlob && stat.isFile()) {
+					return [{ path: formatScopePath(target.searchPath), mtime: stat.mtimeMs }];
+				}
+				if (!stat.isDirectory()) {
+					if (isSingle) throw new ToolError(`Path is not a directory: ${target.searchPath}`);
+					return [];
+				}
+				try {
+					const result = await untilAborted(combinedSignal, () =>
+						natives.glob(
+							{
+								pattern: target.globPattern,
+								path: target.searchPath,
+								hidden: includeHidden,
+								maxResults: effectiveLimit,
+								sortByMtime: true,
+								gitignore: useGitignore,
+								recursive: false,
+								signal: combinedSignal,
+							},
+							makeOnMatch(target.searchPath),
+						),
+					);
+					throwIfAborted(signal);
+					const out: Array<{ path: string; mtime: number }> = [];
+					for (const match of result.matches) {
+						if (!match.path) continue;
+						out.push({
+							path: formatMatchPath(match.path, target.searchPath, match.fileType),
+							mtime: match.mtime ?? 0,
+						});
+					}
+					return out;
+				} catch (error) {
+					if (isTimeoutError(error) && !signal?.aborted) {
+						timedOut = true;
+						return [];
+					}
+					if (isCancellation(error)) throw toolAbort(error, "glob");
+					throw error;
+				}
+			};
+
+			let perTarget: Array<Array<{ path: string; mtime: number }>>;
+			try {
+				perTarget = await Promise.all(targets.map(runTarget));
+			} finally {
+				scopedTimeout.cancel();
+			}
+
+			if (timedOut) {
+				const partial = onUpdateMatches.map((entry, index) => ({ p: entry, m: onUpdateMtimes[index] ?? 0 }));
+				partial.sort((a, b) => b.m - a.m);
+				const sortedPaths = partial.map(entry => entry.p);
+				const seconds = timeoutMs % 1000 === 0 ? `${timeoutMs / 1000}` : (timeoutMs / 1000).toFixed(1);
+				const notice =
+					sortedPaths.length > 0
+						? `glob timed out after ${seconds}s; returning ${sortedPaths.length} partial matches — results are incomplete, scope to a deeper directory instead of retrying blindly`
+						: `Glob timed out after ${seconds}s before finding any matches — the scan is incomplete, NOT proof of absence. The walk is bounded by directory size, not pattern width; scope the search to a deeper directory (e.g. \`sub/dir/*.ext\` instead of \`*.ext\` at a huge root).`;
+				return buildResult(sortedPaths, { notice, forceTruncated: true, timedOut: true });
+			}
+
+			const seen = new Set<string>();
+			const merged: Array<{ path: string; mtime: number }> = [];
+			for (const group of perTarget) {
+				for (const entry of group) {
+					if (seen.has(entry.path)) continue;
+					seen.add(entry.path);
+					merged.push(entry);
+				}
+			}
+			merged.sort((a, b) => b.mtime - a.mtime);
+			return buildResult(merged.map(entry => entry.path));
+		});
+	}
+}
+
+interface GlobRenderArgs {
+	path?: string | string[];
+	paths?: string | string[];
+	limit?: number;
+}
+
+function formatGlobRenderPaths(args: GlobRenderArgs | undefined): string | undefined {
+	const list = toPathList(args?.path ?? args?.paths);
+	return list.length > 0 ? formatScopePaths(list) : undefined;
+}
+
+const COLLAPSED_LIST_LIMIT = PREVIEW_LIMITS.COLLAPSED_ITEMS;
+
+function globStatusIcon(uiTheme: Theme): string {
+	return uiTheme.fg("toolTitle", uiTheme.symbol("icon.search"));
+}
+
+export const globToolRenderer = {
+	inline: true,
+	renderCall(args: GlobRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
+		const meta: string[] = [];
+		if (args.limit !== undefined) meta.push(`limit:${args.limit}`);
+
+		const text = renderStatusLine(
+			{
+				icon: "pending",
+				title: "Glob",
+				titleColor: "toolTitle",
+				description: formatGlobRenderPaths(args) || "*",
+				meta,
+			},
+			uiTheme,
+		);
+		return new Text(text, 1, 0);
+	},
+
+	renderResult(
+		result: { content: Array<{ type: string; text?: string }>; details?: GlobToolDetails; isError?: boolean },
+		options: RenderResultOptions,
+		uiTheme: Theme,
+		args?: GlobRenderArgs,
+	): Component {
+		const details = result.details;
+
+		if (result.isError || details?.error) {
+			const errorText = details?.error || result.content?.find(c => c.type === "text")?.text || "Unknown error";
+			return new Text(formatErrorMessage(errorText, uiTheme), 1, 0);
+		}
+
+		const hasDetailedData = details?.fileCount !== undefined;
+		const textContent = result.content?.find(c => c.type === "text")?.text;
+
+		if (!hasDetailedData) {
+			if (
+				!textContent ||
+				textContent.includes("No files matching") ||
+				textContent.includes("No files found") ||
+				textContent.trim() === ""
+			) {
+				return new Text(formatEmptyMessage("No files found", uiTheme), 1, 0);
+			}
+
+			const lines = textContent.split("\n").filter(l => /\S/.test(l));
+			const header = renderStatusLine(
+				{
+					iconOverride: globStatusIcon(uiTheme),
+					title: "Glob",
+					titleColor: "toolTitle",
+					description: formatGlobRenderPaths(args),
+					meta: [formatCount("file", lines.length)],
+				},
+				uiTheme,
+			);
+			return framedBlock(uiTheme, width => {
+				const maxItems = options.expanded ? lines.length : Math.min(lines.length, COLLAPSED_LIST_LIMIT);
+				const contentWidth = outputBlockContentWidth(width);
+				const bodyLines: string[] = [];
+				for (let i = 0; i < maxItems; i++) {
+					bodyLines.push(truncateToWidth(`  ${uiTheme.fg("accent", lines[i]!)}`, contentWidth, Ellipsis.Omit));
+				}
+				const remaining = lines.length - maxItems;
+				if (!options.expanded && remaining > 0) {
+					bodyLines.push(
+						truncateToWidth(uiTheme.fg("dim", formatMoreItems(remaining, "file")), contentWidth, Ellipsis.Omit),
+					);
+				}
+				return {
+					header,
+					sections: [{ lines: bodyLines }],
+					state: "success",
+					width,
+				};
+			});
+		}
+
+		const fileCount = details?.fileCount ?? 0;
+		const truncation = details?.truncation ?? details?.meta?.truncation;
+		const limits = details?.meta?.limits;
+		const truncated = Boolean(details?.truncated || truncation || details?.resultLimitReached || limits?.resultLimit);
+		const files = details?.files ?? [];
+
+		const missingPaths = details?.missingPaths ?? [];
+		const missingNote =
+			missingPaths.length > 0 ? uiTheme.fg("warning", `skipped missing: ${missingPaths.join(", ")}`) : undefined;
+
+		if (fileCount === 0) {
+			const emptyLabel = truncated ? "No matches before timeout (scan incomplete)" : "No files found";
+			const header = renderStatusLine(
+				{
+					icon: "warning",
+					title: "Glob",
+					titleColor: "toolTitle",
+					description: formatGlobRenderPaths(args),
+					meta: truncated ? ["0 files", uiTheme.fg("warning", "timed out")] : ["0 files"],
+				},
+				uiTheme,
+			);
+			const lines = [header, formatEmptyMessage(emptyLabel, uiTheme)];
+			if (missingNote) lines.push(missingNote);
+			return new Text(lines.join("\n"), 1, 0);
+		}
+		const meta: string[] = [formatCount("file", fileCount)];
+		if (details?.scopePath) meta.push(formatScopeMeta(details.scopePath));
+		if (truncated) meta.push(uiTheme.fg("warning", "truncated"));
+		const header = renderStatusLine(
+			{
+				...(truncated ? { icon: "warning" as const } : { iconOverride: globStatusIcon(uiTheme) }),
+				title: "Glob",
+				titleColor: "toolTitle",
+				description: formatGlobRenderPaths(args),
+				meta,
+			},
+			uiTheme,
+		);
+
+		const truncationReasons: string[] = [];
+		const resultLimit = details?.resultLimitReached ?? limits?.resultLimit?.reached;
+		if (resultLimit) truncationReasons.push(`limit ${resultLimit} results`);
+		if (truncation) truncationReasons.push(truncation.truncatedBy === "lines" ? "line limit" : "size limit");
+		const artifactId = truncation && "artifactId" in truncation ? truncation.artifactId : undefined;
+		if (artifactId) truncationReasons.push(formatFullOutputReference(artifactId));
+
+		const extraLines: string[] = [];
+		if (truncationReasons.length > 0) {
+			extraLines.push(uiTheme.fg("warning", `truncated: ${truncationReasons.join(", ")}`));
+		}
+		if (missingNote) extraLines.push(missingNote);
+
+		return framedBlock(uiTheme, width => {
+			const cwd = details?.cwd;
+			const fileLines = renderFileList(
+				{
+					files: files.map(entry => ({
+						path: entry,
+						isDirectory: entry.endsWith("/"),
+						absPath: cwd && !entry.endsWith("/") ? path.resolve(cwd, entry) : undefined,
+					})),
+					expanded: options.expanded,
+					maxCollapsed: COLLAPSED_LIST_LIMIT,
+					hyperlinkFn: fileHyperlink,
+				},
+				uiTheme,
+			);
+			const contentWidth = outputBlockContentWidth(width);
+			const bodyLines: string[] = new Array(fileLines.length + extraLines.length);
+			for (let fi = 0; fi < fileLines.length; fi++) {
+				bodyLines[fi] = truncateToWidth(fileLines[fi]!, contentWidth, Ellipsis.Omit);
+			}
+			for (let ei = 0; ei < extraLines.length; ei++) {
+				bodyLines[fileLines.length + ei] = truncateToWidth(extraLines[ei]!, contentWidth, Ellipsis.Omit);
+			}
+			return {
+				header,
+				sections: [{ lines: bodyLines }],
+				state: truncated ? "warning" : "success",
+				width,
+			};
+		});
+	},
+	mergeCallAndResult: true,
+};

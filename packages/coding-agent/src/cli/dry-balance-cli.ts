@@ -61,11 +61,6 @@ export interface DryBalanceAuthStorage {
 		options?: DryBalanceAuthOptions,
 	): Promise<OAuthAccess | undefined>;
 	getOAuthAccesses?(provider: string, options?: DryBalanceAuthOptions): Promise<OAuthAccessResolution[]>;
-	/**
-	 * Force-refresh a single credential by id (step (b) of the auth-retry
-	 * policy). The bench re-mints the failing account's token in place on a
-	 * 401 rather than rotating accounts — it is measuring each account.
-	 */
 	forceRefreshCredentialById?(id: number, signal?: AbortSignal): Promise<AuthCredentialSnapshotEntry>;
 }
 
@@ -220,8 +215,6 @@ function extractAccount(access: {
 }): string {
 	const base =
 		access.email ?? access.accountId ?? access.projectId ?? access.enterpriseUrl ?? "(unknown oauth account)";
-	// Two subscriptions (orgs) can share one email — name the org so per-account
-	// bench rows stay tellable apart.
 	const org = access.orgName ?? access.orgId;
 	return org ? `${base} (${org})` : base;
 }
@@ -242,8 +235,6 @@ function getBenchTargetKey(access: {
 		access.enterpriseUrl ??
 		(access.credentialId === undefined ? access.accessToken : `credential:${access.credentialId}`) ??
 		"(unknown oauth account)";
-	// Org-qualify: two org-scoped credentials under one email are two distinct
-	// benchmark targets, not duplicates.
 	return access.orgId ? `${base}|org:${access.orgId}` : base;
 }
 
@@ -328,7 +319,7 @@ function renderBenchStatusLine(
 	}
 }
 
-export function createBenchProgressSink(
+function createBenchProgressSink(
 	total: number,
 	write: (text: string) => void,
 	interactive: boolean,
@@ -358,12 +349,6 @@ export function createBenchProgressSink(
 			chalk.bold("bench requests"),
 			...statuses.map((status, index) => renderBenchStatusLine(status, index, total, frame)),
 		];
-		// Anchor every redraw at column 0 and terminate each row with CRLF: a
-		// bare `\n` only returns to column 0 when the tty performs ONLCR
-		// translation, which is off whenever the terminal is in raw mode — there
-		// the old column-preserving cursor-up staircased each frame into
-		// scrollback. Cap each line to the terminal width so a wrapped row never
-		// desyncs the `\x1b[<n>A` cursor-up from the logical line count.
 		const move = lineCount > 0 ? `\x1b[${lineCount}A` : "";
 		const body = lines.map(line => `\x1b[2K${truncateToWidth(line, width)}`).join("\r\n");
 		write(`${move}\r${body}\r\n`);
@@ -405,9 +390,6 @@ async function runBenchRequest(
 	const { account, accessToken, credentialId } = target;
 	const startedAt = now();
 	let firstTokenAt: number | undefined;
-	// Re-mint the cached token on a 401: a peer/broker may have rotated it out
-	// from under our snapshot (Anthropic rotates refresh tokens on every use).
-	// The bench measures one account, so the switch step intentionally declines.
 	const apiKey: ApiKeyResolver = async ({ lastChance, error }) => {
 		if (error === undefined) return accessToken;
 		if (lastChance || credentialId === undefined || !authStorage.forceRefreshCredentialById) return undefined;
@@ -579,9 +561,6 @@ async function runOneAttempt(
 	sessionId: string,
 ): Promise<DryBalanceAttemptResult> {
 	try {
-		// AuthStorage.getOAuthAccess shares the OAuth credential ranking, refresh,
-		// usage-limit, broker, and session-sticky path used by getApiKey(), while
-		// returning the selected account metadata instead of bearer bytes.
 		const access = await modelRegistry.authStorage.getOAuthAccess(model.provider, sessionId, {
 			baseUrl: model.baseUrl,
 			modelId: model.id,
@@ -618,7 +597,7 @@ function sortedStats(
 	map: Map<string, number>,
 	samples: number,
 ): Array<{ label: string; count: number; percent: number }> {
-	return [...map.entries()]
+	return Array.from(map.entries())
 		.map(([label, count]) => ({ label, count, percent: (count / samples) * 100 }))
 		.sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
 }
@@ -705,7 +684,7 @@ function formatRows(rows: Array<{ count: number; percent: number; label: string 
 	});
 }
 
-export function formatDryBalanceText(summary: DryBalanceSummary): string {
+function formatDryBalanceText(summary: DryBalanceSummary): string {
 	const accountRows = summary.success.accounts.map(row => ({
 		count: row.count,
 		percent: row.percent,

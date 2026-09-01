@@ -30,6 +30,7 @@ interface FakeAcpBuiltinSession {
 	setForcedToolChoice(toolName: string): void;
 	fetchUsageReports?: () => Promise<unknown>;
 	getAsyncJobSnapshot: (opts?: { recentLimit?: number }) => { running: unknown[]; recent: unknown[] } | null;
+	getRunningNonTaskJobCount: () => number;
 	formatSessionAsText: () => string;
 	dumpLlmRequestToTmpDir: () => Promise<string | undefined>;
 	getLastAssistantText: () => string | undefined;
@@ -147,6 +148,7 @@ function createRuntime() {
 			return fakeSessionManager!.getCwd();
 		},
 		getAsyncJobSnapshot: () => null,
+		getRunningNonTaskJobCount: () => 0,
 		formatSessionAsText: () => "",
 		dumpLlmRequestToTmpDir: async () => undefined,
 		getLastAssistantText: () => undefined,

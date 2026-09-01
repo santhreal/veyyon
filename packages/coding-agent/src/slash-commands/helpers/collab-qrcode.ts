@@ -2,12 +2,7 @@ import { type Component, visibleWidth } from "@veyyon/tui";
 import { fgOrPlain } from "../../modes/theme/theme";
 import { QrCode, renderQrHalfBlocks } from "../../utils/qrcode";
 
-/**
- * One-shot transcript block that prints a collab browser-join URL as a
- * scannable QR code. The symbol is encoded once at construction (byte mode,
- * EC level M) and rendered as ANSI half-blocks; on terminals too narrow for
- * the symbol it degrades to a one-line hint pointing at the printed URL.
- */
+/** One-shot transcript block that prints a collab browser-join URL as a scannable QR code. The symbol is encoded once at construction (byte mode, */
 export class CollabQrCodeComponent implements Component {
 	readonly #lines: readonly string[];
 	readonly #minWidth: number;

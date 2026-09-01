@@ -1,15 +1,3 @@
-/**
- * Local mirror of the subset of `@google/genai` types this package consumes.
- *
- * Field shapes match Gemini / Vertex AI wire format 1:1. Enum-shaped values are
- * modelled as string literal unions so they pass through `JSON.stringify` and
- * `JSON.parse` unchanged.
- *
- * Keep this file in sync with the actual request/response surface of:
- *   - `POST {generativelanguage,aiplatform}.googleapis.com/.../models/{model}:streamGenerateContent?alt=sse`
- *   - The Cloud Code Assist endpoint used by `google-gemini-cli.ts`
- */
-/** Mirror of `@google/genai`'s `FinishReason` string enum. */
 export type FinishReason =
 	| "FINISH_REASON_UNSPECIFIED"
 	| "STOP"
@@ -29,26 +17,21 @@ export type FinishReason =
 	| "UNEXPECTED_TOOL_CALL"
 	| "NO_IMAGE";
 
-/** Mirror of `@google/genai`'s `FunctionCallingConfigMode` string enum. */
 export type FunctionCallingConfigMode = "MODE_UNSPECIFIED" | "AUTO" | "NONE" | "ANY" | "VALIDATED";
 
-/** Mirror of `@google/genai`'s `ThinkingLevel` string enum. */
 export type ThinkingLevel = "THINKING_LEVEL_UNSPECIFIED" | "MINIMAL" | "LOW" | "MEDIUM" | "HIGH";
 
-/** Inline base64-encoded data part. */
 export interface InlineDataPart {
 	mimeType: string;
 	data: string;
 }
 
-/** Function call emitted by the model. */
 export interface FunctionCallPart {
 	name?: string;
 	args?: Record<string, unknown>;
 	id?: string;
 }
 
-/** Tool execution result fed back to the model. */
 export interface FunctionResponsePart {
 	name: string;
 	response: Record<string, unknown>;
@@ -56,10 +39,6 @@ export interface FunctionResponsePart {
 	id?: string;
 }
 
-/**
- * A single piece of a `Content` message. Mirrors the SDK's union by keeping
- * every optional field — the model and the wire treat shape as discriminator.
- */
 export interface Part {
 	text?: string;
 	thought?: boolean;
@@ -69,20 +48,17 @@ export interface Part {
 	functionResponse?: FunctionResponsePart;
 }
 
-/** Conversation turn. Roles: `"user"`, `"model"`, optionally absent for system instructions. */
 export interface Content {
 	role?: string;
 	parts?: Part[];
 }
 
-/** Thinking/reasoning configuration shared by Gemini 2.x and 3.x models. */
 export interface ThinkingConfig {
 	includeThoughts?: boolean;
 	thinkingBudget?: number;
 	thinkingLevel?: ThinkingLevel;
 }
 
-/** Function declaration entry inside `tools[].functionDeclarations`. */
 export interface FunctionDeclaration {
 	name: string;
 	description?: string;
@@ -90,12 +66,10 @@ export interface FunctionDeclaration {
 	parametersJsonSchema?: Record<string, unknown>;
 }
 
-/** Tool group as accepted at the request top level. */
 export interface ToolDeclaration {
 	functionDeclarations: Record<string, unknown>[];
 }
 
-/** Tool selection mode container. */
 export interface ToolConfig {
 	functionCallingConfig?: {
 		mode: FunctionCallingConfigMode;
@@ -103,13 +77,6 @@ export interface ToolConfig {
 	};
 }
 
-/**
- * Generation/sampling and request-shape options passed via the SDK's `config`.
- *
- * Fields that the wire format places at the request body root (systemInstruction,
- * tools, toolConfig, safetySettings, cachedContent) live here too — the
- * transformer in `google-shared.ts` lifts them out when serializing.
- */
 export interface GenerateContentConfig {
 	temperature?: number;
 	maxOutputTokens?: number;
@@ -130,29 +97,22 @@ export interface GenerateContentConfig {
 	safetySettings?: Array<Record<string, unknown>>;
 	cachedContent?: string;
 	thinkingConfig?: ThinkingConfig;
-	/**
-	 * Gemini/Vertex serving tier. Serialized to the request body root as
-	 * `serviceTier` (camelCase) by the transformer in `google-shared.ts`.
-	 */
 	serviceTier?: "auto" | "default" | "flex" | "scale" | "priority";
 	abortSignal?: AbortSignal;
 }
 
-/** Top-level argument to `generateContentStream`. */
 export interface GenerateContentParameters {
 	model: string;
 	contents: Content[];
 	config?: GenerateContentConfig;
 }
 
-/** Per-stream candidate envelope. */
 export interface Candidate {
 	content?: Content;
 	finishReason?: FinishReason;
 	index?: number;
 }
 
-/** Cumulative token accounting attached to the trailing chunk. */
 export interface UsageMetadata {
 	promptTokenCount?: number;
 	candidatesTokenCount?: number;
@@ -161,20 +121,17 @@ export interface UsageMetadata {
 	cachedContentTokenCount?: number;
 }
 
-/** Prompt-level safety feedback; `blockReason` is set (with no candidates) when the prompt is blocked. */
 export interface PromptFeedback {
 	blockReason?: string;
 	blockReasonMessage?: string;
 	[key: string]: unknown;
 }
 
-/** Single SSE chunk's parsed JSON body. */
 export interface GenerateContentResponse {
 	candidates?: Candidate[];
 	usageMetadata?: UsageMetadata;
 	modelVersion?: string;
 	responseId?: string;
 	promptFeedback?: PromptFeedback;
-	/** In-band stream failure (quota, internal error) delivered as a final JSON event. */
 	error?: { code?: number; message?: string; status?: string };
 }

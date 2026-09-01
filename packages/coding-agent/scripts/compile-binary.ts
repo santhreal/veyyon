@@ -2,44 +2,19 @@ import * as path from "node:path";
 import { buildDocsIndexPayload } from "./generate-docs-index";
 import { createLegacyPiVirtualModulePlugin } from "./legacy-pi-virtual-module";
 
-/** Native runtime dependencies always resolved from the on-demand install instead of embedded into compiled binaries. */
 export const COMPILED_EXTERNAL_DEPENDENCIES: readonly string[] = Object.freeze(["fastembed", "onnxruntime-node"]);
 
-/** Inputs shared by local and release coding-agent binary builds. */
 export interface CodingAgentCompileOptions {
-	/** Absolute repository root used for package resolution. */
 	readonly repoRoot: string;
-	/** Absolute CLI entrypoint. */
 	readonly entrypoint: string;
-	/** Absolute standalone executable output path. */
 	readonly outfile: string;
-	/** Concrete Transformers.js version baked into the tiny-model worker. */
 	readonly transformersVersion: string;
-	/** Optional cross-compilation runtime target. */
 	readonly target?: Bun.Build.CompileTarget;
-	/** Match release builds that minify identifiers while retaining names. */
 	readonly minifyIdentifiers?: boolean;
-	/** Disable Bun's built-in Darwin signing before the caller re-signs. */
 	readonly skipBuiltinCodesign?: boolean;
-	/**
-	 * Precompile the bundle to Bun bytecode (default ON, opt out with
-	 * `VEYYON_BUILD_BYTECODE=0`). Skips JS source parsing at every launch —
-	 * measured `--version` ~650ms -> ~70ms. Tradeoff: binary grows ~158MB ->
-	 * ~288MB. Requires the embedded mupdf runtime (gen:mupdf) because mupdf's
-	 * top-level await cannot be bytecode-compiled, and the yargs
-	 * `import.meta.resolve` patch plugin below (Bun crashes bytecode binaries
-	 * containing `import.meta.resolve`/`env`, oven-sh/bun#21097).
-	 */
 	readonly bytecode?: boolean;
 }
 
-/**
- * Binary builds never bundle the mupdf package: its top-level await is
- * incompatible with bytecode compilation, and the embedded-asset runtime
- * (scripts/embed-mupdf-wasm.ts --generate + markit pdf extract.ts) supersedes
- * it. The `import("mupdf")` fallback branch is unreachable in compiled
- * binaries, so it is replaced with a loud failure instead of dead weight.
- */
 function createMupdfStubPlugin(): Bun.BunPlugin {
 	return {
 		name: "stub-bundled-mupdf",
@@ -54,20 +29,6 @@ function createMupdfStubPlugin(): Bun.BunPlugin {
 	};
 }
 
-/**
- * `import.meta.resolve()` in any bundled module makes Bun 1.3.14 bytecode
- * binaries crash at startup ("Expected CommonJS module to have a function
- * wrapper", oven-sh/bun#21097 — same crash via `import.meta.env`; minimal
- * repro: a one-line `import.meta.resolve("x")` entry under
- * `bun build --compile --bytecode`). The bundle graph has exactly one such
- * call site: yargs' apply-extends.js, where it resolves a
- * `{extends: "<npm-module>"}` yargs config — a feature nothing in the binary
- * uses. This plugin rewrites that call to a loud throw; yargs' own
- * surrounding catch then returns the config unchanged, its documented
- * unresolvable-extends behavior. The build fails closed if a yargs upgrade
- * changes the expected source shape or introduces new `import.meta.resolve`
- * / `import.meta.env` call sites here.
- */
 function createYargsImportMetaResolvePatchPlugin(): Bun.BunPlugin {
 	return {
 		name: "patch-yargs-import-meta-resolve",
@@ -95,15 +56,7 @@ function createYargsImportMetaResolvePatchPlugin(): Bun.BunPlugin {
 	};
 }
 
-/**
- * Compile the coding-agent executable with its legacy Pi compatibility module
- * graph supplied by an in-memory build plugin rather than generated files.
- */
 export async function compileCodingAgent(options: CodingAgentCompileOptions): Promise<void> {
-	// Compiled binaries can only serve the stats dashboard from the embedded
-	// archive; an empty placeholder compiles fine and 500s at runtime, so fail
-	// the build instead. Callers (build-binary.ts, ci-release-build-binaries.ts)
-	// run `gen:stats` first and reset afterwards.
 	const statsArchivePath = path.join(options.repoRoot, "packages", "stats", "src", "embedded-client.generated.txt");
 	if ((await Bun.file(statsArchivePath).text()).trim().length === 0) {
 		throw new Error(

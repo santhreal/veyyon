@@ -1,0 +1,27 @@
+# @headline: a difficulty-stratified sample, disjoint from every tuned list.
+#
+# WHY A HOLDOUT AT ALL. `pilot-10.txt`, `diverse-20.txt` and `argot-10.txt` have
+# been read while tuning prompts, so a prompt change measured on them is measured
+# on its own training set. None of the 10 tasks below appears in any of those
+# lists.
+#
+# HOW IT WAS BUILT, so it can be rebuilt. Of the 117 tasks in `deep-swe/tasks`,
+# 30 belong to the tuned lists and 83 of the remainder carry a reference patch.
+# Those 83 are ordered by reference-solution patch size (the same difficulty proxy
+# `pilot-10.txt` uses) and one task is taken from the midpoint of each decile, so
+# the sample spans 541 to 1112 patch lines instead of clustering at one end. The
+# selection is deterministic: no seed, no sampling, same 10 tasks every time.
+#
+# WHAT IT IS NOT. Ten tasks answer a parity question ("did this prompt change cost
+# reward?") and not a ranking question. A difference of one task is 10 points, so
+# report the reward pair and the token delta, never a percentage improvement.
+opa-template-string-reconstruction
+go-genai-streamed-function-args
+httpx-deterministic-cookie-store
+awilix-async-container-initialization
+fd-deterministic-multi-key-sorting
+yjs-map-conflict-detection
+participle-grammar-conflict-analysis
+dateutil-rfc5545-timezone-interop
+igel-persist-feature-schema
+dasel-html-document-format

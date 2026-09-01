@@ -7,7 +7,7 @@ const AUTH_URL = "https://chat.qwen.ai";
 const API_BASE_URL = "https://portal.qwen.ai/v1";
 const VALIDATION_MODEL = "coder-model";
 
-export async function loginQwenPortal(options: OAuthController): Promise<string> {
+async function loginQwenPortal(options: OAuthController): Promise<string> {
 	if (!options.onPrompt) {
 		throw new AIError.OnPromptRequiredError("Qwen Portal");
 	}

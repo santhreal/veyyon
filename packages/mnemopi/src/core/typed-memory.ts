@@ -76,7 +76,6 @@ function typePattern(
 }
 
 export const TYPE_PATTERNS: readonly TypePattern[] = [
-	// FACT: Objective, verifiable information
 	typePattern(String.raw`\b(is|are|was|were)\s+(a|an|the)\s+\w+`, MemoryType.FACT, 0.6, "stable"),
 	typePattern(String.raw`\b(has|have|had)\s+\d+`, MemoryType.FACT, 0.7, "stable"),
 	typePattern(String.raw`\b(contains|consists?|comprises?)\b`, MemoryType.FACT, 0.8, "stable"),
@@ -84,21 +83,18 @@ export const TYPE_PATTERNS: readonly TypePattern[] = [
 	typePattern(String.raw`\b(API|endpoint|URL|database|DB)\s+(is|at|points?\s+to)`, MemoryType.FACT, 0.8, "stable"),
 	typePattern(String.raw`\b(created|modified|updated)\s+(on|at)\s+\d{4}`, MemoryType.FACT, 0.8, "stable"),
 
-	// PREFERENCE: User/system preferences
 	typePattern(String.raw`\b(prefer|likes?|enjoys?|loves?|hates?|dislikes?)\b`, MemoryType.PREFERENCE, 0.8, "moderate"),
 	typePattern(String.raw`\b(want|wants|wanted)\s+(to|the|a|an)\b`, MemoryType.PREFERENCE, 0.6, "moderate"),
 	typePattern(String.raw`\b(rather|instead|alternative)\b`, MemoryType.PREFERENCE, 0.5, "moderate"),
 	typePattern(String.raw`\b(dark\s+mode|light\s+mode|theme|color\s+scheme)\b`, MemoryType.PREFERENCE, 0.9, "moderate"),
 	typePattern(String.raw`\b(usually|typically|normally|generally)\b`, MemoryType.PREFERENCE, 0.6, "moderate"),
 
-	// DECISION: Choices affecting future
 	typePattern(String.raw`\b(decided|chose|selected|picked|opted)\b`, MemoryType.DECISION, 0.9, "high"),
 	typePattern(String.raw`\b(going\s+with|settled\s+on|locked\s+in)\b`, MemoryType.DECISION, 0.8, "high"),
 	typePattern(String.raw`\b(choose|select|pick)\s+(between|from|among)\b`, MemoryType.DECISION, 0.7, "high"),
 	typePattern(String.raw`\b(final\s+decision|final\s+call|final\s+choice)\b`, MemoryType.DECISION, 0.9, "high"),
 	typePattern(String.raw`\b(will\s+use|using|adopt|adopting)\s+(the|a|an)?\s*\w+`, MemoryType.DECISION, 0.7, "high"),
 
-	// COMMITMENT: Promises, obligations, deadlines
 	typePattern(
 		String.raw`\b(will|shall|must|need\s+to)\s+\w+\s+(by|before|until)\b`,
 		MemoryType.COMMITMENT,
@@ -126,7 +122,6 @@ export const TYPE_PATTERNS: readonly TypePattern[] = [
 		"time_critical",
 	),
 
-	// GOAL: Objectives to achieve
 	typePattern(String.raw`\b(goal|objective|target|aim|purpose)\b`, MemoryType.GOAL, 0.9, "high"),
 	typePattern(String.raw`\b(achieve|reach|hit|attain|accomplish)\s+\d+`, MemoryType.GOAL, 0.8, "high"),
 	typePattern(String.raw`\b(KPI|metric|OKR|success\s+criteria)\b`, MemoryType.GOAL, 0.9, "high"),
@@ -138,7 +133,6 @@ export const TYPE_PATTERNS: readonly TypePattern[] = [
 		"high",
 	),
 
-	// EVENT: Historical occurrences
 	typePattern(
 		String.raw`\b(meeting|call|discussion|conversation)\s+(with|about)\b`,
 		MemoryType.EVENT,
@@ -151,7 +145,6 @@ export const TYPE_PATTERNS: readonly TypePattern[] = [
 	typePattern(String.raw`\b(incident|outage|bug|issue)\s+#?\d+`, MemoryType.EVENT, 0.8, "decaying"),
 	typePattern(String.raw`\b( launched|released|shipped|deployed)\s+(on|at)\b`, MemoryType.EVENT, 0.8, "decaying"),
 
-	// INSTRUCTION: Rules, guidelines
 	typePattern(String.raw`\b(always|never|must|should|shall|do\s+not|don't)\b`, MemoryType.INSTRUCTION, 0.7, "stable"),
 	typePattern(String.raw`\b(rule|policy|guideline|procedure|protocol)\b`, MemoryType.INSTRUCTION, 0.9, "stable"),
 	typePattern(String.raw`\b(how\s+to|steps?\s+to|guide\s+to|tutorial)\b`, MemoryType.INSTRUCTION, 0.8, "stable"),
@@ -159,7 +152,6 @@ export const TYPE_PATTERNS: readonly TypePattern[] = [
 	typePattern(String.raw`\b(first|then|next|finally)\s*,?\s*\w+`, MemoryType.INSTRUCTION, 0.5, "stable"),
 	typePattern(String.raw`\b(if\s+.+\s+then\s+.+)`, MemoryType.INSTRUCTION, 0.7, "stable"),
 
-	// RELATIONSHIP: Entity connections
 	typePattern(String.raw`\b(manages?|reports?\s+to|supervises?|leads?)\b`, MemoryType.RELATIONSHIP, 0.9, "stable"),
 	typePattern(String.raw`\b(owns?|belongs?\s+to|part\s+of|member\s+of)\b`, MemoryType.RELATIONSHIP, 0.8, "stable"),
 	typePattern(
@@ -177,7 +169,6 @@ export const TYPE_PATTERNS: readonly TypePattern[] = [
 		"stable",
 	),
 
-	// CONTEXT: Situational information
 	typePattern(String.raw`\b(currently|right\s+now|at\s+the\s+moment|presently)\b`, MemoryType.CONTEXT, 0.7, "high"),
 	typePattern(String.raw`\b(working\s+on|focusing\s+on|dealing\s+with)\b`, MemoryType.CONTEXT, 0.8, "high"),
 	typePattern(String.raw`\b(status|state|phase|stage)\s+(is|of)\b`, MemoryType.CONTEXT, 0.7, "high"),
@@ -185,7 +176,6 @@ export const TYPE_PATTERNS: readonly TypePattern[] = [
 	typePattern(String.raw`\b(environment|setup|configuration|settings?)\b`, MemoryType.CONTEXT, 0.6, "high"),
 	typePattern(String.raw`\b(today|this\s+week|this\s+sprint|this\s+quarter)\b`, MemoryType.CONTEXT, 0.5, "high"),
 
-	// LEARNING: Lessons from experience
 	typePattern(String.raw`\b(learned|realized|discovered|found\s+out)\b`, MemoryType.LEARNING, 0.8, "accumulating"),
 	typePattern(String.raw`\b(lesson|takeaway|insight|finding)\b`, MemoryType.LEARNING, 0.9, "accumulating"),
 	typePattern(String.raw`\b(turns?\s+out|surprisingly|interestingly)\b`, MemoryType.LEARNING, 0.7, "accumulating"),
@@ -197,7 +187,6 @@ export const TYPE_PATTERNS: readonly TypePattern[] = [
 		"accumulating",
 	),
 
-	// OBSERVATION: Patterns noticed
 	typePattern(String.raw`\b(noticed|observed|saw|seems?)\b`, MemoryType.OBSERVATION, 0.7, "evolving"),
 	typePattern(String.raw`\b(pattern|trend|correlation|tends?\s+to)\b`, MemoryType.OBSERVATION, 0.9, "evolving"),
 	typePattern(
@@ -215,7 +204,6 @@ export const TYPE_PATTERNS: readonly TypePattern[] = [
 	),
 	typePattern(String.raw`\b(every\s+time|whenever|each\s+time)\b`, MemoryType.OBSERVATION, 0.8, "evolving"),
 
-	// ERROR: Mistakes to avoid
 	typePattern(String.raw`\b(error|bug|issue|problem|failure|crash)\b`, MemoryType.ERROR, 0.7, "persistent"),
 	typePattern(String.raw`\b(broke|broken|failed|failing|doesn't\s+work)\b`, MemoryType.ERROR, 0.8, "persistent"),
 	typePattern(
@@ -228,7 +216,6 @@ export const TYPE_PATTERNS: readonly TypePattern[] = [
 	typePattern(String.raw`\b(exception|timeout|crash|hang|freeze)\b`, MemoryType.ERROR, 0.8, "persistent"),
 	typePattern(String.raw`\b(workaround|hotfix|patch|kludge)\b`, MemoryType.ERROR, 0.7, "persistent"),
 
-	// ARTIFACT: Document/code references
 	typePattern(String.raw`\b(document|doc|spreadsheet|sheet|slide)\b`, MemoryType.ARTIFACT, 0.6, "reference"),
 	typePattern(String.raw`\b(file|folder|directory|path)\s+(name|called|at)\b`, MemoryType.ARTIFACT, 0.7, "reference"),
 	typePattern(String.raw`\b(PR|pull\s+request|issue|ticket|ticket)\s+#?\d+`, MemoryType.ARTIFACT, 0.9, "reference"),

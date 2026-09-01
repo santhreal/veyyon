@@ -1,6 +1,4 @@
 const DEFAULT_MODEL_PROVIDER_ORDER = [
-	// First-party / native account providers. Prefer these over relays when the
-	// same upstream model is available in more than one place.
 	"openai-codex",
 	"anthropic",
 	"openai",
@@ -17,7 +15,6 @@ const DEFAULT_MODEL_PROVIDER_ORDER = [
 	"deepseek",
 	"groq",
 
-	// High-quality aggregators / hosted inference providers.
 	"fireworks",
 	"cerebras",
 	"baseten",
@@ -25,8 +22,6 @@ const DEFAULT_MODEL_PROVIDER_ORDER = [
 	"aimlapi",
 	"together",
 
-	// Generic gateways and editor/proxy providers. These are useful when picked
-	// explicitly, but should not win ambiguous automatic role selection.
 	"alibaba-coding-plan",
 	"umans",
 	"google-antigravity",

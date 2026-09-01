@@ -48,7 +48,7 @@ function stringOrUndefined(v: unknown): string | undefined {
 }
 
 type AssistantItemPhase = "commentary" | "final_answer";
-type MessageSignature = { id: string; phase?: AssistantItemPhase };
+export type MessageSignature = { id: string; phase?: AssistantItemPhase };
 
 function parseAssistantItemPhase(value: unknown): AssistantItemPhase | undefined {
 	return value === "commentary" || value === "final_answer" ? value : undefined;
@@ -67,23 +67,23 @@ function uuidNoDashes(): string {
 	return crypto.randomUUID().replace(/-/g, "");
 }
 
-function makeRespId(): string {
+export function makeRespId(): string {
 	return `resp_${uuidNoDashes()}`;
 }
 
-function makeMsgId(): string {
+export function makeMsgId(): string {
 	return `msg_${uuidNoDashes()}`;
 }
 
-function makeReasoningId(): string {
+export function makeReasoningId(): string {
 	return `rs_${uuidNoDashes()}`;
 }
 
-function makeFuncCallId(): string {
+export function makeFuncCallId(): string {
 	return `fc_${uuidNoDashes()}`;
 }
 
-function makeCustomCallId(): string {
+export function makeCustomCallId(): string {
 	return `ctc_${uuidNoDashes()}`;
 }
 
@@ -524,17 +524,17 @@ type CustomToolCallOutputItem = {
 	status: "completed";
 };
 
-type OutputItem = ReasoningOutputItem | MessageOutputItem | FunctionCallOutputItem | CustomToolCallOutputItem;
+export type OutputItem = ReasoningOutputItem | MessageOutputItem | FunctionCallOutputItem | CustomToolCallOutputItem;
 
-type ResponseStatus = "completed" | "in_progress" | "failed" | "incomplete";
+export type ResponseStatus = "completed" | "in_progress" | "failed" | "incomplete";
 
-function responseStatusForStopReason(message: AssistantMessage): ResponseStatus {
+export function responseStatusForStopReason(message: AssistantMessage): ResponseStatus {
 	if (message.stopReason === "length") return "incomplete";
 	if (message.stopReason === "error" || message.stopReason === "aborted") return "failed";
 	return "completed";
 }
 
-function incompleteDetailsForStatus(status: ResponseStatus): { reason: "max_output_tokens" } | null {
+export function incompleteDetailsForStatus(status: ResponseStatus): { reason: "max_output_tokens" } | null {
 	return status === "incomplete" ? { reason: "max_output_tokens" } : null;
 }
 
@@ -565,7 +565,7 @@ function buildReasoningItem(part: ThinkingContent): ReasoningOutputItem {
 	};
 }
 
-function reasoningItemId(part: ThinkingContent): string {
+export function reasoningItemId(part: ThinkingContent): string {
 	if (part.itemId) return part.itemId;
 	if (part.thinkingSignature) {
 		try {
@@ -587,7 +587,7 @@ function reasoningItemId(part: ThinkingContent): string {
  * the wire: third-party clients validate the `call_id` charset
  * (`^[a-zA-Z0-9_-]+$`) or echo it to other backends, and `|` fails both.
  */
-function wireCallId(id: string): string {
+export function wireCallId(id: string): string {
 	const sep = id.indexOf("|");
 	return sep >= 0 ? id.slice(0, sep) : id;
 }
@@ -596,7 +596,7 @@ function wireCallId(id: string): string {
  * Walk the assistant content array and group consecutive TextContent into a
  * single message item; each ThinkingContent / ToolCall is its own item.
  */
-function buildOutputItems(message: AssistantMessage): OutputItem[] {
+export function buildOutputItems(message: AssistantMessage): OutputItem[] {
 	const out: OutputItem[] = [];
 	let pendingMessage: MessageOutputItem | null = null;
 	let pendingMessageSignature: { id: string; phase?: AssistantItemPhase } | undefined;
@@ -660,7 +660,7 @@ function buildOutputItems(message: AssistantMessage): OutputItem[] {
 	return out;
 }
 
-function buildUsage(message: AssistantMessage): Record<string, unknown> {
+export function buildUsage(message: AssistantMessage): Record<string, unknown> {
 	const u = message.usage;
 	const inputTokens = u.input + u.cacheRead + u.cacheWrite;
 	return {

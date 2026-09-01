@@ -35,7 +35,7 @@ function strList(value: unknown): string[] {
 	return out;
 }
 
-function Summary({ args, result }: ToolRenderProps): ReactNode {
+export function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const query = str(args.query);
 	const limit = num(args.limit);
 	const details = detailsRecord(result);
@@ -57,7 +57,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const details = detailsRecord(result);
 	const query = str(details?.query) ?? str(args.query);
 	const limit = num(details?.limit) ?? num(args.limit);

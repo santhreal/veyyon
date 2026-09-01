@@ -10,7 +10,7 @@ const AUTH_URL = "https://developers.cloudflare.com/ai-gateway/configuration/aut
  * Opens browser to Cloudflare AI Gateway authentication docs and prompts for a gateway token/API key.
  * Returns the API key directly (not OAuthCredentials - this isn't OAuth).
  */
-export async function loginCloudflareAiGateway(options: OAuthController): Promise<string> {
+async function loginCloudflareAiGateway(options: OAuthController): Promise<string> {
 	if (!options.onPrompt) {
 		throw new AIError.OnPromptRequiredError("Cloudflare AI Gateway");
 	}

@@ -1,12 +1,3 @@
-/**
- * Lazily format a stream of UTF-8 bytes into hashline-numbered lines, yielded
- * as bounded text chunks. Used to send `read`-style file content to consumers
- * without materializing the full file at once.
- *
- * Each yielded chunk is at most {@link StreamOptions.maxChunkLines} lines and
- * at most {@link StreamOptions.maxChunkBytes} UTF-8 bytes (whichever fires
- * first).
- */
 import { formatNumberedLine } from "./format";
 import type { StreamOptions } from "./types";
 

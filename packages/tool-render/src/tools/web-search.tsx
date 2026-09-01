@@ -25,7 +25,7 @@ function formatAge(seconds: unknown): string {
 	return `${Math.floor(d / 365)}y ago`;
 }
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	const query = str(args.query);
 	const recency = str(args.recency);
 	return (
@@ -60,7 +60,7 @@ function SourceRow({ source, index }: { source: Record<string, unknown>; index: 
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const query = str(args.query);
 	const recency = str(args.recency);
 	const limit = num(args.limit);

@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+### Changed
+- Free functions, consts, and types extracted from `src/core/patterns.ts` and `src/core/plugins.ts` into companion `*-helpers.ts` files.
+- Free functions, consts, and types extracted from `src/cli.ts` into companion `src/cli-helpers.ts`.
+- Free functions, consts, and types extracted from `src/core/recall-diagnostics.ts` into companion `src/core/recall-diagnostics-helpers.ts`.
+- Free functions, consts, and types extracted from `src/core/query-cache.ts` into companion `src/core/query-cache-helpers.ts`.
+- Free functions, consts, and types extracted from `src/core/extraction/client.ts` into companion `src/core/extraction/client-helpers.ts`.
+- Free functions, consts, and types extracted from `src/core/beam/beam-memory.ts` and `src/core/streaming.ts` into companion `*-helpers.ts` files.
+- Free functions, consts, and types extracted from `src/core/extraction/diagnostics.ts` into companion `src/core/extraction/diagnostics-helpers.ts`.
+- Free functions, consts, and types extracted from `core/veracity-consolidation.ts` into `veracity-consolidation-helpers.ts`.
+- Free functions, consts, and types extracted from `core/polyphonic-recall.ts` and `core/annotations.ts` into companion `*-helpers.ts` files.
+- Free functions, consts, and types extracted from `core/binary-vectors.ts` (333→153 lines) into `binary-vectors-helpers.ts`.
+- Free functions, consts, and types extracted from `core/episodic-graph.ts` (356→165 lines) into `episodic-graph-helpers.ts`.
+- Free functions, consts, and types extracted from `core/triples.ts` (439→236 lines) into `triples-helpers.ts`.
+- Extracted `BeamMemory` class from `beam/index.ts` barrel into `beam/beam-memory.ts` (297 lines).
+- Verbose inline comments stripped from `beam/recall.ts`, `beam/consolidate.ts`, `beam/store.ts`, `mcp-tools.ts`, and `embeddings.ts`.
+
 ## [1.3.0] - 2026-08-28
 
 ### Changed
@@ -13,11 +29,29 @@
 - Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
 - `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
 - `core/embeddings.ts` imports `ProviderHttpError` from `@veyyon/ai/error/classes` instead of the error barrel, cutting twelve modules off the import graph of every module that can remember something; behavior is unchanged.
+
+- Free functions, types, and constants extracted from `beam/consolidate.ts` (1,069→609 lines) into `beam/consolidate-helpers.ts`.
+- Free functions, types, and constants extracted from `mcp-tools.ts` (977→408 lines) into `mcp-tools-helpers.ts`.- Removed export keyword from 19 functions across core, cli, and mcp-tools subsystems that were used locally but never imported by any other module.
 - `config.ts` and `core/extraction/client.ts` take `trimTrailingSlashes` and `withScopedTimeoutSignal` from `@veyyon/utils/url` and `@veyyon/utils/scoped-timeout` instead of the package entry point, cutting the extraction client's import graph from 127 modules to 66; behavior is unchanged.
 
 ### Fixed
 
 - Mnemopi cost log SQLite database (`cost_log.db`) manages schema migrations via `PRAGMA user_version` and dynamically backfills missing columns on legacy databases.
+- `conformance-boundary.ts`, `beam/consolidate.ts`, `beam/index.ts`, and `beam/recall.ts` replace Set/Map/array spreads with `Array.from()`, `.concat()`, and `.slice()` across word set sorting, memory consolidation events, extraction flushing, and recall query expansion.
+### Removed
+- Dead exported `VecType` type alias from `types.ts` (already defined in `config.ts`).
+- Dead exported `EmbeddingResult` interface from `types.ts`.
+- Dead exported `PendingConnection` interface from `core/migrations/e6-triplestore-split.ts`.
+- Dead exported `HOST_LLM_TIMEOUT_SECONDS` constant from `config.ts`.
+- Dead exported `REV_CATEGORY` and `REV_PHRASE` constants and unused `reverseMap` function from `core/aaak.ts`.
+- Dead exported `deferredTransaction` constant from `db.ts`.
+
+
+## [1.2.0] - 2026-08-23
+
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
 
 ## [16.3.9] - 2026-07-06
 

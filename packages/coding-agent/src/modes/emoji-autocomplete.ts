@@ -1,16 +1,9 @@
 import type { AutocompleteItem } from "@veyyon/tui";
 import buckets from "./data/emojis.json" with { type: "json" };
 
-// Bucket layout: `{ "<first-char>": [["<name>", "<emoji>"], ...] }`, with each
-// bucket pre-sorted by name. Built offline by scripts/build-emojis.py
-// so the runtime never has to allocate sorted arrays or filter flag sequences.
 type Entry = readonly [name: string, char: string];
 const BUCKETS = buckets as unknown as Readonly<Record<string, readonly Entry[]>>;
 
-// Western text emoticons (`:D`, `;)`, `<3`, …) sit outside the `:name:`
-// shortcode grammar, so they live in a hand-maintained table here rather than
-// in `emojis.json`. Sorted longest-first so `:-)` wins over `:)` when both
-// would match.
 const EMOTICONS: ReadonlyArray<readonly [pattern: string, char: string]> = [
 	[":'-(", ""],
 	[">:-(", ""],
@@ -77,8 +70,6 @@ function lookupExact(name: string): string | undefined {
 	return hit && hit[0] === name ? hit[1] : undefined;
 }
 
-// Shortcode-name characters mirror the GitHub/gemoji grammar: `a-z`, `A-Z`,
-// `0-9`, `_`, `+`, `-`.
 function isNameCharCode(c: number): boolean {
 	return (
 		(c >= 0x61 && c <= 0x7a) ||
@@ -90,9 +81,6 @@ function isNameCharCode(c: number): boolean {
 	);
 }
 
-// Token boundary to the left of an opening `:`: start-of-string or one of
-// the punctuation characters we treat as a "fresh token" marker (whitespace,
-// opening brackets, `>` for quoted blocks).
 function hasLeftBoundary(text: string, colonIdx: number): boolean {
 	if (colonIdx === 0) return true;
 	const c = text.charCodeAt(colonIdx - 1);
@@ -109,15 +97,10 @@ function hasLeftBoundary(text: string, colonIdx: number): boolean {
 }
 
 interface EmojiTrigger {
-	/** Full token including the leading `:` (e.g. `:joy`). */
 	prefix: string;
-	/** Lowercased name portion (e.g. `joy`). May be empty when only `:` has been typed. */
 	query: string;
 }
 
-// Walk back over name characters then verify an opening `:` with a left
-// boundary. Cheaper than a regex on every keystroke and avoids allocating
-// match arrays.
 function extractTrigger(text: string): EmojiTrigger | null {
 	let i = text.length;
 	while (i > 0 && isNameCharCode(text.charCodeAt(i - 1))) i--;
@@ -131,15 +114,10 @@ function extractTrigger(text: string): EmojiTrigger | null {
 export function getEmojiSuggestions(textBeforeCursor: string): { items: AutocompleteItem[]; prefix: string } | null {
 	const trigger = extractTrigger(textBeforeCursor);
 	if (!trigger) return null;
-	// Wait until the user has typed at least one letter so a bare `:` in prose
-	// (e.g. "note:") does not spam the popup.
 	if (trigger.query.length === 0) return null;
 
 	const items: AutocompleteItem[] = [];
 
-	// Surface emoticon literals (`:D`, `:-)`, …) whose pattern starts with
-	// `:<query>` (case-insensitive). These come first so the user sees the
-	// emoticon they're literally typing at the top of the popup.
 	const wanted = `:${trigger.query}`;
 	for (const [pattern, char] of EMOTICONS) {
 		if (items.length >= MAX_SUGGESTIONS) break;
@@ -174,7 +152,7 @@ export function applyEmojiCompletion(
 	const currentLine = lines[cursorLine] ?? "";
 	const before = currentLine.slice(0, cursorCol - prefix.length);
 	const after = currentLine.slice(cursorCol);
-	const newLines = [...lines];
+	const newLines = lines.slice();
 	newLines[cursorLine] = before + item.value + after;
 	return {
 		lines: newLines,
@@ -185,11 +163,8 @@ export function applyEmojiCompletion(
 
 function tryShortcodeInlineReplace(textBeforeCursor: string): { replaceLen: number; insert: string } | null {
 	const len = textBeforeCursor.length;
-	// Cheap early-out: shortcode replace only fires on a trailing `:`.
 	if (len === 0 || textBeforeCursor.charCodeAt(len - 1) !== 0x3a) return null;
 
-	// Walk back over the candidate name, then require an opening `:` with a
-	// left boundary.
 	const closeIdx = len - 1;
 	let nameStart = closeIdx;
 	while (nameStart > 0 && isNameCharCode(textBeforeCursor.charCodeAt(nameStart - 1))) nameStart--;
@@ -201,20 +176,13 @@ function tryShortcodeInlineReplace(textBeforeCursor: string): { replaceLen: numb
 	const name = textBeforeCursor.slice(nameStart, closeIdx).toLowerCase();
 	const char = lookupExact(name);
 	if (!char) return null;
-	// Replace `:name:` (name + 2 colons) with the emoji character.
 	return { replaceLen: name.length + 2, insert: char };
 }
 
-// A trailing delimiter (space/tab/newline) confirms the user is done with the
-// token — that way typing `:PATH` doesn't turn into `ATH` halfway through.
 function isEmoticonTerminator(c: number): boolean {
 	return c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d;
 }
 
-// Western text emoticons fire only once a terminator follows the pattern
-// (e.g. typing space after `;)` rewrites `;) ` to ` `). The terminator is
-// preserved in the replacement so the user keeps typing without losing it.
-// EMOTICONS is sorted longest-first so `:-) ` wins over `:) `.
 function tryEmoticonInlineReplace(textBeforeCursor: string): { replaceLen: number; insert: string } | null {
 	const len = textBeforeCursor.length;
 	if (len < 2) return null;
@@ -234,8 +202,6 @@ function tryEmoticonInlineReplace(textBeforeCursor: string): { replaceLen: numbe
 			}
 		}
 		if (!match) continue;
-		// Same left-boundary rule as shortcodes: emoticons embedded in
-		// identifiers / URLs / code stay untouched.
 		if (start > 0 && !hasLeftBoundary(textBeforeCursor, start)) continue;
 		return { replaceLen: plen + 1, insert: char + term };
 	}
@@ -250,11 +216,6 @@ export function isEmojiPrefix(prefix: string): boolean {
 	return prefix.startsWith(":");
 }
 
-// Submit-time expansion: scan a whole message for emoticons sitting at token
-// boundaries (preceded by a left boundary, followed by whitespace or EOS) and
-// rewrite them. Catches the case where the user pressed Enter without typing a
-// trailing space after the emoticon. EMOTICONS sorted longest-first means the
-// first `startsWith` hit is always the maximal match.
 export function expandEmoticons(text: string): string {
 	if (text.length < 2) return text;
 	let out = "";

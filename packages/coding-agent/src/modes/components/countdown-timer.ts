@@ -29,10 +29,7 @@ export class CountdownTimer {
 		return Math.ceil(remainingMs / 1000);
 	}
 
-	/** These dialogs live in the editor slot, above a possibly large live
-	 *  transcript; a full requestRender() would re-walk that whole tree every
-	 *  second purely to advance the countdown label (BACKLOG Perf "Next
-	 *  candidates"). */
+	/** These dialogs live in the editor slot, above a possibly large live transcript; a full requestRender() would re-walk that whole tree every */
 	#requestRender(): void {
 		if (this.component) {
 			this.tui?.requestComponentRender(this.component);

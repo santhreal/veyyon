@@ -50,13 +50,7 @@ export interface ParsedLoopArgs {
 	prompt?: string;
 }
 
-/**
- * Parse `/loop` arguments into an optional leading limit plus an optional inline
- * prompt. A token that *looks* like a limit (starts with a digit or sign) but
- * fails to parse is a hard error; anything else is treated as prompt text, so
- * plain prose after `/loop` keeps starting an unbounded loop instead of erroring
- * (the pre-arg-parsing behavior). Returns the error message string on failure.
- */
+/** Parse `/loop` arguments into an optional leading limit plus an optional inline prompt. A token that *looks* like a limit (starts with a digit or sign) but */
 export function parseLoopLimitArgs(args: string): ParsedLoopArgs | string {
 	const trimmed = args.trim();
 	if (!trimmed) return {};
@@ -114,12 +108,7 @@ function makeDuration(amountText: string, unitMs: number): LoopLimitConfig | str
 	return { kind: "duration", durationMs: amount * unitMs };
 }
 
-/**
- * Parse a compact duration token such as `10m`, or a compound one like `1h30m`.
- * Returns `undefined` when the token is not duration-shaped, or an error string
- * when it is shaped like a duration but uses an unknown unit / non-positive
- * amount.
- */
+/** Parse a compact duration token such as `10m`, or a compound one like `1h30m`. Returns `undefined` when the token is not duration-shaped, or an error string */
 function parseCompoundDuration(token: string): LoopLimitConfig | string | undefined {
 	if (!/^(?:\d+[a-z]+)+$/.test(token)) return undefined;
 	const segments = token.match(/\d+[a-z]+/g);

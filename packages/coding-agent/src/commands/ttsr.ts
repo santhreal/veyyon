@@ -1,12 +1,6 @@
 import { existsSync } from "node:fs";
 import * as path from "node:path";
-/**
- * `veyyon ttsr` — inspect and test Time-Traveling Stream Rules.
- *
- * `veyyon ttsr test` feeds a snippet (inline, --file, or stdin) through the real
- * TTSR matching pipeline and reports which rules would trigger. `veyyon ttsr list`
- * shows every TTSR-registered rule the current project/user config would load.
- */
+/** `veyyon ttsr` — inspect and test Time-Traveling Stream Rules. `veyyon ttsr test` feeds a snippet (inline, --file, or stdin) through the real */
 import { APP_NAME, CONFIG_DIR_NAME } from "@veyyon/utils";
 import { Args, Command, Flags } from "@veyyon/utils/cli";
 import {

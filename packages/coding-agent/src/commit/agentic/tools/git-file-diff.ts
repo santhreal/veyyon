@@ -4,6 +4,15 @@ import { isTestFilePath } from "../../../commit/utils/test-paths";
 import type { CustomTool } from "../../../extensibility/custom-tools/types";
 import * as git from "../../../utils/git";
 
+/** Count `\n` occurrences via charCodeAt, avoiding `split("\n").length` allocation. */
+function countNewlines(text: string): number {
+	let count = 0;
+	for (let i = 0; i < text.length; i++) {
+		if (text.charCodeAt(i) === 0x0a) count++;
+	}
+	return count;
+}
+
 const TARGET_TOKENS = 30000;
 const CHARS_PER_TOKEN = 4;
 const MAX_CHARS = TARGET_TOKENS * CHARS_PER_TOKEN;
@@ -84,13 +93,13 @@ function truncateDiffContent(diff: string): { content: string; truncated: boolea
 	const truncatedCount = lines.length - KEEP_HEAD_LINES - KEEP_TAIL_LINES;
 
 	return {
-		content: [...head, `\n[…${truncatedCount}ln elided…]\n`, ...tail].join("\n"),
+		content: head.concat([`\n[…${truncatedCount}ln elided…]\n`], tail).join("\n"),
 		truncated: true,
 	};
 }
 
 function processDiffs(files: string[], diffs: Map<string, string>): { result: string; truncatedFiles: string[] } {
-	const sortedFiles = [...files].sort((a, b) => getFilePriority(b) - getFilePriority(a));
+	const sortedFiles = files.slice().sort((a, b) => getFilePriority(b) - getFilePriority(a));
 
 	const truncatedFiles: string[] = [];
 	const parts: string[] = [];
@@ -107,7 +116,7 @@ function processDiffs(files: string[], diffs: Map<string, string>): { result: st
 		}
 
 		let content = diff;
-		if (content.length > remaining || content.split("\n").length > TRUNCATE_THRESHOLD_LINES) {
+		if (content.length > remaining || countNewlines(content) + 1 > TRUNCATE_THRESHOLD_LINES) {
 			const { content: truncated, truncated: wasTruncated } = truncateDiffContent(content);
 			if (wasTruncated) {
 				truncatedFiles.push(file);

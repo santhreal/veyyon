@@ -24,7 +24,7 @@ function retainItems(args: Record<string, unknown>): RetainItem[] | null {
 	return items;
 }
 
-function Summary({ args, result }: ToolRenderProps): ReactNode {
+export function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const items = retainItems(args);
 	if (items === null) return <InvalidArg what="items" />;
 	const count = num(detailsRecord(result)?.count) ?? items.length;
@@ -37,7 +37,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const items = retainItems(args);
 	const count = num(detailsRecord(result)?.count);
 	// The tool's own "N memories stored/queued." line; trailing period dropped

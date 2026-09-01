@@ -53,9 +53,6 @@ interface ThreadViewPost {
 	replies?: Array<ThreadViewPost | { $type: string }>;
 }
 
-/**
- * Resolve a handle to DID using the profile API
- */
 async function resolveHandle(handle: string, timeout: number, signal?: AbortSignal): Promise<string | null> {
 	const url = `${API_BASE}/app.bsky.actor.getProfile?actor=${encodeURIComponent(handle)}`;
 	const result = await loadPage(url, {
@@ -71,9 +68,6 @@ async function resolveHandle(handle: string, timeout: number, signal?: AbortSign
 	return data.did;
 }
 
-/**
- * Format a post as markdown
- */
 function formatPost(post: BlueskyPost, isQuote = false): string {
 	const author = post.author;
 	const name = author.displayName || author.handle;
@@ -101,7 +95,6 @@ function formatPost(post: BlueskyPost, isQuote = false): string {
 		md += `${post.record.text}\n`;
 	}
 
-	// Handle embeds
 	const embed = post.embed;
 	if (embed) {
 		if (embed.$type === "app.bsky.embed.external#view" && embed.external) {
@@ -132,7 +125,6 @@ function formatPost(post: BlueskyPost, isQuote = false): string {
 		}
 	}
 
-	// Stats
 	if (!isQuote) {
 		const stats: string[] = [];
 		if (post.likeCount) stats.push(`❤️ ${formatNumber(post.likeCount)}`);
@@ -145,9 +137,6 @@ function formatPost(post: BlueskyPost, isQuote = false): string {
 	return md;
 }
 
-/**
- * Handle Bluesky post URLs
- */
 export const handleBluesky: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -163,19 +152,15 @@ export const handleBluesky: SpecialHandler = async (
 		const fetchedAt = new Date().toISOString();
 		const pathParts = parsed.pathname.split("/").filter(Boolean);
 
-		// /profile/{handle}
 		if (pathParts[0] === "profile" && pathParts[1]) {
 			const handle = pathParts[1];
 
-			// /profile/{handle}/post/{rkey}
 			if (pathParts[2] === "post" && pathParts[3]) {
 				const rkey = pathParts[3];
 
-				// First resolve handle to DID
 				const did = await resolveHandle(handle, timeout, signal);
 				if (!did) return null;
 
-				// Construct AT URI and fetch thread
 				const atUri = `at://${did}/app.bsky.feed.post/${rkey}`;
 				const threadUrl = `${API_BASE}/app.bsky.feed.getPostThread?uri=${encodeURIComponent(atUri)}&depth=6&parentHeight=3`;
 
@@ -194,17 +179,14 @@ export const handleBluesky: SpecialHandler = async (
 
 				let md = `# Bluesky Post\n\n`;
 
-				// Show parent context if exists
 				if (thread.parent && "post" in thread.parent) {
 					md += "**Replying to:**\n";
 					md += formatPost(thread.parent.post, true);
 					md += "\n---\n\n";
 				}
 
-				// Main post
 				md += formatPost(thread.post);
 
-				// Show replies
 				if (thread.replies?.length) {
 					md += "\n---\n\n## Replies\n\n";
 					let replyCount = 0;
@@ -221,7 +203,6 @@ export const handleBluesky: SpecialHandler = async (
 				return buildResult(md, { url, method: "bluesky-api", fetchedAt, notes: [`AT URI: ${atUri}`] });
 			}
 
-			// Profile only
 			const profileUrl = `${API_BASE}/app.bsky.actor.getProfile?actor=${encodeURIComponent(handle)}`;
 			const result = await loadPage(profileUrl, {
 				timeout,
@@ -262,6 +243,5 @@ export const handleBluesky: SpecialHandler = async (
 		return scraperDegrade("bluesky", error);
 	}
 
-	// Known host but unrecognized path shape: not a match.
 	return null;
 };

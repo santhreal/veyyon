@@ -12,16 +12,7 @@ function readTargetsPlan(readPath: string, planTarget: string): boolean {
 	return read === target || read.startsWith(`${target}:`);
 }
 
-/**
- * Build a compaction protection matcher that keeps `read` results for the active
- * plan file intact through prune/shake — the plan analog of skill-read
- * protection. Matches both the canonical `local://PLAN.md` alias and the
- * session's current plan reference path (the agent-chosen `local://<slug>-plan.md`),
- * so the plan survives compaction whether the agent reads it by alias or by name.
- *
- * `getPlanReferencePath` is evaluated at match time so the plan path set on
- * approval is honored immediately.
- */
+/** Build a compaction protection matcher that keeps `read` results for the active plan file intact through prune/shake — the plan analog of skill-read */
 export function createPlanReadMatcher(getPlanReferencePath: () => string): (context: ProtectedToolContext) => boolean {
 	return (context: ProtectedToolContext) => {
 		const path = getReadToolPath(context);

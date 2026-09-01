@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Changed
+- No user-facing effect; internal export visibility tightened with no public API change.
+
+## [1.2.0] - 2026-08-23
+
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
+
 ## [16.3.0] - 2026-07-02
 
 ### Breaking Changes
@@ -23,6 +32,7 @@
 ## [15.12.4] - 2026-06-13
 
 ### Changed
+- Verbose inline comments stripped from `index.ts`.
 
 - Changed `WireModel.contextWindow` and `ContextUsage.contextWindow` to `number | null` to allow representing unavailable context-window values
 

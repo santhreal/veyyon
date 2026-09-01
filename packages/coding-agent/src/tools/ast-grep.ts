@@ -1,0 +1,460 @@
+import * as path from "node:path";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { ToolExample } from "@veyyon/ai";
+import { formatHashlineHeader } from "@veyyon/hashline";
+import { type AstFindMatch, astGrep } from "@veyyon/natives";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { prompt, untilAborted } from "@veyyon/utils";
+import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
+import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import type { Theme } from "../modes/theme/theme";
+import { toolsPrompts } from "../prompts/tools/rows";
+import {
+	Ellipsis,
+	fileHyperlink,
+	framedBlock,
+	outputBlockContentWidth,
+	renderStatusLine,
+	truncateToWidth,
+} from "../tui";
+import { resolveFileDisplayMode } from "../utils/file-display-mode";
+import type { ToolSession } from ".";
+import type { AstGrepToolDetails } from "./ast-grep-helpers";
+import { astGrepSchema, runMultiTargetAstGrep } from "./ast-grep-helpers";
+import { searchPathFilesystemTargets } from "./cwd-boundary";
+import { materializeReadUrlToFile, parseReadUrlTarget } from "./fetch";
+import { createFileRecorder, formatResultPath } from "./file-recorder";
+import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
+import { formatMatchLine } from "./match-line-format";
+import { toPathList } from "./path-utils";
+import {
+	appendParseErrorsBulletList,
+	capParseErrors,
+	formatCodeFrameLine,
+	formatCount,
+	formatEmptyMessage,
+	formatErrorMessage,
+	formatMoreItems,
+	formatParseErrors,
+	formatParseErrorsCountLabel,
+	formatScopeMeta,
+	PREVIEW_LIMITS,
+	replaceTabs,
+} from "./render-utils";
+import { resolveToolSearchScope } from "./search-scope";
+import { ToolError } from "./tool-errors";
+import { toolResult } from "./tool-result";
+
+export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolDetails> {
+	readonly name = "ast_grep";
+	readonly approval = "read" as const;
+	readonly filesystemTargets = (args: unknown, cwd = this.session.cwd): string[] =>
+		searchPathFilesystemTargets(args, cwd);
+	readonly label = "AST Grep";
+	readonly summary = "Search code with AST patterns (structural grep)";
+	readonly description: string;
+	readonly parameters = astGrepSchema;
+	readonly strict = true;
+
+	readonly examples: readonly ToolExample<typeof astGrepSchema.inferIn>[] = [
+		{
+			caption: "Search TypeScript files under src",
+			call: { pat: "console.log($$$)", path: "src/**/*.ts" },
+		},
+		{
+			caption: "Method call on any object, ignoring method name with `$_`",
+			call: { pat: "logger.$_($$$ARGS)", path: "src/**/*.ts" },
+		},
+	];
+	readonly loadMode = "discoverable";
+
+	constructor(private readonly session: ToolSession) {
+		this.description = prompt.render(toolsPrompts["tools/ast-grep"].text);
+	}
+
+	async execute(
+		_toolCallId: string,
+		params: typeof astGrepSchema.infer,
+		signal?: AbortSignal,
+		_onUpdate?: AgentToolUpdateCallback<AstGrepToolDetails>,
+		_context?: AgentToolContext,
+	): Promise<AgentToolResult<AstGrepToolDetails>> {
+		return untilAborted(signal, async () => {
+			const pattern = params.pat.trim();
+			if (pattern.length === 0) {
+				throw new ToolError("`pat` must be a non-empty pattern");
+			}
+			const patterns = [pattern];
+			const skip = params.skip === undefined ? 0 : Math.floor(params.skip);
+			if (!Number.isFinite(skip) || skip < 0) {
+				throw new ToolError("skip must be a non-negative number");
+			}
+			const scopedPaths = toPathList(params.path);
+			const rawPaths = scopedPaths.length > 0 ? scopedPaths : ["."];
+			const scope = await resolveToolSearchScope({
+				rawPaths,
+				cwd: this.session.cwd,
+				internalUrlAction: "search",
+				settings: this.session.settings,
+				signal,
+				localProtocolOptions: this.session.localProtocolOptions,
+				skills: this.session.skills,
+				resolveExternalUrl: async rawPath => {
+					const target = parseReadUrlTarget(rawPath);
+					if (!target) return undefined;
+					const materialized = await materializeReadUrlToFile(
+						this.session,
+						{ path: target.path, raw: target.raw },
+						signal,
+					);
+					return { sourcePath: materialized.path, immutable: true };
+				},
+			});
+			const { searchPath: resolvedSearchPath, scopePath, isDirectory, multiTargets, globFilter } = scope;
+
+			const DEFAULT_AST_LIMIT = 50;
+			const result = multiTargets
+				? await runMultiTargetAstGrep(multiTargets, {
+						patterns,
+						commonBasePath: resolvedSearchPath,
+						skip,
+						limit: DEFAULT_AST_LIMIT,
+						signal,
+					})
+				: await astGrep({
+						patterns,
+						path: resolvedSearchPath,
+						glob: globFilter,
+						offset: skip,
+						includeMeta: true,
+						signal,
+					});
+
+			const normalizedParseErrors = (result.parseErrors ?? []).map(error => {
+				const parseError = error.match(/^.+: (.+: parse error \(syntax tree contains error nodes\))$/);
+				return parseError?.[1] ?? error;
+			});
+			const { errors: cappedParseErrors, total: parseErrorsTotal } = capParseErrors(normalizedParseErrors);
+			const formatPath = (filePath: string): string =>
+				formatResultPath(filePath, isDirectory, resolvedSearchPath, this.session.cwd);
+
+			const { record: recordFile, list: fileList } = createFileRecorder();
+			const fileMatchCounts = new Map<string, number>();
+			const matchesByFile = new Map<string, AstFindMatch[]>();
+			for (const match of result.matches) {
+				const relativePath = formatPath(match.path);
+				recordFile(relativePath);
+				if (!matchesByFile.has(relativePath)) {
+					matchesByFile.set(relativePath, []);
+				}
+				matchesByFile.get(relativePath)!.push(match);
+			}
+
+			const baseDetails: AstGrepToolDetails = {
+				matchCount: result.totalMatches,
+				fileCount: result.filesWithMatches,
+				filesSearched: result.filesSearched,
+				limitReached: result.limitReached,
+				...(cappedParseErrors.length > 0 ? { parseErrors: cappedParseErrors, parseErrorsTotal } : {}),
+				scopePath,
+				searchPath: resolvedSearchPath,
+				cwd: this.session.cwd,
+				files: fileList,
+				fileMatches: [],
+			};
+
+			if (result.matches.length === 0) {
+				const searched = result.filesSearched;
+				const where = scopePath ?? resolvedSearchPath;
+				const noMatchMessage = cappedParseErrors.length
+					? "No matches found. Parse issues mean the query may be mis-scoped; narrow `path` before concluding absence."
+					: searched === 0
+						? `No matches found because NO FILES were searched (0 files under ${where}). ast_grep selects files by language, so this usually means the path has no files of the target language, the path is wrong, or the language was not detected. Verify the path and language before concluding the pattern does not match.`
+						: `No matches found (searched ${searched} file${searched === 1 ? "" : "s"}). If you expected matches, check the pattern syntax for this language and that the path covers the intended files.`;
+				const parseMessage = cappedParseErrors.length
+					? `\n${formatParseErrors(cappedParseErrors, parseErrorsTotal).join("\n")}`
+					: "";
+				return toolResult(baseDetails).text(`${noMatchMessage}${parseMessage}`).useless().done();
+			}
+
+			const useHashLines = resolveFileDisplayMode(this.session).hashLines;
+			const hashContexts = new Map<string, { tag: string }>();
+			if (useHashLines) {
+				for (const relativePath of fileList) {
+					const absolutePath = path.resolve(this.session.cwd, relativePath);
+					const tag = await recordFileSnapshot(this.session, absolutePath);
+					if (tag) hashContexts.set(relativePath, { tag });
+				}
+			}
+			const outputLines: string[] = [];
+			const displayLines: string[] = [];
+			const renderMatchesForFile = (relativePath: string): { model: string[]; display: string[] } => {
+				const modelOut: string[] = [];
+				const displayOut: string[] = [];
+				const fileMatches = matchesByFile.get(relativePath) ?? [];
+				const hashContext = hashContexts.get(relativePath);
+				const lineNumberWidth = fileMatches.reduce((width, match) => {
+					let lineCount = 1;
+					for (let ci = 0; ci < match.text.length; ci++) {
+						if (match.text.charCodeAt(ci) === 0x0a) lineCount++;
+					}
+					const endLine = match.startLine + lineCount - 1;
+					return Math.max(width, String(match.startLine).length, String(endLine).length);
+				}, 0);
+				for (const match of fileMatches) {
+					const matchLines = match.text.split("\n");
+					for (let index = 0; index < matchLines.length; index++) {
+						const lineNumber = match.startLine + index;
+						const isMatch = index === 0;
+						const line = matchLines[index] ?? "";
+						modelOut.push(
+							formatMatchLine(lineNumber, line, isMatch, { useHashLines: hashContext !== undefined }),
+						);
+						displayOut.push(formatCodeFrameLine(isMatch ? "*" : " ", lineNumber, line, lineNumberWidth));
+					}
+					if (match.metaVariables && Object.keys(match.metaVariables).length > 0) {
+						const serializedMeta = Object.entries(match.metaVariables)
+							.sort(([left], [right]) => left.localeCompare(right))
+							.map(([key, value]) => `${key}=${value}`)
+							.join(", ");
+						modelOut.push(`  meta: ${serializedMeta}`);
+						displayOut.push(`  meta: ${serializedMeta}`);
+					}
+					fileMatchCounts.set(relativePath, (fileMatchCounts.get(relativePath) ?? 0) + 1);
+				}
+				if (hashContext?.tag) {
+					const absoluteFilePath = path.resolve(this.session.cwd, relativePath);
+					recordSeenLinesFromBody(this.session, absoluteFilePath, hashContext.tag, modelOut.join("\n"));
+				}
+				return { model: modelOut, display: displayOut };
+			};
+
+			if (isDirectory) {
+				const grouped = formatGroupedFiles(fileList, relativePath => {
+					const rendered = renderMatchesForFile(relativePath);
+					const hashContext = hashContexts.get(relativePath);
+					return {
+						modelLines: rendered.model,
+						displayLines: rendered.display,
+						headerSuffix: hashContext?.tag ? `#${hashContext.tag}` : "",
+						skip: rendered.model.length === 0,
+					};
+				});
+				for (let li = 0; li < grouped.model.length; li++) outputLines.push(grouped.model[li]!);
+				for (let li = 0; li < grouped.display.length; li++) displayLines.push(grouped.display[li]!);
+			} else {
+				for (const relativePath of fileList) {
+					const rendered = renderMatchesForFile(relativePath);
+					if (rendered.model.length === 0) continue;
+					if (outputLines.length > 0) {
+						outputLines.push("");
+						displayLines.push("");
+					}
+					const hashContext = hashContexts.get(relativePath);
+					if (hashContext?.tag) {
+						outputLines.push(formatHashlineHeader(relativePath, hashContext.tag));
+					}
+					for (let li = 0; li < rendered.model.length; li++) outputLines.push(rendered.model[li]!);
+					for (let li = 0; li < rendered.display.length; li++) displayLines.push(rendered.display[li]!);
+				}
+			}
+
+			const details: AstGrepToolDetails = {
+				...baseDetails,
+				fileMatches: fileList.map(filePath => ({
+					path: filePath,
+					count: fileMatchCounts.get(filePath) ?? 0,
+				})),
+				displayContent: displayLines.join("\n"),
+			};
+			if (result.limitReached) {
+				outputLines.push("", "Result limit reached; narrow path or increase limit.");
+			}
+			if (cappedParseErrors.length) {
+				outputLines.push("", ...formatParseErrors(cappedParseErrors, parseErrorsTotal));
+			}
+
+			return toolResult(details).text(outputLines.join("\n")).done();
+		});
+	}
+}
+
+interface AstGrepRenderArgs {
+	pat?: string;
+	path?: string | string[];
+	paths?: string[];
+	skip?: number;
+}
+
+const COLLAPSED_MATCH_LIMIT = PREVIEW_LIMITS.COLLAPSED_LINES * 2;
+
+function renderBudgetedAstGrepGroups(
+	groups: string[][],
+	maxLines: number,
+	uiTheme: Theme,
+	expanded: boolean,
+): string[] {
+	if (groups.length === 0 || maxLines <= 0) return [];
+	if (expanded) {
+		const lines: string[] = [];
+		for (const group of groups) {
+			lines.push(replaceTabs(group[0]!));
+			for (let j = 1; j < group.length; j++) {
+				lines.push(`  ${replaceTabs(group[j]!)}`);
+			}
+		}
+		return lines;
+	}
+
+	let fittingCount = groups.length;
+	let fittedLineCount = 0;
+	for (let i = 0; i < groups.length; i++) {
+		const count = groups[i]!.length;
+		const remainingAfter = groups.length - (i + 1);
+		const reservedSummaryLines = remainingAfter > 0 ? 1 : 0;
+		if (fittedLineCount + count + reservedSummaryLines > maxLines) {
+			fittingCount = i;
+			break;
+		}
+		fittedLineCount += count;
+		fittingCount = i + 1;
+	}
+
+	const visibleGroups = groups.slice(0, fittingCount);
+	const remaining = groups.length - fittingCount;
+	const hasSummary = remaining > 0 && (maxLines === Infinity || fittedLineCount < maxLines);
+
+	const lines: string[] = [];
+	for (const group of visibleGroups) {
+		lines.push(replaceTabs(group[0]!));
+		for (let j = 1; j < group.length; j++) {
+			lines.push(`  ${replaceTabs(group[j]!)}`);
+		}
+	}
+	if (hasSummary) {
+		lines.push(uiTheme.fg("dim", formatMoreItems(remaining, "match")));
+	}
+	return lines;
+}
+export const astGrepToolRenderer = {
+	inline: true,
+	renderCall(args: AstGrepRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
+		const meta: string[] = [];
+		const scopePaths = toPathList(args.path ?? args.paths);
+		if (scopePaths.length) meta.push(formatScopeMeta(scopePaths));
+		if (args.skip !== undefined && args.skip > 0) meta.push(`skip:${args.skip}`);
+
+		const description = args.pat ?? "?";
+		const text = renderStatusLine({ icon: "pending", title: "AST Grep", description, meta }, uiTheme);
+		return new Text(text, 0, 0);
+	},
+
+	renderResult(
+		result: { content: Array<{ type: string; text?: string }>; details?: AstGrepToolDetails; isError?: boolean },
+		options: RenderResultOptions,
+		uiTheme: Theme,
+		args?: AstGrepRenderArgs,
+	): Component {
+		const details = result.details;
+
+		if (result.isError) {
+			const errorText = result.content?.find(c => c.type === "text")?.text || "Unknown error";
+			return new Text(formatErrorMessage(errorText, uiTheme), 0, 0);
+		}
+
+		const matchCount = details?.matchCount ?? 0;
+		const fileCount = details?.fileCount ?? 0;
+		const filesSearched = details?.filesSearched ?? 0;
+		const limitReached = details?.limitReached ?? false;
+
+		if (matchCount === 0) {
+			const description = args?.pat;
+			const meta = ["0 matches"];
+			if (details?.scopePath) meta.push(formatScopeMeta(details.scopePath));
+			if (filesSearched > 0) meta.push(`searched ${filesSearched}`);
+			const header = renderStatusLine({ icon: "warning", title: "AST Grep", description, meta }, uiTheme);
+			const lines = [header, formatEmptyMessage("No matches found", uiTheme)];
+			if (details?.parseErrors?.length) {
+				lines.push(uiTheme.fg("warning", "Query may be mis-scoped; narrow `path` before concluding absence"));
+				appendParseErrorsBulletList(lines, details.parseErrors, uiTheme, details.parseErrorsTotal);
+			}
+			return new Text(lines.join("\n"), 0, 0);
+		}
+
+		const summaryParts = [formatCount("match", matchCount), formatCount("file", fileCount)];
+		const meta = summaryParts.slice();
+		if (details?.scopePath) meta.push(`in ${details.scopePath}`);
+		meta.push(`searched ${filesSearched}`);
+		if (limitReached) meta.push(uiTheme.fg("warning", "limit reached"));
+		const description = args?.pat;
+		const header = renderStatusLine(
+			{
+				...(limitReached
+					? { icon: "warning" as const }
+					: { iconOverride: uiTheme.fg("accent", uiTheme.symbol("icon.search")) }),
+				title: "AST Grep",
+				description,
+				meta,
+			},
+			uiTheme,
+		);
+
+		const textContent = result.details?.displayContent ?? result.content?.find(c => c.type === "text")?.text ?? "";
+		const allLines = textContent.split("\n");
+		const contexts = classifyGroupedLines(allLines, details?.cwd ?? details?.searchPath, details?.searchPath);
+		const styledLines = new Array<string>(allLines.length);
+		for (let li = 0; li < allLines.length; li++) {
+			const line = allLines[li]!;
+			const ctx = contexts[li]!;
+			if (ctx.kind === "dir") {
+				const styled = uiTheme.fg("accent", line);
+				styledLines[li] = ctx.headerPath ? fileHyperlink(ctx.headerPath, styled) : styled;
+			} else if (ctx.kind === "file") {
+				const styled = uiTheme.fg(ctx.depth === 1 ? "accent" : "dim", line);
+				styledLines[li] = ctx.headerPath ? fileHyperlink(ctx.headerPath, styled) : styled;
+			} else if (line.startsWith("  meta:")) {
+				styledLines[li] = uiTheme.fg("dim", line);
+			} else {
+				styledLines[li] = uiTheme.fg("toolOutput", line);
+			}
+		}
+		const matchGroups: string[][] = [];
+		for (const indices of groupLineIndicesByBlank(allLines)) {
+			const first = allLines[indices[0]!]!;
+			if (first.startsWith("Result limit reached") || first.startsWith("Parse issues:")) continue;
+			const group = new Array<string>(indices.length);
+			for (let ii = 0; ii < indices.length; ii++) group[ii] = styledLines[indices[ii]!]!;
+			matchGroups.push(group);
+		}
+
+		const extraLines: string[] = [];
+		if (limitReached) {
+			extraLines.push(uiTheme.fg("warning", "limit reached; narrow path or increase limit"));
+		}
+		if (details?.parseErrors?.length) {
+			extraLines.push(
+				uiTheme.fg("warning", formatParseErrorsCountLabel(details.parseErrors, details.parseErrorsTotal)),
+			);
+		}
+
+		return framedBlock(uiTheme, width => {
+			const budget = Math.max((options.expanded ? Infinity : COLLAPSED_MATCH_LIMIT) - extraLines.length, 0);
+			const matchLines = renderBudgetedAstGrepGroups(matchGroups, budget, uiTheme, Boolean(options.expanded));
+			const innerWidth = outputBlockContentWidth(width);
+			const allBody = matchLines.length + extraLines.length;
+			const bodyLines = new Array<string>(allBody);
+			for (let mi = 0; mi < matchLines.length; mi++)
+				bodyLines[mi] = truncateToWidth(matchLines[mi]!, innerWidth, Ellipsis.Omit);
+			for (let ei = 0; ei < extraLines.length; ei++)
+				bodyLines[matchLines.length + ei] = truncateToWidth(extraLines[ei]!, innerWidth, Ellipsis.Omit);
+			return {
+				header,
+				sections: [{ lines: bodyLines }],
+				state: limitReached ? "warning" : "success",
+				width,
+			};
+		});
+	},
+	mergeCallAndResult: true,
+};

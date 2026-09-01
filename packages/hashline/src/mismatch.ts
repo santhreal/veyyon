@@ -1,57 +1,10 @@
-/**
- * Error type raised when a section's snapshot tag does not match the live file
- * content and recovery is unavailable / has failed.
- *
- * Carries enough context to render a useful diagnostic: the anchored lines
- * plus a couple of lines of surrounding context. The {@link MismatchError}
- * formats this into a message at construction time.
- */
-import { HL_FILE_HASH_EXAMPLES, HL_FILE_HASH_SEP, HL_FILE_PREFIX, HL_FILE_SUFFIX } from "./format";
+import { HL_FILE_HASH_SEP, HL_FILE_PREFIX, HL_FILE_SUFFIX } from "./format";
 import { formatAnchoredContext } from "./messages";
 
-const LINE_REF_RE = /^\s*[>+\-*]*\s*(\d+)(?::.*)?\s*$/;
-/** Format the required-shape diagnostic shown when a line reference is malformed. */
-export function formatFullAnchorRequirement(raw?: string): string {
-	const received = raw === undefined ? "" : ` Received ${JSON.stringify(raw)}.`;
-	return (
-		`a bare line number from read/search output plus the section header content-hash tag ` +
-		`(for example ${HL_FILE_PREFIX}src/foo.ts${HL_FILE_HASH_SEP}${HL_FILE_HASH_EXAMPLES[0]}${HL_FILE_SUFFIX} and line "160")${received}`
-	);
-}
+import type { MismatchDetails } from "./mismatch-helpers";
 
-/** Parse a decorated bare line-number anchor like `42`, `*42:foo`, ` > 7`. */
-export function parseTag(ref: string): { line: number } {
-	const match = ref.match(LINE_REF_RE);
-	if (!match) {
-		throw new Error(`Invalid line reference. Expected ${formatFullAnchorRequirement(ref)}.`);
-	}
-	const line = Number.parseInt(match[1], 10);
-	if (line < 1) throw new Error(`Line number must be >= 1, got ${line} in "${ref}".`);
-	return { line };
-}
+export { formatFullAnchorRequirement, parseTag } from "./mismatch-helpers";
 
-export interface MismatchDetails {
-	path?: string;
-	expectedFileHash: string;
-	actualFileHash: string;
-	fileLines: string[];
-	anchorLines?: readonly number[];
-	/**
-	 * `true` when the section's expected hash resolved to a recorded snapshot
-	 * (file content drifted since that snapshot), `false` when no snapshot
-	 * was ever recorded for the hash (likely fabricated or carried over from
-	 * a prior session). Drives a more actionable rejection message; defaults
-	 * to `true` for backward compatibility with direct callers.
-	 */
-	hashRecognized?: boolean;
-}
-
-/**
- * Raised when a hashline section's snapshot tag doesn't match the live file's
- * content (and recovery, if configured, declined the merge). Carries the
- * file lines plus anchored lines so renderers can produce a richer
- * diagnostic via {@link MismatchError.displayMessage}.
- */
 export class MismatchError extends Error {
 	readonly path: string | undefined;
 	readonly expectedFileHash: string;
@@ -114,7 +67,6 @@ export class MismatchError extends Error {
 	}
 }
 
-/** Throws when the line reference is out of bounds for the given file. */
 export function validateLineRef(ref: { line: number }, fileLines: string[]): void {
 	if (ref.line < 1 || ref.line > fileLines.length) {
 		throw new Error(`Line ${ref.line} does not exist (file has ${fileLines.length} lines)`);

@@ -42,14 +42,7 @@ export type TinyTitleWorkerOutbound =
 	| { type: "progress"; id: string; event: TinyTitleProgressEvent }
 	| { type: "log"; level: "debug" | "warn" | "error"; msg: string; meta?: Record<string, unknown> };
 
-/**
- * Wire transport between the parent (`TinyTitleClient`) and the tiny-model
- * subprocess. The parent owns the subprocess lifecycle (graceful work, hard
- * kill on shutdown); the protocol therefore carries no explicit close
- * handshake — once the parent decides to terminate, it signals the OS to
- * reap the child so `onnxruntime-node`'s NAPI finalizer never runs in any
- * shared address space. See `title-client.ts` for the spawn/kill glue.
- */
+/** Wire transport between the parent (`TinyTitleClient`) and the tiny-model subprocess. The parent owns the subprocess lifecycle (graceful work, hard */
 export interface TinyTitleTransport {
 	send(message: TinyTitleWorkerOutbound): void;
 	onMessage(handler: (message: TinyTitleWorkerInbound) => void): () => void;

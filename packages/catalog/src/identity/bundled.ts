@@ -1,11 +1,3 @@
-/**
- * Memoized proxy-reference index over the bundled model catalog.
- *
- * Lazy: walking every bundled model (~12K) triggers thinking enrichment, so the
- * walk is deferred off module load and performed once. Consumers that need
- * non-bundled reference data use the pure builder directly
- * ({@link buildModelReferenceIndex}).
- */
 import { getBundledModels, getBundledProviders } from "../models";
 import type { Api, Model } from "../types";
 import { buildModelReferenceIndex, type ModelReferenceIndex } from "./reference";
@@ -21,7 +13,6 @@ function getBundledModelList(): readonly Model<Api>[] {
 
 let referenceIndex: ModelReferenceIndex | undefined;
 
-/** Proxy-reference index over the bundled catalog. */
 export function getBundledModelReferenceIndex(): ModelReferenceIndex {
 	referenceIndex ??= buildModelReferenceIndex(getBundledModelList());
 	return referenceIndex;

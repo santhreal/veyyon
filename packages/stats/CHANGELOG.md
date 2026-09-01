@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Changed
+- Verbose inline comments stripped from `db.ts`.
+
+- `App.tsx`, `chart-shared.tsx`, `view-models.ts`, `BehaviorRoute.tsx`, `ModelsRoute.tsx`, `ToolsRoute.tsx`, and `generate-client-bundle.ts` replace array spreads with `.concat()`, `Array.from()`, and `.slice()` to avoid iterator allocation on hot paths.
+- `ToolsRoute.tsx` replaces `[...new Set()]` spread with `Array.from()` in tool model panel.
+
+
+- Migrated dashboard theme toggle to shared `ThemeToggle` from `@veyyon/tool-render`.
+
+## [1.2.0] - 2026-08-23
+- Removed export keyword from 8 functions across client and user-metrics modules that were used locally but never imported by any other module.
+
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
+
 ### Removed
 
 - The `@veyyon/stats/format` entry point. `formatCostTiered` and `normalizePremiumRequests` are now exported by `@veyyon/utils/format`.
@@ -33,6 +49,7 @@
 - Improved negation and blame detection to exclude determiners (e.g., "no auto start") and compounds (e.g., "no-op") while adding support for phrases like "why did you" and "makes no sense".
 - Added sad emoticons as a signal for anguish while excluding code-like patterns.
 - Triggered a one-time automatic re-ingestion of sessions on the next database sync to apply the updated metrics.
+- `App.tsx`, `chart-shared.tsx`, `view-models.ts`, `BehaviorRoute.tsx`, `ModelsRoute.tsx`, and `ToolsRoute.tsx` replace Set/Map/array spreads with `Array.from()`, `.slice()`, and `.concat()` across route mounting, chart data sorting, folder row building, and tool call series construction.
 
 ## [16.3.7] - 2026-07-05
 

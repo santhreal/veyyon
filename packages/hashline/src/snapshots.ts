@@ -135,20 +135,20 @@ export abstract class SnapshotStore {
 	abstract clear(): void;
 }
 
-const DEFAULT_MAX_PATHS = 30;
-const DEFAULT_MAX_VERSIONS_PER_PATH = 4;
+export const DEFAULT_MAX_PATHS = 30;
+export const DEFAULT_MAX_VERSIONS_PER_PATH = 4;
 /** Global ceiling on retained snapshot text across all paths (UTF-16 code units). */
-const DEFAULT_MAX_TOTAL_BYTES = 64 * 1024 * 1024;
+export const DEFAULT_MAX_TOTAL_BYTES = 64 * 1024 * 1024;
 
 /** Union `lines` into `snapshot.seenLines`, lazily creating the set. */
-function mergeSeenLines(snapshot: Snapshot, lines: Iterable<number> | undefined): void {
+export function mergeSeenLines(snapshot: Snapshot, lines: Iterable<number> | undefined): void {
 	if (lines === undefined) return;
 	if (snapshot.seenLines === undefined) snapshot.seenLines = new Set<number>();
 	for (const line of lines) snapshot.seenLines.add(line);
 }
 
 /** Union `lines` into `snapshot.clippedLines`, lazily creating the set. */
-function mergeClippedLines(snapshot: Snapshot, lines: Iterable<number> | undefined): void {
+export function mergeClippedLines(snapshot: Snapshot, lines: Iterable<number> | undefined): void {
 	if (lines === undefined) return;
 	if (snapshot.clippedLines === undefined) snapshot.clippedLines = new Set<number>();
 	for (const line of lines) snapshot.clippedLines.add(line);

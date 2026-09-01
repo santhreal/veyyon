@@ -1,17 +1,6 @@
-/**
- * JSON query parser and executor for agent:// URL extraction.
- *
- * Supports jq-like syntax: .foo, [0], .foo.bar[0].baz, ["special-key"]
- * Also supports path form: /foo/bar/0 -> .foo.bar[0]
- */
+/** JSON query parser and executor for agent:// URL extraction. Supports jq-like syntax: .foo, [0], .foo.bar[0].baz, ["special-key"] */
 
-/**
- * Parse a jq-like query string into tokens.
- *
- * @example
- * parseQuery(".foo.bar[0]") // ["foo", "bar", 0]
- * parseQuery(".foo['special-key']") // ["foo", "special-key"]
- */
+/** Parse a jq-like query string into tokens. parseQuery(".foo.bar[0]") // ["foo", "bar", 0] */
 export function parseQuery(query: string): Array<string | number> {
 	let input = query.trim();
 	if (!input) return [];
@@ -89,12 +78,7 @@ export function parseQuery(query: string): Array<string | number> {
 	return tokens;
 }
 
-/**
- * Apply a parsed query to a JSON value.
- *
- * @example
- * applyQuery({ foo: { bar: [1, 2, 3] } }, ".foo.bar[0]") // 1
- */
+/** Apply a parsed query to a JSON value. applyQuery({ foo: { bar: [1, 2, 3] } }, ".foo.bar[0]") // 1 */
 export function applyQuery(data: unknown, query: string): unknown {
 	const tokens = parseQuery(query);
 	let current: unknown = data;
@@ -112,14 +96,7 @@ export function applyQuery(data: unknown, query: string): unknown {
 	return current;
 }
 
-/**
- * Convert a URL path form to a query string.
- *
- * Path form: /foo/bar/0 -> .foo.bar[0]
- * Trailing slash is normalized (ignored).
- *
- * Segments that are not valid identifiers use bracket notation: ['segment']
- */
+/** Convert a URL path form to a query string. Path form: /foo/bar/0 -> .foo.bar[0] */
 export function pathToQuery(urlPath: string): string {
 	if (!urlPath || urlPath === "/") return "";
 

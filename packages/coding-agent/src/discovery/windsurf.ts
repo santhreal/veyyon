@@ -1,15 +1,4 @@
-/**
- * Windsurf (Codeium) Provider
- *
- * Loads configuration from Windsurf's config locations:
- * - User: ~/.codeium/windsurf
- * - Project: .windsurf
- *
- * Supports:
- * - MCP servers from mcp_config.json
- * - Rules from .windsurf/rules/*.md and ~/.codeium/windsurf/memories/global_rules.md
- * - Legacy .windsurfrules file
- */
+/** Windsurf (Codeium) Provider Loads configuration from Windsurf's config locations: */
 
 import { tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "../capability";
@@ -23,10 +12,6 @@ import { buildRuleFromMarkdown, createSourceMeta, getUserPath } from "./helpers"
 const PROVIDER_ID = "windsurf";
 const DISPLAY_NAME = "Windsurf";
 const PRIORITY = 50;
-
-// =============================================================================
-// MCP Servers
-// =============================================================================
 
 function parseServerConfig(
 	name: string,
@@ -75,10 +60,6 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	return { items, warnings };
 }
 
-// =============================================================================
-// Rules
-// =============================================================================
-
 async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	const items: Rule[] = [];
 	const warnings: string[] = [];
@@ -95,10 +76,6 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 
 	return { items, warnings };
 }
-
-// =============================================================================
-// Provider Registration
-// =============================================================================
 
 registerProvider<MCPServer>(mcpCapability.id, {
 	id: PROVIDER_ID,

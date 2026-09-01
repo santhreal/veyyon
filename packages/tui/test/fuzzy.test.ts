@@ -91,7 +91,7 @@ describe("isSubsequenceMatch", () => {
 
 	// ONE-PLACE lock: this subsequence matcher was hand-rolled identically in
 	// autocomplete.ts, prompt-action-autocomplete.ts, and internal-url-
-	// autocomplete.ts. It now lives only in fuzzy.ts. A re-declared boolean
+	// autocomplete.ts. It now lives only in fuzzy-helpers.ts. A re-declared boolean
 	// `fuzzyMatch(query, target)` copy or a second isSubsequenceMatch must fail
 	// here, not silently drift.
 	it("is defined in exactly one source file and has no boolean-fuzzyMatch twins", async () => {
@@ -108,7 +108,7 @@ describe("isSubsequenceMatch", () => {
 				}
 			}
 		}
-		expect(subsequenceDefs).toEqual(["tui/src/fuzzy.ts"]);
+		expect(subsequenceDefs).toEqual(["tui/src/fuzzy-helpers.ts"]);
 		expect(booleanFuzzyMatchDefs).toEqual([]);
 	});
 });
@@ -125,7 +125,7 @@ describe("subsequenceScore", () => {
 	});
 
 	// ONE-PLACE lock: the same score() was hand-rolled in all three autocomplete
-	// files. It now lives only in fuzzy.ts.
+	// files. It now lives only in fuzzy-helpers.ts.
 	it("is defined in exactly one source file", async () => {
 		const root = `${import.meta.dir}/../..`;
 		const defs: string[] = [];
@@ -140,6 +140,6 @@ describe("subsequenceScore", () => {
 				}
 			}
 		}
-		expect(defs).toEqual(["tui/src/fuzzy.ts"]);
+		expect(defs).toEqual(["tui/src/fuzzy-helpers.ts"]);
 	});
 });

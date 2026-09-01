@@ -764,7 +764,7 @@ export function parseSecretCommand(args: string, surface: SecretCommandSurface =
  * Order matters within this function and not between callers: the specific shapes are tested before
  * the catch-all name, so `log 50` is a limit rather than a secret called 50.
  */
-function matchTrailing(trailing: readonly SecretSlot[], word: string): SecretSlot | undefined {
+export function matchTrailing(trailing: readonly SecretSlot[], word: string): SecretSlot | undefined {
 	const lower = word.toLowerCase();
 	if (trailing.includes("scope") && (lower === "profile" || lower === "project" || lower === "global")) {
 		return "scope";
@@ -799,7 +799,7 @@ export const EVERY_VAULT_WORDS: readonly string[] = ["everywhere", "all", "every
  * this function too, and the one command whose purpose is keeping credentials off the screen must not
  * write one into an error that lands in the scrollback and the saved transcript.
  */
-function assignSlot(
+export function assignSlot(
 	request: SecretCommandRequest,
 	slot: SecretSlot,
 	words: readonly string[],
@@ -873,7 +873,7 @@ function assignSlot(
  * often the credential, and this is the command whose whole purpose is keeping credentials out of the
  * scrollback and the saved transcript.
  */
-function refuseMissingWords(
+export function refuseMissingWords(
 	subcommand: SecretSubcommand,
 	shape: (typeof SECRET_SUBCOMMAND_SHAPES)[SecretSubcommand],
 	required: number,
@@ -894,7 +894,7 @@ function refuseMissingWords(
  * so is the fix: the operator wrote two lifetimes or two vaults and has to decide which one they
  * meant. It names the slot and not either word, since one of the two may be the credential.
  */
-function refuseRepeatedWord(
+export function refuseRepeatedWord(
 	subcommand: SecretSubcommand,
 	slot: SecretSlot,
 	surface: SecretCommandSurface,
@@ -955,7 +955,7 @@ const SLOT_WORDS: Record<SecretSlot, string> = {
  * be told the one spelling that expresses it. Not on the noninteractive surface, where a value
  * arrives through `from-env` and there is no bare-value form to reach for.
  */
-function refuseExtraWord(
+export function refuseExtraWord(
 	request: SecretCommandRequest,
 	shape: (typeof SECRET_SUBCOMMAND_SHAPES)[SecretSubcommand],
 	index: number,
@@ -996,7 +996,7 @@ function refuseExtraWord(
  * per-command because the reason differs, and a command that declares the requirement without one is
  * still refused rather than quietly allowed.
  */
-function refuseMissingScope(request: SecretCommandRequest, usageText: string): void {
+export function refuseMissingScope(request: SecretCommandRequest, usageText: string): void {
 	// `allScopes` satisfies the requirement without naming a scope: the operator did answer "which
 	// vault", and the answer was all of them. Read here rather than in the parser so the guard cannot
 	// refuse a request the grammar accepted.
@@ -1044,7 +1044,7 @@ function refuseMissingScope(request: SecretCommandRequest, usageText: string): v
  * Both slot lists are searched. A vault is a required word on `clear` and a trailing one on `rm`, and
  * the footer line that says which commands take a vault is wrong if it names only one of them.
  */
-function subcommandsWithSlot(slot: SecretSlot): SecretSubcommand[] {
+export function subcommandsWithSlot(slot: SecretSlot): SecretSubcommand[] {
 	return (Object.keys(SECRET_SUBCOMMAND_SHAPES) as SecretSubcommand[]).filter(
 		candidate =>
 			SECRET_SUBCOMMAND_SHAPES[candidate].slots.includes(slot) ||
@@ -1061,7 +1061,7 @@ function subcommandsWithSlot(slot: SecretSlot): SecretSubcommand[] {
  * locale data, while this string is pinned byte for byte and read by an operator who has just been
  * refused.
  */
-function joinWithAnd(items: readonly string[]): string {
+export function joinWithAnd(items: readonly string[]): string {
 	return items.length <= 2 ? items.join(" and ") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
 }
 

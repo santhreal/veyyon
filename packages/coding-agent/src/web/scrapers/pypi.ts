@@ -11,9 +11,6 @@ import {
 	tryParseUrl,
 } from "./types";
 
-/**
- * Handle PyPI URLs via JSON API
- */
 export const handlePyPI: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -24,18 +21,15 @@ export const handlePyPI: SpecialHandler = async (
 		if (!parsed) return null;
 		if (parsed.hostname !== "pypi.org" && parsed.hostname !== "www.pypi.org") return null;
 
-		// Extract package name from /project/{package} or /project/{package}/{version}
 		const match = parsed.pathname.match(/^\/project\/([^/]+)/);
 		if (!match) return null;
 
 		const packageName = decodeURIComponent(match[1]);
 		const fetchedAt = new Date().toISOString();
 
-		// Fetch from PyPI JSON API
 		const apiUrl = `https://pypi.org/pypi/${packageName}/json`;
 		const downloadsUrl = `https://pypistats.org/api/packages/${packageName}/recent`;
 
-		// Fetch package info and download stats in parallel
 		const [result, downloadsResult] = await Promise.all([
 			loadPage(apiUrl, { timeout, signal }),
 			loadPage(downloadsUrl, { timeout: Math.min(timeout, 5), signal }),
@@ -43,7 +37,6 @@ export const handlePyPI: SpecialHandler = async (
 
 		if (!result.ok) return scraperDegrade("pypi", loadFailure(result));
 
-		// Parse download stats
 		let weeklyDownloads: number | null = null;
 		if (downloadsResult.ok) {
 			const dlData = tryParseJson<{ data?: { last_week?: number } }>(downloadsResult.content);
@@ -103,7 +96,6 @@ export const handlePyPI: SpecialHandler = async (
 
 		if (info.keywords) md += `\n**Keywords:** ${info.keywords}\n`;
 
-		// Dependencies
 		if (pkg.requires_dist && pkg.requires_dist.length > 0) {
 			md += `\n## Dependencies\n\n`;
 			for (const dep of pkg.requires_dist) {
@@ -111,7 +103,6 @@ export const handlePyPI: SpecialHandler = async (
 			}
 		}
 
-		// README/Description
 		if (info.description) {
 			md += `\n---\n\n## Description\n\n${info.description}\n`;
 		}

@@ -1,11 +1,3 @@
-/**
- * AES-GCM encrypted local cache for auth-broker snapshots.
- *
- * The cache is defense-in-depth for at-rest snapshots: a copied cache file is
- * useless without the matching broker bearer token and URL. The token itself is
- * still the trust boundary; a process that can read both the token and this file
- * can decrypt the snapshot.
- */
 import * as fs from "node:fs/promises";
 import { atomicWriteFile } from "@veyyon/utils/atomic-write";
 import { asStrictBytes } from "@veyyon/utils/bytes";
@@ -28,7 +20,6 @@ export interface ReadAuthBrokerSnapshotCacheOptions {
 	token: string;
 	url: string;
 	ttlMs: number;
-	/** Override clock for deterministic tests. */
 	now?: () => number;
 }
 
@@ -39,12 +30,6 @@ export interface WriteAuthBrokerSnapshotCacheOptions {
 	snapshot: SnapshotResponse;
 }
 
-/**
- * Cheap structural guard for a decrypted cache payload. The bytes are already
- * AES-256-GCM authenticated, so this only rejects shape/version drift (a cache
- * written by a different veyyon build, or a buggy write) — not tampering. A
- * mismatch returns null so the caller refetches a fresh snapshot.
- */
 function isSnapshotResponseShape(v: unknown): v is SnapshotResponse {
 	if (typeof v !== "object" || v === null) return false;
 	const o = v as Record<string, unknown>;

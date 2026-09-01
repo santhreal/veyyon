@@ -30,14 +30,14 @@ function asyncDetailsOf(details: Record<string, unknown> | null): BashAsyncDetai
 	return state ? { state, jobId: str(details.async.jobId) } : null;
 }
 
-function Summary({ args, result }: ToolRenderProps): ReactNode {
+export function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const command = args.command === undefined ? "…" : str(args.command);
 	if (command === null) return <InvalidArg what="command" />;
 	const text = truncate(normalizeWs(command) || "…", 80);
 	return result?.isError ? <span className="tv-err-text">{text}</span> : <span>{text}</span>;
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const command = args.command === undefined ? "…" : str(args.command);
 	const prefix = isRecord(args.env) ? envPrefix(args.env) : "";
 	const cwd = str(args.cwd);

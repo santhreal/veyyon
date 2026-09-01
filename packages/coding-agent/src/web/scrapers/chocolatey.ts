@@ -33,9 +33,6 @@ function extractXmlField(xml: string, fieldName: string): string | null {
 	return match[1].trim();
 }
 
-/**
- * Handle Chocolatey package URLs via NuGet v2 OData API
- */
 export const handleChocolatey: SpecialHandler = async (
 	url: string,
 	timeout: number,
@@ -46,7 +43,6 @@ export const handleChocolatey: SpecialHandler = async (
 		if (!parsed) return null;
 		if (!parsed.hostname.includes("chocolatey.org")) return null;
 
-		// Extract package name from /packages/{name} or /packages/{name}/{version}
 		const match = parsed.pathname.match(/^\/packages\/([^/]+)(?:\/([^/]+))?/);
 		if (!match) return null;
 
@@ -55,12 +51,10 @@ export const handleChocolatey: SpecialHandler = async (
 
 		const fetchedAt = new Date().toISOString();
 
-		// Build OData query - filter by Id and optionally version
 		let apiUrl = `https://community.chocolatey.org/api/v2/Packages()?$filter=Id%20eq%20'${encodeURIComponent(packageName)}'`;
 		if (specificVersion) {
 			apiUrl += `%20and%20Version%20eq%20'${encodeURIComponent(specificVersion)}'`;
 		} else {
-			// Get latest version by ordering and taking first
 			apiUrl += "&$orderby=Version%20desc&$top=1";
 		}
 
@@ -124,13 +118,11 @@ export const handleChocolatey: SpecialHandler = async (
 			};
 		}
 
-		// Build markdown output
 		let md = `# ${pkg.Title || pkg.Id}\n\n`;
 
 		if (pkg.Summary) {
 			md += `${pkg.Summary}\n\n`;
 		} else if (pkg.Description) {
-			// Use first paragraph of description as summary
 			const firstPara = pkg.Description.split(/\n\n/)[0];
 			md += `${firstPara}\n\n`;
 		}
@@ -165,7 +157,6 @@ export const handleChocolatey: SpecialHandler = async (
 			}
 		}
 
-		// Full description if different from summary
 		if (pkg.Description && pkg.Description !== pkg.Summary) {
 			md += `\n## Description\n\n${pkg.Description}\n`;
 		}
@@ -175,7 +166,6 @@ export const handleChocolatey: SpecialHandler = async (
 		}
 
 		if (pkg.Dependencies) {
-			// Dependencies format: "id:version|id:version"
 			const deps = pkg.Dependencies.split("|").filter(d => d.trim().length > 0);
 			if (deps.length > 0) {
 				md += `\n## Dependencies\n\n`;

@@ -6,13 +6,7 @@ import type { SessionInfo } from "../session/session-listing";
 import { SessionManager } from "../session/session-manager";
 import { FileSessionStorage } from "../session/session-storage";
 
-/**
- * Show the TUI session selector and return the selected session, or null if
- * cancelled. Rendered as a fullscreen overlay on the terminal's alternate
- * screen, so the list scrolls and rows are clickable with the mouse. Tab
- * toggles between current-folder and all-projects scope; the all-projects list
- * is loaded lazily via `SessionManager.listAll`.
- */
+/** Show the TUI session selector and return the selected session, or null if cancelled. Rendered as a fullscreen overlay on the terminal's alternate */
 export async function selectSession(
 	sessions: SessionInfo[],
 	options?: { allSessions?: SessionInfo[] },
@@ -75,11 +69,7 @@ export async function selectSession(
 
 	const selector = showSelector();
 	selector.setOnRequestRender(() => ui.requestRender());
-	// Present as a fullscreen overlay so the picker borrows the terminal's
-	// alternate screen buffer (vim/less idiom): the list scrolls and rows are
-	// clickable via the mouse tracking the overlay enables for its lifetime.
-	// Anchored top-left at full size so a mouse row maps directly to a rendered
-	// line (the overlay paints from screen row 0).
+	// Present as a fullscreen overlay so the picker borrows the terminal's alternate screen buffer (vim/less idiom): the list scrolls and rows are
 	ui.showOverlay(selector, {
 		anchor: "top-left",
 		width: "100%",

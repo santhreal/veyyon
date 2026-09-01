@@ -37,8 +37,8 @@ export const ARTIFACT_DEFAULT_MAX_BYTES = 0;
 /** Default head budget; the remainder becomes the rolling tail window. */
 export const ARTIFACT_DEFAULT_HEAD_BYTES = 3 * 1024 * 1024; // 3 MiB
 
-const NL = "\n";
-const ELLIPSIS = "…";
+export const NL = "\n";
+export const ELLIPSIS = "…";
 
 // =============================================================================
 // Interfaces
@@ -159,7 +159,7 @@ export interface HeadTruncationNoticeOptions {
 // =============================================================================
 
 /** Count newline characters via native substring search. */
-function countNewlines(text: string): number {
+export function countNewlines(text: string): number {
 	let count = 0;
 	let pos = text.indexOf(NL);
 	while (pos !== -1) {

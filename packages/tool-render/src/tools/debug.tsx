@@ -57,7 +57,7 @@ function targetTextOf(args: Record<string, unknown>): string | null {
 	);
 }
 
-function Summary(props: ToolRenderProps): ReactNode {
+export function Summary(props: ToolRenderProps): ReactNode {
 	const { args } = props;
 	const program = str(args.program);
 	const file = str(args.file);
@@ -110,7 +110,7 @@ const SCALAR_ARGS: ReadonlyArray<readonly [key: string, label: string]> = [
 	["timeout", "timeout"],
 ];
 
-function Body(props: ToolRenderProps): ReactNode {
+export function Body(props: ToolRenderProps): ReactNode {
 	const { args, result } = props;
 	const program = str(args.program);
 	const file = str(args.file);

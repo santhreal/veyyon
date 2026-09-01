@@ -1,47 +1,9 @@
-/**
- * Pipeline controller for swarm execution.
- *
- * Orchestrates execution waves within each iteration:
- * - Agents in the same wave execute in parallel
- * - Waves execute sequentially (wave N+1 starts after wave N completes)
- * - For pipeline mode, iterations repeat the full DAG execution
- */
 import type { AgentSource, ModelRegistry, Settings, SingleResult } from "@veyyon/coding-agent";
 import { errorMessage } from "@veyyon/utils";
 import { executeSwarmAgent } from "./executor";
+import type { PipelineOptions, PipelineResult } from "./pipeline-helpers";
 import type { SwarmDefinition } from "./schema";
 import type { StateTracker } from "./state";
-
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface PipelineOptions {
-	workspace: string;
-	signal?: AbortSignal;
-	onProgress?: (state: PipelineProgress) => void;
-	modelRegistry?: ModelRegistry;
-	settings?: Settings;
-}
-
-export interface PipelineProgress {
-	iteration: number;
-	targetCount: number;
-	currentWave: number;
-	totalWaves: number;
-	agents: Record<string, { status: string; iteration: number }>;
-}
-
-export interface PipelineResult {
-	status: "completed" | "failed" | "aborted";
-	iterations: number;
-	agentResults: Map<string, SingleResult[]>;
-	errors: string[];
-}
-
-// ============================================================================
-// Controller
-// ============================================================================
 
 export class PipelineController {
 	#def: SwarmDefinition;
@@ -142,7 +104,6 @@ export class PipelineController {
 				`Wave ${waveIdx + 1}/${this.#waves.length}: [${wave.join(", ")}]`,
 			);
 
-			// Mark agents in this wave as waiting
 			for (const agentName of wave) {
 				await this.#stateTracker.updateAgent(agentName, {
 					status: "waiting",
@@ -152,7 +113,6 @@ export class PipelineController {
 			}
 			options.emitProgress(waveIdx);
 
-			// Execute all agents in wave in parallel, catching per-agent errors
 			const waveResults = await Promise.all(
 				wave.map(async agentName => {
 					const agent = this.#def.agents.get(agentName)!;

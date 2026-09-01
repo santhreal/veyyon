@@ -6,15 +6,8 @@ import { getLanguageFromPath } from "../../utils/lang-from-path";
 import { highlightCode } from "../theme/highlight";
 import { theme } from "../theme/theme-binding";
 
-/** SGR dim on / normal intensity — additive, preserves fg/bg colors. */
 const DIM = "\x1b[2m";
 
-/**
- * Visualize leading whitespace (indentation) with dim glyphs.
- * Tabs become ` → ` and spaces become `·`. Only affects whitespace
- * before the first non-whitespace character; remaining tabs in code
- * content are replaced with spaces (like replaceTabs).
- */
 function visualizeIndent(text: string): string {
 	const match = text.match(/^([ \t]+)/);
 	if (!match) return replaceTabs(text);
@@ -25,8 +18,8 @@ function visualizeIndent(text: string): string {
 	const rightPadding = Math.max(0, tabWidth - leftPadding - 1);
 	const tabMarker = `${DIM}${" ".repeat(leftPadding)}→${" ".repeat(rightPadding)}${SGR_INTENSITY_RESET}`;
 	let visible = "";
-	for (const ch of indent) {
-		if (ch === "\t") {
+	for (let ci = 0; ci < indent.length; ci++) {
+		if (indent.charCodeAt(ci) === 9) {
 			visible += tabMarker;
 		} else {
 			visible += `${DIM}·${SGR_INTENSITY_RESET}`;
@@ -35,10 +28,6 @@ function visualizeIndent(text: string): string {
 	return `${visible}${replaceTabs(rest)}`;
 }
 
-/**
- * Parse diff line to extract prefix, line number, and content.
- * Supported formats: "+123|content" (canonical) and "+123 content" (legacy).
- */
 function parseDiffLine(line: string): { prefix: CodeFrameMarker; lineNum: string; content: string } | null {
 	const canonical = line.match(/^([+-\s])(\s*\d+)\|(.*)$/);
 	if (canonical) {
@@ -49,11 +38,6 @@ function parseDiffLine(line: string): { prefix: CodeFrameMarker; lineNum: string
 	return { prefix: legacy[1] as CodeFrameMarker, lineNum: legacy[2] ?? "", content: legacy[3] ?? "" };
 }
 
-/**
- * Compute word-level diff and render with inverse on changed parts.
- * Uses diffWords which groups whitespace with adjacent words for cleaner highlighting.
- * Strips leading whitespace from inverse to avoid highlighting indentation.
- */
 function renderIntraLineDiff(oldContent: string, newContent: string): { removedLine: string; addedLine: string } {
 	const wordDiff = Diff.diffWords(oldContent, newContent);
 
@@ -62,10 +46,10 @@ function renderIntraLineDiff(oldContent: string, newContent: string): { removedL
 	let isFirstRemoved = true;
 	let isFirstAdded = true;
 
-	for (const part of wordDiff) {
+	for (let pi = 0; pi < wordDiff.length; pi++) {
+		const part = wordDiff[pi]!;
 		if (part.removed) {
 			let value = part.value;
-			// Strip leading whitespace from the first removed part
 			if (isFirstRemoved) {
 				const leadingWs = value.match(/^(\s*)/)?.[1] || "";
 				value = value.slice(leadingWs.length);
@@ -77,7 +61,6 @@ function renderIntraLineDiff(oldContent: string, newContent: string): { removedL
 			}
 		} else if (part.added) {
 			let value = part.value;
-			// Strip leading whitespace from the first added part
 			if (isFirstAdded) {
 				const leadingWs = value.match(/^(\s*)/)?.[1] || "";
 				value = value.slice(leadingWs.length);
@@ -97,39 +80,22 @@ function renderIntraLineDiff(oldContent: string, newContent: string): { removedL
 }
 
 export interface RenderDiffOptions {
-	/** File path used to resolve indentation (.editorconfig + defaults) */
 	filePath?: string;
 }
 
-/**
- * Render a diff string with colored lines and intra-line change highlighting.
- * - Context lines: dim/gray
- * - Removed lines: red, with inverse on changed tokens
- * - Added lines: green, with inverse on changed tokens
- */
 export function renderDiff(diffText: string, options: RenderDiffOptions = {}): string {
 	const lines = sanitizeText(diffText).split("\n");
 	const result: string[] = [];
-	const parsedLines = lines.map(parseDiffLine);
-	// Reserve 3 gutter digits: a streaming preview re-renders this diff as it
-	// grows, and a width derived purely from the current max line number widens
-	// at the 100-line crossing — re-padding every already-rendered row, which
-	// breaks the transcript's append-only commit detection and forces a full
-	// recommit of the block into native scrollback. A constant gutter through
-	// 999 lines keeps streamed rows byte-identical to the final result render.
-	const lineNumberWidth = parsedLines.reduce((width, parsed) => {
+	const parsedLines = new Array(lines.length);
+	let lineNumberWidth = 3;
+	for (let pi = 0; pi < lines.length; pi++) {
+		const parsed = parseDiffLine(lines[pi]!);
+		parsedLines[pi] = parsed;
 		const lineNumber = parsed?.lineNum.trim() ?? "";
-		return Math.max(width, lineNumber.length);
-	}, 3);
+		if (lineNumber.length > lineNumberWidth) lineNumberWidth = lineNumber.length;
+	}
 
-	// Batch-highlight context (unedited) lines so consecutive lines tokenize
-	// with full multi-line context. Highlighting is a no-op when no language
-	// can be detected from the file path.
 	const contextHighlights = highlightContextLines(parsedLines, options.filePath);
-	// Track the line number rendered on the previous emitted line so we can
-	// blank out duplicate gutters. Two cases trigger this:
-	//  1. Single-line replacement (`-N` followed by `+N`) — the `+N` repeats `N`.
-	//  2. Insertion followed by context (`+N` then ` N` if producer used oldLine).
 	let prevLineNum = "";
 
 	const formatLine = (prefix: CodeFrameMarker, lineNum: string, content: string): string => {
@@ -145,14 +111,11 @@ export function renderDiff(diffText: string, options: RenderDiffOptions = {}): s
 
 	let i = 0;
 	while (i < lines.length) {
-		const line = lines[i];
-		const parsed = parseDiffLine(line);
+		const parsed = parsedLines[i];
 
 		if (!parsed) {
 			prevLineNum = "";
-			// Blank gap rows (and legacy "..." markers from older transcripts)
-			// mark non-contiguous diff regions; display them as a single dim
-			// unicode ellipsis.
+			const line = lines[i]!;
 			const trimmed = line.trim();
 			const isGapRow = trimmed.length === 0 || trimmed === "..." || trimmed === "…";
 			result.push(theme.fg("toolDiffContext", isGapRow ? "…" : replaceTabs(line)));
@@ -163,7 +126,7 @@ export function renderDiff(diffText: string, options: RenderDiffOptions = {}): s
 		if (parsed.prefix === "-") {
 			const removedLines: { lineNum: string; content: string }[] = [];
 			while (i < lines.length) {
-				const p = parseDiffLine(lines[i]);
+				const p = parsedLines[i];
 				if (p?.prefix !== "-") break;
 				removedLines.push({ lineNum: p.lineNum, content: p.content });
 				i++;
@@ -171,7 +134,7 @@ export function renderDiff(diffText: string, options: RenderDiffOptions = {}): s
 
 			const addedLines: { lineNum: string; content: string }[] = [];
 			while (i < lines.length) {
-				const p = parseDiffLine(lines[i]);
+				const p = parsedLines[i];
 				if (p?.prefix !== "+") break;
 				addedLines.push({ lineNum: p.lineNum, content: p.content });
 				i++;
@@ -189,12 +152,14 @@ export function renderDiff(diffText: string, options: RenderDiffOptions = {}): s
 				result.push(theme.fg("toolDiffRemoved", formatLine("-", removed.lineNum, visualizeIndent(removedLine))));
 				result.push(theme.fg("toolDiffAdded", formatLine("+", added.lineNum, visualizeIndent(addedLine))));
 			} else {
-				for (const removed of removedLines) {
+				for (let ri = 0; ri < removedLines.length; ri++) {
+					const removed = removedLines[ri]!;
 					result.push(
 						theme.fg("toolDiffRemoved", formatLine("-", removed.lineNum, visualizeIndent(removed.content))),
 					);
 				}
-				for (const added of addedLines) {
+				for (let ai = 0; ai < addedLines.length; ai++) {
+					const added = addedLines[ai]!;
 					result.push(theme.fg("toolDiffAdded", formatLine("+", added.lineNum, visualizeIndent(added.content))));
 				}
 			}
@@ -212,12 +177,6 @@ export function renderDiff(diffText: string, options: RenderDiffOptions = {}): s
 	return result.join("\n");
 }
 
-/**
- * Batch-highlight runs of consecutive context lines.
- * Returns a map keyed by index in `parsedLines` to the highlighted content
- * for that line. Lines whose language is unknown are not added to the map,
- * letting callers fall back to the existing rendering path.
- */
 function highlightContextLines(
 	parsedLines: Array<{ prefix: CodeFrameMarker; lineNum: string; content: string } | null>,
 	filePath: string | undefined,
@@ -240,9 +199,6 @@ function highlightContextLines(
 
 	for (let j = 0; j < parsedLines.length; j++) {
 		const p = parsedLines[j];
-		// Collapse markers ("...") are emitted as context lines but are not real
-		// code; highlighting them produces nonsense (e.g. "..." → spread operator)
-		// and would also stitch together unrelated context blocks across the gap.
 		const isCollapseMarker = p?.prefix === " " && (p.content === "..." || p.content === "…");
 		if (p && p.prefix === " " && !isCollapseMarker) {
 			runIndices.push(j);

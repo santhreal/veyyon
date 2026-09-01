@@ -41,20 +41,17 @@ function severityColor(severity: AdvisorSeverity | undefined): ToolUIColor {
 	}
 }
 
-/**
- * Display-only transcript card for advisor notes injected into the primary
- * session. Styled as a distinct voice so notes never blend into thinking
- * output (whose `thinkingText` color equals `toolOutput` in most themes):
- * a bold `customMessageLabel` header tag (skill-card convention), a heavy
- * rail tinted per-note severity, and the note body on the default text color.
- */
+/** Display-only transcript card for advisor notes injected into the primary session. Styled as a distinct voice so notes never blend into thinking */
 export function createAdvisorMessageCard(
 	details: AdvisorMessageDetails | undefined,
 	getExpanded: () => boolean,
 	uiTheme: Theme,
 ): Component {
 	const notes = details?.notes ?? [];
-	const blockers = notes.filter(note => note.severity === "blocker").length;
+	let blockers = 0;
+	for (let ni = 0; ni < notes.length; ni++) {
+		if (notes[ni]!.severity === "blocker") blockers++;
+	}
 	const meta: string[] = [formatCount("note", notes.length)];
 	if (blockers > 0) meta.push(uiTheme.fg("error", formatCount("blocker", blockers)));
 
@@ -65,7 +62,8 @@ export function createAdvisorMessageCard(
 			const lines = [`${tag} ${uiTheme.fg("dim", meta.join(uiTheme.sep.dot))}`];
 			const railGlyph = uiTheme.symbol("advisor.rail");
 			const shown = expanded ? notes : notes.slice(0, COLLAPSED_NOTES);
-			for (const entry of shown) {
+			for (let ni = 0; ni < shown.length; ni++) {
+				const entry = shown[ni]!;
 				const badge = entry.severity
 					? `${formatBadge(entry.severity, severityColor(entry.severity), uiTheme)} `
 					: "";
@@ -82,28 +80,38 @@ export function createAdvisorMessageCard(
 				const w1 = Math.max(10, Math.min(NOTE_LINE_WIDTH, width) - quoteWidth - badgeWidth - whoWidth);
 				const w2 = Math.max(10, Math.min(NOTE_LINE_WIDTH, width) - quoteWidth);
 
-				const paragraphs = entry.note.split("\n").filter(p => p.trim());
+				const rawParagraphs = entry.note.split("\n");
+				const paragraphs: string[] = [];
+				for (let pi = 0; pi < rawParagraphs.length; pi++) {
+					const p = rawParagraphs[pi]!;
+					if (p.trim()) paragraphs.push(p);
+				}
 				const bodyLines: string[] = [];
 				for (let i = 0; i < paragraphs.length; i++) {
 					const p = paragraphs[i];
 					if (i === 0) {
-						bodyLines.push(...wrapVarying(p, w1, w2));
+						const wv = wrapVarying(p, w1, w2);
+						for (let li = 0; li < wv.length; li++) bodyLines.push(wv[li]!);
 					} else {
-						bodyLines.push(...wrapTextWithAnsi(p, w2));
+						const wt = wrapTextWithAnsi(p, w2);
+						for (let li = 0; li < wt.length; li++) bodyLines.push(wt[li]!);
 					}
 				}
 
-				bodyLines.forEach((line, index) => {
-					const prefix = index === 0 ? `${badge}${who}` : "";
-					lines.push(`  ${rail} ${prefix}${uiTheme.fg("customMessageText", replaceTabs(line))}`);
-				});
+				for (let bi = 0; bi < bodyLines.length; bi++) {
+					const prefix = bi === 0 ? `${badge}${who}` : "";
+					lines.push(`  ${rail} ${prefix}${uiTheme.fg("customMessageText", replaceTabs(bodyLines[bi]!))}`);
+				}
 			}
 			const hidden = notes.length - shown.length;
 			if (hidden > 0) {
 				const rail = uiTheme.fg("dim", railGlyph);
 				lines.push(`  ${rail} ${uiTheme.fg("dim", `… +${hidden} more ${hidden === 1 ? "note" : "notes"}`)}`);
 			}
-			return lines.map(line => truncateToWidth(line, width, Ellipsis.Unicode));
+			for (let li = 0; li < lines.length; li++) {
+				lines[li] = truncateToWidth(lines[li]!, width, Ellipsis.Unicode);
+			}
+			return lines;
 		},
 		{ paddingX: 1 },
 	);

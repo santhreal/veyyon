@@ -15,7 +15,7 @@ import { clampVeracity } from "../veracity-consolidation";
 import { scheduleEmbedding } from "./helpers";
 import type { BeamMemoryState, BeamStats, JsonValue, MemoriaRetrieveResult, Metadata, SleepResult } from "./types";
 
-type Row = Record<string, unknown>;
+export type Row = Record<string, unknown>;
 
 type FactCounts = {
 	metric: number;
@@ -35,7 +35,7 @@ type ConsolidateOptions = {
 	veracity?: string | null;
 };
 
-const CONTAMINATED_VERACITY: Record<string, true> = {
+export const CONTAMINATED_VERACITY: Record<string, true> = {
 	inferred: true,
 	tool: true,
 	imported: true,
@@ -60,11 +60,11 @@ type EpisodicVeracity = keyof typeof EPISODIC_VERACITY_WEIGHT;
 // byte-identical defaults, which is the duplication that costs nothing until someone
 // tunes one of them: nothing compares the two, so the tier boundary the consolidator
 // applies and the one `config.tier2Days()` reports would simply stop agreeing.
-const SLEEP_BATCH_SIZE = sleepBatchSize();
-const TIER2_DAYS = tier2Days();
-const TIER3_DAYS = tier3Days();
-const DEGRADE_BATCH_SIZE = degradeBatchSize();
-const TIER3_MAX_CHARS = tier3MaxChars();
+export const SLEEP_BATCH_SIZE = sleepBatchSize();
+export const TIER2_DAYS = tier2Days();
+export const TIER3_DAYS = tier3Days();
+export const DEGRADE_BATCH_SIZE = degradeBatchSize();
+export const TIER3_MAX_CHARS = tier3MaxChars();
 const DEFAULT_MAX_EPISODE_CHARS = 100_000;
 const SLEEP_SUMMARY_SEPARATOR = " | ";
 const SLEEP_TRUNCATION_MARKER = "\n[... sleep_consolidation episode truncated by maxEpisodeChars ...]";
@@ -93,7 +93,7 @@ function markTruncated(content: string, maxChars: number): string {
 	return `${content.slice(0, bodyChars).trimEnd()}${SLEEP_TRUNCATION_MARKER}`;
 }
 
-function splitSleepItems(beam: BeamMemoryState, source: string, items: readonly Row[]): SleepChunk[] {
+export function splitSleepItems(beam: BeamMemoryState, source: string, items: readonly Row[]): SleepChunk[] {
 	const maxChars = normalizedMaxEpisodeChars(beam);
 	const prefixChars = `[${source}] `.length;
 	const joinedLimit = Math.max(0, maxChars - prefixChars);
@@ -116,7 +116,7 @@ function splitSleepItems(beam: BeamMemoryState, source: string, items: readonly 
 	return chunks;
 }
 
-function buildSleepSummary(beam: BeamMemoryState, source: string, chunk: SleepChunk): SleepSummary {
+export function buildSleepSummary(beam: BeamMemoryState, source: string, chunk: SleepChunk): SleepSummary {
 	const maxChars = normalizedMaxEpisodeChars(beam);
 	const prefix = `[${source}] `;
 	const joined = chunk.items.map(item => rowValue(item, "content") ?? "").join(SLEEP_SUMMARY_SEPARATOR);
@@ -130,11 +130,11 @@ function buildSleepSummary(beam: BeamMemoryState, source: string, chunk: SleepCh
 	};
 }
 
-function isoNow(): string {
+export function isoNow(): string {
 	return new Date().toISOString();
 }
 
-function cutoffIso(amount: number, unitMs: number): string {
+export function cutoffIso(amount: number, unitMs: number): string {
 	return new Date(Date.now() - amount * unitMs).toISOString();
 }
 
@@ -142,7 +142,7 @@ function json(metadata: Metadata | null | undefined): string {
 	return JSON.stringify(metadata ?? {});
 }
 
-function rowValue(row: Row, key: string): string | null {
+export function rowValue(row: Row, key: string): string | null {
 	const value = row[key];
 	return value == null ? null : String(value);
 }
@@ -160,7 +160,7 @@ function clampEpisodicVeracity(raw: unknown): EpisodicVeracity {
 	return isEpisodicVeracity(clamped) ? clamped : "unknown";
 }
 
-function aggregateEpisodicVeracity(sourceVeracities: readonly string[]): EpisodicVeracity {
+export function aggregateEpisodicVeracity(sourceVeracities: readonly string[]): EpisodicVeracity {
 	let winner: EpisodicVeracity | null = null;
 	let maxCount = 0;
 	const counts = new Map<EpisodicVeracity, number>();
@@ -194,15 +194,15 @@ function contextSnippet(content: string, index: number, width = 50): string {
 	return compactWhitespace(content.slice(start, end));
 }
 
-function sourceSession(beam: BeamMemoryState): string {
+export function sourceSession(beam: BeamMemoryState): string {
 	return beam.sessionId || "default";
 }
 
-function asRows(value: unknown): Row[] {
+export function asRows(value: unknown): Row[] {
 	return Array.isArray(value) ? (value as Row[]) : [];
 }
 
-function makeQuestionTokens(query: string): string[] {
+export function makeQuestionTokens(query: string): string[] {
 	const stop = new Set([
 		"a",
 		"an",
@@ -588,7 +588,7 @@ export function extractAndStoreFacts(
 	if (/\b(decided|decision|choose|chose|approved|rejected)\b/i.test(text)) counts.decision++;
 	return counts;
 }
-function classifyAbility(query: string): string {
+export function classifyAbility(query: string): string {
 	const q = query.toLowerCase();
 	if (
 		[

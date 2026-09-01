@@ -1,11 +1,4 @@
-/**
- * Terminal state collection for the debug menu.
- *
- * Surfaces the detected terminal, the established subprotocols the renderer
- * negotiated (graphics, desktop notifications, hyperlinks, true color), the
- * scrollback/erase strategy, and the live geometry — the details that decide
- * which escape sequences the renderer emits.
- */
+/** Terminal state collection for the debug menu. Surfaces the detected terminal, the established subprotocols the renderer */
 import { getCellDimensions, ImageProtocol, isOsc99Supported, NotifyProtocol, TERMINAL, TERMINAL_ID } from "@veyyon/tui";
 
 /** Live values the debug view reads off the running TUI, not the static capability table. */

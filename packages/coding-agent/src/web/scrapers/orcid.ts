@@ -125,7 +125,9 @@ function collectAffiliations(
 	if (!container) return summaries;
 
 	const direct = container[key];
-	if (direct?.length) summaries.push(...direct);
+	if (direct?.length) {
+		for (let si = 0; si < direct.length; si++) summaries.push(direct[si]!);
+	}
 
 	const groups = container["affiliation-group"];
 	if (groups?.length) {

@@ -19,10 +19,10 @@ function withDetailImages(result: ToolResultLike | undefined): ToolResultLike | 
 		}
 	}
 	if (extra.length === 0) return result;
-	return { content: [...result.content, ...extra], details: result.details, isError: result.isError };
+	return { content: result.content.concat(extra), details: result.details, isError: result.isError };
 }
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	const subject = str(args.subject);
 	const aspect = str(args.aspect_ratio);
 	const changes = Array.isArray(args.changes) ? args.changes.length : 0;
@@ -51,7 +51,7 @@ const PROMPT_FIELDS = [
 	["image_size", "size"],
 ] as const;
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const changes = Array.isArray(args.changes) ? args.changes : null;
 	const inputs = Array.isArray(args.input) ? args.input : null;
 	const details = detailsRecord(result);

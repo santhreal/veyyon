@@ -1,0 +1,44 @@
+# Both cache-safe levers at once: cap signatures at 4,000 characters AND spill tool
+# output above 2 KB.
+#
+# DO NOT RUN THIS BEFORE ITS TWO PARENTS HAVE EACH HELD REWARD. Moving two
+# variables at once produces a delta attributable to neither, so this arm is only
+# interpretable once sig-max4000 and spill2kb have each been compared against
+# baseline on their own. It exists as a file now so the combination is defined
+# rather than improvised later, and so the prediction below can be checked against
+# it.
+#
+# WHAT IT SHOULD SAVE. The two levers act on disjoint categories of the prefix, so
+# their character-turn removals add rather than overlap:
+#
+#   provider     sig-max4000     spill2kb     combined
+#   gemini            22.8%         9.2%        32.0%
+#   claude             0.0%        26.1%        26.1%
+#
+# The zero on Claude is not a bug in the lever, it is the absence of the category:
+# Anthropic returns no thought signatures to cap, so on that provider this arm and
+# spill2kb are the same arm. Run it on Gemini, where the combination is the only
+# route past 30% that keeps both components cache-stable.
+#
+# Reproduce those figures on any run with:
+#
+#   bun prefix-composition.ts runs/<run-id>/jobs
+#
+# CACHE-SAFE FOR THE SAME REASON BOTH PARENTS ARE. Each rule keys on an item's OWN
+# immutable size, never on its distance from the end of the conversation, so no
+# turn rewrites a byte that an earlier turn already sent. Combining two stable
+# levers cannot make an unstable one.
+#
+# WHERE IT COULD BREAK. The two risks are independent and both land here. Dropping
+# the largest signatures gives up the provider's reasoning replay; spilling at 2 KB
+# gives up ordinary `eval` output that the model asked for and must spend a turn to
+# get back. If either parent costs reward on its own, this arm inherits that cost
+# and there is no reason to run it.
+#
+# Reward is the gate. Report the paired sign test on reward first, then cost.
+argot:
+  enabled: false
+context:
+  thoughtSignatureMaxLength: 4000
+tools:
+  artifactSpillThreshold: 2

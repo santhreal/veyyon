@@ -92,7 +92,7 @@ function outcomeTone(outcome: string): Tone | undefined {
 	}
 }
 
-function statusTone(status: string): Tone | undefined {
+export function statusTone(status: string): Tone | undefined {
 	switch (status) {
 		case "running":
 			return "accent";
@@ -105,7 +105,7 @@ function statusTone(status: string): Tone | undefined {
 	}
 }
 
-function Summary({ args, result }: ToolRenderProps): ReactNode {
+export function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const op = str(args.op) ?? "?";
 	const d = detailsRecord(result);
 	const opBadge = <Badge tone={result?.isError ? "err" : op === "send" ? "accent" : undefined}>{op}</Badge>;
@@ -174,7 +174,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 	return opBadge;
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const op = str(args.op);
 	const to = str(args.to);
 	const from = str(args.from);

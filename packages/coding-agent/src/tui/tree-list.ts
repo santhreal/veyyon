@@ -1,7 +1,3 @@
-/**
- * Hierarchical tree list rendering helper.
- */
-
 import { replaceTabs } from "@veyyon/tui";
 import type { Theme } from "../modes/theme/theme";
 import { formatMoreItems } from "../tools/render-utils";
@@ -12,14 +8,9 @@ export interface TreeListOptions<T> {
 	items: T[];
 	expanded?: boolean;
 	maxCollapsed?: number;
-	/** Strict total-line budget for collapsed mode. When set (and not expanded),
-	 *  rendered item lines plus the trailing summary line must fit within this budget.
-	 */
 	maxCollapsedLines?: number;
 	itemType?: string;
 	truncateFrom?: "start" | "end";
-	/** Called once per item with `isLast: false` during budget calculation;
-	 *  line count MUST NOT vary based on `isLast`. */
 	renderItem: (item: T, context: TreeContext) => string | string[];
 }
 
@@ -48,9 +39,6 @@ export function renderTreeList<T>(options: TreeListOptions<T>, theme: Theme): st
 		}
 	}
 
-	// Pre-render each candidate item once.
-	// isLast cannot be known at this point (fittingCount is not yet determined);
-	// renderItem implementations MUST NOT vary line count based on isLast.
 	const preRendered: string[][] = [];
 	for (let i = 0; i < candidateIndices.length; i++) {
 		const itemIdx = candidateIndices[i];
@@ -104,7 +92,6 @@ export function renderTreeList<T>(options: TreeListOptions<T>, theme: Theme): st
 
 	const hasSummary = !expanded && remaining > 0 && (linesBudget === Infinity || fittedLineCount < linesBudget);
 
-	// Emit pre-rendered content with correct isLast-based branch prefixes.
 	const lines: string[] = [];
 
 	if (truncateFrom === "start" && hasSummary) {

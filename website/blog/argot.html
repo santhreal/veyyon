@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#000000" />
+<link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+<link rel="icon" href="../favicon.ico" sizes="48x48" />
+<link rel="apple-touch-icon" href="../apple-touch-icon.png" />
+<link rel="manifest" href="../site.webmanifest" />
+<meta property="og:site_name" content="Veyyon" />
+<meta property="og:type" content="article" />
+<meta property="og:image" content="https://veyyon.dev/og.png" />
+
+<meta name="robots" content="noindex" />
+<title>Argot: Per-Project Vocabularies for Coding Agents | Veyyon</title>
+<meta property="og:title" content="Argot: Per-Project Vocabularies for Coding Agents | Veyyon" />
+<meta property="og:url" content="https://veyyon.dev/blog/argot" />
+<link rel="canonical" href="https://veyyon.dev/blog/argot" />
+<meta name="description" content="A per-project dictionary format and codec for replacing repeated strings with short token handles." />
+<link rel="preload" href="../fonts/JetBrainsMono-Bold.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="../fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="../site.css" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="../">veyyon</a>
+    <nav>
+    <!--NAV:START-->
+      <a href="../models.html">Models</a>
+      <a href="../features.html">Features</a>
+      <a href="../install.html">Install</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../blog/" aria-current="page">Blog</a>
+      <a href="../docs/">Docs</a>
+      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+      <a href="../install.html" class="btn">Get started</a>
+    <!--NAV:END-->
+    </nav>
+    <details class="nav-menu"><summary>menu</summary>
+      <nav>
+      <!--NAV:START-->
+      <a href="../models.html">Models</a>
+      <a href="../features.html">Features</a>
+      <a href="../install.html">Install</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../blog/" aria-current="page">Blog</a>
+      <a href="../docs/">Docs</a>
+      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+      <a href="../install.html" class="btn">Get started</a>
+      <!--NAV:END-->
+      </nav>
+    </details>
+  </div>
+  <div class="suntrack" aria-hidden="true"><canvas data-sun="progress" width="14" height="14"></canvas></div>
+</header>
+
+<main class="wrap">
+  <article class="post">
+    <div class="post-head">
+      <span class="kicker">Blog</span>
+      <span class="pill pending">Draft</span>
+      <h1>Argot: Per-Project Vocabularies for Coding Agents</h1>
+      <div class="post-meta"><time datetime="2026-07-19">July 19, 2026</time></div>
+    </div>
+    <div class="post-body">
+<p>Argot defines a per-project shorthand vocabulary and codec. It maps frequently repeated strings, such as file paths, commands, and import roots, to short identifier handles prefixed with a sigil. The model writes the handle during generation; the runtime expands the handle to the full string before tool execution, display, or persistence.</p>
+<h2>Dictionary format</h2>
+<p>The dictionary format uses TOML:</p>
+<pre class="code"><code class="language-toml">version = 1
+sigil = &quot;§&quot;
+
+[handles]
+dbconn = &quot;packages/server/src/database/connection.ts&quot;
+tsc    = &quot;CARGO_TARGET_DIR=/dev/null bunx tsgo -p packages/coding-agent/tsconfig.json --noEmit&quot;
+migr   = &quot;packages/server/src/database/migrations&quot;</code></pre>
+<p>Each entry in <code class="inline">[handles]</code> defines a handle identifier and its target expansion string. The <code class="inline">sigil</code> field defines the prefix character that distinguishes handle tokens from surrounding text.</p>
+<p>Handle names must match <code class="inline">^[a-z0-9_]+$</code>. Expansions must be non-empty strings and cannot contain the sigil character.</p>
+<h2>Codec execution</h2>
+<p>Argot operates at two boundaries:</p>
+<ol><li><strong>Model input</strong>: System prompts provide the active handle mapping in prompt context.</li><li><strong>Model output</strong>: Generated text passes through the Argot decoder before reaching tool execution, TUI rendering, session transcripts, or subagent message channels.</li></ol>
+<p>The decoder replaces handles with their expansions:</p>
+<ul><li><strong>Longest match</strong>: Given both <code class="inline">§db</code> and <code class="inline">§dbconn</code>, <code class="inline">§dbconn</code> matches first.</li><li><strong>Identifier boundaries</strong>: A match triggers only when not immediately followed by identifier characters (<code class="inline">[a-z0-9_]</code>). For example, <code class="inline">§dbextra</code> is not matched if <code class="inline">dbextra</code> is undefined, and <code class="inline">§db</code> is not expanded out of it.</li><li><strong>Passthrough</strong>: Unrecognized handle patterns pass through unchanged.</li></ul>
+<p>Decoded text is the only form stored in session transcripts or passed to system tools.</p>
+<h2>Discovery and caching</h2>
+<p>Project dictionaries are generated dynamically rather than committed to repositories:</p>
+<ol><li>The agent invokes the <code class="inline">argot_load</code> tool with a target directory path.</li><li>The runtime resolves the repository root by locating <code class="inline">.git</code> or a <code class="inline">.argot</code> marker file.</li><li>The runtime scans tracked files, identifies repeated string candidates, ranks them by potential token reduction, and generates the active dictionary.</li><li>Generated dictionaries are cached locally in the profile directory. Cache keys derive from the git commit SHA or the file listing signature.</li><li>The <code class="inline">argot_unload</code> tool clears active handles from the current session context.</li></ol>
+<h2>Scoping and configuration</h2>
+<p>Dictionary entries can be scoped to specific subtrees using the <code class="inline">[meta]</code> table:</p>
+<pre class="code"><code class="language-toml">[meta.dbconn]
+note  = &quot;Database connection module&quot;
+scope = &quot;packages/server/**&quot;</code></pre>
+<p>When a scope glob is specified, the runtime activates the handle only when operations occur within matching paths.</p>
+<p>Settings controls:</p>
+<ul><li><code class="inline">argot.enabled</code>: Master toggle for Argot functionality (default <code class="inline">false</code>).</li><li><code class="inline">argot.models</code>: List of model IDs permitted to receive handle dictionaries.</li></ul>
+    </div>
+    <div class="post-foot"><a href="../blog/">← All posts</a></div>
+  </article>
+</main>
+
+<div class="sunset tall" aria-hidden="true"><canvas data-sun="sunset"></canvas></div>
+
+<footer class="site">
+  <div class="wrap foot">
+    <div>
+      <span class="brand">veyyon</span>
+      <div class="attrib">A fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT), by Can Boluk.</div>
+    </div>
+    <nav>
+    <!--NAV:START-->
+      <a href="../models.html">Models</a>
+      <a href="../features.html">Features</a>
+      <a href="../install.html">Install</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../blog/" aria-current="page">Blog</a>
+      <a href="../docs/">Docs</a>
+      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+    <!--NAV:END-->
+    </nav>
+  </div>
+</footer>
+
+<script src="../sun-field.js" defer></script>
+<script src="../motion.js" defer></script>
+<script src="../sunmark.js" defer></script>
+</body>
+</html>

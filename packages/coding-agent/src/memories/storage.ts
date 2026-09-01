@@ -36,10 +36,7 @@ const STAGE1_KIND = "memory_stage1";
 const GLOBAL_KIND = "memory_consolidate_global";
 const DEFAULT_RETRY_REMAINING = 3;
 
-/**
- * Per-project job key so Phase 2 consolidation is isolated to a single cwd.
- * Previously a single "global" key caused cross-project memory contamination.
- */
+/** Per-project job key so Phase 2 consolidation is isolated to a single cwd. Previously a single "global" key caused cross-project memory contamination. */
 function globalJobKey(cwd: string): string {
 	return `global:${cwd}`;
 }

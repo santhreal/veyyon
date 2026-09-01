@@ -54,7 +54,7 @@ describe("getContentType has exactly one owner (ONE-PLACE lock)", () => {
 	});
 
 	it("every protocol that resolves file content types imports the shared owner", () => {
-		for (const name of ["skill-protocol.ts", "local-protocol.ts", "vault-protocol.ts"]) {
+		for (const name of ["skill-protocol.ts", "local-protocol-helpers.ts", "vault-protocol.ts"]) {
 			const text = readFileSync(path.join(protocolDir, name), "utf-8");
 			expect(moduleSpecifiersIn(text)).toContain("./content-type");
 		}

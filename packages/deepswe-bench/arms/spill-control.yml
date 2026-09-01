@@ -1,0 +1,44 @@
+# The unpriced control for turn-scaled output spilling.
+#
+# WHY THIS ARM EXISTS. `inlineCapForTurn` scales a tool result's inline budget
+# by how many turns it will still be re-read for, and it is ON by default. That
+# is a live behaviour change nobody has measured: it holds every result in the
+# first ~56 turns of a session to a quarter of the flat byte cap and spills the
+# rest to an `artifact://` handle.
+#
+# `tools.inlineOutputFloor: 1` lifts the floor to the whole budget, which makes
+# `inlineCapForTurn` return the flat cap at every turn, byte for byte. So this
+# arm is the code as it behaved before the mechanism landed, and it is the
+# control that the shipped default (0.25) and the tighter `spill-tight` arm are
+# both measured against.
+#
+# WHAT IS BEING TESTED, and it is genuinely two-sided. Spilling early output
+# keeps bytes out of context for the rest of the session, and a tool result is
+# re-read on every later turn, so those bytes are the expensive kind. Against
+# that: a result the agent cannot see is one it may have to fetch back, and an
+# extra turn costs more than the bytes saved. Reward must hold. Do not read a
+# token saving as a win on its own.
+#
+# WHAT CHANGED UNDER THIS ARM ON 2026-07-25, and it changes what the sweep is
+# worth running for. The floor used to reach only bash, browser and grep,
+# because the streaming executors save their own artifact and the centralised
+# spill skips any tool that does, so they took `OutputSink`'s flat 50KB default
+# instead. Measured over nine live sessions those three tools were about 4% of
+# all tool-result bytes, and `eval` alone was 80.9%, with its largest tenth of
+# results carrying two thirds of its total and its biggest single result at
+# 71,769 characters. So the sweep was pointed at 4% of the problem.
+#
+# All six `OutputSink` construction sites now price their budget through the
+# same owner, so this floor governs eval, bash, ssh and the interactive shell as
+# well. Read the triple as a genuine before/after on the dominant producer:
+# `spill-control` (floor 1) is the OLD behaviour restored, `baseline` (0.25) is
+# the shipped default, `spill-tight` (0.1) is the far end. If reward drops at
+# 0.25, the shipped default is wrong and should go back to 1 until a lower value
+# is proven.
+#
+# Argot is off here for the same reason it is off in `baseline`: this arm must
+# vary exactly one thing against it.
+argot:
+  enabled: false
+tools:
+  inlineOutputFloor: 1

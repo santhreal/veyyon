@@ -7,8 +7,6 @@ import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, MAX_BYTES, scraperDegrade, tryParseUrl } from "./types";
 
-// --- Rustdoc JSON types (subset we care about) ---
-
 interface RustdocCrate {
 	root: number;
 	crate_version: string | null;
@@ -45,19 +43,13 @@ interface GenericParam {
 	kind: Record<string, unknown>;
 }
 
-// Rustdoc type representation — a union encoded as single-key objects
 type RustType = Record<string, unknown>;
-
-// --- URL parsing ---
 
 interface DocsRsTarget {
 	crateName: string;
 	version: string;
-	/** e.g. "serde/de" for a submodule, "serde" for root */
 	modulePath: string[];
-	/** e.g. "struct", "trait", "fn", "enum", "macro", "type" */
 	itemKind: string | null;
-	/** e.g. "Serialize" */
 	itemName: string | null;
 }
 
@@ -68,23 +60,18 @@ function parseDocsRsUrl(url: string): DocsRsTarget | null {
 
 	const segments = trimTrailingSlashes(parsed.pathname).split("/").filter(Boolean);
 
-	// Skip /crate/{name}/{version} overview pages — those are docs.rs chrome, not rustdoc
 	if (segments[0] === "crate") return null;
 
-	// Rustdoc pages: /{crate}/{version}/{crate_path}/[item.html]
-	// Minimum: /{crate}/{version}/{crate}
 	if (segments.length < 3) return null;
 
 	const crateName = segments[0];
 	const version = segments[1]; // "latest", "1.0.228", etc.
 
-	// The rest is the module path, possibly ending with an item page
 	const rest = segments.slice(2);
 	let itemKind: string | null = null;
 	let itemName: string | null = null;
 
 	const last = rest[rest.length - 1];
-	// Item pages: struct.Foo.html, trait.Bar.html, fn.baz.html, etc.
 	const itemMatch = last?.match(
 		/^(struct|trait|fn|enum|macro|type|constant|static|attr|derive|union|primitive)\.(.+)\.html$/,
 	);
@@ -98,8 +85,6 @@ function parseDocsRsUrl(url: string): DocsRsTarget | null {
 
 	return { crateName, version, modulePath: rest, itemKind, itemName };
 }
-
-// --- Type rendering ---
 
 function renderType(ty: RustType | null | undefined, depth = 0): string {
 	if (!ty || depth > 10) return "_";
@@ -186,8 +171,6 @@ function renderGenerics(generics: Generics): string {
 	return `<${params.join(", ")}>`;
 }
 
-// --- Item rendering ---
-
 function renderFunctionSig(name: string, fn_: FunctionData, generics?: Generics): string {
 	const parts: string[] = [];
 	if (fn_.is_const) parts.push("const");
@@ -252,9 +235,6 @@ function itemKindFromInner(inner: Record<string, unknown>): string {
 	return Object.keys(inner)[0] ?? "unknown";
 }
 
-/**
- * Find an item by name in a module, following `use` re-exports.
- */
 function findItemInModule(mod_: RustdocItem, name: string, index: Record<string, RustdocItem>): RustdocItem | null {
 	const modData = mod_.inner?.module as { items: number[] } | undefined;
 	if (!modData?.items) return null;
@@ -263,10 +243,8 @@ function findItemInModule(mod_: RustdocItem, name: string, index: Record<string,
 		const item = index[String(id)];
 		if (!item) continue;
 
-		// Direct match
 		if (item.name === name) return item;
 
-		// Re-export: `pub use some::path::Name`
 		if ("use" in item.inner) {
 			const use_ = item.inner.use as { name: string; id: number | null };
 			if (use_.name === name && use_.id != null) {
@@ -280,13 +258,8 @@ function findItemInModule(mod_: RustdocItem, name: string, index: Record<string,
 
 const DOCS_RS_CACHE_FILENAME = "rustdoc.json";
 
-/** Hard ceiling for decompressed rustdoc JSON: a 50 MB compressed payload can
- *  expand far enough to block the event loop or OOM without a cap. Exceeding it
- *  throws (RangeError), which the fetch path converts to a `null` result. */
 export const MAX_RUSTDOC_GUNZIP_BYTES = 256 * 1024 * 1024;
 
-/** Decompress a docs.rs rustdoc gzip payload with the output-size cap applied.
- *  `maxOutputLength` is overridable only for tests exercising the cap contract. */
 export function gunzipRustdocJson(compressed: Buffer, maxOutputLength: number = MAX_RUSTDOC_GUNZIP_BYTES): string {
 	return gunzipSync(compressed, { maxOutputLength }).toString("utf-8");
 }
@@ -330,8 +303,6 @@ async function writeCachedRustdocCrate(target: DocsRsTarget, json: string): Prom
 		logger.warn("Failed to write docs.rs cache", { path: cachePath, error: String(err) });
 	}
 }
-
-// --- Main handler ---
 
 export const handleDocsRs: SpecialHandler = async (
 	url: string,
@@ -382,12 +353,9 @@ export const handleDocsRs: SpecialHandler = async (
 	const fetchedAt = new Date().toISOString();
 	const notes = ["Fetched via docs.rs rustdoc JSON"];
 
-	// Fetch the rustdoc JSON (gzip variant for native Node decompression)
 	const jsonUrl = `https://docs.rs/crate/${target.crateName}/${target.version}/json.gz`;
 
 	let crate_: RustdocCrate | null;
-	// Scoped so the deadline timer is cleared on settle instead of staying
-	// armed like a bare AbortSignal.timeout; the fence spans the streamed read.
 	const requestTimeout = scopedTimeoutSignal(timeout * 1000, signal);
 	try {
 		const response = await fetch(jsonUrl, {
@@ -429,11 +397,9 @@ export const handleDocsRs: SpecialHandler = async (
 
 	const index = crate_.index;
 
-	// Find the target module by walking the module path
 	let currentItem = index[String(crate_.root)];
 	if (!currentItem) return null;
 
-	// Walk into submodules (skip first segment which is the crate name itself)
 	const subPath = target.modulePath.slice(1);
 	for (const seg of subPath) {
 		const modData = currentItem.inner?.module as { items: number[] } | undefined;
@@ -446,7 +412,6 @@ export const handleDocsRs: SpecialHandler = async (
 		currentItem = child;
 	}
 
-	// If looking for a specific item
 	if (target.itemName) {
 		const found = findItemInModule(currentItem, target.itemName, index);
 		if (!found) return null;
@@ -459,7 +424,6 @@ export const handleDocsRs: SpecialHandler = async (
 		});
 	}
 
-	// Render the module view
 	return buildResult(renderModule(currentItem, index, crate_, target), {
 		url,
 		method: "docs.rs",
@@ -467,8 +431,6 @@ export const handleDocsRs: SpecialHandler = async (
 		notes,
 	});
 };
-
-// --- Rendering ---
 
 interface RustdocImplData {
 	trait?: { path: string; args?: { angle_bracketed?: { args: unknown[] } } } | null;
@@ -530,12 +492,10 @@ function renderSingleItem(item: RustdocItem, index: Record<string, RustdocItem>,
 	if (decl) md += `\`\`\`rust\n${decl}\n\`\`\`\n\n`;
 	if (item.docs) md += `${item.docs}\n\n`;
 
-	// For structs/enums/traits, show their methods and associated items
 	if ("struct" in item.inner || "enum" in item.inner || "trait" in item.inner || "union" in item.inner) {
 		const impls = (item.inner[kind] as { impls?: number[]; items?: number[] })?.impls ?? [];
 		const traitItems = (item.inner[kind] as { items?: number[] })?.items ?? [];
 
-		// Render direct trait items (for traits)
 		if (traitItems.length > 0) {
 			const required: string[] = [];
 			const provided: string[] = [];
@@ -570,7 +530,6 @@ function renderSingleItem(item: RustdocItem, index: Record<string, RustdocItem>,
 		}
 	}
 
-	// For enums, show variants
 	if ("enum" in item.inner) {
 		const variants = (item.inner.enum as { variants: number[] }).variants ?? [];
 		const lines: string[] = [];
@@ -599,13 +558,11 @@ function renderModule(
 	const modData = mod_.inner?.module as { items: number[] } | undefined;
 	if (!modData?.items) return md;
 
-	// Group items by kind, resolving re-exports
 	const groups: Record<string, Array<{ name: string; docs: string; decl: string | null }>> = {};
 	for (const id of modData.items) {
 		let item = index[String(id)];
 		if (!item) continue;
 
-		// Resolve re-exports
 		let displayName = item.name;
 		if ("use" in item.inner) {
 			const use_ = item.inner.use as { name: string; id: number | null };
@@ -618,7 +575,6 @@ function renderModule(
 		}
 
 		if (!displayName) continue;
-		// Skip private/hidden items
 		if (item.visibility === "crate" || (typeof item.visibility === "object" && "restricted" in item.visibility))
 			continue;
 

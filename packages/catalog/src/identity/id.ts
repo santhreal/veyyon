@@ -8,7 +8,6 @@ function normalizeModelIdWhitespace(value: string): string {
 	return value.trim().replace(/\s+/g, " ");
 }
 
-/** Ordering for model-like segments: longest first, ties broken lexicographically. */
 function compareSegmentPreference(left: string, right: string): number {
 	return left.length !== right.length ? right.length - left.length : left.localeCompare(right);
 }
@@ -20,7 +19,7 @@ export function getModelLikeIdSegments(modelId: string): string[] {
 	for (const segment of matches) {
 		if (MODEL_FAMILY_PREFIX_PATTERN.test(segment) && /\d/.test(segment)) segments.add(segment);
 	}
-	return [...segments].sort(compareSegmentPreference);
+	return Array.from(segments).sort(compareSegmentPreference);
 }
 
 export function getLongestModelLikeIdSegment(modelId: string): string | undefined {
@@ -49,14 +48,6 @@ function hasBracketAffixMarker(value: string): boolean {
 	return false;
 }
 
-/**
- * Strip reseller / wrapper tags that are injected as bracketed affixes around an
- * upstream model id, e.g.
- *   "[Kiro] claude-opus-4-8"                -> "claude-opus-4-8"
- *   "[gcli转] gemini-3.1-pro-preview [假流]" -> "gemini-3.1-pro-preview"
- *
- * Candidates are returned most-stripped first: both ends, then leading-only, then trailing-only.
- */
 export function getBracketStrippedModelIdCandidates(modelId: string): string[] {
 	if (!hasBracketAffixMarker(modelId)) return [];
 	const normalized = normalizeModelIdWhitespace(modelId);
@@ -73,7 +64,7 @@ export function getBracketStrippedModelIdCandidates(modelId: string): string[] {
 			candidates.add(candidate);
 		}
 	}
-	return [...candidates];
+	return Array.from(candidates);
 }
 
 export function stripBracketedModelIdAffixes(modelId: string): string | undefined {

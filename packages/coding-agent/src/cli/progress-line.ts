@@ -1,10 +1,4 @@
-/**
- * Non-TTY progress degradation: `\r`-rewriting progress lines only work on a
- * real terminal — a redirected stream collects thousands of repeated frames.
- * Commands that rewrite a progress line on a TTY use this printer on the
- * non-TTY branch: one plain line per key (file, stage, …) the first time it is
- * seen, then one line per `stepPercent` increase.
- */
+/** Non-TTY progress degradation: `\r`-rewriting progress lines only work on a real terminal — a redirected stream collects thousands of repeated frames. */
 export function makeCoarseStepPrinter(
 	write: (line: string) => void,
 	stepPercent = 25,

@@ -7,13 +7,7 @@ import {
 	getPluginsCacheDir,
 } from "./registry";
 
-/**
- * Build a `MarketplaceManager` wired up with the active project's registry
- * paths and the shared plugin-root cache invalidator. The one construction
- * owner for the plugin CLI and the plugin-settings TUI; marketplace-auto-update
- * keeps injected dependencies so the marketplace graph stays out of the initial
- * TUI module graph.
- */
+/** Build a `MarketplaceManager` wired up with the active project's registry paths and the shared plugin-root cache invalidator. The one construction */
 export async function createMarketplaceManager(cwd: string): Promise<MarketplaceManager> {
 	return new MarketplaceManager({
 		marketplacesRegistryPath: getMarketplacesRegistryPath(),

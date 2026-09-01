@@ -29,10 +29,6 @@ const IS_BUN_COMPILED =
 	import.meta.url.includes("$bunfs") ||
 	import.meta.url.includes("~BUN") ||
 	import.meta.url.includes("%7EBUN");
-// The prepacked npm bundle (coding-agent dist/cli.js) constant-folds
-// process.env.VEYYON_BUNDLED at build time. Like compiled binaries, it ships no
-// dashboard sources or prebuilt dist/client next to the bundle, so the
-// embedded archive is the only viable asset source.
 const IS_PREBUILT = IS_BUN_COMPILED || Boolean(process.env.VEYYON_BUNDLED || Bun.env.VEYYON_BUNDLED);
 const USE_EMBEDDED_CLIENT = EMBEDDED_CLIENT_ARCHIVE !== null || IS_PREBUILT;
 
@@ -95,9 +91,6 @@ async function getLatestMtime(dir: string): Promise<number> {
 	try {
 		entries = await fs.readdir(dir, { withFileTypes: true });
 	} catch (err) {
-		// Tolerate missing source trees (e.g. installs without the dashboard
-		// sources); the caller falls back to prebuilt assets or a clear build
-		// failure instead of crashing on the scan.
 		if (isEnoent(err)) return 0;
 		throw err;
 	}
@@ -180,14 +173,10 @@ const ensureClientBuild = async () => {
 	await Bun.write(path.join(STATIC_DIR, "index.html"), indexHtml);
 };
 
-/**
- * Handle API requests.
- */
 async function handleApi(req: Request): Promise<Response> {
 	const url = new URL(req.url);
 	const path = url.pathname;
 
-	// Stats reads are DB-only; explicit /api/sync does the expensive session scan.
 	const range = url.searchParams.get("range");
 
 	if (path === "/api/stats") {
@@ -264,9 +253,6 @@ async function handleApi(req: Request): Promise<Response> {
 	return new Response("Not Found", { status: 404 });
 }
 
-/**
- * Handle static file requests.
- */
 async function handleStatic(requestPath: string): Promise<Response> {
 	const staticDir = await getEmbeddedClientDir();
 	const filePath = requestPath === "/" ? "/index.html" : requestPath;
@@ -277,7 +263,6 @@ async function handleStatic(requestPath: string): Promise<Response> {
 		return new Response(file);
 	}
 
-	// SPA fallback
 	const index = Bun.file(path.join(staticDir, "index.html"));
 	if (await index.exists()) {
 		return new Response(index);
@@ -286,9 +271,6 @@ async function handleStatic(requestPath: string): Promise<Response> {
 	return new Response("Not Found", { status: 404 });
 }
 
-/**
- * Start the HTTP server.
- */
 export async function startServer(port = 3847): Promise<{ port: number; stop: () => void }> {
 	await ensureClientBuild();
 
@@ -298,7 +280,6 @@ export async function startServer(port = 3847): Promise<{ port: number; stop: ()
 			const url = new URL(req.url);
 			const path = url.pathname;
 
-			// CORS headers for local development
 			const corsHeaders = {
 				"Access-Control-Allow-Origin": "*",
 				"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -318,7 +299,6 @@ export async function startServer(port = 3847): Promise<{ port: number; stop: ()
 					response = await handleStatic(path);
 				}
 
-				// Add CORS headers to all responses
 				const headers = new Headers(response.headers);
 				for (const [key, value] of Object.entries(corsHeaders)) {
 					headers.set(key, value);

@@ -3,39 +3,10 @@ import type { Static, TSchema } from "@veyyon/ai";
 import { Snowflake } from "@veyyon/utils";
 import { applyToolProxy } from "../../extensibility/tool-proxy";
 import type { Theme } from "../../modes/theme/theme";
-import type {
-	RpcHostToolCallRequest,
-	RpcHostToolCancelRequest,
-	RpcHostToolDefinition,
-	RpcHostToolResult,
-	RpcHostToolUpdate,
-} from "./rpc-types";
+import type { PendingHostToolCall, RpcHostToolOutput } from "./host-tools-helpers";
+import type { RpcHostToolDefinition, RpcHostToolResult, RpcHostToolUpdate } from "./rpc-types";
 
-type RpcHostToolOutput = (frame: RpcHostToolCallRequest | RpcHostToolCancelRequest) => void;
-
-type PendingHostToolCall = {
-	resolve: (result: AgentToolResult<unknown>) => void;
-	reject: (error: Error) => void;
-	onUpdate?: AgentToolUpdateCallback<unknown>;
-};
-
-function isAgentToolResult(value: unknown): value is AgentToolResult<unknown> {
-	if (!value || typeof value !== "object") return false;
-	const content = (value as { content?: unknown }).content;
-	return Array.isArray(content);
-}
-
-export function isRpcHostToolResult(value: unknown): value is RpcHostToolResult {
-	if (!value || typeof value !== "object") return false;
-	const frame = value as { type?: unknown; id?: unknown; result?: unknown };
-	return frame.type === "host_tool_result" && typeof frame.id === "string" && isAgentToolResult(frame.result);
-}
-
-export function isRpcHostToolUpdate(value: unknown): value is RpcHostToolUpdate {
-	if (!value || typeof value !== "object") return false;
-	const frame = value as { type?: unknown; id?: unknown; partialResult?: unknown };
-	return frame.type === "host_tool_update" && typeof frame.id === "string" && isAgentToolResult(frame.partialResult);
-}
+export { isRpcHostToolResult, isRpcHostToolUpdate } from "./host-tools-helpers";
 
 class RpcHostToolAdapter<TParams extends TSchema = TSchema, TTheme extends Theme = Theme>
 	implements AgentTool<TParams, unknown, TTheme>

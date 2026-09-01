@@ -329,12 +329,12 @@ function renderCells(args: Record<string, unknown>, name: string, detailCells: D
 	return detailCells.map(c => ({ lang: c.lang ?? "py", title: c.title, attrs: [], code: c.code }));
 }
 
-function Summary({ name, args, result }: ToolRenderProps): ReactNode {
+export function Summary({ name, args, result }: ToolRenderProps): ReactNode {
 	const cells = renderCells(args, name, detailCellsOf(detailsRecord(result)));
 	if (cells.length === 0) return <span className="tv-muted">{argsDigest(args)}</span>;
 	const first = cells[0];
 	const label = first.title || normalizeWs(first.code.split("\n").find(l => l.trim() !== "") ?? "");
-	const langs = [...new Set(cells.map(c => c.lang))];
+	const langs = Array.from(new Set(cells.map(c => c.lang)));
 	return (
 		<>
 			{label && <span>{truncate(label, 72)}</span>}
@@ -343,7 +343,7 @@ function Summary({ name, args, result }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ name, args, result }: ToolRenderProps): ReactNode {
+export function Body({ name, args, result }: ToolRenderProps): ReactNode {
 	const details = detailsRecord(result);
 	const detailCells = detailCellsOf(details);
 	const cells = renderCells(args, name, detailCells);

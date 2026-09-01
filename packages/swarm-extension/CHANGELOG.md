@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+### Changed
+- Free functions, consts, and types extracted from `src/swarm/state.ts` into companion `src/swarm/state-helpers.ts`.
+- Free functions, consts, and types extracted from `src/swarm/pipeline.ts` into companion `src/swarm/pipeline-helpers.ts`.
+
+- `cli.ts`, `extension.ts`, `swarm/dag.ts`, and `swarm/schema.ts` replace `Map`/`Set` spreads with `Array.from()` in agent key extraction, cycle detection, and mode validation.
+
+## [1.2.0] - 2026-08-23
+
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
 ## [1.3.0] - 2026-08-28
 
 ### Changed

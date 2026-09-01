@@ -1,0 +1,1 @@
+- Globbing → `{{toolRefs.glob}}`, not `ls **/*.ext` or `fd`.

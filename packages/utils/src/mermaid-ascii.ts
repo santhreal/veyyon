@@ -21,9 +21,6 @@ export function renderMermaidAsciiSafe(source: string, options?: AsciiRenderOpti
 	}
 }
 
-/**
- * Extract mermaid code blocks from markdown text.
- */
 export function extractMermaidBlocks(markdown: string): { source: string; hash: bigint | number }[] {
 	const blocks: { source: string; hash: bigint | number }[] = [];
 	const regex = /```mermaid\s*\n([\s\S]*?)```/g;

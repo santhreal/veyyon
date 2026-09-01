@@ -1,9 +1,3 @@
-/**
- * ArkType schemas for the Anthropic Messages API request shape we accept on the
- * gateway. Maps canonical wire variants to our internal normalized veyyon Context
- * and options.
- */
-
 import { type } from "arktype";
 import type {
 	ContentBlockParam,
@@ -15,17 +9,10 @@ import type {
 	ToolChoice,
 } from "./anthropic-wire";
 
-// `cache_control` is accepted and translated to pi-ai's per-request
-// `cacheRetention` (any `ttl: "1h"` marker upgrades the request to "long";
-// any other ephemeral marker maps to "short"). The walker doesn't try to
-// preserve per-block breakpoints — pi-ai's anthropic provider re-applies them
-// against the rebuilt outbound request anyway.
 export const cacheControlSchema = type({
 	type: "'ephemeral'",
 	"ttl?": "'1h' | '5m'",
 });
-
-// ─── Sources / inner shapes ─────────────────────────────────────────────────
 
 export const base64ImageSourceSchema = type({
 	type: "'base64'",
@@ -88,13 +75,6 @@ const toolResultBlockSchema = type({
 	"cache_control?": cacheControlSchema,
 });
 
-// Catch-all for content block variants Anthropic ships that the gateway doesn't
-// natively understand (server_tool_use, web_search_tool_result, mcp_*,
-// container_upload, code_execution_*, document, …). The walker flattens these
-// to a text placeholder so legitimate Anthropic clients don't get rejected.
-// Known `type` values are excluded so a malformed known block (e.g.
-// `{type:"text", text: 123}`) fails validation with a clean 400 instead of
-// slipping past the discriminated union and throwing a TypeError downstream.
 function unknownContentBlockSchema(knownTypes: readonly string[]) {
 	const known = new Set(knownTypes);
 	return type({
@@ -107,8 +87,6 @@ function unknownContentBlockSchema(knownTypes: readonly string[]) {
 	});
 }
 
-// ─── System ────────────────────────────────────────────────────────────────
-
 const systemBlockSchema = type({
 	type: "'text'",
 	text: "string",
@@ -116,8 +94,6 @@ const systemBlockSchema = type({
 });
 
 export const systemSchema = type("string").or(systemBlockSchema.array()).or("undefined");
-
-// ─── Messages ──────────────────────────────────────────────────────────────
 
 const userContentBlockSchema = textBlockSchema
 	.or(imageBlockSchema)
@@ -147,8 +123,6 @@ export const assistantMessageSchema = type({
 
 export const messageSchema = userMessageSchema.or(assistantMessageSchema).or(systemMessageSchema);
 
-// ─── Tools ─────────────────────────────────────────────────────────────────
-
 export const toolSchema = type({
 	name: "string >= 1",
 	"description?": "string",
@@ -156,10 +130,6 @@ export const toolSchema = type({
 	"cache_control?": cacheControlSchema,
 });
 
-// ─── Tool choice ───────────────────────────────────────────────────────────
-
-// `disable_parallel_tool_use` is accepted on every variant; the walker maps it
-// onto `options.parallelToolCalls = !disable_parallel_tool_use`.
 export const toolChoiceSchema = type({
 	type: "'auto'",
 	"disable_parallel_tool_use?": "boolean",
@@ -178,12 +148,6 @@ export const toolChoiceSchema = type({
 		"disable_parallel_tool_use?": "boolean",
 	});
 
-// ─── Thinking ──────────────────────────────────────────────────────────────
-
-// Anthropic's three thinking shapes. `enabled` requires a budget; `disabled`
-// suppresses reasoning even on models that default it on; `adaptive` lets the
-// provider pick the budget on the fly. Extra hints (`display: "omitted"`, …)
-// are accepted but ignored on the translate path.
 export const thinkingConfigSchema = type({
 	type: "'enabled'",
 	budget_tokens: "number",
@@ -211,8 +175,6 @@ const outputConfigSchema = type({
 	"format?": "unknown",
 });
 
-// ─── Top-level request ─────────────────────────────────────────────────────
-
 export const anthropicMessagesRequestSchema = type({
 	model: "string >= 1",
 	messages: messageSchema.array(),
@@ -227,22 +189,13 @@ export const anthropicMessagesRequestSchema = type({
 	"stream?": "boolean",
 	"thinking?": thinkingConfigSchema,
 	"output_config?": outputConfigSchema,
-	// Anthropic clients commonly send `metadata: { user_id }`; the walker
-	// surfaces it on `options.metadata` for downstream provider forwarding.
 	"metadata?": { "[string]": "unknown" },
-	// Spec fields that the gateway tolerates but doesn't translate yet.
 	"container?": "unknown",
 	"context_management?": "unknown",
 	"mcp_servers?": "unknown",
 	"service_tier?": "unknown",
 });
 
-/**
- * Public types are sourced from the upstream Anthropic SDK so the gateway
- * stays in lock-step with the canonical API surface; the schemas above are
- * runtime validators for the subset we actually accept.
- */
-export type AnthropicMessagesRequest = MessageCreateParams;
 export type AnthropicSystem = MessageCreateParams["system"];
 export type AnthropicMessage = MessageParam;
 export type AnthropicUserContentBlock = ContentBlockParam;

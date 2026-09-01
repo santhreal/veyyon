@@ -1,13 +1,3 @@
-/**
- * Shared implementation for providers that expose BOTH an OpenAI-compatible
- * and an Anthropic-compatible API surface against the same model catalog
- * (currently Kimi Code and Synthetic).
- *
- * Each call site supplies the provider-specific bits (base URLs, default
- * format, optional extra headers); the streaming/forwarding plumbing lives
- * here once.
- */
-
 import { buildModel } from "@veyyon/catalog/build";
 import { resolveReasoningSelection } from "@veyyon/catalog/model-thinking";
 import { ANTHROPIC_THINKING_BUDGETS, resolveThinkingBudget } from "../reasoning-budget";
@@ -20,25 +10,16 @@ import { streamAnthropic, streamOpenAICompletions } from "./register-builtins";
 export type OpenAIAnthropicApiFormat = "openai" | "anthropic";
 
 export interface OpenAIAnthropicShimOptions extends SimpleStreamOptions {
-	/** API format: "openai" or "anthropic". */
 	format?: OpenAIAnthropicApiFormat;
 }
 
 export interface OpenAIAnthropicShimConfig {
-	/** Base URL for the Anthropic-compatible endpoint (without trailing /v1/messages). */
 	anthropicBaseUrl: string;
-	/** Optional override for the OpenAI-compatible base URL. If omitted, `model.baseUrl` is used as-is. */
 	openaiBaseUrl?: string;
-	/** Default API format when caller does not specify one. */
 	defaultFormat: OpenAIAnthropicApiFormat;
-	/** Provider-specific headers (e.g. auth/session) merged ahead of user-supplied headers. */
 	extraHeaders?: () => Record<string, string>;
 }
 
-/**
- * Stream from an OpenAI-or-Anthropic compatible provider. Returns synchronously;
- * async header fetching and stream piping happen internally.
- */
 export function streamOpenAIAnthropicShim(
 	model: Model<"openai-completions">,
 	context: Context,

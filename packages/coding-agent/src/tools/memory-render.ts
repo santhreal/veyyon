@@ -1,14 +1,4 @@
-/**
- * Inline TUI renderers for the long-term memory tools (`retain`, `recall`,
- * `reflect`).
- *
- * These keep the transcript terse — one status line plus, for `retain`, one
- * `Remember: …` line per stored item — instead of the generic JSON arg tree,
- * which exploded multi-line memory blobs into an unreadable wall. The tool
- * container is a transparent passthrough, so these renderers stay frameless:
- * a status line with a couple of dim bullets reads far cleaner than boxing a
- * one-line memory note.
- */
+/** Inline TUI renderers for the long-term memory tools (`retain`, `recall`, `reflect`). */
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";
@@ -72,7 +62,10 @@ function retainComponent(contents: string[], header: string, getExpanded: () => 
 		if (remaining > 0) {
 			lines.push(`  ${theme.fg("dim", `… ${remaining} more`)} ${formatExpandHint(theme, expanded, true)}`);
 		}
-		return lines.map(line => truncateToWidth(line, width, Ellipsis.Omit));
+		for (let li = 0; li < lines.length; li++) {
+			lines[li] = truncateToWidth(lines[li]!, width, Ellipsis.Omit);
+		}
+		return lines;
 	});
 }
 
@@ -150,7 +143,10 @@ export const recallToolRenderer = {
 				} else {
 					lines.push(`  ${formatExpandHint(theme, false, true)}`);
 				}
-				return lines.map(line => truncateToWidth(line, width, Ellipsis.Omit));
+				for (let li = 0; li < lines.length; li++) {
+					lines[li] = truncateToWidth(lines[li]!, width, Ellipsis.Omit);
+				}
+				return lines;
 			},
 		);
 	},
@@ -180,7 +176,7 @@ export const reflectToolRenderer = {
 			theme.styledSymbol("tool.memory", "accent"),
 		);
 		const answer = resultText(result);
-		const answerLines = answer.split("\n").filter(line => line.trim().length > 0);
+		const answerLines = answer.split("\n").filter(line => /\S/.test(line));
 		return createCachedComponent(
 			() => options.expanded,
 			(width, expanded) => {
@@ -196,7 +192,10 @@ export const reflectToolRenderer = {
 						`  ${theme.fg("dim", `… ${formatMoreLines(remaining)}`)} ${formatExpandHint(theme, expanded, true)}`,
 					);
 				}
-				return lines.map(line => truncateToWidth(line, width, Ellipsis.Omit));
+				for (let li = 0; li < lines.length; li++) {
+					lines[li] = truncateToWidth(lines[li]!, width, Ellipsis.Omit);
+				}
+				return lines;
 			},
 		);
 	},

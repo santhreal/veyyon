@@ -7,7 +7,6 @@ import {
 
 const utf8Encoder = new TextEncoder();
 
-/** Semantic title update persisted by session storage backends. */
 export interface SessionTitleUpdate {
 	title?: string;
 	source?: SessionTitleSource;
@@ -39,7 +38,7 @@ function titleSlotLine(title: string, source: SessionTitleSource | undefined, up
 }
 
 function truncateTitleForSlot(title: string, source: SessionTitleSource | undefined, updatedAt: string): string {
-	const codePoints = [...title];
+	const codePoints = Array.from(title);
 	let low = 0;
 	let high = codePoints.length;
 	let best = "";
@@ -82,7 +81,6 @@ function parseTitleSlotObject(value: unknown): SessionTitleSlotEntry | undefined
 	return slot;
 }
 
-/** Parse a physical title slot JSONL line. Returns undefined for legacy headers. */
 export function parseTitleSlotLine(line: string): SessionTitleSlotEntry | undefined {
 	try {
 		return parseTitleSlotObject(JSON.parse(line)) ?? undefined;
@@ -94,14 +92,12 @@ export function parseTitleSlotLine(line: string): SessionTitleSlotEntry | undefi
 	}
 }
 
-/** Parse the fixed-width title slot from a physical session body. */
 export function parseTitleSlotFromContent(content: string): SessionTitleSlotEntry | undefined {
 	const newlineIndex = content.indexOf("\n");
 	if (newlineIndex < 0) return undefined;
 	return parseTitleSlotLine(content.slice(0, newlineIndex));
 }
 
-/** Convert a parsed title slot to the semantic storage update shape. */
 export function titleUpdateFromSlot(slot: SessionTitleSlotEntry | undefined): SessionTitleUpdate | undefined {
 	if (!slot) return undefined;
 	return {
@@ -111,7 +107,6 @@ export function titleUpdateFromSlot(slot: SessionTitleSlotEntry | undefined): Se
 	};
 }
 
-/** Serialize the fixed-width first-line title slot, exactly 256 UTF-8 bytes including newline. */
 export function serializeTitleSlot(options: SessionTitleUpdate): string {
 	const title = truncateTitleForSlot(options.title ?? "", options.source, options.updatedAt);
 	const unpadded = titleSlotLine(title, options.source, options.updatedAt, "");
@@ -124,7 +119,6 @@ export function serializeTitleSlot(options: SessionTitleUpdate): string {
 	return line;
 }
 
-/** Replace the physical fixed-width title slot in a full session body. */
 export function overlayTitleSlotContent(content: string, update: SessionTitleUpdate): string {
 	const slot = Buffer.from(serializeTitleSlot(update), "utf-8");
 	const existing = Buffer.from(content, "utf-8");
@@ -132,7 +126,6 @@ export function overlayTitleSlotContent(content: string, update: SessionTitleUpd
 	return Buffer.concat([slot, existing.subarray(slot.length)]).toString("utf-8");
 }
 
-/** Replace the physical fixed-width title slot in a prefix byte window. */
 export function overlayTitleSlotPrefix(prefix: string, prefixBytes: number, update: SessionTitleUpdate): string {
 	if (prefixBytes <= 0) return "";
 	const slot = Buffer.from(serializeTitleSlot(update), "utf-8");

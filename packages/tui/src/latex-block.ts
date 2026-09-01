@@ -35,16 +35,16 @@ interface Box {
 	width: number;
 }
 
-type CellAlign = "l" | "c" | "r";
+export type CellAlign = "l" | "c" | "r";
 
 const BAR = "─";
-const FRAC_COMMANDS: Record<string, true> = { frac: true, dfrac: true, tfrac: true, cfrac: true };
-const BINOM_COMMANDS: Record<string, true> = { binom: true, dbinom: true, tbinom: true };
+export const FRAC_COMMANDS: Record<string, true> = { frac: true, dfrac: true, tfrac: true, cfrac: true };
+export const BINOM_COMMANDS: Record<string, true> = { binom: true, dbinom: true, tbinom: true };
 
 // Display "wrapper" environments whose body is an expression (possibly with `\\`
 // row breaks and `&` alignment). Their rows are parsed so fractions inside stack
 // and `&` columns align.
-const DISPLAY_ROW_ENVIRONMENTS: Record<string, true> = {
+export const DISPLAY_ROW_ENVIRONMENTS: Record<string, true> = {
 	equation: true,
 	eqnarray: true,
 	align: true,
@@ -62,7 +62,7 @@ const DISPLAY_ROW_ENVIRONMENTS: Record<string, true> = {
 };
 
 // Environments laid out as 2-D grids of parsed cells: [open, close] delimiter.
-const GRID_ENVIRONMENTS: Record<string, readonly [string, string]> = {
+export const GRID_ENVIRONMENTS: Record<string, readonly [string, string]> = {
 	matrix: ["", ""],
 	smallmatrix: ["", ""],
 	array: ["", ""],
@@ -78,7 +78,7 @@ const GRID_ENVIRONMENTS: Record<string, readonly [string, string]> = {
 };
 
 // Operators whose display-style scripts stack above/below the symbol.
-const LIMIT_OPERATORS: Record<string, true> = {
+export const LIMIT_OPERATORS: Record<string, true> = {
 	sum: true,
 	prod: true,
 	coprod: true,
@@ -113,7 +113,7 @@ const LIMIT_OPERATORS: Record<string, true> = {
 
 // Integral-family operators: scripts stay beside the symbol (LaTeX display
 // convention) unless an explicit `\limits` follows.
-const INTEGRAL_OPERATORS: Record<string, true> = {
+export const INTEGRAL_OPERATORS: Record<string, true> = {
 	int: true,
 	iint: true,
 	iiint: true,
@@ -189,11 +189,11 @@ const DELIM_KEYS: Record<string, string> = {
  * fonts, colors) active at this point in the parse, so each flat run handed to
  * `latexToUnicode` renders with the same styling it would have had in one piece.
  */
-interface Ctx {
+export interface Ctx {
 	wrap: (run: string) => string;
 }
 
-const ROOT_CTX: Ctx = { wrap: run => run };
+export const ROOT_CTX: Ctx = { wrap: run => run };
 
 function spaces(n: number): string {
 	return n > 0 ? " ".repeat(n) : "";
@@ -213,7 +213,7 @@ function center(line: string, width: number): string {
 }
 
 /** A single rendered string (possibly multi-line) as a baseline-centered box. */
-function textBox(text: string): Box {
+export function textBox(text: string): Box {
 	const raw = text.split("\n");
 	let width = 0;
 	for (const line of raw) width = Math.max(width, visibleWidth(line));
@@ -234,7 +234,7 @@ function padBox(b: Box, width: number, align: CellAlign): Box {
 }
 
 /** Place boxes side by side, aligning their baselines. */
-function hconcat(boxes: Box[]): Box {
+export function hconcat(boxes: Box[]): Box {
 	if (boxes.length === 1) return boxes[0];
 	let above = 0;
 	let below = 0;
@@ -258,7 +258,7 @@ function hconcat(boxes: Box[]): Box {
 }
 
 /** Stack boxes vertically, e.g. the rows of an aligned block. */
-function vconcat(boxes: Box[], align: CellAlign = "l"): Box {
+export function vconcat(boxes: Box[], align: CellAlign = "l"): Box {
 	if (boxes.length === 1) return boxes[0];
 	let width = 0;
 	for (const b of boxes) width = Math.max(width, b.width);
@@ -270,7 +270,7 @@ function vconcat(boxes: Box[], align: CellAlign = "l"): Box {
 }
 
 /** Stack `num` over `den`, separated by a bar; the bar becomes the baseline. */
-function fracBox(num: Box, den: Box): Box {
+export function fracBox(num: Box, den: Box): Box {
 	const width = Math.max(num.width, den.width) + 2;
 	const lines = [
 		...num.lines.map(line => center(line, width)),
@@ -285,7 +285,7 @@ function fracBox(num: Box, den: Box): Box {
  * (`"("`, `"{"`, …); null when `key` is empty (`\left.`). Unknown keys render a
  * single glyph at the baseline row.
  */
-function delimColumn(key: string, height: number, baseline: number): Box | null {
+export function delimColumn(key: string, height: number, baseline: number): Box | null {
 	if (!key) return null;
 	const pieces = DELIM_PIECES[key];
 	if (height <= 1) {
@@ -310,7 +310,7 @@ function delimColumn(key: string, height: number, baseline: number): Box | null 
 }
 
 /** Wrap `inner` in (possibly stretched) delimiters, padding tall content. */
-function delimBox(inner: Box, left: string, right: string): Box {
+export function delimBox(inner: Box, left: string, right: string): Box {
 	const height = inner.lines.length;
 	const lcol = delimColumn(left, height, inner.baseline);
 	const rcol = delimColumn(right, height, inner.baseline);
@@ -326,7 +326,7 @@ function delimBox(inner: Box, left: string, right: string): Box {
 }
 
 /** `\binom{n}{k}`: `n` over `k` (no bar) inside stretched parentheses. */
-function binomBox(top: Box, bottom: Box): Box {
+export function binomBox(top: Box, bottom: Box): Box {
 	const width = Math.max(top.width, bottom.width);
 	const lines = [
 		...top.lines.map(line => center(line, width)),
@@ -340,7 +340,7 @@ function binomBox(top: Box, bottom: Box): Box {
  * A drawn radical for a multi-line radicand: overline row on top, bar column
  * on the left, hook at the bottom. Single-line radicands stay flat (`√x̄`).
  */
-function radicalBox(inner: Box, degree: string | null): Box {
+export function radicalBox(inner: Box, degree: string | null): Box {
 	const lines: string[] = [` ┌${BAR.repeat(inner.width + 1)}`];
 	for (let y = 0; y < inner.lines.length; y++) {
 		lines.push((y === inner.lines.length - 1 ? "╲│ " : " │ ") + inner.lines[y]);
@@ -353,7 +353,7 @@ function radicalBox(inner: Box, degree: string | null): Box {
 }
 
 /** Big operator with limits: `sup` centered above `glyph`, `sub` below. */
-function limitsBox(glyph: Box, sub: Box | null, sup: Box | null): Box {
+export function limitsBox(glyph: Box, sub: Box | null, sup: Box | null): Box {
 	const width = Math.max(glyph.width, sub?.width ?? 0, sup?.width ?? 0);
 	const lines: string[] = [];
 	if (sup) for (const line of sup.lines) lines.push(center(line, width));
@@ -369,7 +369,7 @@ function limitsBox(glyph: Box, sub: Box | null, sup: Box | null): Box {
  * single-line base), the subscript starts level with its bottom row (lowered
  * one row below a single-line base).
  */
-function attachScripts(base: Box, sub: Box | null, sup: Box | null): Box {
+export function attachScripts(base: Box, sub: Box | null, sup: Box | null): Box {
 	if (sub === null && sup === null) return base;
 	const single = base.lines.length === 1;
 	const width = Math.max(sub?.width ?? 0, sup?.width ?? 0);
@@ -401,7 +401,7 @@ function attachScripts(base: Box, sub: Box | null, sup: Box | null): Box {
  * vertical center — `A = [matrix]` centers on the brackets, and stretched
  * braces get a real middle piece even for two content rows.
  */
-function gridBox(rows: Box[][], align: (col: number) => CellAlign, gap: (col: number) => number, rowGap = 0): Box {
+export function gridBox(rows: Box[][], align: (col: number) => CellAlign, gap: (col: number) => number, rowGap = 0): Box {
 	let ncols = 0;
 	for (const row of rows) ncols = Math.max(ncols, row.length);
 	if (ncols === 0 || rows.length === 0) return textBox("");
@@ -433,13 +433,13 @@ function gridBox(rows: Box[][], align: (col: number) => CellAlign, gap: (col: nu
 	return grid;
 }
 
-interface Span {
+export interface Span {
 	text: string;
 	end: number;
 }
 
 /** Read a balanced `{…}` beginning at `i` (which must point at `{`). */
-function readBraceGroup(src: string, i: number): Span {
+export function readBraceGroup(src: string, i: number): Span {
 	let depth = 0;
 	let out = "";
 	let j = i;
@@ -474,7 +474,7 @@ function readBraceGroup(src: string, i: number): Span {
  * together with its attached `[…]`/`{…}` arguments (or whole `\begin…\end`
  * block), so e.g. `\frac\sqrt{a}{b}` reads `\sqrt{a}` as the numerator.
  */
-function readArg(src: string, i: number): Span {
+export function readArg(src: string, i: number): Span {
 	while (src[i] === " ") i++;
 	if (i >= src.length) return { text: "", end: i };
 	if (src[i] === "{") return readBraceGroup(src, i);
@@ -513,7 +513,7 @@ function readDelimToken(src: string, i: number): Span | null {
 }
 
 /** Piece-table key for a delimiter token; unknown commands resolve via Unicode. */
-function delimKey(token: string): string {
+export function delimKey(token: string): string {
 	const mapped = DELIM_KEYS[token];
 	if (mapped !== undefined) return mapped;
 	return token.startsWith("\\") ? latexToUnicode(token).trim() : token;
@@ -529,7 +529,7 @@ interface LeftRightParts {
 }
 
 /** Parse `\left⟨tok⟩ … \right⟨tok⟩` starting at the backslash of `\left`. */
-function readLeftRight(src: string, start: number): LeftRightParts | null {
+export function readLeftRight(src: string, start: number): LeftRightParts | null {
 	const left = readDelimToken(src, start + 5);
 	if (!left) return null;
 	const segments: string[] = [];
@@ -574,7 +574,7 @@ function readLeftRight(src: string, start: number): LeftRightParts | null {
  * Index of the `close` matching the `open` at `i`, skipping escapes and brace
  * groups; −1 when unbalanced (e.g. interval notation `[0, 1)`).
  */
-function matchDelim(src: string, i: number, open: string, close: string): number {
+export function matchDelim(src: string, i: number, open: string, close: string): number {
 	let depth = 0;
 	for (let k = i; k < src.length; k++) {
 		const c = src[k];
@@ -603,7 +603,7 @@ interface EnvParts {
 }
 
 /** Locate a `\begin{env}…\end{env}` block (balanced) starting at the backslash. */
-function readEnvironment(src: string, start: number): EnvParts | null {
+export function readEnvironment(src: string, start: number): EnvParts | null {
 	let i = start + 6; // past "\begin"
 	while (src[i] === " ") i++;
 	if (src[i] !== "{") return null;
@@ -638,7 +638,7 @@ function consumeEnvironment(src: string, start: number): Span | null {
 }
 
 /** Split an environment body on top-level `\\` row breaks (depth-aware). */
-function splitRows(body: string): string[] {
+export function splitRows(body: string): string[] {
 	const rows: string[] = [];
 	let braceDepth = 0;
 	let envDepth = 0;

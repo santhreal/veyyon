@@ -9,7 +9,7 @@ function patternsOf(args: Record<string, unknown>): string[] {
 	return input === null || input.trim().length === 0 ? [] : [input];
 }
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+export function Summary({ args }: ToolRenderProps): ReactNode {
 	const patterns = patternsOf(args);
 	if (patterns.length === 0) return <InvalidArg what="input" />;
 	const paths = scopePaths(args);
@@ -23,7 +23,7 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const patterns = patternsOf(args);
 	const paths = scopePaths(args);
 	const skip = num(args.skip);
@@ -65,7 +65,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 
 	return (
 		<>
-			<Badges items={[...argBadges, ...resultBadges]} />
+			<Badges items={argBadges.concat(resultBadges)} />
 			{patterns.length === 0 ? (
 				<InvalidArg what="input" />
 			) : (

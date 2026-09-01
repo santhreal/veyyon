@@ -1,4 +1,3 @@
-import type { TextContent } from "@veyyon/ai";
 import type { Component } from "@veyyon/tui";
 import { Box, Container, Markdown, Spacer, Text } from "@veyyon/tui";
 import { collapseWhitespace } from "@veyyon/utils";
@@ -109,9 +108,11 @@ export class SkillMessageComponent extends Container {
 		if (typeof this.message.content === "string") {
 			return this.message.content;
 		}
-		return this.message.content
-			.filter((c): c is TextContent => c.type === "text")
-			.map(c => c.text)
-			.join("\n");
+		const parts: string[] = [];
+		for (let ci = 0; ci < this.message.content.length; ci++) {
+			const c = this.message.content[ci]!;
+			if (c.type === "text") parts.push(c.text);
+		}
+		return parts.join("\n");
 	}
 }

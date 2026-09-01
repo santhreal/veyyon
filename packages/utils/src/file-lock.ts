@@ -26,13 +26,13 @@ const DEFAULT_OPTIONS: Required<FileLockOptions> = {
 };
 
 /** Maximum time an interrupted legacy creator gets to publish its owner record. */
-const OWNER_INFO_GRACE_MS = 1_000;
+export const OWNER_INFO_GRACE_MS = 1_000;
 const MAX_OWNER_INFO_BYTES = 4_096;
-const RESTORE_ATTEMPTS = 200;
+export const RESTORE_ATTEMPTS = 200;
 const LOCK_INFO_VERSION = 1;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-interface FileIdentity {
+export interface FileIdentity {
 	dev: number;
 	ino: number;
 	birthtimeMs: number;
@@ -46,7 +46,7 @@ interface LockInfo {
 	processIdentity: string | null;
 }
 
-interface LockObservation {
+export interface LockObservation {
 	kind: "valid" | "invalid" | "ownerless" | "unsafe";
 	directoryIdentity: FileIdentity;
 	directoryMtimeMs: number;
@@ -55,7 +55,7 @@ interface LockObservation {
 	info?: LockInfo;
 }
 
-interface LockLease {
+export interface LockLease {
 	token: string;
 	directoryIdentity: FileIdentity;
 	infoIdentity: FileIdentity;
@@ -63,21 +63,21 @@ interface LockLease {
 
 type ProcessInstanceVerifier = (pid: number, expectedIdentity: string | null) => boolean;
 
-type RemovalAuthorization =
+export type RemovalAuthorization =
 	| { kind: "owner"; lease: LockLease }
 	| { kind: "stale"; staleMs: number; isOwnerAlive?: ProcessInstanceVerifier };
 
-type RetireResult = "removed" | "changed" | "busy" | "not-authorized";
+export type RetireResult = "removed" | "changed" | "busy" | "not-authorized";
 
 function identityOf(stat: fsSync.Stats): FileIdentity {
 	return { dev: stat.dev, ino: stat.ino, birthtimeMs: stat.birthtimeMs };
 }
 
-function sameIdentity(left: FileIdentity, right: FileIdentity): boolean {
+export function sameIdentity(left: FileIdentity, right: FileIdentity): boolean {
 	return left.dev === right.dev && left.ino === right.ino && left.birthtimeMs === right.birthtimeMs;
 }
 
-function sameObservationIdentity(left: LockObservation, right: LockObservation): boolean {
+export function sameObservationIdentity(left: LockObservation, right: LockObservation): boolean {
 	if (!sameIdentity(left.directoryIdentity, right.directoryIdentity)) return false;
 	if (left.infoIdentity === undefined || right.infoIdentity === undefined) {
 		return left.infoIdentity === right.infoIdentity;
@@ -109,15 +109,15 @@ function isLockInfo(value: unknown): value is LockInfo {
 	);
 }
 
-function getLockPath(filePath: string): string {
+export function getLockPath(filePath: string): string {
 	return `${filePath}.lock`;
 }
 
-function getTransitionPath(lockPath: string): string {
+export function getTransitionPath(lockPath: string): string {
 	return `${lockPath}.transition`;
 }
 
-function buildLockInfo(token: string): LockInfo {
+export function buildLockInfo(token: string): LockInfo {
 	return {
 		version: LOCK_INFO_VERSION,
 		pid: process.pid,
@@ -127,7 +127,7 @@ function buildLockInfo(token: string): LockInfo {
 	};
 }
 
-function validateOptions(options: FileLockOptions): Required<FileLockOptions> {
+export function validateOptions(options: FileLockOptions): Required<FileLockOptions> {
 	const opts = { ...DEFAULT_OPTIONS, ...options };
 	if (!(opts.staleMs >= 0) || Number.isNaN(opts.staleMs)) {
 		throw new TypeError("file-lock: staleMs must be a non-negative number");
@@ -141,7 +141,7 @@ function validateOptions(options: FileLockOptions): Required<FileLockOptions> {
 	return opts;
 }
 
-async function inspectParent(filePath: string): Promise<FileIdentity> {
+export async function inspectParent(filePath: string): Promise<FileIdentity> {
 	const stat = await fs.lstat(path.dirname(filePath));
 	if (!stat.isDirectory() || stat.isSymbolicLink()) {
 		throw new Error(`file-lock: unsafe parent directory for ${escapeTerminalText(filePath)}`);
@@ -149,7 +149,7 @@ async function inspectParent(filePath: string): Promise<FileIdentity> {
 	return identityOf(stat);
 }
 
-function inspectParentSync(filePath: string): FileIdentity {
+export function inspectParentSync(filePath: string): FileIdentity {
 	const stat = fsSync.lstatSync(path.dirname(filePath));
 	if (!stat.isDirectory() || stat.isSymbolicLink()) {
 		throw new Error(`file-lock: unsafe parent directory for ${escapeTerminalText(filePath)}`);
@@ -157,13 +157,13 @@ function inspectParentSync(filePath: string): FileIdentity {
 	return identityOf(stat);
 }
 
-async function assertParentIdentity(filePath: string, expected: FileIdentity): Promise<void> {
+export async function assertParentIdentity(filePath: string, expected: FileIdentity): Promise<void> {
 	if (!sameIdentity(await inspectParent(filePath), expected)) {
 		throw new Error(`file-lock: parent directory changed while locking ${escapeTerminalText(filePath)}`);
 	}
 }
 
-function assertParentIdentitySync(filePath: string, expected: FileIdentity): void {
+export function assertParentIdentitySync(filePath: string, expected: FileIdentity): void {
 	if (!sameIdentity(inspectParentSync(filePath), expected)) {
 		throw new Error(`file-lock: parent directory changed while locking ${escapeTerminalText(filePath)}`);
 	}
@@ -185,7 +185,7 @@ function parseOwnerBytes(bytes: Buffer): LockInfo | null {
 	return isLockInfo(parsed) ? parsed : null;
 }
 
-async function inspectLockDirectory(lockPath: string): Promise<LockObservation | null> {
+export async function inspectLockDirectory(lockPath: string): Promise<LockObservation | null> {
 	let directoryStat: fsSync.Stats;
 	try {
 		directoryStat = await fs.lstat(lockPath);
@@ -302,7 +302,7 @@ async function inspectLockDirectory(lockPath: string): Promise<LockObservation |
 	}
 }
 
-function inspectLockDirectorySync(lockPath: string): LockObservation | null {
+export function inspectLockDirectorySync(lockPath: string): LockObservation | null {
 	let directoryStat: fsSync.Stats;
 	try {
 		directoryStat = fsSync.lstatSync(lockPath);
@@ -425,7 +425,7 @@ function inspectLockDirectorySync(lockPath: string): LockObservation | null {
 	}
 }
 
-function observationIsStale(
+export function observationIsStale(
 	observation: LockObservation,
 	_staleMs: number,
 	now: number,
@@ -443,22 +443,22 @@ function observationIsStale(
 	return false;
 }
 
-async function readLockInfo(lockPath: string): Promise<LockInfo | null> {
+export async function readLockInfo(lockPath: string): Promise<LockInfo | null> {
 	const observation = await inspectLockDirectory(lockPath);
 	return observation?.kind === "valid" ? (observation.info ?? null) : null;
 }
 
-function readLockInfoSync(lockPath: string): LockInfo | null {
+export function readLockInfoSync(lockPath: string): LockInfo | null {
 	const observation = inspectLockDirectorySync(lockPath);
 	return observation?.kind === "valid" ? (observation.info ?? null) : null;
 }
 
-async function isLockStale(lockPath: string, staleMs: number): Promise<boolean> {
+export async function isLockStale(lockPath: string, staleMs: number): Promise<boolean> {
 	const observation = await inspectLockDirectory(lockPath);
 	return observation !== null && observationIsStale(observation, staleMs, Date.now());
 }
 
-function isLockStaleSync(lockPath: string, staleMs: number): boolean {
+export function isLockStaleSync(lockPath: string, staleMs: number): boolean {
 	const observation = inspectLockDirectorySync(lockPath);
 	return observation !== null && observationIsStale(observation, staleMs, Date.now());
 }
@@ -489,7 +489,7 @@ function directoryHasOnlyInfoSync(directoryPath: string, hasInfo: boolean): bool
 	}
 }
 
-async function removeObservedDirectory(directoryPath: string, expected: LockObservation): Promise<void> {
+export async function removeObservedDirectory(directoryPath: string, expected: LockObservation): Promise<void> {
 	const parentIdentity = await inspectParent(directoryPath);
 	const current = await inspectLockDirectory(directoryPath);
 	if (current === null || !sameObservationIdentity(current, expected) || current.kind === "unsafe") {
@@ -512,7 +512,7 @@ async function removeObservedDirectory(directoryPath: string, expected: LockObse
 	await assertParentIdentity(directoryPath, parentIdentity);
 }
 
-function removeObservedDirectorySync(directoryPath: string, expected: LockObservation): void {
+export function removeObservedDirectorySync(directoryPath: string, expected: LockObservation): void {
 	const parentIdentity = inspectParentSync(directoryPath);
 	const current = inspectLockDirectorySync(directoryPath);
 	if (current === null || !sameObservationIdentity(current, expected) || current.kind === "unsafe") {
@@ -535,7 +535,7 @@ function removeObservedDirectorySync(directoryPath: string, expected: LockObserv
 	assertParentIdentitySync(directoryPath, parentIdentity);
 }
 
-async function restoreTransition(lockPath: string, expected: LockObservation): Promise<boolean> {
+export async function restoreTransition(lockPath: string, expected: LockObservation): Promise<boolean> {
 	const transitionPath = getTransitionPath(lockPath);
 	const parentIdentity = await inspectParent(lockPath);
 	for (let attempt = 0; attempt < RESTORE_ATTEMPTS; attempt++) {

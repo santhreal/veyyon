@@ -1,9 +1,3 @@
-/**
- * Shared `host:port` parser used by the auth-broker and auth-gateway boot
- * paths. Centralized so the two servers can't drift on what they accept (the
- * gateway used to silently allow empty hostnames; this fixes it).
- */
-
 import * as AIError from "../error";
 
 export interface ParsedBind {
@@ -22,19 +16,6 @@ function parsePort(raw: string, bind: string): number {
 	return port;
 }
 
-/**
- * Parse a `host:port` (or bare `port`, which assumes loopback) string.
- *
- * Accepts:
- *   - `"4000"`            → `127.0.0.1:4000`
- *   - `"0.0.0.0:4000"`    → as written
- *   - `"[::1]:4000"`      → as written (brackets retained, Bun handles them)
- *
- * Rejects:
- *   - empty input
- *   - empty hostname (`":4000"`)
- *   - non-integer / out-of-range port
- */
 export function parseBind(raw: string): ParsedBind {
 	const trimmed = raw.trim();
 	if (trimmed.length === 0) {

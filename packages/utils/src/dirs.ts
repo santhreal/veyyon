@@ -529,7 +529,7 @@ interface GlobalConfigRead {
  * do not each re-implement the filename precedence. Throws on unreadable or
  * unparseable YAML, naming the file.
  */
-function readGlobalConfigRecord(): GlobalConfigRead {
+export function readGlobalConfigRecord(): GlobalConfigRead {
 	const { filePath, candidate } = selectMainConfigFile(getBaseConfigRoot(), GLOBAL_CONFIG_FILE_KIND);
 	return {
 		record: candidate.kind === "map" ? candidate.record : {},
@@ -623,7 +623,7 @@ export function findShadowedGlobalConfigFiles(root: string = getBaseConfigRoot()
  * live in exactly one place (see {@link writeGlobalDefaultProfile}, which is a
  * thin wrapper over this).
  */
-function mutateGlobalConfigKey(key: string, mutate: (current: Record<string, unknown>) => unknown): string {
+export function mutateGlobalConfigKey(key: string, mutate: (current: Record<string, unknown>) => unknown): string {
 	const root = getBaseConfigRoot();
 	fs.mkdirSync(root, { recursive: true });
 	// The canonical config path is the stable lock target regardless of which

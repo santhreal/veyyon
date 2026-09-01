@@ -1,18 +1,4 @@
-/**
- * Autocomplete for GitHub issue/PR references typed as `#<number>` (e.g. `#3164`).
- *
- * Mirrors the `@` file-reference and `scheme://` internal-url conventions: the
- * token is rewritten to an internal URL (`pr://3164` or `issue://3164`) plus a
- * trailing space, and the existing tool-mediated pipeline (the `read` tool →
- * InternalUrlRouter → `gh`) resolves it from the session cwd's git remote.
- *
- * No network at suggestion time — candidates are generated locally. GitHub
- * shares the issue/PR number space and there is no cheap way to tell which a
- * given number is while typing, so both a PR and an Issue candidate are offered
- * by default. Naming the type first (`pr #3164` / `issue #3164`) constrains the
- * candidates to that kind. Anything that is not a standalone `#<number>` token
- * keeps falling through to the existing prompt-action menu.
- */
+/** Autocomplete for GitHub issue/PR references typed as `#<number>` (e.g. `#3164`). Mirrors the `@` file-reference and `scheme://` internal-url conventions: the */
 import type { AutocompleteItem } from "@veyyon/tui";
 
 /** Candidate kinds, in default display order. */
@@ -30,13 +16,7 @@ export interface GithubRefContext {
 	number: string;
 }
 
-/**
- * A standalone `#<positive-number>` token ending at the cursor. The `#` must be
- * preceded by a token boundary (start, whitespace, or an opening quote/paren/`<`/`=`,
- * matching the internal-URL boundary set) so embedded hashes like `owner/repo#N`,
- * `foo#N`, `C#12`, or a URL fragment do not match. An optional `pr`/`pull`/`issue`
- * qualifier word (case-insensitive) immediately before the `#` constrains the kind.
- */
+/** A standalone `#<positive-number>` token ending at the cursor. The `#` must be preceded by a token boundary (start, whitespace, or an opening quote/paren/`<`/`=`, */
 const GITHUB_REF_TOKEN_RE = /(?:^|[\s"'`(<=])(?:(pr|pull|issue)(\s+))?#([1-9]\d*)$/i;
 
 export function getGithubRefContext(textBeforeCursor: string): GithubRefContext | null {
@@ -52,12 +32,7 @@ export function getGithubRefContext(textBeforeCursor: string): GithubRefContext 
 	};
 }
 
-/**
- * Suggestions for a `#<number>` token. Both kinds are offered unless the user
- * named a type (`pr #3164` / `issue #3164`), in which case only that kind is
- * offered. Returns `null` when the text before the cursor is not a standalone
- * `#<number>` token.
- */
+/** Suggestions for a `#<number>` token. Both kinds are offered unless the user named a type (`pr #3164` / `issue #3164`), in which case only that kind is */
 export function getGithubRefSuggestions(
 	textBeforeCursor: string,
 ): { items: AutocompleteItem[]; prefix: string } | null {

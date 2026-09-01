@@ -748,7 +748,7 @@ const COLLAPSED_AGENT_LIMIT = 4;
  * over time and trailing entries may be partially parsed — every field access
  * is defensive.
  */
-function renderTaskItemLines(tasks: TaskItem[] | undefined, theme: Theme): string[] {
+export function renderTaskItemLines(tasks: TaskItem[] | undefined, theme: Theme): string[] {
 	if (!Array.isArray(tasks) || tasks.length === 0) return [];
 
 	const bullet = theme.fg("dim", "•");

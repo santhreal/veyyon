@@ -662,7 +662,7 @@ function buildSchemaViolationOutcome(
 }
 
 /** Return the whole-result schema failure for accepted yields, or undefined when complete. */
-function currentYieldSchemaFailure(progress: AgentProgress, outputSchema: unknown): string | undefined {
+export function currentYieldSchemaFailure(progress: AgentProgress, outputSchema: unknown): string | undefined {
 	const extracted = progress.extractedToolData?.yield;
 	if (!Array.isArray(extracted) || extracted.length === 0) return undefined;
 	const yieldItems = extracted.filter(item => item !== null && typeof item === "object") as YieldItem[];
@@ -1041,7 +1041,7 @@ interface RunMonitorArgs {
  * processing, abort/budget machinery, usage accumulation, and output capture
  * for one assignment run.
  */
-interface SubagentRunMonitor {
+export interface SubagentRunMonitor {
 	readonly progress: AgentProgress;
 	/** Fires when the run was asked to stop (caller signal, timeout, budget, terminate). */
 	readonly abortSignal: AbortSignal;
@@ -1079,7 +1079,7 @@ interface SubagentRunMonitor {
 	finish(): void;
 }
 
-function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
+export function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 	const {
 		index,
 		id,

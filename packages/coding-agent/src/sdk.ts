@@ -263,7 +263,7 @@ type AsyncResultDetails = {
 	jobs: AsyncResultJobDetails[];
 };
 
-type McpNotificationEntry = {
+export type McpNotificationEntry = {
 	serverName: string;
 	uri: string;
 };
@@ -284,7 +284,7 @@ type McpNotificationEntry = {
  * the key path, the causes worth checking, and the one command that starts veyyon
  * without protection if that is genuinely what the operator wants.
  */
-function secretProtectionUnavailableMessage(globalConfigRoot: string): string {
+export function secretProtectionUnavailableMessage(globalConfigRoot: string): string {
 	return [
 		`Secret protection is enabled but its key at ${vaultKeyPath(globalConfigRoot)} could not be initialized, so this session cannot redact or expand secrets.`,
 		`Check that ${globalConfigRoot} is a real directory you own and can write to, that it is not a symlink and not on a read-only or exotic filesystem, then retry.`,
@@ -292,7 +292,7 @@ function secretProtectionUnavailableMessage(globalConfigRoot: string): string {
 	].join("\n");
 }
 
-function buildAsyncResultBatchMessage(entries: AsyncResultEntry[]): CustomMessage<AsyncResultDetails> | null {
+export function buildAsyncResultBatchMessage(entries: AsyncResultEntry[]): CustomMessage<AsyncResultDetails> | null {
 	if (entries.length === 0) return null;
 	const jobs = entries.map(entry => ({
 		jobId: entry.jobId,
@@ -327,7 +327,7 @@ type LateDiagnosticsDetails = {
 	files: Array<{ path: string; summary: string; errored: boolean; messages: string[] }>;
 };
 
-function buildLateDiagnosticsBatchMessage(
+export function buildLateDiagnosticsBatchMessage(
 	entries: DeferredDiagnosticsEntry[],
 ): CustomMessage<LateDiagnosticsDetails> | null {
 	if (entries.length === 0) return null;
@@ -359,7 +359,7 @@ function buildLateDiagnosticsBatchMessage(
 	};
 }
 
-function buildMcpNotificationBatchMessage(entries: McpNotificationEntry[]): AgentMessage | null {
+export function buildMcpNotificationBatchMessage(entries: McpNotificationEntry[]): AgentMessage | null {
 	const resources: McpNotificationEntry[] = [];
 	const seen = new Set<string>();
 	for (const entry of entries) {
@@ -382,13 +382,13 @@ function buildMcpNotificationBatchMessage(entries: McpNotificationEntry[]): Agen
 	};
 }
 
-type DeferredMCPActivation = {
+export type DeferredMCPActivation = {
 	mcpDiscoveryEnabled: boolean;
 	explicitlyRequestedMCPToolNames: string[];
 	activateAllMCPTools: boolean;
 };
 
-function createPendingMCPTool(name: string): Tool {
+export function createPendingMCPTool(name: string): Tool {
 	const parsed = parseMCPToolName(name);
 	const serverName = parsed?.serverName;
 	const mcpToolName = parsed?.toolName ?? name;
@@ -420,7 +420,7 @@ function createPendingMCPTool(name: string): Tool {
 	return tool;
 }
 
-function collectPendingMCPToolNames(
+export function collectPendingMCPToolNames(
 	explicitToolNames: readonly string[] | undefined,
 	restoredSelectedToolNames: readonly string[],
 ): string[] {
@@ -436,13 +436,13 @@ function collectPendingMCPToolNames(
 	return [...names];
 }
 
-function logMCPLoadErrors(errors: MCPLoadResult["errors"]): void {
+export function logMCPLoadErrors(errors: MCPLoadResult["errors"]): void {
 	for (const [serverName, error] of errors) {
 		logger.error("MCP tool load failed", { path: `mcp:${serverName}`, error });
 	}
 }
 
-function applyMCPEnvironment(result: { exaApiKeys: string[] }): void {
+export function applyMCPEnvironment(result: { exaApiKeys: string[] }): void {
 	if (result.exaApiKeys.length > 0 && !$env.EXA_API_KEY) {
 		Bun.env.EXA_API_KEY = result.exaApiKeys[0];
 	}
@@ -918,7 +918,7 @@ export async function loadSessionExtensions(
  * The file log keeps the record either way: raising a notice adds reach and
  * never removes it.
  */
-function reportExtensionLoadFailures(result: LoadExtensionsResult, operatorNotices?: OperatorNotices): void {
+export function reportExtensionLoadFailures(result: LoadExtensionsResult, operatorNotices?: OperatorNotices): void {
 	for (const { path, error } of result.errors) {
 		logger.error("Failed to load extension", { path, error });
 		operatorNotices?.error("extensions", `${path}: ${error}`);
@@ -1155,12 +1155,12 @@ function isCustomTool(tool: CustomTool | ToolDefinition): tool is CustomTool {
 	return marked[TOOL_DEFINITION_MARKER] !== true && marked[LEGACY_TOOL_DEFINITION_MARKER] !== true;
 }
 
-function isLegacyBuiltinToolDefinition(tool: CustomTool | ToolDefinition): boolean {
+export function isLegacyBuiltinToolDefinition(tool: CustomTool | ToolDefinition): boolean {
 	return !isCustomTool(tool) && "__veyyonLegacyBuiltinTool" in tool && tool.__veyyonLegacyBuiltinTool === true;
 }
 
 /** Matches the truncation applied to per-server instructions inside `rebuildSystemPrompt`. */
-const MAX_MCP_INSTRUCTIONS_LENGTH = 4000;
+export const MAX_MCP_INSTRUCTIONS_LENGTH = 4000;
 
 let sshCleanupRegistered = false;
 
@@ -1173,7 +1173,7 @@ async function cleanupSshResources(): Promise<void> {
 	}
 }
 
-function registerSshCleanup(): void {
+export function registerSshCleanup(): void {
 	if (sshCleanupRegistered) return;
 	sshCleanupRegistered = true;
 	postmortem.register("ssh-cleanup", cleanupSshResources);
@@ -1181,7 +1181,7 @@ function registerSshCleanup(): void {
 
 let evalCleanupRegistered = false;
 
-function registerEvalCleanup(): void {
+export function registerEvalCleanup(): void {
 	if (evalCleanupRegistered) return;
 	evalCleanupRegistered = true;
 	postmortem.register("python-cleanup", disposeAllKernelSessions);
@@ -1192,7 +1192,7 @@ function registerEvalCleanup(): void {
 	postmortem.register("js-eval-cleanup", disposeAllVmContexts);
 }
 
-function customToolToDefinition(tool: CustomTool, obfuscateProviderText?: (text: string) => string): ToolDefinition {
+export function customToolToDefinition(tool: CustomTool, obfuscateProviderText?: (text: string) => string): ToolDefinition {
 	const definition: ToolDefinition & { [TOOL_DEFINITION_MARKER]: true } = {
 		name: tool.name,
 		label: tool.label,
@@ -1228,7 +1228,7 @@ function customToolToDefinition(tool: CustomTool, obfuscateProviderText?: (text:
 	return definition;
 }
 
-function createCustomToolsExtension(
+export function createCustomToolsExtension(
 	tools: CustomTool[],
 	obfuscateProviderText: (text: string) => string,
 ): ExtensionFactory {
@@ -1329,7 +1329,7 @@ function createCustomToolsExtension(
  * Build LoadedCustomCommand entries for all MCP prompts across connected servers.
  * These are re-created whenever prompts change (setOnPromptsChanged callback).
  */
-function buildMCPPromptCommands(manager: MCPManager): LoadedCustomCommand[] {
+export function buildMCPPromptCommands(manager: MCPManager): LoadedCustomCommand[] {
 	const commands: LoadedCustomCommand[] = [];
 	for (const serverName of manager.getConnectedServers()) {
 		const prompts = manager.getServerPrompts(serverName);

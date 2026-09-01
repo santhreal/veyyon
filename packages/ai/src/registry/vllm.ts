@@ -7,7 +7,7 @@ const AUTH_URL = "https://docs.vllm.ai/en/latest/serving/openai_compatible_serve
 const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:8000/v1";
 const DEFAULT_LOCAL_TOKEN = "vllm-local";
 
-export async function loginVllm(options: OAuthController): Promise<string> {
+async function loginVllm(options: OAuthController): Promise<string> {
 	if (!options.onPrompt) {
 		throw new AIError.OnPromptRequiredError(PROVIDER_ID);
 	}

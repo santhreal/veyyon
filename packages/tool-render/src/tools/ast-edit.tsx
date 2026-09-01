@@ -22,7 +22,7 @@ interface AstEditDetails {
 	displayContent: string | null;
 }
 
-function pathsOf(args: Record<string, unknown>): string[] {
+export function pathsOf(args: Record<string, unknown>): string[] {
 	if (!Array.isArray(args.paths)) return [];
 	const paths: string[] = [];
 	for (const p of args.paths) {
@@ -42,7 +42,7 @@ function opsOf(args: Record<string, unknown>): AstEditOp[] {
 	return ops;
 }
 
-function detailsOf(result: ToolRenderProps["result"]): AstEditDetails | null {
+export function detailsOf(result: ToolRenderProps["result"]): AstEditDetails | null {
 	const d = detailsRecord(result);
 	if (!d) return null;
 	const fileReplacements: AstEditDetails["fileReplacements"] = [];
@@ -73,7 +73,7 @@ function detailsOf(result: ToolRenderProps["result"]): AstEditDetails | null {
 	};
 }
 
-function Summary({ args, result }: ToolRenderProps): ReactNode {
+export function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const paths = pathsOf(args);
 	const first = paths[0];
 	const opCount = Array.isArray(args.ops) ? args.ops.length : 0;
@@ -107,7 +107,7 @@ function OpCell({ op, lang }: { op: AstEditOp; lang: string | null }): ReactNode
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+export function Body({ args, result }: ToolRenderProps): ReactNode {
 	const paths = pathsOf(args);
 	const first = paths[0];
 	const ops = opsOf(args);

@@ -1,23 +1,3 @@
-/**
- * Reusable isolation lifecycle for subagent execution.
- *
- * Both `TaskTool` and the eval `agent()` bridge spawn subagents that can run
- * inside a copy-on-write worktree, capture their changes, and (optionally)
- * apply those changes back to the parent repo. The orchestration is identical
- * for both callers; this module hosts the shared lifecycle so eval `agent()`
- * does not need to round-trip through `TaskTool.#runSpawn`.
- *
- * Shape:
- *   1. {@link prepareIsolationContext} — resolve git root + capture baseline.
- *   2. {@link runIsolatedSubprocess}    — start worktree, run, capture
- *                                        branch/patch, tear worktree down.
- *   3. {@link mergeIsolatedChanges}     — apply captured changes back to the
- *                                        parent repo (skip when the caller
- *                                        opted out).
- *
- * Step 1 happens once per top-level call (the baseline is cloned per spawn
- * before mutation); steps 2 and 3 are per-spawn.
- */
 import * as path from "node:path";
 import type * as natives from "@veyyon/natives";
 import { errorMessage } from "@veyyon/utils";
@@ -45,37 +25,19 @@ import {
 
 type IsoBackendKind = natives.IsoBackendKind;
 
-/** Resolved repo + baseline used by every isolated spawn in a single call. */
 export interface IsolationContext {
 	repoRoot: string;
 	baseline: WorktreeBaseline;
 }
 
-/**
- * Resolve the git repo root and capture the worktree baseline used to diff
- * each isolated spawn against. Throws when the cwd is not inside a git
- * repository; callers surface the error as a task-tool failure.
- */
 export async function prepareIsolationContext(cwd: string): Promise<IsolationContext> {
 	const repoRoot = await getRepoRoot(cwd);
 	const baseline = await captureBaseline(repoRoot);
 	return { repoRoot, baseline };
 }
 
-/** Build a commit-message callback for branch/nested commits; `undefined` ⇒ fall back to generic message. */
 export type BuildCommitMessage = () => undefined | ((diff: string) => Promise<string | null>);
 
-/**
- * Construct the commit-message factory used by isolation branch commits and
- * nested-repo patch commits. Returns a closure that, each time it's called,
- * either yields an AI-backed `(diff) => Promise<string|null>` callback (when
- * `task.isolation.commits === "ai"` and a model registry is available) or
- * `undefined` so the caller falls back to a generic commit message.
- *
- * Centralized so `TaskTool` and the eval `agent()` bridge share one wiring;
- * a drift here previously meant the two callers built subtly different
- * generators for the same setting.
- */
 export function makeIsolationCommitMessage(session: ToolSession): BuildCommitMessage {
 	return () => {
 		const style = session.settings.get("subagent.isolation.commits");
@@ -95,32 +57,14 @@ export function makeIsolationCommitMessage(session: ToolSession): BuildCommitMes
 }
 
 export interface IsolatedRunOptions {
-	/**
-	 * Base run options handed to the subagent subprocess. This helper sets
-	 * `worktree`, clears `preloadedExtensionPaths` / `preloadedCustomToolPaths`
-	 * (isolated runs re-discover inside the worktree), and forwards everything
-	 * else unchanged.
-	 */
 	baseOptions: ExecutorOptions;
-	/** Context returned by {@link prepareIsolationContext}. Baseline is cloned per spawn. */
 	context: IsolationContext;
-	/** PAL backend hint from `parseIsolationMode(...)` (undefined ⇒ resolver picks). */
 	preferredBackend: IsoBackendKind | undefined;
-	/** Stable id used as the isolation worktree namespace and as the branch suffix. */
 	agentId: string;
-	/** Merge mode driving how changes are captured ("branch" commits, "patch" diffs). */
 	mergeMode: "patch" | "branch";
-	/** Output dir for `${agentId}.patch` artifacts (patch mode and branch-mode commit failures). */
 	artifactsDir: string;
-	/** Human description carried onto the branch commit (branch mode). */
 	description?: string;
-	/** Build a commit-message callback (`task.isolation.commits === "ai"`). */
 	buildCommitMessage?: BuildCommitMessage;
-	/**
-	 * Construct a `SingleResult` when isolation setup throws — the caller has
-	 * the full metadata (index, agent, assignment, modelOverride) needed to
-	 * build a result shape consistent with their non-isolated path.
-	 */
 	buildFailureResult: (err: unknown) => SingleResult;
 }
 
@@ -136,23 +80,6 @@ async function writeIsolationPatch(
 	return { patchPath, nestedPatches: delta.nestedPatches };
 }
 
-/**
- * Run a subagent inside an isolation worktree and capture its changes.
- *
- * Branch mode: on success, commits the diff onto `veyyon/task/${agentId}` and
- * returns `branchName` + `nestedPatches`. On commit failure the branch is
- * deleted, the still-live isolation diff is written to `${artifactsDir}/${agentId}.patch`,
- * and `result.error` carries the merge-failure message.
- *
- * Patch mode: on success, writes `${artifactsDir}/${agentId}.patch` and
- * returns `patchPath` + `nestedPatches`.
- *
- * Failure paths preserve the underlying `SingleResult` whenever possible so
- * the caller can still surface the subagent's output; only isolation setup
- * itself routes through {@link IsolatedRunOptions.buildFailureResult}.
- *
- * The isolation handle is always torn down in `finally`.
- */
 export async function runIsolatedSubprocess(opts: IsolatedRunOptions): Promise<SingleResult> {
 	let handle: IsolationHandle | undefined;
 	try {
@@ -182,7 +109,6 @@ export async function runIsolatedSubprocess(opts: IsolatedRunOptions): Promise<S
 					nestedPatches: commitResult?.nestedPatches,
 				};
 			} catch (mergeErr) {
-				// Agent succeeded but branch commit failed — clean up stale branch
 				const branchName = `${TASK_BRANCH_PREFIX}${opts.agentId}`;
 				await git.branch.tryDelete(opts.context.repoRoot, branchName);
 				const msg = errorMessage(mergeErr);
@@ -235,28 +161,12 @@ export interface IsolationMergeOptions {
 }
 
 export interface IsolationMergeOutcome {
-	/** Trailing summary appended to the subagent's result text. May be empty. */
 	summary: string;
-	/**
-	 * Tri-state apply outcome:
-	 * - `true`  — merge ran (or had nothing to apply) and left the repo clean.
-	 * - `false` — merge attempted and failed; artifacts are preserved.
-	 * - `null`  — caller skipped the merge phase entirely (e.g. `apply=false`).
-	 */
 	changesApplied: boolean | null;
 	hadAnyChanges: boolean;
-	/** True iff the root branch actually merged — gates nested-repo patch application. */
 	mergedBranchForNestedPatches: boolean;
 }
 
-/**
- * Apply changes captured by {@link runIsolatedSubprocess} back to the parent
- * repo: patch apply (patch mode) or cherry-pick + cleanup (branch mode).
- *
- * The caller decides whether to run this at all — eval `agent()` with
- * `apply=False` skips this step and surfaces the patch artifact / branch name
- * instead.
- */
 export async function mergeIsolatedChanges(opts: IsolationMergeOptions): Promise<IsolationMergeOutcome> {
 	const { result, repoRoot, mergeMode } = opts;
 	try {
@@ -305,15 +215,12 @@ export async function mergeIsolatedChanges(opts: IsolationMergeOptions): Promise
 				summary += `\n\n<system-notification>${mergeResult.stashConflict}</system-notification>`;
 			}
 
-			// Clean up the merged branch (keep failed ones for manual resolution)
 			if (changesApplied) {
 				await cleanupTaskBranches(repoRoot, [result.branchName]);
 			}
 			return { summary, changesApplied, hadAnyChanges, mergedBranchForNestedPatches };
 		}
 
-		// Patch mode: apply the patch from a successful run. A failed or
-		// aborted run has nothing to apply and must not block the result.
 		let changesApplied: boolean;
 		let hadAnyChanges: boolean;
 		const succeeded = result.exitCode === 0 && !result.error && !result.aborted;
@@ -330,14 +237,6 @@ export async function mergeIsolatedChanges(opts: IsolationMergeOptions): Promise
 				hadAnyChanges = false;
 			} else {
 				const normalized = patchText.endsWith("\n") ? patchText : `${patchText}\n`;
-				// Idempotence: declare a no-op only when the reverse patch applies AND
-				// the forward patch does not. `--reverse --check` alone can theoretically
-				// succeed if the file happens to carry the postimage at another location
-				// via git-apply's fuzz factor; requiring the forward check to fail
-				// removes that ambiguity while still catching true already-applied
-				// runs. Reads only — neither call touches the worktree, unlike
-				// `--3way --check`, which exits 0 even when the real apply would
-				// leave conflict markers and unmerged index entries.
 				const [alreadyApplied, forwardApplies] = await Promise.all([
 					git.patch.canApplyText(repoRoot, normalized, { reverse: true }),
 					git.patch.canApplyText(repoRoot, normalized),
@@ -381,27 +280,14 @@ export async function mergeIsolatedChanges(opts: IsolationMergeOptions): Promise
 }
 
 export interface NestedPatchApplyOptions {
-	/** Subagent result carrying `nestedPatches`/`exitCode`/`aborted`. */
 	result: SingleResult;
 	repoRoot: string;
 	mergeMode: "patch" | "branch";
-	/** Parent merge outcome — patch mode skips nested apply when this is `false`. */
 	changesApplied: boolean | null;
-	/** Branch mode gates nested apply on whether the root branch merged. */
 	mergedBranchForNestedPatches: boolean;
-	/** Optional AI commit-message callback for nested commits; falls back to a generic message. */
 	commitMessage?: (diff: string) => Promise<string | null>;
 }
 
-/**
- * Apply nested-repo patches after the parent merge phase. Centralizes the
- * three-way gate (exitCode/aborted, patch-mode failed parent, branch-mode
- * branch-merged) and the non-fatal failure handling so `TaskTool` and the
- * eval `agent()` bridge use one implementation.
- *
- * Returns a system-notification suffix to append to the parent merge summary,
- * or an empty string when nothing was applied or the nested apply succeeded.
- */
 export async function applyEligibleNestedPatches(opts: NestedPatchApplyOptions): Promise<string> {
 	const { result, repoRoot, mergeMode, changesApplied, mergedBranchForNestedPatches, commitMessage } = opts;
 	if (mergeMode === "patch" && changesApplied === false) return "";
@@ -417,7 +303,6 @@ export async function applyEligibleNestedPatches(opts: NestedPatchApplyOptions):
 		if (warnings.length === 0) return "";
 		return `\n\n<system-notification>${warnings.join("\n")}</system-notification>`;
 	} catch {
-		// Nested patch failures are non-fatal to the parent merge.
 		return "\n\n<system-notification>Some nested repository patches failed to apply.</system-notification>";
 	}
 }

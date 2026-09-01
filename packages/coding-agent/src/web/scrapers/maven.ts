@@ -22,10 +22,7 @@ interface MavenResponse {
 	};
 }
 
-/**
- * Handle Maven Central URLs via Solr API
- * Supports: search.maven.org/artifact/... and mvnrepository.com/artifact/...
- */
+/** Handle Maven Central URLs via Solr API Supports: search.maven.org/artifact/... and mvnrepository.com/artifact/... */
 export const handleMaven: SpecialHandler = async (
 	url: string,
 	timeout: number,

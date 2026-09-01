@@ -1074,7 +1074,7 @@ function repairReplacementBoundaries(
 // re-issue when the original landing was intended.
 
 /** Leading run of tabs and spaces. */
-function leadingIndent(line: string): string {
+export function leadingIndent(line: string): string {
 	let end = 0;
 	while (end < line.length) {
 		const code = line.charCodeAt(end);
@@ -1085,7 +1085,7 @@ function leadingIndent(line: string): string {
 }
 
 /** `deeper` strictly extends `shallower` (same indent style, more depth). */
-function isIndentDeeper(deeper: string, shallower: string): boolean {
+export function isIndentDeeper(deeper: string, shallower: string): boolean {
 	return deeper.length > shallower.length && deeper.startsWith(shallower);
 }
 
@@ -1104,7 +1104,7 @@ interface AfterInsertGroup {
  * all-blank or all-closer body, or rows whose indentation styles are not
  * mutually comparable (tabs vs spaces).
  */
-function bodyTargetIndent(rows: readonly string[]): string | undefined {
+export function bodyTargetIndent(rows: readonly string[]): string | undefined {
 	const nonBlank = rows.filter(hasNonWhitespace);
 	if (nonBlank.length === 0) return undefined;
 	// A body of pure closers re-balances delimiters; it claims no depth.

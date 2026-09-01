@@ -764,7 +764,7 @@ function extractPersistableMessages(payload: string): PersistableMemoryMessage[]
 	return messages;
 }
 
-async function runStage1Job(options: {
+export async function runStage1Job(options: {
 	claim: Stage1Claim;
 	model: Model;
 	apiKey: ApiKey;
@@ -860,7 +860,7 @@ async function runStage1Job(options: {
 	}
 }
 
-async function syncPhase2Artifacts(memoryRoot: string, outputs: Stage1OutputRow[]): Promise<void> {
+export async function syncPhase2Artifacts(memoryRoot: string, outputs: Stage1OutputRow[]): Promise<void> {
 	const summariesDir = path.join(memoryRoot, "rollout_summaries");
 	await fs.mkdir(summariesDir, { recursive: true });
 
@@ -886,7 +886,7 @@ async function syncPhase2Artifacts(memoryRoot: string, outputs: Stage1OutputRow[
 	await Bun.write(path.join(memoryRoot, "raw_memories.md"), rawBody);
 }
 
-async function cleanupConsolidatedArtifacts(memoryRoot: string): Promise<void> {
+export async function cleanupConsolidatedArtifacts(memoryRoot: string): Promise<void> {
 	await fs.rm(path.join(memoryRoot, "MEMORY.md"), { force: true });
 	await fs.rm(path.join(memoryRoot, "memory_summary.md"), { force: true });
 	await fs.rm(path.join(memoryRoot, "skills"), { recursive: true, force: true });
@@ -967,7 +967,7 @@ export async function readRolloutSummaries(memoryRoot: string): Promise<string> 
 	return blocks.join("\n\n");
 }
 
-async function runConsolidationModel(options: {
+export async function runConsolidationModel(options: {
 	memoryRoot: string;
 	model: Model;
 	apiKey: ApiKey;
@@ -1056,7 +1056,7 @@ async function runConsolidationModel(options: {
 	return { memoryMd, memorySummary, skills };
 }
 
-async function applyConsolidation(
+export async function applyConsolidation(
 	memoryRoot: string,
 	consolidated: {
 		memoryMd: string;
@@ -1169,7 +1169,7 @@ async function pruneEmptyDirectories(rootDir: string): Promise<void> {
 	}
 }
 
-function computeCompletionWatermark(claimedInputWatermark: number, outputs: Stage1OutputRow[]): number {
+export function computeCompletionWatermark(claimedInputWatermark: number, outputs: Stage1OutputRow[]): number {
 	const maxOutputWatermark = outputs.reduce((max, row) => Math.max(max, row.sourceUpdatedAt), claimedInputWatermark);
 	return Math.max(claimedInputWatermark, maxOutputWatermark);
 }
@@ -1353,7 +1353,7 @@ function refreshProviderContextForApiKey(apiKey: ApiKey, refresh: () => void): A
 	};
 }
 
-function truncateByApproxTokens(text: string, tokenLimit: number): string {
+export function truncateByApproxTokens(text: string, tokenLimit: number): string {
 	if (tokenLimit <= 0) return "";
 	const maxChars = tokenLimit * 4;
 	if (text.length <= maxChars) return text;
@@ -1362,7 +1362,7 @@ function truncateByApproxTokens(text: string, tokenLimit: number): string {
 	return `${text.slice(0, head)}\n\n...[truncated]...\n\n${text.slice(-tail)}`;
 }
 
-function computeModelTokenBudget(model: Model, config: MemoryRuntimeConfig): number {
+export function computeModelTokenBudget(model: Model, config: MemoryRuntimeConfig): number {
 	const maxTokens =
 		model.contextWindow !== null && Number.isFinite(model.contextWindow) && model.contextWindow > 0
 			? model.contextWindow
@@ -1370,7 +1370,7 @@ function computeModelTokenBudget(model: Model, config: MemoryRuntimeConfig): num
 	return Math.max(2048, Math.floor(maxTokens));
 }
 
-async function resolveMemoryModel(options: {
+export async function resolveMemoryModel(options: {
 	modelRegistry: ModelRegistry;
 	session: AgentSession;
 	fallbackRole: string;
@@ -1388,7 +1388,7 @@ async function resolveMemoryModel(options: {
 	return session.model ?? modelRegistry.getAll()[0];
 }
 
-function loadMemoryConfig(settings: Settings): MemoryRuntimeConfig {
+export function loadMemoryConfig(settings: Settings): MemoryRuntimeConfig {
 	return {
 		enabled: settings.get("memory.backend") === "local" || settings.get("memories.enabled") === true,
 		maxRolloutsPerStartup: settings.get("memories.maxRolloutsPerStartup") ?? DEFAULTS.maxRolloutsPerStartup,
@@ -1532,11 +1532,11 @@ async function readLearnedLessons(memoryRoot: string): Promise<string> {
 		.join("\n");
 }
 
-function unixNow(): number {
+export function unixNow(): number {
 	return Math.floor(Date.now() / 1000);
 }
 
-async function runWithConcurrency<T>(
+export async function runWithConcurrency<T>(
 	items: T[],
 	concurrency: number,
 	worker: (item: T) => Promise<void>,

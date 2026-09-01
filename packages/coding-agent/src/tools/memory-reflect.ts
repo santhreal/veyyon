@@ -1,16 +1,10 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
 import { logger, untilAborted } from "@veyyon/utils";
-import { type } from "arktype";
 import { ensureBankExists } from "../hindsight/bank";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from ".";
-
-const memoryReflectSchema = type({
-	query: type("string").describe("question to answer"),
-	"context?": type("string").describe("optional context"),
-});
-
-export type MemoryReflectParams = typeof memoryReflectSchema.infer;
+import type { MemoryReflectParams } from "./memory-reflect-helpers";
+import { memoryReflectSchema } from "./memory-reflect-helpers";
 
 export class MemoryReflectTool implements AgentTool<typeof memoryReflectSchema> {
 	readonly name = "reflect";

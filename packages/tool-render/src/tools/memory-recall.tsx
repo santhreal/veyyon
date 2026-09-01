@@ -15,7 +15,7 @@ function foundCount(props: ToolRenderProps): number | null {
 	return match ? Number(match[1]) : 0;
 }
 
-function Summary(props: ToolRenderProps): ReactNode {
+export function Summary(props: ToolRenderProps): ReactNode {
 	const query = str(props.args.query);
 	const found = foundCount(props);
 	return (
@@ -52,7 +52,7 @@ function parseEntry(raw: string): RecallEntry {
 	return { text, type, date };
 }
 
-function Body(props: ToolRenderProps): ReactNode {
+export function Body(props: ToolRenderProps): ReactNode {
 	const { args, result } = props;
 	const query = str(args.query) ?? "";
 	const text = resultTextOf(result);

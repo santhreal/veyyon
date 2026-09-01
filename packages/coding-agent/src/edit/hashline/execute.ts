@@ -1,16 +1,3 @@
-/**
- * Coding-agent runner that drives the hashline {@link Patcher} on behalf of
- * the `edit` tool. Converts an `{input}` tool-call payload into a
- * fully-applied patch, wraps the result in the agent's
- * {@link AgentToolResult} shape, and attaches LSP diagnostics + `outputMeta`
- * for the renderer.
- *
- * Multi-section patches are preflighted up front via {@link Patcher.prepare}
- * so a partial batch never lands; the commit loop then narrows the LSP
- * batch's `flush` flag to true only for the final write so diagnostics
- * round-trip once.
- */
-
 import type { AgentToolResult } from "@veyyon/agent-core";
 import {
 	assertUniqueCanonicalPaths,
@@ -33,7 +20,7 @@ import type { EditToolDetails, EditToolPerFileResult, LspBatchRequest } from "..
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 import { nativeBlockResolver } from "./block-resolver";
 import { HashlineFilesystem } from "./filesystem";
-import { hashPatchInput, NOOP_HARD_LIMIT, recordNoopEdit, resetNoopEdit } from "./noop-loop-guard";
+import { hashPatchInput, recordNoopEdit, resetNoopEdit } from "./noop-loop-guard";
 import { type HashlineParams, hashlineEditParamsSchema } from "./params";
 
 export interface ExecuteHashlineSingleOptions {
@@ -46,12 +33,6 @@ export interface ExecuteHashlineSingleOptions {
 }
 
 function noChangeDiagnostic(path: string): string {
-	// The patch parsed and applied cleanly but produced no change — the
-	// `|literal` body rows matched the file content at the targeted lines
-	// byte-for-byte. The model usually misreads this as "wrong anchor, try
-	// again with a bigger payload" and starts duplicating content; the
-	// message below names the cause directly so the next turn can re-read
-	// instead of expanding the patch.
 	return (
 		`Edits to ${path} parsed and applied cleanly, but produced no change: ` +
 		`your body row(s) are byte-identical to the file at the targeted lines. ` +
@@ -60,14 +41,6 @@ function noChangeDiagnostic(path: string): string {
 	);
 }
 
-/**
- * Escalated diagnostic surfaced once the same payload has no-op'd
- * {@link NOOP_HARD_LIMIT} times in a row on the same canonical path. Thrown as
- * a {@link ToolError} so the agent loop sees a tool *failure* — empirically
- * far more effective at breaking a no-op edit loop than the soft hint alone
- * (issue #2081 saw 182 byte-identical no-op results in 205 calls before the
- * user aborted).
- */
 function noChangeLoopDiagnostic(path: string, count: number): string {
 	return (
 		`STOP. Edits to ${path} have been a byte-identical no-op ${count} times in a row — ` +
@@ -202,7 +175,6 @@ export async function executeHashlineSingle(
 	const snapshots = getFileSnapshotStore(options.session);
 	const patcher = new Patcher({ fs, snapshots, blockResolver: nativeBlockResolver });
 
-	// Single-section fast path: prepare, commit, render.
 	const inputHash = hashPatchInput(options.input);
 	if (patch.sections.length === 1) {
 		fs.setBatchRequest(narrowBatchRequest(options.batchRequest, true));
@@ -219,8 +191,6 @@ export async function executeHashlineSingle(
 		return renderSection(sectionResult, fs.consumeDiagnostics(sectionResult.path), prepared.section.path).toolResult;
 	}
 
-	// Multi-section: prepare every section up front so we fail fast before
-	// any write hits the filesystem.
 	const prepared: PreparedSection[] = [];
 	for (const section of patch.sections) prepared.push(await patcher.prepare(section));
 	assertUniqueCanonicalPaths(prepared);
@@ -232,9 +202,6 @@ export async function executeHashlineSingle(
 				: new ToolError(noChangeDiagnostic(entry.section.path));
 		}
 	}
-	// Then commit each one, narrowing the LSP batch flush flag to the final
-	// section only. A no-op apply mid-batch is treated as a hard failure —
-	// the model authored anchors that match the current file content.
 	const rendered: RenderedSection[] = [];
 	for (let i = 0; i < prepared.length; i++) {
 		const isLast = i === prepared.length - 1;

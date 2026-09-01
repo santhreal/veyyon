@@ -1,10 +1,7 @@
 import * as path from "node:path";
 import { formatPathRelativeToCwd } from "./path-utils";
 
-/**
- * Creates a deduplicating recorder for relative file paths.
- * Preserves insertion order in `list`; subsequent duplicates are ignored.
- */
+/** Creates a deduplicating recorder for relative file paths. Preserves insertion order in `list`; subsequent duplicates are ignored. */
 export function createFileRecorder(): {
 	record: (relativePath: string) => void;
 	list: string[];
@@ -22,10 +19,7 @@ export function createFileRecorder(): {
 	};
 }
 
-/**
- * Strip native virtual-root prefixes and format file paths relative to cwd when
- * they are inside cwd. Paths outside cwd remain absolute.
- */
+/** Strip native virtual-root prefixes and format file paths relative to cwd when they are inside cwd. Paths outside cwd remain absolute. */
 export function formatResultPath(filePath: string, isDirectory: boolean, basePath: string, cwd: string): string {
 	const cleanPath = filePath.startsWith("/") ? filePath.slice(1) : filePath;
 	if (isDirectory) {
