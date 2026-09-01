@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "8586ecfa8cccd672f44f8c59ac231a287fde1d7f",
+	"generatedFrom": "e8b665b0a5e8d6c68cd7ec00f7a0a38e71e54662",
 	"packages": {
 		"@veyyon/agent-core": {
 			"name": "@veyyon/agent-core",
@@ -7338,8 +7338,8 @@
 				"./tools/search/ast-edit-view.js",
 				"./tools/search/ast-edit.js",
 				"./tools/search/file-search",
-				"./tools/search/file-search-render",
-				"./tools/search/file-search-render.js",
+				"./tools/search/file-search-view",
+				"./tools/search/file-search-view.js",
 				"./tools/search/file-search.js",
 				"./tools/search/manifest",
 				"./tools/search/manifest.js",
@@ -7362,10 +7362,10 @@
 				"./tools/search/structure-search-render.js",
 				"./tools/search/structure-search.js",
 				"./tools/search/text-search",
-				"./tools/search/text-search-render",
-				"./tools/search/text-search-render.js",
 				"./tools/search/text-search-scope",
 				"./tools/search/text-search-scope.js",
+				"./tools/search/text-search-view",
+				"./tools/search/text-search-view.js",
 				"./tools/search/text-search.js",
 				"./tools/shell/bash",
 				"./tools/shell/bash-foreground-registry",

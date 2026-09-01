@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "8586ecfa8cccd672f44f8c59ac231a287fde1d7f",
+	"generatedFrom": "e8b665b0a5e8d6c68cd7ec00f7a0a38e71e54662",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -69,7 +69,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4625,
+	"changedCount": 4627,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -1126,7 +1126,7 @@
 		"packages/coding-agent/src/tools/search/__tests__/file-search.test.ts",
 		"packages/coding-agent/src/tools/search/ast-edit-view.ts",
 		"packages/coding-agent/src/tools/search/ast-edit.ts",
-		"packages/coding-agent/src/tools/search/file-search-render.ts",
+		"packages/coding-agent/src/tools/search/file-search-view.ts",
 		"packages/coding-agent/src/tools/search/file-search.ts",
 		"packages/coding-agent/src/tools/search/manifest.ts",
 		"packages/coding-agent/src/tools/search/match-line-format.ts",
@@ -1138,8 +1138,8 @@
 		"packages/coding-agent/src/tools/search/search.ts",
 		"packages/coding-agent/src/tools/search/structure-search-render.ts",
 		"packages/coding-agent/src/tools/search/structure-search.ts",
-		"packages/coding-agent/src/tools/search/text-search-render.ts",
 		"packages/coding-agent/src/tools/search/text-search-scope.ts",
+		"packages/coding-agent/src/tools/search/text-search-view.ts",
 		"packages/coding-agent/src/tools/search/text-search.ts",
 		"packages/coding-agent/src/tools/shell/bash-foreground-registry.ts",
 		"packages/coding-agent/src/tools/shell/bash-guard.ts",
@@ -2187,6 +2187,7 @@
 		"packages/coding-agent/test/oracles/certify-arms-main-renderer.ts",
 		"packages/coding-agent/test/oracles/debug-main-renderer.ts",
 		"packages/coding-agent/test/oracles/fetch-main-renderer.ts",
+		"packages/coding-agent/test/oracles/file-search-main-renderer.ts",
 		"packages/coding-agent/test/oracles/goal-main-renderer.ts",
 		"packages/coding-agent/test/oracles/init-experiment-main-renderer.ts",
 		"packages/coding-agent/test/oracles/inspect-image-main-renderer.ts",
@@ -2199,6 +2200,7 @@
 		"packages/coding-agent/test/oracles/search-tool-bm25-main-renderer.ts",
 		"packages/coding-agent/test/oracles/set-cwd-main-renderer.ts",
 		"packages/coding-agent/test/oracles/ssh-main-renderer.ts",
+		"packages/coding-agent/test/oracles/text-search-main-renderer.ts",
 		"packages/coding-agent/test/oracles/todo-main-renderer.ts",
 		"packages/coding-agent/test/oracles/update-notes-main-renderer.ts",
 		"packages/coding-agent/test/oracles/write-main-renderer.ts",

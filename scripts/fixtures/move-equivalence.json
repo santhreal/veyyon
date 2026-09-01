@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "8586ecfa8cccd672f44f8c59ac231a287fde1d7f",
+	"generatedFrom": "e8b665b0a5e8d6c68cd7ec00f7a0a38e71e54662",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -14240,17 +14240,17 @@
 			"differs": "changed",
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "d0bd037a2b8d4b87f2506765611a0d0424930876677702e45a768671a3ea6e47",
-			"mainHash": "2c9c06aed860a720a4452869b9ce31f929762b368b730e841585515c7a8cff1b",
-			"structuralHash": "e22ec6d92722ac6871ba31410752d7dfaf1dfa308a5aa10f191fee5947e56055",
-			"mainStructuralHash": "dbdb3c14aed0a2fab179e5bdf36d25076225e4616bcbd092c89e07cd70d6d916"
+			"hash": "ddb76e9c47972ca1aaea76decd42d0185e239904a45e7883dd93a1fc67c66197",
+			"mainHash": "d2e1a93d8a0a5cf65dbbabdb6839e5405ad1363b89c9014b2cd37eabfc9a322b",
+			"structuralHash": "6fb206ff653bafb803e0badc7cc23243cb37365ce0fe7a9abb0a26caa40df34b",
+			"mainStructuralHash": "b83c1037ff21fa6421d977f3d6b7bbb8f57249aa48cbd970bdf2aa48e0e8fcce"
 		},
 		"packages/coding-agent/src/tools/fs/reroot-hint.ts": {
 			"old": "packages/coding-agent/src/tools/reroot-hint.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "b9cd5ef910bfd0999fe9f60ef222ecedd23775189a677229a1b74799f1579ef6",
-			"mainHash": "93d94527c49da5cb7f9b6218ec4dc6d260b4ad798c5650fa78c2296990bdd204",
+			"hash": "35736b2e0c414314b3e96465d93fb0f6f207445b0ffce149d9b6efc7edafe568",
+			"mainHash": "0c2df44b84f781e008d298ce78f2bb53066aa86016aa36017208936a0b855541",
 			"structuralHash": "ab0226b8e0964d26fb52119e2178b9de8738a623aef073f8249019bfa22a8927",
 			"mainStructuralHash": "ab0226b8e0964d26fb52119e2178b9de8738a623aef073f8249019bfa22a8927"
 		},
@@ -14319,10 +14319,12 @@
 		"packages/coding-agent/src/tools/search/search-renderer.ts": {
 			"old": "packages/coding-agent/src/tools/search-renderer.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "51fac72b1e76f94ddac254357573c26fde89dabd31d49ba7bd466df4de1b2feb",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "8f367164c81bf82358fb126c45d91e17012ec5ed0dbf2316efa129f4fc2b82a3",
 			"mainHash": "9c053129e7bfd187949bfb33cfe85489218e83b7d7e4b0f45962134fa66b9c4e",
-			"structuralHash": "f8110caad7a46663fba27c49393f91c1b0a50a656ea1be3bd680d52e6a8bc340",
+			"structuralHash": "e8e213138eb26fc4cfd3620f8dd91641f68df9d2acb8af43a8095fb77d3b9ad6",
 			"mainStructuralHash": "f8110caad7a46663fba27c49393f91c1b0a50a656ea1be3bd680d52e6a8bc340"
 		},
 		"packages/coding-agent/src/tools/search/search-scope.ts": {
