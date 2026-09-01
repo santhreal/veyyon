@@ -1120,11 +1120,17 @@ describe("the background the card paints on before the terminal answers", () => 
 	 */
 	it("writes nothing when the terminal reports the background it already recorded", async () => {
 		await record({ terminalGround: GROUND, modelName: "Claude Sonnet 4" });
-		const write = vi.spyOn(atomicWrite, "atomicWriteJson");
+		// Observed as the list of files the recorder touched, the way the redraw
+		// case above does it: a spy-call assertion states that a function ran, and
+		// what this defends is that nothing reached the disk.
+		const written: string[] = [];
+		vi.spyOn(atomicWrite, "atomicWriteJson").mockImplementation(async (file: string) => {
+			written.push(file);
+		});
 
 		await record({ terminalGround: GROUND, modelName: "Claude Sonnet 4" });
 
-		expect(write).not.toHaveBeenCalled();
+		expect(written).toEqual([]);
 	});
 
 	/** A window whose emulator changed theme reports a different colour, and that one is the fact. */
