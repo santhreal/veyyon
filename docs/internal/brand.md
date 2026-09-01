@@ -48,7 +48,7 @@ Known drift (tracked in `BACKLOG.md`): `dark.json` (Veyyon Dark) predates the em
 
 Fullscreen setup: Veyyon wordmark + silver progress. No secondary product name and no upstream tagline under the mark. Install/upgrade copy uses **Veyyon**, commands `veyyon` / `vey` only.
 
-Session welcome is a single hero card (not a dual-column dashboard): wordmark, one value line (`Hashline edits that land. Your keys.`), action rows with right-aligned shortcuts, optional recent sessions. Settings is a width-capped centered panel.
+Session welcome is a single hero card (not a dual-column dashboard): wordmark, metadata line, action rows with right-aligned shortcuts, optional recent sessions. No tagline under the mark. Settings is a width-capped centered panel.
 
 ## Documentation contract
 

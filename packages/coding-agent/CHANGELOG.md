@@ -97,6 +97,7 @@
 
 - `subagent.sharedModel`, `subagent.model`, `subagent.thinkingLevel` and `subagent.modelByDepth` decided the model and effort for every subagent at once and are rejected; a config still holding one is reported once, naming the agent page that replaces it.
 - The `--subagent-model` launch flag, which set the model for every subagent in the session.
+- The tagline under the wordmark on the session welcome hero, which the launch card and the mounted hero each printed.
 
 ## [1.3.0] - 2026-08-28
 
