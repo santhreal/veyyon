@@ -74,9 +74,7 @@ describe("a fallback chain selector keeps its model apart from its effort", () =
 
 	it("carries the trimmed text as raw, so one selector keys one entry", () => {
 		// State is keyed by `raw`. Untrimmed text would key a second entry for the same selector.
-		expect(parseRetryFallbackSelector("  anthropic/claude-sonnet-4  ")?.raw).toBe(
-			"anthropic/claude-sonnet-4",
-		);
+		expect(parseRetryFallbackSelector("  anthropic/claude-sonnet-4  ")?.raw).toBe("anthropic/claude-sonnet-4");
 	});
 
 	it("collapses every effort of one model onto a single base selector", () => {
