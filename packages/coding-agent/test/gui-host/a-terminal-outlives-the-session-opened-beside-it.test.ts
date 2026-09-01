@@ -18,7 +18,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { type GuiHostServer, startGuiHostServer } from "../../src/gui-host";
 import { isolatedAuthStorage } from "../helpers/isolated-auth-storage";
-import { TestSocketClient } from "./test-client";
+import { type RequestFrame, TestSocketClient } from "./test-client";
+
+/** The id of the terminal a `CreateTerminal` request's Terminals snapshot carries. */
+function createdTerminalId(frames: RequestFrame[]): string {
+	const terminals = frames.find(f => f.Snapshot?.Terminals)?.Snapshot?.Terminals as Array<{ id: string }> | undefined;
+	if (!terminals || terminals.length === 0) throw new Error("CreateTerminal emitted no Terminals snapshot");
+	return terminals[0].id;
+}
 
 describe("a terminal outlives the session opened beside it", () => {
 	let tempDir: string;
@@ -51,8 +58,7 @@ describe("a terminal outlives the session opened beside it", () => {
 			CreateTerminal: { cwd: tempDir, shell: "/bin/sh", cols: 80, rows: 24 },
 		});
 		expect(created.outcome).toEqual({ RequestSucceeded: { request: 1 } });
-		const terminals = created.frames.find(f => f.Snapshot?.Terminals)?.Snapshot?.Terminals as Array<{ id: string }>;
-		const terminalId = terminals[0].id;
+		const terminalId = createdTerminalId(created.frames);
 
 		const first = await client.request(2, { CreateSession: {} });
 		expect(first.outcome).toEqual({ RequestSucceeded: { request: 2 } });
@@ -82,9 +88,7 @@ describe("a terminal outlives the session opened beside it", () => {
 		await first.nextFrame();
 		await first.nextFrame();
 		const created = await first.request(1, { CreateTerminal: { cwd: tempDir, shell: "/bin/sh" } });
-		const terminalId = (
-			created.frames.find(f => f.Snapshot?.Terminals)?.Snapshot?.Terminals as Array<{ id: string }>
-		)[0].id;
+		const terminalId = createdTerminalId(created.frames);
 
 		const second = await TestSocketClient.connect(server!.endpoint);
 		await second.nextFrame();
