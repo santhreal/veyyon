@@ -291,13 +291,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/session/classifier-tokens.ts",
 	"packages/coding-agent/src/session/side-complete.ts",
 	"packages/coding-agent/src/slash-commands/bare-subcommand.ts",
-	// Sixteen lines whose only statement is `replayFirstFrame()`, imported by `cli.ts` for that
-	// side effect. Everything it wires is covered against `replayFirstFrame` itself in
-	// `a-replayed-card-describes-the-screen-it-replays.test.ts`, including the guard that keeps the
-	// bytes off a pipe. What is left is the import edge, which no in-process test can observe: the
-	// side effect is deliberately on evaluation, and the replay only writes under a TTY on both
-	// sides. The startup benchmark is what notices it going missing.
-	"packages/coding-agent/src/startup/first-frame-replay-entry.ts",
 	"packages/coding-agent/src/stt/asr-worker.ts",
 	"packages/coding-agent/src/tools/browser/handle-release.ts",
 	"packages/coding-agent/src/tools/browser/tab-worker-entry.ts",
