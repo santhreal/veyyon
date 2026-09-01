@@ -231,8 +231,8 @@ export function rewriteManifest(
 					j++;
 				}
 				const subTableContent = subTableLines.join("\n");
-				const parsedSubWrapper = Bun.TOML.parse(`[dep]\n${subTableContent}`);
-				const parsedSub = isRecord(parsedSubWrapper.dep) ? parsedSubWrapper.dep : {};
+				const parsedSubWrapper: unknown = Bun.TOML.parse(`[dep]\n${subTableContent}`);
+				const parsedSub = isRecord(parsedSubWrapper) && isRecord(parsedSubWrapper.dep) ? parsedSubWrapper.dep : {};
 				if (parsedSub.workspace === true) {
 					const localSpec: CargoDependencySpec = {
 						workspace: true,
@@ -301,8 +301,11 @@ export function rewriteManifest(
 					i++;
 					continue;
 				} else if (trimmed.includes("workspace = true")) {
-					const parsedLineWrapper = Bun.TOML.parse(`[dep]\n${line}`);
-					const depVal = isRecord(parsedLineWrapper.dep) ? parsedLineWrapper.dep[depName] : undefined;
+					const parsedLineWrapper: unknown = Bun.TOML.parse(`[dep]\n${line}`);
+					const depVal =
+						isRecord(parsedLineWrapper) && isRecord(parsedLineWrapper.dep)
+							? parsedLineWrapper.dep[depName]
+							: undefined;
 					const parsedDep: CargoDependencySpec = isRecord(depVal)
 						? (depVal as CargoDependencySpec)
 						: { workspace: true };

@@ -8,16 +8,22 @@
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { CRATES_TO_VENDOR, formatDependencyLine, resolveDependency, rewriteManifest } from "./vendor-gpui";
+import {
+	type CargoDependencySpec,
+	CRATES_TO_VENDOR,
+	formatDependencyLine,
+	resolveDependency,
+	rewriteManifest,
+} from "./vendor-gpui";
 
 const WORKSPACE_PACKAGE = { edition: "2024", license: "GPL-3.0-or-later", version: "0.1.0" };
-const WORKSPACE_DEPS = {
+const WORKSPACE_DEPS: Record<string, string | CargoDependencySpec> = {
 	gpui_wgpu: { path: "crates/gpui_wgpu" },
 	collections: { path: "crates/collections" },
 	anyhow: "1.0.0",
 	wgpu: { version: "27", "default-features": false, features: ["wgsl"] },
 	scap: { git: "https://example.invalid/scap", rev: "abc", package: "zed-scap", "default-features": false },
-} as const;
+};
 
 describe("rewriteManifest", () => {
 	test("inlines package fields and rewrites closure and external dependencies", () => {
