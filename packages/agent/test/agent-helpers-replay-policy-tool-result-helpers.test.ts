@@ -190,10 +190,10 @@ describe("ThinkingLevel", () => {
 		expect(ThinkingLevel.Off).toBe("off");
 	});
 	it("has Minimal value", () => {
-		expect(ThinkingLevel.Minimal).toBe("minimal");
+		expect(ThinkingLevel.Minimal).toBe("minimal" as typeof ThinkingLevel.Minimal);
 	});
 	it("has Max value", () => {
-		expect(ThinkingLevel.Max).toBe("max");
+		expect(ThinkingLevel.Max).toBe("max" as typeof ThinkingLevel.Max);
 	});
 	it("has 8 levels", () => {
 		expect(Object.keys(ThinkingLevel)).toHaveLength(8);

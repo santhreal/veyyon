@@ -28,8 +28,11 @@ function makeToolResultMessage(toolCallId: string): Message {
 	return {
 		role: "toolResult",
 		toolCallId,
-		content: [],
-	} as Message;
+		toolName: "test",
+		content: [{ type: "text", text: "result" }],
+		isError: false,
+		timestamp: 0,
+	} as unknown as Message;
 }
 
 function makeUserMessage(text: string): Message {

@@ -41,7 +41,7 @@ describe("isProviderRefusalMessage", () => {
 		expect(isProviderRefusalMessage(msg)).toBe(false);
 	});
 	it("returns false when stopReason is tool_use", () => {
-		const msg = makeAssistant({ stopReason: "tool_use" });
+		const msg = makeAssistant({ stopReason: "toolUse" });
 		expect(isProviderRefusalMessage(msg)).toBe(false);
 	});
 });
@@ -54,7 +54,7 @@ describe("filterProviderReplayMessages", () => {
 		];
 		const filtered = filterProviderReplayMessages(messages);
 		expect(filtered).toHaveLength(1);
-		expect(filtered[0].stopReason).toBe("stop");
+	expect((filtered[0] as AssistantMessage).stopReason).toBe("stop");
 	});
 	it("filters out sensitive messages", () => {
 		const messages: Message[] = [
@@ -66,7 +66,7 @@ describe("filterProviderReplayMessages", () => {
 	});
 	it("preserves non-assistant messages", () => {
 		const messages: Message[] = [
-			{ role: "user", content: [] } as Message,
+			{ role: "user", content: "" } as Message,
 			makeAssistant({ stopReason: "error", stopDetails: { type: "refusal" } }) as Message,
 		];
 		const filtered = filterProviderReplayMessages(messages);
@@ -77,7 +77,7 @@ describe("filterProviderReplayMessages", () => {
 		const messages: Message[] = [
 			makeAssistant({ stopReason: "stop" }) as Message,
 			makeAssistant({ stopReason: "length" }) as Message,
-			makeAssistant({ stopReason: "tool_use" }) as Message,
+		makeAssistant({ stopReason: "toolUse" }) as Message,
 		];
 		const filtered = filterProviderReplayMessages(messages);
 		expect(filtered).toHaveLength(3);
@@ -100,10 +100,10 @@ describe("filterProviderReplayMessages", () => {
 	});
 	it("preserves order of remaining messages", () => {
 		const messages: Message[] = [
-			{ role: "user", content: [] } as Message,
+			{ role: "user", content: "" } as Message,
 			makeAssistant({ stopReason: "stop" }) as Message,
 			makeAssistant({ stopReason: "error", stopDetails: { type: "refusal" } }) as Message,
-			{ role: "user", content: [] } as Message,
+			{ role: "user", content: "" } as Message,
 			makeAssistant({ stopReason: "length" }) as Message,
 		];
 		const filtered = filterProviderReplayMessages(messages);
@@ -115,12 +115,12 @@ describe("filterProviderReplayMessages", () => {
 	});
 	it("handles mix of user, assistant, and refusal messages", () => {
 		const messages: Message[] = [
-			{ role: "user", content: [] } as Message,
+			{ role: "user", content: "" } as Message,
 			makeAssistant({ stopReason: "error", stopDetails: { type: "refusal" } }) as Message,
 			makeAssistant({ stopReason: "stop" }) as Message,
-			{ role: "user", content: [] } as Message,
+			{ role: "user", content: "" } as Message,
 			makeAssistant({ stopReason: "error", stopDetails: { type: "sensitive" } }) as Message,
-			makeAssistant({ stopReason: "tool_use" }) as Message,
+		makeAssistant({ stopReason: "toolUse" }) as Message,
 		];
 		const filtered = filterProviderReplayMessages(messages);
 		expect(filtered).toHaveLength(4);

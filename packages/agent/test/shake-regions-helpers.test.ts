@@ -224,7 +224,7 @@ describe("applyShakeRegion", () => {
 		const region: ShakeRegion = {
 			kind: "block",
 			entry,
-			blockIndex: 0,
+			address: { field: "content", blockIndex: 0 },
 			start: 6,
 			end: 28,
 			tokens: 50,
@@ -240,7 +240,7 @@ describe("applyShakeRegion", () => {
 		const region: ShakeRegion = {
 			kind: "block",
 			entry,
-			blockIndex: 99,
+			address: { field: "content", blockIndex: 99 },
 			start: 0,
 			end: 3,
 			tokens: 10,
@@ -261,7 +261,7 @@ describe("applyShakeRegions", () => {
 				region: {
 					kind: "block" as const,
 					entry,
-					blockIndex: 0,
+				address: { field: "content", blockIndex: 0 },
 					start: 0,
 					end: 5,
 					tokens: 10,
@@ -274,7 +274,7 @@ describe("applyShakeRegions", () => {
 				region: {
 					kind: "block" as const,
 					entry,
-					blockIndex: 0,
+				address: { field: "content", blockIndex: 0 },
 					start: 5,
 					end: 10,
 					tokens: 10,
@@ -309,7 +309,7 @@ describe("applyShakeRegions", () => {
 				region: {
 					kind: "block" as const,
 					entry: userEntry,
-					blockIndex: 0,
+				address: { field: "content", blockIndex: 0 },
 					start: 0,
 					end: 4,
 					tokens: 10,
