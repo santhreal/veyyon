@@ -13,7 +13,7 @@
 //!
 //! WHAT IT DOES NOT CATCH: anything the host does not exercise in a handshake
 //! and a session listing. It is ignored by default because it needs a running
-//! host; VEYYON_GUI_ENDPOINT points it at one.
+//! host; `VEYYON_GUI_ENDPOINT` points it at one.
 
 use std::time::Duration;
 
