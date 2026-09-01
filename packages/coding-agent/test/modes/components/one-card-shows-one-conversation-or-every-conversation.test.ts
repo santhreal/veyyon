@@ -108,7 +108,6 @@ describe("The roster follows the scope the card is showing", () => {
 
 		expect(shown).toContain("alphascout");
 		expect(shown).toContain("bravoscout");
-		expect(dashboard.showingWholeProcess).toBe(true);
 		dashboard.dispose();
 	});
 
@@ -175,7 +174,7 @@ describe("The transcript guard follows the scope on screen", () => {
 	 * pinned to the OPENING scope would refuse a row the operator can see and
 	 * select, which reads as a dead Enter key.
 	 */
-	function cardWithOverlaySpy(processScope: boolean): { dashboard: AgentDashboard; opened: string[] } {
+	function cardWithOverlaySpy(): { dashboard: AgentDashboard; opened: string[] } {
 		const opened: string[] = [];
 		// `showOverlay` hands back the mounted overlay, and the card hides it on
 		// dispose; a stub returning nothing fails there instead of here.
@@ -186,13 +185,13 @@ describe("The transcript guard follows the scope on screen", () => {
 			},
 		} as unknown as TUI;
 		return {
-			dashboard: new AgentDashboard({ terminalHeight: 40, scope: "session-a", processScope, ui }),
+			dashboard: new AgentDashboard({ terminalHeight: 40, scope: "session-a", ui }),
 			opened,
 		};
 	}
 
 	test("refuses another conversation's transcript while showing one conversation", () => {
-		const { dashboard, opened } = cardWithOverlaySpy(false);
+		const { dashboard, opened } = cardWithOverlaySpy();
 
 		dashboard.openTranscript("sub-session-b");
 
@@ -201,7 +200,7 @@ describe("The transcript guard follows the scope on screen", () => {
 	});
 
 	test("opens another conversation's transcript once the card is showing every conversation", () => {
-		const { dashboard, opened } = cardWithOverlaySpy(false);
+		const { dashboard, opened } = cardWithOverlaySpy();
 
 		dashboard.handleInput("a");
 		dashboard.openTranscript("sub-session-b");

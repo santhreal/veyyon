@@ -275,8 +275,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		toolNames && toolNames.length > 0
 			? augmentRequestedToolNames(normalizeToolNames(toolNames), {
 					goalEnabled,
-					astGrepEnabled: session.settings.get("astGrep.enabled"),
-					astEditEnabled: session.settings.get("astEdit.enabled"),
+				astEditEnabled: session.settings.get("astEdit.enabled"),
 					memoryBackend,
 					autolearnEnabled: session.settings.get("autolearn.enabled"),
 					isTopLevelSession: taskDepth === 0,
@@ -357,10 +356,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		debugEnabled: session.settings.get("debug.enabled"),
 		requireYieldTool: includeYield,
 		todoEnabled: session.settings.get("todo.enabled"),
-		globEnabled: session.settings.get("glob.enabled"),
-		grepEnabled: session.settings.get("grep.enabled"),
 		githubEnabled: session.settings.get("github.enabled"),
-		astGrepEnabled: session.settings.get("astGrep.enabled"),
 		astEditEnabled: session.settings.get("astEdit.enabled"),
 		inspectImageEnabled: session.settings.get("inspect_image.enabled"),
 		webSearchEnabled: session.settings.get("web_search.enabled"),
