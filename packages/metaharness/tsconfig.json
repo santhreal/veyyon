@@ -1,4 +1,7 @@
 {
 	"extends": "../tsconfig.workspace.json",
-	"include": ["src", "test", "adapters"]
+	"include": ["src", "test", "adapters"],
+	"compilerOptions": {
+		"lib": ["ES2024", "DOM", "DOM.Iterable", "DOM.AsyncIterable"]
+	}
 }

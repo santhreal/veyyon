@@ -533,7 +533,7 @@ async function runSingleTask(
 
 		const useInProcess = config.inProcess !== false;
 		const client: BenchmarkClient = useInProcess
-			? new InProcessClient({
+			? (new InProcessClient({
 					cwd,
 					model: config.model,
 					appendSystemPrompt: buildBenchmarkSystemPrompt({ multiFile: false, config }),
@@ -542,7 +542,7 @@ async function runSingleTask(
 					editFuzzy: config.editFuzzy,
 					editFuzzyThreshold: config.editFuzzyThreshold,
 					shared,
-				})
+				}) as unknown as BenchmarkClient)
 			: (() => {
 					const rpc = new RpcClient({
 						cliPath: CLI_PATH,
