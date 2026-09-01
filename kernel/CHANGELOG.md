@@ -11,3 +11,7 @@
 - `@veyyon/kernel/loader/*` publishes plugin discovery, manifest parsing, the installed registry, the marketplace client and load-failure reporting.
 - `@veyyon/kernel/registry/*` publishes the contribution surface a plugin is resolved through: the tool proxy, the tool event input, the widget and host-view declarations, and the TypeBox schema conversion.
 - `@veyyon/kernel/registry/tool-domain` declares `ToolDomainManifest`, the name and lazy-factory table a tool domain contributes, so a host reads a domain's tools without depending on the coding agent.
+
+### Removed
+
+- `@veyyon/kernel/session/content-text` is gone: the session spine calls the `contentText` owner in `@veyyon/utils`, which carries the separator, image, `trimBlocks` and `trimString` options that copy held.
