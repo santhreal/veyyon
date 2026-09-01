@@ -1,0 +1,66 @@
+# Reference light theme (§6.9).
+#
+# Declares exactly the roles in ColorRole, no additions and no omissions. Every
+# rendered pair clears its §6.9 floor: text at body size and above against all
+# five grounds at 4.5:1, `micro` text at 3:1, each tint ink on its own fill at
+# 4.5:1, and accent_foreground on accent at 4.5:1. The tightest pair here is
+# placeholder on rail at 4.15:1.
+#
+# canvas and float share a value. At elevation 4 a float is separated by its
+# edge and its shadow (§6.5), not by a lighter ground, and on a light appearance
+# there is no lighter ground available above white.
+
+[meta]
+name = "veyyon light"
+appearance = "light"
+version = 1
+
+[role]
+# Elevation 0 through 4, §6.5.
+ground = "#f6f7f9"
+rail = "#eef0f3"
+canvas = "#ffffff"
+inset = "#f2f4f7"
+float = "#ffffff"
+hairline = "#d7dce3"
+
+foreground = "#161a20"
+secondary = "#3d4652"
+muted = "#5c6675"
+placeholder = "#6b7480"
+
+accent = "#1c5fd0"
+accent_foreground = "#ffffff"
+focus = "#1c5fd0"
+
+[tint.working]
+fill = "#dce9fb"
+ink = "#123a6b"
+
+[tint.attention]
+fill = "#fbeed2"
+ink = "#6b4708"
+
+[tint.approve]
+fill = "#d9f0e2"
+ink = "#0d4429"
+
+[tint.input]
+fill = "#e6e0fb"
+ink = "#37256e"
+
+[tint.plan]
+fill = "#d9eff0"
+ink = "#0c4446"
+
+[tint.due]
+fill = "#fbe6d2"
+ink = "#6b3a0c"
+
+[tint.done]
+fill = "#e2ecdf"
+ink = "#2c4426"
+
+[tint.error]
+fill = "#fbdfe1"
+ink = "#6d1419"

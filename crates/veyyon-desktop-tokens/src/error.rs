@@ -92,4 +92,23 @@ pub enum TokenError {
 		ratio:      f32,
 		required:   f32,
 	},
+
+	#[error(
+		"[{path}] theme version {found} is not supported; this binary reads version {supported}"
+	)]
+	// `found` is the value as TOML read it. Narrowing it to u32 first would
+	// report a negative or oversized version as some other number, so the
+	// error names a version nobody wrote.
+	UnsupportedVersion { path: PathBuf, found: i64, supported: u32 },
+
+	#[error("[{path}:{line}:{column}] invalid colour {value:?} for key {key:?}: {source}")]
+	ColorInvalid {
+		path:   PathBuf,
+		line:   usize,
+		column: usize,
+		key:    String,
+		value:  String,
+		#[source]
+		source: crate::color::ColorParseError,
+	},
 }
