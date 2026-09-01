@@ -473,8 +473,8 @@
 		"contracts/wire/test/the-task-result-envelope-has-one-reader.test.ts": {
 			"old": "packages/wire/test/the-task-result-envelope-has-one-reader.test.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "af65256f2293f36b06166bdc5b189c02069a213da8a4280cfe7cc085b25f464b",
+			"differs": "imports-and-comments-only",
+			"hash": "7991610b65f3853ff542b59c6351f64d49993ca2590f6d7e29dcfff43ff7db9d",
 			"mainHash": "af65256f2293f36b06166bdc5b189c02069a213da8a4280cfe7cc085b25f464b",
 			"structuralHash": "52a99d992303939444d43fdb5b5f44eae390320179433607dda281efd6bada05",
 			"mainStructuralHash": "52a99d992303939444d43fdb5b5f44eae390320179433607dda281efd6bada05"
@@ -14576,9 +14576,9 @@
 			"differs": "changed",
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "37efa46768087005bac6f9c21e30afaae857844f13e0e88236ecc9192403d887",
+			"hash": "625498ec61da21946ce150239d0a9b66fad457d400f2461bcc81aa03e426fa38",
 			"mainHash": "fb2e9c228b423e0613a5a0047f6735190a5f327294b955b1110c78485c2e5fea",
-			"structuralHash": "e21cc232d51fc3c32002ee9f2b3b2b21fffb6db3e8938733afd5bb44eff72f92",
+			"structuralHash": "01a9f46acfbe063a663f07cee04fcf31a90c5c529d4e215ba72a186affeb08a1",
 			"mainStructuralHash": "e36502a39ef22de20912f3430f5c953bf0555f3bacc9eecb5ff7c204c3b55d84"
 		},
 		"packages/coding-agent/src/tools/shell/launch-exit-watch.ts": {

@@ -8,6 +8,7 @@ import type { AgentRegistry } from "../../registry/agent-registry";
 import { formatDuration, PREVIEW_LIMITS } from "../core/render-utils";
 import { ToolError } from "../core/tool-errors";
 import type { ToolSession } from "../index";
+import { jobToolView } from "./job-view";
 
 const jobSchema = type({
 	"poll?": type("string[]").describe("job ids to wait for; omit to wait on all running jobs"),
@@ -99,6 +100,7 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		return !(Array.isArray(args.cancel) && args.cancel.length > 0 && args.poll === undefined);
 	};
 	readonly loadMode = "discoverable";
+	readonly view = jobToolView;
 	constructor(private readonly session: ToolSession) {
 		this.description = prompt.render(toolsPrompts["tools/job"].text);
 	}

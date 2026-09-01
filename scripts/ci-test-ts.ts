@@ -546,7 +546,7 @@ const codingAgentSingletonPathPatterns = [
 
 const codingAgentUiPathPatterns = [
 	/^test\/modes\//,
-	/^test\/(interactive-mode|main-interactive|input-controller|streaming|status-line|keybindings|editor|hook|theme|setup-wizard|job-renderer|tool-args-reveal|tool-execution)[^/]*\.test\.ts$/,
+	/^test\/(interactive-mode|main-interactive|input-controller|streaming|status-line|keybindings|editor|hook|theme|setup-wizard|tool-args-reveal|tool-execution)[^/]*\.test\.ts$/,
 	/^src\/modes\/components\//,
 ];
 

@@ -1,32 +1,53 @@
 /**
- * Terminal drawing for the job tool. The tool half in `job.ts` decides what
- * happened; this half decides how a terminal shows it, and is the only one of the two
- * that reaches the TUI.
+ * Differential oracle: the job tool renderer from origin/main.
+ *
+ * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/tools/job.ts`, lines 566-834).
+ * Frozen: never edited to make a test pass.
+ *
+ * On main this was the renderer half of `src/tools/job.ts`, which this branch extracted to
+ * `src/tools/shell/job-render.ts` without touching a byte of it; the two were diffed identical
+ * before this file was cut, and the one line that did not travel is `COLLAPSED_LIST_LIMIT`, which
+ * the branch exports from the tool half and this file imports back. Only the import specifiers are
+ * rewritten to the package subpaths this branch publishes, so what it draws is main's.
  */
 
-import type { Component } from "@veyyon/tui";
-import { Text } from "@veyyon/tui";
-import { formatCount } from "@veyyon/utils";
-import { stripTaskResultEnvelope } from "@veyyon/wire/task-result";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import { shimmerEnabled, shimmerText } from "../../theme/shimmer";
-import type { Theme } from "../../theme/theme";
-import { Ellipsis, Hasher, type RenderCache, renderStatusLine, renderTreeList, truncateToWidth } from "../../tui";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { shimmerEnabled, shimmerText } from "@veyyon/coding-agent/theme/shimmer";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	formatBadge,
 	formatDuration,
 	formatEmptyMessage,
 	formatStatusIcon,
 	getPreviewLines,
+	PREVIEW_LIMITS,
 	replaceTabs,
 	type ToolUIColor,
 	type ToolUIStatus,
-} from "../core/render-utils";
-import { type AgentActivitySnapshot, COLLAPSED_LIST_LIMIT, type JobSnapshot, type JobToolDetails } from "./job";
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import type {
+	AgentActivitySnapshot,
+	JobSnapshot,
+	JobToolDetails,
+} from "@veyyon/coding-agent/tools/shell/job";
+import {
+	Ellipsis,
+	Hasher,
+	type RenderCache,
+	renderStatusLine,
+	renderTreeList,
+	truncateToWidth,
+} from "@veyyon/coding-agent/tui";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { formatCount } from "@veyyon/utils";
+import { stripTaskResultEnvelope } from "@veyyon/wire/task-result";
 
 // =============================================================================
 // TUI Renderer
 // =============================================================================
+
+const COLLAPSED_LIST_LIMIT = PREVIEW_LIMITS.COLLAPSED_ITEMS;
 
 interface JobRenderArgs {
 	poll?: string[];

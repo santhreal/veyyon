@@ -100,6 +100,7 @@ describe("differential coverage", () => {
 			"vibe_wait",
 			"vibe_kill",
 			"vibe_list",
+			"job",
 		]);
 	});
 

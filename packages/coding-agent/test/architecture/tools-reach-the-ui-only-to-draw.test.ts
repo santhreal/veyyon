@@ -44,7 +44,6 @@ const ALLOWED = new Map<string, string>([
 	["theme/theme", "The palette and symbol set. What every coloured tool block is coloured with."],
 	["theme/markdown-theme", "Markdown styling for tools that print markdown."],
 	["theme/highlight", "Syntax highlighting for code a tool prints."],
-	["theme/shimmer", "The in-progress shimmer, a text effect."],
 	["modes/terminal/utils/key-hint", "Formats a keybinding as the hint text a block prints. No key handling."],
 	[
 		"modes/terminal/components/transcript/visual-truncate",
@@ -261,7 +260,6 @@ const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/shell/bash-interactive.ts", ["type Component"]],
 	["tools/shell/bash-render.ts", ["ImageProtocol", "TERMINAL", "type Component"]],
 	["tools/shell/eval-render.ts", ["Markdown", "Text", "type Component"]],
-	["tools/shell/job-render.ts", ["Text", "type Component"]],
 	["tools/core/render-utils.ts", ["type Component"]],
 	["tools/renderers.ts", ["type Component"]],
 ]);
@@ -486,6 +484,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"tools/search/structure-search-view.ts",
 			"tools/search/text-search-view.ts",
 			"tools/shell/debug-view.ts",
+			"tools/shell/job-view.ts",
 			"tools/shell/launch-view.ts",
 			"tools/shell/ssh-view.ts",
 			"tools/web/browser/view.ts",
@@ -651,7 +650,7 @@ describe("a registry entry either describes its card or is recorded as drawing o
 
 	it("records every entry that still draws terminal components", () => {
 		const drawing = entries.filter(name => toolRenderers[name]?.view === undefined);
-		expect(drawing).toEqual(["apply_patch", "bash", "edit", "eval", "job", "lsp", "task"]);
+		expect(drawing).toEqual(["apply_patch", "bash", "edit", "eval", "lsp", "task"]);
 	});
 
 	it("has a view on every converted entry, and that view draws both halves of the card", () => {
@@ -665,6 +664,7 @@ describe("a registry entry either describes its card or is recorded as drawing o
 			"goal",
 			"inspect_image",
 			"irc",
+			"job",
 			"launch",
 			"read",
 			"recall",

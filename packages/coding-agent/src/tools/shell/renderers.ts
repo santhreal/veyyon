@@ -9,7 +9,7 @@ import type { ToolRenderer } from "../renderers";
 import { bashToolRenderer } from "./bash-render";
 import { debugToolView } from "./debug-view";
 import { evalToolRenderer } from "./eval-render";
-import { jobToolRenderer } from "./job-render";
+import { jobToolView } from "./job-view";
 import type { LaunchRenderArgs } from "./launch";
 import { launchToolView } from "./launch-view";
 import { sshToolView } from "./ssh-view";
@@ -36,7 +36,9 @@ export const shellRenderers: Record<string, ToolRenderer> = {
 			return op === "start" || op === "logs" || op === "wait";
 		},
 	}) as ToolRenderer,
-	job: jobToolRenderer as ToolRenderer,
+	// One row per background job under a row that reports the set, drawn in the response flow: the
+	// card is a snapshot of what is still going rather than a panel of output.
+	job: viewToolRenderer(jobToolView, { inline: true, mergeCallAndResult: true }) as ToolRenderer,
 	debug: viewToolRenderer(debugToolView, {
 		mergeCallAndResult: true,
 		animatedPartialResult: true,

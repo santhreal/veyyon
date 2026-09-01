@@ -83,6 +83,7 @@ export const CONVERTED_TOOLS = [
 	"vibe_wait",
 	"vibe_kill",
 	"vibe_list",
+	"job",
 ] as const;
 
 export const WIDTH = 80;

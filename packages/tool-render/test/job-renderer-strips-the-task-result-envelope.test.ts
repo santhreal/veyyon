@@ -16,8 +16,8 @@
  * answering for itself, by driving the real registry renderer and reading the emitted HTML.
  *
  * WHAT IT DOES NOT CATCH. Whether the envelope the prompt emits still has the tag names the
- * owner looks for; `packages/coding-agent/test/job-renderer-preview.test.ts` renders the real
- * prompt and pins that.
+ * owner looks for; `packages/coding-agent/test/a-job-card-states-what-is-still-running.test.ts`
+ * renders the real prompt and pins that.
  */
 import { describe, expect, it } from "bun:test";
 import { createElement } from "react";

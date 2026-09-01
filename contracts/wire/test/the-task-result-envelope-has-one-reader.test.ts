@@ -15,8 +15,8 @@
  * dependency-free and which both surfaces already depend on. This file is the owner's own
  * suite. The renderers prove they ASK the owner
  * (`packages/tool-render/test/job-renderer-strips-the-task-result-envelope.test.ts`, and
- * `packages/coding-agent/test/job-renderer-preview.test.ts`, which renders the REAL prompt and
- * so also pins the tag names this parser looks for).
+ * `packages/coding-agent/test/a-job-card-states-what-is-still-running.test.ts`, which renders the
+ * REAL prompt and so also pins the tag names this parser looks for).
  *
  * WHAT IT DOES NOT CATCH. A third surface that grows its own copy: nothing here can see code
  * that never calls this function. It also says nothing about truncation or whitespace

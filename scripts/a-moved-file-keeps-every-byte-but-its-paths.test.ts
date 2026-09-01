@@ -96,8 +96,8 @@ describe("a moved file keeps every byte but its paths", () => {
 		for (const [, record] of rows) buckets.set(record.differs, (buckets.get(record.differs) ?? 0) + 1);
 		expect([...buckets].sort()).toEqual([
 			["changed", 159],
-			["imports-and-comments-only", 444],
-			["none", 2729],
+			["imports-and-comments-only", 445],
+			["none", 2728],
 		]);
 		expect(rewrites.length).toBeGreaterThan(50);
 		const paths = rows.map(([relative]) => relative);
@@ -189,7 +189,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.hash || hash !== record.mainHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(unchanged).toBe(2729);
+		expect(unchanged).toBe(2728);
 	});
 
 	/**
@@ -208,7 +208,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.structuralHash || hash !== record.mainStructuralHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(importOnly).toBe(444);
+		expect(importOnly).toBe(445);
 	});
 
 	/**

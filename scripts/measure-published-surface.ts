@@ -613,6 +613,10 @@ const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, Relocat
 			to: "./tools/search/search-view",
 			why: "the search card is one dispatcher over the file, text and structure cards, declared in tools/search/search-view.ts as views the host draws, so the module that dispatched terminal components is gone",
 		},
+		"./tools/shell/job-render": {
+			to: "./tools/shell/job-view",
+			why: "the job call row, snapshot card and empty fallback are declared in tools/shell/job-view.ts as views the host draws, so the module that built their terminal components is gone",
+		},
 		"./tools/vibe-render": {
 			to: "./tools/agent/vibe-view",
 			why: "the vibe spawn, send, wait, kill and list cards are declared in tools/agent/vibe-view.ts as views the host draws, so the module that built their terminal components is gone",
