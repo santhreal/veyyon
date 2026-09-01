@@ -9931,6 +9931,7 @@ dependencies = [
 name = "veyyon-desktop-surface"
 version = "1.3.0"
 dependencies = [
+ "serde_json",
  "smallvec",
  "veyyon-desktop-kit",
  "veyyon-desktop-scene",

@@ -23,7 +23,8 @@
 
 use strum::IntoEnumIterator;
 use veyyon_desktop_model::{
-	BadgeKind, BlockKind, Capability, ErrorScope, HostActionKind, MessageRole, QueuePartition,
+	ALL_SECTION_NAMES, BadgeKind, BlockKind, Capability, ErrorScope, HostActionKind, MessageRole,
+	QueuePartition, SnapshotSectionKind,
 };
 
 /// Assert that a hand-written `ALL` array names every variant of its enum, in
@@ -70,11 +71,33 @@ fn every_action_capability_scope_role_and_partition_is_named_by_its_all_array() 
 	assert_all_is_the_whole_enum(&QueuePartition::ALL, 5, "QueuePartition");
 }
 
-/// `ContentBlock` and `SessionBadge` have no `ALL` array because their variants
-/// carry payloads. The scene gate sweeps their fieldless projections instead,
-/// so those projections are what must stay complete.
+/// `ContentBlock`, `SessionBadge`, and `SnapshotSection` have payload-carrying
+/// variants, so they project to fieldless discriminant kinds for sweeping.
 #[test]
 fn the_field_carrying_unions_project_to_a_sweepable_kind() {
+	let sections: Vec<SnapshotSectionKind> = SnapshotSectionKind::iter().collect();
+	assert_eq!(
+		sections.len(),
+		26,
+		"wire.ts defines 26 snapshot sections. This count is pinned here so additions cannot occur \
+		 in silence."
+	);
+	assert_eq!(
+		ALL_SECTION_NAMES.len(),
+		sections.len(),
+		"ALL_SECTION_NAMES has {} entries but SnapshotSection has {} variants.",
+		ALL_SECTION_NAMES.len(),
+		sections.len()
+	);
+	for (index, (name, kind)) in ALL_SECTION_NAMES.iter().zip(sections.iter()).enumerate() {
+		assert_eq!(
+			*name,
+			format!("{kind:?}"),
+			"ALL_SECTION_NAMES[{index}] is '{name}' but SnapshotSectionKind variant at that position \
+			 is '{kind:?}'"
+		);
+	}
+
 	let blocks: Vec<BlockKind> = BlockKind::iter().collect();
 	assert_eq!(
 		blocks.len(),
