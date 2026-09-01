@@ -34,6 +34,10 @@ use crate::{
 const CELL_BORDER: f32 = 1.0;
 const CELL_GAP: f32 = 16.0;
 const CAPTION_HEIGHT: f32 = 46.0;
+const CAPTION_PAD_TOP: f32 = 6.0;
+const CAPTION_LINE_GAP: f32 = 2.0;
+const CAPTION_LABEL_SIZE: f32 = 12.0;
+const CAPTION_DETAIL_SIZE: f32 = 10.0;
 const SHEET_PADDING: f32 = 20.0;
 const SHEET_GROUND: u32 = 0x0b_0b_0e;
 const CELL_EDGE: u32 = 0x33_33_33;
@@ -176,25 +180,25 @@ impl Render for Sheet {
 						.child(
 							div()
 								.h(px(CAPTION_HEIGHT))
-								.pt(px(6.0))
+								.pt(px(CAPTION_PAD_TOP))
 								.flex()
 								.flex_col()
-								.gap(px(2.0))
+								.gap(px(CAPTION_LINE_GAP))
 								.child(
 									div()
-										.text_size(px(12.0))
+										.text_size(px(CAPTION_LABEL_SIZE))
 										.text_color(rgb(CAPTION_INK))
 										.child(cell.label.clone()),
 								)
 								.child(
 									div()
-										.text_size(px(10.0))
+										.text_size(px(CAPTION_DETAIL_SIZE))
 										.text_color(rgb(CAPTION_DIM))
 										.child(cell.geometry.clone()),
 								)
 								.child(
 									div()
-										.text_size(px(10.0))
+										.text_size(px(CAPTION_DETAIL_SIZE))
 										.text_color(rgb(CAPTION_DIM))
 										.child(cell.measurement.clone()),
 								),
