@@ -41,9 +41,9 @@ import {
 	isSubagentEnableDefaulted,
 	isSubagentEnabled,
 	nextSubagentEnableValue,
+	RETIRED_SUBAGENT_MODEL_SETTINGS,
 	rejectedSubagentModelSettings,
 	resetRejectedSubagentModelSettingReports,
-	RETIRED_SUBAGENT_MODEL_SETTINGS,
 	resetSupersededAgentRowReports,
 	resolveDelegation,
 	resolveSubagentMaxNestedSpawnDepth,
@@ -396,7 +396,8 @@ describe("subagent model precedence: one scope, the agent", () => {
 		const recorded = Settings.isolated();
 		recorded.setModelRole("default", LANE_ROW);
 		expect(
-			resolveSubagentModel({ settings: recorded, agentName: "task", fallbackModelPattern: PROFILE_DEFAULT }).patterns,
+			resolveSubagentModel({ settings: recorded, agentName: "task", fallbackModelPattern: PROFILE_DEFAULT })
+				.patterns,
 		).toEqual([LANE_ROW]);
 	});
 });
@@ -443,9 +444,7 @@ describe("subagent model: the retired cross-agent settings decide nothing", () =
 			"subagent.modelByDepth": { "1": "openai/gpt-5" },
 		} as Parameters<typeof Settings.isolated>[0]);
 
-		expect(rejectedSubagentModelSettings(stale).sort()).toEqual(
-			Object.keys(RETIRED_SUBAGENT_MODEL_SETTINGS).sort(),
-		);
+		expect(rejectedSubagentModelSettings(stale).sort()).toEqual(Object.keys(RETIRED_SUBAGENT_MODEL_SETTINGS).sort());
 		expect(rejectedSubagentModelSettings(Settings.isolated())).toEqual([]);
 	});
 

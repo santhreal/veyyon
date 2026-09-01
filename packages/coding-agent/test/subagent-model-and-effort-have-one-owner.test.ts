@@ -165,7 +165,7 @@ const SUBAGENT_PATHS: SettingPath[] = Object.keys(SETTINGS_SCHEMA)
  * model and effort candidates are deliberately REAL ones: a probe of `"xyz"` would be rejected as junk
  * and a resolver that honored the path would still look inert.
  */
-function probeValuesFor(path: SettingPath, entry: SchemaEntry): unknown[] {
+function probeValuesFor(entry: SchemaEntry): unknown[] {
 	switch (entry.type) {
 		case "boolean":
 			return [true, false];
@@ -211,7 +211,7 @@ function pathsThatDecideWhatASubagentRuns(): SettingPath[] {
 	const baseline = resolutionFingerprint(Settings.isolated());
 	return SUBAGENT_PATHS.filter(candidate => {
 		const entry: SchemaEntry = SETTINGS_SCHEMA[candidate];
-		return probeValuesFor(candidate, entry).some(
+		return probeValuesFor(entry).some(
 			value => resolutionFingerprint(Settings.isolated({ [candidate]: value })) !== baseline,
 		);
 	});
@@ -343,7 +343,7 @@ const ROW_FIELDS: string[] = [
  * decides for the depth below, so a value with nothing in it would report the recursion inert.
  */
 const ROW_VALUES: unknown[] = [
-	...new Set(SUBAGENT_PATHS.flatMap(candidate => probeValuesFor(candidate, SETTINGS_SCHEMA[candidate]))),
+	...new Set(SUBAGENT_PATHS.flatMap(candidate => probeValuesFor(SETTINGS_SCHEMA[candidate]))),
 	{ enabled: true, model: FALLBACK_MODEL, thinkingLevel: "high" },
 ];
 
@@ -865,9 +865,7 @@ describe("a config written before the lane tree", () => {
 			maxNestedSpawnDepth: 2,
 		});
 		expect(resolveSubagentMaxNestedSpawnDepth(settings, AGENT)).toBe(2);
-		expect(resolveSubagentModel({ settings, agentName: AGENT }).patterns).toEqual([
-			FALLBACK_MODEL,
-		]);
+		expect(resolveSubagentModel({ settings, agentName: AGENT }).patterns).toEqual([FALLBACK_MODEL]);
 
 		// Now use the control the report named: Subagents → Enabled.
 		editor.enter("Subagents");

@@ -38,8 +38,8 @@ import { getDefault, getType, SETTINGS_SCHEMA, type SettingPath } from "@veyyon/
 import { getSettingsForTab } from "@veyyon/coding-agent/modes/components/settings-defs";
 import {
 	AGENT_DEFAULT_EFFORT,
-	rejectedSubagentModelSettings,
 	RETIRED_SUBAGENT_MODEL_SETTINGS,
+	rejectedSubagentModelSettings,
 	resolveSubagentModel,
 	resolveSubagentThinkingLevel,
 } from "@veyyon/coding-agent/task/subagent-settings";
@@ -98,7 +98,7 @@ function modelBearingProbe(path: SettingPath): unknown {
 		case "boolean":
 			// A switch cannot name a model, but it can turn one on: the retired
 			// shared-model switch was exactly this shape.
-			return getDefault(path) === true ? false : true;
+			return getDefault(path) !== true;
 		case "record":
 			return { "1": PROBE_MODEL, "2": PROBE_MODEL };
 		default:
@@ -114,9 +114,7 @@ describe("the sweep can see an agent move", () => {
 	 */
 	it("reports exactly the agent a lane names", () => {
 		const baseline = rosterRuns(seeded({}));
-		const withLane = rosterRuns(
-			seeded({ "subagent.agents": { scout: { model: PROBE_MODEL } } } as SettingsSeed),
-		);
+		const withLane = rosterRuns(seeded({ "subagent.agents": { scout: { model: PROBE_MODEL } } } as SettingsSeed));
 
 		expect(moved(baseline, withLane)).toEqual(["scout"]);
 	});

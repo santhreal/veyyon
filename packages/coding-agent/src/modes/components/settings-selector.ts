@@ -31,7 +31,6 @@ import type { ModelRegistry } from "../../config/model-registry";
 import {
 	extractExplicitThinkingSelector,
 	normalizeModelPatternList,
-	resolveConfiguredModelPatterns,
 	resolveModelRoleValue,
 } from "../../config/model-resolver";
 import {

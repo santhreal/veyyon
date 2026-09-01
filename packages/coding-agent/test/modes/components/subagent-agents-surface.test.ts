@@ -382,7 +382,10 @@ describe("subagent.agents settings surface", () => {
 			"subagent.sharedModel",
 			"subagent.modelByDepth",
 		]) {
-			expect(tab.find(entry => entry.path === path), `${path} is retired and must offer no row`).toBeUndefined();
+			expect(
+				tab.find(entry => entry.path === path),
+				`${path} is retired and must offer no row`,
+			).toBeUndefined();
 		}
 		const table = tab.find(entry => entry.path === "subagent.agents");
 		expect(table).toBeDefined();
