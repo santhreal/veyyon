@@ -29,7 +29,12 @@
 import { describe, expect, it } from "bun:test";
 import { metricLabel, renderRunDetail, runScreenRows } from "@veyyon/coding-agent/autoresearch/screen";
 import { createExperimentState, createSessionRuntime } from "@veyyon/coding-agent/autoresearch/state";
-import type { AutoresearchRuntime, ExperimentResult, ExperimentStatus } from "@veyyon/coding-agent/autoresearch/types";
+import {
+	type AutoresearchRuntime,
+	EXPERIMENT_STATUSES,
+	type ExperimentResult,
+	type ExperimentStatus,
+} from "@veyyon/coding-agent/autoresearch/types";
 import { useTruecolorTheme } from "./helpers/theme-assertions";
 
 /**
@@ -99,10 +104,11 @@ describe("a run that measured nothing shows no number", () => {
 	useTruecolorTheme("dark");
 
 	it("classifies every status the store can hand back", () => {
-		// A status added to the union without a decision here is the failure this
-		// exists to force: the sweep below would not reach it.
-		const statuses: ExperimentStatus[] = ["keep", "discard", "crash", "checks_failed"];
-		expect(Object.keys(MEASURES).sort()).toEqual([...statuses].sort());
+		// The product's own status array is the sweep's source, read at run time: a
+		// status added to the union without a decision in MEASURES fails to compile
+		// against `Record<ExperimentStatus, boolean>`, and one bolted on with a
+		// looser type fails here instead of going unswept.
+		expect(Object.keys(MEASURES).sort()).toEqual([...EXPERIMENT_STATUSES].sort());
 	});
 
 	it("names the outcome instead of a metric for a status whose number is a placeholder", () => {
