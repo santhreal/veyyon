@@ -82,6 +82,10 @@
 			"packages/coding-agent/test/oracles/memory-main-renderer.ts"
 		],
 		[
+			"packages/coding-agent/src/tools/eval-render.ts",
+			"packages/coding-agent/test/oracles/eval-main-renderer.ts"
+		],
+		[
 			"packages/coding-agent/src/tools/gh-renderer.ts",
 			"packages/coding-agent/test/oracles/gh-main-renderer.ts"
 		],
@@ -140,6 +144,10 @@
 		[
 			"packages/coding-agent/src/extensibility",
 			"kernel/src/loader"
+		],
+		[
+			"packages/coding-agent/src/lsp/render.ts",
+			"packages/coding-agent/test/oracles/lsp-main-renderer.ts"
 		],
 		[
 			"packages/coding-agent/test/web-scrapers",
@@ -10942,7 +10950,7 @@
 			"old": "packages/coding-agent/src/modes/components/agent-transcript-viewer.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "0284f53f0aa0bc8360f3edd9c68ca2db2ffcd413539a3049a7058747793ce443",
+			"hash": "6002c533bddfe5869de2ae1940b54c8a4bd235b79f26ffc7156b9e4a33684a1d",
 			"mainHash": "a606d9e73ab9a6a5fce259e10386d3955343d149d3b9c1d8874069934c761917",
 			"structuralHash": "9a0340d40c20ca4df1c14c0202c883f8d4e555f2c07280428bc221fad9bb11dd",
 			"mainStructuralHash": "9a0340d40c20ca4df1c14c0202c883f8d4e555f2c07280428bc221fad9bb11dd"
@@ -11422,10 +11430,12 @@
 		"packages/coding-agent/src/modes/terminal/components/status-line/context-thresholds.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/context-thresholds.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "724c7f66d9217742cfb5895f021d09fec8727ef78a55875bddcc0eb3f7d130d7",
+			"differs": "changed",
+			"group": "host-boundary",
+			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
+			"hash": "1efede13b6765ce165eb24d1eddbf0f5c201599b826109726b4beb2d78e81a89",
 			"mainHash": "bc3b020553a51db9b85475555457ea17bd3400a9b8fcda78f68afd1793df1e94",
-			"structuralHash": "abc1111a9a3b82c99e137cc0b6c79183d6b170d69253aee2b26770016bf593aa",
+			"structuralHash": "34652ab62a1ff9d58b79034f003675f7f49ebcc15296840c67ce71da4b077fc4",
 			"mainStructuralHash": "abc1111a9a3b82c99e137cc0b6c79183d6b170d69253aee2b26770016bf593aa"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/git-utils.ts": {
@@ -11753,9 +11763,9 @@
 			"differs": "changed",
 			"group": "view-conversion",
 			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
-			"hash": "1783fa8be3702911324d5056fb266c2c2df2f988b207b9ae4a053052ae6b811c",
+			"hash": "be2e5d6deb5c77bb1acb230dd50cf4507f178e18419847974f6cc54d31baa41f",
 			"mainHash": "0975591bf78ca2176c626d5218145393e218eb09f9b4294017454e05c0f7b281",
-			"structuralHash": "d041b714b7040df1006a9dffb9e400582bbdbbe0d3d1a772486c8cd65f0c3bca",
+			"structuralHash": "3966dac4b204c61d2a45a58b5260df40ac1f238f7525083890274c9263d1d5d2",
 			"mainStructuralHash": "a2bd3352f9d22f8e9e643b4e4dd30511252de9b17e10dd20a7fd20b84e7066bb"
 		},
 		"packages/coding-agent/src/modes/terminal/components/transcript/transcript-block-chrome.ts": {
@@ -14552,22 +14562,15 @@
 			"structuralHash": "547e3d7f6cba98588e2b23adfe16bc86357c8760c622e933f7719cacaab77ca0",
 			"mainStructuralHash": "547e3d7f6cba98588e2b23adfe16bc86357c8760c622e933f7719cacaab77ca0"
 		},
-		"packages/coding-agent/src/tools/shell/eval-render.ts": {
-			"old": "packages/coding-agent/src/tools/eval-render.ts",
-			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "20385bde22cdb3295ee4312c607617bcf8636b84b3979de047074e4904735c46",
-			"mainHash": "f9e1866fff6b20e600911b81b786168b21f4e082ddac9f72562c72d308b7b598",
-			"structuralHash": "c68fdd852f5ba794cd6e7ddbf17dd1f04530b8b2c7e16f1576050bc97906297e",
-			"mainStructuralHash": "c68fdd852f5ba794cd6e7ddbf17dd1f04530b8b2c7e16f1576050bc97906297e"
-		},
 		"packages/coding-agent/src/tools/shell/eval.ts": {
 			"old": "packages/coding-agent/src/tools/eval.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "e3acfb841596c4680f1b62a2653a4f4c7081ba9a6f49bc54a8c7a031f85d4793",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "5c99773468f8980407c716c9d85539e6017c3fce521ba25988b6fd399cc2eaa8",
 			"mainHash": "e1fa28e8b9907dc1662a5c997e0311556093f4e9769bf0536a11eec8eb58003e",
-			"structuralHash": "e7ecabc44b74c83835e14cfee99ff6b6cbcd1614364a2dcaa2a30740bda1dfda",
+			"structuralHash": "e035206e0c669ccf1831ea1aa91178eac7b55a862ca73bea2b9fe316f016903c",
 			"mainStructuralHash": "e7ecabc44b74c83835e14cfee99ff6b6cbcd1614364a2dcaa2a30740bda1dfda"
 		},
 		"packages/coding-agent/src/tools/shell/job.ts": {
@@ -15039,6 +15042,15 @@
 			"structuralHash": "17b56f852eebde0066ffc3e4d437b53c11609bef6b3d5f8d24510869de05cd05",
 			"mainStructuralHash": "17b56f852eebde0066ffc3e4d437b53c11609bef6b3d5f8d24510869de05cd05"
 		},
+		"packages/coding-agent/test/oracles/eval-main-renderer.ts": {
+			"old": "packages/coding-agent/src/tools/eval-render.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "1caa0a03ddb7e08b63246690a5d375d7e049fc096f65184b94513b432652d5de",
+			"mainHash": "f9e1866fff6b20e600911b81b786168b21f4e082ddac9f72562c72d308b7b598",
+			"structuralHash": "c68fdd852f5ba794cd6e7ddbf17dd1f04530b8b2c7e16f1576050bc97906297e",
+			"mainStructuralHash": "c68fdd852f5ba794cd6e7ddbf17dd1f04530b8b2c7e16f1576050bc97906297e"
+		},
 		"packages/coding-agent/test/oracles/gh-main-renderer.ts": {
 			"old": "packages/coding-agent/src/tools/gh-renderer.ts",
 			"kind": "normalized",
@@ -15065,6 +15077,15 @@
 			"mainHash": "ca6a549da49e3fb0fa1bc6b2d6e69db649d2b4e0cb222f0473e25ebcd53d8de5",
 			"structuralHash": "f1948b7b3335aa0410c6fba20509a9d4c9c1d1f40a907cfe99269625f103ae2d",
 			"mainStructuralHash": "f1948b7b3335aa0410c6fba20509a9d4c9c1d1f40a907cfe99269625f103ae2d"
+		},
+		"packages/coding-agent/test/oracles/lsp-main-renderer.ts": {
+			"old": "packages/coding-agent/src/lsp/render.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "4712939f2a71fbd083016a99e02a5dec8af3f78650ff1d4583dca7851db6d908",
+			"mainHash": "893b66499ba75db07838c265f0f255c67645d0b917b7eb54050748fc1502fae7",
+			"structuralHash": "7fee490462d7bfcd3555908d168650471d2542ee3834d4e02bb86e45d0427e3f",
+			"mainStructuralHash": "7fee490462d7bfcd3555908d168650471d2542ee3834d4e02bb86e45d0427e3f"
 		},
 		"packages/coding-agent/test/oracles/memory-main-renderer.ts": {
 			"old": "packages/coding-agent/src/tools/memory-render.ts",

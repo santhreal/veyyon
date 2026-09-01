@@ -6574,6 +6574,8 @@
 				"./extensibility/terminal-capability.js",
 				"./goals/goal-tool",
 				"./goals/goal-tool.js",
+				"./lsp/view",
+				"./lsp/view.js",
 				"./memory/backend",
 				"./memory/backend.js",
 				"./memory/hindsight",
@@ -7266,6 +7268,8 @@
 				"./tools/core/grouped-file-output.js",
 				"./tools/core/json-tree-render",
 				"./tools/core/json-tree-render.js",
+				"./tools/core/json-tree-view",
+				"./tools/core/json-tree-view.js",
 				"./tools/core/jtd-to-json-schema",
 				"./tools/core/jtd-to-json-schema.js",
 				"./tools/core/jtd-to-typescript",
@@ -7401,12 +7405,12 @@
 				"./tools/shell/eval",
 				"./tools/shell/eval-backends",
 				"./tools/shell/eval-backends.js",
-				"./tools/shell/eval-render",
-				"./tools/shell/eval-render.js",
+				"./tools/shell/eval-view",
+				"./tools/shell/eval-view.js",
 				"./tools/shell/eval.js",
 				"./tools/shell/job",
-				"./tools/shell/job-render",
-				"./tools/shell/job-render.js",
+				"./tools/shell/job-view",
+				"./tools/shell/job-view.js",
 				"./tools/shell/job.js",
 				"./tools/shell/launch",
 				"./tools/shell/launch-exit-watch",
@@ -8252,6 +8256,14 @@
 				"./lib/xai-http.js": {
 					"to": "@veyyon/coding-agent/tools/web/xai-http.js",
 					"why": "packages/coding-agent/src/lib/xai-http.ts moved to packages/coding-agent/src/tools/web/xai-http.ts, which @veyyon/coding-agent publishes as ./tools/web/xai-http.js"
+				},
+				"./lsp/render": {
+					"to": "./lsp/view",
+					"why": "the lsp call row, hover, diagnostics, reference, symbol and output cards are declared in lsp/view.ts as views the host draws, so the module that built their terminal components is gone"
+				},
+				"./lsp/render.js": {
+					"to": "./lsp/view.js",
+					"why": "the lsp call row, hover, diagnostics, reference, symbol and output cards are declared in lsp/view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./markit": {
 					"to": "@veyyon/coding-agent/export/markit/index",
@@ -11170,12 +11182,12 @@
 					"why": "packages/coding-agent/src/tools/eval-backends.ts moved to packages/coding-agent/src/tools/shell/eval-backends.ts, which @veyyon/coding-agent publishes as ./tools/shell/eval-backends.js"
 				},
 				"./tools/eval-render": {
-					"to": "@veyyon/coding-agent/tools/shell/eval-render",
-					"why": "packages/coding-agent/src/tools/eval-render.ts moved to packages/coding-agent/src/tools/shell/eval-render.ts, which @veyyon/coding-agent publishes as ./tools/shell/eval-render"
+					"to": "./tools/shell/eval-view",
+					"why": "the eval call preview, cell cards, helper log, subagent rows and cell-less fallback are declared in tools/shell/eval-view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./tools/eval-render.js": {
-					"to": "@veyyon/coding-agent/tools/shell/eval-render.js",
-					"why": "packages/coding-agent/src/tools/eval-render.ts moved to packages/coding-agent/src/tools/shell/eval-render.ts, which @veyyon/coding-agent publishes as ./tools/shell/eval-render.js"
+					"to": "./tools/shell/eval-view.js",
+					"why": "the eval call preview, cell cards, helper log, subagent rows and cell-less fallback are declared in tools/shell/eval-view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./tools/eval.js": {
 					"to": "@veyyon/coding-agent/tools/shell/eval.js",
