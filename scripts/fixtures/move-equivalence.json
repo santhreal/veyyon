@@ -10219,7 +10219,7 @@
 			"differs": "changed",
 			"group": "view-conversion",
 			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
-			"hash": "1cd8ec03fa46ea458f22c533d126bde090547f097dda509aa8ec2e4bd6591454",
+			"hash": "2d72adb9c59b685678c871a8f5e24694228e338e93852b5d03812ab87a3d2c31",
 			"mainHash": "e64f1a24414688155e74076ac6421b7416b6fbc04f1a51c8747e5712dbfba07f",
 			"structuralHash": "d455e27d641d35ad90b0006b15897561f5745c0b3e1a94c1e038b5f7cb5e24bb",
 			"mainStructuralHash": "2f8fac33777a1c41d69cfbfab7f68785636a74d2c511f62e38562a8377aabec2"
@@ -14334,11 +14334,11 @@
 			"old": "packages/coding-agent/src/tools/search-tool-bm25.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"group": "engine-consumer",
-			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "47ec06544b06e08a2823dcb478f9c48ab3e77dc24a3ab2d2f7186089558e8959",
+			"group": "view-conversion",
+			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
+			"hash": "ff304e0afac17d1826c1acb3bf3f360c11d1d73b855367f3760fadfb99e421ed",
 			"mainHash": "555bcba12ce1979e93f9315b4c783bb06029405939201ddf6f2ca8ed1b4d6c74",
-			"structuralHash": "de642426e7d138aef9af19c7152cd8bb18c82697b629f3fe0a385d93736df048",
+			"structuralHash": "1c5191ab0188802c9da84584fb84a452774cfdee04a522830e0ce973a4202a41",
 			"mainStructuralHash": "fea1367d641f98a346849b07ad22f6ecc45bb8963794996a4e77062d7671d208"
 		},
 		"packages/coding-agent/src/tools/search/search.ts": {

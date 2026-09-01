@@ -27,7 +27,7 @@
 {"query":"...","activated_tools":["..."],"match_count":2,"total_tools":17}
 ```
 
-- Runtime-only `details` carries the ranked matches used by the TUI renderer:
+- Runtime-only `details` carries the ranked matches the card reads:
   - `query`, `limit`, `total_tools`
   - `activated_tools`: tool names activated by this call
   - `active_selected_tools`: cumulative discovered-tool selections still active
@@ -39,7 +39,7 @@
     - optional `mcp_tool_name`
     - `schema_keys`
     - `score` rounded to 6 decimals
-- The renderer shows a status line plus up to 5 collapsed tree items by default (`COLLAPSED_MATCH_LIMIT`), each with label, optional server name, score to 3 decimals, and truncated description. The ranked match list is not serialized into `content`.
+- The card in `packages/coding-agent/src/tools/search/search-tool-bm25-view.ts` states a status row plus up to 5 collapsed matches (`COLLAPSED_MATCH_LIMIT`), one row per tool carrying label, optional server name, score to 3 decimals and truncated description, and states how many it held back. Every host draws that description; the terminal draws the rows as a tree. The ranked match list is not serialized into `content`.
 
 ## Flow
 1. `SearchToolBm25Tool.createIf()` in `packages/coding-agent/src/tools/search/search-tool-bm25.ts` exposes the tool for explicit discovery modes (`"mcp-only"` / `"all"`) or legacy `mcp.discoveryMode === true`. The default `"auto"` mode is resolved later by `createAgentSession()` after MCP/extension tools are registered, which also injects the tool for local discovery.
@@ -53,8 +53,8 @@
 7. `searchDiscoverableTools()` in `packages/coding-agent/src/discovery/tool-index.ts` tokenizes the query, scores every document with BM25, sorts by descending score then `tool.name`, and returns up to `searchIndex.documents.length` results; `execute()` then filters already-selected names and slices to `limit`.
 8. If any matches remain, `activateTools()` activates all matched tool names through `session.activateDiscoveredTools()` or legacy `activateDiscoveredMCPTools()`.
 9. `details` is assembled from the activated names, current selected names, corpus size, and formatted matches; `content` is reduced to the compact JSON summary from `buildSearchToolBm25Content()`.
-10. `searchToolBm25Renderer` renders either:
-   - the structured `details` view, or
+10. `searchToolBm25ToolView` describes either:
+   - the structured `details` card, or
    - a fallback text-only warning block if `details` is absent.
 
 ## Modes / Variants
@@ -79,13 +79,13 @@
   - Tool availability changes before the next model call in the same turn; the prompt text says this explicitly.
 - User-visible prompts / interactive UI
   - The tool description includes discoverable server summaries and total discoverable-tool count.
-  - The TUI renderer shows ranked matches, but the model-visible text summary does not.
+  - The card shows ranked matches, but the model-visible text summary does not.
 
 ## Limits & Caps
 - Default result cap: `8` (`DEFAULT_LIMIT` in `packages/coding-agent/src/tools/search/search-tool-bm25.ts`).
 - `limit` must be a positive integer; no tool-level upper bound beyond corpus size.
-- Renderer collapsed list cap: `5` (`COLLAPSED_MATCH_LIMIT`).
-- Renderer truncation widths:
+- Card collapsed list cap: `5` (`COLLAPSED_MATCH_LIMIT` in `packages/coding-agent/src/tools/search/search-tool-bm25-view.ts`).
+- Card truncation widths:
   - label: `72` chars (`MATCH_LABEL_LEN`)
   - description: `96` chars (`MATCH_DESCRIPTION_LEN`)
 - BM25+ parameters in `packages/coding-agent/src/discovery/tool-index.ts`:

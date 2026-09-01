@@ -1,25 +1,59 @@
 /**
- * Terminal drawing for the search_tool_bm25 tool. The tool half in `search-tool-bm25.ts` decides what
- * happened; this half decides how a terminal shows it, and is the only one of the two
- * that reaches the TUI.
+ * Differential oracle: the search_tool_bm25 tool renderer from origin/main.
+ *
+ * Source SHA: 26dc69529c717ffa597feeb29244386afb511fa1, whose bytes are the bytes at
+ * 9636f6161beaa0522368820c4a1735eca63ac18e.
+ * Frozen: never edited to make a test pass.
+ *
+ * On main this was the renderer half of `src/tools/search-tool-bm25.ts`; only its import specifiers
+ * are rewritten to the package subpaths this branch publishes, and the two constants and the two
+ * match types the renderer reads are restated here rather than imported, so the bytes it draws are
+ * main's.
  */
 
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import {
+	formatCount,
+	formatExpandHint,
+	formatMoreItems,
+	replaceTabs,
+	TRUNCATE_LENGTHS,
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import { framedBlock, renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/tui";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import type { Theme } from "../../theme/theme";
-import { framedBlock, renderStatusLine, truncateToWidth } from "../../tui";
-import { formatCount, formatExpandHint, formatMoreItems, replaceTabs, TRUNCATE_LENGTHS } from "../core/render-utils";
-import {
-	COLLAPSED_MATCH_LIMIT,
-	type SearchToolBm25Details,
-	type SearchToolBm25Match,
-	type SearchToolBm25Params,
-} from "./search-tool-bm25";
 
 const TOOL_DISCOVERY_TITLE = "Tool Discovery";
+const COLLAPSED_MATCH_LIMIT = 5;
 const MATCH_LABEL_LEN = 72;
 const MATCH_DESCRIPTION_LEN = 96;
+
+interface SearchToolBm25Params {
+	query: string;
+	limit?: number;
+}
+
+interface SearchToolBm25Match {
+	name: string;
+	label: string;
+	description: string;
+	server_name?: string;
+	mcp_tool_name?: string;
+	schema_keys: string[];
+	score: number;
+}
+
+interface SearchToolBm25Details {
+	query: string;
+	limit: number;
+	total_tools: number;
+	activated_tools: string[];
+	also_matched: string[];
+	active_selected_tools: string[];
+	tools: SearchToolBm25Match[];
+}
+
 function renderMatchLines(match: SearchToolBm25Match, theme: Theme): string[] {
 	const safeServerName = match.server_name ? replaceTabs(match.server_name) : undefined;
 	const safeLabel = replaceTabs(match.label);

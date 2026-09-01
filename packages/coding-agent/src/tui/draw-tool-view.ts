@@ -469,6 +469,8 @@ export function drawToolView(view: ToolView, theme: Theme, spinnerFrame?: number
  */
 export interface ViewToolRendererPolicy {
 	mergeCallAndResult?: boolean;
+	/** Drawn in the response flow rather than in the card's own box, which is the row's placement. */
+	inline?: boolean;
 	animatedPendingPreview?: boolean | ((args: unknown) => boolean);
 	animatedPartialResult?: boolean | ((args: unknown) => boolean);
 	forceFirstResultViewportRepaint?: FirstResultViewportRepaint;

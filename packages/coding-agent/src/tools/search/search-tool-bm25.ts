@@ -14,9 +14,9 @@ import {
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
 import { ToolError } from "../core/tool-errors";
+import { searchToolBm25ToolView } from "./search-tool-bm25-view";
 
 const DEFAULT_LIMIT = 8;
-export const COLLAPSED_MATCH_LIMIT = 5;
 /**
  * How close to the best match a tool must score to be activated by the same
  * call. BM25 rank order is not a decision: a natural-language query matches the
@@ -204,6 +204,7 @@ export class SearchToolBm25Tool implements AgentTool<typeof searchToolBm25Schema
 	}
 	readonly parameters = searchToolBm25Schema;
 	readonly strict = true;
+	readonly view = searchToolBm25ToolView;
 
 	constructor(private readonly session: ToolSession) {}
 
