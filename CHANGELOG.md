@@ -59,6 +59,7 @@
 - The status row no longer carries the secrets segment. The `secrets` id is gone from every preset and from `statusLine.segments`, and a configuration naming it is rejected; `/secret list` states what a session has masked.
 - Model and effort are chosen per agent. Each agent's page under `/settings` → Subagents → Roster sets the model and effort that agent runs, an agent naming neither runs the profile's default model role at medium effort, and no setting changes the model of more than one agent.
 - The roster states that an operator may write an agent, and names `docs/features/subagents-authoring` as the instructions.
+- The subagent authoring page states which frontmatter key spellings are read: `thinkingLevel` and `thinking-level` reach the same field, an underscore does not, and the bundled definitions use the dashed form.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 - `AbortError`, the file lock and the postmortem handler no longer load `node:assert/strict`, `node:crypto` or `node:inspector` at import, which the launch path waited on for one assertion, one identifier and one signal handler.

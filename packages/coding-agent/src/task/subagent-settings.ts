@@ -896,7 +896,9 @@ export function resolveSubagentModel(options: {
  * {@link resolveSubagentModel} uses. Highest first:
  *  1. The LANE — the `subagent.agents.<name>` level governing this spawn, then
  *     up its chain, so a nested page's "inherit" means the page above it.
- *  2. The agent definition's `thinking-level` frontmatter.
+ *  2. The agent definition's `thinkingLevel` frontmatter, or `thinking`. The
+ *     bundled definitions spell it `thinking-level`, which `normalizeKeys`
+ *     folds onto the same field.
  *  3. {@link AGENT_DEFAULT_EFFORT}, the documented default.
  *
  * One sentence has to describe model and effort, or a roster row would move the

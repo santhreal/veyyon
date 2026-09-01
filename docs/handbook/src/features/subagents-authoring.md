@@ -58,6 +58,12 @@ else is optional.
 | `readSummarize` | `false` makes its `read` tool return verbatim file content instead of structural summaries. |
 | `output` | A JSON schema the agent's `yield` payload is validated against. |
 
+A two-word key is read in either spelling: `thinkingLevel` and `thinking-level` reach
+the same field, and so do `autoloadSkills` and `readSummarize`. An underscore does
+not, so `thinking_level` is ignored. The bundled definitions use the dashed form, so
+an unpacked agent reads `thinking-level: medium` where the table above says
+`thinkingLevel`.
+
 A name in `tools` that matches no built-in tool and carries no `mcp__` or extension
 namespace is reported at startup. The tool grants nothing and its guidance is left
 out of the system prompt, so a typo reads as an agent that chose to do nothing.
