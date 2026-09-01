@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "541de2ec15a6a77fda8bda181e0b1ddb865ea3e9",
+	"generatedFrom": "8586ecfa8cccd672f44f8c59ac231a287fde1d7f",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -69,7 +69,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4624,
+	"changedCount": 4625,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -1561,6 +1561,7 @@
 		"packages/coding-agent/test/context-files-scope-resolution.test.ts",
 		"packages/coding-agent/test/context-usage-one-owner.test.ts",
 		"packages/coding-agent/test/context-usage-telemetry.test.ts",
+		"packages/coding-agent/test/core/a-diagnostics-card-groups-by-file-and-shows-the-worst-first.test.ts",
 		"packages/coding-agent/test/core/an-eval-backend-reaches-its-kernel-module-on-every-call.test.ts",
 		"packages/coding-agent/test/core/duplicated-helpers-have-one-owner.test.ts",
 		"packages/coding-agent/test/core/hashline-loop-guard.test.ts",
