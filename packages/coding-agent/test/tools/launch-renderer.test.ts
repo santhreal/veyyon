@@ -10,8 +10,16 @@ import { renderTerminalOutput } from "@veyyon/coding-agent/launch/terminal-outpu
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import type { LaunchToolDetails } from "@veyyon/coding-agent/tools/shell/launch";
-import { launchToolRenderer } from "@veyyon/coding-agent/tools/shell/launch-render";
 import { sanitizeText } from "@veyyon/utils";
+
+/**
+ * The card the registry draws for `launch`, which is the one a rebuilt transcript reaches.
+ *
+ * The tool describes a `ToolView` now, so the drawing under test is the terminal's mapping of that
+ * view rather than a renderer the tool owns: taking the entry rather than importing a module keeps
+ * this suite on the path a card actually takes.
+ */
+const launchToolRenderer = toolRenderers.launch;
 
 async function theme() {
 	const t = await getThemeByName("dark");
@@ -38,8 +46,9 @@ const daemon = (overrides: Partial<DaemonSnapshot>): DaemonSnapshot => ({
 
 describe("launchToolRenderer", () => {
 	it("is registered with merged call/result so the pending header is replaced, not stacked", () => {
-		expect(Object.is(toolRenderers.launch.renderResult, launchToolRenderer.renderResult)).toBe(true);
 		expect(toolRenderers.launch.mergeCallAndResult).toBe(true);
+		expect(typeof toolRenderers.launch.renderCall).toBe("function");
+		expect(typeof toolRenderers.launch.renderResult).toBe("function");
 	});
 
 	it("folds a stop result into one header with op, name, and exit state", async () => {
@@ -160,8 +169,10 @@ describe("launchToolRenderer", () => {
 		// a renderer that kept svc-3 through svc-10 and dropped the first three
 		// satisfied every one of them, and so did one that put the more-row first.
 		// Each row's uptime is derived from the clock, so the row IDENTITY is read
-		// out rather than the whole line.
-		const rows = rendered.slice(1).map(line => line.split(" ")[0]);
+		// out rather than the whole line, and the leading indent is dropped first:
+		// the terminal sets a headed block's lines two columns in under the row that
+		// names them, where the hand-written renderer left them in column zero.
+		const rows = rendered.slice(1).map(line => line.trim().split(" ")[0]);
 
 		expect(rows).toEqual(["svc-0", "svc-1", "svc-2", "svc-3", "svc-4", "svc-5", "svc-6", "svc-7", "…"]);
 		expect(rendered.at(-1)).toContain("3 more processes");

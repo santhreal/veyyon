@@ -1,11 +1,13 @@
-import { sanitizeText } from "@veyyon/utils";
-import { SGR_RESET, sgrSequence } from "@veyyon/utils/ansi";
+/**
+ * How a virtual terminal's screen is read out of xterm.
+ *
+ * The rows leave here as the program wrote them: the text it printed and the SGR sequences it chose,
+ * with nothing else. What a reader eventually sees of them is the host's, which for the terminal is
+ * `src/tui/terminal-row.ts`.
+ */
+
+import { SGR_RESET } from "@veyyon/utils/ansi";
 import type { Terminal as XtermTerminal } from "@xterm/headless";
-
-const SGR = sgrSequence("g");
-
-/** `;` and `:` both separate SGR parameters; see the split in {@link styleTerminalRow}. */
-const SGR_PARAMETER_SEPARATOR = /[;:]/;
 
 interface TerminalCell {
 	getChars(): string;
@@ -53,56 +55,7 @@ function cellStyle(cell: TerminalCell): string {
 	return codes.length > 0 ? `\x1b[${codes.join(";")}m` : "";
 }
 
-function isSafeStyle(codes: readonly number[]): boolean {
-	let index = 0;
-	while (index < codes.length) {
-		const code = codes[index++];
-		if (code === 1 || code === 2 || code === 3 || code === 4 || code === 7 || code === 9 || code === 53) continue;
-		if (code !== 38 && code !== 48) return false;
-		const mode = codes[index++];
-		if (mode === 5) {
-			const color = codes[index++];
-			if (color === undefined || color < 0 || color > 255) return false;
-			continue;
-		}
-		if (mode !== 2) return false;
-		for (let channel = 0; channel < 3; channel++) {
-			const color = codes[index++];
-			if (color === undefined || color < 0 || color > 255) return false;
-		}
-	}
-	return true;
-}
-
-/** Applies the active tool-output color while preserving safe styles from a virtual terminal row. */
-export function styleTerminalRow(row: string, baseForeground: string): string {
-	let output = baseForeground;
-	let offset = 0;
-	let hasText = false;
-	for (const match of row.matchAll(SGR)) {
-		const index = match.index ?? 0;
-		const text = sanitizeText(row.slice(offset, index));
-		output += text;
-		hasText ||= text.length > 0;
-
-		// Split on BOTH separators. A truecolor SGR is written either `38;2;r;g;b` or
-		// `38:2:r:g:b`, and libvte and several test runners emit the colon form. Splitting on
-		// `;` alone made the whole thing one non-numeric token, so `isSafeStyle` rejected a
-		// colour it fully understands and the row came back unstyled. The sequence is replayed
-		// verbatim once validated, so the caller's terminal still receives whichever form the
-		// program originally wrote.
-		const codes = match[1].split(SGR_PARAMETER_SEPARATOR).map(Number);
-		if (match[1] === "0") output += `${SGR_RESET}${baseForeground}`;
-		else if (codes.length > 0 && codes.every(Number.isInteger) && isSafeStyle(codes)) output += match[0];
-		offset = index + match[0].length;
-	}
-	const text = sanitizeText(row.slice(offset));
-	output += text;
-	hasText ||= text.length > 0;
-	return hasText ? `${output}${SGR_RESET}` : "";
-}
-
-/** Reads terminal screen rows as sanitized text plus only the styles the TUI may replay. */
+/** Reads terminal screen rows as the text and the SGR styles the program itself wrote. */
 export function readTerminalRows(terminal: XtermTerminal, startRow: number, rowCount: number): string[] {
 	const buffer = terminal.buffer.active;
 	const reusableCell = buffer.getNullCell();

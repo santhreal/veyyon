@@ -95,7 +95,6 @@ const ENGINE_IMPORTERS = [
 	"tools/shell/bash-render.ts",
 	"tools/shell/eval-render.ts",
 	"tools/shell/job-render.ts",
-	"tools/shell/launch-render.ts",
 	"tools/web/browser/render.ts",
 	"tools/web/gh-renderer.ts",
 	"tui/code-cell.ts",
@@ -171,7 +170,7 @@ describe("only the terminal host imports the terminal engine", () => {
 	 * ledger above and the ceiling here.
 	 */
 	it("does not grow the count of modules a second host cannot reuse", () => {
-		expect(enginePackageImporters("any").length).toBeLessThanOrEqual(42);
+		expect(enginePackageImporters("any").length).toBeLessThanOrEqual(41);
 		expect(enginePackageImporters("runtime").length).toBeLessThanOrEqual(23);
 	});
 });

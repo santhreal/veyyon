@@ -10,10 +10,11 @@ import { Settings } from "../../config/settings";
 import type { ExtensionTerminalCapability } from "../../extensibility/terminal-capability";
 import { OutputSink, type OutputSummary } from "../../session/streaming-output";
 import type { Theme } from "../../theme/theme";
+import { styleTerminalRow } from "../../tui/terminal-row";
 import { sanitizeWithOptionalSixelPassthrough } from "../../utils/sixel";
 import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../core/output-meta";
 import { formatStatusIcon, replaceTabs } from "../core/render-utils";
-import { readTerminalRows, styleTerminalRow } from "./terminal-output";
+import { readTerminalRows } from "./terminal-output";
 
 export interface BashInteractiveResult extends OutputSummary {
 	exitCode: number | undefined;

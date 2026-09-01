@@ -49,6 +49,7 @@ import type { FirstResultViewportRepaint } from "../tools/renderers";
 import { fileHyperlink, urlHyperlink } from "./hyperlink";
 import { framedBlock, outputBlockContentWidth } from "./output-block";
 import { renderStatusLine } from "./status-line";
+import { styleTerminalRow } from "./terminal-row";
 import { renderTreeList } from "./tree-list";
 import type { State } from "./types";
 import { padToWidth } from "./utils";
@@ -130,12 +131,18 @@ const BLOCK_STATES: Record<ViewStatus, { state: State; rail: ThemeColor }> = {
  * A span with a link is wrapped in OSC 8 AFTER it is styled, which is the order every hand-written
  * renderer used (`urlHyperlink(url, theme.fg("mdLinkUrl", url))`): the escape that opens the link
  * carries no colour, so a colour started inside it ends inside it.
+ *
+ * A captured run is another program's own output, so it is replayed rather than styled: the theme
+ * supplies the colour the row sits on and `styleTerminalRow` keeps whichever of the program's styles
+ * this terminal can reproduce. Tone and emphasis are ignored there, because a tool that observed a
+ * screen states what it saw and not how the screen should look.
  */
 export function drawSpan(span: ViewSpan, theme: Theme): string {
 	if (span.symbol !== undefined && Object.hasOwn(UNICODE_SYMBOLS, span.symbol)) {
 		const color = span.tone === undefined ? "accent" : TONE_COLORS[span.tone];
 		return linked(span, theme.styledSymbol(span.symbol as SymbolKey, color));
 	}
+	if (span.captured) return styleTerminalRow(span.text, theme.getFgAnsi(TONE_COLORS.output));
 	let text = span.text;
 	if (span.bold) text = theme.bold(text);
 	if (span.italic) text = theme.italic(text);
@@ -268,6 +275,14 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 		// what it dropped must keep saying it however few rows are left. A list states the same count
 		// on its own closing branch, so the note is already among its rows.
 		note: section.hidden === undefined || section.list ? undefined : drawHiddenNote(section.hidden, theme),
+		// Which of the drawn rows is a verbatim capture of another program's screen row. A row the card
+		// composed itself ends where the columns end, because the words on it were chosen to fit; a
+		// captured row that lost its tail has to say so, or a screen cut at the right margin reads as
+		// the program having printed exactly that. Resolved here, where the spans are still in hand.
+		captured:
+			section.list || section.code !== undefined
+				? undefined
+				: section.lines.map(line => line.some(span => span.captured === true)),
 		tail: section.tail,
 		clip: section.clip === true,
 	}));
@@ -288,14 +303,25 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 		sections: [
 			...sections.map(section => {
 				const contentWidth = outputBlockContentWidth(width);
-				const windowed =
-					section.tail === undefined
-						? section.lines
-						: drawTailWindow(section.lines, section.tail, theme, contentWidth);
-				const rows = section.note === undefined ? windowed : [...windowed, section.note];
 				// A clipped section is rows rather than prose, so a row that runs out of columns ends
 				// there. Without the cut the block WRAPS it, and one long path becomes two rows of a
 				// listing whose every other entry is one.
+				//
+				// The cut comes BEFORE the window for the same reason: a clipped line is exactly one
+				// row, so a window measured on the wrapped text would count rows the card never draws
+				// and drop the front of a screen that fits.
+				const content = section.clip
+					? section.lines.map((line, index) =>
+							truncateToWidth(
+								line,
+								contentWidth,
+								section.captured?.[index] === true ? Ellipsis.Unicode : Ellipsis.Omit,
+							),
+						)
+					: section.lines;
+				const windowed =
+					section.tail === undefined ? content : drawTailWindow(content, section.tail, theme, contentWidth);
+				const rows = section.note === undefined ? windowed : [...windowed, section.note];
 				return {
 					label: section.label,
 					lines: section.clip ? rows.map(line => truncateToWidth(line, contentWidth, Ellipsis.Omit)) : rows,
@@ -412,6 +438,9 @@ function drawItemList(lines: readonly ViewLine[], hidden: ViewHiddenCount | unde
  * Measured in WRAPPED rows rather than in the tool's lines, because one long command line occupies
  * four rows of an eighty-column terminal and a window counted in tool lines overruns the viewport it
  * exists to fit. The note is one of those rows, so a section given ten rows shows nine of its own.
+ *
+ * A clipped section arrives already cut to one row per line, so the wrap below returns each of those
+ * lines unchanged and the count is the same either way. It is not measured separately.
  */
 function drawTailWindow(lines: readonly string[], window: ViewTailWindow, theme: Theme, width: number): string[] {
 	const rows: string[] = [];
@@ -460,6 +489,11 @@ const INDENT = 2;
  * default colour and the row it belongs to loses its tone at the last column. Spans are measured in
  * order and each is given what the ones before it left, so the span that runs out of room is the one
  * that carries the mark.
+ *
+ * A captured run is the exception, and is cut AFTER it is replayed: its own escape bytes sit between
+ * its characters, so cutting the text first would drop every sequence past the cut and redraw the
+ * rest of the row in a colour the program never chose. The cut is width-aware either way, so the
+ * columns are the same; only the styles inside them survive.
  */
 function drawLineToWidth(line: ViewLine, theme: Theme, width: number): string {
 	let used = 0;
@@ -470,6 +504,12 @@ function drawLineToWidth(line: ViewLine, theme: Theme, width: number): string {
 		if (span.symbol !== undefined && Object.hasOwn(UNICODE_SYMBOLS, span.symbol)) {
 			drawn += drawSpan(span, theme);
 			used += visibleWidth(theme.symbol(span.symbol as SymbolKey));
+			continue;
+		}
+		if (span.captured) {
+			const replayed = truncateToWidth(drawSpan(span, theme), remaining, Ellipsis.Unicode);
+			drawn += replayed;
+			used += visibleWidth(replayed);
 			continue;
 		}
 		const text = truncateToWidth(span.text, remaining, Ellipsis.Unicode);

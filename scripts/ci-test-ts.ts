@@ -534,6 +534,11 @@ const codingAgentNativePathPatterns = [
 const codingAgentSingletonPathPatterns = [
 	/^test\/(settings|config|fast-mode-scope|autocomplete-max-visible)[^/]*\.test\.ts$/,
 	/^test\/(?:.*\/)?[^/]*(singleton|global-state|fake-timer)[^/]*\.test\.ts$/,
+	// The converted-card differential suites install the settings singleton and the process-wide ANSI
+	// policy through `test/differential/harness.ts`, so the content scan below -- which reads each test
+	// file's own text and nothing it imports -- sees none of the markers that would place them here.
+	// Classified by path instead: the state is real whether or not it is spelled in the file.
+	/^test\/differential\//,
 ];
 
 const codingAgentUiPathPatterns = [

@@ -1,15 +1,20 @@
 /**
- * Terminal drawing for the launch tool. The tool half in `launch.ts` decides what
- * happened; this half decides how a terminal shows it, and is the only one of the two
- * that reaches the TUI.
+ * Differential oracle: the launch tool renderer from origin/main.
+ *
+ * Source SHA: e9467ab12c976cd830eb7a61e30bfd6adc4bff1f.
+ * Frozen: never edited to make a test pass.
+ *
+ * On main this was the renderer half of `src/tools/launch.ts` (lines 501-817), which this branch
+ * extracted to `src/tools/shell/launch-render.ts` without touching a byte of it; the two were diffed
+ * identical before this file was cut. `callMeta` and `readyPendingSummary` are carried here from the
+ * same file (lines 553-571 and 257-277), because the branch moved them into `launch.ts` and an oracle
+ * that imported the moved copies would be measuring this branch's code. Only the import specifiers
+ * are rewritten to the package subpaths this branch publishes, so what it draws is main's.
  */
 
-import type { Component } from "@veyyon/tui";
-import { Text } from "@veyyon/tui";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import type { DaemonSnapshot, DaemonState } from "../../launch/protocol";
-import type { Theme, ThemeColor } from "../../theme/theme";
-import { framedBlock, outputBlockContentWidth, renderStatusLine } from "../../tui";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { DaemonSnapshot, DaemonState } from "@veyyon/coding-agent/launch/protocol";
+import type { Theme, ThemeColor } from "@veyyon/coding-agent/theme/theme";
 import {
 	capPreviewLines,
 	createCachedComponent,
@@ -24,9 +29,36 @@ import {
 	shortenPath,
 	TRUNCATE_LENGTHS,
 	truncateToWidth,
-} from "../core/render-utils";
-import { callMeta, type LaunchRenderArgs, type LaunchToolDetails, readyPendingSummary } from "./launch";
-import { styleTerminalRow } from "./terminal-output";
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import type { LaunchParams, LaunchToolDetails } from "@veyyon/coding-agent/tools/shell/launch";
+import { framedBlock, outputBlockContentWidth, renderStatusLine } from "@veyyon/coding-agent/tui";
+import { styleTerminalRow } from "@veyyon/coding-agent/tui/terminal-row";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+
+/**
+ * Human sentences for the readiness conditions still unmet, e.g.
+ * `port 5173 on 127.0.0.1 never accepted connections`. `ready` (from the start
+ * params) adds the concrete pattern/port; absent it falls back to generic labels.
+ */
+function readyPendingSummary(daemon: DaemonSnapshot, ready?: LaunchParams["ready"]): string[] {
+	const parts: string[] = [];
+	for (const condition of daemon.readyPending ?? []) {
+		if (condition === "log") {
+			parts.push(ready?.log ? `log pattern /${ready.log}/ never matched` : "the log pattern never matched");
+		} else {
+			parts.push(
+				ready?.port !== undefined
+					? `port ${ready.port} on ${ready.host ?? "127.0.0.1"} never accepted connections`
+					: "the port never accepted connections",
+			);
+		}
+	}
+	return parts;
+}
+
+/** Args shape visible to the renderer, possibly mid-stream (every field optional). */
+type LaunchRenderArgs = Partial<LaunchParams>;
 
 function stateColor(state: DaemonState): ThemeColor {
 	switch (state) {
@@ -75,6 +107,26 @@ function startCommand(args: LaunchRenderArgs): string | undefined {
 	if (!args.application) return undefined;
 	if (args.op !== undefined && args.op !== "start") return undefined;
 	return [args.application, ...(args.args ?? [])].join(" ");
+}
+
+/** Op-specific call context (log filters, wait condition, send payload). */
+function callMeta(args: LaunchRenderArgs): string[] {
+	const meta: string[] = [];
+	switch (args.op) {
+		case "logs":
+			if (args.follow) meta.push("follow");
+			if (args.grep) meta.push(`grep /${args.grep}/`);
+			break;
+		case "wait":
+			meta.push(args.pattern ? `for /${args.pattern}/` : `for ${args.for ?? "exit"}`);
+			break;
+		case "send":
+			if (args.signal) meta.push(args.signal);
+			else if (args.text) meta.push(args.text);
+			if (args.keys?.length) meta.push(args.keys.join(" "));
+			break;
+	}
+	return meta.map(entry => previewLine(replaceTabs(entry), TRUNCATE_LENGTHS.SHORT));
 }
 
 /**

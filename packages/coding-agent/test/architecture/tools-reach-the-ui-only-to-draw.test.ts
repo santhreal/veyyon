@@ -264,7 +264,6 @@ const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/shell/eval-render.ts", ["Markdown", "Text", "type Component"]],
 	["tools/web/gh-renderer.ts", ["Text", "type Component"]],
 	["tools/shell/job-render.ts", ["Text", "type Component"]],
-	["tools/shell/launch-render.ts", ["Text", "type Component"]],
 	["tools/fs/read-render.ts", ["Text", "type Component"]],
 	["tools/core/render-utils.ts", ["type Component"]],
 	["tools/renderers.ts", ["type Component"]],
@@ -477,6 +476,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"tools/search/structure-search-view.ts",
 			"tools/search/text-search-view.ts",
 			"tools/shell/debug-view.ts",
+			"tools/shell/launch-view.ts",
 			"tools/shell/ssh-view.ts",
 			"tools/web/fetch-view.ts",
 		]);

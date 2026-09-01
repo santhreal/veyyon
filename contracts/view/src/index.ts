@@ -68,6 +68,23 @@ export interface ViewSpan {
 	 */
 	strike?: boolean;
 	/**
+	 * That the text is a run of ANOTHER program's output, captured as that program wrote it.
+	 *
+	 * The one case where a span's bytes are not the tool's words: a tool that reports a pty-backed
+	 * process states the screen that process drew, and the styles in it are the program's own
+	 * decisions rather than a colour scheme the tool picked. A tone cannot carry them, because a
+	 * captured cell is a truecolor value and a tone is a meaning; decoding the screen into tones would
+	 * be the tool inventing a palette for output it only observed.
+	 *
+	 * So the run stays verbatim, control sequences and all, and every host is told which runs those
+	 * are. A terminal replays the subset it trusts -- emphasis and colour -- over its own body colour
+	 * and strips the rest. A host that cannot replay them strips every control sequence and keeps the
+	 * text, which is what a transcript export and a browser guest do. A host that draws a span's text
+	 * without reading this member is the one case a view can leak escape bytes, which is why it is
+	 * stated on the span rather than left for a host to infer from the tool it came from.
+	 */
+	captured?: boolean;
+	/**
 	 * A glyph the host resolves from its own registry, drawn INSTEAD of `text` and in the span's tone.
 	 *
 	 * A row-level `emblem` marks what a card IS; this marks one run inside a line, which is what a

@@ -10,7 +10,8 @@ import { bashToolRenderer } from "./bash-render";
 import { debugToolView } from "./debug-view";
 import { evalToolRenderer } from "./eval-render";
 import { jobToolRenderer } from "./job-render";
-import { launchToolRenderer } from "./launch-render";
+import type { LaunchRenderArgs } from "./launch";
+import { launchToolView } from "./launch-view";
 import { sshToolView } from "./ssh-view";
 
 /**
@@ -24,7 +25,17 @@ function hasStreamedRenderArgs(args: unknown): boolean {
 
 export const shellRenderers: Record<string, ToolRenderer> = {
 	bash: bashToolRenderer as ToolRenderer,
-	launch: launchToolRenderer as ToolRenderer,
+	// Only an op that can sit produces a partial result worth animating: list, describe, stop, restart
+	// and send answer in one round trip, and a spinner over those is motion with nothing behind it.
+	launch: viewToolRenderer(launchToolView, {
+		inline: true,
+		mergeCallAndResult: true,
+		animatedPendingPreview: true,
+		animatedPartialResult: args => {
+			const op = (args as LaunchRenderArgs).op;
+			return op === "start" || op === "logs" || op === "wait";
+		},
+	}) as ToolRenderer,
 	job: jobToolRenderer as ToolRenderer,
 	debug: viewToolRenderer(debugToolView, {
 		mergeCallAndResult: true,
