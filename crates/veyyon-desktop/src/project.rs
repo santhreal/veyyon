@@ -14,10 +14,11 @@ use std::{collections::HashMap, fmt::Write as _};
 
 use serde_json::{Value, json};
 use veyyon_desktop_model::{
-	ContentBlock, HostAction, InteractionId, MessageRole, PendingDecisions, QueuePartition, Session,
-	SessionBadge, SessionId, Store, TranscriptEntry, TranscriptTree,
+	ChangesView, ContentBlock, Domains, HostAction, InteractionId, MessageRole, PendingDecisions,
+	QueuePartition, Session, SessionBadge, SessionId, Store, TerminalStatus, TranscriptEntry,
+	TranscriptTree,
 };
-use veyyon_desktop_surface::{Badge, Block, Card, Intent, Row, Section, ShellState, Turn};
+use veyyon_desktop_surface::{Badge, Block, Card, Intent, Row, Section, ShellState, TreeRow, Turn};
 
 /// How many lines a mono pane keeps before the rest is counted, not shown.
 ///
@@ -119,6 +120,127 @@ pub fn project(store: &Store, index: &mut SessionIndex, now_ms: u64, state: &mut
 		.and_then(|id| store.interactions.get(id))
 		.map(cards)
 		.unwrap_or_default();
+
+	state.tree = store
+		.domains
+		.changes
+		.as_ref()
+		.map(tree_rows)
+		.unwrap_or_default();
+	state.drawer_lines = drawer_lines(&store.domains);
+}
+
+/// The right panel's tree for a changes snapshot: one row per directory on
+/// the way to a changed file, then the file with its line counts.
+///
+/// Files are visited in path order so a directory is opened once, at the first
+/// file under it, and closed by the first path that leaves it. A deleted file
+/// is still a row: what the run removed is part of what it changed.
+#[must_use]
+pub fn tree_rows(changes: &ChangesView) -> Vec<TreeRow> {
+	let mut files: Vec<_> = changes.files.iter().collect();
+	files.sort_by(|a, b| a.path.cmp(&b.path));
+
+	let mut rows = Vec::with_capacity(files.len());
+	let mut open: Vec<&str> = Vec::new();
+	for file in files {
+		let mut parts = file
+			.path
+			.split('/')
+			.filter(|part| !part.is_empty())
+			.peekable();
+		let mut depth = 0;
+		while let Some(part) = parts.next() {
+			let is_file = parts.peek().is_none();
+			if is_file {
+				open.truncate(depth);
+				rows.push(TreeRow {
+					depth,
+					name: part.to_string(),
+					changed: Some((clamp_u32(file.additions), clamp_u32(file.deletions))),
+				});
+				break;
+			}
+			if open.get(depth) != Some(&part) {
+				open.truncate(depth);
+				open.push(part);
+				rows.push(TreeRow { depth, name: part.to_string(), changed: None });
+			}
+			depth += 1;
+		}
+	}
+	rows
+}
+
+/// The drawer's lines: the last running terminal's scrollback as plain text.
+///
+/// The terminal shown is the one opened last that is still running, or the
+/// last one opened when none is. Its scrollback is shown with the control
+/// sequences removed, bounded to `PANE_LINE_CEILING` lines from the end,
+/// which is the end an operator reads.
+#[must_use]
+pub fn drawer_lines(domains: &Domains) -> Vec<String> {
+	let shown = domains
+		.terminals
+		.iter()
+		.rev()
+		.find(|terminal| terminal.status == TerminalStatus::Running)
+		.or_else(|| domains.terminals.last());
+	let Some(terminal) = shown else {
+		return Vec::new();
+	};
+	let Some(scrollback) = domains.terminal_output.get(&terminal.id) else {
+		return Vec::new();
+	};
+	let text = String::from_utf8_lossy(&scrollback.data);
+	let plain = strip_control_sequences(&text);
+	let mut lines: Vec<&str> = plain.lines().collect();
+	if lines.len() > PANE_LINE_CEILING {
+		lines.drain(..lines.len() - PANE_LINE_CEILING);
+	}
+	lines.into_iter().map(str::to_string).collect()
+}
+
+/// Text with its ANSI control sequences removed.
+///
+/// CSI (`ESC [` through its final byte), OSC (`ESC ]` through BEL or
+/// `ESC \`) and any other two-byte escape are dropped. Carriage returns are
+/// dropped too, so a progress line that redrew itself reads as its last state
+/// rather than as a run of `\r`.
+#[must_use]
+pub fn strip_control_sequences(text: &str) -> String {
+	let mut out = String::with_capacity(text.len());
+	let mut chars = text.chars();
+	while let Some(c) = chars.next() {
+		match c {
+			'\u{1b}' => match chars.next() {
+				Some('[') => {
+					for next in chars.by_ref() {
+						if ('\u{40}'..='\u{7e}').contains(&next) {
+							break;
+						}
+					}
+				},
+				Some(']') => {
+					let mut previous = '\0';
+					for next in chars.by_ref() {
+						if next == '\u{07}' || (previous == '\u{1b}' && next == '\\') {
+							break;
+						}
+						previous = next;
+					}
+				},
+				_ => {},
+			},
+			'\r' => {},
+			_ => out.push(c),
+		}
+	}
+	out
+}
+
+fn clamp_u32(n: u64) -> u32 {
+	u32::try_from(n).unwrap_or(u32::MAX)
 }
 
 /// The session ids in a partition, in the collection's order.
@@ -449,31 +571,51 @@ fn take_interaction(
 	}
 }
 
-/// The host action an intent asks for, or `None` for one the shell finished
-/// alone or one that no longer has a target.
+/// The host actions an intent asks for, in the order they are sent; empty
+/// for one the shell finished alone or one that no longer has a target.
 ///
 /// `store` is mutated only for a decision, whose pending interaction is taken
 /// out so the next card's position still means the next card.
-pub fn action_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> Option<HostAction> {
+///
+/// Opening a session also refreshes the changes the panel shows, since the
+/// host reports them for the workspace and nothing else asks. Opening the
+/// drawer attaches to the terminal that is running, replaying its scrollback,
+/// or creates one when none is.
+pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> Vec<HostAction> {
 	let active = store.persisted.shell.active_session.clone();
 	match intent {
-		Intent::SelectSession(row) => {
-			Some(HostAction::OpenSession { session: index.session_of(*row)?.clone() })
-		},
-		Intent::Send(text) => Some(HostAction::SubmitPrompt {
-			session:     active?,
-			text:        text.clone(),
-			attachments: Vec::new(),
+		Intent::SelectSession(row) => index.session_of(*row).map_or_else(Vec::new, |session| {
+			vec![HostAction::OpenSession { session: session.clone() }, HostAction::RefreshChanges]
+		}),
+		Intent::Send(text) => active.map_or_else(Vec::new, |session| {
+			vec![HostAction::SubmitPrompt { session, text: text.clone(), attachments: Vec::new() }]
 		}),
 		Intent::Approval { card, .. }
 		| Intent::Answer { card, .. }
 		| Intent::Reply { card, .. }
 		| Intent::Plan { card, .. } => {
-			let session = active?;
-			let pending = store.interactions.get_mut(&session)?;
-			let (id, response) = take_interaction(pending, *card, intent)?;
-			Some(HostAction::RespondToInteraction { session, interaction_id: id.0, response })
+			let Some(session) = active else {
+				return Vec::new();
+			};
+			let Some(pending) = store.interactions.get_mut(&session) else {
+				return Vec::new();
+			};
+			take_interaction(pending, *card, intent).map_or_else(Vec::new, |(id, response)| {
+				vec![HostAction::RespondToInteraction { session, interaction_id: id.0, response }]
+			})
 		},
-		Intent::SelectTab(_) | Intent::ToggleDrawer => None,
+		Intent::SetDrawer { open: true } => {
+			let running = store
+				.domains
+				.terminals
+				.iter()
+				.rev()
+				.find(|terminal| terminal.status == TerminalStatus::Running);
+			vec![match running {
+				Some(terminal) => HostAction::AttachTerminal { terminal_id: terminal.id.clone() },
+				None => HostAction::CreateTerminal { cwd: None, shell: None },
+			}]
+		},
+		Intent::SelectTab(_) | Intent::SetDrawer { open: false } => Vec::new(),
 	}
 }

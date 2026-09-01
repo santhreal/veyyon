@@ -152,7 +152,10 @@ pub fn shell_widths(input: ShedInput, surface: &SurfaceTokens) -> ShellWidths {
 	let queue_px = (breakpoint.queue_width_px > 0.0).then_some(breakpoint.queue_width_px);
 	let right_panel = panel_placement(viewport, input.panel_open, breakpoint, surface);
 	let session_px = (viewport - queue_px.unwrap_or(0.0) - right_panel.inline_width()).max(0.0);
-	let composer_px = (session_px - input.gutter_px * 2.0).clamp(0.0, surface.composer.max_width_px);
+	let composer_px = input
+		.gutter_px
+		.mul_add(-2.0, session_px)
+		.clamp(0.0, surface.composer.max_width_px);
 
 	ShellWidths {
 		queue_px,

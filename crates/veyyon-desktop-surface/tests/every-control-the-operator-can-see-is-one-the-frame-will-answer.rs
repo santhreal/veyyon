@@ -191,7 +191,7 @@ fn a_dispatched_intent_reaches_the_frame_the_operator_then_looks_at() {
 			let mut view = ShellView::new(installed, fixture::with_drawer());
 			// Closed by dispatch, from the state that ships it open, so the
 			// frame below is what a click on the titlebar control produces.
-			view.dispatch(Intent::ToggleDrawer);
+			view.dispatch(Intent::SetDrawer { open: false });
 			assert!(!view.state().drawer_open, "the dispatch did not close the drawer");
 			view
 		})

@@ -286,7 +286,8 @@ fn drawer_control(
 	div()
 		.id("titlebar-drawer")
 		.on_click(cx.listener(|view, _event, _window, cx| {
-			view.dispatch(Intent::ToggleDrawer);
+			let open = !view.state().drawer_open;
+			view.dispatch(Intent::SetDrawer { open });
 			cx.notify();
 		}))
 		.hover(move |style| style.bg(hover))
@@ -305,7 +306,8 @@ fn drawer_control(
 /// those three values and never a literal. The shed needs it to know what the
 /// columns row is left with, and the strip and this must not drift apart.
 fn attention_strip_height(tokens: &TokenSet) -> f32 {
-	f32::from(tokens.spacing(SpacingStep::S1)) * 2.0 + f32::from(tokens.line_height(TextRamp::Micro))
+	f32::from(tokens.spacing(SpacingStep::S1))
+		.mul_add(2.0, f32::from(tokens.line_height(TextRamp::Micro)))
 }
 
 /// The attention strip: one line, above everything, that something is wrong.

@@ -22,7 +22,10 @@ pub use endpoint::{
 };
 pub use framing::{FrameDecoder, FramingError, MAX_FRAME_BYTES, encode_request};
 pub use link::{HostLink, TRANSPORT_THREAD_NAME};
-pub use project::{PANE_LINE_CEILING, SessionIndex, action_for, elapsed_label, project};
+pub use project::{
+	PANE_LINE_CEILING, SessionIndex, actions_for, drawer_lines, elapsed_label, project,
+	strip_control_sequences, tree_rows,
+};
 pub use reconnect::{
 	DeterministicJitter, FATAL_MESSAGE, INITIAL_DELAY_MS, JITTER_PCT, JitterSource, MAX_ATTEMPTS,
 	MAX_DELAY_MS, MAX_ELAPSED_MS, MULTIPLIER, ReconnectError, ReconnectPolicy, SeededJitter,
