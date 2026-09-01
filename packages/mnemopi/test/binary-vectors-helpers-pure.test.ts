@@ -173,7 +173,7 @@ describe("isReadonlyMap", () => {
 		expect(isReadonlyMap({})).toBe(false);
 	});
 	it("returns false for array", () => {
-		expect(isReadonlyMap([])).toBe(false);
+		expect(isReadonlyMap([] as unknown as ReadonlyMap<string, Uint8Array>)).toBe(false);
 	});
 });
 

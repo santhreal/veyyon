@@ -108,7 +108,7 @@ describe("toFields", () => {
 		expect(toFields(null)).toBeUndefined();
 	});
 	it("returns undefined for array", () => {
-		expect(toFields([1, 2])).toEqual([1, 2]);
+		expect(toFields([1, 2]) as unknown).toEqual([1, 2]);
 	});
 	it("returns undefined for string", () => {
 		expect(toFields("hello")).toBeUndefined();

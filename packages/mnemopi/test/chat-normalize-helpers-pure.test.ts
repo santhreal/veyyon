@@ -59,7 +59,7 @@ describe("normalizeChat", () => {
 	});
 	it("lowercases text", () => {
 		const result = normalizeChat("Hello World");
-		expect(result?.toLowerCase()).toBe(result);
+		expect(result?.toLowerCase()).toBe(result as string | undefined);
 	});
 	it("preserves meaningful content", () => {
 		const result = normalizeChat("please fix the bug in the parser");

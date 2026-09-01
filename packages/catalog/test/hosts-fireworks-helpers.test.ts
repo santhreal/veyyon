@@ -178,7 +178,7 @@ describe("KNOWN_HOSTS", () => {
 		expect(KNOWN_HOSTS.anthropic.providers).toContain("anthropic");
 	});
 	it("fireworks has no providers", () => {
-		expect(KNOWN_HOSTS.fireworks.providers).toBeUndefined();
+		expect((KNOWN_HOSTS.fireworks as { providers?: string[] }).providers).toBeUndefined();
 	});
 	it("xiaomi has providerPrefixes", () => {
 		expect(KNOWN_HOSTS.xiaomi.providerPrefixes).toContain("xiaomi-token-plan-");

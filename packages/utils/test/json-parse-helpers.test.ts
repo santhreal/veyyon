@@ -13,19 +13,19 @@ describe("parseJsonWithRepair", () => {
 		expect(parseJsonWithRepair<Record<string, string>>('{"key":"value"}')).toEqual({ key: "value" });
 	});
 	it("parses valid JSON array", () => {
-		expect(parseJsonWithRepair("[1,2,3]")).toEqual([1, 2, 3]);
+		expect(parseJsonWithRepair<number[]>("[1,2,3]")).toEqual([1, 2, 3]);
 	});
 	it("parses valid JSON string", () => {
-		expect(parseJsonWithRepair('"hello"')).toBe("hello");
+		expect(parseJsonWithRepair<string>('"hello"')).toBe("hello");
 	});
 	it("parses valid JSON number", () => {
-		expect(parseJsonWithRepair("42")).toBe(42);
+		expect(parseJsonWithRepair<number>("42")).toBe(42);
 	});
 	it("parses valid JSON boolean", () => {
-		expect(parseJsonWithRepair("true")).toBe(true);
+		expect(parseJsonWithRepair<boolean>("true")).toBe(true);
 	});
 	it("parses valid JSON null", () => {
-		expect(parseJsonWithRepair("null")).toBe(null);
+		expect(parseJsonWithRepair<null>("null")).toBe(null);
 	});
 	it("repairs trailing comma in object", () => {
 		expect(parseJsonWithRepair<Record<string, string>>('{"key":"value",}')).toEqual({ key: "value" });

@@ -19,7 +19,7 @@ import {
 } from "../src/provider-models/wire-capabilities";
 import type { Api, Model } from "../src/types";
 
-function model(provider: string, api: Api | undefined, id: string): Pick<Model, "provider" | "api" | "id"> {
+function model(provider: string, api: Api, id: string): Pick<Model, "provider" | "api" | "id"> {
 	return { provider, api, id };
 }
 

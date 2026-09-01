@@ -3,22 +3,22 @@ import { canonicalizeEfforts, Effort, isEffort, THINKING_EFFORTS } from "../src/
 
 describe("Effort enum", () => {
 	it("Minimal is 'minimal'", () => {
-		expect(Effort.Minimal).toBe("minimal");
+		expect(Effort.Minimal).toBe("minimal" as typeof Effort.Minimal);
 	});
 	it("Low is 'low'", () => {
-		expect(Effort.Low).toBe("low");
+		expect(Effort.Low).toBe("low" as typeof Effort.Low);
 	});
 	it("Medium is 'medium'", () => {
-		expect(Effort.Medium).toBe("medium");
+		expect(Effort.Medium).toBe("medium" as typeof Effort.Medium);
 	});
 	it("High is 'high'", () => {
-		expect(Effort.High).toBe("high");
+		expect(Effort.High).toBe("high" as typeof Effort.High);
 	});
 	it("XHigh is 'xhigh'", () => {
-		expect(Effort.XHigh).toBe("xhigh");
+		expect(Effort.XHigh).toBe("xhigh" as typeof Effort.XHigh);
 	});
 	it("Max is 'max'", () => {
-		expect(Effort.Max).toBe("max");
+		expect(Effort.Max).toBe("max" as typeof Effort.Max);
 	});
 });
 

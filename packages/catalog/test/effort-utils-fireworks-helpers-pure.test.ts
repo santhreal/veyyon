@@ -183,7 +183,7 @@ describe("toFields", () => {
 		expect(toFields(undefined)).toBeUndefined();
 	});
 	it("returns record for array (arrays are objects)", () => {
-		expect(toFields([1, 2])).toEqual([1, 2]);
+		expect(toFields([1, 2]) as unknown).toEqual([1, 2]);
 	});
 });
 

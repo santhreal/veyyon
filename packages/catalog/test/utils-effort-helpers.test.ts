@@ -278,22 +278,22 @@ describe("isRecord", () => {
 
 describe("Effort enum", () => {
 	it("has Minimal value", () => {
-		expect(Effort.Minimal).toBe("minimal");
+		expect(Effort.Minimal).toBe("minimal" as typeof Effort.Minimal);
 	});
 	it("has Low value", () => {
-		expect(Effort.Low).toBe("low");
+		expect(Effort.Low).toBe("low" as typeof Effort.Low);
 	});
 	it("has Medium value", () => {
-		expect(Effort.Medium).toBe("medium");
+		expect(Effort.Medium).toBe("medium" as typeof Effort.Medium);
 	});
 	it("has High value", () => {
-		expect(Effort.High).toBe("high");
+		expect(Effort.High).toBe("high" as typeof Effort.High);
 	});
 	it("has XHigh value", () => {
-		expect(Effort.XHigh).toBe("xhigh");
+		expect(Effort.XHigh).toBe("xhigh" as typeof Effort.XHigh);
 	});
 	it("has Max value", () => {
-		expect(Effort.Max).toBe("max");
+		expect(Effort.Max).toBe("max" as typeof Effort.Max);
 	});
 });
 

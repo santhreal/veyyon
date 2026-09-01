@@ -75,7 +75,7 @@ describe("createReferenceResolver", () => {
 		expect(typeof createReferenceResolver(refs)).toBe("function");
 	});
 	it("resolves from provider refs first", () => {
-		const refs = new Map([["test-model", { id: "test-model", provider: "test" }]]);
+		const refs = new Map([["test-model", { id: "test-model", provider: "test" }]]) as never;
 		const resolver = createReferenceResolver(refs);
 		const result = resolver("test-model");
 		expect(result).toBeDefined();

@@ -121,7 +121,7 @@ describe("adjustWeights", () => {
 		const intent = {
 			category: "temporal" as const,
 			confidence: 0.5,
-			signals: ["temporal"],
+			signals: ["temporal" as const],
 			vec_bias: 2.0,
 			fts_bias: 1.0,
 			importance_bias: 1.0,
