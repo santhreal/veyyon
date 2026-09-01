@@ -71,6 +71,10 @@ fn no_desktop_crate_puts_a_raw_number_in_a_style_position() {
 			scan_source(&file, &content, &mut violations);
 		}
 	}
+	println!(
+		"lint_no_numeric_style_literals scanned {scanned_files} file(s) across {} crate(s)",
+		targets.len()
+	);
 
 	assert!(
 		scanned_files > 0,
@@ -102,6 +106,10 @@ fn the_sweep_reaches_the_crates_that_hold_the_surfaces() {
 	assert!(
 		discovered.iter().any(|name| name == "veyyon-desktop-scene"),
 		"veyyon-desktop-scene is a desktop crate and must be swept; discovered {discovered:?}",
+	);
+	assert!(
+		discovered.iter().any(|name| name == "veyyon-desktop-surface"),
+		"veyyon-desktop-surface is a desktop crate and must be swept; discovered {discovered:?}",
 	);
 	assert!(
 		!discovered
