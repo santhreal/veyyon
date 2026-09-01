@@ -185,17 +185,19 @@ describe("web_search tool differential", () => {
 		return rows.map(row => {
 			const plateless = row.replaceAll("\u001b[49m", "");
 			const words = SOURCE_ROW.test(plateless) ? stripVTControlCharacters(plateless) : plateless;
-			return withoutIdleResets(words)
-				// A held-back note, as the count and the unit both arms state.
-				.replace(/(?:\x1b\[[0-9;:]*m)*(… \d+ more \w+).*$/u, "$1")
-				// Either arm's separator between the facts of one row, including the one left at the end of a
-				// row the host wrapped mid-list.
-				.replace(dot, " ")
-				.replace(/, /g, " ")
-				// Whitespace a tail's placement and a plate's fill decide.
-				.replace(/ {2,}/g, " ")
-				.trimEnd()
-				.replace(/,$/, "");
+			return (
+				withoutIdleResets(words)
+					// A held-back note, as the count and the unit both arms state.
+					.replace(/(?:\x1b\[[0-9;:]*m)*(… \d+ more \w+).*$/u, "$1")
+					// Either arm's separator between the facts of one row, including the one left at the end of a
+					// row the host wrapped mid-list.
+					.replace(dot, " ")
+					.replace(/, /g, " ")
+					// Whitespace a tail's placement and a plate's fill decide.
+					.replace(/ {2,}/g, " ")
+					.trimEnd()
+					.replace(/,$/, "")
+			);
 		});
 	}
 
@@ -298,7 +300,9 @@ describe("web_search tool differential", () => {
 		});
 
 		it("dates a source by the date it was published when it reports no age", () => {
-			const result = found({ sources: [{ title: "Dated", url: "https://example.com/a", publishedDate: "2024-01-02" }] });
+			const result = found({
+				sources: [{ title: "Dated", url: "https://example.com/a", publishedDate: "2024-01-02" }],
+			});
 			expect(comparable(viewRows(result, EXPANDED))).toEqual(comparable(oracleRows(result, HOST_EXPANDED)));
 		});
 
@@ -510,7 +514,8 @@ describe("web_search tool differential", () => {
 		it("sets a source's age at the end of a row that names no page, where main set it beside the title", () => {
 			const result = found({ sources: [{ title: "Local", url: "", ageSeconds: 7200 }] });
 			const drawn = unstyled(viewRows(result, EXPANDED, undefined, 40)).find(row => row.includes("Local")) ?? "";
-			const main = unstyled(oracleRows(result, HOST_EXPANDED, undefined, 40)).find(row => row.includes("Local")) ?? "";
+			const main =
+				unstyled(oracleRows(result, HOST_EXPANDED, undefined, 40)).find(row => row.includes("Local")) ?? "";
 			expect(main).toEndWith("Local 2h ago");
 			expect(drawn).toMatch(/Local {2,}2h ago$/);
 		});

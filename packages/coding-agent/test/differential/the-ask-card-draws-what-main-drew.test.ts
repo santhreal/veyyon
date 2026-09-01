@@ -262,9 +262,21 @@ describe("ask tool differential", () => {
 			{ question: "Pick many", multi: true, options: ["Alpha", "Beta"], selectedOptions: ["Alpha", "Beta"] },
 			{ question: "Pick one", multi: false, options: ["Alpha", "Beta"], selectedOptions: [] },
 			{ question: LONG_QUESTION, multi: false, selectedOptions: ["Alpha"] },
-			{ question: "Details?", multi: false, options: [], selectedOptions: [], customInput: "first line\nsecond line" },
+			{
+				question: "Details?",
+				multi: false,
+				options: [],
+				selectedOptions: [],
+				customInput: "first line\nsecond line",
+			},
 			{ question: "Details?", multi: false, options: [], selectedOptions: [], customInput: "" },
-			{ question: "Pick one", multi: false, options: ["Alpha"], selectedOptions: ["Alpha"], note: "a\tnote\nsecond" },
+			{
+				question: "Pick one",
+				multi: false,
+				options: ["Alpha"],
+				selectedOptions: ["Alpha"],
+				note: "a\tnote\nsecond",
+			},
 			{ question: "Pick one", multi: false, options: ["Alpha"], selectedOptions: ["Alpha"], timedOut: true },
 		];
 		for (const details of results) {
@@ -285,9 +297,29 @@ describe("ask tool differential", () => {
 		const results: AskToolDetails[] = [
 			{
 				results: [
-					{ id: "lang", question: "Which **language**?", options: ["TypeScript", "Rust"], multi: false, selectedOptions: ["Rust"] },
-					{ id: "hosts", question: "Which hosts?", options: ["one", "two"], multi: true, selectedOptions: ["one", "two"], note: "why" },
-					{ id: "free", question: "Anything else?", options: [], multi: false, selectedOptions: [], customInput: "a note\nand more" },
+					{
+						id: "lang",
+						question: "Which **language**?",
+						options: ["TypeScript", "Rust"],
+						multi: false,
+						selectedOptions: ["Rust"],
+					},
+					{
+						id: "hosts",
+						question: "Which hosts?",
+						options: ["one", "two"],
+						multi: true,
+						selectedOptions: ["one", "two"],
+						note: "why",
+					},
+					{
+						id: "free",
+						question: "Anything else?",
+						options: [],
+						multi: false,
+						selectedOptions: [],
+						customInput: "a note\nand more",
+					},
 				],
 			},
 			{
@@ -298,7 +330,13 @@ describe("ask tool differential", () => {
 			},
 			{
 				results: [
-					{ id: "lang", question: "Which language?", options: ["TypeScript", "Rust"], multi: false, selectedOptions: ["Rust"] },
+					{
+						id: "lang",
+						question: "Which language?",
+						options: ["TypeScript", "Rust"],
+						multi: false,
+						selectedOptions: ["Rust"],
+					},
 					{ id: "hosts", question: "Which hosts?", options: ["one", "two"], multi: true, selectedOptions: [] },
 				],
 			},

@@ -168,17 +168,18 @@ describe("edit tool differential", () => {
 	const plain = (rows: readonly string[]): string[] => rows.map(row => stripVTControlCharacters(row));
 
 	/** A row's own text, with the card's rail and the pad around it taken off. */
-	const body = (rows: readonly string[]): string[] =>
-		plain(rows).map(row => row.replace(/^▏\s?/, "").trimEnd());
+	const body = (rows: readonly string[]): string[] => plain(rows).map(row => row.replace(/^▏\s?/, "").trimEnd());
 
 	/** The pad a row carries between its last glyph and the reset that closes it. */
 	const TRAILING_PAD = / +(?=(?:\u001b\[[0-9;]*m)*$)/;
 
 	/** Main's bracketed stats suffix: a dim `⟦`, the coloured counts, a dim `/` between them, a dim `⟧`. */
-	const MAIN_STATS = /\u001b\[[0-9;]+m⟦\u001b\[39m((?:\u001b\[[0-9;]+m[+-]\d+\u001b\[39m|\u001b\[[0-9;]+m\/\u001b\[39m)+)\u001b\[[0-9;]+m⟧\u001b\[39m/;
+	const MAIN_STATS =
+		/\u001b\[[0-9;]+m⟦\u001b\[39m((?:\u001b\[[0-9;]+m[+-]\d+\u001b\[39m|\u001b\[[0-9;]+m\/\u001b\[39m)+)\u001b\[[0-9;]+m⟧\u001b\[39m/;
 
 	/** The host's meta run for the same counts: one dim run holding the coloured counts and its own dot. */
-	const VIEW_STATS = /\u001b\[[0-9;]+m((?:\u001b\[[0-9;]+m[+-]\d+\u001b\[39m)(?: · \u001b\[[0-9;]+m[+-]\d+\u001b\[39m)*)\u001b\[39m/;
+	const VIEW_STATS =
+		/\u001b\[[0-9;]+m((?:\u001b\[[0-9;]+m[+-]\d+\u001b\[39m)(?: · \u001b\[[0-9;]+m[+-]\d+\u001b\[39m)*)\u001b\[39m/;
 
 	/** The dim `/` main wrote between two counts. */
 	const MAIN_STATS_SEPARATOR = /\u001b\[[0-9;]+m\/\u001b\[39m/g;
@@ -253,13 +254,19 @@ describe("edit tool differential", () => {
 				withoutNoteRow(oracleResult(result, args)).map(row => row.replace(NOTE_COLOUR_RESIDUE, "")),
 				"collapsed",
 			);
-			sameRows(viewResult(result, args, { expanded: true }), oracleResult(result, args, { expanded: true }), "expanded");
+			sameRows(
+				viewResult(result, args, { expanded: true }),
+				oracleResult(result, args, { expanded: true }),
+				"expanded",
+			);
 			for (const rows of [viewResult(result, args), oracleResult(result, args)]) {
 				expect(plain(rows).find(row => NOTE_ROW.test(row))).toContain("23 more lines");
 			}
 			// Anti-vacuity: the collapsed card really is cut, and expanding it really does reveal the rest.
 			expect(viewResult(result, args).length).toBeLessThan(viewResult(result, args, { expanded: true }).length);
-			expect(plain(viewResult(result, args, { expanded: true })).some(row => row.includes("context 0.0"))).toBe(true);
+			expect(plain(viewResult(result, args, { expanded: true })).some(row => row.includes("context 0.0"))).toBe(
+				true,
+			);
 			expect(plain(viewResult(result, args)).some(row => row.includes("context 0.0"))).toBe(false);
 		});
 
@@ -373,7 +380,11 @@ describe("edit tool differential", () => {
 			];
 			for (const { label, result, args } of cases) {
 				sameRows(viewResult(result, args), oracleResult(result, args), label);
-				sameRows(viewResult(result, args, { expanded: true }), oracleResult(result, args, { expanded: true }), label);
+				sameRows(
+					viewResult(result, args, { expanded: true }),
+					oracleResult(result, args, { expanded: true }),
+					label,
+				);
 			}
 			// Anti-vacuity: the reader's version of a failure is the one that reaches the card, and a
 			// failed edit states no counts even when the change it failed halfway through is known.
@@ -412,9 +423,7 @@ describe("edit tool differential", () => {
 				};
 				const editedArgs: EditViewArgs = { file_path: `${HOME}/repo/src/demo.ts` };
 				expect(linkTargets(viewResult(edited, editedArgs))).toEqual(linkTargets(oracleResult(edited, editedArgs)));
-				expect(linkTargets(viewResult(edited, editedArgs))).toEqual([
-					`file://${HOME}/repo/src/demo.ts?line=11`,
-				]);
+				expect(linkTargets(viewResult(edited, editedArgs))).toEqual([`file://${HOME}/repo/src/demo.ts?line=11`]);
 				const moved: EditViewResult = {
 					content: [{ type: "text", text: "x" }],
 					details: { diff: DIFF, path: `${HOME}/repo/src/new.ts`, move: `${HOME}/repo/src/new.ts` },
@@ -447,9 +456,13 @@ describe("edit tool differential", () => {
 		});
 
 		it("states the file's language on the row, which a host with a glyph for it draws", () => {
-			const view = editToolView.renderResult(updated(DIFF), { expanded: false, partial: false }, {
-				file_path: "src/demo.ts",
-			});
+			const view = editToolView.renderResult(
+				updated(DIFF),
+				{ expanded: false, partial: false },
+				{
+					file_path: "src/demo.ts",
+				},
+			);
 			expect(framedView(view).header.language).toBe("typescript");
 			// A call whose path has not arrived names no language, so a host draws no glyph for one.
 			expect(framedView(editToolView.renderCall({ previewDiff: DIFF }, { expanded: false })).header.language).toBe(
@@ -524,7 +537,10 @@ describe("edit tool differential", () => {
 
 		it("wraps a row wider than the card the same way, gutter and all", () => {
 			const wide = updated(`+12│ ${"x".repeat(120)}`);
-			sameRows(viewResult(wide, { file_path: "src/demo.ts" }, {}, 60), oracleResult(wide, { file_path: "src/demo.ts" }, {}, 60));
+			sameRows(
+				viewResult(wide, { file_path: "src/demo.ts" }, {}, 60),
+				oracleResult(wide, { file_path: "src/demo.ts" }, {}, 60),
+			);
 		});
 	});
 
@@ -661,13 +677,13 @@ describe("edit tool differential", () => {
 			// Every row the two windows share is the same row: the view spends one of its ten on the
 			// note, so it keeps the nine newest where main kept ten.
 			const rowsOf = (rows: readonly string[]): string[] =>
-				plain(rows).filter(row => /│ line \d+/.test(row)).map(row => row.trimEnd());
+				plain(rows)
+					.filter(row => /│ line \d+/.test(row))
+					.map(row => row.trimEnd());
 			const drawn = rowsOf(viewCall(streaming));
 			const oracle = rowsOf(oracleCall(streaming));
 			expect(drawn.length).toBe(oracle.length - 1);
-			expect(drawn.map(row => row.replace(/\s+$/, ""))).toEqual(
-				oracle.slice(1).map(row => row.replace(/\s+$/, "")),
-			);
+			expect(drawn.map(row => row.replace(/\s+$/, ""))).toEqual(oracle.slice(1).map(row => row.replace(/\s+$/, "")));
 			// Expanded, the window is the viewport less the headroom the settled card will need, so it
 			// is still a window: the same newest rows as main's, one fewer, under the same note.
 			const drawnWide = rowsOf(viewCall(streaming, true));
@@ -679,7 +695,11 @@ describe("edit tool differential", () => {
 		});
 
 		it("exception cell: a card that is still arriving carries the host's streaming row", () => {
-			const args: EditViewArgs = { file_path: "src/demo.ts", previewDiff: DIFF, preview: { diff: DIFF, firstChangedLine: undefined } };
+			const args: EditViewArgs = {
+				file_path: "src/demo.ts",
+				previewDiff: DIFF,
+				preview: { diff: DIFF, firstChangedLine: undefined },
+			};
 			expect(plain(viewCall(args)).at(-1)).toContain("… (streaming)");
 			expect(plain(viewCall(args, true)).at(-1)).toContain("… (streaming)");
 			expect(plain(oracleCall(args)).at(-1)).toContain("(preview)");

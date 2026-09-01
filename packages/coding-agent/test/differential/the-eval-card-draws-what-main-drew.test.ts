@@ -59,7 +59,7 @@ import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import type { EvalCellResult, EvalStatusEvent, EvalToolDetails } from "@veyyon/coding-agent/eval/types";
 import { theme } from "@veyyon/coding-agent/theme/theme";
-import { type EvalRenderArgs, evalToolView, type EvalViewResult } from "@veyyon/coding-agent/tools/shell/eval-view";
+import { type EvalRenderArgs, type EvalViewResult, evalToolView } from "@veyyon/coding-agent/tools/shell/eval-view";
 import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import * as evalOracle from "../oracles/eval-main-renderer";
@@ -86,13 +86,11 @@ describe("eval tool differential", () => {
 		details,
 	});
 
-	function viewLines(
-		value: EvalViewResult,
-		context: ToolViewContext,
-		width = WIDE,
-		args?: EvalRenderArgs,
-	): string[] {
-		return renderCompLines(drawToolView(evalToolView.renderResult(value, context, args), theme, context.frame), width);
+	function viewLines(value: EvalViewResult, context: ToolViewContext, width = WIDE, args?: EvalRenderArgs): string[] {
+		return renderCompLines(
+			drawToolView(evalToolView.renderResult(value, context, args), theme, context.frame),
+			width,
+		);
 	}
 
 	function oracleLines(
@@ -290,10 +288,7 @@ describe("eval tool differential", () => {
 
 	it("exception cell: a call is one card whose cells are groups, and the rows inside them are main's", () => {
 		const details: EvalToolDetails = {
-			cells: [
-				cell({ title: "imports" }),
-				cell({ index: 1, title: "load", code: "cfg = load()", output: "ok" }),
-			],
+			cells: [cell({ title: "imports" }), cell({ index: 1, title: "load", code: "cfg = load()", output: "ok" })],
 		};
 		const drawn = unstyled(viewLines(result(details), COLLAPSED));
 		const oracle = unstyled(oracleLines(result(details), HOST_COLLAPSED_OPTS));
@@ -398,7 +393,9 @@ describe("eval tool differential", () => {
 			expect(oracle.join("\n")).toContain(fact);
 		}
 		// A COLLAPSED helper list is still main's tree, which the byte-for-byte cell above proves.
-		expect(unstyled(viewLines(result({ cells: [cell({ statusEvents: HELPERS })] }), COLLAPSED)).join("\n")).toContain("├─");
+		expect(unstyled(viewLines(result({ cells: [cell({ statusEvents: HELPERS })] }), COLLAPSED)).join("\n")).toContain(
+			"├─",
+		);
 		// The row that opens the log is a section label here, where main wrote a dim divider inside the
 		// output. Same word, and the colour is the host's chrome rather than either renderer's choice.
 		const collapsed = viewLines(result({ cells: [cell({ statusEvents: HELPERS })] }), COLLAPSED);
@@ -445,7 +442,10 @@ describe("eval tool differential", () => {
 	});
 
 	it("exception cell: a result with no cell is a headed block set two columns in", () => {
-		const value = result({ statusEvents: [{ op: "log", message: "kernel down" }] }, "eval failed to start\nsecond line");
+		const value = result(
+			{ statusEvents: [{ op: "log", message: "kernel down" }] },
+			"eval failed to start\nsecond line",
+		);
 		const drawn = unstyled(viewLines(value, COLLAPSED));
 		const oracle = unstyled(oracleLines(value, HOST_COLLAPSED_OPTS));
 		// Main built one `Text` whose first row was blank and whose rows sat in column zero, and drew
@@ -461,7 +461,9 @@ describe("eval tool differential", () => {
 	});
 
 	it("exception cell: a card that is still arriving carries the host's streaming row", () => {
-		const details: EvalToolDetails = { cells: [cell({ status: "running", output: "partial", durationMs: undefined })] };
+		const details: EvalToolDetails = {
+			cells: [cell({ status: "running", output: "partial", durationMs: undefined })],
+		};
 		const context: ToolViewContext = { expanded: false, partial: true, frame: 2 };
 		const drawn = unstyled(viewLines(result(details), context));
 		const oracle = unstyled(oracleLines(result(details), { expanded: false, isPartial: true, spinnerFrame: 2 }));
