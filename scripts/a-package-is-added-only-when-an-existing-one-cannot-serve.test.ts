@@ -66,8 +66,17 @@ import { typeScriptMembers } from "./workspace-layout";
  * `utils` is imported by the plugins the loader has to stay above, so a registry there would be a
  * cycle. A future rise still needs the sentence above: which existing package was considered and
  * why it could not serve.
+ *
+ * The count went 20 -> 21 with `plugins/web`. Eighty site handlers and the page loader turn a URL
+ * into markdown and need no part of the agent: they take a `ScrapeServices` object for the four
+ * things a host owns and import nothing else from it. `coding-agent` is where they were and is what
+ * the split removes, because a handler there reached settings, storage, the tool manager and the
+ * cancellation class, and 16k lines of site-specific parsing sat inside the CLI. `utils` is imported
+ * by everything, so scrapers there would put linkedom and the fetch ladder under every package;
+ * `contracts/*` may hold no runtime; and no other plugin is about retrieval. A future rise still
+ * needs the sentence above: which existing package was considered and why it could not serve.
  */
-const PACKAGE_BUDGET = 20;
+const PACKAGE_BUDGET = 21;
 
 /**
  * Every workspace member, as `<root>/<name>`.

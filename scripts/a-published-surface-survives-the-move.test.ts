@@ -367,7 +367,8 @@ describe("a published surface survives the move", () => {
 	it("(b2) every relocated subpath names a key the manifest still publishes", () => {
 		// A reason sentence excuses a removal; a successor key proves the entry point is still reachable.
 		// The old spelling is gone by design, so the claim worth testing is that its modules are served
-		// under the new one.
+		// under the new one. A successor written as a full specifier left the package altogether, and is
+		// checked against the manifest that took it.
 		const unservedRelocations: Array<{ package: string; from: string; to: string }> = [];
 		let checked = 0;
 
@@ -379,14 +380,18 @@ describe("a published surface survives the move", () => {
 			for (const [from, note] of Object.entries(documentedMap)) {
 				checked++;
 				expect(note.why.length).toBeGreaterThan(20);
-				if (!headPkg.exportsKeys.includes(note.to)) {
+				const successorPackage = note.to.startsWith("@")
+					? HEAD_PACKAGES.get(note.to.split("/").slice(0, 2).join("/"))
+					: headPkg;
+				const successorKey = note.to.startsWith("@") ? `./${note.to.split("/").slice(2).join("/")}` : note.to;
+				if (!successorPackage?.exportsKeys.includes(successorKey)) {
 					unservedRelocations.push({ package: name, from, to: note.to });
 				}
 			}
 		}
 
 		expect(unservedRelocations).toEqual([]);
-		expect(checked).toBe(29);
+		expect(checked).toBe(31);
 	});
 
 	/**
@@ -417,9 +422,11 @@ describe("a published surface survives the move", () => {
 					continue;
 				}
 				expect(note.why.length).toBeGreaterThan(20);
-				// A successor either stays inside the package (`./x`) or names another package outright.
+				// A successor either stays inside the package (`./x`) or names another package outright, and
+				// a bare package name is that package's root subpath rather than an empty one.
+				const successorTail = note.to.split("/").slice(2).join("/");
 				const [successorPackage, successorSubpath] = note.to.startsWith("@")
-					? [note.to.split("/").slice(0, 2).join("/"), `./${note.to.split("/").slice(2).join("/")}`]
+					? [note.to.split("/").slice(0, 2).join("/"), successorTail === "" ? "." : `./${successorTail}`]
 					: [name, note.to];
 				const successorPkg = HEAD_PACKAGES.get(successorPackage);
 				if (successorPkg === undefined || !successorPkg.resolvedSubpaths.includes(successorSubpath)) {
@@ -466,13 +473,19 @@ describe("a published surface survives the move", () => {
 	 * Two rows left the same way: the status row's secrets footer suite was published under both
 	 * spellings and this branch relocated them with the directory, and main then deleted the segment
 	 * the suite covers along with the suite, so the baseline serves neither.
+	 *
+	 * 167 of the coding-agent rows are the web extraction, each subpath served twice: 163 into
+	 * `@veyyon/web` — the 81 site handlers under `./scrapers`, the scrapers barrel under the package
+	 * root, the Parallel client, the markdown-link helper and the browser fingerprint constants the
+	 * handlers read — and 6 into `@veyyon/utils`, the turndown wrapper and the markdown table
+	 * formatter, which stay off the plugin so a tool renders a table without loading a scraper.
 	 */
 	it("(b4) resolved-subpath relocations are pinned by exact equality", () => {
 		const rows = LEDGER.relocations.resolvedSubpaths;
 		expect(Object.keys(rows).sort()).toEqual(["@veyyon/coding-agent", "@veyyon/tui"]);
 
 		const codingAgent = rows["@veyyon/coding-agent"] ?? {};
-		expect(Object.keys(codingAgent).length).toBe(1031);
+		expect(Object.keys(codingAgent).length).toBe(1198);
 		const intoKernel = Object.values(codingAgent).filter(note => note.to.startsWith("@veyyon/kernel/"));
 		expect(intoKernel.length).toBe(100);
 		const kernelConcerns = new Set(intoKernel.map(note => note.to.split("/").slice(0, 3).join("/")));
@@ -497,6 +510,7 @@ describe("a published surface survives the move", () => {
 			"@veyyon/kernel",
 			"@veyyon/tui",
 			"@veyyon/utils",
+			"@veyyon/web",
 		]);
 	});
 

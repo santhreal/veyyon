@@ -103,6 +103,7 @@ describe("every publishable package declares the workspace packages it imports",
 			"plugins/hashline",
 			"plugins/mnemopi",
 			"plugins/mode-swarm",
+			"plugins/web",
 		]);
 	});
 

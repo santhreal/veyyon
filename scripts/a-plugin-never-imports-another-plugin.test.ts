@@ -151,6 +151,7 @@ describe("a plugin never imports another plugin", () => {
 			"plugins/hashline",
 			"plugins/mnemopi",
 			"plugins/mode-swarm",
+			"plugins/web",
 		]);
 		for (const plugin of members) {
 			expect(typeScriptFiles(path.join(REPO_ROOT, plugin.member)).length).toBeGreaterThan(0);

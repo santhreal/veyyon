@@ -29868,9 +29868,9 @@
 			"differs": "changed",
 			"group": "plugin-path-expectation",
 			"reason": "A plugin's own suite asserts on the module paths of the package it tests, which moved out of `packages/`. The assertion derives them from the package root instead of spelling the old prefix.",
-			"hash": "70bf156c7fb0f9af29e3872395d50b10dd6db0123598d182acd2b67e448f638d",
+			"hash": "9746e43541d8b4c55b81fad463d40c7719e2027aa6071ad1911685a386ccd316",
 			"mainHash": "dd5e5f7e9a870e20554a2c58388c6d09bdae1ea490d7af478e8aa616083f2687",
-			"structuralHash": "49262cc84a9fdb62ab20fa152dcf7758301724a8b42fd1e420289fab80a14906",
+			"structuralHash": "a0db74d60bf9370a63723eec2e3a56d4e4f3072c1526f2adea73bc2cdae56342",
 			"mainStructuralHash": "7c4c5f0b5f75438b42b98176406925d36e31940346ab79743499a7c89f587cea"
 		},
 		"plugins/web/test/integration/youtube.test.ts": {

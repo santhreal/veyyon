@@ -404,7 +404,7 @@ const GRANDFATHERED: Readonly<Record<string, number>> = {
 	"packages/coding-agent/test/tools/task-async-fallback.test.ts": 3,
 	"packages/coding-agent/test/tools/text-search-internal-urls.test.ts": 1,
 	"packages/coding-agent/test/tools/tool-output-spill-threshold-has-one-owner.test.ts": 2,
-	"packages/coding-agent/test/tools/web-scrapers/youtube-parallel.test.ts": 1,
+	"plugins/web/test/integration/youtube-parallel.test.ts": 1,
 	"packages/coding-agent/test/tools/web-search-xai.test.ts": 1,
 	"packages/coding-agent/test/tui/a-tool-blocks-rail-moves-while-it-runs-and-cools-once-it-lands.test.ts": 4,
 	"packages/coding-agent/test/unexpected-stop-provider-boundary.test.ts": 2,
