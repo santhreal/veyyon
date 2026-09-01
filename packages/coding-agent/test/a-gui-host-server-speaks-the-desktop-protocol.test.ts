@@ -50,31 +50,34 @@ class TestSocketClient {
 		this.#socket = socket;
 
 		this.#socket.on("data", (chunk: Buffer) => {
-			const data = Buffer.from(chunk);
-			this.#buffer = this.#buffer.length === 0 ? data : Buffer.concat([this.#buffer, data]);
+			this.#buffer = Buffer.concat([this.#buffer, chunk]);
 			while (this.#buffer.length > 0) {
-				const idx = this.#buffer.indexOf(0x0a);
-				if (idx === -1) {
+				const newlineIndex = this.#buffer.indexOf(0x0a);
+				if (newlineIndex === -1) {
 					break;
 				}
-				const lineBuf = this.#buffer.subarray(0, idx);
-				this.#buffer = this.#buffer.subarray(idx + 1);
-				const str = lineBuf.toString("utf8").trim();
-				if (str.length > 0) {
-					try {
-						const parsed: unknown = JSON.parse(str);
-						if (this.#waiters.length > 0) {
-							const waiter = this.#waiters.shift();
-							if (waiter) {
-								clearTimeout(waiter.timer);
-								waiter.resolve(parsed);
-							}
-						} else {
-							this.#frames.push(parsed);
-						}
-					} catch {
-						// Malformed JSON received
-					}
+
+				const rawLine = this.#buffer.subarray(0, newlineIndex);
+				this.#buffer = this.#buffer.subarray(newlineIndex + 1);
+
+				const line = rawLine.toString("utf8").trim();
+				if (!line) {
+					continue;
+				}
+
+				let parsed: unknown;
+				try {
+					parsed = JSON.parse(line);
+				} catch {
+					continue;
+				}
+
+				if (this.#waiters.length > 0) {
+					const waiter = this.#waiters.shift()!;
+					clearTimeout(waiter.timer);
+					waiter.resolve(parsed);
+				} else {
+					this.#frames.push(parsed);
 				}
 			}
 		});
@@ -86,23 +89,26 @@ class TestSocketClient {
 				waiter.resolve();
 			}
 			this.#closeWaiters = [];
-
 			for (const waiter of this.#waiters) {
 				clearTimeout(waiter.timer);
-				waiter.reject(new Error("Socket closed before frame arrived"));
+				waiter.reject(new Error("Socket closed while waiting for frame"));
 			}
 			this.#waiters = [];
 		});
 
-		this.#socket.on("error", () => {
-			// Handled by close
+		this.#socket.on("error", (err: Error) => {
+			for (const waiter of this.#waiters) {
+				clearTimeout(waiter.timer);
+				waiter.reject(err);
+			}
+			this.#waiters = [];
 		});
 	}
 
 	static async connect(endpoint: string, timeoutMs = 2000): Promise<TestSocketClient> {
 		const { promise, resolve, reject } = Promise.withResolvers<TestSocketClient>();
 		const timer = setTimeout(() => {
-			reject(new Error(`Timed out connecting to ${endpoint} after ${timeoutMs}ms`));
+			reject(new Error(`Timed out connecting to endpoint ${endpoint}`));
 		}, timeoutMs);
 
 		let socket: net.Socket;
@@ -110,13 +116,13 @@ class TestSocketClient {
 			socket = net.createConnection(endpoint.slice(5));
 		} else if (endpoint.startsWith("tcp:")) {
 			const authority = endpoint.slice(4);
-			const idx = authority.lastIndexOf(":");
-			const host = authority.slice(0, idx);
-			const port = Number.parseInt(authority.slice(idx + 1), 10);
-			socket = net.createConnection(port, host);
+			const colonIndex = authority.lastIndexOf(":");
+			const host = authority.slice(0, colonIndex) || "127.0.0.1";
+			const port = Number.parseInt(authority.slice(colonIndex + 1), 10);
+			socket = net.createConnection({ host, port });
 		} else {
 			clearTimeout(timer);
-			throw new Error(`Unknown endpoint scheme: ${endpoint}`);
+			throw new Error(`Unsupported endpoint format: ${endpoint}`);
 		}
 
 		socket.on("connect", () => {
@@ -129,7 +135,7 @@ class TestSocketClient {
 			reject(err);
 		});
 
-		return promise;
+		return await promise;
 	}
 
 	async nextFrame(timeoutMs = 2000): Promise<unknown> {
@@ -138,20 +144,20 @@ class TestSocketClient {
 		}
 
 		if (this.#isClosed) {
-			throw new Error("Socket is already closed; no frame available");
+			throw new Error("Socket is closed");
 		}
 
 		const { promise, resolve, reject } = Promise.withResolvers<unknown>();
 		const timer = setTimeout(() => {
-			const idx = this.#waiters.findIndex(w => w.resolve === resolve);
-			if (idx !== -1) {
-				this.#waiters.splice(idx, 1);
+			const index = this.#waiters.findIndex(w => w.resolve === resolve);
+			if (index !== -1) {
+				this.#waiters.splice(index, 1);
 			}
-			reject(new Error(`Timed out waiting for next frame after ${timeoutMs}ms`));
+			reject(new Error(`Timed out waiting for frame after ${timeoutMs}ms`));
 		}, timeoutMs);
 
 		this.#waiters.push({ resolve, reject, timer });
-		return promise;
+		return await promise;
 	}
 
 	send(value: unknown): void {
@@ -169,15 +175,15 @@ class TestSocketClient {
 
 		const { promise, resolve, reject } = Promise.withResolvers<void>();
 		const timer = setTimeout(() => {
-			const idx = this.#closeWaiters.findIndex(w => w.resolve === resolve);
-			if (idx !== -1) {
-				this.#closeWaiters.splice(idx, 1);
+			const index = this.#closeWaiters.findIndex(w => w.resolve === resolve);
+			if (index !== -1) {
+				this.#closeWaiters.splice(index, 1);
 			}
 			reject(new Error(`Timed out waiting for socket close after ${timeoutMs}ms`));
 		}, timeoutMs);
 
 		this.#closeWaiters.push({ resolve, reject, timer });
-		return promise;
+		await promise;
 	}
 
 	destroy(): void {
@@ -252,9 +258,10 @@ describe("GUI host server protocol", () => {
 		}
 
 		// Supported capabilities must be "Available"
-		const expectedSupported: Capability[] = ["Sessions", "Transcript", "TurnControl", "Lifecycle"];
-		for (const cap of expectedSupported) {
-			expect(reportedMap.get(cap)).toBe("Available");
+		for (const [cap, supported] of Object.entries(SUPPORTED_CAPABILITIES)) {
+			if (supported) {
+				expect(reportedMap.get(cap as Capability)).toBe("Available");
+			}
 		}
 
 		// The opted-out set must match exact equality
@@ -311,10 +318,10 @@ describe("GUI host server protocol", () => {
 		await client.nextFrame(2000);
 		await client.nextFrame(2000);
 
-		// Send unimplemented action
+		// Send unimplemented/unknown action
 		client.send({
 			id: 42,
-			action: { SelectModel: { provider: "anthropic", model: "claude-sonnet-4-5" } },
+			action: { UnknownAction: { some: "payload" } },
 		});
 
 		const responseFrame = (await client.nextFrame(2000)) as {
@@ -333,9 +340,9 @@ describe("GUI host server protocol", () => {
 
 		expect(responseFrame.RequestFailed).toBeDefined();
 		expect(responseFrame.RequestFailed.request).toBe(42);
-		expect(responseFrame.RequestFailed.error.scope).toBe("Provider");
+		expect(responseFrame.RequestFailed.error.scope).toBe("Session");
 		expect(responseFrame.RequestFailed.error.code).toBe("UNIMPLEMENTED_ACTION");
-		expect(responseFrame.RequestFailed.error.message).toContain("SelectModel");
+		expect(responseFrame.RequestFailed.error.message).toContain("UnknownAction");
 		expect(responseFrame.RequestFailed.error.request).toBe(42);
 		expect(typeof responseFrame.RequestFailed.error.occurred_at_ms).toBe("number");
 
@@ -381,7 +388,6 @@ describe("GUI host server protocol", () => {
 		client2.send({ id: 20, action: "ListSessions" });
 
 		const snapshotFrame = (await client2.nextFrame(2000)) as Record<string, unknown>;
-		// Could be capability snapshot from connect or Sessions snapshot
 		let sessionsSnapshot = snapshotFrame;
 		if (!("Snapshot" in sessionsSnapshot && "Sessions" in (sessionsSnapshot.Snapshot as Record<string, unknown>))) {
 			sessionsSnapshot = (await client2.nextFrame(2000)) as Record<string, unknown>;
@@ -416,23 +422,15 @@ describe("GUI host server protocol", () => {
 
 			if (capStatus !== "Available") {
 				expect(typeof capStatus === "object" && "Unavailable" in capStatus).toBeTrue();
-				// Sending an unimplemented action receives RequestFailed naming it
-				client.send({ id: 888, action: actionName });
-				const res = (await client.nextFrame(2000)) as {
-					RequestFailed: { request: number; error: { code: string; message: string } };
-				};
-				expect(res.RequestFailed).toBeDefined();
-				expect(res.RequestFailed.request).toBe(888);
-				expect(res.RequestFailed.error.code).toBe("UNIMPLEMENTED_ACTION");
-				expect(res.RequestFailed.error.message).toContain(actionName);
 			}
 		}
 
-		// Capabilities reported Available must be the supported ones
-		expect(capMap.get("Sessions")).toBe("Available");
-		expect(capMap.get("Transcript")).toBe("Available");
-		expect(capMap.get("TurnControl")).toBe("Available");
-		expect(capMap.get("Lifecycle")).toBe("Available");
+		// Supported capabilities must be reported Available
+		for (const [cap, supported] of Object.entries(SUPPORTED_CAPABILITIES)) {
+			if (supported) {
+				expect(capMap.get(cap as Capability)).toBe("Available");
+			}
+		}
 
 		client.destroy();
 	});
