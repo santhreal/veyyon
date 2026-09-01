@@ -305,6 +305,7 @@ export const repoScriptTests = [
 	"scripts/a-generated-doc-says-so-on-its-first-line.test.ts",
 	"scripts/a-local-action-is-called-with-everything-it-requires.test.ts",
 	"scripts/a-module-is-imported-at-the-top-of-its-file.test.ts",
+	"scripts/a-package-exports-its-public-surface.test.ts",
 	"scripts/a-package-is-added-only-when-an-existing-one-cannot-serve.test.ts",
 	"scripts/a-shipped-module-arrives-with-a-test-that-names-it.test.ts",
 	"scripts/a-suite-is-named-for-the-behavior-it-defends.test.ts",

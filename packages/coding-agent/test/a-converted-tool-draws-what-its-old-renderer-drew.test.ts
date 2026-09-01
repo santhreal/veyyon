@@ -2865,7 +2865,13 @@ describe("ast_edit tool differential", () => {
 		const calls: AstEditViewArgs[] = [
 			{ ops: [{ pat: "foo($A)", out: "bar($A)" }] },
 			{ ops: [{ pat: "foo($A)", out: "bar($A)" }], paths: ["src", "test"] },
-			{ ops: [{ pat: "a()", out: "b()" }, { pat: "c()", out: "d()" }], paths: ["src"] },
+			{
+				ops: [
+					{ pat: "a()", out: "b()" },
+					{ pat: "c()", out: "d()" },
+				],
+				paths: ["src"],
+			},
 			// A pattern is source text: multi-line and tab-indented, which the row collapses.
 			{ ops: [{ pat: "class $_ {\n\tmethod() { $$$B }\n}", out: "x" }] },
 			{ ops: [] },
@@ -2901,7 +2907,12 @@ describe("ast_edit tool differential", () => {
 				drawToolView(
 					lineView(
 						astEditToolView.renderCall(
-							{ ops: [{ pat: "a()", out: "b()" }, { pat: "c()", out: "d()" }] },
+							{
+								ops: [
+									{ pat: "a()", out: "b()" },
+									{ pat: "c()", out: "d()" },
+								],
+							},
 							COLLAPSED,
 						),
 					),
@@ -3126,9 +3137,7 @@ describe("ast_edit tool differential", () => {
 		expect(PREVIEW_LIMITS.COLLAPSED_LINES * 2).toBeLessThan(3 + 1 + 3);
 		// Expanded, neither arm holds anything back and neither writes the sentence.
 		expect(stripVTControlCharacters(viewLines(value, EXPANDED, 200).join("\n"))).not.toContain("more changes");
-		expect(stripVTControlCharacters(oracleLines(value, HOST_EXPANDED, 200).join("\n"))).not.toContain(
-			"more changes",
-		);
+		expect(stripVTControlCharacters(oracleLines(value, HOST_EXPANDED, 200).join("\n"))).not.toContain("more changes");
 	});
 
 	it("exception cell: an error card tones every line, where main coloured the block once", () => {
@@ -3150,9 +3159,7 @@ describe("ast_edit tool differential", () => {
 		expect(drawn[1]).toContain(`${theme.fg("error", "first")} `);
 		expect(oracle[1]).not.toContain(theme.fg("error", "first"));
 		expect(drawn[2]).toContain(`  ${theme.fg("error", "second")}`);
-		expect(stripVTControlCharacters(oracle[2] ?? "").trimEnd()).toBe(
-			`${theme.symbol("block.rail")}  second`,
-		);
+		expect(stripVTControlCharacters(oracle[2] ?? "").trimEnd()).toBe(`${theme.symbol("block.rail")}  second`);
 		expect(oracle[2]).not.toContain(theme.fg("error", "second"));
 		// The same two sentences in the same order in both arms; the indent and the run boundaries are
 		// the whole of the difference.

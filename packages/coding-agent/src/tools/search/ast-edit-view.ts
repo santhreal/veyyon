@@ -103,11 +103,7 @@ function changeLines(details: AstEditToolDetails | undefined, text: string): Vie
  * the host spends on the held-back note is reserved here, so a collapsed card occupies the rows it
  * did before the host started writing that note.
  */
-function budgetedGroups(
-	groups: ViewLine[][],
-	expanded: boolean,
-	budget: number,
-): { lines: ViewLine[]; held: number } {
+function budgetedGroups(groups: ViewLine[][], expanded: boolean, budget: number): { lines: ViewLine[]; held: number } {
 	const lines: ViewLine[] = [];
 	let shown = 0;
 	for (let i = 0; i < groups.length; i++) {
