@@ -9,7 +9,6 @@ import {
 	VERACITY_MEANINGS,
 	VERACITY_VALUES,
 	VERACITY_WEIGHTS,
-	type Veracity,
 	weightForVeracity,
 } from "../src/core/veracity";
 

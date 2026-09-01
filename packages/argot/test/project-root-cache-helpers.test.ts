@@ -51,9 +51,7 @@ describe("resolveProjectRoot", () => {
 		expect(resolveProjectRoot("/root/a/b/c", { exists })).toBe("/root");
 	});
 	it("prefers first marker found at closest level", () => {
-		let callCount = 0;
 		const exists = (path: string) => {
-			callCount++;
 			return path === "/root/a/.argot";
 		};
 		expect(resolveProjectRoot("/root/a/b", { exists })).toBe("/root/a");

@@ -12,7 +12,6 @@ import {
 	RECALL_SYNONYMS,
 	recallTokens,
 	unicodeWordTokens,
-	WORD_TOKEN_RE,
 } from "../src/util/regex";
 
 describe("unicodeWordTokens", () => {

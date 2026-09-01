@@ -15,7 +15,6 @@ import {
 	providersDeclaring,
 	providerWireCapabilities,
 	SERVICE_TIERS,
-	type ServiceTier,
 	type ServiceTierByFamily,
 } from "../src/provider-models/wire-capabilities";
 import type { Api, Model } from "../src/types";

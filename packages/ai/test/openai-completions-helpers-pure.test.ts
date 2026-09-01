@@ -242,7 +242,7 @@ describe("getTrailingPartialDeepseekToken", () => {
 		expect(getTrailingPartialDeepseekToken("hello<|token|>")).toBe("");
 	});
 	it("returns empty string when partial is too long (>256 chars)", () => {
-		const longPartial = "<｜" + "a".repeat(260);
+		const longPartial = `<｜${"a".repeat(260)}`;
 		expect(getTrailingPartialDeepseekToken(longPartial)).toBe("");
 	});
 	it("handles empty string", () => {

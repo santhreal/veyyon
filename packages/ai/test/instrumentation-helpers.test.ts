@@ -3,7 +3,6 @@ import {
 	allowsSessionTelemetry,
 	atLeast,
 	INSTRUMENTATION_LEVELS,
-	type InstrumentationLevel,
 	instrumentationRank,
 	SESSION_TELEMETRY_POLICY,
 	type SessionTelemetryCategory,

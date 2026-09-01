@@ -1,7 +1,5 @@
 import { clamp, clamp01 } from "./math";
 
-import { clamp, clamp01 } from "./math";
-
 export interface HSV {
 	h: number;
 	s: number;

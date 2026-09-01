@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import {
-	type CopilotInitiator,
 	getCopilotInitiatorOverride,
 	getCopilotPremiumMultiplier,
 	hasCopilotVisionInput,
@@ -16,7 +15,7 @@ describe("inferCopilotInitiator", () => {
 		expect(inferCopilotInitiator([{ attribution: "agent" }])).toBe("agent");
 	});
 	it("returns 'user' when last message has attribution 'user'", () => {
-		expect(inferCopilotInitiator([{ attribution: "user" }])).toBe("agent" === "agent" ? "user" : "user");
+		expect(inferCopilotInitiator([{ attribution: "user" }])).toBe("user");
 	});
 	it("returns 'agent' when last message role is not 'user'", () => {
 		expect(inferCopilotInitiator([{ role: "assistant" }])).toBe("agent");

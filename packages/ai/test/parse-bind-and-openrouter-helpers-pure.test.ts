@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { getOpenRouterHeaders } from "../src/utils/openrouter-headers";
-import { type ParsedBind, parseBind } from "../src/utils/parse-bind";
+import { parseBind } from "../src/utils/parse-bind";
 
 describe("parseBind", () => {
 	it("parses host:port format", () => {

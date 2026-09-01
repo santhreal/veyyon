@@ -29,7 +29,6 @@ import {
 	HL_REPLACE_KEYWORD,
 } from "../src/format";
 import { detectLineEnding, hasUtf8Bom, normalizeToLF, restoreLineEndings, stripBom } from "../src/normalize";
-import type { Cursor } from "../src/types";
 
 describe("detectLineEnding", () => {
 	it("returns LF for LF-only text", () => {

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { parseJsonlLenient, streamEventCeiling, streamFrameCeiling } from "../src/stream";
 import {
 	DEFAULT_MAX_STREAM_FRAME_BYTES,

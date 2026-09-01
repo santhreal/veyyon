@@ -12,7 +12,6 @@ import {
 	resolveBudgetReserveTokens,
 	resolveCompactionThreshold,
 	resolveThresholdTokens,
-	resolveThresholdWithOrigin,
 	shouldCompact,
 	withLegacyCompactionThreshold,
 } from "../src/compaction/threshold";

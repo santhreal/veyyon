@@ -177,6 +177,7 @@ describe("isValidJsonSchema", () => {
 		expect(
 			isValidJsonSchema({
 				if: { type: "string" },
+				// biome-ignore lint/suspicious/noThenProperty: JSON schema keyword, not a promise
 				then: { type: "string" },
 				else: { type: "number" },
 			}),

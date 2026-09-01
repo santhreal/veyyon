@@ -226,6 +226,7 @@ describe("isThenable", () => {
 		expect(isThenable(Promise.resolve())).toBe(true);
 	});
 	it("returns true for thenable object", () => {
+		// biome-ignore lint/suspicious/noThenProperty: test object with then property to test promise-like detection
 		expect(isThenable({ then: () => {} })).toBe(true);
 	});
 	it("returns false for non-object", () => {
@@ -239,6 +240,7 @@ describe("isThenable", () => {
 	});
 	it("returns true for function with then", () => {
 		const fn: (() => void) & { then?: unknown } = () => {};
+		// biome-ignore lint/suspicious/noThenProperty: test object with then property to test promise-like detection
 		fn.then = () => {};
 		expect(isThenable(fn)).toBe(true);
 	});

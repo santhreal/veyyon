@@ -16,7 +16,6 @@ import {
 	SEAL_IV_BYTES,
 	sealFrame,
 	stripRecommendedSuffix,
-	type TodoStatus,
 	unpackEnvelope,
 	WRITE_TOKEN_BYTES,
 	withRecommendedSuffix,

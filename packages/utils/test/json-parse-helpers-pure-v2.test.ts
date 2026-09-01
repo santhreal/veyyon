@@ -201,16 +201,16 @@ describe("KEYWORDS", () => {
 
 describe("NON_RECOVERABLE_BAREWORDS", () => {
 	it("marks NaN as non-recoverable", () => {
-		expect(NON_RECOVERABLE_BAREWORDS["NaN"]).toBe(true);
+		expect(NON_RECOVERABLE_BAREWORDS.NaN).toBe(true);
 	});
 	it("marks Infinity as non-recoverable", () => {
-		expect(NON_RECOVERABLE_BAREWORDS["Infinity"]).toBe(true);
+		expect(NON_RECOVERABLE_BAREWORDS.Infinity).toBe(true);
 	});
 	it("marks undefined as non-recoverable", () => {
-		expect(NON_RECOVERABLE_BAREWORDS["undefined"]).toBe(true);
+		expect(NON_RECOVERABLE_BAREWORDS.undefined).toBe(true);
 	});
 	it("does not mark true as non-recoverable", () => {
-		expect(NON_RECOVERABLE_BAREWORDS["true"]).toBeUndefined();
+		expect(NON_RECOVERABLE_BAREWORDS.true).toBeUndefined();
 	});
 });
 

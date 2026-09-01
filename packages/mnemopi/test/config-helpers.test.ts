@@ -8,7 +8,6 @@ import {
 	DEFAULT_RECALL_WEIGHTS,
 	EMBEDDING_DIMS,
 	FALLBACK_EMBEDDING_DIM,
-	type HybridWeights,
 	normalizedRecallWeights,
 	recencyHalflifeHours,
 	VERACITY_WEIGHT_DEFAULTS,

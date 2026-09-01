@@ -7,7 +7,6 @@ import {
 	mapEffortToGoogleThinkingLevel,
 	minimumSupportedEffort,
 	OLLAMA_WIRE_EFFORTS,
-	type ReasoningSelection,
 	type ReasoningSelectionIntent,
 	requireSupportedEffort,
 	resolveReasoningSelection,

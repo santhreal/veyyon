@@ -7,7 +7,6 @@ import {
 	isVertexExpressOpenAIUrl,
 	isVertexRawPredictUrl,
 	KNOWN_HOSTS,
-	type KnownHost,
 	modelMatchesHost,
 } from "../src/hosts";
 

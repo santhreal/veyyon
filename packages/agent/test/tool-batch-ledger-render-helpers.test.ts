@@ -6,7 +6,6 @@ import {
 	TOOL_BATCH_LEDGER_MAX_ENTRIES,
 	TOOL_BATCH_LEDGER_MAX_FIELD_WIDTH,
 	type ToolBatchCallEntry,
-	type ToolBatchLedger,
 } from "../src/tool-batch-ledger";
 
 function makeCall(overrides: Partial<ToolBatchCallEntry> & { toolCallId: string }): ToolBatchCallEntry {

@@ -206,6 +206,7 @@ describe("setSafeProperty", () => {
 		const obj: Record<string, unknown> = {};
 		setSafeProperty(obj, "__proto__", { a: 1 });
 		expect(Object.getPrototypeOf(obj)).toBe(Object.prototype);
+		// biome-ignore lint/suspicious/noProto: test using __proto__ to verify prototype chain behavior
 		expect((obj as { __proto__: unknown }).__proto__).toEqual({ a: 1 });
 	});
 
@@ -294,11 +295,13 @@ describe("isThenable", () => {
 	});
 
 	it("returns true for thenable object", () => {
+		// biome-ignore lint/suspicious/noThenProperty: test object with then property to test promise-like detection
 		expect(isThenable({ then: () => {} })).toBe(true);
 	});
 
 	it("returns true for thenable function", () => {
 		const fn: (() => void) & { then?: () => void } = () => {};
+		// biome-ignore lint/suspicious/noThenProperty: test object with then property to test promise-like detection
 		fn.then = () => {};
 		expect(isThenable(fn)).toBe(true);
 	});
@@ -324,6 +327,7 @@ describe("isThenable", () => {
 	});
 
 	it("returns false for object with non-function then", () => {
+		// biome-ignore lint/suspicious/noThenProperty: test object with then property to test promise-like detection
 		expect(isThenable({ then: "not a function" })).toBe(false);
 	});
 });

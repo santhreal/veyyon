@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import {
-	isDashscopeCompatibleModeTextOnlyQwen,
 	joinTextWithImagePlaceholder,
 	NON_VISION_IMAGE_PLACEHOLDER,
 	partitionVisionContent,

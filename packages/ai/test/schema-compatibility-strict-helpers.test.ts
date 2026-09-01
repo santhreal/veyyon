@@ -155,6 +155,7 @@ describe("findStrictToolSchemaViolation", () => {
 	});
 	it("detects violation in then", () => {
 		const result = findStrictToolSchemaViolation({
+			// biome-ignore lint/suspicious/noThenProperty: JSON schema keyword, not a promise
 			then: { type: "string", const: 1 },
 		});
 		expect(result).toContain("then");

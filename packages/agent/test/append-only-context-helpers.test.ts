@@ -72,7 +72,7 @@ describe("AppendOnlyLog", () => {
 		log.extend([makeMessage("user", "a"), makeMessage("assistant", "b"), makeMessage("user", "c")]);
 		log.truncate(1);
 		expect(log.length).toBe(1);
-		expect((log.entries()[0]?.content as Array<{ text: string }>)[0]?.text).toBe("a");
+		expect((log.entries()[0].content as Array<{ text: string }>)[0].text).toBe("a");
 	});
 
 	it("truncate with 0 clears all", () => {

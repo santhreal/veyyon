@@ -120,6 +120,7 @@ describe("assistantTextBlocks", () => {
 	});
 	it("returns empty for no text blocks", () => {
 		const msg = makeMessage([{ type: "toolCall", id: "1", name: "tool", arguments: {} }]);
+		expect(assistantTextBlocks(msg)).toEqual([]);
 	});
 	it("returns empty for empty content", () => {
 		expect(assistantTextBlocks(makeMessage([]))).toEqual([]);

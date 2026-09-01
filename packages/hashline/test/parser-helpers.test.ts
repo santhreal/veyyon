@@ -200,7 +200,7 @@ describe("detectApplyPatchContamination", () => {
 	});
 
 	it("truncates long previews", () => {
-		const longSentinel = "*** Update File: " + "a".repeat(100);
+		const longSentinel = `*** Update File: ${"a".repeat(100)}`;
 		const result = detectApplyPatchContamination(longSentinel, false);
 		expect(result).toContain("…");
 	});

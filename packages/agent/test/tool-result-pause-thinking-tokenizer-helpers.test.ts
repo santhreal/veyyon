@@ -54,10 +54,9 @@ describe("capToolResultContent", () => {
 			type: "image" as const,
 			source: { type: "base64" as const, media_type: "image/png", data: "abc" },
 		};
-		const content = [
-			{ type: "text" as const, text: "x".repeat(2000) },
-			imageBlock,
-		] as unknown as Parameters<typeof capToolResultContent>[0];
+		const content = [{ type: "text" as const, text: "x".repeat(2000) }, imageBlock] as unknown as Parameters<
+			typeof capToolResultContent
+		>[0];
 		const result = capToolResultContent(content, "test-tool", 100);
 		expect(result.content[1] as unknown).toBe(imageBlock);
 	});

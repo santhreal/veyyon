@@ -181,9 +181,8 @@ describe("capTextBytes", () => {
 	});
 
 	it("preserves head and tail content", () => {
-		const longText = "HEAD_DATA\nmiddle\nTAIL_DATA";
 		// Make it long enough to trigger capping
-		const text = "HEAD_DATA\n" + "x".repeat(200) + "\nTAIL_DATA";
+		const text = `HEAD_DATA\n${"x".repeat(200)}\nTAIL_DATA`;
 		const result = capTextBytes(text, 60);
 		expect(result.text).toContain("HEAD_DATA");
 		expect(result.text).toContain("TAIL_DATA");

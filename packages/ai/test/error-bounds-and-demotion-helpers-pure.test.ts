@@ -45,7 +45,7 @@ describe("boundProviderErrorDetail", () => {
 		expect(result).toContain("5000 chars total");
 	});
 	it("trims before checking length", () => {
-		const padded = "  " + "a".repeat(10) + "  ";
+		const padded = `  ${"a".repeat(10)}  `;
 		expect(boundProviderErrorDetail(padded)).toBe("a".repeat(10));
 	});
 });

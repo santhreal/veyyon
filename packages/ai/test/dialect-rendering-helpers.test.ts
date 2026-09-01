@@ -19,7 +19,7 @@ import {
 	stringifyJson,
 } from "../src/dialect/rendering";
 import { THINK_CLOSE, THINK_OPEN, TOOL_RESPONSE_CLOSE, TOOL_RESPONSE_OPEN } from "../src/dialect/wire-tags";
-import type { AssistantMessage, Message, ToolCall, ToolResultMessage } from "../src/types";
+import type { AssistantMessage, Message, ToolCall } from "../src/types";
 
 describe("stringifyJson", () => {
 	it("stringifies object", () => {

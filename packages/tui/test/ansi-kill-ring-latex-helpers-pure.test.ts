@@ -10,7 +10,6 @@ import {
 	SGR_INTENSITY_RESET,
 	SGR_RESET,
 	SGR_RESET_SHORT,
-	SGR_SEQUENCE_PATTERN,
 	ST,
 	sgrSequence,
 } from "../src/ansi";
@@ -329,40 +328,40 @@ describe("NOT_MAP", () => {
 
 describe("ACCENTS", () => {
 	it("maps hat", () => {
-		expect(ACCENTS["hat"]).toBeDefined();
+		expect(ACCENTS.hat).toBeDefined();
 	});
 	it("maps bar", () => {
-		expect(ACCENTS["bar"]).toBeDefined();
+		expect(ACCENTS.bar).toBeDefined();
 	});
 	it("maps dot", () => {
-		expect(ACCENTS["dot"]).toBeDefined();
+		expect(ACCENTS.dot).toBeDefined();
 	});
 });
 
 describe("FUNCTIONS", () => {
 	it("includes sin", () => {
-		expect(FUNCTIONS["sin"]).toBe(true);
+		expect(FUNCTIONS.sin).toBe(true);
 	});
 	it("includes cos", () => {
-		expect(FUNCTIONS["cos"]).toBe(true);
+		expect(FUNCTIONS.cos).toBe(true);
 	});
 	it("includes log", () => {
-		expect(FUNCTIONS["log"]).toBe(true);
+		expect(FUNCTIONS.log).toBe(true);
 	});
 	it("does not include foo", () => {
-		expect(FUNCTIONS["foo"]).toBeUndefined();
+		expect(FUNCTIONS.foo).toBeUndefined();
 	});
 });
 
 describe("FONTS", () => {
 	it("maps mathbf to bold", () => {
-		expect(FONTS["mathbf"]).toBe("bold");
+		expect(FONTS.mathbf).toBe("bold");
 	});
 	it("maps mathit to italic", () => {
-		expect(FONTS["mathit"]).toBe("italic");
+		expect(FONTS.mathit).toBe("italic");
 	});
 	it("maps mathbb to doublestruck", () => {
-		expect(FONTS["mathbb"]).toBe("doublestruck");
+		expect(FONTS.mathbb).toBe("doublestruck");
 	});
 });
 
@@ -377,16 +376,16 @@ describe("MATH_FONT_COMMANDS", () => {
 
 describe("TEXT_COMMANDS", () => {
 	it("includes text", () => {
-		expect(TEXT_COMMANDS["text"]).toBe(true);
+		expect(TEXT_COMMANDS.text).toBe(true);
 	});
 	it("includes textrm", () => {
-		expect(TEXT_COMMANDS["textrm"]).toBe(true);
+		expect(TEXT_COMMANDS.textrm).toBe(true);
 	});
 	it("includes emph", () => {
-		expect(TEXT_COMMANDS["emph"]).toBe(true);
+		expect(TEXT_COMMANDS.emph).toBe(true);
 	});
 	it("includes mathrm", () => {
-		expect(TEXT_COMMANDS["mathrm"]).toBe(true);
+		expect(TEXT_COMMANDS.mathrm).toBe(true);
 	});
 });
 

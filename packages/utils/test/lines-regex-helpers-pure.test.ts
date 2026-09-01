@@ -34,6 +34,7 @@ describe("escapeRegExp", () => {
 		expect(escapeRegExp("a.b")).toBe("a\\.b");
 	});
 	it("escapes all special chars", () => {
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: regex special chars fixture contains literal ${} syntax
 		expect(escapeRegExp(".*+?^${}()|[]\\")).toBe("\\.\\*\\+\\?\\^\\$\\{\\}\\(\\)\\|\\[\\]\\\\");
 	});
 	it("returns plain text unchanged", () => {

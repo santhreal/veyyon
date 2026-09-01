@@ -22,7 +22,7 @@ describe("declareWorkerHostEntry", () => {
 describe("installWorkerInbox", () => {
 	it("returns a WorkerInbox with a bind function", () => {
 		const port = {
-			on(event: string, listener: (value: unknown) => void) {
+			on(_event: string, _listener: (value: unknown) => void) {
 				// no-op
 			},
 		};
@@ -33,7 +33,7 @@ describe("installWorkerInbox", () => {
 	it("queues messages before bind is called", () => {
 		let emit: ((data: unknown) => void) | undefined;
 		const port = {
-			on(event: string, listener: (value: unknown) => void) {
+			on(_event: string, listener: (value: unknown) => void) {
 				emit = listener;
 			},
 		};
@@ -49,7 +49,7 @@ describe("installWorkerInbox", () => {
 	it("delivers messages directly after bind", () => {
 		let emit: ((data: unknown) => void) | undefined;
 		const port = {
-			on(event: string, listener: (value: unknown) => void) {
+			on(_event: string, listener: (value: unknown) => void) {
 				emit = listener;
 			},
 		};
@@ -62,7 +62,7 @@ describe("installWorkerInbox", () => {
 
 	it("bind returns an unbind function", () => {
 		const port = {
-			on(event: string, listener: (value: unknown) => void) {},
+			on(_event: string, _listener: (value: unknown) => void) {},
 		};
 		const inbox = installWorkerInbox(port);
 		const unbind = inbox.bind(() => {});
@@ -73,7 +73,7 @@ describe("installWorkerInbox", () => {
 	it("clears queue after bind", () => {
 		let emit: ((data: unknown) => void) | undefined;
 		const port = {
-			on(event: string, listener: (value: unknown) => void) {
+			on(_event: string, listener: (value: unknown) => void) {
 				emit = listener;
 			},
 		};
@@ -92,7 +92,7 @@ describe("installWorkerInbox", () => {
 describe("consumeWorkerInbox", () => {
 	it("returns the pending inbox and clears it", () => {
 		const port = {
-			on(event: string, listener: (value: unknown) => void) {},
+			on(_event: string, _listener: (value: unknown) => void) {},
 		};
 		installWorkerInbox(port);
 		const inbox = consumeWorkerInbox();

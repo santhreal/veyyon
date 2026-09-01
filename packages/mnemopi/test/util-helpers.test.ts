@@ -23,7 +23,6 @@ import {
 	unicodeWordTokens,
 	WORD_TOKEN_DOT_HYPHEN_RE,
 	WORD_TOKEN_HYPHEN_RE,
-	WORD_TOKEN_RE,
 } from "../src/util/regex";
 import { jaccardIndex, jaccardWordSimilarity, overlapScore, wordSet } from "../src/util/text-similarity";
 

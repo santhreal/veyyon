@@ -126,7 +126,7 @@ describe("adjustWeights", () => {
 			fts_bias: 1.0,
 			importance_bias: 1.0,
 		};
-		const [v, f, i] = adjustWeights(0.5, 0.3, 0.2, intent);
+		const [v] = adjustWeights(0.5, 0.3, 0.2, intent);
 		expect(v).toBeCloseTo((0.5 * 2.0) / (0.5 * 2.0 + 0.3 + 0.2), 10);
 	});
 	it("handles zero base weights", () => {

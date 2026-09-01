@@ -160,6 +160,7 @@ describe("pythonCommandPrefixLength", () => {
 	});
 
 	it("returns 0 for ${", () => {
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: input controller fixture contains literal ${...} syntax
 		expect(pythonCommandPrefixLength("${hello}")).toBe(0);
 	});
 
@@ -200,6 +201,7 @@ describe("parsePythonCommandInput", () => {
 	});
 
 	it("returns undefined for ${", () => {
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: input controller fixture contains literal ${...} syntax
 		expect(parsePythonCommandInput("${hello}")).toBeUndefined();
 	});
 

@@ -10,21 +10,6 @@ export function notifyRawSseEvent(observer: RawSseObserver | undefined, event: S
 	} catch {}
 }
 
-export function resolveOpenAiSseEventName(event: RawSseEvent): void {
-	if (event.event || !event.data || event.data === "[DONE]") return;
-	try {
-		const parsed: unknown = JSON.parse(event.data);
-		if (typeof parsed !== "object" || parsed === null) return;
-		const record = parsed as { type?: unknown; object?: unknown };
-		const resolvedEvent =
-			typeof record.type === "string" ? record.type : typeof record.object === "string" ? record.object : null;
-		if (resolvedEvent) {
-			event.event = resolvedEvent;
-			event.raw = [`event: ${resolvedEvent}`, ...event.raw];
-		}
-	} catch {}
-}
-
 /**
  * Fill in the semantic event name for an OpenAI-family SSE record in place.
  *
