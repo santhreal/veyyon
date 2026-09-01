@@ -286,6 +286,21 @@ export interface StatusRowView {
 	 */
 	descriptionTone?: ViewTone;
 	/**
+	 * Whether the description must FIT the columns the row is given, cut inside itself.
+	 *
+	 * A row overruns its columns when the title, the description and the trailing facts together
+	 * outrun them, and a host has two answers: drop what does not fit off the end of the row, or
+	 * shorten the description until the rest fits. Which one is right belongs to the card, not to the
+	 * host: a row whose description is prose reads fine cut short at the end, while a row whose
+	 * description IS the file it acted on loses the fact the row exists to state, and the counts after
+	 * it are the ones a reader checks. So a card that names a subject sets this and keeps every part
+	 * of its row, and a card that does not leaves the row to the host's own clipping.
+	 *
+	 * What "fit" looks like is still the host's: a terminal cuts a path through the middle, because
+	 * the end of a path is the file name; another host may scroll it, or hover it, or wrap it.
+	 */
+	descriptionFits?: boolean;
+	/**
 	 * A target the description names, which the host makes reachable.
 	 *
 	 * The description of a row that reports on a URL or a file IS the thing it names, so the link

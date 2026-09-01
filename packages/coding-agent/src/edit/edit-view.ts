@@ -189,7 +189,8 @@ function hashlineEntries(input: string): HashlineEntry[] {
 		if (!current) continue;
 		const trimmed = line.trim();
 		if (trimmed === HL_REM_KEYWORD) current.op = "delete";
-		else if (trimmed.startsWith(`${HL_MOVE_KEYWORD} `)) current.rename = hashlineHeaderPath(trimmed.slice(HL_MOVE_KEYWORD.length + 1));
+		else if (trimmed.startsWith(`${HL_MOVE_KEYWORD} `))
+			current.rename = hashlineHeaderPath(trimmed.slice(HL_MOVE_KEYWORD.length + 1));
 		else if (HL_LINE_OP_HEADER.test(trimmed)) current.hasLineEdits = true;
 	}
 	return entries;
@@ -327,7 +328,12 @@ function textPreviewSection(text: string, expanded: boolean): ViewSection | unde
  * absolute paths in it are the operator's directory layout. Word by word, since a path may sit
  * inside brackets or end a sentence.
  */
-function errorSection(errorText: string, rawPath: string, linkPath: string | undefined, expanded: boolean): ViewSection {
+function errorSection(
+	errorText: string,
+	rawPath: string,
+	linkPath: string | undefined,
+	expanded: boolean,
+): ViewSection {
 	let sanitized = errorText;
 	for (const candidate of [rawPath, linkPath]) {
 		if (candidate) sanitized = sanitized.replaceAll(candidate, shortenPath(candidate));
@@ -392,6 +398,9 @@ function header(options: {
 		...(options.status === undefined ? {} : { status: options.status }),
 		...(options.emblem === undefined ? {} : { emblem: options.emblem }),
 		description,
+		// The path is the subject of the row, and an edit states its counts after it, so the row keeps
+		// both by shortening the path rather than losing whichever fact sits past the last column.
+		descriptionFits: true,
 		...(options.rawPath ? { descriptionTone: "accent" as const } : {}),
 		...(target ? { descriptionFile: target } : {}),
 		...(options.firstChangedLine === undefined ? {} : { descriptionFileLine: options.firstChangedLine }),
@@ -489,7 +498,8 @@ function resultSections(
 ): ViewSection[] {
 	const sections: ViewSection[] = [];
 	if (options.isError) {
-		if (options.errorText) sections.push(errorSection(options.errorText, options.rawPath, options.linkPath, options.expanded));
+		if (options.errorText)
+			sections.push(errorSection(options.errorText, options.rawPath, options.linkPath, options.expanded));
 	} else if (details?.diff) {
 		const section = diffSection(details.diff, options.rawPath, { expanded: options.expanded });
 		if (section) sections.push(section);
@@ -498,7 +508,11 @@ function resultSections(
 		// row that heads the card already names the first two; only the third needs saying, or an
 		// empty card reads as an edit that stalled.
 		if (options.op !== "delete" && options.op !== "create" && !options.rename) {
-			const shown = options.linkPath ? shortenPath(options.linkPath) : options.rawPath ? shortenPath(options.rawPath) : "";
+			const shown = options.linkPath
+				? shortenPath(options.linkPath)
+				: options.rawPath
+					? shortenPath(options.rawPath)
+					: "";
 			sections.push({ lines: [[{ text: `No changes were made${shown ? ` to ${shown}` : ""}.`, tone: "dim" }]] });
 		}
 	} else if (options.preview) {
@@ -532,7 +546,8 @@ function singleFileResult(
 	const edits = Array.isArray(args?.edits) ? args.edits : undefined;
 	const firstEdit = edits?.[0];
 	const firstHashline = hashlineSummary(args ?? {})?.[0];
-	const moveSource = details && "sourcePath" in details && typeof details.sourcePath === "string" ? details.sourcePath : undefined;
+	const moveSource =
+		details && "sourcePath" in details && typeof details.sourcePath === "string" ? details.sourcePath : undefined;
 	const detailPath = details && "path" in details && typeof details.path === "string" ? details.path : undefined;
 	const rawPath =
 		moveSource ??

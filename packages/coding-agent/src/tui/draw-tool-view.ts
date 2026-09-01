@@ -374,18 +374,24 @@ function drawMarkdownRows(source: string, width: number, theme: Theme, tone: Vie
 const HEADER_CHROME = 3;
 
 /**
- * The row that heads a block, with its description cut to the columns the block has.
+ * The row that heads a block, with its description cut to the columns the block has when the card
+ * asked for that and left whole when it did not.
  *
  * The description is where a card names what it acted on, which is a path, and a path is cut in the
  * MIDDLE: the end of one is the file, which is the part a reader is looking for, and an end-cut
  * header states a directory and nothing else. The title is left whole — it is a word — and the row
  * is redrawn from the shortened description rather than cut as bytes, so the link, the colours and
  * the trailing counts survive the cut.
+ *
+ * `descriptionFits` is what asks for it, and a row that does not set it is returned untouched for
+ * the block to clip at its own edge. Fitting every header instead would be the terminal deciding
+ * something the card owns: a search card states its query and then counts what it found, and cutting
+ * the query to `…` to keep counts that already fit loses the one fact the row was read for.
  */
 function drawFittedHeader(view: StatusRowView, theme: Theme, width: number, frame?: number): string {
 	const drawn = drawStatusRow(view, theme, frame);
 	const description = view.description;
-	if (description === undefined) return drawn;
+	if (description === undefined || view.descriptionFits !== true) return drawn;
 	const overflow = visibleWidth(drawn) - Math.max(0, width - HEADER_CHROME);
 	if (overflow <= 0) return drawn;
 	const descriptionWidth = visibleWidth(description);

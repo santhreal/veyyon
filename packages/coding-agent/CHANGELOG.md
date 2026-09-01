@@ -159,6 +159,7 @@
 ### Fixed
 
 - An overflow whose summary cannot fit any model no longer waits on a restore that never runs: the dead-end rescue truncates the oversized message to an artifact and the turn is retried, which the overflow-refusal suite now pins.
+- A tool card's header keeps the subject it states: the middle-cut the edit card needs was applied to every framed card, so `ast_edit`, `file_search`, `text_search`, `structure_search`, `search_tool_bm25`, `inspect_image`, `launch` and `ssh` cut a query, a glob or a path to `…` in a narrow terminal to keep counts that already fitted. A card now asks for the cut, and the edit card is the one that asks.
 - A live card whose tool describes a `ToolView` obeys the merge policy its renderer entry states: `debug`, `resolve`, `retain`, `recall`, `reflect` and `ssh` drew the call row above the result card while the call was on screen, and drew one card when the transcript was rebuilt.
 - `veyyon config set` and `veyyon config reset` create the profile's config directory before taking the file lock, so a first write into a profile that has no directory yet persists the setting instead of exiting 1 with ENOENT.
 - `goal-tool.ts` no longer imports a `ViewSpan` type it stopped using when the goal card became a view. No user-visible change.
