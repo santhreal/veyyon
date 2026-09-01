@@ -24,7 +24,8 @@ pub use capabilities::{Capability, CapabilityMap, CapabilityStatus};
 pub use coalescer::{EventCoalescer, EventCoalescerError};
 pub use composer::{ComposerDraft, QueueMode};
 pub use connection::{
-	ConnectionState, EntryId, InteractionId, PROTOCOL_VERSION, RequestId, SessionId, Versioned,
+	ConnectionState, ConnectionStateKind, EntryId, InteractionId, PROTOCOL_VERSION, RequestId,
+	SessionId, Versioned,
 };
 pub use damage::{Damage, DamageSet};
 pub use error::{BackendError, ErrorScope, fallback_surface, is_scope_retryable, route_error};

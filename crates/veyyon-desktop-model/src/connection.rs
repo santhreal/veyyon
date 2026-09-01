@@ -67,7 +67,14 @@ pub struct Versioned<T> {
 }
 
 /// Host transport connection states mirroring wire protocol definitions.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+	Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants,
+)]
+#[strum_discriminants(name(ConnectionStateKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
+#[strum_discriminants(doc = "Fieldless projection of `ConnectionState`, so a scene catalogue can \
+                             sweep every connection state. Four of the six variants carry data, \
+                             so the enum cannot derive `EnumIter` itself, and a catalogue \
+                             holding its own copy would not see a seventh state.")]
 pub enum ConnectionState {
 	#[default]
 	Detached,
