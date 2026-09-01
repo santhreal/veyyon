@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "343932b94b457cdd998b3aefe699f04e052d3b8f",
+	"generatedFrom": "8b24575522c362f241f404cb0538c59bf2af5d48",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -11305,10 +11305,10 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/component.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "aec4777052ad17d01fc8ba7f4c5a83c7b9023349dc4a58a07345c26b811fedbb",
-			"mainHash": "13c183f711fdef43d334408875f384d832d356d289627d4cdfacfcf0bb99871c",
-			"structuralHash": "2088a5abff3b91bd72c00d3b3ee54e278a3189e3166af49deea13194a3daa2de",
-			"mainStructuralHash": "2088a5abff3b91bd72c00d3b3ee54e278a3189e3166af49deea13194a3daa2de"
+			"hash": "d50648ac10bca2699ebec541f9ca567389930ef90fc548b61b96961df3876cb0",
+			"mainHash": "90f19460e301ed7a60c75b5748eb6593cdebf2d5b5aefebece6a8b8b6443f60a",
+			"structuralHash": "9624cc8c39a53672b0de060494419bb5259ee62335cf0c34aad788ca00dade60",
+			"mainStructuralHash": "9624cc8c39a53672b0de060494419bb5259ee62335cf0c34aad788ca00dade60"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/context-thresholds.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/context-thresholds.ts",

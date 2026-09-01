@@ -39,7 +39,7 @@ const LEDGER_PATH = resolve(REPO_ROOT, "scripts/fixtures/token-equivalence.json"
  * `main`, not the tip of `main`. A tip moves under the measurement, and a ledger measured half
  * against one tree and half against another charges main's own edits to this branch.
  */
-const BASELINE_COMMIT = "343932b94b457cdd998b3aefe699f04e052d3b8f";
+const BASELINE_COMMIT = "8b24575522c362f241f404cb0538c59bf2af5d48";
 
 function loadLedger(): TokenEquivalenceLedger {
 	const raw = readFileSync(LEDGER_PATH, "utf-8");
