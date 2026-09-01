@@ -1,18 +1,43 @@
+/**
+ * Differential oracle: the search tool's dispatching renderer from origin/main.
+ *
+ * Source SHA: e9467ab12c976cd830eb7a61e30bfd6adc4bff1f.
+ * Frozen: never edited to make a test pass.
+ *
+ * `search` is one tool over three searches, so main's entry was a dispatcher: it read the type off
+ * the call or the details and handed the card to the file, text or structure view, drawing two rows
+ * of its own -- the row for a call whose type has not arrived, and the row for a type that is not one
+ * of the three -- plus a standalone error row for a failure that named no type.
+ *
+ * It imports the three sub-views from this branch rather than freezing copies of them, which is
+ * deliberate: each has its own oracle and its own differential suite, so what is unproven here is the
+ * dispatcher -- which view a call reaches, and the three rows the dispatcher draws itself. Freezing
+ * the sub-views again would restate their suites and hide a dispatch that reached the wrong one.
+ *
+ * Only the import specifiers are rewritten to the package subpaths this branch publishes.
+ */
+
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import { formatErrorMessage, replaceTabs, TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/core/render-utils";
+import type { FileSearchDetails, FileSearchRenderArgs } from "@veyyon/coding-agent/tools/search/file-search";
+import { type FileSearchViewResult, fileSearchToolView } from "@veyyon/coding-agent/tools/search/file-search-view";
+import type { SearchToolDetails, SearchToolInput, SearchType } from "@veyyon/coding-agent/tools/search/search";
+import type {
+	StructureSearchDetails,
+	StructureSearchRenderArgs,
+} from "@veyyon/coding-agent/tools/search/structure-search";
+import {
+	type StructureSearchViewResult,
+	structureSearchToolView,
+} from "@veyyon/coding-agent/tools/search/structure-search-view";
+import type { TextSearchDetails, TextSearchRenderArgs } from "@veyyon/coding-agent/tools/search/text-search";
+import { type TextSearchViewResult, textSearchToolView } from "@veyyon/coding-agent/tools/search/text-search-view";
+import { renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/tui";
+import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { isRecord } from "@veyyon/utils";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import type { Theme } from "../../theme/theme";
-import { renderStatusLine, truncateToWidth } from "../../tui";
-import { drawToolView } from "../../tui/draw-tool-view";
-import { formatErrorMessage, replaceTabs, TRUNCATE_LENGTHS } from "../core/render-utils";
-import type { FileSearchDetails, FileSearchRenderArgs } from "./file-search";
-import { type FileSearchViewResult, fileSearchToolView } from "./file-search-view";
-import type { SearchToolDetails, SearchToolInput, SearchType } from "./search";
-import type { StructureSearchDetails, StructureSearchRenderArgs } from "./structure-search";
-import { type StructureSearchViewResult, structureSearchToolView } from "./structure-search-view";
-import type { TextSearchDetails, TextSearchRenderArgs } from "./text-search";
-import { type TextSearchViewResult, textSearchToolView } from "./text-search-view";
 
 function renderedType(args: unknown, details?: unknown): SearchType | undefined {
 	if (isRecord(args) && (args.type === "files" || args.type === "text" || args.type === "structure")) {

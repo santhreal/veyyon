@@ -11572,12 +11572,12 @@
 					"why": "packages/coding-agent/src/tools/search.ts moved to packages/coding-agent/src/tools/search/search.ts, which @veyyon/coding-agent publishes as ./tools/search/search"
 				},
 				"./tools/search-renderer": {
-					"to": "@veyyon/coding-agent/tools/search/search-renderer",
-					"why": "packages/coding-agent/src/tools/search-renderer.ts moved to packages/coding-agent/src/tools/search/search-renderer.ts, which @veyyon/coding-agent publishes as ./tools/search/search-renderer"
+					"to": "./tools/search/search-view",
+					"why": "the search card is one dispatcher over the file, text and structure cards, declared in tools/search/search-view.ts as views the host draws, so the module that dispatched terminal components is gone"
 				},
 				"./tools/search-renderer.js": {
-					"to": "@veyyon/coding-agent/tools/search/search-renderer.js",
-					"why": "packages/coding-agent/src/tools/search-renderer.ts moved to packages/coding-agent/src/tools/search/search-renderer.ts, which @veyyon/coding-agent publishes as ./tools/search/search-renderer.js"
+					"to": "./tools/search/search-view.js",
+					"why": "the search card is one dispatcher over the file, text and structure cards, declared in tools/search/search-view.ts as views the host draws, so the module that dispatched terminal components is gone"
 				},
 				"./tools/search-scope": {
 					"to": "@veyyon/coding-agent/tools/search/search-scope",

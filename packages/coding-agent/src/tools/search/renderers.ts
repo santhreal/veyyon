@@ -7,11 +7,11 @@
 import { viewToolRenderer } from "../../tui/draw-tool-view";
 import type { ToolRenderer } from "../renderers";
 import { astEditToolView } from "./ast-edit-view";
-import { searchToolRenderer } from "./search-renderer";
 import { searchToolBm25ToolView } from "./search-tool-bm25-view";
+import { searchToolView } from "./search-view";
 
 export const searchRenderers: Record<string, ToolRenderer> = {
-	search: searchToolRenderer as ToolRenderer,
+	search: viewToolRenderer(searchToolView, { inline: true, mergeCallAndResult: true }) as ToolRenderer,
 	ast_edit: viewToolRenderer(astEditToolView, { mergeCallAndResult: true, inline: true }) as ToolRenderer,
 	search_tool_bm25: viewToolRenderer(searchToolBm25ToolView, {
 		mergeCallAndResult: true,

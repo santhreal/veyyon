@@ -80,6 +80,7 @@ describe("differential coverage", () => {
 			"text_search",
 			"structure_search",
 			"launch",
+			"search",
 		]);
 	});
 

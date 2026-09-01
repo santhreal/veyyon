@@ -20,11 +20,17 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
+import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import { SearchTool, type SearchToolDetails, searchSchema } from "@veyyon/coding-agent/tools/search/search";
-import { searchToolRenderer } from "@veyyon/coding-agent/tools/search/search-renderer";
 import { MULTI_FILE_PER_FILE_MATCHES, type TextSearchDetails } from "@veyyon/coding-agent/tools/search/text-search";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
+
+/**
+ * The production `search` entry, which is the card a session draws. `search` is a view the terminal
+ * draws rather than a renderer module to import, so the suites below reach it through the registry.
+ */
+const searchToolRenderer = toolRenderers.search;
 
 function textOf(result: { content: Array<{ type: string; text?: string }> }): string {
 	return result.content

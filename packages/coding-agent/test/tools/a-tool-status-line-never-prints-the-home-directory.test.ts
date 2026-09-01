@@ -26,7 +26,12 @@ import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { sanitizeText } from "@veyyon/utils";
 import { formatScopeMeta, TRUNCATE_LENGTHS } from "../../src/tools/core/render-utils";
 import { toolRenderers } from "../../src/tools/renderers";
-import { searchToolRenderer } from "../../src/tools/search/search-renderer";
+
+/**
+ * The production `search` entry, which is the card a session draws. `search` is a view the terminal
+ * draws rather than a renderer module to import, so the suites below reach it through the registry.
+ */
+const searchToolRenderer = toolRenderers.search;
 
 const HOME = os.homedir();
 const RENDER_WIDTH = 240;

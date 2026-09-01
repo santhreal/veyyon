@@ -674,8 +674,15 @@ export function viewToolRenderer<Args, Result>(
 ): ViewToolRendererPolicy & {
 	renderCall: (args: unknown, options: RenderResultOptions, theme: Theme) => Component;
 	renderResult: (result: unknown, options: RenderResultOptions, theme: Theme, args?: unknown) => Component;
+	view: Required<ToolViewRenderer<Args, Result>>;
 } {
 	return {
+		// The view this entry is a drawing of, carried so a reader can tell an entry that DESCRIBES its
+		// card from one that draws its own. Nothing in the terminal path needs it -- both halves above
+		// already close over it -- and the architecture gate that records every terminal-only card
+		// reads it, which is the difference between a list kept by hand and one resolved from the
+		// registry. A host other than a terminal reads the view instead of calling either half.
+		view,
 		renderCall: (args, options, theme) =>
 			drawToolView(
 				view.renderCall(args as Args, {

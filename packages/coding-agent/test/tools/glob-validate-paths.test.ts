@@ -9,12 +9,18 @@ import {
 	parseFindPattern,
 	splitDelimitedPathEntry,
 } from "@veyyon/coding-agent/tools/core/path-utils";
+import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import type { FileSearchDetails, FileSearchRenderArgs } from "@veyyon/coding-agent/tools/search/file-search";
 import type { SearchToolDetails, SearchToolInput } from "@veyyon/coding-agent/tools/search/search";
 import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/search/search-scope";
 import type { Component } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
-import { searchToolRenderer } from "../../src/tools/search/search-renderer";
+
+/**
+ * The production `search` entry, which is the card a session draws. `search` is a view the terminal
+ * draws rather than a renderer module to import, so the suites below reach it through the registry.
+ */
+const searchToolRenderer = toolRenderers.search;
 
 let uiTheme: Theme;
 

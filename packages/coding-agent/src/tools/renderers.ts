@@ -6,6 +6,7 @@
  * the union; it no longer owns the list.
  */
 import type { Component } from "@veyyon/tui";
+import type { ToolViewRenderer } from "@veyyon/view";
 import { editToolRenderer } from "../edit/renderer";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { goalToolView } from "../goals/goal-tool";
@@ -37,6 +38,16 @@ export type ToolRenderer = {
 		theme: Theme,
 		args?: unknown,
 	) => Component;
+	/**
+	 * The host-agnostic card this entry draws, present only on an entry built by `viewToolRenderer`.
+	 *
+	 * An entry either DESCRIBES its card as a {@link ToolViewRenderer} and lets a host draw it, or
+	 * draws terminal components itself. Both look the same from the two members above, so the
+	 * distinction is stated here rather than inferred, and the architecture gate that records every
+	 * card still drawn in terminal components resolves the split from the registry instead of from a
+	 * list kept by hand.
+	 */
+	view?: ToolViewRenderer<never, never>;
 	mergeCallAndResult?: boolean;
 	/**
 	 * Whether the call render IS an interactive widget rather than a preview of one.

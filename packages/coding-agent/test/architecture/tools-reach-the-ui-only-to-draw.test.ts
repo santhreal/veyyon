@@ -27,6 +27,7 @@ import * as path from "node:path";
 import * as contextUsagePanel from "@veyyon/coding-agent/modes/terminal/utils/context-usage";
 import * as contextUsageNumbers from "@veyyon/coding-agent/session/context-usage";
 import { moduleSpecifiersIn, namedImportsFrom } from "@veyyon/utils/module-reach";
+import { toolRenderers } from "../../src/tools/renderers";
 
 const SRC = path.join(import.meta.dir, "..", "..", "src");
 const TOOLS = path.join(SRC, "tools");
@@ -267,7 +268,6 @@ const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/fs/read-render.ts", ["Text", "type Component"]],
 	["tools/core/render-utils.ts", ["type Component"]],
 	["tools/renderers.ts", ["type Component"]],
-	["tools/search/search-renderer.ts", ["Text", "type Component"]],
 	["tools/agent/vibe-render.ts", ["Text", "type Component"]],
 ]);
 
@@ -328,6 +328,17 @@ const DRAWS_IN_PLACE = new Map<string, string>([]);
  * and asserted to be a module the sweep actually returned.
  */
 const TERMINAL_DRAWERS = new Set(["tui/draw-tool-view.ts"]);
+
+/**
+ * The registry module, which declares the renderer SHAPE rather than a card.
+ *
+ * `tools/renderers.ts` types `renderCall`, `renderResult` and the optional `view` a converted entry
+ * carries, so the sweep sees it declaring renderers and the view contract in one file, and it would
+ * otherwise read as a tool converted to a view. It is neither a tool nor a drawer: it is the table
+ * the terminal resolves a card through. Pinned by equality below, so a second module reaching this
+ * shape is recorded rather than absorbed.
+ */
+const REGISTRY_MODULES = new Set(["tools/renderers.ts"]);
 
 /** A module whose job is drawing, by the naming convention every split follows. */
 function isRenderModule(file: string): boolean {
@@ -449,7 +460,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 		// also what the terminal's registry entry draws and one object serves both, and a card shared
 		// by several tools is a module of views the contract types.
 		const converted = declaring
-			.filter(file => !TERMINAL_DRAWERS.has(file))
+			.filter(file => !TERMINAL_DRAWERS.has(file) && !REGISTRY_MODULES.has(file))
 			.filter(file => {
 				const source = fs.readFileSync(path.join(SRC, file), "utf8");
 				return /^\s*(readonly\s+)?view\s*(:\s*\{|=)/m.test(source) || /from "@veyyon\/view"/.test(source);
@@ -473,6 +484,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"tools/search/ast-edit-view.ts",
 			"tools/search/file-search-view.ts",
 			"tools/search/search-tool-bm25-view.ts",
+			"tools/search/search-view.ts",
 			"tools/search/structure-search-view.ts",
 			"tools/search/text-search-view.ts",
 			"tools/shell/debug-view.ts",
@@ -505,10 +517,15 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 		expect(drawing).toEqual([...IN_PLACE_ANYWHERE.keys()].sort());
 	});
 
-	/** An excluded drawer that the sweep never returned excludes nothing, and reads as a clean tree. */
-	it("excludes only terminal drawers the sweep returned", () => {
+	/** An excluded module the sweep never returned excludes nothing, and reads as a clean tree. */
+	it("excludes only the drawer and the registry, and only where the sweep returned them", () => {
 		expect([...TERMINAL_DRAWERS]).toEqual(["tui/draw-tool-view.ts"]);
+		expect([...REGISTRY_MODULES]).toEqual(["tools/renderers.ts"]);
 		for (const drawer of TERMINAL_DRAWERS) expect(declaring).toContain(drawer);
+		for (const registry of REGISTRY_MODULES) expect(declaring).toContain(registry);
+		// The registry is excluded from the converted set and from nothing else: it declares no card,
+		// so it must still answer the rule that a module drawing in place carries a reason.
+		expect([...IN_PLACE_ANYWHERE.keys()]).not.toContain("tools/renderers.ts");
 	});
 
 	/** A row for a module that no longer exists, or no longer draws, hides the split that finished. */
@@ -603,5 +620,85 @@ describe("a tool names the terminal package only where it is recorded", () => {
 			.map(([file]) => file);
 
 		expect(withoutTheReturnType).toEqual([]);
+	});
+});
+
+/**
+ * The conversion frontier, resolved from the live registry rather than from the tree.
+ *
+ * WHY THIS IS SEPARATE FROM EVERY CELL ABOVE. Those sweep source files, and a file tells you what a
+ * module imports, never which card a session actually draws. The registry does: an entry built by
+ * `viewToolRenderer` carries the `view` it draws, and an entry that builds terminal components carries
+ * none. So the two halves of the migration are readable as a state -- who describes a card and who
+ * still draws one -- instead of inferred from an import.
+ *
+ * THE DEFECT CLASS. A tool added with a terminal-only renderer, which every host but the terminal
+ * then draws as raw JSON, and a conversion that lands without moving the tool off this list. Both are
+ * silent: the terminal looks right in each case. The set is pinned by exact equality, so a new tool
+ * lands red until its row is recorded, and a converted one lands red until its row is deleted.
+ *
+ * WHAT IT DOES NOT CATCH. Presence, not quality: a `view` that describes the card badly passes here,
+ * which is what the per-tool differential suites are for.
+ */
+describe("a registry entry either describes its card or is recorded as drawing one", () => {
+	const entries = Object.keys(toolRenderers).sort();
+
+	/** Anti-vacuity: an empty registry would make both equalities below pass with nothing swept. */
+	it("is swept from a registry that loaded", () => {
+		expect(entries.length).toBeGreaterThan(30);
+		expect(entries).toContain("bash");
+		expect(entries).toContain("search");
+	});
+
+	it("records every entry that still draws terminal components", () => {
+		const drawing = entries.filter(name => toolRenderers[name]?.view === undefined);
+		expect(drawing).toEqual([
+			"apply_patch",
+			"ask",
+			"bash",
+			"browser",
+			"edit",
+			"eval",
+			"github",
+			"job",
+			"lsp",
+			"read",
+			"task",
+			"vibe_kill",
+			"vibe_list",
+			"vibe_send",
+			"vibe_spawn",
+			"vibe_wait",
+			"web_search",
+		]);
+	});
+
+	it("has a view on every converted entry, and that view draws both halves of the card", () => {
+		const described = entries.filter(name => toolRenderers[name]?.view !== undefined);
+		expect(described).toEqual([
+			"ast_edit",
+			"debug",
+			"goal",
+			"inspect_image",
+			"irc",
+			"launch",
+			"recall",
+			"reflect",
+			"resolve",
+			"retain",
+			"search",
+			"search_tool_bm25",
+			"set_cwd",
+			"ssh",
+			"todo",
+			"write",
+		]);
+		// A half-converted entry describes one render and draws the other, which is a card no host but
+		// the terminal can complete.
+		for (const name of described) {
+			const view = toolRenderers[name]?.view;
+			expect(typeof view?.renderCall).toBe("function");
+			expect(typeof view?.renderResult).toBe("function");
+		}
 	});
 });

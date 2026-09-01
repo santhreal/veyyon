@@ -7,8 +7,8 @@ import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/cus
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
+import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import type { SearchToolDetails, SearchToolInput } from "@veyyon/coding-agent/tools/search/search";
-import { searchToolRenderer } from "@veyyon/coding-agent/tools/search/search-renderer";
 import type {
 	StructureSearchDetails,
 	StructureSearchRenderArgs,
@@ -17,6 +17,12 @@ import type { Component } from "@veyyon/tui";
 import { removeWithRetries, sanitizeText } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
 import { useFullColor } from "../helpers/theme-assertions";
+
+/**
+ * The production `search` entry, which is the card a session draws. `search` is a view the terminal
+ * draws rather than a renderer module to import, so the suites below reach it through the registry.
+ */
+const searchToolRenderer = toolRenderers.search;
 
 /**
  * The `structure` branch of the production search renderer, which is the path a session draws: the

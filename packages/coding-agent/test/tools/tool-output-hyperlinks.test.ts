@@ -11,9 +11,15 @@ import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import { readToolRenderer } from "@veyyon/coding-agent/tools/fs/read-render";
 import { WriteTool } from "@veyyon/coding-agent/tools/fs/write";
 import { writeToolView } from "@veyyon/coding-agent/tools/fs/write-view";
+import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { removeSyncWithRetries } from "@veyyon/utils";
-import { searchToolRenderer } from "../../src/tools/search/search-renderer";
+
+/**
+ * The production `search` entry, which is the card a session draws. `search` is a view the terminal
+ * draws rather than a renderer module to import, so the suites below reach it through the registry.
+ */
+const searchToolRenderer = toolRenderers.search;
 
 // 1x1 PNG so the read tool takes its image branch.
 const TINY_PNG_BASE64 =

@@ -4,13 +4,19 @@ import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import { getThemeByName, type Theme } from "@veyyon/coding-agent/theme/theme";
+import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import type { SearchToolDetails, SearchToolInput } from "@veyyon/coding-agent/tools/search/search";
 import type { TextSearchDetails, TextSearchRenderArgs } from "@veyyon/coding-agent/tools/search/text-search";
 import type { Component } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
-import { searchToolRenderer } from "../../src/tools/search/search-renderer";
 import { expectNotAccented, useFullColor } from "../helpers/theme-assertions";
+
+/**
+ * The production `search` entry, which is the card a session draws. `search` is a view the terminal
+ * draws rather than a renderer module to import, so the suites below reach it through the registry.
+ */
+const searchToolRenderer = toolRenderers.search;
 
 /**
  * The `text` branch of the production search renderer, which is the path a session draws: the card is
