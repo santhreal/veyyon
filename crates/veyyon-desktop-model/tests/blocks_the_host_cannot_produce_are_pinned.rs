@@ -117,8 +117,8 @@ fn the_two_role_sets_partition_every_variant_the_enum_declares() {
 	let unclassified: Vec<MessageRole> = declared.difference(&covered).copied().collect();
 	assert!(
 		unclassified.is_empty(),
-		"MessageRole grew {unclassified:?}. Measure whether the host assigns it, then pin it on \
-		 the side the measurement puts it.",
+		"MessageRole grew {unclassified:?}. Measure whether the host assigns it, then pin it on the \
+		 side the measurement puts it.",
 	);
 
 	let stale: Vec<MessageRole> = covered.difference(&declared).copied().collect();
