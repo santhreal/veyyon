@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "ac01286ebb2111defaeadb94067a01849eb484c2",
+	"generatedFrom": "22d6c9c274ee70424dd10b16e006a23269fb21b7",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -24,6 +24,10 @@
 		[
 			"packages/coding-agent/src/tools/inspect-image-renderer.ts",
 			"packages/coding-agent/test/oracles/inspect-image-main-renderer.ts"
+		],
+		[
+			"packages/coding-agent/src/session/permission-intent.ts",
+			"packages/coding-agent/src/session/agent-session-permissions.ts"
 		],
 		[
 			"packages/coding-agent/src/auto-thinking/classifier.ts",
@@ -2287,15 +2291,6 @@
 			"structuralHash": "0b038b9edb903f2df7c1cc6df539dbf8b86e82248024f1c41cf361e293ec1e8f",
 			"mainStructuralHash": "0b038b9edb903f2df7c1cc6df539dbf8b86e82248024f1c41cf361e293ec1e8f"
 		},
-		"kernel/src/session/content-text.ts": {
-			"old": "packages/coding-agent/src/session/content-text.ts",
-			"kind": "normalized",
-			"differs": "none",
-			"hash": "289b75b18daa0f9289852e32b28e0fdf30da1c69368cf10ba61164fc665c2717",
-			"mainHash": "289b75b18daa0f9289852e32b28e0fdf30da1c69368cf10ba61164fc665c2717",
-			"structuralHash": "15543b0aa018f6a6b5ef8998870a0757fa785d34b0454eb9848b50306f1759c6",
-			"mainStructuralHash": "15543b0aa018f6a6b5ef8998870a0757fa785d34b0454eb9848b50306f1759c6"
-		},
 		"kernel/src/session/detached-abort.ts": {
 			"old": "packages/coding-agent/src/session/detached-abort.ts",
 			"kind": "normalized",
@@ -2399,8 +2394,8 @@
 			"old": "packages/coding-agent/src/session/session-listing.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "59257d31cd690d7161790e3110fe6bcc298a40f744ca5314415b7e3b4aa3658b",
-			"mainHash": "59257d31cd690d7161790e3110fe6bcc298a40f744ca5314415b7e3b4aa3658b",
+			"hash": "3562e1ab68e3b2ac2195479e423a8e8f38041f6de2ae7a5e8046d28046b9fbcb",
+			"mainHash": "3562e1ab68e3b2ac2195479e423a8e8f38041f6de2ae7a5e8046d28046b9fbcb",
 			"structuralHash": "b19c27860a5141afde9556b753d08981165fa7128e2049f2f5477a506458b871",
 			"mainStructuralHash": "b19c27860a5141afde9556b753d08981165fa7128e2049f2f5477a506458b871"
 		},
@@ -12349,6 +12344,17 @@
 			"mainHash": "cbe5fac4905fece413a02811df87739f034d5a400a56a878b5b0001f3b8a8839",
 			"structuralHash": "c79d6f642e70cb2504e799a281ab2a2593a68081627d2bf14788d2b00989a72d",
 			"mainStructuralHash": "c79d6f642e70cb2504e799a281ab2a2593a68081627d2bf14788d2b00989a72d"
+		},
+		"packages/coding-agent/src/session/agent-session-permissions.ts": {
+			"old": "packages/coding-agent/src/session/permission-intent.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "695242f56276e0e3ec0a61feddcdc7d9b0a3186a4aeb61fb31e77f880d46281d",
+			"mainHash": "6c6cf413d3ff3b6ab894a3d1ab0d76e1d26bc3bc91f781682301dbe78c79b493",
+			"structuralHash": "12b50a06171b8650d80d540f06ae256b779e71d9516e86a21e14bd167e46d1ad",
+			"mainStructuralHash": "c6dd3fbf8ba42025b3f813efcb0b16f6657e49ad8f68699e98b20383ae59187b"
 		},
 		"packages/coding-agent/src/session/agent-session-queue.ts": {
 			"old": "packages/coding-agent/src/session/queued-message.ts",

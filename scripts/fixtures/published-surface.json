@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "ac01286ebb2111defaeadb94067a01849eb484c2",
+	"generatedFrom": "22d6c9c274ee70424dd10b16e006a23269fb21b7",
 	"packages": {
 		"@veyyon/agent-core": {
 			"name": "@veyyon/agent-core",
@@ -3170,14 +3170,14 @@
 				"./session/codex-auto-reset.js",
 				"./session/compact-modes",
 				"./session/compact-modes.js",
-				"./session/content-text",
-				"./session/content-text.js",
 				"./session/context-usage",
 				"./session/context-usage.js",
 				"./session/cpu-limit",
 				"./session/cpu-limit.js",
 				"./session/detached-abort",
 				"./session/detached-abort.js",
+				"./session/ephemeral-reply",
+				"./session/ephemeral-reply.js",
 				"./session/exit-diagnostics",
 				"./session/exit-diagnostics.js",
 				"./session/history-storage",
@@ -3198,6 +3198,8 @@
 				"./session/operator-notices.js",
 				"./session/owned-resources",
 				"./session/owned-resources.js",
+				"./session/permission-intent",
+				"./session/permission-intent.js",
 				"./session/provider-context-canonicalizer",
 				"./session/provider-context-canonicalizer.js",
 				"./session/provider-image-budget",
@@ -3212,6 +3214,8 @@
 				"./session/retry-fallback.js",
 				"./session/retry-policy",
 				"./session/retry-policy.js",
+				"./session/rewind-checkpoint",
+				"./session/rewind-checkpoint.js",
 				"./session/session-context",
 				"./session/session-context.js",
 				"./session/session-context.test",
@@ -7571,6 +7575,7 @@
 				"./session/factory-options",
 				"./session/factory-prompt",
 				"./session/factory-tools",
+				"./session/rewind-checkpoint",
 				"./theme/theme",
 				"./tools/agent/ask",
 				"./tools/agent/irc",
@@ -10384,14 +10389,6 @@
 					"to": "@veyyon/kernel/session/compact-modes.js",
 					"why": "packages/coding-agent/src/session/compact-modes.ts moved to kernel/src/session/compact-modes.ts, which @veyyon/kernel publishes as ./session/compact-modes.js"
 				},
-				"./session/content-text": {
-					"to": "@veyyon/kernel/session/content-text",
-					"why": "packages/coding-agent/src/session/content-text.ts moved to kernel/src/session/content-text.ts, which @veyyon/kernel publishes as ./session/content-text"
-				},
-				"./session/content-text.js": {
-					"to": "@veyyon/kernel/session/content-text.js",
-					"why": "packages/coding-agent/src/session/content-text.ts moved to kernel/src/session/content-text.ts, which @veyyon/kernel publishes as ./session/content-text.js"
-				},
 				"./session/detached-abort": {
 					"to": "@veyyon/kernel/session/detached-abort",
 					"why": "packages/coding-agent/src/session/detached-abort.ts moved to kernel/src/session/detached-abort.ts, which @veyyon/kernel publishes as ./session/detached-abort"
@@ -10447,6 +10444,14 @@
 				"./session/owned-resources.js": {
 					"to": "@veyyon/kernel/session/owned-resources.js",
 					"why": "packages/coding-agent/src/session/owned-resources.ts moved to kernel/src/session/owned-resources.ts, which @veyyon/kernel publishes as ./session/owned-resources.js"
+				},
+				"./session/permission-intent": {
+					"to": "@veyyon/coding-agent/session/agent-session-permissions",
+					"why": "packages/coding-agent/src/session/permission-intent.ts moved to packages/coding-agent/src/session/agent-session-permissions.ts, which @veyyon/coding-agent publishes as ./session/agent-session-permissions"
+				},
+				"./session/permission-intent.js": {
+					"to": "@veyyon/coding-agent/session/agent-session-permissions.js",
+					"why": "packages/coding-agent/src/session/permission-intent.ts moved to packages/coding-agent/src/session/agent-session-permissions.ts, which @veyyon/coding-agent publishes as ./session/agent-session-permissions.js"
 				},
 				"./session/queued-message": {
 					"to": "@veyyon/coding-agent/session/agent-session-queue",

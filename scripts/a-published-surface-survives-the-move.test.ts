@@ -393,8 +393,8 @@ describe("a published surface survives the move", () => {
 	 * (b3) The claim cells (b) and (b2) cannot make. They compare `exports` KEYS, and a key is not a
 	 * subpath: `"./session/*"` is one key and was 36 importable modules. Step 5 moved those modules to
 	 * `@veyyon/kernel` and every key stayed exactly where it was, so a ledger of keys reported no
-	 * change while 100 resolved subpaths stopped resolving. This cell states parity over what a
-	 * consumer can actually import: 5199 subpaths the branch point served, every one of them still
+	 * change while 98 resolved subpaths stopped resolving. This cell states parity over what a
+	 * consumer can actually import: 5217 subpaths the branch point served, every one of them still
 	 * served here or carrying a successor that is.
 	 */
 	it("(b3) every resolved subpath main served is still served or relocated to one that is", () => {
@@ -429,7 +429,7 @@ describe("a published surface survives the move", () => {
 		}
 
 		expect(unserved).toEqual([]);
-		expect(compared).toBe(5213);
+		expect(compared).toBe(5217);
 	});
 
 	/**
@@ -437,21 +437,26 @@ describe("a published surface survives the move", () => {
 	 * documented key relocation, or a recorded absorption — so a rule that started matching more than
 	 * it should would otherwise pass as a wider set of correct-looking rows.
 	 *
-	 * 1029 coding-agent subpaths relocated, 100 of them into `@veyyon/kernel`: 53 modules moved and
-	 * each is served twice, extensionless and under a `.js` alias, less the three that this branch
-	 * added rather than moved (`extensibility/host-view`, `extensibility/widget`,
-	 * `session/agent-session-compaction-policy`) and so were never part of the baseline surface. Four
-	 * of the rest are the first-frame replay pair main added under `startup/`, which this branch
-	 * serves from `cli/` under both spellings. Two are `tools/render-limits`, the display-limit leaf
-	 * main extracted from `tools/render-utils`, which this branch serves from the `core/` directory
-	 * every domain reads. Four more are the two session vocabularies main extracted from
-	 * `agent-session.ts` — `session/queued-message` and `session/retry-fallback` — which this branch
-	 * had already extracted under the names its session-split suite pins,
+	 * 1029 coding-agent subpaths relocated, 98 of them into `@veyyon/kernel`: 49 modules moved and
+	 * each is served twice, extensionless and under a `.js` alias. The modules this branch added
+	 * rather than moved (`extensibility/host-view`, `extensibility/widget`,
+	 * `session/agent-session-compaction-policy`) carry no row, since they were never part of the
+	 * baseline surface. Four rows are the first-frame replay pair main added under `startup/`, which
+	 * this branch serves from `cli/` under both spellings. Two are `tools/render-limits`, the
+	 * display-limit leaf main extracted from `tools/render-utils`, which this branch serves from the
+	 * `core/` directory every domain reads. Four more are the two session vocabularies main
+	 * extracted from `agent-session.ts` — `session/queued-message` and `session/retry-fallback` —
+	 * which this branch had already extracted under the names its session-split suite pins,
 	 * `session/agent-session-queue` and `session/agent-session-retry-fallback`, each served under
-	 * both spellings. The remainder are the tool modules, each served under
-	 * both spellings, that moved into the domain directory they belong to. The 54 `@veyyon/tui` rows
-	 * are the terminal engine's move to `hosts/terminal/engine` and the utility modules that went to
-	 * `@veyyon/utils` with it.
+	 * both spellings. Two more are `session/permission-intent`, the ACP argument reader main
+	 * extracted, which this branch had already folded into `session/agent-session-permissions`. The
+	 * remainder are the tool modules, each served under both spellings, that moved into the domain
+	 * directory they belong to. The 54 `@veyyon/tui` rows are the terminal engine's move to
+	 * `hosts/terminal/engine` and the utility modules that went to `@veyyon/utils` with it.
+	 *
+	 * `session/content-text` carries no row either: this branch moved that copy to
+	 * `@veyyon/kernel`, and main then deleted it outright in favour of the `@veyyon/utils` owner
+	 * both packages now call, so the baseline serves no such subpath to relocate.
 	 *
 	 * `@veyyon/stats` carries no row: `./format` was a relocation while this branch alone had moved
 	 * the two cost formatters to `@veyyon/utils/format`, and the baseline stopped serving that
@@ -468,7 +473,7 @@ describe("a published surface survives the move", () => {
 		const codingAgent = rows["@veyyon/coding-agent"] ?? {};
 		expect(Object.keys(codingAgent).length).toBe(1029);
 		const intoKernel = Object.values(codingAgent).filter(note => note.to.startsWith("@veyyon/kernel/"));
-		expect(intoKernel.length).toBe(100);
+		expect(intoKernel.length).toBe(98);
 		const kernelConcerns = new Set(intoKernel.map(note => note.to.split("/").slice(0, 3).join("/")));
 		expect([...kernelConcerns].sort()).toEqual([
 			"@veyyon/kernel/loader",
