@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "6d45852a714cc04679ba9bce11f6423967804d26",
+	"generatedFrom": "90ac7c1e589ad3ca068f7b95da560839f469b9bb",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -9712,10 +9712,10 @@
 			"old": "packages/coding-agent/src/startup/first-frame-replay.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "ca48a154b2914fff7413620a2fc47697d9b50136da396ad4dc813532ecb501c1",
-			"mainHash": "ca48a154b2914fff7413620a2fc47697d9b50136da396ad4dc813532ecb501c1",
-			"structuralHash": "b20f1fa65101e49a09e4dbd249e762e629b8d138b196d35ae1684536f0fc015f",
-			"mainStructuralHash": "b20f1fa65101e49a09e4dbd249e762e629b8d138b196d35ae1684536f0fc015f"
+			"hash": "adab98480867ee27c76a9d4265053cd863fab590dbb549c8ae92038300f8a302",
+			"mainHash": "adab98480867ee27c76a9d4265053cd863fab590dbb549c8ae92038300f8a302",
+			"structuralHash": "8b7ec4423d40b9d96665bc904ab5571833da38df7ce21e9e103212edc18fb0b3",
+			"mainStructuralHash": "8b7ec4423d40b9d96665bc904ab5571833da38df7ce21e9e103212edc18fb0b3"
 		},
 		"packages/coding-agent/src/cli/init-xdg.ts": {
 			"old": "packages/coding-agent/src/cli/commands/init-xdg.ts",
