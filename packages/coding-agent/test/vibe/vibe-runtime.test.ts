@@ -416,12 +416,12 @@ describe("vibe session registry", () => {
 	 * Prevents Vibe from drifting from task/eval policy by pinning the exact
 	 * model and effort fields handed to its production executor.
 	 *
-	 * The values come from the ONE place model and effort are set (`subagent.model`
-	 * and `subagent.thinkingLevel`), because the per-agent row that used to carry
-	 * them is retired: it outranked the setting the operator had just changed from
-	 * another screen. The case below this one is the other half of that contract.
+	 * With `subagent.sharedModel` on, `subagent.model` and `subagent.thinkingLevel` are the only
+	 * pair that reaches a worker: the per-agent row below is inert while that scope is active, so a
+	 * row left behind from the other scope cannot outrank the setting an operator just changed. The
+	 * case below this one is the other half of that contract.
 	 */
-	it("forwards canonical model and effort overrides from the one place they are set", async () => {
+	it("forwards the shared model and effort while the shared scope is on", async () => {
 		const spy = vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
 			AgentRegistry.global().register({
 				id: options.id,
@@ -438,7 +438,10 @@ describe("vibe session registry", () => {
 			cwd: "/tmp",
 			hasUI: false,
 			settings: Settings.isolated({
-				"subagent.agents": { sonic: { enabled: true } },
+				"subagent.agents": {
+					sonic: { enabled: true, model: "anthropic/claude-sonnet-4-5", thinkingLevel: "minimal" },
+				},
+				"subagent.sharedModel": true,
 				"subagent.model": "openai/gpt-5.2-codex",
 				"subagent.thinkingLevel": "xhigh",
 			}),
@@ -460,16 +463,14 @@ describe("vibe session registry", () => {
 	});
 
 	/**
-	 * The lane layer, asserted rather than described.
+	 * The per-agent scope, asserted rather than described.
 	 *
-	 * `subagent.agents.<name>.model` and `.thinkingLevel` are the highest-precedence
-	 * layer, above the blanket settings the case before this one pins, so a row
-	 * written for one agent decides what THAT agent runs and leaves every other
-	 * agent on the blanket pair. The vibe path resolves through the same layers as
-	 * a spawn, and it is the path that would keep the old order longest if the two
-	 * ever drifted, which is why the precedence is asserted here too.
+	 * With `subagent.sharedModel` off — the default — `subagent.agents.<name>.model` and
+	 * `.thinkingLevel` are the pair that decides what an agent runs, and the shared pair is inert.
+	 * The vibe path resolves through the same scopes as a spawn, and it is the path that would keep
+	 * a stale order longest if the two ever drifted, which is why the scope is asserted here too.
 	 */
-	it("lets a per-agent row outrank the blanket model and effort", async () => {
+	it("lets a per-agent row decide while the shared scope is off", async () => {
 		const spy = vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
 			AgentRegistry.global().register({
 				id: options.id,
@@ -486,8 +487,8 @@ describe("vibe session registry", () => {
 			cwd: "/tmp",
 			hasUI: false,
 			settings: Settings.isolated({
-				// The row asks for one model and effort; the blanket settings ask for
-				// another. The row is the pair that must reach the executor.
+				// The row asks for one model and effort; the shared pair asks for
+				// another. The shared scope is off, so the row is what must reach the executor.
 				"subagent.agents": {
 					sonic: { enabled: true, model: "anthropic/claude-sonnet-4-5", thinkingLevel: "minimal" },
 				},

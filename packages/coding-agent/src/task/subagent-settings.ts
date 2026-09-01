@@ -544,9 +544,14 @@ function readNameList(spawner: unknown, key: keyof EnabledSubagentSource): strin
 /** Which setting decided an agent's model. Shown next to the model on every agent surface. */
 export type SubagentModelSource =
 	/**
+	 * `subagent.model`, while `subagent.sharedModel` is on. The roster is on one
+	 * scope, so this answers for every agent and outranks the layers below.
+	 */
+	| "shared"
+	/**
 	 * A `subagent.agents.<name>` lane — the agent's own row, or a `subagents`
-	 * level under it. The most specific layer there is: it names both the agent
-	 * and how far down this spawn sits.
+	 * level under it. The most specific per-agent layer there is: it names both
+	 * the agent and how far down this spawn sits.
 	 */
 	| "lane"
 	/** The agent definition's `model:` frontmatter. */
@@ -597,6 +602,11 @@ export const AGENT_DEFAULT_EFFORT: ConfiguredThinkingLevel = ThinkingLevel.Mediu
  */
 export function subagentModelSourceLabel(source: SubagentModelSource, agentName: string, depth?: number): string {
 	switch (source) {
+		case "shared":
+			// Names the switch as well as the key: a reader who did not set the
+			// switch needs to know why one key answers for an agent they never
+			// configured.
+			return "subagent.model (Same Model for All Subagents)";
 		case "lane":
 			// The path an operator can act on. Depth 0 is the agent's own row; below
 			// that, one `.subagents` per level, which is exactly the sequence of
@@ -701,26 +711,27 @@ export function resetSupersededAgentRowReports(): void {
 /**
  * The version of the `subagent.*` model shape this build reads.
  *
- * Version 1 decided a model for MANY agents at once: `subagent.sharedModel`
- * switched every agent onto `subagent.model` and `subagent.thinkingLevel`, and
- * `subagent.modelByDepth` bound a chain to a spawn depth whatever agent ran
- * there. Version 2 has one scope, the agent, so those keys are stale rather
- * than superseded: version 2 has no reading of "the model for everybody".
+ * Version 1 layered one blanket answer under the per-agent rows, so the roster
+ * and the blanket row each showed a model and neither said which a spawn would
+ * use. Version 2 removed the blanket scope entirely. Version 3 has both and
+ * makes them EXCLUSIVE: `subagent.sharedModel` selects which one exists, and
+ * the surfaces of the scope that is off are not drawn.
+ *
+ * `subagent.modelByDepth` is retired in every version from 2 on. It keyed a
+ * chain to a spawn depth rather than to an agent, so it decided for whatever
+ * agent happened to run there, which neither scope has a reading of.
  */
-export const SUBAGENT_MODEL_SCOPE_VERSION = 2;
+export const SUBAGENT_MODEL_SCOPE_VERSION = 3;
 
 /**
- * The version-1 keys, each with the version-2 control that answers instead.
+ * Keys that stay declared and decide nothing, each with the control that
+ * answers instead.
  *
- * They stay in the schema, marked `retiredBy`, so an existing `config.yml` still
- * loads. They are REJECTED rather than served: no resolver reads them, and each
- * one left in a file is reported once with the page that replaced it. Serving
- * one would keep a single key deciding for every agent.
+ * They stay in the schema, marked `retiredBy`, so an existing `config.yml`
+ * still loads. They are REJECTED rather than served: no resolver reads them,
+ * and each one left in a file is reported once with the page that replaced it.
  */
 export const RETIRED_SUBAGENT_MODEL_SETTINGS: Readonly<Record<string, string>> = {
-	"subagent.sharedModel": "Subagents → Roster → that agent → Model",
-	"subagent.model": "Subagents → Roster → that agent → Model",
-	"subagent.thinkingLevel": "Subagents → Roster → that agent → Effort",
 	"subagent.modelByDepth": "Subagents → Roster → that agent → Subagents → Model",
 };
 
@@ -749,7 +760,7 @@ export function rejectedSubagentModelSettings(settings: Settings): string[] {
 }
 
 /**
- * Say once, per key, that a version-1 model setting decides nothing now.
+ * Say once, per key, that a retired model setting decides nothing now.
  *
  * Called from both resolvers, so the report lands on the path that would have
  * read the value. Silence here is what a rejected setting looks like from the
@@ -761,8 +772,8 @@ function reportRejectedSubagentModelSettings(settings: Settings): void {
 		if (reportedRetiredModelSettings.has(path)) continue;
 		reportedRetiredModelSettings.add(path);
 		logger.warn(
-			`Settings: ${path} is set and is no longer read — model and effort are chosen per agent. ` +
-				`Open ${RETIRED_SUBAGENT_MODEL_SETTINGS[path]} and choose it for the agent that needs it.`,
+			`Settings: ${path} is set and is no longer read — a model and an effort are chosen for one agent, ` +
+				`or for every agent through Same Model for All Subagents. Open ${RETIRED_SUBAGENT_MODEL_SETTINGS[path]} and choose it there.`,
 			{ setting: path, scopeVersion: SUBAGENT_MODEL_SCOPE_VERSION },
 		);
 	}
@@ -817,19 +828,51 @@ function laneModelLayer(
 }
 
 /**
+ * Whether one blanket answer decides for the whole roster, rather than each
+ * agent deciding for itself.
+ */
+export function subagentScopeIsShared(settings: Settings): boolean {
+	return settings.get("subagent.sharedModel") === true;
+}
+
+/**
+ * The blanket model layer, or undefined while the roster is on per-agent scope.
+ *
+ * Reads `subagent.model` only when the switch is on. An unset chain under an on
+ * switch is not an error and is not a layer: it means every agent runs the
+ * default model role, which is the same thing the switch being off with no lane
+ * anywhere would produce.
+ */
+function sharedModelLayer(settings: Settings): { source: "shared"; value: string | string[] } | undefined {
+	if (!subagentScopeIsShared(settings)) return undefined;
+	const value: unknown = settings.get("subagent.model");
+	if (typeof value === "string" && value.trim().length > 0) return { source: "shared", value };
+	if (Array.isArray(value) && value.length > 0) {
+		return { source: "shared", value: value.filter((entry): entry is string => typeof entry === "string") };
+	}
+	return undefined;
+}
+
+/**
  * Resolve the model patterns one agent runs, with the deciding layer.
  *
- * One scope, the agent. Highest first:
- *  1. The lane — `subagent.agents.<name>`, or the `subagents` level under it that governs this
+ * TWO SCOPES, and `subagent.sharedModel` selects which one is in force rather than layering them.
+ * Highest first:
+ *  1. `subagent.model`, while the switch is on. It answers for every agent, and it is the only
+ *     layer that does. The per-agent rows below are not drawn in that state, so nothing on screen
+ *     claims a value this outranks.
+ *  2. The lane — `subagent.agents.<name>`, or the `subagents` level under it that governs this
  *     spawn. Deepest lane first, then up the chain: a level naming no model inherits the level
  *     above, which is what makes "inherit" on a nested page mean the page you came from.
- *  2. The agent definition's `model:` frontmatter.
- *  3. {@link AGENT_DEFAULT_MODEL_ROLE}, the documented default.
+ *  3. The agent definition's `model:` frontmatter.
+ *  4. {@link AGENT_DEFAULT_MODEL_ROLE}, the documented default.
  *
- * No layer answers for more than one agent. `subagent.sharedModel`, `subagent.model`,
- * `subagent.thinkingLevel` and `subagent.modelByDepth` were those layers and are rejected now
- * ({@link RETIRED_SUBAGENT_MODEL_SETTINGS}). A spawn does not follow the model the operator is
- * viewing either, which moved every agent without a choice of its own on a keystroke aimed at one.
+ * Layers 2 to 4 are skipped entirely while the switch is on, so an agent with a lane does not
+ * silently keep its own model against a switch that says every agent shares one. What that lane
+ * holds stays in the file and answers again the moment the switch goes off.
+ *
+ * A spawn does not follow the model the operator is viewing, which moved every agent without a
+ * choice of its own on a keystroke aimed at one.
  *
  * A configured layer that expands to nothing returns `unresolved` rather than falling through, so
  * the caller can refuse to spawn and name the setting that is wrong. Bundled specialists carry no
@@ -857,11 +900,18 @@ export function resolveSubagentModel(options: {
 
 	reportSupersededAgentRows(settings);
 	reportRejectedSubagentModelSettings(settings);
-	const lane = laneModelLayer(settings, agentName, taskDepth);
-	const layers: Array<{ source: SubagentModelSource; value: string | string[] | undefined; depth?: number }> = [
-		...(lane === undefined ? [] : [lane]),
-		{ source: "frontmatter", value: agentModel },
-	];
+	// The scope decides which layers exist at all. Shared with no chain set is
+	// not a fall-through to the agent's own layers — it is every agent on the
+	// default model role, which is what the row says an unset chain means.
+	const sharedScope = subagentScopeIsShared(settings);
+	const shared = sharedScope ? sharedModelLayer(settings) : undefined;
+	const lane = sharedScope ? undefined : laneModelLayer(settings, agentName, taskDepth);
+	const layers: Array<{ source: SubagentModelSource; value: string | string[] | undefined; depth?: number }> =
+		sharedScope
+			? shared
+				? [shared]
+				: []
+			: [...(lane === undefined ? [] : [lane]), { source: "frontmatter", value: agentModel }];
 
 	for (const layer of layers) {
 		const raw = Array.isArray(layer.value) ? layer.value : layer.value?.trim();
@@ -884,17 +934,19 @@ export function resolveSubagentModel(options: {
 }
 
 /**
- * Resolve an agent's thinking level, on the same one-scope chain {@link resolveSubagentModel} uses.
+ * Resolve an agent's thinking level, on the same two scopes {@link resolveSubagentModel} uses.
  * Highest first:
- *  1. The lane — the `subagent.agents.<name>` level governing this spawn, then up its chain, so a
+ *  1. `subagent.thinkingLevel`, while `subagent.sharedModel` is on. It answers for every agent,
+ *     and the layers below are skipped rather than consulted.
+ *  2. The lane — the `subagent.agents.<name>` level governing this spawn, then up its chain, so a
  *     nested page's "inherit" means the page above it.
- *  2. The agent definition's `thinkingLevel` frontmatter, or `thinking`. The bundled definitions
+ *  3. The agent definition's `thinkingLevel` frontmatter, or `thinking`. The bundled definitions
  *     spell it `thinking-level`, which `normalizeKeys` folds onto the same field.
- *  3. {@link AGENT_DEFAULT_EFFORT}, the documented default.
+ *  4. {@link AGENT_DEFAULT_EFFORT}, the documented default.
  *
- * Effort is per agent for the same reason the model is: one scope has to describe both, or a roster
- * row moves the model and leaves the effort behind. The parent session's live effort does not reach
- * a child.
+ * Effort follows the model's scope, never its own: a switch that moved every agent's model and
+ * left each agent's effort behind would run the shared model at whatever level the old per-agent
+ * row happened to name. The parent session's live effort does not reach a child in either scope.
  *
  * An explicit `:level` suffix on the resolved model pattern outranks all of these. The executor
  * applies that, since only it knows whether the suffix was present (see
@@ -912,6 +964,13 @@ export function resolveSubagentThinkingLevel(options: {
 }): ConfiguredThinkingLevel {
 	reportSupersededAgentRows(options.settings);
 	reportRejectedSubagentModelSettings(options.settings);
+	if (subagentScopeIsShared(options.settings)) {
+		const raw: unknown = options.settings.get("subagent.thinkingLevel");
+		const parsed = typeof raw === "string" ? parseConfiguredEffortSetting("subagent.thinkingLevel", raw) : undefined;
+		// Unset, or a value naming no level, leaves the documented default rather
+		// than reaching for a per-agent row the operator cannot currently see.
+		return parsed ?? AGENT_DEFAULT_EFFORT;
+	}
 	const { chain, index } = laneForSpawn(options.settings, options.agentName, options.taskDepth);
 	for (let level = Math.min(index, chain.length - 1); level >= 0; level--) {
 		const raw = chain[level]?.thinkingLevel;
@@ -928,18 +987,25 @@ export function resolveSubagentThinkingLevel(options: {
 
 /**
  * Every model chain a spawn in this profile can land on without anyone editing
- * a setting: the default model role, plus each lane's own chain at every
- * nesting level.
+ * a setting: the default model role, the blanket chain while the roster is on
+ * shared scope, and each lane's own chain at every nesting level.
  *
- * There is no single "the subagent model" to read now that scope is the agent,
- * so a surface that annotates providers by role reads the union instead of one
- * key. Unresolvable patterns stay in the list; the caller resolves and drops
- * what its registry cannot match.
+ * A surface that annotates providers by role reads this union rather than one
+ * key, because which key decides depends on the scope and on the agent. Lanes
+ * stay in the union while the switch is on: a spawn cannot land on them in that
+ * state, but the switch is one keystroke and re-annotating every provider on it
+ * would make the badges flicker for no gain. Unresolvable patterns stay in the
+ * list; the caller resolves and drops what its registry cannot match.
  */
 export function configuredSubagentModelChains(settings: Settings): Array<string | string[]> {
 	const chains: Array<string | string[]> = [];
 	const role = settings.getModelRole(AGENT_DEFAULT_MODEL_ROLE)?.trim();
 	if (role) chains.push(role);
+	const shared: unknown = settings.get("subagent.model");
+	if (typeof shared === "string" && shared.trim().length > 0) chains.push(shared);
+	else if (Array.isArray(shared) && shared.length > 0) {
+		chains.push(shared.filter((entry): entry is string => typeof entry === "string"));
+	}
 	const table: unknown = settings.get("subagent.agents");
 	if (!isRecord(table)) return chains;
 	for (const row of Object.values(table)) {

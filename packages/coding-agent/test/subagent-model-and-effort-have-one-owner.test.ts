@@ -200,35 +200,51 @@ function probeValuesFor(entry: SchemaEntry): unknown[] {
 }
 
 /**
- * Paths whose probe moves the resolved model or effort.
+ * Paths whose probe moves the resolved model or effort, from a given starting store.
  *
- * One store shape, because there is one precedence mode left: the answer for an
- * agent comes from that agent's lane, its definition, or the documented default,
- * and nothing switches between chains. A path outside `subagent.agents` that
- * moves this fingerprint is a second owner by definition.
+ * `base` is the scope the sweep runs in, because which paths decide is exactly
+ * what the scope switch changes. A path outside the set its scope owns is a
+ * second owner by definition, and a path that decides in BOTH scopes is the
+ * layering this suite exists to keep out.
  */
-function pathsThatDecideWhatASubagentRuns(): SettingPath[] {
-	const baseline = resolutionFingerprint(Settings.isolated());
+function pathsThatDecideWhatASubagentRuns(base: Readonly<Record<string, unknown>> = {}): SettingPath[] {
+	const baseline = resolutionFingerprint(Settings.isolated({ ...base }));
 	return SUBAGENT_PATHS.filter(candidate => {
 		const entry: SchemaEntry = SETTINGS_SCHEMA[candidate];
 		return probeValuesFor(entry).some(
-			value => resolutionFingerprint(Settings.isolated({ [candidate]: value })) !== baseline,
+			value => resolutionFingerprint(Settings.isolated({ ...base, [candidate]: value })) !== baseline,
 		);
 	});
 }
 
-describe("exactly one setting decides what a subagent runs", () => {
+describe("exactly one setting decides what a subagent runs, in each scope", () => {
 	/**
-	 * The ownership ratchet, stated as a set rather than as a pair of positive cases.
+	 * The ownership ratchet, stated as a set per scope rather than as positive cases.
 	 *
-	 * `subagent.agents` is the only member, and the scope of every value in it is one agent. The
-	 * four keys that used to sit beside it — `subagent.sharedModel`, `subagent.model`,
-	 * `subagent.modelByDepth` and `subagent.thinkingLevel` — each answered for MANY agents at once,
-	 * and each is retired and rejected. Any `subagent.*` path reaching either resolver that is not
-	 * this one turns this RED, including a revival of one of the four.
+	 * Per agent is the default scope, and `subagent.agents` is its only owner: the scope of every
+	 * value in it is one agent. `subagent.sharedModel` appears because flipping it is what moves
+	 * the roster to the other scope — that is the switch working, not a second owner, and the case
+	 * below pins what it switches TO. Any other `subagent.*` path reaching either resolver here
+	 * turns this RED.
 	 */
-	it("names it, and finds no second", () => {
-		expect(pathsThatDecideWhatASubagentRuns()).toEqual(["subagent.agents"]);
+	it("names one owner for the per-agent scope, and finds no second", () => {
+		expect(pathsThatDecideWhatASubagentRuns()).toEqual(["subagent.agents", "subagent.sharedModel"]);
+	});
+
+	/**
+	 * The other half of the ratchet, and the whole reason the switch could come back.
+	 *
+	 * On shared scope the blanket pair owns both axes and `subagent.agents` decides NOTHING. A lane
+	 * that kept deciding here is the original defect exactly: two surfaces answering for one agent,
+	 * with the roster showing a model no spawn uses. Pinned by equality in both directions, so a
+	 * lane creeping back into the chain turns this RED rather than merely losing a race.
+	 */
+	it("names the blanket pair for the shared scope, and no lane", () => {
+		expect(pathsThatDecideWhatASubagentRuns({ "subagent.sharedModel": true })).toEqual([
+			"subagent.model",
+			"subagent.sharedModel",
+			"subagent.thinkingLevel",
+		]);
 	});
 
 	/**
@@ -250,33 +266,89 @@ describe("exactly one setting decides what a subagent runs", () => {
 	});
 
 	/**
-	 * A value left in one of the retired keys from an earlier release must not quietly outrank the
-	 * agent's own file. Serving it would put one key back in charge of the whole roster, which is
-	 * the three-surfaces-one-value defect in its newest form.
+	 * `subagent.modelByDepth` keyed a chain to a spawn depth rather than to an agent, so it decided
+	 * for whatever agent happened to run there. Neither scope has a reading of that, so a value left
+	 * in it from an earlier release must reach no layer in either.
 	 */
-	it("ignores the retired cross-agent keys entirely", () => {
-		const stale = Settings.isolated({
+	it("ignores the depth-keyed chain in both scopes", () => {
+		for (const sharedModel of [false, true]) {
+			const stale = Settings.isolated({
+				"subagent.sharedModel": sharedModel,
+				"subagent.modelByDepth": { "1": DEPTH_MODEL },
+			});
+			const clean = Settings.isolated({ "subagent.sharedModel": sharedModel });
+			for (const taskDepth of [undefined, 1, 2]) {
+				const a = resolveSubagentModel({
+					settings: clean,
+					agentName: AGENT,
+					agentModel: FRONTMATTER_MODEL,
+					taskDepth,
+				});
+				const b = resolveSubagentModel({
+					settings: stale,
+					agentName: AGENT,
+					agentModel: FRONTMATTER_MODEL,
+					taskDepth,
+				});
+				expect(b.patterns, `shared ${sharedModel} depth ${taskDepth}`).toEqual(a.patterns);
+				expect(b.source, `shared ${sharedModel} depth ${taskDepth}`).toBe(a.source);
+			}
+		}
+	});
+
+	/**
+	 * The switch is EXCLUSIVE, not a layer above the lane. While it is on, a lane that names a model
+	 * and an effort decides neither — which is what lets the roster stop drawing those rows without
+	 * hiding a value that still wins. The same lane is read back out of the shared-scope store to
+	 * prove the value was kept rather than cleared on the way in, and the off-scope store proves it
+	 * decides again.
+	 */
+	it("puts a lane back in charge when the switch is off, having kept its value", () => {
+		const lane = { [AGENT]: { model: BLANKET_MODEL, thinkingLevel: ThinkingLevel.Low } };
+		const on = Settings.isolated({
 			"subagent.sharedModel": true,
-			"subagent.model": BLANKET_MODEL,
-			"subagent.thinkingLevel": "low",
-			"subagent.modelByDepth": { "1": DEPTH_MODEL },
+			"subagent.model": DEPTH_MODEL,
+			"subagent.agents": lane,
+		});
+		const off = Settings.isolated({
+			"subagent.sharedModel": false,
+			"subagent.model": DEPTH_MODEL,
+			"subagent.agents": lane,
 		});
 
-		expect(
-			resolveSubagentModel({
-				settings: stale,
-				agentName: AGENT,
-				agentModel: FRONTMATTER_MODEL,
-				taskDepth: 1,
-			}).patterns,
-		).toEqual([FRONTMATTER_MODEL]);
-		expect(
-			resolveSubagentThinkingLevel({
-				settings: stale,
-				agentName: AGENT,
-				agentThinkingLevel: ThinkingLevel.High,
-			}),
-		).toBe(ThinkingLevel.High);
+		const shared = resolveSubagentModel({ settings: on, agentName: AGENT, taskDepth: 1 });
+		expect(shared.patterns).toEqual([DEPTH_MODEL]);
+		expect(shared.source).toBe("shared");
+		// Kept, not cleared: turning the switch on must not cost the operator the
+		// per-agent choices they made before it.
+		expect(on.get("subagent.agents")).toEqual(lane);
+
+		const perAgent = resolveSubagentModel({ settings: off, agentName: AGENT, taskDepth: 1 });
+		expect(perAgent.patterns).toEqual([BLANKET_MODEL]);
+		expect(perAgent.source).toBe("lane");
+		expect(resolveSubagentThinkingLevel({ settings: off, agentName: AGENT, taskDepth: 1 })).toBe(ThinkingLevel.Low);
+	});
+
+	/**
+	 * Effort follows the model's scope rather than its own. A switch that moved every agent's model
+	 * and left each agent's effort behind would run the shared model at whatever level the hidden
+	 * per-agent row named, which is a value on nobody's screen deciding what a spawn costs.
+	 */
+	it("moves effort with the model when the scope changes", () => {
+		const agents = { [AGENT]: { thinkingLevel: ThinkingLevel.High } };
+		const on = Settings.isolated({
+			"subagent.sharedModel": true,
+			"subagent.thinkingLevel": ThinkingLevel.Low,
+			"subagent.agents": agents,
+		});
+		const off = Settings.isolated({
+			"subagent.sharedModel": false,
+			"subagent.thinkingLevel": ThinkingLevel.Low,
+			"subagent.agents": agents,
+		});
+
+		expect(resolveSubagentThinkingLevel({ settings: on, agentName: AGENT, taskDepth: 1 })).toBe(ThinkingLevel.Low);
+		expect(resolveSubagentThinkingLevel({ settings: off, agentName: AGENT, taskDepth: 1 })).toBe(ThinkingLevel.High);
 	});
 
 	/**
@@ -436,14 +508,14 @@ describe("the layer that chose a subagent's model is one of exactly three", () =
 	 */
 	function producedSources(): SubagentModelSource[] {
 		const produced = new Set<SubagentModelSource>();
-		for (const retired of [undefined, BLANKET_MODEL, "@no-such-role"]) {
+		for (const blanket of [undefined, BLANKET_MODEL, "@no-such-role"]) {
 			for (const row of [undefined, { enabled: true }, { model: FALLBACK_MODEL, thinkingLevel: "high" }]) {
 				for (const nested of [undefined, DEPTH_MODEL]) {
 					for (const frontmatter of [undefined, FRONTMATTER_MODEL]) {
 						for (const defaultRole of [undefined, SESSION_MODEL]) {
 							for (const taskDepth of [undefined, 1, 2]) {
 								const store = Settings.isolated({
-									...(retired ? { "subagent.sharedModel": true, "subagent.model": retired } : {}),
+									...(blanket ? { "subagent.sharedModel": true, "subagent.model": blanket } : {}),
 									...(row || nested
 										? {
 												"subagent.agents": {
@@ -470,24 +542,19 @@ describe("the layer that chose a subagent's model is one of exactly three", () =
 		return [...produced].sort();
 	}
 
-	it("produces lane, frontmatter and default, and nothing else", () => {
-		expect(producedSources()).toEqual(["default", "frontmatter", "lane"]);
+	it("produces shared, lane, frontmatter and default, and nothing else", () => {
+		expect(producedSources()).toEqual(["default", "frontmatter", "lane", "shared"]);
 	});
 
 	/**
-	 * The retired keys must reach NO layer. Without this, a regression that let `subagent.model`
-	 * back into the chain still produces only members the list above names, because it would answer
-	 * as one of them, and the sweep stays green.
+	 * The depth-keyed chain must reach NO layer. Without this, a regression that let
+	 * `subagent.modelByDepth` back into the chain still produces only members the list above names,
+	 * because it would answer as one of them, and the sweep stays green.
 	 */
-	it("resolves the same with and without the retired keys set", () => {
+	it("resolves the same with and without the depth-keyed chain set", () => {
 		const clean = Settings.isolated();
 		clean.setModelRole("default", SESSION_MODEL);
-		const stale = Settings.isolated({
-			"subagent.sharedModel": true,
-			"subagent.model": BLANKET_MODEL,
-			"subagent.thinkingLevel": "low",
-			"subagent.modelByDepth": { "1": DEPTH_MODEL },
-		});
+		const stale = Settings.isolated({ "subagent.modelByDepth": { "1": DEPTH_MODEL } });
 		stale.setModelRole("default", SESSION_MODEL);
 
 		for (const taskDepth of [undefined, 1, 2]) {
@@ -505,16 +572,22 @@ describe("the layer that chose a subagent's model is one of exactly three", () =
 	 */
 	it("names a real setting for every layer", () => {
 		const labels: Record<SubagentModelSource, string> = {
+			shared: subagentModelSourceLabel("shared", AGENT),
 			lane: subagentModelSourceLabel("lane", AGENT, 0),
 			frontmatter: subagentModelSourceLabel("frontmatter", AGENT),
 			default: subagentModelSourceLabel("default", AGENT),
 		};
 
+		// The blanket layer answers for every agent, so its label must NOT name one:
+		// a refusal reading `subagent.model for scout` sends the operator to scout's
+		// page, which is not drawn while that layer is the one deciding.
+		expect(labels.shared).toContain("subagent.model");
+		expect(labels.shared).not.toContain(AGENT);
 		expect(labels.lane).toBe(`subagent.agents.${AGENT}`);
 		expect(subagentModelSourceLabel("lane", AGENT, 2)).toBe(`subagent.agents.${AGENT}.subagents.subagents`);
 		expect(labels.frontmatter).toContain("frontmatter");
 		expect(labels.default).toContain("default model role");
-		expect(new Set(Object.values(labels)).size).toBe(3);
+		expect(new Set(Object.values(labels)).size).toBe(4);
 	});
 });
 
