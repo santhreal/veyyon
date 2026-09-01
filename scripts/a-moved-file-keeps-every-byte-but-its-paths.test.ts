@@ -1,5 +1,5 @@
 /**
- * WHY. This branch renames 3204 tracked files. A reviewer cannot read a diff that size, and the
+ * WHY. This branch renames 3205 tracked files. A reviewer cannot read a diff that size, and the
  * failure mode of a wide move is silent: one file arrives with an accidental edit, a helper is copied
  * instead of moved, or a hunk from another lane lands inside the rename. Nothing about a green type
  * check would catch it, because a stale copy of a helper compiles.
@@ -91,12 +91,12 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("reads a ledger covering the whole move", () => {
 		expect(ledger.generatedFrom).toMatch(/^[0-9a-f]{40}$/);
-		expect(rows.length).toBe(3204);
+		expect(rows.length).toBe(3205);
 		const buckets = new Map<string, number>();
 		for (const [, record] of rows) buckets.set(record.differs, (buckets.get(record.differs) ?? 0) + 1);
 		expect([...buckets].sort()).toEqual([
 			["changed", 139],
-			["imports-and-comments-only", 381],
+			["imports-and-comments-only", 382],
 			["none", 2684],
 		]);
 		expect(rewrites.length).toBeGreaterThan(50);
@@ -208,7 +208,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.structuralHash || hash !== record.mainStructuralHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(importOnly).toBe(381);
+		expect(importOnly).toBe(382);
 	});
 
 	/**

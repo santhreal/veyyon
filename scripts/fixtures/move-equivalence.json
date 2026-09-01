@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "26dc69529c717ffa597feeb29244386afb511fa1",
+	"generatedFrom": "9d4cccdbbb7d372de9cc36f3327b065cd64b4561",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -56,6 +56,10 @@
 		[
 			"packages/coding-agent/src/tools/memory-render.ts",
 			"packages/coding-agent/test/oracles/memory-main-renderer.ts"
+		],
+		[
+			"packages/coding-agent/src/tools/irc-render.ts",
+			"packages/coding-agent/test/oracles/irc-main-renderer.ts"
 		],
 		[
 			"packages/coding-agent/src/commit/git/diff.ts",
@@ -14088,9 +14092,9 @@
 			"differs": "changed",
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "ecca83e061130cef91e5a902b5bc5d2b2a31f19e35f391e837380454ffc7fc27",
+			"hash": "567c4c4c4c836f1f5f83602ff9ca5a73c1642bc7e84356521d6459e0b6178bdb",
 			"mainHash": "6b3b0b0b787c4ecb114a0e99f2cfef2203c99b6ca2170e961d76f0ece5077d58",
-			"structuralHash": "b8048cac4beb75a6b9f489ecd9ce99191d1efd75738410383c565c9e741baccf",
+			"structuralHash": "34110290937a43e8b3d99392d05ca1577a88779d6792e2796a5665693028de4a",
 			"mainStructuralHash": "a8c7425ef4bc0e2d1d8bca0e16eb76042f056ad20dc4e1f61fcf2ddd5ce0f356"
 		},
 		"packages/coding-agent/src/tools/core/repair/agent-hook.ts": {
@@ -14258,9 +14262,9 @@
 			"differs": "changed",
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "9c224e9f841391371262917d9ed31092a2720305403ade47619f7535546ea65b",
+			"hash": "b056e5e1ec8714bf432555443ff89bd633ced29aa229b307777ae7f5d8e252d2",
 			"mainHash": "12737c3579d9652ea7b45fc452edd2383cb15ec66be6cb5d2f22e1a840ec70bc",
-			"structuralHash": "f56bea026a0972ee971e748286f537dccf36d550dff782f7a51891feb03fd9d3",
+			"structuralHash": "85361d7a13ec26d87e220ec6853129aa56a8c1cef4bd21be4c6fa2b1a0812c25",
 			"mainStructuralHash": "1e4dc2e99e29928363d6049c3fceef2dc7280e06680020aa39334ce811ac8ec8"
 		},
 		"packages/coding-agent/src/tools/search/__tests__/file-search.test.ts": {
@@ -14961,6 +14965,15 @@
 			"mainHash": "3742c3e3ae3894095d622c862dcd892b1e028fff7b93196addcd0df42cbdd99a",
 			"structuralHash": "6745fc54d54a62d5b0e2646dd7e398e4f419b08df23d57754dfef898b40172da",
 			"mainStructuralHash": "6745fc54d54a62d5b0e2646dd7e398e4f419b08df23d57754dfef898b40172da"
+		},
+		"packages/coding-agent/test/oracles/irc-main-renderer.ts": {
+			"old": "packages/coding-agent/src/tools/irc-render.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "856591631d1c0118e2532ab82d28bad84491e4b8afa17c615544d59f226893dd",
+			"mainHash": "ca6a549da49e3fb0fa1bc6b2d6e69db649d2b4e0cb222f0473e25ebcd53d8de5",
+			"structuralHash": "f1948b7b3335aa0410c6fba20509a9d4c9c1d1f40a907cfe99269625f103ae2d",
+			"mainStructuralHash": "f1948b7b3335aa0410c6fba20509a9d4c9c1d1f40a907cfe99269625f103ae2d"
 		},
 		"packages/coding-agent/test/oracles/memory-main-renderer.ts": {
 			"old": "packages/coding-agent/src/tools/memory-render.ts",

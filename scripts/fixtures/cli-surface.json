@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "26dc69529c717ffa597feeb29244386afb511fa1",
+	"generatedFrom": "9d4cccdbbb7d372de9cc36f3327b065cd64b4561",
 	"commands": [
 		"__complete",
 		"acp",
@@ -192,6 +192,9 @@
 			"takesValue": false
 		},
 		"--smol": {
+			"takesValue": true
+		},
+		"--subagent-model": {
 			"takesValue": true
 		},
 		"--system-prompt": {
