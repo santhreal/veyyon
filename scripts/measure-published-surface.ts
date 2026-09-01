@@ -585,6 +585,10 @@ const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, Relocat
 			to: "./tools/agent/memory-view",
 			why: "the retain, recall and reflect cards are declared in tools/agent/memory-view.ts as views the host draws, so the module that built their terminal components is gone",
 		},
+		"./tools/search-renderer": {
+			to: "./tools/search/search-view",
+			why: "the search card is one dispatcher over the file, text and structure cards, declared in tools/search/search-view.ts as views the host draws, so the module that dispatched terminal components is gone",
+		},
 		"./vibe/state": {
 			to: "./session/vibe-runtime",
 			why: "VibeModeState is declared in session/vibe-runtime.ts, which publishes it",

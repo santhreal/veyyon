@@ -429,7 +429,7 @@ describe("a published surface survives the move", () => {
 		}
 
 		expect(unserved).toEqual([]);
-		expect(compared).toBe(5219);
+		expect(compared).toBe(5221);
 	});
 
 	/**

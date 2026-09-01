@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "edbce2cd3e7bcd7b25a285452443e9ddfd3c025d",
+	"generatedFrom": "d0cb967888303de02e573bb8b0f3c5ba6fe66377",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -11254,19 +11254,19 @@
 			"old": "packages/coding-agent/src/modes/components/settings-defs.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "4d90df782cdbd6afb0574e26645b5d70e1126058346324e32b5ffab83be74617",
-			"mainHash": "4d90df782cdbd6afb0574e26645b5d70e1126058346324e32b5ffab83be74617",
-			"structuralHash": "44283fcce0217dbf5223d337d02b647b089aa6f90f437403cf360e33c0e25168",
-			"mainStructuralHash": "44283fcce0217dbf5223d337d02b647b089aa6f90f437403cf360e33c0e25168"
+			"hash": "528e5d410535c701e71daf9445357aca0e5797dd970a918ba12f1325a23ec11e",
+			"mainHash": "528e5d410535c701e71daf9445357aca0e5797dd970a918ba12f1325a23ec11e",
+			"structuralHash": "b28ec89591f7d0f607291f1ab5c2f4a93c3dda39ec64c2788756b0a928a6ff3d",
+			"mainStructuralHash": "b28ec89591f7d0f607291f1ab5c2f4a93c3dda39ec64c2788756b0a928a6ff3d"
 		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/settings-selector.ts": {
 			"old": "packages/coding-agent/src/modes/components/settings-selector.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "82946a4a9aad47f7435156ab732e3570272725441d1ecab08c5e3c035eb801ce",
-			"mainHash": "762c6fc6452b8fcb790aec0ff68b6dca633ff8c7c62d79dd6e2289230ded6b7b",
-			"structuralHash": "f5bb45ec2cb9efa3769d54e2097ade18b529b85b2ccb43544dc0fe31161487ef",
-			"mainStructuralHash": "f5bb45ec2cb9efa3769d54e2097ade18b529b85b2ccb43544dc0fe31161487ef"
+			"hash": "c2f63a1fef3a530f327331c630f4138d4b0354336bf21aa8fc167a9dcb36356a",
+			"mainHash": "9e36e00a94b136b65cd7a51ea200c1134b14d1b2a7628f51f310e753d9885ec0",
+			"structuralHash": "2a8469bed1c668438006e14d308c40864695be56b01326ca99abe00b01aa15f5",
+			"mainStructuralHash": "2a8469bed1c668438006e14d308c40864695be56b01326ca99abe00b01aa15f5"
 		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/show-images-selector.ts": {
 			"old": "packages/coding-agent/src/modes/components/show-images-selector.ts",
@@ -15064,13 +15064,11 @@
 		"packages/coding-agent/test/vibe/a-vibe-worker-inherits-the-parents-effort-and-policy.test.ts": {
 			"old": "packages/coding-agent/test/vibe/vibe-runtime.test.ts",
 			"kind": "normalized",
-			"differs": "changed",
-			"group": "shared-mode-seed",
-			"reason": "An arm that asserts the shared model chain seeds `subagent.sharedModel`, the switch that makes `subagent.model` and `subagent.thinkingLevel` live. Without it the arm pinned a blanket value the resolver never read.",
-			"hash": "8b420a60d471f03ff6033224afa643a4077d4ffc78a6b9e67eb170854bccab52",
-			"mainHash": "8ccedb0bfec1108e4cd4b73832ae9c27e456a54d1a3234734c2c1b0e1598e0d7",
-			"structuralHash": "e770eacf72cf77a694195211b26bce567b8a825f3ce0ba49b8799869d80b0b10",
-			"mainStructuralHash": "7784c552a18edfd4a6d00cba6f3d1bae4b56ccea4a38f86cff8bcc45e6e19a5d"
+			"differs": "imports-and-comments-only",
+			"hash": "b184e5c6667e9a203f0bdb24d99805213b02d8a12d8bea981e8ff0cbcf9fd1e0",
+			"mainHash": "cba97bbf942041142b9bd21ca67b84fdb719706d9e7018861cac7b10063671c9",
+			"structuralHash": "6b999349df327d68b8ba90ab0c271fc2658d025f2e2486299f74a168cbe74c3f",
+			"mainStructuralHash": "6b999349df327d68b8ba90ab0c271fc2658d025f2e2486299f74a168cbe74c3f"
 		},
 		"packages/utils/src/ansi.ts": {
 			"old": "packages/tui/src/ansi.ts",
