@@ -16,9 +16,7 @@ get an acknowledgement, and we'll coordinate a fix and disclosure timeline with 
 
 ## Supported versions
 
-Veyyon has not yet cut its `1.0.0` release. Until then, only `main` is supported —
-report against the latest `main`. After `1.0.0`, the latest published release and
-`main` are supported.
+The latest published release and `main` are supported. Report against one of those.
 
 ## Scope
 

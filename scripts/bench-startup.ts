@@ -19,15 +19,18 @@
  *                you are, the model, the mode and the context gauge.
  *   replay       the same launch again, against the recording the launch before it wrote. The card
  *                is replayed rather than composed.
+ *   replay:*     composer, editable and statusrow on that replayed launch. The replayed card is
+ *                bytes, so these say when it stops being a picture and starts answering.
  *
  * `first-frame` and `replay` are the off and on arms of the first-frame replay, at exact parity:
  * one binary, one seeded home, one terminal size, two consecutive launches, and the recording is
  * the only difference between them. `first-frame` deletes the recording before it spawns, so it
  * reports the composed number rather than whichever state the arm before it left behind.
  *
- * A FIRST BYTE IS NOT A USABLE SCREEN, which is why the last three exist. `first-frame` was the
- * whole answer here and it reads 45-46ms on a warm binary: optimizing against it alone declares
- * victory on a frame the operator cannot yet read.
+ * A FIRST BYTE IS NOT A USABLE SCREEN, which is why `composer`, `editable`, `statusrow` and the
+ * `replay:*` arms exist. `first-frame` was the whole answer here and it reads 45-46ms on a warm
+ * binary: optimizing against it alone declares victory on a frame the operator cannot yet read.
+ * The replay arm read the first byte only, which was that same mistake one layer down.
  *
  * `statusrow` used to trail the frame by about a second, because the row belonged to the session
  * and the card painted a hand-written `path · git` in its place. The card now renders the real row
@@ -93,12 +96,19 @@ function launcher(options: Options): { command: string; prefix: string[] } {
  * A pty wrapper, because the interactive arms refuse to run without a terminal and neither Node nor
  * Bun can allocate one. `script` ships with util-linux and with macOS, and its argument order
  * differs between them.
+ *
+ * `stty -echo` FIRST, because the line discipline echoes typed input on its own and the `editable`
+ * arms cannot tell that apart from the composer answering. With echo left on, `sh -c 'printf X;
+ * sleep 2'` returns the probe in 1.1ms and scores better than veyyon: the arm reads the kernel, not
+ * the program, on every launch that has not yet taken the terminal into raw mode. Turning it off
+ * means an echo observed here was written by the process under test.
  */
 function ptyWrapper(command: string, args: string[]): { command: string; args: string[] } {
 	const quoted = [command, ...args].map(part => `'${part.replaceAll("'", "'\\''")}'`).join(" ");
+	const withoutEcho = `stty -echo 2>/dev/null; exec ${quoted}`;
 	return os.platform() === "darwin"
-		? { command: "script", args: ["-q", "/dev/null", "/bin/sh", "-c", quoted] }
-		: { command: "script", args: ["-qec", quoted, "/dev/null"] };
+		? { command: "script", args: ["-q", "/dev/null", "/bin/sh", "-c", withoutEcho] }
+		: { command: "script", args: ["-qec", withoutEcho, "/dev/null"] };
 }
 
 interface RunOutcome {
@@ -367,8 +377,17 @@ async function main(): Promise<void> {
 		// differs, so the gap between this arm and `first-frame` is the replay and only the replay.
 		// A run where they read the same means the recording was rejected: the launch above and this
 		// one disagreed about the frame, or the binary changed underneath them.
-		const replayed = await recordFrame(framePty.command, framePty.args, env, FRAME_HOLD_MS, false);
+		//
+		// This one types. A first byte is not a usable screen on the replay path either, and the
+		// replayed card is bytes from the previous launch rather than a composer that exists yet, so
+		// the gap between `replay` and `replay:editable` is how long the screen is a picture. Typing
+		// costs this launch its own recording, which nothing reads: the recording is rewritten above
+		// on every run.
+		const replayed = await recordFrame(framePty.command, framePty.args, env, FRAME_HOLD_MS);
 		if (replayed.firstByte !== undefined) push("replay", replayed.firstByte);
+		if (replayed.composer !== undefined) push("replay:composer", replayed.composer);
+		if (replayed.editable !== undefined) push("replay:editable", replayed.editable);
+		if (replayed.statusrow !== undefined) push("replay:statusrow", replayed.statusrow);
 	}
 
 	const arms = [
@@ -382,6 +401,9 @@ async function main(): Promise<void> {
 		"editable",
 		"statusrow",
 		"replay",
+		"replay:composer",
+		"replay:editable",
+		"replay:statusrow",
 	];
 	const lines = [
 		`veyyon startup — ${options.bin ? `binary ${options.bin}` : "bun source"}, ${options.cold ? "cold" : "warm"} home, ${options.runs} run(s)`,
