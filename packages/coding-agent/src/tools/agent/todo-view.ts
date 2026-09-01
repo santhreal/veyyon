@@ -192,7 +192,7 @@ function boardSections(
 		const phase = phases[index]!;
 		if (named) {
 			const name = boundedTodoPreviewText(phase.name, TODO_ITEM_PREVIEW_WIDTH);
-			sections.push({ lines: [[{ text: formatPhaseDisplayName(name, index + 1), tone: "accent", bold: true }]] });
+			sections.push({ lines: [[{ text: formatPhaseDisplayName(name, index + 1), tone: "accent" }]] });
 		}
 		const closing = closed.get(phase.name);
 		sections.push({
