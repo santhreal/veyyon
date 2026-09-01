@@ -190,12 +190,16 @@ pub enum Card {
 impl Card {
 	/// How many answers this card offers the operator.
 	///
-	/// An approval and a plan each offer two, and a question offers whatever it
-	/// was asked with. This is the count of controls the card contributes, so a
-	/// card kind added without answers is a card that cannot be answered.
+	/// An approval offers three (reject, approve, approve for the session), a
+	/// plan two, and a question whatever it was asked with, or one reply row
+	/// when it was asked with none. This is the count of controls the card
+	/// contributes, so a card kind added without answers is a card that cannot
+	/// be answered.
 	pub const fn answer_count(&self) -> usize {
 		match self {
-			Self::Approval { .. } | Self::Plan { .. } => 2,
+			Self::Approval { .. } => 3,
+			Self::Plan { .. } => 2,
+			Self::Question { options, .. } if options.is_empty() => 1,
 			Self::Question { options, .. } => options.len(),
 		}
 	}

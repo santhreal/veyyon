@@ -1,6 +1,8 @@
 use crate::{
+	connection::InteractionId,
 	damage::{Damage, DamageSet},
 	event::SnapshotSection,
+	interaction::PendingDecisions,
 	session::{QueuePartition, Session},
 	store::Store,
 	transcript::TranscriptTree,
@@ -65,6 +67,27 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 				damage.insert(Damage::Composer(session_id.clone()));
 			}
 		},
+		SnapshotSection::Interactions { session, pending } => {
+			// Damage names every card that was or is on screen: a card that was
+			// answered has to be taken down as surely as a new one is drawn.
+			let previous = if pending.is_empty() {
+				store.interactions.remove(&session)
+			} else {
+				store.interactions.insert(session.clone(), pending)
+			};
+			let mut ids: Vec<_> = previous.iter().flat_map(decision_ids).collect();
+			ids.extend(
+				store
+					.interactions
+					.get(&session)
+					.into_iter()
+					.flat_map(decision_ids),
+			);
+			for id in ids {
+				damage.insert(Damage::PendingDecision(session.clone(), id));
+			}
+			damage.insert(Damage::Composer(session));
+		},
 		SnapshotSection::Settings(_) => {
 			damage.insert(Damage::Titlebar);
 		},
@@ -74,4 +97,13 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 	}
 
 	damage
+}
+
+fn decision_ids(pending: &PendingDecisions) -> impl Iterator<Item = InteractionId> + '_ {
+	pending
+		.approvals
+		.iter()
+		.map(|a| a.id.clone())
+		.chain(pending.questions.iter().map(|q| q.id.clone()))
+		.chain(pending.plans.iter().map(|p| p.id.clone()))
 }

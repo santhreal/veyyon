@@ -81,8 +81,9 @@ fn every_intent() -> Vec<Intent> {
 		Intent::SelectSession(9),
 		Intent::SelectTab(1),
 		Intent::ToggleDrawer,
-		Intent::Approval { card: 0, approved: true },
+		Intent::Approval { card: 0, approved: true, standing: false },
 		Intent::Answer { card: 1, option: 1 },
+		Intent::Reply { card: 1, text: "ship it".to_owned() },
 		Intent::Plan { card: 2, accepted: false },
 		Intent::Send("ship it".to_owned()),
 	];
@@ -96,6 +97,7 @@ fn every_intent() -> Vec<Intent> {
 			| Intent::ToggleDrawer
 			| Intent::Approval { .. }
 			| Intent::Answer { .. }
+			| Intent::Reply { .. }
 			| Intent::Plan { .. }
 			| Intent::Send(_) => {},
 		}
@@ -232,7 +234,7 @@ fn answering_a_card_position_that_no_longer_exists_removes_nothing() {
 	let mut state = state();
 	let mut intents = Intents::new();
 
-	intents.dispatch(Intent::Approval { card: 9, approved: true }, &mut state);
+	intents.dispatch(Intent::Approval { card: 9, approved: true, standing: false }, &mut state);
 
 	assert_eq!(
 		state.cards.len(),
