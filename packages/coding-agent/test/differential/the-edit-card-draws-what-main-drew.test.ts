@@ -61,6 +61,7 @@ import { settings } from "@veyyon/coding-agent/config/settings";
 import { type EditViewArgs, type EditViewResult, editToolView } from "@veyyon/coding-agent/edit/edit-view";
 import { renderDiff } from "@veyyon/coding-agent/modes/terminal/components/transcript/diff";
 import { theme } from "@veyyon/coding-agent/theme/theme";
+import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import * as editOracle from "../oracles/edit-main-renderer";
@@ -70,6 +71,21 @@ import { framedView, renderCompLines, useDifferentialTheme, WIDTH } from "./harn
 function linkTargets(rows: readonly string[]): string[] {
 	return rows.flatMap(row => [...row.matchAll(/\x1b\]8;[^;]*;([^\x1b]+)\x1b\\/g)].map(match => match[1] ?? ""));
 }
+
+/**
+ * `apply_patch` is compared here and nowhere else, because it draws this card: its registry entry
+ * and `edit`'s are built from the same `editToolView`. The coverage gate records that sharing as a
+ * row, and a row is a claim about two objects nobody re-checked -- give `apply_patch` a card of its
+ * own and the sharing row silently makes this suite its proof. So the identity is asserted where the
+ * comparison happens, and every cell below covers both tools for exactly as long as it holds.
+ */
+describe("the card apply_patch draws", () => {
+	it("is the card compared in this file", () => {
+		expect(toolRenderers.apply_patch?.view).toBeDefined();
+		expect(toolRenderers.apply_patch?.view).toBe(toolRenderers.edit?.view);
+		expect(toolRenderers.edit?.view as unknown).toBe(editToolView);
+	});
+});
 
 useDifferentialTheme();
 

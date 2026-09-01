@@ -6,11 +6,13 @@
  * a tool converted to a `ToolView` with no suite written for it is invisible: every suite passes, the
  * bucket is green, and the one card nobody compared is the one that regressed. This resolves the
  * directory at run time and pairs it against `CONVERTED_TOOLS`, so a conversion lands red until its
- * suite exists, and a suite deleted or renamed lands red until the list agrees.
+ * suite exists, and a suite deleted or renamed lands red until the list agrees. `CONVERTED_TOOLS` is
+ * itself written by hand, so it is pinned a second time against the live tool registry: every entry
+ * that carries a `view` must be claimed here, which is what a list nobody edited cannot fake.
  *
  * THE DEFECT CLASS THIS CLOSES. Coverage that is claimed by a list and never checked against the
- * files: a tool added to the list with no suite, a suite whose tool left the list, and a differential
- * file nobody claims.
+ * files: a tool added to the list with no suite, a suite whose tool left the list, a differential
+ * file nobody claims, and a tool the registry converted that the list never heard about.
  *
  * It also holds the two anti-vacuity claims the per-tool suites all depend on and none of them can
  * make about itself: that the comparisons run under full ANSI styling, without which every styling
@@ -24,6 +26,7 @@ import { describe, expect, it } from "bun:test";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { theme } from "@veyyon/coding-agent/theme/theme";
+import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import * as certifyArmsOracle from "../oracles/certify-arms-main-renderer";
 import * as fetchOracle from "../oracles/fetch-main-renderer";
 import * as goalOracle from "../oracles/goal-main-renderer";
@@ -51,6 +54,7 @@ const SHARED_SUITES: Readonly<Record<string, string>> = {
 	vibe_wait: "vibe",
 	vibe_kill: "vibe",
 	vibe_list: "vibe",
+	apply_patch: "edit",
 };
 
 /** The suite file a tool's card is compared in, by the naming rule the directory follows. */
@@ -105,6 +109,7 @@ describe("differential coverage", () => {
 			"lsp",
 			"bash",
 			"edit",
+			"apply_patch",
 			"task",
 		]);
 	});
@@ -121,6 +126,24 @@ describe("differential coverage", () => {
 		const claimed = new Set(CONVERTED_TOOLS.map(tool => `the-${suiteSlug(tool)}-card-draws-what-main-drew.test.ts`));
 		claimed.add("every-converted-tool-has-a-differential-suite.test.ts");
 		expect(suiteFiles().filter(name => !claimed.has(name))).toEqual([]);
+	});
+
+	/**
+	 * The list above is written by hand, and a hand-written list of what is covered is the thing this
+	 * directory cannot verify about itself. The registry can: every entry built by `viewToolRenderer`
+	 * carries the `view` it draws, so a conversion is a state the tool table reports rather than a row
+	 * somebody remembered to add here. A tool converted in the registry and never listed here ships
+	 * with no differential proof and nothing goes red, which is the exact hole `apply_patch` sat in.
+	 *
+	 * The two sets are not equal in the other direction and must not be: a tool that owns its own
+	 * renderers -- the autoresearch experiment tools, `read_url`, the three search cards -- never
+	 * reaches `toolRenderers`, so the list is the larger set by design.
+	 */
+	it("covers every registry entry that describes its card", () => {
+		const described = Object.keys(toolRenderers).filter(name => toolRenderers[name]?.view !== undefined);
+		expect(described.length).toBeGreaterThan(30);
+		const claimed = new Set<string>(CONVERTED_TOOLS);
+		expect(described.filter(name => !claimed.has(name))).toEqual([]);
 	});
 
 	it("proves the pairing is not vacuous: a tool with no suite is named", () => {

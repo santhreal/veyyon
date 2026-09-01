@@ -353,7 +353,17 @@ function renderDeclaringModules(dir: string): string[] {
 			continue;
 		}
 		if (!entry.name.endsWith(".ts") || entry.name.endsWith(".test.ts")) continue;
-		if (/^\s*renderCall\s*[(<:]|^\s*renderResult\s*[(<:]/m.test(fs.readFileSync(full, "utf8"))) out.push(full);
+		// A module declares a renderer in one of three spellings, and the pattern matches all three
+		// because a view module writes two of them at once. An object member opens with `(`, `<` or
+		// `:` (`renderCall(args, ...)`, `renderCall:`, `readonly renderCall =`), which was the only
+		// spelling matched before; a module-level `function renderCall(...)` collected into an
+		// exported view object writes neither, and reaches the object as a shorthand `renderCall,`.
+		// `task/task-view.ts` writes exactly that pair, and the pre-fix pattern read a whole converted
+		// card as a module declaring nothing. Either new alternative catches it today, so the pattern
+		// keeps both rather than resting on which half a future view module happens to write.
+		const declares =
+			/^\s*(?:export\s+)?function\s+render(?:Call|Result)\b|^\s*(?:readonly\s+)?render(?:Call|Result)\s*[(<:,]/m;
+		if (declares.test(fs.readFileSync(full, "utf8"))) out.push(full);
 	}
 	return out;
 }
@@ -448,8 +458,10 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"autoresearch/tools/log-experiment.ts",
 			"autoresearch/tools/run-experiment.ts",
 			"autoresearch/tools/update-notes.ts",
+			"edit/edit-view.ts",
 			"goals/goal-tool.ts",
 			"lsp/view.ts",
+			"task/task-view.ts",
 			"tools/agent/ask-view.ts",
 			"tools/agent/irc-view.ts",
 			"tools/agent/memory-view.ts",
@@ -617,9 +629,15 @@ describe("a tool names the terminal package only where it is recorded", () => {
  * still draws one -- instead of inferred from an import.
  *
  * THE DEFECT CLASS. A tool added with a terminal-only renderer, which every host but the terminal
- * then draws as raw JSON, and a conversion that lands without moving the tool off this list. Both are
- * silent: the terminal looks right in each case. The set is pinned by exact equality, so a new tool
- * lands red until its row is recorded, and a converted one lands red until its row is deleted.
+ * then draws as raw JSON, and a conversion that lands without moving the tool off the drawing set.
+ * Both are silent: the terminal looks right in each case. Both sets are pinned by exact equality, so
+ * a tool that arrives drawing components lands red until somebody records the row, and a conversion
+ * lands red until the row moves.
+ *
+ * THE STATE. The drawing set is empty: every registry entry describes its card, so the last three
+ * rows -- `apply_patch`, `edit` and `task` -- are gone rather than rewritten. An empty equality is
+ * the weakest kind, because a probe that stopped seeing anything also reports empty, so the
+ * predicate is exercised against a table holding a component-only entry below.
  *
  * WHAT IT DOES NOT CATCH. Presence, not quality: a `view` that describes the card badly passes here,
  * which is what the per-tool differential suites are for.
@@ -634,19 +652,36 @@ describe("a registry entry either describes its card or is recorded as drawing o
 		expect(entries).toContain("search");
 	});
 
+	/**
+	 * The control the empty equality below rests on: the same predicate, over a table whose second
+	 * entry draws components, must return that entry and only that entry. A `view` member renamed on
+	 * the registry type, or a probe written against a member that no longer exists, turns the rule
+	 * into a tautology and fails here instead.
+	 */
+	it("reports an entry that carries no view", () => {
+		const table: Record<string, { view?: unknown }> = {
+			describesItsCard: { view: toolRenderers.bash?.view },
+			drawsComponents: {},
+		};
+		expect(table.describesItsCard?.view).toBeDefined();
+		expect(Object.keys(table).filter(name => table[name]?.view === undefined)).toEqual(["drawsComponents"]);
+	});
+
 	it("records every entry that still draws terminal components", () => {
 		const drawing = entries.filter(name => toolRenderers[name]?.view === undefined);
-		expect(drawing).toEqual(["apply_patch", "edit", "task"]);
+		expect(drawing).toEqual([]);
 	});
 
 	it("has a view on every converted entry, and that view draws both halves of the card", () => {
 		const described = entries.filter(name => toolRenderers[name]?.view !== undefined);
 		expect(described).toEqual([
+			"apply_patch",
 			"ask",
 			"ast_edit",
 			"bash",
 			"browser",
 			"debug",
+			"edit",
 			"eval",
 			"github",
 			"goal",
@@ -664,6 +699,7 @@ describe("a registry entry either describes its card or is recorded as drawing o
 			"search_tool_bm25",
 			"set_cwd",
 			"ssh",
+			"task",
 			"todo",
 			"vibe_kill",
 			"vibe_list",

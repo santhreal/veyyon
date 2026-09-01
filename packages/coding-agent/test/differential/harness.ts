@@ -95,6 +95,7 @@ export const CONVERTED_TOOLS = [
 	"lsp",
 	"bash",
 	"edit",
+	"apply_patch",
 	"task",
 ] as const;
 
