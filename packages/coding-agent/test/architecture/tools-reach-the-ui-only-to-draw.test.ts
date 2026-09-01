@@ -273,7 +273,6 @@ const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/search/structure-search-render.ts", ["Text", "type Component"]],
 	["tools/search/text-search-render.ts", ["Text", "type Component"]],
 	["tools/agent/vibe-render.ts", ["Text", "type Component"]],
-	["tools/fs/write-render.ts", ["type Component"]],
 ]);
 
 /**
@@ -474,6 +473,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"tools/agent/todo-view.ts",
 			"tools/fs/inspect-image-view.ts",
 			"tools/fs/set-cwd.ts",
+			"tools/fs/write-view.ts",
 			"tools/search/ast-edit-view.ts",
 			"tools/search/search-tool-bm25-view.ts",
 			"tools/shell/debug-view.ts",

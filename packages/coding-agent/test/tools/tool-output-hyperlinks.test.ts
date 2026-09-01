@@ -10,7 +10,8 @@ import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import { readToolRenderer } from "@veyyon/coding-agent/tools/fs/read-render";
 import { WriteTool } from "@veyyon/coding-agent/tools/fs/write";
-import { writeToolRenderer } from "@veyyon/coding-agent/tools/fs/write-render";
+import { writeToolView } from "@veyyon/coding-agent/tools/fs/write-view";
+import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { removeSyncWithRetries } from "@veyyon/utils";
 import { structureSearchRenderer } from "../../src/tools/search/structure-search-render";
 import { textSearchRenderer } from "../../src/tools/search/text-search-render";
@@ -96,13 +97,14 @@ describe("tool output OSC 8 file:// hyperlinks", () => {
 			const filePath = path.join(dir, "out.ts");
 			const tool = new WriteTool(createTestToolSession(dir));
 			const res = await tool.execute("w", { path: filePath, content: "export const x = 1;\n" });
-			const rendered = writeToolRenderer
-				.renderResult(
+			const rendered = drawToolView(
+				writeToolView.renderResult(
 					{ content: res.content, details: res.details, isError: res.isError },
-					{ expanded: false, isPartial: false },
-					theme,
+					{ expanded: false, partial: false },
 					{ path: filePath },
-				)
+				),
+				theme,
+			)
 				.render(200)
 				.join("\n");
 			expect(extractLinkUris(rendered)).toContain(url.pathToFileURL(path.resolve(filePath)).href);

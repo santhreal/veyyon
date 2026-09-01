@@ -96,6 +96,19 @@ export interface ViewSpan {
 	 * nothing else. A run may carry both, and a host that offers one of the two uses that one.
 	 */
 	file?: string;
+	/**
+	 * The language of the source this run names, which a host may badge.
+	 *
+	 * The span-level twin of `StatusRowView.language`, for a line that names a file inside a card
+	 * rather than at its head: a diagnostics group states the file it belongs to and the language it
+	 * is in, and a terminal draws its own glyph for the language while a host with no icon set draws
+	 * the path alone.
+	 *
+	 * Empty states a file whose language the tool could not tell, which is not the same as omitting
+	 * the field: a run with no language names no file, and a run with an empty one names a file a
+	 * host may still mark with whatever it draws for a language it does not know.
+	 */
+	language?: string;
 }
 
 /**
@@ -124,6 +137,15 @@ export interface StatusRowView {
 	/** Secondary text after the title, describing what happened. */
 	description?: string;
 	/**
+	 * The role the description plays, which a host maps to its own appearance.
+	 *
+	 * The twin of `titleTone`, and needed for the same reason: the description of a card that wrote a
+	 * file IS the file, so it is the subject of the row rather than secondary detail, while the
+	 * description of a card that reports an operation is prose. Omitted lets the host pick the tone
+	 * it gives secondary text.
+	 */
+	descriptionTone?: ViewTone;
+	/**
 	 * A target the description names, which the host makes reachable.
 	 *
 	 * The description of a row that reports on a URL or a file IS the thing it names, so the link
@@ -131,6 +153,15 @@ export interface StatusRowView {
 	 * stating how a reader follows it.
 	 */
 	descriptionLink?: string;
+	/**
+	 * A filesystem path the description names, which the host opens however it can.
+	 *
+	 * Separate from `descriptionLink` for the reason `ViewSpan.file` is separate from `ViewSpan.link`:
+	 * a path is not a URL, and the path a row shows is often the one a reader recognises -- relative
+	 * to the working directory, or shortened to `~` -- while the one a host must open is absolute. So
+	 * the row states the readable path as its description and the absolute one here.
+	 */
+	descriptionFile?: string;
 	/** A short parenthetical label, such as a mode or a count. */
 	badge?: { label: string; tone: ViewTone };
 	/**
@@ -141,6 +172,19 @@ export interface StatusRowView {
 	 * the host's separator between a glyph and the thing it marks.
 	 */
 	meta?: readonly ViewLine[];
+	/**
+	 * The language of the source a row names, stated as a name rather than as a decoration.
+	 *
+	 * A terminal draws its own badge for it, an editor host colours the tab it opens and a transcript
+	 * export writes the name in a fence. The tool knows the language because it resolved the file it
+	 * wrote; how a reader is told is nobody's business but the host's, and a host with no badge for a
+	 * language it does not know drops the badge and keeps the row.
+	 *
+	 * Empty states a file whose language the tool could not tell, and omitting the field states a row
+	 * that names no file at all. A card that wrote `Makefile` is the first of the two: there is a
+	 * file, and a host that marks files marks this one however it marks a language it cannot name.
+	 */
+	language?: string;
 }
 
 /**
@@ -205,6 +249,40 @@ export interface ViewTailWindow {
 }
 
 /**
+ * That a section's lines are source text, which the host colours and numbers.
+ *
+ * A tool that writes or reads a file knows the text and the language and nothing about how either is
+ * shown: a terminal highlights the run and draws a line-number gutter, an editor host hands the
+ * lines to its own tokenizer, and a transcript export writes a fenced block naming the language. So
+ * the section states the source, and the spans of a code line carry the text alone -- a tool that
+ * toned its own keywords would be writing a colour scheme.
+ */
+export interface ViewCodeLines {
+	/**
+	 * The language the source is in, by name.
+	 *
+	 * Omitted means the tool could not tell, which is what a file with no extension is: a host then
+	 * draws the lines without colouring them rather than guessing.
+	 */
+	language?: string;
+	/**
+	 * The number the section's first line has in the file, so a window onto the middle of one is
+	 * numbered by where it sits rather than from one.
+	 *
+	 * Omitted means the lines are not numbered at all, which is what a fragment with no place in a
+	 * file is.
+	 */
+	firstLineNumber?: number;
+	/**
+	 * How many lines the whole source has, so every window of it is numbered in a gutter of one
+	 * width and the rows do not shift as more of the file arrives.
+	 *
+	 * Omitted sizes the gutter to the lines the section carries.
+	 */
+	totalLines?: number;
+}
+
+/**
  * A labelled group of lines inside a block.
  *
  * The label is text, not chrome: the host decides whether it draws as a heading, a divider or a
@@ -239,6 +317,14 @@ export interface ViewSection {
 	 * and a tool with one states it as its own sections instead.
 	 */
 	list?: boolean;
+	/**
+	 * That the lines are source text rather than prose, which the host colours and numbers.
+	 *
+	 * Omitted means the lines are the tool's own words, toned by the tool. A code section states the
+	 * text and the language and leaves every appearance decision -- the colouring, the gutter, what a
+	 * tab is worth -- to the host, which is the only party that knows what it can draw.
+	 */
+	code?: ViewCodeLines;
 }
 
 /**

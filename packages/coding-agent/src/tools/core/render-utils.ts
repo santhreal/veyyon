@@ -22,12 +22,21 @@ import { settings } from "../../config/settings-instance";
 import type { Theme } from "../../theme/theme";
 import { Hasher } from "../../tui/utils";
 import { formatDimensionNote, type ResizedImage } from "../../utils/image-resize";
+import {
+	getSeverityRank,
+	type ParsedDiagnostic,
+	parseDiagnosticMessage,
+	sanitizeDiagnosticDisplayText,
+} from "./diagnostics";
 import { isPathWithinCwd } from "./path-utils";
 import { shortenPath } from "./shorten-path";
 
 export { Ellipsis } from "@veyyon/natives";
 export { truncateToWidth } from "@veyyon/utils/width";
 export { replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
+// The string form below is the only thing left here that knows the diagnostics grammar's output; the
+// grammar itself, and the view form the converted cards state, are in `./diagnostics`.
+export { sanitizeDiagnosticDisplayText } from "./diagnostics";
 
 // =============================================================================
 // Standardized Display Constants
@@ -444,55 +453,6 @@ export function formatTitle(label: string, theme: Theme, options?: ToolUITitleOp
 // =============================================================================
 // Diagnostic Formatting
 // =============================================================================
-
-interface ParsedDiagnostic {
-	filePath: string;
-	line: number;
-	col: number;
-	severity: "error" | "warning" | "info" | "hint";
-	source?: string;
-	message: string;
-	code?: string;
-}
-
-/**
- * Diagnostic text as it is shown to a reader: tabs replaced, nothing else touched.
- *
- * A diagnostic message carries a compiler's own spacing, and a literal tab in a rendered line lands
- * wherever the terminal's tab stops happen to be, so a column marker under it points at the wrong
- * column. The LSP renderer had a byte-identical private copy of this, so the two surfaces that show
- * diagnostics could have disagreed about what "display text" means.
- */
-export function sanitizeDiagnosticDisplayText(text: string): string {
-	return replaceTabs(text);
-}
-
-function getSeverityRank(severity: ParsedDiagnostic["severity"]): number {
-	switch (severity) {
-		case "error":
-			return 0;
-		case "warning":
-			return 1;
-		case "info":
-			return 2;
-		case "hint":
-			return 3;
-	}
-}
-
-function parseDiagnosticMessage(msg: string): ParsedDiagnostic | null {
-	const match = msg.match(/^(.+?):(\d+):(\d+)\s+\[(\w+)\]\s+(?:\[([^\]]+)\]\s+)?(.+?)(?:\s+\(([^)]+)\))?$/);
-	if (!match) return null;
-	return {
-		filePath: sanitizeDiagnosticDisplayText(match[1]),
-		line: parseInt(match[2], 10),
-		col: parseInt(match[3], 10),
-		severity: match[4] as ParsedDiagnostic["severity"],
-		source: match[5] ? sanitizeDiagnosticDisplayText(match[5]) : undefined,
-		message: sanitizeDiagnosticDisplayText(match[6]),
-		code: match[7] ? sanitizeDiagnosticDisplayText(match[7]) : undefined,
-	};
-}
 
 /**
  * Emits plain railed-ready lines (file header, two-space indented diagnostics, overflow)

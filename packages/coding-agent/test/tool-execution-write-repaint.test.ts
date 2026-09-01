@@ -115,7 +115,9 @@ describe("ToolExecutionComponent write repaint seam", () => {
 			// repaint suite: the bug this exists to catch is a frame drawn a second
 			// time below the first, and `some(...)` is true whether the row was
 			// repainted in place or duplicated.
-			expect(pendingRows.filter(row => row.includes("… (8 earlier lines)"))).toHaveLength(1);
+			// The note is the host's: it counts the WRAPPED rows it dropped, one of which it spends on
+			// the note itself, and it offers the expand gesture the tool no longer words.
+			expect(pendingRows.filter(row => row.includes("… 9 earlier lines"))).toHaveLength(1);
 			expect(pendingRows.filter(row => row.includes("… (streaming)"))).toHaveLength(1);
 			expect(pendingRows.filter(row => row.includes("20 line 20"))).toHaveLength(1);
 

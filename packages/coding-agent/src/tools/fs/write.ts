@@ -1146,12 +1146,19 @@ export function normalizeDisplayText(text: unknown): string {
 }
 
 /**
- * Minimum line-number gutter width for write previews. The streaming preview's
- * gutter must stay byte-stable as the line count grows: a width derived purely
- * from `String(totalLines).length` widens at the 10/100/1000-line crossings,
- * rewriting every already-rendered row — which forces the transcript's commit
- * audit to recommit the block's committed prefix (a full duplicate in native
- * scrollback). Reserving 3 digits keeps the gutter constant through 999 lines
- * and keeps the streamed rows byte-identical to the final result render.
+ * Whether the text a call carries outgrows the window a streaming preview shows.
+ *
+ * A bounded newline scan rather than a split, because this runs on every live compose while the
+ * model writes: the answer is whether the count passes the window, so the scan stops the moment it
+ * does and never materializes the lines.
  */
-export const WRITE_GUTTER_MIN_WIDTH = 3;
+export function writeContentExceedsStreamingWindow(args: unknown): boolean {
+	if (args == null || typeof args !== "object" || !("content" in args)) return false;
+	const content = args.content;
+	if (typeof content !== "string" || !content) return false;
+	let lines = 1;
+	for (let index = content.indexOf("\n"); index !== -1; index = content.indexOf("\n", index + 1)) {
+		if (++lines > WRITE_STREAMING_PREVIEW_LINES) return true;
+	}
+	return false;
+}

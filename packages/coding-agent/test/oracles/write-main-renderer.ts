@@ -1,18 +1,17 @@
 /**
- * Terminal drawing for the write tool. The tool half in `write.ts` decides what
- * happened; this half decides how a terminal shows it, and is the only one of the two
- * that reaches the TUI.
+ * Differential oracle: the write tool renderer from origin/main.
+ *
+ * Source SHA: e9467ab12c976cd830eb7a61e30bfd6adc4bff1f.
+ * Frozen: never edited to make a test pass.
+ *
+ * On main this was `src/tools/fs/write-render.ts`; only its import specifiers are rewritten to the
+ * package subpaths this branch publishes, and the gutter width the renderer read from the tool half
+ * is restated here, since the terminal owns that number now and the tool no longer states it.
  */
 
-import type { Component } from "@veyyon/tui";
-import { formatCount } from "@veyyon/utils";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import { highlightCode } from "../../theme/highlight";
-import type { Theme } from "../../theme/theme-class";
-import { fileHyperlink } from "../../tui/hyperlink";
-import { framedBlock } from "../../tui/output-block";
-import { renderStatusLine } from "../../tui/status-line";
-import { getLanguageFromPath } from "../../utils/lang-from-path";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { highlightCode } from "@veyyon/coding-agent/theme/highlight";
+import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
 import {
 	cachedRenderedString,
 	createRenderedStringCache,
@@ -27,13 +26,18 @@ import {
 	shortenPath,
 	TRUNCATE_LENGTHS,
 	truncateToWidth,
-} from "../core/render-utils";
+} from "@veyyon/coding-agent/tools/core/render-utils";
 import {
 	normalizeDisplayText,
-	WRITE_GUTTER_MIN_WIDTH,
 	WRITE_STREAMING_PREVIEW_LINES,
 	type WriteToolDetails,
-} from "./write";
+} from "@veyyon/coding-agent/tools/fs/write";
+import { fileHyperlink } from "@veyyon/coding-agent/tui/hyperlink";
+import { framedBlock } from "@veyyon/coding-agent/tui/output-block";
+import { renderStatusLine } from "@veyyon/coding-agent/tui/status-line";
+import { getLanguageFromPath } from "@veyyon/coding-agent/utils/lang-from-path";
+import type { Component } from "@veyyon/tui";
+import { formatCount } from "@veyyon/utils";
 
 // =============================================================================
 // TUI Renderer
@@ -107,7 +111,10 @@ function renderContentPreview(
 	});
 }
 
-export const writeToolRenderer = {
+/** Main`s gutter minimum, restated: the terminal owns this number on this branch. */
+const WRITE_GUTTER_MIN_WIDTH = 3;
+
+export const mainWriteToolRenderer = {
 	renderCall(args: WriteRenderArgs, options: RenderResultOptions, uiTheme: Theme): Component {
 		const rawPath =
 			typeof args.file_path === "string" ? args.file_path : typeof args.path === "string" ? args.path : "";
@@ -130,7 +137,7 @@ export const writeToolRenderer = {
 		const streamingCache = createRenderedStringCache();
 		return framedBlock(uiTheme, width => {
 			const body = content
-				? formatStreamingContent(
+				? mainFormatStreamingContent(
 						content,
 						Boolean(options?.expanded),
 						lang,
@@ -249,7 +256,7 @@ export const writeToolRenderer = {
 		!options.expanded && exceedsLineCount(writeContentOf(args), WRITE_STREAMING_PREVIEW_LINES),
 };
 
-export function formatStreamingContent(
+export function mainFormatStreamingContent(
 	content: string,
 	expanded: boolean,
 	language: string | undefined,

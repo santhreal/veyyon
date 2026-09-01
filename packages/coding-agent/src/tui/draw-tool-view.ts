@@ -25,6 +25,7 @@ import type {
 	TextBlockView,
 	ToolView,
 	ToolViewRenderer,
+	ViewCodeLines,
 	ViewHiddenCount,
 	ViewLine,
 	ViewSpan,
@@ -33,9 +34,16 @@ import type {
 	ViewTone,
 } from "@veyyon/view";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import { highlightCode } from "../theme/highlight";
 import { type SymbolKey, UNICODE_SYMBOLS } from "../theme/symbols";
 import type { Theme, ThemeColor } from "../theme/theme";
-import { createCachedComponent, formatExpandHint, previewWindowRows } from "../tools/core/render-utils";
+import {
+	createCachedComponent,
+	formatExpandHint,
+	formatStatusIcon,
+	previewWindowRows,
+	replaceTabs,
+} from "../tools/core/render-utils";
 import type { ToolUIStatus } from "../tools/core/tool-ui-status";
 import type { FirstResultViewportRepaint } from "../tools/renderers";
 import { fileHyperlink, urlHyperlink } from "./hyperlink";
@@ -132,7 +140,10 @@ export function drawSpan(span: ViewSpan, theme: Theme): string {
 	if (span.bold) text = theme.bold(text);
 	if (span.italic) text = theme.italic(text);
 	if (span.strike) text = theme.strikethrough(text);
-	return linked(span, span.tone === undefined ? text : theme.fg(TONE_COLORS[span.tone], text));
+	const drawn = linked(span, span.tone === undefined ? text : theme.fg(TONE_COLORS[span.tone], text));
+	// The badge sits outside the link, because it names the file rather than being part of the target
+	// a reader follows, and the theme owns both the glyph and the space after it.
+	return span.language === undefined ? drawn : `${theme.langBadge(span.language)}${drawn}`;
 }
 
 /**
@@ -179,6 +190,25 @@ function drawEmblem(emblem: string | undefined, theme: Theme): string | undefine
  */
 export function drawStatusRow(view: StatusRowView, theme: Theme, spinnerFrame?: number): string {
 	const emblem = drawEmblem(view.emblem, theme);
+	// The badge and the space after it are one value the theme owns, so a preset with no glyph for
+	// the language leaves no gap where one would have been.
+	const badge = view.language === undefined ? "" : theme.langBadge(view.language);
+	// The tone is applied INSIDE the link and inside the status line's own colouring of the
+	// description, which is the order every hand-written header used: the escape that opens the link
+	// carries no colour, and the row's secondary colour is the ground a toned run sits on.
+	const toned =
+		view.description === undefined || view.descriptionTone === undefined
+			? view.description
+			: theme.fg(TONE_COLORS[view.descriptionTone], view.description);
+	const described =
+		toned === undefined
+			? undefined
+			: view.descriptionLink !== undefined
+				? urlHyperlink(view.descriptionLink, toned)
+				: view.descriptionFile !== undefined
+					? fileHyperlink(view.descriptionFile, toned)
+					: toned;
+	const description = described === undefined ? (badge === "" ? undefined : badge) : `${badge}${described}`;
 	return renderStatusLine(
 		{
 			icon: view.status === undefined ? undefined : STATUS_ICONS[view.status],
@@ -186,10 +216,7 @@ export function drawStatusRow(view: StatusRowView, theme: Theme, spinnerFrame?: 
 			spinnerFrame,
 			title: view.title,
 			titleColor: view.titleTone === undefined ? undefined : TONE_COLORS[view.titleTone],
-			description:
-				view.descriptionLink === undefined || view.description === undefined
-					? view.description
-					: urlHyperlink(view.descriptionLink, view.description),
+			description,
 			badge: view.badge === undefined ? undefined : { label: view.badge.label, color: TONE_COLORS[view.badge.tone] },
 			meta: view.meta?.map(entry => drawSpans(entry, theme)),
 		},
@@ -229,22 +256,39 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 		label: section.label === undefined ? undefined : theme.fg("toolTitle", section.label),
 		lines: section.list
 			? drawItemList(section.lines, section.hidden, theme)
-			: section.lines.map(line => drawSpans(line, theme)),
+			: section.code !== undefined
+				? drawCodeLines(section.lines, section.code, theme)
+				: section.lines.map(line => drawSpans(line, theme)),
 		// Held back by the TOOL, so it stands outside the window the host cuts: a section that says
 		// what it dropped must keep saying it however few rows are left. A list states the same count
 		// on its own closing branch, so the note is already among its rows.
 		note: section.hidden === undefined || section.list ? undefined : drawHiddenNote(section.hidden, theme),
 		tail: section.tail,
 	}));
+	// A block that reports `running` is a card still arriving, which the terminal says on a trailing
+	// row rather than in the header: an animating glyph in the head row pins the native-scrollback
+	// commit boundary at the top of the block, so a long preview could never scroll-append while it
+	// streams. A row that reports `running` still animates its own icon, which is the other case —
+	// the last thing that happened is running, and the card itself is settled.
+	const arriving =
+		view.state === "running"
+			? `${spinnerFrame === undefined ? "" : `${formatStatusIcon("running", theme, spinnerFrame)} `}${theme.fg(
+					"dim",
+					"… (streaming)",
+				)}`
+			: undefined;
 	return framedBlock(theme, width => ({
 		header,
-		sections: sections.map(section => {
-			const lines =
-				section.tail === undefined
-					? section.lines
-					: drawTailWindow(section.lines, section.tail, theme, outputBlockContentWidth(width));
-			return { label: section.label, lines: section.note === undefined ? lines : [...lines, section.note] };
-		}),
+		sections: [
+			...sections.map(section => {
+				const lines =
+					section.tail === undefined
+						? section.lines
+						: drawTailWindow(section.lines, section.tail, theme, outputBlockContentWidth(width));
+				return { label: section.label, lines: section.note === undefined ? lines : [...lines, section.note] };
+			}),
+			...(arriving === undefined ? [] : [{ lines: [arriving] }]),
+		],
 		state: frame?.state,
 		// A listing keeps a quiet edge whatever the write reported: the state belongs to the write and
 		// the record is what the body shows, so neither the plate nor the rail colour states it.
@@ -252,6 +296,77 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 		applyBg: view.contents === undefined || view.contents === "report",
 		width,
 	}));
+}
+
+/**
+ * The narrowest line-number gutter the terminal draws.
+ *
+ * A gutter derived from the line count alone widens at the 10, 100 and 1000-line crossings, which
+ * rewrites every row already on screen: the transcript's commit audit then has to recommit the
+ * block's committed prefix, which is a full duplicate of it in native scrollback. Three columns keep
+ * the gutter constant through a 999-line file, so a streamed row is byte-identical to the row the
+ * settled card draws.
+ */
+const CODE_GUTTER_MIN_WIDTH = 3;
+
+/**
+ * The last code section drawn, so a card that is repainted without changing re-uses its rows.
+ *
+ * A streaming write recomposes on every spinner frame — twelve times a second — and highlighting a
+ * file is the most expensive thing a card does, so a memo is the difference between colouring the
+ * window once and colouring it on every tick. One slot: the live cards are drawn one after another
+ * and the one being repainted is the one that just drew, which is the same reasoning the
+ * single-slot `RenderedStringCache` the hand-written previews used was built on. The theme is
+ * compared by reference because a theme switch replaces the instance wholesale.
+ */
+const codeMemo: { theme: Theme | null; language: string; shape: string; source: string; rows: string[] } = {
+	theme: null,
+	language: "",
+	shape: "",
+	source: "",
+	rows: [],
+};
+
+/**
+ * A code section as highlighted rows in a line-number gutter.
+ *
+ * The spans of a code line carry text alone — a tool that toned its own keywords would be writing a
+ * colour scheme — so the line's text is handed to the highlighter and the tones the section's spans
+ * carry are ignored by design. The gutter is as wide as the file's last line number rather than as
+ * the window's, so the rows do not shift sideways as more of a file arrives, and a section that
+ * states no first line number is drawn without a gutter at all.
+ */
+function drawCodeLines(lines: readonly ViewLine[], code: ViewCodeLines, theme: Theme): string[] {
+	const source = lines.map(line => line.map(span => span.text).join("")).join("\n");
+	const language = code.language ?? "";
+	const first = code.firstLineNumber;
+	const shape = `${first ?? "-"}:${code.totalLines ?? "-"}`;
+	if (
+		codeMemo.theme === theme &&
+		codeMemo.language === language &&
+		codeMemo.shape === shape &&
+		codeMemo.source === source
+	) {
+		return codeMemo.rows;
+	}
+	const highlighted = highlightCode(source, code.language);
+	const rows =
+		first === undefined
+			? highlighted.map(body => replaceTabs(body))
+			: (() => {
+					const last = code.totalLines ?? first + highlighted.length - 1;
+					const gutter = Math.max(CODE_GUTTER_MIN_WIDTH, String(last).length);
+					return highlighted.map(
+						(body, index) =>
+							`${theme.fg("dim", `${String(first + index).padStart(gutter, " ")} `)}${replaceTabs(body)}`,
+					);
+				})();
+	codeMemo.theme = theme;
+	codeMemo.language = language;
+	codeMemo.shape = shape;
+	codeMemo.source = source;
+	codeMemo.rows = rows;
+	return rows;
 }
 
 /**
