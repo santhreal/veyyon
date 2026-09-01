@@ -5,11 +5,18 @@
  * or the re-anchor rule shows up only as a composer drifting off the viewport
  * bottom or bouncing mid-stream, which no static check catches. Each rule
  * (2/5 optical centring, stateless re-anchor with no permanent latch-off,
- * exact-frame dismissal math, change-only re-render) is pinned here with
- * exact row counts.
+ * live-children measurement in both directions, same-frame dismissal math) is
+ * pinned here with exact row counts.
+ *
+ * The row counts are the point: a fill sized one row wrong is a frame composed
+ * one row past the viewport (which moves the window) or one row short of it
+ * (which lifts the composer off the bottom edge), and both were repaired by a
+ * second paint that put the same rows somewhere else — the shake, once per row
+ * of a streaming answer. There is no second paint now, so every number here is
+ * the number that reaches the terminal.
  */
 import { describe, expect, test } from "bun:test";
-import type { TUI } from "@veyyon/tui";
+import type { Component, TUI } from "@veyyon/tui";
 import { HomeAnchorLayout, type HomeAnchorPort } from "../../../src/modes/terminal/controllers/home-anchor-layout";
 
 /** A root component of fixed height, standing in for welcome/status/composer. */
@@ -29,6 +36,7 @@ function makeHarness(options: {
 		transcriptChildren: options.transcriptChildren ?? 0,
 		hasHero: options.hasHero ?? false,
 		renderRequests: 0,
+		layoutSized: [] as Component[],
 	};
 	const children: Array<{ render: (width: number) => readonly string[] }> = [block(options.contentRows)];
 	const ui = {
@@ -39,6 +47,11 @@ function makeHarness(options: {
 		children,
 		requestRender: () => {
 			state.renderRequests++;
+		},
+		// The layout registers both fills so a component-scoped frame renders
+		// them instead of reusing the previous frame's rows.
+		markLayoutSized: (component: Component) => {
+			state.layoutSized.push(component);
 		},
 	} as unknown as TUI;
 	const port: HomeAnchorPort = {
@@ -74,24 +87,94 @@ describe("HomeAnchorLayout.sync — home-screen slack", () => {
 		expect(rowsOf(layout.bottomFill)).toBe(22);
 	});
 
-	test("prefers the composed frame height when one exists, subtracting its own fills", () => {
-		// Steady state: composedFrameRows (12) includes the current fills (0+0
-		// on first sync), so content = 12 and slack = 30-12 = 18. The composed
-		// frame outranks the child walk (8 rows here) because it counts the
-		// wrapping the walk cannot see.
-		const { layout } = makeHarness({ rows: 30, contentRows: 8, composedFrameRows: 12 });
-		layout.sync();
-		expect(rowsOf(layout.bottomFill)).toBe(18);
+	test("the live children outrank the composed frame in both directions", () => {
+		// The frame is a frame behind, and which way it is wrong depends only on
+		// which way the content moved since it composed. Growth (10 live rows
+		// against a 2-row frame) sized from the frame reserves 28 rows of slack
+		// on top of 10 rows of content and composes 38 rows into a 30-row
+		// viewport; a collapse (4 live rows against a 26-row frame) sized from
+		// the frame leaves the composer 22 rows above the bottom edge. Both are
+		// sized from the children instead.
+		const grown = makeHarness({ rows: 30, contentRows: 10, composedFrameRows: 2 });
+		grown.layout.sync();
+		expect(rowsOf(grown.layout.bottomFill)).toBe(20);
+
+		const collapsed = makeHarness({ rows: 30, contentRows: 4, composedFrameRows: 26 });
+		collapsed.layout.sync();
+		expect(rowsOf(collapsed.layout.bottomFill)).toBe(26);
 	});
 
-	test("remeasure sums the live children instead of the stale composed frame", () => {
-		// The submit-frame bug this rule prevents: composedFrameRows is one
-		// frame stale, so right after content mounts it would reserve empty-home
-		// slack on top of the new rows and overflow. remeasure=true walks the
-		// real children (10 rows), not the stale frame (2 rows).
-		const { layout } = makeHarness({ rows: 30, contentRows: 10, composedFrameRows: 2 });
-		layout.sync(true);
-		expect(rowsOf(layout.bottomFill)).toBe(20);
+	test("both fills are registered as layout-sized, so a partial frame renders them", () => {
+		// The sizing pass runs at the top of a frame that requested nothing on
+		// the fills' behalf. A component-scoped frame reuses the previous rows of
+		// every root child it was not asked to repaint, so an unregistered fill
+		// composes at the height the PREVIOUS frame's content called for — one
+		// row of overflow per streamed row, and nothing downstream to repair it.
+		const { layout, state } = makeHarness({ rows: 30, contentRows: 8 });
+		expect(state.layoutSized).toEqual([layout.topFill, layout.bottomFill]);
+	});
+
+	test("a scrollback-driven child is measured through its bounded path, never its frame render", () => {
+		// The rule is on the interface, not on one class. `render()` on a child
+		// the engine drives with the native-scrollback protocol is not a read: it
+		// hands the engine's committed prefix to the terminal and reports the rows
+		// it dropped, and the engine authorizes exactly one such drop per frame —
+		// count fed, child rendered, report read back. It also republishes that
+		// count after every emit, so a sizing pass calling render() spends the
+		// drop on a frame of its own and the compose render drops a second prefix
+		// against the same count. Measured on the scrolled 24-row arm of the
+		// blank-band simulation: the transcript's frame went to zero rows and the
+		// conversation left the screen. Any child carrying that protocol must be
+		// measured through the state-isolated tail instead.
+		const calls = { render: 0, tail: [] as number[] };
+		const driven = {
+			render: (): readonly string[] => {
+				calls.render++;
+				return Array.from({ length: 12 }, () => "");
+			},
+			setNativeScrollbackCommittedRows: () => {},
+			renderViewportTail: (_width: number, maxRows: number): readonly string[] => {
+				calls.tail.push(maxRows);
+				return Array.from({ length: Math.min(12, maxRows) }, () => "");
+			},
+		};
+		const { layout, children } = makeHarness({ rows: 30, contentRows: 8 });
+		children.splice(1, 0, driven);
+
+		layout.sync();
+
+		// 8 rows of block plus 12 of transcript leaves 10 of slack, and the
+		// transcript was asked for the rows the viewport still had.
+		expect({ render: calls.render, tail: calls.tail, bottom: rowsOf(layout.bottomFill) }).toEqual({
+			render: 0,
+			tail: [30],
+			bottom: 10,
+		});
+	});
+
+	test("the measurement saturates at the viewport, so a long transcript routes no slack", () => {
+		// The bounded path returns at most the rows asked for, so content past
+		// the viewport reads as exactly the viewport — which is all the routing
+		// needs, and is what keeps a scrolled session from reading as slack.
+		const tail: number[] = [];
+		const driven = {
+			render: (): readonly string[] => Array.from({ length: 400 }, () => ""),
+			setNativeScrollbackCommittedRows: () => {},
+			renderViewportTail: (_width: number, maxRows: number): readonly string[] => {
+				tail.push(maxRows);
+				return Array.from({ length: maxRows }, () => "");
+			},
+		};
+		const { layout, children } = makeHarness({ rows: 20, contentRows: 4, transcriptChildren: 3 });
+		children.splice(1, 0, driven);
+
+		layout.sync();
+
+		expect({ tail, top: rowsOf(layout.topFill), bottom: rowsOf(layout.bottomFill) }).toEqual({
+			tail: [20],
+			top: 0,
+			bottom: 0,
+		});
 	});
 });
 
@@ -102,7 +185,7 @@ describe("HomeAnchorLayout — stateless re-anchor, no latch-off", () => {
 		// composer stranded mid-screen above a blank slab. The anchor is
 		// stateless now: fills vanish at slack zero and return the moment the
 		// frame shrinks, so the composer hugs the bottom in every state.
-		const { layout, state, children } = makeHarness({
+		const { layout, children } = makeHarness({
 			rows: 20,
 			contentRows: 25,
 			composedFrameRows: 25,
@@ -114,7 +197,6 @@ describe("HomeAnchorLayout — stateless re-anchor, no latch-off", () => {
 		// The spike collapses: slack returns, and the conversation hug routing
 		// puts ALL of it above the transcript (composer stays on the bottom).
 		children[1] = block(12);
-		state.composedFrameRows = 12;
 		layout.sync();
 		expect(rowsOf(layout.topFill)).toBe(8);
 		expect(rowsOf(layout.bottomFill)).toBe(0);
@@ -124,7 +206,7 @@ describe("HomeAnchorLayout — stateless re-anchor, no latch-off", () => {
 		// A tiny terminal where the welcome card fills every row: fills are
 		// zero while there is no slack, and return the moment there is — the
 		// anchor never disengages permanently.
-		const { layout, state, children } = makeHarness({
+		const { layout, children } = makeHarness({
 			rows: 10,
 			contentRows: 15,
 			composedFrameRows: 15,
@@ -134,7 +216,6 @@ describe("HomeAnchorLayout — stateless re-anchor, no latch-off", () => {
 		layout.sync();
 		expect(rowsOf(layout.topFill)).toBe(0);
 		children[1] = block(4);
-		state.composedFrameRows = 4;
 		layout.sync();
 		// Hero centring: 2/5 of the 6 slack rows above, the rest below.
 		expect(rowsOf(layout.topFill)).toBe(2);
@@ -142,38 +223,40 @@ describe("HomeAnchorLayout — stateless re-anchor, no latch-off", () => {
 	});
 });
 
-describe("HomeAnchorLayout.onFrameComposed — the drift correction", () => {
-	test("requests a render only when a fill actually changed", () => {
-		// The async-content case (e.g. the MCP status line mounting after the
-		// fill was seeded): the correction must repaint. The steady-state case
-		// must NOT repaint, or every composed frame would schedule another.
-		const { layout, state } = makeHarness({ rows: 30, contentRows: 8, composedFrameRows: 8 });
-		layout.onFrameComposed();
-		expect(state.renderRequests).toBe(1); // 0 -> 22 bottom fill: changed
-		// The requested render composes the next frame WITH the fill in it.
-		state.composedFrameRows = 30;
-		layout.onFrameComposed();
-		expect(state.renderRequests).toBe(1); // steady state: no extra render
+describe("HomeAnchorLayout.sync — one pass, no follow-up paint", () => {
+	/**
+	 * What replaced the post-commit correction. That correction re-sized the
+	 * fills against the frame that had just composed and requested a repaint
+	 * whenever they moved, which is a second paint of the same content per
+	 * change — and, while an answer streamed, one per row of it. Sizing from the
+	 * live children makes the first paint the right one, so the property to pin
+	 * is that a second sync against the same children changes nothing and asks
+	 * for nothing.
+	 */
+	test("a second sync over unchanged children is a no-op and requests no paint", () => {
+		const { layout, state } = makeHarness({ rows: 30, contentRows: 8, transcriptChildren: 1 });
+		layout.sync();
+		expect({ top: rowsOf(layout.topFill), bottom: rowsOf(layout.bottomFill) }).toEqual({ top: 22, bottom: 0 });
+		layout.sync();
+		expect({ top: rowsOf(layout.topFill), bottom: rowsOf(layout.bottomFill) }).toEqual({ top: 22, bottom: 0 });
+		expect(state.renderRequests).toBe(0);
 	});
 
-	test("keeps correcting after the viewport fills — no permanent latch-off", () => {
-		// The pre-2026-07-23 latch made onFrameComposed inert forever after one
-		// overflowing frame, so a later collapse never re-anchored (the stranded
-		// composer glitch). The correction must stay live: a shrink re-fills and
-		// requests the repaint.
-		const { layout, state, children } = makeHarness({
-			rows: 20,
-			contentRows: 25,
-			composedFrameRows: 25,
-			transcriptChildren: 1,
-		});
+	test("content that changes height is placed by the next sync, not the one after it", () => {
+		// The streaming step, in both directions. Each sync is the pass at the
+		// top of one frame: the fill it computes is the fill that frame paints,
+		// so the content plus the fill is exactly a viewport every time.
+		const { layout, children } = makeHarness({ rows: 30, contentRows: 8, transcriptChildren: 1 });
+		for (const contentRows of [8, 9, 10, 24, 12, 3, 29]) {
+			children[1] = block(contentRows);
+			layout.sync();
+			const total = contentRows + rowsOf(layout.topFill) + rowsOf(layout.bottomFill);
+			expect({ contentRows, total }).toEqual({ contentRows, total: 30 });
+		}
+		// And past the viewport there is nothing left to route.
+		children[1] = block(31);
 		layout.sync();
-		expect(rowsOf(layout.topFill)).toBe(0);
-		children[1] = block(12);
-		state.composedFrameRows = 12;
-		layout.onFrameComposed();
-		expect(rowsOf(layout.topFill)).toBe(8);
-		expect(state.renderRequests).toBe(1);
+		expect({ top: rowsOf(layout.topFill), bottom: rowsOf(layout.bottomFill) }).toEqual({ top: 0, bottom: 0 });
 	});
 });
 
@@ -181,14 +264,13 @@ describe("HomeAnchorLayout.onHeroDismissed — same-frame re-anchor", () => {
 	test("re-anchors from the live children on this frame, not the next", () => {
 		// Hero centred on a 30-row terminal: top 8, bottom 14, content 8 (of
 		// which the hero block is 6). Dismissal unmounts the hero BEFORE the
-		// layout callback runs, so the direct remeasure sees the surviving 2
-		// content rows and the bottom fill becomes 28 to keep the composer on
-		// the bottom edge without waiting for the next compose.
+		// layout callback runs, so the walk sees the surviving 2 content rows
+		// and the bottom fill becomes 28 to keep the composer on the bottom edge
+		// without waiting for the next compose.
 		const { layout, state, children } = makeHarness({ rows: 30, contentRows: 8, hasHero: true });
 		layout.sync();
 		expect(rowsOf(layout.topFill)).toBe(8);
 		expect(rowsOf(layout.bottomFill)).toBe(14);
-		state.composedFrameRows = 30;
 		state.hasHero = false;
 		children[1] = block(2);
 		layout.onHeroDismissed(14);
@@ -197,10 +279,9 @@ describe("HomeAnchorLayout.onHeroDismissed — same-frame re-anchor", () => {
 		expect(state.renderRequests).toBe(1);
 	});
 
-	test("falls back to a full sync when no composed frame exists yet", () => {
-		// Dismissal before the first paint (a keystroke racing startup): there
-		// is no frame to do exact math against, so the layout re-syncs from the
-		// live children instead of guessing.
+	test("re-anchors on a dismissal that lands before the first paint", () => {
+		// A keystroke racing startup: no frame has composed, and the sizing pass
+		// needs none — it reads the children that are mounted.
 		const { layout, state } = makeHarness({ rows: 30, contentRows: 8, hasHero: false });
 		layout.onHeroDismissed(5);
 		expect(rowsOf(layout.bottomFill)).toBe(22);
@@ -238,13 +319,13 @@ describe("HomeAnchorLayout.sync — conversation slack routing", () => {
 		layout.sync();
 		expect(rowsOf(layout.topFill)).toBe(22);
 		children[1] = block(20);
-		layout.sync(true);
+		layout.sync();
 		expect(rowsOf(layout.topFill)).toBe(10);
 		expect(rowsOf(layout.bottomFill)).toBe(0);
 		// Content exceeds the viewport: both fills are zero — the composer is
 		// on the natural bottom, same place the fill held it.
 		children[1] = block(31);
-		layout.sync(true);
+		layout.sync();
 		expect(rowsOf(layout.topFill)).toBe(0);
 		expect(rowsOf(layout.bottomFill)).toBe(0);
 	});
@@ -253,27 +334,29 @@ describe("HomeAnchorLayout.sync — conversation slack routing", () => {
 describe("HomeAnchorLayout — the anchor never routes slack the children have taken", () => {
 	/**
 	 * THE DEFECT. Sending a message made the composer jump and the screen
-	 * oscillate while the answer streamed. `sync` sizes the fill from
+	 * oscillate while the answer streamed. The fill was sized from
 	 * `composedFrameRows`, which is one frame old, so a transcript child mounted
 	 * since that frame was not counted: the slack routed above it was sized for
 	 * rows the content had already taken, the frame composed past the viewport,
 	 * and the engine scrolled the window to fit and back again.
 	 *
-	 * THE CLASS. Not "submit overflows". Any `sync` whose composed frame predates
-	 * the live children, which is every `#mountChatChild` call in
-	 * `interactive-mode.ts`: it syncs immediately after `addChild`, so the frame
-	 * it reads can never contain the child just mounted.
+	 * THE CLASS. Not "submit overflows". Any content whose height differs from
+	 * the last composed frame's, in either direction — every `#mountChatChild`
+	 * call in `interactive-mode.ts`, every streamed chunk, every card that
+	 * collapses when its result lands.
 	 *
-	 * THE RULE. The content estimate is never below what the live children
-	 * render, so the routed fill never exceeds the true slack and the anchor
-	 * cannot compose a frame past the viewport. Under-filling is allowed and
-	 * self-corrects on the next frame; over-filling is the defect.
+	 * THE RULE. The routed fill is exactly the viewport minus what the live
+	 * children render, so the frame the fill is part of is exactly a viewport
+	 * tall while any slack remains. Over-filling scrolls the window;
+	 * under-filling lifts the composer off the bottom edge. Neither is repaired
+	 * afterwards, because a repair is a second paint of the same content.
 	 *
-	 * WHAT IT DOES NOT CATCH. A component that grows in place between a frame
-	 * composing and the next `onFrameComposed`: no `sync` runs in that gap, so
-	 * the fill is a frame behind by construction and no assertion here can see
-	 * it. Wrapping is invisible to the child walk, which is why the composed
-	 * frame still wins when it is the larger of the two.
+	 * WHAT IT DOES NOT CATCH. Whether the frame the engine composes from these
+	 * fills honors them: a component-scoped frame reuses a root child's previous
+	 * rows, which is a property of the compositor and is swept in
+	 * `no-frame-composes-past-the-viewport-while-slack-remains.test.ts` under both
+	 * frame shapes. A child whose `render(width)` disagrees with itself between
+	 * the sizing pass and the compose is out of reach here too.
 	 */
 	test("a child mounted since the composed frame is counted, not treated as free slack", () => {
 		// The frame composed at 30 rows: 8 of content under 22 of top fill. A
@@ -287,8 +370,8 @@ describe("HomeAnchorLayout — the anchor never routes slack the children have t
 		layout.topFill.setLines(22);
 		children[1] = block(14);
 		layout.sync();
-		// 30 - 14 = 16. The stale frame implies 22, which composes 36 rows into
-		// a 30-row viewport.
+		// 30 - 14 = 16. The frame on screen implies 22, which composes 36 rows
+		// into a 30-row viewport.
 		expect(rowsOf(layout.topFill)).toBe(16);
 		expect(rowsOf(layout.bottomFill)).toBe(0);
 	});

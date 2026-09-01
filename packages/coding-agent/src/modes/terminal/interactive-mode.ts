@@ -695,7 +695,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			chatContainer: this.chatContainer,
 			topFillRows: width => this.#layout.topFillRows(width),
 			onHeroDismissed: removedRows => this.#layout.onHeroDismissed(removedRows),
-			remeasureAnchor: () => this.#layout.sync(true),
+			remeasureAnchor: () => this.#layout.sync(),
 		});
 		this.pendingMessagesContainer = new AnchoredLiveContainer();
 		this.statusContainer = new AnchoredLiveContainer();
@@ -728,15 +728,12 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.ui.requestRender();
 		};
 		process.stdout.on("resize", this.#resizeHandler);
-		// Home-screen anchor self-correction: content mounted or resized after the
-		// fill was seeded (e.g. the async MCP status line) would otherwise leave
-		// the composer drifting off the viewport bottom until the next resize.
-		this.ui.onFrameComposed = () => this.#layout.onFrameComposed();
-		// Size the anchor from the children of the frame about to compose. A turn
-		// that grows in place between one frame and the next has no other moment
-		// to be measured in: the post-commit correction below reads a frame that
-		// already composed too tall, so on its own it moves the window to fit and
-		// back on every chunk of a streaming answer.
+		// Size the anchor from the children of the frame about to compose: a turn
+		// that grows or collapses in place between one frame and the next has no
+		// other moment to be measured in. There is no post-commit correction to
+		// pair with it — a fill sized from a frame that already composed is a
+		// second paint that moves the same rows to a different row, once per
+		// chunk of a streaming answer.
 		this.ui.onBeforeCompose = () => this.#layout.sync();
 		try {
 			this.historyStorage = HistoryStorage.open();
@@ -1741,12 +1738,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		// As the conversation begins the anchor slack moves ABOVE the transcript
 		// (see HomeAnchorLayout.sync): the first message renders directly above
 		// the composer at the viewport bottom and climbs as replies land, until
-		// content fills the screen and the anchor latches off. Remeasure directly
-		// — the just-added user message and the working indicator are not in the
-		// committed frame yet, so trusting the stale composed height would reserve
-		// empty-home slack on top of them and overflow, jumping the message above
-		// the fold (the old first-message jerk).
-		this.#layout.sync(true);
+		// content fills the screen and the anchor latches off. Sized here as well
+		// as at the top of the next frame so the message is placed by the paint
+		// this submit requests rather than the one after it.
+		this.#layout.sync();
 		this.ui.requestRender();
 		return submission;
 	}

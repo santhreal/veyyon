@@ -103,11 +103,9 @@ describe("WelcomeComponent hero layout", () => {
 		const metaIdx = lines.findIndex(
 			line => line.includes("v1.2.3") && line.includes("gpt-5") && line.includes("openai"),
 		);
-		const valueIdx = lines.findIndex(line => line.includes("Hashline edits that land"));
 		expect(sunIdx).toBeGreaterThanOrEqual(0);
 		expect(wordIdx).toBeGreaterThan(sunIdx);
 		expect(metaIdx).toBeGreaterThan(wordIdx);
-		expect(valueIdx).toBeGreaterThan(metaIdx);
 		// One shared metadata slot — neither name repeats on a second row.
 		expect(lines.filter(line => line.includes("gpt-5")).length).toBe(1);
 		expect(lines.filter(line => line.includes("openai")).length).toBe(1);
@@ -118,7 +116,7 @@ describe("WelcomeComponent hero layout", () => {
 		for (const width of [40, 60, 80, 120, 200]) {
 			const lines = new WelcomeComponent("1.2.3", "gpt-5", "openai").render(width);
 			// Sun budget is capped by the terminal rows (test env: the 60-row
-			// fallback), plus the fixed header tail (wordmark, meta, value, hint).
+			// fallback), plus the fixed header tail (wordmark, meta, hint).
 			expect(lines.length).toBeLessThanOrEqual(44);
 		}
 	});

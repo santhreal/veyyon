@@ -88,7 +88,9 @@ describe("a taller terminal still hugs the composer to the bottom", () => {
 				tui.addChild(layout.bottomFill);
 				tui.addChild(new Composer());
 				tui.setPinnedFooterChildCount(1);
-				tui.onFrameComposed = () => layout.onFrameComposed();
+				// The shipped wiring (interactive-mode): the fills are sized from
+				// the children of the frame about to compose, and nowhere else.
+				tui.onBeforeCompose = () => layout.sync();
 				tui.start();
 				transcript.addChild(new Block(["> hello", "", "  hi back", ""]));
 				tui.requestRender();

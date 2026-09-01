@@ -8,8 +8,10 @@
  * frame and the next is measured at its old height, so the slack routed above
  * it is sized for rows the content has already taken. The frame composes one
  * row taller than the viewport, the engine moves the window down to fit, the
- * post-commit correction then shrinks the fill by that row, and the window
- * moves back — once per streamed chunk, each cycle costing a full repaint.
+ * correction that ran after the commit then shrank the fill by that row, and the
+ * window moved back — once per streamed chunk, each cycle costing a full
+ * repaint. The anchor is sized before the compose now, and nothing corrects it
+ * afterwards.
  *
  * THE CLASS. Not "streaming". Any content that changes height between a frame
  * composing and the next measurement of it, while the conversation is young
@@ -25,11 +27,13 @@
  * because a suite that only banned overflow would be satisfied by deleting the
  * anchor and letting the composer float wherever the content ends.
  *
- * WHAT IT DOES NOT CATCH. Wrapping: the anchor's own measurement of the live
- * children counts rendered rows and cannot see a row that wraps, so the
- * composed frame is still the authority where it is the larger of the two. A
- * session long enough to have scrolled has no slack to route and is the blank
- * band suite's question. Nothing here speaks about colour or styling.
+ * WHAT IT DOES NOT CATCH. The component-scoped frame, which is the shape the
+ * shipped streaming path actually requests: every arm here drives a full render
+ * request. That half of the class is swept in
+ * `no-frame-composes-past-the-viewport-while-slack-remains.test.ts`, under both
+ * frame shapes. A session long enough to have scrolled has no slack to route and
+ * is the blank band suite's question. Nothing here speaks about colour or
+ * styling.
  */
 import { beforeAll, describe, expect, test } from "bun:test";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
@@ -88,16 +92,13 @@ describe("a streaming answer never composes past the viewport", () => {
 				tui.addChild(layout.bottomFill);
 				tui.addChild(new Composer());
 				tui.setPinnedFooterChildCount(1);
-				// Every composed frame is recorded, not the settled one. The
-				// overflow lasts a single frame and the post-commit correction
-				// removes it, so a measurement taken after the frames drain reads
-				// the repaired height and sees nothing.
+				// Every composed frame is recorded, not the settled one: an overflow
+				// can be gone from the terminal by the time the frames drain, so a
+				// measurement taken afterwards reads a repaired height and sees
+				// nothing.
 				const composed: number[] = [];
 				tui.onBeforeCompose = () => layout.sync();
-				tui.onFrameComposed = () => {
-					composed.push(tui.composedFrameRows);
-					layout.onFrameComposed();
-				};
+				tui.onFrameComposed = () => composed.push(tui.composedFrameRows);
 				tui.start();
 
 				const answer = new GrowingBlock();

@@ -151,6 +151,8 @@
 - The context percentage the next launch states is recorded only while the session is running the configured default model, so a session started with `--model`, switched with `/model` before anything was sent, or fallen back to another model no longer leaves the card a gauge measured against a window its model does not have.
 - The context gauge renders every percentage at one width, so a reading that arrives or changes no longer shifts the status row beside it.
 - The launch card lays its status row out against the same width the live row uses, so a narrow terminal no longer shows the card keeping a segment the running session immediately drops.
+- The screen no longer shakes while an answer streams into a viewport it has not filled: each streamed chunk repaints its own block alone, and the anchor fill above it is now resized in that same frame rather than reused at the previous frame's height, which composed one row past the viewport and moved the window per row of the answer.
+- The composer no longer lifts off the bottom row for a frame when content collapses (a tool card closing, the working indicator retiring): the anchor is sized from the children about to render rather than from the frame that already composed, so the placement no longer needs a second paint to correct it.
 - Context budgeting is unchanged from 1.3.0: the unreleased reserve for the model's output allocation is withdrawn, because subtracting it from the usable window moved every model's compaction threshold, roughly doubling how often compaction fired and invalidating the prompt cache on each pass.
 - A turn too large for compaction to summarize is truncated in the middle, keeping the head and the tail, instead of pausing automatic maintenance; the removed text is written to a recovery artifact the notice names. A session whose newest turn was a single oversized message could previously make no progress, and rewinding the tree did not clear it.
 - A payload the outbound secret scan refuses for its size is treated as a context overflow, so the session compacts and retries instead of stopping at "the provider request exceeds the confidentiality scan byte limit" on every attempt. The scan runs before the request is sent, so nothing else had reported the turn as too large.
@@ -201,6 +203,7 @@
 - `subagent.sharedModel`, `subagent.model`, `subagent.thinkingLevel` and `subagent.modelByDepth` decided the model and effort for every subagent at once and are rejected; a config still holding one is reported once, naming the agent page that replaces it.
 - The `--subagent-model` launch flag, which set the model for every subagent in the session.
 - `WRITE_GUTTER_MIN_WIDTH` is no longer exported: the line-number gutter of a code card is the host's, stated once in `src/tui/draw-tool-view.ts`, and no tool sets it.
+- The tagline under the wordmark on the session welcome hero, which the launch card and the mounted hero each printed.
 
 ## [1.3.0] - 2026-08-28
 

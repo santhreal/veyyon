@@ -27,6 +27,7 @@
 - `TerminalNotification` extends `HostNotification` from `@veyyon/utils/host-notification`, so a terminal is one host that can deliver a tool's notification and the two shapes cannot drift apart.
 ### Added
 
+- `TUI.markLayoutSized(component)` marks a root child whose height the `onBeforeCompose` pass owns, so a component-scoped frame renders it instead of reusing the rows the previous frame's content called for.
 - `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
 - `TUI.adoptPaintedWindow(screen)` tells the renderer the terminal already holds a frame someone else painted, and `TUI.paintedScreen()` returns that frame, so the first render after adoption diffs against the rows on screen and rewrites only what changed instead of repainting the viewport.
 

@@ -197,8 +197,9 @@ export function paintFirstFrame(version: string): FirstFrame {
 	// the focused component, and the focused component is the composer the
 	// operator is looking at.
 	ui.setFocus(editor);
-	// No frame has been composed, so this measures the children directly.
-	layout.sync(true);
+	// The sizing pass, one frame early: the children are on the tree and no
+	// frame has composed yet.
+	layout.sync();
 
 	// Set only by the Windows relaunch degrade below; released at mount.
 	let discardUntilMount: (() => void) | undefined;

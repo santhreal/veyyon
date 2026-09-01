@@ -62,9 +62,6 @@ export const WELCOME_SESSION_SLOTS = 3;
  */
 export const WELCOME_LSP_SLOTS = 0;
 
-/** One-line value prop under the wordmark — shipped strengths only. */
-export const VEYYON_VALUE_LINE = "Hashline edits that land. Your keys.";
-
 /** Action rows: label left, shortcut right. The composer is the primary affordance. */
 const WELCOME_ACTIONS: ReadonlyArray<readonly [label: string, shortcut: string]> = [
 	["Resume session", "/resume"],
@@ -324,7 +321,6 @@ export class WelcomeComponent implements Component {
 		const metaLine =
 			profile === DEFAULT_PROFILE_DIR_NAME ? meta : theme.fg("muted", profile) + theme.fg("dim", " · ") + meta;
 		lines.push(centerLine(metaLine, termWidth));
-		lines.push(centerLine(theme.fg("muted", VEYYON_VALUE_LINE), termWidth));
 		return lines;
 	}
 
