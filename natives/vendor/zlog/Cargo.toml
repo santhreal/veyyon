@@ -1,0 +1,24 @@
+[package]
+name = "zlog"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "GPL-3.0-or-later"
+
+
+[lib]
+path = "src/zlog.rs"
+
+[features]
+default = []
+
+[dependencies]
+collections = { path = "../collections" }
+chrono = { version = "0.4", features = ["serde"] }
+log = { version = "0.4.16", features = ["kv_unstable_serde", "serde"] }
+anyhow = "1.0.86"
+
+[dev-dependencies]
+tempfile = "3.20.0"
+
+[workspace]
