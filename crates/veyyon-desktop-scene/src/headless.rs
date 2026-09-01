@@ -1,0 +1,190 @@
+//! Offscreen rasterisation of a scene to an `RgbaFrame`, and PNG encoding.
+//!
+//! This is the mechanism the iteration engine rests on. A surface is judged by
+//! looking at it, and looking at it costs a process launch and a window unless
+//! a frame can be produced without either. Fork patch P10 supplies the
+//! surfaceless render target; this module gives it a size, a scale factor and a
+//! root element, and hands back a frame the metrics and the tiler already
+//! consume.
+//!
+//! The frame type is `crate::frame::RgbaFrame` and is not redeclared here: it
+//! already validates dimensions, scale factor and byte count, and every metric
+//! is written against it.
+
+use std::{
+	fs,
+	io::BufWriter,
+	path::{Path, PathBuf},
+	sync::Arc,
+};
+
+use veyyon_gpui::{App, Entity, HeadlessAppContext, Pixels, Render, Size, Window, px};
+
+use crate::frame::{FrameError, RgbaFrame};
+
+/// Why a headless render or its encoding did not produce a frame.
+#[derive(Debug, thiserror::Error)]
+pub enum RenderError {
+	/// The platform reported no headless renderer. Without one the render path
+	/// returns an empty frame and reports success, so this is an error rather
+	/// than a uniformly transparent image discovered later.
+	#[error(
+		"this platform supplies no headless renderer, so no offscreen frame can be produced; a GPU \
+		 with a Vulkan ICD is required"
+	)]
+	NoRenderer,
+
+	#[error("the offscreen render target produced no frame: {message}")]
+	NoFrame { message: String },
+
+	#[error("the readback does not describe a frame: {source}")]
+	Readback {
+		#[source]
+		source: FrameError,
+	},
+
+	#[error("could not create {}: {source}", path.display())]
+	CreateDir {
+		path:   PathBuf,
+		#[source]
+		source: std::io::Error,
+	},
+
+	#[error("could not write {}: {source}", path.display())]
+	Write {
+		path:   PathBuf,
+		#[source]
+		source: std::io::Error,
+	},
+
+	#[error("could not encode {}: {source}", path.display())]
+	Encode {
+		path:   PathBuf,
+		#[source]
+		source: png::EncodingError,
+	},
+}
+
+/// Which appearance a scene is rendered in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumIter)]
+pub enum Appearance {
+	Dark,
+	Light,
+}
+
+impl Appearance {
+	pub const fn as_str(self) -> &'static str {
+		match self {
+			Self::Dark => "dark",
+			Self::Light => "light",
+		}
+	}
+}
+
+/// Everything that decides the bytes a render produces.
+///
+/// Two renders with equal options must produce equal bytes, so every input the
+/// renderer reads belongs here. A value taken from ambient state instead would
+/// make a sweep report cells as changed when only the environment moved.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RenderOptions {
+	pub width:        u32,
+	pub height:       u32,
+	pub scale_factor: f32,
+	pub appearance:   Appearance,
+	pub seed:         u64,
+}
+
+impl Default for RenderOptions {
+	fn default() -> Self {
+		Self {
+			width:        1180,
+			height:       800,
+			scale_factor: 2.0,
+			appearance:   Appearance::Dark,
+			seed:         0x5eed_cafe,
+		}
+	}
+}
+
+impl RenderOptions {
+	/// The logical size handed to the renderer. Device pixels come back scaled
+	/// by `scale_factor`.
+	pub const fn logical_size(&self) -> Size<Pixels> {
+		Size { width: px(self.width as f32), height: px(self.height as f32) }
+	}
+}
+
+/// Writes a frame as a PNG, creating parent directories.
+///
+/// A frame is straight-alpha RGBA8 with no row padding, which is exactly PNG's
+/// RGBA8 layout, so the bytes are passed through without conversion.
+pub fn write_png(frame: &RgbaFrame, path: &Path) -> Result<(), RenderError> {
+	if let Some(parent) = path.parent() {
+		fs::create_dir_all(parent)
+			.map_err(|source| RenderError::CreateDir { path: parent.to_path_buf(), source })?;
+	}
+
+	let file = fs::File::create(path)
+		.map_err(|source| RenderError::Write { path: path.to_path_buf(), source })?;
+
+	let mut encoder = png::Encoder::new(BufWriter::new(file), frame.width(), frame.height());
+	encoder.set_color(png::ColorType::Rgba);
+	encoder.set_depth(png::BitDepth::Eight);
+
+	let mut writer = encoder
+		.write_header()
+		.map_err(|source| RenderError::Encode { path: path.to_path_buf(), source })?;
+	writer
+		.write_image_data(frame.as_bytes())
+		.map_err(|source| RenderError::Encode { path: path.to_path_buf(), source })
+}
+
+/// Counts distinct pixel values in a frame.
+///
+/// A frame holding one value was cleared and never drawn into. Determinism is
+/// satisfied by such a frame comparing equal to itself, so this separates a
+/// stable frame from an empty one, which is the check every render proof needs.
+pub fn distinct_pixel_values(frame: &RgbaFrame) -> usize {
+	let mut seen = std::collections::BTreeSet::new();
+	for pixel in frame.as_bytes().chunks_exact(4) {
+		seen.insert(pixel);
+	}
+	seen.len()
+}
+
+/// A context wired to this platform's headless renderer.
+///
+/// `HeadlessAppContext::new` hands back a context with no renderer attached,
+/// which renders nothing and reports success, so the renderer is supplied
+/// explicitly and its absence is reported here.
+pub fn headless_context() -> Result<HeadlessAppContext, RenderError> {
+	if gpui_platform::current_headless_renderer().is_none() {
+		return Err(RenderError::NoRenderer);
+	}
+	let text_system = Arc::new(gpui_wgpu::CosmicTextSystem::new("sans-serif"));
+	Ok(HeadlessAppContext::with_platform(text_system, Arc::new(()), || {
+		gpui_platform::current_headless_renderer()
+	}))
+}
+
+/// Rasterises one root view offscreen.
+///
+/// The root is built by a closure rather than passed as a value because a gpui
+/// view is created inside the app context that renders it.
+pub fn render_view<V, F>(
+	cx: &mut HeadlessAppContext,
+	options: &RenderOptions,
+	build_root: F,
+) -> Result<RgbaFrame, RenderError>
+where
+	V: Render + 'static,
+	F: FnOnce(&mut Window, &mut App) -> Entity<V>,
+{
+	let frame = cx
+		.render_frame(options.logical_size(), options.scale_factor, build_root)
+		.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?;
+
+	RgbaFrame::new(frame.width(), frame.height(), options.scale_factor, frame.as_bytes().to_vec())
+		.map_err(|source| RenderError::Readback { source })
+}

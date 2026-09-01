@@ -13,11 +13,21 @@ description = "Deterministic scene construction, headless rasterization and clut
 workspace = true
 
 [dependencies]
+png = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true }
 thiserror = { workspace = true }
 unicode-segmentation = { workspace = true }
 veyyon-desktop-model = { workspace = true }
+veyyon-desktop-tokens = { workspace = true }
+veyyon-gpui = { workspace = true }
+
+# The headless offscreen path needs the platform crate for the current OS's
+# renderer and the wgpu crate for the text system a frame is shaped with. Both
+# reach the scene crate through veyyon-gpui, but they are named directly here
+# because this crate constructs the context rather than only rendering into one.
+gpui_platform = { workspace = true, features = ["test-support"] }
+gpui_wgpu = { workspace = true }
 
 [dev-dependencies]
