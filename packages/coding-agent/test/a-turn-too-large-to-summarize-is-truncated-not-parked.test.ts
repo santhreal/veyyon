@@ -220,11 +220,28 @@ describe("a turn too large to summarize is truncated, not parked", () => {
 		await session.waitForIdle();
 	}
 
+	/**
+	 * Every attempt to resume the turn once maintenance has run, in order.
+	 *
+	 * Whether the turn carries on is the outcome these cases are about, so it is recorded rather
+	 * than counted on the stub: a dead end that resumed through the other entry point reads as a
+	 * named value here instead of two separate silences.
+	 */
+	function resumptionRecorder(): () => string[] {
+		const resumed: string[] = [];
+		vi.spyOn(session.agent, "continue").mockImplementation(async () => {
+			resumed.push("continue");
+		});
+		vi.spyOn(session.agent, "prompt").mockImplementation((async () => {
+			resumed.push("prompt");
+		}) as typeof session.agent.prompt);
+		return () => resumed;
+	}
+
 	it("recovers a session wedged by one oversized unfenced message", async () => {
 		const bulk = prose(60_000);
 		sessionManager.appendMessage({ role: "user", content: bulk, timestamp: Date.now() });
-		vi.spyOn(session.agent, "continue").mockResolvedValue();
-		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined as never);
+		const resumed = resumptionRecorder();
 		// 120k of other context plus the 60k message sits above the recovery band;
 		// removing the message's middle brings it under.
 		trackLiveContext(120_000);
@@ -254,7 +271,7 @@ describe("a turn too large to summarize is truncated, not parked", () => {
 		expect(countTokens(survivor)).toBeLessThan(countTokens(bulk) / 2);
 
 		// Maintenance made progress, so the turn continues instead of standing down.
-		expect(promptSpy).toHaveBeenCalled();
+		expect(resumed()).toContain("prompt");
 	});
 
 	it("still parks, once, when nothing on the branch is large enough to cut", async () => {
@@ -264,8 +281,7 @@ describe("a turn too large to summarize is truncated, not parked", () => {
 		for (let i = 0; i < 40; i++) {
 			sessionManager.appendMessage({ role: "user", content: `note ${i}: ${prose(40)}`, timestamp: Date.now() });
 		}
-		const continueSpy = vi.spyOn(session.agent, "continue").mockResolvedValue();
-		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined as never);
+		const resumed = resumptionRecorder();
 		trackLiveContext(190_000);
 
 		const notices = collectNotices();
@@ -282,8 +298,7 @@ describe("a turn too large to summarize is truncated, not parked", () => {
 		// The warning names what was already tried, so the remedy it offers is the
 		// one the operator has left.
 		expect(parked[0].message).toContain("truncating the largest messages");
-		expect(promptSpy).not.toHaveBeenCalled();
-		expect(continueSpy).not.toHaveBeenCalled();
+		expect(resumed()).toEqual([]);
 	});
 
 	it("cuts only what the bar is exceeded by, leaving the rest of the tail intact", async () => {

@@ -1525,24 +1525,31 @@ finalize_binary() {
             return 0
         fi
         if ! binary_artifact_is_ours "$dest"; then
-            # Two very different situations reach here, and only one of them is
-            # somebody else's file.
+            # Three situations reach here, and two of them are somebody else's file.
             #
             # A path this installer has NEVER recorded holds a `veyyon` it did not
             # put there. Taking that name is the user's call, so it refuses.
             #
-            # A path it HAS recorded holds a binary whose bytes have since drifted:
+            # A path whose only record is a v1 receipt. That format vouches for the
+            # path alone and says nothing about what is there now, so it cannot tell
+            # a drifted install from a user who deleted the binary and took the name
+            # back — the orphaned-receipt hazard v2 exists to close. Treating it as
+            # a record here would hand that hazard a way to displace the user's file,
+            # so it refuses too.
+            #
+            # A path with a v2 receipt holds a binary whose bytes have since drifted:
             # a local build copied over the install, a replacement by hand, a write
-            # interrupted between the binary and its receipt. That is this
-            # installer's own install location in a state only it can repair, and
-            # refusing left the machine stuck on an old version with the remedy
-            # spelled as a flag the user had to discover from an error. Displace
-            # and continue, which is what --force already did, because nothing is
-            # deleted either way.
+            # interrupted between the binary and its receipt. The recorded identity
+            # proves this installer wrote what used to be there, so this is its own
+            # install location in a state only it can repair, and refusing left the
+            # machine stuck on an old version with the remedy spelled as a flag the
+            # user had to discover from an error. Displace and continue, which is
+            # what --force already did, because nothing is deleted either way.
             #
             # Replacement is a rename, so a session running the old binary keeps
             # its own inode and is untouched by both the move and the swap.
-            if [ "$FORCE" != 1 ] && ! artifact_has_owner_history "$dest"; then
+            if [ "$FORCE" != 1 ] &&
+                { ! artifact_has_owner_history "$dest" || artifact_has_legacy_owner_receipt "$dest"; }; then
                 rm -f "$tmp"
                 die "refusing to replace $dest because $(binary_refusal_reason "$dest").
 The ownership record consulted is $(owner_marker_for "$dest").
