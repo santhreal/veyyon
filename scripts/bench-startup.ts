@@ -39,9 +39,14 @@
  *
  * Each arm runs against an isolated agent home so the numbers do not depend on the machine's
  * accumulated caches, sessions, or vault, and so a run cannot touch them. `--cold` throws that home
- * away between repetitions, which is the install-day number; the default keeps it, which is the
- * number a returning user sees. The two differ by more than a factor of three on the machine this
- * was written on, so a report that does not say which one it measured says nothing.
+ * away between repetitions, which is the first-launch number; the default keeps it, which is the
+ * number a returning user sees.
+ *
+ * A thrown-away home is re-seeded the way an install leaves one, with the native addon already
+ * extracted. Both supported install paths extract it before a user launches anything: `install.sh`
+ * runs `doctor_natives`, and the self-updater runs the same search probe. Skipping that step
+ * charged every cold launch 264ms of extraction against a 293ms frame, and no user reaches that
+ * state without deleting the agent home from under an installed binary.
  *
  * Usage:
  *   bun scripts/bench-startup.ts [--runs 5] [--cold] [--bin <veyyon>] [--json out.json]
@@ -49,10 +54,11 @@
  * `--bin` measures a built binary instead of `bun <source>`; the source arm carries Bun's own
  * transpile cost and is the pessimistic reading.
  */
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { promisify } from "node:util";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const CLI_SOURCE = path.join(REPO_ROOT, "packages", "coding-agent", "src", "cli.ts");
@@ -258,12 +264,72 @@ async function timeRun(
 	return promise;
 }
 
-/** A seeded agent home: onboarded, empty of everything else. */
-async function seedHome(root: string): Promise<string> {
+/**
+ * A seeded agent home: onboarded, installed, empty of everything else.
+ *
+ * The addon an install left behind is hardlinked in rather than extracted again. A compiled binary
+ * cannot `dlopen` the addon it carries, so the loader writes it to
+ * `<home>/.veyyon/natives/<version>/` on the first native call, and every install path already pays
+ * that write. Re-extracting it per arm both models nothing and skews the arm it precedes: 135MB of
+ * writeback is still in flight when the launch being timed starts. A hardlink is the same bytes at
+ * the same path for no I/O.
+ */
+async function seedHome(root: string, installedNatives: string | undefined): Promise<string> {
 	const home = path.join(root, "home");
 	await fs.mkdir(path.join(home, ".veyyon"), { recursive: true });
 	await fs.writeFile(path.join(home, ".veyyon", "config.yml"), ONBOARDED_CONFIG);
+	if (installedNatives) await hardlinkTree(installedNatives, path.join(home, ".veyyon", "natives"));
 	return home;
+}
+
+/**
+ * Mirror a directory as hardlinks. Same filesystem by construction: both live under the scratch.
+ *
+ * Idempotent, because a warm run keeps its home and re-seeds it before every arm. An existing link
+ * is already the file this would create.
+ */
+async function hardlinkTree(from: string, to: string): Promise<void> {
+	await fs.mkdir(to, { recursive: true });
+	for (const entry of await fs.readdir(from, { withFileTypes: true })) {
+		const src = path.join(from, entry.name);
+		const dst = path.join(to, entry.name);
+		if (entry.isDirectory()) {
+			await hardlinkTree(src, dst);
+			continue;
+		}
+		await fs.link(src, dst).catch((err: NodeJS.ErrnoException) => {
+			if (err.code !== "EEXIST") throw err;
+		});
+	}
+}
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Run the installer's own native self-test once against a throwaway home, and return the natives
+ * cache it extracted. `install.sh` runs this as `doctor_natives`, `install.ps1` runs its mirror and
+ * the self-updater runs the same search probe, so a machine reaches its first launch with this
+ * directory already populated.
+ *
+ * Returns undefined when the probe cannot run, which leaves the launch arms to extract for
+ * themselves and report the cost. That matches `install.sh`, which skips the probe on a build with
+ * no `grep` subcommand.
+ */
+async function extractInstalledNatives(root: string, command: string, prefix: string[]): Promise<string | undefined> {
+	const installed = path.join(root, "installed");
+	const probe = path.join(installed, "probe");
+	await fs.mkdir(probe, { recursive: true });
+	await fs.writeFile(path.join(probe, "probe.txt"), "veyyon-native-self-test\n");
+	try {
+		await execFileAsync(command, [...prefix, "grep", "veyyon-native-self-test", probe], {
+			cwd: REPO_ROOT,
+			env: { ...process.env, HOME: installed, VEYYON_PROFILE: "" },
+		});
+	} catch (err) {
+		process.stderr.write(`seed: native addon probe failed, the launch arms will extract instead: ${String(err)}\n`);
+	}
+	const natives = path.join(installed, ".veyyon", "natives");
+	return (await fs.stat(natives).catch(() => undefined))?.isDirectory() === true ? natives : undefined;
 }
 
 /** `Total: 394.3ms` from the timing tree the `ready` arm prints. */
@@ -314,14 +380,18 @@ async function main(): Promise<void> {
 	 */
 	const recording = path.join(scratch, "first-frame.json");
 
+	/** The addon the install left behind, extracted once and hardlinked into every seeded home. */
+	const installedNatives = await extractInstalledNatives(scratch, command, prefix);
+
 	/**
-	 * `--cold` means every arm pays install-day cost, so the home is thrown away before each arm
+	 * `--cold` means every arm pays first-launch cost, so the home is thrown away before each arm
 	 * rather than each run: the GPU probe, the model catalog and the session store are all caches one
 	 * arm would otherwise warm for the next, which turned a cold first-frame number into a warm one.
+	 * The installed addon survives the wipe, because an install is not a cache the user accumulated.
 	 */
 	async function envFor(): Promise<Record<string, string>> {
 		if (options.cold) await fs.rm(path.join(scratch, "home"), { recursive: true, force: true });
-		const home = await seedHome(scratch);
+		const home = await seedHome(scratch, installedNatives);
 		return {
 			HOME: home,
 			TERM: "xterm-256color",
