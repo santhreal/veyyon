@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-2ee91a12.js";
+            window.path_to_searchindex_js = "../searchindex-1cd21800.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -241,34 +241,46 @@ justification is reported in the next iteration.</p>
 own benchmark can improve the number without improving the code.</p>
 <h2 id="reading-a-run"><a class="header" href="#reading-a-run">Reading a run</a></h2>
 <p>A live loop occupies one status row:</p>
-<pre><code>autoswarm · run #5 · 1m 12s · 4 runs · 3 kept · 3 arms · best 168.40ms · conf 3.2x · ctrl+x runs
+<pre><code>autoswarm · run #5 · 1m 12s · 4 runs · 3 kept · 3 arms · best 168.40ms -12.6% · conf 3.2x · ctrl+x runs
 </code></pre>
 <p><code>ctrl+x</code> opens the run screen, and so does <code>/autoresearch</code> with nothing after
 it:</p>
 <pre><code>┌─ Autoswarm · tokenizer-laten…┬───────────────────────────────────────────────────┐
-│   OVERVIEW ───────────────── │ Session     tokenizer-latency                     │
-│ › Session                    │ Goal        make the tokenizer faster             │
-│   Playbook                   │ Metric      duration  lower is better             │
-│   #5 running                 │                                                   │
-│   SEGMENT 1 ──────────────── │ Baseline    192.78ms  (#1)                        │
-│   #4 168.40ms                │ Best        168.40ms  (#4)  -12.6%                │
-│   #3 210.10ms                │ Confidence  3.2x                                  │
-│   #2 188.40ms                │                                                   │
-│   #1 192.78ms                │ Breadth     3 arms per iteration                  │
+│   OVERVIEW ───────────────── │ Best        168.40ms · -12.6% · from 192.78ms ·   │
+│ › Session                    │             run 4 · arm b                         │
+│   Playbook                   │ Trend       ▅▄█▁                                  │
+│   #5  running                │ Metric      duration · lower is better            │
+│   SEGMENT 1 ──────────────── │                                                   │
+│   #4 b  168.40ms -12.6% best │ Goal        make the tokenizer faster             │
+│   #3 c  210.10ms  +9.0% drop │                                                   │
+│   #2 b  188.40ms  -2.3% drop │ Segment     1 · 4 runs, 1 kept, 3 discarded       │
+│   #1    192.78ms       base  │                                                   │
+│                              │ Breadth     3 arms per iteration                  │
 ├──────────────────────────────┴───────────────────────────────────────────────────┤
 │ up/down select   pgup/pgdn page   esc close                                      │
 └──────────────────────────────────────────────────────────────────────────────────┘
 </code></pre>
 <p>The list holds the session, the playbook, the run in flight and every logged
-run, newest first, grouped by segment. The pane beside it shows the highlighted
-entry in full: metric and percentage change against the segment baseline,
-secondary metrics, confidence, the arm that produced the run and the arm that
-certified it, the flag reason, scope deviations, the change description, the
-commit and the files it touched.</p>
+run, newest first, grouped by segment. Each row states its own verdict: the run
+number, the arm that produced it, its metric, its change against the baseline of
+its own segment, and whether it is the baseline, the leader, kept, dropped,
+crashed, failed or flagged.</p>
+<p>The pane beside it shows the highlighted entry in full. The session opens with
+the best measurement of the segment, its change against the measurement the
+segment started from, and the count of runs logged since that best one. Below
+those is one block per run of the segment, oldest on the left, scaled between
+the segment’s lowest and highest measurements: a series still descending and a
+series that improved once and then flattened produce the same best and the same
+count, and the blocks separate them. A segment past the width of the pane draws
+its most recent runs, marked with a leading <code>…</code>. A run shows its metric and
+percentage change against the segment baseline, secondary metrics, confidence,
+the arm that produced it and the arm that certified it, the flag reason, scope
+deviations, the change description, the commit and the files it touched.</p>
 <p><code>log_experiment</code> requires a metric on every status, so a run that crashed before
 it measured anything is recorded with a zero. The screen states <code>no metric</code> for
-that run rather than formatting the zero. A run whose harness printed its metric
-and then died shows that number, and the comparison is against it.</p>
+that run rather than formatting the zero, and draws it as a <code>·</code> in the blocks
+rather than as a height. A run whose harness printed its metric and then died
+shows that number, and the comparison is against it.</p>
 <p>Up and down move through the list, page up and page down move the detail pane by
 a full pane, and typing filters the list. Escape clears a live filter, and closes
 the screen when there is none. It is readable before the first run, where it
@@ -277,7 +289,9 @@ shows the goal, the scope and the metric the session was configured with.</p>
 beside it, both at the full width of the card, and the footer prints the widest
 hint that fits, down to <code>esc close</code>. The status row drops its segments from the
 least informative end when the terminal is narrower than the row, and prints the
-loop name and <code>ctrl+x runs</code> at every width.</p>
+loop name and <code>ctrl+x runs</code> at every width. Where the best is not the newest
+logged run, the row carries the gap as <code>2 since best</code>, which it gives up before
+the best itself.</p>
 <h2 id="going-wider"><a class="header" href="#going-wider">Going wider</a></h2>
 <p><code>/autoresearch</code> tries one change per iteration. <a href="./autoswarm.html">Autoswarm</a> is
 the same loop with several candidate arms per iteration, cross-reviewed before

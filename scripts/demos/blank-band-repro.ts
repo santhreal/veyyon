@@ -133,7 +133,9 @@ async function main(): Promise<void> {
 	tui.addChild(anchor.bottomFill);
 	tui.addChild(new Composer());
 	tui.setPinnedFooterChildCount(1);
-	tui.onFrameComposed = () => anchor.onFrameComposed();
+	// Shipped wiring: the anchor is sized from the children of the frame about
+	// to compose, and from nothing after it.
+	tui.onBeforeCompose = () => anchor.sync();
 	tui.start();
 
 	for (let turn = 1; turn <= TURNS; turn++) {

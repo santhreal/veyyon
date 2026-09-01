@@ -47,9 +47,10 @@ export function renderNav({ prefix, current, cta = true, indent = "      " }) {
 	const lines = LINKS.map(link => {
 		const href = link.absolute ? link.href : `${prefix}${link.href}`;
 		const mark = current && link.page === current ? ' aria-current="page"' : "";
-		const icon = link.icon === "github";
-		const name = icon ? ` aria-label="${link.label}"` : "";
-		const content = icon ? GITHUB_ICON : link.label;
+		const content = link.icon === "github" ? GITHUB_ICON : link.label;
+		// An icon-only link renders no text and its glyph is aria-hidden, so the label has to
+		// reach the accessible name some other way or the link is announced as its URL.
+		const name = link.icon ? ` aria-label="${link.label}"` : "";
 		return `${indent}<a href="${href}"${mark}${name}>${content}</a>`;
 	});
 	if (cta) lines.push(`${indent}<a href="${prefix}${CTA.href}" class="btn">${CTA.label}</a>`);

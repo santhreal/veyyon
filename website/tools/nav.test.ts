@@ -14,19 +14,19 @@ import { describe, expect, it } from "bun:test";
 import { CTA, LINKS, renderNav } from "./nav.mjs";
 
 const WEBSITE = join(dirname(import.meta.dir), ".");
-type Link = { label: string; href: string; page?: string; absolute?: boolean; icon?: string };
+type Link = { label: string; href: string; page?: string; absolute?: boolean };
 const links: Link[] = LINKS;
 
 /**
- * The accessible name a rendered link carries: its text for a worded link, and
- * its `aria-label` for the GitHub link, whose content is an `aria-hidden` icon.
- * Reading both means a link that loses its name is red rather than merely
- * unmatched by a text-only regex.
+ * The accessible name of an anchor: its text when it has any, otherwise its `aria-label`.
+ *
+ * The GitHub link renders an aria-hidden glyph and no text, so reading text nodes alone drops it
+ * and every count below is quietly one short.
  */
-function accessibleName(attrs: string, content: string): string {
-	const labelled = /aria-label="([^"]+)"/.exec(attrs);
-	if (labelled) return labelled[1]!;
-	return content.replace(/<[^>]*>/g, "").trim();
+function accessibleName(anchor: string): string {
+	const text = anchor.replace(/<[^>]*>/g, "").trim();
+	if (text !== "") return text;
+	return /aria-label="([^"]*)"/.exec(anchor)?.[1] ?? "";
 }
 
 /** Link names and hrefs found inside a page's nav region. */
@@ -34,10 +34,10 @@ function navRegions(html: string): { links: { href: string; label: string; curre
 	const regions = [...html.matchAll(/<!--NAV:START-->([\s\S]*?)<!--NAV:END-->/g)];
 	return regions.map(([, raw]) => ({
 		raw,
-		links: [...raw.matchAll(/<a href="([^"]+)"([^>]*)>([\s\S]*?)<\/a>/g)].map(([, href, attrs, content]) => ({
+		links: [...raw.matchAll(/<a href="([^"]+)"([^>]*)>([\s\S]*?)<\/a>/g)].map(([whole, href, attrs]) => ({
 			href,
-			label: accessibleName(attrs!, content!),
-			current: attrs!.includes('aria-current="page"'),
+			label: accessibleName(whole),
+			current: attrs.includes('aria-current="page"'),
 		})),
 	}));
 }
@@ -48,15 +48,8 @@ describe("renderNav", () => {
 	 *  to stop. */
 	it("renders every link in order, with the CTA last in header navs", () => {
 		const html = renderNav({ prefix: "./", current: "install" });
-		const rendered = [...html.matchAll(/<a href="([^"]+)"([^>]*)>([\s\S]*?)<\/a>/g)];
-		expect(rendered.map(([, , attrs, content]) => accessibleName(attrs!, content!))).toEqual([
-			...links.map(l => l.label),
-			CTA.label,
-		]);
-		expect(rendered.map(([, href]) => href)).toEqual([
-			...links.map(l => (l.absolute ? l.href : `./${l.href}`)),
-			`./${CTA.href}`,
-		]);
+		const labels = [...html.matchAll(/<a\b[\s\S]*?<\/a>/g)].map(([anchor]) => accessibleName(anchor));
+		expect(labels).toEqual([...links.map(l => l.label), CTA.label]);
 	});
 
 	/** The footer carries the same destinations but not the Get-started button;

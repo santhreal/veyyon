@@ -819,29 +819,21 @@ function laneModelLayer(
 /**
  * Resolve the model patterns one agent runs, with the deciding layer.
  *
- * ONE SCOPE, the agent. Highest first:
- *  1. The LANE — `subagent.agents.<name>`, or the `subagents` level under it
- *     that governs this spawn. Deepest lane first, then up the chain: a level
- *     that names no model inherits the level above, which is what makes
- *     "inherit" on a nested page mean the page you came from.
- *  2. The agent definition's `model:` frontmatter, which for a user-authored
- *     agent is that author's deliberate choice.
+ * One scope, the agent. Highest first:
+ *  1. The lane — `subagent.agents.<name>`, or the `subagents` level under it that governs this
+ *     spawn. Deepest lane first, then up the chain: a level naming no model inherits the level
+ *     above, which is what makes "inherit" on a nested page mean the page you came from.
+ *  2. The agent definition's `model:` frontmatter.
  *  3. {@link AGENT_DEFAULT_MODEL_ROLE}, the documented default.
  *
- * No layer answers for more than one agent. `subagent.sharedModel`,
- * `subagent.model`, `subagent.thinkingLevel` and `subagent.modelByDepth` were
- * those layers and are rejected now ({@link RETIRED_SUBAGENT_MODEL_SETTINGS}).
- * Nor does a spawn follow the model the operator is looking at: that made every
- * agent without a choice of its own move on a keystroke aimed at one agent, and
- * it is why "I changed the model" and "my subagents changed model" were one
- * event.
+ * No layer answers for more than one agent. `subagent.sharedModel`, `subagent.model`,
+ * `subagent.thinkingLevel` and `subagent.modelByDepth` were those layers and are rejected now
+ * ({@link RETIRED_SUBAGENT_MODEL_SETTINGS}). A spawn does not follow the model the operator is
+ * viewing either, which moved every agent without a choice of its own on a keystroke aimed at one.
  *
- * A configured layer that expands to NOTHING does not fall through: it comes
- * back as `unresolved` so the caller can refuse to spawn and name the setting
- * that is wrong.
- *
- * Bundled specialists carry no `model:` frontmatter, so on a stock install every
- * agent with no lane of its own lands on the default role.
+ * A configured layer that expands to nothing returns `unresolved` rather than falling through, so
+ * the caller can refuse to spawn and name the setting that is wrong. Bundled specialists carry no
+ * `model:` frontmatter, so on a stock install every agent with no lane lands on the default role.
  */
 export function resolveSubagentModel(options: {
 	settings: Settings;
@@ -892,27 +884,24 @@ export function resolveSubagentModel(options: {
 }
 
 /**
- * Resolve an agent's thinking level, on the same one-scope chain
- * {@link resolveSubagentModel} uses. Highest first:
- *  1. The LANE — the `subagent.agents.<name>` level governing this spawn, then
- *     up its chain, so a nested page's "inherit" means the page above it.
- *  2. The agent definition's `thinkingLevel` frontmatter, or `thinking`. The
- *     bundled definitions spell it `thinking-level`, which `normalizeKeys`
- *     folds onto the same field.
+ * Resolve an agent's thinking level, on the same one-scope chain {@link resolveSubagentModel} uses.
+ * Highest first:
+ *  1. The lane — the `subagent.agents.<name>` level governing this spawn, then up its chain, so a
+ *     nested page's "inherit" means the page above it.
+ *  2. The agent definition's `thinkingLevel` frontmatter, or `thinking`. The bundled definitions
+ *     spell it `thinking-level`, which `normalizeKeys` folds onto the same field.
  *  3. {@link AGENT_DEFAULT_EFFORT}, the documented default.
  *
- * One sentence has to describe model and effort, or a roster row would move the
- * model and leave the effort behind. So effort is per agent too, and the parent
- * session's live effort no longer reaches a child.
+ * Effort is per agent for the same reason the model is: one scope has to describe both, or a roster
+ * row moves the model and leaves the effort behind. The parent session's live effort does not reach
+ * a child.
  *
- * An explicit `:level` suffix on the resolved model pattern still outranks all
- * of these; the executor applies that, since only it knows whether the suffix
- * was present (see `resolveEffectiveSubagentThinkingLevel`).
+ * An explicit `:level` suffix on the resolved model pattern outranks all of these. The executor
+ * applies that, since only it knows whether the suffix was present (see
+ * `resolveEffectiveSubagentThinkingLevel`).
  *
- * A configured value that names no level does not silently become the default:
- * it is reported with the setting and the accepted values, then skipped, so the
- * next layer decides. Guessing a neighbouring level instead would run the agent
- * at an effort nobody chose.
+ * A configured value naming no level is reported with the setting and the accepted values, then
+ * skipped so the next layer decides, rather than becoming the default or a neighbouring level.
  */
 export function resolveSubagentThinkingLevel(options: {
 	settings: Settings;

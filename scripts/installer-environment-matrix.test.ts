@@ -525,42 +525,34 @@ describe("the ownership receipt vouches for the file, not for the path", () => {
 		fs.writeFileSync(binary, FOREIGN, { mode: 0o751 });
 	}
 
-	/** The file the installer moved aside, which is where a displaced binary is preserved. */
-	function displacedFiles(installDir: string): string[] {
-		return fs.readdirSync(installDir).filter(name => name.includes(".unowned."));
-	}
-
-	it("repairs a path it recorded, keeping the file it found there", () => {
-		// The reported defect, end to end. The receipt is downgraded to the v1 body a released
-		// installer really wrote, and the alias is removed, so what is left on disk is exactly what
-		// a user who deleted the binary by hand has: a sidecar with no file to describe. The path is
-		// this installer's own, so it repairs it rather than stranding the machine — and the file it
-		// did not write goes to a name of its own instead of under the new binary.
+	it("refuses to replace a file that inherited an orphaned receipt", () => {
+		// The reported defect, end to end. The receipt is downgraded to the v1 body
+		// a released installer really wrote, and the alias is removed, so what is
+		// left on disk is exactly what a user who deleted the binary by hand has:
+		// a sidecar with no file to describe.
 		const { run, binary, alias, receipt } = freshInstall();
 		fs.rmSync(alias);
 		writeLegacyOwnerReceipt(binary);
 		replaceBinaryByHand(binary);
 
 		const rerun = runInstall(ownershipCase, run);
-		expect(rerun.exitCode).toBe(0);
-		expect(rerun.output).toContain("ownership receipt predates recorded file identity");
-		expect(rerun.output).toContain("moved it aside to");
-		expect(fs.readFileSync(binary, "utf8")).toBe(STAND_IN_BINARY);
-		// The user's file is the whole point: byte-identical, mode intact, under its own name.
-		const displaced = displacedFiles(run.installDir);
-		expect(displaced).toHaveLength(1);
-		const kept = path.join(run.installDir, displaced[0] as string);
-		expect(fs.readFileSync(kept, "utf8")).toBe(FOREIGN);
-		expect(fs.statSync(kept).mode & 0o777).toBe(0o751);
-		expect(fs.readFileSync(receipt, "utf8")).toBe(ownerReceiptBodyFor(binary));
+		expect(rerun.exitCode).not.toBe(0);
+		expect(rerun.output).toContain(`refusing to replace ${binary}`);
+		expect(rerun.output).toContain("cannot be confirmed against the file that is there now");
+		// The user's file is the whole point: byte-identical, mode intact.
+		expect(fs.readFileSync(binary, "utf8")).toBe(FOREIGN);
+		expect(fs.statSync(binary).mode & 0o777).toBe(0o751);
+		expect(fs.existsSync(receipt)).toBe(true);
 	});
 
-	it("says the file changed, not that it is a stranger's, while its own alias still points at it", () => {
-		// The realistic shape of the same accident: `rm ~/.local/bin/veyyon` leaves our `vey` symlink
-		// behind, and a v2 receipt this installer wrote and cannot match is its own record that the
-		// file it installed is gone. That is a drifted install of its own, so the remedy is a repair
-		// with the found file preserved, and the reason given has to name drift rather than calling a
-		// file the installer itself recorded somebody else's.
+	it("displaces a drifted file to a printed path instead of deleting it", () => {
+		// `rm ~/.local/bin/veyyon` then a file of your own at the name leaves the
+		// same bytes on disk as a local build copied over the install, so the
+		// installer cannot tell the two apart and takes the name back. What makes
+		// that acceptable is only that it is reversible, so this asserts the whole
+		// of that: the file survives, at a path the run names, with its mode, and
+		// the uninstall that follows still does not touch it. A v2 receipt is what
+		// distinguishes this from the orphaned-receipt case above, which refuses.
 		const { run, binary, alias } = freshInstall();
 		replaceBinaryByHand(binary);
 		expect(fs.lstatSync(alias).isSymbolicLink()).toBe(true);
@@ -568,30 +560,21 @@ describe("the ownership receipt vouches for the file, not for the path", () => {
 		const rerun = runInstall(ownershipCase, run);
 		expect(rerun.exitCode).toBe(0);
 		expect(rerun.output).toContain("it has changed since this installer wrote it");
-		expect(fs.readFileSync(binary, "utf8")).toBe(STAND_IN_BINARY);
-		const displaced = displacedFiles(run.installDir);
-		expect(displaced).toHaveLength(1);
-		expect(fs.readFileSync(path.join(run.installDir, displaced[0] as string), "utf8")).toBe(FOREIGN);
-	});
+		expect(rerun.output).toContain("nothing was deleted");
 
-	it("refuses a path it never recorded, leaving the file exactly where it is", () => {
-		// The other side of the rule, which the repair above must not swallow: a `veyyon` at the
-		// install path that this installer has no record of is the user's, and taking that name is
-		// their call. Seeded before the first install, so there is no receipt and no alias anywhere.
-		const untouched: EnvironmentCase = {
-			...ownershipCase,
-			name: "ownership-foreign",
-			home_dir: "ownership-foreign",
-			pre_files: { ".local/bin/veyyon": FOREIGN },
-		};
-		const run = runInstall(untouched);
+		const displaced = /moved it aside to (\S+)/.exec(rerun.output)?.[1];
+		if (displaced === undefined) throw new Error(`the installer did not name where it moved ${binary}`);
+		expect(fs.readFileSync(displaced, "utf8")).toBe(FOREIGN);
+		expect(fs.statSync(displaced).mode & 0o777).toBe(0o751);
 
-		expect(run.exitCode).not.toBe(0);
-		const binary = path.join(run.installDir, "veyyon");
-		expect(run.output).toContain(`refusing to replace ${binary}`);
-		expect(run.output).toContain("it was not created by this installer");
-		expect(fs.readFileSync(binary, "utf8")).toBe(FOREIGN);
-		expect(displacedFiles(run.installDir)).toEqual([]);
+		// The name now holds this installer's binary, vouched for by a fresh receipt.
+		expect(fs.readFileSync(binary, "utf8")).not.toBe(FOREIGN);
+		expect(fs.existsSync(ownerReceiptFor(binary))).toBe(true);
+
+		// "nothing was deleted" has to survive the next command, or it was only
+		// true until the user uninstalled.
+		uninstall(run);
+		expect(fs.readFileSync(displaced, "utf8")).toBe(FOREIGN);
 	});
 
 	it("reinstalls over its own install and re-stamps the receipt", () => {

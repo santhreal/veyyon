@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-2ee91a12.js";
+            window.path_to_searchindex_js = "../searchindex-1cd21800.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -210,14 +210,22 @@ Autoresearch with breadth. The model derives the metric from your harness.
   Attempts      1    retries before an arm is abandoned
   Certification on   arms cross-review before one is kept
 
-3 arms in a review ring: each arm is reviewed by another, and no pair reviews
-each other.
+3 arms × 1 attempts: up to 3 harness runs per iteration.
+Each arm is reviewed by another, and no pair reviews each other.
 
-↑↓ field   ←→ adjust   space toggle   enter start   esc cancel
+type to edit   ↑↓ field   enter start   esc cancel
 </code></pre>
 <p>Up and down move between fields, left and right change the focused value, space
 toggles certification, Enter starts the run and Escape leaves without starting
-one. Text typed after the command prefills the goal, so <code>/autoswarm make the tokenizer faster</code> opens the console with that goal already in the field.</p>
+one. The legend lists only the keys that act on the focused field: the arrow
+range on Breadth and Attempts, <code>type to edit</code> on Goal.</p>
+<p>The first line under the fields is the harness runs one iteration costs, breadth
+multiplied by attempts. It is a ceiling: an arm that succeeds on its first
+attempt uses one. The second line is the review topology for that breadth. Both
+lines change with the fields above them.</p>
+<p>Enter does nothing while the goal is empty, and the legend reads <code>enter needs a goal</code> until one is typed. Text typed after the command prefills the goal, so
+<code>/autoswarm make the tokenizer faster</code> opens the console with that goal already
+in the field.</p>
 <p>The console opens on whatever the current branch is already doing, so running it
 during a session shows that session’s breadth rather than the default, and
 starting applies the new values from the next iteration.</p>

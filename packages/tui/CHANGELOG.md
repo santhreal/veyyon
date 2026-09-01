@@ -4,6 +4,7 @@
 
 ### Added
 
+- `TUI.markLayoutSized(component)` marks a root child whose height the `onBeforeCompose` pass owns, so a component-scoped frame renders it instead of reusing the rows the previous frame's content called for.
 - `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
 - `SelectList.setItems` replaces the rows in place, keeping the live search query, the cancel ladder and the selected row followed by value, so a host whose data changes does not have to construct a second list and take the reader's filter with it.
 - `TUI.adoptPaintedWindow(screen)` tells the renderer the terminal already holds a frame someone else painted, and `TUI.paintedScreen()` returns that frame, so the first render after adoption diffs against the rows on screen and rewrites only what changed instead of repainting the viewport.

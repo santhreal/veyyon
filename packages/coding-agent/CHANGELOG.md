@@ -17,7 +17,11 @@
 
 ### Changed
 
+- The `read` tool's URL routing, internal-URL routing, notebook reading, document conversion and structural summarizing each live in their own named method instead of inline branches of one 758-line `execute`, with no change to what any read returns.
+- The doc comments on the agent registry's conversation scope and address check, and on the subagent model and thinking-level resolvers, state the precedence and the boundary rule without the surrounding narrative; no behavior changes.
+- The queued-message predicates and the `retry.fallbackChains` selector vocabulary live in `session/queued-message.ts` and `session/retry-fallback.ts` instead of as file-private helpers in `agent-session.ts`; `RestoredQueuedMessage` is imported from the first of those.
 - The launch card paints about 8ms sooner: the bundled themes are embedded as text and parsed on the ask instead of building all 98 before the first frame, and the card path no longer evaluates `node:assert/strict`, `node:crypto`, `node:inspector`, `node:child_process` or `node:zlib` for calls it does not make.
+- The status row reads its truncation limits from `tools/render-limits`, a leaf that imports nothing, rather than `tools/render-utils`, which drops the tool renderers, path helpers and image resizing from the launch card's import graph; first-frame time is unchanged, because those modules only declare functions.
 - The home screen hero drops the recent-session row; `/welcome` still lists recent sessions.
 - The launch card paints the whole status row from config instead of a hand-written path and branch, so the profile, model, approval rung, branch and context gauge are on screen with the first frame; measured on a pty against the built binary, the row lands at 47-48ms rather than 1067-1083ms and the frame is editable at 49-50ms.
 - The status row's segment gathering and row fitting live in one module, `modes/components/status-line/quiet-row.ts`, which the live footline and the launch card both render through, so the two rows cannot carry different segments or order them differently.
@@ -71,6 +75,7 @@
 
 ### Fixed
 
+- The installer refuses to replace a binary whose only ownership record is a pre-identity v1 receipt, instead of moving it aside. That receipt vouches for the path alone, so a user who deleted the installed binary and put their own file at the name left exactly one behind, and it was being read as permission to displace their file.
 - The composer hairline and the transcript rules no longer change shade about half a second after the launch card appears: the card mixes them out of the background this terminal reported on the previous launch instead of a static token, and `tui.paintGround` on `auto` decides the paint from that same recorded background rather than repainting the whole window when the terminal answers. The background is recorded per terminal in `cache/launch-facts.json`, whose shape version is now 4.
 - The launch card's context gauge no longer jumps when the session mounts in a project it has never measured: the reading filed under the model is now that reading with the measuring project's context files subtracted, so a card seeded in a heavy repository no longer states 77% left where the session settles at 88%. A project's own reading is unchanged and still wins where it exists.
 - The session mount no longer forces a full-viewport repaint over the launch card, so the screen no longer flashes and darkens at handover; the mount now writes only the rows whose content changed.
@@ -108,6 +113,8 @@
 - The context percentage the next launch states is recorded only while the session is running the configured default model, so a session started with `--model`, switched with `/model` before anything was sent, or fallen back to another model no longer leaves the card a gauge measured against a window its model does not have.
 - The context gauge renders every percentage at one width, so a reading that arrives or changes no longer shifts the status row beside it.
 - The launch card lays its status row out against the same width the live row uses, so a narrow terminal no longer shows the card keeping a segment the running session immediately drops.
+- The screen no longer shakes while an answer streams into a viewport it has not filled: each streamed chunk repaints its own block alone, and the anchor fill above it is now resized in that same frame rather than reused at the previous frame's height, which composed one row past the viewport and moved the window per row of the answer.
+- The composer no longer lifts off the bottom row for a frame when content collapses (a tool card closing, the working indicator retiring): the anchor is sized from the children about to render rather than from the frame that already composed, so the placement no longer needs a second paint to correct it.
 - Context budgeting is unchanged from 1.3.0: the unreleased reserve for the model's output allocation is withdrawn, because subtracting it from the usable window moved every model's compaction threshold, roughly doubling how often compaction fired and invalidating the prompt cache on each pass.
 - A turn too large for compaction to summarize is truncated in the middle, keeping the head and the tail, instead of pausing automatic maintenance; the removed text is written to a recovery artifact the notice names. A session whose newest turn was a single oversized message could previously make no progress, and rewinding the tree did not clear it.
 - A payload the outbound secret scan refuses for its size is treated as a context overflow, so the session compacts and retries instead of stopping at "the provider request exceeds the confidentiality scan byte limit" on every attempt. The scan runs before the request is sent, so nothing else had reported the turn as too large.
@@ -138,6 +145,7 @@
 
 - `subagent.sharedModel`, `subagent.model`, `subagent.thinkingLevel` and `subagent.modelByDepth` decided the model and effort for every subagent at once and are rejected; a config still holding one is reported once, naming the agent page that replaces it.
 - The `--subagent-model` launch flag, which set the model for every subagent in the session.
+- The tagline under the wordmark on the session welcome hero, which the launch card and the mounted hero each printed.
 
 ## [1.3.0] - 2026-08-28
 

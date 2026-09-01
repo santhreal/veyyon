@@ -22,10 +22,12 @@ import type { Theme } from "../modes/theme/theme";
 import { Hasher } from "../tui/utils";
 import { formatDimensionNote, type ResizedImage } from "../utils/image-resize";
 import { isPathWithinCwd } from "./path-utils";
+import { TRUNCATE_LENGTHS } from "./render-limits";
 import { shortenPath } from "./shorten-path";
 
 export { Ellipsis } from "@veyyon/natives";
 export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui/utils";
+export * from "./render-limits";
 
 // =============================================================================
 // Standardized Display Constants
@@ -49,47 +51,6 @@ export function resolveImageOptions(): { maxWidthCells: number; maxHeightCells?:
 	}
 	return { maxWidthCells, maxHeightCells };
 }
-
-/** Preview limits for collapsed/expanded views */
-export const PREVIEW_LIMITS = {
-	/** Lines shown in collapsed view */
-	COLLAPSED_LINES: 3,
-	/** Lines shown in expanded view */
-	EXPANDED_LINES: 12,
-	/** Items (files, results) shown in collapsed view */
-	COLLAPSED_ITEMS: 8,
-	/** Output preview lines in collapsed view */
-	OUTPUT_COLLAPSED: 3,
-	/** Output preview lines in expanded view */
-	OUTPUT_EXPANDED: 10,
-	/** Max hunks shown when collapsed (edit tool) */
-	DIFF_COLLAPSED_HUNKS: 8,
-	/** Max diff lines shown when collapsed (edit tool) */
-	DIFF_COLLAPSED_LINES: 40,
-} as const;
-
-/** Default number of terminal output rows shown before expansion. */
-export const DEFAULT_TERMINAL_PREVIEW_LINES = 10;
-
-/** Truncation lengths for different content types */
-export const TRUNCATE_LENGTHS = {
-	/** Short titles, labels */
-	TITLE: 60,
-	/** Medium-length content (messages, previews) */
-	CONTENT: 80,
-	/** Longer content (code, explanations) */
-	LONG: 100,
-	/** Full line content */
-	LINE: 110,
-	/** Very short (task previews, badges) */
-	SHORT: 40,
-	/** Status-line chips (session name in the footline) — the footline shares
-	 *  one row with model, mode, path, git, and the context bar, so a chip may
-	 *  never dominate it */
-	CHIP: 24,
-	/** Idle recap status line (~40-word LLM reply) */
-	RECAP: 280,
-} as const;
 
 /** Keybinding action that toggles tool-output expansion. */
 const EXPAND_ACTION = "app.tools.expand";
