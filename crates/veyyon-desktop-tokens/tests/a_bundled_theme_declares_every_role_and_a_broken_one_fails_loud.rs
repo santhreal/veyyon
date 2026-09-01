@@ -245,7 +245,7 @@ fn an_unknown_appearance_names_the_two_that_are_allowed() {
 fn a_malformed_colour_names_the_key_and_never_panics() {
 	for bad in ["#12g456", "#12345", "not-a-colour", "#Àbcdef", ""] {
 		let (_tree, path) = scratch_theme("theme-bad-colour");
-		rewrite(&path, "accent = \"#4a8cf7\"", &format!("accent = \"{bad}\""));
+		rewrite(&path, "accent = \"#f0862e\"", &format!("accent = \"{bad}\""));
 
 		match load_theme(&path).expect_err("a malformed colour must not load") {
 			TokenError::ColorInvalid { key, value, .. } => {
@@ -261,7 +261,7 @@ fn a_malformed_colour_names_the_key_and_never_panics() {
 fn a_pair_below_the_floor_names_both_roles_and_the_ratio() {
 	let (_tree, path) = scratch_theme("theme-low-contrast");
 	// Foreground moved to a near-ground value: legible nowhere.
-	rewrite(&path, "foreground = \"#e8ecf2\"", "foreground = \"#1e2229\"");
+	rewrite(&path, "foreground = \"#fafafa\"", "foreground = \"#1e2229\"");
 
 	match load_theme(&path).expect_err("a pair below the floor must not load") {
 		TokenError::ContrastTooLow { foreground, background, ratio, required, .. } => {
@@ -284,8 +284,8 @@ fn a_tint_ink_is_checked_against_its_own_fill() {
 	let (_tree, path) = scratch_theme("theme-low-tint");
 	rewrite(
 		&path,
-		"[tint.plan]\nfill = \"#123a3c\"\nink = \"#93d6d8\"",
-		"[tint.plan]\nfill = \"#123a3c\"\nink = \"#1a4446\"",
+		"[tint.plan]\nfill = \"#333a44\"\nink = \"#e6e9ee\"",
+		"[tint.plan]\nfill = \"#333a44\"\nink = \"#3a414b\"",
 	);
 
 	match load_theme(&path).expect_err("a tint pair below the floor must not load") {

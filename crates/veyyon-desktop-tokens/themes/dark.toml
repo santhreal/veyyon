@@ -1,10 +1,13 @@
-# Reference dark theme (§6.9).
+# Reference dark theme (§6.9): the brand's Titanium palette. Pitch black
+# ground, silver structure, ember as the one accent. Cyan, blue and purple are
+# not chrome, so the kind tints are drawn from ember, amber, green, red and the
+# silver ladder.
 #
 # Declares exactly the roles in ColorRole, no additions and no omissions. Every
 # rendered pair clears its §6.9 floor: text at body size and above against all
 # five grounds at 4.5:1, `micro` text at 3:1, each tint ink on its own fill at
 # 4.5:1, and accent_foreground on accent at 4.5:1. The tightest pair here is
-# placeholder on float at 3.95:1.
+# placeholder on float at 4.11:1.
 #
 # Regenerate contrast figures with:
 #   cargo test -p veyyon-desktop-tokens --test a_bundled_theme_declares_every_role
@@ -16,25 +19,25 @@ version = 1
 
 [role]
 # Elevation 0 through 4, §6.5. Each step is lighter than the one below it.
-ground = "#0d0f12"
-rail = "#12151a"
-canvas = "#16191f"
-inset = "#1c2027"
-float = "#21262e"
+ground = "#000000"
+rail = "#0a0c0f"
+canvas = "#101318"
+inset = "#171b21"
+float = "#1e232a"
 hairline = "#2c323b"
 
-foreground = "#e8ecf2"
-secondary = "#b3bcc9"
+foreground = "#fafafa"
+secondary = "#c6cbd4"
 muted = "#8b95a3"
 placeholder = "#79838f"
 
-accent = "#4a8cf7"
-accent_foreground = "#04101f"
-focus = "#6aa3ff"
+accent = "#f0862e"
+accent_foreground = "#000000"
+focus = "#f5a15c"
 
 [tint.working]
-fill = "#12314f"
-ink = "#a9cdf7"
+fill = "#3d2510"
+ink = "#f0a66b"
 
 [tint.attention]
 fill = "#4a3410"
@@ -45,12 +48,12 @@ fill = "#123a26"
 ink = "#9adcb6"
 
 [tint.input]
-fill = "#2d2350"
-ink = "#c4b4f5"
+fill = "#262c35"
+ink = "#c6cbd4"
 
 [tint.plan]
-fill = "#123a3c"
-ink = "#93d6d8"
+fill = "#333a44"
+ink = "#e6e9ee"
 
 [tint.due]
 fill = "#4a2f14"
