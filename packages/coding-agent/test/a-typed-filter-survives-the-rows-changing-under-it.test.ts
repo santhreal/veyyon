@@ -191,7 +191,8 @@ describe("a typed filter survives the rows changing under it", () => {
 		expect(screen.render(100).some(line => stripAnsi(line).includes("#20"))).toBeTrue();
 
 		// "playb" reaches the Playbook row and nothing else: a run row is filtered
-		// on its number, description and arm, none of which hold that subsequence.
+		// on its label, which holds its number and its arm and neither of which
+		// holds that subsequence.
 		screen.handleInput("p");
 		screen.handleInput("l");
 		screen.handleInput("a");

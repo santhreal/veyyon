@@ -238,7 +238,7 @@ describe("the run screen fits the terminal it was given", () => {
 		const runtime = runtimeWith(1);
 		runtime.state.breadth = 3;
 		runtime.state.results = [result({ arm: "arm-b", certifiedBy: "arm-c" })];
-		expect(runScreenRows(runtime).find(row => row.value === "run:1")?.description).toContain("arm-b");
+		expect(runScreenRows(runtime).find(row => row.value === "run:1")?.label).toContain("arm-b");
 
 		const screen = new AutoresearchScreenComponent({
 			runtime,
@@ -252,14 +252,14 @@ describe("the run screen fits the terminal it was given", () => {
 		const detail = screen.render(90).join("\n");
 		expect(detail).toContain("arm-b");
 		expect(detail).toContain("arm-c");
-		expect(detail).toContain("Reviewed by");
+		expect(detail).toContain("certified by");
 	});
 
 	it("gives the sidebar a bounded share of the width", () => {
 		// A sidebar that scales without a cap eats the detail pane on a wide
 		// terminal; one that never grows truncates run labels on a narrow one.
 		expect(screenSidebarWidth(60)).toBeGreaterThanOrEqual(22);
-		expect(screenSidebarWidth(400)).toBeLessThanOrEqual(34);
+		expect(screenSidebarWidth(400)).toBeLessThanOrEqual(40);
 		for (const width of [60, 80, 120, 400]) {
 			expect(screenSidebarWidth(width)).toBeLessThan(width / 2);
 		}
@@ -302,17 +302,25 @@ describe("the run screen fits the terminal it was given", () => {
 			const frame = frameOf(runtimeWith(3), width, 20);
 			const text = stripAnsi(frame.join("\n"));
 			expect(frame.length).toBe(20);
-			// Both panes are on screen either way: a run to select, and the selected
-			// run's detail. Every detail field states its LABEL in full at every
-			// width, which is what the two-column pane could not do — it printed
-			// `S…`, `G…`, `M…` down the side of the card and nothing else.
+			// Both panes are on screen either way: a run to select, and the head of
+			// the selected run's detail, whose first field is the one a reader of
+			// this screen came for.
 			expect(text).toContain("Playbook");
-			expect(text).toContain("Goal");
-			expect(text).toContain("Metric");
-			// A pane holding the 12-column label gutter, the fixture's 15-column
-			// session name and the four columns of chrome states the value too.
-			if (screenStacks(width) && width >= 31) expect(text).toContain("startup-latency");
+			expect(text).toContain("Best");
 		}
+		// Every detail field states its LABEL in full, which is what the two-column
+		// pane could not do — it printed `S…`, `G…`, `M…` down the side of the card
+		// and nothing else. Asserted against the pane rather than the card: a pane
+		// with more lines than the card has rows is paged through, so a field below
+		// the fold is scrolled to and not truncated, and the narrowest pane the
+		// stacked layout hands out is the one that has to hold every label.
+		const narrow = stripAnsi(renderRunDetail(runtimeWith(3), "session", 20).join("\n"));
+		for (const label of ["Best", "Metric", "Goal", "Segment", "Breadth", "Scope", "Branch"]) {
+			expect(narrow).toContain(label);
+		}
+		// A pane holding the 12-column label gutter and the fixture's 15-column
+		// session name states the value too.
+		expect(stripAnsi(renderRunDetail(runtimeWith(3), "session", 40).join("\n"))).toContain("startup-latency");
 		// The changeover is a property of the geometry, not of a width someone
 		// remembered: a pane that cannot hold a label and a value stacks.
 		expect(screenStacks(31)).toBe(true);

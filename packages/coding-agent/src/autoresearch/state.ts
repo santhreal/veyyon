@@ -102,19 +102,27 @@ export function findBaselineMetric(results: ExperimentResult[], segment: number)
 	return baseline ? baseline.metric : null;
 }
 
+export function findBestKeptResult(
+	results: ExperimentResult[],
+	segment: number,
+	direction: MetricDirection,
+): ExperimentResult | null {
+	let best: ExperimentResult | null = null;
+	for (const result of currentResults(results, segment)) {
+		if (result.status !== "keep" || result.flagged) continue;
+		if (best === null || isBetter(result.metric, best.metric, direction)) {
+			best = result;
+		}
+	}
+	return best;
+}
+
 export function findBestKeptMetric(
 	results: ExperimentResult[],
 	segment: number,
 	direction: MetricDirection,
 ): number | null {
-	let best: number | null = null;
-	for (const result of currentResults(results, segment)) {
-		if (result.status !== "keep" || result.flagged) continue;
-		if (best === null || isBetter(result.metric, best, direction)) {
-			best = result.metric;
-		}
-	}
-	return best;
+	return findBestKeptResult(results, segment, direction)?.metric ?? null;
 }
 
 export function findBaselineRunNumber(results: ExperimentResult[], segment: number): number | null {

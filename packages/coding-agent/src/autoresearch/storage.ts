@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { errorMessage, getAutoresearchDbPath, getAutoresearchProjectDir, logger, tryParseJson } from "@veyyon/utils";
 import * as git from "../utils/git";
 import type { ASIData, ExperimentStatus, MetricDirection, NumericMetricMap } from "./types";
+import { EXPERIMENT_STATUSES } from "./types";
 
 /**
  * Encode an absolute project path into a single filesystem-safe segment.
@@ -787,8 +788,7 @@ function rowToRun(row: RunDbRow): RunRow {
 }
 
 function parseStatus(value: string | null): ExperimentStatus | null {
-	if (value === "keep" || value === "discard" || value === "crash" || value === "checks_failed") return value;
-	return null;
+	return EXPERIMENT_STATUSES.find(status => status === value) ?? null;
 }
 
 /**

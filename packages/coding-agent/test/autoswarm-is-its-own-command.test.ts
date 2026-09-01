@@ -251,10 +251,13 @@ describe("autoswarm is its own command", () => {
 		const harness = buildHarness();
 		const drive: ConsoleDrive = { opened: false, overlay: false, frames: [] };
 		// Enter on an empty goal must not close the console. If it did, the run
-		// would start with nothing to optimize.
+		// would start with nothing to optimize. The console says so on the legend,
+		// where `enter` is, rather than promising `enter start` and ignoring it.
 		const keys = ["\r", "g", "o", "\r"];
 		await harness.commands.get("autoswarm")?.handler("", makeCtx(cwdDir.path(), harness.notices, keys, drive));
-		expect(drive.frames[0]?.join("\n")).toContain("A goal is required");
+		const first = drive.frames[0]?.join("\n") ?? "";
+		expect(first).toContain("enter needs a goal");
+		expect(first).not.toContain("enter start");
 		expect(harness.messages).toContain("go");
 	});
 

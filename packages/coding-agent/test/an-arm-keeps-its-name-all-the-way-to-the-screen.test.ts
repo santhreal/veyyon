@@ -131,15 +131,20 @@ describe("an arm keeps its name", () => {
 			certified_by: "a0",
 		});
 		// The screen renders from the runtime the log tool refreshed, which is the
-		// object the overlay holds while a loop runs.
+		// object the overlay holds while a loop runs. The arm has to be in the
+		// LABEL: a sidebar this narrow never prints an item description, so an arm
+		// carried only there crosses every boundary in this suite and then reaches
+		// no reader.
 		const row = runScreenRows(harness.runtime).find(candidate => candidate.value === `run:${runId}`);
-		expect(row?.description).toContain("a1");
+		expect(row?.label).toContain("a1");
 		expect(row?.filterText).toContain("a1");
 
 		const detail = renderRunDetail(harness.runtime, `run:${runId}`, 60).join("\n");
 		expect(detail).toContain("Arm");
 		expect(detail).toContain("a1");
-		expect(detail).toContain("Reviewed by");
+		// The reviewer rides the outcome it qualifies, in the term the rest of the
+		// product uses for it: the setup console's toggle is Certification.
+		expect(detail).toContain("certified by");
 		expect(detail).toContain("a0");
 	});
 });

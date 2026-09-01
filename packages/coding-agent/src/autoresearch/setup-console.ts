@@ -67,18 +67,34 @@ export class SwarmSetupModel {
 	}
 
 	/**
+	 * The work this configuration commits to, in harness runs.
+	 *
+	 * Breadth and attempts multiply, and neither row says so: breadth 4 with 3
+	 * attempts is up to twelve builds and twelve measurements per iteration,
+	 * which is the difference between a loop that finishes over lunch and one
+	 * that does not. Stated as a ceiling, because an arm that succeeds on its
+	 * first try spends one attempt.
+	 */
+	costSummary(): string {
+		const unit = this.breadth === 1 ? "experiment" : "arms";
+		const total = this.breadth * this.attempts;
+		const runs = total === 1 ? "1 harness run" : `up to ${total} harness runs`;
+		return `${this.breadth} ${unit} × ${this.attempts} attempts: ${runs} per iteration.`;
+	}
+
+	/**
 	 * What the chosen breadth actually buys, stated on screen. A knob whose
 	 * effect is invisible is a knob nobody can set correctly: breadth 2 reads
 	 * like "a small ring" and is in fact no ring at all.
+	 *
+	 * The arm count is on the line above, so this states only the topology.
 	 */
 	certifierSummary(): string {
-		if (this.breadth === 1) return "Serial: one experiment per iteration, no arms and no review.";
-		if (!this.certify) return `${this.breadth} arms, uncertified: you are the only reviewer.`;
+		if (this.breadth === 1) return "Serial: no arms and no review.";
+		if (!this.certify) return "No cross-review: you are the only reviewer.";
 		const mode = certifierFor(this.breadth);
-		if (mode === "ring") {
-			return `${this.breadth} arms in a review ring: each arm is reviewed by another, and no pair reviews each other.`;
-		}
-		return `${this.breadth} arms reviewed by the director: a ring needs 3, since 2 arms would review each other.`;
+		if (mode === "ring") return "Each arm is reviewed by another, and no pair reviews each other.";
+		return "The director reviews both arms: a ring needs 3, since 2 arms would review each other.";
 	}
 }
 
@@ -90,6 +106,12 @@ interface Row {
 	hint: string;
 }
 
+/**
+ * One grammar for every hint: a noun phrase naming what the value governs, so
+ * the column reads as one list rather than as three sentences that happen to
+ * sit under each other. The two that bound an arm's life share a shape, because
+ * they are the same kind of limit read from opposite ends.
+ */
 export function setupRows(model: SwarmSetupModel): Row[] {
 	return [
 		{ id: "goal", label: "Goal", value: model.goal.length > 0 ? model.goal : "what should get faster?", hint: "" },
@@ -99,9 +121,36 @@ export function setupRows(model: SwarmSetupModel): Row[] {
 			id: "certify",
 			label: "Certification",
 			value: model.certify ? "on" : "off",
-			hint: "arms cross-review before one is kept",
+			hint: "cross-review before an arm is kept",
 		},
 	];
+}
+
+/**
+ * The keys that do something to the field the cursor is on, and the range the
+ * adjust keys move within.
+ *
+ * One legend listing every key the console understands told a reader on the
+ * goal row that space toggles and the arrows adjust, which is true of neither
+ * that field nor that moment, and it never said what breadth's ceiling was --
+ * the arrows simply stopped moving and nothing on screen said why.
+ */
+function keyLegend(field: FieldId, canStart: boolean): string {
+	const local =
+		field === "goal"
+			? "type to edit"
+			: field === "breadth"
+				? `←→ ${MIN_BREADTH} to ${MAX_BREADTH}`
+				: field === "attempts"
+					? `←→ ${MIN_ATTEMPTS} to ${MAX_ATTEMPTS}`
+					: "space toggle";
+	// The refusal rides on the key it refuses. It was a warning line of its own,
+	// which appeared the moment the goal was cleared and disappeared on the next
+	// character, moving the legend under the reader's eye while they typed --
+	// and the legend it moved still promised `enter start`, which enter did not
+	// do. One line, and it never lies about what enter does.
+	const enter = canStart ? "enter start" : "enter needs a goal";
+	return `${local}   ↑↓ field   ${enter}   esc cancel`;
 }
 
 /**
@@ -162,12 +211,13 @@ export function renderSetupConsole(model: SwarmSetupModel, width: number, theme:
 		lines.push(truncateToWidth(`${marker} ${label}${value}${caret}${hint}`, width));
 	}
 	lines.push("");
-	lines.push(...prose(model.certifierSummary(), width, line => theme.fg("muted", line)));
-	if (!model.canStart()) {
-		lines.push(...prose("A goal is required before autoswarm can start.", width, line => theme.fg("warning", line)));
-	}
+	// Cost first, topology second: what the loop will spend, then how it decides.
+	// Both lines are unconditional, so nothing below them moves while the reader
+	// is on a knob.
+	lines.push(...prose(model.costSummary(), width, line => theme.fg("muted", line)));
+	lines.push(...prose(model.certifierSummary(), width, dim));
 	lines.push("");
-	lines.push(...prose("↑↓ field   ←→ adjust   space toggle   enter start   esc cancel", width, dim));
+	lines.push(...prose(keyLegend(model.field, model.canStart()), width, dim));
 	return lines;
 }
 

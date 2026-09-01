@@ -66,26 +66,33 @@ it:
 
 ```
 ┌─ Autoswarm · tokenizer-laten…┬───────────────────────────────────────────────────┐
-│   OVERVIEW ───────────────── │ Session     tokenizer-latency                     │
-│ › Session                    │ Goal        make the tokenizer faster             │
-│   Playbook                   │ Metric      duration  lower is better             │
-│   #5 running                 │                                                   │
-│   SEGMENT 1 ──────────────── │ Baseline    192.78ms  (#1)                        │
-│   #4 168.40ms                │ Best        168.40ms  (#4)  -12.6%                │
-│   #3 210.10ms                │ Confidence  3.2x                                  │
-│   #2 188.40ms                │                                                   │
-│   #1 192.78ms                │ Breadth     3 arms per iteration                  │
+│   OVERVIEW ───────────────── │ Best        168.40ms · -12.6% · from 192.78ms ·   │
+│ › Session                    │             run 4 · arm b                         │
+│   Playbook                   │ Metric      duration · lower is better            │
+│   #5  running                │                                                   │
+│   SEGMENT 1 ──────────────── │ Goal        make the tokenizer faster             │
+│   #4 b  168.40ms -12.6% best │                                                   │
+│   #3 c  210.10ms  +9.0% drop │ Segment     1 · 4 runs, 1 kept, 3 discarded       │
+│   #2 b  188.40ms  -2.3% drop │                                                   │
+│   #1    192.78ms       base  │ Breadth     3 arms per iteration                  │
 ├──────────────────────────────┴───────────────────────────────────────────────────┤
 │ up/down select   pgup/pgdn page   esc close                                      │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 The list holds the session, the playbook, the run in flight and every logged
-run, newest first, grouped by segment. The pane beside it shows the highlighted
-entry in full: metric and percentage change against the segment baseline,
-secondary metrics, confidence, the arm that produced the run and the arm that
-certified it, the flag reason, scope deviations, the change description, the
-commit and the files it touched.
+run, newest first, grouped by segment. Each row states its own verdict: the run
+number, the arm that produced it, its metric, its change against the baseline of
+its own segment, and whether it is the baseline, the leader, kept, dropped,
+crashed, failed or flagged.
+
+The pane beside it shows the highlighted entry in full. The session opens with
+the best measurement of the segment against the one it started from, and states
+how many runs have been logged since that best one, which is how a loop that has
+stopped finding anything says so. A run shows its metric and percentage change
+against the segment baseline, secondary metrics, confidence, the arm that
+produced it and the arm that certified it, the flag reason, scope deviations,
+the change description, the commit and the files it touched.
 
 `log_experiment` requires a metric on every status, so a run that crashed before
 it measured anything is recorded with a zero. The screen states `no metric` for

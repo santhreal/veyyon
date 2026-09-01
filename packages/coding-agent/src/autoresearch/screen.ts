@@ -32,15 +32,21 @@ import {
 	findBaselineMetric,
 	findBaselineRunNumber,
 	findBaselineSecondary,
+	findBestKeptResult,
 } from "./state";
 import type { AutoresearchRuntime, ExperimentResult, ExperimentState } from "./types";
 
 /** Label column of the detail body, so every value starts at one column. */
 const LABEL_WIDTH = 12;
 
-/** Sidebar bounds. Wide enough for `#1234  192.78ms`, never past a third. */
+/**
+ * Sidebar bounds. Wide enough for the full ledger row — `#12 c  192.78ms
+ * -6.4%  best` — because a row that sheds its outcome tag at every reachable
+ * terminal width is a column that does not exist. Never past a third of the
+ * card, so the detail pane stays the larger of the two.
+ */
 const SIDEBAR_MIN = 22;
-const SIDEBAR_MAX = 34;
+const SIDEBAR_MAX = 40;
 
 /**
  * Footer hints, widest first. The row is truncated to the card, so one long
@@ -77,12 +83,22 @@ function wrap(text: string, width: number): string[] {
 	return Bun.wrapAnsi(sanitizeSingleLine(text), Math.max(1, width), { trim: false }).split("\n");
 }
 
-/** `Label       value`, wrapped under a hanging indent so values stay in column. */
+/**
+ * `Label       value`, wrapped under a hanging indent so values stay in column.
+ *
+ * A continuation line is trimmed at the front. The wrapper keeps the space it
+ * broke on, so a value that wrapped started one column right of the value above
+ * it and the hanging indent stopped hanging. Indentation inside a value is not
+ * lost by this: `sanitizeSingleLine` has already collapsed it, and the one
+ * caller with meaningful indentation -- the playbook -- wraps directly.
+ */
 function field(label: string, value: string, width: number): string[] {
 	const body = Math.max(1, width - LABEL_WIDTH);
 	const lines = wrap(value, body);
 	return lines.map((line, index) =>
-		index === 0 ? `${theme.fg("dim", label.padEnd(LABEL_WIDTH))}${line}` : `${" ".repeat(LABEL_WIDTH)}${line}`,
+		index === 0
+			? `${theme.fg("dim", label.padEnd(LABEL_WIDTH))}${line}`
+			: `${" ".repeat(LABEL_WIDTH)}${line.trimStart()}`,
 	);
 }
 
@@ -130,16 +146,68 @@ export function screenTitle(runtime: AutoresearchRuntime): string {
 }
 
 /**
+ * The tag a run row carries: what that run is worth to the reader.
+ *
+ * `best` and `base` are the two rows the whole segment is read against, and
+ * the other four state why a run is in neither of those roles. A run that was
+ * kept and is neither is `kept`.
+ *
+ * Four characters each but one, which is what lets the column survive the shed
+ * ladder on an ordinary terminal: `dropped` and `flagged` cost the whole column
+ * two more, and a verdict nobody sees is worth less than an abbreviated one.
+ *
+ * `base` outranks `best` on the run that is both. Early in a segment the
+ * baseline is also the leader, and tagging it `best` puts a winner on a list
+ * that has not produced one; with no row tagged `best`, the absence is the
+ * reading, and it is the true one.
+ */
+function runTag(result: ExperimentResult, isBest: boolean, isBaseline: boolean): string {
+	if (result.flagged) return "flag";
+	if (result.status === "crash") return "crash";
+	if (result.status === "checks_failed") return "fail";
+	if (result.status === "discard") return "drop";
+	if (isBaseline) return "base";
+	if (isBest) return "best";
+	return "kept";
+}
+
+/** A run row before it is measured against its neighbours and padded to them. */
+interface RunRow {
+	value: string;
+	segment: number;
+	number: string;
+	metric: string;
+	delta: string;
+	tag: string;
+	filterText: string;
+}
+
+/**
  * Sidebar rows, newest first, grouped by segment.
  *
- * The session and the playbook are rows rather than a banner: a banner is paid
- * for on every frame by every reader, and these two are read once each.
+ * A run list is read by scanning it, not by selecting each row in turn and
+ * reading the pane beside it, so a row states its own verdict. Four columns,
+ * padded against each other so they read as a ledger rather than as ragged
+ * text: which run it was, its metric, its change against the baseline of its
+ * own segment, and what it is worth. A swarm run carries its arm next to its
+ * number — `#12 c` — because in a breadth of four the number alone does not
+ * say which candidate produced the reading.
+ *
+ * The columns shed from the right as the sidebar narrows, in the order the rest
+ * of this screen sheds: the same ladder the footer hint and the status row use.
+ * The tag goes first, then the change, and the narrowest sidebar is the bare
+ * number the detail pane then has to answer for.
+ *
+ * No row carries a `description`. `SelectList` prints one only above 40 columns
+ * and this sidebar is capped at 40, so every description here was computed on
+ * every frame, keyed the list's rebuild signature, and reached no reader. What
+ * a row has to say, it says in its label.
  */
-export function runScreenRows(runtime: AutoresearchRuntime): SelectItem[] {
+export function runScreenRows(runtime: AutoresearchRuntime, sidebarWidth: number = SIDEBAR_MAX): SelectItem[] {
 	const state = runtime.state;
 	const rows: SelectItem[] = [
-		{ value: "session", label: "Session", description: sessionRowSummary(runtime), group: "overview" },
-		{ value: "notes", label: "Playbook", description: notesSummary(state), group: "overview" },
+		{ value: "session", label: "Session", group: "overview" },
+		{ value: "notes", label: "Playbook", group: "overview" },
 	];
 	if (runtime.runningExperiment) {
 		// No elapsed time on this row. The list is rebuilt whenever its rows change,
@@ -150,43 +218,83 @@ export function runScreenRows(runtime: AutoresearchRuntime): SelectItem[] {
 		rows.push({
 			value: "running",
 			label: `#${runtime.runningExperiment.runNumber}  running`,
-			description: "in flight",
 			group: "overview",
 		});
 	} else if (runtime.lastRunSummary) {
+		// `pending` alone said nothing about the run it names. What the reader has
+		// to decide is whether the change is worth logging, and the harness has
+		// already answered half of that.
 		rows.push({
 			value: "pending",
-			label: `#${runtime.lastRunSummary.runNumber}  pending`,
-			description: runtime.lastRunSummary.passed ? "log required" : "failed",
+			label: `#${runtime.lastRunSummary.runNumber}  ${runtime.lastRunSummary.passed ? "passed" : "failed"}, unlogged`,
 			group: "overview",
 		});
 	}
+	// One pass per segment rather than one per row: the baseline and the best of a
+	// segment are the same two lookups for every run in it.
+	const baselines = new Map<number, number | null>();
+	const bests = new Map<number, ExperimentResult | null>();
+	const runRows: RunRow[] = [];
 	for (let index = state.results.length - 1; index >= 0; index -= 1) {
 		const result = state.results[index];
+		const segment = result.segment;
+		if (!baselines.has(segment)) {
+			baselines.set(segment, findBaselineMetric(state.results, segment));
+			bests.set(segment, findBestKeptResult(state.results, segment, state.bestDirection));
+		}
+		const baseline = baselines.get(segment) ?? null;
 		const number = result.runNumber ?? index + 1;
-		const arm = result.arm ? `  ${result.arm}` : "";
-		rows.push({
+		const isBaseline = findBaselineRunNumber(state.results, segment) === number;
+		const isBest = bests.get(segment) === result;
+		// The change a crash shows is the change of the number it shows: a run that
+		// measured nothing is compared against nothing, and the baseline row is the
+		// reference rather than a reading of it.
+		const shown = result.status === "crash" ? result.measuredPrimary : result.metric;
+		const delta = isBaseline || shown === null ? undefined : formatPercentChange(shown, baseline);
+		runRows.push({
 			value: `run:${number}`,
-			label: `#${number}  ${metricLabel(result, state.metricUnit)}`,
-			description: `${runOutcome(result)}${arm}`,
-			group: `segment ${result.segment + 1}`,
-			filterText: `${number} ${result.description} ${result.arm ?? ""}`,
+			segment,
+			number: result.arm ? `#${number} ${result.arm}` : `#${number}`,
+			metric: metricLabel(result, state.metricUnit),
+			delta: delta ?? "",
+			tag: runTag(result, isBest, isBaseline),
+			filterText: `${number} ${result.description} ${result.arm ?? ""} ${runOutcome(result)}`,
+		});
+	}
+	// `  ` between every column, and the list insets the row by two before it
+	// prints the cursor and one more after it.
+	const budget = sidebarWidth - 5;
+	const numberWidth = widestOf(runRows, row => row.number);
+	const metricWidth = widestOf(runRows, row => row.metric);
+	const deltaWidth = widestOf(runRows, row => row.delta);
+	const tagWidth = widestOf(runRows, row => row.tag);
+	// The verdict outranks the change on the way down. A reader can compare two
+	// numbers in an aligned metric column and recover the change themselves; no
+	// amount of staring at that column says which run the loop kept, which one
+	// it is measuring everything against, or which one segfaulted. So the tag is
+	// charged first and the change takes whatever is left.
+	const withTag = numberWidth + metricWidth + tagWidth + 4;
+	const showTag = tagWidth > 0 && withTag <= budget;
+	const used = numberWidth + metricWidth + 2 + (showTag ? tagWidth + 2 : 0);
+	const showDelta = deltaWidth > 0 && used + deltaWidth + 2 <= budget;
+	for (const runRow of runRows) {
+		let label = `${runRow.number.padEnd(numberWidth)}  ${runRow.metric.padEnd(metricWidth)}`;
+		if (showDelta) label += `  ${runRow.delta.padStart(deltaWidth)}`;
+		if (showTag) label += `  ${runRow.tag}`;
+		rows.push({
+			value: runRow.value,
+			label: label.trimEnd(),
+			group: `segment ${runRow.segment + 1}`,
+			filterText: runRow.filterText,
 		});
 	}
 	return rows;
 }
 
-function sessionRowSummary(runtime: AutoresearchRuntime): string {
-	const state = runtime.state;
-	if (state.results.length === 0) return runtime.autoresearchMode ? "baseline pending" : "not started";
-	const kept = currentResults(state.results, state.currentSegment).filter(r => r.status === "keep").length;
-	return `${state.results.length} runs  ${kept} kept`;
-}
-
-function notesSummary(state: ExperimentState): string {
-	const text = state.notes.trim();
-	if (text.length === 0) return "empty";
-	return `${text.split("\n").filter(line => line.trim().length > 0).length} lines`;
+function widestOf(rows: readonly RunRow[], pick: (row: RunRow) => string): number {
+	let widest = 0;
+	for (const row of rows) widest = Math.max(widest, pick(row).length);
+	return widest;
 }
 
 /** The highlighted row in full. */
@@ -202,6 +310,14 @@ export function renderRunDetail(runtime: AutoresearchRuntime, value: string, wid
 	return sessionDetail(runtime, width);
 }
 
+/**
+ * The session, read by someone asking whether the loop is getting anywhere.
+ *
+ * That question has one answer -- the best measurement so far, against the one
+ * it started from -- and it is the first row, because a reader who reads
+ * nothing else has read the thing they came for. The goal, the scope and the
+ * branch are what the answer is about and follow it.
+ */
 function sessionDetail(runtime: AutoresearchRuntime, width: number): string[] {
 	const state = runtime.state;
 	const current = currentResults(state.results, state.currentSegment);
@@ -209,46 +325,61 @@ function sessionDetail(runtime: AutoresearchRuntime, width: number): string[] {
 	const baselineRun = findBaselineRunNumber(state.results, state.currentSegment);
 	const best = bestResult(state);
 	const lines: string[] = [];
-	// The title carries the name too, and the title is inset into a border segment
-	// as wide as the sidebar, so a long name reads in full only here.
-	if (state.name) lines.push(...field("Session", state.name, width));
-	lines.push(...field("Goal", runtime.goal ?? state.goal ?? "(not stated)", width));
-	lines.push(
-		...field(
-			"Metric",
-			`${state.metricName}  ${state.bestDirection === "lower" ? "lower" : "higher"} is better`,
-			width,
-		),
-	);
-	lines.push("");
-	lines.push(
-		...field(
-			"Baseline",
-			baseline === null
-				? "pending"
-				: `${formatNum(baseline, state.metricUnit)}${baselineRun ? `  (#${baselineRun})` : ""}`,
-			width,
-		),
-	);
-	if (best) {
+	const direction = state.bestDirection === "lower" ? "lower" : "higher";
+	if (best && baseline !== null) {
 		const change = formatPercentChange(best.metric, baseline);
+		const arm = best.arm ? ` · arm ${best.arm}` : "";
 		lines.push(
 			...field(
 				"Best",
-				`${formatNum(best.metric, state.metricUnit)}  (#${best.runNumber ?? "?"})${change ? `  ${change}` : ""}`,
+				`${formatNum(best.metric, state.metricUnit)}${change ? ` · ${change}` : ""}` +
+					theme.fg("dim", ` · from ${formatNum(baseline, state.metricUnit)}`) +
+					theme.fg("dim", ` · run ${best.runNumber ?? "?"}${arm}`),
+				width,
+			),
+		);
+	} else if (baseline !== null) {
+		lines.push(
+			...field(
+				"Best",
+				theme.fg("dim", "nothing has beaten the baseline yet") +
+					` · ${formatNum(baseline, state.metricUnit)}${baselineRun ? theme.fg("dim", ` · run ${baselineRun}`) : ""}`,
+				width,
+			),
+		);
+	} else {
+		lines.push(...field("Best", theme.fg("dim", "no baseline measured yet"), width));
+	}
+	// Whether the loop is still finding anything. "Best" is a point, and a point
+	// cannot answer the question a reader actually has in front of a loop that
+	// has been running for an hour: leave it, or stop it. Best at run 3 with
+	// eleven logged is eight runs of nothing, which is the answer.
+	const bestRun = best?.runNumber ?? null;
+	if (bestRun !== null) {
+		const since = current.filter(result => (result.runNumber ?? 0) > bestRun).length;
+		if (since > 0) {
+			lines.push(...field("Since", `${since} ${since === 1 ? "run" : "runs"} later, none better`, width));
+		}
+	}
+	lines.push(...field("Metric", `${state.metricName} · ${theme.fg("dim", `${direction} is better`)}`, width));
+	if (state.confidence !== null) {
+		lines.push(
+			...field(
+				"Confidence",
+				`${state.confidence.toFixed(1)}x${theme.fg("dim", " · the run-to-run spread of this segment")}`,
 				width,
 			),
 		);
 	}
-	if (state.confidence !== null) lines.push(...field("Confidence", `${state.confidence.toFixed(1)}x`, width));
 	lines.push("");
-	lines.push(
-		...field(
-			"Segment",
-			`${state.currentSegment + 1}  ·  ${current.length} runs  ${countBy(current, "keep")} kept  ${countBy(current, "discard")} discarded  ${countBy(current, "crash")} crashed  ${countBy(current, "checks_failed")} checks failed`,
-			width,
-		),
-	);
+	lines.push(...field("Goal", runtime.goal ?? state.goal ?? "(not stated)", width));
+	// The title carries the name too, and the title is inset into a border segment
+	// as wide as the sidebar, so a long name reads in full only here.
+	if (state.name) lines.push(...field("Session", state.name, width));
+	lines.push("");
+	// Only the outcomes that happened. A run of five counts, four of them zero,
+	// is a row the reader has to parse before learning it says nothing.
+	lines.push(...field("Segment", segmentTally(state, current), width));
 	if (state.results.length > current.length) {
 		lines.push(...field("Archived", `${state.results.length - current.length} runs from earlier segments`, width));
 	}
@@ -257,9 +388,12 @@ function sessionDetail(runtime: AutoresearchRuntime, width: number): string[] {
 	if (breadth > 1) {
 		lines.push(...field("Breadth", `${breadth} arms per iteration`, width));
 		const flagged = state.results.filter(result => result.flagged).length;
-		lines.push(...field("Flagged", flagged === 0 ? "none" : `${flagged} runs`, width));
+		if (flagged > 0) {
+			const runs = flagged === 1 ? "run" : "runs";
+			lines.push(...field("Flagged", `${flagged} ${runs}, excluded from best and baseline`, width));
+		}
 	} else {
-		lines.push(...field("Breadth", "1  ·  serial, no arms and no review", width));
+		lines.push(...field("Breadth", "1 · serial, no arms and no review", width));
 	}
 	if (state.maxExperiments !== null) lines.push(...field("Cap", `${state.maxExperiments} runs per segment`, width));
 	lines.push("");
@@ -276,6 +410,25 @@ function sessionDetail(runtime: AutoresearchRuntime, width: number): string[] {
 		),
 	);
 	return lines;
+}
+
+/**
+ * `2  ·  4 runs, 2 kept, 1 crashed, 1 failed its checks`.
+ *
+ * An outcome nobody recorded is left out. Printing every status the union has,
+ * most of them zero, made the row longest exactly when it had least to say.
+ */
+function segmentTally(state: ExperimentState, current: readonly ExperimentResult[]): string {
+	const parts = [`${current.length} ${current.length === 1 ? "run" : "runs"}`];
+	const kept = countBy(current, "keep");
+	const discarded = countBy(current, "discard");
+	const crashed = countBy(current, "crash");
+	const failed = countBy(current, "checks_failed");
+	if (kept > 0) parts.push(`${kept} kept`);
+	if (discarded > 0) parts.push(`${discarded} discarded`);
+	if (crashed > 0) parts.push(`${crashed} crashed`);
+	if (failed > 0) parts.push(`${failed} failed its checks`);
+	return `${state.currentSegment + 1}  ·  ${parts.join(", ")}`;
 }
 
 function countBy(results: readonly ExperimentResult[], status: ExperimentResult["status"]): number {
@@ -338,48 +491,90 @@ function pendingDetail(runtime: AutoresearchRuntime, width: number): string[] {
 	return lines;
 }
 
+/**
+ * One run, read by someone deciding whether it is the change to keep.
+ *
+ * The order is that decision: what the loop concluded, what it measured against
+ * the run every other run in the segment is measured against, who stands behind
+ * it, and only then what it actually changed. A field with nothing to report is
+ * absent rather than present and empty -- `Reviewed by (nobody)` on a run that
+ * crashed before anyone could review it is a row that costs a line and answers
+ * nothing.
+ */
 function runDetail(result: ExperimentResult, state: ExperimentState, width: number): string[] {
 	// The run's own segment, not the current one: an archived run was judged
 	// against the baseline of the segment it ran in, and a percentage against a
 	// later segment's baseline describes a comparison the loop never made.
 	const baseline = findBaselineMetric(state.results, result.segment);
 	const baselineSecondary = findBaselineSecondary(state.results, result.segment, state.secondaryMetrics);
+	const isBaseline = findBaselineRunNumber(state.results, result.segment) === result.runNumber;
+	const isBest = findBestKeptResult(state.results, result.segment, state.bestDirection) === result;
 	// The comparison is against the number the row shows: a crash that measured
 	// nothing has none, and reading its logged zero against a 205ms baseline
 	// printed `0ms  -100.0%`, a claim about a run that never finished.
 	const shown = result.status === "crash" ? result.measuredPrimary : result.metric;
 	const change = shown === null ? undefined : formatPercentChange(shown, baseline);
 	const lines: string[] = [];
+	// The verdict and the reviewer on one row: "kept, and c is who says so" is one
+	// fact, and splitting it left the reviewer four rows below the word it
+	// qualifies with a metric block in between.
+	const certified = result.certifiedBy ? theme.fg("dim", `  ·  certified by ${result.certifiedBy}`) : "";
 	lines.push(
 		...field(
 			"Outcome",
 			theme.fg(statusPaint(result.status, result.flagged), runOutcome(result)) +
-				(result.flagged ? theme.fg("dim", ` (logged ${result.status})`) : ""),
+				(result.flagged ? theme.fg("dim", ` (logged ${result.status})`) : "") +
+				certified,
 			width,
 		),
 	);
+	// What the number is for. A run with no percentage beside it is either the
+	// reference every percentage is against or a run that measured nothing, and
+	// an unexplained blank reads as a third thing: a number nobody compared.
+	// ` · `, not two spaces: `field` wraps its value through the ANSI wrapper,
+	// which collapses a run of spaces, so an alignment gap written here arrives
+	// as one space and the value reads as a sentence fragment.
+	const role = isBaseline
+		? theme.fg("dim", " · the baseline of this segment")
+		: isBest
+			? theme.fg("dim", " · best of this segment")
+			: "";
 	lines.push(
-		...field(state.metricName, `${metricLabel(result, state.metricUnit)}${change ? `  ${change}` : ""}`, width),
+		...field(
+			state.metricName,
+			`${metricLabel(result, state.metricUnit)}${change ? ` · ${change}` : ""}${role}`,
+			width,
+		),
 	);
 	for (const metric of state.secondaryMetrics) {
 		const value = result.metrics[metric.name];
 		if (value === undefined) continue;
 		const delta = formatPercentChange(value, baselineSecondary[metric.name]);
-		lines.push(...field(metric.name, `${formatNum(value, metric.unit)}${delta ? `  ${delta}` : ""}`, width));
+		lines.push(...field(metric.name, `${formatNum(value, metric.unit)}${delta ? ` · ${delta}` : ""}`, width));
 	}
-	if (result.confidence !== null) lines.push(...field("Confidence", `${result.confidence.toFixed(1)}x`, width));
-	lines.push("");
-	if (result.arm !== null || result.certifiedBy !== null) {
-		lines.push(...field("Arm", result.arm ?? "(unattributed)", width));
-		lines.push(...field("Reviewed by", result.certifiedBy ?? "(nobody)", width));
+	if (result.confidence !== null) {
+		lines.push(
+			...field(
+				"Confidence",
+				`${result.confidence.toFixed(1)}x${theme.fg("dim", " · the run-to-run spread of this segment")}`,
+				width,
+			),
+		);
+	}
+	if (result.arm !== null) {
+		const breadth = state.breadth > 1 ? theme.fg("dim", ` of ${state.breadth}`) : "";
+		lines.push("");
+		lines.push(...field("Arm", `${result.arm}${breadth}`, width));
 	}
 	if (result.flagged) {
+		lines.push("");
 		lines.push(...field("Flagged", theme.fg("warning", result.flaggedReason ?? "no reason recorded"), width));
 		lines.push(
 			...field("", theme.fg("dim", "A flagged run is excluded from the baseline and the best metric."), width),
 		);
 	}
 	if (result.scopeDeviations.length > 0) {
+		lines.push("");
 		lines.push(...field("Off limits", theme.fg("warning", result.scopeDeviations.join(", ")), width));
 		lines.push(
 			...field("Justified", result.justification ?? theme.fg("warning", "no justification recorded"), width),
@@ -387,8 +582,11 @@ function runDetail(result: ExperimentResult, state: ExperimentState, width: numb
 	}
 	lines.push("");
 	lines.push(...field("Change", result.description || "(no description)", width));
-	if (result.commit) lines.push(...field("Commit", result.commit, width));
 	if (result.modifiedPaths.length > 0) lines.push(...field("Files", result.modifiedPaths.join(", "), width));
+	// Twelve characters, the length git itself prints and the length the session
+	// row already shortens the baseline commit to. Forty was the widest thing on
+	// the pane and nobody reads past the first eight.
+	if (result.commit) lines.push(...field("Commit", result.commit.slice(0, 12), width));
 	const asi = result.asi;
 	if (asi && Object.keys(asi).length > 0) {
 		const entries = Object.entries(asi).map(([key, value]) => `${key}=${JSON.stringify(value)}`);
@@ -472,13 +670,19 @@ export function renderRunScreen(
 /**
  * Sidebar column width for a card of `width` columns.
  *
+ * A third rather than 0.28, because the difference decides whether the ledger
+ * has a verdict column: at 0.28 a 120-column terminal gave the sidebar 33 and
+ * the tag was shed at every width a reader is likely to have, which is a column
+ * that does not exist. A third reaches the cap at 120 and the detail pane still
+ * has more than twice the sidebar there.
+ *
  * Two panes cost seven columns of chrome, so a sidebar sized only by its own
  * bounds wrote a 29-column frame into a 10-column terminal and the border
  * wrapped. A terminal that cannot pay for the sidebar's floor and one body
  * column gives the sidebar whatever is left instead.
  */
 export function screenSidebarWidth(width: number): number {
-	const wanted = clampLow(Math.floor(width * 0.28), SIDEBAR_MIN, SIDEBAR_MAX);
+	const wanted = clampLow(Math.floor(width / 3), SIDEBAR_MIN, SIDEBAR_MAX);
 	return clampLow(wanted, 0, width - 8);
 }
 
@@ -486,9 +690,14 @@ export function screenSidebarWidth(width: number): number {
  * What the sidebar is showing, as one string. A screen open across a logged run
  * rebuilds its list only when this changes, so an idle repaint allocates one
  * string instead of a list.
+ *
+ * The label, not the description: a row's label is the whole of what this list
+ * prints, and keying on a field the list never draws rebuilt the sidebar for
+ * changes no reader could see -- and left a changed label, which they can, to
+ * be noticed only if some description happened to move with it.
  */
 function signatureOf(items: readonly SelectItem[]): string {
-	return items.map(item => `${item.value}|${item.description ?? ""}`).join("\n");
+	return items.map(item => `${item.value}|${item.label}`).join("\n");
 }
 
 /**
@@ -554,18 +763,22 @@ export class AutoresearchScreenComponent implements Component {
 	 * being logged.
 	 */
 	#sync(): void {
-		const items = runScreenRows(this.#runtime);
-		const signature = signatureOf(items);
+		const items = runScreenRows(this.#runtime, this.#sidebarWidth);
+		// The width is part of the signature: a resize sheds or restores a column
+		// of every run row, and a signature blind to it left the list rendering
+		// the columns of the width before last.
+		const signature = `${this.#sidebarWidth}\n${signatureOf(items)}`;
 		if (signature === this.#signature) return;
 		this.#signature = signature;
 		this.#list.setItems(items);
 	}
 
 	render(width: number): readonly string[] {
-		this.#sync();
 		const rows = Math.max(SCREEN_MIN_ROWS, this.#rows());
 		const sidebarWidth = screenSidebarWidth(width);
 		this.#sidebarWidth = screenStacks(width) ? width - 4 : sidebarWidth;
+		// After the width, because the rows are built against it.
+		this.#sync();
 		// Stacked, both panes are the full inner width and the rows are split
 		// between them; side by side, both panes get every body row.
 		const stackedRows = stackedBodyRows(rows);

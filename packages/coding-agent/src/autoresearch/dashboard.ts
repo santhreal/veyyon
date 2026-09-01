@@ -12,10 +12,10 @@
 import { visibleWidth } from "@veyyon/tui";
 import type { ExtensionContext } from "../extensibility/extensions";
 import { theme } from "../modes/theme/theme";
-import { formatElapsed, formatNum } from "./helpers";
+import { formatElapsed, formatNum, formatPercentChange } from "./helpers";
 import { AutoresearchScreenComponent } from "./screen";
 import { AUTORESEARCH_SCREEN_KEY } from "./shortcuts";
-import { currentResults, effectiveBreadth } from "./state";
+import { currentResults, effectiveBreadth, findBaselineMetric } from "./state";
 import type { AutoresearchRuntime, DashboardController, ExperimentState } from "./types";
 
 export function createDashboardController(): DashboardController {
@@ -169,8 +169,13 @@ const SEPARATOR = " · ";
  */
 export function renderStatusRow(runtime: AutoresearchRuntime, width = process.stdout.columns ?? 80): string {
 	const state = runtime.state;
+	// One reading of the breadth for the whole row. The name and the arm count
+	// used to come from `effectiveBreadth` and `state.breadth`, which disagree for
+	// the whole first turn of a swarm: the row said `autoswarm` and then declined
+	// to say how many arms, which is the one fact the word implies.
+	const breadth = effectiveBreadth(runtime);
 	const segments: StatusSegment[] = [
-		{ text: theme.fg("accent", effectiveBreadth(runtime) > 1 ? "autoswarm" : "autoresearch"), drop: 0 },
+		{ text: theme.fg("accent", breadth > 1 ? "autoswarm" : "autoresearch"), drop: 0 },
 	];
 
 	if (runtime.runningExperiment) {
@@ -203,12 +208,27 @@ export function renderStatusRow(runtime: AutoresearchRuntime, width = process.st
 			text: theme.fg("success", `${current.filter(result => result.status === "keep").length} kept`),
 			drop: 4,
 		});
-		if (state.breadth > 1) segments.push({ text: theme.fg("muted", `${state.breadth} arms`), drop: 2 });
+		if (breadth > 1) segments.push({ text: theme.fg("muted", `${breadth} arms`), drop: 2 });
 		const flagged = current.filter(result => result.flagged).length;
-		if (flagged > 0) segments.push({ text: theme.fg("warning", `${flagged} flagged`), drop: 8 });
+		if (flagged > 0) segments.push({ text: theme.fg("warning", `${flagged} flagged`), drop: 5 });
+		// The number and what it is worth travel as one segment. `best 192.78ms`
+		// alone is a reading nobody can place: the loop exists to move that number
+		// off the one it started from, and the row that reports the loop has to
+		// report the move, or shed both and report neither.
+		//
+		// It is also the last thing on the row to be given up, because it is the
+		// answer to the question the row exists for. A flag count and a run in
+		// flight are the day's exceptions; this is the result.
 		const best = bestMetric(state);
-		if (best !== null)
-			segments.push({ text: theme.fg("toolTitle", `best ${formatNum(best, state.metricUnit)}`), drop: 5 });
+		if (best !== null) {
+			const change = formatPercentChange(best, findBaselineMetric(state.results, state.currentSegment));
+			segments.push({
+				text:
+					theme.fg("toolTitle", `best ${formatNum(best, state.metricUnit)}`) +
+					(change ? theme.fg("dim", ` ${change}`) : ""),
+				drop: 8,
+			});
+		}
 		if (state.confidence !== null)
 			segments.push({ text: theme.fg("dim", `conf ${state.confidence.toFixed(1)}x`), drop: 1 });
 	}

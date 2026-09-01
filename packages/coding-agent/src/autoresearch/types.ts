@@ -4,7 +4,20 @@ import type { SessionEntry } from "../session/session-entries";
 import type { TruncationResult } from "../session/streaming-output";
 
 export type MetricDirection = "lower" | "higher";
-export type ExperimentStatus = "keep" | "discard" | "crash" | "checks_failed";
+
+/**
+ * Every outcome a logged run can carry, as a value rather than only as a type.
+ *
+ * A union spelled once in the type and again in each place that has to check it
+ * goes stale one copy at a time: the storage parser, the screen's tag and the
+ * status paint each held their own list, and a fifth outcome would have reached
+ * a reader as a dropped row, an untagged row, or both. Anything that switches
+ * on a status reads this array, and a test that sweeps it sees a new member the
+ * day it is added.
+ */
+export const EXPERIMENT_STATUSES = ["keep", "discard", "crash", "checks_failed"] as const;
+
+export type ExperimentStatus = (typeof EXPERIMENT_STATUSES)[number];
 
 export type ASIValue = string | number | boolean | null | ASIValue[] | { [key: string]: ASIValue };
 

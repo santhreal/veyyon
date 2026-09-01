@@ -36,7 +36,7 @@ function hintColumn(line: string, hint: string): number {
 const HINTS = {
 	breadth: "candidate arms per iteration",
 	attempts: "retries before an arm is abandoned",
-	certify: "arms cross-review before one is kept",
+	certify: "cross-review before an arm is kept",
 };
 
 function frame(breadth: number, attempts: number, certify: boolean, width = 80): string[] {

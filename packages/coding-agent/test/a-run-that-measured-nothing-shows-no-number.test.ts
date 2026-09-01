@@ -127,11 +127,12 @@ describe("a run that measured nothing shows no number", () => {
 	it("keeps the number out of the sidebar row of a crashed run", () => {
 		const rows = runScreenRows(runtimeWith("crash", 0));
 		const crashed = rows.find(row => row.value === "run:2");
-		expect(crashed?.label).toBe("#2  no metric");
-		expect(crashed?.description).toBe("crash");
+		// No number and no percentage, and still a verdict: the row says the run
+		// crashed rather than going blank next to the one that measured.
+		expect(crashed?.label).toBe("#2  no metric  crash");
 		// The measured run beside it still reports its number, so this is not a
 		// blanket suppression.
-		expect(rows.find(row => row.value === "run:1")?.label).toBe("#1  205.94ms");
+		expect(rows.find(row => row.value === "run:1")?.label).toBe("#1  205.94ms   base");
 	});
 
 	it("keeps the number and the percentage out of a crashed run's detail", () => {
@@ -148,7 +149,7 @@ describe("a run that measured nothing shows no number", () => {
 		expect(detail).toContain("244.51ms");
 		expect(detail).toContain("%");
 		const rows = runScreenRows(runtimeWith("checks_failed", 244.51, 244.51));
-		expect(rows.find(row => row.value === "run:2")?.label).toBe("#2  244.51ms");
+		expect(rows.find(row => row.value === "run:2")?.label).toBe("#2  244.51ms  +18.7%  fail");
 	});
 
 	it("reports a crash that measured before it died", () => {
@@ -157,7 +158,7 @@ describe("a run that measured nothing shows no number", () => {
 		// says 0ms and a screen that suppresses every crash says nothing; both hide
 		// the one number the run produced.
 		const runtime = runtimeWith("crash", 0, 244.51);
-		expect(runScreenRows(runtime).find(row => row.value === "run:2")?.label).toBe("#2  244.51ms");
+		expect(runScreenRows(runtime).find(row => row.value === "run:2")?.label).toBe("#2  244.51ms  +18.7%  crash");
 		const detail = renderRunDetail(runtime, "run:2", 76).join("\n");
 		expect(detail).toContain("244.51ms");
 		// It is still a crash: the outcome says so, and the comparison it prints is

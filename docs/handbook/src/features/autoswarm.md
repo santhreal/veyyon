@@ -19,16 +19,26 @@ Autoresearch with breadth. The model derives the metric from your harness.
   Attempts      1    retries before an arm is abandoned
   Certification on   arms cross-review before one is kept
 
-3 arms in a review ring: each arm is reviewed by another, and no pair reviews
-each other.
+3 arms × 1 attempts: up to 3 harness runs per iteration.
+Each arm is reviewed by another, and no pair reviews each other.
 
-↑↓ field   ←→ adjust   space toggle   enter start   esc cancel
+type to edit   ↑↓ field   enter start   esc cancel
 ```
 
 Up and down move between fields, left and right change the focused value, space
 toggles certification, Enter starts the run and Escape leaves without starting
-one. Text typed after the command prefills the goal, so `/autoswarm make the
-tokenizer faster` opens the console with that goal already in the field.
+one. The legend states only the keys that act on the focused field, so the
+arrow range appears on Breadth and Attempts and `type to edit` on Goal.
+
+The first line under the fields is what the configuration will spend: breadth
+multiplied by attempts, as a ceiling, because an arm that succeeds on its first
+try spends one attempt. The second states the review topology the breadth
+bought. Both change as the knobs change.
+
+Enter does nothing while the goal is empty, and the legend reads `enter needs a
+goal` until one is typed. Text typed after the command prefills the goal, so
+`/autoswarm make the tokenizer faster` opens the console with that goal already
+in the field.
 
 The console opens on whatever the current branch is already doing, so running it
 during a session shows that session's breadth rather than the default, and
