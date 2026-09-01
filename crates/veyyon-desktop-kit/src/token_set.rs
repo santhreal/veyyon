@@ -111,12 +111,7 @@ fn rgb_to_hsla(rgb: RgbColor) -> Hsla {
 	} else {
 		((red - green) / delta + 4.0) / 6.0
 	};
-	Hsla {
-		h: hue,
-		s: saturation,
-		l: luminance,
-		a: rgb.a,
-	}
+	Hsla { h: hue, s: saturation, l: luminance, a: rgb.a }
 }
 
 /// Resolved design token set stored in GPUI context.
@@ -146,11 +141,15 @@ impl TokenSet {
 	pub fn from_tokens(tokens: &Tokens, theme: &Theme) -> Result<Self, TokenError> {
 		let mut colors = [Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.0 }; COLOR_ROLE_COUNT];
 		for role in ColorRole::all() {
-			let rgb = theme.roles.get(&role).copied().ok_or_else(|| TokenError::MissingKey {
-				path:    PathBuf::from(&theme.name),
-				section: "role".to_string(),
-				key:     role.as_str().to_string(),
-			})?;
+			let rgb = theme
+				.roles
+				.get(&role)
+				.copied()
+				.ok_or_else(|| TokenError::MissingKey {
+					path:    PathBuf::from(&theme.name),
+					section: "role".to_string(),
+					key:     role.as_str().to_string(),
+				})?;
 			colors[role as usize] = rgb_to_hsla(rgb);
 		}
 
