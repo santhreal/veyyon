@@ -290,212 +290,58 @@ describe("subagent.agents settings surface", () => {
 	});
 
 	/**
-	 * WHY: the model a subagent runs was asked THREE times — a Models-tab row, a
-	 * Subagents-tab row, and the roster — and the roster showed what every lane
-	 * ran while printing a sentence naming another section to change it on
-	 * ("Change it in Models · Subagent Model and Subagent Effort"). The roster is
-	 * the single owner now, and its first row picks which of two chains is live.
-	 * Every case below drives the real `SettingsSelectorComponent` from the tab
-	 * through the roster and asserts on the stored settings, so a screen that
-	 * shows a value and cannot change it turns this red.
+	 * The roster lists agents and NOTHING that reaches more than one of them.
 	 *
-	 * The CLASS is wider than the two rows: any run-affecting subagent setting
-	 * must be reachable from this one section, which the enumerating case below
-	 * fails on rather than leaving to a reader.
+	 * The screen this replaced opened with a "Same Model for All Agents" switch
+	 * and a model/effort pair under it that answered for the whole roster, so a
+	 * choice aimed at one agent and a choice aimed at every agent looked the same
+	 * and sat one row apart. Every case here drives the real component and
+	 * asserts on the stored settings, so a screen that shows a value and cannot
+	 * change it, or changes more than the agent named on it, turns this red.
 	 *
 	 * WHAT IT DOES NOT CATCH: the model picker's own catalog behaviour. This
 	 * harness has no models, so the chain rows it can reach are the ones that
 	 * need none (an existing chain, and clearing it).
 	 */
-	it("asks about a shared model first, and offers no blanket rows while the answer is no", async () => {
-		settings.unset("subagent.sharedModel");
+	it("lists agents and offers no row that reaches more than one", async () => {
 		settings.set("subagent.model", ["anthropic/claude-sonnet-4"]);
 		settings.set("subagent.thinkingLevel", "high");
 		const { component } = await openRoster("designer");
 		const lines = paneLines(component);
 
-		const toggle = lines.findIndex(line => line.includes("Same Model for All Agents"));
-		const lane = lines.findIndex(line => line.includes("designer"));
-		expect(toggle).toBeGreaterThanOrEqual(0);
-		expect(lane).toBeGreaterThan(toggle);
-		expect(lines[toggle]).toContain("off");
-		// A stored blanket value that decides nothing must not be on screen: a
-		// greyed third model row is the duplication this page was collapsed to end.
+		expect(lines.some(line => line.includes("designer"))).toBe(true);
+		expect(lines.some(line => line.includes("Same Model for All Agents"))).toBe(false);
+		// A stored cross-agent value that decides nothing must not be on screen: a
+		// row answering for everybody is what this page was collapsed to end.
 		expect(lines.some(line => line.includes("every subagent"))).toBe(false);
 		// The dead end this screen replaced.
 		expect(lines.some(line => line.includes("Change it in"))).toBe(false);
 	});
 
 	/**
-	 * Turning the switch on is what puts the shared pair on screen, and the lanes
-	 * stay listed rather than vanishing — which agents are ENABLED is still
-	 * decided here, and a reader needs to see the lanes the shared row overrides.
+	 * Authoring an agent was reachable only by knowing a directory path and
+	 * finding a handbook page nothing linked. The roster is where someone looking
+	 * for an agent that does not exist yet arrives, so the hint lives here, states
+	 * where the file goes, and names the document rather than gesturing at "the
+	 * docs". Joined across the pane because the sentence wraps at this width, and
+	 * a hint whose second half is off-screen names nothing.
 	 */
-	it("reveals the shared pair above the lanes once the answer is yes", async () => {
-		settings.set("subagent.sharedModel", true);
-		settings.unset("subagent.model");
-		settings.unset("subagent.thinkingLevel");
+	it("says an operator may write an agent, and names where the instructions are", async () => {
 		const { component } = await openRoster("designer");
-		const lines = paneLines(component);
-		const toggle = lines.findIndex(line => line.includes("Same Model for All Agents"));
-		const model = lines.findIndex(line => /\bModel\b/.test(line) && line.includes("every subagent"));
-		const effort = lines.findIndex(line => /\bEffort\b/.test(line) && line.includes("every subagent"));
-		const lane = lines.findIndex(line => line.includes("designer"));
+		const pane = paneLines(component).join(" ").replace(/\s+/g, " ");
 
-		expect(model).toBe(toggle + 1);
-		expect(effort).toBe(model + 1);
-		expect(lane).toBeGreaterThan(effort);
-		expect(lines[toggle]).toContain("on");
-	});
-
-	/**
-	 * A lane that no longer decides anything is greyed and inert, not hidden and
-	 * not live. Enter on it must do nothing: a page that opened and accepted a
-	 * model nobody would run is the same "changed one thing, something else ran"
-	 * failure in a new place.
-	 */
-	it("greys the lanes and refuses to open one while the shared model is on", async () => {
-		settings.set("subagent.sharedModel", true);
-		settings.unset("subagent.agents");
-		const { component, selectRow } = await openRoster("designer");
-		expect(paneLines(component).some(line => line.includes("shared model"))).toBe(true);
-
-		selectRow("designer");
-		component.handleInput("\n");
-
-		// Still the roster: the per-subagent page never opened.
-		expect(paneLines(component).some(line => line.includes("Subagent: designer"))).toBe(false);
-		expect(paneLines(component).some(line => line.includes("Same Model for All Agents"))).toBe(true);
-	});
-
-	/**
-	 * The switch is a real setting, written from the row that asks the question,
-	 * and the rows it governs appear in the same frame rather than after a
-	 * reopen. A toggle that stored the value and left the screen stale would read
-	 * as the switch doing nothing.
-	 */
-	it("writes the switch and redraws the rows it governs in one press", async () => {
-		settings.unset("subagent.sharedModel");
-		const changed: string[] = [];
-		const { component, selectRow } = await openRoster("designer", changed);
-		expect(paneLines(component).some(line => line.includes("every subagent"))).toBe(false);
-
-		selectRow("Same Model for All Agents");
-		component.handleInput("\n");
-
-		expect(settings.get("subagent.sharedModel")).toBe(true);
-		expect(paneLines(component).some(line => line.includes("every subagent"))).toBe(true);
-	});
-
-	/**
-	 * The effort row writes the blanket setting, and reports THAT path so every
-	 * surface behind it re-reads the value it prints. Reporting `subagent.agents`
-	 * for an effort write is how the roster and the stored value would disagree.
-	 */
-	it("stores the blanket effort chosen in the roster and reports the path it wrote", async () => {
-		settings.set("subagent.sharedModel", true);
-		settings.unset("subagent.thinkingLevel");
-		const changed: string[] = [];
-		const { component, selectRow } = await openRoster("designer", changed);
-
-		selectRow("Effort");
-		component.handleInput("\n");
-		expect(paneLines(component).some(line => line.includes("Subagent Effort · every subagent"))).toBe(true);
-
-		// "medium" appears in exactly one row; "high" and "low" are substrings of
-		// other rows' text ("xhigh", "Auto-detect per prompt (low–xhigh)"), which is
-		// how a by-name selector lands on the wrong row.
-		selectRow("medium");
-		component.handleInput("\n");
-		expect(settings.get("subagent.thinkingLevel")).toBe("medium");
-		expect(changed).toContain("subagent.thinkingLevel");
-		expect(changed).not.toContain("subagent.agents");
-		// Back on the roster, showing the value it just wrote.
-		expect(paneLines(component).some(line => /\bEffort\b/.test(line) && line.includes("medium"))).toBe(true);
-	});
-
-	/**
-	 * Inherit is the ABSENCE of a value. Storing the empty string leaves the key
-	 * configured, which reads downstream as a choice nobody made and prints as a
-	 * blank effort on every surface that shows the stored value.
-	 */
-	it("unsets the blanket effort rather than blanking it when Inherit is chosen", async () => {
-		settings.set("subagent.sharedModel", true);
-		settings.set("subagent.thinkingLevel", "high");
-		const { component, selectRow } = await openRoster("designer");
-
-		selectRow("Effort");
-		component.handleInput("\n");
-		selectRow("Inherit");
-		component.handleInput("\n");
-
-		expect(settings.get("subagent.thinkingLevel")).toBeUndefined();
-	});
-
-	/**
-	 * The model row opens the ONE chain editor bound to `subagent.model`, so
-	 * clearing the chain here clears the setting itself rather than some copy the
-	 * roster kept.
-	 */
-	it("edits the blanket model chain through the roster", async () => {
-		settings.set("subagent.sharedModel", true);
-		settings.set("subagent.model", ["anthropic/claude-sonnet-4"]);
-		const changed: string[] = [];
-		const { component, selectRow } = await openRoster("designer", changed);
-		// The value column truncates, so the needle is the part that always survives.
-		expect(paneLines(component).some(line => /\bModel\b/.test(line) && line.includes("anthropic/"))).toBe(true);
-
-		selectRow("Model");
-		component.handleInput("\n");
-		const chain = paneLines(component);
-		expect(chain.some(line => line.includes("Subagent Model · every subagent"))).toBe(true);
-		expect(chain.some(line => line.includes("1. ") && line.includes("claude-sonnet-4"))).toBe(true);
-
-		selectRow("Clear (inherit)");
-		component.handleInput("\n");
-		expect(settings.get("subagent.model")).toBeUndefined();
-		expect(changed).toContain("subagent.model");
-	});
-
-	/**
-	 * A configured chain never summarizes as "inherit", and both encodings — YAML
-	 * list and comma string — render byte-for-byte the same, because they resolve
-	 * to the same chain. Mislabeling a configured chain as inherit tells the
-	 * operator their value was ignored. This moved here with the row: it used to
-	 * be asserted against a Subagents-tab row that no longer exists.
-	 *
-	 * WHAT IT DOES NOT CATCH: the fallback count. The value column truncates at
-	 * this pane width, so the tail of the summary is not on screen to assert.
-	 */
-	it("summarizes a multi-pattern blanket chain the same in both encodings", async () => {
-		settings.set("subagent.sharedModel", true);
-		const summaryOf = async (chain: string | string[]): Promise<string> => {
-			settings.set("subagent.model", chain);
-			const { component } = await openRoster("designer");
-			return paneLines(component).find(line => /\bModel\b/.test(line) && line.includes("every subagent")) ?? "";
-		};
-
-		const array = await summaryOf(["anthropic/claude-sonnet-4", "openai/gpt-5"]);
-		const comma = await summaryOf("anthropic/claude-sonnet-4, openai/gpt-5");
-		settings.unset("subagent.model");
-		const empty = await summaryOf([]);
-
-		expect(array).toContain("anthropic/");
-		expect(array).not.toContain("inherit");
-		expect(comma.trim()).toBe(array.trim());
-		// The one state that MAY say inherit, so the assertion above is a real
-		// distinction rather than a word this row never prints.
-		expect(empty).toContain("inherit");
+		expect(pane).toContain("Write your own");
+		expect(pane).toContain("~/.veyyon/subagents/");
+		expect(pane).toContain("features/subagents-authoring");
 	});
 
 	/**
 	 * The per-subagent page shows what THAT lane runs, and the value it shows is the value it
-	 * changes: an effort chosen here lands on the agent's own row and leaves the blanket alone.
-	 * The screen this replaced printed the blanket value on the agent's page and wrote the blanket
-	 * path from it, so configuring one lane silently retuned every other one.
+	 * changes: an effort chosen here lands on the agent's own row and leaves every other agent
+	 * alone. The screen this replaced printed a shared value on the agent's page and wrote the
+	 * shared path from it, so configuring one lane silently retuned every other one.
 	 */
-	it("writes the agent's own lane from the per-subagent page, never the blanket", async () => {
-		settings.unset("subagent.sharedModel");
+	it("writes the agent's own lane from the per-subagent page, and moves no other agent", async () => {
 		settings.unset("subagent.thinkingLevel");
 		settings.unset("subagent.agents");
 		const changed: string[] = [];
@@ -518,28 +364,29 @@ describe("subagent.agents settings surface", () => {
 	});
 
 	/**
-	 * ONE OWNER, enumerated from the schema at run time. Every setting that
-	 * decides what a subagent runs is reachable from the roster and from nowhere
-	 * else: the blanket pair carries no `ui` block at all — it is drawn inside
-	 * the roster page — and anything that does declare a row declares it in the
-	 * roster's own group. A run-affecting setting added to this tab in a section
-	 * of its own fails here instead of quietly reopening the three-surface split.
+	 * ONE OWNER, enumerated from the schema at run time. The per-agent table is
+	 * the only setting on this tab that decides what a subagent runs, and it sits
+	 * in the roster's own group. The four keys that used to answer for every
+	 * agent are retired: they carry no `ui` block, so a row of their own is the
+	 * regression, and a run-affecting setting added to this tab in a section of
+	 * its own fails here instead of quietly reopening the three-surface split.
 	 */
 	it("keeps every setting that decides what a subagent runs in the roster's section", () => {
 		invalidateSettingDefsCache();
 		expect(TAB_GROUPS.subagents.filter(group => /model/i.test(group))).toEqual([]);
 		const tab = getSettingsForTab("subagents");
 
-		// Drawn by the roster page, so a row of their own is the regression.
-		for (const path of ["subagent.model", "subagent.thinkingLevel", "subagent.sharedModel"]) {
-			expect(tab.find(entry => entry.path === path)).toBeUndefined();
+		for (const path of [
+			"subagent.model",
+			"subagent.thinkingLevel",
+			"subagent.sharedModel",
+			"subagent.modelByDepth",
+		]) {
+			expect(tab.find(entry => entry.path === path), `${path} is retired and must offer no row`).toBeUndefined();
 		}
-		// Everything else run-affecting sits in the roster's group.
-		for (const path of ["subagent.agents", "subagent.modelByDepth"]) {
-			const def = tab.find(entry => entry.path === path);
-			expect(def).toBeDefined();
-			expect(def?.group).toBe("Subagents");
-		}
+		const table = tab.find(entry => entry.path === "subagent.agents");
+		expect(table).toBeDefined();
+		expect(table?.group).toBe("Subagents");
 	});
 });
 

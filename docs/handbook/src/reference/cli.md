@@ -21,7 +21,6 @@ Common launch options:
 | `--approval-mode <policy>` | When to ask before running commands |
 | `--profile <name>` | Use an isolated profile agent directory |
 | `--model <id>` | Interactive model (`provider/model`) |
-| `--subagent-model <id>` | Model for spawned task subagents |
 | `--compaction-model <id>` | Model for context compaction |
 
 Config precedence: CLI flags → `--config` overlays → profile config → defaults. See

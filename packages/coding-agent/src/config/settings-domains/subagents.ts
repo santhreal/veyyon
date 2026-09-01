@@ -11,9 +11,11 @@
  *
  * Two rules hold this shape together:
  *
- *  1. UNSET MEANS INHERIT. A per-agent model left blank follows the session's
- *     live main model. No agent carries a private model chain, so turning one on
- *     never silently introduces a second (billed) model.
+ *  1. ONE SCOPE, THE AGENT. A model or an effort is chosen for one agent, on
+ *     that agent's page. An agent that names neither runs the `default` model
+ *     role at the documented default effort. Nothing here answers for the whole
+ *     roster at once, and the session model the operator is looking at reaches
+ *     no agent but the main assistant.
  *  2. ONLY TASK DELEGATION IS ON BY DEFAULT. The bundled specialists are listed
  *     but disabled, because most sessions need a general delegate and nothing
  *     else, and every extra agent type costs tokens in the tool description and
@@ -53,7 +55,8 @@
  *  1. UNSET MEANS THE LEVEL ABOVE. Not the session, not a default table: the
  *     lane that spawned you. Change what `deep` runs and everything under `deep`
  *     follows, which is the only reading under which a nested page needs no
- *     absolute value to be understood.
+ *     absolute value to be understood. The top level has no lane above it, so
+ *     unset there is the `default` model role.
  *  2. `subagents.enabled` IS THE DEPTH LIMIT. Turning a level on grants it; the
  *     first level nobody turned on is where `subagent.maxNestedSpawnDepth`
  *     resumes answering. A separate per-agent number is gone: two controls over
@@ -89,39 +92,6 @@ export interface SubagentLaneSettings {
 
 /** The top level of a lane chain is a lane like any other. */
 export type SubagentAgentSettings = SubagentLaneSettings;
-
-/**
- * A `subagent.modelByDepth` key is a positive integer spawn depth: "1" for a
- * direct child, "2" for a grandchild, and so on. "0" is refused because no
- * spawn runs at the root session's own depth, and a zero-padded or non-numeric
- * key can never match the number the resolver asks with. Shared by the entry
- * validator below and the one reader (`task/subagent-settings.ts`) so the two
- * can never disagree about which keys are real.
- */
-export function isModelByDepthKey(key: string): boolean {
-	return /^[1-9]\d*$/.test(key);
-}
-
-/**
- * Validate one `subagent.modelByDepth` entry: the key is a depth and the value
- * is a chain in the same two spellings `subagent.model` accepts. Reported
- * through `describeSettingTypeMismatch`, so a bad entry is surfaced with its
- * file at load instead of sitting in the map looking configured and deciding
- * nothing.
- */
-function validateModelByDepthEntry(key: string, value: unknown): string | undefined {
-	if (!isModelByDepthKey(key)) {
-		return `subagent.modelByDepth.${key}: depth keys are positive integers ("1", "2", …), found "${key}"`;
-	}
-	if (typeof value === "string") return undefined;
-	if (Array.isArray(value)) {
-		const bad = value.findIndex(entry => typeof entry !== "string");
-		return bad === -1
-			? undefined
-			: `subagent.modelByDepth.${key}: expected model patterns, found ${typeof value[bad]} at index ${bad}`;
-	}
-	return `subagent.modelByDepth.${key}: expected a model pattern, or a list of them`;
-}
 
 /**
  * The one bundled agent enabled out of the box: the end-to-end delegate.
@@ -260,14 +230,14 @@ export const SUBAGENTS_SETTINGS = {
 	 * edited two sections apart from the overrides that outrank it is how an
 	 * operator changes one and reads the other.
 	 *
-	 * IT IS ALSO THE ONLY PLACE A SUBAGENT MODEL IS CHOSEN. The same value used
-	 * to be reachable from three screens — a `Subagent Model` row on this tab, a
-	 * blanket `Model` row at the top of the roster, and each agent's own page —
-	 * so the tab showed one model, the roster header showed the same one again,
-	 * and the per-agent rows showed a third answer inherited from it. Whether a
-	 * model is chosen once for everyone or once per agent is now a single
-	 * question, {@link SUBAGENTS_SETTINGS}`["subagent.sharedModel"]`, asked at the
-	 * top of the roster.
+	 * IT IS ALSO THE ONLY PLACE A MODEL OR AN EFFORT IS CHOSEN FOR AN AGENT. The
+	 * same value used to be reachable from three screens — a `Subagent Model` row
+	 * on this tab, a blanket `Model` row at the top of the roster, and each
+	 * agent's own page — so the tab showed one model, the roster header showed
+	 * the same one again, and the per-agent rows showed a third answer inherited
+	 * from it. The two blanket surfaces are retired: an agent's page is the one
+	 * place its model and effort are chosen, and nothing changes a model for more
+	 * than one agent.
 	 */
 	"subagent.agents": {
 		type: "record",
@@ -277,7 +247,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Subagents",
 			label: "Roster",
 			description:
-				"Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent's page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above. Same Model for All Agents, at the top of the roster, switches those per-agent choices for one shared pair.",
+				"Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent's page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above, and an agent that names nothing runs the default model role. This is the only place a model or an effort is chosen for an agent.",
 			keywords: [
 				"agents",
 				"roster",
@@ -311,60 +281,43 @@ export const SUBAGENTS_SETTINGS = {
 	},
 
 	/**
-	 * Whether one model answers for every agent, or each agent answers for
-	 * itself. Off by default, because a roster exists to run different lanes on
-	 * different models and a shared model makes the per-agent rows decorative.
+	 * RETIRED: one switch that put every agent on one model and one effort.
 	 *
-	 * This is the toggle that collapsed three surfaces into one. It has no `ui`
-	 * block on purpose: it is not a row on the tab, it is the FIRST row inside
-	 * the roster page, rendered there by `settings-selector.ts` so the question
-	 * and the rows it governs are on one screen. A row here would put the switch
-	 * one screen away from the thing it greys out, which is the arrangement this
-	 * change removes.
+	 * Model and effort are per agent. This key stays declared so an existing
+	 * `config.yml` still loads and `config get` can name its replacement, and
+	 * `rejectedSubagentModelSettings` reports it when a file still carries it. No
+	 * resolver reads it.
 	 */
 	"subagent.sharedModel": {
 		type: "boolean",
 		default: false,
+		retiredBy: "subagent.agents",
 	},
 
-	/**
-	 * The shared model chain, live only while `subagent.sharedModel` is on.
-	 *
-	 * No `ui` block: it renders inside the roster page, above the agent rows it
-	 * overrides, and only when the toggle above is on. It used to be a row on
-	 * this tab AND a row at the top of the roster, which is two of the three
-	 * duplicate surfaces.
-	 */
+	/** RETIRED: the shared model chain `subagent.sharedModel` switched to. */
 	"subagent.model": {
 		type: "modelChain",
 		default: undefined,
+		retiredBy: "subagent.agents",
 	},
 
-	/**
-	 * The shared effort, live only while `subagent.sharedModel` is on. Same
-	 * reasoning as `subagent.model` above.
-	 */
+	/** RETIRED: the shared effort `subagent.sharedModel` switched to. */
 	"subagent.thinkingLevel": {
 		type: "string",
 		default: undefined,
+		retiredBy: "subagent.agents",
 	},
 
+	/**
+	 * RETIRED: a model chain keyed by spawn depth, which decided for whatever
+	 * agent happened to run at that depth. A lane level under
+	 * `subagent.agents.<name>.subagents` is the per-agent spelling of the same
+	 * shape.
+	 */
 	"subagent.modelByDepth": {
 		type: "record",
 		default: {} as Record<string, string | string[]>,
-		validateEntry: validateModelByDepthEntry,
-		ui: {
-			tab: "subagents",
-			group: "Subagents",
-			label: "Models by Depth",
-			description:
-				"Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row applies only while Same Model for All Agents is off, outranks the agent's own frontmatter for a spawn at exactly that depth, and leaves every other depth alone. A row whose chain matches no model refuses the spawn and names the row.",
-			keywords: ["subagent", "depth", "nested", "grandchild", "model", "chain"],
-			// Advanced: a depth-keyed chain is a rare shape, and it outranks the row
-			// above it, so it belongs behind the fold rather than beside the setting
-			// most sessions use.
-			advanced: true,
-		},
+		retiredBy: "subagent.agents",
 	},
 
 	"subagent.showResolvedModelBadge": {

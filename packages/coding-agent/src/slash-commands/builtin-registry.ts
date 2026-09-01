@@ -60,6 +60,7 @@ import type { AuthStorage } from "../session/auth-storage";
 import { parseCompactArgs } from "../session/compact-modes";
 import { resolveResumableSession } from "../session/session-listing";
 import { formatShakeSummary, type ShakeMode } from "../session/shake-types";
+import { configuredSubagentModelChains } from "../task/subagent-settings";
 import { configuredThinkingLevelsForModel, parseConfiguredThinkingLevel } from "../thinking";
 import { normalizeApprovalMode } from "../tools/approval";
 import { AUTONOMY_LABEL, isKnownApprovalMode } from "../tools/approval-modes";
@@ -353,25 +354,25 @@ const ACCOUNT_VERBS: readonly string[] = BUILTIN_SLASH_COMMAND_DECLARATIONS.flat
  * Which providers this session routes to, and for what, as `/account status` annotates them.
  *
  * The three roles are the three ways a provider ends up serving one session: the model the user is
- * looking at, the model subagents run on, and the web-search backend. They are read from the
+ * looking at, the models subagents run on, and the web-search backend. They are read from the
  * settings the runtime itself obeys, so the block cannot claim a role the router does not honor.
- * `subagent.model` left unset means every subagent INHERITS the session model, which is why the
- * main provider is annotated for subagents in that case instead of the annotation going missing.
+ *
+ * Subagents are a UNION, because model scope is the agent: the default model role plus every lane
+ * that names a model of its own. Nothing resolvable at all falls back to the main provider, which
+ * is what a spawn reaches when the default role is unset.
  */
 function accountRoleSources(session: AgentSession): AccountRoleSources {
 	const model = session.model;
+	const available = session.modelRegistry.getAvailable();
+	const preferences = getModelMatchPreferences(session.settings);
 	const subagentProviders: string[] = [];
-	const configured = resolveConfiguredModelPatterns(session.settings.get("subagent.model"), session.settings);
-	if (configured.length === 0) {
-		if (model) subagentProviders.push(model.provider);
-	} else {
-		const available = session.modelRegistry.getAvailable();
-		const preferences = getModelMatchPreferences(session.settings);
-		for (const pattern of configured) {
+	for (const chain of configuredSubagentModelChains(session.settings)) {
+		for (const pattern of resolveConfiguredModelPatterns(chain, session.settings)) {
 			const resolved = resolveModelFromString(pattern, available, preferences);
-			if (resolved) subagentProviders.push(resolved.provider);
+			if (resolved && !subagentProviders.includes(resolved.provider)) subagentProviders.push(resolved.provider);
 		}
 	}
+	if (subagentProviders.length === 0 && model) subagentProviders.push(model.provider);
 	const webSearch = session.settings.get("providers.webSearch");
 	return {
 		...(model ? { mainModel: { provider: model.provider, id: model.id } } : {}),

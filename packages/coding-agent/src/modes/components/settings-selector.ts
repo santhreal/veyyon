@@ -61,20 +61,15 @@ import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } 
 import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
 import { discoverAgents } from "../../task/discovery";
 import {
-	clearSubagentModelByDepthRow,
 	delegationBlockedNotice,
 	isSubagentEnableDefaulted,
 	nextSubagentEnableValue,
-	nextSubagentModelByDepth,
 	resolveDelegation,
 	resolveSubagentMaxNestedSpawnDepth,
 	resolveSubagentModel,
 	resolveSubagentThinkingLevel,
 	SUBAGENT_ENABLE_STATE_LABEL,
-	SUBAGENT_MODEL_BY_DEPTH_PATH,
 	subagentEnableState,
-	subagentModelByDepthRowPath,
-	subagentModelByDepthRows,
 	subagentModelSourceLabel,
 	subagentSettingsFor,
 } from "../../task/subagent-settings";
@@ -1341,26 +1336,35 @@ const AGENT_ROW_NESTED = "\u0000agent-nested";
 const AGENT_ROW_RESET = "\u0000agent-reset";
 
 /**
- * Row ids for the two settings the roster edits beside the agents themselves:
- * the model and the effort every subagent runs. They appear at the top of the
- * roster list and again inside a per-subagent page, and both spellings write
- * the same setting — the screen that shows what a lane runs is the screen that
- * changes it, because the previous shape showed it and then named a different
- * screen to go and change it on.
+ * Row ids for the two settings a subagent's own page edits: the model and the
+ * effort THAT agent runs. The page that shows a lane's value is the page that
+ * changes it, because the previous shape showed a value and then named a
+ * different screen to go and change it on.
  */
 const AGENT_ROW_MODEL = "\u0000subagent-model";
 const AGENT_ROW_EFFORT = "\u0000subagent-effort";
-const AGENT_ROW_SHARED = "\u0000subagent-shared-model";
-
-/** The settings one pass through the roster can write. */
-type SubagentRosterPath = "subagent.agents" | "subagent.model" | "subagent.thinkingLevel" | "subagent.sharedModel";
 
 /**
- * What `subagent.thinkingLevel` narrows against, as three distinct answers
- * rather than one nullable model.
+ * The line stating that an operator may write an agent, and naming where the
+ * instructions are.
  *
- * `model` — a model is named and resolved: the chain head, or the session's own
- * model when no chain is set, because unset means every subagent inherits it.
+ * It sits under the roster because the roster is where someone looking for an
+ * agent that does not exist yet arrives, and because the answer used to be
+ * spread across a CLI command, a directory path and a handbook page with no one
+ * place naming all three.
+ */
+const CUSTOM_AGENT_HINT =
+	"Write your own: a markdown file in ~/.veyyon/subagents/. Guide: veyyon.dev/docs/features/subagents-authoring.html";
+
+/** The settings one pass through the roster can write. */
+type SubagentRosterPath = "subagent.agents";
+
+/**
+ * What a lane's Effort row narrows against, as three distinct answers rather
+ * than one nullable model.
+ *
+ * `model` — a model is named and resolved: the lane's chain head, or the
+ * session's own model when the lane names none.
  * `unresolved` — a model is named and this session has no catalog entry for it
  * (an unauthenticated provider, a pattern matching nothing). Offering a ladder
  * here invents one: the picker says which pattern it cannot read instead.
@@ -1371,10 +1375,6 @@ type SubagentRosterPath = "subagent.agents" | "subagent.model" | "subagent.think
  * the full vocabulary: `minimal` on a row whose endpoint declares `low, high,
  * max`, and an invented ladder for an id like `cursor-grok-4.6-medium` whose id
  * IS its effort.
- *
- * ONE owner, because two screens narrow the same ladder: the tab's Subagent
- * Effort row and the roster's Effort row. Two copies would drift into offering
- * different levels for one setting.
  */
 type SubagentEffortScope =
 	| { kind: "model"; model: Model }
@@ -1382,9 +1382,9 @@ type SubagentEffortScope =
 	| { kind: "blanket" };
 
 /**
- * The scope one resolved model pattern implies. Separate from the blanket-row
- * reader below because a lane resolves its own head, and the narrowing rule
- * must be identical for both or the two screens offer different ladders.
+ * The scope one resolved model pattern implies. The one narrowing rule, so a
+ * lane's Effort row and the level a spawn actually runs at cannot disagree
+ * about which ladder exists.
  */
 function effortScopeForPattern(
 	models: ReadonlyArray<Model> | undefined,
@@ -1395,18 +1395,6 @@ function effortScopeForPattern(
 	const bare = models ? barePickerSelector(head, models as Model<Api>[]) : head;
 	const found = models?.find(candidate => `${candidate.provider}/${candidate.id}` === bare);
 	return found ? { kind: "model", model: found } : { kind: "unresolved", pattern: head };
-}
-
-/** The blanket scope: what `subagent.model` resolves to for every lane with no override. */
-function subagentEffortScope(
-	models: ReadonlyArray<Model> | undefined,
-	sessionModel: Model | undefined,
-): SubagentEffortScope {
-	return effortScopeForPattern(
-		models,
-		resolveConfiguredModelPatterns(settings.get("subagent.model"), settings)[0],
-		sessionModel,
-	);
 }
 
 /** The picker rows and the sentence that explains a short list, from one scope. */
@@ -1527,8 +1515,6 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 
 	constructor(
 		private readonly cwd: string,
-		/** The session's live model, so an inheriting row shows what it will actually run. */
-		private readonly activeModelPattern: string | undefined,
 		/** The session's model, used to narrow the effort ladder when no chain is set. */
 		private readonly sessionModel: Model | undefined,
 		/**
@@ -1623,7 +1609,6 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			settings,
 			agentName: agent.name,
 			agentModel: agent.model,
-			activeModelPattern: this.activeModelPattern,
 			taskDepth: depth + 1,
 		});
 		if (resolved.unresolved) return theme.fg("error", `${resolved.unresolved.value} matches no model`);
@@ -1637,8 +1622,8 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			fallbacks > 0
 				? `${formatSelectorSummary(pattern)} ${theme.fg("dim", `+${fallbacks} fallback${fallbacks === 1 ? "" : "s"}`)}`
 				: formatSelectorSummary(pattern);
-		return resolved.source === "inherit"
-			? theme.fg("dim", `inherit · ${summary}`)
+		return resolved.source === "default"
+			? theme.fg("dim", `default · ${summary}`)
 			: `${summary} ${theme.fg("dim", `· ${subagentModelSourceLabel(resolved.source, agent.name, resolved.depth)}`)}`;
 	}
 
@@ -1652,7 +1637,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	#laneModelSummary(lane: SubagentLaneSettings, depth: number): string {
 		const chain = lane.model;
 		if (chain === undefined || (Array.isArray(chain) ? chain.length === 0 : chain.trim().length === 0)) {
-			return theme.fg("dim", depth === 0 ? "inherit · the session's model" : "inherit · the level above");
+			return theme.fg("dim", depth === 0 ? "default · the default model role" : "inherit · the level above");
 		}
 		const entries = Array.isArray(chain) ? chain : [chain];
 		const head = entries[0] ?? "";
@@ -1667,7 +1652,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		const level = lane.thinkingLevel?.trim() ?? "";
 		return level.length > 0
 			? level
-			: theme.fg("dim", depth === 0 ? "inherit · the session's effort" : "inherit · the level above");
+			: theme.fg("dim", depth === 0 ? "default · the default effort" : "inherit · the level above");
 	}
 
 	/**
@@ -1682,7 +1667,6 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			settings,
 			agentName: agent.name,
 			agentModel: agent.model,
-			activeModelPattern: this.activeModelPattern,
 			taskDepth: depth + 1,
 		}).patterns[0];
 		// A `:level` suffix on the pattern already prints inside the model summary,
@@ -1695,30 +1679,19 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			agentThinkingLevel: agent.thinkingLevel,
 			taskDepth: depth + 1,
 		});
-		return `${model} ${theme.fg("dim", `· ${effort ?? "inherited"} effort`)}`;
+		return `${model} ${theme.fg("dim", `· ${effort} effort`)}`;
 	}
 
 	#showAgentList(): void {
 		this.clear();
 		this.#escapeTo = undefined;
-		// The roster asks ONE question about models before it lists anything: is
-		// there one model for everyone, or one per agent. It is the first row
-		// because every row under it means something different depending on the
-		// answer, and because the switch used to live on the tab behind this page
-		// while the rows it governs lived here. Read here rather than beside the
-		// rows because the header sentence describes a different screen in each
-		// mode, and a header naming rows that are not on screen is how a reader
-		// goes looking for a model row that does not exist.
-		const shared = settings.get("subagent.sharedModel") === true;
 		this.addChild(new Text(theme.bold(theme.fg("accent", "Subagents")), 0, 0));
 		this.addChild(new Spacer(1));
 		this.addChild(
 			new Text(
 				theme.fg(
 					"muted",
-					shared
-						? "Which subagent types this session offers, and what they all run. The first row switches to one shared model; the two under it are that model and its effort, and the lanes below are inert while it is on."
-						: "Which subagent types this session offers, and what each one runs. The first row switches to one shared model for everyone; the rest are the lanes, each running what its own page names.",
+					"Which subagent types this session offers, and what each one runs. Model and effort are chosen inside an agent's own page and apply to that agent alone; an agent that names neither runs the profile's default model at medium effort.",
 				),
 				0,
 				0,
@@ -1755,60 +1728,30 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			this.addChild(new Spacer(1));
 		}
 
-		const items: SelectItem[] = [
-			{
-				value: AGENT_ROW_SHARED,
-				label: "Same Model for All Agents",
-				description: shared
-					? `on · one model below, per-agent choices ignored`
-					: theme.fg("dim", "off · each agent chooses its own"),
-			},
-		];
-		// The shared pair exists only while it decides something. Showing it
-		// greyed while off would put a third model row back on the screen, which
-		// is the duplication this page was collapsed to remove.
-		if (shared) {
-			items.push(
-				{
-					value: AGENT_ROW_MODEL,
-					label: "Model",
-					description: `every subagent · ${this.#blanketModelSummary()}`,
-				},
-				{
-					value: AGENT_ROW_EFFORT,
-					label: "Effort",
-					description: `every subagent · ${this.#blanketEffortSummary()}`,
-				},
-			);
-		}
-		// Agent rows are always listed, and go inert rather than disappearing when
-		// a shared model is on: which agents are ENABLED is still decided here, and
-		// a reader needs to see the lanes whose models the shared row is
-		// overriding. `disabled` greys the row and blocks Enter.
-		items.push(
-			...this.#agents.map(agent => ({
-				value: agent.name,
-				label: agent.name,
-				description: `${SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, this.#row(agent.name).enabled)]} · ${shared ? theme.fg("dim", "shared model") : this.#modelSummary(agent)}`,
-				disabled: shared,
-			})),
-		);
-		// A session that discovered no lanes still has a model and an effort every
-		// spawn would use, so the note goes ABOVE the rows rather than replacing
-		// them: an early return here left the reader on a screen with nothing on it.
-		if (this.#agents.length === 0) {
+		// One row per discovered agent, and nothing above them. There is no header
+		// pair answering for the whole list any more: a control that reached every
+		// agent at once is what made "I changed the model" and "my subagents
+		// changed model" one event.
+		const items: SelectItem[] = this.#agents.map(agent => ({
+			value: agent.name,
+			label: agent.name,
+			description: `${SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, this.#row(agent.name).enabled)]} · ${this.#modelSummary(agent)}`,
+		}));
+		// No lanes at all is now an empty screen rather than a screen with a shared
+		// model pair on it, so the hint below is the only thing left to act on and
+		// this page stops here rather than building a list with no rows in it.
+		if (items.length === 0) {
 			this.addChild(new Text(theme.fg("dim", "  No subagent types found."), 0, 0));
 			this.addChild(new Spacer(1));
+			this.addChild(new Text(theme.fg("muted", `  ${CUSTOM_AGENT_HINT}`), 0, 0));
+			this.addChild(new Spacer(1));
+			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			return;
 		}
 
 		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
 		this.#selectList.onSelect = item => {
-			if (item.value === AGENT_ROW_SHARED) {
-				settings.set("subagent.sharedModel", !shared);
-				this.#showAgentList();
-			} else if (item.value === AGENT_ROW_MODEL) this.#showModelPicker(() => this.#showAgentList());
-			else if (item.value === AGENT_ROW_EFFORT) this.#showEffortPicker(() => this.#showAgentList());
-			else this.#showAgentEditor(item.value);
+			this.#showAgentEditor(item.value);
 			this.requestRender?.();
 		};
 		this.#selectList.onCancel = this.onCancel;
@@ -1827,9 +1770,9 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		this.addChild(new Spacer(1));
 		this.addChild(detail);
 		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(theme.fg("dim", "  Enter to configure · /agents to write agent files · Esc to go back"), 0, 0),
-		);
+		this.addChild(new Text(theme.fg("muted", `  ${CUSTOM_AGENT_HINT}`), 0, 0));
+		this.addChild(new Spacer(1));
+		this.addChild(new Text(theme.fg("dim", "  Enter to configure · Esc to go back"), 0, 0));
 	}
 
 	#agent(name: string): AgentDefinition | undefined {
@@ -1838,51 +1781,9 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 
 	/** The highlighted row's own line: what that lane is for, or what a setting does. */
 	#detailText(name: string | undefined): string {
-		if (name === AGENT_ROW_SHARED) {
-			return theme.fg(
-				"muted",
-				"  On: one model and effort for every agent, and the per-agent rows below stop applying. Off: each agent runs what its own page names.",
-			);
-		}
-		if (name === AGENT_ROW_MODEL) {
-			return theme.fg(
-				"muted",
-				"  The model chain every subagent runs. Unset means they follow this session's model.",
-			);
-		}
-		if (name === AGENT_ROW_EFFORT) {
-			return theme.fg(
-				"muted",
-				"  The thinking effort every subagent runs at. Inherit follows this session's effort.",
-			);
-		}
 		const description = name ? this.#agent(name)?.description?.trim() : undefined;
 		if (!description) return "";
-		// While a shared model is on, the lane rows are inert. Saying so on the
-		// detail line is the only place a reader learns WHY Enter did nothing.
-		const suffix =
-			settings.get("subagent.sharedModel") === true
-				? " — its own model is not in use while Same Model for All Agents is on."
-				: "";
-		return theme.fg("muted", `  ${description}${suffix}`);
-	}
-
-	/** The blanket model chain, as the roster's own row shows it. */
-	#blanketModelSummary(): string {
-		const chain = normalizeModelPatternList(settings.get("subagent.model"));
-		const head = chain[0];
-		if (!head) return theme.fg("dim", `inherit · ${this.activeModelPattern ?? "session model"}`);
-		const fallbacks = chain.length - 1;
-		return fallbacks > 0
-			? `${formatSelectorSummary(head)} ${theme.fg("dim", `+${fallbacks} fallback${fallbacks === 1 ? "" : "s"}`)}`
-			: formatSelectorSummary(head);
-	}
-
-	/** The blanket effort, or the word for having none. */
-	#blanketEffortSummary(): string {
-		const stored = settings.get("subagent.thinkingLevel");
-		const level = typeof stored === "string" ? stored.trim() : "";
-		return level.length > 0 ? level : theme.fg("dim", "inherit");
+		return theme.fg("muted", `  ${description}`);
 	}
 
 	/**
@@ -2109,95 +2010,9 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		const head = resolveSubagentModel({
 			settings,
 			agentName: name,
-			activeModelPattern: this.activeModelPattern,
 			taskDepth: depth + 1,
 		}).patterns[0];
 		return effortScopeForPattern(this.models, head, this.sessionModel);
-	}
-
-	/**
-	 * The blanket model chain, edited through the SAME picker the tab row opens
-	 * ({@link ModelChainSubmenu} bound to `subagent.model`). A second chain editor
-	 * here is how two screens would start disagreeing about one value.
-	 */
-	#showModelPicker(back: () => void): void {
-		this.clear();
-		this.#selectList = undefined;
-		this.#escapeTo = back;
-		if (!this.picker) {
-			this.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
-			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
-			return;
-		}
-		const stored: unknown = settings.get("subagent.model");
-		let current: string | string[] | undefined;
-		if (typeof stored === "string") current = stored;
-		else if (Array.isArray(stored) && stored.every(entry => typeof entry === "string")) current = stored;
-		this.addChild(
-			new ModelChainSubmenu(
-				"subagent.model",
-				this.picker.registry,
-				this.picker.models,
-				"Subagent Model · every subagent",
-				current,
-				() => {
-					this.#escapeTo = undefined;
-					back();
-					this.requestRender?.();
-				},
-				() => this.onChange("subagent.model"),
-				this.requestRender,
-			),
-		);
-	}
-
-	/**
-	 * The blanket effort, narrowed by the same scope helper the tab row uses, so
-	 * the two lists cannot offer different levels — and neither offers a level
-	 * nothing in scope declares.
-	 *
-	 * The catalog comes from `models`, not from the chain picker's context: that
-	 * context also needs a registry, and gating the ladder on it made the effort
-	 * list fall back to a vocabulary in a session whose models were right there.
-	 */
-	#showEffortPicker(back: () => void): void {
-		this.clear();
-		this.#selectList = undefined;
-		this.#escapeTo = back;
-		const { options, notice } = subagentEffortOptions(
-			subagentEffortScope(this.models, this.sessionModel),
-			this.models,
-		);
-		const stored = settings.get("subagent.thinkingLevel");
-		const current = typeof stored === "string" ? stored.trim() : "";
-		const description =
-			notice === undefined
-				? "Effort for every subagent. Inherit follows the session's effort; a `:level` on the model chain still wins."
-				: `Effort for every subagent. ${notice}`;
-		this.addChild(
-			new SelectSubmenu(
-				"Subagent Effort · every subagent",
-				description,
-				options,
-				current,
-				value => {
-					// Inherit is the ABSENCE of a value: storing the empty string would
-					// leave the key configured and reading as a choice nobody made.
-					if (value === INHERIT_EFFORT_OPTION_VALUE) settings.unset("subagent.thinkingLevel");
-					else settings.set("subagent.thinkingLevel", value);
-					this.onChange("subagent.thinkingLevel");
-					this.#escapeTo = undefined;
-					back();
-					this.requestRender?.();
-				},
-				() => {
-					this.#escapeTo = undefined;
-					back();
-					this.requestRender?.();
-				},
-			),
-		);
 	}
 
 	/** The list on screen, or the picker that owns the frame while one is open. */
@@ -2226,17 +2041,6 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		this.children[0]?.handleInput?.(data);
 	}
 }
-
-/**
- * Submenu rows whose options are efforts, filled from the model in scope rather
- * than the schema.
- *
- * ONE owner, because two places read it: the row's option list and the sentence
- * that explains a one-row list. Those disagreeing is exactly how this screen came
- * to narrow correctly and then say nothing about why, so a row added here gets
- * both behaviours or neither.
- */
-const EFFORT_SUBMENU_PATHS: Readonly<Record<string, true>> = { "subagent.thinkingLevel": true };
 
 /** Synthetic list id for the "add a model" row: not a settings key, and never a
  *  model selector, so it cannot collide with a real row. */
@@ -2707,138 +2511,6 @@ export class ModelChainSubmenu extends MouseRoutedSubmenu {
 		return (
 			this.#selectList ??
 			this.children.find((child): child is ModelSelectorPanel => child instanceof ModelSelectorPanel)
-		);
-	}
-
-	handleInput(data: string): void {
-		if (this.#selectList && (matchesKey(data, "delete") || matchesKey(data, "backspace"))) {
-			this.#removeSelectedRow();
-			return;
-		}
-		if (this.#selectList) {
-			this.#selectList.handleInput(data);
-			return;
-		}
-		this.children[0]?.handleInput?.(data);
-	}
-}
-
-/** Synthetic list id for the depth map's append row, on the same NUL-prefixed rule as the chain picker's. */
-const DEPTH_ADD_ROW = "\u0000depth-add-row";
-
-/**
- * The `subagent.modelByDepth` map: one row per configured spawn depth, plus an
- * "Add depth…" row for the next unused one.
- *
- * Every row opens the SAME ordered-chain picker {@link ModelChainSubmenu} that
- * `subagent.model` uses, bound to that depth's dotted row path — a parallel
- * picker here is how the two chain editors would drift apart. The map itself
- * is read and cleared through `task/subagent-settings.ts`, the one owner of
- * the `subagent.*` area; this screen never restates the key.
- *
- * A row is only an entry in a map, so deleting one is Del on the list, and
- * clearing the last row removes the map itself (the unset state), done by
- * {@link clearSubagentModelByDepthRow} rather than here.
- */
-class SubagentModelByDepthSubmenu extends MouseRoutedSubmenu {
-	#selectList: SelectList | undefined;
-
-	constructor(
-		private readonly registry: ModelRegistry,
-		private readonly models: ReadonlyArray<Model>,
-		private readonly onChange: () => void,
-		private readonly onCancel: () => void,
-		private readonly requestRender?: () => void,
-	) {
-		super();
-		this.#showRows();
-	}
-
-	#showRows(): void {
-		this.clear();
-		this.#selectList = undefined;
-		this.addChild(new Text(theme.bold(theme.fg("accent", "Models by Depth")), 0, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(
-			new Text(
-				theme.fg(
-					"muted",
-					"Applies only while Same Model for All Agents is off. A row outranks the agent's own frontmatter for a spawn at exactly that depth: 1 is a direct child, 2 a grandchild. Other depths are unaffected.",
-				),
-				0,
-				0,
-			),
-		);
-		this.addChild(new Spacer(1));
-
-		const rows = subagentModelByDepthRows(settings);
-		const items: SelectItem[] = rows.map(row => {
-			const chain = normalizeModelPatternList(row.value);
-			const primary = chain[0] === undefined ? "" : formatSelectorSummary(chain[0]);
-			const fallbacks = chain.length - 1;
-			return {
-				value: String(row.depth),
-				label: `Depth ${row.depth}`,
-				description: fallbacks > 0 ? `${primary}, +${fallbacks}` : primary,
-			};
-		});
-		items.push({
-			value: DEPTH_ADD_ROW,
-			label: "Add depth…",
-			description: `bind a chain to depth ${nextSubagentModelByDepth(settings)}`,
-		});
-
-		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
-		this.#selectList.onSelect = item => {
-			this.#openDepth(item.value === DEPTH_ADD_ROW ? nextSubagentModelByDepth(settings) : Number(item.value));
-			this.requestRender?.();
-		};
-		this.#selectList.onCancel = this.onCancel;
-		this.addChild(this.#selectList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter edits · Del clears a depth · Esc to go back"), 0, 0));
-	}
-
-	#openDepth(depth: number): void {
-		this.clear();
-		this.#selectList = undefined;
-		const current = subagentModelByDepthRows(settings).find(row => row.depth === depth)?.value;
-		this.addChild(
-			new ModelChainSubmenu(
-				subagentModelByDepthRowPath(depth),
-				this.registry,
-				this.models,
-				`Depth ${depth}`,
-				current,
-				() => {
-					// The chain picker's own Clear row unsets the dotted row but
-					// leaves an empty map behind; dropping it keeps "no rows" and
-					// "unset" the same stored shape.
-					if (subagentModelByDepthRows(settings).length === 0) settings.unset(SUBAGENT_MODEL_BY_DEPTH_PATH);
-					this.onChange();
-					this.#showRows();
-					this.requestRender?.();
-				},
-				() => this.onChange(),
-				this.requestRender,
-			),
-		);
-	}
-
-	#removeSelectedRow(): void {
-		const value = this.#selectList?.getSelectedItem?.()?.value;
-		if (value === undefined || value === DEPTH_ADD_ROW) return;
-		clearSubagentModelByDepthRow(settings, Number(value));
-		this.onChange();
-		this.#showRows();
-		this.requestRender?.();
-	}
-
-	/** The depth rows list; an open depth targets its chain picker (which routes its own mouse). */
-	mouseTarget(): SelectList | ModelChainSubmenu | undefined {
-		return (
-			this.#selectList ??
-			this.children.find((child): child is ModelChainSubmenu => child instanceof ModelChainSubmenu)
 		);
 	}
 
@@ -3858,16 +3530,6 @@ export class SettingsSelectorComponent implements Component {
 					changed,
 				};
 
-			case "subagentModelByDepth":
-				return {
-					id: def.path,
-					label: def.label,
-					description: def.description,
-					currentValue: this.#formatSubagentModelByDepthValue(),
-					submenu: (_cv, done) => this.#createSubagentModelByDepthInput(done),
-					changed,
-				};
-
 			case "rules":
 				return {
 					id: def.path,
@@ -4004,17 +3666,6 @@ export class SettingsSelectorComponent implements Component {
 				{ value: NONE_PERSONALITY, label: "None", description: "Omit the personality block entirely" },
 			];
 		}
-		// Effort is narrowed to what the model these subagents run actually accepts,
-		// from the same helper `/effort` and every model picker use. A fixed ladder
-		// here offered `xhigh` on models with no effort field at all, and `off` on
-		// models that route effort through sibling model ids — picks that stored a
-		// value the resolver then had to clamp or ignore.
-		if (Object.hasOwn(EFFORT_SUBMENU_PATHS, def.path)) {
-			return subagentEffortOptions(
-				subagentEffortScope(this.context.availableModels, this.context.model),
-				this.context.availableModels,
-			).options;
-		}
 		return def.options;
 	}
 
@@ -4026,19 +3677,8 @@ export class SettingsSelectorComponent implements Component {
 		currentValue: string,
 		done: (value?: string) => void,
 	): Container {
-		const effort = Object.hasOwn(EFFORT_SUBMENU_PATHS, def.path)
-			? subagentEffortOptions(
-					subagentEffortScope(this.context.availableModels, this.context.model),
-					this.context.availableModels,
-				)
-			: undefined;
-		const options = effort?.options ?? this.#submenuOptions(def);
-		// A row whose only choice is "inherit" has nothing to pick, and saying why
-		// beats a one-row list. WHICH sentence is true depends on the scope: a model
-		// that decides effort through its model id exposes no effort field, a
-		// catalog can declare no effort at all, and a chain naming a model this
-		// session cannot resolve knows nothing either way. The scope owner picks.
-		const description = effort?.notice ? `${def.description} ${effort.notice}` : def.description;
+		const options = this.#submenuOptions(def);
+		const description = def.description;
 
 		// Preview handlers
 		let onPreview: ((value: string) => void | Promise<void>) | undefined;
@@ -4195,8 +3835,7 @@ export class SettingsSelectorComponent implements Component {
 		} else if (Array.isArray(current) && current.every(value => typeof value === "string")) {
 			rawCurrent = current;
 		}
-		const label =
-			path === "subagent.model" ? "Subagent Model" : path === "compaction.model" ? "Compaction Model" : String(path);
+		const label = path === "compaction.model" ? "Compaction Model" : String(path);
 		return new ModelChainSubmenu(
 			path,
 			ctx.registry,
@@ -4290,10 +3929,8 @@ export class SettingsSelectorComponent implements Component {
 	 * instead of refusing the whole screen, which is what it used to do.
 	 */
 	#createSubagentAgentsInput(done: (value?: string) => void): Container {
-		const active = this.context.model ? `${this.context.model.provider}/${this.context.model.id}` : undefined;
 		return new SubagentAgentsSubmenu(
 			this.context.cwd,
-			active,
 			this.context.model,
 			this.context.availableModels,
 			this.#requireModelPickerContext(),
@@ -4301,39 +3938,6 @@ export class SettingsSelectorComponent implements Component {
 				this.callbacks.onChange(path, settings.get(path));
 			},
 			() => done(this.#formatSubagentAgentsValue()),
-			this.context.requestRender,
-		);
-	}
-
-	/**
-	 * Row summary for Models by Depth: each configured depth with its chain's
-	 * first model, e.g. `1: k3 +1, 2: opus`.
-	 */
-	#formatSubagentModelByDepthValue(): string {
-		const rows = subagentModelByDepthRows(settings);
-		if (rows.length === 0) return "off";
-		return rows.map(row => `${row.depth}: ${this.#formatCompactModelSelectorValue(row.value)}`).join(", ");
-	}
-
-	#createSubagentModelByDepthInput(done: (value?: string) => void): Container {
-		const ctx = this.#requireModelPickerContext();
-		if (!ctx) {
-			const fallback = new Container();
-			fallback.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
-			fallback.addChild(new Spacer(1));
-			fallback.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
-			(fallback as Container & { handleInput?: (data: string) => void }).handleInput = data => {
-				if (matchesKey(data, "escape") || data === "\x1b") done();
-			};
-			return fallback;
-		}
-		return new SubagentModelByDepthSubmenu(
-			ctx.registry,
-			ctx.models,
-			() => {
-				this.callbacks.onChange(SUBAGENT_MODEL_BY_DEPTH_PATH, settings.get(SUBAGENT_MODEL_BY_DEPTH_PATH));
-			},
-			() => done(this.#formatSubagentModelByDepthValue()),
 			this.context.requestRender,
 		);
 	}

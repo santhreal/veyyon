@@ -1506,9 +1506,6 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			plan: planModel,
 		});
 	}
-	if (parsedArgs.subagentModel) {
-		settingsInstance.override("subagent.model", parsedArgs.subagentModel);
-	}
 	if (parsedArgs.compactionModel) {
 		settingsInstance.override("compaction.model", parsedArgs.compactionModel);
 	}

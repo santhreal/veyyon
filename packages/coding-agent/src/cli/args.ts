@@ -35,7 +35,6 @@ export interface Args {
 	smol?: string;
 	slow?: string;
 	plan?: string;
-	subagentModel?: string;
 	compactionModel?: string;
 	prewalk?: boolean;
 	noPrewalk?: boolean;

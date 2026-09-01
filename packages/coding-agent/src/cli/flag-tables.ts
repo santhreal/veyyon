@@ -180,9 +180,6 @@ export const STRING_SETTERS: Record<string, StringSetter> = {
 	"--plan": (result, value) => {
 		result.plan = value;
 	},
-	"--subagent-model": (result, value) => {
-		result.subagentModel = value;
-	},
 	"--compaction-model": (result, value) => {
 		result.compactionModel = value;
 	},
