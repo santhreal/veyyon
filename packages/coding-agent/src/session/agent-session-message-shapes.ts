@@ -6,8 +6,8 @@
 
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
-import { type ContentBlockLike, contentText } from "@veyyon/kernel/session/content-text";
 import { getStringProperty, isRecord } from "@veyyon/utils";
+import { contentText } from "@veyyon/utils/content-text";
 import type { TitleConversationTurn } from "../tiny/message-preproc";
 
 /** `customType` for the hidden mid-run todo nudge; `display: false`, so it reaches
@@ -110,7 +110,7 @@ export function sanitizeAssistantForReparentedHistory(message: AssistantMessage)
 export function textFromContent(content: unknown): string {
 	if (typeof content === "string") return content.trim();
 	if (!Array.isArray(content)) return "";
-	return contentText(content as readonly ContentBlockLike[], { separator: "\n\n", trimBlocks: true });
+	return contentText(content, { separator: "\n\n", trimBlocks: true });
 }
 
 export function thinkingFromContent(content: unknown): string {

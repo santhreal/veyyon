@@ -308,6 +308,7 @@ packages/coding-agent/test/secrets/vault.test.ts
 packages/coding-agent/test/session-color.test.ts
 packages/coding-agent/test/session-focus-controller.test.ts
 packages/coding-agent/test/session-manager/session-id.test.ts
+
 packages/coding-agent/test/session/provider-image-budget.test.ts
 packages/coding-agent/test/session/session-dump-format.test.ts
 packages/coding-agent/test/session/session-history-format.test.ts
@@ -508,7 +509,6 @@ packages/utils/test/bytes.test.ts
 packages/utils/test/collapse-whitespace.test.ts
 packages/utils/test/color.test.ts
 packages/utils/test/conformance.test.ts
-packages/utils/test/content-text.test.ts
 packages/utils/test/dirs.test.ts
 packages/utils/test/env.test.ts
 packages/utils/test/fault-sink.test.ts

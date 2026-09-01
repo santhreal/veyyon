@@ -11,13 +11,13 @@ import {
 	parseJsonlLenient,
 	toError,
 } from "@veyyon/utils";
+import { contentText } from "@veyyon/utils/content-text";
 import {
 	SESSION_BACKUP_EXTENSION,
 	SESSION_FILE_EXTENSION,
 	sessionBackupPrimaryName,
 	sessionFileStem,
 } from "@veyyon/utils/session-file";
-import { contentText } from "./content-text";
 import { computeDefaultSessionDir } from "./session-paths";
 import { FileSessionStorage, type SessionStorage } from "./session-storage";
 

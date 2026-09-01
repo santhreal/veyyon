@@ -27,6 +27,7 @@
 
 - `AbortError`, the file lock and the postmortem handler no longer load `node:assert/strict`, `node:crypto` or `node:inspector` at import, which the launch path waited on for one assertion, one identifier and one signal handler.
 - The doc comments on `resolveHomeDirOrThrow()` and `getConfigRootOverride()` state the refusal rules and the sandbox exception without the surrounding narrative; no behavior changes.
+- `contentText()` is the single owner of content-block flattening across every package: it takes the `separator`, `image` placeholder, `trimBlocks` and `trimString` options the coding agent's own copy carried, and its second argument is now that options object rather than a bare separator string. A block that carries no text — a thinking block, a tool call, a loose non-object, or a text block whose `text` is absent or not a string — contributes nothing rather than an empty part between two separators.
 
 ## [1.3.0] - 2026-08-28
 

@@ -21,8 +21,8 @@
 
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { ImageContent, TextContent, UserMessage } from "@veyyon/ai";
-import { contentText } from "@veyyon/kernel/session/content-text";
 import { prompt } from "@veyyon/utils";
+import { contentText } from "@veyyon/utils/content-text";
 import { steeringPrompts } from "../prompts/steering/rows";
 
 function isSteeringUserMessage(message: AgentMessage | undefined): message is UserMessage & { steering: true } {

@@ -150,6 +150,7 @@
 - The roster states that an operator may write an agent, and names `docs/features/subagents-authoring` as the instructions.
 - The subagent authoring page states which frontmatter key spellings are read: `thinkingLevel` and `thinking-level` reach the same field, an underscore does not, and the bundled definitions use the dashed form.
 - The rewind and checkpoint entry readers and the side-channel reply bound live in `session/rewind-checkpoint.ts` and `session/ephemeral-reply.ts` instead of as file-private helpers in `agent-session.ts`; the doc comment describing the Anthropic request metadata payload is attached to the function it describes rather than to the tool-order check below it. No behavior change.
+- `session/content-text.ts` is gone; the session modules that flattened content blocks call the `@veyyon/utils` owner, which now carries the options that copy held. Two implementations of the same flattening each documented themselves as the only one.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The package directory is `plugins/argot` instead of `packages/argot`; the published package name, entry points and behavior are unchanged.
 - Source-path comments in `constants.ts` and `generate.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
@@ -168,8 +169,10 @@
 - `getLaunchFactsCachePath()` resolves the cache file the launch card reads the previous launch's model, git state and context percentage from.
 - `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
 - `workspaceModuleReachResolution()` resolves every workspace member declared by the root manifest, at whatever depth it sits, instead of the direct children of `packages/`, so a cross-package specifier into `@veyyon/kernel`, `@veyyon/tui`, a contract or a plugin resolves again and every module-reach ceiling built on it measures what it claims.
+- The session parser passes `contentText` an options object rather than a bare separator, following that helper's consolidation in `@veyyon/utils`. No change to the text it extracts.
 - `AbortError`, the file lock and the postmortem handler no longer load `node:assert/strict`, `node:crypto` or `node:inspector` at import, which the launch path waited on for one assertion, one identifier and one signal handler.
 - The doc comments on `resolveHomeDirOrThrow()` and `getConfigRootOverride()` state the refusal rules and the sandbox exception without the surrounding narrative; no behavior changes.
+- `contentText()` is the single owner of content-block flattening across every package: it takes the `separator`, `image` placeholder, `trimBlocks` and `trimString` options the coding agent's own copy carried, and its second argument is now that options object rather than a bare separator string. A block that carries no text — a thinking block, a tool call, a loose non-object, or a text block whose `text` is absent or not a string — contributes nothing rather than an empty part between two separators.
 
 ### Removed
 
@@ -194,6 +197,7 @@
 - The launch card states the context percentage recorded at the end of the last launch instead of `?`, and falls back to `?` when the release, the model or the project changed.
 - The installer refuses to replace a binary whose only ownership record is a pre-identity v1 receipt, instead of moving it aside. That receipt vouches for the path alone, so a user who deleted the installed binary and put their own file at the name left exactly one behind, and it was being read as permission to displace their file.
 - A `/btw` or `/omfg` reply long enough to be truncated no longer ends in a replacement character when the cut lands inside an emoji: the trim counts UTF-8 bytes but removes UTF-16 code units, so it could stop on half a surrogate pair.
+- A malformed content block no longer opens a blank line in a session listing or in rendered history. A text block whose `text` is absent or is not a string contributed an empty part, so the join placed a separator beside it, while a thinking or tool block carrying just as little text was skipped outright.
 - The composer hairline and the transcript rules no longer change shade about half a second after the launch card appears: the card mixes them out of the background this terminal reported on the previous launch instead of a static token, and `tui.paintGround` on `auto` decides the paint from that same recorded background rather than repainting the whole window when the terminal answers. The background is recorded per terminal in `cache/launch-facts.json`, whose shape version is now 4.
 - The launch card's context gauge no longer jumps when the session mounts in a project it has never measured: the reading filed under the model is now that reading with the measuring project's context files subtracted, so a card seeded in a heavy repository no longer states 77% left where the session settles at 88%. A project's own reading is unchanged and still wins where it exists.
 - The session mount no longer forces a full-viewport repaint over the launch card, so the screen no longer flashes and darkens at handover; the mount now writes only the rows whose content changed.

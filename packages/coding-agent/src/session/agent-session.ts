@@ -164,7 +164,6 @@ import {
 import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { ClientBridge, ClientBridgePermissionOutcome } from "@veyyon/kernel/session/client-bridge";
 import { findCompactMode } from "@veyyon/kernel/session/compact-modes";
-import { contentText } from "@veyyon/kernel/session/content-text";
 import { abortDetached } from "@veyyon/kernel/session/detached-abort";
 import {
 	collectPendingToolCalls,
@@ -223,6 +222,7 @@ import {
 	withScopedTimeoutSignal,
 	withTimeout,
 } from "@veyyon/utils";
+import { contentText } from "@veyyon/utils/content-text";
 import { startupMarker } from "@veyyon/utils/startup-marker";
 import type { ArgotSession } from "argot";
 import {
@@ -551,6 +551,7 @@ import {
 	shouldEvaluateCodexAutoRedeem,
 	shouldPromptCodexAutoRedeem,
 } from "./codex-auto-reset";
+
 // The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
 // terminal UI on the session engine's graph and cost the layering gate a standing exception each.
 import {
