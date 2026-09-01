@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "36f228d40be6dff9ca532fba1ca0978856b1d604",
+	"generatedFrom": "d703c19dca25e9cec84f4614c6ebee402604ac97",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -69,7 +69,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4627,
+	"changedCount": 4630,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -1906,10 +1906,11 @@
 		"packages/coding-agent/test/model-selector-settings.test.ts",
 		"packages/coding-agent/test/model-slot-naming.test.ts",
 		"packages/coding-agent/test/modes/a-draft-marker-is-recognized-by-shape-and-only-images-renumber.test.ts",
-		"packages/coding-agent/test/modes/a-failed-image-write-keeps-the-links-that-worked.test.ts",
 		"packages/coding-agent/test/modes/a-rephrase-needs-a-finished-reply-to-work-from.test.ts",
+		"packages/coding-agent/test/modes/a-status-string-survives-as-one-printable-line.test.ts",
 		"packages/coding-agent/test/modes/a-stopped-mode-draws-no-more-frames.test.ts",
 		"packages/coding-agent/test/modes/an-idle-session-draws-a-still-todo-board.test.ts",
+		"packages/coding-agent/test/modes/an-image-link-list-keeps-its-index-alignment-through-a-failed-write.test.ts",
 		"packages/coding-agent/test/modes/an-unrenderable-ask-question-is-refused-by-every-caller.test.ts",
 		"packages/coding-agent/test/modes/components/a-card-first-frame-is-settled.test.ts",
 		"packages/coding-agent/test/modes/components/a-clicked-composer-chip-runs-its-action.test.ts",
@@ -2602,6 +2603,7 @@
 		"packages/coding-agent/test/tools/a-directory-read-answers-at-the-depth-it-was-asked.test.ts",
 		"packages/coding-agent/test/tools/a-discovery-call-activates-only-what-it-matched-well.test.ts",
 		"packages/coding-agent/test/tools/a-file-whose-own-syntax-looks-like-display-output-still-writes.test.ts",
+		"packages/coding-agent/test/tools/a-home-directory-collapses-only-on-a-path-boundary.test.ts",
 		"packages/coding-agent/test/tools/a-launched-process-that-ends-reports-its-exit.test.ts",
 		"packages/coding-agent/test/tools/a-locate-query-can-ask-for-paths-instead-of-match-lines.test.ts",
 		"packages/coding-agent/test/tools/a-malformed-approval-policy-is-a-block-not-a-blank.test.ts",
@@ -2722,6 +2724,7 @@
 		"packages/coding-agent/test/tools/eval-runs-exactly-one-cell.test.ts",
 		"packages/coding-agent/test/tools/eval-streaming-output.test.ts",
 		"packages/coding-agent/test/tools/eval-timeout.test.ts",
+		"packages/coding-agent/test/tools/expanding-a-preview-always-shows-more-than-collapsing-it.test.ts",
 		"packages/coding-agent/test/tools/fetch-binary-dispatch.test.ts",
 		"packages/coding-agent/test/tools/fetch-dispatcher-stops-on-a-deadline.test.ts",
 		"packages/coding-agent/test/tools/fetch-html-nesting-dos.test.ts",
