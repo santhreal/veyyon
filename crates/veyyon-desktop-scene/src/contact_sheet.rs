@@ -22,9 +22,10 @@ use veyyon_gpui::{
 };
 
 use crate::{
-	frame::RgbaFrame,
+	frame::{RgbaColor, RgbaFrame},
 	headless::{RenderError, RenderOptions, render_view},
-	metrics::ClutterMetrics,
+	layout::LayoutBoxTree,
+	metrics::{ClutterMetrics, compute_metrics},
 };
 
 /// Sheet chrome, in logical pixels. Values are held here rather than read from
@@ -62,6 +63,25 @@ impl SheetCell {
 
 	pub const fn with_metrics(mut self, metrics: ClutterMetrics) -> Self {
 		self.metrics = Some(metrics);
+		self
+	}
+
+	/// Constructs a cell from a rendered frame and its layout box tree,
+	/// computing the six clutter metrics against the specified ground colour.
+	pub fn from_rendered(
+		label: impl Into<String>,
+		frame: RgbaFrame,
+		tree: &LayoutBoxTree,
+		ground: RgbaColor,
+	) -> Self {
+		let metrics = compute_metrics(tree, &frame, ground);
+		Self { label: label.into(), frame, metrics: Some(metrics) }
+	}
+
+	/// Populates the cell's clutter metrics from the given layout box tree and
+	/// ground colour.
+	pub fn with_layout(mut self, tree: &LayoutBoxTree, ground: RgbaColor) -> Self {
+		self.metrics = Some(compute_metrics(tree, &self.frame, ground));
 		self
 	}
 

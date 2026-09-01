@@ -17,7 +17,7 @@ use veyyon_desktop_model::{
 	BadgeKind, BlockKind, Capability, ErrorScope, MessageRole, QueuePartition,
 };
 use veyyon_desktop_scene::{
-	ConnectionStateKind, GateVariant, RowShape, SceneRegistry, required_states,
+	ConnectionStateKind, GateVariant, PrimitiveKind, RowShape, SceneRegistry, required_states,
 };
 
 #[test]
@@ -49,6 +49,9 @@ fn test_enum_iteration_exhausts_all_protocol_domains() {
 	let row_shape_count = RowShape::iter().count();
 	assert_eq!(row_shape_count, 2);
 
+	let primitive_count = PrimitiveKind::iter().count();
+	assert_eq!(primitive_count, 41);
+
 	let total_expected = connection_count
 		+ (capability_count * gate_count)
 		+ role_count
@@ -56,9 +59,10 @@ fn test_enum_iteration_exhausts_all_protocol_domains() {
 		+ error_count
 		+ badge_count
 		+ partition_count
-		+ row_shape_count;
+		+ row_shape_count
+		+ primitive_count;
 
-	assert_eq!(total_expected, 187);
+	assert_eq!(total_expected, 228);
 	assert_eq!(required_states().len(), total_expected);
 }
 

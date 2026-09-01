@@ -451,14 +451,17 @@ tree-sitter-zig = "1.1"
 # GUI & Renderer
 # ──────────────────────────────────────────────────────────────────────────────
 # GPUI renderer fork for the desktop control surface. Pinned to santhreal/zed branch veyyon.
-# This revision carries P10, the headless deterministic offscreen surface: a surfaceless wgpu
-# context, an offscreen render target, and tightly-packed RGBA8 readback, which is what lets a
-# scene render to bytes with no window, no display and no compositor.
-gpui = { git = "https://github.com/santhreal/zed", rev = "86edfba9ba46bf78f609549f87198b0e0c6c0263" }
+# This revision carries the whole patch series the front end is written against: P1 affine
+# transforms, P2 animator identity, P3 native delay, P4 backdrop blur, P5 inner shadow and inset
+# hairline, P6 per-corner radii, and P10, which is the headless deterministic offscreen surface —
+# a surfaceless wgpu context, an offscreen render target, tightly-packed RGBA8 readback, and the
+# text-run and hitbox metadata a frame carries back. Without P10's metadata a frame states what it
+# looks like but not which of its rectangles will answer a click.
+gpui = { git = "https://github.com/santhreal/zed", rev = "4682106fc840da107787cd2e1722a280d0c8eefe" }
 # The headless offscreen path needs the platform crate, which builds the renderer for the current
 # OS, and the wgpu crate, which supplies the text system. Same revision as gpui above.
-gpui_platform = { git = "https://github.com/santhreal/zed", rev = "86edfba9ba46bf78f609549f87198b0e0c6c0263" }
-gpui_wgpu = { git = "https://github.com/santhreal/zed", rev = "86edfba9ba46bf78f609549f87198b0e0c6c0263" }
+gpui_platform = { git = "https://github.com/santhreal/zed", rev = "4682106fc840da107787cd2e1722a280d0c8eefe" }
+gpui_wgpu = { git = "https://github.com/santhreal/zed", rev = "4682106fc840da107787cd2e1722a280d0c8eefe" }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Unsorted (added by `cargo add` - move into a section above)
