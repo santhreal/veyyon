@@ -36,13 +36,12 @@ const TOOLS = path.join(SRC, "tools");
  * Every `modes/` module a tool may import, and the drawing job it does.
  *
  * The theme entries are the bulk and the least interesting: a tool that prints a
- * coloured block needs the palette, and the palette is the UI's. The four
- * component entries are the ones worth reading, because a component directory is
- * where a drawing helper hides next to an interactive surface.
+ * coloured block needs the palette, and the palette is the UI's. The component
+ * entries are the ones worth reading, because a component directory is where a
+ * drawing helper hides next to an interactive surface.
  */
 const ALLOWED = new Map<string, string>([
 	["theme/theme", "The palette and symbol set. What every coloured tool block is coloured with."],
-	["theme/markdown-theme", "Markdown styling for tools that print markdown."],
 	["theme/highlight", "Syntax highlighting for code a tool prints."],
 	["modes/terminal/utils/key-hint", "Formats a keybinding as the hint text a block prints. No key handling."],
 	[
@@ -50,10 +49,6 @@ const ALLOWED = new Map<string, string>([
 		"Truncates rendered output to a line budget. Pure text in, text out.",
 	],
 	["modes/terminal/components/chrome/follow", "The hot-tail painter for streaming output. Drawing only."],
-	[
-		"modes/terminal/components/status-line/context-thresholds",
-		"Formats a context-usage figure the way the status line does, so a tool that prints one agrees with the gauge.",
-	],
 	[
 		"modes/terminal/components/dialogs/hook-editor",
 		"One layout constant, `HOOK_EDITOR_TEXT_PAD_COLS`, so the ask tool's block lines up with the editor above it. The editor itself is never constructed here.",
@@ -259,7 +254,6 @@ describe("tools reach the terminal UI only to draw", () => {
 const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/shell/bash-interactive.ts", ["type Component"]],
 	["tools/shell/bash-render.ts", ["ImageProtocol", "TERMINAL", "type Component"]],
-	["tools/shell/eval-render.ts", ["Markdown", "Text", "type Component"]],
 	["tools/core/render-utils.ts", ["type Component"]],
 	["tools/renderers.ts", ["type Component"]],
 ]);
@@ -484,6 +478,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"tools/search/structure-search-view.ts",
 			"tools/search/text-search-view.ts",
 			"tools/shell/debug-view.ts",
+			"tools/shell/eval-view.ts",
 			"tools/shell/job-view.ts",
 			"tools/shell/launch-view.ts",
 			"tools/shell/ssh-view.ts",
@@ -555,9 +550,9 @@ describe("a tool names the terminal package only where it is recorded", () => {
 	 */
 	it("extracts both erased and runtime names from a real tool", () => {
 		expect(files.length).toBeGreaterThan(50);
-		expect(tuiNamesIn(fs.readFileSync(path.join(TOOLS, "shell", "eval-render.ts"), "utf-8"))).toEqual([
-			"Markdown",
-			"Text",
+		expect(tuiNamesIn(fs.readFileSync(path.join(TOOLS, "shell", "bash-render.ts"), "utf-8"))).toEqual([
+			"ImageProtocol",
+			"TERMINAL",
 			"type Component",
 		]);
 	});
@@ -650,7 +645,7 @@ describe("a registry entry either describes its card or is recorded as drawing o
 
 	it("records every entry that still draws terminal components", () => {
 		const drawing = entries.filter(name => toolRenderers[name]?.view === undefined);
-		expect(drawing).toEqual(["apply_patch", "bash", "edit", "eval", "lsp", "task"]);
+		expect(drawing).toEqual(["apply_patch", "bash", "edit", "lsp", "task"]);
 	});
 
 	it("has a view on every converted entry, and that view draws both halves of the card", () => {
@@ -660,6 +655,7 @@ describe("a registry entry either describes its card or is recorded as drawing o
 			"ast_edit",
 			"browser",
 			"debug",
+			"eval",
 			"github",
 			"goal",
 			"inspect_image",

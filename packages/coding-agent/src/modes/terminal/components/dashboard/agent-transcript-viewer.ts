@@ -23,7 +23,7 @@ import * as fs from "node:fs";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { FileEntry, SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
 import { type Component, Editor, ScrollView, type TUI } from "@veyyon/tui";
-import { errorMessage, formatDuration, formatNumber, logger } from "@veyyon/utils";
+import { errorMessage, formatContextUsage, formatDuration, formatNumber, logger } from "@veyyon/utils";
 import { matchesKey } from "@veyyon/utils/keys";
 import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import type { KeyId } from "../../../../config/keybindings";
@@ -47,7 +47,6 @@ import {
 	sizingForArea,
 } from "../chrome/modal-shell";
 import { COMPOSER_INSET_COLS } from "../composer/composer-chrome";
-import { formatContextUsage } from "../status-line/context-thresholds";
 import { ChatTranscriptBuilder } from "../transcript/chat-transcript-builder";
 import { type AgentDisplayState, agentDisplayState, agentStatusWord } from "./agent-status-display";
 

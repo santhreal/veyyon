@@ -8,13 +8,12 @@
 import path from "node:path";
 import type { Component } from "@veyyon/tui";
 import { Container, Markdown, Text } from "@veyyon/tui";
-import { formatCount, formatNumber, isRecord, sanitizeText } from "@veyyon/utils";
+import { formatContextUsage, formatCount, formatNumber, isRecord, sanitizeText } from "@veyyon/utils";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
 import { EXIT_CODE_NOTICE_RE } from "../exec/exit-notice";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { modelBadgeFromSelector } from "../modes/terminal/components/dashboard/agent-model-badge";
-import { formatContextUsage } from "../modes/terminal/components/status-line/context-thresholds";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import type { Theme } from "../theme/theme";
 import {

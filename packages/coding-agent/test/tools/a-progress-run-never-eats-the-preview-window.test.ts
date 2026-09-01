@@ -31,7 +31,8 @@ import {
 	previewWindowRows,
 } from "@veyyon/coding-agent/tools/core/render-utils";
 import { bashToolRenderer } from "@veyyon/coding-agent/tools/shell/bash-render";
-import { evalToolRenderer } from "@veyyon/coding-agent/tools/shell/eval-render";
+import { evalToolView } from "@veyyon/coding-agent/tools/shell/eval-view";
+import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
 
 const ORIGINAL_ROWS = Object.getOwnPropertyDescriptor(process.stdout, "rows");
@@ -172,13 +173,10 @@ describe("the collapsed card window", () => {
 
 	test("eval keeps the warning and names what it counted away", () => {
 		const rendered = plain(
-			evalToolRenderer
-				.renderResult(
-					{ content: [{ type: "text", text: CARGO_CAPTURE.join("\n") }] },
-					{ expanded: false, isPartial: false },
-					activeTheme,
-				)
-				.render(80),
+			drawToolView(
+				evalToolView.renderResult({ content: [{ type: "text", text: CARGO_CAPTURE.join("\n") }] }, { expanded: false }),
+				activeTheme,
+			).render(80),
 		);
 		expect(rendered.join("\n")).toContain(WARNING);
 		expect(rendered.join("\n")).toContain("+39 earlier");
@@ -187,8 +185,8 @@ describe("the collapsed card window", () => {
 
 	test("an eval cell keeps the warning and names what it counted away", () => {
 		const rendered = plain(
-			evalToolRenderer
-				.renderResult(
+			drawToolView(
+				evalToolView.renderResult(
 					{
 						content: [{ type: "text", text: "" }],
 						details: {
@@ -203,10 +201,10 @@ describe("the collapsed card window", () => {
 							],
 						},
 					},
-					{ expanded: false, isPartial: false },
-					activeTheme,
-				)
-				.render(80),
+					{ expanded: false },
+				),
+				activeTheme,
+			).render(80),
 		);
 		expect(rendered.join("\n")).toContain(WARNING);
 		expect(rendered.join("\n")).toContain("+39 earlier");

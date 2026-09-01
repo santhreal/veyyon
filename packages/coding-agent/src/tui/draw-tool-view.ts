@@ -604,13 +604,17 @@ export function drawHeadedBlock(view: HeadedBlockView, theme: Theme, spinnerFram
 	const header = view.header === undefined ? undefined : drawStatusRow(view.header, theme, spinnerFrame);
 	const lines = view.lines;
 	const hidden = view.hidden;
+	const tail = view.tail;
 	return createCachedComponent(
 		() => false,
 		width => {
 			const rows: string[] = [];
 			if (header !== undefined) rows.push(truncateToWidth(header, width, Ellipsis.Omit));
-			for (const line of lines)
-				rows.push(`  ${drawRowToWidth(line, theme, Math.max(1, width - INDENT), spinnerFrame)}`);
+			const body = lines.map(line => drawRowToWidth(line, theme, Math.max(1, width - INDENT), spinnerFrame));
+			// A window is measured on the rows the lines occupy at the width the body has, which is the
+			// width minus the indent every one of them is drawn at.
+			const windowed = tail === undefined ? body : drawTailWindow(body, tail, theme, Math.max(1, width - INDENT));
+			for (const row of windowed) rows.push(`  ${row}`);
 			const note = hidden === undefined ? undefined : drawHiddenNote(hidden, theme);
 			if (note !== undefined) rows.push(truncateToWidth(`  ${note}`, width, Ellipsis.Omit));
 			return rows;

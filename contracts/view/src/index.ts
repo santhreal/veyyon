@@ -518,6 +518,18 @@ export interface HeadedBlockView {
 	lines: readonly ViewLine[];
 	/** Omitted means the lines are everything the card has. */
 	hidden?: ViewHiddenCount;
+	/**
+	 * That the lines are a window onto their END, cut by the host rather than by the tool.
+	 *
+	 * The same bargain a section strikes, for a card with no sections to strike it in: a stream of
+	 * output whose newest rows are the ones a reader wants is stated whole, and the host — the only
+	 * party that knows how many rows the lines wrap to and how many it has — drops the front and says
+	 * what it dropped. `hidden` is the other case and still stands beside this one: what the TOOL
+	 * trimmed is counted there, whatever the host does with the rest.
+	 *
+	 * Omitted means the lines are the block, and a host draws every one of them.
+	 */
+	tail?: ViewTailWindow;
 }
 
 /**

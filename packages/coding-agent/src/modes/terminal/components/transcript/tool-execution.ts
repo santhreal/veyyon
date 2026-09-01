@@ -43,9 +43,6 @@ import {
 } from "../../../../tools/core/render-utils";
 import { type FirstResultViewportRepaint, toolRenderers } from "../../../../tools/renderers";
 import { BASH_DEFAULT_PREVIEW_LINES } from "../../../../tools/shell/bash";
-// From the renderer that owns the number, not from `tools/eval`, which is the tool that RUNS a cell: reading
-// a preview height should not instantiate the Python kernel machinery.
-import { EVAL_DEFAULT_PREVIEW_LINES } from "../../../../tools/shell/eval-render";
 import { isWaitingPollDetails } from "../../../../tools/shell/job";
 import { renderStatusLine, WidthAwareText } from "../../../../tui";
 import { drawToolView, toolDrawsItself } from "../../../../tui/draw-tool-view";
@@ -1749,11 +1746,6 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			context.expanded = this.#expanded;
 			context.previewLines = BASH_DEFAULT_PREVIEW_LINES;
 			context.timeout = normalizeTimeoutSeconds((this.#args as { timeout?: unknown } | undefined)?.timeout, 3600);
-		} else if (this.#toolName === "eval" && this.#result) {
-			const output = this.#getTextOutput().trimEnd();
-			context.output = output;
-			context.expanded = this.#expanded;
-			context.previewLines = EVAL_DEFAULT_PREVIEW_LINES;
 		} else if (this.#toolName === "task") {
 			// Once a result snapshot exists the task renderer's `renderResult`
 			// draws every dispatched agent as a progress/result line, so tell

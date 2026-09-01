@@ -39,20 +39,6 @@ export function getContextUsageLevel(usedPercent: number | null | undefined): Co
 	return "normal";
 }
 
-/**
- * Tokens used against the limit, one unit on both sides: `47k/200k`.
- *
- * It used to render `47.3%/200,000` — a percent and a token count either side
- * of a slash, a notation that everywhere else means a ratio of like quantities,
- * with no reading of it that is arithmetically true. An unknown limit is `47k/?`
- * rather than `47k/0`, because a zero denominator reads as a real number.
- */
-export function formatContextUsage(usedTokens: number, limitTokens: number): string {
-	const used = Number.isFinite(usedTokens) && usedTokens > 0 ? usedTokens : 0;
-	if (!Number.isFinite(limitTokens) || limitTokens <= 0) return `${formatNumber(used)}/?`;
-	return `${formatNumber(used)}/${formatNumber(limitTokens)}`;
-}
-
 /** Tokens still available before the limit, never negative: `153k left`. */
 export function formatContextRemaining(usedTokens: number, limitTokens: number): string {
 	if (!Number.isFinite(limitTokens) || limitTokens <= 0) return "? left";

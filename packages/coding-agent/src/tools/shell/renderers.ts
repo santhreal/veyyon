@@ -8,7 +8,7 @@ import { viewToolRenderer } from "../../tui/draw-tool-view";
 import type { ToolRenderer } from "../renderers";
 import { bashToolRenderer } from "./bash-render";
 import { debugToolView } from "./debug-view";
-import { evalToolRenderer } from "./eval-render";
+import { evalToolView } from "./eval-view";
 import { jobToolView } from "./job-view";
 import type { LaunchRenderArgs } from "./launch";
 import { launchToolView } from "./launch-view";
@@ -43,7 +43,15 @@ export const shellRenderers: Record<string, ToolRenderer> = {
 		mergeCallAndResult: true,
 		animatedPartialResult: true,
 	}) as ToolRenderer,
-	eval: evalToolRenderer as ToolRenderer,
+	// A cell is still being written while its code streams and while it runs, so both the preview and
+	// the partial result animate; the card is inline, because a cell's output belongs under the code
+	// that produced it rather than in a card of its own.
+	eval: viewToolRenderer(evalToolView, {
+		inline: true,
+		mergeCallAndResult: true,
+		animatedPendingPreview: true,
+		animatedPartialResult: true,
+	}) as ToolRenderer,
 	// The streamed placeholder (`⏳ SSH: […]` / `$ …`) is re-anchored by the first result rather than
 	// preserved by it, and the provisional pending frame settles into the final one, so both shape
 	// changes ask for a viewport replay; painting the placeholder consumes a spinner frame.

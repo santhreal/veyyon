@@ -21,10 +21,10 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
+import { formatContextUsage } from "@veyyon/utils/format";
 import {
 	formatContextRemaining,
 	formatContextRemainingPercent,
-	formatContextUsage,
 	getContextUsageLevel,
 } from "@veyyon/coding-agent/modes/terminal/components/status-line/context-thresholds";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";

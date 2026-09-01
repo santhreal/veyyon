@@ -33,6 +33,7 @@ import { ToolAbortError, ToolError } from "../core/tool-errors";
 import { toolResult } from "../core/tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice, TOOL_TIMEOUTS } from "../core/tool-timeouts";
 import { type EvalBackendsAllowance, resolveEvalBackends } from "./eval-backends";
+import { evalToolView } from "./eval-view";
 
 /** Language tokens the eval tool accepts, in stable display order. */
 export type EvalLanguageToken = "py" | "js" | "rb" | "jl";
@@ -356,9 +357,10 @@ function formatEvalInputLanguage(value: string): string {
 	return value;
 }
 
-export class EvalTool implements AgentTool<typeof evalSchema> {
+export class EvalTool implements AgentTool<typeof evalSchema, EvalToolDetails> {
 	readonly name = "eval";
 	readonly approval = "exec" as const;
+	readonly view = evalToolView;
 	readonly formatApprovalDetails = (args: unknown): string[] => {
 		const params = args as Partial<EvalToolParams>;
 		const language =
@@ -484,9 +486,9 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 		_toolCallId: string,
 		params: typeof evalSchema.infer,
 		signal?: AbortSignal,
-		onUpdate?: AgentToolUpdateCallback,
+		onUpdate?: AgentToolUpdateCallback<EvalToolDetails, typeof evalSchema>,
 		_ctx?: AgentToolContext,
-	): Promise<AgentToolResult<EvalToolDetails | undefined>> {
+	): Promise<AgentToolResult<EvalToolDetails>> {
 		if (this.#proxyExecutor) {
 			return this.#proxyExecutor(params, signal);
 		}
@@ -530,7 +532,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 			return outputSummary;
 		};
 
-		const execution = (async (): Promise<AgentToolResult<EvalToolDetails | undefined>> => {
+		const execution = (async (): Promise<AgentToolResult<EvalToolDetails>> => {
 			try {
 				if (signal?.aborted) {
 					throw new ToolAbortError();

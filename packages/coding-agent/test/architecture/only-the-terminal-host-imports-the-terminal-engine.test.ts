@@ -89,7 +89,6 @@ const ENGINE_IMPORTERS = [
 	"theme/theme-class.ts",
 	"theme/theme.ts",
 	"tools/shell/bash-render.ts",
-	"tools/shell/eval-render.ts",
 	"tui/code-cell.ts",
 	"tui/draw-tool-view.ts",
 	"tui/hyperlink.ts",

@@ -76,6 +76,25 @@ function trim1(n: number): string {
 }
 
 /**
+ * Tokens used against the limit, one unit on both sides: `47K/200K`.
+ *
+ * It used to render `47.3%/200,000` — a percent and a token count either side of a slash, a
+ * notation that everywhere else means a ratio of like quantities, with no reading of it that is
+ * arithmetically true. An unknown limit is `47K/?` rather than `47K/0`, because a zero denominator
+ * reads as a real number.
+ *
+ * It is here rather than beside the context gauge because three surfaces state the same reading and
+ * only one of them is a terminal status line: a subagent progress row and an eval cell's agent tree
+ * report it too, and a tool that reached into the status line's module for it would be importing a
+ * host to format a number.
+ */
+export function formatContextUsage(usedTokens: number, limitTokens: number): string {
+	const used = Number.isFinite(usedTokens) && usedTokens > 0 ? usedTokens : 0;
+	if (!Number.isFinite(limitTokens) || limitTokens <= 0) return `${formatNumber(used)}/?`;
+	return `${formatNumber(used)}/${formatNumber(limitTokens)}`;
+}
+
+/**
  * Format a byte count to a human-readable string.
  * Examples: "512B", "1.5KB", "2.3MB", "1.2GB"
  */

@@ -1,27 +1,28 @@
 /**
- * TUI rendering for the eval tool.
+ * Differential oracle: the eval tool renderer from origin/main.
  *
- * Split out from `eval.ts` so the renderer can be imported by `renderers.ts`
- * without dragging the eval *runtime* (JS/Python/Ruby/Julia backends ->
- * agent bridge -> task executor -> sdk -> extension loader -> root barrel)
- * into the renderer module graph. That transitive chain re-enters
- * `renderers.ts` while `eval.ts` is still initializing, which previously
- * crashed module load with a TDZ `Cannot access 'evalToolRenderer' before
- * initialization`.
+ * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/tools/eval-render.ts`).
+ * Frozen: never edited to make a test pass.
+ *
+ * The branch moved the module to `src/tools/shell/eval-render.ts` and rewrote its import
+ * specifiers for the new depth and nothing else; that copy was diffed against main byte for byte
+ * before this file was cut. Here the specifiers are the package subpaths this branch publishes, so
+ * what it draws is main's.
  */
 import type { Component } from "@veyyon/tui";
 import { Markdown, Text } from "@veyyon/tui";
-import { formatCount, formatMoreLines, formatNumber } from "@veyyon/utils";
+// `formatContextUsage` moved into the shared formatter leaf on this branch, so a domain view can
+// state a token count without importing a terminal status-line module. Same function, same bytes.
+import { formatContextUsage, formatCount, formatMoreLines, formatNumber } from "@veyyon/utils";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
-import { settings } from "../../config/settings-instance";
-import type { EvalCellResult, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "../../eval/types";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import { formatContextUsage } from "../../modes/terminal/components/status-line/context-thresholds";
-import { truncateToVisualLines } from "../../modes/terminal/components/transcript/visual-truncate";
-import { expandHintSuffix } from "../../modes/terminal/utils/key-hint";
-import { getMarkdownTheme } from "../../theme/markdown-theme";
-import type { Theme } from "../../theme/theme";
-import { markFramedBlockComponent, outputBlockContentWidth, renderCodeCell, renderOutputBlock } from "../../tui";
+import { settings } from "@veyyon/coding-agent/config/settings-instance";
+import type { EvalCellResult, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "@veyyon/coding-agent/eval/types";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { truncateToVisualLines } from "@veyyon/coding-agent/modes/terminal/components/transcript/visual-truncate";
+import { expandHintSuffix } from "@veyyon/coding-agent/modes/terminal/utils/key-hint";
+import { getMarkdownTheme } from "@veyyon/coding-agent/theme/markdown-theme";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import { markFramedBlockComponent, outputBlockContentWidth, renderCodeCell, renderOutputBlock } from "@veyyon/coding-agent/tui";
 import {
 	JSON_TREE_MAX_DEPTH_COLLAPSED,
 	JSON_TREE_MAX_DEPTH_EXPANDED,
@@ -30,8 +31,8 @@ import {
 	JSON_TREE_SCALAR_LEN_COLLAPSED,
 	JSON_TREE_SCALAR_LEN_EXPANDED,
 	renderJsonTreeLines,
-} from "../core/json-tree-render";
-import { formatStyledTruncationWarning, stripOutputNotice } from "../core/output-meta";
+} from "@veyyon/coding-agent/tools/core/json-tree-render";
+import { formatStyledTruncationWarning, stripOutputNotice } from "@veyyon/coding-agent/tools/core/output-meta";
 import {
 	formatBadge,
 	formatDuration,
@@ -43,7 +44,7 @@ import {
 	shortenPath,
 	truncateToWidth,
 	wrapBrackets,
-} from "../core/render-utils";
+} from "@veyyon/coding-agent/tools/core/render-utils";
 export const EVAL_DEFAULT_PREVIEW_LINES = 10;
 
 function languageForHighlighter(language: EvalLanguage | undefined): "python" | "javascript" | "ruby" | "julia" {
