@@ -466,13 +466,7 @@ import {
 } from "./compaction-policy";
 // The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
 // terminal UI on the session engine's graph and cost the layering gate a standing exception each.
-import {
-	buildContextSnapshot,
-	computeNonMessageBreakdown,
-	computeNonMessageTokens,
-	computeStoredMessagesTokens,
-	estimateContextSnapshotAttribution,
-} from "./context-usage";
+import { buildContextSnapshot, computeStoredMessagesTokens, estimateContextSnapshotAttribution } from "./context-usage";
 import { initSessionCpuLimit, rekeySessionCpuLimit, sessionCpuLimit } from "./cpu-limit";
 import { abortDetached } from "./detached-abort";
 import { dedupeEphemeralReply } from "./ephemeral-reply";
@@ -507,6 +501,7 @@ import {
 	stripImagesFromMessage,
 	USER_INTERRUPT_LABEL,
 } from "./messages";
+import { computeNonMessageBreakdown, computeNonMessageTokens } from "./non-message-tokens";
 import {
 	GEMINI_TOOL_REMINDER_TYPE,
 	MEMORY_CONTEXT_MESSAGE_TYPE,

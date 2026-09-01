@@ -17,7 +17,7 @@ import { settings } from "../../../config/settings-instance";
 import { accountDisplayLabel, accountsForProvider, buildAccountInventory } from "../../../session/account-inventory";
 import type { AgentSession } from "../../../session/agent-session";
 import type { OAuthAccountIdentity } from "../../../session/auth-storage";
-import { computeNonMessageBreakdown } from "../../../session/context-usage";
+import { computeNonMessageBreakdown } from "../../../session/non-message-tokens";
 import { limitMatchesActiveAccount } from "../../../slash-commands/helpers/active-oauth-account";
 import { AUTO_THINKING } from "../../../thinking";
 import { type ActiveRepoContext, resolveActiveRepoContextSync } from "../../../utils/active-repo-context";

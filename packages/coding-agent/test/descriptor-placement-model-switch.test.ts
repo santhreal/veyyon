@@ -7,7 +7,7 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { estimateToolSchemaTokens } from "@veyyon/coding-agent/session/context-usage";
+import { estimateToolSchemaTokens } from "@veyyon/coding-agent/session/non-message-tokens";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { estimateTokensFromText, TempDir } from "@veyyon/utils";
 
