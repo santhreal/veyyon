@@ -2,14 +2,14 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentToolResult, RenderResultOptions } from "@veyyon/agent-core";
+import type { AgentToolResult } from "@veyyon/agent-core";
 import { preloadPluginRoots } from "@veyyon/coding-agent/discovery/helpers";
 import { LspTool } from "@veyyon/coding-agent/lsp";
 import * as lspClient from "@veyyon/coding-agent/lsp/client";
 import * as lspConfig from "@veyyon/coding-agent/lsp/config";
 import { getServersForFile, type LspConfig, loadConfig } from "@veyyon/coding-agent/lsp/config";
 import { applyTextEditsToString, applyWorkspaceEdit, sortAndValidateTextEdits } from "@veyyon/coding-agent/lsp/edits";
-import { renderCall, renderResult } from "@veyyon/coding-agent/lsp/render";
+import { lspToolView } from "@veyyon/coding-agent/lsp/view";
 import type {
 	CodeAction,
 	CreateFile,
@@ -37,6 +37,7 @@ import {
 } from "@veyyon/coding-agent/lsp/utils";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { makeToolSession } from "../helpers/tool-session";
 
 /**
@@ -1042,36 +1043,39 @@ describe("lsp regressions", () => {
 		});
 	});
 
-	it("sanitizes symbol metadata in renderer output", async () => {
+	it("sanitizes symbol metadata in the card a host draws", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
 		const uiTheme = theme!;
-		const renderOptions: RenderResultOptions = { expanded: false, isPartial: false };
 
-		const call = renderCall(
-			{ action: "definition", file: "src/example.ts", line: 10, symbol: "foo\tbar\nbaz" },
-			renderOptions,
+		const call = drawToolView(
+			lspToolView.renderCall(
+				{ action: "definition", file: "src/example.ts", line: 10, symbol: "foo\tbar\nbaz" },
+				{ expanded: false },
+			),
 			uiTheme,
 		);
 		const callText = sanitizeText(call.render(120).join("\n"));
 		const normalizedCallText = callText.replace(/\s+/g, " ");
 		expect(normalizedCallText).toContain("foo bar baz");
 		expect(callText).not.toContain("\t");
-		const result = renderResult(
-			{
-				content: [{ type: "text", text: "No definition found" }],
-				details: {
-					action: "definition",
-					success: true,
-					request: {
+		const result = drawToolView(
+			lspToolView.renderResult(
+				{
+					content: [{ type: "text", text: "No definition found" }],
+					details: {
 						action: "definition",
-						file: "src/example.ts",
-						line: 10,
-						symbol: "foo\tbar\nbaz",
+						success: true,
+						request: {
+							action: "definition",
+							file: "src/example.ts",
+							line: 10,
+							symbol: "foo\tbar\nbaz",
+						},
 					},
 				},
-			},
-			renderOptions,
+				{ expanded: false },
+			),
 			uiTheme,
 		);
 		const resultText = sanitizeText(result.render(120).join("\n"));
@@ -1080,26 +1084,27 @@ describe("lsp regressions", () => {
 		expect(resultText).not.toContain("\t");
 	});
 
-	it("sanitizes tabs in rendered diagnostic output", async () => {
+	it("sanitizes tabs in a drawn diagnostic row", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
 		const uiTheme = theme!;
-		const renderOptions: RenderResultOptions = { expanded: false, isPartial: false };
 
-		const result = renderResult(
-			{
-				content: [
-					{
-						type: "text",
-						text: "Diagnostics: 1 error(s)\nsrc/example.go:183:41 [error] [compiler] too many\targuments in call (WrongArgCount)",
-					},
-				],
-			},
-			renderOptions,
+		const result = drawToolView(
+			lspToolView.renderResult(
+				{
+					content: [
+						{
+							type: "text",
+							text: "Diagnostics: 1 error(s)\nsrc/example.go:183:41 [error] [compiler] too many\targuments in call (WrongArgCount)",
+						},
+					],
+				},
+				{ expanded: true },
+			),
 			uiTheme,
 		);
 
-		const resultText = sanitizeText(result.render(120).join("\n"));
+		const resultText = sanitizeText(result.render(200).join("\n"));
 		expect(resultText).not.toContain("\t");
 		expect(resultText.replace(/\s+/g, " ")).toContain("too many arguments in call");
 	});

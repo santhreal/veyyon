@@ -356,13 +356,13 @@ describe("branch.currentOrHead", () => {
 
 describe("sanitizeDiagnosticDisplayText", () => {
 	/**
-	 * Two surfaces render diagnostics (the LSP panel and the tool-result renderer) and each had its own
+	 * Two surfaces render diagnostics (the LSP card and the tool-result renderer) and each had its own
 	 * copy of the same one-line rule. A literal tab in a rendered diagnostic lands on the terminal's tab
 	 * stops, so a column marker under it points at the wrong column; the two surfaces disagreeing about
 	 * that would mean the same diagnostic reads differently depending on where it appeared.
 	 */
-	it("is defined once in render-utils, and the LSP renderer imports it", () => {
-		expect(importsOf("lsp/render.ts")).toContain("tools/core/render-utils");
+	it("is defined once in render-utils, and the LSP card imports it", () => {
+		expect(importsOf("lsp/view.ts")).toContain("tools/core/render-utils");
 	});
 });
 

@@ -1,17 +1,16 @@
 /**
- * LSP Tool TUI Rendering
+ * Differential oracle: the LSP tool renderer from origin/main.
  *
- * Renders LSP tool calls and results in the TUI with:
- * - Syntax-highlighted hover information
- * - Color-coded diagnostics by severity
- * - Grouped references and symbols
- * - Collapsible/expandable views
+ * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/lsp/render.ts`).
+ * Frozen: never edited to make a test pass.
+ *
+ * Only the import specifiers differ from main's bytes: they name the package subpaths this branch
+ * publishes rather than relative paths inside `src/`, so what this draws is main's drawing.
  */
 import type { RenderResultOptions } from "@veyyon/agent-core";
-import { type Component, Text } from "@veyyon/tui";
-import { formatMoreLines } from "@veyyon/utils/format";
-import { highlightCode as highlightThemeCode } from "../theme/highlight";
-import type { Theme } from "../theme/theme-class";
+import type { LspParams, LspToolDetails } from "@veyyon/coding-agent/lsp/types";
+import { highlightCode as highlightThemeCode } from "@veyyon/coding-agent/theme/highlight";
+import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
 import {
 	formatExpandHint,
 	formatMoreItems,
@@ -21,11 +20,12 @@ import {
 	shortenPath,
 	TRUNCATE_LENGTHS,
 	truncateToWidth,
-} from "../tools/core/render-utils";
-import { renderStatusLine } from "../tui";
-import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block";
-import { getLanguageFromPath } from "../utils/lang-from-path";
-import type { LspParams, LspToolDetails } from "./types";
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import { renderStatusLine } from "@veyyon/coding-agent/tui";
+import { CachedOutputBlock, markFramedBlockComponent } from "@veyyon/coding-agent/tui/output-block";
+import { getLanguageFromPath } from "@veyyon/coding-agent/utils/lang-from-path";
+import { type Component, Text } from "@veyyon/tui";
+import { formatMoreLines } from "@veyyon/utils/format";
 
 // =============================================================================
 // Call Rendering

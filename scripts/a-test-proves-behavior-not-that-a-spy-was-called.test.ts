@@ -223,7 +223,6 @@ const GRANDFATHERED: Readonly<Record<string, number>> = {
 	"packages/coding-agent/test/job-poll-displacement.test.ts": 2,
 	"packages/coding-agent/test/keybindings-escape-components.test.ts": 5,
 	"packages/coding-agent/test/loop-limit.test.ts": 3,
-	"packages/coding-agent/test/lsp-render.test.ts": 2,
 	"packages/coding-agent/test/main-cross-project-resume.test.ts": 3,
 	"packages/coding-agent/test/main-interactive-input.test.ts": 24,
 	"packages/coding-agent/test/mcp-command-ignores-repo-config.test.ts": 8,

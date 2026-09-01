@@ -460,6 +460,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"autoresearch/tools/run-experiment.ts",
 			"autoresearch/tools/update-notes.ts",
 			"goals/goal-tool.ts",
+			"lsp/view.ts",
 			"tools/agent/ask-view.ts",
 			"tools/agent/irc-view.ts",
 			"tools/agent/memory-view.ts",
@@ -645,7 +646,7 @@ describe("a registry entry either describes its card or is recorded as drawing o
 
 	it("records every entry that still draws terminal components", () => {
 		const drawing = entries.filter(name => toolRenderers[name]?.view === undefined);
-		expect(drawing).toEqual(["apply_patch", "bash", "edit", "lsp", "task"]);
+		expect(drawing).toEqual(["apply_patch", "bash", "edit", "task"]);
 	});
 
 	it("has a view on every converted entry, and that view draws both halves of the card", () => {
@@ -662,6 +663,7 @@ describe("a registry entry either describes its card or is recorded as drawing o
 			"irc",
 			"job",
 			"launch",
+			"lsp",
 			"read",
 			"recall",
 			"reflect",

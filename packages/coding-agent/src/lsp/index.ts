@@ -23,7 +23,6 @@ import type { BunFile } from "bun";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import { theme } from "../theme/theme-binding";
-import type { Theme } from "../theme/theme-class";
 import type { ToolSession } from "../tools";
 import { truncateForPrompt } from "../tools/core/approval";
 import { formatPathRelativeToCwd, resolveToCwd } from "../tools/core/path-utils";
@@ -103,6 +102,7 @@ import {
 	symbolKindToIcon,
 	uriToFile,
 } from "./utils";
+import { lspToolView } from "./view";
 
 export type { LspServerStatus } from "./client";
 export type { LspToolDetails } from "./types";
@@ -1567,8 +1567,9 @@ export function createLspWritethrough(cwd: string, options?: WritethroughOptions
 /**
  * LSP tool for language server protocol operations.
  */
-export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Theme> {
+export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails> {
 	readonly name = "lsp";
+	readonly view = lspToolView;
 	readonly approval = (args: unknown): ToolApprovalDecision => {
 		const rawAction = (args as Partial<LspParams>).action;
 		const action = typeof rawAction === "string" ? rawAction.toLowerCase() : "";

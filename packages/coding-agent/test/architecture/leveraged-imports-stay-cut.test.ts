@@ -526,7 +526,6 @@ describe("the theme engine, second in the same ranking", () => {
 		"modes/terminal/components/transcript/execution-shared.ts",
 		"tools/shell/bash.ts",
 		"tools/fs/write.ts",
-		"lsp/render.ts",
 	])("%s names the owner of the highlighter rather than the engine that forwards it", relative => {
 		const imports = runtimeImportsOf(path.join(SRC, relative));
 
@@ -1120,7 +1119,7 @@ describe("declaring the web-search tool does not load the credential store", () 
 		const reached = reachedNames("web/search/index.ts");
 
 		expect(reached).toContain(path.join("coding-agent", "src", "web", "search", "provider.ts"));
-		expect(reached).toContain(path.join("coding-agent", "src", "web", "search", "render.ts"));
+		expect(reached).toContain(path.join("coding-agent", "src", "web", "search", "view.ts"));
 		expect(reached.length).toBeGreaterThan(100);
 	});
 

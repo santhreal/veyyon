@@ -85,6 +85,7 @@ export const CONVERTED_TOOLS = [
 	"vibe_list",
 	"job",
 	"eval",
+	"lsp",
 ] as const;
 
 export const WIDTH = 80;

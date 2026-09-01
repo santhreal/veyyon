@@ -102,6 +102,7 @@ describe("differential coverage", () => {
 			"vibe_list",
 			"job",
 			"eval",
+			"lsp",
 		]);
 	});
 

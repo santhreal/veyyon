@@ -577,6 +577,10 @@ const DOCUMENTED_KEY_RELOCATIONS: Readonly<Record<string, Readonly<Record<string
  */
 const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, RelocationNote>>>> = {
 	"@veyyon/coding-agent": {
+		"./lsp/render": {
+			to: "./lsp/view",
+			why: "the lsp call row, hover, diagnostics, reference, symbol and output cards are declared in lsp/view.ts as views the host draws, so the module that built their terminal components is gone",
+		},
 		"./modes/sanitize-status-text": {
 			to: "@veyyon/utils/sanitize-status-text",
 			why: "sanitizeStatusText is declared in packages/utils/src/sanitize-status-text.ts, which @veyyon/utils publishes as ./sanitize-status-text; it is text over stripAnsi and names no host, and the goal tool reduces an objective to one line while building a view model in the domain package",
@@ -588,6 +592,10 @@ const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, Relocat
 		"./tools/browser/render": {
 			to: "./tools/web/browser/view",
 			why: "the browser open, close and run cards are declared in tools/web/browser/view.ts as views the host draws, so the module that built their terminal components is gone",
+		},
+		"./tools/eval-render": {
+			to: "./tools/shell/eval-view",
+			why: "the eval call preview, cell cards, helper log, subagent rows and cell-less fallback are declared in tools/shell/eval-view.ts as views the host draws, so the module that built their terminal components is gone",
 		},
 		"./tools/fs/read-render": {
 			to: "./tools/fs/read-view",
@@ -612,10 +620,6 @@ const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, Relocat
 		"./tools/search-renderer": {
 			to: "./tools/search/search-view",
 			why: "the search card is one dispatcher over the file, text and structure cards, declared in tools/search/search-view.ts as views the host draws, so the module that dispatched terminal components is gone",
-		},
-		"./tools/shell/eval-render": {
-			to: "./tools/shell/eval-view",
-			why: "the eval call preview, cell cards, helper log, subagent rows and cell-less fallback are declared in tools/shell/eval-view.ts as views the host draws, so the module that built their terminal components is gone",
 		},
 		"./tools/shell/job-render": {
 			to: "./tools/shell/job-view",

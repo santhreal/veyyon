@@ -10,7 +10,7 @@ import type { ToolViewRenderer } from "@veyyon/view";
 import { editToolRenderer } from "../edit/renderer";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { goalToolView } from "../goals/goal-tool";
-import { lspToolRenderer } from "../lsp/render";
+import { lspToolView } from "../lsp/view";
 import { taskToolRenderer } from "../task/renderer";
 import type { Theme } from "../theme/theme";
 import { viewToolRenderer } from "../tui/draw-tool-view";
@@ -95,7 +95,9 @@ export const toolRenderers: Record<string, ToolRenderer> = {
 	edit: editToolRenderer as ToolRenderer,
 	// The same renderer under the name a provider-side patch call arrives as.
 	apply_patch: editToolRenderer as ToolRenderer,
-	lsp: lspToolRenderer as ToolRenderer,
+	// The lsp tool describes a view, and this entry is the terminal's drawing of it — the path a
+	// rebuilt transcript takes, where no tool instance exists to read `tool.view` from.
+	lsp: viewToolRenderer(lspToolView, { mergeCallAndResult: true, inline: true }) as ToolRenderer,
 	// Lazy getter: `taskToolRenderer` lives in a module that closes an import
 	// cycle back here (task/renderer → task/render → … → tools/renderers), so
 	// reading it at init order-dependently hits its temporal dead zone. Deferring
