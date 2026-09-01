@@ -23,6 +23,7 @@
 - The autoswarm setup console and the autoresearch experiment tool clamp their breadth and attempt counts through the shared clamp rather than local copies. No behavior change.
 - The host capability probe and the environment it measures against moved out of the session budget module into `session/cgroup-host.ts`, and the capabilities a probe reports no longer carry the field it used to pick a cgroup parent. No behavior change.
 - The desktop host states that profile theme listing is unavailable rather than describing a theme selection it never owned.
+- The desktop renderer repaints only the region a state change declares, keeping the rest of the frame in a retained texture, clips rounded and path-bounded subtrees at the boundary, and shapes each distinct line of text once across frames; GPUI is now a vendored snapshot of the `santhreal/zed` fork under `crates/vendor` rather than a git dependency.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 
