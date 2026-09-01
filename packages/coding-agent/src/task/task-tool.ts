@@ -840,7 +840,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		}
 
 		const planModeState = this.session.getPlanModeState?.();
-		const planModeBaseTools: string[] = [TOOL.read, TOOL.grep, TOOL.glob, TOOL.lsp, TOOL.web_search];
+	const planModeBaseTools: string[] = [TOOL.read, TOOL.search, TOOL.lsp, TOOL.web_search];
 		const planModeTools = [
 			...planModeBaseTools,
 			...(agent.tools ?? []).filter(

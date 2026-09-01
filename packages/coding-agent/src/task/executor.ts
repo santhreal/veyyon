@@ -625,7 +625,7 @@ interface FinalizeSubprocessOutputArgs {
 	lastAssistantText?: string;
 }
 
-interface FinalizeSubprocessOutputResult {
+export interface FinalizeSubprocessOutputResult {
 	rawOutput: string;
 	exitCode: number;
 	stderr: string;

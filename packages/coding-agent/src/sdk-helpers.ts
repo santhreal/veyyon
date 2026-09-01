@@ -96,6 +96,7 @@ import {
 	type LoadExtensionsResult,
 	loadExtensionFromFactory,
 	loadExtensions,
+	type ToolDefinition,
 	wrapRegisteredTools,
 } from "./extensibility/extensions";
 import { type Skill, type SkillWarning, setActiveSkills } from "./extensibility/skills";
@@ -166,6 +167,7 @@ import {
 	obfuscateProviderPayload,
 	type SecretRuntimeLease,
 } from "./session/agent-session";
+import { AgentStorage } from "./session/agent-storage";
 import { discoverAuthStorage } from "./session/auth-broker-config";
 import { sessionCpuExecHooks } from "./session/cpu-limit";
 import { abortDetached } from "./session/detached-abort";
@@ -1544,7 +1546,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		};
 		if (enableMCP && !mcpManager) {
 			if (deferMCPDiscoveryForUI) {
-				const cacheStorage = settings.getStorage();
+				const cacheStorage = AgentStorage.forAgentDir(settings.getAgentDir());
 				mcpManager = new MCPManager(cwd, cacheStorage ? new MCPToolCache(cacheStorage) : null);
 				mcpManager.setAuthStorage(authStorage);
 				toolSession.mcpManager = mcpManager;
@@ -1605,7 +1607,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			} else {
 				const mcpResult = await logger.time("discoverAndLoadMCPTools", discoverAndLoadMCPTools, cwd, {
 					...mcpDiscoverOptions,
-					cacheStorage: settings.getStorage(),
+				cacheStorage: AgentStorage.forAgentDir(settings.getAgentDir()),
 					authStorage,
 				});
 				mcpManager = mcpResult.manager;
@@ -2212,7 +2214,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				const definition = isCustomTool(tool)
 					? customToolToDefinition(tool, text => secretRuntimeLease.obfuscateText(text))
 					: tool;
-				return { definition, extensionPath: "<sdk>" };
+				return { definition: definition as ToolDefinition, extensionPath: "<sdk>" };
 			}),
 		];
 		// `wrapToolWithMetaNotice` runs the centralized large-output → artifact spill.

@@ -70,7 +70,7 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 	readonly loadMode = "discoverable";
 
 	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(toolsPrompts["tools/ast-grep"].text);
+		this.description = prompt.render(toolsPrompts["tools/search"].text);
 	}
 
 	async execute(

@@ -26,10 +26,10 @@ import type { ConfiguredThinkingLevel } from "../thinking";
 import "../tools/yield";
 import { ToolAbortError } from "../tools/tool-errors";
 import {
-	resolveSubagentAutoCloseBudget,
+	resolveSubagentPruneBudget,
 	resolveSubagentIdleTtlMs,
 	resolveSubagentMaxNestedSpawnDepth,
-	type SubagentAutoCloseBudget,
+	type SubagentPruneBudget,
 } from "./subagent-settings";
 import {
 	type AgentDefinition,
@@ -614,7 +614,7 @@ export async function finalizeSubagentLifecycle(args: {
 	keepAlive: boolean;
 	isolated: boolean;
 	agentIdleTtlMs: number;
-	autoClose?: SubagentAutoCloseBudget;
+	autoClose?: SubagentPruneBudget;
 	signOff?: string;
 	reviveSession: (() => Promise<AgentSession>) | null;
 }): Promise<void> {
@@ -651,8 +651,8 @@ export async function finalizeSubagentLifecycle(args: {
 		registry.detachSession(args.id);
 		AgentLifecycleManager.global().adopt(args.id, {
 			idleTtlMs: 0,
-			closeParkedMs: args.autoClose?.parkedMs ?? 0,
-			closeWaitingMs: args.autoClose?.waitingMs ?? 0,
+			pruneAfterMs: args.autoClose?.afterMs ?? 0,
+			pruneWaitingAfterMs: args.autoClose?.waitingAfterMs ?? 0,
 		});
 		return;
 	}
@@ -661,8 +661,8 @@ export async function finalizeSubagentLifecycle(args: {
 	registry.setStatus(args.id, "idle");
 	AgentLifecycleManager.global().adopt(args.id, {
 		idleTtlMs: args.agentIdleTtlMs,
-		closeParkedMs: args.autoClose?.parkedMs ?? 0,
-		closeWaitingMs: args.autoClose?.waitingMs ?? 0,
+		pruneAfterMs: args.autoClose?.afterMs ?? 0,
+		pruneWaitingAfterMs: args.autoClose?.waitingAfterMs ?? 0,
 		revive: args.reviveSession ?? undefined,
 	});
 }
@@ -836,7 +836,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		Math.trunc(Number(options.maxRuntimeMs ?? settings.get("subagent.maxRuntimeMs") ?? 0) || 0),
 	);
 	const agentIdleTtlMs = resolveSubagentIdleTtlMs(settings);
-	const autoCloseBudget = resolveSubagentAutoCloseBudget(settings);
+	const autoCloseBudget = resolveSubagentPruneBudget(settings);
 	const configuredDefaultBudget = Math.max(
 		0,
 		Math.trunc(Number(settings.get("subagent.softRequestBudget") ?? SOFT_REQUEST_BUDGET.default) || 0),

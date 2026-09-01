@@ -1145,7 +1145,7 @@ import { LEGACY_TOOL_DEFINITION_MARKER } from "./extensibility/legacy-tool-marke
 
 const TOOL_DEFINITION_MARKER = Symbol("__isToolDefinition");
 
-function isCustomTool(tool: CustomTool | ToolDefinition): tool is CustomTool {
+export function isCustomTool(tool: CustomTool | ToolDefinition): tool is CustomTool {
 	// Converted tools carry a hidden marker: the sdk's symbol
 	// (customToolToDefinition) or the legacy shim's string prop. Anything
 	// unmarked is a CustomTool that still needs conversion — checking only one

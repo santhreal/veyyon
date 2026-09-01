@@ -64,10 +64,8 @@ export {
 
 export const READ_ONLY_TOOL_NAMES: ReadonlySet<string> = new Set([
 	TOOL.read,
-	TOOL.grep,
-	TOOL.glob,
+	TOOL.search,
 	TOOL.web_search,
-	TOOL.ast_grep,
 	TOOL.yield,
 	TOOL.irc,
 	TOOL.ask,
@@ -85,7 +83,7 @@ export const READ_ONLY_TOOL_NAMES: ReadonlySet<string> = new Set([
 	TOOL.search_tool_bm25,
 ]);
 
-export const PLAN_MODE_AGENT_TOOL_ALLOWLIST: ReadonlySet<string> = new Set([TOOL.ast_grep, TOOL.report_finding]);
+export const PLAN_MODE_AGENT_TOOL_ALLOWLIST: ReadonlySet<string> = new Set([TOOL.search, TOOL.report_finding]);
 
 export function isReadOnlyAgent(agent: AgentDefinition): boolean {
 	return !!agent.tools?.length && agent.tools.every(tool => READ_ONLY_TOOL_NAMES.has(tool));

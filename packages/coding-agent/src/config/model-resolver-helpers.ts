@@ -10,6 +10,7 @@ import { fuzzyMatch } from "@veyyon/tui";
 import { AUTO_THINKING, type ConfiguredThinkingLevel, concreteThinkingLevel, parseThinkingLevel } from "../thinking";
 import type { ModelRegistry } from "./model-registry";
 import type { Settings } from "./settings";
+import { AgentStorage } from "../session/agent-storage";
 
 function isKnownProvider(provider: string): provider is KnownProvider {
 	return provider in DEFAULT_MODEL_PER_PROVIDER;
@@ -421,10 +422,11 @@ export function buildPreferenceContext(
 }
 
 export function getModelMatchPreferences(
-	settings?: Partial<Pick<Settings, "get" | "getStorage">>,
+	settings?: Settings,
 ): ModelMatchPreferences {
+	const storage = settings ? AgentStorage.forAgentDir(settings.getAgentDir()) : undefined;
 	return {
-		usageOrder: settings?.getStorage?.()?.getModelUsageOrder(),
+		usageOrder: storage?.getModelUsageOrder(),
 		providerOrder: settings?.get?.("modelProviderOrder"),
 	};
 }
