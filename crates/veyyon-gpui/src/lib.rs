@@ -1,9 +1,9 @@
 //! The desktop front end's view of GPUI.
 //!
 //! GPUI is pinned in the workspace manifest to the `santhreal/zed` fork, branch
-//! `veyyon`, by revision. That branch is where patches P1 through P10 live; the
-//! README states the series, the golden assertion each patch owes, and the
-//! rebase policy.
+//! `veyyon`, by revision. That branch carries the patch series; the README
+//! states which patch is landed and under which commit, the golden assertion
+//! each one owes, and the rebase policy.
 //!
 //! Every patch extension gets a module here WHEN the patch exists on the
 //! branch. Until then this crate is a re-export and nothing more, so that the
