@@ -33,11 +33,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { ProcessTerminal } from "@veyyon/tui/terminal";
+import { clearFirstFrameRecording, recordFirstFrame } from "../src/startup/first-frame-recorder";
 import {
-	clearFirstFrameRecording,
 	isBareInteractiveLaunch,
 	RECORDED_ENV_KEYS,
-	recordFirstFrame,
 	replayFirstFrame,
 	takeReplayedFirstFrame,
 } from "../src/startup/first-frame-replay";
