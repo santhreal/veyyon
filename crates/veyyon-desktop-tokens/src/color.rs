@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, fmt, path::Path};
 
 use serde::{Deserialize, Serialize};
 
@@ -110,6 +110,50 @@ impl ColorRole {
 	}
 }
 
+/// Why a colour value was rejected. A theme file is edited by hand, so each
+/// case names what to correct rather than only reporting failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorParseError {
+	/// The value holds a character outside ASCII. Reported before length,
+	/// because a byte count over a multi-byte string does not describe digits.
+	NotAscii(char),
+	/// The digit count is not 3, 6 or 8.
+	Length(usize),
+	/// A character is not a hexadecimal digit.
+	Digit(char),
+}
+
+impl fmt::Display for ColorParseError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::NotAscii(found) => write!(
+				f,
+				"'{found}' is not an ASCII hex digit; a colour value is ASCII digits, optionally \
+				 prefixed with '#'"
+			),
+			Self::Length(found) => {
+				write!(f, "a colour value has 3, 6 or 8 hex digits after '#', not {found}")
+			},
+			Self::Digit(found) => write!(f, "'{found}' is not a hexadecimal digit"),
+		}
+	}
+}
+
+impl std::error::Error for ColorParseError {}
+
+/// Converts one ASCII hex digit to its value.
+///
+/// Takes a byte because the caller matches the value as a byte slice; a
+/// non-ASCII value is rejected before this point, so the cast to `char` is
+/// lossless here.
+fn nibble(digit: u8) -> Result<u8, ColorParseError> {
+	let as_char = char::from(digit);
+	as_char
+		.to_digit(16)
+		.and_then(|value| u8::try_from(value).ok())
+		.ok_or(ColorParseError::Digit(as_char))
+}
+
 /// Linear RGB color representation with alpha channel.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct RgbColor {
@@ -125,42 +169,43 @@ impl RgbColor {
 		Self { r, g, b, a }
 	}
 
-	/// Parses a hex color string like "#1e1e2e" or "#fff".
-	pub fn from_hex(hex: &str) -> Result<Self, String> {
-		let hex_str = hex.trim().trim_start_matches('#');
-		if hex_str.len() == 6 {
-			let red = u8::from_str_radix(&hex_str[0..2], 16).map_err(|e| e.to_string())?;
-			let green = u8::from_str_radix(&hex_str[2..4], 16).map_err(|e| e.to_string())?;
-			let blue = u8::from_str_radix(&hex_str[4..6], 16).map_err(|e| e.to_string())?;
-			Ok(Self::new(
-				f32::from(red) / 255.0,
-				f32::from(green) / 255.0,
-				f32::from(blue) / 255.0,
-				1.0,
-			))
-		} else if hex_str.len() == 8 {
-			let red = u8::from_str_radix(&hex_str[0..2], 16).map_err(|e| e.to_string())?;
-			let green = u8::from_str_radix(&hex_str[2..4], 16).map_err(|e| e.to_string())?;
-			let blue = u8::from_str_radix(&hex_str[4..6], 16).map_err(|e| e.to_string())?;
-			let alpha = u8::from_str_radix(&hex_str[6..8], 16).map_err(|e| e.to_string())?;
-			Ok(Self::new(
-				f32::from(red) / 255.0,
-				f32::from(green) / 255.0,
-				f32::from(blue) / 255.0,
-				f32::from(alpha) / 255.0,
-			))
-		} else if hex_str.len() == 3 {
-			let red = u8::from_str_radix(&hex_str[0..1], 16).map_err(|e| e.to_string())? * 17;
-			let green = u8::from_str_radix(&hex_str[1..2], 16).map_err(|e| e.to_string())? * 17;
-			let blue = u8::from_str_radix(&hex_str[2..3], 16).map_err(|e| e.to_string())? * 17;
-			Ok(Self::new(
-				f32::from(red) / 255.0,
-				f32::from(green) / 255.0,
-				f32::from(blue) / 255.0,
-				1.0,
-			))
-		} else {
-			Err(format!("invalid hex color length: {hex}"))
+	/// Parses a hex colour string: `#rgb`, `#rrggbb` or `#rrggbbaa`, with the
+	/// `#` optional.
+	///
+	/// Digits are matched as a slice pattern rather than sliced by index. The
+	/// length test counts bytes, so on a multi-byte value a byte-indexed slice
+	/// lands inside a character and panics. A colour arrives from a file an
+	/// operator edits, and the token contract is that a malformed file reports
+	/// a parse error and the last good set stays; a panic leaves neither.
+	pub fn from_hex(hex: &str) -> Result<Self, ColorParseError> {
+		let trimmed = hex.trim().trim_start_matches('#');
+		if let Some(wide) = trimmed.chars().find(|c| !c.is_ascii()) {
+			return Err(ColorParseError::NotAscii(wide));
+		}
+
+		let channel = |high: u8, low: u8| -> Result<f32, ColorParseError> {
+			let high = nibble(high)?;
+			let low = nibble(low)?;
+			// Both nibbles are 0..=15, so the compose and the divide are exact
+			// and cannot overflow a u8.
+			Ok(f32::from((high << 4) | low) / 255.0)
+		};
+
+		match trimmed.as_bytes() {
+			[r, g, b] => {
+				// A short value repeats each digit: 0xF becomes 0xFF.
+				Ok(Self::new(channel(*r, *r)?, channel(*g, *g)?, channel(*b, *b)?, 1.0))
+			},
+			[r1, r2, g1, g2, b1, b2] => {
+				Ok(Self::new(channel(*r1, *r2)?, channel(*g1, *g2)?, channel(*b1, *b2)?, 1.0))
+			},
+			[r1, r2, g1, g2, b1, b2, a1, a2] => Ok(Self::new(
+				channel(*r1, *r2)?,
+				channel(*g1, *g2)?,
+				channel(*b1, *b2)?,
+				channel(*a1, *a2)?,
+			)),
+			other => Err(ColorParseError::Length(other.len())),
 		}
 	}
 
@@ -199,6 +244,26 @@ pub struct Theme {
 }
 
 impl Theme {
+	/// Returns a role's colour, or reports the role as missing.
+	///
+	/// A theme declares every role in the role table, so an absent role is a
+	/// malformed theme rather than a value to substitute. Defaulting an absent
+	/// role to white or black made the contrast check pass on an incomplete
+	/// theme: a missing `foreground` compared white against black and scored
+	/// the maximum 21:1, so the one check that guards legibility passed
+	/// precisely when the theme could not be rendered.
+	pub fn role(&self, path: &Path, role: ColorRole) -> Result<RgbColor, TokenError> {
+		self
+			.roles
+			.get(&role)
+			.copied()
+			.ok_or_else(|| TokenError::MissingKey {
+				path:    path.to_path_buf(),
+				section: "role".to_string(),
+				key:     role.as_str().to_string(),
+			})
+	}
+
 	/// Asserts contrast ratio between foreground and background meets WCAG
 	/// thresholds.
 	pub fn assert_contrast(
@@ -210,16 +275,8 @@ impl Theme {
 		line: usize,
 		column: usize,
 	) -> Result<(), TokenError> {
-		let fg = self
-			.roles
-			.get(&foreground_role)
-			.copied()
-			.unwrap_or(RgbColor::new(1.0, 1.0, 1.0, 1.0));
-		let bg = self
-			.roles
-			.get(&background_role)
-			.copied()
-			.unwrap_or(RgbColor::new(0.0, 0.0, 0.0, 1.0));
+		let fg = self.role(path, foreground_role)?;
+		let bg = self.role(path, background_role)?;
 		let ratio = fg.contrast_ratio(bg);
 		if ratio < required {
 			return Err(TokenError::ContrastTooLow {
