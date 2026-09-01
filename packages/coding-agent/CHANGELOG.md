@@ -88,6 +88,7 @@
 ### Changed
 
 - The launch card paints about 8ms sooner: the bundled themes are embedded as text and parsed on the ask instead of building all 98 before the first frame, and the card path no longer evaluates `node:assert/strict`, `node:crypto`, `node:inspector`, `node:child_process` or `node:zlib` for calls it does not make.
+- The status row reads its truncation limits from `tools/render-limits`, a leaf that imports nothing, rather than `tools/render-utils`, which drops the tool renderers, path helpers and image resizing from the launch card's import graph; first-frame time is unchanged, because those modules only declare functions.
 - The home screen hero drops the recent-session row; `/welcome` still lists recent sessions.
 - The launch card paints the whole status row from config instead of a hand-written path and branch, so the profile, model, approval rung, branch and context gauge are on screen with the first frame; measured on a pty against the built binary, the row lands at 47-48ms rather than 1067-1083ms and the frame is editable at 49-50ms.
 - The status row's segment gathering and row fitting live in one module, `modes/components/status-line/quiet-row.ts`, which the live footline and the launch card both render through, so the two rows cannot carry different segments or order them differently.
