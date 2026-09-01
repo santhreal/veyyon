@@ -86,6 +86,10 @@
 			"packages/coding-agent/test/oracles/gh-main-renderer.ts"
 		],
 		[
+			"packages/coding-agent/src/tools/vibe-render.ts",
+			"packages/coding-agent/test/oracles/vibe-main-renderer.ts"
+		],
+		[
 			"packages/coding-agent/src/web/search/providers",
 			"plugins/web/src"
 		],
@@ -13768,15 +13772,6 @@
 			"structuralHash": "39f95163588db471a85b7104c9db84cfcc90fa81f293833450e7b046f6279ef3",
 			"mainStructuralHash": "39f95163588db471a85b7104c9db84cfcc90fa81f293833450e7b046f6279ef3"
 		},
-		"packages/coding-agent/src/tools/agent/__tests__/vibe-render.test.ts": {
-			"old": "packages/coding-agent/src/tools/__tests__/vibe-render.test.ts",
-			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "58c789583be9a4dafb820076a654da9a36c440c3295418842a968c725df27385",
-			"mainHash": "74e36960429d5f2e9fd4566823edb23563b0ef19df3f32c109614ea0dec64c6f",
-			"structuralHash": "81f833453fe4b6991c9a8ff19367224052c17b86ec45d6264fd57cd88a860216",
-			"mainStructuralHash": "81f833453fe4b6991c9a8ff19367224052c17b86ec45d6264fd57cd88a860216"
-		},
 		"packages/coding-agent/src/tools/agent/argot.ts": {
 			"old": "packages/coding-agent/src/tools/argot.ts",
 			"kind": "normalized",
@@ -13926,22 +13921,15 @@
 			"structuralHash": "776b28e51e43a5cf96979f700c273d1159d379630dce3be39beb7a38d4e81151",
 			"mainStructuralHash": "21246c232b935730b9649acaef4f299c9bcefc52c35e99e6efae6faf003181ba"
 		},
-		"packages/coding-agent/src/tools/agent/vibe-render.ts": {
-			"old": "packages/coding-agent/src/tools/vibe-render.ts",
-			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "b285e3014dccdcd39d0b1c7ad179ce5c9f33b6418eebbb14c3cd96b9574a32d4",
-			"mainHash": "9ecc16bdb71e7333bbae26c67fcbc0256938b226aab89e8d3fa8f9c3e74733eb",
-			"structuralHash": "d0293bccbd1994a43247cdc74e6431c43f7c65397d93b39b9b0174139efa2454",
-			"mainStructuralHash": "d0293bccbd1994a43247cdc74e6431c43f7c65397d93b39b9b0174139efa2454"
-		},
 		"packages/coding-agent/src/tools/agent/vibe.ts": {
 			"old": "packages/coding-agent/src/tools/vibe.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "b67f4bd8a433cb31207c48da90e4e44b9d5f4049e7d853c622b01d5c70ba1135",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "377ecce4f41af628f7dcb48247b16c55a4bffc9be1ddd1bb405ceb6a595ed725",
 			"mainHash": "7eba0f3ff082aafc0fa9e3c6c4594062819222c194f5bbe8671eb08bc54eea8e",
-			"structuralHash": "542e05b6d0d34d92edbd77e3a92fcd5feafa490ad2054a5209cb6ddb0a86304d",
+			"structuralHash": "b59866c5228350d41ebec7b52add2f75cab3acf89c046d3f007d8032224597cc",
 			"mainStructuralHash": "542e05b6d0d34d92edbd77e3a92fcd5feafa490ad2054a5209cb6ddb0a86304d"
 		},
 		"packages/coding-agent/src/tools/agent/yield.ts": {
@@ -14202,9 +14190,9 @@
 			"differs": "changed",
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "066ea9f054155c06af5f3175db7ee7c4ce334030dc83098b352b589a33958501",
+			"hash": "12b8140f50731de247d948161dbceeb9ff890c31e4a557767b95be21e850eccf",
 			"mainHash": "cc67f3d0401dca1eaae8035fd22b1d2a30e1cdeba2f2bdba80870dc354afed77",
-			"structuralHash": "0b5fe1e5acc19fda524bd0f76aaaa4cfd20d5d0ceb3808eca46a28143a693b21",
+			"structuralHash": "bf93f582d5b0fdbeed3653f97df22e5d4f0ddcd8017d9b0c5a007c76bbe91f10",
 			"mainStructuralHash": "9a33bd6baad329cd473c13a893ab7cc870a31c7f7c29d0f38fa6d5c8a7e1e96d"
 		},
 		"packages/coding-agent/src/tools/core/repair/agent-hook.ts": {
@@ -15097,6 +15085,15 @@
 			"mainHash": "9c053129e7bfd187949bfb33cfe85489218e83b7d7e4b0f45962134fa66b9c4e",
 			"structuralHash": "0c2577b4fc60f371e697d4e7ee169862a6cb1877dcc5b0a2f97c43b5e54f6c75",
 			"mainStructuralHash": "f8110caad7a46663fba27c49393f91c1b0a50a656ea1be3bd680d52e6a8bc340"
+		},
+		"packages/coding-agent/test/oracles/vibe-main-renderer.ts": {
+			"old": "packages/coding-agent/src/tools/vibe-render.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "84066cd6c5d5de605e24fa3dbe6ac4b4c2b22ff2d95a6d99291ad299ba86ee43",
+			"mainHash": "9ecc16bdb71e7333bbae26c67fcbc0256938b226aab89e8d3fa8f9c3e74733eb",
+			"structuralHash": "d0293bccbd1994a43247cdc74e6431c43f7c65397d93b39b9b0174139efa2454",
+			"mainStructuralHash": "d0293bccbd1994a43247cdc74e6431c43f7c65397d93b39b9b0174139efa2454"
 		},
 		"packages/coding-agent/test/oracles/web-search-main-renderer.ts": {
 			"old": "packages/coding-agent/src/web/search/render.ts",

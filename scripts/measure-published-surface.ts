@@ -581,6 +581,10 @@ const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, Relocat
 			to: "@veyyon/utils/sanitize-status-text",
 			why: "sanitizeStatusText is declared in packages/utils/src/sanitize-status-text.ts, which @veyyon/utils publishes as ./sanitize-status-text; it is text over stripAnsi and names no host, and the goal tool reduces an objective to one line while building a view model in the domain package",
 		},
+		"./tools/__tests__/vibe-render.test": {
+			to: "./tools/agent/vibe-view",
+			why: "the colocated suite asserted the terminal components tools/agent/vibe-render.ts built; the five cards are declared in tools/agent/vibe-view.ts and their assertions are under test/, which the package does not publish",
+		},
 		"./tools/browser/render": {
 			to: "./tools/web/browser/view",
 			why: "the browser open, close and run cards are declared in tools/web/browser/view.ts as views the host draws, so the module that built their terminal components is gone",
@@ -608,6 +612,10 @@ const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, Relocat
 		"./tools/search-renderer": {
 			to: "./tools/search/search-view",
 			why: "the search card is one dispatcher over the file, text and structure cards, declared in tools/search/search-view.ts as views the host draws, so the module that dispatched terminal components is gone",
+		},
+		"./tools/vibe-render": {
+			to: "./tools/agent/vibe-view",
+			why: "the vibe spawn, send, wait, kill and list cards are declared in tools/agent/vibe-view.ts as views the host draws, so the module that built their terminal components is gone",
 		},
 		"./vibe/state": {
 			to: "./session/vibe-runtime",

@@ -7188,8 +7188,6 @@
 				"./thinking/auto-classifier.js",
 				"./thinking/index",
 				"./thinking/index.js",
-				"./tools/agent/__tests__/vibe-render.test",
-				"./tools/agent/__tests__/vibe-render.test.js",
 				"./tools/agent/argot",
 				"./tools/agent/argot.js",
 				"./tools/agent/ask",
@@ -7235,8 +7233,8 @@
 				"./tools/agent/todo-view.js",
 				"./tools/agent/todo.js",
 				"./tools/agent/vibe",
-				"./tools/agent/vibe-render",
-				"./tools/agent/vibe-render.js",
+				"./tools/agent/vibe-view",
+				"./tools/agent/vibe-view.js",
 				"./tools/agent/vibe.js",
 				"./tools/agent/yield",
 				"./tools/agent/yield.js",
@@ -10824,12 +10822,12 @@
 					"why": "packages/coding-agent/src/tools/__tests__/json-tree.test.ts moved to packages/coding-agent/src/tools/core/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test.ts, which @veyyon/coding-agent publishes as ./tools/core/__tests__/an-inline-arg-line-spends-its-width-on-the-values-that-fit.test.js"
 				},
 				"./tools/__tests__/vibe-render.test": {
-					"to": "@veyyon/coding-agent/tools/agent/__tests__/vibe-render.test",
-					"why": "packages/coding-agent/src/tools/__tests__/vibe-render.test.ts moved to packages/coding-agent/src/tools/agent/__tests__/vibe-render.test.ts, which @veyyon/coding-agent publishes as ./tools/agent/__tests__/vibe-render.test"
+					"to": "./tools/agent/vibe-view",
+					"why": "the colocated suite asserted the terminal components tools/agent/vibe-render.ts built; the five cards are declared in tools/agent/vibe-view.ts and their assertions are under test/, which the package does not publish"
 				},
 				"./tools/__tests__/vibe-render.test.js": {
-					"to": "@veyyon/coding-agent/tools/agent/__tests__/vibe-render.test.js",
-					"why": "packages/coding-agent/src/tools/__tests__/vibe-render.test.ts moved to packages/coding-agent/src/tools/agent/__tests__/vibe-render.test.ts, which @veyyon/coding-agent publishes as ./tools/agent/__tests__/vibe-render.test.js"
+					"to": "./tools/agent/vibe-view.js",
+					"why": "the colocated suite asserted the terminal components tools/agent/vibe-render.ts built; the five cards are declared in tools/agent/vibe-view.ts and their assertions are under test/, which the package does not publish"
 				},
 				"./tools/aborted-partway": {
 					"to": "@veyyon/coding-agent/tools/core/aborted-partway",
@@ -11748,12 +11746,12 @@
 					"why": "packages/coding-agent/src/tools/vibe.ts moved to packages/coding-agent/src/tools/agent/vibe.ts, which @veyyon/coding-agent publishes as ./tools/agent/vibe"
 				},
 				"./tools/vibe-render": {
-					"to": "@veyyon/coding-agent/tools/agent/vibe-render",
-					"why": "packages/coding-agent/src/tools/vibe-render.ts moved to packages/coding-agent/src/tools/agent/vibe-render.ts, which @veyyon/coding-agent publishes as ./tools/agent/vibe-render"
+					"to": "./tools/agent/vibe-view",
+					"why": "the vibe spawn, send, wait, kill and list cards are declared in tools/agent/vibe-view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./tools/vibe-render.js": {
-					"to": "@veyyon/coding-agent/tools/agent/vibe-render.js",
-					"why": "packages/coding-agent/src/tools/vibe-render.ts moved to packages/coding-agent/src/tools/agent/vibe-render.ts, which @veyyon/coding-agent publishes as ./tools/agent/vibe-render.js"
+					"to": "./tools/agent/vibe-view.js",
+					"why": "the vibe spawn, send, wait, kill and list cards are declared in tools/agent/vibe-view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./tools/vibe.js": {
 					"to": "@veyyon/coding-agent/tools/agent/vibe.js",
