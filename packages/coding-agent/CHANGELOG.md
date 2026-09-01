@@ -17,6 +17,7 @@
 
 ### Changed
 
+- The compaction policy vocabulary (check outcomes, the bar a pass is measured against, the truncation edge budget, the prune cache window and idle flush, and the recovery band) lives in `session/compaction-policy.ts` rather than interleaved with shutdown timeouts and credential backoffs in `agent-session.ts`, with no behavior change.
 - The thinking display's hidden-code fence marker is named `hiddenCodeMarker`, no longer colliding with the unrelated `elisionMarker` in `@veyyon/utils/byte-truncate`; the marker text is unchanged.
 - The `read` tool's URL routing, internal-URL routing, notebook reading, document conversion and structural summarizing each live in their own named method instead of inline branches of one 758-line `execute`, with no change to what any read returns.
 - The doc comments on the agent registry's conversation scope and address check, and on the subagent model and thinking-level resolvers, state the precedence and the boundary rule without the surrounding narrative; no behavior changes.
