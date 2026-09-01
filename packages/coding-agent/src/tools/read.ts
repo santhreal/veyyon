@@ -1151,6 +1151,13 @@ export function readFilesystemTargets(args: unknown, cwd = process.cwd()): strin
 	const expanded = expandDelimitedPathEntriesSync([rawPath], cwd, { internalUrls: "split-on-semicolon" });
 	return expanded.filter(entry => entry.length > 0);
 }
+/** A structural summary rendered in place of a file's full text. */
+type RenderedFileSummary = {
+	readonly details: ReadToolDetails;
+	readonly content: Array<TextContent | ImageContent>;
+	readonly columnTruncated: number;
+};
+
 /**
  * The outcome of converting a document through markit.
  *
@@ -2576,6 +2583,66 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	}
 
 	/**
+	 * Render a structural summary for a whole-file read, when one applies.
+	 *
+	 * Returns undefined when summarizing is off for this file, when it does not parse, or when
+	 * nothing was elided; the caller then reads the file the ordinary way.
+	 */
+	async #renderFileSummary(options: {
+		readonly absolutePath: string;
+		readonly localReadPath: string;
+		readonly ext: string;
+		readonly fileSize: number;
+		readonly parsed: ParsedSelector;
+		readonly hashLines: boolean;
+		readonly signal?: AbortSignal;
+	}): Promise<RenderedFileSummary | undefined> {
+		const { absolutePath, localReadPath, ext, fileSize, parsed, hashLines, signal } = options;
+		if (
+			parsed.kind !== "none" ||
+			!this.session.settings.get("read.summarize.enabled") ||
+			(!this.session.settings.get("read.summarize.prose") && PROSE_SUMMARY_EXTENSIONS.has(ext))
+		) {
+			return undefined;
+		}
+		const summary = await this.#trySummarize(absolutePath, fileSize, signal);
+		if (!summary?.parsed || !summary.elided) return undefined;
+
+		const summaryBudget = inlineBudgetFor(this.session);
+		const rendered = this.#renderSummary(summary, summaryBudget, this.#defaultLimit);
+		const footer = formatSummaryElisionFooter(localReadPath, rendered.elidedRanges, rendered.elidedLines);
+		const budgetNotice =
+			rendered.stoppedBy === "lines"
+				? `[Summary reached the ${this.#defaultLimit}-line default. Use :${rendered.nextLine} to continue]`
+				: rendered.stoppedBy === "bytes"
+					? `[Summary reached the ${formatBytes(summaryBudget)} output budget. Use :${rendered.nextLine} to continue]`
+					: "";
+		const hashContext = hashLines
+			? await readHashlineHeaderContext(this.session, absolutePath, this.session.cwd)
+			: undefined;
+		const bodyText = [rendered.text, footer, budgetNotice].filter(part => part).join("\n\n");
+		const modelText = prependHashlineHeader(bodyText, hashContext);
+		if (hashContext?.tag) {
+			recordSeenLinesFromBody(this.session, absolutePath, hashContext.tag, rendered.text);
+		}
+		return {
+			details: {
+				displayContent: {
+					text: budgetNotice ? `${rendered.displayText}\n\n${budgetNotice}` : rendered.displayText,
+					startLine: 1,
+				},
+				summary: {
+					lines: countTextLines(rendered.text),
+					elidedSpans: rendered.elidedRanges.length,
+					elidedLines: rendered.elidedLines,
+				},
+			},
+			content: [{ type: "text", text: modelText }],
+			columnTruncated: rendered.columnTruncated,
+		};
+	}
+
+	/**
 	 * Convert a document through markit and apply the selector to the converted markdown.
 	 *
 	 * The selector applies to the CONVERTED output, so `file.pdf:50-100` reads lines 50-100 of the
@@ -2913,54 +2980,20 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					.done();
 			}
 
-			if (
-				parsed.kind === "none" &&
-				this.session.settings.get("read.summarize.enabled") &&
-				(this.session.settings.get("read.summarize.prose") || !PROSE_SUMMARY_EXTENSIONS.has(ext))
-			) {
-				const summary = await this.#trySummarize(absolutePath, fileSize, signal);
-				if (summary?.parsed && summary.elided) {
-					const summaryBudget = inlineBudgetFor(this.session);
-					const renderedSummary = this.#renderSummary(summary, summaryBudget, this.#defaultLimit);
-					const footer = formatSummaryElisionFooter(
-						localReadPath,
-						renderedSummary.elidedRanges,
-						renderedSummary.elidedLines,
-					);
-					const budgetNotice =
-						renderedSummary.stoppedBy === "lines"
-							? `[Summary reached the ${this.#defaultLimit}-line default. Use :${renderedSummary.nextLine} to continue]`
-							: renderedSummary.stoppedBy === "bytes"
-								? `[Summary reached the ${formatBytes(summaryBudget)} output budget. Use :${renderedSummary.nextLine} to continue]`
-								: "";
-					const summaryHashContext = displayMode.hashLines
-						? await readHashlineHeaderContext(this.session, absolutePath, this.session.cwd)
-						: undefined;
-					const bodyText = [renderedSummary.text, footer, budgetNotice].filter(part => part).join("\n\n");
-					const modelText = prependHashlineHeader(bodyText, summaryHashContext);
-					if (summaryHashContext?.tag) {
-						recordSeenLinesFromBody(this.session, absolutePath, summaryHashContext.tag, renderedSummary.text);
-					}
-					details = {
-						displayContent: {
-							text: budgetNotice
-								? `${renderedSummary.displayText}\n\n${budgetNotice}`
-								: renderedSummary.displayText,
-							startLine: 1,
-						},
-						summary: {
-							lines: countTextLines(renderedSummary.text),
-							elidedSpans: renderedSummary.elidedRanges.length,
-							elidedLines: renderedSummary.elidedLines,
-						},
-					};
-
-					sourcePath = absolutePath;
-					content = [{ type: "text", text: modelText }];
-					if (renderedSummary.columnTruncated > 0) {
-						columnTruncated = renderedSummary.columnTruncated;
-					}
-				}
+			const fileSummary = await this.#renderFileSummary({
+				absolutePath,
+				localReadPath,
+				ext,
+				fileSize,
+				parsed,
+				hashLines: displayMode.hashLines,
+				signal,
+			});
+			if (fileSummary) {
+				details = fileSummary.details;
+				content = fileSummary.content;
+				sourcePath = absolutePath;
+				if (fileSummary.columnTruncated > 0) columnTruncated = fileSummary.columnTruncated;
 			}
 
 			if (!content) {
