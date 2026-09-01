@@ -26,6 +26,7 @@ import type {
 	ViewHiddenCount,
 	ViewLine,
 	ViewSection,
+	ViewSpan,
 	ViewTone,
 } from "@veyyon/view";
 import { PREVIEW_LIMITS, replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../core/render-utils";
@@ -198,7 +199,7 @@ function getRunMeta(run: GhRunWatchRunDetails): string[] {
  */
 function runRow(run: GhRunWatchRunDetails): ViewLine {
 	const parts = getRunMeta(run);
-	const line: ViewLine = [{ text: getRunLabel(run), tone: "accent" }];
+	const line: ViewSpan[] = [{ text: getRunLabel(run), tone: "accent" }];
 	for (const [index, part] of parts.entries()) {
 		line.push({ text: "  " }, index === parts.length - 1 ? { text: part, tone: "muted" } : { text: part });
 	}
