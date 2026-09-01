@@ -206,8 +206,11 @@ brush-builtins = { path = "natives/vendor/brush-builtins" }
 veyyon-desktop-model = { path = "crates/veyyon-desktop-model" }
 veyyon-desktop-motion = { path = "crates/veyyon-desktop-motion" }
 veyyon-desktop-tokens = { path = "crates/veyyon-desktop-tokens" }
+veyyon-desktop-kit = { path = "crates/veyyon-desktop-kit" }
+veyyon-desktop-surface = { path = "crates/veyyon-desktop-surface" }
 veyyon-desktop = { path = "crates/veyyon-desktop" }
 veyyon-gpui = { path = "crates/veyyon-gpui" }
+veyyon-desktop-scene = { path = "crates/veyyon-desktop-scene" }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Async Runtime & Concurrency

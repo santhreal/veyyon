@@ -1,0 +1,21 @@
+[package]
+name = "veyyon-desktop-surface"
+version.workspace = true
+publish = false
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "The veyyon desktop surfaces: queue, session, composer, run bar, right panel and terminal drawer"
+
+[lints]
+workspace = true
+
+[dependencies]
+smallvec.workspace = true
+veyyon-desktop-kit.workspace = true
+veyyon-desktop-tokens.workspace = true
+veyyon-gpui.workspace = true
+
+[dev-dependencies]
+veyyon-desktop-scene.workspace = true
