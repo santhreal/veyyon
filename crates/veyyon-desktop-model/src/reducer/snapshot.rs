@@ -3,6 +3,7 @@ use crate::{
 	event::SnapshotSection,
 	session::{QueuePartition, Session},
 	store::Store,
+	transcript::TranscriptTree,
 };
 
 /// Reduces a full or partial snapshot synchronization section into store state.
@@ -45,11 +46,14 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 				.active_session
 				.clone()
 				.unwrap_or_else(|| "default".into());
-			let tree = store.transcripts.entry(active_session.clone()).or_default();
-
+			// A snapshot is the whole transcript as the host holds it. Reopening
+			// a session sends one again, so it replaces the tree rather than
+			// appending to it, or every reopen would double the transcript.
+			let mut tree = TranscriptTree::new();
 			for entry in versioned.value {
 				tree.append(entry);
 			}
+			store.transcripts.insert(active_session.clone(), tree);
 			damage.insert(Damage::TranscriptFull(active_session));
 		},
 		SnapshotSection::Capabilities(caps) => {

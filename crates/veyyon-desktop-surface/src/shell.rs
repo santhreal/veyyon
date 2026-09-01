@@ -69,6 +69,12 @@ impl ShellView {
 		&self.state
 	}
 
+	/// The state to draw, for a projection that rewrites the host-owned fields
+	/// in place and leaves the window-owned ones alone.
+	pub const fn state_mut(&mut self) -> &mut ShellState {
+		&mut self.state
+	}
+
 	/// Sets or clears the attention strip's message.
 	///
 	/// A reload that failed keeps the last good token set and reports the
