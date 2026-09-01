@@ -71,6 +71,10 @@ fn no_desktop_crate_writes_a_color_literal() {
 		 reaching the code it claims to lint",
 		targets.len(),
 	);
+	println!(
+		"lint_no_color_literals scanned {scanned_files} file(s) across {} crate(s)",
+		targets.len()
+	);
 
 	assert!(
 		violations.is_empty(),
@@ -96,6 +100,10 @@ fn the_sweep_reaches_the_crates_that_hold_the_surfaces() {
 	assert!(
 		discovered.iter().any(|name| name == "veyyon-desktop-scene"),
 		"veyyon-desktop-scene is a desktop crate and must be swept; discovered {discovered:?}",
+	);
+	assert!(
+		discovered.iter().any(|name| name == "veyyon-desktop-surface"),
+		"veyyon-desktop-surface is a desktop crate and must be swept; discovered {discovered:?}",
 	);
 }
 
