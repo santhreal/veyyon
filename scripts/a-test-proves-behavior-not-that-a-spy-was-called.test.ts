@@ -420,7 +420,6 @@ const GRANDFATHERED: Readonly<Record<string, number>> = {
 	"packages/coding-agent/test/web/search/abort-and-timeout.test.ts": 6,
 	"packages/coding-agent/test/web/search/codex-broker.test.ts": 2,
 	"packages/coding-agent/test/write-acp-fs.test.ts": 5,
-	"packages/coding-agent/test/write-streaming-preview-expand.test.ts": 2,
 	"plugins/mnemopi/test/beam-store.test.ts": 1,
 	"plugins/mnemopi/test/consolidate-fact-id-collision.test.ts": 1,
 	"plugins/mnemopi/test/consolidate-fact-sibling-races.test.ts": 1,

@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "e8b665b0a5e8d6c68cd7ec00f7a0a38e71e54662",
+	"generatedFrom": "36f228d40be6dff9ca532fba1ca0978856b1d604",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -1266,6 +1266,7 @@
 		"packages/coding-agent/test/a-dry-run-install-resolves-the-target.test.ts",
 		"packages/coding-agent/test/a-fading-hover-band-is-mixed-out-of-the-ground.test.ts",
 		"packages/coding-agent/test/a-failed-compaction-parks-the-run-instead-of-looping.test.ts",
+		"packages/coding-agent/test/a-fallback-chain-selector-keeps-its-model-apart-from-its-effort.test.ts",
 		"packages/coding-agent/test/a-finding-row-draws-the-mark-its-renderer-drew.test.ts",
 		"packages/coding-agent/test/a-full-window-is-never-called-too-small.test.ts",
 		"packages/coding-agent/test/a-fullscreen-picker-fills-the-screen-and-floats-its-card.test.ts",
@@ -1904,6 +1905,7 @@
 		"packages/coding-agent/test/model-registry.test.ts",
 		"packages/coding-agent/test/model-selector-settings.test.ts",
 		"packages/coding-agent/test/model-slot-naming.test.ts",
+		"packages/coding-agent/test/modes/a-draft-marker-is-recognized-by-shape-and-only-images-renumber.test.ts",
 		"packages/coding-agent/test/modes/a-failed-image-write-keeps-the-links-that-worked.test.ts",
 		"packages/coding-agent/test/modes/a-rephrase-needs-a-finished-reply-to-work-from.test.ts",
 		"packages/coding-agent/test/modes/a-stopped-mode-draws-no-more-frames.test.ts",
@@ -2127,7 +2129,6 @@
 		"packages/coding-agent/test/modes/controllers/welcome-controller.test.ts",
 		"packages/coding-agent/test/modes/cwd-change-refreshes-system-prompt.test.ts",
 		"packages/coding-agent/test/modes/github-ref-autocomplete.test.ts",
-		"packages/coding-agent/test/modes/image-reference-markers.test.ts",
 		"packages/coding-agent/test/modes/internal-url-autocomplete.test.ts",
 		"packages/coding-agent/test/modes/magic-keyword-boundary.test.ts",
 		"packages/coding-agent/test/modes/magic-keywords.test.ts",
@@ -2355,7 +2356,6 @@
 		"packages/coding-agent/test/session/a-pending-mcp-tool-refuses-until-its-server-connects.test.ts",
 		"packages/coding-agent/test/session/a-question-to-the-user-ends-the-turn.test.ts",
 		"packages/coding-agent/test/session/a-re-root-does-not-rewrite-the-cached-prompt-prefix.test.ts",
-		"packages/coding-agent/test/session/a-retry-fallback-selector-survives-the-round-trip.test.ts",
 		"packages/coding-agent/test/session/a-rewrite-publishes-the-whole-file-without-holding-or-rereading-it.test.ts",
 		"packages/coding-agent/test/session/a-session-id-resolves-from-any-profile.test.ts",
 		"packages/coding-agent/test/session/a-turn-that-ends-with-text-after-a-tool-call-settles-as-text.test.ts",

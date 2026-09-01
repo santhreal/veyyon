@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "e8b665b0a5e8d6c68cd7ec00f7a0a38e71e54662",
+	"generatedFrom": "36f228d40be6dff9ca532fba1ca0978856b1d604",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -40,6 +40,14 @@
 		[
 			"packages/coding-agent/test/vibe/vibe-runtime.test.ts",
 			"packages/coding-agent/test/vibe/a-vibe-worker-inherits-the-parents-effort-and-policy.test.ts"
+		],
+		[
+			"packages/coding-agent/src/session/queued-message.ts",
+			"packages/coding-agent/src/session/agent-session-queue.ts"
+		],
+		[
+			"packages/coding-agent/src/session/retry-fallback.ts",
+			"packages/coding-agent/src/session/agent-session-retry-fallback.ts"
 		],
 		[
 			"packages/coding-agent/test/tools/ssh-render.test.ts",
@@ -12341,6 +12349,26 @@
 			"mainHash": "cbe5fac4905fece413a02811df87739f034d5a400a56a878b5b0001f3b8a8839",
 			"structuralHash": "c79d6f642e70cb2504e799a281ab2a2593a68081627d2bf14788d2b00989a72d",
 			"mainStructuralHash": "c79d6f642e70cb2504e799a281ab2a2593a68081627d2bf14788d2b00989a72d"
+		},
+		"packages/coding-agent/src/session/agent-session-queue.ts": {
+			"old": "packages/coding-agent/src/session/queued-message.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+			"hash": "ca92ba02d9aa24ce6d4c4fc17dbd77a94eec5db2b0be1ac86930c9a0e9f1e59a",
+			"mainHash": "02538856b9817a5ad5900e576460e8e4996a82fa7e894425b1bb63bee2d53cd3",
+			"structuralHash": "d18733ed19880c546db77a93a553f996faa0a1ab3653d089de6c47c23904df96",
+			"mainStructuralHash": "7da2788dc5785290c92ed11daead2055dd28f4d6a79f7f9af05ac7293daa2249"
+		},
+		"packages/coding-agent/src/session/agent-session-retry-fallback.ts": {
+			"old": "packages/coding-agent/src/session/retry-fallback.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "1d6ec6298b3a10cabf6dc806fa68968ef2cfcd6a8bfb913666a2a882c30efbbf",
+			"mainHash": "064d11de228ea1d9531c6d3e44a2bc09995993ed7326338bdd68fb388fc8d426",
+			"structuralHash": "753b2de48e6bfdc029bceedffb8eca597b3374c8c9758acfc3370e9d720bb3e8",
+			"mainStructuralHash": "753b2de48e6bfdc029bceedffb8eca597b3374c8c9758acfc3370e9d720bb3e8"
 		},
 		"packages/coding-agent/src/session/vibe-runtime.ts": {
 			"old": "packages/coding-agent/src/vibe/runtime.ts",

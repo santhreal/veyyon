@@ -768,10 +768,7 @@ const HANDROLLED_ATOMIC_ALLOWED = new Map<string, string>([
 	// same-directory temp plus rename with no fsync, which is the whole requirement here — a torn
 	// recording is discarded by the reader's validity check, so durability is not part of the
 	// contract.
-	[
-		"coding-agent/src/cli/first-frame-replay.ts",
-		"pre-paint launch path, node builtins only; cannot import the owner",
-	],
+	["coding-agent/src/cli/first-frame-replay.ts", "pre-paint launch path, node builtins only; cannot import the owner"],
 ]);
 
 // A CALL to rename, not a DECLARATION of one. The lookbehinds matter: `SecretVault.rename` is a

@@ -695,7 +695,6 @@ function hasNonWhitespace(value: string): boolean {
 
 export type { ShakeMode, ShakeResult };
 
-
 const EPHEMERAL_REPLY_MAX_BYTES = 4096;
 
 /**
@@ -842,7 +841,6 @@ function createHandoffFileName(date = new Date()): string {
 // ============================================================================
 // AgentSession Class
 // ============================================================================
-
 
 /**
  * Redact every string in a provider payload, object keys included, after

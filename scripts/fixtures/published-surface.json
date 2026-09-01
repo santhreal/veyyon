@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "e8b665b0a5e8d6c68cd7ec00f7a0a38e71e54662",
+	"generatedFrom": "36f228d40be6dff9ca532fba1ca0978856b1d604",
 	"packages": {
 		"@veyyon/agent-core": {
 			"name": "@veyyon/agent-core",
@@ -3202,10 +3202,14 @@
 				"./session/provider-context-canonicalizer.js",
 				"./session/provider-image-budget",
 				"./session/provider-image-budget.js",
+				"./session/queued-message",
+				"./session/queued-message.js",
 				"./session/redis-session-storage",
 				"./session/redis-session-storage.js",
 				"./session/relativize-paths",
 				"./session/relativize-paths.js",
+				"./session/retry-fallback",
+				"./session/retry-fallback.js",
 				"./session/retry-policy",
 				"./session/retry-policy.js",
 				"./session/session-context",
@@ -10444,6 +10448,14 @@
 					"to": "@veyyon/kernel/session/owned-resources.js",
 					"why": "packages/coding-agent/src/session/owned-resources.ts moved to kernel/src/session/owned-resources.ts, which @veyyon/kernel publishes as ./session/owned-resources.js"
 				},
+				"./session/queued-message": {
+					"to": "@veyyon/coding-agent/session/agent-session-queue",
+					"why": "packages/coding-agent/src/session/queued-message.ts moved to packages/coding-agent/src/session/agent-session-queue.ts, which @veyyon/coding-agent publishes as ./session/agent-session-queue"
+				},
+				"./session/queued-message.js": {
+					"to": "@veyyon/coding-agent/session/agent-session-queue.js",
+					"why": "packages/coding-agent/src/session/queued-message.ts moved to packages/coding-agent/src/session/agent-session-queue.ts, which @veyyon/coding-agent publishes as ./session/agent-session-queue.js"
+				},
 				"./session/redis-session-storage": {
 					"to": "@veyyon/kernel/session/redis-session-storage",
 					"why": "packages/coding-agent/src/session/redis-session-storage.ts moved to kernel/src/session/redis-session-storage.ts, which @veyyon/kernel publishes as ./session/redis-session-storage"
@@ -10451,6 +10463,14 @@
 				"./session/redis-session-storage.js": {
 					"to": "@veyyon/kernel/session/redis-session-storage.js",
 					"why": "packages/coding-agent/src/session/redis-session-storage.ts moved to kernel/src/session/redis-session-storage.ts, which @veyyon/kernel publishes as ./session/redis-session-storage.js"
+				},
+				"./session/retry-fallback": {
+					"to": "@veyyon/coding-agent/session/agent-session-retry-fallback",
+					"why": "packages/coding-agent/src/session/retry-fallback.ts moved to packages/coding-agent/src/session/agent-session-retry-fallback.ts, which @veyyon/coding-agent publishes as ./session/agent-session-retry-fallback"
+				},
+				"./session/retry-fallback.js": {
+					"to": "@veyyon/coding-agent/session/agent-session-retry-fallback.js",
+					"why": "packages/coding-agent/src/session/retry-fallback.ts moved to packages/coding-agent/src/session/agent-session-retry-fallback.ts, which @veyyon/coding-agent publishes as ./session/agent-session-retry-fallback.js"
 				},
 				"./session/retry-policy": {
 					"to": "@veyyon/kernel/session/retry-policy",
