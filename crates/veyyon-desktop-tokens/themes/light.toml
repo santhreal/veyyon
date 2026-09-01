@@ -1,4 +1,7 @@
-# Reference light theme (§6.9).
+# Reference light theme (§6.9): the brand's light polarity. White ground,
+# dark-silver structure, ember as the one accent. Cyan, blue and purple are not
+# chrome, so the kind tints are drawn from ember, amber, green, red and the
+# silver ladder.
 #
 # Declares exactly the roles in ColorRole, no additions and no omissions. Every
 # rendered pair clears its §6.9 floor: text at body size and above against all
@@ -29,13 +32,13 @@ secondary = "#3d4652"
 muted = "#5c6675"
 placeholder = "#6b7480"
 
-accent = "#1c5fd0"
-accent_foreground = "#ffffff"
-focus = "#1c5fd0"
+accent = "#f0862e"
+accent_foreground = "#161a20"
+focus = "#d4711f"
 
 [tint.working]
-fill = "#dce9fb"
-ink = "#123a6b"
+fill = "#fde3cc"
+ink = "#7a3d09"
 
 [tint.attention]
 fill = "#fbeed2"
@@ -46,12 +49,12 @@ fill = "#d9f0e2"
 ink = "#0d4429"
 
 [tint.input]
-fill = "#e6e0fb"
-ink = "#37256e"
+fill = "#e6e9ee"
+ink = "#3d4652"
 
 [tint.plan]
-fill = "#d9eff0"
-ink = "#0c4446"
+fill = "#d7dce3"
+ink = "#161a20"
 
 [tint.due]
 fill = "#fbe6d2"
