@@ -256,11 +256,23 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 	{
 		name: "view-conversion",
 		matches: relative =>
-			/(goals\/goal-tool\.ts|transcript\/tool-execution\.ts|tools\/agent\/(review|memory-view|memory-retain|memory-recall|memory-reflect)\.ts|tools\/fs\/(set-cwd|inspect-image)\.ts|tools\/search\/search-tool-bm25\.ts|tools\/shell\/terminal-output\.ts|test\/tools\/an-ssh-block-keeps-its-header-on-one-line\.test\.ts)$/.test(
+			/(goals\/goal-tool\.ts|transcript\/tool-execution\.ts|tools\/agent\/(review|memory-view|memory-retain|memory-recall|memory-reflect)\.ts|tools\/fs\/(set-cwd|inspect-image)\.ts|tools\/search\/search-tool-bm25\.ts|test\/tools\/an-ssh-block-keeps-its-header-on-one-line\.test\.ts)$/.test(
 				relative,
 			),
 		reason:
-			"A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. A module that read a screen out of xterm returns the rows as the program wrote them and leaves the drawing to the host. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
+			"A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
+	},
+	{
+		name: "terminal-readout",
+		matches: relative => /tools\/shell\/terminal-output\.ts$/.test(relative),
+		reason:
+			"The rows of a virtual terminal's screen leave this module as the program wrote them -- its text and its SGR sequences and nothing else -- because the card that shows them is a `ToolView` and the drawing is the host's. What used to be decided here is now decided in `src/tui/terminal-row.ts`.",
+	},
+	{
+		name: "oracle-freeze",
+		matches: relative => /^packages\/coding-agent\/test\/oracles\/[a-z0-9-]+\.ts$/.test(relative),
+		reason:
+			"A renderer this branch replaced with a `ToolView` is frozen here as the differential oracle its suite compares the card against. The search dispatcher reached the three sub-views this branch declares rather than the terminal components main built, which is the change recorded: the rows it draws itself are main's, and the suite beside it proves the card byte for byte.",
 	},
 	{
 		name: "shared-mode-seed",

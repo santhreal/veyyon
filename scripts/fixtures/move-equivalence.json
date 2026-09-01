@@ -62,6 +62,10 @@
 			"packages/coding-agent/test/tools/an-ssh-block-keeps-its-header-on-one-line.test.ts"
 		],
 		[
+			"packages/coding-agent/src/tools/search-renderer.ts",
+			"packages/coding-agent/test/oracles/search-main-renderer.ts"
+		],
+		[
 			"packages/coding-agent/src/memory-backend/index.ts",
 			"packages/coding-agent/src/memory/backend.ts"
 		],
@@ -14365,17 +14369,6 @@
 			"structuralHash": "40841ec7427bc2cdf9ac0364c779162f56d85a4c1f4a3b8fbe4ac6a7b475af7b",
 			"mainStructuralHash": "40841ec7427bc2cdf9ac0364c779162f56d85a4c1f4a3b8fbe4ac6a7b475af7b"
 		},
-		"packages/coding-agent/src/tools/search/search-renderer.ts": {
-			"old": "packages/coding-agent/src/tools/search-renderer.ts",
-			"kind": "normalized",
-			"differs": "changed",
-			"group": "engine-consumer",
-			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "c1385a6595bd98d60d2e4aa8d4bff56334bcb46633c392da54cb0af97664ec01",
-			"mainHash": "9c053129e7bfd187949bfb33cfe85489218e83b7d7e4b0f45962134fa66b9c4e",
-			"structuralHash": "0c2577b4fc60f371e697d4e7ee169862a6cb1877dcc5b0a2f97c43b5e54f6c75",
-			"mainStructuralHash": "f8110caad7a46663fba27c49393f91c1b0a50a656ea1be3bd680d52e6a8bc340"
-		},
 		"packages/coding-agent/src/tools/search/search-scope.ts": {
 			"old": "packages/coding-agent/src/tools/search-scope.ts",
 			"kind": "normalized",
@@ -14460,7 +14453,7 @@
 			"differs": "changed",
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "bb01105f8f3f5b2ef5f2fd11385a0bf51d8ff8022f3e9e65fa5a4facf4ef4c53",
+			"hash": "7f2204fe5a96de78adcf2fc9b84f0cbd96b539e42798c742fbae0ff41034c04f",
 			"mainHash": "ce333407fbdbb807188c3f95e3d4f0a1b1c911784070e37a0a5ea2c823bfcd08",
 			"structuralHash": "6996c7896af7d0e8225f2646f8ec0d36616064517e86d1d2aea809bdba4c6964",
 			"mainStructuralHash": "6b40f5272e224530bb87bf82dc7be60471f6f050e85eabb41b9b452a50ae6fa6"
@@ -14586,10 +14579,12 @@
 		"packages/coding-agent/src/tools/shell/terminal-output.ts": {
 			"old": "packages/coding-agent/src/tools/terminal-output.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "46aff36a79195bd8d3eaff7ba24329ddc4b4ce74ed93641146e4f713482ba55a",
+			"differs": "changed",
+			"group": "terminal-readout",
+			"reason": "The rows of a virtual terminal's screen leave this module as the program wrote them -- its text and its SGR sequences and nothing else -- because the card that shows them is a `ToolView` and the drawing is the host's. What used to be decided here is now decided in `src/tui/terminal-row.ts`.",
+			"hash": "02696d87548d241f7fc871318cc7aba670e4c86a2e6d232a01b0b8796c97b457",
 			"mainHash": "e1aed79fe37c9a2472d81c3a857752ef5b3e2f7e2114f28d487eac57f6eec1bb",
-			"structuralHash": "8da6225e89552d623f9b28573fe531df24c8f3f3455c105e2aaef1d4ff7ba15a",
+			"structuralHash": "1474d9ad86a4c6f9747e941ca8f5e25db6b368b17f347811eda95cba982727a7",
 			"mainStructuralHash": "8da6225e89552d623f9b28573fe531df24c8f3f3455c105e2aaef1d4ff7ba15a"
 		},
 		"packages/coding-agent/src/tools/web/browser.ts": {
@@ -15043,6 +15038,17 @@
 			"mainHash": "f9d86832e8cb513f343126a482af9cc848fef58eebf2ad2baa969769e924c68d",
 			"structuralHash": "7d9306e04f57025673ef71c279f3c16de629b756ef4e58d5e4617064e9d2bd67",
 			"mainStructuralHash": "7d9306e04f57025673ef71c279f3c16de629b756ef4e58d5e4617064e9d2bd67"
+		},
+		"packages/coding-agent/test/oracles/search-main-renderer.ts": {
+			"old": "packages/coding-agent/src/tools/search-renderer.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "oracle-freeze",
+			"reason": "A renderer this branch replaced with a `ToolView` is frozen here as the differential oracle its suite compares the card against. The search dispatcher reached the three sub-views this branch declares rather than the terminal components main built, which is the change recorded: the rows it draws itself are main's, and the suite beside it proves the card byte for byte.",
+			"hash": "63586ed724e4b6571dab3352294a12609c49164c3e341341f7b61d6a2bfd88b3",
+			"mainHash": "9c053129e7bfd187949bfb33cfe85489218e83b7d7e4b0f45962134fa66b9c4e",
+			"structuralHash": "0c2577b4fc60f371e697d4e7ee169862a6cb1877dcc5b0a2f97c43b5e54f6c75",
+			"mainStructuralHash": "f8110caad7a46663fba27c49393f91c1b0a50a656ea1be3bd680d52e6a8bc340"
 		},
 		"packages/coding-agent/test/tools/an-ssh-block-keeps-its-header-on-one-line.test.ts": {
 			"old": "packages/coding-agent/test/tools/ssh-render.test.ts",

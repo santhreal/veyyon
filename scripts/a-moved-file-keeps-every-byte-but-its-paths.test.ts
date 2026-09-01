@@ -95,8 +95,8 @@ describe("a moved file keeps every byte but its paths", () => {
 		const buckets = new Map<string, number>();
 		for (const [, record] of rows) buckets.set(record.differs, (buckets.get(record.differs) ?? 0) + 1);
 		expect([...buckets].sort()).toEqual([
-			["changed", 143],
-			["imports-and-comments-only", 383],
+			["changed", 144],
+			["imports-and-comments-only", 382],
 			["none", 2683],
 		]);
 		expect(rewrites.length).toBeGreaterThan(50);
@@ -208,7 +208,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.structuralHash || hash !== record.mainStructuralHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(importOnly).toBe(383);
+		expect(importOnly).toBe(382);
 	});
 
 	/**
@@ -218,7 +218,7 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("explains every file whose content really changed", () => {
 		const changed = rows.filter(([, record]) => record.differs === "changed");
-		expect(changed.length).toBe(143);
+		expect(changed.length).toBe(144);
 		const unexplained: string[] = [];
 		const drifted: string[] = [];
 		for (const [relative, record] of changed) {
@@ -248,9 +248,11 @@ describe("a moved file keeps every byte but its paths", () => {
 			"host-boundary",
 			"kernel-absorption",
 			"manifest-depth",
+			"oracle-freeze",
 			"plugin-path-expectation",
 			"rust-path-expectation",
 			"shared-mode-seed",
+			"terminal-readout",
 			"vendored-manifest",
 			"view-conversion",
 		]);
