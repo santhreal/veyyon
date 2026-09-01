@@ -1,7 +1,7 @@
 /**
  * What a loop shows while it is running: one status row, and one screen.
  *
- * The row is the always-on part and it is exactly one line — the state, the
+ * The row is the always-on part and it is one line — the state, the
  * metric, and the chord that opens the rest. It goes through `ui.setStatus`,
  * which every extension's status shares, rather than through a widget: a widget
  * above the composer is charged to the conversation on every frame, and this one
@@ -52,7 +52,7 @@ export function createDashboardController(): DashboardController {
 	 *
 	 * The row states the elapsed time of the run in flight, and nothing else
 	 * repaints it: the extension calls `update` on state transitions, and a
-	 * benchmark between two of those is exactly when a reader is watching. So the
+	 * benchmark between two of those is when a reader is watching. So the
 	 * timer runs while a run is in flight or the screen is open, and stops as soon
 	 * as neither is true, which is what keeps an idle session off the event loop.
 	 */
@@ -141,8 +141,8 @@ function hasSession(runtime: AutoresearchRuntime): boolean {
  * One segment of the row, and the order it is given up in. The host prints the
  * row through `truncateToWidth`, so a row longer than the terminal loses its
  * TAIL — and the tail is the chord, which is the only statement of how to reach
- * everything the row had to leave out. A narrow terminal was told there was a
- * loop and not told where it was.
+ * everything the row had to leave out. A narrow terminal printed that a loop
+ * was running and never printed where to look at it.
  *
  * `drop` is the order segments are given up in, lowest first; a segment with
  * drop 0 is never given up. What survives to the narrowest row is what the loop
@@ -163,7 +163,7 @@ const SEPARATOR = " · ";
 /**
  * The one row. Left to right: what this is, what it is doing now, where the
  * metric stands, and the chord. Every segment is dropped rather than shortened
- * when it has nothing to say, so the row reads the same length whatever the
+ * when it has nothing to report, so the row reads the same length whatever the
  * loop is doing — and on a terminal too narrow for all of them, the least
  * informative are dropped in turn rather than the row being cut mid-word.
  */
@@ -171,8 +171,8 @@ export function renderStatusRow(runtime: AutoresearchRuntime, width = process.st
 	const state = runtime.state;
 	// One reading of the breadth for the whole row. The name and the arm count
 	// used to come from `effectiveBreadth` and `state.breadth`, which disagree for
-	// the whole first turn of a swarm: the row said `autoswarm` and then declined
-	// to say how many arms, which is the one fact the word implies.
+	// the whole first turn of a swarm: the row printed `autoswarm` with no arm
+	// count, which is the one fact that word implies.
 	const breadth = effectiveBreadth(runtime);
 	const segments: StatusSegment[] = [
 		{ text: theme.fg("accent", breadth > 1 ? "autoswarm" : "autoresearch"), drop: 0 },

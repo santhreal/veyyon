@@ -1,6 +1,6 @@
 /**
  * WHY: the autoresearch and autoswarm commands each carried an action that did
- * the opposite of what the words in front of the user said.
+ * the opposite of what the words on screen stated.
  *
  * Three defects, one class — a keystroke whose effect is not the one it reads
  * as:
@@ -8,7 +8,7 @@
  *      reach for to look at a run turned it off.
  *   2. `clear` scanned its arguments as a substring, so `--keeptree`,
  *      `--keep_tree` and `-keep-tree` all matched nothing, fell through to the
- *      destructive default, and reset the worktree the user was asking to keep.
+ *      destructive default, and reset the worktree the flag names as kept.
  *   3. The reset itself — `git reset --hard` plus `git clean` — ran with no
  *      confirmation, from four letters typed after a slash.
  *   4. The reset resolved its session as the newest open row rather than the one
@@ -249,8 +249,8 @@ describe("a loop command never destroys what it was asked to show", () => {
 
 		await shortcut?.handler(makeCtx(cwdDir.path(), harness, surface));
 
-		// It used to refuse with "No autoresearch results yet", which is exactly
-		// when a reader wants to see the goal and the harness that were configured.
+		// It used to reject the command with "No autoresearch results yet", which is
+		// when the configured goal and harness are most worth reading.
 		expect(surface.screens.length).toBe(1);
 		expect(harness.notices.map(notice => notice.text)).not.toContain("No autoresearch results yet");
 	});

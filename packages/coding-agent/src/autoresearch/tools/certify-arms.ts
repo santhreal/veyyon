@@ -210,7 +210,7 @@ export function createCertifyArmsTool(
  * different question and always has an answer: a round where every arm
  * regressed still elected a winner, which was then logged as an improvement and
  * re-applied. The sibling floor stands in only when the segment has no logged
- * baseline yet, where the alternative is refusing to pick at all.
+ * baseline yet, where the alternative is electing no winner at all.
  */
 function certificationBar(
 	runs: readonly RunRow[],

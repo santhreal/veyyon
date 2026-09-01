@@ -1,9 +1,9 @@
 /**
  * WHY: a breadth iteration measures several arms, one wins, and the winner is
- * re-applied and logged. Every field that says WHICH arm won and WHO reviewed it
+ * re-applied and logged. Every field that states WHICH arm won and WHO reviewed it
  * lived only in the certify tool's text output, so the stored run, the rebuilt
  * state and the run screen all showed an unattributed result. An operator
- * reading the screen after four iterations could not tell a swarm round from a
+ * reading the screen after four iterations could not distinguish a swarm round from a
  * serial one.
  *
  * The class it closes is attribution dropped at a boundary: the tool argument,
@@ -73,7 +73,7 @@ describe("an arm keeps its name", () => {
 	});
 
 	it("does not erase the arm run_experiment recorded when the log omits it", async () => {
-		// The measurement knows its arm; the log call that follows may not repeat
+		// The measurement carries its arm; the log call that follows may not repeat
 		// it. An overwriting write turned every logged arm back into a blank.
 		const harness = await openSwarm();
 		seedMeasuredRun(harness, { metric: 70, arm: "a2" });
@@ -142,7 +142,7 @@ describe("an arm keeps its name", () => {
 		const detail = renderRunDetail(harness.runtime, `run:${runId}`, 60).join("\n");
 		expect(detail).toContain("Arm");
 		expect(detail).toContain("a1");
-		// The reviewer rides the outcome it qualifies, in the term the rest of the
+		// The reviewer is printed on the outcome it qualifies, in the term the rest of the
 		// product uses for it: the setup console's toggle is Certification.
 		expect(detail).toContain("certified by");
 		expect(detail).toContain("a0");

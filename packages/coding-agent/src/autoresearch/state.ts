@@ -60,9 +60,9 @@ export function createSessionRuntime(): AutoresearchRuntime {
  *
  * `state.breadth` is read from the stored session, which does not exist until
  * `init_experiment` creates it — a fresh autoswarm spends the whole first turn
- * with a state that reports breadth 1 while `pendingSwarm` holds what the user
- * actually asked for. Anything deciding swarm-vs-serial before that first tool
- * call has to ask both.
+ * with a state that reports breadth 1 while `pendingSwarm` holds the configured
+ * values. Anything that selects swarm or serial before that first tool call has
+ * to read both.
  */
 export function effectiveBreadth(runtime: AutoresearchRuntime): number {
 	return Math.max(runtime.state.breadth, runtime.pendingSwarm?.breadth ?? 1);

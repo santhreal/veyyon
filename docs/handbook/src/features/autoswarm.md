@@ -27,13 +27,13 @@ type to edit   ↑↓ field   enter start   esc cancel
 
 Up and down move between fields, left and right change the focused value, space
 toggles certification, Enter starts the run and Escape leaves without starting
-one. The legend states only the keys that act on the focused field, so the
-arrow range appears on Breadth and Attempts and `type to edit` on Goal.
+one. The legend lists only the keys that act on the focused field: the arrow
+range on Breadth and Attempts, `type to edit` on Goal.
 
-The first line under the fields is what the configuration will spend: breadth
-multiplied by attempts, as a ceiling, because an arm that succeeds on its first
-try spends one attempt. The second states the review topology the breadth
-bought. Both change as the knobs change.
+The first line under the fields is the harness runs one iteration costs, breadth
+multiplied by attempts. It is a ceiling: an arm that succeeds on its first
+attempt uses one. The second line is the review topology for that breadth. Both
+lines change with the fields above them.
 
 Enter does nothing while the goal is empty, and the legend reads `enter needs a
 goal` until one is typed. Text typed after the command prefills the goal, so

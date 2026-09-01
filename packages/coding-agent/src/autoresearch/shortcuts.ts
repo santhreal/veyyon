@@ -5,7 +5,7 @@
  * fixed chord, not an entry in the remappable `KEYBINDINGS` table, so writing it
  * out is correct here in a way it is not for an `app.*` action. What was not
  * correct was writing it out TWICE: the registration in `index.ts` and the hint
- * that tells you to press it were separate literals, so changing the chord in
+ * that states it were separate literals, so changing the chord in
  * one place left the other advertising the old one.
  *
  * There is one chord because there is one surface. It used to be two — a

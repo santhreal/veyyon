@@ -135,7 +135,7 @@ describe("the autoswarm console configures a run before it starts", () => {
 		expect(model.canStart()).toBe(false);
 		expect(handleSetupKey(model, ENTER)).toBeNull();
 		// The report is on the legend, beside `enter`, rather than a warning line
-		// somewhere above it: a legend that promises `enter start` while enter does
+		// somewhere above it: a legend that prints `enter start` while enter does
 		// nothing is the console contradicting itself.
 		const refusing = renderSetupConsole(model, 80, theme).join("\n");
 		expect(refusing).toContain("enter needs a goal");
@@ -258,7 +258,7 @@ describe("the autoswarm console configures a run before it starts", () => {
 	});
 
 	it("states the harness runs the configuration commits to, at every reachable setting", () => {
-		// Breadth and attempts multiply, and neither row says so: breadth 4 with
+		// Breadth and attempts multiply, and neither row states it: breadth 4 with
 		// 3 attempts is twelve builds and twelve measurements per iteration. A
 		// user setting the second knob cannot see the cost of the first, which is
 		// how a loop meant to run over lunch gets configured to run overnight.
@@ -280,7 +280,7 @@ describe("the autoswarm console configures a run before it starts", () => {
 		// The refusal used to be a line of its own that appeared the moment the
 		// goal was cleared, so the legend moved under the reader's eye on the
 		// keystroke that cleared it and moved back on the one that fixed it.
-		// What the legend then says is the previous test's; this one is the shape.
+		// What the legend then prints is the previous test's; this one is the shape.
 		const model = fresh({ goal: "x" });
 		const withGoal = renderSetupConsole(model, 80, theme);
 		handleSetupKey(model, BACKSPACE);

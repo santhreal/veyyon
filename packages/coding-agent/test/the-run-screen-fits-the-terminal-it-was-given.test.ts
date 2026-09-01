@@ -7,7 +7,7 @@
  * screen's: given a width and a height, it returns EXACTLY that many rows, each
  * no wider than the width, whatever the session holds. A surface that returns
  * one row too many is clipped by the host, and the row it loses is the footer
- * that says how to leave.
+ * that states how to leave.
  *
  * The class this closes is unbounded content reaching a bounded viewport: a long
  * goal, a long playbook, a long file list, a long flag reason, a hundred runs.
@@ -155,7 +155,7 @@ describe("the run screen fits the terminal it was given", () => {
 		const swarm = runtimeWith(1);
 		swarm.state.breadth = 4;
 		expect(screenTitle(swarm)).toContain("Autoswarm");
-		// A loop whose mode was turned off still reads its runs, and says so.
+		// A loop whose mode was turned off still reads its runs, and states it.
 		const off = runtimeWith(1);
 		off.autoresearchMode = false;
 		expect(screenTitle(off)).toContain("mode off");
@@ -164,8 +164,8 @@ describe("the run screen fits the terminal it was given", () => {
 	it("reads a swarm the console configured before any session exists", () => {
 		// Between the setup console and the first `init_experiment` there is no
 		// stored session, so `state.breadth` is 1 for a whole turn. The surface
-		// titled itself "Autoresearch" and its session pane said "serial, no arms"
-		// about a swarm of four that the user had already configured.
+		// titled itself "Autoresearch" and its session pane printed "serial, no arms"
+		// about a swarm of four the setup console had already configured.
 		const runtime = runtimeWith(0);
 		runtime.pendingSwarm = { breadth: 4, attempts: 2, certify: true };
 		expect(screenTitle(runtime)).toContain("Autoswarm");
@@ -293,7 +293,7 @@ describe("the run screen fits the terminal it was given", () => {
 		// a 31-column terminal two columns of detail pane: every line of the run
 		// under the cursor arrived as a bare ellipsis, and the card spent a third
 		// of the terminal drawing a border around them. Below the width a pane can
-		// say anything in, the two go one above the other at full width instead.
+		// print anything in, the two go one above the other at full width instead.
 		//
 		// Swept from the narrowest terminal up through the changeover, with the
 		// changeover read from the code rather than written down here, so moving it
@@ -332,7 +332,7 @@ describe("the run screen fits the terminal it was given", () => {
 		// tail went first: below 29 columns `esc close` was the part cut, and the
 		// screen printed navigation keys with no exit. The exit is now the last
 		// hint shed, not the first, so a reader on any terminal that can hold the
-		// two words is told how to leave.
+		// two words states how to leave.
 		//
 		// Swept from the narrowest width that fits `esc close` inside the insets
 		// up past the full hint, so a future hint added to the ladder is covered
@@ -361,7 +361,7 @@ describe("the run screen fits the terminal it was given", () => {
 		// Compared as text, not as bytes: the selected row's prefix carries a lava
 		// shimmer, which is a function of the clock, so two frames of the same
 		// state differ by a colour channel when they land in different animation
-		// frames. What paging owes the reader is the same CONTENT it started on.
+		// frames. Paging has to land on the same CONTENT it started on.
 		const runtime = runtimeWith(1);
 		runtime.state.notes = Array.from({ length: 120 }, (_unused, index) => `note line ${index}`).join("\n");
 		const screen = new AutoresearchScreenComponent({

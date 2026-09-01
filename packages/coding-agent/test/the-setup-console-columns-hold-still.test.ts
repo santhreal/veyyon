@@ -1,7 +1,6 @@
 /**
  * WHY: the autoswarm setup console sized its value column from the values it was
- * currently showing, so the hint column moved sideways as the user adjusted a
- * knob.
+ * currently showing, so the hint column moved sideways as a knob was adjusted.
  *
  * `Attempts` crossing 9 and `Certification` toggling to `off` each widen the
  * widest current value by a column, and every hint on screen shifted with it on

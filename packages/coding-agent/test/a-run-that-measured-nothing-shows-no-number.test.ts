@@ -127,7 +127,7 @@ describe("a run that measured nothing shows no number", () => {
 	it("keeps the number out of the sidebar row of a crashed run", () => {
 		const rows = runScreenRows(runtimeWith("crash", 0));
 		const crashed = rows.find(row => row.value === "run:2");
-		// No number and no percentage, and still a verdict: the row says the run
+		// No number and no percentage, and still a verdict: the row states the run
 		// crashed rather than going blank next to the one that measured.
 		expect(crashed?.label).toBe("#2  no metric  crash");
 		// The measured run beside it still reports its number, so this is not a
@@ -144,7 +144,7 @@ describe("a run that measured nothing shows no number", () => {
 
 	it("still reports a measured failure, which is a different thing", () => {
 		// `checks_failed` measured the tree and then failed its tests: the number is
-		// real and the reader needs it to know whether the idea was worth repairing.
+		// real, and it is what decides whether the idea was worth repairing.
 		const detail = renderRunDetail(runtimeWith("checks_failed", 244.51, 244.51), "run:2", 76).join("\n");
 		expect(detail).toContain("244.51ms");
 		expect(detail).toContain("%");
@@ -155,13 +155,13 @@ describe("a run that measured nothing shows no number", () => {
 	it("reports a crash that measured before it died", () => {
 		// The harness printed 244.51ms and the process died on teardown. The logged
 		// metric is still the required placeholder, so a screen that reads `metric`
-		// says 0ms and a screen that suppresses every crash says nothing; both hide
+		// prints 0ms and a screen that suppresses every crash prints nothing; both hide
 		// the one number the run produced.
 		const runtime = runtimeWith("crash", 0, 244.51);
 		expect(runScreenRows(runtime).find(row => row.value === "run:2")?.label).toBe("#2  244.51ms  +18.7%  crash");
 		const detail = renderRunDetail(runtime, "run:2", 76).join("\n");
 		expect(detail).toContain("244.51ms");
-		// It is still a crash: the outcome says so, and the comparison it prints is
+		// It is still a crash: the outcome states it, and the comparison it prints is
 		// against the measurement, not against the placeholder.
 		expect(detail).toContain("crash");
 		expect(detail).toContain("+18.7%");

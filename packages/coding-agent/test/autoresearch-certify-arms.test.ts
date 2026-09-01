@@ -463,9 +463,9 @@ describe("certify_arms", () => {
 	});
 
 	it("falls back to the sibling floor only while the segment has no baseline", async () => {
-		// Without a logged baseline there is nothing to beat, and refusing to pick
-		// would stall the first iteration. The message says which bar was used, so
-		// a reader can tell the two situations apart.
+		// Without a logged baseline there is nothing to beat, and electing no winner
+		// would stall the first iteration. The message states which bar was used, so
+		// the two situations are distinguishable.
 		const dir = freshRepo();
 		const runtime = createSessionRuntime();
 		await openSession(dir, runtime);

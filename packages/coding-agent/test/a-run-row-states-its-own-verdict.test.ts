@@ -5,7 +5,7 @@
  * sidebar is capped well under that. The outcome, the arm and the change against
  * the baseline were computed, carried through storage, handed to the component
  * and then rendered nowhere. An operator four iterations into a swarm could not
- * tell which row won, which row was the reference, or which arm produced either.
+ * identify which row won, which row was the reference, or which arm produced either.
  *
  * The contract: a row states its own verdict. Which run it was and which arm ran
  * it, what it measured, how that compares to the baseline of ITS OWN segment,
@@ -105,7 +105,7 @@ describe("a run row states its own verdict", () => {
 
 	it("has a tag for every status the store can hand back", () => {
 		// The decision table and the union are the same set, so adding a status
-		// without deciding what its row says fails here and not in a screenshot.
+		// without a decision on what its row states fails here and not in a screenshot.
 		expect(Object.keys(TAG_FOR).sort()).toEqual([...EXPERIMENT_STATUSES].sort());
 	});
 
@@ -205,7 +205,7 @@ describe("a run row states its own verdict", () => {
 	});
 
 	it("carries the arm beside the run number", () => {
-		// In a breadth of four, `#12` alone does not say which candidate produced
+		// In a breadth of four, `#12` alone does not identify the candidate that produced
 		// the reading, and the arm is the whole record of that.
 		const runtime = runtimeWith([
 			result({ runNumber: 1, metric: 100, measuredPrimary: 100, arm: "a" }),
@@ -244,13 +244,13 @@ describe("a run row states its own verdict", () => {
 			if (!hasDelta) sawDeltaShed = true;
 			previousHadDelta = hasDelta;
 		}
-		// The ladder is only a ladder if the narrow end actually sheds.
+		// The ladder is only a ladder if the narrow end sheds.
 		expect(sawDeltaShed).toBe(true);
 	});
 
 	it("still states the verdict in a segment with no percentage to print", () => {
 		// The baseline and a run that measured nothing: there is no change to show
-		// on either row, and that is no reason to stop saying which of the two is
+		// on either row, and that is no reason to stop stating which of the two is
 		// which. Conditioning the tag on the change existing suppressed both.
 		const runtime = runtimeWith([
 			result({ runNumber: 1, metric: 100, measuredPrimary: 100 }),

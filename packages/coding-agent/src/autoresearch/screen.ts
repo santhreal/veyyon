@@ -8,7 +8,7 @@
  * run are rows in one list, so reading a loop is scrolling, not remembering
  * which chord shows which slice.
  *
- * Row geometry lives in `renderRunScreen`, which takes its width and height as
+ * Row geometry is in `renderRunScreen`, which takes its width and height as
  * arguments so a test can pin a frame without a terminal.
  */
 import { type Component, type SelectItem, SelectList, sanitizeSingleLine, truncateToWidth } from "@veyyon/tui";
@@ -113,14 +113,14 @@ export function runOutcome(result: ExperimentResult): string {
 }
 
 /**
- * What a run's metric column says.
+ * What a run's metric column contains.
  *
  * A crash that produced no measurement still has to log a number, because
  * `log_experiment` requires one, so the loop records the only number it has:
  * zero. Formatted like any other value that read `#6  0ms` in a session where
  * lower is better — the fastest row on the screen was the run that segfaulted.
- * Best and baseline math already skips a crash, so this is the display saying
- * what the number is worth.
+ * Best and baseline math already skips a crash, so this is where the display
+ * states what the number is worth.
  *
  * A harness that printed its metric and then died did measure, and that number
  * is the one the run is worth reading for: it comes from the harness's own
@@ -191,7 +191,7 @@ interface RunRow {
  * text: which run it was, its metric, its change against the baseline of its
  * own segment, and what it is worth. A swarm run carries its arm next to its
  * number — `#12 c` — because in a breadth of four the number alone does not
- * say which candidate produced the reading.
+ * identify the candidate that produced the reading.
  *
  * The columns shed from the right as the sidebar narrows, in the order the rest
  * of this screen sheds: the same ladder the footer hint and the status row use.
@@ -200,8 +200,8 @@ interface RunRow {
  *
  * No row carries a `description`. `SelectList` prints one only above 40 columns
  * and this sidebar is capped at 40, so every description here was computed on
- * every frame, keyed the list's rebuild signature, and reached no reader. What
- * a row has to say, it says in its label.
+ * every frame, keyed the list's rebuild signature, and rendered nowhere. A row
+ * states everything it has to state in its label.
  */
 export function runScreenRows(runtime: AutoresearchRuntime, sidebarWidth: number = SIDEBAR_MAX): SelectItem[] {
 	const state = runtime.state;
@@ -221,9 +221,9 @@ export function runScreenRows(runtime: AutoresearchRuntime, sidebarWidth: number
 			group: "overview",
 		});
 	} else if (runtime.lastRunSummary) {
-		// `pending` alone said nothing about the run it names. What the reader has
-		// to decide is whether the change is worth logging, and the harness has
-		// already answered half of that.
+		// `pending` alone stated nothing about the run. The decision at this point
+		// is whether the change is worth logging, and the harness result is half of
+		// it.
 		rows.push({
 			value: "pending",
 			label: `#${runtime.lastRunSummary.runNumber}  ${runtime.lastRunSummary.passed ? "passed" : "failed"}, unlogged`,
@@ -268,11 +268,11 @@ export function runScreenRows(runtime: AutoresearchRuntime, sidebarWidth: number
 	const metricWidth = widestOf(runRows, row => row.metric);
 	const deltaWidth = widestOf(runRows, row => row.delta);
 	const tagWidth = widestOf(runRows, row => row.tag);
-	// The verdict outranks the change on the way down. A reader can compare two
-	// numbers in an aligned metric column and recover the change themselves; no
-	// amount of staring at that column says which run the loop kept, which one
-	// it is measuring everything against, or which one segfaulted. So the tag is
-	// charged first and the change takes whatever is left.
+	// The verdict outranks the change on the way down. The change is recoverable
+	// by comparing two numbers in an aligned metric column; the column does not
+	// identify which run the loop kept, which one it measures everything against,
+	// or which one segfaulted. So the tag is charged first and the change takes
+	// whatever is left.
 	const withTag = numberWidth + metricWidth + tagWidth + 4;
 	const showTag = tagWidth > 0 && withTag <= budget;
 	const used = numberWidth + metricWidth + 2 + (showTag ? tagWidth + 2 : 0);
@@ -351,7 +351,7 @@ function sessionDetail(runtime: AutoresearchRuntime, width: number): string[] {
 		lines.push(...field("Best", theme.fg("dim", "no baseline measured yet"), width));
 	}
 	// Whether the loop is still finding anything. "Best" is a point, and a point
-	// cannot answer the question a reader actually has in front of a loop that
+	// cannot answer the question a reader has in front of a loop that
 	// has been running for an hour: leave it, or stop it. Best at run 3 with
 	// eleven logged is eight runs of nothing, which is the answer.
 	const bestRun = best?.runNumber ?? null;
@@ -378,7 +378,7 @@ function sessionDetail(runtime: AutoresearchRuntime, width: number): string[] {
 	if (state.name) lines.push(...field("Session", state.name, width));
 	lines.push("");
 	// Only the outcomes that happened. A run of five counts, four of them zero,
-	// is a row the reader has to parse before learning it says nothing.
+	// is a row that has to be parsed before it turns out to report nothing.
 	lines.push(...field("Segment", segmentTally(state, current), width));
 	if (state.results.length > current.length) {
 		lines.push(...field("Archived", `${state.results.length - current.length} runs from earlier segments`, width));
@@ -415,8 +415,8 @@ function sessionDetail(runtime: AutoresearchRuntime, width: number): string[] {
 /**
  * `2  ·  4 runs, 2 kept, 1 crashed, 1 failed its checks`.
  *
- * An outcome nobody recorded is left out. Printing every status the union has,
- * most of them zero, made the row longest exactly when it had least to say.
+ * An unrecorded outcome is left out. Printing every status the union has, most
+ * of them zero, made the row longest when it had least to report.
  */
 function segmentTally(state: ExperimentState, current: readonly ExperimentResult[]): string {
 	const parts = [`${current.length} ${current.length === 1 ? "run" : "runs"}`];
@@ -467,7 +467,7 @@ function pendingDetail(runtime: AutoresearchRuntime, width: number): string[] {
 		return [
 			...field("Run", `#${running.runNumber}  running ${formatElapsed(Date.now() - running.startedAt)}`, width),
 			...field("Command", running.command, width),
-			// The run directory sits under the profile, so the untouched string states the operator's home
+			// The run directory is under the profile, so the untouched string states the home
 			// directory and account name on a screen a demo or a screenshot carries out of the session.
 			...field("Artifacts", shortenPath(running.runDirectory), width),
 		];
@@ -492,11 +492,11 @@ function pendingDetail(runtime: AutoresearchRuntime, width: number): string[] {
 }
 
 /**
- * One run, read by someone deciding whether it is the change to keep.
+ * One run, read when deciding whether it is the change to keep.
  *
  * The order is that decision: what the loop concluded, what it measured against
  * the run every other run in the segment is measured against, who stands behind
- * it, and only then what it actually changed. A field with nothing to report is
+ * it, and only then what it changed. A field with nothing to report is
  * absent rather than present and empty -- `Reviewed by (nobody)` on a run that
  * crashed before anyone could review it is a row that costs a line and answers
  * nothing.
@@ -515,9 +515,9 @@ function runDetail(result: ExperimentResult, state: ExperimentState, width: numb
 	const shown = result.status === "crash" ? result.measuredPrimary : result.metric;
 	const change = shown === null ? undefined : formatPercentChange(shown, baseline);
 	const lines: string[] = [];
-	// The verdict and the reviewer on one row: "kept, and c is who says so" is one
-	// fact, and splitting it left the reviewer four rows below the word it
-	// qualifies with a metric block in between.
+	// The verdict and the reviewer on one row: kept, certified by c, is one fact,
+	// and splitting it left the reviewer four rows below the word it qualifies,
+	// with a metric block in between.
 	const certified = result.certifiedBy ? theme.fg("dim", `  ·  certified by ${result.certifiedBy}`) : "";
 	lines.push(
 		...field(
@@ -605,7 +605,7 @@ export function footerHint(width: number): string {
 }
 
 /**
- * Columns a detail pane needs before it can say anything. A pane narrower than
+ * Columns a detail pane needs before it can print anything. A pane narrower than
  * this holds a label column and nothing else, and at 31 columns the split gave
  * it two: every line of the run under the cursor arrived as an ellipsis, and the
  * card spent a third of a narrow terminal drawing a border around them.
@@ -670,7 +670,7 @@ export function renderRunScreen(
 /**
  * Sidebar column width for a card of `width` columns.
  *
- * A third rather than 0.28, because the difference decides whether the ledger
+ * A third rather than 0.28, because the difference controls whether the ledger
  * has a verdict column: at 0.28 a 120-column terminal gave the sidebar 33 and
  * the tag was shed at every width a reader is likely to have, which is a column
  * that does not exist. A third reaches the cap at 120 and the detail pane still

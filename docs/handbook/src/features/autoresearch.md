@@ -87,12 +87,12 @@ its own segment, and whether it is the baseline, the leader, kept, dropped,
 crashed, failed or flagged.
 
 The pane beside it shows the highlighted entry in full. The session opens with
-the best measurement of the segment against the one it started from, and states
-how many runs have been logged since that best one, which is how a loop that has
-stopped finding anything says so. A run shows its metric and percentage change
-against the segment baseline, secondary metrics, confidence, the arm that
-produced it and the arm that certified it, the flag reason, scope deviations,
-the change description, the commit and the files it touched.
+the best measurement of the segment, its change against the measurement the
+segment started from, and the count of runs logged since that best one. A run
+shows its metric and percentage change against the segment baseline, secondary
+metrics, confidence, the arm that produced it and the arm that certified it, the
+flag reason, scope deviations, the change description, the commit and the files
+it touched.
 
 `log_experiment` requires a metric on every status, so a run that crashed before
 it measured anything is recorded with a zero. The screen states `no metric` for

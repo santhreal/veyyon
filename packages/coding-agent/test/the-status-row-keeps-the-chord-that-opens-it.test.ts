@@ -3,7 +3,7 @@
  * through `truncateToWidth`. The row was one joined string of up to nine
  * segments, so a terminal narrower than the string lost its TAIL — and the tail
  * is `ctrl+x runs`, the only statement of where everything the row left out can
- * be read. A narrow terminal was told a loop existed and not told how to open
+ * be read. A narrow terminal printed that a loop existed and never how to open
  * it, and the cut landed mid-word.
  *
  * The class is a one-line surface whose content grows with the session while its

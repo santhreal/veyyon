@@ -167,7 +167,7 @@ describe("autoswarm is its own command", () => {
 	it("completes the two subcommands on both, and breadth on neither", () => {
 		// `/autoswarm off` and `/autoswarm clear` still work, so they must still
 		// be offered — including before a letter is typed, which is the only point
-		// a reader who does not already know the names can find them. Breadth is
+		// the names are discoverable without knowing them in advance. Breadth is
 		// not a subcommand any more and must not be offered on either command.
 		const { commands } = buildHarness();
 		for (const name of ["autoswarm", "autoresearch"]) {
@@ -251,8 +251,8 @@ describe("autoswarm is its own command", () => {
 		const harness = buildHarness();
 		const drive: ConsoleDrive = { opened: false, overlay: false, frames: [] };
 		// Enter on an empty goal must not close the console. If it did, the run
-		// would start with nothing to optimize. The console says so on the legend,
-		// where `enter` is, rather than promising `enter start` and ignoring it.
+		// would start with nothing to optimize. The console states it on the legend,
+		// where `enter` is, rather than printing `enter start` and ignoring the key.
 		const keys = ["\r", "g", "o", "\r"];
 		await harness.commands.get("autoswarm")?.handler("", makeCtx(cwdDir.path(), harness.notices, keys, drive));
 		const first = drive.frames[0]?.join("\n") ?? "";

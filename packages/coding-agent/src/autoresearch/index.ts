@@ -172,7 +172,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		const runtime = getRuntime(ctx);
 
 		// A bare command on a live loop is a request to LOOK at it, never to end
-		// it. Ending one is `off`, which is a word the user typed on purpose:
+		// it. Ending one is `off`, a word typed on purpose:
 		// reaching for `/autoswarm` to check on a run and having the mode fall out
 		// from under you is the same keystroke meaning two opposite things.
 		if (trimmed === "off") {
@@ -329,8 +329,8 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		handler(ctx): Promise<void> {
 			// Reachable before the first run, on purpose: the screen is where the
 			// goal, the scope and the harness are read, and those exist before any
-			// measurement does. It used to refuse with "no results yet", which is
-			// exactly when a reader most wants to check what was configured.
+			// measurement does. It used to reject the command with "no results yet",
+			// which is when the configured values are most worth checking.
 			return dashboard.showScreen(ctx, getRuntime(ctx));
 		},
 	});
@@ -521,8 +521,8 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		if (shouldResetTree && session?.baselineCommit) {
 			// `git reset --hard` plus `git clean` is the one autoresearch action with
 			// nothing behind it: uncommitted work in the worktree is gone, and the
-			// command that reaches it is four letters typed after a slash. Ask, name
-			// the commit and the file count, and treat a refusal as "clear nothing":
+			// command that reaches it is four letters typed after a slash. Prompt, state
+			// the commit and the file count, and treat a decline as "clear nothing":
 			// `clear --keep-tree` closes the session without touching files.
 			const dirty = await dirtyPathCount(ctx.cwd);
 			if (dirty === null) {
@@ -607,7 +607,7 @@ function removeLegacyArtifacts(workDir: string): void {
  * `git reset --hard` plus `git clean`, and it earns that by naming what is at
  * stake; a git failure reported as zero turned "discarding uncommitted changes
  * in 3 files" into a prompt that mentioned nothing, and the answer to it erased
- * work the user was never told about.
+ * work the prompt never mentioned.
  */
 async function dirtyPathCount(cwd: string): Promise<number | null> {
 	try {

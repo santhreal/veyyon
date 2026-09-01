@@ -69,7 +69,7 @@ export class SwarmSetupModel {
 	/**
 	 * The work this configuration commits to, in harness runs.
 	 *
-	 * Breadth and attempts multiply, and neither row says so: breadth 4 with 3
+	 * Breadth and attempts multiply, and neither row states it: breadth 4 with 3
 	 * attempts is up to twelve builds and twelve measurements per iteration,
 	 * which is the difference between a loop that finishes over lunch and one
 	 * that does not. Stated as a ceiling, because an arm that succeeds on its
@@ -130,10 +130,10 @@ export function setupRows(model: SwarmSetupModel): Row[] {
  * The keys that do something to the field the cursor is on, and the range the
  * adjust keys move within.
  *
- * One legend listing every key the console understands told a reader on the
- * goal row that space toggles and the arrows adjust, which is true of neither
- * that field nor that moment, and it never said what breadth's ceiling was --
- * the arrows simply stopped moving and nothing on screen said why.
+ * One legend listing every key the console accepts stated, on the goal row,
+ * that space toggles and the arrows adjust, which is true of neither that field
+ * nor that moment, and it never stated breadth's ceiling -- the arrows stopped
+ * moving and nothing on screen stated why.
  */
 function keyLegend(field: FieldId, canStart: boolean): string {
 	const local =
@@ -144,11 +144,11 @@ function keyLegend(field: FieldId, canStart: boolean): string {
 				: field === "attempts"
 					? `←→ ${MIN_ATTEMPTS} to ${MAX_ATTEMPTS}`
 					: "space toggle";
-	// The refusal rides on the key it refuses. It was a warning line of its own,
-	// which appeared the moment the goal was cleared and disappeared on the next
-	// character, moving the legend under the reader's eye while they typed --
-	// and the legend it moved still promised `enter start`, which enter did not
-	// do. One line, and it never lies about what enter does.
+	// The refusal is printed on the key it applies to. It was a warning line of
+	// its own, which appeared the moment the goal was cleared and disappeared on
+	// the next character, moving the legend during typing -- and the legend it
+	// moved still printed `enter start`, which enter did not do. One line, and it
+	// states what enter does at both values.
 	const enter = canStart ? "enter start" : "enter needs a goal";
 	return `${local}   ↑↓ field   ${enter}   esc cancel`;
 }
@@ -184,7 +184,7 @@ const LABEL_WIDTH = 14;
  * Sentences and key legends wrap; only the field rows, whose value is windowed
  * to the caret, are cut. A truncated sentence loses its last clause, and the
  * clause at the end of each of these is the one that matters: where the metric
- * comes from, what the chosen breadth actually buys, and which key leaves.
+ * comes from, what the chosen breadth provides, and which key leaves.
  */
 function prose(text: string, width: number, paint: (line: string) => string): string[] {
 	return Bun.wrapAnsi(text, Math.max(20, width), { trim: false }).split("\n").map(paint);
@@ -211,9 +211,9 @@ export function renderSetupConsole(model: SwarmSetupModel, width: number, theme:
 		lines.push(truncateToWidth(`${marker} ${label}${value}${caret}${hint}`, width));
 	}
 	lines.push("");
-	// Cost first, topology second: what the loop will spend, then how it decides.
-	// Both lines are unconditional, so nothing below them moves while the reader
-	// is on a knob.
+	// Cost first, topology second: what the loop will run, then how it selects.
+	// Both lines are unconditional, so nothing below them moves while a field is
+	// being adjusted.
 	lines.push(...prose(model.costSummary(), width, line => theme.fg("muted", line)));
 	lines.push(...prose(model.certifierSummary(), width, dim));
 	lines.push("");
