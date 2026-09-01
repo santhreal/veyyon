@@ -459,6 +459,7 @@ import {
 } from "./context-usage";
 import { initSessionCpuLimit, rekeySessionCpuLimit, sessionCpuLimit } from "./cpu-limit";
 import { abortDetached } from "./detached-abort";
+import { dedupeEphemeralReply } from "./ephemeral-reply";
 import {
 	collectPendingToolCalls,
 	createInterruptedTurnAbortMessage,
@@ -531,6 +532,11 @@ import {
 	resolveRetryPolicy,
 	unreplayableContinueDelayMs,
 } from "./retry-policy";
+import {
+	checkpointStartedAtFromEntry,
+	completedRewindFromEntry,
+	isSuccessfulCheckpointEntry,
+} from "./rewind-checkpoint";
 import type { BuildSessionContextOptions, SessionContext } from "./session-context";
 import { getLatestCompactionEntry, getRestorableSessionModels } from "./session-context";
 import { formatSessionDumpText } from "./session-dump-format";
@@ -673,61 +679,6 @@ const GEMINI_TOOL_REMINDER_TYPE = "gemini-tool-call-reminder";
  *  thinking/response loop. Steers the model off the repeated content; never displayed. */
 const THINKING_LOOP_REDIRECT_TYPE = "thinking-loop-redirect";
 const TOOL_CALL_LOOP_REDIRECT_TYPE = "tool-call-loop-redirect";
-
-function customMessageContentText(content: string | (TextContent | ImageContent)[]): string {
-	if (typeof content === "string") return content;
-	const parts: string[] = [];
-	for (const part of content) {
-		if (part.type === "text") parts.push(part.text);
-	}
-	return parts.join("\n");
-}
-
-function stringProperty(value: object, key: string): string | undefined {
-	const field = Object.getOwnPropertyDescriptor(value, key)?.value;
-	return typeof field === "string" ? field : undefined;
-}
-
-function reportFromRewindReportContent(content: string): string {
-	const marker = "\nReport:\n";
-	const index = content.lastIndexOf(marker);
-	const report = index >= 0 ? content.slice(index + marker.length) : content;
-	return report.trim();
-}
-
-function completedRewindFromEntry(entry: SessionEntry): CompletedRewindState | undefined {
-	if (entry.type !== "custom_message" || entry.customType !== "rewind-report") return undefined;
-	const details = entry.details;
-	if (!details || typeof details !== "object") return undefined;
-	const startedAt = stringProperty(details, "startedAt");
-	const rewoundAt = stringProperty(details, "rewoundAt");
-	if (!startedAt || !rewoundAt) return undefined;
-	const report =
-		stringProperty(details, "report")?.trim() ||
-		reportFromRewindReportContent(customMessageContentText(entry.content));
-	return report.length > 0 ? { report, startedAt, rewoundAt } : undefined;
-}
-
-function isSuccessfulCheckpointEntry(entry: SessionEntry): entry is SessionMessageEntry & {
-	message: { role: "toolResult"; toolName: "checkpoint"; isError?: false };
-} {
-	return (
-		entry.type === "message" &&
-		entry.message.role === "toolResult" &&
-		entry.message.toolName === TOOL.checkpoint &&
-		entry.message.isError !== true
-	);
-}
-
-function checkpointStartedAtFromEntry(entry: SessionEntry): string | undefined {
-	if (!isSuccessfulCheckpointEntry(entry)) return undefined;
-	const details = entry.message.details;
-	if (details && typeof details === "object") {
-		const startedAt = stringProperty(details, "startedAt");
-		if (startedAt) return startedAt;
-	}
-	return entry.timestamp;
-}
 
 // A side-channel assistant response is signed for the hidden prompt/history that
 // produced it. If we persist that response under a different user turn, native
@@ -1550,66 +1501,6 @@ export interface FreshSessionResult {
 	closedProviderSessions: number;
 }
 
-const EPHEMERAL_REPLY_MAX_BYTES = 4096;
-
-/**
- * Collapse degenerate ephemeral replies (/btw, /omfg side-channel turns).
- * Models occasionally loop on a single line (~16 reports of N-times-repeated
- * replies); compress runs longer than 3 down to one instance + `[…N×]`, then
- * cap at 4 KiB so a runaway reply can't flood the channel.
- */
-function dedupeEphemeralReply(text: string): string {
-	if (!text) return text;
-	const lines = text.split("\n");
-	const out: string[] = [];
-	let i = 0;
-	while (i < lines.length) {
-		let j = i + 1;
-		while (j < lines.length && lines[j] === lines[i]) j++;
-		const runLen = j - i;
-		if (runLen > 3) {
-			out.push(lines[i], `[…${runLen}×]`);
-		} else {
-			for (let k = 0; k < runLen; k++) out.push(lines[i]);
-		}
-		i = j;
-	}
-	let result = out.join("\n");
-	if (Buffer.byteLength(result, "utf8") > EPHEMERAL_REPLY_MAX_BYTES) {
-		// Trim by characters until we're under the byte budget — handles multi-byte
-		// glyphs at the boundary without splitting them.
-		const suffix = "\n[…truncated]";
-		const budget = EPHEMERAL_REPLY_MAX_BYTES - Buffer.byteLength(suffix, "utf8");
-		while (Buffer.byteLength(result, "utf8") > budget) {
-			result = result.slice(0, -1);
-		}
-		result += suffix;
-	}
-	return result;
-}
-
-/**
- * Build the per-request `metadata` payload for the Anthropic provider, shaped
- * like real Claude Code's `getAPIMetadata` output (`{ session_id, account_uuid,
- * device_id }`) so the backend buckets requests under one session and attributes
- * them to the authenticated OAuth account when available. Resolved at request
- * time so token refreshes and login/logout transitions don't strand a stale
- * account UUID in memory. `account_uuid` and `device_id` are omitted for
- * non-Anthropic providers to avoid leaking the user's Claude identity to
- * third-party APIs (including Anthropic-format-compatible proxies such as
- * cloudflare-ai-gateway or gitlab-duo).
- *
- * `provider` is the target provider string (e.g. `"anthropic"`) and gates the
- * `account_uuid` and `device_id` lookups — only `"anthropic"` requests carry them.
- *
- * `sessionId` is forwarded to the auth-storage session-sticky lookup so that
- * multi-credential setups attribute to the same OAuth account used for the
- * actual API request rather than always picking the first credential.
- *
- * `authStorage` is treated as optional so test fixtures that stub `modelRegistry`
- * without a real storage layer still work; the resolver simply skips the lookup
- * and emits `{ session_id }` alone, matching the no-OAuth-credential path.
- */
 /**
  * Whether `next` is the same tool set as `current` in a different order.
  *
@@ -1636,6 +1527,28 @@ function isToolOrderPermutation(current: readonly string[], next: readonly strin
 	return currentSet.size === 0;
 }
 
+/**
+ * Build the per-request `metadata` payload for the Anthropic provider, shaped
+ * like real Claude Code's `getAPIMetadata` output (`{ session_id, account_uuid,
+ * device_id }`) so the backend buckets requests under one session and attributes
+ * them to the authenticated OAuth account when available. Resolved at request
+ * time so token refreshes and login/logout transitions don't strand a stale
+ * account UUID in memory. `account_uuid` and `device_id` are omitted for
+ * non-Anthropic providers to avoid leaking the user's Claude identity to
+ * third-party APIs (including Anthropic-format-compatible proxies such as
+ * cloudflare-ai-gateway or gitlab-duo).
+ *
+ * `provider` is the target provider string (e.g. `"anthropic"`) and gates the
+ * `account_uuid` and `device_id` lookups — only `"anthropic"` requests carry them.
+ *
+ * `sessionId` is forwarded to the auth-storage session-sticky lookup so that
+ * multi-credential setups attribute to the same OAuth account used for the
+ * actual API request rather than always picking the first credential.
+ *
+ * `authStorage` is treated as optional so test fixtures that stub `modelRegistry`
+ * without a real storage layer still work; the resolver simply skips the lookup
+ * and emits `{ session_id }` alone, matching the no-OAuth-credential path.
+ */
 function buildSessionMetadata(
 	sessionId: string,
 	provider: string,

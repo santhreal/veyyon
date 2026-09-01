@@ -66,6 +66,7 @@
 - Model and effort are chosen per agent. Each agent's page under `/settings` → Subagents → Roster sets the model and effort that agent runs, an agent naming neither runs the profile's default model role at medium effort, and no setting changes the model of more than one agent.
 - The roster states that an operator may write an agent, and names `docs/features/subagents-authoring` as the instructions.
 - The subagent authoring page states which frontmatter key spellings are read: `thinkingLevel` and `thinking-level` reach the same field, an underscore does not, and the bundled definitions use the dashed form.
+- The rewind and checkpoint entry readers and the side-channel reply bound live in `session/rewind-checkpoint.ts` and `session/ephemeral-reply.ts` instead of as file-private helpers in `agent-session.ts`; the doc comment describing the Anthropic request metadata payload is attached to the function it describes rather than to the tool-order check below it. No behavior change.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 - `AbortError`, the file lock and the postmortem handler no longer load `node:assert/strict`, `node:crypto` or `node:inspector` at import, which the launch path waited on for one assertion, one identifier and one signal handler.
@@ -81,6 +82,7 @@
 ### Fixed
 
 - The installer refuses to replace a binary whose only ownership record is a pre-identity v1 receipt, instead of moving it aside. That receipt vouches for the path alone, so a user who deleted the installed binary and put their own file at the name left exactly one behind, and it was being read as permission to displace their file.
+- A `/btw` or `/omfg` reply long enough to be truncated no longer ends in a replacement character when the cut lands inside an emoji: the trim counts UTF-8 bytes but removes UTF-16 code units, so it could stop on half a surrogate pair.
 - The composer hairline and the transcript rules no longer change shade about half a second after the launch card appears: the card mixes them out of the background this terminal reported on the previous launch instead of a static token, and `tui.paintGround` on `auto` decides the paint from that same recorded background rather than repainting the whole window when the terminal answers. The background is recorded per terminal in `cache/launch-facts.json`, whose shape version is now 4.
 - The launch card's context gauge no longer jumps when the session mounts in a project it has never measured: the reading filed under the model is now that reading with the measuring project's context files subtracted, so a card seeded in a heavy repository no longer states 77% left where the session settles at 88%. A project's own reading is unchanged and still wins where it exists.
 - The session mount no longer forces a full-viewport repaint over the launch card, so the screen no longer flashes and darkens at handover; the mount now writes only the rows whose content changed.
