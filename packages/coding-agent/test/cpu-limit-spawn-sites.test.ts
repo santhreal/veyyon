@@ -5,11 +5,11 @@
  * spawns joins the session's budget group. A NEW spawn site added without
  * the wiring is a silent hole: the kernel cap does not cover it, the watcher
  * does not see it, and nobody gets an error. The author of that site has no
- * reason to know the budget exists. So every spawn primitive under the roots
- * in `SWEEP_ROOTS` — the CLI package, the kernel, the hosts and the contracts —
- * is enumerated here, and each file carrying one is either wired (named with
- * its mechanism) or exempt (named with its reason). A new site fails this
- * test until the author chooses one.
+ * reason to know the budget exists. So every spawn primitive under the roots in
+ * `sweepRoots()` — the CLI package, the kernel, the hosts, the contracts and
+ * every plugin's source — is enumerated here, and each file carrying one is
+ * either wired (named with its mechanism) or exempt (named with its reason). A
+ * new site fails this test until the author chooses one.
  *
  * This is a structural invariant over the tree, the same class as
  * scripts/every-script-has-an-owner.test.ts: it does not assert what any
@@ -28,12 +28,36 @@ import * as path from "node:path";
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 
 /**
- * The roots this guard sweeps, repo-relative. The CLI package is where most
- * spawn sites are, the kernel holds the budget layer's own host seam, and the
- * hosts spawn for the operator's desktop; a site that moves between them is a
- * rename in the ledger rather than a hole.
+ * The fixed roots this guard sweeps, repo-relative. The CLI package is where
+ * most spawn sites are, the kernel holds the budget layer's own host seam, and
+ * the hosts spawn for the operator's desktop; a site that moves between them is
+ * a rename in the ledger rather than a hole.
+ *
+ * Every plugin's `src` joins them through `sweepRoots()`, read off the tree so a
+ * plugin added later arrives swept instead of unaccounted for. A plugin's bench
+ * and scripts stay out, the same way the CLI package is swept at `src`: they run
+ * from a developer's shell, never from a session.
  */
-const SWEEP_ROOTS = ["contracts", "hosts", "kernel/src", "packages/coding-agent/src"];
+const FIXED_SWEEP_ROOTS = ["contracts", "hosts", "kernel/src", "packages/coding-agent/src"];
+
+/** `FIXED_SWEEP_ROOTS` plus the `src` of every plugin present in the tree. */
+async function sweepRoots(): Promise<string[]> {
+	const plugins = await fs.readdir(path.join(REPO_ROOT, "plugins"), { withFileTypes: true });
+	const pluginSources: string[] = [];
+	for (const entry of plugins) {
+		if (!entry.isDirectory()) continue;
+		const source = path.join(REPO_ROOT, "plugins", entry.name, "src");
+		if (
+			await fs.stat(source).then(
+				stat => stat.isDirectory(),
+				() => false,
+			)
+		) {
+			pluginSources.push(`plugins/${entry.name}/src`);
+		}
+	}
+	return [...FIXED_SWEEP_ROOTS, ...pluginSources.sort()];
+}
 
 /**
  * Spawn primitives that start OS processes (or in-process workers, which must
@@ -182,10 +206,6 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 		wired: true,
 		reason: "the trafilatura and lynx reader-mode extractors are adopted",
 	},
-	"packages/coding-agent/src/web/scrapers/youtube.ts": {
-		wired: true,
-		reason: "yt-dlp metadata and subtitle runs are adopted",
-	},
 	"packages/coding-agent/src/utils/tools-manager.ts": {
 		wired: true,
 		reason: "the uv/pip on-demand tool installs are adopted",
@@ -261,9 +281,10 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 		reason: "one-shot shell env capture at startup",
 	},
 
-	// Outside the CLI package. The session spine and the hosts are swept under the
-	// same rule, so a spawn site that moves out of packages/coding-agent stays
-	// accounted for instead of disappearing from this ledger.
+	// Outside the CLI package. The session spine, the hosts and the plugins are
+	// swept under the same rule, so a spawn site that moves out of
+	// packages/coding-agent stays accounted for instead of disappearing from this
+	// ledger.
 	"kernel/src/session/cgroup-host.ts": {
 		wired: true,
 		reason:
@@ -272,6 +293,10 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 	"hosts/terminal/engine/src/desktop-notify.ts": {
 		wired: false,
 		reason: "notify-send/osascript hands a notification to the operator's desktop session, not the agent's",
+	},
+	"plugins/web/src/scrapers/youtube.ts": {
+		wired: true,
+		reason: "yt-dlp metadata and subtitle runs are adopted",
 	},
 };
 
@@ -297,10 +322,11 @@ async function findSpawnFiles(root: string): Promise<string[]> {
 	return hits.sort();
 }
 
-/** Every spawn file across SWEEP_ROOTS, keyed the way the ledger keys it: repo-relative. */
+/** Every spawn file across `sweepRoots()`, keyed the way the ledger keys it: repo-relative. */
 async function findEverySpawnFile(): Promise<string[]> {
+	const roots = await sweepRoots();
 	const perRoot = await Promise.all(
-		SWEEP_ROOTS.map(async root => (await findSpawnFiles(path.join(REPO_ROOT, root))).map(file => `${root}/${file}`)),
+		roots.map(async root => (await findSpawnFiles(path.join(REPO_ROOT, root))).map(file => `${root}/${file}`)),
 	);
 	return perRoot.flat().sort();
 }
