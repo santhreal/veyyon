@@ -6,12 +6,6 @@ Eighty site handlers (GitHub, crates.io, arXiv, YouTube, Reddit, PyPI and the re
 loader that escalates through three user agents when a site answers as though it is talking to a
 bot, and a client for Parallel's extract API.
 
-## Install
-
-```sh
-bun add @veyyon/web
-```
-
 ## Use
 
 `specialHandlers` is the ordered list the dispatcher walks. A handler returns a `RenderResult` for a
