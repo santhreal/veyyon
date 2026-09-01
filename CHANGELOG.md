@@ -57,12 +57,16 @@
 - The settings store holds no database handle. `AgentStorage.forAgentDir` is the one owner of the run's agent.db and opens it on first use, `config/legacy-agent-db-settings.ts` owns the first-run read of the pre-config.yml `settings` table, and the launch card no longer evaluates `bun:sqlite` or the SQLite credential store to read a setting. Measured warm on a pty, the card's first byte goes from 50.5ms to 42.4ms and a keystroke is echoed at 45.6ms instead of 53.6ms; a database that will not open now costs usage statistics with a logged reason rather than failing the launch.
 - The three hidden magic-keyword notices are in `session/magic-keyword-notices.ts` rather than under `modes/`, which was the one edge from the session into the UI directory with no drawing behind it. No behavior change.
 - The status row no longer carries the secrets segment. The `secrets` id is gone from every preset and from `statusLine.segments`, and a configuration naming it is rejected; `/secret list` states what a session has masked.
+- Model and effort are chosen per agent. Each agent's page under `/settings` → Subagents → Roster sets the model and effort that agent runs, an agent naming neither runs the profile's default model role at medium effort, and no setting changes the model of more than one agent.
+- The roster states that an operator may write an agent, and names `docs/features/subagents-authoring` as the instructions.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 - `AbortError`, the file lock and the postmortem handler no longer load `node:assert/strict`, `node:crypto` or `node:inspector` at import, which the launch path waited on for one assertion, one identifier and one signal handler.
 
 ### Removed
 
+- `subagent.sharedModel`, `subagent.model`, `subagent.thinkingLevel` and `subagent.modelByDepth` decided the model and effort for every subagent at once and are rejected; a config still holding one is reported once, naming the agent page that replaces it.
+- The `--subagent-model` launch flag, which set the model for every subagent in the session.
 - The `@veyyon/stats/format` entry point. `formatCostTiered` and `normalizePremiumRequests` are now exported by `@veyyon/utils/format`.
 
 ### Fixed
