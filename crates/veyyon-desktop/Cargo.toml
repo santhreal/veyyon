@@ -19,6 +19,16 @@ serde_json.workspace = true
 thiserror.workspace = true
 bytes.workspace = true
 strum.workspace = true
+veyyon-gpui.workspace = true
+gpui_platform = { workspace = true, features = ["x11"] }
+veyyon-desktop-tokens.workspace = true
+flume.workspace = true
+veyyon-desktop-surface.workspace = true
 
 [dev-dependencies]
 veyyon-test-scratch.workspace = true
+veyyon-desktop-scene.workspace = true
+
+[[bin]]
+name = "veyyon-desktop"
+path = "src/main.rs"

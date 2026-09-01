@@ -12,7 +12,6 @@ overlay_scrim_blur_px = 4
 
 [terminal_drawer]
 min_height_px = 180
-default_height_px = 280
 max_viewport_ratio = 0.75
 
 [tabs]

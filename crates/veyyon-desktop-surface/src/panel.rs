@@ -15,7 +15,11 @@ use veyyon_gpui::{
 
 use crate::{ShellView, intent::Intent, model::TreeRow};
 
-/// Builds the right panel.
+/// Builds the right panel at the width the active breakpoint allots it.
+///
+/// The width is the caller's and is applied verbatim. A floor enforced here
+/// instead would win against the width the breakpoint chose, which is how a
+/// narrow window ends up with a full-width panel and no session surface at all.
 pub fn right_panel(
 	tabs: &[String],
 	active: usize,
@@ -30,7 +34,6 @@ pub fn right_panel(
 		.flex_col()
 		.h_full()
 		.w(px(width))
-		.min_w(px(geometry.right_panel_min_width_px))
 		.flex_shrink_0()
 		.bg(tokens.color(ColorRole::Rail))
 		.border_l(px(geometry.chrome_resize_handle_line_px))

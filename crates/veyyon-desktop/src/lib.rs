@@ -1,9 +1,13 @@
+pub mod app;
 pub mod bridge;
 pub mod endpoint;
 pub mod framing;
 pub mod reconnect;
 pub mod transport;
 
+pub use app::{
+	AssetPaths, StartupBundle, discover_asset_paths, load_startup_bundle, start_token_supervision,
+};
 pub use bridge::{
 	ActionClassification, EGRESS_CAPACITY, EgressBridge, EgressError, INGRESS_CAPACITY,
 	MUTATION_TIMEOUT_MS, classify_action, create_egress_channel, create_ingress_channel,

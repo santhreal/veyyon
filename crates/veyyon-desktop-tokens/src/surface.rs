@@ -111,8 +111,11 @@ pub struct PanelsSurfaceTokens {
 	pub right_panel_container_margin_px: f32,
 	pub right_panel_overlay_breakpoint_px: f32,
 	pub right_panel_overlay_scrim_blur_px: f32,
+	/// The floor a drawer draws at, docked or overlaid. The height itself
+	/// belongs to the breakpoint row the window resolves.
 	pub terminal_drawer_min_height_px: f32,
-	pub terminal_drawer_default_height_px: f32,
+	/// The share of the window height a docked drawer may take before its
+	/// declared height is cut back to fit.
 	pub terminal_drawer_max_viewport_ratio: f32,
 	pub tabs_height_px: f32,
 	pub tabs_gap_px: f32,
@@ -158,12 +161,49 @@ pub struct SettingsSurfaceTokens {
 	pub description_size:        TypeSize,
 }
 
+/// How the right panel occupies the window at a given width (§5.7).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum RightPanelMode {
+	/// The panel is a column in the row, taking this width.
+	Inline { width_px: f32 },
+	/// The panel floats over the session surface and takes no width from it.
+	Overlay,
+}
+
+impl std::fmt::Display for RightPanelMode {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Inline { width_px } => write!(f, "inline_{width_px}"),
+			Self::Overlay => write!(f, "overlay"),
+		}
+	}
+}
+
+/// How the terminal drawer occupies the window at a given width (§5.7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DrawerPlacement {
+	/// A row under the session surface, taking height from the transcript.
+	Row,
+	/// A float over the session surface, taking no height from it.
+	Overlay,
+}
+
+impl std::fmt::Display for DrawerPlacement {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Row => write!(f, "row"),
+			Self::Overlay => write!(f, "overlay"),
+		}
+	}
+}
+
 /// Viewport layout state and thresholds for a single breakpoint.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BreakpointConfig {
 	pub min_width_px:              f32,
 	pub queue_width_px:            f32,
-	pub right_panel_mode:          String,
+	pub right_panel_mode:          RightPanelMode,
+	pub terminal_drawer_placement: DrawerPlacement,
 	pub terminal_drawer_height_px: f32,
 	pub composer_footer_labels:    bool,
 	pub run_bar_labels:            bool,
@@ -176,6 +216,29 @@ pub struct BreakpointsSurfaceTokens {
 	pub standard:  BreakpointConfig,
 	pub compact:   BreakpointConfig,
 	pub collapsed: BreakpointConfig,
+}
+
+impl BreakpointsSurfaceTokens {
+	/// The widest breakpoint whose `min_width_px` the viewport reaches. A
+	/// viewport narrower than every threshold resolves to the narrowest
+	/// breakpoint rather than to nothing.
+	pub fn resolve(&self, viewport_width_px: f32) -> &BreakpointConfig {
+		let mut configs = [&self.wide, &self.standard, &self.compact, &self.collapsed];
+		configs.sort_by(|a, b| b.min_width_px.total_cmp(&a.min_width_px));
+		let narrowest = match configs.last() {
+			Some(&bp) => bp,
+			None => &self.collapsed,
+		};
+		if !viewport_width_px.is_finite() || viewport_width_px < 0.0 {
+			return narrowest;
+		}
+		for &bp in &configs {
+			if bp.min_width_px <= viewport_width_px {
+				return bp;
+			}
+		}
+		narrowest
+	}
 }
 
 /// Window and titlebar geometry (§4.1).

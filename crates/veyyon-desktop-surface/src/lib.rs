@@ -15,6 +15,7 @@ pub mod composer;
 pub mod drawer;
 pub mod fixture;
 pub mod intent;
+pub mod layout;
 pub mod model;
 pub mod panel;
 pub mod queue;

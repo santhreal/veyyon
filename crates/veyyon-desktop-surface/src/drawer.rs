@@ -13,6 +13,7 @@ use veyyon_gpui::{IntoElement, ParentElement, Styled, div, px};
 /// Builds the terminal drawer.
 pub fn terminal_drawer(
 	lines: &[String],
+	height: f32,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 ) -> impl IntoElement {
@@ -40,10 +41,12 @@ pub fn terminal_drawer(
 		);
 	}
 
+	// The height is the one the shed resolved: it already carries the token
+	// floor and the window-share ceiling, so a second floor here would be a
+	// region overriding the measure it was handed.
 	div()
 		.w_full()
-		.h(px(geometry.terminal_drawer_default_height_px))
-		.min_h(px(geometry.terminal_drawer_min_height_px))
+		.h(px(height))
 		.flex_shrink_0()
 		.flex()
 		.flex_col()
