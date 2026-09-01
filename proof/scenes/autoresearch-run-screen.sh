@@ -21,6 +21,17 @@
 # segments, four arms, one flagged by its reviewer, a playbook, and a metric that
 # improved. Running the loop for real needs a harness and an hour of model time,
 # which is why the setup-console scene stops at the console.
+#
+# A still take: the screen holds between keystrokes, so the motion gate has to be
+# lowered or it rejects the take as a stutter. Each width takes its own OUT_DIR,
+# which is a bind mount and has to be absolute.
+#
+#   for px in 1600 640 396; do
+#     SCENE_WIDTH=$px SCENE_MOTION_FLOOR=1 OUT_DIR="${PWD}/proof/captures/x11/w${px}" \
+#       proof/docker/record-x11.sh proof/scenes/autoresearch-run-screen.sh
+#     SCENE_WIDTH=$px SCENE_MOTION_FLOOR=1 OUT_DIR="${PWD}/proof/captures/x11/before/w${px}" \
+#       proof/docker/record-x11-before.sh proof/scenes/autoresearch-run-screen.sh
+#   done
 
 settle 20
 

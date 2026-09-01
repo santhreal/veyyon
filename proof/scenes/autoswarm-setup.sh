@@ -14,6 +14,17 @@
 # The goal field is prefilled from the text typed after the command, so the
 # first frame already carries a goal and the empty-goal warning is reached by
 # deleting it rather than by opening a second session.
+#
+# The console holds still between keystrokes and the take measures under 1 fps of
+# real change, so both arms turn the motion gate off:
+#
+#   SCENE_MOTION_FLOOR=0 proof/docker/record-x11.sh proof/scenes/autoswarm-setup.sh
+#   SCENE_MOTION_FLOOR=0 proof/docker/record-x11-before.sh proof/scenes/autoswarm-setup.sh
+#
+# `certification-off` is the frame that carries the layout contract: `off` is the
+# widest value the toggle reaches, so a value column measured from the values a
+# field currently holds lands on the correct column in that one state and a column
+# short in every other.
 
 settle 20
 

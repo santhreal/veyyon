@@ -158,3 +158,31 @@ confirmation exists to state what the reset discards.
 State is stored per repository, under the profile directory. The database is
 keyed on the primary checkout, so worktrees of one repository share it.
 `VEYYON_AUTORESEARCH_DB_DIR` overrides the location.
+
+## Regenerating the run screen captures
+
+`proof/scenes/autoresearch-run-screen.sh` drives the swarm run screen and
+`proof/scenes/autoresearch-serial-screen.sh` the serial one. Both are stills
+takes, so both lower the motion floor; at the default the recorder rejects a
+take that holds still as a stuttering capture.
+
+The run screen changes layout twice as a terminal narrows -- the sidebar is
+bounded, then the panes stack -- so it is captured at three widths. `OUT_DIR` is
+a bind mount and must be absolute, and each width takes its own directory,
+because one directory cannot hold two takes whose frames share a mark name.
+
+```sh
+for px in 1600 640 396; do
+	SCENE_WIDTH=${px} SCENE_MOTION_FLOOR=1 OUT_DIR="${PWD}/proof/captures/x11/w${px}" \
+		proof/docker/record-x11.sh proof/scenes/autoresearch-run-screen.sh
+	SCENE_WIDTH=${px} SCENE_MOTION_FLOOR=1 OUT_DIR="${PWD}/proof/captures/x11/before/w${px}" \
+		proof/docker/record-x11-before.sh proof/scenes/autoresearch-run-screen.sh
+done
+
+SCENE_MOTION_FLOOR=1 proof/docker/record-x11.sh proof/scenes/autoresearch-serial-screen.sh
+SCENE_MOTION_FLOOR=1 proof/docker/record-x11-before.sh proof/scenes/autoresearch-serial-screen.sh
+```
+
+The before arm holds every source file the branch changed at `origin/main`,
+takes away every file it added and puts back every file it deleted, then
+restores all three from memory and verifies the restore by checksum.

@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-eecfdfdc.js";
+            window.path_to_searchindex_js = "searchindex-be1c480c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-0d6bf2a1.js"></script>
@@ -6576,6 +6576,28 @@ confirmation exists to state what the reset discards.</p>
 <p>State is stored per repository, under the profile directory. The database is
 keyed on the primary checkout, so worktrees of one repository share it.
 <code>VEYYON_AUTORESEARCH_DB_DIR</code> overrides the location.</p>
+<h2 id="regenerating-the-run-screen-captures"><a class="header" href="#regenerating-the-run-screen-captures">Regenerating the run screen captures</a></h2>
+<p><code>proof/scenes/autoresearch-run-screen.sh</code> drives the swarm run screen and
+<code>proof/scenes/autoresearch-serial-screen.sh</code> the serial one. Both are stills
+takes, so both lower the motion floor; at the default the recorder rejects a
+take that holds still as a stuttering capture.</p>
+<p>The run screen changes layout twice as a terminal narrows – the sidebar is
+bounded, then the panes stack – so it is captured at three widths. <code>OUT_DIR</code> is
+a bind mount and must be absolute, and each width takes its own directory,
+because one directory cannot hold two takes whose frames share a mark name.</p>
+<pre><code class="language-sh">for px in 1600 640 396; do
+	SCENE_WIDTH=${px} SCENE_MOTION_FLOOR=1 OUT_DIR="${PWD}/proof/captures/x11/w${px}" \
+		proof/docker/record-x11.sh proof/scenes/autoresearch-run-screen.sh
+	SCENE_WIDTH=${px} SCENE_MOTION_FLOOR=1 OUT_DIR="${PWD}/proof/captures/x11/before/w${px}" \
+		proof/docker/record-x11-before.sh proof/scenes/autoresearch-run-screen.sh
+done
+
+SCENE_MOTION_FLOOR=1 proof/docker/record-x11.sh proof/scenes/autoresearch-serial-screen.sh
+SCENE_MOTION_FLOOR=1 proof/docker/record-x11-before.sh proof/scenes/autoresearch-serial-screen.sh
+</code></pre>
+<p>The before arm holds every source file the branch changed at <code>origin/main</code>,
+takes away every file it added and puts back every file it deleted, then
+restores all three from memory and verifies the restore by checksum.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="autoswarm"><a class="header" href="#autoswarm">Autoswarm</a></h1>
 <p>Autoswarm is <a href="#autoresearch">autoresearch</a> with breadth. An iteration builds
@@ -6696,6 +6718,20 @@ it, both stated on the run screen’s entry for that run.</p>
 its iteration. An iteration where every arm regressed is a null round.</p>
 <p><code>certify_arms</code> attaches only while breadth is above 1. A serial session has one
 candidate and no ring, so there is nothing for it to triage.</p>
+<h2 id="regenerating-the-setup-console-captures"><a class="header" href="#regenerating-the-setup-console-captures">Regenerating the setup console captures</a></h2>
+<p><code>proof/scenes/autoswarm-setup.sh</code> opens the console, moves through the fields,
+toggles certification off and back on, empties the goal and leaves with Escape.
+It is a stills take that measures under 1 fps of real change, so both arms turn
+the motion gate off; at the default the recorder rejects the take as a stutter:</p>
+<pre><code class="language-sh">SCENE_MOTION_FLOOR=0 proof/docker/record-x11.sh proof/scenes/autoswarm-setup.sh
+SCENE_MOTION_FLOOR=0 proof/docker/record-x11-before.sh proof/scenes/autoswarm-setup.sh
+</code></pre>
+<p>The frame that carries the console’s layout contract is <code>certification-off</code>.
+<code>off</code> is three columns where every other value is one or two, so a value column
+measured from the values a field currently holds is a column narrower in every
+other state, and the hint beside it moves as the toggle crosses. The column is
+sized from the bounds each field can reach instead, so the hints stand still.
+A frame of any other state shows the column’s position but not that it holds.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="eval-tool-python-backend"><a class="header" href="#eval-tool-python-backend">Eval Tool Python Backend</a></h1>
 <p>The Python execution stack in <code>packages/coding-agent</code>: tool behavior, runner lifecycle,

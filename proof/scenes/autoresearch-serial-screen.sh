@@ -14,6 +14,11 @@
 # The seeded session (proof/docker/seed-autoresearch.ts, `serial`) is three logged
 # runs in one segment with no arm and no certifier, which is what a serial loop
 # writes.
+#
+# A still take, so both arms lower the motion gate:
+#
+#   SCENE_MOTION_FLOOR=1 proof/docker/record-x11.sh proof/scenes/autoresearch-serial-screen.sh
+#   SCENE_MOTION_FLOOR=1 proof/docker/record-x11-before.sh proof/scenes/autoresearch-serial-screen.sh
 
 settle 20
 

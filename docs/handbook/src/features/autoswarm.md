@@ -142,3 +142,22 @@ its iteration. An iteration where every arm regressed is a null round.
 
 `certify_arms` attaches only while breadth is above 1. A serial session has one
 candidate and no ring, so there is nothing for it to triage.
+
+## Regenerating the setup console captures
+
+`proof/scenes/autoswarm-setup.sh` opens the console, moves through the fields,
+toggles certification off and back on, empties the goal and leaves with Escape.
+It is a stills take that measures under 1 fps of real change, so both arms turn
+the motion gate off; at the default the recorder rejects the take as a stutter:
+
+```sh
+SCENE_MOTION_FLOOR=0 proof/docker/record-x11.sh proof/scenes/autoswarm-setup.sh
+SCENE_MOTION_FLOOR=0 proof/docker/record-x11-before.sh proof/scenes/autoswarm-setup.sh
+```
+
+The frame that carries the console's layout contract is `certification-off`.
+`off` is three columns where every other value is one or two, so a value column
+measured from the values a field currently holds is a column narrower in every
+other state, and the hint beside it moves as the toggle crosses. The column is
+sized from the bounds each field can reach instead, so the hints stand still.
+A frame of any other state shows the column's position but not that it holds.
