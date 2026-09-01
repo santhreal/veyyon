@@ -102,6 +102,17 @@ export function findBaselineMetric(results: ExperimentResult[], segment: number)
 	return baseline ? baseline.metric : null;
 }
 
+/**
+ * The best run of a segment: kept, unflagged, and holding a measurement.
+ *
+ * Four copies of this scan existed — here, in the status row, in the run screen
+ * and in the prompt builder — and they disagreed about a kept run logged with
+ * the placeholder zero the log call requires of a run that measured nothing.
+ * Where lower is better that zero is the best value there is, so the ledger
+ * tagged one run `best` while the pane beside it named another. Every surface
+ * that shows a best, tags one, or counts runs since one calls this, so they
+ * cannot disagree.
+ */
 export function findBestKeptResult(
 	results: ExperimentResult[],
 	segment: number,
@@ -109,7 +120,7 @@ export function findBestKeptResult(
 ): ExperimentResult | null {
 	let best: ExperimentResult | null = null;
 	for (const result of currentResults(results, segment)) {
-		if (result.status !== "keep" || result.flagged) continue;
+		if (result.status !== "keep" || result.flagged || result.metric <= 0) continue;
 		if (best === null || isBetter(result.metric, best.metric, direction)) {
 			best = result;
 		}

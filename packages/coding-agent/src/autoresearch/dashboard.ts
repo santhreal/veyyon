@@ -15,7 +15,7 @@ import { theme } from "../modes/theme/theme";
 import { formatElapsed, formatNum, formatPercentChange } from "./helpers";
 import { AutoresearchScreenComponent } from "./screen";
 import { AUTORESEARCH_SCREEN_KEY } from "./shortcuts";
-import { currentResults, effectiveBreadth, findBaselineMetric } from "./state";
+import { currentResults, effectiveBreadth, findBaselineMetric, findBestKeptResult } from "./state";
 import type { AutoresearchRuntime, DashboardController, ExperimentState } from "./types";
 
 export function createDashboardController(): DashboardController {
@@ -180,8 +180,8 @@ export function renderStatusRow(runtime: AutoresearchRuntime, width = process.st
 
 	if (runtime.runningExperiment) {
 		segments.push(
-			{ text: theme.fg("warning", `run #${runtime.runningExperiment.runNumber}`), drop: 7 },
-			{ text: theme.fg("dim", formatElapsed(Date.now() - runtime.runningExperiment.startedAt)), drop: 6 },
+			{ text: theme.fg("warning", `run #${runtime.runningExperiment.runNumber}`), drop: 8 },
+			{ text: theme.fg("dim", formatElapsed(Date.now() - runtime.runningExperiment.startedAt)), drop: 7 },
 		);
 	} else if (runtime.lastRunSummary) {
 		segments.push(
@@ -190,14 +190,14 @@ export function renderStatusRow(runtime: AutoresearchRuntime, width = process.st
 					"warning",
 					`run #${runtime.lastRunSummary.runNumber} ${runtime.lastRunSummary.passed ? "passed" : "failed"}`,
 				),
-				drop: 7,
+				drop: 8,
 			},
-			{ text: theme.fg("dim", "log pending"), drop: 6 },
+			{ text: theme.fg("dim", "log pending"), drop: 7 },
 		);
 	} else if (state.results.length === 0) {
 		segments.push({
 			text: theme.fg("warning", runtime.autoresearchMode ? "baseline pending" : "not started"),
-			drop: 7,
+			drop: 8,
 		});
 	}
 
@@ -219,21 +219,39 @@ export function renderStatusRow(runtime: AutoresearchRuntime, width = process.st
 		// It is also the last thing on the row to be given up, because it is the
 		// answer to the question the row exists for. A flag count and a run in
 		// flight are the day's exceptions; this is the result.
-		const best = bestMetric(state);
+		// `bestMeasuredRun` is the one rule every surface showing a best uses, so
+		// the number here, the tag in the ledger and the count below cannot name
+		// different runs.
+		const best = findBestKeptResult(state.results, state.currentSegment, state.bestDirection);
 		if (best !== null) {
-			const change = formatPercentChange(best, findBaselineMetric(state.results, state.currentSegment));
+			const change = formatPercentChange(best.metric, findBaselineMetric(state.results, state.currentSegment));
 			segments.push({
 				text:
-					theme.fg("toolTitle", `best ${formatNum(best, state.metricUnit)}`) +
+					theme.fg("toolTitle", `best ${formatNum(best.metric, state.metricUnit)}`) +
 					(change ? theme.fg("dim", ` ${change}`) : ""),
-				drop: 8,
+				drop: 9,
 			});
+			// How long since that best. `best 168.40ms -12.6%` is cumulative and
+			// reads as progress at a glance whether it was won last run or forty
+			// runs ago, which is what decides whether to leave the loop running. It
+			// sheds before the best it qualifies, so a narrow row keeps the result.
+			//
+			// A run number is optional, and an unnumbered run cannot be ordered
+			// against the best: it is not counted, and a best without a number
+			// makes the question unanswerable, so the segment is left off.
+			const bestNumber = best.runNumber;
+			if (bestNumber !== null) {
+				const since = current.filter(result => result.runNumber !== null && result.runNumber > bestNumber).length;
+				if (since > 0) segments.push({ text: theme.fg("dim", `${since} since best`), drop: 6 });
+			}
 		}
 		if (state.confidence !== null)
 			segments.push({ text: theme.fg("dim", `conf ${state.confidence.toFixed(1)}x`), drop: 1 });
 	}
 
-	if (!runtime.autoresearchMode) segments.push({ text: theme.fg("dim", "mode off"), drop: 9 });
+	// Above the result: a metric from a loop that is no longer running is the one
+	// reading that needs the qualification more than it needs the number.
+	if (!runtime.autoresearchMode) segments.push({ text: theme.fg("dim", "mode off"), drop: 10 });
 	segments.push({ text: theme.fg("dim", `${AUTORESEARCH_SCREEN_KEY} runs`), drop: 0 });
 
 	let kept = segments;
@@ -248,16 +266,4 @@ export function renderStatusRow(runtime: AutoresearchRuntime, width = process.st
 		kept = kept.filter((_segment, index) => index !== victim);
 	}
 	return kept.map(segment => segment.text).join(theme.fg("borderMuted", SEPARATOR));
-}
-
-/** Best kept, unflagged metric of the current segment. */
-function bestMetric(state: ExperimentState): number | null {
-	let best: number | null = null;
-	for (const result of currentResults(state.results, state.currentSegment)) {
-		if (result.status !== "keep" || result.flagged || result.metric <= 0) continue;
-		if (best === null || (state.bestDirection === "lower" ? result.metric < best : result.metric > best)) {
-			best = result.metric;
-		}
-	}
-	return best;
 }

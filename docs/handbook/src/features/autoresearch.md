@@ -58,7 +58,7 @@ own benchmark can improve the number without improving the code.
 A live loop occupies one status row:
 
 ```
-autoswarm · run #5 · 1m 12s · 4 runs · 3 kept · 3 arms · best 168.40ms · conf 3.2x · ctrl+x runs
+autoswarm · run #5 · 1m 12s · 4 runs · 3 kept · 3 arms · best 168.40ms -12.6% · conf 3.2x · ctrl+x runs
 ```
 
 `ctrl+x` opens the run screen, and so does `/autoresearch` with nothing after
@@ -68,13 +68,14 @@ it:
 ┌─ Autoswarm · tokenizer-laten…┬───────────────────────────────────────────────────┐
 │   OVERVIEW ───────────────── │ Best        168.40ms · -12.6% · from 192.78ms ·   │
 │ › Session                    │             run 4 · arm b                         │
-│   Playbook                   │ Metric      duration · lower is better            │
-│   #5  running                │                                                   │
-│   SEGMENT 1 ──────────────── │ Goal        make the tokenizer faster             │
-│   #4 b  168.40ms -12.6% best │                                                   │
-│   #3 c  210.10ms  +9.0% drop │ Segment     1 · 4 runs, 1 kept, 3 discarded       │
-│   #2 b  188.40ms  -2.3% drop │                                                   │
-│   #1    192.78ms       base  │ Breadth     3 arms per iteration                  │
+│   Playbook                   │ Trend       ▅▄█▁                                  │
+│   #5  running                │ Metric      duration · lower is better            │
+│   SEGMENT 1 ──────────────── │                                                   │
+│   #4 b  168.40ms -12.6% best │ Goal        make the tokenizer faster             │
+│   #3 c  210.10ms  +9.0% drop │                                                   │
+│   #2 b  188.40ms  -2.3% drop │ Segment     1 · 4 runs, 1 kept, 3 discarded       │
+│   #1    192.78ms       base  │                                                   │
+│                              │ Breadth     3 arms per iteration                  │
 ├──────────────────────────────┴───────────────────────────────────────────────────┤
 │ up/down select   pgup/pgdn page   esc close                                      │
 └──────────────────────────────────────────────────────────────────────────────────┘
@@ -88,16 +89,21 @@ crashed, failed or flagged.
 
 The pane beside it shows the highlighted entry in full. The session opens with
 the best measurement of the segment, its change against the measurement the
-segment started from, and the count of runs logged since that best one. A run
-shows its metric and percentage change against the segment baseline, secondary
-metrics, confidence, the arm that produced it and the arm that certified it, the
-flag reason, scope deviations, the change description, the commit and the files
-it touched.
+segment started from, and the count of runs logged since that best one. Below
+those is one block per run of the segment, oldest on the left, scaled between
+the segment's lowest and highest measurements: a series still descending and a
+series that improved once and then flattened produce the same best and the same
+count, and the blocks separate them. A segment past the width of the pane draws
+its most recent runs, marked with a leading `…`. A run shows its metric and
+percentage change against the segment baseline, secondary metrics, confidence,
+the arm that produced it and the arm that certified it, the flag reason, scope
+deviations, the change description, the commit and the files it touched.
 
 `log_experiment` requires a metric on every status, so a run that crashed before
 it measured anything is recorded with a zero. The screen states `no metric` for
-that run rather than formatting the zero. A run whose harness printed its metric
-and then died shows that number, and the comparison is against it.
+that run rather than formatting the zero, and draws it as a `·` in the blocks
+rather than as a height. A run whose harness printed its metric and then died
+shows that number, and the comparison is against it.
 
 Up and down move through the list, page up and page down move the detail pane by
 a full pane, and typing filters the list. Escape clears a live filter, and closes
@@ -108,7 +114,9 @@ On a terminal too narrow for two panes, the list is above the detail instead of
 beside it, both at the full width of the card, and the footer prints the widest
 hint that fits, down to `esc close`. The status row drops its segments from the
 least informative end when the terminal is narrower than the row, and prints the
-loop name and `ctrl+x runs` at every width.
+loop name and `ctrl+x runs` at every width. Where the best is not the newest
+logged run, the row carries the gap as `2 since best`, which it gives up before
+the best itself.
 
 ## Going wider
 

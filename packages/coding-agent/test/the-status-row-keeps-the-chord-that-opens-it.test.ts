@@ -7,11 +7,16 @@
  * it, and the cut landed mid-word.
  *
  * The class is a one-line surface whose content grows with the session while its
- * viewport does not: the row gains an arm count, a flag count, a metric and a
- * confidence as a run progresses, and every one of them pushed the chord further
- * past the right edge. It is closed by shedding whole segments in a fixed order,
- * with the identity and the chord never shed, so the narrowest row still names
- * the loop and the key that opens it.
+ * viewport does not: the row gains an arm count, a flag count, a metric, a count
+ * of runs since that metric was won and a confidence as a run progresses, and
+ * every one of them pushed the chord further past the right edge. It is closed by
+ * shedding whole segments in a fixed order, with the identity and the chord never
+ * shed, so the narrowest row still names the loop and the key that opens it.
+ *
+ * A second class is closed alongside it: a reading the row cannot place. A best
+ * is cumulative and reads as progress whether it was won last run or forty runs
+ * ago, so the row reports the gap, and the gap and the metric come from one scan
+ * so they cannot name different runs.
  *
  * The sweep is over the row the code builds, not a list of segments written down
  * here: a segment added to `renderStatusRow` without a shed rank is caught by the
@@ -179,6 +184,66 @@ describe("the status row keeps the chord that opens it", () => {
 		expect(shedBy(full - 13)).toEqual(["4 arms", "conf 2.5x"]);
 		// Down to the floor, what is left is the loop and the way in.
 		expect(segmentsOf(runtime, 1)).toEqual(["autoswarm", "ctrl+x runs"]);
+	});
+
+	it("states how many runs have been logged since the best, and nothing when the best is the latest", () => {
+		// A best is cumulative, so it reads the same whether it was won last run or
+		// forty runs ago, and those call for opposite decisions. The count is of
+		// runs logged after the best, whatever their outcome: a discarded run is
+		// still an attempt that failed to beat it.
+		const runtime = loudestRuntime();
+		// Lower is better, so the best kept and unflagged run is 2 at 90ms. Run 3
+		// is flagged and run 4 discarded; both were logged after it and both count.
+		expect(segmentsOf(runtime, 400)).toContain("2 since best");
+
+		// The newest run taking the lead retires the segment: there is no gap to
+		// report, and a `0 since best` would be noise on every improving loop.
+		runtime.state.results = [result({ runNumber: 1, metric: 120 }), result({ runNumber: 2, metric: 90 })];
+		const improving = segmentsOf(runtime, 400);
+		expect(improving.some(segment => segment.startsWith("best "))).toBe(true);
+		expect(improving.some(segment => segment.includes("since best"))).toBe(false);
+	});
+
+	it("never counts runs since a best it is not showing", () => {
+		// The count and the metric come from one scan, so the gap always belongs to
+		// the run whose metric is beside it. Two best-finders, one admitting the
+		// placeholder zero a run that never measured is logged with and one not,
+		// disagree about which run leads and put a gap of the wrong length on the
+		// row. Where lower is better that zero is the best value there is, so it is
+		// the case that diverges.
+		const runtime = loudestRuntime();
+		runtime.state.results = [
+			result({ runNumber: 1, metric: 120 }),
+			result({ runNumber: 2, metric: 90 }),
+			result({ runNumber: 3, metric: 0, measuredPrimary: null }),
+			result({ runNumber: 4, metric: 110 }),
+		];
+		// Run 2 holds the best measurement, and runs 3 and 4 followed it. Admitting
+		// run 3's zero would make it the leader and the gap 1 run long.
+		expect(segmentsOf(runtime, 400)).toContain("2 since best");
+
+		// With no measured run at all there is no best, so there is no gap either.
+		runtime.state.results = [result({ runNumber: 1, metric: 0, measuredPrimary: null })];
+		const unmeasured = segmentsOf(runtime, 400);
+		expect(unmeasured.some(segment => segment.startsWith("best "))).toBe(false);
+		expect(unmeasured.some(segment => segment.includes("since best"))).toBe(false);
+	});
+
+	it("gives up the gap before the result it qualifies", () => {
+		// The gap is a qualification of the best, so a row too narrow for both
+		// keeps the number. Shedding the other way leaves `2 since best` beside no
+		// best, which states a gap from nothing.
+		const runtime = loudestRuntime();
+		const widest = segmentsOf(runtime, 400);
+		const gap = widest.find(segment => segment.includes("since best")) ?? "";
+		const best = widest.find(segment => segment.startsWith("best ")) ?? "";
+		// A corpus that produces neither would make the sweep below vacuous.
+		expect(gap).not.toBe("");
+		expect(best).not.toBe("");
+		for (let width = 1; width <= 400; width += 1) {
+			const kept = segmentsOf(runtime, width);
+			if (kept.includes(gap)) expect(kept).toContain(best);
+		}
 	});
 
 	it("rebuilds the row when the terminal is resized under it", () => {

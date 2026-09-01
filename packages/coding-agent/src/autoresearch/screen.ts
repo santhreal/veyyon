@@ -323,7 +323,7 @@ function sessionDetail(runtime: AutoresearchRuntime, width: number): string[] {
 	const current = currentResults(state.results, state.currentSegment);
 	const baseline = findBaselineMetric(state.results, state.currentSegment);
 	const baselineRun = findBaselineRunNumber(state.results, state.currentSegment);
-	const best = bestResult(state);
+	const best = findBestKeptResult(state.results, state.currentSegment, state.bestDirection);
 	const lines: string[] = [];
 	const direction = state.bestDirection === "lower" ? "lower" : "higher";
 	if (best && baseline !== null) {
@@ -351,16 +351,26 @@ function sessionDetail(runtime: AutoresearchRuntime, width: number): string[] {
 		lines.push(...field("Best", theme.fg("dim", "no baseline measured yet"), width));
 	}
 	// Whether the loop is still finding anything. "Best" is a point, and a point
-	// cannot answer the question a reader has in front of a loop that
-	// has been running for an hour: leave it, or stop it. Best at run 3 with
-	// eleven logged is eight runs of nothing, which is the answer.
+	// cannot answer the question a reader has in front of a loop that has been
+	// running for an hour: leave it, or stop it. Best at run 3 with eleven logged
+	// is eight runs of nothing, which is the answer.
+	// A run number is optional. An unnumbered run cannot be ordered against the
+	// best, so it is not counted, and a best without one leaves the row off.
 	const bestRun = best?.runNumber ?? null;
 	if (bestRun !== null) {
-		const since = current.filter(result => (result.runNumber ?? 0) > bestRun).length;
+		const since = current.filter(result => result.runNumber !== null && result.runNumber > bestRun).length;
 		if (since > 0) {
 			lines.push(...field("Since", `${since} ${since === 1 ? "run" : "runs"} later, none better`, width));
 		}
 	}
+	// A row of eighth-blocks, one per run of the segment, oldest on the left.
+	//
+	// "Best" and "Since" are two numbers, and two numbers cannot show the shape
+	// of the search: a loop that improved once and then flattened reads
+	// identically to one still descending a step per run. The series shows both,
+	// in a column per run and with no scrolling.
+	const trend = metricTrend(current, best, width - LABEL_WIDTH);
+	if (trend !== null) lines.push(...field("Trend", trend, width));
 	lines.push(...field("Metric", `${state.metricName} · ${theme.fg("dim", `${direction} is better`)}`, width));
 	if (state.confidence !== null) {
 		lines.push(
@@ -431,22 +441,63 @@ function segmentTally(state: ExperimentState, current: readonly ExperimentResult
 	return `${state.currentSegment + 1}  ·  ${parts.join(", ")}`;
 }
 
-function countBy(results: readonly ExperimentResult[], status: ExperimentResult["status"]): number {
-	return results.filter(result => result.status === status).length;
+/**
+ * Eighth-blocks, low to high. A full eight levels rather than the six of the
+ * effort gauge in `theme/symbols.ts`, which drops `▄` and `▇` so that six
+ * discrete settings each land on a distinguishable height; here the levels are
+ * quantized from a continuous measurement and every step is worth having.
+ */
+const TREND_LEVELS = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"] as const;
+
+/**
+ * The segment's measurements as one row of blocks, oldest run on the left, or
+ * null when there is not enough measured to have a shape.
+ *
+ * Height is the raw metric, not its distance from the goal, so the picture does
+ * not silently flip when a session runs `higher is better`: the Metric row
+ * states the direction and this row states the values. Two runs are a pair of
+ * numbers the Best row already covers, so the floor is three.
+ *
+ * A run the harness never measured is a gap rather than a zero-height bar,
+ * which is the same defect as printing its logged zero as a measurement: a
+ * segfault would draw as the best result of a session where lower is better.
+ */
+function metricTrend(
+	current: readonly ExperimentResult[],
+	best: ExperimentResult | null,
+	room: number,
+): string | null {
+	if (room < 8) return null;
+	// The tail, not the head: the question in front of a long segment is where it
+	// is going, and the oldest runs are the ones already answered by Best. One
+	// column is held back for the ellipsis, so an elided row is `room` wide and
+	// not `room + 1` -- a bar row that overran its pane would wrap under the
+	// label column and read as a second, shorter series.
+	const budget = current.length > room ? room - 1 : room;
+	const shown = current.length > budget ? current.slice(current.length - budget) : current;
+	const values: Array<number | null> = shown.map(result =>
+		result.status === "crash" ? result.measuredPrimary : result.metric,
+	);
+	const measured = values.filter((value): value is number => value !== null && value > 0);
+	if (measured.length < 3) return null;
+	const low = Math.min(...measured);
+	const high = Math.max(...measured);
+	const span = high - low;
+	const bars = values.map((value, index) => {
+		const result = shown[index];
+		if (value === null || value <= 0) return theme.fg("dim", "·");
+		// A flat segment is mid-height, not a row of floors: every run measured the
+		// same number, which is a real and legible answer.
+		const level = span === 0 ? 3 : Math.min(7, Math.floor(((value - low) / span) * 8));
+		const paint: ThemeColor = result.flagged ? "warning" : result === best ? "success" : "muted";
+		return theme.fg(paint, TREND_LEVELS[level]);
+	});
+	const elided = current.length > shown.length ? theme.fg("dim", "…") : "";
+	return `${elided}${bars.join("")}`;
 }
 
-function bestResult(state: ExperimentState): ExperimentResult | null {
-	let best: ExperimentResult | null = null;
-	for (const result of currentResults(state.results, state.currentSegment)) {
-		if (result.status !== "keep" || result.flagged || result.metric <= 0) continue;
-		if (
-			best === null ||
-			(state.bestDirection === "lower" ? result.metric < best.metric : result.metric > best.metric)
-		) {
-			best = result;
-		}
-	}
-	return best;
+function countBy(results: readonly ExperimentResult[], status: ExperimentResult["status"]): number {
+	return results.filter(result => result.status === status).length;
 }
 
 function notesDetail(state: ExperimentState, width: number): string[] {

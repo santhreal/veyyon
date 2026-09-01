@@ -60,6 +60,8 @@
 - The autoswarm setup console states the harness runs one iteration costs, as `3 arms × 3 attempts: up to 9 harness runs per iteration`.
 - The autoswarm setup console legend reads `enter needs a goal` while the goal is empty, and Enter starts nothing.
 - The run screen's session pane states the count of runs logged since the best one.
+- The autoresearch status row states the count of runs logged since the best one, and sheds it before the best it qualifies.
+- The run screen's session pane draws the segment's measurements as a row of blocks, one per run, with a gap for a run the harness never measured.
 - The run screen's list states the run in flight and the run awaiting a log by number, with the harness result on the unlogged row.
 - The subagent model resolver states the layer numbering its per-agent chain actually resolves. No behavior change.
 - The status row no longer carries the secrets segment. The `secrets` id is gone from every preset and from `statusLine.segments`, and a configuration naming it is rejected; `/secret list` states what a session has masked.
@@ -83,6 +85,7 @@
 - The autoresearch status row drops whole segments, least informative first, when the terminal is narrower than the row, and rebuilds on a resize, so the `ctrl+x runs` chord that opens the run screen is on screen at every width.
 - A crashed run reports what its harness measured before it died, and states that it has no metric when the harness measured nothing, instead of formatting the zero the log call was required to supply as a measurement, which listed a segfault as the fastest result of a session where lower is better.
 - The run screen lists each metric once: the primary metric a log call repeats among its secondary metrics is no longer stored or rendered as a secondary of itself, which printed a second unitless copy of every measurement and a `-100.0%` row for a crashed run.
+- Every surface reporting the best run of a segment names the same run. The run list, the session pane, the status row and the prompt built from the session each ran their own scan, and two of them counted a run logged with the placeholder zero the log call requires of a run that measured nothing; where lower is better that zero is the best value there is, so the list tagged a run `best` that the pane beside it did not.
 - The run screen prints the artifacts directory with the home directory collapsed to `~`, so a screenshot of a loop no longer states the account name and profile layout it ran under.
 - The run screen fits a terminal shorter than fourteen rows: it wrote a fixed fourteen rows whatever the height, so a ten-row terminal lost the four rows holding the footer and the border.
 - The run screen fits a terminal narrower than 29 columns: the sidebar is sized from the available width rather than its own floor, and every row is cut to the width it was handed, so the border no longer wraps into rows the card did not count.

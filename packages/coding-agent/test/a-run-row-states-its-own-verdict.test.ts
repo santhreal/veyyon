@@ -12,12 +12,14 @@
  * and what it is worth — in the label, which is the part that renders, and
  * padded into columns that stay put as the list grows.
  *
- * Two classes are closed here. The first is a status the row cannot describe:
+ * Three classes are closed here. The first is a status the row cannot describe:
  * the sweep is over `EXPERIMENT_STATUSES` at run time, and a member added
  * without a tag turns this red rather than falling through to `kept`. The second
  * is a column that sheds out of order or overflows: the ladder is asserted
  * across every sidebar width the screen can produce, including the widths where
- * a segment has no percentage to print at all.
+ * a segment has no percentage to print at all. The third is a `best` tag that
+ * disagrees with the pane beside it, which is what three separate best-finders
+ * produced on a segment holding a run logged with the placeholder zero.
  *
  * What it does not catch: colour. Every assertion runs through a passthrough
  * theme, because a row that is the right text in the wrong paint is a palette
@@ -25,7 +27,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { formatNum } from "@veyyon/coding-agent/autoresearch/helpers";
-import { runScreenRows, screenSidebarWidth } from "@veyyon/coding-agent/autoresearch/screen";
+import { renderRunDetail, runScreenRows, screenSidebarWidth } from "@veyyon/coding-agent/autoresearch/screen";
 import { createExperimentState, createSessionRuntime } from "@veyyon/coding-agent/autoresearch/state";
 import {
 	type AutoresearchRuntime,
@@ -34,6 +36,7 @@ import {
 	type ExperimentStatus,
 } from "@veyyon/coding-agent/autoresearch/types";
 import { visibleWidth } from "@veyyon/tui";
+import { stripAnsi } from "@veyyon/utils";
 import { useTruecolorTheme } from "./helpers/theme-assertions";
 
 /**
@@ -122,6 +125,31 @@ describe("a run row states its own verdict", () => {
 		}
 		const tags = Object.values(TAG_FOR);
 		expect(new Set(tags).size).toBe(tags.length);
+	});
+
+	it("tags the run the detail pane calls best, on a segment holding an unmeasured zero", () => {
+		// Three surfaces report a best: this row's tag, the session pane's Best row,
+		// and the status row. They were three scans, two of which admitted the
+		// placeholder zero a run that never measured is logged with and one of
+		// which did not. Where lower is better that zero is the best value there
+		// is, so a kept run that measured nothing took the tag in the ledger while
+		// the pane beside it named a different run.
+		//
+		// Run 3 is `keep`, which is what makes it the divergent case: `crash` is
+		// excluded by status before the metric is looked at, so a corpus whose
+		// unmeasured run crashed passes under either rule.
+		const runtime = runtimeWith([
+			result({ runNumber: 1, metric: 300, measuredPrimary: 300 }),
+			result({ runNumber: 2, metric: 150, measuredPrimary: 150 }),
+			result({ runNumber: 3, metric: 0, measuredPrimary: null }),
+		]);
+		expect(labelOf(runtime, 2)).toContain("best");
+		expect(labelOf(runtime, 3)).not.toContain("best");
+		// And the pane agrees, by run number rather than by metric: the tag and the
+		// row have to name one run, not two runs that happen to share a number.
+		const pane = renderRunDetail(runtime, "session", 80).map(stripAnsi);
+		const bestRow = pane.find(line => line.startsWith("Best")) ?? "";
+		expect(bestRow).toContain("run 2");
 	});
 
 	it("says a run is flagged before it says what the run was", () => {

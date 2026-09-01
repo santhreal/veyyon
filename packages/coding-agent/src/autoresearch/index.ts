@@ -17,7 +17,7 @@ import {
 	currentResults,
 	effectiveBreadth,
 	findBaselineMetric,
-	findBestKeptMetric,
+	findBestKeptResult,
 	reconstructControlState,
 } from "./state";
 import { openAutoresearchStorage, openAutoresearchStorageIfExists, type RunRow, type SessionRow } from "./storage";
@@ -416,8 +416,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		const basePrompt = Array.isArray(event.systemPrompt) ? event.systemPrompt.join("\n\n") : "";
 		const currentSegmentResults = currentResults(state.results, state.currentSegment);
 		const baselineMetric = findBaselineMetric(state.results, state.currentSegment);
-		const bestMetric = findBestKeptMetric(state.results, state.currentSegment, state.bestDirection);
-		const bestResult = bestKeptResult(state.results, state.currentSegment, state.bestDirection);
+		const bestResult = findBestKeptResult(state.results, state.currentSegment, state.bestDirection);
 		const goal = runtime.goal ?? state.goal ?? state.name ?? "";
 		const recentResults = currentSegmentResults.slice(-3).map(result => {
 			const asiSummary = summarizeExperimentAsi(result);
@@ -484,8 +483,8 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 					current_segment_run_count: currentSegmentResults.length,
 					has_baseline_metric: baselineMetric !== null,
 					baseline_metric_display: formatNum(baselineMetric, state.metricUnit),
-					has_best_result: bestResult !== null && bestMetric !== null,
-					best_metric_display: bestMetric !== null ? formatNum(bestMetric, state.metricUnit) : "-",
+					has_best_result: bestResult !== null,
+					best_metric_display: bestResult !== null ? formatNum(bestResult.metric, state.metricUnit) : "-",
 					best_run_number: bestResult ? (bestResult.runNumber ?? state.results.indexOf(bestResult) + 1) : null,
 					has_recent_results: recentResults.length > 0,
 					recent_results: recentResults,
@@ -645,24 +644,6 @@ function summarizeExperimentAsi(result: ExperimentResult): string | null {
 	const next = typeof result.asi?.next_action_hint === "string" ? result.asi.next_action_hint.trim() : "";
 	const summary = [hypothesis, rollback, next].filter(part => part.length > 0).join(" | ");
 	return summary.length > 0 ? summary.slice(0, 220) : null;
-}
-
-function bestKeptResult(
-	results: ExperimentResult[],
-	segment: number,
-	direction: "lower" | "higher",
-): ExperimentResult | null {
-	let best: ExperimentResult | null = null;
-	for (const result of results) {
-		if (result.segment !== segment || result.status !== "keep" || result.flagged) continue;
-		if (!best) {
-			best = result;
-			continue;
-		}
-		const better = direction === "lower" ? result.metric < best.metric : result.metric > best.metric;
-		if (better) best = result;
-	}
-	return best;
 }
 
 /**
