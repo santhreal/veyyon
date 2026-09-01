@@ -12,7 +12,7 @@
  */
 
 import { Ellipsis } from "@veyyon/natives";
-import { type Component, Text } from "@veyyon/tui";
+import { type Component, Markdown, Text } from "@veyyon/tui";
 import { pluralize } from "@veyyon/utils/format";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
@@ -36,6 +36,7 @@ import type {
 } from "@veyyon/view";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { highlightCode } from "../theme/highlight";
+import { getMarkdownTheme } from "../theme/markdown-theme";
 import { type SymbolKey, UNICODE_SYMBOLS } from "../theme/symbols";
 import type { Theme, ThemeColor } from "../theme/theme";
 import {
@@ -219,7 +220,11 @@ export function drawStatusRow(view: StatusRowView, theme: Theme, spinnerFrame?: 
 			: view.descriptionLink !== undefined
 				? urlHyperlink(view.descriptionLink, toned)
 				: view.descriptionFile !== undefined
-					? fileHyperlink(view.descriptionFile, toned)
+					? fileHyperlink(
+							view.descriptionFile,
+							toned,
+							view.descriptionFileLine === undefined ? undefined : { line: view.descriptionFileLine },
+						)
 					: toned;
 	const description = described === undefined ? (badge === "" ? undefined : badge) : `${badge}${described}`;
 	return renderStatusLine(
@@ -248,6 +253,18 @@ export function drawToolViewText(view: LineToolView, theme: Theme, spinnerFrame?
 }
 
 /**
+ * A markdown section as the rows the terminal's own document renderer lays out.
+ *
+ * The width is the block's content width, so the document wraps inside the frame rather than against
+ * the terminal's edge, and a resize re-lays it out. A section whose source is blank draws nothing at
+ * all rather than one empty row, which is what a document with no text is.
+ */
+function drawMarkdownRows(source: string, width: number): readonly string[] {
+	if (!source.trim()) return [];
+	return new Markdown(source, 0, 0, getMarkdownTheme()).render(Math.max(1, width));
+}
+
+/**
  * A framed block as the self-framing component the card renders flush.
  *
  * The width arrives from the host and never from the tool, which is the whole reason this kind
@@ -265,34 +282,40 @@ export function drawToolViewText(view: LineToolView, theme: Theme, spinnerFrame?
 export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFrame?: number): Component {
 	const header = drawStatusRow(view.header, theme, spinnerFrame);
 	const frame = view.state === undefined ? undefined : BLOCK_STATES[view.state];
-	const sections = view.sections.map(section => ({
-		label: section.label === undefined ? undefined : theme.fg("toolTitle", section.label),
-		lines: section.list
-			? drawItemList(section.lines, section.hidden, theme)
-			: section.code !== undefined
-				? drawCodeLines(section.lines, section.code, theme)
-				: [],
-		// A plain section's rows, drawn here when the whole row is its subject and left as spans when
-		// it carries a trailing run: a tail sits at the END of the row, so the words before it are cut
-		// to what the tail leaves and the gap between the two is whatever columns are left. That is
-		// the host's width, so those rows are drawn inside the closure below and the rest are not
-		// re-drawn on every frame.
-		rows: section.list || section.code !== undefined ? undefined : section.lines.map(line => plainRow(line, theme)),
-		// Held back by the TOOL, so it stands outside the window the host cuts: a section that says
-		// what it dropped must keep saying it however few rows are left. A list states the same count
-		// on its own closing branch, so the note is already among its rows.
-		note: section.hidden === undefined || section.list ? undefined : drawHiddenNote(section.hidden, theme),
-		// Which of the drawn rows is a verbatim capture of another program's screen row. A row the card
-		// composed itself ends where the columns end, because the words on it were chosen to fit; a
-		// captured row that lost its tail has to say so, or a screen cut at the right margin reads as
-		// the program having printed exactly that. Resolved here, where the spans are still in hand.
-		captured:
-			section.list || section.code !== undefined
-				? undefined
-				: section.lines.map(line => line.some(span => span.captured === true)),
-		tail: section.tail,
-		clip: section.clip === true,
-	}));
+	const sections = view.sections.map(section => {
+		// A section states source or a document, never both: `code` is the reading that invents no
+		// layout, so a tool that marked its lines as both is drawn as code.
+		const markdown = section.code === undefined && section.markdown === true;
+		const drawnHere = section.list || section.code !== undefined || markdown;
+		return {
+			label: section.label === undefined ? undefined : theme.fg("toolTitle", section.label),
+			lines: section.list
+				? drawItemList(section.lines, section.hidden, theme)
+				: section.code !== undefined
+					? drawCodeLines(section.lines, section.code, theme)
+					: [],
+			// A document is laid out at the host's width, so its rows are composed inside the closure
+			// below from the source the section carries rather than drawn once here.
+			markdown: markdown ? section.lines.map(line => line.map(span => span.text).join("")).join("\n") : undefined,
+			// A plain section's rows, drawn here when the whole row is its subject and left as spans when
+			// it carries a trailing run: a tail sits at the END of the row, so the words before it are cut
+			// to what the tail leaves and the gap between the two is whatever columns are left. That is
+			// the host's width, so those rows are drawn inside the closure below and the rest are not
+			// re-drawn on every frame.
+			rows: drawnHere ? undefined : section.lines.map(line => plainRow(line, theme)),
+			// Held back by the TOOL, so it stands outside the window the host cuts: a section that says
+			// what it dropped must keep saying it however few rows are left. A list states the same count
+			// on its own closing branch, so the note is already among its rows.
+			note: section.hidden === undefined || section.list ? undefined : drawHiddenNote(section.hidden, theme),
+			// Which of the drawn rows is a verbatim capture of another program's screen row. A row the card
+			// composed itself ends where the columns end, because the words on it were chosen to fit; a
+			// captured row that lost its tail has to say so, or a screen cut at the right margin reads as
+			// the program having printed exactly that. Resolved here, where the spans are still in hand.
+			captured: drawnHere ? undefined : section.lines.map(line => line.some(span => span.captured === true)),
+			tail: section.tail,
+			clip: section.clip === true,
+		};
+	});
 	// A block that reports `running` is a card still arriving, which the terminal says on a trailing
 	// row rather than in the header: an animating glyph in the head row pins the native-scrollback
 	// commit boundary at the top of the block, so a long preview could never scroll-append while it
@@ -311,13 +334,15 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 			...sections.map(section => {
 				const contentWidth = outputBlockContentWidth(width);
 				const drawn =
-					section.rows === undefined
-						? section.lines
-						: section.rows.map(row =>
-								row.tail === undefined
-									? row.drawn
-									: drawRowWithTail(row.lead, row.tail, theme, contentWidth),
-							);
+					section.markdown !== undefined
+						? drawMarkdownRows(section.markdown, contentWidth)
+						: section.rows === undefined
+							? section.lines
+							: section.rows.map(row =>
+									row.tail === undefined
+										? row.drawn
+										: drawRowWithTail(row.lead, row.tail, theme, contentWidth),
+								);
 				// A clipped section is rows rather than prose, so a row that runs out of columns ends
 				// there. Without the cut the block WRAPS it, and one long path becomes two rows of a
 				// listing whose every other entry is one.
@@ -383,19 +408,38 @@ const codeMemo: { theme: Theme | null; language: string; shape: string; source: 
 };
 
 /**
+ * The columns a gutter of stated line numbers spends.
+ *
+ * As wide as the widest number the FILE has, not the widest the window carries: two windows onto one
+ * file are numbered in one column, and a window that happens to end at line 99 is drawn in the same
+ * gutter as the one that reaches 1000.
+ */
+function codeGutterWidth(numbers: readonly (number | null)[], totalLines: number | undefined): number {
+	let widest = totalLines ?? 0;
+	for (const number of numbers) {
+		if (number !== null && number > widest) widest = number;
+	}
+	return Math.max(CODE_GUTTER_MIN_WIDTH, String(widest).length);
+}
+
+/**
  * A code section as highlighted rows in a line-number gutter.
  *
  * The spans of a code line carry text alone — a tool that toned its own keywords would be writing a
  * colour scheme — so the line's text is handed to the highlighter and the tones the section's spans
- * carry are ignored by design. The gutter is as wide as the file's last line number rather than as
- * the window's, so the rows do not shift sideways as more of a file arrives, and a section that
- * states no first line number is drawn without a gutter at all.
+ * carry are ignored by design. The gutter is as wide as the file's last line number rather than as the
+ * window's, so the rows do not shift sideways as more of a file arrives, and a section that
+ * states no first line number is drawn without a gutter at all. A section that states a number per
+ * line is numbered by those, which is what several windows onto one file are: the rows are in file
+ * order and the numbers jump, and a row whose number is `null` keeps a blank gutter of the same
+ * width so the source stays in one column.
  */
 function drawCodeLines(lines: readonly ViewLine[], code: ViewCodeLines, theme: Theme): string[] {
 	const source = lines.map(line => line.map(span => span.text).join("")).join("\n");
 	const language = code.language ?? "";
 	const first = code.firstLineNumber;
-	const shape = `${first ?? "-"}:${code.totalLines ?? "-"}`;
+	const numbers = code.lineNumbers;
+	const shape = `${first ?? "-"}:${code.totalLines ?? "-"}:${numbers === undefined ? "-" : numbers.join(",")}`;
 	if (
 		codeMemo.theme === theme &&
 		codeMemo.language === language &&
@@ -406,16 +450,25 @@ function drawCodeLines(lines: readonly ViewLine[], code: ViewCodeLines, theme: T
 	}
 	const highlighted = highlightCode(source, code.language);
 	const rows =
-		first === undefined
-			? highlighted.map(body => replaceTabs(body))
-			: (() => {
-					const last = code.totalLines ?? first + highlighted.length - 1;
-					const gutter = Math.max(CODE_GUTTER_MIN_WIDTH, String(last).length);
-					return highlighted.map(
-						(body, index) =>
-							`${theme.fg("dim", `${String(first + index).padStart(gutter, " ")} `)}${replaceTabs(body)}`,
-					);
-				})();
+		numbers !== undefined
+			? (() => {
+					const gutter = codeGutterWidth(numbers, code.totalLines);
+					return highlighted.map((body, index) => {
+						const number = numbers[index];
+						const cell = number === null || number === undefined ? " ".repeat(gutter) : String(number).padStart(gutter, " ");
+						return `${theme.fg("dim", `${cell} `)}${replaceTabs(body)}`;
+					});
+				})()
+			: first === undefined
+				? highlighted.map(body => replaceTabs(body))
+				: (() => {
+						const last = code.totalLines ?? first + highlighted.length - 1;
+						const gutter = Math.max(CODE_GUTTER_MIN_WIDTH, String(last).length);
+						return highlighted.map(
+							(body, index) =>
+								`${theme.fg("dim", `${String(first + index).padStart(gutter, " ")} `)}${replaceTabs(body)}`,
+						);
+					})();
 	codeMemo.theme = theme;
 	codeMemo.language = language;
 	codeMemo.shape = shape;

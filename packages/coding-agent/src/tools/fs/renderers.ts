@@ -8,13 +8,13 @@
 import { viewToolRenderer } from "../../tui/draw-tool-view";
 import type { ToolRenderer } from "../renderers";
 import { inspectImageToolView } from "./inspect-image-view";
-import { readToolRenderer } from "./read-render";
+import { readToolView } from "./read-view";
 import { setCwdToolView } from "./set-cwd";
 import { writeContentExceedsStreamingWindow } from "./write";
 import { writeToolView } from "./write-view";
 
 export const fsRenderers: Record<string, ToolRenderer> = {
-	read: readToolRenderer as ToolRenderer,
+	read: viewToolRenderer(readToolView, { mergeCallAndResult: true }) as ToolRenderer,
 	write: viewToolRenderer(writeToolView, {
 		mergeCallAndResult: true,
 		// The collapsed pending preview follows the streaming edge with a tail window once the content

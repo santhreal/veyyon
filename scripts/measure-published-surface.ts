@@ -550,6 +550,14 @@ const DOCUMENTED_KEY_RELOCATIONS: Readonly<Record<string, Readonly<Record<string
 			to: "./discovery/*",
 			why: "the discovery modules are flat under src/discovery/, which ./discovery/* serves",
 		},
+		"./web/scrapers": {
+			to: "@veyyon/web/scrapers",
+			why: "the site handlers moved to plugins/web, which @veyyon/web publishes as ./scrapers",
+		},
+		"./web/scrapers/*": {
+			to: "@veyyon/web/scrapers/*",
+			why: "the site handlers moved to plugins/web, which @veyyon/web publishes as ./scrapers/*",
+		},
 	},
 };
 
@@ -576,6 +584,10 @@ const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, Relocat
 		"./tools/browser/render": {
 			to: "./tools/web/browser/view",
 			why: "the browser open, close and run cards are declared in tools/web/browser/view.ts as views the host draws, so the module that built their terminal components is gone",
+		},
+		"./tools/fs/read-render": {
+			to: "./tools/fs/read-view",
+			why: "the read file row, code and document sections, notices, image card and error card are declared in tools/fs/read-view.ts as views the host draws, so the module that built their terminal components is gone",
 		},
 		"./tools/gh-renderer": {
 			to: "./tools/web/gh-view",
@@ -714,14 +726,15 @@ export function generateLedger(baseRef = mergeBaseWithMain(), headRef = "HEAD"):
 	 * not. `./modes/components` is one: the barrel was rewritten past the point a rename is detected,
 	 * and the row that describes the move is already in {@link DOCUMENTED_KEY_RELOCATIONS}. The
 	 * successor is accepted only if the head really serves it, so a stale row cannot describe a loss
-	 * into existence.
+	 * into existence, and a successor in another package is checked against that package's surface:
+	 * `./web/scrapers/*` left `@veyyon/coding-agent` for `@veyyon/web` entirely.
 	 */
 	function documentedSuccessor(pkgName: string, subpath: string, served: ReadonlySet<string>): RelocationNote | null {
 		const rows = DOCUMENTED_KEY_RELOCATIONS[pkgName];
 		if (rows === undefined) return null;
 		for (const [key, note] of Object.entries(rows)) {
 			if (!key.includes("*")) {
-				if (key !== subpath || !served.has(note.to)) continue;
+				if (key !== subpath || !isServed(note.to, served)) continue;
 				return note;
 			}
 			const star = key.indexOf("*");
@@ -731,10 +744,22 @@ export function generateLedger(baseRef = mergeBaseWithMain(), headRef = "HEAD"):
 			const middle = subpath.slice(head.length, subpath.length - tail.length);
 			if (middle.length === 0) continue;
 			const candidate = note.to.replace("*", middle);
-			if (!served.has(candidate)) continue;
+			if (!isServed(candidate, served)) continue;
 			return { to: candidate, why: note.why };
 		}
 		return null;
+	}
+
+	/**
+	 * Whether the head serves a successor, in this package or, when it is a full specifier, another. A
+	 * bare package name is that package's root subpath: `@veyyon/web` is `.`, not an empty tail.
+	 */
+	function isServed(to: string, served: ReadonlySet<string>): boolean {
+		if (!to.startsWith("@")) return served.has(to);
+		const successorPackage = to.split("/").slice(0, 2).join("/");
+		const tail = to.split("/").slice(2).join("/");
+		const successorSubpath = tail === "" ? "." : `./${tail}`;
+		return headPackages[successorPackage]?.resolvedSubpaths.includes(successorSubpath) === true;
 	}
 
 	/**
@@ -749,14 +774,7 @@ export function generateLedger(baseRef = mergeBaseWithMain(), headRef = "HEAD"):
 		const note = rows[bare];
 		if (note === undefined) return null;
 		const to = `${note.to}${alias}`;
-		if (to.startsWith("@")) {
-			const successorPackage = to.split("/").slice(0, 2).join("/");
-			const successorSubpath = `./${to.split("/").slice(2).join("/")}`;
-			const surface = headPackages[successorPackage]?.resolvedSubpaths;
-			if (surface === undefined || !surface.includes(successorSubpath)) return null;
-			return { to, why: note.why };
-		}
-		if (!served.has(to)) return null;
+		if (!isServed(to, served)) return null;
 		return { to, why: note.why };
 	}
 

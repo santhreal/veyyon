@@ -3,7 +3,8 @@ import * as path from "node:path";
 import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { theme as activeTheme, getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
-import { readToolRenderer } from "@veyyon/coding-agent/tools/fs/read-render";
+import { readToolView } from "@veyyon/coding-agent/tools/fs/read-view";
+import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import type { TUI } from "@veyyon/tui";
 import { createToolExecution } from "../helpers/tool-execution";
 
@@ -31,25 +32,27 @@ afterAll(() => {
 	resetSettingsForTest();
 });
 
-describe("readToolRenderer hyperlinks", () => {
-	it("links local-style read titles to the resolved filesystem path and selected line", async () => {
+describe("the read card's hyperlinks", () => {
+	it("links a local-style read row to the resolved filesystem path and the line it read at", async () => {
 		settings.override("tui.hyperlinks", "always");
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
 
 		const handoffPath = path.resolve("/tmp/veyyon-local/handoff.md");
-		const component = readToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: "second line" }],
-				details: {
-					resolvedPath: handoffPath,
-					displayContent: { text: "second line", startLine: 2 },
-					contentType: "text/plain",
+		const component = drawToolView(
+			readToolView.renderResult(
+				{
+					content: [{ type: "text", text: "second line" }],
+					details: {
+						resolvedPath: handoffPath,
+						displayContent: { text: "second line", startLine: 2 },
+						contentType: "text/plain",
+					},
 				},
-			},
-			{ expanded: false, isPartial: false },
+				{ expanded: false, partial: false },
+				{ path: "local://handoff.md:2" },
+			),
 			theme!,
-			{ path: "local://handoff.md:2" },
 		);
 
 		const rendered = component.render(200).join("\n");
@@ -58,19 +61,19 @@ describe("readToolRenderer hyperlinks", () => {
 		const handoffUri = new URL(url.pathToFileURL(path.resolve(handoffPath)).href);
 		handoffUri.searchParams.set("line", "2");
 		expect(extractLinkUris(rendered)).toContain(handoffUri.href);
-		expect(extractLinkTexts(rendered)).toContain("local://handoff.md");
-		expect(extractLinkTexts(rendered)).not.toContain("local://handoff.md:2");
+		// The description a row states IS the window that was read, selector and all, so the whole of
+		// it is the reachable run rather than the path with the selector trailing outside the link.
+		expect(extractLinkTexts(rendered)).toContain("local://handoff.md:2");
 	});
 
-	it("links absolute read call paths to file URIs with selector lines", async () => {
+	it("links an absolute read call to a file URI at the selector's first line", async () => {
 		settings.override("tui.hyperlinks", "always");
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
 
 		const examplePath = path.resolve("/tmp/veyyon-read/example.ts");
-		const component = readToolRenderer.renderCall(
-			{ path: `${examplePath}:10-12` },
-			{ expanded: false, isPartial: false },
+		const component = drawToolView(
+			readToolView.renderCall({ path: `${examplePath}:10-12` }, { expanded: false, partial: false }),
 			theme!,
 		);
 
@@ -79,31 +82,32 @@ describe("readToolRenderer hyperlinks", () => {
 		const exampleUri = new URL(url.pathToFileURL(path.resolve(examplePath)).href);
 		exampleUri.searchParams.set("line", "10");
 		expect(extractLinkUris(rendered)).toContain(exampleUri.href);
-		expect(extractLinkTexts(rendered)).toContain(examplePath);
-		expect(extractLinkTexts(rendered)).not.toContain(`${examplePath}:10-12`);
+		expect(extractLinkTexts(rendered)).toContain(`${examplePath}:10-12`);
 	});
 
-	it("links HTTP read result headers to the final URL", async () => {
+	it("links an HTTP read result to the final URL", async () => {
 		settings.override("tui.hyperlinks", "always");
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
 
-		const component = readToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: "---\n\nhello" }],
-				details: {
-					kind: "url",
-					url: "http://example.com/start",
-					finalUrl: "http://example.com/final",
-					contentType: "text/plain",
-					method: "fetch",
-					truncated: false,
-					notes: [],
-				},
-			} as never,
-			{ expanded: false, isPartial: false },
+		const component = drawToolView(
+			readToolView.renderResult(
+				{
+					content: [{ type: "text", text: "---\n\nhello" }],
+					details: {
+						kind: "url",
+						url: "http://example.com/start",
+						finalUrl: "http://example.com/final",
+						contentType: "text/plain",
+						method: "fetch",
+						truncated: false,
+						notes: [],
+					},
+				} as never,
+				{ expanded: false, partial: false },
+				{ path: "http://example.com/start" },
+			),
 			theme!,
-			{ path: "http://example.com/start" },
 		);
 
 		const rendered = component.render(200).join("\n");

@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
 import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/theme/theme";
-import { readToolRenderer } from "@veyyon/coding-agent/tools/fs/read-render";
+import { readToolView } from "@veyyon/coding-agent/tools/fs/read-view";
 import { writeToolView } from "@veyyon/coding-agent/tools/fs/write-view";
 import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import type { Component } from "@veyyon/tui";
@@ -38,9 +38,8 @@ describe("tool path renderers with invalid provider arguments", () => {
 		it(`read renderer does not throw for ${invalid.name}`, () => {
 			let callComponent: Component | undefined;
 			expect(() => {
-				callComponent = readToolRenderer.renderCall(
-					{ path: invalid.path },
-					{ expanded: false, isPartial: true },
+				callComponent = drawToolView(
+					readToolView.renderCall({ path: invalid.path }, { expanded: false, partial: true }),
 					uiTheme,
 				);
 			}).not.toThrow();
@@ -48,17 +47,19 @@ describe("tool path renderers with invalid provider arguments", () => {
 
 			let resultComponent: Component | undefined;
 			expect(() => {
-				resultComponent = readToolRenderer.renderResult(
-					{
-						content: [{ type: "text", text: "hello from read" }],
-						details: {
-							displayContent: { text: "hello from read", startLine: 1 },
-							contentType: "text/plain",
+				resultComponent = drawToolView(
+					readToolView.renderResult(
+						{
+							content: [{ type: "text", text: "hello from read" }],
+							details: {
+								displayContent: { text: "hello from read", startLine: 1 },
+								contentType: "text/plain",
+							},
 						},
-					},
-					{ expanded: false, isPartial: false },
+						{ expanded: false, partial: false },
+						{ path: invalid.path },
+					),
 					uiTheme,
-					{ path: invalid.path },
 				);
 			}).not.toThrow();
 			const rendered = renderPlain(resultComponent!);

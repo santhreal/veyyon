@@ -1,7 +1,10 @@
 /**
- * Terminal drawing for the read tool. The tool half in `read.ts` decides what
- * happened; this half decides how a terminal shows it, and is the only one of the two
- * that reaches the TUI.
+ * Differential oracle: the read tool renderer from origin/main.
+ *
+ * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/tools/fs/read-render.ts`).
+ * Frozen: never edited to make a test pass.
+ *
+ * Only the import specifiers are rewritten to the package subpaths this branch publishes.
  */
 
 import * as path from "node:path";
@@ -9,21 +12,35 @@ import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { formatCount } from "@veyyon/utils/format";
 import { hasUrlScheme } from "@veyyon/utils/url";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import { tryResolveInternalUrlSync } from "../../internal-urls/resolve-sync";
-import type { Theme } from "../../theme/theme-class";
-import { renderCodeCell, renderMarkdownCell } from "../../tui/code-cell";
-import { drawToolView } from "../../tui/draw-tool-view";
-import { fileHyperlink } from "../../tui/hyperlink";
-import { CachedOutputBlock, markFramedBlockComponent } from "../../tui/output-block";
-import { renderStatusLine } from "../../tui/status-line";
-import { getLanguageFromPath } from "../../utils/lang-from-path";
-import { formatFullOutputReference, formatStyledTruncationWarning, stripOutputNotice } from "../core/output-meta";
-import { isReadableUrlPath, splitInternalUrlSel, splitPathAndSel } from "../core/path-utils";
-import { formatBytes, replaceTabs, shortenPath, wrapBrackets } from "../core/render-utils";
-import type { ReadUrlToolDetails } from "../web/fetch";
-import { readUrlToolView } from "../web/fetch-view";
-import { isRawSelector, parseSel, type ReadRenderArgs, type ReadToolDetails, readSourceFsPath } from "./read";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { tryResolveInternalUrlSync } from "@veyyon/coding-agent/internal-urls/resolve-sync";
+import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
+import { renderCodeCell, renderMarkdownCell } from "@veyyon/coding-agent/tui/code-cell";
+import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { fileHyperlink } from "@veyyon/coding-agent/tui/hyperlink";
+import { CachedOutputBlock, markFramedBlockComponent } from "@veyyon/coding-agent/tui/output-block";
+import { renderStatusLine } from "@veyyon/coding-agent/tui/status-line";
+import { getLanguageFromPath } from "@veyyon/coding-agent/utils/lang-from-path";
+import {
+	formatFullOutputReference,
+	formatStyledTruncationWarning,
+	stripOutputNotice,
+} from "@veyyon/coding-agent/tools/core/output-meta";
+import {
+	isReadableUrlPath,
+	splitInternalUrlSel,
+	splitPathAndSel,
+} from "@veyyon/coding-agent/tools/core/path-utils";
+import { formatBytes, replaceTabs, shortenPath, wrapBrackets } from "@veyyon/coding-agent/tools/core/render-utils";
+import type { ReadUrlToolDetails } from "@veyyon/coding-agent/tools/web/fetch";
+import { readUrlToolView } from "@veyyon/coding-agent/tools/web/fetch-view";
+import {
+	isRawSelector,
+	parseSel,
+	type ReadRenderArgs,
+	type ReadToolDetails,
+	readSourceFsPath,
+} from "@veyyon/coding-agent/tools/fs/read";
 
 function splitReadRenderPath(rawPath: string): { path: string; sel?: string } {
 	if (hasUrlScheme(rawPath)) {

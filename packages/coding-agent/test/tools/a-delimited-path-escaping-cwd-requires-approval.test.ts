@@ -44,7 +44,8 @@ import {
 	splitDelimitedPathEntrySync,
 } from "@veyyon/coding-agent/tools/core/path-utils";
 import { shortenPath } from "@veyyon/coding-agent/tools/core/render-utils";
-import { readToolRenderer } from "@veyyon/coding-agent/tools/fs/read-render";
+import { readToolView } from "@veyyon/coding-agent/tools/fs/read-view";
+import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 describe("a delimited path escaping cwd requires approval", () => {
@@ -395,22 +396,24 @@ describe("a delimited path escaping cwd requires approval", () => {
 		}
 	});
 
-	it("sanitizes resolvedPath in readToolRenderer using shortenPath", async () => {
+	it("sanitizes resolvedPath in the read card using shortenPath", async () => {
 		const uiTheme = await getThemeByName("dark");
 		expect(uiTheme).toBeDefined();
 		const homeDir = os.homedir();
 		const secretSubpath = path.join(homeDir, "workspace", "project");
-		const rendered = readToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: "file contents" }],
-				details: {
-					resolvedPath: secretSubpath,
-					contentType: "text/plain",
+		const rendered = drawToolView(
+			readToolView.renderResult(
+				{
+					content: [{ type: "text", text: "file contents" }],
+					details: {
+						resolvedPath: secretSubpath,
+						contentType: "text/plain",
+					},
 				},
-			},
-			{ expanded: false, isPartial: false },
+				{ expanded: false, partial: false },
+				{ path: "." },
+			),
 			uiTheme!,
-			{ path: "." },
 		);
 
 		const renderedLines = rendered.render(120);

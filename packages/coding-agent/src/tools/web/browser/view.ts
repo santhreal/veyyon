@@ -271,7 +271,11 @@ function tabCard(
 
 	const header: StatusRowView = {
 		kind: "statusRow",
-		...(partial ? { status: "running" as const } : isError ? { status: "error" as const } : { emblem: BROWSER_EMBLEM }),
+		...(partial
+			? { status: "running" as const }
+			: isError
+				? { status: "error" as const }
+				: { emblem: BROWSER_EMBLEM }),
 		title,
 		...(meta.length > 0 ? { meta } : {}),
 	};

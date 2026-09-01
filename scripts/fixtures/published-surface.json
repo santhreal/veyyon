@@ -6371,7 +6371,8 @@
 	"additions": {
 		"packages": [
 			"@veyyon/kernel",
-			"@veyyon/view"
+			"@veyyon/view",
+			"@veyyon/web"
 		],
 		"exportsKeys": {
 			"@veyyon/wire": [
@@ -7330,8 +7331,6 @@
 				"./tools/fs/manifest",
 				"./tools/fs/manifest.js",
 				"./tools/fs/read",
-				"./tools/fs/read-render",
-				"./tools/fs/read-render.js",
 				"./tools/fs/read.js",
 				"./tools/fs/renderers",
 				"./tools/fs/renderers.js",
@@ -7485,6 +7484,8 @@
 				"./tools/web/manifest.js",
 				"./tools/web/renderers",
 				"./tools/web/renderers.js",
+				"./tools/web/scrape-services",
+				"./tools/web/scrape-services.js",
 				"./tools/web/tts",
 				"./tools/web/tts.js",
 				"./tools/web/xai-http",
@@ -7513,6 +7514,8 @@
 				"./fuzzy.js",
 				"./host-notification",
 				"./host-notification.js",
+				"./html-markdown",
+				"./html-markdown.js",
 				"./image-fallback",
 				"./image-fallback.js",
 				"./keybindings",
@@ -7529,6 +7532,8 @@
 				"./latex-unicode.js",
 				"./loop-watchdog",
 				"./loop-watchdog.js",
+				"./markdown-table",
+				"./markdown-table.js",
 				"./motion",
 				"./motion.js",
 				"./mouse",
@@ -7555,6 +7560,8 @@
 				"./tmux.js",
 				"./ttyid",
 				"./ttyid.js",
+				"./turndown",
+				"./turndown.js",
 				"./width",
 				"./width.js",
 				"./word-nav",
@@ -7747,6 +7754,14 @@
 				"./tool-discovery/*": {
 					"to": "./discovery/*",
 					"why": "the discovery modules are flat under src/discovery/, which ./discovery/* serves"
+				},
+				"./web/scrapers": {
+					"to": "@veyyon/web/scrapers",
+					"why": "the site handlers moved to plugins/web, which @veyyon/web publishes as ./scrapers"
+				},
+				"./web/scrapers/*": {
+					"to": "@veyyon/web/scrapers/*",
+					"why": "the site handlers moved to plugins/web, which @veyyon/web publishes as ./scrapers/*"
 				}
 			}
 		},
@@ -11860,6 +11875,30 @@
 					"to": "@veyyon/coding-agent/speech/tts/wav.js",
 					"why": "packages/coding-agent/src/tts/wav.ts moved to packages/coding-agent/src/speech/tts/wav.ts, which @veyyon/coding-agent publishes as ./speech/tts/wav.js"
 				},
+				"./utils/markdown-link": {
+					"to": "@veyyon/web/markdown-link",
+					"why": "packages/coding-agent/src/utils/markdown-link.ts moved to plugins/web/src/markdown-link.ts, which @veyyon/web publishes as ./markdown-link"
+				},
+				"./utils/markdown-link.js": {
+					"to": "@veyyon/web/markdown-link.js",
+					"why": "packages/coding-agent/src/utils/markdown-link.ts moved to plugins/web/src/markdown-link.ts, which @veyyon/web publishes as ./markdown-link.js"
+				},
+				"./utils/markdown-table": {
+					"to": "@veyyon/utils/markdown-table",
+					"why": "packages/coding-agent/src/utils/markdown-table.ts moved to packages/utils/src/markdown-table.ts, which @veyyon/utils publishes as ./markdown-table"
+				},
+				"./utils/markdown-table.js": {
+					"to": "@veyyon/utils/markdown-table.js",
+					"why": "packages/coding-agent/src/utils/markdown-table.ts moved to packages/utils/src/markdown-table.ts, which @veyyon/utils publishes as ./markdown-table.js"
+				},
+				"./utils/turndown": {
+					"to": "@veyyon/utils/turndown",
+					"why": "packages/coding-agent/src/utils/turndown.ts moved to packages/utils/src/turndown.ts, which @veyyon/utils publishes as ./turndown"
+				},
+				"./utils/turndown.js": {
+					"to": "@veyyon/utils/turndown.js",
+					"why": "packages/coding-agent/src/utils/turndown.ts moved to packages/utils/src/turndown.ts, which @veyyon/utils publishes as ./turndown.js"
+				},
 				"./vibe/runtime": {
 					"to": "@veyyon/coding-agent/session/vibe-runtime",
 					"why": "packages/coding-agent/src/vibe/runtime.ts moved to packages/coding-agent/src/session/vibe-runtime.ts, which @veyyon/coding-agent publishes as ./session/vibe-runtime"
@@ -11875,6 +11914,650 @@
 				"./vibe/state.js": {
 					"to": "./session/vibe-runtime.js",
 					"why": "VibeModeState is declared in session/vibe-runtime.ts, which publishes it"
+				},
+				"./web/parallel": {
+					"to": "@veyyon/web/parallel",
+					"why": "packages/coding-agent/src/web/parallel.ts moved to plugins/web/src/parallel.ts, which @veyyon/web publishes as ./parallel"
+				},
+				"./web/parallel.js": {
+					"to": "@veyyon/web/parallel.js",
+					"why": "packages/coding-agent/src/web/parallel.ts moved to plugins/web/src/parallel.ts, which @veyyon/web publishes as ./parallel.js"
+				},
+				"./web/scrapers": {
+					"to": "@veyyon/web",
+					"why": "packages/coding-agent/src/web/scrapers/index.ts moved to plugins/web/src/scrapers/index.ts, which @veyyon/web publishes as ."
+				},
+				"./web/scrapers/artifacthub": {
+					"to": "@veyyon/web/scrapers/artifacthub",
+					"why": "packages/coding-agent/src/web/scrapers/artifacthub.ts moved to plugins/web/src/scrapers/artifacthub.ts, which @veyyon/web publishes as ./scrapers/artifacthub"
+				},
+				"./web/scrapers/artifacthub.js": {
+					"to": "@veyyon/web/scrapers/artifacthub.js",
+					"why": "packages/coding-agent/src/web/scrapers/artifacthub.ts moved to plugins/web/src/scrapers/artifacthub.ts, which @veyyon/web publishes as ./scrapers/artifacthub.js"
+				},
+				"./web/scrapers/arxiv": {
+					"to": "@veyyon/web/scrapers/arxiv",
+					"why": "packages/coding-agent/src/web/scrapers/arxiv.ts moved to plugins/web/src/scrapers/arxiv.ts, which @veyyon/web publishes as ./scrapers/arxiv"
+				},
+				"./web/scrapers/arxiv.js": {
+					"to": "@veyyon/web/scrapers/arxiv.js",
+					"why": "packages/coding-agent/src/web/scrapers/arxiv.ts moved to plugins/web/src/scrapers/arxiv.ts, which @veyyon/web publishes as ./scrapers/arxiv.js"
+				},
+				"./web/scrapers/aur": {
+					"to": "@veyyon/web/scrapers/aur",
+					"why": "packages/coding-agent/src/web/scrapers/aur.ts moved to plugins/web/src/scrapers/aur.ts, which @veyyon/web publishes as ./scrapers/aur"
+				},
+				"./web/scrapers/aur.js": {
+					"to": "@veyyon/web/scrapers/aur.js",
+					"why": "packages/coding-agent/src/web/scrapers/aur.ts moved to plugins/web/src/scrapers/aur.ts, which @veyyon/web publishes as ./scrapers/aur.js"
+				},
+				"./web/scrapers/biorxiv": {
+					"to": "@veyyon/web/scrapers/biorxiv",
+					"why": "packages/coding-agent/src/web/scrapers/biorxiv.ts moved to plugins/web/src/scrapers/biorxiv.ts, which @veyyon/web publishes as ./scrapers/biorxiv"
+				},
+				"./web/scrapers/biorxiv.js": {
+					"to": "@veyyon/web/scrapers/biorxiv.js",
+					"why": "packages/coding-agent/src/web/scrapers/biorxiv.ts moved to plugins/web/src/scrapers/biorxiv.ts, which @veyyon/web publishes as ./scrapers/biorxiv.js"
+				},
+				"./web/scrapers/bluesky": {
+					"to": "@veyyon/web/scrapers/bluesky",
+					"why": "packages/coding-agent/src/web/scrapers/bluesky.ts moved to plugins/web/src/scrapers/bluesky.ts, which @veyyon/web publishes as ./scrapers/bluesky"
+				},
+				"./web/scrapers/bluesky.js": {
+					"to": "@veyyon/web/scrapers/bluesky.js",
+					"why": "packages/coding-agent/src/web/scrapers/bluesky.ts moved to plugins/web/src/scrapers/bluesky.ts, which @veyyon/web publishes as ./scrapers/bluesky.js"
+				},
+				"./web/scrapers/brew": {
+					"to": "@veyyon/web/scrapers/brew",
+					"why": "packages/coding-agent/src/web/scrapers/brew.ts moved to plugins/web/src/scrapers/brew.ts, which @veyyon/web publishes as ./scrapers/brew"
+				},
+				"./web/scrapers/brew.js": {
+					"to": "@veyyon/web/scrapers/brew.js",
+					"why": "packages/coding-agent/src/web/scrapers/brew.ts moved to plugins/web/src/scrapers/brew.ts, which @veyyon/web publishes as ./scrapers/brew.js"
+				},
+				"./web/scrapers/cheatsh": {
+					"to": "@veyyon/web/scrapers/cheatsh",
+					"why": "packages/coding-agent/src/web/scrapers/cheatsh.ts moved to plugins/web/src/scrapers/cheatsh.ts, which @veyyon/web publishes as ./scrapers/cheatsh"
+				},
+				"./web/scrapers/cheatsh.js": {
+					"to": "@veyyon/web/scrapers/cheatsh.js",
+					"why": "packages/coding-agent/src/web/scrapers/cheatsh.ts moved to plugins/web/src/scrapers/cheatsh.ts, which @veyyon/web publishes as ./scrapers/cheatsh.js"
+				},
+				"./web/scrapers/chocolatey": {
+					"to": "@veyyon/web/scrapers/chocolatey",
+					"why": "packages/coding-agent/src/web/scrapers/chocolatey.ts moved to plugins/web/src/scrapers/chocolatey.ts, which @veyyon/web publishes as ./scrapers/chocolatey"
+				},
+				"./web/scrapers/chocolatey.js": {
+					"to": "@veyyon/web/scrapers/chocolatey.js",
+					"why": "packages/coding-agent/src/web/scrapers/chocolatey.ts moved to plugins/web/src/scrapers/chocolatey.ts, which @veyyon/web publishes as ./scrapers/chocolatey.js"
+				},
+				"./web/scrapers/choosealicense": {
+					"to": "@veyyon/web/scrapers/choosealicense",
+					"why": "packages/coding-agent/src/web/scrapers/choosealicense.ts moved to plugins/web/src/scrapers/choosealicense.ts, which @veyyon/web publishes as ./scrapers/choosealicense"
+				},
+				"./web/scrapers/choosealicense.js": {
+					"to": "@veyyon/web/scrapers/choosealicense.js",
+					"why": "packages/coding-agent/src/web/scrapers/choosealicense.ts moved to plugins/web/src/scrapers/choosealicense.ts, which @veyyon/web publishes as ./scrapers/choosealicense.js"
+				},
+				"./web/scrapers/cisa-kev": {
+					"to": "@veyyon/web/scrapers/cisa-kev",
+					"why": "packages/coding-agent/src/web/scrapers/cisa-kev.ts moved to plugins/web/src/scrapers/cisa-kev.ts, which @veyyon/web publishes as ./scrapers/cisa-kev"
+				},
+				"./web/scrapers/cisa-kev.js": {
+					"to": "@veyyon/web/scrapers/cisa-kev.js",
+					"why": "packages/coding-agent/src/web/scrapers/cisa-kev.ts moved to plugins/web/src/scrapers/cisa-kev.ts, which @veyyon/web publishes as ./scrapers/cisa-kev.js"
+				},
+				"./web/scrapers/clojars": {
+					"to": "@veyyon/web/scrapers/clojars",
+					"why": "packages/coding-agent/src/web/scrapers/clojars.ts moved to plugins/web/src/scrapers/clojars.ts, which @veyyon/web publishes as ./scrapers/clojars"
+				},
+				"./web/scrapers/clojars.js": {
+					"to": "@veyyon/web/scrapers/clojars.js",
+					"why": "packages/coding-agent/src/web/scrapers/clojars.ts moved to plugins/web/src/scrapers/clojars.ts, which @veyyon/web publishes as ./scrapers/clojars.js"
+				},
+				"./web/scrapers/coingecko": {
+					"to": "@veyyon/web/scrapers/coingecko",
+					"why": "packages/coding-agent/src/web/scrapers/coingecko.ts moved to plugins/web/src/scrapers/coingecko.ts, which @veyyon/web publishes as ./scrapers/coingecko"
+				},
+				"./web/scrapers/coingecko.js": {
+					"to": "@veyyon/web/scrapers/coingecko.js",
+					"why": "packages/coding-agent/src/web/scrapers/coingecko.ts moved to plugins/web/src/scrapers/coingecko.ts, which @veyyon/web publishes as ./scrapers/coingecko.js"
+				},
+				"./web/scrapers/crates-io": {
+					"to": "@veyyon/web/scrapers/crates-io",
+					"why": "packages/coding-agent/src/web/scrapers/crates-io.ts moved to plugins/web/src/scrapers/crates-io.ts, which @veyyon/web publishes as ./scrapers/crates-io"
+				},
+				"./web/scrapers/crates-io.js": {
+					"to": "@veyyon/web/scrapers/crates-io.js",
+					"why": "packages/coding-agent/src/web/scrapers/crates-io.ts moved to plugins/web/src/scrapers/crates-io.ts, which @veyyon/web publishes as ./scrapers/crates-io.js"
+				},
+				"./web/scrapers/crossref": {
+					"to": "@veyyon/web/scrapers/crossref",
+					"why": "packages/coding-agent/src/web/scrapers/crossref.ts moved to plugins/web/src/scrapers/crossref.ts, which @veyyon/web publishes as ./scrapers/crossref"
+				},
+				"./web/scrapers/crossref.js": {
+					"to": "@veyyon/web/scrapers/crossref.js",
+					"why": "packages/coding-agent/src/web/scrapers/crossref.ts moved to plugins/web/src/scrapers/crossref.ts, which @veyyon/web publishes as ./scrapers/crossref.js"
+				},
+				"./web/scrapers/devto": {
+					"to": "@veyyon/web/scrapers/devto",
+					"why": "packages/coding-agent/src/web/scrapers/devto.ts moved to plugins/web/src/scrapers/devto.ts, which @veyyon/web publishes as ./scrapers/devto"
+				},
+				"./web/scrapers/devto.js": {
+					"to": "@veyyon/web/scrapers/devto.js",
+					"why": "packages/coding-agent/src/web/scrapers/devto.ts moved to plugins/web/src/scrapers/devto.ts, which @veyyon/web publishes as ./scrapers/devto.js"
+				},
+				"./web/scrapers/discogs": {
+					"to": "@veyyon/web/scrapers/discogs",
+					"why": "packages/coding-agent/src/web/scrapers/discogs.ts moved to plugins/web/src/scrapers/discogs.ts, which @veyyon/web publishes as ./scrapers/discogs"
+				},
+				"./web/scrapers/discogs.js": {
+					"to": "@veyyon/web/scrapers/discogs.js",
+					"why": "packages/coding-agent/src/web/scrapers/discogs.ts moved to plugins/web/src/scrapers/discogs.ts, which @veyyon/web publishes as ./scrapers/discogs.js"
+				},
+				"./web/scrapers/discourse": {
+					"to": "@veyyon/web/scrapers/discourse",
+					"why": "packages/coding-agent/src/web/scrapers/discourse.ts moved to plugins/web/src/scrapers/discourse.ts, which @veyyon/web publishes as ./scrapers/discourse"
+				},
+				"./web/scrapers/discourse.js": {
+					"to": "@veyyon/web/scrapers/discourse.js",
+					"why": "packages/coding-agent/src/web/scrapers/discourse.ts moved to plugins/web/src/scrapers/discourse.ts, which @veyyon/web publishes as ./scrapers/discourse.js"
+				},
+				"./web/scrapers/dockerhub": {
+					"to": "@veyyon/web/scrapers/dockerhub",
+					"why": "packages/coding-agent/src/web/scrapers/dockerhub.ts moved to plugins/web/src/scrapers/dockerhub.ts, which @veyyon/web publishes as ./scrapers/dockerhub"
+				},
+				"./web/scrapers/dockerhub.js": {
+					"to": "@veyyon/web/scrapers/dockerhub.js",
+					"why": "packages/coding-agent/src/web/scrapers/dockerhub.ts moved to plugins/web/src/scrapers/dockerhub.ts, which @veyyon/web publishes as ./scrapers/dockerhub.js"
+				},
+				"./web/scrapers/docs-rs": {
+					"to": "@veyyon/web/scrapers/docs-rs",
+					"why": "packages/coding-agent/src/web/scrapers/docs-rs.ts moved to plugins/web/src/scrapers/docs-rs.ts, which @veyyon/web publishes as ./scrapers/docs-rs"
+				},
+				"./web/scrapers/docs-rs.js": {
+					"to": "@veyyon/web/scrapers/docs-rs.js",
+					"why": "packages/coding-agent/src/web/scrapers/docs-rs.ts moved to plugins/web/src/scrapers/docs-rs.ts, which @veyyon/web publishes as ./scrapers/docs-rs.js"
+				},
+				"./web/scrapers/fdroid": {
+					"to": "@veyyon/web/scrapers/fdroid",
+					"why": "packages/coding-agent/src/web/scrapers/fdroid.ts moved to plugins/web/src/scrapers/fdroid.ts, which @veyyon/web publishes as ./scrapers/fdroid"
+				},
+				"./web/scrapers/fdroid.js": {
+					"to": "@veyyon/web/scrapers/fdroid.js",
+					"why": "packages/coding-agent/src/web/scrapers/fdroid.ts moved to plugins/web/src/scrapers/fdroid.ts, which @veyyon/web publishes as ./scrapers/fdroid.js"
+				},
+				"./web/scrapers/firefox-addons": {
+					"to": "@veyyon/web/scrapers/firefox-addons",
+					"why": "packages/coding-agent/src/web/scrapers/firefox-addons.ts moved to plugins/web/src/scrapers/firefox-addons.ts, which @veyyon/web publishes as ./scrapers/firefox-addons"
+				},
+				"./web/scrapers/firefox-addons.js": {
+					"to": "@veyyon/web/scrapers/firefox-addons.js",
+					"why": "packages/coding-agent/src/web/scrapers/firefox-addons.ts moved to plugins/web/src/scrapers/firefox-addons.ts, which @veyyon/web publishes as ./scrapers/firefox-addons.js"
+				},
+				"./web/scrapers/flathub": {
+					"to": "@veyyon/web/scrapers/flathub",
+					"why": "packages/coding-agent/src/web/scrapers/flathub.ts moved to plugins/web/src/scrapers/flathub.ts, which @veyyon/web publishes as ./scrapers/flathub"
+				},
+				"./web/scrapers/flathub.js": {
+					"to": "@veyyon/web/scrapers/flathub.js",
+					"why": "packages/coding-agent/src/web/scrapers/flathub.ts moved to plugins/web/src/scrapers/flathub.ts, which @veyyon/web publishes as ./scrapers/flathub.js"
+				},
+				"./web/scrapers/github": {
+					"to": "@veyyon/web/scrapers/github",
+					"why": "packages/coding-agent/src/web/scrapers/github.ts moved to plugins/web/src/scrapers/github.ts, which @veyyon/web publishes as ./scrapers/github"
+				},
+				"./web/scrapers/github-gist": {
+					"to": "@veyyon/web/scrapers/github-gist",
+					"why": "packages/coding-agent/src/web/scrapers/github-gist.ts moved to plugins/web/src/scrapers/github-gist.ts, which @veyyon/web publishes as ./scrapers/github-gist"
+				},
+				"./web/scrapers/github-gist.js": {
+					"to": "@veyyon/web/scrapers/github-gist.js",
+					"why": "packages/coding-agent/src/web/scrapers/github-gist.ts moved to plugins/web/src/scrapers/github-gist.ts, which @veyyon/web publishes as ./scrapers/github-gist.js"
+				},
+				"./web/scrapers/github.js": {
+					"to": "@veyyon/web/scrapers/github.js",
+					"why": "packages/coding-agent/src/web/scrapers/github.ts moved to plugins/web/src/scrapers/github.ts, which @veyyon/web publishes as ./scrapers/github.js"
+				},
+				"./web/scrapers/gitlab": {
+					"to": "@veyyon/web/scrapers/gitlab",
+					"why": "packages/coding-agent/src/web/scrapers/gitlab.ts moved to plugins/web/src/scrapers/gitlab.ts, which @veyyon/web publishes as ./scrapers/gitlab"
+				},
+				"./web/scrapers/gitlab.js": {
+					"to": "@veyyon/web/scrapers/gitlab.js",
+					"why": "packages/coding-agent/src/web/scrapers/gitlab.ts moved to plugins/web/src/scrapers/gitlab.ts, which @veyyon/web publishes as ./scrapers/gitlab.js"
+				},
+				"./web/scrapers/go-pkg": {
+					"to": "@veyyon/web/scrapers/go-pkg",
+					"why": "packages/coding-agent/src/web/scrapers/go-pkg.ts moved to plugins/web/src/scrapers/go-pkg.ts, which @veyyon/web publishes as ./scrapers/go-pkg"
+				},
+				"./web/scrapers/go-pkg.js": {
+					"to": "@veyyon/web/scrapers/go-pkg.js",
+					"why": "packages/coding-agent/src/web/scrapers/go-pkg.ts moved to plugins/web/src/scrapers/go-pkg.ts, which @veyyon/web publishes as ./scrapers/go-pkg.js"
+				},
+				"./web/scrapers/hackage": {
+					"to": "@veyyon/web/scrapers/hackage",
+					"why": "packages/coding-agent/src/web/scrapers/hackage.ts moved to plugins/web/src/scrapers/hackage.ts, which @veyyon/web publishes as ./scrapers/hackage"
+				},
+				"./web/scrapers/hackage.js": {
+					"to": "@veyyon/web/scrapers/hackage.js",
+					"why": "packages/coding-agent/src/web/scrapers/hackage.ts moved to plugins/web/src/scrapers/hackage.ts, which @veyyon/web publishes as ./scrapers/hackage.js"
+				},
+				"./web/scrapers/hackernews": {
+					"to": "@veyyon/web/scrapers/hackernews",
+					"why": "packages/coding-agent/src/web/scrapers/hackernews.ts moved to plugins/web/src/scrapers/hackernews.ts, which @veyyon/web publishes as ./scrapers/hackernews"
+				},
+				"./web/scrapers/hackernews.js": {
+					"to": "@veyyon/web/scrapers/hackernews.js",
+					"why": "packages/coding-agent/src/web/scrapers/hackernews.ts moved to plugins/web/src/scrapers/hackernews.ts, which @veyyon/web publishes as ./scrapers/hackernews.js"
+				},
+				"./web/scrapers/hex": {
+					"to": "@veyyon/web/scrapers/hex",
+					"why": "packages/coding-agent/src/web/scrapers/hex.ts moved to plugins/web/src/scrapers/hex.ts, which @veyyon/web publishes as ./scrapers/hex"
+				},
+				"./web/scrapers/hex.js": {
+					"to": "@veyyon/web/scrapers/hex.js",
+					"why": "packages/coding-agent/src/web/scrapers/hex.ts moved to plugins/web/src/scrapers/hex.ts, which @veyyon/web publishes as ./scrapers/hex.js"
+				},
+				"./web/scrapers/huggingface": {
+					"to": "@veyyon/web/scrapers/huggingface",
+					"why": "packages/coding-agent/src/web/scrapers/huggingface.ts moved to plugins/web/src/scrapers/huggingface.ts, which @veyyon/web publishes as ./scrapers/huggingface"
+				},
+				"./web/scrapers/huggingface.js": {
+					"to": "@veyyon/web/scrapers/huggingface.js",
+					"why": "packages/coding-agent/src/web/scrapers/huggingface.ts moved to plugins/web/src/scrapers/huggingface.ts, which @veyyon/web publishes as ./scrapers/huggingface.js"
+				},
+				"./web/scrapers/iacr": {
+					"to": "@veyyon/web/scrapers/iacr",
+					"why": "packages/coding-agent/src/web/scrapers/iacr.ts moved to plugins/web/src/scrapers/iacr.ts, which @veyyon/web publishes as ./scrapers/iacr"
+				},
+				"./web/scrapers/iacr.js": {
+					"to": "@veyyon/web/scrapers/iacr.js",
+					"why": "packages/coding-agent/src/web/scrapers/iacr.ts moved to plugins/web/src/scrapers/iacr.ts, which @veyyon/web publishes as ./scrapers/iacr.js"
+				},
+				"./web/scrapers/index": {
+					"to": "@veyyon/web",
+					"why": "packages/coding-agent/src/web/scrapers/index.ts moved to plugins/web/src/scrapers/index.ts, which @veyyon/web publishes as ."
+				},
+				"./web/scrapers/index.js": {
+					"to": "@veyyon/web/scrapers/index.js",
+					"why": "packages/coding-agent/src/web/scrapers/index.ts moved to plugins/web/src/scrapers/index.ts, which @veyyon/web publishes as ./scrapers/index.js"
+				},
+				"./web/scrapers/jetbrains-marketplace": {
+					"to": "@veyyon/web/scrapers/jetbrains-marketplace",
+					"why": "packages/coding-agent/src/web/scrapers/jetbrains-marketplace.ts moved to plugins/web/src/scrapers/jetbrains-marketplace.ts, which @veyyon/web publishes as ./scrapers/jetbrains-marketplace"
+				},
+				"./web/scrapers/jetbrains-marketplace.js": {
+					"to": "@veyyon/web/scrapers/jetbrains-marketplace.js",
+					"why": "packages/coding-agent/src/web/scrapers/jetbrains-marketplace.ts moved to plugins/web/src/scrapers/jetbrains-marketplace.ts, which @veyyon/web publishes as ./scrapers/jetbrains-marketplace.js"
+				},
+				"./web/scrapers/lemmy": {
+					"to": "@veyyon/web/scrapers/lemmy",
+					"why": "packages/coding-agent/src/web/scrapers/lemmy.ts moved to plugins/web/src/scrapers/lemmy.ts, which @veyyon/web publishes as ./scrapers/lemmy"
+				},
+				"./web/scrapers/lemmy.js": {
+					"to": "@veyyon/web/scrapers/lemmy.js",
+					"why": "packages/coding-agent/src/web/scrapers/lemmy.ts moved to plugins/web/src/scrapers/lemmy.ts, which @veyyon/web publishes as ./scrapers/lemmy.js"
+				},
+				"./web/scrapers/lobsters": {
+					"to": "@veyyon/web/scrapers/lobsters",
+					"why": "packages/coding-agent/src/web/scrapers/lobsters.ts moved to plugins/web/src/scrapers/lobsters.ts, which @veyyon/web publishes as ./scrapers/lobsters"
+				},
+				"./web/scrapers/lobsters.js": {
+					"to": "@veyyon/web/scrapers/lobsters.js",
+					"why": "packages/coding-agent/src/web/scrapers/lobsters.ts moved to plugins/web/src/scrapers/lobsters.ts, which @veyyon/web publishes as ./scrapers/lobsters.js"
+				},
+				"./web/scrapers/mastodon": {
+					"to": "@veyyon/web/scrapers/mastodon",
+					"why": "packages/coding-agent/src/web/scrapers/mastodon.ts moved to plugins/web/src/scrapers/mastodon.ts, which @veyyon/web publishes as ./scrapers/mastodon"
+				},
+				"./web/scrapers/mastodon.js": {
+					"to": "@veyyon/web/scrapers/mastodon.js",
+					"why": "packages/coding-agent/src/web/scrapers/mastodon.ts moved to plugins/web/src/scrapers/mastodon.ts, which @veyyon/web publishes as ./scrapers/mastodon.js"
+				},
+				"./web/scrapers/maven": {
+					"to": "@veyyon/web/scrapers/maven",
+					"why": "packages/coding-agent/src/web/scrapers/maven.ts moved to plugins/web/src/scrapers/maven.ts, which @veyyon/web publishes as ./scrapers/maven"
+				},
+				"./web/scrapers/maven.js": {
+					"to": "@veyyon/web/scrapers/maven.js",
+					"why": "packages/coding-agent/src/web/scrapers/maven.ts moved to plugins/web/src/scrapers/maven.ts, which @veyyon/web publishes as ./scrapers/maven.js"
+				},
+				"./web/scrapers/mdn": {
+					"to": "@veyyon/web/scrapers/mdn",
+					"why": "packages/coding-agent/src/web/scrapers/mdn.ts moved to plugins/web/src/scrapers/mdn.ts, which @veyyon/web publishes as ./scrapers/mdn"
+				},
+				"./web/scrapers/mdn.js": {
+					"to": "@veyyon/web/scrapers/mdn.js",
+					"why": "packages/coding-agent/src/web/scrapers/mdn.ts moved to plugins/web/src/scrapers/mdn.ts, which @veyyon/web publishes as ./scrapers/mdn.js"
+				},
+				"./web/scrapers/metacpan": {
+					"to": "@veyyon/web/scrapers/metacpan",
+					"why": "packages/coding-agent/src/web/scrapers/metacpan.ts moved to plugins/web/src/scrapers/metacpan.ts, which @veyyon/web publishes as ./scrapers/metacpan"
+				},
+				"./web/scrapers/metacpan.js": {
+					"to": "@veyyon/web/scrapers/metacpan.js",
+					"why": "packages/coding-agent/src/web/scrapers/metacpan.ts moved to plugins/web/src/scrapers/metacpan.ts, which @veyyon/web publishes as ./scrapers/metacpan.js"
+				},
+				"./web/scrapers/musicbrainz": {
+					"to": "@veyyon/web/scrapers/musicbrainz",
+					"why": "packages/coding-agent/src/web/scrapers/musicbrainz.ts moved to plugins/web/src/scrapers/musicbrainz.ts, which @veyyon/web publishes as ./scrapers/musicbrainz"
+				},
+				"./web/scrapers/musicbrainz.js": {
+					"to": "@veyyon/web/scrapers/musicbrainz.js",
+					"why": "packages/coding-agent/src/web/scrapers/musicbrainz.ts moved to plugins/web/src/scrapers/musicbrainz.ts, which @veyyon/web publishes as ./scrapers/musicbrainz.js"
+				},
+				"./web/scrapers/npm": {
+					"to": "@veyyon/web/scrapers/npm",
+					"why": "packages/coding-agent/src/web/scrapers/npm.ts moved to plugins/web/src/scrapers/npm.ts, which @veyyon/web publishes as ./scrapers/npm"
+				},
+				"./web/scrapers/npm.js": {
+					"to": "@veyyon/web/scrapers/npm.js",
+					"why": "packages/coding-agent/src/web/scrapers/npm.ts moved to plugins/web/src/scrapers/npm.ts, which @veyyon/web publishes as ./scrapers/npm.js"
+				},
+				"./web/scrapers/nuget": {
+					"to": "@veyyon/web/scrapers/nuget",
+					"why": "packages/coding-agent/src/web/scrapers/nuget.ts moved to plugins/web/src/scrapers/nuget.ts, which @veyyon/web publishes as ./scrapers/nuget"
+				},
+				"./web/scrapers/nuget.js": {
+					"to": "@veyyon/web/scrapers/nuget.js",
+					"why": "packages/coding-agent/src/web/scrapers/nuget.ts moved to plugins/web/src/scrapers/nuget.ts, which @veyyon/web publishes as ./scrapers/nuget.js"
+				},
+				"./web/scrapers/nvd": {
+					"to": "@veyyon/web/scrapers/nvd",
+					"why": "packages/coding-agent/src/web/scrapers/nvd.ts moved to plugins/web/src/scrapers/nvd.ts, which @veyyon/web publishes as ./scrapers/nvd"
+				},
+				"./web/scrapers/nvd.js": {
+					"to": "@veyyon/web/scrapers/nvd.js",
+					"why": "packages/coding-agent/src/web/scrapers/nvd.ts moved to plugins/web/src/scrapers/nvd.ts, which @veyyon/web publishes as ./scrapers/nvd.js"
+				},
+				"./web/scrapers/ollama": {
+					"to": "@veyyon/web/scrapers/ollama",
+					"why": "packages/coding-agent/src/web/scrapers/ollama.ts moved to plugins/web/src/scrapers/ollama.ts, which @veyyon/web publishes as ./scrapers/ollama"
+				},
+				"./web/scrapers/ollama.js": {
+					"to": "@veyyon/web/scrapers/ollama.js",
+					"why": "packages/coding-agent/src/web/scrapers/ollama.ts moved to plugins/web/src/scrapers/ollama.ts, which @veyyon/web publishes as ./scrapers/ollama.js"
+				},
+				"./web/scrapers/open-vsx": {
+					"to": "@veyyon/web/scrapers/open-vsx",
+					"why": "packages/coding-agent/src/web/scrapers/open-vsx.ts moved to plugins/web/src/scrapers/open-vsx.ts, which @veyyon/web publishes as ./scrapers/open-vsx"
+				},
+				"./web/scrapers/open-vsx.js": {
+					"to": "@veyyon/web/scrapers/open-vsx.js",
+					"why": "packages/coding-agent/src/web/scrapers/open-vsx.ts moved to plugins/web/src/scrapers/open-vsx.ts, which @veyyon/web publishes as ./scrapers/open-vsx.js"
+				},
+				"./web/scrapers/opencorporates": {
+					"to": "@veyyon/web/scrapers/opencorporates",
+					"why": "packages/coding-agent/src/web/scrapers/opencorporates.ts moved to plugins/web/src/scrapers/opencorporates.ts, which @veyyon/web publishes as ./scrapers/opencorporates"
+				},
+				"./web/scrapers/opencorporates.js": {
+					"to": "@veyyon/web/scrapers/opencorporates.js",
+					"why": "packages/coding-agent/src/web/scrapers/opencorporates.ts moved to plugins/web/src/scrapers/opencorporates.ts, which @veyyon/web publishes as ./scrapers/opencorporates.js"
+				},
+				"./web/scrapers/openlibrary": {
+					"to": "@veyyon/web/scrapers/openlibrary",
+					"why": "packages/coding-agent/src/web/scrapers/openlibrary.ts moved to plugins/web/src/scrapers/openlibrary.ts, which @veyyon/web publishes as ./scrapers/openlibrary"
+				},
+				"./web/scrapers/openlibrary.js": {
+					"to": "@veyyon/web/scrapers/openlibrary.js",
+					"why": "packages/coding-agent/src/web/scrapers/openlibrary.ts moved to plugins/web/src/scrapers/openlibrary.ts, which @veyyon/web publishes as ./scrapers/openlibrary.js"
+				},
+				"./web/scrapers/orcid": {
+					"to": "@veyyon/web/scrapers/orcid",
+					"why": "packages/coding-agent/src/web/scrapers/orcid.ts moved to plugins/web/src/scrapers/orcid.ts, which @veyyon/web publishes as ./scrapers/orcid"
+				},
+				"./web/scrapers/orcid.js": {
+					"to": "@veyyon/web/scrapers/orcid.js",
+					"why": "packages/coding-agent/src/web/scrapers/orcid.ts moved to plugins/web/src/scrapers/orcid.ts, which @veyyon/web publishes as ./scrapers/orcid.js"
+				},
+				"./web/scrapers/osv": {
+					"to": "@veyyon/web/scrapers/osv",
+					"why": "packages/coding-agent/src/web/scrapers/osv.ts moved to plugins/web/src/scrapers/osv.ts, which @veyyon/web publishes as ./scrapers/osv"
+				},
+				"./web/scrapers/osv.js": {
+					"to": "@veyyon/web/scrapers/osv.js",
+					"why": "packages/coding-agent/src/web/scrapers/osv.ts moved to plugins/web/src/scrapers/osv.ts, which @veyyon/web publishes as ./scrapers/osv.js"
+				},
+				"./web/scrapers/packagist": {
+					"to": "@veyyon/web/scrapers/packagist",
+					"why": "packages/coding-agent/src/web/scrapers/packagist.ts moved to plugins/web/src/scrapers/packagist.ts, which @veyyon/web publishes as ./scrapers/packagist"
+				},
+				"./web/scrapers/packagist.js": {
+					"to": "@veyyon/web/scrapers/packagist.js",
+					"why": "packages/coding-agent/src/web/scrapers/packagist.ts moved to plugins/web/src/scrapers/packagist.ts, which @veyyon/web publishes as ./scrapers/packagist.js"
+				},
+				"./web/scrapers/pub-dev": {
+					"to": "@veyyon/web/scrapers/pub-dev",
+					"why": "packages/coding-agent/src/web/scrapers/pub-dev.ts moved to plugins/web/src/scrapers/pub-dev.ts, which @veyyon/web publishes as ./scrapers/pub-dev"
+				},
+				"./web/scrapers/pub-dev.js": {
+					"to": "@veyyon/web/scrapers/pub-dev.js",
+					"why": "packages/coding-agent/src/web/scrapers/pub-dev.ts moved to plugins/web/src/scrapers/pub-dev.ts, which @veyyon/web publishes as ./scrapers/pub-dev.js"
+				},
+				"./web/scrapers/pubmed": {
+					"to": "@veyyon/web/scrapers/pubmed",
+					"why": "packages/coding-agent/src/web/scrapers/pubmed.ts moved to plugins/web/src/scrapers/pubmed.ts, which @veyyon/web publishes as ./scrapers/pubmed"
+				},
+				"./web/scrapers/pubmed.js": {
+					"to": "@veyyon/web/scrapers/pubmed.js",
+					"why": "packages/coding-agent/src/web/scrapers/pubmed.ts moved to plugins/web/src/scrapers/pubmed.ts, which @veyyon/web publishes as ./scrapers/pubmed.js"
+				},
+				"./web/scrapers/pypi": {
+					"to": "@veyyon/web/scrapers/pypi",
+					"why": "packages/coding-agent/src/web/scrapers/pypi.ts moved to plugins/web/src/scrapers/pypi.ts, which @veyyon/web publishes as ./scrapers/pypi"
+				},
+				"./web/scrapers/pypi.js": {
+					"to": "@veyyon/web/scrapers/pypi.js",
+					"why": "packages/coding-agent/src/web/scrapers/pypi.ts moved to plugins/web/src/scrapers/pypi.ts, which @veyyon/web publishes as ./scrapers/pypi.js"
+				},
+				"./web/scrapers/rawg": {
+					"to": "@veyyon/web/scrapers/rawg",
+					"why": "packages/coding-agent/src/web/scrapers/rawg.ts moved to plugins/web/src/scrapers/rawg.ts, which @veyyon/web publishes as ./scrapers/rawg"
+				},
+				"./web/scrapers/rawg.js": {
+					"to": "@veyyon/web/scrapers/rawg.js",
+					"why": "packages/coding-agent/src/web/scrapers/rawg.ts moved to plugins/web/src/scrapers/rawg.ts, which @veyyon/web publishes as ./scrapers/rawg.js"
+				},
+				"./web/scrapers/readthedocs": {
+					"to": "@veyyon/web/scrapers/readthedocs",
+					"why": "packages/coding-agent/src/web/scrapers/readthedocs.ts moved to plugins/web/src/scrapers/readthedocs.ts, which @veyyon/web publishes as ./scrapers/readthedocs"
+				},
+				"./web/scrapers/readthedocs.js": {
+					"to": "@veyyon/web/scrapers/readthedocs.js",
+					"why": "packages/coding-agent/src/web/scrapers/readthedocs.ts moved to plugins/web/src/scrapers/readthedocs.ts, which @veyyon/web publishes as ./scrapers/readthedocs.js"
+				},
+				"./web/scrapers/reddit": {
+					"to": "@veyyon/web/scrapers/reddit",
+					"why": "packages/coding-agent/src/web/scrapers/reddit.ts moved to plugins/web/src/scrapers/reddit.ts, which @veyyon/web publishes as ./scrapers/reddit"
+				},
+				"./web/scrapers/reddit.js": {
+					"to": "@veyyon/web/scrapers/reddit.js",
+					"why": "packages/coding-agent/src/web/scrapers/reddit.ts moved to plugins/web/src/scrapers/reddit.ts, which @veyyon/web publishes as ./scrapers/reddit.js"
+				},
+				"./web/scrapers/repology": {
+					"to": "@veyyon/web/scrapers/repology",
+					"why": "packages/coding-agent/src/web/scrapers/repology.ts moved to plugins/web/src/scrapers/repology.ts, which @veyyon/web publishes as ./scrapers/repology"
+				},
+				"./web/scrapers/repology.js": {
+					"to": "@veyyon/web/scrapers/repology.js",
+					"why": "packages/coding-agent/src/web/scrapers/repology.ts moved to plugins/web/src/scrapers/repology.ts, which @veyyon/web publishes as ./scrapers/repology.js"
+				},
+				"./web/scrapers/rfc": {
+					"to": "@veyyon/web/scrapers/rfc",
+					"why": "packages/coding-agent/src/web/scrapers/rfc.ts moved to plugins/web/src/scrapers/rfc.ts, which @veyyon/web publishes as ./scrapers/rfc"
+				},
+				"./web/scrapers/rfc.js": {
+					"to": "@veyyon/web/scrapers/rfc.js",
+					"why": "packages/coding-agent/src/web/scrapers/rfc.ts moved to plugins/web/src/scrapers/rfc.ts, which @veyyon/web publishes as ./scrapers/rfc.js"
+				},
+				"./web/scrapers/rubygems": {
+					"to": "@veyyon/web/scrapers/rubygems",
+					"why": "packages/coding-agent/src/web/scrapers/rubygems.ts moved to plugins/web/src/scrapers/rubygems.ts, which @veyyon/web publishes as ./scrapers/rubygems"
+				},
+				"./web/scrapers/rubygems.js": {
+					"to": "@veyyon/web/scrapers/rubygems.js",
+					"why": "packages/coding-agent/src/web/scrapers/rubygems.ts moved to plugins/web/src/scrapers/rubygems.ts, which @veyyon/web publishes as ./scrapers/rubygems.js"
+				},
+				"./web/scrapers/searchcode": {
+					"to": "@veyyon/web/scrapers/searchcode",
+					"why": "packages/coding-agent/src/web/scrapers/searchcode.ts moved to plugins/web/src/scrapers/searchcode.ts, which @veyyon/web publishes as ./scrapers/searchcode"
+				},
+				"./web/scrapers/searchcode.js": {
+					"to": "@veyyon/web/scrapers/searchcode.js",
+					"why": "packages/coding-agent/src/web/scrapers/searchcode.ts moved to plugins/web/src/scrapers/searchcode.ts, which @veyyon/web publishes as ./scrapers/searchcode.js"
+				},
+				"./web/scrapers/sec-edgar": {
+					"to": "@veyyon/web/scrapers/sec-edgar",
+					"why": "packages/coding-agent/src/web/scrapers/sec-edgar.ts moved to plugins/web/src/scrapers/sec-edgar.ts, which @veyyon/web publishes as ./scrapers/sec-edgar"
+				},
+				"./web/scrapers/sec-edgar.js": {
+					"to": "@veyyon/web/scrapers/sec-edgar.js",
+					"why": "packages/coding-agent/src/web/scrapers/sec-edgar.ts moved to plugins/web/src/scrapers/sec-edgar.ts, which @veyyon/web publishes as ./scrapers/sec-edgar.js"
+				},
+				"./web/scrapers/semantic-scholar": {
+					"to": "@veyyon/web/scrapers/semantic-scholar",
+					"why": "packages/coding-agent/src/web/scrapers/semantic-scholar.ts moved to plugins/web/src/scrapers/semantic-scholar.ts, which @veyyon/web publishes as ./scrapers/semantic-scholar"
+				},
+				"./web/scrapers/semantic-scholar.js": {
+					"to": "@veyyon/web/scrapers/semantic-scholar.js",
+					"why": "packages/coding-agent/src/web/scrapers/semantic-scholar.ts moved to plugins/web/src/scrapers/semantic-scholar.ts, which @veyyon/web publishes as ./scrapers/semantic-scholar.js"
+				},
+				"./web/scrapers/snapcraft": {
+					"to": "@veyyon/web/scrapers/snapcraft",
+					"why": "packages/coding-agent/src/web/scrapers/snapcraft.ts moved to plugins/web/src/scrapers/snapcraft.ts, which @veyyon/web publishes as ./scrapers/snapcraft"
+				},
+				"./web/scrapers/snapcraft.js": {
+					"to": "@veyyon/web/scrapers/snapcraft.js",
+					"why": "packages/coding-agent/src/web/scrapers/snapcraft.ts moved to plugins/web/src/scrapers/snapcraft.ts, which @veyyon/web publishes as ./scrapers/snapcraft.js"
+				},
+				"./web/scrapers/sourcegraph": {
+					"to": "@veyyon/web/scrapers/sourcegraph",
+					"why": "packages/coding-agent/src/web/scrapers/sourcegraph.ts moved to plugins/web/src/scrapers/sourcegraph.ts, which @veyyon/web publishes as ./scrapers/sourcegraph"
+				},
+				"./web/scrapers/sourcegraph.js": {
+					"to": "@veyyon/web/scrapers/sourcegraph.js",
+					"why": "packages/coding-agent/src/web/scrapers/sourcegraph.ts moved to plugins/web/src/scrapers/sourcegraph.ts, which @veyyon/web publishes as ./scrapers/sourcegraph.js"
+				},
+				"./web/scrapers/spdx": {
+					"to": "@veyyon/web/scrapers/spdx",
+					"why": "packages/coding-agent/src/web/scrapers/spdx.ts moved to plugins/web/src/scrapers/spdx.ts, which @veyyon/web publishes as ./scrapers/spdx"
+				},
+				"./web/scrapers/spdx.js": {
+					"to": "@veyyon/web/scrapers/spdx.js",
+					"why": "packages/coding-agent/src/web/scrapers/spdx.ts moved to plugins/web/src/scrapers/spdx.ts, which @veyyon/web publishes as ./scrapers/spdx.js"
+				},
+				"./web/scrapers/spotify": {
+					"to": "@veyyon/web/scrapers/spotify",
+					"why": "packages/coding-agent/src/web/scrapers/spotify.ts moved to plugins/web/src/scrapers/spotify.ts, which @veyyon/web publishes as ./scrapers/spotify"
+				},
+				"./web/scrapers/spotify.js": {
+					"to": "@veyyon/web/scrapers/spotify.js",
+					"why": "packages/coding-agent/src/web/scrapers/spotify.ts moved to plugins/web/src/scrapers/spotify.ts, which @veyyon/web publishes as ./scrapers/spotify.js"
+				},
+				"./web/scrapers/stackoverflow": {
+					"to": "@veyyon/web/scrapers/stackoverflow",
+					"why": "packages/coding-agent/src/web/scrapers/stackoverflow.ts moved to plugins/web/src/scrapers/stackoverflow.ts, which @veyyon/web publishes as ./scrapers/stackoverflow"
+				},
+				"./web/scrapers/stackoverflow.js": {
+					"to": "@veyyon/web/scrapers/stackoverflow.js",
+					"why": "packages/coding-agent/src/web/scrapers/stackoverflow.ts moved to plugins/web/src/scrapers/stackoverflow.ts, which @veyyon/web publishes as ./scrapers/stackoverflow.js"
+				},
+				"./web/scrapers/terraform": {
+					"to": "@veyyon/web/scrapers/terraform",
+					"why": "packages/coding-agent/src/web/scrapers/terraform.ts moved to plugins/web/src/scrapers/terraform.ts, which @veyyon/web publishes as ./scrapers/terraform"
+				},
+				"./web/scrapers/terraform.js": {
+					"to": "@veyyon/web/scrapers/terraform.js",
+					"why": "packages/coding-agent/src/web/scrapers/terraform.ts moved to plugins/web/src/scrapers/terraform.ts, which @veyyon/web publishes as ./scrapers/terraform.js"
+				},
+				"./web/scrapers/tldr": {
+					"to": "@veyyon/web/scrapers/tldr",
+					"why": "packages/coding-agent/src/web/scrapers/tldr.ts moved to plugins/web/src/scrapers/tldr.ts, which @veyyon/web publishes as ./scrapers/tldr"
+				},
+				"./web/scrapers/tldr.js": {
+					"to": "@veyyon/web/scrapers/tldr.js",
+					"why": "packages/coding-agent/src/web/scrapers/tldr.ts moved to plugins/web/src/scrapers/tldr.ts, which @veyyon/web publishes as ./scrapers/tldr.js"
+				},
+				"./web/scrapers/twitter": {
+					"to": "@veyyon/web/scrapers/twitter",
+					"why": "packages/coding-agent/src/web/scrapers/twitter.ts moved to plugins/web/src/scrapers/twitter.ts, which @veyyon/web publishes as ./scrapers/twitter"
+				},
+				"./web/scrapers/twitter.js": {
+					"to": "@veyyon/web/scrapers/twitter.js",
+					"why": "packages/coding-agent/src/web/scrapers/twitter.ts moved to plugins/web/src/scrapers/twitter.ts, which @veyyon/web publishes as ./scrapers/twitter.js"
+				},
+				"./web/scrapers/types": {
+					"to": "@veyyon/web/scrapers/types",
+					"why": "packages/coding-agent/src/web/scrapers/types.ts moved to plugins/web/src/scrapers/types.ts, which @veyyon/web publishes as ./scrapers/types"
+				},
+				"./web/scrapers/types.js": {
+					"to": "@veyyon/web/scrapers/types.js",
+					"why": "packages/coding-agent/src/web/scrapers/types.ts moved to plugins/web/src/scrapers/types.ts, which @veyyon/web publishes as ./scrapers/types.js"
+				},
+				"./web/scrapers/utils": {
+					"to": "@veyyon/web/scrapers/utils",
+					"why": "packages/coding-agent/src/web/scrapers/utils.ts moved to plugins/web/src/scrapers/utils.ts, which @veyyon/web publishes as ./scrapers/utils"
+				},
+				"./web/scrapers/utils.js": {
+					"to": "@veyyon/web/scrapers/utils.js",
+					"why": "packages/coding-agent/src/web/scrapers/utils.ts moved to plugins/web/src/scrapers/utils.ts, which @veyyon/web publishes as ./scrapers/utils.js"
+				},
+				"./web/scrapers/vimeo": {
+					"to": "@veyyon/web/scrapers/vimeo",
+					"why": "packages/coding-agent/src/web/scrapers/vimeo.ts moved to plugins/web/src/scrapers/vimeo.ts, which @veyyon/web publishes as ./scrapers/vimeo"
+				},
+				"./web/scrapers/vimeo.js": {
+					"to": "@veyyon/web/scrapers/vimeo.js",
+					"why": "packages/coding-agent/src/web/scrapers/vimeo.ts moved to plugins/web/src/scrapers/vimeo.ts, which @veyyon/web publishes as ./scrapers/vimeo.js"
+				},
+				"./web/scrapers/vscode-marketplace": {
+					"to": "@veyyon/web/scrapers/vscode-marketplace",
+					"why": "packages/coding-agent/src/web/scrapers/vscode-marketplace.ts moved to plugins/web/src/scrapers/vscode-marketplace.ts, which @veyyon/web publishes as ./scrapers/vscode-marketplace"
+				},
+				"./web/scrapers/vscode-marketplace.js": {
+					"to": "@veyyon/web/scrapers/vscode-marketplace.js",
+					"why": "packages/coding-agent/src/web/scrapers/vscode-marketplace.ts moved to plugins/web/src/scrapers/vscode-marketplace.ts, which @veyyon/web publishes as ./scrapers/vscode-marketplace.js"
+				},
+				"./web/scrapers/w3c": {
+					"to": "@veyyon/web/scrapers/w3c",
+					"why": "packages/coding-agent/src/web/scrapers/w3c.ts moved to plugins/web/src/scrapers/w3c.ts, which @veyyon/web publishes as ./scrapers/w3c"
+				},
+				"./web/scrapers/w3c.js": {
+					"to": "@veyyon/web/scrapers/w3c.js",
+					"why": "packages/coding-agent/src/web/scrapers/w3c.ts moved to plugins/web/src/scrapers/w3c.ts, which @veyyon/web publishes as ./scrapers/w3c.js"
+				},
+				"./web/scrapers/wikidata": {
+					"to": "@veyyon/web/scrapers/wikidata",
+					"why": "packages/coding-agent/src/web/scrapers/wikidata.ts moved to plugins/web/src/scrapers/wikidata.ts, which @veyyon/web publishes as ./scrapers/wikidata"
+				},
+				"./web/scrapers/wikidata.js": {
+					"to": "@veyyon/web/scrapers/wikidata.js",
+					"why": "packages/coding-agent/src/web/scrapers/wikidata.ts moved to plugins/web/src/scrapers/wikidata.ts, which @veyyon/web publishes as ./scrapers/wikidata.js"
+				},
+				"./web/scrapers/wikipedia": {
+					"to": "@veyyon/web/scrapers/wikipedia",
+					"why": "packages/coding-agent/src/web/scrapers/wikipedia.ts moved to plugins/web/src/scrapers/wikipedia.ts, which @veyyon/web publishes as ./scrapers/wikipedia"
+				},
+				"./web/scrapers/wikipedia.js": {
+					"to": "@veyyon/web/scrapers/wikipedia.js",
+					"why": "packages/coding-agent/src/web/scrapers/wikipedia.ts moved to plugins/web/src/scrapers/wikipedia.ts, which @veyyon/web publishes as ./scrapers/wikipedia.js"
+				},
+				"./web/scrapers/youtube": {
+					"to": "@veyyon/web/scrapers/youtube",
+					"why": "packages/coding-agent/src/web/scrapers/youtube.ts moved to plugins/web/src/scrapers/youtube.ts, which @veyyon/web publishes as ./scrapers/youtube"
+				},
+				"./web/scrapers/youtube.js": {
+					"to": "@veyyon/web/scrapers/youtube.js",
+					"why": "packages/coding-agent/src/web/scrapers/youtube.ts moved to plugins/web/src/scrapers/youtube.ts, which @veyyon/web publishes as ./scrapers/youtube.js"
+				},
+				"./web/search/providers/browser-fingerprint-constants": {
+					"to": "@veyyon/web/browser-fingerprint-constants",
+					"why": "packages/coding-agent/src/web/search/providers/browser-fingerprint-constants.ts moved to plugins/web/src/browser-fingerprint-constants.ts, which @veyyon/web publishes as ./browser-fingerprint-constants"
+				},
+				"./web/search/providers/browser-fingerprint-constants.js": {
+					"to": "@veyyon/web/browser-fingerprint-constants.js",
+					"why": "packages/coding-agent/src/web/search/providers/browser-fingerprint-constants.ts moved to plugins/web/src/browser-fingerprint-constants.ts, which @veyyon/web publishes as ./browser-fingerprint-constants.js"
 				}
 			},
 			"@veyyon/tui": {

@@ -215,6 +215,14 @@ export interface StatusRowView {
 	 * the row states the readable path as its description and the absolute one here.
 	 */
 	descriptionFile?: string;
+	/**
+	 * The line inside `descriptionFile` the row names, which the host opens the file AT.
+	 *
+	 * The row-level twin of `ViewSpan.fileLine`, and needed for the same reason: a card that read one
+	 * window of a file names a position rather than a document, and a row that named the file alone
+	 * would send a reader to its first line. One-based, and meaningless without `descriptionFile`.
+	 */
+	descriptionFileLine?: number;
 	/** A short parenthetical label, such as a mode or a count. */
 	badge?: { label: string; tone: ViewTone };
 	/**
@@ -333,6 +341,19 @@ export interface ViewCodeLines {
 	 * Omitted sizes the gutter to the lines the section carries.
 	 */
 	totalLines?: number;
+	/**
+	 * The number each line has in the file, one entry per line the section carries, for a section
+	 * that is SEVERAL windows onto one file rather than one run of it.
+	 *
+	 * A read of `:5-16,960-973` and a structural summary that elides the body of every function are
+	 * both this shape: the rows are in file order and the numbers jump, so `firstLineNumber` plus a
+	 * count would number the second window as a continuation of the first. A `null` entry is a row
+	 * that has no number of its own, which is what a marker standing in for an elided span is.
+	 *
+	 * Omitted numbers the lines from `firstLineNumber`, which is what one contiguous window is. A
+	 * host that draws no gutter ignores both.
+	 */
+	lineNumbers?: readonly (number | null)[];
 }
 
 /**
@@ -378,6 +399,21 @@ export interface ViewSection {
 	 * tab is worth -- to the host, which is the only party that knows what it can draw.
 	 */
 	code?: ViewCodeLines;
+	/**
+	 * That the lines are Markdown, which the host renders however it can.
+	 *
+	 * The twin of `code` for a document rather than a program: a tool that reads a `.md` file knows
+	 * the text is Markdown and knows nothing about whether a reader sees a heading in bold, a heading
+	 * in a larger font, or a `#` in the first column. A terminal renders the source and lays it out at
+	 * its own width, a browser host mounts it as HTML, and a host with no renderer draws the source
+	 * lines, which is what the text already is.
+	 *
+	 * Mutually exclusive with `code`, which states the opposite of the same lines: source a host
+	 * colours and numbers, never a document it formats. A section that states both is a tool
+	 * contradicting itself, and a host resolves the pair by drawing the code, which is the reading
+	 * that never invents layout.
+	 */
+	markdown?: boolean;
 	/**
 	 * That each line is one row and never flows onto a second, so a host CUTS it to the width instead
 	 * of wrapping it.

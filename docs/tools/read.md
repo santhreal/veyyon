@@ -15,6 +15,7 @@
   - `packages/coding-agent/src/utils/file-display-mode.ts`: decide hashline vs line-number vs raw display.
   - `packages/coding-agent/src/workspace-tree.ts`: render directory trees.
   - `packages/coding-agent/src/edit/file-snapshot-store.ts`: stores read lines for later hashline edit verification/recovery.
+  - `packages/coding-agent/src/tools/fs/read-view.ts`: `readToolView`, the host-agnostic view for the read card -- the file row, the code or document section, the notices, the image card and the error card. A host draws it; the module imports no terminal code.
   - `packages/coding-agent/src/tools/index.ts`: registers `read: s => new ReadTool(s)`.
 
 ## Inputs

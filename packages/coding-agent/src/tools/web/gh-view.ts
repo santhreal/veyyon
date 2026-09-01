@@ -286,9 +286,7 @@ function failedLogSections(failedLogs: readonly GhRunWatchFailedLogDetails[], ex
 			const tailLines = replaceTabs(entry.tail)
 				.split("\n")
 				.filter(line => line.length > 0);
-			const previewLimit = expanded
-				? tailLines.length
-				: Math.min(PREVIEW_LIMITS.OUTPUT_COLLAPSED, tailLines.length);
+			const previewLimit = expanded ? tailLines.length : Math.min(PREVIEW_LIMITS.OUTPUT_COLLAPSED, tailLines.length);
 			for (const line of tailLines.slice(-previewLimit)) {
 				lines.push([{ text: `  ${line}`, tone: "dim" }]);
 			}

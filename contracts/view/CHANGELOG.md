@@ -21,3 +21,6 @@
 - `ToolViewContext.partial` states whether the result in hand is the tool's last word or an update it will replace, so a card that streams reports running rather than reading an outcome off a half-finished result.
 - `ViewSection.tail` states that a section is a window onto the end of its lines, measured by the host in the rows the lines occupy after wrapping, so a tool that cannot know a width or a viewport height still keeps the end of a long command or a long output on screen.
 - `ViewSpan.trailing` states that a run is trailing detail on its line, so a host with columns to spare places it at the line's end and pads the runs that lead it, and a host drawing one column after another writes it where it falls.
+- `StatusRowView.descriptionFileLine` states the line inside `descriptionFile` a row names, so a card that read one window of a file sends a reader to that window rather than to the file's first line.
+- `ViewCodeLines.lineNumbers` states the number each line has in the file, one entry per line, for a section that is several windows onto one file: the rows are in file order and the numbers jump, and a `null` entry is a row standing in for an elided span.
+- `ViewSection.markdown` states that a section's lines are a document rather than source, so a tool that read a `.md` file says what the text is and leaves headings, emphasis and layout to the host.

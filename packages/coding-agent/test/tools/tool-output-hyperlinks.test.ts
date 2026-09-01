@@ -8,7 +8,7 @@ import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
 import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
-import { readToolRenderer } from "@veyyon/coding-agent/tools/fs/read-render";
+import { readToolView } from "@veyyon/coding-agent/tools/fs/read-view";
 import { WriteTool } from "@veyyon/coding-agent/tools/fs/write";
 import { writeToolView } from "@veyyon/coding-agent/tools/fs/write-view";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
@@ -68,22 +68,24 @@ describe("tool output OSC 8 file:// hyperlinks", () => {
 			const textRes = await tool.execute("t", { path: textPath });
 			const imgRes = await tool.execute("i", { path: imgPath });
 
-			const textRender = readToolRenderer
-				.renderResult(
+			const textRender = drawToolView(
+				readToolView.renderResult(
 					{ content: textRes.content, details: textRes.details, isError: textRes.isError },
-					{ expanded: false, isPartial: false },
-					theme,
+					{ expanded: false, partial: false },
 					{ path: textPath },
-				)
+				),
+				theme,
+			)
 				.render(200)
 				.join("\n");
-			const imgRender = readToolRenderer
-				.renderResult(
+			const imgRender = drawToolView(
+				readToolView.renderResult(
 					{ content: imgRes.content, details: imgRes.details, isError: imgRes.isError },
-					{ expanded: false, isPartial: false },
-					theme,
+					{ expanded: false, partial: false },
 					{ path: imgPath },
-				)
+				),
+				theme,
+			)
 				.render(200)
 				.join("\n");
 

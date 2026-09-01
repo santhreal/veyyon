@@ -90,7 +90,6 @@ const ENGINE_IMPORTERS = [
 	"theme/theme.ts",
 	"tools/agent/ask-render.ts",
 	"tools/agent/vibe-render.ts",
-	"tools/fs/read-render.ts",
 	"tools/shell/bash-render.ts",
 	"tools/shell/eval-render.ts",
 	"tools/shell/job-render.ts",
