@@ -95,6 +95,7 @@ export const CONVERTED_TOOLS = [
 	"lsp",
 	"bash",
 	"edit",
+	"task",
 ] as const;
 
 export const WIDTH = 80;

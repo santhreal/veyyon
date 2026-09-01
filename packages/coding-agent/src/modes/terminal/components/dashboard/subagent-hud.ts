@@ -19,7 +19,7 @@
  */
 
 import { visibleWidth } from "@veyyon/utils/width";
-import { formatTaskId } from "../../../../task/render";
+import { formatTaskId } from "../../../../task/task-id";
 import { theme } from "../../../../theme/theme";
 import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../../../../tools/core/render-utils";
 import type { ObservableSession } from "../../session-observer-registry";

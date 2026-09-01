@@ -13,8 +13,8 @@
  * keeps one code path instead of one-per-caller.
  */
 import { ThinkingLevel } from "@veyyon/agent-core";
+import { splitModelSelector } from "../../../../task/model-selector";
 import type { Theme } from "../../../../theme/theme";
-import { parseThinkingLevel } from "../../../../thinking";
 import { replaceTabs } from "../../../../tools/core/render-utils";
 
 /**
@@ -41,13 +41,10 @@ function formatModelBadge(modelId: string, level: ThinkingLevel | undefined, the
  * The badge for a `provider/id[:level]` selector string, as the executor
  * reports it and the registry records it.
  *
- * Model ids may themselves contain colons (`qwen3:14b`), so the suffix counts
- * as a thinking level only when it parses as one. Splitting on the first colon
- * instead turned `qwen3:14b` into the model `qwen3` at an invented level.
+ * The selector is split by `splitModelSelector`, which the task card reads too,
+ * so both surfaces name the same model at the same level.
  */
 export function modelBadgeFromSelector(resolved: string, theme: Theme): string {
-	const colon = resolved.lastIndexOf(":");
-	const level = colon >= 0 ? parseThinkingLevel(resolved.slice(colon + 1)) : undefined;
-	const selector = level !== undefined ? resolved.slice(0, colon) : resolved;
-	return formatModelBadge(selector.slice(selector.indexOf("/") + 1), level, theme);
+	const { model, level } = splitModelSelector(resolved);
+	return formatModelBadge(model, level, theme);
 }

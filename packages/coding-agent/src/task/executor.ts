@@ -109,6 +109,14 @@ import { buildNamedToolChoice } from "../utils/tool-choice";
 import type { WorkspaceTree } from "../workspace-tree";
 import { type AutoloadSkillPlan, settleAutoloadSkills } from "./inherited-collections";
 import { generateTaskLabel } from "./label";
+// SIDE-EFFECT IMPORT, for the same reason as `../tools/agent/yield` above.
+//
+// `nested-task-details.ts` registers the `task` handler, and this file's `recordExtractedToolData`
+// is what reads it: no handler means a child's own spawns never reach `extractedToolData.task`, so a
+// two-level delegation reports one level and everything under it stays invisible. The registration
+// used to ride in on `task/render.ts`, which drew the tree that consumed it; the drawing is a view
+// now and imports nothing terminal, so the protocol half states its own dependency here.
+import "./nested-task-details";
 import {
 	resolveSubagentIdleTtlMs,
 	resolveSubagentMaxNestedSpawnDepth,

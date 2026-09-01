@@ -4,10 +4,7 @@
  * Tools can register handlers to:
  * - Extract structured data from their execution results
  * - Trigger subprocess termination on completion
- * - Provide custom rendering for realtime/final display
  */
-import type { Component } from "@veyyon/tui";
-import type { Theme } from "../theme/theme";
 import { TOOL } from "../tools/core/builtin-names";
 
 /**
@@ -56,14 +53,14 @@ export interface SubprocessToolHandler<TData = unknown> {
 	shouldTerminate?: (event: SubprocessToolEvent) => boolean;
 
 	/**
-	 * Render accumulated data in the final result view.
-	 * Called once with all accumulated data for this tool.
+	 * A tool's accumulated data is drawn by the block that owns it, never by a handler.
 	 *
-	 * There is no inline counterpart. One used to sit here and no reader could reach it: every caller
-	 * of the registry draws a tool's live rows through the block that owns them, and the one handler
-	 * that ever declared an inline renderer is skipped by name before the lookup happens.
+	 * Two rendering members used to sit here, `renderInline` and `renderFinal`, and no reader could
+	 * reach either: every caller draws a tool's rows through the card that owns them, and each of the
+	 * three registered handlers is skipped by name before the lookup that would have found it. They
+	 * were terminal drawing typed into the subprocess protocol, which is why removing them is what
+	 * takes the last terminal type out of this module.
 	 */
-	renderFinal?: (allData: TData[], theme: Theme, expanded: boolean) => Component;
 }
 
 /** Registry for subprocess tool handlers */

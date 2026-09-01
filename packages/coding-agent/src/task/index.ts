@@ -87,9 +87,9 @@ import {
 import { generateTaskName } from "./name-generator";
 import { AgentOutputManager } from "./output-manager";
 import { mapWithConcurrencyLimit, Semaphore } from "./parallel";
-import { renderResult, renderCall as renderTaskCall } from "./render";
 import { repairTaskParams } from "./repair-args";
 import { treeSpawnSemaphore } from "./spawn-semaphore";
+import { taskToolView } from "./task-view";
 import { parseIsolationMode } from "./worktree";
 
 function renderSubagentUserPrompt(assignment: string): string {
@@ -600,10 +600,11 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	readonly summary = "Spawn subagents to complete delegated tasks";
 	readonly strict = true;
 	readonly loadMode = "discoverable";
-	readonly renderResult = renderResult;
+	readonly view = taskToolView;
 	// Suppress the streaming call preview once a (partial or final) result exists
 	// so the task renders as ONE block that transitions in place — not a pending
-	// call frame stacked above the result frame. Mirrors `taskToolRenderer`.
+	// call frame stacked above the result frame. Mirrors the `task` row in
+	// `tools/renderers.ts`.
 	readonly mergeCallAndResult = true;
 	readonly #discoveredAgents: AgentDefinition[];
 	readonly #blockedAgent: string | undefined;
@@ -624,10 +625,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			defaultAgent: catalog.defaultAgent,
 			enabledAgentNames: catalog.agents.map(agent => agent.name),
 		});
-	}
-
-	renderCall(args: unknown, options: Parameters<typeof renderTaskCall>[1], theme: Theme) {
-		return renderTaskCall(repairTaskParams(args as TaskParams), options, theme);
 	}
 
 	/**

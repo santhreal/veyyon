@@ -25,6 +25,7 @@ import type {
 	StatusRowView,
 	TextBlockView,
 	ToolView,
+	ToolViewContext,
 	ToolViewRenderer,
 	ViewCodeLines,
 	ViewDiffLines,
@@ -35,6 +36,7 @@ import type {
 	ViewStatus,
 	ViewTailWindow,
 	ViewTone,
+	ViewTreeLines,
 } from "@veyyon/view";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { paintHotTail, shimmerPhase } from "../modes/terminal/components/chrome/follow";
@@ -83,6 +85,8 @@ const TONE_COLORS: Record<ViewTone, ThemeColor> = {
 	warning: "warning",
 	error: "error",
 	info: "infoAccent",
+	cost: "statusLineCost",
+	text: "text",
 };
 
 /**
@@ -124,6 +128,25 @@ const BLOCK_STATES: Record<ViewStatus, { state: State; rail: ThemeColor }> = {
 };
 
 /**
+ * The colour a reasoning level is drawn in, when a span names one and states no tone of its own.
+ *
+ * A `thinking.<level>` symbol is the one glyph family whose meaning IS a scale: the six levels are
+ * told apart by colour on the model selector, the composer chip and the agent roster, and a card
+ * that drew them all in one tone would be reporting that every agent thinks alike. The scale is the
+ * terminal's, so a tool names the level and this resolves the colour; a browser guest reads the same
+ * symbol and picks its own. `theme.getThinkingBorderColor` owns the same table for the surfaces that
+ * take a colouring function rather than a `ThemeColor`.
+ */
+const THINKING_COLORS: Readonly<Record<string, ThemeColor>> = {
+	"thinking.minimal": "thinkingMinimal",
+	"thinking.low": "thinkingLow",
+	"thinking.medium": "thinkingMedium",
+	"thinking.high": "thinkingHigh",
+	"thinking.xhigh": "thinkingXhigh",
+	"thinking.max": "thinkingXhigh",
+};
+
+/**
  * One span as terminal bytes.
  *
  * Emphasis is applied INSIDE the colour, which is the order every hand-written renderer here already
@@ -134,8 +157,9 @@ const BLOCK_STATES: Record<ViewStatus, { state: State; rail: ThemeColor }> = {
  * A span naming a symbol this terminal has draws the glyph in the span's tone and nothing else: the
  * glyph replaces the text rather than joining it, which is what `theme.styledSymbol` already returns
  * for every hand-written row that marks a line. Emphasis is dropped on a glyph, since no renderer
- * here bolds one. A symbol this build has never heard of falls back to `text`, so an extension naming
- * an unknown mark loses the mark and never the line.
+ * here bolds one. A reasoning level with no tone stated takes the colour of that level and every
+ * other untoned symbol takes `accent`. A symbol this build has never heard of falls back to `text`,
+ * so an extension naming an unknown mark loses the mark and never the line.
  *
  * A span with a link is wrapped in OSC 8 AFTER it is styled, which is the order every hand-written
  * renderer used (`urlHyperlink(url, theme.fg("mdLinkUrl", url))`): the escape that opens the link
@@ -169,7 +193,7 @@ const BLOCK_STATES: Record<ViewStatus, { state: State; rail: ThemeColor }> = {
  */
 export function drawSpan(span: ViewSpan, theme: Theme, frame?: number): string {
 	if (span.symbol !== undefined && Object.hasOwn(UNICODE_SYMBOLS, span.symbol)) {
-		const color = span.tone === undefined ? "accent" : TONE_COLORS[span.tone];
+		const color = span.tone === undefined ? (THINKING_COLORS[span.symbol] ?? "accent") : TONE_COLORS[span.tone];
 		return linked(span, theme.styledSymbol(span.symbol as SymbolKey, color));
 	}
 	if (span.status !== undefined) {
@@ -402,16 +426,21 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 		// is drawn as the change, and after that as code.
 		const diff = section.code === undefined ? section.diff : undefined;
 		const markdown = section.code === undefined && diff === undefined && section.markdown === true;
-		const drawnHere = section.list || section.code !== undefined || diff !== undefined || markdown;
+		const tree = section.code === undefined && diff === undefined && !markdown ? section.tree : undefined;
+		const drawnHere =
+			section.list || section.code !== undefined || diff !== undefined || markdown || tree !== undefined;
 		return {
 			label: section.label === undefined ? undefined : theme.fg("toolTitle", section.label),
+			separator: section.separator === true,
 			lines: section.list
 				? drawItemList(section.lines, section.hidden, theme, spinnerFrame)
 				: section.code !== undefined
 					? drawCodeLines(section.lines, section.code, theme)
 					: diff !== undefined
 						? drawDiffLines(section.lines, diff, theme)
-						: [],
+						: tree !== undefined
+							? drawTreeLines(section.lines, tree, theme, spinnerFrame)
+							: [],
 			// A change wraps in its own gutter rather than as prose, and the gutter is measured against
 			// the columns the block has, so the rows are re-broken inside the closure below.
 			diff: diff !== undefined,
@@ -495,6 +524,7 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 				const rows = section.note === undefined ? windowed : [...windowed, section.note];
 				return {
 					label: section.label,
+					separator: section.separator,
 					lines: section.clip ? rows.map(line => truncateToWidth(line, contentWidth, Ellipsis.Omit)) : rows,
 				};
 			}),
@@ -711,6 +741,40 @@ function drawItemList(
 }
 
 /**
+ * A tree section as the connected rows the terminal draws for one.
+ *
+ * The guides are resolved from the lines above: a line at depth `d` sits behind one column of chrome
+ * per level above it, and each of those columns is a vertical run while the node it belongs to has a
+ * sibling still to come and blank once it does not. So the walk keeps the last-child answer of every
+ * open level and reads it back for the levels below, which is what lets a tool state depth alone.
+ *
+ * A line at the section's own level takes no connector and no indent, and its continuation rows take
+ * the two columns a node's detail already sat in: the top level of a card is a list of things, not a
+ * branch off the card itself.
+ */
+function drawTreeLines(lines: readonly ViewLine[], tree: ViewTreeLines, theme: Theme, frame?: number): string[] {
+	const vertical = `${theme.fg("dim", theme.tree.vertical)}  `;
+	const blank = "   ";
+	const base = "  ";
+	const lastAtDepth: boolean[] = [];
+	return lines.map((line, index) => {
+		const depth = Math.max(0, tree.depth[index] ?? 0);
+		const last = tree.last[index] === true;
+		const opens = tree.opens[index] === true;
+		if (opens) lastAtDepth[depth] = last;
+		if (depth === 0) return `${opens ? "" : base}${drawSpans(line, theme, frame)}`;
+		let prefix = base;
+		for (let level = 1; level < depth; level++) prefix += lastAtDepth[level] === true ? blank : vertical;
+		prefix += opens
+			? `${theme.fg("dim", last ? theme.tree.last : theme.tree.branch)} `
+			: lastAtDepth[depth] === true
+				? blank
+				: vertical;
+		return `${prefix}${drawSpans(line, theme, frame)}`;
+	});
+}
+
+/**
  * The end of a section, in the rows it is allowed, with a line saying what came before it.
  *
  * Measured in WRAPPED rows rather than in the tool's lines, because one long command line occupies
@@ -725,11 +789,7 @@ function drawTailWindow(lines: readonly string[], window: ViewTailWindow, theme:
 	for (const line of lines) rows.push(...wrapTextWithAnsi(line.trimEnd(), width));
 	const viewport = Math.max(1, previewWindowRows() - (window.reserve ?? 0));
 	const max =
-		window.max === undefined
-			? viewport
-			: window.viewport === true
-				? Math.min(window.max, viewport)
-				: window.max;
+		window.max === undefined ? viewport : window.viewport === true ? Math.min(window.max, viewport) : window.max;
 	if (rows.length <= max) return rows;
 	const kept = max <= 1 ? [] : rows.slice(rows.length - (max - 1));
 	const earlier = rows.length - kept.length;
@@ -1008,6 +1068,13 @@ export interface ViewToolRendererPolicy {
 }
 
 /**
+ * What the registry hands a renderer: the disclosure state, plus the loosely typed bag of surface
+ * facts the transcript component fills in. `ToolRenderer` already spells the bag out on its result
+ * half; a view reads it on both, because a call preview is the half that has to know a result exists.
+ */
+type RegistryRenderOptions = RenderResultOptions & { renderContext?: Record<string, unknown> };
+
+/**
  * A view-only tool's card for the terminal's own renderer registry.
  *
  * A tool that describes a view needs no entry here: the card reads `tool.view` off the live tool.
@@ -1023,10 +1090,28 @@ export function viewToolRenderer<Args, Result>(
 	view: Required<ToolViewRenderer<Args, Result>>,
 	extras?: ViewToolRendererPolicy,
 ): ViewToolRendererPolicy & {
-	renderCall: (args: unknown, options: RenderResultOptions, theme: Theme) => Component;
-	renderResult: (result: unknown, options: RenderResultOptions, theme: Theme, args?: unknown) => Component;
+	renderCall: (args: unknown, options: RegistryRenderOptions, theme: Theme) => Component;
+	renderResult: (result: unknown, options: RegistryRenderOptions, theme: Theme, args?: unknown) => Component;
 	view: Required<ToolViewRenderer<Args, Result>>;
 } {
+	/**
+	 * What the surface knows, out of the loosely typed bag the registry path threads through.
+	 *
+	 * The live path builds a `ToolViewContext` directly and states both facts; this path is handed
+	 * the same two through `renderContext`, because the registry's signature predates the contract
+	 * and carries a record. A caller that states neither gets a context that omits both, which is
+	 * what a rebuilt transcript with no live block knows.
+	 */
+	const contextOf = (options: RegistryRenderOptions): ToolViewContext => {
+		const bag = options.renderContext;
+		return {
+			expanded: options.expanded,
+			partial: options.isPartial,
+			frame: options.spinnerFrame,
+			...(bag?.hasResult === undefined ? {} : { hasResult: bag.hasResult === true }),
+			...(bag?.frozen === undefined ? {} : { frozen: bag.frozen === true }),
+		};
+	};
 	return {
 		// The view this entry is a drawing of, carried so a reader can tell an entry that DESCRIBES its
 		// card from one that draws its own. Nothing in the terminal path needs it -- both halves above
@@ -1035,22 +1120,10 @@ export function viewToolRenderer<Args, Result>(
 		// registry. A host other than a terminal reads the view instead of calling either half.
 		view,
 		renderCall: (args, options, theme) =>
-			drawToolView(
-				view.renderCall(args as Args, {
-					expanded: options.expanded,
-					partial: options.isPartial,
-					frame: options.spinnerFrame,
-				}),
-				theme,
-				options.spinnerFrame,
-			),
+			drawToolView(view.renderCall(args as Args, contextOf(options)), theme, options.spinnerFrame),
 		renderResult: (result, options, theme, args) =>
 			drawToolView(
-				view.renderResult(
-					result as Result,
-					{ expanded: options.expanded, partial: options.isPartial, frame: options.spinnerFrame },
-					args as Args | undefined,
-				),
+				view.renderResult(result as Result, contextOf(options), args as Args | undefined),
 				theme,
 				options.spinnerFrame,
 			),

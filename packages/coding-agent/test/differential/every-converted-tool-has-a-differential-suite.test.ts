@@ -105,6 +105,7 @@ describe("differential coverage", () => {
 			"lsp",
 			"bash",
 			"edit",
+			"task",
 		]);
 	});
 

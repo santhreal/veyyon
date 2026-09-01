@@ -84,7 +84,6 @@ const ENGINE_IMPORTERS = [
 	"extensibility/legacy-pi-tui-shim.ts",
 	"index.ts",
 	"modes/launch-facts.ts",
-	"task/render.ts",
 	"theme/theme-class.ts",
 	"theme/theme.ts",
 	"tui/code-cell.ts",
@@ -139,7 +138,7 @@ describe("only the terminal host imports the terminal engine", () => {
 	it("reads the package and does find engine imports where they exist", () => {
 		expect(modulesOutsideTheTerminalHost().length).toBeGreaterThan(400);
 		expect(modulesOutsideTheTerminalHost().some(rel => rel.startsWith("modes/terminal/"))).toBe(false);
-		expect(enginePackageImporters("any")).toContain("task/render.ts");
+		expect(enginePackageImporters("any")).toContain("tui/output-block.ts");
 		expect(enginePackageImporters("runtime")).toContain("theme/theme-class.ts");
 	});
 

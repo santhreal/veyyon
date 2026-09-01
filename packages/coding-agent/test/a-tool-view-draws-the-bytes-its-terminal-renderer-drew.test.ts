@@ -68,6 +68,7 @@ import type { ExtensionAPI, ToolDefinition } from "@veyyon/coding-agent/extensib
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { RegisteredToolAdapter } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import type { ThemeColor } from "@veyyon/coding-agent/theme/color";
+import { UNICODE_SYMBOLS } from "@veyyon/coding-agent/theme/symbols";
 import { initTheme, type Theme as TerminalTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	drawNotice,
@@ -210,6 +211,8 @@ describe("the measurement itself", () => {
 			link: "mdLinkUrl",
 			diffAdded: "toolDiffAdded",
 			diffRemoved: "toolDiffRemoved",
+			cost: "statusLineCost",
+			text: "text",
 		};
 		const probe = {
 			fg: (color: ThemeColor, text: string) => `<${color}>${text}`,
@@ -224,11 +227,28 @@ describe("the measurement itself", () => {
 				`<${color}:status.error>`,
 			);
 		}
-		// Anti-vacuity: twelve tones, twelve distinct roles, so no assertion above passes by collision.
+		// Anti-vacuity: fourteen tones, fourteen distinct roles, so no assertion above passes by collision.
 		expect(new Set(Object.values(expected)).size).toBe(Object.keys(expected).length);
 		// An untoned span is raw text, and an untoned glyph is the accent one.
 		expect(drawSpan({ text: "x" }, probe)).toBe("x");
 		expect(drawSpan({ symbol: "status.error", text: "!" }, probe)).toBe("<accent:status.error>");
+		// Except a reasoning level, whose colour IS the level: the host holds that scale, so a card
+		// names the level and states no tone. Every level the glyph registry declares has one.
+		const levels = Object.keys(UNICODE_SYMBOLS).filter(
+			key => key.startsWith("thinking.") && key !== "thinking.autoPending",
+		);
+		expect(levels).toEqual([
+			"thinking.minimal",
+			"thinking.low",
+			"thinking.medium",
+			"thinking.high",
+			"thinking.xhigh",
+			"thinking.max",
+		]);
+		const drawnLevels = levels.map(symbol => drawSpan({ symbol, text: "" }, probe));
+		expect(drawnLevels.every(drawn => !drawn.startsWith("<accent:"))).toBe(true);
+		// A tone stated on one wins, so a host colour is never forced on a card that named its own.
+		expect(drawSpan({ symbol: "thinking.high", text: "", tone: "error" }, probe)).toBe("<error:thinking.high>");
 	});
 
 	/**

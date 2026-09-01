@@ -1,10 +1,14 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { taskToolView } from "@veyyon/coding-agent/task/task-view";
+import type { AgentProgress, SingleResult, TaskToolDetails } from "@veyyon/coding-agent/task/types";
+import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/theme/theme";
+import { viewToolRenderer } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
-import { Settings } from "../config/settings";
-import { getThemeByName, setThemeInstance, type Theme } from "../theme/theme";
-import { renderResult } from "./render";
-import { taskToolRenderer } from "./renderer";
-import type { AgentProgress, SingleResult, TaskToolDetails } from "./types";
+
+/** The card the terminal draws from the task tool's view, which is what the product renders. */
+const taskToolRenderer = viewToolRenderer(taskToolView, { mergeCallAndResult: true });
+const renderResult = taskToolRenderer.renderResult;
 
 const strip = (lines: readonly string[]): string => stripAnsi(lines.join("\n"));
 
@@ -135,18 +139,22 @@ describe("task live progress rendering", () => {
 		restoreViewportRows();
 	});
 
-	it("caps subagent recent output with the viewport budget instead of a fixed six lines", () => {
-		setViewportRows(40);
-		const chronological = Array.from({ length: 8 }, (_, index) => `line ${index + 1}`);
+	// The card bounds a live agent's output by CONTENT rather than by the reader's viewport: it names
+	// no terminal, so a short window and a tall one keep the same rows and a noisy agent is cut the
+	// same either way. These two cells are the pair — under the bound nothing is dropped, over it the
+	// newest rows survive and the front is counted.
+	it("keeps every line of a short subagent burst", () => {
+		setViewportRows(24);
+		const chronological = Array.from({ length: 6 }, (_, index) => `line ${index + 1}`);
 		const text = renderProgressText(makeProgress([...chronological].reverse()), true, uiTheme);
 
 		expect(text).toContain("line 1");
-		expect(text).toContain("line 8");
-		expect(text).not.toContain("more lines");
+		expect(text).toContain("line 6");
+		expect(text).not.toContain("earlier lines");
 	});
 
-	it("keeps the newest subagent output when the viewport cap truncates", () => {
-		setViewportRows(24);
+	it("keeps the newest subagent output when the bound truncates", () => {
+		setViewportRows(40);
 		const chronological = Array.from({ length: 8 }, (_, index) => `line ${index + 1}`);
 		const text = renderProgressText(makeProgress([...chronological].reverse()), true, uiTheme);
 
@@ -265,7 +273,15 @@ describe("task live progress rendering", () => {
 		expect("animatedPartialResult" in taskToolRenderer).toBe(false);
 	});
 
-	it("renders running progress identically across spinner frames", () => {
+	/**
+	 * Nothing above the trailing streaming row moves between frames.
+	 *
+	 * The agent rows are what a terminal commits to native scrollback, so a glyph that animates among
+	 * them repaints a region that has already scrolled away and pins the commit boundary at the top of
+	 * the block. The host draws the animation on a row of its own BELOW them, which is the one row
+	 * allowed to differ here — assert both halves, or a card that stopped animating at all passes.
+	 */
+	it("holds every agent row still while only the trailing streaming row animates", () => {
 		const progress = makeProgress([]);
 		const details: TaskToolDetails = {
 			projectAgentsDir: null,
@@ -280,8 +296,13 @@ describe("task live progress rendering", () => {
 					{ expanded: false, isPartial: true, spinnerFrame },
 					uiTheme,
 				).render(120),
-			);
+			).split("\n");
 
-		expect(render(0)).toBe(render(1));
+		const first = render(0);
+		const second = render(1);
+		expect(second.length).toBe(first.length);
+		expect(second.slice(0, -1)).toEqual(first.slice(0, -1));
+		expect(first.at(-1)).toContain("… (streaming)");
+		expect(second.at(-1)).not.toBe(first.at(-1));
 	});
 });

@@ -45,7 +45,27 @@ export type ViewTone =
 	| "success"
 	| "warning"
 	| "error"
-	| "info";
+	| "info"
+	/**
+	 * Money a run spent, which is a fact of its own rather than an outcome.
+	 *
+	 * A card that reports work done by a model states what the work cost, and the figure is neither
+	 * good news nor bad: `success` would read as an outcome and `dim` as detail nobody scans, which
+	 * is the opposite of how a reader uses it. A terminal has carried a colour of its own for this
+	 * since before a view existed -- the status line, the agent roster and the subagent wall all
+	 * draw the same one -- and a host with no such colour draws the figure in its body text.
+	 */
+	| "cost"
+	/**
+	 * The host's own body text, stated rather than inherited.
+	 *
+	 * A run with no tone takes whatever colour the surrounding row was left in, which is right for a
+	 * fragment inside a coloured phrase and wrong for a row that has SETTLED: a delegated agent's row
+	 * is accent while it runs and plain once it finishes, and "plain" there is a decision the card
+	 * made, not the absence of one. Naming it is also what lets a host draw a card on a ground of its
+	 * own without a settled row inheriting the ground's colour.
+	 */
+	| "text";
 
 /**
  * A run of text with one tone.
@@ -494,6 +514,45 @@ export interface ViewDiffLines {
 }
 
 /**
+ * That a section's lines are the nodes of a tree, which the host draws connectors for.
+ *
+ * A card that reports work delegated to other agents is the case: an agent that spawned agents of
+ * its own is a structure rather than a list, and the rows under one node -- what it is running, what
+ * it found, how much it spent -- belong to that node however deep it sits. `list` states one flat
+ * level and one line per item, and a nested run fits neither half of that.
+ *
+ * So the section states where each line sits and the host draws whatever it draws for depth: a
+ * terminal draws the branch, the elbow and the vertical run that carries a parent's line past its
+ * children, a graphical host indents or mounts a disclosure widget, and a transcript export writes
+ * nested list items. The tool names no glyph, which is the part that was terminal chrome in every
+ * hand-written card that drew one.
+ *
+ * Every member is one entry per line the section carries, read together with the line at the same
+ * index, and the lines are in document order: a host that draws connectors resolves a line's
+ * ancestors from the lines above it.
+ */
+export interface ViewTreeLines {
+	/** How deep each line sits, `0` for a line at the section's own level. */
+	depth: readonly number[];
+	/**
+	 * Whether each line OPENS the node it belongs to, rather than continuing one already open.
+	 *
+	 * A node is one line that names it and any number under it that describe it, and only the first
+	 * carries a mark: a terminal draws the elbow on the line that opens a node and the vertical run
+	 * on the rest, so a node's own detail is not read as four more children.
+	 */
+	opens: readonly boolean[];
+	/**
+	 * Whether the node each line belongs to is the last of its parent's children.
+	 *
+	 * A continuation line carries the same answer its opening line does, since it belongs to the same
+	 * node. A host that draws connectors closes the last node with an elbow and stops running the
+	 * vertical past it; one that indents ignores this.
+	 */
+	last: readonly boolean[];
+}
+
+/**
  * A labelled group of lines inside a block.
  *
  * The label is text, not chrome: the host decides whether it draws as a heading, a divider or a
@@ -502,6 +561,15 @@ export interface ViewDiffLines {
 export interface ViewSection {
 	label?: string;
 	lines: readonly ViewLine[];
+	/**
+	 * That the host divides this section from the one above it.
+	 *
+	 * A card whose body is a brief and then the agents working from it states two groups a reader
+	 * reads separately, and neither of them wants a label: the brief IS the words above the rule.
+	 * Meaningless on the first section, which has nothing above it to be divided from, and a host
+	 * that separates groups its own way -- whitespace, a card of its own -- ignores it.
+	 */
+	separator?: boolean;
 	/**
 	 * What this section trimmed away, when the hold-back belongs to one group rather than the card.
 	 *
@@ -544,6 +612,14 @@ export interface ViewSection {
 	 * host does with the words that changed inside a replaced line to the host.
 	 */
 	diff?: ViewDiffLines;
+	/**
+	 * That the lines are the nodes of a tree, which the host draws depth for.
+	 *
+	 * Omitted means the lines are flat, which is what prose and a listing are. A tree section states
+	 * where each line sits and leaves every connector, indent and disclosure to the host. It composes
+	 * with the tone the tool gave its spans, since depth is structure and not appearance.
+	 */
+	tree?: ViewTreeLines;
 	/**
 	 * That the lines are Markdown, which the host renders however it can.
 	 *
@@ -717,12 +793,24 @@ export type LineToolView = StatusRowView | TextBlockView;
  * the content for the frame it is given, which is host-agnostic in the way a spinner glyph is not:
  * the surface owns the clock and the tool owns what the animation shows. Omitted means the surface
  * animates nothing, so the card states its settled content.
+ *
+ * `hasResult` is whether the surface already has a result for the call it is asking about. A host
+ * that merges the two cards into one draws the call half and the result half together, so a call
+ * preview that lists what a result card lists again would say it twice; the call half reads this
+ * and stops describing what the result half describes. A host that draws them as two separate
+ * cards omits it, and the preview stands on its own.
+ *
+ * `frozen` is whether the card has left the surface's live region: a detached spawn the reader has
+ * scrolled past, or a block the surface has sealed. Its content no longer updates, so a row that
+ * would otherwise read as in-progress states itself as inert instead of claiming work is happening.
  */
 export interface ToolViewContext {
 	expanded: boolean;
 	/** Omitted means the result is settled, which is what a call site with nothing to stream states. */
 	partial?: boolean;
 	frame?: number;
+	hasResult?: boolean;
+	frozen?: boolean;
 }
 
 /**

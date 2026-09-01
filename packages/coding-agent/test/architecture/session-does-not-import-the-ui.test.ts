@@ -192,44 +192,46 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 	}
 
 	/**
-	 * The one runtime edge left, pinned by exact equality so a second turns this
-	 * red. Shrink-only: an entry leaves when the edge is gone, and none is added.
+	 * No runtime edge is left, pinned by exact equality so the first one turns this red.
 	 *
-	 * `task/render.ts` is 1886 lines of terminal drawing that happens to be filed
-	 * under `task/`. What kept it here was the published renderer signature, which
-	 * returned a TUI `Component`; that returns `HostView` now, so what remains is
-	 * the drawing itself, and moving it means moving the module under
-	 * `modes/terminal/` rather than changing a type.
+	 * `task/render.ts` was the last: 1886 lines of terminal drawing filed under `task/` because the
+	 * published renderer signature returned a TUI `Component`. The task tool describes a
+	 * `ToolViewRenderer` now, so the drawing is `tui/draw-tool-view.ts` reading a view, the frozen
+	 * copy of what it used to draw is `test/oracles/task-main-renderer.ts`, and the engine names the
+	 * package nowhere.
 	 */
-	const RUNTIME_EDGES = ["task/render.ts -> @veyyon/tui"];
+	const RUNTIME_EDGES: string[] = [];
 
 	/**
-	 * Erased edges, pinned the same way and for the same reason: each one is a
-	 * decision, not an accident.
+	 * No erased edge either, pinned the same way and for the same reason.
 	 *
-	 * `task/subprocess-tool-registry.ts` declares its own `renderInline` and
-	 * `renderFinal`, which are consumed by `task/render.ts` beside it and by
-	 * nothing else; they are terminal drawing typed where it is drawn, not a
-	 * published contract. `task/render.ts` names more of the package it draws with.
+	 * `task/subprocess-tool-registry.ts` declared `renderInline` and `renderFinal`, terminal drawing
+	 * typed into the subprocess protocol, consumed by `task/render.ts` beside it and by nothing else.
+	 * Neither was reachable — all three registered handlers are skipped by name before the lookup
+	 * that would have found them — so both are gone and the registry names a `Theme` no more than it
+	 * names a `Component`.
 	 */
-	const TYPE_EDGES = ["task/render.ts -> @veyyon/tui", "task/subprocess-tool-registry.ts -> @veyyon/tui"];
+	const TYPE_EDGES: string[] = [];
 
 	/**
-	 * Anti-vacuity. Both cases below are absence checks over a list this walker
-	 * produces, so a walker that reads nothing passes them; `task/render.ts` is the
-	 * positive control, and it is here because it really does import the package.
+	 * Anti-vacuity. Both cases below are absence checks over a list this walker produces, so a walker
+	 * that reads nothing passes them, and the positive control that used to stand here was the very
+	 * edge this change removed. So the control is a file OUTSIDE the engine that really does import
+	 * the package: the same extractor over `tui/output-block.ts` finds it, which is what says an
+	 * empty result above is a fact about the engine rather than about the reader.
 	 */
-	it("reads the whole engine and does find TUI imports where they exist", () => {
+	it("reads the whole engine, with an extractor that finds a TUI import where one exists", () => {
 		expect(engineFiles.length).toBeGreaterThan(40);
 		expect(engineFiles.some(file => file.endsWith(`${path.sep}factory-tools.ts`))).toBe(true);
-		expect(tuiEdges("runtime")).toContain("task/render.ts -> @veyyon/tui");
+		const drawn = fs.readFileSync(path.join(SRC, "tui", "output-block.ts"), "utf-8");
+		expect(moduleSpecifiersIn(drawn).filter(specifier => specifier.startsWith("@veyyon/tui"))).not.toEqual([]);
 	});
 
-	it("instantiates the TUI package only in the recorded renderer", () => {
+	it("instantiates the TUI package nowhere in the engine", () => {
 		expect(tuiEdges("runtime")).toEqual(RUNTIME_EDGES);
 	});
 
-	it("names the TUI package for types only where recorded", () => {
+	it("names the TUI package for types nowhere in the engine", () => {
 		expect(tuiEdges("type")).toEqual(TYPE_EDGES);
 	});
 

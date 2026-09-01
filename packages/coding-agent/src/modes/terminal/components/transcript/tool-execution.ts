@@ -1363,6 +1363,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 											expanded: this.#renderState.expanded,
 											partial: this.#renderState.isPartial,
 											frame: this.#renderState.spinnerFrame,
+											hasResult: Boolean(this.#result),
+											frozen: this.#backgroundTaskFrozen,
 										}),
 										theme,
 										this.#renderState.spinnerFrame,
@@ -1415,6 +1417,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 											expanded: this.#renderState.expanded,
 											partial: this.#renderState.isPartial,
 											frame: this.#renderState.spinnerFrame,
+											hasResult: Boolean(this.#result),
+											frozen: this.#backgroundTaskFrozen,
 										},
 										this.#args,
 									),
@@ -1757,15 +1761,13 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			context.expanded = this.#expanded;
 			context.previewLines = BASH_DEFAULT_PREVIEW_LINES;
 			context.timeout = normalizeTimeoutSeconds((this.#args as { timeout?: unknown } | undefined)?.timeout, 3600);
-		} else if (this.#toolName === "task") {
-			// Once a result snapshot exists the task renderer's `renderResult`
-			// draws every dispatched agent as a progress/result line, so tell
-			// `renderCall` to drop its duplicate streaming preview list.
-			context.hasResult = Boolean(this.#result);
-			// Out of the transcript live region: progress rows render static gray
-			// (see task/render.ts).
-			context.frozen = this.#backgroundTaskFrozen;
 		}
+		// Two facts about the surface rather than about any one tool, which every view reads through
+		// `viewToolRenderer`: whether a result already exists for this call, so a merged card's call
+		// half stops repeating what its result half draws, and whether the block has left the live
+		// region, so a row that would otherwise read as in-progress states itself inert instead.
+		context.hasResult = Boolean(this.#result);
+		context.frozen = this.#backgroundTaskFrozen;
 
 		return context;
 	}

@@ -1,21 +1,36 @@
 /**
- * TUI rendering for task tool.
+ * Differential oracle: the task tool renderer from origin/main.
  *
- * Provides renderCall and renderResult functions for displaying
- * task execution in the terminal UI.
+ * Source SHA: c0039837474b2587b818a346b7ff870ce9a0c0e7 (`src/task/render.ts`).
+ * Frozen: never edited to make a test pass.
+ *
+ * The branch rewrote its import specifiers for this file's depth and dropped the dead
+ * `subprocessToolRegistry` registration at the foot of it — the `renderFinal` half no reader could
+ * reach, whose live `extractData` half is `src/task/nested-task-details.ts` now. The drawing below
+ * is main's, byte for byte. Here the specifiers are the package subpaths this branch publishes, so
+ * what it draws is what main drew.
  */
 
 import path from "node:path";
-import type { Component } from "@veyyon/tui";
-import { Container, Markdown, Text } from "@veyyon/tui";
-import { formatContextUsage, formatCount, formatNumber, isRecord, sanitizeText } from "@veyyon/utils";
-// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
-import { settings } from "../config/settings-instance";
-import { EXIT_CODE_NOTICE_RE } from "../exec/exit-notice";
-import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { modelBadgeFromSelector } from "../modes/terminal/components/dashboard/agent-model-badge";
-import { getMarkdownTheme } from "../theme/markdown-theme";
-import type { Theme } from "../theme/theme";
+import { settings } from "@veyyon/coding-agent/config/settings-instance";
+import { EXIT_CODE_NOTICE_RE } from "@veyyon/coding-agent/exec/exit-notice";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { modelBadgeFromSelector } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-model-badge";
+import { classifySubagentOutcome } from "@veyyon/coding-agent/task/outcome";
+import { repairDoubleEncodedJsonString } from "@veyyon/coding-agent/task/repair-args";
+import { DEFAULT_SPAWN_AGENT } from "@veyyon/coding-agent/task/spawn-policy";
+import { YIELD_TOOL_NAME } from "@veyyon/coding-agent/task/subprocess-tool-registry";
+import type {
+	AgentProgress,
+	SingleResult,
+	TaskItem,
+	TaskParams,
+	TaskToolDetails,
+	YieldItem,
+} from "@veyyon/coding-agent/task/types";
+import { assembleYieldResult } from "@veyyon/coding-agent/task/yield-assembly";
+import { getMarkdownTheme } from "@veyyon/coding-agent/theme/markdown-theme";
+import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
 import {
 	type FindingPriority,
 	getPriorityInfo,
@@ -23,8 +38,8 @@ import {
 	parseReportFindingDetails,
 	type ReportFindingDetails,
 	type SubmitReviewDetails,
-} from "../tools/agent/review";
-import { stripGeneratedOutputNotice, stripRawOutputArtifactNotice } from "../tools/core/output-meta";
+} from "@veyyon/coding-agent/tools/agent/review";
+import { stripGeneratedOutputNotice, stripRawOutputArtifactNotice } from "@veyyon/coding-agent/tools/core/output-meta";
 import {
 	capPreviewLines,
 	formatBadge,
@@ -37,15 +52,12 @@ import {
 	replaceTabs,
 	type ToolUIStatus,
 	truncateToWidth,
-} from "../tools/core/render-utils";
-import { framedBlock, renderStatusLine } from "../tui";
-import { buildTreePrefix } from "../tui/utils";
-import { classifySubagentOutcome } from "./outcome";
-import { repairDoubleEncodedJsonString } from "./repair-args";
-import { DEFAULT_SPAWN_AGENT } from "./spawn-policy";
-import { subprocessToolRegistry, YIELD_TOOL_NAME } from "./subprocess-tool-registry";
-import type { AgentProgress, SingleResult, TaskItem, TaskParams, TaskToolDetails, YieldItem } from "./types";
-import { assembleYieldResult } from "./yield-assembly";
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import { framedBlock, renderStatusLine } from "@veyyon/coding-agent/tui";
+import { buildTreePrefix } from "@veyyon/coding-agent/tui/utils";
+import type { Component } from "@veyyon/tui";
+import { Markdown } from "@veyyon/tui";
+import { formatContextUsage, formatCount, formatNumber, isRecord, sanitizeText } from "@veyyon/utils";
 
 /** Render context threaded in from `ToolExecutionComponent.#buildRenderContext`. */
 interface TaskRenderContext {
@@ -1349,8 +1361,7 @@ function renderAgentResult(
 			// Skip review tools - handled above
 			if (toolName === "report_finding") continue;
 
-			const isTaskTool = toolName === "task";
-			if (isTaskTool && (dataArray as unknown[]).length > 0) {
+			if (toolName === "task" && (dataArray as unknown[]).length > 0) {
 				for (const line of renderNestedTaskResults(
 					dataArray as TaskToolDetails[],
 					expanded,
@@ -1360,32 +1371,11 @@ function renderAgentResult(
 				)) {
 					deferredToolLines.push(`${continuePrefix}${line}`);
 				}
-				continue;
 			}
-
-			const handler = subprocessToolRegistry.getHandler(toolName);
-			if (handler?.renderFinal && (dataArray as unknown[]).length > 0) {
-				const component = handler.renderFinal(dataArray as unknown[], theme, expanded);
-				const target = lines;
-				if (!isTaskTool) {
-					hasCustomRendering = true;
-					target.push(`${continuePrefix}${theme.fg("dim", `Tool: ${toolName}`)}`);
-				}
-				if (component instanceof Text) {
-					// Prefix each line with continuePrefix
-					const text = component.getText();
-					for (const line of text.split("\n")) {
-						target.push(`${continuePrefix}${line}`);
-					}
-				} else if (component instanceof Container) {
-					// For containers, render each child
-					for (const child of (component as Container).children) {
-						if (child instanceof Text) {
-							target.push(`${continuePrefix}${child.getText()}`);
-						}
-					}
-				}
-			}
+			// A `subprocessToolRegistry.getHandler(toolName).renderFinal` branch stood here and could
+			// not run: the three registered handlers are `yield`, `report_finding` and `task`, and all
+			// three are skipped by name above it. Dropping it drops no drawn byte, and it is what lets
+			// the live registry stop naming a terminal `Component`.
 		}
 	}
 
@@ -1728,15 +1718,6 @@ export function renderResult(
 	});
 }
 
-function isTaskToolDetails(value: unknown): value is TaskToolDetails {
-	return (
-		Boolean(value) &&
-		typeof value === "object" &&
-		"results" in (value as TaskToolDetails) &&
-		Array.isArray((value as TaskToolDetails).results)
-	);
-}
-
 // Nested subagent snapshots sit one or more levels below the frame border, so
 // they keep tree guides to convey depth (the parent prepends its own continue
 // prefix). Only the top-level agent list drops guides (the frame is its box).
@@ -1856,15 +1837,3 @@ function renderNestedTaskTree(
 	}
 	return lines;
 }
-
-// Register task tool subprocess handler
-subprocessToolRegistry.register<TaskToolDetails>("task", {
-	extractData: event => {
-		const details = event.result?.details;
-		return isTaskToolDetails(details) ? details : undefined;
-	},
-	renderFinal: (allData, theme, expanded) => {
-		const lines = renderNestedTaskResults(allData, expanded, theme);
-		return new Text(lines.join("\n"), 0, 0);
-	},
-});

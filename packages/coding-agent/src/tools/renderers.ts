@@ -11,7 +11,7 @@ import { editToolView } from "../edit/edit-view";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { goalToolView } from "../goals/goal-tool";
 import { lspToolView } from "../lsp/view";
-import { taskToolRenderer } from "../task/renderer";
+import { taskToolView } from "../task/task-view";
 import type { Theme } from "../theme/theme";
 import { viewToolRenderer } from "../tui/draw-tool-view";
 import { webSearchToolView } from "../web/search/view";
@@ -99,13 +99,10 @@ export const toolRenderers: Record<string, ToolRenderer> = {
 	// The lsp tool describes a view, and this entry is the terminal's drawing of it — the path a
 	// rebuilt transcript takes, where no tool instance exists to read `tool.view` from.
 	lsp: viewToolRenderer(lspToolView, { mergeCallAndResult: true, inline: true }) as ToolRenderer,
-	// Lazy getter: `taskToolRenderer` lives in a module that closes an import
-	// cycle back here (task/renderer → task/render → … → tools/renderers), so
-	// reading it at init order-dependently hits its temporal dead zone. Deferring
-	// the read to first access (render time) sidesteps the cycle entirely.
-	get task(): ToolRenderer {
-		return taskToolRenderer as ToolRenderer;
-	},
+	// The task tool describes a view, and this entry is the terminal's drawing of it. The lazy getter
+	// that used to stand here worked around an import cycle through `task/render.ts`, which drew the
+	// card with the terminal engine and reached back into this table; a view imports neither.
+	task: viewToolRenderer(taskToolView, { mergeCallAndResult: true }) as ToolRenderer,
 	// The goal tool describes a view instead of drawing a component, so its entry here is the
 	// terminal's drawing of that same view. It exists for the rebuilt transcript of a session that
 	// never constructed the tool, which is the one path that cannot read `tool.view`.
