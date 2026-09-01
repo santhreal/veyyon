@@ -139,6 +139,25 @@ async function written(act: () => void): Promise<{
 	};
 }
 
+/**
+ * Every path the recorder wrote for the duration of a test, in order, passed through to the real
+ * writer so the file on disk stays what the product would have left.
+ *
+ * A recorder rather than a call count: when a collapse regresses, this states which record was
+ * rewritten, and a count states only that something was.
+ */
+function writeRecorder(): () => string[] {
+	const paths: string[] = [];
+	const real = atomicWrite.atomicWriteJson;
+	vi.spyOn(atomicWrite, "atomicWriteJson").mockImplementation(
+		async (filePath: string, data: unknown, options?: atomicWrite.AtomicWriteOptions) => {
+			paths.push(filePath);
+			await real(filePath, data, options);
+		},
+	);
+	return () => paths;
+}
+
 /** The card's own status-row context, which is what the segments actually render from. */
 function cardContext() {
 	return launchSegmentContext({
@@ -603,17 +622,17 @@ describe("what the launch card knows before a session exists", () => {
 	 * An idle session redraws continuously and every redraw reaches the recorder with the same
 	 * facts. The write has to stop at the first.
 	 *
-	 * Counted at the filesystem call rather than inferred from the file's contents: a recorder
+	 * Observed at the filesystem call rather than inferred from the file's contents: a recorder
 	 * that rewrote identical bytes fifty times would leave a file indistinguishable from one
-	 * written once, so only the call count can see the amplification.
+	 * written once, so only the writes themselves can see the amplification.
 	 */
 	it("writes once for facts that have not changed", async () => {
 		await record({ contextPercent: 40, gitStatus: DIRTY });
-		const writes = vi.spyOn(atomicWrite, "atomicWriteJson");
+		const recorded = writeRecorder();
 
 		for (let redraw = 0; redraw < 50; redraw++) await recordLaunchFacts({ contextPercent: 40, gitStatus: DIRTY });
 
-		expect(writes).toHaveBeenCalledTimes(0);
+		expect(recorded()).toEqual([]);
 	});
 
 	/**
@@ -1117,11 +1136,11 @@ describe("the background the card paints on before the terminal answers", () => 
 	 */
 	it("writes nothing when the terminal reports the background it already recorded", async () => {
 		await record({ terminalGround: GROUND, modelName: "Claude Sonnet 4" });
-		const write = vi.spyOn(atomicWrite, "atomicWriteJson");
+		const recorded = writeRecorder();
 
 		await record({ terminalGround: GROUND, modelName: "Claude Sonnet 4" });
 
-		expect(write).not.toHaveBeenCalled();
+		expect(recorded()).toEqual([]);
 	});
 
 	/** A window whose emulator changed theme reports a different colour, and that one is the fact. */

@@ -238,12 +238,31 @@ describe("a multi-step operation in progress", () => {
 	});
 });
 
+/**
+ * Every way this package can start a process, replaced with a recorder that also throws.
+ *
+ * Recording catches a spawn whose failure the caller swallows, and throwing fails at the call
+ * site instead of several assertions later, naming which entry point ran.
+ */
+function spawnRecorder(): () => string[] {
+	const spawned: string[] = [];
+	const trap = (name: string) => {
+		return (...args: unknown[]): never => {
+			const argv = Array.isArray(args[0]) ? (args[0] as unknown[]).join(" ") : String(args[0] ?? "");
+			spawned.push(`${name} ${argv}`.trim());
+			throw new Error(`reading the branch spawned ${name}`);
+		};
+	};
+	vi.spyOn(Bun, "spawnSync").mockImplementation(trap("Bun.spawnSync") as never);
+	vi.spyOn(Bun, "spawn").mockImplementation(trap("Bun.spawn") as never);
+	vi.spyOn(childProcess, "spawnSync").mockImplementation(trap("childProcess.spawnSync") as never);
+	vi.spyOn(childProcess, "execFileSync").mockImplementation(trap("childProcess.execFileSync") as never);
+	return () => spawned;
+}
+
 describe("reading the branch spawns nothing", () => {
 	it("runs no subprocess for an ordinary checkout, a worktree, or a rebase", () => {
-		const spawnSync = vi.spyOn(Bun, "spawnSync");
-		const spawn = vi.spyOn(Bun, "spawn");
-		const cpSpawnSync = vi.spyOn(childProcess, "spawnSync");
-		const cpExecFileSync = vi.spyOn(childProcess, "execFileSync");
+		const spawned = spawnRecorder();
 
 		const plain = checkout({ ".git/HEAD": HEAD_ON_MAIN });
 		const worktree = checkout({
@@ -261,23 +280,20 @@ describe("reading the branch spawns nothing", () => {
 		expect(branchLabelFromFiles(path.join(worktree.root, "wt"))).toBe("topic");
 		expect(branchLabelFromFiles(rebasing.root)).toBe("topic|REBASE");
 
-		expect(spawnSync).not.toHaveBeenCalled();
-		expect(spawn).not.toHaveBeenCalled();
-		expect(cpSpawnSync).not.toHaveBeenCalled();
-		expect(cpExecFileSync).not.toHaveBeenCalled();
+		expect(spawned()).toEqual([]);
 	});
 
 	it("runs no subprocess for a reftable repository either — it declines instead", () => {
 		// The whole reason this module exists. `git.head.resolveSync` answers
 		// this case by spawning `git symbolic-ref`, which is exactly what must
 		// not happen on the frame the terminal is owed.
-		const spawnSync = vi.spyOn(Bun, "spawnSync");
+		const spawned = spawnRecorder();
 		const { root } = checkout({
 			".git/HEAD": HEAD_ON_MAIN,
 			".git/config": "[extensions]\n\trefstorage = reftable\n",
 		});
 		expect(branchLabelFromFiles(root)).toBeNull();
-		expect(spawnSync).not.toHaveBeenCalled();
+		expect(spawned()).toEqual([]);
 	});
 });
 
