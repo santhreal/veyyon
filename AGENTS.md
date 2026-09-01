@@ -235,9 +235,11 @@ model is actually told, and why enablement is inert". Read it before touching th
 - Imports are top-level, and a type is never imported dynamically: no `import("pkg").Type`. A
   dynamic `await import()` is allowed only where a lazy boundary already exists, which is the tool
   dispatch table (`packages/coding-agent/src/tools/index.ts` and the per-domain manifests it unions,
-  `packages/coding-agent/src/tools/<domain>/manifest.ts`), CLI command dispatch, and the
-  barrels held out of TUI startup. `scripts/a-module-is-imported-at-the-top-of-its-file.test.ts`
-  pins that set, so a new site elsewhere fails.
+  `packages/coding-agent/src/tools/<domain>/manifest.ts`), CLI command dispatch, the
+  barrels held out of TUI startup, and `scripts/package-exports-surface.ts`, whose specifiers are
+  read from the manifests at run time and are the loader boundary the export gate exercises.
+  `scripts/a-module-is-imported-at-the-top-of-its-file.test.ts` pins that set, so a new site
+  elsewhere fails.
 - Check `node_modules` for external API types instead of guessing.
 - A third-party version that two or more packages share lives in `workspaces.catalog` in the root
   `package.json`, and each of those packages writes `"react": "catalog:"`. A dependency already in

@@ -134,3 +134,4 @@ plugins/mnemopi/test/checking-a-schema-is-not-running-the-engine.test.ts
 plugins/mnemopi/test/local-llm.test.ts
 scripts/check-doc-imports.ts
 scripts/demos/render-args.ts
+scripts/package-exports-surface.ts

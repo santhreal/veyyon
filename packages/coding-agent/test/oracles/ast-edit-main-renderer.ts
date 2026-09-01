@@ -12,10 +12,7 @@
 
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
-import {
-	classifyGroupedLines,
-	groupLineIndicesByBlank,
-} from "@veyyon/coding-agent/tools/core/grouped-file-output";
+import { classifyGroupedLines, groupLineIndicesByBlank } from "@veyyon/coding-agent/tools/core/grouped-file-output";
 import {
 	appendParseErrorsBulletList,
 	formatCount,
@@ -25,13 +22,7 @@ import {
 	formatScopeMeta,
 	PREVIEW_LIMITS,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import {
-	Ellipsis,
-	fileHyperlink,
-	framedBlock,
-	renderStatusLine,
-	truncateToWidth,
-} from "@veyyon/coding-agent/tui";
+import { Ellipsis, fileHyperlink, framedBlock, renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/tui";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { collapseWhitespace } from "@veyyon/utils";
