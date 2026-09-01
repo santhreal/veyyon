@@ -140,6 +140,8 @@
 - Codex remote compaction keeps at least one user turn when the retained-token budget it is handed is not a finite number, instead of replaying a window holding nothing but the compaction item.
 - A Codex server-side compaction sends the session's `prompt_cache_key`, so it lands on the session's cached prefix instead of missing it and making the next turn re-pay full uncached input.
 - A Codex server-side compaction with no session id is refused instead of minting a random conversation identity, which opened a second cache lineage and left the post-compaction history reset with nothing to find.
+- The Claude Code user-agent reports `agent-sdk/0.3.257`, the Agent SDK release paired with the Claude Code version the same request sends.
+- The Claude Code fingerprint version is 2.1.257, so Anthropic OAuth requests for current models are no longer rejected with `claude_code_version_too_old`.
 - The addon loader resolves `node:child_process` and `node:zlib` when it loads an addon rather than when it is imported, so importing `@veyyon/natives` for its types or enum values costs 3ms less.
 - A compiled binary's first launch of a version extracts only the native addon variant the host loads, instead of every variant the binary carries, so a cold start writes about 135MB rather than 270MB before the first frame; the skipped variants are written on demand if the selected one fails to load.
 - A compiled binary carries one embedded archive per native addon variant instead of one archive holding all of them, so a cold launch inflates only the variant it loads; cold first paint on linux-x64 drops from 361ms to 229ms.
