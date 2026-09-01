@@ -9,10 +9,11 @@ import chalk from "chalk";
 import { applyProviderGlobalsFromSettings } from "../config/provider-globals";
 import { Settings } from "../config/settings";
 import { initTheme, theme } from "../theme/theme";
+import { drawToolView } from "../tui/draw-tool-view";
 import { runSearchQuery, type SearchQueryParams } from "../web/search/index";
 import { SEARCH_PROVIDER_ORDER } from "../web/search/provider";
-import { renderSearchResult } from "../web/search/render";
 import type { SearchProviderId } from "../web/search/types";
+import { webSearchToolView } from "../web/search/view";
 
 export interface SearchCommandArgs {
 	query: string;
@@ -65,10 +66,15 @@ export async function runSearchCommand(cmd: SearchCommandArgs): Promise<void> {
 	};
 
 	const result = await runSearchQuery(params);
-	const component = renderSearchResult(result, { expanded: cmd.expanded, isPartial: false }, theme, {
-		query: cmd.query,
-		maxAnswerLines: cmd.expanded ? undefined : 6,
-	});
+	// The card is described once and drawn by the host, which here is this terminal: the compact cap
+	// travels as an argument, so a one-shot print states what it left out and offers no gesture for it.
+	const component = drawToolView(
+		webSearchToolView.renderResult(result, { expanded: cmd.expanded }, {
+			query: cmd.query,
+			maxAnswerLines: cmd.expanded ? undefined : 6,
+		}),
+		theme,
+	);
 
 	const width = Math.max(60, process.stdout.columns ?? 100);
 	// The theme renderer emits truecolor escapes unconditionally; follow chalk's

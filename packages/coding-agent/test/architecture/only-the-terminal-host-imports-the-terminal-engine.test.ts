@@ -97,7 +97,6 @@ const ENGINE_IMPORTERS = [
 	"tui/hyperlink.ts",
 	"tui/output-block.ts",
 	"tui/width-aware-text.ts",
-	"web/search/render.ts",
 ];
 
 /**

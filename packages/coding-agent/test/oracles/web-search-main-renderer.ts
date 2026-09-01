@@ -1,14 +1,17 @@
 /**
- * Web Search TUI Rendering
+ * Differential oracle: the web_search tool renderer from origin/main.
  *
- * Tree-based rendering with collapsed/expanded states for web search results.
+ * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/web/search/render.ts`).
+ * Frozen: never edited to make a test pass.
+ *
+ * Only the import specifiers are rewritten to the package subpaths this branch publishes.
  */
 
 import type { Component } from "@veyyon/tui";
 import { Markdown, Text } from "@veyyon/tui";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import { getMarkdownTheme } from "../../theme/markdown-theme";
-import type { Theme } from "../../theme/theme";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { getMarkdownTheme } from "@veyyon/coding-agent/theme/markdown-theme";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	formatAge,
 	formatCount,
@@ -17,10 +20,10 @@ import {
 	PREVIEW_LIMITS,
 	replaceTabs,
 	truncateToWidth,
-} from "../../tools/core/render-utils";
-import { framedBlock, outputBlockContentWidth, renderStatusLine, urlHyperlink } from "../../tui";
-import { getSearchProviderLabel } from "./provider";
-import type { SearchResponse } from "./types";
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import { framedBlock, outputBlockContentWidth, renderStatusLine, urlHyperlink } from "@veyyon/coding-agent/tui";
+import { getSearchProviderLabel } from "@veyyon/coding-agent/web/search/provider";
+import type { SearchResponse } from "@veyyon/coding-agent/web/search/types";
 
 const MAX_COLLAPSED_ITEMS = PREVIEW_LIMITS.COLLAPSED_ITEMS;
 

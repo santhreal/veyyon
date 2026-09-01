@@ -10,10 +10,9 @@ import { formatCount, prompt, truncate } from "@veyyon/utils";
 import { type } from "arktype";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
-import type { CustomTool, CustomToolContext, RenderResultOptions } from "../../extensibility/custom-tools/types";
+import type { CustomTool, CustomToolContext } from "../../extensibility/custom-tools/types";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ProviderTextTransformResolver } from "../../provider-boundary";
-import type { Theme } from "../../theme/theme";
 import type { ToolSession } from "../../tools";
 import { formatAge } from "../../tools/core/render-utils";
 import { throwIfAborted } from "../../tools/core/tool-errors";
@@ -25,9 +24,9 @@ import {
 	type SearchProvider,
 	selectSearchProviders,
 } from "./provider";
-import { renderSearchCall, renderSearchResult, type SearchRenderDetails } from "./render";
-import type { SearchProviderId, SearchResponse } from "./types";
+import type { SearchProviderId, SearchRenderDetails, SearchResponse } from "./types";
 import { SearchProviderError } from "./types";
+import { webSearchToolView } from "./view";
 
 /**
  * Open the credential store, loading the module that knows how ON DEMAND.
@@ -334,7 +333,7 @@ export class WebSearchTool implements AgentTool<typeof webSearchSchema, SearchRe
 	}
 }
 
-/** Web search tool as CustomTool (for TUI rendering support) */
+/** Web search tool as CustomTool, which is the shape that carries a card. */
 export const webSearchCustomTool: CustomTool<typeof webSearchSchema, SearchRenderDetails> = {
 	name: "web_search",
 	label: "Web Search",
@@ -358,14 +357,11 @@ export const webSearchCustomTool: CustomTool<typeof webSearchSchema, SearchRende
 			resolveProviderTextTransform: () => ctx.obfuscateProviderText,
 		});
 	},
-
-	renderCall(args: SearchToolParams, options: RenderResultOptions, theme: Theme) {
-		return renderSearchCall(args, options, theme);
-	},
-
-	renderResult(result, options: RenderResultOptions, theme: Theme, args) {
-		return renderSearchResult(result, options, theme, args);
-	},
+	/**
+	 * The tool's own card, as data. Declared here so the live tool carries it and any host that draws
+	 * a transcript reads it off the tool rather than from a terminal-side registry.
+	 */
+	view: webSearchToolView,
 };
 
 export function getSearchTools(): CustomTool<any, any>[] {

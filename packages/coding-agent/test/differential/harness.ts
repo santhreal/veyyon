@@ -77,6 +77,7 @@ export const CONVERTED_TOOLS = [
 	"browser",
 	"read",
 	"ask",
+	"web_search",
 ] as const;
 
 export const WIDTH = 80;

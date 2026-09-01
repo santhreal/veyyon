@@ -14,7 +14,7 @@ import { lspToolRenderer } from "../lsp/render";
 import { taskToolRenderer } from "../task/renderer";
 import type { Theme } from "../theme/theme";
 import { viewToolRenderer } from "../tui/draw-tool-view";
-import { webSearchToolRenderer } from "../web/search/render";
+import { webSearchToolView } from "../web/search/view";
 import { agentRenderers } from "./agent/renderers";
 import { fsRenderers } from "./fs/renderers";
 import { searchRenderers } from "./search/renderers";
@@ -107,5 +107,5 @@ export const toolRenderers: Record<string, ToolRenderer> = {
 	// terminal's drawing of that same view. It exists for the rebuilt transcript of a session that
 	// never constructed the tool, which is the one path that cannot read `tool.view`.
 	goal: viewToolRenderer(goalToolView, { mergeCallAndResult: true }) as ToolRenderer,
-	web_search: webSearchToolRenderer as ToolRenderer,
+	web_search: viewToolRenderer(webSearchToolView, { mergeCallAndResult: true }) as ToolRenderer,
 };

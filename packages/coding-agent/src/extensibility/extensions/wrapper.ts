@@ -106,9 +106,10 @@ export class RegisteredToolAdapter implements AgentTool<TSchema, unknown, unknow
 		args?: Static<TSchema>,
 	) => unknown;
 	/**
-	 * Forwarded like the pair above rather than left to `applyToolProxy`, and for the same reason:
-	 * the property has to be ABSENT when the definition has none. A `view` that exists and answers
-	 * undefined puts `ToolExecutionComponent` on the tool-owned path with nothing to draw.
+	 * Forwarded in the constructor like the pair above, rather than left to `applyToolProxy`: the
+	 * field declarations on this class put `renderCall`, `renderResult` and `view` on the instance
+	 * already, and the proxy skips every key the wrapper owns. Without the assignment a definition's
+	 * view would never reach a host, and the tool would fall back to the generic card.
 	 */
 	view?: ToolViewRenderer<Static<TSchema>, AgentToolResult<unknown>>;
 

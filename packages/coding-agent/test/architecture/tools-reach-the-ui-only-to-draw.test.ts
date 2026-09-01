@@ -491,6 +491,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"tools/web/browser/view.ts",
 			"tools/web/fetch-view.ts",
 			"tools/web/gh-view.ts",
+			"web/search/view.ts",
 		]);
 		for (const file of converted) {
 			expect([...IN_PLACE_ANYWHERE.keys()]).not.toContain(file);
@@ -663,7 +664,6 @@ describe("a registry entry either describes its card or is recorded as drawing o
 			"vibe_send",
 			"vibe_spawn",
 			"vibe_wait",
-			"web_search",
 		]);
 	});
 
@@ -689,6 +689,7 @@ describe("a registry entry either describes its card or is recorded as drawing o
 			"set_cwd",
 			"ssh",
 			"todo",
+			"web_search",
 			"write",
 		]);
 		// A half-converted entry describes one render and draws the other, which is a card no host but

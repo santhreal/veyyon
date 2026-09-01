@@ -1,7 +1,9 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
-import { renderSearchResult, type SearchRenderDetails } from "@veyyon/coding-agent/web/search/render";
-import type { SearchResponse } from "@veyyon/coding-agent/web/search/types";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import type { SearchRenderDetails, SearchResponse } from "@veyyon/coding-agent/web/search/types";
+import { type WebSearchViewArgs, type WebSearchViewResult, webSearchToolView } from "@veyyon/coding-agent/web/search/view";
 import { sanitizeText } from "@veyyon/utils";
 
 const ANSWER = [
@@ -33,10 +35,25 @@ function buildResult(answer: string): {
 	return { content: [{ type: "text", text: answer }], details: { response } };
 }
 
+/**
+ * The card the view describes, drawn by the terminal host.
+ *
+ * The tool states the card and never how it looks, so every cell below asks the view for one and
+ * hands it to the drawer, which is the path a session takes.
+ */
+function card(
+	result: WebSearchViewResult,
+	expanded: boolean,
+	uiTheme: Theme,
+	args?: WebSearchViewArgs,
+): readonly string[] {
+	return drawToolView(webSearchToolView.renderResult(result, { expanded }, args), uiTheme).render(120);
+}
+
 /** Slice the sanitized lines belonging to the framed "Answer" section. */
-function answerSection(lines: string[]): string {
-	const start = lines.findIndex(l => / Answer /.test(l));
-	const end = lines.findIndex((l, i) => i > start && / Sources /.test(l));
+function answerSection(lines: readonly string[]): string {
+	const start = lines.findIndex(l => / Answer\b/.test(l));
+	const end = lines.findIndex((l, i) => i > start && / Sources\b/.test(l));
 	expect(start).toBeGreaterThanOrEqual(0);
 	expect(end).toBeGreaterThan(start);
 	return lines
@@ -45,17 +62,14 @@ function answerSection(lines: string[]): string {
 		.trim();
 }
 
-describe("renderSearchResult", () => {
+describe("the web search card", () => {
 	beforeAll(async () => {
 		await initTheme();
 	});
 
 	it("renders the answer as markdown (strips ## and ** markers)", async () => {
 		const uiTheme = (await getThemeByName("dark"))!;
-		const component = renderSearchResult(buildResult(ANSWER), { expanded: true, isPartial: false }, uiTheme, {
-			query: "test query",
-		});
-		const answer = answerSection(component.render(120).map(l => sanitizeText(l)));
+		const answer = answerSection(card(buildResult(ANSWER), true, uiTheme, { query: "test query" }).map(l => sanitizeText(l)));
 		// Heading hashes and bold asterisks are consumed by the markdown renderer.
 		expect(answer).not.toContain("##");
 		expect(answer).not.toContain("**");
@@ -66,10 +80,9 @@ describe("renderSearchResult", () => {
 
 	it("shows the full answer when expanded — no answer truncation summary", async () => {
 		const uiTheme = (await getThemeByName("dark"))!;
-		const component = renderSearchResult(buildResult(ANSWER), { expanded: true, isPartial: false }, uiTheme, {
-			query: "test query",
-		});
-		const answer = answerSection(component.render(120).map(l => sanitizeText(l)));
+		const answer = answerSection(
+			card(buildResult(ANSWER), true, uiTheme, { query: "test query" }).map(l => sanitizeText(l)),
+		);
 		// The final paragraph is present and there is no "… N more lines" cap inside the Answer section.
 		expect(answer).toContain("FINAL_UNIQUE_MARKER");
 		expect(answer).not.toMatch(/more line/);
@@ -77,10 +90,7 @@ describe("renderSearchResult", () => {
 
 	it("shows the full answer when collapsed by default", async () => {
 		const uiTheme = (await getThemeByName("dark"))!;
-		const component = renderSearchResult(buildResult(ANSWER), { expanded: false, isPartial: false }, uiTheme, {
-			query: "test query",
-		});
-		const answer = answerSection(component.render(120).map(l => sanitizeText(l)));
+		const answer = answerSection(card(buildResult(ANSWER), false, uiTheme, { query: "test query" }).map(l => sanitizeText(l)));
 		// TUI collapsed view keeps the answer intact; only explicit compact mode caps it.
 		expect(answer).toContain("FINAL_UNIQUE_MARKER");
 		expect(answer).not.toMatch(/more line/);
@@ -88,11 +98,9 @@ describe("renderSearchResult", () => {
 
 	it("truncates the answer only when compact mode provides maxAnswerLines", async () => {
 		const uiTheme = (await getThemeByName("dark"))!;
-		const component = renderSearchResult(buildResult(ANSWER), { expanded: false, isPartial: false }, uiTheme, {
-			query: "test query",
-			maxAnswerLines: 3,
-		});
-		const answer = answerSection(component.render(120).map(l => sanitizeText(l)));
+		const answer = answerSection(
+			card(buildResult(ANSWER), false, uiTheme, { query: "test query", maxAnswerLines: 3 }).map(l => sanitizeText(l)),
+		);
 
 		expect(answer).toMatch(/more line/);
 		expect(answer).not.toContain("FINAL_UNIQUE_MARKER");
@@ -100,10 +108,7 @@ describe("renderSearchResult", () => {
 
 	it("renders sources as railed body lines without tree connectors", async () => {
 		const uiTheme = (await getThemeByName("dark"))!;
-		const component = renderSearchResult(buildResult(ANSWER), { expanded: true, isPartial: false }, uiTheme, {
-			query: "test query",
-		});
-		const rendered = component.render(120);
+		const rendered = card(buildResult(ANSWER), true, uiTheme, { query: "test query" });
 		const plainLines = rendered.map(l => sanitizeText(l));
 		const rail = uiTheme.symbol("block.rail");
 
@@ -142,7 +147,7 @@ describe("renderSearchResult", () => {
 		const rail = uiTheme.symbol("block.rail");
 
 		// Collapsed mode: shows 8 sources + 1 overflow summary line
-		const collapsed = renderSearchResult(res, { expanded: false, isPartial: false }, uiTheme).render(120);
+		const collapsed = card(res, false, uiTheme);
 		const plainCollapsed = collapsed.map(l => sanitizeText(l));
 		expect(plainCollapsed[0]!).toContain("12 sources");
 		for (const line of plainCollapsed.slice(1)) {
@@ -152,7 +157,7 @@ describe("renderSearchResult", () => {
 		expect(plainCollapsed.some(l => l.includes("… 4 more sources"))).toBe(true);
 
 		// Expanded mode: shows all 12 sources
-		const expanded = renderSearchResult(res, { expanded: true, isPartial: false }, uiTheme).render(120);
+		const expanded = card(res, true, uiTheme);
 		const plainExpanded = expanded.map(l => sanitizeText(l));
 		expect(plainExpanded[0]!).toContain("12 sources");
 		for (const line of plainExpanded.slice(1)) {
@@ -167,24 +172,20 @@ describe("renderSearchResult", () => {
 		const rail = uiTheme.symbol("block.rail");
 
 		// Fallback text (no response details)
-		const fallbackComp = renderSearchResult(
-			{ content: [{ type: "text", text: "Line 1\nLine 2\nLine 3" }] },
-			{ expanded: true, isPartial: false },
-			uiTheme,
+		const fallbackLines = card({ content: [{ type: "text", text: "Line 1\nLine 2\nLine 3" }] }, true, uiTheme).map(l =>
+			sanitizeText(l),
 		);
-		const fallbackLines = fallbackComp.render(120).map(l => sanitizeText(l));
 		for (const line of fallbackLines) {
 			expect(line.startsWith(`${rail} `)).toBe(true);
 			expect(line).not.toMatch(/[├└│]/);
 		}
 
 		// Error panel
-		const errorComp = renderSearchResult(
+		const errorLines = card(
 			{ content: [], details: { error: "Network timeout", response: { provider: "brave" } as never } },
-			{ expanded: false, isPartial: false },
+			false,
 			uiTheme,
-		);
-		const errorLines = errorComp.render(120).map(l => sanitizeText(l));
+		).map(l => sanitizeText(l));
 		expect(errorLines[0]!).toContain("Web Search");
 		expect(errorLines[0]!).toContain("Brave");
 		for (const line of errorLines) {

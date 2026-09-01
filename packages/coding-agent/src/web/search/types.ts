@@ -149,6 +149,18 @@ export interface SearchResponse {
 	authMode?: string;
 }
 
+/**
+ * What a web_search result carries beside its text: the response the provider returned, and the
+ * message when the query failed.
+ *
+ * The tool's own detail shape, stated here with the response it holds rather than beside a card, so
+ * a host reading a result never imports a renderer to name its details.
+ */
+export interface SearchRenderDetails {
+	response: SearchResponse;
+	error?: string;
+}
+
 /** Provider-specific error with optional HTTP status */
 export class SearchProviderError extends Error {
 	constructor(

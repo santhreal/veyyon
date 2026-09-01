@@ -85,6 +85,7 @@ describe("differential coverage", () => {
 			"browser",
 			"read",
 			"ask",
+			"web_search",
 		]);
 	});
 
