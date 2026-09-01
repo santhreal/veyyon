@@ -58,6 +58,14 @@ export interface ViewSpan {
 	bold?: boolean;
 	italic?: boolean;
 	/**
+	 * A run struck through, which is a state the text is IN rather than a colour it carries.
+	 *
+	 * A closed task is the case: the tone says it succeeded and the strike says it is finished with.
+	 * It is separate from tone for the reason `bold` is, and a host that cannot draw a strike drops
+	 * it and keeps the words, which is what a terminal with attributes off already does.
+	 */
+	strike?: boolean;
+	/**
 	 * A glyph the host resolves from its own registry, drawn INSTEAD of `text` and in the span's tone.
 	 *
 	 * A row-level `emblem` marks what a card IS; this marks one run inside a line, which is what a
@@ -113,8 +121,14 @@ export interface StatusRowView {
 	descriptionLink?: string;
 	/** A short parenthetical label, such as a mode or a count. */
 	badge?: { label: string; tone: ViewTone };
-	/** Trailing detail. A host joins these with its own separator. */
-	meta?: readonly ViewSpan[];
+	/**
+	 * Trailing detail, one entry per fact, which the host joins with its own separator.
+	 *
+	 * An entry is a line rather than a run because one fact may take several: the task a todo write
+	 * moved is a state mark and the task's words, and a row that stated them as two entries would put
+	 * the host's separator between a glyph and the thing it marks.
+	 */
+	meta?: readonly ViewLine[];
 }
 
 /**
@@ -201,6 +215,18 @@ export interface ViewSection {
 	 * Omitted means the lines are the section, and a host draws every one of them.
 	 */
 	tail?: ViewTailWindow;
+	/**
+	 * That the lines are the items of a list, which the host marks and closes its own way.
+	 *
+	 * A terminal draws a tree, with a branch on every item and a different one on the last, and puts
+	 * the held-back note on the closing branch; a graphical host draws list rows. The tool states one
+	 * line per item and the count it kept back, and never a connector glyph, which is the part that
+	 * was terminal chrome in every hand-written card that drew one.
+	 *
+	 * One line per item: a list whose items are several lines each has structure this does not carry,
+	 * and a tool with one states it as its own sections instead.
+	 */
+	list?: boolean;
 }
 
 /**
@@ -247,12 +273,15 @@ export interface FramedBlockView {
 	 * a settled row of counts -- so a host may carry the state across the whole card and leave its
 	 * edge quiet. `data` is a card whose body is content the tool fetched or read, where the same
 	 * treatment reads as highlighting text nobody highlighted: a host states the outcome on the
-	 * card's edge instead and leaves the body on its ordinary ground.
+	 * card's edge instead and leaves the body on its ordinary ground. `listing` is a card whose body
+	 * is a record the tool keeps -- a plan, a queue, a roster -- where the state belongs to the write
+	 * that produced the card and not to the record it shows, so a host states it quietly and leaves
+	 * both the body and the edge alone.
 	 *
 	 * Either way the state is stated once. This is not a request for chrome, and a host with one way
 	 * of drawing a panel may ignore it.
 	 */
-	contents?: "report" | "data";
+	contents?: "report" | "data" | "listing";
 }
 
 /**
@@ -303,11 +332,18 @@ export type LineToolView = StatusRowView | TextBlockView;
  * word or an update it will replace. A tool that streams says a different thing about the same
  * payload -- running rather than succeeded -- and without this it would have to read the outcome off
  * a half-finished result and report success on every update.
+ *
+ * `frame` is how many animation frames the surface has advanced since the card appeared. A card
+ * whose content changes over those frames -- a strike sweeping across a task as it closes -- states
+ * the content for the frame it is given, which is host-agnostic in the way a spinner glyph is not:
+ * the surface owns the clock and the tool owns what the animation shows. Omitted means the surface
+ * animates nothing, so the card states its settled content.
  */
 export interface ToolViewContext {
 	expanded: boolean;
 	/** Omitted means the result is settled, which is what a call site with nothing to stream states. */
 	partial?: boolean;
+	frame?: number;
 }
 
 /**

@@ -84,11 +84,11 @@ const ENGINE_IMPORTERS = [
 	"extensibility/legacy-pi-tui-shim.ts",
 	"index.ts",
 	"lsp/render.ts",
+	"modes/launch-facts.ts",
 	"task/render.ts",
 	"theme/theme-class.ts",
 	"theme/theme.ts",
 	"tools/agent/ask-render.ts",
-	"tools/agent/todo-render.ts",
 	"tools/agent/vibe-render.ts",
 	"tools/fs/inspect-image-renderer.ts",
 	"tools/fs/read-render.ts",
@@ -120,6 +120,11 @@ const ENGINE_IMPORTERS = [
  * capability leaf, as it does on `main` — the row was omitted when this ledger was first written, not
  * added by an edge this branch created. Cutting that edge means moving two ANSI call sites out of the
  * theme resolver, which is its own change.
+ *
+ * `modes/launch-facts.ts` is here for the same reason: it arrived from `main` reading `TERMINAL_ID`
+ * off the capability leaf to key a launch fact on the emulator the window is running in. The edge is
+ * the terminal's identity rather than its renderer, and cutting it means the launch path handing the
+ * id in, which is its own change.
  */
 const RUNTIME_ENGINE_IMPORTERS = [
 	"autoresearch/dashboard.ts",
@@ -135,6 +140,7 @@ const RUNTIME_ENGINE_IMPORTERS = [
 	"extensibility/legacy-pi-tui-shim.ts",
 	"index.ts",
 	"lsp/render.ts",
+	"modes/launch-facts.ts",
 	"theme/theme-class.ts",
 	"theme/theme.ts",
 	"tools/agent/ask-render.ts",

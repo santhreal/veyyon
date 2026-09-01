@@ -16,6 +16,12 @@ export interface TreeListOptions<T> {
 	 *  rendered item lines plus the trailing summary line must fit within this budget.
 	 */
 	maxCollapsedLines?: number;
+	/**
+	 * Items the caller already cut, which the closing summary states instead of the count this call
+	 * cut. A view's section arrives trimmed — the tool decided what to keep and how much it kept back
+	 * — so the list is drawn whole and the count comes from the tool.
+	 */
+	heldBack?: number;
 	itemType?: string;
 	truncateFrom?: "start" | "end";
 	/** Called once per item with `isLast: false` during budget calculation;
@@ -31,6 +37,7 @@ export function renderTreeList<T>(options: TreeListOptions<T>, theme: Theme): st
 		maxCollapsedLines,
 		itemType = "item",
 		truncateFrom = "end",
+		heldBack,
 		renderItem,
 	} = options;
 	const maxItems = expanded ? items.length : Math.min(items.length, maxCollapsed);
@@ -101,6 +108,10 @@ export function renderTreeList<T>(options: TreeListOptions<T>, theme: Theme): st
 		displayedSlice = { start: 0, end: fittingCount };
 		remaining = items.length - fittingCount;
 	}
+
+	// The caller's own count wins: it cut the list before the call, so what this pass has left over
+	// is zero and says nothing about what is missing.
+	if (heldBack !== undefined) remaining = heldBack;
 
 	const hasSummary = !expanded && remaining > 0 && (linesBudget === Infinity || fittedLineCount < linesBudget);
 

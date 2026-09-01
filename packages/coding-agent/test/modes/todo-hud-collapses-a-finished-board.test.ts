@@ -43,12 +43,16 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme, stopThemeWatcher, theme } from "@veyyon/coding-agent/theme/theme";
 import type { TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
-import { todoToolRenderer } from "@veyyon/coding-agent/tools/agent/todo-render";
+import { todoToolView } from "@veyyon/coding-agent/tools/agent/todo-view";
+import { viewToolRenderer } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { isTodoListDone, TODO_DONE_SUMMARY, TODO_STATUSES, type TodoStatus } from "@veyyon/wire";
 import { VirtualTerminal } from "../../../../hosts/terminal/engine/test/virtual-terminal";
+
+// The card the terminal registry draws for `todo`: the shipped view through the shipped drawer.
+const todoToolRenderer = viewToolRenderer(todoToolView, { mergeCallAndResult: true });
 
 const COLUMNS = 100;
 
@@ -67,10 +71,15 @@ function board(...statusesPerPhase: string[][]): TodoPhase[] {
  * The exact bytes a finished board must produce, success SGR included, built
  * from the theme accessors rather than a literal escape so a re-themed success
  * colour stays the contract.
+ *
+ * Two runs, not one: the card names the mark and the summary as separate spans, because a host
+ * that is not a terminal draws the mark from its own glyph table, so the terminal opens the
+ * success colour for each.
  */
 function doneLine(tasks: number): string {
 	const plural = tasks === 1 ? "task" : "tasks";
-	return theme.fg("success", `${theme.checkbox.checked} ${TODO_DONE_SUMMARY} · ${tasks} ${plural}`);
+	const summary = ` ${TODO_DONE_SUMMARY} · ${tasks} ${plural}`;
+	return `${theme.fg("success", theme.checkbox.checked)}${theme.fg("success", summary)}`;
 }
 
 // The colour is half the report, and a piped `bun test` resolves the ANSI policy

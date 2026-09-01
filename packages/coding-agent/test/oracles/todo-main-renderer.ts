@@ -1,18 +1,16 @@
 /**
- * Terminal drawing for the todo tool. The tool half in `todo.ts` decides what
- * happened; this half decides how a terminal shows it, and is the only one of the two
- * that reaches the TUI.
+ * Differential oracle: the todo tool renderer from origin/main.
+ *
+ * Source SHA: 8b24575522c362f241f404cb0538c59bf2af5d48
+ * Frozen: never edited to make a test pass.
+ *
+ * On main this lived inside `tools/todo.ts`, beside the tool it drew. The strike sweep is main own
+ * copy, written as raw SGR bytes rather than through the theme, which is what the converted card is
+ * compared against.
  */
 
-import type { Component } from "@veyyon/tui";
-import { Text } from "@veyyon/tui";
-import { formatCount } from "@veyyon/utils";
-import { isTodoListDone, TODO_DONE_SUMMARY } from "@veyyon/wire";
-import chalk from "chalk";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import type { Theme } from "../../theme/theme";
-import { framedBlock, renderStatusLine, renderTreeList } from "../../tui";
-import { formatErrorDetail } from "../core/render-utils";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	boundedTodoPreviewText,
 	formatPhaseDisplayName,
@@ -24,24 +22,64 @@ import {
 	type TodoItem,
 	type TodoRenderArgs,
 	type TodoToolDetails,
-	todoStrikeSplit,
-} from "./todo";
+} from "@veyyon/coding-agent/tools/agent/todo";
+import { formatErrorDetail } from "@veyyon/coding-agent/tools/core/render-utils";
+import { framedBlock, renderStatusLine, renderTreeList } from "@veyyon/coding-agent/tui";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { formatCount } from "@veyyon/utils";
+import { isTodoListDone, TODO_DONE_SUMMARY } from "@veyyon/wire";
+import chalk from "chalk";
 
-/**
- * A closed task's text with the strike drawn as far as it has swept, `frame` frames in.
- *
- * The tool states where the sweep has reached and this states what a struck run looks like, which
- * is the theme's strikethrough attribute, and nothing at all on a terminal that has attributes off.
- * The board above the composer draws a settled closed task with that same attribute, so the two
- * surfaces cannot drift.
- */
-export function drawTodoStrike(text: string, frame: number | undefined, uiTheme: Theme): string {
-	const { struck, plain } = todoStrikeSplit(text, frame);
-	if (struck.length === 0) return plain;
-	return `${uiTheme.strikethrough(struck)}${plain}`;
+export const TODO_STRIKE_HOLD_FRAMES = 2;
+export const TODO_STRIKE_REVEAL_FRAMES = 12;
+export const TODO_STRIKE_TOTAL_FRAMES = TODO_STRIKE_HOLD_FRAMES + TODO_STRIKE_REVEAL_FRAMES;
+const EMPTY_COMPLETION_KEYS = new Set<string>();
+const STRIKE_START = "\x1b[9m";
+const STRIKE_END = "\x1b[29m";
+
+function strikethroughText(text: string): string {
+	return `${STRIKE_START}${text}${STRIKE_END}`;
 }
 
-const EMPTY_COMPLETION_KEYS = new Set<string>();
+function partialStrikethrough(text: string, visibleChars: number): string {
+	if (visibleChars <= 0) return text;
+	const chars = [...text];
+	if (visibleChars >= chars.length) return strikethroughText(text);
+	return `${strikethroughText(chars.slice(0, visibleChars).join(""))}${chars.slice(visibleChars).join("")}`;
+}
+
+function strikeRevealCount(text: string, frame: number | undefined): number | undefined {
+	if (frame === undefined) return undefined;
+	if (frame <= TODO_STRIKE_HOLD_FRAMES) return 0;
+	const chars = [...text];
+	if (chars.length === 0) return undefined;
+	const revealFrame = Math.min(frame - TODO_STRIKE_HOLD_FRAMES, TODO_STRIKE_REVEAL_FRAMES);
+	return Math.ceil((chars.length * revealFrame) / TODO_STRIKE_REVEAL_FRAMES);
+}
+
+/**
+ * A task's text with the completion strike swept across it, `frame` frames in.
+ *
+ * The sweep is the one gesture that says a task closed, and both surfaces that
+ * draw a closed task run it: the transcript card and the anchored board above
+ * the composer. It lives here because it is a property of the TASK rather than
+ * of either renderer, and because the board's copy of it drifted the moment
+ * there were two — the board slammed the whole strike on in one frame while the
+ * card swept it, so the same completion looked like two different events
+ * depending on which surface the eye was on.
+ *
+ * `undefined` is the settled state: fully struck, no animation owed. A frame
+ * past {@link TODO_STRIKE_TOTAL_FRAMES} is the same thing, so a caller that
+ * keeps counting past the window converges on the static bytes instead of
+ * wrapping back to the start of the sweep.
+ */
+export function todoStrikeReveal(text: string, frame: number | undefined): string {
+	const revealCount = strikeRevealCount(text, frame);
+	if (revealCount === undefined) return strikethroughText(text);
+	return partialStrikethrough(text, revealCount);
+}
+
 function formatTodoLine(
 	item: TodoItem,
 	uiTheme: Theme,
@@ -54,17 +92,14 @@ function formatTodoLine(
 	switch (item.status) {
 		case "completed": {
 			const strikeFrame = completionKeys.has(item.content) ? frame : undefined;
-			return uiTheme.fg(
-				"success",
-				`${prefix}${checkbox.checked} ${drawTodoStrike(safeContent, strikeFrame, uiTheme)}`,
-			);
+			return uiTheme.fg("success", `${prefix}${checkbox.checked} ${todoStrikeReveal(safeContent, strikeFrame)}`);
 		}
 		case "in_progress":
 			// Its own glyph, not the pending box in a different colour, and the
 			// same one the HUD above the composer draws for this state.
 			return uiTheme.fg("accent", `${prefix}${checkbox.progress} ${safeContent}`);
 		case "abandoned":
-			return uiTheme.fg("error", `${prefix}${checkbox.unchecked} ${uiTheme.strikethrough(safeContent)}`);
+			return uiTheme.fg("error", `${prefix}${checkbox.unchecked} ${strikethroughText(safeContent)}`);
 		case "pending":
 			return uiTheme.fg("dim", `${prefix}${checkbox.unchecked} ${safeContent}`);
 		default:

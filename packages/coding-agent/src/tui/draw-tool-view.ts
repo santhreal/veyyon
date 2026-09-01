@@ -41,6 +41,7 @@ import type { FirstResultViewportRepaint } from "../tools/renderers";
 import { urlHyperlink } from "./hyperlink";
 import { framedBlock, outputBlockContentWidth } from "./output-block";
 import { renderStatusLine } from "./status-line";
+import { renderTreeList } from "./tree-list";
 import type { State } from "./types";
 import { padToWidth } from "./utils";
 
@@ -128,6 +129,7 @@ export function drawSpan(span: ViewSpan, theme: Theme): string {
 	let text = span.text;
 	if (span.bold) text = theme.bold(text);
 	if (span.italic) text = theme.italic(text);
+	if (span.strike) text = theme.strikethrough(text);
 	return linked(span, span.tone === undefined ? text : theme.fg(TONE_COLORS[span.tone], text));
 }
 
@@ -179,7 +181,7 @@ export function drawStatusRow(view: StatusRowView, theme: Theme, spinnerFrame?: 
 					? view.description
 					: urlHyperlink(view.descriptionLink, view.description),
 			badge: view.badge === undefined ? undefined : { label: view.badge.label, color: TONE_COLORS[view.badge.tone] },
-			meta: view.meta?.map(span => drawSpan(span, theme)),
+			meta: view.meta?.map(entry => drawSpans(entry, theme)),
 		},
 		theme,
 	);
@@ -215,10 +217,13 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 	const frame = view.state === undefined ? undefined : BLOCK_STATES[view.state];
 	const sections = view.sections.map(section => ({
 		label: section.label === undefined ? undefined : theme.fg("toolTitle", section.label),
-		lines: section.lines.map(line => drawSpans(line, theme)),
+		lines: section.list
+			? drawItemList(section.lines, section.hidden, theme)
+			: section.lines.map(line => drawSpans(line, theme)),
 		// Held back by the TOOL, so it stands outside the window the host cuts: a section that says
-		// what it dropped must keep saying it however few rows are left.
-		note: section.hidden === undefined ? undefined : drawHiddenNote(section.hidden, theme),
+		// what it dropped must keep saying it however few rows are left. A list states the same count
+		// on its own closing branch, so the note is already among its rows.
+		note: section.hidden === undefined || section.list ? undefined : drawHiddenNote(section.hidden, theme),
 		tail: section.tail,
 	}));
 	return framedBlock(theme, width => ({
@@ -231,10 +236,35 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 			return { label: section.label, lines: section.note === undefined ? lines : [...lines, section.note] };
 		}),
 		state: frame?.state,
-		borderColor: view.contents === "data" ? undefined : frame?.rail,
-		applyBg: view.contents !== "data",
+		// A listing keeps a quiet edge whatever the write reported: the state belongs to the write and
+		// the record is what the body shows, so neither the plate nor the rail colour states it.
+		borderColor: view.contents === "listing" ? "borderMuted" : view.contents === "data" ? undefined : frame?.rail,
+		applyBg: view.contents === undefined || view.contents === "report",
 		width,
 	}));
+}
+
+/**
+ * A list section as the tree the terminal draws for one, marks and closing row included.
+ *
+ * Through the same helper every hand-written tree card uses, so the branch glyphs and the wording of
+ * the closing row have one owner. The items arrive already trimmed — the tool cut them and said how
+ * many it kept back — so the helper is handed the whole list and the count separately, and trims
+ * nothing itself.
+ */
+function drawItemList(lines: readonly ViewLine[], hidden: ViewHiddenCount | undefined, theme: Theme): string[] {
+	const drawn = lines.map(line => drawSpans(line, theme));
+	return renderTreeList(
+		{
+			items: drawn,
+			expanded: false,
+			maxCollapsed: drawn.length,
+			heldBack: hidden?.count ?? 0,
+			itemType: hidden?.noun?.one ?? "item",
+			renderItem: line => line,
+		},
+		theme,
+	);
 }
 
 /**
@@ -467,7 +497,11 @@ export function viewToolRenderer<Args, Result>(
 	return {
 		renderCall: (args, options, theme) =>
 			drawToolView(
-				view.renderCall(args as Args, { expanded: options.expanded, partial: options.isPartial }),
+				view.renderCall(args as Args, {
+					expanded: options.expanded,
+					partial: options.isPartial,
+					frame: options.spinnerFrame,
+				}),
 				theme,
 				options.spinnerFrame,
 			),
@@ -475,7 +509,7 @@ export function viewToolRenderer<Args, Result>(
 			drawToolView(
 				view.renderResult(
 					result as Result,
-					{ expanded: options.expanded, partial: options.isPartial },
+					{ expanded: options.expanded, partial: options.isPartial, frame: options.spinnerFrame },
 					args as Args | undefined,
 				),
 				theme,

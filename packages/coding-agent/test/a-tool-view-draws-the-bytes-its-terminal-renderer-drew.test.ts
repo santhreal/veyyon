@@ -573,7 +573,7 @@ describe("a status row", () => {
 				title: "review",
 				titleTone: "title",
 				badge: { label: "strict", tone: "warning" },
-				meta: [{ text: "12 files", tone: "muted" }],
+				meta: [[{ text: "12 files", tone: "muted" }]],
 			},
 			theme,
 		);

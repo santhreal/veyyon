@@ -192,7 +192,12 @@ function textOf(view: ToolView): string[] {
 	const spans = (list: readonly ViewSpan[] | undefined): string[] => (list ?? []).map(span => span.text);
 	switch (view.kind) {
 		case "statusRow":
-			return [view.title, view.description ?? "", view.badge?.label ?? "", ...spans(view.meta)];
+			return [
+				view.title,
+				view.description ?? "",
+				view.badge?.label ?? "",
+				...(view.meta ?? []).flatMap(entry => spans(entry)),
+			];
 		case "textBlock":
 			return spans(view.spans);
 		case "headedBlock":

@@ -65,7 +65,7 @@ export function retainRow(summary: string): StatusRowView {
 		kind: "statusRow",
 		emblem: MEMORY_EMBLEM,
 		title: "Retain",
-		...(summary ? { meta: [{ text: summary }] } : {}),
+		...(summary ? { meta: [[{ text: summary }]] } : {}),
 	};
 }
 
@@ -191,7 +191,7 @@ export const recallToolView: Required<ToolViewRenderer<MemoryQueryViewArgs, Memo
 		if (result.isError) return memoryFailure(result, "Recall failed");
 		const text = memoryResultText(result);
 		const found = recalledCount(text);
-		const meta = [{ text: found > 0 ? `${found} found` : "no matches" }];
+		const meta = [[{ text: found > 0 ? `${found} found` : "no matches" }]];
 		if (found === 0) return memoryQueryRow("Recall", args?.query, { status: "warning", meta });
 		const header = memoryQueryRow("Recall", args?.query, { status: "success", emblem: MEMORY_EMBLEM, meta });
 		return recallBlock(header, text.replace(/^[^\n]*\n+/, ""), context.expanded);

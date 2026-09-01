@@ -14,9 +14,13 @@ import {
 	todoMatchesAnyDescription,
 	todoStrikeSplit,
 } from "@veyyon/coding-agent/tools/agent/todo";
-import { todoToolRenderer } from "@veyyon/coding-agent/tools/agent/todo-render";
+import { todoToolView } from "@veyyon/coding-agent/tools/agent/todo-view";
+import { viewToolRenderer } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { type Component, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { type } from "arktype";
+
+// The card the terminal registry draws for `todo`: the shipped view through the shipped drawer.
+const todoToolRenderer = viewToolRenderer(todoToolView, { mergeCallAndResult: true });
 
 function createSession(initialPhases: TodoPhase[] = []): ToolSession {
 	let phases = initialPhases;
@@ -139,17 +143,22 @@ it("renders completed tasks as checked before revealing strikethrough", async ()
 	const tool = new TodoTool(createSession());
 	await tool.execute("call-1", { op: "init", list: [{ phase: "Execution", items: ["finish", "carry on"] }] });
 	const result = await tool.execute("call-2", { op: "done", task: "finish" });
-	const options = { expanded: true, isPartial: false, spinnerFrame: 0 };
-	const component = todoToolRenderer.renderResult(result, options, theme);
 	const policy = getAnsiPolicy();
 	setAnsiPolicy("full");
+	// One card per frame, which is how the transcript draws one: the frame is part of the key the
+	// block rebuilds on, so a surface a frame further on asks the renderer again rather than
+	// re-rendering the component it already holds.
+	const frameAt = (spinnerFrame: number): string =>
+		todoToolRenderer
+			.renderResult(result, { expanded: true, isPartial: false, spinnerFrame }, theme)
+			.render(120)
+			.join("\n");
 	try {
-		const firstFrame = component.render(120).join("\n");
+		const firstFrame = frameAt(0);
 		expect(Bun.stripANSI(firstFrame)).toContain("finish");
 		expect(firstFrame).not.toContain("\x1b[9m");
 
-		options.spinnerFrame = TODO_STRIKE_HOLD_FRAMES + 1;
-		const revealFrame = component.render(120).join("\n");
+		const revealFrame = frameAt(TODO_STRIKE_HOLD_FRAMES + 1);
 		expect(Bun.stripANSI(revealFrame)).toContain("finish");
 		expect(revealFrame).toContain("\x1b[9m");
 	} finally {

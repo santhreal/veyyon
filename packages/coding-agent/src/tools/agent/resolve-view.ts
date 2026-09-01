@@ -50,7 +50,7 @@ export const resolveToolView: Required<ToolViewRenderer<ResolveParams, ResolveVi
 				label: args.action === "apply" ? "proposed -> resolved" : "proposed -> rejected",
 				tone: args.action === "apply" ? "success" : "warning",
 			},
-			meta: shown === undefined ? undefined : [{ text: shown, tone: "muted" }],
+			meta: shown === undefined ? undefined : [[{ text: shown, tone: "muted" }]],
 		};
 	},
 

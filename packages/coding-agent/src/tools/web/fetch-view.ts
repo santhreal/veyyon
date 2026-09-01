@@ -155,7 +155,7 @@ export const readUrlToolView: Required<ToolViewRenderer<ReadUrlViewArgs, ReadUrl
 			status: "pending",
 			title: "Read",
 			...describeUrl(args.path ?? args.url ?? ""),
-			meta: args.raw ? [{ text: "raw" }] : undefined,
+			meta: args.raw ? [[{ text: "raw" }]] : undefined,
 		};
 	},
 

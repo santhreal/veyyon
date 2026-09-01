@@ -11,7 +11,7 @@
 import * as path from "node:path";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import { errorMessage, prompt } from "@veyyon/utils";
-import type { FramedBlockView, TextBlockView, ToolViewRenderer, ViewSpan } from "@veyyon/view";
+import type { FramedBlockView, TextBlockView, ToolViewRenderer, ViewLine } from "@veyyon/view";
 import { type } from "arktype";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
@@ -147,10 +147,10 @@ export const setCwdToolView: Required<ToolViewRenderer<SetCwdToolInput, AgentToo
 		// identical to one that changed nothing.
 		const applied = details?.rulesApplied?.length ?? 0;
 		const dropped = details?.rulesDropped?.length ?? 0;
-		const meta: ViewSpan[] = [{ text: line }];
+		const meta: ViewLine[] = [[{ text: line }]];
 		if (applied > 0 || dropped > 0) {
 			const counts = [applied > 0 ? `+${applied}` : "", dropped > 0 ? `-${dropped}` : ""].filter(Boolean).join(" ");
-			meta.push({ text: `${counts} ${applied + dropped === 1 ? "rule file" : "rule files"}` });
+			meta.push([{ text: `${counts} ${applied + dropped === 1 ? "rule file" : "rule files"}` }]);
 		}
 		return {
 			kind: "framedBlock",

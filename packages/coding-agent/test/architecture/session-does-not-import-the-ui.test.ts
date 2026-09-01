@@ -263,7 +263,7 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 	 * `slash-commands/builtin-registry.ts` used to be on this list.
 	 * That is the delta three probes bought: a question about a pipe is no longer
 	 * answered by loading a renderer, the todo tool's drawing moved to
-	 * `tools/agent/todo-render.ts`, which print mode never reaches, and the `/collab`
+	 * `tools/agent/todo-view.ts`, which print mode never reaches, and the `/collab`
 	 * QR block draws its own spacing instead of the registry stacking a terminal
 	 * component above it. Shrink-only -- a row
 	 * leaves when the edge is cut, and none is added, so a new module reaching the

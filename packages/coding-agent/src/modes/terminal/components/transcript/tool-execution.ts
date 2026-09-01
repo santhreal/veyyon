@@ -1366,6 +1366,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 										viewCall(callArgs, {
 											expanded: this.#renderState.expanded,
 											partial: this.#renderState.isPartial,
+											frame: this.#renderState.spinnerFrame,
 										}),
 										theme,
 										this.#renderState.spinnerFrame,
@@ -1414,7 +1415,11 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 							? drawToolView(
 									viewResult(
 										resultPayload,
-										{ expanded: this.#renderState.expanded, partial: this.#renderState.isPartial },
+										{
+											expanded: this.#renderState.expanded,
+											partial: this.#renderState.isPartial,
+											frame: this.#renderState.spinnerFrame,
+										},
 										this.#args,
 									),
 									theme,

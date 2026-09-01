@@ -2,7 +2,7 @@ import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallb
 import { formatNumber, prompt } from "@veyyon/utils";
 import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 import { truncateToWidth } from "@veyyon/utils/width";
-import type { ToolView, ToolViewContext, ToolViewRenderer, ViewSection, ViewSpan, ViewTone } from "@veyyon/view";
+import type { ToolView, ToolViewContext, ToolViewRenderer, ViewLine, ViewSection, ViewSpan, ViewTone } from "@veyyon/view";
 import { type } from "arktype";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { formatDurationCoarse } from "../slash-commands/helpers/format";
@@ -190,13 +190,15 @@ interface GoalRenderResult {
 export const goalToolView: Required<ToolViewRenderer<GoalRenderArgs, GoalRenderResult>> = {
 	renderCall(args: GoalRenderArgs): ToolView {
 		const objective = args.objective?.trim();
-		const meta: ViewSpan[] = [];
+		const meta: ViewLine[] = [];
 		if (args.op === "create" && objective) {
-			meta.push({
-				text: `"${truncateToWidth(sanitizeStatusText(objective), TRUNCATE_LENGTHS.TITLE)}"`,
-				tone: "muted",
-				italic: true,
-			});
+			meta.push([
+				{
+					text: `"${truncateToWidth(sanitizeStatusText(objective), TRUNCATE_LENGTHS.TITLE)}"`,
+					tone: "muted",
+					italic: true,
+				},
+			]);
 		}
 		return { kind: "statusRow", status: "pending", title: "Goal", description: describeOp(args.op), meta };
 	},
@@ -232,7 +234,7 @@ export const goalToolView: Required<ToolViewRenderer<GoalRenderArgs, GoalRenderR
 				status: "warning",
 				title: "Goal",
 				description,
-				meta: [{ text: "no active goal" }],
+				meta: [[{ text: "no active goal" }]],
 			};
 		}
 
