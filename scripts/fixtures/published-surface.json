@@ -7445,8 +7445,6 @@
 				"./tools/web/browser/readable.js",
 				"./tools/web/browser/registry",
 				"./tools/web/browser/registry.js",
-				"./tools/web/browser/render",
-				"./tools/web/browser/render.js",
 				"./tools/web/browser/run-cancellation",
 				"./tools/web/browser/run-cancellation.js",
 				"./tools/web/browser/run-output",
@@ -7463,6 +7461,8 @@
 				"./tools/web/browser/tab-worker.js",
 				"./tools/web/browser/target-id",
 				"./tools/web/browser/target-id.js",
+				"./tools/web/browser/view",
+				"./tools/web/browser/view.js",
 				"./tools/web/fetch",
 				"./tools/web/fetch-view",
 				"./tools/web/fetch-view.js",
@@ -11021,12 +11021,12 @@
 					"why": "packages/coding-agent/src/tools/browser/registry.ts moved to packages/coding-agent/src/tools/web/browser/registry.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/registry.js"
 				},
 				"./tools/browser/render": {
-					"to": "@veyyon/coding-agent/tools/web/browser/render",
-					"why": "packages/coding-agent/src/tools/browser/render.ts moved to packages/coding-agent/src/tools/web/browser/render.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/render"
+					"to": "./tools/web/browser/view",
+					"why": "the browser open, close and run cards are declared in tools/web/browser/view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./tools/browser/render.js": {
-					"to": "@veyyon/coding-agent/tools/web/browser/render.js",
-					"why": "packages/coding-agent/src/tools/browser/render.ts moved to packages/coding-agent/src/tools/web/browser/render.ts, which @veyyon/coding-agent publishes as ./tools/web/browser/render.js"
+					"to": "./tools/web/browser/view.js",
+					"why": "the browser open, close and run cards are declared in tools/web/browser/view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./tools/browser/run-cancellation": {
 					"to": "@veyyon/coding-agent/tools/web/browser/run-cancellation",
