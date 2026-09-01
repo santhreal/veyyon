@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "8b24575522c362f241f404cb0538c59bf2af5d48",
+	"generatedFrom": "6d45852a714cc04679ba9bce11f6423967804d26",
 	"packages": {
 		"@veyyon/agent-core": {
 			"name": "@veyyon/agent-core",
@@ -3334,6 +3334,10 @@
 				"./ssh/utils.js",
 				"./startup-splash",
 				"./startup-splash.js",
+				"./startup/first-frame-replay",
+				"./startup/first-frame-replay-entry",
+				"./startup/first-frame-replay-entry.js",
+				"./startup/first-frame-replay.js",
 				"./startup/launch-card",
 				"./startup/launch-card.js",
 				"./startup/prologue-handoff",
@@ -6436,6 +6440,10 @@
 				"./core/tui.js"
 			],
 			"@veyyon/coding-agent": [
+				"./cli/first-frame-replay",
+				"./cli/first-frame-replay-entry",
+				"./cli/first-frame-replay-entry.js",
+				"./cli/first-frame-replay.js",
 				"./cli/init-xdg",
 				"./cli/init-xdg.js",
 				"./cli/launch-card",
@@ -7206,8 +7214,8 @@
 				"./tools/agent/review",
 				"./tools/agent/review.js",
 				"./tools/agent/todo",
-				"./tools/agent/todo-render",
-				"./tools/agent/todo-render.js",
+				"./tools/agent/todo-view",
+				"./tools/agent/todo-view.js",
 				"./tools/agent/todo.js",
 				"./tools/agent/vibe",
 				"./tools/agent/vibe-render",
@@ -10563,6 +10571,22 @@
 				"./session/yield-queue.js": {
 					"to": "@veyyon/kernel/session/yield-queue.js",
 					"why": "packages/coding-agent/src/session/yield-queue.ts moved to kernel/src/session/yield-queue.ts, which @veyyon/kernel publishes as ./session/yield-queue.js"
+				},
+				"./startup/first-frame-replay": {
+					"to": "@veyyon/coding-agent/cli/first-frame-replay",
+					"why": "packages/coding-agent/src/startup/first-frame-replay.ts moved to packages/coding-agent/src/cli/first-frame-replay.ts, which @veyyon/coding-agent publishes as ./cli/first-frame-replay"
+				},
+				"./startup/first-frame-replay-entry": {
+					"to": "@veyyon/coding-agent/cli/first-frame-replay-entry",
+					"why": "packages/coding-agent/src/startup/first-frame-replay-entry.ts moved to packages/coding-agent/src/cli/first-frame-replay-entry.ts, which @veyyon/coding-agent publishes as ./cli/first-frame-replay-entry"
+				},
+				"./startup/first-frame-replay-entry.js": {
+					"to": "@veyyon/coding-agent/cli/first-frame-replay-entry.js",
+					"why": "packages/coding-agent/src/startup/first-frame-replay-entry.ts moved to packages/coding-agent/src/cli/first-frame-replay-entry.ts, which @veyyon/coding-agent publishes as ./cli/first-frame-replay-entry.js"
+				},
+				"./startup/first-frame-replay.js": {
+					"to": "@veyyon/coding-agent/cli/first-frame-replay.js",
+					"why": "packages/coding-agent/src/startup/first-frame-replay.ts moved to packages/coding-agent/src/cli/first-frame-replay.ts, which @veyyon/coding-agent publishes as ./cli/first-frame-replay.js"
 				},
 				"./startup/launch-card": {
 					"to": "@veyyon/coding-agent/cli/launch-card",

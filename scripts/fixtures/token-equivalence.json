@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "8b24575522c362f241f404cb0538c59bf2af5d48",
+	"generatedFrom": "6d45852a714cc04679ba9bce11f6423967804d26",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -70,7 +70,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4608,
+	"changedCount": 4613,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -146,6 +146,7 @@
 		"hosts/terminal/engine/test/a-footer-click-target-holds-the-mouse-in-a-session-that-never-scrolls.test.ts",
 		"hosts/terminal/engine/test/a-hover-band-fades-in-instead-of-switching.test.ts",
 		"hosts/terminal/engine/test/a-live-region-row-never-enters-the-tape.test.ts",
+		"hosts/terminal/engine/test/a-screen-someone-else-painted-is-adopted-or-repainted.test.ts",
 		"hosts/terminal/engine/test/a-shortcut-frame-paints-what-a-cold-compose-would.test.ts",
 		"hosts/terminal/engine/test/a-streamed-render-normalizes-what-arrived-not-the-transcript.test.ts",
 		"hosts/terminal/engine/test/a-suggestion-popup-grows-instead-of-cutting-in.test.ts",
@@ -417,6 +418,8 @@
 		"packages/coding-agent/src/cli/config-cli.ts",
 		"packages/coding-agent/src/cli/dry-balance-cli.ts",
 		"packages/coding-agent/src/cli/file-processor.ts",
+		"packages/coding-agent/src/cli/first-frame-replay-entry.ts",
+		"packages/coding-agent/src/cli/first-frame-replay.ts",
 		"packages/coding-agent/src/cli/flag-tables.ts",
 		"packages/coding-agent/src/cli/gallery-cli.ts",
 		"packages/coding-agent/src/cli/gallery-fixtures/agentic.ts",
@@ -1061,7 +1064,7 @@
 		"packages/coding-agent/src/tools/agent/resolve-view.ts",
 		"packages/coding-agent/src/tools/agent/resolve.ts",
 		"packages/coding-agent/src/tools/agent/review.ts",
-		"packages/coding-agent/src/tools/agent/todo-render.ts",
+		"packages/coding-agent/src/tools/agent/todo-view.ts",
 		"packages/coding-agent/src/tools/agent/todo.ts",
 		"packages/coding-agent/src/tools/agent/vibe-render.ts",
 		"packages/coding-agent/src/tools/agent/vibe.ts",
@@ -1278,6 +1281,7 @@
 		"packages/coding-agent/test/a-provider-window-is-not-a-summary.test.ts",
 		"packages/coding-agent/test/a-relaunched-session-ignores-bytes-left-in-the-tty.test.ts",
 		"packages/coding-agent/test/a-repaint-never-leaves-a-second-composer-behind.test.ts",
+		"packages/coding-agent/test/a-replayed-card-describes-the-screen-it-replays.test.ts",
 		"packages/coding-agent/test/a-retry-walks-the-fallback-chain-before-it-gives-up.test.ts",
 		"packages/coding-agent/test/a-running-subagent-survives-a-transcript-rebuild.test.ts",
 		"packages/coding-agent/test/a-saturated-budget-refuses-a-spawn-before-the-process-exists.test.ts",
@@ -2188,6 +2192,7 @@
 		"packages/coding-agent/test/oracles/run-experiment-main-renderer.ts",
 		"packages/coding-agent/test/oracles/set-cwd-main-renderer.ts",
 		"packages/coding-agent/test/oracles/ssh-main-renderer.ts",
+		"packages/coding-agent/test/oracles/todo-main-renderer.ts",
 		"packages/coding-agent/test/oracles/update-notes-main-renderer.ts",
 		"packages/coding-agent/test/output-fold.test.ts",
 		"packages/coding-agent/test/output-sink-budget-is-priced.test.ts",

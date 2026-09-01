@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "8b24575522c362f241f404cb0538c59bf2af5d48",
+	"generatedFrom": "6d45852a714cc04679ba9bce11f6423967804d26",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -434,10 +434,10 @@
 			"differs": "changed",
 			"group": "changelog-or-readme",
 			"reason": "A moved package records the move in its own changelog or names its new path in its readme.",
-			"hash": "78b4ff85845c7e5cfc1f12abe41d606788c0f13004e7596a7d783102a25ed815",
-			"mainHash": "38a0fbd305639f5f2beaaa65612eba0fea0fe795943bb155e2b750e3bb5af061",
-			"structuralHash": "48507b55a6ea20f847f6cb6e3196f5ac0283360170078f6d2db7237e6107af75",
-			"mainStructuralHash": "8ea6e9f21c5ca63d5ba5d18a4ff6d86fdba06a0aa19d4ccb938089f8dc2da90c"
+			"hash": "7c18a8e165e49cd801fc2cac81589cb15ed3dbfbca6941992d2ecbb9e95e7c77",
+			"mainHash": "91b56f4470c3cabcbc3693dc6e63d3b53b775d34cc8da641bbc4c1a922692027",
+			"structuralHash": "ab2c0fcce9e319dd53796c18db0bc62f0f90d30ef96c2b054906fc561b0f517f",
+			"mainStructuralHash": "37429427018eb3caea716ec7750d82cc2ae84cb398cfd4337262524bf5b81158"
 		},
 		"hosts/terminal/engine/README.md": {
 			"old": "packages/tui/README.md",
@@ -710,10 +710,10 @@
 			"differs": "changed",
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
-			"hash": "84a313fb60cc58e176244a176788b9dca211550fbccbacd4f304213e332381a8",
-			"mainHash": "bec9c38d4885149f9f92ce23b9052c2060c871dcb5281e86876653a4eb1a1008",
-			"structuralHash": "c04a8d08e1e7ae40b5f748fecd3788a0f5ada5f9b24886d3357e17c194d85fb8",
-			"mainStructuralHash": "dcb189ae4d84eb7a480bde275ffba411a1c69ea30f36f2ff550e0fdfdffb5d13"
+			"hash": "653de6a2d98b3f956766d67f712d5a8b6754d34b09f4848b7c8bf9772ca318d4",
+			"mainHash": "aa4a3825ba177dbddd1227d81e1162f32d3284baca0f5f76986c756372840c88",
+			"structuralHash": "cd149a11e147513ebc6554b6976e687ce008e97823fe9705d268e8ee5dc9035f",
+			"mainStructuralHash": "2445858479f4b56b21d0dbadc4df2a863d589f03044f65ac27cfc2fb53e16455"
 		},
 		"hosts/terminal/engine/src/desktop-notify.ts": {
 			"old": "packages/tui/src/desktop-notify.ts",
@@ -853,6 +853,15 @@
 			"mainHash": "8f682d042d73e918f82c050bec92c87eb81e26853bb2f56446c2a7c7b72cf20c",
 			"structuralHash": "5b0d3d6bad3a692f6d0282c1c66191a69c98c1745431b1de3a836808b0b9f7a8",
 			"mainStructuralHash": "5b0d3d6bad3a692f6d0282c1c66191a69c98c1745431b1de3a836808b0b9f7a8"
+		},
+		"hosts/terminal/engine/test/a-screen-someone-else-painted-is-adopted-or-repainted.test.ts": {
+			"old": "packages/tui/test/a-screen-someone-else-painted-is-adopted-or-repainted.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "624cd4b0c9b244f7bdb6b52224a5dc574518615d73353982b99311cd703f4f3d",
+			"mainHash": "624cd4b0c9b244f7bdb6b52224a5dc574518615d73353982b99311cd703f4f3d",
+			"structuralHash": "a3199296161bcffeeafd42067b0b83eb1143eeb4e6eba05f6bd78557ea0eb473",
+			"mainStructuralHash": "a3199296161bcffeeafd42067b0b83eb1143eeb4e6eba05f6bd78557ea0eb473"
 		},
 		"hosts/terminal/engine/test/a-shortcut-frame-paints-what-a-cold-compose-would.test.ts": {
 			"old": "packages/tui/test/a-shortcut-frame-paints-what-a-cold-compose-would.test.ts",
@@ -9690,6 +9699,24 @@
 			"structuralHash": "ea9fd6240393ad3d1d842db386f538e938f44aa0d23fd7885ea5883e34fa56c6",
 			"mainStructuralHash": "ea9fd6240393ad3d1d842db386f538e938f44aa0d23fd7885ea5883e34fa56c6"
 		},
+		"packages/coding-agent/src/cli/first-frame-replay-entry.ts": {
+			"old": "packages/coding-agent/src/startup/first-frame-replay-entry.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "cb9714e48de584abf9c096bd0ea97b30c996080e1a819665325956613176d6fb",
+			"mainHash": "cb9714e48de584abf9c096bd0ea97b30c996080e1a819665325956613176d6fb",
+			"structuralHash": "dabd1da44a6a06a32d85da3946ec403d774cfacdf5f3d0f0fd9746aa2e02c9d3",
+			"mainStructuralHash": "dabd1da44a6a06a32d85da3946ec403d774cfacdf5f3d0f0fd9746aa2e02c9d3"
+		},
+		"packages/coding-agent/src/cli/first-frame-replay.ts": {
+			"old": "packages/coding-agent/src/startup/first-frame-replay.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "ca48a154b2914fff7413620a2fc47697d9b50136da396ad4dc813532ecb501c1",
+			"mainHash": "ca48a154b2914fff7413620a2fc47697d9b50136da396ad4dc813532ecb501c1",
+			"structuralHash": "b20f1fa65101e49a09e4dbd249e762e629b8d138b196d35ae1684536f0fc015f",
+			"mainStructuralHash": "b20f1fa65101e49a09e4dbd249e762e629b8d138b196d35ae1684536f0fc015f"
+		},
 		"packages/coding-agent/src/cli/init-xdg.ts": {
 			"old": "packages/coding-agent/src/cli/commands/init-xdg.ts",
 			"kind": "normalized",
@@ -9703,10 +9730,10 @@
 			"old": "packages/coding-agent/src/startup/launch-card.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "9dae2709469b0facf4db234bcb3574ebb9fdf6fd3bca8048853e4eb37e597f3e",
-			"mainHash": "4fc98702cfba87e45b3c5649a004676e8d9429c90fa3ede1b51b2d8fa46f58c6",
-			"structuralHash": "5ebebfb635ea62229bf8ac95964a0967a559c71eabd9de11c9151132e6bc65f6",
-			"mainStructuralHash": "5ebebfb635ea62229bf8ac95964a0967a559c71eabd9de11c9151132e6bc65f6"
+			"hash": "c00e47fe94b3a9d166f3d0629ea2e567fe50ff10904289773f5f98bd504e24fa",
+			"mainHash": "9715cb665404e22366f4f30c27ef4c3791d14c61e9a3a4583ab3254992386c59",
+			"structuralHash": "6819a21dab988b39683c183d686af56e9f9be790a7bbed0c7dd73b4d2e7208d9",
+			"mainStructuralHash": "6819a21dab988b39683c183d686af56e9f9be790a7bbed0c7dd73b4d2e7208d9"
 		},
 		"packages/coding-agent/src/cli/prologue-handoff.ts": {
 			"old": "packages/coding-agent/src/startup/prologue-handoff.ts",
@@ -10188,9 +10215,9 @@
 			"differs": "changed",
 			"group": "view-conversion",
 			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
-			"hash": "deb4e4b7b8ae598ba36e2f3dc91fe99ab530f9ed3df0a65667b143cd8414ccbf",
+			"hash": "1cd8ec03fa46ea458f22c533d126bde090547f097dda509aa8ec2e4bd6591454",
 			"mainHash": "e64f1a24414688155e74076ac6421b7416b6fbc04f1a51c8747e5712dbfba07f",
-			"structuralHash": "947f3f04a4c18bbcf663124e68d0556e030edd2facd7b1047b498707a507f667",
+			"structuralHash": "d455e27d641d35ad90b0006b15897561f5745c0b3e1a94c1e038b5f7cb5e24bb",
 			"mainStructuralHash": "2f8fac33777a1c41d69cfbfab7f68785636a74d2c511f62e38562a8377aabec2"
 		},
 		"packages/coding-agent/src/memory/backend.ts": {
@@ -11644,9 +11671,9 @@
 			"differs": "changed",
 			"group": "view-conversion",
 			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
-			"hash": "bf864f810919907c362f3e22744edca5f3f72af26ac0baf9f0d981e28eaa8a58",
+			"hash": "1783fa8be3702911324d5056fb266c2c2df2f988b207b9ae4a053052ae6b811c",
 			"mainHash": "0975591bf78ca2176c626d5218145393e218eb09f9b4294017454e05c0f7b281",
-			"structuralHash": "0a1b3095101ddfddb425f24980e0e5143e8e04b07937a126fd970d10631e7eb2",
+			"structuralHash": "d041b714b7040df1006a9dffb9e400582bbdbbe0d3d1a772486c8cd65f0c3bca",
 			"mainStructuralHash": "a2bd3352f9d22f8e9e643b4e4dd30511252de9b17e10dd20a7fd20b84e7066bb"
 		},
 		"packages/coding-agent/src/modes/terminal/components/transcript/transcript-block-chrome.ts": {
@@ -11920,10 +11947,10 @@
 			"old": "packages/coding-agent/src/modes/first-frame.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "27536eb37a2cad358bf3d978feb20d5a0a9b783b9a9e869c72238f52db87d59b",
-			"mainHash": "7b779a17b15d95f3c25b8a27da56ca1eac9f3bad075b86aaede7e8bc95f7e8ce",
-			"structuralHash": "65ea3c27ee1413fd1856de8fb62a07b2d37005275d79c98b602b50b5007a4556",
-			"mainStructuralHash": "65ea3c27ee1413fd1856de8fb62a07b2d37005275d79c98b602b50b5007a4556"
+			"hash": "d160493c20176121c901585e30533a39223553fbef100ed59866223855764dbf",
+			"mainHash": "45e1ff48f4e6507cc7edce5bcb9fe265a271daaa0ae07591ce4c60d7ac65ec0e",
+			"structuralHash": "e9d346116aa76c2106ed4538562b0d14f5fe15119543e9f1d3d9ba2af73cc4c6",
+			"mainStructuralHash": "e9d346116aa76c2106ed4538562b0d14f5fe15119543e9f1d3d9ba2af73cc4c6"
 		},
 		"packages/coding-agent/src/modes/terminal/image-reference-markers.ts": {
 			"old": "packages/coding-agent/src/modes/image-reference-markers.ts",
@@ -14232,9 +14259,9 @@
 			"differs": "changed",
 			"group": "view-conversion",
 			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
-			"hash": "02a51077ef437ce5efdd777fbb74b1912a2fbdbd8da89488a6d19dc15c162f14",
+			"hash": "a7f3cd8b4e99bd99ad5af0709d6d962fe2ad183b6d815a94678f66cee9dc02b5",
 			"mainHash": "c75107b0348bc52855588ff93f246caf40d367b3570d37f4a7764a90f5f85fbb",
-			"structuralHash": "8a715ae835b63ff966639e3e4651a9bf2325dd85137e49704228952f840bc3f8",
+			"structuralHash": "8258b48f785de40e4f87b19aa198b7c2493d4ef20d1ee79b24ad45aae010efba",
 			"mainStructuralHash": "44f8c7b16083ea460dec4ca8255fb5f7eb138a27f079e3957aad075e0d82dc26"
 		},
 		"packages/coding-agent/src/tools/fs/write.ts": {
