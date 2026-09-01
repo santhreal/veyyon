@@ -3,6 +3,7 @@ import * as os from "node:os";
 // 69ms of module evaluation, and the status row draws before a session exists.
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import { truncateToWidth } from "@veyyon/tui/utils";
 import { DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault, getProjectDir } from "@veyyon/utils/dirs";
 import { formatDuration, formatNumber, normalizePremiumRequests } from "@veyyon/utils/format";
 import { clamp01 } from "@veyyon/utils/math";
@@ -11,7 +12,9 @@ import { withIcon } from "../../../modes/theme/icon-label";
 import { type ThemeColor, theme } from "../../../modes/theme/theme";
 import { normalizeApprovalMode } from "../../../tools/approval";
 import { AUTONOMY_LABEL } from "../../../tools/approval-modes";
-import { TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
+// The limits leaf, not `tools/render-utils`: that module reaches the tool renderers,
+// path helpers and image resizing, and this row needs two numbers from it.
+import { TRUNCATE_LENGTHS } from "../../../tools/render-limits";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../../../utils/session-color";
 import { sanitizeStatusText } from "../../shared";
 import { isTreeDirty, renderBranch } from "./branch";
