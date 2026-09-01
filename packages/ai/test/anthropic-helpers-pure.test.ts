@@ -245,8 +245,8 @@ describe("dropAnthropicStrictTools", () => {
 			],
 		} as never;
 		dropAnthropicStrictTools(params);
-		expect(((params.tools as unknown[])[0] as { strict?: unknown }).strict).toBeUndefined();
-		expect(((params.tools as unknown[])[1] as { strict?: unknown }).strict).toBeUndefined();
+		expect((((params as { tools?: unknown[] }).tools ?? [])[0] as { strict?: unknown }).strict).toBeUndefined();
+		expect((((params as { tools?: unknown[] }).tools ?? [])[1] as { strict?: unknown }).strict).toBeUndefined();
 	});
 	it("does nothing when no tools", () => {
 		const params = {} as never;

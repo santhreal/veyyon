@@ -100,7 +100,7 @@ describe("applyOpenAIExtraBody", () => {
 		expect(params).toEqual({ foo: "bar" });
 	});
 	it("merges extraBody into params", () => {
-		const params = { foo: "bar" };
+		const params: Record<string, unknown> = { foo: "bar" };
 		applyOpenAIExtraBody(params, { baz: "qux" } as Record<string, unknown>);
 		expect(params).toEqual({ foo: "bar", baz: "qux" });
 	});
@@ -134,7 +134,7 @@ describe("applyOpenAIExtraBody", () => {
 		expect(params.thinking).toEqual({ type: "enabled" });
 	});
 	it("merges nested objects by assignment", () => {
-		const params = { config: { a: 1 } };
+		const params: Record<string, unknown> = { config: { a: 1 } };
 		applyOpenAIExtraBody(params, { config: { b: 2 } } as Record<string, unknown>);
 		expect(params.config).toEqual({ b: 2 });
 	});

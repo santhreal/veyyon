@@ -28,7 +28,7 @@ import {
 	assembleRunMeasurement,
 	certifyArgot,
 } from "./argot-certify";
-import { extractBenchmarkFixtures } from "./extract";
+export { extractBenchmarkFixtures } from "./extract";
 import { typescriptEditSuitePrompts } from "./prompts/registry";
 import type { EditTask } from "./tasks";
 import { loadTasksFromDir } from "./tasks";
