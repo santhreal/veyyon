@@ -1,7 +1,7 @@
 /**
  * Startup benchmark: how long veyyon takes to put something on the screen.
  *
- * Seven arms, cheapest first, so a regression can be attributed to a layer:
+ * Eight arms, cheapest first, so a regression can be attributed to a layer:
  *
  *   version      `--version`, which returns before the command registry loads. Runtime init plus
  *                the entry module's own graph, and nothing else.
@@ -10,13 +10,20 @@
  *                and exits at the point the TUI would take the terminal. Everything the boot path
  *                does before the first frame, minus the frame itself.
  *   first-frame  an interactive launch under a pty, timed from spawn to the first byte the process
- *                writes.
+ *                writes, with no first-frame recording on disk. The card is composed.
  *   composer     the same launch, timed to the composer's own placeholder row being on screen.
  *   editable     the same launch, timed to a character typed after the first byte coming back
  *                echoed. This is the moment the terminal answers the operator, and no output-only
  *                timer can observe it.
  *   statusrow    the same launch, timed to the status row being on screen — the row carrying where
  *                you are, the model, the mode and the context gauge.
+ *   replay       the same launch again, against the recording the launch before it wrote. The card
+ *                is replayed rather than composed.
+ *
+ * `first-frame` and `replay` are the off and on arms of the first-frame replay, at exact parity:
+ * one binary, one seeded home, one terminal size, two consecutive launches, and the recording is
+ * the only difference between them. `first-frame` deletes the recording before it spawns, so it
+ * reports the composed number rather than whichever state the arm before it left behind.
  *
  * A FIRST BYTE IS NOT A USABLE SCREEN, which is why the last three exist. `first-frame` was the
  * whole answer here and it reads 45-46ms on a warm binary: optimizing against it alone declares
@@ -125,6 +132,11 @@ interface FrameMarks {
  * soon as the first byte lands, so the echo timestamp measures when the composer became able to
  * answer and not how long this harness waited before asking.
  *
+ * `probe: false` withholds it, which the replay arms need. A launch the operator typed into records
+ * nothing, because what is on screen at the end of it is a draft rather than a card the next launch
+ * can replay, so a typing launch can never leave the recording the replay arm measures against.
+ * Those arms want the first byte only, and the first byte is timed before any probe would be sent.
+ *
  * The markers are read off a recorded stream rather than assumed:
  *   composer    the composer's placeholder row, which nothing else draws
  *   statusrow   the context gauge, which is on every preset's status row and nowhere else on the
@@ -136,6 +148,7 @@ async function recordFrame(
 	args: string[],
 	env: Record<string, string>,
 	holdMs: number,
+	probe = true,
 ): Promise<FrameMarks> {
 	const marks: FrameMarks = {};
 	const started = performance.now();
@@ -151,7 +164,7 @@ async function recordFrame(
 		seen += chunk;
 		if (marks.firstByte === undefined) {
 			marks.firstByte = at();
-			child.stdin.write(PROBE);
+			if (probe) child.stdin.write(PROBE);
 		}
 		if (marks.composer === undefined && seen.includes("ask anything")) marks.composer = at();
 		if (marks.editable === undefined && seen.includes(PROBE)) marks.editable = at();
@@ -282,6 +295,16 @@ async function main(): Promise<void> {
 	};
 
 	/**
+	 * The first-frame recording, kept inside the scratch directory.
+	 *
+	 * Named explicitly because the seeded `HOME` does not reach it: the recording resolves its path
+	 * from `os.homedir()`, which Bun fixes at process start, so a launch spawned with `HOME` set
+	 * still writes to the operator's own cache. Without this the bench would both pollute that cache
+	 * and read whichever recording the operator's last real launch left there.
+	 */
+	const recording = path.join(scratch, "first-frame.json");
+
+	/**
 	 * `--cold` means every arm pays install-day cost, so the home is thrown away before each arm
 	 * rather than each run: the GPU probe, the model catalog and the session store are all caches one
 	 * arm would otherwise warm for the next, which turned a cold first-frame number into a warm one.
@@ -289,7 +312,12 @@ async function main(): Promise<void> {
 	async function envFor(): Promise<Record<string, string>> {
 		if (options.cold) await fs.rm(path.join(scratch, "home"), { recursive: true, force: true });
 		const home = await seedHome(scratch);
-		return { HOME: home, TERM: "xterm-256color", VEYYON_PROFILE: "" };
+		return {
+			HOME: home,
+			TERM: "xterm-256color",
+			VEYYON_PROFILE: "",
+			VEYYON_FIRST_FRAME_CACHE: recording,
+		};
 	}
 
 	for (let run = 0; run < options.runs; run++) {
@@ -320,11 +348,27 @@ async function main(): Promise<void> {
 		// One recorded launch answers all four: the arms are moments in a single
 		// frame's life, and timing them separately would spend four launches to
 		// compare numbers from four different processes.
+		//
+		// The recording goes first, so this arm composes the card whatever the arm before it left
+		// behind. This launch types, so it leaves no recording of its own.
+		await fs.rm(recording, { force: true });
 		const marks = await recordFrame(framePty.command, framePty.args, env, FRAME_HOLD_MS);
 		if (marks.firstByte !== undefined) push("first-frame", marks.firstByte);
 		if (marks.composer !== undefined) push("composer", marks.composer);
 		if (marks.editable !== undefined) push("editable", marks.editable);
 		if (marks.statusrow !== undefined) push("statusrow", marks.statusrow);
+
+		// The recording the replay arm measures against, written by a launch nobody typed into. Its
+		// own timing is discarded: it is the off arm again, and the off arm is already measured.
+		await fs.rm(recording, { force: true });
+		await recordFrame(framePty.command, framePty.args, env, FRAME_HOLD_MS, false);
+
+		// Same env, same pty, same binary, and the recording the launch above wrote. Nothing else
+		// differs, so the gap between this arm and `first-frame` is the replay and only the replay.
+		// A run where they read the same means the recording was rejected: the launch above and this
+		// one disagreed about the frame, or the binary changed underneath them.
+		const replayed = await recordFrame(framePty.command, framePty.args, env, FRAME_HOLD_MS, false);
+		if (replayed.firstByte !== undefined) push("replay", replayed.firstByte);
 	}
 
 	const arms = [
@@ -337,6 +381,7 @@ async function main(): Promise<void> {
 		"composer",
 		"editable",
 		"statusrow",
+		"replay",
 	];
 	const lines = [
 		`veyyon startup — ${options.bin ? `binary ${options.bin}` : "bun source"}, ${options.cold ? "cold" : "warm"} home, ${options.runs} run(s)`,

@@ -95,10 +95,9 @@ function bareLaunch(): { readonly file: string; readonly written: () => string[]
 	undo.push(() => fs.rmSync(dir, { recursive: true, force: true }));
 	const file = path.join(dir, "first-frame.json");
 	setEnv("VEYYON_FIRST_FRAME_CACHE", file);
-	// A recorded variable left set by the surrounding process would be compared against a recording
-	// this test wrote with it set too, so the sweep below needs a known starting state, not an
-	// empty one: `TERM` present and everything else absent is the state every arm starts from.
-	for (const key of RECORDED_ENV_KEYS) setEnv(key, key === "TERM" ? "xterm-256color" : undefined);
+	// The recorded variables are deliberately NOT stubbed. The replay compares against the
+	// environment this process received, read once when the module was evaluated, so assigning one
+	// here would change neither side of that comparison and would only read as though it did.
 	stub(process, "argv", [process.execPath, "veyyon"]);
 	stub(process.stdin, "isTTY", true);
 	stub(process.stdout, "isTTY", true);
@@ -165,6 +164,9 @@ describe("a recording of the launch card", () => {
 	});
 });
 
+/** Containers the walkers below stop at, because their keys are values and not field names. */
+const OPAQUE = new Set(["env"]);
+
 /**
  * How to break each field of the recording, and how to break each field of the objects nested in
  * it. Every entry must make the recording describe a screen this launch would not paint; the arm
@@ -196,8 +198,10 @@ const CORRUPTIONS: Record<string, (recording: Record<string, unknown>) => void> 
 	recordedAtMs: r => {
 		r.recordedAtMs = Date.now() - 24 * 60 * 60 * 1000 - 1;
 	},
-	"env.TERM": r => {
-		(r.env as Record<string, string>).TERM = "dumb";
+	// `env` is a map whose keys are whichever recorded variables this machine exports, not a record
+	// of named fields, so it is corrupted as a whole here and swept key by key in its own describe.
+	env: r => {
+		(r.env as Record<string, string>).TERM = "a-terminal-this-process-is-not-running-under";
 	},
 	"binary.path": r => {
 		(r.binary as Record<string, unknown>).path = "/nowhere/veyyon";
@@ -228,13 +232,19 @@ const CORRUPTIONS: Record<string, (recording: Record<string, unknown>) => void> 
 	},
 };
 
-/** Every leaf and every object field of the recording, as dotted paths. */
-function fieldPaths(value: Record<string, unknown>, prefix = ""): string[] {
+/**
+ * Every leaf and every object field of the recording, as dotted paths.
+ *
+ * `opaque` names containers whose keys are data rather than schema: descending into one would make
+ * the corruption table depend on the machine's environment, and the field it is standing in for is
+ * the container itself.
+ */
+function fieldPaths(value: Record<string, unknown>, prefix = "", opaque = OPAQUE): string[] {
 	const paths: string[] = [];
 	for (const [key, entry] of Object.entries(value)) {
 		const at = prefix === "" ? key : `${prefix}.${key}`;
-		if (entry !== null && typeof entry === "object" && !Array.isArray(entry)) {
-			paths.push(...fieldPaths(entry as Record<string, unknown>, at));
+		if (!opaque.has(at) && entry !== null && typeof entry === "object" && !Array.isArray(entry)) {
+			paths.push(...fieldPaths(entry as Record<string, unknown>, at, opaque));
 			continue;
 		}
 		paths.push(at);
@@ -349,25 +359,57 @@ describe("every field read as a type it does not hold", () => {
 	});
 });
 
+/**
+ * The environment arms work on the recording's stored `env`, not on `process.env`.
+ *
+ * The replay compares against the environment this PROCESS received, snapshotted once when the
+ * module was evaluated, because the two ends of a recording read it 40ms apart and startup deletes
+ * some of these on the way past. Nothing a test assigns afterwards can change what the process
+ * received, and pretending otherwise would assert a contract the product no longer has. What is
+ * still worth proving, and is what actually broke, is that a recording carrying a different
+ * environment than this one is refused: by a changed value, by a key it does not have, and by a key
+ * it has and the recording does not.
+ */
 describe("every environment variable the frame is a function of", () => {
 	for (const key of RECORDED_ENV_KEYS) {
-		it(`is not replayed when ${key} changed after the recording`, () => {
+		it(`is not replayed when the recording carries a different ${key}`, () => {
 			const launch = bareLaunch();
 			recordOne();
-			setEnv(key, "changed-after-the-recording");
+			const recording = readRecording(launch.file);
+			(recording.env as Record<string, string>)[key] = "not-what-this-process-received";
+			writeRecording(launch.file, recording);
 			replayFirstFrame();
 			expect(launch.written()).toEqual([]);
+			expect(takeReplayedFirstFrame()).toBeUndefined();
 		});
 
-		it(`is not replayed when ${key} was unset after the recording`, () => {
+		// Both directions of the key-set comparison, without depending on which variables the machine
+		// running this happens to export. Whichever way the recording differs, it is refused.
+		it(`is not replayed when the recording's key set differs by ${key}`, () => {
 			const launch = bareLaunch();
-			setEnv(key, "set-while-recording");
 			recordOne();
-			setEnv(key, undefined);
+			const recording = readRecording(launch.file);
+			const env = recording.env as Record<string, string>;
+			if (key in env) delete env[key];
+			else env[key] = "recorded-under-a-variable-this-process-does-not-have";
+			writeRecording(launch.file, recording);
 			replayFirstFrame();
 			expect(launch.written()).toEqual([]);
+			expect(takeReplayedFirstFrame()).toBeUndefined();
 		});
 	}
+
+	it("records the variables this process received and no others", () => {
+		const launch = bareLaunch();
+		recordOne();
+		const env = readRecording(launch.file).env as Record<string, string>;
+		expect(Object.keys(env).sort()).toEqual(
+			RECORDED_ENV_KEYS.filter(key => process.env[key] !== undefined)
+				.slice()
+				.sort(),
+		);
+		for (const [key, value] of Object.entries(env)) expect(process.env[key]).toBe(value);
+	});
 });
 
 describe("a recording that cannot be trusted", () => {
@@ -458,5 +500,75 @@ describe("the launch a recording may be replayed onto", () => {
 			expect(launch.written()).toEqual([]);
 			while (undo.length > 0) undo.pop()?.();
 		}
+	});
+});
+
+/**
+ * The size the replay compares against is the size the card was composed at.
+ *
+ * These are resolved by two different modules that cannot import each other: the replay evaluates
+ * before the import graph and may reach node builtins only, so it mirrors `ProcessTerminal`'s
+ * accessors instead of calling them. A drift between the two is silent and total. The replay reads
+ * the raw `process.stdout.columns`, a pty that reports 0 until it is sized reads 0, the card
+ * composes at the renderer's fallback and records that, and every launch on that terminal is
+ * rejected for a size mismatch while looking exactly like a launch that was merely slow. That was
+ * the state this suite was extended to catch, found under `script(1)` with no controlling terminal.
+ */
+describe("the size the replay reads", () => {
+	// Each case is a state a real terminal reports, not a synthetic one: 0 is a pty sized after the
+	// process started, undefined is a stream that is not a tty at all, and the env pair is what a
+	// terminal multiplexer exports when the ioctl answers neither.
+	for (const [label, columns, rows, envColumns, envLines] of [
+		["a sized pty", 120, 40, undefined, undefined],
+		["a pty that is not sized yet", 0, 0, undefined, undefined],
+		["a pty that is not sized yet, under COLUMNS and LINES", 0, 0, "100", "30"],
+		["a stream that reports nothing", undefined, undefined, undefined, undefined],
+		["a stream that reports nothing, under COLUMNS and LINES", undefined, undefined, "72", "20"],
+		["a width but no height", 90, 0, undefined, undefined],
+	] as const) {
+		it(`is the size the renderer composes at on ${label}`, async () => {
+			const launch = bareLaunch();
+			stub(process.stdout, "columns", columns);
+			stub(process.stdout, "rows", rows);
+			setEnv("COLUMNS", envColumns);
+			setEnv("LINES", envLines);
+
+			// The renderer's own answer, from the module that owns it.
+			const { ProcessTerminal } = await import("@veyyon/tui/terminal");
+			const terminal = new ProcessTerminal();
+
+			// The replay's answer, observed through the only thing it exposes: a recording written at
+			// the renderer's size replays, and one written at any other size does not.
+			recordFirstFrame({
+				bytes: BYTES,
+				cols: terminal.columns,
+				rows: terminal.rows,
+				screen: { ...SCREEN, width: terminal.columns, height: terminal.rows },
+				tip: TIP,
+			});
+			replayFirstFrame();
+			expect(launch.written()).toEqual([BYTES]);
+			expect(takeReplayedFirstFrame()).toBeDefined();
+		});
+	}
+
+	it("rejects a recording written at a size the renderer would not compose at", () => {
+		const launch = bareLaunch();
+		stub(process.stdout, "columns", 0);
+		stub(process.stdout, "rows", 0);
+		setEnv("COLUMNS", undefined);
+		setEnv("LINES", undefined);
+		// 0x0 is what the raw stream reports here; the renderer composes at 80x24. A replay that
+		// compared raw values would accept this and paint an empty frame's rows onto a real card.
+		recordFirstFrame({
+			bytes: BYTES,
+			cols: 0,
+			rows: 0,
+			screen: { ...SCREEN, width: 0, height: 0 },
+			tip: TIP,
+		});
+		replayFirstFrame();
+		expect(launch.written()).toEqual([]);
+		expect(takeReplayedFirstFrame()).toBeUndefined();
 	});
 });
