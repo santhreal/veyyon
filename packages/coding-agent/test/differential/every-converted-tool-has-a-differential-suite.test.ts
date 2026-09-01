@@ -111,6 +111,7 @@ describe("differential coverage", () => {
 			"edit",
 			"apply_patch",
 			"task",
+			"mcp",
 		]);
 	});
 

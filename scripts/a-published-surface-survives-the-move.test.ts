@@ -462,6 +462,13 @@ describe("a published surface survives the move", () => {
 	 * directory they belong to. The 54 `@veyyon/tui` rows are the terminal engine's move to
 	 * `hosts/terminal/engine` and the utility modules that went to `@veyyon/utils` with it.
 	 *
+	 * Ten coding-agent rows are the renderers three card conversions deleted rather than moved:
+	 * `edit/renderer`, `mcp/render`, `task/render` and `task/renderer`, each served under both
+	 * spellings, whose cards are now the views in `edit/edit-view.ts`, `mcp/view.ts` and
+	 * `task/task-view.ts`. The last two are `task/render.test`, the suite that drove the deleted
+	 * terminal renderer, whose subject is compared against a frozen copy of it in
+	 * `test/differential/`, which the package does not publish.
+	 *
 	 * `session/content-text` carries no row either: this branch moved that copy to
 	 * `@veyyon/kernel`, and main then deleted it outright in favour of the `@veyyon/utils` owner
 	 * both packages now call, so the baseline serves no such subpath to relocate.
@@ -485,7 +492,7 @@ describe("a published surface survives the move", () => {
 		expect(Object.keys(rows).sort()).toEqual(["@veyyon/coding-agent", "@veyyon/tui"]);
 
 		const codingAgent = rows["@veyyon/coding-agent"] ?? {};
-		expect(Object.keys(codingAgent).length).toBe(1202);
+		expect(Object.keys(codingAgent).length).toBe(1212);
 		const intoKernel = Object.values(codingAgent).filter(note => note.to.startsWith("@veyyon/kernel/"));
 		expect(intoKernel.length).toBe(100);
 		const kernelConcerns = new Set(intoKernel.map(note => note.to.split("/").slice(0, 3).join("/")));

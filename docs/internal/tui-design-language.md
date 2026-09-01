@@ -143,7 +143,7 @@ surface instead of pasting a separator literal into a widget.
 | Danger / deny | Theme `error` (red) |
 | Success / approved | Theme `success` (green) |
 | Warning | Theme `warning` (yellow) |
-| MCP / external tools | Accent `server/tool` title (`mcp/render.ts`); the `tool.mcp` marker is blank in `unicode`, `\uEB2D` in `nerd`, `<>` in `ascii` |
+| MCP / external tools | Accent `server/tool` title (`mcp/view.ts`); the `tool.mcp` marker is blank in `unicode`, `\uEB2D` in `nerd`, `<>` in `ascii` |
 
 Never rely on color alone. Pair hue with a glyph or word. Color-off is environment-driven and owned by `detectAnsiPolicy` / `detectStreamAnsiPolicy` in `hosts/terminal/engine/src/terminal-capabilities.ts`: a non-empty `NO_COLOR` yields `noColor`, `TERM=dumb` yields `plain`, `FORCE_COLOR` yields `full`. There is no `--no-color` flag anywhere in the CLI; do not document one.
 

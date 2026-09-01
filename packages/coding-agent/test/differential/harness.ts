@@ -97,6 +97,9 @@ export const CONVERTED_TOOLS = [
 	"edit",
 	"apply_patch",
 	"task",
+	// Not a registry entry: an MCP tool is built per server at run time, so its card is bound to the
+	// tool object rather than to a name the table knows in advance.
+	"mcp",
 ] as const;
 
 export const WIDTH = 80;

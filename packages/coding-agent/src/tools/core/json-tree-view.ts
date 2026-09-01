@@ -41,10 +41,12 @@ function kindSymbol(value: unknown): string {
 }
 
 /**
- * A JSON value as view lines, and whether the bounds cut it short.
+ * A JSON value as view lines, and whether rows were dropped without a mark.
  *
- * `truncated` is the caller's to state: the walk stops at the bound and says so, and a card decides
- * whether that closes with an ellipsis row of its own or a held-back count.
+ * `truncated` reports the line budget and a held-back run of a multi-line string: rows the walk had
+ * to drop with nothing in the lines to say so, which a card turns into an ellipsis row or a count. A
+ * depth cut is not one of them, because the walk already closes that node with its own `…` row, and
+ * a card that added a second one would state the same cut twice.
  */
 export function jsonTreeViewLines(
 	value: unknown,
@@ -62,7 +64,10 @@ export function jsonTreeViewLines(
 		return true;
 	};
 
-	const indent = (depth: number): ViewSpan[] => (depth <= 0 ? [] : [{ text: LEVEL_INDENT.repeat(depth) }]);
+	// Depth is the level a node sits at, counted from 1 for a root child, which is what `maxDepth`
+	// bounds. The columns are one level behind it, so a root child opens flush and its children step
+	// in by two.
+	const indent = (depth: number): ViewSpan[] => (depth <= 1 ? [] : [{ text: LEVEL_INDENT.repeat(depth - 1) }]);
 
 	const renderNode = (node: unknown, key: string | undefined, depth: number): void => {
 		if (lines.length >= bounds.maxLines) {
@@ -120,10 +125,7 @@ export function jsonTreeViewLines(
 
 		if (Array.isArray(node)) {
 			if (node.length === 0) return closing("[]");
-			if (depth + 1 > bounds.maxDepth) {
-				truncated = true;
-				return closing("…");
-			}
+			if (depth >= bounds.maxDepth) return closing("…");
 			for (let index = 0; index < node.length; index++) {
 				renderNode(node[index], `[${index}]`, depth + 1);
 				if (lines.length >= bounds.maxLines) {
@@ -137,10 +139,7 @@ export function jsonTreeViewLines(
 		if (!isRecord(node)) return;
 		const keys = Object.keys(node);
 		if (keys.length === 0) return closing("{}");
-		if (depth + 1 > bounds.maxDepth) {
-			truncated = true;
-			return closing("…");
-		}
+		if (depth >= bounds.maxDepth) return closing("…");
 		for (const childKey of keys) {
 			renderNode(node[childKey], childKey, depth + 1);
 			if (lines.length >= bounds.maxLines) {
@@ -153,7 +152,7 @@ export function jsonTreeViewLines(
 	if (isRecord(value)) {
 		for (const key of Object.keys(value)) {
 			if (Object.hasOwn(HIDDEN_KEYS, key)) continue;
-			renderNode(value[key], key, 0);
+			renderNode(value[key], key, 1);
 			if (lines.length >= bounds.maxLines) {
 				truncated = true;
 				break;
@@ -161,14 +160,15 @@ export function jsonTreeViewLines(
 		}
 	} else if (Array.isArray(value)) {
 		for (let index = 0; index < value.length; index++) {
-			renderNode(value[index], `[${index}]`, 0);
+			renderNode(value[index], `[${index}]`, 1);
 			if (lines.length >= bounds.maxLines) {
 				truncated = true;
 				break;
 			}
 		}
 	} else {
-		renderNode(value, undefined, 0);
+		// A bare value sits where a root child sits: flush, with its continuation rows hanging under it.
+		renderNode(value, undefined, 1);
 	}
 
 	return { lines, truncated };

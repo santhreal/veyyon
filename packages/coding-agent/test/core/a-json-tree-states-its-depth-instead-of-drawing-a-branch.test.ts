@@ -13,13 +13,16 @@
  * asked for.
  *
  * WHAT IT DOES NOT CATCH. How a host DRAWS a line: `icon.folder` resolving to a terminal glyph is
- * `draw-tool-view`'s claim, pinned in the converted-tool differential suites. It also does not
- * assert that this walk and the string walk in `json-tree-render.ts` state the same facts, which no
- * caller depends on while both exist.
+ * `draw-tool-view`'s claim, pinned in the converted-tool differential suites. The bounds are checked
+ * against the string walk, and the words each row states with them, but not the columns each walk
+ * indents by: one states depth and the other draws a branch, so their whitespace differs by design.
  */
 
 import { describe, expect, it } from "bun:test";
+import { stripVTControlCharacters } from "node:util";
+import { renderJsonTreeLines } from "@veyyon/coding-agent/tools/core/json-tree-render";
 import { type JsonTreeBounds, jsonTreeViewLines } from "@veyyon/coding-agent/tools/core/json-tree-view";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { ViewLine } from "@veyyon/view";
 
 const BOUNDS: JsonTreeBounds = { maxDepth: 6, maxLines: 200, maxScalarLen: 80 };
@@ -31,6 +34,23 @@ function words(line: ViewLine): string {
 
 function lines(value: unknown, overrides: Partial<JsonTreeBounds> = {}): string[] {
 	return jsonTreeViewLines(value, { ...BOUNDS, ...overrides }).lines.map(words);
+}
+
+/** A line's words with its kind mark dropped, which is the part both walks state the same way. */
+function labels(line: ViewLine): string {
+	return line
+		.map(span => span.text)
+		.join("")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+/** The same words out of a drawn row: the branch, the glyphs and the colours are all non-ASCII. */
+function plainLabels(row: string): string {
+	return stripVTControlCharacters(row)
+		.replace(/[^\x20-\x7E…]/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
 }
 
 describe("a json tree states its depth instead of drawing a branch", () => {
@@ -69,11 +89,19 @@ describe("a json tree states its depth instead of drawing a branch", () => {
 		expect(empties.lines.map(words)).toEqual(["icon.package list", "  []", "icon.folder map", "  {}"]);
 	});
 
-	it("stops at the depth bound with an ellipsis and says it was cut", () => {
+	it("stops at the depth bound with an ellipsis row, and leaves the flag to the line budget", () => {
+		// A root child is level 1, which is the level `maxDepth` counts, so a bound of 1 states the root
+		// keys and closes each container under them. The terminal walk this replaces bounded the same
+		// level, and a card that allowed one more would deepen every walk in the product by a level.
 		const cut = jsonTreeViewLines({ a: { b: { c: 1 } } }, { ...BOUNDS, maxDepth: 1 });
 
-		expect(cut.lines.map(words)).toEqual(["icon.folder a", "  icon.folder b", "    …"]);
-		expect(cut.truncated).toBe(true);
+		expect(cut.lines.map(words)).toEqual(["icon.folder a", "  …"]);
+		// The cut is already in the rows, so a card reading the flag adds no second ellipsis for it.
+		expect(cut.truncated).toBe(false);
+
+		const deeper = jsonTreeViewLines({ a: { b: { c: 1 } } }, { ...BOUNDS, maxDepth: 2 });
+		expect(deeper.lines.map(words)).toEqual(["icon.folder a", "  icon.folder b", "    …"]);
+		expect(deeper.truncated).toBe(false);
 	});
 
 	it("never spends more lines than the bound allows, and says it was cut", () => {
@@ -124,5 +152,31 @@ describe("a json tree states its depth instead of drawing a branch", () => {
 
 	it("drops the plumbing keys a tool wrote into its own arguments", () => {
 		expect(lines({ i: "an intent", __partialJson: '{"pat', pat: "x" })).toEqual(['icon.file pat: "x"']);
+	});
+
+	/**
+	 * The bounds are the reader's, and a card passes the same numbers to whichever walk its host uses.
+	 * A level counted differently here than in the string walk deepens or shortens every structure in
+	 * the product by a level while both stay green on their own, which is the defect this closes: the
+	 * view walk numbered a root child 0 where the string walk numbered it 1, so a collapsed card
+	 * showed one level more than the terminal ever had.
+	 */
+	it("cuts at the same level and the same row as the string walk it replaces", async () => {
+		await initTheme();
+		const fixture = { a: { b: { c: [1, { d: "x" }] } }, top: 3 };
+
+		for (const maxDepth of [1, 2, 3, 4, 5]) {
+			for (const maxLines of [3, 200]) {
+				const walked = jsonTreeViewLines(fixture, { maxDepth, maxLines, maxScalarLen: 80 });
+				const drawn = renderJsonTreeLines(fixture, theme, maxDepth, maxLines, 80);
+
+				expect({ maxDepth, maxLines, rows: walked.lines.map(labels), cut: walked.truncated }).toEqual({
+					maxDepth,
+					maxLines,
+					rows: drawn.lines.map(plainLabels),
+					cut: drawn.truncated,
+				});
+			}
+		}
 	});
 });

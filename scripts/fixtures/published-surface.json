@@ -7973,6 +7973,14 @@
 					"to": "@veyyon/coding-agent/debug/dap/types.js",
 					"why": "packages/coding-agent/src/dap/types.ts moved to packages/coding-agent/src/debug/dap/types.ts, which @veyyon/coding-agent publishes as ./debug/dap/types.js"
 				},
+				"./edit/renderer": {
+					"to": "./edit/edit-view",
+					"why": "the edit and apply_patch cards are declared in edit/edit-view.ts as views the host draws, so the module that built their terminal components is gone"
+				},
+				"./edit/renderer.js": {
+					"to": "./edit/edit-view.js",
+					"why": "the edit and apply_patch cards are declared in edit/edit-view.ts as views the host draws, so the module that built their terminal components is gone"
+				},
 				"./extensibility/custom-commands/bundled/ci-green/index": {
 					"to": "@veyyon/coding-agent/extensibility/custom-commands/bundled/ci-green",
 					"why": "packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts moved to packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green.ts, which @veyyon/coding-agent publishes as ./extensibility/custom-commands/bundled/ci-green"
@@ -8404,6 +8412,14 @@
 				"./markit/types.js": {
 					"to": "@veyyon/coding-agent/export/markit/types.js",
 					"why": "packages/coding-agent/src/markit/types.ts moved to packages/coding-agent/src/export/markit/types.ts, which @veyyon/coding-agent publishes as ./export/markit/types.js"
+				},
+				"./mcp/render": {
+					"to": "./mcp/view",
+					"why": "an MCP tool's call and result cards are declared in mcp/view.ts as views the host draws, so the module that built their terminal components is gone"
+				},
+				"./mcp/render.js": {
+					"to": "./mcp/view.js",
+					"why": "an MCP tool's call and result cards are declared in mcp/view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./memories": {
 					"to": "@veyyon/coding-agent/memory/local",
@@ -10796,6 +10812,30 @@
 				"./stt/wav.js": {
 					"to": "@veyyon/coding-agent/speech/stt/wav.js",
 					"why": "packages/coding-agent/src/stt/wav.ts moved to packages/coding-agent/src/speech/stt/wav.ts, which @veyyon/coding-agent publishes as ./speech/stt/wav.js"
+				},
+				"./task/render": {
+					"to": "./task/task-view",
+					"why": "the task call row, the subagent progress card and the yield card are declared in task/task-view.ts as views the host draws, so the two modules that built their terminal components are gone"
+				},
+				"./task/render.js": {
+					"to": "./task/task-view.js",
+					"why": "the task call row, the subagent progress card and the yield card are declared in task/task-view.ts as views the host draws, so the two modules that built their terminal components are gone"
+				},
+				"./task/render.test": {
+					"to": "./task/task-view",
+					"why": "the terminal renderer that module tested is gone, and the card it drew is now compared against a frozen copy of it in test/differential/the-task-card-draws-what-main-drew.test.ts, which the package does not publish"
+				},
+				"./task/render.test.js": {
+					"to": "./task/task-view.js",
+					"why": "the terminal renderer that module tested is gone, and the card it drew is now compared against a frozen copy of it in test/differential/the-task-card-draws-what-main-drew.test.ts, which the package does not publish"
+				},
+				"./task/renderer": {
+					"to": "./task/task-view",
+					"why": "the task call row, the subagent progress card and the yield card are declared in task/task-view.ts as views the host draws, so the two modules that built their terminal components are gone"
+				},
+				"./task/renderer.js": {
+					"to": "./task/task-view.js",
+					"why": "the task call row, the subagent progress card and the yield card are declared in task/task-view.ts as views the host draws, so the two modules that built their terminal components are gone"
 				},
 				"./thinking.js": {
 					"to": "@veyyon/coding-agent/thinking/index.js",

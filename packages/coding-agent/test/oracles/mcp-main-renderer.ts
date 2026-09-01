@@ -1,13 +1,15 @@
 /**
- * TUI rendering for MCP tools.
+ * Differential oracle: the MCP tool card renderer from before the conversion.
  *
- * Provides structured display of MCP tool calls and results,
- * showing args and output in JSON tree format similar to task tool.
+ * Source SHA: 51082ac1cb086c13f8e00672dab66b4fc8042a7c, where the card was drawn by `src/mcp/render.ts` and both MCP tool classes
+ * called it from their own `renderCall`/`renderResult`. Carried over verbatim apart from the
+ * import paths, which name the package rather than a sibling. Frozen: never edited to make a test
+ * pass.
  */
-import type { Component } from "@veyyon/tui";
-import { formatMoreLines } from "@veyyon/utils/format";
-import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import type { Theme } from "../theme/theme";
+
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { MCPToolDetails } from "@veyyon/coding-agent/mcp/tool-bridge";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	formatArgsInline,
 	JSON_TREE_MAX_DEPTH_COLLAPSED,
@@ -17,11 +19,12 @@ import {
 	JSON_TREE_SCALAR_LEN_COLLAPSED,
 	JSON_TREE_SCALAR_LEN_EXPANDED,
 	renderJsonTreeLines,
-} from "../tools/core/json-tree-render";
-import { formatStyledTruncationWarning, stripOutputNotice } from "../tools/core/output-meta";
-import { formatExpandHint, truncateToWidth } from "../tools/core/render-utils";
-import { renderStatusLine, WidthAwareText } from "../tui";
-import type { MCPToolDetails } from "./tool-bridge";
+} from "@veyyon/coding-agent/tools/core/json-tree-render";
+import { formatStyledTruncationWarning, stripOutputNotice } from "@veyyon/coding-agent/tools/core/output-meta";
+import { formatExpandHint, truncateToWidth } from "@veyyon/coding-agent/tools/core/render-utils";
+import { renderStatusLine, WidthAwareText } from "@veyyon/coding-agent/tui";
+import type { Component } from "@veyyon/tui";
+import { formatMoreLines } from "@veyyon/utils/format";
 
 /**
  * Render MCP tool call.

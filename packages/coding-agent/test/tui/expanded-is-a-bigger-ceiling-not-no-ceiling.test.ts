@@ -10,7 +10,7 @@
  * Five separate families in this package already pair a collapsed limit with a NAMED expanded one:
  *
  *   - `JSON_TREE_MAX_LINES_COLLAPSED` / `JSON_TREE_MAX_LINES_EXPANDED` (6 / 200) in `tools/core/json-tree-render.ts`,
- *     used by `mcp/render.ts`, `modes/terminal/components/transcript/tool-execution.ts` and `tools/shell/eval-render.ts`
+ *     used by `mcp/view.ts`, `modes/terminal/components/transcript/tool-execution.ts` and `tools/shell/eval-view.ts`
  *   - `COLLAPSED_TEXT_LIMIT` / `EXPANDED_TEXT_LIMIT` in `tools/search/text-search.ts`
  *   - `INSPECT_OUTPUT_COLLAPSED_LINES` / `INSPECT_OUTPUT_EXPANDED_LINES` (4 / 16)
  *   - `TV_OUTPUT_COLLAPSED` / `TV_OUTPUT_EXPANDED` (1 / 3) in `tools/agent/vibe-render.ts`
