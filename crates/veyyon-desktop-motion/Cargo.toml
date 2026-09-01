@@ -1,0 +1,22 @@
+[package]
+name = "veyyon-desktop-motion"
+version.workspace = true
+publish = false
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# The GPUI feature is off-by-default because the host environment currently lacks Vulkan development libraries.
+gpui = []
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+veyyon-desktop-tokens.workspace = true

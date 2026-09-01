@@ -1,0 +1,34 @@
+[meta]
+version = 1
+name = "surface_queue"
+
+[geometry.width]
+default_px = 256
+min_px = 208
+max_viewport_delta_px = 640
+floor_max_px = 208
+collapsed_px = 0
+outer_edge_stroke = "hairline"
+
+[geometry.insets]
+content_inset = "s4"
+row_inset = "s5"
+
+[geometry.row_heights]
+card_px = 78
+line_px = 36
+section_header_px = 20
+
+[geometry.card_layout]
+padding_top = "s4"
+padding_bottom = "s4"
+padding_horizontal = "s5"
+header_gap = "s1"
+body_gap = "s2"
+badge_height = 20
+title_height = 20
+subtitle_height = 16
+
+[geometry.limits]
+max_hover_actions = 2
+parked_initial_page_size = 25

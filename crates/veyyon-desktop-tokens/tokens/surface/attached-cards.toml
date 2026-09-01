@@ -1,0 +1,23 @@
+[meta]
+version = 1
+name = "surface_attached_cards"
+
+[stack]
+max_visible = 2
+overflow_collapsed_height_px = 24
+
+[approval]
+padding = "s6"
+tool_name_size = "body"
+tool_name_weight = "medium"
+detail_mono_pane_cap_px = 120
+
+[question]
+padding = "s6"
+question_size = "read"
+option_row_height_px = 28
+
+[plan]
+padding = "s8"
+max_markdown_height_px = 400
+fade_height_px = 64

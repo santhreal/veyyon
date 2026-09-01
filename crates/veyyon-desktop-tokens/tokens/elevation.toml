@@ -1,0 +1,57 @@
+[meta]
+version = 1
+name = "elevation"
+
+[[level]]
+index = 0
+role = "shell_ground"
+ground_role = "ground"
+grain_enabled = true
+grain_texture = "blue_noise_128"
+grain_opacity = 0.025
+blur_px = 0
+edge = "none"
+has_shadow = false
+
+[[level]]
+index = 1
+role = "queue_rail"
+ground_role = "rail"
+grain_enabled = false
+blur_px = 0
+edge = "hairline_right"
+has_shadow = false
+
+[[level]]
+index = 2
+role = "canvas"
+ground_role = "canvas"
+grain_enabled = false
+blur_px = 0
+edge = "none"
+has_shadow = false
+
+[[level]]
+index = 3
+role = "inset"
+ground_role = "inset"
+grain_enabled = false
+blur_px = 0
+edge = "hairline_all"
+has_shadow = false
+
+[[level]]
+index = 4
+role = "float"
+ground_role = "float"
+grain_enabled = false
+blur_px = 20
+saturation = 1.06
+ground_opacity = 0.82
+edge = "hairline_plus_inset_top"
+has_shadow = true
+shadow_x = 0
+shadow_y = -8
+shadow_blur = 24
+shadow_spread = -18
+shadow_opacity = 0.45

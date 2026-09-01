@@ -188,6 +188,11 @@ veyyon-uu-diff = { path = "crates/veyyon-uu-diff" }
 veyyon-uu-grep = { path = "crates/veyyon-uu-grep" }
 veyyon-uutils-ctx = { path = "crates/veyyon-uutils-ctx" }
 veyyon-walker = { path = "crates/veyyon-walker" }
+veyyon-desktop-model = { path = "crates/veyyon-desktop-model" }
+veyyon-desktop-motion = { path = "crates/veyyon-desktop-motion" }
+veyyon-desktop-tokens = { path = "crates/veyyon-desktop-tokens" }
+veyyon-desktop = { path = "crates/veyyon-desktop" }
+veyyon-gpui = { path = "crates/veyyon-gpui" }
 brush-core = { path = "crates/vendor/brush-core" }
 brush-builtins = { path = "crates/vendor/brush-builtins" }
 
@@ -209,12 +214,21 @@ base64 = "0.22"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 toml = "1.1"
+# Variant iteration for the desktop protocol enums. Every scene gate and capability sweep
+# enumerates a union at run time, and a hand-written `ALL` array goes stale in silence when
+# someone adds a variant. `EnumIter` and `EnumDiscriminants` derive the space from the enum,
+# so a new variant turns a sweep red instead of being skipped. Already in the lock at this
+# version through the vendored brush crates.
+strum = { version = "0.28", features = ["derive"] }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Error Handling
 # ──────────────────────────────────────────────────────────────────────────────
 anyhow = "1.0"
 bytes = "1"
+# Named error types for the desktop crates. A library API returns a variant a caller can
+# match, so `anyhow` stays at the binary boundary where the context string is the product.
+thiserror = "2"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CLI & Configuration
@@ -328,6 +342,10 @@ grep-regex = "0.1"
 grep-searcher = "0.1"
 ignore = "0.4"
 memchr = "2.8"
+# The token watcher in veyyon-desktop-tokens. Hot reload is the mechanism the whole
+# iteration engine rests on, so the watch is a real filesystem notification rather than a
+# poll: a sweep re-renders on save, and a poll interval is a lower bound on every pass.
+notify = "8"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Image Processing & Syntax Highlighting
@@ -425,6 +443,12 @@ tree-sitter-vue = { version = "0.1.0", package = "tree-sitter-vue-next" }
 tree-sitter-xml = "0.7"
 tree-sitter-yaml = "0.7"
 tree-sitter-zig = "1.1"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# GUI & Renderer
+# ──────────────────────────────────────────────────────────────────────────────
+# GPUI renderer fork for the desktop control surface. Pinned to santhreal/zed branch veyyon.
+gpui = { git = "https://github.com/santhreal/zed", rev = "399258feeaf90ad8a3a208c99221ee87b6452f38" }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Unsorted (added by `cargo add` - move into a section above)
