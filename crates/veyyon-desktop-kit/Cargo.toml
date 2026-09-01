@@ -1,0 +1,23 @@
+[package]
+name = "veyyon-desktop-kit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+description = "Token-driven primitive kit for the veyyon desktop front end"
+
+[lints]
+workspace = true
+
+[dependencies]
+strum = { workspace = true }
+thiserror = { workspace = true }
+veyyon-desktop-motion = { workspace = true }
+veyyon-desktop-tokens = { workspace = true }
+veyyon-gpui = { workspace = true }
+
+[dev-dependencies]
+gpui_platform = { workspace = true, features = ["test-support"] }
+gpui_wgpu = { workspace = true }

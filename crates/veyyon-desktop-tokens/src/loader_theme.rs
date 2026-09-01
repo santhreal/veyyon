@@ -279,3 +279,11 @@ pub fn load_bundled_themes(dir: &Path) -> Result<Vec<Theme>, TokenError> {
 	}
 	Ok(themes)
 }
+
+/// Loads a bundled theme by appearance ("dark" or "light").
+pub fn load_bundled_theme(appearance: &str) -> Result<Theme, TokenError> {
+	let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+		.join("themes")
+		.join(format!("{appearance}.toml"));
+	load_theme(&path)
+}

@@ -98,3 +98,9 @@ pub fn load_from_dir(dir: &Path) -> Result<Tokens, TokenError> {
 
 	Ok(Tokens { scale, elevation, ceilings, motion, surface })
 }
+
+/// Loads the bundled tokens shipped with this crate.
+pub fn load_bundled_tokens() -> Result<Tokens, TokenError> {
+	let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tokens");
+	load_from_dir(&dir)
+}
