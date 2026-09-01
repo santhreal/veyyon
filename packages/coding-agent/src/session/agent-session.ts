@@ -210,6 +210,7 @@ import {
 	formatDuration,
 	getActiveAuthDbPath,
 	getInstallId,
+	getStringProperty,
 	isAbortError,
 	isBunTestRuntime,
 	isEnoent,
@@ -463,10 +464,7 @@ import { normalizePromptPath } from "../utils/prompt-path";
 import { generateSessionTitle } from "../utils/title-generator";
 import { buildNamedToolChoice, isToolChoiceActive } from "../utils/tool-choice";
 import {
-	checkpointStartedAtFromEntry,
-	completedRewindFromEntry,
 	GEMINI_TOOL_REMINDER_TYPE,
-	isSuccessfulCheckpointEntry,
 	MEMORY_CONTEXT_MESSAGE_TYPE,
 	PLAN_YOLO_HANDOFF_MESSAGE_TYPE,
 	PREWALK_CHECKLIST_MESSAGE_TYPE,
@@ -481,7 +479,6 @@ import {
 import {
 	extractPermissionLocations,
 	getPermissionIntent,
-	getStringProperty,
 	PERMISSION_OPTIONS,
 	PERMISSION_OPTIONS_BY_ID,
 	PERMISSION_REQUIRED_TOOLS,
@@ -564,6 +561,7 @@ import {
 	estimateContextSnapshotAttribution,
 } from "./context-usage";
 import { initSessionCpuLimit, rekeySessionCpuLimit, sessionCpuLimit } from "./cpu-limit";
+import { dedupeEphemeralReply } from "./ephemeral-reply";
 import { ORCHESTRATE_NOTICE, renderWorkflowNotice, ULTRATHINK_NOTICE } from "./magic-keyword-notices";
 import {
 	type BashExecutionMessage,
@@ -588,6 +586,11 @@ import {
 import { ProviderContextCanonicalizer } from "./provider-context-canonicalizer";
 import { applyProviderImagePolicy } from "./provider-image-budget";
 import { normalizeRoots } from "./relativize-paths";
+import {
+	checkpointStartedAtFromEntry,
+	completedRewindFromEntry,
+	isSuccessfulCheckpointEntry,
+} from "./rewind-checkpoint";
 import { ThinkingRuntime } from "./runtime/thinking-runtime";
 import { TodoRuntime } from "./runtime/todo-runtime";
 import { TtsrRuntime } from "./runtime/ttsr-runtime";
@@ -695,66 +698,6 @@ function hasNonWhitespace(value: string): boolean {
 
 export type { ShakeMode, ShakeResult };
 
-const EPHEMERAL_REPLY_MAX_BYTES = 4096;
-
-/**
- * Collapse degenerate ephemeral replies (/btw, /omfg side-channel turns).
- * Models occasionally loop on a single line (~16 reports of N-times-repeated
- * replies); compress runs longer than 3 down to one instance + `[…N×]`, then
- * cap at 4 KiB so a runaway reply can't flood the channel.
- */
-function dedupeEphemeralReply(text: string): string {
-	if (!text) return text;
-	const lines = text.split("\n");
-	const out: string[] = [];
-	let i = 0;
-	while (i < lines.length) {
-		let j = i + 1;
-		while (j < lines.length && lines[j] === lines[i]) j++;
-		const runLen = j - i;
-		if (runLen > 3) {
-			out.push(lines[i], `[…${runLen}×]`);
-		} else {
-			for (let k = 0; k < runLen; k++) out.push(lines[i]);
-		}
-		i = j;
-	}
-	let result = out.join("\n");
-	if (Buffer.byteLength(result, "utf8") > EPHEMERAL_REPLY_MAX_BYTES) {
-		// Trim by characters until we're under the byte budget — handles multi-byte
-		// glyphs at the boundary without splitting them.
-		const suffix = "\n[…truncated]";
-		const budget = EPHEMERAL_REPLY_MAX_BYTES - Buffer.byteLength(suffix, "utf8");
-		while (Buffer.byteLength(result, "utf8") > budget) {
-			result = result.slice(0, -1);
-		}
-		result += suffix;
-	}
-	return result;
-}
-
-/**
- * Build the per-request `metadata` payload for the Anthropic provider, shaped
- * like real Claude Code's `getAPIMetadata` output (`{ session_id, account_uuid,
- * device_id }`) so the backend buckets requests under one session and attributes
- * them to the authenticated OAuth account when available. Resolved at request
- * time so token refreshes and login/logout transitions don't strand a stale
- * account UUID in memory. `account_uuid` and `device_id` are omitted for
- * non-Anthropic providers to avoid leaking the user's Claude identity to
- * third-party APIs (including Anthropic-format-compatible proxies such as
- * cloudflare-ai-gateway or gitlab-duo).
- *
- * `provider` is the target provider string (e.g. `"anthropic"`) and gates the
- * `account_uuid` and `device_id` lookups — only `"anthropic"` requests carry them.
- *
- * `sessionId` is forwarded to the auth-storage session-sticky lookup so that
- * multi-credential setups attribute to the same OAuth account used for the
- * actual API request rather than always picking the first credential.
- *
- * `authStorage` is treated as optional so test fixtures that stub `modelRegistry`
- * without a real storage layer still work; the resolver simply skips the lookup
- * and emits `{ session_id }` alone, matching the no-OAuth-credential path.
- */
 /**
  * Whether `next` is the same tool set as `current` in a different order.
  *
@@ -781,6 +724,28 @@ function isToolOrderPermutation(current: readonly string[], next: readonly strin
 	return currentSet.size === 0;
 }
 
+/**
+ * Build the per-request `metadata` payload for the Anthropic provider, shaped
+ * like real Claude Code's `getAPIMetadata` output (`{ session_id, account_uuid,
+ * device_id }`) so the backend buckets requests under one session and attributes
+ * them to the authenticated OAuth account when available. Resolved at request
+ * time so token refreshes and login/logout transitions don't strand a stale
+ * account UUID in memory. `account_uuid` and `device_id` are omitted for
+ * non-Anthropic providers to avoid leaking the user's Claude identity to
+ * third-party APIs (including Anthropic-format-compatible proxies such as
+ * cloudflare-ai-gateway or gitlab-duo).
+ *
+ * `provider` is the target provider string (e.g. `"anthropic"`) and gates the
+ * `account_uuid` and `device_id` lookups — only `"anthropic"` requests carry them.
+ *
+ * `sessionId` is forwarded to the auth-storage session-sticky lookup so that
+ * multi-credential setups attribute to the same OAuth account used for the
+ * actual API request rather than always picking the first credential.
+ *
+ * `authStorage` is treated as optional so test fixtures that stub `modelRegistry`
+ * without a real storage layer still work; the resolver simply skips the lookup
+ * and emits `{ session_id }` alone, matching the no-OAuth-credential path.
+ */
 function buildSessionMetadata(
 	sessionId: string,
 	provider: string,

@@ -34,7 +34,7 @@ import { getLatestTodoPhasesFromEntries, type TodoPhase } from "../../tools/agen
 import { TOOL } from "../../tools/core/builtin-names";
 import { buildNamedToolChoice } from "../../utils/tool-choice";
 import { MID_RUN_TODO_NUDGE_MESSAGE_TYPE, toolCallOpFromMessage } from "../agent-session-message-shapes";
-import { getStringProperty } from "../agent-session-permissions";
+import { getStringProperty } from "@veyyon/utils";
 import type { AgentSessionEvent, ScheduledAgentContinueOptions } from "../agent-session-types";
 import { getLatestCompactionEntry } from "../session-context";
 import { incompleteTodoItems, renderTodoContinuationReminder, todoReminderFingerprint } from "../todo-reminder";

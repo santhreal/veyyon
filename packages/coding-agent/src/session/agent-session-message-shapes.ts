@@ -5,15 +5,10 @@
  */
 
 import type { AgentMessage } from "@veyyon/agent-core";
-import type { SessionMessageEntry } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
 import { type ContentBlockLike, contentText } from "@veyyon/kernel/session/content-text";
-import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
-import { isRecord } from "@veyyon/utils";
+import { getStringProperty, isRecord } from "@veyyon/utils";
 import type { TitleConversationTurn } from "../tiny/message-preproc";
-import { TOOL } from "../tools/core/builtin-names";
-import type { CompletedRewindState } from "../tools/fs/checkpoint";
-import { getStringProperty } from "./agent-session-permissions";
 
 /** `customType` for the hidden mid-run todo nudge; `display: false`, so it reaches
  *  the model but never renders in the TUI or transcript. */
@@ -97,40 +92,6 @@ export function reportFromRewindReportContent(content: string): string {
 	const index = content.lastIndexOf(marker);
 	const report = index >= 0 ? content.slice(index + marker.length) : content;
 	return report.trim();
-}
-
-export function completedRewindFromEntry(entry: SessionEntry): CompletedRewindState | undefined {
-	if (entry.type !== "custom_message" || entry.customType !== "rewind-report") return undefined;
-	const details = entry.details;
-	if (!details || typeof details !== "object") return undefined;
-	const startedAt = stringProperty(details, "startedAt");
-	const rewoundAt = stringProperty(details, "rewoundAt");
-	if (!startedAt || !rewoundAt) return undefined;
-	const report =
-		stringProperty(details, "report")?.trim() ||
-		reportFromRewindReportContent(customMessageContentText(entry.content));
-	return report.length > 0 ? { report, startedAt, rewoundAt } : undefined;
-}
-
-export function isSuccessfulCheckpointEntry(entry: SessionEntry): entry is SessionMessageEntry & {
-	message: { role: "toolResult"; toolName: "checkpoint"; isError?: false };
-} {
-	return (
-		entry.type === "message" &&
-		entry.message.role === "toolResult" &&
-		entry.message.toolName === TOOL.checkpoint &&
-		entry.message.isError !== true
-	);
-}
-
-export function checkpointStartedAtFromEntry(entry: SessionEntry): string | undefined {
-	if (!isSuccessfulCheckpointEntry(entry)) return undefined;
-	const details = entry.message.details;
-	if (details && typeof details === "object") {
-		const startedAt = stringProperty(details, "startedAt");
-		if (startedAt) return startedAt;
-	}
-	return entry.timestamp;
 }
 
 export function sanitizeAssistantForReparentedHistory(message: AssistantMessage): AssistantMessage {

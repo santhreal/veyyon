@@ -1,15 +1,20 @@
 /**
- * The permission question a tool call raises: which tools require one, the
- * options the operator is offered, and the intent and locations read out of the
- * call's arguments so the prompt can say what the tool is about to do.
+ * The ACP permission gate's read-only half: which tool calls need the client's consent, what to
+ * call the operation on screen, and which files it will touch.
+ *
+ * Every function here is a pure read of the tool arguments. Asking the client, caching the answer
+ * and acting on it stay in `AgentSession`, which owns the connection and the session state.
  */
 
 import { Patch } from "@veyyon/hashline";
 import type { ClientBridgePermissionOption } from "@veyyon/kernel/session/client-bridge";
-import { isRecord } from "@veyyon/utils";
+import { getStringProperty, isRecord } from "@veyyon/utils";
 import { expandApplyPatchToEntries } from "../edit/modes/apply-patch";
 import { TOOL } from "../tools/core/builtin-names";
 import { resolveToCwd } from "../tools/core/path-utils";
+
+// The package surface carries this helper from here; its one definition is in `@veyyon/utils`.
+export { getStringProperty };
 
 /** Tools that require user permission before execution when an ACP client is connected. */
 export const PERMISSION_REQUIRED_TOOLS = new Set([TOOL.bash, TOOL.edit, "delete", "move"]);
@@ -24,15 +29,25 @@ export const PERMISSION_OPTIONS: ClientBridgePermissionOption[] = [
 
 export const PERMISSION_OPTIONS_BY_ID = new Map(PERMISSION_OPTIONS.map(option => [option.optionId, option]));
 
-export function getStringProperty(value: Record<string, unknown>, key: string): string | undefined {
-	const candidate = value[key];
-	return typeof candidate === "string" ? candidate : undefined;
+/** What a gated tool call is asking to do, as the client will be shown it. */
+export interface PermissionIntent {
+	toolName: string;
+	title: string;
+	paths?: string[];
+	cacheKey: string;
 }
 
 export function collectStringPaths(value: unknown): string[] {
 	return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+/**
+ * Whether an `edit` call deletes or moves a file, which is what makes it worth a prompt.
+ *
+ * The edit tool reaches those two operations through three argument shapes: structured `edits`
+ * entries, a hashline patch in `input`, and an apply_patch envelope in the same field. All three
+ * are read here, because a gate that understands one of them consents to the other two silently.
+ */
 export function getEditDestructiveIntent(args: unknown): { kind: "delete" | "move"; paths: string[] } | undefined {
 	if (!isRecord(args)) return undefined;
 	const a = args as Record<string, unknown>;
@@ -81,10 +96,14 @@ export function getEditDestructiveIntent(args: unknown): { kind: "delete" | "mov
 	return undefined;
 }
 
-export function getPermissionIntent(
-	toolName: string,
-	args: unknown,
-): { toolName: string; title: string; paths?: string[]; cacheKey: string } | undefined {
+/**
+ * The prompt a gated tool call earns, or undefined when it needs none.
+ *
+ * `cacheKey` is what an "always allow" answer is remembered under, so it is coarser than the
+ * title: every bash command shares one key, while an edit that deletes is kept apart from an edit
+ * that moves.
+ */
+export function getPermissionIntent(toolName: string, args: unknown): PermissionIntent | undefined {
 	const a = isRecord(args) ? (args as Record<string, unknown>) : {};
 	if (toolName === TOOL.bash) {
 		const cmd = getStringProperty(a, "command")?.slice(0, 80);
@@ -128,6 +147,13 @@ export function getPermissionIntent(
 	return undefined;
 }
 
+/**
+ * The files a gated call touches, as absolute paths the editor host can open.
+ *
+ * ACP locations are resolved against the session cwd because tool arguments are usually relative
+ * and the client cannot resolve them itself. A path that will not resolve is dropped rather than
+ * sent, and duplicates are collapsed so one file is not focused twice.
+ */
 export function extractPermissionLocations(
 	args: unknown,
 	cwd: string,
@@ -138,9 +164,6 @@ export function extractPermissionLocations(
 	const out: { path: string; line?: number }[] = [];
 	const pushPath = (value: unknown) => {
 		if (typeof value !== "string" || value.length === 0) return;
-		// ACP locations carry file paths that the editor host will open or focus;
-		// they must be absolute or the client cannot resolve them. Resolve raw
-		// tool args (often cwd-relative) against the session cwd before sending.
 		let resolved: string;
 		try {
 			resolved = resolveToCwd(value, cwd);
