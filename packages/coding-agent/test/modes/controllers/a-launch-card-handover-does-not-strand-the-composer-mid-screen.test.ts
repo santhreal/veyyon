@@ -4,23 +4,21 @@
  * WHY THIS SUITE EXISTS. `first-frame.ts` paints the launch card and starts the
  * screen before `InteractiveMode` exists, using its own `HomeAnchorLayout`. When
  * the mode lands it drops those children and mounts its own tree with a SECOND
- * layout instance. `HomeAnchorLayout.sync()` prefers `ui.composedFrameRows` and
- * subtracts its own fills from it — correct while one layout owns the frame,
- * wrong at this handover: the frame on screen was composed from the first
- * layout's fills, the mode's fills are still zero, so a viewport-tall frame is
- * counted as content, the slack reads as zero and the composer mounts directly
- * under the hero in the middle of the viewport. The operator sees it hang there
- * during launch until the next composed frame re-anchors it.
+ * layout instance. A fill sized from `ui.composedFrameRows` minus its own fills
+ * is correct while one layout owns the frame and wrong at this handover: the
+ * frame on screen was composed from the first layout's fills, the mode's fills
+ * are still zero, so a viewport-tall frame is counted as content, the slack reads
+ * as zero and the composer mounts directly under the hero in the middle of the
+ * viewport, where the operator watches it hang for the rest of launch.
  *
- * THE CLASS. Not "the launch card": any mount-time seed taken against a composed
- * frame this layout did not produce. The fix is that the mount path has one named
- * owner, `seedAfterMount()`, which always remeasures. These arms call that
- * production entry point, so replacing its body with a bare `sync()` turns them
- * red.
+ * THE CLASS. Not "the launch card": any measurement of the content taken from a
+ * frame rather than from the children about to render. `HomeAnchorLayout.sync`
+ * reads the live children and nothing else, which is what makes the handover
+ * correct on the mount frame; these arms drive the real handover, so returning
+ * any frame-derived term to that measurement turns them red.
  *
- * The frame-composed self-correction is deliberately NOT wired here. It is what
- * makes the defect temporary rather than permanent, and wiring it would hide the
- * mount frame — the one frame this suite is about.
+ * No repaint is wired after the commit, because there is none in the product:
+ * the mount frame is asserted as painted, not as eventually repaired.
  *
  * WHAT IT DOES NOT CATCH. Anything about the launch card's own frame (owned by
  * `first-frame.ts`), the resize path (its own suite), and the visual duration of
@@ -108,7 +106,7 @@ describe("a launch card handover does not strand the composer mid-screen", () =>
 		];
 		mountLaunchComposer({ addChild: child => cardChildren.push(child) }, new Composer());
 		for (const child of cardChildren) tui.addChild(child);
-		cardLayout.sync(true);
+		cardLayout.sync();
 		tui.start();
 		await settleFrames(term, tui);
 

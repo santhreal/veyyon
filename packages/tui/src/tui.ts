@@ -1518,8 +1518,15 @@ export class TUI extends Container {
 			// subtree provably did not change (content mutations route through
 			// a render request, which would have made this frame a full one) —
 			// reuse its previous rows and seam report without calling render().
+			// A layout child is the exception: the sizing pass at the top of this
+			// frame resized it against the children about to render, and it
+			// requested nothing (see markLayoutSized).
 			const reuse =
-				partialRoots !== null && previous !== undefined && previous.component === child && !partialRoots.has(child);
+				partialRoots !== null &&
+				previous !== undefined &&
+				previous.component === child &&
+				!partialRoots.has(child) &&
+				!this.#layoutSizedChildren.has(child);
 			let childLines: readonly string[];
 			let liveLocalStart: number | undefined;
 			let reported: number | undefined;
@@ -1804,6 +1811,34 @@ export class TUI extends Container {
 	 * root child; it may only resize what is already mounted.
 	 */
 	onBeforeCompose?: () => void;
+
+	/**
+	 * Declare that `component`'s height is sized in {@link onBeforeCompose} from
+	 * its siblings' heights, so the compositor must re-render it on a
+	 * component-scoped frame as well.
+	 *
+	 * A component-scoped frame re-renders only the root subtrees whose repaint
+	 * was requested and reuses the previous rows of every other root child. A
+	 * layout child is resized by the sizing pass at the top of THIS frame, which
+	 * requested nothing, so reusing its previous rows composes the frame with the
+	 * height the previous frame's content called for: a streamed chunk repainting
+	 * its own block alone (`ChatBlock.requestRender`) grows the frame by the rows
+	 * it gained while the fill above it still reserves the rows it had, the frame
+	 * composes past the viewport, and the engine moves the window to fit. Nothing
+	 * downstream can repair it either — the sizing pass already wrote the right
+	 * height into the component, so the post-commit correction compares equal and
+	 * requests nothing.
+	 *
+	 * Registration is by reference and held weakly, so an unmounted child is
+	 * collected as usual.
+	 */
+	markLayoutSized(component: Component): void {
+		this.#layoutSizedChildren.add(component);
+	}
+
+	// Root children whose height the onBeforeCompose sizing pass owns; never
+	// segment-reused on a component-scoped frame (see markLayoutSized).
+	#layoutSizedChildren = new WeakSet<Component>();
 
 	/**
 	 * Invoked after every frame commit, once the freshly composed row count is
