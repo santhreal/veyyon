@@ -78,6 +78,10 @@
 			"packages/coding-agent/test/oracles/memory-main-renderer.ts"
 		],
 		[
+			"packages/coding-agent/src/tools/gh-renderer.ts",
+			"packages/coding-agent/test/oracles/gh-main-renderer.ts"
+		],
+		[
 			"packages/coding-agent/src/tools/irc-render.ts",
 			"packages/coding-agent/test/oracles/irc-main-renderer.ts"
 		],
@@ -14796,15 +14800,6 @@
 			"structuralHash": "548f1d0a8eaa258e3cfd844e9cd5669b21cf4ec484626dcfaa10c5c6af155210",
 			"mainStructuralHash": "548f1d0a8eaa258e3cfd844e9cd5669b21cf4ec484626dcfaa10c5c6af155210"
 		},
-		"packages/coding-agent/src/tools/web/gh-renderer.ts": {
-			"old": "packages/coding-agent/src/tools/gh-renderer.ts",
-			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "557e186c668c5193a279ccdb6f409a47b71f3a36ca184aff416d55883c708f4b",
-			"mainHash": "553192ee071b5ad3260f5e0b85e3bd148eba5f4b8285b64208eda5e27e49e53a",
-			"structuralHash": "569321ba3aff74132b257d43d0383507aac1af0ac1596297cd8e7fc045dd9192",
-			"mainStructuralHash": "569321ba3aff74132b257d43d0383507aac1af0ac1596297cd8e7fc045dd9192"
-		},
 		"packages/coding-agent/src/tools/web/gh-url.ts": {
 			"old": "packages/coding-agent/src/tools/gh-url.ts",
 			"kind": "normalized",
@@ -14818,7 +14813,7 @@
 			"old": "packages/coding-agent/src/tools/gh.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "98cdd6292035e75af57ef6b0245961b3d043e54f85819d31028c6bece8555736",
+			"hash": "36a3c49d8bbf5a842053ea74acff4ac31e8e17e01b78236167c017df42b74690",
 			"mainHash": "8c98721fe73481939b9bdf6afa48f48d5ec8510ee547bb10be6412a95c9bcb99",
 			"structuralHash": "1e7626be22c748d1ce8a4f4b71904287ec1212db61c884e9ca4d38bb529cc4ae",
 			"mainStructuralHash": "1e7626be22c748d1ce8a4f4b71904287ec1212db61c884e9ca4d38bb529cc4ae"
@@ -15011,6 +15006,15 @@
 			"mainHash": "7c89af567666c1f1aa1386a215a048d6c8088756b80595483667a49b26857810",
 			"structuralHash": "08cefcfd485c233e2c02a2d857bd2c221a10758d282f5011ee11722a44dcaa2b",
 			"mainStructuralHash": "08cefcfd485c233e2c02a2d857bd2c221a10758d282f5011ee11722a44dcaa2b"
+		},
+		"packages/coding-agent/test/oracles/gh-main-renderer.ts": {
+			"old": "packages/coding-agent/src/tools/gh-renderer.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "e04cd7f807d6c979d05825b191f9e3ff4b51f6979456880de74f6216f6fed557",
+			"mainHash": "553192ee071b5ad3260f5e0b85e3bd148eba5f4b8285b64208eda5e27e49e53a",
+			"structuralHash": "569321ba3aff74132b257d43d0383507aac1af0ac1596297cd8e7fc045dd9192",
+			"mainStructuralHash": "569321ba3aff74132b257d43d0383507aac1af0ac1596297cd8e7fc045dd9192"
 		},
 		"packages/coding-agent/test/oracles/inspect-image-main-renderer.ts": {
 			"old": "packages/coding-agent/src/tools/inspect-image-renderer.ts",

@@ -7472,10 +7472,10 @@
 				"./tools/web/gh-fetch.js",
 				"./tools/web/gh-format",
 				"./tools/web/gh-format.js",
-				"./tools/web/gh-renderer",
-				"./tools/web/gh-renderer.js",
 				"./tools/web/gh-url",
 				"./tools/web/gh-url.js",
+				"./tools/web/gh-view",
+				"./tools/web/gh-view.js",
 				"./tools/web/gh.js",
 				"./tools/web/github-cache",
 				"./tools/web/github-cache.js",
@@ -11225,12 +11225,12 @@
 					"why": "packages/coding-agent/src/tools/gh-format.ts moved to packages/coding-agent/src/tools/web/gh-format.ts, which @veyyon/coding-agent publishes as ./tools/web/gh-format.js"
 				},
 				"./tools/gh-renderer": {
-					"to": "@veyyon/coding-agent/tools/web/gh-renderer",
-					"why": "packages/coding-agent/src/tools/gh-renderer.ts moved to packages/coding-agent/src/tools/web/gh-renderer.ts, which @veyyon/coding-agent publishes as ./tools/web/gh-renderer"
+					"to": "./tools/web/gh-view",
+					"why": "the github call row, run-watch panel, failed-log group and failure card are declared in tools/web/gh-view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./tools/gh-renderer.js": {
-					"to": "@veyyon/coding-agent/tools/web/gh-renderer.js",
-					"why": "packages/coding-agent/src/tools/gh-renderer.ts moved to packages/coding-agent/src/tools/web/gh-renderer.ts, which @veyyon/coding-agent publishes as ./tools/web/gh-renderer.js"
+					"to": "./tools/web/gh-view.js",
+					"why": "the github call row, run-watch panel, failed-log group and failure card are declared in tools/web/gh-view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./tools/gh-url": {
 					"to": "@veyyon/coding-agent/tools/web/gh-url",
