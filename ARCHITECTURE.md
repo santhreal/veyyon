@@ -42,8 +42,8 @@ subcommand (`commit`, `grep`, `models`, `exec`, …).
 ## Workspace layout
 
 The repository layout and component responsibilities are documented in [`AGENTS.md`](AGENTS.md).
-TypeScript members are under `contracts/`, `hosts/`, `packages/` and `kernel/`; first-party Rust is
-grouped by purpose under `natives/`.
+TypeScript members are under `contracts/`, `hosts/`, `packages/`, `plugins/` and `kernel/`; first-party
+Rust is grouped by purpose under `natives/`.
 Vendored third-party Rust code is under `natives/vendor/`, and the whole-product conformance corpus
 is under `tests/conformance/`.
 

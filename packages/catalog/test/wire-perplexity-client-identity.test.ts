@@ -36,7 +36,8 @@ const AI_SRC = path.resolve(import.meta.dir, "../../ai/src");
 const CODING_AGENT_SRC = path.resolve(import.meta.dir, "../../coding-agent/src");
 const LOGIN = path.join(AI_SRC, "registry/oauth/perplexity.ts");
 const SEARCH = path.join(CODING_AGENT_SRC, "web/search/providers/perplexity.ts");
-const BROWSER_HEADERS = path.join(CODING_AGENT_SRC, "web/search/providers/browser-fingerprint-constants.ts");
+const WEB_SRC = path.resolve(import.meta.dir, "../../../plugins/web/src");
+const BROWSER_HEADERS = path.join(WEB_SRC, "browser-fingerprint-constants.ts");
 
 describe("the spoofed Perplexity app identity", () => {
 	/**
@@ -232,7 +233,7 @@ describe("the browser fingerprint states its version once", () => {
 		expect(version(CHROME_WINDOWS_USER_AGENT)).toBe(version(CHROME_DESKTOP_USER_AGENT));
 		expect(CHROME_WINDOWS_USER_AGENT).toContain("Windows NT 10.0");
 		expect(CHROME_DESKTOP_USER_AGENT).toContain("Macintosh");
-		const scraper = await Bun.file(path.join(CODING_AGENT_SRC, "web/scrapers/types.ts")).text();
+		const scraper = await Bun.file(path.join(WEB_SRC, "scrapers/types.ts")).text();
 		expect(scraper).toContain("CHROME_WINDOWS_USER_AGENT");
 		expect(scraper).toContain(
 			'const USER_AGENTS = ["curl/8.0", "Mozilla/5.0 (compatible; TextBot/1.0)", CHROME_WINDOWS_USER_AGENT];',
@@ -242,7 +243,7 @@ describe("the browser fingerprint states its version once", () => {
 	/** No module outside the owner spells a Chrome User-Agent literal. */
 	it("spells no Chrome User-Agent outside the fingerprint owner", async () => {
 		const offenders: string[] = [];
-		for (const root of [AI_SRC, CODING_AGENT_SRC]) {
+		for (const root of [AI_SRC, CODING_AGENT_SRC, WEB_SRC]) {
 			for (const file of new Bun.Glob("**/*.ts").scanSync(root)) {
 				const full = path.join(root, file);
 				if (full === BROWSER_HEADERS) continue;
