@@ -532,6 +532,10 @@ describe("AgentSession context promotion", () => {
 		if (!model) {
 			throw new Error("Expected codex spark model to exist");
 		}
+		const contextWindow = model.contextWindow;
+		if (contextWindow === null) {
+			throw new Error("Expected codex spark model to state a context window");
+		}
 		const settings = Settings.isolated({
 			"compaction.enabled": true,
 			"compaction.strategy": "summary",
@@ -554,7 +558,7 @@ describe("AgentSession context promotion", () => {
 		// and tokenizes at about three tokens, so each message is well under the
 		// truncation floor and the pile is well over the window.
 		const perMessageTokens = Math.floor(TRUNCATION_MIN_TEXT_TOKENS / 2);
-		const messageCount = Math.ceil((2 * model.contextWindow) / perMessageTokens);
+		const messageCount = Math.ceil((2 * contextWindow) / perMessageTokens);
 		for (let index = 0; index < messageCount; index++) {
 			session.sessionManager.appendMessage(createUserMessage("old context ".repeat(perMessageTokens / 3)));
 			session.sessionManager.appendMessage(createAssistantMessage(model, `old response ${index}`));
