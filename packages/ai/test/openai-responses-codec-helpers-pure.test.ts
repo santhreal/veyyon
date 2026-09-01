@@ -259,7 +259,7 @@ describe("appendReasoningSummaryPart", () => {
 			id: "r1",
 			summary: [],
 		} as unknown as ResponseReasoningItem;
-		item.summary = undefined;
+		(item as { summary?: unknown }).summary = undefined;
 		appendReasoningSummaryPart(item, { type: "summary_text", text: "part1" });
 		expect(item.summary).toEqual([{ type: "summary_text", text: "part1" }]);
 	});

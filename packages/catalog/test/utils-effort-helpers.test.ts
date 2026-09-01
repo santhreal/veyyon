@@ -107,7 +107,7 @@ describe("toFields", () => {
 		expect(toFields(null)).toBeUndefined();
 	});
 	it("returns array for array (arrays are objects)", () => {
-		expect(toFields([1, 2])).toEqual([1, 2]);
+		expect(toFields([1, 2]) as unknown).toEqual([1, 2]);
 	});
 	it("returns undefined for string", () => {
 		expect(toFields("hello")).toBeUndefined();
@@ -278,22 +278,22 @@ describe("isRecord", () => {
 
 describe("Effort enum", () => {
 	it("has Minimal value", () => {
-		expect(Effort.Minimal).toBe("minimal" as typeof Effort.Minimal);
+		expect(Effort.Minimal).toBe("minimal" as string);
 	});
 	it("has Low value", () => {
-		expect(Effort.Low).toBe("low" as typeof Effort.Low);
+		expect(Effort.Low).toBe("low" as string);
 	});
 	it("has Medium value", () => {
-		expect(Effort.Medium).toBe("medium" as typeof Effort.Medium);
+		expect(Effort.Medium).toBe("medium" as string);
 	});
 	it("has High value", () => {
-		expect(Effort.High).toBe("high" as typeof Effort.High);
+		expect(Effort.High).toBe("high" as string);
 	});
 	it("has XHigh value", () => {
-		expect(Effort.XHigh).toBe("xhigh" as typeof Effort.XHigh);
+		expect(Effort.XHigh).toBe("xhigh" as string);
 	});
 	it("has Max value", () => {
-		expect(Effort.Max).toBe("max" as typeof Effort.Max);
+		expect(Effort.Max).toBe("max" as string);
 	});
 });
 

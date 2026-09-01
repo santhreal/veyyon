@@ -3,22 +3,22 @@ import { canonicalizeEfforts, Effort, isEffort, THINKING_EFFORTS } from "../src/
 
 describe("Effort enum", () => {
 	it("Minimal is 'minimal'", () => {
-		expect(Effort.Minimal).toBe("minimal" as typeof Effort.Minimal);
+		expect(Effort.Minimal).toBe("minimal" as string);
 	});
 	it("Low is 'low'", () => {
-		expect(Effort.Low).toBe("low" as typeof Effort.Low);
+		expect(Effort.Low).toBe("low" as string);
 	});
 	it("Medium is 'medium'", () => {
-		expect(Effort.Medium).toBe("medium" as typeof Effort.Medium);
+		expect(Effort.Medium).toBe("medium" as string);
 	});
 	it("High is 'high'", () => {
-		expect(Effort.High).toBe("high" as typeof Effort.High);
+		expect(Effort.High).toBe("high" as string);
 	});
 	it("XHigh is 'xhigh'", () => {
-		expect(Effort.XHigh).toBe("xhigh" as typeof Effort.XHigh);
+		expect(Effort.XHigh).toBe("xhigh" as string);
 	});
 	it("Max is 'max'", () => {
-		expect(Effort.Max).toBe("max" as typeof Effort.Max);
+		expect(Effort.Max).toBe("max" as string);
 	});
 });
 
@@ -115,10 +115,10 @@ describe("canonicalizeEfforts", () => {
 		expect(canonicalizeEfforts([Effort.High, Effort.Max])).toEqual([Effort.High, Effort.Max]);
 	});
 	it("handles all efforts", () => {
-		expect(canonicalizeEfforts(THINKING_EFFORTS)).toEqual(THINKING_EFFORTS);
+		expect(canonicalizeEfforts(THINKING_EFFORTS)).toEqual([...THINKING_EFFORTS]);
 	});
 	it("handles all efforts shuffled", () => {
 		const shuffled = [Effort.Medium, Effort.Max, Effort.Minimal, Effort.High, Effort.Low, Effort.XHigh];
-		expect(canonicalizeEfforts(shuffled)).toEqual(THINKING_EFFORTS);
+		expect(canonicalizeEfforts(shuffled)).toEqual([...THINKING_EFFORTS]);
 	});
 });

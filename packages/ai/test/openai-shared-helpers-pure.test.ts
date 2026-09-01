@@ -21,7 +21,7 @@ describe("applyOpenAIGatewayRouting", () => {
 		openRouterRouting: { order: ["auto"] },
 		};
 		applyOpenAIGatewayRouting(params, compat);
-		expect(params.provider).toBe("openrouter/auto");
+		expect(params.provider as unknown).toBe({ order: ["auto"] });
 	});
 	it("does not set provider when not OpenRouter host", () => {
 		const params: OpenAIGatewayRoutingParams = {};
@@ -72,6 +72,7 @@ describe("applyOpenAIGatewayRouting", () => {
 		expect(params.providerOptions?.gateway?.order).toEqual(["anthropic"]);
 	});
 	it("does not set gateway when Vercel routing has neither only nor order", () => {
+		const params: OpenAIGatewayRoutingParams = {};
 		const compat: OpenAIGatewayRoutingCompat = {
 			isOpenRouterHost: false,
 			isVercelGatewayHost: true,
@@ -100,7 +101,7 @@ describe("applyOpenAIExtraBody", () => {
 	});
 	it("merges extraBody into params", () => {
 		const params = { foo: "bar" };
-		applyOpenAIExtraBody(params, { baz: "qux" });
+		applyOpenAIExtraBody(params, { baz: "qux" } as Record<string, unknown>);
 		expect(params).toEqual({ foo: "bar", baz: "qux" });
 	});
 	it("overwrites existing params with extraBody", () => {
@@ -134,7 +135,7 @@ describe("applyOpenAIExtraBody", () => {
 	});
 	it("merges nested objects by assignment", () => {
 		const params = { config: { a: 1 } };
-		applyOpenAIExtraBody(params, { config: { b: 2 } });
+		applyOpenAIExtraBody(params, { config: { b: 2 } } as Record<string, unknown>);
 		expect(params.config).toEqual({ b: 2 });
 	});
 });

@@ -52,16 +52,16 @@ describe("parseJsonWithRepair", () => {
 
 describe("parseStreamingJson", () => {
 	it("returns empty object for undefined input", () => {
-		expect(parseStreamingJson(undefined)).toEqual({});
+		expect(parseStreamingJson(undefined) as Record<string, unknown>).toEqual({});
 	});
 	it("returns empty object for empty string", () => {
-		expect(parseStreamingJson("")).toEqual({});
+		expect(parseStreamingJson("") as Record<string, unknown>).toEqual({});
 	});
 	it("returns empty object for whitespace-only string", () => {
-		expect(parseStreamingJson("   ")).toEqual({});
+		expect(parseStreamingJson("   ") as Record<string, unknown>).toEqual({});
 	});
 	it("parses complete JSON object", () => {
-		expect(parseStreamingJson('{"key":"value"}')).toEqual({ key: "value" });
+		expect(parseStreamingJson('{"key":"value"}') as Record<string, unknown>).toEqual({ key: "value" });
 	});
 	it("parses partial JSON object with closing brace", () => {
 		const result = parseStreamingJson('{"key":"value"');
@@ -72,7 +72,7 @@ describe("parseStreamingJson", () => {
 		expect(result).toBeDefined();
 	});
 	it("returns empty object for unparseable input", () => {
-		expect(parseStreamingJson("@#$%")).toEqual({});
+		expect(parseStreamingJson("@#$%") as Record<string, unknown>).toEqual({});
 	});
 	it("parses partial array", () => {
 		const result = parseStreamingJson("[1,2,3");
