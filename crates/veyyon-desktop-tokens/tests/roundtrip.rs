@@ -39,15 +39,14 @@ fn test_tokens_dump_and_load_roundtrip_with_modified_surface_fields() {
 
 /// WHY: A dumper that formats float pixel dimensions using integer casting
 /// silently truncates fractional inline panel widths (e.g. 540.5 -> 540). This
-/// suite proves that arbitrary finite decimal inline widths survive serialization
-/// and deserialization without precision loss.
+/// suite proves that arbitrary finite decimal inline widths survive
+/// serialization and deserialization without precision loss.
 #[test]
 fn test_tokens_dump_and_load_preserves_non_integer_inline_width() {
 	let shipped_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tokens");
 	let mut original = load_from_dir(&shipped_dir).expect("load shipped tokens");
 
-	original.surface.breakpoints.wide.right_panel_mode =
-		RightPanelMode::Inline { width_px: 540.5 };
+	original.surface.breakpoints.wide.right_panel_mode = RightPanelMode::Inline { width_px: 540.5 };
 	original.surface.breakpoints.standard.right_panel_mode =
 		RightPanelMode::Inline { width_px: 360.25 };
 
@@ -59,12 +58,10 @@ fn test_tokens_dump_and_load_preserves_non_integer_inline_width() {
 		original, reloaded,
 		"reloaded tokens with non-integer inline widths must match original"
 	);
-	assert_eq!(
-		reloaded.surface.breakpoints.wide.right_panel_mode,
-		RightPanelMode::Inline { width_px: 540.5 }
-	);
-	assert_eq!(
-		reloaded.surface.breakpoints.standard.right_panel_mode,
-		RightPanelMode::Inline { width_px: 360.25 }
-	);
+	assert_eq!(reloaded.surface.breakpoints.wide.right_panel_mode, RightPanelMode::Inline {
+		width_px: 540.5,
+	});
+	assert_eq!(reloaded.surface.breakpoints.standard.right_panel_mode, RightPanelMode::Inline {
+		width_px: 360.25,
+	});
 }

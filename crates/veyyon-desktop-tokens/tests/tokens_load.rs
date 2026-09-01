@@ -91,14 +91,12 @@ fn test_load_shipped_tokens() {
 	assert_eq!(tokens.surface.composer.padding_horizontal, 16.0); // "s8" -> 16
 
 	// §5.7 Breakpoint modes
-	assert_eq!(
-		tokens.surface.breakpoints.wide.right_panel_mode,
-		RightPanelMode::Inline { width_px: 540.0 }
-	);
-	assert_eq!(
-		tokens.surface.breakpoints.standard.right_panel_mode,
-		RightPanelMode::Inline { width_px: 360.0 }
-	);
+	assert_eq!(tokens.surface.breakpoints.wide.right_panel_mode, RightPanelMode::Inline {
+		width_px: 540.0,
+	});
+	assert_eq!(tokens.surface.breakpoints.standard.right_panel_mode, RightPanelMode::Inline {
+		width_px: 360.0,
+	});
 	assert_eq!(tokens.surface.breakpoints.compact.right_panel_mode, RightPanelMode::Overlay);
 	assert_eq!(tokens.surface.breakpoints.collapsed.right_panel_mode, RightPanelMode::Overlay);
 
@@ -107,16 +105,19 @@ fn test_load_shipped_tokens() {
 	assert_eq!(
 		[
 			tokens.surface.breakpoints.wide.terminal_drawer_placement,
-			tokens.surface.breakpoints.standard.terminal_drawer_placement,
+			tokens
+				.surface
+				.breakpoints
+				.standard
+				.terminal_drawer_placement,
 			tokens.surface.breakpoints.compact.terminal_drawer_placement,
-			tokens.surface.breakpoints.collapsed.terminal_drawer_placement,
+			tokens
+				.surface
+				.breakpoints
+				.collapsed
+				.terminal_drawer_placement,
 		],
-		[
-			DrawerPlacement::Row,
-			DrawerPlacement::Row,
-			DrawerPlacement::Row,
-			DrawerPlacement::Overlay,
-		]
+		[DrawerPlacement::Row, DrawerPlacement::Row, DrawerPlacement::Row, DrawerPlacement::Overlay,]
 	);
 
 	// Breakpoint resolution across viewport thresholds

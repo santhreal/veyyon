@@ -152,32 +152,25 @@ fn test_validation_rule_6_unresolved_reference() {
 	));
 }
 
-/// WHY: An unvalidated or unknown `right_panel_mode` string loading into the token tree
-/// causes layout logic to behave unpredictably or fail silently. This test ensures every
-/// malformed or unknown mode variant fails loud during token loading with a precise
-/// `TokenError::OffScale` naming the file, section, scale name, and offending value.
+/// WHY: An unvalidated or unknown `right_panel_mode` string loading into the
+/// token tree causes layout logic to behave unpredictably or fail silently.
+/// This test ensures every malformed or unknown mode variant fails loud during
+/// token loading with a precise `TokenError::OffScale` naming the file,
+/// section, scale name, and offending value.
 #[test]
 fn test_validation_rule_right_panel_mode_off_scale() {
-	let invalid_modes = [
-		"sidebar",
-		"inline_",
-		"inline_abc",
-		"inline_0",
-		"inline_-40",
-	];
+	let invalid_modes = ["sidebar", "inline_", "inline_abc", "inline_0", "inline_-40"];
 
 	for mode in invalid_modes {
 		let (_tree, dir) = setup_temp_tokens_dir();
 		let bp_path = dir.join("surface/breakpoints.toml");
 		let content = fs::read_to_string(&bp_path).unwrap();
-		let modified = content.replace(
-			"right_panel_mode = \"inline_540\"",
-			&format!("right_panel_mode = \"{mode}\""),
-		);
+		let modified = content
+			.replace("right_panel_mode = \"inline_540\"", &format!("right_panel_mode = \"{mode}\""));
 		fs::write(&bp_path, modified).unwrap();
 
-		let err = load_from_dir(&dir)
-			.expect_err(&format!("mode {mode:?} should fail off-scale validation"));
+		let err =
+			load_from_dir(&dir).expect_err(&format!("mode {mode:?} should fail off-scale validation"));
 		match &err {
 			TokenError::OffScale { path, value, scale_name, allowed, .. } => {
 				assert!(path.ends_with("surface/breakpoints.toml"));
@@ -189,7 +182,8 @@ fn test_validation_rule_right_panel_mode_off_scale() {
 		}
 		let err_msg = err.to_string();
 		assert!(err_msg.contains(&format!(
-			"value off scale: {mode:?} is not in declared scale breakpoint.wide.right_panel_mode (\"overlay\" or \"inline_<px>\")"
+			"value off scale: {mode:?} is not in declared scale breakpoint.wide.right_panel_mode \
+			 (\"overlay\" or \"inline_<px>\")"
 		)));
 	}
 }
@@ -278,7 +272,9 @@ fn test_validation_rule_absent_breakpoint_row() {
 	let bp_path = dir.join("surface/breakpoints.toml");
 	let content = fs::read_to_string(&bp_path).unwrap();
 	let header = "[breakpoint.collapsed]";
-	let cut = content.find(header).expect("shipped tokens declare the collapsed row");
+	let cut = content
+		.find(header)
+		.expect("shipped tokens declare the collapsed row");
 	fs::write(&bp_path, &content[..cut]).unwrap();
 
 	let err = load_from_dir(&dir).expect_err("an absent row must fail the load");
@@ -300,7 +296,11 @@ fn test_validation_rule_breakpoint_row_value_wrong_type() {
 	let cases = [
 		("queue_width_px = 256", "queue_width_px = \"256\"", "queue_width_px"),
 		("min_width_px = 1440", "min_width_px = 1440.5", "min_width_px"),
-		("terminal_drawer_height_px = 280", "terminal_drawer_height_px = -8", "terminal_drawer_height_px"),
+		(
+			"terminal_drawer_height_px = 280",
+			"terminal_drawer_height_px = -8",
+			"terminal_drawer_height_px",
+		),
 		("run_bar_labels = true", "run_bar_labels = \"true\"", "run_bar_labels"),
 		("right_panel_mode = \"inline_540\"", "right_panel_mode = 540", "right_panel_mode"),
 		(

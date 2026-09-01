@@ -108,7 +108,9 @@ fn the_sweep_reaches_the_crates_that_hold_the_surfaces() {
 		"veyyon-desktop-scene is a desktop crate and must be swept; discovered {discovered:?}",
 	);
 	assert!(
-		discovered.iter().any(|name| name == "veyyon-desktop-surface"),
+		discovered
+			.iter()
+			.any(|name| name == "veyyon-desktop-surface"),
 		"veyyon-desktop-surface is a desktop crate and must be swept; discovered {discovered:?}",
 	);
 	assert!(
