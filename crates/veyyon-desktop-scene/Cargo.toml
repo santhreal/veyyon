@@ -22,6 +22,7 @@ strum = { workspace = true }
 thiserror = { workspace = true }
 unicode-segmentation = { workspace = true }
 veyyon-desktop-model = { workspace = true }
+veyyon-desktop-kit = { workspace = true }
 veyyon-desktop-tokens = { workspace = true }
 veyyon-gpui = { workspace = true }
 

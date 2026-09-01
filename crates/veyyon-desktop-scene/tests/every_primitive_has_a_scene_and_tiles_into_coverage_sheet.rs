@@ -162,8 +162,8 @@ fn rendered_primitive_scenes_use_bundled_dark_theme_colours() {
 	let expected_g = (canvas_rgb.g * 255.0).round() as u8;
 	let expected_b = (canvas_rgb.b * 255.0).round() as u8;
 
-	let frame = render_primitive_scene(&mut cx, PrimitiveKind::Button, &opt)
-		.expect("button scene renders");
+	let frame =
+		render_primitive_scene(&mut cx, PrimitiveKind::Button, &opt).expect("button scene renders");
 
 	let mut found_canvas = false;
 	for pixel in frame.pixels() {
@@ -178,6 +178,7 @@ fn rendered_primitive_scenes_use_bundled_dark_theme_colours() {
 
 	assert!(
 		found_canvas,
-		"Rendered frame must contain ground Canvas pixel matching theme #16191f ({expected_r}, {expected_g}, {expected_b})"
+		"Rendered frame must contain ground Canvas pixel matching theme #16191f ({expected_r}, \
+		 {expected_g}, {expected_b})"
 	);
 }

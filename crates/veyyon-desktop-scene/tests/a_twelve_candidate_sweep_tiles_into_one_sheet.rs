@@ -20,8 +20,8 @@
 use std::time::Instant;
 
 use veyyon_desktop_scene::{
-	Appearance, RenderOptions, SheetCell, SheetGrid, distinct_pixel_values, headless_context,
-	render_view, tile, write_png,
+	Appearance, RenderOptions, RgbaColor, SheetCell, SheetGrid, distinct_pixel_values,
+	headless_context, render_view_with_layout, tile, write_png,
 };
 use veyyon_gpui::{
 	App, AppContext, Context, IntoElement, ParentElement, Render, Styled, Window, div, px, rgb,
@@ -106,16 +106,24 @@ fn twelve_gap_candidates_render_and_tile_within_the_budget() {
 	let mut cells = Vec::with_capacity(CANDIDATES);
 	for step in 0..CANDIDATES {
 		let gap = candidate_gap(step);
-		let frame = render_view(&mut cx, &options, move |_window, app: &mut App| {
-			app.new(move |_| GapCandidate { gap })
-		})
-		.expect("a candidate rasterises");
+		let (frame, tree) =
+			render_view_with_layout(&mut cx, &options, move |_window, app: &mut App| {
+				app.new(move |_| GapCandidate { gap })
+			})
+			.expect("a candidate rasterises");
 
 		assert!(
 			distinct_pixel_values(&frame) > 1,
 			"candidate at gap {gap} rendered a uniform frame, so nothing was drawn",
 		);
-		cells.push(SheetCell::new(format!("queue-row  gap {gap:.0}"), frame));
+		let cell = SheetCell::from_rendered(
+			format!("queue-row  gap {gap:.0}"),
+			frame,
+			&tree,
+			RgbaColor::new(0x14, 0x14, 0x1a, 255),
+		);
+		assert!(cell.metrics.is_some(), "candidate at gap {gap} must carry computed clutter metrics");
+		cells.push(cell);
 	}
 
 	assert_eq!(cells.len(), CANDIDATES, "every candidate produced a cell");

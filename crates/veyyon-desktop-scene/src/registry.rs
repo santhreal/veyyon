@@ -7,6 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use strum::IntoEnumIterator;
+pub use veyyon_desktop_kit::PrimitiveKind;
 // `ConnectionStateKind` is the model's own fieldless projection of `ConnectionState`,
 // re-exported so a consumer of this crate still names one type. A copy declared here would not
 // grow when the protocol does, which is the staleness this catalogue exists to catch.
@@ -60,6 +61,7 @@ pub enum RequiredState {
 	Badge(BadgeKind),
 	Section(QueuePartition),
 	RowShape(RowShape),
+	Primitive(PrimitiveKind),
 }
 
 impl RequiredState {
@@ -75,6 +77,7 @@ impl RequiredState {
 			Self::Badge(_) => "queue-badge",
 			Self::Section(_) => "queue-section",
 			Self::RowShape(_) => "queue-row",
+			Self::Primitive(_) => "kit",
 		}
 	}
 
@@ -96,6 +99,7 @@ impl RequiredState {
 			Self::Badge(b) => to_kebab_case(&format!("{b:?}")),
 			Self::Section(s) => to_kebab_case(&format!("{s:?}")),
 			Self::RowShape(r) => to_kebab_case(&format!("{r:?}")),
+			Self::Primitive(p) => to_kebab_case(&format!("{p:?}")),
 		}
 	}
 
@@ -122,6 +126,7 @@ pub fn required_states() -> Vec<RequiredState> {
 	states.extend(BadgeKind::iter().map(RequiredState::Badge));
 	states.extend(QueuePartition::iter().map(RequiredState::Section));
 	states.extend(RowShape::iter().map(RequiredState::RowShape));
+	states.extend(PrimitiveKind::iter().map(RequiredState::Primitive));
 	states
 }
 

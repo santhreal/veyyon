@@ -18,9 +18,13 @@ use std::{
 	sync::Arc,
 };
 
-use veyyon_gpui::{App, Entity, HeadlessAppContext, Pixels, Render, Size, Window, px};
+use veyyon_gpui::{App, Bounds, Entity, HeadlessAppContext, Pixels, Render, Size, Window, px};
 
-use crate::frame::{FrameError, RgbaFrame};
+use crate::{
+	frame::{FrameError, RgbaFrame},
+	layout::{LayoutBoxTree, LayoutError},
+	layout_bridge::layout_box_tree_from_quads,
+};
 
 /// Why a headless render or its encoding did not produce a frame.
 #[derive(Debug, thiserror::Error)]
@@ -46,6 +50,11 @@ pub enum RenderError {
 	Readback {
 		#[source]
 		source: FrameError,
+	},
+	#[error("layout error during box tree construction: {source}")]
+	Layout {
+		#[source]
+		source: LayoutError,
 	},
 
 	#[error("could not create {}: {source}", path.display())]
@@ -173,6 +182,93 @@ pub fn headless_context() -> Result<HeadlessAppContext, RenderError> {
 	}))
 }
 
+/// Rasterises one root view offscreen and captures the rendered frame and
+/// the layout box tree.
+pub fn render_view_with_layout<V, F>(
+	cx: &mut HeadlessAppContext,
+	options: &RenderOptions,
+	build_root: F,
+) -> Result<(RgbaFrame, LayoutBoxTree), RenderError>
+where
+	V: Render + 'static,
+	F: FnOnce(&mut Window, &mut App) -> Entity<V>,
+{
+	render_view_captured(cx, options, build_root).map(|captured| (captured.frame, captured.layout))
+}
+
+/// Everything one offscreen render produced.
+///
+/// The frame is what a reviewer looks at, the tree is what the metrics
+/// evaluate, and the hit rects are what an operator can actually reach. A
+/// surface can be correct in all three and wrong in one, so a render hands
+/// back all three rather than the caller choosing which to trust.
+#[derive(Debug)]
+pub struct Captured {
+	/// The rasterised frame.
+	pub frame:    RgbaFrame,
+	/// The quad tree, in logical pixels.
+	pub layout:   LayoutBoxTree,
+	/// Every hit rect the frame registered, in logical pixels.
+	///
+	/// A rect appears here only for an element that carries a listener, a
+	/// hover style or another reason to be hit-tested, so this is the set of
+	/// controls the frame is willing to answer a click on — not the set of
+	/// things drawn to look like controls.
+	pub hitboxes: Vec<Bounds<Pixels>>,
+}
+
+/// Rasterises one root view offscreen and captures everything the frame knows.
+pub fn render_view_captured<V, F>(
+	cx: &mut HeadlessAppContext,
+	options: &RenderOptions,
+	build_root: F,
+) -> Result<Captured, RenderError>
+where
+	V: Render + 'static,
+	F: FnOnce(&mut Window, &mut App) -> Entity<V>,
+{
+	let window = cx
+		.open_window(options.logical_size(), build_root)
+		.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?;
+
+	cx.update_window(window.into(), |_, window, _| {
+		window.set_scale_factor(options.scale_factor);
+	})
+	.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?;
+
+	cx.run_until_parked();
+
+	let (frame_result, quads) = cx
+		.update_window(window.into(), |_, window, _| {
+			let frame = window.render_to_frame(options.scale_factor);
+			let quads = window.painted_quads();
+			(frame, quads)
+		})
+		.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?;
+
+	cx.update(|app| {
+		let _ = window.update(app, |_, window, _| window.remove_window());
+	});
+
+	let headless_frame =
+		frame_result.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?;
+
+	let hitboxes = headless_frame.hitboxes().to_vec();
+
+	let frame = RgbaFrame::new(
+		headless_frame.width(),
+		headless_frame.height(),
+		options.scale_factor,
+		headless_frame.as_bytes().to_vec(),
+	)
+	.map_err(|source| RenderError::Readback { source })?;
+
+	let layout = layout_box_tree_from_quads(&quads, options.scale_factor)
+		.map_err(|source| RenderError::Layout { source })?;
+
+	Ok(Captured { frame, layout, hitboxes })
+}
+
 /// Rasterises one root view offscreen.
 ///
 /// The root is built by a closure rather than passed as a value because a gpui
@@ -186,10 +282,5 @@ where
 	V: Render + 'static,
 	F: FnOnce(&mut Window, &mut App) -> Entity<V>,
 {
-	let frame = cx
-		.render_frame(options.logical_size(), options.scale_factor, build_root)
-		.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?;
-
-	RgbaFrame::new(frame.width(), frame.height(), options.scale_factor, frame.as_bytes().to_vec())
-		.map_err(|source| RenderError::Readback { source })
+	render_view_with_layout(cx, options, build_root).map(|(frame, _)| frame)
 }
