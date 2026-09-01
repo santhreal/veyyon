@@ -61,8 +61,17 @@ import { PACKAGES, reach, reachedNames } from "../helpers/module-reach-gate";
  * So the leaf is admitted on the same terms as `json.ts` above: one module, zero imports of its own,
  * so the edge cannot grow, and no measurable time. A raise for a module that pulls a graph behind it
  * is a different question and this precedent does not cover it.
+ *
+ * 37 from 2026-08-31, two modules above the 35 the graph measured just before it and one above the
+ * ceiling that stood over it. The modules are `cli/first-frame-replay-entry.ts` and
+ * `cli/first-frame-replay.ts`, the first-frame replay that writes the previous bare launch's
+ * recorded card to fd 1 during the entry's own evaluation. They are on this path on purpose: the
+ * write only beats the import graph from the first import of `cli.ts`, so moving either behind an
+ * `await import(...)` deletes the feature. The pair reaches `node:fs`, `node:os` and `node:path`
+ * and one type-only import of `@veyyon/tui/tui`, which erases, so the edge cannot grow into the
+ * package the way a value import would.
  */
-const BOOT_CEILING = 36;
+const BOOT_CEILING = 37;
 
 /** The same measurement as a floor, so a broken walk fails instead of passing quietly. */
 const BOOT_FLOOR = 25;
