@@ -115,11 +115,13 @@ export function declaredContextWindow(model: Model | undefined): number | undefi
 	return typeof contextWindow === "number" && contextWindow > 0 ? contextWindow : undefined;
 }
 
-export function createCodexCompactionContext(options: {
-	trigger: CodexCompactionContext["trigger"];
-	reason: CodexCompactionContext["reason"];
-	phase: CodexCompactionContext["phase"];
-}): CodexCompactionContext {
+/**
+ * The lifecycle fields a caller states. The operation identity is minted per
+ * call and the strategy is fixed, so neither is a caller's to supply.
+ */
+export type CodexCompactionContextOptions = Pick<CodexCompactionContext, "trigger" | "reason" | "phase">;
+
+export function createCodexCompactionContext(options: CodexCompactionContextOptions): CodexCompactionContext {
 	return {
 		operationId: crypto.randomUUID(),
 		trigger: options.trigger,

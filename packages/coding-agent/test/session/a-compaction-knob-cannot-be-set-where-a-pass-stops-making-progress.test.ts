@@ -28,6 +28,7 @@ import {
 	COMPACTION_CHECK_CONTINUATION,
 	COMPACTION_CHECK_NONE,
 	COMPACTION_RECOVERY_BAND,
+	type CodexCompactionContextOptions,
 	compactionDeadEndWarning,
 	createCodexCompactionContext,
 	declaredContextWindow,
@@ -127,16 +128,25 @@ describe("the context window a model declares", () => {
 });
 
 describe("a codex compaction context", () => {
-	const options = { trigger: "auto", reason: "threshold", phase: "start" } as Parameters<
-		typeof createCodexCompactionContext
-	>[0];
+	const triggers: CodexCompactionContextOptions["trigger"][] = ["manual", "auto"];
+	const reasons: CodexCompactionContextOptions["reason"][] = [
+		"user_requested",
+		"context_limit",
+		"model_downshift",
+		"comp_hash_changed",
+	];
+	const phases: CodexCompactionContextOptions["phase"][] = ["standalone_turn", "pre_turn", "mid_turn"];
+	const every: CodexCompactionContextOptions[] = triggers.flatMap(trigger =>
+		reasons.flatMap(reason => phases.map(phase => ({ trigger, reason, phase }))),
+	);
+	const options = every[0] as CodexCompactionContextOptions;
 
-	test("forwards the trigger, reason and phase it was given", () => {
-		expect(createCodexCompactionContext(options)).toMatchObject({
-			trigger: options.trigger,
-			reason: options.reason,
-			phase: options.phase,
-		});
+	test("forwards every trigger, reason and phase combination unchanged", () => {
+		// A member dropped or rewritten on the way through is how a compaction
+		// pass gets reported to the provider as a different kind of pass.
+		expect(
+			every.map(createCodexCompactionContext).map(({ trigger, reason, phase }) => ({ trigger, reason, phase })),
+		).toEqual(every);
 	});
 
 	test("names the one strategy this route runs", () => {
