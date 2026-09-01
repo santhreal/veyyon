@@ -613,6 +613,10 @@ const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, Relocat
 			to: "./session/vibe-runtime",
 			why: "VibeModeState is declared in session/vibe-runtime.ts, which publishes it",
 		},
+		"./web/search/render": {
+			to: "./web/search/view",
+			why: "the web_search pending row, answer card, unreadable-response fallback and error panel are declared in web/search/view.ts as views the host draws, so the module that built their terminal components is gone",
+		},
 	},
 	"@veyyon/stats": {
 		"./format": {

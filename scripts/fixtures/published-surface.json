@@ -7497,7 +7497,9 @@
 				"./tui/terminal-row",
 				"./tui/terminal-row.js",
 				"./utils/jsonrpc-framing",
-				"./utils/jsonrpc-framing.js"
+				"./utils/jsonrpc-framing.js",
+				"./web/search/view",
+				"./web/search/view.js"
 			],
 			"@veyyon/utils": [
 				"./ansi",
@@ -12560,6 +12562,14 @@
 				"./web/search/providers/browser-fingerprint-constants.js": {
 					"to": "@veyyon/web/browser-fingerprint-constants.js",
 					"why": "packages/coding-agent/src/web/search/providers/browser-fingerprint-constants.ts moved to plugins/web/src/browser-fingerprint-constants.ts, which @veyyon/web publishes as ./browser-fingerprint-constants.js"
+				},
+				"./web/search/render": {
+					"to": "./web/search/view",
+					"why": "the web_search pending row, answer card, unreadable-response fallback and error panel are declared in web/search/view.ts as views the host draws, so the module that built their terminal components is gone"
+				},
+				"./web/search/render.js": {
+					"to": "./web/search/view.js",
+					"why": "the web_search pending row, answer card, unreadable-response fallback and error panel are declared in web/search/view.ts as views the host draws, so the module that built their terminal components is gone"
 				}
 			},
 			"@veyyon/tui": {

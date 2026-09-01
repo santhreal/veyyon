@@ -90,6 +90,10 @@
 			"plugins/web/src"
 		],
 		[
+			"packages/coding-agent/src/web/search/render.ts",
+			"packages/coding-agent/test/oracles/web-search-main-renderer.ts"
+		],
+		[
 			"packages/coding-agent/src/tools/irc-render.ts",
 			"packages/coding-agent/test/oracles/irc-main-renderer.ts"
 		],
@@ -15093,6 +15097,15 @@
 			"mainHash": "9c053129e7bfd187949bfb33cfe85489218e83b7d7e4b0f45962134fa66b9c4e",
 			"structuralHash": "0c2577b4fc60f371e697d4e7ee169862a6cb1877dcc5b0a2f97c43b5e54f6c75",
 			"mainStructuralHash": "f8110caad7a46663fba27c49393f91c1b0a50a656ea1be3bd680d52e6a8bc340"
+		},
+		"packages/coding-agent/test/oracles/web-search-main-renderer.ts": {
+			"old": "packages/coding-agent/src/web/search/render.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "edec774e435b4cdb192b875d4a349191f8e9c5b53f510ed3aafed105044152fa",
+			"mainHash": "69c128b209bbfcf09a8fced7793c5e13c595c728b1e42b9eac4b12a2db4c344f",
+			"structuralHash": "80daafa5183c120f8531df1f94d077be58ad3776ff270b5d23524fb8eaba4623",
+			"mainStructuralHash": "80daafa5183c120f8531df1f94d077be58ad3776ff270b5d23524fb8eaba4623"
 		},
 		"packages/coding-agent/test/tools/an-ssh-block-keeps-its-header-on-one-line.test.ts": {
 			"old": "packages/coding-agent/test/tools/ssh-render.test.ts",

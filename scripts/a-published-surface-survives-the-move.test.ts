@@ -485,7 +485,7 @@ describe("a published surface survives the move", () => {
 		expect(Object.keys(rows).sort()).toEqual(["@veyyon/coding-agent", "@veyyon/tui"]);
 
 		const codingAgent = rows["@veyyon/coding-agent"] ?? {};
-		expect(Object.keys(codingAgent).length).toBe(1198);
+		expect(Object.keys(codingAgent).length).toBe(1200);
 		const intoKernel = Object.values(codingAgent).filter(note => note.to.startsWith("@veyyon/kernel/"));
 		expect(intoKernel.length).toBe(100);
 		const kernelConcerns = new Set(intoKernel.map(note => note.to.split("/").slice(0, 3).join("/")));
