@@ -219,7 +219,7 @@ Watch flow:
 - Failed-job logs are fetched with `gh api /repos/<repo>/actions/jobs/<jobId>/logs` via `git.github.run()`, not `json()`. Non-zero exit leaves `available: false` instead of failing the whole watch.
 - Inline result includes only the last `tail` lines per failed job. The saved artifact contains full logs (`mode: "full"`).
 - In commit mode, success is intentionally double-checked: once all known runs are successful, the tool waits one more poll interval and succeeds only if the set of run IDs is unchanged. This avoids returning before late workflow runs appear for the same commit.
-- `details.watch` drives a specialized renderer in `packages/coding-agent/src/tools/web/gh-renderer.ts`; non-watch results fall back to generic text rendering.
+- `details.watch` drives a specialized card described in `packages/coding-agent/src/tools/web/gh-view.ts`; non-watch results fall back to generic text rendering.
 
 ## Side Effects
 - Filesystem
