@@ -507,6 +507,25 @@ import {
 	stripImagesFromMessage,
 	USER_INTERRUPT_LABEL,
 } from "./messages";
+import {
+	GEMINI_TOOL_REMINDER_TYPE,
+	MEMORY_CONTEXT_MESSAGE_TYPE,
+	MID_RUN_TODO_NUDGE_MAX_PER_CYCLE,
+	MID_RUN_TODO_NUDGE_MESSAGE_TYPE,
+	MID_RUN_TODO_NUDGE_MUTATING_TOOLS,
+	MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD,
+	PLAN_DECISION_TOOLS,
+	PLAN_MODE_REMINDER_MAX,
+	PLAN_YOLO_HANDOFF_MESSAGE_TYPE,
+	PREWALK_ACTION_TOOLS,
+	PREWALK_CHECKLIST_MESSAGE_TYPE,
+	PREWALK_CONTINUE_MESSAGE_TYPE,
+	PREWALK_PLAN_MESSAGE_TYPE,
+	SESSION_STATE_MESSAGE_TYPE,
+	SESSION_STOP_CONTINUATION_CAP,
+	THINKING_LOOP_REDIRECT_TYPE,
+	TOOL_CALL_LOOP_REDIRECT_TYPE,
+} from "./nudges";
 import { OperatorNotices, stderrNoticeSink } from "./operator-notices";
 import { disposeOwnedResources } from "./owned-resources";
 import {
@@ -581,34 +600,6 @@ import {
 } from "./verification-evidence-ledger";
 import { YieldQueue } from "./yield-queue";
 
-const SESSION_STOP_CONTINUATION_CAP = 8;
-const PLAN_MODE_REMINDER_MAX = 3;
-const PLAN_DECISION_TOOLS = new Set<string>([TOOL.ask, TOOL.resolve]);
-
-/**
- * Mutating tool results (`bash`/`eval`/`edit`/`write`/`ast_edit`) without the
- * agent touching the `todo` tool that trip the mid-run reconciliation nudge.
- * Read-only exploration (search/read/lsp) never ticks this: an agent
- * researching for a long stretch has nothing to flip. Picked so a normal
- * fix-verify loop (~3-6 mutations) never sees the nudge, but a sustained run
- * of landed work without flipping any todos does. Without this nudge, long
- * runs drive the live todo HUD to `0/N` until the final stop, then batch-flip
- * to `N/N` (issue #3651).
- */
-const MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD = 12;
-/** Mid-run nudges per prompt cycle. Deliberately tighter than
- *  `todo.reminders.max` (the stop-time budget): this is a gentle hidden hint,
- *  not an escalation ladder. */
-const MID_RUN_TODO_NUDGE_MAX_PER_CYCLE = 2;
-/** Tool results that count as landed work for the mid-run todo nudge. */
-const MID_RUN_TODO_NUDGE_MUTATING_TOOLS: Record<string, true> = {
-	bash: true,
-	eval: true,
-	edit: true,
-	write: true,
-	ast_edit: true,
-};
-
 interface PendingContextSnapshot {
 	promptTokens: number;
 	nonMessageTokens: number;
@@ -629,72 +620,9 @@ interface PendingContextSnapshot {
 	compactionEntryId?: string;
 }
 
-/** `customType` for the hidden mid-run todo nudge; `display: false`, so it reaches
- *  the model but never renders in the TUI or transcript. */
-const MID_RUN_TODO_NUDGE_MESSAGE_TYPE = "mid-run-todo-nudge";
-/**
- * Custom-message type carrying the memory backend's volatile context (recalled
- * memories, mental models) at the TAIL of the conversation.
- *
- * It used to ride in the system prompt, which is the provider's cache prefix, so
- * every recall and every mental-model reload made the next request re-read the
- * whole conversation as uncached input. Same information, same place in the
- * model's reading order, no prefix invalidation.
- */
-const MEMORY_CONTEXT_MESSAGE_TYPE = "memory-context";
-/**
- * Custom-message type carrying the two facts that describe NOW rather than the
- * project: the calendar date and the working directory.
- *
- * They used to be one sentence inside the project block of the system prompt,
- * which is the provider's cache prefix, and the working directory is the one
- * thing in that prefix a session routinely changes. Measured on this repository,
- * a re-root from the root to `packages/utils` altered exactly one line of a
- * 92,921-character prompt — that sentence — and threw away the cached prefix for
- * the entire conversation behind it. Across 19 local log files, 210 of 232
- * recorded prefix invalidations were a `cwd-change`, averaging about 85,000
- * characters re-read each time for a path that had moved a directory down.
- *
- * The rebuild on re-root stays: the rules, skills and workspace tree really are
- * cwd-derived and a cross-project move must change them. What changes is that a
- * move which alters nothing but the path now rebuilds to BYTE-IDENTICAL bytes, so
- * there is no invalidation to record.
- */
-const SESSION_STATE_MESSAGE_TYPE = "session-state";
-/** Hidden plan nudge injected by prewalk; scrubbed from the LLM context
- *  when the switch happens. */
-const PREWALK_PLAN_MESSAGE_TYPE = "prewalk-plan";
-/** Hidden safety-net nudge forcing one more turn after a text-only reply to
- *  the plan nudge, which would otherwise end the run with no code written. */
-const PREWALK_CONTINUE_MESSAGE_TYPE = "prewalk-continue";
-/** Hidden "verify before finishing" checklist steered into the run at the
- *  switch, aimed at the fast model's specific failure patterns: partial
- *  multi-site fixes, unnecessarily broad rewrites, and reported-test-only
- *  verification. */
-const PREWALK_CHECKLIST_MESSAGE_TYPE = "prewalk-checklist";
-/** Tools whose first successful call triggers the switch — once the todo
- *  gate is open (see {@link AgentSession.#prewalkTodoSeen}). Bash is
- *  deliberately excluded: it doubles as exploration (ls/cat) and fired
- *  turn-1 switches in practice. `todo` is deliberately NOT a trigger: firing
- *  at the todo init handed the fast model 100% of the implementation with
- *  zero started work and measurably regressed pass rates. */
-const PREWALK_ACTION_TOOLS: Record<string, true> = {
-	edit: true,
-	write: true,
-};
-/** `customType` for the hidden hand-off message steered to the target model
- *  once PlanYolo auto-approves the plan. Unlike prewalk's plan nudge this
- *  is never scrubbed — it IS the instruction the target model acts on. */
-const PLAN_YOLO_HANDOFF_MESSAGE_TYPE = "plan-yolo-handoff";
 /** Abort reason for the Gemini reasoning-header runaway interrupt. Surfaced on the
  *  discarded assistant turn only; never reaches the model. */
 const GEMINI_HEADER_INTERRUPT_REASON = "Interrupted: emit a tool call instead of more planning";
-/** `customType` for the hidden tool-call reminder injected after the interrupt. */
-const GEMINI_TOOL_REMINDER_TYPE = "gemini-tool-call-reminder";
-/** `customType` for the hidden redirect notice injected into a turn retried after a
- *  thinking/response loop. Steers the model off the repeated content; never displayed. */
-const THINKING_LOOP_REDIRECT_TYPE = "thinking-loop-redirect";
-const TOOL_CALL_LOOP_REDIRECT_TYPE = "tool-call-loop-redirect";
 
 // A side-channel assistant response is signed for the hidden prompt/history that
 // produced it. If we persist that response under a different user turn, native
