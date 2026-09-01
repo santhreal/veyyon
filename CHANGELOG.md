@@ -7,6 +7,9 @@
 ### Added
 
 - The models page on veyyon.dev lists every provider and model veyyon supports, read live from the bundled catalog and auto-refreshed from the repository; `bun run site:build` regenerates `website/models-data.json` from `packages/catalog/src/models.json`.
+- A bare interactive launch replays the previous launch's card from a cache before the CLI's import graph is evaluated, then adopts those rows and corrects only what changed. `bun scripts/bench-startup.ts --runs 5 --bin packages/coding-agent/dist/vey` reports the card's first byte at a 44ms median composed and a 19ms median replayed. The recording is discarded unless the terminal size, the environment this process received and the binary's path, size and modification time all still match, and it ages out after 24 hours; a launch whose composed card disagrees with the replayed rows drops the recording so the next launch records a fresh one.
+- `bun scripts/bench-startup.ts` gains a `replay` arm and keeps the first-frame recording inside its scratch directory. The recording resolves its path from `os.homedir()`, which Bun fixes at process start, so the bench's seeded `HOME` did not reach it and a run read and overwrote the operator's own cache.
+- `VEYYON_REPLAY_DEBUG` names a file the launch appends its replay decision to. A rejected recording is otherwise indistinguishable from a slow launch, and the logger does not exist yet at that point.
 - `/rephrase` asks for the reply on screen again in plainer prose, and refuses unless the conversation is resting on a finished reply.
 - `/autoswarm` opens a setup console for the goal, breadth, attempts and certification, then runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
 - Autoresearch and autoswarm have handbook pages.
@@ -17,6 +20,7 @@
 - `VEYYON_DEBUG_STARTUP` emits a `native:firstCall:<export>` marker naming the native call that first loads the addon, so a launch that pays extraction before its first frame states which call pulled it in.
 - `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
 - `SelectList.setItems` replaces the rows in place, keeping the live search query, the cancel ladder and the selected row followed by value, so a host whose data changes does not have to construct a second list and take the reader's filter with it.
+- `TUI.adoptPaintedWindow(screen)` tells the renderer the terminal already holds a frame someone else painted, and `TUI.paintedScreen()` returns that frame, so the first render after adoption diffs against the rows on screen and rewrites only what changed instead of repainting the viewport.
 - `getLaunchFactsCachePath()` resolves the cache file the launch card reads the previous launch's model, git state and context percentage from.
 - `formatCostTiered()` and `normalizePremiumRequests()`, moved here from `@veyyon/stats/format` so the status row reaches a terminal formatter without the stats package.
 - `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
@@ -61,12 +65,17 @@
 - A run records the arm that produced it and the arm that certified it, both shown on the run screen.
 - The subagent model resolver states the layer numbering its per-agent chain actually resolves. No behavior change.
 - The status row no longer carries the secrets segment. The `secrets` id is gone from every preset and from `statusLine.segments`, and a configuration naming it is rejected; `/secret list` states what a session has masked.
+- Model and effort are chosen per agent. Each agent's page under `/settings` → Subagents → Roster sets the model and effort that agent runs, an agent naming neither runs the profile's default model role at medium effort, and no setting changes the model of more than one agent.
+- The roster states that an operator may write an agent, and names `docs/features/subagents-authoring` as the instructions.
+- The subagent authoring page states which frontmatter key spellings are read: `thinkingLevel` and `thinking-level` reach the same field, an underscore does not, and the bundled definitions use the dashed form.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 - `AbortError`, the file lock and the postmortem handler no longer load `node:assert/strict`, `node:crypto` or `node:inspector` at import, which the launch path waited on for one assertion, one identifier and one signal handler.
 
 ### Removed
 
+- `subagent.sharedModel`, `subagent.model`, `subagent.thinkingLevel` and `subagent.modelByDepth` decided the model and effort for every subagent at once and are rejected; a config still holding one is reported once, naming the agent page that replaces it.
+- The `--subagent-model` launch flag, which set the model for every subagent in the session.
 - The `@veyyon/stats/format` entry point. `formatCostTiered` and `normalizePremiumRequests` are now exported by `@veyyon/utils/format`.
 
 ### Fixed

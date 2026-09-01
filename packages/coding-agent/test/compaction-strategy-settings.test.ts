@@ -102,20 +102,20 @@ describe("model role selectability", () => {
 
 describe("subagent and compaction model resolution", () => {
 	/**
-	 * `subagent.model` outranks an agent definition's own `model:` frontmatter
-	 * while Same Model for All Agents is on, so one shared setting really does
-	 * move every subagent. The full two-chain matrix lives in the subagent-model
-	 * suite; this keeps the neighbouring compaction case honest company.
+	 * A subagent's own lane outranks its definition's `model:` frontmatter, and
+	 * moves that agent alone. The full matrix lives in the subagent-model suite;
+	 * this keeps the neighbouring compaction case honest company.
 	 */
-	it("prefers subagent.model over agent frontmatter model while shared is on", () => {
-		const settings = Settings.isolated({ "subagent.sharedModel": true, "subagent.model": "openai/gpt-5" });
+	it("prefers an agent's lane over its frontmatter model", () => {
+		const settings = Settings.isolated({
+			"subagent.agents": { scout: { model: "openai/gpt-5" } },
+		} as Parameters<typeof Settings.isolated>[0]);
 		const resolved = resolveSubagentModel({
 			settings,
 			agentName: "scout",
 			agentModel: "anthropic/claude-sonnet-4-5",
-			activeModelPattern: "openai/gpt-4.1",
 		});
-		expect(resolved.source).toBe("blanket");
+		expect(resolved.source).toBe("lane");
 		expect(resolved.patterns[0]).toContain("gpt-5");
 	});
 

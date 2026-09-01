@@ -23,7 +23,10 @@ import { stripAnsi } from "@veyyon/utils/strip-ansi";
  * setter without adding a descriptor. When this suite was written they had, and
  * seven working flags were invisible in help: `--fork`, `--session`,
  * `--subagent-model`, `--compaction-model`, `--plugin-dir`,
- * `--provider-session-id`, and `--prompt-cache-key`. An undocumented flag is not
+ * `--provider-session-id`, and `--prompt-cache-key`. `--subagent-model` has
+ * since been removed, because a model chosen once for every subagent is exactly
+ * the cross-agent control this product no longer has; the other six are asserted
+ * below. An undocumented flag is not
  * a cosmetic problem. Nobody can use a capability they cannot discover, and
  * `--fork` in particular is the only non-destructive way to branch a session:
  * without it in help, the reachable answer is `--resume`, which writes into the
@@ -118,14 +121,13 @@ describe("the launch parser and its help agree on the flag list", () => {
 
 describe("the flags that were missing are named in help", () => {
 	/**
-	 * Each of the seven is asserted by name with a real description, not merely
+	 * Each of the six is asserted by name with a real description, not merely
 	 * by presence in the set. A descriptor added with an empty description would
 	 * satisfy the reconciliation above while still telling a reader nothing.
 	 */
 	it.each([
 		["fork", "branching a session without writing to the original"],
 		["session", "the alias of --resume"],
-		["subagent-model", "the model subagents run on"],
 		["compaction-model", "the model that summarizes on compaction"],
 		["plugin-dir", "an extra plugin discovery root"],
 		["provider-session-id", "reusing a provider-side session"],

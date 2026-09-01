@@ -100,8 +100,8 @@ docker run --rm \
 			cp -a /host-auth/. /sandbox/home/.veyyon/shared-auth/
 			cp -a /host-auth/. /sandbox/home/.veyyon/profiles/default/agent/
 		fi
-		# A recorder on another machine cannot resolve the llama.cpp container by the
-		# name it has on this daemon, so the base URL is overridable at record time.
+		chown -R "$(id -u):$(id -g)" /sandbox/home || true
+		chmod -R 777 /sandbox/home/.veyyon || true
 		if [ -n "${PROOF_LLM_BASE_URL}" ]; then
 			sed -i "s|baseUrl: .*|baseUrl: ${PROOF_LLM_BASE_URL}|" /sandbox/home/.veyyon/profiles/default/agent/models.yml
 		fi

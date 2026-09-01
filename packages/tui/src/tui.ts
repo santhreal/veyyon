@@ -763,6 +763,31 @@ interface CursorControlResult extends HardwareCursorUpdate {
 }
 
 /**
+ * A composed frame as the terminal is showing it: the rows, the geometry they were composed at,
+ * and the two positions an incremental update writes relative to.
+ *
+ * Exported because it crosses a process boundary. A launch records one, the next launch replays
+ * its bytes and hands this back through {@link TUI.adoptPaintedWindow}, and the engine picks up
+ * where the recording left off instead of repainting.
+ */
+export interface AdoptedScreen {
+	readonly window: readonly string[];
+	/**
+	 * Rows the frame composed to, which is not `window.length`: the window is padded to the
+	 * viewport and the frame is not. `composedFrameRows` reports this, and the home anchor sizes
+	 * the gap between the content and the composer from it, so a window length here is a composer
+	 * placed against a frame that is mostly padding.
+	 */
+	readonly frameLength: number;
+	readonly width: number;
+	readonly height: number;
+	/** Frame row the terminal cursor is parked on. */
+	readonly cursorRow: number;
+	/** Frame row the visible window starts at. */
+	readonly windowTopRow: number;
+}
+
+/**
  * One root child's contribution to the composed frame: the array reference its
  * render() returned, the frame row it starts at, the row count recorded at
  * compose time (in-place mutators keep the reference but may change length),
@@ -1326,6 +1351,8 @@ export class TUI extends Container {
 	#clearScrollbackOnNextRender = false;
 	#forceViewportRepaintOnNextRender = false;
 	#hasEverRendered = false;
+	/** An {@link adoptPaintedWindow} screen no frame has diffed against yet. */
+	#adoptedScreenUnconsumed = false;
 	// Erase-and-replay history when a block's final form replaces the live
 	// preview that already scrolled off.
 	//
@@ -2245,6 +2272,57 @@ export class TUI extends Container {
 	override invalidate(): void {
 		super.invalidate();
 		for (const overlay of this.overlayStack) overlay.component.invalidate?.();
+	}
+
+	/**
+	 * Take the screen as already showing `screen`, so the next render diffs against it instead of
+	 * repainting the viewport.
+	 *
+	 * WHO NEEDS THIS. Something outside the engine wrote a frame this engine did not compose, and
+	 * the engine is about to compose the same one. Without adoption the first render is a full
+	 * paint by definition (`firstPaint = !#hasEverRendered`), which erases and rewrites every row
+	 * the caller just wrote, and the operator watches an assembled screen blink and reassemble.
+	 *
+	 * WHAT THE CALLER PROMISES. That `screen` is exactly what the terminal shows: the same rows the
+	 * engine would have composed, at the same geometry, styles included. A caller that cannot
+	 * promise that must not adopt, because the next render writes only the rows that DIFFER from
+	 * these and a wrong row here is a row that never gets corrected. The bytes a caller replays and
+	 * the screen it adopts come from one recording for that reason.
+	 *
+	 * THE POSITIONS ARE PART OF THE SCREEN. An update writes RELATIVE cursor motion, from the row
+	 * the engine believes the cursor is on and against the frame row it believes the window starts
+	 * at. Adopting rows without adopting both puts every subsequent row at an offset, and a card
+	 * that reappears one row down the screen is what each of them looked like when it was missing.
+	 *
+	 * WHAT IT DOES NOT COVER. Only a chrome-only frame: nothing here seeds the commit ledger, the
+	 * scroll tape or the committed prefix, all of which stay empty, so an adopted screen must hold
+	 * no transcript history. The launch card is the case that exists, and it is entirely chrome.
+	 */
+	adoptPaintedWindow(screen: AdoptedScreen): void {
+		this.#previousWindow = [...screen.window];
+		this.#previousFrameLength = screen.frameLength;
+		this.#previousWidth = screen.width;
+		this.#previousHeight = screen.height;
+		this.#hardwareCursorRow = screen.cursorRow;
+		this.#windowTopRow = screen.windowTopRow;
+		this.#hasEverRendered = true;
+		this.#adoptedScreenUnconsumed = true;
+	}
+
+	/**
+	 * Everything about the last frame that {@link adoptPaintedWindow} needs to take it as given:
+	 * the rows, the geometry they were composed at, and the two accounting positions an update
+	 * writes relative to.
+	 */
+	paintedScreen(): AdoptedScreen {
+		return {
+			window: this.#previousWindow,
+			frameLength: this.#previousFrameLength,
+			width: this.#previousWidth,
+			height: this.#previousHeight,
+			cursorRow: this.#hardwareCursorRow,
+			windowTopRow: this.#windowTopRow,
+		};
 	}
 
 	start(options?: TUIStartOptions): void {
@@ -4310,6 +4388,15 @@ export class TUI extends Container {
 			this.#publishCommittedRows();
 			return;
 		}
+		// `start()` ends in `requestRender(true)`, so the frame that follows an adoption arrives
+		// with the forced-repaint flag set and would rewrite every row of the window -- the exact
+		// cost adoption exists to avoid, and invisible in a screen comparison because a full
+		// rewrite of the right rows looks identical. The force flag is what keeps that first frame
+		// from being downgraded to a viewport-only or throttled paint, which the adopted frame
+		// still wants; only its rewrite-everything effect is dropped, and only once.
+		const adoptedFirstFrame = this.#adoptedScreenUnconsumed;
+		this.#adoptedScreenUnconsumed = false;
+		if (adoptedFirstFrame) this.#forceViewportRepaintOnNextRender = false;
 		// 6. Emit.
 		if (intent.kind === "fullPaint") {
 			this.#emitFullPaint(frame, window, width, height, cursorPos, purgeSequence, imageTransmitBuffer, {

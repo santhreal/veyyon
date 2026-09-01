@@ -5,6 +5,9 @@
 ### Added
 
 - The models page on veyyon.dev lists every provider and model veyyon supports, read live from the bundled catalog and auto-refreshed from the repository; `bun run site:build` regenerates `website/models-data.json` from `packages/catalog/src/models.json`.
+- A bare interactive launch replays the previous launch's card from a cache before the CLI's import graph is evaluated, then adopts those rows and corrects only what changed. `bun scripts/bench-startup.ts --runs 5 --bin packages/coding-agent/dist/vey` reports the card's first byte at a 44ms median composed and a 19ms median replayed. The recording is discarded unless the terminal size, the environment this process received and the binary's path, size and modification time all still match, and it ages out after 24 hours; a launch whose composed card disagrees with the replayed rows drops the recording so the next launch records a fresh one.
+- `bun scripts/bench-startup.ts` gains a `replay` arm and keeps the first-frame recording inside its scratch directory. The recording resolves its path from `os.homedir()`, which Bun fixes at process start, so the bench's seeded `HOME` did not reach it and a run read and overwrote the operator's own cache.
+- `VEYYON_REPLAY_DEBUG` names a file the launch appends its replay decision to. A rejected recording is otherwise indistinguishable from a slow launch, and the logger does not exist yet at that point.
 - `/rephrase` asks for the reply on screen again in plainer prose, and refuses unless the conversation is resting on a finished reply.
 - `/autoswarm` opens a setup console for the goal, breadth, attempts and certification, then runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
 - Autoresearch and autoswarm have handbook pages.
@@ -52,6 +55,9 @@
 - A run records the arm that produced it and the arm that certified it, both shown on the run screen.
 - The subagent model resolver states the layer numbering its per-agent chain actually resolves. No behavior change.
 - The status row no longer carries the secrets segment. The `secrets` id is gone from every preset and from `statusLine.segments`, and a configuration naming it is rejected; `/secret list` states what a session has masked.
+- Model and effort are chosen per agent. Each agent's page under `/settings` → Subagents → Roster sets the model and effort that agent runs, an agent naming neither runs the profile's default model role at medium effort, and no setting changes the model of more than one agent.
+- The roster states that an operator may write an agent, and names `docs/features/subagents-authoring` as the instructions.
+- The subagent authoring page states which frontmatter key spellings are read: `thinkingLevel` and `thinking-level` reach the same field, an underscore does not, and the bundled definitions use the dashed form.
 
 ### Fixed
 
@@ -115,6 +121,11 @@
 - `/cpu-limit` no longer sets a budget: it reports both scopes and lifts this session's CPU cap, and points at `/settings` under Resources for configuration.
 - An ACP client following a tool-call location now opens the file, not a name ending in the read tool's line range.
 - The settings screen states that `left` returns to the category list, and no longer expands a row that has no description, which consumed the next `left` with nothing on screen to show for it.
+
+### Removed
+
+- `subagent.sharedModel`, `subagent.model`, `subagent.thinkingLevel` and `subagent.modelByDepth` decided the model and effort for every subagent at once and are rejected; a config still holding one is reported once, naming the agent page that replaces it.
+- The `--subagent-model` launch flag, which set the model for every subagent in the session.
 
 ## [1.3.0] - 2026-08-28
 

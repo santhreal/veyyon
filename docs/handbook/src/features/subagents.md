@@ -19,8 +19,9 @@ subagent:
   delegation: preferred   # the default; the prompt requests that substantial work be delegated
 ```
 
-Every subagent runs the model you are working with. Change the model you are talking
-to and your subagents follow it.
+Each subagent runs the model and effort set on its own page in the roster. An agent
+that names neither runs the profile's default model at medium effort. Changing the
+model you are talking to moves that session and nothing else.
 
 Veyyon also ships five specialists (`scout`, `reviewer`, `designer`, `librarian`,
 `sonic`), and they are **disabled** by default. During first-run setup, the
@@ -95,6 +96,8 @@ model, and effort, or reset it to defaults.
 To add an agent, put a markdown definition in `~/.veyyon/subagents/`, or start
 from the shipped definitions by running `veyyon agents unpack`. The definition
 makes the role available. Enable its row before the model may start it.
+[Writing a subagent](./subagents-authoring.md) covers the frontmatter fields, the
+system prompt and enabling the result.
 
 That directory is read by every profile, and the file is the whole definition.
 Which profile may spawn the agent is a separate, per-profile answer:
@@ -122,16 +125,16 @@ permission. Enable the role during setup or in the Agents settings table.
 
 ## Choosing models
 
-The first row of the roster, **Same Model for All Agents**, decides which of two
-rules answers. It is off by default.
+Model and effort belong to one agent. There is no setting that answers for the whole
+roster: open **Subagents → Roster**, press Enter on an agent, and set the model and
+the effort on that agent's own page.
 
-**Off — each agent answers for itself.** The first of these that names a model
-wins:
+For one agent, the first of these that names a model wins:
 
-1. that agent's own row, `subagent.agents.<name>.model`
-2. `subagent.modelByDepth.<n>`, for a spawn at exactly that depth
-3. the agent definition's own `model:` frontmatter, for an agent you wrote
-4. otherwise the subagent inherits the model you are working with
+1. that agent's lane, `subagent.agents.<name>.model`, and for a nested spawn the
+   `subagents` level under it that governs that depth
+2. the agent definition's own `model:` frontmatter, for an agent you wrote
+3. the profile's `default` model role
 
 ```yaml
 subagent:
@@ -139,35 +142,34 @@ subagent:
     reviewer:
       enabled: true
       model: anthropic/claude-opus-4-5
+      thinkingLevel: high
 ```
 
-**On — one model answers for all of them.** `subagent.model` and
-`subagent.thinkingLevel` decide, and nothing per-agent is consulted: a row's own
-model, a depth row, and an agent file's `model:` all stop applying. The roster
-greys the agent rows while this is on, because their models are not what runs.
-Unset still inherits the model you are working with.
+Effort resolves on the same three layers, ending at `medium`. An explicit `:effort`
+suffix on the resolved model pattern outranks all of them.
 
-```yaml
-subagent:
-  sharedModel: true
-  model: openai/gpt-5:high
-```
+The `default` model role is the model the main assistant starts on, and it is the
+one keystroke path for the common case: `/model` writes it, and every agent with no
+model of its own follows it. A temporary pick, role cycling and plan mode move the
+live session model only, so an agent never changes model because of a keystroke
+aimed at the main assistant.
 
-No bundled agent pins a model, so a stock install inherits your session model
-either way. **Inherit** passes the current session's effective effort into the
-child, while an explicit `auto` requests that the provider choose. An explicit
-`:effort` suffix on a model pattern always wins over an agent's own default.
+`subagent.sharedModel`, `subagent.model`, `subagent.thinkingLevel` and
+`subagent.modelByDepth` decided for every agent at once and no longer apply. A config
+still holding one is reported once, naming the roster page that replaces it.
 
 ### Fallback models
 
-Every one of those four places takes a list, not just one model:
+Every one of those places takes a list, not just one model:
 
 ```yaml
 subagent:
-  model: anthropic/claude-opus-4-5,openai/gpt-5
+  agents:
+    reviewer:
+      model: anthropic/claude-opus-4-5,openai/gpt-5
 ```
 
-The first entry is what subagents run on. The rest are held in reserve: when a run errors on the
+The first entry is what that agent runs on. The rest are held in reserve: when a run errors on the
 model in use, that agent retries on the next entry rather than failing. The settings picker writes
 the value for you: open the model row, add a fallback, and press Enter on any entry to move it up
 the list.
@@ -176,22 +178,26 @@ A longer chain reads better as a list, and both spellings mean the same thing:
 
 ```yaml
 subagent:
-  model:
-    - anthropic/claude-opus-4-5
-    - openai/gpt-5
+  agents:
+    reviewer:
+      model:
+        - anthropic/claude-opus-4-5
+        - openai/gpt-5
 ```
 
 Write it whichever way suits the file. `compaction.model` takes a chain the same two ways.
 
 A chain only covers errors at run time. A model pattern that matches nothing is still a
 configuration mistake, so veyyon will not spawn the agent and states the setting, rather than
-quietly running it on the next entry: a typo must not silently downgrade every subagent you spawn.
+quietly running it on the next entry: a typo must not silently downgrade the agent you spawn.
 
 In the `Subagents` block above the composer, an agent that fell back is marked with `↓` before its
 model badge, so you can tell a deliberate model from a retried one at a glance.
 
 Effort is chosen from a list: `off`, `minimal` through `max`, `auto`, or `Inherit`.
-The same list appears in both places, so you cannot set a level that does not exist. If a hand-written config
+`Inherit` on an agent's own page means the default effort; on a nested page it means the
+page above it. `auto` requests that the provider choose. The same list appears in both
+places, so you cannot set a level that does not exist. If a hand-written config
 holds one that does not, veyyon reports the levels that work, rather than
 treating it as `Inherit` and leaving you with a setting that reads as configured and
 changes nothing.
@@ -200,7 +206,7 @@ A configured model that matches nothing available does **not** quietly fall thro
 the next layer. The spawn is rejected and the message states the setting to fix, because
 falling through is indistinguishable from your setting having no effect. Both agent
 surfaces show, for the selected agent, the pattern, the model it resolves to, and
-which of the four layers decided.
+which of the three layers decided.
 
 ## Watching a run
 

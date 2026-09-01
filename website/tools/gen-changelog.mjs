@@ -585,9 +585,10 @@ export function renderRootChangelog(sources, { forkPointVersion = FORK_POINT_VER
  * splits the list, veyyon's line renders as cards, and everything at/below the
  * fork point is collapsed into a single credit note (`upstreamNote`) that
  * links to oh-my-pi for the pre-fork history. The `[Unreleased]` block renders
- * first as an "Unreleased" card so there is real veyyon news before 1.0.0 is
- * cut. The "latest" pill goes to the newest *published* veyyon release (or, when
- * the GitHub lookup was skipped, the newest veyyon CHANGELOG entry).
+ * first as an "Unreleased" card, so work that has landed since the last tag is
+ * visible on the page. The "latest" pill goes to the newest *published* veyyon
+ * release (or, when the GitHub lookup was skipped, the newest veyyon CHANGELOG
+ * entry).
  */
 export function buildChangelogHtml(reconciledReleases, { unreleased = null, forkPointVersion = FORK_POINT_VERSION, maxReleases = MAX_RELEASES } = {}) {
 	const forkIdx = reconciledReleases.findIndex(r => r.version === forkPointVersion);
