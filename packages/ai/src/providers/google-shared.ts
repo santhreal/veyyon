@@ -60,7 +60,7 @@ export type {
 } from "./google-types";
 export { normalizeSchemaForGoogle };
 
-type GoogleApiType = "google-generative-ai" | "google-gemini-cli" | "google-vertex";
+export type GoogleApiType = "google-generative-ai" | "google-gemini-cli" | "google-vertex";
 
 /**
  * Thinking level for Gemini 3 models. Mirrors Google's `ThinkingLevel` enum values.

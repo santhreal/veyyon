@@ -85,11 +85,11 @@ function isGoogleUnsupportedSchemaField(key: string): boolean {
 	return Object.hasOwn(UNSUPPORTED_SCHEMA_FIELDS, key);
 }
 
-function isMcpUnsupportedSchemaField(key: string): boolean {
+export function isMcpUnsupportedSchemaField(key: string): boolean {
 	return key === "$schema";
 }
 
-function isMoonshotUnsupportedSchemaField(key: string): boolean {
+export function isMoonshotUnsupportedSchemaField(key: string): boolean {
 	// `default` is an MFJS Meta Data field (kept); everything else here is a
 	// validation/decorative keyword or tuple form MFJS rejects.
 	if (key === "default") return false;

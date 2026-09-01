@@ -1,4 +1,3 @@
-/// <reference types="./bun-imports.d.ts" />
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -8,18 +7,18 @@ import type { Model, ToolExample } from "@veyyon/ai";
 import { formatSessionDumpText, RpcClient } from "@veyyon/coding-agent";
 import { estimateTokensFromText, prompt, splitTextLines } from "@veyyon/utils";
 import { diffLines } from "diff";
-import { formatDirectory } from "@veyyon/typescript-edit-benchmark/formatter";
+import { formatDirectory } from "@veyyon/evals/suites/typescript-edit/formatter";
 import {
 	discoverSharedInfra,
 	InProcessClient,
 	type SharedInfra,
-} from "@veyyon/typescript-edit-benchmark/in-process-client";
+} from "@veyyon/evals/backends/in-process/client";
 import { EDIT_BENCHMARK_PROMPTS } from "./prompts/registry";
-import type { EditTask } from "@veyyon/typescript-edit-benchmark/tasks";
+import type { EditTask } from "@veyyon/evals/suites/typescript-edit/tasks";
 import {
 	verifyExpectedFileSubset,
 	verifyExpectedFiles,
-} from "@veyyon/typescript-edit-benchmark/verify";
+} from "@veyyon/evals/suites/typescript-edit/verify";
 
 
 import {
@@ -70,7 +69,6 @@ import {
 	type PromptTurnLimitTelemetry,
 	type ProviderFailure,
 } from "./runner-helpers";
-
 export {
 	EDIT_FAILURE_CATEGORIES,
 	writeConversationDump,

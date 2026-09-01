@@ -1199,7 +1199,7 @@ export class CmuxTab {
 	}
 }
 
-class CmuxResponse {
+export class CmuxResponse {
 	readonly #record: CmuxResponseRecord;
 
 	constructor(record: CmuxResponseRecord) {
@@ -1240,7 +1240,7 @@ class CmuxResponse {
 	}
 }
 
-class CmuxElementHandle {
+export class CmuxElementHandle {
 	readonly #tab: CmuxTab;
 	readonly #selector: string;
 
@@ -1321,7 +1321,7 @@ class CmuxLocator {
 	}
 }
 
-class CmuxPageFacade {
+export class CmuxPageFacade {
 	readonly #tab: CmuxTab;
 	readonly keyboard: { press: (key: string) => Promise<void> };
 	readonly mouse: {
@@ -1417,7 +1417,7 @@ class CmuxPageFacade {
 	}
 }
 
-class CmuxBrowserFacade {
+export class CmuxBrowserFacade {
 	readonly #tab: CmuxTab;
 	connected = true;
 
@@ -1542,6 +1542,6 @@ export async function runCmuxCode(tab: CmuxTab, opts: RunCmuxCodeOptions): Promi
 	}
 }
 
-function numberFrom(value: unknown, fallback: number): number {
+export function numberFrom(value: unknown, fallback: number): number {
 	return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }

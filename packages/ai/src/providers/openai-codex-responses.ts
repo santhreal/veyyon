@@ -3310,7 +3310,7 @@ function toWebSocketUrl(url: string): string {
 	return parsed.toString();
 }
 
-function headersToRecord(headers: Headers): Record<string, string> {
+export function headersToRecord(headers: Headers): Record<string, string> {
 	const result: Record<string, string> = {};
 	for (const [key, value] of headers.entries()) {
 		result[key] = value;
@@ -3327,7 +3327,7 @@ interface CodexWebSocketConnectionOptions {
 	onHandshakeHeaders?: (headers: Headers) => void;
 }
 
-class CodexWebSocketConnection {
+export class CodexWebSocketConnection {
 	#url: string;
 	#headers: Record<string, string>;
 	#onHandshakeHeaders?: (headers: Headers) => void;

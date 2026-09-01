@@ -77,8 +77,8 @@ const MAX_SNAPSHOT_STRING_BYTES = 4096;
 const MAX_SNAPSHOT_NODES = 128;
 const MAX_DECODE_LINES = 32_768;
 const MAX_DECODE_RECORDS = 32_768;
-const MAX_PENDING_RECORDS = 128;
-const MAX_PENDING_BYTES = MAX_PENDING_RECORDS * MAX_RECORD_BYTES;
+export const MAX_PENDING_RECORDS = 128;
+export const MAX_PENDING_BYTES = MAX_PENDING_RECORDS * MAX_RECORD_BYTES;
 
 /**
  * Size at which the log is rotated, keeping one previous generation.
@@ -741,7 +741,7 @@ function isSecretExpansionRecord(value: unknown): value is SecretExpansionRecord
 }
 
 /** Reject paths an audit write must never follow or reinterpret. */
-function assertOwnedRegularFile(filePath: string, stats: Stats): void {
+export function assertOwnedRegularFile(filePath: string, stats: Stats): void {
 	if (!stats.isFile()) {
 		throw new Error(`The secret audit path at ${escapeTerminalText(filePath)} is not a regular file.`);
 	}

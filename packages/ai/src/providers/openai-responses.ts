@@ -167,7 +167,7 @@ const OPENAI_RESPONSES_FIRST_EVENT_TIMEOUT_MESSAGE =
 /** Consecutive stale-previous-response failures before chaining is disabled for the session. */
 const OPENAI_RESPONSES_CHAIN_STALE_FAILURE_LIMIT = 3;
 
-interface OpenAIResponsesProviderSessionState
+export interface OpenAIResponsesProviderSessionState
 	extends ProviderSessionState,
 		OpenAIStrictToolsState,
 		OpenAIReasoningEffortFallbackState {
@@ -328,7 +328,7 @@ function markOpenAIResponsesChainZeroDataRetention(chain: OpenAIResponsesChainSt
 	});
 }
 
-type OpenAIResponsesSamplingParams = ResponseCreateParamsStreaming & {
+export type OpenAIResponsesSamplingParams = ResponseCreateParamsStreaming & {
 	top_p?: number;
 	top_k?: number;
 	min_p?: number;
@@ -341,7 +341,7 @@ type OpenAIResponsesSamplingParams = ResponseCreateParamsStreaming & {
 	cache_control?: CacheControlEphemeral;
 };
 
-function buildDeveloperSystemInput(
+export function buildDeveloperSystemInput(
 	systemPrompts: readonly string[],
 	cachePolicy: OpenAIPromptCachePolicy,
 ): ResponseInput[number][] {
@@ -354,7 +354,7 @@ function buildDeveloperSystemInput(
 	});
 }
 
-function maybeAddOpenRouterAnthropicCacheControl(
+export function maybeAddOpenRouterAnthropicCacheControl(
 	params: OpenAIResponsesSamplingParams,
 	model: Model<"openai-responses">,
 	cacheRetention: CacheRetention,

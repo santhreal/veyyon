@@ -458,7 +458,7 @@ function resolveContentCapture(value: TelemetryContentCapture | undefined): Reso
  * conversation, agent identity, user-supplied extras) pre-applied. Returns
  * `undefined` when telemetry is disabled.
  */
-function startSpan(
+export function startSpan(
 	telemetry: AgentTelemetry | undefined,
 	kind: TelemetrySpanKind,
 	name: string,
@@ -725,7 +725,7 @@ function createTelemetryTextSanitizer(telemetry: AgentTelemetry): TelemetryTextS
 
 const sanitizedSpanWrappers = new WeakMap<AgentTelemetry, WeakMap<Span, Span>>();
 
-function wrapSpanWithTextSanitizer(
+export function wrapSpanWithTextSanitizer(
 	telemetry: AgentTelemetry,
 	rawSpan: Span,
 	textSanitizer = createTelemetryTextSanitizer(telemetry),
@@ -807,7 +807,7 @@ function wrapSpanWithTextSanitizer(
 	return wrappedSpan;
 }
 
-function buildTelemetryAttributeContext(
+export function buildTelemetryAttributeContext(
 	telemetry: AgentTelemetry,
 	kind: TelemetrySpanKind,
 	options: {
@@ -828,7 +828,7 @@ function buildTelemetryAttributeContext(
 	};
 }
 
-function resolveDynamicAttributes(telemetry: AgentTelemetry, ctx: TelemetryAttributeContext): Attributes | undefined {
+export function resolveDynamicAttributes(telemetry: AgentTelemetry, ctx: TelemetryAttributeContext): Attributes | undefined {
 	const resolver = telemetry.config.resolveAttributes;
 	if (!resolver) return undefined;
 	try {
@@ -862,7 +862,7 @@ function applyAgentAttributes(attrs: Attributes, agent: AgentIdentity): void {
 	if (agent.description) attrs[GenAIAttr.AgentDescription] = agent.description;
 }
 
-function normalizeProviderName(
+export function normalizeProviderName(
 	telemetry: AgentTelemetry | undefined,
 	provider: string | undefined,
 ): string | undefined {
@@ -905,7 +905,7 @@ function mapProviderNameToOtel(provider: string | undefined): string | undefined
 	}
 }
 
-function normalizeAgentIdentity(telemetry: AgentTelemetry, agent: AgentIdentity): AgentIdentity {
+export function normalizeAgentIdentity(telemetry: AgentTelemetry, agent: AgentIdentity): AgentIdentity {
 	const normalize = telemetry.config.normalizeAgentName;
 	if (!normalize || !agent.name) return agent;
 	try {
@@ -925,7 +925,7 @@ function normalizeAgentIdentity(telemetry: AgentTelemetry, agent: AgentIdentity)
 	}
 }
 
-function normalizedTelemetryAgent(telemetry: AgentTelemetry | undefined): AgentIdentity | undefined {
+export function normalizedTelemetryAgent(telemetry: AgentTelemetry | undefined): AgentIdentity | undefined {
 	return telemetry?.agent ? normalizeAgentIdentity(telemetry, telemetry.agent) : undefined;
 }
 
@@ -933,7 +933,7 @@ export function recordTelemetryWarning(telemetry: AgentTelemetry | undefined, wa
 	emitTelemetryWarning(telemetry, warning);
 }
 
-function emitTelemetryWarning(telemetry: AgentTelemetry | undefined, warning: AgentTelemetryWarning): void {
+export function emitTelemetryWarning(telemetry: AgentTelemetry | undefined, warning: AgentTelemetryWarning): void {
 	const hook = telemetry?.config.onTelemetryWarning;
 	if (!hook) {
 		if (warning.error === undefined) console.warn(`[pi-agent] ${warning.message}`);
@@ -961,7 +961,7 @@ function safeOnSpanStart(telemetry: AgentTelemetry | undefined, ctx: TelemetryHo
 	}
 }
 
-function safeOnSpanEnd(telemetry: AgentTelemetry | undefined, ctx: TelemetryHookContext): void {
+export function safeOnSpanEnd(telemetry: AgentTelemetry | undefined, ctx: TelemetryHookContext): void {
 	const hook = telemetry?.config.onSpanEnd;
 	if (!hook) return;
 	try {
@@ -1092,7 +1092,7 @@ function applyContentCaptureForRequest(telemetry: AgentTelemetry, span: Span, re
 	if (inputMessages) span.setAttribute(GenAIAttr.InputMessages, inputMessages);
 }
 
-function applyContentCaptureForResponse(telemetry: AgentTelemetry, span: Span, message: AssistantMessage): void {
+export function applyContentCaptureForResponse(telemetry: AgentTelemetry, span: Span, message: AssistantMessage): void {
 	const responseText = serializeResponseTextForTelemetry(telemetry, message);
 	if (responseText) span.setAttribute(PiGenAIAttr.ResponseText, responseText);
 	const responseToolCalls = serializeResponseToolCallsForTelemetry(telemetry, message);
@@ -1169,18 +1169,18 @@ function serializeResponseToolCallsForTelemetry(
 	return serialized;
 }
 
-interface TelemetryMessageSummary {
+export interface TelemetryMessageSummary {
 	readonly role: string;
 	readonly content: unknown;
 }
 
-interface TelemetryToolCallSummary {
+export interface TelemetryToolCallSummary {
 	readonly toolCallId: string;
 	readonly toolName: string;
 	readonly input: unknown;
 }
 
-type OtelMessagePart =
+export type OtelMessagePart =
 	| { readonly type: "text"; readonly content: string }
 	| { readonly type: "reasoning"; readonly content: string }
 	| { readonly type: "blob"; readonly modality: "image"; readonly mime_type: string; readonly content: string }

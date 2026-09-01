@@ -166,7 +166,7 @@ function resolveBedrockRegion(modelId: string, options: BedrockOptions): string 
 	return ambient || "us-east-1";
 }
 
-type Block = (TextContent | ThinkingContent | ToolCall) & {
+export type Block = (TextContent | ThinkingContent | ToolCall) & {
 	[kStreamingBlockIndex]?: number;
 	[kStreamingPartialJson]?: string;
 	[kStreamingLastParseLen]?: number;
@@ -182,13 +182,13 @@ interface CachePoint {
 interface TextBlockWire {
 	text: string;
 }
-interface ImageBlockWire {
+export interface ImageBlockWire {
 	image: { format: "jpeg" | "png" | "gif" | "webp"; source: { bytes: string } };
 }
 interface ToolUseBlockWire {
 	toolUse: { toolUseId: string; name: string; input: unknown };
 }
-interface ToolResultBlockWire {
+export interface ToolResultBlockWire {
 	toolResult: {
 		toolUseId: string;
 		content: Array<TextBlockWire | ImageBlockWire>;
@@ -199,19 +199,19 @@ interface ReasoningBlockWire {
 	reasoningContent: { reasoningText: { text: string; signature?: string } };
 }
 
-type UserContent = TextBlockWire | ImageBlockWire | ToolResultBlockWire | CachePoint;
-type AssistantContent = TextBlockWire | ToolUseBlockWire | ReasoningBlockWire;
-type SystemContent = TextBlockWire | CachePoint;
+export type UserContent = TextBlockWire | ImageBlockWire | ToolResultBlockWire | CachePoint;
+export type AssistantContent = TextBlockWire | ToolUseBlockWire | ReasoningBlockWire;
+export type SystemContent = TextBlockWire | CachePoint;
 
-interface WireMessage {
+export interface WireMessage {
 	role: "user" | "assistant";
 	content: Array<UserContent | AssistantContent>;
 }
 
-interface WireToolSpec {
+export interface WireToolSpec {
 	toolSpec: { name: string; description: string; inputSchema: { json: unknown } };
 }
-interface WireToolChoice {
+export interface WireToolChoice {
 	auto?: Record<string, never>;
 	any?: Record<string, never>;
 	tool?: { name: string };
@@ -238,7 +238,7 @@ export const NO_TOOLS_SENTINEL: WireToolSpec = {
 	},
 };
 
-interface BedrockToolPlan {
+export interface BedrockToolPlan {
 	toolConfig: WireToolConfig | undefined;
 	sentinelInjected: boolean;
 }
@@ -255,11 +255,11 @@ interface ConverseStreamRequest {
 interface MessageStartEvent {
 	role: "user" | "assistant";
 }
-interface ContentBlockStartEvent {
+export interface ContentBlockStartEvent {
 	contentBlockIndex: number;
 	start?: { toolUse?: { toolUseId?: string; name?: string } };
 }
-interface ContentBlockDeltaEvent {
+export interface ContentBlockDeltaEvent {
 	contentBlockIndex: number;
 	delta?: {
 		text?: string;
@@ -267,13 +267,13 @@ interface ContentBlockDeltaEvent {
 		reasoningContent?: { text?: string; signature?: string };
 	};
 }
-interface ContentBlockStopEvent {
+export interface ContentBlockStopEvent {
 	contentBlockIndex: number;
 }
 interface MessageStopEvent {
 	stopReason?: string;
 }
-interface MetadataEvent {
+export interface MetadataEvent {
 	usage?: {
 		inputTokens?: number;
 		outputTokens?: number;

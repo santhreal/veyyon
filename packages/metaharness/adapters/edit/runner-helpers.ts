@@ -7,15 +7,18 @@ import type { Model, ToolExample } from "@veyyon/ai";
 import { formatSessionDumpText, RpcClient } from "@veyyon/coding-agent";
 import { estimateTokensFromText, prompt, splitTextLines } from "@veyyon/utils";
 import { diffLines } from "diff";
-import { formatDirectory } from "./formatter";
-import { discoverSharedInfra, type SharedInfra } from "./in-process-client-helpers";
-import { InProcessClient } from "../../backends/in-process/client";
+import { formatDirectory } from "@veyyon/evals/suites/typescript-edit/formatter";
+import {
+	discoverSharedInfra,
+	InProcessClient,
+	type SharedInfra,
+} from "@veyyon/evals/backends/in-process/client";
 import { EDIT_BENCHMARK_PROMPTS } from "./prompts/registry";
-import type { EditTask } from "./tasks";
+import type { EditTask } from "@veyyon/evals/suites/typescript-edit/tasks";
 import {
 	verifyExpectedFileSubset,
 	verifyExpectedFiles,
-} from "./verify";
+} from "@veyyon/evals/suites/typescript-edit/verify";
 
 
 import type { TaskRunResult } from "./runner";

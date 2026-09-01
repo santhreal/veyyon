@@ -98,7 +98,7 @@ type OllamaChatChunk = {
 	eval_count?: number;
 };
 
-type InternalToolCallBlock = AssistantMessage["content"][number] & {
+export type InternalToolCallBlock = AssistantMessage["content"][number] & {
 	type: "toolCall";
 	[kStreamingPartialJson]?: string;
 };
@@ -310,7 +310,7 @@ function resolveNumPredict(model: Model<"ollama-chat">, requested: number): numb
 	return requested;
 }
 
-function createChatBody(model: Model<"ollama-chat">, context: Context, options: OllamaChatOptions | undefined) {
+export function createChatBody(model: Model<"ollama-chat">, context: Context, options: OllamaChatOptions | undefined) {
 	const think = mapReasoning(model, options?.reasoning, options?.disableReasoning);
 	const toolChoice = mapToolChoice(options?.toolChoice);
 	const selectedTools = selectToolsForToolChoice(context.tools, options?.toolChoice);
@@ -333,12 +333,12 @@ function createChatBody(model: Model<"ollama-chat">, context: Context, options: 
  * reproduces on every replay because the same prompt produces the same malformed output. The rest of
  * the verdict is `retryResponse`'s.
  */
-const OLLAMA_RESPONSE_RETRY_POLICY: AIError.ResponseRetryPolicy = {
+export const OLLAMA_RESPONSE_RETRY_POLICY: AIError.ResponseRetryPolicy = {
 	api: "ollama-chat",
 	refusesReplay: body => AIError.LLAMA_CPP_TOOL_CALL_PARSE_PATTERN.test(body),
 };
 
-async function* iterateNdjson(stream: ReadableStream<Uint8Array>): AsyncGenerator<OllamaChatChunk> {
+export async function* iterateNdjson(stream: ReadableStream<Uint8Array>): AsyncGenerator<OllamaChatChunk> {
 	const reader = stream.getReader();
 	const decoder = new TextDecoder();
 	let buffer = "";
@@ -368,7 +368,7 @@ async function* iterateNdjson(stream: ReadableStream<Uint8Array>): AsyncGenerato
 	}
 }
 
-function createEmptyOutput(model: Model<"ollama-chat">): AssistantMessage {
+export function createEmptyOutput(model: Model<"ollama-chat">): AssistantMessage {
 	return {
 		role: "assistant",
 		content: [],

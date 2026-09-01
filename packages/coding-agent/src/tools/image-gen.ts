@@ -769,7 +769,7 @@ function collectInlineImages(parts: GeminiPart[]): InlineImageData[] {
 	return images;
 }
 
-function isOpenAIHostedImageModel(model: Model | undefined): model is Model {
+export function isOpenAIHostedImageModel(model: Model | undefined): model is Model {
 	if (!model) return false;
 	if (model.provider !== "openai" && model.provider !== "openai-codex") return false;
 	if (model.api !== "openai-responses" && model.api !== "openai-codex-responses") return false;
@@ -777,7 +777,7 @@ function isOpenAIHostedImageModel(model: Model | undefined): model is Model {
 	return modelId.startsWith("gpt-") || modelId === "o3" || modelId.startsWith("o3-");
 }
 
-function getOpenAIHostedImageProvider(model: Model): ImageProvider {
+export function getOpenAIHostedImageProvider(model: Model): ImageProvider {
 	return model.api === "openai-codex-responses" || model.provider === "openai-codex" ? "openai-codex" : "openai";
 }
 

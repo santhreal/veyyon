@@ -91,8 +91,8 @@ export interface DevinOptions extends StreamOptions {
  * Three, matching the other providers' provider-level budget. The retries are only ever attempted
  * before the first token, so this costs latency on a failing turn and nothing on a working one.
  */
-const DEVIN_MAX_PROVIDER_RETRIES = 3;
-const DEVIN_RETRY_BASE_DELAY_MS = 1_000;
+export const DEVIN_MAX_PROVIDER_RETRIES = 3;
+export const DEVIN_RETRY_BASE_DELAY_MS = 1_000;
 /**
  * The longest this will sit waiting before giving the failure to the operator.
  *
@@ -101,11 +101,11 @@ const DEVIN_RETRY_BASE_DELAY_MS = 1_000;
  * useful happens for the operator in that time and the correct answer is to fail now and let them
  * decide, which is what a window over this cap does.
  */
-const DEVIN_RETRY_MAX_DELAY_MS = 90_000;
+export const DEVIN_RETRY_MAX_DELAY_MS = 90_000;
 
 const CHAT_MESSAGE_PATH = "/exa.api_server_pb.ApiServerService/GetChatMessage";
-const DEVIN_AUTH_PATH = "/exa.auth_pb.AuthService/GetUserJwt";
-const DEVIN_DEFAULT_STOP_PATTERNS = ["<|user|>", "<|bot|>", "<|context_request|>", "<|endoftext|>", "<|end_of_turn|>"];
+export const DEVIN_AUTH_PATH = "/exa.auth_pb.AuthService/GetUserJwt";
+export const DEVIN_DEFAULT_STOP_PATTERNS = ["<|user|>", "<|bot|>", "<|context_request|>", "<|endoftext|>", "<|end_of_turn|>"];
 
 /** Connect streaming framing: flag byte bit 0x01 = gzip payload, 0x02 = end-of-stream JSON trailers. */
 const CONNECT_COMPRESSED_FLAG = 0x01;

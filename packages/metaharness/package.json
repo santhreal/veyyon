@@ -32,6 +32,7 @@
 		"@veyyon/coding-agent": "catalog:",
 		"@veyyon/utils": "catalog:",
 		"@veyyon/typescript-edit-benchmark": "workspace:*",
+		"@veyyon/evals": "workspace:*",
 		"clsx": "^2.1.1",
 		"d3-scale": "^4.0.2",
 		"d3-shape": "^3.2.0",

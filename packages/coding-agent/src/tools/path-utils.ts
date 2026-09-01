@@ -94,27 +94,27 @@ function normalizeUnicodeSpaces(str: string): string {
 	return str.replace(UNICODE_SPACES, " ");
 }
 
-function tryMacOSScreenshotPath(filePath: string): string {
+export function tryMacOSScreenshotPath(filePath: string): string {
 	return filePath.replace(/ (AM|PM)\./g, `${NARROW_NO_BREAK_SPACE}$1.`);
 }
 
-function tryNFDVariant(filePath: string): string {
+export function tryNFDVariant(filePath: string): string {
 	// macOS stores filenames in NFD (decomposed) form, try converting user input to NFD
 	return filePath.normalize("NFD");
 }
 
-function tryCurlyQuoteVariant(filePath: string): string {
+export function tryCurlyQuoteVariant(filePath: string): string {
 	// macOS uses U+2019 (right single quotation mark) in screenshot names like "Capture d'écran"
 	// Users typically type U+0027 (straight apostrophe)
 	return filePath.replace(/'/g, "\u2019");
 }
 
-function tryShellEscapedPath(filePath: string): string {
+export function tryShellEscapedPath(filePath: string): string {
 	if (!filePath.includes("\\") || !filePath.includes("/")) return filePath;
 	return filePath.replace(/\\([ \t"'(){}[\]])/g, "$1");
 }
 
-function fileExists(filePath: string): boolean {
+export function fileExists(filePath: string): boolean {
 	try {
 		fs.accessSync(filePath, fs.constants.F_OK);
 		return true;
@@ -829,7 +829,7 @@ export function resolveStoredPathCase(absolutePath: string): string {
 export function stripOuterDoubleQuotes(input: string): string {
 	return input.startsWith('"') && input.endsWith('"') && input.length > 1 ? input.slice(1, -1) : input;
 }
-function normalizePathSeparators(input: string): string {
+export function normalizePathSeparators(input: string): string {
 	if (isInternalUrlPath(input)) return input;
 	if (!input.includes("\\")) return input;
 	return input.replace(/\\/g, "/");

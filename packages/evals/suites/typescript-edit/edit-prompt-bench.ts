@@ -1,11 +1,11 @@
-/// <reference types="./bun-imports.d.ts" />
 
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
-import { extractBenchmarkFixtures } from "./argot-bench";
-import { discoverSharedInfra, InProcessClient, type SharedInfra } from "./in-process-client";
+import { extractBenchmarkFixtures } from "./extract";
+import { discoverSharedInfra, type SharedInfra } from "./in-process-client-helpers";
+import { InProcessClient } from "../../backends/in-process/client";
 import { type EditTask, loadTasksFromDir } from "./tasks";
 import { verifyExpectedFileSubset } from "./verify";
 

@@ -351,7 +351,7 @@ const RATE_LIMIT_BUDGET_MS = 5 * 60 * 1000;
 const GOOGLE_GEMINI_REFRESH_SKEW_MS = 60_000;
 const ANTIGRAVITY_REFRESH_SKEW_MS = 60_000;
 
-function isClaudeModel(modelId: string): boolean {
+export function isClaudeModel(modelId: string): boolean {
 	return modelId.toLowerCase().includes("claude");
 }
 
@@ -453,7 +453,7 @@ export function shouldRefreshGeminiCliCredentials(
 	return nowMs + skewMs >= expiresAt;
 }
 
-interface CloudCodeAssistRequest {
+export interface CloudCodeAssistRequest {
 	project: string;
 	model: string;
 	request: {
