@@ -88,11 +88,136 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 			}
 			damage.insert(Damage::Composer(session));
 		},
-		SnapshotSection::Settings(_) => {
-			damage.insert(Damage::Titlebar);
+		SnapshotSection::Settings(val) => {
+			store.domains.settings = Some(val);
+			damage.insert(Damage::Palette);
 		},
-		SnapshotSection::Diagnostics(_) => {
-			damage.insert(Damage::Titlebar);
+		SnapshotSection::Diagnostics(val) => {
+			store.domains.diagnostics = Some(val);
+			damage.insert(Damage::Palette);
+		},
+		SnapshotSection::Changes(view) => {
+			store.domains.changes = Some(view);
+			if let Some(session_id) = &store.persisted.shell.active_session {
+				damage.insert(Damage::RightPanelTab(session_id.clone(), "changes".to_string()));
+			} else {
+				damage.insert(Damage::FullWindow);
+			}
+		},
+		SnapshotSection::FileTree(view) => {
+			store.domains.file_tree = Some(view);
+			if let Some(session_id) = &store.persisted.shell.active_session {
+				damage.insert(Damage::RightPanelTab(session_id.clone(), "filetree".to_string()));
+			} else {
+				damage.insert(Damage::FullWindow);
+			}
+		},
+		SnapshotSection::FileContent(view) => {
+			store.domains.file_content = Some(view);
+			if let Some(session_id) = &store.persisted.shell.active_session {
+				damage.insert(Damage::RightPanelTab(session_id.clone(), "filecontent".to_string()));
+			} else {
+				damage.insert(Damage::FullWindow);
+			}
+		},
+		SnapshotSection::SearchResults(view) => {
+			store.domains.search = Some(view);
+			if let Some(session_id) = &store.persisted.shell.active_session {
+				damage.insert(Damage::RightPanelTab(session_id.clone(), "searchresults".to_string()));
+			} else {
+				damage.insert(Damage::FullWindow);
+			}
+		},
+		SnapshotSection::Terminals(views) => {
+			store.domains.terminals = views;
+			if let Some(session_id) = &store.persisted.shell.active_session {
+				damage.insert(Damage::TerminalDrawerChrome(session_id.clone()));
+			} else {
+				damage.insert(Damage::FullWindow);
+			}
+		},
+		SnapshotSection::TerminalOutput(chunk) => {
+			let terminal_id = chunk.terminal.clone();
+			store
+				.domains
+				.terminal_output
+				.entry(terminal_id.clone())
+				.or_default()
+				.append_chunk(chunk);
+			if let Some(session_id) = &store.persisted.shell.active_session {
+				damage.insert(Damage::TerminalOutput(session_id.clone(), terminal_id));
+			} else {
+				damage.insert(Damage::FullWindow);
+			}
+		},
+		SnapshotSection::Processes(views) => {
+			store.domains.processes = views;
+			if let Some(session_id) = &store.persisted.shell.active_session {
+				damage.insert(Damage::ProcessList(session_id.clone()));
+			} else {
+				damage.insert(Damage::FullWindow);
+			}
+		},
+		SnapshotSection::ProcessLogs(chunk) => {
+			let process = chunk.process.clone();
+			store
+				.domains
+				.process_logs
+				.entry(process)
+				.or_default()
+				.append_chunk(chunk);
+			if let Some(session_id) = &store.persisted.shell.active_session {
+				damage.insert(Damage::ProcessList(session_id.clone()));
+			} else {
+				damage.insert(Damage::FullWindow);
+			}
+		},
+		SnapshotSection::Models(view) => {
+			store.domains.models = Some(view);
+			damage.insert(Damage::Palette);
+		},
+		SnapshotSection::Providers(views) => {
+			store.domains.providers = views;
+			damage.insert(Damage::Palette);
+		},
+		SnapshotSection::AuthFlow(view) => {
+			store.domains.auth_flow = Some(view);
+			damage.insert(Damage::Palette);
+		},
+		SnapshotSection::Mcp(views) => {
+			store.domains.mcp = views;
+			damage.insert(Damage::Palette);
+		},
+		SnapshotSection::McpToolResult(view) => {
+			store.domains.mcp_tool_result = Some(view);
+			damage.insert(Damage::Palette);
+		},
+		SnapshotSection::Agents(views) => {
+			store.domains.agents = views;
+			damage.insert(Damage::Palette);
+		},
+		SnapshotSection::Usage(view) => {
+			let session = view.session;
+			store.domains.usage.insert(session.clone(), view.totals);
+			damage.insert(Damage::RightPanelTab(session, "usage".to_string()));
+		},
+		SnapshotSection::ContextBreakdown(view) => {
+			let session = view.session.clone();
+			store.domains.context.insert(session.clone(), view);
+			damage.insert(Damage::RightPanelTab(session, "contextbreakdown".to_string()));
+		},
+		SnapshotSection::Export(view) => {
+			let session = view.session.clone();
+			store.domains.export = Some(view);
+			damage.insert(Damage::RightPanelTab(session, "export".to_string()));
+		},
+		SnapshotSection::Themes(view) => {
+			store.domains.themes = Some(view);
+			damage.insert(Damage::Palette);
+		},
+		SnapshotSection::Keybindings(views) => {
+			store.domains.keybindings = views;
+			damage.insert(Damage::Palette);
 		},
 	}
 

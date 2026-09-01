@@ -1,7 +1,9 @@
+use std::{collections::HashSet, fs, path::PathBuf};
+
 use veyyon_desktop_model::{
-	BackendError, ConnectionState, ContentBlock, Damage, EntryId, EntryMeta, ErrorScope, HostEvent,
-	MessageRole, RequestId, SessionHeaderView, SessionId, SessionSummary, SnapshotSection, Store,
-	StreamingMessageState, TranscriptEntry, Versioned, reduce,
+	ALL_SECTION_NAMES, BackendError, ConnectionState, ContentBlock, Damage, EntryId, EntryMeta,
+	ErrorScope, HostEvent, MessageRole, RequestId, SessionHeaderView, SessionId, SessionSummary,
+	SnapshotSection, Store, StreamingMessageState, TranscriptEntry, Versioned, reduce,
 };
 
 #[test]
@@ -84,6 +86,131 @@ fn test_reduce_snapshot_sections() {
 	}));
 	let damage_transcript = reduce(&mut store, transcript_event);
 	assert!(damage_transcript.contains(&Damage::TranscriptFull(SessionId::from("session-1"))));
+}
+
+#[test]
+fn test_damage_decision_for_every_snapshot_section_sweep() {
+	let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+	let fixture_path = manifest_dir.join("tests/fixtures/snapshot-sections.json");
+	let raw_json =
+		fs::read_to_string(&fixture_path).expect("failed to read snapshot-sections fixture");
+	let sections: Vec<SnapshotSection> =
+		serde_json::from_str(&raw_json).expect("failed to deserialize snapshot sections");
+
+	let mut covered_sections = HashSet::new();
+
+	for section in sections {
+		let name = section.name();
+		covered_sections.insert(name);
+
+		// Case A: Active session present
+		let mut store = Store::new();
+		let session_id = SessionId::from("sess-1");
+		store.persisted.shell.active_session = Some(session_id.clone());
+
+		let damage = reduce(&mut store, HostEvent::Snapshot(section.clone()));
+
+		match name {
+			"Sessions" => {
+				assert!(damage.contains(&Damage::QueueAll), "Sessions must emit QueueAll");
+			},
+			"ActiveSession" => {
+				assert!(damage.contains(&Damage::Titlebar));
+				assert!(damage.contains(&Damage::Composer(session_id.clone())));
+				assert!(damage.contains(&Damage::RightPanelChrome(session_id.clone())));
+			},
+			"Transcript" => {
+				assert!(damage.contains(&Damage::TranscriptFull(session_id.clone())));
+			},
+			"Capabilities" => {
+				assert!(damage.contains(&Damage::Titlebar));
+				assert!(damage.contains(&Damage::Composer(session_id.clone())));
+			},
+			"Interactions" => {
+				assert!(damage.contains(&Damage::Composer(session_id.clone())));
+			},
+			"Settings" | "Diagnostics" | "Models" | "Providers" | "AuthFlow" | "Mcp"
+			| "McpToolResult" | "Agents" | "Themes" | "Keybindings" => {
+				assert!(damage.contains(&Damage::Palette), "{name} must emit Damage::Palette");
+			},
+			"Changes" => {
+				assert!(
+					damage.contains(&Damage::RightPanelTab(session_id.clone(), "changes".to_string()))
+				);
+			},
+			"FileTree" => {
+				assert!(
+					damage.contains(&Damage::RightPanelTab(session_id.clone(), "filetree".to_string()))
+				);
+			},
+			"FileContent" => {
+				assert!(
+					damage
+						.contains(&Damage::RightPanelTab(session_id.clone(), "filecontent".to_string()))
+				);
+			},
+			"SearchResults" => {
+				assert!(
+					damage.contains(&Damage::RightPanelTab(
+						session_id.clone(),
+						"searchresults".to_string()
+					))
+				);
+			},
+			"Terminals" => {
+				assert!(damage.contains(&Damage::TerminalDrawerChrome(session_id.clone())));
+			},
+			"TerminalOutput" => {
+				assert!(
+					damage.contains(&Damage::TerminalOutput(session_id.clone(), "term-1".to_string()))
+				);
+			},
+			"Processes" | "ProcessLogs" => {
+				assert!(damage.contains(&Damage::ProcessList(session_id.clone())));
+			},
+			"Usage" => {
+				assert!(
+					damage.contains(&Damage::RightPanelTab(session_id.clone(), "usage".to_string()))
+				);
+			},
+			"ContextBreakdown" => {
+				assert!(damage.contains(&Damage::RightPanelTab(
+					session_id.clone(),
+					"contextbreakdown".to_string()
+				)));
+			},
+			"Export" => {
+				assert!(
+					damage.contains(&Damage::RightPanelTab(session_id.clone(), "export".to_string()))
+				);
+			},
+			other => panic!("Unhandled snapshot section in damage test: {other}"),
+		}
+
+		// Case B: No active session present for session-dependent chrome sections
+		let mut no_session_store = Store::new();
+		let damage_no_session = reduce(&mut no_session_store, HostEvent::Snapshot(section.clone()));
+
+		match name {
+			"Changes" | "FileTree" | "FileContent" | "SearchResults" | "Terminals"
+			| "TerminalOutput" | "Processes" | "ProcessLogs" => {
+				assert!(
+					damage_no_session.contains(&Damage::FullWindow),
+					"{name} without active session must fallback to Damage::FullWindow"
+				);
+			},
+			_ => {},
+		}
+	}
+
+	assert_eq!(
+		covered_sections.len(),
+		ALL_SECTION_NAMES.len(),
+		"Every section in ALL_SECTION_NAMES must be covered by damage test sweep"
+	);
+	for name in ALL_SECTION_NAMES {
+		assert!(covered_sections.contains(name), "Section '{name}' missing from damage test sweep");
+	}
 }
 
 #[test]

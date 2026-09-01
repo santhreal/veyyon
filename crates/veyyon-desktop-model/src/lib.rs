@@ -5,6 +5,7 @@ pub mod coalescer;
 pub mod composer;
 pub mod connection;
 pub mod damage;
+pub mod domain;
 pub mod error;
 pub mod event;
 pub mod gate;
@@ -28,9 +29,19 @@ pub use connection::{
 	SessionId, Versioned,
 };
 pub use damage::{Damage, DamageSet};
+pub use domain::{
+	AgentView, AuthFlowState, AuthFlowView, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
+	ContextBreakdownView, ContextCategory, Domains, ExportView, FileContentView, FileKind, FileNode,
+	FileTreeView, KeybindingView, McpServerStatus, McpServerView, McpToolResultView, ModelRef,
+	ModelView, ModelsView, PROCESS_LOG_CAPACITY_LINES, ProcessLogView, ProcessLogsChunk,
+	ProcessView, ProviderView, SearchResultsView, SeqGap, TERMINAL_SCROLLBACK_CAPACITY_BYTES,
+	TerminalOutputChunk, TerminalScrollback, TerminalStatus, TerminalView, ThemeView, ThemesView,
+	UsageView,
+};
 pub use error::{BackendError, ErrorScope, fallback_surface, is_scope_retryable, route_error};
 pub use event::{
-	HostEvent, SessionHeaderView, SessionLoadError, SessionStatus, SessionSummary, SnapshotSection,
+	ALL_SECTION_NAMES, HostEvent, SessionHeaderView, SessionLoadError, SessionStatus,
+	SessionSummary, SnapshotSection, SnapshotSectionKind,
 };
 pub use gate::{Gate, action_to_capability, gate, gate_kind};
 pub use interaction::{

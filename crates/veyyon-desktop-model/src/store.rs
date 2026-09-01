@@ -4,13 +4,13 @@ use crate::{
 	capabilities::CapabilityMap,
 	composer::ComposerDraft,
 	connection::{ConnectionState, SessionId},
+	domain::Domains,
 	interaction::PendingDecisions,
 	persistence::PersistedState,
 	session::SessionCollection,
 	streaming::StreamingMessageState,
 	transcript::TranscriptTree,
 };
-
 /// Root state container for the desktop client.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Store {
@@ -38,6 +38,8 @@ pub struct Store {
 	/// Single definition of layout, geometry, panel visibility, and local client
 	/// persistence.
 	pub persisted:       PersistedState,
+	/// Single definition of all panel-domain views received from the host.
+	pub domains:         Domains,
 }
 
 impl Default for Store {
@@ -60,6 +62,7 @@ impl Store {
 			interactions:    HashMap::new(),
 			composer_drafts: HashMap::new(),
 			persisted:       PersistedState::new(),
+			domains:         Domains::new(),
 		}
 	}
 }
