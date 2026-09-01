@@ -13,6 +13,7 @@
 ### Changed
 
 - `AbortError`, the file lock and the postmortem handler no longer load `node:assert/strict`, `node:crypto` or `node:inspector` at import, which the launch path waited on for one assertion, one identifier and one signal handler.
+- The doc comments on `resolveHomeDirOrThrow()` and `getConfigRootOverride()` state the refusal rules and the sandbox exception without the surrounding narrative; no behavior changes.
 
 ## [1.3.0] - 2026-08-28
 
