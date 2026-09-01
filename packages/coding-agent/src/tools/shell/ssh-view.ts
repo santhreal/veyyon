@@ -47,8 +47,8 @@ const PROMPT = "$ ";
  */
 function commandSection(command: string, expanded: boolean): ViewSection {
 	const sanitized = replaceTabs(command);
-	const lines = (sanitized.length > 0 ? sanitized.split("\n") : ["…"]).map((line, index): ViewLine =>
-		index === 0 ? [{ text: PROMPT, tone: "dim" }, { text: line }] : [{ text: line }],
+	const lines = (sanitized.length > 0 ? sanitized.split("\n") : ["…"]).map(
+		(line, index): ViewLine => (index === 0 ? [{ text: PROMPT, tone: "dim" }, { text: line }] : [{ text: line }]),
 	);
 	return { lines, tail: expanded ? undefined : {} };
 }
