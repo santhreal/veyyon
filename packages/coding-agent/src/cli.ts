@@ -1,4 +1,8 @@
 #!/usr/bin/env bun
+// FIRST, and it has to stay first: this import writes the previous bare launch's card to the
+// terminal during its own evaluation, which is the only position from which it beats the ~33ms of
+// import below it. It reaches node builtins only. See ./cli/first-frame-replay.
+import "./cli/first-frame-replay-entry";
 // Subpath, NOT the "@veyyon/utils" barrel: the barrel re-exports ./env, which
 // eagerly parses the agent-directory .env at import time (env.ts). Pulling that
 // in here would load the .env BEFORE runCli() calls setProfile(), so

@@ -43,6 +43,7 @@ import { matchesKey } from "@veyyon/utils/keys";
 import * as logger from "@veyyon/utils/logger";
 import { planPaintGround } from "@veyyon/utils/paint-ground";
 import { setTuiTight } from "@veyyon/utils/tight-mode";
+import { clearFirstFrameRecording, recordFirstFrame, takeReplayedFirstFrame } from "../../cli/first-frame-replay";
 import { settings } from "../../config/settings-instance";
 import { applyGroundPaint, setDetectedTerminalGround } from "../../theme/ground-tints";
 import { getEditorTheme, theme } from "../../theme/theme";
@@ -55,6 +56,7 @@ import {
 	resolveComposerAccents,
 } from "./components/composer/composer-chrome";
 import { CustomEditor } from "./components/composer/custom-editor";
+import { setLaunchTip } from "./components/dialogs/launch-tip";
 import { WelcomeComponent } from "./components/dialogs/welcome";
 import { HomeAnchorLayout } from "./controllers/home-anchor-layout";
 import { consumeRelaunchMarker, flushPendingTtyInput } from "./tty-input-flush";
@@ -106,6 +108,14 @@ export interface FirstFrame {
 	 * chrome to the mode's zone without being detached from its parent.
 	 */
 	readonly editorContainer: Container;
+	/**
+	 * Settle what the next launch replays: record this card, keep a recording this card confirmed,
+	 * or drop one it corrected.
+	 *
+	 * Called once the paint has reached the terminal, because that is when the bytes are complete
+	 * and the composed rows are final.
+	 */
+	settleReplayRecording(): void;
 	/** Drop the launch rows, leaving an empty root for the mode's own tree. Idempotent. */
 	release(): void;
 	/**
@@ -149,6 +159,17 @@ export function paintFirstFrame(version: string): FirstFrame {
 	// operator who is logged in, and a row the session then rewrote 600ms later.
 	// Absent a recording the configured role's own tail is stated instead, so the
 	// placeholder is reached only when no model is configured and it is true.
+	// The screen the replay left, if this launch replayed one. Taken here, before the card is built,
+	// because the card has to be built to MATCH it: same tip, or the three tip rows rewrite
+	// themselves the moment the real card composes.
+	const replayed = takeReplayedFirstFrame();
+	const adopted =
+		replayed !== undefined &&
+		replayed.screen.width === ui.terminal.columns &&
+		replayed.screen.height === ui.terminal.rows
+			? replayed
+			: undefined;
+	if (adopted) setLaunchTip(adopted.tip);
 	const { providerName, terminalGround } = readLaunchFacts();
 	// The ground every structural color is derived from is settled below, before the first paint,
 	// out of what this terminal last reported.
@@ -239,11 +260,30 @@ export function paintFirstFrame(version: string): FirstFrame {
 		settleGround();
 		ui.requestRender();
 	});
+	// Adopting the replayed screen makes the render below a DIFF against those rows instead of a
+	// full paint, so an unchanged launch writes nothing at all and a changed one writes only the
+	// rows that changed.
+	if (adopted) ui.adoptPaintedWindow(adopted.screen);
 	// The first paint always clears the viewport (ED 2) so the card never
 	// appends over the previous run's frame. Erasing the terminal's saved
 	// scrollback (ED 3) also takes whatever the operator had on screen before
-	// launch, so it happens only when they asked for it.
-	ui.start({ clearScrollback: settings.get("startup.clearScrollback") });
+	// launch, so it happens only when they asked for it. An adopted screen was
+	// cleared by the replayed bytes themselves, and clearing again would be the
+	// full repaint the adoption exists to avoid.
+	ui.start({ clearScrollback: adopted === undefined && settings.get("startup.clearScrollback") });
+	// Everything the render writes from here, which is the recording the next launch replays. The
+	// wrapper goes on AFTER `start`, so the terminal setup it emits -- the capability queries above
+	// all -- stays out: replaying a query means a second answer arriving with nobody expecting it.
+	let captured = "";
+	const terminal = ui.terminal;
+	const passThrough = terminal.write.bind(terminal);
+	terminal.write = (data: string): void => {
+		captured += data;
+		passThrough(data);
+	};
+	const stopCapture = (): void => {
+		terminal.write = passThrough;
+	};
 
 	const frame: FirstFrame = {
 		ui,
@@ -256,6 +296,38 @@ export function paintFirstFrame(version: string): FirstFrame {
 			if (!mounted) return;
 			mounted = false;
 			for (const child of children) ui.removeChild(child);
+		},
+		settleReplayRecording(): void {
+			stopCapture();
+			const screen = ui.paintedScreen();
+			if (adopted === undefined) {
+				recordFirstFrame({
+					bytes: captured,
+					cols: ui.terminal.columns,
+					rows: ui.terminal.rows,
+					screen,
+					tip: hero.tip ?? "",
+				});
+				return;
+			}
+			const window = screen.window;
+			const previous = adopted.screen.window;
+			// The screen was replayed and the real card agrees with it row for row, so the recording
+			// still describes what a launch paints and stays.
+			if (window.length === previous.length && window.every((row, at) => row === previous[at])) return;
+			// It disagreed, so the operator just watched those rows correct themselves. The bytes that
+			// would record the NEW card were never emitted -- only the diff was -- so the recording is
+			// dropped and the next launch composes one and records it. One corrected launch, not a run
+			// of them.
+			const at = window.findIndex((row, index) => row !== previous[index]);
+			logger.debug("First-frame recording dropped: the composed card disagreed with the replay", {
+				row: at === -1 ? window.length : at,
+				replayed: at === -1 ? undefined : previous[at],
+				composed: at === -1 ? undefined : window[at],
+				replayedRows: previous.length,
+				composedRows: window.length,
+			});
+			clearFirstFrameRecording();
 		},
 		async settleQueuedInput(): Promise<boolean> {
 			// A check-phase turn, so the loop reaches poll and the reader hands
