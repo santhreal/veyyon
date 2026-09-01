@@ -14371,9 +14371,9 @@
 			"differs": "changed",
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "8f367164c81bf82358fb126c45d91e17012ec5ed0dbf2316efa129f4fc2b82a3",
+			"hash": "c1385a6595bd98d60d2e4aa8d4bff56334bcb46633c392da54cb0af97664ec01",
 			"mainHash": "9c053129e7bfd187949bfb33cfe85489218e83b7d7e4b0f45962134fa66b9c4e",
-			"structuralHash": "e8e213138eb26fc4cfd3620f8dd91641f68df9d2acb8af43a8095fb77d3b9ad6",
+			"structuralHash": "0c2577b4fc60f371e697d4e7ee169862a6cb1877dcc5b0a2f97c43b5e54f6c75",
 			"mainStructuralHash": "f8110caad7a46663fba27c49393f91c1b0a50a656ea1be3bd680d52e6a8bc340"
 		},
 		"packages/coding-agent/src/tools/search/search-scope.ts": {

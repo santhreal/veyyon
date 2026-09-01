@@ -27,7 +27,6 @@ import { sanitizeText } from "@veyyon/utils";
 import { formatScopeMeta, TRUNCATE_LENGTHS } from "../../src/tools/core/render-utils";
 import { toolRenderers } from "../../src/tools/renderers";
 import { searchToolRenderer } from "../../src/tools/search/search-renderer";
-import { structureSearchRenderer } from "../../src/tools/search/structure-search-render";
 
 const HOME = os.homedir();
 const RENDER_WIDTH = 240;
@@ -97,7 +96,14 @@ describe("a search renderer shortens the scope it was given", () => {
 			{ type: "files", input: "*.ts" },
 			"Search files",
 		],
-		["structure search", structureSearchRenderer, { input: "$A()", path: scope }, "in ~/workspace/project/src"],
+		[
+			"structure search",
+			// Through the search renderer, since the structure card is a view the terminal draws rather
+			// than a renderer module to import.
+			searchToolRenderer as unknown as ScopeRenderer,
+			{ type: "structure", input: "$A()", path: scope },
+			"in ~/workspace/project/src",
+		],
 		[
 			"ast_edit",
 			// Through the registry, since the ast_edit card is a view the terminal draws rather than a

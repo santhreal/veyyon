@@ -14,7 +14,6 @@ import { writeToolView } from "@veyyon/coding-agent/tools/fs/write-view";
 import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { removeSyncWithRetries } from "@veyyon/utils";
 import { searchToolRenderer } from "../../src/tools/search/search-renderer";
-import { structureSearchRenderer } from "../../src/tools/search/structure-search-render";
 
 // 1x1 PNG so the read tool takes its image branch.
 const TINY_PNG_BASE64 =
@@ -172,8 +171,15 @@ describe("tool output OSC 8 file:// hyperlinks", () => {
 				displayContent: ["# src/", "## interactive-mode.ts", "  *12│const needle = true;"].join("\n"),
 			},
 		};
-		const rendered = structureSearchRenderer
-			.renderResult(result as never, { expanded: true, isPartial: false }, theme, { input: "needle" })
+		// Through the search renderer, since the structure card is a view the terminal draws rather than
+		// a renderer module to import.
+		const rendered = searchToolRenderer
+			.renderResult(
+				{ content: result.content, details: { type: "structure", result: result.details } } as never,
+				{ expanded: true, isPartial: false },
+				theme,
+				{ type: "structure", input: "needle" } as never,
+			)
 			.render(240)
 			.join("\n");
 		const interactiveModeUri = url.pathToFileURL(path.resolve(interactiveModePath)).href;

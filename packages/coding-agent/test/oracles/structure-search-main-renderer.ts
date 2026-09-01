@@ -1,23 +1,19 @@
 /**
- * Terminal drawing for the structure search tool. The tool half in `structure-search.ts` decides what
- * happened; this half decides how a terminal shows it, and is the only one of the two
- * that reaches the TUI.
+ * Differential oracle: the structure search tool renderer from origin/main.
+ *
+ * Source SHA: e9467ab12c976cd830eb7a61e30bfd6adc4bff1f.
+ * Frozen: never edited to make a test pass.
+ *
+ * On main this was the renderer half of `src/tools/structure-search.ts` (lines 536-696), which this
+ * branch extracted to `src/tools/search/structure-search-render.ts` without touching a byte of it;
+ * the two were diffed identical before this file was cut. Only the import specifiers are rewritten
+ * to the package subpaths this branch publishes, so what it draws is main's.
  */
 
-import type { Component } from "@veyyon/tui";
-import { Text } from "@veyyon/tui";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import type { Theme } from "../../theme/theme";
-import {
-	Ellipsis,
-	fileHyperlink,
-	framedBlock,
-	outputBlockContentWidth,
-	renderStatusLine,
-	truncateToWidth,
-} from "../../tui";
-import { classifyGroupedLines, groupLineIndicesByBlank } from "../core/grouped-file-output";
-import { toPathList } from "../core/path-utils";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import { classifyGroupedLines, groupLineIndicesByBlank } from "@veyyon/coding-agent/tools/core/grouped-file-output";
+import { toPathList } from "@veyyon/coding-agent/tools/core/path-utils";
 import {
 	appendParseErrorsBulletList,
 	formatCount,
@@ -27,13 +23,23 @@ import {
 	formatParseErrorsCountLabel,
 	formatScopeMeta,
 	replaceTabs,
-} from "../core/render-utils";
+} from "@veyyon/coding-agent/tools/core/render-utils";
 import {
 	COLLAPSED_MATCH_LIMIT,
 	MATCH_LIMIT_NOTICE_PREFIX,
 	type StructureSearchDetails,
 	type StructureSearchRenderArgs,
-} from "./structure-search";
+} from "@veyyon/coding-agent/tools/search/structure-search";
+import {
+	fileHyperlink,
+	framedBlock,
+	outputBlockContentWidth,
+	renderStatusLine,
+	truncateToWidth,
+} from "@veyyon/coding-agent/tui";
+import { Ellipsis } from "@veyyon/natives";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
 
 function renderBudgetedAstGrepGroups(
 	groups: string[][],

@@ -10,7 +10,7 @@ import type { FileSearchDetails, FileSearchRenderArgs } from "./file-search";
 import { type FileSearchViewResult, fileSearchToolView } from "./file-search-view";
 import type { SearchToolDetails, SearchToolInput, SearchType } from "./search";
 import type { StructureSearchDetails, StructureSearchRenderArgs } from "./structure-search";
-import { structureSearchRenderer } from "./structure-search-render";
+import { type StructureSearchViewResult, structureSearchToolView } from "./structure-search-view";
 import type { TextSearchDetails, TextSearchRenderArgs } from "./text-search";
 import { type TextSearchViewResult, textSearchToolView } from "./text-search-view";
 
@@ -77,7 +77,15 @@ export const searchToolRenderer = {
 			);
 		}
 		if (args?.type === "structure") {
-			return structureSearchRenderer.renderCall(args as StructureSearchRenderArgs, options, uiTheme);
+			return drawToolView(
+				structureSearchToolView.renderCall(args as StructureSearchRenderArgs, {
+					expanded: options.expanded,
+					partial: options.isPartial,
+					frame: options.spinnerFrame,
+				}),
+				uiTheme,
+				options.spinnerFrame,
+			);
 		}
 		return invalidSearchComponent(uiTheme, args, options.isPartial);
 	},
@@ -116,11 +124,17 @@ export const searchToolRenderer = {
 			);
 		}
 		if (type === "structure") {
-			return structureSearchRenderer.renderResult(
-				{ ...result, details: details as StructureSearchDetails | undefined },
-				options,
+			return drawToolView(
+				structureSearchToolView.renderResult(
+					{
+						...result,
+						details: details as StructureSearchDetails | undefined,
+					} satisfies StructureSearchViewResult,
+					{ expanded: options.expanded, partial: options.isPartial, frame: options.spinnerFrame },
+					args as StructureSearchRenderArgs | undefined,
+				),
 				uiTheme,
-				args as StructureSearchRenderArgs | undefined,
+				options.spinnerFrame,
 			);
 		}
 		return invalidSearchComponent(uiTheme, args, options.isPartial);

@@ -3,13 +3,45 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
-import { structureSearchRenderer } from "@veyyon/coding-agent/tools/search/structure-search-render";
+import type { SearchToolDetails, SearchToolInput } from "@veyyon/coding-agent/tools/search/search";
+import { searchToolRenderer } from "@veyyon/coding-agent/tools/search/search-renderer";
+import type {
+	StructureSearchDetails,
+	StructureSearchRenderArgs,
+} from "@veyyon/coding-agent/tools/search/structure-search";
+import type { Component } from "@veyyon/tui";
 import { removeWithRetries, sanitizeText } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
 import { useFullColor } from "../helpers/theme-assertions";
 
+/**
+ * The `structure` branch of the production search renderer, which is the path a session draws: the
+ * card is a view the terminal draws rather than a renderer module to import, so the type-bearing
+ * arguments and the nested details are assembled here and every assertion below stays on the real
+ * bytes.
+ */
+const structureSearchRenderer = {
+	renderResult: (
+		result: { content: Array<{ type: string; text?: string }>; details?: StructureSearchDetails; isError?: boolean },
+		options: RenderResultOptions,
+		theme: Theme,
+		args?: StructureSearchRenderArgs,
+	): Component =>
+		searchToolRenderer.renderResult(
+			{
+				content: result.content,
+				details: { type: "structure", result: result.details } as unknown as SearchToolDetails,
+				...(result.isError === undefined ? {} : { isError: result.isError }),
+			},
+			options,
+			theme,
+			args === undefined ? undefined : ({ ...args, type: "structure" } as unknown as SearchToolInput),
+		),
+};
 function createTestSession(cwd = "/tmp/test", overrides: Partial<ToolSession> = {}): ToolSession {
 	return {
 		cwd,
