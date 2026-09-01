@@ -256,7 +256,7 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 	{
 		name: "view-conversion",
 		matches: relative =>
-			/(goals\/goal-tool\.ts|transcript\/tool-execution\.ts|tools\/agent\/(review|memory-view|memory-retain|memory-recall|memory-reflect)\.ts|tools\/fs\/(set-cwd|inspect-image)\.ts|tools\/search\/search-tool-bm25\.ts|test\/tools\/an-ssh-block-keeps-its-header-on-one-line\.test\.ts)$/.test(
+			/(goals\/goal-tool\.ts|transcript\/tool-execution\.ts|tools\/agent\/(review|memory-view|memory-retain|memory-recall|memory-reflect)\.ts|tools\/fs\/(set-cwd|inspect-image)\.ts|tools\/search\/search-tool-bm25\.ts|test\/tools\/an-ssh-block-keeps-its-header-on-one-line\.test\.ts|test\/task\/task-result-render\.test\.ts)$/.test(
 				relative,
 			),
 		reason:

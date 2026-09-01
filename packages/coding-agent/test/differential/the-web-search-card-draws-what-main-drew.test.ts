@@ -146,11 +146,11 @@ describe("web_search tool differential", () => {
 	 * close, and a colour extent that changed still fails the comparison.
 	 */
 	function withoutIdleResets(row: string): string {
-		const escape = /\x1b\[[0-9;:]*m/g;
+		const sgr = /\x1b\[[0-9;:]*m/g;
 		let out = "";
 		let read = 0;
 		let open = false;
-		for (let match = escape.exec(row); match !== null; match = escape.exec(row)) {
+		for (let match = sgr.exec(row); match !== null; match = sgr.exec(row)) {
 			const code = match[0];
 			out += row.slice(read, match.index);
 			read = match.index + code.length;

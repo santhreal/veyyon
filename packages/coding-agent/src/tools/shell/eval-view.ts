@@ -218,7 +218,12 @@ function codeSection(cell: EvalViewCell | EvalCellResult, label: string | undefi
 	const language = highlightLanguage(cell.language);
 	const rows = textRows(cell.code ?? "");
 	if (!expanded) {
-		return { ...(label === undefined ? {} : { label }), lines: rows.map(row => [{ text: row }]), code: { language }, tail: {} };
+		return {
+			...(label === undefined ? {} : { label }),
+			lines: rows.map(row => [{ text: row }]),
+			code: { language },
+			tail: {},
+		};
 	}
 	const shown = rows.slice(0, EXPANDED_MAX_LINES);
 	const hidden = heldBack(rows.length - shown.length, "line", "lines");
@@ -265,7 +270,10 @@ function outputSection(cell: EvalCellResult, expanded: boolean): ViewSection | u
 	const lines = collapseProgressRuns(textRows(cell.output)).map(row =>
 		row.hidden === 0
 			? [{ text: row.text, tone }]
-			: [{ text: row.text, tone }, { text: ` … +${row.hidden} earlier`, tone: "dim" as ViewTone }],
+			: [
+					{ text: row.text, tone },
+					{ text: ` … +${row.hidden} earlier`, tone: "dim" as ViewTone },
+				],
 	);
 	return { label, lines, tail: { max: EVAL_DEFAULT_PREVIEW_LINES } };
 }
@@ -382,7 +390,13 @@ function eventLine(event: EvalStatusEvent): ViewLine {
 	const { op, ...data } = event;
 	const mark: ViewSpan = { text: "", symbol: opSymbol(op), tone: "muted" };
 	if (data.error) {
-		return [mark, { text: " " }, { text: op, tone: "warning" }, { text: ": " }, { text: String(data.error), tone: "dim" }];
+		return [
+			mark,
+			{ text: " " },
+			{ text: op, tone: "warning" },
+			{ text: ": " },
+			{ text: String(data.error), tone: "dim" },
+		];
 	}
 	const description = describeEvent(op, data);
 	return description === ""
@@ -508,11 +522,7 @@ function agentSection(events: readonly EvalStatusEvent[]): ViewSection | undefin
 	for (const event of events) {
 		const status = agentStatus(event.status);
 		const id = eventText(event.id) ?? "agent";
-		const line: ViewSpan[] = [
-			{ text: "", status },
-			{ text: " " },
-			{ text: id, tone: "accent", bold: true },
-		];
+		const line: ViewSpan[] = [{ text: "", status }, { text: " " }, { text: id, tone: "accent", bold: true }];
 		if (status === "error" || status === "aborted") {
 			line.push({ text: " " }, { text: status === "error" ? "failed" : "aborted", badge: true, tone: "error" });
 		}
@@ -521,7 +531,10 @@ function agentSection(events: readonly EvalStatusEvent[]): ViewSection | undefin
 		if (status === "running" && currentTool === undefined && lastIntent === undefined) {
 			const preview = eventText(event.taskPreview);
 			if (preview !== undefined) {
-				line.push({ text: " " }, { text: truncateToWidth(replaceTabs(preview), AGENT_DETAIL_MAX_WIDTH, Ellipsis.Unicode), tone: "muted" });
+				line.push(
+					{ text: " " },
+					{ text: truncateToWidth(replaceTabs(preview), AGENT_DETAIL_MAX_WIDTH, Ellipsis.Unicode), tone: "muted" },
+				);
 			}
 		}
 		for (const fact of agentFacts(event)) line.push({ text: " " }, fact);
@@ -536,7 +549,10 @@ function agentSection(events: readonly EvalStatusEvent[]): ViewSection | undefin
 					? []
 					: [
 							{ text: ": " },
-							{ text: truncateToWidth(replaceTabs(detail), AGENT_DETAIL_MAX_WIDTH, Ellipsis.Unicode), tone: "dim" as ViewTone },
+							{
+								text: truncateToWidth(replaceTabs(detail), AGENT_DETAIL_MAX_WIDTH, Ellipsis.Unicode),
+								tone: "dim" as ViewTone,
+							},
 						]),
 			]);
 		} else if (lastIntent !== undefined) {
@@ -552,7 +568,7 @@ function agentSection(events: readonly EvalStatusEvent[]): ViewSection | undefin
 }
 
 /** The values a cell displayed, and the notices that came with them. */
-function trailingSection(result: EvalViewResult, details: EvalToolDetails | undefined, expanded: boolean): ViewSection | undefined {
+function trailingSection(details: EvalToolDetails | undefined, expanded: boolean): ViewSection | undefined {
 	const lines: ViewLine[] = [];
 	const outputs = details?.jsonOutputs ?? [];
 	const bounds = {
@@ -622,24 +638,28 @@ export const evalToolView: Required<ToolViewRenderer<EvalRenderArgs, EvalViewRes
 			sections: cells.map((cell, index) =>
 				codeSection(
 					cell,
-					cells.length > 1 ? `[${index + 1}/${cells.length}]${cell.title === undefined ? "" : ` ${cell.title}`}` : undefined,
+					cells.length > 1
+						? `[${index + 1}/${cells.length}]${cell.title === undefined ? "" : ` ${cell.title}`}`
+						: undefined,
 					context.expanded,
 				),
 			),
 		} satisfies FramedBlockView;
 	},
 
-	renderResult(result: EvalViewResult, context: ToolViewContext, args?: EvalRenderArgs): ToolView {
+	renderResult(result: EvalViewResult, context: ToolViewContext): ToolView {
 		const details = result.details;
 		const expanded = context.expanded;
 		const cells = details?.cells ?? [];
-		const trailing = trailingSection(result, details, expanded);
+		const trailing = trailingSection(details, expanded);
 
 		if (cells.length > 0) {
 			const sections: ViewSection[] = [];
 			for (const [index, cell] of cells.entries()) {
 				const label =
-					cells.length > 1 ? `[${index + 1}/${cells.length}]${cell.title === undefined ? "" : ` ${cell.title}`}` : undefined;
+					cells.length > 1
+						? `[${index + 1}/${cells.length}]${cell.title === undefined ? "" : ` ${cell.title}`}`
+						: undefined;
 				sections.push(codeSection(cell, label, expanded));
 				const output = outputSection(cell, expanded);
 				if (output !== undefined) sections.push(output);
@@ -663,7 +683,10 @@ export const evalToolView: Required<ToolViewRenderer<EvalRenderArgs, EvalViewRes
 
 		// No cell ran, so there is no card to head: what the tool returned is the whole of it, which
 		// is what a kernel that failed before it started, and a replayed transcript, both carry.
-		const text = stripOutputNotice((result.content?.find(part => part.type === "text")?.text ?? "").trimEnd(), details?.meta).trimEnd();
+		const text = stripOutputNotice(
+			(result.content?.find(part => part.type === "text")?.text ?? "").trimEnd(),
+			details?.meta,
+		).trimEnd();
 		const lines: ViewLine[] = [];
 		if (text !== "") {
 			// A run of same-shape progress lines is condensed before the host measures its window, for

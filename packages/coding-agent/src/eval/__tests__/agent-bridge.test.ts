@@ -17,6 +17,7 @@ import type { ExecutorOptions } from "../../task/executor";
 import * as taskExecutor from "../../task/executor";
 import * as isolationRunner from "../../task/isolation-runner";
 import { AgentOutputManager } from "../../task/output-manager";
+import { AGENT_DEFAULT_EFFORT } from "../../task/subagent-settings";
 import type { AgentDefinition, AgentProgress, SingleResult } from "../../task/types";
 import type { ToolSession } from "../../tools";
 import { EVAL_AGENT_MAX_DEPTH, runEvalAgent } from "../agent-bridge";
@@ -552,10 +553,13 @@ describe("runEvalAgent", () => {
 		expect(applied.modelOverride).toEqual(["p/call:max"]);
 		expect(applied.thinkingLevel).toBe(ThinkingLevel.High);
 		expect(applied.parentThinkingLevel).toBeUndefined();
-		// Shared off: the same value is not a layer of the per-agent chain at all,
-		// so the spawn inherits the session's effort rather than the roster's.
+		// Shared off: the shared value is not a layer of the per-agent chain at all, so it reaches no
+		// spawn. Nothing else decides here either — no lane row, no frontmatter level — so the spawn
+		// runs at the documented default, which is what a resolver that returns a level rather than an
+		// absence states. The regression this pins is the shared "high" arriving anyway.
 		expect(inert.modelOverride).toEqual(["p/call"]);
-		expect(inert.thinkingLevel).toBeUndefined();
+		expect(inert.thinkingLevel).toBe(AGENT_DEFAULT_EFFORT);
+		expect(inert.thinkingLevel).not.toBe(ThinkingLevel.High);
 	});
 
 	it("forwards session-scoped MCP, local protocol options, and the parent agent id", async () => {

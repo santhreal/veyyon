@@ -31,6 +31,7 @@ import { stripOutputNotice, stripRawOutputArtifactNotice } from "../core/output-
 // helper beside it: a view states the sentence and never the colour it is drawn in.
 import { formatTruncationMetaNotice } from "../core/output-notice";
 import { collapseProgressRuns, formatToolWorkingDirectory, replaceTabs } from "../core/render-utils";
+import { clampTimeout } from "../core/tool-timeouts";
 import { BASH_DEFAULT_PREVIEW_LINES, type BashToolDetails, formatBackgroundNotice } from "./bash";
 
 /** The arguments the card reads off a bash call, which is any subset the model has sent so far. */
@@ -52,9 +53,6 @@ export interface BashViewResult {
 
 /** The prompt the first line of a command is read under. */
 const PROMPT = "$";
-
-/** The longest timeout a call may state, which is the bound the tool itself clamps to. */
-const MAX_TIMEOUT_SECONDS = 3600;
 
 /**
  * An env value inside the double quotes a preview writes it in.
@@ -197,10 +195,10 @@ function commandSection(args: BashViewArgs | undefined, expanded: boolean): View
 	};
 }
 
-/** The seconds a call states as its bound, clamped the way the tool clamps it. */
+/** The seconds a call states as its bound, clamped by the table the tool itself clamps against. */
 function timeoutFromArgs(timeout: number | undefined): number | undefined {
 	if (typeof timeout !== "number" || !Number.isFinite(timeout)) return undefined;
-	return Math.min(Math.max(timeout, 1), MAX_TIMEOUT_SECONDS);
+	return clampTimeout("bash", timeout);
 }
 
 function formatWallTimeSeconds(wallTimeMs: number): string {

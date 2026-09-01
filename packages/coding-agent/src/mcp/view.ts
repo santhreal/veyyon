@@ -14,6 +14,7 @@
  * chrome for a structure the lines already state as depth.
  */
 
+import { isRecord } from "@veyyon/utils";
 import type { HeadedBlockView, StatusRowView, ToolViewContext, ToolViewRenderer, ViewLine } from "@veyyon/view";
 import {
 	formatArgsInline,
@@ -52,9 +53,7 @@ export interface MCPViewResult {
 }
 
 function argsRecord(value: unknown): Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
+	return isRecord(value) ? value : {};
 }
 
 /** The walk bounds a card spends at each disclosure. */

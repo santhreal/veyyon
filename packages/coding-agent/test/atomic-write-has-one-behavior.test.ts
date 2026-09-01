@@ -386,9 +386,9 @@ describe("the two implementations", () => {
  *
  * Two atomic-write implementations are a deliberate cost. A third would be the point where nobody can
  * say which semantics a given call site got, so a new temp-plus-rename has to earn its place here with
- * a reason. Five modules do earn it, and none of them is writing bytes to a file the way the writers
- * do: each stages something the writers cannot express, which is precisely why "just call the writer"
- * is not the fix.
+ * a reason. Six modules do earn it, and none of them is writing bytes to a file the way the writers
+ * do: each stages something the writers cannot express, or cannot pay for the import that reaches
+ * one, which is precisely why "just call the writer" is not the fix.
  */
 const JUSTIFIED_TEMP_RENAMES: ReadonlyMap<string, string> = new Map([
 	["utils/src/atomic-write.ts", "the primary implementation"],
@@ -426,6 +426,15 @@ const JUSTIFIED_TEMP_RENAMES: ReadonlyMap<string, string> = new Map([
 			"O_EXCL|O_NOFOLLOW and mode 600, so no step of the transaction can be redirected by a " +
 			"swapped parent directory. Both writers take a lexical path and rename unconditionally, so " +
 			"calling one would drop the CAS, the rollback and the directory pin at once.",
+	],
+	[
+		"coding-agent/src/cli/first-frame-replay.ts",
+		"is the boot path's own module: it writes the recording the NEXT launch reads before any " +
+			"graph loads, and it holds itself to node builtins and one type import for that reason. " +
+			"Both writers arrive with a module graph the 6.3ms replay path is measured without, and " +
+			"the static-module ceiling on the boot path pins that graph exactly. The write is a cache " +
+			"whose failure costs a speedup and nothing else, so the staging rename buys the reader's " +
+			"all-or-nothing view at no import cost.",
 	],
 ]);
 

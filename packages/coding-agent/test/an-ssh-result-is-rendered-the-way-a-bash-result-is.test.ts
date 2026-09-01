@@ -72,12 +72,21 @@ describe("an ssh result is rendered the way a bash result is", () => {
 		expect(rows.some(row => row.includes("earlier lines"))).toBe(true);
 	});
 
+	/**
+	 * The window is the shared limit measured in ROWS, and the row that states what was dropped is
+	 * one of them: a card asks for a window of `OUTPUT_COLLAPSED` rows and the host spends one on the
+	 * note, where the pre-view renderer drew the note above a full budget of output. The limit is
+	 * still the shared one, which is what this cell defends — a local number would not move with it.
+	 */
 	it("caps a collapsed result at the shared limit rather than a local number", () => {
 		const component = sshComponent(Array.from({ length: 20 }, (_, i) => `line-${i}`).join("\n"));
 
-		const outputRows = plain(component).filter(row => /line-\d+$/.test(row));
+		const rows = plain(component);
+		const outputRows = rows.filter(row => /line-\d+$/.test(row));
+		const notes = rows.filter(row => row.includes("earlier line"));
 
-		expect(outputRows).toHaveLength(PREVIEW_LIMITS.OUTPUT_COLLAPSED);
+		expect(notes).toHaveLength(1);
+		expect(outputRows.length + notes.length).toBe(PREVIEW_LIMITS.OUTPUT_COLLAPSED);
 		// The tail, the way every other collapsed output shows it: the newest
 		// lines, with the count of what was dropped above them.
 		expect(outputRows.at(-1)?.endsWith("line-19")).toBe(true);

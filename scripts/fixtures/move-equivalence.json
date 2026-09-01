@@ -102,6 +102,10 @@
 			"packages/coding-agent/test/oracles/web-search-main-renderer.ts"
 		],
 		[
+			"packages/coding-agent/src/task/render.test.ts",
+			"packages/coding-agent/test/task/task-result-render.test.ts"
+		],
+		[
 			"packages/coding-agent/src/tools/irc-render.ts",
 			"packages/coding-agent/test/oracles/irc-main-renderer.ts"
 		],
@@ -126,6 +130,10 @@
 			"packages/coding-agent/src/memory/local.ts"
 		],
 		[
+			"packages/coding-agent/src/edit/renderer.ts",
+			"packages/coding-agent/test/oracles/edit-main-renderer.ts"
+		],
+		[
 			"packages/coding-agent/src/modes/components",
 			"packages/coding-agent/src/modes/terminal/components/transcript"
 		],
@@ -138,6 +146,10 @@
 			"packages/coding-agent/src/memory"
 		],
 		[
+			"packages/coding-agent/src/task/render.ts",
+			"packages/coding-agent/test/oracles/task-main-renderer.ts"
+		],
+		[
 			"packages/coding-agent/src/tool-discovery",
 			"packages/coding-agent/src/discovery"
 		],
@@ -148,6 +160,10 @@
 		[
 			"packages/coding-agent/src/lsp/render.ts",
 			"packages/coding-agent/test/oracles/lsp-main-renderer.ts"
+		],
+		[
+			"packages/coding-agent/src/mcp/render.ts",
+			"packages/coding-agent/test/oracles/mcp-main-renderer.ts"
 		],
 		[
 			"packages/coding-agent/test/web-scrapers",
@@ -10931,10 +10947,12 @@
 		"packages/coding-agent/src/modes/terminal/components/dashboard/agent-model-badge.ts": {
 			"old": "packages/coding-agent/src/modes/components/agent-model-badge.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "7107ebfdba129e35ae36525821fae44f9b83d318db092789b60116eb70bb5a0a",
+			"differs": "changed",
+			"group": "host-boundary",
+			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
+			"hash": "21be950309df487d1a76418a57bbf762cc946fed5683ea5c1b465e1492994a56",
 			"mainHash": "f7d91d4751619e0d6ff56e0628eddf666cbb23641d632a854a4c7fddc0db4bcb",
-			"structuralHash": "70df1fbb889e50355f33cbac1d458408cc57c289582572aa2d89a965d80e7235",
+			"structuralHash": "2b89a07949aa1f3b997daf758bc9d9cc2597dfa7669586728c900e1f81b3642d",
 			"mainStructuralHash": "70df1fbb889e50355f33cbac1d458408cc57c289582572aa2d89a965d80e7235"
 		},
 		"packages/coding-agent/src/modes/terminal/components/dashboard/agent-status-display.ts": {
@@ -10968,7 +10986,7 @@
 			"old": "packages/coding-agent/src/modes/components/subagent-hud.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "c96e7d72a393fc3ee05d47c6c1b1955bba9e9be195db96a93647a826e7cb7ecf",
+			"hash": "1c4671a77a06fdec300e0205e615686d6e4475fb4f0dcd1dd53a92ee4dd21afe",
 			"mainHash": "beb7586ec8fbab4911c72d0c4617e32af02fff194771df41384586cd1968a9b8",
 			"structuralHash": "852b74ab13f8fff7786a8b45d23e8fa381395535e79e4013a8a0d63c46a99a96",
 			"mainStructuralHash": "852b74ab13f8fff7786a8b45d23e8fa381395535e79e4013a8a0d63c46a99a96"
@@ -11763,9 +11781,9 @@
 			"differs": "changed",
 			"group": "view-conversion",
 			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
-			"hash": "be2e5d6deb5c77bb1acb230dd50cf4507f178e18419847974f6cc54d31baa41f",
+			"hash": "8c0092f80e75e36586fc2955f6cc42aabf5b9e18ece5bc4e68f3c070e4a94dbb",
 			"mainHash": "0975591bf78ca2176c626d5218145393e218eb09f9b4294017454e05c0f7b281",
-			"structuralHash": "3966dac4b204c61d2a45a58b5260df40ac1f238f7525083890274c9263d1d5d2",
+			"structuralHash": "e1ba22c5ff37ef9287c8ff5f2ea7e79fa1734dabb1022466027544354854d445",
 			"mainStructuralHash": "a2bd3352f9d22f8e9e643b4e4dd30511252de9b17e10dd20a7fd20b84e7066bb"
 		},
 		"packages/coding-agent/src/modes/terminal/components/transcript/transcript-block-chrome.ts": {
@@ -14537,9 +14555,9 @@
 			"differs": "changed",
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "dac7f78debd2aabdbf9647fcc72e4ee3582c80f62ea1bf29e80a9008b0b0c4f5",
+			"hash": "f15a8efb5c7da0f0197730feb43587c31d5609353df8dd3cfc11bc0c9a6f3bc6",
 			"mainHash": "ae273c2b4ffb218d38cd245112f7c64de3c96a0bf67e68f292d367434bf63d99",
-			"structuralHash": "141b93f643d55f2a568093331df9840d67b777efe99456da330b8987d948286e",
+			"structuralHash": "c44c1ec8d568a83806ef8a85d61132720f5c4c59dbf8b4686b146807ac5df4dc",
 			"mainStructuralHash": "2cdb52fe621e16ce0bd49e114646a19f84145eb00070f52ce605c90348eca2fb"
 		},
 		"packages/coding-agent/src/tools/shell/debug.ts": {
@@ -15042,6 +15060,17 @@
 			"structuralHash": "17b56f852eebde0066ffc3e4d437b53c11609bef6b3d5f8d24510869de05cd05",
 			"mainStructuralHash": "17b56f852eebde0066ffc3e4d437b53c11609bef6b3d5f8d24510869de05cd05"
 		},
+		"packages/coding-agent/test/oracles/edit-main-renderer.ts": {
+			"old": "packages/coding-agent/src/edit/renderer.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "oracle-freeze",
+			"reason": "A renderer this branch replaced with a `ToolView` is frozen here as the differential oracle its suite compares the card against. The search dispatcher reached the three sub-views this branch declares rather than the terminal components main built, which is the change recorded: the rows it draws itself are main's, and the suite beside it proves the card byte for byte.",
+			"hash": "19754b13f4f97d55bdeab86c3c7a79bcf797e71b857caedab672139b541955be",
+			"mainHash": "b44c959ef5254cf986bcbbb014d27246c01336a0bb85f6f47fd80aa9e038b551",
+			"structuralHash": "9e740041ce7720302687f0336aa69b6b74760040fe03b6ef6208cbaa091ecc01",
+			"mainStructuralHash": "e3382b4ca78fc82214d56cb4a7553eee858a2a00dbab19a3114c00339d5be626"
+		},
 		"packages/coding-agent/test/oracles/eval-main-renderer.ts": {
 			"old": "packages/coding-agent/src/tools/eval-render.ts",
 			"kind": "normalized",
@@ -15087,6 +15116,15 @@
 			"structuralHash": "7fee490462d7bfcd3555908d168650471d2542ee3834d4e02bb86e45d0427e3f",
 			"mainStructuralHash": "7fee490462d7bfcd3555908d168650471d2542ee3834d4e02bb86e45d0427e3f"
 		},
+		"packages/coding-agent/test/oracles/mcp-main-renderer.ts": {
+			"old": "packages/coding-agent/src/mcp/render.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "58c3da3ff5e4ae365247805aa7352368c0df5c7a2275063aec1f54d8c5be94e6",
+			"mainHash": "b0f656befa559fd65d916734cfa8fb482b46b7a319927e9571fa35ccf5c32c64",
+			"structuralHash": "a2e779f94c4ef822e44eefa1153b40aa989d4716f29ad693a01bd1fb9a260de3",
+			"mainStructuralHash": "a2e779f94c4ef822e44eefa1153b40aa989d4716f29ad693a01bd1fb9a260de3"
+		},
 		"packages/coding-agent/test/oracles/memory-main-renderer.ts": {
 			"old": "packages/coding-agent/src/tools/memory-render.ts",
 			"kind": "normalized",
@@ -15107,6 +15145,17 @@
 			"structuralHash": "0c2577b4fc60f371e697d4e7ee169862a6cb1877dcc5b0a2f97c43b5e54f6c75",
 			"mainStructuralHash": "f8110caad7a46663fba27c49393f91c1b0a50a656ea1be3bd680d52e6a8bc340"
 		},
+		"packages/coding-agent/test/oracles/task-main-renderer.ts": {
+			"old": "packages/coding-agent/src/task/render.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "oracle-freeze",
+			"reason": "A renderer this branch replaced with a `ToolView` is frozen here as the differential oracle its suite compares the card against. The search dispatcher reached the three sub-views this branch declares rather than the terminal components main built, which is the change recorded: the rows it draws itself are main's, and the suite beside it proves the card byte for byte.",
+			"hash": "73f9bb94f3c1b8fa2d4df7af9fbff79689746f3a5d7a13e5761a4913278e5554",
+			"mainHash": "07658bc4f82070db1847de306177b01f50b0abdec9aa7dd4171a36aeed472ee3",
+			"structuralHash": "ec0c98115c902d08d38b4edbf08366a5c4a1f6cd27209958c50541f35bd0638e",
+			"mainStructuralHash": "29fafe13a3f4640e90c93cf45e511cbc70afca64c936af874234a62dc1a3125d"
+		},
 		"packages/coding-agent/test/oracles/vibe-main-renderer.ts": {
 			"old": "packages/coding-agent/src/tools/vibe-render.ts",
 			"kind": "normalized",
@@ -15124,6 +15173,17 @@
 			"mainHash": "69c128b209bbfcf09a8fced7793c5e13c595c728b1e42b9eac4b12a2db4c344f",
 			"structuralHash": "80daafa5183c120f8531df1f94d077be58ad3776ff270b5d23524fb8eaba4623",
 			"mainStructuralHash": "80daafa5183c120f8531df1f94d077be58ad3776ff270b5d23524fb8eaba4623"
+		},
+		"packages/coding-agent/test/task/task-result-render.test.ts": {
+			"old": "packages/coding-agent/src/task/render.test.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "view-conversion",
+			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
+			"hash": "d36c35d9608abf55ad7cb6ddcf520d9bd17871a7186c174711c85685f232ccce",
+			"mainHash": "0d2dd3469a68427cb16ccc8f57ad84f464cbbd9e0a8aca83df78a871e5517e01",
+			"structuralHash": "c9a6d16cb83b84868dc9bcf3e39fd8e78a42076928764e5efdc487678885b03c",
+			"mainStructuralHash": "6fac648dc801f77680a945d17b5d261971f055f33cfea55b422be9496e6a91ec"
 		},
 		"packages/coding-agent/test/tools/an-ssh-block-keeps-its-header-on-one-line.test.ts": {
 			"old": "packages/coding-agent/test/tools/ssh-render.test.ts",

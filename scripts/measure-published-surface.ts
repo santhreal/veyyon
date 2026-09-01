@@ -577,13 +577,33 @@ const DOCUMENTED_KEY_RELOCATIONS: Readonly<Record<string, Readonly<Record<string
  */
 const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, RelocationNote>>>> = {
 	"@veyyon/coding-agent": {
+		"./edit/renderer": {
+			to: "./edit/edit-view",
+			why: "the edit call row, hunk preview, diff sections, snapshot notices and failure card are declared in edit/edit-view.ts as views the host draws, so the module that built their terminal components is gone",
+		},
 		"./lsp/render": {
 			to: "./lsp/view",
 			why: "the lsp call row, hover, diagnostics, reference, symbol and output cards are declared in lsp/view.ts as views the host draws, so the module that built their terminal components is gone",
 		},
+		"./mcp/render": {
+			to: "./mcp/view",
+			why: "the mcp call row, resource listing, tool result card and error panel are declared in mcp/view.ts as views the host draws, so the module that built their terminal components is gone",
+		},
 		"./modes/sanitize-status-text": {
 			to: "@veyyon/utils/sanitize-status-text",
 			why: "sanitizeStatusText is declared in packages/utils/src/sanitize-status-text.ts, which @veyyon/utils publishes as ./sanitize-status-text; it is text over stripAnsi and names no host, and the goal tool reduces an objective to one line while building a view model in the domain package",
+		},
+		"./task/render": {
+			to: "./task/task-view",
+			why: "the task call preview, agent progress rows, per-agent results and failure card are declared in task/task-view.ts as views the host draws, so the module that built their terminal components is gone",
+		},
+		"./task/render.test": {
+			to: "./task/task-view",
+			why: "the colocated suite asserted the terminal components task/render.ts built; the task cards are declared in task/task-view.ts and their assertions are under test/task/task-result-render.test.ts, which the package does not publish",
+		},
+		"./task/renderer": {
+			to: "./task/task-view",
+			why: "the task tool renderer is the card the host draws from task/task-view.ts, so the module that registered a terminal-only renderer is gone",
 		},
 		"./tools/__tests__/vibe-render.test": {
 			to: "./tools/agent/vibe-view",

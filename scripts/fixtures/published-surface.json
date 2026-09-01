@@ -6527,6 +6527,10 @@
 				"./discovery/mode.js",
 				"./discovery/tool-index",
 				"./discovery/tool-index.js",
+				"./edit/details",
+				"./edit/details.js",
+				"./edit/edit-view",
+				"./edit/edit-view.js",
 				"./export/markit",
 				"./export/markit/converters/docx",
 				"./export/markit/converters/docx.js",
@@ -6576,6 +6580,8 @@
 				"./goals/goal-tool.js",
 				"./lsp/view",
 				"./lsp/view.js",
+				"./mcp/view",
+				"./mcp/view.js",
 				"./memory/backend",
 				"./memory/backend.js",
 				"./memory/hindsight",
@@ -7151,6 +7157,14 @@
 				"./speech/tts/wav.js",
 				"./task/irc-bus",
 				"./task/irc-bus.js",
+				"./task/model-selector",
+				"./task/model-selector.js",
+				"./task/nested-task-details",
+				"./task/nested-task-details.js",
+				"./task/task-id",
+				"./task/task-id.js",
+				"./task/task-view",
+				"./task/task-view.js",
 				"./theme/before-markdown-theme",
 				"./theme/before-markdown-theme.js",
 				"./theme/builtin-themes",
@@ -7393,10 +7407,10 @@
 				"./tools/shell/bash-interceptor.js",
 				"./tools/shell/bash-pty-selection",
 				"./tools/shell/bash-pty-selection.js",
-				"./tools/shell/bash-render",
-				"./tools/shell/bash-render.js",
 				"./tools/shell/bash-skill-urls",
 				"./tools/shell/bash-skill-urls.js",
+				"./tools/shell/bash-view",
+				"./tools/shell/bash-view.js",
 				"./tools/shell/bash.js",
 				"./tools/shell/debug",
 				"./tools/shell/debug-view",
@@ -7498,6 +7512,8 @@
 				"./tui/draw-tool-view.js",
 				"./tui/terminal-row",
 				"./tui/terminal-row.js",
+				"./tui/wrap-diff-row",
+				"./tui/wrap-diff-row.js",
 				"./utils/jsonrpc-framing",
 				"./utils/jsonrpc-framing.js",
 				"./web/search/view",
@@ -7975,11 +7991,11 @@
 				},
 				"./edit/renderer": {
 					"to": "./edit/edit-view",
-					"why": "the edit and apply_patch cards are declared in edit/edit-view.ts as views the host draws, so the module that built their terminal components is gone"
+					"why": "the edit call row, hunk preview, diff sections, snapshot notices and failure card are declared in edit/edit-view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./edit/renderer.js": {
 					"to": "./edit/edit-view.js",
-					"why": "the edit and apply_patch cards are declared in edit/edit-view.ts as views the host draws, so the module that built their terminal components is gone"
+					"why": "the edit call row, hunk preview, diff sections, snapshot notices and failure card are declared in edit/edit-view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./extensibility/custom-commands/bundled/ci-green/index": {
 					"to": "@veyyon/coding-agent/extensibility/custom-commands/bundled/ci-green",
@@ -8415,11 +8431,11 @@
 				},
 				"./mcp/render": {
 					"to": "./mcp/view",
-					"why": "an MCP tool's call and result cards are declared in mcp/view.ts as views the host draws, so the module that built their terminal components is gone"
+					"why": "the mcp call row, resource listing, tool result card and error panel are declared in mcp/view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./mcp/render.js": {
 					"to": "./mcp/view.js",
-					"why": "an MCP tool's call and result cards are declared in mcp/view.ts as views the host draws, so the module that built their terminal components is gone"
+					"why": "the mcp call row, resource listing, tool result card and error panel are declared in mcp/view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./memories": {
 					"to": "@veyyon/coding-agent/memory/local",
@@ -10815,27 +10831,27 @@
 				},
 				"./task/render": {
 					"to": "./task/task-view",
-					"why": "the task call row, the subagent progress card and the yield card are declared in task/task-view.ts as views the host draws, so the two modules that built their terminal components are gone"
+					"why": "the task call preview, agent progress rows, per-agent results and failure card are declared in task/task-view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./task/render.js": {
 					"to": "./task/task-view.js",
-					"why": "the task call row, the subagent progress card and the yield card are declared in task/task-view.ts as views the host draws, so the two modules that built their terminal components are gone"
+					"why": "the task call preview, agent progress rows, per-agent results and failure card are declared in task/task-view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./task/render.test": {
 					"to": "./task/task-view",
-					"why": "the terminal renderer that module tested is gone, and the card it drew is now compared against a frozen copy of it in test/differential/the-task-card-draws-what-main-drew.test.ts, which the package does not publish"
+					"why": "the colocated suite asserted the terminal components task/render.ts built; the task cards are declared in task/task-view.ts and their assertions are under test/task/task-result-render.test.ts, which the package does not publish"
 				},
 				"./task/render.test.js": {
 					"to": "./task/task-view.js",
-					"why": "the terminal renderer that module tested is gone, and the card it drew is now compared against a frozen copy of it in test/differential/the-task-card-draws-what-main-drew.test.ts, which the package does not publish"
+					"why": "the colocated suite asserted the terminal components task/render.ts built; the task cards are declared in task/task-view.ts and their assertions are under test/task/task-result-render.test.ts, which the package does not publish"
 				},
 				"./task/renderer": {
 					"to": "./task/task-view",
-					"why": "the task call row, the subagent progress card and the yield card are declared in task/task-view.ts as views the host draws, so the two modules that built their terminal components are gone"
+					"why": "the task tool renderer is the card the host draws from task/task-view.ts, so the module that registered a terminal-only renderer is gone"
 				},
 				"./task/renderer.js": {
 					"to": "./task/task-view.js",
-					"why": "the task call row, the subagent progress card and the yield card are declared in task/task-view.ts as views the host draws, so the two modules that built their terminal components are gone"
+					"why": "the task tool renderer is the card the host draws from task/task-view.ts, so the module that registered a terminal-only renderer is gone"
 				},
 				"./thinking.js": {
 					"to": "@veyyon/coding-agent/thinking/index.js",
