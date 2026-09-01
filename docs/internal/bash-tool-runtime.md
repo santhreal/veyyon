@@ -273,7 +273,7 @@ This component is wired by `CommandController.handleBashCommand()` and fed from 
 ## Implementation files
 
 - [`src/tools/shell/bash.ts`](../../packages/coding-agent/src/tools/shell/bash.ts): tool entrypoint, input handling/interception, async and PTY/non-PTY selection, and result/error mapping.
-- [`src/tools/shell/bash-render.ts`](../../packages/coding-agent/src/tools/shell/bash-render.ts): `createShellRenderer`, `BashRenderContext`, and the `bashToolRenderer` built from them.
+- [`src/tools/shell/bash-view.ts`](../../packages/coding-agent/src/tools/shell/bash-view.ts): `BashViewArgs`, `BashViewResult`, and the `bashToolView` renderer that describes the call row and the result card for any host.
 - [`src/tools/shell/bash-pty-selection.ts`](../../packages/coding-agent/src/tools/shell/bash-pty-selection.ts): `canUseInteractiveBashPty` predicate for choosing the local PTY overlay.
 - [`src/tools/shell/bash-interceptor.ts`](../../packages/coding-agent/src/tools/shell/bash-interceptor.ts): interceptor rule matching and blocked-command messages.
 - [`src/exec/bash-executor.ts`](../../packages/coding-agent/src/exec/bash-executor.ts): non-PTY executor, shell session reuse, cancellation wiring, output sink integration.
@@ -287,4 +287,4 @@ This component is wired by `CommandController.handleBashCommand()` and fed from 
 - [`src/modes/rpc/rpc-mode.ts`](../../packages/coding-agent/src/modes/rpc/rpc-mode.ts): RPC `bash` and `abort_bash` command surface.
 - [`src/internal-urls/artifact-protocol.ts`](../../packages/coding-agent/src/internal-urls/artifact-protocol.ts): `artifact://<id>` resolution.
 
-*Verified against `4aaaffd0a` on 2026-08-30.*
+*Verified against `70cae216c2` on 2026-09-01.*

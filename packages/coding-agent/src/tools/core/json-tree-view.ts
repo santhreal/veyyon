@@ -11,7 +11,7 @@
  * the terminal walk this replaces.
  */
 
-import { isRecord } from "@veyyon/utils";
+import { formatMoreLines, isRecord } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import type { ViewLine, ViewSpan } from "@veyyon/view";
 import { Ellipsis, truncateToWidth } from "./render-utils";
@@ -106,7 +106,7 @@ export function jsonTreeViewLines(
 				}
 				if (parts.length > shown) {
 					truncated = true;
-					push([...indent(depth + 1), { text: `…(${parts.length - shown} more lines)"`, tone: "dim" }]);
+					push([...indent(depth + 1), { text: `…(${formatMoreLines(parts.length - shown)})"`, tone: "dim" }]);
 					return;
 				}
 				const last = lines[lines.length - 1];

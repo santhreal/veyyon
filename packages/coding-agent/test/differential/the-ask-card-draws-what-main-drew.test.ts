@@ -424,8 +424,10 @@ describe("ask tool differential", () => {
 		expect(stripVTControlCharacters(oracleRows(result, 200)[1] ?? "")).toBe("no dialog was opened");
 		// The words, the tone and the header row above them are the same either way.
 		expect(viewRows(result, 200)[0]).toBe(oracleRows(result, 200)[0]);
+		// A 256-colour terminal and a truecolor one open the same empty runs with different bytes, so
+		// the normalizer keys off a colour opened and closed with nothing between it, not off a depth.
 		expect(viewRows(result, 200)[1]?.trimStart()).toBe(
-			(oracleRows(result, 200)[1] ?? "").replace(/^(?:\x1b\[(?:38;2;\d+;\d+;\d+|39)m)*(?=\x1b\[38)/, ""),
+			(oracleRows(result, 200)[1] ?? "").replace(/^(?:\x1b\[[0-9;]*m\x1b\[39m)+/, ""),
 		);
 	});
 

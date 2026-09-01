@@ -117,18 +117,29 @@ export const HOST_COLLAPSED: RenderResultOptions = { expanded: false, isPartial:
 export const HOST_EXPANDED: RenderResultOptions = { expanded: true, isPartial: false };
 
 let entryPolicy: AnsiPolicy | undefined;
+let entryColorterm: string | undefined;
 
 /**
- * The state every comparison is taken under: a loaded theme, full ANSI styling, and settings on an
- * in-memory store.
+ * The state every comparison is taken under: a loaded theme at a fixed colour depth, full ANSI
+ * styling, and settings on an in-memory store.
  *
  * Full styling is load-bearing rather than cosmetic. Under a reduced policy `theme.fg` returns its
  * input, so every styling difference between the two arms collapses to the same plain string and the
  * suites pass while proving nothing; `every-converted-tool-has-a-differential-suite.test.ts` asserts
  * the policy took. Settings are initialized because several cards read one -- hyperlink support, for
  * instance -- and an uninitialized singleton would answer from whatever the process last wrote.
+ *
+ * THE DEPTH IS PINNED for the same reason the policy is. `detectColorMode` answers from `COLORTERM`
+ * and `TERM`, so a workstation resolves every tone as `38;2;r;g;b` and a runner with no `TERM` at all
+ * resolves the same tone as `38;5;n`. Both arms move together, so no comparison of raw rows cares --
+ * but the normalizers that close up main's empty styling runs, and the cells that count coloured runs
+ * in a row, are written against the bytes a colour open is spelled with. Unpinned, those cells pass on
+ * a developer's terminal and fail on CI, which is the one place the suite is not watched. The variable
+ * is restored at teardown, so a suite that runs after these sees the environment it started in.
  */
 export async function setupDifferentialTheme(): Promise<void> {
+	entryColorterm = process.env.COLORTERM;
+	process.env.COLORTERM = "truecolor";
 	await initTheme();
 	entryPolicy = getAnsiPolicy();
 	setAnsiPolicy("full");
@@ -138,6 +149,8 @@ export async function setupDifferentialTheme(): Promise<void> {
 
 export function teardownDifferentialTheme(): void {
 	if (entryPolicy !== undefined) setAnsiPolicy(entryPolicy);
+	if (entryColorterm === undefined) delete process.env.COLORTERM;
+	else process.env.COLORTERM = entryColorterm;
 	resetSettingsForTest();
 }
 

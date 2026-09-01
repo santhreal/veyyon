@@ -531,10 +531,38 @@ describe("buildTreePrefix", () => {
 		expect(buildTreePrefix([true, false, true], theme)).toBe("│     │  ");
 	});
 
-	it("has one definition, and the two other renderers import it", () => {
-		for (const file of ["task/render.ts", "tools/core/json-tree-render.ts"]) {
-			expect(importsOf(file), file).toContain("tui/utils");
-		}
+	/**
+	 * The consumer set moved when the task card became a ToolView: `task/render.ts` drew the agent
+	 * tree as terminal strings and is gone, and the host draws that tree in `tui/draw-tool-view.ts`,
+	 * which resolves the ancestors from the depth a view states rather than being handed a list. So
+	 * the JSON renderer is the one caller left, and the guard against a fourth copy is the set of
+	 * files allowed to touch the rule glyph at all: a new tree drawn by hand reddens this until
+	 * someone records why it is not the helper's job.
+	 */
+	it("has one definition, the JSON renderer imports it, and no new file rolls the rule by hand", () => {
+		expect(importsOf("tools/core/json-tree-render.ts")).toContain("tui/utils");
+
+		const drawers = fs
+			.readdirSync(SRC, { recursive: true, encoding: "utf8" })
+			.filter(entry => entry.endsWith(".ts"))
+			.filter(entry => fs.readFileSync(path.join(SRC, entry), "utf8").includes("tree.vertical"))
+			.map(entry => entry.split(path.sep).join("/"))
+			.sort();
+
+		expect(drawers).toEqual([
+			// The two selectors draw their own tree of a filesystem, through `getTreeContinuePrefix`
+			// beside the helper this cell is about.
+			"modes/terminal/components/selectors/copy-selector.ts",
+			"modes/terminal/components/selectors/tree-selector.ts",
+			// Where the glyph itself is declared and resolved for a theme.
+			"theme/symbols.ts",
+			"theme/theme-class.ts",
+			// The host's view drawer, which knows a line's depth and its last-child answer and not its
+			// ancestor list, and dims each rule as it lays it down.
+			"tui/draw-tool-view.ts",
+			// The owner.
+			"tui/utils.ts",
+		]);
 	});
 
 	/**

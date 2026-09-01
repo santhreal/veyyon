@@ -163,6 +163,17 @@ describe("differential anti-vacuity", () => {
 		expect(theme.italic("sample")).not.toBe("sample");
 	});
 
+	/**
+	 * The harness pins the depth, and this is what notices when the pin goes. A tone spelled
+	 * `38;5;n` is what a runner with no `TERM` resolves, and under it every normalizer written
+	 * against a truecolor colour open stops matching: the suites then pass on a workstation and
+	 * fail on CI. Asserted through the theme rather than through the variable, because the theme
+	 * reads the depth once when it loads and keeps it.
+	 */
+	it("resolves colour at one pinned depth, whatever the terminal running it is", () => {
+		expect(theme.fg("accent", "sample")).toMatch(/^\x1b\[38;2;\d+;\d+;\d+m/);
+	});
+
 	it("confirms every frozen oracle produces non-empty output", () => {
 		const goalCall = goalOracle.renderCall({ op: "get" }, HOST_COLLAPSED, theme);
 		expect(renderCompText(goalCall).length).toBeGreaterThan(0);
