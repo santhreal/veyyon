@@ -64,11 +64,19 @@ function runtimeWith(results: readonly ExperimentResult[]): AutoresearchRuntime 
 	return runtime;
 }
 
-/** A descending series of `count` runs: the shape of a loop that keeps winning. */
+/**
+ * A descending series of `count` runs: the shape of a loop that keeps winning.
+ *
+ * Every value is positive whatever the length, because a metric of zero or less
+ * is what the row treats as unmeasured: a fixture that walked down through zero
+ * made a long series draw as a row of gaps and suppressed itself, so the
+ * assertion about a long series was passing on an absent row.
+ */
 function descending(count: number): ExperimentResult[] {
-	return Array.from({ length: count }, (_, index) =>
-		result({ runNumber: index + 1, metric: 300 - index * 5, measuredPrimary: 300 - index * 5 }),
-	);
+	return Array.from({ length: count }, (_, index) => {
+		const metric = (count - index) * 5;
+		return result({ runNumber: index + 1, metric, measuredPrimary: metric });
+	});
 }
 
 /** The Trend row of the session pane, ANSI stripped, or undefined when absent. */
@@ -164,6 +172,11 @@ describe("a segment shows the shape of its search", () => {
 		// arrives as a full row plus a second row holding one bar. The elision
 		// marker is part of the row, so a budget that forgets it overruns by
 		// exactly one column and wraps exactly one bar.
+		// A pane too narrow to carry a series draws none, which is a real outcome
+		// and not a skip: the pane-and-count cases that drew are counted, and the
+		// count is asserted below, so a fixture or a budget that suppresses the
+		// row everywhere fails here instead of sweeping an empty set.
+		let drawnCases = 0;
 		for (const pane of reachablePaneWidths()) {
 			for (const count of [3, 8, 40, 200]) {
 				const lines = renderRunDetail(runtimeWith(descending(count)), "session", pane).map(stripAnsi);
@@ -171,6 +184,7 @@ describe("a segment shows the shape of its search", () => {
 				// filter matches the Metric and Segment rows too.
 				const drawn = lines.filter(line => [...line].some(cell => BLOCKS.includes(cell)));
 				if (drawn.length === 0) continue;
+				drawnCases += 1;
 				// One line, never a continuation under the label column.
 				expect(drawn).toHaveLength(1);
 				expect(visibleWidth(drawn[0])).toBeLessThanOrEqual(pane);
@@ -178,6 +192,10 @@ describe("a segment shows the shape of its search", () => {
 				for (const cell of [...row]) expect(`${BLOCKS}${GAP}…`).toContain(cell);
 			}
 		}
+		// Every pane is swept at four run counts, so the sweep has four cases per
+		// pane, and the widest panes the screen reaches are far past the eight
+		// columns the row needs: more cases draw a series than there are panes.
+		expect(drawnCases).toBeGreaterThan(reachablePaneWidths().length);
 	});
 
 	it("shows the newest runs when a segment outgrows the pane", () => {

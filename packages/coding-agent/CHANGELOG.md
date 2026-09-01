@@ -14,6 +14,8 @@
 - Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 - `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
+- The run screen's session pane shows the number of runs since the segment's best one as `Since  8 runs later, none better`, and a `Trend` row of one block per run, oldest on the left, scaled between the segment's lowest and highest measurements; an unmeasured run draws as `·`, and a segment wider than the pane draws its most recent runs behind a leading `…`.
+- The autoresearch status row shows the same gap as `2 since best`, and drops that segment before the best metric when the terminal is too narrow for both.
 
 ### Changed
 
