@@ -344,7 +344,6 @@ const GRANDFATHERED: Readonly<Record<string, number>> = {
 	"packages/coding-agent/test/slash-commands/tan.test.ts": 5,
 	"packages/coding-agent/test/slash-commands/thinking.test.ts": 5,
 	"packages/coding-agent/test/slash-commands/yolo.test.ts": 17,
-	"packages/coding-agent/test/status-line-dispose-async-leak.test.ts": 3,
 	"packages/coding-agent/test/status-line-pr-lookup-timeout.test.ts": 1,
 	"packages/coding-agent/test/status-line-settings-cache.test.ts": 6,
 	"packages/coding-agent/test/streaming-edit-abort.test.ts": 5,

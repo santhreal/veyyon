@@ -277,17 +277,28 @@ describe("an invalid release is refused before it touches the system", () => {
 	});
 
 	it("nothing the user can see is written before the version gate", () => {
-		// The alias, PATH edit, and completions all follow finalize_binary, so the
-		// earliest gate must precede every one of them.
+		// The alias, PATH edit and completions are all done by `finish_install`. It is reached from
+		// two places, and each is behind a version check of its own: the already-current path runs
+		// only when `installed_version_is "$LATEST"` already held, and the download path runs only
+		// after `require_release_version` cleared the staged file.
 		const body = shFn("install_binary");
 		const preflight = body.indexOf('require_release_version "$tmpbin" "$LATEST" "downloaded"');
 		expect(preflight).toBeGreaterThan(-1);
+
+		const early = body.indexOf("finish_install");
+		const afterDownload = body.lastIndexOf("finish_install");
+		expect(afterDownload).toBeGreaterThan(preflight);
+		// The early one is not ungated: it sits inside the already-current branch.
+		expect(body.lastIndexOf('installed_version_is "$LATEST"', early)).toBeGreaterThan(-1);
+
+		// And those three are what `finish_install` does, so the ordering above is about them.
+		const finish = shFn("finish_install");
 		for (const mutation of [
 			'link_alias "$(install_dir)"',
 			'install_completions "$(install_dir)/$BIN_NAME"',
 			'ensure_on_path "$(install_dir)"',
 		]) {
-			expect(body.indexOf(mutation), mutation).toBeGreaterThan(preflight);
+			expect(finish, mutation).toContain(mutation);
 		}
 	});
 

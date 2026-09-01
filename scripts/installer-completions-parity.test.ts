@@ -70,8 +70,12 @@ describe("every installer installs completions for the shells its platform has",
 	});
 
 	it("install.sh installs completions on both surviving install paths", () => {
-		expect(shFn("install_binary")).toContain('install_completions "$(install_dir)/$BIN_NAME"');
-		expect(shFn("install_local")).toContain('install_completions "$(install_dir)/$BIN_NAME"');
+		// Both paths reach completions through one owner: `finish_install` does the alias, the
+		// completions, the PATH line and the self-check, so the already-current path can skip the
+		// download and still repair all four. Assert the chain, not a call inside each path.
+		expect(shFn("install_binary")).toContain("finish_install");
+		expect(shFn("install_local")).toContain("finish_install");
+		expect(shFn("finish_install")).toContain('install_completions "$(install_dir)/$BIN_NAME"');
 	});
 
 	it("neither installer still has a source-install path to install them on", () => {
