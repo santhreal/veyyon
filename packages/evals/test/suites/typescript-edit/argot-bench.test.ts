@@ -36,10 +36,10 @@ import {
 	prepareArgotWorkdir,
 	runArgotBench,
 	runContentReproBench,
-} from "../src/argot-bench";
-import { assembleRunMeasurement, assertArgotCertified, EDIT_TASK_TRUTHS } from "../src/argot-certify";
-import { loadTasksFromDir } from "../src/tasks";
-import { verifyExpectedFileSubset } from "../src/verify";
+} from "../../suites/typescript-edit/argot-bench";
+import { assembleRunMeasurement, assertArgotCertified, EDIT_TASK_TRUTHS } from "../../suites/typescript-edit/argot-certify";
+import { loadTasksFromDir } from "../../suites/typescript-edit/tasks";
+import { verifyExpectedFileSubset } from "../../suites/typescript-edit/verify";
 
 const BENCH_MODEL = process.env.ARGOT_BENCH_MODEL;
 const TEST_PROFILE = "argot-bench-test";

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { BENCHMARK_DEFINITIONS, type BenchmarkSnapshot, readBenchmarkSnapshot } from "./benchmarks";
+import { listBenchmarkDefinitions, type BenchmarkSnapshot, readBenchmarkSnapshot } from "./benchmarks";
 import { DEFAULT_JOBS_DIR } from "./paths";
 import { type RunRow, RunStore } from "./store";
 
@@ -13,7 +13,7 @@ function formatMetric(value: number | null, format: "percent" | "number" | "usd"
 }
 
 export function renderBenchResultsBlock(run: RunRow, snapshot: BenchmarkSnapshot, key: string): string {
-	const definition = BENCHMARK_DEFINITIONS.find(d => d.kind === run.benchmark);
+	const definition = listBenchmarkDefinitions().find(d => d.kind === run.benchmark);
 	if (!definition) throw new Error(`No benchmark definition for kind ${run.benchmark}`);
 	const finished = run.finishedAt ? new Date(run.finishedAt).toISOString().slice(0, 10) : "unfinished";
 	const metricCells = definition.metrics.map(
