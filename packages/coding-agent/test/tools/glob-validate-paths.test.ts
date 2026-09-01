@@ -9,10 +9,12 @@ import {
 	parseFindPattern,
 	splitDelimitedPathEntry,
 } from "@veyyon/coding-agent/tools/core/path-utils";
+import type { FileSearchDetails, FileSearchRenderArgs } from "@veyyon/coding-agent/tools/search/file-search";
+import type { SearchToolDetails, SearchToolInput } from "@veyyon/coding-agent/tools/search/search";
 import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/search/search-scope";
 import type { Component } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
-import { fileSearchRenderer } from "../../src/tools/search/file-search-render";
+import { searchToolRenderer } from "../../src/tools/search/search-renderer";
 
 let uiTheme: Theme;
 
@@ -134,7 +136,33 @@ describe("delimited path expansion", () => {
 	});
 });
 
-describe("fileSearchRenderer", () => {
+/**
+ * The `files` branch of the production search renderer, which is the path a session draws: the card
+ * is a view the terminal draws rather than a renderer module to import, so the type-bearing arguments
+ * and the nested details are assembled here and every assertion below stays on the real bytes.
+ */
+const fileSearchRenderer = {
+	renderCall: (args: FileSearchRenderArgs, options: RenderResultOptions, theme: Theme): Component =>
+		searchToolRenderer.renderCall({ ...args, type: "files" } as unknown as SearchToolInput, options, theme),
+	renderResult: (
+		result: { content: Array<{ type: string; text?: string }>; details?: FileSearchDetails; isError?: boolean },
+		options: RenderResultOptions,
+		theme: Theme,
+		args?: FileSearchRenderArgs,
+	): Component =>
+		searchToolRenderer.renderResult(
+			{
+				content: result.content,
+				details: { type: "files", result: result.details } as unknown as SearchToolDetails,
+				...(result.isError === undefined ? {} : { isError: result.isError }),
+			},
+			options,
+			theme,
+			args === undefined ? undefined : ({ ...args, type: "files" } as unknown as SearchToolInput),
+		),
+};
+
+describe("the files search card", () => {
 	it("accepts a single string paths value before validation", async () => {
 		const args = { input: "src/**/*.ts" };
 		const renderings = [

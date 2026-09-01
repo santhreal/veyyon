@@ -1,12 +1,41 @@
 import { describe, expect, it } from "bun:test";
-import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { getThemeByName, type Theme } from "@veyyon/coding-agent/theme/theme";
+import type { FileSearchDetails, FileSearchRenderArgs } from "@veyyon/coding-agent/tools/search/file-search";
+import type { SearchToolDetails, SearchToolInput } from "@veyyon/coding-agent/tools/search/search";
+import type { Component } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
-import { fileSearchRenderer } from "../../src/tools/search/file-search-render";
 import { searchToolRenderer } from "../../src/tools/search/search-renderer";
 import { expectNotAccented, useFullColor } from "../helpers/theme-assertions";
 
-describe("fileSearchRenderer and searchToolRenderer (files)", () => {
+/**
+ * The `files` branch of the production search renderer, which is the path a session draws: the card
+ * is a view the terminal draws rather than a renderer module to import, so the type-bearing arguments
+ * and the nested details are assembled here and every assertion below stays on the real bytes.
+ */
+const fileSearchRenderer = {
+	renderCall: (args: FileSearchRenderArgs, options: RenderResultOptions, theme: Theme): Component =>
+		searchToolRenderer.renderCall({ ...args, type: "files" } as unknown as SearchToolInput, options, theme),
+	renderResult: (
+		result: { content: Array<{ type: string; text?: string }>; details?: FileSearchDetails; isError?: boolean },
+		options: RenderResultOptions,
+		theme: Theme,
+		args?: FileSearchRenderArgs,
+	): Component =>
+		searchToolRenderer.renderResult(
+			{
+				content: result.content,
+				details: { type: "files", result: result.details } as unknown as SearchToolDetails,
+				...(result.isError === undefined ? {} : { isError: result.isError }),
+			},
+			options,
+			theme,
+			args === undefined ? undefined : ({ ...args, type: "files" } as unknown as SearchToolInput),
+		),
+};
+
+describe("the files search card", () => {
 	useFullColor();
 	it("indents inline glob output and avoids accent-colored success headers", async () => {
 		const theme = await getThemeByName("dark");

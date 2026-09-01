@@ -131,6 +131,15 @@ export interface StatusRowView {
 	 * entry for it falls back to `status`, so an unknown emblem loses decoration and never the row.
 	 */
 	emblem?: string;
+	/**
+	 * The role the emblem plays, for a card whose mark is part of its title rather than a decoration
+	 * beside it.
+	 *
+	 * Omitted lets the host pick, which is an accent: an emblem is usually the one coloured thing on a
+	 * settled row. A tool states this when the mark and the title are one subject -- a search card's
+	 * glyph reads as a second accent otherwise, competing with the paths the card exists to show.
+	 */
+	emblemTone?: ViewTone;
 	title: string;
 	/** Omitted lets the host pick the tone it gives a title. */
 	titleTone?: ViewTone;
@@ -325,6 +334,16 @@ export interface ViewSection {
 	 * tab is worth -- to the host, which is the only party that knows what it can draw.
 	 */
 	code?: ViewCodeLines;
+	/**
+	 * That each line is one row and never flows onto a second, so a host CUTS it to the width instead
+	 * of wrapping it.
+	 *
+	 * A listing states this and prose does not: one found path per row is a promise about the shape of
+	 * the section, and wrapping the one path that is too long makes it two rows in a body whose every
+	 * other entry is one, which is how a reader loses count. The width is the host's, so the cut is
+	 * too; the tool says only that a line is atomic.
+	 */
+	clip?: boolean;
 }
 
 /**

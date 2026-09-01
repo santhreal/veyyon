@@ -4,9 +4,10 @@ import { isRecord } from "@veyyon/utils";
 import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
 import type { Theme } from "../../theme/theme";
 import { renderStatusLine, truncateToWidth } from "../../tui";
+import { drawToolView } from "../../tui/draw-tool-view";
 import { formatErrorMessage, replaceTabs, TRUNCATE_LENGTHS } from "../core/render-utils";
 import type { FileSearchDetails, FileSearchRenderArgs } from "./file-search";
-import { fileSearchRenderer } from "./file-search-render";
+import { type FileSearchViewResult, fileSearchToolView } from "./file-search-view";
 import type { SearchToolDetails, SearchToolInput, SearchType } from "./search";
 import type { StructureSearchDetails, StructureSearchRenderArgs } from "./structure-search";
 import { structureSearchRenderer } from "./structure-search-render";
@@ -54,7 +55,15 @@ export const searchToolRenderer = {
 	mergeCallAndResult: true,
 	renderCall(args: SearchToolInput, options: RenderResultOptions, uiTheme: Theme): Component {
 		if (args?.type === "files") {
-			return fileSearchRenderer.renderCall(args as FileSearchRenderArgs, options, uiTheme);
+			return drawToolView(
+				fileSearchToolView.renderCall(args as FileSearchRenderArgs, {
+					expanded: options.expanded,
+					partial: options.isPartial,
+					frame: options.spinnerFrame,
+				}),
+				uiTheme,
+				options.spinnerFrame,
+			);
 		}
 		if (args?.type === "text") {
 			return textSearchRenderer.renderCall(args as TextSearchRenderArgs, options, uiTheme);
@@ -77,11 +86,14 @@ export const searchToolRenderer = {
 		}
 		const details = result.details?.result;
 		if (type === "files") {
-			return fileSearchRenderer.renderResult(
-				{ ...result, details: details as FileSearchDetails | undefined },
-				options,
+			return drawToolView(
+				fileSearchToolView.renderResult(
+					{ ...result, details: details as FileSearchDetails | undefined } satisfies FileSearchViewResult,
+					{ expanded: options.expanded, partial: options.isPartial, frame: options.spinnerFrame },
+					args as FileSearchRenderArgs | undefined,
+				),
 				uiTheme,
-				args as FileSearchRenderArgs | undefined,
+				options.spinnerFrame,
 			);
 		}
 		if (type === "text") {

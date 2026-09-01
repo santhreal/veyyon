@@ -173,10 +173,10 @@ export function drawSpans(spans: readonly ViewSpan[], theme: Theme): string {
  * chose, so an extension can name one this build has never heard of, and the row must survive that
  * with its status icon instead of a blank column where a glyph should be.
  */
-function drawEmblem(emblem: string | undefined, theme: Theme): string | undefined {
+function drawEmblem(emblem: string | undefined, tone: ViewTone | undefined, theme: Theme): string | undefined {
 	if (emblem === undefined) return undefined;
 	if (!Object.hasOwn(UNICODE_SYMBOLS, emblem)) return undefined;
-	return theme.styledSymbol(emblem as SymbolKey, "accent");
+	return theme.styledSymbol(emblem as SymbolKey, tone === undefined ? "accent" : TONE_COLORS[tone]);
 }
 
 /**
@@ -189,7 +189,7 @@ function drawEmblem(emblem: string | undefined, theme: Theme): string | undefine
  * around it.
  */
 export function drawStatusRow(view: StatusRowView, theme: Theme, spinnerFrame?: number): string {
-	const emblem = drawEmblem(view.emblem, theme);
+	const emblem = drawEmblem(view.emblem, view.emblemTone, theme);
 	// The badge and the space after it are one value the theme owns, so a preset with no glyph for
 	// the language leaves no gap where one would have been.
 	const badge = view.language === undefined ? "" : theme.langBadge(view.language);
@@ -264,6 +264,7 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 		// on its own closing branch, so the note is already among its rows.
 		note: section.hidden === undefined || section.list ? undefined : drawHiddenNote(section.hidden, theme),
 		tail: section.tail,
+		clip: section.clip === true,
 	}));
 	// A block that reports `running` is a card still arriving, which the terminal says on a trailing
 	// row rather than in the header: an animating glyph in the head row pins the native-scrollback
@@ -281,11 +282,19 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 		header,
 		sections: [
 			...sections.map(section => {
-				const lines =
+				const contentWidth = outputBlockContentWidth(width);
+				const windowed =
 					section.tail === undefined
 						? section.lines
-						: drawTailWindow(section.lines, section.tail, theme, outputBlockContentWidth(width));
-				return { label: section.label, lines: section.note === undefined ? lines : [...lines, section.note] };
+						: drawTailWindow(section.lines, section.tail, theme, contentWidth);
+				const rows = section.note === undefined ? windowed : [...windowed, section.note];
+				// A clipped section is rows rather than prose, so a row that runs out of columns ends
+				// there. Without the cut the block WRAPS it, and one long path becomes two rows of a
+				// listing whose every other entry is one.
+				return {
+					label: section.label,
+					lines: section.clip ? rows.map(line => truncateToWidth(line, contentWidth, Ellipsis.Omit)) : rows,
+				};
 			}),
 			...(arriving === undefined ? [] : [{ lines: [arriving] }]),
 		],

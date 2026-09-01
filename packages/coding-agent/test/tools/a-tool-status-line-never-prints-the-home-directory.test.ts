@@ -26,7 +26,7 @@ import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { sanitizeText } from "@veyyon/utils";
 import { formatScopeMeta, TRUNCATE_LENGTHS } from "../../src/tools/core/render-utils";
 import { toolRenderers } from "../../src/tools/renderers";
-import { fileSearchRenderer } from "../../src/tools/search/file-search-render";
+import { searchToolRenderer } from "../../src/tools/search/search-renderer";
 import { structureSearchRenderer } from "../../src/tools/search/structure-search-render";
 import { textSearchRenderer } from "../../src/tools/search/text-search-render";
 
@@ -83,7 +83,14 @@ describe("a search renderer shortens the scope it was given", () => {
 	const scope = `${HOME}/workspace/project/src`;
 	const cases: ReadonlyArray<[string, ScopeRenderer, object, string]> = [
 		["text search", textSearchRenderer, { input: "needle", path: scope }, "in ~/workspace/project/src"],
-		["file search", fileSearchRenderer, { input: "*.ts" }, "Search files"],
+		[
+			"file search",
+			// Through the search renderer, since the files card is a view the terminal draws rather than
+			// a renderer module to import.
+			searchToolRenderer as unknown as ScopeRenderer,
+			{ type: "files", input: "*.ts" },
+			"Search files",
+		],
 		["structure search", structureSearchRenderer, { input: "$A()", path: scope }, "in ~/workspace/project/src"],
 		[
 			"ast_edit",

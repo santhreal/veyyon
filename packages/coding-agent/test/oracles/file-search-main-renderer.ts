@@ -1,30 +1,44 @@
 /**
- * Terminal drawing for the file search tool. The tool half in `file-search.ts` decides what
- * happened; this half decides how a terminal shows it, and is the only one of the two
- * that reaches the TUI.
+ * Differential oracle: the file search tool renderer from origin/main.
+ *
+ * Source SHA: e9467ab12c976cd830eb7a61e30bfd6adc4bff1f.
+ * Frozen: never edited to make a test pass.
+ *
+ * On main this was the renderer half of `src/tools/file-search.ts`, which this branch extracted to
+ * `src/tools/search/file-search-render.ts` without touching a byte of it. Only the import specifiers
+ * are rewritten to the package subpaths this branch publishes, and the one constant the renderer
+ * reads is restated here rather than imported, so what it draws is main's.
  */
 
 import * as path from "node:path";
-import type { Component } from "@veyyon/tui";
-import { Text } from "@veyyon/tui";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import type { Theme } from "../../theme/theme";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import { formatFullOutputReference } from "@veyyon/coding-agent/tools/core/output-meta";
+import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/core/render-limits";
 import {
-	Ellipsis,
+	formatCount,
+	formatEmptyMessage,
+	formatErrorMessage,
+	formatMoreItems,
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import type { FileSearchDetails, FileSearchRenderArgs } from "@veyyon/coding-agent/tools/search/file-search";
+import {
 	fileHyperlink,
 	framedBlock,
 	outputBlockContentWidth,
 	renderFileList,
 	renderStatusLine,
 	truncateToWidth,
-} from "../../tui";
-import { formatFullOutputReference } from "../core/output-meta";
-import { formatCount, formatEmptyMessage, formatErrorMessage, formatMoreItems } from "../core/render-utils";
-import { COLLAPSED_LIST_LIMIT, type FileSearchDetails, type FileSearchRenderArgs } from "./file-search";
+} from "@veyyon/coding-agent/tui";
+import { Ellipsis } from "@veyyon/natives";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
 
 function formatFileSearchRenderInput(args: FileSearchRenderArgs | undefined): string | undefined {
 	return args?.input;
 }
+
+const COLLAPSED_LIST_LIMIT = PREVIEW_LIMITS.COLLAPSED_ITEMS;
 
 function fileSearchStatusIcon(uiTheme: Theme): string {
 	return uiTheme.fg("toolTitle", uiTheme.symbol("icon.search"));
