@@ -286,6 +286,12 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 		reason: "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
 	},
 	{
+		name: "kernel-absorption",
+		matches: relative => relative === "kernel/src/session/agent-session-compaction-policy.ts",
+		reason:
+			"The kernel's compaction policy module carries the knobs this branch extracted from `agent-session.ts` plus the vocabulary main later extracted into a package-local module of its own, which git pairs as the rename source. One owner states both sets, and no knob's value changed.",
+	},
+	{
 		name: "contract-extraction",
 		matches: relative => relative.startsWith("contracts/"),
 		reason:

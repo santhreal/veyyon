@@ -429,7 +429,7 @@ describe("a published surface survives the move", () => {
 		}
 
 		expect(unserved).toEqual([]);
-		expect(compared).toBe(5217);
+		expect(compared).toBe(5219);
 	});
 
 	/**
@@ -437,11 +437,12 @@ describe("a published surface survives the move", () => {
 	 * documented key relocation, or a recorded absorption — so a rule that started matching more than
 	 * it should would otherwise pass as a wider set of correct-looking rows.
 	 *
-	 * 1029 coding-agent subpaths relocated, 98 of them into `@veyyon/kernel`: 49 modules moved and
+	 * 1031 coding-agent subpaths relocated, 100 of them into `@veyyon/kernel`: 50 modules moved and
 	 * each is served twice, extensionless and under a `.js` alias. The modules this branch added
-	 * rather than moved (`extensibility/host-view`, `extensibility/widget`,
-	 * `session/agent-session-compaction-policy`) carry no row, since they were never part of the
-	 * baseline surface. Four rows are the first-frame replay pair main added under `startup/`, which
+	 * rather than moved (`extensibility/host-view`, `extensibility/widget`) carry no row, since they
+	 * were never part of the baseline surface. Two of the kernel rows are `session/compaction-policy`,
+	 * the compaction vocabulary main extracted from `agent-session.ts`, which this branch serves from
+	 * `@veyyon/kernel/session/agent-session-compaction-policy` under both spellings. Four rows are the first-frame replay pair main added under `startup/`, which
 	 * this branch serves from `cli/` under both spellings. Two are `tools/render-limits`, the
 	 * display-limit leaf main extracted from `tools/render-utils`, which this branch serves from the
 	 * `core/` directory every domain reads. Four more are the two session vocabularies main
@@ -471,9 +472,9 @@ describe("a published surface survives the move", () => {
 		expect(Object.keys(rows).sort()).toEqual(["@veyyon/coding-agent", "@veyyon/tui"]);
 
 		const codingAgent = rows["@veyyon/coding-agent"] ?? {};
-		expect(Object.keys(codingAgent).length).toBe(1029);
+		expect(Object.keys(codingAgent).length).toBe(1031);
 		const intoKernel = Object.values(codingAgent).filter(note => note.to.startsWith("@veyyon/kernel/"));
-		expect(intoKernel.length).toBe(98);
+		expect(intoKernel.length).toBe(100);
 		const kernelConcerns = new Set(intoKernel.map(note => note.to.split("/").slice(0, 3).join("/")));
 		expect([...kernelConcerns].sort()).toEqual([
 			"@veyyon/kernel/loader",

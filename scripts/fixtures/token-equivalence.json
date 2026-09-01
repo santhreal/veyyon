@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "22d6c9c274ee70424dd10b16e006a23269fb21b7",
+	"generatedFrom": "edbce2cd3e7bcd7b25a285452443e9ddfd3c025d",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -69,7 +69,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4628,
+	"changedCount": 4629,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -2348,6 +2348,7 @@
 		"packages/coding-agent/test/session-storage.test.ts",
 		"packages/coding-agent/test/session-workdir-settings-ui.test.ts",
 		"packages/coding-agent/test/session-write-budget.test.ts",
+		"packages/coding-agent/test/session/a-compaction-knob-cannot-be-set-where-a-pass-stops-making-progress.test.ts",
 		"packages/coding-agent/test/session/a-crashed-session-is-logged-louder-than-a-closed-terminal.test.ts",
 		"packages/coding-agent/test/session/a-credential-says-which-state-it-is-in.test.ts",
 		"packages/coding-agent/test/session/a-destructive-edit-is-gated-whichever-way-it-is-spelled.test.ts",

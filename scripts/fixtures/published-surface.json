@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "22d6c9c274ee70424dd10b16e006a23269fb21b7",
+	"generatedFrom": "edbce2cd3e7bcd7b25a285452443e9ddfd3c025d",
 	"packages": {
 		"@veyyon/agent-core": {
 			"name": "@veyyon/agent-core",
@@ -3170,6 +3170,8 @@
 				"./session/codex-auto-reset.js",
 				"./session/compact-modes",
 				"./session/compact-modes.js",
+				"./session/compaction-policy",
+				"./session/compaction-policy.js",
 				"./session/context-usage",
 				"./session/context-usage.js",
 				"./session/cpu-limit",
@@ -10388,6 +10390,14 @@
 				"./session/compact-modes.js": {
 					"to": "@veyyon/kernel/session/compact-modes.js",
 					"why": "packages/coding-agent/src/session/compact-modes.ts moved to kernel/src/session/compact-modes.ts, which @veyyon/kernel publishes as ./session/compact-modes.js"
+				},
+				"./session/compaction-policy": {
+					"to": "@veyyon/kernel/session/agent-session-compaction-policy",
+					"why": "packages/coding-agent/src/session/compaction-policy.ts moved to kernel/src/session/agent-session-compaction-policy.ts, which @veyyon/kernel publishes as ./session/agent-session-compaction-policy"
+				},
+				"./session/compaction-policy.js": {
+					"to": "@veyyon/kernel/session/agent-session-compaction-policy.js",
+					"why": "packages/coding-agent/src/session/compaction-policy.ts moved to kernel/src/session/agent-session-compaction-policy.ts, which @veyyon/kernel publishes as ./session/agent-session-compaction-policy.js"
 				},
 				"./session/detached-abort": {
 					"to": "@veyyon/kernel/session/detached-abort",

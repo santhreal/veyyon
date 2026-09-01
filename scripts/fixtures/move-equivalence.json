@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "22d6c9c274ee70424dd10b16e006a23269fb21b7",
+	"generatedFrom": "edbce2cd3e7bcd7b25a285452443e9ddfd3c025d",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -24,6 +24,10 @@
 		[
 			"packages/coding-agent/src/tools/inspect-image-renderer.ts",
 			"packages/coding-agent/test/oracles/inspect-image-main-renderer.ts"
+		],
+		[
+			"packages/coding-agent/src/session/compaction-policy.ts",
+			"kernel/src/session/agent-session-compaction-policy.ts"
 		],
 		[
 			"packages/coding-agent/src/session/permission-intent.ts",
@@ -2209,6 +2213,17 @@
 			"mainHash": "93cf667d7ccc854205499be9f7665d947c21a00512cafd2154df664ece3e1bd8",
 			"structuralHash": "2a57defed49fc65cc18a32c0cd2051a3601accd092cdeb170d84d69bd9d7e0f0",
 			"mainStructuralHash": "2a57defed49fc65cc18a32c0cd2051a3601accd092cdeb170d84d69bd9d7e0f0"
+		},
+		"kernel/src/session/agent-session-compaction-policy.ts": {
+			"old": "packages/coding-agent/src/session/compaction-policy.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "kernel-absorption",
+			"reason": "The kernel's compaction policy module carries the knobs this branch extracted from `agent-session.ts` plus the vocabulary main later extracted into a package-local module of its own, which git pairs as the rename source. One owner states both sets, and no knob's value changed.",
+			"hash": "30c4ba3bdab1081c32922d8ece1e1470ce509b123da5c36754abfc442dea2067",
+			"mainHash": "6ccb5749c36046ff18cfd65f76347aae5c859fd40dbf7563c814269d09a3ae84",
+			"structuralHash": "c0fa52c0526d6fc54f97027b7c03376c85e2907061c0d176fabb474be2b1213a",
+			"mainStructuralHash": "69f26285ab4c1b947382092dc7d123beb86d375f2cacfad5a2f62f42bce5c6f2"
 		},
 		"kernel/src/session/artifacts.ts": {
 			"old": "packages/coding-agent/src/session/artifacts.ts",
@@ -11841,10 +11856,10 @@
 			"old": "packages/coding-agent/src/modes/controllers/mcp-command-controller.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "693e327cdba7111e6640ffd94cf160d6e5b3d8afc10c08c8de08024bf42a2c11",
-			"mainHash": "e59dab7da1c448c195e9c17864cbae37c82b752b3e5028fa70764d49eb384b1f",
-			"structuralHash": "68fa842be0a88d5aed46ea508e33998183a071002b892cdefd2062bad43a492f",
-			"mainStructuralHash": "68fa842be0a88d5aed46ea508e33998183a071002b892cdefd2062bad43a492f"
+			"hash": "b6715cc9a49874e0dce1b7083715b5c2d59ffbbd0660eba834f418e0623a64b7",
+			"mainHash": "0522471e0054c7be0600291eefde3482b333db3fc76f0a9b8b10601dcec3d178",
+			"structuralHash": "70d95b80022eebbc6d2871cdd2d1e9deb4ad7ea3dc3d3530332ae20a0634a38d",
+			"mainStructuralHash": "70d95b80022eebbc6d2871cdd2d1e9deb4ad7ea3dc3d3530332ae20a0634a38d"
 		},
 		"packages/coding-agent/src/modes/terminal/controllers/omfg-controller.ts": {
 			"old": "packages/coding-agent/src/modes/controllers/omfg-controller.ts",
