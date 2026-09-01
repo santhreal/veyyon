@@ -15,6 +15,7 @@
  * suffix or part of a model id; that ambiguity belongs to the parser this module calls.
  */
 import { describe, expect, it } from "bun:test";
+import { ThinkingLevel } from "@veyyon/agent-core";
 import {
 	formatRetryFallbackBaseSelector,
 	isRetryFallbackModelKey,
@@ -69,7 +70,7 @@ describe("a fallback chain selector keeps its model apart from its effort", () =
 		expect(parsed?.provider).toBe("anthropic");
 		// The id must NOT keep the suffix, or the fallback would name a model that does not exist.
 		expect(parsed?.id).toBe("claude-sonnet-4");
-		expect(parsed?.thinkingLevel).toBe("high");
+		expect(parsed?.thinkingLevel).toBe(ThinkingLevel.High);
 	});
 
 	it("carries the trimmed text as raw, so one selector keys one entry", () => {
