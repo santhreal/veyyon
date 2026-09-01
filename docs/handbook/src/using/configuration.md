@@ -159,7 +159,7 @@ Configure the interactive model, subagent policy, compaction model, and optional
 | Goal | What to set |
 | --- | --- |
 | Choose the model you talk to | `--model` / `/model` (persisted as `modelRoles.default`) |
-| Choose profile-wide subagent defaults | `subagent.model` and `subagent.thinkingLevel` |
+| Run every subagent on one model and effort | `subagent.sharedModel`, then `subagent.model` and `subagent.thinkingLevel` |
 | Customize one subagent | `subagent.agents.<name>` or Settings → Subagents → Agents |
 | Choose the model for context compaction | `compaction.model` |
 | Add named model assignments | `modelRoles`, per profile (Settings → Model → Roles) |

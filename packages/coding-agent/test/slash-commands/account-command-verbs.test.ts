@@ -16,6 +16,7 @@ import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test, vi } from "bun:test";
 import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import * as oauthUtils from "@veyyon/ai/registry/oauth";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
@@ -52,7 +53,10 @@ describe("/account verbs", () => {
 			sessionId: SESSION_ID,
 			model: providerOfCurrentModel ? { provider: providerOfCurrentModel, id: "unit-model-1" } : undefined,
 			modelRegistry: { authStorage, getAvailable: () => [] },
-			settings: { get: (path: string) => (path === "providers.webSearch" ? "auto" : undefined) },
+			// A real isolated store, not a `get`-only stand-in: the status block reads
+			// model roles as well as settings paths, and a stand-in that answers one of
+			// those and not the other fails as a missing method rather than a wrong block.
+			settings: Settings.isolated({ "providers.webSearch": "auto" }),
 			fetchUsageReports: async () => null,
 		} as unknown as AgentSession;
 		const ctx = {

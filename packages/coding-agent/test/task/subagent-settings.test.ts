@@ -28,7 +28,7 @@
 import { describe, expect, it, spyOn } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import { getBundledModel } from "@veyyon/catalog/models";
-import { Settings } from "@veyyon/coding-agent/config/settings";
+import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import type { SubagentAgentSettings } from "@veyyon/coding-agent/config/settings-domains/subagents";
 import { isSettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import {
@@ -405,20 +405,37 @@ describe("subagent model precedence: one scope, the agent", () => {
 	});
 });
 
-describe("subagent model: the retired cross-agent settings decide nothing", () => {
+describe("subagent model: the two scopes, and the key that is retired in both", () => {
 	/**
-	 * A config written by an older release still carries the four keys that moved
-	 * every agent at once. They must be inert: serving one would put a single key
-	 * back in charge of the whole roster, which is the defect this scope change
-	 * exists to end. Each is asserted on its own, so a resolver that kept reading
-	 * one of the four cannot hide behind the other three.
+	 * `subagent.model` and `subagent.thinkingLevel` answer only while the switch is on. Left in a
+	 * file with the switch off they are inert, so a config written while the roster was shared does
+	 * not quietly outrank the per-agent pages once the operator turns the switch back off.
 	 */
 	it.each([
-		["subagent.sharedModel", { "subagent.sharedModel": true, "subagent.model": "openai/gpt-5" }],
 		["subagent.model", { "subagent.model": "openai/gpt-5" }],
 		["subagent.modelByDepth", { "subagent.modelByDepth": { "1": "openai/gpt-5" } }],
-	] as Array<[string, Parameters<typeof Settings.isolated>[0]]>)("ignores %s", (_name, stored) => {
-		const settings = Settings.isolated(stored);
+	] as Array<[string, Parameters<typeof Settings.isolated>[0]]>)(
+		"ignores %s while the switch is off",
+		(_name, stored) => {
+			const settings = Settings.isolated(stored);
+			settings.setModelRole("default", "anthropic/claude-opus-4-5");
+
+			const resolved = resolveSubagentModel({ settings, agentName: "scout", taskDepth: 1 });
+
+			expect(resolved.patterns).toEqual(["anthropic/claude-opus-4-5"]);
+			expect(resolved.source).toBe("default");
+		},
+	);
+
+	/**
+	 * The depth-keyed chain is retired in BOTH scopes: it named a depth rather than an agent, so it
+	 * decided for whatever agent happened to run there, and neither scope has a reading of that.
+	 */
+	it("ignores subagent.modelByDepth even while the switch is on", () => {
+		const settings = Settings.isolated({
+			"subagent.sharedModel": true,
+			"subagent.modelByDepth": { "1": "openai/gpt-5" },
+		} as Parameters<typeof Settings.isolated>[0]);
 		settings.setModelRole("default", "anthropic/claude-opus-4-5");
 
 		const resolved = resolveSubagentModel({ settings, agentName: "scout", taskDepth: 1 });
@@ -427,28 +444,75 @@ describe("subagent model: the retired cross-agent settings decide nothing", () =
 		expect(resolved.source).toBe("default");
 	});
 
-	/** The retired effort key is inert on its own axis for the same reason. */
-	it("ignores subagent.thinkingLevel", () => {
+	/** The blanket effort is inert on its own axis while the switch is off, for the same reason. */
+	it("ignores subagent.thinkingLevel while the switch is off", () => {
 		const settings = Settings.isolated({ "subagent.thinkingLevel": "low" });
 
 		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout" })).toBe(AGENT_DEFAULT_EFFORT);
 	});
 
-	/**
-	 * Inert is not the same as silent. A file that still names a model looks
-	 * configured, so each stale key is listed with the page that replaced it;
-	 * otherwise the operator reads a value on disk and watches something else run.
-	 */
-	it("lists every stale key that is still set, and nothing that is unset", () => {
-		const stale = Settings.isolated({
+	/** With the switch on, both blanket keys answer, and they answer for an agent with no row. */
+	it("serves both blanket keys while the switch is on", () => {
+		const settings = Settings.isolated({
 			"subagent.sharedModel": true,
 			"subagent.model": "openai/gpt-5",
 			"subagent.thinkingLevel": "low",
+		} as Parameters<typeof Settings.isolated>[0]);
+		settings.setModelRole("default", "anthropic/claude-opus-4-5");
+
+		const resolved = resolveSubagentModel({ settings, agentName: "scout", taskDepth: 1 });
+
+		expect(resolved.patterns).toEqual(["openai/gpt-5"]);
+		expect(resolved.source).toBe("shared");
+		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout" })).toBe(ThinkingLevel.Low);
+	});
+
+	/**
+	 * The switch on with no chain set is every agent on the default model role, not a fall-through
+	 * to the agent's own layers. Falling through would make the switch look on while frontmatter
+	 * still decided, which is a screen saying one thing and a spawn doing another.
+	 */
+	it("lands every agent on the default role when the switch is on and no chain is set", () => {
+		const settings = Settings.isolated({ "subagent.sharedModel": true });
+		settings.setModelRole("default", "anthropic/claude-opus-4-5");
+
+		const resolved = resolveSubagentModel({
+			settings,
+			agentName: "scout",
+			agentModel: "openai/gpt-5",
+			taskDepth: 1,
+		});
+
+		expect(resolved.patterns).toEqual(["anthropic/claude-opus-4-5"]);
+		expect(resolved.source).toBe("default");
+	});
+
+	/**
+	 * Inert is not the same as silent. A file that still names a depth-keyed chain looks
+	 * configured, so the stale key is listed with the page that replaced it; otherwise the operator
+	 * reads a value on disk and watches something else run.
+	 */
+	it("lists every stale key that is still set, and nothing that is unset", () => {
+		const stale = Settings.isolated({
 			"subagent.modelByDepth": { "1": "openai/gpt-5" },
 		} as Parameters<typeof Settings.isolated>[0]);
 
 		expect(rejectedSubagentModelSettings(stale).sort()).toEqual(Object.keys(RETIRED_SUBAGENT_MODEL_SETTINGS).sort());
 		expect(rejectedSubagentModelSettings(Settings.isolated())).toEqual([]);
+	});
+
+	/**
+	 * A live key is never reported as stale. Reporting `subagent.model` would tell an operator to
+	 * migrate the setting the switch above it just told them to use.
+	 */
+	it("says nothing about the blanket keys, which are live", () => {
+		const settings = Settings.isolated({
+			"subagent.sharedModel": true,
+			"subagent.model": "openai/gpt-5",
+			"subagent.thinkingLevel": "low",
+		} as Parameters<typeof Settings.isolated>[0]);
+
+		expect(rejectedSubagentModelSettings(settings)).toEqual([]);
 	});
 
 	/**
@@ -482,7 +546,9 @@ describe("subagent model: the retired cross-agent settings decide nothing", () =
 		const warnings: string[] = [];
 		const restore = captureLoggerWarnings(warnings);
 		try {
-			const settings = Settings.isolated({ "subagent.model": "openai/gpt-5" });
+			const settings = Settings.isolated({
+				"subagent.modelByDepth": { "1": "openai/gpt-5" },
+			} as Parameters<typeof Settings.isolated>[0]);
 			resolveSubagentModel({ settings, agentName: "scout" });
 			resolveSubagentModel({ settings, agentName: "reviewer" });
 		} finally {
@@ -490,9 +556,9 @@ describe("subagent model: the retired cross-agent settings decide nothing", () =
 			resetRejectedSubagentModelSettingReports();
 		}
 
-		const reported = warnings.filter(message => message.includes("subagent.model"));
+		const reported = warnings.filter(message => message.includes("subagent.modelByDepth"));
 		expect(reported).toHaveLength(1);
-		expect(reported[0]).toContain(RETIRED_SUBAGENT_MODEL_SETTINGS["subagent.model"]);
+		expect(reported[0]).toContain(RETIRED_SUBAGENT_MODEL_SETTINGS["subagent.modelByDepth"]);
 	});
 });
 
@@ -541,6 +607,9 @@ describe("subagent model: a configured value that resolves to nothing refuses", 
 	 */
 	it("names the setting behind every layer", () => {
 		const expected: Record<SubagentModelSource, string> = {
+			// Names the switch beside the key: a reader who never set the switch has
+			// to learn why one key answers for an agent they did not configure.
+			shared: "subagent.model (Same Model for All Subagents)",
 			// For a lane the number is its index in the chain, not a spawn depth: 0 is the
 			// agent's own row and each step down adds one `.subagents`, so the label spells
 			// the exact sequence of pages an operator walked to set it.
@@ -912,19 +981,42 @@ describe("the enabled chain is the spawn ceiling", () => {
 
 describe("subagent effort choices", () => {
 	/**
-	 * The blanket effort was a free-text field on the Subagents tab: any string
-	 * was accepted and an unrecognized one resolved to "inherited". It has no tab
-	 * row at all now — the roster page owns it, picked from the one effort
-	 * vocabulary, and only while the shared switch is on. A row here would be the
-	 * third surface answering a question that has one owner.
+	 * The blanket effort was a free-text field on the Subagents tab: any string was accepted and an
+	 * unrecognized one resolved to "inherited". It is a picker over the one effort vocabulary now,
+	 * and it renders only while the shared switch is on, beside the blanket model it applies to. Off,
+	 * neither row is drawn, so the tab never shows two rows that decide nothing — which is how the
+	 * retired version of this switch confused people.
 	 */
-	it("keeps the blanket effort off the tab entirely", () => {
+	it("draws the blanket model and effort only while the shared switch is on", async () => {
+		resetSettingsForTest();
+		await Settings.init({ inMemory: true });
 		invalidateSettingDefsCache();
-		const paths = getSettingsForTab("subagents").map(entry => entry.path);
+		try {
+			const entries = getSettingsForTab("subagents");
+			const paths = entries.map(entry => entry.path);
+			expect(paths).toContain("subagent.agents");
+			expect(paths).toContain("subagent.sharedModel");
 
-		expect(paths).not.toContain("subagent.thinkingLevel");
-		expect(paths).not.toContain("subagent.model");
-		expect(paths).toContain("subagent.agents");
+			const blanket = entries.filter(
+				entry => entry.path === "subagent.model" || entry.path === "subagent.thinkingLevel",
+			);
+			expect(blanket.map(entry => entry.type)).toEqual(["modelSelector", "subagentSharedEffort"]);
+
+			settings.set("subagent.sharedModel", false);
+			for (const entry of blanket) {
+				expect(entry.condition?.(), `${entry.path} must not be drawn while the switch is off`).toBe(false);
+			}
+			settings.set("subagent.sharedModel", true);
+			for (const entry of blanket) {
+				expect(entry.condition?.(), `${entry.path} must be drawn while the switch is on`).toBe(true);
+			}
+
+			// The switch itself is never conditional, or turning it off would hide the way back.
+			expect(entries.find(entry => entry.path === "subagent.sharedModel")?.condition).toBeUndefined();
+		} finally {
+			resetSettingsForTest();
+			invalidateSettingDefsCache();
+		}
 	});
 
 	/**

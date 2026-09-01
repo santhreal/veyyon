@@ -125,11 +125,13 @@ permission. Enable the role during setup or in the Agents settings table.
 
 ## Choosing models
 
-Model and effort belong to one agent. There is no setting that answers for the whole
-roster: open **Subagents → Roster**, press Enter on an agent, and set the model and
-the effort on that agent's own page.
+Two scopes choose a subagent's model and effort, and **Subagents → Same Model for All
+Agents** selects which one is in force. They are exclusive, not layered: the rows of the
+scope that is off are not drawn.
 
-For one agent, the first of these that names a model wins:
+Off, the default, each agent decides. Open **Subagents → Roster**, press Enter on an
+agent, and set the model and the effort on that agent's own page. The first of these
+that names a model wins:
 
 1. that agent's lane, `subagent.agents.<name>.model`, and for a nested spawn the
    `subagents` level under it that governs that depth
@@ -148,15 +150,30 @@ subagent:
 Effort resolves on the same three layers, ending at `medium`. An explicit `:effort`
 suffix on the resolved model pattern outranks all of them.
 
+On, one pair decides for the whole roster, and the per-agent Model and Effort rows are
+hidden. **Shared Model** (`subagent.model`) and **Shared Effort**
+(`subagent.thinkingLevel`) sit under the switch; an unset chain runs every agent on the
+`default` model role:
+
+```yaml
+subagent:
+  sharedModel: true
+  model: openai/gpt-5
+  thinkingLevel: high
+```
+
+A lane keeps whatever it holds while the switch is on, and decides again the moment the
+switch goes off.
+
 The `default` model role is the model the main assistant starts on, and it is the
 one keystroke path for the common case: `/model` writes it, and every agent with no
 model of its own follows it. A temporary pick, role cycling and plan mode move the
 live session model only, so an agent never changes model because of a keystroke
 aimed at the main assistant.
 
-`subagent.sharedModel`, `subagent.model`, `subagent.thinkingLevel` and
-`subagent.modelByDepth` decided for every agent at once and no longer apply. A config
-still holding one is reported once, naming the roster page that replaces it.
+`subagent.modelByDepth` bound a chain to a spawn depth rather than to an agent and no
+longer applies. A config still holding it is reported once, naming the roster page that
+replaces it.
 
 ### Fallback models
 

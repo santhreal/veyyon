@@ -470,16 +470,7 @@ import { normalizePromptPath } from "../utils/prompt-path";
 import { generateSessionTitle } from "../utils/title-generator";
 import { buildNamedToolChoice, isToolChoiceActive } from "../utils/tool-choice";
 import {
-	GEMINI_TOOL_REMINDER_TYPE,
-	MEMORY_CONTEXT_MESSAGE_TYPE,
-	PLAN_YOLO_HANDOFF_MESSAGE_TYPE,
-	PREWALK_CHECKLIST_MESSAGE_TYPE,
-	PREWALK_CONTINUE_MESSAGE_TYPE,
-	PREWALK_PLAN_MESSAGE_TYPE,
-	SESSION_STATE_MESSAGE_TYPE,
 	sanitizeAssistantForReparentedHistory,
-	THINKING_LOOP_REDIRECT_TYPE,
-	TOOL_CALL_LOOP_REDIRECT_TYPE,
 	titleConversationTurnFromMessage,
 } from "./agent-session-message-shapes";
 import {
@@ -590,6 +581,21 @@ import {
 	stripImagesFromMessage,
 	USER_INTERRUPT_LABEL,
 } from "./messages";
+import {
+	GEMINI_TOOL_REMINDER_TYPE,
+	MEMORY_CONTEXT_MESSAGE_TYPE,
+	PLAN_DECISION_TOOLS,
+	PLAN_MODE_REMINDER_MAX,
+	PLAN_YOLO_HANDOFF_MESSAGE_TYPE,
+	PREWALK_ACTION_TOOLS,
+	PREWALK_CHECKLIST_MESSAGE_TYPE,
+	PREWALK_CONTINUE_MESSAGE_TYPE,
+	PREWALK_PLAN_MESSAGE_TYPE,
+	SESSION_STATE_MESSAGE_TYPE,
+	SESSION_STOP_CONTINUATION_CAP,
+	THINKING_LOOP_REDIRECT_TYPE,
+	TOOL_CALL_LOOP_REDIRECT_TYPE,
+} from "./nudges";
 import { ProviderContextCanonicalizer } from "./provider-context-canonicalizer";
 import { applyProviderImagePolicy } from "./provider-image-budget";
 import { normalizeRoots } from "./relativize-paths";
@@ -620,20 +626,6 @@ import {
 } from "./verification-evidence-ledger";
 import type { VibeModeState } from "./vibe-runtime";
 
-const SESSION_STOP_CONTINUATION_CAP = 8;
-const PLAN_MODE_REMINDER_MAX = 3;
-const PLAN_DECISION_TOOLS = new Set<string>([TOOL.ask, TOOL.resolve]);
-
-/** Tools whose first successful call triggers the switch — once the todo
- *  gate is open (see {@link TodoRuntime.sawTodoTool}). Bash is
- *  deliberately excluded: it doubles as exploration (ls/cat) and fired
- *  turn-1 switches in practice. `todo` is deliberately NOT a trigger: firing
- *  at the todo init handed the fast model 100% of the implementation with
- *  zero started work and measurably regressed pass rates. */
-const PREWALK_ACTION_TOOLS: Record<string, true> = {
-	edit: true,
-	write: true,
-};
 /** Abort reason for the Gemini reasoning-header runaway interrupt. Surfaced on the
  *  discarded assistant turn only; never reaches the model. */
 const GEMINI_HEADER_INTERRUPT_REASON = "Interrupted: emit a tool call instead of more planning";

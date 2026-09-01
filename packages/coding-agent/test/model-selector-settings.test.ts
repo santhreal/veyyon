@@ -26,17 +26,15 @@ describe("settings model pickers", () => {
 	});
 
 	/**
-	 * The subagent model is a picker on NO tab: it is drawn inside the roster
-	 * page, above the lanes it overrides, and only while Same Model for All
-	 * Agents is on. It sat on the Model tab while the per-agent overrides sat
-	 * behind `/agents` and a role called "Subtask" sat in the role table: three
-	 * places to look for one decision, which is how an operator could set a
-	 * subagent model and watch something else win. A tab row anywhere is that
-	 * split reopening, so both tabs are checked rather than the one it left.
+	 * The shared subagent model is a picker on the Subagents tab and nowhere else, drawn under the
+	 * switch that turns it on. It also sat on the Model tab while the per-agent overrides sat behind
+	 * `/agents` and a role called "Subtask" sat in the role table: three places to look for one
+	 * decision, which is how an operator could set a subagent model and watch something else win. A
+	 * Model-tab row is that split reopening.
 	 */
-	it("exposes subagent.model on no tab, leaving it to the roster page", () => {
+	it("exposes subagent.model on the Subagents tab only", () => {
 		invalidateSettingDefsCache();
-		expect(getSettingsForTab("subagents").find(def => def.path === "subagent.model")).toBeUndefined();
+		expect(getSettingsForTab("subagents").find(def => def.path === "subagent.model")?.type).toBe("modelSelector");
 		expect(getSettingsForTab("model").find(def => def.path === "subagent.model")).toBeUndefined();
 	});
 

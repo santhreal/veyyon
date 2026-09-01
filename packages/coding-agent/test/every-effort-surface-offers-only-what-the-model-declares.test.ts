@@ -382,38 +382,15 @@ function openSettingsRow(path: SettingPath, model: Model<Api> | undefined, scope
 
 /**
  * The shared subagent effort, opened the way a user reaches it: Subagents tab →
- * Roster → the Effort row that appears once Same Model for All Agents is on.
+ * Shared Effort, the row that appears once Same Model for All Subagents is on.
  *
- * It has no `ui` block and therefore no tab row of its own — the roster page
- * draws it — so `openSettingsRow` cannot reach it. Driving the page instead of
- * dropping the surface is the point: a picker nobody drives is exactly where a
- * hardcoded ladder survives, and this one is the picker the whole file exists
- * to pin.
- *
- * Async because the roster discovers agents before it draws; the render
- * callback is the signal, so there is no timer here.
+ * The switch goes on first because the row carries the `subagentSharedModel`
+ * condition and is not drawn without it, which is the same gate a user passes
+ * through.
  */
-async function openSubagentEffortRow(
-	model: Model<Api> | undefined,
-	scope?: ReadonlyArray<Model<Api>>,
-): Promise<string> {
+function openSubagentEffortRow(model: Model<Api> | undefined, scope?: ReadonlyArray<Model<Api>>): string {
 	settings.set("subagent.sharedModel", true);
-	let rendered = Promise.withResolvers<void>();
-	const component = buildSelector(model, scope, () => rendered.resolve());
-	const frame = (): string => stripVTControlCharacters(component.render(PANEL_WIDTH).join("\n"));
-	component.openTab("subagents");
-	expect(component.selectSetting("subagent.agents")).toBe(true);
-	component.handleInput(ENTER);
-	while (!frame().includes("Same Model for All Agents")) {
-		await rendered.promise;
-		rendered = Promise.withResolvers<void>();
-	}
-	// By label rather than by a press count: the roster is alphabetical, so any
-	// agent rename would otherwise land these presses on a different row.
-	for (let step = 0; step < 32 && !/›\s*Effort\b/.test(frame()); step++) component.handleInput("\u001b[B");
-	expect(frame()).toMatch(/›\s*Effort\b/);
-	component.handleInput(ENTER);
-	return frame();
+	return openSettingsRow("subagent.thinkingLevel", model, scope);
 }
 
 /** Open Settings → Model → Default Effort on a row already stored for `model`. */
@@ -509,9 +486,9 @@ const RPC_EXPRESSIBLE: readonly string[] = Object.values(ThinkingLevel).map(Stri
 
 const SURFACES: readonly EffortSurface[] = [
 	{
-		id: "roster row Subagents → Roster → Effort",
+		id: "settings row Subagents → Shared Effort",
 		reads: "configuredThinkingLevelOptions",
-		offered: async model => effortWordsIn(await openSubagentEffortRow(model)),
+		offered: model => effortWordsIn(openSubagentEffortRow(model)),
 		emptyNotice: thinking.noSelectableEffortNotice(SETTINGS_INHERIT_LABEL),
 		render: model => openSubagentEffortRow(model),
 	},
@@ -706,7 +683,7 @@ describe("a surface that has narrowed to nothing says why", () => {
 
 		expect(explaining).toEqual(drawn);
 		expect(drawn).toEqual([
-			"roster row Subagents → Roster → Effort",
+			"settings row Subagents → Shared Effort",
 			"settings row Model → Default Effort, per-model row",
 			"model selector effort step",
 		]);
@@ -716,10 +693,10 @@ describe("a surface that has narrowed to nothing says why", () => {
 	 * The other half. A surface that explains itself for every model and offers nothing to anyone is the
 	 * failure a narrowing change introduces most often, and it would satisfy every case above.
 	 */
-	it("says nothing of the kind for a model that has a ladder", async () => {
+	it("says nothing of the kind for a model that has a ladder", () => {
 		const withLadder = shapeModel("declares-a-strict-subset");
 
-		expect(await openSubagentEffortRow(withLadder)).not.toContain(
+		expect(openSubagentEffortRow(withLadder)).not.toContain(
 			thinking.noSelectableEffortNotice(SETTINGS_INHERIT_LABEL),
 		);
 		expect(openEffortStep(withLadder)).toContain("Valid effort variants");
@@ -778,8 +755,8 @@ describe("a row with no single model offers the union its catalog declares, and 
 		expect(UNION.length).toBeLessThan(VOCABULARY.length);
 	});
 
-	it("offers the catalog's union on the subagent effort row with no session model", async () => {
-		expect(effortWordsIn(await openSubagentEffortRow(undefined, BLANKET_SCOPE)).sort()).toEqual([...UNION].sort());
+	it("offers the catalog's union on the subagent effort row with no session model", () => {
+		expect(effortWordsIn(openSubagentEffortRow(undefined, BLANKET_SCOPE)).sort()).toEqual([...UNION].sort());
 	});
 
 	it("offers the catalog's union on the any-model default-effort row", () => {
@@ -801,10 +778,10 @@ describe("a row with no single model offers the union its catalog declares, and 
 	 * A catalog that declares nothing yields nothing. The blanket rows are the only surfaces allowed to
 	 * answer without a model, and that licence is to read the catalog — not to fall back to a constant.
 	 */
-	it("offers no level at all when nothing in the catalog declares one", async () => {
+	it("offers no level at all when nothing in the catalog declares one", () => {
 		const barren = [shapeModel("declares-nothing")];
 		expect(thinking.configuredThinkingLevelsInScope(barren)).toEqual([]);
-		expect(effortWordsIn(await openSubagentEffortRow(undefined, barren))).toEqual([]);
+		expect(effortWordsIn(openSubagentEffortRow(undefined, barren))).toEqual([]);
 	});
 
 	it("refuses nothing over RPC when there is no model to narrow against", () => {

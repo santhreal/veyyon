@@ -33,35 +33,17 @@ import { turnControlPrompts } from "../../prompts/turn-control/rows";
 import { getLatestTodoPhasesFromEntries, type TodoPhase } from "../../tools/agent/todo";
 import { TOOL } from "../../tools/core/builtin-names";
 import { buildNamedToolChoice } from "../../utils/tool-choice";
-import { MID_RUN_TODO_NUDGE_MESSAGE_TYPE, toolCallOpFromMessage } from "../agent-session-message-shapes";
+import { toolCallOpFromMessage } from "../agent-session-message-shapes";
 import { getStringProperty } from "@veyyon/utils";
 import type { AgentSessionEvent, ScheduledAgentContinueOptions } from "../agent-session-types";
+import {
+	MID_RUN_TODO_NUDGE_MAX_PER_CYCLE,
+	MID_RUN_TODO_NUDGE_MESSAGE_TYPE,
+	MID_RUN_TODO_NUDGE_MUTATING_TOOLS,
+	MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD,
+} from "../nudges";
 import { getLatestCompactionEntry } from "../session-context";
 import { incompleteTodoItems, renderTodoContinuationReminder, todoReminderFingerprint } from "../todo-reminder";
-
-/**
- * Mutating tool results (`bash`/`eval`/`edit`/`write`/`ast_edit`) without the
- * agent touching the `todo` tool that trip the mid-run reconciliation nudge.
- * Read-only exploration (search/read/lsp) never ticks this: an agent
- * researching for a long stretch has nothing to flip. Picked so a normal
- * fix-verify loop (~3-6 mutations) never sees the nudge, but a sustained run
- * of landed work without flipping any todos does. Without this nudge, long
- * runs drive the live todo HUD to `0/N` until the final stop, then batch-flip
- * to `N/N` (issue #3651).
- */
-const MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD = 12;
-/** Mid-run nudges per prompt cycle. Deliberately tighter than
- *  `todo.reminders.max` (the stop-time budget): this is a gentle hidden hint,
- *  not an escalation ladder. */
-const MID_RUN_TODO_NUDGE_MAX_PER_CYCLE = 2;
-/** Tool results that count as landed work for the mid-run todo nudge. */
-const MID_RUN_TODO_NUDGE_MUTATING_TOOLS: Record<string, true> = {
-	bash: true,
-	eval: true,
-	edit: true,
-	write: true,
-	ast_edit: true,
-};
 
 /**
  * The slice of the agent loop the todo pressures drive. `Agent` satisfies this

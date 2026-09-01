@@ -70,6 +70,7 @@ import {
 	SUBAGENT_ENABLE_STATE_LABEL,
 	subagentEnableState,
 	subagentModelSourceLabel,
+	subagentScopeIsShared,
 	subagentSettingsFor,
 } from "../../../../task/subagent-settings";
 import { type AgentDefinition, canSpawnAtDepth } from "../../../../task/types";
@@ -1830,6 +1831,16 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		// edit the value they are looking at.
 		this.addChild(new Text(`  ${theme.fg("muted", "Runs")} ${this.#runsSummary(agent, depth)}`, 0, 0));
 		this.addChild(new Spacer(1));
+		// One scope draws its rows and the other draws none. A Model row here
+		// while the blanket switch is on would show a value no spawn reads, which
+		// is the exact confusion that retired the switch the first time. The
+		// signpost replaces the rows rather than sitting beside them, so the page
+		// still says where the answer is instead of looking like it lost one.
+		const shared = subagentScopeIsShared(settings);
+		if (shared) {
+			this.addChild(new Text(theme.fg("dim", "  Set for every subagent · Subagents → Shared Model"), 0, 0));
+			this.addChild(new Spacer(1));
+		}
 		const items: SelectItem[] = [
 			{
 				value: AGENT_ROW_OFFERED,
@@ -1848,16 +1859,20 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 								lane.enabled === undefined ? theme.fg("dim", " (default)") : ""
 							}`,
 			},
-			{
-				value: AGENT_ROW_MODEL,
-				label: "Model",
-				description: this.#laneModelSummary(lane, depth),
-			},
-			{
-				value: AGENT_ROW_EFFORT,
-				label: "Effort",
-				description: this.#laneEffortSummary(lane, depth),
-			},
+			...(shared
+				? []
+				: [
+						{
+							value: AGENT_ROW_MODEL,
+							label: "Model",
+							description: this.#laneModelSummary(lane, depth),
+						},
+						{
+							value: AGENT_ROW_EFFORT,
+							label: "Effort",
+							description: this.#laneEffortSummary(lane, depth),
+						},
+					]),
 			{
 				value: AGENT_ROW_NESTED,
 				label: "Subagents",
@@ -3511,6 +3526,16 @@ export class SettingsSelectorComponent implements Component {
 					changed,
 				};
 
+			case "subagentSharedEffort":
+				return {
+					id: def.path,
+					label: def.label,
+					description: def.description,
+					currentValue: this.#formatSubagentSharedEffortValue(),
+					submenu: (_cv, done) => this.#createSubagentSharedEffortInput(done),
+					changed,
+				};
+
 			case "modelRoles":
 				return {
 					id: def.path,
@@ -3902,6 +3927,51 @@ export class SettingsSelectorComponent implements Component {
 			},
 			() => done(this.#formatDefaultEffortValue()),
 			this.context.requestRender,
+		);
+	}
+
+	/** Row summary: the stored level, or that the documented default applies. */
+	#formatSubagentSharedEffortValue(): string {
+		const stored: unknown = settings.get("subagent.thinkingLevel");
+		const level = typeof stored === "string" ? stored.trim() : "";
+		return level.length > 0 ? level : "Inherit";
+	}
+
+	/**
+	 * The blanket effort, narrowed against the model those agents actually run.
+	 *
+	 * The scope comes from `subagent.model` rather than the session model: while
+	 * the switch is on that chain is what every spawn resolves to, and narrowing
+	 * against the model on screen would offer levels no subagent endpoint
+	 * accepts. An unset chain falls back to the session model, which is what an
+	 * unset chain resolves to through the default role.
+	 */
+	#createSubagentSharedEffortInput(done: (value?: string) => void): Container {
+		const chain: unknown = settings.get("subagent.model");
+		const head = Array.isArray(chain) ? chain.find((entry): entry is string => typeof entry === "string") : chain;
+		const scope = effortScopeForPattern(
+			this.context.availableModels,
+			typeof head === "string" && head.trim().length > 0 ? head : undefined,
+			this.context.model,
+		);
+		const { options, notice } = subagentEffortOptions(scope, this.context.availableModels);
+		const stored: unknown = settings.get("subagent.thinkingLevel");
+		return new SelectSubmenu(
+			"Shared Effort",
+			notice === undefined
+				? "The effort every subagent runs at. A `:level` on the model chain still wins."
+				: `The effort every subagent runs at. ${notice}`,
+			options,
+			typeof stored === "string" ? stored.trim() : "",
+			value => {
+				// Inherit is the ABSENCE of a value: storing the empty string would
+				// leave the key configured and reading as a choice nobody made.
+				if (value === INHERIT_EFFORT_OPTION_VALUE) settings.set("subagent.thinkingLevel", undefined);
+				else settings.set("subagent.thinkingLevel", value);
+				this.callbacks.onChange("subagent.thinkingLevel", settings.get("subagent.thinkingLevel"));
+				done(this.#formatSubagentSharedEffortValue());
+			},
+			() => done(this.#formatSubagentSharedEffortValue()),
 		);
 	}
 

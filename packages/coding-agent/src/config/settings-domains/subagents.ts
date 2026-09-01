@@ -230,14 +230,15 @@ export const SUBAGENTS_SETTINGS = {
 	 * edited two sections apart from the overrides that outrank it is how an
 	 * operator changes one and reads the other.
 	 *
-	 * IT IS ALSO THE ONLY PLACE A MODEL OR AN EFFORT IS CHOSEN FOR AN AGENT. The
-	 * same value used to be reachable from three screens — a `Subagent Model` row
-	 * on this tab, a blanket `Model` row at the top of the roster, and each
-	 * agent's own page — so the tab showed one model, the roster header showed
-	 * the same one again, and the per-agent rows showed a third answer inherited
-	 * from it. The two blanket surfaces are retired: an agent's page is the one
-	 * place its model and effort are chosen, and nothing changes a model for more
-	 * than one agent.
+	 * IT IS THE ONLY PER-AGENT SURFACE FOR A MODEL OR AN EFFORT. The same value
+	 * used to be reachable from three screens — a `Subagent Model` row on this
+	 * tab, a blanket `Model` row at the top of the roster, and each agent's own
+	 * page — so the tab showed one model, the roster header showed the same one
+	 * again, and the per-agent rows showed a third answer inherited from it. One
+	 * blanket scope is back as {@link SUBAGENTS_SETTINGS}`["subagent.sharedModel"]`,
+	 * and the two scopes are exclusive rather than layered: while the switch is
+	 * on, the per-agent Model and Effort rows are not drawn at all, so exactly
+	 * one screen shows a model and that screen is the one that changes it.
 	 */
 	"subagent.agents": {
 		type: "record",
@@ -247,7 +248,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Subagents",
 			label: "Roster",
 			description:
-				"Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent's page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above, and an agent that names nothing runs the default model role. This is the only place a model or an effort is chosen for an agent.",
+				"Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent's page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above, and an agent that names nothing runs the default model role. Same Model for All Subagents below replaces the per-agent Model and Effort rows with one pair for the whole roster.",
 			keywords: [
 				"agents",
 				"roster",
@@ -281,31 +282,63 @@ export const SUBAGENTS_SETTINGS = {
 	},
 
 	/**
-	 * RETIRED: one switch that put every agent on one model and one effort.
+	 * Which scope decides a subagent's model and effort: the agent, or the whole
+	 * roster.
 	 *
-	 * Model and effort are per agent. This key stays declared so an existing
-	 * `config.yml` still loads and `config get` can name its replacement, and
-	 * `rejectedSubagentModelSettings` reports it when a file still carries it. No
-	 * resolver reads it.
+	 * Off, the default, is per agent — a lane under `subagent.agents`, then the
+	 * agent's frontmatter, then the default model role. On, `subagent.model` and
+	 * `subagent.thinkingLevel` answer for every agent and outrank both.
+	 *
+	 * The two scopes are EXCLUSIVE, not layered, which is the whole difference
+	 * from the version of this switch that was retired. That one left the
+	 * per-agent rows on screen and outranked by them, so the roster and the
+	 * blanket row each showed a model and neither said which one a spawn would
+	 * use. Here the switch decides which rows exist: on, the per-agent Model and
+	 * Effort rows are not drawn, and the two rows below are. A lane that already
+	 * names a model keeps its value in the file and gets it back when the switch
+	 * goes off.
 	 */
 	"subagent.sharedModel": {
 		type: "boolean",
 		default: false,
-		retiredBy: "subagent.agents",
+		ui: {
+			tab: "subagents",
+			group: "Subagents",
+			label: "Same Model for All Subagents",
+			description:
+				"Run every subagent on one model and one effort instead of choosing per agent. Off, each agent's page decides. On, the two rows below decide for the whole roster and the per-agent Model and Effort rows are hidden; what those rows hold is kept and comes back when this goes off.",
+			keywords: ["shared", "blanket", "all agents", "one model", "roster", "model", "effort"],
+		},
 	},
 
-	/** RETIRED: the shared model chain `subagent.sharedModel` switched to. */
+	/** The model chain every agent runs while `subagent.sharedModel` is on. */
 	"subagent.model": {
 		type: "modelChain",
 		default: undefined,
-		retiredBy: "subagent.agents",
+		ui: {
+			tab: "subagents",
+			group: "Subagents",
+			label: "Shared Model",
+			description:
+				"The model chain every subagent runs while Same Model for All Subagents is on. Unset falls back to the default model role, the same model a new session starts on.",
+			condition: "subagentSharedModel",
+			keywords: ["shared", "model", "all agents", "chain"],
+		},
 	},
 
-	/** RETIRED: the shared effort `subagent.sharedModel` switched to. */
+	/** The effort every agent runs at while `subagent.sharedModel` is on. */
 	"subagent.thinkingLevel": {
 		type: "string",
 		default: undefined,
-		retiredBy: "subagent.agents",
+		ui: {
+			tab: "subagents",
+			group: "Subagents",
+			label: "Shared Effort",
+			description:
+				"The effort every subagent runs at while Same Model for All Subagents is on. Narrowed to what the model above declares; a `:level` suffix on the chain still wins. Inherit leaves the documented default.",
+			condition: "subagentSharedModel",
+			keywords: ["shared", "effort", "thinking", "all agents"],
+		},
 	},
 
 	/**

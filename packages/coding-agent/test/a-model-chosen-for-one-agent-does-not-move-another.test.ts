@@ -9,18 +9,23 @@
  * roster with it. "I changed the model" and "my subagents changed model" were
  * the same event, and nothing on screen said which one had happened.
  *
- * The scope is now the agent, and this suite defends that as an invariant rather
- * than as a list of the four keys that were removed:
+ * There are two scopes now, and `subagent.sharedModel` selects which one is in
+ * force rather than layering them. This suite defends that as an invariant
+ * rather than as a list of keys:
  *
- *  1. NO `subagent.*` SETTING OUTSIDE `subagent.agents` MAY CHANGE WHAT AN AGENT
- *     RESOLVES TO. The sweep reads the schema at run time, so a new global model
- *     or effort knob added under `subagent.` turns this file red the day it is
- *     declared, with no list to remember to update.
- *  2. A lane moves exactly the agent it names, on both axes.
- *  3. Every agent resolves to a CONCRETE model and a CONCRETE effort with
+ *  1. WITH THE SWITCH OFF, NO `subagent.*` SETTING OUTSIDE `subagent.agents`
+ *     MAY CHANGE WHAT AN AGENT RESOLVES TO — and with it on, none outside the
+ *     three keys the switch owns. The sweep reads the schema at run time in
+ *     both scopes, so a new global model or effort knob added under `subagent.`
+ *     turns this file red the day it is declared, with no list to remember.
+ *  2. A lane moves exactly the agent it names, on both axes, while the switch
+ *     is off, and moves nobody while it is on.
+ *  3. The shared scope is all-or-nothing: on, every agent runs the blanket
+ *     chain at the blanket effort.
+ *  4. Every agent resolves to a CONCRETE model and a CONCRETE effort with
  *     nothing configured, from the documented default rather than from whatever
  *     the operator happens to be looking at.
- *  4. The four retired keys still load, still get named, and decide nothing.
+ *  5. The depth-keyed key still loads, still gets named, and decides nothing.
  *
  * The probe machinery is proved by a negative control before it is trusted: the
  * same comparison that reports "nothing moved" for every swept key must report
@@ -52,8 +57,14 @@ const PROFILE_DEFAULT = "anthropic/claude-opus-4-5";
 const PROBE_MODEL = "openai/gpt-5";
 const PROBE_EFFORT = "minimal";
 
-/** The scope that is allowed to decide a model: the per-agent table and nothing else. */
+/** The scope that decides per agent. Everything else must move one agent or the whole roster. */
 const PER_AGENT_PATH = "subagent.agents";
+
+/**
+ * The three keys the switch owns: the switch, and the model and effort it puts every agent on.
+ * Listed once, so the sweep below and the tab check read the same set.
+ */
+const SHARED_SCOPE_PATHS: SettingPath[] = ["subagent.sharedModel", "subagent.model", "subagent.thinkingLevel"];
 
 type SettingsSeed = Parameters<typeof Settings.isolated>[0];
 
@@ -130,16 +141,20 @@ describe("the sweep can see an agent move", () => {
 	});
 });
 
-describe("no subagent setting outside the per-agent table changes what an agent runs", () => {
+describe("no subagent setting outside the per-agent table and the shared trio changes what an agent runs", () => {
 	const swept = (Object.keys(SETTINGS_SCHEMA) as SettingPath[]).filter(
-		path => path.startsWith("subagent.") && path !== PER_AGENT_PATH && modelBearingProbe(path) !== undefined,
+		path =>
+			path.startsWith("subagent.") &&
+			path !== PER_AGENT_PATH &&
+			!SHARED_SCOPE_PATHS.includes(path) &&
+			modelBearingProbe(path) !== undefined,
 	);
 
 	/**
-	 * The sweep is worthless if it swept nothing, and the count is not pinned
-	 * because the schema is allowed to grow. What is pinned is that the retired
-	 * four are still IN it: they are the exact keys that used to move everybody,
-	 * so a rename that dropped one out of the sweep would take its proof with it.
+	 * The sweep is worthless if it swept nothing, and the count is not pinned because the schema is
+	 * allowed to grow. What is pinned is that the retired depth key is still IN it: it is the key
+	 * that used to move whoever ran at a depth, so a rename that dropped it out of the sweep would
+	 * take its proof with it.
 	 */
 	it("covers every retired cross-agent key", () => {
 		for (const path of Object.keys(RETIRED_SUBAGENT_MODEL_SETTINGS)) {
@@ -147,12 +162,18 @@ describe("no subagent setting outside the per-agent table changes what an agent 
 		}
 	});
 
-	it.each(swept)("%s moves no agent", path => {
-		const baseline = rosterRuns(seeded({}));
-
-		for (const probe of [modelBearingProbe(path), PROBE_EFFORT]) {
-			const after = rosterRuns(seeded({ [path]: probe } as SettingsSeed));
-			expect(moved(baseline, after), `${path} = ${JSON.stringify(probe)} moved an agent`).toEqual([]);
+	/**
+	 * Both scopes, because a knob that moved an agent only while the switch was on would be a
+	 * second blanket layer hidden behind the first, which is the shape this whole file exists to
+	 * keep out.
+	 */
+	it.each(swept)("%s moves no agent in either scope", path => {
+		for (const scope of [{}, { "subagent.sharedModel": true }] as SettingsSeed[]) {
+			const baseline = rosterRuns(seeded(scope));
+			for (const probe of [modelBearingProbe(path), PROBE_EFFORT]) {
+				const after = rosterRuns(seeded({ ...scope, [path]: probe } as SettingsSeed));
+				expect(moved(baseline, after), `${path} = ${JSON.stringify(probe)} moved an agent`).toEqual([]);
+			}
 		}
 	});
 });
@@ -183,13 +204,57 @@ describe("every agent resolves to a concrete model and effort with nothing confi
 	});
 });
 
-describe("the retired cross-agent keys are named and inert", () => {
-	const STALE: SettingsSeed = {
-		"subagent.sharedModel": true,
-		"subagent.model": PROBE_MODEL,
-		"subagent.thinkingLevel": PROBE_EFFORT,
-		"subagent.modelByDepth": { "1": PROBE_MODEL },
-	} as SettingsSeed;
+describe("the shared scope moves the whole roster, or nobody", () => {
+	/**
+	 * The blanket chain is all-or-nothing. A shared model that reached some agents and not others
+	 * would be the three-surface split again: a roster showing one model per agent, and a spawn
+	 * running something else for the ones the blanket happened to catch.
+	 */
+	it("puts every agent on the blanket chain while the switch is on", () => {
+		const settings = seeded({ "subagent.sharedModel": true, "subagent.model": PROBE_MODEL } as SettingsSeed);
+
+		expect(new Set(Object.values(rosterRuns(settings))).size).toBe(1);
+		for (const name of ROSTER) {
+			const resolved = resolveSubagentModel({ settings, agentName: name, taskDepth: 1 });
+			expect(resolved.patterns, name).toEqual([PROBE_MODEL]);
+			expect(resolved.source, name).toBe("shared");
+		}
+	});
+
+	/** A lane the switch outranks moves nobody, including the agent it names. */
+	it("leaves a lane deciding nothing while the switch is on", () => {
+		const blanket = rosterRuns(
+			seeded({ "subagent.sharedModel": true, "subagent.model": PROBE_MODEL } as SettingsSeed),
+		);
+		const withLane = rosterRuns(
+			seeded({
+				"subagent.sharedModel": true,
+				"subagent.model": PROBE_MODEL,
+				"subagent.agents": { scout: { model: PROFILE_DEFAULT, thinkingLevel: PROBE_EFFORT } },
+			} as SettingsSeed),
+		);
+
+		expect(moved(blanket, withLane)).toEqual([]);
+	});
+
+	/** Effort travels with the model rather than staying on each agent's row. */
+	it("puts every agent on the blanket effort while the switch is on", () => {
+		const settings = seeded({
+			"subagent.sharedModel": true,
+			"subagent.thinkingLevel": PROBE_EFFORT,
+			"subagent.agents": { reviewer: { thinkingLevel: ThinkingLevel.Max } },
+		} as SettingsSeed);
+
+		for (const name of ROSTER) {
+			expect(resolveSubagentThinkingLevel({ settings, agentName: name, taskDepth: 1 }), name).toBe(
+				ThinkingLevel.Minimal,
+			);
+		}
+	});
+});
+
+describe("the retired depth-keyed key is named and inert", () => {
+	const STALE: SettingsSeed = { "subagent.modelByDepth": { "1": PROBE_MODEL } } as SettingsSeed;
 
 	/**
 	 * An existing `config.yml` still loads. Dropping the declarations would make
@@ -210,30 +275,36 @@ describe("the retired cross-agent keys are named and inert", () => {
 		expect(rejectedSubagentModelSettings(Settings.isolated())).toEqual([]);
 	});
 
-	/** All four at once, which is what an untouched old profile actually holds. */
-	it("resolves a whole stale profile to the documented default", () => {
+	/** Inert in both scopes, since a depth names no agent in either of them. */
+	it("resolves a stale profile to the documented default in either scope", () => {
 		expect(moved(rosterRuns(seeded({})), rosterRuns(seeded(STALE)))).toEqual([]);
+		const on: SettingsSeed = { "subagent.sharedModel": true } as SettingsSeed;
+		expect(moved(rosterRuns(seeded(on)), rosterRuns(seeded({ ...on, ...STALE } as SettingsSeed)))).toEqual([]);
 	});
 });
 
-describe("the Subagents settings tab offers no cross-agent model or effort row", () => {
+describe("the Subagents tab offers cross-agent rows only under the switch that declares them", () => {
 	/**
-	 * The settings tab is where the removed toggle lived, so its absence is part
-	 * of the contract rather than an implementation detail. Asserted over the
-	 * rows the tab actually builds, so a row reintroduced through any of the
-	 * def factories is caught, and by path prefix rather than by label, so
-	 * renaming "Same Model for All Agents" does not smuggle it back.
+	 * Every row on the tab that names a model or an effort is one of the three the switch owns, and
+	 * the two that decide are hidden while the switch is off. Read off the rows the tab actually
+	 * builds, so a row reintroduced through any of the def factories is caught, and matched by path
+	 * rather than by label, so renaming "Same Model for All Subagents" smuggles nothing back.
+	 *
+	 * `subagent.showResolvedModelBadge` is opted out by exact name: it decides whether the resolved
+	 * model is PRINTED beside an agent, not what the agent runs. A new display knob lands in the
+	 * list and turns this red until someone records that decision here.
 	 */
-	it("exposes model and effort only through the per-agent table", () => {
-		const modelRows = getSettingsForTab("subagents").filter(def => {
+	it("exposes model and effort through the per-agent table and the shared trio, and nothing else", () => {
+		const displayOnly = ["subagent.showResolvedModelBadge"];
+		const crossAgent = getSettingsForTab("subagents").filter(def => {
 			const path = String(def.path);
-			return path !== PER_AGENT_PATH && (path.includes("model") || path.includes("thinking"));
+			return path !== PER_AGENT_PATH && !displayOnly.includes(path) && /model|thinking/i.test(path);
 		});
 
-		expect(modelRows.map(def => def.path)).toEqual([]);
+		expect(crossAgent.map(def => String(def.path)).sort()).toEqual([...SHARED_SCOPE_PATHS].sort());
 	});
 
-	/** And the per-agent table is on the tab, or there is nowhere left to choose one. */
+	/** And the per-agent table is on the tab, or there is nowhere left to choose one per agent. */
 	it("keeps the per-agent table on the tab", () => {
 		const table = getSettingsForTab("subagents").find(def => def.path === PER_AGENT_PATH);
 

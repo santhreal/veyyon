@@ -85,6 +85,7 @@ export * from "./session/factory-options";
 export * from "./session/factory-prompt";
 export * from "./session/factory-tools";
 export * from "./session/messages";
+export * from "./session/nudges";
 export * from "./session/rewind-checkpoint";
 export * from "./session/session-context";
 export * from "./session/session-dump-format";

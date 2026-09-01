@@ -6,6 +6,7 @@ import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { TaskTool } from "@veyyon/coding-agent/task";
 import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
 import * as executorModule from "@veyyon/coding-agent/task/executor";
+import { AGENT_DEFAULT_EFFORT } from "@veyyon/coding-agent/task/subagent-settings";
 import type { AgentDefinition, SingleResult } from "@veyyon/coding-agent/task/types";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 import { TempDir } from "@veyyon/utils";
@@ -67,6 +68,10 @@ describe("task subagent effort inheritance", () => {
 				}),
 				getSessionFile: () => tempDir.join("parent.jsonl"),
 				getSessionSpawns: () => "*",
+				// The bootstrap the resolver reads is the session's EXPLICIT model, not the one the
+				// operator happens to be viewing: a spawn that followed the active model would move
+				// every agent on a keystroke aimed at one.
+				getModelString: () => MODEL,
 				getActiveModelString: () => MODEL,
 				getActiveThinkingLevel: () => ThinkingLevel.High,
 			}),
@@ -82,12 +87,21 @@ describe("task subagent effort inheritance", () => {
 		return options;
 	}
 
-	/** An unset effort must cross the task-tool boundary as the parent's effort, not fall into child defaults. */
-	it("passes the parent session effort when the agent row and blanket effort are unset", async () => {
+	/**
+	 * With no row anywhere, a spawn runs at the documented default and on the session's model
+	 * bootstrap, and the parent's own effort still crosses the boundary beside it: the executor
+	 * needs it for the case where the resolved level is `inherit` or names nothing.
+	 *
+	 * The child does NOT follow the parent's live effort here. A parent on `high` spawning a worker
+	 * that nobody configured runs that worker at the default, so a keystroke aimed at the main
+	 * assistant does not silently reprice every subagent it spawns afterwards.
+	 */
+	it("runs an unconfigured agent at the documented default, carrying the parent effort beside it", async () => {
 		const options = await dispatch();
 
 		expect(options.modelOverride).toEqual([MODEL]);
-		expect(options.thinkingLevel).toBeUndefined();
+		expect(options.thinkingLevel).toBe(AGENT_DEFAULT_EFFORT);
+		expect(options.thinkingLevel).not.toBe(ThinkingLevel.High);
 		expect(options.parentThinkingLevel).toBe(ThinkingLevel.High);
 	});
 
