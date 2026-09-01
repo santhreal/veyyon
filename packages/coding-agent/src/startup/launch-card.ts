@@ -125,7 +125,12 @@ export async function runStartupPrologue(parsed: Args, forceSetupWizard = false)
 		// statement evaluates the main module and holds the loop long enough
 		// that the character would otherwise appear 156ms after the composer it
 		// was typed into.
-		await logger.time("paintFirstFrame:queuedInput", () => frame.settleQueuedInput());
+		const typed = await logger.time("paintFirstFrame:queuedInput", () => frame.settleQueuedInput());
+		// AFTER those turns, not before them: the terminal's background answer lands in that window
+		// and restyles the chrome, and a recording taken ahead of it captures a card in a state no
+		// launch ends in. Nothing is recorded at all when the operator typed into the card, because
+		// what is on screen then is their draft, not a card the next launch can replay.
+		if (!typed) logger.time("paintFirstFrame:record", () => frame.settleReplayRecording());
 	}
 
 	const prologue: StartupPrologue = { settings, workdirApplied, showStartupSplash };
