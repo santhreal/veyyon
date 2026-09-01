@@ -481,6 +481,7 @@
 - Every provider row with a `login` declares `credential: "api-key" | "oauth"`, and `OAuthProviderInfo` and `getLoginCredential(providerId)` expose it, so a login surface can tell a dashboard URL from an authorization it must open; `OpenAI` is named `OpenAI Platform` and `OpenAI Codex` is named `ChatGPT (Codex subscription)`.
 - The GPU front end's theme is the window's own preference rather than an engine request, so a detached window can be themed, and the profile theme list is read-only because a profile theme carries no palette the window could draw.
 - The desktop host states that profile theme listing is unavailable rather than describing a theme selection it never owned.
+- The desktop renderer repaints only the region a state change declares, keeping the rest of the frame in a retained texture, clips rounded and path-bounded subtrees at the boundary, and shapes each distinct line of text once across frames; GPUI is now a vendored snapshot of the `santhreal/zed` fork under `crates/vendor` rather than a git dependency.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 - The session parser passes `contentText` an options object rather than a bare separator, following that helper's consolidation in `@veyyon/utils`. No change to the text it extracts.
