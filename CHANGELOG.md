@@ -7,6 +7,7 @@
 ### Added
 
 - The models page on veyyon.dev lists every provider and model veyyon supports, read live from the bundled catalog and auto-refreshed from the repository; `bun run site:build` regenerates `website/models-data.json` from `packages/catalog/src/models.json`.
+- A bare interactive launch replays the previous launch's card from a cache before the CLI's import graph is evaluated, then adopts those rows and corrects only what changed. Measured on the built binary over a pty, the card's first byte goes from 44-51ms to 15-21ms. The recording is discarded unless the terminal size, the recorded environment and the binary's path, size and modification time all still match, and it ages out after 24 hours; a launch whose composed card disagrees with the replayed rows drops the recording so the next launch records a fresh one.
 - `/rephrase` asks for the reply on screen again in plainer prose, and refuses unless the conversation is resting on a finished reply.
 - `/autoswarm` opens a setup console for the goal, breadth, attempts and certification, then runs autoresearch with breadth: each iteration builds several candidate arms, rejects the ones that are empty, out of scope, unreadable or duplicates, has the survivors cross-review each other, and keeps at most one; `/autoresearch` is unchanged and still serial.
 - Autoresearch and autoswarm have handbook pages.
@@ -16,6 +17,7 @@
 - Compaction can truncate the middle of an oversized text, keeping both edges, in any message role — including the roles that store their model-visible text outside `content`, such as a shell cell's `output`, a summary's `summary` and a file mention's `files[i].content`.
 - `VEYYON_DEBUG_STARTUP` emits a `native:firstCall:<export>` marker naming the native call that first loads the addon, so a launch that pays extraction before its first frame states which call pulled it in.
 - `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
+- `TUI.adoptPaintedWindow(screen)` tells the renderer the terminal already holds a frame someone else painted, and `TUI.paintedScreen()` returns that frame, so the first render after adoption diffs against the rows on screen and rewrites only what changed instead of repainting the viewport.
 - `getLaunchFactsCachePath()` resolves the cache file the launch card reads the previous launch's model, git state and context percentage from.
 - `formatCostTiered()` and `normalizePremiumRequests()`, moved here from `@veyyon/stats/format` so the status row reaches a terminal formatter without the stats package.
 - `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
