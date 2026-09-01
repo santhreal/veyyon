@@ -73,6 +73,7 @@ export const CONVERTED_TOOLS = [
 	"structure_search",
 	"launch",
 	"search",
+	"github",
 ] as const;
 
 export const WIDTH = 80;

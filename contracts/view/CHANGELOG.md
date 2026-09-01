@@ -20,3 +20,4 @@
 - `NoticeView` states a short notice whose whole body carries one state — a headline, an optional tag and lines under it — so a tool describes a decision without filling a plate itself; a span inside a notice states emphasis and structure, never colour.
 - `ToolViewContext.partial` states whether the result in hand is the tool's last word or an update it will replace, so a card that streams reports running rather than reading an outcome off a half-finished result.
 - `ViewSection.tail` states that a section is a window onto the end of its lines, measured by the host in the rows the lines occupy after wrapping, so a tool that cannot know a width or a viewport height still keeps the end of a long command or a long output on screen.
+- `ViewSpan.trailing` states that a run is trailing detail on its line, so a host with columns to spare places it at the line's end and pads the runs that lead it, and a host drawing one column after another writes it where it falls.

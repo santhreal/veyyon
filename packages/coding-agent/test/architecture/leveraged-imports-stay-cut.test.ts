@@ -816,7 +816,7 @@ describe("reading a local file does not load the MCP client, the skill loader or
 
 	/**
 	 * And the tool still re-exports every fetcher, which is the promise that made the move invisible to
-	 * callers. `tools/web/gh-renderer.ts` and a long tail of tests name `./gh` for these, and the re-export is
+	 * callers. `tools/web/gh-view.ts` and a long tail of tests name `./gh` for these, and the re-export is
 	 * the only reason none of them changed. Asserted through the module's exports rather than by reading
 	 * the source, so a re-export that compiles but resolves to nothing would fail here.
 	 */

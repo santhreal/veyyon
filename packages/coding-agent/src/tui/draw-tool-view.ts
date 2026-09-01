@@ -14,6 +14,7 @@
 import { Ellipsis } from "@veyyon/natives";
 import { type Component, Text } from "@veyyon/tui";
 import { pluralize } from "@veyyon/utils/format";
+import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type {
@@ -270,7 +271,13 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 			? drawItemList(section.lines, section.hidden, theme)
 			: section.code !== undefined
 				? drawCodeLines(section.lines, section.code, theme)
-				: section.lines.map(line => drawSpans(line, theme)),
+				: [],
+		// A plain section's rows, drawn here when the whole row is its subject and left as spans when
+		// it carries a trailing run: a tail sits at the END of the row, so the words before it are cut
+		// to what the tail leaves and the gap between the two is whatever columns are left. That is
+		// the host's width, so those rows are drawn inside the closure below and the rest are not
+		// re-drawn on every frame.
+		rows: section.list || section.code !== undefined ? undefined : section.lines.map(line => plainRow(line, theme)),
 		// Held back by the TOOL, so it stands outside the window the host cuts: a section that says
 		// what it dropped must keep saying it however few rows are left. A list states the same count
 		// on its own closing branch, so the note is already among its rows.
@@ -303,6 +310,14 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 		sections: [
 			...sections.map(section => {
 				const contentWidth = outputBlockContentWidth(width);
+				const drawn =
+					section.rows === undefined
+						? section.lines
+						: section.rows.map(row =>
+								row.tail === undefined
+									? row.drawn
+									: drawRowWithTail(row.lead, row.tail, theme, contentWidth),
+							);
 				// A clipped section is rows rather than prose, so a row that runs out of columns ends
 				// there. Without the cut the block WRAPS it, and one long path becomes two rows of a
 				// listing whose every other entry is one.
@@ -311,14 +326,14 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 				// row, so a window measured on the wrapped text would count rows the card never draws
 				// and drop the front of a screen that fits.
 				const content = section.clip
-					? section.lines.map((line, index) =>
+					? drawn.map((line, index) =>
 							truncateToWidth(
 								line,
 								contentWidth,
 								section.captured?.[index] === true ? Ellipsis.Unicode : Ellipsis.Omit,
 							),
 						)
-					: section.lines;
+					: drawn;
 				const windowed =
 					section.tail === undefined ? content : drawTailWindow(content, section.tail, theme, contentWidth);
 				const rows = section.note === undefined ? windowed : [...windowed, section.note];
@@ -470,7 +485,7 @@ export function drawHeadedBlock(view: HeadedBlockView, theme: Theme, spinnerFram
 		width => {
 			const rows: string[] = [];
 			if (header !== undefined) rows.push(truncateToWidth(header, width, Ellipsis.Omit));
-			for (const line of lines) rows.push(`  ${drawLineToWidth(line, theme, Math.max(1, width - INDENT))}`);
+			for (const line of lines) rows.push(`  ${drawRowToWidth(line, theme, Math.max(1, width - INDENT))}`);
 			const note = hidden === undefined ? undefined : drawHiddenNote(hidden, theme);
 			if (note !== undefined) rows.push(truncateToWidth(`  ${note}`, width, Ellipsis.Omit));
 			return rows;
@@ -517,6 +532,52 @@ function drawLineToWidth(line: ViewLine, theme: Theme, width: number): string {
 		used += visibleWidth(text);
 	}
 	return drawn;
+}
+
+/**
+ * The columns a row keeps for its own words however long its tail is.
+ *
+ * A tail is an aside, so it may not consume the row: two columns of mark and eight of name is the
+ * floor every hand-written card that reserved a name width already used, and below it the tail
+ * overruns the columns rather than the words disappearing.
+ */
+const TAIL_LEAD_MIN_WIDTH = 10;
+
+/**
+ * One plain row of a section: the bytes it draws, or the two halves a trailing run splits it into.
+ *
+ * A row whose whole line is its subject is drawn once, at no width; a row with a tail is kept as
+ * spans, because where the tail lands is the host's answer and it changes with every resize.
+ */
+type PlainRow = { drawn: string; lead?: undefined; tail?: undefined } | { lead: ViewLine; tail: ViewLine };
+
+/** A plain row as the drawer holds it, split at the first run the tool marked trailing. */
+function plainRow(line: ViewLine, theme: Theme): PlainRow {
+	const at = line.findIndex(span => span.trailing === true);
+	if (at < 0) return { drawn: drawSpans(line, theme) };
+	return { lead: line.slice(0, at), tail: line.slice(at) };
+}
+
+/**
+ * A row with its tail at the end of the columns it has, and its own words cut to what is left.
+ *
+ * The tail is measured first and keeps every column it asks for, since a duration or a count that
+ * lost a digit reads as a different number; the words before it are cut with an ellipsis, and the
+ * gap between the two is whatever remains, never less than one column so the two never run together.
+ */
+function drawRowWithTail(lead: ViewLine, tail: ViewLine, theme: Theme, width: number): string {
+	const drawnTail = drawSpans(tail, theme);
+	const tailWidth = visibleWidth(drawnTail);
+	const drawnLead = drawLineToWidth(lead, theme, Math.max(TAIL_LEAD_MIN_WIDTH, width - tailWidth - 1));
+	const gap = padding(Math.max(1, width - visibleWidth(drawnLead) - tailWidth));
+	return `${drawnLead}${gap}${drawnTail}`;
+}
+
+/** One row of a block in the columns it has, whether or not it carries a tail. */
+function drawRowToWidth(line: ViewLine, theme: Theme, width: number): string {
+	const at = line.findIndex(span => span.trailing === true);
+	if (at < 0) return drawLineToWidth(line, theme, width);
+	return drawRowWithTail(line.slice(0, at), line.slice(at), theme, width);
 }
 
 /** The unit a held-back count is in, as the words that follow it, or nothing when the tool named none. */

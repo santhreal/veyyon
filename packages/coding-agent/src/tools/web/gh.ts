@@ -63,7 +63,7 @@ export type {
 /**
  * The fetchers moved to `./gh-fetch`, which imports neither the prompt registry nor this tool. Every
  * name is re-exported here because the `github` tool was their only public home for a long time and
- * `tools/web/gh-renderer.ts` and the tests still name it. See that module's header for the split.
+ * `tools/web/gh-view.ts` and the tests still name it. See that module's header for the split.
  */
 export {
 	getOrFetchIssue,

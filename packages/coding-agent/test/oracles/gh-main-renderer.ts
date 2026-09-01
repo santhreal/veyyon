@@ -1,12 +1,14 @@
-import { type Component, Text } from "@veyyon/tui";
-// The owning leaf, not the `@veyyon/utils` barrel: this is the only vocabulary the renderer
-// needs, and the React renderer of the same tool output reads the same one.
-import { classifyGithubCheckRun, githubIssueRefNumber } from "@veyyon/utils/github-check-run";
-import { padding } from "@veyyon/utils/padding";
-import { visibleWidth } from "@veyyon/utils/width";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import type { Theme, ThemeColor } from "../../theme/theme";
-import { framedBlock, renderStatusLine } from "../../tui";
+/**
+ * Differential oracle: the github tool renderer from origin/main.
+ *
+ * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/tools/gh-renderer.ts`).
+ * Frozen: never edited to make a test pass.
+ *
+ * Only the import specifiers are rewritten to the package subpaths this branch publishes.
+ */
+
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { Theme, ThemeColor } from "@veyyon/coding-agent/theme/theme";
 import {
 	formatExpandHint,
 	formatMoreItems,
@@ -17,15 +19,22 @@ import {
 	type ToolUIStatus,
 	TRUNCATE_LENGTHS,
 	truncateToWidth as truncateVisualWidth,
-} from "../core/render-utils";
+} from "@veyyon/coding-agent/tools/core/render-utils";
 import type {
 	GhRunWatchFailedLogDetails,
 	GhRunWatchJobDetails,
 	GhRunWatchRunDetails,
 	GhRunWatchViewDetails,
 	GhToolDetails,
-} from "./gh";
-import { formatShortSha } from "./gh-format";
+} from "@veyyon/coding-agent/tools/web/gh";
+import { formatShortSha } from "@veyyon/coding-agent/tools/web/gh-format";
+import { framedBlock, renderStatusLine } from "@veyyon/coding-agent/tui";
+import { type Component, Text } from "@veyyon/tui";
+// The owning leaf, not the `@veyyon/utils` barrel: this is the only vocabulary the renderer
+// needs, and the React renderer of the same tool output reads the same one.
+import { classifyGithubCheckRun, githubIssueRefNumber } from "@veyyon/utils/github-check-run";
+import { padding } from "@veyyon/utils/padding";
+import { visibleWidth } from "@veyyon/utils/width";
 
 type GithubToolRenderArgs = {
 	op?: string;

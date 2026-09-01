@@ -138,6 +138,21 @@ export interface ViewSpan {
 	 * host may still mark with whatever it draws for a language it does not know.
 	 */
 	language?: string;
+	/**
+	 * That this run, and every run after it on the same line, is trailing detail rather than the
+	 * subject of the row.
+	 *
+	 * The line-level twin of `StatusRowView.meta`, for a row inside a block: a watched CI job is its
+	 * name and how long it ran, and the two are one row whose second half is an aside. A host that
+	 * lays a row out in columns sets the tail at the end of the row and cuts the words before it,
+	 * which is how a column of durations stays a column; a host with one column draws the runs where
+	 * they fall, which is the same text in the same order.
+	 *
+	 * The tail is the END of a line, so the first marked run opens it and nothing after it can leave
+	 * it. Meaningless on a list item, a code line and a status row, each of which states its own
+	 * structure already.
+	 */
+	trailing?: boolean;
 }
 
 /**

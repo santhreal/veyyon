@@ -7,7 +7,7 @@
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/github.md`
 - Key collaborators:
   - `packages/coding-agent/src/tools/web/gh-format.ts`: shorten commit SHAs for summaries.
-  - `packages/coding-agent/src/tools/web/gh-renderer.ts`: TUI rendering, especially `run_watch` live/result views.
+  - `packages/coding-agent/src/tools/web/gh-view.ts`: the call row, run-watch panel, failed-log group and failure card, described as views a host draws.
   - `packages/coding-agent/src/utils/git.ts`: `gh`/`git` process wrappers, repo locking, branch config writes.
   - `packages/utils/src/dirs.ts`: base directory for dedicated PR worktrees.
   - `packages/coding-agent/src/sdk.ts`: session artifact allocation hook.
@@ -48,7 +48,7 @@ The tool returns a single text result built by `buildTextResult()` in `packages/
 - `details`: optional structured metadata used by the TUI renderer.
   - Common fields: `artifactId`, `repo`, `branch`, `worktreePath`, `remote`, `remoteBranch`, `headSha`, `runId`, `runIds`, `status`, `conclusion`, `failedJobs`.
   - `pr_checkout` adds `checkouts: GhPrCheckoutSummary[]`.
-  - `run_watch` adds `watch: GhRunWatchViewDetails`, which drives the custom live/result renderer in `packages/coding-agent/src/tools/web/gh-renderer.ts`.
+  - `run_watch` adds `watch: GhRunWatchViewDetails`, which drives the live and result views in `packages/coding-agent/src/tools/web/gh-view.ts`.
 - Artifact trailer: when `artifactId` is present, the text body gets an appended line like `Full failed-job logs: artifact://<id>`.
   - `run_watch` allocates artifacts with `session.allocateOutputArtifact("github")`; persistent sessions therefore save failed-log bodies as `<artifact-dir>/<id>.github.log`.
 

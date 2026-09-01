@@ -237,10 +237,10 @@ describe("tools reach the terminal UI only to draw", () => {
  * `@veyyon/tui` and get a widget it can draw. Same concern, different boundary, so
  * it lives beside its sibling instead of in a file of its own.
  *
- * WHAT THE ROWS SAY NOW. Twenty-three of the twenty-five are `-render.ts` /
- * `-renderer.ts` siblings, which is where drawing belongs: a tool module decides what
- * happened, its sibling decides how a terminal shows it, and only the sibling names
- * the renderer package. The two that are not siblings, `bash-interactive.ts` and
+ * WHAT THE ROWS SAY NOW. Seven of the ten are `-render.ts` / `render.ts` siblings,
+ * which is where drawing belongs: a tool module decides what happened, its sibling
+ * decides how a terminal shows it, and only the sibling names the renderer package.
+ * The three that are not siblings, `bash-interactive.ts`, `render-utils.ts` and
  * `renderers.ts`, take `type Component` and nothing else, so they bind no host at run
  * time. No module under `src/tools/` constructs a terminal value in place any more,
  * which is why `DRAWS_IN_PLACE` below is empty.
@@ -263,7 +263,6 @@ const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/shell/bash-render.ts", ["ImageProtocol", "TERMINAL", "type Component"]],
 	["tools/web/browser/render.ts", ["Text", "type Component"]],
 	["tools/shell/eval-render.ts", ["Markdown", "Text", "type Component"]],
-	["tools/web/gh-renderer.ts", ["Text", "type Component"]],
 	["tools/shell/job-render.ts", ["Text", "type Component"]],
 	["tools/fs/read-render.ts", ["Text", "type Component"]],
 	["tools/core/render-utils.ts", ["type Component"]],
@@ -491,6 +490,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"tools/shell/launch-view.ts",
 			"tools/shell/ssh-view.ts",
 			"tools/web/fetch-view.ts",
+			"tools/web/gh-view.ts",
 		]);
 		for (const file of converted) {
 			expect([...IN_PLACE_ANYWHERE.keys()]).not.toContain(file);
@@ -659,7 +659,6 @@ describe("a registry entry either describes its card or is recorded as drawing o
 			"browser",
 			"edit",
 			"eval",
-			"github",
 			"job",
 			"lsp",
 			"read",
@@ -678,6 +677,7 @@ describe("a registry entry either describes its card or is recorded as drawing o
 		expect(described).toEqual([
 			"ast_edit",
 			"debug",
+			"github",
 			"goal",
 			"inspect_image",
 			"irc",

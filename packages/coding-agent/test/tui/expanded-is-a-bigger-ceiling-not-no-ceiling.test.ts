@@ -23,8 +23,9 @@
  *      `outputMaxLines = 6`, `codeMaxLines = 12` and `contentMaxLines = 12` -- all DEFAULT PARAMETERS,
  *      the path every test takes unless it says otherwise -- were bypassed entirely on expand. This
  *      cell is reached by `tools/fs/read.ts`, which 54 test files import.
- *   2. `tools/web/gh-renderer.ts:369` gave its COLLAPSED arm `OUTPUT_EXPANDED` and its expanded arm no
- *      ceiling. Line 257 of the same file pairs them correctly, so one file disagreed with itself.
+ *   2. The github renderer, at `tools/web/gh-renderer.ts:369` when the defect was found, gave its
+ *      COLLAPSED arm `OUTPUT_EXPANDED` and its expanded arm no ceiling. Line 257 of the same file
+ *      pairs them correctly, so one file disagreed with itself.
  *
  * WHY `it.each` OVER THE BRANCH VALUES rather than a second copy of the test. One assertion applied to
  * every value of the branch means a THIRD value added later inherits the contract instead of escaping

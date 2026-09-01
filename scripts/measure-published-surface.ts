@@ -573,6 +573,10 @@ const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, Relocat
 			to: "@veyyon/utils/sanitize-status-text",
 			why: "sanitizeStatusText is declared in packages/utils/src/sanitize-status-text.ts, which @veyyon/utils publishes as ./sanitize-status-text; it is text over stripAnsi and names no host, and the goal tool reduces an objective to one line while building a view model in the domain package",
 		},
+		"./tools/gh-renderer": {
+			to: "./tools/web/gh-view",
+			why: "the github call row, run-watch panel, failed-log group and failure card are declared in tools/web/gh-view.ts as views the host draws, so the module that built their terminal components is gone",
+		},
 		"./tools/inspect-image-renderer": {
 			to: "./tools/fs/inspect-image-view",
 			why: "the inspect_image call row, answer panel and failure card are declared in tools/fs/inspect-image-view.ts as views the host draws, so the module that built their terminal components is gone",
