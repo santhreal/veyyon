@@ -91,7 +91,6 @@ const ENGINE_IMPORTERS = [
 	"tools/agent/ask-render.ts",
 	"tools/agent/vibe-render.ts",
 	"tools/fs/read-render.ts",
-	"tools/search/ast-edit-render.ts",
 	"tools/search/file-search-render.ts",
 	"tools/search/search-renderer.ts",
 	"tools/search/structure-search-render.ts",

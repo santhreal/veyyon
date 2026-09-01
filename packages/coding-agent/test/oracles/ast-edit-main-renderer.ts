@@ -1,17 +1,21 @@
 /**
- * Terminal drawing for the ast_edit tool. The tool half in `ast-edit.ts` decides what
- * happened; this half decides how a terminal shows it, and is the only one of the two
- * that reaches the TUI.
+ * Differential oracle: the ast_edit tool renderer from origin/main.
+ *
+ * Source SHA: 9636f6161beaa0522368820c4a1735eca63ac18e.
+ * Frozen: never edited to make a test pass.
+ *
+ * On main this was the renderer half of `src/tools/ast-edit.ts`; only its import specifiers are
+ * rewritten to the package subpaths this branch publishes, and the details type and the collapsed
+ * budget the renderer reads are restated here rather than imported, so the bytes it draws are
+ * main's.
  */
 
-import type { Component } from "@veyyon/tui";
-import { Text } from "@veyyon/tui";
-import { collapseWhitespace } from "@veyyon/utils";
-import { replaceTabs } from "@veyyon/utils/wrap";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import type { Theme } from "../../theme/theme";
-import { Ellipsis, fileHyperlink, framedBlock, renderStatusLine, truncateToWidth } from "../../tui";
-import { classifyGroupedLines, groupLineIndicesByBlank } from "../core/grouped-file-output";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import {
+	classifyGroupedLines,
+	groupLineIndicesByBlank,
+} from "@veyyon/coding-agent/tools/core/grouped-file-output";
 import {
 	appendParseErrorsBulletList,
 	formatCount,
@@ -20,12 +24,32 @@ import {
 	formatParseErrorsCountLabel,
 	formatScopeMeta,
 	PREVIEW_LIMITS,
-} from "../core/render-utils";
-import type { AstEditToolDetails } from "./ast-edit";
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import {
+	Ellipsis,
+	fileHyperlink,
+	framedBlock,
+	renderStatusLine,
+	truncateToWidth,
+} from "@veyyon/coding-agent/tui";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { collapseWhitespace } from "@veyyon/utils";
+import { replaceTabs } from "@veyyon/utils/wrap";
 
-// =============================================================================
-// TUI Renderer
-// =============================================================================
+/** The fields of main's `AstEditToolDetails` this renderer reads, restated so the oracle stands alone. */
+interface AstEditToolDetails {
+	totalReplacements: number;
+	filesTouched: number;
+	filesSearched: number;
+	limitReached: boolean;
+	parseErrors?: string[];
+	parseErrorsTotal?: number;
+	scopePath?: string;
+	displayContent?: string;
+	searchPath?: string;
+	cwd?: string;
+}
 
 interface AstEditRenderArgs {
 	ops?: Array<{ pat?: string; out?: string }>;

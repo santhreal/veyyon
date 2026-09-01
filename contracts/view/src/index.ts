@@ -30,8 +30,8 @@ export type ViewStatus = "success" | "done" | "error" | "warning" | "info" | "pe
  *
  * `title` is the name of the thing, `accent` its subject, `output` the text the tool itself
  * produced, `link` a target the reader can follow, `muted` and `dim` are secondary detail at two
- * strengths, and the remaining four carry outcome. A tone is a meaning, so a host is free to draw
- * two of them the same way.
+ * strengths, `diffAdded` and `diffRemoved` are the two sides of a change, and the remaining four
+ * carry outcome. A tone is a meaning, so a host is free to draw two of them the same way.
  */
 export type ViewTone =
 	| "title"
@@ -40,6 +40,8 @@ export type ViewTone =
 	| "link"
 	| "muted"
 	| "dim"
+	| "diffAdded"
+	| "diffRemoved"
 	| "success"
 	| "warning"
 	| "error"
@@ -84,6 +86,16 @@ export interface ViewSpan {
 	 * colour, a link drawn as ordinary text, or link-coloured text that goes nowhere.
 	 */
 	link?: string;
+	/**
+	 * A filesystem path this run names, which the host opens however it can.
+	 *
+	 * Separate from `link`, which carries a URL: a path is not one, and turning it into a `file://`
+	 * URI means resolving it against a working directory and percent-encoding it, which is the host's
+	 * answer rather than the tool's. A terminal wraps the run in an OSC 8 link to that URI, an editor
+	 * host opens the file in a pane, and a browser that can reach no filesystem draws the text and
+	 * nothing else. A run may carry both, and a host that offers one of the two uses that one.
+	 */
+	file?: string;
 }
 
 /**

@@ -26,7 +26,6 @@ import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { sanitizeText } from "@veyyon/utils";
 import { formatScopeMeta, TRUNCATE_LENGTHS } from "../../src/tools/core/render-utils";
 import { toolRenderers } from "../../src/tools/renderers";
-import { astEditToolRenderer } from "../../src/tools/search/ast-edit-render";
 import { fileSearchRenderer } from "../../src/tools/search/file-search-render";
 import { structureSearchRenderer } from "../../src/tools/search/structure-search-render";
 import { textSearchRenderer } from "../../src/tools/search/text-search-render";
@@ -68,6 +67,11 @@ describe("formatScopeMeta", () => {
 	});
 });
 
+/** What this suite needs of a renderer: a `renderCall` whose component can be drawn to text. */
+type ScopeRenderer = {
+	renderCall(a: never, o: never, t: Theme): { render(w: number): readonly string[] };
+};
+
 /**
  * The four renderers reached through their real `renderCall`, with the argument
  * shape each one actually reads. `glob` shows its scope as the status
@@ -77,15 +81,15 @@ describe("formatScopeMeta", () => {
  */
 describe("a search renderer shortens the scope it was given", () => {
 	const scope = `${HOME}/workspace/project/src`;
-	const cases: ReadonlyArray<
-		[string, { renderCall(a: never, o: never, t: Theme): { render(w: number): readonly string[] } }, object, string]
-	> = [
+	const cases: ReadonlyArray<[string, ScopeRenderer, object, string]> = [
 		["text search", textSearchRenderer, { input: "needle", path: scope }, "in ~/workspace/project/src"],
 		["file search", fileSearchRenderer, { input: "*.ts" }, "Search files"],
 		["structure search", structureSearchRenderer, { input: "$A()", path: scope }, "in ~/workspace/project/src"],
 		[
 			"ast_edit",
-			astEditToolRenderer,
+			// Through the registry, since the ast_edit card is a view the terminal draws rather than a
+			// renderer module to import.
+			toolRenderers.ast_edit as unknown as ScopeRenderer,
 			{ ops: [{ pat: "$A()", out: "$B()" }], paths: [scope] },
 			"in ~/workspace/project/src",
 		],

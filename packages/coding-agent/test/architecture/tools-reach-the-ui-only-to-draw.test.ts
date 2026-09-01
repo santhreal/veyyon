@@ -258,7 +258,6 @@ describe("tools reach the terminal UI only to draw", () => {
  */
 const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/agent/ask-render.ts", ["Markdown", "Text", "renderInlineMarkdown", "type Component", "type MarkdownTheme"]],
-	["tools/search/ast-edit-render.ts", ["Text", "type Component"]],
 	["tools/shell/bash-interactive.ts", ["type Component"]],
 	["tools/shell/bash-render.ts", ["ImageProtocol", "TERMINAL", "type Component"]],
 	["tools/web/browser/render.ts", ["Text", "type Component"]],
@@ -475,6 +474,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"tools/agent/todo-view.ts",
 			"tools/fs/inspect-image-view.ts",
 			"tools/fs/set-cwd.ts",
+			"tools/search/ast-edit-view.ts",
 			"tools/search/search-tool-bm25-view.ts",
 			"tools/shell/debug-view.ts",
 			"tools/shell/ssh-view.ts",

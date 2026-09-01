@@ -38,7 +38,7 @@ import type { Theme, ThemeColor } from "../theme/theme";
 import { createCachedComponent, formatExpandHint, previewWindowRows } from "../tools/core/render-utils";
 import type { ToolUIStatus } from "../tools/core/tool-ui-status";
 import type { FirstResultViewportRepaint } from "../tools/renderers";
-import { urlHyperlink } from "./hyperlink";
+import { fileHyperlink, urlHyperlink } from "./hyperlink";
 import { framedBlock, outputBlockContentWidth } from "./output-block";
 import { renderStatusLine } from "./status-line";
 import { renderTreeList } from "./tree-list";
@@ -59,6 +59,8 @@ const TONE_COLORS: Record<ViewTone, ThemeColor> = {
 	output: "toolOutput",
 	muted: "muted",
 	dim: "dim",
+	diffAdded: "toolDiffAdded",
+	diffRemoved: "toolDiffRemoved",
 	success: "success",
 	warning: "warning",
 	error: "error",
@@ -133,8 +135,16 @@ export function drawSpan(span: ViewSpan, theme: Theme): string {
 	return linked(span, span.tone === undefined ? text : theme.fg(TONE_COLORS[span.tone], text));
 }
 
-/** The drawn run, reachable when the span named a target and this terminal offers hyperlinks. */
+/**
+ * The drawn run, reachable when the span named a target and this terminal offers hyperlinks.
+ *
+ * A path and a URL are two targets rather than one: `fileHyperlink` resolves a relative path against
+ * the working directory and percent-encodes it into a `file://` URI, which `urlHyperlink` refuses
+ * outright since it accepts http and https alone. A run naming both is drawn as its file, because a
+ * terminal opens that directly and the URL beside it is the same thing at one remove.
+ */
 function linked(span: ViewSpan, drawn: string): string {
+	if (span.file !== undefined) return fileHyperlink(span.file, drawn);
 	return span.link === undefined ? drawn : urlHyperlink(span.link, drawn);
 }
 

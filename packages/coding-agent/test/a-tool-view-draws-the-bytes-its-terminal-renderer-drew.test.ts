@@ -208,6 +208,8 @@ describe("the measurement itself", () => {
 			error: "error",
 			info: "infoAccent",
 			link: "mdLinkUrl",
+			diffAdded: "toolDiffAdded",
+			diffRemoved: "toolDiffRemoved",
 		};
 		const probe = {
 			fg: (color: ThemeColor, text: string) => `<${color}>${text}`,
@@ -222,7 +224,7 @@ describe("the measurement itself", () => {
 				`<${color}:status.error>`,
 			);
 		}
-		// Anti-vacuity: ten tones, ten distinct roles, so no assertion above passes by collision.
+		// Anti-vacuity: twelve tones, twelve distinct roles, so no assertion above passes by collision.
 		expect(new Set(Object.values(expected)).size).toBe(Object.keys(expected).length);
 		// An untoned span is raw text, and an untoned glyph is the accent one.
 		expect(drawSpan({ text: "x" }, probe)).toBe("x");
