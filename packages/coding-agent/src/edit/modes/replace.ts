@@ -16,7 +16,8 @@ import { generateDiffString, replaceText } from "../diff";
 import { EditMatchError, findMatch, formatOccurrenceError } from "../match";
 import { detectLineEnding, normalizeToLF, restoreLineEndings } from "../normalize";
 import { readEditFileTextWithBom, serializeEditFileText } from "../read-file";
-import type { EditToolDetails, LspBatchRequest } from "../renderer";
+import type { LspBatchRequest } from "../../tools/core/render-utils";
+import type { EditToolDetails } from "../details";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 
 export const replaceEditEntrySchema = type({

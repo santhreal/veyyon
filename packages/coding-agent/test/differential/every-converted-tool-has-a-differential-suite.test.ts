@@ -104,6 +104,7 @@ describe("differential coverage", () => {
 			"eval",
 			"lsp",
 			"bash",
+			"edit",
 		]);
 	});
 

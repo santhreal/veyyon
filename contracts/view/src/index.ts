@@ -384,6 +384,15 @@ export interface ViewTailWindow {
 	 * short by construction wants.
 	 */
 	viewport?: boolean;
+	/**
+	 * Rows of the host's own bound the window gives up, for what the card is about to become.
+	 *
+	 * A preview of something still arriving is replaced by the settled card, and a window that spent
+	 * the whole viewport leaves that card nowhere to land: it commits the preview's mutating rows to
+	 * scrollback and draws the finished one under them. Only meaningful beside `viewport`, since a
+	 * bound the tool set itself already leaves whatever it left.
+	 */
+	reserve?: number;
 }
 
 /**
@@ -442,6 +451,48 @@ export interface ViewCodeLines {
 	lead?: string;
 }
 
+/** Which side of a change one line of a diff section is on. */
+export type ViewDiffSide = "added" | "removed" | "context" | "gap";
+
+/**
+ * That a section's lines are one change to a file, which the host marks, numbers and colours.
+ *
+ * The twin of `code` for text that is a CHANGE rather than a file: a tool that edits a file knows
+ * which lines it added, which it removed, which stood still and where each one sits, and knows
+ * nothing about whether a reader sees a red row, a left-hand gutter, a struck-through word or two
+ * panes side by side. So the section states the sides and the numbers, and the host draws them: a
+ * terminal marks each row `+`, `-` or a space, colours it, highlights the words that changed inside
+ * a one-for-one replacement and colours the unchanged rows in the file's own language; a graphical
+ * host may draw the same rows as two columns.
+ *
+ * The spans of a diff line carry text alone, for the reason a code line's do: a tool that toned its
+ * own added rows would be writing a colour scheme. `sides` is one entry per line the section
+ * carries, so a line and its side are read together however many the window kept.
+ *
+ * Mutually exclusive with `code` and `markdown`, each of which states something else about the same
+ * lines. A host handed more than one draws the diff, which is the reading that keeps the meaning of
+ * a `-` row.
+ */
+export interface ViewDiffLines {
+	/** Which side of the change each line is on, one entry per line the section carries. */
+	sides: readonly ViewDiffSide[];
+	/**
+	 * The number each line has in the file, one entry per line, `null` for a row that has none.
+	 *
+	 * Omitted draws no gutter at all, which is what a change to a file nobody has yet -- a preview
+	 * computed before the edit landed -- is: the rows are the change and no line of them has a place
+	 * in a file on disk.
+	 */
+	lineNumbers?: readonly (number | null)[];
+	/**
+	 * The file the change is to, so a host colours its unchanged rows in that file's language.
+	 *
+	 * Omitted states a change whose file the tool could not name, and the rows are drawn uncoloured
+	 * rather than guessed at.
+	 */
+	path?: string;
+}
+
 /**
  * A labelled group of lines inside a block.
  *
@@ -485,6 +536,14 @@ export interface ViewSection {
 	 * tab is worth -- to the host, which is the only party that knows what it can draw.
 	 */
 	code?: ViewCodeLines;
+	/**
+	 * That the lines are a change to a file rather than prose, which the host marks and colours.
+	 *
+	 * Omitted means the lines are the tool's own words. A diff section states which side of the
+	 * change each line is on and leaves the marker column, the gutter, the colours and whatever a
+	 * host does with the words that changed inside a replaced line to the host.
+	 */
+	diff?: ViewDiffLines;
 	/**
 	 * That the lines are Markdown, which the host renders however it can.
 	 *
@@ -593,6 +652,15 @@ export interface FramedBlockView {
 	 * of drawing a panel may ignore it.
 	 */
 	contents?: "report" | "data" | "listing";
+	/**
+	 * That the body carries its own leading column, so the host adds no indent of its own.
+	 *
+	 * A change and a code frame draw a gutter — a marker, a line number and a separator — and an
+	 * indent in front of one is a second margin: the gutter IS the indent, and the rows were measured
+	 * without the other. Omitted means the body is prose and a host indents it as it indents any
+	 * other card.
+	 */
+	gutter?: boolean;
 }
 
 /**

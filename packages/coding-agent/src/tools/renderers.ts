@@ -7,7 +7,7 @@
  */
 import type { Component } from "@veyyon/tui";
 import type { ToolViewRenderer } from "@veyyon/view";
-import { editToolRenderer } from "../edit/renderer";
+import { editToolView } from "../edit/edit-view";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { goalToolView } from "../goals/goal-tool";
 import { lspToolView } from "../lsp/view";
@@ -92,9 +92,10 @@ export const toolRenderers: Record<string, ToolRenderer> = {
 	...shellRenderers,
 	...webRenderers,
 	...agentRenderers,
-	edit: editToolRenderer as ToolRenderer,
-	// The same renderer under the name a provider-side patch call arrives as.
-	apply_patch: editToolRenderer as ToolRenderer,
+	// The edit tool describes a view, and this entry is the terminal's drawing of it, under both the
+	// name the model calls and the name a provider-side patch call arrives as.
+	edit: viewToolRenderer(editToolView, { mergeCallAndResult: true }) as ToolRenderer,
+	apply_patch: viewToolRenderer(editToolView, { mergeCallAndResult: true }) as ToolRenderer,
 	// The lsp tool describes a view, and this entry is the terminal's drawing of it — the path a
 	// rebuilt transcript takes, where no tool instance exists to read `tool.view` from.
 	lsp: viewToolRenderer(lspToolView, { mergeCallAndResult: true, inline: true }) as ToolRenderer,

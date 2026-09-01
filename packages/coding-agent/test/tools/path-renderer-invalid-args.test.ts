@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
+import { editToolView } from "@veyyon/coding-agent/edit/edit-view";
 import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/theme/theme";
 import { readToolView } from "@veyyon/coding-agent/tools/fs/read-view";
 import { writeToolView } from "@veyyon/coding-agent/tools/fs/write-view";
@@ -102,27 +102,32 @@ describe("tool path renderers with invalid provider arguments", () => {
 			expect(resultText).toContain("first line");
 		});
 
-		it(`edit renderer does not throw for ${invalid.name}`, () => {
+		it(`edit view does not throw for ${invalid.name}`, () => {
 			let callComponent: Component | undefined;
 			expect(() => {
-				callComponent = editToolRenderer.renderCall(
-					{ path: invalid.path, oldText: "before", newText: "after" },
-					{ expanded: false, isPartial: true, spinnerFrame: 0, renderContext: { editMode: "replace" } },
+				callComponent = drawToolView(
+					editToolView.renderCall(
+						{ path: invalid.path, oldText: "before", newText: "after", editMode: "replace" },
+						{ expanded: false, partial: true, frame: 0 },
+					),
 					uiTheme,
+					0,
 				);
 			}).not.toThrow();
 			expect(renderPlain(callComponent!)).toContain("Edit");
 
 			let resultComponent: Component | undefined;
 			expect(() => {
-				resultComponent = editToolRenderer.renderResult(
-					{
-						content: [{ type: "text", text: "updated" }],
-						details: { diff: "-before\n+after" },
-					},
-					{ expanded: false, isPartial: false, renderContext: { editMode: "replace" } },
+				resultComponent = drawToolView(
+					editToolView.renderResult(
+						{
+							content: [{ type: "text", text: "updated" }],
+							details: { diff: "-before\n+after" },
+						},
+						{ expanded: false, partial: false },
+						{ path: invalid.path, oldText: "before", newText: "after", editMode: "replace" },
+					),
 					uiTheme,
-					{ path: invalid.path, oldText: "before", newText: "after" },
 				);
 			}).not.toThrow();
 			const rendered = renderPlain(resultComponent!);

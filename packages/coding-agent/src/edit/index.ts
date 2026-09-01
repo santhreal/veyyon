@@ -19,7 +19,9 @@ import { type ApplyPatchParams, applyPatchSchema, expandApplyPatchToEntries } fr
 import applyPatchGrammar from "./modes/apply-patch.lark" with { type: "text" };
 import { executePatchSingle, type PatchEditEntry, type PatchParams, patchEditSchema } from "./modes/patch";
 import { executeReplaceSingle, type ReplaceEditEntry, type ReplaceParams, replaceEditSchema } from "./modes/replace";
-import { type EditToolDetails, type EditToolPerFileResult, getLspBatchRequest, type LspBatchRequest } from "./renderer";
+import { getLspBatchRequest, type LspBatchRequest } from "../tools/core/render-utils";
+import type { EditToolDetails, EditToolPerFileResult } from "./details";
+import { editToolView } from "./edit-view";
 import { pruneOversizedEditSnapshots } from "./snapshot-details";
 import { EDIT_MODE_STRATEGIES } from "./streaming";
 
@@ -36,7 +38,8 @@ export * from "./modes/apply-patch";
 export * from "./modes/patch";
 export * from "./modes/replace";
 export * from "./normalize";
-export * from "./renderer";
+export * from "./details";
+export * from "./edit-view";
 export * from "./snapshot-details";
 export * from "./streaming";
 
@@ -499,7 +502,7 @@ export function editFilesystemTargets(args: unknown): string[] {
 	return targets;
 }
 
-export class EditTool implements AgentTool<TInput> {
+export class EditTool implements AgentTool<TInput, EditToolDetails> {
 	readonly approval = (args: unknown) => {
 		const targetPath = extractApprovalPath(args);
 		return targetPath !== "(unknown)" && isInternalUrlPath(targetPath) ? "read" : "write";
@@ -515,6 +518,7 @@ export class EditTool implements AgentTool<TInput> {
 	readonly loadMode = "essential";
 	readonly concurrency = "exclusive";
 	readonly strict = true;
+	readonly view = editToolView;
 
 	readonly #allowFuzzy: boolean;
 	readonly #fuzzyThreshold: number;

@@ -37,7 +37,7 @@ import { assertEditableFileContent } from "../../tools/fs/auto-generated-guard";
 import { canonicalSnapshotKey } from "../file-snapshot-store";
 import { isNotebookPath } from "../notebook";
 import { readEditFileText, serializeEditFileText } from "../read-file";
-import type { LspBatchRequest } from "../renderer";
+import type { LspBatchRequest } from "../../tools/core/render-utils";
 
 export interface HashlineFilesystemOptions {
 	session: ToolSession;

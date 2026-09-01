@@ -58,7 +58,8 @@ import {
 	stripBom,
 } from "../normalize";
 import { readEditFileText, serializeEditFileText } from "../read-file";
-import type { EditToolDetails, LspBatchRequest } from "../renderer";
+import type { LspBatchRequest } from "../../tools/core/render-utils";
+import type { EditToolDetails } from "../details";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 
 export type Operation = "create" | "delete" | "update";

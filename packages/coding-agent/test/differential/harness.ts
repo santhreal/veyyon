@@ -94,6 +94,7 @@ export const CONVERTED_TOOLS = [
 	"eval",
 	"lsp",
 	"bash",
+	"edit",
 ] as const;
 
 export const WIDTH = 80;

@@ -2,18 +2,32 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+import { stripVTControlCharacters } from "node:util";
 import type { AgentTool } from "@veyyon/agent-core";
 import { renderGalleryState, resolveFixture } from "@veyyon/coding-agent/cli/gallery-cli";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
-import { renderDiff } from "@veyyon/coding-agent/modes/terminal/components/transcript/diff";
+import { type EditViewArgs, editToolView } from "@veyyon/coding-agent/edit/edit-view";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
 import * as themeModule from "@veyyon/coding-agent/theme/theme";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { InMemorySnapshotStore } from "@veyyon/hashline";
 import { getAnsiPolicy, setAnsiPolicy, Text, type TUI } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
+import type { EditViewResult } from "@veyyon/coding-agent/edit/edit-view";
 import { createToolExecution } from "../helpers/tool-execution";
+
+/**
+ * What the edit card says, drawn the way a session draws it: `editToolView` describes the card and
+ * `drawToolView` puts it on a terminal.
+ *
+ * WHAT THIS DOES NOT CATCH. That the bytes are the ones main's renderer drew, which
+ * `test/differential/the-edit-card-draws-what-main-drew.test.ts` owns; and diff-render caching,
+ * which left with the injected `renderDiff` the old renderer took — the host memoizes one drawn
+ * change and nothing outside it can observe the call count any more.
+ */
 
 beforeAll(async () => {
 	resetSettingsForTest();
@@ -27,6 +41,38 @@ async function getUiTheme() {
 	return theme!;
 }
 
+/** The card a call draws, at `width`, as the plain rows a reader sees. */
+function drawCall(
+	args: EditViewArgs,
+	uiTheme: Theme,
+	options: { expanded?: boolean; partial?: boolean; width?: number } = {},
+): string[] {
+	const component = drawToolView(
+		editToolView.renderCall(args, {
+			expanded: options.expanded ?? false,
+			partial: options.partial ?? true,
+			frame: 0,
+		}),
+		uiTheme,
+		0,
+	);
+	return component.render(options.width ?? 160).map(line => stripVTControlCharacters(line));
+}
+
+/** The card a result draws, at `width`, as the plain rows a reader sees. */
+function drawResult(
+	result: EditViewResult,
+	args: EditViewArgs | undefined,
+	uiTheme: Theme,
+	options: { expanded?: boolean; width?: number } = {},
+): string[] {
+	const component = drawToolView(
+		editToolView.renderResult(result, { expanded: options.expanded ?? false, partial: false }, args),
+		uiTheme,
+	);
+	return component.render(options.width ?? 160).map(line => stripVTControlCharacters(line));
+}
+
 async function waitForRenderedText(
 	component: ToolExecutionComponent,
 	width: number,
@@ -35,62 +81,54 @@ async function waitForRenderedText(
 	const deadline = Date.now() + 1_000;
 	let rendered = "";
 	while (Date.now() < deadline) {
-		rendered = Bun.stripANSI(component.render(width).join("\n"));
+		rendered = stripVTControlCharacters(component.render(width).join("\n"));
 		if (rendered.includes(expectedText)) return rendered;
-		await Bun.sleep(10);
+		await sleep(10);
 	}
 	return rendered;
 }
 
-describe("editToolRenderer", () => {
+describe("edit card", () => {
 	it("shows the target path from partial JSON while edit args stream", async () => {
 		const uiTheme = await getUiTheme();
-		const component = editToolRenderer.renderCall(
+		const rendered = drawCall(
 			{
 				edits: [{}],
-				__partialJson: '{"edits":[{"path":"packages/coding-agent/src/edit/renderer.ts","old_text":"before',
+				editMode: "replace",
+				__partialJson: '{"edits":[{"path":"packages/coding-agent/src/edit/edit-view.ts","old_text":"before',
 			},
-			{ expanded: false, isPartial: true, spinnerFrame: 0, renderContext: { editMode: "replace" } },
 			uiTheme,
-		);
+		).join("\n");
 
-		const rendered = Bun.stripANSI(component.render(160).join("\n"));
-		expect(rendered).toContain("packages/coding-agent/src/edit/renderer.ts");
+		expect(rendered).toContain("packages/coding-agent/src/edit/edit-view.ts");
 	});
 
 	it("windows the expanded streaming diff to the viewport tail", async () => {
 		const uiTheme = await getUiTheme();
 		// Pin a tall viewport so previewWindowRows() (rows - reserve) lands at 30:
-		// collapsed stays at the 12-row fixed tail, expanded widens to 30.
+		// collapsed stays at the 12-row fixed tail, expanded widens to the viewport
+		// less the headroom the settled card lands in.
 		const originalRowsDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "rows");
 		Object.defineProperty(process.stdout, "rows", { value: 50, configurable: true });
 		try {
 			const makeDiff = (length: number): string =>
 				Array.from({ length }, (_, index) => (index === 0 ? "-head-line-1" : `+tail-line-${index + 1}`)).join("\n");
 			const renderPreview = (diff: string, expanded: boolean): string =>
-				Bun.stripANSI(
-					editToolRenderer
-						.renderCall(
-							{ file_path: "/tmp/preview.ts", previewDiff: diff },
-							{ expanded, isPartial: true, spinnerFrame: 0, renderContext: { editMode: "replace" } },
-							uiTheme,
-						)
-						.render(200)
-						.join("\n"),
-				);
+				drawCall({ file_path: "/tmp/preview.ts", previewDiff: diff, editMode: "replace" }, uiTheme, {
+					expanded,
+					width: 200,
+				}).join("\n");
 
 			const collapsed = renderPreview(makeDiff(20), false);
 			expect(collapsed).toContain("tail-line-20");
 			expect(collapsed).not.toContain("head-line-1");
-			expect(collapsed).toContain("more lines above");
-			expect(collapsed).toContain("(preview)");
+			expect(collapsed).toMatch(/\d+ earlier lines/);
 
 			// Within the viewport window, expanded shows the whole diff.
 			const expanded = renderPreview(makeDiff(20), true);
 			expect(expanded).toContain("head-line-1");
 			expect(expanded).toContain("tail-line-20");
-			expect(expanded).not.toContain("more lines above");
-			expect(expanded).not.toContain("(preview)");
+			expect(expanded).not.toMatch(/earlier lines/);
 
 			// Beyond it, expanded stays a viewport-sized tail window: an unbounded
 			// live preview scrolls above the native-scrollback commit boundary and
@@ -98,7 +136,7 @@ describe("editToolRenderer", () => {
 			const expandedTall = renderPreview(makeDiff(40), true);
 			expect(expandedTall).toContain("tail-line-40");
 			expect(expandedTall).not.toContain("head-line-1");
-			expect(expandedTall).toContain("more lines above");
+			expect(expandedTall).toMatch(/\d+ earlier lines/);
 		} finally {
 			if (originalRowsDescriptor) {
 				Object.defineProperty(process.stdout, "rows", originalRowsDescriptor);
@@ -110,16 +148,15 @@ describe("editToolRenderer", () => {
 
 	it("uses hashline input headers for streaming call path without apply_patch errors", async () => {
 		const uiTheme = await getUiTheme();
-		const component = editToolRenderer.renderCall(
+		const rendered = drawCall(
 			{
-				input: "[packages/coding-agent/src/edit/renderer.ts]\nINS.TAIL:\n+// preview",
+				input: "[packages/coding-agent/src/edit/edit-view.ts]\nINS.TAIL:\n+// preview",
+				editMode: "hashline",
 			},
-			{ expanded: false, isPartial: true, spinnerFrame: 0, renderContext: { editMode: "hashline" } },
 			uiTheme,
-		);
+		).join("\n");
 
-		const rendered = Bun.stripANSI(component.render(160).join("\n"));
-		expect(rendered).toContain("packages/coding-agent/src/edit/renderer.ts");
+		expect(rendered).toContain("packages/coding-agent/src/edit/edit-view.ts");
 		expect(rendered).not.toContain("The first line of the patch must be");
 	});
 
@@ -142,7 +179,7 @@ describe("editToolRenderer", () => {
 			uiStub,
 		);
 
-		const rendered = Bun.stripANSI(component.render(160).join("\n"));
+		const rendered = stripVTControlCharacters(component.render(160).join("\n"));
 		expect(rendered).toContain("natives/bridge/addon/src/shell.rs");
 		expect(rendered).not.toContain("INS.TAIL:");
 		expect(rendered).not.toContain("+pub fn streaming_preview() {");
@@ -151,24 +188,14 @@ describe("editToolRenderer", () => {
 
 	it("recognizes compact and quoted hashline input headers", async () => {
 		const uiTheme = await getUiTheme();
-		const compactComponent = editToolRenderer.renderCall(
-			{
-				input: "[foo bar.ts]\nINS.HEAD:\n+// preview",
-			},
-			{ expanded: true, isPartial: true, spinnerFrame: 0, renderContext: { editMode: "hashline" } },
+		const compactRendered = drawCall({ input: "[foo bar.ts]\nINS.HEAD:\n+// preview", editMode: "hashline" }, uiTheme, {
+			expanded: true,
+		}).join("\n");
+		const quotedRendered = drawCall(
+			{ input: "['baz qux.ts']\nINS.HEAD:\n+// preview", editMode: "hashline" },
 			uiTheme,
-		);
+		).join("\n");
 
-		const quotedComponent = editToolRenderer.renderCall(
-			{
-				input: "['baz qux.ts']\nINS.HEAD:\n+// preview",
-			},
-			{ expanded: false, isPartial: true, spinnerFrame: 0, renderContext: { editMode: "hashline" } },
-			uiTheme,
-		);
-
-		const compactRendered = Bun.stripANSI(compactComponent.render(160).join("\n"));
-		const quotedRendered = Bun.stripANSI(quotedComponent.render(160).join("\n"));
 		expect(compactRendered).toContain("foo bar.ts");
 		expect(quotedRendered).toContain("baz qux.ts");
 	});
@@ -176,25 +203,21 @@ describe("editToolRenderer", () => {
 	it("strips bracket delimiters from hashline input headers", async () => {
 		const uiTheme = await getUiTheme();
 
-		// Canonical `[PATH]` form — the parser strips the delimiters and the
-		// renderer keeps the title clean.
-		const canonical = editToolRenderer.renderCall(
+		// Canonical `[PATH]` form — the parser strips the delimiters and the card
+		// keeps the title clean.
+		const canonicalRendered = drawCall(
 			{
 				input: "[packages/coding-agent/src/slash-commands/builtin-registry.ts]\nINS.HEAD:\n+// preview",
+				editMode: "hashline",
 			},
-			{ expanded: true, isPartial: true, spinnerFrame: 0, renderContext: { editMode: "hashline" } },
 			uiTheme,
-		);
+			{ expanded: true },
+		).join("\n");
 
 		// While streaming, the closing bracket may not have arrived yet.
-		const partial = editToolRenderer.renderCall(
-			{ input: "[a/b/c.ts\nINS.HEAD:\n+// preview" },
-			{ expanded: true, isPartial: true, spinnerFrame: 0, renderContext: { editMode: "hashline" } },
-			uiTheme,
-		);
-
-		const canonicalRendered = Bun.stripANSI(canonical.render(160).join("\n"));
-		const partialRendered = Bun.stripANSI(partial.render(160).join("\n"));
+		const partialRendered = drawCall({ input: "[a/b/c.ts\nINS.HEAD:\n+// preview", editMode: "hashline" }, uiTheme, {
+			expanded: true,
+		}).join("\n");
 
 		expect(canonicalRendered).toContain("packages/coding-agent/src/slash-commands/builtin-registry.ts");
 		expect(canonicalRendered).not.toMatch(/\[packages\/coding-agent/);
@@ -204,86 +227,46 @@ describe("editToolRenderer", () => {
 
 	it("uses hashline input headers for completed single-file result path", async () => {
 		const uiTheme = await getUiTheme();
-		const component = editToolRenderer.renderResult(
+		const rendered = drawResult(
 			{
-				content: [{ type: "text", text: "Updated packages/coding-agent/src/edit/renderer.ts" }],
-				details: {
-					diff: "+1|// preview",
-					op: "update",
-				},
+				content: [{ type: "text", text: "Updated packages/coding-agent/src/edit/edit-view.ts" }],
+				details: { diff: "+1|// preview", op: "update" },
 			},
-			{ expanded: false, isPartial: false, renderContext: { editMode: "hashline" } },
+			{
+				input: "[packages/coding-agent/src/edit/edit-view.ts]\nINS.TAIL:\n+// preview",
+				editMode: "hashline",
+			},
 			uiTheme,
-			{
-				input: "[packages/coding-agent/src/edit/renderer.ts]\nINS.TAIL:\n+// preview",
-			},
-		);
+		).join("\n");
 
-		const rendered = Bun.stripANSI(component.render(160).join("\n"));
-		expect(rendered).toContain("packages/coding-agent/src/edit/renderer.ts");
+		expect(rendered).toContain("packages/coding-agent/src/edit/edit-view.ts");
 		expect(rendered).not.toContain(" …");
 	});
 
 	it("omits changed-line suffixes from completed edit headers and middle-elides long paths", async () => {
 		const uiTheme = await getUiTheme();
-		const component = editToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: "Updated transcript-container.test.ts" }],
-				details: {
-					diff: "+1│const value = 2;",
-					firstChangedLine: 251,
-					op: "update",
-					path: "/tmp/project/packages/coding-agent/test/modes/components/transcript-container.test.ts",
-				},
+		const result: EditViewResult = {
+			content: [{ type: "text", text: "Updated transcript-container.test.ts" }],
+			details: {
+				diff: "+1│const value = 2;",
+				firstChangedLine: 251,
+				op: "update",
+				path: "/tmp/project/packages/coding-agent/test/modes/components/transcript-container.test.ts",
 			},
-			{ expanded: false, isPartial: false, renderContext: { editMode: "hashline" } },
-			uiTheme,
-			{ file_path: "packages/coding-agent/test/modes/components/transcript-container.test.ts" },
-		);
+		};
+		const args: EditViewArgs = {
+			file_path: "packages/coding-agent/test/modes/components/transcript-container.test.ts",
+			editMode: "hashline",
+		};
 
-		const wideHeader = Bun.stripANSI(component.render(160)[0]);
+		const wideHeader = drawResult(result, args, uiTheme)[0]!;
 		expect(wideHeader).toContain("packages/coding-agent/test/modes/components/transcript-container.test.ts");
 		expect(wideHeader).not.toContain(":251");
 
-		const narrowHeader = Bun.stripANSI(component.render(72)[0]);
+		const narrowHeader = drawResult(result, args, uiTheme, { width: 72 })[0]!;
 		expect(narrowHeader).toContain("…");
 		expect(narrowHeader).toContain("container.test.ts");
 		expect(narrowHeader).not.toContain(":251");
-	});
-	it("caches completed diff rendering across stable frame renders", async () => {
-		const uiTheme = await getUiTheme();
-		let renderDiffCalls = 0;
-		const options = {
-			expanded: false,
-			isPartial: false,
-			renderContext: {
-				renderDiff: (diffText: string) => {
-					renderDiffCalls++;
-					return diffText;
-				},
-			},
-		};
-		const component = editToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: "Updated src/example.ts" }],
-				details: {
-					diff: "+1│const value = 1;",
-					op: "update",
-					path: "src/example.ts",
-				},
-			},
-			options,
-			uiTheme,
-			{ file_path: "src/example.ts" },
-		);
-
-		component.render(160);
-		component.render(120);
-		expect(renderDiffCalls).toBe(1);
-
-		options.expanded = true;
-		component.render(120);
-		expect(renderDiffCalls).toBe(2);
 	});
 
 	it("computes the hashline preview diff once a single-line edit finishes streaming", async () => {
@@ -294,7 +277,7 @@ describe("editToolRenderer", () => {
 		try {
 			const content = "export const a = 1;\nexport const b = 2;\nexport const c = 3;\n";
 			const filePath = path.join(tmpDir, "memory.ts");
-			await Bun.write(filePath, content);
+			await fs.writeFile(filePath, content);
 
 			const snapshots = new InMemorySnapshotStore();
 			const tag = snapshots.record(filePath, content);
@@ -325,7 +308,7 @@ describe("editToolRenderer", () => {
 		try {
 			const content = "export const a = 1;\nexport const b = 2;\n";
 			const filePath = path.join(tmpDir, "memory.ts");
-			await Bun.write(filePath, content);
+			await fs.writeFile(filePath, content);
 
 			const snapshots = new InMemorySnapshotStore();
 			const tag = snapshots.record(filePath, content);
@@ -342,7 +325,7 @@ describe("editToolRenderer", () => {
 			const rendered = await waitForRenderedText(component, 160, "export const b = 22;");
 			expect(rendered).toContain("memory.ts");
 			expect(rendered).toContain("export const b = 22;");
-			expect(rendered).not.toContain(" …");
+			expect(rendered.split("\n").find(line => line.includes("memory.ts"))).not.toContain("…");
 		} finally {
 			await removeWithRetries(tmpDir);
 		}
@@ -365,7 +348,9 @@ describe("editToolRenderer", () => {
 
 		expect(rendered).toContain("src/demo.ts");
 		expect(rendered).toContain("const value = 2;");
-		expect(rendered).not.toContain(" …");
+		// The row naming the file states it whole; the card's own trailing "… (streaming)" row is the
+		// host saying the call is still arriving, not an elided path.
+		expect(rendered.split("\n").find(line => line.includes("src/demo.ts"))).not.toContain("…");
 	});
 
 	it("normalizes raw streamed text input for any renderer", async () => {
@@ -389,51 +374,44 @@ describe("editToolRenderer", () => {
 			uiStub,
 		);
 
-		const rendered = Bun.stripANSI(component.render(160).join("\n"));
+		const rendered = stripVTControlCharacters(component.render(160).join("\n"));
 		expect(rendered).toContain("plain streamed text");
 	});
 
 	it("renders change stats inline on the result header with no separate metadata or stats row", async () => {
 		const uiTheme = await getUiTheme();
 		const diff = [" 115│ ctx", "-116│ old", "+117│ new one", "+118│ new two"].join("\n");
-		const component = editToolRenderer.renderResult(
+		const lines = drawResult(
 			{
 				content: [{ type: "text", text: "Updated demo.go" }],
 				details: { diff, op: "update" },
 			},
-			{ expanded: false, isPartial: false, renderContext: { editMode: "hashline" } },
+			{ file_path: "demo.go", editMode: "hashline" },
 			uiTheme,
-			{ file_path: "demo.go" },
 		);
 
-		const lines = Bun.stripANSI(component.render(160).join("\n")).split("\n");
 		// Stats ride on the header line next to the path…
 		expect(lines[0]).toContain("demo.go");
 		expect(lines[0]).toContain("+2");
 		expect(lines[0]).toContain("-1");
-		expect(lines[0]).toContain("+2/-1");
 		// …only there (no standalone stats row), and the diff starts immediately
 		// below the header (no blank line, no lone lang-icon metadata row).
 		expect(lines[1]).toContain("115│ ctx");
-		expect(lines.filter(line => line.includes("+2/-1"))).toHaveLength(1);
+		expect(lines.filter(line => line.includes("+2") && line.includes("-1"))).toHaveLength(1);
 	});
 
 	it("renders completed edit gutters without inherited frame padding", async () => {
 		const uiTheme = await getUiTheme();
-		const component = editToolRenderer.renderResult(
+		const lines = drawResult(
 			{
 				content: [{ type: "text", text: "Updated demo.ts" }],
-				details: {
-					diff: "+1│const renamedIdentifier = computeValueFromSomeVeryLongInputName();",
-					op: "update",
-				},
+				details: { diff: "+1│const renamedIdentifier = computeValueFromSomeVeryLongInputName();", op: "update" },
 			},
-			{ expanded: false, isPartial: false, renderContext: { editMode: "hashline" } },
+			{ file_path: "demo.ts", editMode: "hashline" },
 			uiTheme,
-			{ file_path: "demo.ts" },
+			{ width: 48 },
 		);
 
-		const lines = component.render(48).map(line => Bun.stripANSI(line));
 		// One rectangle, and it never reaches past the terminal: the block is as wide as
 		// its own widest row rather than as wide as the screen.
 		const widths = new Set(lines.map(visibleWidth));
@@ -450,80 +428,65 @@ describe("editToolRenderer", () => {
 	it("does not leak the first file's no-change preview into a multi-file delete result", async () => {
 		const uiTheme = await getUiTheme();
 		const paths = ["scripts/a.ts", "scripts/a.user.md", "scripts/a.system.md"];
-		const component = editToolRenderer.renderResult(
+		const rendered = drawResult(
 			{
 				content: [{ type: "text", text: paths.map(p => `Deleted ${p}`).join("\n") }],
 				details: {
 					diff: "",
-					perFileResults: paths.map(path => ({ path, diff: "", op: "delete" as const, oldText: "x\n" })),
+					perFileResults: paths.map(filePath => ({ path: filePath, diff: "", op: "delete" as const, oldText: "x\n" })),
 				},
 			},
 			{
-				expanded: false,
-				isPartial: false,
-				renderContext: {
-					editMode: "hashline",
-					// The streaming preview only ever holds the first file's result; a
-					// delete card must not fall back to it (issue: every card showed
-					// "No changes would be made to <first file>").
-					editDiffPreview: { error: "No changes would be made to scripts/a.ts." },
-				},
+				editMode: "hashline",
+				// The streaming preview only ever holds the first file's result; a
+				// delete card must not fall back to it (issue: every card showed
+				// "No changes would be made to <first file>").
+				preview: { error: "No changes would be made to scripts/a.ts." },
 			},
 			uiTheme,
-		);
+		).join("\n");
 
-		const rendered = Bun.stripANSI(component.render(160).join("\n"));
 		expect(rendered).not.toContain("No changes would be made");
-		for (const path of paths) expect(rendered).toContain(path);
+		for (const filePath of paths) expect(rendered).toContain(filePath);
 	});
 
 	it("renders a move-only result as source → destination with no diff body", async () => {
 		const uiTheme = await getUiTheme();
-		const component = editToolRenderer.renderResult(
+		const lines = drawResult(
 			{
 				content: [{ type: "text", text: "Moved a.ts to b.ts" }],
 				details: { diff: "", op: "update", path: "b.ts", move: "b.ts", sourcePath: "a.ts" },
 			},
 			{
-				expanded: false,
-				isPartial: false,
-				renderContext: {
-					editMode: "hashline",
-					editDiffPreview: { error: "No changes would be made to other.ts." },
-				},
+				input: "[a.ts#1a2b]\nMV b.ts",
+				editMode: "hashline",
+				preview: { error: "No changes would be made to other.ts." },
 			},
 			uiTheme,
-			{ input: "[a.ts#1a2b]\nMV b.ts" },
 		);
 
-		const header = Bun.stripANSI(component.render(160)[0]);
 		// Header shows the move as source → destination, not the buggy dest → dest.
-		expect(header).toContain("a.ts");
-		expect(header).toContain("b.ts");
-		expect(header).toContain("→");
-		expect(Bun.stripANSI(component.render(160).join("\n"))).not.toContain("No changes");
+		expect(lines[0]).toContain("a.ts");
+		expect(lines[0]).toContain("b.ts");
+		expect(lines[0]).toContain("→");
+		expect(lines.join("\n")).not.toContain("No changes");
 	});
 
 	it("uses the result's own path for a genuine no-op, not the shared preview", async () => {
 		const uiTheme = await getUiTheme();
-		const component = editToolRenderer.renderResult(
+		const rendered = drawResult(
 			{
 				content: [{ type: "text", text: "no change" }],
 				details: { diff: "", op: "update", path: "scripts/real.ts" },
 			},
 			{
-				expanded: false,
-				isPartial: false,
-				renderContext: {
-					editMode: "hashline",
-					editDiffPreview: { error: "No changes would be made to scripts/WRONG.ts." },
-				},
+				file_path: "scripts/real.ts",
+				editMode: "hashline",
+				preview: { error: "No changes would be made to scripts/WRONG.ts." },
 			},
 			uiTheme,
-			{ file_path: "scripts/real.ts" },
-		);
+		).join("\n");
 
-		const rendered = Bun.stripANSI(component.render(160).join("\n"));
 		expect(rendered).toContain("No changes were made");
 		expect(rendered).toContain("scripts/real.ts");
 		expect(rendered).not.toContain("WRONG");
@@ -532,7 +495,7 @@ describe("editToolRenderer", () => {
 	it("renders the delete gallery fixture as a Delete card without a no-change body", async () => {
 		await getUiTheme();
 		const text = (await renderGalleryState("edit_delete", resolveFixture("edit_delete"), "success", 160))
-			.map(line => Bun.stripANSI(line))
+			.map(line => stripVTControlCharacters(line))
 			.join("\n");
 		expect(text).toContain("Delete");
 		expect(text).toContain("scripts/prune-changelogs.ts");
@@ -542,7 +505,7 @@ describe("editToolRenderer", () => {
 	it("renders the move gallery fixture as source → destination", async () => {
 		await getUiTheme();
 		const text = (await renderGalleryState("edit_move", resolveFixture("edit_move"), "success", 160))
-			.map(line => Bun.stripANSI(line))
+			.map(line => stripVTControlCharacters(line))
 			.join("\n");
 		expect(text).toContain("scripts/prune-changelogs.ts");
 		expect(text).toContain("scripts/archived/prune-changelogs.ts");
@@ -551,24 +514,26 @@ describe("editToolRenderer", () => {
 	});
 });
 
-describe("editToolRenderer diff line wrapping", () => {
+describe("edit card diff line wrapping", () => {
 	// Renders a completed single-line replacement (`-N|old` + `+N|new`) through
-	// the real renderDiff so the result carries its production shapes: a blanked
-	// dedup gutter on the `+` row (`   +│`) and intra-line inverse highlights.
+	// the host's own diff drawing so the result carries its production shapes: a
+	// blanked dedup gutter on the `+` row (`   +│`) and intra-line inverse highlights.
 	async function renderSingleLineReplacement(
 		oldLine: string,
 		newLine: string,
 		width: number,
 	): Promise<readonly string[]> {
 		const uiTheme = await getUiTheme();
-		const component = editToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: "Updated demo.ts" }],
-				details: { diff: `-42|${oldLine}\n+42|${newLine}`, op: "update", path: "demo.ts" },
-			},
-			{ expanded: true, isPartial: false, renderContext: { renderDiff } },
+		const component = drawToolView(
+			editToolView.renderResult(
+				{
+					content: [{ type: "text", text: "Updated demo.ts" }],
+					details: { diff: `-42|${oldLine}\n+42|${newLine}`, op: "update", path: "demo.ts" },
+				},
+				{ expanded: true, partial: false },
+				{ file_path: "demo.ts" },
+			),
 			uiTheme,
-			{ file_path: "demo.ts" },
 		);
 		return component.render(width);
 	}
@@ -600,7 +565,7 @@ describe("editToolRenderer diff line wrapping", () => {
 				"    the revised synopsis paragraph now catalogues seasonal festival logistics enumerating lantern shipments drum rehearsals and ribbon inventories that the parade stewards confirmed before dawn, closing with the zephyrQuota tally and the marbledFinale banner",
 				100,
 			)
-		).map(row => Bun.stripANSI(row));
+		).map(row => stripVTControlCharacters(row));
 
 		// The tail of the added line lands on continuation rows, which must carry the
 		// spaces-only continuation gutter rather than start as bare prose — and carry
@@ -647,17 +612,16 @@ describe("editToolRenderer diff line wrapping", () => {
 	// pin the boundary between prose that merely looks pipe-ish and real gutters.
 	async function renderErrorResultRows(errorText: string): Promise<string[]> {
 		const uiTheme = await getUiTheme();
-		const component = editToolRenderer.renderResult(
+		return drawResult(
 			{
 				content: [{ type: "text", text: errorText }],
 				details: { diff: "", op: "update", path: "demo.ts" },
 				isError: true,
 			},
-			{ expanded: true, isPartial: false, renderContext: { renderDiff } },
-			uiTheme,
 			{ file_path: "demo.ts" },
+			uiTheme,
+			{ expanded: true, width: 100 },
 		);
-		return component.render(100).map(row => Bun.stripANSI(row));
 	}
 
 	it("does not give pipe-leading error text a phantom diff gutter when wrapping", async () => {
@@ -704,12 +668,11 @@ describe("editToolRenderer diff line wrapping", () => {
 		for (const row of bodyRows.slice(1)) expect(row).not.toMatch(new RegExp(`^${rail}\\s*\\|`));
 	});
 
-	it("keeps the numbered ASCII-pipe gutter for canonical rows through the plain fallback", async () => {
-		// Without renderContext the plain fallback passes canonical rows through
-		// verbatim; a numbered "-42|" row must still take the gutter path and
-		// carry an "   |" continuation gutter, not generic prose wrapping.
+	it("keeps the numbered ASCII-pipe gutter for canonical rows", async () => {
+		// A numbered "-42|" row takes the gutter path and carries an "   |"
+		// continuation gutter, not generic prose wrapping.
 		const uiTheme = await getUiTheme();
-		const component = editToolRenderer.renderResult(
+		const rows = drawResult(
 			{
 				content: [{ type: "text", text: "Updated demo.ts" }],
 				details: {
@@ -718,20 +681,20 @@ describe("editToolRenderer diff line wrapping", () => {
 					path: "demo.ts",
 				},
 			},
-			{ expanded: true, isPartial: false },
-			uiTheme,
 			{ file_path: "demo.ts" },
+			uiTheme,
+			{ expanded: true, width: 100 },
 		);
 
-		const rows = component.render(100).map(row => Bun.stripANSI(row));
 		const rail = uiTheme.symbol("block.rail");
 		const bodyRows = rows.slice(1);
 		// Precondition: the row actually wrapped past its first visual line.
 		expect(bodyRows.length).toBeGreaterThanOrEqual(2);
-		expect(bodyRows[0]).toMatch(new RegExp(`^${rail} -42\\|`));
+		expect(bodyRows[0]).toMatch(new RegExp(`^${rail}\\s*-42[│|]`));
 		// Same column as the gutter it continues, not merely "some spaces then a pipe":
 		// the rail contributes a space of its own, so the looser shape is satisfied by a
 		// continuation prefix that lost its padding entirely.
-		for (const row of bodyRows.slice(1)) expect(row.indexOf("|")).toBe(bodyRows[0]!.indexOf("|"));
+		const separator = (row: string): number => Math.max(row.indexOf("|"), row.indexOf("│"));
+		for (const row of bodyRows.slice(1)) expect(separator(row)).toBe(separator(bodyRows[0]!));
 	});
 });

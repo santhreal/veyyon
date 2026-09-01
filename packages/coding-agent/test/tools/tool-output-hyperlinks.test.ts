@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
+import { editToolView } from "@veyyon/coding-agent/edit/edit-view";
 import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
@@ -200,16 +200,17 @@ describe("tool output OSC 8 file:// hyperlinks", () => {
 		settings.override("tui.hyperlinks", "always");
 		const theme = (await getThemeByName("dark"))!;
 		const editPath = path.resolve("/tmp/veyyon-project/src/a.ts");
-		const rendered = editToolRenderer
-			.renderResult(
+		const rendered = drawToolView(
+			editToolView.renderResult(
 				{
 					content: [{ type: "text", text: "Updated src/a.ts" }],
 					details: { diff: "+1|// x", op: "update", path: editPath },
 				},
-				{ expanded: false, isPartial: false, renderContext: { editMode: "hashline" } },
-				theme,
-				{ path: "src/a.ts" },
-			)
+				{ expanded: false, partial: false },
+				{ path: "src/a.ts", editMode: "hashline" },
+			),
+			theme,
+		)
 			.render(200)
 			.join("\n");
 		const editUri = url.pathToFileURL(path.resolve(editPath)).href;

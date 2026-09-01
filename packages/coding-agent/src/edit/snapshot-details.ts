@@ -11,7 +11,7 @@
  * flows — diff visualization degrades gracefully for over-threshold edits.
  */
 
-import type { EditToolDetails, EditToolPerFileResult } from "./renderer";
+import type { EditToolDetails, EditToolPerFileResult } from "./details";
 
 /**
  * Combined `oldText` + `newText` character budget for a single edit-tool

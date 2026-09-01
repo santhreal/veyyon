@@ -1,18 +1,27 @@
 /**
- * Edit tool renderer and LSP batching helpers.
+ * Differential oracle: the edit tool renderer from origin/main.
+ *
+ * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/edit/renderer.ts`).
+ * Frozen: never edited to make a test pass.
+ *
+ * The branch moved the detail types out of it and rewrote its import specifiers for this file's
+ * depth and nothing else; the drawing below is main's, byte for byte. Here the specifiers are the
+ * package subpaths this branch publishes, so what it draws is what main drew.
  */
 
 import { HL_FILE_PREFIX, HL_FILE_SUFFIX, HL_MOVE_KEYWORD, HL_REM_KEYWORD } from "@veyyon/hashline";
-import type { Component } from "@veyyon/tui";
-import { errorMessage, formatMoreLines, sanitizeText } from "@veyyon/utils";
-import { SGR_FG_RESET } from "@veyyon/utils/ansi";
-import { sliceWithWidth, visibleWidth } from "@veyyon/utils/width";
-import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
-import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import type { FileDiagnosticsResult } from "../lsp";
-import { renderDiff as renderDiffColored } from "../modes/terminal/components/transcript/diff";
-import type { Theme } from "../theme/theme-class";
-import type { OutputMeta } from "../tools/core/output-meta";
+import type { EditToolDetails, EditToolPerFileResult } from "@veyyon/coding-agent/edit/details";
+import type { DiffError, DiffResult } from "@veyyon/coding-agent/edit/diff";
+import {
+	type ApplyPatchEntry,
+	expandApplyPatchToEntries,
+	expandApplyPatchToPreviewEntries,
+} from "@veyyon/coding-agent/edit/modes/apply-patch";
+import type { Operation } from "@veyyon/coding-agent/edit/modes/patch";
+import type { PerFileDiffPreview } from "@veyyon/coding-agent/edit/streaming";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { renderDiff as renderDiffColored } from "@veyyon/coding-agent/modes/terminal/components/transcript/diff";
+import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
 import {
 	cachedRenderedString,
 	createRenderedStringCache,
@@ -20,16 +29,14 @@ import {
 	formatExpandHint,
 	formatStatusIcon,
 	getDiffStats,
-	getLspBatchRequest,
 	invalidateRenderedStringCache,
-	type LspBatchRequest,
 	PREVIEW_LIMITS,
 	previewWindowRows,
 	type RenderedStringCache,
 	replaceTabs,
 	shortenPath,
 	truncateDiffByHunk,
-} from "../tools/core/render-utils";
+} from "@veyyon/coding-agent/tools/core/render-utils";
 import {
 	fileHyperlink,
 	framedBlock,
@@ -38,79 +45,20 @@ import {
 	renderStatusLine,
 	truncateToWidth,
 	WidthAwareText,
-} from "../tui";
-import type { EditMode } from "../utils/edit-mode";
-import { getLanguageFromPath } from "../utils/lang-from-path";
-import type { DiffError, DiffResult } from "./diff";
-import { type ApplyPatchEntry, expandApplyPatchToEntries, expandApplyPatchToPreviewEntries } from "./modes/apply-patch";
-import type { Operation } from "./modes/patch";
-import type { PerFileDiffPreview } from "./streaming";
-
-// ═══════════════════════════════════════════════════════════════════════════
-// LSP Batching
-// ═══════════════════════════════════════════════════════════════════════════
-
-export { getLspBatchRequest, type LspBatchRequest };
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Tool Details Types
-// ═══════════════════════════════════════════════════════════════════════════
-
-export interface EditToolPerFileResult {
-	path: string;
-	diff: string;
-	firstChangedLine?: number;
-	diagnostics?: FileDiagnosticsResult;
-	op?: Operation;
-	move?: string;
-	isError?: boolean;
-	errorText?: string;
-	/** TUI-friendly error text. When present, rendered to the user instead of `errorText`.
-	 * Set when the underlying error carries a `displayMessage` (e.g. {@link HashlineMismatchError}). */
-	displayErrorText?: string;
-	meta?: OutputMeta;
-	/** Source-of-truth content before the edit; `undefined` for create operations. */
-	oldText?: string;
-	/** Source-of-truth content after the edit; `undefined` for delete operations. */
-	newText?: string;
-	/** True when {@link pruneOversizedEditSnapshots} dropped `oldText`/`newText` from this entry. Aggregators check this to suppress misleading combined snapshots when at least one entry of a multi-entry single-path edit was pruned. */
-	snapshotsPruned?: boolean;
-	/** Pre-move source path; set only when the edit moved/renamed the file. The header renders `sourcePath → path`. */
-	sourcePath?: string;
-}
-
-export interface EditToolDetails {
-	/** Unified diff of the changes made */
-	diff: string;
-	/** Line number of the first change in the new file (for editor navigation) */
-	firstChangedLine?: number;
-	/** Diagnostic result (if available) */
-	diagnostics?: FileDiagnosticsResult;
-	/** Operation type (patch mode only) */
-	op?: Operation;
-	/** New path after move/rename (patch mode only) */
-	move?: string;
-	/** Structured output metadata */
-	meta?: OutputMeta;
-	/** Per-file results (multi-file edits) */
-	perFileResults?: EditToolPerFileResult[];
-	/** Absolute file path for single-file edit results. Required by ACP diff metadata consumers. */
-	path?: string;
-	/** Source-of-truth content before the edit; `undefined` for create operations. */
-	oldText?: string;
-	/** Source-of-truth content after the edit; `undefined` for delete operations. */
-	newText?: string;
-	/** True when {@link pruneOversizedEditSnapshots} dropped `oldText`/`newText` from this entry. Aggregators check this to suppress misleading combined snapshots when at least one entry of a multi-entry single-path edit was pruned. */
-	snapshotsPruned?: boolean;
-	/** Pre-move source path; set only when the edit moved/renamed the file. The header renders `sourcePath → path`. */
-	sourcePath?: string;
-}
+} from "@veyyon/coding-agent/tui";
+import type { EditMode } from "@veyyon/coding-agent/utils/edit-mode";
+import { getLanguageFromPath } from "@veyyon/coding-agent/utils/lang-from-path";
+import type { Component } from "@veyyon/tui";
+import { errorMessage, formatMoreLines, sanitizeText } from "@veyyon/utils";
+import { SGR_FG_RESET } from "@veyyon/utils/ansi";
+import { sliceWithWidth, visibleWidth } from "@veyyon/utils/width";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TUI Renderer
 // ═══════════════════════════════════════════════════════════════════════════
 
-interface EditRenderArgs {
+export interface EditRenderArgs {
 	path?: unknown;
 	file_path?: unknown;
 	oldText?: string;
@@ -810,6 +758,12 @@ function wrapEditRendererLine(line: string, width: number): string[] {
 	);
 }
 
+export interface EditRenderResult {
+	content: Array<{ type: string; text?: string }>;
+	details?: EditToolDetails;
+	isError?: boolean;
+}
+
 export const editToolRenderer = {
 	mergeCallAndResult: true,
 
@@ -898,7 +852,7 @@ export const editToolRenderer = {
 	},
 
 	renderResult(
-		result: { content: Array<{ type: string; text?: string }>; details?: EditToolDetails; isError?: boolean },
+		result: EditRenderResult,
 		options: RenderResultOptions & { renderContext?: EditRenderContext },
 		uiTheme: Theme,
 		args?: EditRenderArgs,

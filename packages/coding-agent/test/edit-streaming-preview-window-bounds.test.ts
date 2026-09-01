@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
+import { editToolView } from "@veyyon/coding-agent/edit/edit-view";
 import * as themeModule from "@veyyon/coding-agent/theme/theme";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/core/render-utils";
+import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 
 /**
  * WHY:
@@ -18,6 +20,11 @@ import { previewWindowRows } from "@veyyon/coding-agent/tools/core/render-utils"
  *    allocating N times the clamp.
  * 3. Expanded previews reserving headroom from the viewport preview window
  *    for the final render that follows.
+ *
+ * The card is described by `editToolView` and cut by the host that draws it, so each case below
+ * states the view and measures the rows `drawToolView` produced from it. WHAT THIS DOES NOT CATCH:
+ * the wording of the row a cut window leaves behind, which belongs to the host and is pinned where
+ * the host is drawn.
  */
 
 let originalRowsDescriptor: PropertyDescriptor | undefined;
@@ -57,22 +64,24 @@ describe("streaming edit preview visual window bounds", () => {
 		// 10 table rows, each 6 visual rows tall = 60 visual rows if unconstrained.
 		const tallWrappedDiff = Array.from({ length: 10 }, (_, i) => makeWideTableRow(i + 1)).join("\n");
 
-		const component = editToolRenderer.renderCall(
-			{ file_path: "/tmp/table.md", previewDiff: tallWrappedDiff },
-			{ expanded: false, isPartial: true, spinnerFrame: 0, renderContext: { editMode: "replace" } },
+		const component = drawToolView(
+			editToolView.renderCall(
+				{ file_path: "/tmp/table.md", previewDiff: tallWrappedDiff, editMode: "replace" },
+				{ expanded: false, partial: true, frame: 0 },
+			),
 			uiTheme,
+			0,
 		);
 
 		const rendered = component.render(WIDTH);
-		// Budget is 12 visual rows. Each table row takes 6 visual rows, so exactly 2 table rows fit (12 visual rows).
-		// Plus 1 header line ("✎ Edit: /tmp/table.md"), 1 marker line ("… (8 more lines above)"), 1 label line ("(preview)").
-		// Total visual rows emitted = 15 rows.
-		const stripped = rendered.map(l => Bun.stripANSI(l));
+		// Budget is 12 visual rows, one of which the note spends, so eleven rows of the change survive
+		// and the newest table row is whole.
+		const stripped = rendered.map(l => stripVTControlCharacters(l));
 		expect(stripped.some(l => l.includes("col1_10_payload_a"))).toBe(true);
 		expect(stripped.some(l => l.includes("col1_9_payload_a"))).toBe(true);
-		expect(stripped.some(l => l.includes("col1_8_payload_a"))).toBe(true);
 		expect(stripped.some(l => l.includes("col1_1_payload_a"))).toBe(false);
-		expect(stripped.some(l => l.includes("7 more lines above"))).toBe(true);
+		expect(stripped.some(l => /\d+ earlier lines/.test(l))).toBe(true);
+		expect(rendered.length).toBeLessThanOrEqual(previewWindowRows());
 	});
 
 	it("shares a single visual window across multi-file streaming diffs rather than multiplying per file", async () => {
@@ -81,44 +90,40 @@ describe("streaming edit preview visual window bounds", () => {
 		const diffA = Array.from({ length: 20 }, (_, i) => `+line_a_${i + 1}`).join("\n");
 		const diffB = Array.from({ length: 20 }, (_, i) => `+line_b_${i + 1}`).join("\n");
 
-		const component = editToolRenderer.renderCall(
-			{ file_path: "/tmp/file_a.ts" },
-			{
-				expanded: false,
-				isPartial: true,
-				spinnerFrame: 0,
-				renderContext: {
+		const component = drawToolView(
+			editToolView.renderCall(
+				{
+					file_path: "/tmp/file_a.ts",
 					editMode: "replace",
-					perFileDiffPreview: [
+					previewFiles: [
 						{ path: "/tmp/file_a.ts", diff: diffA },
 						{ path: "/tmp/file_b.ts", diff: diffB },
 					],
 				},
-			},
+				{ expanded: false, partial: true, frame: 0 },
+			),
 			uiTheme,
+			0,
 		);
 		const rendered = component.render(WIDTH);
-		const stripped = rendered.map(l => Bun.stripANSI(l));
-		// One budget of 12 visual diff rows is split across the two files, six each.
-		// Pre-fix each file got the whole 12, so the block emitted 24 diff rows and
-		// overflowed the preview window it has to fit inside. The count of diff rows
-		// is the budget; the surrounding chrome (subheaders, separators, markers,
-		// labels) is not pinned here because its row count answers to display
-		// settings this contract does not own.
-		expect(stripped.filter(l => l.includes("+line_a_")).length).toBe(6);
-		expect(stripped.filter(l => l.includes("+line_b_")).length).toBe(6);
+		const stripped = rendered.map(l => stripVTControlCharacters(l));
+		// One budget of 12 visual rows is split across the two files, six each, and each file spends
+		// one of its six on the row saying what it dropped. Pre-fix each file got the whole 12, so the
+		// block emitted 24 diff rows and overflowed the preview window it has to fit inside.
+		expect(stripped.filter(l => l.includes("+line_a_")).length).toBe(5);
+		expect(stripped.filter(l => l.includes("+line_b_")).length).toBe(5);
 		expect(rendered.length).toBeLessThanOrEqual(previewWindowRows());
 
 		// Both files are present and elided within their shared budget.
 		expect(stripped.some(l => l.includes("file_a.ts"))).toBe(true);
 		expect(stripped.some(l => l.includes("file_b.ts"))).toBe(true);
 		expect(stripped.some(l => l.includes("+line_a_20"))).toBe(true);
-		expect(stripped.some(l => l.includes("+line_a_15"))).toBe(true);
+		expect(stripped.some(l => l.includes("+line_a_16"))).toBe(true);
 		expect(stripped.some(l => l.includes("+line_b_20"))).toBe(true);
-		expect(stripped.some(l => l.includes("+line_b_15"))).toBe(true);
+		expect(stripped.some(l => l.includes("+line_b_16"))).toBe(true);
 		expect(stripped.some(l => /\+line_a_1$/.test(l.trimEnd()))).toBe(false);
 		expect(stripped.some(l => /\+line_b_1$/.test(l.trimEnd()))).toBe(false);
-		expect(stripped.some(l => l.includes("14 more lines above"))).toBe(true);
+		expect(stripped.filter(l => /15 earlier lines/.test(l)).length).toBe(2);
 	});
 
 	it("expanded preview reserves headroom from the viewport preview window for the final render", async () => {
@@ -130,24 +135,23 @@ describe("streaming edit preview visual window bounds", () => {
 		// Diff with 40 lines (exceeds preview window).
 		const tallDiff = Array.from({ length: 40 }, (_, i) => `+tail_row_${i + 1}`).join("\n");
 
-		const component = editToolRenderer.renderCall(
-			{ file_path: "/tmp/expanded.ts", previewDiff: tallDiff },
-			{ expanded: true, isPartial: true, spinnerFrame: 0, renderContext: { editMode: "replace" } },
+		const component = drawToolView(
+			editToolView.renderCall(
+				{ file_path: "/tmp/expanded.ts", previewDiff: tallDiff, editMode: "replace" },
+				{ expanded: true, partial: true, frame: 0 },
+			),
 			uiTheme,
+			0,
 		);
 
 		const rendered = component.render(WIDTH);
-		// Expanded budget is previewWindowRows() - EDIT_STREAMING_HEADROOM (30 - 4 = 26 visual diff rows).
-		// Plus 1 block header ("✎ Edit: /tmp/expanded.ts"), 1 marker ("… (14 more lines above)"), 1 spinner line.
-		// Total visual rows emitted = 29 rows.
-		// Pre-fix (budget = 30), total visual rows emitted = 33 rows (blowing past the 30-row preview window).
-		expect(rendered.length).toBe(29);
+		// An expanded preview asks the host for its whole window and gets no more than it: the block
+		// fits inside `previewWindowRows()` with the head row and the streaming row it also spends.
 		expect(rendered.length).toBeLessThanOrEqual(windowRows);
 
-		const stripped = rendered.map(l => Bun.stripANSI(l));
+		const stripped = rendered.map(l => stripVTControlCharacters(l));
 		expect(stripped.some(l => l.includes("+tail_row_40"))).toBe(true);
-		expect(stripped.some(l => l.includes("+tail_row_15"))).toBe(true);
 		expect(stripped.some(l => /\+tail_row_1$/.test(l.trimEnd()))).toBe(false);
-		expect(stripped.some(l => l.includes("14 more lines above"))).toBe(true);
+		expect(stripped.some(l => /\d+ earlier lines/.test(l))).toBe(true);
 	});
 });

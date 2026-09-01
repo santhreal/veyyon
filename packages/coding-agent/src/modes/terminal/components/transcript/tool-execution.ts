@@ -66,7 +66,6 @@ import {
 import { sanitizeWithOptionalSixelPassthrough } from "../../../../utils/sixel";
 import { asyncToolState } from "../../utils/async-tool-state";
 import { COMPOSER_INSET_COLS } from "../composer/composer-chrome";
-import { renderDiff } from "./diff";
 import { reportRendererFailure } from "./renderer-failure";
 
 /**
@@ -1707,26 +1706,38 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		return `tool "${this.#toolName}" ${phase}`;
 	}
 
+	/**
+	 * The arguments a card is drawn from, which for an edit are the call's own plus whatever change
+	 * was computed for it before the tool ran.
+	 *
+	 * The preview travels on the arguments rather than beside them: the card is described by
+	 * `editToolView`, which any host draws, and a channel only the terminal fills would leave every
+	 * other host with a call it cannot preview.
+	 */
 	#getCallArgsForRender(): unknown {
 		const renderArgs = getArgsWithStreamedTextInput(this.#args);
 		if (!isEditLikeToolName(this.#toolName)) {
 			return renderArgs;
 		}
+		const args: Record<string, unknown> = { ...(renderArgs as Record<string, unknown>) };
+		if (this.#editMode) args.editMode = this.#editMode;
 		const previews = this.#editDiffPreview;
 		if (!previews || previews.length === 0) {
-			return renderArgs;
+			return args;
 		}
-		// Single-file previews feed the existing `previewDiff` channel consumed
-		// by `formatStreamingDiff` in the renderer.
 		const first = previews[0];
-		if (!first?.diff) {
-			return renderArgs;
+		if (first?.error) {
+			args.preview = { error: first.error };
+		} else if (first?.diff) {
+			args.previewDiff = first.diff;
+			args.preview = { diff: first.diff, firstChangedLine: first.firstChangedLine };
 		}
-		return { ...(renderArgs as Record<string, unknown>), previewDiff: first.diff };
+		if (previews.length > 1) args.previewFiles = previews;
+		return args;
 	}
 
 	/**
-	 * Build render context for tools that need extra state (bash, python, edit)
+	 * Build render context for tools that need extra state (bash, task)
 	 */
 	#buildRenderContext(): Record<string, unknown> {
 		const context: Record<string, unknown> = {};
@@ -1754,27 +1765,6 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			// Out of the transcript live region: progress rows render static gray
 			// (see task/render.ts).
 			context.frozen = this.#backgroundTaskFrozen;
-		} else if (isEditLikeToolName(this.#toolName)) {
-			context.editMode = this.#editMode;
-			const previews = this.#editDiffPreview;
-			if (previews && previews.length > 0) {
-				const first = previews[0];
-				if (first?.diff || first?.error) {
-					context.editDiffPreview = first.error
-						? { error: first.error }
-						: { diff: first.diff ?? "", firstChangedLine: first.firstChangedLine };
-				}
-				if (previews.length > 1) {
-					context.perFileDiffPreview = previews;
-				}
-			}
-			if (!previews?.some(preview => preview.diff)) {
-				const editMode = this.#editMode;
-				const strategy = editMode ? EDIT_MODE_STRATEGIES[editMode] : undefined;
-				const fallback = strategy?.renderStreamingFallback(getArgsWithStreamedTextInput(this.#args), theme);
-				if (fallback) context.editStreamingFallback = fallback;
-			}
-			context.renderDiff = renderDiff;
 		}
 
 		return context;

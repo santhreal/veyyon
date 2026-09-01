@@ -15,7 +15,7 @@ import { Ellipsis } from "@veyyon/natives";
 import { type Component, Markdown, renderInlineMarkdown, TERMINAL, Text } from "@veyyon/tui";
 import { pluralize } from "@veyyon/utils/format";
 import { padding } from "@veyyon/utils/padding";
-import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { sliceWithWidth, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import type {
 	FramedBlockView,
@@ -27,6 +27,8 @@ import type {
 	ToolView,
 	ToolViewRenderer,
 	ViewCodeLines,
+	ViewDiffLines,
+	ViewDiffSide,
 	ViewHiddenCount,
 	ViewLine,
 	ViewSpan,
@@ -36,6 +38,7 @@ import type {
 } from "@veyyon/view";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { paintHotTail, shimmerPhase } from "../modes/terminal/components/chrome/follow";
+import { renderDiff } from "../modes/terminal/components/transcript/diff";
 import { highlightCode } from "../theme/highlight";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { shimmerEnabled, shimmerText } from "../theme/shimmer";
@@ -58,6 +61,7 @@ import { styleTerminalRow } from "./terminal-row";
 import { renderTreeList } from "./tree-list";
 import type { State } from "./types";
 import { padToWidth } from "./utils";
+import { wrapDiffRow } from "./wrap-diff-row";
 
 /**
  * The theme colour each tone draws as.
@@ -342,6 +346,38 @@ function drawMarkdownRows(source: string, width: number, theme: Theme, tone: Vie
 	return new Markdown(source, 0, 0, getMarkdownTheme(), ground).render(Math.max(1, width));
 }
 
+/** The rail glyph, the space after it and one column of air, which a header row never spends. */
+const HEADER_CHROME = 3;
+
+/**
+ * The row that heads a block, with its description cut to the columns the block has.
+ *
+ * The description is where a card names what it acted on, which is a path, and a path is cut in the
+ * MIDDLE: the end of one is the file, which is the part a reader is looking for, and an end-cut
+ * header states a directory and nothing else. The title is left whole — it is a word — and the row
+ * is redrawn from the shortened description rather than cut as bytes, so the link, the colours and
+ * the trailing counts survive the cut.
+ */
+function drawFittedHeader(view: StatusRowView, theme: Theme, width: number, frame?: number): string {
+	const drawn = drawStatusRow(view, theme, frame);
+	const description = view.description;
+	if (description === undefined) return drawn;
+	const overflow = visibleWidth(drawn) - Math.max(0, width - HEADER_CHROME);
+	if (overflow <= 0) return drawn;
+	const descriptionWidth = visibleWidth(description);
+	const fitted = Math.max(1, descriptionWidth - overflow);
+	if (fitted >= descriptionWidth) return drawn;
+	const head = Math.floor((fitted - 1) / 2);
+	const tail = fitted - 1 - head;
+	const shortened =
+		fitted <= 1
+			? "…"
+			: `${sliceWithWidth(description, 0, head, true).text}…${
+					sliceWithWidth(description, Math.max(0, descriptionWidth - tail), tail, true).text
+				}`;
+	return drawStatusRow({ ...view, description: shortened }, theme, frame);
+}
+
 /**
  * A framed block as the self-framing component the card renders flush.
  *
@@ -358,20 +394,27 @@ function drawMarkdownRows(source: string, width: number, theme: Theme, tone: Vie
  * settled muted rail and carries the outcome across the plate.
  */
 export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFrame?: number): Component {
-	const header = view.header === undefined ? undefined : drawStatusRow(view.header, theme, spinnerFrame);
+	const header = view.header;
 	const frame = view.state === undefined ? undefined : BLOCK_STATES[view.state];
 	const sections = view.sections.map(section => {
-		// A section states source or a document, never both: `code` is the reading that invents no
-		// layout, so a tool that marked its lines as both is drawn as code.
-		const markdown = section.code === undefined && section.markdown === true;
-		const drawnHere = section.list || section.code !== undefined || markdown;
+		// A section states source, a change or a document, never two of them: a `-` row means nothing
+		// once it is drawn as source or as Markdown, so a tool that marked its lines as more than one
+		// is drawn as the change, and after that as code.
+		const diff = section.code === undefined ? section.diff : undefined;
+		const markdown = section.code === undefined && diff === undefined && section.markdown === true;
+		const drawnHere = section.list || section.code !== undefined || diff !== undefined || markdown;
 		return {
 			label: section.label === undefined ? undefined : theme.fg("toolTitle", section.label),
 			lines: section.list
 				? drawItemList(section.lines, section.hidden, theme, spinnerFrame)
 				: section.code !== undefined
 					? drawCodeLines(section.lines, section.code, theme)
-					: [],
+					: diff !== undefined
+						? drawDiffLines(section.lines, diff, theme)
+						: [],
+			// A change wraps in its own gutter rather than as prose, and the gutter is measured against
+			// the columns the block has, so the rows are re-broken inside the closure below.
+			diff: diff !== undefined,
 			// A document is laid out at the host's width, so its rows are composed inside the closure
 			// below from the source the section carries rather than drawn once here.
 			markdown: markdown ? section.lines.map(line => line.map(span => span.text).join("")).join("\n") : undefined,
@@ -410,11 +453,15 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 					"… (streaming)",
 				)}`
 			: undefined;
+	// A body that carries its own gutter sits flush against the rail: the marker column IS the
+	// indent, and a pad in front of it is a second margin the rows were never measured with.
+	const contentPaddingLeft = view.gutter === true ? 0 : undefined;
 	return framedBlock(theme, width => ({
-		header,
+		...(contentPaddingLeft === undefined ? {} : { contentPaddingLeft }),
+		header: header === undefined ? undefined : drawFittedHeader(header, theme, width, spinnerFrame),
 		sections: [
 			...sections.map(section => {
-				const contentWidth = outputBlockContentWidth(width);
+				const contentWidth = outputBlockContentWidth(width, contentPaddingLeft);
 				const drawn =
 					section.markdown !== undefined
 						? drawMarkdownRows(section.markdown, contentWidth, theme, section.markdownTone)
@@ -432,15 +479,17 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 				// The cut comes BEFORE the window for the same reason: a clipped line is exactly one
 				// row, so a window measured on the wrapped text would count rows the card never draws
 				// and drop the front of a screen that fits.
-				const content = section.clip
-					? drawn.map((line, index) =>
-							truncateToWidth(
-								line,
-								contentWidth,
-								section.captured?.[index] === true ? Ellipsis.Unicode : Ellipsis.Omit,
-							),
-						)
-					: drawn;
+				const content = section.diff
+					? drawn.flatMap(line => wrapDiffRow(line, contentWidth))
+					: section.clip
+						? drawn.map((line, index) =>
+								truncateToWidth(
+									line,
+									contentWidth,
+									section.captured?.[index] === true ? Ellipsis.Unicode : Ellipsis.Omit,
+								),
+							)
+						: drawn;
 				const windowed =
 					section.tail === undefined ? content : drawTailWindow(content, section.tail, theme, contentWidth);
 				const rows = section.note === undefined ? windowed : [...windowed, section.note];
@@ -579,6 +628,61 @@ function drawCodeLines(lines: readonly ViewLine[], code: ViewCodeLines, theme: T
 }
 
 /**
+ * The last change drawn, so a card repainted without changing re-uses its rows.
+ *
+ * The same single slot the code sections keep, for the same reason: a streaming edit recomposes on
+ * every spinner frame, and colouring a change -- highlighting its unchanged rows in the file's
+ * language and diffing the words inside a replaced line -- is the most expensive thing that card
+ * does.
+ */
+const diffMemo: { theme: Theme | null; path: string; source: string; rows: string[] } = {
+	theme: null,
+	path: "",
+	source: "",
+	rows: [],
+};
+
+/** The marker column each side of a change is drawn in. */
+const DIFF_MARKERS: Record<ViewDiffSide, string> = {
+	added: "+",
+	removed: "-",
+	context: " ",
+	gap: "",
+};
+
+/**
+ * A change as the marked, numbered and coloured rows the terminal draws for one.
+ *
+ * The rows are composed back into the canonical form the terminal's own diff renderer reads --
+ * marker, number, `|`, text -- and handed to it, so a change described by a tool and a change drawn
+ * from a diff string are the same bytes: one owner for the gutter, the indent glyphs, the
+ * word-level highlight inside a one-for-one replacement and the highlighting of the rows that did
+ * not change. A row with no number of its own is written without one, which the renderer draws as a
+ * marker and its text; a gap is an empty row, which it draws as an ellipsis.
+ */
+function drawDiffLines(lines: readonly ViewLine[], diff: ViewDiffLines, theme: Theme): string[] {
+	const numbers = diff.lineNumbers;
+	const source = lines
+		.map((line, index) => {
+			const side = diff.sides[index] ?? "context";
+			if (side === "gap") return "";
+			const text = line.map(span => span.text).join("");
+			const number = numbers?.[index];
+			const marker = DIFF_MARKERS[side];
+			return number === null || number === undefined ? `${marker}${text}` : `${marker}${number}|${text}`;
+		})
+		.join("\n");
+	const path = diff.path ?? "";
+	if (diffMemo.theme === theme && diffMemo.path === path && diffMemo.source === source) return diffMemo.rows;
+	const rows = renderDiff(source, diff.path === undefined ? {} : { filePath: diff.path }).split("\n");
+	diffMemo.theme = theme;
+	diffMemo.path = path;
+	diffMemo.source = source;
+	diffMemo.rows = rows;
+	return rows;
+}
+
+/**
  * A list section as the tree the terminal draws for one, marks and closing row included.
  *
  * Through the same helper every hand-written tree card uses, so the branch glyphs and the wording of
@@ -619,11 +723,12 @@ function drawItemList(
 function drawTailWindow(lines: readonly string[], window: ViewTailWindow, theme: Theme, width: number): string[] {
 	const rows: string[] = [];
 	for (const line of lines) rows.push(...wrapTextWithAnsi(line.trimEnd(), width));
+	const viewport = Math.max(1, previewWindowRows() - (window.reserve ?? 0));
 	const max =
 		window.max === undefined
-			? previewWindowRows()
+			? viewport
 			: window.viewport === true
-				? Math.min(window.max, previewWindowRows())
+				? Math.min(window.max, viewport)
 				: window.max;
 	if (rows.length <= max) return rows;
 	const kept = max <= 1 ? [] : rows.slice(rows.length - (max - 1));

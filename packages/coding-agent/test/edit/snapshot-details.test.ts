@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { EditToolDetails, EditToolPerFileResult } from "@veyyon/coding-agent/edit/renderer";
+import type { EditToolDetails, EditToolPerFileResult } from "@veyyon/coding-agent/edit/details";
 import { MAX_EDIT_SNAPSHOT_TEXT_CHARS, pruneOversizedEditSnapshots } from "@veyyon/coding-agent/edit/snapshot-details";
 
 /**
