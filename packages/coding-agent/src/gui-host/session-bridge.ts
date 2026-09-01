@@ -19,42 +19,39 @@ import {
 /** Capabilities supported by this host server implementation. */
 export const SUPPORTED_CAPABILITIES: Partial<Record<Capability, true>> = {
 	Sessions: true,
+	SessionDeletion: true,
+	SessionTreeNavigation: true,
 	Transcript: true,
 	TurnControl: true,
+	BackgroundSubmission: true,
+	Tools: true,
+	Approvals: true,
+	Questions: true,
+	Plans: true,
+	Files: true,
+	Changes: true,
+	Terminals: true,
+	ProcessSupervisor: true,
+	Models: true,
+	Providers: true,
+	Authentication: true,
+	Mcp: true,
+	Agents: true,
+	Tasks: true,
+	Settings: true,
+	Themes: true,
+	Keybindings: true,
+	Diagnostics: true,
+	Usage: true,
+	ContextBreakdown: true,
 	Lifecycle: true,
 };
 
 /** Specific, truthful reasons why each unsupported capability is unavailable. */
-export const UNAVAILABLE_CAPABILITY_REASONS: Record<
-	Exclude<Capability, "Sessions" | "Transcript" | "TurnControl" | "Lifecycle">,
-	string
-> = {
-	SessionDeletion: "Session deletion is not supported by the host server",
-	SessionTreeNavigation: "Session tree branching and navigation are not supported by the host server",
-	BackgroundSubmission: "Background queueing and submission are not supported by the host server",
-	Tools: "Interactive tool cancellation and progress tracking are not supported by the host server",
-	Approvals: "Tool approval interception is not supported by the host server",
-	Questions: "Interactive user question prompts are not supported by the host server",
-	Plans: "Plan mode inspection and approvals are not supported by the host server",
-	Files: "File tree browsing and file search are not supported by the host server",
-	Changes: "Git and workspace diff inspection are not supported by the host server",
-	PendingEdits: "Pending edit inspection is not supported by the host server",
-	Terminals: "Embedded terminal sessions are not supported by the host server",
-	ProcessSupervisor: "Process supervision and inspection are not supported by the host server",
-	Models: "Dynamic model catalog queries and selection are not supported by the host server",
-	Providers: "Provider discovery and management are not supported by the host server",
-	Authentication: "Interactive authentication flows are not supported by the host server",
-	Mcp: "MCP server configuration and management are not supported by the host server",
-	Extensions: "Extension management and introspection are not supported by the host server",
-	Agents: "Multi-agent roster inspection is not supported by the host server",
-	AgentCommands: "Agent command discovery is not supported by the host server",
-	Tasks: "Background task spawning and management are not supported by the host server",
-	Settings: "Settings inspection and modification are not supported by the host server",
-	Themes: "Profile theme listing is not supported by the host server",
-	Keybindings: "Keybinding configuration is not supported by the host server",
-	Diagnostics: "Engine diagnostic collection is not supported by the host server",
-	Usage: "Usage telemetry querying is not supported by the host server",
-	ContextBreakdown: "Context window token breakdown queries are not supported by the host server",
+export const UNAVAILABLE_CAPABILITY_REASONS: Record<"PendingEdits" | "Extensions" | "AgentCommands", string> = {
+	PendingEdits: "Pending edit inspection is not supported by this host version",
+	Extensions: "Extension management is handled directly through the extension host",
+	AgentCommands: "Agent command discovery is managed through the slash-command registry",
 };
 
 /**
@@ -73,109 +70,85 @@ export function buildCapabilitiesSnapshot(): [Capability, CapabilityStatus][] {
 	});
 }
 
-/**
- * Map an action tag to its corresponding ErrorScope.
- */
+const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
+	Attach: "Connection",
+	Detach: "Connection",
+	RetryConnection: "Connection",
+	Shutdown: "Lifecycle",
+	ListSessions: "Session",
+	OpenSession: "Session",
+	CreateSession: "Session",
+	RenameSession: "Session",
+	DeleteSession: "Session",
+	BranchSession: "Session",
+	ExportSession: "Session",
+	CompactSession: "Session",
+	HandoffSession: "Session",
+	ClearOutput: "Session",
+	GetContextBreakdown: "Session",
+	LoadTranscript: "Transcript",
+	SubmitPrompt: "Session",
+	Steer: "Session",
+	FollowUp: "Session",
+	AbortTurn: "Session",
+	SetQueueMode: "Session",
+	CancelTool: "Tool",
+	RespondToInteraction: "Interaction",
+	LoadFileTree: "File",
+	ReadFile: "File",
+	SearchFiles: "File",
+	OpenExternal: "File",
+	RefreshChanges: "Change",
+	SelectChangeScope: "Change",
+	CreateTerminal: "Terminal",
+	AttachTerminal: "Terminal",
+	WriteTerminal: "Terminal",
+	ResizeTerminal: "Terminal",
+	RestartTerminal: "Terminal",
+	ClearTerminal: "Terminal",
+	CloseTerminal: "Terminal",
+	RefreshProcesses: "Terminal",
+	ProcessLogs: "Terminal",
+	ProcessSend: "Terminal",
+	ProcessSignal: "Terminal",
+	ProcessStop: "Terminal",
+	ProcessRestart: "Terminal",
+	ProcessStart: "Terminal",
+	ProcessWait: "Terminal",
+	ProcessDescribe: "Terminal",
+	RefreshModels: "Provider",
+	SelectModel: "Provider",
+	SetThinkingLevel: "Provider",
+	RefreshProviders: "Provider",
+	StartProviderAuth: "Authentication",
+	RefreshAuth: "Authentication",
+	SubmitAuthSecret: "Authentication",
+	OpenAuthUrl: "Authentication",
+	CancelAuthFlow: "Authentication",
+	RetryAuthFlow: "Authentication",
+	RefreshMcp: "Mcp",
+	ConnectMcp: "Mcp",
+	DisconnectMcp: "Mcp",
+	SetMcpEnabled: "Mcp",
+	CallMcpTool: "Mcp",
+	ReviveAgent: "Agent",
+	SpawnTask: "Task",
+	CancelTask: "Task",
+	LoadSettings: "Settings",
+	SetSetting: "Settings",
+	ResetSetting: "Settings",
+	LoadThemes: "Settings",
+	LoadKeybindings: "Settings",
+	SetKeybinding: "Settings",
+	RefreshDiagnostics: "Diagnostic",
+	RetryDiagnosticSource: "Diagnostic",
+	GetUsage: "Usage",
+};
+
 export function mapActionToErrorScope(actionTag: string): ErrorScope {
-	switch (actionTag) {
-		case "Attach":
-		case "Detach":
-		case "RetryConnection":
-			return "Connection";
-		case "Shutdown":
-			return "Lifecycle";
-		case "ListSessions":
-		case "OpenSession":
-		case "CreateSession":
-		case "RenameSession":
-		case "DeleteSession":
-		case "BranchSession":
-		case "ExportSession":
-		case "CompactSession":
-		case "HandoffSession":
-		case "GetContextBreakdown":
-			return "Session";
-		case "LoadTranscript":
-			return "Transcript";
-		case "SubmitPrompt":
-		case "Steer":
-		case "FollowUp":
-		case "AbortTurn":
-		case "SetQueueMode":
-			return "Session";
-		case "CancelTool":
-			return "Tool";
-		case "RespondToInteraction":
-			return "Interaction";
-		case "LoadFileTree":
-		case "ReadFile":
-		case "SearchFiles":
-		case "OpenExternal":
-			return "File";
-		case "RefreshChanges":
-		case "SelectChangeScope":
-			return "Change";
-		case "CreateTerminal":
-		case "AttachTerminal":
-		case "WriteTerminal":
-		case "ResizeTerminal":
-		case "RestartTerminal":
-		case "ClearTerminal":
-		case "CloseTerminal":
-		case "RefreshProcesses":
-		case "ProcessLogs":
-		case "ProcessSend":
-		case "ProcessSignal":
-		case "ProcessStop":
-		case "ProcessRestart":
-		case "ProcessStart":
-		case "ProcessWait":
-		case "ProcessDescribe":
-			return "Terminal";
-		case "RefreshModels":
-		case "SelectModel":
-		case "SetThinkingLevel":
-		case "RefreshProviders":
-			return "Provider";
-		case "StartProviderAuth":
-		case "RefreshAuth":
-		case "SubmitAuthSecret":
-		case "OpenAuthUrl":
-		case "CancelAuthFlow":
-		case "RetryAuthFlow":
-			return "Authentication";
-		case "RefreshMcp":
-		case "ConnectMcp":
-		case "DisconnectMcp":
-		case "SetMcpEnabled":
-		case "CallMcpTool":
-			return "Mcp";
-		case "ReviveAgent":
-			return "Agent";
-		case "SpawnTask":
-		case "CancelTask":
-			return "Task";
-		case "LoadSettings":
-		case "SetSetting":
-		case "ResetSetting":
-		case "LoadThemes":
-		case "LoadKeybindings":
-		case "SetKeybinding":
-			return "Settings";
-		case "RefreshDiagnostics":
-		case "RetryDiagnosticSource":
-			return "Diagnostic";
-		case "ClearOutput":
-			return "Session";
-		case "GetUsage":
-			return "Usage";
-		default:
-			return "Session";
-	}
+	return ACTION_ERROR_SCOPES[actionTag] ?? "Session";
 }
-/**
- * Map internal SessionInfo status to wire SessionStatus.
- */
+
 export function mapSessionStatus(status: SessionInfo["status"]): SessionStatus {
 	switch (status) {
 		case "complete":
@@ -192,9 +165,7 @@ export function mapSessionStatus(status: SessionInfo["status"]): SessionStatus {
 			return "Unknown";
 	}
 }
-/**
- * Convert SessionInfo to wire SessionSummary.
- */
+
 export function sessionInfoToSummary(info: SessionInfo): SessionSummary {
 	return {
 		id: info.id,
@@ -213,9 +184,6 @@ export function sessionInfoToSummary(info: SessionInfo): SessionSummary {
 	};
 }
 
-/**
- * Convert SessionHeader to wire SessionHeaderView.
- */
 export function sessionHeaderToView(header: SessionHeader | null | undefined): SessionHeaderView {
 	if (!header) {
 		return {
@@ -240,58 +208,42 @@ export function sessionHeaderToView(header: SessionHeader | null | undefined): S
 }
 
 function mapContentBlocks(content: unknown): ContentBlock[] {
-	if (typeof content === "string") {
-		return [{ Text: { text: content } }];
-	}
-	if (Array.isArray(content)) {
-		const blocks: ContentBlock[] = [];
-		for (const item of content) {
-			if (item && typeof item === "object") {
-				if ("type" in item) {
-					if (item.type === "text" && "text" in item && typeof item.text === "string") {
-						blocks.push({ Text: { text: item.text } });
-					} else if (item.type === "thinking" && "thinking" in item && typeof item.thinking === "string") {
-						blocks.push({ Thinking: { text: item.thinking } });
-					} else if (item.type === "image" && "data" in item && typeof item.data === "string") {
-						const mediaType =
-							"mimeType" in item && typeof item.mimeType === "string" ? item.mimeType : "image/png";
-						blocks.push({
-							Image: {
-								media_type: mediaType,
-								data: Array.from(Buffer.from(item.data, "base64")),
-								alt: null,
-							},
-						});
-					} else if (
-						(item.type === "tool_call" || item.type === "toolCall") &&
-						"id" in item &&
-						typeof item.id === "string" &&
-						"name" in item &&
-						typeof item.name === "string"
-					) {
-						const args = "arguments" in item ? item.arguments : {};
-						blocks.push({ ToolCall: { id: item.id, name: item.name, arguments: args } });
-					} else if (item.type === "tool_result" || item.type === "toolResult") {
-						const toolId =
-							"toolCallId" in item && typeof item.toolCallId === "string"
-								? item.toolCallId
-								: "id" in item && typeof item.id === "string"
-									? item.id
-									: "tool";
-						const blockContent = "content" in item ? item.content : null;
-						const isError = "isError" in item && typeof item.isError === "boolean" ? item.isError : false;
-						blocks.push({ ToolResult: { tool: toolId, content: blockContent, is_error: isError } });
-					} else {
-						blocks.push({ Unknown: { tag: String(item.type), value: item } });
-					}
-				} else {
-					blocks.push({ Unknown: { tag: "object", value: item } });
-				}
-			}
+	if (typeof content === "string") return [{ Text: { text: content } }];
+	if (!Array.isArray(content)) return [{ Fallback: { producer: "unknown", value: content } }];
+
+	const blocks: ContentBlock[] = [];
+	for (const item of content) {
+		if (!item || typeof item !== "object") continue;
+		if (!("type" in item)) {
+			blocks.push({ Unknown: { tag: "object", value: item } });
+			continue;
 		}
-		return blocks;
+		if (item.type === "text" && typeof item.text === "string") {
+			blocks.push({ Text: { text: item.text } });
+		} else if (item.type === "thinking" && typeof item.thinking === "string") {
+			blocks.push({ Thinking: { text: item.thinking } });
+		} else if (item.type === "image" && typeof item.data === "string") {
+			const mediaType = typeof item.mimeType === "string" ? item.mimeType : "image/png";
+			blocks.push({
+				Image: { media_type: mediaType, data: Array.from(Buffer.from(item.data, "base64")), alt: null },
+			});
+		} else if (
+			(item.type === "tool_call" || item.type === "toolCall") &&
+			typeof item.id === "string" &&
+			typeof item.name === "string"
+		) {
+			blocks.push({
+				ToolCall: { id: item.id, name: item.name, arguments: "arguments" in item ? item.arguments : {} },
+			});
+		} else if (item.type === "tool_result" || item.type === "toolResult") {
+			const toolId =
+				typeof item.toolCallId === "string" ? item.toolCallId : typeof item.id === "string" ? item.id : "tool";
+			blocks.push({ ToolResult: { tool: toolId, content: item.content ?? null, is_error: item.isError === true } });
+		} else {
+			blocks.push({ Unknown: { tag: String(item.type), value: item } });
+		}
 	}
-	return [{ Fallback: { producer: "unknown", value: content } }];
+	return blocks;
 }
 
 function mapMessageRole(role: string): MessageRole {
@@ -312,60 +264,38 @@ function mapMessageRole(role: string): MessageRole {
 }
 
 function mapUsage(usage: unknown): UsageTotals | null {
-	if (!usage || typeof usage !== "object") {
-		return null;
-	}
-	const input = "input" in usage && typeof usage.input === "number" ? usage.input : 0;
-	const output = "output" in usage && typeof usage.output === "number" ? usage.output : 0;
-	const cacheRead = "cacheRead" in usage && typeof usage.cacheRead === "number" ? usage.cacheRead : 0;
-	const cacheWrite = "cacheWrite" in usage && typeof usage.cacheWrite === "number" ? usage.cacheWrite : 0;
+	if (!usage || typeof usage !== "object") return null;
+	const u = usage as Record<string, unknown>;
 	return {
-		input_tokens: input,
-		output_tokens: output,
-		cache_read_tokens: cacheRead,
-		cache_write_tokens: cacheWrite,
+		input_tokens: typeof u.input === "number" ? u.input : 0,
+		output_tokens: typeof u.output === "number" ? u.output : 0,
+		cache_read_tokens: typeof u.cacheRead === "number" ? u.cacheRead : 0,
+		cache_write_tokens: typeof u.cacheWrite === "number" ? u.cacheWrite : 0,
 		orchestration_tokens: 0,
 		premium_requests: 0,
 		cost_microusd: null,
 	};
 }
 
-/**
- * Convert an AgentMessage to a wire TranscriptEntry under the identity `id`.
- *
- * The id is the caller's because a message carries none of its own: a session
- * entry has one, and a streaming message has whatever the connection minted for
- * the turn. Minting one here per call gave every delta of one reply a different
- * identity, which the desktop reads as a new entry per frame.
- */
 export function agentMessageToTranscriptEntry(message: AgentMessage, revision: number, id: string): TranscriptEntry {
-	let role: MessageRole = "Custom";
-	let meta: EntryMeta | null = null;
-	let content: ContentBlock[] = [];
+	const role = message.role ? mapMessageRole(message.role) : "Custom";
+	const meta: EntryMeta | null =
+		message.role === "assistant"
+			? {
+					provider: typeof message.provider === "string" ? message.provider : null,
+					model: typeof message.model === "string" ? message.model : null,
+					stop_reason: typeof message.stopReason === "string" ? message.stopReason : null,
+					error: typeof message.errorMessage === "string" ? message.errorMessage : null,
+					usage: "usage" in message ? mapUsage(message.usage) : null,
+				}
+			: null;
 
-	if (message.role) {
-		role = mapMessageRole(message.role);
-	}
-
-	if (message.role === "assistant") {
-		meta = {
-			provider: "provider" in message && typeof message.provider === "string" ? message.provider : null,
-			model: "model" in message && typeof message.model === "string" ? message.model : null,
-			stop_reason: "stopReason" in message && typeof message.stopReason === "string" ? message.stopReason : null,
-			error: "error" in message && typeof message.error === "string" ? message.error : null,
-			usage: "usage" in message ? mapUsage(message.usage) : null,
-		};
-	}
-
-	if ("content" in message) {
-		content = mapContentBlocks(message.content);
-	}
-
+	const content = "content" in message ? mapContentBlocks(message.content) : [];
 	return {
 		id,
 		parent: null,
 		revision,
-		timestamp_ms: "timestamp" in message && typeof message.timestamp === "number" ? message.timestamp : Date.now(),
+		timestamp_ms: typeof message.timestamp === "number" ? message.timestamp : Date.now(),
 		role,
 		content,
 		meta,
@@ -374,16 +304,12 @@ export function agentMessageToTranscriptEntry(message: AgentMessage, revision: n
 	};
 }
 
-/**
- * Convert a SessionEntry to a wire TranscriptEntry.
- */
 export function sessionEntryToTranscriptEntry(entry: SessionEntry, revision: number): TranscriptEntry {
 	const timestampMs = entry.timestamp ? new Date(entry.timestamp).getTime() : Date.now();
 
 	if (entry.type === "message" && "message" in entry) {
-		const messageEntry = agentMessageToTranscriptEntry(entry.message as AgentMessage, revision, entry.id);
 		return {
-			...messageEntry,
+			...agentMessageToTranscriptEntry(entry.message as AgentMessage, revision, entry.id),
 			parent: entry.parentId ?? null,
 			timestamp_ms: timestampMs,
 			raw_discriminator: entry.type,
@@ -392,14 +318,13 @@ export function sessionEntryToTranscriptEntry(entry: SessionEntry, revision: num
 	}
 
 	if (entry.type === "compaction" && "summary" in entry) {
-		const summaryText = typeof entry.summary === "string" ? entry.summary : "";
 		return {
 			id: entry.id,
 			parent: entry.parentId ?? null,
 			revision,
 			timestamp_ms: timestampMs,
 			role: "CompactionSummary",
-			content: [{ Summary: { kind: "compaction", text: summaryText } }],
+			content: [{ Summary: { kind: "compaction", text: typeof entry.summary === "string" ? entry.summary : "" } }],
 			meta: null,
 			raw_discriminator: entry.type,
 			raw: entry,
@@ -407,14 +332,13 @@ export function sessionEntryToTranscriptEntry(entry: SessionEntry, revision: num
 	}
 
 	if (entry.type === "branch_summary" && "summary" in entry) {
-		const summaryText = typeof entry.summary === "string" ? entry.summary : "";
 		return {
 			id: entry.id,
 			parent: entry.parentId ?? null,
 			revision,
 			timestamp_ms: timestampMs,
 			role: "BranchSummary",
-			content: [{ Summary: { kind: "branch", text: summaryText } }],
+			content: [{ Summary: { kind: "branch", text: typeof entry.summary === "string" ? entry.summary : "" } }],
 			meta: null,
 			raw_discriminator: entry.type,
 			raw: entry,
@@ -422,15 +346,20 @@ export function sessionEntryToTranscriptEntry(entry: SessionEntry, revision: num
 	}
 
 	if (entry.type === "session_lifecycle") {
-		const phase = "phase" in entry && typeof entry.phase === "string" ? entry.phase : "lifecycle";
-		const reason = "reason" in entry && typeof entry.reason === "string" ? entry.reason : null;
 		return {
 			id: entry.id,
 			parent: entry.parentId ?? null,
 			revision,
 			timestamp_ms: timestampMs,
 			role: "Lifecycle",
-			content: [{ Lifecycle: { phase, reason } }],
+			content: [
+				{
+					Lifecycle: {
+						phase: typeof entry.state === "string" ? entry.state : "lifecycle",
+						reason: typeof entry.reason === "string" ? entry.reason : null,
+					},
+				},
+			],
 			meta: null,
 			raw_discriminator: entry.type,
 			raw: entry,

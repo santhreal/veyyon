@@ -1,12 +1,23 @@
 /**
- * TypeScript mirror of the Rust host/model wire types for the GUI desktop client.
+ * TypeScript mirror of the Rust wire types the desktop client speaks,
+ * `crates/veyyon-desktop-model/src/`:
+ * - `action.rs`: HostRequest, HostAction
+ * - `event.rs`: HostEvent, SnapshotSection, SessionSummary, SessionHeaderView, SessionStatus
+ * - `domain.rs`: every panel-domain section (changes, files, terminals, processes, models,
+ *   providers, mcp, agents, usage, context, export, themes, keybindings)
+ * - `connection.rs`: ConnectionState, Versioned, RequestId
+ * - `capabilities.rs`: Capability, CapabilityStatus
+ * - `error.rs`: BackendError, ErrorScope
+ * - `transcript.rs`: TranscriptEntry, MessageRole, ContentBlock, EntryMeta
+ * - `streaming.rs`: StreamingMessageState
+ * - `interaction.rs`: PendingDecisions
  *
- * All types are derived from the authoritative Rust definitions in `hosts/gui/core/src/`:
- * - `host.rs`: HostRequest, HostAction, HostEvent, SnapshotSection
- * - `model/connection.rs`: ConnectionState, Capability, CapabilityStatus, BackendError, ErrorScope
- * - `model/session.rs`: SessionSummary, SessionHeaderView, SessionStatus
- * - `model/transcript.rs`: TranscriptEntry, MessageRole, ContentBlock, EntryMeta, StreamingMessageState
- * - `model/remote.rs`: Versioned
+ * The Rust enum is the authority. Serde's external tagging is the encoding: a
+ * unit variant is its name as a string, a struct variant is `{ Name: {...} }`.
+ * `crates/veyyon-desktop-model/tests/fixtures/snapshot-sections.json` holds one
+ * instance of every section; both sides read it, so a shape that drifts fails
+ * the Rust deserialization test and the TypeScript assignment in
+ * `test/gui-host/every-snapshot-section-is-one-the-desktop-decodes.test.ts`.
  */
 
 export const PROTOCOL_VERSION = 1;
@@ -203,12 +214,311 @@ export interface Versioned<T> {
 	value: T;
 }
 
+/**
+ * Decisions a session is waiting on. Mirrors `PendingDecisions` in
+ * `crates/veyyon-desktop-model/src/interaction.rs`; the section carries the
+ * whole set, so the desktop replaces rather than merges.
+ */
+export interface ApprovalInteraction {
+	id: string;
+	tool_name: string;
+	detail: string;
+	requested_at_ms: number;
+}
+
+export interface QuestionInteraction {
+	id: string;
+	prompt: string;
+	/** Empty for a free-text question, which is answered with `{ text }`. */
+	options: string[];
+	requested_at_ms: number;
+}
+
+export interface PlanInteraction {
+	id: string;
+	markdown_plan: string;
+	requested_at_ms: number;
+}
+
+export interface PendingDecisions {
+	approvals: ApprovalInteraction[];
+	questions: QuestionInteraction[];
+	plans: PlanInteraction[];
+}
+
+/**
+ * The `response` of `RespondToInteraction`, by the kind of decision it answers.
+ * An approval's `scope` defaults to `"once"`; `"session"` stands for the rest
+ * of the session, the same grant the terminal's "for session" rows record.
+ */
+export type InteractionResponse =
+	| { approved: boolean; scope?: "once" | "session" }
+	| { option: number }
+	| { text: string }
+	| { accepted: boolean };
+
+/**
+ * Panel-domain sections. Each is the whole of its domain as the host holds it
+ * at that moment, so the desktop replaces on receipt. `TerminalOutput` and
+ * `ProcessLogs` are the two that accumulate: a terminal's bytes and a
+ * process's log lines arrive as they are produced, and `reset` marks the
+ * chunk that starts a fresh scrollback.
+ */
+export type ChangeScope = "WorkingTree" | "Staged";
+export type ChangeStatus = "Added" | "Modified" | "Deleted" | "Renamed" | "Untracked" | "Conflicted";
+
+export interface ChangedFile {
+	path: string;
+	previous_path: string | null;
+	status: ChangeStatus;
+	additions: number;
+	deletions: number;
+}
+
+export interface ChangesView {
+	revision: number;
+	repository: string | null;
+	scope: ChangeScope;
+	files: ChangedFile[];
+	/** Unified diff of every file in `files` for `scope`. */
+	diff: string;
+}
+
+export type FileKind = "File" | "Directory" | "Symlink";
+
+export interface FileNode {
+	/** Workspace-relative, `/`-separated. */
+	path: string;
+	name: string;
+	kind: FileKind;
+	depth: number;
+}
+
+export interface FileTreeView {
+	root: string;
+	entries: FileNode[];
+	truncated: boolean;
+}
+
+export interface FileContentView {
+	path: string;
+	content: string;
+	size_bytes: number;
+	truncated: boolean;
+	binary: boolean;
+}
+
+export interface SearchResultsView {
+	query: string;
+	paths: string[];
+	truncated: boolean;
+}
+
+export type TerminalStatus = "Running" | { Exited: { code: number } } | { Failed: { message: string } };
+
+export interface TerminalView {
+	id: string;
+	cwd: string;
+	shell: string;
+	cols: number;
+	rows: number;
+	status: TerminalStatus;
+}
+
+export interface TerminalOutputChunk {
+	terminal: string;
+	seq: number;
+	data: number[];
+	reset: boolean;
+}
+
+export interface ProcessView {
+	name: string;
+	pid: number | null;
+	status: string;
+	application: string;
+	args: string[];
+	cwd: string;
+	lifetime: string;
+	started_at_ms: number;
+	exit_code: number | null;
+	terminated_by: string | null;
+}
+
+export interface ProcessLogsChunk {
+	process: string;
+	lines: string[];
+	cursor: number;
+	reset: boolean;
+}
+
+export interface ModelRef {
+	provider: string;
+	id: string;
+}
+
+export interface ModelView extends ModelRef {
+	name: string;
+	reasoning: boolean;
+	context_window: number;
+	max_output: number;
+}
+
+export interface ModelsView {
+	models: ModelView[];
+	current: ModelRef | null;
+	thinking_level: string | null;
+	thinking_levels: string[];
+}
+
+export interface ProviderView {
+	id: string;
+	name: string;
+	authenticated: boolean;
+	oauth: boolean;
+	api_key: boolean;
+}
+
+export type AuthFlowState = "AwaitingBrowser" | "AwaitingSecret" | "Completed" | "Failed" | "Cancelled";
+
+export interface AuthFlowView {
+	provider: string;
+	state: AuthFlowState;
+	url: string | null;
+	prompt: string | null;
+	message: string | null;
+}
+
+export type McpServerStatus = "Connected" | "Connecting" | "Disconnected" | { Error: { message: string } };
+
+export interface McpServerView {
+	name: string;
+	enabled: boolean;
+	status: McpServerStatus;
+	tools: string[];
+}
+
+export interface McpToolResultView {
+	server: string;
+	tool: string;
+	is_error: boolean;
+	output: string;
+}
+
+export interface AgentView {
+	id: string;
+	display_name: string;
+	kind: string;
+	status: string;
+	parent: string | null;
+	scope: string;
+	session: string | null;
+}
+
+export interface ContextCategory {
+	name: string;
+	tokens: number;
+}
+
+export interface ContextBreakdownView {
+	session: string;
+	total_tokens: number;
+	limit_tokens: number | null;
+	categories: ContextCategory[];
+}
+
+export interface UsageView {
+	session: string;
+	totals: UsageTotals;
+}
+
+export interface ExportView {
+	session: string;
+	format: string;
+	path: string | null;
+	content: string | null;
+}
+
+export interface ThemeView {
+	id: string;
+	name: string;
+	dark: boolean;
+}
+
+export interface ThemesView {
+	themes: ThemeView[];
+	current: string;
+}
+
+export interface KeybindingView {
+	action: string;
+	keys: string[];
+	source: string;
+}
+
 export type SnapshotSection =
 	| { Sessions: [Versioned<SessionSummary[]>, SessionLoadError[]] }
 	| { ActiveSession: Versioned<SessionHeaderView> }
 	| { Transcript: Versioned<TranscriptEntry[]> }
 	| { Capabilities: [Capability, CapabilityStatus][] }
-	| Record<string, unknown>;
+	| { Interactions: { session: string; pending: PendingDecisions } }
+	| { Settings: unknown }
+	| { Diagnostics: unknown }
+	| { Changes: ChangesView }
+	| { FileTree: FileTreeView }
+	| { FileContent: FileContentView }
+	| { SearchResults: SearchResultsView }
+	| { Terminals: TerminalView[] }
+	| { TerminalOutput: TerminalOutputChunk }
+	| { Processes: ProcessView[] }
+	| { ProcessLogs: ProcessLogsChunk }
+	| { Models: ModelsView }
+	| { Providers: ProviderView[] }
+	| { AuthFlow: AuthFlowView }
+	| { Mcp: McpServerView[] }
+	| { McpToolResult: McpToolResultView }
+	| { Agents: AgentView[] }
+	| { Usage: UsageView }
+	| { ContextBreakdown: ContextBreakdownView }
+	| { Export: ExportView }
+	| { Themes: ThemesView }
+	| { Keybindings: KeybindingView[] };
+
+export const ALL_SNAPSHOT_SECTIONS = [
+	"Sessions",
+	"ActiveSession",
+	"Transcript",
+	"Capabilities",
+	"Interactions",
+	"Settings",
+	"Diagnostics",
+	"Changes",
+	"FileTree",
+	"FileContent",
+	"SearchResults",
+	"Terminals",
+	"TerminalOutput",
+	"Processes",
+	"ProcessLogs",
+	"Models",
+	"Providers",
+	"AuthFlow",
+	"Mcp",
+	"McpToolResult",
+	"Agents",
+	"Usage",
+	"ContextBreakdown",
+	"Export",
+	"Themes",
+	"Keybindings",
+] as const;
+
+export type SnapshotSectionTag = (typeof ALL_SNAPSHOT_SECTIONS)[number];
+
+/** The one tag a section carries; `keyof` a union member is its tag. */
+export function getSnapshotSectionTag(section: SnapshotSection): SnapshotSectionTag {
+	return Object.keys(section)[0] as SnapshotSectionTag;
+}
 
 export type HostEvent =
 	| { ConnectionChanged: ConnectionState }

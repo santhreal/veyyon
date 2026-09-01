@@ -1,33 +1,21 @@
 import * as fs from "node:fs/promises";
 import * as net from "node:net";
 import * as path from "node:path";
+import type { AuthStorage } from "@veyyon/ai";
 import { getAgentDir, logger } from "@veyyon/utils";
-import { listSessions } from "../session/session-listing";
-import { SessionManager } from "../session/session-manager";
-import { computeDefaultSessionDir } from "../session/session-paths";
-import { FileSessionStorage } from "../session/session-storage";
+import { discoverAuthStorage } from "../session/auth-broker-config";
+import { allActionHandlers } from "./actions";
+import type { ActionContext, ReplyHelper } from "./actions/types";
 import { FrameDecoder, writeFrame } from "./frames";
+import { buildCapabilitiesSnapshot, mapActionToErrorScope } from "./session-bridge";
+import { type ClientSessionState, disposeClientState } from "./turns";
 import {
-	buildCapabilitiesSnapshot,
-	mapActionToErrorScope,
-	sessionEntryToTranscriptEntry,
-	sessionHeaderToView,
-	sessionInfoToSummary,
-} from "./session-bridge";
-import {
-	abortTurn,
-	type ClientSessionState,
-	disposeTurnSession,
-	executePromptTurn,
-	getOrCreateAgentSession,
-} from "./turns";
-import {
-	type AttachmentSubmission,
 	type BackendError,
 	getActionTag,
 	type HostAction,
+	type HostActionTag,
 	PROTOCOL_VERSION,
-	type TranscriptEntry,
+	type SnapshotSection,
 } from "./wire";
 
 export class SocketInUseError extends Error {
@@ -37,10 +25,18 @@ export class SocketInUseError extends Error {
 		this.name = "SocketInUseError";
 	}
 }
+
 export interface GuiHostServerOptions {
 	endpoint?: string;
 	cwd?: string;
 	agentDir?: string;
+	/**
+	 * The credential store every action reads and writes. Default: the
+	 * profile's store through `discoverAuthStorage`, which follows credential
+	 * sharing to the machine-wide one. A test passes its own so a key it seeds
+	 * never lands there.
+	 */
+	authStorage?: AuthStorage;
 }
 
 interface ParsedEndpoint {
@@ -76,7 +72,7 @@ export function parseEndpoint(written: string, defaultAgentDir?: string): Parsed
 		const host = authority.slice(0, colonIndex) || "127.0.0.1";
 		const portStr = authority.slice(colonIndex + 1);
 		const port = Number.parseInt(portStr, 10);
-		if (Number.isNaN(port) || port <= 0 || port > 65535) {
+		if (Number.isNaN(port) || port < 0 || port > 65535) {
 			throw new Error(`Invalid TCP port number: '${portStr}'`);
 		}
 		return {
@@ -105,21 +101,42 @@ export class GuiHostServer {
 	#server: net.Server | null = null;
 	#clients = new Set<net.Socket>();
 	#clientStates = new Map<net.Socket, ClientSessionState>();
-	#storage = new FileSessionStorage();
 	#cwd: string;
 	#agentDir: string;
+	#authStorage: Promise<AuthStorage> | null;
 	#isClosing = false;
 
 	constructor(options: GuiHostServerOptions = {}) {
 		this.#cwd = options.cwd ?? process.cwd();
 		this.#agentDir = options.agentDir ?? getAgentDir();
+		this.#authStorage = options.authStorage ? Promise.resolve(options.authStorage) : null;
 		this.#parsedEndpoint = parseEndpoint(
 			options.endpoint ?? `unix:${path.join(this.#agentDir, "gui-host.sock")}`,
 			this.#agentDir,
 		);
 	}
 
+	/**
+	 * One store for the server's lifetime. A discovery that failed is not
+	 * cached, so the next action retries it rather than inheriting the failure.
+	 */
+	#resolveAuthStorage(): Promise<AuthStorage> {
+		if (!this.#authStorage) {
+			this.#authStorage = discoverAuthStorage(this.#agentDir).catch(error => {
+				this.#authStorage = null;
+				throw error;
+			});
+		}
+		return this.#authStorage;
+	}
+
 	get endpoint(): string {
+		if (this.#parsedEndpoint.type === "tcp" && this.#server?.listening) {
+			const addr = this.#server.address();
+			if (addr && typeof addr === "object") {
+				return `tcp:${this.#parsedEndpoint.host ?? "127.0.0.1"}:${addr.port}`;
+			}
+		}
 		return this.#parsedEndpoint.formatted;
 	}
 
@@ -146,7 +163,7 @@ export class GuiHostServer {
 			this.#server.listen(this.#parsedEndpoint.path, () => {
 				resolve();
 			});
-		} else if (this.#parsedEndpoint.type === "tcp" && this.#parsedEndpoint.port) {
+		} else if (this.#parsedEndpoint.type === "tcp" && typeof this.#parsedEndpoint.port === "number") {
 			this.#server.listen(this.#parsedEndpoint.port, this.#parsedEndpoint.host ?? "127.0.0.1", () => {
 				resolve();
 			});
@@ -195,6 +212,7 @@ export class GuiHostServer {
 			throw error;
 		}
 	}
+
 	#handleConnection(socket: net.Socket): void {
 		this.#clients.add(socket);
 		const clientState: ClientSessionState = { revision: 0 };
@@ -209,6 +227,7 @@ export class GuiHostServer {
 				},
 			},
 		});
+
 		// 2. Write capabilities snapshot
 		writeFrame(socket, {
 			Snapshot: {
@@ -242,7 +261,7 @@ export class GuiHostServer {
 		this.#clients.delete(socket);
 		const state = this.#clientStates.get(socket);
 		if (state) {
-			void disposeTurnSession(state);
+			void disposeClientState(state);
 			this.#clientStates.delete(socket);
 		}
 	}
@@ -280,240 +299,57 @@ export class GuiHostServer {
 		action: HostAction,
 		actionTag: string,
 	): Promise<void> {
-		switch (actionTag) {
-			case "ListSessions": {
-				const sessionDir = computeDefaultSessionDir(
-					this.#cwd,
-					this.#storage,
-					path.join(this.#agentDir, "sessions"),
-				);
-				const sessions = await listSessions(sessionDir, this.#storage);
-				const summaries = sessions.map(sessionInfoToSummary);
-				clientState.revision += 1;
-				writeFrame(socket, {
-					Snapshot: {
-						Sessions: [{ revision: clientState.revision, value: summaries }, []],
-					},
-				});
+		const reply: ReplyHelper = {
+			success: () => {
 				writeFrame(socket, { RequestSucceeded: { request: requestId } });
-				break;
-			}
-
-			case "OpenSession": {
-				let targetSession: string | undefined;
-				if (typeof action === "object" && action !== null && "OpenSession" in action) {
-					const openPayload = action.OpenSession;
-					if (openPayload && typeof openPayload === "object" && "session" in openPayload) {
-						targetSession = String(openPayload.session);
-					}
-				}
-
-				if (!targetSession) {
-					throw new Error("OpenSession missing session identifier");
-				}
-
-				// Find or open session
-				let sessionPath: string = targetSession;
-				let found = false;
-				try {
-					await fs.access(targetSession);
-					found = true;
-				} catch {
-					found = false;
-				}
-
-				if (!found) {
-					const sessionDir = computeDefaultSessionDir(
-						this.#cwd,
-						this.#storage,
-						path.join(this.#agentDir, "sessions"),
-					);
-					const sessions = await listSessions(sessionDir, this.#storage);
-					const matched = sessions.find(s => s.id === targetSession || s.path === targetSession);
-					if (matched) {
-						sessionPath = matched.path;
-					}
-				}
-
-				// Dispose any existing in-memory agent session so subsequent prompts continue this session
-				await disposeTurnSession(clientState);
-
-				const sm = await SessionManager.open(sessionPath, undefined, undefined, { suppressBreadcrumb: true });
-				clientState.sessionManager = sm;
-
-				// Wire appends
-				sm.onEntryAppended = entry => {
-					clientState.revision += 1;
-					const transcriptEntry = sessionEntryToTranscriptEntry(entry, clientState.revision);
-					writeFrame(socket, {
-						TranscriptAppended: {
-							revision: clientState.revision,
-							entries: [transcriptEntry],
-						},
-					});
-				};
-
-				// Send ActiveSession snapshot
-				clientState.revision += 1;
-				writeFrame(socket, {
-					Snapshot: {
-						ActiveSession: {
-							revision: clientState.revision,
-							value: sessionHeaderToView(sm.getHeader()),
-						},
-					},
-				});
-
-				// Send Transcript snapshot
-				clientState.revision += 1;
-				const entries: TranscriptEntry[] = sm
-					.getEntries()
-					.map(e => sessionEntryToTranscriptEntry(e, clientState.revision));
-				writeFrame(socket, {
-					Snapshot: {
-						Transcript: {
-							revision: clientState.revision,
-							value: entries,
-						},
-					},
-				});
-
-				writeFrame(socket, { RequestSucceeded: { request: requestId } });
-				break;
-			}
-
-			case "LoadTranscript": {
-				let before: string | null = null;
-				if (typeof action === "object" && action !== null && "LoadTranscript" in action) {
-					const payload = action.LoadTranscript;
-					if (payload && typeof payload === "object" && "before" in payload) {
-						before = typeof payload.before === "string" ? payload.before : null;
-					}
-				}
-
-				const sm = clientState.sessionManager ?? clientState.agentSession?.sessionManager;
-				if (!sm) {
-					const error: BackendError = {
-						scope: "Transcript",
-						code: "NO_ACTIVE_SESSION",
-						message: "No session is currently open to load transcript from",
-						retryable: false,
-						request: requestId,
-						occurred_at_ms: Date.now(),
-					};
-					writeFrame(socket, { RequestFailed: { request: requestId, error } });
-					break;
-				}
-
-				if (before !== null && before !== undefined) {
-					const error: BackendError = {
-						scope: "Transcript",
-						code: "PAGING_UNSUPPORTED",
-						message: "Backward transcript paging with 'before' is not supported by the session store",
-						retryable: false,
-						request: requestId,
-						occurred_at_ms: Date.now(),
-					};
-					writeFrame(socket, { RequestFailed: { request: requestId, error } });
-					break;
-				}
-
-				clientState.revision += 1;
-				const entries: TranscriptEntry[] = sm
-					.getEntries()
-					.map(e => sessionEntryToTranscriptEntry(e, clientState.revision));
-				writeFrame(socket, {
-					Snapshot: {
-						Transcript: {
-							revision: clientState.revision,
-							value: entries,
-						},
-					},
-				});
-				writeFrame(socket, { RequestSucceeded: { request: requestId } });
-				break;
-			}
-
-			case "SubmitPrompt": {
-				let promptText = "";
-				let attachments: AttachmentSubmission[] = [];
-				if (typeof action === "object" && action !== null && "SubmitPrompt" in action) {
-					const payload = action.SubmitPrompt;
-					if (payload && typeof payload === "object") {
-						if ("text" in payload && typeof payload.text === "string") {
-							promptText = payload.text;
-						}
-						if ("attachments" in payload && Array.isArray(payload.attachments)) {
-							attachments = payload.attachments as AttachmentSubmission[];
-						}
-					}
-				}
-
-				const session = await getOrCreateAgentSession(clientState, socket, {
-					cwd: this.#cwd,
-					agentDir: this.#agentDir,
-				});
-
-				await executePromptTurn(session, clientState, promptText, attachments);
-				writeFrame(socket, { RequestSucceeded: { request: requestId } });
-				break;
-			}
-
-			case "AbortTurn": {
-				const session = clientState.agentSession;
-				if (!session?.isStreaming) {
-					const error: BackendError = {
-						scope: "Session",
-						code: "NOT_RUNNING",
-						message: "No turn is currently in flight to abort",
-						retryable: false,
-						request: requestId,
-						occurred_at_ms: Date.now(),
-					};
-					writeFrame(socket, { RequestFailed: { request: requestId, error } });
-					break;
-				}
-
-				await abortTurn(session);
-				writeFrame(socket, { RequestSucceeded: { request: requestId } });
-				break;
-			}
-
-			case "Detach": {
-				await disposeTurnSession(clientState);
-				clientState.sessionManager = undefined;
-				writeFrame(socket, { RequestSucceeded: { request: requestId } });
-				break;
-			}
-
-			case "RetryConnection": {
-				writeFrame(socket, {
-					Snapshot: {
-						Capabilities: buildCapabilitiesSnapshot(),
-					},
-				});
-				writeFrame(socket, { RequestSucceeded: { request: requestId } });
-				break;
-			}
-
-			case "Shutdown": {
-				writeFrame(socket, { RequestSucceeded: { request: requestId } });
-				void this.close();
-				break;
-			}
-
-			default: {
+			},
+			failure: err => {
 				const error: BackendError = {
-					scope: mapActionToErrorScope(actionTag),
-					code: "UNIMPLEMENTED_ACTION",
-					message: `Action '${actionTag}' is not implemented by this host`,
-					retryable: false,
+					scope: err.scope,
+					code: err.code ?? "ACTION_FAILED",
+					message: err.message,
+					retryable: err.retryable ?? false,
 					request: requestId,
-					occurred_at_ms: Date.now(),
+					occurred_at_ms: err.occurred_at_ms ?? Date.now(),
 				};
 				writeFrame(socket, { RequestFailed: { request: requestId, error } });
-				break;
-			}
+			},
+			snapshot: (section: SnapshotSection) => {
+				writeFrame(socket, { Snapshot: section });
+			},
+		};
+
+		const handler = allActionHandlers[actionTag as HostActionTag];
+		if (!handler) {
+			reply.failure({
+				scope: mapActionToErrorScope(actionTag),
+				code: "UNIMPLEMENTED_ACTION",
+				message: `Action '${actionTag}' is not implemented by this host`,
+				retryable: false,
+			});
+			return;
+		}
+
+		let payload: unknown;
+		if (typeof action === "object" && action !== null && actionTag in action) {
+			payload = (action as Record<string, unknown>)[actionTag];
+		}
+
+		const ctx: ActionContext = {
+			socket,
+			clientState,
+			cwd: this.#cwd,
+			agentDir: this.#agentDir,
+			authStorage: () => this.#resolveAuthStorage(),
+			requestId,
+			actionTag: actionTag as HostActionTag,
+			reply,
+		};
+
+		await handler(ctx, payload as never);
+
+		if (actionTag === "Shutdown") {
+			void this.close();
 		}
 	}
 
