@@ -28,13 +28,12 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import type { Api, Message, Model, ToolChoice } from "@veyyon/ai";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { mayContinueAtSettle, type SettleContinuationState } from "@veyyon/kernel/session/settle-continuation";
-import { logger, prompt } from "@veyyon/utils";
+import { getStringProperty, logger, prompt } from "@veyyon/utils";
 import { turnControlPrompts } from "../../prompts/turn-control/rows";
 import { getLatestTodoPhasesFromEntries, type TodoPhase } from "../../tools/agent/todo";
 import { TOOL } from "../../tools/core/builtin-names";
 import { buildNamedToolChoice } from "../../utils/tool-choice";
 import { toolCallOpFromMessage } from "../agent-session-message-shapes";
-import { getStringProperty } from "@veyyon/utils";
 import type { AgentSessionEvent, ScheduledAgentContinueOptions } from "../agent-session-types";
 import {
 	MID_RUN_TODO_NUDGE_MAX_PER_CYCLE,

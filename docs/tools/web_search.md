@@ -35,7 +35,7 @@
   - `packages/coding-agent/src/web/search/providers/tinyfish.ts`: TinyFish search adapter.
   - `packages/coding-agent/src/web/search/providers/xai.ts`: xAI Responses web-search adapter.
   - `packages/coding-agent/src/web/search/providers/zai.ts`: Z.AI remote MCP adapter.
-  - `packages/coding-agent/src/web/parallel.ts`: Parallel search/extract HTTP client.
+  - `plugins/web/src/parallel.ts`: Parallel search/extract HTTP client.
   - `packages/coding-agent/src/web/kagi.ts`: Kagi HTTP client.
   - `packages/coding-agent/src/tools/index.ts`: built-in tool registration and enable flag.
 
@@ -183,7 +183,7 @@ Streaming: none. `WebSearchTool.execute()` forwards its `AbortSignal` into `exec
     - Querying: POST to `MOONSHOT_SEARCH_BASE_URL` / `KIMI_SEARCH_BASE_URL` / default `https://api.kimi.com/coding/v1/search` with `text_query`, `limit`, `enable_page_crawling`, `timeout_seconds: 30`.
     - `limit` / `num_search_results`: `params.numSearchResults ?? params.limit`, clamped to `1..20`, default `10`.
     - Output: `sources`, `requestId`.
-  - **Parallel**: `packages/coding-agent/src/web/search/providers/parallel.ts`, `packages/coding-agent/src/web/parallel.ts`
+  - **Parallel**: `packages/coding-agent/src/web/search/providers/parallel.ts`, `plugins/web/src/parallel.ts`
     - Availability: env or `agent.db` credential for `parallel`.
     - Querying: POST `https://api.parallel.ai/v1beta/search` with `objective=query`, `search_queries=[query]`, `mode:"fast"`, `max_chars_per_result: 10000`, beta header `search-extract-2025-10-10`.
     - There is no provider fan-out here despite the name; the current adapter always sends a one-element `search_queries` array.
@@ -246,7 +246,7 @@ Streaming: none. `WebSearchTool.execute()` forwards its `AbortSignal` into `exec
 - Tavily result count: default `5`, max `20` (`packages/coding-agent/src/web/search/providers/tavily.ts`).
 - Firecrawl result count: default `10`, max `100` (`packages/coding-agent/src/web/search/providers/firecrawl.ts`).
 - Kimi result count: default `10`, max `20`; request timeout field fixed to `30` seconds (`packages/coding-agent/src/web/search/providers/kimi.ts`).
-- Parallel result count: default `10`, max `40`; per-result excerpt cap `10_000` chars (`packages/coding-agent/src/web/search/providers/parallel.ts`, `packages/coding-agent/src/web/parallel.ts`).
+- Parallel result count: default `10`, max `40`; per-result excerpt cap `10_000` chars (`packages/coding-agent/src/web/search/providers/parallel.ts`, `plugins/web/src/parallel.ts`).
 - Kagi result count: default `10`, max `40` (`packages/coding-agent/src/web/search/providers/kagi.ts`).
 - SearXNG result count: default `10`, max `20` (`packages/coding-agent/src/web/search/providers/searxng.ts`).
 - xAI local sources/citations cap: `num_search_results` before `limit`, omitted/invalid/zero => local default `10`, max `30` (`packages/coding-agent/src/web/search/providers/xai.ts`).

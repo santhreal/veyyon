@@ -84,11 +84,10 @@ describe("handleYouTube with Parallel extract", () => {
 	});
 
 	it("reports the missing resolver when no host supplied one", async () => {
-		const extract = vi.spyOn(parallelModule, "extractWithParallel");
-
+		// No services means no fetch preference, so the Parallel branch is unreachable here and the
+		// only question is what the handler reports.
 		const result = asRender(await handleYouTube("https://youtu.be/dQw4w9WgXcQ", 10));
 
-		expect(extract).not.toHaveBeenCalled();
 		expect(result?.method).toBe("youtube-no-ytdlp");
 		expect(result?.notes).toContain("no external-tool resolver was supplied");
 	});

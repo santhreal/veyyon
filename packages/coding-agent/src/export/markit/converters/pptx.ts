@@ -1,7 +1,7 @@
 // Adapted from markit-ai (MIT). See ../NOTICE.
 import * as path from "node:path";
-import { XMLParser } from "fast-xml-parser";
 import { renderMarkdownTable } from "@veyyon/utils/markdown-table";
+import { XMLParser } from "fast-xml-parser";
 import { resolveArchiveMemberPath, unzip, unzipText } from "../../../utils/zip";
 import type { ConversionResult, Converter, StreamInfo } from "../types";
 import { xmlNodeText } from "./xml-text";

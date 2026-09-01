@@ -6,6 +6,7 @@ import type { MnemopiLlmCompleteOptions, MnemopiLlmPayloadHook } from "@veyyon/m
 import type * as MnemopiDiagnoseNs from "@veyyon/mnemopi/diagnose";
 import type { DiagnosticSummary } from "@veyyon/mnemopi/diagnose";
 import { clampLow, logger, removeWithRetries } from "@veyyon/utils";
+import { escapeMarkdownTableCell } from "@veyyon/utils/markdown-table";
 import type { ModelRegistry } from "../../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../../config/model-resolver";
 import { resolveConfigValue } from "../../config/resolve-config-value";
@@ -14,7 +15,6 @@ import type { AgentSession } from "../../session/agent-session";
 import { isTinyMemoryLocalModelKey, ONLINE_MEMORY_MODEL_KEY } from "../../tiny/models";
 import { tinyModelClient } from "../../tiny/title-client";
 import { shortenPath } from "../../tools/core/render-utils";
-import { escapeMarkdownTableCell } from "@veyyon/utils/markdown-table";
 import type {
 	MemoryBackend,
 	MemoryBackendSaveInput,

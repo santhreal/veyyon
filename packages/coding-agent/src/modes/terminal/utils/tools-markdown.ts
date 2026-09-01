@@ -1,5 +1,5 @@
-import type { Tool } from "../../../tools";
 import { escapeMarkdownTableCell } from "@veyyon/utils/markdown-table";
+import type { Tool } from "../../../tools";
 
 export interface ToolsMarkdownBindings {
 	tools: ReadonlyArray<Pick<Tool, "description" | "name">>;

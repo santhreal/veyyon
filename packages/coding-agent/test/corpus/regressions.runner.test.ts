@@ -84,11 +84,11 @@ import {
 import { formatShortSha } from "@veyyon/coding-agent/tools/web/gh-format";
 import { parseIssueUrl, parsePrUrl } from "@veyyon/coding-agent/tools/web/gh-url";
 import { detectLanguageId } from "@veyyon/coding-agent/utils/lang-from-path";
-import { formatIsoDate, formatMediaDuration } from "@veyyon/coding-agent/web/scrapers/types";
 import { InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher, parsePatch, Recovery } from "@veyyon/hashline";
 import { findCompactMode, parseCompactArgs } from "@veyyon/kernel/session/compact-modes";
 import { parseTitleSlotLine, serializeTitleSlot, titleUpdateFromSlot } from "@veyyon/kernel/session/session-title-slot";
 import { formatShakeSummary, type ShakeResult } from "@veyyon/kernel/session/shake-types";
+import { formatIsoDate, formatMediaDuration } from "@veyyon/web/scrapers/types";
 import type { CorpusCase } from "../helpers/corpus-loader";
 import { flattenCorpus, loadCorpusFile } from "../helpers/corpus-loader";
 import { makeToolSession } from "../helpers/tool-session";
