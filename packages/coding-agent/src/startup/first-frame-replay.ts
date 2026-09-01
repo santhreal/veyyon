@@ -157,8 +157,32 @@ export function isBareInteractiveLaunch(): boolean {
 	return process.argv.length === 2 && process.stdin.isTTY === true && process.stdout.isTTY === true;
 }
 
-/** The current value of every recorded variable, as the recording stores them. */
-function currentEnv(): Record<string, string> {
+/**
+ * The terminal size the card will be composed at, resolved exactly as the renderer resolves it.
+ *
+ * `process.stdout.columns` is not that size. A pty whose dimensions are set after the process
+ * starts reports 0 here and a real size a few milliseconds later, and under `script(1)` with no
+ * controlling terminal it reports 0 for the whole of this function's life. The renderer never sees
+ * that 0: `ProcessTerminal.columns` falls back through `COLUMNS` to 80, so the card composes at
+ * 80x24 and the recording stores 80x24.
+ *
+ * Comparing the raw value against a recording written from the resolved one rejects every launch
+ * on such a terminal, which is a replay that silently never fires. The two must read the size the
+ * same way, so this mirrors `ProcessTerminal.columns` and `.rows` in `@veyyon/tui/terminal`, which
+ * own it. Mirrored rather than imported because this module is evaluated before the import graph
+ * and may import node builtins only;
+ * `packages/coding-agent/test/a-replayed-card-describes-the-screen-it-replays.test.ts` fails if the
+ * two ever disagree.
+ */
+function terminalSize(): { cols: number; rows: number } {
+	return {
+		cols: process.stdout.columns || Number(process.env.COLUMNS) || 80,
+		rows: process.stdout.rows || Number(process.env.LINES) || 24,
+	};
+}
+
+/** The value of every recorded variable, as the recording stores them. */
+function readEnv(): Record<string, string> {
 	const snapshot: Record<string, string> = {};
 	for (const key of RECORDED_ENV_KEYS) {
 		const value = process.env[key];
@@ -166,6 +190,18 @@ function currentEnv(): Record<string, string> {
 	}
 	return snapshot;
 }
+
+/**
+ * The recorded variables as this process received them, read once, here.
+ *
+ * Not read again at either end. This module is `cli.ts`'s first import, so module evaluation is the
+ * only moment at which the replay's comparison and the recording written 40ms later are looking at
+ * the same environment: startup consumes some of these on the way past. `VEYYON_PROFILE` is deleted
+ * from `process.env` once the profile is resolved, so a recording that read the environment at the
+ * point the card was composed stored it as absent, the next launch compared that against an entry
+ * environment that still had it, and no launch under a profile ever replayed. Both ends read this.
+ */
+const ENTRY_ENV: Readonly<Record<string, string>> = readEnv();
 
 /** Whether the running binary is exactly the one that wrote the recording. */
 function binaryUnchanged(binary: RecordedBinary): boolean {
@@ -178,13 +214,12 @@ function binaryUnchanged(binary: RecordedBinary): boolean {
 	}
 }
 
-/** Whether two env snapshots hold the same keys with the same values. */
+/** Whether a recording's environment is the one this process received. */
 function envUnchanged(recorded: Readonly<Record<string, string>>): boolean {
-	const current = currentEnv();
 	const recordedKeys = Object.keys(recorded);
-	if (recordedKeys.length !== Object.keys(current).length) return false;
+	if (recordedKeys.length !== Object.keys(ENTRY_ENV).length) return false;
 	for (const key of recordedKeys) {
-		if (recorded[key] !== current[key]) return false;
+		if (recorded[key] !== ENTRY_ENV[key]) return false;
 	}
 	return true;
 }
@@ -224,6 +259,24 @@ export interface ReplayedFirstFrame {
 let replayed: ReplayedFirstFrame | undefined;
 
 /**
+ * Why a launch did not replay, appended to the file `VEYYON_REPLAY_DEBUG` names.
+ *
+ * A rejected recording is indistinguishable from a slow launch on the outside: nothing is written,
+ * the ordinary path runs, and the recording is rewritten at the end. That is the right product
+ * behavior and it makes "the replay never fires under this launcher" undiagnosable from a timing
+ * table. The logger cannot serve here, because this runs before it exists.
+ */
+function why(reason: string): void {
+	const file = process.env.VEYYON_REPLAY_DEBUG;
+	if (file === undefined) return;
+	try {
+		fs.appendFileSync(file, `${process.pid} ${reason}\n`);
+	} catch {
+		// A diagnostic that cannot be written is not a launch that fails.
+	}
+}
+
+/**
  * Write the previous launch's card, if this launch is the same launch.
  *
  * Called before the CLI's own import graph is evaluated, so it must not throw for any reason: a
@@ -231,19 +284,31 @@ let replayed: ReplayedFirstFrame | undefined;
  * fails.
  */
 export function replayFirstFrame(): void {
-	if (!isBareInteractiveLaunch()) return;
+	if (!isBareInteractiveLaunch()) {
+		why(`not-bare argv=${process.argv.length} stdin=${process.stdin.isTTY} stdout=${process.stdout.isTTY}`);
+		return;
+	}
 	try {
 		const recording = asRecording(JSON.parse(fs.readFileSync(recordingPath(), "utf8")) as unknown);
-		if (recording === undefined) return;
-		if (Date.now() - recording.recordedAtMs > RECORDING_MAX_AGE_MS) return;
-		if (recording.cols !== process.stdout.columns || recording.rows !== process.stdout.rows) return;
-		if (!envUnchanged(recording.env)) return;
-		if (!binaryUnchanged(recording.binary)) return;
+		if (recording === undefined) return why("no usable recording");
+		if (Date.now() - recording.recordedAtMs > RECORDING_MAX_AGE_MS) return why("aged out");
+		const size = terminalSize();
+		if (recording.cols !== size.cols || recording.rows !== size.rows) {
+			return why(`size ${recording.cols}x${recording.rows} != ${size.cols}x${size.rows}`);
+		}
+		if (!envUnchanged(recording.env)) {
+			return why(`env ${JSON.stringify(recording.env)} != ${JSON.stringify(ENTRY_ENV)}`);
+		}
+		if (!binaryUnchanged(recording.binary)) {
+			return why(`binary ${JSON.stringify(recording.binary)} != ${process.execPath}`);
+		}
 		fs.writeSync(1, recording.bytes);
 		replayed = { screen: recording.screen, tip: recording.tip };
-	} catch {
+		why("replayed");
+	} catch (error) {
 		// Every failure here is the same failure: no replay, ordinary path, fresh recording at the
 		// end of this run.
+		why(`threw ${error instanceof Error ? error.message : String(error)}`);
 	}
 }
 
@@ -278,7 +343,7 @@ export function recordFirstFrame(options: {
 			version: REPLAY_SHAPE_VERSION,
 			cols: options.cols,
 			rows: options.rows,
-			env: currentEnv(),
+			env: ENTRY_ENV,
 			binary: { path: process.execPath, mtimeMs: stat.mtimeMs, size: stat.size },
 			bytes: options.bytes,
 			screen: options.screen,
