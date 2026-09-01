@@ -455,7 +455,10 @@ function drawCodeLines(lines: readonly ViewLine[], code: ViewCodeLines, theme: T
 					const gutter = codeGutterWidth(numbers, code.totalLines);
 					return highlighted.map((body, index) => {
 						const number = numbers[index];
-						const cell = number === null || number === undefined ? " ".repeat(gutter) : String(number).padStart(gutter, " ");
+						const cell =
+							number === null || number === undefined
+								? " ".repeat(gutter)
+								: String(number).padStart(gutter, " ");
 						return `${theme.fg("dim", `${cell} `)}${replaceTabs(body)}`;
 					});
 				})()

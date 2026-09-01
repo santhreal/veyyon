@@ -199,14 +199,10 @@ function getRunMeta(run: GhRunWatchRunDetails): string[] {
 function runRow(run: GhRunWatchRunDetails): ViewLine {
 	const parts = getRunMeta(run);
 	const line: ViewLine = [{ text: getRunLabel(run), tone: "accent" }];
-	return parts.reduce<ViewLine>(
-		(row, part, index) => [
-			...row,
-			{ text: "  " },
-			index === parts.length - 1 ? { text: part, tone: "muted" } : { text: part },
-		],
-		line,
-	);
+	for (const [index, part] of parts.entries()) {
+		line.push({ text: "  " }, index === parts.length - 1 ? { text: part, tone: "muted" } : { text: part });
+	}
+	return line;
 }
 
 /** The mark a job's state draws as, and the tone its words carry, which are two decisions. */

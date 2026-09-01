@@ -360,7 +360,11 @@ export const launchToolView: Required<ToolViewRenderer<LaunchRenderArgs, LaunchV
 		}
 
 		const head = header(op, description ? replaceTabs(description) : undefined, {
-			...(failed ? { status: "error" as const } : partial ? { status: "pending" as const } : { emblem: LAUNCH_EMBLEM }),
+			...(failed
+				? { status: "error" as const }
+				: partial
+					? { status: "pending" as const }
+					: { emblem: LAUNCH_EMBLEM }),
 			meta,
 		});
 

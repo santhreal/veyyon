@@ -8,32 +8,16 @@
  */
 
 import * as path from "node:path";
-import type { Component } from "@veyyon/tui";
-import { Text } from "@veyyon/tui";
-import { formatCount } from "@veyyon/utils/format";
-import { hasUrlScheme } from "@veyyon/utils/url";
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import { tryResolveInternalUrlSync } from "@veyyon/coding-agent/internal-urls/resolve-sync";
 import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
-import { renderCodeCell, renderMarkdownCell } from "@veyyon/coding-agent/tui/code-cell";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
-import { fileHyperlink } from "@veyyon/coding-agent/tui/hyperlink";
-import { CachedOutputBlock, markFramedBlockComponent } from "@veyyon/coding-agent/tui/output-block";
-import { renderStatusLine } from "@veyyon/coding-agent/tui/status-line";
-import { getLanguageFromPath } from "@veyyon/coding-agent/utils/lang-from-path";
 import {
 	formatFullOutputReference,
 	formatStyledTruncationWarning,
 	stripOutputNotice,
 } from "@veyyon/coding-agent/tools/core/output-meta";
-import {
-	isReadableUrlPath,
-	splitInternalUrlSel,
-	splitPathAndSel,
-} from "@veyyon/coding-agent/tools/core/path-utils";
+import { isReadableUrlPath, splitInternalUrlSel, splitPathAndSel } from "@veyyon/coding-agent/tools/core/path-utils";
 import { formatBytes, replaceTabs, shortenPath, wrapBrackets } from "@veyyon/coding-agent/tools/core/render-utils";
-import type { ReadUrlToolDetails } from "@veyyon/coding-agent/tools/web/fetch";
-import { readUrlToolView } from "@veyyon/coding-agent/tools/web/fetch-view";
 import {
 	isRawSelector,
 	parseSel,
@@ -41,6 +25,18 @@ import {
 	type ReadToolDetails,
 	readSourceFsPath,
 } from "@veyyon/coding-agent/tools/fs/read";
+import type { ReadUrlToolDetails } from "@veyyon/coding-agent/tools/web/fetch";
+import { readUrlToolView } from "@veyyon/coding-agent/tools/web/fetch-view";
+import { renderCodeCell, renderMarkdownCell } from "@veyyon/coding-agent/tui/code-cell";
+import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { fileHyperlink } from "@veyyon/coding-agent/tui/hyperlink";
+import { CachedOutputBlock, markFramedBlockComponent } from "@veyyon/coding-agent/tui/output-block";
+import { renderStatusLine } from "@veyyon/coding-agent/tui/status-line";
+import { getLanguageFromPath } from "@veyyon/coding-agent/utils/lang-from-path";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { formatCount } from "@veyyon/utils/format";
+import { hasUrlScheme } from "@veyyon/utils/url";
 
 function splitReadRenderPath(rawPath: string): { path: string; sel?: string } {
 	if (hasUrlScheme(rawPath)) {

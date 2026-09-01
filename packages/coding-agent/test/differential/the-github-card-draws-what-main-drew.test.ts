@@ -135,7 +135,9 @@ describe("github tool differential", () => {
 		const header = new RegExp(
 			`${escapeRe(`${open}${glyph}${close} ${open}`)}([^\u001b]*)${escapeRe(close)} {2}(${escapeRe(mutedOpen)}[^\u001b]*${escapeRe(close)})`,
 		);
-		return lines.map(line => line.replace(header, (_match, name, context) => `${open}${glyph} ${name}  ${context}${close}`));
+		return lines.map(line =>
+			line.replace(header, (_match, name, context) => `${open}${glyph} ${name}  ${context}${close}`),
+		);
 	}
 
 	function escapeRe(value: string): string {
@@ -333,15 +335,13 @@ describe("github tool differential", () => {
 	it("draws main's waiting row for a watch call, whichever reference it names", () => {
 		const cases: ReadonlyArray<readonly [GithubArgs, string, ThemeColor]> = [
 			[{ op: "run_watch", run: "42" }, "#42", "muted"],
-			[{ op: "run_watch", run: "  " , branch: "feature/x" }, "feature/x", "text"],
+			[{ op: "run_watch", run: "  ", branch: "feature/x" }, "feature/x", "text"],
 			[{ op: "run_watch" }, "current HEAD", "muted"],
 			[{ op: "run_watch", branch: "   " }, "current HEAD", "muted"],
 		];
 		for (const [args, token, color] of cases) {
 			for (const options of [HOST_COLLAPSED, HOST_RUNNING]) {
-				expect(callMeta(token, color, unindent(newCall(args, options)))).toEqual(
-					emptyRuns(oldCall(args, options)),
-				);
+				expect(callMeta(token, color, unindent(newCall(args, options)))).toEqual(emptyRuns(oldCall(args, options)));
 			}
 		}
 		// Anti-vacuity: the row is the pending one, and it says what it is waiting for.
@@ -394,9 +394,7 @@ describe("github tool differential", () => {
 		];
 		for (const watch of cases) {
 			for (const options of [HOST_COLLAPSED, HOST_EXPANDED]) {
-				expect(watchAsMain(newResult(watchResult(watch), options))).toEqual(
-					oldResult(watchResult(watch), options),
-				);
+				expect(watchAsMain(newResult(watchResult(watch), options))).toEqual(oldResult(watchResult(watch), options));
 			}
 		}
 	});
@@ -412,7 +410,12 @@ describe("github tool differential", () => {
 		});
 		for (const options of [HOST_COLLAPSED, HOST_EXPANDED]) {
 			// Main wrote "lines" for a count of one; the host words the note from the count it held back.
-			const drawn = note("… 1 more log line", "  ", watchAsMain(newResult(watchResult(watch), options)), "… 1 more log lines");
+			const drawn = note(
+				"… 1 more log line",
+				"  ",
+				watchAsMain(newResult(watchResult(watch), options)),
+				"… 1 more log lines",
+			);
 			expect(drawn).toEqual(oldResult(watchResult(watch), options));
 		}
 		// Anti-vacuity: the collapsed arm keeps the END of the log and says how much it dropped; the
@@ -480,7 +483,10 @@ describe("github tool differential", () => {
 		const failures: GithubResult[] = [
 			{ content: [{ type: "text", text: "gh: not found" }], isError: true },
 			{ content: [{ type: "text", text: "line one\nline two" }], isError: true },
-			{ content: [{ type: "text", text: Array.from({ length: 6 }, (_, i) => `err ${i}`).join("\n") }], isError: true },
+			{
+				content: [{ type: "text", text: Array.from({ length: 6 }, (_, i) => `err ${i}`).join("\n") }],
+				isError: true,
+			},
 		];
 		for (const result of failures) {
 			for (const options of [HOST_COLLAPSED, HOST_EXPANDED]) {

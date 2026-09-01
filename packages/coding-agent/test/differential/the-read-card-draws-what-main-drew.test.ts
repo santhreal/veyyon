@@ -271,10 +271,7 @@ describe("read tool differential", () => {
 			detailsOf(markdown, { contentType: "text/markdown", displayContent: { text: markdown, startLine: 1 } }),
 		);
 		const documentArgs: Array<ReadRenderArgs> = [{ path: "docs/readme.md" }];
-		const sourceArgs: Array<ReadRenderArgs> = [
-			{ path: "docs/readme.md", raw: true },
-			{ path: "docs/readme.md:raw" },
-		];
+		const sourceArgs: Array<ReadRenderArgs> = [{ path: "docs/readme.md", raw: true }, { path: "docs/readme.md:raw" }];
 		for (const args of [...documentArgs, ...sourceArgs]) {
 			for (const [context, options] of DISCLOSURES) {
 				for (const width of WIDTHS) {
@@ -303,17 +300,11 @@ describe("read tool differential", () => {
 				details: { contentType: "image/png" },
 			},
 			{
-				content: [
-					{ type: "text", text: "image 800x600 png" },
-					{ type: "image" },
-				],
+				content: [{ type: "text", text: "image 800x600 png" }, { type: "image" }],
 				details: { contentType: "image/png" },
 			},
 			{
-				content: [
-					{ type: "text", text: "image 800x600 png" },
-					{ type: "image" },
-				],
+				content: [{ type: "text", text: "image 800x600 png" }, { type: "image" }],
 				details: {
 					contentType: "image/png",
 					suffixResolution: { from: "logo.png", to: "assets/logo.png" },
@@ -322,10 +313,7 @@ describe("read tool differential", () => {
 		];
 		/** The same card carrying a notice, which is the one shape the brackets below change the wrap of. */
 		const withNotice: ReadViewResult = {
-			content: [
-				{ type: "text", text: "image 800x600 png" },
-				{ type: "image" },
-			],
+			content: [{ type: "text", text: "image 800x600 png" }, { type: "image" }],
 			details: { contentType: "image/png", resolvedPath: "/repo/assets/logo.png" },
 		};
 		const unbracketed = (rows: readonly string[]): string[] =>
@@ -343,8 +331,10 @@ describe("read tool differential", () => {
 			}
 			// The header row too, which an image card already stated as a description in both arms.
 			expect(unstyled(viewRows(result, COLLAPSED, { path: "assets/logo.png" }, 200))[0]).toBe(
-				unstyled(oracleRows(result, HOST_COLLAPSED, { path: "assets/logo.png" }, 200))[0]
-					?.replace(" (corrected from logo.png)", " corrected from logo.png"),
+				unstyled(oracleRows(result, HOST_COLLAPSED, { path: "assets/logo.png" }, 200))[0]?.replace(
+					" (corrected from logo.png)",
+					" corrected from logo.png",
+				),
 			);
 		}
 		for (const [context, options] of DISCLOSURES) {
@@ -358,7 +348,9 @@ describe("read tool differential", () => {
 			}
 		}
 		// Anti-vacuity: a picture with nothing said about it still draws a card, and it says so.
-		expect(unstyled(viewRows(images[0]!, COLLAPSED, { path: "assets/logo.png" }, 200)).join("\n")).toContain("(image)");
+		expect(unstyled(viewRows(images[0]!, COLLAPSED, { path: "assets/logo.png" }, 200)).join("\n")).toContain(
+			"(image)",
+		);
 	});
 
 	it("draws the error card's rows byte for byte, over every shape an error arrives in", () => {
@@ -388,7 +380,9 @@ describe("read tool differential", () => {
 		const drawn = unstyled(viewRows(errors[0]!, COLLAPSED, { path: "missing.ts" }, 200)).join("\n");
 		expect(drawn).toContain("ENOENT: no such file");
 		expect(drawn).not.toContain("Error: ENOENT");
-		expect(unstyled(viewRows(errors[2]!, COLLAPSED, { path: "missing.ts" }, 200)).join("\n")).toContain("Unknown error");
+		expect(unstyled(viewRows(errors[2]!, COLLAPSED, { path: "missing.ts" }, 200)).join("\n")).toContain(
+			"Unknown error",
+		);
 	});
 
 	it("holds back the same lines of a collapsed file, and reveals them all when expanded", () => {
@@ -430,7 +424,11 @@ describe("read tool differential", () => {
 			detailsOf("line one\nline two", { resolvedPath: "/repo/src/example.ts", meta: { truncation } }),
 			detailsOf("aaaa", {
 				meta: { truncation: { ...truncation, artifactId: "art9" } },
-				truncation: { firstLineExceedsLimit: true, outputBytes: 4_096, totalBytes: 99_999 } as ReadToolDetails["truncation"],
+				truncation: {
+					firstLineExceedsLimit: true,
+					outputBytes: 4_096,
+					totalBytes: 99_999,
+				} as ReadToolDetails["truncation"],
 			}),
 			detailsOf("aaaa", {
 				meta: { truncation: { ...truncation, artifactId: undefined } },
@@ -525,7 +523,10 @@ describe("read tool differential", () => {
 					args: { path: "src/example.ts" },
 					details: detailsOf("x", { meta: { source: { type: "path", value: "/repo/src/example.ts" } } }),
 				},
-				{ args: { path: "src/example.ts", offset: 40 }, details: detailsOf("x", { resolvedPath: "/repo/src/example.ts" }) },
+				{
+					args: { path: "src/example.ts", offset: 40 },
+					details: detailsOf("x", { resolvedPath: "/repo/src/example.ts" }),
+				},
 				{
 					args: { path: "archive.zip:dir/file.ts" },
 					details: detailsOf("x", { resolvedPath: "/repo/archive.zip" }),
@@ -579,10 +580,7 @@ describe("read tool differential", () => {
 
 	it("exception cell: a tab in an image's details is widened, where main passed it through", () => {
 		const result: ReadViewResult = {
-			content: [
-				{ type: "text", text: "800x600\tpng\t24KB" },
-				{ type: "image" },
-			],
+			content: [{ type: "text", text: "800x600\tpng\t24KB" }, { type: "image" }],
 			details: { contentType: "image/png" },
 		};
 		const args: ReadRenderArgs = { path: "assets/logo.png" };
@@ -642,7 +640,12 @@ describe("read tool differential", () => {
 		expect(message.length).toBeGreaterThan(0);
 		// Same words in both arms. The brackets main drew around them are the theme's, which a tool
 		// cannot name, so each notice arrives as a toned run and the host draws it plainly.
-		expect(drawn.find(row => row.includes(message))?.trimEnd().endsWith(message)).toBe(true);
+		expect(
+			drawn
+				.find(row => row.includes(message))
+				?.trimEnd()
+				.endsWith(message),
+		).toBe(true);
 		expect(oracle.find(row => row.includes(message))).toContain(theme.format.bracketLeft);
 		expect(drawn.find(row => row.includes(message))).not.toContain(theme.format.bracketLeft);
 		expect(oracle.find(row => row.includes("Resolved path"))).toContain(theme.format.bracketLeft);

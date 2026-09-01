@@ -321,7 +321,10 @@ export const readToolView: Required<ToolViewRenderer<ReadRenderArgs, ReadViewRes
 	renderCall(args, context: ToolViewContext): ToolView {
 		const rawPath = pathOf(args);
 		if (isReadableUrlPath(rawPath)) {
-			return readUrlToolView.renderCall({ path: rawPath, ...(args.raw === undefined ? {} : { raw: args.raw }) }, context);
+			return readUrlToolView.renderCall(
+				{ path: rawPath, ...(args.raw === undefined ? {} : { raw: args.raw }) },
+				context,
+			);
 		}
 		return header(rawPath, args, { status: "pending", fallbackLabel: "…" });
 	},

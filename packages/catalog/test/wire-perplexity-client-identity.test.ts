@@ -196,9 +196,7 @@ describe("the browser fingerprint states its version once", () => {
 	 * literals; this reads the shipped module and checks the version it interpolates appears in both.
 	 */
 	it("uses one Chrome version in the User-Agent and the client hint", async () => {
-		const { CHROME_DESKTOP_USER_AGENT } = await import(
-			"@veyyon/web/browser-fingerprint-constants"
-		);
+		const { CHROME_DESKTOP_USER_AGENT } = await import("@veyyon/web/browser-fingerprint-constants");
 		const version = /Chrome\/(\d+)\./.exec(CHROME_DESKTOP_USER_AGENT)?.[1];
 		expect(version, "no Chrome version in the User-Agent").toBeDefined();
 		const source = await Bun.file(BROWSER_HEADERS).text();

@@ -135,9 +135,7 @@ describe("browser tool differential", () => {
 						expect(resultView(settled, context, args, width)).toEqual(
 							resultOracle(settled, options, args, width),
 						);
-						expect(resultView(failed, context, args, width)).toEqual(
-							resultOracle(failed, options, args, width),
-						);
+						expect(resultView(failed, context, args, width)).toEqual(resultOracle(failed, options, args, width));
 						// The call row, whose browser kind comes from the arguments alone because a call
 						// has no result to read it off.
 						expect(callView(args, context, width)).toEqual(callOracle(args, options, width));
@@ -244,9 +242,7 @@ describe("browser tool differential", () => {
 				const view = sameRailColour(resultView({ content: [] }, COLLAPSED, args, width));
 				const oracle = sameRailColour(resultOracle({ content: [] }, HOST_COLLAPSED, args, width));
 				expect(view.slice(1, -1)).toEqual(oracle.slice(1, -1));
-				expect(stripVTControlCharacters(view.at(-1) ?? "")).toEqual(
-					stripVTControlCharacters(oracle.at(-1) ?? ""),
-				);
+				expect(stripVTControlCharacters(view.at(-1) ?? "")).toEqual(stripVTControlCharacters(oracle.at(-1) ?? ""));
 				// The call card, which is the panel the script appears in as the model writes it.
 				expect(sameRailColour(callView(args, EXPANDED, width)).slice(1)).toEqual(
 					sameRailColour(callOracle(args, HOST_EXPANDED, width)).slice(1),
@@ -275,9 +271,7 @@ describe("browser tool differential", () => {
 		expect(flat).toContain("const value10 = 10;");
 		expect(flat).not.toContain("const value11 = 11;");
 		expect(
-			stripVTControlCharacters(
-				resultView({ content: [] }, EXPANDED, { action: "run", code: CODE }, 200).join("\n"),
-			),
+			stripVTControlCharacters(resultView({ content: [] }, EXPANDED, { action: "run", code: CODE }, 200).join("\n")),
 		).toContain("const value18 = 18;");
 		expect(
 			stripVTControlCharacters(
