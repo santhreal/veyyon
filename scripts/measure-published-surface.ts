@@ -577,6 +577,10 @@ const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, Relocat
 			to: "./tools/fs/inspect-image-view",
 			why: "the inspect_image call row, answer panel and failure card are declared in tools/fs/inspect-image-view.ts as views the host draws, so the module that built their terminal components is gone",
 		},
+		"./tools/irc-render": {
+			to: "./tools/agent/irc-view",
+			why: "the irc send, wait, inbox and roster cards are declared in tools/agent/irc-view.ts as views the host draws, and the live transcript card is a terminal component in modes/terminal/components/transcript/irc-message.ts, so the module that built both is gone",
+		},
 		"./tools/memory-render": {
 			to: "./tools/agent/memory-view",
 			why: "the retain, recall and reflect cards are declared in tools/agent/memory-view.ts as views the host draws, so the module that built their terminal components is gone",

@@ -16,10 +16,10 @@ import {
 	shouldRenderAbortReason,
 } from "../../../session/messages";
 import { theme } from "../../../theme/theme";
-import { createIrcMessageCard } from "../../../tools/agent/irc";
 import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/core/render-utils";
 import { canonicalizeMessage } from "../../../utils/thinking-display";
 import { COMPOSER_INSET_COLS } from "../components/composer/composer-chrome";
+import { createIrcMessageCard } from "../components/transcript/irc-message";
 import { TranscriptBlock } from "../components/transcript/transcript-container";
 
 type CustomOrHookMessage = Extract<AgentMessage, { role: "custom" | "hookMessage" }>;

@@ -1,19 +1,19 @@
 /**
- * TUI renderer for the irc tool — status lines, message cards, inbox and
- * peer-list trees.
+ * Differential oracle: the irc tool renderer from origin/main.
  *
- * Split from `irc.ts` on purpose: `renderers.ts` (loaded by the boot-path
- * `tool-execution` component) needs ONLY the presentation code, while the
- * tool implementation pulls the IrcBus runtime and the agent registry.
- * Keeping the renderer here keeps those off the CLI boot path (PERF-6);
- * every runtime import below is type-only and erased at compile time.
+ * Source SHA: 9d4cccdbbb7d372de9cc36f3327b065cd64b4561 (`src/tools/irc-render.ts`).
+ * Frozen: never edited to make a test pass.
+ *
+ * Only the import specifiers are rewritten to the package subpaths this branch publishes. The
+ * transcript card is kept beside the tool renderer because both moved in the same change: the
+ * renderer became a host-agnostic view and the card became a terminal component, and each half is
+ * compared against the bytes main drew for it.
  */
-import type { Component } from "@veyyon/tui";
-import { formatAge, formatDuration } from "@veyyon/utils";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import type { IrcDeliveryReceipt } from "../../task/irc-bus";
-import type { Theme } from "../../theme/theme";
-import { Ellipsis, framedBlock, renderStatusLine, type State, truncateToWidth } from "../../tui";
+
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { IrcDeliveryReceipt } from "@veyyon/coding-agent/task/irc-bus";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import type { IrcDetails, IrcParams } from "@veyyon/coding-agent/tools/agent/irc";
 import {
 	createCachedComponent,
 	formatBadge,
@@ -23,8 +23,10 @@ import {
 	PREVIEW_LIMITS,
 	replaceTabs,
 	type ToolUIColor,
-} from "../core/render-utils";
-import type { IrcDetails, IrcParams } from "./irc";
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import { Ellipsis, framedBlock, renderStatusLine, type State, truncateToWidth } from "@veyyon/coding-agent/tui";
+import type { Component } from "@veyyon/tui";
+import { formatAge, formatDuration } from "@veyyon/utils";
 
 // =============================================================================
 // TUI Renderer

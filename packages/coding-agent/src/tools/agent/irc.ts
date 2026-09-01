@@ -458,7 +458,3 @@ function normalizeIrcTimeoutMs(value: number): number {
 	if (!Number.isFinite(value) || value < 0) return DEFAULT_IRC_TIMEOUT_MS;
 	return Math.max(1, Math.trunc(value));
 }
-
-// The TUI renderer lives in `irc-render.ts` (light module, boot-path safe);
-// re-exported here so the library surface and existing importers keep working.
-export { createIrcMessageCard, ircToolRenderer } from "./irc-render";

@@ -11249,12 +11249,12 @@
 					"why": "packages/coding-agent/src/tools/irc-enabled.ts moved to packages/coding-agent/src/tools/agent/irc-enabled.ts, which @veyyon/coding-agent publishes as ./tools/agent/irc-enabled.js"
 				},
 				"./tools/irc-render": {
-					"to": "@veyyon/coding-agent/tools/agent/irc-render",
-					"why": "packages/coding-agent/src/tools/irc-render.ts moved to packages/coding-agent/src/tools/agent/irc-render.ts, which @veyyon/coding-agent publishes as ./tools/agent/irc-render"
+					"to": "./tools/agent/irc-view",
+					"why": "the irc send, wait, inbox and roster cards are declared in tools/agent/irc-view.ts as views the host draws, and the live transcript card is a terminal component in modes/terminal/components/transcript/irc-message.ts, so the module that built both is gone"
 				},
 				"./tools/irc-render.js": {
-					"to": "@veyyon/coding-agent/tools/agent/irc-render.js",
-					"why": "packages/coding-agent/src/tools/irc-render.ts moved to packages/coding-agent/src/tools/agent/irc-render.ts, which @veyyon/coding-agent publishes as ./tools/agent/irc-render.js"
+					"to": "./tools/agent/irc-view.js",
+					"why": "the irc send, wait, inbox and roster cards are declared in tools/agent/irc-view.ts as views the host draws, and the live transcript card is a terminal component in modes/terminal/components/transcript/irc-message.ts, so the module that built both is gone"
 				},
 				"./tools/irc.js": {
 					"to": "@veyyon/coding-agent/tools/agent/irc.js",

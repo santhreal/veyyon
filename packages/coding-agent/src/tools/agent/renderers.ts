@@ -10,7 +10,7 @@
 import { viewToolRenderer } from "../../tui/draw-tool-view";
 import type { ToolRenderer } from "../renderers";
 import { askToolRenderer } from "./ask-render";
-import { ircToolRenderer } from "./irc-render";
+import { ircToolView } from "./irc-view";
 import { recallToolView, reflectToolView, retainToolView } from "./memory-view";
 import { resolveToolView } from "./resolve-view";
 import { todoToolView } from "./todo-view";
@@ -18,7 +18,7 @@ import { createVibeToolRenderer } from "./vibe-render";
 
 export const agentRenderers: Record<string, ToolRenderer> = {
 	ask: askToolRenderer as ToolRenderer,
-	irc: ircToolRenderer as ToolRenderer,
+	irc: viewToolRenderer(ircToolView, { inline: true, mergeCallAndResult: true }) as ToolRenderer,
 	todo: viewToolRenderer(todoToolView, { mergeCallAndResult: true }) as ToolRenderer,
 	resolve: viewToolRenderer(resolveToolView, { mergeCallAndResult: true }) as ToolRenderer,
 	retain: viewToolRenderer(retainToolView, { mergeCallAndResult: true }) as ToolRenderer,

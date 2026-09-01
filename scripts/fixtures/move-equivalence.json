@@ -12315,7 +12315,7 @@
 			"old": "packages/coding-agent/src/modes/utils/transcript-render-helpers.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "392aa46815f4c3f325ecf403253498e06a7db7c8325157a3fa80c886300cedbb",
+			"hash": "004d109437f91346ce0cf3491805cc41a4d51eba99f6de80a4869a444f8e3b63",
 			"mainHash": "c492babe4776afee10e027dd50ce6907e2f35df5fbad48bbdad8ab0c36f9a425",
 			"structuralHash": "52729343e56fc882c31143d2871e7c7d476fa5071cfd5e3ca28109075fb0ba01",
 			"mainStructuralHash": "52729343e56fc882c31143d2871e7c7d476fa5071cfd5e3ca28109075fb0ba01"
@@ -13710,20 +13710,11 @@
 			"structuralHash": "97673e26fe3eab72d0d0e611e51006b9b501045e00108a06cd62223143aa2232",
 			"mainStructuralHash": "97673e26fe3eab72d0d0e611e51006b9b501045e00108a06cd62223143aa2232"
 		},
-		"packages/coding-agent/src/tools/agent/irc-render.ts": {
-			"old": "packages/coding-agent/src/tools/irc-render.ts",
-			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "4a01d1bc268a7a627b9abf2647d76ce3063be749b56d72ae8bda2f75fac479a7",
-			"mainHash": "ca6a549da49e3fb0fa1bc6b2d6e69db649d2b4e0cb222f0473e25ebcd53d8de5",
-			"structuralHash": "f1948b7b3335aa0410c6fba20509a9d4c9c1d1f40a907cfe99269625f103ae2d",
-			"mainStructuralHash": "f1948b7b3335aa0410c6fba20509a9d4c9c1d1f40a907cfe99269625f103ae2d"
-		},
 		"packages/coding-agent/src/tools/agent/irc.ts": {
 			"old": "packages/coding-agent/src/tools/irc.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "a0cfdd11f937c8809c58665d57cce8e187343a1fd8ea5465fbe759908aecd8e9",
+			"hash": "22c6fcb343d26033033916f7f186fe763105255c906671a3f17f8d68fcb20774",
 			"mainHash": "0404bfa33adc1760a6ea038222616f2f83c4f11e610152f0ce2d3e19dc8ff401",
 			"structuralHash": "1f47c53f7b49a547efe9307334adb7dc4c0a019b753ac9347d716b93dea28424",
 			"mainStructuralHash": "1f47c53f7b49a547efe9307334adb7dc4c0a019b753ac9347d716b93dea28424"
