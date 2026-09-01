@@ -4,6 +4,7 @@
 //! This crate provides the pure, renderer-free layout box tree representation,
 //! raster frame models, and the six clutter metrics defined in §8.31 and §9.6.
 
+pub mod contact_sheet;
 pub mod fixtures;
 pub mod frame;
 pub mod headless;
@@ -11,6 +12,7 @@ pub mod layout;
 pub mod metrics;
 pub mod registry;
 
+pub use contact_sheet::{SheetCell, SheetGrid, tile};
 pub use fixtures::{
 	FixtureText, Reachability, block_reachability, content_block_fixture, entry_meta_fixture,
 	role_reachability, session_badge_fixture, session_fixture, session_summary_fixture,
