@@ -34,6 +34,11 @@ pub enum RenderError {
 	)]
 	NoRenderer,
 
+	/// A sheet with no cells has no size, and an empty image is not a useful
+	/// report: the caller asked for a comparison and supplied nothing.
+	#[error("a contact sheet needs at least one cell")]
+	EmptySheet,
+
 	#[error("the offscreen render target produced no frame: {message}")]
 	NoFrame { message: String },
 
