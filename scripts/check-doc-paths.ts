@@ -73,6 +73,7 @@ export const SOURCE_ROOTS = [
 	".github/",
 	"assets/",
 	"contracts/",
+	"demo/",
 	"docs/",
 	"fixtures/",
 	"fuzz/",

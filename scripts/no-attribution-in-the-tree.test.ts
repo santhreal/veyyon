@@ -127,6 +127,7 @@ const EXTENSION_POLICY: Readonly<Record<string, ExtensionDecision>> = {
 	".pdf": BINARY_ASSET,
 	".ttf": BINARY_ASSET,
 	".gz": BINARY_ASSET,
+	".mp4": BINARY_ASSET,
 	".svg": { skip: "vector art, not prose" },
 };
 

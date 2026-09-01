@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e7438f41.js";
+            window.path_to_searchindex_js = "../searchindex-a71f7782.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -1046,9 +1046,8 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>subagent.agents</code></td><td>Roster</td><td>record</td><td><code>{}</code></td><td>Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent’s page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above. Same Model for All Agents, at the top of the roster, switches those per-agent choices for one shared pair.</td></tr>
+<tr><td><code>subagent.agents</code></td><td>Roster</td><td>record</td><td><code>{}</code></td><td>Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent’s page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above, and an agent that names nothing runs the default model role. This is the only place a model or an effort is chosen for an agent.</td></tr>
 <tr><td><code>subagent.maxNestedSpawnDepth</code></td><td>Max Nested Spawn Depth</td><td>number</td><td><code>0</code></td><td>How many nested levels subagents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Roster above, pick a subagent, then Subagents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name.</td></tr>
-<tr><td><code>subagent.modelByDepth</code></td><td>Models by Depth</td><td>record</td><td><code>{}</code></td><td>Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row applies only while Same Model for All Agents is off, outranks the agent’s own frontmatter for a spawn at exactly that depth, and leaves every other depth alone. A row whose chain matches no model refuses the spawn and names the row. Shown under the tab’s Advanced fold.</td></tr>
 <tr><td><code>subagent.showResolvedModelBadge</code></td><td>Show Resolved Model Badge</td><td>boolean</td><td><code>true</code></td><td>Show each subagent’s resolved model, and the setting that decided it, in the task widget status line and the agent surfaces. Shown under the tab’s Advanced fold.</td></tr>
 </tbody>
 </table>
@@ -1448,9 +1447,10 @@ veyyon config get compaction.threshold
 <tr><td><code>statusLine.separator</code></td><td>enum</td><td><code>pipe</code></td><td>Values: <code>powerline</code>, <code>powerline-thin</code>, <code>slash</code>, <code>pipe</code>, <code>block</code>, <code>none</code>, <code>ascii</code>.</td></tr>
 <tr><td><code>statusLine.transparent</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
 <tr><td><code>stt.language</code></td><td>string</td><td><code>en</code></td><td></td></tr>
-<tr><td><code>subagent.model</code></td><td>modelChain</td><td><em>(unset)</em></td><td></td></tr>
-<tr><td><code>subagent.sharedModel</code></td><td>boolean</td><td><code>false</code></td><td></td></tr>
-<tr><td><code>subagent.thinkingLevel</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
+<tr><td><code>subagent.model</code></td><td>modelChain</td><td><em>(unset)</em></td><td>Retired: use <code>subagent.agents</code> instead.</td></tr>
+<tr><td><code>subagent.modelByDepth</code></td><td>record</td><td><code>{}</code></td><td>Retired: use <code>subagent.agents</code> instead.</td></tr>
+<tr><td><code>subagent.sharedModel</code></td><td>boolean</td><td><code>false</code></td><td>Retired: use <code>subagent.agents</code> instead.</td></tr>
+<tr><td><code>subagent.thinkingLevel</code></td><td>string</td><td><em>(unset)</em></td><td>Retired: use <code>subagent.agents</code> instead.</td></tr>
 <tr><td><code>thinkingBudgets.high</code></td><td>number</td><td><code>16384</code></td><td></td></tr>
 <tr><td><code>thinkingBudgets.low</code></td><td>number</td><td><code>2048</code></td><td></td></tr>
 <tr><td><code>thinkingBudgets.max</code></td><td>number</td><td><code>32768</code></td><td></td></tr>
@@ -1464,7 +1464,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<p>351 settings in /settings, 123 configuration-file keys, 474 in all.</p>
+<p>350 settings in /settings, 124 configuration-file keys, 474 in all.</p>
 
                     </main>
 

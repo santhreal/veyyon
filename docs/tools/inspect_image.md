@@ -6,7 +6,7 @@
 - Entry: `packages/coding-agent/src/tools/fs/inspect-image.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/inspect-image.md`
 - Key collaborators:
-  - `packages/coding-agent/src/tools/fs/inspect-image-renderer.ts`: TUI call/result rendering.
+  - `packages/coding-agent/src/tools/fs/inspect-image-view.ts`: the host-agnostic call and result view.
   - `packages/coding-agent/src/utils/image-loading.ts`: path resolution, type detection, size gate, optional resize.
   - `packages/coding-agent/src/utils/image-resize.ts`: downscale and recompress oversized images.
   - `packages/coding-agent/src/tools/core/path-utils.ts`: resolve input path relative to session cwd.
@@ -30,12 +30,12 @@ The tool returns a single `AgentToolResult`:
 
 Model-visible output is single-shot, not streamed by this tool.
 
-TUI rendering adds presentation-only truncation from `packages/coding-agent/src/tools/fs/inspect-image-renderer.ts`:
+Presentation-only truncation comes from the view in `packages/coding-agent/src/tools/fs/inspect-image-view.ts`, and every host draws it the same way:
 
 - call preview truncates `question` to 100 columns,
 - result view shows 4 lines collapsed or 16 lines expanded,
 - each rendered output line is truncated to 120 columns,
-- footer metadata shows `model · mimeType` when present.
+- header metadata shows `model · mimeType` when present.
 
 ## Flow
 1. `InspectImageTool.execute(...)` rejects immediately if `images.blockImages` is enabled in session settings.

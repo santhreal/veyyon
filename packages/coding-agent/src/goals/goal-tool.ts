@@ -2,7 +2,7 @@ import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallb
 import { formatNumber, prompt } from "@veyyon/utils";
 import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 import { truncateToWidth } from "@veyyon/utils/width";
-import type { ToolView, ToolViewContext, ToolViewRenderer, ViewLine, ViewSection, ViewSpan, ViewTone } from "@veyyon/view";
+import type { ToolView, ToolViewContext, ToolViewRenderer, ViewLine, ViewSection, ViewTone } from "@veyyon/view";
 import { type } from "arktype";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { formatDurationCoarse } from "../slash-commands/helpers/format";
