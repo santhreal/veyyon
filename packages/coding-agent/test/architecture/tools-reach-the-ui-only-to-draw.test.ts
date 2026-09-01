@@ -237,7 +237,7 @@ describe("tools reach the terminal UI only to draw", () => {
  * `@veyyon/tui` and get a widget it can draw. Same concern, different boundary, so
  * it lives beside its sibling instead of in a file of its own.
  *
- * WHAT THE ROWS SAY NOW. Seven of the ten are `-render.ts` / `render.ts` siblings,
+ * WHAT THE ROWS SAY NOW. Six of the nine are `-render.ts` / `render.ts` siblings,
  * which is where drawing belongs: a tool module decides what happened, its sibling
  * decides how a terminal shows it, and only the sibling names the renderer package.
  * The three that are not siblings, `bash-interactive.ts`, `render-utils.ts` and
@@ -261,7 +261,6 @@ const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/agent/ask-render.ts", ["Markdown", "Text", "renderInlineMarkdown", "type Component", "type MarkdownTheme"]],
 	["tools/shell/bash-interactive.ts", ["type Component"]],
 	["tools/shell/bash-render.ts", ["ImageProtocol", "TERMINAL", "type Component"]],
-	["tools/web/browser/render.ts", ["Text", "type Component"]],
 	["tools/shell/eval-render.ts", ["Markdown", "Text", "type Component"]],
 	["tools/shell/job-render.ts", ["Text", "type Component"]],
 	["tools/fs/read-render.ts", ["Text", "type Component"]],

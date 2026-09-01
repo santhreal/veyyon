@@ -1,24 +1,29 @@
 /**
- * TUI renderer for the browser tool.
+ * Differential oracle: the browser tool renderer from origin/main.
  *
- * Mirrors the `eval` tool look: each `run` invocation is shown as a JS code
- * cell with status icon, optional output, and expand/collapse handling. `open`
- * and `close` actions render as compact status lines.
+ * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/tools/browser/render.ts`).
+ * Frozen: never edited to make a test pass.
+ *
+ * Only the import specifiers are rewritten to the package subpaths this branch publishes.
  */
+
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import type { RenderResultOptions } from "../../../extensibility/custom-tools/types";
-import type { Theme } from "../../../theme/theme";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	Hasher,
 	isFramedBlockComponent,
 	markFramedBlockComponent,
 	renderCodeCell,
 	renderStatusLine,
-} from "../../../tui";
-import { formatStyledTruncationWarning, stripOutputNotice } from "../../core/output-meta";
-import { replaceTabs, shortenPath } from "../../core/render-utils";
-import type { BrowserToolDetails } from "../browser";
+} from "@veyyon/coding-agent/tui";
+import {
+	formatStyledTruncationWarning,
+	stripOutputNotice,
+} from "@veyyon/coding-agent/tools/core/output-meta";
+import { replaceTabs, shortenPath } from "@veyyon/coding-agent/tools/core/render-utils";
+import type { BrowserToolDetails } from "@veyyon/coding-agent/tools/web/browser";
 
 const BROWSER_DEFAULT_PREVIEW_LINES = 10;
 

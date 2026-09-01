@@ -21,7 +21,7 @@
   - `packages/coding-agent/src/tools/web/browser/cmux/socket-client.ts`: `CmuxSocketClient`: JSON-RPC over the cmux unix socket.
   - `packages/coding-agent/src/tools/web/browser/cmux/cmux-tab.ts`: `CmuxTab` surface helper API and `runCmuxCode()` execution path.
   - `packages/coding-agent/src/eval/js/shared/runtime.ts`: shared `JsRuntime` that executes `run` code (same engine as the `eval` JS tool); both the worker and cmux backends delegate to it.
-  - `packages/coding-agent/src/tools/web/browser/render.ts`: TUI rendering for `open`/`close` status lines and `run` JS cells.
+  - `packages/coding-agent/src/tools/web/browser/view.ts`: `browserToolView`, the host-agnostic view for `open`/`close` status rows and `run` JS cells. A host draws it; the module imports no terminal code.
   - `packages/coding-agent/src/tools/web/puppeteer/00_stealth_tampering.txt`: mask patched functions/descriptors as native.
   - `packages/coding-agent/src/tools/web/puppeteer/01_stealth_activity.txt`: synthesize visibility/focus/scroll activity.
   - `packages/coding-agent/src/tools/web/puppeteer/02_stealth_hairline.txt`: fix Modernizr hairline detection.

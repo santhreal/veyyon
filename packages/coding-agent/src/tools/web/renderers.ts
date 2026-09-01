@@ -6,11 +6,23 @@
  */
 import { viewToolRenderer } from "../../tui/draw-tool-view";
 import type { ToolRenderer } from "../renderers";
-import { browserToolRenderer } from "./browser/render";
+import { browserToolView } from "./browser/view";
 import { githubToolView } from "./gh-view";
 
+/** Whether the call is the action whose card grows as the script arrives. */
+function isRunAction(args: unknown): boolean {
+	return (args as { action?: unknown } | undefined)?.action === "run";
+}
+
 export const webRenderers: Record<string, ToolRenderer> = {
-	browser: browserToolRenderer as ToolRenderer,
+	// A `run` card is the only one that animates: it streams the script and then the output, where
+	// `open` and `close` are one row that either happened or did not.
+	browser: viewToolRenderer(browserToolView, {
+		mergeCallAndResult: true,
+		inline: true,
+		animatedPendingPreview: isRunAction,
+		animatedPartialResult: isRunAction,
+	}) as ToolRenderer,
 	// No animatedPendingPreview: the pending row is materialized once per display rebuild rather than
 	// from a render closure, so a live spinner interval would ask for 30fps repaints while the visible
 	// glyph stayed frozen.

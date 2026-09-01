@@ -94,7 +94,6 @@ const ENGINE_IMPORTERS = [
 	"tools/shell/bash-render.ts",
 	"tools/shell/eval-render.ts",
 	"tools/shell/job-render.ts",
-	"tools/web/browser/render.ts",
 	"tui/code-cell.ts",
 	"tui/draw-tool-view.ts",
 	"tui/hyperlink.ts",
