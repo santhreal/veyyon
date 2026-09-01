@@ -1,7 +1,8 @@
 /**
- * The compaction decision as data: what a check can conclude, the window a model
- * declares, the recovery band, and the notice shown when a context is too full to
- * compact its way out.
+ * The vocabulary a compaction pass is decided against: what a check concluded,
+ * the bar the pass is measured against, the token and idle bounds the reducing
+ * tiers work within, the window a model declares, the recovery band, and the
+ * notice shown when a context is too full to compact its way out.
  */
 
 import { stripLegacyArchive } from "@veyyon/agent-core/compaction";
@@ -25,6 +26,48 @@ export const COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION: CompactionCheckResul
 	continuationScheduled: false,
 	automaticContinuationBlocked: true,
 };
+
+/**
+ * The bar a compaction pass is measured against. `"fit"` is the overflow/
+ * incomplete retry, which only has to fit the window; `"recovery-band"` is the
+ * threshold pass, which needs hysteresis under the trigger.
+ */
+export type CompactionBar = "fit" | "recovery-band";
+
+/** Where the live context sits relative to a {@link CompactionBar}. */
+export type CompactionBudget = Readonly<{ residualTokens: number; budgetTokens: number }>;
+
+/**
+ * Tokens preserved at the start and at the end of every text the truncation
+ * tier cuts. A tool result states what it read in its first lines and what it
+ * concluded in its last, and a model that keeps both can still tell what the
+ * call was; the bulk between them is what a context window is spent on.
+ */
+export const TRUNCATION_KEEP_EDGE_TOKENS = 512;
+
+/**
+ * Smallest text the truncation tier will cut. Below `2 ×` the kept edges plus
+ * a margin there is no middle worth removing, and the marker would cost more
+ * than the cut frees.
+ */
+export const TRUNCATION_MIN_TEXT_TOKENS = TRUNCATION_KEEP_EDGE_TOKENS * 2 + 256;
+
+/**
+ * Per-turn prune cache window. A tool result whose all-message suffix exceeds
+ * this is in the warm, already-sent prompt-cache prefix: re-writing it costs the
+ * cacheWrite premium on the whole suffix. Per-turn passes only reclaim inside
+ * this tail (matches the supersede pass's default `suffixTokenLimit`); deeper
+ * stale/age victims are left to compaction/shake, which rebuild the cache anyway.
+ */
+export const PRUNE_CACHE_WARM_SUFFIX_TOKENS = 8_000;
+
+/**
+ * Idle gap after which the supersede pass may flush the whole sent region (the
+ * provider cache is cold, so re-writing it is free). MUST exceed the maximum
+ * Anthropic prompt-cache TTL: "long" retention (the OAuth default) is 1h, or a
+ * still-warm prefix is busted by the flush. 90 min leaves margin over the 1h TTL.
+ */
+export const PRUNE_IDLE_FLUSH_MS = 90 * 60_000;
 
 /**
  * Hysteresis band for the post-maintenance "did we actually create headroom?"
@@ -71,11 +114,13 @@ export function declaredContextWindow(model: Model | undefined): number | undefi
 	return typeof contextWindow === "number" && contextWindow > 0 ? contextWindow : undefined;
 }
 
-export function createCodexCompactionContext(options: {
-	trigger: CodexCompactionContext["trigger"];
-	reason: CodexCompactionContext["reason"];
-	phase: CodexCompactionContext["phase"];
-}): CodexCompactionContext {
+/**
+ * The lifecycle fields a caller states. The operation identity is minted per
+ * call and the strategy is fixed, so neither is a caller's to supply.
+ */
+export type CodexCompactionContextOptions = Pick<CodexCompactionContext, "trigger" | "reason" | "phase">;
+
+export function createCodexCompactionContext(options: CodexCompactionContextOptions): CodexCompactionContext {
 	return {
 		operationId: crypto.randomUUID(),
 		trigger: options.trigger,
