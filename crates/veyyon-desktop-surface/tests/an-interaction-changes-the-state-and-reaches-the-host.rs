@@ -80,7 +80,8 @@ fn every_intent() -> Vec<Intent> {
 	let sample = vec![
 		Intent::SelectSession(9),
 		Intent::SelectTab(1),
-		Intent::ToggleDrawer,
+		Intent::SetDrawer { open: true },
+		Intent::SetDrawer { open: false },
 		Intent::Approval { card: 0, approved: true, standing: false },
 		Intent::Answer { card: 1, option: 1 },
 		Intent::Reply { card: 1, text: "ship it".to_owned() },
@@ -94,7 +95,7 @@ fn every_intent() -> Vec<Intent> {
 		match intent {
 			Intent::SelectSession(_)
 			| Intent::SelectTab(_)
-			| Intent::ToggleDrawer
+			| Intent::SetDrawer { .. }
 			| Intent::Approval { .. }
 			| Intent::Answer { .. }
 			| Intent::Reply { .. }
@@ -114,6 +115,11 @@ fn every_intent_either_changes_the_state_or_is_reported_and_never_neither() {
 		// dead one.
 		let mut before = state();
 		before.composed = "ship it".to_owned();
+		// The drawer is seeded opposite to the intent for the same reason: a
+		// close on a closed drawer is not the close being swept.
+		if let Intent::SetDrawer { open } = &intent {
+			before.drawer_open = !open;
+		}
 		let mut after = before.clone();
 
 		let mut intents = Intents::new();
@@ -193,15 +199,21 @@ fn a_tab_out_of_range_is_dropped_rather_than_clamped_to_a_neighbour() {
 }
 
 #[test]
-fn the_drawer_toggles_both_ways_and_keeps_the_output_it_had() {
+fn the_drawer_opens_through_the_host_and_closes_alone_keeping_the_output_it_had() {
 	let mut state = state();
 	let mut intents = Intents::new();
 
-	intents.dispatch(Intent::ToggleDrawer, &mut state);
+	intents.dispatch(Intent::SetDrawer { open: true }, &mut state);
 	assert!(state.drawer_open, "the drawer did not open");
+	assert_eq!(
+		intents.drain(),
+		[Intent::SetDrawer { open: true }],
+		"the pane is the host's terminal, so opening it is the host's to answer"
+	);
 
-	intents.dispatch(Intent::ToggleDrawer, &mut state);
+	intents.dispatch(Intent::SetDrawer { open: false }, &mut state);
 	assert!(!state.drawer_open, "the drawer did not close again");
+	assert!(intents.pending().is_empty(), "closing the drawer is the window's own business");
 	assert_eq!(
 		state.drawer_lines,
 		["$ cargo test"],

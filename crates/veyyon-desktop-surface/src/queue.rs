@@ -79,13 +79,13 @@ pub fn rail_fill(
 		}
 	};
 
-	let mut budget = height_px - geometry.content_inset * 2.0;
+	let mut budget = geometry.content_inset.mul_add(-2.0, height_px);
 	let wanted: f32 = sections
 		.iter()
 		.zip(&paged)
 		.filter(|((_, rows), _)| !rows.is_empty())
 		.map(|((section, _), count)| {
-			geometry.section_header_px + row_height(*section) * *count as f32
+			row_height(*section).mul_add(*count as f32, geometry.section_header_px)
 		})
 		.sum();
 	let paged_out: usize = paged

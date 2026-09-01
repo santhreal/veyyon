@@ -9,7 +9,7 @@
 use std::{cell::RefCell, env, process, rc::Rc};
 
 use veyyon_desktop::{
-	HostLink, SessionIndex, action_for, connect_or_spawn, current_timestamp_ms,
+	HostLink, SessionIndex, actions_for, connect_or_spawn, current_timestamp_ms,
 	discover_asset_paths, load_startup_bundle, project, start_token_supervision,
 };
 use veyyon_desktop_model::{ConnectionState, HostEvent, Store, reduce};
@@ -206,7 +206,7 @@ fn main() {
 				let mut host = host.borrow_mut();
 				let host = &mut *host;
 				for intent in &intents {
-					if let Some(action) = action_for(intent, &host.index, &mut host.store) {
+					for action in actions_for(intent, &host.index, &mut host.store) {
 						host.link.send(action);
 					}
 				}

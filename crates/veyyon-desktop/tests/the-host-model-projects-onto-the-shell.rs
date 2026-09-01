@@ -1,6 +1,6 @@
 //! WHY: the window drew a fixture. Nothing turned what the host reported into
 //! what the surfaces draw, so a session the host listed, a turn it streamed
-//! and a decision it asked for reached no pixel. `project` and `action_for`
+//! and a decision it asked for reached no pixel. `project` and `actions_for`
 //! are that turn, in both directions.
 //!
 //! CLASS CLOSED: a member of the protocol model the projection drops or
@@ -14,15 +14,21 @@
 //! the surface crate's pixel suites. Whether the host sends what the model
 //! expects; that is the live handshake suite.
 
+use std::fmt::Write as _;
+
 use strum::IntoEnumIterator as _;
-use veyyon_desktop::{PANE_LINE_CEILING, SessionIndex, action_for, project};
+use veyyon_desktop::{PANE_LINE_CEILING, SessionIndex, actions_for, project};
 use veyyon_desktop_model::{
-	ApprovalInteraction, BadgeKind, BlockKind, ContentBlock, EntryId, HostAction, HostEvent,
-	InteractionId, MessageRole, PendingDecisions, PlanInteraction, QuestionInteraction,
-	QueuePartition, Session, SessionBadge, SessionId, SnapshotSection, Store, StreamingMessageState,
-	TranscriptEntry, Versioned, reduce,
+	ApprovalInteraction, BadgeKind, BlockKind, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
+	ContentBlock, EntryId, HostAction, HostEvent, InteractionId, MessageRole, PendingDecisions,
+	PlanInteraction, QuestionInteraction, QueuePartition, Session, SessionBadge, SessionId,
+	SnapshotSection, Store, StreamingMessageState, TerminalOutputChunk, TerminalStatus,
+	TerminalView, TranscriptEntry, Versioned, reduce,
 };
 use veyyon_desktop_surface::{Badge, Block, Card, Intent, Section, ShellState, Turn};
+
+/// One tree row as the assertions read it: depth, name, line counts.
+type TreeCell<'a> = (usize, &'a str, Option<(u32, u32)>);
 
 const NOW_MS: u64 = 10_000_000;
 
@@ -61,7 +67,7 @@ fn entry(
 	}
 }
 
-fn badge_of(kind: BadgeKind) -> SessionBadge {
+const fn badge_of(kind: BadgeKind) -> SessionBadge {
 	match kind {
 		BadgeKind::Approval => SessionBadge::Approval,
 		BadgeKind::Input => SessionBadge::Input,
@@ -339,12 +345,13 @@ fn a_projection_leaves_what_the_window_owns_alone() {
 	store
 		.sessions
 		.insert(session("s", QueuePartition::Live, None));
-	let mut state = ShellState::default();
-	state.composed = "half a sentence".to_string();
-	state.drawer_open = true;
-	state.tabs = vec!["Files".to_string(), "Changes".to_string()];
-	state.active_tab = 1;
-	state.drawer_lines = vec!["$ bun test".to_string()];
+	let mut state = ShellState {
+		composed: "half a sentence".to_string(),
+		drawer_open: true,
+		tabs: vec!["Files".to_string(), "Changes".to_string()],
+		active_tab: 1,
+		..ShellState::default()
+	};
 
 	project(&store, &mut SessionIndex::new(), NOW_MS, &mut state);
 
@@ -352,17 +359,143 @@ fn a_projection_leaves_what_the_window_owns_alone() {
 	assert!(state.drawer_open);
 	assert_eq!(state.active_tab, 1);
 	assert_eq!(state.tabs.len(), 2);
-	assert_eq!(state.drawer_lines, ["$ bun test"]);
 	assert_eq!(state.sections.len(), 1, "and the host-owned fields were written");
+	assert_eq!(state.drawer_lines, Vec::<String>::new(), "the drawer shows the host's terminal");
+}
+
+fn changed(path: &str, additions: u64, deletions: u64) -> ChangedFile {
+	ChangedFile {
+		path: path.to_string(),
+		previous_path: None,
+		status: ChangeStatus::Modified,
+		additions,
+		deletions,
+	}
+}
+
+#[test]
+fn a_changes_snapshot_becomes_a_tree_with_each_directory_opened_once() {
+	let mut store = Store::new();
+	reduce(
+		&mut store,
+		HostEvent::Snapshot(SnapshotSection::Changes(ChangesView {
+			revision:   1,
+			repository: Some("/repo".to_string()),
+			scope:      ChangeScope::WorkingTree,
+			files:      vec![
+				changed("src/b/two.rs", 2, 0),
+				changed("README.md", 1, 1),
+				changed("src/a/one.rs", 3, 4),
+				changed("src/a/zero.rs", 0, 9),
+			],
+			diff:       String::new(),
+		})),
+	);
+	let mut state = ShellState::default();
+	project(&store, &mut SessionIndex::new(), NOW_MS, &mut state);
+
+	let rows: Vec<TreeCell<'_>> = state
+		.tree
+		.iter()
+		.map(|row| (row.depth, row.name.as_str(), row.changed))
+		.collect();
+	assert_eq!(rows, [
+		(0, "README.md", Some((1, 1))),
+		(0, "src", None),
+		(1, "a", None),
+		(2, "one.rs", Some((3, 4))),
+		(2, "zero.rs", Some((0, 9))),
+		(1, "b", None),
+		(2, "two.rs", Some((2, 0))),
+	]);
+
+	reduce(
+		&mut store,
+		HostEvent::Snapshot(SnapshotSection::Changes(ChangesView {
+			revision:   2,
+			repository: Some("/repo".to_string()),
+			scope:      ChangeScope::Staged,
+			files:      Vec::new(),
+			diff:       String::new(),
+		})),
+	);
+	project(&store, &mut SessionIndex::new(), NOW_MS, &mut state);
+	assert!(state.tree.is_empty(), "a later snapshot replaces the tree, it does not add to it");
+}
+
+fn terminal(id: &str, status: TerminalStatus) -> TerminalView {
+	TerminalView {
+		id: id.to_string(),
+		cwd: "/repo".to_string(),
+		shell: "/bin/sh".to_string(),
+		cols: 80,
+		rows: 24,
+		status,
+	}
+}
+
+fn output(terminal: &str, seq: u64, data: &str) -> HostEvent {
+	HostEvent::Snapshot(SnapshotSection::TerminalOutput(TerminalOutputChunk {
+		terminal: terminal.to_string(),
+		seq,
+		data: data.as_bytes().to_vec(),
+		reset: false,
+	}))
+}
+
+#[test]
+fn the_drawer_shows_the_last_running_terminal_as_plain_text_from_the_end() {
+	let mut store = Store::new();
+	reduce(
+		&mut store,
+		HostEvent::Snapshot(SnapshotSection::Terminals(vec![
+			terminal("t1", TerminalStatus::Running),
+			terminal("t2", TerminalStatus::Running),
+			terminal("t3", TerminalStatus::Exited { code: 0 }),
+		])),
+	);
+	reduce(&mut store, output("t1", 1, "first terminal\n"));
+	reduce(&mut store, output("t3", 1, "exited terminal\n"));
+	let mut long = String::new();
+	for n in 0..PANE_LINE_CEILING + 3 {
+		write!(long, "\u{1b}[32mline {n}\u{1b}[0m\r\n").unwrap();
+	}
+	reduce(&mut store, output("t2", 1, &long));
+	reduce(&mut store, output("t2", 2, "\u{1b}]0;title\u{07}$ done"));
+
+	let mut state = ShellState::default();
+	project(&store, &mut SessionIndex::new(), NOW_MS, &mut state);
+
+	assert_eq!(state.drawer_lines.len(), PANE_LINE_CEILING, "held to the pane ceiling");
+	assert_eq!(state.drawer_lines[0], "line 4", "the lines dropped are the oldest");
+	assert_eq!(state.drawer_lines.last().map(String::as_str), Some("$ done"));
+	assert!(
+		state
+			.drawer_lines
+			.iter()
+			.all(|line| !line.contains('\u{1b}') && !line.contains('\r')),
+		"control sequences never reach the drawer"
+	);
+
+	reduce(
+		&mut store,
+		HostEvent::Snapshot(SnapshotSection::Terminals(vec![terminal(
+			"t3",
+			TerminalStatus::Exited { code: 0 },
+		)])),
+	);
+	project(&store, &mut SessionIndex::new(), NOW_MS, &mut state);
+	assert_eq!(state.drawer_lines, ["exited terminal"], "with nothing running, the last one opened");
 }
 
 #[test]
 fn a_pane_is_held_to_its_ceiling_with_the_remainder_counted() {
 	let mut store = Store::new();
 	store.persisted.shell.active_session = Some(SessionId::from("s"));
-	let output: String = (0..PANE_LINE_CEILING + 5)
-		.map(|n| format!("line {n}\n"))
-		.collect();
+	let mut output = String::new();
+	for n in 0..PANE_LINE_CEILING + 5 {
+		writeln!(output, "line {n}").unwrap();
+	}
 	let tree = store.transcripts.entry(SessionId::from("s")).or_default();
 	tree.append(entry("a", None, MessageRole::BashExecution, vec![ContentBlock::Execution {
 		language: "bash".into(),
@@ -436,78 +569,104 @@ fn store_with_decisions() -> (Store, SessionIndex) {
 }
 
 #[test]
-fn every_intent_maps_to_the_action_the_host_answers_or_to_none_on_purpose() {
+fn every_intent_maps_to_the_actions_the_host_answers_or_to_none_on_purpose() {
 	let (mut store, mut index) = store_with_decisions();
 	let row = index.row_of(&SessionId::from("s"));
 	let session = SessionId::from("s");
 
 	assert_eq!(
-		action_for(&Intent::SelectSession(row), &index, &mut store),
-		Some(HostAction::OpenSession { session: session.clone() })
+		actions_for(&Intent::SelectSession(row), &index, &mut store),
+		[HostAction::OpenSession { session: session.clone() }, HostAction::RefreshChanges],
+		"opening a session also asks for the changes the panel shows"
 	);
-	assert_eq!(action_for(&Intent::SelectSession(999), &index, &mut store), None);
-	assert_eq!(
-		action_for(&Intent::Send("hello".into()), &index, &mut store),
-		Some(HostAction::SubmitPrompt {
+	assert!(actions_for(&Intent::SelectSession(999), &index, &mut store).is_empty());
+	assert_eq!(actions_for(&Intent::Send("hello".into()), &index, &mut store), [
+		HostAction::SubmitPrompt {
 			session:     session.clone(),
 			text:        "hello".into(),
 			attachments: Vec::new(),
-		})
-	);
-	assert_eq!(action_for(&Intent::SelectTab(0), &index, &mut store), None);
-	assert_eq!(action_for(&Intent::ToggleDrawer, &index, &mut store), None);
+		}
+	]);
+	assert!(actions_for(&Intent::SelectTab(0), &index, &mut store).is_empty());
+	assert!(actions_for(&Intent::SetDrawer { open: false }, &index, &mut store).is_empty());
 
 	// Answer the plan (position 3) first: its id is the plan's, and the
 	// cards before it keep their positions.
-	let plan = action_for(&Intent::Plan { card: 3, accepted: true }, &index, &mut store);
-	assert_eq!(
-		plan,
-		Some(HostAction::RespondToInteraction {
-			session:        session.clone(),
-			interaction_id: "i-plan".into(),
-			response:       serde_json::json!({ "accepted": true }),
-		})
-	);
-	let answer = action_for(&Intent::Answer { card: 1, option: 1 }, &index, &mut store);
-	assert_eq!(
-		answer,
-		Some(HostAction::RespondToInteraction {
-			session:        session.clone(),
-			interaction_id: "i-ask".into(),
-			response:       serde_json::json!({ "option": 1, "text": "right" }),
-		})
-	);
+	let plan = actions_for(&Intent::Plan { card: 3, accepted: true }, &index, &mut store);
+	assert_eq!(plan, [HostAction::RespondToInteraction {
+		session:        session.clone(),
+		interaction_id: "i-plan".into(),
+		response:       serde_json::json!({ "accepted": true }),
+	}]);
+	let answer = actions_for(&Intent::Answer { card: 1, option: 1 }, &index, &mut store);
+	assert_eq!(answer, [HostAction::RespondToInteraction {
+		session:        session.clone(),
+		interaction_id: "i-ask".into(),
+		response:       serde_json::json!({ "option": 1, "text": "right" }),
+	}]);
 	// The free-text question moved up to position 1 and takes the composer's
 	// text as its answer.
-	let reply = action_for(&Intent::Reply { card: 1, text: "widget".into() }, &index, &mut store);
-	assert_eq!(
-		reply,
-		Some(HostAction::RespondToInteraction {
-			session:        session.clone(),
-			interaction_id: "i-free".into(),
-			response:       serde_json::json!({ "text": "widget" }),
-		})
-	);
+	let reply = actions_for(&Intent::Reply { card: 1, text: "widget".into() }, &index, &mut store);
+	assert_eq!(reply, [HostAction::RespondToInteraction {
+		session:        session.clone(),
+		interaction_id: "i-free".into(),
+		response:       serde_json::json!({ "text": "widget" }),
+	}]);
 	// The approval is now the only card, at position 0, in both stacks.
-	let approval = action_for(
+	let approval = actions_for(
 		&Intent::Approval { card: 0, approved: false, standing: false },
 		&index,
 		&mut store,
 	);
-	assert_eq!(
-		approval,
-		Some(HostAction::RespondToInteraction {
-			session:        session.clone(),
-			interaction_id: "i-approve".into(),
-			response:       serde_json::json!({ "approved": false, "scope": "once" }),
-		})
-	);
-	assert_eq!(
-		action_for(&Intent::Approval { card: 0, approved: true, standing: true }, &index, &mut store),
-		None,
+	assert_eq!(approval, [HostAction::RespondToInteraction {
+		session:        session.clone(),
+		interaction_id: "i-approve".into(),
+		response:       serde_json::json!({ "approved": false, "scope": "once" }),
+	}]);
+	assert!(
+		actions_for(
+			&Intent::Approval { card: 0, approved: true, standing: true },
+			&index,
+			&mut store
+		)
+		.is_empty(),
 		"an answered card is not answered twice"
 	);
 	assert!(store.interactions[&session].is_empty());
+}
+
+#[test]
+fn opening_the_drawer_attaches_to_the_running_terminal_or_creates_one() {
+	let (mut store, index) = store_with_decisions();
+	assert_eq!(
+		actions_for(&Intent::SetDrawer { open: true }, &index, &mut store),
+		[HostAction::CreateTerminal { cwd: None, shell: None }],
+		"with no terminal, the drawer asks for one"
+	);
+	reduce(
+		&mut store,
+		HostEvent::Snapshot(SnapshotSection::Terminals(vec![
+			terminal("t1", TerminalStatus::Running),
+			terminal("t2", TerminalStatus::Exited { code: 1 }),
+		])),
+	);
+	assert_eq!(
+		actions_for(&Intent::SetDrawer { open: true }, &index, &mut store),
+		[HostAction::AttachTerminal { terminal_id: "t1".into() }],
+		"with one running, the drawer attaches to it and replays its scrollback"
+	);
+	reduce(
+		&mut store,
+		HostEvent::Snapshot(SnapshotSection::Terminals(vec![terminal(
+			"t1",
+			TerminalStatus::Failed { message: "no shell".into() },
+		)])),
+	);
+	assert_eq!(
+		actions_for(&Intent::SetDrawer { open: true }, &index, &mut store),
+		[HostAction::CreateTerminal { cwd: None, shell: None }],
+		"a terminal that failed is not one to attach to"
+	);
 }
 
 #[test]
@@ -515,16 +674,14 @@ fn a_decision_at_a_position_of_the_wrong_kind_is_dropped_not_misdelivered() {
 	let (mut store, index) = store_with_decisions();
 	// Position 0 is the approval; asking to answer it as a question must not
 	// resolve the approval with a question's payload.
-	assert_eq!(action_for(&Intent::Answer { card: 0, option: 0 }, &index, &mut store), None);
-	assert_eq!(action_for(&Intent::Plan { card: 1, accepted: true }, &index, &mut store), None);
-	assert_eq!(
-		action_for(&Intent::Reply { card: 0, text: "no".into() }, &index, &mut store),
-		None,
+	assert!(actions_for(&Intent::Answer { card: 0, option: 0 }, &index, &mut store).is_empty());
+	assert!(actions_for(&Intent::Plan { card: 1, accepted: true }, &index, &mut store).is_empty());
+	assert!(
+		actions_for(&Intent::Reply { card: 0, text: "no".into() }, &index, &mut store).is_empty(),
 		"a reply is a question's answer, never an approval's"
 	);
-	assert_eq!(
-		action_for(&Intent::Answer { card: 1, option: 5 }, &index, &mut store),
-		None,
+	assert!(
+		actions_for(&Intent::Answer { card: 1, option: 5 }, &index, &mut store).is_empty(),
 		"an option that does not exist is not sent"
 	);
 	let pending = &store.interactions[&SessionId::from("s")];

@@ -21,8 +21,12 @@ pub enum Intent {
 	SelectSession(u64),
 	/// Show a different tab in the right panel.
 	SelectTab(usize),
-	/// Open or close the terminal drawer.
-	ToggleDrawer,
+	/// Open or close the terminal drawer. Opening it is a host's to answer as
+	/// well: the drawer shows a terminal, and the host is what has one.
+	SetDrawer {
+		/// Whether the drawer is docked after this.
+		open: bool,
+	},
 	/// Answer the approval attached at this position with a decision.
 	Approval {
 		/// The card's position in the stack.
@@ -69,9 +73,10 @@ impl Intent {
 	///
 	/// Opening a session is not local. The highlight is, but the transcript
 	/// belongs to the host, and a shell that kept the selection to itself would
-	/// draw a row as open that nothing ever filled.
+	/// draw a row as open that nothing ever filled. Opening the drawer is not
+	/// local for the same reason: the pane is the host's terminal.
 	pub const fn is_local(&self) -> bool {
-		matches!(self, Self::SelectTab(_) | Self::ToggleDrawer)
+		matches!(self, Self::SelectTab(_) | Self::SetDrawer { open: false })
 	}
 
 	/// Applies the part of this intent the shell owns.
@@ -95,7 +100,7 @@ impl Intent {
 					state.active_tab = index;
 				}
 			},
-			Self::ToggleDrawer => state.drawer_open = !state.drawer_open,
+			Self::SetDrawer { open } => state.drawer_open = open,
 			// A card is removed as soon as it is answered, because a decision
 			// surface that keeps offering an answered question invites the
 			// operator to answer it twice.
