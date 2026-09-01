@@ -14,6 +14,20 @@ import * as ptree from "@veyyon/utils/ptree";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { $which } from "@veyyon/utils/which";
+import { extractWithParallel, findParallelApiKey, getParallelExtractContent } from "@veyyon/web/parallel";
+import {
+	decodeHtmlEntities,
+	finalizeOutput,
+	isScraperDegrade,
+	loadPage,
+	looksLikeHtml,
+	MAX_BYTES,
+	MAX_OUTPUT_CHARS,
+	type RenderResult,
+	type ScraperDegrade,
+	type SpecialHandler,
+} from "@veyyon/web/scrapers/types";
+import { fetchBinary } from "@veyyon/web/scrapers/utils";
 import { LRUCache } from "lru-cache/raw";
 import type { Settings } from "../../config/settings";
 import { readEditableNotebookText } from "../../edit/notebook";
@@ -30,20 +44,6 @@ import { webpExclusionForModel } from "../../utils/image-loading";
 import { formatDimensionNote, resizeImage } from "../../utils/image-resize";
 import { ensureTool } from "../../utils/tools-manager";
 import { type ArchiveFormat, listArchiveRoot, sniffArchiveFormat } from "../../utils/zip";
-import { extractWithParallel, findParallelApiKey, getParallelExtractContent } from "../../web/parallel";
-import {
-	decodeHtmlEntities,
-	finalizeOutput,
-	isScraperDegrade,
-	loadPage,
-	looksLikeHtml,
-	MAX_BYTES,
-	MAX_OUTPUT_CHARS,
-	type RenderResult,
-	type ScraperDegrade,
-	type SpecialHandler,
-} from "../../web/scrapers/types";
-import { convertWithMarkit, fetchBinary } from "../../web/scrapers/utils";
 import { applyListLimit } from "../core/list-limit";
 import { inlineBudgetFor } from "../core/output-artifact";
 import type { OutputMeta } from "../core/output-meta";
@@ -53,6 +53,7 @@ import { listTables, looksLikeSqlite, renderTableList } from "../core/sqlite-rea
 import { ToolError, throwIfAborted } from "../core/tool-errors";
 import { toolResult } from "../core/tool-result";
 import { clampTimeout } from "../core/tool-timeouts";
+import { convertDocument, scrapeServices } from "./scrape-services";
 
 // =============================================================================
 // Types and Constants
@@ -1270,7 +1271,7 @@ let specialHandlersPromise: Promise<SpecialHandler[]> | undefined;
  * requires a special handler, so we keep them out of the cold-startup graph.
  */
 function loadSpecialHandlers(): Promise<SpecialHandler[]> {
-	specialHandlersPromise ??= import("../../web/scrapers").then(m => m.specialHandlers);
+	specialHandlersPromise ??= import("@veyyon/web/scrapers").then(m => m.specialHandlers);
 	return specialHandlersPromise;
 }
 
@@ -1281,16 +1282,20 @@ export async function handleSpecialUrls(
 	url: string,
 	timeout: number,
 	signal: AbortSignal | undefined,
-	storage: AgentStorage | null,
+	storage: AgentStorage | null | undefined,
 	notes: string[],
 	handlers?: SpecialHandler[],
 ): Promise<FetchRenderResult | null> {
 	const specialHandlers = handlers ?? (await loadSpecialHandlers());
+	// One object for the whole walk: a handler that needs a credential, a converter or a managed
+	// binary asks this rather than importing it, which is what keeps the scrapers in their own
+	// package.
+	const services = scrapeServices(storage);
 	for (const handler of specialHandlers) {
 		throwIfAborted(signal, "fetch");
 		let result: RenderResult | ScraperDegrade | null;
 		try {
-			result = await handler(url, timeout, signal, storage);
+			result = await handler(url, timeout, signal, services);
 		} catch (error) {
 			// STOP, DO NOT DEGRADE. `isCancellation` is the repo-wide owner of this
 			// test and it covers both halves: the user aborting, AND a deadline
@@ -1516,7 +1521,7 @@ async function renderUrl(
 		const binary = await fetchBinary(finalUrl, timeout, signal);
 		if (binary.ok) {
 			const ext = getExtensionHint(finalUrl, binary.contentDisposition) || extHint;
-			const converted = await convertWithMarkit(binary.buffer, ext, timeout, signal);
+			const converted = await convertDocument(binary.buffer, ext, timeout, signal);
 			if (converted.ok) {
 				if (converted.content.trim().length > 50) {
 					notes.push("Converted with markit");
@@ -1758,7 +1763,7 @@ async function renderUrl(
 				const binary = await fetchBinary(docUrl, timeout, signal);
 				if (binary.ok) {
 					const ext = getExtensionHint(docUrl, binary.contentDisposition);
-					const converted = await convertWithMarkit(binary.buffer, ext, timeout, signal);
+					const converted = await convertDocument(binary.buffer, ext, timeout, signal);
 					if (converted.ok && converted.content.trim().length > htmlResult.content.length) {
 						notes.push(`Extracted and converted document: ${docUrl}`);
 						const output = finalizeOutput(converted.content);

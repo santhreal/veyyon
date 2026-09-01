@@ -240,6 +240,9 @@ export const fastWorkspacePackages = [
 	// stay in the fast workspace job. Their 300ms watchdogs run sequentially
 	// inside the package through `workspaceTestParallelism` below.
 	"packages/simulations",
+	// The scraper suites drive their handlers against a mocked `fetch` and never open a
+	// socket, so they need neither the native addon nor the network.
+	"plugins/web",
 ];
 
 // These suites cover the native package, TUI/browser-ish behavior, local servers,

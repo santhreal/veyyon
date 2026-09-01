@@ -7,18 +7,18 @@
 import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { $env } from "@veyyon/utils";
+import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import {
 	type ProviderTextTransformResolver,
 	resolveProviderTextTransform,
 	transformProviderPayload,
 } from "../../../provider-boundary";
-
 import type { SearchResponse, SearchSource } from "../types";
 import { SearchProviderError } from "../types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { classifyProviderHttpError, withHardTimeout } from "./utils";
+import { classifyProviderHttpError } from "./utils";
 
 type SearchParamsWithFetch = SearchParams & { fetch?: FetchImpl };
 

@@ -23,6 +23,7 @@ import {
 	getGeminiCliHeaders,
 } from "@veyyon/catalog/wire/gemini-headers";
 import { fetchWithRetry } from "@veyyon/utils";
+import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import {
 	type ProviderTextTransformResolver,
 	resolveProviderTextTransform,
@@ -33,7 +34,7 @@ import { SearchProviderError } from "../types";
 import { sanitizeResultLimit } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { classifyProviderHttpError, withHardTimeout } from "./utils";
+import { classifyProviderHttpError } from "./utils";
 
 const DEVELOPER_API_PROVIDER = "google";
 const DEFAULT_MODEL = "gemini-2.5-flash";

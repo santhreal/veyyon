@@ -12,6 +12,7 @@
 - `@veyyon/utils/ttyid` reads the controlling terminal's identity, and `@veyyon/utils/image-fallback` states the four causes a client can fail to draw a picture for, as `IMAGE_FALLBACK_REASONS` and the `ImageFallbackReason` union over it. Both moved out of `@veyyon/tui`, so a conversation engine can name a session or a cause without importing a renderer.
 - `@veyyon/utils/host-notification` states `HostNotification`, the out-of-band message a tool asks its host to deliver, and `HostNotifier`, the delivery a host installs. Neither names a terminal, so a GUI host can honour one.
 - `@veyyon/utils/sanitize-status-text` reduces text to one line a terminal draws as text, stripping escape sequences, mapping the remaining controls to spaces and collapsing space runs, so domain code that names a value in a single-line surface no longer imports the terminal host to sanitize it.
+- `@veyyon/utils/markdown-table` renders and escapes GFM tables, `@veyyon/utils/turndown` builds the Turndown instance and normalizes a `<td>`-first table, and `@veyyon/utils/html-markdown` converts HTML to markdown through both. All three are subpaths and none is on the barrel, so a document converter or a scraper reaches them without importing the coding agent.
 
 ### Changed
 

@@ -1,5 +1,5 @@
+import { CHROME_FALLBACK_HEADERS } from "@veyyon/web/browser-fingerprint-constants";
 import { HeaderGenerator } from "header-generator";
-import { CHROME_FALLBACK_HEADERS } from "./browser-fingerprint-constants";
 
 // Lazily instantiate the singleton header generator. Bun single-file binaries do not
 // bundle header-generator's fs-loaded data_files, so construction may throw when the

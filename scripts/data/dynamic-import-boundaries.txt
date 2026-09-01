@@ -83,13 +83,6 @@ packages/coding-agent/src/tools/web/browser/tab-supervisor.ts
 packages/coding-agent/src/tools/web/fetch.ts
 packages/coding-agent/src/tools/web/manifest.ts
 packages/coding-agent/src/utils/markit.ts
-packages/coding-agent/src/web/scrapers/arxiv.ts
-packages/coding-agent/src/web/scrapers/go-pkg.ts
-packages/coding-agent/src/web/scrapers/iacr.ts
-packages/coding-agent/src/web/scrapers/readthedocs.ts
-packages/coding-agent/src/web/scrapers/twitter.ts
-packages/coding-agent/src/web/scrapers/types.ts
-packages/coding-agent/src/web/scrapers/wikipedia.ts
 packages/coding-agent/src/web/search/index.ts
 packages/coding-agent/src/web/search/provider.ts
 packages/coding-agent/test/acp-lazy-startup.test.ts
@@ -132,6 +125,12 @@ plugins/mnemopi/src/core/extraction.ts
 plugins/mnemopi/src/core/fastembed-runtime.ts
 plugins/mnemopi/test/checking-a-schema-is-not-running-the-engine.test.ts
 plugins/mnemopi/test/local-llm.test.ts
+plugins/web/src/scrapers/arxiv.ts
+plugins/web/src/scrapers/go-pkg.ts
+plugins/web/src/scrapers/iacr.ts
+plugins/web/src/scrapers/readthedocs.ts
+plugins/web/src/scrapers/twitter.ts
+plugins/web/src/scrapers/wikipedia.ts
 scripts/check-doc-imports.ts
 scripts/demos/render-args.ts
 scripts/package-exports-surface.ts

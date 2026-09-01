@@ -14,7 +14,7 @@ import type { AgentSession } from "../../session/agent-session";
 import { isTinyMemoryLocalModelKey, ONLINE_MEMORY_MODEL_KEY } from "../../tiny/models";
 import { tinyModelClient } from "../../tiny/title-client";
 import { shortenPath } from "../../tools/core/render-utils";
-import { escapeMarkdownTableCell } from "../../utils/markdown-table";
+import { escapeMarkdownTableCell } from "@veyyon/utils/markdown-table";
 import type {
 	MemoryBackend,
 	MemoryBackendSaveInput,

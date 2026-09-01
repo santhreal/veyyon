@@ -27,6 +27,7 @@ import { trimTrailingSlashes } from "@veyyon/utils";
  */
 
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
+import { withHardTimeout } from "@veyyon/web/hard-timeout";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../config/settings-instance";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
@@ -35,7 +36,7 @@ import { SearchProviderError } from "../types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { classifyProviderHttpError, withHardTimeout } from "./utils";
+import { classifyProviderHttpError } from "./utils";
 
 const MAX_NUM_RESULTS = 20;
 

@@ -29,6 +29,7 @@ operator manual.
 |`packages/tool-render`|Shared React tool-call renderers for HTML export, collab-web and the stats dashboard|
 |`packages/collab-web`|Browser guest client and local relay for collab live sessions (private)|
 |`plugins/mode-swarm`|Swarm orchestration extension|
+|`plugins/web`|Site scrapers that turn a URL into markdown: ~80 per-site handlers, the page loader escalation ladder and the Parallel extract client, running against host capabilities passed in rather than imported|
 |`packages/evals`|Every model and agent evaluation: the DeepSWE, Terminal-Bench 3.0 and TypeScript-edit suites, harness adapters, execution backends, run store, REST/SSE API and live dashboard (private)|
 |`packages/simulations`|Deterministic offline simulations driving real subsystems end to end (private)|
 |`natives/bridge/addon`|The napi addon: the only Rust surface TypeScript calls (grep, glob, text measurement, highlighting, clipboard, SIXEL)|

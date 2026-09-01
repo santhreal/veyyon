@@ -10,6 +10,7 @@ import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { asRecord, tryParseJson } from "@veyyon/utils";
+import { withHardTimeout } from "@veyyon/web/hard-timeout";
 // The two owners rather than the store that re-exports both: the slot leaf for the value, the schema for
 // the default. A web-search provider reading two settings paid 95 modules for the pair.
 import { settings } from "../../../config/settings-instance";
@@ -22,7 +23,7 @@ import { SearchProviderError } from "../types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { classifyProviderHttpError, withHardTimeout } from "./utils";
+import { classifyProviderHttpError } from "./utils";
 
 const EXA_API_URL = "https://api.exa.ai/search";
 const DEFAULT_EXA_SEARCH_DELAY_MS = getDefault("exa.searchDelayMs");

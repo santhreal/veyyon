@@ -9,6 +9,7 @@ import type { ApiKey, AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { getEnvApiKey } from "@veyyon/ai/env-api-key";
 import { isRecord, trimmedString } from "@veyyon/utils";
+import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { MCP_PROTOCOL_VERSION } from "../../../mcp/protocol-version";
 import {
 	type ProviderTextTransformResolver,
@@ -20,7 +21,7 @@ import { SearchProviderError } from "../types";
 import { clampNumResults, dateToAgeSeconds, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { classifyProviderHttpError, withHardTimeout } from "./utils";
+import { classifyProviderHttpError } from "./utils";
 
 const ZAI_MCP_URL = "https://api.z.ai/api/mcp/web_search_prime/mcp";
 const ZAI_TOOL_NAME = "web_search_prime";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { markdownLink, markdownLinkText, markdownLinkUrl } from "@veyyon/coding-agent/utils/markdown-link";
+import { markdownLink, markdownLinkText, markdownLinkUrl } from "@veyyon/web/markdown-link";
 
 /**
  * Locks the canonical Markdown-link builder used by the web scrapers. Before it

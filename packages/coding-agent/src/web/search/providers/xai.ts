@@ -1,13 +1,14 @@
 import type { ApiKey, ApiKeyResolver, AuthStorage } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { $env } from "@veyyon/utils";
+import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type { SearchCitation, SearchResponse, SearchSource, SearchUsage } from "../types";
 import { SearchProviderError } from "../types";
 import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { classifyProviderHttpError, withHardTimeout } from "./utils";
+import { classifyProviderHttpError } from "./utils";
 
 const XAI_RESPONSES_URL = "https://api.x.ai/v1/responses";
 const XAI_WEB_SEARCH_MODEL = "grok-4.3";

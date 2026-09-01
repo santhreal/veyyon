@@ -21,6 +21,7 @@ import {
 } from "@veyyon/ai";
 import { ANTHROPIC_WEB_SEARCH_TOOL } from "@veyyon/catalog/wire/anthropic";
 import { $env } from "@veyyon/utils";
+import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import {
 	type ProviderTextTransformResolver,
 	resolveProviderTextTransform,
@@ -31,7 +32,7 @@ import { SearchProviderError } from "../types";
 import { applyResultLimit } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { classifyProviderHttpError, withHardTimeout } from "./utils";
+import { classifyProviderHttpError } from "./utils";
 
 const DEFAULT_MODEL = "claude-haiku-4-5";
 const DEFAULT_MAX_TOKENS = 4096;

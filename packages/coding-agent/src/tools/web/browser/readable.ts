@@ -1,6 +1,6 @@
 import type * as ReadabilityNs from "@mozilla/readability";
+import { htmlToBasicMarkdown } from "@veyyon/utils/html-markdown";
 import type * as LinkedomNs from "linkedom";
-import { htmlToBasicMarkdown } from "../../../web/scrapers/types";
 
 export type ReadableFormat = "text" | "markdown";
 

@@ -30,6 +30,7 @@ import { dirname, join, relative, resolve } from "node:path";
  */
 
 const SRC = resolve(import.meta.dirname, "..", "src");
+const WEB_PLUGIN_SRC = resolve(import.meta.dirname, "..", "..", "..", "plugins", "web", "src");
 
 /**
  * Third-party packages whose module evaluation is expensive enough that reaching one from a startup
@@ -224,10 +225,16 @@ describe("a startup root cannot reach an expensive third-party package through s
 
 	it("reaches no expensive package from the non-tool startup modules that triggered this suite", () => {
 		const offenders: string[] = [];
-		for (const entry of ["cli/file-processor.ts", "web/scrapers/types.ts", "web/search/providers/perplexity.ts"]) {
-			const root = join(SRC, entry);
-			expect(existsSync(root)).toBe(true);
-			for (const [pkg, trail] of expensiveReachableFrom(root)) {
+		// Two of the three left this package: the scrapers and their fingerprint leaf are
+		// `@veyyon/web`. The walk follows the file, not the directory it used to sit in, because the
+		// property under test is what a startup root reaches and that does not change with the owner.
+		for (const entry of [
+			join(SRC, "cli/file-processor.ts"),
+			join(WEB_PLUGIN_SRC, "scrapers/types.ts"),
+			join(SRC, "web/search/providers/perplexity.ts"),
+		]) {
+			expect(existsSync(entry)).toBe(true);
+			for (const [pkg, trail] of expensiveReachableFrom(entry)) {
 				offenders.push(`${entry} -> ${pkg}\n    via ${trail.join("\n     -> ")}`);
 			}
 		}
@@ -236,10 +243,10 @@ describe("a startup root cannot reach an expensive third-party package through s
 
 	it("keeps the two constant leaves import-free, which is the property that makes them cheap", () => {
 		for (const leaf of [
-			"export/markit/convertible-extensions.ts",
-			"web/search/providers/browser-fingerprint-constants.ts",
+			join(SRC, "export/markit/convertible-extensions.ts"),
+			join(WEB_PLUGIN_SRC, "browser-fingerprint-constants.ts"),
 		]) {
-			const { bare, local } = staticImportsOf(join(SRC, leaf));
+			const { bare, local } = staticImportsOf(leaf);
 			expect({ leaf, bare, local }).toEqual({ leaf, bare: [], local: [] });
 		}
 	});

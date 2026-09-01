@@ -5,12 +5,13 @@ import * as path from "node:path";
 import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
+import * as scrapeServices from "@veyyon/coding-agent/tools/web/scrape-services";
 import * as imageResize from "@veyyon/coding-agent/utils/image-resize";
 import * as toolsManager from "@veyyon/coding-agent/utils/tools-manager";
-import * as scrapers from "@veyyon/coding-agent/web/scrapers/types";
-import * as scraperUtils from "@veyyon/coding-agent/web/scrapers/utils";
 import * as natives from "@veyyon/natives";
 import { ptree, removeSyncWithRetries, Snowflake } from "@veyyon/utils";
+import * as scrapers from "@veyyon/web/scrapers/types";
+import * as scraperUtils from "@veyyon/web/scrapers/utils";
 import { asGlobalFetch } from "../helpers/fetch-mock";
 
 const withMissingSystemPython = () => {
@@ -217,7 +218,7 @@ describe("read tool URL handling", () => {
 			ok: true,
 			buffer: new Uint8Array([137, 80, 78, 71]),
 		});
-		const convertSpy = vi.spyOn(scraperUtils, "convertWithMarkit");
+		const convertSpy = vi.spyOn(scrapeServices, "convertDocument");
 
 		const result = await tool.execute("fetch-image-resized", { path: "https://example.com/image.png" });
 		const imageBlock = result.content.find(
@@ -282,7 +283,7 @@ describe("read tool URL handling", () => {
 	it("falls back to textual output when inline image refetch fails", async () => {
 		const session = createSession();
 		const tool = new ReadTool(session);
-		const convertSpy = vi.spyOn(scraperUtils, "convertWithMarkit");
+		const convertSpy = vi.spyOn(scrapeServices, "convertDocument");
 		vi.spyOn(scrapers, "loadPage").mockResolvedValue({
 			ok: true,
 			status: 200,

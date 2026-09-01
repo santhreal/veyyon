@@ -1,13 +1,14 @@
 import type { AuthStorage } from "@veyyon/ai";
+import { withHardTimeout } from "@veyyon/web/hard-timeout";
+import { decodeHtmlEntities } from "@veyyon/web/scrapers/types";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
-import { decodeHtmlEntities } from "../../scrapers/types";
 import type { SearchResponse, SearchSource } from "../types";
 import { SearchProviderError } from "../types";
 import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { browserFetch } from "./browser-page";
-import { classifyProviderHttpError, withHardTimeout } from "./utils";
+import { classifyProviderHttpError } from "./utils";
 
 /**
  * DuckDuckGo's no-JS HTML search frontend. POST `q=…` to receive a static

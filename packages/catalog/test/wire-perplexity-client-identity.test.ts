@@ -197,7 +197,7 @@ describe("the browser fingerprint states its version once", () => {
 	 */
 	it("uses one Chrome version in the User-Agent and the client hint", async () => {
 		const { CHROME_DESKTOP_USER_AGENT } = await import(
-			"@veyyon/coding-agent/web/search/providers/browser-fingerprint-constants"
+			"@veyyon/web/browser-fingerprint-constants"
 		);
 		const version = /Chrome\/(\d+)\./.exec(CHROME_DESKTOP_USER_AGENT)?.[1];
 		expect(version, "no Chrome version in the User-Agent").toBeDefined();
@@ -218,7 +218,7 @@ describe("the browser fingerprint states its version once", () => {
 	it("has the anonymous search path reading the shared browser User-Agent", async () => {
 		const search = await Bun.file(SEARCH).text();
 		expect(search).toContain("CHROME_DESKTOP_USER_AGENT");
-		expect(moduleSpecifiersIn(search)).toContain("./browser-fingerprint-constants");
+		expect(moduleSpecifiersIn(search)).toContain("@veyyon/web/browser-fingerprint-constants");
 		expect(search).not.toContain("ANONYMOUS_USER_AGENT");
 	});
 
@@ -228,7 +228,7 @@ describe("the browser fingerprint states its version once", () => {
 	 */
 	it("has the scraper ladder reading the shared Windows User-Agent", async () => {
 		const { CHROME_DESKTOP_USER_AGENT, CHROME_WINDOWS_USER_AGENT } = await import(
-			"@veyyon/coding-agent/web/search/providers/browser-fingerprint-constants"
+			"@veyyon/web/browser-fingerprint-constants"
 		);
 		const version = (agent: string) => /Chrome\/(\d+)\./.exec(agent)?.[1];
 		expect(version(CHROME_WINDOWS_USER_AGENT)).toBe(version(CHROME_DESKTOP_USER_AGENT));

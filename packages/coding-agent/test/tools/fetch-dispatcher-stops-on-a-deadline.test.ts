@@ -37,7 +37,7 @@
 import { describe, expect, it } from "bun:test";
 import { ToolAbortError } from "@veyyon/coding-agent/tools/core/tool-errors";
 import { handleSpecialUrls } from "@veyyon/coding-agent/tools/web/fetch";
-import type { RenderResult } from "@veyyon/coding-agent/web/scrapers/types";
+import type { RenderResult } from "@veyyon/web/scrapers/types";
 
 /** The exact rejection `scopedTimeoutSignal` produces when its budget runs out. */
 function timeoutRejection(): DOMException {

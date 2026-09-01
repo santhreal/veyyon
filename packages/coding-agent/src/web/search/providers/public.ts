@@ -1,4 +1,5 @@
 import type { AuthStorage } from "@veyyon/ai";
+import { SEARCH_HARD_TIMEOUT_MS } from "@veyyon/web/hard-timeout";
 import { scopedTimeoutSignal } from "../../../utils/fetch-timeout";
 import { formatSearchProviderFailures, getSearchProvider, isSearchProviderExcluded } from "../provider";
 import type { SearchProviderId, SearchResponse, SearchSource } from "../types";
@@ -6,7 +7,6 @@ import { SearchProviderError } from "../types";
 import { clampNumResults } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { SEARCH_HARD_TIMEOUT_MS } from "./utils";
 
 /**
  * Credential-free engines the Public Web aggregate fans out to. Order is the

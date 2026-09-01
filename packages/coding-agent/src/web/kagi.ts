@@ -8,12 +8,12 @@
  */
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
+import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import {
 	type ProviderTextTransformResolver,
 	resolveProviderTextTransform,
 	transformProviderPayload,
 } from "../provider-boundary";
-import { withHardTimeout } from "./search/providers/utils";
 
 const KAGI_SEARCH_URL = "https://kagi.com/api/v1/search";
 

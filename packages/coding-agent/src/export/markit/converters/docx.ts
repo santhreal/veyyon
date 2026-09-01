@@ -1,7 +1,7 @@
 // Adapted from markit-ai (MIT). See ../NOTICE.
 import * as path from "node:path";
 import mammoth from "mammoth";
-import { createTurndown, normalizeTablesHtml } from "../../../utils/turndown";
+import { createTurndown, normalizeTablesHtml } from "@veyyon/utils/turndown";
 import type { ConversionResult, Converter, StreamInfo } from "../types";
 
 const EXTENSIONS = [".docx"];

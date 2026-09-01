@@ -74,6 +74,7 @@
     "@veyyon/utils": "catalog:",
     "@veyyon/view": "catalog:",
     "@veyyon/wire": "catalog:",
+    "@veyyon/web": "catalog:",
     "@xterm/headless": "catalog:",
     "argot": "workspace:*",
     "arktype": "catalog:",

@@ -1,6 +1,6 @@
 // Adapted from markit-ai (MIT). See ../NOTICE.
 import { XMLParser } from "fast-xml-parser";
-import { createTurndown, normalizeTablesHtml } from "../../../utils/turndown";
+import { createTurndown, normalizeTablesHtml } from "@veyyon/utils/turndown";
 import { resolveArchiveMemberPath, unzip, unzipText } from "../../../utils/zip";
 import type { ConversionResult, Converter, StreamInfo } from "../types";
 import { xmlNodeText } from "./xml-text";

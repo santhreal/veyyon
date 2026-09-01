@@ -1,5 +1,6 @@
 import type { AuthStorage } from "@veyyon/ai";
 import { errorMessage } from "@veyyon/utils";
+import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { parseHTML } from "linkedom";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type { SearchResponse, SearchSource } from "../types";
@@ -9,7 +10,7 @@ import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import type { LoadedHtmlPage } from "./browser-page";
 import { browserFetch } from "./browser-page";
-import { isExternalHttpUrl, parseResultUrl, withHardTimeout } from "./utils";
+import { isExternalHttpUrl, parseResultUrl } from "./utils";
 
 const GOOGLE_HOME_URL = "https://www.google.com/";
 

@@ -1,10 +1,10 @@
 import type { FetchImpl } from "@veyyon/ai";
 import { untilAborted } from "@veyyon/utils";
+import { SEARCH_HARD_TIMEOUT_MS } from "@veyyon/web/hard-timeout";
 import type { Page } from "puppeteer-core";
 import { applyStealthPatches, applyViewport } from "../../../tools/web/browser/launch";
 import { acquireBrowser, holdBrowser, releaseBrowser } from "../../../tools/web/browser/registry";
 import { buildBrowserNavigationHeaders } from "./browser-headers";
-import { SEARCH_HARD_TIMEOUT_MS } from "./utils";
 
 /**
  * How long to wait for a rendered page to show its results before reading it

@@ -2,7 +2,7 @@
  * Display bundle rendering shared between the Python runner output and the
  * legacy Jupyter MIME conventions. Pure function, no kernel coupling.
  */
-import { htmlToBasicMarkdown } from "../../web/scrapers/types";
+import { htmlToBasicMarkdown } from "@veyyon/utils/html-markdown";
 
 /** Status event emitted by prelude helpers for TUI rendering. */
 export interface PythonStatusEvent {

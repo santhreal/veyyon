@@ -23,15 +23,16 @@ import {
 	PERPLEXITY_WEB_ORIGIN,
 } from "@veyyon/catalog/wire/perplexity";
 import { $env, asRecord, readSseJson, tryParseJson } from "@veyyon/utils";
+import { CHROME_DESKTOP_USER_AGENT } from "@veyyon/web/browser-fingerprint-constants";
+import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../provider-boundary";
 import type { PerplexityRequest, PerplexitySearchResult, SearchCitation, SearchResponse, SearchSource } from "../types";
 import { SearchProviderError } from "../types";
 import { dateToAgeSeconds, sanitizeResultLimit } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { CHROME_DESKTOP_USER_AGENT } from "./browser-fingerprint-constants";
 import { type ApiConfig, getAvailableAuthMethods } from "./perplexity-auth";
-import { classifyProviderHttpError, withHardTimeout } from "./utils";
+import { classifyProviderHttpError } from "./utils";
 
 const PERPLEXITY_OAUTH_ASK_URL = `${PERPLEXITY_WEB_ORIGIN}/rest/sse/perplexity_ask`;
 

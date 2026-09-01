@@ -27,6 +27,7 @@ import {
 	OPENAI_HEADERS,
 } from "@veyyon/catalog/wire/codex";
 import { $env, readSseJson } from "@veyyon/utils";
+import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import packageJson from "../../../../package.json" with { type: "json" };
 import {
 	type ProviderTextTransformResolver,
@@ -38,7 +39,7 @@ import { SearchProviderError } from "../types";
 import { applyResultLimit } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { classifyProviderHttpError, withHardTimeout } from "./utils";
+import { classifyProviderHttpError } from "./utils";
 
 const CODEX_RESPONSES_PATH = "/codex/responses";
 const FALLBACK_MODEL = "gpt-5.5";
