@@ -449,6 +449,7 @@
 - A turn that ends on text after a tool call is recognized as finished even while a session subscriber is still running, so the todo reminder, the rewind pass and the session-stop hooks no longer skip a turn whose final message arrived behind a slow subscriber.
 - The GPU front end's theme is the window's own preference rather than an engine request, so a detached window can be themed, and the profile theme list is read-only because a profile theme carries no palette the window could draw.
 - The desktop host states that profile theme listing is unavailable rather than describing a theme selection it never owned.
+- The desktop renderer repaints only the region a state change declares, keeping the rest of the frame in a retained texture, clips rounded and path-bounded subtrees at the boundary, and shapes each distinct line of text once across frames; GPUI is now a vendored snapshot of the `santhreal/zed` fork under `crates/vendor` rather than a git dependency.
 
 ### Fixed
 
