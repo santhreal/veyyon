@@ -1516,7 +1516,7 @@ async function appendLearnedLine(filePath: string, line: string): Promise<void> 
  * pre-existing file bypasses write-time normalization and the block renders
  * unescaped into the system prompt. Returns "" when absent/unreadable.
  */
-async function readLearnedLessons(memoryRoot: string): Promise<string> {
+export async function readLearnedLessons(memoryRoot: string): Promise<string> {
 	let raw = "";
 	try {
 		raw = (await Bun.file(path.join(memoryRoot, LEARNED_LESSONS_FILE)).text()).trim();

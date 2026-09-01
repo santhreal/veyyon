@@ -10,7 +10,6 @@ import { diffLines } from "diff";
 import { formatDirectory } from "./formatter";
 import { discoverSharedInfra, type SharedInfra } from "./in-process-client-helpers";
 import { InProcessClient } from "../../backends/in-process/client";
-import { EDIT_BENCHMARK_PROMPTS } from "./prompts/registry";
 import type { EditTask } from "./tasks";
 import {
 	verifyExpectedFileSubset,
@@ -18,8 +17,7 @@ import {
 } from "./verify";
 
 
-import type { TaskRunResult } from "./runner";
-
+import type { TaskRunResult } from "./runner/types";
 export const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..", "..");
 export const RUNS_DIR = path.join(REPO_ROOT, "runs");
 export const TMP = path.join(RUNS_DIR, `rb-${Math.random().toString(36).slice(2, 10)}`);

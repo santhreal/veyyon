@@ -359,7 +359,7 @@ function needsClaudeThinkingBetaHeader(model: Model<"google-gemini-cli">): boole
 	return model.provider === "google-antigravity" && model.id.startsWith("claude-") && model.reasoning;
 }
 
-function shouldInjectAntigravitySystemInstruction(modelId: string): boolean {
+export function shouldInjectAntigravitySystemInstruction(modelId: string): boolean {
 	const normalized = modelId.toLowerCase();
 	return normalized.includes("claude") || normalized.includes("gemini-3");
 }

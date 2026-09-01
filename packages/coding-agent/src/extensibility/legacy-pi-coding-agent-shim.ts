@@ -60,7 +60,7 @@ import { Type } from "./typebox";
 
 const LEGACY_BUILTIN_TOOL_MARKER = "__veyyonLegacyBuiltinTool";
 export const LEGACY_CODING_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
-const LEGACY_READ_ONLY_TOOL_NAMES = ["read", "grep", "find", "ls"] as const;
+export const LEGACY_READ_ONLY_TOOL_NAMES = ["read", "grep", "find", "ls"] as const;
 
 type LegacyCodingToolName = (typeof LEGACY_CODING_TOOL_NAMES)[number];
 type LegacyRegistryToolName = LegacyCodingToolName | "search";
