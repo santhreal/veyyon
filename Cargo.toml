@@ -451,7 +451,11 @@ tree-sitter-zig = "1.1"
 # This revision carries P10, the headless deterministic offscreen surface: a surfaceless wgpu
 # context, an offscreen render target, and tightly-packed RGBA8 readback, which is what lets a
 # scene render to bytes with no window, no display and no compositor.
-gpui = { git = "https://github.com/santhreal/zed", rev = "32dbf750f659546fad3c99b0b6a3406f88b466b7" }
+gpui = { git = "https://github.com/santhreal/zed", rev = "86edfba9ba46bf78f609549f87198b0e0c6c0263" }
+# The headless offscreen path needs the platform crate, which builds the renderer for the current
+# OS, and the wgpu crate, which supplies the text system. Same revision as gpui above.
+gpui_platform = { git = "https://github.com/santhreal/zed", rev = "86edfba9ba46bf78f609549f87198b0e0c6c0263" }
+gpui_wgpu = { git = "https://github.com/santhreal/zed", rev = "86edfba9ba46bf78f609549f87198b0e0c6c0263" }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Unsorted (added by `cargo add` - move into a section above)
