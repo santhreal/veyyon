@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 publish = false
-description = "The veyyon desktop front end's view of GPUI, pinned to the santhreal/zed fork carrying patches P1-P10"
+description = "The veyyon desktop front end's view of GPUI, pinned to the santhreal/zed fork by revision"
 
 [lints]
 workspace = true

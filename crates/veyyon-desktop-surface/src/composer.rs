@@ -31,7 +31,7 @@ pub fn composer(
 	// The float's ground is translucent so the transcript passing behind it
 	// stays perceptible, and the backdrop is blurred and saturated so that what
 	// passes behind reads as texture rather than as competing text. Fork patch
-	// P4 supplies the sampling; both values come from the composer's own
+	// P6 supplies the sampling; both values come from the composer's own
 	// material tokens, so the glass is retuned in the token file.
 	let mut ground = tokens.color(ColorRole::Float);
 	ground.a = geometry.ground_opacity;

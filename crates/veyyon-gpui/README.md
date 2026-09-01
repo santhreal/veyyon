@@ -9,10 +9,10 @@ The dependency is pinned by commit revision in the workspace `Cargo.toml`.
 
 ## Rebase Policy
 
-1. The `veyyon` branch contains upstream release tags plus local patches P1 through P10 applied in order.
+1. The `veyyon` branch contains upstream release tags plus the local patches, in series order, followed by any patch that carries a capability the series does not name.
 2. The branch contains no merge commits and no squashed patch sequences.
 3. Rebases occur on demand when upstream capabilities or fixes are required.
-4. Each rebase reapplies the patch series P1 through P10 in sequence on top of the target upstream revision.
+4. Each rebase reapplies the landed patches, in the order the status table below lists them, on top of the target upstream revision.
 5. The commit advancing the workspace `Cargo.toml` revision pin lists any patch adjustments required during the rebase.
 
 ## Patch Series Specification
@@ -45,18 +45,39 @@ Every patch has a corresponding golden test or invariant assertion in the reposi
 
 ## Patch Series Status
 
-The `veyyon` branch carries one commit over upstream:
-`32dbf750f659546fad3c99b0b6a3406f88b466b7`, which is P10 and is what the workspace pins.
+The workspace pins `4682106fc840da107787cd2e1722a280d0c8eefe`. Seven commits sit over upstream
+`399258feeaf90ad8a3a208c99221ee87b6452f38`:
+
+|series patch|commit|
+|---|---|
+|P1, affine transforms|`8253f6ed3b`|
+|P2, animator identity|`d01551a128`|
+|P3, spring integrator and native delay|`acd0490a45`|
+|P6, backdrop material|`4682106fc8`|
+|P10, headless deterministic surface|`9d4553735d`|
+|(outside the series) inner shadow and inset hairline on a rounded rect|`c2518a463b`|
+|(outside the series) per-corner radii on one quad primitive|`449fe47412`|
+
+Three commit subjects on the branch state a patch number the series does not assign them:
+`4682106fc8` says P4 and is P6, and the last two say P5 and P6 and are neither. Read the table
+above, not the subject lines. A rebase reapplies the capabilities in this order and does not
+reproduce those numbers.
 
 P10 adds `WgpuContext::new_surfaceless`, `WgpuRenderer::new_offscreen`, `WgpuRenderer::read_pixels`
 and `HeadlessAppContext::render_frame`, the last returning a `HeadlessFrame` of tightly-packed
 straight-alpha RGBA8 at a given size and scale factor. Output is byte-identical across renders and
 across processes: adapter selection scores discrete GPUs, the target is cleared to transparent
-black before each frame, and wgpu's 256-byte row alignment is unpadded on readback.
+black before each frame, and wgpu's 256-byte row alignment is unpadded on readback. It also carries
+the frame's text-run layouts and interactive hit rects in logical pixels, which is what lets an
+offscreen frame answer which of its rectangles a click reaches.
 
-P1 through P9 are unwritten. This crate declares no patch extension module until the patch it wraps
-exists on the branch. A module whose body is a comment describing an unwritten patch is worse than
-an absent one, because it makes the crate look finished to a reader and to a grep.
+The renderer is a process-wide resource: a third live `HeadlessAppContext` in one process aborts it
+with SIGSEGV. `veyyon_desktop_scene::headless_context` hands back a context bound to a permit that
+admits one at a time, and every consumer takes it from there.
+
+P4, P5, P7, P8 and P9 are unwritten. This crate declares no patch extension module until the patch
+it wraps exists on the branch. A module whose body is a comment describing an unwritten patch is
+worse than an absent one, because it makes the crate look finished to a reader and to a grep.
 
 ## Build Requirements
 
