@@ -6,6 +6,7 @@
 
 pub mod fixtures;
 pub mod frame;
+pub mod headless;
 pub mod layout;
 pub mod metrics;
 pub mod registry;
@@ -16,6 +17,10 @@ pub use fixtures::{
 	transcript_entry_fixture, usage_totals_fixture,
 };
 pub use frame::{FrameError, PerceptualDiff, RgbaColor, RgbaFrame};
+pub use headless::{
+	Appearance, RenderError, RenderOptions, distinct_pixel_values, headless_context, render_view,
+	write_png,
+};
 pub use layout::{
 	BorderPaint, BoxBounds, BoxId, DividerAxis, LayoutBox, LayoutBoxSpec, LayoutBoxTree,
 	LayoutBoxTreeBuilder, LayoutError, TextPaint,
