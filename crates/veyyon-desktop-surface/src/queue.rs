@@ -15,15 +15,38 @@ use veyyon_desktop_kit::{
 	Badge as BadgeChip, ColorRole, RadiusStep, SpacingStep, TextRamp, TextWeight, TokenSet,
 };
 use veyyon_desktop_tokens::QueueSurfaceTokens;
-use veyyon_gpui::{Div, IntoElement, ParentElement, Styled, div, px};
+use veyyon_gpui::{
+	Context, Div, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+	Styled, div, px,
+};
 
-use crate::model::{Row, Section};
+use crate::{
+	ShellView,
+	intent::Intent,
+	model::{Row, Section},
+};
+
+/// How many of a section's rows the rail draws.
+///
+/// `Parked` is paged because it is unbounded — a queue running for a week holds
+/// more parked sessions than a rail has height, and the rest are reached by the
+/// page control rather than by scrolling past them. Every other section is
+/// drawn whole.
+pub fn visible_rows(section: Section, count: usize, geometry: &QueueSurfaceTokens) -> usize {
+	if section == Section::Parked {
+		geometry.parked_initial_page_size.min(count)
+	} else {
+		count
+	}
+}
 
 /// Builds the queue rail.
 pub fn queue_rail(
 	sections: &[(Section, Vec<Row>)],
+	current: u64,
 	geometry: &QueueSurfaceTokens,
 	tokens: &TokenSet,
+	cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	let mut rail = div()
 		.flex()
@@ -47,17 +70,14 @@ pub fn queue_rail(
 		}
 		rail = rail.child(section_header(*section, rows.len(), geometry, tokens));
 
-		let visible = if *section == Section::Parked {
-			geometry.parked_initial_page_size.min(rows.len())
-		} else {
-			rows.len()
-		};
+		let visible = visible_rows(*section, rows.len(), geometry);
 
 		for row in rows.iter().take(visible) {
+			let selected = row.id == current;
 			rail = if section.draws_cards() {
-				rail.child(card_row(row, geometry, tokens))
+				rail.child(card_row(row, selected, geometry, tokens, cx))
 			} else {
-				rail.child(line_row(row, geometry, tokens))
+				rail.child(line_row(row, selected, geometry, tokens, cx))
 			};
 		}
 
@@ -105,9 +125,15 @@ fn section_header(
 }
 
 /// A card row: badge, elapsed time, title and subtitle.
-fn card_row(row: &Row, geometry: &QueueSurfaceTokens, tokens: &TokenSet) -> Div {
-	let ground = if row.current {
-		tokens.color(ColorRole::Canvas)
+fn card_row(
+	row: &Row,
+	selected: bool,
+	geometry: &QueueSurfaceTokens,
+	tokens: &TokenSet,
+	cx: &Context<ShellView>,
+) -> impl IntoElement {
+	let ground = if selected {
+		tokens.row_selected()
 	} else {
 		tokens.transparent()
 	};
@@ -141,7 +167,19 @@ fn card_row(row: &Row, geometry: &QueueSurfaceTokens, tokens: &TokenSet) -> Div 
 		);
 	}
 
+	let id = row.id;
+	let hover = tokens.row_hover();
+
 	div()
+		// The whole row is the target, not the title inside it. A hit area
+		// smaller than the row is the defect an operator experiences as the
+		// click that did nothing.
+		.id(("queue-card", id as usize))
+		.on_click(cx.listener(move |view, _event, _window, cx| {
+			view.dispatch(Intent::SelectSession(id));
+			cx.notify();
+		}))
+		.hover(move |style| style.bg(hover))
 		.h(px(geometry.card_px))
 		.mx(px(geometry.row_inset))
 		.pt(px(geometry.card_padding_top))
@@ -190,12 +228,33 @@ fn card_row(row: &Row, geometry: &QueueSurfaceTokens, tokens: &TokenSet) -> Div 
 }
 
 /// A line row: a title, and the badge reduced to a dot of its tint.
-fn line_row(row: &Row, geometry: &QueueSurfaceTokens, tokens: &TokenSet) -> Div {
+fn line_row(
+	row: &Row,
+	selected: bool,
+	geometry: &QueueSurfaceTokens,
+	tokens: &TokenSet,
+	cx: &Context<ShellView>,
+) -> impl IntoElement {
 	let dot_size = tokens.spacing(SpacingStep::S2);
+	let id = row.id;
+	let hover = tokens.row_hover();
+	let ground = if selected {
+		tokens.row_selected()
+	} else {
+		tokens.transparent()
+	};
 	let mut line = div()
+		.id(("queue-line", id as usize))
+		.on_click(cx.listener(move |view, _event, _window, cx| {
+			view.dispatch(Intent::SelectSession(id));
+			cx.notify();
+		}))
+		.hover(move |style| style.bg(hover))
 		.h(px(geometry.line_px))
 		.mx(px(geometry.row_inset))
 		.px(px(geometry.card_padding_horizontal))
+		.rounded(tokens.radius(RadiusStep::Sm))
+		.bg(ground)
 		.flex()
 		.flex_row()
 		.items_center()

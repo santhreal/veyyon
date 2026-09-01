@@ -14,6 +14,7 @@ pub mod cards;
 pub mod composer;
 pub mod drawer;
 pub mod fixture;
+pub mod intent;
 pub mod model;
 pub mod panel;
 pub mod queue;
@@ -21,6 +22,7 @@ pub mod shell;
 pub mod tokens;
 pub mod transcript;
 
+pub use intent::Intent;
 pub use model::*;
 pub use shell::ShellView;
 pub use tokens::{InstalledTokens, install_tokens};

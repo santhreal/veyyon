@@ -113,6 +113,10 @@ impl Section {
 /// A row in the queue.
 #[derive(Debug, Clone)]
 pub struct Row {
+	/// The session this row opens. Stable across a re-section, so selection
+	/// survives a row moving from Live to Deferred, which a positional index
+	/// would not.
+	pub id:       u64,
 	/// The session's title.
 	pub title:    String,
 	/// The repository or working directory, shown on card rows.
@@ -121,8 +125,6 @@ pub struct Row {
 	pub badge:    Option<Badge>,
 	/// Elapsed or due time, already formatted.
 	pub meta:     Option<String>,
-	/// Whether this row is the open session.
-	pub current:  bool,
 }
 
 /// One block inside an assistant turn (§5.2).
@@ -185,6 +187,20 @@ pub enum Card {
 	},
 }
 
+impl Card {
+	/// How many answers this card offers the operator.
+	///
+	/// An approval and a plan each offer two, and a question offers whatever it
+	/// was asked with. This is the count of controls the card contributes, so a
+	/// card kind added without answers is a card that cannot be answered.
+	pub const fn answer_count(&self) -> usize {
+		match self {
+			Self::Approval { .. } | Self::Plan { .. } => 2,
+			Self::Question { options, .. } => options.len(),
+		}
+	}
+}
+
 /// A row in the right panel's file tree (§5.4).
 #[derive(Debug, Clone)]
 pub struct TreeRow {
@@ -200,40 +216,62 @@ pub struct TreeRow {
 #[derive(Debug, Clone)]
 pub struct ShellState {
 	/// The window title: the open session's name.
-	pub title:      String,
+	pub title:        String,
 	/// The queue's sections and their rows.
-	pub sections:   Vec<(Section, Vec<Row>)>,
+	pub sections:     Vec<(Section, Vec<Row>)>,
 	/// The open session's transcript.
-	pub transcript: Vec<Turn>,
+	pub transcript:   Vec<Turn>,
 	/// The composer's current text, empty when it shows its placeholder.
-	pub composed:   String,
+	pub composed:     String,
 	/// The run bar's status line.
-	pub run_status: Option<(Badge, String)>,
+	pub run_status:   Option<(Badge, String)>,
 	/// The right panel's tree, empty when the panel is closed.
-	pub tree:       Vec<TreeRow>,
+	pub tree:         Vec<TreeRow>,
 	/// The right panel's tab labels and which is active.
-	pub tabs:       Vec<String>,
+	pub tabs:         Vec<String>,
 	/// The active tab's index.
-	pub active_tab: usize,
+	pub active_tab:   usize,
 	/// Decisions attached above the composer.
-	pub cards:      Vec<Card>,
-	/// Supervised output lines, absent when the drawer is closed.
-	pub drawer:     Option<Vec<String>>,
+	pub cards:        Vec<Card>,
+	/// Supervised output lines. Retained while the drawer is closed, so
+	/// reopening it shows what was there rather than an empty pane.
+	pub drawer_lines: Vec<String>,
+	/// Whether the terminal drawer is open.
+	pub drawer_open:  bool,
+	/// The open session.
+	pub current_id:   u64,
+}
+
+impl ShellState {
+	/// The row with this id, in whatever section holds it.
+	///
+	/// A row's identity is the session's, not its position, because a section
+	/// re-sorts under the operator and a position taken before a click is not
+	/// the row that was clicked.
+	pub fn row(&self, id: u64) -> Option<&Row> {
+		self
+			.sections
+			.iter()
+			.flat_map(|(_, rows)| rows.iter())
+			.find(|row| row.id == id)
+	}
 }
 
 impl Default for ShellState {
 	fn default() -> Self {
 		Self {
-			title:      "veyyon".to_string(),
-			sections:   Vec::new(),
-			transcript: Vec::new(),
-			composed:   String::new(),
-			run_status: None,
-			tree:       Vec::new(),
-			tabs:       Vec::new(),
-			active_tab: 0,
-			cards:      Vec::new(),
-			drawer:     None,
+			title:        "veyyon".to_string(),
+			sections:     Vec::new(),
+			transcript:   Vec::new(),
+			composed:     String::new(),
+			run_status:   None,
+			tree:         Vec::new(),
+			tabs:         Vec::new(),
+			active_tab:   0,
+			cards:        Vec::new(),
+			drawer_lines: Vec::new(),
+			drawer_open:  false,
+			current_id:   0,
 		}
 	}
 }

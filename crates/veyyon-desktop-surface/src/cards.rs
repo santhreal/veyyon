@@ -15,15 +15,19 @@ use veyyon_desktop_kit::{
 	TokenSet,
 };
 use veyyon_desktop_tokens::AttachedCardsSurfaceTokens;
-use veyyon_gpui::{Div, IntoElement, ParentElement, Styled, div, px};
+use veyyon_gpui::{
+	AnyElement, Context, Div, InteractiveElement, IntoElement, ParentElement,
+	StatefulInteractiveElement, Styled, div, px,
+};
 
-use crate::model::Card;
+use crate::{ShellView, intent::Intent, model::Card};
 
 /// Builds the attached card stack, capped at the token's visible count.
 pub fn card_stack(
 	cards: &[Card],
 	geometry: &AttachedCardsSurfaceTokens,
 	tokens: &TokenSet,
+	cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	let mut stack = div()
 		.flex()
@@ -32,12 +36,23 @@ pub fn card_stack(
 		.gap(tokens.spacing(SpacingStep::S2));
 
 	let visible = geometry.stack_max_visible.min(cards.len());
-	for card in cards.iter().take(visible) {
-		stack = stack.child(match card {
-			Card::Approval { tool, detail } => approval(tool, detail, geometry, tokens),
-			Card::Question { prompt, options } => question(prompt, options, geometry, tokens),
-			Card::Plan { title, body } => plan(title, body, geometry, tokens),
-		});
+	for (index, card) in cards.iter().enumerate().take(visible) {
+		let body: AnyElement = match card {
+			Card::Approval { tool, detail } => {
+				approval(index, tool, detail, geometry, tokens, cx).into_any_element()
+			},
+			Card::Question { prompt, options } => {
+				question(index, prompt, options, geometry, tokens, cx).into_any_element()
+			},
+			Card::Plan { title, body } => {
+				plan(index, title, body, geometry, tokens, cx).into_any_element()
+			},
+		};
+
+		// The card's position identifies it, so a control inside it needs only
+		// a position of its own. The two compose into one identity per control,
+		// which is what keeps two cards offering "Approve" distinguishable.
+		stack = stack.child(div().id(("card", index)).w_full().child(body));
 	}
 
 	let hidden = cards.len().saturating_sub(visible);
@@ -79,10 +94,12 @@ fn shell(tint: TintRole, padding: f32, tokens: &TokenSet) -> Div {
 
 /// An approval: what the agent wants to run, and the two answers.
 fn approval(
+	card: usize,
 	tool: &str,
 	detail: &[String],
 	geometry: &AttachedCardsSurfaceTokens,
 	tokens: &TokenSet,
+	cx: &Context<ShellView>,
 ) -> Div {
 	let mut pane = div()
 		.w_full()
@@ -124,17 +141,26 @@ fn approval(
 				.child(tool.to_owned()),
 		)
 		.child(pane)
-		.child(answers(&["Reject", "Approve"], tokens))
+		.child(answers(
+			&[
+				("Reject", Intent::Approval { card, approved: false }),
+				("Approve", Intent::Approval { card, approved: true }),
+			],
+			tokens,
+			cx,
+		))
 }
 
 /// A question: what the agent is asking, and the answers it offers.
 fn question(
+	card: usize,
 	prompt: &str,
 	options: &[String],
 	geometry: &AttachedCardsSurfaceTokens,
 	tokens: &TokenSet,
+	cx: &Context<ShellView>,
 ) -> Div {
-	let mut card = shell(TintRole::Input, geometry.question_padding, tokens).child(
+	let mut element = shell(TintRole::Input, geometry.question_padding, tokens).child(
 		div()
 			.w_full()
 			.text_size(px(geometry.question_size.size))
@@ -143,9 +169,20 @@ fn question(
 			.child(prompt.to_owned()),
 	);
 
-	for option in options {
-		card = card.child(
+	// A question's options are its answers: the row is the control, not a list
+	// above one, because an option an operator cannot click is a transcript of
+	// the question rather than a way to answer it.
+	for (option, label) in options.iter().enumerate() {
+		let hover = tokens.row_hover();
+
+		element = element.child(
 			div()
+				.id(("option", option))
+				.on_click(cx.listener(move |view, _event, _window, cx| {
+					view.dispatch(Intent::Answer { card, option });
+					cx.notify();
+				}))
+				.hover(move |style| style.bg(hover))
 				.h(px(geometry.question_option_row_height_px))
 				.w_full()
 				.flex()
@@ -160,19 +197,21 @@ fn question(
 				.text_size(tokens.font_size(TextRamp::Small))
 				.line_height(tokens.line_height(TextRamp::Small))
 				.text_color(tokens.color(ColorRole::Secondary))
-				.child(option.clone()),
+				.child(label.clone()),
 		);
 	}
 
-	card
+	element
 }
 
 /// A plan: what the agent intends, capped in height and faded at the cut.
 fn plan(
+	card: usize,
 	title: &str,
 	body: &[String],
 	geometry: &AttachedCardsSurfaceTokens,
 	tokens: &TokenSet,
+	cx: &Context<ShellView>,
 ) -> Div {
 	let mut markdown = div()
 		.w_full()
@@ -208,12 +247,19 @@ fn plan(
 				.child(title.to_owned()),
 		)
 		.child(markdown)
-		.child(answers(&["Revise", "Accept"], tokens))
+		.child(answers(
+			&[
+				("Revise", Intent::Plan { card, accepted: false }),
+				("Accept", Intent::Plan { card, accepted: true }),
+			],
+			tokens,
+			cx,
+		))
 }
 
 /// The answer row every card ends with. A decision surface that states the
 /// question without offering the answers is a notification.
-fn answers(labels: &[&str], tokens: &TokenSet) -> Div {
+fn answers(choices: &[(&str, Intent)], tokens: &TokenSet, cx: &Context<ShellView>) -> Div {
 	let mut row = div()
 		.w_full()
 		.flex()
@@ -221,19 +267,27 @@ fn answers(labels: &[&str], tokens: &TokenSet) -> Div {
 		.justify_end()
 		.gap(tokens.spacing(SpacingStep::S2));
 
-	// The last label is the affirmative one and carries the accent; the rest
+	// The last choice is the affirmative one and carries the accent; the rest
 	// are quiet, so the default reading of the card is what it will do.
-	let last = labels.len().saturating_sub(1);
-	for (index, label) in labels.iter().enumerate() {
+	let last = choices.len().saturating_sub(1);
+	for (index, (label, intent)) in choices.iter().enumerate() {
 		let affirmative = index == last;
 		let (ground, ink) = if affirmative {
 			(tokens.color(ColorRole::Accent), tokens.color(ColorRole::AccentForeground))
 		} else {
 			(tokens.color(ColorRole::Inset), tokens.color(ColorRole::Secondary))
 		};
+		let hover = tokens.row_hover();
+		let intent = intent.clone();
 
 		row = row.child(
 			div()
+				.id(("choice", index))
+				.on_click(cx.listener(move |view, _event, _window, cx| {
+					view.dispatch(intent.clone());
+					cx.notify();
+				}))
+				.hover(move |style| style.bg(hover))
 				.flex_shrink_0()
 				.px(tokens.spacing(SpacingStep::S3))
 				.py(tokens.spacing(SpacingStep::S1))

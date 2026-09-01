@@ -14,20 +14,25 @@ use veyyon_desktop_kit::{
 	Badge as BadgeChip, ColorRole, RadiusStep, SpacingStep, TextRamp, TextWeight, TokenSet,
 };
 use veyyon_desktop_tokens::ComposerSurfaceTokens;
-use veyyon_gpui::{BoxShadow, Div, IntoElement, ParentElement, Styled, div, point, px};
+use veyyon_gpui::{
+	BoxShadow, Context, Div, InteractiveElement, IntoElement, ParentElement,
+	StatefulInteractiveElement, Styled, div, point, px,
+};
 
-use crate::model::Badge;
+use crate::{ShellView, intent::Intent, model::Badge};
 
 /// Builds the composer.
 pub fn composer(
 	composed: &str,
 	geometry: &ComposerSurfaceTokens,
 	tokens: &TokenSet,
+	cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	// The float's ground is translucent so the transcript passing behind it
-	// stays perceptible. The blur that would go with it is a renderer
-	// capability the fork does not expose yet; until it lands this is a plain
-	// alpha, which is the honest subset rather than a fake frosted look.
+	// stays perceptible, and the backdrop is blurred and saturated so that what
+	// passes behind reads as texture rather than as competing text. Fork patch
+	// P4 supplies the sampling; both values come from the composer's own
+	// material tokens, so the glass is retuned in the token file.
 	let mut ground = tokens.color(ColorRole::Float);
 	ground.a = geometry.ground_opacity;
 
@@ -47,6 +52,8 @@ pub fn composer(
 			.min_h(px(geometry.rest_height_px))
 			.max_h(px(geometry.growth_cap_px))
 			.bg(ground)
+			.backdrop_blur(px(geometry.blur_px))
+			.backdrop_saturation(geometry.saturation)
 			.rounded(px(geometry.radius_outer))
 			.border(px(geometry.hairline_stroke))
 			.border_color(tokens.color(ColorRole::Hairline))
@@ -74,12 +81,17 @@ pub fn composer(
 					.text_color(tokens.color(ink))
 					.child(text.to_owned()),
 			)
-			.child(footer(geometry, tokens)),
+			.child(footer(composed, geometry, tokens, cx)),
 	)
 }
 
-/// The composer's footer: what the next send will use.
-fn footer(geometry: &ComposerSurfaceTokens, tokens: &TokenSet) -> Div {
+/// The composer's footer: what the next send will use, and the send itself.
+fn footer(
+	composed: &str,
+	geometry: &ComposerSurfaceTokens,
+	tokens: &TokenSet,
+	cx: &Context<ShellView>,
+) -> Div {
 	// The footer states the settings that change what a send does, capped at
 	// the token's control count so a narrow window sheds the least important
 	// rather than wrapping to a second row.
@@ -104,17 +116,34 @@ fn footer(geometry: &ComposerSurfaceTokens, tokens: &TokenSet) -> Div {
 		);
 	}
 
+	// An empty composer has nothing to send, and a send control that looks
+	// live while doing nothing is the interaction an operator reads as broken.
+	// So the control states whether there is anything to send: accent when
+	// there is, quiet when there is not.
+	let sendable = !composed.trim().is_empty();
+	let (ground, ink) = if sendable {
+		(tokens.color(ColorRole::Accent), tokens.color(ColorRole::AccentForeground))
+	} else {
+		(tokens.color(ColorRole::Inset), tokens.color(ColorRole::Muted))
+	};
+	let text = composed.to_owned();
+
 	row.child(div().flex_1()).child(
 		div()
+			.id("composer-send")
+			.on_click(cx.listener(move |view, _event, _window, cx| {
+				view.dispatch(Intent::Send(text.clone()));
+				cx.notify();
+			}))
 			.flex_shrink_0()
 			.px(tokens.spacing(SpacingStep::S2))
 			.py(tokens.spacing(SpacingStep::S1))
 			.rounded(tokens.radius(RadiusStep::Sm))
-			.bg(tokens.color(ColorRole::Accent))
+			.bg(ground)
 			.text_size(tokens.font_size(TextRamp::Micro))
 			.line_height(tokens.line_height(TextRamp::Micro))
 			.font_weight(tokens.font_weight(TextWeight::Medium))
-			.text_color(tokens.color(ColorRole::AccentForeground))
+			.text_color(ink)
 			.child("Send"),
 	)
 }

@@ -15,82 +15,85 @@ use crate::model::{Badge, Block, Card, Row, Section, ShellState, TreeRow, Turn};
 /// Builds a shell state exercising every section, badge and block kind.
 pub fn populated() -> ShellState {
 	ShellState {
-		title:      "veyyon-desktop-surface".to_owned(),
-		sections:   vec![
+		title:        "veyyon-desktop-surface".to_owned(),
+		sections:     vec![
 			(Section::Unsent, vec![Row {
+				id:       1,
 				title:    "Split the oversized loader files".to_owned(),
 				subtitle: "veyyon/crates/veyyon-desktop-tokens".to_owned(),
 				badge:    None,
 				meta:     None,
-				current:  false,
 			}]),
 			(Section::Pinned, vec![Row {
+				id:       2,
 				title:    "Reach the headless renderer and prove it deterministic".to_owned(),
 				subtitle: "veyyon/crates/veyyon-desktop-scene".to_owned(),
 				badge:    Some(Badge::Approval),
 				meta:     Some("4m".to_owned()),
-				current:  false,
 			}]),
 			(Section::Live, vec![
 				Row {
+					id:       3,
 					title:    "Build the queue, transcript and composer surfaces".to_owned(),
 					subtitle: "veyyon/crates/veyyon-desktop-surface".to_owned(),
 					badge:    Some(Badge::Working),
 					meta:     Some("12m".to_owned()),
-					current:  true,
 				},
 				Row {
+					id:       4,
 					title:    "Per-corner radii on a single quad, at both device ratios".to_owned(),
 					subtitle: "zed/crates/gpui".to_owned(),
 					badge:    Some(Badge::Watching),
 					meta:     Some("31m".to_owned()),
-					current:  false,
 				},
 				Row {
+					id:       5,
 					title:    "Which providers carry the premium multiplier".to_owned(),
 					subtitle: "veyyon/packages/catalog".to_owned(),
 					badge:    Some(Badge::Input),
 					meta:     Some("2m".to_owned()),
-					current:  false,
 				},
 				Row {
+					id:       6,
 					title:    "Close the fail-open colour fallback in the kit".to_owned(),
 					subtitle: "veyyon/crates/veyyon-desktop-kit".to_owned(),
 					badge:    Some(Badge::Plan),
 					meta:     Some("8m".to_owned()),
-					current:  false,
 				},
 			]),
 			(Section::Deferred, vec![
 				Row {
+					id:       7,
 					title:    "Regenerate the contact sheet after the truncation fix".to_owned(),
 					subtitle: String::new(),
 					badge:    Some(Badge::Due),
 					meta:     Some("09:00".to_owned()),
-					current:  false,
 				},
 				Row {
+					id:       8,
 					title:    "Backdrop blur that samples the framebuffer".to_owned(),
 					subtitle: String::new(),
 					badge:    None,
 					meta:     Some("Thu".to_owned()),
-					current:  false,
 				},
 			]),
 			// Longer than the page size, so the rail's overflow row is drawn.
 			(Section::Parked, parked_rows()),
 		],
-		transcript: transcript(),
-		composed:   String::new(),
-		run_status: Some((
+		transcript:   transcript(),
+		composed:     String::new(),
+		run_status:   Some((
 			Badge::Working,
 			"Rendering the shell headless at 1440x900, one frame per section".to_owned(),
 		)),
-		tree:       tree(),
-		tabs:       vec!["Changes".to_owned(), "Terminal".to_owned(), "Diagnostics".to_owned()],
-		active_tab: 0,
-		cards:      cards(),
-		drawer:     None,
+		tree:         tree(),
+		tabs:         vec!["Changes".to_owned(), "Terminal".to_owned(), "Diagnostics".to_owned()],
+		active_tab:   0,
+		cards:        cards(),
+		drawer_lines: Vec::new(),
+		drawer_open:  false,
+		// The row the queue draws as open, and the session the titlebar names.
+		current_id:   3,
 	}
 }
 
@@ -108,15 +111,22 @@ fn parked_rows() -> Vec<Row> {
 
 	titles
 		.into_iter()
-		.map(|title| Row {
+		.enumerate()
+		.map(|(index, title)| Row {
+			// Ids continue past the sections above, because a row's identity is
+			// the session's, and two rows sharing one is two rows the queue
+			// cannot tell apart when one is clicked.
+			id:       PARKED_FIRST_ID + index as u64,
 			title:    title.to_owned(),
 			subtitle: String::new(),
 			badge:    None,
 			meta:     None,
-			current:  false,
 		})
 		.collect()
 }
+
+/// The first id the parked list uses, past every row above it.
+const PARKED_FIRST_ID: u64 = 9;
 
 /// A transcript with every block kind, and one turn long enough to wrap.
 fn transcript() -> Vec<Turn> {
@@ -225,12 +235,13 @@ fn cards() -> Vec<Card> {
 /// transcript is the thing being hidden.
 pub fn with_drawer() -> ShellState {
 	ShellState {
-		drawer: Some(vec![
+		drawer_lines: vec![
 			"$ cargo test -p veyyon-desktop-surface".to_owned(),
 			"   Compiling veyyon-desktop-surface v1.3.0".to_owned(),
 			"    Finished `test` profile in 41.02s".to_owned(),
 			"test the_shell_draws_its_regions_where_the_tokens_put_them ... ok".to_owned(),
-		]),
+		],
+		drawer_open: true,
 		..populated()
 	}
 }

@@ -6,11 +6,14 @@
 //! construction — a closed panel gives its width back to the transcript — so
 //! nothing it shows may be the only place a fact appears.
 
-use veyyon_desktop_kit::{ColorRole, SpacingStep, TextRamp, TextWeight, TokenSet};
+use veyyon_desktop_kit::{ColorRole, RadiusStep, SpacingStep, TextRamp, TextWeight, TokenSet};
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
-use veyyon_gpui::{Div, IntoElement, ParentElement, Styled, div, px};
+use veyyon_gpui::{
+	Context, Div, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+	Styled, div, px,
+};
 
-use crate::model::TreeRow;
+use crate::{ShellView, intent::Intent, model::TreeRow};
 
 /// Builds the right panel.
 pub fn right_panel(
@@ -20,6 +23,7 @@ pub fn right_panel(
 	width: f32,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
+	cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	div()
 		.flex()
@@ -32,7 +36,7 @@ pub fn right_panel(
 		.border_l(px(geometry.chrome_resize_handle_line_px))
 		.border_color(tokens.color(ColorRole::Hairline))
 		.overflow_hidden()
-		.child(tab_strip(tabs, active, geometry, tokens))
+		.child(tab_strip(tabs, active, geometry, tokens, cx))
 		.child(tree(rows, geometry, tokens))
 }
 
@@ -42,6 +46,7 @@ fn tab_strip(
 	active: usize,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
+	cx: &Context<ShellView>,
 ) -> Div {
 	let mut strip = div()
 		.h(px(geometry.tabs_height_px))
@@ -69,10 +74,29 @@ fn tab_strip(
 			TextWeight::Regular
 		};
 
+		let hover = tokens.row_hover();
+		let ground = if selected {
+			tokens.row_selected()
+		} else {
+			tokens.transparent()
+		};
+
 		strip = strip.child(
 			div()
+				// The tab strip is the panel's whole navigation, so a tab that
+				// states which one is active without switching to it leaves the
+				// panel showing one thing and offering three.
+				.id(("panel-tab", index))
+				.on_click(cx.listener(move |view, _event, _window, cx| {
+					view.dispatch(Intent::SelectTab(index));
+					cx.notify();
+				}))
+				.hover(move |style| style.bg(hover))
 				.max_w(px(geometry.tabs_max_width_px))
 				.min_w_0()
+				.px(tokens.spacing(SpacingStep::S2))
+				.rounded(tokens.radius(RadiusStep::Sm))
+				.bg(ground)
 				.overflow_hidden()
 				.whitespace_nowrap()
 				.truncate()
