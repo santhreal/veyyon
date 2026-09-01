@@ -58,6 +58,8 @@
 			"hosts/terminal/engine/test/**/*.ts",
 			"hosts/terminal/engine/bench/**/*.ts",
 			"hosts/terminal/engine/scripts/**/*.ts",
+			"hosts/gui/src/**/*.ts",
+			"hosts/gui/test/**/*.ts",
 			"kernel/src/**/*.ts",
 			"kernel/test/**/*.ts",
 			"natives/bridge/bindings/src/**/*.ts",

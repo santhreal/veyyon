@@ -47,6 +47,12 @@ Rust is grouped by purpose under `natives/`.
 Vendored third-party Rust code is under `natives/vendor/`, and the whole-product conformance corpus
 is under `tests/conformance/`.
 
+`hosts/` holds the surfaces a tool's output is drawn on, and there are two. A tool returns a
+`ToolView` from `contracts/view` and names neither: `hosts/terminal/engine` draws it as rows of
+escape bytes, and `hosts/gui` draws the same models as HTML. The second one is what keeps the
+contract a contract, because a view member no other host can draw fails there rather than being
+discovered by whoever writes the next client.
+
 `kernel/` (`@veyyon/kernel`) is the only workspace member that is not a plugin: it holds the
 plugin loader, the contribution registry, and the session spine.
 

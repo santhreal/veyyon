@@ -75,8 +75,20 @@ import { typeScriptMembers } from "./workspace-layout";
  * by everything, so scrapers there would put linkedom and the fetch ladder under every package;
  * `contracts/*` may hold no runtime; and no other plugin is about retrieval. A future rise still
  * needs the sentence above: which existing package was considered and why it could not serve.
+ *
+ * The count went 21 -> 22 with `hosts/gui`. It is the second implementation of `contracts/view`, and
+ * a contract with one implementation is a description of that implementation: while the terminal was
+ * the only host, a view member could mean "whatever the terminal does with it" and nothing would
+ * fail. This host draws every kind of the union into HTML, so a member that cannot be drawn without a
+ * terminal is a red gate rather than a discovery made by whoever writes the browser client. It cannot
+ * live anywhere else: `contracts/*` may hold no runtime at all, `hosts/terminal/engine` IS the
+ * coupling being checked, `packages/tool-render` renders the wire protocol's recorded calls with
+ * React for the export, the dashboard and the web client rather than drawing a live `ToolView`, and
+ * `packages/collab-web` is a guest client that would drag a relay and a socket into a pure string
+ * function. A future rise still needs the sentence above: which existing package was considered and
+ * why it could not serve.
  */
-const PACKAGE_BUDGET = 21;
+const PACKAGE_BUDGET = 22;
 
 /**
  * Every workspace member, as `<root>/<name>`.

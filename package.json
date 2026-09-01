@@ -13,6 +13,7 @@
 	"workspaces": {
 		"packages": [
 			"contracts/*",
+			"hosts/gui",
 			"hosts/terminal/engine",
 			"kernel",
 			"natives/bridge/bindings",

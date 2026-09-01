@@ -20,6 +20,7 @@ operator manual.
 |`packages/catalog`|Model catalog: bundled models.json, provider descriptors, model identity/classification|
 |`packages/agent`|Agent runtime with tool calling and state management|
 |`packages/coding-agent`|Main CLI application (primary focus)|
+|`hosts/gui`|Graphical host: draws the same `ToolView` models as HTML, the second implementation that keeps `contracts/view` a contract rather than a description of the terminal|
 |`hosts/terminal/engine`|Terminal UI library with differential rendering|
 |`packages/stats`|Local observability dashboard (`veyyon stats`)|
 |`packages/utils`|Shared utilities (logger, streams, temp files)|
