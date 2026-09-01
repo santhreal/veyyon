@@ -184,8 +184,11 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 				for (const relativePath of fileList) {
 					const absolutePath = path.resolve(this.session.cwd, relativePath);
 					const tag = await recordFileSnapshot(this.session, absolutePath);
+					if (tag) hashContexts.set(relativePath, { tag });
+				}
 			}
-			}
+			const outputLines: string[] = [];
+			const displayLines: string[] = [];
 			const renderMatchesForFile = (relativePath: string): { model: string[]; display: string[] } => {
 				const modelOut: string[] = [];
 				const displayOut: string[] = [];
