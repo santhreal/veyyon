@@ -46,6 +46,7 @@ import { type BashInteractiveResult, runInteractiveBashPty } from "./bash-intera
 import { checkBashInterception } from "./bash-interceptor";
 import { canUseInteractiveBashPty } from "./bash-pty-selection";
 import { expandInternalUrls, type InternalUrlExpansionOptions } from "./bash-skill-urls";
+import { bashToolView } from "./bash-view";
 import { resolveEvalBackends } from "./eval-backends";
 
 export const BASH_DEFAULT_PREVIEW_LINES = DEFAULT_TERMINAL_PREVIEW_LINES;
@@ -473,6 +474,7 @@ function stripHeredocBodies(command: string): string {
  */
 export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSchemaWithAsync, BashToolDetails> {
 	readonly name = "bash";
+	readonly view = bashToolView;
 	// An arrow rather than the bare function so `this.session` is read at CALL
 	// time: the operator's `tools.protectedPaths` additions are settings, and a
 	// field initializer cannot be relied on to see the constructor's parameter

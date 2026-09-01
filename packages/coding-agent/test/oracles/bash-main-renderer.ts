@@ -1,31 +1,49 @@
 /**
- * Terminal drawing for the bash tool. The tool half in `bash.ts` decides what
- * happened; this half decides how a terminal shows it, and is the only one of the two
- * that reaches the TUI.
+ * Differential oracle: the bash tool renderer from origin/main.
+ *
+ * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/tools/bash.ts`, its renderer half).
+ * Frozen: never edited to make a test pass.
+ *
+ * The branch split that half into `src/tools/shell/bash-render.ts` and rewrote its import
+ * specifiers for the new depth and nothing else; every function here was diffed against main byte
+ * for byte before this file was cut. Here the specifiers are the package subpaths this branch
+ * publishes, so what it draws is main's.
  */
 
-import type { Component } from "@veyyon/tui";
-import { ImageProtocol, TERMINAL } from "@veyyon/tui";
-import { getProjectDir, signalName } from "@veyyon/utils";
-import { formatExitCodeNotice } from "../../exec/exit-notice";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import { paintHotTail, shimmerPhase } from "../../modes/terminal/components/chrome/follow";
-import { truncateToVisualLines } from "../../modes/terminal/components/transcript/visual-truncate";
-import { expandHintSuffix } from "../../modes/terminal/utils/key-hint";
-import { highlightCode } from "../../theme/highlight";
-import type { Theme } from "../../theme/theme-class";
-import { CachedOutputBlock, markFramedBlockComponent, outputBlockContentWidth } from "../../tui/output-block";
-import { renderStatusLine } from "../../tui/status-line";
-import { getSixelLineMask } from "../../utils/sixel";
-import { formatStyledTruncationWarning, stripOutputNotice, stripRawOutputArtifactNotice } from "../core/output-meta";
+import { formatExitCodeNotice } from "@veyyon/coding-agent/exec/exit-notice";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { paintHotTail, shimmerPhase } from "@veyyon/coding-agent/modes/terminal/components/chrome/follow";
+import { truncateToVisualLines } from "@veyyon/coding-agent/modes/terminal/components/transcript/visual-truncate";
+import { expandHintSuffix } from "@veyyon/coding-agent/modes/terminal/utils/key-hint";
+import { highlightCode } from "@veyyon/coding-agent/theme/highlight";
+import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
+import {
+	formatStyledTruncationWarning,
+	stripOutputNotice,
+	stripRawOutputArtifactNotice,
+} from "@veyyon/coding-agent/tools/core/output-meta";
 import {
 	capPreviewLines,
 	formatToolWorkingDirectory,
 	previewWindowRows,
 	renderCollapsedOutputLines,
 	replaceTabs,
-} from "../core/render-utils";
-import { BASH_DEFAULT_PREVIEW_LINES, type BashToolDetails, formatBackgroundNotice } from "./bash";
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import {
+	BASH_DEFAULT_PREVIEW_LINES,
+	type BashToolDetails,
+	formatBackgroundNotice,
+} from "@veyyon/coding-agent/tools/shell/bash";
+import {
+	CachedOutputBlock,
+	markFramedBlockComponent,
+	outputBlockContentWidth,
+} from "@veyyon/coding-agent/tui/output-block";
+import { renderStatusLine } from "@veyyon/coding-agent/tui/status-line";
+import { getSixelLineMask } from "@veyyon/coding-agent/utils/sixel";
+import type { Component } from "@veyyon/tui";
+import { ImageProtocol, TERMINAL } from "@veyyon/tui";
+import { getProjectDir, signalName } from "@veyyon/utils";
 
 function escapeBashEnvValueForDisplay(value: string): string {
 	return value
@@ -524,7 +542,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 	};
 }
 
-export const bashToolRenderer = createShellRenderer<BashRenderArgs>({
+export const bashMainRenderer = createShellRenderer<BashRenderArgs>({
 	resolveTitle: () => "Bash",
 	resolveCommand: args => args?.command,
 	resolveCwd: args => args?.cwd,

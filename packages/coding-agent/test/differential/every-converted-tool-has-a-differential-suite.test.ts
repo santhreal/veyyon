@@ -103,6 +103,7 @@ describe("differential coverage", () => {
 			"job",
 			"eval",
 			"lsp",
+			"bash",
 		]);
 	});
 

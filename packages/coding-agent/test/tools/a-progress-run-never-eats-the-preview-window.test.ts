@@ -30,7 +30,7 @@ import {
 	PROGRESS_RUN_MIN_LINES,
 	previewWindowRows,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import { bashToolRenderer } from "@veyyon/coding-agent/tools/shell/bash-render";
+import { bashToolView } from "@veyyon/coding-agent/tools/shell/bash-view";
 import { evalToolView } from "@veyyon/coding-agent/tools/shell/eval-view";
 import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
@@ -144,13 +144,14 @@ describe("the collapsed card window", () => {
 
 	test("bash keeps the warning and names what it counted away", () => {
 		const rendered = plain(
-			bashToolRenderer
-				.renderResult(
+			drawToolView(
+				bashToolView.renderResult(
 					{ content: [{ type: "text", text: CARGO_CAPTURE.join("\n") }] },
-					{ expanded: false, isPartial: false },
-					activeTheme,
-				)
-				.render(80),
+					{ expanded: false, partial: false },
+					{ command: "cargo test -p keyhog-scanner" },
+				),
+				activeTheme,
+			).render(80),
 		);
 		expect(rendered.join("\n")).toContain(WARNING);
 		expect(rendered.join("\n")).toContain("+39 earlier");
@@ -159,13 +160,14 @@ describe("the collapsed card window", () => {
 
 	test("ctrl+o still shows every progress line bash counted away", () => {
 		const rendered = plain(
-			bashToolRenderer
-				.renderResult(
+			drawToolView(
+				bashToolView.renderResult(
 					{ content: [{ type: "text", text: CARGO_CAPTURE.join("\n") }] },
-					{ expanded: true, isPartial: false },
-					activeTheme,
-				)
-				.render(80),
+					{ expanded: true, partial: false },
+					{ command: "cargo test -p keyhog-scanner" },
+				),
+				activeTheme,
+			).render(80),
 		);
 		expect(rendered.filter(line => line.includes("Compiling"))).toHaveLength(40);
 		expect(rendered.join("\n")).not.toContain("+39 earlier");

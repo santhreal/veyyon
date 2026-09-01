@@ -6,7 +6,7 @@
  */
 import { viewToolRenderer } from "../../tui/draw-tool-view";
 import type { ToolRenderer } from "../renderers";
-import { bashToolRenderer } from "./bash-render";
+import { bashToolView } from "./bash-view";
 import { debugToolView } from "./debug-view";
 import { evalToolView } from "./eval-view";
 import { jobToolView } from "./job-view";
@@ -24,7 +24,11 @@ function hasStreamedRenderArgs(args: unknown): boolean {
 }
 
 export const shellRenderers: Record<string, ToolRenderer> = {
-	bash: bashToolRenderer as ToolRenderer,
+	// The card opens on the command it ran, drawn in the response flow: a header would say "Bash"
+	// over `$ ls`. Neither the preview nor a still-arriving output consumes a spinner frame — the
+	// command and its bytes are the whole card, and the motion a live block carries is the rail's
+	// own repaint in `tool-execution.ts`, which needs no declaration here.
+	bash: viewToolRenderer(bashToolView, { inline: true, mergeCallAndResult: true }) as ToolRenderer,
 	// Only an op that can sit produces a partial result worth animating: list, describe, stop, restart
 	// and send answer in one round trip, and a spinner over those is motion with nothing behind it.
 	launch: viewToolRenderer(launchToolView, {

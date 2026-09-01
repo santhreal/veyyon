@@ -23,7 +23,8 @@
  */
 
 import { theme } from "../../packages/coding-agent/src/theme/theme";
-import { bashToolRenderer } from "../../packages/coding-agent/src/tools/shell/bash-render";
+import { bashToolView } from "../../packages/coding-agent/src/tools/shell/bash-view";
+import { drawToolView } from "../../packages/coding-agent/src/tui/draw-tool-view";
 import {
 	paintRailMotion,
 	RAIL_SETTLE_FRAMES,
@@ -50,15 +51,16 @@ const OUTPUT = [
 ].join("\n");
 
 const running = hasFlag("running");
-const component = running
-	? bashToolRenderer.renderCall({ command }, { expanded: false, isPartial: true }, theme)
-	: bashToolRenderer.renderResult(
-			// `BashToolDetails` carries the exit code only; the command and output reach the renderer
+const view = running
+	? bashToolView.renderCall({ command }, { expanded: false, partial: true })
+	: bashToolView.renderResult(
+			// `BashToolDetails` carries the exit code only; the command and output reach the card
 			// through the call args and the result content.
 			{ content: [{ type: "text", text: OUTPUT }], details: { exitCode: 0 } },
-			{ expanded: false, isPartial: false },
-			theme,
+			{ expanded: false, partial: false },
+			{ command },
 		);
+const component = drawToolView(view, theme);
 
 const lines = component.render(width);
 const idle = flag("idle", "");

@@ -204,7 +204,7 @@ function textOf(view: ToolView): string[] {
 			return [...(view.header === undefined ? [] : textOf(view.header)), ...view.lines.flatMap(line => spans(line))];
 		case "framedBlock":
 			return [
-				...textOf(view.header),
+				...(view.header === undefined ? [] : textOf(view.header)),
 				...view.sections.flatMap(section => [section.label ?? "", ...section.lines.flatMap(line => spans(line))]),
 			];
 		case "notice":

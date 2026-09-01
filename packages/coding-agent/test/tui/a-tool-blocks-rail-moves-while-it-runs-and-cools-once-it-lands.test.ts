@@ -44,7 +44,8 @@ import { stripVTControlCharacters } from "node:util";
 import { interactionFixtures } from "@veyyon/coding-agent/cli/gallery-fixtures/interaction";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
-import { bashToolRenderer } from "@veyyon/coding-agent/tools/shell/bash-render";
+import { bashToolView } from "@veyyon/coding-agent/tools/shell/bash-view";
+import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import {
 	findRailCell,
 	paintRailMotion,
@@ -72,20 +73,23 @@ const OUTPUT = [
 	"test rejects_a_truncated_header ... ok",
 ].join("\n");
 
-/** The settled block, exactly as the renderer draws it with no animation. */
+/** The settled block, exactly as the terminal draws the card with no animation. */
 function settledBlock(): readonly string[] {
-	return bashToolRenderer
-		.renderResult(
+	return drawToolView(
+		bashToolView.renderResult(
 			{ content: [{ type: "text", text: OUTPUT }], details: { exitCode: 0 } },
-			{ expanded: false, isPartial: false },
-			theme,
-		)
-		.render(WIDTH);
+			{ expanded: false, partial: false },
+			{ command: COMMAND },
+		),
+		theme,
+	).render(WIDTH);
 }
 
 /** The running preview, which is the shape the idle pass plays over. */
 function runningBlock(): readonly string[] {
-	return bashToolRenderer.renderCall({ command: COMMAND }, { expanded: false, isPartial: true }, theme).render(WIDTH);
+	return drawToolView(bashToolView.renderCall({ command: COMMAND }, { expanded: false, partial: true }), theme).render(
+		WIDTH,
+	);
 }
 
 function plain(lines: readonly string[]): string[] {

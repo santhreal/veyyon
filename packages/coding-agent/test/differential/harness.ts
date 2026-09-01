@@ -39,7 +39,14 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import type { ExtensionAPI } from "@veyyon/coding-agent/extensibility/extensions";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, type Component, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
-import type { FramedBlockView, LineToolView, ToolView, ToolViewContext, ToolViewRenderer } from "@veyyon/view";
+import type {
+	FramedBlockView,
+	LineToolView,
+	StatusRowView,
+	ToolView,
+	ToolViewContext,
+	ToolViewRenderer,
+} from "@veyyon/view";
 
 /**
  * The full set of tools converted from Component renderers to ToolViews in this PR.
@@ -86,6 +93,7 @@ export const CONVERTED_TOOLS = [
 	"job",
 	"eval",
 	"lsp",
+	"bash",
 ] as const;
 
 export const WIDTH = 80;
@@ -147,9 +155,22 @@ export function lineView(view: ToolView): LineToolView {
  * panel changed the card, so this throws rather than returning early. An early return would leave the
  * cell green with nothing compared.
  */
-export function framedView(view: ToolView): FramedBlockView {
+export function framedBlock(view: ToolView): FramedBlockView {
 	if (view.kind !== "framedBlock") throw new Error(`expected a framed block, got ${view.kind}`);
 	return view;
+}
+
+/**
+ * A framed-block view carrying a header, or a failure.
+ *
+ * Every converted card but bash states a header row, and a suite that compares one asserts its
+ * title, status and emblem. The header is optional on the type because the bash card suppresses it,
+ * so this narrows it once here instead of guarding it at each assertion.
+ */
+export function framedView(view: ToolView): FramedBlockView & { readonly header: StatusRowView } {
+	const frame = framedBlock(view);
+	if (frame.header === undefined) throw new Error("expected a framed block with a header");
+	return frame as FramedBlockView & { readonly header: StatusRowView };
 }
 
 export function trimLines(lines: readonly string[]): string[] {

@@ -374,6 +374,16 @@ export interface ViewTailWindow {
 	 * window the reader has states: a taller terminal shows more of it.
 	 */
 	max?: number;
+	/**
+	 * That the host's own bound applies as well, so the window is the SMALLER of the two.
+	 *
+	 * A card that states a bound of its own and sets this asks for at most that many rows and never
+	 * more than fit: a stream of output windowed to the tool's ten rows still has to sit inside a
+	 * twenty-four-row terminal, where the frame, the other sections and the composer take rows the
+	 * tool cannot see. Without it a bound is the tool's alone, which is what a card whose section is
+	 * short by construction wants.
+	 */
+	viewport?: boolean;
 }
 
 /**
@@ -421,6 +431,15 @@ export interface ViewCodeLines {
 	 * host that draws no gutter ignores both.
 	 */
 	lineNumbers?: readonly (number | null)[];
+	/**
+	 * A run the host draws before the FIRST line of the source, as an aside rather than as source.
+	 *
+	 * The prompt a shell command is read under is this: `$ cd services &&` states where the command
+	 * ran and is not part of what ran, so a host that highlights the source leaves the lead alone and
+	 * one that hands the source to a tokenizer never sends it. A section with no lead is source and
+	 * nothing else, which is what a file is, and a section with no source draws no lead.
+	 */
+	lead?: string;
 }
 
 /**
@@ -545,7 +564,16 @@ export interface HeadedBlockView {
  */
 export interface FramedBlockView {
 	kind: "framedBlock";
-	header: StatusRowView;
+	/**
+	 * Omitted means the block opens on its own first section, for a card whose body already states
+	 * what it is.
+	 *
+	 * A shell card is the case: its first row is the command that was run, and a title row above it
+	 * reads as the word "Bash" over `$ ls`. The outcome still reaches the reader, through `state` on
+	 * the frame and through whatever the body says, so a headerless card is one that would have
+	 * repeated itself rather than one that reports less.
+	 */
+	header?: StatusRowView;
 	/** Omitted means the block reports nothing beyond its contents. */
 	state?: ViewStatus;
 	sections: readonly ViewSection[];

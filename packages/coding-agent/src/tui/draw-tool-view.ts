@@ -12,7 +12,7 @@
  */
 
 import { Ellipsis } from "@veyyon/natives";
-import { type Component, Markdown, renderInlineMarkdown, Text } from "@veyyon/tui";
+import { type Component, Markdown, renderInlineMarkdown, TERMINAL, Text } from "@veyyon/tui";
 import { pluralize } from "@veyyon/utils/format";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
@@ -35,6 +35,7 @@ import type {
 	ViewTone,
 } from "@veyyon/view";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import { paintHotTail, shimmerPhase } from "../modes/terminal/components/chrome/follow";
 import { highlightCode } from "../theme/highlight";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { shimmerEnabled, shimmerText } from "../theme/shimmer";
@@ -177,6 +178,24 @@ export function drawSpan(span: ViewSpan, theme: Theme, frame?: number): string {
 		return linked(span, formatBadge(span.text, TONE_COLORS[span.tone ?? "accent"], theme));
 	}
 	if (span.captured) return styleTerminalRow(span.text, theme.getFgAnsi(TONE_COLORS.output));
+	// A live run of ANOTHER PROGRAM's output is the follow rather than a shimmer: the newest
+	// characters of a stream grade up to the accent and cool back into the output colour, which is the
+	// treatment every live tool row on this host already had. A shimmer sweeps a whole run, which
+	// reads as one word arriving rather than as a stream still pouring, and it would sweep a build's
+	// last line end to end. The run is toned first, so the head of the row keeps the output colour the
+	// trail cools into. Truecolor only, and the helper returns the row untouched without it.
+	if (span.live === true && span.tone === "output") {
+		return linked(
+			span,
+			paintHotTail(
+				theme.fg(TONE_COLORS.output, span.text),
+				theme,
+				TERMINAL.trueColor,
+				"toolOutput",
+				shimmerPhase(performance.now()),
+			),
+		);
+	}
 	// The sweep paints its own three tiers across the run, so it REPLACES the tone rather than
 	// layering over it: a shimmer opened inside a colour ends its last tier in that colour's reset and
 	// leaves the rest of the run drawn in whatever the row opened with.
@@ -339,7 +358,7 @@ function drawMarkdownRows(source: string, width: number, theme: Theme, tone: Vie
  * settled muted rail and carries the outcome across the plate.
  */
 export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFrame?: number): Component {
-	const header = drawStatusRow(view.header, theme, spinnerFrame);
+	const header = view.header === undefined ? undefined : drawStatusRow(view.header, theme, spinnerFrame);
 	const frame = view.state === undefined ? undefined : BLOCK_STATES[view.state];
 	const sections = view.sections.map(section => {
 		// A section states source or a document, never both: `code` is the reading that invents no
@@ -435,7 +454,17 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 		state: frame?.state,
 		// A listing keeps a quiet edge whatever the write reported: the state belongs to the write and
 		// the record is what the body shows, so neither the plate nor the rail colour states it.
-		borderColor: view.contents === "listing" ? "borderMuted" : view.contents === "data" ? undefined : frame?.rail,
+		//
+		// A card with no header row has no row that states its outcome, so the rail is where the
+		// outcome goes: the shell card is the case, and its edge is accent while the run is arriving,
+		// quiet once it settles and the failure colour when it failed. Naming no colour is what asks
+		// the block for that, since the block derives one from the state it was given.
+		borderColor:
+			view.contents === "listing"
+				? "borderMuted"
+				: view.contents === "data" || view.header === undefined
+					? undefined
+					: frame?.rail,
 		applyBg: view.contents === undefined || view.contents === "report",
 		width,
 	}));
@@ -502,7 +531,7 @@ function drawCodeLines(lines: readonly ViewLine[], code: ViewCodeLines, theme: T
 	const language = code.language ?? "";
 	const first = code.firstLineNumber;
 	const numbers = code.lineNumbers;
-	const shape = `${first ?? "-"}:${code.totalLines ?? "-"}:${numbers === undefined ? "-" : numbers.join(",")}`;
+	const shape = `${first ?? "-"}:${code.totalLines ?? "-"}:${numbers === undefined ? "-" : numbers.join(",")}:${code.lead ?? "-"}`;
 	if (
 		codeMemo.theme === theme &&
 		codeMemo.language === language &&
@@ -535,12 +564,18 @@ function drawCodeLines(lines: readonly ViewLine[], code: ViewCodeLines, theme: T
 								`${theme.fg("dim", `${String(first + index).padStart(gutter, " ")} `)}${replaceTabs(body)}`,
 						);
 					})();
+	// The lead is the prompt the first line is read under, so it opens that row in the aside colour
+	// and the highlighter never sees it. A section carrying no source draws no lead: a prompt over a
+	// command nobody has states nothing.
+	const lead = code.lead;
+	const led =
+		lead === undefined ? rows : rows.map((row, index) => (index === 0 ? `${theme.fg("dim", lead)}${row}` : row));
 	codeMemo.theme = theme;
 	codeMemo.language = language;
 	codeMemo.shape = shape;
 	codeMemo.source = source;
-	codeMemo.rows = rows;
-	return rows;
+	codeMemo.rows = led;
+	return led;
 }
 
 /**
@@ -584,7 +619,12 @@ function drawItemList(
 function drawTailWindow(lines: readonly string[], window: ViewTailWindow, theme: Theme, width: number): string[] {
 	const rows: string[] = [];
 	for (const line of lines) rows.push(...wrapTextWithAnsi(line.trimEnd(), width));
-	const max = window.max ?? previewWindowRows();
+	const max =
+		window.max === undefined
+			? previewWindowRows()
+			: window.viewport === true
+				? Math.min(window.max, previewWindowRows())
+				: window.max;
 	if (rows.length <= max) return rows;
 	const kept = max <= 1 ? [] : rows.slice(rows.length - (max - 1));
 	const earlier = rows.length - kept.length;

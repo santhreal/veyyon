@@ -1,8 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { BashTool } from "@veyyon/coding-agent/tools/shell/bash";
-import { bashToolRenderer } from "@veyyon/coding-agent/tools/shell/bash-render";
+import { BashTool, type BashToolDetails } from "@veyyon/coding-agent/tools/shell/bash";
+import { bashToolView } from "@veyyon/coding-agent/tools/shell/bash-view";
+import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { sanitizeText } from "@veyyon/utils";
 import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
 import { makeToolSession } from "../helpers/tool-session";
@@ -95,11 +96,13 @@ describe("a persisted bash result reads its notices from the footer", () => {
 	async function render(text: string, details: Record<string, unknown>, isError: boolean): Promise<string> {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
-		const component = bashToolRenderer.renderResult(
-			{ content: [{ type: "text", text }], details, isError },
-			{ expanded: false, isPartial: false },
+		const component = drawToolView(
+			bashToolView.renderResult(
+				{ content: [{ type: "text", text }], details: details as BashToolDetails, isError },
+				{ expanded: false, partial: false },
+				{ command: "echo hi" },
+			),
 			theme!,
-			{ command: "echo hi" },
 		);
 		return sanitizeText(component.render(120).join("\n"));
 	}

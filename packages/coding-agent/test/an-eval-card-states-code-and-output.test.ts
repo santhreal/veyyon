@@ -28,10 +28,10 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { EvalCellResult, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "@veyyon/coding-agent/eval/types";
 import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/theme/theme";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/core/render-utils";
-import { type EvalRenderArgs, evalToolView, type EvalViewResult } from "@veyyon/coding-agent/tools/shell/eval-view";
+import { type EvalRenderArgs, type EvalViewResult, evalToolView } from "@veyyon/coding-agent/tools/shell/eval-view";
 import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
-import type { FramedBlockView, ToolView, ToolViewContext, ViewSection, ViewStatus } from "@veyyon/view";
+import type { FramedBlockView, StatusRowView, ToolView, ToolViewContext, ViewSection, ViewStatus } from "@veyyon/view";
 
 const WIDTH = 100;
 
@@ -62,11 +62,16 @@ function view(details: EvalToolDetails | undefined, ctx = context(), text = ""):
 	return evalToolView.renderResult(result(details, text), ctx, undefined);
 }
 
-/** The same card as a framed block, or a failure naming what arrived instead. */
-function framed(details: EvalToolDetails | undefined, ctx = context(), text = ""): FramedBlockView {
+/** The same card as a framed block with its header, or a failure naming what arrived instead. */
+function framed(
+	details: EvalToolDetails | undefined,
+	ctx = context(),
+	text = "",
+): FramedBlockView & { readonly header: StatusRowView } {
 	const drawn = view(details, ctx, text);
 	if (drawn.kind !== "framedBlock") throw new Error(`expected a framed block, got ${drawn.kind}`);
-	return drawn;
+	if (drawn.header === undefined) throw new Error("expected an eval card with a header");
+	return drawn as FramedBlockView & { readonly header: StatusRowView };
 }
 
 /** The rows the terminal draws for a result card, as the words a reader sees. */
@@ -224,7 +229,9 @@ describe("an eval card states code and output", () => {
 		expect(text).toContain("warning: unused variable `x`");
 		expect(text.split("\n").filter(line => line.includes("Compiling"))).toHaveLength(1);
 		// Opened, every counted-away line comes back and the count is gone.
-		const opened = sectionText(section(framed({ cells: [cell({ output: capture.join("\n") })] }, context({ expanded: true })), "Output"));
+		const opened = sectionText(
+			section(framed({ cells: [cell({ output: capture.join("\n") })] }, context({ expanded: true })), "Output"),
+		);
 		expect(opened.split("\n").filter(line => line.includes("Compiling"))).toHaveLength(40);
 		expect(opened).not.toContain("+39 earlier");
 	});
@@ -248,7 +255,10 @@ describe("an eval card states code and output", () => {
 		expect(kept).not.toContain("read");
 
 		// Opened: every call, plus what each one listed or read.
-		const opened = section(framed({ cells: [cell({ statusEvents: events })] }, context({ expanded: true })), "Status");
+		const opened = section(
+			framed({ cells: [cell({ statusEvents: events })] }, context({ expanded: true })),
+			"Status",
+		);
 		expect(opened?.hidden).toBeUndefined();
 		const all = sectionText(opened);
 		expect(all).toContain("120 chars");
@@ -268,7 +278,13 @@ describe("an eval card states code and output", () => {
 	it("lists what an expanded call read, and says how much more there was", () => {
 		const preview = Array.from({ length: 6 }, (_unused, index) => `line ${index}`).join("\n");
 		const opened = sectionText(
-			section(framed({ cells: [cell({ statusEvents: [{ op: "cat", files: 2, chars: 80, preview }] })] }, context({ expanded: true })), "Status"),
+			section(
+				framed(
+					{ cells: [cell({ statusEvents: [{ op: "cat", files: 2, chars: 80, preview }] })] },
+					context({ expanded: true }),
+				),
+				"Status",
+			),
 		);
 		expect(opened).toContain("2 files");
 		expect(opened).toContain("line 0");
@@ -329,7 +345,13 @@ describe("an eval card states code and output", () => {
 	it("states a subagent's task while it has no tool and no intent to report", () => {
 		const text = sectionText(
 			section(
-				framed({ cells: [cell({ statusEvents: [{ op: "agent", id: "Fresh", status: "running", taskPreview: "port the loader" }] })] }),
+				framed({
+					cells: [
+						cell({
+							statusEvents: [{ op: "agent", id: "Fresh", status: "running", taskPreview: "port the loader" }],
+						}),
+					],
+				}),
 				"Agents",
 			),
 		);
@@ -362,13 +384,20 @@ describe("an eval card states code and output", () => {
 		expect(text).toContain("900");
 		expect(trailing?.lines.some(line => line.some(span => span.tone === "warning"))).toBe(true);
 		// A single display is not labelled, since there is nothing to tell it apart from.
-		expect(sectionText(framed({ cells: [cell()], jsonOutputs: [{ ok: true }] }).sections.at(-1))).not.toContain("display[1]");
+		expect(sectionText(framed({ cells: [cell()], jsonOutputs: [{ ok: true }] }).sections.at(-1))).not.toContain(
+			"display[1]",
+		);
 	});
 
 	it("states the returned text as the card when no cell ran", () => {
 		const drawn = view({ statusEvents: [{ op: "log", message: "kernel down" }] }, context(), "eval failed to start");
 		expect(drawn.kind).toBe("headedBlock");
-		const text = rows({ statusEvents: [{ op: "log", message: "kernel down" }] }, context(), WIDTH, "eval failed to start").join("\n");
+		const text = rows(
+			{ statusEvents: [{ op: "log", message: "kernel down" }] },
+			context(),
+			WIDTH,
+			"eval failed to start",
+		).join("\n");
 		expect(text).toContain("eval failed to start");
 		expect(text).toContain("kernel down");
 	});
@@ -389,7 +418,13 @@ describe("an eval card states code and output", () => {
 		for (const width of [40, 80, 200]) {
 			const drawn = rows(
 				{
-					cells: [cell({ code: long, output: long, statusEvents: [{ op: "agent", id: "A".repeat(80), status: "running" }] })],
+					cells: [
+						cell({
+							code: long,
+							output: long,
+							statusEvents: [{ op: "agent", id: "A".repeat(80), status: "running" }],
+						}),
+					],
 					notice: long,
 				},
 				context(),

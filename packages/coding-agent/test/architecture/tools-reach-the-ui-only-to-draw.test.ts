@@ -42,13 +42,6 @@ const TOOLS = path.join(SRC, "tools");
  */
 const ALLOWED = new Map<string, string>([
 	["theme/theme", "The palette and symbol set. What every coloured tool block is coloured with."],
-	["theme/highlight", "Syntax highlighting for code a tool prints."],
-	["modes/terminal/utils/key-hint", "Formats a keybinding as the hint text a block prints. No key handling."],
-	[
-		"modes/terminal/components/transcript/visual-truncate",
-		"Truncates rendered output to a line budget. Pure text in, text out.",
-	],
-	["modes/terminal/components/chrome/follow", "The hot-tail painter for streaming output. Drawing only."],
 	[
 		"modes/terminal/components/dialogs/hook-editor",
 		"One layout constant, `HOOK_EDITOR_TEXT_PAD_COLS`, so the ask tool's block lines up with the editor above it. The editor itself is never constructed here.",
@@ -123,7 +116,7 @@ describe("tools reach the terminal UI only to draw", () => {
 		expect(files.length).toBeGreaterThan(50);
 		const targets = new Set(files.flatMap(uiImportsIn));
 
-		expect(targets.size).toBeGreaterThan(5);
+		expect(targets.size).toBeGreaterThan(2);
 		expect(targets).toContain("theme/theme");
 	});
 
@@ -231,13 +224,10 @@ describe("tools reach the terminal UI only to draw", () => {
  * `@veyyon/tui` and get a widget it can draw. Same concern, different boundary, so
  * it lives beside its sibling instead of in a file of its own.
  *
- * WHAT THE ROWS SAY NOW. Six of the nine are `-render.ts` / `render.ts` siblings,
- * which is where drawing belongs: a tool module decides what happened, its sibling
- * decides how a terminal shows it, and only the sibling names the renderer package.
- * The three that are not siblings, `bash-interactive.ts`, `render-utils.ts` and
- * `renderers.ts`, take `type Component` and nothing else, so they bind no host at run
- * time. No module under `src/tools/` constructs a terminal value in place any more,
- * which is why `DRAWS_IN_PLACE` below is empty.
+ * WHAT THE ROWS SAY NOW. Three rows are left, and none of them draws: `bash-interactive.ts`,
+ * `render-utils.ts` and `renderers.ts` take `type Component` and nothing else, so they bind no host
+ * at run time. Every card a tool states is a `ToolView` its host draws, which is why the `-render.ts`
+ * siblings that used to fill this ledger are gone and `DRAWS_IN_PLACE` below is empty.
  *
  * A `type ` prefix marks a name erased at compile time. It is recorded rather than
  * skipped because an erased import is still a contract this package cannot change
@@ -253,7 +243,6 @@ describe("tools reach the terminal UI only to draw", () => {
  */
 const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/shell/bash-interactive.ts", ["type Component"]],
-	["tools/shell/bash-render.ts", ["ImageProtocol", "TERMINAL", "type Component"]],
 	["tools/core/render-utils.ts", ["type Component"]],
 	["tools/renderers.ts", ["type Component"]],
 ]);
@@ -478,6 +467,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"tools/search/search-view.ts",
 			"tools/search/structure-search-view.ts",
 			"tools/search/text-search-view.ts",
+			"tools/shell/bash-view.ts",
 			"tools/shell/debug-view.ts",
 			"tools/shell/eval-view.ts",
 			"tools/shell/job-view.ts",
@@ -547,15 +537,15 @@ describe("a tool names the terminal package only where it is recorded", () => {
 	 * returned nothing for every file would report an empty map and a missing-row
 	 * failure rather than a pass -- but a walker that found no FILES would produce the
 	 * same empty map from the other side, and the diff would be unreadable. Prove the
-	 * extractor works on a file whose imports are known before trusting it on 29.
+	 * extractor works on files whose imports are known before trusting it on the rest:
+	 * one that takes an erased name, and one that takes none at all.
 	 */
-	it("extracts both erased and runtime names from a real tool", () => {
+	it("extracts erased names from a real tool and none from a tool that draws nothing", () => {
 		expect(files.length).toBeGreaterThan(50);
-		expect(tuiNamesIn(fs.readFileSync(path.join(TOOLS, "shell", "bash-render.ts"), "utf-8"))).toEqual([
-			"ImageProtocol",
-			"TERMINAL",
+		expect(tuiNamesIn(fs.readFileSync(path.join(TOOLS, "shell", "bash-interactive.ts"), "utf-8"))).toEqual([
 			"type Component",
 		]);
+		expect(tuiNamesIn(fs.readFileSync(path.join(TOOLS, "shell", "bash-view.ts"), "utf-8"))).toEqual([]);
 	});
 
 	/**
@@ -646,7 +636,7 @@ describe("a registry entry either describes its card or is recorded as drawing o
 
 	it("records every entry that still draws terminal components", () => {
 		const drawing = entries.filter(name => toolRenderers[name]?.view === undefined);
-		expect(drawing).toEqual(["apply_patch", "bash", "edit", "task"]);
+		expect(drawing).toEqual(["apply_patch", "edit", "task"]);
 	});
 
 	it("has a view on every converted entry, and that view draws both halves of the card", () => {
@@ -654,6 +644,7 @@ describe("a registry entry either describes its card or is recorded as drawing o
 		expect(described).toEqual([
 			"ask",
 			"ast_edit",
+			"bash",
 			"browser",
 			"debug",
 			"eval",

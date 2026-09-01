@@ -22,9 +22,11 @@ import type { FramedBlockView, HeadedBlockView, StatusRowView, ToolView, ViewLin
 const COLLAPSED = { expanded: false } as const;
 const EXPANDED = { expanded: true } as const;
 
-function framed(view: ToolView): FramedBlockView {
+function framed(view: ToolView): FramedBlockView & { readonly header: StatusRowView } {
 	expect(view.kind).toBe("framedBlock");
-	return view as FramedBlockView;
+	const frame = view as FramedBlockView;
+	if (frame.header === undefined) throw new Error("expected an lsp card with a header");
+	return frame as FramedBlockView & { readonly header: StatusRowView };
 }
 
 function statusRow(view: ToolView): StatusRowView {

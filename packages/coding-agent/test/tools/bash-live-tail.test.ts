@@ -24,7 +24,8 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { FOLLOW_TUNING } from "@veyyon/coding-agent/modes/terminal/components/chrome/follow";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
-import { bashToolRenderer } from "@veyyon/coding-agent/tools/shell/bash-render";
+import { bashToolView } from "@veyyon/coding-agent/tools/shell/bash-view";
+import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { TERMINAL } from "@veyyon/tui";
 
 const terminal = TERMINAL as unknown as { trueColor: boolean };
@@ -45,11 +46,13 @@ function distinctFgColors(line: string): Set<string> {
 async function renderBash(isPartial: boolean): Promise<{ lines: string[] }> {
 	const theme = await getThemeByName("titanium");
 	expect(theme).toBeDefined();
-	const component = bashToolRenderer.renderResult(
-		{ content: [{ type: "text", text: OUTPUT }], details: {}, isError: false },
-		{ expanded: false, isPartial },
+	const component = drawToolView(
+		bashToolView.renderResult(
+			{ content: [{ type: "text", text: OUTPUT }], details: {}, isError: false },
+			{ expanded: false, partial: isPartial },
+			{ command: "some-long-running-build" },
+		),
 		theme!,
-		{ command: "some-long-running-build" },
 	);
 	return { lines: [...component.render(100)] };
 }
