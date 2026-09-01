@@ -22,8 +22,10 @@ pub use color::{ColorParseError, ColorRole, RgbColor, Theme};
 pub use dumper::dump_to_dir;
 pub use elevation::{ElevationLevel, ElevationTokens};
 pub use error::TokenError;
-pub use loader::load_from_dir;
-pub use loader_theme::{APPEARANCES, THEME_VERSION, load_bundled_themes, load_theme};
+pub use loader::{load_bundled_tokens, load_from_dir};
+pub use loader_theme::{
+	APPEARANCES, THEME_VERSION, load_bundled_theme, load_bundled_themes, load_theme,
+};
 pub use motion::{
 	DirectThenSpringModel, DurationModel, EasingCurve, FlipModel, MotionModel, MotionRole,
 	MotionRoleConfig, MotionTokens, ReducedMotion, SpringFadeModel, SpringModel, TwoStepModel,
