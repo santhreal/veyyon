@@ -317,6 +317,14 @@ export function paintFirstFrame(version: string): FirstFrame {
 			// would record the NEW card were never emitted -- only the diff was -- so the recording is
 			// dropped and the next launch composes one and records it. One corrected launch, not a run
 			// of them.
+			const at = window.findIndex((row, index) => row !== previous[index]);
+			logger.debug("First-frame recording dropped: the composed card disagreed with the replay", {
+				row: at === -1 ? window.length : at,
+				replayed: at === -1 ? undefined : previous[at],
+				composed: at === -1 ? undefined : window[at],
+				replayedRows: previous.length,
+				composedRows: window.length,
+			});
 			clearFirstFrameRecording();
 		},
 		async settleQueuedInput(): Promise<boolean> {
