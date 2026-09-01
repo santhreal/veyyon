@@ -97,6 +97,18 @@ export interface ViewSpan {
 	 */
 	file?: string;
 	/**
+	 * The line inside `file` this run names, which the host opens the file AT.
+	 *
+	 * A search result is the case: the run is one matched line of one file, so the target is a
+	 * position rather than a document, and a run that named the file alone would send a reader to its
+	 * first line. Separate from `file` because most runs that name a path mean the whole of it, and a
+	 * host that can only open documents ignores this and still opens the right one.
+	 *
+	 * Meaningless without `file`, and one-based: the first line of a file is 1, which is what every
+	 * editor and every terminal that follows a link expects.
+	 */
+	fileLine?: number;
+	/**
 	 * The language of the source this run names, which a host may badge.
 	 *
 	 * The span-level twin of `StatusRowView.language`, for a line that names a file inside a card

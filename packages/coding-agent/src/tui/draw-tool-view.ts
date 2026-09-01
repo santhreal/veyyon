@@ -152,10 +152,15 @@ export function drawSpan(span: ViewSpan, theme: Theme): string {
  * A path and a URL are two targets rather than one: `fileHyperlink` resolves a relative path against
  * the working directory and percent-encodes it into a `file://` URI, which `urlHyperlink` refuses
  * outright since it accepts http and https alone. A run naming both is drawn as its file, because a
- * terminal opens that directly and the URL beside it is the same thing at one remove.
+ * terminal opens that directly and the URL beside it is the same thing at one remove. A line inside
+ * that file reaches the link as the `line` query parameter `fileHyperlink` writes into the URI.
  */
 function linked(span: ViewSpan, drawn: string): string {
-	if (span.file !== undefined) return fileHyperlink(span.file, drawn);
+	if (span.file !== undefined) {
+		return span.fileLine === undefined
+			? fileHyperlink(span.file, drawn)
+			: fileHyperlink(span.file, drawn, { line: span.fileLine });
+	}
 	return span.link === undefined ? drawn : urlHyperlink(span.link, drawn);
 }
 

@@ -12,7 +12,7 @@ import type { SearchToolDetails, SearchToolInput, SearchType } from "./search";
 import type { StructureSearchDetails, StructureSearchRenderArgs } from "./structure-search";
 import { structureSearchRenderer } from "./structure-search-render";
 import type { TextSearchDetails, TextSearchRenderArgs } from "./text-search";
-import { textSearchRenderer } from "./text-search-render";
+import { type TextSearchViewResult, textSearchToolView } from "./text-search-view";
 
 function renderedType(args: unknown, details?: unknown): SearchType | undefined {
 	if (isRecord(args) && (args.type === "files" || args.type === "text" || args.type === "structure")) {
@@ -66,7 +66,15 @@ export const searchToolRenderer = {
 			);
 		}
 		if (args?.type === "text") {
-			return textSearchRenderer.renderCall(args as TextSearchRenderArgs, options, uiTheme);
+			return drawToolView(
+				textSearchToolView.renderCall(args as TextSearchRenderArgs, {
+					expanded: options.expanded,
+					partial: options.isPartial,
+					frame: options.spinnerFrame,
+				}),
+				uiTheme,
+				options.spinnerFrame,
+			);
 		}
 		if (args?.type === "structure") {
 			return structureSearchRenderer.renderCall(args as StructureSearchRenderArgs, options, uiTheme);
@@ -97,11 +105,14 @@ export const searchToolRenderer = {
 			);
 		}
 		if (type === "text") {
-			return textSearchRenderer.renderResult(
-				{ ...result, details: details as TextSearchDetails | undefined },
-				options,
+			return drawToolView(
+				textSearchToolView.renderResult(
+					{ ...result, details: details as TextSearchDetails | undefined } satisfies TextSearchViewResult,
+					{ expanded: options.expanded, partial: options.isPartial, frame: options.spinnerFrame },
+					args as TextSearchRenderArgs | undefined,
+				),
 				uiTheme,
-				args as TextSearchRenderArgs | undefined,
+				options.spinnerFrame,
 			);
 		}
 		if (type === "structure") {

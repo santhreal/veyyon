@@ -262,7 +262,6 @@ const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/shell/bash-render.ts", ["ImageProtocol", "TERMINAL", "type Component"]],
 	["tools/web/browser/render.ts", ["Text", "type Component"]],
 	["tools/shell/eval-render.ts", ["Markdown", "Text", "type Component"]],
-	["tools/search/file-search-render.ts", ["Text", "type Component"]],
 	["tools/web/gh-renderer.ts", ["Text", "type Component"]],
 	["tools/shell/job-render.ts", ["Text", "type Component"]],
 	["tools/shell/launch-render.ts", ["Text", "type Component"]],
@@ -271,7 +270,6 @@ const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/renderers.ts", ["type Component"]],
 	["tools/search/search-renderer.ts", ["Text", "type Component"]],
 	["tools/search/structure-search-render.ts", ["Text", "type Component"]],
-	["tools/search/text-search-render.ts", ["Text", "type Component"]],
 	["tools/agent/vibe-render.ts", ["Text", "type Component"]],
 ]);
 
@@ -475,7 +473,9 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"tools/fs/set-cwd.ts",
 			"tools/fs/write-view.ts",
 			"tools/search/ast-edit-view.ts",
+			"tools/search/file-search-view.ts",
 			"tools/search/search-tool-bm25-view.ts",
+			"tools/search/text-search-view.ts",
 			"tools/shell/debug-view.ts",
 			"tools/shell/ssh-view.ts",
 			"tools/web/fetch-view.ts",

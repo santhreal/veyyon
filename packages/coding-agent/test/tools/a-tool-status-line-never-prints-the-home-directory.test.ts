@@ -28,7 +28,6 @@ import { formatScopeMeta, TRUNCATE_LENGTHS } from "../../src/tools/core/render-u
 import { toolRenderers } from "../../src/tools/renderers";
 import { searchToolRenderer } from "../../src/tools/search/search-renderer";
 import { structureSearchRenderer } from "../../src/tools/search/structure-search-render";
-import { textSearchRenderer } from "../../src/tools/search/text-search-render";
 
 const HOME = os.homedir();
 const RENDER_WIDTH = 240;
@@ -82,7 +81,14 @@ type ScopeRenderer = {
 describe("a search renderer shortens the scope it was given", () => {
 	const scope = `${HOME}/workspace/project/src`;
 	const cases: ReadonlyArray<[string, ScopeRenderer, object, string]> = [
-		["text search", textSearchRenderer, { input: "needle", path: scope }, "in ~/workspace/project/src"],
+		[
+			"text search",
+			// Through the search renderer, since the text card is a view the terminal draws rather than
+			// a renderer module to import.
+			searchToolRenderer as unknown as ScopeRenderer,
+			{ type: "text", input: "needle", path: scope },
+			"in ~/workspace/project/src",
+		],
 		[
 			"file search",
 			// Through the search renderer, since the files card is a view the terminal draws rather than
