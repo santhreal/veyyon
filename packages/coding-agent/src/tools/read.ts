@@ -90,6 +90,7 @@ import {
 import {
 	executeReadUrl,
 	loadReadUrlCacheEntry,
+	type ParsedReadUrlTarget,
 	parseReadUrlTarget,
 	type ReadUrlToolDetails,
 	renderReadUrlCall,
@@ -1150,6 +1151,27 @@ export function readFilesystemTargets(args: unknown, cwd = process.cwd()): strin
 	const expanded = expandDelimitedPathEntriesSync([rawPath], cwd, { internalUrls: "split-on-semicolon" });
 	return expanded.filter(entry => entry.length > 0);
 }
+/**
+ * The outcome of converting a document through markit.
+ *
+ * `unavailable` carries the placeholder text a failed conversion shows, so the caller records the
+ * reason on its own details object rather than the converter reaching into it.
+ */
+type ConvertedDocumentRead =
+	| { readonly kind: "result"; readonly result: AgentToolResult<ReadToolDetails> }
+	| { readonly kind: "unavailable"; readonly content: Array<TextContent | ImageContent> };
+
+/**
+ * What internal-URL routing decided for a read path.
+ *
+ * `promoted` is the `local://` case: the URL named a real file, so the read continues down the
+ * ordinary filesystem path with the URL's own selector carried separately.
+ */
+type InternalUrlRouting =
+	| { readonly kind: "handled"; readonly result: AgentToolResult<ReadToolDetails> }
+	| { readonly kind: "promoted"; readonly readPath: string; readonly selector: string | undefined }
+	| { readonly kind: "not-internal" };
+
 export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	readonly name = "read";
 	readonly approval = (args: unknown): ToolTier =>
@@ -2534,6 +2556,144 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		};
 	}
 
+	/** Read a notebook as editable text, honouring a line selector. */
+	async #readNotebook(
+		absolutePath: string,
+		localReadPath: string,
+		parsed: ParsedSelector,
+	): Promise<AgentToolResult<ReadToolDetails>> {
+		const notebookText = await readEditableNotebookText(absolutePath, localReadPath);
+		const options = {
+			details: { resolvedPath: absolutePath },
+			sourcePath: absolutePath,
+			entityLabel: "notebook",
+		};
+		if (isMultiRange(parsed) && parsed.kind === "lines") {
+			return this.#buildInMemoryMultiRangeResult(notebookText, parsed.ranges, options);
+		}
+		const { offset, limit } = selToOffsetLimit(parsed);
+		return this.#buildInMemoryTextResult(notebookText, offset, limit, options);
+	}
+
+	/**
+	 * Convert a document through markit and apply the selector to the converted markdown.
+	 *
+	 * The selector applies to the CONVERTED output, so `file.pdf:50-100` reads lines 50-100 of the
+	 * extracted text rather than the head of the document.
+	 */
+	async #readConvertedDocument(
+		absolutePath: string,
+		localReadPath: string,
+		ext: string,
+		parsed: ParsedSelector,
+		signal?: AbortSignal,
+	): Promise<ConvertedDocumentRead> {
+		const result = await convertFileWithMarkit(absolutePath, signal);
+		if (!result.ok) {
+			return {
+				kind: "unavailable",
+				content: [{ type: "text", text: `[Cannot read ${ext} file: ${result.error || "conversion failed"}]` }],
+			};
+		}
+		const rendered = ext === ".pdf" ? rewritePdfImagePlaceholders(result.content, localReadPath) : result.content;
+		const options = {
+			details: { resolvedPath: absolutePath },
+			sourcePath: absolutePath,
+			entityLabel: "document",
+		};
+		if (isMultiRange(parsed) && parsed.kind === "lines") {
+			return {
+				kind: "result",
+				result: await this.#buildInMemoryMultiRangeResult(rendered, parsed.ranges, options),
+			};
+		}
+		const { offset, limit } = selToOffsetLimit(parsed);
+		return {
+			kind: "result",
+			result: await this.#buildInMemoryTextResult(rendered, offset, limit, {
+				...options,
+				raw: isRawSelector(parsed),
+			}),
+		};
+	}
+
+	/**
+	 * Route an internal URL: `agent://`, `artifact://`, `memory://`, `skill://`, `rule://`,
+	 * `local://`, `mcp://`, `veyyon://`, `issue://` and `pr://`.
+	 *
+	 * A `local://` URL naming a real file is promoted to that filesystem path, keeping its selector
+	 * separate so a sibling literal file cannot shadow the URL's selector semantics during
+	 * filesystem routing. Every other scheme is served here.
+	 */
+	async #routeInternalUrl(readPath: string, params: ReadParams, signal?: AbortSignal): Promise<InternalUrlRouting> {
+		if (!InternalUrlRouter.instance().canHandle(readPath)) return { kind: "not-internal" };
+		// The internal-URL-aware splitter peels a malformed selector off the URL so parseSel reports
+		// it, rather than the handler receiving a path it cannot make sense of.
+		const internalTarget = splitInternalUrlSel(readPath);
+		const parsed = parseSel(internalTarget.sel);
+		if (internalTarget.sel !== undefined && parsed.kind === "none") {
+			throw new ToolError(
+				`Invalid selector ':${internalTarget.sel}' on '${internalTarget.path}'. Use :N, :N-M, :N+K, :N- (open-ended), a comma-separated list of ranges, :raw, or a range combined with raw (e.g. :raw:50-100).`,
+			);
+		}
+		const urlMeta = parseInternalUrl(internalTarget.path);
+		const serve = async (): Promise<InternalUrlRouting> => ({
+			kind: "handled",
+			result: await this.#readInternalUrlOrList(readPath, internalTarget.path, parsed, signal, {
+				depth: params.depth,
+				limit: params.limit,
+			}),
+		});
+		if (urlMeta.protocol.replace(/:$/, "").toLowerCase() !== "local") return serve();
+		const localFile = await resolveLocalUrlToFile(urlMeta, {
+			cwd: this.session.cwd,
+			settings: this.session.settings,
+			signal,
+			localProtocolOptions: this.session.localProtocolOptions,
+			skills: this.session.skills,
+		});
+		if (!localFile) return serve();
+		return { kind: "promoted", readPath: localFile.path, selector: internalTarget.sel };
+	}
+
+	/**
+	 * Read a URL target, honouring a line selector when one is attached.
+	 *
+	 * A multi-range or offset/limit selector is served through the URL cache so the fetch happens
+	 * once and every range reads the same body; a bare URL goes straight to the fetch path.
+	 */
+	async #readUrlTarget(target: ParsedReadUrlTarget, signal?: AbortSignal): Promise<AgentToolResult<ReadToolDetails>> {
+		if (!this.session.settings.get("fetch.enabled")) {
+			throw new ToolError("URL reads are disabled by settings.");
+		}
+		const raw = target.raw;
+		const cacheKey = { path: target.path, raw };
+		const cacheOptions = { ensureArtifact: true, preferCached: true } as const;
+		const inMemoryOptions = (details: ReadUrlToolDetails) => ({
+			details: { ...details },
+			sourceUrl: details.finalUrl,
+			entityLabel: "URL output",
+			raw,
+			immutable: true,
+		});
+
+		const ranges = target.ranges;
+		if (ranges !== undefined && ranges.length > 1) {
+			const cached = await loadReadUrlCacheEntry(this.session, cacheKey, signal, cacheOptions);
+			return this.#buildInMemoryMultiRangeResult(cached.output, ranges, inMemoryOptions(cached.details));
+		}
+		if (target.offset !== undefined || target.limit !== undefined) {
+			const cached = await loadReadUrlCacheEntry(this.session, cacheKey, signal, cacheOptions);
+			return this.#buildInMemoryTextResult(
+				cached.output,
+				target.offset,
+				target.limit,
+				inMemoryOptions(cached.details),
+			);
+		}
+		return executeReadUrl(this.session, cacheKey, signal);
+	}
+
 	async execute(
 		_toolCallId: string,
 		params: ReadParams,
@@ -2559,90 +2719,13 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 
 		const parsedUrlTarget = parseReadUrlTarget(readPath);
 		if (parsedUrlTarget) {
-			if (!this.session.settings.get("fetch.enabled")) {
-				throw new ToolError("URL reads are disabled by settings.");
-			}
-			const urlRaw = parsedUrlTarget.raw;
-			const urlRanges = parsedUrlTarget.ranges;
-			if (urlRanges !== undefined && urlRanges.length > 1) {
-				const cached = await loadReadUrlCacheEntry(
-					this.session,
-					{ path: parsedUrlTarget.path, raw: urlRaw },
-					signal,
-					{ ensureArtifact: true, preferCached: true },
-				);
-				return this.#buildInMemoryMultiRangeResult(cached.output, urlRanges, {
-					details: { ...cached.details },
-					sourceUrl: cached.details.finalUrl,
-					entityLabel: "URL output",
-					raw: urlRaw,
-					immutable: true,
-				});
-			}
-			const urlOffset = parsedUrlTarget.offset;
-			const urlLimit = parsedUrlTarget.limit;
-			if (urlOffset !== undefined || urlLimit !== undefined) {
-				const cached = await loadReadUrlCacheEntry(
-					this.session,
-					{ path: parsedUrlTarget.path, raw: urlRaw },
-					signal,
-					{
-						ensureArtifact: true,
-						preferCached: true,
-					},
-				);
-				return this.#buildInMemoryTextResult(cached.output, urlOffset, urlLimit, {
-					details: { ...cached.details },
-					sourceUrl: cached.details.finalUrl,
-					entityLabel: "URL output",
-					raw: urlRaw,
-					immutable: true,
-				});
-			}
-			return executeReadUrl(this.session, { path: parsedUrlTarget.path, raw: urlRaw }, signal);
+			return this.#readUrlTarget(parsedUrlTarget, signal);
 		}
 
-		// Handle internal URLs (agent://, artifact://, memory://, skill://, rule://, local://, mcp://, veyyon://, issue://, pr://).
-		// Use the internal-URL-aware splitter so malformed selectors are peeled
-		// off the URL and surfaced via parseSel rather than confusing handlers.
-		const internalRouter = InternalUrlRouter.instance();
-		let promotedSelector: string | undefined;
-		if (internalRouter.canHandle(readPath)) {
-			const internalTarget = splitInternalUrlSel(readPath);
-			const parsed = parseSel(internalTarget.sel);
-			if (internalTarget.sel !== undefined && parsed.kind === "none") {
-				throw new ToolError(
-					`Invalid selector ':${internalTarget.sel}' on '${internalTarget.path}'. Use :N, :N-M, :N+K, :N- (open-ended), a comma-separated list of ranges, :raw, or a range combined with raw (e.g. :raw:50-100).`,
-				);
-			}
-			const urlMeta = parseInternalUrl(internalTarget.path);
-			const scheme = urlMeta.protocol.replace(/:$/, "").toLowerCase();
-			if (scheme === "local") {
-				const localFile = await resolveLocalUrlToFile(urlMeta, {
-					cwd: this.session.cwd,
-					settings: this.session.settings,
-					signal,
-					localProtocolOptions: this.session.localProtocolOptions,
-					skills: this.session.skills,
-				});
-				if (localFile) {
-					readPath = localFile.path;
-					// Preserve a local:// selector separately so a sibling literal file
-					// cannot shadow the URL's selector semantics during filesystem routing.
-					promotedSelector = internalTarget.sel;
-				} else {
-					return this.#readInternalUrlOrList(readPath, internalTarget.path, parsed, signal, {
-						depth: params.depth,
-						limit: params.limit,
-					});
-				}
-			} else {
-				return this.#readInternalUrlOrList(readPath, internalTarget.path, parsed, signal, {
-					depth: params.depth,
-					limit: params.limit,
-				});
-			}
-		}
+		const routed = await this.#routeInternalUrl(readPath, params, signal);
+		if (routed.kind === "handled") return routed.result;
+		if (routed.kind === "promoted") readPath = routed.readPath;
+		const promotedSelector = routed.kind === "promoted" ? routed.selector : undefined;
 
 		// One suffix-glob memo per read call — archive, sqlite, and plain-path
 		// resolution share misses instead of re-globbing the workspace.
@@ -2800,52 +2883,12 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				fileSize,
 			}));
 		} else if (isNotebookPath(absolutePath) && !isRawSelector(parsed)) {
-			const notebookText = await readEditableNotebookText(absolutePath, localReadPath);
-			if (isMultiRange(parsed) && parsed.kind === "lines") {
-				return this.#buildInMemoryMultiRangeResult(notebookText, parsed.ranges, {
-					details: { resolvedPath: absolutePath },
-					sourcePath: absolutePath,
-					entityLabel: "notebook",
-				});
-			}
-			const { offset, limit } = selToOffsetLimit(parsed);
-			return this.#buildInMemoryTextResult(notebookText, offset, limit, {
-				details: { resolvedPath: absolutePath },
-				sourcePath: absolutePath,
-				entityLabel: "notebook",
-			});
+			return this.#readNotebook(absolutePath, localReadPath, parsed);
 		} else if (shouldConvertWithMarkit) {
-			// Convert document via markit.
-			const result = await convertFileWithMarkit(absolutePath, signal);
-			if (result.ok) {
-				const renderedContent =
-					ext === ".pdf" ? rewritePdfImagePlaceholders(result.content, localReadPath) : result.content;
-				// Route the converted markdown through the in-memory text builder
-				// so line-range selectors (`file.pdf:50-100`, `:5-16,40-80`) and
-				// raw mode apply against the converted output. Without this,
-				// `file.pdf:50-100` silently returned the head of the document
-				// because only `truncateHead` was being applied.
-				if (isMultiRange(parsed) && parsed.kind === "lines") {
-					return this.#buildInMemoryMultiRangeResult(renderedContent, parsed.ranges, {
-						details: { resolvedPath: absolutePath },
-						sourcePath: absolutePath,
-						entityLabel: "document",
-					});
-				}
-				const { offset, limit } = selToOffsetLimit(parsed);
-				return this.#buildInMemoryTextResult(renderedContent, offset, limit, {
-					details: { resolvedPath: absolutePath },
-					sourcePath: absolutePath,
-					entityLabel: "document",
-					raw: isRawSelector(parsed),
-				});
-			} else if (result.error) {
-				content = [{ type: "text", text: `[Cannot read ${ext} file: ${result.error || "conversion failed"}]` }];
-				details.contentUnavailable = { reason: "conversion-failed" };
-			} else {
-				content = [{ type: "text", text: `[Cannot read ${ext} file: conversion failed]` }];
-				details.contentUnavailable = { reason: "conversion-failed" };
-			}
+			const converted = await this.#readConvertedDocument(absolutePath, localReadPath, ext, parsed, signal);
+			if (converted.kind === "result") return converted.result;
+			content = converted.content;
+			details.contentUnavailable = { reason: "conversion-failed" };
 		} else {
 			// Binary sniff before any UTF-8 text materialization. A binary file
 			// (font, object, archive, packed blob) decodes to NUL/control bytes and
