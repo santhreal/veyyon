@@ -54,7 +54,7 @@ const BARRELS = ["@veyyon/tui", "@veyyon/utils", "@veyyon/agent-core", "@veyyon/
  * First-party modules the three entries evaluate, counted from `require.cache` in a fresh process.
  * A count and not a millisecond budget: the same graph evaluates in 63ms on a workstation and in
  * 478ms on a shared runner reading the tree over NFS, so a wall-clock ceiling failed on machine
- * speed instead of on a regression, while the module set is byte-identical on both. Measured at 335
+ * speed instead of on a regression, while the module set is byte-identical on both. Measured at 333
  * with the barrel edges out. The cheapest barrel edge that could return, `@veyyon/tui`, adds 16
  * modules on top of the leaves the shell already evaluates, so the ceiling sits under that and
  * still leaves room for a handful of honest new leaves.
