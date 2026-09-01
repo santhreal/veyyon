@@ -408,7 +408,7 @@ describe("every environment variable the frame is a function of", () => {
 				.slice()
 				.sort(),
 		);
-		for (const [key, value] of Object.entries(env)) expect(value).toBe(process.env[key]);
+		for (const [key, value] of Object.entries(env)) expect(process.env[key]).toBe(value);
 	});
 });
 
