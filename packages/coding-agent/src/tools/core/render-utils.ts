@@ -19,7 +19,7 @@ import { replaceTabs } from "@veyyon/utils/wrap";
 import { formatKeyHints, type KeyId } from "../../config/keybindings";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
-import type { Theme } from "../../theme/theme";
+import type { Theme, ThemeColor } from "../../theme/theme";
 import { Hasher } from "../../tui/utils";
 import { formatDimensionNote, type ResizedImage } from "../../utils/image-resize";
 import {
@@ -278,8 +278,11 @@ export function formatExpandHint(theme: Theme, expanded?: boolean, hasMore?: boo
 
 /**
  * Format a badge like [done] or [failed] with brackets and color.
+ *
+ * The colour is any theme colour rather than the narrow outcome set, because a badge inside a card's
+ * row carries whatever tone the row states, and the bracket grammar has one owner either way.
  */
-export function formatBadge(label: string, color: ToolUIColor, theme: Theme): string {
+export function formatBadge(label: string, color: ThemeColor, theme: Theme): string {
 	const left = theme.format.bracketLeft;
 	const right = theme.format.bracketRight;
 	return theme.fg(color, `${left}${label}${right}`);

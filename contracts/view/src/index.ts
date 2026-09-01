@@ -95,6 +95,36 @@ export interface ViewSpan {
 	 */
 	symbol?: string;
 	/**
+	 * That this run is the state mark of its line, drawn INSTEAD of `text` from the host's own glyph
+	 * set and animated by the host while the state is one that moves.
+	 *
+	 * `StatusRowView.status` marks a whole card and this marks one row inside one, which is what a
+	 * card whose body is a set of things each doing something needs: a wall of workers and a list of
+	 * background jobs are rows that succeeded, failed and are still going, side by side under one
+	 * header that reports the set. A row that stated its state in words alone would put a reader to
+	 * reading a column of adjectives, and a row that named a glyph would be choosing one.
+	 *
+	 * A terminal draws the same mark it gives a status row and spins the one that reports `running`,
+	 * a graphical host draws its own icon, and a host with no glyph for a state draws `text`, which is
+	 * the fallback and may be empty. The mark carries the state's own appearance, so `tone` says
+	 * nothing here: two rows reporting the same state look the same however the tool toned the words
+	 * beside them.
+	 */
+	status?: ViewStatus;
+	/**
+	 * That this run is a short label the host sets off from the words around it, in whatever grammar it
+	 * brackets one with.
+	 *
+	 * The line-level twin of `StatusRowView.badge`, for a row inside a card: a wall of workers marks
+	 * each row with the flavour of CLI behind it and a list of jobs with the kind of job it is, and both
+	 * are labels rather than prose. A tool that wrote the brackets itself would be choosing the
+	 * bracket glyphs, which is the one part of a badge that is the host's -- a terminal theme owns its
+	 * pair, and a graphical host draws a chip with no brackets at all.
+	 *
+	 * `text` is the label alone, so a host that sets nothing off draws exactly the words.
+	 */
+	badge?: boolean;
+	/**
 	 * A target this run names, which the host makes reachable however it can.
 	 *
 	 * A terminal wraps the run in an OSC 8 hyperlink, a browser draws an anchor and a transcript export
@@ -174,6 +204,22 @@ export interface ViewSpan {
 	 * structure already.
 	 */
 	trailing?: boolean;
+	/**
+	 * That the thing this run names is still in flight, so a host may animate the run while it is.
+	 *
+	 * The span-level twin of a `running` status: a status marks the whole row and this marks one run
+	 * inside it, which is what the wall of live workers needs -- a worker's id and the tool it is part
+	 * way through are the moving parts of a row whose other columns are settled facts. A tool that
+	 * knows a run is arriving cannot animate it itself, because motion needs a clock and a frame the
+	 * tool is not given until the host supplies one in `ToolViewContext`.
+	 *
+	 * So the run says it is live and the host decides what live looks like: a terminal sweeps a
+	 * highlight across it on every frame the surface advances, a graphical host may pulse it, and a
+	 * host with no clock -- a transcript export, a still capture -- draws the run in its `tone` and
+	 * nothing moves. It is separate from `tone` because the two answer different questions: the tone
+	 * is what the run means when it settles, and a settled card carries it with nothing animating.
+	 */
+	live?: boolean;
 }
 
 /**

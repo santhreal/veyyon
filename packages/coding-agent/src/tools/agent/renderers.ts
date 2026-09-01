@@ -5,7 +5,8 @@
  * is imported only by a host that draws one.
  *
  * The five vibe rows come from one factory taking the sub-command, which is why they are spelled out
- * here rather than derived: each is a distinct tool name in the same table.
+ * here rather than derived: each is a distinct tool name in the same table, and each states its own
+ * animation policy.
  */
 import { viewToolRenderer } from "../../tui/draw-tool-view";
 import type { ToolRenderer } from "../renderers";
@@ -14,7 +15,7 @@ import { ircToolView } from "./irc-view";
 import { recallToolView, reflectToolView, retainToolView } from "./memory-view";
 import { resolveToolView } from "./resolve-view";
 import { todoToolView } from "./todo-view";
-import { createVibeToolRenderer } from "./vibe-render";
+import { createVibeToolView } from "./vibe-view";
 
 export const agentRenderers: Record<string, ToolRenderer> = {
 	ask: viewToolRenderer(askToolView, { mergeCallAndResult: true, callIsLiveWidget: true }) as ToolRenderer,
@@ -24,9 +25,29 @@ export const agentRenderers: Record<string, ToolRenderer> = {
 	retain: viewToolRenderer(retainToolView, { mergeCallAndResult: true }) as ToolRenderer,
 	recall: viewToolRenderer(recallToolView, { mergeCallAndResult: true }) as ToolRenderer,
 	reflect: viewToolRenderer(reflectToolView, { mergeCallAndResult: true }) as ToolRenderer,
-	vibe_spawn: createVibeToolRenderer("spawn") as ToolRenderer,
-	vibe_send: createVibeToolRenderer("send") as ToolRenderer,
-	vibe_wait: createVibeToolRenderer("wait") as ToolRenderer,
-	vibe_kill: createVibeToolRenderer("kill") as ToolRenderer,
-	vibe_list: createVibeToolRenderer("list") as ToolRenderer,
+	// The composer ops paint a caret that blinks with the frame, so both consume one; only a wait can
+	// sit long enough to report progress, which is the one partial result worth animating.
+	vibe_spawn: viewToolRenderer(createVibeToolView("spawn"), {
+		inline: true,
+		mergeCallAndResult: true,
+		animatedPendingPreview: true,
+	}) as ToolRenderer,
+	vibe_send: viewToolRenderer(createVibeToolView("send"), {
+		inline: true,
+		mergeCallAndResult: true,
+		animatedPendingPreview: true,
+	}) as ToolRenderer,
+	vibe_wait: viewToolRenderer(createVibeToolView("wait"), {
+		inline: true,
+		mergeCallAndResult: true,
+		animatedPartialResult: true,
+	}) as ToolRenderer,
+	vibe_kill: viewToolRenderer(createVibeToolView("kill"), {
+		inline: true,
+		mergeCallAndResult: true,
+	}) as ToolRenderer,
+	vibe_list: viewToolRenderer(createVibeToolView("list"), {
+		inline: true,
+		mergeCallAndResult: true,
+	}) as ToolRenderer,
 };

@@ -24,6 +24,7 @@ import {
 	type VibeWaitOutcome,
 } from "../../session/vibe-runtime";
 import type { Tool, ToolSession } from "../index";
+import { createVibeToolView } from "./vibe-view";
 
 export const VIBE_TOOL_NAMES = ["vibe_spawn", "vibe_send", "vibe_wait", "vibe_kill", "vibe_list"] as const;
 
@@ -86,6 +87,7 @@ export class VibeSpawnTool implements AgentTool<typeof vibeSpawnSchema, VibeTool
 	readonly description: string;
 	readonly parameters = vibeSpawnSchema;
 	readonly strict = true;
+	readonly view = createVibeToolView("spawn");
 	constructor(private readonly session: ToolSession) {
 		this.description = prompt.render(toolsPrompts["tools/vibe-spawn"].text);
 	}
@@ -107,6 +109,7 @@ export class VibeSendTool implements AgentTool<typeof vibeSendSchema, VibeToolDe
 	readonly description: string;
 	readonly parameters = vibeSendSchema;
 	readonly strict = true;
+	readonly view = createVibeToolView("send");
 	constructor(private readonly session: ToolSession) {
 		this.description = prompt.render(toolsPrompts["tools/vibe-send"].text);
 	}
@@ -134,6 +137,7 @@ export class VibeWaitTool implements AgentTool<typeof vibeWaitSchema, VibeToolDe
 	readonly parameters = vibeWaitSchema;
 	readonly strict = true;
 	readonly interruptible = true;
+	readonly view = createVibeToolView("wait");
 	constructor(private readonly session: ToolSession) {
 		this.description = prompt.render(toolsPrompts["tools/vibe-wait"].text);
 	}
@@ -205,6 +209,7 @@ export class VibeKillTool implements AgentTool<typeof vibeKillSchema, VibeToolDe
 	readonly description: string;
 	readonly parameters = vibeKillSchema;
 	readonly strict = true;
+	readonly view = createVibeToolView("kill");
 	constructor(private readonly session: ToolSession) {
 		this.description = prompt.render(toolsPrompts["tools/vibe-kill"].text);
 	}
@@ -231,6 +236,7 @@ export class VibeListTool implements AgentTool<typeof vibeListSchema, VibeToolDe
 	readonly description: string;
 	readonly parameters = vibeListSchema;
 	readonly strict = true;
+	readonly view = createVibeToolView("list");
 	constructor(private readonly session: ToolSession) {
 		this.description = prompt.render(toolsPrompts["tools/vibe-list"].text);
 	}
@@ -263,7 +269,6 @@ export function createVibeTools(session: ToolSession): Tool[] {
 	];
 }
 
-// The TUI renderer lives in `vibe-render.ts` (light module, boot-path safe);
-// re-exported here so the library surface (`export * from "./tools/agent/vibe"`)
-// and existing importers keep working.
-export { createVibeToolRenderer } from "./vibe-render";
+// The card every vibe tool describes lives in `vibe-view.ts`; re-exported here so the library
+// surface (`export * from "./tools/agent/vibe"`) carries it beside the tools that return it.
+export { createVibeToolView } from "./vibe-view";

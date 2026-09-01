@@ -42,7 +42,16 @@ useDifferentialTheme();
  * Pinned by exact equality rather than inferred: a tool whose card diverges from the one it shares
  * needs its own suite, and this is where that decision is recorded.
  */
-const SHARED_SUITES: Readonly<Record<string, string>> = { retain: "memory", recall: "memory", reflect: "memory" };
+const SHARED_SUITES: Readonly<Record<string, string>> = {
+	retain: "memory",
+	recall: "memory",
+	reflect: "memory",
+	vibe_spawn: "vibe",
+	vibe_send: "vibe",
+	vibe_wait: "vibe",
+	vibe_kill: "vibe",
+	vibe_list: "vibe",
+};
 
 /** The suite file a tool's card is compared in, by the naming rule the directory follows. */
 function suiteSlug(tool: string): string {
@@ -86,6 +95,11 @@ describe("differential coverage", () => {
 			"read",
 			"ask",
 			"web_search",
+			"vibe_spawn",
+			"vibe_send",
+			"vibe_wait",
+			"vibe_kill",
+			"vibe_list",
 		]);
 	});
 
@@ -108,6 +122,7 @@ describe("differential coverage", () => {
 		expect(present.has("the-nonexistent-card-draws-what-main-drew.test.ts")).toBe(false);
 		expect(suiteSlug("search_tool_bm25")).toBe("search-tool-bm25");
 		expect(suiteSlug("reflect")).toBe("memory");
+		expect(suiteSlug("vibe_wait")).toBe("vibe");
 	});
 });
 

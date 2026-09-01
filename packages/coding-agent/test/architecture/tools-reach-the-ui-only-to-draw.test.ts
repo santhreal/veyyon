@@ -264,7 +264,6 @@ const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/shell/job-render.ts", ["Text", "type Component"]],
 	["tools/core/render-utils.ts", ["type Component"]],
 	["tools/renderers.ts", ["type Component"]],
-	["tools/agent/vibe-render.ts", ["Text", "type Component"]],
 ]);
 
 /**
@@ -475,6 +474,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"tools/agent/resolve-view.ts",
 			"tools/agent/review.ts",
 			"tools/agent/todo-view.ts",
+			"tools/agent/vibe-view.ts",
 			"tools/fs/inspect-image-view.ts",
 			"tools/fs/read-view.ts",
 			"tools/fs/set-cwd.ts",
@@ -651,20 +651,7 @@ describe("a registry entry either describes its card or is recorded as drawing o
 
 	it("records every entry that still draws terminal components", () => {
 		const drawing = entries.filter(name => toolRenderers[name]?.view === undefined);
-		expect(drawing).toEqual([
-			"apply_patch",
-			"bash",
-			"edit",
-			"eval",
-			"job",
-			"lsp",
-			"task",
-			"vibe_kill",
-			"vibe_list",
-			"vibe_send",
-			"vibe_spawn",
-			"vibe_wait",
-		]);
+		expect(drawing).toEqual(["apply_patch", "bash", "edit", "eval", "job", "lsp", "task"]);
 	});
 
 	it("has a view on every converted entry, and that view draws both halves of the card", () => {
@@ -689,6 +676,11 @@ describe("a registry entry either describes its card or is recorded as drawing o
 			"set_cwd",
 			"ssh",
 			"todo",
+			"vibe_kill",
+			"vibe_list",
+			"vibe_send",
+			"vibe_spawn",
+			"vibe_wait",
 			"web_search",
 			"write",
 		]);

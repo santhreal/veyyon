@@ -37,10 +37,12 @@ import type {
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { highlightCode } from "../theme/highlight";
 import { getMarkdownTheme } from "../theme/markdown-theme";
+import { shimmerEnabled, shimmerText } from "../theme/shimmer";
 import { type SymbolKey, UNICODE_SYMBOLS } from "../theme/symbols";
 import type { Theme, ThemeColor } from "../theme/theme";
 import {
 	createCachedComponent,
+	formatBadge,
 	formatExpandHint,
 	formatStatusIcon,
 	previewWindowRows,
@@ -144,13 +146,43 @@ const BLOCK_STATES: Record<ViewStatus, { state: State; rail: ThemeColor }> = {
  * supplies the colour the row sits on and `styleTerminalRow` keeps whichever of the program's styles
  * this terminal can reproduce. Tone and emphasis are ignored there, because a tool that observed a
  * screen states what it saw and not how the screen should look.
+ *
+ * A status run is the same mark a status row carries, through the same helper, so a row inside a card
+ * and the card's own header report a state identically. The frame reaches it for the one state that
+ * moves: `running` draws the spinner glyph at the frame the surface is on, and every other state is a
+ * settled glyph that ignores it.
+ *
+ * A badge run is set off in the theme's own bracket pair, through the same helper every hand-written
+ * row that marked one used, so a label inside a card and a label on its header bracket identically.
+ * The tone colours the whole of it, brackets included, which is what a badge already was.
+ *
+ * A live run is drawn as a shimmer sweep, which is the treatment every hand-written row that reported
+ * something in flight already used. It needs two things the span does not carry: a frame, so the
+ * sweep plays only on a surface that repaints, and the reader's own setting, since shimmer is
+ * switchable. Without either the run is drawn exactly as a settled one, so a still capture and a
+ * transcript export carry the words and no motion.
  */
-export function drawSpan(span: ViewSpan, theme: Theme): string {
+export function drawSpan(span: ViewSpan, theme: Theme, frame?: number): string {
 	if (span.symbol !== undefined && Object.hasOwn(UNICODE_SYMBOLS, span.symbol)) {
 		const color = span.tone === undefined ? "accent" : TONE_COLORS[span.tone];
 		return linked(span, theme.styledSymbol(span.symbol as SymbolKey, color));
 	}
+	if (span.status !== undefined) {
+		return linked(
+			span,
+			formatStatusIcon(STATUS_ICONS[span.status], theme, span.status === "running" ? frame : undefined),
+		);
+	}
+	if (span.badge === true) {
+		return linked(span, formatBadge(span.text, TONE_COLORS[span.tone ?? "accent"], theme));
+	}
 	if (span.captured) return styleTerminalRow(span.text, theme.getFgAnsi(TONE_COLORS.output));
+	// The sweep paints its own three tiers across the run, so it REPLACES the tone rather than
+	// layering over it: a shimmer opened inside a colour ends its last tier in that colour's reset and
+	// leaves the rest of the run drawn in whatever the row opened with.
+	if (span.live === true && frame !== undefined && shimmerEnabled()) {
+		return linked(span, shimmerText(span.text, theme));
+	}
 	const ground = span.tone === undefined ? undefined : TONE_COLORS[span.tone];
 	// A markdown run is rendered rather than styled: the tone is the ground its words sit on, and
 	// whatever the source asks for -- a code span, a link, emphasis -- takes the markdown theme's own
@@ -193,9 +225,9 @@ function linked(span: ViewSpan, drawn: string): string {
 }
 
 /** Every span concatenated, with no separator the tool did not ask for. */
-export function drawSpans(spans: readonly ViewSpan[], theme: Theme): string {
+export function drawSpans(spans: readonly ViewSpan[], theme: Theme, frame?: number): string {
 	let line = "";
-	for (const span of spans) line += drawSpan(span, theme);
+	for (const span of spans) line += drawSpan(span, theme, frame);
 	return line;
 }
 
@@ -255,20 +287,22 @@ export function drawStatusRow(view: StatusRowView, theme: Theme, spinnerFrame?: 
 			titleColor: view.titleTone === undefined ? undefined : TONE_COLORS[view.titleTone],
 			description,
 			badge: view.badge === undefined ? undefined : { label: view.badge.label, color: TONE_COLORS[view.badge.tone] },
-			meta: view.meta?.map(entry => drawSpans(entry, theme)),
+			meta: view.meta?.map(entry => drawSpans(entry, theme, spinnerFrame)),
 		},
 		theme,
 	);
 }
 
 /** A text block as one styled string. */
-export function drawTextBlock(view: TextBlockView, theme: Theme): string {
-	return drawSpans(view.spans, theme);
+export function drawTextBlock(view: TextBlockView, theme: Theme, frame?: number): string {
+	return drawSpans(view.spans, theme, frame);
 }
 
 /** A one-line view as the terminal string that draws it. */
 export function drawToolViewText(view: LineToolView, theme: Theme, spinnerFrame?: number): string {
-	return view.kind === "statusRow" ? drawStatusRow(view, theme, spinnerFrame) : drawTextBlock(view, theme);
+	return view.kind === "statusRow"
+		? drawStatusRow(view, theme, spinnerFrame)
+		: drawTextBlock(view, theme, spinnerFrame);
 }
 
 /**
@@ -315,7 +349,7 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 		return {
 			label: section.label === undefined ? undefined : theme.fg("toolTitle", section.label),
 			lines: section.list
-				? drawItemList(section.lines, section.hidden, theme)
+				? drawItemList(section.lines, section.hidden, theme, spinnerFrame)
 				: section.code !== undefined
 					? drawCodeLines(section.lines, section.code, theme)
 					: [],
@@ -325,15 +359,13 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 			// The ground the document's own text sits on, which the section states by toning the span it
 			// carries the source in. Read from the first toned span, so a document stated as several
 			// spans of one line is one document with one ground rather than a run-by-run palette.
-			markdownTone: markdown
-				? section.lines.flat().find(span => span.tone !== undefined)?.tone
-				: undefined,
+			markdownTone: markdown ? section.lines.flat().find(span => span.tone !== undefined)?.tone : undefined,
 			// A plain section's rows, drawn here when the whole row is its subject and left as spans when
 			// it carries a trailing run: a tail sits at the END of the row, so the words before it are cut
 			// to what the tail leaves and the gap between the two is whatever columns are left. That is
 			// the host's width, so those rows are drawn inside the closure below and the rest are not
 			// re-drawn on every frame.
-			rows: drawnHere ? undefined : section.lines.map(line => plainRow(line, theme)),
+			rows: drawnHere ? undefined : section.lines.map(line => plainRow(line, theme, spinnerFrame)),
 			// Held back by the TOOL, so it stands outside the window the host cuts: a section that says
 			// what it dropped must keep saying it however few rows are left. A list states the same count
 			// on its own closing branch, so the note is already among its rows.
@@ -372,7 +404,7 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 							: section.rows.map(row =>
 									row.tail === undefined
 										? row.drawn
-										: drawRowWithTail(row.lead, row.tail, theme, contentWidth),
+										: drawRowWithTail(row.lead, row.tail, theme, contentWidth, spinnerFrame),
 								);
 				// A clipped section is rows rather than prose, so a row that runs out of columns ends
 				// there. Without the cut the block WRAPS it, and one long path becomes two rows of a
@@ -519,8 +551,13 @@ function drawCodeLines(lines: readonly ViewLine[], code: ViewCodeLines, theme: T
  * many it kept back — so the helper is handed the whole list and the count separately, and trims
  * nothing itself.
  */
-function drawItemList(lines: readonly ViewLine[], hidden: ViewHiddenCount | undefined, theme: Theme): string[] {
-	const drawn = lines.map(line => drawSpans(line, theme));
+function drawItemList(
+	lines: readonly ViewLine[],
+	hidden: ViewHiddenCount | undefined,
+	theme: Theme,
+	frame?: number,
+): string[] {
+	const drawn = lines.map(line => drawSpans(line, theme, frame));
 	return renderTreeList(
 		{
 			items: drawn,
@@ -572,7 +609,8 @@ export function drawHeadedBlock(view: HeadedBlockView, theme: Theme, spinnerFram
 		width => {
 			const rows: string[] = [];
 			if (header !== undefined) rows.push(truncateToWidth(header, width, Ellipsis.Omit));
-			for (const line of lines) rows.push(`  ${drawRowToWidth(line, theme, Math.max(1, width - INDENT))}`);
+			for (const line of lines)
+				rows.push(`  ${drawRowToWidth(line, theme, Math.max(1, width - INDENT), spinnerFrame)}`);
 			const note = hidden === undefined ? undefined : drawHiddenNote(hidden, theme);
 			if (note !== undefined) rows.push(truncateToWidth(`  ${note}`, width, Ellipsis.Omit));
 			return rows;
@@ -592,30 +630,41 @@ const INDENT = 2;
  * order and each is given what the ones before it left, so the span that runs out of room is the one
  * that carries the mark.
  *
+ * A mark is atomic and is never cut: a glyph, a state mark and a badge are decoration whose half is
+ * nothing, so each is drawn whole and measured on what it drew. A badge is measured on the drawn run
+ * for a second reason: the theme's brackets are two columns the tool's text does not carry, and a row
+ * that counted the label alone would overrun the columns it was given by exactly that.
+ *
  * A captured run is the exception, and is cut AFTER it is replayed: its own escape bytes sit between
  * its characters, so cutting the text first would drop every sequence past the cut and redraw the
  * rest of the row in a colour the program never chose. The cut is width-aware either way, so the
  * columns are the same; only the styles inside them survive.
  */
-function drawLineToWidth(line: ViewLine, theme: Theme, width: number): string {
+function drawLineToWidth(line: ViewLine, theme: Theme, width: number, frame?: number): string {
 	let used = 0;
 	let drawn = "";
 	for (const span of line) {
 		const remaining = width - used;
 		if (remaining <= 0) break;
 		if (span.symbol !== undefined && Object.hasOwn(UNICODE_SYMBOLS, span.symbol)) {
-			drawn += drawSpan(span, theme);
+			drawn += drawSpan(span, theme, frame);
 			used += visibleWidth(theme.symbol(span.symbol as SymbolKey));
 			continue;
 		}
+		if (span.status !== undefined || span.badge === true) {
+			const mark = drawSpan(span, theme, frame);
+			drawn += mark;
+			used += visibleWidth(mark);
+			continue;
+		}
 		if (span.captured) {
-			const replayed = truncateToWidth(drawSpan(span, theme), remaining, Ellipsis.Unicode);
+			const replayed = truncateToWidth(drawSpan(span, theme, frame), remaining, Ellipsis.Unicode);
 			drawn += replayed;
 			used += visibleWidth(replayed);
 			continue;
 		}
 		const text = truncateToWidth(span.text, remaining, Ellipsis.Unicode);
-		drawn += drawSpan({ ...span, text }, theme);
+		drawn += drawSpan({ ...span, text }, theme, frame);
 		used += visibleWidth(text);
 	}
 	return drawn;
@@ -639,9 +688,9 @@ const TAIL_LEAD_MIN_WIDTH = 10;
 type PlainRow = { drawn: string; lead?: undefined; tail?: undefined } | { lead: ViewLine; tail: ViewLine };
 
 /** A plain row as the drawer holds it, split at the first run the tool marked trailing. */
-function plainRow(line: ViewLine, theme: Theme): PlainRow {
+function plainRow(line: ViewLine, theme: Theme, frame?: number): PlainRow {
 	const at = line.findIndex(span => span.trailing === true);
-	if (at < 0) return { drawn: drawSpans(line, theme) };
+	if (at < 0) return { drawn: drawSpans(line, theme, frame) };
 	return { lead: line.slice(0, at), tail: line.slice(at) };
 }
 
@@ -652,19 +701,19 @@ function plainRow(line: ViewLine, theme: Theme): PlainRow {
  * lost a digit reads as a different number; the words before it are cut with an ellipsis, and the
  * gap between the two is whatever remains, never less than one column so the two never run together.
  */
-function drawRowWithTail(lead: ViewLine, tail: ViewLine, theme: Theme, width: number): string {
-	const drawnTail = drawSpans(tail, theme);
+function drawRowWithTail(lead: ViewLine, tail: ViewLine, theme: Theme, width: number, frame?: number): string {
+	const drawnTail = drawSpans(tail, theme, frame);
 	const tailWidth = visibleWidth(drawnTail);
-	const drawnLead = drawLineToWidth(lead, theme, Math.max(TAIL_LEAD_MIN_WIDTH, width - tailWidth - 1));
+	const drawnLead = drawLineToWidth(lead, theme, Math.max(TAIL_LEAD_MIN_WIDTH, width - tailWidth - 1), frame);
 	const gap = padding(Math.max(1, width - visibleWidth(drawnLead) - tailWidth));
 	return `${drawnLead}${gap}${drawnTail}`;
 }
 
 /** One row of a block in the columns it has, whether or not it carries a tail. */
-function drawRowToWidth(line: ViewLine, theme: Theme, width: number): string {
+function drawRowToWidth(line: ViewLine, theme: Theme, width: number, frame?: number): string {
 	const at = line.findIndex(span => span.trailing === true);
-	if (at < 0) return drawLineToWidth(line, theme, width);
-	return drawRowWithTail(line.slice(0, at), line.slice(at), theme, width);
+	if (at < 0) return drawLineToWidth(line, theme, width, frame);
+	return drawRowWithTail(line.slice(0, at), line.slice(at), theme, width, frame);
 }
 
 /** The unit a held-back count is in, as the words that follow it, or nothing when the tool named none. */

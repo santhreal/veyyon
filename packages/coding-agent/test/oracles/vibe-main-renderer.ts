@@ -1,21 +1,18 @@
 /**
- * TUI renderers for the vibe tools — the mini composer (spawn/send) and the
- * "TV wall" (wait/list).
+ * Differential oracle: the vibe tool renderers from origin/main.
  *
- * Split from `vibe.ts` on purpose: `renderers.ts` (loaded by the boot-path
- * `tool-execution` component) needs ONLY the presentation code, while the tool
- * implementations pull the whole vibe session runtime. Keeping the renderer in
- * this light module keeps the vibe runtime off the CLI boot path (PERF-6);
- * every runtime import below is type-only and erased at compile time.
+ * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/tools/agent/vibe-render.ts`).
+ * Frozen: never edited to make a test pass.
+ *
+ * Only the import specifiers are rewritten to the package subpaths this branch publishes.
  */
-import type { Component } from "@veyyon/tui";
-import { Text } from "@veyyon/tui";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import type { VibeCli, VibeScreenSnapshot, VibeSessionState } from "../../session/vibe-runtime";
-import { oneLineLabel } from "../../task/types";
-import { shimmerEnabled, shimmerText } from "../../theme/shimmer";
-import type { Theme } from "../../theme/theme";
-import { renderStatusLine } from "../../tui";
+
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { VibeCli, VibeScreenSnapshot, VibeSessionState } from "@veyyon/coding-agent/session/vibe-runtime";
+import { oneLineLabel } from "@veyyon/coding-agent/task/types";
+import { shimmerEnabled, shimmerText } from "@veyyon/coding-agent/theme/shimmer";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import type { VibeOp, VibeToolDetails } from "@veyyon/coding-agent/tools/agent/vibe";
 import {
 	Ellipsis,
 	formatBadge,
@@ -25,8 +22,10 @@ import {
 	type ToolUIColor,
 	type ToolUIStatus,
 	truncateToWidth,
-} from "../core/render-utils";
-import type { VibeOp, VibeToolDetails } from "./vibe";
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import { renderStatusLine } from "@veyyon/coding-agent/tui";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
 
 // =============================================================================
 // TUI Renderer — mini composer (spawn/send) + TV wall (wait/list)
