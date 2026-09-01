@@ -100,28 +100,21 @@ export interface AgentRef {
 	createdAt: number;
 	lastActivity: number;
 	/**
-	 * The conversation this agent belongs to: the SessionManager session id of
-	 * the root `main` session it was spawned under.
+	 * The conversation this agent belongs to: the SessionManager session id of the root `main`
+	 * session it was spawned under.
 	 *
-	 * The session id rather than the transcript path, because the two disagree in
-	 * both directions. A brand-new session has an id before it has ever been
-	 * written to disk, so a path-keyed scope would be undefined for exactly the
-	 * window in which the first subagents spawn; and `/move` rewrites the path of
-	 * a conversation that never ended, which a path-keyed scope would read as a
-	 * new one.
+	 * The session id rather than the transcript path, because the two disagree in both directions. A
+	 * new session has an id before it is ever written to disk, so a path-keyed scope is undefined for
+	 * exactly the window in which the first subagents spawn, and `/move` rewrites the path of a
+	 * conversation that never ended, which a path-keyed scope reads as a new one.
 	 *
-	 * The registry is process-global, but an agent roster is not. One process
-	 * holds several conversations at once — `/new` and `/resume` re-root the
-	 * driving session, ACP and cmux hosts register one `main` per client
-	 * session, and the SDK embeds more — and without this every one of them
-	 * listed every other one's subagents. Two rosters that disagree about what
-	 * exists is the mild version; messaging an agent that belongs to a
-	 * conversation you closed an hour ago is the real one.
+	 * The registry is process-global but a roster is not: `/new` and `/resume` re-root the driving
+	 * session, ACP and cmux hosts register one `main` per client session, and the SDK embeds more.
+	 * Without a scope, each of those lists every other one's subagents.
 	 *
-	 * Undefined means "not attributable to a conversation" (a collab guest
-	 * mirror, a hand-built ref in a test). Scoping treats an unknown scope on
-	 * EITHER side as visible, so the filter can only ever hide an agent both
-	 * sides positively agree belongs somewhere else.
+	 * Undefined means not attributable to a conversation, such as a collab guest mirror or a
+	 * hand-built ref in a test. Scoping treats an unknown scope on either side as visible, so the
+	 * filter can only hide an agent both sides positively agree belongs elsewhere.
 	 */
 	scope?: string;
 	/** Short gist of what the agent is currently doing (latest intent or tool), for the work-aware roster. Display-only. */
@@ -469,21 +462,16 @@ export class AgentRegistry {
 	}
 
 	/**
-	 * THE conversation-boundary decision, for every caller that has two agent ids
-	 * and needs to know whether one may reach the other. `irc send`, `irc list`,
-	 * `irc wait`'s liveness watch and the job tool's roster all route through this
-	 * or through the two list methods below, which are themselves defined in terms
-	 * of it.
+	 * The conversation-boundary decision, for every caller holding two agent ids that needs to know
+	 * whether one may reach the other. `irc send`, `irc list`, `irc wait`'s liveness watch and the
+	 * job tool's roster route through this, or through the two list methods below, which are defined
+	 * in terms of it.
 	 *
-	 * ONE owner on purpose. Those four surfaces each carried their own spelling of
-	 * the same rule, and a rule expressed four times is a rule that gets fixed
-	 * three times: the version that drifts is the one nobody remembers exists, and
-	 * it is the one that keeps the leak open. There is now nothing left to keep in
-	 * sync, and a change to the boundary is a change to this method.
+	 * One owner on purpose: the same rule spelled at four call sites drifts at whichever one nobody
+	 * remembers, and that is the one that keeps the leak open.
 	 *
-	 * Advisors are excluded here rather than at each call site for the same
-	 * reason. They are read-only observability transcripts, never peers, and every
-	 * caller that forgot the check exposed one.
+	 * Advisors are excluded here rather than at each call site, for the same reason. They are
+	 * read-only observability transcripts, never peers.
 	 */
 	canAddress(senderId: string, targetId: string): boolean {
 		if (senderId === targetId) return false;

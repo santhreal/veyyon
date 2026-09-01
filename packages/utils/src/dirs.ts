@@ -266,24 +266,19 @@ function isUsableXdgBase(envVar: string, value: string): boolean {
 /**
  * The user's home directory, refused rather than guessed when it is unusable.
  *
- * Every path veyyon owns hangs off this one value, so a bad answer here is not a
- * bad path, it is every path. Two answers are bad in ways that do not announce
- * themselves:
+ * Every path veyyon owns hangs off this one value, so a bad answer here is not a bad path, it is
+ * every path. Two answers are bad without announcing themselves:
  *
- *  - EMPTY (`HOME=` with no usable passwd entry, common in a stripped container
- *    or a `env -i` invocation). `path.join("", ".veyyon")` is `.veyyon`, a
- *    RELATIVE path, so config, sessions, and credentials would be created in
- *    whatever directory the process happened to start in, and a second run from
- *    a different directory would silently see a different, empty veyyon.
- *  - the filesystem ROOT (`HOME=/`). Every write then lands in `/.veyyon`,
- *    outside the user's control and usually not writable, and on the occasions
- *    it IS writable (a root shell) it litters the root of the filesystem.
+ *  - Empty (`HOME=` with no usable passwd entry, common in a stripped container or an `env -i`
+ *    invocation). `path.join("", ".veyyon")` is `.veyyon`, a relative path, so config, sessions and
+ *    credentials are created in whatever directory the process started in, and a second run from a
+ *    different directory sees a different, empty veyyon.
+ *  - The filesystem root (`HOME=/`). Every write lands in `/.veyyon`, outside the user's control
+ *    and usually not writable; where it is writable, it litters the root of the filesystem.
  *
- * Both are configuration faults with a one-line fix, so this throws and names
- * the fix rather than proceeding somewhere arbitrary.
- *
- * Exported so the refusal can be tested directly: `os.homedir()` is resolved
- * once per process, so a test cannot reach the empty case by assigning `HOME`.
+ * Both are configuration faults with a one-line fix, so this throws and states the fix rather than
+ * proceeding somewhere arbitrary. Exported so the refusal can be tested directly: `os.homedir()` is
+ * resolved once per process, so a test cannot reach the empty case by assigning `HOME`.
  */
 export function resolveHomeDirOrThrow(): string {
 	const home = os.homedir();
@@ -1279,44 +1274,23 @@ function isUnderPath(candidate: string, root: string): boolean {
 /**
  * The config root named by `VEYYON_CONFIG_DIR`, or `undefined` when it is unset.
  *
- * ## The bug this is the fix for
+ * The value is a path, not a name: absolute is taken as written, relative is resolved against the
+ * home. It is then checked against the one thing it must never be, somewhere inside the operator's
+ * home. A joined name instead makes `~/.veyyon-<anything>` reachable from one environment variable,
+ * and a suite setting one in the belief that it has isolated itself writes into the real home,
+ * because assigning `process.env.HOME` does not move `os.homedir()` under Bun, which resolves it
+ * once at process start.
  *
- * This used to be `getConfigDirName()`, which returned a NAME that every caller
- * `path.join`ed onto `os.homedir()`. A location that can only ever land inside the home
- * is not a location, it is a rename, and both halves of that produced damage:
+ * The default root `~/.veyyon` is unaffected: that is what an unset variable gives, and this
+ * function is not consulted for it.
  *
- *  - A BARE NAME created a real directory in the operator's real home. Assigning
- *    `process.env.HOME` does not move `os.homedir()` under Bun -- it is resolved once at
- *    process start -- so a suite setting `VEYYON_CONFIG_DIR=".veyyon-mysuite"` believing
- *    it had isolated itself was writing to `~/.veyyon-mysuite`. 136 of those accumulated
- *    in one real home before anyone counted them. The mechanism read as isolation and
- *    was its opposite.
- *  - An ABSOLUTE PATH was REFUSED, so the one spelling that could NOT land in the home
- *    was the one spelling forbidden, and the sanctioned escape was
- *    `path.relative(os.homedir(), tempRoot)`: a run of `..` segments whose correctness
- *    depends on a home the reader cannot see from the call site.
+ * Inside the test sandbox the home is a tmpfs the guest owns, with the operator's real home absent
+ * from the filesystem view, so {@link SANDBOX_MARKER_ENV_KEY} lifts the refusal. It is trusted in
+ * this one direction only; the strong half of the pair is the reachability proof in
+ * `packages/utils/test/helpers/sandbox-gate.ts`, which refuses to let the process start when a real
+ * home is in reach.
  *
- * So the rule is inverted. The value is a PATH -- absolute taken as written, relative
- * resolved against the home, which keeps the `..` form above working -- and then checked
- * against the one thing it must never be: somewhere inside the operator's home. The
- * default root `~/.veyyon` is unaffected: that is what you get when the variable is
- * unset, and this function is not consulted.
- *
- * ## Why the sandbox marker grants it
- *
- * Inside the test sandbox the home IS disposable: a tmpfs the guest owns, with the
- * operator's real home absent from the filesystem view entirely. Refusing there would
- * break every suite that legitimately puts its config root under its own temp home while
- * protecting nothing. {@link SANDBOX_MARKER_ENV_KEY} is trusted in this one direction
- * only, and it is the weaker half of the pair: the strong half is the reachability proof
- * in `packages/utils/test/helpers/sandbox-gate.ts`, which has already refused to let the
- * process start if a real home was in reach.
- *
- * ## What breaks if this regresses
- *
- * Reverting to a joined name makes `~/.veyyon-<anything>` reachable from one environment
- * variable again, which is how the 136 directories were created.
- * `packages/utils/test/sandbox-gate-contracts.test.ts` fails when it does.
+ * `packages/utils/test/sandbox-gate-contracts.test.ts` fails when this regresses to a joined name.
  */
 export function getConfigRootOverride(): string | undefined {
 	const override = pickProcessEnv(...CONFIG_DIR_ENV_KEYS);

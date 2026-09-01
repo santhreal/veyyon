@@ -89,6 +89,8 @@
 - The `/collab` QR block draws its own leading blank row instead of being presented behind a spacer, so the slash-command registry no longer imports the terminal engine; the transcript shows the same blank row above the code and above the too-narrow hint.
 ### Changed
 
+- The `read` tool's URL routing, internal-URL routing, notebook reading, document conversion and structural summarizing each live in their own named method instead of inline branches of one 758-line `execute`, with no change to what any read returns.
+- The doc comments on the agent registry's conversation scope and address check, and on the subagent model and thinking-level resolvers, state the precedence and the boundary rule without the surrounding narrative; no behavior changes.
 - The launch card paints about 8ms sooner: the bundled themes are embedded as text and parsed on the ask instead of building all 98 before the first frame, and the card path no longer evaluates `node:assert/strict`, `node:crypto`, `node:inspector`, `node:child_process` or `node:zlib` for calls it does not make.
 - The status row reads its truncation limits from `tools/core/render-limits`, a leaf that imports nothing, rather than `tools/core/render-utils`, which drops the tool renderers, path helpers and image resizing from the launch card's import graph; first-frame time is unchanged, because those modules only declare functions.
 - The home screen hero drops the recent-session row; `/welcome` still lists recent sessions.
