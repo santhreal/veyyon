@@ -284,7 +284,7 @@ One call runs one cell in one language. You mix languages by making separate cal
 - Timeout default: 30s (applied when `timeout` is omitted in `EvalTool.execute()`; `TOOL_TIMEOUTS.eval` in `packages/coding-agent/src/tools/core/tool-timeouts.ts`)
 - Timeout `0`: disables the deadline entirely (no idle timer is armed)
 - Timeout clamp at runtime: 1s minimum, 3600s maximum, plus the `tools.maxTimeout` global ceiling when configured (`TOOL_TIMEOUTS.eval` in `packages/coding-agent/src/tools/core/tool-timeouts.ts`). A clamped request is reported through `details.notice`, not silently adjusted.
-- Transcript code/output preview: 10 lines by default (`EVAL_DEFAULT_PREVIEW_LINES` in `packages/coding-agent/src/tools/shell/eval-render.ts`, re-exported from `eval.ts`)
+- Transcript code/output preview: 10 lines by default (`EVAL_DEFAULT_PREVIEW_LINES` in `packages/coding-agent/src/tools/shell/eval-view.ts`)
 - Output truncation window: 50KB default, set by `tools.artifactSpillThreshold`
 - Output line cap inside truncation helpers: 3000 lines (`DEFAULT_MAX_LINES` in `packages/coding-agent/src/session/streaming-output.ts`)
 - Streaming tail buffer for live updates: `DEFAULT_MAX_BYTES * 2` = 100KB (`packages/coding-agent/src/tools/shell/eval.ts`)

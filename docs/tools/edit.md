@@ -77,7 +77,7 @@ Warnings:
 ...
 ```
 
-- `details` is `EditToolDetails` from `packages/coding-agent/src/edit/renderer.ts`:
+- `details` is `EditToolDetails` from `packages/coding-agent/src/edit/details.ts`:
   - `diff`: unified diff string
   - `firstChangedLine`: first changed post-edit line
   - `diagnostics`: LSP/format result if available
