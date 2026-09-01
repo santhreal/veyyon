@@ -16,7 +16,7 @@ pub mod schema;
 pub mod surface;
 pub mod watcher;
 
-pub use color::{ColorRole, RgbColor, Theme};
+pub use color::{ColorParseError, ColorRole, RgbColor, Theme};
 pub use dumper::dump_to_dir;
 pub use elevation::{ElevationLevel, ElevationTokens};
 pub use error::TokenError;
