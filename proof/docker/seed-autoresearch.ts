@@ -240,6 +240,15 @@ const started = Date.now() - 1000 * 60 * 214;
 let clock = started;
 for (const seed of FIXTURES.runs) {
 	clock += 1000 * 60 * 7;
+	// A crashed command produces no parseable output, so the harness parses no
+	// primary and no secondaries, and the log call that records the outcome has
+	// no numbers to declare. Seeding it with the zero the run row carries would
+	// state that the harness measured zero, which is the reading the screen now
+	// distinguishes from an unmeasured run.
+	const measured = seed.status !== "crash";
+	const metrics: Record<string, number> = measured
+		? { "wall time": seed.metric, "peak rss": 128 + seed.segment * 4 }
+		: {};
 	const run = storage.insertRun({
 		sessionId: session.id,
 		segment: seed.segment,
@@ -253,10 +262,10 @@ for (const seed of FIXTURES.runs) {
 		runId: run.id,
 		completedAt: clock + Math.round(seed.metric * 1000),
 		durationMs: Math.round(seed.metric * 1000),
-		exitCode: 0,
+		exitCode: measured ? 0 : 139,
 		timedOut: false,
-		parsedPrimary: seed.metric,
-		parsedMetrics: { "wall time": seed.metric, "peak rss": 128 + seed.segment * 4 },
+		parsedPrimary: measured ? seed.metric : null,
+		parsedMetrics: metrics,
 		parsedAsi: null,
 	});
 	storage.markRunLogged({
@@ -264,7 +273,7 @@ for (const seed of FIXTURES.runs) {
 		status: seed.status,
 		description: seed.description,
 		metric: seed.metric,
-		metrics: { "wall time": seed.metric, "peak rss": 128 + seed.segment * 4 },
+		metrics,
 		asi: null,
 		commitHash: baselineCommit,
 		confidence: seed.confidence ?? null,
