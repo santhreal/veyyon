@@ -18,6 +18,7 @@ import {
 } from "../../utils/image-loading";
 import { ToolError } from "../core/tool-errors";
 import type { ToolSession } from "../index";
+import { inspectImageToolView } from "./inspect-image-view";
 
 const inspectImageSchema = type({
 	path: type("string").describe("image file path, Image #N label, or attachment://N URI"),
@@ -110,6 +111,7 @@ export class InspectImageTool implements AgentTool<typeof inspectImageSchema, In
 	readonly description: string;
 	readonly parameters = inspectImageSchema;
 	readonly strict = false;
+	readonly view = inspectImageToolView;
 
 	readonly examples: readonly ToolExample<typeof inspectImageSchema.infer>[] = [
 		{
@@ -290,5 +292,3 @@ export class InspectImageTool implements AgentTool<typeof inspectImageSchema, In
 		};
 	}
 }
-
-export { inspectImageToolRenderer } from "./inspect-image-renderer";

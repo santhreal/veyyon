@@ -1,10 +1,26 @@
+/**
+ * Differential oracle: the inspect_image tool renderer from origin/main.
+ *
+ * Source SHA: 90ac7c1e589ad3ca068f7b95da560839f469b9bb
+ * Frozen: never edited to make a test pass.
+ *
+ * On main this was `src/tools/inspect-image-renderer.ts`; only its import specifiers are rewritten
+ * to the package subpaths this branch publishes, so the bytes it draws are main's.
+ */
+
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import {
+	formatErrorDetail,
+	formatExpandHint,
+	replaceTabs,
+	shortenPath,
+	truncateToWidth,
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import { framedBlock, renderStatusLine } from "@veyyon/coding-agent/tui";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";
-import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
-import type { Theme } from "../../theme/theme";
-import { framedBlock, renderStatusLine } from "../../tui";
-import { formatErrorDetail, formatExpandHint, replaceTabs, shortenPath, truncateToWidth } from "../core/render-utils";
 
 interface InspectImageRenderArgs {
 	path?: string;
