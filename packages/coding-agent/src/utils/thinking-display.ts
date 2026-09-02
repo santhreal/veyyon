@@ -50,19 +50,19 @@ function isCommentNoise(line: string, isLastLine: boolean): boolean {
  * streamed tick while the fence is open, so the block visibly keeps moving, and
  * a finished block states how much of itself it is hiding.
  */
-function elisionMarker(hidden: number): string {
+function hiddenCodeMarker(hidden: number): string {
 	if (hidden <= 0) return "...";
 	return `... (${hidden} ${hidden === 1 ? "line" : "lines"} of code)`;
 }
 
-/** Matches {@link elisionMarker} at the end of a line, capturing its count. */
-const ELISION_MARKER_PATTERN = /\.\.\.(?: \((\d+) lines? of code\))?$/;
+/** Matches {@link hiddenCodeMarker} at the end of a line, capturing its count. */
+const HIDDEN_CODE_MARKER_PATTERN = /\.\.\.(?: \((\d+) lines? of code\))?$/;
 
 /**
  * Thinking text prepared for display. Both modes drop empty `<!-- -->`
  * sentinel lines outside code fences (see {@link isCommentNoise}); prose-only
  * mode additionally elides fenced code down to a trailing ellipsis that names
- * how many lines it hid (see {@link elisionMarker}).
+ * how many lines it hid (see {@link hiddenCodeMarker}).
  */
 export function formatThinkingForDisplay(text: string, proseOnly: boolean): string {
 	if (!text) return text;
@@ -90,20 +90,20 @@ export function formatThinkingForDisplay(text: string, proseOnly: boolean): stri
 		}
 
 		if (lastLineIdx < 0) {
-			resultLines.push(elisionMarker(hidden));
+			resultLines.push(hiddenCodeMarker(hidden));
 			return;
 		}
 		const trimmed = resultLines[lastLineIdx]!.trimEnd();
-		const existing = ELISION_MARKER_PATTERN.exec(trimmed);
+		const existing = HIDDEN_CODE_MARKER_PATTERN.exec(trimmed);
 		if (existing) {
 			// Fences separated only by blank lines collapse onto one marker
 			// rather than stacking ellipses on the same sentence.
 			const already = existing[1] === undefined ? 0 : Number(existing[1]);
-			resultLines[lastLineIdx] = trimmed.slice(0, existing.index) + elisionMarker(already + hidden);
+			resultLines[lastLineIdx] = trimmed.slice(0, existing.index) + hiddenCodeMarker(already + hidden);
 			return;
 		}
 		const stem = trimmed.endsWith(".") ? trimmed.slice(0, -1) : trimmed;
-		resultLines[lastLineIdx] = stem + elisionMarker(hidden);
+		resultLines[lastLineIdx] = stem + hiddenCodeMarker(hidden);
 	};
 
 	for (let i = 0; i < lines.length; i++) {

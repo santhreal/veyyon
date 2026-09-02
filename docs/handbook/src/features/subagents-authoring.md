@@ -90,13 +90,15 @@ and `thinkingLevel:` in the file.
 
 ## Start from a bundled agent
 
-`veyyon agents unpack` writes the shipped definitions to disk as ordinary markdown
-files, frontmatter and all. Copy one into `~/.veyyon/subagents/` under a new name
-and edit it.
+`veyyon agents unpack` writes the shipped definitions to `~/.veyyon/subagents/` as
+ordinary markdown files, frontmatter and all. Copy one under a new name and edit it.
 
 ```console
 $ veyyon agents unpack --dir ./unpacked-agents
 ```
+
+`--dir` writes them somewhere else, which keeps the unedited copies out of the
+directory discovery reads.
 
 A definition that keeps a bundled agent's `name` replaces that agent: a file in
 `~/.veyyon/subagents/` outranks the bundled definition of the same name, so writing

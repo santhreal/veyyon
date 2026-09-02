@@ -590,8 +590,11 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.agents` | Roster | record | `{}` | Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent's page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above, and an agent that names nothing runs the default model role. This is the only place a model or an effort is chosen for an agent. |
+| `subagent.agents` | Roster | record | `{}` | Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent's page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above, and an agent that names nothing runs the default model role. Same Model for All Subagents below replaces the per-agent Model and Effort rows with one pair for the whole roster. |
 | `subagent.maxNestedSpawnDepth` | Max Nested Spawn Depth | number | `0` | How many nested levels subagents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Roster above, pick a subagent, then Subagents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name. |
+| `subagent.sharedModel` | Same Model for All Subagents | boolean | `false` | Run every subagent on one model and one effort instead of choosing per agent. Off, each agent's page decides. On, the two rows below decide for the whole roster and the per-agent Model and Effort rows are hidden; what those rows hold is kept and comes back when this goes off. |
+| `subagent.model` | Shared Model | modelChain | _(unset)_ | The model chain every subagent runs while Same Model for All Subagents is on. Unset falls back to the default model role, the same model a new session starts on. |
+| `subagent.thinkingLevel` | Shared Effort | string | _(unset)_ | The effort every subagent runs at while Same Model for All Subagents is on. Narrowed to what the model above declares; a `:level` suffix on the chain still wins. Inherit leaves the documented default. |
 | `subagent.showResolvedModelBadge` | Show Resolved Model Badge | boolean | `true` | Show each subagent's resolved model, and the setting that decided it, in the task widget status line and the agent surfaces. Shown under the tab's Advanced fold. |
 
 ### Limits
@@ -890,10 +893,7 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `statusLine.separator` | enum | `pipe` | Values: `powerline`, `powerline-thin`, `slash`, `pipe`, `block`, `none`, `ascii`. |
 | `statusLine.transparent` | boolean | `true` |  |
 | `stt.language` | string | `en` |  |
-| `subagent.model` | modelChain | _(unset)_ | Retired: use `subagent.agents` instead. |
 | `subagent.modelByDepth` | record | `{}` | Retired: use `subagent.agents` instead. |
-| `subagent.sharedModel` | boolean | `false` | Retired: use `subagent.agents` instead. |
-| `subagent.thinkingLevel` | string | _(unset)_ | Retired: use `subagent.agents` instead. |
 | `thinkingBudgets.high` | number | `16384` |  |
 | `thinkingBudgets.low` | number | `2048` |  |
 | `thinkingBudgets.max` | number | `32768` |  |
@@ -905,4 +905,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-350 settings in /settings, 124 configuration-file keys, 474 in all.
+353 settings in /settings, 121 configuration-file keys, 474 in all.

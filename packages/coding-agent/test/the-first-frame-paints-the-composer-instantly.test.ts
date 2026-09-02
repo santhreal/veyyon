@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, setSystemTime, vi } from "bun:test";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -25,10 +26,10 @@ import { getEditorTheme, initTheme } from "@veyyon/coding-agent/modes/theme/them
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { branchLabelFromFiles } from "@veyyon/coding-agent/utils/git-head";
+import { branchLabelFromFiles, HEAD_REF_PREFIX, LOCAL_BRANCH_PREFIX } from "@veyyon/coding-agent/utils/git-head";
 import type { Component } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/tui/utils";
-import { getProjectDir, TempDir } from "@veyyon/utils";
+import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 import { useFixtureCheckout } from "./helpers/fixture-checkout";
 
@@ -109,16 +110,23 @@ function budgetedLocation(): string {
 }
 
 /**
+ * The narrowest width the location is looked for at, and the reason a case that measures clipping
+ * must land above it: below this the scan never looks, so a path short enough to survive here is
+ * reported as fitting at the floor and one column narrower is a width nothing was measured at.
+ */
+const LOCATION_SCAN_FLOOR = 40;
+
+/**
  * The narrowest terminal whose card row carries the budgeted location whole.
  *
  * Wider than this the path is untouched; narrower, the row refits it against the segments beside
  * it, which is what the live row does with the same path. Measured because the answer is the
- * length of this checkout's path, and asserted against a bound so a location that never survives
+ * length of the project's path, and asserted against a bound so a location that never survives
  * at any width fails here instead of quietly calibrating to 400.
  */
 function widthThatFitsTheLocation(): number {
 	const located = budgetedLocation();
-	for (let width = 40; width <= 400; width += 1) {
+	for (let width = LOCATION_SCAN_FLOOR; width <= 400; width += 1) {
 		if (launchRows(width).some(row => row.includes(located))) return width;
 	}
 	throw new Error("the launch row carried the budgeted location at no width between 40 and 400 columns");
@@ -133,7 +141,6 @@ const CHECKOUT = useFixtureCheckout({
 	branch: "launch-card-fixture",
 	nested: ["platform-services", "ingest-pipeline", "normalizer"],
 });
-
 let isolated: IsolatedConfigRoot;
 
 beforeAll(async () => {
@@ -200,6 +207,9 @@ describe("the launch composer", () => {
 	 */
 	it("shortens the path rather than dropping it when the row cannot afford the budget", () => {
 		const fits = widthThatFitsTheLocation();
+		// Above the scan floor, or `fits - 1` is a width the search never looked at and the case
+		// below measures a row that was never asked to give anything up.
+		expect(fits).toBeGreaterThan(LOCATION_SCAN_FLOOR);
 		const tail = path.basename(getProjectDir());
 		const row = launchRows(fits - 1).find(candidate => candidate.includes(tail));
 

@@ -46,7 +46,7 @@ import {
 } from "@veyyon/coding-agent/modes/launch-facts";
 import { resetGroundTintsForTest } from "@veyyon/coding-agent/modes/theme/ground-tints";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { computeNonMessageBreakdown } from "@veyyon/coding-agent/session/context-usage";
+import { computeNonMessageBreakdown } from "@veyyon/coding-agent/session/non-message-tokens";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 import type { GitStatusSummary } from "@veyyon/coding-agent/utils/git";
 import { getLaunchFactsCachePath, stripAnsi } from "@veyyon/utils";

@@ -290,14 +290,13 @@ describe("subagent.agents settings surface", () => {
 	});
 
 	/**
-	 * The roster lists agents and NOTHING that reaches more than one of them.
+	 * The roster lists agents and NOTHING that reaches more than one of them. The switch that does
+	 * reach every agent is a row on the tab above, not a row inside this page, so a choice aimed at
+	 * one agent and a choice aimed at the whole roster are never one row apart.
 	 *
-	 * The screen this replaced opened with a "Same Model for All Agents" switch
-	 * and a model/effort pair under it that answered for the whole roster, so a
-	 * choice aimed at one agent and a choice aimed at every agent looked the same
-	 * and sat one row apart. Every case here drives the real component and
-	 * asserts on the stored settings, so a screen that shows a value and cannot
-	 * change it, or changes more than the agent named on it, turns this red.
+	 * Every case here drives the real component and asserts on the stored settings, so a screen
+	 * that shows a value and cannot change it, or changes more than the agent named on it, turns
+	 * this red.
 	 *
 	 * WHAT IT DOES NOT CATCH: the model picker's own catalog behaviour. This
 	 * harness has no models, so the chain rows it can reach are the ones that
@@ -310,12 +309,58 @@ describe("subagent.agents settings surface", () => {
 		const lines = paneLines(component);
 
 		expect(lines.some(line => line.includes("designer"))).toBe(true);
-		expect(lines.some(line => line.includes("Same Model for All Agents"))).toBe(false);
-		// A stored cross-agent value that decides nothing must not be on screen: a
+		expect(lines.some(line => line.includes("Same Shared Model"))).toBe(false);
+		// A stored blanket value the switch is not reading must not be on screen: a
 		// row answering for everybody is what this page was collapsed to end.
 		expect(lines.some(line => line.includes("every subagent"))).toBe(false);
 		// The dead end this screen replaced.
 		expect(lines.some(line => line.includes("Change it in"))).toBe(false);
+	});
+
+	/**
+	 * The two scopes are exclusive on screen, not only in the resolver. While the switch is on, the
+	 * agent's page must not draw a Model or an Effort row: a row showing a value no spawn reads is
+	 * the exact confusion that retired the first version of this switch. The page says where the
+	 * answer is instead of losing one.
+	 */
+	it("replaces an agent's Model and Effort rows with a signpost while the switch is on", async () => {
+		settings.set("subagent.sharedModel", true);
+		settings.set("subagent.agents", { designer: { model: "anthropic/claude-sonnet-4" } });
+		const { component, selectRow } = await openRoster("designer");
+		selectRow("designer");
+		component.handleInput("\n");
+		const labels = paneLines(component).map(
+			line =>
+				line
+					.replace(/^[\s›]*/, "")
+					.split(/\s{2,}/)[0]
+					?.trim() ?? "",
+		);
+
+		expect(labels).toContain("Enabled");
+		expect(labels).not.toContain("Model");
+		expect(labels).not.toContain("Effort");
+		expect(paneLines(component).join(" ").replace(/\s+/g, " ")).toContain("Subagents → Shared Model");
+	});
+
+	/** Off is the default, and the agent's own rows are back the moment it is. */
+	it("draws an agent's Model and Effort rows while the switch is off", async () => {
+		settings.set("subagent.sharedModel", false);
+		settings.set("subagent.agents", { designer: { model: "anthropic/claude-sonnet-4" } });
+		const { component, selectRow } = await openRoster("designer");
+		selectRow("designer");
+		component.handleInput("\n");
+		const labels = paneLines(component).map(
+			line =>
+				line
+					.replace(/^[\s›]*/, "")
+					.split(/\s{2,}/)[0]
+					?.trim() ?? "",
+		);
+
+		expect(labels).toContain("Model");
+		expect(labels).toContain("Effort");
+		expect(paneLines(component).join(" ").replace(/\s+/g, " ")).not.toContain("Shared Model");
 	});
 
 	/**
@@ -364,32 +409,31 @@ describe("subagent.agents settings surface", () => {
 	});
 
 	/**
-	 * ONE OWNER, enumerated from the schema at run time. The per-agent table is
-	 * the only setting on this tab that decides what a subagent runs, and it sits
-	 * in the roster's own group. The four keys that used to answer for every
-	 * agent are retired: they carry no `ui` block, so a row of their own is the
-	 * regression, and a run-affecting setting added to this tab in a section of
-	 * its own fails here instead of quietly reopening the three-surface split.
+	 * ONE OWNER PER SCOPE, enumerated from the schema at run time. Everything on this tab that
+	 * decides what a subagent runs sits in the roster's own group: the per-agent table, and the
+	 * shared switch with the two rows it owns. A run-affecting setting added to this tab in a
+	 * section of its own fails here instead of quietly reopening the three-surface split.
+	 *
+	 * `subagent.modelByDepth` keyed a chain to a spawn depth rather than to an agent and offers no
+	 * row in either scope.
 	 */
 	it("keeps every setting that decides what a subagent runs in the roster's section", () => {
 		invalidateSettingDefsCache();
 		expect(TAB_GROUPS.subagents.filter(group => /model/i.test(group))).toEqual([]);
 		const tab = getSettingsForTab("subagents");
 
-		for (const path of [
-			"subagent.model",
-			"subagent.thinkingLevel",
-			"subagent.sharedModel",
-			"subagent.modelByDepth",
-		]) {
-			expect(
-				tab.find(entry => entry.path === path),
-				`${path} is retired and must offer no row`,
-			).toBeUndefined();
+		expect(
+			tab.find(entry => entry.path === "subagent.modelByDepth"),
+			"subagent.modelByDepth is retired and must offer no row",
+		).toBeUndefined();
+
+		const deciding = ["subagent.agents", "subagent.sharedModel", "subagent.model", "subagent.thinkingLevel"];
+		for (const path of deciding) {
+			const entry = tab.find(candidate => candidate.path === path);
+			expect(entry, `${path} must offer a row`).toBeDefined();
+			expect(entry?.group, `${path} belongs beside the roster`).toBe("Subagents");
 		}
-		const table = tab.find(entry => entry.path === "subagent.agents");
-		expect(table).toBeDefined();
-		expect(table?.group).toBe("Subagents");
+		expect(tab.find(entry => entry.path === "subagent.agents")?.type).toBe("subagentAgents");
 	});
 });
 

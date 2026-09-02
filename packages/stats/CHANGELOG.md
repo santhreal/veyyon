@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The session parser passes `contentText` an options object rather than a bare separator, following that helper's consolidation in `@veyyon/utils`. No change to the text it extracts.
+
 ### Removed
 
 - The `@veyyon/stats/format` entry point. `formatCostTiered` and `normalizePremiumRequests` are now exported by `@veyyon/utils/format`.

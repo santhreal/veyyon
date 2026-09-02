@@ -42,7 +42,8 @@ import { type Component, Container, TUI } from "@veyyon/tui/tui";
 import { setTuiTight } from "@veyyon/tui/utils";
 import * as logger from "@veyyon/utils/logger";
 import { settings } from "../config/settings-instance";
-import { clearFirstFrameRecording, recordFirstFrame, takeReplayedFirstFrame } from "../startup/first-frame-replay";
+import { clearFirstFrameRecording, recordFirstFrame } from "../startup/first-frame-recorder";
+import { takeReplayedFirstFrame } from "../startup/first-frame-replay";
 import {
 	applyComposerChrome,
 	computeEditorMaxHeight,

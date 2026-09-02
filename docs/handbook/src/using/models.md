@@ -98,7 +98,7 @@ $ veyyon --model openai/gpt-5
 | --- | --- | --- |
 | **Interactive model** | Main conversation | `/model`, `--model`; persisted as `modelRoles.default` |
 | **Roles** | Named assignments (`smol`, `slow`, `plan`, `advisor`, …) | `modelRoles` / Settings → Model → Roles |
-| **Subagent policy** | Blanket and per-agent model and effort choices | `subagent.model`, `subagent.thinkingLevel`, and `subagent.agents` |
+| **Subagent policy** | Per-agent choices, or one pair for the whole roster | `subagent.agents`, or `subagent.sharedModel` with `subagent.model` and `subagent.thinkingLevel` |
 | **Compaction override** | Compaction / handoff | `compaction.model` (else inherit interactive) |
 
 ```yaml

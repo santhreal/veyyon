@@ -157,7 +157,6 @@ import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import { modelsAreEqual } from "@veyyon/catalog/models";
 import { ANTIGRAVITY_PRIMARY_ENDPOINT, ANTIGRAVITY_SANDBOX_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
-import { Patch } from "@veyyon/hashline";
 import { MacOSPowerAssertion } from "@veyyon/natives";
 import {
 	errorMessage,
@@ -167,6 +166,7 @@ import {
 	formatDuration,
 	getActiveAuthDbPath,
 	getInstallId,
+	getStringProperty,
 	isAbortError,
 	isBunTestRuntime,
 	isEnoent,
@@ -180,6 +180,7 @@ import {
 	withScopedTimeoutSignal,
 	withTimeout,
 } from "@veyyon/utils";
+import { contentText } from "@veyyon/utils/content-text";
 import { startupMarker } from "@veyyon/utils/startup-marker";
 import type { ArgotSession } from "argot";
 import {
@@ -277,7 +278,6 @@ import { clearClaudePluginRootsCache } from "../discovery/helpers";
 // symbols are declared in four leaves that reach a handful between them.
 import { normalizeDiff, ParseError } from "../edit/diff";
 import { getFileSnapshotStore } from "../edit/file-snapshot-store";
-import { expandApplyPatchToEntries } from "../edit/modes/apply-patch";
 import { previewPatch } from "../edit/modes/patch";
 import { normalizeToLF, stripBom } from "../edit/normalize";
 import { executePython as executePythonCommand, type PythonResult } from "../eval/py/executor";
@@ -439,7 +439,7 @@ import { buildNamedToolChoice, isToolChoiceActive } from "../utils/tool-choice";
 import type { VibeModeState } from "../vibe/state";
 import { AgentStorage } from "./agent-storage";
 import type { AuthStorage } from "./auth-storage";
-import type { ClientBridge, ClientBridgePermissionOption, ClientBridgePermissionOutcome } from "./client-bridge";
+import type { ClientBridge, ClientBridgePermissionOutcome } from "./client-bridge";
 import {
 	type CodexAutoRedeemRedeemDecision,
 	defaultCodexAutoRedeemCoordinator,
@@ -448,18 +448,28 @@ import {
 	shouldPromptCodexAutoRedeem,
 } from "./codex-auto-reset";
 import { findCompactMode } from "./compact-modes";
-import { type ContentBlockLike, contentText } from "./content-text";
+import {
+	COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION,
+	COMPACTION_CHECK_CONTINUATION,
+	COMPACTION_CHECK_NONE,
+	COMPACTION_RECOVERY_BAND,
+	type CompactionBar,
+	type CompactionBudget,
+	type CompactionCheckResult,
+	compactionDeadEndWarning,
+	createCodexCompactionContext,
+	declaredContextWindow,
+	PRUNE_CACHE_WARM_SUFFIX_TOKENS,
+	PRUNE_IDLE_FLUSH_MS,
+	TRUNCATION_KEEP_EDGE_TOKENS,
+	TRUNCATION_MIN_TEXT_TOKENS,
+} from "./compaction-policy";
 // The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
 // terminal UI on the session engine's graph and cost the layering gate a standing exception each.
-import {
-	buildContextSnapshot,
-	computeNonMessageBreakdown,
-	computeNonMessageTokens,
-	computeStoredMessagesTokens,
-	estimateContextSnapshotAttribution,
-} from "./context-usage";
+import { buildContextSnapshot, computeStoredMessagesTokens, estimateContextSnapshotAttribution } from "./context-usage";
 import { initSessionCpuLimit, rekeySessionCpuLimit, sessionCpuLimit } from "./cpu-limit";
 import { abortDetached } from "./detached-abort";
+import { dedupeEphemeralReply } from "./ephemeral-reply";
 import {
 	collectPendingToolCalls,
 	createInterruptedTurnAbortMessage,
@@ -491,8 +501,35 @@ import {
 	stripImagesFromMessage,
 	USER_INTERRUPT_LABEL,
 } from "./messages";
+import { computeNonMessageBreakdown, computeNonMessageTokens } from "./non-message-tokens";
+import {
+	GEMINI_TOOL_REMINDER_TYPE,
+	MEMORY_CONTEXT_MESSAGE_TYPE,
+	MID_RUN_TODO_NUDGE_MAX_PER_CYCLE,
+	MID_RUN_TODO_NUDGE_MESSAGE_TYPE,
+	MID_RUN_TODO_NUDGE_MUTATING_TOOLS,
+	MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD,
+	PLAN_DECISION_TOOLS,
+	PLAN_MODE_REMINDER_MAX,
+	PLAN_YOLO_HANDOFF_MESSAGE_TYPE,
+	PREWALK_ACTION_TOOLS,
+	PREWALK_CHECKLIST_MESSAGE_TYPE,
+	PREWALK_CONTINUE_MESSAGE_TYPE,
+	PREWALK_PLAN_MESSAGE_TYPE,
+	SESSION_STATE_MESSAGE_TYPE,
+	SESSION_STOP_CONTINUATION_CAP,
+	THINKING_LOOP_REDIRECT_TYPE,
+	TOOL_CALL_LOOP_REDIRECT_TYPE,
+} from "./nudges";
 import { OperatorNotices, stderrNoticeSink } from "./operator-notices";
 import { disposeOwnedResources } from "./owned-resources";
+import {
+	extractPermissionLocations,
+	getPermissionIntent,
+	PERMISSION_OPTIONS,
+	PERMISSION_OPTIONS_BY_ID,
+	PERMISSION_REQUIRED_TOOLS,
+} from "./permission-intent";
 import { ProviderContextCanonicalizer } from "./provider-context-canonicalizer";
 import { applyProviderImagePolicy } from "./provider-image-budget";
 import {
@@ -525,6 +562,11 @@ import {
 	resolveRetryPolicy,
 	unreplayableContinueDelayMs,
 } from "./retry-policy";
+import {
+	checkpointStartedAtFromEntry,
+	completedRewindFromEntry,
+	isSuccessfulCheckpointEntry,
+} from "./rewind-checkpoint";
 import type { BuildSessionContextOptions, SessionContext } from "./session-context";
 import { getLatestCompactionEntry, getRestorableSessionModels } from "./session-context";
 import { formatSessionDumpText } from "./session-dump-format";
@@ -553,34 +595,6 @@ import {
 } from "./verification-evidence-ledger";
 import { YieldQueue } from "./yield-queue";
 
-const SESSION_STOP_CONTINUATION_CAP = 8;
-const PLAN_MODE_REMINDER_MAX = 3;
-const PLAN_DECISION_TOOLS = new Set<string>([TOOL.ask, TOOL.resolve]);
-
-/**
- * Mutating tool results (`bash`/`eval`/`edit`/`write`/`ast_edit`) without the
- * agent touching the `todo` tool that trip the mid-run reconciliation nudge.
- * Read-only exploration (search/read/lsp) never ticks this: an agent
- * researching for a long stretch has nothing to flip. Picked so a normal
- * fix-verify loop (~3-6 mutations) never sees the nudge, but a sustained run
- * of landed work without flipping any todos does. Without this nudge, long
- * runs drive the live todo HUD to `0/N` until the final stop, then batch-flip
- * to `N/N` (issue #3651).
- */
-const MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD = 12;
-/** Mid-run nudges per prompt cycle. Deliberately tighter than
- *  `todo.reminders.max` (the stop-time budget): this is a gentle hidden hint,
- *  not an escalation ladder. */
-const MID_RUN_TODO_NUDGE_MAX_PER_CYCLE = 2;
-/** Tool results that count as landed work for the mid-run todo nudge. */
-const MID_RUN_TODO_NUDGE_MUTATING_TOOLS: Record<string, true> = {
-	bash: true,
-	eval: true,
-	edit: true,
-	write: true,
-	ast_edit: true,
-};
-
 interface PendingContextSnapshot {
 	promptTokens: number;
 	nonMessageTokens: number;
@@ -601,127 +615,9 @@ interface PendingContextSnapshot {
 	compactionEntryId?: string;
 }
 
-/** `customType` for the hidden mid-run todo nudge; `display: false`, so it reaches
- *  the model but never renders in the TUI or transcript. */
-const MID_RUN_TODO_NUDGE_MESSAGE_TYPE = "mid-run-todo-nudge";
-/**
- * Custom-message type carrying the memory backend's volatile context (recalled
- * memories, mental models) at the TAIL of the conversation.
- *
- * It used to ride in the system prompt, which is the provider's cache prefix, so
- * every recall and every mental-model reload made the next request re-read the
- * whole conversation as uncached input. Same information, same place in the
- * model's reading order, no prefix invalidation.
- */
-const MEMORY_CONTEXT_MESSAGE_TYPE = "memory-context";
-/**
- * Custom-message type carrying the two facts that describe NOW rather than the
- * project: the calendar date and the working directory.
- *
- * They used to be one sentence inside the project block of the system prompt,
- * which is the provider's cache prefix, and the working directory is the one
- * thing in that prefix a session routinely changes. Measured on this repository,
- * a re-root from the root to `packages/utils` altered exactly one line of a
- * 92,921-character prompt — that sentence — and threw away the cached prefix for
- * the entire conversation behind it. Across 19 local log files, 210 of 232
- * recorded prefix invalidations were a `cwd-change`, averaging about 85,000
- * characters re-read each time for a path that had moved a directory down.
- *
- * The rebuild on re-root stays: the rules, skills and workspace tree really are
- * cwd-derived and a cross-project move must change them. What changes is that a
- * move which alters nothing but the path now rebuilds to BYTE-IDENTICAL bytes, so
- * there is no invalidation to record.
- */
-const SESSION_STATE_MESSAGE_TYPE = "session-state";
-/** Hidden plan nudge injected by prewalk; scrubbed from the LLM context
- *  when the switch happens. */
-const PREWALK_PLAN_MESSAGE_TYPE = "prewalk-plan";
-/** Hidden safety-net nudge forcing one more turn after a text-only reply to
- *  the plan nudge, which would otherwise end the run with no code written. */
-const PREWALK_CONTINUE_MESSAGE_TYPE = "prewalk-continue";
-/** Hidden "verify before finishing" checklist steered into the run at the
- *  switch, aimed at the fast model's specific failure patterns: partial
- *  multi-site fixes, unnecessarily broad rewrites, and reported-test-only
- *  verification. */
-const PREWALK_CHECKLIST_MESSAGE_TYPE = "prewalk-checklist";
-/** Tools whose first successful call triggers the switch — once the todo
- *  gate is open (see {@link AgentSession.#prewalkTodoSeen}). Bash is
- *  deliberately excluded: it doubles as exploration (ls/cat) and fired
- *  turn-1 switches in practice. `todo` is deliberately NOT a trigger: firing
- *  at the todo init handed the fast model 100% of the implementation with
- *  zero started work and measurably regressed pass rates. */
-const PREWALK_ACTION_TOOLS: Record<string, true> = {
-	edit: true,
-	write: true,
-};
-/** `customType` for the hidden hand-off message steered to the target model
- *  once PlanYolo auto-approves the plan. Unlike prewalk's plan nudge this
- *  is never scrubbed — it IS the instruction the target model acts on. */
-const PLAN_YOLO_HANDOFF_MESSAGE_TYPE = "plan-yolo-handoff";
 /** Abort reason for the Gemini reasoning-header runaway interrupt. Surfaced on the
  *  discarded assistant turn only; never reaches the model. */
 const GEMINI_HEADER_INTERRUPT_REASON = "Interrupted: emit a tool call instead of more planning";
-/** `customType` for the hidden tool-call reminder injected after the interrupt. */
-const GEMINI_TOOL_REMINDER_TYPE = "gemini-tool-call-reminder";
-/** `customType` for the hidden redirect notice injected into a turn retried after a
- *  thinking/response loop. Steers the model off the repeated content; never displayed. */
-const THINKING_LOOP_REDIRECT_TYPE = "thinking-loop-redirect";
-const TOOL_CALL_LOOP_REDIRECT_TYPE = "tool-call-loop-redirect";
-
-function customMessageContentText(content: string | (TextContent | ImageContent)[]): string {
-	if (typeof content === "string") return content;
-	const parts: string[] = [];
-	for (const part of content) {
-		if (part.type === "text") parts.push(part.text);
-	}
-	return parts.join("\n");
-}
-
-function stringProperty(value: object, key: string): string | undefined {
-	const field = Object.getOwnPropertyDescriptor(value, key)?.value;
-	return typeof field === "string" ? field : undefined;
-}
-
-function reportFromRewindReportContent(content: string): string {
-	const marker = "\nReport:\n";
-	const index = content.lastIndexOf(marker);
-	const report = index >= 0 ? content.slice(index + marker.length) : content;
-	return report.trim();
-}
-
-function completedRewindFromEntry(entry: SessionEntry): CompletedRewindState | undefined {
-	if (entry.type !== "custom_message" || entry.customType !== "rewind-report") return undefined;
-	const details = entry.details;
-	if (!details || typeof details !== "object") return undefined;
-	const startedAt = stringProperty(details, "startedAt");
-	const rewoundAt = stringProperty(details, "rewoundAt");
-	if (!startedAt || !rewoundAt) return undefined;
-	const report =
-		stringProperty(details, "report")?.trim() ||
-		reportFromRewindReportContent(customMessageContentText(entry.content));
-	return report.length > 0 ? { report, startedAt, rewoundAt } : undefined;
-}
-
-function isSuccessfulCheckpointEntry(entry: SessionEntry): entry is SessionMessageEntry & {
-	message: { role: "toolResult"; toolName: "checkpoint"; isError?: false };
-} {
-	return (
-		entry.type === "message" &&
-		entry.message.role === "toolResult" &&
-		entry.message.toolName === TOOL.checkpoint &&
-		entry.message.isError !== true
-	);
-}
-
-function checkpointStartedAtFromEntry(entry: SessionEntry): string | undefined {
-	if (!isSuccessfulCheckpointEntry(entry)) return undefined;
-	const details = entry.message.details;
-	if (details && typeof details === "object") {
-		const startedAt = stringProperty(details, "startedAt");
-		if (startedAt) return startedAt;
-	}
-	return entry.timestamp;
-}
 
 // A side-channel assistant response is signed for the hidden prompt/history that
 // produced it. If we persist that response under a different user turn, native
@@ -831,94 +727,6 @@ export interface AgentSessionDisposeOptions {
 	reason?: postmortem.Reason;
 }
 
-type CompactionCheckResult = Readonly<{
-	continuationScheduled: boolean;
-	automaticContinuationBlocked?: boolean;
-	historyRewritten?: boolean;
-}>;
-
-const COMPACTION_CHECK_NONE: CompactionCheckResult = {
-	continuationScheduled: false,
-};
-const COMPACTION_CHECK_CONTINUATION: CompactionCheckResult = {
-	continuationScheduled: true,
-};
-const COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION: CompactionCheckResult = {
-	continuationScheduled: false,
-	automaticContinuationBlocked: true,
-};
-
-/**
- * The bar a compaction pass is measured against. `"fit"` is the overflow/
- * incomplete retry, which only has to fit the window; `"recovery-band"` is the
- * threshold pass, which needs hysteresis under the trigger.
- */
-type CompactionBar = "fit" | "recovery-band";
-
-/** Where the live context sits relative to a {@link CompactionBar}. */
-type CompactionBudget = Readonly<{ residualTokens: number; budgetTokens: number }>;
-
-/**
- * Tokens preserved at the start and at the end of every text the truncation
- * tier cuts. A tool result states what it read in its first lines and what it
- * concluded in its last, and a model that keeps both can still tell what the
- * call was; the bulk between them is what a context window is spent on.
- */
-const TRUNCATION_KEEP_EDGE_TOKENS = 512;
-
-/**
- * Smallest text the truncation tier will cut. Below `2 ×` the kept edges plus
- * a margin there is no middle worth removing, and the marker would cost more
- * than the cut frees.
- */
-const TRUNCATION_MIN_TEXT_TOKENS = TRUNCATION_KEEP_EDGE_TOKENS * 2 + 256;
-
-/**
- * User-facing notice for a compaction dead end: every automatic reducer ran and
- * the context is still over the bar. By the time this fires the tiered rescue
- * has already elided heavy blocks to an artifact, dropped attached images and
- * truncated the largest remaining texts, so what is left is many small messages
- * that only a summarizer or the operator can reduce.
- */
-function compactionDeadEndWarning(): string {
-	return (
-		"Compaction freed too little context to make progress — pausing automatic maintenance to avoid a compaction loop. " +
-		"Eliding, image-dropping and truncating the largest messages all ran and the context is still over budget: " +
-		"start a fresh session with /new, or switch to a larger-context model."
-	);
-}
-
-/**
- * Context window compaction may price itself against, or undefined when the
- * model declares none.
- *
- * `Model.contextWindow` is nullable, and null there is a statement: this model
- * never told us how much it holds. Compaction caps its recent-history budget
- * against that window so it cannot ask to keep more conversation than the
- * prompt is allowed to carry, and there is nothing to cap against here.
- * Substituting a default would clamp against a number nobody stated, so the
- * cap is skipped and the configured budget stands, which is the behaviour
- * every session had before the cap existed.
- */
-function declaredContextWindow(model: Model | undefined): number | undefined {
-	const contextWindow = model?.contextWindow;
-	return typeof contextWindow === "number" && contextWindow > 0 ? contextWindow : undefined;
-}
-
-function createCodexCompactionContext(options: {
-	trigger: CodexCompactionContext["trigger"];
-	reason: CodexCompactionContext["reason"];
-	phase: CodexCompactionContext["phase"];
-}): CodexCompactionContext {
-	return {
-		operationId: crypto.randomUUID(),
-		trigger: options.trigger,
-		reason: options.reason,
-		phase: options.phase,
-		strategy: "memento",
-	};
-}
-
 /**
  * Settings that change the SHAPE OF THE TOOLS the model is handed, rather than
  * any text in the system prompt.
@@ -950,22 +758,6 @@ function rebuildsThePrompt(path: string): boolean {
 }
 
 /**
- * Per-turn prune cache window. A tool result whose all-message suffix exceeds
- * this is in the warm, already-sent prompt-cache prefix: re-writing it costs the
- * cacheWrite premium on the whole suffix. Per-turn passes only reclaim inside
- * this tail (matches the supersede pass's default `suffixTokenLimit`); deeper
- * stale/age victims are left to compaction/shake, which rebuild the cache anyway.
- */
-const PRUNE_CACHE_WARM_SUFFIX_TOKENS = 8_000;
-
-/**
- * Idle gap after which the supersede pass may flush the whole sent region (the
- * provider cache is cold, so re-writing it is free). MUST exceed the maximum
- * Anthropic prompt-cache TTL: "long" retention (the OAuth default) is 1h, or a
- * still-warm prefix is busted by the flush. 90 min leaves margin over the 1h TTL.
- */
-const PRUNE_IDLE_FLUSH_MS = 90 * 60_000;
-/**
  * How long a headless `shutdown()` waits for `dispose()` to flush before it
  * exits anyway. Long enough for a session-log write, short enough that a wedged
  * teardown cannot strand the caller.
@@ -973,19 +765,6 @@ const PRUNE_IDLE_FLUSH_MS = 90 * 60_000;
 const SHUTDOWN_DISPOSE_TIMEOUT_MS = 5_000;
 export type CommandMetadataChangedListener = () => void | Promise<void>;
 export type AsyncJobSnapshotItem = Pick<AsyncJob, "id" | "type" | "status" | "label" | "startTime">;
-
-/**
- * Hysteresis band for the post-maintenance "did we actually create headroom?"
- * check shared by the shake tail and the context-full tail. A
- * pass counts as having resolved threshold pressure only when residual context
- * lands at or below `COMPACTION_RECOVERY_BAND × threshold`. Re-checking against
- * the raw threshold lets a pass keep reclaiming a trickle of the previous
- * turn's output and land just under the line every turn, sustaining the
- * auto-continue dead loop reported in #2275; the same band stops the
- * context-full tail from re-firing on a history whose single
- * most-recent kept turn already exceeds the threshold (the compaction thrash).
- */
-const COMPACTION_RECOVERY_BAND = 0.8;
 
 /**
  * Slack added past a sibling credential's block expiry before retrying, so
@@ -1544,66 +1323,6 @@ export interface FreshSessionResult {
 	closedProviderSessions: number;
 }
 
-const EPHEMERAL_REPLY_MAX_BYTES = 4096;
-
-/**
- * Collapse degenerate ephemeral replies (/btw, /omfg side-channel turns).
- * Models occasionally loop on a single line (~16 reports of N-times-repeated
- * replies); compress runs longer than 3 down to one instance + `[…N×]`, then
- * cap at 4 KiB so a runaway reply can't flood the channel.
- */
-function dedupeEphemeralReply(text: string): string {
-	if (!text) return text;
-	const lines = text.split("\n");
-	const out: string[] = [];
-	let i = 0;
-	while (i < lines.length) {
-		let j = i + 1;
-		while (j < lines.length && lines[j] === lines[i]) j++;
-		const runLen = j - i;
-		if (runLen > 3) {
-			out.push(lines[i], `[…${runLen}×]`);
-		} else {
-			for (let k = 0; k < runLen; k++) out.push(lines[i]);
-		}
-		i = j;
-	}
-	let result = out.join("\n");
-	if (Buffer.byteLength(result, "utf8") > EPHEMERAL_REPLY_MAX_BYTES) {
-		// Trim by characters until we're under the byte budget — handles multi-byte
-		// glyphs at the boundary without splitting them.
-		const suffix = "\n[…truncated]";
-		const budget = EPHEMERAL_REPLY_MAX_BYTES - Buffer.byteLength(suffix, "utf8");
-		while (Buffer.byteLength(result, "utf8") > budget) {
-			result = result.slice(0, -1);
-		}
-		result += suffix;
-	}
-	return result;
-}
-
-/**
- * Build the per-request `metadata` payload for the Anthropic provider, shaped
- * like real Claude Code's `getAPIMetadata` output (`{ session_id, account_uuid,
- * device_id }`) so the backend buckets requests under one session and attributes
- * them to the authenticated OAuth account when available. Resolved at request
- * time so token refreshes and login/logout transitions don't strand a stale
- * account UUID in memory. `account_uuid` and `device_id` are omitted for
- * non-Anthropic providers to avoid leaking the user's Claude identity to
- * third-party APIs (including Anthropic-format-compatible proxies such as
- * cloudflare-ai-gateway or gitlab-duo).
- *
- * `provider` is the target provider string (e.g. `"anthropic"`) and gates the
- * `account_uuid` and `device_id` lookups — only `"anthropic"` requests carry them.
- *
- * `sessionId` is forwarded to the auth-storage session-sticky lookup so that
- * multi-credential setups attribute to the same OAuth account used for the
- * actual API request rather than always picking the first credential.
- *
- * `authStorage` is treated as optional so test fixtures that stub `modelRegistry`
- * without a real storage layer still work; the resolver simply skips the lookup
- * and emits `{ session_id }` alone, matching the no-OAuth-credential path.
- */
 /**
  * Whether `next` is the same tool set as `current` in a different order.
  *
@@ -1630,6 +1349,28 @@ function isToolOrderPermutation(current: readonly string[], next: readonly strin
 	return currentSet.size === 0;
 }
 
+/**
+ * Build the per-request `metadata` payload for the Anthropic provider, shaped
+ * like real Claude Code's `getAPIMetadata` output (`{ session_id, account_uuid,
+ * device_id }`) so the backend buckets requests under one session and attributes
+ * them to the authenticated OAuth account when available. Resolved at request
+ * time so token refreshes and login/logout transitions don't strand a stale
+ * account UUID in memory. `account_uuid` and `device_id` are omitted for
+ * non-Anthropic providers to avoid leaking the user's Claude identity to
+ * third-party APIs (including Anthropic-format-compatible proxies such as
+ * cloudflare-ai-gateway or gitlab-duo).
+ *
+ * `provider` is the target provider string (e.g. `"anthropic"`) and gates the
+ * `account_uuid` and `device_id` lookups — only `"anthropic"` requests carry them.
+ *
+ * `sessionId` is forwarded to the auth-storage session-sticky lookup so that
+ * multi-credential setups attribute to the same OAuth account used for the
+ * actual API request rather than always picking the first credential.
+ *
+ * `authStorage` is treated as optional so test fixtures that stub `modelRegistry`
+ * without a real storage layer still work; the resolver simply skips the lookup
+ * and emits `{ session_id }` alone, matching the no-OAuth-credential path.
+ */
 function buildSessionMetadata(
 	sessionId: string,
 	provider: string,
@@ -1689,169 +1430,6 @@ function createHandoffContext(document: string): string {
 function createHandoffFileName(date = new Date()): string {
 	const fileTimestamp = date.toISOString().replace(/[:.]/g, "-");
 	return `handoff-${fileTimestamp}.md`;
-}
-
-// ============================================================================
-// ACP Permission Gate
-// ============================================================================
-
-/** Tools that require user permission before execution when an ACP client is connected. */
-const PERMISSION_REQUIRED_TOOLS = new Set([TOOL.bash, TOOL.edit, "delete", "move"]);
-
-/** Permission options presented to the client on each gated tool call. */
-const PERMISSION_OPTIONS: ClientBridgePermissionOption[] = [
-	{ optionId: "allow_once", name: "Allow once", kind: "allow_once" },
-	{ optionId: "allow_always", name: "Always allow", kind: "allow_always" },
-	{ optionId: "reject_once", name: "Reject", kind: "reject_once" },
-	{ optionId: "reject_always", name: "Always reject", kind: "reject_always" },
-];
-
-const PERMISSION_OPTIONS_BY_ID = new Map(PERMISSION_OPTIONS.map(option => [option.optionId, option]));
-
-function getStringProperty(value: Record<string, unknown>, key: string): string | undefined {
-	const candidate = value[key];
-	return typeof candidate === "string" ? candidate : undefined;
-}
-
-function collectStringPaths(value: unknown): string[] {
-	return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-}
-
-function getEditDestructiveIntent(args: unknown): { kind: "delete" | "move"; paths: string[] } | undefined {
-	if (!isRecord(args)) return undefined;
-	const a = args as Record<string, unknown>;
-
-	const edits = Array.isArray(a.edits) ? a.edits : undefined;
-	if (edits) {
-		const path = getStringProperty(a, "path");
-		if (path) {
-			for (const edit of edits) {
-				if (!isRecord(edit)) continue;
-				const op = getStringProperty(edit as Record<string, unknown>, "op");
-				if (op === "delete") return { kind: "delete", paths: [path] };
-			}
-		}
-		for (const edit of edits) {
-			if (!isRecord(edit)) continue;
-			const entry = edit as Record<string, unknown>;
-			const op = getStringProperty(entry, "op");
-			const rename = getStringProperty(entry, "rename");
-			if (op !== "create" && rename) return { kind: "move", paths: path ? [path, rename] : [rename] };
-		}
-	}
-
-	const input = getStringProperty(a, "input");
-	if (input) {
-		try {
-			const patch = Patch.parse(input);
-			for (const section of patch.sections) {
-				if (section.fileOp?.kind === "rem") return { kind: "delete", paths: [section.path] };
-				if (section.fileOp?.kind === "move") return { kind: "move", paths: [section.path, section.fileOp.dest] };
-			}
-		} catch {
-			// Not a hashline patch — fall through to apply_patch parsing.
-		}
-		try {
-			const entries = expandApplyPatchToEntries({ input });
-			const deleteEntry = entries.find(entry => entry.op === "delete");
-			if (deleteEntry) return { kind: "delete", paths: [deleteEntry.path] };
-			const moveEntry = entries.find(entry => entry.rename);
-			if (moveEntry?.rename) return { kind: "move", paths: [moveEntry.path, moveEntry.rename] };
-		} catch {
-			// If the edit input is not an apply_patch envelope, it is not a delete/move operation.
-		}
-	}
-
-	return undefined;
-}
-
-function getPermissionIntent(
-	toolName: string,
-	args: unknown,
-): { toolName: string; title: string; paths?: string[]; cacheKey: string } | undefined {
-	const a = isRecord(args) ? (args as Record<string, unknown>) : {};
-	if (toolName === TOOL.bash) {
-		const cmd = getStringProperty(a, "command")?.slice(0, 80);
-		return { toolName, title: cmd || toolName, cacheKey: toolName };
-	}
-	if (toolName === "delete") {
-		const p = getStringProperty(a, "path");
-		return { toolName, title: p ? `Delete ${p}` : toolName, paths: p ? [p] : undefined, cacheKey: toolName };
-	}
-	if (toolName === "move") {
-		const from = getStringProperty(a, "oldPath") ?? getStringProperty(a, "path") ?? getStringProperty(a, "from");
-		const to = getStringProperty(a, "newPath") ?? getStringProperty(a, "to") ?? getStringProperty(a, "destination");
-		if (from && to) return { toolName, title: `Move ${from} to ${to}`, paths: [from, to], cacheKey: toolName };
-		return {
-			toolName,
-			title: from ? `Move ${from}` : toolName,
-			paths: from ? [from] : undefined,
-			cacheKey: toolName,
-		};
-	}
-	if (toolName === TOOL.edit) {
-		const intent = getEditDestructiveIntent(args);
-		if (!intent) return undefined;
-		if (intent.kind === "delete") {
-			return {
-				toolName,
-				title: `Delete ${intent.paths[0] ?? "edit target"}`,
-				paths: intent.paths,
-				cacheKey: "edit:delete",
-			};
-		}
-		const from = intent.paths[0];
-		const to = intent.paths[1];
-		return {
-			toolName,
-			title: from && to ? `Move ${from} to ${to}` : `Move ${from ?? to ?? "edit target"}`,
-			paths: intent.paths,
-			cacheKey: "edit:move",
-		};
-	}
-	return undefined;
-}
-
-function extractPermissionLocations(
-	args: unknown,
-	cwd: string,
-	explicitPaths?: string[],
-): { path: string; line?: number }[] {
-	if (!args || typeof args !== "object") return [];
-	const a = args as Record<string, unknown>;
-	const out: { path: string; line?: number }[] = [];
-	const pushPath = (value: unknown) => {
-		if (typeof value !== "string" || value.length === 0) return;
-		// ACP locations carry file paths that the editor host will open or focus;
-		// they must be absolute or the client cannot resolve them. Resolve raw
-		// tool args (often cwd-relative) against the session cwd before sending.
-		let resolved: string;
-		try {
-			resolved = resolveToCwd(value, cwd);
-		} catch {
-			return;
-		}
-		if (out.some(location => location.path === resolved)) return;
-		out.push({ path: resolved });
-	};
-	if (explicitPaths) {
-		for (const p of explicitPaths) {
-			pushPath(p);
-		}
-		return out;
-	}
-	pushPath(a.path);
-	pushPath(a.file);
-	for (const p of collectStringPaths(a.paths)) {
-		pushPath(p);
-	}
-	pushPath(a.oldPath);
-	pushPath(a.newPath);
-	pushPath(a.from);
-	pushPath(a.to);
-	pushPath(a.source);
-	pushPath(a.destination);
-	return out;
 }
 
 // ============================================================================
@@ -1943,7 +1521,7 @@ type SetSessionNameWithTrigger = (
 function textFromContent(content: unknown): string {
 	if (typeof content === "string") return content.trim();
 	if (!Array.isArray(content)) return "";
-	return contentText(content as readonly ContentBlockLike[], { separator: "\n\n", trimBlocks: true });
+	return contentText(content, { separator: "\n\n", trimBlocks: true });
 }
 
 function thinkingFromContent(content: unknown): string {

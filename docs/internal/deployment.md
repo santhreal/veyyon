@@ -51,7 +51,7 @@ bun run site:build      # = node website/build.mjs
    build means the committed one is behind.
 6. Generates `website-get/` for the separate `veyyon-get` Pages project,
    including the two installer scripts, root rewrite, and response headers.
-7. Scans the five hand-authored pages for leaked old product
+7. Scans the hard-coded page list in `website/build.mjs` for leaked old product
    names, allowing the MIT oh-my-pi attribution and marked `OMP_` legacy aliases,
    then writes `website/.buildinfo`. This scan does not cover handbook pages.
 
@@ -113,7 +113,7 @@ on 2026-07-28: the book carried a page whose markdown was not committed, so CI
 rebuilt 99 files differently and reported the book stale against sources that were
 never wrong.
 
-### Automatic sync: merge a page, it publishes itself
+### Automatic sync: merge a change, it publishes itself
 
 `.github/workflows/site.yml` is what makes the repository and the site one thing.
 It builds the site on pull requests targeting `main` that touch `website/**`
@@ -301,4 +301,4 @@ merge lands:
 4. `bun run site:deploy`.
 5. If `install.sh` or `install.ps1` changed, also run `bun run site:deploy:get`.
 
-*Verified against `1c60b481` on 2026-08-31.*
+*Verified against `c003983747` on 2026-09-01.*

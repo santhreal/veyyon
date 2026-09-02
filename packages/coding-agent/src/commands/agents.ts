@@ -19,13 +19,14 @@ export default class Agents extends Command {
 	static flags = {
 		force: Flags.boolean({ char: "f", description: "Overwrite existing agent files" }),
 		json: Flags.boolean({ description: "Output JSON" }),
-		dir: Flags.string({ description: "Output directory (default: ~/.veyyon/subagents)" }),
+		dir: Flags.string({ description: "Output directory (overrides --user)" }),
+		user: Flags.boolean({ description: "Write to ~/.veyyon/subagents (default)" }),
 	};
 
 	static examples = [
-		"# Export bundled agents into ~/.veyyon/subagents, where every profile reads them\n  veyyon agents unpack",
-		"# Overwrite existing definitions\n  veyyon agents unpack --force",
-		"# Export into a directory to read, without installing them\n  veyyon agents unpack --dir ./tmp/agents --json",
+		"# Export bundled agents where every profile reads them (default)\n  veyyon agents unpack",
+		"# Overwrite existing agent files\n  veyyon agents unpack --force",
+		"# Export into a custom directory\n  veyyon agents unpack --dir ./tmp/agents --json",
 	];
 
 	async run(): Promise<void> {
@@ -41,6 +42,7 @@ export default class Agents extends Command {
 				force: flags.force,
 				json: flags.json,
 				dir: flags.dir,
+				user: flags.user,
 			},
 		};
 

@@ -4,29 +4,38 @@
  * The defect: Settings → Subagents → Agents → <agent> carried its own Model and Effort rows, and both
  * outranked the blanket Subagent Model and Subagent Effort settings. Two screens answered one question
  * and disagreed on screen — the per-agent Model row printed an inherited value with an effort suffix
- * while the Effort row under it said inherit. The rows were DELETED rather than hidden, because a hidden
- * layer that outranks the visible setting is the same drift wearing a different hat.
+ * while the Effort row under it said inherit.
  *
- * The class is: what a subagent RUNS has exactly one owner per axis, and nothing may reintroduce a
- * second one. A test that pins the two retired field names closes the incident and nothing else — the
- * next `subagent.agents.<name>.effort`, or a fourth precedence layer under a new name, lands green.
- * So every case here derives its variant space at run time and fails by default:
+ * The fix is two EXCLUSIVE scopes rather than a precedence ladder. `subagent.sharedModel` selects
+ * which one is in force: off, each agent's lane decides and the blanket pair is inert; on, the
+ * blanket pair decides for every agent, every lane is inert, and the per-agent rows are not drawn.
+ * A lane keeps its value across the switch and decides again when it goes off.
  *
- *  1. WHICH SETTINGS DECIDE. Every `subagent.*` path in `SETTINGS_SCHEMA` is probed against the real
- *     resolvers, and the set that changes the answer must be exactly `subagent.agents`, whose scope
- *     is one agent. A new setting that reaches either resolver turns this RED.
+ * The class is: what a subagent RUNS has exactly one owner per axis IN EACH SCOPE, and neither scope
+ * may read a setting the other owns. A test that pins the two field names closes the incident and
+ * nothing else — the next `subagent.agents.<name>.effort`, or a fourth precedence layer under a new
+ * name, lands green. So every case here derives its variant space at run time and fails by default:
+ *
+ *  1. WHICH SETTINGS DECIDE, PER SCOPE. Every `subagent.*` path in `SETTINGS_SCHEMA` is probed against
+ *     the real resolvers in both scopes, and the set that changes the answer is pinned by equality for
+ *     each: `subagent.agents` plus the switch while it is off, the blanket pair plus the switch while
+ *     it is on. A new setting that reaches either resolver turns this RED, and so does a lane that
+ *     keeps deciding under an on switch.
  *  2. WHAT A PER-AGENT ROW MAY DECIDE. Row field names are derived from the schema's own `subagent.*`
- *     leaf names, so the sweep grows with the settings area rather than with someone's memory. No field
- *     may change the resolved model or effort; exactly one may change enablement and exactly one the
+ *     leaf names, so the sweep grows with the settings area rather than with someone's memory. Exactly
+ *     three fields may move the resolved model or effort, exactly one enablement and exactly one the
  *     nested spawn depth, pinned by equality in both directions.
  *  3. WHICH LAYER ANSWERED. The `SubagentModelSource` values a combinatorial sweep can actually produce
- *     must be exactly depth, blanket, frontmatter and inherit. Re-adding an `agent` layer produces a fifth.
+ *     must be exactly shared, lane, frontmatter and default. A fifth layer under any name produces a
+ *     member this list does not name.
  *  4. WHAT THE SCREEN OFFERS. The real Agents editor is driven and its editable rows are pinned by
- *     exact equality, so adding a per-agent Model or Effort row back to the UI turns this RED even if
- *     no resolver reads it yet.
+ *     exact equality, so a row that shows a value the scope in force does not read turns this RED.
+ *     The shared-scope half of that screen — the rows replaced by a signpost — is driven in
+ *     `modes/components/subagent-agents-surface.test.ts`.
  *  5. THE STALE COPY. A config already carrying the retired fields is loaded through the real loader,
  *     resolved, reloaded, and edited, because a persisted shape is how a fixed bug comes back after the
- *     fix ships.
+ *     fix ships. `subagent.modelByDepth` is swept in BOTH scopes, since a scope switch is exactly where
+ *     a retired key gets read again.
  *
  * WHAT THIS DOES NOT CATCH: a precedence layer that reaches the executor without going through
  * `resolveSubagentModel` / `resolveSubagentThinkingLevel`. Those two functions are the choke point every
@@ -46,6 +55,8 @@ import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { resolveEffectiveSubagentThinkingLevel } from "@veyyon/coding-agent/task/executor";
 import {
+	AGENT_DEFAULT_EFFORT,
+	configuredSubagentModelChains,
 	isSubagentEnabled,
 	resetSupersededAgentRowReports,
 	resolveSubagentMaxNestedSpawnDepth,
@@ -200,35 +211,51 @@ function probeValuesFor(entry: SchemaEntry): unknown[] {
 }
 
 /**
- * Paths whose probe moves the resolved model or effort.
+ * Paths whose probe moves the resolved model or effort, from a given starting store.
  *
- * One store shape, because there is one precedence mode left: the answer for an
- * agent comes from that agent's lane, its definition, or the documented default,
- * and nothing switches between chains. A path outside `subagent.agents` that
- * moves this fingerprint is a second owner by definition.
+ * `base` is the scope the sweep runs in, because which paths decide is exactly
+ * what the scope switch changes. A path outside the set its scope owns is a
+ * second owner by definition, and a path that decides in BOTH scopes is the
+ * layering this suite exists to keep out.
  */
-function pathsThatDecideWhatASubagentRuns(): SettingPath[] {
-	const baseline = resolutionFingerprint(Settings.isolated());
+function pathsThatDecideWhatASubagentRuns(base: Readonly<Record<string, unknown>> = {}): SettingPath[] {
+	const baseline = resolutionFingerprint(Settings.isolated({ ...base }));
 	return SUBAGENT_PATHS.filter(candidate => {
 		const entry: SchemaEntry = SETTINGS_SCHEMA[candidate];
 		return probeValuesFor(entry).some(
-			value => resolutionFingerprint(Settings.isolated({ [candidate]: value })) !== baseline,
+			value => resolutionFingerprint(Settings.isolated({ ...base, [candidate]: value })) !== baseline,
 		);
 	});
 }
 
-describe("exactly one setting decides what a subagent runs", () => {
+describe("exactly one setting decides what a subagent runs, in each scope", () => {
 	/**
-	 * The ownership ratchet, stated as a set rather than as a pair of positive cases.
+	 * The ownership ratchet, stated as a set per scope rather than as positive cases.
 	 *
-	 * `subagent.agents` is the only member, and the scope of every value in it is one agent. The
-	 * four keys that used to sit beside it — `subagent.sharedModel`, `subagent.model`,
-	 * `subagent.modelByDepth` and `subagent.thinkingLevel` — each answered for MANY agents at once,
-	 * and each is retired and rejected. Any `subagent.*` path reaching either resolver that is not
-	 * this one turns this RED, including a revival of one of the four.
+	 * Per agent is the default scope, and `subagent.agents` is its only owner: the scope of every
+	 * value in it is one agent. `subagent.sharedModel` appears because flipping it is what moves
+	 * the roster to the other scope — that is the switch working, not a second owner, and the case
+	 * below pins what it switches TO. Any other `subagent.*` path reaching either resolver here
+	 * turns this RED.
 	 */
-	it("names it, and finds no second", () => {
-		expect(pathsThatDecideWhatASubagentRuns()).toEqual(["subagent.agents"]);
+	it("names one owner for the per-agent scope, and finds no second", () => {
+		expect(pathsThatDecideWhatASubagentRuns()).toEqual(["subagent.agents", "subagent.sharedModel"]);
+	});
+
+	/**
+	 * The other half of the ratchet, and the whole reason the switch could come back.
+	 *
+	 * On shared scope the blanket pair owns both axes and `subagent.agents` decides NOTHING. A lane
+	 * that kept deciding here is the original defect exactly: two surfaces answering for one agent,
+	 * with the roster showing a model no spawn uses. Pinned by equality in both directions, so a
+	 * lane creeping back into the chain turns this RED rather than merely losing a race.
+	 */
+	it("names the blanket pair for the shared scope, and no lane", () => {
+		expect(pathsThatDecideWhatASubagentRuns({ "subagent.sharedModel": true })).toEqual([
+			"subagent.model",
+			"subagent.sharedModel",
+			"subagent.thinkingLevel",
+		]);
 	});
 
 	/**
@@ -250,33 +277,164 @@ describe("exactly one setting decides what a subagent runs", () => {
 	});
 
 	/**
-	 * A value left in one of the retired keys from an earlier release must not quietly outrank the
-	 * agent's own file. Serving it would put one key back in charge of the whole roster, which is
-	 * the three-surfaces-one-value defect in its newest form.
+	 * `subagent.modelByDepth` keyed a chain to a spawn depth rather than to an agent, so it decided
+	 * for whatever agent happened to run there. Neither scope has a reading of that, so a value left
+	 * in it from an earlier release must reach no layer in either.
 	 */
-	it("ignores the retired cross-agent keys entirely", () => {
-		const stale = Settings.isolated({
+	it("ignores the depth-keyed chain in both scopes", () => {
+		for (const sharedModel of [false, true]) {
+			const stale = Settings.isolated({
+				"subagent.sharedModel": sharedModel,
+				"subagent.modelByDepth": { "1": DEPTH_MODEL },
+			});
+			const clean = Settings.isolated({ "subagent.sharedModel": sharedModel });
+			for (const taskDepth of [undefined, 1, 2]) {
+				const a = resolveSubagentModel({
+					settings: clean,
+					agentName: AGENT,
+					agentModel: FRONTMATTER_MODEL,
+					taskDepth,
+				});
+				const b = resolveSubagentModel({
+					settings: stale,
+					agentName: AGENT,
+					agentModel: FRONTMATTER_MODEL,
+					taskDepth,
+				});
+				expect(b.patterns, `shared ${sharedModel} depth ${taskDepth}`).toEqual(a.patterns);
+				expect(b.source, `shared ${sharedModel} depth ${taskDepth}`).toBe(a.source);
+			}
+		}
+	});
+
+	/**
+	 * The switch is EXCLUSIVE, not a layer above the lane. While it is on, a lane that names a model
+	 * and an effort decides neither — which is what lets the roster stop drawing those rows without
+	 * hiding a value that still wins. The same lane is read back out of the shared-scope store to
+	 * prove the value was kept rather than cleared on the way in, and the off-scope store proves it
+	 * decides again.
+	 */
+	it("puts a lane back in charge when the switch is off, having kept its value", () => {
+		const lane = { [AGENT]: { model: BLANKET_MODEL, thinkingLevel: ThinkingLevel.Low } };
+		const on = Settings.isolated({
 			"subagent.sharedModel": true,
-			"subagent.model": BLANKET_MODEL,
-			"subagent.thinkingLevel": "low",
-			"subagent.modelByDepth": { "1": DEPTH_MODEL },
+			"subagent.model": DEPTH_MODEL,
+			"subagent.agents": lane,
+		});
+		const off = Settings.isolated({
+			"subagent.sharedModel": false,
+			"subagent.model": DEPTH_MODEL,
+			"subagent.agents": lane,
 		});
 
-		expect(
-			resolveSubagentModel({
-				settings: stale,
+		const shared = resolveSubagentModel({ settings: on, agentName: AGENT, taskDepth: 1 });
+		expect(shared.patterns).toEqual([DEPTH_MODEL]);
+		expect(shared.source).toBe("shared");
+		// Kept, not cleared: turning the switch on must not cost the operator the
+		// per-agent choices they made before it.
+		expect(on.get("subagent.agents")).toEqual(lane);
+
+		const perAgent = resolveSubagentModel({ settings: off, agentName: AGENT, taskDepth: 1 });
+		expect(perAgent.patterns).toEqual([BLANKET_MODEL]);
+		expect(perAgent.source).toBe("lane");
+		expect(resolveSubagentThinkingLevel({ settings: off, agentName: AGENT, taskDepth: 1 })).toBe(ThinkingLevel.Low);
+	});
+
+	/**
+	 * The scope is off, not empty. A shared scope whose chain names nothing runs every agent on the
+	 * default model role at the documented effort — it does NOT reach past the switch for a lane or
+	 * a definition, which is the fall-through that reopens the ladder the switch replaced. Asserted
+	 * at every depth the lane chain can answer at, and against a definition too, because a
+	 * fall-through would show up as `lane` at one depth and `frontmatter` at another.
+	 */
+	it("runs the documented default when the shared scope names nothing", () => {
+		const store = Settings.isolated({
+			"subagent.sharedModel": true,
+			"subagent.agents": {
+				[AGENT]: { model: BLANKET_MODEL, thinkingLevel: ThinkingLevel.High, subagents: { model: DEPTH_MODEL } },
+			},
+		});
+		store.setModelRole("default", SESSION_MODEL);
+
+		for (const taskDepth of [undefined, 1, 2]) {
+			const resolved = resolveSubagentModel({
+				settings: store,
 				agentName: AGENT,
 				agentModel: FRONTMATTER_MODEL,
-				taskDepth: 1,
-			}).patterns,
-		).toEqual([FRONTMATTER_MODEL]);
-		expect(
-			resolveSubagentThinkingLevel({
-				settings: stale,
-				agentName: AGENT,
-				agentThinkingLevel: ThinkingLevel.High,
-			}),
-		).toBe(ThinkingLevel.High);
+				taskDepth,
+			});
+			expect(resolved.source, `depth ${taskDepth}`).toBe("default");
+			expect(resolved.patterns, `depth ${taskDepth}`).toEqual([SESSION_MODEL]);
+			expect(
+				resolveSubagentThinkingLevel({ settings: store, agentName: AGENT, taskDepth }),
+				`depth ${taskDepth}`,
+			).toBe(AGENT_DEFAULT_EFFORT);
+		}
+	});
+
+	/**
+	 * The shared scope carries a CHAIN, not one model, and keeps its order. A build that read only a
+	 * single string would silently drop every fallback under the first entry while still answering
+	 * `shared`, so the resolved patterns are pinned rather than the source alone.
+	 */
+	it("keeps the shared chain in order, and says the shared scope decided", () => {
+		const store = Settings.isolated({
+			"subagent.sharedModel": true,
+			"subagent.model": [FALLBACK_MODEL, FRONTMATTER_MODEL],
+			"subagent.agents": { [AGENT]: { model: BLANKET_MODEL } },
+		});
+
+		const resolved = resolveSubagentModel({ settings: store, agentName: AGENT, taskDepth: 1 });
+
+		expect(resolved.source).toBe("shared");
+		expect(resolved.patterns).toEqual([FALLBACK_MODEL, FRONTMATTER_MODEL]);
+	});
+
+	/**
+	 * The union a provider surface reads names every chain a spawn can land on WITHOUT anyone
+	 * editing a setting: the default model role, the shared chain, and each lane at every level.
+	 * Both scopes are in it deliberately — the switch is one keystroke, and re-annotating providers
+	 * on it would make the badges flicker — so a chain missing from the union is a provider
+	 * `/account status` never mentions. Pinned by equality, in both scope states.
+	 */
+	it("names every chain a spawn can land on, in both scopes", () => {
+		for (const sharedModel of [false, true]) {
+			const store = Settings.isolated({
+				"subagent.sharedModel": sharedModel,
+				"subagent.model": [FALLBACK_MODEL, FRONTMATTER_MODEL],
+				"subagent.agents": { [AGENT]: { model: BLANKET_MODEL, subagents: { model: DEPTH_MODEL } } },
+			});
+			store.setModelRole("default", SESSION_MODEL);
+
+			expect(configuredSubagentModelChains(store), `shared ${sharedModel}`).toEqual([
+				SESSION_MODEL,
+				[FALLBACK_MODEL, FRONTMATTER_MODEL],
+				BLANKET_MODEL,
+				DEPTH_MODEL,
+			]);
+		}
+	});
+
+	/**
+	 * Effort follows the model's scope rather than its own. A switch that moved every agent's model
+	 * and left each agent's effort behind would run the shared model at whatever level the hidden
+	 * per-agent row named, which is a value on nobody's screen deciding what a spawn costs.
+	 */
+	it("moves effort with the model when the scope changes", () => {
+		const agents = { [AGENT]: { thinkingLevel: ThinkingLevel.High } };
+		const on = Settings.isolated({
+			"subagent.sharedModel": true,
+			"subagent.thinkingLevel": ThinkingLevel.Low,
+			"subagent.agents": agents,
+		});
+		const off = Settings.isolated({
+			"subagent.sharedModel": false,
+			"subagent.thinkingLevel": ThinkingLevel.Low,
+			"subagent.agents": agents,
+		});
+
+		expect(resolveSubagentThinkingLevel({ settings: on, agentName: AGENT, taskDepth: 1 })).toBe(ThinkingLevel.Low);
+		expect(resolveSubagentThinkingLevel({ settings: off, agentName: AGENT, taskDepth: 1 })).toBe(ThinkingLevel.High);
 	});
 
 	/**
@@ -425,7 +583,7 @@ describe("a per-agent row decides exactly what its own page shows", () => {
 // Which layer answered.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("the layer that chose a subagent's model is one of exactly three", () => {
+describe("the layer that chose a subagent's model is one of exactly four", () => {
 	/**
 	 * Enumerated by driving the resolver over every combination rather than by reading the union: a
 	 * fourth member added to the type is only a defect once something can produce it, and a fourth
@@ -436,14 +594,14 @@ describe("the layer that chose a subagent's model is one of exactly three", () =
 	 */
 	function producedSources(): SubagentModelSource[] {
 		const produced = new Set<SubagentModelSource>();
-		for (const retired of [undefined, BLANKET_MODEL, "@no-such-role"]) {
+		for (const blanket of [undefined, BLANKET_MODEL, "@no-such-role"]) {
 			for (const row of [undefined, { enabled: true }, { model: FALLBACK_MODEL, thinkingLevel: "high" }]) {
 				for (const nested of [undefined, DEPTH_MODEL]) {
 					for (const frontmatter of [undefined, FRONTMATTER_MODEL]) {
 						for (const defaultRole of [undefined, SESSION_MODEL]) {
 							for (const taskDepth of [undefined, 1, 2]) {
 								const store = Settings.isolated({
-									...(retired ? { "subagent.sharedModel": true, "subagent.model": retired } : {}),
+									...(blanket ? { "subagent.sharedModel": true, "subagent.model": blanket } : {}),
 									...(row || nested
 										? {
 												"subagent.agents": {
@@ -470,24 +628,19 @@ describe("the layer that chose a subagent's model is one of exactly three", () =
 		return [...produced].sort();
 	}
 
-	it("produces lane, frontmatter and default, and nothing else", () => {
-		expect(producedSources()).toEqual(["default", "frontmatter", "lane"]);
+	it("produces shared, lane, frontmatter and default, and nothing else", () => {
+		expect(producedSources()).toEqual(["default", "frontmatter", "lane", "shared"]);
 	});
 
 	/**
-	 * The retired keys must reach NO layer. Without this, a regression that let `subagent.model`
-	 * back into the chain still produces only members the list above names, because it would answer
-	 * as one of them, and the sweep stays green.
+	 * The depth-keyed chain must reach NO layer. Without this, a regression that let
+	 * `subagent.modelByDepth` back into the chain still produces only members the list above names,
+	 * because it would answer as one of them, and the sweep stays green.
 	 */
-	it("resolves the same with and without the retired keys set", () => {
+	it("resolves the same with and without the depth-keyed chain set", () => {
 		const clean = Settings.isolated();
 		clean.setModelRole("default", SESSION_MODEL);
-		const stale = Settings.isolated({
-			"subagent.sharedModel": true,
-			"subagent.model": BLANKET_MODEL,
-			"subagent.thinkingLevel": "low",
-			"subagent.modelByDepth": { "1": DEPTH_MODEL },
-		});
+		const stale = Settings.isolated({ "subagent.modelByDepth": { "1": DEPTH_MODEL } });
 		stale.setModelRole("default", SESSION_MODEL);
 
 		for (const taskDepth of [undefined, 1, 2]) {
@@ -505,16 +658,22 @@ describe("the layer that chose a subagent's model is one of exactly three", () =
 	 */
 	it("names a real setting for every layer", () => {
 		const labels: Record<SubagentModelSource, string> = {
+			shared: subagentModelSourceLabel("shared", AGENT),
 			lane: subagentModelSourceLabel("lane", AGENT, 0),
 			frontmatter: subagentModelSourceLabel("frontmatter", AGENT),
 			default: subagentModelSourceLabel("default", AGENT),
 		};
 
+		// The blanket layer answers for every agent, so its label must NOT name one:
+		// a refusal reading `subagent.model for scout` sends the operator to scout's
+		// page, which is not drawn while that layer is the one deciding.
+		expect(labels.shared).toContain("subagent.model");
+		expect(labels.shared).not.toContain(AGENT);
 		expect(labels.lane).toBe(`subagent.agents.${AGENT}`);
 		expect(subagentModelSourceLabel("lane", AGENT, 2)).toBe(`subagent.agents.${AGENT}.subagents.subagents`);
 		expect(labels.frontmatter).toContain("frontmatter");
 		expect(labels.default).toContain("default model role");
-		expect(new Set(Object.values(labels)).size).toBe(3);
+		expect(new Set(Object.values(labels)).size).toBe(4);
 	});
 });
 

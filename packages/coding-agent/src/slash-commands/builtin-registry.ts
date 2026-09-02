@@ -357,9 +357,11 @@ const ACCOUNT_VERBS: readonly string[] = BUILTIN_SLASH_COMMAND_DECLARATIONS.flat
  * looking at, the models subagents run on, and the web-search backend. They are read from the
  * settings the runtime itself obeys, so the block cannot claim a role the router does not honor.
  *
- * Subagents are a UNION, because model scope is the agent: the default model role plus every lane
- * that names a model of its own. Nothing resolvable at all falls back to the main provider, which
- * is what a spawn reaches when the default role is unset.
+ * Subagents are a UNION of every chain a spawn can land on: the default model role, the shared
+ * chain, and every lane that names a model of its own. Both scopes are read, because the scope
+ * switch is one keystroke and re-annotating providers on it would make the badges flicker.
+ * Nothing resolvable at all falls back to the main provider, which is what a spawn reaches when
+ * the default role is unset.
  */
 function accountRoleSources(session: AgentSession): AccountRoleSources {
 	const model = session.model;

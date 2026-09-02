@@ -55,8 +55,11 @@ import type { AdoptedScreen } from "@veyyon/tui/tui";
 /**
  * The recording's shape. A copy written by an older shape is discarded rather than read, because
  * every field here is load-bearing for bytes that go straight to the terminal.
+ *
+ * Exported for `./first-frame-recorder`, which writes the copy this module reads. That module is
+ * the only other reader of the four internals this one exports.
  */
-const REPLAY_SHAPE_VERSION = 2;
+export const REPLAY_SHAPE_VERSION = 2;
 
 /**
  * How long a recording may be replayed before the card is composed again.
@@ -104,7 +107,7 @@ interface RecordedBinary {
 }
 
 /** A recorded frame: the bytes that painted it, the rows they produced, and what it is valid for. */
-interface FirstFrameRecording {
+export interface FirstFrameRecording {
 	readonly version: number;
 	readonly cols: number;
 	readonly rows: number;
@@ -140,7 +143,7 @@ interface FirstFrameRecording {
  * does: `os.homedir()` is fixed at process start under Bun, so a suite cannot move this file by
  * assigning `HOME` and would otherwise have to write into the operator's own cache to test it.
  */
-function recordingPath(): string {
+export function recordingPath(): string {
 	const override = process.env.VEYYON_FIRST_FRAME_CACHE;
 	if (override) return override;
 	return path.join(os.homedir(), ".veyyon", "cache", "first-frame.json");
@@ -201,7 +204,7 @@ function readEnv(): Record<string, string> {
  * point the card was composed stored it as absent, the next launch compared that against an entry
  * environment that still had it, and no launch under a profile ever replayed. Both ends read this.
  */
-const ENTRY_ENV: Readonly<Record<string, string>> = readEnv();
+export const ENTRY_ENV: Readonly<Record<string, string>> = readEnv();
 
 /** Whether the running binary is exactly the one that wrote the recording. */
 function binaryUnchanged(binary: RecordedBinary): boolean {
@@ -322,51 +325,4 @@ export function takeReplayedFirstFrame(): ReplayedFirstFrame | undefined {
 	const taken = replayed;
 	replayed = undefined;
 	return taken;
-}
-
-/**
- * Record this launch's card for the next one.
- *
- * Failure is silent for the same reason the replay's is, one step later: a cache that cannot be
- * written costs the next launch its speedup and nothing else.
- */
-export function recordFirstFrame(options: {
-	readonly bytes: string;
-	readonly cols: number;
-	readonly rows: number;
-	readonly screen: AdoptedScreen;
-	readonly tip: string;
-}): void {
-	try {
-		const stat = fs.statSync(process.execPath);
-		const recording: FirstFrameRecording = {
-			version: REPLAY_SHAPE_VERSION,
-			cols: options.cols,
-			rows: options.rows,
-			env: ENTRY_ENV,
-			binary: { path: process.execPath, mtimeMs: stat.mtimeMs, size: stat.size },
-			bytes: options.bytes,
-			screen: options.screen,
-			tip: options.tip,
-			recordedAtMs: Date.now(),
-		};
-		const target = recordingPath();
-		fs.mkdirSync(path.dirname(target), { recursive: true });
-		// Written through a temporary name in the same directory: the reader is the next process's
-		// first file read and must never see half a recording.
-		const scratch = `${target}.${process.pid}.tmp`;
-		fs.writeFileSync(scratch, JSON.stringify(recording));
-		fs.renameSync(scratch, target);
-	} catch {
-		// A cache that cannot be written costs the next launch its speedup and nothing else.
-	}
-}
-
-/** Discard the recording, so the next launch composes its card. */
-export function clearFirstFrameRecording(): void {
-	try {
-		fs.rmSync(recordingPath(), { force: true });
-	} catch {
-		// Already gone, or a root nothing may write: either way the next launch composes.
-	}
 }

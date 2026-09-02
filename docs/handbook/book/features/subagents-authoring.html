@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-1cd21800.js";
+            window.path_to_searchindex_js = "../searchindex-16fabfb7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -271,11 +271,12 @@ you want it in:</p>
 there. The same page sets that agent’s model and effort, which outrank the <code>model:</code>
 and <code>thinkingLevel:</code> in the file.</p>
 <h2 id="start-from-a-bundled-agent"><a class="header" href="#start-from-a-bundled-agent">Start from a bundled agent</a></h2>
-<p><code>veyyon agents unpack</code> writes the shipped definitions to disk as ordinary markdown
-files, frontmatter and all. Copy one into <code>~/.veyyon/subagents/</code> under a new name
-and edit it.</p>
+<p><code>veyyon agents unpack</code> writes the shipped definitions to <code>~/.veyyon/subagents/</code> as
+ordinary markdown files, frontmatter and all. Copy one under a new name and edit it.</p>
 <pre><code class="language-console">$ veyyon agents unpack --dir ./unpacked-agents
 </code></pre>
+<p><code>--dir</code> writes them somewhere else, which keeps the unedited copies out of the
+directory discovery reads.</p>
 <p>A definition that keeps a bundled agent’s <code>name</code> replaces that agent: a file in
 <code>~/.veyyon/subagents/</code> outranks the bundled definition of the same name, so writing
 <code>reviewer.md</code> there means your reviewer is the reviewer.</p>

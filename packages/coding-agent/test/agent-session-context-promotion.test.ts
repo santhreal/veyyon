@@ -7,6 +7,7 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { TRUNCATION_MIN_TEXT_TOKENS } from "@veyyon/coding-agent/session/compaction-policy";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 
@@ -518,13 +519,22 @@ describe("AgentSession context promotion", () => {
 	it("refuses overflow recovery loudly when the summary cannot fit the model", async () => {
 		// The other side of the row above: a history larger than the window cannot be
 		// summarized by that model at all, because the summarization request carries
-		// the conversation it is summarizing. The recovery has to say which model and
-		// which sizes made it impossible, rather than reporting a compaction that
-		// never ran, and then reduce the history without a provider so the turn can
-		// still be retried.
+		// the conversation it is summarizing. The recovery has to say so and leave the
+		// overflow in place, rather than reporting a compaction that never ran.
+		//
+		// The history is MANY small messages rather than one enormous one, and that is
+		// the whole fixture. A single oversized text is what the truncation tier exists
+		// to cut, so a session wedged that way is rescued rather than parked, and this
+		// case then measured the rescue and not the refusal. Every message here is under
+		// `TRUNCATION_MIN_TEXT_TOKENS`, so no tier has anything eligible to reduce and
+		// the dead end is the real one.
 		const model = modelRegistry.find("openai-codex", "gpt-5.3-codex-spark");
 		if (!model) {
 			throw new Error("Expected codex spark model to exist");
+		}
+		const contextWindow = model.contextWindow;
+		if (contextWindow === null) {
+			throw new Error("Expected codex spark model to state a context window");
 		}
 		const settings = Settings.isolated({
 			"compaction.enabled": true,
@@ -543,10 +553,16 @@ describe("AgentSession context promotion", () => {
 			settings,
 			modelRegistry,
 		});
-		// Roughly twice the window, so no candidate can hold the request.
-		const oversizedChars = "old context ".repeat(80_000).length;
-		session.sessionManager.appendMessage(createUserMessage("old context ".repeat(80_000)));
-		session.sessionManager.appendMessage(createAssistantMessage(model, "old response"));
+		// Roughly twice the window, so no candidate can hold the request, spread over
+		// messages the truncation tier will not touch. `"old context "` is 12 characters
+		// and tokenizes at about three tokens, so each message is well under the
+		// truncation floor and the pile is well over the window.
+		const perMessageTokens = Math.floor(TRUNCATION_MIN_TEXT_TOKENS / 2);
+		const messageCount = Math.ceil((2 * contextWindow) / perMessageTokens);
+		for (let index = 0; index < messageCount; index++) {
+			session.sessionManager.appendMessage(createUserMessage("old context ".repeat(perMessageTokens / 3)));
+			session.sessionManager.appendMessage(createAssistantMessage(model, `old response ${index}`));
+		}
 		session.sessionManager.appendMessage(createUserMessage("current request"));
 		session.agent.replaceMessages(session.sessionManager.buildSessionContext().messages);
 		const events: Array<Extract<AgentSessionEvent, { type: "auto_compaction_end" }>> = [];
@@ -557,7 +573,7 @@ describe("AgentSession context promotion", () => {
 				compactionDone.resolve();
 			}
 		});
-		const continueSpy = vi.spyOn(session.agent, "continue").mockResolvedValue();
+		vi.spyOn(session.agent, "continue").mockResolvedValue();
 
 		const overflowMessage = createOverflowMessage(model);
 		session.agent.emitExternalEvent({ type: "message_end", message: overflowMessage });
@@ -572,21 +588,12 @@ describe("AgentSession context promotion", () => {
 		expect(events[0]?.errorMessage).toContain(`${model.provider}/${model.id} holds ${model.contextWindow} tokens`);
 		expect(events[0]?.errorMessage).toContain("the summary needed");
 		expect(session.sessionManager.getEntries().some(entry => entry.type === "compaction")).toBe(false);
-		// And the session is not left wedged. Nothing summarized, so the provider-free rescue cuts the
-		// middle out of the one oversized message (to a recovery artifact) and the same turn is retried
-		// on the same model. The failed turn stays OUT of active context, because a retry that replayed
-		// it would overflow again on the message that just overflowed.
-		await waitFor(() => continueSpy.mock.calls.length === 1, 10_000);
-		const oversized = session.messages[0];
-		const oversizedLength =
-			oversized?.role === "user" && typeof oversized.content === "string"
-				? oversized.content.length
-				: oversizedChars;
-		expect(oversizedLength).toBeLessThan(oversizedChars);
-		expect(session.messages.map(message => message.role)).toEqual(["user", "assistant", "user"]);
-		// The case bound is seconds rather than the default five: this history is roughly a megabyte, and
-		// the refusal, the rescue and the retry each count its tokens.
-	}, 30_000);
+		// And the refusal the user has to read is still the last thing in context.
+		// The rollback runs after the event, so wait for it rather than racing it.
+		await waitFor(() => session.messages.at(-1)?.role === "assistant");
+		expect(session.messages.at(-1)?.role).toBe("assistant");
+		expect((session.messages.at(-1) as AssistantMessage).stopReason).toBe("error");
+	});
 
 	it("promotes to a larger-context model on response.incomplete (length stop)", async () => {
 		const sparkModel = modelRegistry.find("openai-codex", "gpt-5.3-codex-spark");

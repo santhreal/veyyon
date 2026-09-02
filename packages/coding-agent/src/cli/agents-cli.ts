@@ -1,8 +1,16 @@
 /**
  * Agents CLI command handlers.
  *
- * Handles `veyyon agents unpack` for writing bundled agent definitions to the
- * directory `discoverAgents` reads authored definitions from.
+ * Handles `veyyon agents unpack` for writing bundled agent definitions to disk.
+ *
+ * The default target is the one directory discovery reads for user-authored
+ * definitions, `~/<config>/subagents` ({@link getGlobalSubagentsDir}). It used
+ * to be `<agentDir>/agents`, and it stayed there after definitions moved to the
+ * global dir, so an unpacked agent landed where nothing loads it: the command
+ * reported files written and the model never saw one of them. `--dir` is the
+ * only other destination, for exporting a definition into an extension package
+ * or a scratch tree; there is no project scope, because a repository-supplied
+ * definition would shadow a bundled agent by name.
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -24,6 +32,7 @@ export interface AgentsCommandArgs {
 		force?: boolean;
 		json?: boolean;
 		dir?: string;
+		user?: boolean;
 	};
 }
 
@@ -38,17 +47,7 @@ function writeStdout(line: string): void {
 	process.stdout.write(`${line}\n`);
 }
 
-/**
- * Where an unpacked definition goes.
- *
- * `getGlobalSubagentsDir()` and nothing else, because that is the one directory
- * `discoverAgents` reads an authored definition from: it wrote them into the
- * active profile's `agent/agents`, which stopped being a source when discovery
- * moved to the base config root, so every unpacked agent was invisible to
- * `/agents` and to `task`. A project scope has no reader either — a repository
- * cannot supply an agent definition at all — so `--dir`, an explicit path the
- * caller names, is the only other target.
- */
+/** Where an unpacked definition goes; see the file header for why there are two targets. */
 function resolveTargetDir(flags: AgentsCommandArgs["flags"]): string {
 	if (flags.dir && flags.dir.trim().length > 0) {
 		return path.resolve(getProjectDir(), flags.dir.trim());

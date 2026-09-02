@@ -103,4 +103,12 @@ describe("veyyon agents unpack", () => {
 		expect(exitCode).not.toBe(0);
 		expect(stderr).toContain("--project");
 	}, 30_000);
+
+	it("--user names the same directory as the default", async () => {
+		const home = makeTempDir2();
+		const { stdout, exitCode } = await runAgents(makeEnv(home), ["unpack", "--user", "--json"]);
+		expect(exitCode).toBe(0);
+		const result = JSON.parse(stdout) as { targetDir: string };
+		expect(result.targetDir).toBe(path.join(home, ".veyyon", "subagents"));
+	}, 30_000);
 });

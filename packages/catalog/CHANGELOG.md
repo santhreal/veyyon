@@ -6,6 +6,10 @@
 
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 
+### Fixed
+
+- The Claude Code fingerprint version is 2.1.257, so Anthropic OAuth requests for current models are no longer rejected with `claude_code_version_too_old`.
+
 ## [1.3.0] - 2026-08-28
 
 ### Added

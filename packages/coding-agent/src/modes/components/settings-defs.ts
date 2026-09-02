@@ -125,6 +125,20 @@ export interface DefaultEffortSettingDef extends BaseSettingDef {
 }
 
 /**
+ * `subagent.thinkingLevel`: the effort every agent runs at while the roster is
+ * on shared scope.
+ *
+ * A dedicated type rather than the generic text control because the levels a
+ * model accepts are not free-form, and a stored level no endpoint declares is
+ * clamped away at dispatch and reads as the picker having done nothing. The
+ * ladder narrows against `subagent.model`, which is the model those agents
+ * actually run, so the row and the spawn cannot disagree.
+ */
+export interface SubagentSharedEffortSettingDef extends BaseSettingDef {
+	type: "subagentSharedEffort";
+}
+
+/**
  * The profile's DEFAULT model — the model each new session starts on. Rendered
  * with the same searchable model+effort picker as the role/subagent slots, but
  * backed by the `default` model-role slot (the slot the interactive `/model`
@@ -180,6 +194,7 @@ export type SettingDef =
 	| ModelRolesSettingDef
 	| SubagentAgentsSettingDef
 	| DefaultEffortSettingDef
+	| SubagentSharedEffortSettingDef
 	| DefaultModelSettingDef
 	| AdvisorModelSettingDef
 	| RulesSettingDef
@@ -260,6 +275,10 @@ const CONDITIONS: Record<string, () => boolean> = {
 	// Both close budgets are meaningless while nothing closes, and a visible timer
 	// that does not run reads as a bug in the feature rather than an off switch.
 	subagentPruneEnabled: () => whenSettingsSay(() => Settings.instance.get("subagent.prune.enabled") === true),
+	// The blanket model and effort exist only while the roster is on one scope.
+	// Shown while the switch is off they are two rows that decide nothing, which
+	// is exactly how the retired version of this switch confused people.
+	subagentSharedModel: () => whenSettingsSay(() => Settings.instance.get("subagent.sharedModel") === true),
 	// Isolation ships off, and the merge strategy and commit style only describe
 	// how an isolated run's changes come back. Shown while no backend is selected
 	// they are two choices with no case where either applies.
@@ -441,6 +460,7 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 	}
 
 	if (schemaType === "string") {
+		if (path === "subagent.thinkingLevel") return { ...base, type: "subagentSharedEffort" };
 		if (path === "compaction.threshold") {
 			return { ...base, type: "compactionThreshold", options: options && options !== "runtime" ? options : [] };
 		}

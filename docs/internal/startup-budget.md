@@ -23,7 +23,7 @@ compiled binary cannot `dlopen` the addon it carries, so the first native call w
 of extraction against a 293ms frame, and no user reaches that state without deleting the agent home
 from under an installed binary.
 
-Six arms:
+Thirteen arms:
 
 | Arm | Measures |
 | --- | --- |
@@ -33,6 +33,22 @@ Six arms:
 | `ready:boot` | The timing tree's `Total`: every boot phase from the first marker to the TUI handoff. |
 | `ready` | Wall time of an interactive launch under `VEYYON_TIMING=x`, which prints the tree and exits where the TUI would start. |
 | `first-frame` | Wall time from spawn to the first byte the process writes to a pty. This is what a person waits for. |
+| `composer` | The composer's placeholder row on screen. A first byte is not a screen anyone can read. |
+| `editable` | A character typed after the first byte coming back echoed: the moment the terminal answers. |
+| `statusrow` | The status row on screen, matched by the approval rung between two of the row's separator dots. |
+| `replay` | The first byte of a launch that replays the recording the launch before it wrote, rather than composing the card. |
+| `replay:composer` | The composer's placeholder row on that replayed launch. |
+| `replay:editable` | The echo on that replayed launch: how long the replayed card is a picture. |
+| `replay:statusrow` | The status row on that replayed launch. |
+
+`first-frame` and `replay` are the off and on arms of the first-frame replay, at exact parity: one
+binary, one seeded home, one terminal size, two consecutive launches, and the recording is the only
+difference between them.
+
+The `statusrow` marker keys on the approval rung because the context gauge is the row's last
+segment, and the bench's eighty-column pty sheds it: the arm reported nothing at all while the
+gauge was the marker. `packages/coding-agent/test/the-startup-bench-sees-the-status-row.test.ts`
+holds the marker against the row the card renders.
 
 `VEYYON_TIMING=x veyyon` prints the phase tree on its own, without the bench, and exits. `full`
 adds every module-load span.
@@ -172,4 +188,4 @@ It is still a target and not a gate. Wiring it to CI needs a runner whose timing
 that a red build means a regression, and a first-frame median here moves by more than 50% between
 repetitions, and by more than that when a type check shares the machine.
 
-*Verified against `9636f6161b` on 2026-08-31.*
+*Verified against `c00398374` on 2026-09-01.*

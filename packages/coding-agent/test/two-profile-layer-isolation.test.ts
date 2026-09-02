@@ -285,17 +285,17 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 
 	/**
 	 * Agent definitions shipped by an extension PACKAGE the profile declared in its own
-	 * `settings.json#extensions`. One more source feeding the same `discoverAgents`
-	 * surface as the marketplace case below, and each one resolved the process-active
-	 * profile independently of the others, so fixing the marketplace read alone would
-	 * still have handed a spawned agent the wrong definition through this one.
+	 * `settings.json#extensions`. That source resolved the process-active profile
+	 * independently of the sibling layers, so fixing the marketplace read alone would
+	 * still have handed a spawned agent the wrong definition through it.
 	 *
-	 * The authored definitions dir is the control on the other side of the same
-	 * assertion: it is GLOBAL (`getGlobalSubagentsDir()`, the base config root), so the
-	 * same agent is present under both loads. Profile-scoping it again — the shape this
-	 * suite used to pin — drops it from one of the two sets and fails here.
+	 * The user-authored dir is the OPPOSITE claim and is asserted in the same case, so
+	 * neither can be traded for the other: `~/<config>/subagents` is global on purpose
+	 * (a definition is authored once, and `subagent.agents.<name>.enabled` is the
+	 * per-profile answer), so both loads must return it. A profile-private definitions
+	 * dir at `<agentDir>/agents` is the retired shape, and stays unread.
 	 */
-	test("discoverAgents follows the named profile for its extensions and reads the global subagents dir", async () => {
+	test("discoverAgents follows the named profile for its extensions and shares the global definitions", async () => {
 		const f = fixture("agentdirs-active");
 		const namedAgentDir = f.agentDirFor("agentdirs-named");
 		const activePackage = path.join(f.home, "active-agent-pkg");
@@ -304,7 +304,9 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 		writeAgentDefinition(f, path.join(namedPackage, "agents"), "named-ext-agent");
 		f.writeFile(path.join(f.agentDir, "settings.json"), JSON.stringify({ extensions: [activePackage] }));
 		f.writeFile(path.join(namedAgentDir, "settings.json"), JSON.stringify({ extensions: [namedPackage] }));
-		writeAgentDefinition(f, getGlobalSubagentsDir(), "authored-agent");
+		writeAgentDefinition(f, getGlobalSubagentsDir(), "global-user-agent");
+		writeAgentDefinition(f, path.join(f.agentDir, "agents"), "active-user-agent");
+		writeAgentDefinition(f, path.join(namedAgentDir, "agents"), "named-user-agent");
 
 		const defaulted = await discoverAgents(f.cwd, f.home);
 		f.resetCaches();
@@ -312,8 +314,8 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 
 		const own = (result: Awaited<ReturnType<typeof discoverAgents>>): string[] =>
 			result.agents.map(agent => agent.name).filter(name => name.endsWith("-agent"));
-		expect(own(defaulted).toSorted()).toEqual(["active-ext-agent", "authored-agent"]);
-		expect(own(named).toSorted()).toEqual(["authored-agent", "named-ext-agent"]);
+		expect(own(defaulted).toSorted()).toEqual(["active-ext-agent", "global-user-agent"]);
+		expect(own(named).toSorted()).toEqual(["global-user-agent", "named-ext-agent"]);
 	});
 
 	/** All four layers at once, so no single fix can be credited for another's. */
