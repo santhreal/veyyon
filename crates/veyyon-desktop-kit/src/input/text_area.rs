@@ -1,9 +1,10 @@
-//! Text area multiline input primitive (§8.25).
+//! Text area multiline input primitive wrapping an Editor entity (§8.25).
 
 use std::sync::Arc;
 
 use veyyon_gpui::{App, ElementId, IntoElement, RenderOnce, SharedString, Window, div, prelude::*};
 
+use super::editor::slot::EditorSlot;
 use crate::{
 	state::InteractiveState,
 	token_set::{ColorRole, RadiusStep, SpacingStep, TextRamp, TokenSet},
@@ -13,7 +14,7 @@ use crate::{
 #[derive(IntoElement)]
 pub struct TextArea {
 	id:          Option<ElementId>,
-	value:       SharedString,
+	editor:      EditorSlot,
 	placeholder: SharedString,
 	state:       InteractiveState,
 	rows:        usize,
@@ -21,12 +22,12 @@ pub struct TextArea {
 }
 
 impl TextArea {
-	/// Creates a text area with text content.
+	/// Creates a text area wrapping an editor slot.
 	#[must_use]
-	pub fn new(value: impl Into<SharedString>) -> Self {
+	pub fn new(editor: impl Into<EditorSlot>) -> Self {
 		Self {
 			id:          None,
-			value:       value.into(),
+			editor:      editor.into(),
 			placeholder: SharedString::default(),
 			state:       InteractiveState::default(),
 			rows:        4,
@@ -74,9 +75,14 @@ impl TextArea {
 }
 
 impl RenderOnce for TextArea {
-	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let default_tokens = TokenSet::default();
 		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
+
+		let is_entity_focused = self
+			.editor
+			.entity()
+			.is_some_and(|ed| ed.read(cx).focus_handle().is_focused(window));
 
 		let (bg, border_color, fg) = match self.state {
 			InteractiveState::Disabled => (
@@ -85,6 +91,11 @@ impl RenderOnce for TextArea {
 				tokens.color(ColorRole::Muted),
 			),
 			InteractiveState::Focused => (
+				tokens.color(ColorRole::Inset),
+				tokens.color(ColorRole::Focus),
+				tokens.color(ColorRole::Foreground),
+			),
+			_ if is_entity_focused => (
 				tokens.color(ColorRole::Inset),
 				tokens.color(ColorRole::Focus),
 				tokens.color(ColorRole::Foreground),
@@ -102,14 +113,8 @@ impl RenderOnce for TextArea {
 		let font_size = tokens.font_size(TextRamp::Body);
 		let line_h = tokens.line_height(TextRamp::Body);
 
-		let text = if self.value.is_empty() {
-			self.placeholder
-		} else {
-			self.value
-		};
-
 		let id = self.id.unwrap_or_else(|| ElementId::from("text-area"));
-		div()
+		let container = div()
 			.id(id)
 			.w_full()
 			.bg(bg)
@@ -121,7 +126,18 @@ impl RenderOnce for TextArea {
 			.text_size(font_size)
 			.line_height(line_h)
 			.text_color(fg)
-			.overflow_hidden()
-			.child(text)
+			.overflow_hidden();
+
+		match self.editor {
+			EditorSlot::Entity(entity) => container.child(entity),
+			EditorSlot::Static(val) => {
+				let text = if val.is_empty() {
+					self.placeholder
+				} else {
+					val
+				};
+				container.child(text)
+			},
+		}
 	}
 }

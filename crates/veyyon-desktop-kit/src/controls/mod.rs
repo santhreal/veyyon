@@ -2,16 +2,18 @@
 
 pub mod button;
 pub mod icon_button;
+pub mod metrics;
 pub mod number_input;
 pub mod segmented;
 pub mod select;
-pub mod selection;
+mod selection;
 pub mod slider;
 pub mod split_button;
 pub mod toggle;
 
 pub use button::*;
 pub use icon_button::*;
+pub use metrics::*;
 pub use number_input::*;
 pub use segmented::*;
 pub use select::*;

@@ -2,11 +2,13 @@
 
 use std::sync::Arc;
 
-use veyyon_gpui::{App, ElementId, IntoElement, RenderOnce, Window, div, prelude::*};
+use veyyon_gpui::{
+	App, CursorStyle, ElementId, IntoElement, RenderOnce, Window, div, prelude::*, px,
+};
 
 use crate::{
 	state::InteractiveState,
-	token_set::{ColorRole, RadiusStep, SpacingStep, TokenSet},
+	token_set::{ColorRole, RadiusStep, SpacingStep, StrokeStep, TokenSet},
 };
 
 /// Boolean toggle switch element.
@@ -55,35 +57,52 @@ impl RenderOnce for Toggle {
 		let default_tokens = TokenSet::default();
 		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
 
-		let track_w = tokens.spacing(SpacingStep::S8);
-		let track_h = tokens.spacing(SpacingStep::S5);
-		let thumb_size = tokens.spacing(SpacingStep::S4);
+		// §6.10: a 26 × 16 track with a 12px knob. On is an accent track with a
+		// foreground knob; off is a transparent track with a hairline edge and a
+		// secondary knob. The edge is drawn in both states so the track's
+		// outline never moves when it switches.
+		let stroke = tokens.stroke(StrokeStep::Hairline);
+		let track_w = px(26.0);
+		let track_h = px(16.0);
+		let knob = px(12.0);
 		let radius = tokens.radius(RadiusStep::Full);
-		let pad = tokens.spacing(SpacingStep::S1);
+		let inset = tokens.spacing(SpacingStep::S1) - stroke;
 
-		let track_bg = if self.checked {
-			tokens.color(ColorRole::Accent)
+		let (track_bg, edge, knob_bg) = if self.checked {
+			(
+				tokens.color(ColorRole::Accent),
+				tokens.color(ColorRole::Accent),
+				tokens.color(ColorRole::Foreground),
+			)
 		} else {
-			tokens.color(ColorRole::Inset)
+			(
+				tokens.transparent(),
+				tokens.color(ColorRole::Hairline),
+				tokens.color(ColorRole::Secondary),
+			)
 		};
-
-		let thumb = div()
-			.size(thumb_size)
-			.rounded(radius)
-			.bg(tokens.color(ColorRole::Foreground))
-			.shadow_sm();
+		let disabled = self.state == InteractiveState::Disabled;
+		let cursor = if disabled {
+			CursorStyle::OperationNotAllowed
+		} else {
+			CursorStyle::PointingHand
+		};
 
 		let id = self.id.unwrap_or_else(|| ElementId::from("toggle"));
 		let mut track = div()
 			.id(id)
 			.w(track_w)
 			.h(track_h)
+			.flex_shrink_0()
 			.rounded(radius)
 			.bg(track_bg)
-			.p(pad)
+			.border(stroke)
+			.border_color(edge)
+			.px(inset)
 			.flex()
 			.items_center()
-			.cursor_pointer();
+			.cursor(cursor)
+			.child(div().size(knob).rounded(radius).bg(knob_bg));
 
 		if self.checked {
 			track = track.justify_end();
@@ -91,9 +110,9 @@ impl RenderOnce for Toggle {
 			track = track.justify_start();
 		}
 
-		track = track.child(thumb);
-
-		if let Some(handler) = self.on_toggle {
+		if disabled {
+			track = track.opacity(0.4);
+		} else if let Some(handler) = self.on_toggle {
 			let next_state = !self.checked;
 			track = track.on_click(move |_, window, cx| handler(next_state, window, cx));
 		}

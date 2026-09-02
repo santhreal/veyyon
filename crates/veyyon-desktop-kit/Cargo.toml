@@ -13,6 +13,9 @@ workspace = true
 
 [dependencies]
 strum = { workspace = true }
+parking_lot = { workspace = true }
+smallvec = { workspace = true }
+unicode-segmentation = { workspace = true }
 thiserror = { workspace = true }
 veyyon-desktop-motion = { workspace = true }
 veyyon-desktop-tokens = { workspace = true }

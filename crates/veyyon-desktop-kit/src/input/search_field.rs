@@ -1,31 +1,33 @@
-//! Search field input primitive (§8.25).
+//! Search field input primitive wrapping an Editor entity (§8.25).
 
 use std::sync::Arc;
 
 use veyyon_gpui::{App, ElementId, IntoElement, RenderOnce, SharedString, Window, div, prelude::*};
 
+use super::editor::slot::EditorSlot;
 use crate::{
+	controls::{ButtonSize, IconButton, metrics::control_metrics},
 	icons::{Icon, IconName, IconSize},
-	token_set::{ColorRole, RadiusStep, SpacingStep, TextRamp, TokenSet},
+	token_set::{ColorRole, StrokeStep, TokenSet},
 };
 
 /// Search field primitive with search icon, clear button, and placeholder.
 #[derive(IntoElement)]
 pub struct SearchField {
 	id:          Option<ElementId>,
-	value:       SharedString,
+	editor:      EditorSlot,
 	placeholder: SharedString,
 	on_change:   Option<Arc<dyn Fn(SharedString, &mut Window, &mut App) + Send + Sync + 'static>>,
 	on_clear:    Option<Arc<dyn Fn(&mut Window, &mut App) + Send + Sync + 'static>>,
 }
 
 impl SearchField {
-	/// Creates a search field with current query value.
+	/// Creates a search field wrapping an editor slot.
 	#[must_use]
-	pub fn new(value: impl Into<SharedString>) -> Self {
+	pub fn new(editor: impl Into<EditorSlot>) -> Self {
 		Self {
 			id:          None,
-			value:       value.into(),
+			editor:      editor.into(),
 			placeholder: "Search...".into(),
 			on_change:   None,
 			on_clear:    None,
@@ -68,76 +70,86 @@ impl SearchField {
 }
 
 impl RenderOnce for SearchField {
-	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let default_tokens = TokenSet::default();
 		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
 
-		let bg = tokens.color(ColorRole::Inset);
-		let border_color = tokens.color(ColorRole::Hairline);
-		let radius = tokens.radius(RadiusStep::Md);
-		let pad_x = tokens.spacing(SpacingStep::S3);
-		let pad_y = tokens.spacing(SpacingStep::S2);
-		let gap = tokens.spacing(SpacingStep::S2);
-
-		let has_value = !self.value.is_empty();
-		let (text, text_color) = if has_value {
-			(self.value.clone(), tokens.color(ColorRole::Foreground))
+		// §6.10: no ground, a hairline edge that rises to focus, and the icon in
+		// secondary ink. The clear control appears only once there is text to
+		// clear, so an empty field shows one glyph.
+		let metrics = control_metrics(ButtonSize::Medium, tokens);
+		let focused = self
+			.editor
+			.entity()
+			.is_some_and(|ed| ed.read(cx).focus_handle().is_focused(window));
+		let edge = if focused {
+			tokens.color(ColorRole::Focus)
 		} else {
-			(self.placeholder, tokens.color(ColorRole::Placeholder))
+			tokens.color(ColorRole::Hairline)
+		};
+		let has_value = match &self.editor {
+			EditorSlot::Entity(entity) => !entity.read(cx).text().is_empty(),
+			EditorSlot::Static(val) => !val.is_empty(),
 		};
 
 		let id = self.id.unwrap_or_else(|| ElementId::from("search-field"));
-		let mut el = div()
+		let mut container = div()
 			.id(id)
+			.h(metrics.height)
 			.w_full()
-			.max_w_full()
 			.min_w_0()
 			.overflow_hidden()
-			.bg(bg)
-			.rounded(radius)
-			.border_1()
-			.border_color(border_color)
-			.px(pad_x)
-			.py(pad_y)
+			.rounded(metrics.radius)
+			.border(tokens.stroke(StrokeStep::Hairline))
+			.border_color(edge)
+			.px(metrics.inset)
 			.flex()
 			.items_center()
-			.gap(gap)
+			.gap(metrics.gap)
+			.text_size(tokens.font_size(metrics.ramp))
+			.line_height(tokens.line_height(metrics.ramp))
 			.child(
 				div().flex_shrink_0().child(
 					Icon::new(IconName::Search)
 						.size(IconSize::Size14)
 						.color(tokens.color(ColorRole::Secondary)),
 				),
-			)
-			.child(
-				div()
-					.flex_1()
-					.min_w_0()
-					.overflow_hidden()
-					.whitespace_nowrap()
-					.truncate()
-					.text_size(tokens.font_size(TextRamp::Body))
-					.text_color(text_color)
-					.child(text),
 			);
 
-		if has_value {
-			let mut clear_btn = div()
-				.id(ElementId::from("clear-btn"))
-				.cursor_pointer()
-				.child(
-					Icon::new(IconName::Close)
-						.size(IconSize::Size12)
-						.color(tokens.color(ColorRole::Secondary)),
+		match self.editor {
+			EditorSlot::Entity(entity) => {
+				container = container
+					.cursor_text()
+					.child(div().flex_1().min_w_0().child(entity));
+			},
+			EditorSlot::Static(val) => {
+				let (text, text_color) = if has_value {
+					(val, tokens.color(ColorRole::Foreground))
+				} else {
+					(self.placeholder, tokens.color(ColorRole::Placeholder))
+				};
+				container = container.child(
+					div()
+						.flex_1()
+						.min_w_0()
+						.overflow_hidden()
+						.whitespace_nowrap()
+						.truncate()
+						.text_color(text_color)
+						.child(text),
 				);
-
-			if let Some(handler) = self.on_clear {
-				clear_btn = clear_btn.on_click(move |_, window, cx| handler(window, cx));
-			}
-
-			el = el.child(clear_btn);
+			},
 		}
 
-		el
+		if let (true, Some(on_clear)) = (has_value, self.on_clear) {
+			container = container.child(
+				IconButton::new(IconName::Close)
+					.id("search-field-clear")
+					.size(IconSize::Size12)
+					.on_click(move |_, window, cx| on_clear(window, cx)),
+			);
+		}
+
+		container
 	}
 }

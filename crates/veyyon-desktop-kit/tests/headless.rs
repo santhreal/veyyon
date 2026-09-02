@@ -40,7 +40,7 @@ fn the_desktop_kit_primitives_render_distinct_pixels_on_headless_surface()
 		assert_eq!(frame.height(), 300);
 
 		let mut distinct_colors = std::collections::HashSet::new();
-		for pixel in bytes.chunks_exact(4) {
+		for pixel in bytes.as_chunks::<4>().0 {
 			distinct_colors.insert((pixel[0], pixel[1], pixel[2], pixel[3]));
 		}
 
