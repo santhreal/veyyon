@@ -10,14 +10,13 @@
 //! its layout tree by the scene crate's six-metric suite; the interactive
 //! count is the frame's registered hit rects, the set a click can reach.
 //!
-//! A breach names its cell (width × appearance) and the MetricReport's own
+//! A breach names its cell (width × appearance) and the `MetricReport`'s own
 //! accounting, so the surface that overspent is found from the failure alone.
 
 use std::path::{Path, PathBuf};
 
-use veyyon_desktop_kit::{ColorRole, load_bundled_theme, load_bundled_tokens};
+use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_scene::{
-	RgbaColor,
 	headless::{RenderOptions, headless_context, render_view_captured},
 	metrics::{
 		Ceilings, DENSEST_REGION_CEILING, SurfaceClass, ceilings, cluster_text_sizes,
@@ -45,15 +44,6 @@ fn the_window_holds_its_ink_ceilings_at_every_width_in_both_appearances() {
 		let mut cx = headless_context().expect("a headless renderer is required to render the shell");
 		let tokens = load_bundled_tokens().expect("the bundled tokens load");
 		let theme = load_bundled_theme(appearance).expect("the bundled theme loads");
-		let ground_rgb = theme
-			.role(Path::new("bundled"), ColorRole::Ground)
-			.expect("the theme declares a ground");
-		let ground = RgbaColor::opaque(
-			(ground_rgb.r * 255.0).round() as u8,
-			(ground_rgb.g * 255.0).round() as u8,
-			(ground_rgb.b * 255.0).round() as u8,
-		);
-
 		for width in WIDTHS {
 			let options =
 				RenderOptions { width, height: HEIGHT, scale_factor: 1.0, ..RenderOptions::default() };
@@ -169,7 +159,18 @@ fn the_window_holds_its_ink_ceilings_at_every_width_in_both_appearances() {
 			// assertion substitutes for that. Written only when asked, to a
 			// directory outside the tree (a proof frame is never committed).
 			if let Ok(dir) = std::env::var("VEYYON_CONVERGENCE_FRAMES") {
+				// `cargo test` runs with the package root as the working
+				// directory, so a relative path is anchored at the workspace
+				// root: the frames are judged beside the plan, not beside the
+				// crate.
 				let dir = PathBuf::from(dir);
+				let dir = if dir.is_absolute() {
+					dir
+				} else {
+					Path::new(env!("CARGO_MANIFEST_DIR"))
+						.join("../..")
+						.join(dir)
+				};
 				std::fs::create_dir_all(&dir).expect("the frame directory is creatable");
 				write_png(
 					&captured.frame,
