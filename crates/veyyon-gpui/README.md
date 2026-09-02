@@ -36,16 +36,16 @@ there, pushed, and re-vendored. An edit made directly under `crates/vendor` is l
 
 Every patch has a corresponding golden test or invariant assertion in the repository tree to verify behavior across rebases:
 
-- **P1**: Rasterization comparison of scaled and rotated subtrees against reference byte outputs at 1× and 2× DPR.
-- **P2**: Interruption at 40% completion reverses from 40% with non-zero velocity; remounting mid-flight preserves progress.
-- **P3**: Spring reaches rest within bounds without oscillating past declared damping; delayed animation maintains start value for the configured delay duration.
-- **P4**: Hover transition generates a monotonic color ramp over declared duration; mid-transition state changes re-anchor without discontinuity.
-- **P5**: `TranscriptUpdated` event generates damage rectangles bounded by the entry layout box; mounted animation damage is bounded by element bounds.
-- **P6**: Blurred backdrop borders and dividers remain intact during hover repaints elsewhere in the window.
-- **P7**: Primitive with higher z-order renders above lower z-order primitives regardless of kind.
-- **P8**: Path-clipped subtree clips at path boundary at 1× and 2× DPR.
-- **P9**: Layout fit calculation completes without secondary layout pass, verified via layout pass counter.
-- **P10**: Identical scene produces identical RGBA byte output across multiple runs in one process and across separate processes.
+- **P1**: Rasterization comparison of scaled and rotated subtrees against reference byte outputs at 1× and 2× DPR (`tests/a_scaled_and_rotated_subtree_rasterises_to_the_reference_at_1x_and_2x.rs`).
+- **P2**: Interruption at 40% completion reverses from 40% with non-zero velocity; remounting mid-flight preserves progress (`tests/an_interrupted_animation_reverses_from_its_current_value_and_velocity.rs`).
+- **P3**: Spring reaches rest within bounds without oscillating past declared damping; delayed animation maintains start value for the configured delay duration (`tests/a_spring_settles_within_its_bound_and_a_delay_holds_the_start_value.rs`).
+- **P4**: Hover transition generates a monotonic color ramp over declared duration; mid-transition state changes re-anchor without discontinuity (`tests/a_hover_flip_ramps_monotonically_and_re_anchors_mid_ramp.rs`).
+- **P5**: `TranscriptUpdated` event generates damage rectangles bounded by the entry layout box; mounted animation damage is bounded by element bounds (`tests/a_transcript_update_damages_only_its_own_entry.rs`).
+- **P6**: Blurred backdrop borders and dividers remain intact during hover repaints elsewhere in the window (`tests/a_blurred_float_keeps_its_borders_across_a_repaint_elsewhere.rs`).
+- **P7**: Primitive with higher z-order renders above lower z-order primitives regardless of kind (`tests/a_circle_declared_above_an_image_renders_above_it.rs`).
+- **P8**: Path-clipped subtree clips at path boundary at 1× and 2× DPR (`tests/a_path_clipped_subtree_clips_at_the_path_boundary_at_1x_and_2x.rs`).
+- **P9**: Layout fit calculation completes without secondary layout pass, verified via layout pass counter (`tests/a_row_that_fits_its_text_shapes_it_once.rs`).
+- **P10**: Identical scene produces identical RGBA byte output across multiple runs in one process and across separate processes (`tests/the_headless_surface_renders_the_same_bytes_twice.rs`).
 
 ## Patch Series Status
 
@@ -101,10 +101,16 @@ The renderer is a process-wide resource: a third live `HeadlessAppContext` in on
 with SIGSEGV. `veyyon_desktop_scene::headless_context` hands back a context bound to a permit that
 admits one at a time, and every consumer takes it from there.
 
-The golden tests under `tests/` prove P8 (`a_path_clipped_subtree_clips_at_the_path_boundary_at_1x_and_2x`),
+The golden tests under `tests/` prove P1 (`a_scaled_and_rotated_subtree_rasterises_to_the_reference_at_1x_and_2x`),
+P2 (`an_interrupted_animation_reverses_from_its_current_value_and_velocity`),
+P3 (`a_spring_settles_within_its_bound_and_a_delay_holds_the_start_value`),
+P4 (`a_hover_flip_ramps_monotonically_and_re_anchors_mid_ramp`),
+P5 (`a_transcript_update_damages_only_its_own_entry`),
+P6 (`a_blurred_float_keeps_its_borders_across_a_repaint_elsewhere`),
+P7 (`a_circle_declared_above_an_image_renders_above_it`),
+P8 (`a_path_clipped_subtree_clips_at_the_path_boundary_at_1x_and_2x`),
 P9 (`a_row_that_fits_its_text_shapes_it_once`) and P10
-(`the_headless_surface_renders_the_same_bytes_twice`) through the snapshot. P5's invariants are
-asserted in the fork (`crates/gpui/src/window.rs`, `crates/gpui_wgpu/src/wgpu_renderer.rs`).
+(`the_headless_surface_renders_the_same_bytes_twice`) through the snapshot.
 
 ## Build Requirements
 
