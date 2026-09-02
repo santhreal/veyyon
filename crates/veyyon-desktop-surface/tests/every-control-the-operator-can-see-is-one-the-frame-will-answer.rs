@@ -313,7 +313,7 @@ fn the_refusal_notice_registers_its_close_while_it_is_up() {
 		}
 	};
 	stage("context");
-	let mut cx = headless_context().expect("a headless renderer is required to render the shell");
+	let cx = headless_context().expect("a headless renderer is required to render the shell");
 	let tokens = load_bundled_tokens().expect("the bundled tokens load");
 	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
 

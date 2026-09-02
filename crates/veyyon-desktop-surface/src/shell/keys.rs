@@ -167,7 +167,7 @@ pub fn bind_composer_keys(composer: Div, cx: &Context<ShellView>) -> Div {
 				.map(PaletteState::from_models);
 			match palette {
 				Some(palette) => {
-					view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Palette(palette))))
+					view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Palette(palette))));
 				},
 				None => cx.propagate(),
 			}

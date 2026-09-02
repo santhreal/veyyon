@@ -28,11 +28,12 @@ pub fn distinct_gap_values(tree: &LayoutBoxTree, text: &[BoxBounds]) -> BTreeSet
 	gap_spans(tree, text).keys().copied().collect()
 }
 
-/// Every measured gap with the spans that produced it, so a gate can count
-/// the values and, when one overspends a ceiling, attribute it to the places
-/// it came from. Identical spans are counted once: the pair loop sees one
-/// physical gap through every member that shares an edge with it, so a raw
-/// map would hold the same rect several times.
+/// Every measured gap with the spans that produced it.
+///
+/// A gate counts the values and, when one overspends a ceiling, attributes it
+/// to the places it came from. Identical spans are counted once: the pair
+/// loop sees one physical gap through every member that shares an edge with
+/// it, so a raw map would hold the same rect several times.
 pub fn gap_spans(
 	tree: &LayoutBoxTree,
 	text: &[BoxBounds],
@@ -147,9 +148,11 @@ pub fn compute_distinct_text_sizes(tree: &LayoutBoxTree) -> usize {
 	cluster_text_sizes(&sizes)
 }
 
-/// The number of distinct sizes in a sorted list, clustered within the 0.1px
-/// tolerance `compute_distinct_text_sizes` uses. Shared with gates whose text
-/// comes from a frame's shaped runs rather than a tree's text leaves.
+/// The number of distinct sizes in a sorted list.
+///
+/// Clustered within the 0.1px tolerance `compute_distinct_text_sizes` uses.
+/// Shared with gates whose text comes from a frame's shaped runs rather than
+/// a tree's text leaves.
 pub fn cluster_text_sizes(sizes: &[f32]) -> usize {
 	let mut cluster_count = 0;
 	let mut current_rep: Option<f32> = None;

@@ -76,9 +76,8 @@ fn an_interrupted_animation_reverses_from_its_current_value_and_velocity() {
 
 	let mut session = HeadlessSession::open(&mut cx, &options, {
 		let handle = spring_handle.clone();
-		let values = rendered_values.clone();
 		move |_window, app: &mut App| {
-			app.new(|_| SpringInterruptView { target: px(100.0), handle, rendered_values: values })
+			app.new(|_| SpringInterruptView { target: px(100.0), handle, rendered_values })
 		}
 	})
 	.expect("open spring session");
@@ -100,7 +99,7 @@ fn an_interrupted_animation_reverses_from_its_current_value_and_velocity() {
 		.expect("velocity at interrupt must exist");
 
 	assert!(
-		pos_at_interrupt >= 40.0 && pos_at_interrupt < 65.0,
+		(40.0..65.0).contains(&pos_at_interrupt),
 		"position must be around 40%, got {pos_at_interrupt}"
 	);
 	assert!(vel_at_interrupt > 0.0, "forward velocity must be positive, got {vel_at_interrupt}");
