@@ -55,21 +55,32 @@ shot breadth-raised
 # The two ids are rows the recorder's own model file declares, so the console
 # resolves them through the resolver `--model` uses rather than accepting any
 # string that was typed.
-k Down
-settle 1
-shot models-focused
-t "qwen2.5-1.5b-q8, qwen2.5-1.5b-q4"
-settle 1
-shot models-assigned
+#
+# The row exists on the branch and nowhere else: main's console has four fields
+# and no per-arm model, so the assignment and the refusal have no state on that
+# side to photograph and are shot on the after arm alone. The pair that carries
+# this change is `breadth-raised`, where the row is present on one side and
+# absent on the other. Skipping the block whole is also what keeps the field
+# cursor aligned: the `k Down` after it lands on Attempts in both arms, and a
+# scene that instead typed a model spec into main's Attempts field would drift
+# every frame below this point into a state neither side of the change has.
+if [ "${SCENE_ARM:-after}" = "after" ]; then
+	k Down
+	settle 1
+	shot models-focused
+	t "qwen2.5-1.5b-q8, qwen2.5-1.5b-q4"
+	settle 1
+	shot models-assigned
 
-# A model nothing matches must refuse the run rather than quietly falling back
-# to the session model.
-t ", nope"
-settle 1
-shot models-unknown
-key_repeat BackSpace 6 0.05
-settle 1
-shot models-restored
+	# A model nothing matches must refuse the run rather than quietly falling
+	# back to the session model.
+	t ", nope"
+	settle 1
+	shot models-unknown
+	key_repeat BackSpace 6 0.05
+	settle 1
+	shot models-restored
+fi
 
 # Down past Attempts to Certification, and toggle it off. The summary changes
 # from a review ring to uncertified, which is the differential this field has.
