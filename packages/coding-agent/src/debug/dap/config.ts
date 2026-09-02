@@ -195,8 +195,8 @@ export function getAdapterConfigs(cwd?: string): Record<string, DapAdapterConfig
 function normalizeCommandForCwd(command: string, cwd: string): string {
 	if (path.isAbsolute(command)) return command;
 	if (
-		command.startsWith(".") ||
-		command.startsWith("../..") ||
+		command.startsWith("./") ||
+		command.startsWith("../") ||
 		command.startsWith(".\\") ||
 		command.startsWith("..\\")
 	) {
