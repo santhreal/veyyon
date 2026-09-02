@@ -101,6 +101,39 @@ describe("settings, themes, and keybindings action group behaviour", () => {
 		client.destroy();
 	});
 
+	test("every emitted entry carries value and default the desktop requires", async () => {
+		// WHY: `JSON.stringify` drops `undefined` fields, so a setting whose
+		// effective value or schema default resolves to `undefined` ships over
+		// the socket without the `value`/`default` keys the desktop's
+		// `SettingEntry` deserializer requires; the frame is rejected and the
+		// transport drops the connection as a fatal protocol error. Observed
+		// live with `auth.broker.token` on a host with no broker token. The
+		// choke point is the whole record: any key, present or future, that
+		// emits an incomplete entry turns this test red.
+		server = await startGuiHostServer({
+			endpoint: "tcp:127.0.0.1:0",
+			cwd: tempDir,
+			agentDir,
+		});
+		const client = await TestSocketClient.connect(server.endpoint);
+
+		const res = await client.request(1, "LoadSettings");
+		expect(res.outcome).toEqual({ RequestSucceeded: { request: 1 } });
+
+		const settingsFrame: SettingsSnapshotFrame | undefined = res.frames.find(
+			f => f.Snapshot && "Settings" in f.Snapshot,
+		);
+		const settingsMap = settingsFrame?.Snapshot?.Settings ?? {};
+		expect(Object.keys(settingsMap).length).toBeGreaterThan(0);
+
+		const incomplete = Object.entries(settingsMap)
+			.filter(([, entry]) => !("value" in entry) || !("default" in entry))
+			.map(([key]) => key);
+		expect(incomplete).toEqual([]);
+
+		client.destroy();
+	});
+
 	test("SetSetting of a boolean key with a string value fails with INVALID_VALUE", async () => {
 		server = await startGuiHostServer({
 			endpoint: "tcp:127.0.0.1:0",
