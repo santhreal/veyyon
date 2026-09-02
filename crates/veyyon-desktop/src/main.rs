@@ -6,25 +6,37 @@
 //! reload, attaches to a GUI host — starting one when nothing listens — and
 //! runs the GPUI event loop with the host's events projected onto the shell.
 
-use std::{cell::RefCell, env, process, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, env, process, rc::Rc};
 
 use veyyon_desktop::{
 	HostLink, SessionIndex, actions_for, connect_or_spawn, current_timestamp_ms,
-	discover_asset_paths, load_startup_bundle, project, start_token_supervision,
+	discover_asset_paths, load_startup_bundle, project, request_frame, start_token_supervision,
 };
-use veyyon_desktop_model::{ConnectionState, HostEvent, Store, reduce};
-use veyyon_desktop_surface::{ShellState, ShellView, install_tokens};
+use veyyon_desktop_model::{
+	ConnectionState, HostEvent, RequestRegistry, SessionId, Store, SurfaceId, is_scope_retryable,
+	reduce, route_error,
+};
+use veyyon_desktop_surface::{
+	ControlError, Intent, Keymap, ShellState, ShellView, damage::regions_changed, install_tokens,
+	terminal::TerminalEmulator,
+};
 use veyyon_desktop_tokens::TokenReloadMessage;
 use veyyon_gpui::{
-	App, AppContext, Application, AsyncApp, Bounds, Point, Size, WindowBounds, WindowOptions, px,
+	App, AppContext, Application, AsyncApp, Bounds, Point, Size, TitlebarOptions, WindowBounds,
+	WindowOptions, point, px,
 };
 
 /// The window's side of the host: the protocol model, the row identities, and
 /// the link requests go out on. One owner, on the UI thread.
 struct Host {
-	store: Store,
-	index: SessionIndex,
-	link:  HostLink,
+	store:     Store,
+	index:     SessionIndex,
+	link:      HostLink,
+	registry:  RequestRegistry,
+	terminals: HashMap<String, TerminalEmulator>,
+	/// The state the window drew last, so a batch's projection can be
+	/// diffed region by region and repainted inside what changed (P5).
+	drawn:     ShellState,
 }
 
 /// The `--endpoint <addr>` or `--endpoint=<addr>` argument, if given.
@@ -59,6 +71,36 @@ fn connection_notice(state: &ConnectionState) -> Option<String> {
 	}
 }
 
+/// Resolves the initiating surface for an operator intent.
+fn surface_for_intent(intent: &Intent, active_session: Option<&SessionId>) -> SurfaceId {
+	match intent {
+		Intent::RetryConnection => SurfaceId::ConnectionRetryButton,
+		Intent::StartProviderAuth(p) => SurfaceId::ProviderAuthStartButton(p.clone()),
+		Intent::SubmitAuthSecret { provider, .. } => {
+			SurfaceId::ProviderAuthSecretSubmit(provider.clone())
+		},
+		Intent::OpenAuthUrl(url) => SurfaceId::ProviderAuthUrlOpen(url.clone()),
+		Intent::CancelAuthFlow => SurfaceId::ProviderAuthCancelButton(String::new()),
+		Intent::RetryAuthFlow => SurfaceId::ProviderAuthRetryButton(String::new()),
+		Intent::RetryControl(id) => id.clone(),
+		Intent::Send { .. } => match active_session {
+			Some(s) => SurfaceId::ComposerSendButton(s.clone()),
+			None => SurfaceId::GlobalTitlebarLine,
+		},
+		Intent::SelectSession(id) => SurfaceId::QueueSessionRow(SessionId(id.to_string())),
+		Intent::SetDrawer { .. } => SurfaceId::TerminalCreateButton(
+			active_session
+				.cloned()
+				.unwrap_or_else(|| SessionId("active".into())),
+		),
+		Intent::SelectTab(_) => SurfaceId::RightPanelDiffTab(
+			active_session
+				.cloned()
+				.unwrap_or_else(|| SessionId("active".into())),
+		),
+		_ => SurfaceId::GlobalTitlebarLine,
+	}
+}
 fn main() {
 	let paths = discover_asset_paths();
 	let bundle = match load_startup_bundle(paths) {
@@ -86,9 +128,17 @@ fn main() {
 			size:   Size { width: px(min_width), height: px(min_height) },
 		});
 
+		// On macOS the window draws the titlebar itself and the traffic
+		// lights land in the inset the shell's bar leaves for them (§4.1).
+		// Elsewhere the window manager's decorations sit above the bar.
+		let titlebar = cfg!(target_os = "macos").then(|| TitlebarOptions {
+			title:                  None,
+			appears_transparent:    true,
+			traffic_light_position: Some(point(px(12.0), px(20.0))),
+		});
 		let window_options = WindowOptions {
 			window_bounds: Some(window_bounds),
-			titlebar: None,
+			titlebar,
 			window_min_size: Some(Size { width: px(min_width), height: px(min_height) }),
 			..Default::default()
 		};
@@ -109,6 +159,7 @@ fn main() {
 				process::exit(1);
 			},
 		};
+		cx.bind_keys(Keymap::default().bindings());
 
 		// Background token watcher for hot reload (§8.4).
 		match start_token_supervision(&tokens_dir) {
@@ -191,8 +242,14 @@ fn main() {
 			cx.notify();
 		});
 
-		let host =
-			Rc::new(RefCell::new(Host { store: Store::new(), index: SessionIndex::new(), link }));
+		let host = Rc::new(RefCell::new(Host {
+			store: Store::new(),
+			index: SessionIndex::new(),
+			link,
+			registry: RequestRegistry::new(),
+			terminals: HashMap::new(),
+			drawn: ShellState::default(),
+		}));
 
 		// Intents the operator raised go to the host as actions. Every
 		// dispatch notifies the view, so observing it drains them at once.
@@ -205,9 +262,16 @@ fn main() {
 				}
 				let mut host = host.borrow_mut();
 				let host = &mut *host;
+				let active_session = host.store.persisted.shell.active_session.clone();
+				let now_ms = current_timestamp_ms();
 				for intent in &intents {
+					let surface = surface_for_intent(intent, active_session.as_ref());
 					for action in actions_for(intent, &host.index, &mut host.store) {
-						host.link.send(action);
+						let kind = action.kind();
+						let req_id = host.link.send(action);
+						host
+							.registry
+							.register(req_id, kind, surface.clone(), now_ms, 30_000);
 					}
 				}
 			})
@@ -236,20 +300,67 @@ fn main() {
 									notice = Some(connection_notice(state));
 								},
 								HostEvent::RequestFailed { error, .. } => {
-									notice = Some(Some(error.message.clone()));
+									let active = host.store.persisted.shell.active_session.as_ref();
+									let surface = route_error(error, &host.registry, active);
+									let is_retryable = is_scope_retryable(error.scope);
+									view.state_mut().controls.set_error(
+										surface.clone(),
+										ControlError::new(&error.message, is_retryable),
+									);
+									if surface == SurfaceId::GlobalTitlebarLine {
+										notice = Some(Some(error.message.clone()));
+									}
+								},
+								HostEvent::RequestSucceeded { request } => {
+									if let Some(in_flight) = host.registry.complete(request) {
+										view.state_mut().controls.clear_error(&in_flight.surface);
+									}
 								},
 								HostEvent::FatalProtocolError { message } => {
 									notice = Some(Some(format!("protocol error: {message}")));
+								},
+								HostEvent::Snapshot(
+									veyyon_desktop_model::SnapshotSection::Keybindings(views),
+								) => {
+									view.keymap_mut().apply_overrides(views);
+									cx.bind_keys(view.keymap().bindings());
+								},
+								HostEvent::Snapshot(
+									veyyon_desktop_model::SnapshotSection::TerminalOutput(chunk),
+								) => {
+									let emu = host
+										.terminals
+										.entry(chunk.terminal.clone())
+										.or_insert_with(|| TerminalEmulator::new(80, 24));
+									if chunk.reset {
+										emu.reset();
+									}
+									emu.feed(&chunk.data);
 								},
 								_ => {},
 							}
 							let _damage = reduce(&mut host.store, event);
 						}
-						project(&host.store, &mut host.index, current_timestamp_ms(), view.state_mut());
-						if let Some(notice) = notice {
-							view.set_notice(notice);
+						let now_ms = current_timestamp_ms();
+						project(&host.store, &mut host.index, &host.terminals, now_ms, view.state_mut());
+						// The clock the queue's elapsed labels and the connection
+						// banner are measured against is the batch's, not the last
+						// frame's.
+						view.set_clock_ms(now_ms);
+						// The attention strip is a view field, not state, and
+						// it moves the columns when it appears, so a change to
+						// it repaints the window regardless of the diff.
+						let invalidation = regions_changed(&host.drawn, view.state());
+						host.drawn.clone_from(view.state());
+						match notice {
+							Some(notice) => {
+								view.set_notice(notice);
+								cx.notify();
+							},
+							None => {
+								request_frame(view, &invalidation, cx);
+							},
 						}
-						cx.notify();
 					});
 				}
 			}

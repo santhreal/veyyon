@@ -1,5 +1,6 @@
 pub mod app;
 pub mod bridge;
+pub mod damage;
 pub mod endpoint;
 pub mod framing;
 pub mod link;
@@ -15,6 +16,7 @@ pub use bridge::{
 	MUTATION_TIMEOUT_MS, classify_action, create_egress_channel, create_ingress_channel,
 	current_timestamp_ms,
 };
+pub use damage::{Repaint, request_frame};
 pub use endpoint::{
 	AttachError, Attachment, ChildHostHandle, DEFAULT_SOCKET_FILENAME, Endpoint, EndpointError,
 	HostSpawnError, SPAWN_WAIT_MS, VEYYON_BIN_ENV, VEYYON_GUI_ENDPOINT_ENV, VEYYON_PROFILE_ENV,
@@ -24,7 +26,7 @@ pub use framing::{FrameDecoder, FramingError, MAX_FRAME_BYTES, encode_request};
 pub use link::{HostLink, TRANSPORT_THREAD_NAME};
 pub use project::{
 	PANE_LINE_CEILING, SessionIndex, actions_for, drawer_lines, elapsed_label, project,
-	strip_control_sequences, tree_rows,
+	project_turn_phase, strip_control_sequences, tree_rows_from_changes,
 };
 pub use reconnect::{
 	DeterministicJitter, FATAL_MESSAGE, INITIAL_DELAY_MS, JITTER_PCT, JitterSource, MAX_ATTEMPTS,
