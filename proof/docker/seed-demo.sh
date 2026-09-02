@@ -547,7 +547,7 @@ git -C "${WIDE}" -c commit.gpgsign=false commit -q -m "seed the normalizer"
 SCENE_NAME="$(basename "${2:-}" .sh)"
 case "${SCENE_NAME}" in
 autoresearch-serial-*) SEED_KIND=serial ;;
-autoresearch-*) SEED_KIND=swarm ;;
+autoresearch-* | autoswarm-run-*) SEED_KIND=swarm ;;
 *) SEED_KIND="" ;;
 esac
 if [ -n "${SEED_KIND}" ]; then
