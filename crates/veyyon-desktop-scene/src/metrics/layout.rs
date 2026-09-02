@@ -14,7 +14,31 @@ use crate::layout::{BoxBounds, LayoutBoxTree};
 /// that a user cannot see. Measuring painted extents accurately reflects the
 /// visual rhythm perceived on screen.
 pub fn compute_distinct_gaps(tree: &LayoutBoxTree) -> usize {
-	let mut distinct_gaps = BTreeSet::new();
+	distinct_gap_values(tree, &[]).len()
+}
+
+/// The distinct gap values themselves, so a gate that fails the count can
+/// name the values that overspent it.
+///
+/// `text` carries the shaped runs' line boxes when the tree was recovered
+/// from a painted frame: a quad tree holds fills and borders only, and a gap
+/// that spans a line of prose is content, not rhythm, so a run that overlaps
+/// the span suppresses it the same way an intervening box does.
+pub fn distinct_gap_values(tree: &LayoutBoxTree, text: &[BoxBounds]) -> BTreeSet<i64> {
+	gap_spans(tree, text).keys().copied().collect()
+}
+
+/// Every measured gap with the spans that produced it, so a gate can count
+/// the values and, when one overspends a ceiling, attribute it to the places
+/// it came from. Identical spans are counted once: the pair loop sees one
+/// physical gap through every member that shares an edge with it, so a raw
+/// map would hold the same rect several times.
+pub fn gap_spans(
+	tree: &LayoutBoxTree,
+	text: &[BoxBounds],
+) -> std::collections::BTreeMap<i64, Vec<BoxBounds>> {
+	let mut distinct_gaps: std::collections::BTreeMap<i64, Vec<BoxBounds>> =
+		std::collections::BTreeMap::new();
 
 	for group in tree.sibling_groups() {
 		// Collect painted extents for all siblings in the group
@@ -53,12 +77,13 @@ pub fn compute_distinct_gaps(tree: &LayoutBoxTree) -> usize {
 
 						let has_intervening = members
 							.iter()
-							.any(|&(id3, b3)| id3 != id1 && id3 != id2 && b3.intersects(&gap_rect));
+							.any(|&(id3, b3)| id3 != id1 && id3 != id2 && b3.intersects(&gap_rect))
+							|| text.iter().any(|run| run.intersects(&gap_rect));
 
 						if !has_intervening {
 							let rounded = gap.round() as i64;
 							if rounded > 0 {
-								distinct_gaps.insert(rounded);
+								distinct_gaps.entry(rounded).or_default().push(gap_rect);
 							}
 						}
 					}
@@ -78,12 +103,13 @@ pub fn compute_distinct_gaps(tree: &LayoutBoxTree) -> usize {
 
 						let has_intervening = members
 							.iter()
-							.any(|&(id3, b3)| id3 != id1 && id3 != id2 && b3.intersects(&gap_rect));
+							.any(|&(id3, b3)| id3 != id1 && id3 != id2 && b3.intersects(&gap_rect))
+							|| text.iter().any(|run| run.intersects(&gap_rect));
 
 						if !has_intervening {
 							let rounded = gap.round() as i64;
 							if rounded > 0 {
-								distinct_gaps.insert(rounded);
+								distinct_gaps.entry(rounded).or_default().push(gap_rect);
 							}
 						}
 					}
@@ -92,7 +118,16 @@ pub fn compute_distinct_gaps(tree: &LayoutBoxTree) -> usize {
 		}
 	}
 
-	distinct_gaps.len()
+	for spans in distinct_gaps.values_mut() {
+		spans.sort_by_key(|span| {
+			(span.left as i64, span.top as i64, span.right as i64, span.bottom as i64)
+		});
+		spans.dedup_by_key(|span| {
+			(span.left as i64, span.top as i64, span.right as i64, span.bottom as i64)
+		});
+	}
+
+	distinct_gaps
 }
 
 /// Compute the count of distinct rendered text font sizes.
@@ -109,11 +144,17 @@ pub fn compute_distinct_text_sizes(tree: &LayoutBoxTree) -> usize {
 	}
 
 	sizes.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+	cluster_text_sizes(&sizes)
+}
 
+/// The number of distinct sizes in a sorted list, clustered within the 0.1px
+/// tolerance `compute_distinct_text_sizes` uses. Shared with gates whose text
+/// comes from a frame's shaped runs rather than a tree's text leaves.
+pub fn cluster_text_sizes(sizes: &[f32]) -> usize {
 	let mut cluster_count = 0;
 	let mut current_rep: Option<f32> = None;
 
-	for &size in &sizes {
+	for &size in sizes {
 		match current_rep {
 			None => {
 				cluster_count = 1;
@@ -147,6 +188,13 @@ pub fn compute_element_density(tree: &LayoutBoxTree, width: u32, height: u32) ->
 		.map(|b| b.bounds.center())
 		.collect();
 
+	element_density_of_centers(&centers, width, height)
+}
+
+/// The density over an arbitrary center set, for gates whose interactive
+/// elements come from a frame's hit rects rather than a tree's interactive
+/// boxes (the quad-recovery path marks none).
+pub fn element_density_of_centers(centers: &[(f32, f32)], width: u32, height: u32) -> f32 {
 	if centers.is_empty() {
 		return 0.0;
 	}
@@ -172,7 +220,7 @@ pub fn compute_element_density(tree: &LayoutBoxTree, width: u32, height: u32) ->
 			let right = wx + 100.0;
 			let bottom = wy + 100.0;
 			let mut count = 0usize;
-			for &(cx, cy) in &centers {
+			for &(cx, cy) in centers {
 				if cx >= wx && cx < right && cy >= wy && cy < bottom {
 					count += 1;
 				}
