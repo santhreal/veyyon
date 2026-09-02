@@ -412,7 +412,7 @@ describe("the rebuild has one owner, and it is not the settings screen", () => {
 		// Absence of a call site is the one claim only a source read can make. That the trigger
 		// WORKS is proven where it lives, against real writes and a real session, in
 		// `test/a-settings-write-rebuilds-the-prompt-it-changes.test.ts`, and that this screen
-		// stays out of it is proven in `test/modes/controllers/selector-prompt-gate-rebuild.test.ts`.
+		// stays out of it is proven in `test/modes/terminal/controllers/selector-prompt-gate-rebuild.test.ts`.
 		const source = await Bun.file(SELECTOR_CONTROLLER).text();
 		const calls = [...source.matchAll(/refreshBaseSystemPrompt\(/g)];
 

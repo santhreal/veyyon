@@ -108,7 +108,7 @@ function content(term: VirtualTerminal): string[] {
  * Per-case timeout for this suite, well above bun's 5s default.
  *
  * MEASURED 2026-07-25, after the "stops at the oldest row" case timed out at
- * 5000ms inside a full `test/modes/components/` run while passing alone. It is
+ * 5000ms inside a full `test/modes/terminal/components/` run while passing alone. It is
  * not a hung wait and not a fixed sleep: every case drives the PRODUCTION
  * scheduler and awaits a real frame per input event -- fourteen turns plus forty
  * wheel events is about fifty awaited frames -- so alone each case costs 0.5s to

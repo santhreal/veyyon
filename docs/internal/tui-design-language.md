@@ -151,7 +151,7 @@ A block's `state` is not a signal by itself. `renderOutputBlock` turns `state` i
 
 A modal never gets smaller when the terminal gets bigger. `computeModalDims` takes its vertical margin off both ends, and `sizingForArea` sheds padding on a card that has no room to spare, and those two rules used to meet in the middle of ordinary window sizes: a 24-row terminal gave a full-screen card, a 25-row terminal gave an 11-row one, and a list surface opened on a split pane showed an empty box. Card height is floored, the floor rises with the padding the card carries so switching the padding on cannot cost the body a row, and compact mode sheds padding only. A card that asks for `preferredBodyRows` still shrinks to its content, so the floor gives a LIST more room without inflating a short dialog into an empty box. If you add a sizing or a chrome band, re-run `modal-shell-height-is-monotonic.test.ts`: it scans every terminal height from 8 to 120 and fails on any step DOWN, which is the only way to catch a discontinuity that lives between the sizes anyone thinks to test.
 
-A selection band fills the ROW, not the text. `theme.bg("selectedBg", line)` wrapped around a row's content tints only as far as that row happens to reach, so the band stops mid-row and changes shape as the cursor moves; the eye reads that ragged edge as the end of something rather than as "you are here". Call `selectionBand(line, rowWidth)` from `modes/components/selector-helpers.ts`: it pads first and tints second, which is the whole rule, and it is the one place that rule lives. The subagent dashboard shipped the ragged version and it was caught by looking at a render proof, not by a test, because with color off the fill is not there either way. `test/modes/components/agent-dashboard-selection-fill.test.ts` shows the shape of the lock: force color on with `setAnsiPolicy("full")`, then assert the tinted span reaches the pane edge and that the scrollbar sits outside it.
+A selection band fills the ROW, not the text. `theme.bg("selectedBg", line)` wrapped around a row's content tints only as far as that row happens to reach, so the band stops mid-row and changes shape as the cursor moves; the eye reads that ragged edge as the end of something rather than as "you are here". Call `selectionBand(line, rowWidth)` from `modes/components/selector-helpers.ts`: it pads first and tints second, which is the whole rule, and it is the one place that rule lives. The subagent dashboard shipped the ragged version and it was caught by looking at a render proof, not by a test, because with color off the fill is not there either way. `test/modes/terminal/components/agent-dashboard-selection-fill.test.ts` shows the shape of the lock: force color on with `setAnsiPolicy("full")`, then assert the tinted span reaches the pane edge and that the scrollbar sits outside it.
 
 A row's width comes from the view that will render it. `renderScrollableList` takes a `buildRows(rowWidth)` callback rather than a finished array, and hands it `ScrollView.contentWidth(width)` from the very view it is about to render through. That shape exists because the alternative kept going wrong: the helper it replaced reserved ONE column for the scrollbar while `ScrollView` reserves TWO, a gutter plus the glyph, so every row was built one column too wide and silently truncated on the way out. A row that was merely padded lost a space and nobody noticed; a row that was FILLED lost the escape that closes the fill, and the bar and every cell after it came out painted. Do not recompute the reserve, and do not pass a width you measured yourself.
 
@@ -225,7 +225,7 @@ product worse to satisfy a gate.
 In practice this means picking from Arrows (`U+2190–U+21FF`), Mathematical Operators
 (`U+2200–U+22FF`), Miscellaneous Technical (`U+2300–U+23FF`), Box Drawing, Block Elements, Geometric
 Shapes (`U+25A0–U+25FF`) and Dingbats, and it means a glyph outside those ranges needs measuring
-before it ships. `test/modes/theme/every-unicode-glyph-exists-in-a-plain-monospace-font.test.ts`
+before it ships. `test/theme/every-unicode-glyph-exists-in-a-plain-monospace-font.test.ts`
 holds the measurement, one row per codepoint, and fails on a codepoint nobody has checked. A test
 cannot read fonts (CI has no guaranteed font set, and a gate that silently finds none and passes is
 worse than no gate), so the measurement is checked in and its `cmap` command is in the suite header.
@@ -242,7 +242,7 @@ A preset may leave an icon blank, and the `unicode` preset leaves 94 of its 201 
 withIcon(theme.icon.job, `${runningJobs}`); // "⚙ 5", or "5" when icon.job is empty
 ```
 
-Writing `` `${theme.icon.job} ${runningJobs}` `` instead renders ` 5` under such a preset: a leading space, and a number with nothing saying what it counts. Written by hand across the status line's segments, that showed the gap in some and not others on the same line. `test/modes/theme/an-empty-icon-leaves-no-gap.test.ts` fails if the template is written by hand again.
+Writing `` `${theme.icon.job} ${runningJobs}` `` instead renders ` 5` under such a preset: a leading space, and a number with nothing saying what it counts. Written by hand across the status line's segments, that showed the gap in some and not others on the same line. `test/theme/an-empty-icon-leaves-no-gap.test.ts` fails if the template is written by hand again.
 
 Those blanks were treated as an unfinished task for a while, so the reason is worth stating.
 The obvious glyph for a cache, a job, a camera, a roster of agents or a lightning-fast mode is
@@ -267,7 +267,7 @@ Where a status marker is a bare presence dot, it is a **square**, not a circle:
 | `radio.selected` / `radio.unselected` | `◉` `○` | `▣` `□` (square-in-square vs open square, kept distinct from the `■`/`□` checkbox) |
 | `thinking.minimal…max` | `o ◔ ◑ ◒ ◕ ◉` | text labels `min` `low` `med` `high` `xhigh` `max` (a deliberate exception: the gauge-bar glyphs `▁▂▃…` were retired because they rendered as stray solid rectangles) |
 
-These live in the `unicode` preset (`symbols.ts`), the base the default Titanium theme inherits, and are locked by `test/modes/theme/symbol-presets.test.ts` (with `test/tools/ask.test.ts` pinning the radio/checkbox distinction). The `nerd` and `ascii` presets keep their own icon/text vocabularies. **Named themes may override the house set** when circles are part of their identity (the poimandres themes keep their circular glyphs); the block style is the Veyyon default, not a constraint on every theme.
+These live in the `unicode` preset (`symbols.ts`), the base the default Titanium theme inherits, and are locked by `test/theme/symbol-presets.test.ts` (with `test/tools/ask.test.ts` pinning the radio/checkbox distinction). The `nerd` and `ascii` presets keep their own icon/text vocabularies. **Named themes may override the house set** when circles are part of their identity (the poimandres themes keep their circular glyphs); the block style is the Veyyon default, not a constraint on every theme.
 
 ## Voice register
 

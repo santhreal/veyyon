@@ -13,7 +13,7 @@
 # (settings-selector.ts `#defToItem`), and the recording session assigns a model
 # role at runtime, so Role Models reads "runtime override · all inherit" and
 # Enter does not open it. That the advisor is gone from the table is pinned by
-# test/modes/components/advisor-model-has-one-owner.test.ts instead.
+# test/modes/terminal/components/advisor-model-has-one-owner.test.ts instead.
 #
 #   SCENE_SETTINGS='advisor.enabled: true' OUT_DIR=proof/captures/x11/before \
 #     proof/docker/record-x11-before.sh proof/scenes/settings-advisor-model.sh

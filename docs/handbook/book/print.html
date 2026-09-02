@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-29255d79.js";
+            window.path_to_searchindex_js = "searchindex-594768c5.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-b613f6a6.js"></script>
@@ -17836,7 +17836,7 @@ export default function extension(pi: ExtensionAPI): void {
 <h2 id="examples-of-what-tests-check"><a class="header" href="#examples-of-what-tests-check">Examples of what tests check</a></h2>
 <ul>
 <li><strong>Hashline edit path</strong>: round-trip: generated patches apply to the intended content; mismatches fail with the expected error surface.</li>
-<li><strong>Tool-call repair</strong>: unit and conformance cases in <code>packages/coding-agent/test/repair/schema-repair.test.ts</code> (clean / repaired / unrepairable, alias ambiguity, strict <code>additionalProperties</code>).</li>
+<li><strong>Tool-call repair</strong>: unit and conformance cases in <code>packages/coding-agent/test/edit/schema-repair.test.ts</code> (clean / repaired / unrepairable, alias ambiguity, strict <code>additionalProperties</code>).</li>
 <li><strong>Tool-output bounds</strong>: truncation limits behave as configured and remain visible to the model.</li>
 <li><strong>Architecture gates</strong>: layering, import cycles, and module-reach checks in <code>packages/coding-agent/test/architecture/</code>.</li>
 </ul>
@@ -18035,7 +18035,7 @@ that writes a render into <code>assets/</code>. Drivers write outside the tracke
 </tbody>
 </table>
 </div>
-<p>Implementation: <code>packages/coding-agent/src/tools/core/repair/schema-repair.ts</code><br>Tests: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code></p>
+<p>Implementation: <code>packages/coding-agent/src/tools/core/repair/schema-repair.ts</code><br>Tests: <code>packages/coding-agent/test/edit/schema-repair.test.ts</code></p>
 <h2 id="related-18"><a class="header" href="#related-18">Related</a></h2>
 <ul>
 <li><a href="#the-repair-cascade">The repair cascade</a>: ordered rules</li>
@@ -18053,7 +18053,7 @@ that writes a render into <code>assets/</code>. Drivers write outside the tracke
 <li><strong>Ambiguity guard</strong>: reject when required string fields have multiple plausible donors.</li>
 <li><strong>Outcome</strong>: <code>clean</code>, <code>repaired</code> (canonical args + hints), or <code>unrepairable</code> (error tool result, no dispatch).</li>
 </ol>
-<p>Conformance suite: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code> (alias renames, ambiguity refusals, strict-mode refusals, and a guard that strict rejection does not fire on ArkType/Zod wire schemas that synthesize <code>additionalProperties: false</code> for closed-object emission rather than authorial strictness).</p>
+<p>Conformance suite: <code>packages/coding-agent/test/edit/schema-repair.test.ts</code> (alias renames, ambiguity refusals, strict-mode refusals, and a guard that strict rejection does not fire on ArkType/Zod wire schemas that synthesize <code>additionalProperties: false</code> for closed-object emission rather than authorial strictness).</p>
 <p>Per-model enable/disable and tool allowlist hints: <a href="#per-model-repair-posture">Per-model posture</a>.</p>
 <h2 id="related-19"><a class="header" href="#related-19">Related</a></h2>
 <ul>

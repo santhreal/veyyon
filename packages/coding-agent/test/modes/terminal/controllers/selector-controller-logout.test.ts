@@ -24,7 +24,7 @@
  *     because `/logout groq` reaches the same card and the same reporter.
  *
  * WHAT IT DOES NOT CATCH. The card's own rendering is proven in
- * `test/modes/components/account-manager.test.ts`; this suite drives the real component but asserts
+ * `test/modes/terminal/components/account-manager.test.ts`; this suite drives the real component but asserts
  * on the removal and the report, not on the frame. Whether the removal reaches the database is the
  * store's contract, exercised here through a real `SqliteAuthCredentialStore` rather than a fake.
  */

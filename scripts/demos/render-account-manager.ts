@@ -6,7 +6,7 @@
  * plan, the origin badge and two usage bars per account still read as one row at a glance when
  * three accounts of one provider sit on top of each other, and whether a failed account and a
  * rate-limited one are tellable apart without reading the words. The string assertions in
- * `test/modes/components/account-manager.test.ts` pin the bytes; they cannot answer that.
+ * `test/modes/terminal/components/account-manager.test.ts` pin the bytes; they cannot answer that.
  *
  * Run:
  *     env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-account-manager.ts --width 110 |

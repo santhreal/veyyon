@@ -21,7 +21,7 @@
  *     original defect with a mouse instead of a timer.
  *
  * WHAT IT DOES NOT CATCH. The card's frame is not asserted (that is
- * `test/modes/components/account-manager.test.ts`), and a repaint triggered by a real state change
+ * `test/modes/terminal/components/account-manager.test.ts`), and a repaint triggered by a real state change
  * is expected and deliberately not forbidden: `reload()` after a pin, a rename or a logout renders
  * the whole UI once, on purpose, because the rows underneath the overlay changed too.
  */

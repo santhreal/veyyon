@@ -8,11 +8,11 @@
  * suite in the same process rendered.
  *
  * The failure that produced this suite was a mermaid assertion in
- * `test/modes/components/assistant-message-mermaid.test.ts` that passed alone, passed in its own
+ * `test/modes/terminal/components/assistant-message-mermaid.test.ts` that passed alone, passed in its own
  * directory, and failed roughly once per six-hundred-file run with zero box-border rows. The
  * printed render showed the fenced-source fallback (`--<rule>mermaid` plus the verbatim
  * `flowchart TD` lines), not a diagram drawn with the wrong glyphs -- so the renderer had been
- * turned off, not restyled. `test/modes/controllers/selector-prompt-gate-rebuild.test.ts` drives
+ * turned off, not restyled. `test/modes/terminal/controllers/selector-prompt-gate-rebuild.test.ts` drives
  * `SelectorController.handleSettingChange("tui.renderMermaid", false)` twice, which is the real
  * product path into `setMarkdownMermaidRendering(false)`, and nothing put it back.
  *

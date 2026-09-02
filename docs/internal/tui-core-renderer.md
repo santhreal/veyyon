@@ -669,7 +669,7 @@ drops committed rows the way the real container does. Only the second one can
 see this class of bug. Both state `setScrollbackRebuild(false)` explicitly, because
 the rebuild is on by default and these suites assert the append-below history it
 would otherwise erase. A third suite,
-`packages/coding-agent/test/modes/components/transcript-scrollback-pinned-composer.test.ts`,
+`packages/coding-agent/test/modes/terminal/components/transcript-scrollback-pinned-composer.test.ts`,
 mounts the real container and the real shortcut bar together, so the host side of
 the contract is proven too.
 

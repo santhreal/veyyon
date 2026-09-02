@@ -891,12 +891,12 @@ missing `yield` handler once surfaced as seventeen unrelated-looking failures.
 | Update per environment | `scripts/update-environment-matrix.test.ts` (same TOML, shared harness) |
 | Regression corpus | `packages/coding-agent/test/corpus/regressions/` |
 | Docs and handbook | `scripts/check-doc-*.test.ts`, `scripts/handbook-built-pages-contain-source-contracts.test.ts` |
-| Symbol presets and glyph contracts | `coding-agent/test/modes/theme/every-unicode-glyph-*.test.ts`, `an-empty-icon-leaves-no-gap.test.ts` |
+| Symbol presets and glyph contracts | `coding-agent/test/theme/every-unicode-glyph-*.test.ts`, `an-empty-icon-leaves-no-gap.test.ts` |
 | Module reach and boot cost | `coding-agent/test/architecture/`, via `test/helpers/module-reach-gate.ts` |
 | Keybinding ids reach a reader | `coding-agent/test/config/every-keybinding-id-is-read-by-something.test.ts` |
 | Keybinding docs quote real chords | `coding-agent/test/config/the-reference-page-quotes-the-real-default-keys.test.ts` |
-| `/hotkeys` follows a remap | `coding-agent/test/modes/utils/hotkeys-follows-a-remap.test.ts` |
-| No surface spells a hint by hand | `coding-agent/test/modes/utils/no-surface-writes-a-hint-out-by-hand.test.ts` |
+| `/hotkeys` follows a remap | `coding-agent/test/modes/terminal/utils/hotkeys-follows-a-remap.test.ts` |
+| No surface spells a hint by hand | `coding-agent/test/modes/terminal/utils/no-surface-writes-a-hint-out-by-hand.test.ts` |
 | The more-lines phrase has one owner | `packages/utils/test/more-lines-has-one-owner.test.ts` |
 | One owner for the default chords | `coding-agent/test/config/the-keybinding-defaults-have-one-owner.test.ts` |
 | Session does not import the UI | `coding-agent/test/architecture/session-does-not-import-the-ui.test.ts` |

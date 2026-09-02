@@ -16,7 +16,7 @@
 // there is handed back on both of its exits. `showCopySelector` and `/move`'s picker opt out of the
 // shared helper, which is precisely why they were missed. The extensions dashboard is a fourth such
 // site; it is fenced beside its own bands, in
-// `test/modes/components/the-extensions-dashboard-fades-both-its-bands.test.ts`.
+// `test/modes/terminal/components/the-extensions-dashboard-fades-both-its-bands.test.ts`.
 //
 // It drives the real controllers against the real cards and the real shared clock. A fake component
 // would prove the fake was disposed, and the defect was that the real one never was.

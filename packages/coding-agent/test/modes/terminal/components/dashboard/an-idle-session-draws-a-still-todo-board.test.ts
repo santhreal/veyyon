@@ -19,9 +19,9 @@
  * breathing/rail motion across turn boundaries."
  *
  * WHAT IT DOES NOT CATCH.
- * Subagent HUD lane motion (owned by `test/modes/components/subagent-agents-surface.test.ts`),
- * the completion strike envelope countdown (owned by `test/modes/a-stopped-mode-draws-no-more-frames.test.ts`),
- * and static glyph monochrome assertions (owned by `test/modes/todo-hud-states.test.ts`).
+ * Subagent HUD lane motion (owned by `test/modes/terminal/components/subagent-agents-surface.test.ts`),
+ * the completion strike envelope countdown (owned by `test/modes/terminal/a-stopped-mode-draws-no-more-frames.test.ts`),
+ * and static glyph monochrome assertions (owned by `test/modes/terminal/components/dashboard/todo-hud-states.test.ts`).
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";

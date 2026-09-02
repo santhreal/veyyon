@@ -684,7 +684,7 @@ describe("setup wizard theme previews", () => {
 	 * their glyphs back. Nothing else covers it. The test this replaced asserted
 	 * the same restore against an "ANSI-safe" ROW that ended the step, which is
 	 * the design the toggles removed; see
-	 * `test/modes/setup-wizard/theme-scene-modifiers-compose.test.ts`.
+	 * `test/modes/terminal/setup-wizard/theme-scene-modifiers-compose.test.ts`.
 	 *
 	 * THE EXIT IS `onUnmount`, NOT AN ESCAPE KEYSTROKE. This case used to send
 	 * `\x1b` straight to the controller, which reached the list's cancel ladder

@@ -105,7 +105,7 @@ function plain(ctx: SegmentContext): string {
 
 /**
  * The `mode` segment carries the approval rung after the mode label (see
- * `test/modes/components/status-line/approval-rung-segment.test.ts`), and this
+ * `test/modes/terminal/components/status-line/approval-rung-segment.test.ts`), and this
  * stub session names no `effectiveApprovalMode`, so the rung resolves to the
  * default. Every expectation here is the whole segment, so it has to include it.
  */

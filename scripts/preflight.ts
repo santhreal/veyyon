@@ -122,7 +122,7 @@ const CONTRACTS: readonly Contract[] = [
 		symptom: "an existing session transcript can no longer be loaded",
 	},
 	{
-		suite: "packages/coding-agent/test/modes/components/settings-layout.test.ts",
+		suite: "packages/coding-agent/test/modes/terminal/components/settings-layout.test.ts",
 		symptom: "a settings group is unreachable in /settings, so its settings cannot be changed",
 	},
 ];

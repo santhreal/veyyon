@@ -31,7 +31,7 @@
  * the live row has facts the card cannot have (a session name, a measured gauge), which is the
  * whole reason the two rows differ at all. Byte agreement for the one fact both rows have before
  * any lookup — the branch — is held in
- * `test/modes/components/status-line/the-branch-reads-the-same-on-the-card-and-the-live-row.test.ts`,
+ * `test/modes/terminal/components/status-line/the-branch-reads-the-same-on-the-card-and-the-live-row.test.ts`,
  * and that the rows land on the same SCREEN ROW is held in
  * `the-first-frame-paints-the-composer-instantly.test.ts`. The preset cases here run wide enough
  * that the fitter sheds nothing, because what a narrow row drops is the fitter's contract and is
