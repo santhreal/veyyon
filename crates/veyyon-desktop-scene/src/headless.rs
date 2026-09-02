@@ -19,7 +19,10 @@ use std::{
 	sync::{Arc, Mutex, MutexGuard, PoisonError},
 };
 
-use veyyon_gpui::{App, Bounds, Entity, HeadlessAppContext, Pixels, Render, Size, Window, px};
+use veyyon_gpui::{
+	AnyWindowHandle, App, Bounds, Entity, HeadlessAppContext, Pixels, Render, Size, TextRunLayout,
+	Window, px,
+};
 
 use crate::{
 	frame::{FrameError, RgbaFrame},
@@ -78,6 +81,12 @@ pub enum RenderError {
 		#[source]
 		source: png::EncodingError,
 	},
+
+	#[error("invalid keystroke chord {chord:?}: {message}")]
+	InvalidKeystroke { chord: String, message: String },
+
+	#[error("window error during headless interaction: {message}")]
+	Window { message: String },
 }
 
 /// Which appearance a scene is rendered in.
@@ -162,7 +171,7 @@ pub fn write_png(frame: &RgbaFrame, path: &Path) -> Result<(), RenderError> {
 /// stable frame from an empty one, which is the check every render proof needs.
 pub fn distinct_pixel_values(frame: &RgbaFrame) -> usize {
 	let mut seen = std::collections::BTreeSet::new();
-	for pixel in frame.as_bytes().chunks_exact(4) {
+	for pixel in frame.as_bytes().as_chunks::<4>().0 {
 		seen.insert(pixel);
 	}
 	seen.len()
@@ -245,16 +254,53 @@ where
 #[derive(Debug)]
 pub struct Captured {
 	/// The rasterised frame.
-	pub frame:    RgbaFrame,
+	pub frame:     RgbaFrame,
 	/// The quad tree, in logical pixels.
-	pub layout:   LayoutBoxTree,
+	pub layout:    LayoutBoxTree,
 	/// Every hit rect the frame registered, in logical pixels.
 	///
 	/// A rect appears here only for an element that carries a listener, a
 	/// hover style or another reason to be hit-tested, so this is the set of
 	/// controls the frame is willing to answer a click on — not the set of
 	/// things drawn to look like controls.
-	pub hitboxes: Vec<Bounds<Pixels>>,
+	pub hitboxes:  Vec<Bounds<Pixels>>,
+	/// Every shaped text run the frame registered, in logical pixels.
+	pub text_runs: Vec<TextRunLayout>,
+}
+
+/// Captures a rendered frame, layout tree, hitboxes and text runs from an open
+/// window.
+pub fn capture_window(
+	cx: &mut HeadlessAppContext,
+	handle: AnyWindowHandle,
+	scale_factor: f32,
+) -> Result<Captured, RenderError> {
+	let (frame_result, quads) = cx
+		.update_window(handle, |_, window, _| {
+			let frame = window.render_to_frame(scale_factor);
+			let quads = window.painted_quads();
+			(frame, quads)
+		})
+		.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?;
+
+	let headless_frame =
+		frame_result.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?;
+
+	let hitboxes = headless_frame.hitboxes().to_vec();
+	let text_runs = headless_frame.text_runs().to_vec();
+
+	let frame = RgbaFrame::new(
+		headless_frame.width(),
+		headless_frame.height(),
+		scale_factor,
+		headless_frame.as_bytes().to_vec(),
+	)
+	.map_err(|source| RenderError::Readback { source })?;
+
+	let layout = layout_box_tree_from_quads(&quads, scale_factor)
+		.map_err(|source| RenderError::Layout { source })?;
+
+	Ok(Captured { frame, layout, hitboxes, text_runs })
 }
 
 /// Rasterises one root view offscreen and captures everything the frame knows.
@@ -278,35 +324,13 @@ where
 
 	cx.run_until_parked();
 
-	let (frame_result, quads) = cx
-		.update_window(window.into(), |_, window, _| {
-			let frame = window.render_to_frame(options.scale_factor);
-			let quads = window.painted_quads();
-			(frame, quads)
-		})
-		.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?;
+	let captured = capture_window(cx, window.into(), options.scale_factor);
 
 	cx.update(|app| {
 		let _ = window.update(app, |_, window, _| window.remove_window());
 	});
 
-	let headless_frame =
-		frame_result.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?;
-
-	let hitboxes = headless_frame.hitboxes().to_vec();
-
-	let frame = RgbaFrame::new(
-		headless_frame.width(),
-		headless_frame.height(),
-		options.scale_factor,
-		headless_frame.as_bytes().to_vec(),
-	)
-	.map_err(|source| RenderError::Readback { source })?;
-
-	let layout = layout_box_tree_from_quads(&quads, options.scale_factor)
-		.map_err(|source| RenderError::Layout { source })?;
-
-	Ok(Captured { frame, layout, hitboxes })
+	captured
 }
 
 /// Rasterises one root view offscreen.

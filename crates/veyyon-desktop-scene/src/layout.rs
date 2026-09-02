@@ -42,8 +42,8 @@ impl BoxBounds {
 		self.width() * self.height()
 	}
 
-	pub fn center(&self) -> (f32, f32) {
-		((self.left + self.right) * 0.5, (self.top + self.bottom) * 0.5)
+	pub const fn center(&self) -> (f32, f32) {
+		(f32::midpoint(self.left, self.right), f32::midpoint(self.top, self.bottom))
 	}
 
 	pub const fn is_empty(&self) -> bool {

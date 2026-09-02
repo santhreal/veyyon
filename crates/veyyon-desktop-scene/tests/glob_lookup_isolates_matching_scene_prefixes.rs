@@ -28,15 +28,19 @@ fn test_glob_lookup_finds_all_scenes_under_prefix() {
 	}
 
 	let shell_scenes = registry.find_glob("shell/*");
-	assert_eq!(shell_scenes.len(), 6, "expected exactly 6 connection scenes under shell/*");
-
-	for scene in &shell_scenes {
-		assert!(
-			scene.name.starts_with("shell/"),
-			"scene '{}' must match prefix 'shell/'",
-			scene.name
-		);
-	}
+	let mut by_glob: Vec<&str> = shell_scenes
+		.iter()
+		.map(|scene| scene.name.as_str())
+		.collect();
+	by_glob.sort_unstable();
+	let mut by_prefix: Vec<&str> = registry
+		.iter()
+		.map(|scene| scene.name.as_str())
+		.filter(|name| name.starts_with("shell/"))
+		.collect();
+	by_prefix.sort_unstable();
+	assert!(!by_prefix.is_empty(), "the registry carries the shell's connection and auth scenes");
+	assert_eq!(by_glob, by_prefix, "shell/* returns every scene under the prefix and no other");
 }
 
 #[test]

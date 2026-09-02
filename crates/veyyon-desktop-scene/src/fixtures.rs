@@ -97,7 +97,8 @@ pub const fn block_reachability(kind: BlockKind) -> Reachability {
 		| BlockKind::Summary
 		| BlockKind::Lifecycle
 		| BlockKind::Fallback
-		| BlockKind::Unknown => Reachability::Reachable,
+		| BlockKind::Unknown
+		| BlockKind::Video => Reachability::Reachable,
 		BlockKind::RedactedThinking
 		| BlockKind::Execution
 		| BlockKind::FileMention
@@ -201,6 +202,9 @@ pub fn content_block_fixture(seed: u64, kind: BlockKind) -> ContentBlock {
 		BlockKind::Unknown => ContentBlock::Unknown {
 			tag:   "unrecognized_block".to_string(),
 			value: serde_json::json!({ "raw": seed }),
+		},
+		BlockKind::Video => {
+			ContentBlock::Video { media_type: "video/mp4".to_string(), bytes: 1024 * (seed + 1) }
 		},
 	}
 }

@@ -34,3 +34,4 @@ gpui_platform = { workspace = true, features = ["test-support"] }
 gpui_wgpu = { workspace = true }
 
 [dev-dependencies]
+veyyon-desktop-surface = { workspace = true }
