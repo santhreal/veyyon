@@ -73,7 +73,13 @@
 			}
 		}
 	},
-	{ "Settings": { "argot.enabled": false, "theme": "dark" } },
+	{
+		"Settings": {
+			"argot.enabled": { "value": false, "default": false, "source": "default", "type": "boolean", "label": "Argot Shorthand", "description": "Per-project shorthand vocabularies.", "tab": "general", "group": "Experimental", "values": [], "options": [], "min": null, "max": null, "global": false, "advanced": false, "hidden": false },
+			"tools.approvalMode": { "value": "auto", "default": "auto", "source": "profile", "type": "enum", "label": "Tool Approval", "description": "How much the agent may do without asking.", "tab": "interaction", "group": "Approvals", "values": ["plan", "ask", "auto"], "options": [{ "value": "ask", "label": "Ask everything", "description": "Every tool call asks first." }, { "value": "auto", "label": "Auto", "description": null }, { "value": "plan", "label": "Plan", "description": null }], "min": null, "max": null, "global": false, "advanced": false, "hidden": false },
+			"onboardingVersion": { "value": 3, "default": 0, "source": "profile", "type": "number", "label": null, "description": null, "tab": null, "group": null, "values": [], "options": [], "min": 0, "max": null, "global": true, "advanced": false, "hidden": true }
+		}
+	},
 	{ "Diagnostics": { "sources": [{ "name": "lsp", "status": "ok" }] } },
 	{
 		"Changes": {

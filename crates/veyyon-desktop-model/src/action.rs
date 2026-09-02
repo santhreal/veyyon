@@ -4,11 +4,15 @@ pub use crate::action_kind::{HostActionKind, HostActionKind as Kind};
 use crate::connection::{EntryId, RequestId, SessionId};
 
 /// Binary attachment descriptor for prompt submission.
+///
+/// `media_type` is one of the image or video types the host accepts;
+/// `data` crosses the wire as base64 (see [`crate::base64_bytes`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AttachmentSubmission {
 	pub id:         String,
 	pub name:       String,
 	pub media_type: String,
+	#[serde(with = "crate::base64_bytes")]
 	pub data:       Vec<u8>,
 }
 

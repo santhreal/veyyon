@@ -1,5 +1,6 @@
 pub mod action;
 pub mod action_kind;
+pub mod base64_bytes;
 pub mod capabilities;
 pub mod coalescer;
 pub mod composer;
@@ -32,11 +33,11 @@ pub use damage::{Damage, DamageSet};
 pub use domain::{
 	AgentView, AuthFlowState, AuthFlowView, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
 	ContextBreakdownView, ContextCategory, Domains, ExportView, FileContentView, FileKind, FileNode,
-	FileTreeView, KeybindingView, McpServerStatus, McpServerView, McpToolResultView, ModelRef,
-	ModelView, ModelsView, PROCESS_LOG_CAPACITY_LINES, ProcessLogView, ProcessLogsChunk,
-	ProcessView, ProviderView, SearchResultsView, SeqGap, TERMINAL_SCROLLBACK_CAPACITY_BYTES,
-	TerminalOutputChunk, TerminalScrollback, TerminalStatus, TerminalView, ThemeView, ThemesView,
-	UsageView,
+	FileTreeView, InputModality, KeybindingView, McpServerStatus, McpServerView, McpToolResultView,
+	ModelRef, ModelView, ModelsView, PROCESS_LOG_CAPACITY_LINES, ProcessLogView, ProcessLogsChunk,
+	ProcessView, ProviderView, SearchResultsView, SeqGap, SettingEntry, SettingKind, SettingOption,
+	SettingsView, TERMINAL_SCROLLBACK_CAPACITY_BYTES, TerminalOutputChunk, TerminalScrollback,
+	TerminalStatus, TerminalView, ThemeView, ThemesView, UsageView,
 };
 pub use error::{BackendError, ErrorScope, fallback_surface, is_scope_retryable, route_error};
 pub use event::{
@@ -48,7 +49,7 @@ pub use interaction::{
 	ApprovalInteraction, PendingDecisions, PlanInteraction, QuestionInteraction,
 };
 pub use persistence::{
-	ComposerStore, PanelsStore, PersistedState, PersistenceError, QueueStore, ShellStore,
+	ComposerStore, DiffMode, PanelsStore, PersistedState, PersistenceError, QueueStore, ShellStore,
 	TokensStore, TranscriptStore, VersionedStore, WindowStore, load_or_default,
 	validate_and_deserialize,
 };

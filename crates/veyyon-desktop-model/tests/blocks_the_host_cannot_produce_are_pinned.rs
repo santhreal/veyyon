@@ -52,10 +52,11 @@ const UNREACHABLE_ROLES: [MessageRole; 4] = [
 ];
 
 /// Block kinds the host constructs, each owing the transcript a render path.
-const REACHABLE_BLOCKS: [BlockKind; 9] = [
+const REACHABLE_BLOCKS: [BlockKind; 10] = [
 	BlockKind::Text,
 	BlockKind::Thinking,
 	BlockKind::Image,
+	BlockKind::Video,
 	BlockKind::ToolCall,
 	BlockKind::ToolResult,
 	BlockKind::Summary,
@@ -157,9 +158,9 @@ fn the_unreachable_role_set_is_exactly_the_four_that_were_measured() {
 
 #[test]
 fn every_block_the_host_can_emit_is_one_the_transcript_must_render() {
-	// The renderer's obligation is this set and no larger. Nine, not fifteen.
-	assert_eq!(REACHABLE_BLOCKS.len(), 9);
-	assert_eq!(BlockKind::iter().count(), 15);
+	// The renderer's obligation is this set and no larger. Ten, not sixteen.
+	assert_eq!(REACHABLE_BLOCKS.len(), 10);
+	assert_eq!(BlockKind::iter().count(), 16);
 
 	// Unknown and Fallback are the host's own output for content it does not
 	// recognise, so they are reachable rather than defensive branches.
