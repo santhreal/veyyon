@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "d0cb967888303de02e573bb8b0f3c5ba6fe66377",
+	"generatedFrom": "1a6bcba79c5e125e82d8fa5ac33a98c26b838f5c",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -46,7 +46,7 @@
 		"packages/coding-agent/src/provider-boundary.ts": "203996422b120c0253fe8e2b4caa9b153d099d9feb98a3fff9345a0dd7b78e66",
 		"packages/coding-agent/src/registry/agent-registry.ts": "ebb82969a26a2c23482ca150e73b571c9f082b6441fff3a4542c527657b4f2c5",
 		"packages/coding-agent/src/secrets/notices.ts": "ff83ccd5c6dd9243fe7e2c4a0ee8656017b47dca6ed1e05fb0c4ec9b703fa8a6",
-		"packages/coding-agent/src/session/context-usage.ts": "8ac2c3a6c6914e734bdd6a5883f3fd45084ba6291b8d6af04d4f478be9755124",
+		"packages/coding-agent/src/session/context-usage.ts": "6d9c8a0297e1d5ad7836bd18592ac9fef2ebe36fb32f2585e4044aa0ae2def37",
 		"packages/coding-agent/src/slash-commands/category-order.ts": "df1229f13d908a053b75055eebe5e28e04df611ae13be554bdc67ab383d1a1ea",
 		"packages/coding-agent/src/system-prompt-builder/gate-registry.ts": "5c6f14ede4d5b270bd07c399620ff3d37392b1292262222a1b92cf93270445d1",
 		"packages/coding-agent/src/utils/block-context.ts": "8d737a9e6b3af56064e6333e5bbd69256d4deac355edf7f1e19c523afcd9b6ce",
@@ -69,7 +69,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4842,
+	"changedCount": 4845,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -424,6 +424,7 @@
 		"packages/coding-agent/src/cli/config-cli.ts",
 		"packages/coding-agent/src/cli/dry-balance-cli.ts",
 		"packages/coding-agent/src/cli/file-processor.ts",
+		"packages/coding-agent/src/cli/first-frame-recorder.ts",
 		"packages/coding-agent/src/cli/first-frame-replay-entry.ts",
 		"packages/coding-agent/src/cli/first-frame-replay.ts",
 		"packages/coding-agent/src/cli/flag-tables.ts",
@@ -2641,6 +2642,7 @@
 		"packages/coding-agent/test/the-session-mounts-over-the-card-without-repainting-it.test.ts",
 		"packages/coding-agent/test/the-settle-reads-the-turn-that-just-ended.test.ts",
 		"packages/coding-agent/test/the-setup-wizard-footer-chips-answer-the-pointer.test.ts",
+		"packages/coding-agent/test/the-startup-bench-sees-the-status-row.test.ts",
 		"packages/coding-agent/test/the-static-model-stage-snapshot-hits-unless-cache-content-changes.test.ts",
 		"packages/coding-agent/test/the-todo-board-has-one-owner.test.ts",
 		"packages/coding-agent/test/the-todo-board-pulse-never-draws-a-full-cell.test.ts",
@@ -4787,6 +4789,7 @@
 		"scripts/a-test-reads-a-module-through-its-graph-not-its-bytes.test.ts",
 		"scripts/a-type-is-named-not-derived-from-a-function.test.ts",
 		"scripts/barrel-files-are-imported.test.ts",
+		"scripts/bench-startup.ts",
 		"scripts/changelog-unreleased.test.ts",
 		"scripts/changelog-version-headings-are-unique.test.ts",
 		"scripts/changelog-version-headings-have-one-owner.test.ts",

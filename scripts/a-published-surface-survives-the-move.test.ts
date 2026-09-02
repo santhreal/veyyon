@@ -399,7 +399,7 @@ describe("a published surface survives the move", () => {
 	 * subpath: `"./session/*"` is one key and was 36 importable modules. Step 5 moved those modules to
 	 * `@veyyon/kernel` and every key stayed exactly where it was, so a ledger of keys reported no
 	 * change while 98 resolved subpaths stopped resolving. This cell states parity over what a
-	 * consumer can actually import: 5217 subpaths the branch point served, every one of them still
+	 * consumer can actually import: 5225 subpaths the branch point served, every one of them still
 	 * served here or carrying a successor that is.
 	 */
 	it("(b3) every resolved subpath main served is still served or relocated to one that is", () => {
@@ -436,7 +436,7 @@ describe("a published surface survives the move", () => {
 		}
 
 		expect(unserved).toEqual([]);
-		expect(compared).toBe(5221);
+		expect(compared).toBe(5225);
 	});
 
 	/**
@@ -449,8 +449,9 @@ describe("a published surface survives the move", () => {
 	 * rather than moved (`extensibility/host-view`, `extensibility/widget`) carry no row, since they
 	 * were never part of the baseline surface. Two of the kernel rows are `session/compaction-policy`,
 	 * the compaction vocabulary main extracted from `agent-session.ts`, which this branch serves from
-	 * `@veyyon/kernel/session/agent-session-compaction-policy` under both spellings. Four rows are the first-frame replay pair main added under `startup/`, which
-	 * this branch serves from `cli/` under both spellings. Two are `tools/render-limits`, the
+	 * `@veyyon/kernel/session/agent-session-compaction-policy` under both spellings. Six rows are the
+	 * first-frame replay pair and the first-frame recorder main added under `startup/`, which this
+	 * branch serves from `cli/` under both spellings. Two are `tools/render-limits`, the
 	 * display-limit leaf main extracted from `tools/render-utils`, which this branch serves from the
 	 * `core/` directory every domain reads. Four more are the two session vocabularies main
 	 * extracted from `agent-session.ts` — `session/queued-message` and `session/retry-fallback` —
@@ -492,7 +493,7 @@ describe("a published surface survives the move", () => {
 		expect(Object.keys(rows).sort()).toEqual(["@veyyon/coding-agent", "@veyyon/tui"]);
 
 		const codingAgent = rows["@veyyon/coding-agent"] ?? {};
-		expect(Object.keys(codingAgent).length).toBe(1212);
+		expect(Object.keys(codingAgent).length).toBe(1214);
 		const intoKernel = Object.values(codingAgent).filter(note => note.to.startsWith("@veyyon/kernel/"));
 		expect(intoKernel.length).toBe(100);
 		const kernelConcerns = new Set(intoKernel.map(note => note.to.split("/").slice(0, 3).join("/")));

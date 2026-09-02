@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "d0cb967888303de02e573bb8b0f3c5ba6fe66377",
+	"generatedFrom": "1a6bcba79c5e125e82d8fa5ac33a98c26b838f5c",
 	"packages": {
 		"@veyyon/agent-core": {
 			"name": "@veyyon/agent-core",
@@ -3196,6 +3196,8 @@
 				"./session/messages.js",
 				"./session/messages.test",
 				"./session/messages.test.js",
+				"./session/non-message-tokens",
+				"./session/non-message-tokens.js",
 				"./session/nudges",
 				"./session/nudges.js",
 				"./session/operator-notices",
@@ -3346,6 +3348,8 @@
 				"./ssh/utils.js",
 				"./startup-splash",
 				"./startup-splash.js",
+				"./startup/first-frame-recorder",
+				"./startup/first-frame-recorder.js",
 				"./startup/first-frame-replay",
 				"./startup/first-frame-replay-entry",
 				"./startup/first-frame-replay-entry.js",
@@ -6456,6 +6460,8 @@
 				"./core/tui.js"
 			],
 			"@veyyon/coding-agent": [
+				"./cli/first-frame-recorder",
+				"./cli/first-frame-recorder.js",
 				"./cli/first-frame-replay",
 				"./cli/first-frame-replay-entry",
 				"./cli/first-frame-replay-entry.js",
@@ -10681,6 +10687,14 @@
 				"./session/yield-queue.js": {
 					"to": "@veyyon/kernel/session/yield-queue.js",
 					"why": "packages/coding-agent/src/session/yield-queue.ts moved to kernel/src/session/yield-queue.ts, which @veyyon/kernel publishes as ./session/yield-queue.js"
+				},
+				"./startup/first-frame-recorder": {
+					"to": "@veyyon/coding-agent/cli/first-frame-recorder",
+					"why": "packages/coding-agent/src/startup/first-frame-recorder.ts moved to packages/coding-agent/src/cli/first-frame-recorder.ts, which @veyyon/coding-agent publishes as ./cli/first-frame-recorder"
+				},
+				"./startup/first-frame-recorder.js": {
+					"to": "@veyyon/coding-agent/cli/first-frame-recorder.js",
+					"why": "packages/coding-agent/src/startup/first-frame-recorder.ts moved to packages/coding-agent/src/cli/first-frame-recorder.ts, which @veyyon/coding-agent publishes as ./cli/first-frame-recorder.js"
 				},
 				"./startup/first-frame-replay": {
 					"to": "@veyyon/coding-agent/cli/first-frame-replay",
