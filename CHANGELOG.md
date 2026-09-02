@@ -351,6 +351,7 @@
 - A bare interactive launch replays the previous launch's card from a cache before the CLI's import graph is evaluated, then adopts those rows and corrects only what changed. `bun scripts/bench-startup.ts --runs 5 --bin packages/coding-agent/dist/vey` reports the card's first byte at a 34-35ms median composed and a 15ms median replayed. The recording is discarded unless the terminal size, the environment this process received and the binary's path, size and modification time all still match, and it ages out after 24 hours; a launch whose composed card disagrees with the replayed rows drops the recording so the next launch records a fresh one.
 - `bun scripts/bench-startup.ts` gains a `replay` arm and keeps the first-frame recording inside its scratch directory. The recording resolves its path from `os.homedir()`, which Bun fixes at process start, so the bench's seeded `HOME` did not reach it and a run read and overwrote the operator's own cache.
 - `VEYYON_REPLAY_DEBUG` names a file the launch appends its replay decision to. A rejected recording is otherwise indistinguishable from a slow launch, and the logger does not exist yet at that point.
+- Prompt attachments support video inputs alongside images, with input modality validation and desktop wire protocol integration.
 - The GUI host engine server connects desktop clients over unix domain sockets and TCP with live session streaming and capability negotiation via the veyyon gui CLI command.
 - The GUI host engine server runs prompt submissions as real turns, streaming transcript updates and assistant deltas to desktop clients while supporting aborts, session continuation, and truthful capability snapshots.
 - The GUI host serves every desktop domain from the real subsystem: session compaction, handoff, branching and export, the workspace file tree, file contents and search, git changes by scope, PTY terminals with streamed output, supervised processes through the launch daemon, model and thinking-level selection, provider authentication, MCP servers and tool calls, subagent tasks, diagnostics, usage, settings, themes and keybindings; an action that cannot be served fails with a typed error naming why.
@@ -408,6 +409,10 @@
 - The GPU front end's theme is chosen in Appearance, previewed while the pointer rests on a row, persisted on press, and drawn on the next frame.
 - The GPU front end draws every floating surface with one treatment: a face lit down its top, an edge that holds against a backdrop of any luminance, and a contact shadow under the lift, so a sheet, popover, menu, tooltip, toast or completion list reads as floating over the surface it covers at both appearances.
 - The GPU front end's interface text size steps through the sizes the Appearance page offers, from `secondary-=` and `secondary--`, the View menu and the command palette.
+- `VideoContent` support across provider serialization and fallback placeholder handling.
+- Model input capability support includes `"video"` for video-capable models.
+- `SUPPORTED_VIDEO_MIME_TYPES` exports the supported video MIME types (`video/mp4`, `video/webm`, `video/quicktime`).
+- `VideoContent` joins the user, developer, tool-result and custom message content unions so collab guests receive video attachments.
 
 ### Changed
 
@@ -482,6 +487,7 @@
 - The GPU front end's theme is the window's own preference rather than an engine request, so a detached window can be themed, and the profile theme list is read-only because a profile theme carries no palette the window could draw.
 - The desktop host states that profile theme listing is unavailable rather than describing a theme selection it never owned.
 - The desktop renderer repaints only the region a state change declares, keeping the rest of the frame in a retained texture, clips rounded and path-bounded subtrees at the boundary, and shapes each distinct line of text once across frames; GPUI is now a vendored snapshot of the `santhreal/zed` fork under `crates/vendor` rather than a git dependency.
+- Custom message, compaction summary and session entry content unions admit `VideoContent` alongside text and images.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 - The session parser passes `contentText` an options object rather than a bare separator, following that helper's consolidation in `@veyyon/utils`. No change to the text it extracts.
