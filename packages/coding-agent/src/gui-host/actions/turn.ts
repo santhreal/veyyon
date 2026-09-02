@@ -1,4 +1,7 @@
-import { abortTurn, executePromptTurn, getOrCreateAgentSession } from "../turns";
+import { UnsupportedModelInputError } from "../../session/agent-session";
+import { ImageInputTooLargeError } from "../../utils/image-loading";
+import { VideoInputTooLargeError } from "../../utils/video-loading";
+import { abortTurn, AttachmentValidationError, executePromptTurn, getOrCreateAgentSession } from "../turns";
 import type { AttachmentSubmission } from "../wire";
 import { activateSession, replyError } from "./active-session";
 import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
@@ -57,7 +60,21 @@ async function deliver(
 		await executePromptTurn(session, ctx.clientState, text, attachments, streaming);
 		ctx.reply.success();
 	} catch (error) {
-		replyError(ctx, "PROMPT_REJECTED", error);
+		if (
+			error instanceof UnsupportedModelInputError ||
+			error instanceof VideoInputTooLargeError ||
+			error instanceof ImageInputTooLargeError ||
+			error instanceof AttachmentValidationError ||
+			(error instanceof Error &&
+				(error.name === "UnsupportedModelInputError" ||
+					error.name === "AttachmentValidationError" ||
+					error.name === "VideoInputTooLargeError" ||
+					error.name === "ImageInputTooLargeError"))
+		) {
+			replyError(ctx, "INVALID_ARGUMENTS", error);
+		} else {
+			replyError(ctx, "PROMPT_REJECTED", error);
+		}
 	}
 }
 

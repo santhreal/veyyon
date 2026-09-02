@@ -7,7 +7,7 @@
  */
 
 import type { AgentMessage } from "@veyyon/agent-core";
-import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
+import type { AssistantMessage, ImageContent, TextContent, VideoContent } from "@veyyon/ai";
 import { obfuscateToolArguments, type SecretObfuscator } from "../secrets/obfuscator";
 import type { SessionEntry, SessionHeader } from "../session/session-entries";
 import type { OutputMeta } from "../tools/output-meta";
@@ -89,8 +89,8 @@ function redactShareEntry(o: SecretObfuscator, entry: SessionEntry): SessionEntr
 
 function redactShareContent(
 	o: SecretObfuscator,
-	content: string | (TextContent | ImageContent)[],
-): string | (TextContent | ImageContent)[] {
+	content: string | (TextContent | ImageContent | VideoContent)[],
+): string | (TextContent | ImageContent | VideoContent)[] {
 	if (typeof content === "string") return o.obfuscate(content);
 	return content.map(block => (block.type === "text" ? { ...block, text: o.obfuscate(block.text) } : block));
 }
@@ -126,7 +126,7 @@ function redactShareMessage(o: SecretObfuscator, message: AgentMessage): AgentMe
 			return {
 				...message,
 				details: undefined,
-				content: redactShareContent(o, message.content) as (TextContent | ImageContent)[],
+				content: redactShareContent(o, message.content) as (TextContent | ImageContent | VideoContent)[],
 			};
 		case "assistant":
 			// Drop opaque provider-replay state (encrypted reasoning / native history) the viewer

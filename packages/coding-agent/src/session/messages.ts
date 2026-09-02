@@ -26,6 +26,7 @@ import type {
 	TextContent,
 	ToolResultMessage,
 	UserMessage,
+	VideoContent,
 } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
@@ -57,7 +58,7 @@ export const BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE = "background-tan-dispatch";
 export const DEFAULT_CUSTOM_MESSAGE_TYPE = "custom-message";
 
 /** Content shape accepted for extension-injected messages. */
-export type CustomMessageContent = string | (TextContent | ImageContent)[];
+export type CustomMessageContent = string | (TextContent | ImageContent | VideoContent)[];
 
 /** Public input accepted by `pi.sendMessage` and `AgentSession.sendCustomMessage`. */
 export type CustomMessagePayload<T = unknown> =
@@ -384,15 +385,15 @@ export function normalizeCustomMessagePayload<T = unknown>(
 	};
 }
 
-/** Result of filtering image blocks out of a `(TextContent | ImageContent)[]` array. */
+/** Result of filtering image blocks out of a `(TextContent | ImageContent | VideoContent)[]` array. */
 interface StripContentResult {
-	content: (TextContent | ImageContent)[];
+	content: (TextContent | ImageContent | VideoContent)[];
 	removed: number;
 }
 
-function stripImagesFromArrayContent(content: (TextContent | ImageContent)[]): StripContentResult {
+function stripImagesFromArrayContent(content: (TextContent | ImageContent | VideoContent)[]): StripContentResult {
 	let removed = 0;
-	const kept: (TextContent | ImageContent)[] = [];
+	const kept: (TextContent | ImageContent | VideoContent)[] = [];
 	for (const part of content) {
 		if (part.type === "image") {
 			removed++;
@@ -500,7 +501,7 @@ export function replaceLlmImagesWithText(messages: Message[], placeholder: strin
 		if (msg.role !== "user" && msg.role !== "developer" && msg.role !== "toolResult") continue;
 		const content = msg.content;
 		if (!Array.isArray(content) || !content.some(part => part.type === "image")) continue;
-		const replaced: (TextContent | ImageContent)[] = [];
+		const replaced: (TextContent | ImageContent | VideoContent)[] = [];
 		for (const part of content) {
 			if (part.type !== "image") {
 				if (part.type === "text" && isImageVisibilityNotice(part.text)) continue;
@@ -794,7 +795,9 @@ export function sanitizeRehydratedOpenAIResponsesAssistantMessage(message: Assis
 	};
 }
 
-function customMessageContentToLlmContent(content: CustomMessage["content"]): (TextContent | ImageContent)[] {
+function customMessageContentToLlmContent(
+	content: CustomMessage["content"],
+): (TextContent | ImageContent | VideoContent)[] {
 	return typeof content === "string" ? [{ type: "text", text: content }] : content;
 }
 

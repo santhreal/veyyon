@@ -5,19 +5,50 @@ import { syncYamlTextToSettings } from "@veyyon/utils/yaml-sync";
 import { YAML } from "bun";
 import { KEYBINDINGS, KeybindingsManager } from "../../config/keybindings";
 import { Settings } from "../../config/settings";
-import { describeSettingTypeMismatch, getDefault, SETTINGS_SCHEMA } from "../../config/settings-schema";
+import {
+	describeSettingTypeMismatch,
+	getDefault,
+	getUi,
+	SETTINGS_SCHEMA,
+	type SettingPath,
+} from "../../config/settings-schema";
 import { getAvailableThemes, isLightTheme } from "../../modes/theme/theme";
-import type { KeybindingView, ThemesView, ThemeView } from "../wire";
+import type { KeybindingView, SettingEntryView, ThemesView, ThemeView } from "../wire";
 import type { ActionHandler, ActionHandlersMap } from "./types";
 
-export function dumpSettings(settings: Settings): Record<string, { value: unknown; default: unknown; source: string }> {
-	const dumped: Record<string, { value: unknown; default: unknown; source: string }> = {};
-	for (const key of Object.keys(SETTINGS_SCHEMA)) {
+/**
+ * Every setting with its effective value, its provenance and the schema it is
+ * declared with. The desktop renders its settings screen from this alone, so
+ * the copy, the choices and the bounds travel with the value rather than being
+ * restated on the other side of the wire.
+ */
+export function dumpSettings(settings: Settings): Record<string, SettingEntryView> {
+	const dumped: Record<string, SettingEntryView> = {};
+	for (const key of Object.keys(SETTINGS_SCHEMA) as SettingPath[]) {
+		const def = SETTINGS_SCHEMA[key];
+		const ui = getUi(key);
+		const options = Array.isArray(ui?.options) ? ui.options : [];
 		try {
 			dumped[key] = {
 				value: settings.get(key as never),
 				default: getDefault(key as never),
 				source: settings.getSource(key),
+				type: def.type,
+				label: ui?.label ?? null,
+				description: ui?.description ?? null,
+				tab: ui?.tab ?? null,
+				group: ui?.group ?? null,
+				values: "values" in def ? [...def.values] : [],
+				options: options.map(option => ({
+					value: option.value,
+					label: option.label,
+					description: option.description ?? null,
+				})),
+				min: ui?.min ?? null,
+				max: ui?.max ?? null,
+				global: ui?.scope === "global",
+				advanced: ui?.advanced === true,
+				hidden: ui?.hidden === true || "retiredBy" in def,
 			};
 		} catch {
 			// Ignore unresolvable settings

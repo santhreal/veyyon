@@ -1,8 +1,12 @@
 import type * as net from "node:net";
 import * as path from "node:path";
-import type { AuthStorage, ImageContent } from "@veyyon/ai";
+import type { AuthStorage, ImageContent, VideoContent } from "@veyyon/ai";
 import type { PtySession } from "@veyyon/natives";
 import { logger } from "@veyyon/utils";
+import { formatBytes } from "@veyyon/utils/format";
+import { SUPPORTED_IMAGE_MIME_TYPES, SUPPORTED_VIDEO_MIME_TYPES } from "@veyyon/utils/mime";
+import { MAX_IMAGE_INPUT_BYTES } from "../utils/image-loading";
+import { base64DecodedBytes, MAX_PROMPT_ATTACHMENT_BYTES, MAX_VIDEO_INPUT_BYTES } from "../utils/video-loading";
 import { initializeExtensions } from "../modes/runtime-init";
 import { createAgentSession } from "../sdk";
 import type { AgentSession, AgentSessionEvent } from "../session/agent-session";
@@ -236,6 +240,15 @@ function clearStreaming(socket: net.Socket, state: ClientSessionState): void {
  * turn error, which the session records on the transcript entry itself.
  * Returns whether a turn was started.
  */
+export class AttachmentValidationError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "AttachmentValidationError";
+	}
+}
+
+const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
+
 export async function executePromptTurn(
 	session: AgentSession,
 	state: ClientSessionState,
@@ -244,14 +257,50 @@ export async function executePromptTurn(
 	streamingBehavior?: "steer" | "followUp",
 ): Promise<boolean> {
 	const images: ImageContent[] = [];
+	const videos: VideoContent[] = [];
+	let totalAttachmentBytes = 0;
+
 	for (const att of attachments) {
-		if (att.media_type.startsWith("image/")) {
+		if (typeof att.data !== "string" || att.data.length % 4 !== 0 || !BASE64_RE.test(att.data)) {
+			throw new AttachmentValidationError(`Attachment "${att.name}" carries invalid base64 data.`);
+		}
+		const decodedBytes = base64DecodedBytes(att.data);
+		totalAttachmentBytes += decodedBytes;
+
+		if (SUPPORTED_IMAGE_MIME_TYPES.has(att.media_type)) {
+			if (decodedBytes > MAX_IMAGE_INPUT_BYTES) {
+				throw new AttachmentValidationError(
+					`Attachment "${att.name}" (${att.media_type}) size ${formatBytes(decodedBytes)} exceeds ${formatBytes(MAX_IMAGE_INPUT_BYTES)} limit.`,
+				);
+			}
 			images.push({
 				type: "image",
-				data: Buffer.from(att.data).toString("base64"),
+				data: att.data,
 				mimeType: att.media_type,
 			});
+		} else if (SUPPORTED_VIDEO_MIME_TYPES.has(att.media_type)) {
+			if (decodedBytes > MAX_VIDEO_INPUT_BYTES) {
+				throw new AttachmentValidationError(
+					`Attachment "${att.name}" (${att.media_type}) size ${formatBytes(decodedBytes)} exceeds ${formatBytes(MAX_VIDEO_INPUT_BYTES)} limit.`,
+				);
+			}
+			videos.push({
+				type: "video",
+				data: att.data,
+				mimeType: att.media_type,
+			});
+		} else {
+			const accepted = [...SUPPORTED_IMAGE_MIME_TYPES, ...SUPPORTED_VIDEO_MIME_TYPES].join(", ");
+			throw new AttachmentValidationError(
+				`Attachment "${att.name}" has unsupported media type "${att.media_type}". Accepted types: ${accepted}.`,
+			);
 		}
+	}
+
+	if (totalAttachmentBytes > MAX_PROMPT_ATTACHMENT_BYTES) {
+		throw new AttachmentValidationError(
+			`Total attachment size ${formatBytes(totalAttachmentBytes)} exceeds ${formatBytes(MAX_PROMPT_ATTACHMENT_BYTES)} prompt limit.`,
+		);
 	}
 
 	const accepted = Promise.withResolvers<boolean>();
@@ -275,6 +324,7 @@ export async function executePromptTurn(
 	});
 	const promptPromise = session.prompt(promptText, {
 		images: images.length > 0 ? images : undefined,
+		videos: videos.length > 0 ? videos : undefined,
 		streamingBehavior,
 	});
 	state.activeTurnPromise = promptPromise;
