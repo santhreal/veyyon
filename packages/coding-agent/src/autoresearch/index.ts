@@ -403,7 +403,12 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 
 	api.on("before_agent_start", async (event, ctx) => {
 		const runtime = getRuntime(ctx);
-		if (!runtime.autoresearchMode) return;
+		// A paused loop keeps re-checking. This handler is the only one that notices
+		// a git checkout mid-conversation -- `session_branch` is the conversation
+		// tree branching, not the repository -- so returning here on a paused
+		// runtime would strand the loop until the session was restarted, however
+		// many times the user checked the branch back out.
+		if (!runtime.autoresearchMode && runtime.pausedOnBranch === null) return;
 		// Re-check git branch on every agent start. Off the session's branch the
 		// experiment tools detach and the autoresearch system prompt is not
 		// injected, but the loop is paused rather than discarded: its runs stay
@@ -423,7 +428,14 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			await api.setActiveTools(activeToolsFor(api.getActiveTools(), false, effectiveBreadth(runtime)));
 			return;
 		}
-		runtime.pausedOnBranch = null;
+		const resumed = runtime.pausedOnBranch !== null;
+		if (resumed) {
+			// Back on the session's branch. The pause itself records that mode was on
+			// when it was taken, so resuming is not a guess.
+			runtime.pausedOnBranch = null;
+			runtime.autoresearchMode = true;
+			await api.setActiveTools(activeToolsFor(api.getActiveTools(), true, effectiveBreadth(runtime)));
+		}
 		const storage = await openAutoresearchStorageIfExists(ctx.cwd);
 		if (session && storage) {
 			runtime.state = buildExperimentState(session, storage.listLoggedRuns(session.id));
@@ -433,6 +445,10 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		runtime.lastRunSummary = pendingRun;
 		runtime.lastRunDuration = pendingRun?.durationSeconds ?? runtime.lastRunDuration;
 		runtime.lastRunAsi = pendingRun?.parsedAsi ?? runtime.lastRunAsi;
+		// The row still reads `paused` until it is repainted, and this is the first
+		// point where the state behind it is the resumed one rather than the state
+		// the pause was taken with.
+		if (resumed) dashboard.update(ctx, runtime);
 		const state = runtime.state;
 		// `event.systemPrompt` is typed `string[]`, but upstream code paths can leave
 		// it unset (issue #3665). Coerce defensively so the autoresearch block still

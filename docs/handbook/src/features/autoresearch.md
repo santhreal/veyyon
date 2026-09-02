@@ -39,7 +39,8 @@ change it only alongside a new segment.
 Checking out another branch pauses the session. The experiment tools detach and
 no autoresearch block is added to the turn, but the recorded runs stay readable:
 the status row reads `paused · session on <branch>` and `ctrl+x` still opens the
-run screen. Checking the branch out again clears the pause.
+run screen. Checking the branch out again lifts the pause on the next turn and
+reattaches the experiment tools.
 
 ## Segments
 

@@ -254,21 +254,32 @@ describe("a loop that stops says why it stopped", () => {
 	});
 
 	it("drops the pause the moment the branch is back, without a restart", async () => {
+		// A git checkout mid-conversation raises no event of its own: `session_branch`
+		// is the conversation tree branching. `before_agent_start` re-reading the
+		// branch each turn is the only thing that notices, in both directions, so a
+		// pause it took has to be a pause it can also lift. Taking the pause and then
+		// returning early on it stranded the loop until the session was restarted.
 		const harness = buildHarness();
 		const ctx = makeCtx(harness, cwdDir.path());
-		if (!harness.handlers.session_start || !harness.handlers.session_branch) throw new Error("handlers missing");
+		const turn: BeforeAgentStartEvent = { type: "before_agent_start", prompt: "hi", systemPrompt: [] };
+		if (!harness.handlers.session_start || !harness.handlers.before_agent_start) throw new Error("handlers missing");
 
 		await harness.handlers.session_start({ type: "session_start" } as SessionStartEvent, ctx);
+		expect(harness.activeTools).toContain("run_experiment");
+
 		vi.spyOn(git.branch, "current").mockResolvedValue("main");
-		await harness.handlers.session_branch({ type: "session_branch" } as SessionBranchEvent, ctx);
+		await harness.handlers.before_agent_start(turn, ctx);
 		expect(stripAnsi(harness.row() ?? "")).toContain("paused");
+		expect(harness.activeTools).not.toContain("run_experiment");
 
 		vi.spyOn(git.branch, "current").mockResolvedValue(SESSION_BRANCH);
-		await harness.handlers.session_branch({ type: "session_branch" } as SessionBranchEvent, ctx);
+		await harness.handlers.before_agent_start(turn, ctx);
 
 		const text = stripAnsi(harness.row() ?? "");
 		expect(text).not.toContain("paused");
 		expect(text).toContain("1 runs");
+		// The tools come back with the loop, or the model cannot measure anything.
+		expect(harness.activeTools).toContain("run_experiment");
 	});
 
 	it("names the branch even before the loop has logged a run", async () => {

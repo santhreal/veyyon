@@ -92,6 +92,7 @@
 ### Fixed
 
 - Checking out a branch other than the one an autoresearch or autoswarm session records now shows `paused · session on <branch>` on the status row and keeps the session's runs readable through `ctrl+x`, instead of resetting the row to `baseline pending` and reporting a session that had measured runs as empty.
+- Checking the session's branch back out resumes the loop on the next turn, restoring its experiment tools; leaving the branch previously turned autoresearch off for the rest of the conversation, and no later checkout brought it back.
 - The installer refuses to replace a binary whose only ownership record is a pre-identity v1 receipt, instead of moving it aside. That receipt vouches for the path alone, so a user who deleted the installed binary and put their own file at the name left exactly one behind, and it was being read as permission to displace their file.
 - `veyyon agents unpack` writes to `~/.veyyon/subagents`, the directory subagent discovery reads, instead of the profile's `agent/agents` dir, where an unpacked definition was reported as written and then never loaded.
 - `veyyon config set` and `veyyon config reset` no longer exit 1 with an ENOENT on a profile that has never been launched: the save now creates the profile's agent directory before it takes the config file's lock, which refused a parent directory that did not exist yet.
