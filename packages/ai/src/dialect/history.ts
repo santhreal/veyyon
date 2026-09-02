@@ -2,11 +2,11 @@ import type {
 	AssistantMessage,
 	Context,
 	ImageContent,
-	VideoContent,
 	Message,
 	TextContent,
 	ToolCall,
 	ToolResultMessage,
+	VideoContent,
 } from "../types";
 import { getDialectDefinition } from "./factory";
 import type { Dialect, DialectDefinition, DialectToolResult, InbandTool } from "./types";

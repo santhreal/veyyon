@@ -15,7 +15,6 @@ import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
 import type { Usage } from "@veyyon/ai";
 import { Text, type TUI } from "@veyyon/tui";
 import { formatBytes } from "@veyyon/utils/format";
-import { base64DecodedBytes } from "../../utils/video-loading";
 import type { AdvisorMessageDetails } from "../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
@@ -29,6 +28,7 @@ import {
 	type SkillPromptDetails,
 } from "../../session/messages";
 import type { SessionMessageEntry } from "../../session/session-entries";
+import { base64DecodedBytes } from "../../utils/video-loading";
 import { theme } from "../theme/theme";
 import {
 	assistantHasVisibleContent,

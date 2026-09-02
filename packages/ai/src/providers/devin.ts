@@ -36,7 +36,6 @@ import {
 	StopReason,
 } from "@veyyon/catalog/discovery/devin-gen/exa/codeium_common_pb/codeium_common_pb";
 import { calculateCost, discardAttemptUsage, emptyUsage } from "@veyyon/catalog/models";
-import { NON_VIDEO_MODEL_PLACEHOLDER } from "./vision-content";
 import { DEVIN_CASCADE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { isAbortError } from "@veyyon/utils/abortable";
 import { tryParseJson } from "@veyyon/utils/json";
@@ -62,6 +61,7 @@ import { clearStreamingPartialJson, setStreamingPartialJson } from "../utils/blo
 import { deterministicUuid } from "../utils/deterministic-id";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { toolWireSchema } from "../utils/schema/wire";
+import { NON_VIDEO_MODEL_PLACEHOLDER } from "./vision-content";
 
 /**
  * Base host for Codeium/Windsurf's Cascade chat API (Connect protocol over HTTP/1.1).

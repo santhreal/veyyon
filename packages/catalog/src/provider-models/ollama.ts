@@ -164,7 +164,8 @@ export function ollamaCloudModelManagerOptions(
 						? capabilities.includes("vision")
 							? (["text", "image"] as Array<"text" | "image" | "video">)
 							: (["text"] as Array<"text" | "image" | "video">)
-						: ((reference?.input as Array<"text" | "image" | "video"> | undefined) ?? (["text"] as Array<"text" | "image" | "video">));
+						: ((reference?.input as Array<"text" | "image" | "video"> | undefined) ??
+							(["text"] as Array<"text" | "image" | "video">));
 					const resolvedName = entry.name && entry.name !== id ? entry.name : (reference?.name ?? id);
 					return {
 						id,

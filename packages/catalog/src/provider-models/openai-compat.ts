@@ -3150,14 +3150,13 @@ export function basetenModelManagerOptions(
 						return {
 							...baseModel,
 							reasoning,
-							input:
-								vision
-									? (modalities.includes("video") || (reference?.input.includes("video") ?? false))
-										? ["text", "image", "video"]
-										: ["text", "image"]
-									: (modalities.includes("video") || (reference?.input.includes("video") ?? false))
-										? ["text", "video"]
-										: ["text"],
+							input: vision
+								? modalities.includes("video") || (reference?.input.includes("video") ?? false)
+									? ["text", "image", "video"]
+									: ["text", "image"]
+								: modalities.includes("video") || (reference?.input.includes("video") ?? false)
+									? ["text", "video"]
+									: ["text"],
 							cost,
 							contextWindow,
 							maxTokens,

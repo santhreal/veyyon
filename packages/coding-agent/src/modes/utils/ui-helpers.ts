@@ -4,7 +4,6 @@ import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import { type Component, Spacer, Text, TruncatedText } from "@veyyon/tui";
 import { APP_NAME, errorMessage, formatCount } from "@veyyon/utils";
 import { formatBytes } from "@veyyon/utils/format";
-import { base64DecodedBytes } from "../../utils/video-loading";
 import type { AdvisorMessageDetails } from "../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
 import { type SettingsSaveFailure, settings } from "../../config/settings";
@@ -49,6 +48,7 @@ import {
 } from "../../session/messages";
 import type { SessionContext, StrippedToolCallsMarker } from "../../session/session-context";
 import { replaceTabs } from "../../tools/render-utils";
+import { base64DecodedBytes } from "../../utils/video-loading";
 import { buildSkillCommandPrompt, invokeSkillCommandFromText, isKnownSkillCommand } from "../skill-command";
 import { isLiveBackgroundTask } from "./async-tool-state";
 import { createAssistantMessageComponent } from "./interactive-context-helpers";
@@ -112,7 +112,6 @@ export type UiHelpersContext = Pick<
 	| "withLocalSubmission"
 >;
 
-type TextBlock = { type: "text"; text: string };
 interface RenderInitialMessagesOptions {
 	preserveExistingChat?: boolean;
 	clearTerminalHistory?: boolean;

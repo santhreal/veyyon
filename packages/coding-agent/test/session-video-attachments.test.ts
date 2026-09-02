@@ -124,13 +124,7 @@ describe("AgentSession video attachments and queued message lifecycle", () => {
 			data: Buffer.from("send-user-video").toString("base64"),
 		};
 
-		await session.sendUserMessage(
-			[
-				{ type: "text", text: "Please review" },
-				video,
-			],
-			{ deliverAs: "steer" },
-		);
+		await session.sendUserMessage([{ type: "text", text: "Please review" }, video], { deliverAs: "steer" });
 
 		const restored = session.clearQueue();
 		expect(restored.steering.length).toBe(1);
@@ -150,9 +144,9 @@ describe("AgentSession video attachments and queued message lifecycle", () => {
 		expect(session.prompt("Prompt with video", { videos: [video] })).rejects.toThrow(UnsupportedModelInputError);
 		expect(session.steer("Steer with video", undefined, [video])).rejects.toThrow(UnsupportedModelInputError);
 		expect(session.followUp("FollowUp with video", undefined, [video])).rejects.toThrow(UnsupportedModelInputError);
-		expect(
-			session.sendUserMessage([{ type: "text", text: "Test" }, video], { deliverAs: "steer" }),
-		).rejects.toThrow(UnsupportedModelInputError);
+		expect(session.sendUserMessage([{ type: "text", text: "Test" }, video], { deliverAs: "steer" })).rejects.toThrow(
+			UnsupportedModelInputError,
+		);
 
 		try {
 			await session.prompt("Prompt with video", { videos: [video] });

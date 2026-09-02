@@ -33,7 +33,6 @@ import {
 	type CacheRetention,
 	type Context,
 	type ImageContent,
-	type VideoContent,
 	type Message,
 	type MessageAttribution,
 	type Model,
@@ -49,6 +48,7 @@ import {
 	type ToolCall,
 	type ToolResultMessage,
 	type Usage,
+	type VideoContent,
 } from "../types";
 import {
 	getOpenAIResponsesHistoryItems,
@@ -95,7 +95,12 @@ import type {
 	ResponseStreamEvent,
 } from "./openai-responses-wire";
 import { transformMessages } from "./transform-messages";
-import { joinTextWithImagePlaceholder, NON_VIDEO_MODEL_PLACEHOLDER, NON_VISION_IMAGE_PLACEHOLDER, partitionVisionContent } from "./vision-content";
+import {
+	joinTextWithImagePlaceholder,
+	NON_VIDEO_MODEL_PLACEHOLDER,
+	NON_VISION_IMAGE_PLACEHOLDER,
+	partitionVisionContent,
+} from "./vision-content";
 
 export interface OpenAIModelIdentity {
 	provider: string;
