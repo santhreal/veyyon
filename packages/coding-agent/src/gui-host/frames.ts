@@ -1,7 +1,7 @@
 import type { Socket } from "node:net";
 import { logger } from "@veyyon/utils";
 
-/** Maximum allowed frame size: 32 MiB (mirrored by Rust crates/veyyon-desktop-model/src/framing.rs). */
+/** Maximum allowed frame size: 32 MiB (mirrored by Rust crates/veyyon-desktop/src/framing.rs). */
 export const MAX_FRAME_BYTES = 32 * 1024 * 1024;
 
 /**

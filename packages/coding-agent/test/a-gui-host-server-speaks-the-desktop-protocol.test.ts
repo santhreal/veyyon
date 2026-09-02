@@ -33,6 +33,7 @@ import {
 	ALL_HOST_ACTIONS,
 	type Capability,
 	type GuiHostServer,
+	MAX_FRAME_BYTES,
 	PROTOCOL_VERSION,
 	SUPPORTED_CAPABILITIES,
 	startGuiHostServer,
@@ -356,8 +357,10 @@ describe("GUI host server protocol", () => {
 		const client1 = await TestSocketClient.connect(server.endpoint);
 		await client1.nextFrame(2000); // greeting
 
-		// Send > 8 MiB without newline
-		const oversized = Buffer.alloc(8 * 1024 * 1024 + 1024, 0x61);
+		// Send over the bound without newline. The bound comes from the
+		// production constant rather than a literal, so a deliberate bound
+		// change updates this probe instead of staling it.
+		const oversized = Buffer.alloc(MAX_FRAME_BYTES + 1024, 0x61);
 		client1.sendRaw(oversized);
 
 		await client1.waitForClose(2000);
