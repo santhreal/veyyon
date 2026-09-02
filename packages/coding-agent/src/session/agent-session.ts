@@ -10903,8 +10903,8 @@ export class AgentSession {
 			}
 		}
 
-		if (options?.videos && options.videos.length > 0) {
-			if (!this.model || !this.model.input.includes("video")) {
+		if (options?.videos?.length) {
+			if (!this.model?.input.includes("video")) {
 				throw new UnsupportedModelInputError(this.model?.id ?? "unknown", "video");
 			}
 		}
@@ -11533,10 +11533,8 @@ export class AgentSession {
 		if (text.startsWith("/")) {
 			this.#throwIfExtensionCommand(text);
 		}
-		if (videos && videos.length > 0) {
-			if (!this.model || !this.model.input.includes("video")) {
-				throw new UnsupportedModelInputError(this.model?.id ?? "unknown", "video");
-			}
+		if (videos?.length && !this.model?.input.includes("video")) {
+			throw new UnsupportedModelInputError(this.model?.id ?? "unknown", "video");
 		}
 
 		const expandedText = expandPromptTemplate(text, [...this.#promptTemplates]);
@@ -11571,10 +11569,8 @@ export class AgentSession {
 			opts = options;
 		}
 
-		if (videos && videos.length > 0) {
-			if (!this.model || !this.model.input.includes("video")) {
-				throw new UnsupportedModelInputError(this.model?.id ?? "unknown", "video");
-			}
+		if (videos?.length && !this.model?.input.includes("video")) {
+			throw new UnsupportedModelInputError(this.model?.id ?? "unknown", "video");
 		}
 
 		const expandedText =
@@ -11614,10 +11610,8 @@ export class AgentSession {
 		videos: VideoContent[] | undefined,
 		mode: "steer" | "followUp",
 	): Promise<void> {
-		if (videos && videos.length > 0) {
-			if (!this.model || !this.model.input.includes("video")) {
-				throw new UnsupportedModelInputError(this.model?.id ?? "unknown", "video");
-			}
+		if (videos?.length && !this.model?.input.includes("video")) {
+			throw new UnsupportedModelInputError(this.model?.id ?? "unknown", "video");
 		}
 		// A queued user message (RPC/SDK/collab steer or follow-up, or a typed message
 		// while streaming) is a deliberate resume; re-enable advisor auto-resume that
@@ -11980,10 +11974,8 @@ export class AgentSession {
 			if (videos.length === 0) videos = undefined;
 		}
 
-		if (videos && videos.length > 0) {
-			if (!this.model || !this.model.input.includes("video")) {
-				throw new UnsupportedModelInputError(this.model?.id ?? "unknown", "video");
-			}
+		if (videos?.length && !this.model?.input.includes("video")) {
+			throw new UnsupportedModelInputError(this.model?.id ?? "unknown", "video");
 		}
 
 		if (options?.deliverAs === "followUp") {
