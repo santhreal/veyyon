@@ -17,6 +17,8 @@
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 - `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
 - Compaction can truncate the middle of an oversized text, keeping both edges, in any message role — including the roles that store their model-visible text outside `content`, such as a shell cell's `output`, a summary's `summary` and a file mention's `files[i].content`.
+- `pruneSupersededToolResults` accepts `cacheWarmSuffixTokens`, a hard ceiling on the sent context a rewrite may sit behind; a candidate over the ceiling is never rewritten, including as part of a batch the cache math would otherwise pay for.
+- A model's thinking config carries `prefixBinding`, set for Claude 5.1 and later, stating that its thinking blocks are bound to the conversation prefix they were produced against.
 - `VEYYON_DEBUG_STARTUP` emits a `native:firstCall:<export>` marker naming the native call that first loads the addon, so a launch that pays extraction before its first frame states which call pulled it in.
 - `TUI.markLayoutSized(component)` marks a root child whose height the `onBeforeCompose` pass owns, so a component-scoped frame renders it instead of reusing the rows the previous frame's content called for.
 - `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
@@ -92,6 +94,7 @@
 
 ### Fixed
 
+- A session on a model whose thinking blocks are bound to their conversation prefix, such as Claude 5.1 and later, leaves an already-sent tool result in place instead of superseding it mid-history, which invalidated every thinking block recorded after it and drew a 400 on the next turn.
 - The installer refuses to replace a binary whose only ownership record is a pre-identity v1 receipt, instead of moving it aside. That receipt vouches for the path alone, so a user who deleted the installed binary and put their own file at the name left exactly one behind, and it was being read as permission to displace their file.
 - `veyyon agents unpack` writes to `~/.veyyon/subagents`, the directory subagent discovery reads, instead of the profile's `agent/agents` dir, where an unpacked definition was reported as written and then never loaded.
 - `veyyon config set` and `veyyon config reset` no longer exit 1 with an ENOENT on a profile that has never been launched: the save now creates the profile's agent directory before it takes the config file's lock, which refused a parent directory that did not exist yet.
@@ -136,10 +139,12 @@
 - `/cpu-limit` no longer sets a budget: it reports both scopes and lifts this session's CPU cap, and points at `/settings` under Resources for configuration.
 - An ACP client following a tool-call location now opens the file, not a name ending in the read tool's line range.
 - The settings screen states that `left` returns to the category list, and no longer expands a row that has no description, which consumed the next `left` with nothing on screen to show for it.
+- A compaction summary is written from a transcript with the model's own reasoning removed on the Anthropic dialect, which was quoting thinking back at the endpoint and drawing a `reasoning_extraction` refusal.
 - Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the `{base}/codex/responses` route they are sent to.
 - A ChatGPT Codex server-side compaction now reduces the context it was paid to reduce: its stored window was not on the list of apis whose window can be replayed, so the entry counted as unusable, the whole pre-compaction span was re-expanded on the next rebuild, and the session crossed the threshold and compacted again on every turn.
 - Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
 - Remote compaction forwards the session's prompt cache key to the provider, so a session whose cache key differs from its session id compacts on the same cache lineage its turns use.
+- Reasoning recorded behind a rewritten history prefix is dropped before the request on a model that binds thinking blocks to their prefix, instead of being replayed and answered with a 400.
 - ChatGPT Codex server-side compaction streams a trailing `compaction_trigger` item to `{base}/codex/responses`, instead of posting to `{base}/codex/responses/compact`, which answers 404 and turned every compaction into a paid local pass for the rest of the session.
 - A Codex compaction stream carrying a `compaction` item with no `encrypted_content` is refused instead of being stored as a window every later turn discards.
 - A compaction route that answers 404 is retried after 30 minutes instead of standing the model down for the whole process, so one transient 404 no longer forces a paid local compaction on every later pass.
