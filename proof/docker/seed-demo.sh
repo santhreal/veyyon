@@ -550,6 +550,14 @@ autoresearch-serial-*) SEED_KIND=serial ;;
 autoresearch-* | autoswarm-run-*) SEED_KIND=swarm ;;
 *) SEED_KIND="" ;;
 esac
+# The paused row needs the one seed state no other scene wants: the session
+# recorded on its branch and the tree left somewhere else. Keyed off the scene
+# name for the same reason the fixture is, so a re-record cannot photograph an
+# unpaused row and read as a regression in the row.
+case "${SCENE_NAME}" in
+autoresearch-paused-*) SEED_LEAVE_BRANCH=1 ;;
+*) SEED_LEAVE_BRANCH="" ;;
+esac
 if [ -n "${SEED_KIND}" ]; then
-	(cd /repo && bun proof/docker/seed-autoresearch.ts "${DEMO}" "${SEED_KIND}")
+	(cd /repo && SEED_LEAVE_BRANCH="${SEED_LEAVE_BRANCH}" bun proof/docker/seed-autoresearch.ts "${DEMO}" "${SEED_KIND}")
 fi

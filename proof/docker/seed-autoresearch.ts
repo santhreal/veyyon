@@ -220,6 +220,7 @@ const FIXTURES = {
 // The session's branch has to be the branch the tree is on: `/autoresearch` keeps
 // an `autoresearch/*` branch it finds rather than allocating a new one, and the
 // session is looked up by exactly that name.
+const branchBeforeSeed = git("rev-parse", "--abbrev-ref", "HEAD");
 const branches = git("branch", "--list", FIXTURES.branch);
 if (branches.length === 0) git("checkout", "-q", "-b", FIXTURES.branch);
 else git("checkout", "-q", FIXTURES.branch);
@@ -308,4 +309,17 @@ const lastSegment = FIXTURES.runs[FIXTURES.runs.length - 1].segment;
 for (let segment = 0; segment < lastSegment; segment += 1) storage.bumpSegment(session.id);
 
 storage.close();
+
+// `SEED_LEAVE_BRANCH=1` checks the tree back out onto the branch it was on before
+// seeding, which is the state a paused loop is read in: the session is recorded
+// on `FIXTURES.branch` and the tree is somewhere else. Any other value is taken
+// as the branch to leave for. Unset, the tree stays on the session's branch,
+// which is what every other scene needs.
+const leaveFor = process.env.SEED_LEAVE_BRANCH;
+if (leaveFor) {
+	const target = leaveFor === "1" ? branchBeforeSeed : leaveFor;
+	git("checkout", "-q", target);
+	process.stdout.write(`left ${FIXTURES.branch} for ${target}\n`);
+}
+
 process.stdout.write(`seeded ${kind} session ${session.id} on ${FIXTURES.branch} with ${FIXTURES.runs.length} runs\n`);
