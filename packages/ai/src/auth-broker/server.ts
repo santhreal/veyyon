@@ -204,9 +204,9 @@ class GenerationGate {
 	}
 
 	#wake(generation: number): void {
-		for (const [waitingFor, waiters] of [...this.#waiters]) {
+		for (const [waitingFor, waiters] of Array.from(this.#waiters)) {
 			if (generation <= waitingFor) continue;
-			for (const resolve of [...waiters]) resolve();
+			for (const resolve of Array.from(waiters)) resolve();
 		}
 	}
 }
@@ -479,7 +479,7 @@ function serveSnapshotStream(
 						generation: snapshot.generation,
 					});
 				}
-				for (const id of [...lastByCredId.keys()]) {
+				for (const id of Array.from(lastByCredId.keys())) {
 					if (seenIds.has(id)) continue;
 					lastByCredId.delete(id);
 					const payload: SnapshotStreamRemovedEvent = {

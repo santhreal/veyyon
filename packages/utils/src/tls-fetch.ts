@@ -127,9 +127,9 @@ function withExtraCaInit(init: RequestInit | undefined, extraCa: string): Reques
 	const existingCa = existingTls?.ca;
 	let mergedCa: string[];
 	if (existingCa === undefined) {
-		mergedCa = [...tls.rootCertificates, extraCa];
+		mergedCa = tls.rootCertificates.concat([extraCa]);
 	} else if (Array.isArray(existingCa)) {
-		mergedCa = [...existingCa, extraCa];
+		mergedCa = existingCa.concat([extraCa]);
 	} else {
 		mergedCa = [existingCa, extraCa];
 	}

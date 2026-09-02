@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
+
 - The package directory is `plugins/argot` instead of `packages/argot`; the published package name, entry points and behavior are unchanged.
 - Source-path comments in `constants.ts` and `generate.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 

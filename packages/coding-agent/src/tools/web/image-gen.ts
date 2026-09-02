@@ -996,7 +996,7 @@ function combineParts(response: GeminiGenerateContentResponse): GeminiPart[] {
 	const parts: GeminiPart[] = [];
 	for (const candidate of response.candidates ?? []) {
 		const candidateParts = candidate.content?.parts ?? [];
-		parts.push(...candidateParts);
+		for (let pi = 0; pi < candidateParts.length; pi++) parts.push(candidateParts[pi]!);
 	}
 	return parts;
 }
@@ -1237,7 +1237,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 							const bearer = rotated?.accessToken ?? key;
 							const projectId = rotated?.projectId ?? apiKey.projectId!;
 
-							let endpoints: string[] = [...ANTIGRAVITY_ENDPOINTS];
+							let endpoints: string[] = ANTIGRAVITY_ENDPOINTS.slice();
 							try {
 								const mode = settings.get("providers.antigravityEndpoint");
 								if (mode === "production") {

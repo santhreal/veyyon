@@ -428,7 +428,8 @@ export class SelectList implements Component, MouseRoutable {
 			theme: { track: t => this.theme.scrollInfo(t), thumb: t => this.theme.selectedPrefix(t) },
 		});
 		sv.setScrollOffset(visualOffset);
-		lines.push(...sv.render(width));
+		const svLines = sv.render(width);
+		for (let li = 0; li < svLines.length; li++) lines.push(svLines[li]!);
 
 		// Add search status when relevant (scrollbar now indicates overflow)
 		if (showSearchStatus) {
@@ -797,9 +798,9 @@ export class SelectList implements Component, MouseRoutable {
 		const kb = getKeybindings();
 		if (kb.matches(keyData, "tui.editor.deleteCharBackward")) {
 			if (!this.#canClearFilter()) return false;
-			const chars = [...this.#filterQuery];
-			chars.pop();
-			this.#setFilter(chars.join(""), true, true);
+			const len = this.#filterQuery.length;
+			const cut = len > 0 && (this.#filterQuery.charCodeAt(len - 1) & 0xfc00) === 0xdc00 ? 2 : 1;
+			this.#setFilter(this.#filterQuery.slice(0, len - cut), true, true);
 			return true;
 		}
 

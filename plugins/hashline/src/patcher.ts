@@ -286,7 +286,7 @@ export class Patcher {
 	 */
 	async prepare(section: PatchSection): Promise<PreparedSection> {
 		const parsed = section.parse();
-		const parseWarnings = [...parsed.warnings];
+		const parseWarnings = parsed.warnings.slice();
 		const fileOp = parsed.fileOp;
 		assertSectionHashPresent(section.path, section.fileHash);
 
@@ -697,9 +697,7 @@ export class Patcher {
 			});
 		}
 		const withResolveWarnings = (result: ApplyResult): ApplyResult =>
-			resolveWarnings.length === 0
-				? result
-				: { ...result, warnings: [...resolveWarnings, ...(result.warnings ?? [])] };
+			resolveWarnings.length === 0 ? result : { ...result, warnings: resolveWarnings.concat(result.warnings ?? []) };
 
 		// No tag, or the tag still names the live content: an edit anchored at any
 		// line is safe to apply, and the resolved block spans line up with what

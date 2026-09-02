@@ -402,7 +402,7 @@ function keyConfigValue(keys: KeyId[]): KeyId | KeyId[] {
 		const key = keys[0];
 		if (key !== undefined) return key;
 	}
-	return [...keys];
+	return keys.slice();
 }
 
 /**

@@ -169,7 +169,7 @@ export async function gatherRepoFiles(
 	paths: readonly string[],
 	onNotice?: (notice: CorpusNotice) => void,
 ): Promise<RepoFile[]> {
-	const sorted = [...paths].sort();
+	const sorted = paths.slice().sort();
 	const files: RepoFile[] = [];
 	let scannedBytes = 0;
 	let budgetHit = false;

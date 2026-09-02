@@ -61,7 +61,7 @@ export async function buildAvailableSlashCommands(
 				: (declaration.acpInputHint ?? declaration.inlineHint);
 		appendCommand({
 			name: declaration.name,
-			aliases: declaration.aliases ? [...declaration.aliases] : undefined,
+			aliases: declaration.aliases ? Array.from(declaration.aliases) : undefined,
 			description: declaration.acpDescription ?? declaration.description,
 			input: hint ? { hint } : undefined,
 			subcommands: declaration.subcommands?.map(sub => ({ ...sub })),

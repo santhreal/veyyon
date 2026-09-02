@@ -58,12 +58,21 @@ function safeKey(key: string): string {
 function childSchemas(schema: object): unknown[] {
 	const children: unknown[] = [];
 	if (isJTDProperties(schema)) {
-		if (schema.properties) children.push(...Object.values(schema.properties));
-		if (schema.optionalProperties) children.push(...Object.values(schema.optionalProperties));
+		if (schema.properties) {
+			const pv = Object.values(schema.properties);
+			for (let ci = 0; ci < pv.length; ci++) children.push(pv[ci]!);
+		}
+		if (schema.optionalProperties) {
+			const pv = Object.values(schema.optionalProperties);
+			for (let ci = 0; ci < pv.length; ci++) children.push(pv[ci]!);
+		}
 	}
 	if (isJTDElements(schema)) children.push(schema.elements);
 	if (isJTDValues(schema)) children.push(schema.values);
-	if (isJTDDiscriminator(schema)) children.push(...Object.values(schema.mapping));
+	if (isJTDDiscriminator(schema)) {
+		const pv = Object.values(schema.mapping);
+		for (let ci = 0; ci < pv.length; ci++) children.push(pv[ci]!);
+	}
 	return children;
 }
 

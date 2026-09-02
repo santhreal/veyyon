@@ -284,7 +284,7 @@ async function collectConnectedMcpLines(
 			const collected = await withPreparedMcpConnection(runtime, name, config, connection =>
 				collect(name, connection),
 			);
-			lines.push(...collected);
+			for (let li = 0; li < collected.length; li++) lines.push(collected[li]!);
 		} catch (error) {
 			// The server is simply absent from the listing, which reads exactly like a
 			// server that is up and has nothing to list. Name it so an operator whose

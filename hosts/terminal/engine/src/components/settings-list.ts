@@ -530,9 +530,9 @@ export class SettingsList implements Component {
 		const kb = getKeybindings();
 		if (kb.matches(data, "tui.editor.deleteCharBackward")) {
 			if (this.#filterQuery.length === 0) return false;
-			const chars = [...this.#filterQuery];
-			chars.pop();
-			this.#setFilter(chars.join(""));
+			const len = this.#filterQuery.length;
+			const cut = len > 0 && (this.#filterQuery.charCodeAt(len - 1) & 0xfc00) === 0xdc00 ? 2 : 1;
+			this.#setFilter(this.#filterQuery.slice(0, len - cut));
 			return true;
 		}
 
@@ -663,7 +663,7 @@ export class SettingsList implements Component {
 				? this.#renderSplitList(width, sections)
 				: null;
 		if (splitLines) {
-			lines.push(...splitLines);
+			for (let li = 0; li < splitLines.length; li++) lines.push(splitLines[li]!);
 		} else {
 			// Expand-mode description renders inline, directly under the selected
 			// row inside the viewport (never detached below the padded panel), so
@@ -761,7 +761,8 @@ export class SettingsList implements Component {
 				},
 			});
 			scrollView.setScrollOffset(startIndex);
-			lines.push(...scrollView.render(width));
+			const scrollLines = scrollView.render(width);
+			for (let li = 0; li < scrollLines.length; li++) lines.push(scrollLines[li]!);
 			// Pad short lists to the full viewport so the panel height is constant.
 			while (lines.length < this.#maxVisible) lines.push("");
 		}
@@ -782,7 +783,7 @@ export class SettingsList implements Component {
 				}
 			}
 			while (descLines.length < 3) descLines.push("");
-			lines.push(...descLines);
+			for (let li = 0; li < descLines.length; li++) lines.push(descLines[li]!);
 		}
 
 		// External-search mode: the host renders the query; skip the status row.

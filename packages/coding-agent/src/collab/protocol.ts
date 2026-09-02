@@ -469,7 +469,7 @@ export function toWireModel(model: Model): WireModel {
 		thinking: model.thinking
 			? {
 					mode: model.thinking.mode,
-					efforts: [...model.thinking.efforts],
+					efforts: model.thinking.efforts.slice(),
 					defaultLevel: model.thinking.defaultLevel,
 				}
 			: undefined,

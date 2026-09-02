@@ -868,7 +868,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		}
 		const asyncSpawns = spawns.filter(spawn => !spawn.blocking);
 		const syncSpawns = spawns.filter(spawn => spawn.blocking);
-		const agentLabel = [...new Set(asyncSpawns.map(spawn => spawn.progress.agent))].join(", ");
+		const agentLabel = Array.from(new Set(asyncSpawns.map(spawn => spawn.progress.agent))).join(", ");
 
 		// Aggregate state for the one tool call. Async spawns report into the
 		// shared progress snapshot through their jobs: the async half stays
@@ -884,7 +884,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		let syncProjectAgentsDir: string | null = null;
 		const buildAsyncDetails = (): TaskToolDetails => ({
 			projectAgentsDir: syncProjectAgentsDir,
-			results: [...syncResults],
+			results: syncResults.slice(),
 			totalDurationMs: Date.now() - callStartedAt,
 			usage: syncUsage,
 			outputPaths: syncOutputPaths,
@@ -1025,7 +1025,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			syncSpawns.map(spawn => ({ item: spawn.item, index: spawn.index })),
 			payloads,
 		);
-		syncResults.push(...merged.results);
+		for (let ri = 0; ri < merged.results.length; ri++) syncResults.push(merged.results[ri]!);
 		syncUsage = merged.usage;
 		syncOutputPaths = merged.outputPaths;
 		syncProjectAgentsDir = merged.projectAgentsDir;

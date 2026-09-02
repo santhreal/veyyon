@@ -173,7 +173,7 @@ const MAX_MERGE_GAP = 14;
 function mergeIntoWords(raws: RawTextItem[]): RawTextItem[] {
 	if (raws.length === 0) return [];
 	// Sort by Y descending (top-first in bottom-left coords), then X ascending
-	const sorted = [...raws].sort((a, b) => {
+	const sorted = raws.slice().sort((a, b) => {
 		const dy = b.y - a.y;
 		return Math.abs(dy) > SAME_LINE_Y_TOLERANCE ? dy : a.x - b.x;
 	});
@@ -353,7 +353,7 @@ export function extractSegmentsFromContentStream(raw: string, pageNumber: number
 	let idx = 0;
 	let strokeWidth = 1.0;
 	// Graphics state stack (q/Q): saves CTM + strokeWidth
-	let ctm = [...CTM_IDENTITY];
+	let ctm = CTM_IDENTITY.slice();
 	const stateStack: Array<{ ctm: number[]; strokeWidth: number }> = [];
 	// State for path building (in user coordinates, pre-CTM)
 	let curX = 0;
@@ -408,7 +408,7 @@ export function extractSegmentsFromContentStream(raw: string, pageNumber: number
 	while (idx < tokens.length) {
 		const t = tokens[idx];
 		if (t === "q") {
-			stateStack.push({ ctm: [...ctm], strokeWidth });
+			stateStack.push({ ctm: ctm.slice(), strokeWidth });
 		} else if (t === "Q") {
 			const saved = stateStack.pop();
 			if (saved) {

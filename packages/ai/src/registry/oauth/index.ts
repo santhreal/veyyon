@@ -168,5 +168,5 @@ export function getOAuthProviders(): OAuthProviderInfo[] {
 		available: true,
 		storeCredentialsAs: provider.storeCredentialsAs,
 	}));
-	return [...builtInOAuthProviders, ...customProviders];
+	return builtInOAuthProviders.concat(customProviders);
 }

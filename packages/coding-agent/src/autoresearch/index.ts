@@ -93,7 +93,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		const activeTools = api.getActiveTools();
 		const experimentTools = new Set(EXPERIMENT_TOOL_NAMES);
 		const nextActiveTools = runtime.autoresearchMode
-			? [...new Set([...activeTools, ...EXPERIMENT_TOOL_NAMES])]
+			? Array.from(new Set(activeTools.concat(EXPERIMENT_TOOL_NAMES)))
 			: activeTools.filter(name => !experimentTools.has(name));
 		const toolsChanged =
 			nextActiveTools.length !== activeTools.length ||

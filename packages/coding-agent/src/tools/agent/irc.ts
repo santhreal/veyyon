@@ -418,7 +418,7 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 			typeof session?.drainPendingIrcInboxMessages === "function"
 				? session.drainPendingIrcInboxMessages(senderId)
 				: [];
-		const messages = [...busMessages, ...pendingMessages].sort((a, b) => a.ts - b.ts);
+		const messages = busMessages.concat(pendingMessages).sort((a, b) => a.ts - b.ts);
 		if (messages.length === 0) {
 			return {
 				content: [{ type: "text", text: "Inbox empty." }],

@@ -276,7 +276,7 @@ export class PatchSection {
 
 	/** Anchor lines touched by this section, sorted ascending and deduplicated. */
 	collectAnchorLines(): readonly number[] {
-		return [...new Set(collectEditAnchorLines(this.edits))].sort((a, b) => a - b);
+		return Array.from(new Set(collectEditAnchorLines(this.edits))).sort((a, b) => a - b);
 	}
 
 	/**
@@ -299,7 +299,7 @@ export class PatchSection {
 		const result = applyEdits(text, resolved);
 		// Preserve parse warnings so consumers don't need to call `parse()`
 		// separately.
-		const merged = [...warnings, ...resolveWarnings, ...(result.warnings ?? [])];
+		const merged = warnings.concat(resolveWarnings, result.warnings ?? []);
 		return merged.length > 0
 			? { ...result, warnings: merged }
 			: { text: result.text, firstChangedLine: result.firstChangedLine };
@@ -324,7 +324,7 @@ export class PatchSection {
 			onWarning: warning => resolveWarnings.push(warning),
 		});
 		const result = applyEdits(text, resolved);
-		const merged = [...warnings, ...resolveWarnings, ...(result.warnings ?? [])];
+		const merged = warnings.concat(resolveWarnings, result.warnings ?? []);
 		return merged.length > 0
 			? { ...result, warnings: merged }
 			: { text: result.text, firstChangedLine: result.firstChangedLine };

@@ -86,7 +86,7 @@ export function AgentDrawer(props: {
 							setDroppedRows(n => n + decision.skipped.length);
 						}
 						if (decision.fresh.length > 0) {
-							acc = [...acc, ...decision.fresh];
+							acc = acc.concat(decision.fresh);
 							setEntries(acc);
 						}
 						return;

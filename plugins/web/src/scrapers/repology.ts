@@ -210,7 +210,7 @@ export const handleRepology: SpecialHandler = async (
 		md += "\n";
 
 		// Sort packages: newest first, then by repo name
-		const sortedPackages = [...packages].sort((a, b) => {
+		const sortedPackages = packages.slice().sort((a, b) => {
 			const statusPriority: Record<string, number> = {
 				newest: 0,
 				unique: 1,

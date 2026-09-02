@@ -76,7 +76,7 @@ export function parseSwarmYaml(content: string): SwarmDefinition {
 
 	const mode = swarm.mode ?? "sequential";
 	if (!VALID_MODES.has(mode)) {
-		throw new Error(`Invalid mode '${mode}'. Must be one of: ${[...VALID_MODES].join(", ")}`);
+		throw new Error(`Invalid mode '${mode}'. Must be one of: ${Array.from(VALID_MODES).join(", ")}`);
 	}
 
 	const agentOrder: string[] = [];

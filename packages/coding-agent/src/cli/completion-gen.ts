@@ -617,7 +617,7 @@ function generateZsh(spec: CompletionSpec): string {
 	// The `:value:_veyyon_tools` action references this helper; bake its candidates
 	// from the spec's `list` flag so the generator stays a pure function of its
 	// input (bash/fish read `v.values` inline for the same reason).
-	const listFlag = [...spec.root.flags, ...spec.commands.flatMap(c => c.flags)].find(f => f.value.kind === "list");
+	const listFlag = spec.root.flags.concat(spec.commands.flatMap(c => c.flags)).find(f => f.value.kind === "list");
 	const toolNames = listFlag?.value.kind === "list" ? listFlag.value.values.join(" ") : "";
 	const parts: string[] = [];
 	// Listing every name on `#compdef` is what makes one autoloaded `_veyyon` file
@@ -1064,7 +1064,7 @@ function generatePowerShell(spec: CompletionSpec): string {
 	// subcommand's enum positionals are merged and offered together.
 	lines.push("$global:__veyyonCommandArgs = @{");
 	for (const c of spec.commands) {
-		const enums = c.args.flatMap(a => (a.value.kind === "enum" ? [...a.value.values] : []));
+		const enums = c.args.flatMap(a => (a.value.kind === "enum" ? a.value.values.slice() : []));
 		const kind = enums.length > 0 ? "enum" : c.args.some(a => a.value.kind === "file") ? "file" : undefined;
 		if (!kind) continue;
 		for (const token of commandTokens(c)) {

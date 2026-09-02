@@ -643,7 +643,7 @@ export function imageFormatForPath(filePath: string): ImageFormat {
 /** Summarize still-running helpers (oldest first) so a cell timeout names what stalled. */
 export function describeInflight(inflight: Map<number, InflightOp>): string {
 	const now = Date.now();
-	return [...inflight.values()]
+	return Array.from(inflight.values())
 		.sort((a, b) => a.startedAt - b.startedAt)
 		.map(op => `${op.label} (${((now - op.startedAt) / 1000).toFixed(1)}s)`)
 		.join(", ");
@@ -1722,7 +1722,7 @@ export class WorkerCore {
 			this.#elementCounter = 0;
 			return;
 		}
-		const handles = [...this.#elementCache.values()];
+		const handles = Array.from(this.#elementCache.values());
 		this.#elementCache.clear();
 		this.#elementCounter = 0;
 		for (const handle of handles) void releaseHandle(handle);

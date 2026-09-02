@@ -158,7 +158,7 @@ function readFileRangeSync(file: string, offset: number, length: number): Buffer
 function sentinelOffsets(size: number): number[] {
 	if (size <= 0) return [];
 	const length = Math.min(SENTINEL_BYTES, size);
-	return [...new Set([0, Math.max(0, Math.floor((size - length) / 2)), Math.max(0, size - length)])];
+	return Array.from(new Set([0, Math.max(0, Math.floor((size - length) / 2)), Math.max(0, size - length)]));
 }
 
 function sentinelsFromBuffer(buffer: Buffer): LocalTranscriptSentinel[] {
@@ -641,7 +641,7 @@ export class AgentTranscriptViewer implements Component {
 		const dims = computeModalDims(width, termHeight, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
-			return Array.from({ length: termHeight }, () => " ".repeat(width));
+			return new Array(termHeight).fill(" ".repeat(width));
 		}
 		// The transcript components carry their own rail inset, and ScrollView
 		// reserves the last column for the scrollbar, so the body is widthed to
@@ -754,7 +754,10 @@ export class AgentTranscriptViewer implements Component {
 		if (stats.length > 0 || progress.toolCount > 0) {
 			const toolStat =
 				progress.toolCount > 0 ? `${formatNumber(progress.toolCount)} ${theme.icon.extensionTool}` : "";
-			parts.push(theme.fg("dim", [toolStat, ...stats].filter(Boolean).join(theme.sep.dot)));
+			const statParts: string[] = [];
+			if (toolStat) statParts.push(toolStat);
+			for (let si = 0; si < stats.length; si++) statParts.push(stats[si]!);
+			parts.push(theme.fg("dim", statParts.join(theme.sep.dot)));
 		}
 		if (progress.cost > 0) parts.push(theme.fg("statusLineCost", `$${progress.cost.toFixed(2)}`));
 		return parts.join(theme.sep.dot);

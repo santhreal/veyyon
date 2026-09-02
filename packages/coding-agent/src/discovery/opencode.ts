@@ -141,7 +141,7 @@ function normalizeCommand(
 	const configuredArgs = stringArray(argsValue);
 	if (Array.isArray(commandValue)) {
 		const [command, ...commandArgs] = commandValue;
-		const args = configuredArgs ? [...commandArgs, ...configuredArgs] : commandArgs;
+		const args = configuredArgs ? commandArgs.concat(configuredArgs) : commandArgs;
 		return {
 			command: typeof command === "string" ? command : undefined,
 			args: args.length > 0 ? args : undefined,

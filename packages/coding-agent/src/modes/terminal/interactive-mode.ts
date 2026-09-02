@@ -856,7 +856,7 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		const builtinCommands = buildTuiBuiltinSlashCommands({ ctx: this });
 		// Store pending commands for init() where file commands are loaded async
-		this.#pendingSlashCommands = [...builtinCommands, ...hookCommands, ...customCommands, ...skillCommandList];
+		this.#pendingSlashCommands = builtinCommands.concat(hookCommands, customCommands, skillCommandList);
 
 		this.#uiHelpers = new UiHelpers(this);
 		this.#btwController = new BtwController(this);
@@ -968,7 +968,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			// Failures of servers veyyon merely borrowed from another tool's
 			// config (Claude Code, Codex, …) stay visible but don't alarm —
 			// red at first paint is reserved for veyyon's own configuration.
-			const allForeign = [...this.#mcpFailedServers.values()].every(f => f.foreign);
+			const allForeign = Array.from(this.#mcpFailedServers.values()).every(f => f.foreign);
 			// Route the cross through the theme symbol, not a raw `✗` literal, so it
 			// degrades with the symbol preset (nerd ``, ascii `[!!]`) instead of
 			// emitting a glyph an ascii terminal cannot render.
@@ -1459,7 +1459,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				category: "custom",
 			}));
 		this.#baseAutocompleteProvider = this.#inputController.createAutocompleteProvider(
-			[...this.#pendingSlashCommands, ...fileSlashCommands, ...promptTemplateCommands],
+			this.#pendingSlashCommands.concat(fileSlashCommands, promptTemplateCommands),
 			basePath,
 		);
 		this.#applyAutocompleteProvider();
@@ -2525,7 +2525,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (this.session.hasBuiltInTool("write")) {
 			planAugmentations.push("write");
 		}
-		const uniquePlanTools = [...new Set([...previousTools.filter(name => name !== "goal"), ...planAugmentations])];
+		const uniquePlanTools = Array.from(
+			new Set(previousTools.filter(name => name !== "goal").concat(planAugmentations)),
+		);
 
 		this.#planModePreviousTools = previousTools;
 		this.planModePlanFilePath = planFilePath;
@@ -3036,7 +3038,7 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		// Restore the execution tool set, but force-enable `read`: approved-plan
 		// prompts now require loading the durable local:// plan file before work.
-		const executionTools = previousTools.includes("read") ? previousTools : [...previousTools, "read"];
+		const executionTools = previousTools.includes("read") ? previousTools : previousTools.concat(["read"]);
 		await this.session.setActiveToolsByName(executionTools);
 		this.session.setPlanReferencePath(options.planFilePath);
 

@@ -1636,7 +1636,7 @@ export class SecretVault {
 			byName.delete(entry.name);
 			byName.set(entry.name, entry);
 		}
-		return [...byName.values()];
+		return Array.from(byName.values());
 	}
 
 	/**
@@ -1707,7 +1707,7 @@ export class SecretVault {
 	 * repair rather than handed to a command as the literal text `#NAME#`.
 	 */
 	unreadableScopes(): readonly VaultScope[] {
-		return [...this.#unreadableScopes];
+		return Array.from(this.#unreadableScopes);
 	}
 
 	/**
@@ -1743,8 +1743,8 @@ export class SecretVault {
 			}
 		}
 		this.#unreadableScopes = unreadable;
-		noteFailedVaultLoad(this.#locations, [...unreadable], error);
-		return [...unreadable];
+		noteFailedVaultLoad(this.#locations, Array.from(unreadable), error);
+		return Array.from(unreadable);
 	}
 
 	/**

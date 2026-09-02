@@ -634,7 +634,7 @@ async function searchVirtualResources(
 					},
 					undefined,
 				);
-				matchedIndexes = [...new Set(probe.matches.map(match => match.lineNumber - 1))]
+				matchedIndexes = Array.from(new Set(probe.matches.map(match => match.lineNumber - 1)))
 					.filter(lineIndex => lineAllowed(lineIndex + 1, resource.ranges))
 					.sort((a, b) => a - b);
 			}
@@ -649,7 +649,7 @@ async function searchVirtualResources(
 			if (matchedIndexes.length > 0) filesWithMatches.add(resource.path);
 			totalMatches += matchedIndexes.length;
 			limitReached = limitReached || matchedIndexes.length > resourceMatches.length;
-			matches.push(...resourceMatches);
+			for (let ri = 0; ri < resourceMatches.length; ri++) matches.push(resourceMatches[ri]!);
 		}
 	} finally {
 		// Same as `cleanup` above: the search result stands, and the leaked directory is named in the log.
@@ -669,7 +669,7 @@ async function searchVirtualResources(
 function mergeGrepResults(left: GrepResult, right: GrepResult, maxCount: number): GrepResult {
 	if (left.matches.length === 0) return right;
 	if (right.matches.length === 0) return left;
-	const combinedMatches = [...left.matches, ...right.matches];
+	const combinedMatches = left.matches.concat(right.matches);
 	const matches = combinedMatches.length > maxCount ? combinedMatches.slice(0, maxCount) : combinedMatches;
 	return {
 		matches,

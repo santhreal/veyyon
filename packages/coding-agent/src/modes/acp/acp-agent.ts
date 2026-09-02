@@ -1290,9 +1290,14 @@ export class AcpAgent implements Agent {
 		if (!progress || progress.textEmitted) {
 			return;
 		}
-		const lastAssistant = [...event.messages]
-			.reverse()
-			.find((message): message is AssistantMessage => message.role === "assistant");
+		let lastAssistant: AssistantMessage | undefined;
+		for (let mi = event.messages.length - 1; mi >= 0; mi -= 1) {
+			const message = event.messages[mi]!;
+			if (message.role === "assistant") {
+				lastAssistant = message as AssistantMessage;
+				break;
+			}
+		}
 		if (!lastAssistant) {
 			return;
 		}
@@ -1329,9 +1334,14 @@ export class AcpAgent implements Agent {
 		if (streamedDelivery && (await streamedDelivery)) {
 			return;
 		}
-		const lastAssistant = [...event.messages]
-			.reverse()
-			.find((message): message is AssistantMessage => message.role === "assistant");
+		let lastAssistant: AssistantMessage | undefined;
+		for (let mi = event.messages.length - 1; mi >= 0; mi -= 1) {
+			const message = event.messages[mi]!;
+			if (message.role === "assistant") {
+				lastAssistant = message as AssistantMessage;
+				break;
+			}
+		}
 		if (lastAssistant?.stopReason !== "error") {
 			return;
 		}
@@ -1434,9 +1444,14 @@ export class AcpAgent implements Agent {
 		if (cancelRequested) {
 			return "cancelled";
 		}
-		const lastAssistant = [...event.messages]
-			.reverse()
-			.find((message): message is AssistantMessage => message.role === "assistant");
+		let lastAssistant: AssistantMessage | undefined;
+		for (let mi = event.messages.length - 1; mi >= 0; mi -= 1) {
+			const message = event.messages[mi]!;
+			if (message.role === "assistant") {
+				lastAssistant = message as AssistantMessage;
+				break;
+			}
+		}
 		const reason = lastAssistant?.stopReason;
 		switch (reason) {
 			case "aborted":
@@ -2214,7 +2229,7 @@ export class AcpAgent implements Agent {
 		if (options.includeStart === false) {
 			return notifications;
 		}
-		return [...mapAgentSessionEventToAcpSessionUpdates(startEvent, sessionId, { cwd }), ...notifications];
+		return mapAgentSessionEventToAcpSessionUpdates(startEvent, sessionId, { cwd }).concat(notifications);
 	}
 
 	#buildReplayToolArgs(details: unknown): { path?: string } {

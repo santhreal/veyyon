@@ -84,13 +84,13 @@ function truncateDiffContent(diff: string): { content: string; truncated: boolea
 	const truncatedCount = lines.length - KEEP_HEAD_LINES - KEEP_TAIL_LINES;
 
 	return {
-		content: [...head, `\n[…${truncatedCount}ln elided…]\n`, ...tail].join("\n"),
+		content: head.concat([`\n[…${truncatedCount}ln elided…]\n`], tail).join("\n"),
 		truncated: true,
 	};
 }
 
 function processDiffs(files: string[], diffs: Map<string, string>): { result: string; truncatedFiles: string[] } {
-	const sortedFiles = [...files].sort((a, b) => getFilePriority(b) - getFilePriority(a));
+	const sortedFiles = files.slice().sort((a, b) => getFilePriority(b) - getFilePriority(a));
 
 	const truncatedFiles: string[] = [];
 	const parts: string[] = [];

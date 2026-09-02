@@ -212,9 +212,13 @@ export function renderAccountStatus(
 		}
 
 		const rotated = selectedButRotated(inventory, provider);
-		if (rotated) lines.push(...divergenceLines(provider, rotated.chosen, now));
+		if (rotated) {
+			const dl = divergenceLines(provider, rotated.chosen, now);
+			for (let li = 0; li < dl.length; li++) lines.push(dl[li]!);
+		}
 
-		lines.push(...usageLines(row, now));
+		const ul = usageLines(row, now);
+		for (let li = 0; li < ul.length; li++) lines.push(ul[li]!);
 
 		if (row.health === "failed" && row.healthReason) {
 			lines.push(line(DETAIL_INDENT, cell(row.healthReason, TRUNCATE_LENGTHS.CONTENT)));
@@ -237,7 +241,9 @@ export function renderAccountStatus(
 	// sentence seven times in an eight-provider block: it tripled the height, buried the accounts
 	// between repetitions of itself, and read as nagging rather than as an offer. The placeholder
 	// on each row is what marks WHICH accounts it applies to.
-	const unnamed = [...routed.values()].filter(rows => !(rows.find(r => r.activeForSession) ?? rows[0])?.name).length;
+	const unnamed = Array.from(routed.values()).filter(
+		rows => !(rows.find(r => r.activeForSession) ?? rows[0])?.name,
+	).length;
 	if (unnamed > 0) {
 		lines.push(
 			line(ROW_INDENT, `${unnamed === 1 ? "1 account has" : `${unnamed} accounts have`} no name · ${NAME_HINT}`),

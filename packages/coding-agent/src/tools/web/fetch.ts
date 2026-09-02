@@ -1150,7 +1150,7 @@ async function tryRenderBinaryPayload(
 		return null;
 	}
 
-	const resultNotes = [...notes];
+	const resultNotes = notes.slice();
 	const binary = await fetchBinary(finalUrl, timeout, signal);
 	if (!binary.ok) {
 		resultNotes.push(binary.error ? `Binary fetch failed: ${binary.error}` : "Binary fetch failed");

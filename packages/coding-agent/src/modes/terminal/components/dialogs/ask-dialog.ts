@@ -106,7 +106,7 @@ export function boundPromptTitle(prefix: string, question: string): string {
 	if (wrapped.length <= MAX_PROMPT_TITLE_ROWS) return wrapped.join("\n");
 	const kept = wrapped.slice(0, MAX_PROMPT_TITLE_ROWS - 1);
 	const last = truncateToWidth(wrapped[MAX_PROMPT_TITLE_ROWS - 1] ?? "", width, Ellipsis.Unicode);
-	return [...kept, last].join("\n");
+	return kept.concat([last]).join("\n");
 }
 
 interface AskDialogCallbacks {

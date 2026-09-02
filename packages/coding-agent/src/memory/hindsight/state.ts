@@ -483,7 +483,7 @@ export class HindsightSessionState {
 		if (!latestPrompt) return undefined;
 
 		const history = this.#transformProviderMessages(extractMessages(this.session.sessionManager));
-		const queryMessages = [...history, { role: "user" as const, content: latestPrompt }];
+		const queryMessages = history.concat([{ role: "user" as const, content: latestPrompt }]);
 		const query = composeRecallQuery(latestPrompt, queryMessages, this.config.recallContextTurns);
 		const truncated = truncateRecallQuery(query, latestPrompt, this.config.recallMaxQueryChars);
 		const { context, ok } = await this.recallForContext(truncated);

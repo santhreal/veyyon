@@ -50,7 +50,7 @@ export function rejectAllPending<TRequest extends RejectablePendingRequest>(
 	error: { code: number; message: string },
 	onEach?: (request: TRequest) => void,
 ): number {
-	const failed = [...pending.values()];
+	const failed = Array.from(pending.values());
 	pending.clear();
 	for (const request of failed) {
 		onEach?.(request);

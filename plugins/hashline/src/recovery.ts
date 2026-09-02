@@ -82,7 +82,7 @@ interface AnchorNeighbors {
  * large block replacement — with one O(anchors log anchors) pass.
  */
 function computeAnchorNeighbors(anchorLines: ReadonlySet<number>, lineCount: number): Map<number, AnchorNeighbors> {
-	const sorted = [...anchorLines].sort((a, b) => a - b);
+	const sorted = Array.from(anchorLines).sort((a, b) => a - b);
 	const neighbors = new Map<number, AnchorNeighbors>();
 	for (let i = 0; i < sorted.length; ) {
 		let j = i;

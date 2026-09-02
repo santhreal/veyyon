@@ -293,7 +293,7 @@ function isFormatIpv6(value: string): boolean {
 		const head = sides[0] === "" ? [] : sides[0].split(":");
 		const tail = sides[1] === "" ? [] : sides[1].split(":");
 		if (head.length + tail.length > 7) return false;
-		return [...head, ...tail].every(group => IPV6_HEXTET_RE.test(group));
+		return head.concat(tail).every(group => IPV6_HEXTET_RE.test(group));
 	}
 	const groups = value.split(":");
 	return groups.length === 8 && groups.every(group => IPV6_HEXTET_RE.test(group));
@@ -659,7 +659,7 @@ function tUnion<T extends readonly ArkSchema[]>(schemas: T, opts?: Meta): ArkSch
 			opts,
 		);
 	if (schemas.length === 1) return applyMeta(schemas[0], opts);
-	const validator = createUnionValidator([...schemas]);
+	const validator = createUnionValidator(schemas.slice());
 	return applyMeta(createArkSchema(validator, { anyOf: schemas.map(jsonSchemaOf) }), opts);
 }
 
@@ -670,7 +670,7 @@ function tIntersect(schemas: readonly ArkSchema[], opts?: Meta): ArkSchema {
 			opts,
 		);
 	if (schemas.length === 1) return applyMeta(schemas[0], opts);
-	const validator = createIntersectionValidator([...schemas]);
+	const validator = createIntersectionValidator(schemas.slice());
 	return applyMeta(createArkSchema(validator, { allOf: schemas.map(jsonSchemaOf) }), opts);
 }
 
@@ -714,7 +714,7 @@ function tArray<E extends ArkSchema>(item: E, opts?: ArrayOpts): ArkSchema {
 }
 
 function tTuple(items: readonly ArkSchema[], opts?: Meta): ArkSchema {
-	const validator = createTupleValidator([...items]);
+	const validator = createTupleValidator(items.slice());
 	return applyMeta(
 		createArkSchema(validator, {
 			type: "array",
@@ -824,7 +824,7 @@ function tRequired<_P extends Record<string, ArkSchema>>(obj: ArkSchema): ArkSch
 }
 
 function tPick<P extends Record<string, ArkSchema>, K extends keyof P>(obj: ArkSchema, keys: readonly K[]): ArkSchema {
-	const keySet = new Set([...keys].map(String));
+	const keySet = new Set(Array.from(keys).map(String));
 	if (obj.__properties) {
 		const properties: Record<string, ArkSchema> = {};
 		for (const key of keySet) {
@@ -868,7 +868,7 @@ function tPick<P extends Record<string, ArkSchema>, K extends keyof P>(obj: ArkS
 }
 
 function tOmit<P extends Record<string, ArkSchema>, K extends keyof P>(obj: ArkSchema, keys: readonly K[]): ArkSchema {
-	const keySet = new Set([...keys].map(String));
+	const keySet = new Set(Array.from(keys).map(String));
 	if (obj.__properties) {
 		const properties: Record<string, ArkSchema> = {};
 		for (const key in obj.__properties) {

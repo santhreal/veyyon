@@ -1258,7 +1258,7 @@ function chunkUtf8(payload: string): string[] {
 
 function osc99Chunk(meta: string[], payload: string): string {
 	if (OSC99_UNSAFE.test(payload)) {
-		return `\x1b]99;${[...meta, "e=1"].join(":")};${base64Utf8(payload)}\x1b\\`;
+		return `\x1b]99;${meta.concat(["e=1"]).join(":")};${base64Utf8(payload)}\x1b\\`;
 	}
 	return `\x1b]99;${meta.join(":")};${payload}\x1b\\`;
 }
@@ -1267,7 +1267,7 @@ function osc99Payload(meta: string[], payload: string, holdUntilLaterPayload: bo
 	const chunks = chunkUtf8(payload);
 	let out = "";
 	for (let i = 0; i < chunks.length; i++) {
-		const chunkMeta = [...meta];
+		const chunkMeta = meta.slice();
 		if (holdUntilLaterPayload || i < chunks.length - 1) chunkMeta.push("d=0");
 		out += osc99Chunk(chunkMeta, chunks[i]!);
 	}

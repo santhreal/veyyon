@@ -183,9 +183,13 @@ export function computeFileLists(fileOps: FileOperations): { readFiles: string[]
 	// Drop any `scheme://` URLs (e.g. legacy `conflict://`/`artifact://` entries
 	// rehydrated straight into `fileOps` from a pre-fix compaction summary) — only
 	// real files belong in `<files>`. New tool-call scans are already filtered.
-	const modified = new Set([...fileOps.edited, ...fileOps.written].filter(f => !isUrlSchemePath(f)));
-	const readOnly = [...fileOps.read].filter(f => !isUrlSchemePath(f) && !modified.has(f)).sort();
-	const modifiedFiles = [...modified].sort();
+	const modified = new Set<string>();
+	for (const f of fileOps.edited) if (!isUrlSchemePath(f)) modified.add(f);
+	for (const f of fileOps.written) if (!isUrlSchemePath(f)) modified.add(f);
+	const readOnly = Array.from(fileOps.read)
+		.filter(f => !isUrlSchemePath(f) && !modified.has(f))
+		.sort();
+	const modifiedFiles = Array.from(modified).sort();
 	return { readFiles: readOnly, modifiedFiles };
 }
 
@@ -216,7 +220,7 @@ export function formatFileOperations(
 	const mode = new Map<string, "Read" | "Write" | "RW">();
 	for (const file of readFiles) mode.set(file, "Read");
 	for (const file of modifiedFiles) mode.set(file, readSet?.has(file) ? "RW" : "Write");
-	const all = [...mode.keys()].sort();
+	const all = Array.from(mode.keys()).sort();
 	let files = formatGroupedPaths(all.slice(0, FILE_OPERATION_SUMMARY_LIMIT), path => ` (${mode.get(path)})`);
 	if (all.length > FILE_OPERATION_SUMMARY_LIMIT) {
 		files += `\n[…${all.length - FILE_OPERATION_SUMMARY_LIMIT} files elided…]`;

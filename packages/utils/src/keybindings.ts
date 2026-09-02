@@ -270,7 +270,7 @@ export class KeybindingsManager {
 
 		for (const [key, keybindings] of userClaims) {
 			if (keybindings.size > 1) {
-				this.#conflicts.push({ key, keybindings: [...keybindings] });
+				this.#conflicts.push({ key, keybindings: Array.from(keybindings) });
 			}
 		}
 
@@ -294,7 +294,7 @@ export class KeybindingsManager {
 	}
 
 	getKeys(keybinding: Keybinding): KeyId[] {
-		return [...(this.#keysById.get(keybinding) ?? [])];
+		return Array.from(this.#keysById.get(keybinding) ?? []);
 	}
 
 	getDefinition(keybinding: Keybinding): KeybindingDefinition {
@@ -302,7 +302,7 @@ export class KeybindingsManager {
 	}
 
 	getConflicts(): KeybindingConflict[] {
-		return this.#conflicts.map(conflict => ({ ...conflict, keybindings: [...conflict.keybindings] }));
+		return this.#conflicts.map(conflict => ({ ...conflict, keybindings: conflict.keybindings.slice() }));
 	}
 
 	setUserBindings(userBindings: KeybindingsConfig): void {
@@ -318,7 +318,7 @@ export class KeybindingsManager {
 		const resolved: KeybindingsConfig = {};
 		for (const id of Object.keys(this.#definitions)) {
 			const keys = this.#keysById.get(id as Keybinding) ?? [];
-			resolved[id] = keys.length === 1 ? keys[0]! : [...keys];
+			resolved[id] = keys.length === 1 ? keys[0]! : keys.slice();
 		}
 		return resolved;
 	}

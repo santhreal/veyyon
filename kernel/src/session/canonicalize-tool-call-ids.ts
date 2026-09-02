@@ -57,7 +57,7 @@ export function canonicalizeToolCallIdsInMessage(
 			if (block.type !== "toolCall") continue;
 			const canonical = resolveCanonicalToolCallId(block.id, map, allocate);
 			if (canonical === block.id) continue;
-			content ??= [...message.content];
+			content ??= message.content.slice();
 			content[i] = { ...block, id: canonical };
 		}
 		return content ? { ...message, content } : message;
@@ -81,7 +81,7 @@ export function canonicalizeToolCallIds(messages: Message[], map: ToolCallIdMap,
 	for (let i = 0; i < messages.length; i++) {
 		const next = canonicalizeToolCallIdsInMessage(messages[i], map, allocate);
 		if (next === messages[i]) continue;
-		out ??= [...messages];
+		out ??= messages.slice();
 		out[i] = next;
 	}
 	return out ?? messages;

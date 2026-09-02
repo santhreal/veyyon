@@ -20,7 +20,7 @@ export function getModelLikeIdSegments(modelId: string): string[] {
 	for (const segment of matches) {
 		if (MODEL_FAMILY_PREFIX_PATTERN.test(segment) && /\d/.test(segment)) segments.add(segment);
 	}
-	return [...segments].sort(compareSegmentPreference);
+	return Array.from(segments).sort(compareSegmentPreference);
 }
 
 export function getLongestModelLikeIdSegment(modelId: string): string | undefined {
@@ -73,7 +73,7 @@ export function getBracketStrippedModelIdCandidates(modelId: string): string[] {
 			candidates.add(candidate);
 		}
 	}
-	return [...candidates];
+	return Array.from(candidates);
 }
 
 export function stripBracketedModelIdAffixes(modelId: string): string | undefined {

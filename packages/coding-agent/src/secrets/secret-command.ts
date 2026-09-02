@@ -418,7 +418,7 @@ function buildUsage(entryLines: readonly string[], footerLines: readonly string[
 		// The blank line after each group is what makes the grouping visible at all.
 		lines.push(heading, ...entries.map(entry => `${OUTPUT_INDENT}${entry}`), "");
 	}
-	lines.push(...footerLines);
+	for (let li = 0; li < footerLines.length; li++) lines.push(footerLines[li]!);
 	return lines.join("\n");
 }
 
@@ -605,7 +605,7 @@ function parseTuiValue(args: string, tokens: readonly SecretToken[]): SecretComm
  */
 export function parseSecretCommand(args: string, surface: SecretCommandSurface = "tui"): SecretCommandRequest {
 	const usageText = secretCommandUsage(surface);
-	const tokens = [...args.matchAll(/\S+/gu)].map(match => ({
+	const tokens = Array.from(args.matchAll(/\S+/gu)).map(match => ({
 		value: match[0],
 		start: match.index,
 		end: match.index + match[0].length,
@@ -1382,7 +1382,7 @@ export function renderSecretList(
 		return masked === undefined ? help : `${masked}\n\n${help}`;
 	}
 
-	const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
+	const sorted = entries.slice().sort((a, b) => a.name.localeCompare(b.name));
 	const rows = sorted.map(entry => {
 		const urgency = expiryUrgency(entry, options.now);
 		return [
@@ -1701,7 +1701,7 @@ async function clearEveryVault(context: { vault: SecretVault }): Promise<SecretC
 	}
 	// A survivor means a scope was written back while this ran, or one could not be read at all. It
 	// is still spendable, so it is reported rather than covered by "removed from every vault".
-	const live = [...new Set((await context.vault.load()).map(entry => entry.name))].sort();
+	const live = Array.from(new Set((await context.vault.load()).map(entry => entry.name))).sort();
 	if (live.length > 0) {
 		lines.push(
 			`${live.join(", ")} ${live.length === 1 ? "is" : "are"} still stored and still spendable. ` +

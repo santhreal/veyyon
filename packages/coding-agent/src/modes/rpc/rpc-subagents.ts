@@ -155,7 +155,7 @@ export class RpcSubagentRegistry {
 	}
 
 	getSubagents(): RpcSubagentSnapshot[] {
-		return [...this.#subagents.values()].sort((a, b) => a.index - b.index || a.id.localeCompare(b.id));
+		return Array.from(this.#subagents.values()).sort((a, b) => a.index - b.index || a.id.localeCompare(b.id));
 	}
 
 	#rememberTranscriptSession(subagentId: string, sessionFile: string | undefined): void {

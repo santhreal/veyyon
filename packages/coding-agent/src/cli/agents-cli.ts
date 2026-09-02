@@ -81,7 +81,7 @@ async function unpackBundledAgents(flags: AgentsCommandArgs["flags"]): Promise<U
 	const targetDir = resolveTargetDir(flags);
 	await fs.mkdir(targetDir, { recursive: true });
 
-	const bundledAgents = [...loadBundledAgents()].sort((a, b) => a.name.localeCompare(b.name));
+	const bundledAgents = Array.from(loadBundledAgents()).sort((a, b) => a.name.localeCompare(b.name));
 	const written: string[] = [];
 	const skipped: string[] = [];
 

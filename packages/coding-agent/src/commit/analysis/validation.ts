@@ -72,7 +72,7 @@ export function validateAnalysis(analysis: ConventionalAnalysis): CommitValidati
 	const errors: string[] = [];
 	const scopeResult = validateScope(analysis.scope);
 	if (!scopeResult.valid) {
-		errors.push(...scopeResult.errors);
+		for (let ei = 0; ei < scopeResult.errors.length; ei++) errors.push(scopeResult.errors[ei]!);
 	}
 	for (const detail of analysis.details) {
 		if (!detail.text.trim()) {

@@ -620,7 +620,7 @@ export async function releaseTab(name: string, opts: ReleaseTabOptions = {}): Pr
 }
 
 export async function releaseAllTabs(opts: ReleaseTabOptions = {}): Promise<number> {
-	const names = [...tabs.keys()];
+	const names = Array.from(tabs.keys());
 	let count = 0;
 	for (const name of names) {
 		if (await releaseTab(name, opts)) count++;
@@ -629,7 +629,9 @@ export async function releaseAllTabs(opts: ReleaseTabOptions = {}): Promise<numb
 }
 
 export async function dropHeadlessTabs(): Promise<void> {
-	const names = [...tabs.values()].filter(tab => tab.kindTag === "headless").map(tab => tab.name);
+	const names = Array.from(tabs.values())
+		.filter(tab => tab.kindTag === "headless")
+		.map(tab => tab.name);
 	for (const name of names) await releaseTab(name);
 }
 
@@ -648,7 +650,9 @@ export async function dropHeadlessTabs(): Promise<void> {
  */
 export async function releaseTabsForOwner(ownerId: string, opts: ReleaseTabOptions = {}): Promise<number> {
 	if (!ownerId) return 0;
-	const names = [...tabs.values()].filter(tab => tab.ownerSessionId === ownerId).map(tab => tab.name);
+	const names = Array.from(tabs.values())
+		.filter(tab => tab.ownerSessionId === ownerId)
+		.map(tab => tab.name);
 	let count = 0;
 	for (const name of names) {
 		if (await releaseTab(name, opts)) count++;

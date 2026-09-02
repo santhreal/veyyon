@@ -77,7 +77,7 @@ export class BackgroundSessions {
 
 	/** Sessions still finishing their turn, oldest handoff first. */
 	get kept(): readonly KeptSession[] {
-		return [...this.#kept.values()];
+		return Array.from(this.#kept.values());
 	}
 
 	/** How many handed-off sessions have not settled yet. */
@@ -179,7 +179,7 @@ export class BackgroundSessions {
 	 */
 	async drain(timeoutMs: number = SHUTDOWN_DRAIN_TIMEOUT_MS): Promise<void> {
 		if (this.#kept.size === 0) return;
-		const snapshot = [...this.#kept.values()];
+		const snapshot = Array.from(this.#kept.values());
 		const unsettled = new Set(snapshot);
 		const settled = Promise.all(
 			snapshot.map(async entry => {
@@ -199,7 +199,10 @@ export class BackgroundSessions {
 			if (unsettled.size > 0) {
 				logger.warn("Background conversations abandoned at shutdown before their transcript flushed", {
 					timeoutMs,
-					sessions: [...unsettled].map(entry => ({ sessionId: entry.sessionId, sessionFile: entry.sessionFile })),
+					sessions: Array.from(unsettled).map(entry => ({
+						sessionId: entry.sessionId,
+						sessionFile: entry.sessionFile,
+					})),
 				});
 			}
 			for (const entry of snapshot) {

@@ -383,21 +383,25 @@ export function validateSchemaCompatibility(
 	switch (provider) {
 		case "openai-strict": {
 			walkSchema(schema, { path: "root" }, (node, state) => {
-				violations.push(...validateStrictNode(node, state));
+				const strictV = validateStrictNode(node, state);
+				for (let vi = 0; vi < strictV.length; vi++) violations.push(strictV[vi]!);
 			});
 			break;
 		}
 		case "google": {
 			walkSchema(schema, { path: "root" }, (node, state) => {
-				violations.push(...validateGoogleNode(node, state));
+				const googleV = validateGoogleNode(node, state);
+				for (let vi = 0; vi < googleV.length; vi++) violations.push(googleV[vi]!);
 			});
 			break;
 		}
 		case "cloud-code-assist-claude": {
 			walkSchema(schema, { path: "root" }, (node, state) => {
-				violations.push(...validateCloudCodeAssistNode(node, state));
+				const ccaV = validateCloudCodeAssistNode(node, state);
+				for (let vi = 0; vi < ccaV.length; vi++) violations.push(ccaV[vi]!);
 			});
-			violations.push(...validateCloudCodeAssistSchema(schema));
+			const ccaSchemaV = validateCloudCodeAssistSchema(schema);
+			for (let vi = 0; vi < ccaSchemaV.length; vi++) violations.push(ccaSchemaV[vi]!);
 			break;
 		}
 	}

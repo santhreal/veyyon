@@ -220,7 +220,7 @@ export class ConflictHistory {
 
 	/** Snapshot every registered entry in insertion (id) order. */
 	entries(): ConflictEntry[] {
-		return [...this.#entries.values()];
+		return Array.from(this.#entries.values());
 	}
 
 	/** Drop a single entry by id. Used after a successful resolve. */
@@ -371,7 +371,7 @@ export function spliceConflict(originalText: string, entry: ConflictEntry, repla
 			i < replacementLines.length - 1 || hasFollowingLine ? `${l}\r` : l,
 		);
 	}
-	const next = [...lines.slice(0, match.startIdx), ...replacementLines, ...lines.slice(match.endIdx + 1)];
+	const next = lines.slice(0, match.startIdx).concat(replacementLines, lines.slice(match.endIdx + 1));
 	return { text: next.join("\n"), trimmedLeading: echo.leading, trimmedTrailing: echo.trailing };
 }
 
@@ -451,13 +451,13 @@ function trimBoundaryEcho(
 function buildRecordedRegion(entry: ConflictBlock): string[] {
 	const out: string[] = [];
 	out.push(entry.oursLabel ? `${OURS_PREFIX} ${entry.oursLabel}` : OURS_PREFIX);
-	out.push(...entry.oursLines);
+	for (let li = 0; li < entry.oursLines.length; li++) out.push(entry.oursLines[li]!);
 	if (entry.baseLines !== undefined) {
 		out.push(entry.baseLabel ? `${BASE_PREFIX} ${entry.baseLabel}` : BASE_PREFIX);
-		out.push(...entry.baseLines);
+		for (let li = 0; li < entry.baseLines.length; li++) out.push(entry.baseLines[li]!);
 	}
 	out.push(SEPARATOR);
-	out.push(...entry.theirsLines);
+	for (let li = 0; li < entry.theirsLines.length; li++) out.push(entry.theirsLines[li]!);
 	out.push(entry.theirsLabel ? `${THEIRS_PREFIX} ${entry.theirsLabel}` : THEIRS_PREFIX);
 	return out;
 }
@@ -560,10 +560,10 @@ export function expandContentTokens(content: string, entry: ConflictEntry): stri
 		const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
 		switch (line) {
 			case "@ours":
-				out.push(...entry.oursLines);
+				for (let li = 0; li < entry.oursLines.length; li++) out.push(entry.oursLines[li]!);
 				break;
 			case "@theirs":
-				out.push(...entry.theirsLines);
+				for (let li = 0; li < entry.theirsLines.length; li++) out.push(entry.theirsLines[li]!);
 				break;
 			case "@base":
 				if (!entry.baseLines) {
@@ -571,10 +571,11 @@ export function expandContentTokens(content: string, entry: ConflictEntry): stri
 						`Conflict #${entry.id} has no base section (2-way merge). \`@base\` is only valid for diff3 conflicts.`,
 					);
 				}
-				out.push(...entry.baseLines);
+				for (let li = 0; li < entry.baseLines.length; li++) out.push(entry.baseLines[li]!);
 				break;
 			case "@both":
-				out.push(...entry.oursLines, ...entry.theirsLines);
+				for (let li = 0; li < entry.oursLines.length; li++) out.push(entry.oursLines[li]!);
+				for (let li = 0; li < entry.theirsLines.length; li++) out.push(entry.theirsLines[li]!);
 				break;
 			default:
 				out.push(rawLine);
@@ -608,10 +609,10 @@ export function renderConflictRegion(
 	scope: ConflictScope | undefined,
 ): { lines: string[]; startLine: number } {
 	if (scope === "ours") {
-		return { lines: [...entry.oursLines], startLine: entry.startLine + 1 };
+		return { lines: entry.oursLines.slice(), startLine: entry.startLine + 1 };
 	}
 	if (scope === "theirs") {
-		return { lines: [...entry.theirsLines], startLine: entry.separatorLine + 1 };
+		return { lines: entry.theirsLines.slice(), startLine: entry.separatorLine + 1 };
 	}
 	if (scope === "base") {
 		if (entry.baseLines === undefined || entry.baseLine === undefined) {
@@ -619,17 +620,17 @@ export function renderConflictRegion(
 				`Conflict #${entry.id} has no base section (2-way merge). 'conflict://${entry.id}/base' is only valid for diff3 conflicts.`,
 			);
 		}
-		return { lines: [...entry.baseLines], startLine: entry.baseLine + 1 };
+		return { lines: entry.baseLines.slice(), startLine: entry.baseLine + 1 };
 	}
 	const out: string[] = [];
 	out.push(markerLine("<<<<<<<", entry.oursLabel));
-	out.push(...entry.oursLines);
+	for (let li = 0; li < entry.oursLines.length; li++) out.push(entry.oursLines[li]!);
 	if (entry.baseLines !== undefined) {
 		out.push(markerLine("|||||||", entry.baseLabel));
-		out.push(...entry.baseLines);
+		for (let li = 0; li < entry.baseLines.length; li++) out.push(entry.baseLines[li]!);
 	}
 	out.push("=======");
-	out.push(...entry.theirsLines);
+	for (let li = 0; li < entry.theirsLines.length; li++) out.push(entry.theirsLines[li]!);
 	out.push(markerLine(">>>>>>>", entry.theirsLabel));
 	return { lines: out, startLine: entry.startLine };
 }

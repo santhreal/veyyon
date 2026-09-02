@@ -28,6 +28,8 @@
 
 ### Changed
 
+- Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
+
 - Fifty-three modules moved from `src/session/` (35 session spine modules) and `src/extensibility/` (18 loader and registry modules) to `@veyyon/kernel`, leaving `src/session/` containing the turn loop, session factories and prompt rendering, and `src/extensibility/` containing tool, command, hook and host extensions.
 - Terminal drawing of a `ToolView` lives in `src/modes/terminal/draw/`, and web search lives in `src/tools/web/search/`. Subpath imports previously resolved through `@veyyon/coding-agent/tui` and `@veyyon/coding-agent/web/search` now name those directories. No user-visible behavior changes.
 - Every tool module is grouped by domain under `src/tools/<domain>/`, each domain importing only `core/` and itself, so the dispatch table no longer sits above 139 flat modules. No user-visible behavior changes.

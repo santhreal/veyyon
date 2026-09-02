@@ -78,7 +78,7 @@ function planCells(breakdown: ContextBreakdown): CellSpec[] {
 		// Scale categories proportionally down to fit.
 		let overflow = usedCount - maxUsable;
 		// Trim from the largest categories first to preserve visibility for small ones.
-		const order = [...categoryCounts].sort((a, b) => b.count - a.count);
+		const order = categoryCounts.slice().sort((a, b) => b.count - a.count);
 		for (const entry of order) {
 			while (overflow > 0 && entry.count > 1) {
 				entry.count -= 1;

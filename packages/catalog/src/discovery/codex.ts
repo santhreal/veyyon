@@ -149,13 +149,13 @@ export async function fetchCodexModels(options: CodexModelDiscoveryOptions): Pro
 
 function normalizePaths(paths: readonly string[] | undefined): string[] {
 	if (!paths || paths.length === 0) {
-		return [...DEFAULT_MODEL_LIST_PATHS];
+		return DEFAULT_MODEL_LIST_PATHS.slice();
 	}
 	const normalized = paths
 		.map(path => path.trim())
 		.filter(path => path.length > 0)
 		.map(path => (path.startsWith("/") ? path : `/${path}`));
-	return normalized.length > 0 ? normalized : [...DEFAULT_MODEL_LIST_PATHS];
+	return normalized.length > 0 ? normalized : DEFAULT_MODEL_LIST_PATHS.slice();
 }
 
 function buildModelsUrl(baseUrl: string, path: string, clientVersion: string | undefined): string {

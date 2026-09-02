@@ -134,7 +134,7 @@ function getReferenceCandidateIds(modelId: string): string[] {
 			queue.push(strippedMarker);
 		}
 	}
-	return [...candidates];
+	return Array.from(candidates);
 }
 
 /** Resolve a (possibly proxied/affixed) model id to its bundled upstream reference. */

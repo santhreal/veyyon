@@ -327,7 +327,7 @@ async function callGeminiSearch(
 		} else if (m === "production") {
 			endpoints = [ANTIGRAVITY_PRIMARY_ENDPOINT];
 		} else {
-			endpoints = [...ANTIGRAVITY_ENDPOINTS];
+			endpoints = ANTIGRAVITY_ENDPOINTS.slice();
 		}
 	} else {
 		endpoints = [CLOUD_CODE_ENDPOINT];

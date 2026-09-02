@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
+
 - A comment on `OPENROUTER_BASE_URL` names the Perplexity auth module at `tools/web/search/providers/perplexity-auth.ts`. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 

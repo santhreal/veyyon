@@ -137,7 +137,7 @@ function taskAgentSchemaRule(defaultAgent: string | undefined, enabledAgentNames
 	if (enabledAgentNames === undefined) {
 		return trimmedDefault ? type("string").default(trimmedDefault) : "string";
 	}
-	const names = [...new Set(enabledAgentNames.map(name => name.trim()).filter(Boolean))];
+	const names = Array.from(new Set(enabledAgentNames.map(name => name.trim()).filter(Boolean)));
 	const enabled = type.enumerated(...names);
 	return trimmedDefault ? enabled.default(trimmedDefault) : enabled;
 }

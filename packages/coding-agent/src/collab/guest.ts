@@ -400,7 +400,7 @@ export class CollabGuestLink {
 			logger.debug("collab guest dropping orphan snapshot-chunk");
 			return false;
 		}
-		pending.entries.push(...frame.entries.map(fromWireSessionEntry));
+		for (let ei = 0; ei < frame.entries.length; ei++) pending.entries.push(fromWireSessionEntry(frame.entries[ei]!));
 		const complete = frame.final || pending.entries.length >= pending.entryCount;
 		if (complete) {
 			this.#clearSnapshotProgressTimer();
@@ -487,7 +487,7 @@ export class CollabGuestLink {
 				const entry = fromWireSessionEntry(frame.entry);
 				this.#ctx.sessionManager.ingestReplicatedEntry(entry);
 				if (entry.type === "message") {
-					this.#ctx.session.agent.replaceMessages([...this.#ctx.session.messages, entry.message]);
+					this.#ctx.session.agent.replaceMessages(this.#ctx.session.messages.concat([entry.message]));
 				}
 				break;
 			}
@@ -692,7 +692,7 @@ export class CollabGuestLink {
 	 */
 	#clearUiRequests(): void {
 		if (this.#pendingUiRequests.size === 0) return;
-		const aborts = [...this.#pendingUiRequests.values()];
+		const aborts = Array.from(this.#pendingUiRequests.values());
 		this.#pendingUiRequests.clear();
 		for (const abort of aborts.reverse()) abort.abort();
 	}

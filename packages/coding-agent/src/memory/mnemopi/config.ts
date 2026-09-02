@@ -232,7 +232,7 @@ export function extendRecallWithLegacyBanks(
 		const candidate = path.join(banksDir, entry.name, "mnemopi.db");
 		if (bankOnlyHasCwd(candidate, cwdAbs)) extras.push(entry.name);
 	}
-	return extras.length === 0 ? resolved : [...resolved, ...extras];
+	return extras.length === 0 ? resolved : resolved.concat(extras);
 }
 
 function bankOnlyHasCwd(dbPath: string, cwd: string): boolean {

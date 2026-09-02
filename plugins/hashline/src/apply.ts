@@ -543,12 +543,16 @@ function computeProjectedPrefixBalance(
 	const prefix: string[] = [];
 	for (let line = 1; line < group.startLine; line++) {
 		const inserted = insertedByLine.get(line);
-		if (inserted) prefix.push(...inserted);
+		if (inserted) {
+			for (let ii = 0; ii < inserted.length; ii++) prefix.push(inserted[ii]!);
+		}
 		if (!deletedLines.has(line)) prefix.push(fileLines[line - 1] ?? "");
 	}
 	const insertedAtStart = insertedLineMaps.before.get(group.startLine);
-	if (insertedAtStart) prefix.push(...insertedAtStart);
-	prefix.push(...group.payload);
+	if (insertedAtStart) {
+		for (let ii = 0; ii < insertedAtStart.length; ii++) prefix.push(insertedAtStart[ii]!);
+	}
+	for (let ii = 0; ii < group.payload.length; ii++) prefix.push(group.payload[ii]!);
 	return computeDelimiterBalance(prefix);
 }
 
@@ -878,7 +882,7 @@ function repairReplacementBoundaries(
 		if (boundaryEcho) {
 			slots.push({
 				kind: "edits",
-				edits: [...inserts.slice(boundaryEcho.leading, inserts.length - boundaryEcho.trailing), ...deletes],
+				edits: inserts.slice(boundaryEcho.leading, inserts.length - boundaryEcho.trailing).concat(deletes),
 				warning: describeBoundaryEchoRepair(group, boundaryEcho),
 			});
 			continue;
@@ -906,12 +910,12 @@ function repairReplacementBoundaries(
 						: inserts.slice(0, inserts.length - oneSided.count);
 				slots.push({
 					kind: "edits",
-					edits: [...trimmed, ...deletes],
+					edits: trimmed.concat(deletes),
 					warning: describeOneSidedEchoRepair(group, oneSided.side, oneSided.count),
 				});
 				continue;
 			}
-			slots.push({ kind: "edits", edits: [...inserts, ...deletes] });
+			slots.push({ kind: "edits", edits: inserts.concat(deletes) });
 			continue;
 		}
 
@@ -919,7 +923,7 @@ function repairReplacementBoundaries(
 		if (dupSuffix > 0) {
 			slots.push({
 				kind: "edits",
-				edits: [...inserts.slice(0, inserts.length - dupSuffix), ...deletes],
+				edits: inserts.slice(0, inserts.length - dupSuffix).concat(deletes),
 				warning: describeBoundaryRepair(
 					group,
 					`dropped ${dupSuffix} duplicated trailing payload line(s) already present below the range`,
@@ -931,7 +935,7 @@ function repairReplacementBoundaries(
 		if (dupPrefix > 0) {
 			slots.push({
 				kind: "edits",
-				edits: [...inserts.slice(dupPrefix), ...deletes],
+				edits: inserts.slice(dupPrefix).concat(deletes),
 				warning: describeBoundaryRepair(
 					group,
 					`dropped ${dupPrefix} duplicated leading payload line(s) already present above the range`,
@@ -944,7 +948,8 @@ function repairReplacementBoundaries(
 
 	const projected: AppliedEdit[] = [];
 	for (const slot of slots) {
-		projected.push(...(slot.kind === "candidate" ? [...slot.inserts, ...slot.deletes] : slot.edits));
+		const slotEdits = slot.kind === "candidate" ? slot.inserts.concat(slot.deletes) : slot.edits;
+		for (let ei = 0; ei < slotEdits.length; ei++) projected.push(slotEdits[ei]!);
 	}
 	const deletedLines = new Set<number>();
 	for (const edit of projected) {
@@ -977,7 +982,7 @@ function repairReplacementBoundaries(
 	for (const slot of slots) {
 		if (slot.kind !== "candidate") {
 			if (slot.warning !== undefined) warnings.push(slot.warning);
-			out.push(...slot.edits);
+			for (let ei = 0; ei < slot.edits.length; ei++) out.push(slot.edits[ei]!);
 			continue;
 		}
 		const deletedPrefixBalance = netDeletedPrefixBalance(slot.group, deletedLines, insertedByLine, fileLines);
@@ -1036,7 +1041,8 @@ function repairReplacementBoundaries(
 			remainingDelta = balanceSum(remainingDelta, droppedClosers.balance);
 			continue;
 		}
-		out.push(...slot.inserts, ...slot.deletes);
+		for (let ii = 0; ii < slot.inserts.length; ii++) out.push(slot.inserts[ii]!);
+		for (let ii = 0; ii < slot.deletes.length; ii++) out.push(slot.deletes[ii]!);
 	}
 	return { edits: out, warnings };
 }
@@ -1228,7 +1234,7 @@ function repairAfterInsertLandings(
 	let out: AppliedEdit[] | undefined;
 	const warnings: string[] = [];
 	const retarget = (group: AfterInsertGroup, line: number): void => {
-		out ??= [...edits];
+		out ??= edits.slice();
 		for (const idx of group.members) {
 			const edit = out[idx] as InsertEdit;
 			out[idx] = { ...edit, cursor: { kind: "after_anchor", anchor: { line } } };
@@ -1283,7 +1289,7 @@ export function applyEdits(text: string, edits: readonly Edit[]): ApplyResult {
 	validateLineBounds(targetEdits, fileLines);
 	const { edits: repaired, warnings: boundaryWarnings } = repairReplacementBoundaries(targetEdits, fileLines);
 	const { edits: landed, warnings: landingWarnings } = repairAfterInsertLandings(repaired, fileLines);
-	const warnings = [...boundaryWarnings, ...landingWarnings];
+	const warnings = boundaryWarnings.concat(landingWarnings);
 
 	// Partition edits into bof, eof, and anchor-targeted buckets.
 	const bofLines: string[] = [];

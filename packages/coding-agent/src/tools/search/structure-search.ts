@@ -127,7 +127,9 @@ async function runMultiTargetAstGrep(
 		filesWithMatches += targetResult.filesWithMatches;
 		filesSearched += targetResult.filesSearched;
 		limitReached = limitReached || targetResult.limitReached;
-		if (targetResult.parseErrors) parseErrors.push(...targetResult.parseErrors);
+		if (targetResult.parseErrors) {
+			for (let pi = 0; pi < targetResult.parseErrors.length; pi++) parseErrors.push(targetResult.parseErrors[pi]!);
+		}
 		for (const match of targetResult.matches) {
 			const absolute = targetInfo.isFile ? targetInfo.basePath : path.resolve(targetInfo.basePath, match.path);
 			// Overlapping targets (a directory plus a file nested

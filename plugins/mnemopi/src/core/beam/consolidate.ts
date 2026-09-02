@@ -434,7 +434,7 @@ export function consolidateToEpisodic(
 	ingestIntoEpisodicGraph(beam, memoryId, summary);
 	scheduleEmbedding(beam, [{ memoryId, content: summary }]);
 	emitEvent(beam, "MEMORY_CONSOLIDATED", memoryId, summary, source, importance, {
-		summary_of: [...sourceWmIds],
+		summary_of: Array.from(sourceWmIds),
 		...metadata,
 	});
 	return memoryId;
@@ -990,7 +990,7 @@ export function sleep(beam: BeamMemoryState, dryRun = false): SleepResult {
 					metadata,
 				});
 			}
-			consolidatedIds.push(...ids);
+			for (let ii = 0; ii < ids.length; ii++) consolidatedIds.push(ids[ii]!);
 			summariesCreated++;
 		}
 	}

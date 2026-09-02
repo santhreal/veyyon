@@ -343,7 +343,7 @@ export function applyCodexResponsesLiteShape(body: CodexLiteShapedBody): void {
 			content: [{ type: "input_text", text: body.instructions }],
 		});
 	}
-	body.input = [...prefix, ...input];
+	body.input = prefix.concat(input);
 	delete body.instructions;
 	delete body.tools;
 }
@@ -371,7 +371,7 @@ export async function transformRequestBody(
 			content: [{ type: "input_text", text }],
 		}));
 		const input = Array.isArray(body.input) ? body.input : [];
-		body.input = [...developerMessages, ...input];
+		body.input = developerMessages.concat(input);
 	}
 
 	let finalInstruction = prompt?.developerMessages.findLast(text => text.trim().length > 0);
@@ -474,7 +474,7 @@ export async function transformRequestBody(
 		verbosity: options.textVerbosity || "medium",
 	};
 
-	const include = Array.isArray(options.include) ? [...options.include] : [];
+	const include = Array.isArray(options.include) ? options.include.slice() : [];
 	include.push("reasoning.encrypted_content");
 	body.include = Array.from(new Set(include));
 

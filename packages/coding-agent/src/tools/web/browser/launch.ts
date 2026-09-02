@@ -65,7 +65,7 @@ function isMicrosoftEdgeExecutable(executablePath: string | undefined): boolean 
 }
 
 function stealthIgnoreDefaultArgs(executablePath: string | undefined): string[] {
-	if (!isMicrosoftEdgeExecutable(executablePath)) return [...STEALTH_IGNORE_DEFAULT_ARGS];
+	if (!isMicrosoftEdgeExecutable(executablePath)) return STEALTH_IGNORE_DEFAULT_ARGS.slice();
 	return STEALTH_IGNORE_DEFAULT_ARGS.filter(arg => arg !== ENABLE_AUTOMATION_FLAG);
 }
 

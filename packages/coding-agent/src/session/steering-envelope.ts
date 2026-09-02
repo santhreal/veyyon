@@ -58,7 +58,8 @@ function wrapSteeringUserMessage(message: UserMessage): UserMessage {
 	const text = contentText(message.content);
 	if (text.length === 0) return message;
 	const content: (TextContent | ImageContent)[] = [{ type: "text", text: renderSteeringEnvelope(text) }];
-	content.push(...getArrayContentImages(message.content));
+	const images = getArrayContentImages(message.content);
+	for (let ii = 0; ii < images.length; ii++) content.push(images[ii]!);
 	return { ...userMessageWithoutSteering(message), content };
 }
 

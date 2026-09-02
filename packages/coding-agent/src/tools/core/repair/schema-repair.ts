@@ -168,7 +168,7 @@ export function planAliasKeyRepairs(
 
 		if (candidates.size === 0) continue;
 		if (candidates.size > 1) {
-			const candidateList = [...candidates].join(", ");
+			const candidateList = Array.from(candidates).join(", ");
 			return {
 				kind: "ambiguous",
 				reason:
@@ -250,7 +250,7 @@ export function detectStrictUnknownKeyRepair(
 	const declaredSet = new Set(Object.keys(properties));
 	const unknownKeys = Object.keys(args).filter(key => !key.startsWith("__") && !declaredSet.has(key));
 	if (unknownKeys.length === 0) return undefined;
-	const allowedList = [...declaredSet].join(", ") || "(none)";
+	const allowedList = Array.from(declaredSet).join(", ") || "(none)";
 	return {
 		reason:
 			`Unrecognized tool argument field(s) [${unknownKeys.join(", ")}] are not allowed by this tool's schema ` +
@@ -402,7 +402,7 @@ export function repairToolCallArguments(tool: Tool, toolCall: ToolCall): ToolCal
 		}
 		if (outcome.status === "unrepairable") return outcome;
 		workingArgs = outcome.arguments;
-		hints = [...outcome.hints];
+		hints = outcome.hints.slice();
 		repaired = outcome.status === "repaired";
 	} else {
 		const objectArgs = asObjectArgs(toolCall.arguments);
@@ -417,7 +417,7 @@ export function repairToolCallArguments(tool: Tool, toolCall: ToolCall): ToolCal
 		if (parseRecovery) {
 			if (parseRecovery.status === "unrepairable") return parseRecovery;
 			workingArgs = parseRecovery.arguments;
-			hints = [...parseRecovery.hints];
+			hints = parseRecovery.hints.slice();
 			repaired = true;
 		} else {
 			workingArgs = objectArgs;
@@ -431,8 +431,10 @@ export function repairToolCallArguments(tool: Tool, toolCall: ToolCall): ToolCal
 	if (aliasPlan.kind === "renamed") {
 		workingArgs = applyAliasKeyRenames(workingArgs, aliasPlan.renames);
 		repaired = true;
-		const renameSummary = [...aliasPlan.renames.entries()].map(([from, to]) => `${from} -> ${to}`).join(", ");
-		hints = [...hints, `Renamed alias/typo field name(s) to the declared schema name: ${renameSummary}.`];
+		const renameSummary = Array.from(aliasPlan.renames.entries())
+			.map(([from, to]) => `${from} -> ${to}`)
+			.join(", ");
+		hints = hints.concat([`Renamed alias/typo field name(s) to the declared schema name: ${renameSummary}.`]);
 	}
 
 	const strictUnknownKey = schemaAuthoredAsPlainJsonSchema

@@ -346,7 +346,7 @@ const RUNS_UNSEEN_SHELL = new Set(["eval", "source", ".", "bash", "sh", "zsh", "
  */
 function reboundNames(words: readonly { text: string }[], watched: ReadonlySet<string>): string[] {
 	if (watched.size === 0) return [];
-	if (RUNS_UNSEEN_SHELL.has(basename(words[0]?.text ?? ""))) return [...watched];
+	if (RUNS_UNSEEN_SHELL.has(basename(words[0]?.text ?? ""))) return Array.from(watched);
 	const rebound: string[] = [];
 	for (const word of words) {
 		const bare = /^([A-Za-z_][A-Za-z0-9_]*)(?:$|=|\[)/.exec(word.text)?.[1];
@@ -1571,7 +1571,9 @@ export function findCriticalBashRisk(
 		// A name written by anything this scan cannot read loses BOTH its mktemp
 		// exemption and its carried value: `DST=/srv/app; read DST; rm -rf "$DST"`
 		// deletes whatever was typed, not what the line said one segment ago.
-		const watched = new Set<string>([...selfCreatedTemp, ...carried.keys(), ...stagedValues.keys()]);
+		const watched = new Set<string>(selfCreatedTemp);
+		for (const k of carried.keys()) watched.add(k);
+		for (const k of stagedValues.keys()) watched.add(k);
 		for (const name of reboundNames(rawWords.slice(commandIndex), watched)) {
 			staged.push({ name, created: false });
 			stagedValues.set(name, undefined);
@@ -1900,5 +1902,5 @@ export function bashCredentialTargets(command: string, env: NodeJS.ProcessEnv = 
 			if (directories.some(directory => isAtOrUnder(normalized, directory))) found.add(normalized);
 		}
 	}
-	return [...found];
+	return Array.from(found);
 }

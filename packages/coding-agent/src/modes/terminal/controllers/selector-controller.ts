@@ -295,11 +295,11 @@ export class SelectorController {
 			};
 			selector = new SettingsSelectorComponent(
 				{
-					availableThinkingLevels: [...this.ctx.session.getAvailableThinkingLevels()],
+					availableThinkingLevels: this.ctx.session.getAvailableThinkingLevels().slice(),
 					thinkingLevel: this.ctx.session.thinkingLevel,
 					availableThemes,
 					availablePersonalities,
-					providers: [...new Set(this.ctx.session.getAvailableModels().map(model => model.provider))].sort(
+					providers: Array.from(new Set(this.ctx.session.getAvailableModels().map(model => model.provider))).sort(
 						(a, b) => a.localeCompare(b),
 					),
 					cwd: getProjectDir(),

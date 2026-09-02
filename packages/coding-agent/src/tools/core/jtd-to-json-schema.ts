@@ -69,7 +69,7 @@ function applyNullable(base: unknown, nullable: boolean): unknown {
 	}
 	const obj = base;
 	if (Array.isArray(obj.enum)) {
-		return obj.enum.includes(null) ? obj : { ...obj, enum: [...obj.enum, null] };
+		return obj.enum.includes(null) ? obj : { ...obj, enum: obj.enum.concat([null]) };
 	}
 	if ("type" in obj && !("anyOf" in obj) && !("oneOf" in obj) && !("allOf" in obj)) {
 		const t = obj.type;
@@ -77,7 +77,7 @@ function applyNullable(base: unknown, nullable: boolean): unknown {
 			return t === "null" ? obj : { ...obj, type: [t, "null"] };
 		}
 		if (Array.isArray(t)) {
-			return t.includes("null") ? obj : { ...obj, type: [...t, "null"] };
+			return t.includes("null") ? obj : { ...obj, type: t.concat(["null"]) };
 		}
 	}
 	return { anyOf: [obj, { type: "null" }] };

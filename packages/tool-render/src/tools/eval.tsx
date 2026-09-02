@@ -334,7 +334,7 @@ function Summary({ name, args, result }: ToolRenderProps): ReactNode {
 	if (cells.length === 0) return <span className="tv-muted">{argsDigest(args)}</span>;
 	const first = cells[0];
 	const label = first.title || normalizeWs(first.code.split("\n").find(l => l.trim() !== "") ?? "");
-	const langs = [...new Set(cells.map(c => c.lang))];
+	const langs = Array.from(new Set(cells.map(c => c.lang)));
 	return (
 		<>
 			{label && <span>{truncate(label, 72)}</span>}

@@ -85,7 +85,9 @@ async function runAstEditTargets(
 		filesSearched += targetResult.filesSearched;
 		limitReached = limitReached || targetResult.limitReached;
 		applied = applied && targetResult.applied;
-		if (targetResult.parseErrors) parseErrors.push(...targetResult.parseErrors);
+		if (targetResult.parseErrors) {
+			for (let pi = 0; pi < targetResult.parseErrors.length; pi++) parseErrors.push(targetResult.parseErrors[pi]!);
+		}
 		for (const change of targetResult.changes) {
 			const absolute = path.resolve(target.basePath, change.path);
 			const rebased = path.relative(commonBasePath, absolute).replace(/\\/g, "/");
@@ -379,8 +381,8 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 						skip: rendered.model.length === 0,
 					};
 				});
-				outputLines.push(...grouped.model);
-				displayLines.push(...grouped.display);
+				for (let li = 0; li < grouped.model.length; li++) outputLines.push(grouped.model[li]!);
+				for (let li = 0; li < grouped.display.length; li++) displayLines.push(grouped.display[li]!);
 			} else {
 				for (const relativePath of fileList) {
 					const rendered = renderChangesForFile(relativePath);
@@ -393,8 +395,8 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 					if (hashContext) {
 						outputLines.push(formatHashlineHeader(relativePath, hashContext.tag));
 					}
-					outputLines.push(...rendered.model);
-					displayLines.push(...rendered.display);
+					for (let li = 0; li < rendered.model.length; li++) outputLines.push(rendered.model[li]!);
+					for (let li = 0; li < rendered.display.length; li++) displayLines.push(rendered.display[li]!);
 				}
 			}
 

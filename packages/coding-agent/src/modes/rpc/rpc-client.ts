@@ -783,7 +783,7 @@ export class RpcClient {
 	 * Changes take effect before the next model call.
 	 */
 	async setCustomTools(tools: RpcClientCustomTool[]): Promise<string[]> {
-		this.#customTools = [...tools];
+		this.#customTools = tools.slice();
 		if (!this.#process) {
 			return this.#customTools.map(tool => tool.name);
 		}

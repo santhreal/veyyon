@@ -255,7 +255,7 @@ export class Executor {
 		}
 		for (const [anchorLine, sourceLines] of sourceLinesByAnchor) {
 			if (sourceLines.length < 2) continue;
-			const [firstBlock, secondBlock] = [...sourceLines].sort((a, b) => a - b);
+			const [firstBlock, secondBlock] = sourceLines.slice().sort((a, b) => a - b);
 			throw new Error(
 				`line ${secondBlock}: anchor line ${anchorLine} is already targeted by another hunk on line ${firstBlock}. ` +
 					"Issue ONE hunk per range; payload is only the final desired content, never a before/after pair.",
@@ -328,7 +328,7 @@ export class Executor {
 	#commitDeferredBlanks(pending: Pending): void {
 		if (pending.deferredBlanks.length === 0) return;
 		if (!this.#warnings.includes(BARE_BODY_AUTO_PIPED_WARNING)) this.#warnings.push(BARE_BODY_AUTO_PIPED_WARNING);
-		pending.payloads.push(...pending.deferredBlanks);
+		for (let bi = 0; bi < pending.deferredBlanks.length; bi++) pending.payloads.push(pending.deferredBlanks[bi]!);
 		pending.deferredBlanks = [];
 	}
 

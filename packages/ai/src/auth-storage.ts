@@ -1625,7 +1625,7 @@ export class AuthStorage {
 
 	#bumpGeneration(reason: string): void {
 		this.#generation += 1;
-		for (const listener of [...this.#generationListeners]) {
+		for (const listener of Array.from(this.#generationListeners)) {
 			try {
 				listener(this.#generation);
 			} catch (error) {
@@ -1681,7 +1681,7 @@ export class AuthStorage {
 	}
 
 	#emitCredentialFailover(event: CredentialFailoverEvent): void {
-		for (const listener of [...this.#credentialFailoverListeners]) {
+		for (const listener of Array.from(this.#credentialFailoverListeners)) {
 			const logListenerError = (error: unknown): void => {
 				logger.warn("onCredentialFailover listener threw", { provider: event.provider, error: String(error) });
 			};
@@ -1706,7 +1706,7 @@ export class AuthStorage {
 	}
 
 	#emitUsageLimitWithheld(event: UsageLimitWithheldEvent): void {
-		for (const listener of [...this.#usageLimitWithheldListeners]) {
+		for (const listener of Array.from(this.#usageLimitWithheldListeners)) {
 			const logListenerError = (error: unknown): void => {
 				logger.warn("onUsageLimitWithheld listener threw", { provider: event.provider, error: String(error) });
 			};
@@ -3040,7 +3040,7 @@ export class AuthStorage {
 		// auth-death mark: the grant the mark described is not the grant this row now holds, and the
 		// an explicit choice of this account becomes honourable again.
 		this.#authDeadCredentials.delete(target.id);
-		const updated = [...entries];
+		const updated = entries.slice();
 		updated[index] = { id: target.id, credential };
 		this.#setStoredCredentials(provider, updated);
 	}
@@ -3139,7 +3139,7 @@ export class AuthStorage {
 			);
 			return this.#getStoredCredentials(provider).findIndex(entry => entry.id === id);
 		}
-		const updated = [...entries];
+		const updated = entries.slice();
 		updated[index] = { id, credential };
 		this.#setStoredCredentials(provider, updated);
 		return index;
@@ -3176,7 +3176,7 @@ export class AuthStorage {
 		}
 		// Snapshot before iteration so a listener that subscribes/unsubscribes during fan-out
 		// can't observe a partially-mutated set or receive an event it just registered for.
-		const listeners = [...this.#credentialDisabledListeners];
+		const listeners = Array.from(this.#credentialDisabledListeners);
 		for (const listener of listeners) {
 			this.#invokeListener(listener, event);
 		}
@@ -3513,7 +3513,7 @@ export class AuthStorage {
 	 * List all providers with credentials.
 	 */
 	list(): string[] {
-		return [...this.#data.keys()];
+		return Array.from(this.#data.keys());
 	}
 
 	/**
@@ -4471,7 +4471,7 @@ export class AuthStorage {
 			const accountId = limit.scope.accountId?.trim();
 			if (accountId) ids.add(accountId);
 		}
-		if (ids.size === 1) return [...ids][0];
+		if (ids.size === 1) return Array.from(ids)[0];
 		return undefined;
 	}
 
@@ -4481,7 +4481,7 @@ export class AuthStorage {
 			const projectId = limit.scope.projectId?.trim();
 			if (projectId) ids.add(projectId);
 		}
-		if (ids.size === 1) return [...ids][0];
+		if (ids.size === 1) return Array.from(ids)[0];
 		return undefined;
 	}
 
@@ -4533,13 +4533,13 @@ export class AuthStorage {
 
 	#mergeUsageReportGroup(reports: UsageReport[]): UsageReport {
 		if (reports.length === 1) return reports[0];
-		const sorted = [...reports].sort((a, b) => {
+		const sorted = reports.slice().sort((a, b) => {
 			const limitDiff = b.limits.length - a.limits.length;
 			if (limitDiff !== 0) return limitDiff;
 			return (b.fetchedAt ?? 0) - (a.fetchedAt ?? 0);
 		});
 		const base = sorted[0];
-		const mergedLimits = [...base.limits];
+		const mergedLimits = base.limits.slice();
 		const limitIds = new Set(mergedLimits.map(limit => limit.id));
 		const mergedMetadata: Record<string, unknown> = { ...(base.metadata ?? {}) };
 		let fetchedAt = base.fetchedAt;
@@ -4727,7 +4727,7 @@ export class AuthStorage {
 		if (requests.length === 0) return [];
 
 		this.#usageLogger?.debug("Usage fetch requested", {
-			providers: [...new Set(requests.map(request => request.provider))].sort(),
+			providers: Array.from(new Set(requests.map(request => request.provider))).sort(),
 		});
 
 		// Per-credential caching with jitter lives in #fetchUsageCached, so we

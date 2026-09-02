@@ -184,10 +184,10 @@ export async function resetVmContext(sessionKey: string): Promise<void> {
 }
 
 export async function disposeAllVmContexts(): Promise<void> {
-	const pending = [...startingSessions.values()];
+	const pending = Array.from(startingSessions.values());
 	startingSessions.clear();
 	const started = await Promise.allSettled(pending);
-	const all = [...sessions.values()];
+	const all = Array.from(sessions.values());
 	for (const result of started) {
 		if (result.status !== "fulfilled") continue;
 		if (!all.includes(result.value)) all.push(result.value);
@@ -206,7 +206,7 @@ export async function disposeAllVmContexts(): Promise<void> {
  */
 export async function disposeVmContextsByOwner(ownerId: string): Promise<void> {
 	const toKill: JsSession[] = [];
-	for (const session of [...sessions.values()]) {
+	for (const session of Array.from(sessions.values())) {
 		if (!session.ownerIds.has(ownerId)) continue;
 		if (session.ownerIds.size === 1) {
 			toKill.push(session);

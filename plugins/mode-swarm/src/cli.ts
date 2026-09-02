@@ -31,7 +31,7 @@ const def = parseSwarmYaml(content);
 console.log(`Swarm: ${def.name}`);
 console.log(`Mode: ${def.mode}`);
 console.log(`Target count: ${def.targetCount}`);
-console.log(`Agents: ${[...def.agents.keys()].join(", ")}`);
+console.log(`Agents: ${Array.from(def.agents.keys()).join(", ")}`);
 
 // Validate
 const errors = validateSwarmDefinition(def);
@@ -60,7 +60,7 @@ console.log(`Workspace: ${workspace}`);
 
 // Initialize
 const stateTracker = new StateTracker(workspace, def.name);
-await stateTracker.init([...def.agents.keys()], def.targetCount, def.mode);
+await stateTracker.init(Array.from(def.agents.keys()), def.targetCount, def.mode);
 
 // Auth + settings
 const authStorage = await discoverAuthStorage();

@@ -2865,7 +2865,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		toolNames = agent.tools;
 		// Auto-include task tool if spawns defined but task not in tools
 		if (agent.spawns !== undefined && !toolNames.includes("task") && !atMaxDepth) {
-			toolNames = [...toolNames, "task"];
+			toolNames = toolNames.concat(["task"]);
 		}
 	}
 
@@ -2875,7 +2875,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 	// IRC is always available; the COOP prompt section advertises it, so a restricted
 	// whitelist must still carry `irc` for the subagent to actually use it.
 	if (toolNames && !toolNames.includes("irc")) {
-		toolNames = [...toolNames, "irc"];
+		toolNames = toolNames.concat(["irc"]);
 	}
 	if (toolNames?.includes("exec")) {
 		const backends = resolveEvalBackends({ settings } as ToolSession);
@@ -3169,7 +3169,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 					});
 					return defaultPrompt.length === 0
 						? [subagentPrompt]
-						: [...defaultPrompt.slice(0, -1), subagentPrompt, defaultPrompt[defaultPrompt.length - 1]];
+						: defaultPrompt.slice(0, -1).concat([subagentPrompt, defaultPrompt[defaultPrompt.length - 1]!]);
 				},
 				sessionManager: sessionManagerForRun,
 				hasUI: false,

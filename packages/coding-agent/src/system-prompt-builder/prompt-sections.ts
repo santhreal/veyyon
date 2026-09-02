@@ -165,7 +165,7 @@ export function applyPromptSectionOrderToParts(
 	parts: readonly string[],
 	order: readonly string[] | undefined,
 ): string[] {
-	if (!order || order.length === 0 || parts.length === 0) return [...parts];
+	if (!order || order.length === 0 || parts.length === 0) return parts.slice();
 	const [template, ...runtimeParts] = parts;
 
 	const rank = new Map<string, number>();

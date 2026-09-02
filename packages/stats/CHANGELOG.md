@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
+
 - Repointed a doc comment at `@veyyon/kernel/session/session-entries`, where the session header type now lives; no behavior change.
 - The session parser passes `contentText` an options object rather than a bare separator, following that helper's consolidation in `@veyyon/utils`. No change to the text it extracts.
 

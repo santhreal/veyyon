@@ -1339,7 +1339,7 @@ export class AgentSession {
 		if (this.#isDisposed || this.isStreaming) return;
 		if (this.#pendingIrcInterrupts.length === 0 && this.#pendingIrcAsides.length === 0) return;
 		if (this.#canAutoContinueForFollowUp() && this.agent.hasQueuedMessages()) return;
-		const records = [...this.#pendingIrcInterrupts, ...this.#pendingIrcAsides];
+		const records = this.#pendingIrcInterrupts.concat(this.#pendingIrcAsides);
 		this.#pendingIrcInterrupts = [];
 		this.#pendingIrcAsides = [];
 		if (this.#planModeState?.enabled) {
@@ -1374,10 +1374,10 @@ export class AgentSession {
 			this.agent.peekSteeringQueue().length === 0 &&
 			this.agent.peekFollowUpQueue().length > 0 &&
 			!this.#canAutoContinueForFollowUp()
-				? [...this.agent.peekFollowUpQueue()]
+				? this.agent.peekFollowUpQueue().slice()
 				: [];
 		if (parkedFollowUps.length > 0) {
-			this.agent.replaceQueues([...this.agent.peekSteeringQueue()], []);
+			this.agent.replaceQueues(this.agent.peekSteeringQueue().slice(), []);
 		}
 		this.#resetPromptMaintenanceState();
 		this.#beginInFlight();
@@ -1389,8 +1389,8 @@ export class AgentSession {
 			.finally(() => {
 				if (parkedFollowUps.length > 0) {
 					this.agent.replaceQueues(
-						[...this.agent.peekSteeringQueue()],
-						[...parkedFollowUps, ...this.agent.peekFollowUpQueue()],
+						this.agent.peekSteeringQueue().slice(),
+						parkedFollowUps.concat(this.agent.peekFollowUpQueue()),
 					);
 				}
 				this.#endInFlight();
@@ -1405,7 +1405,7 @@ export class AgentSession {
 	#extractQueuedAdvisorCards(): CustomMessage[] {
 		const steering = this.agent.peekSteeringQueue();
 		const followUp = this.agent.peekFollowUpQueue();
-		const cards = [...steering, ...followUp].filter(isAdvisorCard);
+		const cards = steering.concat(followUp).filter(isAdvisorCard);
 		if (cards.length === 0) return [];
 		this.agent.replaceQueues(
 			steering.filter(m => !isAdvisorCard(m)),
@@ -1641,7 +1641,7 @@ export class AgentSession {
 		const previousTools = this.getActiveToolNames();
 		const augmentations: string[] = [TOOL.resolve];
 		if (this.hasBuiltInTool(TOOL.write)) augmentations.push(TOOL.write);
-		await this.setActiveToolsByName([...new Set([...previousTools, ...augmentations])]);
+		await this.setActiveToolsByName(Array.from(new Set(previousTools.concat(augmentations))));
 		this.#planYoloPreviousTools = previousTools;
 		this.setPlanModeState({
 			enabled: true,
@@ -1995,7 +1995,7 @@ export class AgentSession {
 		// `job poll` / `irc wait` can return early before the boundary drains them.
 		this.agent.hasIrcInterrupts = () => this.#pendingIrcInterrupts.length > 0;
 		this.agent.setAsideMessageProvider(() => {
-			const pendingIrc = [...this.#pendingIrcInterrupts, ...this.#pendingIrcAsides];
+			const pendingIrc = this.#pendingIrcInterrupts.concat(this.#pendingIrcAsides);
 			this.#pendingIrcInterrupts = [];
 			this.#pendingIrcAsides = [];
 			const thunks: AsideMessage[] = pendingIrc.map(record => () => record);
@@ -3499,7 +3499,7 @@ export class AgentSession {
 		// ended has either a released child or this agent on it. Bounded by the
 		// ENDING scope so the purge cannot reach a line another conversation in
 		// this process recorded under a recycled agent name.
-		IrcBus.global().forgetAgents([...descendants, id], endingScope);
+		IrcBus.global().forgetAgents(descendants.concat([id]), endingScope);
 		// Standing approval grants die with the conversation they were given in.
 		// "Allow bash for this session" is an answer about the work in front of
 		// you, and `/new` or `/resume` replaces that work entirely; carrying the
@@ -3543,7 +3543,7 @@ export class AgentSession {
 	/** Emit an event to all listeners */
 	#emit(event: AgentSessionEvent): void {
 		// Copy array before iteration to avoid mutation during iteration.
-		const listeners = [...this.#eventListeners];
+		const listeners = this.#eventListeners.slice();
 		for (const l of listeners) {
 			try {
 				const result = l(event) as unknown;
@@ -4816,9 +4816,14 @@ export class AgentSession {
 					cacheWrite: usage.cacheWrite,
 				},
 			});
-			const fallbackAssistant = [...settledMessages]
-				.reverse()
-				.find((message): message is AssistantMessage => message.role === "assistant");
+			let fallbackAssistant: AssistantMessage | undefined;
+			for (let i = settledMessages.length - 1; i >= 0; i--) {
+				const message = settledMessages[i]!;
+				if (message.role === "assistant") {
+					fallbackAssistant = message;
+					break;
+				}
+			}
 			const msg = this.#lastAssistantMessage ?? fallbackAssistant;
 			this.#lastAssistantMessage = undefined;
 			if (!msg) {
@@ -6248,7 +6253,7 @@ export class AgentSession {
 	}
 
 	#notifyCommandMetadataChanged(): void {
-		const listeners = [...this.#commandMetadataChangedListeners];
+		const listeners = this.#commandMetadataChangedListeners.slice();
 		for (const listener of listeners) {
 			// `CommandMetadataChangedListener` is `() => void | Promise<void>`, so
 			// the published contract INVITES an async listener, but a `catch`
@@ -6337,7 +6342,7 @@ export class AgentSession {
 	providerCacheKeyDiscards(): readonly string[] {
 		// Frozen copy, matching `systemPromptInvalidations`: this is cost evidence,
 		// and a reader that trimmed the live array would under-report re-prefills.
-		return Object.freeze([...this.#providerCacheKeyDiscards]);
+		return Object.freeze(this.#providerCacheKeyDiscards.slice());
 	}
 
 	/**
@@ -6438,7 +6443,9 @@ export class AgentSession {
 	 * sent again.
 	 */
 	#lastDeliveredBlock(customType: string): string | undefined {
-		for (const message of [...this.agent.state.messages].reverse()) {
+		const messages = this.agent.state.messages;
+		for (let i = messages.length - 1; i >= 0; i--) {
+			const message = messages[i]!;
 			if (message.role !== "custom" || message.customType !== customType) continue;
 			return typeof message.content === "string" ? message.content : undefined;
 		}
@@ -6944,7 +6951,7 @@ export class AgentSession {
 			this.#installedVibeToolNames.add(tool.name);
 		}
 
-		await this.#applyActiveToolsByName([...new Set([...baseToolNames, ...vibeToolNames])]);
+		await this.#applyActiveToolsByName(Array.from(new Set(baseToolNames.concat(vibeToolNames))));
 	}
 
 	/** Removes tools installed by {@link activateVibeTools} and activates `nextToolNames`. */
@@ -7043,12 +7050,11 @@ export class AgentSession {
 		if (activated.length === 0) {
 			return [];
 		}
-		const nextActive = [
-			...this.#getActiveNonMCPToolNames(),
-			...this.#filterSelectableMCPToolNames(nextSelectedMCPToolNames),
-		];
+		const nextActive = this.#getActiveNonMCPToolNames().concat(
+			this.#filterSelectableMCPToolNames(nextSelectedMCPToolNames),
+		);
 		await this.setActiveToolsByName(nextActive);
-		return [...new Set(activated)];
+		return Array.from(new Set(activated));
 	}
 
 	// ── Generic tool discovery (covers built-in + MCP + extension) ────────────
@@ -7074,7 +7080,7 @@ export class AgentSession {
 		const activeNames = new Set(this.getActiveToolNames());
 		const mcpTools = Array.from(this.#discoverableMCPTools.values()).filter(t => !activeNames.has(t.name));
 		const localTools: DiscoverableTool[] = mode === "all" ? this.#collectDiscoverableLocalTools() : [];
-		const allTools = [...localTools, ...mcpTools];
+		const allTools = localTools.concat(mcpTools);
 		return filter?.source ? allTools.filter(t => t.source === filter.source) : allTools;
 	}
 
@@ -7115,7 +7121,7 @@ export class AgentSession {
 		const nonMcpSelected = Array.from(this.#selectedDiscoveredToolNames).filter(
 			name => activeNames.has(name) && this.#toolRegistry.has(name) && !isMCPToolName(name),
 		);
-		return [...new Set([...mcpSelected, ...nonMcpSelected])];
+		return Array.from(new Set(mcpSelected.concat(nonMcpSelected)));
 	}
 
 	async activateDiscoveredTools(toolNames: string[]): Promise<string[]> {
@@ -7141,7 +7147,7 @@ export class AgentSession {
 				}
 			}
 			if (newlyAdded.length > 0) {
-				const nextActive = [...this.getActiveToolNames(), ...newlyAdded];
+				const nextActive = this.getActiveToolNames().concat(newlyAdded);
 				await this.setActiveToolsByName(nextActive);
 				this.#invalidateDiscoverableToolSearchIndex();
 			}

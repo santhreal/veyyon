@@ -58,13 +58,13 @@ function renderUsageReports(
 		grouped.set(report.provider, providerReports);
 	}
 
-	for (const [provider, providerReports] of [...grouped.entries()].sort(([left], [right]) =>
+	for (const [provider, providerReports] of Array.from(grouped.entries()).sort(([left], [right]) =>
 		left.localeCompare(right),
 	)) {
 		lines.push("", formatProviderName(provider));
 		const activeAccount = resolveActiveAccount?.(provider);
 		// Provider-wide disclaimers render once per provider, not per limit.
-		const providerNotes = [...new Set(providerReports.flatMap(report => report.notes ?? []))];
+		const providerNotes = Array.from(new Set(providerReports.flatMap(report => report.notes ?? [])));
 		for (const note of providerNotes)
 			lines.push(`  ${sanitizeText(note.replace(/[\r\n]+/g, " ").replace(/\t/g, "  "))}`);
 		for (const report of providerReports) {

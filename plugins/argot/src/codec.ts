@@ -106,7 +106,7 @@ function buildHandlePattern(vocab: Vocabulary): RegExp | undefined {
 	}
 	// Longest name first: a greedy alternation would otherwise stop at the first
 	// (shorter) branch that matches.
-	const names = [...vocab.handles.keys()].sort((a, b) => b.length - a.length);
+	const names = Array.from(vocab.handles.keys()).sort((a, b) => b.length - a.length);
 	const alternation = names.map(escapeRegExp).join("|");
 	return new RegExp(`${escapeRegExp(vocab.sigil)}(${alternation})(?![a-z0-9_])`, "g");
 }

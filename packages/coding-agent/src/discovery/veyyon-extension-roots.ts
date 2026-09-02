@@ -62,7 +62,7 @@ export function injectVeyyonExtensionCliRoots(paths: readonly string[], home: st
 		// CLI scope mirrors how `--extension` is treated elsewhere — user-level overrides win.
 		if (!merged.has(resolved)) merged.set(resolved, { path: resolved, level: "user" });
 	}
-	injectedCliRoots = [...merged.values()];
+	injectedCliRoots = Array.from(merged.values());
 }
 
 /** Drop every CLI-injected root. Tests use this between cases. */

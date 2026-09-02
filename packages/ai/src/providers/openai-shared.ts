@@ -1566,7 +1566,7 @@ export function buildResponsesInput<TApi extends Api>(options: BuildResponsesInp
 					: undefined;
 				if (nativeReplayEnabled && sanitizedHistoryItems) {
 					if (providerPayload?.dt) {
-						messages.push(...sanitizedHistoryItems);
+						for (let hi = 0; hi < sanitizedHistoryItems.length; hi++) messages.push(sanitizedHistoryItems[hi]!);
 					} else {
 						messages.splice(0, messages.length, ...sanitizedHistoryItems);
 					}
@@ -1593,7 +1593,7 @@ export function buildResponsesInput<TApi extends Api>(options: BuildResponsesInp
 				? sanitizeOpenAIResponsesAssistantFallbackItemsForReplay(convertedOutputItems)
 				: convertedOutputItems;
 			if (outputItems.length === 0) continue;
-			messages.push(...outputItems);
+			for (let oi = 0; oi < outputItems.length; oi++) messages.push(outputItems[oi]!);
 		} else if (msg.role === "toolResult") {
 			appendResponsesToolResultMessages(
 				messages,

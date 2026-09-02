@@ -438,7 +438,7 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		// say more existed — the "you can't see all of it" report.
 		const rendered = this.#activeScene?.render(contentWidth, maxBodyLines) ?? [];
 		const body = this.#clipBody(rendered, maxBodyLines);
-		const lines = [...header, ...body.map(line => indentLine(line, width, marginX))];
+		const lines = header.concat(body.map(line => indentLine(line, width, marginX)));
 		while (lines.length + footer.length < height) {
 			lines.push("");
 		}
@@ -490,10 +490,10 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 	 */
 	#clipBody(lines: readonly string[], budget: number): string[] {
 		if (budget <= 0) return [];
-		if (lines.length <= budget) return [...lines];
+		if (lines.length <= budget) return lines.slice();
 		const hidden = lines.length - budget + 1;
 		const notice = theme.fg("warning", `↓ ${hidden} more ${hidden === 1 ? "row" : "rows"} below`);
-		return [...lines.slice(0, budget - 1), notice];
+		return lines.slice(0, budget - 1).concat(notice);
 	}
 
 	#fitToScreen(lines: string[], width: number, height: number): string[] {

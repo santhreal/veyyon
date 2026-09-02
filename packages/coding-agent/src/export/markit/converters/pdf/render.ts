@@ -116,7 +116,7 @@ function normalizeShiftedSparseColumns(matrix: string[][]): string[][] {
 		if (matrix[row][to].trim().length > 0) return matrix;
 		moves.push({ from, to, row });
 	}
-	const copy = matrix.map(row => [...row]);
+	const copy = matrix.map(row => row.slice());
 	for (const { from, to, row } of moves) {
 		copy[row][to] = copy[row][to].trim().length > 0 ? `${copy[row][to]} ${copy[row][from]}` : copy[row][from];
 		copy[row][from] = "";
@@ -133,7 +133,7 @@ function normalizeShiftedSparseColumns(matrix: string[][]): string[][] {
 function promoteSubHeaderPrefixes(matrix: string[][]): string[][] {
 	if (matrix.length < 2) return matrix;
 	const PAREN_RE = /^\([^)]{1,40}\)$/;
-	const result = matrix.map(row => [...row]);
+	const result = matrix.map(row => row.slice());
 	const cols = matrix[0].length;
 	const rowsToRemove = new Set<number>();
 	for (let r = 1; r < result.length; r++) {
@@ -210,7 +210,7 @@ function modalFontSize(textBoxes: TextBox[]): number {
 /** Group free text boxes into horizontal lines, sorted top-to-bottom. */
 function groupFreeTextIntoLines(textBoxes: TextBox[]): RenderLine[] {
 	if (textBoxes.length === 0) return [];
-	const sorted = [...textBoxes].sort((a, b) => {
+	const sorted = textBoxes.slice().sort((a, b) => {
 		const ya = (a.bounds.top + a.bounds.bottom) / 2;
 		const yb = (b.bounds.top + b.bounds.bottom) / 2;
 		const dy = yb - ya;
@@ -438,7 +438,7 @@ export function normalizeDetachedFirstColumnTables(blocks: ContentBlock[]): Cont
 			if (!isPlainBlock(text) || !isShortLabel(text)) break;
 			belowLabels.push({ idx: i, text });
 		}
-		const labels = [...aboveLabels, ...belowLabels];
+		const labels = aboveLabels.concat(belowLabels);
 		if (labels.length !== logicalRows.length) continue;
 		// Reconstruct the full table. The header tokens and first-column labels are
 		// raw PDF text (splitTokens/block content), so a literal `|` in one would end

@@ -52,7 +52,7 @@ export function detectColumns(textBoxes: TextBox[]): ColumnLayout {
 		return { columnCount: 1, columns: [textBoxes], boundaries: [] };
 	}
 	// Collect unique left edges (rounded to avoid float noise)
-	const lefts = [...new Set(textBoxes.map(tb => Math.round(tb.bounds.left)))].sort((a, b) => a - b);
+	const lefts = Array.from(new Set(textBoxes.map(tb => Math.round(tb.bounds.left)))).sort((a, b) => a - b);
 	if (lefts.length < 2) {
 		return { columnCount: 1, columns: [textBoxes], boundaries: [] };
 	}

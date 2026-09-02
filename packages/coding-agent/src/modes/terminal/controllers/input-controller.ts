@@ -740,9 +740,9 @@ export class InputController {
 			}
 
 			const runner = this.ctx.session.extensionRunner;
-			let inputImages = this.ctx.editor.pendingImages.length > 0 ? [...this.ctx.editor.pendingImages] : undefined;
+			let inputImages = this.ctx.editor.pendingImages.length > 0 ? this.ctx.editor.pendingImages.slice() : undefined;
 			let inputImageLinks =
-				this.ctx.editor.pendingImageLinks.length > 0 ? [...this.ctx.editor.pendingImageLinks] : undefined;
+				this.ctx.editor.pendingImageLinks.length > 0 ? this.ctx.editor.pendingImageLinks.slice() : undefined;
 			let hasInputImages = (inputImages?.length ?? 0) > 0;
 
 			if (runner?.hasHandlers("input")) {
@@ -813,7 +813,7 @@ export class InputController {
 					this.ctx.showStatus("This collab link is read-only — prompting is disabled");
 					return;
 				}
-				const images = inputImages && inputImages.length > 0 ? [...inputImages] : undefined;
+				const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
 				this.ctx.editor.clearDraft(text);
 				// No local render: the prompt comes back from the host as a
 				// collab-prompt event/entry and renders with the author badge.
@@ -827,7 +827,7 @@ export class InputController {
 			// not consume the skill before the compaction-resume path re-parses it.
 			if (text && isKnownSkillCommand(this.ctx, text)) {
 				if (this.ctx.session.isCompacting) {
-					const images = inputImages && inputImages.length > 0 ? [...inputImages] : undefined;
+					const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
 					this.ctx.queueCompactionMessage(text, "steer", images);
 					return;
 				}
@@ -881,7 +881,7 @@ export class InputController {
 
 			// Queue input during compaction
 			if (this.ctx.session.isCompacting) {
-				const images = inputImages && inputImages.length > 0 ? [...inputImages] : undefined;
+				const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
 				this.ctx.queueCompactionMessage(text, "steer", images);
 				return;
 			}
@@ -892,7 +892,7 @@ export class InputController {
 				this.ctx.editor.addToHistory(text);
 				this.ctx.editor.setText("");
 				this.ctx.editor.imageLinks = undefined;
-				const images = inputImages && inputImages.length > 0 ? [...inputImages] : undefined;
+				const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
 				this.ctx.editor.pendingImages = [];
 				this.ctx.editor.pendingImageLinks = [];
 				// Record the signature so the queued message's eventual delivery
@@ -966,7 +966,7 @@ export class InputController {
 			if (this.ctx.onInputCallback) {
 				// Include any pending images from clipboard paste
 				this.ctx.editor.imageLinks = undefined;
-				const images = inputImages && inputImages.length > 0 ? [...inputImages] : undefined;
+				const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
 				this.ctx.editor.pendingImages = [];
 				this.ctx.editor.pendingImageLinks = [];
 
@@ -993,7 +993,7 @@ export class InputController {
 				// `streamingBehavior: "steer"` preserves the typed-message queueing
 				// semantics instead of throwing AgentBusyError.
 				this.ctx.editor.imageLinks = undefined;
-				const images = inputImages && inputImages.length > 0 ? [...inputImages] : undefined;
+				const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
 				this.ctx.editor.pendingImages = [];
 				this.ctx.editor.pendingImageLinks = [];
 				try {
@@ -1028,9 +1028,9 @@ export class InputController {
 	/** Submit editor text to the focused subagent session (chat-only focus policy). */
 	async #submitToFocusedSession(text: string, streamingBehavior: "steer" | "followUp"): Promise<void> {
 		const target = this.ctx.viewSession;
-		const images = this.ctx.editor.pendingImages.length > 0 ? [...this.ctx.editor.pendingImages] : undefined;
+		const images = this.ctx.editor.pendingImages.length > 0 ? this.ctx.editor.pendingImages.slice() : undefined;
 		const imageLinks =
-			images && this.ctx.editor.pendingImageLinks.length > 0 ? [...this.ctx.editor.pendingImageLinks] : undefined;
+			images && this.ctx.editor.pendingImageLinks.length > 0 ? this.ctx.editor.pendingImageLinks.slice() : undefined;
 		if (!text && !images) {
 			if (target.isStreaming && target.queuedMessageCount > 0) {
 				const aborting = target.abort({ reason: USER_INTERRUPT_LABEL });
@@ -1247,9 +1247,9 @@ export class InputController {
 
 	/** Queue `/queue` input behind an active turn, or start it immediately when idle. */
 	async handleQueueCommand(text: string): Promise<void> {
-		const images = this.ctx.editor.pendingImages.length > 0 ? [...this.ctx.editor.pendingImages] : undefined;
+		const images = this.ctx.editor.pendingImages.length > 0 ? this.ctx.editor.pendingImages.slice() : undefined;
 		const imageLinks =
-			images && this.ctx.editor.pendingImageLinks.length > 0 ? [...this.ctx.editor.pendingImageLinks] : undefined;
+			images && this.ctx.editor.pendingImageLinks.length > 0 ? this.ctx.editor.pendingImageLinks.slice() : undefined;
 		await this.#queueForYield(text, { images, imageLinks });
 	}
 
@@ -1368,9 +1368,9 @@ export class InputController {
 	/** Send editor text as a follow-up message (queued behind current stream). */
 	async handleFollowUp(): Promise<void> {
 		let text = normalizeSubmittedPrompt(this.ctx.editor.getExpandedText());
-		const images = this.ctx.editor.pendingImages.length > 0 ? [...this.ctx.editor.pendingImages] : undefined;
+		const images = this.ctx.editor.pendingImages.length > 0 ? this.ctx.editor.pendingImages.slice() : undefined;
 		const imageLinks =
-			images && this.ctx.editor.pendingImageLinks.length > 0 ? [...this.ctx.editor.pendingImageLinks] : undefined;
+			images && this.ctx.editor.pendingImageLinks.length > 0 ? this.ctx.editor.pendingImageLinks.slice() : undefined;
 		if (!text && !images) return;
 
 		// Focused subagent session: follow-ups go to it; non-chat input is gated.
@@ -1385,7 +1385,7 @@ export class InputController {
 		// `promptCustomMessage`. The compaction-resume path re-parses the
 		// queued text into a user-attributed skill invocation before delivery.
 		if (this.ctx.session.isCompacting) {
-			const images = this.ctx.editor.pendingImages.length > 0 ? [...this.ctx.editor.pendingImages] : undefined;
+			const images = this.ctx.editor.pendingImages.length > 0 ? this.ctx.editor.pendingImages.slice() : undefined;
 			this.ctx.queueCompactionMessage(text, "followUp", images);
 			return;
 		}

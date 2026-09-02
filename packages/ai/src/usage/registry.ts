@@ -90,5 +90,5 @@ export function resolveRegisteredRankingStrategy(provider: Provider): Credential
 /** Every provider that reports usage. Used by tests and by inventory surfaces, never on a hot path. */
 export function listRegisteredUsageProviders(): UsageProvider[] {
 	warnIfUnpopulated();
-	return [...usageProviders.values()];
+	return Array.from(usageProviders.values());
 }

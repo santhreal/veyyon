@@ -1057,7 +1057,7 @@ function buildChatRequestAttributes(stepNumber: number, request: ChatRequestSnap
 	if (request.presencePenalty != null) attrs[GenAIAttr.RequestPresencePenalty] = request.presencePenalty;
 	if (request.seed != null) attrs[GenAIAttr.RequestSeed] = request.seed;
 	if (request.stopSequences && request.stopSequences.length > 0) {
-		attrs[GenAIAttr.RequestStopSequences] = [...request.stopSequences];
+		attrs[GenAIAttr.RequestStopSequences] = request.stopSequences.slice();
 	}
 	if (request.serviceTier && shouldSendServiceTier(request.serviceTier, provider)) {
 		attrs[OpenAIAttr.RequestServiceTier] = request.serviceTier;
@@ -2185,13 +2185,13 @@ function applyAggregateAttributes(span: Span, summary: AgentRunSummary, coverage
 	span.setAttribute(PiGenAIAggregateAttr.ToolsAbortedCount, summary.tools.aborted);
 	span.setAttribute(PiGenAIAggregateAttr.ToolsTotalLatencyMs, summary.tools.totalLatencyMs);
 	if (coverage.toolsInvoked.length > 0) {
-		span.setAttribute(PiGenAIAggregateAttr.ToolsInvoked, [...coverage.toolsInvoked]);
+		span.setAttribute(PiGenAIAggregateAttr.ToolsInvoked, coverage.toolsInvoked.slice());
 	}
 	if (coverage.toolsAvailable.length > 0) {
-		span.setAttribute(PiGenAIAggregateAttr.ToolsAvailable, [...coverage.toolsAvailable]);
+		span.setAttribute(PiGenAIAggregateAttr.ToolsAvailable, coverage.toolsAvailable.slice());
 	}
 	if (coverage.toolsUnused.length > 0) {
-		span.setAttribute(PiGenAIAggregateAttr.ToolsUnused, [...coverage.toolsUnused]);
+		span.setAttribute(PiGenAIAggregateAttr.ToolsUnused, coverage.toolsUnused.slice());
 	}
 	span.setAttribute(PiGenAIAggregateAttr.UsageInputTokensTotal, summary.usage.inputTokens);
 	span.setAttribute(PiGenAIAggregateAttr.UsageOutputTokensTotal, summary.usage.outputTokens);

@@ -63,7 +63,7 @@ export function streamingPlayerCommandsFor(
 	if (platform === "darwin") {
 		const commands: PlayerCommand[] = [];
 		const ffmpegBin = ffmpeg();
-		if (ffmpegBin) commands.push({ cmd: ffmpegBin, args: [...input, "-f", "audiotoolbox", "default"] });
+		if (ffmpegBin) commands.push({ cmd: ffmpegBin, args: input.concat(["-f", "audiotoolbox", "default"]) });
 		const play = which("play");
 		if (play) {
 			commands.push({
@@ -80,8 +80,8 @@ export function streamingPlayerCommandsFor(
 	const commands: PlayerCommand[] = [];
 	const ffmpegBin = ffmpeg();
 	if (ffmpegBin) {
-		commands.push({ cmd: ffmpegBin, args: [...input, "-f", "pulse", "default"] });
-		commands.push({ cmd: ffmpegBin, args: [...input, "-f", "alsa", "default"] });
+		commands.push({ cmd: ffmpegBin, args: input.concat(["-f", "pulse", "default"]) });
+		commands.push({ cmd: ffmpegBin, args: input.concat(["-f", "alsa", "default"]) });
 	}
 	const paplay = which("paplay");
 	if (paplay) commands.push({ cmd: paplay, args: ["--raw", `--rate=${rate}`, "--format=float32le", "--channels=1"] });

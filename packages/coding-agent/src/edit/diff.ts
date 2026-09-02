@@ -134,7 +134,7 @@ function insertBracketContextRows(
 	contextLines: ReadonlyMap<number, string>,
 	seenRows: Set<string>,
 ): void {
-	const context = [...contextLines].sort(([left], [right]) => left - right);
+	const context = Array.from(contextLines).sort(([left], [right]) => left - right);
 	for (const [lineNumber, text] of context) {
 		const row = formatNumberedDiffLine(" ", lineNumber, text);
 		if (seenRows.has(row)) continue;
@@ -296,7 +296,7 @@ export function generateDiffString(
 						const leadingContext = raw.slice(0, contextLimit);
 						const trailingContext = raw.slice(raw.length - contextLimit);
 						middleSkip = raw.length - leadingContext.length - trailingContext.length;
-						linesToShow = [...leadingContext, ...trailingContext];
+						linesToShow = leadingContext.concat(trailingContext);
 					} else {
 						linesToShow = raw;
 					}
@@ -427,7 +427,7 @@ const LINE_HINT_REGEX = /^lines?\s+(\d+)(?:\s*-\s*(\d+))?(?:\s*@@)?$/i;
 const TOP_OF_FILE_REGEX = /^(top|start|beginning)\s+of\s+file$/i;
 // `diff --git ` is git's own marker, not part of the apply-patch envelope, so it is
 // added here rather than kept in the shared marker list.
-const MULTI_FILE_MARKERS = [...FILE_OP_MARKERS, "diff --git "];
+const MULTI_FILE_MARKERS = FILE_OP_MARKERS.concat(["diff --git "]);
 const DIFF_METADATA_PREFIXES = [
 	...FILE_OP_MARKERS,
 	"diff --git ",
@@ -706,7 +706,7 @@ function parseOneHunk(lines: string[], lineNumber: number, allowMissingContext: 
 }
 
 function stripLineNumberPrefixes(hunk: DiffHunk): void {
-	const allLines = [...hunk.oldLines, ...hunk.newLines].filter(line => line.trim().length > 0);
+	const allLines = hunk.oldLines.concat(hunk.newLines).filter(line => line.trim().length > 0);
 	if (allLines.length < 2) return;
 
 	const numberMatches = allLines

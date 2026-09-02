@@ -34,7 +34,7 @@ interface BiomeDiagnostic {
  * Convert byte offsets to line:column positions in a single pass over the source.
  */
 function offsetsToPositions(source: string, offsets: number[]): Map<number, { line: number; column: number }> {
-	const sorted = [...new Set(offsets)].sort((a, b) => a - b);
+	const sorted = Array.from(new Set(offsets)).sort((a, b) => a - b);
 	const result = new Map<number, { line: number; column: number }>();
 	let line = 1;
 	let column = 1;

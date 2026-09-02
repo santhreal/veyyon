@@ -84,7 +84,7 @@ export function registerOwnedResourceDisposer(disposer: OwnedResourceDisposer): 
 
 /** Every registered name, sorted, across all scopes. Exported for the tests that assert who is wired up. */
 export function registeredOwnedResourceDisposers(): string[] {
-	return [...disposers.keys()].sort();
+	return Array.from(disposers.keys()).sort();
 }
 
 /**

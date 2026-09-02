@@ -315,7 +315,7 @@ export function collectPendingToolCalls(entries: readonly SessionEntry[]): Pendi
 		const marker = readToolExecutionStart(entry);
 		if (marker) applyToolExecutionStart(pending, marker);
 	}
-	return [...pending.values()].map(({ key: _key, ...toolCall }) => toolCall);
+	return Array.from(pending.values()).map(({ key: _key, ...toolCall }) => toolCall);
 }
 
 function appendArgumentSummary(parts: string[], args: unknown): void {

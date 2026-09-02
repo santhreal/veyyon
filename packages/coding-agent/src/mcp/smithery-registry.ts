@@ -568,7 +568,7 @@ export async function searchSmitheryRegistry(
 			);
 		}
 		if (pageEntries.length === 0) break;
-		allEntries.push(...pageEntries);
+		for (let ei = 0; ei < pageEntries.length; ei++) allEntries.push(pageEntries[ei]!);
 
 		// Stop early if we already have enough identity-matching entries.
 		const filtered = isSemantic ? allEntries : allEntries.filter(entry => matchesIdentityQuery(query, entry));
@@ -576,7 +576,9 @@ export async function searchSmitheryRegistry(
 		if (pageEntries.length < pageSize) break;
 	}
 
-	const entries = isSemantic ? [...allEntries] : [...allEntries].filter(entry => matchesIdentityQuery(query, entry));
+	const entries = isSemantic
+		? allEntries.slice()
+		: allEntries.slice().filter(entry => matchesIdentityQuery(query, entry));
 
 	// Only apply local useCount sort when not in semantic mode (preserve API relevance ranking).
 	if (!isSemantic) {

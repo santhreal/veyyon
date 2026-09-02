@@ -470,7 +470,7 @@ export class MnemopiSessionState {
 		const latestPrompt = promptText.trim();
 		if (!latestPrompt) return undefined;
 		const history = extractMessages(this.session.sessionManager);
-		const queryMessages = [...history, { role: "user" as const, content: latestPrompt }];
+		const queryMessages = history.concat([{ role: "user" as const, content: latestPrompt }]);
 		const query = composeRecallQuery(latestPrompt, queryMessages, this.config.recallContextTurns);
 		const truncated = truncateRecallQuery(query, latestPrompt, this.config.recallMaxQueryChars);
 		const context = await this.recallForContext(truncated);
@@ -701,7 +701,7 @@ function createScopedResources(config: MnemopiBackendConfig): MnemopiScopedResou
 		retain,
 		recall,
 		global,
-		owned: [...memories.values()].map(entry => entry.memory),
+		owned: Array.from(memories.values()).map(entry => entry.memory),
 	};
 }
 
@@ -740,7 +740,7 @@ function dedupeScopedTargets(targets: readonly MnemopiScopedMemory[]): readonly 
 }
 
 function uniqueBanks(banks: readonly string[]): readonly string[] {
-	return [...new Set(banks)];
+	return Array.from(new Set(banks));
 }
 
 /**
@@ -767,7 +767,7 @@ function deriveSharedRecallFallbackQuery(
 }
 
 function tokenizeBankName(bank: string): string[] {
-	return [...new Set(bank.toLowerCase().match(/[a-z0-9]+/g) ?? [])];
+	return Array.from(new Set(bank.toLowerCase().match(/[a-z0-9]+/g) ?? []));
 }
 
 function stripLiteralBankPhrase(query: string, tokens: readonly string[]): string {

@@ -133,7 +133,7 @@ export function exceedsBlockContextScanCeiling(text: string): boolean {
 
 /** Collapse a set of visible line numbers into sorted, merged inclusive spans. */
 function visibleSetToSpans(visible: ReadonlySet<number>): LineSpan[] {
-	const sorted = [...visible].sort((left, right) => left - right);
+	const sorted = Array.from(visible).sort((left, right) => left - right);
 	const spans: LineSpan[] = [];
 	for (const line of sorted) {
 		const previous = spans[spans.length - 1];
@@ -348,7 +348,7 @@ export function buildLineEntriesWithBlockContext(
 	const allLines = new Set<number>(visible);
 	for (const lineNumber of context.keys()) allLines.add(lineNumber);
 
-	const sorted = [...allLines].sort((left, right) => left - right);
+	const sorted = Array.from(allLines).sort((left, right) => left - right);
 	const entries: LineEntry[] = [];
 	let previousLine: number | undefined;
 	for (const lineNumber of sorted) {

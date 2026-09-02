@@ -59,7 +59,7 @@ export function weibullDecayFactor12(ageHours: number, memoryType?: string): num
 
 /** {@link wordSet} as a sorted array (sets have no JSON form). */
 export function wordSetSorted(text: string): string[] {
-	return [...wordSet(text)].sort();
+	return Array.from(wordSet(text)).sort();
 }
 
 /** {@link mmrRerank} over plain `{content, score}` records with an explicit

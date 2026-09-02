@@ -91,7 +91,7 @@ export function detectCycles(deps: Map<string, Set<string>>): string[] | null {
 	}
 
 	if (sorted.length < deps.size) {
-		return [...deps.keys()].filter(k => !sorted.includes(k));
+		return Array.from(deps.keys()).filter(k => !sorted.includes(k));
 	}
 
 	return null;
@@ -127,7 +127,7 @@ export function buildExecutionWaves(deps: Map<string, Set<string>>): string[][] 
 
 		if (wave.length === 0) {
 			throw new Error(
-				`Deadlock: agents [${[...remaining].join(", ")}] cannot make progress. This indicates a bug in cycle detection.`,
+				`Deadlock: agents [${Array.from(remaining).join(", ")}] cannot make progress. This indicates a bug in cycle detection.`,
 			);
 		}
 

@@ -497,7 +497,7 @@ export class CustomEditor extends Editor {
 	/** Idle timer that fires `onSpaceHoldEnd` once repeated spaces stop arriving. */
 	#spaceHoldTimer: NodeJS.Timeout | undefined;
 	#actionKeys = new Map<ConfigurableEditorAction, KeyId[]>(
-		Object.entries(DEFAULT_ACTION_KEYS).map(([action, keys]) => [action as ConfigurableEditorAction, [...keys]]),
+		Object.entries(DEFAULT_ACTION_KEYS).map(([action, keys]) => [action as ConfigurableEditorAction, keys.slice()]),
 	);
 	#actionMatchKeys = new Map<ConfigurableEditorAction, Set<string>>(
 		Object.entries(DEFAULT_ACTION_KEYS).map(([action, keys]) => [
@@ -507,7 +507,7 @@ export class CustomEditor extends Editor {
 	);
 
 	setActionKeys(action: ConfigurableEditorAction, keys: KeyId[]): void {
-		this.#actionKeys.set(action, [...keys]);
+		this.#actionKeys.set(action, keys.slice());
 		this.#rebuildActionMatchKeys(action);
 	}
 

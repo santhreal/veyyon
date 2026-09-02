@@ -178,7 +178,8 @@ function collectClosedTopLevelSchemas(jsonSchema: Record<string, unknown>): Reco
 	if (Array.isArray(allOf)) {
 		for (const raw of allOf) {
 			if (isRecord(raw)) {
-				schemas.push(...collectClosedTopLevelSchemas(raw as Record<string, unknown>));
+				const cs = collectClosedTopLevelSchemas(raw as Record<string, unknown>);
+				for (let si = 0; si < cs.length; si++) schemas.push(cs[si]!);
 			}
 		}
 	}
@@ -216,7 +217,10 @@ function collectClosedTopLevelUnions(jsonSchema: Record<string, unknown>): Close
 	const allOf = jsonSchema.allOf;
 	if (Array.isArray(allOf)) {
 		for (const raw of allOf) {
-			if (isRecord(raw)) unions.push(...collectClosedTopLevelUnions(raw));
+			if (isRecord(raw)) {
+				const cu = collectClosedTopLevelUnions(raw);
+				for (let ui = 0; ui < cu.length; ui++) unions.push(cu[ui]!);
+			}
 		}
 	}
 	return unions;
@@ -268,7 +272,7 @@ export function extractRequiredFields(jsonSchema: unknown): string[] {
 
 export function computeMissingRequired(required: readonly string[], value: unknown): string[] {
 	if (required.length === 0) return [];
-	if (value === null || value === undefined) return [...required];
+	if (value === null || value === undefined) return required.slice();
 	if (typeof value !== "object" || Array.isArray(value)) return [];
 	const record = value as Record<string, unknown>;
 	return required.filter(key => !(key in record) || record[key] === undefined);

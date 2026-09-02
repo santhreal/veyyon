@@ -174,7 +174,7 @@ export function applyEmojiCompletion(
 	const currentLine = lines[cursorLine] ?? "";
 	const before = currentLine.slice(0, cursorCol - prefix.length);
 	const after = currentLine.slice(cursorCol);
-	const newLines = [...lines];
+	const newLines = lines.slice();
 	newLines[cursorLine] = before + item.value + after;
 	return {
 		lines: newLines,

@@ -254,7 +254,7 @@ export async function renderGalleryForThemes(
 	const available = new Set(await getAvailableThemes());
 	const unknown = themes.filter(name => !available.has(name));
 	if (unknown.length > 0) {
-		const known = [...available].sort().join(", ");
+		const known = Array.from(available).sort().join(", ");
 		throw new Error(`Unknown theme '${unknown[0]}'. Known themes: ${known}`);
 	}
 	const rendered: ThemedGallery[] = [];
@@ -281,12 +281,12 @@ export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void>
 
 	const width = resolveWidth(args.width);
 	const expanded = args.expanded ?? false;
-	const states = args.states && args.states.length > 0 ? args.states : [...GALLERY_STATES];
+	const states = args.states && args.states.length > 0 ? args.states : GALLERY_STATES.slice();
 
 	// Renderer-registry tools plus fixture-only tools (no dedicated renderer,
 	// e.g. `report_tool_issue` / custom extension tools) so the gallery covers
 	// the generic fallback + custom-tool branches too.
-	const allNames = Array.from(new Set([...Object.keys(toolRenderers), ...Object.keys(galleryFixtures)])).sort();
+	const allNames = Array.from(new Set(Object.keys(toolRenderers).concat(Object.keys(galleryFixtures)))).sort();
 	const names = args.tool ? allNames.filter(name => name === args.tool) : allNames;
 	if (args.tool && names.length === 0) {
 		process.stderr.write(`Unknown tool '${args.tool}'. Known tools: ${allNames.join(", ")}\n`);

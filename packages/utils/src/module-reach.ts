@@ -196,7 +196,7 @@ export function dynamicImportBindings(source: string, specifier: string): string
 function importClausesFrom(code: string, specifier: string): string[] {
 	const quoted = specifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 	const re = new RegExp(`(?:^|\\n)[ \\t]*(?:import|export)\\s+([\\w$*{},\\s]*?)\\sfrom\\s*["']${quoted}["']`, "g");
-	return [...code.matchAll(re)].map(match => match[1] ?? "");
+	return Array.from(code.matchAll(re)).map(match => match[1] ?? "");
 }
 
 /**

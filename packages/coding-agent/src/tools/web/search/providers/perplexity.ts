@@ -91,7 +91,7 @@ function mergeMarkdownBlock(
 	if (incoming.chunks?.length) {
 		const offset = incoming.chunk_starting_offset ?? 0;
 		const existingChunks = existing.chunks ?? [];
-		result.chunks = offset === 0 ? [...incoming.chunks] : [...existingChunks.slice(0, offset), ...incoming.chunks];
+		result.chunks = offset === 0 ? incoming.chunks.slice() : existingChunks.slice(0, offset).concat(incoming.chunks);
 	}
 
 	return result;
@@ -122,7 +122,7 @@ function mergeBlocks(
 		blockMap.set(block.intended_usage, { ...prev, ...block });
 	}
 
-	return [...blockMap.values()];
+	return Array.from(blockMap.values());
 }
 
 function mergeOAuthEventSnapshot(
@@ -680,7 +680,7 @@ async function callPerplexityAsk(
 
 		return {
 			answer,
-			sources: [...sourcesByUrl.values()],
+			sources: Array.from(sourcesByUrl.values()),
 			model,
 			requestId: finalRequestId ?? requestId,
 		};

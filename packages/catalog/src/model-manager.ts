@@ -378,7 +378,7 @@ function prepareCacheModelsForStaticMismatch<TApi extends Api>(
 		return [];
 	}
 	if (cacheFingerprintMatches) {
-		return [...models];
+		return models.slice();
 	}
 
 	const droppedIds = ids && ids.length > 0 ? new Set(ids) : undefined;
@@ -400,8 +400,8 @@ function mergeDynamicModels<TApi extends Api>(
 	// Empty-side fast paths: `mergeDynamicModels(base, [])` is the common shape
 	// after we've already merged the first pair, and `(...)` with no base
 	// happens for providers without static catalogs.
-	if (dynamicModels.length === 0) return baseModels.length === 0 ? [] : [...baseModels];
-	if (baseModels.length === 0) return [...dynamicModels];
+	if (dynamicModels.length === 0) return baseModels.length === 0 ? [] : baseModels.slice();
+	if (baseModels.length === 0) return dynamicModels.slice();
 	const merged = new Map<string, Model<TApi>>(baseModels.map(model => [model.id, model]));
 	for (const dynamicModel of dynamicModels) {
 		if (!dynamicModel?.id) {

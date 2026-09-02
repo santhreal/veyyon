@@ -889,7 +889,7 @@ const streamOpenAICompletionsOnce = (
 				stream.push({ type: "toolcall_end", contentIndex, toolCall: block, partial: output });
 			};
 			const finishPendingToolCallBlocks = (): void => {
-				for (const block of [...pendingToolCallBlocks]) {
+				for (const block of pendingToolCallBlocks.slice()) {
 					finishToolCallBlock(block);
 				}
 			};

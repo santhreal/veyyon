@@ -310,7 +310,7 @@ function mergeByModelKey<T extends { provider: string; id: string }>(
 	incoming: readonly T[],
 	combine: (existing: Model<Api> | undefined, entry: T) => Model<Api>,
 ): Model<Api>[] {
-	const merged = [...base];
+	const merged = base.slice();
 	const indexByKey = new Map<string, number>();
 	for (let i = 0; i < merged.length; i += 1) {
 		indexByKey.set(`${merged[i].provider}\u0000${merged[i].id}`, i);
@@ -470,7 +470,7 @@ function createLiveConfigHeaders(
 	if (liveSources.length === 0 && (!options?.authHeader || !options.apiKeyConfig)) return undefined;
 
 	const localHeaders: Record<string, string> = {};
-	const allSources = [...liveSources, localHeaders];
+	const allSources = liveSources.concat([localHeaders]);
 	const current = () => materializeConfigHeaderSources(allSources, options) ?? {};
 	return new Proxy(localHeaders, {
 		get(target, property, receiver) {
@@ -1460,7 +1460,8 @@ export class ModelRegistry {
 						} as ModelSpec<Api>),
 					)
 				: withTransport.map(model => buildModel(model));
-			cachedModels.push(...this.#applyProviderModelOverrides(providerId, withCompat));
+			const overrides = this.#applyProviderModelOverrides(providerId, withCompat);
+			for (let oi = 0; oi < overrides.length; oi++) cachedModels.push(overrides[oi]!);
 		}
 		return { models: cachedModels, authoritativeFreshProviders };
 	}
@@ -1495,7 +1496,7 @@ export class ModelRegistry {
 					),
 				),
 			);
-			cachedModels.push(...models);
+			for (let mi = 0; mi < models.length; mi++) cachedModels.push(models[mi]!);
 			const stale =
 				providerConfig.discovery.type === "llama.cpp" || !cache.fresh || !cache.authoritative || configStale;
 			this.#providerDiscoveryStates.set(providerConfig.provider, {
@@ -1703,7 +1704,7 @@ export class ModelRegistry {
 			configuredDiscoveriesPromise,
 			this.#discoverBuiltInProviderModels(strategy, providerFilter),
 		]);
-		const discovered = [...configuredDiscovered, ...builtInDiscovery.models];
+		const discovered = configuredDiscovered.concat(builtInDiscovery.models);
 		if (discovered.length === 0 && builtInDiscovery.authoritativeProviders.size === 0) {
 			return;
 		}
@@ -1951,7 +1952,7 @@ export class ModelRegistry {
 		const authoritativeProviders = new Set<string>();
 		const models: Model<Api>[] = [];
 		for (const discovery of discoveries) {
-			models.push(...discovery.models);
+			for (let mi = 0; mi < discovery.models.length; mi++) models.push(discovery.models[mi]!);
 			for (const provider of discovery.authoritativeProviders) {
 				authoritativeProviders.add(provider);
 			}
@@ -2617,7 +2618,7 @@ export class ModelRegistry {
 			}
 			// Store as runtime overlays so they survive #reloadStaticModels()
 			this.#runtimeModelOverlays = this.#runtimeModelOverlays.filter(m => m.provider !== providerName);
-			this.#runtimeModelOverlays.push(...newOverlays);
+			for (let oi = 0; oi < newOverlays.length; oi++) this.#runtimeModelOverlays.push(newOverlays[oi]!);
 
 			// Also update #models immediately for the current cycle
 			const nextModels = this.#models.filter(m => m.provider !== providerName);

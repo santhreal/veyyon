@@ -648,7 +648,8 @@ export class EpisodicGraph {
 		const features: (string | null)[] = [];
 		for (const row of gistRows) {
 			const gist = rowToGist(row);
-			features.push(...gist.participants, gist.location, gist.emotion, gist.timeScope);
+			for (let pi = 0; pi < gist.participants.length; pi++) features.push(gist.participants[pi]!);
+			features.push(gist.location, gist.emotion, gist.timeScope);
 		}
 		for (const row of factRows) {
 			features.push(row.subject, row.predicate, row.object);

@@ -8,6 +8,8 @@
 
 ### Changed
 
+- Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
+
 - A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
 - Compaction can truncate the middle of an oversized text, keeping both edges, in any message role — including the roles that store their model-visible text outside `content`, such as a shell cell's `output`, a summary's `summary` and a file mention's `files[i].content`.
 

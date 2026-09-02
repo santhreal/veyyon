@@ -277,7 +277,7 @@ export function extractOAuthCredentialIdentifiers(credential: OAuthCredential): 
 	for (const identifier of refreshIdentifiers) {
 		identifiers.add(identifier);
 	}
-	return [...identifiers];
+	return Array.from(identifiers);
 }
 
 export function extractOAuthTokenIdentifiers(token: string | undefined): string[] | undefined {
@@ -304,7 +304,7 @@ export function extractOAuthTokenIdentifiers(token: string | undefined): string[
 						: codexClaims.accountId,
 	);
 	if (accountId) identifiers.add(`account:${accountId}`);
-	return identifiers.size > 0 ? [...identifiers] : undefined;
+	return identifiers.size > 0 ? Array.from(identifiers) : undefined;
 }
 
 /**
