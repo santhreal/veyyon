@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-98507b9a.js";
+            window.path_to_searchindex_js = "searchindex-00658df1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-b613f6a6.js"></script>
@@ -6584,6 +6584,12 @@ recorded and shown but do not decide anything.</p>
 before the first iteration, and that commit is the baseline every later run is
 measured against. Editing the harness mid-session invalidates the comparison, so
 change it only alongside a new segment.</p>
+<p>Checking out another branch pauses the session at the start of the next turn.
+The experiment tools detach and no autoresearch block is added to the turn, but
+the recorded runs stay readable: the status row reads
+<code>paused · session on &lt;branch&gt;</code> and <code>ctrl+x</code> still opens the run screen. Checking
+the branch out again lifts the pause on the next turn and reattaches the
+experiment tools.</p>
 <h2 id="segments"><a class="header" href="#segments">Segments</a></h2>
 <p>A segment is one baseline and the runs measured against it. Bumping the segment
 starts a fresh baseline inside the same session, which is what you want after
@@ -6806,6 +6812,13 @@ off or clearing the session mid-arm restores it too.</p>
 <p>A round configured this way compares models as much as ideas: each arm is a
 different model writing a different change, measured by the same harness and
 reviewed by the ring. Certification still applies, and no arm reviews itself.</p>
+<p>Each run records the model in force when <code>run_experiment</code> measured it, and the
+run screen shows it under the arm as <code>Built on</code>. The arm is the attribution the
+loop declares; the model is what the session was on while the arm was built.
+Read one against the other to tell a model comparison from a round that stayed
+on one model. <code>run_experiment</code> states it in the result when an arm is measured
+with no arm in flight, or while a different arm is: both mean the diff was
+written by a model other than the one configured for that arm.</p>
 <h2 id="why-arms-are-reviewed"><a class="header" href="#why-arms-are-reviewed">Why arms are reviewed</a></h2>
 <p>Breadth searches wider, but that is the smaller half. A loop scored on a number
 will find ways to move the number that have nothing to do with the work getting

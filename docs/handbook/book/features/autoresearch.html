@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-98507b9a.js";
+            window.path_to_searchindex_js = "../searchindex-00658df1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -227,6 +227,12 @@ recorded and shown but do not decide anything.</p>
 before the first iteration, and that commit is the baseline every later run is
 measured against. Editing the harness mid-session invalidates the comparison, so
 change it only alongside a new segment.</p>
+<p>Checking out another branch pauses the session at the start of the next turn.
+The experiment tools detach and no autoresearch block is added to the turn, but
+the recorded runs stay readable: the status row reads
+<code>paused · session on &lt;branch&gt;</code> and <code>ctrl+x</code> still opens the run screen. Checking
+the branch out again lifts the pause on the next turn and reattaches the
+experiment tools.</p>
 <h2 id="segments"><a class="header" href="#segments">Segments</a></h2>
 <p>A segment is one baseline and the runs measured against it. Bumping the segment
 starts a fresh baseline inside the same session, which is what you want after

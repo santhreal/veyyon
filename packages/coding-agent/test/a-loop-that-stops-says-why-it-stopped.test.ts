@@ -1,14 +1,16 @@
 /**
  * WHY: a loop that leaves the screen without a word reads as a broken feature.
  *
- * An autoresearch session is pinned to the branch it was opened on. Checking out
- * another branch — to read something, to compare, to answer a question — used to
- * take the mode down in silence: the handler set the mode off, replaced the state
- * with an empty one, and the status row went from the run in flight to nothing at
- * all. `hasSession()` reads the state it had just emptied, so the row was removed
- * rather than repainted, and `ctrl+x` opened a screen that said no runs existed
- * while the database held every one of them. Nothing on screen named the branch,
- * so the way back was a guess.
+ * An autoresearch session is pinned to the branch it was opened on, and it used
+ * to be looked up by that branch alone. Off the branch the lookup returned
+ * nothing, which is the same answer it gives for a project that never started a
+ * loop, so the two states were indistinguishable and each went wrong in its own
+ * direction. A checkout mid-conversation was noticed by nothing: the loop kept
+ * its experiment tools and kept injecting its system prompt while standing on
+ * another branch. A session resumed off that branch loaded no runs at all, so the
+ * row read `autoresearch · baseline pending` and `ctrl+x` reported nothing while
+ * the database held every run. Nothing on screen named the branch, so the way
+ * back was a guess.
  *
  * The class closed here: every path that suspends the mode for a branch mismatch
  * states it on the row, keeps the session's runs readable, and names the branch to
@@ -20,7 +22,10 @@
  * status-row suites own that), and whether the tools detach, which
  * `activeToolsFor` owns.
  */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { createAutoresearchExtension } from "@veyyon/coding-agent/autoresearch";
 import {
 	closeAllAutoresearchStorages,
@@ -40,6 +45,7 @@ import { stripAnsi, TempDir } from "@veyyon/utils";
 import { useTruecolorTheme } from "./helpers/theme-assertions";
 
 useTruecolorTheme("dark");
+const execFileAsync = promisify(execFile);
 
 const SESSION_BRANCH = "autoresearch/tokenizer-throughput";
 
@@ -54,10 +60,13 @@ interface Harness {
 	/** The status row as the user sees it, or null once it is taken away. */
 	row(): string | null;
 	activeTools: string[];
+	/** `/autoresearch <args>`, as the slash command runs it. */
+	command(name: string, args: string, ctx: ExtensionContext): Promise<void>;
 }
 
 function buildHarness(): Harness {
 	const handlers: Handlers = {};
+	const commands = new Map<string, (args: string, ctx: ExtensionContext) => Promise<void>>();
 	const activeTools: string[] = ["read"];
 	const api = {
 		appendEntry(): void {},
@@ -65,7 +74,9 @@ function buildHarness(): Harness {
 		on(event: string, handler: ExtensionHandler<unknown, unknown>): void {
 			(handlers as Record<string, ExtensionHandler<unknown, unknown>>)[event] = handler;
 		},
-		registerCommand(): void {},
+		registerCommand(name: string, spec: { handler: (args: string, ctx: ExtensionContext) => Promise<void> }): void {
+			commands.set(name, spec.handler);
+		},
 		registerShortcut(): void {},
 		registerTool(): void {},
 		getActiveTools: (): string[] => [...activeTools],
@@ -81,6 +92,11 @@ function buildHarness(): Harness {
 		handlers,
 		activeTools,
 		row: () => status ?? null,
+		command: async (name, args, ctx) => {
+			const handler = commands.get(name);
+			if (!handler) throw new Error(`no command ${name}`);
+			await handler(args, ctx);
+		},
 		__setStatus: (value: string | undefined): void => {
 			status = value;
 		},
@@ -186,6 +202,70 @@ async function seedSession(cwd: string, withRun = true): Promise<void> {
 	});
 }
 
+/**
+ * The suite above mocks `git.branch.current`, so it proves the decision and not
+ * the read behind it. This one runs the same turn against a real repository and a
+ * real checkout: the branch comes from git, the storage is resolved from the real
+ * repo root, and nothing about the environment is stubbed.
+ */
+describe("a real checkout is what the turn reads", () => {
+	let dbDir: TempDir;
+	let repoDir: TempDir;
+
+	const git_ = async (cwd: string, ...args: string[]): Promise<string> => {
+		const { stdout } = await execFileAsync("git", args, { cwd });
+		return stdout.trim();
+	};
+
+	beforeEach(async () => {
+		dbDir = TempDir.createSync("@pi-autoresearch-realgit-db-");
+		process.env.VEYYON_AUTORESEARCH_DB_DIR = dbDir.path();
+		repoDir = TempDir.createSync("@pi-autoresearch-realgit-repo-");
+		const cwd = repoDir.path();
+		await git_(cwd, "init", "-q", "-b", "main");
+		await git_(cwd, "config", "user.email", "test@example.invalid");
+		await git_(cwd, "config", "user.name", "test");
+		await git_(cwd, "commit", "-q", "--allow-empty", "-m", "root");
+		await git_(cwd, "checkout", "-q", "-b", SESSION_BRANCH);
+		await seedSession(cwd);
+	});
+
+	afterEach(() => {
+		delete process.env.VEYYON_AUTORESEARCH_DB_DIR;
+		closeAllAutoresearchStorages();
+		repoDir.removeSync();
+		dbDir.removeSync();
+	});
+
+	it("pauses on a real branch switch and resumes on a real switch back", async () => {
+		const cwd = repoDir.path();
+		const harness = buildHarness();
+		const ctx = makeCtx(harness, cwd);
+		if (!harness.handlers.session_start || !harness.handlers.before_agent_start) throw new Error("handlers missing");
+
+		await harness.handlers.session_start({ type: "session_start" } as SessionStartEvent, ctx);
+		expect(stripAnsi(harness.row() ?? "")).toContain("autoswarm");
+
+		await git_(cwd, "checkout", "-q", "main");
+		expect(await git.branch.current(cwd)).toBe("main");
+		await harness.handlers.before_agent_start(
+			{ type: "before_agent_start", prompt: "say ok", systemPrompt: [] },
+			ctx,
+		);
+
+		const paused = stripAnsi(harness.row() ?? "");
+		expect(paused).toContain("paused");
+		expect(paused).toContain(SESSION_BRANCH);
+
+		await git_(cwd, "checkout", "-q", SESSION_BRANCH);
+		await harness.handlers.before_agent_start(
+			{ type: "before_agent_start", prompt: "say ok", systemPrompt: [] },
+			ctx,
+		);
+		expect(stripAnsi(harness.row() ?? "")).not.toContain("paused");
+	});
+});
+
 describe("a loop that stops says why it stopped", () => {
 	let dbDir: TempDir;
 	let cwdDir: TempDir;
@@ -280,6 +360,29 @@ describe("a loop that stops says why it stopped", () => {
 		expect(text).toContain("1 runs");
 		// The tools come back with the loop, or the model cannot measure anything.
 		expect(harness.activeTools).toContain("run_experiment");
+	});
+
+	it("stops naming a branch when the loop is turned off while it is paused", async () => {
+		// A pause is its own reason to report a row, so an explicit `off` has to
+		// clear it too. Otherwise the row goes on naming a branch to return to for
+		// a loop the user has just shut down, and nothing short of a restart
+		// removes it.
+		const harness = buildHarness();
+		const ctx = makeCtx(harness, cwdDir.path());
+		const turn: BeforeAgentStartEvent = { type: "before_agent_start", prompt: "hi", systemPrompt: [] };
+		if (!harness.handlers.session_start || !harness.handlers.before_agent_start) throw new Error("handlers missing");
+
+		await harness.handlers.session_start({ type: "session_start" } as SessionStartEvent, ctx);
+		vi.spyOn(git.branch, "current").mockResolvedValue("main");
+		await harness.handlers.before_agent_start(turn, ctx);
+		expect(stripAnsi(harness.row() ?? "")).toContain("paused");
+
+		await harness.command("autoresearch", "off", ctx);
+		// The row survives `off` on a loop that has results -- it reports them with
+		// `mode off` -- but it must stop naming a branch to go back to.
+		const afterOff = stripAnsi(harness.row() ?? "");
+		expect(afterOff).not.toContain("paused");
+		expect(afterOff).toContain("mode off");
 	});
 
 	it("names the branch even before the loop has logged a run", async () => {
