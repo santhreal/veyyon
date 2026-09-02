@@ -38,7 +38,7 @@ pub fn compute_edge_count(tree: &LayoutBoxTree, frame: &RgbaFrame) -> f32 {
 					candidates.push(b.bounds.right);
 				}
 				if b.divider == Some(DividerAxis::Vertical) {
-					candidates.push((b.bounds.left + b.bounds.right) * 0.5);
+					candidates.push(f32::midpoint(b.bounds.left, b.bounds.right));
 				}
 			}
 		}
@@ -65,7 +65,7 @@ pub fn compute_edge_count(tree: &LayoutBoxTree, frame: &RgbaFrame) -> f32 {
 
 					// Adjacent on X with gap of zero (facing edges within 0.5px)
 					if (b2.bounds.left - b1.bounds.right).abs() <= 0.5 {
-						let edge_x = (b1.bounds.right + b2.bounds.left) * 0.5;
+						let edge_x = f32::midpoint(b1.bounds.right, b2.bounds.left);
 						if let Some(dev_x) = frame.device_x(edge_x)
 							&& dev_x >= 2 && dev_x + 2 < frame.width()
 							&& let (Some(p_left), Some(p_right)) =

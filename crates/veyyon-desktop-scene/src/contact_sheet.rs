@@ -121,10 +121,9 @@ impl SheetCell {
 /// everywhere else in this crate, including in the PNGs and in every metric.
 fn as_render_image(frame: &RgbaFrame) -> Arc<RenderImage> {
 	let mut bgra = Vec::with_capacity(frame.as_bytes().len());
-	for pixel in frame.as_bytes().chunks_exact(4) {
-		if let [r, g, b, a] = pixel {
-			bgra.extend_from_slice(&[*b, *g, *r, *a]);
-		}
+	for pixel in frame.as_bytes().as_chunks::<4>().0 {
+		let [r, g, b, a] = pixel;
+		bgra.extend_from_slice(&[*b, *g, *r, *a]);
 	}
 
 	// The buffer is exactly width * height * 4 because `RgbaFrame` rejects any

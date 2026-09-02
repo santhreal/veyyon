@@ -35,7 +35,7 @@ fn test_enum_iteration_exhausts_all_protocol_domains() {
 	assert_eq!(role_count, 12);
 
 	let block_count = BlockKind::iter().count();
-	assert_eq!(block_count, 15);
+	assert_eq!(block_count, 16);
 
 	let error_count = ErrorScope::iter().count();
 	assert_eq!(error_count, 19);
@@ -62,7 +62,7 @@ fn test_enum_iteration_exhausts_all_protocol_domains() {
 		+ row_shape_count
 		+ primitive_count;
 
-	assert_eq!(total_expected, 228);
+	assert_eq!(total_expected, 229);
 	assert_eq!(required_states().len(), total_expected);
 }
 

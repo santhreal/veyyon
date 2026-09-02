@@ -13,6 +13,7 @@ pub mod layout_bridge;
 pub mod metrics;
 pub mod primitive_scenes;
 pub mod registry;
+pub mod session;
 
 pub use contact_sheet::{SheetCell, SheetGrid, tile};
 pub use fixtures::{
@@ -44,3 +45,4 @@ pub use registry::{
 	ConnectionStateKind, FixtureSelection, GateVariant, PrimitiveKind, RequiredState, RowShape,
 	Scene, SceneError, SceneRegistry, StateDescriptor, required_states,
 };
+pub use session::HeadlessSession;

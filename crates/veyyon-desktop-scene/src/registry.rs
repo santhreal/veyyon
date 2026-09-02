@@ -254,6 +254,8 @@ impl SceneRegistry {
 			("run-bar/rest", "run-bar"),
 			("palette/rest", "palette"),
 			("settings-row/rest", "settings-row"),
+			("shell/auth-needs-secret", "shell"),
+			("shell/auth-awaiting-external-url", "shell"),
 		];
 
 		for (name, surface) in additional {
