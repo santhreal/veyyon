@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 // for the import-cycle TDZ (see the getKnownRoleIds describe below). If model-roles ever re-enters
 // the config/model-resolver cycle, this import throws "Cannot access 'MODEL_ROLE_ALIAS_PREFIX'
 // before initialization" and the whole file fails to load.
-import { getKnownRoleIds, getRoleInfo } from "@veyyon/coding-agent/config/model-roles";
+import { getKnownRoleIds, getRoleInfo, MODEL_ROLE_IDS } from "@veyyon/coding-agent/config/model-roles";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 
 describe("getRoleInfo", () => {
@@ -104,7 +104,8 @@ describe("getRoleInfo", () => {
  * `advisor` is not among the built-ins. It is a slot rather than a selectable role: the model it
  * runs is asked for in the Advisor group's own row, which writes the same slot, so listing it here
  * as well gave one value two surfaces. Assigning it puts it back in this list through the
- * `modelRoles` pass, which `compaction-strategy-settings.test.ts` pins beside the slot itself.
+ * `modelRoles` pass, which `compaction-strategy-settings.test.ts` pins beside the slot itself. The
+ * last case pins the absence as a decision rather than an omission.
  */
 describe("getKnownRoleIds", () => {
 	test("loads without an import-cycle error and lists the built-in roles first in order", () => {
@@ -137,5 +138,14 @@ describe("getKnownRoleIds", () => {
 			}),
 		);
 		expect(roles).toEqual(["smol", "slow", "vision", "plan", "designer", "commit", "tiny", "extraRole"]);
+	});
+
+	test("keeps the advisor slot addressable while leaving it out of the selector", () => {
+		// Both directions: a slot that disappeared would break `@advisor`, and a slot that reappeared
+		// among the built-ins would put a second surface for the advisor's model beside the one that
+		// owns it. Naming it in `cycleOrder` still adds it, exactly as any other custom role.
+		expect(MODEL_ROLE_IDS).toContain("advisor");
+		expect(getKnownRoleIds(Settings.isolated({}))).not.toContain("advisor");
+		expect(getKnownRoleIds(Settings.isolated({ cycleOrder: ["advisor"] }))).toContain("advisor");
 	});
 });
