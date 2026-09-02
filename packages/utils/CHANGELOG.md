@@ -6,6 +6,12 @@
 
 ### Added
 
+- `SUPPORTED_VIDEO_MIME_TYPES` exports the supported video MIME types (`video/mp4`, `video/webm`, `video/quicktime`).
+
+## [1.3.0] - 2026-08-28
+
+### Added
+
 - `@veyyon/utils/terminal-emulator` resolves terminal identity without loading the terminal renderer.
 - `@veyyon/utils/json-snapshot` atomically stores rebuildable JSON snapshots with one serialization and verifies their input fingerprint and exact payload bytes.
 - `@veyyon/utils/format` owns `formatCostTiered` and `normalizePremiumRequests`, the terminal cost and premium-request formatters the status row and the stats CLI read.
