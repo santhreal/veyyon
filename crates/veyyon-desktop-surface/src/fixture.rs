@@ -10,13 +10,23 @@
 //! row of every badge. A fixture full of short tidy strings proves only that
 //! the layout survives the easy case.
 
-use crate::model::{Badge, Block, Card, Row, Section, ShellState, TreeRow, Turn};
+use veyyon_desktop_model::InputModality;
+
+use crate::{
+	composer::{
+		ComposerState, ContextMeter, ModelChoice, ModelControl, ModelOption, ThinkingControl,
+	},
+	drawer::{DrawerContent, DrawerTab},
+	model::{Badge, Block, Card, ConnectionPhase, Row, Section, ShellState, Turn},
+	right_panel::{DiffFile, DiffRow, PanelContent, PanelTab, TreeContent, TreeRowItem},
+	terminal::{Cell, CellStyle, Ink},
+};
 
 /// Builds a shell state exercising every section, badge and block kind.
 pub fn populated() -> ShellState {
 	ShellState {
-		title:        "veyyon-desktop-surface".to_owned(),
-		sections:     vec![
+		title: "veyyon-desktop-surface".to_owned(),
+		sections: vec![
 			(Section::Unsent, vec![Row {
 				id:       1,
 				title:    "Split the oversized loader files".to_owned(),
@@ -80,20 +90,56 @@ pub fn populated() -> ShellState {
 			// Longer than the page size, so the rail's overflow row is drawn.
 			(Section::Parked, parked_rows()),
 		],
-		transcript:   transcript(),
-		composed:     String::new(),
-		run_status:   Some((
+		transcript: transcript(),
+		turn: crate::composer::TurnPhase::Idle,
+		composer: fixture_composer(),
+		run_status: Some((
 			Badge::Working,
 			"Rendering the shell headless at 1440x900, one frame per section".to_owned(),
 		)),
-		tree:         tree(),
-		tabs:         vec!["Changes".to_owned(), "Terminal".to_owned(), "Diagnostics".to_owned()],
-		active_tab:   0,
-		cards:        cards(),
-		drawer_lines: Vec::new(),
-		drawer_open:  false,
+		panel: fixture_panel(),
+		cards: cards(),
+		drawer: DrawerContent::default(),
+		drawer_open: false,
 		// The row the queue draws as open, and the session the titlebar names.
-		current_id:   3,
+		current_id: 3,
+		connection: ConnectionPhase::Attached,
+		..ShellState::default()
+	}
+}
+
+/// A footer with every control the host can report: a model the operator
+/// can change, a thinking level with somewhere to go, and a context meter.
+fn fixture_composer() -> ComposerState {
+	let sonnet =
+		ModelChoice { provider: "anthropic".to_owned(), model: "claude-sonnet-4.5".to_owned() };
+	let opus =
+		ModelChoice { provider: "anthropic".to_owned(), model: "claude-opus-4.1".to_owned() };
+	ComposerState {
+		model: Some(ModelControl {
+			current:    Some(sonnet.clone()),
+			options:    vec![
+				ModelOption {
+					choice:    sonnet,
+					name:      "Claude Sonnet 4.5".to_owned(),
+					reasoning: true,
+					input:     vec![InputModality::Text, InputModality::Image],
+				},
+				ModelOption {
+					choice:    opus,
+					name:      "Claude Opus 4.1".to_owned(),
+					reasoning: true,
+					input:     vec![InputModality::Text, InputModality::Image],
+				},
+			],
+			selectable: true,
+		}),
+		thinking: Some(ThinkingControl {
+			level:  "high".to_owned(),
+			levels: ["off", "low", "medium", "high"].map(str::to_owned).to_vec(),
+		}),
+		context: Some(ContextMeter { used_tokens: 82_400, limit_tokens: Some(200_000) }),
+		..ComposerState::default()
 	}
 }
 
@@ -179,22 +225,82 @@ fn transcript() -> Vec<Turn> {
 	]
 }
 
-/// A changed-files tree.
-fn tree() -> Vec<TreeRow> {
-	vec![
-		TreeRow { depth: 0, name: "crates".to_owned(), changed: None },
-		TreeRow { depth: 1, name: "veyyon-desktop-surface".to_owned(), changed: None },
-		TreeRow { depth: 2, name: "src".to_owned(), changed: None },
-		TreeRow { depth: 3, name: "queue.rs".to_owned(), changed: Some((238, 0)) },
-		TreeRow { depth: 3, name: "transcript.rs".to_owned(), changed: Some((249, 0)) },
-		TreeRow { depth: 3, name: "composer.rs".to_owned(), changed: Some((180, 0)) },
-		TreeRow { depth: 3, name: "panel.rs".to_owned(), changed: Some((141, 0)) },
-		TreeRow { depth: 3, name: "shell.rs".to_owned(), changed: Some((214, 0)) },
-		TreeRow { depth: 3, name: "tokens.rs".to_owned(), changed: Some((58, 0)) },
-		TreeRow { depth: 1, name: "veyyon-desktop-kit".to_owned(), changed: None },
-		TreeRow { depth: 2, name: "src/token_set.rs".to_owned(), changed: Some((41, 12)) },
-		TreeRow { depth: 0, name: "Cargo.toml".to_owned(), changed: Some((1, 0)) },
-	]
+/// A populated fixture panel.
+// A one-span intraline list is deliberate: the field holds every changed span
+// and this fixture row changes one.
+#[allow(
+	clippy::single_range_in_vec_init,
+	reason = "a one-span intraline list is deliberate: the field holds every changed span"
+)]
+fn fixture_panel() -> PanelContent {
+	PanelContent {
+		tabs:       vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
+		active_tab: PanelTab::Diff,
+		diff:       vec![DiffFile {
+			path:      "crates/veyyon-desktop-surface/src/panel.rs".to_string(),
+			old_path:  None,
+			status:    veyyon_desktop_model::ChangeStatus::Modified,
+			additions: 12,
+			deletions: 3,
+			rows:      vec![
+				DiffRow::HunkHeader {
+					old_start: 1,
+					old_count: 5,
+					new_start: 1,
+					new_count: 6,
+					symbol:    Some("pub fn right_panel".to_string()),
+				},
+				DiffRow::Context {
+					old_line: 1,
+					new_line: 1,
+					text:     "use veyyon_desktop_kit::TokenSet;".to_string(),
+				},
+				DiffRow::Removed {
+					old_line:  2,
+					text:      "fn old_tab_strip() {".to_string(),
+					intraline: Vec::from([3..6]),
+				},
+				DiffRow::Added {
+					new_line:  2,
+					text:      "fn new_tab_strip() {".to_string(),
+					intraline: Vec::from([3..6]),
+				},
+				DiffRow::Context { old_line: 3, new_line: 3, text: "}".to_string() },
+			],
+		}],
+		file:       None,
+		tree:       TreeContent {
+			rows:           vec![
+				TreeRowItem {
+					path:        "crates".to_string(),
+					name:        "crates".to_string(),
+					depth:       0,
+					is_dir:      true,
+					is_expanded: true,
+					changed:     None,
+				},
+				TreeRowItem {
+					path:        "crates/veyyon-desktop-surface".to_string(),
+					name:        "veyyon-desktop-surface".to_string(),
+					depth:       1,
+					is_dir:      true,
+					is_expanded: true,
+					changed:     None,
+				},
+				TreeRowItem {
+					path:        "crates/veyyon-desktop-surface/src/panel.rs".to_string(),
+					name:        "panel.rs".to_string(),
+					depth:       2,
+					is_dir:      false,
+					is_expanded: false,
+					changed:     Some((12, 3)),
+				},
+			],
+			selected_path:  None,
+			expanded_paths: std::collections::BTreeSet::new(),
+		},
+		diff_mode:  veyyon_desktop_model::DiffMode::Unified,
+	}
 }
 
 /// One card of every kind, plus enough of them to overflow the stack cap.
@@ -234,13 +340,49 @@ fn cards() -> Vec<Card> {
 /// session column, so a state that opens it by default is a state where the
 /// transcript is the thing being hidden.
 pub fn with_drawer() -> ShellState {
+	let mut grid_rows = Vec::new();
+	for line_str in [
+		"$ cargo test -p veyyon-desktop-surface",
+		"   Compiling veyyon-desktop-surface v1.3.0",
+		"    Finished `test` profile in 41.02s",
+		"test the_shell_draws_its_regions_where_the_tokens_put_them ... ok",
+	] {
+		let mut row = Vec::new();
+		for c in line_str.chars() {
+			row.push(Cell {
+				c,
+				ink: Ink::Default,
+				bg_ink: Ink::Default,
+				style: CellStyle::new(),
+				width: 1,
+			});
+		}
+		while row.len() < 80 {
+			row.push(Cell::blank());
+		}
+		grid_rows.push(row);
+	}
+	while grid_rows.len() < 11 {
+		grid_rows.push(vec![Cell::blank(); 80]);
+	}
+
 	ShellState {
-		drawer_lines: vec![
-			"$ cargo test -p veyyon-desktop-surface".to_owned(),
-			"   Compiling veyyon-desktop-surface v1.3.0".to_owned(),
-			"    Finished `test` profile in 41.02s".to_owned(),
-			"test the_shell_draws_its_regions_where_the_tokens_put_them ... ok".to_owned(),
-		],
+		drawer: DrawerContent {
+			tabs: vec![DrawerTab::Terminal {
+				id:    "term-1".to_string(),
+				title: "Terminal".to_string(),
+			}],
+			active_tab: 0,
+			grid_rows,
+			cursor_col: 0,
+			cursor_row: 4,
+			cursor_visible: true,
+			title: "Terminal".to_string(),
+			scroll_offset: 0,
+			processes: Vec::new(),
+			selection: None,
+			search: None,
+		},
 		drawer_open: true,
 		..populated()
 	}

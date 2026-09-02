@@ -40,6 +40,7 @@ fn shed(viewport_px: f32, viewport_height_px: f32) -> ShedInput {
 		viewport_height_px,
 		chrome_height_px: surface().shell.titlebar_height_px,
 		gutter_px: f32::from(TokenSet::default().spacing(SpacingStep::S4)),
+		queue_collapsed: false,
 		panel_open: true,
 		labels: LabelState::default(),
 	}

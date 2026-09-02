@@ -12,122 +12,160 @@
 //! talks to a host directly, which is what keeps every surface renderable with
 //! no host attached.
 
-use crate::model::ShellState;
+use veyyon_desktop_model::SurfaceId;
+
+mod apply;
+
+use crate::{
+	composer::{Attachment, ModelChoice, QueueMode, ThinkingLevel},
+	keymap::ScrollBy,
+	model::ShellState,
+	overlay::Overlay,
+	palette::PaletteState,
+};
 
 /// One thing the operator did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Intent {
-	/// Open a session from the queue.
 	SelectSession(u64),
-	/// Show a different tab in the right panel.
 	SelectTab(usize),
-	/// Open or close the terminal drawer. Opening it is a host's to answer as
-	/// well: the drawer shows a terminal, and the host is what has one.
 	SetDrawer {
-		/// Whether the drawer is docked after this.
 		open: bool,
 	},
-	/// Answer the approval attached at this position with a decision.
 	Approval {
-		/// The card's position in the stack.
 		card:     usize,
-		/// Whether the operator approved it.
 		approved: bool,
-		/// Whether the decision holds for every later call to the same tool
-		/// in this session, rather than for this call alone.
 		standing: bool,
 	},
-	/// Answer the question attached at this position with one of its options.
 	Answer {
-		/// The card's position in the stack.
 		card:   usize,
-		/// The chosen option's position.
 		option: usize,
 	},
-	/// Answer the free-text question attached at this position with what the
-	/// composer holds.
 	Reply {
-		/// The card's position in the stack.
 		card: usize,
-		/// The text given as the answer.
 		text: String,
 	},
-	/// Accept or revise the plan attached at this position.
 	Plan {
-		/// The card's position in the stack.
 		card:     usize,
-		/// Whether the operator accepted it.
 		accepted: bool,
 	},
-	/// Send what the composer holds.
-	Send(String),
+	/// A prompt and the images and clips it carries, sent as the next turn.
+	Send {
+		text:        String,
+		attachments: Vec<Attachment>,
+	},
+	Steer(String),
+	Queue(String),
+	AbortTurn,
+	SetQueueMode(QueueMode),
+	SelectModel(ModelChoice),
+	SetThinking(ThinkingLevel),
+	/// An image or clip read and admitted, added to the next prompt.
+	Attach(Attachment),
+	RemoveAttachment(usize),
+	RetryConnection,
+	StartProviderAuth(String),
+	SubmitAuthSecret {
+		provider: String,
+		secret:   String,
+	},
+	OpenAuthUrl(String),
+	CancelAuthFlow,
+	RetryAuthFlow,
+	RetryControl(SurfaceId),
+	DismissError(SurfaceId),
+	OpenOverlay(Box<Overlay>),
+	CloseOverlay,
+	PaletteQuery(String),
+	PaletteMove(i32),
+	PaletteRun,
+	PaletteAscend,
+	SettingChanged {
+		key:   String,
+		value: serde_json::Value,
+	},
+	ResetSetting(String),
+	SelectTheme(String),
+	ReloadSettings,
+	SetMcpEnabled {
+		server:  String,
+		enabled: bool,
+	},
+	RefreshDiagnostics,
+	RetryDiagnosticSource(String),
+	RefreshUsage,
+	TerminalInput(Vec<u8>),
+	ResizeTerminal {
+		cols: u16,
+		rows: u16,
+	},
+	SelectDrawerTab(usize),
+	ClearTerminal,
+	RestartTerminal,
+	ProcessStop(String),
+	ProcessRestart(String),
+	ProcessSignal(String),
+	PinSession(u64),
+	DeferSession(u64),
+	ParkSession(u64),
+	FilterQueue(String),
+	NewSession,
+	CloseTabOrPark,
+	MoveQueueSelection(i32),
+	ScrollTranscript(ScrollBy),
+	FindInTranscript,
+	StepTurn(i32),
+	ToggleBlock,
+	ToggleQueue,
+	TogglePanel,
+	SetDiffMode(veyyon_desktop_model::DiffMode),
+	OpenFile(String),
+	ToggleTreeNode(String),
+	ExpandContext {
+		file: usize,
+		row:  usize,
+	},
+	SelectChangeScope(veyyon_desktop_model::ChangeScope),
 }
 
 impl Intent {
 	/// Whether the shell can finish this intent alone.
-	///
-	/// A local intent is complete once the state changes: nothing outside the
-	/// window is waiting on it, so reporting it to a host would be noise. The
-	/// rest are requests a host answers, and the shell's own change is only the
-	/// optimistic part — removing an answered card, clearing what was sent.
-	///
-	/// Opening a session is not local. The highlight is, but the transcript
-	/// belongs to the host, and a shell that kept the selection to itself would
-	/// draw a row as open that nothing ever filled. Opening the drawer is not
-	/// local for the same reason: the pane is the host's terminal.
 	pub const fn is_local(&self) -> bool {
-		matches!(self, Self::SelectTab(_) | Self::SetDrawer { open: false })
+		matches!(
+			self,
+			Self::SelectTab(_)
+				| Self::Attach(_)
+				| Self::RemoveAttachment(_)
+				| Self::SelectDrawerTab(_)
+				| Self::SetDrawer { open: false }
+				| Self::DismissError(_)
+				| Self::OpenOverlay(_)
+				| Self::CloseOverlay
+				| Self::PaletteMove(_)
+				| Self::PinSession(_)
+				| Self::DeferSession(_)
+				| Self::ParkSession(_)
+				| Self::FilterQueue(_)
+				| Self::MoveQueueSelection(_)
+				| Self::ScrollTranscript(_)
+				| Self::FindInTranscript
+				| Self::StepTurn(_)
+				| Self::ToggleBlock
+				| Self::ToggleQueue
+				| Self::TogglePanel
+				| Self::SetDiffMode(_)
+				| Self::ToggleTreeNode(_)
+				| Self::ExpandContext { .. }
+		)
 	}
 
 	/// Applies the part of this intent the shell owns.
-	///
-	/// Every out-of-range position is dropped rather than clamped. A tab index
-	/// or a card position that no longer exists means the state moved under the
-	/// click, and the nearest surviving one is not what was clicked.
 	pub fn apply(&self, state: &mut ShellState) {
-		match *self {
-			Self::SelectSession(id) => {
-				state.current_id = id;
-				// The titlebar names the open session, so a selection that did
-				// not move the title has left the chrome describing the
-				// previous one.
-				if let Some(title) = state.row(id).map(|row| row.title.clone()) {
-					state.title = title;
-				}
-			},
-			Self::SelectTab(index) => {
-				if index < state.tabs.len() {
-					state.active_tab = index;
-				}
-			},
-			Self::SetDrawer { open } => state.drawer_open = open,
-			// A card is removed as soon as it is answered, because a decision
-			// surface that keeps offering an answered question invites the
-			// operator to answer it twice.
-			Self::Approval { card, .. } | Self::Answer { card, .. } | Self::Plan { card, .. } => {
-				if state.cards.get(card).is_some() {
-					state.cards.remove(card);
-				}
-			},
-			// A reply takes the composer's text with it: the text was the
-			// answer, and leaving it in place offers it again as a prompt.
-			Self::Reply { card, .. } => {
-				if state.cards.get(card).is_some() {
-					state.cards.remove(card);
-					state.composed.clear();
-				}
-			},
-			Self::Send(_) => state.composed.clear(),
-		}
+		apply::apply_intent(self, state);
 	}
 }
 
 /// The intents recorded for a host, and the one place an intent is applied.
-///
-/// Kept apart from the view because a click's effect is a function of an intent
-/// and a state: nothing about it needs a window, a renderer or a gpui context.
-/// Holding it here is what makes the whole interaction contract exercisable
-/// without rendering a frame.
 #[derive(Debug, Default)]
 pub struct Intents {
 	pending: Vec<Intent>,
@@ -141,18 +179,25 @@ impl Intents {
 
 	/// Applies what the operator did, and records what a host must answer.
 	///
-	/// Every surface reaches the state through here and through nothing else,
-	/// so what an interaction does is decided in one place rather than once per
-	/// click handler.
+	/// Running a palette command is the command: the palette closes and the
+	/// command is dispatched as if its own control had been clicked, so one
+	/// that needs a host reaches the host.
 	pub fn dispatch(&mut self, intent: Intent, state: &mut ShellState) {
-		// An empty send is discarded rather than recorded. A host that received
-		// it would have to decide what an empty message means, and there is no
-		// answer to that better than not sending it.
-		if let Intent::Send(text) = &intent
-			&& text.trim().is_empty()
-		{
+		if match &intent {
+			Intent::Send { text, .. } | Intent::Steer(text) | Intent::Queue(text) => {
+				text.trim().is_empty()
+			},
+			_ => false,
+		} {
 			return;
 		}
+
+		if intent == Intent::PaletteRun
+			&& let Some(run) = state.overlay_palette().and_then(PaletteState::run_intent) {
+				state.overlay = None;
+				self.dispatch(run, state);
+				return;
+			}
 
 		intent.apply(state);
 		if !intent.is_local() {
@@ -161,9 +206,6 @@ impl Intents {
 	}
 
 	/// Takes the intents a host has not seen yet.
-	///
-	/// A transport drains this. The shell holds no connection, so an intent
-	/// nothing drains accumulates rather than failing.
 	pub fn drain(&mut self) -> Vec<Intent> {
 		std::mem::take(&mut self.pending)
 	}

@@ -143,12 +143,12 @@ fn approval(
 		.child(pane)
 		.child(answers(
 			&[
-				("Reject", Choice::Fixed(Intent::Approval { card, approved: false, standing: false })),
+				("Reject", Choice::Fixed(Box::new(Intent::Approval { card, approved: false, standing: false }))),
 				(
 					"Approve for session",
-					Choice::Fixed(Intent::Approval { card, approved: true, standing: true }),
+					Choice::Fixed(Box::new(Intent::Approval { card, approved: true, standing: true })),
 				),
-				("Approve", Choice::Fixed(Intent::Approval { card, approved: true, standing: false })),
+				("Approve", Choice::Fixed(Box::new(Intent::Approval { card, approved: true, standing: false }))),
 			],
 			tokens,
 			cx,
@@ -226,15 +226,17 @@ fn question(
 /// is whatever the composer holds at the click, so it is built then.
 #[derive(Clone)]
 enum Choice {
-	Fixed(Intent),
+	Fixed(Box<Intent>),
 	Reply { card: usize },
 }
 
 impl Choice {
 	fn intent(&self, view: &ShellView) -> Intent {
 		match self {
-			Self::Fixed(intent) => intent.clone(),
-			Self::Reply { card } => Intent::Reply { card: *card, text: view.state().composed.clone() },
+			Self::Fixed(intent) => intent.as_ref().clone(),
+			Self::Reply { card } => {
+				Intent::Reply { card: *card, text: view.composer_text().to_string() }
+			},
 		}
 	}
 }
@@ -284,8 +286,8 @@ fn plan(
 		.child(markdown)
 		.child(answers(
 			&[
-				("Revise", Choice::Fixed(Intent::Plan { card, accepted: false })),
-				("Accept", Choice::Fixed(Intent::Plan { card, accepted: true })),
+				("Revise", Choice::Fixed(Box::new(Intent::Plan { card, accepted: false }))),
+				("Accept", Choice::Fixed(Box::new(Intent::Plan { card, accepted: true }))),
 			],
 			tokens,
 			cx,
@@ -303,16 +305,26 @@ fn answers(choices: &[(&str, Choice)], tokens: &TokenSet, cx: &Context<ShellView
 		.gap(tokens.spacing(SpacingStep::S2));
 
 	// The last choice is the affirmative one and carries the accent; the rest
-	// are quiet, so the default reading of the card is what it will do.
+	// are ink on hairline, so the default reading of the card is what it will
+	// do. A neutral fill here would paint a second ground over the card's own.
 	let last = choices.len().saturating_sub(1);
 	for (index, (label, choice)) in choices.iter().enumerate() {
 		let affirmative = index == last;
-		let (ground, ink) = if affirmative {
-			(tokens.color(ColorRole::Accent), tokens.color(ColorRole::AccentForeground))
+		let (ground, edge, ink, hover) = if affirmative {
+			(
+				tokens.color(ColorRole::Accent),
+				tokens.transparent(),
+				tokens.color(ColorRole::AccentForeground),
+				tokens.color(ColorRole::Focus),
+			)
 		} else {
-			(tokens.color(ColorRole::Inset), tokens.color(ColorRole::Secondary))
+			(
+				tokens.transparent(),
+				tokens.color(ColorRole::Hairline),
+				tokens.color(ColorRole::Secondary),
+				tokens.row_hover(),
+			)
 		};
-		let hover = tokens.row_hover();
 		let choice = choice.clone();
 
 		row = row.child(
@@ -329,6 +341,8 @@ fn answers(choices: &[(&str, Choice)], tokens: &TokenSet, cx: &Context<ShellView
 				.py(tokens.spacing(SpacingStep::S1))
 				.rounded(tokens.radius(RadiusStep::Sm))
 				.bg(ground)
+				.border(tokens.stroke(StrokeStep::Hairline))
+				.border_color(edge)
 				.text_size(tokens.font_size(TextRamp::Micro))
 				.line_height(tokens.line_height(TextRamp::Micro))
 				.font_weight(tokens.font_weight(TextWeight::Medium))
