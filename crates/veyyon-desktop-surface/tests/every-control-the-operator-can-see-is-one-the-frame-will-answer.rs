@@ -22,14 +22,17 @@
 //! judge whether a hit area is comfortable, only that it exists, lies inside
 //! the window and has area.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_scene::headless::{
 	Captured, RenderOptions, headless_context, render_view_captured,
 };
 use veyyon_desktop_surface::{
-	Intent, ShellState, ShellView, fixture, install_tokens, queue::rail_fill,
+	Attachment, Intent, MediaType, ShellState, ShellView,
+	composer::{AttachmentError, payload_for},
+	fixture, install_tokens,
+	queue::rail_fill,
 };
 use veyyon_gpui::{App, AppContext, Bounds, Pixels};
 
@@ -123,7 +126,14 @@ fn expected_controls(state: &ShellState) -> usize {
 	// something to show.
 	let chrome = 1 + 3 + 1 + 8 + usize::from(!state.panel.is_empty());
 
-	queue_controls + panel + answers + chrome
+	// Each attachment card answers three clicks: the card's own hover group,
+	// the wrapper whose paint turns on with that hover (a `group_hover` style
+	// is hit-tested so its reveal can be tracked), and the remove control the
+	// hover reveals. The tray itself answers nothing. The refusal notice is
+	// window-local state and so is counted by its own test below, not here.
+	let tray = state.composer.attachments.len() * 3;
+
+	queue_controls + panel + answers + chrome + tray
 }
 
 /// Whether a rect lies inside the window and encloses any area at all.
@@ -250,5 +260,91 @@ fn a_dispatched_intent_reaches_the_frame_the_operator_then_looks_at() {
 		open.frame.as_bytes(),
 		"a dispatched toggle produced an identical frame, so the state the shell draws from is not \
 		 the state the dispatch changed"
+	);
+}
+
+/// One image and one clip, so both thumbnail arms are drawn.
+fn tray() -> Vec<Attachment> {
+	let png = || payload_for(MediaType::Png, b"\x89PNG\r\n\x1a\nrest".to_vec());
+	vec![
+		Attachment::from_path(PathBuf::from("/repo/shot.png"), MediaType::Png, png()),
+		Attachment::from_clipboard(1, MediaType::Png, png()),
+	]
+}
+
+#[test]
+fn the_tray_registers_each_card_and_the_remove_control_on_it() {
+	let bare = fixture::populated();
+	assert!(
+		bare.composer.attachments.is_empty(),
+		"the fixture carries a tray, so this proves nothing"
+	);
+
+	let mut with_tray = bare.clone();
+	with_tray.composer.attachments = tray();
+	let cards = with_tray.composer.attachments.len();
+
+	let before = capture(bare).hitboxes.len();
+	let captured = capture(with_tray.clone());
+
+	assert_eq!(
+		captured.hitboxes.len() - before,
+		cards * 3,
+		"a tray of {cards} added {} hit rects rather than three per card — the card's hover group, \
+		 the wrapper whose paint turns on with that hover, and the remove control — so a chip shows \
+		 a close that answers no click",
+		captured.hitboxes.len() - before
+	);
+	assert_eq!(
+		captured.hitboxes.len(),
+		expected_controls(&with_tray),
+		"the expectation did not move with the tray it now counts"
+	);
+	for rect in &captured.hitboxes {
+		assert!(reachable(rect), "a tray control's hit rect {rect:?} cannot be clicked");
+	}
+}
+
+#[test]
+fn the_refusal_notice_registers_its_close_while_it_is_up() {
+	let stage = |mark: &str| {
+		if std::env::var_os("VEYYON_CENSUS_PROBE").is_some() {
+			eprintln!("refusal stage: {mark}");
+		}
+	};
+	stage("context");
+	let mut cx = headless_context().expect("a headless renderer is required to render the shell");
+	let tokens = load_bundled_tokens().expect("the bundled tokens load");
+	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
+
+	stage("render with notice");
+	// The context must drop before the baseline capture opens its own: two
+	// live headless contexts deadlock the renderer.
+	let with_notice = {
+		let mut cx = cx;
+		render_view_captured(&mut cx, &options(), move |_window, app: &mut App| {
+			let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
+				.expect("the bundled tokens and theme install");
+			app.new(|_| {
+				let mut view = ShellView::new(installed, fixture::populated());
+				view.attach(Err(AttachmentError::Unsupported {
+					path: PathBuf::from("/repo/notes.txt"),
+				}));
+				assert!(view.composer_local().notice.is_some(), "the refusal did not raise the notice");
+				view
+			})
+		})
+		.expect("the shell renders offscreen")
+	};
+
+	stage("baseline capture");
+	let without = capture(fixture::populated()).hitboxes.len();
+	stage("assert");
+	assert_eq!(
+		with_notice.hitboxes.len() - without,
+		1,
+		"the notice added {} hit rects rather than exactly its close, so the dismissal the accent \
+		 line appears to offer answers no click",
+		with_notice.hitboxes.len() - without
 	);
 }
