@@ -9,6 +9,21 @@
 use veyyon_desktop_kit::TintRole;
 use veyyon_desktop_tokens::ColorRole;
 
+pub use crate::{
+	attach::ConnectionPhase,
+	composer::{
+		Attachment, ComposerState, ContextMeter, ModelControl, ModelOption, ThinkingControl,
+		TurnPhase,
+	},
+	controls::{Availability, ControlError, ControlStates},
+	drawer::DrawerContent,
+	keymap::KeymapState,
+	overlay::{Overlay, PaletteState, SettingsState},
+	right_panel::{
+		DiffFile, DiffRow, FileLine, FileView, HighlightSpan, PanelContent, PanelTab, TreeContent,
+		TreeRowItem,
+	},
+};
 /// A status badge (§5.1). The vocabulary is fixed: a badge states what the
 /// session needs from the operator, or what it is doing without them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,7 +84,7 @@ impl Badge {
 }
 
 /// A queue section (§5.1), in the order the queue lists them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Section {
 	/// Composed but not yet sent.
 	Unsent,
@@ -111,7 +126,7 @@ impl Section {
 }
 
 /// A row in the queue.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Row {
 	/// The session this row opens. Stable across a re-section, so selection
 	/// survives a row moving from Live to Deferred, which a positional index
@@ -128,7 +143,7 @@ pub struct Row {
 }
 
 /// One block inside an assistant turn (§5.2).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Block {
 	/// Prose the assistant wrote.
 	Prose(String),
@@ -153,7 +168,7 @@ pub enum Block {
 }
 
 /// A turn in the transcript.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Turn {
 	/// What the operator sent.
 	Operator(String),
@@ -162,7 +177,7 @@ pub enum Turn {
 }
 
 /// A decision attached above the composer (§5.3).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Card {
 	/// The agent wants to run something that needs permission.
 	Approval {
@@ -206,7 +221,7 @@ impl Card {
 }
 
 /// A row in the right panel's file tree (§5.4).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreeRow {
 	/// Nesting depth, zero at the root.
 	pub depth:   usize,
@@ -217,33 +232,39 @@ pub struct TreeRow {
 }
 
 /// Everything one shell render draws.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShellState {
 	/// The window title: the open session's name.
-	pub title:        String,
+	pub title:       String,
 	/// The queue's sections and their rows.
-	pub sections:     Vec<(Section, Vec<Row>)>,
+	pub sections:    Vec<(Section, Vec<Row>)>,
 	/// The open session's transcript.
-	pub transcript:   Vec<Turn>,
-	/// The composer's current text, empty when it shows its placeholder.
-	pub composed:     String,
+	pub transcript:  Vec<Turn>,
+	/// The active conversational turn phase.
+	pub turn:        TurnPhase,
+	/// The composer's footer: model, thinking level, queue mode, attachments
+	/// and the context meter, as the host reported them (§5.4).
+	pub composer:    ComposerState,
 	/// The run bar's status line.
-	pub run_status:   Option<(Badge, String)>,
-	/// The right panel's tree, empty when the panel is closed.
-	pub tree:         Vec<TreeRow>,
-	/// The right panel's tab labels and which is active.
-	pub tabs:         Vec<String>,
-	/// The active tab's index.
-	pub active_tab:   usize,
+	pub run_status:  Option<(Badge, String)>,
+	/// The right panel's content and tabs (§5.6, §5.11).
+	pub panel:       PanelContent,
 	/// Decisions attached above the composer.
-	pub cards:        Vec<Card>,
-	/// Supervised output lines. Retained while the drawer is closed, so
-	/// reopening it shows what was there rather than an empty pane.
-	pub drawer_lines: Vec<String>,
+	pub cards:       Vec<Card>,
+	/// Terminal drawer state and tenants.
+	pub drawer:      DrawerContent,
 	/// Whether the terminal drawer is open.
-	pub drawer_open:  bool,
+	pub drawer_open: bool,
 	/// The open session.
-	pub current_id:   u64,
+	pub current_id:  u64,
+	/// Active transport connectivity phase or authentication overlay state.
+	pub connection:  ConnectionPhase,
+	/// Control availability and error states for capability gate resolution.
+	pub controls:    ControlStates,
+	/// Modal floating overlay currently active (Palette or Settings).
+	pub overlay:     Option<Overlay>,
+	/// Keymap and keyboard navigation state (§5.14).
+	pub keymap:      KeymapState,
 }
 
 impl ShellState {
@@ -259,23 +280,52 @@ impl ShellState {
 			.flat_map(|(_, rows)| rows.iter())
 			.find(|row| row.id == id)
 	}
+
+	/// Returns the palette state if a palette overlay is open.
+	#[must_use]
+	pub fn overlay_palette(&self) -> Option<&PaletteState> {
+		self.overlay.as_ref().and_then(Overlay::as_palette)
+	}
+
+	/// Returns a mutable reference to the palette state if a palette overlay is
+	/// open.
+	#[must_use]
+	pub fn overlay_palette_mut(&mut self) -> Option<&mut PaletteState> {
+		self.overlay.as_mut().and_then(Overlay::as_palette_mut)
+	}
+
+	/// Returns the settings state if a settings overlay is open.
+	#[must_use]
+	pub fn overlay_settings(&self) -> Option<&SettingsState> {
+		self.overlay.as_ref().and_then(Overlay::as_settings)
+	}
+
+	/// Returns a mutable reference to the settings state if a settings overlay
+	/// is open.
+	#[must_use]
+	pub fn overlay_settings_mut(&mut self) -> Option<&mut SettingsState> {
+		self.overlay.as_mut().and_then(Overlay::as_settings_mut)
+	}
 }
 
 impl Default for ShellState {
 	fn default() -> Self {
 		Self {
-			title:        "veyyon".to_string(),
-			sections:     Vec::new(),
-			transcript:   Vec::new(),
-			composed:     String::new(),
-			run_status:   None,
-			tree:         Vec::new(),
-			tabs:         Vec::new(),
-			active_tab:   0,
-			cards:        Vec::new(),
-			drawer_lines: Vec::new(),
-			drawer_open:  false,
-			current_id:   0,
+			title:       "veyyon".to_string(),
+			sections:    Vec::new(),
+			transcript:  Vec::new(),
+			turn:        TurnPhase::default(),
+			composer:    ComposerState::default(),
+			run_status:  None,
+			panel:       PanelContent::default(),
+			cards:       Vec::new(),
+			drawer:      DrawerContent::default(),
+			drawer_open: false,
+			current_id:  0,
+			connection:  ConnectionPhase::default(),
+			controls:    ControlStates::default(),
+			overlay:     None,
+			keymap:      KeymapState::default(),
 		}
 	}
 }

@@ -57,6 +57,7 @@ fn shed(viewport_px: f32, panel_open: bool) -> ShedInput {
 		viewport_height_px: SWEPT_HEIGHT,
 		chrome_height_px: swept_chrome(),
 		gutter_px,
+		queue_collapsed: false,
 		panel_open,
 		labels: LabelState::default(),
 	}
@@ -236,6 +237,7 @@ fn a_resize_across_the_label_threshold_settles_instead_of_flickering() {
 				viewport_height_px: SWEPT_HEIGHT,
 				chrome_height_px: surface.shell.titlebar_height_px,
 				gutter_px: gutter,
+				queue_collapsed: false,
 				panel_open: true,
 				labels,
 			},

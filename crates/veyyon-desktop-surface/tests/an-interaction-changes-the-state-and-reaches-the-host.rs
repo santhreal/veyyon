@@ -15,9 +15,37 @@
 //! `every-control-the-operator-can-see-is-one-the-frame-will-answer.rs`, and it
 //! does not catch a host that ignores what it drained.
 
-use veyyon_desktop_surface::{
-	Badge, Card, Intent, Row, Section, ShellState, TreeRow, intent::Intents,
+use std::path::PathBuf;
+
+use veyyon_desktop_model::{
+	McpServerStatus, McpServerView, SettingEntry, SettingKind, SurfaceId, ThemesView,
+	domain::ThemeView,
 };
+use veyyon_desktop_surface::{
+	Attachment, Badge, Card, ConnectionPhase, ControlError, DiffFile, DiffRow, Intent, Overlay,
+	PaletteMode, PaletteState, PanelContent, PanelTab, Row, ScrollBy, Section, SettingsState,
+	ShellState, TreeContent, TreeRowItem,
+	composer::{MediaType, ModelChoice, QueueMode, ThinkingLevel, TurnPhase, payload_for},
+	drawer::{DrawerContent, DrawerTab, ProcessRow},
+	intent::Intents,
+	terminal::{Cell, CellStyle, Ink},
+};
+
+/// A one-signature PNG under a fixed name: enough for a reducer, which never
+/// decodes it, and small enough that a sweep of every intent stays cheap.
+fn attachment() -> Attachment {
+	let bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+	Attachment::from_path(
+		PathBuf::from("shot.png"),
+		MediaType::Png,
+		payload_for(MediaType::Png, bytes),
+	)
+}
+
+/// A send carrying `text` and one image.
+fn send(text: &str) -> Intent {
+	Intent::Send { text: text.to_owned(), attachments: vec![attachment()] }
+}
 
 /// A state with two sections, three tabs, three cards and a closed drawer.
 ///
@@ -25,8 +53,8 @@ use veyyon_desktop_surface::{
 /// exact positions and counts, and the fixture exists to be awkward to draw.
 fn state() -> ShellState {
 	ShellState {
-		title:        "first".to_owned(),
-		sections:     vec![
+		title: "first".to_owned(),
+		sections: vec![
 			(Section::Live, vec![
 				Row {
 					id:       7,
@@ -51,13 +79,36 @@ fn state() -> ShellState {
 				meta:     None,
 			}]),
 		],
-		transcript:   Vec::new(),
-		composed:     String::new(),
-		run_status:   None,
-		tree:         vec![TreeRow { depth: 0, name: "src".to_owned(), changed: None }],
-		tabs:         vec!["Changes".to_owned(), "Terminal".to_owned(), "Diagnostics".to_owned()],
-		active_tab:   0,
-		cards:        vec![
+		transcript: Vec::new(),
+		turn: TurnPhase::Idle,
+		run_status: None,
+		panel: PanelContent {
+			tabs:       vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
+			active_tab: PanelTab::Diff,
+			diff:       vec![DiffFile {
+				path:      "src/main.rs".to_string(),
+				old_path:  None,
+				status:    veyyon_desktop_model::ChangeStatus::Modified,
+				additions: 1,
+				deletions: 1,
+				rows:      vec![DiffRow::Collapsed { hidden: 10, before_line: 0, after_line: 0 }],
+			}],
+			file:       None,
+			tree:       TreeContent {
+				rows:           vec![TreeRowItem {
+					path:        "src".to_string(),
+					name:        "src".to_string(),
+					depth:       0,
+					is_dir:      true,
+					is_expanded: false,
+					changed:     None,
+				}],
+				selected_path:  None,
+				expanded_paths: std::collections::BTreeSet::new(),
+			},
+			diff_mode:  veyyon_desktop_model::DiffMode::Unified,
+		},
+		cards: vec![
 			Card::Approval { tool: "bash".to_owned(), detail: vec!["rm -rf build".to_owned()] },
 			Card::Question {
 				prompt:  "Which target?".to_owned(),
@@ -65,9 +116,38 @@ fn state() -> ShellState {
 			},
 			Card::Plan { title: "Split the loaders".to_owned(), body: vec!["four files".to_owned()] },
 		],
-		drawer_lines: vec!["$ cargo test".to_owned()],
-		drawer_open:  false,
-		current_id:   7,
+		drawer: DrawerContent {
+			tabs:           vec![
+				DrawerTab::Terminal { id: "t1".to_owned(), title: "Terminal 1".to_owned() },
+				DrawerTab::Terminal { id: "t2".to_owned(), title: "Terminal 2".to_owned() },
+			],
+			active_tab:     0,
+			grid_rows:      vec![vec![Cell {
+				c:      'x',
+				ink:    Ink::Default,
+				bg_ink: Ink::Default,
+				style:  CellStyle::new(),
+				width:  1,
+			}]],
+			cursor_col:     0,
+			cursor_row:     0,
+			cursor_visible: true,
+			title:          "term".to_owned(),
+			scroll_offset:  1,
+			processes:      vec![ProcessRow {
+				name:          "build".to_owned(),
+				pid:           Some(123),
+				status:        "running".to_owned(),
+				elapsed_label: "10s".to_owned(),
+				terminated_by: None,
+				exit_code:     None,
+			}],
+			selection:      None,
+			search:         None,
+		},
+		drawer_open: false,
+		current_id: 7,
+		..ShellState::default()
 	}
 }
 
@@ -86,7 +166,66 @@ fn every_intent() -> Vec<Intent> {
 		Intent::Answer { card: 1, option: 1 },
 		Intent::Reply { card: 1, text: "ship it".to_owned() },
 		Intent::Plan { card: 2, accepted: false },
-		Intent::Send("ship it".to_owned()),
+		send("ship it"),
+		Intent::Steer("steer text".to_owned()),
+		Intent::Queue("queue text".to_owned()),
+		Intent::AbortTurn,
+		Intent::SetQueueMode(QueueMode::Queue),
+		Intent::SelectModel(ModelChoice::new("anthropic", "claude-sonnet-4-6")),
+		Intent::SetThinking(ThinkingLevel::new("medium")),
+		Intent::RemoveAttachment(0),
+		Intent::Attach(attachment()),
+		Intent::RetryConnection,
+		Intent::StartProviderAuth("anthropic".to_owned()),
+		Intent::SubmitAuthSecret {
+			provider: "anthropic".to_owned(),
+			secret:   "sk-ant-...".to_owned(),
+		},
+		Intent::OpenAuthUrl("https://auth.provider.com/oauth".to_owned()),
+		Intent::CancelAuthFlow,
+		Intent::RetryAuthFlow,
+		Intent::RetryControl(SurfaceId::ConnectionRetryButton),
+		Intent::DismissError(SurfaceId::ConnectionRetryButton),
+		Intent::OpenOverlay(Box::new(Overlay::Palette(PaletteState::default()))),
+		Intent::CloseOverlay,
+		Intent::PaletteQuery("find".to_owned()),
+		Intent::PaletteMove(1),
+		Intent::PaletteRun,
+		Intent::PaletteAscend,
+		Intent::SettingChanged { key: "font_size".to_owned(), value: serde_json::json!(14) },
+		Intent::SelectTheme("light".to_owned()),
+		Intent::ResetSetting("font_size".to_owned()),
+		Intent::ReloadSettings,
+		Intent::SetMcpEnabled { server: "fs".to_owned(), enabled: true },
+		Intent::RefreshDiagnostics,
+		Intent::RetryDiagnosticSource("github".to_owned()),
+		Intent::RefreshUsage,
+		Intent::PinSession(7),
+		Intent::DeferSession(7),
+		Intent::ParkSession(7),
+		Intent::FilterQueue("test".to_owned()),
+		Intent::NewSession,
+		Intent::CloseTabOrPark,
+		Intent::MoveQueueSelection(1),
+		Intent::ScrollTranscript(ScrollBy::PageDown),
+		Intent::FindInTranscript,
+		Intent::StepTurn(1),
+		Intent::ToggleBlock,
+		Intent::ToggleQueue,
+		Intent::TogglePanel,
+		Intent::SelectDrawerTab(1),
+		Intent::TerminalInput(vec![b'a']),
+		Intent::ResizeTerminal { cols: 80, rows: 24 },
+		Intent::ClearTerminal,
+		Intent::RestartTerminal,
+		Intent::ProcessStop("build".to_owned()),
+		Intent::ProcessRestart("build".to_owned()),
+		Intent::ProcessSignal("build".to_owned()),
+		Intent::SetDiffMode(veyyon_desktop_model::DiffMode::Split),
+		Intent::OpenFile("src/lib.rs".to_owned()),
+		Intent::ToggleTreeNode("src".to_owned()),
+		Intent::ExpandContext { file: 0, row: 0 },
+		Intent::SelectChangeScope(veyyon_desktop_model::ChangeScope::Staged),
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -100,7 +239,63 @@ fn every_intent() -> Vec<Intent> {
 			| Intent::Answer { .. }
 			| Intent::Reply { .. }
 			| Intent::Plan { .. }
-			| Intent::Send(_) => {},
+			| Intent::Send { .. }
+			| Intent::Steer(_)
+			| Intent::Queue(_)
+			| Intent::AbortTurn
+			| Intent::SetQueueMode(_)
+			| Intent::SelectModel(_)
+			| Intent::SetThinking(_)
+			| Intent::RemoveAttachment(_)
+			| Intent::Attach(_)
+			| Intent::RetryConnection
+			| Intent::StartProviderAuth(_)
+			| Intent::SubmitAuthSecret { .. }
+			| Intent::OpenAuthUrl(_)
+			| Intent::CancelAuthFlow
+			| Intent::RetryAuthFlow
+			| Intent::RetryControl(_)
+			| Intent::DismissError(_)
+			| Intent::OpenOverlay(_)
+			| Intent::CloseOverlay
+			| Intent::PaletteQuery(_)
+			| Intent::PaletteMove(_)
+			| Intent::PaletteRun
+			| Intent::PaletteAscend
+			| Intent::SettingChanged { .. }
+			| Intent::SelectTheme(_)
+			| Intent::ResetSetting(_)
+			| Intent::ReloadSettings
+			| Intent::SetMcpEnabled { .. }
+			| Intent::RefreshDiagnostics
+			| Intent::RetryDiagnosticSource(_)
+			| Intent::RefreshUsage
+			| Intent::PinSession(_)
+			| Intent::DeferSession(_)
+			| Intent::ParkSession(_)
+			| Intent::FilterQueue(_)
+			| Intent::NewSession
+			| Intent::CloseTabOrPark
+			| Intent::MoveQueueSelection(_)
+			| Intent::ScrollTranscript(_)
+			| Intent::FindInTranscript
+			| Intent::StepTurn(_)
+			| Intent::ToggleBlock
+			| Intent::ToggleQueue
+			| Intent::TogglePanel
+			| Intent::SelectDrawerTab(_)
+			| Intent::TerminalInput(_)
+			| Intent::ResizeTerminal { .. }
+			| Intent::RestartTerminal
+			| Intent::ClearTerminal
+			| Intent::ProcessStop(_)
+			| Intent::ProcessRestart(_)
+			| Intent::ProcessSignal(_)
+			| Intent::SetDiffMode(_)
+			| Intent::OpenFile(_)
+			| Intent::ToggleTreeNode(_)
+			| Intent::ExpandContext { .. }
+			| Intent::SelectChangeScope(_) => {},
 		}
 	}
 
@@ -114,11 +309,122 @@ fn every_intent_either_changes_the_state_or_is_reported_and_never_neither() {
 		// changes nothing, and the sweep would then read a working send as a
 		// dead one.
 		let mut before = state();
-		before.composed = "ship it".to_owned();
+		if let Intent::AbortTurn | Intent::SetQueueMode(QueueMode::Queue) = &intent {
+			before.turn = TurnPhase::Running { queue_mode: QueueMode::Steer };
+		}
+		if let Intent::RemoveAttachment(_) = &intent {
+			before.composer.attachments = vec![attachment()];
+		}
 		// The drawer is seeded opposite to the intent for the same reason: a
 		// close on a closed drawer is not the close being swept.
 		if let Intent::SetDrawer { open } = &intent {
 			before.drawer_open = !open;
+		}
+		if let Intent::DismissError(id) | Intent::RetryControl(id) = &intent {
+			before
+				.controls
+				.set_error(id.clone(), ControlError::new("network error", true));
+		}
+		if matches!(&intent, Intent::CancelAuthFlow) {
+			before.connection = ConnectionPhase::NeedsSecret { provider: "anthropic".to_owned() };
+		}
+		if let Intent::RetryConnection | Intent::RetryAuthFlow = &intent {
+			before.connection = ConnectionPhase::Fatal { message: "disconnected".to_owned() };
+		}
+		if matches!(&intent, Intent::CloseOverlay) {
+			before.overlay = Some(Overlay::Palette(PaletteState::default()));
+		}
+		if matches!(&intent, Intent::ClearTerminal) {
+			before.drawer.grid_rows = vec![vec![Cell {
+				c:      'x',
+				ink:    Ink::Default,
+				bg_ink: Ink::Default,
+				style:  CellStyle::new(),
+				width:  1,
+			}]];
+		}
+		if let Intent::TerminalInput(_) = &intent {
+			before.drawer.scroll_offset = 1;
+		}
+		if let Intent::PaletteQuery(_) | Intent::PaletteMove(_) | Intent::PaletteRun = &intent {
+			before.overlay = Some(Overlay::Palette(PaletteState::commands()));
+		}
+		if matches!(&intent, Intent::PaletteAscend) {
+			let mut p = PaletteState::new(PaletteMode::Browse);
+			p.browse_path = vec!["crates".to_owned(), "src".to_owned()];
+			before.overlay = Some(Overlay::Palette(p));
+		}
+		if let Intent::SettingChanged { key, .. } = &intent {
+			let mut s = SettingsState::default();
+			s.settings.insert(key.clone(), SettingEntry {
+				value:       serde_json::json!(12),
+				default:     serde_json::json!(12),
+				source:      "default".to_string(),
+				kind:        SettingKind::Number,
+				label:       None,
+				description: None,
+				tab:         None,
+				group:       None,
+				values:      Vec::new(),
+				options:     Vec::new(),
+				min:         None,
+				max:         None,
+				global:      false,
+				advanced:    false,
+				hidden:      false,
+			});
+			before.overlay = Some(Overlay::Settings(Box::new(s)));
+		}
+		if let Intent::ResetSetting(key) = &intent {
+			let mut s = SettingsState::default();
+			s.settings.insert(key.clone(), SettingEntry {
+				value:       serde_json::json!(99),
+				default:     serde_json::json!(12),
+				source:      "user".to_string(),
+				kind:        SettingKind::Number,
+				label:       None,
+				description: None,
+				tab:         None,
+				group:       None,
+				values:      Vec::new(),
+				options:     Vec::new(),
+				min:         None,
+				max:         None,
+				global:      false,
+				advanced:    false,
+				hidden:      false,
+			});
+			before.overlay = Some(Overlay::Settings(Box::new(s)));
+		}
+		if let Intent::SelectTheme(_) = &intent {
+			before.overlay = Some(Overlay::Settings(Box::new(SettingsState {
+				themes: Some(ThemesView {
+					themes:  vec![
+						ThemeView { id: "dark".to_string(), name: "Dark".to_string(), dark: true },
+						ThemeView { id: "light".to_string(), name: "Light".to_string(), dark: false },
+					],
+					current: "dark".to_string(),
+				}),
+				..SettingsState::default()
+			})));
+		}
+		if let Intent::SetMcpEnabled { server, .. } = &intent {
+			before.overlay = Some(Overlay::Settings(Box::new(SettingsState {
+				mcp: vec![McpServerView {
+					name:    server.clone(),
+					enabled: false,
+					status:  McpServerStatus::Disconnected,
+					tools:   Vec::new(),
+				}],
+				..SettingsState::default()
+			})));
+		}
+		if let Intent::ReloadSettings
+		| Intent::RefreshDiagnostics
+		| Intent::RetryDiagnosticSource(_)
+		| Intent::RefreshUsage = &intent
+		{
+			before.overlay = Some(Overlay::Settings(Box::default()));
 		}
 		let mut after = before.clone();
 
@@ -129,8 +435,9 @@ fn every_intent_either_changes_the_state_or_is_reported_and_never_neither() {
 		let reported = !intents.pending().is_empty();
 
 		assert!(
-			changed,
-			"{intent:?} left the state untouched, so nothing an operator can see happened"
+			changed || reported,
+			"{intent:?} left the state untouched and was not reported, so nothing an operator can \
+			 see happened"
 		);
 		assert_eq!(
 			reported,
@@ -176,18 +483,27 @@ fn a_tab_out_of_range_is_dropped_rather_than_clamped_to_a_neighbour() {
 	let mut intents = Intents::new();
 
 	intents.dispatch(Intent::SelectTab(2), &mut state);
-	assert_eq!(state.active_tab, 2, "the tab that was clicked did not become active");
+	assert_eq!(
+		state.panel.active_tab,
+		PanelTab::Tree,
+		"the tab that was clicked did not become active"
+	);
 
 	// The active tab is moved off the last one first. A clamp and a drop are
 	// indistinguishable while the active tab already is the clamp's target,
 	// which is the shape a suite passes for the wrong reason in.
 	intents.dispatch(Intent::SelectTab(1), &mut state);
-	assert_eq!(state.active_tab, 1, "the tab that was clicked did not become active");
+	assert_eq!(
+		state.panel.active_tab,
+		PanelTab::File,
+		"the tab that was clicked did not become active"
+	);
 
 	for past_the_end in [3, 9, usize::MAX] {
 		intents.dispatch(Intent::SelectTab(past_the_end), &mut state);
 		assert_eq!(
-			state.active_tab, 1,
+			state.panel.active_tab,
+			PanelTab::File,
 			"tab {past_the_end} past the last one moved the panel to a tab nobody clicked"
 		);
 	}
@@ -214,9 +530,8 @@ fn the_drawer_opens_through_the_host_and_closes_alone_keeping_the_output_it_had(
 	intents.dispatch(Intent::SetDrawer { open: false }, &mut state);
 	assert!(!state.drawer_open, "the drawer did not close again");
 	assert!(intents.pending().is_empty(), "closing the drawer is the window's own business");
-	assert_eq!(
-		state.drawer_lines,
-		["$ cargo test"],
+	assert!(
+		!state.drawer.grid_rows.is_empty(),
 		"closing the drawer discarded the output, so reopening it shows an empty pane"
 	);
 }
@@ -261,11 +576,11 @@ fn an_empty_send_changes_nothing_and_is_never_reported() {
 
 	for text in ["", "   ", "\t\n"] {
 		let mut state = state();
-		state.composed = text.to_owned();
+		state.turn = TurnPhase::Idle;
 
-		intents.dispatch(Intent::Send(text.to_owned()), &mut state);
+		intents.dispatch(send(text), &mut state);
 
-		assert_eq!(state.composed, text, "an empty send cleared the composer anyway");
+		assert_eq!(state.turn, TurnPhase::Idle, "an empty send modified turn phase anyway");
 		assert!(
 			intents.pending().is_empty(),
 			"an empty send was handed to a host, which has no answer for it"
@@ -274,23 +589,24 @@ fn an_empty_send_changes_nothing_and_is_never_reported() {
 }
 
 #[test]
-fn a_send_clears_the_composer_and_is_drained_in_the_order_it_happened() {
+fn a_send_transitions_turn_phase_and_is_drained_in_the_order_it_happened() {
 	let mut state = state();
-	state.composed = "ship it".to_owned();
+	state.turn = TurnPhase::Idle;
 	let mut intents = Intents::new();
 
-	intents.dispatch(Intent::Send("ship it".to_owned()), &mut state);
+	intents.dispatch(send("ship it"), &mut state);
 	intents.dispatch(Intent::SelectSession(9), &mut state);
 
-	assert!(
-		state.composed.is_empty(),
-		"the composer still holds text that was already sent, so it can be sent twice"
+	assert_eq!(
+		state.turn,
+		TurnPhase::Running { queue_mode: QueueMode::Steer },
+		"send did not transition to running turn phase"
 	);
 
 	let drained = intents.drain();
 	assert_eq!(
 		drained,
-		[Intent::Send("ship it".to_owned()), Intent::SelectSession(9)],
+		[send("ship it"), Intent::SelectSession(9)],
 		"the host received the operator's decisions out of order"
 	);
 	assert!(

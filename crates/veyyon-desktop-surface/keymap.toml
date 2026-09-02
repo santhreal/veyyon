@@ -1,0 +1,300 @@
+# Veyyon Desktop Default Keybindings (§5.14)
+
+# Global Scope (10 chords)
+[[binding]]
+scope = "global"
+chord = "primary-k"
+action = "OpenPalette"
+
+[[binding]]
+scope = "global"
+chord = "primary-n"
+action = "NewSession"
+
+[[binding]]
+scope = "global"
+chord = "primary-,"
+action = "OpenSettings"
+
+[[binding]]
+scope = "global"
+chord = "primary-b"
+action = "ToggleQueue"
+
+[[binding]]
+scope = "global"
+chord = "primary-j"
+action = "ToggleDrawer"
+
+[[binding]]
+scope = "global"
+chord = "primary-\\"
+action = "TogglePanel"
+
+[[binding]]
+scope = "global"
+chord = "primary-1"
+action = "FocusLive"
+arg = { index = 1 }
+
+[[binding]]
+scope = "global"
+chord = "primary-2"
+action = "FocusLive"
+arg = { index = 2 }
+
+[[binding]]
+scope = "global"
+chord = "primary-3"
+action = "FocusLive"
+arg = { index = 3 }
+
+[[binding]]
+scope = "global"
+chord = "primary-4"
+action = "FocusLive"
+arg = { index = 4 }
+
+[[binding]]
+scope = "global"
+chord = "primary-5"
+action = "FocusLive"
+arg = { index = 5 }
+
+[[binding]]
+scope = "global"
+chord = "primary-6"
+action = "FocusLive"
+arg = { index = 6 }
+
+[[binding]]
+scope = "global"
+chord = "primary-7"
+action = "FocusLive"
+arg = { index = 7 }
+
+[[binding]]
+scope = "global"
+chord = "primary-8"
+action = "FocusLive"
+arg = { index = 8 }
+
+[[binding]]
+scope = "global"
+chord = "primary-9"
+action = "FocusLive"
+arg = { index = 9 }
+
+[[binding]]
+scope = "global"
+chord = "primary-["
+action = "PreviousSession"
+
+[[binding]]
+scope = "global"
+chord = "primary-]"
+action = "NextSession"
+
+[[binding]]
+scope = "global"
+chord = "primary-w"
+action = "CloseTabOrPark"
+
+# Queue Scope (7 chords)
+[[binding]]
+scope = "queue"
+chord = "up"
+action = "MoveSelection"
+arg = { delta = -1 }
+
+[[binding]]
+scope = "queue"
+chord = "down"
+action = "MoveSelection"
+arg = { delta = 1 }
+
+[[binding]]
+scope = "queue"
+chord = "enter"
+action = "OpenSelectedSession"
+
+[[binding]]
+scope = "queue"
+chord = "p"
+action = "TogglePinSelected"
+
+[[binding]]
+scope = "queue"
+chord = "d"
+action = "ToggleDeferSelected"
+
+[[binding]]
+scope = "queue"
+chord = "k"
+action = "ToggleParkSelected"
+
+[[binding]]
+scope = "queue"
+chord = "/"
+action = "FilterQueue"
+
+# Transcript Scope (8 chords)
+[[binding]]
+scope = "transcript"
+chord = "pageup"
+action = "Scroll"
+arg = { by = "page-up" }
+
+[[binding]]
+scope = "transcript"
+chord = "pagedown"
+action = "Scroll"
+arg = { by = "page-down" }
+
+[[binding]]
+scope = "transcript"
+chord = "home"
+action = "Scroll"
+arg = { by = "top" }
+
+[[binding]]
+scope = "transcript"
+chord = "end"
+action = "Scroll"
+arg = { by = "bottom" }
+
+[[binding]]
+scope = "transcript"
+chord = "primary-f"
+action = "FindInTranscript"
+
+[[binding]]
+scope = "transcript"
+chord = "primary-up"
+action = "PreviousTurn"
+
+[[binding]]
+scope = "transcript"
+chord = "primary-down"
+action = "NextTurn"
+
+[[binding]]
+scope = "transcript"
+chord = "space"
+action = "ToggleBlock"
+
+# Composer Scope (18 chords)
+[[binding]]
+scope = "composer"
+chord = "enter"
+action = "Primary"
+
+[[binding]]
+scope = "composer"
+chord = "shift-enter"
+action = "Newline"
+
+[[binding]]
+scope = "composer"
+chord = "primary-enter"
+action = "SplitHalf"
+
+[[binding]]
+scope = "composer"
+chord = "escape"
+action = "Dismiss"
+
+[[binding]]
+scope = "composer"
+chord = "primary-."
+action = "AbortTurn"
+
+[[binding]]
+scope = "composer"
+chord = "primary-/"
+action = "ToggleQueueMode"
+
+[[binding]]
+scope = "composer"
+chord = "1"
+action = "SelectOption"
+arg = { index = 1 }
+
+[[binding]]
+scope = "composer"
+chord = "2"
+action = "SelectOption"
+arg = { index = 2 }
+
+[[binding]]
+scope = "composer"
+chord = "3"
+action = "SelectOption"
+arg = { index = 3 }
+
+[[binding]]
+scope = "composer"
+chord = "4"
+action = "SelectOption"
+arg = { index = 4 }
+
+[[binding]]
+scope = "composer"
+chord = "5"
+action = "SelectOption"
+arg = { index = 5 }
+
+[[binding]]
+scope = "composer"
+chord = "6"
+action = "SelectOption"
+arg = { index = 6 }
+
+[[binding]]
+scope = "composer"
+chord = "7"
+action = "SelectOption"
+arg = { index = 7 }
+
+[[binding]]
+scope = "composer"
+chord = "8"
+action = "SelectOption"
+arg = { index = 8 }
+
+[[binding]]
+scope = "composer"
+chord = "9"
+action = "SelectOption"
+arg = { index = 9 }
+
+[[binding]]
+scope = "composer"
+chord = "primary-shift-m"
+action = "ModelPicker"
+
+[[binding]]
+scope = "composer"
+chord = "primary-shift-t"
+action = "ThinkingLevel"
+
+[[binding]]
+scope = "composer"
+chord = "primary-u"
+action = "AttachFile"
+
+# Panel Scope (3 chords)
+[[binding]]
+scope = "panel"
+chord = "primary-alt-["
+action = "PreviousTab"
+
+[[binding]]
+scope = "panel"
+chord = "primary-alt-]"
+action = "NextTab"
+
+[[binding]]
+scope = "panel"
+chord = "primary-shift-d"
+action = "ToggleDiffMode"

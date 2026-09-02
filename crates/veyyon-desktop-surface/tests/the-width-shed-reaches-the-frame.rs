@@ -44,6 +44,7 @@ fn shed(viewport_px: f32, viewport_height_px: f32, panel_open: bool) -> ShedInpu
 		// chrome above the columns row.
 		chrome_height_px: surface.shell.titlebar_height_px,
 		gutter_px,
+		queue_collapsed: false,
 		panel_open,
 		labels: LabelState::default(),
 	}
@@ -106,7 +107,7 @@ fn at_the_window_floor_the_session_surface_spans_the_window() {
 	// nothing to do with the shed. The window floor also collapses the
 	// queue, so the session surface is the whole row.
 	let mut state = fixture::populated();
-	state.tree = Vec::new();
+	state.panel = veyyon_desktop_surface::PanelContent::default();
 	state.transcript = Vec::new();
 	state.cards = Vec::new();
 	let widths = shell_widths(shed(width as f32, height as f32, false), &surface);
@@ -144,7 +145,10 @@ fn at_the_window_floor_the_panel_overlays_instead_of_taking_the_transcript() {
 	let height = surface.shell.window_min_height_px as u32;
 
 	let state = fixture::populated();
-	assert!(!state.tree.is_empty(), "the fixture must have panel content for this to mean anything");
+	assert!(
+		!state.panel.is_empty(),
+		"the fixture must have panel content for this to mean anything"
+	);
 
 	let widths = shell_widths(shed(width as f32, height as f32, true), &surface);
 	let drawn = match widths.right_panel {
@@ -242,10 +246,10 @@ fn first_differing_row(closed: &RgbaFrame, open: &RgbaFrame, from_y: u32) -> Opt
 /// that has nothing to do with the drawer.
 fn drawer_pair(width: u32, height: u32, name: &str) -> (RgbaFrame, RgbaFrame) {
 	let mut closed = fixture::with_drawer();
-	closed.tree = Vec::new();
+	closed.panel = Default::default();
 	closed.drawer_open = false;
 	let mut open = fixture::with_drawer();
-	open.tree = Vec::new();
+	open.panel = Default::default();
 	(
 		render_at(width, height, closed, &format!("{name}-drawer-closed")),
 		render_at(width, height, open, &format!("{name}-drawer-open")),

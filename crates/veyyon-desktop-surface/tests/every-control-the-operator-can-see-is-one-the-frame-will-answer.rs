@@ -66,21 +66,45 @@ fn expected_controls(state: &ShellState) -> usize {
 	let queue = &tokens.surface.queue;
 	let cards = &tokens.surface.attached_cards;
 
-	// Every drawn queue row is a way to open a session, and the rail draws only
-	// the rows the columns row has height for: it cannot scroll, so a row laid
-	// out past the window's lower edge would be painted clipped and still
-	// answer a click nobody can aim. No notice is shown here, so the chrome
-	// above the columns row is the titlebar alone.
+	// The rail draws only the rows the columns row has height for: it cannot
+	// scroll, so a row laid out past the window's lower edge would be painted
+	// clipped and still answer a click nobody can aim. No notice is shown
+	// here, so the chrome above the columns row is the titlebar alone. Every
+	// drawn queue row answers four clicks: the row itself opens the session,
+	// and the hover-revealed slot carries the park and defer controls, the
+	// slot itself hit-tested because its paint turns on with the hover. A
+	// Deferred or Parked section header answers two more: the header row
+	// toggles the collapse and its chevron is its own control.
 	let columns_px = HEIGHT as f32 - tokens.surface.shell.titlebar_height_px;
-	let rows: usize = rail_fill(&state.sections, columns_px, queue)
+	let drawn_rows: usize = rail_fill(&state.sections, columns_px, queue)
 		.drawn
 		.iter()
 		.sum();
-	// A tab is a control only while the panel it sits in is present.
-	let tabs = if state.tree.is_empty() {
+	let collapsible_headers = state
+		.sections
+		.iter()
+		.filter(|(section, rows)| {
+			matches!(
+				section,
+				veyyon_desktop_surface::model::Section::Deferred
+					| veyyon_desktop_surface::model::Section::Parked
+			) && !rows.is_empty()
+		})
+		.count();
+	let queue_controls = drawn_rows * 4 + collapsible_headers * 2;
+
+	// A tab is a control only while the panel it sits in is present, and the
+	// diff surface adds its unified/split toggle and the click target that
+	// covers its scroll area while it is the active tab.
+	let panel = if state.panel.is_empty() {
 		0
 	} else {
-		state.tabs.len()
+		state.panel.tabs.len()
+			+ if state.panel.active_tab == veyyon_desktop_surface::PanelTab::Diff {
+				2
+			} else {
+				0
+			}
 	};
 
 	// A card past the stack cap is collapsed into a count and offers nothing.
@@ -92,8 +116,14 @@ fn expected_controls(state: &ShellState) -> usize {
 		.map(veyyon_desktop_surface::Card::answer_count)
 		.sum();
 
-	// The send control and the titlebar's drawer control are always present.
-	rows + tabs + answers + 2
+	// The constant chrome: the window root, the titlebar's drag strip and its
+	// queue and drawer toggles, the rail's settings gear, and the composer's
+	// card, input, model, thinking, queue-mode, attach, context and send
+	// controls. The titlebar's panel toggle is drawn only while the panel has
+	// something to show.
+	let chrome = 1 + 3 + 1 + 8 + usize::from(!state.panel.is_empty());
+
+	queue_controls + panel + answers + chrome
 }
 
 /// Whether a rect lies inside the window and encloses any area at all.
@@ -159,19 +189,24 @@ fn taking_the_cards_away_takes_exactly_their_answers_away() {
 #[test]
 fn closing_the_right_panel_takes_its_tabs_out_of_reach() {
 	let open = fixture::populated();
-	let tabs = open.tabs.len();
-	assert!(tabs > 0, "the fixture has no tabs, so this proves nothing");
+	assert!(!open.panel.is_empty(), "the fixture has no panel, so this proves nothing");
 
-	let before = capture(fixture::populated()).hitboxes.len();
-	let after = capture(ShellState { tree: Vec::new(), ..fixture::populated() })
-		.hitboxes
-		.len();
+	let mut closed = open.clone();
+	closed.panel = Default::default();
 
+	let before = capture(open.clone()).hitboxes.len();
+	let after = capture(closed.clone()).hitboxes.len();
+
+	// The panel owns its tabs, the diff surface's two controls while the diff
+	// tab is active, and the titlebar toggle that exists only while the panel
+	// has something to show; closing it takes exactly those out of reach.
+	let owned = expected_controls(&open) - expected_controls(&closed);
 	assert_eq!(
 		before - after,
-		tabs,
-		"closing the panel left {} of its {tabs} tabs answering clicks off screen",
-		tabs - (before - after)
+		owned,
+		"closing the panel changed the frame's hit rects by {} rather than the {owned} controls it \
+		 owns, so a panel control still answers clicks off screen",
+		before - after
 	);
 }
 
@@ -199,12 +234,16 @@ fn a_dispatched_intent_reaches_the_frame_the_operator_then_looks_at() {
 	.expect("the shell renders offscreen");
 
 	drop(cx);
-	let open = capture(fixture::with_drawer());
+	let open_state = fixture::with_drawer();
+	let drawer_controls = open_state.drawer.tabs.len() + 2; // each tab, plus Clear and Restart
+	let open = capture(open_state);
 
 	assert_eq!(
-		closed.hitboxes.len(),
-		open.hitboxes.len(),
-		"the drawer changed the set of controls, and it owns none of them"
+		open.hitboxes.len() - closed.hitboxes.len(),
+		drawer_controls,
+		"opening the drawer added {} hit rects rather than its {drawer_controls} own controls, so \
+		 an intent meant for the drawer reaches something else",
+		open.hitboxes.len() - closed.hitboxes.len()
 	);
 	assert_ne!(
 		closed.frame.as_bytes(),

@@ -15,14 +15,21 @@ use veyyon_desktop_kit::{
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{Div, IntoElement, ParentElement, Styled, div, px};
 
-use crate::model::{Block, Turn};
+use crate::{
+	damage::{LaidOut, Region},
+	model::{Block, Turn},
+};
 
 /// Builds the transcript column, centred in the space available.
+///
+/// Every turn's box is recorded in `laid_out` as the column is prepainted, so
+/// a change to one turn can be repainted inside that turn alone (P5).
 pub fn transcript_column(
 	turns: &[Turn],
 	geometry: &TranscriptSurfaceTokens,
 	user_ground: ColorRole,
 	tokens: &TokenSet,
+	laid_out: &LaidOut,
 ) -> impl IntoElement {
 	// The column is a maximum, not a fixed width. A session region narrower
 	// than the measure would otherwise clip the column on both edges rather
@@ -52,7 +59,7 @@ pub fn transcript_column(
 		.flex_row()
 		.justify_center()
 		.w_full()
-		.child(column)
+		.child(laid_out.track_children(column, |index| Some(Region::Turn(index))))
 }
 
 /// What the operator sent: a tinted bubble, aligned to the trailing edge.

@@ -83,7 +83,9 @@ pub struct ShedInput {
 	pub chrome_height_px:   f32,
 	/// The horizontal inset the session column applies on each side.
 	pub gutter_px:          f32,
-	/// Whether the right panel has anything to show.
+	/// Whether the operator collapsed the queue rail (§5.14).
+	pub queue_collapsed:    bool,
+	/// Whether the right panel has anything to show and is not collapsed.
 	pub panel_open:         bool,
 	/// The label state the previous frame settled on.
 	pub labels:             LabelState,
@@ -149,8 +151,10 @@ pub fn shell_widths(input: ShedInput, surface: &SurfaceTokens) -> ShellWidths {
 	};
 
 	let breakpoint = surface.breakpoints.resolve(viewport);
-	let queue_px = (breakpoint.queue_width_px > 0.0).then_some(breakpoint.queue_width_px);
-	let right_panel = panel_placement(viewport, input.panel_open, breakpoint, surface);
+	let queue_px = (breakpoint.queue_width_px > 0.0 && !input.queue_collapsed)
+		.then_some(breakpoint.queue_width_px);
+	let right_panel =
+		panel_placement(viewport, queue_px.unwrap_or(0.0), input.panel_open, breakpoint, surface);
 	let session_px = (viewport - queue_px.unwrap_or(0.0) - right_panel.inline_width()).max(0.0);
 	let composer_px = input
 		.gutter_px
@@ -225,6 +229,7 @@ fn labels(
 /// Places and measures the right panel.
 fn panel_placement(
 	viewport_px: f32,
+	queue_px: f32,
 	panel_open: bool,
 	breakpoint: &BreakpointConfig,
 	surface: &SurfaceTokens,
@@ -251,8 +256,7 @@ fn panel_placement(
 			// surface must keep. Without this bound a window between two rows
 			// takes the upper row's panel out of the lower row's transcript,
 			// which is how the surface being read reaches zero width.
-			let ceiling =
-				viewport_px - breakpoint.queue_width_px - panels.right_panel_container_margin_px;
+			let ceiling = viewport_px - queue_px - panels.right_panel_container_margin_px;
 			let width = width_px.min(share).min(ceiling);
 
 			// Below the panel's own minimum there is no inline column to draw:

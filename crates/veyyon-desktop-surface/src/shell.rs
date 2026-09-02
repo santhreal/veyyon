@@ -9,37 +9,59 @@
 //! surface being read; a window that gets narrower takes width from the panels
 //! and leaves the transcript's line length alone.
 
-use veyyon_desktop_kit::{
-	ColorRole, RadiusStep, SpacingStep, StrokeStep, TextRamp, TextWeight, TintRole, TokenSet,
-};
-use veyyon_desktop_tokens::ShellSurfaceTokens;
+use veyyon_desktop_kit::input::{Editor, EditorEvent, EditorMode};
 use veyyon_gpui::{
-	Context, Div, InteractiveElement, IntoElement, ParentElement, Render,
-	StatefulInteractiveElement, Styled, Window, div, px,
+	AppContext, Context, Entity, FocusHandle, IntoElement, Render, Subscription, Window,
 };
 
+mod attach;
+pub mod connection;
+pub mod keys;
+pub mod overlay;
+mod render;
 mod session;
+pub mod titlebar;
+
+pub use attach::AttachState;
+pub use connection::{connection_banner, error_hairline};
+pub use overlay::overlay_scrim;
+pub use titlebar::{
+	TitlebarState, attention_strip, attention_strip_height, platform_inset_left_px, titlebar,
+};
 
 use crate::{
+	damage::LaidOut,
 	intent::{Intent, Intents},
-	layout::{LabelState, RightPanelPlacement, ShedInput, shell_widths},
+	keymap::Keymap,
+	layout::LabelState,
 	model::ShellState,
-	panel::right_panel,
-	queue::queue_rail,
-	shell::session::session_surface,
+	queue::RailMotion,
 	tokens::InstalledTokens,
 };
 
 /// The window's root view.
 pub struct ShellView {
-	installed: InstalledTokens,
-	state:     ShellState,
-	notice:    Option<String>,
-	intents:   Intents,
+	installed:      InstalledTokens,
+	state:          ShellState,
+	notice:         Option<String>,
+	intents:        Intents,
 	/// What the last frame settled the composer's labels on. Carried because
 	/// the decision has hysteresis, so it is a function of the previous frame
 	/// as well as of this width (§5.4).
-	labels:    LabelState,
+	labels:         LabelState,
+	/// Where the last frame laid each region out, for a repaint scoped to
+	/// the regions a state change touched (P5).
+	laid_out:       LaidOut,
+	keymap:         Keymap,
+	composer:       Option<Entity<Editor>>,
+	composer_cache: String,
+	/// What the composer draws that is the window's: the drop target and
+	/// the refusal line.
+	attach:         AttachState,
+	rail_motion:    RailMotion,
+	focus_handle:   Option<FocusHandle>,
+	now_ms:         u64,
+	subscriptions: Vec<Subscription>,
 }
 
 impl ShellView {
@@ -51,7 +73,202 @@ impl ShellView {
 			notice: None,
 			intents: Intents::new(),
 			labels: LabelState::default(),
+			laid_out: LaidOut::default(),
+			keymap: Keymap::default(),
+			composer: None,
+			composer_cache: String::new(),
+			attach: AttachState::default(),
+			rail_motion: RailMotion::new(),
+			focus_handle: None,
+			now_ms: 0,
+			subscriptions: Vec::new(),
 		}
+	}
+
+	/// Returns a reference to the installed tokens.
+	#[must_use]
+	pub const fn installed(&self) -> &InstalledTokens {
+		&self.installed
+	}
+
+	/// Returns the label hysteresis state.
+	#[must_use]
+	pub const fn labels(&self) -> LabelState {
+		self.labels
+	}
+
+	/// Sets the label hysteresis state.
+	pub const fn set_labels(&mut self, labels: LabelState) {
+		self.labels = labels;
+	}
+
+	/// Returns a reference to the rail motion driver.
+	#[must_use]
+	pub const fn rail_motion(&self) -> &RailMotion {
+		&self.rail_motion
+	}
+
+	/// Returns a mutable reference to the rail motion driver.
+	pub const fn rail_motion_mut(&mut self) -> &mut RailMotion {
+		&mut self.rail_motion
+	}
+
+	/// Returns a reference to the root focus handle if initialized.
+	#[must_use]
+	pub const fn focus_handle(&self) -> Option<&FocusHandle> {
+		self.focus_handle.as_ref()
+	}
+
+	/// Sets the clock time in milliseconds for relative time computations.
+	pub const fn set_clock_ms(&mut self, now_ms: u64) {
+		self.now_ms = now_ms;
+	}
+
+	/// Returns the current clock time in milliseconds.
+	#[must_use]
+	pub const fn clock_ms(&self) -> u64 {
+		self.now_ms
+	}
+
+	/// Returns true if an attention notice is active.
+	#[must_use]
+	pub const fn has_notice(&self) -> bool {
+		self.notice.is_some()
+	}
+
+	/// Returns the attention notice text if set.
+	#[must_use]
+	pub fn notice(&self) -> Option<&str> {
+		self.notice.as_deref()
+	}
+
+	/// Returns a reference to the active composer editor entity if initialized.
+	#[must_use]
+	pub const fn composer(&self) -> Option<&Entity<Editor>> {
+		self.composer.as_ref()
+	}
+
+	/// Returns the current composer text content.
+	#[must_use]
+	pub fn composer_text(&self) -> &str {
+		&self.composer_cache
+	}
+
+	/// Returns true if the composer contains non-whitespace text characters.
+	#[must_use]
+	pub fn has_composer_text(&self) -> bool {
+		!self.composer_cache.trim().is_empty()
+	}
+
+	/// Lazily creates and returns the composer editor entity.
+	pub fn ensure_composer(&mut self, cx: &mut Context<Self>) -> Entity<Editor> {
+		if let Some(ed) = &self.composer {
+			return ed.clone();
+		}
+
+		let editor = cx.new(|cx| {
+			Editor::new(EditorMode::Multiline { newline_on_enter: false }, cx)
+				.placeholder("Ask, or describe a change")
+				.max_visible_lines(8)
+		});
+
+		let sub = cx.subscribe(&editor, |this, ed, event: &EditorEvent, cx| match event {
+			EditorEvent::Submit => {
+				this.submit_primary_turn_action(cx);
+			},
+			EditorEvent::Escape => {
+				if !this.state.cards.is_empty() {
+					this.state.cards.remove(0);
+					cx.notify();
+				}
+			},
+			EditorEvent::Changed => {
+				this.composer_cache = ed.read(cx).text().to_string();
+				cx.notify();
+			},
+			EditorEvent::PasteMedia(item) => this.attach_clipboard(item, cx),
+		});
+
+		self.composer = Some(editor.clone());
+		self.subscriptions.push(sub);
+		editor
+	}
+
+	/// Sets the composer text content.
+	pub fn set_composed(&mut self, text: impl Into<String>, cx: &mut Context<Self>) {
+		let text = text.into();
+		self.composer_cache.clone_from(&text);
+		let ed = self.ensure_composer(cx);
+		ed.update(cx, |editor, cx| {
+			editor.set_text(text, cx);
+		});
+	}
+
+	/// Takes and clears the composer text content.
+	pub fn take_composed(&mut self, cx: &mut Context<Self>) -> String {
+		self.composer_cache.clear();
+		if let Some(ed) = &self.composer {
+			ed.update(cx, |editor, cx| editor.take_text(cx))
+		} else {
+			String::new()
+		}
+	}
+
+	/// Submits the primary turn action according to the active turn phase.
+	pub fn submit_primary_turn_action(&mut self, cx: &mut Context<Self>) {
+		let text = if let Some(ed) = &self.composer {
+			ed.update(cx, |editor, cx| editor.take_text(cx))
+		} else {
+			std::mem::take(&mut self.composer_cache)
+		};
+		self.composer_cache.clear();
+		let has_text = !text.trim().is_empty();
+		let (primary, _secondary) = crate::composer::primary_action(&self.state.turn, has_text);
+
+		match primary {
+			crate::composer::PrimaryAction::Send => {
+				if has_text {
+					let attachments = self.state.composer.attachments.clone();
+					self.clear_composer_notice();
+					self.dispatch(Intent::Send { text, attachments });
+				}
+			},
+			crate::composer::PrimaryAction::Steer => {
+				if has_text {
+					self.dispatch(Intent::Steer(text));
+				}
+			},
+			crate::composer::PrimaryAction::Queue => {
+				if has_text {
+					self.dispatch(Intent::Queue(text));
+				}
+			},
+			crate::composer::PrimaryAction::Answer => {
+				if !self.state.cards.is_empty() {
+					if has_text {
+						self.dispatch(Intent::Reply { card: 0, text });
+					} else {
+						self.dispatch(Intent::Answer { card: 0, option: 0 });
+					}
+				}
+			},
+			crate::composer::PrimaryAction::Approve => {
+				if !self.state.cards.is_empty() {
+					self.dispatch(Intent::Approval { card: 0, approved: true, standing: false });
+				}
+			},
+			crate::composer::PrimaryAction::Accept => {
+				if !self.state.cards.is_empty() {
+					self.dispatch(Intent::Plan { card: 0, accepted: true });
+				}
+			},
+			crate::composer::PrimaryAction::Refine => {
+				if !self.state.cards.is_empty() {
+					self.dispatch(Intent::Plan { card: 0, accepted: false });
+				}
+			},
+		}
+		cx.notify();
 	}
 
 	/// Replaces the token set, after a reload applied a new one.
@@ -65,6 +282,7 @@ impl ShellView {
 	}
 
 	/// What the shell is currently drawing.
+	#[must_use]
 	pub const fn state(&self) -> &ShellState {
 		&self.state
 	}
@@ -73,6 +291,12 @@ impl ShellView {
 	/// in place and leaves the window-owned ones alone.
 	pub const fn state_mut(&mut self) -> &mut ShellState {
 		&mut self.state
+	}
+
+	/// Where the last frame laid each region out.
+	#[must_use]
+	pub const fn laid_out(&self) -> &LaidOut {
+		&self.laid_out
 	}
 
 	/// Sets or clears the attention strip's message.
@@ -99,232 +323,30 @@ impl ShellView {
 	}
 
 	/// The intents recorded and not yet drained.
+	#[must_use]
 	pub fn pending(&self) -> &[Intent] {
 		self.intents.pending()
+	}
+
+	/// Returns a reference to the active keymap table.
+	#[must_use]
+	pub const fn keymap(&self) -> &Keymap {
+		&self.keymap
+	}
+
+	/// Returns a mutable reference to the active keymap table.
+	pub const fn keymap_mut(&mut self) -> &mut Keymap {
+		&mut self.keymap
+	}
+
+	/// Replaces the active keymap table.
+	pub fn set_keymap(&mut self, keymap: Keymap) {
+		self.keymap = keymap;
 	}
 }
 
 impl Render for ShellView {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		// The shed runs first: it settles the label state this frame draws
-		// with, and settling it needs `self` mutably, which the token borrows
-		// below would prevent.
-		//
-		// The session column's horizontal inset is what separates the window
-		// from the composer's measure, so the shed is told the same value the
-		// column applies rather than deriving its own.
-		let chrome_px = self.installed.surface.shell.titlebar_height_px
-			+ if self.notice.is_some() {
-				attention_strip_height(&self.installed.set)
-			} else {
-				0.0
-			};
-		let widths = shell_widths(
-			ShedInput {
-				viewport_px:        f32::from(window.viewport_size().width),
-				viewport_height_px: f32::from(window.viewport_size().height),
-				chrome_height_px:   chrome_px,
-				gutter_px:          f32::from(self.installed.set.spacing(SpacingStep::S4)),
-				panel_open:         !self.state.tree.is_empty(),
-				labels:             self.labels,
-			},
-			&self.installed.surface,
-		);
-		self.labels = widths.labels;
-
-		let tokens = &self.installed.set;
-		let surface = &self.installed.surface;
-
-		let mut root = div()
-			.flex()
-			.flex_col()
-			.size_full()
-			.bg(tokens.color(ColorRole::Ground))
-			.text_color(tokens.color(ColorRole::Foreground))
-			.overflow_hidden()
-			.child(titlebar(&self.state.title, self.state.drawer_open, &surface.shell, tokens, cx));
-
-		if let Some(notice) = &self.notice {
-			root = root.child(attention_strip(notice, tokens));
-		}
-
-		let panels = &surface.panels;
-
-		// The columns row is the overlay's positioning parent, so an overlaid
-		// right panel covers the queue and the transcript and leaves the
-		// titlebar and the attention strip reachable above it.
-		let mut columns = div()
-			.relative()
-			.flex()
-			.flex_row()
-			.w_full()
-			.flex_1()
-			.overflow_hidden();
-
-		// A collapsed rail is absent, not zero-width: a zero-width column still
-		// draws its right border, leaving a hairline against the window edge
-		// with nothing behind it.
-		if let Some(queue_px) = widths.queue_px {
-			columns = columns.child(queue_rail(
-				&self.state.sections,
-				self.state.current_id,
-				queue_px,
-				widths.columns_px,
-				&surface.queue,
-				tokens,
-				cx,
-			));
-		}
-
-		columns = columns.child(session_surface(&self.state, &widths, &self.installed, cx));
-
-		let tree = &self.state.tree;
-		let tabs = &self.state.tabs;
-		let active_tab = self.state.active_tab;
-		columns = match widths.right_panel {
-			RightPanelPlacement::Absent => columns,
-			RightPanelPlacement::Inline { width_px } => {
-				columns.child(right_panel(tabs, active_tab, tree, width_px, panels, tokens, cx))
-			},
-			// The panel takes its width from the window rather than from the
-			// transcript, over a blurred scrim stating that what it covers is
-			// still there (§5.6).
-			RightPanelPlacement::Overlay { width_px } => columns.child(
-				div()
-					.absolute()
-					.inset_0()
-					.flex()
-					.flex_row()
-					.justify_end()
-					.backdrop_blur(px(panels.right_panel_overlay_scrim_blur_px))
-					.bg(tokens.scrim())
-					.child(right_panel(tabs, active_tab, tree, width_px, panels, tokens, cx)),
-			),
-		};
-
-		root.child(columns)
+		render::render_shell(self, window, cx)
 	}
-}
-
-/// The titlebar: window controls, the open session's name, the drawer control.
-fn titlebar(
-	title: &str,
-	drawer_open: bool,
-	geometry: &ShellSurfaceTokens,
-	tokens: &TokenSet,
-	cx: &Context<ShellView>,
-) -> impl IntoElement {
-	let mut controls = div()
-		.flex()
-		.flex_row()
-		.items_center()
-		.flex_shrink_0()
-		.gap(px(geometry.titlebar_control_gap_px));
-
-	// Three controls, drawn as the ground they sit on lightened by the
-	// hairline role. They are geometry here, not behaviour: the window manager
-	// owns the actions, and the shell owns only the space they occupy.
-	for _ in 0..3 {
-		controls = controls.child(
-			div()
-				.w(px(geometry.titlebar_control_px))
-				.h(px(geometry.titlebar_control_px))
-				.rounded_full()
-				.bg(tokens.color(ColorRole::Hairline)),
-		);
-	}
-
-	div()
-		.h(px(geometry.titlebar_height_px))
-		.w_full()
-		.flex_shrink_0()
-		.flex()
-		.flex_row()
-		.items_center()
-		.pl(px(geometry.titlebar_inset_left_px))
-		.pr(px(geometry.titlebar_inset_right_px))
-		.border_b(tokens.stroke(StrokeStep::Hairline))
-		.border_color(tokens.color(ColorRole::Hairline))
-		.overflow_hidden()
-		.child(controls)
-		.child(
-			div()
-				.flex_1()
-				.min_w_0()
-				.overflow_hidden()
-				.whitespace_nowrap()
-				.truncate()
-				.text_center()
-				.text_size(tokens.font_size(TextRamp::Small))
-				.line_height(tokens.line_height(TextRamp::Small))
-				.font_weight(tokens.font_weight(TextWeight::Medium))
-				.text_color(tokens.color(ColorRole::Secondary))
-				.child(title.to_owned()),
-		)
-		.child(drawer_control(drawer_open, geometry, tokens, cx))
-}
-
-/// The titlebar's drawer control (§4.1).
-///
-/// The control states the drawer's position rather than naming an action: it is
-/// filled while the drawer is docked and hollow while it is not, so the
-/// titlebar answers "is there a terminal open" without the operator opening it
-/// to find out.
-fn drawer_control(
-	open: bool,
-	geometry: &ShellSurfaceTokens,
-	tokens: &TokenSet,
-	cx: &Context<ShellView>,
-) -> impl IntoElement {
-	let ground = if open {
-		tokens.row_selected()
-	} else {
-		tokens.transparent()
-	};
-	let hover = tokens.row_hover();
-
-	div()
-		.id("titlebar-drawer")
-		.on_click(cx.listener(|view, _event, _window, cx| {
-			let open = !view.state().drawer_open;
-			view.dispatch(Intent::SetDrawer { open });
-			cx.notify();
-		}))
-		.hover(move |style| style.bg(hover))
-		.flex_shrink_0()
-		.w(px(geometry.titlebar_control_px))
-		.h(px(geometry.titlebar_control_px))
-		.rounded(tokens.radius(RadiusStep::Sm))
-		.border(tokens.stroke(StrokeStep::Hairline))
-		.border_color(tokens.color(ColorRole::Hairline))
-		.bg(ground)
-}
-
-/// What the attention strip takes off the top of the window.
-///
-/// The strip is one line of micro text between two insets, so its height is
-/// those three values and never a literal. The shed needs it to know what the
-/// columns row is left with, and the strip and this must not drift apart.
-fn attention_strip_height(tokens: &TokenSet) -> f32 {
-	f32::from(tokens.spacing(SpacingStep::S1))
-		.mul_add(2.0, f32::from(tokens.line_height(TextRamp::Micro)))
-}
-
-/// The attention strip: one line, above everything, that something is wrong.
-fn attention_strip(notice: &str, tokens: &TokenSet) -> Div {
-	let tint = tokens.tint(TintRole::Error);
-
-	div()
-		.w_full()
-		.flex_shrink_0()
-		.px(tokens.spacing(SpacingStep::S3))
-		.py(tokens.spacing(SpacingStep::S1))
-		.bg(tint.fill)
-		.overflow_hidden()
-		.whitespace_nowrap()
-		.truncate()
-		.text_size(tokens.font_size(TextRamp::Micro))
-		.line_height(tokens.line_height(TextRamp::Micro))
-		.text_color(tint.ink)
-		.child(notice.to_owned())
 }
