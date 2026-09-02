@@ -51,14 +51,14 @@ fn placed(at: (f32, f32, f32, f32)) -> veyyon_gpui::Div {
 impl Render for BlurredFloatScene {
 	fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
 		let trigger_fill = if self.trigger_hovered {
-			rgb(0x22c5_5e)
+			rgb(0x22_c55e)
 		} else {
-			rgb(0xef44_44)
+			rgb(0xef_4444)
 		};
 		div()
 			.size_full()
-			.bg(rgb(0x1010_18))
-			.child(placed(BLOCK).bg(rgb(0x3b82_f6)).z_index(1))
+			.bg(rgb(0x10_1018))
+			.child(placed(BLOCK).bg(rgb(0x3b_82f6)).z_index(1))
 			.child(
 				placed(FLOAT)
 					.border_2()
@@ -77,9 +77,12 @@ fn sample_pixel(bytes: &[u8], x: usize, y: usize) -> (u8, u8, u8, u8) {
 	(bytes[idx], bytes[idx + 1], bytes[idx + 2], bytes[idx + 3])
 }
 
+/// A sampled pixel: where it sits and the colour read back there.
+type PixelSample = ((usize, usize), (u8, u8, u8, u8));
+
 /// The top border row (y = 20) and the left border column (x = 30), away from
 /// the corners, plus one sample of the blurred body.
-fn float_samples(bytes: &[u8]) -> Vec<((usize, usize), (u8, u8, u8, u8))> {
+fn float_samples(bytes: &[u8]) -> Vec<PixelSample> {
 	let top = (40..160).map(|x| (x, 20));
 	let left = (25..45).map(|y| (30, y));
 	top.chain(left)

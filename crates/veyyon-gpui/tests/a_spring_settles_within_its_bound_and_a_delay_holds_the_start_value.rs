@@ -70,8 +70,9 @@ fn a_spring_settles_within_its_bound_and_does_not_oscillate_past_damping() {
 	let underdamped_config = SpringConfig::new(100.0, 10.0, 1.0);
 	let (_, damping_ratio) = underdamped_config.canonical();
 	assert!((damping_ratio - 0.5).abs() < 1e-4);
-	let max_theoretical_overshoot =
-		(-std::f32::consts::PI * damping_ratio / (1.0 - damping_ratio * damping_ratio).sqrt()).exp();
+	let max_theoretical_overshoot = (-std::f32::consts::PI * damping_ratio
+		/ damping_ratio.mul_add(-damping_ratio, 1.0).sqrt())
+	.exp();
 
 	let mut under_state = SpringState { position: 0.0, velocity: 0.0 };
 	let under_settle = underdamped_config.settle_time(under_state, target, epsilon);

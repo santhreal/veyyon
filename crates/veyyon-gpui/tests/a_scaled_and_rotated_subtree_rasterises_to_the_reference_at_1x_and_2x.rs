@@ -99,11 +99,11 @@ fn a_scaled_and_rotated_subtree_rasterises_to_the_reference_at_1x_and_2x() {
 
 	// Center pixel must be fully white (interior)
 	let center_1x = sample_pixel(&bytes_1x, 200, 100, 100);
-	assert!(center_1x.0 > 240, "center pixel must be white, got {:?}", center_1x);
+	assert!(center_1x.0 > 240, "center pixel must be white, got {center_1x:?}");
 
 	// Far corner must be black (exterior)
 	let corner_1x = sample_pixel(&bytes_1x, 200, 10, 10);
-	assert!(corner_1x.0 < 15, "corner pixel must be black, got {:?}", corner_1x);
+	assert!(corner_1x.0 < 15, "corner pixel must be black, got {corner_1x:?}");
 
 	// The 80px square, scaled 1.2 and rotated 45° about its centre, is a
 	// diamond around (100, 100) with a half-diagonal of 40 · 1.2 · √2 ≈ 67.9px.
@@ -132,7 +132,7 @@ fn a_scaled_and_rotated_subtree_rasterises_to_the_reference_at_1x_and_2x() {
 
 	// Center at 2x must also be white
 	let center_2x = sample_pixel(bytes_2x, 400, 200, 200);
-	assert!(center_2x.0 > 240, "2x center pixel must be white, got {:?}", center_2x);
+	assert!(center_2x.0 > 240, "2x center pixel must be white, got {center_2x:?}");
 	let below_2x = sample_pixel(bytes_2x, 400, 200, 320);
 	assert!(
 		below_2x.0 > 240,

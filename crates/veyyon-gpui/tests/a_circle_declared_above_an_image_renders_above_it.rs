@@ -83,8 +83,7 @@ fn a_circle_declared_above_an_image_renders_above_it() {
 	let center_f1 = sample_pixel(bytes1, 200, 100, 100);
 	assert!(
 		center_f1.1 > 180 && center_f1.0 < 50,
-		"center pixel must be green (circle on top), got {:?}",
-		center_f1
+		"center pixel must be green (circle on top), got {center_f1:?}"
 	);
 
 	// Corner of the red background at (55, 55) (outside the circle) must still be
@@ -92,8 +91,7 @@ fn a_circle_declared_above_an_image_renders_above_it() {
 	let bg_corner_f1 = sample_pixel(bytes1, 200, 55, 55);
 	assert!(
 		bg_corner_f1.0 > 200 && bg_corner_f1.1 < 100 && bg_corner_f1.2 < 100,
-		"background corner pixel must be red, got {:?}",
-		bg_corner_f1
+		"background corner pixel must be red, got {bg_corner_f1:?}"
 	);
 
 	// Invert z-order: Background now has z_index 2, circle has z_index 1
@@ -111,7 +109,6 @@ fn a_circle_declared_above_an_image_renders_above_it() {
 	let center_f2 = sample_pixel(bytes2, 200, 100, 100);
 	assert!(
 		center_f2.0 > 200 && center_f2.1 < 100 && center_f2.2 < 100,
-		"center pixel must be red (background on top), got {:?}",
-		center_f2
+		"center pixel must be red (background on top), got {center_f2:?}"
 	);
 }

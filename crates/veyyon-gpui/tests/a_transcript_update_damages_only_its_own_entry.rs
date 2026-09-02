@@ -59,7 +59,7 @@ impl Render for SpinnerView {
 	}
 }
 
-fn entry_bounds(y: f32) -> Bounds<Pixels> {
+const fn entry_bounds(y: f32) -> Bounds<Pixels> {
 	Bounds { origin: point(px(0.0), px(y)), size: size(px(300.0), px(50.0)) }
 }
 
@@ -139,8 +139,8 @@ fn a_mounted_animation_damages_only_its_own_bounds() {
 		assert!(
 			damage_bounds.size.width <= px(40.0) + px(1.0)
 				&& damage_bounds.size.height <= px(40.0) + px(1.0),
-			"spinner animation damage must be bounded within element size (40x40), got {:?}",
-			damage_bounds
+			"spinner animation damage must be bounded within element size (40x40), got \
+			 {damage_bounds:?}",
 		);
 	}
 }

@@ -7,8 +7,8 @@
 //! CLASS CLOSED: an admission decision that disagrees with what the host can
 //! send. The accepted set is swept from `MediaType::ALL` at run time, so a type
 //! added there fails here until its magic bytes and its wire spelling are
-//! recorded; a container that merely looks like one (an M4A in an ISO BMFF
-//! box, a Matroska that is not WebM, an SVG) is refused by its bytes.
+//! recorded; a container that merely looks like one (an `M4A` in an `ISO BMFF`
+//! box, a `Matroska` that is not `WebM`, an `SVG`) is refused by its bytes.
 //!
 //! The suite defends:
 //! 1. Every accepted type is classified from its leading bytes, and its IANA
