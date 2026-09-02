@@ -42,7 +42,7 @@ impl MessageRole {
 }
 
 /// Rich content block payload representing an element within a transcript turn
-/// across fifteen variants.
+/// across sixteen variants.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
 #[strum_discriminants(name(BlockKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
 #[strum_discriminants(
@@ -56,6 +56,13 @@ pub enum ContentBlock {
 		media_type: String,
 		data:       Vec<u8>,
 		alt:        Option<String>,
+	},
+	/// A video clip the operator attached. The host sends its descriptor and
+	/// never its payload: the desktop cannot play it inline and a clip runs to
+	/// tens of megabytes.
+	Video {
+		media_type: String,
+		bytes:      u64,
 	},
 	Thinking {
 		text: String,

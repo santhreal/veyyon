@@ -88,7 +88,7 @@ fn test_persistence_shell_store() {
 #[test]
 fn test_persistence_panels_store() {
 	let original = PanelsStore {
-		version:             1,
+		version:             2,
 		right_panel_visible: true,
 		right_panel_width:   600,
 		drawer_visible:      true,
@@ -97,35 +97,35 @@ fn test_persistence_panels_store() {
 		active_right_tab:    Some("diff".to_string()),
 		open_drawer_tabs:    vec!["terminal-1".to_string()],
 		active_drawer_tab:   Some("terminal-1".to_string()),
-		diff_mode_split:     true,
+		diff_mode:           veyyon_desktop_model::DiffMode::Split,
 	};
 
 	let json = serde_json::to_string(&original).unwrap();
 	let decoded: PanelsStore = validate_and_deserialize(&json).unwrap();
 	assert_eq!(original, decoded);
 
-	// Version lower
+	// Version lower (e.g. stale version 1)
 	let (loaded, err) = load_or_default::<PanelsStore>(
-		r#"{"version":0,"right_panel_visible":false,"right_panel_width":540,"drawer_visible":false,"drawer_height":280,"open_right_tabs":[],"active_right_tab":null,"open_drawer_tabs":[],"active_drawer_tab":null,"diff_mode_split":false}"#,
+		r#"{"version":1,"right_panel_visible":false,"right_panel_width":540,"drawer_visible":false,"drawer_height":280,"open_right_tabs":[],"active_right_tab":null,"open_drawer_tabs":[],"active_drawer_tab":null,"diff_mode":"unified"}"#,
 	);
 	assert_eq!(loaded, PanelsStore::default());
 	assert!(matches!(err, Some(PersistenceError::VersionMismatch { .. })));
 
 	// Version higher
 	let (loaded, err) = load_or_default::<PanelsStore>(
-		r#"{"version":2,"right_panel_visible":false,"right_panel_width":540,"drawer_visible":false,"drawer_height":280,"open_right_tabs":[],"active_right_tab":null,"open_drawer_tabs":[],"active_drawer_tab":null,"diff_mode_split":false}"#,
+		r#"{"version":3,"right_panel_visible":false,"right_panel_width":540,"drawer_visible":false,"drawer_height":280,"open_right_tabs":[],"active_right_tab":null,"open_drawer_tabs":[],"active_drawer_tab":null,"diff_mode":"unified"}"#,
 	);
 	assert_eq!(loaded, PanelsStore::default());
 	assert!(matches!(err, Some(PersistenceError::VersionMismatch { .. })));
 
 	// Truncated
-	let (loaded, err) = load_or_default::<PanelsStore>(r#"{"version":1,"right_panel_visible":true"#);
+	let (loaded, err) = load_or_default::<PanelsStore>(r#"{"version":2,"right_panel_visible":true"#);
 	assert_eq!(loaded, PanelsStore::default());
 	assert!(matches!(err, Some(PersistenceError::TruncatedPayload)));
 
 	// Unknown key
 	let (loaded, err) = load_or_default::<PanelsStore>(
-		r#"{"version":1,"right_panel_visible":false,"right_panel_width":540,"drawer_visible":false,"drawer_height":280,"open_right_tabs":[],"active_right_tab":null,"open_drawer_tabs":[],"active_drawer_tab":null,"diff_mode_split":false,"rogue_key":123}"#,
+		r#"{"version":2,"right_panel_visible":false,"right_panel_width":540,"drawer_visible":false,"drawer_height":280,"open_right_tabs":[],"active_right_tab":null,"open_drawer_tabs":[],"active_drawer_tab":null,"diff_mode":"unified","rogue_key":123}"#,
 	);
 	assert_eq!(loaded, PanelsStore::default());
 	assert!(matches!(err, Some(PersistenceError::DeserializationFailed(_))));

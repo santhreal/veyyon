@@ -16,11 +16,12 @@
 use veyyon_desktop_model::{
 	AgentView, AuthFlowState, AuthFlowView, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
 	ContextBreakdownView, ContextCategory, ExportView, FileContentView, FileKind, FileNode,
-	FileTreeView, HostEvent, KeybindingView, McpServerStatus, McpServerView, McpToolResultView,
-	ModelRef, ModelView, ModelsView, PROCESS_LOG_CAPACITY_LINES, ProcessLogsChunk, ProcessView,
-	ProviderView, SearchResultsView, SeqGap, SessionId, SnapshotSection, Store,
-	TERMINAL_SCROLLBACK_CAPACITY_BYTES, TerminalOutputChunk, TerminalStatus, TerminalView,
-	ThemeView, ThemesView, UsageTotals, UsageView, reduce,
+	FileTreeView, HostEvent, InputModality, KeybindingView, McpServerStatus, McpServerView,
+	McpToolResultView, ModelRef, ModelView, ModelsView, PROCESS_LOG_CAPACITY_LINES,
+	ProcessLogsChunk, ProcessView, ProviderView, SearchResultsView, SeqGap, SessionId, SettingEntry,
+	SettingKind, SettingsView, SnapshotSection, Store, TERMINAL_SCROLLBACK_CAPACITY_BYTES,
+	TerminalOutputChunk, TerminalStatus, TerminalView, ThemeView, ThemesView, UsageTotals,
+	UsageView, reduce,
 };
 
 #[test]
@@ -178,6 +179,7 @@ fn domain_sections_replace_their_domain_state() {
 			reasoning:      false,
 			context_window: 100_000,
 			max_output:     4_096,
+			input:          vec![InputModality::Text, InputModality::Image],
 		}],
 		current:         Some(ModelRef {
 			provider: "anthropic".to_string(),
@@ -195,6 +197,7 @@ fn domain_sections_replace_their_domain_state() {
 			reasoning:      true,
 			context_window: 200_000,
 			max_output:     64_000,
+			input:          vec![InputModality::Text, InputModality::Image],
 		}],
 		current:         Some(ModelRef {
 			provider: "anthropic".to_string(),
@@ -400,9 +403,29 @@ fn domain_sections_replace_their_domain_state() {
 	assert_eq!(store.domains.keybindings, kb2);
 
 	// 18. Settings and Diagnostics replacement
-	let settings1 = serde_json::json!({ "theme": "light" });
+	let entry = |value: serde_json::Value, source: &str| SettingEntry {
+		value,
+		default: serde_json::Value::String("dark".to_string()),
+		source: source.to_string(),
+		kind: SettingKind::String,
+		label: None,
+		description: None,
+		tab: None,
+		group: None,
+		values: Vec::new(),
+		options: Vec::new(),
+		min: None,
+		max: None,
+		global: false,
+		advanced: false,
+		hidden: false,
+	};
+	let settings1 = SettingsView::from([("theme".to_string(), entry("light".into(), "profile"))]);
 	reduce(&mut store, HostEvent::Snapshot(SnapshotSection::Settings(settings1)));
-	let settings2 = serde_json::json!({ "theme": "dark", "argot.enabled": true });
+	let settings2 = SettingsView::from([
+		("theme".to_string(), entry("dark".into(), "default")),
+		("argot.enabled".to_string(), entry(true.into(), "project")),
+	]);
 	reduce(&mut store, HostEvent::Snapshot(SnapshotSection::Settings(settings2.clone())));
 	assert_eq!(store.domains.settings.as_ref(), Some(&settings2));
 

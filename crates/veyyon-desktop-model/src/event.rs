@@ -6,8 +6,8 @@ use crate::{
 	domain::{
 		AgentView, AuthFlowView, ChangesView, ContextBreakdownView, ExportView, FileContentView,
 		FileTreeView, KeybindingView, McpServerView, McpToolResultView, ModelsView, ProcessLogsChunk,
-		ProcessView, ProviderView, SearchResultsView, TerminalOutputChunk, TerminalView, ThemesView,
-		UsageView,
+		ProcessView, ProviderView, SearchResultsView, SettingsView, TerminalOutputChunk,
+		TerminalView, ThemesView, UsageView,
 	},
 	error::BackendError,
 	interaction::PendingDecisions,
@@ -120,8 +120,8 @@ pub enum SnapshotSection {
 		/// Pending decisions.
 		pending: PendingDecisions,
 	},
-	/// Raw configuration settings payload.
-	Settings(serde_json::Value),
+	/// Every setting the host reports, with its schema and copy.
+	Settings(SettingsView),
 	/// Diagnostic sources payload.
 	Diagnostics(serde_json::Value),
 	/// Git changes view with unified diff.

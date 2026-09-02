@@ -1,7 +1,7 @@
 use veyyon_desktop_model::{
 	BackendError, ConnectionState, ContentBlock, EntryId, ErrorScope, HostEvent, MessageRole,
-	QueuePartition, RequestId, Session, SessionBadge, SessionId, SnapshotSection, Store,
-	StreamingMessageState, TranscriptEntry, reduce,
+	QueuePartition, RequestId, Session, SessionBadge, SessionId, SettingsView, SnapshotSection,
+	Store, StreamingMessageState, TranscriptEntry, reduce,
 };
 
 fn create_sample_live_sessions() -> Vec<Session> {
@@ -54,7 +54,7 @@ fn generate_sample_events() -> Vec<HostEvent> {
 			endpoint: "127.0.0.1".to_string(),
 			protocol: 1,
 		}),
-		HostEvent::Snapshot(SnapshotSection::Settings(serde_json::json!({}))),
+		HostEvent::Snapshot(SnapshotSection::Settings(SettingsView::new())),
 		HostEvent::TranscriptAppended {
 			revision: 1,
 			entries:  vec![TranscriptEntry {

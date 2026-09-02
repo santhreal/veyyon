@@ -88,6 +88,17 @@ impl VersionedStore for ShellStore {
 	}
 }
 
+/// Diff view layout mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiffMode {
+	/// Single column with inline additions and deletions.
+	#[default]
+	Unified,
+	/// Side-by-side split columns for old and new content.
+	Split,
+}
+
 /// Right panel and terminal drawer state for a specific session.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -101,7 +112,7 @@ pub struct PanelsStore {
 	pub active_right_tab:    Option<String>,
 	pub open_drawer_tabs:    Vec<String>,
 	pub active_drawer_tab:   Option<String>,
-	pub diff_mode_split:     bool,
+	pub diff_mode:           DiffMode,
 }
 
 impl Default for PanelsStore {
@@ -116,12 +127,14 @@ impl Default for PanelsStore {
 			active_right_tab:    None,
 			open_drawer_tabs:    Vec::new(),
 			active_drawer_tab:   None,
-			diff_mode_split:     false,
+			diff_mode:           DiffMode::default(),
 		}
 	}
 }
 
 impl VersionedStore for PanelsStore {
+	const CURRENT_VERSION: u32 = 2;
+
 	fn version(&self) -> u32 {
 		self.version
 	}
@@ -256,6 +269,18 @@ impl PersistedState {
 	}
 }
 
+/// The one field every persisted store shares, read ahead of the store's own
+/// shape.
+///
+/// A stale payload is stale in its fields as well as its version: a field it
+/// no longer has, or one it still has under an old name, fails the store's
+/// `deny_unknown_fields` deserialization. Reading the version first reports
+/// the stale copy as the version mismatch it is, not as a parse failure.
+#[derive(Deserialize)]
+struct VersionHeader {
+	version: u32,
+}
+
 /// Validates serialized JSON and deserializes into a versioned store, rejecting
 /// stale or malformed payloads.
 pub fn validate_and_deserialize<T>(json_str: &str) -> Result<T, PersistenceError>
@@ -265,6 +290,15 @@ where
 	let trimmed = json_str.trim();
 	if trimmed.is_empty() || (!trimmed.ends_with('}') && !trimmed.ends_with(']')) {
 		return Err(PersistenceError::TruncatedPayload);
+	}
+
+	let header: VersionHeader = serde_json::from_str(trimmed)
+		.map_err(|e| PersistenceError::DeserializationFailed(e.to_string()))?;
+	if header.version != T::CURRENT_VERSION {
+		return Err(PersistenceError::VersionMismatch {
+			expected: T::CURRENT_VERSION,
+			found:    header.version,
+		});
 	}
 
 	let value: T = serde_json::from_str(trimmed)

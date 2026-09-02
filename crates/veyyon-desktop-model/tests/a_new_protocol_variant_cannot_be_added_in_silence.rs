@@ -101,8 +101,8 @@ fn the_field_carrying_unions_project_to_a_sweepable_kind() {
 	let blocks: Vec<BlockKind> = BlockKind::iter().collect();
 	assert_eq!(
 		blocks.len(),
-		15,
-		"wire.ts defines 15 content blocks. This count was once written as 19 and satisfied by four \
+		16,
+		"wire.ts defines 16 content blocks. This count was once written as 19 and satisfied by four \
 		 variants nobody had defined; it is pinned here so that cannot recur.",
 	);
 
