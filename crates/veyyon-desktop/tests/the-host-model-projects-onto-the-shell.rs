@@ -14,18 +14,23 @@
 //! the surface crate's pixel suites. Whether the host sends what the model
 //! expects; that is the live handshake suite.
 
-use std::fmt::Write as _;
+use std::{collections::HashMap, fmt::Write as _, path::PathBuf};
 
 use strum::IntoEnumIterator as _;
-use veyyon_desktop::{PANE_LINE_CEILING, SessionIndex, actions_for, project};
+use veyyon_desktop::{PANE_LINE_CEILING, SessionIndex, actions_for, drawer_lines, project};
 use veyyon_desktop_model::{
-	ApprovalInteraction, BadgeKind, BlockKind, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
-	ContentBlock, EntryId, HostAction, HostEvent, InteractionId, MessageRole, PendingDecisions,
-	PlanInteraction, QuestionInteraction, QueuePartition, Session, SessionBadge, SessionId,
-	SnapshotSection, Store, StreamingMessageState, TerminalOutputChunk, TerminalStatus,
-	TerminalView, TranscriptEntry, Versioned, reduce,
+	ApprovalInteraction, AttachmentSubmission, BadgeKind, BlockKind, Capability, CapabilityStatus,
+	ChangeScope, ChangeStatus, ChangedFile, ChangesView, ComposerDraft, ContentBlock,
+	ContextBreakdownView, EntryId, HostAction, HostEvent, InputModality, InteractionId, MessageRole,
+	ModelRef, ModelView, ModelsView, PendingDecisions, PlanInteraction, QuestionInteraction,
+	QueueMode, QueuePartition, Session, SessionBadge, SessionId, SnapshotSection, Store,
+	StreamingMessageState, TerminalOutputChunk, TerminalStatus, TerminalView, TranscriptEntry,
+	Versioned, reduce,
 };
-use veyyon_desktop_surface::{Badge, Block, Card, Intent, Section, ShellState, Turn};
+use veyyon_desktop_surface::{
+	Attachment, Badge, Block, Card, Intent, MediaType, Section, ShellState, Turn,
+	composer::payload_for,
+};
 
 /// One tree row as the assertions read it: depth, name, line counts.
 type TreeCell<'a> = (usize, &'a str, Option<(u32, u32)>);
@@ -88,6 +93,9 @@ fn block_of(kind: BlockKind) -> ContentBlock {
 			data:       vec![0],
 			alt:        None,
 		},
+		BlockKind::Video => {
+			ContentBlock::Video { media_type: "video/mp4".to_string(), bytes: 12_400_000 }
+		},
 		BlockKind::Thinking => ContentBlock::Thinking { text: "why".to_string() },
 		BlockKind::RedactedThinking => ContentBlock::RedactedThinking { marker: "r".to_string() },
 		BlockKind::ToolCall => ContentBlock::ToolCall {
@@ -149,7 +157,7 @@ fn every_partition_lands_in_its_section_and_a_row_keeps_its_id_across_a_move() {
 	}
 	let mut index = SessionIndex::new();
 	let mut state = ShellState::default();
-	project(&store, &mut index, NOW_MS, &mut state);
+	project(&store, &mut index, &HashMap::new(), NOW_MS, &mut state);
 
 	let sections: Vec<Section> = state.sections.iter().map(|(section, _)| *section).collect();
 	assert_eq!(
@@ -167,7 +175,7 @@ fn every_partition_lands_in_its_section_and_a_row_keeps_its_id_across_a_move() {
 	let mut moved = session("s0", QueuePartition::Parked, None);
 	moved.title = "moved".to_string();
 	store.sessions.insert(moved);
-	project(&store, &mut index, NOW_MS, &mut state);
+	project(&store, &mut index, &HashMap::new(), NOW_MS, &mut state);
 	let parked = &state.sections.last().expect("parked section").1;
 	assert!(
 		parked
@@ -193,7 +201,7 @@ fn every_badge_variant_reaches_the_row_and_the_run_bar() {
 			.insert(session("s", QueuePartition::Live, Some(badge_of(kind))));
 		store.persisted.shell.active_session = Some(SessionId::from("s"));
 		let mut state = ShellState::default();
-		project(&store, &mut SessionIndex::new(), NOW_MS, &mut state);
+		project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
 
 		let row = &state.sections[0].1[0];
 		let badge = row
@@ -246,7 +254,7 @@ fn a_turn_is_what_the_operator_said_and_everything_that_came_back() {
 	}]));
 
 	let mut state = ShellState::default();
-	project(&store, &mut SessionIndex::new(), NOW_MS, &mut state);
+	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
 
 	assert_eq!(state.transcript.len(), 2, "one operator turn, one agent turn");
 	assert!(matches!(&state.transcript[0], Turn::Operator(text) if text == "do it"));
@@ -269,7 +277,7 @@ fn every_block_kind_draws_something() {
 		let tree = store.transcripts.entry(SessionId::from("s")).or_default();
 		tree.append(entry("a", None, MessageRole::Assistant, vec![block_of(kind)]));
 		let mut state = ShellState::default();
-		project(&store, &mut SessionIndex::new(), NOW_MS, &mut state);
+		project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
 		let blocks = agent_blocks(&state.transcript[0]);
 		assert_eq!(blocks.len(), 1, "{kind:?} draws one block, got {blocks:?}");
 	}
@@ -299,7 +307,7 @@ fn the_active_branch_is_read_from_the_leaf_and_a_streaming_reply_is_the_last_tur
 		});
 
 	let mut state = ShellState::default();
-	project(&store, &mut SessionIndex::new(), NOW_MS, &mut state);
+	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
 
 	let prose: Vec<String> = state
 		.transcript
@@ -334,7 +342,7 @@ fn a_transcript_snapshot_replaces_what_an_earlier_one_loaded() {
 	reduce(&mut store, snapshot(&["d"]));
 
 	let mut state = ShellState::default();
-	project(&store, &mut SessionIndex::new(), NOW_MS, &mut state);
+	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
 	assert_eq!(state.transcript.len(), 1, "a reopen shows the reopened transcript once");
 	assert!(matches!(&state.transcript[0], Turn::Operator(text) if text == "d"));
 }
@@ -346,21 +354,22 @@ fn a_projection_leaves_what_the_window_owns_alone() {
 		.sessions
 		.insert(session("s", QueuePartition::Live, None));
 	let mut state = ShellState {
-		composed: "half a sentence".to_string(),
 		drawer_open: true,
-		tabs: vec!["Files".to_string(), "Changes".to_string()],
-		active_tab: 1,
+		panel: veyyon_desktop_surface::PanelContent {
+			active_tab: veyyon_desktop_surface::PanelTab::File,
+			diff_mode: veyyon_desktop_model::DiffMode::Split,
+			..veyyon_desktop_surface::PanelContent::default()
+		},
 		..ShellState::default()
 	};
 
-	project(&store, &mut SessionIndex::new(), NOW_MS, &mut state);
+	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
 
-	assert_eq!(state.composed, "half a sentence");
 	assert!(state.drawer_open);
-	assert_eq!(state.active_tab, 1);
-	assert_eq!(state.tabs.len(), 2);
+	assert_eq!(state.panel.active_tab, veyyon_desktop_surface::PanelTab::File);
+	assert_eq!(state.panel.diff_mode, veyyon_desktop_model::DiffMode::Split);
 	assert_eq!(state.sections.len(), 1, "and the host-owned fields were written");
-	assert_eq!(state.drawer_lines, Vec::<String>::new(), "the drawer shows the host's terminal");
+	assert_eq!(state.drawer.tabs.len(), 0, "the drawer shows the host's terminal");
 }
 
 fn changed(path: &str, additions: u64, deletions: u64) -> ChangedFile {
@@ -392,10 +401,12 @@ fn a_changes_snapshot_becomes_a_tree_with_each_directory_opened_once() {
 		})),
 	);
 	let mut state = ShellState::default();
-	project(&store, &mut SessionIndex::new(), NOW_MS, &mut state);
+	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
 
 	let rows: Vec<TreeCell<'_>> = state
+		.panel
 		.tree
+		.rows
 		.iter()
 		.map(|row| (row.depth, row.name.as_str(), row.changed))
 		.collect();
@@ -419,8 +430,11 @@ fn a_changes_snapshot_becomes_a_tree_with_each_directory_opened_once() {
 			diff:       String::new(),
 		})),
 	);
-	project(&store, &mut SessionIndex::new(), NOW_MS, &mut state);
-	assert!(state.tree.is_empty(), "a later snapshot replaces the tree, it does not add to it");
+	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
+	assert!(
+		state.panel.tree.rows.is_empty(),
+		"a later snapshot replaces the tree, it does not add to it"
+	);
 }
 
 fn terminal(id: &str, status: TerminalStatus) -> TerminalView {
@@ -464,19 +478,20 @@ fn the_drawer_shows_the_last_running_terminal_as_plain_text_from_the_end() {
 	reduce(&mut store, output("t2", 2, "\u{1b}]0;title\u{07}$ done"));
 
 	let mut state = ShellState::default();
-	project(&store, &mut SessionIndex::new(), NOW_MS, &mut state);
+	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
 
-	assert_eq!(state.drawer_lines.len(), PANE_LINE_CEILING, "held to the pane ceiling");
-	assert_eq!(state.drawer_lines[0], "line 4", "the lines dropped are the oldest");
-	assert_eq!(state.drawer_lines.last().map(String::as_str), Some("$ done"));
+	let lines = drawer_lines(&store.domains);
+	assert_eq!(lines.len(), PANE_LINE_CEILING, "held to the pane ceiling");
+	assert_eq!(lines[0], "line 4", "the lines dropped are the oldest");
+	assert_eq!(lines.last().map(String::as_str), Some("$ done"));
 	assert!(
-		state
-			.drawer_lines
+		lines
 			.iter()
 			.all(|line| !line.contains('\u{1b}') && !line.contains('\r')),
 		"control sequences never reach the drawer"
 	);
-
+	assert_eq!(state.drawer.tabs.len(), 3, "drawer projects 3 terminal tabs");
+	assert_eq!(state.drawer.title, "title", "drawer projects title from OSC");
 	reduce(
 		&mut store,
 		HostEvent::Snapshot(SnapshotSection::Terminals(vec![terminal(
@@ -484,8 +499,9 @@ fn the_drawer_shows_the_last_running_terminal_as_plain_text_from_the_end() {
 			TerminalStatus::Exited { code: 0 },
 		)])),
 	);
-	project(&store, &mut SessionIndex::new(), NOW_MS, &mut state);
-	assert_eq!(state.drawer_lines, ["exited terminal"], "with nothing running, the last one opened");
+	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
+	let lines2 = drawer_lines(&store.domains);
+	assert_eq!(lines2, ["exited terminal"], "with nothing running, the last one opened");
 }
 
 #[test]
@@ -504,7 +520,7 @@ fn a_pane_is_held_to_its_ceiling_with_the_remainder_counted() {
 		exit_code: Some(2),
 	}]));
 	let mut state = ShellState::default();
-	project(&store, &mut SessionIndex::new(), NOW_MS, &mut state);
+	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
 
 	let Block::Pane { caption, lines } = &agent_blocks(&state.transcript[0])[0] else {
 		panic!("an execution is a pane");
@@ -551,7 +567,7 @@ fn store_with_decisions() -> (Store, SessionIndex) {
 		});
 	let mut index = SessionIndex::new();
 	let mut state = ShellState::default();
-	project(&store, &mut index, NOW_MS, &mut state);
+	project(&store, &mut index, &HashMap::new(), NOW_MS, &mut state);
 	assert!(
 		matches!(&state.cards[..], [
 			Card::Approval { .. },
@@ -580,13 +596,53 @@ fn every_intent_maps_to_the_actions_the_host_answers_or_to_none_on_purpose() {
 		"opening a session also asks for the changes the panel shows"
 	);
 	assert!(actions_for(&Intent::SelectSession(999), &index, &mut store).is_empty());
-	assert_eq!(actions_for(&Intent::Send("hello".into()), &index, &mut store), [
-		HostAction::SubmitPrompt {
+	assert_eq!(
+		actions_for(
+			&Intent::Send { text: "hello".into(), attachments: Vec::new() },
+			&index,
+			&mut store
+		),
+		[HostAction::SubmitPrompt {
 			session:     session.clone(),
 			text:        "hello".into(),
 			attachments: Vec::new(),
-		}
-	]);
+		}]
+	);
+	// An attachment reaches the host with its bytes, its sniffed media type
+	// and an id that distinguishes two chips carrying the same file.
+	let png = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+	let picked = Attachment::from_path(
+		PathBuf::from("/repo/shot.png"),
+		MediaType::Png,
+		payload_for(MediaType::Png, png.clone()),
+	);
+	let pasted =
+		Attachment::from_clipboard(2, MediaType::Png, payload_for(MediaType::Png, png.clone()));
+	assert_eq!(
+		actions_for(
+			&Intent::Send { text: "look".into(), attachments: vec![picked, pasted] },
+			&index,
+			&mut store
+		),
+		[HostAction::SubmitPrompt {
+			session:     session.clone(),
+			text:        "look".into(),
+			attachments: vec![
+				AttachmentSubmission {
+					id:         "0:/repo/shot.png".into(),
+					name:       "shot.png".into(),
+					media_type: "image/png".into(),
+					data:       png.clone(),
+				},
+				AttachmentSubmission {
+					id:         "1:clipboard:2".into(),
+					name:       "Pasted image 2.png".into(),
+					media_type: "image/png".into(),
+					data:       png,
+				},
+			],
+		}]
+	);
 	assert!(actions_for(&Intent::SelectTab(0), &index, &mut store).is_empty());
 	assert!(actions_for(&Intent::SetDrawer { open: false }, &index, &mut store).is_empty());
 
@@ -689,5 +745,100 @@ fn a_decision_at_a_position_of_the_wrong_kind_is_dropped_not_misdelivered() {
 		(pending.approvals.len(), pending.questions.len(), pending.plans.len()),
 		(1, 1, 1),
 		"the mis-kinded answers took nothing; the bad option took its question"
+	);
+}
+
+#[test]
+fn the_footer_shows_the_model_thinking_and_context_the_host_reported() {
+	let mut store = Store::new();
+	let session_id = SessionId::from("s");
+	store
+		.sessions
+		.insert(session("s", QueuePartition::Live, None));
+	store.persisted.shell.active_session = Some(session_id.clone());
+	store
+		.capabilities
+		.set(Capability::Models, CapabilityStatus::Available);
+	store.domains.models = Some(ModelsView {
+		models:          vec![ModelView {
+			provider:       "anthropic".into(),
+			id:             "claude-sonnet-4.5".into(),
+			name:           "Claude Sonnet 4.5".into(),
+			reasoning:      true,
+			context_window: 200_000,
+			max_output:     64_000,
+			input:          vec![InputModality::Text, InputModality::Image],
+		}],
+		current:         Some(ModelRef {
+			provider: "anthropic".into(),
+			id:       "claude-sonnet-4.5".into(),
+		}),
+		thinking_level:  Some("high".into()),
+		thinking_levels: ["off", "low", "medium", "high"].map(str::to_owned).to_vec(),
+	});
+	store
+		.domains
+		.context
+		.insert(session_id.clone(), ContextBreakdownView {
+			session:      session_id.clone(),
+			total_tokens: 82_400,
+			limit_tokens: Some(200_000),
+			categories:   Vec::new(),
+		});
+	store
+		.composer_drafts
+		.insert(session_id, ComposerDraft { queue_mode: QueueMode::Queue, ..ComposerDraft::new() });
+
+	// What the window owns is not the host's to overwrite: the attachment the
+	// operator added survives the frame that reports a new model.
+	let mut state = ShellState::default();
+	state.composer.attachments.push(Attachment::from_clipboard(
+		1,
+		MediaType::Png,
+		payload_for(MediaType::Png, vec![0x89, b'P', b'N', b'G']),
+	));
+	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
+
+	let model = state
+		.composer
+		.model
+		.as_ref()
+		.expect("the models view projects");
+	assert!(model.selectable, "the host accepts SelectModel");
+	assert_eq!(model.label(), Some("Claude Sonnet 4.5"));
+	assert_eq!(
+		model.accepts(InputModality::Video),
+		Some(false),
+		"the catalog lists the model without video, so a clip flags unsupported"
+	);
+	let thinking = state
+		.composer
+		.thinking
+		.as_ref()
+		.expect("the levels project");
+	assert_eq!(thinking.level, "high");
+	assert_eq!(thinking.next(), Some("off"), "cycling wraps to the first level");
+	assert_eq!(
+		state.composer.context.and_then(|meter| meter.percent()),
+		Some(41),
+		"82.4k of 200k is 41% context"
+	);
+	assert_eq!(state.composer.queue_mode, QueueMode::Queue, "the draft's mode projects");
+	assert_eq!(state.composer.attachments.len(), 1, "the frame left the window's attachments");
+
+	// A host that never answered the Models capability gets a label naming the
+	// active model and no picker (§5.13).
+	store
+		.capabilities
+		.set(Capability::Models, CapabilityStatus::UnknownUntilAttached);
+	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
+	assert!(
+		!state
+			.composer
+			.model
+			.as_ref()
+			.expect("the models view still projects")
+			.selectable,
+		"an unknown capability is not permission to send SelectModel"
 	);
 }

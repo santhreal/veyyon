@@ -115,15 +115,17 @@ fn buffer_does_not_grow_past_cap_when_peer_sends_no_newline() {
 	let mut decoder = FrameDecoder::new();
 
 	let chunk_1mb = vec![b'x'; 1024 * 1024];
+	let chunks_to_cap = MAX_FRAME_BYTES / chunk_1mb.len();
 
-	// Feed 8 chunks (8 MiB)
-	for _ in 0..8 {
+	// Feed exactly up to the cap
+	for _ in 0..chunks_to_cap {
 		let res = decoder.decode_chunk(&chunk_1mb);
-		assert!(res.is_ok(), "up to 8 MiB without newline should buffer");
+		assert!(res.is_ok(), "up to the cap without newline should buffer");
 	}
-	assert_eq!(decoder.buffered_len(), 8 * 1024 * 1024);
+	assert_eq!(decoder.buffered_len(), MAX_FRAME_BYTES);
 
-	// The 9th chunk must fail immediately without expanding buffer to 9 MiB
+	// The next chunk must fail immediately without expanding the buffer past the
+	// cap
 	let res = decoder.decode_chunk(&chunk_1mb);
 	assert!(matches!(res, Err(FramingError::FrameTooLarge { .. })));
 

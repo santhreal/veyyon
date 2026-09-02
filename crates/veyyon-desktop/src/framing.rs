@@ -2,9 +2,12 @@ use bytes::BytesMut;
 use thiserror::Error;
 use veyyon_desktop_model::{HostEvent, HostRequest};
 
-/// Maximum allowed frame size: 8 MiB (8,388,608 bytes), matching
+/// Maximum allowed frame size: 32 MiB (33,554,432 bytes), matching
 /// `packages/coding-agent/src/gui-host/frames.ts:5`.
-pub const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
+///
+/// Sized for one prompt carrying `MAX_PROMPT_ATTACHMENT_BYTES` (20 MiB) of
+/// media as base64 (26.7 MiB) plus its envelope, with headroom.
+pub const MAX_FRAME_BYTES: usize = 32 * 1024 * 1024;
 
 /// Errors encountered during frame encoding or decoding.
 #[derive(Debug, Error)]
