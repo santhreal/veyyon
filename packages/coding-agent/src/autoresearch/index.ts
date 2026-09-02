@@ -116,6 +116,10 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	): void => {
 		const runtime = getRuntime(ctx);
 		runtime.autoresearchMode = enabled;
+		// An explicit on or off outranks a pause. Leaving it set would keep the row
+		// reading `paused` after the loop was turned off, since a pause is on its
+		// own reason to report one.
+		runtime.pausedOnBranch = null;
 		runtime.autoResumeArmed = false;
 		runtime.goal = goal;
 		runtime.lastAutoResumePendingRunNumber = null;
