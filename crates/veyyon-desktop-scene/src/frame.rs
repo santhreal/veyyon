@@ -232,7 +232,12 @@ impl RgbaFrame {
 
 	/// Every pixel in raster order.
 	pub fn pixels(&self) -> impl Iterator<Item = RgbaColor> + '_ {
-		self.pixels.as_chunks::<4>().0.iter().map(|[r, g, b, a]| RgbaColor::new(*r, *g, *b, *a))
+		self
+			.pixels
+			.as_chunks::<4>()
+			.0
+			.iter()
+			.map(|[r, g, b, a]| RgbaColor::new(*r, *g, *b, *a))
 	}
 
 	/// Convert a logical x to the nearest device column inside the frame.

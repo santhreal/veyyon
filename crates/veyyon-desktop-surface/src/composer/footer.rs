@@ -58,22 +58,23 @@ fn footer_controls(composer: &ComposerState, session: &SessionId) -> Vec<FooterC
 	let mut controls = Vec::with_capacity(5);
 
 	if let Some(model) = &composer.model
-		&& let Some(label) = model.label() {
-			let action = if model.selectable && !model.options.is_empty() {
-				FooterAction::Dispatch(Box::new(Intent::OpenOverlay(Box::new(Overlay::Palette(
-					PaletteState::from_models(model),
-				)))))
-			} else {
-				FooterAction::Label
-			};
-			controls.push(FooterControl {
-				id: "composer-footer-model",
-				surface: Some(SurfaceId::ComposerModelSelector(session.clone())),
-				icon: IconName::Cpu,
-				label: label.to_owned(),
-				action,
-			});
-		}
+		&& let Some(label) = model.label()
+	{
+		let action = if model.selectable && !model.options.is_empty() {
+			FooterAction::Dispatch(Box::new(Intent::OpenOverlay(Box::new(Overlay::Palette(
+				PaletteState::from_models(model),
+			)))))
+		} else {
+			FooterAction::Label
+		};
+		controls.push(FooterControl {
+			id: "composer-footer-model",
+			surface: Some(SurfaceId::ComposerModelSelector(session.clone())),
+			icon: IconName::Cpu,
+			label: label.to_owned(),
+			action,
+		});
+	}
 
 	if let Some(thinking) = &composer.thinking {
 		let action = thinking.next().map_or(FooterAction::Label, |next| {

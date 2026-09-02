@@ -119,9 +119,9 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 			if let Some(Overlay::Palette(palette)) = &mut state.overlay
 				&& let Some(crate::palette::PaletteItemKind::Directory { path }) =
 					palette.selected_item().map(|item| item.kind.clone())
-				{
-					palette.descend(path);
-				}
+			{
+				palette.descend(path);
+			}
 		},
 		Intent::PaletteAscend => {
 			if let Some(Overlay::Palette(palette)) = &mut state.overlay {
@@ -130,21 +130,24 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		},
 		Intent::SettingChanged { key, value } => {
 			if let Some(Overlay::Settings(settings)) = &mut state.overlay
-				&& let Some(entry) = settings.settings.get_mut(key) {
-					entry.value = value.clone();
-				}
+				&& let Some(entry) = settings.settings.get_mut(key)
+			{
+				entry.value = value.clone();
+			}
 		},
 		Intent::ResetSetting(key) => {
 			if let Some(Overlay::Settings(settings)) = &mut state.overlay
-				&& let Some(entry) = settings.settings.get_mut(key) {
-					entry.value = entry.default.clone();
-				}
+				&& let Some(entry) = settings.settings.get_mut(key)
+			{
+				entry.value = entry.default.clone();
+			}
 		},
 		Intent::SelectTheme(theme) => {
 			if let Some(Overlay::Settings(settings)) = &mut state.overlay
-				&& let Some(themes) = &mut settings.themes {
-					themes.current.clone_from(theme);
-				}
+				&& let Some(themes) = &mut settings.themes
+			{
+				themes.current.clone_from(theme);
+			}
 		},
 		Intent::ReloadSettings => {
 			if let Some(Overlay::Settings(settings)) = &mut state.overlay {
@@ -153,9 +156,10 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		},
 		Intent::SetMcpEnabled { server, enabled } => {
 			if let Some(Overlay::Settings(settings)) = &mut state.overlay
-				&& let Some(view) = settings.mcp.iter_mut().find(|view| view.name == *server) {
-					view.enabled = *enabled;
-				}
+				&& let Some(view) = settings.mcp.iter_mut().find(|view| view.name == *server)
+			{
+				view.enabled = *enabled;
+			}
 		},
 		// A refresh has nothing local to show until the host answers with the
 		// snapshot the projection draws.
@@ -280,22 +284,19 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		},
 		Intent::ExpandContext { file, row } => {
 			if let Some(diff_file) = state.panel.diff.get_mut(*file)
-				&& let Some(crate::right_panel::DiffRow::Collapsed {
-					hidden,
-					before_line,
-					after_line,
-				}) = diff_file.rows.get(*row).cloned()
-				{
-					let mut expanded_rows = Vec::with_capacity(hidden);
-					for i in 0..hidden {
-						expanded_rows.push(crate::right_panel::DiffRow::Context {
-							old_line: before_line + 1 + i,
-							new_line: after_line + 1 + i,
-							text:     String::new(),
-						});
-					}
-					diff_file.rows.splice(*row..=*row, expanded_rows);
+				&& let Some(crate::right_panel::DiffRow::Collapsed { hidden, before_line, after_line }) =
+					diff_file.rows.get(*row).cloned()
+			{
+				let mut expanded_rows = Vec::with_capacity(hidden);
+				for i in 0..hidden {
+					expanded_rows.push(crate::right_panel::DiffRow::Context {
+						old_line: before_line + 1 + i,
+						new_line: after_line + 1 + i,
+						text:     String::new(),
+					});
 				}
+				diff_file.rows.splice(*row..=*row, expanded_rows);
+			}
 		},
 		Intent::SelectChangeScope(_) => {},
 	}

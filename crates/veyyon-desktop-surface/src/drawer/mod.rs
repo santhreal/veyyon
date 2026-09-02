@@ -65,9 +65,10 @@ pub const fn resolve_named_color(color: NamedColor, tokens: &TokenSet) -> Hsla {
 #[must_use]
 pub fn resolve_indexed_color(idx: u8, tokens: &TokenSet) -> Hsla {
 	if idx < 16
-		&& let Some(named) = NamedColor::from_index(idx) {
-			return resolve_named_color(named, tokens);
-		}
+		&& let Some(named) = NamedColor::from_index(idx)
+	{
+		return resolve_named_color(named, tokens);
+	}
 
 	if idx >= 232 {
 		let gray = (idx - 232) * 10 + 8;

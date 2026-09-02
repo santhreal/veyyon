@@ -74,22 +74,23 @@ pub fn render_context_page(
 
 	// Meter bar if limit is known
 	if let Some(limit) = ctx.limit_tokens
-		&& limit > 0 {
-			let ratio = ((ctx.total_tokens as f32 / limit as f32) * 100.0).clamp(0.0, 100.0);
-			let meter = div()
-				.w_full()
-				.h(px(4.0))
-				.rounded(tokens.radius(RadiusStep::Full))
-				.bg(tokens.color(ColorRole::Inset))
-				.overflow_hidden()
-				.child(
-					div()
-						.h_full()
-						.w(veyyon_gpui::relative(ratio / 100.0))
-						.bg(tokens.color(ColorRole::Accent)),
-				);
-			container = container.child(meter);
-		}
+		&& limit > 0
+	{
+		let ratio = ((ctx.total_tokens as f32 / limit as f32) * 100.0).clamp(0.0, 100.0);
+		let meter = div()
+			.w_full()
+			.h(px(4.0))
+			.rounded(tokens.radius(RadiusStep::Full))
+			.bg(tokens.color(ColorRole::Inset))
+			.overflow_hidden()
+			.child(
+				div()
+					.h_full()
+					.w(veyyon_gpui::relative(ratio / 100.0))
+					.bg(tokens.color(ColorRole::Accent)),
+			);
+		container = container.child(meter);
+	}
 
 	// Categories
 	for cat in &ctx.categories {

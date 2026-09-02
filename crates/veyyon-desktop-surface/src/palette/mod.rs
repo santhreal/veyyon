@@ -17,7 +17,7 @@ use veyyon_gpui::{Context, InteractiveElement, IntoElement, ParentElement, Style
 pub use self::{matcher::*, modes::*, rows::*};
 use crate::{
 	Intent, ShellView,
-    model::{Row, Section},
+	model::{Row, Section},
 };
 
 /// Active state of the command palette overlay (§5.8).
@@ -161,10 +161,10 @@ impl PaletteState {
 				.options
 				.iter()
 				.position(|option| option.choice == *current)
-			{
-				let active = items.remove(position);
-				items.insert(0, active);
-			}
+		{
+			let active = items.remove(position);
+			items.insert(0, active);
+		}
 		Self {
 			query: String::new(),
 			mode: PaletteMode::Models,

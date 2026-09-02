@@ -143,12 +143,18 @@ fn approval(
 		.child(pane)
 		.child(answers(
 			&[
-				("Reject", Choice::Fixed(Box::new(Intent::Approval { card, approved: false, standing: false }))),
+				(
+					"Reject",
+					Choice::Fixed(Box::new(Intent::Approval { card, approved: false, standing: false })),
+				),
 				(
 					"Approve for session",
 					Choice::Fixed(Box::new(Intent::Approval { card, approved: true, standing: true })),
 				),
-				("Approve", Choice::Fixed(Box::new(Intent::Approval { card, approved: true, standing: false }))),
+				(
+					"Approve",
+					Choice::Fixed(Box::new(Intent::Approval { card, approved: true, standing: false })),
+				),
 			],
 			tokens,
 			cx,

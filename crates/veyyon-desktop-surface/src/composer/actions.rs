@@ -121,57 +121,58 @@ pub fn turn_action_controls(
 		InteractiveState::Disabled
 	};
 
-	let primary_element = if let Some(mode @ (SecondaryAction::Queue | SecondaryAction::Steer)) = secondary {
- 			// The secondary half switches the queue mode to the one the
- 			// primary is not, so the operator can reach either from one control.
- 			let mode = if mode == SecondaryAction::Queue {
- 				QueueMode::Queue
- 			} else {
- 				QueueMode::Steer
- 			};
- 			let mut btn = SplitButton::new(primary.label())
- 				.id(ElementId::from("composer-primary-split"))
- 				.variant(variant)
- 				.size(ButtonSize::Small)
- 				.state(state);
+	let primary_element =
+		if let Some(mode @ (SecondaryAction::Queue | SecondaryAction::Steer)) = secondary {
+			// The secondary half switches the queue mode to the one the
+			// primary is not, so the operator can reach either from one control.
+			let mode = if mode == SecondaryAction::Queue {
+				QueueMode::Queue
+			} else {
+				QueueMode::Steer
+			};
+			let mut btn = SplitButton::new(primary.label())
+				.id(ElementId::from("composer-primary-split"))
+				.variant(variant)
+				.size(ButtonSize::Small)
+				.state(state);
 
- 			if allowed {
- 				btn = btn
- 					.on_primary(cx.listener(|view, _ev: &ClickEvent, _win, cx| {
- 						view.submit_primary_turn_action(cx);
- 						cx.notify();
- 					}))
- 					.on_secondary(cx.listener(move |view, _ev: &ClickEvent, _win, cx| {
- 						view.dispatch(Intent::SetQueueMode(mode));
- 						cx.notify();
- 					}));
- 			}
+			if allowed {
+				btn = btn
+					.on_primary(cx.listener(|view, _ev: &ClickEvent, _win, cx| {
+						view.submit_primary_turn_action(cx);
+						cx.notify();
+					}))
+					.on_secondary(cx.listener(move |view, _ev: &ClickEvent, _win, cx| {
+						view.dispatch(Intent::SetQueueMode(mode));
+						cx.notify();
+					}));
+			}
 
- 			// Opacity alone on the wrapper: a cursor here would register a
- 			// second hit rect over the button's own.
- 			div()
- 				.id(ElementId::from("composer-split-action"))
- 				.opacity(opacity)
- 				.child(btn)
- 		} else {
- 			let mut btn = Button::new(primary.label())
- 				.id(ElementId::from("composer-primary-action"))
- 				.variant(variant)
- 				.size(ButtonSize::Small)
- 				.state(state);
+			// Opacity alone on the wrapper: a cursor here would register a
+			// second hit rect over the button's own.
+			div()
+				.id(ElementId::from("composer-split-action"))
+				.opacity(opacity)
+				.child(btn)
+		} else {
+			let mut btn = Button::new(primary.label())
+				.id(ElementId::from("composer-primary-action"))
+				.variant(variant)
+				.size(ButtonSize::Small)
+				.state(state);
 
- 			if allowed {
- 				btn = btn.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
- 					view.submit_primary_turn_action(cx);
- 					cx.notify();
- 				}));
- 			}
+			if allowed {
+				btn = btn.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+					view.submit_primary_turn_action(cx);
+					cx.notify();
+				}));
+			}
 
- 			div()
- 				.id(ElementId::from("composer-action-btn-wrap"))
- 				.opacity(opacity)
- 				.child(btn)
- 		};
+			div()
+				.id(ElementId::from("composer-action-btn-wrap"))
+				.opacity(opacity)
+				.child(btn)
+		};
 
 	container.child(primary_element)
 }

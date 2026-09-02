@@ -178,9 +178,10 @@ impl TerminalGrid {
 			if self.cursor_col >= self.cols.saturating_sub(1) {
 				let (col, r_idx) = (self.cursor_col, self.cursor_row);
 				if let Some(row) = self.visible_row_mut(r_idx)
-					&& let Some(cell) = row.get_mut(col) {
-						cell.reset();
-					}
+					&& let Some(cell) = row.get_mut(col)
+				{
+					cell.reset();
+				}
 				if self.auto_wrap {
 					self.cursor_col = 0;
 					self.linefeed();
@@ -204,9 +205,10 @@ impl TerminalGrid {
 		} else {
 			let (col, row) = (self.cursor_col, self.cursor_row);
 			if let Some(r) = self.visible_row_mut(row)
-				&& let Some(cell) = r.get_mut(col) {
-					*cell = Cell { c, ink: fg, bg_ink: bg, style, width: 1 };
-				}
+				&& let Some(cell) = r.get_mut(col)
+			{
+				*cell = Cell { c, ink: fg, bg_ink: bg, style, width: 1 };
+			}
 			if self.cursor_col + 1 < self.cols {
 				self.cursor_col += 1;
 			} else {

@@ -193,11 +193,12 @@ impl Intents {
 		}
 
 		if intent == Intent::PaletteRun
-			&& let Some(run) = state.overlay_palette().and_then(PaletteState::run_intent) {
-				state.overlay = None;
-				self.dispatch(run, state);
-				return;
-			}
+			&& let Some(run) = state.overlay_palette().and_then(PaletteState::run_intent)
+		{
+			state.overlay = None;
+			self.dispatch(run, state);
+			return;
+		}
 
 		intent.apply(state);
 		if !intent.is_local() {

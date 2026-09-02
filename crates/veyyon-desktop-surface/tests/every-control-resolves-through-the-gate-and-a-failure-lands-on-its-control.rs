@@ -14,15 +14,14 @@
 //! asserts that local surface state reflects gate availability and error
 //! routing.
 
-
 use veyyon_desktop_kit::{TokenSet, load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_model::{
 	BackendError, ErrorScope, HostActionKind, RequestId, RequestRegistry, SurfaceId, route_error,
 };
 use veyyon_desktop_scene::{Appearance, RenderOptions, headless_context, render_view_captured};
 use veyyon_desktop_surface::{
-	Availability, ConnectionPhase, ControlError, ShellState,
-	ShellView, controls::availability_style, fixture::populated, tokens::install_tokens,
+	Availability, ConnectionPhase, ControlError, ShellState, ShellView,
+	controls::availability_style, fixture::populated, tokens::install_tokens,
 };
 use veyyon_gpui::{App, AppContext, CursorStyle, Window};
 fn render_shell_captured(state: ShellState) -> veyyon_desktop_scene::Captured {
