@@ -1,5 +1,4 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, setSystemTime, vi } from "bun:test";
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -26,10 +25,10 @@ import { getEditorTheme, initTheme } from "@veyyon/coding-agent/modes/theme/them
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { branchLabelFromFiles, HEAD_REF_PREFIX, LOCAL_BRANCH_PREFIX } from "@veyyon/coding-agent/utils/git-head";
+import { branchLabelFromFiles } from "@veyyon/coding-agent/utils/git-head";
 import type { Component } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/tui/utils";
-import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
+import { getProjectDir, TempDir } from "@veyyon/utils";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 import { useFixtureCheckout } from "./helpers/fixture-checkout";
 
