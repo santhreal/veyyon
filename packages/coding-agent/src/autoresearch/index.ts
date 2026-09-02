@@ -41,12 +41,20 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 
 	const loadActiveSession = async (
 		ctx: ExtensionContext,
-	): Promise<{ session: SessionRow | null; currentBranch: string | null }> => {
+	): Promise<{ session: SessionRow | null; currentBranch: string | null; pausedOnBranch: string | null }> => {
 		const currentBranch = await tryReadBranch(ctx.cwd);
 		const storage = await openAutoresearchStorageIfExists(ctx.cwd);
-		if (!storage) return { session: null, currentBranch };
-		const session = storage.getActiveSessionForBranch(currentBranch);
-		return { session, currentBranch };
+		if (!storage) return { session: null, currentBranch, pausedOnBranch: null };
+		const onBranch = storage.getActiveSessionForBranch(currentBranch);
+		if (onBranch) return { session: onBranch, currentBranch, pausedOnBranch: null };
+		// Nothing recorded for this branch. An active session on another branch is
+		// paused, not absent: the caller keeps its runs readable and names the
+		// branch, rather than showing a loop that looks reset to nothing.
+		const elsewhere = storage.getActiveSession();
+		if (!elsewhere || elsewhere.branch === null || elsewhere.branch === currentBranch) {
+			return { session: elsewhere, currentBranch, pausedOnBranch: null };
+		}
+		return { session: elsewhere, currentBranch, pausedOnBranch: elsewhere.branch };
 	};
 
 	const rehydrate = async (ctx: ExtensionContext): Promise<void> => {
@@ -60,18 +68,18 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		// This is the common case: every project gets a session_start event but most
 		// never touch autoresearch, so we must not create a SQLite file just to look.
 		const everActivated = control.lastMode !== null;
-		const { session, currentBranch } = everActivated
+		const { session, pausedOnBranch } = everActivated
 			? await loadActiveSession(ctx)
-			: { session: null, currentBranch: null };
+			: { session: null, pausedOnBranch: null };
 
-		// Mode is effective only when the recorded session matches the current git
-		// branch. When the user switches off the autoresearch branch the widget hides
-		// and the experiment tools detach, but the session entries are preserved so
-		// switching back resumes seamlessly.
-		const onActiveBranch = session === null || session.branch === null || session.branch === currentBranch;
-		runtime.autoresearchMode = control.autoresearchMode && onActiveBranch;
+		// Mode is effective only on the branch the session recorded. Off that branch
+		// the experiment tools detach, but the loop is paused rather than gone: its
+		// runs stay loaded, so the run screen still opens and the row can name the
+		// branch instead of blanking to a state that looks like nothing ever ran.
+		runtime.pausedOnBranch = pausedOnBranch;
+		runtime.autoresearchMode = control.autoresearchMode && pausedOnBranch === null;
 
-		if (session && onActiveBranch) {
+		if (session) {
 			const storage = await openAutoresearchStorageIfExists(ctx.cwd);
 			if (storage) {
 				const loggedRuns = storage.listLoggedRuns(session.id);
@@ -396,21 +404,26 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	api.on("before_agent_start", async (event, ctx) => {
 		const runtime = getRuntime(ctx);
 		if (!runtime.autoresearchMode) return;
-		// Re-check git branch on every agent start. If the user manually switched
-		// off the autoresearch/* branch between turns, we silently drop autoresearch
-		// from this turn — the widget hides, the experiment tools detach, and we do
-		// not inject the autoresearch system prompt.
-		const { session, currentBranch } = await loadActiveSession(ctx);
-		const onActiveBranch = session === null || session.branch === null || session.branch === currentBranch;
-		if (!onActiveBranch) {
+		// Re-check git branch on every agent start. Off the session's branch the
+		// experiment tools detach and the autoresearch system prompt is not
+		// injected, but the loop is paused rather than discarded: its runs stay
+		// loaded so the run screen still opens, and the row names the branch that
+		// resumes it.
+		const { session, pausedOnBranch } = await loadActiveSession(ctx);
+		if (pausedOnBranch !== null) {
+			runtime.pausedOnBranch = pausedOnBranch;
 			runtime.autoresearchMode = false;
-			runtime.state = createExperimentState();
-			runtime.lastRunSummary = null;
 			runtime.runningExperiment = null;
+			const pausedStorage = await openAutoresearchStorageIfExists(ctx.cwd);
+			if (session && pausedStorage) {
+				runtime.state = buildExperimentState(session, pausedStorage.listLoggedRuns(session.id));
+				runtime.lastRunSummary = pendingRunSummaryFromRow(pausedStorage.getPendingRun(session.id));
+			}
 			dashboard.update(ctx, runtime);
 			await api.setActiveTools(activeToolsFor(api.getActiveTools(), false, effectiveBreadth(runtime)));
 			return;
 		}
+		runtime.pausedOnBranch = null;
 		const storage = await openAutoresearchStorageIfExists(ctx.cwd);
 		if (session && storage) {
 			runtime.state = buildExperimentState(session, storage.listLoggedRuns(session.id));

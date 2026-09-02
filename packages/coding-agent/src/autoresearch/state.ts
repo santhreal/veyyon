@@ -40,6 +40,7 @@ export function createExperimentState(): ExperimentState {
 export function createSessionRuntime(): AutoresearchRuntime {
 	return {
 		autoresearchMode: false,
+		pausedOnBranch: null,
 		autoResumeArmed: false,
 		lastAutoResumePendingRunNumber: null,
 		lastRunDuration: null,

@@ -167,6 +167,12 @@ export interface SwarmSetup {
 
 export interface AutoresearchRuntime {
 	autoresearchMode: boolean;
+	/**
+	 * The branch an active session is recorded on, when that is not the branch
+	 * checked out now. Non-null means the loop is paused: its tools are detached
+	 * and its runs stay readable, so the row names the branch to switch back to.
+	 */
+	pausedOnBranch: string | null;
 	autoResumeArmed: boolean;
 	lastAutoResumePendingRunNumber: number | null;
 	lastRunDuration: number | null;

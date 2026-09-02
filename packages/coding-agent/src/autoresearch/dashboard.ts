@@ -132,6 +132,9 @@ export function createDashboardController(): DashboardController {
 function hasSession(runtime: AutoresearchRuntime): boolean {
 	return (
 		runtime.autoresearchMode ||
+		// A paused loop is still a loop worth reporting: dropping the row here is
+		// what made a branch switch look like the session had been discarded.
+		runtime.pausedOnBranch !== null ||
 		runtime.state.results.length > 0 ||
 		runtime.runningExperiment !== null ||
 		runtime.lastRunSummary !== null
@@ -179,7 +182,21 @@ export function renderStatusRow(runtime: AutoresearchRuntime, width = process.st
 		{ text: theme.fg("accent", breadth > 1 ? "autoswarm" : "autoresearch"), drop: 0 },
 	];
 
-	if (runtime.runningExperiment) {
+	if (runtime.pausedOnBranch) {
+		// Why the loop is not running, and the branch that resumes it. Without this
+		// the row falls through to the run-status segments below and reads as though
+		// nothing was ever measured here.
+		segments.push({
+			// The branch is the actionable part: it is what the user checks out to
+			// resume. Width is the segment system's job, so it is not capped a
+			// second time here into something that cannot be typed back.
+			text: theme.fg("warning", `paused · session on ${runtime.pausedOnBranch}`),
+			// Outranks every other droppable segment: a metric with no explanation of
+			// why the loop stopped is the reading that misleads, and this replaces
+			// `mode off` rather than sitting beside it.
+			drop: 11,
+		});
+	} else if (runtime.runningExperiment) {
 		segments.push(
 			{ text: theme.fg("warning", `run #${runtime.runningExperiment.runNumber}`), drop: 8 },
 			{ text: theme.fg("dim", formatElapsed(Date.now() - runtime.runningExperiment.startedAt)), drop: 7 },
@@ -262,7 +279,11 @@ export function renderStatusRow(runtime: AutoresearchRuntime, width = process.st
 
 	// Above the result: a metric from a loop that is no longer running is the one
 	// reading that needs the qualification more than it needs the number.
-	if (!runtime.autoresearchMode) segments.push({ text: theme.fg("dim", "mode off"), drop: 10 });
+	// A paused row already states the mode is off and why, so the bare
+	// qualification would only crowd out the branch name.
+	if (!runtime.autoresearchMode && runtime.pausedOnBranch === null) {
+		segments.push({ text: theme.fg("dim", "mode off"), drop: 10 });
+	}
 	segments.push({ text: theme.fg("dim", `${AUTORESEARCH_SCREEN_KEY} runs`), drop: 0 });
 
 	let kept = segments;
