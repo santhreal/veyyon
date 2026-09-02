@@ -176,7 +176,10 @@ describe("the collapsed card window", () => {
 	test("eval keeps the warning and names what it counted away", () => {
 		const rendered = plain(
 			drawToolView(
-				evalToolView.renderResult({ content: [{ type: "text", text: CARGO_CAPTURE.join("\n") }] }, { expanded: false }),
+				evalToolView.renderResult(
+					{ content: [{ type: "text", text: CARGO_CAPTURE.join("\n") }] },
+					{ expanded: false },
+				),
 				activeTheme,
 			).render(80),
 		);

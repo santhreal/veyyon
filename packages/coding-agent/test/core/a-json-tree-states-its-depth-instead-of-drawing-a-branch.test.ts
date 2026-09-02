@@ -20,9 +20,9 @@
 
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { renderJsonTreeLines } from "@veyyon/coding-agent/tools/core/json-tree-render";
 import { type JsonTreeBounds, jsonTreeViewLines } from "@veyyon/coding-agent/tools/core/json-tree-view";
-import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { ViewLine } from "@veyyon/view";
 
 const BOUNDS: JsonTreeBounds = { maxDepth: 6, maxLines: 200, maxScalarLen: 80 };

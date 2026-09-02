@@ -1,9 +1,13 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import type { SearchRenderDetails, SearchResponse } from "@veyyon/coding-agent/web/search/types";
-import { type WebSearchViewArgs, type WebSearchViewResult, webSearchToolView } from "@veyyon/coding-agent/web/search/view";
+import {
+	type WebSearchViewArgs,
+	type WebSearchViewResult,
+	webSearchToolView,
+} from "@veyyon/coding-agent/web/search/view";
 import { sanitizeText } from "@veyyon/utils";
 
 const ANSWER = [
@@ -69,7 +73,9 @@ describe("the web search card", () => {
 
 	it("renders the answer as markdown (strips ## and ** markers)", async () => {
 		const uiTheme = (await getThemeByName("dark"))!;
-		const answer = answerSection(card(buildResult(ANSWER), true, uiTheme, { query: "test query" }).map(l => sanitizeText(l)));
+		const answer = answerSection(
+			card(buildResult(ANSWER), true, uiTheme, { query: "test query" }).map(l => sanitizeText(l)),
+		);
 		// Heading hashes and bold asterisks are consumed by the markdown renderer.
 		expect(answer).not.toContain("##");
 		expect(answer).not.toContain("**");
@@ -90,7 +96,9 @@ describe("the web search card", () => {
 
 	it("shows the full answer when collapsed by default", async () => {
 		const uiTheme = (await getThemeByName("dark"))!;
-		const answer = answerSection(card(buildResult(ANSWER), false, uiTheme, { query: "test query" }).map(l => sanitizeText(l)));
+		const answer = answerSection(
+			card(buildResult(ANSWER), false, uiTheme, { query: "test query" }).map(l => sanitizeText(l)),
+		);
 		// TUI collapsed view keeps the answer intact; only explicit compact mode caps it.
 		expect(answer).toContain("FINAL_UNIQUE_MARKER");
 		expect(answer).not.toMatch(/more line/);
@@ -99,7 +107,9 @@ describe("the web search card", () => {
 	it("truncates the answer only when compact mode provides maxAnswerLines", async () => {
 		const uiTheme = (await getThemeByName("dark"))!;
 		const answer = answerSection(
-			card(buildResult(ANSWER), false, uiTheme, { query: "test query", maxAnswerLines: 3 }).map(l => sanitizeText(l)),
+			card(buildResult(ANSWER), false, uiTheme, { query: "test query", maxAnswerLines: 3 }).map(l =>
+				sanitizeText(l),
+			),
 		);
 
 		expect(answer).toMatch(/more line/);
@@ -172,8 +182,8 @@ describe("the web search card", () => {
 		const rail = uiTheme.symbol("block.rail");
 
 		// Fallback text (no response details)
-		const fallbackLines = card({ content: [{ type: "text", text: "Line 1\nLine 2\nLine 3" }] }, true, uiTheme).map(l =>
-			sanitizeText(l),
+		const fallbackLines = card({ content: [{ type: "text", text: "Line 1\nLine 2\nLine 3" }] }, true, uiTheme).map(
+			l => sanitizeText(l),
 		);
 		for (const line of fallbackLines) {
 			expect(line.startsWith(`${rail} `)).toBe(true);

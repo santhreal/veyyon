@@ -9,7 +9,6 @@ import * as lspClient from "@veyyon/coding-agent/lsp/client";
 import * as lspConfig from "@veyyon/coding-agent/lsp/config";
 import { getServersForFile, type LspConfig, loadConfig } from "@veyyon/coding-agent/lsp/config";
 import { applyTextEditsToString, applyWorkspaceEdit, sortAndValidateTextEdits } from "@veyyon/coding-agent/lsp/edits";
-import { lspToolView } from "@veyyon/coding-agent/lsp/view";
 import type {
 	CodeAction,
 	CreateFile,
@@ -35,6 +34,7 @@ import {
 	resolveSymbolColumn,
 	uriToFile,
 } from "@veyyon/coding-agent/lsp/utils";
+import { lspToolView } from "@veyyon/coding-agent/lsp/view";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";

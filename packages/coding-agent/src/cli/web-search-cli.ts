@@ -69,10 +69,14 @@ export async function runSearchCommand(cmd: SearchCommandArgs): Promise<void> {
 	// The card is described once and drawn by the host, which here is this terminal: the compact cap
 	// travels as an argument, so a one-shot print states what it left out and offers no gesture for it.
 	const component = drawToolView(
-		webSearchToolView.renderResult(result, { expanded: cmd.expanded }, {
-			query: cmd.query,
-			maxAnswerLines: cmd.expanded ? undefined : 6,
-		}),
+		webSearchToolView.renderResult(
+			result,
+			{ expanded: cmd.expanded },
+			{
+				query: cmd.query,
+				maxAnswerLines: cmd.expanded ? undefined : 6,
+			},
+		),
 		theme,
 	);
 

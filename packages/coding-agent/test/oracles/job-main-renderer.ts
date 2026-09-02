@@ -25,11 +25,7 @@ import {
 	type ToolUIColor,
 	type ToolUIStatus,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import type {
-	AgentActivitySnapshot,
-	JobSnapshot,
-	JobToolDetails,
-} from "@veyyon/coding-agent/tools/shell/job";
+import type { AgentActivitySnapshot, JobSnapshot, JobToolDetails } from "@veyyon/coding-agent/tools/shell/job";
 import {
 	Ellipsis,
 	Hasher,

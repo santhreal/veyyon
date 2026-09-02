@@ -12,10 +12,10 @@
  */
 
 import { formatMoreLines, isRecord } from "@veyyon/utils";
-import { INTENT_FIELD } from "@veyyon/wire";
 import type { ViewLine, ViewSpan } from "@veyyon/view";
-import { Ellipsis, truncateToWidth } from "./render-utils";
+import { INTENT_FIELD } from "@veyyon/wire";
 import { formatScalar } from "./json-tree-render";
+import { Ellipsis, truncateToWidth } from "./render-utils";
 
 /** The two columns one level of nesting costs. */
 const LEVEL_INDENT = "  ";
@@ -48,10 +48,7 @@ function kindSymbol(value: unknown): string {
  * depth cut is not one of them, because the walk already closes that node with its own `…` row, and
  * a card that added a second one would state the same cut twice.
  */
-export function jsonTreeViewLines(
-	value: unknown,
-	bounds: JsonTreeBounds,
-): { lines: ViewLine[]; truncated: boolean } {
+export function jsonTreeViewLines(value: unknown, bounds: JsonTreeBounds): { lines: ViewLine[]; truncated: boolean } {
 	const lines: ViewLine[] = [];
 	let truncated = false;
 
@@ -74,7 +71,10 @@ export function jsonTreeViewLines(
 			truncated = true;
 			return;
 		}
-		const label: ViewSpan = { text: key ?? (Array.isArray(node) ? "array" : isRecord(node) ? "object" : "value"), tone: "muted" };
+		const label: ViewSpan = {
+			text: key ?? (Array.isArray(node) ? "array" : isRecord(node) ? "object" : "value"),
+			tone: "muted",
+		};
 		const head: ViewSpan[] = [
 			...indent(depth),
 			{ text: "", symbol: kindSymbol(node), tone: "muted" },

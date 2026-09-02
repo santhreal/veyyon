@@ -242,6 +242,10 @@
 			"packages/utils/src"
 		],
 		[
+			"packages/hashline/tsconfig.json",
+			"kernel/tsconfig.json"
+		],
+		[
 			"packages/coding-agent/test/web",
 			"plugins/web/test"
 		],
@@ -256,10 +260,6 @@
 		[
 			"crates/veyyon-test-scratch",
 			"natives/testing/scratch"
-		],
-		[
-			"packages/tui/tsconfig.json",
-			"kernel/tsconfig.json"
 		],
 		[
 			"crates/veyyon-conformance",
@@ -531,6 +531,28 @@
 			"mainHash": "c730dfd7e569e5173a60e38e37bcbcc4bc19c576aa8a42510cdf46a801a8cfdc",
 			"structuralHash": "3e823dfa50a745297133ddaa28e7711dd16e54ea540bf1ec73047630ad4d99b1",
 			"mainStructuralHash": "3e823dfa50a745297133ddaa28e7711dd16e54ea540bf1ec73047630ad4d99b1"
+		},
+		"hosts/gui/bunfig.toml": {
+			"old": "packages/hashline/bunfig.toml",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "manifest-depth",
+			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"hash": "1cdfc76e896b4df720c8c700ea6c8e4d6473a012ad5f490fe73a29e0cb1105fa",
+			"mainHash": "e357f0514f16015c938d120055649b63d1d92e5ce69c9745766c46f30c386a77",
+			"structuralHash": "e67cafbcfa993d42c79936c2b3c96323734290b2b9be51a7f589f8cec069a2d9",
+			"mainStructuralHash": "d77fe7e12f97d22f38bab5a9245647b1325964f93f1353248eac056a4bb1f09c"
+		},
+		"hosts/gui/tsconfig.json": {
+			"old": "packages/tui/tsconfig.json",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "manifest-depth",
+			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"hash": "d15bacbdda48a13ace6cef832622daf0754b125bb399edff53db4529e7acc82c",
+			"mainHash": "8c311aa9b6154a484e086da0fc6da90d35cd5ec99bd94405937c9a5b162b106b",
+			"structuralHash": "3d1f42113994e537eb4004f5efb7506ca09cdc40ef4bd70c307730dc2b8db465",
+			"mainStructuralHash": "b7e87a3a0dbf53f214467603befab7c2567ce60d153a73e9c5a220610fa5f760"
 		},
 		"hosts/terminal/engine/CHANGELOG.md": {
 			"old": "packages/tui/CHANGELOG.md",
@@ -2131,7 +2153,7 @@
 			"mainStructuralHash": "db7140b054bae1b899e370c9bb2df3e088a67d51d17ef27f323696511b31dcff"
 		},
 		"hosts/terminal/engine/tsconfig.json": {
-			"old": "packages/hashline/tsconfig.json",
+			"old": "packages/mnemopi/tsconfig.json",
 			"kind": "normalized",
 			"differs": "changed",
 			"group": "manifest-depth",
@@ -2603,7 +2625,7 @@
 			"mainStructuralHash": "98e15d3a1c86811e83cf97bb06e95c9b765a7e9b17ab9d5cc7099d2da0bdf696"
 		},
 		"kernel/tsconfig.json": {
-			"old": "packages/tui/tsconfig.json",
+			"old": "packages/hashline/tsconfig.json",
 			"kind": "normalized",
 			"differs": "changed",
 			"group": "manifest-depth",
@@ -15066,7 +15088,7 @@
 			"differs": "changed",
 			"group": "oracle-freeze",
 			"reason": "A renderer this branch replaced with a `ToolView` is frozen here as the differential oracle its suite compares the card against. The search dispatcher reached the three sub-views this branch declares rather than the terminal components main built, which is the change recorded: the rows it draws itself are main's, and the suite beside it proves the card byte for byte.",
-			"hash": "19754b13f4f97d55bdeab86c3c7a79bcf797e71b857caedab672139b541955be",
+			"hash": "41f483c35ce81ed6b5cad76e17f6140983b969ef235069b7e14e299459077c3f",
 			"mainHash": "b44c959ef5254cf986bcbbb014d27246c01336a0bb85f6f47fd80aa9e038b551",
 			"structuralHash": "9e740041ce7720302687f0336aa69b6b74760040fe03b6ef6208cbaa091ecc01",
 			"mainStructuralHash": "e3382b4ca78fc82214d56cb4a7553eee858a2a00dbab19a3114c00339d5be626"
@@ -15075,7 +15097,7 @@
 			"old": "packages/coding-agent/src/tools/eval-render.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "1caa0a03ddb7e08b63246690a5d375d7e049fc096f65184b94513b432652d5de",
+			"hash": "e3e913a04b5ddc33212a63a5507da95145a85fc5eed1224534fdb430f8960a0c",
 			"mainHash": "f9e1866fff6b20e600911b81b786168b21f4e082ddac9f72562c72d308b7b598",
 			"structuralHash": "c68fdd852f5ba794cd6e7ddbf17dd1f04530b8b2c7e16f1576050bc97906297e",
 			"mainStructuralHash": "c68fdd852f5ba794cd6e7ddbf17dd1f04530b8b2c7e16f1576050bc97906297e"
@@ -15169,7 +15191,7 @@
 			"old": "packages/coding-agent/src/web/search/render.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "edec774e435b4cdb192b875d4a349191f8e9c5b53f510ed3aafed105044152fa",
+			"hash": "131314499079a8a981de5ba39a81be079288bce04d86a51b3890ade3ef1c89b3",
 			"mainHash": "69c128b209bbfcf09a8fced7793c5e13c595c728b1e42b9eac4b12a2db4c344f",
 			"structuralHash": "80daafa5183c120f8531df1f94d077be58ad3776ff270b5d23524fb8eaba4623",
 			"mainStructuralHash": "80daafa5183c120f8531df1f94d077be58ad3776ff270b5d23524fb8eaba4623"
@@ -15984,7 +16006,7 @@
 			"mainStructuralHash": "2531bc4f74fc4a6abc69a9e548a241aeb4e748619679fddebdf8c19e9c4418d5"
 		},
 		"plugins/argot/bunfig.toml": {
-			"old": "packages/hashline/bunfig.toml",
+			"old": "packages/swarm-extension/bunfig.toml",
 			"kind": "normalized",
 			"differs": "changed",
 			"group": "manifest-depth",
@@ -16449,7 +16471,7 @@
 			"mainStructuralHash": "803df439ba7fdb98a781fa7f7059e7770028580e4387c8ae6b547bc0f07dfc04"
 		},
 		"plugins/hashline/bunfig.toml": {
-			"old": "packages/swarm-extension/bunfig.toml",
+			"old": "packages/natives/bunfig.toml",
 			"kind": "normalized",
 			"differs": "changed",
 			"group": "manifest-depth",
@@ -27034,17 +27056,6 @@
 			"structuralHash": "7973c3d923a7725644e6408e99b812ea32044d7ed35014306bf97a407016648b",
 			"mainStructuralHash": "7973c3d923a7725644e6408e99b812ea32044d7ed35014306bf97a407016648b"
 		},
-		"plugins/hashline/tsconfig.json": {
-			"old": "packages/mnemopi/tsconfig.json",
-			"kind": "normalized",
-			"differs": "changed",
-			"group": "manifest-depth",
-			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
-			"hash": "4727b8d59142037ab3bdbf174cafaf587cb1bc7eaf0f2a34d75a4472fd2aa55c",
-			"mainHash": "8c311aa9b6154a484e086da0fc6da90d35cd5ec99bd94405937c9a5b162b106b",
-			"structuralHash": "e658471018ceb65393394f6b12620b464a83346164060fd2e5e57d2c4cba7169",
-			"mainStructuralHash": "b7e87a3a0dbf53f214467603befab7c2567ce60d153a73e9c5a220610fa5f760"
-		},
 		"plugins/hashline/tsconfig.publish.json": {
 			"old": "packages/hashline/tsconfig.publish.json",
 			"kind": "normalized",
@@ -28906,17 +28917,6 @@
 			"mainHash": "50d2f3d62e99101cee1b5eca7348d068ab1efbad50fee6aeabbcb65d5636e40f",
 			"structuralHash": "67bedc17fe402ffc917137b7d5c7a2e200d2f5d7f3a008fef0aab5fc72a6257a",
 			"mainStructuralHash": "67bedc17fe402ffc917137b7d5c7a2e200d2f5d7f3a008fef0aab5fc72a6257a"
-		},
-		"plugins/mode-swarm/bunfig.toml": {
-			"old": "packages/natives/bunfig.toml",
-			"kind": "normalized",
-			"differs": "changed",
-			"group": "manifest-depth",
-			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
-			"hash": "1cdfc76e896b4df720c8c700ea6c8e4d6473a012ad5f490fe73a29e0cb1105fa",
-			"mainHash": "e357f0514f16015c938d120055649b63d1d92e5ce69c9745766c46f30c386a77",
-			"structuralHash": "e67cafbcfa993d42c79936c2b3c96323734290b2b9be51a7f589f8cec069a2d9",
-			"mainStructuralHash": "d77fe7e12f97d22f38bab5a9245647b1325964f93f1353248eac056a4bb1f09c"
 		},
 		"plugins/mode-swarm/package.json": {
 			"old": "packages/swarm-extension/package.json",

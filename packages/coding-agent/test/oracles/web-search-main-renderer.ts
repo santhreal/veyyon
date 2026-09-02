@@ -7,8 +7,6 @@
  * Only the import specifiers are rewritten to the package subpaths this branch publishes.
  */
 
-import type { Component } from "@veyyon/tui";
-import { Markdown, Text } from "@veyyon/tui";
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import { getMarkdownTheme } from "@veyyon/coding-agent/theme/markdown-theme";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
@@ -24,6 +22,8 @@ import {
 import { framedBlock, outputBlockContentWidth, renderStatusLine, urlHyperlink } from "@veyyon/coding-agent/tui";
 import { getSearchProviderLabel } from "@veyyon/coding-agent/web/search/provider";
 import type { SearchResponse } from "@veyyon/coding-agent/web/search/types";
+import type { Component } from "@veyyon/tui";
+import { Markdown, Text } from "@veyyon/tui";
 
 const MAX_COLLAPSED_ITEMS = PREVIEW_LIMITS.COLLAPSED_ITEMS;
 

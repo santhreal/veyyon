@@ -27,8 +27,10 @@ import {
 import { outputMeta } from "../../tools/core/output-meta";
 import { resolveToCwd } from "../../tools/core/path-utils";
 import { enforcePlanModeWrite, resolvePlanPath } from "../../tools/core/plan-mode-guard";
+import type { LspBatchRequest } from "../../tools/core/render-utils";
 import { ToolError } from "../../tools/core/tool-errors";
 import { assertEditableFile } from "../../tools/fs/auto-generated-guard";
+import type { EditToolDetails } from "../details";
 import {
 	ApplyPatchError,
 	type DiffHunk,
@@ -58,8 +60,6 @@ import {
 	stripBom,
 } from "../normalize";
 import { readEditFileText, serializeEditFileText } from "../read-file";
-import type { LspBatchRequest } from "../../tools/core/render-utils";
-import type { EditToolDetails } from "../details";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 
 export type Operation = "create" | "delete" | "update";

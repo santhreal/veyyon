@@ -223,7 +223,10 @@ describe("streaming tool output never sprays duplicate scrollback banners", () =
 			},
 			isError: false,
 		};
-		const component = drawToolView(evalToolView.renderResult(result, { expanded: false, partial: true }), activeTheme);
+		const component = drawToolView(
+			evalToolView.renderResult(result, { expanded: false, partial: true }),
+			activeTheme,
+		);
 		const lines = component.render(80);
 		// The collapsed cell box fits the viewport budget: code + output tails are
 		// each capped at previewWindowRows() VISUAL rows. Pre-fix the long output

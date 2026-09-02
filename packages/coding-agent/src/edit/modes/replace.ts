@@ -12,12 +12,12 @@ import { routeWriteThroughBridge } from "../../tools/core/acp-bridge";
 import { invalidateFsScanAfterWrite } from "../../tools/core/fs-cache-invalidation";
 import { outputMeta } from "../../tools/core/output-meta";
 import { enforcePlanModeWrite, resolvePlanPath } from "../../tools/core/plan-mode-guard";
+import type { LspBatchRequest } from "../../tools/core/render-utils";
+import type { EditToolDetails } from "../details";
 import { generateDiffString, replaceText } from "../diff";
 import { EditMatchError, findMatch, formatOccurrenceError } from "../match";
 import { detectLineEnding, normalizeToLF, restoreLineEndings } from "../normalize";
 import { readEditFileTextWithBom, serializeEditFileText } from "../read-file";
-import type { LspBatchRequest } from "../../tools/core/render-utils";
-import type { EditToolDetails } from "../details";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 
 export const replaceEditEntrySchema = type({

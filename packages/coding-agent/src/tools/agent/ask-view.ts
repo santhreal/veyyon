@@ -152,10 +152,11 @@ function customInputLines(customInput: string): ViewLine[] {
 function noteLines(note: string): ViewLine[] {
 	return replaceTabs(note)
 		.split("\n")
-		.map((line, index): ViewLine =>
-			index === 0
-				? [{ text: "Note:", tone: "dim" }, { text: " " }, { text: line, tone: "output" }]
-				: [{ text: "      " }, { text: line, tone: "output" }],
+		.map(
+			(line, index): ViewLine =>
+				index === 0
+					? [{ text: "Note:", tone: "dim" }, { text: " " }, { text: line, tone: "output" }]
+					: [{ text: "      " }, { text: line, tone: "output" }],
 		);
 }
 
@@ -176,8 +177,7 @@ function answerLines(result: {
 	const selected = new Set(result.selectedOptions ?? []);
 	// Prefer the full recorded option set; fall back to the selected labels when details omit the
 	// options array.
-	const list =
-		result.options && result.options.length > 0 ? result.options : (result.selectedOptions ?? []);
+	const list = result.options && result.options.length > 0 ? result.options : (result.selectedOptions ?? []);
 
 	if (selected.size === 0 && result.customInput === undefined && result.note === undefined) {
 		return [
@@ -232,18 +232,11 @@ function offeredSections(
 
 /** The sections one answered question occupies: the question, then what came back. */
 function answeredSections(result: QuestionResult, labelled: boolean): ViewSection[] {
-	return [
-		questionSection(result.question, labelled ? `[${result.id}]` : undefined),
-		{ lines: answerLines(result) },
-	];
+	return [questionSection(result.question, labelled ? `[${result.id}]` : undefined), { lines: answerLines(result) }];
 }
 
 /** Whether anything at all came back for a question: a choice, a written answer, or a note. */
-function answered(result: {
-	selectedOptions?: readonly string[];
-	customInput?: string;
-	note?: string;
-}): boolean {
+function answered(result: { selectedOptions?: readonly string[]; customInput?: string; note?: string }): boolean {
 	return (
 		result.customInput !== undefined ||
 		result.note !== undefined ||

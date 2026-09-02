@@ -7,16 +7,16 @@ import { stripVTControlCharacters } from "node:util";
 import type { AgentTool } from "@veyyon/agent-core";
 import { renderGalleryState, resolveFixture } from "@veyyon/coding-agent/cli/gallery-cli";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import type { EditViewResult } from "@veyyon/coding-agent/edit/edit-view";
 import { type EditViewArgs, editToolView } from "@veyyon/coding-agent/edit/edit-view";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
-import * as themeModule from "@veyyon/coding-agent/theme/theme";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import * as themeModule from "@veyyon/coding-agent/theme/theme";
 import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
 import { InMemorySnapshotStore } from "@veyyon/hashline";
 import { getAnsiPolicy, setAnsiPolicy, Text, type TUI } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
-import type { EditViewResult } from "@veyyon/coding-agent/edit/edit-view";
 import { createToolExecution } from "../helpers/tool-execution";
 
 /**
@@ -188,9 +188,13 @@ describe("edit card", () => {
 
 	it("recognizes compact and quoted hashline input headers", async () => {
 		const uiTheme = await getUiTheme();
-		const compactRendered = drawCall({ input: "[foo bar.ts]\nINS.HEAD:\n+// preview", editMode: "hashline" }, uiTheme, {
-			expanded: true,
-		}).join("\n");
+		const compactRendered = drawCall(
+			{ input: "[foo bar.ts]\nINS.HEAD:\n+// preview", editMode: "hashline" },
+			uiTheme,
+			{
+				expanded: true,
+			},
+		).join("\n");
 		const quotedRendered = drawCall(
 			{ input: "['baz qux.ts']\nINS.HEAD:\n+// preview", editMode: "hashline" },
 			uiTheme,
@@ -433,7 +437,12 @@ describe("edit card", () => {
 				content: [{ type: "text", text: paths.map(p => `Deleted ${p}`).join("\n") }],
 				details: {
 					diff: "",
-					perFileResults: paths.map(filePath => ({ path: filePath, diff: "", op: "delete" as const, oldText: "x\n" })),
+					perFileResults: paths.map(filePath => ({
+						path: filePath,
+						diff: "",
+						op: "delete" as const,
+						oldText: "x\n",
+					})),
 				},
 			},
 			{

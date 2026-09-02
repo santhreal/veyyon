@@ -21,7 +21,6 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { formatContextUsage } from "@veyyon/utils/format";
 import {
 	formatContextRemaining,
 	formatContextRemainingPercent,
@@ -30,6 +29,7 @@ import {
 import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { formatContextUsage } from "@veyyon/utils/format";
 import { NO_SESSION_FACTS } from "../src/modes/terminal/components/status-line/session-facts";
 
 beforeAll(async () => {

@@ -9,7 +9,6 @@
  * package subpaths this branch publishes, so what it draws is what main drew.
  */
 
-import { HL_FILE_PREFIX, HL_FILE_SUFFIX, HL_MOVE_KEYWORD, HL_REM_KEYWORD } from "@veyyon/hashline";
 import type { EditToolDetails, EditToolPerFileResult } from "@veyyon/coding-agent/edit/details";
 import type { DiffError, DiffResult } from "@veyyon/coding-agent/edit/diff";
 import {
@@ -48,6 +47,7 @@ import {
 } from "@veyyon/coding-agent/tui";
 import type { EditMode } from "@veyyon/coding-agent/utils/edit-mode";
 import { getLanguageFromPath } from "@veyyon/coding-agent/utils/lang-from-path";
+import { HL_FILE_PREFIX, HL_FILE_SUFFIX, HL_MOVE_KEYWORD, HL_REM_KEYWORD } from "@veyyon/hashline";
 import type { Component } from "@veyyon/tui";
 import { errorMessage, formatMoreLines, sanitizeText } from "@veyyon/utils";
 import { SGR_FG_RESET } from "@veyyon/utils/ansi";

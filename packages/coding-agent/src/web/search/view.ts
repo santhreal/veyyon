@@ -237,9 +237,7 @@ export const webSearchToolView: Required<ToolViewRenderer<WebSearchViewArgs, Web
 			// The answer and its sources are what the provider returned, not a verdict on them.
 			contents: "data",
 			sections: [
-				...(queryText
-					? [{ lines: [metadataLine("Query", truncateToWidth(queryText, QUERY_LABEL_WIDTH))] }]
-					: []),
+				...(queryText ? [{ lines: [metadataLine("Query", truncateToWidth(queryText, QUERY_LABEL_WIDTH))] }] : []),
 				answerSection(answer || rawText, args, context.expanded),
 				sourcesSection(sources, context.expanded),
 				metadataSection(response, providerLabel),

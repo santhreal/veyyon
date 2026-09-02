@@ -9,11 +9,7 @@
  * before this file was cut. Here the specifiers are the package subpaths this branch publishes, so
  * what it draws is main's.
  */
-import type { Component } from "@veyyon/tui";
-import { Markdown, Text } from "@veyyon/tui";
-// `formatContextUsage` moved into the shared formatter leaf on this branch, so a domain view can
-// state a token count without importing a terminal status-line module. Same function, same bytes.
-import { formatContextUsage, formatCount, formatMoreLines, formatNumber } from "@veyyon/utils";
+
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import type { EvalCellResult, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "@veyyon/coding-agent/eval/types";
@@ -22,7 +18,6 @@ import { truncateToVisualLines } from "@veyyon/coding-agent/modes/terminal/compo
 import { expandHintSuffix } from "@veyyon/coding-agent/modes/terminal/utils/key-hint";
 import { getMarkdownTheme } from "@veyyon/coding-agent/theme/markdown-theme";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
-import { markFramedBlockComponent, outputBlockContentWidth, renderCodeCell, renderOutputBlock } from "@veyyon/coding-agent/tui";
 import {
 	JSON_TREE_MAX_DEPTH_COLLAPSED,
 	JSON_TREE_MAX_DEPTH_EXPANDED,
@@ -45,6 +40,17 @@ import {
 	truncateToWidth,
 	wrapBrackets,
 } from "@veyyon/coding-agent/tools/core/render-utils";
+import {
+	markFramedBlockComponent,
+	outputBlockContentWidth,
+	renderCodeCell,
+	renderOutputBlock,
+} from "@veyyon/coding-agent/tui";
+import type { Component } from "@veyyon/tui";
+import { Markdown, Text } from "@veyyon/tui";
+// `formatContextUsage` moved into the shared formatter leaf on this branch, so a domain view can
+// state a token count without importing a terminal status-line module. Same function, same bytes.
+import { formatContextUsage, formatCount, formatMoreLines, formatNumber } from "@veyyon/utils";
 export const EVAL_DEFAULT_PREVIEW_LINES = 10;
 
 function languageForHighlighter(language: EvalLanguage | undefined): "python" | "javascript" | "ruby" | "julia" {
