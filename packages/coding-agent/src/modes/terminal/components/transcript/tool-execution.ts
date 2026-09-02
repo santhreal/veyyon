@@ -896,6 +896,14 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				const frameCount = theme.spinnerFrames.length;
 				this.#spinnerFrame = sharedSpinnerFrame(frameCount, now);
 				this.#renderState.spinnerFrame = this.#spinnerFrame;
+				// A view draws its glyph from the frame it was HANDED, not from a binding it reads back
+				// at paint time: `drawToolView` takes the number and returns rows. So a glyph step is a
+				// shape change for a converted card, and the card is rebuilt here rather than only
+				// repainted. `#updateDisplay` keys on `#spinnerFrame`, so this is one rebuild per step
+				// of one live block, and the tools whose renderers still read `options.spinnerFrame`
+				// inside their own paint closure reach the same key and rebuild no more often than they
+				// already repainted.
+				this.#updateDisplay();
 				// Component-scoped: a spinner tick only changes this tool block, so
 				// the TUI reuses every other root subtree instead of walking the
 				// whole tree (issue #4377).

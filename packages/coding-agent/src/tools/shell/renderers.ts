@@ -43,7 +43,11 @@ export const shellRenderers: Record<string, ToolRenderer> = {
 	// One row per background job under a row that reports the set, drawn in the response flow: the
 	// card is a snapshot of what is still going rather than a panel of output.
 	job: viewToolRenderer(jobToolView, { inline: true, mergeCallAndResult: true }) as ToolRenderer,
+	// A debug card is a stack, a frame list or a variable set drawn in the response flow: its rows are
+	// the state a step landed in, not a panel. The partial result animates because a launch, a step
+	// and a continue all sit while the adapter answers.
 	debug: viewToolRenderer(debugToolView, {
+		inline: true,
 		mergeCallAndResult: true,
 		animatedPartialResult: true,
 	}) as ToolRenderer,

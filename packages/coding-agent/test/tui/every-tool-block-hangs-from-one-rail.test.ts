@@ -41,17 +41,26 @@ const NARROW_CONTENT = WIDTHS[0] - COMPOSER_INSET_COLS - 1;
 const HANGING_INDENT_MIN_TEXT = 4;
 
 /**
- * Cards whose first row is a section row rather than a title, with the reason.
- * A section row carries the block's content indent, so it starts one cell
- * further in than a title does. Pinned by exact equality: a renderer that drops
- * its title, or one that gains an indent it did not mean to, lands here and the
- * suite goes red until someone records the decision. `debug` and `lsp` used to
- * sit here, opening a settled result on its stack rows and its findings; both
- * cards are now views whose header row states the tool and the outcome in every
- * lifecycle state, so neither opens on a section any more.
+ * Cards whose first row is not a title, with the reason and the shape it is instead.
+ *
+ * A `section` row carries the block's content indent, so it starts one cell further in than a title
+ * does. A `plate` row is a notice's own top inset: the renderer fills its whole width, so the row the
+ * block frames as its header is blank from the rail to the right margin, and the headline sits under
+ * it. Pinned by exact equality and by shape: a renderer that drops its title, one that gains an
+ * indent it did not mean to, and one whose recorded shape changes all land here and the suite goes red
+ * until someone records the decision. `debug` and `lsp` used to sit here, opening a settled result on
+ * its stack rows and its findings; both cards are now views whose header row states the tool and the
+ * outcome in every lifecycle state, so neither opens on a section any more.
  */
-const CARDS_WITHOUT_A_TITLE_ROW: Record<string, string> = {
-	bash: "the `$ command` row says what a title would repeat, so the shell card draws no title",
+const CARDS_WITHOUT_A_TITLE_ROW: Record<string, { shape: "section" | "plate"; why: string }> = {
+	bash: {
+		shape: "section",
+		why: "the `$ command` row says what a title would repeat, so the shell card draws no title",
+	},
+	resolve: {
+		shape: "plate",
+		why: "a resolution is a full-width plate, and its top inset row is what the block frames as the card's first row",
+	},
 };
 
 /**
@@ -153,8 +162,8 @@ describe("every tool block hangs from one rail", () => {
 
 	it("opens every card one cell after the rail, and names the ones that open on a section row", async () => {
 		const rail = theme.symbol("block.rail");
-		const indented = new Set<string>();
-		let widest = 0;
+		/** Per tool, the shapes its first row took across the states, so a recorded shape is checked. */
+		const shapes = new Map<string, Set<string>>();
 
 		for (const name of Object.keys(toolRenderers).sort()) {
 			const fixture = resolveFixture(name);
@@ -163,18 +172,29 @@ describe("every tool block hangs from one rail", () => {
 				const first = rendered.map(line => Bun.stripANSI(line)).find(line => line.trim().length > 0) ?? "";
 				const after = first.slice(first.indexOf(rail) + rail.length);
 				const gap = after.length - after.trimStart().length;
-				widest = Math.max(widest, gap);
 				// An inline renderer used to draw its rows one cell in from the margin it
 				// no longer sits on, which put its title a cell right of every framed
-				// card's title in the same transcript.
-				if (gap !== 1) indented.add(name);
+				// card's title in the same transcript. A row blank to the right margin is a
+				// plate's top inset rather than an indent: one section of padding and no
+				// more, and anything further in with text on it is a renderer padding
+				// itself on top of the padding the block already draws.
+				const shape = gap === 1 ? "title" : after.trim() === "" ? "plate" : gap === 2 ? "section" : `indent:${gap}`;
+				const seen = shapes.get(name) ?? new Set<string>();
+				seen.add(shape);
+				shapes.set(name, seen);
 			}
 		}
 
-		expect([...indented].sort()).toEqual(Object.keys(CARDS_WITHOUT_A_TITLE_ROW).sort());
-		// One section indent and no more: a row further in than that is a renderer
-		// padding itself on top of the padding the block already draws.
-		expect(widest).toBe(2);
+		const notTitled = [...shapes.entries()].filter(([, seen]) => !(seen.size === 1 && seen.has("title")));
+		expect(notTitled.map(([name]) => name).sort()).toEqual(Object.keys(CARDS_WITHOUT_A_TITLE_ROW).sort());
+		for (const [name, seen] of notTitled) {
+			// A recorded card opens on the shape it was recorded with, in the states that are not a
+			// plain title row: a plate that becomes a two-cell indent is a shape change, not a card
+			// that happens to still be on the list.
+			const recorded = CARDS_WITHOUT_A_TITLE_ROW[name];
+			expect([...seen].filter(shape => shape !== "title").sort()).toEqual([recorded.shape]);
+			expect(recorded.why.length).toBeGreaterThan(40);
+		}
 	});
 
 	it("draws no second left edge inside the rail, and names every renderer that draws a tree", async () => {

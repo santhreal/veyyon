@@ -21,10 +21,13 @@ export const agentRenderers: Record<string, ToolRenderer> = {
 	ask: viewToolRenderer(askToolView, { mergeCallAndResult: true, callIsLiveWidget: true }) as ToolRenderer,
 	irc: viewToolRenderer(ircToolView, { inline: true, mergeCallAndResult: true }) as ToolRenderer,
 	todo: viewToolRenderer(todoToolView, { mergeCallAndResult: true }) as ToolRenderer,
-	resolve: viewToolRenderer(resolveToolView, { mergeCallAndResult: true }) as ToolRenderer,
-	retain: viewToolRenderer(retainToolView, { mergeCallAndResult: true }) as ToolRenderer,
-	recall: viewToolRenderer(recallToolView, { mergeCallAndResult: true }) as ToolRenderer,
-	reflect: viewToolRenderer(reflectToolView, { mergeCallAndResult: true }) as ToolRenderer,
+	// The resolution plate and the three memory cards draw in the response flow: a plate that fills
+	// its own width, and three cards whose rows are one fact each. A card of their own would put a
+	// second edge around rows that are already one decision or one line.
+	resolve: viewToolRenderer(resolveToolView, { inline: true, mergeCallAndResult: true }) as ToolRenderer,
+	retain: viewToolRenderer(retainToolView, { inline: true, mergeCallAndResult: true }) as ToolRenderer,
+	recall: viewToolRenderer(recallToolView, { inline: true, mergeCallAndResult: true }) as ToolRenderer,
+	reflect: viewToolRenderer(reflectToolView, { inline: true, mergeCallAndResult: true }) as ToolRenderer,
 	// The composer ops paint a caret that blinks with the frame, so both consume one; only a wait can
 	// sit long enough to report progress, which is the one partial result worth animating.
 	vibe_spawn: viewToolRenderer(createVibeToolView("spawn"), {

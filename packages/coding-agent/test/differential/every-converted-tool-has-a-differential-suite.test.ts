@@ -123,10 +123,24 @@ describe("differential coverage", () => {
 		expect(missing).toEqual([]);
 	});
 
+	/**
+	 * Two files in this directory are not one tool's card: this one, and the sweep that compares every
+	 * entry's chrome policy against the frozen declaration it was converted from. Pinned by exact
+	 * equality, so a per-tool suite named off the convention still reddens here.
+	 */
 	it("has a converted tool for every suite file", () => {
 		const claimed = new Set(CONVERTED_TOOLS.map(tool => `the-${suiteSlug(tool)}-card-draws-what-main-drew.test.ts`));
-		claimed.add("every-converted-tool-has-a-differential-suite.test.ts");
+		const crossTool = [
+			"a-converted-card-keeps-the-chrome-its-renderer-declared.test.ts",
+			"every-converted-tool-has-a-differential-suite.test.ts",
+		];
+		for (const name of crossTool) claimed.add(name);
 		expect(suiteFiles().filter(name => !claimed.has(name))).toEqual([]);
+		expect(
+			suiteFiles()
+				.filter(name => crossTool.includes(name))
+				.sort(),
+		).toEqual([...crossTool].sort());
 	});
 
 	/**

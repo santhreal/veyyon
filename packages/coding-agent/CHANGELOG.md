@@ -163,6 +163,8 @@
 ### Fixed
 
 - An overflow whose summary cannot fit any model no longer waits on a restore that never runs: the dead-end rescue truncates the oversized message to an artifact and the turn is retried, which the overflow-refusal suite now pins.
+- A live tool card drawn from a `ToolView` spins again: a view is handed the frame it draws, so the spinner tick now rebuilds the card instead of only repainting it, and the streaming glyph on the `browser`, `debug`, `eval`, `launch`, `ssh` and `vibe` cards no longer sits frozen on the frame it was born with.
+- The `debug`, `resolve`, `retain`, `recall` and `reflect` renderer entries declare the `inline` policy they declared before their cards became views. The flag reaches no reader in the terminal today, so nothing on screen changes.
 - A tool card's header keeps the subject it states: the middle-cut the edit card needs was applied to every framed card, so `ast_edit`, `file_search`, `text_search`, `structure_search`, `search_tool_bm25`, `inspect_image`, `launch` and `ssh` cut a query, a glob or a path to `…` in a narrow terminal to keep counts that already fitted. A card now asks for the cut, and the edit card is the one that asks.
 - A live card whose tool describes a `ToolView` obeys the merge policy its renderer entry states: `debug`, `resolve`, `retain`, `recall`, `reflect` and `ssh` drew the call row above the result card while the call was on screen, and drew one card when the transcript was rebuilt.
 - `veyyon config set` and `veyyon config reset` create the profile's config directory before taking the file lock, so a first write into a profile that has no directory yet persists the setting instead of exiting 1 with ENOENT.
