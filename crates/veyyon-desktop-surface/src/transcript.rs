@@ -30,19 +30,23 @@ pub fn transcript_column(
 	user_ground: ColorRole,
 	tokens: &TokenSet,
 	laid_out: &LaidOut,
+	measure_px: f32,
 ) -> impl IntoElement {
 	// The column is a maximum, not a fixed width. A session region narrower
 	// than the measure would otherwise clip the column on both edges rather
 	// than reflow it, which is the one failure a reader cannot work around.
-	let mut column = div()
-		.flex()
-		.flex_col()
-		.w_full()
-		.max_w(px(geometry.column_width_px));
+	//
+	// The bubble cannot read the column's shrunk width from the token
+	// measure alone, so the shed-adjusted measure arrives with the call:
+	// capped at the token measure, it is what the trailing-aligned bubble
+	// sizes itself against, and a region narrower than the measure no
+	// longer pushes the bubble's leading edge out of the column.
+	let measure_px = geometry.column_width_px.min(measure_px);
+	let mut column = div().flex().flex_col().w_full().max_w(px(measure_px));
 
 	for (index, turn) in turns.iter().enumerate() {
 		let mut block = match turn {
-			Turn::Operator(text) => operator_turn(text, geometry, user_ground, tokens),
+			Turn::Operator(text) => operator_turn(text, geometry, user_ground, tokens, measure_px),
 			Turn::Agent(blocks) => agent_turn(blocks, geometry, tokens),
 		};
 		// The gap belongs between turns, not after the last one, so it is a
@@ -68,8 +72,9 @@ fn operator_turn(
 	geometry: &TranscriptSurfaceTokens,
 	user_ground: ColorRole,
 	tokens: &TokenSet,
+	measure_px: f32,
 ) -> Div {
-	let bubble_width = geometry.column_width_px * geometry.user_turn_width_ratio;
+	let bubble_width = measure_px * geometry.user_turn_width_ratio;
 
 	div().flex().flex_row().justify_end().w_full().child(
 		div()

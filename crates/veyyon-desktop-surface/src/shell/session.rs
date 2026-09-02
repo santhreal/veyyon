@@ -72,6 +72,7 @@ pub fn session_surface(
 			installed.user_turn_ground,
 			tokens,
 			laid_out,
+			widths.composer_px,
 		))
 	};
 
