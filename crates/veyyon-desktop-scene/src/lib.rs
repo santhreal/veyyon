@@ -33,9 +33,10 @@ pub use layout::{
 pub use layout_bridge::layout_box_tree_from_quads;
 pub use metrics::{
 	Ceilings, ClutterMetrics, DENSEST_REGION_CEILING, MetricBreach, MetricReport, SurfaceClass,
-	Verdict, ceilings, check, compute_alignment_residue, compute_distinct_gaps,
+	Verdict, ceilings, check, cluster_text_sizes, compute_alignment_residue, compute_distinct_gaps,
 	compute_distinct_text_sizes, compute_edge_count, compute_element_density, compute_ink_ratio,
-	compute_metrics, count_interactive, perceptual_diff,
+	compute_metrics, count_interactive, distinct_gap_values, element_density_of_centers, gap_spans,
+	perceptual_diff,
 };
 pub use primitive_scenes::{
 	PrimitiveSceneView, generate_kit_coverage_sheet, render_all_primitive_scenes, render_primitive,

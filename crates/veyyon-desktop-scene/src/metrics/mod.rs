@@ -10,8 +10,9 @@ pub use ceilings::{
 	Ceilings, DENSEST_REGION_CEILING, MetricBreach, SurfaceClass, Verdict, ceilings, check,
 };
 pub use layout::{
-	compute_alignment_residue, compute_distinct_gaps, compute_distinct_text_sizes,
-	compute_element_density, count_interactive,
+	cluster_text_sizes, compute_alignment_residue, compute_distinct_gaps,
+	compute_distinct_text_sizes, compute_element_density, count_interactive, distinct_gap_values,
+	element_density_of_centers, gap_spans,
 };
 pub use raster::{compute_edge_count, compute_ink_ratio, perceptual_diff};
 
