@@ -381,22 +381,35 @@ export function handleSetupKey(model: SwarmSetupModel, data: string): "start" | 
 		model.adjust(1);
 		return null;
 	}
-	if (isPrintable(data)) {
-		model.typeText(data);
+	const typed = printableText(data);
+	if (typed.length > 0) {
+		model.typeText(typed);
 		return null;
 	}
 	return null;
 }
 
 /**
- * Printable text. An escape sequence is rejected by the control-character scan,
- * since ESC is itself 0x1b, so it needs no separate check; empty input scans to
- * nothing and appends nothing.
+ * The text a chunk contributes to a field.
+ *
+ * A chunk holding ESC is a key sequence rather than text, and contributes
+ * nothing: filtering one would type its bracket and letter into the field. Any
+ * other control character is a paste artifact. A newline or a tab becomes a
+ * space, since a pasted list that ends in a newline used to be rejected whole
+ * and insert nothing, and an interior one would otherwise fuse two specs into
+ * one token. The rest are dropped.
  */
-function isPrintable(data: string): boolean {
+function printableText(data: string): string {
+	let out = "";
 	for (const char of data) {
 		const code = char.codePointAt(0) ?? 0;
-		if (code < 0x20 || code === 0x7f) return false;
+		if (code === 0x1b) return "";
+		if (char === "\n" || char === "\r" || char === "\t") {
+			out += " ";
+			continue;
+		}
+		if (code < 0x20 || code === 0x7f) continue;
+		out += char;
 	}
-	return true;
+	return out;
 }

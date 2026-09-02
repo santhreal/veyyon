@@ -45,6 +45,8 @@ const git = (...args: string[]): string =>
 interface SeedRun {
 	segment: number;
 	arm: string | null;
+	/** `provider/id` the run was measured on, as `run_experiment` records it. */
+	model?: string;
 	metric: number;
 	status: ExperimentStatus;
 	description: string;
@@ -58,6 +60,7 @@ const SWARM_RUNS: readonly SeedRun[] = [
 	{
 		segment: 0,
 		arm: null,
+		model: "anthropic/claude-sonnet-4-5",
 		metric: 240.1,
 		status: "keep",
 		description: "Baseline: tokenize 64 MB of source with the shipped scanner",
@@ -66,6 +69,7 @@ const SWARM_RUNS: readonly SeedRun[] = [
 	{
 		segment: 0,
 		arm: "b",
+		model: "openai/gpt-5",
 		metric: 251.42,
 		status: "discard",
 		description: "Batch the codepoint classifier behind a 4 KB lookahead",
@@ -75,6 +79,7 @@ const SWARM_RUNS: readonly SeedRun[] = [
 	{
 		segment: 0,
 		arm: "c",
+		model: "anthropic/claude-sonnet-4-5",
 		metric: 214.83,
 		status: "keep",
 		description: "Replace the per-token allocation with one arena per chunk",
@@ -84,6 +89,7 @@ const SWARM_RUNS: readonly SeedRun[] = [
 	{
 		segment: 0,
 		arm: "d",
+		model: "zai/glm-4.6",
 		metric: 180.24,
 		status: "keep",
 		description: "Skip the classifier for pure-ASCII runs",
@@ -93,6 +99,7 @@ const SWARM_RUNS: readonly SeedRun[] = [
 	{
 		segment: 1,
 		arm: "b",
+		model: "openai/gpt-5",
 		metric: 244.51,
 		status: "checks_failed",
 		description: "Fold the classifier table into the scanner and widen the lookahead",
@@ -102,6 +109,7 @@ const SWARM_RUNS: readonly SeedRun[] = [
 	{
 		segment: 1,
 		arm: "d",
+		model: "zai/glm-4.6",
 		metric: 0,
 		status: "crash",
 		description: "Reuse one arena across chunks without resetting it",
@@ -110,6 +118,7 @@ const SWARM_RUNS: readonly SeedRun[] = [
 	{
 		segment: 1,
 		arm: "a",
+		model: "google/gemini-2.5-pro",
 		metric: 205.94,
 		status: "keep",
 		description: "Arena per chunk, plus a branchless ASCII fast path",
@@ -119,6 +128,7 @@ const SWARM_RUNS: readonly SeedRun[] = [
 	{
 		segment: 1,
 		arm: "c",
+		model: "anthropic/claude-sonnet-4-5",
 		metric: 192.78,
 		status: "keep",
 		description: "Arena per chunk with the classifier table folded into the scanner",
@@ -132,6 +142,7 @@ const SERIAL_RUNS: readonly SeedRun[] = [
 	{
 		segment: 0,
 		arm: null,
+		model: "anthropic/claude-sonnet-4-5",
 		metric: 96.4,
 		status: "keep",
 		description: "Baseline: parse the 12 MB fixture with the shipped recursive descent",
@@ -139,6 +150,7 @@ const SERIAL_RUNS: readonly SeedRun[] = [
 	{
 		segment: 0,
 		arm: null,
+		model: "anthropic/claude-sonnet-4-5",
 		metric: 101.2,
 		status: "discard",
 		description: "Memoize the token lookahead in a Map",
@@ -147,6 +159,7 @@ const SERIAL_RUNS: readonly SeedRun[] = [
 	{
 		segment: 0,
 		arm: null,
+		model: "anthropic/claude-sonnet-4-5",
 		metric: 94.8,
 		status: "checks_failed",
 		description: "Parse numbers with a hand-rolled scanner",
@@ -155,6 +168,7 @@ const SERIAL_RUNS: readonly SeedRun[] = [
 	{
 		segment: 0,
 		arm: null,
+		model: "anthropic/claude-sonnet-4-5",
 		metric: 88.71,
 		status: "keep",
 		description: "Reuse one token buffer across nodes",
@@ -257,6 +271,7 @@ for (const seed of FIXTURES.runs) {
 		preRunDirtyPaths: [],
 		startedAt: clock,
 		arm: seed.arm,
+		model: seed.model ?? null,
 	});
 	storage.markRunCompleted({
 		runId: run.id,

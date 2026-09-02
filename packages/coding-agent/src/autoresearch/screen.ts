@@ -608,10 +608,19 @@ function runDetail(result: ExperimentResult, state: ExperimentState, width: numb
 			),
 		);
 	}
-	if (result.arm !== null) {
-		const breadth = state.breadth > 1 ? theme.fg("dim", ` of ${state.breadth}`) : "";
+	// The arm is what the loop attributed the run to; the model is what built it.
+	// Reading one against the models the arms were configured with is the only
+	// way to tell a model comparison from a round that stayed on one model. A
+	// serial run carries no arm and still records the model it was measured on.
+	if (result.arm !== null || result.model !== null) {
 		lines.push("");
-		lines.push(...field("Arm", `${result.arm}${breadth}`, width));
+		if (result.arm !== null) {
+			const breadth = state.breadth > 1 ? theme.fg("dim", ` of ${state.breadth}`) : "";
+			lines.push(...field("Arm", `${result.arm}${breadth}`, width));
+		}
+		if (result.model !== null) {
+			lines.push(...field("Built on", theme.fg("muted", result.model), width));
+		}
 	}
 	if (result.flagged) {
 		lines.push("");

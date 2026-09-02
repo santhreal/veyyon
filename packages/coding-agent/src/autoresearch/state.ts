@@ -246,6 +246,7 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 			flaggedReason: run.flaggedReason,
 			arm: run.arm,
 			certifiedBy: run.certifiedBy,
+			model: run.model,
 		};
 		state.results.push(result);
 		if (run.segment === state.currentSegment) {

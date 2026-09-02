@@ -107,6 +107,14 @@ A round configured this way compares models as much as ideas: each arm is a
 different model writing a different change, measured by the same harness and
 reviewed by the ring. Certification still applies, and no arm reviews itself.
 
+Each run records the model in force when `run_experiment` measured it, and the
+run screen shows it under the arm as `Built on`. The arm is the attribution the
+loop declares; the model is what the session was on while the arm was built.
+Read one against the other to tell a model comparison from a round that stayed
+on one model. `run_experiment` states it in the result when an arm is measured
+with no arm in flight, or while a different arm is: both mean the diff was
+written by a model other than the one configured for that arm.
+
 ## Why arms are reviewed
 
 Breadth searches wider, but that is the smaller half. A loop scored on a number

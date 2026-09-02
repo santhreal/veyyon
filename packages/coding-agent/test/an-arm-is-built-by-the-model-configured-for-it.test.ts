@@ -19,21 +19,31 @@
  */
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Model } from "@veyyon/ai";
 import { enterArm, leaveArm } from "@veyyon/coding-agent/autoresearch/arm-model";
+import { renderRunDetail } from "@veyyon/coding-agent/autoresearch/screen";
 import {
+	handleSetupKey,
 	parseArmModels,
 	renderSetupConsole,
 	SwarmSetupModel,
 	setupRows,
 } from "@veyyon/coding-agent/autoresearch/setup-console";
-import { createSessionRuntime } from "@veyyon/coding-agent/autoresearch/state";
+import { createExperimentState, createSessionRuntime } from "@veyyon/coding-agent/autoresearch/state";
 import { AutoresearchStorage } from "@veyyon/coding-agent/autoresearch/storage";
 import { MAX_BREADTH, MIN_BREADTH } from "@veyyon/coding-agent/autoresearch/swarm";
+import { createLogExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/log-experiment";
+import { createRunExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/run-experiment";
 import { createStartArmTool } from "@veyyon/coding-agent/autoresearch/tools/start-arm";
-import type { AutoresearchRuntime, AutoresearchToolFactoryOptions } from "@veyyon/coding-agent/autoresearch/types";
+import type {
+	AutoresearchRuntime,
+	AutoresearchToolFactoryOptions,
+	ExperimentResult,
+} from "@veyyon/coding-agent/autoresearch/types";
 import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent/extensibility/extensions";
+import { stripAnsi } from "@veyyon/utils";
 import {
 	type AutoresearchHarness,
 	createCtx,
@@ -43,8 +53,12 @@ import {
 	seedMeasuredRun,
 	useAutoresearchRepo,
 } from "./helpers/autoresearch-session";
+import { useTruecolorTheme } from "./helpers/theme-assertions";
 
 const freshRepo = useAutoresearchRepo("arm-model");
+// The run detail paints through the active theme, so the screen assertions
+// below need one installed.
+useTruecolorTheme("dark");
 
 /**
  * The `sessions` table exactly as the previous schema version wrote it: every
@@ -77,13 +91,53 @@ const LEGACY_SESSIONS_DDL = `CREATE TABLE sessions (
 	closed_at INTEGER
 )`;
 
+/**
+ * The `runs` table as SCHEMA_VERSION 3 wrote it: `arm` and `certified_by`
+ * present, no `model`. A run logged by that build is the stale row the read
+ * path has to survive.
+ */
+const LEGACY_RUNS_DDL = `CREATE TABLE runs (
+	id INTEGER PRIMARY KEY,
+	session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+	segment INTEGER NOT NULL,
+	command TEXT NOT NULL,
+	started_at INTEGER NOT NULL,
+	completed_at INTEGER,
+	duration_ms INTEGER,
+	exit_code INTEGER,
+	timed_out INTEGER NOT NULL DEFAULT 0,
+	parsed_primary REAL,
+	parsed_metrics_json TEXT,
+	parsed_asi_json TEXT,
+	pre_run_dirty_paths_json TEXT NOT NULL DEFAULT '[]',
+	log_path TEXT NOT NULL,
+	status TEXT,
+	description TEXT,
+	metric REAL,
+	metrics_json TEXT,
+	asi_json TEXT,
+	commit_hash TEXT,
+	confidence REAL,
+	modified_paths_json TEXT,
+	scope_deviations_json TEXT,
+	justification TEXT,
+	flagged INTEGER NOT NULL DEFAULT 0,
+	flagged_reason TEXT,
+	arm TEXT,
+	certified_by TEXT,
+	logged_at INTEGER,
+	abandoned_at INTEGER
+)`;
+
 const plainTheme = {
 	fg: (_name: string, text: string) => text,
 	bold: (text: string) => text,
 } as unknown as Parameters<typeof renderSetupConsole>[2];
 
 function modelNamed(id: string): Model {
-	return { id, name: id.toUpperCase(), api: "anthropic-messages" } as unknown as Model;
+	// A provider, because a run records `provider/id`: without one the stored
+	// value would read `undefined/gpt-5` and the assertion would pass on it.
+	return { id, name: id.toUpperCase(), api: "anthropic-messages", provider: "acme" } as unknown as Model;
 }
 
 /** Every model this session can reach, by the spec that names it. */
@@ -152,6 +206,26 @@ async function startArm(
 	};
 }
 
+/**
+ * `run_experiment` driven through the same switcher the arm was started on. The
+ * model is recorded on the measurement, so the real tool is the only way to
+ * observe it: `seedMeasuredRun` inserts a row directly and records none.
+ */
+async function measureArm(harness: AutoresearchHarness, switching: Switcher, arm?: string): Promise<string> {
+	fs.writeFileSync(path.join(harness.dir, "autoresearch.sh"), "#!/usr/bin/env bash\necho METRIC ms=10\n");
+	const params: Record<string, unknown> = { timeout_seconds: 30 };
+	// arktype rejects an optional key present with an `undefined` value.
+	if (arm !== undefined) params.arm = arm;
+	const result = await createRunExperimentTool({ ...harness.options, pi: switching.api }).execute(
+		"call-run",
+		params as never,
+		new AbortController().signal,
+		() => {},
+		switching.ctx,
+	);
+	return result.content.map(part => (part.type === "text" ? part.text : "")).join("");
+}
+
 /** A swarm session whose arms are assigned the given specs. */
 async function swarmWith(armModels: string[], breadth = armModels.length): Promise<AutoresearchHarness> {
 	const harness = await openExperiment(freshRepo(), { name: "arm models", breadth });
@@ -159,6 +233,52 @@ async function swarmWith(armModels: string[], breadth = armModels.length): Promi
 	const refreshed = harness.storage.getSessionById(harness.session.id);
 	if (!refreshed) throw new Error("session vanished");
 	return { ...harness, session: refreshed };
+}
+
+/**
+ * `log_experiment` driven through the same switcher the arm was started on, so
+ * the model the tool reads is the one the arm actually left the session on.
+ * The shared `logRun` helper builds its own context with no model registry.
+ */
+async function logArm(
+	harness: AutoresearchHarness,
+	switching: Switcher,
+	params: Record<string, unknown>,
+): Promise<string> {
+	const result = await createLogExperimentTool({ ...harness.options, pi: switching.api }).execute(
+		"call-log",
+		params as never,
+		new AbortController().signal,
+		() => {},
+		switching.ctx,
+	);
+	if (!result.details) throw new Error(`log_experiment returned no details: ${JSON.stringify(result.content)}`);
+	return result.content.map(part => (part.type === "text" ? part.text : "")).join("");
+}
+
+/** A logged result as the screen reads it. */
+function experimentResult(overrides: Partial<ExperimentResult>): ExperimentResult {
+	return {
+		runNumber: 1,
+		commit: "c0ffee",
+		metric: 100,
+		measuredPrimary: 100,
+		metrics: {},
+		status: "keep",
+		description: "a run",
+		timestamp: 0,
+		segment: 0,
+		confidence: null,
+		modifiedPaths: [],
+		scopeDeviations: [],
+		justification: null,
+		flagged: false,
+		flaggedReason: null,
+		arm: null,
+		certifiedBy: null,
+		model: null,
+		...overrides,
+	};
 }
 
 describe("an arm is built by the model configured for it", () => {
@@ -411,5 +531,202 @@ describe("an arm is built by the model configured for it", () => {
 		const harness = await swarmWith(["sonnet", "", "glm"]);
 		const reread = harness.storage.getSessionById(harness.session.id);
 		expect(reread?.armModels).toEqual(["sonnet", "", "glm"]);
+	});
+
+	it("records on the run the model that measured it, not the one the arm was assigned", async () => {
+		// The assignment is intent and the arm is the loop's claim. Neither is
+		// evidence: only the model in force when the arm was measured says what
+		// wrote the code the number came from.
+		const harness = await swarmWith(["sonnet", "gpt-5"]);
+		const switching = switcher(harness.dir);
+		await startArm(harness, switching, "a1");
+		expect(switching.current()?.id).toBe("gpt-5");
+
+		const measured = await measureArm(harness, switching, "a1");
+		expect(measured).not.toContain("Warning");
+		await logArm(harness, switching, { status: "keep", description: "a1", metric: 10, arm: "a1" });
+
+		const logged = harness.storage.listLoggedRuns(harness.session.id).at(-1);
+		expect(logged?.arm).toBe("a1");
+		// Logging restores the session model, so a read taken at the log call
+		// would record `session-default` here. The row keeps what built it.
+		expect(logged?.model).toBe("acme/gpt-5");
+		expect(switching.current()?.id).toBe("session-default");
+	});
+
+	it("keeps the measuring model on the row when a later arm is in flight at the log call", async () => {
+		// The shape a certified round always has: every arm is built before the
+		// winner is logged, so the session is on some other arm's model by the
+		// time the log call happens. A model read there records the wrong arm's.
+		const harness = await swarmWith(["sonnet", "gpt-5"]);
+		const switching = switcher(harness.dir);
+		await startArm(harness, switching, "a0");
+		await measureArm(harness, switching, "a0");
+		await startArm(harness, switching, "a1");
+		expect(switching.current()?.id).toBe("gpt-5");
+
+		await logArm(harness, switching, { status: "keep", description: "a0 won", metric: 10, arm: "a0" });
+
+		const logged = harness.storage.listLoggedRuns(harness.session.id).at(-1);
+		expect(logged?.arm).toBe("a0");
+		expect(logged?.model).toBe("acme/sonnet");
+	});
+
+	it("says so when a measurement is attributed to an arm nothing started", async () => {
+		// The silent version of this is the defect the console refuses at setup:
+		// four arms attributed to four models, all of them written by one.
+		const harness = await swarmWith(["sonnet", "gpt-5"]);
+		const switching = switcher(harness.dir);
+		const text = await measureArm(harness, switching, "a1");
+
+		expect(text).toContain("start_arm");
+		expect(text).toContain("a1");
+		expect(text).toContain("acme/session-default");
+		expect(harness.storage.getPendingRun(harness.session.id)?.model).toBe("acme/session-default");
+	});
+
+	it("says so when the measured arm is not the arm in flight", async () => {
+		const harness = await swarmWith(["sonnet", "gpt-5"]);
+		const switching = switcher(harness.dir);
+		await startArm(harness, switching, "a0");
+		const text = await measureArm(harness, switching, "a1");
+
+		expect(text).toContain("in flight");
+		expect(text).toContain("a0");
+		expect(text).toContain("a1");
+		// The row keeps the model that actually built it, which is a0's.
+		expect(harness.storage.getPendingRun(harness.session.id)?.model).toBe("acme/sonnet");
+	});
+
+	it("stays quiet about the model on a session that assigned none", async () => {
+		// A serial loop and a swarm left on one model both measure with no arm
+		// model configured. Warning there would be noise on every run.
+		const harness = await swarmWith([], 2);
+		const switching = switcher(harness.dir);
+		const text = await measureArm(harness, switching, "a0");
+
+		expect(text).not.toContain("start_arm");
+		expect(text).not.toContain("in flight");
+		expect(harness.storage.getPendingRun(harness.session.id)?.model).toBe("acme/session-default");
+	});
+
+	it("records the model on a serial run that names no arm at all", async () => {
+		const harness = await swarmWith([], 1);
+		const switching = switcher(harness.dir);
+		const text = await measureArm(harness, switching);
+
+		expect(text).not.toContain("Warning");
+		const pending = harness.storage.getPendingRun(harness.session.id);
+		expect(pending?.arm).toBeNull();
+		expect(pending?.model).toBe("acme/session-default");
+	});
+
+	it("reads and writes a run recorded before the model column existed", async () => {
+		// A stale row reads back with no model, and the next measurement into that
+		// same database still writes one. Reading alone proves nothing here: an
+		// absent column reads as undefined and coalesces to the null this asserts,
+		// so the write is what shows the column was actually added.
+		const dir = freshRepo();
+		const dbPath = path.join(dir, "before-run-model.db");
+		const legacy = new Database(dbPath);
+		legacy.run(LEGACY_SESSIONS_DDL);
+		legacy.run(LEGACY_RUNS_DDL);
+		legacy.run(
+			`INSERT INTO sessions (id, name, primary_metric, metric_unit, direction, breadth, attempts, max_parallel, certify, created_at)
+			 VALUES (1, 'legacy', 'ms', 'ms', 'lower', 2, 1, 2, 1, 1)`,
+		);
+		legacy.run(
+			`INSERT INTO runs (id, session_id, segment, command, started_at, log_path, status, metric, arm, logged_at)
+			 VALUES (1, 1, 0, 'bench', 1, 'log.txt', 'keep', 12.5, 'a0', 2)`,
+		);
+		legacy.run("PRAGMA user_version = 3");
+		legacy.close();
+
+		const storage = new AutoresearchStorage(dbPath, dir);
+		try {
+			const stale = storage.listLoggedRuns(1).at(0);
+			expect(stale?.arm).toBe("a0");
+			expect(stale?.model).toBeNull();
+
+			const measured = storage.insertRun({
+				sessionId: 1,
+				segment: 0,
+				command: "bench",
+				logPath: "log.txt",
+				preRunDirtyPaths: [],
+				startedAt: 4,
+				arm: "a0",
+				model: "acme/sonnet",
+			});
+			expect(measured.model).toBe("acme/sonnet");
+
+			// And logging that row leaves the recorded model alone.
+			const logged = storage.markRunLogged({
+				runId: measured.id,
+				status: "keep",
+				description: "relogged",
+				metric: 12.5,
+				metrics: {},
+				asi: null,
+				commitHash: null,
+				confidence: null,
+				modifiedPaths: [],
+				scopeDeviations: [],
+				justification: null,
+				loggedAt: 5,
+				arm: "a0",
+			});
+			expect(logged.model).toBe("acme/sonnet");
+		} finally {
+			storage.close();
+		}
+	});
+
+	it("names the model in the run detail, with or without an arm, and prints no row when none was recorded", () => {
+		const runtime = createSessionRuntime();
+		runtime.state = createExperimentState();
+		runtime.state.breadth = 2;
+		runtime.state.results = [
+			experimentResult({ runNumber: 1, arm: "a0", model: "acme/sonnet" }),
+			experimentResult({ runNumber: 2, arm: "a1", model: null }),
+			// A serial run: no arm, and still measured on some model.
+			experimentResult({ runNumber: 3, arm: null, model: "acme/gpt-5" }),
+		];
+
+		const withModel = renderRunDetail(runtime, "run:1", 80).map(stripAnsi);
+		expect(withModel.some(line => line.startsWith("Arm"))).toBe(true);
+		expect(withModel.some(line => line.startsWith("Built on") && line.includes("acme/sonnet"))).toBe(true);
+
+		const withoutModel = renderRunDetail(runtime, "run:2", 80).map(stripAnsi);
+		expect(withoutModel.some(line => line.startsWith("Arm"))).toBe(true);
+		expect(withoutModel.some(line => line.startsWith("Built on"))).toBe(false);
+
+		const serial = renderRunDetail(runtime, "run:3", 80).map(stripAnsi);
+		expect(serial.some(line => line.startsWith("Arm"))).toBe(false);
+		expect(serial.some(line => line.startsWith("Built on") && line.includes("acme/gpt-5"))).toBe(true);
+	});
+
+	it("takes a pasted list that ends in a newline, and types nothing from a key sequence", () => {
+		// A model list is pasted, and a paste out of a terminal or a document
+		// carries a trailing newline. The whole chunk used to be rejected, so the
+		// paste inserted nothing and said nothing.
+		const model = new SwarmSetupModel({ goal: "g", breadth: 2, attempts: 1, certify: true, armModels: [] });
+		model.field = "models";
+		handleSetupKey(model, "sonnet, gpt-5\n");
+		expect(parseArmModels(model.models)).toEqual(["sonnet", "gpt-5"]);
+
+		// An interior newline separates rather than fusing two specs.
+		const pasted = new SwarmSetupModel({ goal: "g", breadth: 2, attempts: 1, certify: true, armModels: [] });
+		pasted.field = "models";
+		handleSetupKey(pasted, "sonnet,\ngpt-5");
+		expect(parseArmModels(pasted.models)).toEqual(["sonnet", "gpt-5"]);
+
+		// An escape sequence is a key, not text: it must not type its own bytes.
+		// F1, deliberately: an arrow is caught by its own branch above, so a test
+		// that used one would pass with the escape guard removed.
+		const untouched = new SwarmSetupModel({ goal: "g", breadth: 2, attempts: 1, certify: true, armModels: [] });
+		untouched.field = "models";
+		handleSetupKey(untouched, "\u001bOP");
+		expect(untouched.models).toBe("");
 	});
 });

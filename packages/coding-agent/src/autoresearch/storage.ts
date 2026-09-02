@@ -84,6 +84,15 @@ export interface RunRow {
 	arm: string | null;
 	/** Which arm certified this one, when a ring reviewed it. */
 	certifiedBy: string | null;
+	/**
+	 * The model the session was on when this run was logged, as
+	 * `provider/id`. Null on a run logged before the column existed.
+	 *
+	 * The arm above is what the loop says the run belongs to; this is what
+	 * built it. A configured arm model that never took effect is only visible
+	 * as the difference between the two.
+	 */
+	model: string | null;
 	loggedAt: number | null;
 	abandonedAt: number | null;
 }
@@ -138,6 +147,13 @@ export interface InsertRunParams {
 	preRunDirtyPaths: string[];
 	startedAt: number;
 	arm?: string | null;
+	/**
+	 * The model in force when the measurement was taken, as `provider/id`. It is
+	 * written here rather than at log time because a certified round logs its
+	 * winner after every arm has been built, when the session is on the last
+	 * arm's model.
+	 */
+	model?: string | null;
 }
 
 export interface MarkRunCompletedParams {
@@ -228,11 +244,12 @@ type RunDbRow = {
 	flagged_reason: string | null;
 	arm: string | null;
 	certified_by: string | null;
+	model: string | null;
 	logged_at: number | null;
 	abandoned_at: number | null;
 };
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const SCHEMA_SQL = `
 PRAGMA journal_mode=WAL;
@@ -294,6 +311,7 @@ CREATE TABLE IF NOT EXISTS runs (
 	flagged_reason TEXT,
 	arm TEXT,
 	certified_by TEXT,
+	model TEXT,
 	logged_at INTEGER,
 	abandoned_at INTEGER
 );
@@ -321,6 +339,9 @@ function migrateSchema(db: Database, from: number): void {
 	}
 	if (from < 3) {
 		addColumnIfMissing(db, "sessions", "arm_models_json", "TEXT NOT NULL DEFAULT '[]'");
+	}
+	if (from < 4) {
+		addColumnIfMissing(db, "runs", "model", "TEXT");
 	}
 }
 
@@ -533,8 +554,8 @@ export class AutoresearchStorage {
 	insertRun(params: InsertRunParams): RunRow {
 		const stmt = this.#db.prepare<{ id: number }, SQLQueryBindings[]>(
 			`INSERT INTO runs (
-				session_id, segment, command, started_at, log_path, pre_run_dirty_paths_json, arm
-			) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+				session_id, segment, command, started_at, log_path, pre_run_dirty_paths_json, arm, model
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 		);
 		const row = stmt.get(
 			params.sessionId,
@@ -544,6 +565,7 @@ export class AutoresearchStorage {
 			params.logPath,
 			JSON.stringify(params.preRunDirtyPaths),
 			params.arm ?? null,
+			params.model ?? null,
 		);
 		if (!row) throw new Error("Failed to insert run");
 		return this.getRunByIdRequired(row.id);
@@ -800,6 +822,7 @@ function rowToRun(row: RunDbRow): RunRow {
 		flaggedReason: row.flagged_reason,
 		arm: row.arm ?? null,
 		certifiedBy: row.certified_by ?? null,
+		model: row.model ?? null,
 		loggedAt: row.logged_at,
 		abandonedAt: row.abandoned_at,
 	};

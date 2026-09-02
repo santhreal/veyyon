@@ -62,6 +62,11 @@ export interface ExperimentResult {
 	arm: string | null;
 	/** Which arm or the director certified this run. */
 	certifiedBy: string | null;
+	/**
+	 * The model that built this run, `provider/id`, or null on a run logged
+	 * before the field existed. What ran, next to the arm it is attributed to.
+	 */
+	model: string | null;
 }
 
 export interface ExperimentState {

@@ -203,6 +203,13 @@ export function createLogExperimentTool(
 				);
 			}
 
+			// The model is recorded on the measurement, by `run_experiment`, and is
+			// not touched here. A certified round logs the winner after every arm
+			// has been measured, so the arm in flight at this call is the last arm
+			// built, not the one being logged: reading the session model here would
+			// stamp the wrong arm's model on the row.
+			const loggedArm = params.arm?.trim() || undefined;
+
 			const loggedAt = Date.now();
 			const tentativeRun = storage.markRunLogged({
 				runId: pendingRun.id,
@@ -217,7 +224,7 @@ export function createLogExperimentTool(
 				scopeDeviations,
 				justification,
 				loggedAt,
-				arm: params.arm?.trim() || undefined,
+				arm: loggedArm,
 				certifiedBy: params.certified_by?.trim() || undefined,
 			});
 
@@ -268,6 +275,7 @@ export function createLogExperimentTool(
 				flaggedReason: tentativeRun.flaggedReason,
 				arm: tentativeRun.arm,
 				certifiedBy: tentativeRun.certifiedBy,
+				model: tentativeRun.model,
 			};
 
 			const segmentRunCount = currentResults(finalState.results, finalState.currentSegment).length;

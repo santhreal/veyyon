@@ -73,6 +73,7 @@ function result(overrides: Partial<ExperimentResult> = {}): ExperimentResult {
 		flaggedReason: null,
 		arm: null,
 		certifiedBy: null,
+		model: null,
 		...overrides,
 	};
 }

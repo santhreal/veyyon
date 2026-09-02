@@ -46,6 +46,7 @@ function makeResult(partial: Partial<ExperimentResult>): ExperimentResult {
 		flaggedReason: partial.flaggedReason ?? null,
 		arm: partial.arm ?? null,
 		certifiedBy: partial.certifiedBy ?? null,
+		model: partial.model ?? null,
 	};
 }
 
