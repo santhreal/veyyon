@@ -31,6 +31,7 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { compactionDeadEndWarning } from "@veyyon/kernel/session/agent-session-compaction-policy";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
@@ -242,11 +243,11 @@ describe("a failed compaction parks the run instead of looping", () => {
 		const noProgress = notices.filter(n => n.source === NOTICE_SOURCE && n.message.includes(NO_PROGRESS_FRAGMENT));
 		expect(noProgress.length).toBe(1);
 		expect(noProgress[0]!.level).toBe("warning");
-		// A parked run is a dead end the operator has to break, so the warning names the two moves
-		// that break it. Its "every reducer already ran" half is pinned beside the verdict, in
-		// `the-compaction-verdict-is-data-not-a-side-effect.test.ts`.
-		expect(noProgress[0]!.message).toContain("start a fresh session with /new");
-		expect(noProgress[0]!.message).toContain("larger-context model");
+		// The warning the session emits IS the one `compaction-policy.ts` owns, compared against that
+		// owner rather than against a copy of its wording: the contract is which notice fires, and a
+		// reworded sentence is not a regression. Pinning a phrase here is what left this suite red for
+		// two days after the dead-end advice stopped naming tool output.
+		expect(noProgress[0]!.message).toBe(compactionDeadEndWarning());
 	});
 
 	it("does not warn or block continuation when rescue after summarizer failure creates headroom", async () => {

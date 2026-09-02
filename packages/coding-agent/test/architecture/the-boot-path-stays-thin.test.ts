@@ -112,6 +112,7 @@ const ON_THE_BOOT_PATH = [
 	"coding-agent/src/cli/flag-tables.ts",
 	"coding-agent/src/cli-commands.ts",
 	"coding-agent/src/worker-args.ts",
+	"coding-agent/src/cli/first-frame-replay-entry.ts",
 ] as const;
 
 /**

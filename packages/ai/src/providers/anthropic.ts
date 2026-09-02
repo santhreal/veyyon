@@ -518,7 +518,7 @@ function getCacheControl(
  * This re-export keeps the name callers already import.
  */
 export { CLAUDE_CODE_VERSION as claudeCodeVersion } from "@veyyon/catalog/wire/anthropic";
-export const claudeAgentSdkVersion = "0.3.165";
+export const claudeAgentSdkVersion = "0.3.257";
 export const claudeClientVersion = "1.11187.4";
 export const claudeToolPrefix: string = "_";
 export const claudeCodeSystemInstruction = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";

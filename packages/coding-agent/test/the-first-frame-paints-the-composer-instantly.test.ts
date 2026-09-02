@@ -28,7 +28,7 @@ import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
-import { branchLabelFromFiles } from "@veyyon/coding-agent/utils/git-head";
+import { branchLabelFromFiles, HEAD_REF_PREFIX, LOCAL_BRANCH_PREFIX } from "@veyyon/coding-agent/utils/git-head";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { Component } from "@veyyon/tui";
 import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
@@ -140,24 +140,6 @@ function inAFixtureCheckout(body: (dir: string) => void): void {
 }
 
 /**
- * Run `body` with the project directory pointed at a nested leaf inside a fresh checkout, so a cell
- * about REFITTING a path has a path with a head to lose.
- *
- * The location abbreviates to its own basename once the whole path fits the budget, so a shallow
- * directory has nothing to shorten and the refit is unobservable. That is also why the ambient
- * checkout cannot decide it: a runner's `/srv/veyyon` is shorter than the budget, a workstation's
- * worktree is not, and the same cell then asserts a different thing on each.
- */
-function inADeepFixtureCheckout(body: (leaf: string) => void): void {
-	inAFixtureCheckout(dir => {
-		const leaf = path.join(dir, "nested-project", "workspaces", "app-server", "runtime");
-		fs.mkdirSync(leaf, { recursive: true });
-		setProjectDir(leaf);
-		body(leaf);
-	});
-}
-
-/**
  * Run `body` inside {@link inAFixtureCheckout}, with the checkout's HEAD naming {@link
  * FIXTURE_BRANCH}, written as files rather than by running git — which is how the card reads it.
  *
@@ -182,19 +164,51 @@ function budgetedLocation(): string {
 }
 
 /**
+ * The narrowest width the location is looked for at, and the reason a case that measures clipping
+ * must land above it: below this the scan never looks, so a path short enough to survive here is
+ * reported as fitting at the floor and one column narrower is a width nothing was measured at.
+ */
+const LOCATION_SCAN_FLOOR = 40;
+
+/**
  * The narrowest terminal whose card row carries the budgeted location whole.
  *
  * Wider than this the path is untouched; narrower, the row refits it against the segments beside
  * it, which is what the live row does with the same path. Measured because the answer is the
- * length of this checkout's path, and asserted against a bound so a location that never survives
+ * length of the project's path, and asserted against a bound so a location that never survives
  * at any width fails here instead of quietly calibrating to 400.
  */
 function widthThatFitsTheLocation(): number {
 	const located = budgetedLocation();
-	for (let width = 40; width <= 400; width += 1) {
+	for (let width = LOCATION_SCAN_FLOOR; width <= 400; width += 1) {
 		if (launchRows(width).some(row => row.includes(located))) return width;
 	}
 	throw new Error("the launch row carried the budgeted location at no width between 40 and 400 columns");
+}
+/**
+ * Run `body` against a project directory long enough for the row to have to fit it, on a branch.
+ *
+ * Not the checkout the suite runs in. That path is `/srv/veyyon` on the CI runner, short enough to
+ * survive whole at the scan floor above and short enough that the row keeps it and sheds the branch
+ * instead, so every case that pins CLIPPING or the ORDER of the left group passed on a long
+ * checkout and proved nothing on a short one. This directory exceeds any preset budget on every
+ * machine, and it carries the one file `branchLabelFromFiles` reads, so the branch on the row comes
+ * from the fixture rather than from wherever the tree happens to sit.
+ */
+function withDeepProject<T>(body: (project: string) => T): T {
+	const deep = TempDir.createSync("@pi-first-frame-deep-project-");
+	const nested = deep.join("a-directory-named-at-length", "and-another-one-below-it", "leaf");
+	fs.mkdirSync(nested, { recursive: true });
+	fs.mkdirSync(deep.join(".git"), { recursive: true });
+	fs.writeFileSync(deep.join(".git", "HEAD"), `${HEAD_REF_PREFIX} ${LOCAL_BRANCH_PREFIX}${FIXTURE_BRANCH}\n`);
+	const previousProjectDir = getProjectDir();
+	setProjectDir(nested);
+	try {
+		return body(nested);
+	} finally {
+		setProjectDir(previousProjectDir);
+		deep.removeSync();
+	}
 }
 
 let isolated: IsolatedConfigRoot;
@@ -273,9 +287,13 @@ describe("the launch composer", () => {
 	 * worktree and red on the runner, and neither reading was about the card.
 	 */
 	it("shortens the path rather than dropping it when the row cannot afford the budget", () => {
-		inADeepFixtureCheckout(leaf => {
+		withDeepProject(project => {
 			const fits = widthThatFitsTheLocation();
-			const row = launchRows(fits - 1).find(candidate => candidate.includes(path.basename(leaf)));
+			// Above the scan floor, or `fits - 1` is a width the search never looked at and the case
+			// below measures a row that was never asked to give anything up.
+			expect(fits).toBeGreaterThan(LOCATION_SCAN_FLOOR);
+			const tail = path.basename(project);
+			const row = launchRows(fits - 1).find(candidate => candidate.includes(tail));
 
 			expect(row).toBeDefined();
 			expect(row).not.toContain(budgetedLocation());
@@ -284,29 +302,30 @@ describe("the launch composer", () => {
 	});
 
 	it("clips the location to the preset's budget, not to the terminal", () => {
-		const options = resolveLocationOptions();
-		inAFixtureCheckout(() => {
-			const expected = renderLocation({ projectDir: getProjectDir(), options }).content;
-
-			// The same location bytes at both widths. A card that clipped to the row instead of the
-			// preset would paint more of the path in a 300-column terminal and shorten it the moment the
-			// session mounted; the row itself still fits the terminal it was given.
-			for (const width of [100, 300]) {
-				const row = launchRows(width).find(candidate => candidate.includes(expected));
-				expect(row).toBeDefined();
-				expect(visibleWidth(row as string)).toBeLessThanOrEqual(width);
-			}
+		// A 300-column terminal must not paint a 300-column path: the live row
+		// clamps at the preset's `maxLength`, and a card that did not would
+		// shorten the path the moment the session mounted.
+		//
+		// The ROW is 300 wide, because the row is now the real status row and its
+		// right-hand group sits against the right edge exactly as the live one
+		// does. The location inside it is what the budget governs.
+		//
+		// The directory is the deep fixture rather than this checkout, because the
+		// budget only bites on a path longer than it: on a short checkout
+		// (`/srv/veyyon` on the CI runner) the clipped and unclipped spellings are
+		// the same string, and the case passed having proved nothing while failing
+		// wherever the checkout was long enough to clip.
+		withDeepProject(nested => {
+			const expected = renderLocation({ projectDir: nested, options: resolveLocationOptions() }).content;
+			const row = launchRows(300).find(candidate => candidate.includes(expected));
+			expect(row).toBeDefined();
+			expect(visibleWidth(row as string)).toBeLessThanOrEqual(300);
+			// The clip happened at all: the segment is shorter than the directory it names.
+			expect(visibleWidth(expected)).toBeLessThan(nested.length);
+			// The unclipped path is absent: a row that had simply been given more room
+			// would carry it, and would then shrink at the handover.
+			expect(row).not.toContain(nested);
 		});
-
-		// And the budget bites where it can be seen to: a path longer than it loses its head to the
-		// ellipsis. Asserted against a stated path rather than the checkout's own, which is 33 cells
-		// on a CI runner and around 60 on a workstation -- a cell that read the ambient path proved
-		// the clip on one machine and asserted nothing on the other, and passed here only while a
-		// neighbouring file in the bucket happened to leave the project directory somewhere longer.
-		const deep = `/srv/${"nested-project/".repeat(8)}app`;
-		const clipped = renderLocation({ projectDir: deep, options }).content;
-		expect(clipped).not.toContain(deep);
-		expect(clipped).toContain("…");
 	});
 
 	it("honors a path budget the session overrides the preset with", () => {
@@ -323,11 +342,12 @@ describe("the launch composer", () => {
 	});
 
 	it("names the branch, after the location, joined the way the live row joins segments", () => {
-		onABranch(fixtureBranch => {
-			const branch = renderBranch(fixtureBranch, false);
-			expect(branch).not.toBe("");
-			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
-			const row = launchRows(100).find(candidate => candidate.includes(located));
+		withDeepProject(project => {
+			const branch = renderBranch(branchLabelFromFiles(project), false);
+			// The fixture wrote the HEAD this reads, so a row without a branch is the card's doing.
+			expect(branch).toContain(FIXTURE_BRANCH);
+			const located = budgetedLocation();
+			const row = launchRows(widthThatFitsTheLocation()).find(candidate => candidate.includes(located));
 			// `toStartWith`, not `toBe`: the rest of the row is the preset's remaining
 			// segments, which is the point of the card rendering the real row. What is
 			// pinned here is the left group's content and its order.

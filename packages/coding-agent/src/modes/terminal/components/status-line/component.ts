@@ -16,7 +16,7 @@ import { resolveContextLimit } from "../../../../config/compaction-strategy";
 import { settings } from "../../../../config/settings-instance";
 import { accountDisplayLabel, accountsForProvider, buildAccountInventory } from "../../../../session/account-inventory";
 import type { AgentSession } from "../../../../session/agent-session";
-import { computeNonMessageBreakdown } from "../../../../session/context-usage";
+import { computeNonMessageBreakdown } from "../../../../session/non-message-tokens";
 import { limitMatchesActiveAccount } from "../../../../slash-commands/helpers/active-oauth-account";
 import { withIcon } from "../../../../theme/icon-label";
 import { transitionsEnabled } from "../../../../theme/shimmer";

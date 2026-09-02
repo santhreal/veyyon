@@ -48,7 +48,7 @@ import {
 	launchSegmentContext,
 } from "@veyyon/coding-agent/modes/terminal/components/status-line/session-facts";
 import { paintFirstFrame, takeFirstFrame } from "@veyyon/coding-agent/modes/terminal/first-frame";
-import { computeNonMessageBreakdown } from "@veyyon/coding-agent/session/context-usage";
+import { computeNonMessageBreakdown } from "@veyyon/coding-agent/session/non-message-tokens";
 import { resetGroundTintsForTest } from "@veyyon/coding-agent/theme/ground-tints";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";

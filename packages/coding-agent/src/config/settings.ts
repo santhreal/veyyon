@@ -12,6 +12,7 @@
  */
 
 import * as fs from "node:fs";
+import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 // The caps' own module, not the streaming engine that reads them. `@veyyon/ai/stream` re-exports
 // this setter and importing it there cost 285 modules for one function; ~530 test files import
@@ -2507,11 +2508,11 @@ export class Settings {
 
 		try {
 			// The lock directory lands beside the config file, so the parent has to exist before the
-			// lock is taken: a first save into a profile whose agent directory was never created
-			// failed the lock's own lstat with ENOENT and reported the setting as unsaved. Inside
-			// this try, a home that cannot take the directory at all is recorded as a save failure
-			// like any other, rather than reported as a missing lock.
-			await fs.promises.mkdir(path.dirname(configPath), { recursive: true });
+			// lock is taken: a profile that has never been launched interactively has no agent
+			// directory yet, so the first save into it failed the lock's own lstat with ENOENT and
+			// reported the setting as unsaved. Inside this try, a home that cannot take the directory
+			// at all is recorded as a save failure like any other, rather than as a missing lock.
+			await fsp.mkdir(path.dirname(configPath), { recursive: true });
 			await withFileLock(configPath, async () => {
 				// Re-read to preserve external changes. Strict: an unreadable file
 				// fails the save rather than being written over as if it were empty.

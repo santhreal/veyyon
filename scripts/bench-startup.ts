@@ -16,7 +16,7 @@
  *                echoed. This is the moment the terminal answers the operator, and no output-only
  *                timer can observe it.
  *   statusrow    the same launch, timed to the status row being on screen — the row carrying where
- *                you are, the model, the mode and the context gauge.
+ *                you are, the branch, the model and the approval rung.
  *   replay       the same launch again, against the recording the launch before it wrote. The card
  *                is replayed rather than composed.
  *   replay:*     composer, editable and statusrow on that replayed launch. The replayed card is
@@ -59,6 +59,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import { AUTONOMY_LABEL } from "../packages/coding-agent/src/tools/core/approval-modes";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const CLI_SOURCE = path.join(REPO_ROOT, "packages", "coding-agent", "src", "cli.ts");
@@ -161,6 +162,19 @@ const PROBE = "qjq";
  */
 const FRAME_HOLD_MS = 4000;
 
+/**
+ * The status row on screen: an approval rung with a separator dot on each side.
+ *
+ * Read off `AUTONOMY_LABEL` rather than spelled here, so renaming a rung fails this arm loudly
+ * instead of leaving it reporting no samples. The rungs carry no regex metacharacters today, and
+ * the escape keeps that from being a condition of the bench working.
+ */
+export const STATUS_ROW = new RegExp(
+	`·\\s+(?:${Object.values(AUTONOMY_LABEL)
+		.map(label => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+		.join("|")})\\s+·`,
+);
+
 interface FrameMarks {
 	firstByte?: number;
 	composer?: number;
@@ -182,9 +196,10 @@ interface FrameMarks {
  *
  * The markers are read off a recorded stream rather than assumed:
  *   composer    the composer's placeholder row, which nothing else draws
- *   statusrow   the context gauge, which is on every preset's status row and nowhere else on the
- *               screen. Matched as the glyph OR the words, so a preset rendering the ascii bar
- *               still trips it.
+ *   statusrow   the approval rung between two of the row's separator dots. The gauge used to be
+ *               the marker and reported nothing: it is the row's last segment, so an eighty-column
+ *               terminal — what the pty here gives — sheds it before anything else, and a launch
+ *               resolving a long model id never printed it at all.
  */
 async function recordFrame(
 	command: string,
@@ -211,7 +226,7 @@ async function recordFrame(
 		}
 		if (marks.composer === undefined && seen.includes("ask anything")) marks.composer = at();
 		if (marks.editable === undefined && seen.includes(PROBE)) marks.editable = at();
-		if (marks.statusrow === undefined && /▰|% left/.test(seen)) marks.statusrow = at();
+		if (marks.statusrow === undefined && STATUS_ROW.test(seen)) marks.statusrow = at();
 	};
 	child.stdout.setEncoding("utf8");
 	child.stdout.on("data", onData);
@@ -548,4 +563,6 @@ async function main(): Promise<void> {
 	}
 }
 
-await main();
+if (import.meta.main) {
+	await main();
+}

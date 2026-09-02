@@ -54,91 +54,35 @@ const ENTRIES = [
 const BARRELS = ["@veyyon/tui", "@veyyon/utils", "@veyyon/agent-core", "@veyyon/ai"] as const;
 
 /**
- * The whole shell graph, and the barrel set it must not touch, measured in ONE child process so
- * both numbers come off the same host under the same load.
- *
- * The budget was an absolute 100ms, which is a claim about the machine as much as about the code:
- * the graph reads 63ms on an idle workstation and 137ms on a contended runner sharing its cores
- * with the rest of a test bucket, so the cell failed while every per-barrel case above passed --
- * no barrel edge existed and the overage was the host. Contention only ever ADDS time, and it adds
- * it to both readings, so the RATIO between them survives a busy machine that the difference does
- * not.
- *
- * The ratio is also the sentence this file opens with: the barrel edges cost 83ms against a 63ms
- * shell graph, so a launch paid more for code the first frame does not draw than for code it does.
- * A shell graph that stays cheaper than the barrels it declined to evaluate is that defect being
- * absent, stated without a number anybody has to recalibrate.
- *
- * A barrel edge re-introduced anywhere under the graph moves its cost from the denominator into
- * the numerator -- the shell pays it, and the later import is then a cached map lookup -- so the
- * ratio moves twice as far as the cost itself.
+ * The barrel the whole-graph case measures the machine with, and the cheapest of the four: a
+ * re-introduced edge to any other one costs more, so calibrating against this one is the strict
+ * choice.
  */
-const SHELL_GRAPH_BARREL_RATIO = 1;
+const CALIBRATION_BARREL = "@veyyon/tui";
+
+/**
+ * What the shell graph may cost, counted in evaluations of {@link CALIBRATION_BARREL} on the SAME
+ * machine rather than in milliseconds.
+ *
+ * A millisecond ceiling measures the hardware. The same graph evaluates in 59ms on the workstation
+ * it was tuned on and 112ms on a GitHub-hosted runner, so a 100ms ceiling failed every CI run while
+ * the graph had not moved, which is a gate that reports the runner. The barrel is the right unit
+ * because a re-introduced barrel edge is the failure this case exists to catch, and it inflates on
+ * a slow machine exactly as the graph does.
+ *
+ * Measured cold on the workstation: the barrel 36.9ms, the graph 58.6ms (1.59 barrels), and the
+ * graph with the barrel evaluated inside it 71.6ms (1.94 barrels) -- the cheapest regression there
+ * is, since the barrel shares most of its modules with the graph already. The bound is the midpoint
+ * of those two, so a clean graph clears it by a tenth and the cheapest re-introduced edge misses it
+ * by a tenth.
+ */
+const SHELL_GRAPH_BARRELS = 1.75;
 
 async function probe(code: string): Promise<number> {
 	const { stdout } = await run("bun", ["-e", code], { cwd: repoRoot, maxBuffer: 1 << 24 });
 	const elapsedMs = Number.parseFloat(stdout.trim().split("\n").at(-1) ?? "");
 	if (!Number.isFinite(elapsedMs)) throw new Error(`probe printed no timing: ${stdout}`);
 	return elapsedMs;
-}
-
-/** One paired reading: the shell graph, and the barrel set it declined to evaluate. */
-interface GraphReading {
-	shellMs: number;
-	barrelMs: number;
-}
-
-/**
- * How many child processes the paired reading takes. The cleanest of them is the estimate of what
- * the code costs: a single sample measures the code AND whatever else the machine was doing, and a
- * shared CI runner supplies plenty of the second. Noise only ever ADDS time, so the run with the
- * cheapest shell graph is the run that had the most of the host to itself, and both halves of that
- * run's pair are taken together rather than best-of each — a numerator and a denominator from
- * different processes are not a ratio of anything.
- */
-const GRAPH_SAMPLES = 3;
-
-/**
- * Evaluate the shell graph, then the barrels, in one child process, and report both costs.
- *
- * The barrels are imported AFTER the graph on purpose: what that measures is the evaluation the
- * launch declined to pay, net of everything the graph already loaded, which is the figure the
- * budget is about. It is a lower bound on the barrels' full cost, so it makes the comparison
- * stricter rather than kinder.
- */
-async function readGraphAgainstBarrels(): Promise<GraphReading> {
-	const imports = ENTRIES.map(entry => `await import(${JSON.stringify(`./${entry}`)});`).join("\n");
-	const barrels = BARRELS.map(barrel => `await import(${JSON.stringify(barrel)});`).join("\n");
-	const { stdout } = await run(
-		"bun",
-		[
-			"-e",
-			`const shellStarted = performance.now();
-${imports}
-const shellMs = performance.now() - shellStarted;
-const barrelStarted = performance.now();
-${barrels}
-const barrelMs = performance.now() - barrelStarted;
-console.log(JSON.stringify({ shellMs, barrelMs }));`,
-		],
-		{ cwd: repoRoot, maxBuffer: 1 << 24 },
-	);
-	const printed: unknown = JSON.parse(stdout.trim().split("\n").at(-1) ?? "null");
-	const reading = printed as GraphReading | null;
-	if (!reading || !Number.isFinite(reading.shellMs) || !Number.isFinite(reading.barrelMs)) {
-		throw new Error(`probe printed no timings: ${stdout}`);
-	}
-	return reading;
-}
-
-async function cleanestOf(samples: number): Promise<GraphReading> {
-	let best: GraphReading | null = null;
-	for (let taken = 0; taken < samples; taken++) {
-		const reading = await readGraphAgainstBarrels();
-		if (!best || reading.shellMs < best.shellMs) best = reading;
-	}
-	if (!best) throw new Error("no sample was taken");
-	return best;
 }
 
 function barrelIsEvaluatedAfter(entry: string, barrel: string): Promise<number> {
@@ -162,16 +106,21 @@ describe("the launch shell does not evaluate a package barrel", () => {
 	 * visible. This is the figure the shell is actually budgeted against; the per-barrel cases above
 	 * name the usual cause when it moves.
 	 *
-	 * Both halves are asserted. The barrels have to cost something, or the comparison is between a
-	 * measured graph and a rounding error: a denominator at zero would mean the graph had already
-	 * evaluated all four, which is the defect this file exists for, and a ratio test that reads
-	 * `Infinity < 1` as false catches it only by accident. Asserted directly instead.
+	 * Both numbers are the FASTER of two cold processes, because a probe that lost the machine for a
+	 * scheduling quantum reports the loss and not the graph, in either direction.
 	 */
-	it("evaluates the whole shell graph for less than the barrels it skipped", async () => {
-		const { shellMs, barrelMs } = await cleanestOf(GRAPH_SAMPLES);
+	it("evaluates the whole shell graph in under the barrels it is budgeted at", async () => {
+		const imports = ENTRIES.map(entry => `await import(${JSON.stringify(`./${entry}`)});`).join("\n");
+		const graphCode = `const started = performance.now();
+${imports}
+console.log(performance.now() - started);`;
+		const barrelCode = `const started = performance.now();
+await import(${JSON.stringify(CALIBRATION_BARREL)});
+console.log(performance.now() - started);`;
+		const graphMs = Math.min(await probe(graphCode), await probe(graphCode));
+		const barrelMs = Math.min(await probe(barrelCode), await probe(barrelCode));
 
-		expect(barrelMs).toBeGreaterThan(CACHED_IMPORT_CEILING_MS * BARRELS.length);
-		expect(shellMs).toBeLessThan(barrelMs * SHELL_GRAPH_BARREL_RATIO);
+		expect(graphMs).toBeLessThan(barrelMs * SHELL_GRAPH_BARRELS);
 	}, 120_000);
 
 	/**

@@ -11,12 +11,12 @@ import { countTokens } from "@veyyon/agent-core";
 import * as compactionModule from "@veyyon/agent-core/compaction";
 import { arkToWireSchema } from "@veyyon/ai/utils/schema";
 import { renderContextUsage } from "@veyyon/coding-agent/modes/terminal/utils/context-usage";
+import { computeStoredMessagesTokens } from "@veyyon/coding-agent/session/context-usage";
 import {
 	computeNonMessageBreakdown,
 	computeNonMessageTokens,
-	computeStoredMessagesTokens,
 	estimateToolSchemaTokens,
-} from "@veyyon/coding-agent/session/context-usage";
+} from "@veyyon/coding-agent/session/non-message-tokens";
 import { type } from "arktype";
 
 describe("estimateToolSchemaTokens", () => {

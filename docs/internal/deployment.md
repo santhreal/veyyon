@@ -294,4 +294,4 @@ merge lands:
 4. `bun run site:deploy`.
 5. If `install.sh` or `install.ps1` changed, also run `bun run site:deploy:get`.
 
-*Verified against `4384ff5e` on 2026-08-31.*
+*Verified against `c003983747` on 2026-09-01.*

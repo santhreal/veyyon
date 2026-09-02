@@ -1,4 +1,4 @@
-import { modelFamilyToken } from "@veyyon/catalog/identity";
+import { modelFamilyToken } from "@veyyon/catalog/identity/family";
 
 /**
  * Resolves whether full tool descriptors should be inlined into the system
