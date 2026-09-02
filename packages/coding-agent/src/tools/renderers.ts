@@ -86,16 +86,19 @@ export type ToolRenderer = {
 	forceResultViewportRepaintOnSettle?: boolean;
 };
 
+// One object under both names: `apply_patch` is the provider-side spelling of `edit`, and a host
+// that groups by renderer identity (streamed-arg keys, the first-result replay) treats them as the
+// same card. Two wrappers around the same view would be two objects and split that grouping.
+const editRenderer = viewToolRenderer(editToolView, { mergeCallAndResult: true }) as ToolRenderer;
+
 export const toolRenderers: Record<string, ToolRenderer> = {
 	...fsRenderers,
 	...searchRenderers,
 	...shellRenderers,
 	...webRenderers,
 	...agentRenderers,
-	// The edit tool describes a view, and this entry is the terminal's drawing of it, under both the
-	// name the model calls and the name a provider-side patch call arrives as.
-	edit: viewToolRenderer(editToolView, { mergeCallAndResult: true }) as ToolRenderer,
-	apply_patch: viewToolRenderer(editToolView, { mergeCallAndResult: true }) as ToolRenderer,
+	edit: editRenderer,
+	apply_patch: editRenderer,
 	// The lsp tool describes a view, and this entry is the terminal's drawing of it — the path a
 	// rebuilt transcript takes, where no tool instance exists to read `tool.view` from.
 	lsp: viewToolRenderer(lspToolView, { mergeCallAndResult: true, inline: true }) as ToolRenderer,

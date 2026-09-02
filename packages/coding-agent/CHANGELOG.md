@@ -162,6 +162,7 @@
 
 ### Fixed
 
+- `edit` and `apply_patch` share one renderer object again, so a host that groups by identity (streamed-arg keys, the first-result replay) treats them as the same card. No user-visible change.
 - A debug adapter command resolves against the debug working directory only when it is spelled as a relative path (`./tool`, `../tool`), restoring the prefixes a mechanical path rewrite had widened to any leading dot.
 - An overflow whose summary cannot fit any model no longer waits on a restore that never runs: the dead-end rescue truncates the oversized message to an artifact and the turn is retried, which the overflow-refusal suite now pins.
 - A live tool card drawn from a `ToolView` spins again: a view is handed the frame it draws, so the spinner tick now rebuilds the card instead of only repainting it, and the streaming glyph on the `browser`, `debug`, `eval`, `launch`, `ssh` and `vibe` cards no longer sits frozen on the frame it was born with.
