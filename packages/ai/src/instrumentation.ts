@@ -18,7 +18,7 @@
  */
 
 import type { Usage } from "@veyyon/catalog/types";
-import type { ImageContent, ServiceTier, TextContent, ToolChoice } from "./types";
+import type { ImageContent, ServiceTier, TextContent, ToolChoice, VideoContent } from "./types";
 
 /**
  * Ordered richness levels. The order is meaningful: a level includes every
@@ -192,7 +192,7 @@ export interface ToolCallMetricsInput {
 	signalAborted?: boolean;
 	/** Whether the tool explicitly marked this successful result as contextually useless. */
 	useless?: boolean;
-	resultContent?: readonly (TextContent | ImageContent)[];
+	resultContent?: readonly (TextContent | ImageContent | VideoContent)[];
 	args?: Record<string, unknown>;
 	/**
 	 * Token counter used at `rich`+ to weigh the result. Injected so this module

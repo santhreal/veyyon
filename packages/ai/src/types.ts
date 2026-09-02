@@ -479,6 +479,18 @@ export interface ImageContent {
 	detail?: "auto" | "low" | "high" | "original";
 }
 
+/**
+ * A video clip sent inline with a user message. Only a model whose
+ * `Model.input` includes `"video"` receives it; a provider serialises it in
+ * its own inline-media form (Gemini `inlineData`, OpenAI-compatible
+ * `video_url` data URL) and omits it with a placeholder elsewhere.
+ */
+export interface VideoContent {
+	type: "video";
+	data: string; // base64 encoded video data
+	mimeType: string; // e.g., "video/mp4", "video/webm", "video/quicktime"
+}
+
 export interface ToolCall {
 	type: "toolCall";
 	id: string;
@@ -515,7 +527,7 @@ export type ProviderPayload = OpenAIResponsesHistoryPayload;
 
 export interface UserMessage {
 	role: "user";
-	content: string | (TextContent | ImageContent)[];
+	content: string | (TextContent | ImageContent | VideoContent)[];
 	/** True if the message was injected by the system (e.g., auto-continue). */
 	synthetic?: boolean;
 	/** True when injected mid-turn as a steer; consumed by the agent's pre-LLM transform to wrap it for emphasis. Never rendered. */
@@ -529,7 +541,7 @@ export interface UserMessage {
 
 export interface DeveloperMessage {
 	role: "developer";
-	content: string | (TextContent | ImageContent)[];
+	content: string | (TextContent | ImageContent | VideoContent)[];
 	/** Who initiated this message for billing/attribution semantics. */
 	attribution?: MessageAttribution;
 	/** Provider-specific opaque payload used to reconstruct transport-native history. */
@@ -716,7 +728,7 @@ export interface ToolResultMessage<TDetails = unknown> {
 	role: "toolResult";
 	toolCallId: string;
 	toolName: string;
-	content: (TextContent | ImageContent)[]; // Supports text and images
+	content: (TextContent | ImageContent | VideoContent)[]; // Supports text, images, and videos
 	details?: TDetails;
 	isError: boolean;
 	/** Who initiated this message for billing/attribution semantics. */

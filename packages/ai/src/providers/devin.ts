@@ -36,6 +36,7 @@ import {
 	StopReason,
 } from "@veyyon/catalog/discovery/devin-gen/exa/codeium_common_pb/codeium_common_pb";
 import { calculateCost, discardAttemptUsage, emptyUsage } from "@veyyon/catalog/models";
+import { NON_VIDEO_MODEL_PLACEHOLDER } from "./vision-content";
 import { DEVIN_CASCADE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { isAbortError } from "@veyyon/utils/abortable";
 import { tryParseJson } from "@veyyon/utils/json";
@@ -649,6 +650,8 @@ function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMe
 						promptText += part.text;
 					} else if (part.type === "image") {
 						images.push(create(ImageDataSchema, { base64Data: part.data, mimeType: part.mimeType }));
+					} else if (part.type === "video") {
+						promptText += (promptText ? "\n" : "") + NON_VIDEO_MODEL_PLACEHOLDER;
 					}
 				}
 			}
@@ -700,6 +703,8 @@ function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMe
 					resultText += part.text;
 				} else if (part.type === "image") {
 					images.push(create(ImageDataSchema, { base64Data: part.data, mimeType: part.mimeType }));
+				} else if (part.type === "video") {
+					resultText += (resultText ? "\n" : "") + NON_VIDEO_MODEL_PLACEHOLDER;
 				}
 			}
 			prompts.push(
@@ -835,3 +840,5 @@ export function devinTrailerFailure(trailer: DevinTrailerError): Error {
 	if (status === undefined) return new AIError.ValidationError(trailer.text);
 	return new AIError.DevinApiError(trailer.text, status);
 }
+
+export { buildChatMessagePrompts as buildDevinChatMessagePrompts };

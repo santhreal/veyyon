@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+
+- `VideoContent` support across provider serialization and fallback placeholder handling.
 ### Fixed
 
 - ChatGPT Codex server-side compaction posts to the codex responses route instead of the retired `/responses/compact` route, which answered 404 and turned the session over to local compaction for the rest of its life.

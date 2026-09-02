@@ -8,6 +8,7 @@ import type {
 	AssistantMessage,
 	Context,
 	ImageContent,
+	VideoContent,
 	Message,
 	Model,
 	StreamFunction,
@@ -45,7 +46,7 @@ import {
 } from "../utils/stream-markup-healing";
 import { stopReasonForTerminallessEof } from "../utils/terminalless-eof";
 import { transformMessages } from "./transform-messages";
-import { joinTextWithImagePlaceholder, partitionVisionContent } from "./vision-guard";
+import { joinTextWithImagePlaceholder, NON_VIDEO_MODEL_PLACEHOLDER, partitionVisionContent } from "./vision-content";
 
 export interface OllamaChatOptions extends StreamOptions {
 	reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -175,7 +176,7 @@ function selectToolsForToolChoice(tools: Tool[] | undefined, toolChoice: ToolCho
 }
 
 function toPlainContent(
-	content: string | ReadonlyArray<TextContent | ImageContent>,
+	content: string | ReadonlyArray<TextContent | ImageContent | VideoContent>,
 	supportsImages: boolean,
 ): {
 	content: string;
@@ -185,9 +186,14 @@ function toPlainContent(
 		return { content };
 	}
 	const { textBlocks, imageBlocks, omittedImages } = partitionVisionContent(content, supportsImages);
+	const hasVideos = content.some(block => block.type === "video");
 	const text = textBlocks.map(block => block.text).join("\n");
+	let joined = joinTextWithImagePlaceholder(text, omittedImages);
+	if (hasVideos) {
+		joined = joined.length > 0 ? `${joined}\n${NON_VIDEO_MODEL_PLACEHOLDER}` : NON_VIDEO_MODEL_PLACEHOLDER;
+	}
 	return {
-		content: joinTextWithImagePlaceholder(text, omittedImages),
+		content: joined,
 		...(imageBlocks.length > 0 ? { images: imageBlocks.map(block => block.data) } : {}),
 	};
 }
@@ -762,3 +768,5 @@ const streamOllamaOnce = (
 /** Retry EOS-only Ollama completions before the agent loop sees an empty stop. */
 export const streamOllama: StreamFunction<"ollama-chat"> = (model, context, options) =>
 	withEmptyCompletionRetry(model, context, options, streamOllamaOnce);
+
+export { convertMessage as convertOllamaMessage };
