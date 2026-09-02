@@ -77,6 +77,11 @@ fn test_load_shipped_tokens() {
 	assert_eq!(tokens.surface.queue.line_px, 36.0);
 	assert_eq!(tokens.surface.queue.content_inset, 8.0); // "s4" -> 8
 	assert_eq!(tokens.surface.queue.row_inset, 10.0); // "s5" -> 10
+	assert_eq!(tokens.surface.queue.footer_height_px, 36.0);
+	assert_eq!(tokens.surface.queue.footer_inset, 8.0); // "s4" -> 8
+	assert_eq!(tokens.surface.queue.gear_size_px, 16.0);
+	assert_eq!(tokens.surface.queue.section_gap_above, 12.0); // "s6" -> 12
+	assert_eq!(tokens.surface.queue.section_gap_below, 4.0); // "s2" -> 4
 
 	assert_eq!(tokens.surface.transcript.column_width_px, 768.0);
 	assert_eq!(tokens.surface.transcript.user_turn_padding, 12.0); // "s6" -> 12

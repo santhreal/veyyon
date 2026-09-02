@@ -28,6 +28,12 @@ overlay_scrim_blur_px = {}
 [terminal_drawer]
 min_height_px = {}
 max_viewport_ratio = {:.2}
+cell_width_px = {:.1}
+cell_height_px = {:.1}
+min_columns = {}
+min_rows = {}
+process_row_height_px = {}
+process_dot_px = {}
 
 [tabs]
 height_px = {}
@@ -51,6 +57,10 @@ font_size = "{}"
 row_height_px = {}
 font_size = "{}"
 gutter_width_px = {}
+sign_width_px = {}
+hunk_header_height_px = {}
+added_removed_alpha = {}
+intraline_alpha = {}
 "#,
 		p.right_panel_min_width_px as i64,
 		p.right_panel_default_width_px as i64,
@@ -60,6 +70,12 @@ gutter_width_px = {}
 		p.right_panel_overlay_scrim_blur_px as i64,
 		p.terminal_drawer_min_height_px as i64,
 		p.terminal_drawer_max_viewport_ratio,
+		p.terminal_cell_width_px,
+		p.terminal_cell_height_px,
+		p.terminal_min_columns,
+		p.terminal_min_rows,
+		p.process_row_height_px as i64,
+		p.process_dot_px as i64,
 		p.tabs_height_px as i64,
 		p.tabs_gap_px as i64,
 		p.tabs_max_width_px as i64,
@@ -74,7 +90,11 @@ gutter_width_px = {}
 		step_type_size(s, &p.tree_font_size),
 		p.diff_row_height_px as i64,
 		step_type_size(s, &p.diff_font_size),
-		p.diff_gutter_width_px as i64
+		p.diff_gutter_width_px as i64,
+		p.diff_sign_width_px as i64,
+		p.diff_hunk_header_height_px as i64,
+		p.diff_added_removed_alpha,
+		p.diff_intraline_alpha
 	);
 	write_file(path, &out)
 }

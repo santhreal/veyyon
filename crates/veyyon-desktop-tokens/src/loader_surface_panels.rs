@@ -78,6 +78,27 @@ pub fn load_panels(path: &Path, scale: &ScaleTokens) -> Result<PanelsSurfaceToke
 		.get("max_viewport_ratio")
 		.and_then(Value::as_float)
 		.unwrap_or(0.75) as f32;
+	let terminal_cell_width_px = td
+		.get("cell_width_px")
+		.and_then(Value::as_float)
+		.unwrap_or(7.2) as f32;
+	let terminal_cell_height_px = td
+		.get("cell_height_px")
+		.and_then(Value::as_float)
+		.unwrap_or(16.0) as f32;
+	let terminal_min_columns = td
+		.get("min_columns")
+		.and_then(Value::as_integer)
+		.unwrap_or(80) as usize;
+	let terminal_min_rows = td.get("min_rows").and_then(Value::as_integer).unwrap_or(11) as usize;
+	let process_row_height_px = td
+		.get("process_row_height_px")
+		.and_then(Value::as_integer)
+		.unwrap_or(24) as f32;
+	let process_dot_px = td
+		.get("process_dot_px")
+		.and_then(Value::as_integer)
+		.unwrap_or(6) as f32;
 
 	let tabs = root
 		.get("tabs")
@@ -181,6 +202,22 @@ pub fn load_panels(path: &Path, scale: &ScaleTokens) -> Result<PanelsSurfaceToke
 		.get("gutter_width_px")
 		.and_then(Value::as_integer)
 		.unwrap_or(44) as f32;
+	let diff_sign_width_px = diff
+		.get("sign_width_px")
+		.and_then(Value::as_integer)
+		.unwrap_or(12) as f32;
+	let diff_hunk_header_height_px = diff
+		.get("hunk_header_height_px")
+		.and_then(Value::as_integer)
+		.unwrap_or(24) as f32;
+	let diff_added_removed_alpha = diff
+		.get("added_removed_alpha")
+		.and_then(Value::as_float)
+		.unwrap_or(0.12) as f32;
+	let diff_intraline_alpha = diff
+		.get("intraline_alpha")
+		.and_then(Value::as_float)
+		.unwrap_or(0.28) as f32;
 
 	Ok(PanelsSurfaceTokens {
 		right_panel_min_width_px,
@@ -191,6 +228,12 @@ pub fn load_panels(path: &Path, scale: &ScaleTokens) -> Result<PanelsSurfaceToke
 		right_panel_overlay_scrim_blur_px,
 		terminal_drawer_min_height_px,
 		terminal_drawer_max_viewport_ratio,
+		terminal_cell_width_px,
+		terminal_cell_height_px,
+		terminal_min_columns,
+		terminal_min_rows,
+		process_row_height_px,
+		process_dot_px,
 		tabs_height_px,
 		tabs_gap_px,
 		tabs_max_width_px,
@@ -206,5 +249,9 @@ pub fn load_panels(path: &Path, scale: &ScaleTokens) -> Result<PanelsSurfaceToke
 		diff_row_height_px,
 		diff_font_size,
 		diff_gutter_width_px,
+		diff_sign_width_px,
+		diff_hunk_header_height_px,
+		diff_added_removed_alpha,
+		diff_intraline_alpha,
 	})
 }

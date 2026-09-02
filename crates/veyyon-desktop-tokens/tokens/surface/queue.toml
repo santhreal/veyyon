@@ -29,6 +29,15 @@ badge_height = 20
 title_height = 20
 subtitle_height = 16
 
+[geometry.section_layout]
+gap_above = "s6"
+gap_below = "s2"
+
+[geometry.footer]
+height_px = 36
+inset = "s4"
+gear_size_px = 16
+
 [geometry.limits]
 max_hover_actions = 2
 parked_initial_page_size = 25

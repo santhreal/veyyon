@@ -31,6 +31,7 @@ pub fn load_composer(
 		"footer",
 		"run_bar",
 		"opening_line",
+		"attachments",
 	])?;
 
 	let geom = root
@@ -229,6 +230,32 @@ pub fn load_composer(
 		_ => 400,
 	};
 
+	let attachments = root
+		.get("attachments")
+		.and_then(Value::as_table)
+		.ok_or_else(|| TokenError::MissingKey {
+			path:    path.to_path_buf(),
+			section: "root".to_string(),
+			key:     "attachments".to_string(),
+		})?;
+	let attachment_card_height_px = attachments
+		.get("card_height_px")
+		.and_then(Value::as_integer)
+		.unwrap_or(48) as f32;
+	let attachment_card_max_width_px = attachments
+		.get("card_max_width_px")
+		.and_then(Value::as_integer)
+		.unwrap_or(240) as f32;
+	let attachment_card_radius = resolve_radius_opt(
+		path,
+		&text,
+		"attachments",
+		"card_radius",
+		attachments.get("card_radius"),
+		RadiusStep::Md,
+		scale,
+	)?;
+
 	Ok(ComposerSurfaceTokens {
 		max_width_px,
 		rest_height_px,
@@ -257,5 +284,8 @@ pub fn load_composer(
 		opening_line_max_width_px,
 		opening_line_type_size,
 		opening_line_weight,
+		attachment_card_height_px,
+		attachment_card_max_width_px,
+		attachment_card_radius,
 	})
 }

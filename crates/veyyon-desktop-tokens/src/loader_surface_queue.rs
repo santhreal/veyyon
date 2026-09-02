@@ -29,6 +29,15 @@ pub fn load_queue(path: &Path, scale: &ScaleTokens) -> Result<QueueSurfaceTokens
 			section: "root".to_string(),
 			key:     "geometry".to_string(),
 		})?;
+	validate_table_keys(path, &text, "geometry", geom, &[
+		"width",
+		"insets",
+		"row_heights",
+		"card_layout",
+		"section_layout",
+		"footer",
+		"limits",
+	])?;
 
 	let width =
 		geom
@@ -183,6 +192,68 @@ pub fn load_queue(path: &Path, scale: &ScaleTokens) -> Result<QueueSurfaceTokens
 		.and_then(Value::as_integer)
 		.unwrap_or(16) as f32;
 
+	let section_layout = geom
+		.get("section_layout")
+		.and_then(Value::as_table)
+		.ok_or_else(|| TokenError::MissingKey {
+			path:    path.to_path_buf(),
+			section: "geometry".to_string(),
+			key:     "section_layout".to_string(),
+		})?;
+	validate_table_keys(path, &text, "geometry.section_layout", section_layout, &[
+		"gap_above",
+		"gap_below",
+	])?;
+	let section_gap_above = resolve_spacing_opt(
+		path,
+		&text,
+		"geometry.section_layout",
+		"gap_above",
+		section_layout.get("gap_above"),
+		SpacingStep::S6,
+		scale,
+	)?;
+	let section_gap_below = resolve_spacing_opt(
+		path,
+		&text,
+		"geometry.section_layout",
+		"gap_below",
+		section_layout.get("gap_below"),
+		SpacingStep::S2,
+		scale,
+	)?;
+
+	let footer = geom
+		.get("footer")
+		.and_then(Value::as_table)
+		.ok_or_else(|| TokenError::MissingKey {
+			path:    path.to_path_buf(),
+			section: "geometry".to_string(),
+			key:     "footer".to_string(),
+		})?;
+	validate_table_keys(path, &text, "geometry.footer", footer, &[
+		"height_px",
+		"inset",
+		"gear_size_px",
+	])?;
+	let footer_height_px = footer
+		.get("height_px")
+		.and_then(Value::as_integer)
+		.unwrap_or(36) as f32;
+	let footer_inset = resolve_spacing_opt(
+		path,
+		&text,
+		"geometry.footer",
+		"inset",
+		footer.get("inset"),
+		SpacingStep::S4,
+		scale,
+	)?;
+	let gear_size_px = footer
+		.get("gear_size_px")
+		.and_then(Value::as_integer)
+		.unwrap_or(16) as f32;
+
 	let limits = geom
 		.get("limits")
 		.and_then(Value::as_table)
@@ -222,5 +293,10 @@ pub fn load_queue(path: &Path, scale: &ScaleTokens) -> Result<QueueSurfaceTokens
 		card_subtitle_height,
 		max_hover_actions,
 		parked_initial_page_size,
+		footer_height_px,
+		footer_inset,
+		gear_size_px,
+		section_gap_above,
+		section_gap_below,
 	})
 }
