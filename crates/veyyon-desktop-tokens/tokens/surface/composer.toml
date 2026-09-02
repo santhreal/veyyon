@@ -38,3 +38,9 @@ label_size = "small"
 max_width_px = 768
 type_size = "lead"
 weight = "regular"
+
+# One card per attached image or clip: a square thumbnail at card_height beside the name and size.
+[attachments]
+card_height_px = 48
+card_max_width_px = 240
+card_radius = "md"

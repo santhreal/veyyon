@@ -43,6 +43,15 @@ badge_height = {}
 title_height = {}
 subtitle_height = {}
 
+[geometry.section_layout]
+gap_above = "{}"
+gap_below = "{}"
+
+[geometry.footer]
+height_px = {}
+inset = "{}"
+gear_size_px = {}
+
 [geometry.limits]
 max_hover_actions = {}
 parked_initial_page_size = {}
@@ -66,6 +75,11 @@ parked_initial_page_size = {}
 		q.card_badge_height as i64,
 		q.card_title_height as i64,
 		q.card_subtitle_height as i64,
+		step_spacing(s, q.section_gap_above),
+		step_spacing(s, q.section_gap_below),
+		q.footer_height_px as i64,
+		step_spacing(s, q.footer_inset),
+		q.gear_size_px as i64,
 		q.max_hover_actions,
 		q.parked_initial_page_size
 	);
@@ -182,6 +196,11 @@ label_size = "{}"
 max_width_px = {}
 type_size = "{}"
 weight = "{}"
+
+[attachments]
+card_height_px = {}
+card_max_width_px = {}
+card_radius = "{}"
 "#,
 		c.max_width_px as i64,
 		c.rest_height_px as i64,
@@ -209,7 +228,10 @@ weight = "{}"
 		step_type_size(s, &c.run_bar_label_size),
 		c.opening_line_max_width_px as i64,
 		step_type_size(s, &c.opening_line_type_size),
-		weight_str(c.opening_line_weight)
+		weight_str(c.opening_line_weight),
+		c.attachment_card_height_px as i64,
+		c.attachment_card_max_width_px as i64,
+		step_radius(s, c.attachment_card_radius)
 	);
 	write_file(path, &out)
 }

@@ -95,7 +95,7 @@ pub fn load_palette(path: &Path, scale: &ScaleTokens) -> Result<PaletteSurfaceTo
 	let results_row_height_px = results
 		.get("row_height_px")
 		.and_then(Value::as_integer)
-		.unwrap_or(32) as f32;
+		.unwrap_or(36) as f32;
 	let results_group_header_height_px = results
 		.get("group_header_height_px")
 		.and_then(Value::as_integer)

@@ -26,6 +26,11 @@ pub struct QueueSurfaceTokens {
 	pub card_subtitle_height:        f32,
 	pub max_hover_actions:           usize,
 	pub parked_initial_page_size:    usize,
+	pub footer_height_px:            f32,
+	pub footer_inset:                f32,
+	pub gear_size_px:                f32,
+	pub section_gap_above:           f32,
+	pub section_gap_below:           f32,
 }
 
 /// Resolved transcript surface geometry tokens.
@@ -83,6 +88,9 @@ pub struct ComposerSurfaceTokens {
 	pub opening_line_max_width_px: f32,
 	pub opening_line_type_size: TypeSize,
 	pub opening_line_weight: u16,
+	pub attachment_card_height_px: f32,
+	pub attachment_card_max_width_px: f32,
+	pub attachment_card_radius: f32,
 }
 
 /// Resolved attached cards (approval, question, plan) geometry tokens.
@@ -117,6 +125,12 @@ pub struct PanelsSurfaceTokens {
 	/// The share of the window height a docked drawer may take before its
 	/// declared height is cut back to fit.
 	pub terminal_drawer_max_viewport_ratio: f32,
+	pub terminal_cell_width_px: f32,
+	pub terminal_cell_height_px: f32,
+	pub terminal_min_columns: usize,
+	pub terminal_min_rows: usize,
+	pub process_row_height_px: f32,
+	pub process_dot_px: f32,
 	pub tabs_height_px: f32,
 	pub tabs_gap_px: f32,
 	pub tabs_max_width_px: f32,
@@ -132,6 +146,10 @@ pub struct PanelsSurfaceTokens {
 	pub diff_row_height_px: f32,
 	pub diff_font_size: TypeSize,
 	pub diff_gutter_width_px: f32,
+	pub diff_sign_width_px: f32,
+	pub diff_hunk_header_height_px: f32,
+	pub diff_added_removed_alpha: f32,
+	pub diff_intraline_alpha: f32,
 }
 
 /// Resolved command palette surface geometry tokens.
