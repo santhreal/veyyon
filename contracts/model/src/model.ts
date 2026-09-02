@@ -829,7 +829,7 @@ export interface Model<TApi extends Api = Api> {
 	provider: Provider;
 	baseUrl: string;
 	reasoning: boolean;
-	input: ("text" | "image")[];
+	input: ("text" | "image" | "video")[];
 	/**
 	 * Decoder family used for image inputs when it has narrower format support
 	 * than Veyyon's general image pipeline. `stb` local backends reject WebP.

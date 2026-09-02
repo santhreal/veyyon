@@ -1082,9 +1082,10 @@ export function collapseEffortVariants<TSpec extends VariantSpecLike>(
 		if (hasRouting) thinking.effortRouting = routing;
 		if (family.suppressWhenOff) thinking.suppressWhenOff = true;
 
-		const input: ("text" | "image")[] = [];
+		const input: ("text" | "image" | "video")[] = [];
 		if (memberSpecs.some(spec => spec.input.includes("text"))) input.push("text");
 		if (memberSpecs.some(spec => spec.input.includes("image"))) input.push("image");
+		if (memberSpecs.some(spec => spec.input.includes("video"))) input.push("video");
 
 		const collapsed: TSpec = {
 			...(memberSpecs[0] as TSpec),

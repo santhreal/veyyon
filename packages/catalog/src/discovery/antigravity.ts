@@ -266,7 +266,8 @@ export async function fetchAntigravityDiscoveryModels(
 				provider: "google-antigravity",
 				baseUrl: endpoint,
 				reasoning: model.supportsThinking === true,
-				input: supportsImages ? ["text", "image"] : ["text"],
+				// Google Gemini / Antigravity multimodal input (text, image, video): https://ai.google.dev/gemini-api/docs/multimodal
+				input: supportsImages ? ["text", "image", "video"] : ["text"],
 				// This endpoint publishes no pricing, so the zeros mean "not told", not "free".
 				cost: {
 					input: 0,

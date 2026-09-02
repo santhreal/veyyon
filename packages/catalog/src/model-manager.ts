@@ -465,6 +465,12 @@ function mergeDynamicModel<TApi extends Api>(existingModel: Model<TApi>, dynamic
 	const supportsImage = dynamicInputAuthoritative
 		? dynamicModel.input.includes("image")
 		: existingModel.input.includes("image") || dynamicModel.input.includes("image");
+	const supportsVideo = dynamicInputAuthoritative
+		? dynamicModel.input.includes("video")
+		: existingModel.input.includes("video") || dynamicModel.input.includes("video");
+	const input: ("text" | "image" | "video")[] = ["text"];
+	if (supportsImage) input.push("image");
+	if (supportsVideo) input.push("video");
 	// Re-build from spec stage: sparse compat comes from `compatConfig` (the
 	// verbatim override vocabulary), never the resolved `compat` record.
 	return buildModel({
@@ -481,7 +487,7 @@ function mergeDynamicModel<TApi extends Api>(existingModel: Model<TApi>, dynamic
 				: (dynamicModel.thinking ?? existingModel.thinking),
 		name: preferDiscoveryName(dynamicModel.name, existingModel.name, dynamicModel.id),
 		reasoning: existingModel.reasoning || dynamicModel.reasoning,
-		input: supportsImage ? ["text", "image"] : ["text"],
+		input,
 		cost: {
 			input: preferDiscoveryCost(dynamicModel.cost.input, existingModel.cost.input),
 			output: preferDiscoveryCost(dynamicModel.cost.output, existingModel.cost.output),
@@ -616,13 +622,13 @@ function modelSpecRejection(value: unknown): string | null {
 	return null;
 }
 
-function isModelInputArray(value: unknown): value is ("text" | "image")[] {
+function isModelInputArray(value: unknown): value is ("text" | "image" | "video")[] {
 	if (!Array.isArray(value) || value.length === 0) {
 		return false;
 	}
 	for (let i = 0; i < value.length; i++) {
 		const item = value[i];
-		if (item !== "text" && item !== "image") {
+		if (item !== "text" && item !== "image" && item !== "video") {
 			return false;
 		}
 	}

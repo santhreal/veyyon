@@ -28,6 +28,7 @@
 - An `anthropic-messages` model's compat carries `replayDemotedPriorReasoning`, which drops prior-turn reasoning on a signing endpoint instead of replaying it as demoted prose.
 - The bundled ChatGPT Codex catalog carries `gpt-6-astra` and `gpt-reserve`, each with the low-through-max effort ladder and the freeform `apply_patch` tool the endpoint declares.
 
+- Model input capability support includes `"video"` for video-capable models.
 ### Changed
 
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
