@@ -108,7 +108,7 @@ fn render_session<R>(
 	let mut session = HeadlessSession::open(&mut cx, &options, move |_window, app: &mut App| {
 		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
 			.expect("tokens and theme install");
-		
+
 		app.new(|_| ShellView::new(installed, state))
 	})
 	.expect("session opens");

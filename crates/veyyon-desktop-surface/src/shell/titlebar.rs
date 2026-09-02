@@ -197,7 +197,10 @@ fn connection_state(connection: &ConnectionPhase, tokens: &TokenSet) -> Div {
 /// What the attention strip takes off the top of the window.
 #[must_use]
 pub fn attention_strip_height(tokens: &TokenSet) -> f32 {
-	2.0f32.mul_add(f32::from(tokens.spacing(SpacingStep::S2)), f32::from(tokens.line_height(TextRamp::Micro)))
+	2.0f32.mul_add(
+		f32::from(tokens.spacing(SpacingStep::S2)),
+		f32::from(tokens.line_height(TextRamp::Micro)),
+	)
 }
 
 /// The attention strip: one line, above everything, that something is wrong.

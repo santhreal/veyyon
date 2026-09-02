@@ -12,9 +12,7 @@
 //! WHAT THIS DOES NOT CATCH: renderer-level font shaping or GPU quad
 //! rasterization, which are defended in the frame verification suites.
 
-use veyyon_desktop_surface::terminal::{
-	Ink, MAX_SCROLLBACK_ROWS, TerminalEmulator,
-};
+use veyyon_desktop_surface::terminal::{Ink, MAX_SCROLLBACK_ROWS, TerminalEmulator};
 
 #[test]
 fn the_terminal_parser_handles_sgr_cursor_erase_scroll_and_osc() {

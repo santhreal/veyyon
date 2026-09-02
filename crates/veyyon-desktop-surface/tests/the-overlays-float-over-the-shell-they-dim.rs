@@ -16,9 +16,7 @@ use veyyon_desktop_scene::{
 	RgbaFrame,
 	headless::{RenderOptions, headless_context, render_view, write_png},
 };
-use veyyon_desktop_surface::{
-	Overlay, PaletteState, ShellView, fixture, install_tokens,
-};
+use veyyon_desktop_surface::{Overlay, PaletteState, ShellView, fixture, install_tokens};
 use veyyon_gpui::{App, AppContext};
 
 const WIDTH: u32 = 1440;
@@ -47,7 +45,9 @@ fn render(cx: &mut veyyon_gpui::HeadlessAppContext, overlay: Option<Overlay>) ->
 fn band_equal(a: &RgbaFrame, b: &RgbaFrame, top: u32, bottom: u32) -> bool {
 	let width = a.width() as usize;
 	a.as_bytes()
-		.as_chunks::<4>().0.iter()
+		.as_chunks::<4>()
+		.0
+		.iter()
 		.zip(b.as_bytes().as_chunks::<4>().0)
 		.enumerate()
 		.filter(|(i, _)| {

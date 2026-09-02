@@ -7,7 +7,7 @@
 use veyyon_gpui::{Context, Div, InteractiveElement};
 
 use crate::{
-    Intent, Overlay, PaletteState, Section, ShellView,
+	Intent, Overlay, PaletteState, Section, ShellView,
 	composer::{QueueMode, SecondaryAction, ThinkingControl, TurnPhase, primary_action},
 	keymap::actions::{
 		AbortTurn, AttachFile, CloseTabOrPark, FilterQueue, FindInTranscript, FocusLive, ModelPicker,
@@ -166,7 +166,9 @@ pub fn bind_composer_keys(composer: Div, cx: &Context<ShellView>) -> Div {
 				.filter(|model| model.selectable && !model.options.is_empty())
 				.map(PaletteState::from_models);
 			match palette {
-				Some(palette) => view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Palette(palette)))),
+				Some(palette) => {
+					view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Palette(palette))))
+				},
 				None => cx.propagate(),
 			}
 		}))

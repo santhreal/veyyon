@@ -26,38 +26,38 @@ pub fn render_keybindings_page(
 	let shell_state = cx.entity().read(cx).state();
 
 	if state.keybindings.is_empty() {
- 		// §5.13: Keybindings capability absent -> render shipped defaults read-only.
- 		let keymap = Keymap::default();
- 		for row in keymap.rows() {
- 			let chip = Badge::new(&row.chord, TintRole::Plan);
- 			let av = Availability::Enabled;
+		// §5.13: Keybindings capability absent -> render shipped defaults read-only.
+		let keymap = Keymap::default();
+		for row in keymap.rows() {
+			let chip = Badge::new(&row.chord, TintRole::Plan);
+			let av = Availability::Enabled;
 
- 			container = container.child(setting_row(
- 				&row.label,
- 				Some(row.scope.as_str()),
- 				chip,
- 				&av,
- 				geometry,
- 				tokens,
- 			));
- 		}
- 	} else {
- 		for binding in &state.keybindings {
- 			let field_id = SurfaceId::KeybindingField(binding.action.clone());
- 			let av = shell_state.controls.availability(&field_id);
- 			let chord_str = binding.keys.join(" ");
- 			let chip = Badge::new(chord_str, TintRole::Plan);
+			container = container.child(setting_row(
+				&row.label,
+				Some(row.scope.as_str()),
+				chip,
+				&av,
+				geometry,
+				tokens,
+			));
+		}
+	} else {
+		for binding in &state.keybindings {
+			let field_id = SurfaceId::KeybindingField(binding.action.clone());
+			let av = shell_state.controls.availability(&field_id);
+			let chord_str = binding.keys.join(" ");
+			let chip = Badge::new(chord_str, TintRole::Plan);
 
- 			container = container.child(setting_row(
- 				&binding.action,
- 				Some(&binding.source),
- 				chip,
- 				&av,
- 				geometry,
- 				tokens,
- 			));
- 		}
- 	}
+			container = container.child(setting_row(
+				&binding.action,
+				Some(&binding.source),
+				chip,
+				&av,
+				geometry,
+				tokens,
+			));
+		}
+	}
 
 	container
 }

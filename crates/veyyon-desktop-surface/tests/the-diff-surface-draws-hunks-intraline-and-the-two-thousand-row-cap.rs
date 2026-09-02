@@ -10,8 +10,7 @@
 //! symbols, word-level intraline highlights, the 2,000 changed-row ceiling, and
 //! headless rendering in both unified and split modes.
 
-use std::fmt::Write as _;
-use std::path::Path;
+use std::{fmt::Write as _, path::Path};
 
 use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_model::{ChangeStatus, DiffMode};

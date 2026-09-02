@@ -39,7 +39,7 @@ fn options() -> RenderOptions {
 fn sample_state() -> ShellState {
 	ShellState {
 		connection: ConnectionPhase::Attached,
-		sections:   vec![(Section::Live, vec![
+		sections: vec![(Section::Live, vec![
 			Row {
 				id:       101,
 				title:    "Workspace Refactor".to_string(),

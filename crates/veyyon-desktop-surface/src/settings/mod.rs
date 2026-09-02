@@ -170,12 +170,12 @@ pub fn settings_surface(
 			.items_center()
 			.cursor_pointer()
 			.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
-				view.dispatch(Intent::OpenOverlay(Box::new(crate::overlay::Overlay::Settings(Box::new(
-					SettingsState {
+				view.dispatch(Intent::OpenOverlay(Box::new(crate::overlay::Overlay::Settings(
+					Box::new(SettingsState {
 						page,
 						..view.state().overlay_settings().cloned().unwrap_or_default()
-					},
-				)))));
+					}),
+				))));
 				cx.notify();
 			}))
 			.child(

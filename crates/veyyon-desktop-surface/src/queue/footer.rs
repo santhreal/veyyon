@@ -12,10 +12,7 @@ use veyyon_desktop_kit::{
 use veyyon_desktop_tokens::QueueSurfaceTokens;
 use veyyon_gpui::{ClickEvent, Context, IntoElement, ParentElement, Styled, div, px};
 
-use crate::{
-	Intent, ShellView,
-    overlay::Overlay,
-};
+use crate::{Intent, ShellView, overlay::Overlay};
 
 /// Renders the queue rail's bottom-pinned footer containing the settings gear.
 pub fn queue_footer(

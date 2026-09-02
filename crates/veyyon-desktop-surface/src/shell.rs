@@ -61,7 +61,7 @@ pub struct ShellView {
 	rail_motion:    RailMotion,
 	focus_handle:   Option<FocusHandle>,
 	now_ms:         u64,
-	subscriptions: Vec<Subscription>,
+	subscriptions:  Vec<Subscription>,
 }
 
 impl ShellView {
