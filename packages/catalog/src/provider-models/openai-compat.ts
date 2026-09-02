@@ -178,12 +178,20 @@ function toModelName(value: unknown, fallback: string): string {
 	return trimmed.length > 0 ? trimmed : fallback;
 }
 
-function toInputCapabilities(value: unknown): ("text" | "image")[] {
+export function toInputCapabilities(value: unknown): ("text" | "image" | "video")[] {
 	if (!Array.isArray(value)) {
 		return ["text"];
 	}
 	const supportsImage = value.some(item => item === "image");
-	return supportsImage ? ["text", "image"] : ["text"];
+	const supportsVideo = value.some(item => item === "video");
+	const result: ("text" | "image" | "video")[] = ["text"];
+	if (supportsImage) {
+		result.push("image");
+	}
+	if (supportsVideo) {
+		result.push("video");
+	}
+	return result;
 }
 
 /**
@@ -2786,8 +2794,12 @@ export function kimiCodeModelManagerOptions(
 							reasoning: entry.supports_reasoning === true || model.reasoning,
 							input:
 								entry.supports_image_in === true || model.input.includes("image")
-									? ["text", "image"]
-									: ["text"],
+									? model.input.includes("video") || entry.supports_video_in === true
+										? ["text", "image", "video"]
+										: ["text", "image"]
+									: model.input.includes("video") || entry.supports_video_in === true
+										? ["text", "video"]
+										: ["text"],
 							contextWindow:
 								typeof entry.context_length === "number"
 									? entry.context_length
@@ -3002,7 +3014,14 @@ export function syntheticModelManagerOptions(
 							...(reference ? { ...reference, id: defaults.id, baseUrl } : defaults),
 							name: toModelName(entry.name, reference?.name ?? defaults.name),
 							reasoning: entry.supports_reasoning === true || (reference?.reasoning ?? false),
-							input: entry.supports_vision === true || referenceSupportsImage ? ["text", "image"] : ["text"],
+							input:
+								entry.supports_vision === true || referenceSupportsImage
+									? (reference?.input.includes("video") ?? false)
+										? ["text", "image", "video"]
+										: ["text", "image"]
+									: (reference?.input.includes("video") ?? false)
+										? ["text", "video"]
+										: ["text"],
 							contextWindow: toPositiveNumber(
 								entry.context_length,
 								reference?.contextWindow ?? defaults.contextWindow,
@@ -3131,7 +3150,14 @@ export function basetenModelManagerOptions(
 						return {
 							...baseModel,
 							reasoning,
-							input: vision ? ["text", "image"] : ["text"],
+							input:
+								vision
+									? (modalities.includes("video") || (reference?.input.includes("video") ?? false))
+										? ["text", "image", "video"]
+										: ["text", "image"]
+									: (modalities.includes("video") || (reference?.input.includes("video") ?? false))
+										? ["text", "video"]
+										: ["text"],
 							cost,
 							contextWindow,
 							maxTokens,
@@ -3192,6 +3218,9 @@ export function coreWeaveModelManagerOptions(
  * key. Output ceilings are left unset: the endpoint is an OpenAI-compatible
  * proxy and does not document a per-model completion cap.
  */
+// Vendor docs for video input:
+// - Moonshot Kimi: https://platform.moonshot.cn/docs/guide/vision
+// - MiniMax M3: https://platform.minimaxi.com/document/ChatCompletion-v2
 export const COMMAND_CODE_STATIC_MODELS: readonly ModelSpec<"openai-completions">[] = [
 	{
 		id: "moonshotai/Kimi-K2.7-Code",
@@ -3200,7 +3229,7 @@ export const COMMAND_CODE_STATIC_MODELS: readonly ModelSpec<"openai-completions"
 		provider: "command-code",
 		baseUrl: "https://api.commandcode.ai/provider/v1",
 		reasoning: false,
-		input: ["text"],
+		input: ["text", "image", "video"],
 		cost: { input: 0.95, output: 4, cacheRead: 0.19, cacheWrite: 0 },
 		contextWindow: 256000,
 		maxTokens: null,
@@ -3224,7 +3253,7 @@ export const COMMAND_CODE_STATIC_MODELS: readonly ModelSpec<"openai-completions"
 		provider: "command-code",
 		baseUrl: "https://api.commandcode.ai/provider/v1",
 		reasoning: false,
-		input: ["text"],
+		input: ["text", "image", "video"],
 		cost: { input: 0.3, output: 1.2, cacheRead: 0.06, cacheWrite: 0 },
 		contextWindow: 1000000,
 		maxTokens: null,
@@ -3325,8 +3354,12 @@ function mapNousResearchModel(
 		: [];
 	const inputModalities = Array.isArray(architecture.input_modalities)
 		? architecture.input_modalities
-		: typeof architecture.modality === "string" && architecture.modality.includes("image")
-			? ["text", "image"]
+		: typeof architecture.modality === "string"
+			? [
+					"text",
+					...(architecture.modality.includes("image") ? ["image"] : []),
+					...(architecture.modality.includes("video") ? ["video"] : []),
+				]
 			: ["text"];
 
 	return {

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+
+- Model input capability support includes `"video"` for video-capable models.
 ### Changed
 
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.

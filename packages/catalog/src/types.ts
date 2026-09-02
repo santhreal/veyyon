@@ -812,7 +812,13 @@ export interface Model<TApi extends Api = Api> {
 	provider: Provider;
 	baseUrl: string;
 	reasoning: boolean;
-	input: ("text" | "image")[];
+	/**
+	 * Input modalities the model accepts. `"video"` is declared by the
+	 * upstream catalog (models.dev `modalities.input`) for Gemini, Kimi K2.5+,
+	 * Qwen 3.5+/VL/Omni, GLM-V, MiniMax-M3 and Nova; a `VideoContent` part
+	 * reaches the wire only when it is present.
+	 */
+	input: ("text" | "image" | "video")[];
 	/**
 	 * Decoder family used for image inputs when it has narrower format support
 	 * than Veyyon's general image pipeline. `stb` local backends reject WebP.
