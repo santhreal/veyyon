@@ -11,8 +11,9 @@
 use crate::{
     AnyView, AnyWindowHandle, App, AppCell, AppContext, AssetSource, BackgroundExecutor, Bounds,
     Context, Entity, EntityId, ForegroundExecutor, Global, HeadlessFrame, Pixels,
-    PlatformHeadlessRenderer, PlatformTextSystem, Render, Reservation, Size, Task, TestDispatcher,
-    TestPlatform, TextSystem, Window, WindowBounds, WindowHandle, WindowOptions,
+    PlatformHeadlessRenderer, PlatformTextSystem, Render, RequestFrameOptions, Reservation, Size,
+    Task, TestDispatcher, TestPlatform, TextSystem, Window, WindowBounds, WindowHandle,
+    WindowOptions,
     app::{GpuiBorrow, GpuiMode},
 };
 use anyhow::Result;
@@ -181,6 +182,29 @@ impl HeadlessAppContext {
     ) -> Result<HeadlessFrame> {
         let mut app = self.app.borrow_mut();
         app.update_window(window, |_, window, _| window.render_to_frame(scale_factor))?
+    }
+
+    /// Delivers one frame request to the window, as a display's frame source
+    /// would on the next vsync: pending next-frame callbacks run first, and the
+    /// window draws if they, or anything else, left it dirty.
+    ///
+    /// A window that is neither dirty nor waiting on an animation frame draws
+    /// nothing, so a caller inspecting damage after a scoped update sees that
+    /// update's damage and not a full redraw.
+    pub fn request_frame(&mut self, window: AnyWindowHandle) -> Result<()> {
+        let test_window = {
+            let mut app = self.app.borrow_mut();
+            app.windows
+                .get_mut(window.id)
+                .and_then(|slot| slot.as_deref_mut())
+                .ok_or_else(|| anyhow::anyhow!("window not found"))?
+                .platform_window
+                .as_test()
+                .ok_or_else(|| anyhow::anyhow!("window is not a test window"))?
+                .clone()
+        };
+        test_window.simulate_frame_request(RequestFrameOptions::default());
+        Ok(())
     }
 
     /// Renders an element tree to a `HeadlessFrame` at the given logical size and scale factor.
