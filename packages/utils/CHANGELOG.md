@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `SUPPORTED_VIDEO_MIME_TYPES` exports the supported video MIME types (`video/mp4`, `video/webm`, `video/quicktime`).
+
 ## [1.3.0] - 2026-08-28
 
 ### Added

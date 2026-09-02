@@ -14,6 +14,7 @@ const WEBP_VP8L = Buffer.from("VP8L");
 const WEBP_VP8 = Buffer.from("VP8 ");
 
 export const SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+export const SUPPORTED_VIDEO_MIME_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
 
 export type ImageMetadata =
 	| { mimeType: "image/png"; width?: number; height?: number; channels?: number; hasAlpha?: boolean }

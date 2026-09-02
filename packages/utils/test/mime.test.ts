@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseImageMetadata, SUPPORTED_IMAGE_MIME_TYPES } from "../src/mime";
+import { parseImageMetadata, SUPPORTED_IMAGE_MIME_TYPES, SUPPORTED_VIDEO_MIME_TYPES } from "../src/mime";
 
 function pngHeader(width: number, height: number, colorType: number): Uint8Array {
 	const header = new Uint8Array(26);
@@ -142,5 +142,9 @@ describe("parseImageMetadata", () => {
 
 	it("exposes exactly the four supported raster types", () => {
 		expect([...SUPPORTED_IMAGE_MIME_TYPES].sort()).toEqual(["image/gif", "image/jpeg", "image/png", "image/webp"]);
+	});
+
+	it("exposes exactly the three supported video container types", () => {
+		expect([...SUPPORTED_VIDEO_MIME_TYPES].sort()).toEqual(["video/mp4", "video/quicktime", "video/webm"]);
 	});
 });
