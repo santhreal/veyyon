@@ -248,6 +248,7 @@ export function messageContentText(
 	for (const block of content) {
 		if (block.type === "text" && block.text !== undefined) text += block.text;
 		else if (block.type === "image") text += block.mimeType ? `[Image: ${block.mimeType}]` : "[Image]";
+		else if (block.type === "video") text += block.mimeType ? `[Video: ${block.mimeType}]` : "[Video]";
 	}
 	return text;
 }

@@ -33,7 +33,7 @@ import { normalizeSystemPrompts } from "../utils";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { openBoundedFirstEventBudget } from "../utils/first-event-budget";
 import { toolWireSchema } from "../utils/schema/wire";
-
+import { NON_VIDEO_MODEL_PLACEHOLDER } from "./vision-content";
 export const GITLAB_DUO_WORKFLOW_PROVIDER_ID = "gitlab-duo-agent";
 export const GITLAB_DUO_WORKFLOW_API = "gitlab-duo-agent";
 export const GITLAB_DUO_WORKFLOW_DEFINITION = "ambient";
@@ -2338,7 +2338,15 @@ function buildGitLabDuoWorkflowActionResponse(
 }
 
 function gitLabToolResultToText(toolResult: ToolResultMessage): string {
-	return toolResult.content.map(item => (item.type === "text" ? item.text : `[${item.mimeType} image]`)).join("\n");
+	return toolResult.content
+		.map(item =>
+			item.type === "text"
+				? item.text
+				: item.type === "video"
+					? NON_VIDEO_MODEL_PLACEHOLDER
+					: `[${item.mimeType} image]`,
+		)
+		.join("\n");
 }
 
 function buildGitLabMcpToolDefinition(tool: Tool): GitLabMcpToolDefinition {
@@ -2850,7 +2858,15 @@ function gitLabDuoWorkflowMessageContentToText(message: Message): string {
 
 function gitLabDuoWorkflowUserContentToText(message: Exclude<Message, AssistantMessage>): string {
 	if (typeof message.content === "string") return message.content;
-	return message.content.map(item => (item.type === "text" ? item.text : `[${item.mimeType} image]`)).join("\n");
+	return message.content
+		.map(item =>
+			item.type === "text"
+				? item.text
+				: item.type === "video"
+					? NON_VIDEO_MODEL_PLACEHOLDER
+					: `[${item.mimeType} image]`,
+		)
+		.join("\n");
 }
 
 export function describeGitLabDuoWorkflowSocketEvent(event: unknown): string {

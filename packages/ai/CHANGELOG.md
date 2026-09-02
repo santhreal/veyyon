@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `VideoContent` support across provider serialization and fallback placeholder handling.
+### Fixed
+
+- ChatGPT Codex server-side compaction posts to the codex responses route instead of the retired `/responses/compact` route, which answered 404 and turned the session over to local compaction for the rest of its life.
+- Codex remote compaction keeps at least one user turn when the retained-token budget it is handed is not a finite number, instead of replaying a window holding nothing but the compaction item.
+
 ### Changed
 
 - `Tool` extends `ToolSpec` from `@veyyon/tool`, which owns the schema-independent declaration and the `ToolExample` kinds; `@veyyon/ai` exports every name it exported before, so no caller changes.

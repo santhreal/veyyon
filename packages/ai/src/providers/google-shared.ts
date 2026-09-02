@@ -28,6 +28,7 @@ import type {
 	ThinkingContent,
 	Tool,
 	ToolCall,
+	VideoContent,
 } from "../types";
 import { shouldSendServiceTier } from "../types";
 import { normalizeSystemPrompts } from "../utils";
@@ -48,7 +49,7 @@ import type {
 	ThinkingLevel,
 } from "./google-types";
 import { transformMessages } from "./transform-messages";
-import { NON_VISION_IMAGE_PLACEHOLDER } from "./vision-guard";
+import { NON_VIDEO_MODEL_PLACEHOLDER, NON_VISION_IMAGE_PLACEHOLDER } from "./vision-content";
 
 export type {
 	Content,
@@ -341,28 +342,45 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 				});
 			} else {
 				const supportsImages = model.input.includes("image");
+				const supportsVideos = model.input.includes("video");
 				const parts: Part[] = [];
 				let omittedImages = false;
+				let omittedVideos = false;
 				for (const item of msg.content) {
 					if (item.type === "text") {
 						const text = item.text.toWellFormed();
 						if (text.trim().length === 0) continue;
 						parts.push({ text });
-					} else if (supportsImages) {
-						parts.push({
-							inlineData: {
-								mimeType: item.mimeType,
-								data: item.data,
-							},
-						});
-					} else {
-						omittedImages = true;
+					} else if (item.type === "image") {
+						if (supportsImages) {
+							parts.push({
+								inlineData: {
+									mimeType: item.mimeType,
+									data: item.data,
+								},
+							});
+						} else {
+							omittedImages = true;
+						}
+					} else if (item.type === "video") {
+						if (supportsVideos) {
+							parts.push({
+								inlineData: {
+									mimeType: item.mimeType,
+									data: item.data,
+								},
+							});
+						} else {
+							omittedVideos = true;
+						}
 					}
 				}
 				if (omittedImages) {
 					parts.push({ text: NON_VISION_IMAGE_PLACEHOLDER });
 				}
-				if (parts.length === 0) continue;
+				if (omittedVideos) {
+					parts.push({ text: NON_VIDEO_MODEL_PLACEHOLDER });
+				}
 				contents.push({
 					role: "user",
 					parts,
@@ -390,14 +408,9 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 					// summary, so an unsigned summary carries no reasoning context the
 					// provider can replay: it is transcript text and nothing more, and it
 					// was measured at 10.8% of the conversation body. A SIGNED block is
-					// never dropped here, whatever the window says, because dropping it
-					// would discard replayable reasoning.
-					if (
-						messageIndex < retainThinkingFrom &&
-						!resolveThoughtSignature(isSameProviderAndModel, block.thinkingSignature)
-					) {
-						continue;
-					}
+					// preserved: its content is never sent (and the byte was zero on the
+					// wire), but the signature is what proves the preceding chain.
+					if (!block.thinkingSignature && messageIndex < retainThinkingFrom) continue;
 					const thoughtSignature = resolveThoughtSignature(isSameProviderAndModel, block.thinkingSignature);
 					if (thoughtSignature) {
 						parts.push({
@@ -446,11 +459,12 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 		} else if (msg.role === "toolResult") {
 			// Extract text and image content
 			const supportsImages = model.input.includes("image");
+			const supportsVideos = model.input.includes("video");
 			const textContent = msg.content.filter((c): c is TextContent => c.type === "text");
 			const textResult = textContent.map(c => c.text).join("\n");
 			const imageContent = supportsImages ? msg.content.filter((c): c is ImageContent => c.type === "image") : [];
 			const omittedImages = !supportsImages && msg.content.some((c): c is ImageContent => c.type === "image");
-
+			const omittedVideos = !supportsVideos && msg.content.some((c): c is VideoContent => c.type === "video");
 			const hasText = textResult.length > 0;
 			const hasImages = imageContent.length > 0;
 
@@ -460,14 +474,17 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 			const modelSupportsMultimodalFunctionResponse = supportsMultimodalFunctionResponse(model.id);
 
 			// Use "output" key for success, "error" key for errors as per SDK documentation
-			const responseValue = omittedImages
-				? [hasText ? textResult.toWellFormed() : "", NON_VISION_IMAGE_PLACEHOLDER].filter(Boolean).join("\n")
-				: hasText
-					? textResult.toWellFormed()
-					: hasImages
-						? "(see attached image)"
-						: "";
-
+			const omittedParts: string[] = [];
+			if (omittedImages) omittedParts.push(NON_VISION_IMAGE_PLACEHOLDER);
+			if (omittedVideos) omittedParts.push(NON_VIDEO_MODEL_PLACEHOLDER);
+			const responseValue =
+				omittedParts.length > 0
+					? [hasText ? textResult.toWellFormed() : "", ...omittedParts].filter(Boolean).join("\n")
+					: hasText
+						? textResult.toWellFormed()
+						: hasImages
+							? "(see attached image)"
+							: "";
 			const imageParts: Part[] = imageContent.map(imageBlock => ({
 				inlineData: {
 					mimeType: imageBlock.mimeType,
@@ -1292,3 +1309,5 @@ function extractGoogleErrorMessage(body: AIError.ProviderErrorBody): string {
 	}
 	return body.detail;
 }
+
+export { convertMessages as convertGoogleMessages };

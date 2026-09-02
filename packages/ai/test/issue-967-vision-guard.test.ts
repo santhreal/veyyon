@@ -4,7 +4,7 @@ import { convertMessages as convertGoogleMessages } from "@veyyon/ai/providers/g
 import { convertCodexResponsesMessages } from "@veyyon/ai/providers/openai-codex-responses";
 import { convertMessages as convertOpenAICompletionsMessages } from "@veyyon/ai/providers/openai-completions";
 import { appendResponsesToolResultMessages, convertResponsesInputContent } from "@veyyon/ai/providers/openai-shared";
-import { NON_VISION_IMAGE_PLACEHOLDER } from "@veyyon/ai/providers/vision-guard";
+import { NON_VISION_IMAGE_PLACEHOLDER } from "@veyyon/ai/providers/vision-content";
 import type { Api, AssistantMessage, Context, Model, ModelSpec, ToolResultMessage, Usage } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 import type { ResolvedOpenAICompat } from "@veyyon/catalog/types";
