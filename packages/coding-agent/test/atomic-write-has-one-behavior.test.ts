@@ -427,15 +427,6 @@ const JUSTIFIED_TEMP_RENAMES: ReadonlyMap<string, string> = new Map([
 			"swapped parent directory. Both writers take a lexical path and rename unconditionally, so " +
 			"calling one would drop the CAS, the rollback and the directory pin at once.",
 	],
-	[
-		"coding-agent/src/cli/first-frame-replay.ts",
-		"is the boot path's own module: it writes the recording the NEXT launch reads before any " +
-			"graph loads, and it holds itself to node builtins and one type import for that reason. " +
-			"Both writers arrive with a module graph the 6.3ms replay path is measured without, and " +
-			"the static-module ceiling on the boot path pins that graph exactly. The write is a cache " +
-			"whose failure costs a speedup and nothing else, so the staging rename buys the reader's " +
-			"all-or-nothing view at no import cost.",
-	],
 ]);
 
 describe("the source tree", () => {

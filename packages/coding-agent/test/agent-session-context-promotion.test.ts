@@ -544,6 +544,12 @@ describe("AgentSession context promotion", () => {
 			"contextPromotion.enabled": false,
 		});
 		const compactSpy = vi.spyOn(compactionModule, "compact");
+		// Isolate the candidate set to the model this case is about. Compaction walks every
+		// available model, and a sibling with a larger window would reach `compact()` — which this
+		// suite does not mock — and hang the cell on a provider call. The cannot-fit refusal is a
+		// skip of THIS window, not a network error from a bigger one.
+		vi.spyOn(modelRegistry, "getAvailable").mockReturnValue([model]);
+		compactSpy.mockRejectedValue(new Error("compact must not be reached: the summary cannot fit this model"));
 
 		const agent = new Agent({
 			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },

@@ -45,8 +45,8 @@ describe("tool results that read as failures are marked as failures", () => {
 	}
 
 	/**
-	 * Every `text:` string literal in the file that opens with failure wording,
-	 * paired with whether the `return { ... }` object enclosing it sets `isError`.
+	 * Every `text:` string literal in the source that opens with failure wording, paired with whether
+	 * the `return { ... }` object enclosing it is a tool result and sets `isError`.
 	 *
 	 * The enclosing object is found by walking back to the nearest `return {` and
 	 * brace-matching forward from it, which is exact for the shape every tool
@@ -54,8 +54,7 @@ describe("tool results that read as failures are marked as failures", () => {
 	 * building a string) is skipped, because those paths cannot produce an
 	 * unmarked success.
 	 */
-	function scan(file: string): Violation[] {
-		const source = readFileSync(path.join(TOOLS_DIR, file), "utf8");
+	function scanSource(file: string, source: string): Violation[] {
 		const violations: Violation[] = [];
 		const textLiteral = /text:\s*(`|")((?:[^`"\\]|\\.)*)\1/g;
 
@@ -75,7 +74,14 @@ describe("tool results that read as failures are marked as failures", () => {
 				}
 			}
 			if (end <= match.index) continue; // the literal is not inside this return
-			if (/\bisError\b/.test(source.slice(start, end))) continue;
+			const enclosing = source.slice(start, end);
+			// A RESULT, NOT A ROW. `text:` is also the span field a `ToolView` row carries, and a tool
+			// that describes its card returns rows from the same module the results are built in
+			// (`Error: ${sanitizeErrorText(text)}` is a row a view draws for a failure the loop has
+			// already marked). Only an object that also carries `content:` can be what the model reads,
+			// so the check is anchored on that rather than on the module's name, which a rename defeats.
+			if (!/\bcontent\s*:/.test(enclosing)) continue;
+			if (/\bisError\b/.test(enclosing)) continue;
 
 			violations.push({
 				file,
@@ -84,6 +90,10 @@ describe("tool results that read as failures are marked as failures", () => {
 			});
 		}
 		return violations;
+	}
+
+	function scan(file: string): Violation[] {
+		return scanSource(file, readFileSync(path.join(TOOLS_DIR, file), "utf8"));
 	}
 
 	/**
@@ -168,6 +178,22 @@ describe("tool results that read as failures are marked as failures", () => {
 			]) {
 				expect(FAILURE_OPENERS.test(text)).toBe(false);
 			}
+		});
+
+		it("flags an unmarked failure result and clears the same wording in a card's row", () => {
+			// The discrimination the scan rests on. A result is what the model reads, so failure
+			// wording in one without `isError` is the defect; the identical sentence in a `ToolView`
+			// row is a card describing a failure the loop has already marked, and a scan that cannot
+			// tell them apart is one that gets switched off.
+			const unmarked = `function run() {\n\treturn { content: [{ type: "text", text: "Error: no image data returned." }] };\n}`;
+			const marked = `function run() {\n\treturn { content: [{ type: "text", text: "Error: no image data returned." }], isError: true };\n}`;
+			const row = `function renderResult() {\n\treturn { text: "Error: no image data returned.", tone: "error" };\n}`;
+
+			expect(scanSource("fabricated/tool.ts", unmarked).map(v => v.text)).toEqual([
+				"Error: no image data returned.",
+			]);
+			expect(scanSource("fabricated/tool.ts", marked)).toEqual([]);
+			expect(scanSource("fabricated/tool-view.ts", row)).toEqual([]);
 		});
 	});
 });
