@@ -50,6 +50,18 @@ const ALLOWED = new Map<string, string>([
 		"modes/terminal/components/chrome/modal-shell",
 		"One width query, `mediumModalContentWidth`, so the ask tool pre-wraps its title to the width of the card the editor draws it in. Wrapping at the terminal width instead hands the card lines it wraps a second time. No card is constructed, rendered or hit-tested here.",
 	],
+	[
+		"modes/terminal/draw/draw-tool-view",
+		"The terminal's drawing of a ToolView. Domain renderer tables call viewToolRenderer; they do not construct a card.",
+	],
+	[
+		"modes/terminal/draw/utils",
+		"buildTreePrefix, the one owner of tree-rail indentation. json-tree-render draws nested JSON with it.",
+	],
+	[
+		"modes/terminal/draw/terminal-row",
+		"styleTerminalRow, so the interactive bash overlay paints PTY rows the same way a transcript terminal row does.",
+	],
 ]);
 
 /**
@@ -224,8 +236,8 @@ describe("tools reach the terminal UI only to draw", () => {
  * `@veyyon/tui` and get a widget it can draw. Same concern, different boundary, so
  * it lives beside its sibling instead of in a file of its own.
  *
- * WHAT THE ROWS SAY NOW. Three rows are left, and none of them draws: `bash-interactive.ts`,
- * `render-utils.ts` and `renderers.ts` take `type Component` and nothing else, so they bind no host
+ * WHAT THE ROWS SAY NOW. Two rows are left, and neither draws: `bash-interactive.ts`
+ * and `renderers.ts` take `type Component` and nothing else, so they bind no host
  * at run time. Every card a tool states is a `ToolView` its host draws, which is why the `-render.ts`
  * siblings that used to fill this ledger are gone and `DRAWS_IN_PLACE` below is empty.
  *
@@ -243,7 +255,6 @@ describe("tools reach the terminal UI only to draw", () => {
  */
 const TUI_SURFACE = new Map<string, readonly string[]>([
 	["tools/shell/bash-interactive.ts", ["type Component"]],
-	["tools/core/render-utils.ts", ["type Component"]],
 	["tools/renderers.ts", ["type Component"]],
 ]);
 

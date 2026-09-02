@@ -10,9 +10,9 @@
 import type { Component } from "@veyyon/tui";
 import { formatAge } from "@veyyon/utils";
 import type { Theme } from "../../../../theme/theme";
-import { createCachedComponent, getPreviewLines, replaceTabs } from "../../../../tools/core/render-utils";
+import { getPreviewLines, replaceTabs } from "../../../../tools/core/render-utils";
 import { renderStatusLine } from "../../draw/status-line";
-import { Ellipsis, truncateToWidth } from "../../draw/utils";
+import { createCachedComponent, Ellipsis, truncateToWidth } from "../../draw/utils";
 
 /** Rows of the message a collapsed card shows, and the rows it shows once expanded. */
 const BODY_LINES_COLLAPSED = 3;

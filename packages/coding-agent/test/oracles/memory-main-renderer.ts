@@ -8,14 +8,13 @@
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import {
-	createCachedComponent,
 	formatErrorMessage,
 	formatExpandHint,
 	PREVIEW_LIMITS,
 	replaceTabs,
 	type ToolUIStatus,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import { Ellipsis, renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/modes/terminal/draw";
+import { createCachedComponent, Ellipsis, renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";

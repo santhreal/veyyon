@@ -8,7 +8,6 @@
 import * as path from "node:path";
 import type { ToolCallContext } from "@veyyon/agent-core";
 import type { Ellipsis } from "@veyyon/natives";
-import type { Component } from "@veyyon/tui/core/component-types";
 // Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { formatCount, pluralize } from "@veyyon/utils/format";
@@ -19,7 +18,6 @@ import { replaceTabs } from "@veyyon/utils/wrap";
 import { formatKeyHints, type KeyId } from "../../config/keybindings";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
-import { Hasher } from "../../modes/terminal/draw/utils";
 import type { Theme, ThemeColor } from "../../theme/theme";
 import { formatDimensionNote, type ResizedImage } from "../../utils/image-resize";
 import {
@@ -832,40 +830,6 @@ export function capParseErrors(
 ): { errors: string[]; total: number } {
 	const deduped = dedupeParseErrors(errors);
 	return { errors: deduped.slice(0, limit), total: deduped.length };
-}
-
-// =============================================================================
-// Renderer helpers shared by search / find / ast tools
-// =============================================================================
-
-/**
- * Standard width+expand keyed render cache used by every search-style tool
- * renderer. `compute` re-runs only when the cache key changes; the returned
- * Component is the canonical `{ render, invalidate }` pair.
- */
-export function createCachedComponent(
-	getExpanded: () => boolean,
-	compute: (width: number, expanded: boolean) => string[],
-	options: { paddingX?: number } = {},
-): Component {
-	let cached: { key: bigint; lines: string[] } | undefined;
-	return {
-		render(width: number): readonly string[] {
-			const expanded = getExpanded();
-			const key = new Hasher().bool(expanded).u32(width).digest();
-			if (cached?.key === key) return cached.lines;
-			const paddingX = Math.max(0, options.paddingX ?? 0);
-			const innerWidth = Math.max(1, width - paddingX * 2);
-			const lines = compute(innerWidth, expanded);
-			const pad = paddingX === 0 ? "" : " ".repeat(paddingX);
-			const paddedLines = paddingX === 0 ? lines : lines.map(line => `${pad}${line}${pad}`);
-			cached = { key, lines: paddedLines };
-			return paddedLines;
-		},
-		invalidate() {
-			cached = undefined;
-		},
-	};
 }
 
 /**

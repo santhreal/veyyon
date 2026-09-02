@@ -47,7 +47,6 @@ import { shimmerEnabled, shimmerText } from "../../../theme/shimmer";
 import { type SymbolKey, UNICODE_SYMBOLS } from "../../../theme/symbols";
 import type { Theme, ThemeColor } from "../../../theme/theme";
 import {
-	createCachedComponent,
 	formatBadge,
 	formatExpandHint,
 	formatStatusIcon,
@@ -62,7 +61,7 @@ import { renderStatusLine } from "./status-line";
 import { styleTerminalRow } from "./terminal-row";
 import { renderTreeList } from "./tree-list";
 import type { State } from "./types";
-import { padToWidth } from "./utils";
+import { createCachedComponent, padToWidth } from "./utils";
 import { wrapDiffRow } from "./wrap-diff-row";
 
 /**

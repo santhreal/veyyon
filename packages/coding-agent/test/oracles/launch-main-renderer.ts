@@ -17,7 +17,6 @@ import type { DaemonSnapshot, DaemonState } from "@veyyon/coding-agent/launch/pr
 import type { Theme, ThemeColor } from "@veyyon/coding-agent/theme/theme";
 import {
 	capPreviewLines,
-	createCachedComponent,
 	DEFAULT_TERMINAL_PREVIEW_LINES,
 	formatDuration,
 	formatExpandHint,
@@ -31,7 +30,12 @@ import {
 	truncateToWidth,
 } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { LaunchParams, LaunchToolDetails } from "@veyyon/coding-agent/tools/shell/launch";
-import { framedBlock, outputBlockContentWidth, renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw";
+import {
+	createCachedComponent,
+	framedBlock,
+	outputBlockContentWidth,
+	renderStatusLine,
+} from "@veyyon/coding-agent/modes/terminal/draw";
 import { styleTerminalRow } from "@veyyon/coding-agent/modes/terminal/draw/terminal-row";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";

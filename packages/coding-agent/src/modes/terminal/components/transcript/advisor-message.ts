@@ -3,14 +3,8 @@ import { formatCount } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
 import type { AdvisorMessageDetails, AdvisorSeverity } from "../../../../advisor";
 import type { Theme } from "../../../../theme/theme";
-import {
-	createCachedComponent,
-	formatBadge,
-	replaceTabs,
-	type ToolUIColor,
-	wrapTextWithAnsi,
-} from "../../../../tools/core/render-utils";
-import { Ellipsis, truncateToWidth } from "../../draw/utils";
+import { formatBadge, replaceTabs, type ToolUIColor, wrapTextWithAnsi } from "../../../../tools/core/render-utils";
+import { createCachedComponent, Ellipsis, truncateToWidth } from "../../draw/utils";
 
 const COLLAPSED_NOTES = 3;
 const NOTE_LINE_WIDTH = 110;
