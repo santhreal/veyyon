@@ -15,7 +15,6 @@ import type {
 	AssistantMessageEventStream,
 	Context,
 	ImageContent,
-	VideoContent,
 	Message,
 	StopReason,
 	TextContent,
@@ -23,6 +22,7 @@ import type {
 	ToolCall,
 	ToolResultMessage,
 	TSchema,
+	VideoContent,
 } from "../types";
 import { isServiceTier } from "../types";
 import {

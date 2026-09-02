@@ -45,7 +45,6 @@ import type {
 	Context,
 	FetchImpl,
 	ImageContent,
-	VideoContent,
 	Message,
 	Model,
 	ProviderSessionState,
@@ -62,6 +61,7 @@ import type {
 	ToolCall,
 	ToolResultMessage,
 	Usage,
+	VideoContent,
 } from "../types";
 import { EMPTY_ERROR_TOOL_RESULT_TEXT, realizesPriorityServiceTier } from "../types";
 import { isRecord, normalizeSystemPrompts, normalizeToolCallId, resolveCacheRetention } from "../utils";

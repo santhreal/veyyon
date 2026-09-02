@@ -8,7 +8,6 @@ import type {
 	AssistantMessage,
 	Context,
 	ImageContent,
-	VideoContent,
 	Message,
 	Model,
 	StreamFunction,
@@ -16,6 +15,7 @@ import type {
 	TextContent,
 	Tool,
 	ToolChoice,
+	VideoContent,
 } from "../types";
 import { normalizeSystemPrompts } from "../utils";
 import { clearStreamingPartialJson, kStreamingPartialJson } from "../utils/block-symbols";

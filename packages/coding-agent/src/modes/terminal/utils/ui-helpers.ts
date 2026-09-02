@@ -112,7 +112,6 @@ export type UiHelpersContext = Pick<
 	| "withLocalSubmission"
 >;
 
-type TextBlock = { type: "text"; text: string };
 interface RenderInitialMessagesOptions {
 	preserveExistingChat?: boolean;
 	clearTerminalHistory?: boolean;

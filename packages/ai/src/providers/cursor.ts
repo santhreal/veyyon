@@ -123,7 +123,6 @@ import type {
 	CursorShellStreamCallbacks,
 	CursorToolResultHandler,
 	ImageContent,
-	VideoContent,
 	Message,
 	Model,
 	ProviderContextBucket,
@@ -134,6 +133,7 @@ import type {
 	Tool,
 	ToolCall,
 	ToolResultMessage,
+	VideoContent,
 } from "../types";
 import { normalizeSystemPrompts } from "../utils";
 import {
@@ -1908,7 +1908,15 @@ async function applyToolResultHandler(
 }
 
 function toolResultToText(toolResult: ToolResultMessage): string {
-	return toolResult.content.map(item => (item.type === "text" ? item.text : item.type === "video" ? NON_VIDEO_MODEL_PLACEHOLDER : `[${item.mimeType} image]`)).join("\n");
+	return toolResult.content
+		.map(item =>
+			item.type === "text"
+				? item.text
+				: item.type === "video"
+					? NON_VIDEO_MODEL_PLACEHOLDER
+					: `[${item.mimeType} image]`,
+		)
+		.join("\n");
 }
 
 function toolResultWasTruncated(toolResult: ToolResultMessage): boolean {
@@ -3025,7 +3033,9 @@ function hasUserMessageImages(msg: Message): boolean {
 
 type CursorRootPromptContentPart = { type: "text"; text: string } | { type: "image"; image: string; mediaType: string };
 
-export function buildCursorRootPromptContent(content: string | (TextContent | ImageContent | VideoContent)[]): CursorRootPromptContentPart[] {
+export function buildCursorRootPromptContent(
+	content: string | (TextContent | ImageContent | VideoContent)[],
+): CursorRootPromptContentPart[] {
 	if (typeof content === "string") {
 		const text = content.trim();
 		return text ? [{ type: "text", text }] : [];
@@ -3062,7 +3072,6 @@ export function cursorUserContentKey(content: string | (TextContent | ImageConte
 	}
 	return hash.digest("hex");
 }
-
 
 /**
  * Extract text content from an assistant message.
