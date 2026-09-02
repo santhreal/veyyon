@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Custom message, compaction summary and session entry content unions admit `VideoContent` alongside text and images.
+
 ### Fixed
 
 - Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the route they are sent to.
