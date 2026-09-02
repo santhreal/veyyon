@@ -100,10 +100,14 @@ shot certification-on
 
 # Back to the goal and empty it. Enter must not start a run with nothing to
 # optimize, so the warning appears and the console stays open.
-k Up
-k Up
-k Up
-k Up
+#
+# One Up per field between Certification and Goal, which is five fields on the
+# branch and four on main: the walk is the field count, not a constant, and a
+# constant 4 wraps main's cursor back onto Certification, where backspace does
+# nothing and the frame below is the one above.
+ups=4
+if [ "${SCENE_ARM:-after}" = "before" ]; then ups=3; fi
+key_repeat Up "${ups}" 0.15
 settle 1
 key_repeat BackSpace 26 0.05
 settle 1
