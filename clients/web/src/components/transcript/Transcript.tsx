@@ -1,6 +1,7 @@
 import type {
 	ImageContent,
 	TextContent,
+	VideoContent,
 	WireAssistantMessage,
 	WireSessionEntry,
 	WireToolResultMessage,
@@ -61,7 +62,11 @@ function ThinkingBlock({ text, redacted }: { text: string; redacted?: boolean })
 }
 
 /** Plain text + image thumbnails for user / custom message content. */
-function MsgContent({ content }: { content: string | readonly (TextContent | ImageContent)[] }): ReactNode {
+function MsgContent({
+	content,
+}: {
+	content: string | readonly (TextContent | ImageContent | VideoContent)[];
+}): ReactNode {
 	if (typeof content === "string") return <div className="tr-text">{content}</div>;
 	return (
 		<>
@@ -80,6 +85,15 @@ function MsgContent({ content }: { content: string | readonly (TextContent | Ima
 								className="tr-msg-img"
 								src={`data:${block.mimeType};base64,${block.data}`}
 								alt="attachment"
+							/>
+						);
+					case "video":
+						return (
+							<video
+								key={i}
+								className="tr-msg-img"
+								src={`data:${block.mimeType};base64,${block.data}`}
+								controls
 							/>
 						);
 					default:

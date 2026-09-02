@@ -12,6 +12,7 @@
 
 - `TextContent`, `ImageContent`, `ThinkingContent`, `RedactedThinkingContent`, `ToolCallContent`, `FallbackContent`, `WireStopReason` and `WireUsage` are `Pick` projections of the shapes `@veyyon/model` owns, imported type-only, with the same fields as before; the package declares `@veyyon/model` and no runtime dependency.
 
+- `VideoContent` joins the user, developer, tool-result and custom message content unions so collab guests receive video attachments.
 
 ## [16.3.0] - 2026-07-02
 
