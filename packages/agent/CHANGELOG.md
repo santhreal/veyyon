@@ -9,7 +9,7 @@
 
 ### Fixed
 
-- A compaction summary is written from a transcript with the model's own reasoning removed on the Anthropic dialect, which was quoting thinking back at the endpoint and drawing a `reasoning_extraction` refusal.
+- A compaction summary is written from a transcript with the model's own reasoning removed, on every dialect and with none, which was quoting thinking back at the endpoint and drawing a `reasoning_extraction` refusal.
 - Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the `{base}/codex/responses` route they are sent to.
 - A ChatGPT Codex server-side compaction now reduces the context it was paid to reduce: its stored window was not on the list of apis whose window can be replayed, so the entry counted as unusable, the whole pre-compaction span was re-expanded on the next rebuild, and the session crossed the threshold and compacted again on every turn.
 - Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.

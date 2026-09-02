@@ -67,7 +67,7 @@ describe("serializeConversation — useless pairs", () => {
 		expect(out).toContain("[Tool Result]: grep crashed");
 	});
 
-	test("legacy serializer renders user (string + array), thinking, text, and tool calls with role tags", () => {
+	test("legacy serializer renders user (string + array), text, and tool calls with role tags", () => {
 		const out = serializeConversation([
 			{ role: "user", content: "plain string prompt", timestamp: 0 },
 			{ role: "user", content: [{ type: "text", text: "array prompt" }], timestamp: 0 },
@@ -81,7 +81,10 @@ describe("serializeConversation — useless pairs", () => {
 
 		expect(out).toContain("[User]: plain string prompt");
 		expect(out).toContain("[User]: array prompt");
-		expect(out).toContain("[Think]: let me consider");
+		// Reasoning is not a role tag here: a summary request carrying it is refused
+		// by Anthropic's reasoning_extraction classifier, so it never reaches the text.
+		expect(out).not.toContain("[Think]:");
+		expect(out).not.toContain("let me consider");
 		expect(out).toContain("[Assistant]: here is the answer");
 		expect(out).toContain('[Tool Call]: search(pattern="delta")');
 		expect(out).toContain("[Tool Result]: delta hit");
@@ -115,7 +118,7 @@ describe("serializeConversation — useless pairs", () => {
 		expect(out).not.toContain("[Assistant tool calls]:");
 	});
 
-	test("summary serialization escapes Harmony control tokens while preserving assistant thinking", () => {
+	test("summary serialization escapes Harmony control tokens and carries no analysis channel", () => {
 		const messages = [
 			assistantMessage([
 				{ type: "thinking", thinking: "Need to inspect the failing compaction path." },
@@ -125,12 +128,14 @@ describe("serializeConversation — useless pairs", () => {
 
 		const out = serializeConversationForSummary(messages, "harmony");
 
-		expect(out).not.toContain("<|channel|>analysis");
+		expect(out).not.toContain("<|channel|>final");
 		expect(out).not.toContain("<|message|>");
-		expect(out).toContain("<\\|channel\\|>analysis");
 		expect(out).toContain("<\\|channel\\|>final");
-		expect(out).toContain("Need to inspect the failing compaction path.");
 		expect(out).toContain("The final answer stays visible.");
+		// The analysis channel is where Harmony puts reasoning, so it has nothing to
+		// carry: neither the escaped marker nor the text behind it appears.
+		expect(out).not.toContain("<\\|channel\\|>analysis");
+		expect(out).not.toContain("Need to inspect the failing compaction path.");
 	});
 
 	test("native Harmony serialization keeps raw transcript markers", () => {
@@ -144,10 +149,10 @@ describe("serializeConversation — useless pairs", () => {
 			"harmony",
 		);
 
-		expect(out).toContain("<|channel|>analysis");
-		expect(out).toContain("<|message|>Native transcript includes analysis.");
 		expect(out).toContain("<|channel|>final");
-		expect(out).toContain("Native final text.");
+		expect(out).toContain("<|message|>Native final text.");
+		expect(out).not.toContain("<|channel|>analysis");
+		expect(out).not.toContain("Native transcript includes analysis.");
 	});
 
 	test("dialect path renders user turns alongside assistant and tool messages", () => {

@@ -360,6 +360,19 @@ export function serializeConversationForSummary(messages: Message[], dialect?: D
 /**
  * Serialize LLM messages to transcript text.
  * Call convertToLlm() first to handle custom message types.
+ *
+ * Prior reasoning is dropped rather than rendered. Every caller of this
+ * function puts the result inside a user turn — a summarization request, a
+ * branch summary, a handoff — and a user turn carrying the model's own chain of
+ * thought is what Anthropic's `reasoning_extraction` classifier refuses: the
+ * Anthropic dialect renders thinking as `<thinking>` tags, so compacting a
+ * session that had thinking on came back as `Compaction failed: Summarization
+ * failed: Refusal (reasoning_extraction)` and the history was never compacted.
+ * `renderDemotedThinking` in `@veyyon/ai/dialect/demotion` states why bare
+ * prose is no answer here either: the classifier's heat is cumulative in block
+ * count, and a compaction payload replays every thinking block in the discarded
+ * range at once. A summary describes what was asked, done and decided, all of
+ * which survives in the text, tool calls and results this still renders.
  */
 export function serializeConversation(messages: Message[], dialect?: Dialect): string {
 	// Tool results flagged contextually useless (and their paired calls) are
@@ -373,20 +386,11 @@ export function serializeConversation(messages: Message[], dialect?: Dialect): s
 		}
 	}
 	if (dialect) {
-		// Claude's classifier refuses inputs that reproduce the model's own
-		// reasoning as text ("reasoning_extraction"), and the anthropic dialect
-		// otherwise renders thinking verbatim inside <thinking> tags. Reasoning is
-		// ephemeral and low-signal for a summary, so drop it from Anthropic-target
-		// summary input. Other dialects (e.g. Harmony) carry reasoning natively in
-		// their transcript format and keep it.
-		const dropThinking = dialect === "anthropic";
 		const processed: Message[] = [];
 		for (const msg of messages) {
 			if (msg.role === "assistant") {
 				const content = msg.content.filter(
-					block =>
-						(block.type !== "toolCall" || !uselessCallIds.has(block.id)) &&
-						(!dropThinking || block.type !== "thinking"),
+					block => block.type !== "thinking" && (block.type !== "toolCall" || !uselessCallIds.has(block.id)),
 				);
 				if (content.length > 0) processed.push(content.length === msg.content.length ? msg : { ...msg, content });
 				continue;
@@ -422,23 +426,17 @@ export function serializeConversation(messages: Message[], dialect?: Dialect): s
 			if (content) parts.push(`[User]: ${content}`);
 		} else if (msg.role === "assistant") {
 			const textParts: string[] = [];
-			const thinkingParts: string[] = [];
 			const toolCalls: ToolCall[] = [];
 
 			for (const block of msg.content) {
 				if (block.type === "text") {
 					textParts.push(block.text);
-				} else if (block.type === "thinking") {
-					thinkingParts.push(block.thinking);
 				} else if (block.type === "toolCall") {
 					if (uselessCallIds.has(block.id)) continue;
 					toolCalls.push(block);
 				}
 			}
 
-			if (thinkingParts.length > 0) {
-				parts.push(`[Think]: ${thinkingParts.join("\n")}`);
-			}
 			if (textParts.length > 0) {
 				parts.push(`[Assistant]: ${textParts.join("\n")}`);
 			}
