@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "1a6bcba79c5e125e82d8fa5ac33a98c26b838f5c",
+	"generatedFrom": "ced8b7d710615959f60b79e66a4c8e864969a928",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -55,6 +55,7 @@
 		"packages/coding-agent/test/config/setting-signal-listeners.test.ts": "fa46603f5a9fa9adb5a4b08c6614450ca977fd0c7c767af4adcb9fd05bb3c296",
 		"packages/coding-agent/test/global-settings-tab.test.ts": "f91153924a1d8c21540f58eeddf4119c0b202156873297c799220a5cbc9afbc4",
 		"packages/coding-agent/test/helpers/warm-native-text.ts": "f171f7a1ed85835ed16907a7876b2abab28267fff31c8c928c0d3e97c24ab1a6",
+		"packages/coding-agent/test/role-info.test.ts": "40ff040f3b3ed85cbed769707abafd97d2515a8f39be280a8625faa825d566a3",
 		"packages/coding-agent/test/settings-global-auth-broker.test.ts": "96149b50fd022272cd829a1b5d6c1471201db3019143553121190dfda5ca6ec0",
 		"packages/coding-agent/test/task/subprocess-yield-handler-registration.test.ts": "e8081b3943526e21979a1d3eca0bed688d3c99fbaf299fea33e5c4055274475b",
 		"packages/coding-agent/test/utils/a-boundary-lookup-refuses-a-source-it-cannot-retain.test.ts": "5c575d8ded96f0ef51a62efca7437855a7304b7479990a72d42b1662b8263b23",
@@ -69,7 +70,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 4845,
+	"changedCount": 4844,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -2333,7 +2334,6 @@
 		"packages/coding-agent/test/requires-approval-yolo-and-ask-matrix.test.ts",
 		"packages/coding-agent/test/resolve-approval-tier-rank-property.test.ts",
 		"packages/coding-agent/test/resolve-effective-approval-mode-cartesian-grid.test.ts",
-		"packages/coding-agent/test/role-info.test.ts",
 		"packages/coding-agent/test/sdk-async-job-manager-singleton.test.ts",
 		"packages/coding-agent/test/sdk-default-role-discovery-config-provider.test.ts",
 		"packages/coding-agent/test/sdk-default-role-extension-provider.test.ts",
