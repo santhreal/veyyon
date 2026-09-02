@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
-import { setExcludedSearchProviders } from "@veyyon/coding-agent/web/search/provider";
-import type { SearchParams } from "@veyyon/coding-agent/web/search/providers/base";
+import { setExcludedSearchProviders } from "@veyyon/coding-agent/tools/web/search/provider";
+import type { SearchParams } from "@veyyon/coding-agent/tools/web/search/providers/base";
 import {
 	dedupKey,
 	type MergedSource,
 	mergeSources,
 	searchPublicWeb,
-} from "@veyyon/coding-agent/web/search/providers/public";
-import { SearchProviderError, type SearchProviderId, type SearchSource } from "@veyyon/coding-agent/web/search/types";
+} from "@veyyon/coding-agent/tools/web/search/providers/public";
+import { SearchProviderError, type SearchProviderId, type SearchSource } from "@veyyon/coding-agent/tools/web/search/types";
 
 const fakeAuthStorage = {
 	async getApiKey() {

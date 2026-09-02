@@ -25,7 +25,7 @@
  *     streaming engine, which this file now genuinely calls, so its ceiling is re-measured below rather
  *     than left red. That is the distinction this whole suite is about: an engine a file uses is a cost,
  *     an engine a file merely imported a predicate through is a leak.
- *   - `coding-agent/src/web/search/providers/perplexity.ts` wanted an OAuth retry wrapper. 372 -> 327.
+ *   - `coding-agent/src/tools/web/search/providers/perplexity.ts` wanted an OAuth retry wrapper. 372 -> 327.
  *
  * WHAT IS STILL ALLOWED, and it is most of the remaining list. `completeSimple` and `streamSimple` ARE the
  * engine, so a module that calls one of them reaches it whichever specifier it uses. The rule below is about
@@ -211,7 +211,7 @@ describe("the modules that were repointed stay cut", () => {
 		"coding-agent/src/config/api-key-resolver.ts",
 		"coding-agent/src/mcp/manager.ts",
 		"coding-agent/src/commit/shared-llm.ts",
-		"coding-agent/src/web/search/providers/perplexity.ts",
+		"coding-agent/src/tools/web/search/providers/perplexity.ts",
 		"agent/src/agent-loop.ts",
 		"agent/src/agent.ts",
 	])("%s takes no runtime name from the barrel", relative => {

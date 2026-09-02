@@ -11,7 +11,7 @@ import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { AskTool } from "@veyyon/coding-agent/tools/agent/ask";
 import { askToolView } from "@veyyon/coding-agent/tools/agent/ask-view";
 import { ToolAbortError } from "@veyyon/coding-agent/tools/core/tool-errors";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { stripAnsi } from "@veyyon/utils";
 import { type } from "arktype";
 

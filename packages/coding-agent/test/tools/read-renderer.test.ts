@@ -4,7 +4,7 @@ import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { theme as activeTheme, getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { readToolView } from "@veyyon/coding-agent/tools/fs/read-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { TUI } from "@veyyon/tui";
 import { createToolExecution } from "../helpers/tool-execution";
 

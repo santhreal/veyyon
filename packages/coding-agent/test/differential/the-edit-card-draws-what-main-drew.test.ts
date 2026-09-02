@@ -62,7 +62,7 @@ import { type EditViewArgs, type EditViewResult, editToolView } from "@veyyon/co
 import { renderDiff } from "@veyyon/coding-agent/modes/terminal/components/transcript/diff";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import * as editOracle from "../oracles/edit-main-renderer";
 import { framedView, renderCompLines, useDifferentialTheme, WIDTH } from "./harness";

@@ -36,7 +36,7 @@ import {
 	outputBlockContentWidth,
 	renderStatusLine,
 	truncateToWidth,
-} from "@veyyon/coding-agent/tui";
+} from "@veyyon/coding-agent/modes/terminal/draw";
 import { Ellipsis } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";

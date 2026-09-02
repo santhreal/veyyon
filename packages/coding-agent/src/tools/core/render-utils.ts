@@ -19,8 +19,8 @@ import { replaceTabs } from "@veyyon/utils/wrap";
 import { formatKeyHints, type KeyId } from "../../config/keybindings";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
+import { Hasher } from "../../modes/terminal/draw/utils";
 import type { Theme, ThemeColor } from "../../theme/theme";
-import { Hasher } from "../../tui/utils";
 import { formatDimensionNote, type ResizedImage } from "../../utils/image-resize";
 import {
 	getSeverityRank,

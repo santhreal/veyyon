@@ -44,7 +44,7 @@ import {
 	renderStatusLine,
 	truncateToWidth,
 	WidthAwareText,
-} from "@veyyon/coding-agent/tui";
+} from "@veyyon/coding-agent/modes/terminal/draw";
 import type { EditMode } from "@veyyon/coding-agent/utils/edit-mode";
 import { getLanguageFromPath } from "@veyyon/coding-agent/utils/lang-from-path";
 import { HL_FILE_PREFIX, HL_FILE_SUFFIX, HL_MOVE_KEYWORD, HL_REM_KEYWORD } from "@veyyon/hashline";

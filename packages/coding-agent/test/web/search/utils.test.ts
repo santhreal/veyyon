@@ -15,7 +15,7 @@ import {
 	collapseWhitespace,
 	dateToAgeSeconds,
 	sanitizeResultLimit,
-} from "../../../src/web/search/utils";
+} from "../../../src/tools/web/search/utils";
 
 describe("collapseWhitespace", () => {
 	it("collapses runs of mixed whitespace to single spaces and trims the ends", () => {
@@ -134,7 +134,7 @@ describe("dateToAgeSeconds", () => {
 });
 
 describe("collapseWhitespace single-owner lock", () => {
-	const providersDir = path.resolve(import.meta.dir, "../../../src/web/search/providers");
+	const providersDir = path.resolve(import.meta.dir, "../../../src/tools/web/search/providers");
 	const files = readdirSync(providersDir).filter(f => f.endsWith(".ts") && !f.endsWith(".test.ts"));
 
 	it("scans the provider directory", () => {
@@ -153,7 +153,7 @@ describe("collapseWhitespace single-owner lock", () => {
 });
 
 describe("result-limit single-owner lock", () => {
-	const providersDir = path.resolve(import.meta.dir, "../../../src/web/search/providers");
+	const providersDir = path.resolve(import.meta.dir, "../../../src/tools/web/search/providers");
 	const files = readdirSync(providersDir).filter(f => f.endsWith(".ts") && !f.endsWith(".test.ts"));
 
 	// A caller-supplied count must never reach `Array.prototype.slice` raw. Both

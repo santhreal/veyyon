@@ -11,15 +11,15 @@ import { editToolView } from "../edit/edit-view";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { goalToolView } from "../goals/goal-tool";
 import { lspToolView } from "../lsp/view";
+import { viewToolRenderer } from "../modes/terminal/draw/draw-tool-view";
 import { taskToolView } from "../task/task-view";
 import type { Theme } from "../theme/theme";
-import { viewToolRenderer } from "../tui/draw-tool-view";
-import { webSearchToolView } from "../web/search/view";
 import { agentRenderers } from "./agent/renderers";
 import { fsRenderers } from "./fs/renderers";
 import { searchRenderers } from "./search/renderers";
 import { shellRenderers } from "./shell/renderers";
 import { webRenderers } from "./web/renderers";
+import { webSearchToolView } from "./web/search/view";
 
 /**
  * Per-renderer opt-in for a full viewport replay when the first result

@@ -37,7 +37,7 @@ import {
 	PRIORITY_LABELS,
 	reportFindingTool,
 } from "@veyyon/coding-agent/tools/agent/review";
-import { drawSpan, drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawSpan, drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { type AnsiPolicy, type Component, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import type { ToolView } from "@veyyon/view";
 import * as reviewOracle from "./oracles/review-main-renderer";

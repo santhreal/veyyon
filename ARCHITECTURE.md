@@ -66,8 +66,6 @@ Its source is organized into three concern directories:
 - `src/loader/` — plugin loader, plugin parser, manifest keys, runtime config, marketplace client, and compatibility shims.
 - `src/session/` — session spine: storage backends (SQL, Redis, indexed storage), history, persistence, migrations, compaction policy, cgroups and machine budget accounting, artifacts, turn persistence, and queue management.
 
-Two additional concern directories, `src/settings/` and `src/log/`, are named in the target architecture and not populated yet.
-
 `kernel/` has no root barrel and exposes no `.` entry point: a barrel nobody imports is banned
 (`scripts/barrel-files-are-imported.test.ts`), and a single entry point would republish 53 modules
 as one surface. Consumers import deep module paths directly (`@veyyon/kernel/<concern>/<module>`).

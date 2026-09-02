@@ -101,7 +101,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 | `advisor/`, `autolearn/`, `autoresearch/` | Advisor/watchdog, managed skills, background research | [advisor-watchdog.md](../../docs/handbook/src/features/advisor.md) |
 | `memory/` | Memory subsystems and backends, with `memory/mnemopi/` and `memory/hindsight/` | [memory.md](../../docs/handbook/src/architecture/memory.md), [mnemosyne-memory-backend.md](../../docs/internal/mnemosyne-memory-backend.md) |
 | `internal-urls/` | Router + handlers (`agent://`, `docs://`, `rule://`, …) | [tree.md](../../docs/handbook/src/reference/tree-command.md) |
-| `tui/`, `collab/` | Low-level TUI primitives, live session sharing | [tui.md](../../docs/handbook/src/architecture/tui.md), [collab.md](../../docs/handbook/src/features/collab.md) |
+| `modes/terminal/draw/`, `collab/` | Low-level TUI primitives, live session sharing | [tui.md](../../docs/handbook/src/architecture/tui.md), [collab.md](../../docs/handbook/src/features/collab.md) |
 | `speech/` | Text-to-speech (`speech/tts/`) and speech-to-text (`speech/stt/`) | — |
 | `tiny/`, `thinking/` | Embedded tiny-model experiments, thinking levels and the auto classifier | [local-tiny-models.md](../../docs/internal/local-tiny-models.md) |
 | `async/`, `utils/`, `prompts/`, `edit/` | Shared plumbing, prompt assets, patch/diff engine | [tools/edit.md](../../docs/tools/edit.md) |

@@ -3,7 +3,7 @@
  *
  * The tool half in `structure-search.ts` decides what happened; this half decides what a reader is
  * told, and names no colour, glyph or component. A terminal draws it through
- * `src/tui/draw-tool-view.ts` and a second host writes its own mapping from the same value.
+ * `src/modes/terminal/draw/draw-tool-view.ts` and a second host writes its own mapping from the same value.
  *
  * The card has four shapes, and they are the tool's own branches: a call still running, a failure, a
  * query that matched nothing, and a query that matched. The matched shape is the one with structure

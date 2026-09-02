@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import type { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
-import { searchParallel } from "@veyyon/coding-agent/web/search/providers/parallel";
+import { searchParallel } from "@veyyon/coding-agent/tools/web/search/providers/parallel";
 import { searchWithParallel } from "@veyyon/web/parallel";
 
 describe("Parallel web search", () => {

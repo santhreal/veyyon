@@ -34,7 +34,7 @@ import type { RenderResultOptions } from "@veyyon/agent-core";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import type { AskToolDetails } from "@veyyon/coding-agent/tools/agent/ask";
 import { type AskRenderArgs, type AskViewResult, askToolView } from "@veyyon/coding-agent/tools/agent/ask-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import { askMainRenderer } from "../oracles/ask-main-renderer";
 import { HOST_EXPANDED, renderCompLines, useDifferentialTheme, WIDTH } from "./harness";

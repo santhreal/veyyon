@@ -4,7 +4,7 @@
  * Separate from `./manifest` on purpose: a renderer constructs terminal components, so this module
  * is imported only by a host that draws one.
  */
-import { viewToolRenderer } from "../../tui/draw-tool-view";
+import { viewToolRenderer } from "../../modes/terminal/draw/draw-tool-view";
 import type { ToolRenderer } from "../renderers";
 import { astEditToolView } from "./ast-edit-view";
 import { searchToolBm25ToolView } from "./search-tool-bm25-view";

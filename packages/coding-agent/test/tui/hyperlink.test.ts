@@ -11,7 +11,7 @@ import {
 	uriHyperlink,
 	urlHyperlink,
 	urlHyperlinkAlways,
-} from "@veyyon/coding-agent/tui/hyperlink";
+} from "@veyyon/coding-agent/modes/terminal/draw/hyperlink";
 import * as terminalCaps from "@veyyon/tui";
 
 // OSC 8 sequence markers

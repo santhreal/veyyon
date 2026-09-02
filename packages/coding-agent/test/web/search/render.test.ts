@@ -1,13 +1,13 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
-import type { SearchRenderDetails, SearchResponse } from "@veyyon/coding-agent/web/search/types";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import type { SearchRenderDetails, SearchResponse } from "@veyyon/coding-agent/tools/web/search/types";
 import {
 	type WebSearchViewArgs,
 	type WebSearchViewResult,
 	webSearchToolView,
-} from "@veyyon/coding-agent/web/search/view";
+} from "@veyyon/coding-agent/tools/web/search/view";
 import { sanitizeText } from "@veyyon/utils";
 
 const ANSWER = [

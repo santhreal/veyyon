@@ -20,7 +20,7 @@ import {
 	replaceTabs,
 	TRUNCATE_LENGTHS,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import { framedBlock, renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/tui";
+import { framedBlock, renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 

@@ -4,7 +4,7 @@ import {
 	clampNumResults,
 	dateToAgeSeconds,
 	sanitizeResultLimit,
-} from "@veyyon/coding-agent/web/search/utils";
+} from "@veyyon/coding-agent/tools/web/search/utils";
 
 /**
  * These four helpers own the "how many web-search results survive" rules across every provider.

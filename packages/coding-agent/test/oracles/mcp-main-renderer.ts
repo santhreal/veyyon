@@ -22,7 +22,7 @@ import {
 } from "@veyyon/coding-agent/tools/core/json-tree-render";
 import { formatStyledTruncationWarning, stripOutputNotice } from "@veyyon/coding-agent/tools/core/output-meta";
 import { formatExpandHint, truncateToWidth } from "@veyyon/coding-agent/tools/core/render-utils";
-import { renderStatusLine, WidthAwareText } from "@veyyon/coding-agent/tui";
+import { renderStatusLine, WidthAwareText } from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Component } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";
 

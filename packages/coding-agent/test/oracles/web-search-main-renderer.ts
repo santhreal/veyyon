@@ -1,7 +1,7 @@
 /**
  * Differential oracle: the web_search tool renderer from origin/main.
  *
- * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/web/search/render.ts`).
+ * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/tools/web/search/render.ts`).
  * Frozen: never edited to make a test pass.
  *
  * Only the import specifiers are rewritten to the package subpaths this branch publishes.
@@ -19,9 +19,9 @@ import {
 	replaceTabs,
 	truncateToWidth,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import { framedBlock, outputBlockContentWidth, renderStatusLine, urlHyperlink } from "@veyyon/coding-agent/tui";
-import { getSearchProviderLabel } from "@veyyon/coding-agent/web/search/provider";
-import type { SearchResponse } from "@veyyon/coding-agent/web/search/types";
+import { framedBlock, outputBlockContentWidth, renderStatusLine, urlHyperlink } from "@veyyon/coding-agent/modes/terminal/draw";
+import { getSearchProviderLabel } from "@veyyon/coding-agent/tools/web/search/provider";
+import type { SearchResponse } from "@veyyon/coding-agent/tools/web/search/types";
 import type { Component } from "@veyyon/tui";
 import { Markdown, Text } from "@veyyon/tui";
 

@@ -4,7 +4,7 @@
  * Why this suite exists: two packages take part in ONE Perplexity session and each had its own copy of the app
  * identity it claims. `@veyyon/ai`'s `registry/oauth/perplexity.ts` mints the session JWT through the email-OTP
  * flow with `API_VERSION = "2.18"` and `APP_USER_AGENT = "Perplexity/641 ..."`;
- * `@veyyon/coding-agent`'s `web/search/providers/perplexity.ts` spends that session with the same two values
+ * `@veyyon/coding-agent`'s `tools/web/search/providers/perplexity.ts` spends that session with the same two values
  * under `OAUTH_API_VERSION` and `OAUTH_USER_AGENT`. The version was spelled a third time inside one request,
  * once as the `X-App-ApiVersion` header and once as the ask body's `version` field.
  *
@@ -35,7 +35,7 @@ import {
 const AI_SRC = path.resolve(import.meta.dir, "../../ai/src");
 const CODING_AGENT_SRC = path.resolve(import.meta.dir, "../../coding-agent/src");
 const LOGIN = path.join(AI_SRC, "registry/oauth/perplexity.ts");
-const SEARCH = path.join(CODING_AGENT_SRC, "web/search/providers/perplexity.ts");
+const SEARCH = path.join(CODING_AGENT_SRC, "tools/web/search/providers/perplexity.ts");
 const WEB_SRC = path.resolve(import.meta.dir, "../../../plugins/web/src");
 const BROWSER_HEADERS = path.join(WEB_SRC, "browser-fingerprint-constants.ts");
 

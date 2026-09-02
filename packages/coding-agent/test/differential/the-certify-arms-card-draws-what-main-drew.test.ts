@@ -9,7 +9,7 @@ import { describe, expect, it } from "bun:test";
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { createCertifyArmsTool } from "@veyyon/coding-agent/autoresearch/tools/certify-arms";
 import { theme } from "@veyyon/coding-agent/theme/theme";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import * as certifyArmsOracle from "../oracles/certify-arms-main-renderer";
 import {
 	autoresearchOptions,

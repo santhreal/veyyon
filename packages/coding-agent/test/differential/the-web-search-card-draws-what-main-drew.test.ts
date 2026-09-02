@@ -38,13 +38,13 @@ import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { theme } from "@veyyon/coding-agent/theme/theme";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
-import type { SearchRenderDetails, SearchResponse } from "@veyyon/coding-agent/web/search/types";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import type { SearchRenderDetails, SearchResponse } from "@veyyon/coding-agent/tools/web/search/types";
 import {
 	type WebSearchViewArgs,
 	type WebSearchViewResult,
 	webSearchToolView,
-} from "@veyyon/coding-agent/web/search/view";
+} from "@veyyon/coding-agent/tools/web/search/view";
 import type { ToolViewContext } from "@veyyon/view";
 import { webSearchToolRenderer } from "../oracles/web-search-main-renderer";
 import { HOST_COLLAPSED, HOST_EXPANDED, renderCompLines, useDifferentialTheme, WIDTH } from "./harness";

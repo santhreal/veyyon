@@ -11,7 +11,7 @@ import {
 	resetExaSearchThrottleForTest,
 	searchExa,
 	synthesizeAnswer,
-} from "@veyyon/coding-agent/web/search/providers/exa";
+} from "@veyyon/coding-agent/tools/web/search/providers/exa";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeWithRetries } from "@veyyon/utils";
 

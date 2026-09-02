@@ -22,9 +22,9 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
-import { getSearchProvider } from "@veyyon/coding-agent/web/search/provider";
-import { PUBLIC_ENGINE_IDS } from "@veyyon/coding-agent/web/search/providers/public";
-import { SearchProviderError, type SearchProviderId } from "@veyyon/coding-agent/web/search/types";
+import { getSearchProvider } from "@veyyon/coding-agent/tools/web/search/provider";
+import { PUBLIC_ENGINE_IDS } from "@veyyon/coding-agent/tools/web/search/providers/public";
+import { SearchProviderError, type SearchProviderId } from "@veyyon/coding-agent/tools/web/search/types";
 
 const fakeAuthStorage = {
 	async getApiKey() {

@@ -461,11 +461,11 @@ describe("the theme engine, second in the same ranking", () => {
 	 * of every reader. `./markdown-theme` then took `getSymbolTheme` from `./theme` for one field of the
 	 * markdown theme it builds, and the engine was 144 MARGINAL modules on that graph: a box-drawing
 	 * character set carried theme JSON loading, the hundred embedded theme modules, syntax highlighting
-	 * and mermaid rendering into every rendered markdown cell, and through `tui/code-cell.ts` into
+	 * and mermaid rendering into every rendered markdown cell, and through `modes/terminal/draw/code-cell.ts` into
 	 * `tools/fs/read.ts`, which 54 test files import.
 	 *
 	 * `theme/symbol-theme.ts` is that function beside the binding. MEASURED: `markdown-theme`
-	 * 319 -> 175, `tui/code-cell.ts` 327 -> 220, `tools/fs/read.ts` 648 -> 542, `modes/terminal/components/transcript/diff.ts`
+	 * 319 -> 175, `modes/terminal/draw/code-cell.ts` 327 -> 220, `tools/fs/read.ts` 648 -> 542, `modes/terminal/components/transcript/diff.ts`
 	 * 288 -> 181.
 	 */
 	it("keeps the symbol reader a leaf, so reading the active symbols costs the binding and nothing else", () => {
@@ -479,7 +479,7 @@ describe("the theme engine, second in the same ranking", () => {
 	 * the engine by ANY path, which is the assertion that fails if a later import re-opens the edge four
 	 * hops away, the way this one was opened.
 	 */
-	it.each(["theme/markdown-theme.ts", "tui/code-cell.ts"])(
+	it.each(["theme/markdown-theme.ts", "modes/terminal/draw/code-cell.ts"])(
 		"%s reads symbols from the leaf and never reaches the engine",
 		relative => {
 			const reached = reachedNames(relative);
@@ -517,8 +517,8 @@ describe("the theme engine, second in the same ranking", () => {
 	 * the owner.
 	 */
 	it.each([
-		"tui/code-cell.ts",
-		"tui/file-list.ts",
+		"modes/terminal/draw/code-cell.ts",
+		"modes/terminal/draw/file-list.ts",
 		"modes/terminal/components/transcript/diff.ts",
 		"modes/terminal/components/dialogs/ask-dialog.ts",
 		"modes/terminal/components/selectors/copy-selector.ts",
@@ -543,7 +543,7 @@ describe("the theme engine, second in the same ranking", () => {
 	 *   - `modes/terminal/components/transcript/eval-execution.ts` took `getSymbolTheme` and `theme` from
 	 *     `./execution-shared`, which took them from the engine.
 	 *
-	 * MEASURED: `tui/file-list.ts` 289 -> 180, the local `tui/index.ts` barrel 352 -> 246,
+	 * MEASURED: `modes/terminal/draw/file-list.ts` 289 -> 180, the local `modes/terminal/draw/index.ts` barrel 352 -> 246,
 	 * `tools/shell/bash.ts` 504 -> 353, `tools/fs/write.ts` 536 -> 386, `modes/terminal/components/transcript/eval-execution.ts`
 	 * 299 -> 193, and the whole suite 857,632 -> 832,035 module instantiations.
 	 *
@@ -552,12 +552,12 @@ describe("the theme engine, second in the same ranking", () => {
 	 */
 	it.each([
 		// Each row carries its own CONTROL: something the file must still reach, so that deleting its theme
-		// usage entirely would fail rather than satisfy the two absences. `tui/file-list.ts` is the one that
+		// usage entirely would fail rather than satisfy the two absences. `modes/terminal/draw/file-list.ts` is the one that
 		// needs a different control from the rest: it takes `Theme` as an erased type and wanted only the
 		// language table, so it has no runtime theme dependency at all and asserting the binding here failed
 		// for the right reason. That is the shape of a vacuous absence, caught by writing the control down.
-		["tui/file-list.ts", "utils/lang-from-path.ts"],
-		["tui/index.ts", "theme/theme-binding.ts"],
+		["modes/terminal/draw/file-list.ts", "utils/lang-from-path.ts"],
+		["modes/terminal/draw/index.ts", "theme/theme-binding.ts"],
 		["tools/shell/bash.ts", "theme/theme-binding.ts"],
 		["tools/fs/write.ts", "theme/theme-binding.ts"],
 		["modes/terminal/components/transcript/eval-execution.ts", "theme/symbol-theme.ts"],
@@ -786,7 +786,7 @@ describe("reading a local file does not load the MCP client, the skill loader or
 		const store = path.relative(PACKAGES, path.join(SRC, "config/settings.ts"));
 		const slot = path.relative(PACKAGES, path.join(SRC, "config/settings-instance.ts"));
 
-		for (const file of ["tools/fs/read.ts", "tools/web/fetch.ts", "web/search/index.ts"]) {
+		for (const file of ["tools/fs/read.ts", "tools/web/fetch.ts", "tools/web/search/index.ts"]) {
 			expect(reachedNames(file), `${file} should not reach the settings store`).not.toContain(store);
 		}
 		// The control: they still read settings, through the slot. An absence of both would mean the walk
@@ -894,11 +894,11 @@ describe("reading a local file does not load the MCP client, the skill loader or
 
 	/**
 	 * The status line is the extreme case of the same rule and worth its own exact number: TWO modules,
-	 * itself and the status union it renders. It was 168, and `tui/index.ts` re-exports it into
+	 * itself and the status union it renders. It was 168, and `modes/terminal/draw/index.ts` re-exports it into
 	 * `tools/web/fetch.ts`, which `read.ts` imports, so those 166 were paid four hops away.
 	 */
 	it("the status line is two modules", () => {
-		expect(reach("tui/status-line.ts")).toBe(2);
+		expect(reach("modes/terminal/draw/status-line.ts")).toBe(2);
 	});
 
 	/**
@@ -908,7 +908,7 @@ describe("reading a local file does not load the MCP client, the skill loader or
 	 * two different modules by design.
 	 */
 	it("the hyperlink formatter does not reach the memory consolidator", () => {
-		expect(reachedNames("tui/hyperlink.ts")).not.toContain(
+		expect(reachedNames("modes/terminal/draw/hyperlink.ts")).not.toContain(
 			path.relative(PACKAGES, path.join(SRC, "memory/local.ts")),
 		);
 	});
@@ -1094,14 +1094,14 @@ describe("a cheap value is owned by a leaf, and a file that wants only it names 
  * path. So: the STATIC edge is gone, the DYNAMIC one is present, and the call sites still exist.
  */
 describe("declaring the web-search tool does not load the credential store", () => {
-	const source = fs.readFileSync(path.join(SRC, "web/search/index.ts"), "utf-8");
+	const source = fs.readFileSync(path.join(SRC, "tools/web/search/index.ts"), "utf-8");
 
 	/**
 	 * The four modules by name, because the count is the symptom and these are the cause. Each is a piece of
 	 * credential machinery, and a single static `import { discoverAuthStorage }` brings back all four.
 	 */
 	it("reaches no part of the auth broker or the credential store", () => {
-		const reached = reachedNames("web/search/index.ts");
+		const reached = reachedNames("tools/web/search/index.ts");
 
 		expect(reached).not.toContain(path.join("coding-agent", "src", "session", "auth-broker-config.ts"));
 		expect(reached).not.toContain(path.join("ai", "src", "auth-broker", "client.ts"));
@@ -1116,16 +1116,18 @@ describe("declaring the web-search tool does not load the credential store", () 
 	 * declared search tool genuinely carries, and it must be there.
 	 */
 	it("still reaches what defining a search actually needs", () => {
-		const reached = reachedNames("web/search/index.ts");
+		const reached = reachedNames("tools/web/search/index.ts");
 
-		expect(reached).toContain(path.join("coding-agent", "src", "web", "search", "provider.ts"));
-		expect(reached).toContain(path.join("coding-agent", "src", "web", "search", "view.ts"));
+		expect(reached).toContain(path.join("coding-agent", "src", "tools", "web", "search", "provider.ts"));
+		expect(reached).toContain(path.join("coding-agent", "src", "tools", "web", "search", "view.ts"));
 		expect(reached.length).toBeGreaterThan(100);
 	});
 
 	/** The static edge is gone. This is the assertion that fails if someone re-adds the plain import. */
 	it("names the broker config in no static import", () => {
-		expect(runtimeImportsOf(path.join(SRC, "web/search/index.ts"))).not.toContain("../../session/auth-broker-config");
+		expect(runtimeImportsOf(path.join(SRC, "tools/web/search/index.ts"))).not.toContain(
+			"../../../session/auth-broker-config",
+		);
 	});
 
 	/**
@@ -1136,8 +1138,8 @@ describe("declaring the web-search tool does not load the credential store", () 
 	it("loads the broker config dynamically, and still asks it for credentials", () => {
 		// The parsed dynamic edge, not the characters: the scan this replaced went green on a doc
 		// comment describing the import and red on a reformat of the call it was watching.
-		expect(dynamicImportSpecifiersIn(source)).toContain("../../session/auth-broker-config");
-		expect(dynamicImportBindings(source, "../../session/auth-broker-config")).toEqual(["discover"]);
+		expect(dynamicImportSpecifiersIn(source)).toContain("../../../session/auth-broker-config");
+		expect(dynamicImportBindings(source, "../../../session/auth-broker-config")).toEqual(["discover"]);
 
 		const callSites = withoutComments(source).match(/await discoverAuthStorage\(\)/g) ?? [];
 		expect(callSites.length).toBe(3);

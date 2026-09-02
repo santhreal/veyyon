@@ -44,14 +44,14 @@ import {
 import { type FirstResultViewportRepaint, toolRenderers } from "../../../../tools/renderers";
 import { BASH_DEFAULT_PREVIEW_LINES } from "../../../../tools/shell/bash";
 import { isWaitingPollDetails } from "../../../../tools/shell/job";
-import { renderStatusLine, WidthAwareText } from "../../../../tui";
-import { drawToolView, toolDrawsItself } from "../../../../tui/draw-tool-view";
+import { sanitizeWithOptionalSixelPassthrough } from "../../../../utils/sixel";
+import { drawToolView, toolDrawsItself } from "../../draw/draw-tool-view";
 import {
 	CachedOutputBlock,
 	isFramedBlockComponent,
 	markFramedBlockComponent,
 	outputBlockContentWidth,
-} from "../../../../tui/output-block";
+} from "../../draw/output-block";
 import {
 	paintRailMotion,
 	RAIL_IDLE_STEP_MS,
@@ -62,8 +62,9 @@ import {
 	railIdleHeadAtMs,
 	railRowCount,
 	railStreamHeadAtRow,
-} from "../../../../tui/rail-motion";
-import { sanitizeWithOptionalSixelPassthrough } from "../../../../utils/sixel";
+} from "../../draw/rail-motion";
+import { renderStatusLine } from "../../draw/status-line";
+import { WidthAwareText } from "../../draw/width-aware-text";
 import { asyncToolState } from "../../utils/async-tool-state";
 import { COMPOSER_INSET_COLS } from "../composer/composer-chrome";
 import { reportRendererFailure } from "./renderer-failure";

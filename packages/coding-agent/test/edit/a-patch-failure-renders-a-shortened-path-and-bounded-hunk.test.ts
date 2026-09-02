@@ -7,7 +7,7 @@ import { editToolView } from "@veyyon/coding-agent/edit/edit-view";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import * as themeModule from "@veyyon/coding-agent/theme/theme";
 import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/core/render-utils";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 
 /**
  * WHY:

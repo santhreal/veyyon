@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
-import { renderStatusLine } from "@veyyon/coding-agent/tui";
+import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw";
 import { sanitizeText } from "@veyyon/utils";
 
 beforeAll(async () => {

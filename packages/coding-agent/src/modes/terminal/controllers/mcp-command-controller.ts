@@ -54,12 +54,12 @@ import { MCP_SCOPE_REMOVED_REPLACEMENT, removedOptionMessage } from "../../../sl
 import { withIcon } from "../../../theme/icon-label";
 import { theme } from "../../../theme/theme";
 import { shortenPath } from "../../../tools/core/render-utils";
-import { urlHyperlinkAlways } from "../../../tui";
 import { copyToClipboard } from "../../../utils/clipboard";
 import { openPath } from "../../../utils/open";
 import { MCPAddWizard } from "../components/dialogs/mcp-add-wizard";
 import { ChatBlock } from "../components/transcript/chat-block";
 import { TranscriptBlock } from "../components/transcript/transcript-container";
+import { urlHyperlinkAlways } from "../draw/hyperlink";
 import { parseCommandArgs } from "../shared";
 import type { InteractiveModeContext } from "../types";
 import { groupBySource, showCommandMessage } from "./command-controller-shared";

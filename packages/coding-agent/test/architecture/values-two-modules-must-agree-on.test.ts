@@ -118,7 +118,7 @@ describe("the MCP protocol revision", () => {
 	it("is sent by both MCP speakers from the one owner", () => {
 		for (const [file, specifier] of [
 			["mcp/client.ts", "./protocol-version"],
-			["web/search/providers/zai.ts", "../../../mcp/protocol-version"],
+			["tools/web/search/providers/zai.ts", "../../../../mcp/protocol-version"],
 		] as const) {
 			expect(moduleSpecifiersIn(fs.readFileSync(path.join(SRC, file), "utf-8")), file).toContain(specifier);
 		}
@@ -133,7 +133,7 @@ describe("Anthropic's web-search tool name", () => {
 
 	/** The asker and the matcher read one declaration, across two packages. */
 	it("is read by the provider that asks and the one that matches", async () => {
-		const search = await Bun.file(path.join(SRC, "web/search/providers/anthropic.ts")).text();
+		const search = await Bun.file(path.join(SRC, "tools/web/search/providers/anthropic.ts")).text();
 		const provider = await Bun.file(path.join(AI_SRC, "providers/anthropic.ts")).text();
 		expect(search).toContain("name: ANTHROPIC_WEB_SEARCH_TOOL,");
 		expect(search).toContain("stripClaudeToolPrefix(block.name) === ANTHROPIC_WEB_SEARCH_TOOL");
@@ -200,7 +200,7 @@ describe("each value is declared once", () => {
 	 * The same eight bytes appear elsewhere and mean different things, so a tree-wide scan for them would be
 	 * wrong rather than merely noisy. `tools/core/builtin-names.ts` lists veyyon's OWN tool called `web_search`, the
 	 * one the model calls; `ai/providers/openai-responses-wire.ts` has it as a member of an OpenAI wire type
-	 * union, beside `web_search_2025_08_26`; `web/search/providers/xai.ts` and `.../codex.ts` each name their
+	 * union, beside `web_search_2025_08_26`; `tools/web/search/providers/xai.ts` and `.../codex.ts` each name their
 	 * own vendor's server tool. Folding those into one constant would assert that four independent vendors and
 	 * veyyon's own tool registry change together, and the day one of them renamed its tool the others would
 	 * silently follow.
@@ -210,7 +210,7 @@ describe("each value is declared once", () => {
 	 */
 	it("spells Anthropic's tool name only through the owner in the two modules that must agree", async () => {
 		const speakers = [
-			path.join(SRC, "web/search/providers/anthropic.ts"),
+			path.join(SRC, "tools/web/search/providers/anthropic.ts"),
 			path.join(AI_SRC, "providers/anthropic.ts"),
 		];
 		for (const file of speakers) {
@@ -228,7 +228,7 @@ describe("each value is declared once", () => {
 		const others: ReadonlyArray<[string, string]> = [
 			[path.join(SRC, "tools/core/builtin-names.ts"), "veyyon's own tool"],
 			[path.join(AI_SRC, "providers/openai-responses-wire.ts"), "OpenAI's wire type"],
-			[path.join(SRC, "web/search/providers/xai.ts"), "xAI's server tool"],
+			[path.join(SRC, "tools/web/search/providers/xai.ts"), "xAI's server tool"],
 		];
 		for (const [file, what] of others) {
 			const text = await Bun.file(file).text();
@@ -270,8 +270,8 @@ describe("each value is declared once", () => {
 			"packages/coding-agent/src/plan-mode/plan-protection.ts",
 			"packages/coding-agent/src/session/agent-session.ts",
 			"packages/coding-agent/src/mcp/client.ts",
-			"packages/coding-agent/src/web/search/providers/zai.ts",
-			"packages/coding-agent/src/web/search/providers/anthropic.ts",
+			"packages/coding-agent/src/tools/web/search/providers/zai.ts",
+			"packages/coding-agent/src/tools/web/search/providers/anthropic.ts",
 			"packages/ai/src/providers/anthropic.ts",
 		]) {
 			expect(files).toContain(declarer);

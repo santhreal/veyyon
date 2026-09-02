@@ -39,7 +39,7 @@ import {
 	type TodoToolDetails,
 } from "@veyyon/coding-agent/tools/agent/todo";
 import { todoToolView } from "@veyyon/coding-agent/tools/agent/todo-view";
-import { viewToolRenderer } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { viewToolRenderer } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
 import {

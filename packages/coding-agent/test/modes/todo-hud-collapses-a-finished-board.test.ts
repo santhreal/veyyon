@@ -44,7 +44,7 @@ import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme, stopThemeWatcher, theme } from "@veyyon/coding-agent/theme/theme";
 import type { TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
 import { todoToolView } from "@veyyon/coding-agent/tools/agent/todo-view";
-import { viewToolRenderer } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { viewToolRenderer } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";

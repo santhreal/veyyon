@@ -29,7 +29,7 @@ import {
 	type BrowserViewResult,
 	browserToolView,
 } from "@veyyon/coding-agent/tools/web/browser/view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolView, ToolViewContext } from "@veyyon/view";
 import * as browserOracle from "../oracles/browser-main-renderer";
 import {

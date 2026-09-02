@@ -132,7 +132,7 @@ export * from "./tools/web/gh";
 export * from "./tools/web/image-gen";
 export * from "./tools/web/tts";
 export * from "./utils/git";
-export * from "./web/search";
+export * from "./tools/web/search";
 // UI components for extensions
 export {
 	HookEditorComponent as ExtensionEditorComponent,

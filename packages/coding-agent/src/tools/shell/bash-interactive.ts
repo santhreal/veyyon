@@ -10,7 +10,7 @@ import { Settings } from "../../config/settings";
 import type { ExtensionTerminalCapability } from "../../extensibility/terminal-capability";
 import { OutputSink, type OutputSummary } from "../../session/streaming-output";
 import type { Theme } from "../../theme/theme";
-import { styleTerminalRow } from "../../tui/terminal-row";
+import { styleTerminalRow } from "../../modes/terminal/draw/terminal-row";
 import { sanitizeWithOptionalSixelPassthrough } from "../../utils/sixel";
 import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../core/output-meta";
 import { formatStatusIcon, replaceTabs } from "../core/render-utils";

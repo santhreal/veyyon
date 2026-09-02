@@ -4,7 +4,7 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { editToolView } from "@veyyon/coding-agent/edit/edit-view";
 import * as themeModule from "@veyyon/coding-agent/theme/theme";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/core/render-utils";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 
 /**
  * WHY:

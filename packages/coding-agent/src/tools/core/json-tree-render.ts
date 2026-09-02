@@ -4,7 +4,7 @@
 import { formatMoreLines, isRecord } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import type { Theme } from "../../theme/theme";
-import { buildTreePrefix } from "../../tui/utils";
+import { buildTreePrefix } from "../../modes/terminal/draw/utils";
 import { truncateToWidth } from "./render-utils";
 
 /** Max depth for JSON tree rendering */

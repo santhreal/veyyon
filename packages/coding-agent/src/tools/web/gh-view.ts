@@ -2,7 +2,7 @@
  * What the GitHub card shows, for any host.
  *
  * The tool half in `gh.ts` decides what happened; this half decides what a reader is told, and names
- * no colour, glyph, width or component. A terminal draws it through `src/tui/draw-tool-view.ts`, and
+ * no colour, glyph, width or component. A terminal draws it through `src/modes/terminal/draw/draw-tool-view.ts`, and
  * the React renderer in `@veyyon/tool-render` writes its own mapping from the same value.
  *
  * The card has two subjects, and they are the tool's own: every op reports one operation, and

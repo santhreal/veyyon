@@ -22,7 +22,7 @@ import {
 	formatScopeMeta,
 	PREVIEW_LIMITS,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import { Ellipsis, fileHyperlink, framedBlock, renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/tui";
+import { Ellipsis, fileHyperlink, framedBlock, renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { collapseWhitespace } from "@veyyon/utils";

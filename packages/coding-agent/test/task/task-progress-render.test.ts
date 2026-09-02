@@ -6,7 +6,7 @@ import type { RetryRecoveryMode } from "@veyyon/coding-agent/modes/retry-display
 import { taskToolView } from "@veyyon/coding-agent/task/task-view";
 import type { AgentProgress, SingleResult, TaskToolDetails } from "@veyyon/coding-agent/task/types";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
-import { viewToolRenderer } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { viewToolRenderer } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { useFullColor } from "../helpers/theme-assertions";
 
 /** The card the terminal draws from the task tool's view, which is what the product renders. */

@@ -2,7 +2,7 @@
  * What the read card shows, for any host.
  *
  * The tool half in `read.ts` decides what happened; this half states what a reader is told and names
- * no colour, glyph, gutter or width. A terminal draws it through `src/tui/draw-tool-view.ts`, and a
+ * no colour, glyph, gutter or width. A terminal draws it through `src/modes/terminal/draw/draw-tool-view.ts`, and a
  * host that formats documents itself draws the same card from the same value.
  *
  * The card's subject is the file, so the file is the row's description and the content is a section

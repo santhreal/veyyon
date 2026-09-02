@@ -4,12 +4,12 @@ import {
 	formatSearchProviderFailures,
 	isSearchProviderExcluded,
 	setExcludedSearchProviders,
-} from "@veyyon/coding-agent/web/search/provider";
+} from "@veyyon/coding-agent/tools/web/search/provider";
 import {
 	isSearchProviderId,
 	isSearchProviderPreference,
 	SearchProviderError,
-} from "@veyyon/coding-agent/web/search/types";
+} from "@veyyon/coding-agent/tools/web/search/types";
 
 /**
  * When a web-search provider fails, the operator sees a single line per provider explaining

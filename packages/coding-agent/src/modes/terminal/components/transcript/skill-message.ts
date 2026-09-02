@@ -7,7 +7,7 @@ import { withIcon } from "../../../../theme/icon-label";
 import { getMarkdownTheme } from "../../../../theme/markdown-theme";
 import { theme } from "../../../../theme/theme";
 import { shortenPath } from "../../../../tools/core/render-utils";
-import { fileHyperlink } from "../../../../tui";
+import { fileHyperlink } from "../../draw/hyperlink";
 import { cardOutlineColor } from "./message-frame";
 
 export class SkillMessageComponent extends Container {

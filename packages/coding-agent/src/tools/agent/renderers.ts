@@ -8,7 +8,7 @@
  * here rather than derived: each is a distinct tool name in the same table, and each states its own
  * animation policy.
  */
-import { viewToolRenderer } from "../../tui/draw-tool-view";
+import { viewToolRenderer } from "../../modes/terminal/draw/draw-tool-view";
 import type { ToolRenderer } from "../renderers";
 import { askToolView } from "./ask-view";
 import { ircToolView } from "./irc-view";

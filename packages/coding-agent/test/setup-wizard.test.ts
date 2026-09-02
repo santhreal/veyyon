@@ -21,7 +21,7 @@ import { WebSearchTab } from "@veyyon/coding-agent/modes/terminal/setup-wizard/s
 import { SetupWizardComponent } from "@veyyon/coding-agent/modes/terminal/setup-wizard/wizard-overlay";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
-import { SEARCH_PROVIDER_OPTIONS, SEARCH_PROVIDER_PREFERENCES } from "@veyyon/coding-agent/web/search/types";
+import { SEARCH_PROVIDER_OPTIONS, SEARCH_PROVIDER_PREFERENCES } from "@veyyon/coding-agent/tools/web/search/types";
 
 function fakeContextWithConfiguredModel(): InteractiveModeContext {
 	return {

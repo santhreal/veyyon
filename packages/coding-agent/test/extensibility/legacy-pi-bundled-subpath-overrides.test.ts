@@ -38,10 +38,10 @@ describe("legacy pi compat compiled-mode subpath overrides (issue #3442)", () =>
 	it("expands web search provider wildcard exports for compiled plugin imports", () => {
 		const overrides = __buildLegacyPiPackageRootOverrides(true, bundledModuleKeys);
 		const providerKeys = [
-			"@veyyon/coding-agent/web/search/providers/xai",
-			"@veyyon/coding-agent/web/search/providers/tinyfish",
-			"@veyyon/coding-agent/web/search/providers/firecrawl",
-			"@veyyon/coding-agent/web/search/providers/duckduckgo",
+			"@veyyon/coding-agent/tools/web/search/providers/xai",
+			"@veyyon/coding-agent/tools/web/search/providers/tinyfish",
+			"@veyyon/coding-agent/tools/web/search/providers/firecrawl",
+			"@veyyon/coding-agent/tools/web/search/providers/duckduckgo",
 		] as const;
 
 		for (const key of providerKeys) {

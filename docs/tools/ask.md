@@ -9,7 +9,7 @@
   - `packages/coding-agent/src/tools/agent/ask-view.ts`: `askToolView`, the host-agnostic view for the ask card -- the open question with its choices, the settled answer with its marks, the free-text answer, the note, the chat redirect and the error frame. A host draws it; the module imports no terminal code.
   - `packages/coding-agent/src/config/settings-domains/interaction.ts`: `ask.timeout` / `ask.notify` defaults (the ms-legacy rewrite lives in `packages/coding-agent/src/config/settings.ts`)
   - `packages/coding-agent/src/theme/theme.ts`: checkbox and radio glyphs the view names as symbols
-  - `packages/coding-agent/src/tui/draw-tool-view.ts`: the terminal drawer that turns the view into rows
+  - `packages/coding-agent/src/modes/terminal/draw/draw-tool-view.ts`: the terminal drawer that turns the view into rows
 
 ## Inputs
 

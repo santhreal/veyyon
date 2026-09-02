@@ -7,7 +7,7 @@
  *
  * - `@veyyon/ai`'s `registry/oauth/perplexity.ts` performs the email-OTP login against
  *   `www.perplexity.ai/api/auth/*` and mints the session JWT.
- * - `@veyyon/coding-agent`'s `web/search/providers/perplexity.ts` spends that session on
+ * - `@veyyon/coding-agent`'s `tools/web/search/providers/perplexity.ts` spends that session on
  *   `www.perplexity.ai/rest/sse/perplexity_ask`.
  *
  * WHY THESE VALUES CANNOT LIVE IN TWO PLACES. A session minted while claiming to be one app version and then

@@ -25,14 +25,14 @@
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import type { AuthStorage } from "@veyyon/ai";
-import { runSearchQuery, type SearchQueryParams } from "@veyyon/coding-agent/web/search";
+import { runSearchQuery, type SearchQueryParams } from "@veyyon/coding-agent/tools/web/search";
 import {
 	resolveProviderCandidates,
 	selectSearchProviders,
 	setExcludedSearchProviders,
 	setPreferredSearchProvider,
-} from "@veyyon/coding-agent/web/search/provider";
-import { SEARCH_PROVIDER_ORDER, type SearchProviderId } from "@veyyon/coding-agent/web/search/types";
+} from "@veyyon/coding-agent/tools/web/search/provider";
+import { SEARCH_PROVIDER_ORDER, type SearchProviderId } from "@veyyon/coding-agent/tools/web/search/types";
 
 // Both are module-level mutable state, so every case restores them or the next file
 // inherits a chosen provider and an exclusion set it never asked for.

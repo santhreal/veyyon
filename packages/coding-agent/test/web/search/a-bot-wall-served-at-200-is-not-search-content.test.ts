@@ -32,16 +32,16 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { WebSearchTool } from "@veyyon/coding-agent/web/search";
-import * as providerModule from "@veyyon/coding-agent/web/search/provider";
+import { WebSearchTool } from "@veyyon/coding-agent/tools/web/search";
+import * as providerModule from "@veyyon/coding-agent/tools/web/search/provider";
 import {
 	getSearchProvider,
 	setExcludedSearchProviders,
 	setPreferredSearchProvider,
-} from "@veyyon/coding-agent/web/search/provider";
-import { PUBLIC_ENGINE_IDS, searchPublicWeb } from "@veyyon/coding-agent/web/search/providers/public";
-import { StartpageProvider, searchStartpage } from "@veyyon/coding-agent/web/search/providers/startpage";
-import { SearchProviderError } from "@veyyon/coding-agent/web/search/types";
+} from "@veyyon/coding-agent/tools/web/search/provider";
+import { PUBLIC_ENGINE_IDS, searchPublicWeb } from "@veyyon/coding-agent/tools/web/search/providers/public";
+import { StartpageProvider, searchStartpage } from "@veyyon/coding-agent/tools/web/search/providers/startpage";
+import { SearchProviderError } from "@veyyon/coding-agent/tools/web/search/types";
 import { useIsolatedAgentDir } from "../../helpers/isolated-agent-dir";
 import { makeToolSession } from "../../helpers/tool-session";
 

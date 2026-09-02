@@ -71,7 +71,7 @@ export const SGR_RESET = `${CSI}0m`;
  * A terminal treats an omitted parameter as zero, so both forms clear every attribute, and a
  * PARSER has to accept both while an emitter should pick one. This tree emits {@link SGR_RESET}
  * and reads either: `utils.ts` looks for the short form when it compacts a carried style run,
- * and `coding-agent/src/tui/output-block.ts` has to re-apply a block background after any reset
+ * and `coding-agent/src/modes/terminal/draw/output-block.ts` has to re-apply a block background after any reset
  * in the content, which is wrong if it sees only the long one. Both had the bytes inline.
  */
 export const SGR_RESET_SHORT = `${CSI}m`;

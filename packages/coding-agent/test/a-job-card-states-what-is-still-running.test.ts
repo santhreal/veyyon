@@ -32,7 +32,7 @@ import {
 	type JobToolDetails,
 } from "@veyyon/coding-agent/tools/shell/job";
 import { type JobRenderArgs, type JobViewResult, jobToolView } from "@veyyon/coding-agent/tools/shell/job-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { prompt } from "@veyyon/utils";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import type { ToolView, ToolViewContext, ViewLine } from "@veyyon/view";

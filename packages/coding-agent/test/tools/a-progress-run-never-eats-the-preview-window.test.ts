@@ -32,7 +32,7 @@ import {
 } from "@veyyon/coding-agent/tools/core/render-utils";
 import { bashToolView } from "@veyyon/coding-agent/tools/shell/bash-view";
 import { evalToolView } from "@veyyon/coding-agent/tools/shell/eval-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
 
 const ORIGINAL_ROWS = Object.getOwnPropertyDescriptor(process.stdout, "rows");

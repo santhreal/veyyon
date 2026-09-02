@@ -71,7 +71,7 @@ import { formatProviderName } from "@veyyon/coding-agent/slash-commands/helpers/
 import * as workerClient from "@veyyon/coding-agent/subprocess/worker-client";
 import type { WorkerLogPayload } from "@veyyon/coding-agent/subprocess/worker-log";
 import * as workerLog from "@veyyon/coding-agent/subprocess/worker-log";
-import { buildTreePrefix } from "@veyyon/coding-agent/tui/utils";
+import { buildTreePrefix } from "@veyyon/coding-agent/modes/terminal/draw/utils";
 import { branch } from "@veyyon/coding-agent/utils/git";
 import { errorMessage, parseJsonOrYamlByExtension, TempDir } from "@veyyon/utils";
 import { asStrictBytes } from "@veyyon/utils/bytes";
@@ -533,14 +533,14 @@ describe("buildTreePrefix", () => {
 
 	/**
 	 * The consumer set moved when the task card became a ToolView: `task/render.ts` drew the agent
-	 * tree as terminal strings and is gone, and the host draws that tree in `tui/draw-tool-view.ts`,
+	 * tree as terminal strings and is gone, and the host draws that tree in `modes/terminal/draw/draw-tool-view.ts`,
 	 * which resolves the ancestors from the depth a view states rather than being handed a list. So
 	 * the JSON renderer is the one caller left, and the guard against a fourth copy is the set of
 	 * files allowed to touch the rule glyph at all: a new tree drawn by hand reddens this until
 	 * someone records why it is not the helper's job.
 	 */
 	it("has one definition, the JSON renderer imports it, and no new file rolls the rule by hand", () => {
-		expect(importsOf("tools/core/json-tree-render.ts")).toContain("tui/utils");
+		expect(importsOf("tools/core/json-tree-render.ts")).toContain("modes/terminal/draw/utils");
 
 		const drawers = fs
 			.readdirSync(SRC, { recursive: true, encoding: "utf8" })
@@ -559,9 +559,9 @@ describe("buildTreePrefix", () => {
 			"theme/theme-class.ts",
 			// The host's view drawer, which knows a line's depth and its last-child answer and not its
 			// ancestor list, and dims each rule as it lays it down.
-			"tui/draw-tool-view.ts",
+			"modes/terminal/draw/draw-tool-view.ts",
 			// The owner.
-			"tui/utils.ts",
+			"modes/terminal/draw/utils.ts",
 		]);
 	});
 

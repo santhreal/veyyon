@@ -23,7 +23,7 @@ import {
 	type ToolUIStatus,
 	truncateToWidth,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import { renderStatusLine } from "@veyyon/coding-agent/tui";
+import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 

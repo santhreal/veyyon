@@ -46,6 +46,7 @@ import { PluginManager } from "../extensibility/plugins";
 import { buildMemoryPayloadForDisplay, resolveMemoryBackend } from "../memory/backend";
 import { describeLoopLimitRuntime } from "../modes/loop-limit";
 import { runPauseScreen } from "../modes/terminal/components/dialogs/pause-screen";
+import { urlHyperlinkAlways } from "../modes/terminal/draw/hyperlink";
 import type { InteractiveModeContext } from "../modes/terminal/types";
 import { extractLastCodeBlock, extractLastCommand } from "../modes/terminal/utils/copy-targets";
 import { SECRET_TUI_SUBCOMMANDS } from "../secrets/secret-command";
@@ -66,7 +67,6 @@ import { configuredThinkingLevelsForModel, parseConfiguredThinkingLevel } from "
 import { normalizeApprovalMode } from "../tools/core/approval";
 import { AUTONOMY_LABEL, isKnownApprovalMode } from "../tools/core/approval-modes";
 import { expandTilde, resolveToCwd } from "../tools/core/path-utils";
-import { urlHyperlinkAlways } from "../tui";
 import { copyToClipboard } from "../utils/clipboard";
 import { bareInvocationShowsSubcommands } from "./bare-subcommand";
 import {

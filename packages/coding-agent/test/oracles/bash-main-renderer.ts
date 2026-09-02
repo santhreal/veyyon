@@ -38,8 +38,8 @@ import {
 	CachedOutputBlock,
 	markFramedBlockComponent,
 	outputBlockContentWidth,
-} from "@veyyon/coding-agent/tui/output-block";
-import { renderStatusLine } from "@veyyon/coding-agent/tui/status-line";
+} from "@veyyon/coding-agent/modes/terminal/draw/output-block";
+import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw/status-line";
 import { getSixelLineMask } from "@veyyon/coding-agent/utils/sixel";
 import type { Component } from "@veyyon/tui";
 import { ImageProtocol, TERMINAL } from "@veyyon/tui";

@@ -542,33 +542,33 @@
       "types": "./src/tools/*.ts",
       "import": "./src/tools/*.ts"
     },
-    "./tui": {
-      "types": "./src/tui/index.ts",
-      "import": "./src/tui/index.ts"
+    "./modes/terminal/draw": {
+      "types": "./src/modes/terminal/draw/index.ts",
+      "import": "./src/modes/terminal/draw/index.ts"
     },
-    "./tui/*": {
-      "types": "./src/tui/*.ts",
-      "import": "./src/tui/*.ts"
+    "./modes/terminal/draw/*": {
+      "types": "./src/modes/terminal/draw/*.ts",
+      "import": "./src/modes/terminal/draw/*.ts"
     },
     "./utils/*": {
       "types": "./src/utils/*.ts",
       "import": "./src/utils/*.ts"
     },
-    "./web/*": {
-      "types": "./src/web/*.ts",
-      "import": "./src/web/*.ts"
+    "./tools/web/*": {
+      "types": "./src/tools/web/*.ts",
+      "import": "./src/tools/web/*.ts"
     },
-    "./web/search": {
-      "types": "./src/web/search/index.ts",
-      "import": "./src/web/search/index.ts"
+    "./tools/web/search": {
+      "types": "./src/tools/web/search/index.ts",
+      "import": "./src/tools/web/search/index.ts"
     },
-    "./web/search/*": {
-      "types": "./src/web/search/*.ts",
-      "import": "./src/web/search/*.ts"
+    "./tools/web/search/*": {
+      "types": "./src/tools/web/search/*.ts",
+      "import": "./src/tools/web/search/*.ts"
     },
-    "./web/search/providers/*": {
-      "types": "./src/web/search/providers/*.ts",
-      "import": "./src/web/search/providers/*.ts"
+    "./tools/web/search/providers/*": {
+      "types": "./src/tools/web/search/providers/*.ts",
+      "import": "./src/tools/web/search/providers/*.ts"
     }
   }
 }

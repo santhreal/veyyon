@@ -45,7 +45,7 @@ import {
 	outputBlockContentWidth,
 	renderCodeCell,
 	renderOutputBlock,
-} from "@veyyon/coding-agent/tui";
+} from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Component } from "@veyyon/tui";
 import { Markdown, Text } from "@veyyon/tui";
 // `formatContextUsage` moved into the shared formatter leaf on this branch, so a domain view can

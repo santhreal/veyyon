@@ -8,12 +8,12 @@ import { getProjectDir, stripAnsi } from "@veyyon/utils";
 import chalk from "chalk";
 import { applyProviderGlobalsFromSettings } from "../config/provider-globals";
 import { Settings } from "../config/settings";
+import { drawToolView } from "../modes/terminal/draw/draw-tool-view";
 import { initTheme, theme } from "../theme/theme";
-import { drawToolView } from "../tui/draw-tool-view";
-import { runSearchQuery, type SearchQueryParams } from "../web/search/index";
-import { SEARCH_PROVIDER_ORDER } from "../web/search/provider";
-import type { SearchProviderId } from "../web/search/types";
-import { webSearchToolView } from "../web/search/view";
+import { runSearchQuery, type SearchQueryParams } from "../tools/web/search/index";
+import { SEARCH_PROVIDER_ORDER } from "../tools/web/search/provider";
+import type { SearchProviderId } from "../tools/web/search/types";
+import { webSearchToolView } from "../tools/web/search/view";
 
 export interface SearchCommandArgs {
 	query: string;

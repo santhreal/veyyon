@@ -196,7 +196,7 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 	 *
 	 * `task/render.ts` was the last: 1886 lines of terminal drawing filed under `task/` because the
 	 * published renderer signature returned a TUI `Component`. The task tool describes a
-	 * `ToolViewRenderer` now, so the drawing is `tui/draw-tool-view.ts` reading a view, the frozen
+	 * `ToolViewRenderer` now, so the drawing is `modes/terminal/draw/draw-tool-view.ts` reading a view, the frozen
 	 * copy of what it used to draw is `test/oracles/task-main-renderer.ts`, and the engine names the
 	 * package nowhere.
 	 */
@@ -217,13 +217,13 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 	 * Anti-vacuity. Both cases below are absence checks over a list this walker produces, so a walker
 	 * that reads nothing passes them, and the positive control that used to stand here was the very
 	 * edge this change removed. So the control is a file OUTSIDE the engine that really does import
-	 * the package: the same extractor over `tui/output-block.ts` finds it, which is what says an
+	 * the package: the same extractor over `modes/terminal/draw/output-block.ts` finds it, which is what says an
 	 * empty result above is a fact about the engine rather than about the reader.
 	 */
 	it("reads the whole engine, with an extractor that finds a TUI import where one exists", () => {
 		expect(engineFiles.length).toBeGreaterThan(40);
 		expect(engineFiles.some(file => file.endsWith(`${path.sep}factory-tools.ts`))).toBe(true);
-		const drawn = fs.readFileSync(path.join(SRC, "tui", "output-block.ts"), "utf-8");
+		const drawn = fs.readFileSync(path.join(SRC, "modes", "terminal", "draw", "output-block.ts"), "utf-8");
 		expect(moduleSpecifiersIn(drawn).filter(specifier => specifier.startsWith("@veyyon/tui"))).not.toEqual([]);
 	});
 
@@ -257,7 +257,7 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 	 *
 	 * `-p` writes text to a pipe and renders no frame, yet its runtime graph
 	 * instantiates `@veyyon/tui` through three clusters: the theme engine, the
-	 * `src/tui/` block helpers that lay out tool output, and the slash-command
+	 * `src/modes/terminal/draw/` block helpers that lay out tool output, and the slash-command
 	 * registry that reaches a dialog. Each is a front-end concern filed outside the
 	 * front end, and each is its own piece of work.
 	 *
@@ -280,10 +280,10 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 		"packages/coding-agent/src/modes/terminal/components/dialogs/pause-screen.ts -> @veyyon/tui",
 		"packages/coding-agent/src/theme/theme-class.ts -> @veyyon/tui/terminal-capabilities",
 		"packages/coding-agent/src/theme/theme.ts -> @veyyon/tui/terminal-capabilities",
-		"packages/coding-agent/src/tui/code-cell.ts -> @veyyon/tui",
-		"packages/coding-agent/src/tui/hyperlink.ts -> @veyyon/tui/terminal-capabilities",
-		"packages/coding-agent/src/tui/output-block.ts -> @veyyon/tui",
-		"packages/coding-agent/src/tui/width-aware-text.ts -> @veyyon/tui",
+		"packages/coding-agent/src/modes/terminal/draw/code-cell.ts -> @veyyon/tui",
+		"packages/coding-agent/src/modes/terminal/draw/hyperlink.ts -> @veyyon/tui/terminal-capabilities",
+		"packages/coding-agent/src/modes/terminal/draw/output-block.ts -> @veyyon/tui",
+		"packages/coding-agent/src/modes/terminal/draw/width-aware-text.ts -> @veyyon/tui",
 	];
 
 	/** Files print mode loads at runtime, and the TUI edges among them. */

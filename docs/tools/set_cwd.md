@@ -8,7 +8,7 @@
 - Key collaborators:
   - `packages/coding-agent/src/tools/core/path-utils.ts`: `resolveToCwd()` turns a relative request into an absolute path against the current cwd.
   - `packages/coding-agent/src/tools/core/tool-errors.ts`: maps failures to user-facing `ToolError`s.
-  - `packages/coding-agent/src/tui`: `framedBlock` / `renderStatusLine` draw the transcript result.
+  - `packages/coding-agent/src/modes/terminal/draw`: `framedBlock` / `renderStatusLine` draw the transcript result.
 
 ## Inputs
 

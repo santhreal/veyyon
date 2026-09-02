@@ -6,8 +6,8 @@ import {
 	resolveProviderChain,
 	setExcludedSearchProviders,
 	setPreferredSearchProvider,
-} from "@veyyon/coding-agent/web/search/provider";
-import { SEARCH_PROVIDER_ORDER } from "@veyyon/coding-agent/web/search/types";
+} from "@veyyon/coding-agent/tools/web/search/provider";
+import { SEARCH_PROVIDER_ORDER } from "@veyyon/coding-agent/tools/web/search/types";
 
 // This chain is driven purely by env-backed keys, so the store answers "nothing stored" for every
 // provider that consults it.

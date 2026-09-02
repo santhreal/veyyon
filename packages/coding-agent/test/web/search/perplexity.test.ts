@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
-import { PerplexityProvider, searchPerplexity } from "@veyyon/coding-agent/web/search/providers/perplexity";
-import { getAvailableAuthMethods } from "@veyyon/coding-agent/web/search/providers/perplexity-auth";
+import { PerplexityProvider, searchPerplexity } from "@veyyon/coding-agent/tools/web/search/providers/perplexity";
+import { getAvailableAuthMethods } from "@veyyon/coding-agent/tools/web/search/providers/perplexity-auth";
 
 const API_URL = "https://api.perplexity.ai/chat/completions";
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";

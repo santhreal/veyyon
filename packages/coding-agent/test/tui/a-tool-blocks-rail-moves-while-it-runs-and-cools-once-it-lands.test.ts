@@ -45,7 +45,7 @@ import { interactionFixtures } from "@veyyon/coding-agent/cli/gallery-fixtures/i
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { bashToolView } from "@veyyon/coding-agent/tools/shell/bash-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import {
 	findRailCell,
 	paintRailMotion,
@@ -60,7 +60,7 @@ import {
 	railIdleHeadAtMs,
 	railIdleIntensity,
 	railRowCount,
-} from "@veyyon/coding-agent/tui/rail-motion";
+} from "@veyyon/coding-agent/modes/terminal/draw/rail-motion";
 import type { TUI } from "@veyyon/tui";
 import { useFullColor } from "../helpers/theme-assertions";
 import { createToolExecution } from "../helpers/tool-execution";

@@ -266,7 +266,7 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 		name: "terminal-readout",
 		matches: relative => /tools\/shell\/terminal-output\.ts$/.test(relative),
 		reason:
-			"The rows of a virtual terminal's screen leave this module as the program wrote them -- its text and its SGR sequences and nothing else -- because the card that shows them is a `ToolView` and the drawing is the host's. What used to be decided here is now decided in `src/tui/terminal-row.ts`.",
+			"The rows of a virtual terminal's screen leave this module as the program wrote them -- its text and its SGR sequences and nothing else -- because the card that shows them is a `ToolView` and the drawing is the host's. What used to be decided here is now decided in `src/modes/terminal/draw/terminal-row.ts`.",
 	},
 	{
 		name: "oracle-freeze",

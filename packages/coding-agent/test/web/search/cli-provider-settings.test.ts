@@ -7,7 +7,7 @@ import {
 	SEARCH_PROVIDER_ORDER,
 	setExcludedSearchProviders,
 	setPreferredSearchProvider,
-} from "@veyyon/coding-agent/web/search/provider";
+} from "@veyyon/coding-agent/tools/web/search/provider";
 import { setAgentDir, TempDir } from "@veyyon/utils";
 import { __resetDirsFromEnvForTests, getActiveAuthDbPath } from "@veyyon/utils/dirs";
 import { runSearchCommand } from "../../../src/cli/web-search-cli";

@@ -6,7 +6,7 @@ import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/compone
 import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/core/render-utils";
 import { evalToolView } from "@veyyon/coding-agent/tools/shell/eval-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { type Component, TUI } from "@veyyon/tui";
 import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
 import { settleFrames } from "../../../hosts/terminal/engine/test/helpers/settle-frames";

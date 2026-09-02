@@ -83,8 +83,8 @@ packages/coding-agent/src/tools/web/browser/tab-supervisor.ts
 packages/coding-agent/src/tools/web/fetch.ts
 packages/coding-agent/src/tools/web/manifest.ts
 packages/coding-agent/src/utils/markit.ts
-packages/coding-agent/src/web/search/index.ts
-packages/coding-agent/src/web/search/provider.ts
+packages/coding-agent/src/tools/web/search/index.ts
+packages/coding-agent/src/tools/web/search/provider.ts
 packages/coding-agent/test/acp-lazy-startup.test.ts
 packages/coding-agent/test/agent-storage-corrupt-stats-db.test.ts
 packages/coding-agent/test/approval-critical-floor.test.ts

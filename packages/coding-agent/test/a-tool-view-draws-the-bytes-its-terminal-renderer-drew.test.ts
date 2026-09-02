@@ -37,7 +37,7 @@
  * a screen. Which colour each tone asks for IS pinned, on a probe theme that answers with the role it
  * was handed, because the live theme draws two of its roles identically and hid a mis-mapped tone.
  * The cell is total in `ViewTone`, as `TONE_COLORS: Record<ViewTone, ThemeColor>` and
- * `STATUS_ICONS: Record<ViewStatus, ToolUIStatus>` in `tui/draw-tool-view.ts` are, so either union
+ * `STATUS_ICONS: Record<ViewStatus, ToolUIStatus>` in `modes/terminal/draw/draw-tool-view.ts` are, so either union
  * growing a member fails `check:ts` rather than drawing the wrong thing. And it says nothing
  * about the streamed preview: `exposesRawPartialJson` in `controllers/event-controller.ts` counts a
  * `view.renderCall` so a conversion does not narrow what the live preview is handed, and that
@@ -76,8 +76,8 @@ import {
 	drawStatusRow,
 	drawToolViewText,
 	toolDrawsItself,
-} from "@veyyon/coding-agent/tui/draw-tool-view";
-import { renderStatusLine } from "@veyyon/coding-agent/tui/status-line";
+} from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw/status-line";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
@@ -292,7 +292,7 @@ describe("the measurement itself", () => {
 	/**
 	 * Which colour a notice's plate carries for each state, and what the plate is made of.
 	 *
-	 * `NOTICE_COLORS: Record<ViewStatus, ThemeColor>` in `tui/draw-tool-view.ts` is total, so a status
+	 * `NOTICE_COLORS: Record<ViewStatus, ThemeColor>` in `modes/terminal/draw/draw-tool-view.ts` is total, so a status
 	 * added to the contract fails the type check there rather than falling into whichever branch ran
 	 * last. This is the runtime half of that: the three outcome states a decision reaches draw in
 	 * three different colours, the reductions draw as the state they reduce to, and every state fills

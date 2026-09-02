@@ -9,7 +9,8 @@ import { getLanguageFromPath, theme } from "../../../../theme/theme";
 import { parseLineRanges, selectorLineRanges, splitPathAndSel } from "../../../../tools/core/path-utils";
 import { PREVIEW_LIMITS, shortenPath } from "../../../../tools/core/render-utils";
 import type { ReadRenderArgs } from "../../../../tools/fs/read";
-import { fileHyperlink, renderCodeCell } from "../../../../tui";
+import { renderCodeCell } from "../../draw/code-cell";
+import { fileHyperlink } from "../../draw/hyperlink";
 import type { ToolExecutionHandle } from "./tool-execution";
 
 /**

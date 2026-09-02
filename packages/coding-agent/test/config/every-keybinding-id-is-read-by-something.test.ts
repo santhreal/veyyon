@@ -38,7 +38,7 @@ import { memberSrcNamed } from "../../../utils/test/support/package-sources";
 
 const CODING_AGENT_SRC = path.resolve(import.meta.dir, "../../src");
 // A published name is stable and its directory is not: the terminal engine is `hosts/terminal/engine`,
-// and a relative `../../../tui/src` failed with ENOENT the day it left `packages/`.
+// and a relative `../../../modes/terminal/draw/src` failed with ENOENT the day it left `packages/`.
 const TUI_SRC = memberSrcNamed("@veyyon/tui");
 const UTILS_SRC = memberSrcNamed("@veyyon/utils");
 

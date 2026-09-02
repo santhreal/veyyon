@@ -41,7 +41,7 @@ export function compactSgrCarry(carry: string): string {
  * here was already doing, separately.
  *
  * THREE COPIES, THREE DIFFERENT ANSWERS, which is why this is one function now.
- * `coding-agent/src/tui/output-block.ts` handled `ESC [ 0 m` and `ESC [ 49 m`,
+ * `coding-agent/src/modes/terminal/draw/output-block.ts` handled `ESC [ 0 m` and `ESC [ 49 m`,
  * `tui/src/components/editor.ts` handled only `ESC [ 0 m`, and
  * `coding-agent/src/modes/terminal/components/chrome/sun.ts` handled both but DROPPED the `ESC [ 49 m` instead
  * of keeping it. None of the three handled `ESC [ m`, the parameterless reset, which means the

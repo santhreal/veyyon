@@ -3,7 +3,7 @@
  *
  * The tool half in `index.ts` decides what a language server answered; this half states what a
  * reader is told, and names no colour, glyph, tree or width. A terminal draws it through
- * `src/tui/draw-tool-view.ts` and a second host writes its own mapping from the same value.
+ * `src/modes/terminal/draw/draw-tool-view.ts` and a second host writes its own mapping from the same value.
  *
  * A card is one framed panel: a row naming the operation and what it found, the request under it,
  * then the answer as the shape that answer has -- source for a hover, one row per diagnostic, one

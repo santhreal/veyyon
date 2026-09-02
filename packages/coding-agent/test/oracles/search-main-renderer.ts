@@ -33,8 +33,8 @@ import {
 } from "@veyyon/coding-agent/tools/search/structure-search-view";
 import type { TextSearchDetails, TextSearchRenderArgs } from "@veyyon/coding-agent/tools/search/text-search";
 import { type TextSearchViewResult, textSearchToolView } from "@veyyon/coding-agent/tools/search/text-search-view";
-import { renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/tui";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/modes/terminal/draw";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { isRecord } from "@veyyon/utils";

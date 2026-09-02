@@ -20,8 +20,8 @@
 
 import { describe, expect, it } from "bun:test";
 import type { AuthStorage } from "@veyyon/ai";
-import { getSearchProvider } from "@veyyon/coding-agent/web/search/provider";
-import { SEARCH_PROVIDER_ORDER, type SearchProviderId } from "@veyyon/coding-agent/web/search/types";
+import { getSearchProvider } from "@veyyon/coding-agent/tools/web/search/provider";
+import { SEARCH_PROVIDER_ORDER, type SearchProviderId } from "@veyyon/coding-agent/tools/web/search/types";
 
 /**
  * Providers that do not become available from a credential stored under their own id: `public` is

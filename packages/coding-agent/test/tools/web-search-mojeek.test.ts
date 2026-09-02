@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
-import type { SearchParams } from "@veyyon/coding-agent/web/search/providers/base";
-import { searchMojeek } from "@veyyon/coding-agent/web/search/providers/mojeek";
-import { SearchProviderError } from "@veyyon/coding-agent/web/search/types";
+import type { SearchParams } from "@veyyon/coding-agent/tools/web/search/providers/base";
+import { searchMojeek } from "@veyyon/coding-agent/tools/web/search/providers/mojeek";
+import { SearchProviderError } from "@veyyon/coding-agent/tools/web/search/types";
 
 const fakeAuthStorage = {
 	async getApiKey() {

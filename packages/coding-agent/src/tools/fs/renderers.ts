@@ -5,7 +5,7 @@
  * is imported only by a host that draws one. The manifest stays free of it, and a headless or
  * browser host reads the manifest without pulling the engine in.
  */
-import { viewToolRenderer } from "../../tui/draw-tool-view";
+import { viewToolRenderer } from "../../modes/terminal/draw/draw-tool-view";
 import type { ToolRenderer } from "../renderers";
 import { inspectImageToolView } from "./inspect-image-view";
 import { readToolView } from "./read-view";

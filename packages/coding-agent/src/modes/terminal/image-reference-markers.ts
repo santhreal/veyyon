@@ -7,7 +7,7 @@
  * the edge cost 133ms of module evaluation to draw a regex match.
  */
 
-import { fileHyperlink } from "../../tui/hyperlink";
+import { fileHyperlink } from "./draw/hyperlink";
 
 /** Matches `[Image #N]`/`[Image #N, WxH]` and `[Paste #N, +X lines]`/`[Paste #N, Y chars]` tokens.
  *  Group 1 is the kind (`Image`/`Paste`), group 2 the 1-based index. The optional metadata

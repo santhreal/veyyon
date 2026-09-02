@@ -2,7 +2,7 @@
  * What a job card shows, for any host.
  *
  * The tool half in `job.ts` decides what happened; this half decides what a reader is told, and
- * names no colour, glyph or component. A terminal draws it through `src/tui/draw-tool-view.ts` and a
+ * names no colour, glyph or component. A terminal draws it through `src/modes/terminal/draw/draw-tool-view.ts` and a
  * second host writes its own mapping from the same value.
  *
  * The card is a row that reports the SET -- how many jobs are still going, how many settled and how

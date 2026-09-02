@@ -145,7 +145,7 @@ import {
 	type RailMotion,
 	railClockMs,
 	railIdleHeadAtMs,
-} from "../../tui/rail-motion";
+} from "./draw/rail-motion";
 import { copyToClipboard } from "../../utils/clipboard";
 import type { EventBus } from "../../utils/event-bus";
 import { getEditorCommand, openInEditor } from "../../utils/external-editor";

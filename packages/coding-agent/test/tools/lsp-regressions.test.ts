@@ -37,7 +37,7 @@ import {
 import { lspToolView } from "@veyyon/coding-agent/lsp/view";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { makeToolSession } from "../helpers/tool-session";
 
 /**

@@ -295,15 +295,15 @@ const DRAWS_IN_PLACE = new Map<string, string>([]);
 /**
  * The terminal's own drawing layer, which the naming convention does not name.
  *
- * `tui/draw-tool-view.ts` declares `renderCall` and `renderResult` because `viewToolRenderer` builds
+ * `modes/terminal/draw/draw-tool-view.ts` declares `renderCall` and `renderResult` because `viewToolRenderer` builds
  * the terminal's registry entry for a tool that returns a view: those two members are the registry's
  * shape, and this module is the drawer every rule in this file directs a tool toward. Recording it as
  * a tool drawing in place would be a row nobody could ever delete.
  *
- * Pinned by equality, so a second drawer under `tui/` is recorded here rather than absorbed silently,
+ * Pinned by equality, so a second drawer under `modes/terminal/draw/` is recorded here rather than absorbed silently,
  * and asserted to be a module the sweep actually returned.
  */
-const TERMINAL_DRAWERS = new Set(["tui/draw-tool-view.ts"]);
+const TERMINAL_DRAWERS = new Set(["modes/terminal/draw/draw-tool-view.ts"]);
 
 /**
  * The registry module, which declares the renderer SHAPE rather than a card.
@@ -489,7 +489,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"tools/web/browser/view.ts",
 			"tools/web/fetch-view.ts",
 			"tools/web/gh-view.ts",
-			"web/search/view.ts",
+			"tools/web/search/view.ts",
 		]);
 		for (const file of converted) {
 			expect([...IN_PLACE_ANYWHERE.keys()]).not.toContain(file);
@@ -518,7 +518,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 
 	/** An excluded module the sweep never returned excludes nothing, and reads as a clean tree. */
 	it("excludes only the drawer and the registry, and only where the sweep returned them", () => {
-		expect([...TERMINAL_DRAWERS]).toEqual(["tui/draw-tool-view.ts"]);
+		expect([...TERMINAL_DRAWERS]).toEqual(["modes/terminal/draw/draw-tool-view.ts"]);
 		expect([...REGISTRY_MODULES]).toEqual(["tools/renderers.ts"]);
 		for (const drawer of TERMINAL_DRAWERS) expect(declaring).toContain(drawer);
 		for (const registry of REGISTRY_MODULES) expect(declaring).toContain(registry);

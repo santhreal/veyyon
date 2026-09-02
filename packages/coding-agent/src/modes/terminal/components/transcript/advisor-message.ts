@@ -10,7 +10,7 @@ import {
 	type ToolUIColor,
 	wrapTextWithAnsi,
 } from "../../../../tools/core/render-utils";
-import { Ellipsis, truncateToWidth } from "../../../../tui";
+import { Ellipsis, truncateToWidth } from "../../draw/utils";
 
 const COLLAPSED_NOTES = 3;
 const NOTE_LINE_WIDTH = 110;

@@ -31,8 +31,8 @@ import {
 	truncateToWidth,
 } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { LaunchParams, LaunchToolDetails } from "@veyyon/coding-agent/tools/shell/launch";
-import { framedBlock, outputBlockContentWidth, renderStatusLine } from "@veyyon/coding-agent/tui";
-import { styleTerminalRow } from "@veyyon/coding-agent/tui/terminal-row";
+import { framedBlock, outputBlockContentWidth, renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw";
+import { styleTerminalRow } from "@veyyon/coding-agent/modes/terminal/draw/terminal-row";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 

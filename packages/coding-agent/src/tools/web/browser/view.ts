@@ -3,7 +3,7 @@
  *
  * The tool half in `../browser.ts` decides what happened; this half decides what a reader is told,
  * and names no colour, glyph, width or component. A terminal draws it through
- * `src/tui/draw-tool-view.ts`, and a second host writes its own mapping from the same value.
+ * `src/modes/terminal/draw/draw-tool-view.ts`, and a second host writes its own mapping from the same value.
  *
  * The tool has three actions and two card shapes, and the split is the tool's own. `open` and
  * `close` report one operation on one tab, so they are a row: what was done, which tab, which

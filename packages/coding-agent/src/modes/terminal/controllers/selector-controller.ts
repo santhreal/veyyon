@@ -73,7 +73,7 @@ import {
 	isSearchProviderPreference,
 	setExcludedSearchProviders,
 	setPreferredSearchProvider,
-} from "../../../web/search";
+} from "../../../tools/web/search";
 import { AccountManagerComponent } from "../components/account/account-manager";
 import { HistorySearchComponent } from "../components/composer/history-search";
 import { AgentDashboard } from "../components/dashboard/agent-dashboard";

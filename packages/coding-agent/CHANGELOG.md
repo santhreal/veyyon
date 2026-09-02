@@ -21,7 +21,7 @@
 - `@veyyon/coding-agent/session/facade` exposes `AgentSessionFacade`, a thirteen-member session API a front end drives — start, stop, submit, interrupt, retry, per-call tool approval, six event streams and the model, provider and context-usage readings — over a live `AgentSession`; the facade owns the permission prompt while it is started, and refuses a session another host already routes through.
 - `setImageDisplayProbe` lets a front end state whether it draws pictures, which is what the session reports to the model about an image a tool returned; a client that installs nothing draws nothing, so a host embedding the engine no longer inherits a terminal's answer.
 - `ToolDefinition.view` lets an extension describe its tool's call and result cards as a `ToolView` instead of building a terminal component, and re-exports the `@veyyon/view` vocabulary (`ToolView`, `StatusRowView`, `TextBlockView`, `ViewSpan`, `ViewTone`, `ViewStatus`) so a plugin can construct one; the terminal draws it, and a tool that also declares `renderCall`/`renderResult` keeps those.
-- `src/tui/draw-tool-view.ts` draws a `ToolView` as terminal bytes through exhaustive tone-to-colour and status-to-icon records, so a tone added to the contract fails the type check until the terminal states how it looks.
+- `src/modes/terminal/draw/draw-tool-view.ts` draws a `ToolView` as terminal bytes through exhaustive tone-to-colour and status-to-icon records, so a tone added to the contract fails the type check until the terminal states how it looks.
 - A `ToolView` span carries `file` for a filesystem path a host opens however it can, separate from the `link` a URL rides on, and the tone vocabulary adds `diffAdded` and `diffRemoved` for the two sides of a change; the terminal wraps a `file` run in an OSC 8 link to its `file://` URI.
 - Each tool domain declares a `manifest.ts` naming its lazy tool factories and a `renderers.ts` holding its terminal renderers, and `tools/index.ts` and `tools/renderers.ts` compose those five pairs instead of listing every tool themselves, so a host that draws no terminal reads the manifests alone.
 - `CustomTool.view` lets a tool authored as a custom tool describe its call and result cards as a `ToolView`, the member `ToolDefinition.view` already offered an extension, and both adapters forward it to the host.
@@ -29,6 +29,7 @@
 ### Changed
 
 - Fifty-three modules moved from `src/session/` (35 session spine modules) and `src/extensibility/` (18 loader and registry modules) to `@veyyon/kernel`, leaving `src/session/` containing the turn loop, session factories and prompt rendering, and `src/extensibility/` containing tool, command, hook and host extensions.
+- Terminal drawing of a `ToolView` lives in `src/modes/terminal/draw/`, and web search lives in `src/tools/web/search/`. Subpath imports previously resolved through `@veyyon/coding-agent/tui` and `@veyyon/coding-agent/web/search` now name those directories. No user-visible behavior changes.
 - Every tool module is grouped by domain under `src/tools/<domain>/`, each domain importing only `core/` and itself, so the dispatch table no longer sits above 139 flat modules. No user-visible behavior changes.
 - Source-path comments and the gallery search fixture name the terminal renderer at its new path, `hosts/terminal/engine`, and a new architecture gate records every module outside `src/modes/terminal/` that still imports it. No user-visible behavior changes.
 - A source-checkout update runs the native-addon ensure step in `natives/bridge/bindings`, the bindings package's path after it moved out of `packages/`.
@@ -250,7 +251,7 @@
 
 - `subagent.sharedModel`, `subagent.model`, `subagent.thinkingLevel` and `subagent.modelByDepth` decided the model and effort for every subagent at once and are rejected; a config still holding one is reported once, naming the agent page that replaces it.
 - The `--subagent-model` launch flag, which set the model for every subagent in the session.
-- `WRITE_GUTTER_MIN_WIDTH` is no longer exported: the line-number gutter of a code card is the host's, stated once in `src/tui/draw-tool-view.ts`, and no tool sets it.
+- `WRITE_GUTTER_MIN_WIDTH` is no longer exported: the line-number gutter of a code card is the host's, stated once in `src/modes/terminal/draw/draw-tool-view.ts`, and no tool sets it.
 - The tagline under the wordmark on the session welcome hero, which the launch card and the mounted hero each printed.
 
 ## [1.3.0] - 2026-08-28

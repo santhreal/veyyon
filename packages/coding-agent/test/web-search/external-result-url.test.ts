@@ -23,7 +23,7 @@ import {
 	isExternalHttpUrl,
 	parseResultUrl,
 	resolveExternalResultUrl,
-} from "@veyyon/coding-agent/web/search/providers/utils";
+} from "@veyyon/coding-agent/tools/web/search/providers/utils";
 
 const HOME = "https://www.example-engine.com/search?q=x";
 const OWN = ["example-engine.com"] as const;

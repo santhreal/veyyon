@@ -53,8 +53,8 @@ import {
 	type ToolUIStatus,
 	truncateToWidth,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import { framedBlock, renderStatusLine } from "@veyyon/coding-agent/tui";
-import { buildTreePrefix } from "@veyyon/coding-agent/tui/utils";
+import { framedBlock, renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw";
+import { buildTreePrefix } from "@veyyon/coding-agent/modes/terminal/draw/utils";
 import type { Component } from "@veyyon/tui";
 import { Markdown } from "@veyyon/tui";
 import { formatContextUsage, formatCount, formatNumber, isRecord, sanitizeText } from "@veyyon/utils";

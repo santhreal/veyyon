@@ -10,7 +10,7 @@ import type { RenderResultOptions } from "@veyyon/agent-core";
 import { createLogExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/log-experiment";
 import type { ExperimentResult, ExperimentState, LogDetails } from "@veyyon/coding-agent/autoresearch/types";
 import { theme } from "@veyyon/coding-agent/theme/theme";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import * as logExperimentOracle from "../oracles/log-experiment-main-renderer";
 import {
 	autoresearchOptions,

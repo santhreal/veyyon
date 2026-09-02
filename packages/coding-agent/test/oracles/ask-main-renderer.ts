@@ -15,7 +15,7 @@ import { getMarkdownTheme } from "@veyyon/coding-agent/theme/markdown-theme";
 import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
 import { type AskToolDetails, optionMarker } from "@veyyon/coding-agent/tools/agent/ask";
 import { formatErrorMessage, formatMeta, formatTitle } from "@veyyon/coding-agent/tools/core/render-utils";
-import { framedBlock, renderStatusLine } from "@veyyon/coding-agent/tui";
+import { framedBlock, renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw";
 import { type Component, Markdown, type MarkdownTheme, renderInlineMarkdown, Text } from "@veyyon/tui";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";

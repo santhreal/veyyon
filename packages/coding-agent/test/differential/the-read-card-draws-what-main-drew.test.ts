@@ -36,7 +36,7 @@ import {
 } from "@veyyon/coding-agent/tools/core/output-notice";
 import type { ReadRenderArgs, ReadToolDetails } from "@veyyon/coding-agent/tools/fs/read";
 import { type ReadViewResult, readToolView } from "@veyyon/coding-agent/tools/fs/read-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import { readToolRenderer } from "../oracles/read-main-renderer";
 import { HOST_COLLAPSED, HOST_EXPANDED, renderCompLines, useDifferentialTheme, WIDTH } from "./harness";

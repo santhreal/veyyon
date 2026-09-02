@@ -2,7 +2,7 @@
  * What the file search card shows, for any host.
  *
  * The tool half in `file-search.ts` decides what happened; this half decides what a reader is told,
- * and names no colour, glyph or component. A terminal draws it through `src/tui/draw-tool-view.ts`
+ * and names no colour, glyph or component. A terminal draws it through `src/modes/terminal/draw/draw-tool-view.ts`
  * and a second host writes its own mapping from the same value.
  *
  * The card has five shapes, and they are the tool's own branches rather than presentation choices: a

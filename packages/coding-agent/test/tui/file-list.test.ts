@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/theme/theme";
-import { renderFileList } from "@veyyon/coding-agent/tui/file-list";
+import { renderFileList } from "@veyyon/coding-agent/modes/terminal/draw/file-list";
 import { sanitizeText } from "@veyyon/utils";
 
 let uiTheme: Theme;

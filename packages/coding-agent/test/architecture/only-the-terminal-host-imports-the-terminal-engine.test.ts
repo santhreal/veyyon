@@ -86,11 +86,11 @@ const ENGINE_IMPORTERS = [
 	"modes/launch-facts.ts",
 	"theme/theme-class.ts",
 	"theme/theme.ts",
-	"tui/code-cell.ts",
-	"tui/draw-tool-view.ts",
-	"tui/hyperlink.ts",
-	"tui/output-block.ts",
-	"tui/width-aware-text.ts",
+	"modes/terminal/draw/code-cell.ts",
+	"modes/terminal/draw/draw-tool-view.ts",
+	"modes/terminal/draw/hyperlink.ts",
+	"modes/terminal/draw/output-block.ts",
+	"modes/terminal/draw/width-aware-text.ts",
 ];
 
 /**
@@ -123,10 +123,10 @@ const RUNTIME_ENGINE_IMPORTERS = [
 	"modes/launch-facts.ts",
 	"theme/theme-class.ts",
 	"theme/theme.ts",
-	"tui/code-cell.ts",
-	"tui/draw-tool-view.ts",
-	"tui/hyperlink.ts",
-	"tui/width-aware-text.ts",
+	"modes/terminal/draw/code-cell.ts",
+	"modes/terminal/draw/draw-tool-view.ts",
+	"modes/terminal/draw/hyperlink.ts",
+	"modes/terminal/draw/width-aware-text.ts",
 ];
 
 describe("only the terminal host imports the terminal engine", () => {
@@ -138,7 +138,7 @@ describe("only the terminal host imports the terminal engine", () => {
 	it("reads the package and does find engine imports where they exist", () => {
 		expect(modulesOutsideTheTerminalHost().length).toBeGreaterThan(400);
 		expect(modulesOutsideTheTerminalHost().some(rel => rel.startsWith("modes/terminal/"))).toBe(false);
-		expect(enginePackageImporters("any")).toContain("tui/output-block.ts");
+		expect(enginePackageImporters("any")).toContain("modes/terminal/draw/output-block.ts");
 		expect(enginePackageImporters("runtime")).toContain("theme/theme-class.ts");
 	});
 

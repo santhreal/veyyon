@@ -25,10 +25,10 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import type { AuthStorage } from "@veyyon/ai";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { WebSearchTool } from "@veyyon/coding-agent/web/search";
-import * as provider from "@veyyon/coding-agent/web/search/provider";
-import type { SearchParams } from "@veyyon/coding-agent/web/search/providers/base";
-import type { SearchProviderId, SearchResponse } from "@veyyon/coding-agent/web/search/types";
+import { WebSearchTool } from "@veyyon/coding-agent/tools/web/search";
+import * as provider from "@veyyon/coding-agent/tools/web/search/provider";
+import type { SearchParams } from "@veyyon/coding-agent/tools/web/search/providers/base";
+import type { SearchProviderId, SearchResponse } from "@veyyon/coding-agent/tools/web/search/types";
 import { useIsolatedAgentDir } from "../../helpers/isolated-agent-dir";
 import { makeToolSession } from "../../helpers/tool-session";
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
-import { searchZai } from "@veyyon/coding-agent/web/search/providers/zai";
+import { searchZai } from "@veyyon/coding-agent/tools/web/search/providers/zai";
 
 interface CapturedRequest {
 	method: string | undefined;

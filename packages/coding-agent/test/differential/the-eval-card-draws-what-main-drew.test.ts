@@ -60,7 +60,7 @@ import type { RenderResultOptions } from "@veyyon/agent-core";
 import type { EvalCellResult, EvalStatusEvent, EvalToolDetails } from "@veyyon/coding-agent/eval/types";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import { type EvalRenderArgs, type EvalViewResult, evalToolView } from "@veyyon/coding-agent/tools/shell/eval-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import * as evalOracle from "../oracles/eval-main-renderer";
 import { renderCompLines, useDifferentialTheme, WIDTH } from "./harness";

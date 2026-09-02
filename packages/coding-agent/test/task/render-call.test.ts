@@ -3,7 +3,7 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import type { TaskParams } from "@veyyon/coding-agent/task";
 import { taskToolView } from "@veyyon/coding-agent/task/task-view";
 import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/theme/theme";
-import { viewToolRenderer } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { viewToolRenderer } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 
 /** The card the terminal draws from the task tool's view, which is what the product renders. */
 const taskToolRenderer = viewToolRenderer(taskToolView, { mergeCallAndResult: true });

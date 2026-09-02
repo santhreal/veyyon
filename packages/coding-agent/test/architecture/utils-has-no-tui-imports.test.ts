@@ -38,6 +38,6 @@ describe("the utilities do not depend on the renderer", () => {
 	});
 
 	test("no file reaches the tui package by relative path", () => {
-		expect(forbiddenEdges(UTILS, specifier => specifier.includes("../tui/"))).toEqual([]);
+		expect(forbiddenEdges(UTILS, specifier => specifier.includes("../modes/terminal/draw/"))).toEqual([]);
 	});
 });

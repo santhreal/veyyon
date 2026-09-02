@@ -3,8 +3,8 @@ import {
 	getSearchProviderLabel,
 	resolveProviderCandidates,
 	setExcludedSearchProviders,
-} from "@veyyon/coding-agent/web/search/provider";
-import { SEARCH_PROVIDER_ORDER, type SearchProviderId } from "@veyyon/coding-agent/web/search/types";
+} from "@veyyon/coding-agent/tools/web/search/provider";
+import { SEARCH_PROVIDER_ORDER, type SearchProviderId } from "@veyyon/coding-agent/tools/web/search/types";
 
 /**
  * resolveProviderCandidates builds the web-search candidate list WITHOUT loading any provider

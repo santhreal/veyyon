@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import { recallToolView, reflectToolView, retainToolView } from "@veyyon/coding-agent/tools/agent/memory-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { sanitizeText } from "@veyyon/utils";
 import type { ToolView } from "@veyyon/view";
 

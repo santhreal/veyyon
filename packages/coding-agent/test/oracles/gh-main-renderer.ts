@@ -28,7 +28,7 @@ import type {
 	GhToolDetails,
 } from "@veyyon/coding-agent/tools/web/gh";
 import { formatShortSha } from "@veyyon/coding-agent/tools/web/gh-format";
-import { framedBlock, renderStatusLine } from "@veyyon/coding-agent/tui";
+import { framedBlock, renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw";
 import { type Component, Text } from "@veyyon/tui";
 // The owning leaf, not the `@veyyon/utils` barrel: this is the only vocabulary the renderer
 // needs, and the React renderer of the same tool output reads the same one.

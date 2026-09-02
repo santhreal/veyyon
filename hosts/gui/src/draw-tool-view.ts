@@ -1,7 +1,7 @@
 /**
  * How a graphical host draws a tool's view.
  *
- * The terminal draws the same models in `packages/coding-agent/src/tui/draw-tool-view.ts`, and the
+ * The terminal draws the same models in `packages/coding-agent/src/modes/terminal/draw/draw-tool-view.ts`, and the
  * two share no code and no vocabulary: one produces rows of escape bytes measured in columns, this
  * one produces elements a stylesheet lays out. What they share is the contract, which is the claim
  * this host exists to check -- a tool that returns a `ToolView` reaches a second host with no

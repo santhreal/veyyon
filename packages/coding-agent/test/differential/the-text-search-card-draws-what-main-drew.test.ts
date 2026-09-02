@@ -30,7 +30,7 @@ import {
 	type TextSearchRenderArgs,
 } from "@veyyon/coding-agent/tools/search/text-search";
 import { type TextSearchViewResult, textSearchToolView } from "@veyyon/coding-agent/tools/search/text-search-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import * as textSearchOracle from "../oracles/text-search-main-renderer";
 import {

@@ -19,7 +19,7 @@
  * TWO MODULES DEVIATED, and both had zero behavioural tests (checked by filename and by grepping
  * `test/` for the module specifier; the only hits were prose in an architecture gate).
  *
- *   1. `tui/code-cell.ts` at four sites read `expanded ? raw.length : Math.min(raw.length, max)`, so
+ *   1. `modes/terminal/draw/code-cell.ts` at four sites read `expanded ? raw.length : Math.min(raw.length, max)`, so
  *      `outputMaxLines = 6`, `codeMaxLines = 12` and `contentMaxLines = 12` -- all DEFAULT PARAMETERS,
  *      the path every test takes unless it says otherwise -- were bypassed entirely on expand. This
  *      cell is reached by `tools/fs/read.ts`, which 54 test files import.
@@ -36,7 +36,7 @@ import { describe, expect, it } from "bun:test";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { theme } from "@veyyon/coding-agent/theme/theme-binding";
 import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/core/render-utils";
-import { renderCodeCell, renderMarkdownCell } from "@veyyon/coding-agent/tui/code-cell";
+import { renderCodeCell, renderMarkdownCell } from "@veyyon/coding-agent/modes/terminal/draw/code-cell";
 
 /** Far larger than any ceiling in play, so an unbounded arm is unmistakable in the line count. */
 const HUGE = 5_000;

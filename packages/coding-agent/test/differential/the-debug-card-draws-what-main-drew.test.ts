@@ -17,7 +17,7 @@ import { theme } from "@veyyon/coding-agent/theme/theme";
 import { formatExpandHint, TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { DebugParams, DebugToolDetails } from "@veyyon/coding-agent/tools/shell/debug";
 import { type DebugViewResult, debugToolView } from "@veyyon/coding-agent/tools/shell/debug-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import * as debugOracle from "../oracles/debug-main-renderer";
 import {

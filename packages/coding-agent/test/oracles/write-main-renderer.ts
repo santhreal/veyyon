@@ -32,9 +32,9 @@ import {
 	WRITE_STREAMING_PREVIEW_LINES,
 	type WriteToolDetails,
 } from "@veyyon/coding-agent/tools/fs/write";
-import { fileHyperlink } from "@veyyon/coding-agent/tui/hyperlink";
-import { framedBlock } from "@veyyon/coding-agent/tui/output-block";
-import { renderStatusLine } from "@veyyon/coding-agent/tui/status-line";
+import { fileHyperlink } from "@veyyon/coding-agent/modes/terminal/draw/hyperlink";
+import { framedBlock } from "@veyyon/coding-agent/modes/terminal/draw/output-block";
+import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw/status-line";
 import { getLanguageFromPath } from "@veyyon/coding-agent/utils/lang-from-path";
 import type { Component } from "@veyyon/tui";
 import { formatCount } from "@veyyon/utils";

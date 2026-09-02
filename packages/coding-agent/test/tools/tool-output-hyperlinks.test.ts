@@ -12,7 +12,7 @@ import { readToolView } from "@veyyon/coding-agent/tools/fs/read-view";
 import { WriteTool } from "@veyyon/coding-agent/tools/fs/write";
 import { writeToolView } from "@veyyon/coding-agent/tools/fs/write-view";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { removeSyncWithRetries } from "@veyyon/utils";
 
 /**

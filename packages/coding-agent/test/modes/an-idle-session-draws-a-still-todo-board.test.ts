@@ -34,7 +34,7 @@ import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme, stopThemeWatcher, theme } from "@veyyon/coding-agent/theme/theme";
-import { RAIL_IDLE_STEP_MS } from "@veyyon/coding-agent/tui/rail-motion";
+import { RAIL_IDLE_STEP_MS } from "@veyyon/coding-agent/modes/terminal/draw/rail-motion";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";

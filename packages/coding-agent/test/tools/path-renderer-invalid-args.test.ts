@@ -3,7 +3,7 @@ import { editToolView } from "@veyyon/coding-agent/edit/edit-view";
 import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/theme/theme";
 import { readToolView } from "@veyyon/coding-agent/tools/fs/read-view";
 import { writeToolView } from "@veyyon/coding-agent/tools/fs/write-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { Component } from "@veyyon/tui";
 
 interface InvalidPathCase {

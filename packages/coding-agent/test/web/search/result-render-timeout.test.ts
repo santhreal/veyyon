@@ -17,7 +17,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
-import { RESULT_RENDER_TIMEOUT_MS, readyTimeoutMs } from "@veyyon/coding-agent/web/search/providers/browser-page";
+import { RESULT_RENDER_TIMEOUT_MS, readyTimeoutMs } from "@veyyon/coding-agent/tools/web/search/providers/browser-page";
 
 describe("RESULT_RENDER_TIMEOUT_MS", () => {
 	/**
@@ -58,7 +58,7 @@ describe("readyTimeoutMs", () => {
 });
 
 describe("the render wait has one owner", () => {
-	const providerDir = new URL("../../../src/web/search/providers/", import.meta.url);
+	const providerDir = new URL("../../../src/tools/web/search/providers/", import.meta.url);
 
 	async function read(name: string): Promise<string> {
 		return await readFile(new URL(name, providerDir), "utf8");

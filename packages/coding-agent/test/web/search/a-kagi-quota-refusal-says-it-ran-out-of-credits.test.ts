@@ -21,7 +21,7 @@
 
 import { describe, expect, it } from "bun:test";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
-import { searchKagi } from "@veyyon/coding-agent/web/search/providers/kagi";
+import { searchKagi } from "@veyyon/coding-agent/tools/web/search/providers/kagi";
 
 /** A store that answers with a key, so the request reaches the fetch below rather than failing earlier. */
 const AUTH_STORAGE = {

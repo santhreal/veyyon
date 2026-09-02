@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
-import type { SearchParams } from "@veyyon/coding-agent/web/search/providers/base";
-import { searchCodex } from "@veyyon/coding-agent/web/search/providers/codex";
+import type { SearchParams } from "@veyyon/coding-agent/tools/web/search/providers/base";
+import { searchCodex } from "@veyyon/coding-agent/tools/web/search/providers/codex";
 
 type CapturedRequest = {
 	url: string;

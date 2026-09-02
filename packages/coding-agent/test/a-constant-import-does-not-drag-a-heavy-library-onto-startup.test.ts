@@ -207,7 +207,7 @@ describe("a startup root cannot reach an expensive third-party package through s
 		const roots = startupRoots();
 		// A regression that empties this set would make every other assertion vacuously true.
 		expect(roots.size).toBeGreaterThan(20);
-		expect([...roots.values()]).toContain("../web/search");
+		expect([...roots.values()]).toContain("../tools/web/search");
 		expect([...roots.values()]).toContain("./read");
 	});
 
@@ -231,7 +231,7 @@ describe("a startup root cannot reach an expensive third-party package through s
 		for (const entry of [
 			join(SRC, "cli/file-processor.ts"),
 			join(WEB_PLUGIN_SRC, "scrapers/types.ts"),
-			join(SRC, "web/search/providers/perplexity.ts"),
+			join(SRC, "tools/web/search/providers/perplexity.ts"),
 		]) {
 			expect(existsSync(entry)).toBe(true);
 			for (const [pkg, trail] of expensiveReachableFrom(entry)) {

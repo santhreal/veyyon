@@ -47,7 +47,7 @@ import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { type SubagentProgressPayload, TASK_SUBAGENT_PROGRESS_CHANNEL } from "@veyyon/coding-agent/task";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
-import { paintRailMotion, railIdleHeadAt } from "@veyyon/coding-agent/tui/rail-motion";
+import { paintRailMotion, railIdleHeadAt } from "@veyyon/coding-agent/modes/terminal/draw/rail-motion";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { Text } from "@veyyon/tui";

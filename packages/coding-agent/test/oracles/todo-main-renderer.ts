@@ -24,7 +24,7 @@ import {
 	type TodoToolDetails,
 } from "@veyyon/coding-agent/tools/agent/todo";
 import { formatErrorDetail } from "@veyyon/coding-agent/tools/core/render-utils";
-import { framedBlock, renderStatusLine, renderTreeList } from "@veyyon/coding-agent/tui";
+import { framedBlock, renderStatusLine, renderTreeList } from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { formatCount } from "@veyyon/utils";

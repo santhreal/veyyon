@@ -45,7 +45,7 @@ import {
 } from "@veyyon/coding-agent/tools/core/path-utils";
 import { shortenPath } from "@veyyon/coding-agent/tools/core/render-utils";
 import { readToolView } from "@veyyon/coding-agent/tools/fs/read-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 describe("a delimited path escaping cwd requires approval", () => {

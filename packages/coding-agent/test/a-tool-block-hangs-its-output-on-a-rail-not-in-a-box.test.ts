@@ -51,7 +51,7 @@ import {
 	type OutputBlockOptions,
 	outputBlockContentWidth,
 	renderOutputBlock,
-} from "@veyyon/coding-agent/tui/output-block";
+} from "@veyyon/coding-agent/modes/terminal/draw/output-block";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TERMINAL, type TUI } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/utils/width";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
@@ -75,9 +75,9 @@ function plain(lines: readonly string[]): string[] {
  * rail and plate nobody checked.
  */
 async function declaredStates(): Promise<string[]> {
-	const text = await fs.readFile(path.join(SRC, "tui", "types.ts"), "utf8");
+	const text = await fs.readFile(path.join(SRC, "modes", "terminal", "draw", "types.ts"), "utf8");
 	const declaration = /export type State\s*=([^;]+);/.exec(text);
-	if (!declaration) throw new Error("State is no longer an exported type alias in src/tui/types.ts");
+	if (!declaration) throw new Error("State is no longer an exported type alias in src/modes/terminal/draw/types.ts");
 	const members = [...declaration[1].matchAll(/"([^"]+)"/g)].map(m => m[1]!);
 	if (members.length === 0) throw new Error("State declares no string members");
 	return members;

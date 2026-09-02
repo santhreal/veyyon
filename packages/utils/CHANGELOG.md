@@ -17,6 +17,7 @@
 
 ### Changed
 
+- Source-path comments in `ansi.ts` and `sgr.ts` name the terminal output-block at `src/modes/terminal/draw/output-block.ts`. No user-visible behavior changes.
 - Source-path comments in `ansi.ts` and `eval-prompt-overrides.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
 - `sanitize-text.ts` imports the escape byte from `@veyyon/utils/ansi` rather than declaring a second copy of it.
 - Source-path comments in `sanitize-text.ts`, `strip-ansi.ts`, `tab-spacing.ts` and `width.ts` name the Rust modules they cite at their new paths under `natives/`. No user-visible behavior changes.

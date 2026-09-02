@@ -337,7 +337,7 @@ describe("Gemini, Anthropic and Cursor", () => {
 		const expected: ReadonlyArray<[string, string]> = [
 			["ai/src/providers/google.ts", "GEMINI_DEVELOPER_API_ENDPOINT"],
 			["catalog/src/discovery/gemini.ts", "GEMINI_DEVELOPER_API_ENDPOINT"],
-			["coding-agent/src/web/search/providers/gemini.ts", "GEMINI_DEVELOPER_API_ENDPOINT"],
+			["coding-agent/src/tools/web/search/providers/gemini.ts", "GEMINI_DEVELOPER_API_ENDPOINT"],
 			["ai/src/utils/anthropic-auth.ts", "ANTHROPIC_API_ENDPOINT"],
 			["ai/src/providers/anthropic.ts", "ANTHROPIC_API_ENDPOINT"],
 			["ai/src/providers/anthropic-client.ts", "ANTHROPIC_API_ENDPOINT"],
@@ -370,7 +370,7 @@ describe("OpenRouter's API base", () => {
 			"plugins/mnemopi/src/config.ts",
 			"plugins/mnemopi/src/core/embeddings.ts",
 			"plugins/mnemopi/src/core/extraction/client.ts",
-			"coding-agent/src/web/search/providers/perplexity-auth.ts",
+			"coding-agent/src/tools/web/search/providers/perplexity-auth.ts",
 		]) {
 			const text = await Bun.file(memberFileOf(file)).text();
 			expect(importedEndpoints(text), file).toContain("OPENROUTER_API_ENDPOINT");
@@ -380,7 +380,7 @@ describe("OpenRouter's API base", () => {
 	/** Both published names still resolve to the one value, since callers already import them. */
 	it("keeps both published aliases pointing here", async () => {
 		const { DEFAULT_EMBEDDING_API_URL } = await import("@veyyon/mnemopi/config");
-		const { OPENROUTER_BASE_URL } = await import("@veyyon/coding-agent/web/search/providers/perplexity-auth");
+		const { OPENROUTER_BASE_URL } = await import("@veyyon/coding-agent/tools/web/search/providers/perplexity-auth");
 		expect(DEFAULT_EMBEDDING_API_URL).toBe(OPENROUTER_API_ENDPOINT);
 		expect(OPENROUTER_BASE_URL).toBe(OPENROUTER_API_ENDPOINT);
 	});
@@ -477,7 +477,7 @@ describe("the hosts have one owner", () => {
 			"ai/src/usage/google-antigravity.ts",
 			"ai/src/registry/oauth/google-antigravity.ts",
 			"ai/src/registry/oauth/google-gemini-cli.ts",
-			"coding-agent/src/web/search/providers/gemini.ts",
+			"coding-agent/src/tools/web/search/providers/gemini.ts",
 			"coding-agent/src/tools/web/image-gen.ts",
 			"coding-agent/src/session/agent-session.ts",
 			"catalog/src/discovery/gitlab-duo-workflow.ts",

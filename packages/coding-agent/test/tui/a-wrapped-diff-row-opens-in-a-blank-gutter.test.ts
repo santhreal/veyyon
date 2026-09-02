@@ -18,7 +18,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { wrapDiffRow } from "@veyyon/coding-agent/tui/wrap-diff-row";
+import { wrapDiffRow } from "@veyyon/coding-agent/modes/terminal/draw/wrap-diff-row";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 
 /** Every row's visible text, which is what a reader sees. */

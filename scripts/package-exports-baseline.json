@@ -3064,7 +3064,7 @@
 		"createTools",
 		"filterInitialToolsForDiscoveryAll"
 	],
-	"@veyyon/coding-agent/tui": [
+	"@veyyon/coding-agent/modes/terminal/draw": [
 		"CachedOutputBlock",
 		"Ellipsis",
 		"Hasher",
@@ -3091,7 +3091,7 @@
 		"urlHyperlink",
 		"urlHyperlinkAlways"
 	],
-	"@veyyon/coding-agent/web/search": [
+	"@veyyon/coding-agent/tools/web/search": [
 		"WebSearchTool",
 		"getSearchProvider",
 		"getSearchTools",

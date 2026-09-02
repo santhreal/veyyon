@@ -2,7 +2,7 @@
  * What the launch card shows, for any host.
  *
  * The tool half in `launch.ts` decides what happened; this half decides what a reader is told, and
- * names no colour, glyph or component. A terminal draws it through `src/tui/draw-tool-view.ts` and a
+ * names no colour, glyph or component. A terminal draws it through `src/modes/terminal/draw/draw-tool-view.ts` and a
  * second host writes its own mapping from the same value.
  *
  * The card is one row per operation: a head row stating the op, the process it names and the facts

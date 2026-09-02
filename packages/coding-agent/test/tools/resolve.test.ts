@@ -4,7 +4,7 @@ import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ResolveTool } from "@veyyon/coding-agent/tools/agent/resolve";
 import { resolveToolView } from "@veyyon/coding-agent/tools/agent/resolve-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { sanitizeText } from "@veyyon/utils";
 import { useFullColor } from "../helpers/theme-assertions";
 

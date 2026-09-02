@@ -24,7 +24,7 @@ import {
 	replaceTabs,
 	type ToolUIColor,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import { Ellipsis, framedBlock, renderStatusLine, type State, truncateToWidth } from "@veyyon/coding-agent/tui";
+import { Ellipsis, framedBlock, renderStatusLine, type State, truncateToWidth } from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Component } from "@veyyon/tui";
 import { formatAge, formatDuration } from "@veyyon/utils";
 

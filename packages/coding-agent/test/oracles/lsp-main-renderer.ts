@@ -21,8 +21,8 @@ import {
 	TRUNCATE_LENGTHS,
 	truncateToWidth,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import { renderStatusLine } from "@veyyon/coding-agent/tui";
-import { CachedOutputBlock, markFramedBlockComponent } from "@veyyon/coding-agent/tui/output-block";
+import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw";
+import { CachedOutputBlock, markFramedBlockComponent } from "@veyyon/coding-agent/modes/terminal/draw/output-block";
 import { getLanguageFromPath } from "@veyyon/coding-agent/utils/lang-from-path";
 import { type Component, Text } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";

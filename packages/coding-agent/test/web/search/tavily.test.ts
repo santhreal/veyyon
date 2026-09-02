@@ -5,7 +5,7 @@ import {
 	buildRequestBody,
 	searchTavily,
 	type TavilySearchParams,
-} from "@veyyon/coding-agent/web/search/providers/tavily";
+} from "@veyyon/coding-agent/tools/web/search/providers/tavily";
 
 describe("Tavily buildRequestBody", () => {
 	afterEach(() => {

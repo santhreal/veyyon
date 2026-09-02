@@ -35,7 +35,7 @@ import {
 	type AstEditViewResult,
 	astEditToolView,
 } from "@veyyon/coding-agent/tools/search/ast-edit-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import * as astEditOracle from "../oracles/ast-edit-main-renderer";
 import {

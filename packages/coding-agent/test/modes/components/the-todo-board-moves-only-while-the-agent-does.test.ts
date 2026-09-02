@@ -35,7 +35,7 @@ import {
 	RAIL_IDLE_ROWS_PER_STEP,
 	RAIL_IDLE_STEP_MS,
 	railIdleHeadAtMs,
-} from "@veyyon/coding-agent/tui/rail-motion";
+} from "@veyyon/coding-agent/modes/terminal/draw/rail-motion";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 
 const EXPECTED_MOTION_FIELDS = ["agentInMotion", "live", "transitions"] as const;

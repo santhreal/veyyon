@@ -21,7 +21,7 @@
  * background and vertical padding, which this component forwards untouched.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { WidthAwareText } from "@veyyon/coding-agent/tui/width-aware-text";
+import { WidthAwareText } from "@veyyon/coding-agent/modes/terminal/draw/width-aware-text";
 import { setTuiTight } from "@veyyon/utils/tight-mode";
 
 /** A formatter that records every content width it is asked for. */

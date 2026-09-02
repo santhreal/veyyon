@@ -15,7 +15,7 @@ import {
 	todoStrikeSplit,
 } from "@veyyon/coding-agent/tools/agent/todo";
 import { todoToolView } from "@veyyon/coding-agent/tools/agent/todo-view";
-import { viewToolRenderer } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { viewToolRenderer } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { type Component, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { type } from "arktype";
 

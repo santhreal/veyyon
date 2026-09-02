@@ -3,7 +3,7 @@
  *
  * The rows leave here as the program wrote them: the text it printed and the SGR sequences it chose,
  * with nothing else. What a reader eventually sees of them is the host's, which for the terminal is
- * `src/tui/terminal-row.ts`.
+ * `src/modes/terminal/draw/terminal-row.ts`.
  */
 
 import { SGR_RESET } from "@veyyon/utils/ansi";

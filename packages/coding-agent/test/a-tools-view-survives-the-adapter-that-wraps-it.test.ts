@@ -26,7 +26,7 @@ import { CustomToolAdapter } from "@veyyon/coding-agent/extensibility/custom-too
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import type { RegisteredTool, ToolDefinition } from "@veyyon/coding-agent/extensibility/extensions/types";
 import { RegisteredToolAdapter } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
-import { toolDrawsItself } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { toolDrawsItself } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { Type } from "@veyyon/kernel/registry/typebox";
 import type { ToolView, ToolViewRenderer } from "@veyyon/view";
 

@@ -27,11 +27,11 @@ import {
 } from "@veyyon/coding-agent/tools/fs/read";
 import type { ReadUrlToolDetails } from "@veyyon/coding-agent/tools/web/fetch";
 import { readUrlToolView } from "@veyyon/coding-agent/tools/web/fetch-view";
-import { renderCodeCell, renderMarkdownCell } from "@veyyon/coding-agent/tui/code-cell";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
-import { fileHyperlink } from "@veyyon/coding-agent/tui/hyperlink";
-import { CachedOutputBlock, markFramedBlockComponent } from "@veyyon/coding-agent/tui/output-block";
-import { renderStatusLine } from "@veyyon/coding-agent/tui/status-line";
+import { renderCodeCell, renderMarkdownCell } from "@veyyon/coding-agent/modes/terminal/draw/code-cell";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { fileHyperlink } from "@veyyon/coding-agent/modes/terminal/draw/hyperlink";
+import { CachedOutputBlock, markFramedBlockComponent } from "@veyyon/coding-agent/modes/terminal/draw/output-block";
+import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw/status-line";
 import { getLanguageFromPath } from "@veyyon/coding-agent/utils/lang-from-path";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";

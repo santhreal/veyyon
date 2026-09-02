@@ -39,7 +39,7 @@ import { theme } from "@veyyon/coding-agent/theme/theme";
 import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { AgentActivitySnapshot, JobSnapshot, JobToolDetails } from "@veyyon/coding-agent/tools/shell/job";
 import { type JobRenderArgs, type JobViewResult, jobToolView } from "@veyyon/coding-agent/tools/shell/job-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { Ellipsis } from "@veyyon/natives";
 import { truncateToWidth } from "@veyyon/utils/width";
 import { jobToolRenderer } from "../oracles/job-main-renderer";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { classifyProviderHttpError, toSearchSources } from "@veyyon/coding-agent/web/search/providers/utils";
-import { SearchProviderError } from "@veyyon/coding-agent/web/search/types";
+import { classifyProviderHttpError, toSearchSources } from "@veyyon/coding-agent/tools/web/search/providers/utils";
+import { SearchProviderError } from "@veyyon/coding-agent/tools/web/search/types";
 
 /**
  * classifyProviderHttpError maps a provider's raw HTTP failure into a compact,

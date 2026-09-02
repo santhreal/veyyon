@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { applyResultLimit, sanitizeResultLimit } from "../../src/web/search/utils";
+import { applyResultLimit, sanitizeResultLimit } from "../../src/tools/web/search/utils";
 
 /**
  * applyResultLimit is the single owner of "apply a caller-supplied result limit

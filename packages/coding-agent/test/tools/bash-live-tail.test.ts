@@ -25,7 +25,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { FOLLOW_TUNING } from "@veyyon/coding-agent/modes/terminal/components/chrome/follow";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import { bashToolView } from "@veyyon/coding-agent/tools/shell/bash-view";
-import { drawToolView } from "@veyyon/coding-agent/tui/draw-tool-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { TERMINAL } from "@veyyon/tui";
 
 const terminal = TERMINAL as unknown as { trueColor: boolean };

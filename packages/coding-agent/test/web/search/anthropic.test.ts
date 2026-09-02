@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
-import { searchAnthropic } from "@veyyon/coding-agent/web/search/providers/anthropic";
+import { searchAnthropic } from "@veyyon/coding-agent/tools/web/search/providers/anthropic";
 import { AuthStorage as CodingAuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
