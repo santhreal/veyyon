@@ -29,9 +29,17 @@ export function dumpSettings(settings: Settings): Record<string, SettingEntryVie
 		const ui = getUi(key);
 		const options = Array.isArray(ui?.options) ? ui.options : [];
 		try {
+			const value = settings.get(key as never);
+			const defaultValue = getDefault(key as never);
+			// JSON.stringify drops undefined fields, so an entry emitted with one
+			// arrives at the desktop missing value or default and fails to
+			// decode; treat an unresolvable pair as an unresolvable setting.
+			if (value === undefined || defaultValue === undefined) {
+				continue;
+			}
 			dumped[key] = {
-				value: settings.get(key as never),
-				default: getDefault(key as never),
+				value,
+				default: defaultValue,
 				source: settings.getSource(key),
 				type: def.type,
 				label: ui?.label ?? null,
