@@ -104,7 +104,7 @@ impl CubicBezier {
 			if t_high - t_low <= 1e-6 {
 				break;
 			}
-			t = (t_low + t_high) * 0.5;
+			t = f32::midpoint(t_low, t_high);
 			if self.sample_x(t) < x {
 				t_low = t;
 			} else {
