@@ -2,10 +2,19 @@
  * Agents CLI command handlers.
  *
  * Handles `veyyon agents unpack` for writing bundled agent definitions to disk.
+ *
+ * The default target is the one directory discovery reads for user-authored
+ * definitions, `~/<config>/subagents` ({@link getGlobalSubagentsDir}). It used
+ * to be `<agentDir>/agents`, and it stayed there after definitions moved to the
+ * global dir, so an unpacked agent landed where nothing loads it: the command
+ * reported files written and the model never saw one of them. `--dir` is the
+ * only other destination, for exporting a definition into an extension package
+ * or a scratch tree; there is no project scope, because a repository-supplied
+ * definition would shadow a bundled agent by name.
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getAgentDir, getProjectDir, isEnoent } from "@veyyon/utils";
+import { getGlobalSubagentsDir, getProjectDir, isEnoent } from "@veyyon/utils";
 import { YAML } from "bun";
 import chalk from "chalk";
 import { theme } from "../modes/theme/theme";
@@ -24,7 +33,6 @@ export interface AgentsCommandArgs {
 		json?: boolean;
 		dir?: string;
 		user?: boolean;
-		project?: boolean;
 	};
 }
 
@@ -44,15 +52,7 @@ function resolveTargetDir(flags: AgentsCommandArgs["flags"]): string {
 		return path.resolve(getProjectDir(), flags.dir.trim());
 	}
 
-	if (flags.user && flags.project) {
-		throw new Error("Choose either --user or --project, not both.");
-	}
-
-	if (flags.project) {
-		return path.resolve(getProjectDir(), ".veyyon", "agents");
-	}
-
-	return path.join(getAgentDir(), "agents");
+	return getGlobalSubagentsDir();
 }
 
 function toFrontmatter(agent: AgentDefinition): Record<string, unknown> {

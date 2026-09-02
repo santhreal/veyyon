@@ -69,6 +69,7 @@
 ### Fixed
 
 - The installer refuses to replace a binary whose only ownership record is a pre-identity v1 receipt, instead of moving it aside. That receipt vouches for the path alone, so a user who deleted the installed binary and put their own file at the name left exactly one behind, and it was being read as permission to displace their file.
+- `veyyon agents unpack` writes to `~/.veyyon/subagents`, the directory subagent discovery reads, instead of the profile's `agent/agents` dir, where an unpacked definition was reported as written and then never loaded.
 - `veyyon config set` and `veyyon config reset` no longer exit 1 with an ENOENT on a profile that has never been launched: the save now creates the profile's agent directory before it takes the config file's lock, which refused a parent directory that did not exist yet.
 - A `/btw` or `/omfg` reply long enough to be truncated no longer ends in a replacement character when the cut lands inside an emoji: the trim counts UTF-8 bytes but removes UTF-16 code units, so it could stop on half a surrogate pair.
 - A malformed content block no longer opens a blank line in a session listing or in rendered history. A text block whose `text` is absent or is not a string contributed an empty part, so the join placed a separator beside it, while a thinking or tool block carrying just as little text was skipped outright.
@@ -116,6 +117,7 @@
 
 - `subagent.sharedModel`, `subagent.model`, `subagent.thinkingLevel` and `subagent.modelByDepth` decided the model and effort for every subagent at once and are rejected; a config still holding one is reported once, naming the agent page that replaces it.
 - The `--subagent-model` launch flag, which set the model for every subagent in the session.
+- The `--project` flag on `veyyon agents unpack`, which wrote definitions to `./.veyyon/agents`; there is no project scope for subagent discovery, so those files were never loaded.
 - The tagline under the wordmark on the session welcome hero, which the launch card and the mounted hero each printed.
 
 ## [1.3.0] - 2026-08-28
