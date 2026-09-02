@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Reasoning recorded behind a rewritten history prefix is dropped before the request on a model that binds thinking blocks to their prefix, instead of being replayed and answered with a 400.
 - ChatGPT Codex server-side compaction streams a trailing `compaction_trigger` item to `{base}/codex/responses`, instead of posting to `{base}/codex/responses/compact`, which answers 404 and turned every compaction into a paid local pass for the rest of the session.
 - A Codex compaction stream carrying a `compaction` item with no `encrypted_content` is refused instead of being stored as a window every later turn discards.
 - A compaction route that answers 404 is retried after 30 minutes instead of standing the model down for the whole process, so one transient 404 no longer forces a paid local compaction on every later pass.

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- A model's thinking config carries `prefixBinding`, set for Claude 5.1 and later, stating that its thinking blocks are bound to the conversation prefix they were produced against.
+
 ### Changed
 
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.

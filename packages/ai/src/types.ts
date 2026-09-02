@@ -524,6 +524,15 @@ export interface UserMessage {
 	attribution?: MessageAttribution;
 	/** Provider-specific opaque payload used to reconstruct transport-native history. */
 	providerPayload?: ProviderPayload;
+	/**
+	 * When this message REPLACED earlier history (a compaction or branch
+	 * summary), in ms since epoch. Preserved-thinking models bind each thinking
+	 * block's signature to the exact bytes of everything before it, so an
+	 * assistant turn recorded at or before a rewrite carries reasoning minted
+	 * against a prefix that no longer exists: `transformMessages` drops those
+	 * blocks rather than let the API reject the request or drop them silently.
+	 */
+	historyRewriteAt?: number;
 	timestamp: number; // Unix timestamp in milliseconds
 }
 
@@ -534,6 +543,8 @@ export interface DeveloperMessage {
 	attribution?: MessageAttribution;
 	/** Provider-specific opaque payload used to reconstruct transport-native history. */
 	providerPayload?: ProviderPayload;
+	/** See {@link UserMessage.historyRewriteAt}. */
+	historyRewriteAt?: number;
 	timestamp: number; // Unix timestamp in milliseconds
 }
 
