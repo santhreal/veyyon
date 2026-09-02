@@ -54,12 +54,22 @@ export function dashboardStub(): DashboardController {
 	};
 }
 
-/** The extension context the autoresearch tools read: a cwd and a session id. */
-export function createCtx(cwd: string, sessionId = "autoresearch-test-session"): ExtensionContext {
+/**
+ * The extension context the autoresearch tools read: a cwd, a session id, and
+ * the model query `start_arm` resolves an arm's model through. The default
+ * query is empty, so a tool that resolves a model without one being supplied
+ * fails the way it does for an unauthenticated provider rather than throwing.
+ */
+export function createCtx(
+	cwd: string,
+	sessionId = "autoresearch-test-session",
+	models: Partial<ExtensionContext["models"]> = {},
+): ExtensionContext {
 	return {
 		cwd,
 		hasUI: false,
 		sessionManager: { getSessionId: () => sessionId },
+		models: { list: () => [], current: () => undefined, resolve: () => undefined, ...models },
 	} as unknown as ExtensionContext;
 }
 

@@ -167,7 +167,7 @@ describe("the run screen fits the terminal it was given", () => {
 		// titled itself "Autoresearch" and its session pane printed "serial, no arms"
 		// about a swarm of four the setup console had already configured.
 		const runtime = runtimeWith(0);
-		runtime.pendingSwarm = { breadth: 4, attempts: 2, certify: true };
+		runtime.pendingSwarm = { breadth: 4, attempts: 2, certify: true, armModels: [] };
 		expect(screenTitle(runtime)).toContain("Autoswarm");
 
 		const detail = renderRunDetail(runtime, "session", 90).join("\n");

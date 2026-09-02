@@ -16,11 +16,13 @@ Autoresearch with breadth. The model derives the metric from your harness.
 
 › Goal          make the tokenizer faster▌
   Breadth       3    candidate arms per iteration
+  Models        one per arm, comma separated
   Attempts      1    retries before an arm is abandoned
   Certification on   arms cross-review before one is kept
 
 3 arms × 1 attempts: up to 3 harness runs per iteration.
 Each arm is reviewed by another, and no pair reviews each other.
+Every arm runs on the session model.
 
 type to edit   ↑↓ field   enter start   esc cancel
 ```
@@ -28,12 +30,13 @@ type to edit   ↑↓ field   enter start   esc cancel
 Up and down move between fields, left and right change the focused value, space
 toggles certification, Enter starts the run and Escape leaves without starting
 one. The legend lists only the keys that act on the focused field: the arrow
-range on Breadth and Attempts, `type to edit` on Goal.
+range on Breadth and Attempts, `type to edit` on Goal and Models.
 
 The first line under the fields is the harness runs one iteration costs, breadth
 multiplied by attempts. It is a ceiling: an arm that succeeds on its first
-attempt uses one. The second line is the review topology for that breadth. Both
-lines change with the fields above them.
+attempt uses one. The second line is the review topology for that breadth. The
+third states which model each arm runs on. All three change with the fields
+above them.
 
 Enter does nothing while the goal is empty, and the legend reads `enter needs a
 goal` until one is typed. Text typed after the command prefills the goal, so
@@ -66,6 +69,43 @@ so breadth costs iteration time rather than disk. An arm is a different idea:
 two arms that produce the same diff are counted once.
 
 Breadth 1 is the serial loop exactly. No arms, no review, no certification cost.
+
+## Models per arm
+
+The Models row assigns one model to each arm, in arm order, comma separated:
+
+```
+  Models        opus, gpt-5, glm
+```
+
+`a0` runs on Opus, `a1` on GPT-5, `a2` on GLM. The line under the fields reads
+the assignment back as arms, so an arm that is off by one comma is visible
+before the run starts:
+
+```
+a0 opus · a1 gpt-5 · a2 glm.
+```
+
+An entry left empty runs that arm on the session model, so `, gpt-5` puts `a1`
+on GPT-5 and leaves `a0` where the session already is. An arm past the end of
+the list runs on the session model too, and clearing the row puts every arm
+there.
+
+Each spec resolves the way `--model` resolves one: `provider/id`, a bare id, or
+a role alias such as `@slow`. A spec that matches nothing refuses the run, and
+the legend reads `enter needs a known model` until it is fixed. The row is
+absent at breadth 1, where there are no arms to spread across models.
+
+`start_arm` performs the switch. The loop calls it before the first edit of each
+arm, which is also what puts the arm on the status row (`a1 on GPT-5`) while it
+is being built. The session returns to its own model when the arm's result is
+logged, so triage, certification and the choice of the next hypothesis run on
+the model you selected rather than on whichever arm ran last. Turning the mode
+off or clearing the session mid-arm restores it too.
+
+A round configured this way compares models as much as ideas: each arm is a
+different model writing a different change, measured by the same harness and
+reviewed by the ring. Certification still applies, and no arm reviews itself.
 
 ## Why arms are reviewed
 
@@ -142,21 +182,23 @@ reviewer concludes; the judgement on top of them does not.
 
 ## Session state
 
-Breadth, attempts and certification belong to the session rather than the
-installation, so the setup console sets them per investigation and `/settings`
-does not carry them. A run records which arm produced it and which arm certified
-it, both stated on the run screen's entry for that run.
+Breadth, attempts, certification and the per-arm models belong to the session
+rather than the installation, so the setup console sets them per investigation
+and `/settings` does not carry them. A run records which arm produced it and
+which arm certified it, both stated on the run screen's entry for that run.
 
 A winning arm has to beat the segment's baseline, not merely the other arms of
 its iteration. An iteration where every arm regressed is a null round.
 
-`certify_arms` attaches only while breadth is above 1. A serial session has one
-candidate and no ring, so there is nothing for it to triage.
+`certify_arms` and `start_arm` attach only while breadth is above 1. A serial
+session has one candidate, no ring and no arm to open, so there is nothing for
+either to do.
 
 ## Regenerating the setup console captures
 
 `proof/scenes/autoswarm-setup.sh` opens the console, moves through the fields,
-toggles certification off and back on, empties the goal and leaves with Escape.
+assigns a model per arm and types one nothing matches, toggles certification off
+and back on, empties the goal and leaves with Escape.
 It is a stills take that measures under 1 fps of real change, so both arms turn
 the motion gate off; at the default the recorder rejects the take as a stutter:
 

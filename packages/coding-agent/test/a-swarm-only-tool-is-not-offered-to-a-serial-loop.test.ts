@@ -32,7 +32,7 @@ describe("a swarm-only tool is not offered to a serial loop", () => {
 		// Pinned by equality, not by count: a new tool lands in neither list and
 		// fails here, where the decision is recorded, rather than silently
 		// attaching to sessions that cannot use it.
-		expect(SWARM_TOOL_NAMES).toEqual(["certify_arms"]);
+		expect(SWARM_TOOL_NAMES).toEqual(["certify_arms", "start_arm"]);
 		expect(SERIAL_SAFE).toEqual(["init_experiment", "run_experiment", "log_experiment", "update_notes"]);
 		for (const name of SWARM_TOOL_NAMES) {
 			expect(EXPERIMENT_TOOL_NAMES).toContain(name);

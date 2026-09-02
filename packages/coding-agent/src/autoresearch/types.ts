@@ -1,4 +1,5 @@
 import type { AgentToolResult } from "@veyyon/agent-core";
+import type { Model } from "@veyyon/ai";
 import type { ExtensionAPI, ExtensionContext } from "../extensibility/extensions";
 import type { SessionEntry } from "../session/session-entries";
 import type { TruncationResult } from "../session/streaming-output";
@@ -151,6 +152,12 @@ export interface SwarmSetup {
 	breadth: number;
 	attempts: number;
 	certify: boolean;
+	/**
+	 * Model spec per arm index, `a0` first, resolved the way `--model` resolves
+	 * one. An empty entry, and any arm past the end, runs on the session model.
+	 * Empty at breadth 1, where there are no arms to spread across models.
+	 */
+	armModels: string[];
 }
 
 export interface AutoresearchRuntime {
@@ -171,6 +178,24 @@ export interface AutoresearchRuntime {
 	 * configures in the order they reach for it: set up, then start.
 	 */
 	pendingSwarm: SwarmSetup | null;
+	/**
+	 * The arm currently being built, and the model it was switched to, from
+	 * `start_arm` until the `log_experiment` that closes that arm. Null outside
+	 * an arm, which is where the loop's own reasoning happens.
+	 */
+	activeArm: ActiveArm | null;
+}
+
+export interface ActiveArm {
+	/** Arm id as the loop names it, `a0` first. */
+	arm: string;
+	/** Display name of the model the arm builds on. */
+	modelLabel: string;
+	/**
+	 * The model to return to when the arm closes. Undefined when the arm runs on
+	 * the session model and nothing was switched.
+	 */
+	restore: Model | undefined;
 }
 
 export interface AutoresearchControlEntryData {

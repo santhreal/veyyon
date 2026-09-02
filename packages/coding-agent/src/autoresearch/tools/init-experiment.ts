@@ -89,6 +89,10 @@ export function createInitExperimentTool(
 			const breadth = clampCount(params.breadth, MAX_BREADTH) ?? parked?.breadth ?? existing?.breadth ?? 1;
 			const attempts = clampCount(params.attempts, MAX_ATTEMPTS) ?? parked?.attempts ?? existing?.attempts ?? 1;
 			const certify = params.certify ?? parked?.certify ?? existing?.certify ?? true;
+			// Per-arm models are the user's choice in the setup console, never the
+			// model's: this tool takes no argument for them, and a breadth that
+			// lands back at 1 drops them, since there are no arms to spread.
+			const armModels = breadth > 1 ? (parked?.armModels ?? existing?.armModels ?? []).slice(0, breadth) : [];
 			runtime.pendingSwarm = null;
 
 			if (requiresHarness) {
@@ -147,6 +151,7 @@ export function createInitExperimentTool(
 					attempts,
 					maxParallel: breadth,
 					certify,
+					armModels,
 				});
 				createdSession = true;
 			} else {
@@ -166,6 +171,7 @@ export function createInitExperimentTool(
 					attempts,
 					maxParallel: breadth,
 					certify,
+					armModels,
 				};
 				if (isNewSegmentInit) {
 					updates.baselineCommit = baselineCommit;

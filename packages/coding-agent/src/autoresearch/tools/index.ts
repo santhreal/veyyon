@@ -5,6 +5,7 @@
  */
 export const EXPERIMENT_TOOL_NAMES = [
 	"init_experiment",
+	"start_arm",
 	"run_experiment",
 	"log_experiment",
 	"update_notes",
@@ -19,8 +20,13 @@ export const EXPERIMENT_TOOL_NAMES = [
  * tool has nothing to triage: offered anyway, it invites a model to invent an
  * arm identity, "certify" its single run against itself, and log the result as
  * though a reviewer had passed it.
+ *
+ * `start_arm` opens an arm and puts the session on that arm's model. A serial
+ * session has no arm to open and no second model to open it on, so the same
+ * argument applies: offered anyway, it invites an arm identity that the storage
+ * row, the screen and the certification all agree does not exist.
  */
-export const SWARM_TOOL_NAMES = ["certify_arms"];
+export const SWARM_TOOL_NAMES = ["certify_arms", "start_arm"];
 
 /**
  * The active-tool set for a session of the given breadth.

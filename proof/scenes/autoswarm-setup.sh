@@ -3,13 +3,15 @@
 #
 # `/autoswarm` used to take its configuration as command arguments, so a run was
 # started by typing `/autoswarm breadth 4` and hoping the number landed. It now
-# opens a console: four fields, arrow keys, Enter to start, Escape to leave.
+# opens a console: the goal, the breadth, one model per arm, the attempts and
+# the certification toggle, with arrow keys, Enter to start and Escape to leave.
 #
 # The scene proves the console is reachable, that the keys move the values on
-# screen, and that Escape leaves without starting a run. It deliberately does
-# not press Enter at the end: starting a real swarm needs an `autoresearch.sh`
-# harness in the tree and a model that will spend an hour in it, and neither
-# belongs in a capture.
+# screen, that an arm can be put on its own model and that a model nothing
+# matches refuses to start, and that Escape leaves without starting a run. It
+# deliberately does not press Enter at the end: starting a real swarm needs an
+# `autoresearch.sh` harness in the tree and a model that will spend an hour in
+# it, and neither belongs in a capture.
 #
 # The goal field is prefilled from the text typed after the command, so the
 # first frame already carries a goal and the empty-goal warning is reached by
@@ -25,6 +27,10 @@
 # widest value the toggle reaches, so a value column measured from the values a
 # field currently holds lands on the correct column in that one state and a column
 # short in every other.
+#
+# `models-unknown` carries the other one: the refusal is printed beside `enter`
+# on the legend and named on the assignment line, so a console that accepts a
+# model nobody has is visible in the frame rather than only in the run it starts.
 
 settle 20
 
@@ -41,6 +47,29 @@ shot breadth-focused
 key_repeat Right 3 0.25
 settle 1
 shot breadth-raised
+
+# The models row: one spec per arm, in arm order. The line under the fields
+# reads the assignment back as arms, so the frame shows which model each arm
+# gets rather than a comma list the reader has to count.
+#
+# The two ids are rows the recorder's own model file declares, so the console
+# resolves them through the resolver `--model` uses rather than accepting any
+# string that was typed.
+k Down
+settle 1
+shot models-focused
+t "qwen2.5-1.5b-q8, qwen2.5-1.5b-q4"
+settle 1
+shot models-assigned
+
+# A model nothing matches must refuse the run rather than quietly falling back
+# to the session model.
+t ", nope"
+settle 1
+shot models-unknown
+key_repeat BackSpace 6 0.05
+settle 1
+shot models-restored
 
 # Down past Attempts to Certification, and toggle it off. The summary changes
 # from a review ring to uncertified, which is the differential this field has.
@@ -60,6 +89,7 @@ shot certification-on
 
 # Back to the goal and empty it. Enter must not start a run with nothing to
 # optimize, so the warning appears and the console stays open.
+k Up
 k Up
 k Up
 k Up

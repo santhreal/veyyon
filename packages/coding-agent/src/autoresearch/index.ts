@@ -5,6 +5,7 @@ import { errorMessage, logger, prompt } from "@veyyon/utils";
 import type { ExtensionContext, ExtensionFactory } from "../extensibility/extensions";
 import { autoresearchPrompts } from "../prompts/autoresearch/rows";
 import * as git from "../utils/git";
+import { leaveArm } from "./arm-model";
 import { createDashboardController } from "./dashboard";
 import { ensureAutoresearchBranch, parseWorkDirDirtyPaths } from "./git";
 import { formatNum, gitStatusPorcelain, gitWorkDirPrefix } from "./helpers";
@@ -27,6 +28,7 @@ import { createCertifyArmsTool } from "./tools/certify-arms";
 import { createInitExperimentTool } from "./tools/init-experiment";
 import { createLogExperimentTool } from "./tools/log-experiment";
 import { createRunExperimentTool } from "./tools/run-experiment";
+import { createStartArmTool } from "./tools/start-arm";
 import { createUpdateNotesTool } from "./tools/update-notes";
 import type { AutoresearchRuntime, ExperimentResult, PendingRunSummary } from "./types";
 
@@ -117,6 +119,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	api.registerTool(createLogExperimentTool({ dashboard, getRuntime, pi: api }));
 	api.registerTool(createUpdateNotesTool({ dashboard, getRuntime, pi: api }));
 	api.registerTool(createCertifyArmsTool({ dashboard, getRuntime, pi: api }));
+	api.registerTool(createStartArmTool({ dashboard, getRuntime, pi: api }));
 
 	// `/autoresearch` and `/autoswarm` are one engine reached two ways. Autoswarm
 	// is autoresearch with breadth: same session, same tools, same store, plus
@@ -130,9 +133,11 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 
 	const disableMode = async (ctx: ExtensionContext, runtime: AutoresearchRuntime, label: string): Promise<void> => {
 		setMode(ctx, false, runtime.goal, "off");
+		// Leaving mid-arm must not leave the user on that arm's model.
+		const restored = await leaveArm(api, runtime);
 		dashboard.update(ctx, runtime);
 		await api.setActiveTools(activeToolsFor(api.getActiveTools(), false, effectiveBreadth(runtime)));
-		ctx.ui.notify(`${label} mode disabled`, "info");
+		ctx.ui.notify(restored ? `${label} mode disabled, and your model restored` : `${label} mode disabled`, "info");
 	};
 
 	/**
@@ -152,6 +157,11 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			breadth: session?.breadth ?? runtime.pendingSwarm?.breadth ?? DEFAULT_SWARM_BREADTH,
 			attempts: session?.attempts ?? runtime.pendingSwarm?.attempts ?? 1,
 			certify: session?.certify ?? runtime.pendingSwarm?.certify ?? true,
+			armModels: session?.armModels ?? runtime.pendingSwarm?.armModels ?? [],
+			// The console refuses a spec nothing matches, through the resolver
+			// `--model` selection uses, so a typo is caught at the row rather than
+			// leaving the arm silently on the session model mid-run.
+			modelExists: (spec: string) => ctx.models.resolve(spec) !== undefined,
 		});
 		return await ctx.ui.custom<SwarmSetupResult | null>(
 			(tui, theme, _keybindings, done) => ({
@@ -213,6 +223,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				breadth: swarmSetup.breadth,
 				attempts: swarmSetup.attempts,
 				certify: swarmSetup.certify,
+				armModels: swarmSetup.armModels,
 			};
 		}
 
@@ -252,6 +263,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 					attempts: swarmSetup.attempts,
 					certify: swarmSetup.certify,
 					maxParallel: swarmSetup.breadth,
+					armModels: swarmSetup.armModels,
 				});
 				runtime.pendingSwarm = null;
 			}
@@ -472,6 +484,10 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 					swarm: session.breadth > 1,
 					breadth: session.breadth,
 					certify: session.certify,
+					has_arm_models: session.armModels.some(spec => spec.length > 0),
+					arm_models: session.armModels
+						.map((spec, index) => `a${index} on ${spec.length > 0 ? spec : "the session model"}`)
+						.join(", "),
 					metric_name: state.metricName,
 					has_branch: Boolean(state.branch),
 					branch: state.branch,
@@ -566,6 +582,10 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		runtime.lastRunArtifactDir = null;
 		runtime.lastRunNumber = null;
 		runtime.lastRunSummary = null;
+		runtime.pendingSwarm = null;
+		// Same reason as `off`: a cleared session leaves nothing behind, including
+		// the model an arm switched to.
+		await leaveArm(api, runtime);
 		setMode(ctx, false, null, "clear");
 		dashboard.update(ctx, runtime);
 		await api.setActiveTools(activeToolsFor(api.getActiveTools(), false, effectiveBreadth(runtime)));

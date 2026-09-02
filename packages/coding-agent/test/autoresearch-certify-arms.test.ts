@@ -185,11 +185,12 @@ describe("breadth reaches the session", () => {
 		// nothing when used in the order a user reaches for it.
 		const dir = freshRepo();
 		const runtime = createSessionRuntime();
-		runtime.pendingSwarm = { breadth: 4, attempts: 3, certify: false };
+		runtime.pendingSwarm = { breadth: 4, attempts: 3, certify: false, armModels: ["sonnet", "", "gpt-5", ""] };
 		const { session } = await openSession(dir, runtime, { breadth: undefined });
 		expect(session.breadth).toBe(4);
 		expect(session.attempts).toBe(3);
 		expect(session.certify).toBe(false);
+		expect(session.armModels).toEqual(["sonnet", "", "gpt-5", ""]);
 		expect(runtime.pendingSwarm).toBeNull();
 	});
 
@@ -198,10 +199,12 @@ describe("breadth reaches the session", () => {
 		// it passes deliberately outranks what was parked before it looked.
 		const dir = freshRepo();
 		const runtime = createSessionRuntime();
-		runtime.pendingSwarm = { breadth: 4, attempts: 3, certify: false };
+		runtime.pendingSwarm = { breadth: 4, attempts: 3, certify: false, armModels: ["sonnet", "", "gpt-5", ""] };
 		const { session } = await openSession(dir, runtime, { breadth: 2 });
 		expect(session.breadth).toBe(2);
 		expect(session.attempts).toBe(3);
+		// Two arms now, so the two model slots past them are not carried.
+		expect(session.armModels).toEqual(["sonnet", ""]);
 	});
 
 	it("keeps the configured breadth when a later init does not mention it", async () => {

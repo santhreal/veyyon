@@ -51,6 +51,7 @@ export function createSessionRuntime(): AutoresearchRuntime {
 		state: createExperimentState(),
 		goal: null,
 		pendingSwarm: null,
+		activeArm: null,
 	};
 }
 

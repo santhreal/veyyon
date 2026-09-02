@@ -38,8 +38,8 @@ const HINTS = {
 	certify: "cross-review before an arm is kept",
 };
 
-function frame(breadth: number, attempts: number, certify: boolean, width = 80): string[] {
-	const model = new SwarmSetupModel({ goal: "make it faster", breadth, attempts, certify });
+function frame(breadth: number, attempts: number, certify: boolean, width = 80, armModels: string[] = []): string[] {
+	const model = new SwarmSetupModel({ goal: "make it faster", breadth, attempts, certify, armModels });
 	return renderSetupConsole(model, width, plainTheme);
 }
 

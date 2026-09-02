@@ -30,8 +30,24 @@ const ENTER = "\r";
 const ESCAPE = "\x1b";
 const BACKSPACE = "\x7f";
 
-function fresh(overrides: Partial<{ goal: string; breadth: number; attempts: number; certify: boolean }> = {}) {
-	return new SwarmSetupModel({ goal: "make it faster", breadth: 3, attempts: 1, certify: true, ...overrides });
+function fresh(
+	overrides: Partial<{
+		goal: string;
+		breadth: number;
+		attempts: number;
+		certify: boolean;
+		armModels: string[];
+		modelExists: (spec: string) => boolean;
+	}> = {},
+) {
+	return new SwarmSetupModel({
+		goal: "make it faster",
+		breadth: 3,
+		attempts: 1,
+		certify: true,
+		armModels: [],
+		...overrides,
+	});
 }
 
 function feed(model: SwarmSetupModel, keys: string[]): Array<"start" | "cancel" | null> {
@@ -49,14 +65,14 @@ describe("the autoswarm console configures a run before it starts", () => {
 		// setting nobody can change, which is the same as not shipping it.
 		const model = fresh();
 		const ids = setupRows(model).map(row => row.id);
-		expect(ids).toEqual(["goal", "breadth", "attempts", "certify"]);
+		expect(ids).toEqual(["goal", "breadth", "models", "attempts", "certify"]);
 
 		const seen: string[] = [model.field];
 		for (let index = 0; index < ids.length; index++) {
 			handleSetupKey(model, DOWN);
 			seen.push(model.field);
 		}
-		expect(seen).toEqual(["goal", "breadth", "attempts", "certify", "goal"]);
+		expect(seen).toEqual(["goal", "breadth", "models", "attempts", "certify", "goal"]);
 
 		handleSetupKey(model, UP);
 		expect(model.field).toBe("certify");
@@ -70,6 +86,8 @@ describe("the autoswarm console configures a run before it starts", () => {
 		feed(model, Array<string>(MAX_BREADTH + 4).fill(LEFT));
 		expect(model.breadth).toBe(MIN_BREADTH);
 
+		// Breadth is back at its minimum here, so the models row is gone and one
+		// step down lands on attempts.
 		handleSetupKey(model, DOWN);
 		feed(model, Array<string>(MAX_ATTEMPTS + 4).fill(RIGHT));
 		expect(model.attempts).toBe(MAX_ATTEMPTS);
@@ -108,7 +126,7 @@ describe("the autoswarm console configures a run before it starts", () => {
 		expect(model.goal).toBe("a ");
 		expect(model.certify).toBe(true);
 
-		feed(model, [DOWN, DOWN, DOWN, " "]);
+		feed(model, [DOWN, DOWN, DOWN, DOWN, " "]);
 		expect(model.field).toBe("certify");
 		expect(model.certify).toBe(false);
 		expect(model.goal).toBe("a ");
@@ -150,7 +168,7 @@ describe("the autoswarm console configures a run before it starts", () => {
 	});
 
 	it("cancels on escape from any field", () => {
-		for (const prefix of [[], [DOWN], [DOWN, DOWN], [DOWN, DOWN, DOWN]]) {
+		for (const prefix of [[], [DOWN], [DOWN, DOWN], [DOWN, DOWN, DOWN], [DOWN, DOWN, DOWN, DOWN]]) {
 			const model = fresh();
 			feed(model, prefix);
 			expect(handleSetupKey(model, ESCAPE)).toBe("cancel");
@@ -159,8 +177,14 @@ describe("the autoswarm console configures a run before it starts", () => {
 
 	it("hands back a trimmed goal with the values that were set", () => {
 		const model = fresh({ goal: "  make startup faster  ", breadth: 3, attempts: 1, certify: true });
-		feed(model, [DOWN, RIGHT, DOWN, RIGHT, DOWN, " ", ENTER]);
-		expect(model.result()).toEqual({ goal: "make startup faster", breadth: 4, attempts: 2, certify: false });
+		feed(model, [DOWN, RIGHT, DOWN, DOWN, RIGHT, DOWN, " ", ENTER]);
+		expect(model.result()).toEqual({
+			goal: "make startup faster",
+			breadth: 4,
+			attempts: 2,
+			certify: false,
+			armModels: [],
+		});
 	});
 
 	it("states what the chosen breadth actually buys", () => {
@@ -214,7 +238,7 @@ describe("the autoswarm console configures a run before it starts", () => {
 
 		// And it stays one column when a value changes width.
 		handleSetupKey(model, DOWN);
-		feed(model, [DOWN, DOWN, " "]);
+		feed(model, [DOWN, DOWN, DOWN, " "]);
 		expect(model.certify).toBe(false);
 		expect(hintColumns(model)).toEqual(columns);
 	});

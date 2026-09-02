@@ -70,6 +70,7 @@ const UPDATES: UpdateSessionParams = {
 	attempts: 3,
 	maxParallel: 2,
 	certify: false,
+	armModels: ["sonnet", "", "gpt-5", "glm"],
 };
 
 function fields(session: SessionRow): Record<string, unknown> {

@@ -44,6 +44,11 @@ export interface SessionRow {
 	maxParallel: number;
 	/** Whether surviving arms certify each other. Skipped when breadth is 1. */
 	certify: boolean;
+	/**
+	 * Model chain per arm index, `a0` first. An entry that is empty, and any arm
+	 * past the end of the list, runs on whatever model the session is on.
+	 */
+	armModels: string[];
 	createdAt: number;
 	closedAt: number | null;
 }
@@ -101,6 +106,7 @@ export interface OpenSessionParams {
 	attempts?: number;
 	maxParallel?: number;
 	certify?: boolean;
+	armModels?: string[];
 }
 
 export interface UpdateSessionParams {
@@ -121,6 +127,7 @@ export interface UpdateSessionParams {
 	attempts?: number;
 	maxParallel?: number;
 	certify?: boolean;
+	armModels?: string[];
 }
 
 export interface InsertRunParams {
@@ -187,6 +194,7 @@ type SessionDbRow = {
 	attempts: number;
 	max_parallel: number;
 	certify: number;
+	arm_models_json: string | null;
 	created_at: number;
 	closed_at: number | null;
 };
@@ -224,7 +232,7 @@ type RunDbRow = {
 	abandoned_at: number | null;
 };
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const SCHEMA_SQL = `
 PRAGMA journal_mode=WAL;
@@ -252,6 +260,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 	attempts INTEGER NOT NULL DEFAULT 1,
 	max_parallel INTEGER NOT NULL DEFAULT 8,
 	certify INTEGER NOT NULL DEFAULT 1,
+	arm_models_json TEXT NOT NULL DEFAULT '[]',
 	created_at INTEGER NOT NULL,
 	closed_at INTEGER
 );
@@ -309,6 +318,9 @@ function migrateSchema(db: Database, from: number): void {
 		addColumnIfMissing(db, "sessions", "certify", "INTEGER NOT NULL DEFAULT 1");
 		addColumnIfMissing(db, "runs", "arm", "TEXT");
 		addColumnIfMissing(db, "runs", "certified_by", "TEXT");
+	}
+	if (from < 3) {
+		addColumnIfMissing(db, "sessions", "arm_models_json", "TEXT NOT NULL DEFAULT '[]'");
 	}
 }
 
@@ -389,9 +401,9 @@ export class AutoresearchStorage {
 				name, goal, primary_metric, metric_unit, direction,
 				preferred_command, branch, baseline_commit, max_iterations,
 				scope_paths_json, off_limits_json, constraints_json, secondary_metrics_json,
-				breadth, attempts, max_parallel, certify,
+				breadth, attempts, max_parallel, certify, arm_models_json,
 				created_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 		);
 		const row = stmt.get(
 			params.name,
@@ -411,6 +423,7 @@ export class AutoresearchStorage {
 			params.attempts ?? 1,
 			params.maxParallel ?? 8,
 			(params.certify ?? true) ? 1 : 0,
+			JSON.stringify(params.armModels ?? []),
 			Date.now(),
 		);
 		if (!row) throw new Error("Failed to insert autoresearch session");
@@ -492,6 +505,10 @@ export class AutoresearchStorage {
 		if (updates.certify !== undefined) {
 			setClauses.push("certify = ?");
 			values.push(updates.certify ? 1 : 0);
+		}
+		if (updates.armModels !== undefined) {
+			setClauses.push("arm_models_json = ?");
+			values.push(JSON.stringify(updates.armModels));
 		}
 		if (setClauses.length > 0) {
 			values.push(sessionId);
@@ -747,6 +764,7 @@ function rowToSession(row: SessionDbRow): SessionRow {
 		attempts: row.attempts ?? 1,
 		maxParallel: row.max_parallel ?? 8,
 		certify: (row.certify ?? 1) !== 0,
+		armModels: parseStringArray(row.arm_models_json ?? "[]"),
 		createdAt: row.created_at,
 		closedAt: row.closed_at,
 	};

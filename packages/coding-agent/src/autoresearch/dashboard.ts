@@ -12,6 +12,7 @@
 import { visibleWidth } from "@veyyon/tui";
 import type { ExtensionContext } from "../extensibility/extensions";
 import { theme } from "../modes/theme/theme";
+import { truncateToWidth } from "../tools/render-utils";
 import { formatElapsed, formatNum, formatPercentChange } from "./helpers";
 import { AutoresearchScreenComponent } from "./screen";
 import { AUTORESEARCH_SCREEN_KEY } from "./shortcuts";
@@ -198,6 +199,16 @@ export function renderStatusRow(runtime: AutoresearchRuntime, width = process.st
 		segments.push({
 			text: theme.fg("warning", runtime.autoresearchMode ? "baseline pending" : "not started"),
 			drop: 8,
+		});
+	}
+
+	// Which arm the edits landing right now belong to, and what is writing them.
+	// Without it a per-arm model switch is invisible: the model row changes under
+	// the user mid-loop and nothing on screen connects it to an arm.
+	if (runtime.activeArm) {
+		segments.push({
+			text: theme.fg("accent", `${runtime.activeArm.arm} on ${truncateToWidth(runtime.activeArm.modelLabel, 24)}`),
+			drop: 6,
 		});
 	}
 

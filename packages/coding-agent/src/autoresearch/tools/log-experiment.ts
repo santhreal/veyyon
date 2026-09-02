@@ -7,6 +7,7 @@ import type { ToolDefinition } from "../../extensibility/extensions";
 import type { Theme } from "../../modes/theme/theme";
 import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
 import * as git from "../../utils/git";
+import { leaveArm } from "../arm-model";
 import { computeRunModifiedPaths, getCurrentAutoresearchBranch, parseWorkDirDirtyPaths, tryReadHeadSha } from "../git";
 import {
 	ensureNumericMetricMap,
@@ -241,6 +242,10 @@ export function createLogExperimentTool(
 			runtime.lastRunNumber = null;
 			runtime.autoResumeArmed = true;
 			runtime.lastAutoResumePendingRunNumber = null;
+			// The arm this result belongs to is over. Whatever comes next -- the next
+			// arm, triage, the next hypothesis -- runs on the session's own model
+			// until another `start_arm` says otherwise.
+			await leaveArm(options.pi, runtime);
 
 			const experiment: ExperimentResult = {
 				runNumber: tentativeRun.id,
