@@ -75,14 +75,15 @@ impl RenderOnce for Checkbox {
 
 		let box_size = tokens.spacing(SpacingStep::S6);
 		let radius = tokens.radius(RadiusStep::Sm);
+		// §6.10: unchecked is a hairline-edged transparent box; checked is the
+		// accent. The edge is drawn in both states so the box never resizes.
 		let (bg, border_color) = match self.state {
-			CheckboxState::Unchecked => {
-				(tokens.color(ColorRole::Inset), tokens.color(ColorRole::Hairline))
-			},
+			CheckboxState::Unchecked => (tokens.transparent(), tokens.color(ColorRole::Hairline)),
 			CheckboxState::Checked | CheckboxState::Indeterminate => {
 				(tokens.color(ColorRole::Accent), tokens.color(ColorRole::Accent))
 			},
 		};
+		let disabled = self.interact == InteractiveState::Disabled;
 
 		let icon = match self.state {
 			CheckboxState::Checked => Some(IconName::Check),
@@ -114,18 +115,22 @@ impl RenderOnce for Checkbox {
 			.flex()
 			.items_center()
 			.gap(tokens.spacing(SpacingStep::S2))
-			.cursor_pointer()
 			.child(box_el);
 
 		if let Some(label) = self.label {
 			row = row.child(
 				div()
 					.text_size(tokens.font_size(TextRamp::Body))
+					.line_height(tokens.line_height(TextRamp::Body))
 					.text_color(tokens.color(ColorRole::Foreground))
 					.child(label),
 			);
 		}
 
+		if disabled {
+			return row.opacity(0.4).cursor_not_allowed();
+		}
+		row = row.cursor_pointer();
 		if let Some(handler) = self.on_toggle {
 			let next_state = match self.state {
 				CheckboxState::Unchecked => CheckboxState::Checked,
@@ -202,17 +207,19 @@ impl RenderOnce for Radio {
 		let inner_size = tokens.spacing(SpacingStep::S2);
 		let radius = tokens.radius(RadiusStep::Full);
 
+		// §6.10: the ring is the hairline at rest and the accent when chosen;
+		// the dot is the accent. Neither state has a neutral fill.
 		let (border_color, inner_bg) = if self.selected {
 			(tokens.color(ColorRole::Accent), tokens.color(ColorRole::Accent))
 		} else {
 			(tokens.color(ColorRole::Hairline), tokens.transparent())
 		};
+		let disabled = self.interact == InteractiveState::Disabled;
 
 		let inner_dot = div().size(inner_size).bg(inner_bg).rounded(radius);
 
 		let outer_circle = div()
 			.size(outer_size)
-			.bg(tokens.color(ColorRole::Inset))
 			.rounded(radius)
 			.border_1()
 			.border_color(border_color)
@@ -227,18 +234,22 @@ impl RenderOnce for Radio {
 			.flex()
 			.items_center()
 			.gap(tokens.spacing(SpacingStep::S2))
-			.cursor_pointer()
 			.child(outer_circle);
 
 		if let Some(label) = self.label {
 			row = row.child(
 				div()
 					.text_size(tokens.font_size(TextRamp::Body))
+					.line_height(tokens.line_height(TextRamp::Body))
 					.text_color(tokens.color(ColorRole::Foreground))
 					.child(label),
 			);
 		}
 
+		if disabled {
+			return row.opacity(0.4).cursor_not_allowed();
+		}
+		row = row.cursor_pointer();
 		if let Some(handler) = self.on_select {
 			row = row.on_click(move |_, window, cx| handler(window, cx));
 		}

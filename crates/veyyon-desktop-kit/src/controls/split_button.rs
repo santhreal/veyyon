@@ -1,17 +1,16 @@
 //! SplitButton primitive (§8.25).
 
-use std::sync::Arc;
-
 use veyyon_gpui::{
-	App, ClickEvent, ElementId, IntoElement, RenderOnce, SharedString, Window, div, prelude::*,
+	App, ClickEvent, CursorStyle, ElementId, IntoElement, RenderOnce, SharedString, Window, div,
+	prelude::*,
 };
 
 pub use crate::state::ButtonVariant;
 use crate::{
-	controls::ButtonSize,
+	controls::{ButtonSize, metrics::control_metrics},
 	icons::{Icon, IconName, IconSize},
 	state::InteractiveState,
-	token_set::{ColorRole, RadiusStep, SpacingStep, StrokeStep, TextRamp, TokenSet},
+	token_set::{ColorRole, StrokeStep, TintRole, TokenSet},
 };
 
 /// Interactive split button primitive combining a primary action button with a
@@ -23,8 +22,8 @@ pub struct SplitButton {
 	variant:      ButtonVariant,
 	size:         ButtonSize,
 	state:        InteractiveState,
-	on_primary:   Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static>>,
-	on_secondary: Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static>>,
+	on_primary:   Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
+	on_secondary: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
 }
 
 impl SplitButton {
@@ -74,9 +73,9 @@ impl SplitButton {
 	#[must_use]
 	pub fn on_primary(
 		mut self,
-		handler: impl Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static,
+		handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 	) -> Self {
-		self.on_primary = Some(Arc::new(handler));
+		self.on_primary = Some(Box::new(handler));
 		self
 	}
 
@@ -84,9 +83,9 @@ impl SplitButton {
 	#[must_use]
 	pub fn on_secondary(
 		mut self,
-		handler: impl Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static,
+		handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 	) -> Self {
-		self.on_secondary = Some(Arc::new(handler));
+		self.on_secondary = Some(Box::new(handler));
 		self
 	}
 }
@@ -96,100 +95,108 @@ impl RenderOnce for SplitButton {
 		let default_tokens = TokenSet::default();
 		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
 
-		let (pad_x, pad_y, radius, ramp, icon_size) = match self.size {
-			ButtonSize::Small => (
-				tokens.spacing(SpacingStep::S2),
-				tokens.spacing(SpacingStep::S1),
-				tokens.radius(RadiusStep::Sm),
-				TextRamp::Small,
-				IconSize::Size12,
-			),
-			ButtonSize::Medium => (
-				tokens.spacing(SpacingStep::S3),
-				tokens.spacing(SpacingStep::S2),
-				tokens.radius(RadiusStep::Md),
-				TextRamp::Body,
-				IconSize::Size14,
-			),
-			ButtonSize::Large => (
-				tokens.spacing(SpacingStep::S4),
-				tokens.spacing(SpacingStep::S3),
-				tokens.radius(RadiusStep::Lg),
-				TextRamp::Read,
-				IconSize::Size16,
-			),
+		let metrics = control_metrics(self.size, tokens);
+		let icon_size = match self.size {
+			ButtonSize::Small => IconSize::Size12,
+			ButtonSize::Medium => IconSize::Size14,
+			ButtonSize::Large => IconSize::Size16,
 		};
 
-		let (bg, fg, divider_color) = match (self.variant, self.state) {
-			(_, InteractiveState::Disabled) => (
-				tokens.color(ColorRole::Inset),
-				tokens.color(ColorRole::Muted),
-				tokens.color(ColorRole::Hairline),
-			),
-			(ButtonVariant::Primary, _) => (
+		// The same ladder as `Button` (§6.10): the two halves share one ground
+		// and one edge. The divider is the hairline on a quiet variant and the
+		// edge colour on a destructive one; on the accent fill it is the
+		// accent's own ink at a third, so it reads as a seam, not a stripe.
+		let error = tokens.tint(TintRole::Error);
+		let mut accent_seam = tokens.color(ColorRole::AccentForeground);
+		accent_seam.a = 0.3;
+		let (bg, edge, fg, hover_bg, divider) = match self.variant {
+			ButtonVariant::Primary => (
 				tokens.color(ColorRole::Accent),
-				tokens.color(ColorRole::AccentForeground),
-				tokens.color(ColorRole::Hairline),
-			),
-			(ButtonVariant::Danger, _) => (
-				tokens.color(ColorRole::ErrorFill),
-				tokens.color(ColorRole::ErrorInk),
-				tokens.color(ColorRole::Hairline),
-			),
-			(ButtonVariant::Ghost, _) => (
 				tokens.transparent(),
+				tokens.color(ColorRole::AccentForeground),
+				tokens.color(ColorRole::Focus),
+				accent_seam,
+			),
+			ButtonVariant::Default => (
+				tokens.transparent(),
+				tokens.color(ColorRole::Hairline),
 				tokens.color(ColorRole::Foreground),
+				tokens.row_hover(),
 				tokens.color(ColorRole::Hairline),
 			),
-			(ButtonVariant::Default, _) => (
-				tokens.color(ColorRole::Inset),
-				tokens.color(ColorRole::Foreground),
+			ButtonVariant::Ghost => (
+				tokens.transparent(),
+				tokens.transparent(),
+				tokens.color(ColorRole::Secondary),
+				tokens.row_hover(),
 				tokens.color(ColorRole::Hairline),
 			),
+			ButtonVariant::Danger => {
+				(tokens.transparent(), error.fill, error.ink, error.fill, error.fill)
+			},
 		};
+		let disabled = self.state == InteractiveState::Disabled;
 
 		let id = self.id.unwrap_or_else(|| ElementId::from("split-button"));
 		let stroke_px = tokens.stroke(StrokeStep::Hairline);
+		let cursor = if disabled {
+			CursorStyle::OperationNotAllowed
+		} else {
+			CursorStyle::PointingHand
+		};
 
 		let mut primary_el = div()
 			.id(ElementId::from("split-button-primary"))
-			.px(pad_x)
-			.py(pad_y)
+			.h_full()
+			.px(metrics.inset)
 			.flex()
 			.items_center()
 			.justify_center()
-			.cursor_pointer()
+			.cursor(cursor)
 			.child(self.label);
-
-		if let Some(handler) = self.on_primary {
-			primary_el = primary_el.on_click(move |ev, window, cx| handler(ev, window, cx));
-		}
-
 		let mut secondary_el = div()
 			.id(ElementId::from("split-button-secondary"))
-			.px(pad_y)
-			.py(pad_y)
+			.h_full()
+			.w(metrics.square)
 			.flex()
 			.items_center()
 			.justify_center()
-			.cursor_pointer()
-			.child(Icon::new(IconName::ChevronDown).size(icon_size));
+			.cursor(cursor)
+			.child(Icon::new(IconName::ChevronDown).size(icon_size).color(fg));
 
-		if let Some(handler) = self.on_secondary {
-			secondary_el = secondary_el.on_click(move |ev, window, cx| handler(ev, window, cx));
+		if !disabled {
+			primary_el = primary_el.hover(move |style| style.bg(hover_bg));
+			secondary_el = secondary_el.hover(move |style| style.bg(hover_bg));
+			if let Some(handler) = self.on_primary {
+				primary_el = primary_el.on_click(move |ev, window, cx| handler(ev, window, cx));
+			}
+			if let Some(handler) = self.on_secondary {
+				secondary_el = secondary_el.on_click(move |ev, window, cx| handler(ev, window, cx));
+			}
 		}
 
-		div()
+		// The height is set on the outer element; each half fills it, so the
+		// divider is exactly the control's height and the halves share a
+		// baseline. The radius clips the halves' hover wash to the corners.
+		let mut el = div()
 			.id(id)
+			.h(metrics.height)
 			.bg(bg)
-			.rounded(radius)
+			.border(stroke_px)
+			.border_color(edge)
+			.rounded(metrics.radius)
+			.overflow_hidden()
 			.text_color(fg)
-			.text_size(tokens.font_size(ramp))
-			.line_height(tokens.line_height(ramp))
+			.text_size(tokens.font_size(metrics.ramp))
+			.line_height(tokens.line_height(metrics.ramp))
 			.flex()
 			.items_center()
 			.child(primary_el)
-			.child(div().w(stroke_px).h_full().bg(divider_color))
-			.child(secondary_el)
+			.child(div().w(stroke_px).h_full().bg(divider))
+			.child(secondary_el);
+		if disabled {
+			el = el.opacity(metrics.disabled_opacity);
+		}
+		el
 	}
 }

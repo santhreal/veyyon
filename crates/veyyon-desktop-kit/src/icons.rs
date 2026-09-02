@@ -3,10 +3,7 @@
 use std::collections::HashSet;
 
 use strum::{EnumIter, IntoEnumIterator};
-use veyyon_gpui::{
-	App, Bounds, Hsla, IntoElement, Path, Pixels, Point, RenderOnce, Window, canvas, div,
-	prelude::*, px,
-};
+use veyyon_gpui::{App, Hsla, IntoElement, Pixels, RenderOnce, Window, div, prelude::*, px, svg};
 
 use crate::token_set::{ColorRole, TokenSet};
 
@@ -46,6 +43,16 @@ pub enum IconName {
 	Info,
 	Warning,
 	Help,
+	Cpu,
+	Sparkles,
+	Zap,
+	Layers,
+	Paperclip,
+	Gauge,
+	Image,
+	Film,
+	PanelLeft,
+	PanelRight,
 }
 
 /// Permitted standard icon sizes.
@@ -67,17 +74,6 @@ impl IconSize {
 			Self::Size14 => px(14.0),
 			Self::Size16 => px(16.0),
 			Self::Size20 => px(20.0),
-		}
-	}
-
-	/// Resolves scale factor relative to 16px reference grid.
-	#[must_use]
-	pub fn scale(self) -> f32 {
-		match self {
-			Self::Size12 => 12.0 / 16.0,
-			Self::Size14 => 14.0 / 16.0,
-			Self::Size16 => 1.0,
-			Self::Size20 => 20.0 / 16.0,
 		}
 	}
 }
@@ -119,6 +115,16 @@ pub fn icon_meanings() -> Vec<(IconName, &'static str)> {
 		(IconName::Info, "informational notice"),
 		(IconName::Warning, "advisory caution alert"),
 		(IconName::Help, "documentation assistance"),
+		(IconName::Cpu, "language model selection"),
+		(IconName::Sparkles, "reasoning or thinking effort"),
+		(IconName::Zap, "steer the running turn"),
+		(IconName::Layers, "queue behind the running turn"),
+		(IconName::Paperclip, "file attachment"),
+		(IconName::Gauge, "context window occupancy"),
+		(IconName::Image, "still picture attachment"),
+		(IconName::Film, "video clip attachment"),
+		(IconName::PanelLeft, "queue rail visibility"),
+		(IconName::PanelRight, "right panel visibility"),
 	]
 }
 
@@ -144,99 +150,57 @@ pub fn validate_icon_uniqueness() -> bool {
 	true
 }
 
-/// Vector path segment for rendering.
-#[derive(Debug, Clone, Copy)]
-pub enum PathSegment {
-	MoveTo(f32, f32),
-	LineTo(f32, f32),
-}
-
-/// Returns normalized path segments on a 16x16 reference grid.
+/// Returns raw SVG bytes for the given icon.
 #[must_use]
-pub fn icon_segments(icon: IconName, _size: IconSize) -> &'static [PathSegment] {
-	match icon {
-		IconName::ChevronDown => &[
-			PathSegment::MoveTo(4.0, 6.0),
-			PathSegment::LineTo(8.0, 10.0),
-			PathSegment::LineTo(12.0, 6.0),
-		],
-		IconName::ChevronRight => &[
-			PathSegment::MoveTo(6.0, 4.0),
-			PathSegment::LineTo(10.0, 8.0),
-			PathSegment::LineTo(6.0, 12.0),
-		],
-		IconName::ChevronLeft => &[
-			PathSegment::MoveTo(10.0, 4.0),
-			PathSegment::LineTo(6.0, 8.0),
-			PathSegment::LineTo(10.0, 12.0),
-		],
-		IconName::ChevronUp => &[
-			PathSegment::MoveTo(4.0, 10.0),
-			PathSegment::LineTo(8.0, 6.0),
-			PathSegment::LineTo(12.0, 10.0),
-		],
-		IconName::Search => &[
-			PathSegment::MoveTo(7.0, 3.0),
-			PathSegment::LineTo(11.0, 7.0),
-			PathSegment::LineTo(7.0, 11.0),
-			PathSegment::LineTo(3.0, 7.0),
-			PathSegment::LineTo(7.0, 3.0),
-			PathSegment::MoveTo(10.0, 10.0),
-			PathSegment::LineTo(13.5, 13.5),
-		],
-		IconName::Close => &[
-			PathSegment::MoveTo(4.0, 4.0),
-			PathSegment::LineTo(12.0, 12.0),
-			PathSegment::MoveTo(12.0, 4.0),
-			PathSegment::LineTo(4.0, 12.0),
-		],
-		IconName::Check => &[
-			PathSegment::MoveTo(3.5, 8.5),
-			PathSegment::LineTo(6.5, 11.5),
-			PathSegment::LineTo(12.5, 4.5),
-		],
-		IconName::Plus => &[
-			PathSegment::MoveTo(8.0, 3.0),
-			PathSegment::LineTo(8.0, 13.0),
-			PathSegment::MoveTo(3.0, 8.0),
-			PathSegment::LineTo(13.0, 8.0),
-		],
-		IconName::Minus => &[PathSegment::MoveTo(3.0, 8.0), PathSegment::LineTo(13.0, 8.0)],
-		IconName::Terminal => &[
-			PathSegment::MoveTo(3.0, 4.0),
-			PathSegment::LineTo(7.0, 8.0),
-			PathSegment::LineTo(3.0, 12.0),
-			PathSegment::MoveTo(8.0, 12.0),
-			PathSegment::LineTo(13.0, 12.0),
-		],
-		IconName::Folder => &[
-			PathSegment::MoveTo(2.0, 4.0),
-			PathSegment::LineTo(6.0, 4.0),
-			PathSegment::LineTo(8.0, 6.0),
-			PathSegment::LineTo(14.0, 6.0),
-			PathSegment::LineTo(14.0, 13.0),
-			PathSegment::LineTo(2.0, 13.0),
-			PathSegment::LineTo(2.0, 4.0),
-		],
-		IconName::File => &[
-			PathSegment::MoveTo(3.0, 2.0),
-			PathSegment::LineTo(9.0, 2.0),
-			PathSegment::LineTo(13.0, 6.0),
-			PathSegment::LineTo(13.0, 14.0),
-			PathSegment::LineTo(3.0, 14.0),
-			PathSegment::LineTo(3.0, 2.0),
-		],
-		_ => &[
-			PathSegment::MoveTo(2.0, 2.0),
-			PathSegment::LineTo(14.0, 2.0),
-			PathSegment::LineTo(14.0, 14.0),
-			PathSegment::LineTo(2.0, 14.0),
-			PathSegment::LineTo(2.0, 2.0),
-		],
+pub const fn icon_bytes(name: IconName) -> &'static [u8] {
+	match name {
+		IconName::ChevronDown => include_bytes!("../assets/icons/chevron-down.svg"),
+		IconName::ChevronRight => include_bytes!("../assets/icons/chevron-right.svg"),
+		IconName::ChevronLeft => include_bytes!("../assets/icons/chevron-left.svg"),
+		IconName::ChevronUp => include_bytes!("../assets/icons/chevron-up.svg"),
+		IconName::Search => include_bytes!("../assets/icons/search.svg"),
+		IconName::Close => include_bytes!("../assets/icons/close.svg"),
+		IconName::Check => include_bytes!("../assets/icons/check.svg"),
+		IconName::Folder => include_bytes!("../assets/icons/folder.svg"),
+		IconName::File => include_bytes!("../assets/icons/file.svg"),
+		IconName::Terminal => include_bytes!("../assets/icons/terminal.svg"),
+		IconName::Settings => include_bytes!("../assets/icons/settings.svg"),
+		IconName::Refresh => include_bytes!("../assets/icons/refresh.svg"),
+		IconName::Plus => include_bytes!("../assets/icons/plus.svg"),
+		IconName::Minus => include_bytes!("../assets/icons/minus.svg"),
+		IconName::Trash => include_bytes!("../assets/icons/trash.svg"),
+		IconName::Edit => include_bytes!("../assets/icons/edit.svg"),
+		IconName::Eye => include_bytes!("../assets/icons/eye.svg"),
+		IconName::EyeOff => include_bytes!("../assets/icons/eye-off.svg"),
+		IconName::Filter => include_bytes!("../assets/icons/filter.svg"),
+		IconName::Play => include_bytes!("../assets/icons/play.svg"),
+		IconName::Pause => include_bytes!("../assets/icons/pause.svg"),
+		IconName::Stop => include_bytes!("../assets/icons/stop.svg"),
+		IconName::ArrowRight => include_bytes!("../assets/icons/arrow-right.svg"),
+		IconName::ArrowLeft => include_bytes!("../assets/icons/arrow-left.svg"),
+		IconName::ArrowUp => include_bytes!("../assets/icons/arrow-up.svg"),
+		IconName::ArrowDown => include_bytes!("../assets/icons/arrow-down.svg"),
+		IconName::Pin => include_bytes!("../assets/icons/pin.svg"),
+		IconName::Unpin => include_bytes!("../assets/icons/unpin.svg"),
+		IconName::Lock => include_bytes!("../assets/icons/lock.svg"),
+		IconName::Unlock => include_bytes!("../assets/icons/unlock.svg"),
+		IconName::Info => include_bytes!("../assets/icons/info.svg"),
+		IconName::Warning => include_bytes!("../assets/icons/warning.svg"),
+		IconName::Help => include_bytes!("../assets/icons/help.svg"),
+		IconName::Cpu => include_bytes!("../assets/icons/cpu.svg"),
+		IconName::Sparkles => include_bytes!("../assets/icons/sparkles.svg"),
+		IconName::Zap => include_bytes!("../assets/icons/zap.svg"),
+		IconName::Layers => include_bytes!("../assets/icons/layers.svg"),
+		IconName::Paperclip => include_bytes!("../assets/icons/paperclip.svg"),
+		IconName::Gauge => include_bytes!("../assets/icons/gauge.svg"),
+		IconName::Image => include_bytes!("../assets/icons/image.svg"),
+		IconName::Film => include_bytes!("../assets/icons/film.svg"),
+		IconName::PanelLeft => include_bytes!("../assets/icons/panel-left.svg"),
+		IconName::PanelRight => include_bytes!("../assets/icons/panel-right.svg"),
 	}
 }
 
-/// Icon element rendered via vector path canvas.
+/// Icon element rendered via vector SVG asset.
 #[derive(IntoElement)]
 pub struct Icon {
 	name:  IconName,
@@ -274,42 +238,13 @@ impl RenderOnce for Icon {
 			.color
 			.unwrap_or_else(|| tokens.color(ColorRole::Foreground));
 		let size_px = self.size.pixels();
-		let scale = self.size.scale();
-		let name = self.name;
-		let size = self.size;
+		let bytes = icon_bytes(self.name);
 
 		div()
 			.size(size_px)
 			.flex()
 			.items_center()
 			.justify_center()
-			.child(
-				canvas(
-					move |bounds: Bounds<Pixels>, _window: &mut Window, _cx: &mut App| bounds,
-					move |bounds: Bounds<Pixels>, _, window: &mut Window, _cx: &mut App| {
-						let segments = icon_segments(name, size);
-						let mut path = Path::new(Point::new(bounds.origin.x, bounds.origin.y));
-
-						for segment in segments {
-							match *segment {
-								PathSegment::MoveTo(x, y) => {
-									path.move_to(Point::new(
-										bounds.origin.x + px(x * scale),
-										bounds.origin.y + px(y * scale),
-									));
-								},
-								PathSegment::LineTo(x, y) => {
-									path.line_to(Point::new(
-										bounds.origin.x + px(x * scale),
-										bounds.origin.y + px(y * scale),
-									));
-								},
-							}
-						}
-						window.paint_path(path, fg);
-					},
-				)
-				.size(size_px),
-			)
+			.child(svg().data(bytes).size(size_px).text_color(fg))
 	}
 }

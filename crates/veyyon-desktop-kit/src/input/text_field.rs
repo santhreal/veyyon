@@ -1,31 +1,33 @@
-//! Text field single-line input primitive (§8.25).
+//! Text field single-line input primitive wrapping an Editor entity (§8.25).
 
 use std::sync::Arc;
 
 use veyyon_gpui::{App, ElementId, IntoElement, RenderOnce, SharedString, Window, div, prelude::*};
 
+use super::editor::slot::EditorSlot;
 use crate::{
+	controls::{ButtonSize, metrics::control_metrics},
 	state::InteractiveState,
-	token_set::{ColorRole, RadiusStep, SpacingStep, TextRamp, TokenSet},
+	token_set::{ColorRole, StrokeStep, TokenSet},
 };
 
 /// Single-line text input field primitive element.
 #[derive(IntoElement)]
 pub struct TextField {
 	id:          Option<ElementId>,
-	value:       SharedString,
+	editor:      EditorSlot,
 	placeholder: SharedString,
 	state:       InteractiveState,
 	on_change:   Option<Arc<dyn Fn(SharedString, &mut Window, &mut App) + Send + Sync + 'static>>,
 }
 
 impl TextField {
-	/// Creates a text field with string value.
+	/// Creates a text field wrapping an editor slot.
 	#[must_use]
-	pub fn new(value: impl Into<SharedString>) -> Self {
+	pub fn new(editor: impl Into<EditorSlot>) -> Self {
 		Self {
 			id:          None,
-			value:       value.into(),
+			editor:      editor.into(),
 			placeholder: SharedString::default(),
 			state:       InteractiveState::default(),
 			on_change:   None,
@@ -65,56 +67,70 @@ impl TextField {
 }
 
 impl RenderOnce for TextField {
-	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let default_tokens = TokenSet::default();
 		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
 
-		let (bg, border_color, fg) = match self.state {
-			InteractiveState::Disabled => (
-				tokens.color(ColorRole::Inset),
-				tokens.color(ColorRole::Hairline),
-				tokens.color(ColorRole::Muted),
-			),
-			InteractiveState::Focused => (
-				tokens.color(ColorRole::Inset),
-				tokens.color(ColorRole::Focus),
-				tokens.color(ColorRole::Foreground),
-			),
-			_ => (
-				tokens.color(ColorRole::Inset),
-				tokens.color(ColorRole::Hairline),
-				tokens.color(ColorRole::Foreground),
-			),
-		};
+		let is_entity_focused = self
+			.editor
+			.entity()
+			.is_some_and(|ed| ed.read(cx).focus_handle().is_focused(window));
 
-		let pad_x = tokens.spacing(SpacingStep::S3);
-		let pad_y = tokens.spacing(SpacingStep::S2);
-		let radius = tokens.radius(RadiusStep::Md);
-		let font_size = tokens.font_size(TextRamp::Body);
-
-		let text = if self.value.is_empty() {
-			self.placeholder
+		// §6.10: no ground and a hairline edge; focus raises the edge to the
+		// focus role and nothing else moves. A static slot is a value on
+		// display, not an input, so it takes no text cursor.
+		let metrics = control_metrics(ButtonSize::Medium, tokens);
+		let focused = self.state == InteractiveState::Focused || is_entity_focused;
+		let disabled = self.state == InteractiveState::Disabled;
+		let edge = if focused {
+			tokens.color(ColorRole::Focus)
 		} else {
-			self.value
+			tokens.color(ColorRole::Hairline)
 		};
 
 		let id = self.id.unwrap_or_else(|| ElementId::from("text-field"));
-		div()
+		let mut container = div()
 			.id(id)
+			.h(metrics.height)
 			.w_full()
-			.max_w_full()
 			.min_w_0()
 			.overflow_hidden()
-			.bg(bg)
-			.rounded(radius)
-			.border_1()
-			.border_color(border_color)
-			.px(pad_x)
-			.py(pad_y)
-			.text_size(font_size)
-			.text_color(fg)
-			.whitespace_nowrap()
-			.truncate()
-			.child(text)
+			.rounded(metrics.radius)
+			.border(tokens.stroke(StrokeStep::Hairline))
+			.border_color(edge)
+			.px(metrics.inset)
+			.flex()
+			.items_center()
+			.text_size(tokens.font_size(metrics.ramp))
+			.line_height(tokens.line_height(metrics.ramp))
+			.text_color(tokens.color(ColorRole::Foreground));
+		if disabled {
+			container = container
+				.opacity(metrics.disabled_opacity)
+				.cursor_not_allowed();
+		} else if self.editor.is_entity() {
+			container = container.cursor_text();
+		}
+
+		match self.editor {
+			EditorSlot::Entity(entity) => container.child(div().flex_1().min_w_0().child(entity)),
+			EditorSlot::Static(val) => {
+				let (text, ink) = if val.is_empty() {
+					(self.placeholder, tokens.color(ColorRole::Placeholder))
+				} else {
+					(val, tokens.color(ColorRole::Foreground))
+				};
+				container.child(
+					div()
+						.flex_1()
+						.min_w_0()
+						.overflow_hidden()
+						.whitespace_nowrap()
+						.truncate()
+						.text_color(ink)
+						.child(text),
+				)
+			},
+		}
 	}
 }

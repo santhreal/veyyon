@@ -1,17 +1,16 @@
 //! Button primitive (§8.25).
 
-use std::sync::Arc;
-
 use veyyon_gpui::{
-	AnyElement, App, ClickEvent, ElementId, IntoElement, RenderOnce, SharedString, Window, div,
-	prelude::*,
+	AnyElement, App, ClickEvent, CursorStyle, ElementId, IntoElement, RenderOnce, SharedString,
+	Window, div, prelude::*,
 };
 
 pub use crate::state::ButtonVariant;
 use crate::{
+	controls::metrics::control_metrics,
 	icons::{Icon, IconName, IconSize},
 	state::InteractiveState,
-	token_set::{ColorRole, RadiusStep, SpacingStep, TextRamp, TokenSet},
+	token_set::{ColorRole, StrokeStep, TintRole, TokenSet},
 };
 
 /// Size ramp for button padding and typography.
@@ -33,7 +32,7 @@ pub struct Button {
 	state:       InteractiveState,
 	leading:     Option<AnyElement>,
 	trailing:    Option<AnyElement>,
-	on_click:    Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static>>,
+	on_click:    Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
 	block_width: bool,
 }
 
@@ -112,9 +111,9 @@ impl Button {
 	#[must_use]
 	pub fn on_click(
 		mut self,
-		handler: impl Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static,
+		handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 	) -> Self {
-		self.on_click = Some(Arc::new(handler));
+		self.on_click = Some(Box::new(handler));
 		self
 	}
 
@@ -131,58 +130,65 @@ impl RenderOnce for Button {
 		let default_tokens = TokenSet::default();
 		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
 
-		let (pad_x, pad_y, radius, ramp) = match self.size {
-			ButtonSize::Small => (
-				tokens.spacing(SpacingStep::S2),
-				tokens.spacing(SpacingStep::S1),
-				tokens.radius(RadiusStep::Sm),
-				TextRamp::Small,
-			),
-			ButtonSize::Medium => (
-				tokens.spacing(SpacingStep::S3),
-				tokens.spacing(SpacingStep::S2),
-				tokens.radius(RadiusStep::Md),
-				TextRamp::Body,
-			),
-			ButtonSize::Large => (
-				tokens.spacing(SpacingStep::S4),
-				tokens.spacing(SpacingStep::S3),
-				tokens.radius(RadiusStep::Lg),
-				TextRamp::Read,
-			),
-		};
+		let metrics = control_metrics(self.size, tokens);
 
-		let (bg, fg) = match (self.variant, self.state) {
-			(_, InteractiveState::Disabled) => {
-				(tokens.color(ColorRole::Inset), tokens.color(ColorRole::Muted))
-			},
-			(ButtonVariant::Primary, _) => {
-				(tokens.color(ColorRole::Accent), tokens.color(ColorRole::AccentForeground))
-			},
-			(ButtonVariant::Danger, _) => {
-				(tokens.color(ColorRole::ErrorFill), tokens.color(ColorRole::ErrorInk))
-			},
-			(ButtonVariant::Ghost, _) => (tokens.transparent(), tokens.color(ColorRole::Foreground)),
-			(ButtonVariant::Default, _) => {
-				(tokens.color(ColorRole::Inset), tokens.color(ColorRole::Foreground))
-			},
+		// Every variant carries the same 1px edge so a secondary button beside a
+		// primary one shares its height; the edge is transparent where §6.10 draws
+		// none. A control never fills with a neutral ground: the secondary and
+		// text variants are ink plus edge, and hover is the row-hover wash.
+		let error = tokens.tint(TintRole::Error);
+		let (bg, edge, fg, hover_bg) = match self.variant {
+			ButtonVariant::Primary => (
+				tokens.color(ColorRole::Accent),
+				tokens.transparent(),
+				tokens.color(ColorRole::AccentForeground),
+				tokens.color(ColorRole::Focus),
+			),
+			ButtonVariant::Default => (
+				tokens.transparent(),
+				tokens.color(ColorRole::Hairline),
+				tokens.color(ColorRole::Foreground),
+				tokens.row_hover(),
+			),
+			ButtonVariant::Ghost => (
+				tokens.transparent(),
+				tokens.transparent(),
+				tokens.color(ColorRole::Secondary),
+				tokens.row_hover(),
+			),
+			ButtonVariant::Danger => (tokens.transparent(), error.fill, error.ink, error.fill),
 		};
+		let disabled = self.state == InteractiveState::Disabled;
 
 		let id = self.id.unwrap_or_else(|| ElementId::from("button"));
+		let cursor = if disabled {
+			CursorStyle::OperationNotAllowed
+		} else {
+			CursorStyle::PointingHand
+		};
+		// Height is set, not derived from padding, so the edge never changes
+		// it; the label centres inside and an icon-only button is square.
 		let mut el = div()
 			.id(id)
+			.h(metrics.height)
 			.bg(bg)
-			.rounded(radius)
-			.px(pad_x)
-			.py(pad_y)
+			.border(tokens.stroke(StrokeStep::Hairline))
+			.border_color(edge)
+			.rounded(metrics.radius)
+			.px(metrics.inset)
 			.flex()
 			.items_center()
 			.justify_center()
-			.gap(tokens.spacing(SpacingStep::S2))
+			.gap(metrics.gap)
 			.text_color(fg)
-			.text_size(tokens.font_size(ramp))
-			.line_height(tokens.line_height(ramp))
-			.cursor_pointer();
+			.text_size(tokens.font_size(metrics.ramp))
+			.line_height(tokens.line_height(metrics.ramp))
+			.cursor(cursor);
+		if disabled {
+			el = el.opacity(metrics.disabled_opacity);
+		} else {
+			el = el.hover(move |style| style.bg(hover_bg));
+		}
 
 		if self.block_width {
 			el = el.w_full();

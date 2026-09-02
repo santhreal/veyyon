@@ -1,15 +1,19 @@
 //! NumberInput stepper control primitive (§8.25).
 
-use veyyon_gpui::{App, IntoElement, RenderOnce, Window, div, prelude::*};
+use std::rc::Rc;
+
+use veyyon_gpui::{App, ElementId, IntoElement, RenderOnce, Window, div, prelude::*};
 
 use crate::{
+	controls::{ButtonSize, metrics::control_metrics},
 	icons::{Icon, IconName, IconSize},
-	token_set::{ColorRole, RadiusStep, SpacingStep, TextRamp, TokenSet},
+	token_set::{ColorRole, SpacingStep, StrokeStep, TokenSet},
 };
 
 /// Numeric input field with increment/decrement stepper controls.
 #[derive(IntoElement)]
 pub struct NumberInput {
+	id:        Option<ElementId>,
 	value:     i64,
 	min:       i64,
 	max:       i64,
@@ -22,7 +26,22 @@ impl NumberInput {
 	/// Creates a number input with initial value.
 	#[must_use]
 	pub fn new(value: i64) -> Self {
-		Self { value, min: i64::MIN, max: i64::MAX, step: 1, disabled: false, on_change: None }
+		Self {
+			id: None,
+			value,
+			min: i64::MIN,
+			max: i64::MAX,
+			step: 1,
+			disabled: false,
+			on_change: None,
+		}
+	}
+
+	/// Sets the element ID; two inputs in one surface need distinct ids.
+	#[must_use]
+	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+		self.id = Some(id.into());
+		self
 	}
 
 	/// Sets minimum and maximum value bounds.
@@ -60,62 +79,75 @@ impl RenderOnce for NumberInput {
 		let default_tokens = TokenSet::default();
 		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
 
-		let bg = tokens.color(ColorRole::Inset);
-		let border_color = tokens.color(ColorRole::Hairline);
-		let fg = tokens.color(ColorRole::Foreground);
-		let radius = tokens.radius(RadiusStep::Md);
-		let pad_x = tokens.spacing(SpacingStep::S3);
-		let pad_y = tokens.spacing(SpacingStep::S2);
-		let font_size = tokens.font_size(TextRamp::Body);
-
+		// §6.10: no ground, a hairline edge, the value in foreground ink and the
+		// steppers as square text controls inside the frame. A stepper at its
+		// bound is drawn at rest and does nothing, so the value never leaves
+		// the range.
+		let metrics = control_metrics(ButtonSize::Medium, tokens);
+		let stroke = tokens.stroke(StrokeStep::Hairline);
+		let hairline = tokens.color(ColorRole::Hairline);
+		let hover = tokens.row_hover();
+		let stepper = metrics.height - stroke - stroke;
 		let value_text = self.value.to_string();
+		let handler = self.on_change.map(Rc::new);
 
-		let dec_btn = div()
-			.px(tokens.spacing(SpacingStep::S2))
-			.py(tokens.spacing(SpacingStep::S1))
-			.rounded(tokens.radius(RadiusStep::Xs))
-			.cursor_pointer()
-			.child(
-				Icon::new(IconName::Minus)
-					.size(IconSize::Size12)
-					.color(tokens.color(ColorRole::Muted)),
-			);
-
-		let inc_btn = div()
-			.px(tokens.spacing(SpacingStep::S2))
-			.py(tokens.spacing(SpacingStep::S1))
-			.rounded(tokens.radius(RadiusStep::Xs))
-			.cursor_pointer()
-			.child(
-				Icon::new(IconName::Plus)
-					.size(IconSize::Size12)
-					.color(tokens.color(ColorRole::Muted)),
-			);
+		let step_button = |name: &'static str, icon: IconName, target: Option<i64>| {
+			let mut button = div()
+				.id(ElementId::from(name))
+				.w(stepper)
+				.h_full()
+				.flex_shrink_0()
+				.flex()
+				.items_center()
+				.justify_center()
+				.child(
+					Icon::new(icon)
+						.size(IconSize::Size12)
+						.color(tokens.color(ColorRole::Secondary)),
+				);
+			if let (Some(target), Some(handler), false) = (target, handler.clone(), self.disabled) {
+				button = button
+					.cursor_pointer()
+					.hover(move |style| style.bg(hover))
+					.on_click(move |_, window, cx| handler(target, window, cx));
+			}
+			button
+		};
+		let lower =
+			(self.value > self.min).then(|| self.value.saturating_sub(self.step).max(self.min));
+		let higher =
+			(self.value < self.max).then(|| self.value.saturating_add(self.step).min(self.max));
 
 		let mut container = div()
-			.bg(bg)
-			.rounded(radius)
-			.border_1()
-			.border_color(border_color)
-			.px(pad_x)
-			.py(pad_y)
+			.id(self.id.unwrap_or_else(|| ElementId::from("number-input")))
+			.h(metrics.height)
+			.rounded(metrics.radius)
+			.border(stroke)
+			.border_color(hairline)
+			.overflow_hidden()
 			.flex()
 			.flex_row()
 			.items_center()
-			.justify_between()
-			.child(div().text_size(font_size).text_color(fg).child(value_text))
+			.child(step_button("number-input-decrement", IconName::Minus, lower))
+			.child(div().w(stroke).h_full().bg(hairline))
 			.child(
 				div()
+					.min_w(tokens.spacing(SpacingStep::S12))
+					.px(metrics.gap)
 					.flex()
-					.flex_row()
-					.items_center()
-					.gap(tokens.spacing(SpacingStep::S1))
-					.child(dec_btn)
-					.child(inc_btn),
-			);
+					.justify_center()
+					.text_size(tokens.font_size(metrics.ramp))
+					.line_height(tokens.line_height(metrics.ramp))
+					.text_color(tokens.color(ColorRole::Foreground))
+					.child(value_text),
+			)
+			.child(div().w(stroke).h_full().bg(hairline))
+			.child(step_button("number-input-increment", IconName::Plus, higher));
 
 		if self.disabled {
-			container = container.opacity(0.4).cursor_not_allowed();
+			container = container
+				.opacity(metrics.disabled_opacity)
+				.cursor_not_allowed();
 		}
 
 		container

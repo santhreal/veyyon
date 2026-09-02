@@ -1,13 +1,14 @@
 //! Icon button primitive (§8.25).
 
-use std::sync::Arc;
-
-use veyyon_gpui::{App, ClickEvent, ElementId, IntoElement, RenderOnce, Window, div, prelude::*};
+use veyyon_gpui::{
+	App, ClickEvent, CursorStyle, ElementId, IntoElement, RenderOnce, Window, div, prelude::*,
+};
 
 use crate::{
+	controls::{ButtonSize, metrics::control_metrics},
 	icons::{Icon, IconName, IconSize},
 	state::InteractiveState,
-	token_set::{ColorRole, RadiusStep, SpacingStep, TokenSet},
+	token_set::{ColorRole, StrokeStep, TokenSet},
 };
 
 /// Visual variant for icon buttons.
@@ -27,7 +28,7 @@ pub struct IconButton {
 	size:     IconSize,
 	variant:  IconButtonVariant,
 	state:    InteractiveState,
-	on_click: Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static>>,
+	on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
 }
 
 impl IconButton {
@@ -76,9 +77,9 @@ impl IconButton {
 	#[must_use]
 	pub fn on_click(
 		mut self,
-		handler: impl Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static,
+		handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 	) -> Self {
-		self.on_click = Some(Arc::new(handler));
+		self.on_click = Some(Box::new(handler));
 		self
 	}
 }
@@ -88,36 +89,67 @@ impl RenderOnce for IconButton {
 		let default_tokens = TokenSet::default();
 		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
 
-		let (bg, fg) = match (self.variant, self.state) {
-			(_, InteractiveState::Disabled) => (tokens.transparent(), tokens.color(ColorRole::Muted)),
-			(IconButtonVariant::Solid, _) => {
-				(tokens.color(ColorRole::Accent), tokens.color(ColorRole::AccentForeground))
-			},
-			(IconButtonVariant::Subtle, _) => {
-				(tokens.color(ColorRole::Inset), tokens.color(ColorRole::Foreground))
-			},
-			(IconButtonVariant::Ghost, _) => {
-				(tokens.transparent(), tokens.color(ColorRole::Secondary))
+		// §6.10: `Solid` is the one accent fill, `Subtle` is a hairline-edged
+		// secondary, `Ghost` is ink alone. None fills with a neutral ground.
+		let (bg, edge, fg) = match self.variant {
+			IconButtonVariant::Solid => (
+				tokens.color(ColorRole::Accent),
+				tokens.transparent(),
+				tokens.color(ColorRole::AccentForeground),
+			),
+			IconButtonVariant::Subtle => (
+				tokens.transparent(),
+				tokens.color(ColorRole::Hairline),
+				tokens.color(ColorRole::Foreground),
+			),
+			IconButtonVariant::Ghost => {
+				(tokens.transparent(), tokens.transparent(), tokens.color(ColorRole::Secondary))
 			},
 		};
+		let hover_bg = if self.variant == IconButtonVariant::Solid {
+			tokens.color(ColorRole::Focus)
+		} else {
+			tokens.row_hover()
+		};
+		let disabled = self.state == InteractiveState::Disabled;
 
-		let pad = tokens.spacing(SpacingStep::S1);
-		let radius = tokens.radius(RadiusStep::Sm);
+		// A square whose side is the control height of the size the icon
+		// implies, so an icon button sits flush beside a text button.
+		let size = match self.size {
+			IconSize::Size12 => ButtonSize::Small,
+			IconSize::Size14 => ButtonSize::Medium,
+			IconSize::Size16 | IconSize::Size20 => ButtonSize::Large,
+		};
+		let metrics = control_metrics(size, tokens);
+		let cursor = if disabled {
+			CursorStyle::OperationNotAllowed
+		} else {
+			CursorStyle::PointingHand
+		};
 
 		let id = self.id.unwrap_or_else(|| ElementId::from("icon-button"));
 		let mut el = div()
 			.id(id)
-			.p(pad)
-			.rounded(radius)
+			.w(metrics.square)
+			.h(metrics.square)
+			.flex_shrink_0()
+			.rounded(metrics.radius)
+			.bg(bg)
+			.border(tokens.stroke(StrokeStep::Hairline))
+			.border_color(edge)
 			.flex()
 			.items_center()
 			.justify_center()
-			.bg(bg)
-			.cursor_pointer()
+			.cursor(cursor)
 			.child(Icon::new(self.icon).size(self.size).color(fg));
 
-		if let Some(handler) = self.on_click {
-			el = el.on_click(move |ev, window, cx| handler(ev, window, cx));
+		if disabled {
+			el = el.opacity(metrics.disabled_opacity);
+		} else {
+			el = el.hover(move |style| style.bg(hover_bg));
+			if let Some(handler) = self.on_click {
+				el = el.on_click(move |ev, window, cx| handler(ev, window, cx));
+			}
 		}
 
 		el

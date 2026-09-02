@@ -9857,8 +9857,11 @@ version = "1.3.0"
 dependencies = [
  "gpui_platform",
  "gpui_wgpu",
+ "parking_lot",
+ "smallvec",
  "strum",
  "thiserror 2.0.20",
+ "unicode-segmentation",
  "veyyon-desktop-motion",
  "veyyon-desktop-tokens",
  "veyyon-gpui",
@@ -9868,6 +9871,7 @@ dependencies = [
 name = "veyyon-desktop-model"
 version = "1.3.0"
 dependencies = [
+ "base64",
  "serde",
  "serde_json",
  "smallvec",
@@ -9901,6 +9905,7 @@ dependencies = [
  "unicode-segmentation",
  "veyyon-desktop-kit",
  "veyyon-desktop-model",
+ "veyyon-desktop-surface",
  "veyyon-desktop-tokens",
  "veyyon-gpui",
 ]
@@ -9909,11 +9914,20 @@ dependencies = [
 name = "veyyon-desktop-surface"
 version = "1.3.0"
 dependencies = [
+ "serde",
  "serde_json",
  "smallvec",
+ "strum",
+ "syntect",
+ "thiserror 2.0.20",
+ "toml 1.1.4+spec-1.1.0",
+ "unicode-width 0.2.2",
  "veyyon-desktop-kit",
+ "veyyon-desktop-model",
+ "veyyon-desktop-motion",
  "veyyon-desktop-scene",
  "veyyon-desktop-tokens",
+ "veyyon-diff-kernel",
  "veyyon-gpui",
 ]
 
@@ -9952,6 +9966,7 @@ dependencies = [
  "gpui",
  "gpui_platform",
  "gpui_wgpu",
+ "veyyon-desktop-scene",
 ]
 
 [[package]]
