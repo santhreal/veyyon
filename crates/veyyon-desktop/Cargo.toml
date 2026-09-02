@@ -32,3 +32,6 @@ veyyon-desktop-scene.workspace = true
 [[bin]]
 name = "veyyon-desktop"
 path = "src/main.rs"
+[[bench]]
+name = "streaming_turn_damage"
+harness = false
