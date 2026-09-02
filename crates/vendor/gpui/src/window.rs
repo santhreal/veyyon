@@ -2931,7 +2931,15 @@ impl Window {
     }
 
     /// Overrides the display scale factor.
+    ///
+    /// `bounds_changed` re-reads the scale factor from the platform window on
+    /// every activation, resize and move, so on a test window the override is
+    /// written through to the platform as well; otherwise activating a headless
+    /// window would silently restore the platform's default.
     pub fn set_scale_factor(&mut self, scale_factor: f32) {
+        if let Some(test_window) = self.platform_window.as_test() {
+            test_window.set_scale_factor(scale_factor);
+        }
         self.scale_factor = scale_factor;
         self.refresh();
     }
