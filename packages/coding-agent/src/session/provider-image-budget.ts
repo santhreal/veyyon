@@ -6,6 +6,7 @@ import type {
 	TextContent,
 	ToolResultMessage,
 	UserMessage,
+	VideoContent,
 } from "@veyyon/ai";
 import { replaceLlmImagesWithText } from "./messages";
 
@@ -51,11 +52,11 @@ function countImages(context: Context): number {
 }
 
 function clampContent(
-	content: readonly (TextContent | ImageContent)[],
+	content: readonly (TextContent | ImageContent | VideoContent)[],
 	state: { remainingDrops: number },
-): (TextContent | ImageContent)[] | undefined {
+): (TextContent | ImageContent | VideoContent)[] | undefined {
 	let changed = false;
-	const clamped: (TextContent | ImageContent)[] = [];
+	const clamped: (TextContent | ImageContent | VideoContent)[] = [];
 	for (const part of content) {
 		if (part.type === "image" && state.remainingDrops > 0) {
 			state.remainingDrops--;
@@ -76,9 +77,9 @@ function clampContent(
  * Shared by every role clamper so the guard lives in exactly one place.
  */
 function clampContentPreservingNonEmpty(
-	content: readonly (TextContent | ImageContent)[],
+	content: readonly (TextContent | ImageContent | VideoContent)[],
 	state: { remainingDrops: number },
-): (TextContent | ImageContent)[] | undefined {
+): (TextContent | ImageContent | VideoContent)[] | undefined {
 	const clamped = clampContent(content, state);
 	if (!clamped) return undefined;
 	return clamped.length > 0 ? clamped : [IMAGE_OMISSION_PLACEHOLDER];

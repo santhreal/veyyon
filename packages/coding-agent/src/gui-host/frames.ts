@@ -1,14 +1,14 @@
 import type { Socket } from "node:net";
 import { logger } from "@veyyon/utils";
 
-/** Maximum allowed frame size: 8 MiB. */
-export const MAX_FRAME_BYTES = 8 * 1024 * 1024;
+/** Maximum allowed frame size: 32 MiB (mirrored by Rust crates/veyyon-desktop-model/src/framing.rs). */
+export const MAX_FRAME_BYTES = 32 * 1024 * 1024;
 
 /**
  * Line-delimited JSON frame decoder for socket streams.
  *
  * Accumulates raw byte chunks, splits on `\n` (byte 0x0A), skips empty keep-alive
- * lines, rejects frames larger than 8 MiB, and parses UTF-8 JSON payloads. Multi-byte
+ * lines, rejects frames larger than 32 MiB, and parses UTF-8 JSON payloads. Multi-byte
  * UTF-8 sequences split across chunk boundaries are preserved safely because buffer
  * accumulation happens at the raw byte level before slicing.
  */

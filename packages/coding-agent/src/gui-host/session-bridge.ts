@@ -1,6 +1,7 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { SessionEntry, SessionHeader } from "../session/session-entries";
 import type { SessionInfo } from "../session/session-listing";
+import { base64DecodedBytes } from "../utils/video-loading";
 import {
 	ALL_CAPABILITIES,
 	type Capability,
@@ -226,6 +227,12 @@ function mapContentBlocks(content: unknown): ContentBlock[] {
 			const mediaType = typeof item.mimeType === "string" ? item.mimeType : "image/png";
 			blocks.push({
 				Image: { media_type: mediaType, data: Array.from(Buffer.from(item.data, "base64")), alt: null },
+			});
+		} else if (item.type === "video" && typeof item.data === "string") {
+			const mediaType = typeof item.mimeType === "string" ? item.mimeType : "video/mp4";
+			const bytes = base64DecodedBytes(item.data);
+			blocks.push({
+				Video: { media_type: mediaType, bytes },
 			});
 		} else if (
 			(item.type === "tool_call" || item.type === "toolCall") &&

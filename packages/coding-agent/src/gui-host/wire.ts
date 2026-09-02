@@ -149,6 +149,7 @@ export type MessageRole =
 export type ContentBlock =
 	| { Text: { text: string } }
 	| { Image: { media_type: string; data: number[]; alt: string | null } }
+	| { Video: { media_type: string; bytes: number } }
 	| { Thinking: { text: string } }
 	| { RedactedThinking: { marker: string } }
 	| { ToolCall: { id: string; name: string; arguments: unknown } }
@@ -360,6 +361,7 @@ export interface ModelRef {
 export interface ModelView extends ModelRef {
 	name: string;
 	reasoning: boolean;
+	input?: ("text" | "image" | "video")[];
 	context_window: number;
 	max_output: number;
 }
@@ -456,13 +458,45 @@ export interface KeybindingView {
 	source: string;
 }
 
+/** The type tag a setting is declared with; mirrors `SettingType` in the schema. */
+export type SettingKindTag = "boolean" | "string" | "modelChain" | "number" | "enum" | "array" | "record";
+
+export interface SettingOptionView {
+	value: string;
+	label: string;
+	description: string | null;
+}
+
+/**
+ * One setting as the desktop reads it: the effective value, its provenance,
+ * the schema it is declared with and the copy the settings screen shows.
+ * Mirrors `SettingEntry` in `crates/veyyon-desktop-model/src/domain/settings.rs`.
+ */
+export interface SettingEntryView {
+	value: unknown;
+	default: unknown;
+	source: string;
+	type: SettingKindTag;
+	label: string | null;
+	description: string | null;
+	tab: string | null;
+	group: string | null;
+	values: string[];
+	options: SettingOptionView[];
+	min: number | null;
+	max: number | null;
+	global: boolean;
+	advanced: boolean;
+	hidden: boolean;
+}
+
 export type SnapshotSection =
 	| { Sessions: [Versioned<SessionSummary[]>, SessionLoadError[]] }
 	| { ActiveSession: Versioned<SessionHeaderView> }
 	| { Transcript: Versioned<TranscriptEntry[]> }
 	| { Capabilities: [Capability, CapabilityStatus][] }
 	| { Interactions: { session: string; pending: PendingDecisions } }
-	| { Settings: unknown }
+	| { Settings: Record<string, SettingEntryView> }
 	| { Diagnostics: unknown }
 	| { Changes: ChangesView }
 	| { FileTree: FileTreeView }
@@ -534,7 +568,7 @@ export interface AttachmentSubmission {
 	id: string;
 	name: string;
 	media_type: string;
-	data: number[];
+	data: string;
 }
 
 export type HostAction =

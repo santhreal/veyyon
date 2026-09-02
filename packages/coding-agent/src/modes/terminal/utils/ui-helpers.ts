@@ -4,6 +4,8 @@ import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import type { SessionContext, StrippedToolCallsMarker } from "@veyyon/kernel/session/session-context";
 import { type Component, Spacer, Text, TruncatedText } from "@veyyon/tui";
 import { APP_NAME, errorMessage, formatCount } from "@veyyon/utils";
+import { formatBytes } from "@veyyon/utils/format";
+import { base64DecodedBytes } from "../../../utils/video-loading";
 import type { AdvisorMessageDetails } from "../../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../../collab/protocol";
 import { type SettingsSaveFailure, settings } from "../../../config/settings";
@@ -143,11 +145,18 @@ export class UiHelpers {
 	/** Extract text content from a user message */
 	getUserMessageText(message: Message): string {
 		if (message.role !== "user") return "";
-		const textBlocks =
-			typeof message.content === "string"
-				? [{ type: "text", text: message.content }]
-				: message.content.filter((content): content is TextBlock => content.type === "text");
-		return textBlocks.map(block => block.text).join("");
+		if (typeof message.content === "string") return message.content;
+		const parts: string[] = [];
+		for (const block of message.content) {
+			if (block.type === "text") {
+				parts.push(block.text);
+			} else if (block.type === "video") {
+				const bytes = base64DecodedBytes(block.data);
+				const marker = `[${block.mimeType} · ${formatBytes(bytes)}]`;
+				parts.push(parts.length > 0 && !parts[parts.length - 1]!.endsWith("\n") ? `\n${marker}` : marker);
+			}
+		}
+		return parts.join("");
 	}
 
 	/**

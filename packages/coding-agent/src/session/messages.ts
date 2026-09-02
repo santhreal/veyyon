@@ -27,6 +27,7 @@ import type {
 	TextContent,
 	ToolResultMessage,
 	UserMessage,
+	VideoContent,
 } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
 import { isBlobRef, isTextBlobRef } from "@veyyon/kernel/session/blob-store";
@@ -61,6 +62,7 @@ export {
 export const SKILL_PROMPT_MESSAGE_TYPE = "skill-prompt";
 export const LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE = "lsp-late-diagnostic";
 export const BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE = "background-tan-dispatch";
+
 
 /** Custom message type for hidden interrupted-thinking continuity context. */
 export const INTERRUPTED_THINKING_MESSAGE_TYPE = "interrupted-thinking";
@@ -330,15 +332,15 @@ export function resolveAbortLabel(
 	return ToolAbortError.MESSAGE;
 }
 
-/** Result of filtering image blocks out of a `(TextContent | ImageContent)[]` array. */
+/** Result of filtering image blocks out of a `(TextContent | ImageContent | VideoContent)[]` array. */
 interface StripContentResult {
-	content: (TextContent | ImageContent)[];
+	content: (TextContent | ImageContent | VideoContent)[];
 	removed: number;
 }
 
-function stripImagesFromArrayContent(content: (TextContent | ImageContent)[]): StripContentResult {
+function stripImagesFromArrayContent(content: (TextContent | ImageContent | VideoContent)[]): StripContentResult {
 	let removed = 0;
-	const kept: (TextContent | ImageContent)[] = [];
+	const kept: (TextContent | ImageContent | VideoContent)[] = [];
 	for (const part of content) {
 		if (part.type === "image") {
 			removed++;
@@ -446,7 +448,7 @@ export function replaceLlmImagesWithText(messages: Message[], placeholder: strin
 		if (msg.role !== "user" && msg.role !== "developer" && msg.role !== "toolResult") continue;
 		const content = msg.content;
 		if (!Array.isArray(content) || !content.some(part => part.type === "image")) continue;
-		const replaced: (TextContent | ImageContent)[] = [];
+		const replaced: (TextContent | ImageContent | VideoContent)[] = [];
 		for (const part of content) {
 			if (part.type !== "image") {
 				if (part.type === "text" && isImageVisibilityNotice(part.text)) continue;
@@ -622,7 +624,9 @@ declare module "@veyyon/session" {
 	}
 }
 
-function customMessageContentToLlmContent(content: CustomMessage["content"]): (TextContent | ImageContent)[] {
+function customMessageContentToLlmContent(
+	content: CustomMessage["content"],
+): (TextContent | ImageContent | VideoContent)[] {
 	return typeof content === "string" ? [{ type: "text", text: content }] : content;
 }
 

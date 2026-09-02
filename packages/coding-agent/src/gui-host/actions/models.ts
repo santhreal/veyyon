@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
@@ -12,13 +13,16 @@ import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
 const VALID_THINKING_LEVELS: readonly string[] = Object.values(ThinkingLevel);
 
 async function buildModelsView(ctx: ActionContext): Promise<ModelsView> {
-	const registry = ctx.clientState.agentSession?.modelRegistry ?? new ModelRegistry(await ctx.authStorage());
+	const registry =
+		ctx.clientState.agentSession?.modelRegistry ??
+		new ModelRegistry(await ctx.authStorage(), path.join(ctx.agentDir, "models.json"));
 	const allModels = registry.getAll();
 	const models: ModelView[] = allModels.map(m => ({
 		provider: m.provider,
 		id: m.id,
 		name: m.name ?? m.id,
 		reasoning: m.reasoning === true,
+		input: m.input,
 		context_window: m.contextWindow ?? 0,
 		max_output: m.maxTokens ?? 0,
 	}));
