@@ -130,7 +130,7 @@ export interface EssentialToolNamesInputs {
  * The override wins when it is non-empty AFTER trim + normalize + filter-to-built-in. Note the
  * documented edge: an override naming only unknown tools returns `[]`, NOT the defaults — the
  * override names the complete set, and silently restoring seven tools it did not name would be
- * the opposite of what it asks for. `test/tool-discovery/initial-tools.test.ts`
+ * the opposite of what it asks for. `test/discovery/initial-tools.test.ts`
  * pins that behavior; do not "fix" it here.
  */
 export function resolveEssentialToolNames(inputs: EssentialToolNamesInputs): string[] {

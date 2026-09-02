@@ -918,7 +918,7 @@ function buildRawMemoriesMarkdown(outputs: Stage1OutputRow[]): string {
  * the first and keeps the concise answer, because it is the ordinary first-run state. Anything else is
  * the second: it reaches the log with the failing path and the reason, AND the returned text says the
  * section is unknown rather than empty. Exported so
- * `test/memories/rollout-summaries-never-report-unreadable-as-absent.test.ts` can assert the exact
+ * `test/memory/rollout-summaries-never-report-unreadable-as-absent.test.ts` can assert the exact
  * sentences, since the sentence is what the model reads.
  */
 export async function readRolloutSummaries(memoryRoot: string): Promise<string> {

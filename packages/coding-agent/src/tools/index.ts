@@ -482,7 +482,7 @@ export type ToolFactory = (session: ToolSession) => Tool | null | Promise<Tool |
  *
  * Settings adapter for {@link resolveEssentialToolNames}; the rule lives in `./loading/policy`
  * with the rest of the tool-loading decisions. Kept at this name and signature because the SDK
- * and `test/tool-discovery/initial-tools.test.ts` both call it.
+ * and `test/discovery/initial-tools.test.ts` both call it.
  */
 export function computeEssentialBuiltinNames(settings: Settings): string[] {
 	return resolveEssentialToolNames({

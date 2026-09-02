@@ -12,7 +12,7 @@
  * literal `"user"` level, so the `RULES@project` rule no longer exists. The
  * negative cases below pin that door shut at the loader that owns it; the
  * whole-repo sweep lives in
- * `test/security/the-working-tree-does-not-configure-the-agent.test.ts`.
+ * `test/secrets/the-working-tree-does-not-configure-the-agent.test.ts`.
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import * as fs from "node:fs";

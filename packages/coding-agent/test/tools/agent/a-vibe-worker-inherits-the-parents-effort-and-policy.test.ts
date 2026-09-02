@@ -1,0 +1,900 @@
+/**
+ * Contracts: vibe worker-session registry lifecycle.
+ *
+ * 1. `spawn` returns immediately (session id + turn job id) while the turn
+ *    runs in the background; the settled turn self-delivers a result carrying
+ *    the activity trace AND the worker's response, and the session stays
+ *    addressable (idle) afterwards.
+ * 2. `send` routes by state: steering into a streaming mid-turn worker,
+ *    queueing when the worker is mid-turn but not steerable (drained into the
+ *    next turn automatically), and starting a follow-up turn on the SAME
+ *    worker id when idle.
+ * 3. `runSubagentFollowUpTurn` continues a live session in place: consecutive
+ *    turns hit the same AgentSession instance (context retained) and the
+ *    finalized result carries the yield payload + tool trace.
+ * 4. `wait` wakes on the FIRST settling turn among concurrent sessions and
+ *    acknowledges its delivery so the result is not delivered twice.
+ * 5. `kill` cancels the in-flight turn job and releases the worker session.
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { ThinkingLevel } from "@veyyon/agent-core";
+import { AsyncJobManager } from "@veyyon/coding-agent/async/job-manager";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { VibeSessionRegistry } from "@veyyon/coding-agent/session/vibe-runtime";
+import * as executorModule from "@veyyon/coding-agent/task/executor";
+import type { AgentProgress, SingleResult } from "@veyyon/coding-agent/task/types";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { makeToolSession } from "../../helpers/tool-session";
+
+function createSession(options: { manager?: AsyncJobManager } = {}): ToolSession {
+	return makeToolSession({
+		cwd: "/tmp",
+		hasUI: false,
+		settings: Settings.isolated({ "subagent.agents": { sonic: { enabled: true } } }),
+		getSessionFile: () => null,
+		getSessionSpawns: () => "*",
+		asyncJobManager: options.manager,
+	});
+}
+
+function makeResult(id: string, overrides: Partial<SingleResult> = {}): SingleResult {
+	return {
+		index: 0,
+		id,
+		agent: "task",
+		agentSource: "bundled",
+		task: "prompt",
+		exitCode: 0,
+		output: "All done.",
+		stderr: "",
+		truncated: false,
+		durationMs: 5,
+		tokens: 0,
+		requests: 1,
+		...overrides,
+	};
+}
+
+interface Deferred {
+	promise: Promise<void>;
+	resolve: () => void;
+}
+
+function deferred(): Deferred {
+	const { promise, resolve } = Promise.withResolvers<void>();
+	return { promise, resolve };
+}
+
+async function pollUntil(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+	const start = Date.now();
+	while (!predicate()) {
+		if (Date.now() - start > timeoutMs) throw new Error("pollUntil timed out");
+		await Bun.sleep(5);
+	}
+}
+
+/**
+ * Minimal stand-in for a worker AgentSession: records prompts/steers, replays
+ * a scripted event stream through subscribed listeners on each prompt, and
+ * reports a final assistant message — enough surface for the executor's run
+ * monitor + driveSessionToYield.
+ */
+function createFakeWorkerSession(options: { streaming?: boolean } = {}) {
+	const listeners = new Set<(event: unknown) => void>();
+	const prompts: string[] = [];
+	const steers: string[] = [];
+	let disposed = false;
+	let lastAssistant: { stopReason: string; content: Array<{ type: string; text: string }> } | undefined;
+	let script: { events: unknown[]; responseText: string } | undefined;
+	const fake = {
+		isStreaming: options.streaming ?? false,
+		model: undefined,
+		subscribe(listener: (event: unknown) => void): () => void {
+			listeners.add(listener);
+			return () => listeners.delete(listener);
+		},
+		async prompt(text: string): Promise<boolean> {
+			prompts.push(text);
+			const active = script;
+			script = undefined;
+			if (active) {
+				for (const event of active.events) {
+					for (const listener of [...listeners]) listener(event);
+				}
+				lastAssistant = { stopReason: "stop", content: [{ type: "text", text: active.responseText }] };
+				const end = { type: "message_end", message: { role: "assistant", content: lastAssistant.content } };
+				for (const listener of [...listeners]) listener(end);
+			}
+			return true;
+		},
+		async steer(text: string): Promise<void> {
+			steers.push(text);
+		},
+		async waitForIdle(): Promise<void> {},
+		getLastAssistantMessage() {
+			return lastAssistant;
+		},
+		async abort(): Promise<void> {},
+		async dispose(): Promise<void> {
+			disposed = true;
+		},
+	};
+	return {
+		session: fake as unknown as AgentSession,
+		prompts,
+		steers,
+		isDisposed: () => disposed,
+		setStreaming(value: boolean) {
+			fake.isStreaming = value;
+		},
+		setScript(next: { events: unknown[]; responseText: string }) {
+			script = next;
+		},
+	};
+}
+
+/** Scripted turn: one `read` tool call, then a successful `yield` carrying `data`. */
+function yieldTurnEvents(data: unknown): unknown[] {
+	return [
+		{ type: "tool_execution_start", toolName: "read", args: { path: "src/foo.ts" }, intent: "Reading foo" },
+		{ type: "tool_execution_end", toolName: "read", result: {}, isError: false },
+		{ type: "tool_execution_start", toolName: "yield", args: {} },
+		{
+			type: "tool_execution_end",
+			toolName: "yield",
+			result: { details: { status: "success", data } },
+			isError: false,
+		},
+	];
+}
+
+/** Progress snapshot in the shape the executor's run monitor emits. */
+function progressSnapshot(id: string, overrides: Partial<AgentProgress> = {}): AgentProgress {
+	return {
+		index: 0,
+		id,
+		agent: "task",
+		agentSource: "bundled",
+		status: "running",
+		task: "prompt",
+		recentTools: [],
+		recentOutput: [],
+		toolCount: 0,
+		requests: 0,
+		tokens: 0,
+		cost: 0,
+		durationMs: 0,
+		...overrides,
+	};
+}
+
+describe("vibe session registry", () => {
+	const managers: AsyncJobManager[] = [];
+
+	function createManager(): AsyncJobManager {
+		const manager = new AsyncJobManager({ onJobComplete: () => {} });
+		managers.push(manager);
+		return manager;
+	}
+
+	beforeEach(() => {
+		AgentRegistry.resetGlobalForTests();
+		AgentLifecycleManager.resetGlobalForTests();
+		VibeSessionRegistry.resetGlobalForTests();
+	});
+
+	afterEach(async () => {
+		vi.restoreAllMocks();
+		for (const manager of managers.splice(0)) {
+			await manager.dispose({ timeoutMs: 1000 });
+		}
+		VibeSessionRegistry.resetGlobalForTests();
+		AgentLifecycleManager.resetGlobalForTests();
+		AgentRegistry.resetGlobalForTests();
+	});
+
+	/**
+	 * Vibe starts children through its own executor-options builder. It must
+	 * preserve the same parent-effort inheritance contract as task and eval.
+	 */
+	it("forwards the parent effective effort into a Vibe worker", async () => {
+		const spy = vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: createFakeWorkerSession().session,
+				status: "idle",
+			});
+			return makeResult(options.id);
+		});
+		const manager = createManager();
+		const session = makeToolSession({
+			cwd: "/tmp",
+			hasUI: false,
+			getActiveThinkingLevel: () => ThinkingLevel.Low,
+			settings: Settings.isolated({ "subagent.agents": { sonic: { enabled: true } } }),
+			getSessionFile: () => null,
+			getSessionSpawns: () => "*",
+			asyncJobManager: manager,
+		});
+
+		const { jobId } = await VibeSessionRegistry.global().spawn(session, {
+			cli: "fast",
+			name: "InheritedVibe",
+			prompt: "Keep the parent effort.",
+		});
+		await manager.getJob(jobId)?.promise;
+
+		expect(spy.mock.calls[0]?.[0]?.parentThinkingLevel).toBe(ThinkingLevel.Low);
+	});
+
+	/**
+	 * LOCKS OUT: `skills: session.skills ?? []` (and the same `??` for context files, prompt
+	 * templates, and rules) in `vibe/runtime.ts#buildSpawnOptions`.
+	 *
+	 * `sdk.ts` gates discovery on PRESENCE, not on length, so an empty array is not a neutral
+	 * default: it tells the worker "already resolved, do not look". A vibe worker spawned from a
+	 * parent that had not resolved its own layers therefore ran the whole session with no skills,
+	 * no prompt templates, no rules, and no `AGENTS.md`, silently.
+	 *
+	 * IF THIS REGRESSES: every vibe worker loses the operator's configuration, and the only
+	 * visible symptom is the worker behaving as if the project had no rules.
+	 */
+	it("hands a vibe worker undefined layers when the parent resolved none, and forwards them when it did", async () => {
+		const spy = vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: createFakeWorkerSession().session,
+				status: "idle",
+			});
+			return makeResult(options.id);
+		});
+		const manager = createManager();
+
+		const unresolved = await VibeSessionRegistry.global().spawn(createSession({ manager }), {
+			cli: "fast",
+			name: "UnresolvedVibe",
+			prompt: "Nothing resolved upstream.",
+		});
+		await manager.getJob(unresolved.jobId)?.promise;
+
+		const bare = spy.mock.calls[0]?.[0];
+		expect(bare?.contextFiles).toBeUndefined();
+		expect(bare?.skills).toBeUndefined();
+		expect(bare?.promptTemplates).toBeUndefined();
+		expect(bare?.rules).toBeUndefined();
+
+		const contextFiles = [{ path: "/tmp/AGENTS.md", content: "# project rules\n", depth: 0 }];
+		// Real member shapes, not double casts: what this case proves is that the
+		// parent's loaded capabilities reach the spawn, so the fixtures have to be
+		// the types the spawn would forward.
+		const skills: ToolSession["skills"] = [
+			{
+				name: "review",
+				description: "Review a diff.",
+				filePath: "/tmp/skills/review/SKILL.md",
+				baseDir: "/tmp/skills/review",
+				source: "project",
+			},
+		];
+		const promptTemplates: ToolSession["promptTemplates"] = [
+			{ name: "brief", description: "Brief the reader.", content: "Brief: {{topic}}", source: "(project)" },
+		];
+		const rules: ToolSession["rules"] = [
+			{
+				name: "no-em-dash",
+				path: "/tmp/rules/no-em-dash.md",
+				content: "No em dashes.\n",
+				_source: {
+					provider: "project",
+					providerName: "Project",
+					path: "/tmp/rules/no-em-dash.md",
+					level: "project",
+				},
+			},
+		];
+		const resolvedParent = makeToolSession({
+			cwd: "/tmp",
+			hasUI: false,
+			settings: Settings.isolated({ "subagent.agents": { sonic: { enabled: true } } }),
+			getSessionFile: () => null,
+			getSessionSpawns: () => "*",
+			asyncJobManager: manager,
+			contextFiles,
+			skills,
+			promptTemplates,
+			rules,
+		});
+
+		const resolved = await VibeSessionRegistry.global().spawn(resolvedParent, {
+			cli: "fast",
+			name: "ResolvedVibe",
+			prompt: "Everything resolved upstream.",
+		});
+		await manager.getJob(resolved.jobId)?.promise;
+
+		const forwarded = spy.mock.calls[1]?.[0];
+		expect(forwarded?.contextFiles).toEqual(contextFiles);
+		expect(forwarded?.skills).toEqual(skills);
+		expect(forwarded?.promptTemplates).toEqual(promptTemplates);
+		expect(forwarded?.rules).toEqual(rules);
+	});
+
+	/**
+	 * Vibe used to bypass the task/eval denylist entirely. The fast worker must
+	 * now honor the same profile enabled state and avoid starting an executor.
+	 */
+	it("rejects a disabled Vibe agent before starting a worker", async () => {
+		const executorSpy = vi.spyOn(executorModule, "runSubprocess");
+		const manager = createManager();
+		const session = makeToolSession({
+			cwd: "/tmp",
+			hasUI: false,
+			settings: Settings.isolated({
+				"subagent.agents": { sonic: { enabled: false } },
+			}),
+			getSessionFile: () => null,
+			getSessionSpawns: () => "*",
+			asyncJobManager: manager,
+		});
+
+		await expect(
+			VibeSessionRegistry.global().spawn(session, {
+				cli: "fast",
+				name: "DisabledVibe",
+				prompt: "Do not start.",
+			}),
+		).rejects.toThrow(
+			'Agent "sonic" is disabled (subagent.agents.sonic.enabled is false). Enable it in the Subagents settings tab (/settings) before starting the "fast" vibe worker.',
+		);
+		expect(executorSpy).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * The master `subagent.enabled` toggle is checked separately from the per-agent
+	 * row, and it must reject with its own message: an operator who turned the
+	 * whole feature off should not be told to go flip a per-agent row that is
+	 * already on.
+	 *
+	 * IF THIS REGRESSES: turning subagents off leaves vibe able to start workers.
+	 */
+	it("rejects a vibe worker when subagents are disabled wholesale", async () => {
+		const executorSpy = vi.spyOn(executorModule, "runSubprocess");
+		const manager = createManager();
+		const session = makeToolSession({
+			cwd: "/tmp",
+			hasUI: false,
+			settings: Settings.isolated({
+				"subagent.enabled": false,
+				"subagent.agents": { sonic: { enabled: true } },
+			}),
+			getSessionFile: () => null,
+			getSessionSpawns: () => "*",
+			asyncJobManager: manager,
+		});
+
+		await expect(
+			VibeSessionRegistry.global().spawn(session, { cli: "fast", name: "OffVibe", prompt: "Do not start." }),
+		).rejects.toThrow('Cannot start vibe worker "sonic": subagents are disabled in settings.');
+		expect(executorSpy).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * The parent's spawn declaration is a recursion capability, distinct from the
+	 * profile's enabled rows. An agent that may only spawn `task` must not reach a
+	 * vibe worker sideways, and the rejection names what it may actually spawn.
+	 *
+	 * IF THIS REGRESSES: vibe becomes a hole in the spawn allowlist.
+	 */
+	it("rejects a vibe worker the parent's spawn policy does not allow", async () => {
+		const executorSpy = vi.spyOn(executorModule, "runSubprocess");
+		const manager = createManager();
+		const session = makeToolSession({
+			cwd: "/tmp",
+			hasUI: false,
+			settings: Settings.isolated({ "subagent.agents": { sonic: { enabled: true } } }),
+			getSessionFile: () => null,
+			getSessionSpawns: () => "deep",
+			asyncJobManager: manager,
+		});
+
+		await expect(
+			VibeSessionRegistry.global().spawn(session, { cli: "fast", name: "UnallowedVibe", prompt: "Do not start." }),
+		).rejects.toThrow('Cannot start vibe worker "sonic". Enabled and allowed agents: deep.');
+		expect(executorSpy).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * Prevents Vibe from drifting from task/eval policy by pinning the exact
+	 * model and effort fields handed to its production executor.
+	 *
+	 * With `subagent.sharedModel` on, `subagent.model` and `subagent.thinkingLevel` are the only
+	 * pair that reaches a worker: the per-agent row below is inert while that scope is active, so a
+	 * row left behind from the other scope cannot outrank the setting an operator just changed. The
+	 * case below this one is the other half of that contract.
+	 */
+	it("forwards the shared model and effort while the shared scope is on", async () => {
+		const spy = vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: createFakeWorkerSession().session,
+				status: "idle",
+			});
+			return makeResult(options.id);
+		});
+		const manager = createManager();
+		const session = makeToolSession({
+			cwd: "/tmp",
+			hasUI: false,
+			settings: Settings.isolated({
+				"subagent.agents": {
+					sonic: { enabled: true, model: "anthropic/claude-sonnet-4-5", thinkingLevel: "minimal" },
+				},
+				"subagent.sharedModel": true,
+				"subagent.model": "openai/gpt-5.2-codex",
+				"subagent.thinkingLevel": "xhigh",
+			}),
+			getSessionFile: () => null,
+			getSessionSpawns: () => "*",
+			asyncJobManager: manager,
+		});
+
+		const { jobId } = await VibeSessionRegistry.global().spawn(session, {
+			cli: "fast",
+			name: "ConfiguredVibe",
+			prompt: "Use the profile policy.",
+		});
+		await manager.getJob(jobId)?.promise;
+
+		expect(spy.mock.calls[0]?.[0]?.modelOverride).toEqual(["openai/gpt-5.2-codex"]);
+		expect(spy.mock.calls[0]?.[0]?.thinkingLevel).toBe(ThinkingLevel.XHigh);
+		expect(spy.mock.calls[0]?.[0]?.parentThinkingLevel).toBeUndefined();
+	});
+
+	/**
+	 * The per-agent scope, asserted rather than described.
+	 *
+	 * With `subagent.sharedModel` off — the default — `subagent.agents.<name>.model` and
+	 * `.thinkingLevel` are the pair that decides what an agent runs, and the shared pair is inert.
+	 * The vibe path resolves through the same scopes as a spawn, and it is the path that would keep
+	 * a stale order longest if the two ever drifted, which is why the scope is asserted here too.
+	 */
+	it("lets a per-agent row decide while the shared scope is off", async () => {
+		const spy = vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: createFakeWorkerSession().session,
+				status: "idle",
+			});
+			return makeResult(options.id);
+		});
+		const manager = createManager();
+		const session = makeToolSession({
+			cwd: "/tmp",
+			hasUI: false,
+			settings: Settings.isolated({
+				// The row asks for one model and effort; the shared pair asks for
+				// another. The shared scope is off, so the row is what must reach the executor.
+				"subagent.agents": {
+					sonic: { enabled: true, model: "anthropic/claude-sonnet-4-5", thinkingLevel: "minimal" },
+				},
+				"subagent.model": "openai/gpt-5.2-codex",
+				"subagent.thinkingLevel": "xhigh",
+			}),
+			getSessionFile: () => null,
+			getSessionSpawns: () => "*",
+			asyncJobManager: manager,
+		});
+
+		const { jobId } = await VibeSessionRegistry.global().spawn(session, {
+			cli: "fast",
+			name: "LaneRowVibe",
+			prompt: "Take the row that names you.",
+		});
+		await manager.getJob(jobId)?.promise;
+
+		expect(spy.mock.calls[0]?.[0]?.modelOverride).toEqual(["anthropic/claude-sonnet-4-5"]);
+		expect(spy.mock.calls[0]?.[0]?.thinkingLevel).toBe(ThinkingLevel.Minimal);
+	});
+
+	it("spawn returns immediately and self-delivers a turn result with activity trace + response", async () => {
+		const gate = deferred();
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: createFakeWorkerSession().session,
+				status: "running",
+			});
+			options.onProgress?.(
+				progressSnapshot(options.id, {
+					toolCount: 2,
+					recentTools: [
+						{ tool: "bash", args: "bun test", endMs: 2 },
+						{ tool: "read", args: "src/foo.ts", endMs: 1 },
+					],
+					lastIntent: "Running tests",
+					resolvedModel: "prov/fast-model",
+				}),
+			);
+			await gate.promise;
+			AgentRegistry.global().setStatus(options.id, "idle");
+			return makeResult(options.id, { output: "Implemented the widget.", requests: 3 });
+		});
+
+		const manager = createManager();
+		const session = createSession({ manager });
+		const registry = VibeSessionRegistry.global();
+
+		const { id, jobId } = await registry.spawn(session, { cli: "fast", name: "Fast", prompt: "Build the widget." });
+		expect(id).toBe("Fast");
+
+		// Ack is immediate: the job is still running behind the gate.
+		const job = manager.getJob(jobId)!;
+		expect(job.status).toBe("running");
+		expect(registry.screens("Main")[0]?.cli).toBe("fast");
+
+		gate.resolve();
+		await job.promise;
+
+		expect(job.status).toBe("completed");
+		const text = job.resultText ?? "";
+		// Envelope + summarized activity (compressed tool trace, oldest first) + response.
+		expect(text).toContain('<vibe-turn session="Fast" cli="fast" turn="1" status="completed"');
+		expect(text).toContain('model="prov/fast-model"');
+		expect(text.indexOf("read(src/foo.ts)")).toBeGreaterThan(-1);
+		expect(text.indexOf("read(src/foo.ts)")).toBeLessThan(text.indexOf("bash(bun test)"));
+		expect(text).toContain("Implemented the widget.");
+		// Session survives the turn, addressable for follow-ups.
+		const entry = registry.screens("Main")[0]!;
+		expect(entry.state).toBe("idle");
+		expect(entry.turns).toBe(1);
+	});
+
+	it("send steers a streaming mid-turn worker and queues for a non-steerable one", async () => {
+		const gate = deferred();
+		const fake = createFakeWorkerSession({ streaming: true });
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: fake.session,
+				status: "running",
+			});
+			await gate.promise;
+			AgentRegistry.global().setStatus(options.id, "idle");
+			return makeResult(options.id);
+		});
+		const followUps: Array<{ id: string; message: string }> = [];
+		vi.spyOn(executorModule, "runSubagentFollowUpTurn").mockImplementation(async options => {
+			followUps.push({ id: options.id, message: options.message });
+			return makeResult(options.id, { output: "queued work done" });
+		});
+
+		const manager = createManager();
+		const session = createSession({ manager });
+		const registry = VibeSessionRegistry.global();
+		const { jobId } = await registry.spawn(session, { cli: "good", name: "Good", prompt: "Design it." });
+		await pollUntil(() => AgentRegistry.global().get("Good") !== undefined);
+
+		// Streaming worker → steering.
+		const steered = await registry.send(session, { session: "Good", message: "Focus on the API first." });
+		expect(steered.mode).toBe("steered");
+		expect(fake.steers).toEqual(["Focus on the API first."]);
+
+		// Not streaming → queued for the next turn.
+		fake.setStreaming(false);
+		const queued = await registry.send(session, { session: "Good", message: "Then write tests." });
+		expect(queued.mode).toBe("queued");
+		expect(registry.screens("Main")[0]?.queued).toBe(1);
+
+		// Settling the turn drains the queue into an automatic follow-up turn.
+		gate.resolve();
+		await manager.getJob(jobId)!.promise;
+		await pollUntil(() => followUps.length === 1);
+		expect(followUps[0]).toEqual({ id: "Good", message: "Then write tests." });
+	});
+
+	it("send to an idle session starts a follow-up turn on the same worker", async () => {
+		const gate = deferred();
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: createFakeWorkerSession().session,
+				status: "running",
+			});
+			await gate.promise;
+			AgentRegistry.global().setStatus(options.id, "idle");
+			return makeResult(options.id);
+		});
+		const followUps: Array<{ id: string; message: string }> = [];
+		vi.spyOn(executorModule, "runSubagentFollowUpTurn").mockImplementation(async options => {
+			followUps.push({ id: options.id, message: options.message });
+			options.onProgress?.(
+				progressSnapshot(options.id, {
+					toolCount: 1,
+					recentTools: [{ tool: "edit", args: "src/foo.ts", endMs: 1 }],
+				}),
+			);
+			return makeResult(options.id, { output: "Renamed everything." });
+		});
+
+		const manager = createManager();
+		const session = createSession({ manager });
+		const registry = VibeSessionRegistry.global();
+		const spawn = await registry.spawn(session, { cli: "fast", name: "Fast", prompt: "First task." });
+		gate.resolve();
+		await manager.getJob(spawn.jobId)!.promise;
+
+		const outcome = await registry.send(session, { session: "Fast", message: "Now rename the helpers." });
+		expect(outcome.mode).toBe("turn");
+		const turnJob = manager.getJob(outcome.jobId!)!;
+		await turnJob.promise;
+
+		expect(followUps).toEqual([{ id: "Fast", message: "Now rename the helpers." }]);
+		const text = turnJob.resultText ?? "";
+		expect(text).toContain('turn="2"');
+		expect(text).toContain("edit(src/foo.ts)");
+		expect(text).toContain("Renamed everything.");
+		expect(registry.screens("Main")[0]?.turns).toBe(2);
+	});
+
+	it("runSubagentFollowUpTurn continues the same live session and finalizes trace + yield response", async () => {
+		const fake = createFakeWorkerSession();
+		AgentRegistry.global().register({
+			id: "Worker",
+			displayName: "Worker",
+			kind: "sub",
+			parentId: "Main",
+			session: fake.session,
+			status: "idle",
+		});
+		const agent = { name: "task", description: "worker", systemPrompt: "sp", source: "bundled" as const };
+
+		fake.setScript({ events: yieldTurnEvents({ report: "did the first thing" }), responseText: "first summary" });
+		const progressSnapshots: AgentProgress[] = [];
+		const first = await executorModule.runSubagentFollowUpTurn({
+			id: "Worker",
+			agent,
+			message: "do the first thing",
+			onProgress: progress => progressSnapshots.push({ ...progress, recentTools: progress.recentTools.slice() }),
+		});
+		expect(first.exitCode).toBe(0);
+		expect(first.output).toContain("did the first thing");
+		expect(progressSnapshots.some(progress => progress.recentTools.some(entry => entry.tool === "read"))).toBe(true);
+
+		// Second turn lands on the SAME session instance — prior context retained.
+		fake.setScript({ events: yieldTurnEvents({ report: "built on prior work" }), responseText: "second summary" });
+		const second = await executorModule.runSubagentFollowUpTurn({ id: "Worker", agent, message: "now extend it" });
+		expect(second.exitCode).toBe(0);
+		expect(second.output).toContain("built on prior work");
+		expect(fake.prompts).toEqual(["do the first thing", "now extend it"]);
+		expect(fake.isDisposed()).toBe(false);
+	});
+
+	it("wait wakes on the first settling turn among concurrent sessions and suppresses its re-delivery", async () => {
+		const gates = new Map<string, Deferred>();
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: createFakeWorkerSession().session,
+				status: "running",
+			});
+			const gate = deferred();
+			gates.set(options.id, gate);
+			await gate.promise;
+			AgentRegistry.global().setStatus(options.id, "idle");
+			return makeResult(options.id, { output: `${options.id} finished.` });
+		});
+
+		const manager = createManager();
+		const session = createSession({ manager });
+		const registry = VibeSessionRegistry.global();
+		const fast = await registry.spawn(session, { cli: "fast", name: "Fast", prompt: "Task A." });
+		const good = await registry.spawn(session, { cli: "good", name: "Good", prompt: "Task B." });
+		await pollUntil(() => gates.size === 2);
+
+		const waitPromise = registry.wait(session, { sessions: ["Fast", "Good"], timeoutMs: 5000 });
+		gates.get("Fast")!.resolve();
+		const outcome = await waitPromise;
+
+		expect(outcome.timedOut).toBe(false);
+		expect(outcome.settled.map(entry => entry.id)).toEqual(["Fast"]);
+		expect(outcome.settled[0]!.resultText).toContain("Fast finished.");
+		expect(outcome.stillRunning).toEqual(["Good"]);
+		// The reported result must not be delivered a second time as a follow-up.
+		expect(manager.isDeliverySuppressed(fast.jobId)).toBe(true);
+		expect(manager.isDeliverySuppressed(good.jobId)).toBe(false);
+
+		gates.get("Good")!.resolve();
+		await manager.getJob(good.jobId)!.promise;
+	});
+
+	it("wait reports the settled turn even when a queued follow-up starts immediately", async () => {
+		const firstGate = deferred();
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: createFakeWorkerSession().session,
+				status: "running",
+			});
+			await firstGate.promise;
+			AgentRegistry.global().setStatus(options.id, "idle");
+			return makeResult(options.id, { output: "First turn done." });
+		});
+		const followUpGate = deferred();
+		vi.spyOn(executorModule, "runSubagentFollowUpTurn").mockImplementation(async options => {
+			await followUpGate.promise;
+			return makeResult(options.id, { output: "Follow-up done." });
+		});
+
+		const manager = createManager();
+		const session = createSession({ manager });
+		const registry = VibeSessionRegistry.global();
+		const { jobId } = await registry.spawn(session, { cli: "fast", name: "Fast", prompt: "Task A." });
+		await pollUntil(() => AgentRegistry.global().get("Fast") !== undefined);
+
+		// Queued while mid-turn: #finishTurn starts this follow-up turn inside
+		// the settling job's callback, BEFORE the watched job's promise resolves.
+		const queued = await registry.send(session, { session: "Fast", message: "Task B." });
+		expect(queued.mode).toBe("queued");
+
+		const waitPromise = registry.wait(session, { sessions: ["Fast"], timeoutMs: 5000 });
+		firstGate.resolve();
+		const outcome = await waitPromise;
+
+		// The settled first turn is reported (not shadowed by the new in-flight
+		// turn) and acknowledged so it is not re-delivered …
+		expect(outcome.settled.map(entry => entry.jobId)).toEqual([jobId]);
+		expect(outcome.settled[0]!.resultText).toContain("First turn done.");
+		expect(manager.isDeliverySuppressed(jobId)).toBe(true);
+		// … while the drained-queue follow-up shows as still running.
+		expect(outcome.stillRunning).toEqual(["Fast"]);
+
+		followUpGate.resolve();
+		await manager.getJob("Fast-t2")!.promise;
+	});
+
+	/**
+	 * `wait` returns the settled turn's result itself, and `unwatchJobs` re-arms
+	 * the async delivery of anything that settled inside the watch window. The
+	 * delivery loop reaches `onJobComplete` synchronously, so `wait`'s `finally`
+	 * has to acknowledge BEFORE it unwatches.
+	 *
+	 * IF THIS REGRESSES (the two lines in `wait`'s `finally` swap places): the
+	 * operator is handed the worker's whole report twice, once as this call's
+	 * return value and once as an async job-completion follow-up.
+	 */
+	it("wait does not also deliver the report it returns", async () => {
+		const gate = deferred();
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: createFakeWorkerSession().session,
+				status: "running",
+			});
+			await gate.promise;
+			AgentRegistry.global().setStatus(options.id, "idle");
+			return makeResult(options.id, { output: "Fast finished." });
+		});
+
+		const pushed: Array<{ jobId: string; text: string }> = [];
+		const manager = new AsyncJobManager({
+			onJobComplete: async (jobId, text) => {
+				pushed.push({ jobId, text });
+			},
+		});
+		managers.push(manager);
+		const session = createSession({ manager });
+		const registry = VibeSessionRegistry.global();
+		const { jobId } = await registry.spawn(session, { cli: "fast", name: "Fast", prompt: "Task A." });
+		await pollUntil(() => AgentRegistry.global().get("Fast") !== undefined);
+
+		const waitPromise = registry.wait(session, { sessions: ["Fast"], timeoutMs: 5000 });
+		gate.resolve();
+		const outcome = await waitPromise;
+
+		expect(outcome.settled.map(entry => entry.jobId)).toEqual([jobId]);
+		expect(outcome.settled[0]!.resultText).toContain("Fast finished.");
+
+		await manager.drainDeliveries({ timeoutMs: 2_000 });
+		// The return value above is the operator's one copy; nothing may follow it.
+		expect(pushed).toEqual([]);
+	});
+
+	it("kill cancels the in-flight turn and releases the worker session", async () => {
+		const gate = deferred();
+		const fake = createFakeWorkerSession();
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: fake.session,
+				status: "running",
+			});
+			await gate.promise;
+			return makeResult(options.id);
+		});
+
+		const manager = createManager();
+		const session = createSession({ manager });
+		const registry = VibeSessionRegistry.global();
+		const { jobId } = await registry.spawn(session, { cli: "fast", name: "Doomed", prompt: "Never mind." });
+		await pollUntil(() => AgentRegistry.global().get("Doomed") !== undefined);
+
+		const outcome = await registry.kill(session, "Doomed");
+		expect(outcome.cancelledTurn).toBe(true);
+		expect(manager.getJob(jobId)!.status).toBe("cancelled");
+		expect(fake.isDisposed()).toBe(true);
+		expect(AgentRegistry.global().get("Doomed")).toBeUndefined();
+		expect(registry.screens("Main")[0]?.state).toBe("dead");
+		await expect(registry.send(session, { session: "Doomed", message: "hello?" })).rejects.toThrow("dead");
+
+		gate.resolve();
+	});
+
+	it("killAll terminates every session for the owner (mode-exit path)", async () => {
+		const gates = new Map<string, Deferred>();
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			AgentRegistry.global().register({
+				id: options.id,
+				displayName: options.id,
+				kind: "sub",
+				parentId: "Main",
+				session: createFakeWorkerSession().session,
+				status: "running",
+			});
+			const gate = deferred();
+			gates.set(options.id, gate);
+			await gate.promise;
+			return makeResult(options.id);
+		});
+
+		const manager = createManager();
+		const session = createSession({ manager });
+		const registry = VibeSessionRegistry.global();
+		await registry.spawn(session, { cli: "fast", name: "One", prompt: "A." });
+		await registry.spawn(session, { cli: "good", name: "Two", prompt: "B." });
+		await pollUntil(() => gates.size === 2);
+
+		const killed = await registry.killAll("Main", manager);
+		expect(killed).toBe(2);
+		expect(registry.listIds("Main")).toEqual([]);
+		expect(AgentRegistry.global().get("One")).toBeUndefined();
+		expect(AgentRegistry.global().get("Two")).toBeUndefined();
+
+		for (const gate of gates.values()) gate.resolve();
+	});
+});

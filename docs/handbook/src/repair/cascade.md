@@ -8,7 +8,7 @@ Before argument validation, the agent loop runs `packages/coding-agent/src/tools
 4. **Ambiguity guard**: reject when required string fields have multiple plausible donors.
 5. **Outcome**: `clean`, `repaired` (canonical args + hints), or `unrepairable` (error tool result, no dispatch).
 
-Conformance suite: `packages/coding-agent/test/repair/schema-repair.test.ts` (alias renames, ambiguity refusals, strict-mode refusals, and a guard that strict rejection does not fire on ArkType/Zod wire schemas that synthesize `additionalProperties: false` for closed-object emission rather than authorial strictness).
+Conformance suite: `packages/coding-agent/test/edit/schema-repair.test.ts` (alias renames, ambiguity refusals, strict-mode refusals, and a guard that strict rejection does not fire on ArkType/Zod wire schemas that synthesize `additionalProperties: false` for closed-object emission rather than authorial strictness).
 
 Per-model enable/disable and tool allowlist hints: [Per-model posture](./per-model.md).
 
