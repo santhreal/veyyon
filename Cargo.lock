@@ -9929,6 +9929,7 @@ dependencies = [
  "veyyon-desktop-tokens",
  "veyyon-diff-kernel",
  "veyyon-gpui",
+ "veyyon-test-scratch",
 ]
 
 [[package]]

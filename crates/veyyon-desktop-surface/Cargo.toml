@@ -29,3 +29,4 @@ veyyon-gpui.workspace = true
 [dev-dependencies]
 serde_json.workspace = true
 veyyon-desktop-scene.workspace = true
+veyyon-test-scratch.workspace = true
