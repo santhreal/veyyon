@@ -197,6 +197,7 @@ export function resolveOverlayLayout(
 	const marginRight = Math.max(0, margin.right ?? 0);
 	const footerReserve = opt.aboveFooter ? clampLow(termHeight - footerTop, 0, Math.max(0, termHeight - 1)) : 0;
 	const marginBottom = Math.max(0, margin.bottom ?? 0) + footerReserve;
+	const marginLeft = Math.max(0, margin.left ?? 0);
 
 	// Available space after margins
 	const availWidth = Math.max(1, termWidth - marginLeft - marginRight);

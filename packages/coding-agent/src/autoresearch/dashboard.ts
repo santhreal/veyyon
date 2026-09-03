@@ -138,7 +138,6 @@ export function createDashboardController(): DashboardController {
 							];
 						},
 						handleInput(data: string): void {
-
 							const maxScroll = Math.max(0, totalRows - viewportRows);
 							if (matchesKey(data, "escape") || matchesKey(data, "esc") || data === "q") {
 								done(undefined);
