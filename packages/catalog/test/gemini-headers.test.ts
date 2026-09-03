@@ -63,7 +63,7 @@ describe("getAntigravityModelWireProfile", () => {
 	});
 
 	it("pins the tiered flash deployments at the discovered Gemini cap with no model_enum label", () => {
-		for (const id of ["gemini-3.6-flash-tiered", "gemini-3.7-flash-tiered"]) {
+		for (const id of ["gemini-3.6-flash-tiered", "gemini-3.7-flash-tiered", "gemini-3.8-flash-tiered"]) {
 			const profile = getAntigravityModelWireProfile(id);
 			expect(profile?.maxOutputTokens).toBe(65536);
 			expect(profile?.modelEnum).toBeUndefined();
@@ -92,6 +92,7 @@ describe("getAntigravityModelWireProfile", () => {
 			"gemini-pro-agent": { modelEnum: "MODEL_PLACEHOLDER_M16", maxOutputTokens: 65535 },
 			"gemini-3.6-flash-tiered": { maxOutputTokens: 65536 },
 			"gemini-3.7-flash-tiered": { maxOutputTokens: 65536 },
+			"gemini-3.8-flash-tiered": { maxOutputTokens: 65536 },
 			"claude-sonnet-4-6": { maxOutputTokens: 64000 },
 			"claude-opus-4-6-thinking": { maxOutputTokens: 64000 },
 		});

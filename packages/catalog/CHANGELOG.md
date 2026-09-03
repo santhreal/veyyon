@@ -13,6 +13,7 @@
 ### Fixed
 
 - The Claude Code fingerprint version is 2.1.257, so Anthropic OAuth requests for current models are no longer rejected with `claude_code_version_too_old`.
+- Antigravity discovery gives `gemini-3.8-flash-tiered` the same effort surface as 3.7: the endpoint serves 3.8 Flash only under that wire id, with no bare id and no per-tier siblings, so the row arrived raw with no effort levels. It now collapses to a logical `gemini-3.8-flash` row carrying the low/medium/high ladder models.dev declares for `google/gemini-3.8-flash` on the `google-level` transport, and its wire profile pins the 65536 output cap the endpoint reports.
 
 ## [1.3.0] - 2026-08-28
 
