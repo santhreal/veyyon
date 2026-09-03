@@ -96,7 +96,8 @@ Then use `isKeyRelease()` / `isKeyRepeat()` if needed.
 
 - `TUI.setFocus(component)` routes input to that component.
 - Overlay APIs exist in `TUI` (`showOverlay`, `OverlayHandle`). In interactive extension/custom UI, `custom(..., { overlay: true })` mounts your component through `TUI.showOverlay(...)`; without `overlay`, it replaces the editor component area directly.
-- Overlay custom UI is anchored at `bottom-center` with full terminal width/max height and is removed through the returned overlay handle when `done(...)` closes the flow.
+- Overlay custom UI is anchored at `bottom-center` with full terminal width and is removed through the returned overlay handle when `done(...)` closes the flow. It is placed with `aboveFooter: true`: the overlay covers the transcript region only, and the composer zone (prompt, status line, footline) stays painted under it. Size the component from `tui.terminal.rows - tui.pinnedFooterRows`; a taller render is clipped to the rows above the footer.
+- `OverlayOptions.aboveFooter` is the general form of that placement. With a pinned footer (`TUI.setPinnedFooterChildCount`), the screen rows from the footer's top down are added to the overlay's bottom margin every frame, so the reserve follows a footer that grows or a frame shorter than the viewport. Without a pinned footer the option does nothing.
 
 ## Mount points and return contracts
 
@@ -120,7 +121,7 @@ Behavior in interactive mode (`extension-ui-controller.ts`):
 
 - Saves editor text.
 - Without `options.overlay`, replaces the editor component with your component.
-- With `options.overlay`, mounts your component as a bottom-centered overlay instead of replacing the editor.
+- With `options.overlay`, mounts your component as a bottom-centered overlay above the composer zone instead of replacing the editor; the prompt and status line remain visible.
 - Focuses your component.
 - On `done(result)`: calls `component.dispose?.()`, hides the overlay if present, restores editor + text for non-overlay flows, focuses editor, resolves promise.
   So `done(...)` is mandatory for completion.

@@ -66,15 +66,17 @@ export function createDashboardController(): DashboardController {
 					}
 
 					let scrollOffset = 0;
+					// Rows the overlay can paint: the screen minus the pinned composer
+					// zone, minus the header, the footer line and their two pad rows.
+					const viewportRowsNow = (): number => Math.max(4, tui.terminal.rows - tui.pinnedFooterRows - 4);
 					return {
 						render(width: number): readonly string[] {
-							const terminalRows = process.stdout.rows ?? 40;
 							const header = renderExpandedHeader(runtime, width, theme);
 							const body = renderDashboardLines(runtime, width, theme, 0);
 							if (runtime.runningExperiment) {
 								body.push(renderOverlayRunningLine(runtime, theme, width, spinnerFrame));
 							}
-							const viewportRows = Math.max(4, terminalRows - 4);
+							const viewportRows = viewportRowsNow();
 							const maxScroll = Math.max(0, body.length - viewportRows);
 							if (scrollOffset > maxScroll) scrollOffset = maxScroll;
 							const sv = new ScrollView(body.slice(scrollOffset, scrollOffset + viewportRows), {
@@ -90,7 +92,7 @@ export function createDashboardController(): DashboardController {
 							const totalRows =
 								renderDashboardLines(runtime, process.stdout.columns ?? 120, theme, 0).length +
 								(runtime.runningExperiment ? 1 : 0);
-							const viewportRows = Math.max(4, (process.stdout.rows ?? 40) - 4);
+							const viewportRows = viewportRowsNow();
 							const maxScroll = Math.max(0, totalRows - viewportRows);
 							if (matchesKey(data, "escape") || matchesKey(data, "esc") || data === "q") {
 								done(undefined);

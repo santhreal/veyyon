@@ -1169,11 +1169,15 @@ export class ExtensionUiController {
 			}
 			component = c;
 			if (options?.overlay) {
+				// The overlay sits on the transcript region: the composer zone (prompt,
+				// status line, footline) stays painted under it, so a running console
+				// or dashboard never takes the whole screen.
 				overlayHandle = this.ctx.ui.showOverlay(component, {
 					anchor: "bottom-center",
 					width: "100%",
 					maxHeight: "100%",
 					margin: 0,
+					aboveFooter: true,
 				});
 				return;
 			}

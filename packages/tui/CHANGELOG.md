@@ -7,6 +7,7 @@
 - `TUI.markLayoutSized(component)` marks a root child whose height the `onBeforeCompose` pass owns, so a component-scoped frame renders it instead of reusing the rows the previous frame's content called for.
 - `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
 - `TUI.adoptPaintedWindow(screen)` tells the renderer the terminal already holds a frame someone else painted, and `TUI.paintedScreen()` returns that frame, so the first render after adoption diffs against the rows on screen and rewrites only what changed instead of repainting the viewport.
+- `OverlayOptions.aboveFooter` keeps the pinned footer on screen: the rows from the footer's top down are added to the overlay's bottom margin every frame, so a bottom-anchored overlay ends directly above the composer zone and follows a footer that grows. `TUI.pinnedFooterRows` reports the footer's row span in the last composed frame so a host can size the component it shows.
 
 ### Fixed
 

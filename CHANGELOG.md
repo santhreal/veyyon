@@ -23,6 +23,7 @@
 - `TUI.markLayoutSized(component)` marks a root child whose height the `onBeforeCompose` pass owns, so a component-scoped frame renders it instead of reusing the rows the previous frame's content called for.
 - `SelectItem.disabled` greys a row and refuses Enter and click on it, while the cursor still lands on it, so a list can show a choice that does not apply without hiding it.
 - `TUI.adoptPaintedWindow(screen)` tells the renderer the terminal already holds a frame someone else painted, and `TUI.paintedScreen()` returns that frame, so the first render after adoption diffs against the rows on screen and rewrites only what changed instead of repainting the viewport.
+- `OverlayOptions.aboveFooter` keeps the pinned footer on screen: the rows from the footer's top down are added to the overlay's bottom margin every frame, so a bottom-anchored overlay ends directly above the composer zone and follows a footer that grows. `TUI.pinnedFooterRows` reports the footer's row span in the last composed frame so a host can size the component it shows.
 - `getLaunchFactsCachePath()` resolves the cache file the launch card reads the previous launch's model, git state and context percentage from.
 - `formatCostTiered()` and `normalizePremiumRequests()`, moved here from `@veyyon/stats/format` so the status row reaches a terminal formatter without the stats package.
 - `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
@@ -94,6 +95,7 @@
 
 ### Fixed
 
+- The interactive console (`bash` with a PTY), the autoresearch dashboard and every other `ui.custom(..., { overlay: true })` surface sit above the composer zone instead of covering the whole screen: the prompt, status line and footline stay painted while the overlay is up, and the console box is sized to the rows above them.
 - A session on a model whose thinking blocks are bound to their conversation prefix, such as Claude 5.1 and later, leaves an already-sent tool result in place instead of superseding it mid-history, which invalidated every thinking block recorded after it and drew a 400 on the next turn.
 - The installer refuses to replace a binary whose only ownership record is a pre-identity v1 receipt, instead of moving it aside. That receipt vouches for the path alone, so a user who deleted the installed binary and put their own file at the name left exactly one behind, and it was being read as permission to displace their file.
 - `veyyon agents unpack` writes to `~/.veyyon/subagents`, the directory subagent discovery reads, instead of the profile's `agent/agents` dir, where an unpacked definition was reported as written and then never loaded.
