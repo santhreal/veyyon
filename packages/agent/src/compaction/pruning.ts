@@ -89,6 +89,18 @@ export interface SupersedePruneConfig {
 	/** Prune a candidate now when all messages after it total at most this many estimated tokens. Default 8 000. */
 	suffixTokenLimit?: number;
 	/**
+	 * Hard ceiling on how much sent context a rewrite may sit behind. A
+	 * candidate whose all-message suffix EXCEEDS this is never rewritten, not
+	 * even as part of a batch the cache math would otherwise pay for. Undefined
+	 * = no ceiling, and the batch decides on price alone.
+	 *
+	 * Set to 0 for a model that binds thinking blocks to their conversation
+	 * prefix: there the price of an in-place edit is not a cache write, it is
+	 * every thinking block recorded after the edited message, which no amount
+	 * of reclaimed tokens pays back.
+	 */
+	cacheWarmSuffixTokens?: number;
+	/**
 	 * Read-equivalent price of re-writing one already-cached token, used to decide
 	 * whether a batch of victims is worth the cache write it forces. Providers
 	 * charge roughly 1.25x base input to write a cache entry and 0.1x to read one,
@@ -352,7 +364,12 @@ export function pruneSupersededToolResults(entries: SessionEntry[], config: Supe
 		const suffixTokenLimit = config.suffixTokenLimit ?? DEFAULT_SUFFIX_TOKEN_LIMIT;
 		// suffixTokens[i] = estimated tokens of all messages strictly after entry i.
 		const suffixTokens = computeMessageSuffixTokens(entries);
-		const eligible = candidates.filter(candidate => candidate.index >= boundaryIndex);
+		const cacheWarmSuffixTokens = config.cacheWarmSuffixTokens;
+		const eligible = candidates.filter(
+			candidate =>
+				candidate.index >= boundaryIndex &&
+				(cacheWarmSuffixTokens === undefined || (suffixTokens[candidate.index] ?? 0) <= cacheWarmSuffixTokens),
+		);
 		// The cheap tail: a candidate whose own suffix is small is worth rewriting on
 		// its own, which is the read -> edit -> read loop.
 		const tail = eligible.filter(candidate => suffixTokens[candidate.index] <= suffixTokenLimit);

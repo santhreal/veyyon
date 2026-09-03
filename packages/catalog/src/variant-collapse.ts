@@ -354,24 +354,25 @@ function gemini36FlashFamily(): EffortVariantFamily {
 
 /**
  * Gemini 3.x Flash on Cloud Code Assist is also served as a single `-tiered`
- * deployment (`gemini-3.7-flash-tiered`, `gemini-3.6-flash-tiered`): one wire
- * id for every tier, with the tier carried in the request body as
- * `thinkingLevel` (the `google-level` mode). For 3.7 the tiered id is the ONLY
- * id the endpoint serves, with no bare id and no `-low`/`-medium`/`-high`
- * siblings, so sibling-id effort routing is impossible there. The surface is
- * curated per id, never derived from the suffix: models.dev's
- * `google/gemini-3.7-flash` entry declares the low/medium/high ladder and the
- * official Antigravity harness exposes a low/medium/high effort slider for the
- * deployment. An uncurated future `-tiered` id keeps its raw row and no
- * ladder rather than an invented one.
+ * deployment (`gemini-3.8-flash-tiered`, `gemini-3.7-flash-tiered`,
+ * `gemini-3.6-flash-tiered`): one wire id for every tier, with the tier carried
+ * in the request body as `thinkingLevel` (the `google-level` mode). For 3.7 and
+ * 3.8 the tiered id is the ONLY id the endpoint serves, with no bare id and no
+ * `-low`/`-medium`/`-high` siblings, so sibling-id effort routing is impossible
+ * there. The surface is curated per id, never derived from the suffix:
+ * models.dev's `google/gemini-3.7-flash` and `google/gemini-3.8-flash` entries
+ * declare the low/medium/high ladder and the official Antigravity harness
+ * exposes a low/medium/high effort slider for the deployment. An uncurated
+ * future `-tiered` id keeps its raw row and no ladder rather than an invented
+ * one.
  *
- * 3.7 collapses to the logical `gemini-3.7-flash` row (matching the bundled
- * `google/gemini-3.7-flash` identity) with `requestModelId` pointing at the
- * tiered wire id. 3.6 cannot: the `gemini-3.6-flash` logical id belongs to the
- * per-tier effort family above, and one family carries one axis. That family's
- * mode is `effort` (the wire id carries the tier); this deployment's is
- * `google-level` (the body does). The 3.6 tiered id therefore stands alone as
- * its own row, keyed on the wire id.
+ * 3.7 and 3.8 collapse to the logical `gemini-3.7-flash` / `gemini-3.8-flash`
+ * rows (matching the bundled `google/gemini-3.x-flash` identities) with
+ * `requestModelId` pointing at the tiered wire id. 3.6 cannot: the
+ * `gemini-3.6-flash` logical id belongs to the per-tier effort family above,
+ * and one family carries one axis. That family's mode is `effort` (the wire id
+ * carries the tier); this deployment's is `google-level` (the body does). The
+ * 3.6 tiered id therefore stands alone as its own row, keyed on the wire id.
  *
  * No `off` route and no `suppressWhenOff`: Gemini 3.x reasoning is mandatory,
  * so the build-time floor backfills `requiresEffort` and the picker never
@@ -396,6 +397,7 @@ function geminiTieredFlashFamily(id: string, name: string, wireId: string): Effo
 /** CCA families shared verbatim by both providers (transport-agnostic, or one transport both endpoints speak). */
 const SHARED_CCA_FAMILIES: readonly EffortVariantFamily[] = [
 	gemini36FlashFamily(),
+	geminiTieredFlashFamily("gemini-3.8-flash", "Gemini 3.8 Flash", "gemini-3.8-flash-tiered"),
 	geminiTieredFlashFamily("gemini-3.7-flash", "Gemini 3.7 Flash", "gemini-3.7-flash-tiered"),
 	geminiTieredFlashFamily("gemini-3.6-flash-tiered", "Gemini 3.6 Flash Tiered", "gemini-3.6-flash-tiered"),
 	{

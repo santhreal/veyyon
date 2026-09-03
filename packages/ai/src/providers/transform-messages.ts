@@ -304,6 +304,37 @@ export function transformMessages<TApi extends Api>(
 	const toolCallIdMap = new Map<string, string>();
 
 	const latestSurvivingAssistantIndex = getLatestSurvivingAssistantIndex(messages);
+	// Preserved thinking (Fable 5.1+): a thinking block's signature is bound to
+	// the exact bytes of every message before it, so reasoning recorded before a
+	// client-side history rewrite — a compaction or branch summary replacing the
+	// turns it was produced against, or a tool result pruned in place — can no
+	// longer be replayed. Anthropic rejects such a block with 400 unless the
+	// request opts into `drop_block`; dropping it here keeps the request
+	// append-only from the API's point of view and costs only reasoning the
+	// summary already subsumes.
+	const orphanedThinkingAssistantIndexes = new Set<number>();
+	if (model.thinking?.prefixBinding) {
+		let latestRewriteAt: number | undefined;
+		for (let index = 0; index < messages.length; index++) {
+			const message = messages[index];
+			if (!message) continue;
+			const rewriteAt =
+				message.role === "user" || message.role === "developer"
+					? message.historyRewriteAt
+					: message.role === "toolResult"
+						? message.prunedAt
+						: undefined;
+			if (rewriteAt !== undefined) {
+				latestRewriteAt = latestRewriteAt === undefined ? rewriteAt : Math.max(latestRewriteAt, rewriteAt);
+			} else if (
+				message.role === "assistant" &&
+				latestRewriteAt !== undefined &&
+				message.timestamp <= latestRewriteAt
+			) {
+				orphanedThinkingAssistantIndexes.add(index);
+			}
+		}
+	}
 	// First pass: transform messages (thinking blocks, tool call ID normalization)
 	const normalizedMessages = messages.map((msg, index) => {
 		// User and developer messages pass through unchanged
@@ -429,6 +460,12 @@ export function transformMessages<TApi extends Api>(
 				!assistantMsg.content.some(anthropicVisibleThinkingSurvivesReplay);
 
 			const transformedContent = assistantMsg.content.flatMap((block, blockIndex) => {
+				if (
+					orphanedThinkingAssistantIndexes.has(index) &&
+					(block.type === "thinking" || block.type === "redactedThinking")
+				) {
+					return [];
+				}
 				if (block.type === "thinking") {
 					// Only an aborted/errored turn's final (mid-stream) block can hold a
 					// partial signature; abandoned tool-use turns strip all. Drop the

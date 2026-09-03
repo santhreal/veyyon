@@ -112,9 +112,10 @@ export function createDashboardController(): DashboardController {
 							}
 							// THE BOX ENDS WHERE THE CONTENT DOES. Sizing the viewport to the
 							// terminal left a five-run segment framed by twenty-five blank rows
-							// inside a border drawn round them.
+							// inside a border drawn round them. Subtract the pinned composer
+							// zone so a full-height overlay still ends above it.
 							const chromeRows = OVERLAY_CHROME_ROWS + stats.length;
-							const available = Math.max(3, (process.stdout.rows ?? 40) - chromeRows);
+							const available = Math.max(3, tui.terminal.rows - tui.pinnedFooterRows - chromeRows);
 							viewportRows = Math.min(available, Math.max(1, body.length));
 							totalRows = body.length;
 							const maxScroll = Math.max(0, body.length - viewportRows);
@@ -137,6 +138,7 @@ export function createDashboardController(): DashboardController {
 							];
 						},
 						handleInput(data: string): void {
+
 							const maxScroll = Math.max(0, totalRows - viewportRows);
 							if (matchesKey(data, "escape") || matchesKey(data, "esc") || data === "q") {
 								done(undefined);

@@ -289,6 +289,19 @@ export const supportsAdaptiveThinkingDisplay = memo((modelId: string): boolean =
 });
 
 /**
+ * The API verifies each thinking block's signature against the bytes that
+ * preceded it — system prompt, tool set, and every earlier message — and
+ * rejects a block whose prefix the client rewrote. Enforced from Claude Fable
+ * 5.1; every later Anthropic generation inherits it, so the floor is a version
+ * compare rather than a fixed id list.
+ * @see https://platform.claude.com/docs/en/build-with-claude/preserved-thinking
+ */
+export const enforcesThinkingPrefixBinding = memo((modelId: string): boolean => {
+	const parsed = parseAnthropicModel(bareModelId(modelId));
+	return parsed !== null && semverGte(parsed.version, "5.1");
+});
+
+/**
  * Returns true for Anthropic models with Opus 4.7+, Sonnet 5+, and Fable/Mythos 5+
  * API restrictions:
  * - Sampling parameters (temperature/top_p/top_k) return 400 error

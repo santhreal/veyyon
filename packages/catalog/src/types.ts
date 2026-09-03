@@ -73,6 +73,14 @@ export interface ThinkingConfig {
 	 */
 	supportsDisplay?: boolean;
 	/**
+	 * The API binds each thinking block's signature to the exact bytes of
+	 * everything before it — the system prompt, the tool set, and every earlier
+	 * message (Fable 5.1 and later). Replaying a block whose prefix the client
+	 * rewrote is rejected, so `transformMessages` drops the reasoning a
+	 * compaction or a branch summary orphaned instead of sending it.
+	 */
+	prefixBinding?: boolean;
+	/**
 	 * Per-effort upstream wire-id routing for collapsed effort-tier variants
 	 * (`variant-collapse.ts`). Keyed by pi effort; `"off"` applies when
 	 * thinking is disabled. Missing keys fall back to `requestModelId ?? id`.

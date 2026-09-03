@@ -100,6 +100,13 @@ export interface OverlayOptions {
 	 * Called each render cycle with current terminal dimensions.
 	 */
 	visible?: (termWidth: number, termHeight: number) => boolean;
+	/**
+	 * Keep the pinned footer on screen: the screen rows from `footerTop` down
+	 * are added to the bottom margin every frame, so a bottom-anchored overlay
+	 * sits on the transcript region and the composer zone under it stays painted.
+	 * Defaults off. Without a footer (`footerTop === termHeight`) this is a no-op.
+	 */
+	aboveFooter?: boolean;
 
 	// === Fullscreen ===
 	/**
@@ -167,13 +174,17 @@ export interface OverlayViewport {
 
 /**
  * Resolve overlay layout from options.
- * Returns { width, row, col, maxHeight } for rendering.
+ * Returns { width, row, col, maxHeight } for rendering. `footerTop` is the
+ * screen row where the pinned footer starts in the window being painted
+ * (`termHeight` when there is none); `aboveFooter` reserves everything
+ * from that row down.
  */
 export function resolveOverlayLayout(
 	options: OverlayOptions | undefined,
 	overlayHeight: number,
 	termWidth: number,
 	termHeight: number,
+	footerTop: number = termHeight,
 ): { width: number; row: number; col: number; maxHeight: number } {
 	const opt = options ?? {};
 
@@ -184,8 +195,8 @@ export function resolveOverlayLayout(
 			: (opt.margin ?? {});
 	const marginTop = Math.max(0, margin.top ?? 0);
 	const marginRight = Math.max(0, margin.right ?? 0);
-	const marginBottom = Math.max(0, margin.bottom ?? 0);
-	const marginLeft = Math.max(0, margin.left ?? 0);
+	const footerReserve = opt.aboveFooter ? clampLow(termHeight - footerTop, 0, Math.max(0, termHeight - 1)) : 0;
+	const marginBottom = Math.max(0, margin.bottom ?? 0) + footerReserve;
 
 	// Available space after margins
 	const availWidth = Math.max(1, termWidth - marginLeft - marginRight);
@@ -471,16 +482,17 @@ export class OverlayStack {
 	 * Composite every visible overlay into the window slice (screen coordinates, in stack order,
 	 * later = on top). Overlays never touch the frame: composited rows exist only in the painted
 	 * window, and commits are frozen while an overlay is visible, so overlay cells can never enter
-	 * native scrollback.
+	 * native scrollback. `footerTop` is the screen row the pinned footer starts on; overlays with
+	 * `aboveFooter` end above it.
 	 */
-	compositeIntoWindow(window: string[], termWidth: number, termHeight: number): string[] {
+	compositeIntoWindow(window: string[], termWidth: number, termHeight: number, footerTop: number = termHeight): string[] {
 		const result = [...window];
 		for (const entry of this.#entries) {
 			if (!this.isVisible(entry)) continue;
 			const { component, options } = entry;
 			// Get layout with height=0 first to determine width and maxHeight
 			// (width and maxHeight don't depend on overlay height).
-			const { width, maxHeight } = resolveOverlayLayout(options, 0, termWidth, termHeight);
+			const { width, maxHeight } = resolveOverlayLayout(options, 0, termWidth, termHeight, footerTop);
 			let overlayLines = component.render(width);
 			if (overlayLines.length > maxHeight) {
 				const anchor = options?.anchor ?? "center";
@@ -489,7 +501,7 @@ export class OverlayStack {
 						? overlayLines.slice(overlayLines.length - maxHeight)
 						: overlayLines.slice(0, maxHeight);
 			}
-			const { row, col } = resolveOverlayLayout(options, overlayLines.length, termWidth, termHeight);
+			const { row, col } = resolveOverlayLayout(options, overlayLines.length, termWidth, termHeight, footerTop);
 			for (let i = 0; i < overlayLines.length; i++) {
 				const idx = row + i;
 				if (idx < 0 || idx >= result.length) continue;

@@ -52,7 +52,7 @@ describe("veyyon agents unpack", () => {
 			written: string[];
 			skipped: string[];
 		};
-		expect(result.targetDir).toBe(path.join(home, ".veyyon", "profiles", "default", "agent", "agents"));
+		expect(result.targetDir).toBe(path.join(home, ".veyyon", "subagents"));
 		expect(result.total).toBeGreaterThan(0);
 		expect(result.written.length).toBe(result.total);
 		expect(result.skipped).toEqual([]);
@@ -90,10 +90,11 @@ describe("veyyon agents unpack", () => {
 		expect(result.written.every(file => file.startsWith(target))).toBe(true);
 	}, 30_000);
 
-	it("rejects --user together with --project", async () => {
+	it("--user names the same directory as the default", async () => {
 		const home = makeTempDir2();
-		const { stderr, exitCode } = await runAgents(makeEnv(home), ["unpack", "--user", "--project"]);
-		expect(exitCode).toBe(1);
-		expect(stderr).toContain("either --user or --project");
+		const { stdout, exitCode } = await runAgents(makeEnv(home), ["unpack", "--user", "--json"]);
+		expect(exitCode).toBe(0);
+		const result = JSON.parse(stdout) as { targetDir: string };
+		expect(result.targetDir).toBe(path.join(home, ".veyyon", "subagents"));
 	}, 30_000);
 });

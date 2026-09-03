@@ -145,6 +145,7 @@ const DEFAULT_RENDER_SCHEDULER: RenderScheduler = {
 };
 
 /**
+
  * Render intent. `#doRender` classifies each frame, and the matching `#emit*`
  * method owns the bytes written and the state update.
  *
@@ -1060,6 +1061,11 @@ export class TUI extends Container {
 	 * need a host-side sync. */
 	setPinnedFooterChildCount(count: number): void {
 		this.#pinnedFooterChildCount = Math.max(0, count);
+	}
+
+	/** Row span of the pinned footer in the last composed frame; 0 without one. */
+	get pinnedFooterRows(): number {
+		return this.#pinnedFooterRows;
 	}
 
 	/** True while the transcript region shows a frozen, scrolled-up slice. */
@@ -2352,6 +2358,7 @@ export class TUI extends Container {
 	}
 
 	/**
+
 	 * Render one frame.
 	 *
 	 * Append-only pipeline: compose the frame, derive the commit boundary from
@@ -2841,6 +2848,10 @@ export class TUI extends Container {
 		// caret whose frame row sits in the frozen history above has no screen row
 		// at all and must not be drawn at a stale one.
 		let altCaret: { row: number; col: number } | null = null;
+		// Screen row where the pinned footer starts in this window, for overlays
+		// that stay above it. `height` when nothing is pinned or the footer is
+		// below the window's last row.
+		let overlayFooterTop = height;
 		if (virtualScrollSlice) {
 			// Frozen transcript rows above, live footer rows below. The region
 			// reads the scroll-space snapshot (tape + this frame's uncommitted
@@ -2853,6 +2864,7 @@ export class TUI extends Container {
 			const snapshot = this.#scrollSnapshot;
 			const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
 			const regionRows = height - footerRows;
+			overlayFooterTop = regionRows;
 			const viewTop = this.#virtualScrollTop!;
 			for (let r = 0; r < height; r++) {
 				window[r] =
@@ -2867,12 +2879,15 @@ export class TUI extends Container {
 			}
 		} else {
 			for (let r = 0; r < height; r++) window[r] = frame[windowTop + r] ?? "";
+			if (this.#pinnedFooterRows > 0) {
+				overlayFooterTop = Math.min(height, Math.max(0, frameLength - this.#pinnedFooterRows - windowTop));
+			}
 			if (cursorPos !== null && cursorPos.row >= windowTop && cursorPos.row < windowTop + height) {
 				altCaret = { row: cursorPos.row - windowTop, col: cursorPos.col };
 			}
 		}
 		if (hasVisibleOverlay) {
-			window = this.#overlays.compositeIntoWindow(window, width, height);
+			window = this.#overlays.compositeIntoWindow(window, width, height, overlayFooterTop);
 			const overlayMarkers = extractCursorMarkers(window);
 			if (overlayMarkers.length > 0) {
 				cursorPos = { row: windowTop + overlayMarkers[0]!.row, col: overlayMarkers[0]!.col };
@@ -3414,7 +3429,7 @@ export class TUI extends Container {
 	 */
 	#renderAltFrame(width: number, height: number): void {
 		const base: string[] = new Array(Math.max(0, height)).fill("");
-		let lines = this.#overlays.compositeIntoWindow(base, width, height);
+		let lines = this.#overlays.compositeIntoWindow(base, width, height, height);
 		extractCursorMarkers(lines);
 		lines = prepareLinesArray(lines, width);
 		this.#emitAltFrame(lines, width, height);
