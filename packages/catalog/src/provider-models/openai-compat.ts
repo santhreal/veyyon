@@ -2301,6 +2301,27 @@ function openCodeModelCacheProviderId(
 	return `${providerId}:models-v1:${Bun.hash(scope).toString(36)}`;
 }
 
+/**
+ * Provider-scoped models.dev rows for one OpenCode gateway. The gateway's
+ * `/v1/models` listing carries ids only, so the wire API for an id the bundle
+ * predates (`muse-spark-1.3-contributor-free` shipped as `@ai-sdk/openai`,
+ * i.e. Responses-only; `/chat/completions` returns HTTP 500) can only come
+ * from models.dev. The same descriptor rules the generator uses resolve the
+ * row, so runtime and bundle agree; the bundle is the offline fallback.
+ */
+async function loadOpenCodeModelsDevReferences(
+	providerId: "opencode-go" | "opencode-zen",
+	fetchImpl?: FetchImpl,
+	hooks?: DiscoveryHooks,
+): Promise<Map<string, ModelSpec<Api>>> {
+	const references = new Map<string, ModelSpec<Api>>();
+	const payload = await fetchModelsDevPayload(fetchImpl, hooks);
+	if (!isRecord(payload)) return references;
+	const descriptors = MODELS_DEV_PROVIDER_DESCRIPTORS.filter(descriptor => descriptor.providerId === providerId);
+	for (const model of mapModelsDevToModels(payload, descriptors)) references.set(model.id, model);
+	return references;
+}
+
 function openCodeModelManagerOptions(
 	providerId: "opencode-go" | "opencode-zen",
 	defaultBasePath: string,
@@ -2309,21 +2330,22 @@ function openCodeModelManagerOptions(
 	const apiKey = config?.apiKey;
 	const basePath = normalizeOpenCodeBasePath(config?.baseUrl, defaultBasePath);
 	const discoveryBaseUrl = openCodeBaseUrlForApi("openai-completions", basePath);
-	const references = createBundledReferenceMap<Api>(providerId);
+	const bundledReferences = createBundledReferenceMap<Api>(providerId);
 	return {
 		providerId,
 		cacheProviderId: openCodeModelCacheProviderId(providerId, apiKey, discoveryBaseUrl),
 		dynamicModelsAuthoritative: true,
 		...(apiKey && {
-			fetchDynamicModels: hooks =>
-				fetchOpenAICompatibleModels<Api>({
+			fetchDynamicModels: async hooks => {
+				const modelsDevReferences = await loadOpenCodeModelsDevReferences(providerId, config?.fetch, hooks);
+				return fetchOpenAICompatibleModels<Api>({
 					onFailure: hooks?.onFailure,
 					api: "openai-completions",
 					provider: providerId,
 					baseUrl: discoveryBaseUrl,
 					apiKey,
 					mapModel: (entry, defaults) => {
-						const reference = references.get(defaults.id);
+						const reference = modelsDevReferences.get(defaults.id) ?? bundledReferences.get(defaults.id);
 						const name = toModelName(entry.name, reference?.name ?? defaults.name);
 						if (!reference) {
 							return {
@@ -2341,7 +2363,8 @@ function openCodeModelManagerOptions(
 						};
 					},
 					fetch: config?.fetch,
-				}),
+				});
+			},
 		}),
 	};
 }
