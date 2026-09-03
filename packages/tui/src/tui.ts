@@ -3686,7 +3686,13 @@ export class TUI extends Container {
 						? overlayLines.slice(overlayLines.length - maxHeight)
 						: overlayLines.slice(0, maxHeight);
 			}
-			const { row, col } = this.#resolveOverlayLayout(options, overlayLines.length, termWidth, termHeight, footerTop);
+			const { row, col } = this.#resolveOverlayLayout(
+				options,
+				overlayLines.length,
+				termWidth,
+				termHeight,
+				footerTop,
+			);
 			for (let i = 0; i < overlayLines.length; i++) {
 				const idx = row + i;
 				if (idx < 0 || idx >= result.length) continue;

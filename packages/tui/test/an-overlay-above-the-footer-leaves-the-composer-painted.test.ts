@@ -130,17 +130,12 @@ describe("an overlay above the footer leaves the composer painted", () => {
 			// Frame = 6 body + 2 footer + composer = 9 rows; the footer starts at
 			// screen row 6, so the overlay is confined to rows 0-5 and, being
 			// bottom-anchored, shows its last six rows there.
-			expect(term.getViewport().slice(0, 9).map(line => line.trimEnd())).toEqual([
-				"ov-34",
-				"ov-35",
-				"ov-36",
-				"ov-37",
-				"ov-38",
-				"ov-39",
-				"footer-0",
-				"footer-1",
-				">",
-			]);
+			expect(
+				term
+					.getViewport()
+					.slice(0, 9)
+					.map(line => line.trimEnd()),
+			).toEqual(["ov-34", "ov-35", "ov-36", "ov-37", "ov-38", "ov-39", "footer-0", "footer-1", ">"]);
 		} finally {
 			stop();
 		}
