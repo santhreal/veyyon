@@ -17,7 +17,7 @@
  *
  * WHAT IT DOES NOT CATCH. That the recorded BYTES paint the recorded ROWS. Nothing in this process
  * runs a terminal, so the two are only asserted to travel together; the pairing itself is proved
- * in `packages/tui/test/a-screen-someone-else-painted-is-adopted-or-repainted.test.ts`, against a
+ * in `hosts/terminal/engine/test/a-screen-someone-else-painted-is-adopted-or-repainted.test.ts`, against a
  * real VT parser. Nor does it catch a terminal that reports a size it does not have, which no
  * amount of recording can survive.
  *

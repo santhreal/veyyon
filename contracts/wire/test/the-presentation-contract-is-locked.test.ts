@@ -47,7 +47,7 @@ import * as transcriptModule from "../src/presentation/transcript";
 import * as viewModelsModule from "../src/presentation/view-models";
 
 /**
- * Every module in the layer, by its path under `packages/wire/src`. The package
+ * Every module in the layer, by its path under `contracts/wire/src`. The package
  * publishes one entry point (`./presentation`), so a module the barrel does not
  * re-export is unreachable for a consumer no matter what it declares.
  */
