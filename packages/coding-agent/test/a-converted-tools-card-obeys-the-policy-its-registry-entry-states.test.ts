@@ -35,15 +35,14 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { AnyAgentTool } from "@veyyon/agent-core";
-import { Settings } from "@veyyon/coding-agent/config/settings";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ResolveTool } from "@veyyon/coding-agent/tools/agent/resolve";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import { DebugTool } from "@veyyon/coding-agent/tools/shell/debug";
 import type { TUI } from "@veyyon/tui";
 import type { StatusRowView } from "@veyyon/view";
 import { createToolExecution } from "./helpers/tool-execution";
+import { makeToolSession } from "./helpers/tool-session";
 
 const ui = { requestRender: () => {}, requestComponentRender: () => {} } as unknown as TUI;
 
@@ -84,14 +83,8 @@ function settledCard(name: string, tool: AnyAgentTool, details?: unknown): strin
 	return rowsOf(block);
 }
 
-function session(): ToolSession {
-	return {
-		cwd: "/repo",
-		hasUI: false,
-		getSessionFile: () => null,
-		getSessionSpawns: () => "*",
-		settings: Settings.isolated(),
-	} as unknown as ToolSession;
+function session() {
+	return makeToolSession({ cwd: "/repo", getSessionSpawns: () => "*" });
 }
 
 /** Every registered tool name whose entry states that the result replaces the call row. */
