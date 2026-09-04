@@ -42,7 +42,7 @@ const ASSEMBLER = path.join(SRC, "system-prompt.ts");
 const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
 
 /**
- * Measured at 1622 against the merge base's 1581. Two of the extra modules are the
+ * Measured at 1624 against the merge base's 1581. Two of the extra modules are the
  * catalog OpenCode discovery header leaf this branch absorbed with origin/main;
  * six are `contracts/model`, whose leaves (`effort`, `instrumentation`,
  * `message`, `model`, `service-tier`, `stream-block`) sit on the graph beside the
@@ -55,16 +55,20 @@ const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
  * measures one higher than a fresh checkout. One is the kernel's settings registry,
  * `kernel/settings/schema`, which the product composer `config/settings-schema`
  * registers its domain tables into: the queries moved out of the composer into the
- * registry, so the same code is two modules where it was one. `contracts/host`,
- * `contracts/session` and `contracts/tool` are reached by type only and do not
- * count. The number is modules, so a split raises it while the code the launch runs
- * is the same, and re-pinning here is the decision that growth is supposed to force.
+ * registry, so the same code is two modules where it was one. Two more are the kernel's
+ * settings store, `kernel/settings/store`, and the setting signal, `kernel/settings/signal`,
+ * which the product store `config/settings` subclasses and re-exports: the layered file
+ * store moved out of the product module, so again the same code is two modules where it
+ * was one. `contracts/host`, `contracts/session` and `contracts/tool` are reached by type
+ * only and do not count. The number is modules, so a split raises it while the code the
+ * launch runs is the same, and re-pinning here is the decision that growth is supposed to
+ * force.
  *
  * A ratchet, not a target: nothing breaks when it grows, which is exactly why it is pinned. There
  * is no margin left on purpose — the next module on this graph is a barrel someone reached for
  * and owes a line here.
  */
-const LAUNCH_REACH_CEILING = 1622;
+const LAUNCH_REACH_CEILING = 1624;
 
 /**
  * Measured at 498, down from 538 at the merge base and 718 before the aggregate edge was cut. The

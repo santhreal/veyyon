@@ -127,12 +127,14 @@ describe("the kernel names no tool and no host", () => {
 		// and its role-keyed table (`session/message-kinds`), which is how the spine converts a role a
 		// tool domain records without naming the domain. Then the settings schema registry
 		// (`settings/schema`), which answers what a declared setting is from whatever tables have
-		// registered, and the unset-number owner (`settings/optional-number`) it reads.
-		expect(kernelFiles.length).toBe(62);
+		// registered, and the unset-number owner (`settings/optional-number`) it reads. Then the
+		// layered settings store (`settings/store`), the file-backed store every product composes with
+		// its own hook set, and the setting signal (`settings/signal`) a store fires on change.
+		expect(kernelFiles.length).toBe(64);
 		expect(concernCounts.registry).toBe(8);
 		expect(concernCounts.loader).toBe(12);
 		expect(concernCounts.session).toBe(40);
-		expect(concernCounts.settings).toBe(2);
+		expect(concernCounts.settings).toBe(4);
 		expect(concernCounts.registry).toBeGreaterThan(0);
 		expect(concernCounts.loader).toBeGreaterThan(0);
 		expect(concernCounts.session).toBeGreaterThan(0);

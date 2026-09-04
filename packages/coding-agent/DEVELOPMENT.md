@@ -132,7 +132,23 @@ registry. A query before the composition has loaded throws rather than reporting
 unknown, so outside the kernel a query is imported from `config/settings-schema` (or from
 `config/settings`, which re-exports it), which registers the tables by the same edge;
 `test/config/settings-domain-composition.test.ts` fails a module that reads the registry
-directly. The store (`config/settings.ts`) has not moved.
+directly.
+
+The settings store is the kernel's, the settings hooks are the product's. `SettingsStore`
+(`@veyyon/kernel/settings/store`) holds the three layers and their merge, `get`/`set`/`unset`/
+`override`, the source and configured queries, the YAML load with quarantine and type-mismatch
+collection, the debounced locked text-preserving save with its failure report, the fork, clone and
+reload, and the one-shot migration stamp; `SettingSignal` (`@veyyon/kernel/settings/signal`) is the
+change signal a store fires. The store takes a `SettingsStoreHooks` at construction and calls it
+where the product code ran: `globalBinding` for a machine-wide path, `migrate` on every raw tree it
+loads, `loadLegacySources` and `afterOwnedConfigLoaded` on a persisting load, `resolveForCwd` on a
+read, `applyHook`, `applyAllHooks` and `notifyEffectiveChange` on a write, `mergedViewRebuilt` on a
+rebuild. `config/settings.ts` is `Settings extends SettingsStore` with `CodingAgentSettingsHooks`:
+`GLOBAL_SETTING_BINDINGS`, the `SETTING_HOOKS` table, the product migrations, the `settings.json`
+and `agent.db` legacy read, the changelog-marker seed and the path-scoped resolution of
+`enabledModels`, plus the product accessors and the `on…Changed` signals. It re-exports the store's
+vocabulary, so every existing import resolves. `kernel/test/the-settings-store-calls-each-product-hook-where-the-product-store-did.test.ts`
+drives the kernel store with a recording hook set and pins the call sequence.
 
 The dividing line is the import graph, not the subject. A module moved when its transitive closure
 named no tool, no host and no mode; a module that reaches one of those stayed. 38 non-test modules
