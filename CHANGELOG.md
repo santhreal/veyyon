@@ -28,6 +28,7 @@
 - `/autoresearch <text>` on a live session where `<text>` is the stored goal is a resume with nothing to add: it neither prints a context notice nor sends the goal to the model a second time.
 - A file search accepts `path` as the directory its `input` globs are searched under, the way `path` scopes a text search: `{ type: "files", input: "*.ts", path: "src" }` is `src/**/*.ts`, each `input` entry keeps its own depth, and a scope that is a glob or an input that is absolute is rejected naming the spelling that works.
 - Browser tool calls batched in one turn run in the order written; `run` and `close` on the same tab used to start together and the run found its tab closed.
+- `ExtensionAPI.setModel(model, { ephemeral: true })` switches the session's model for the rest of the turn without recording it as the session's own model, so a resumed session opens on the model the operator chose.
 - Compaction can truncate the middle of an oversized text, keeping both edges, in any message role — including the roles that store their model-visible text outside `content`, such as a shell cell's `output`, a summary's `summary` and a file mention's `files[i].content`.
 - `pruneSupersededToolResults` accepts `cacheWarmSuffixTokens`, a hard ceiling on the sent context a rewrite may sit behind; a candidate over the ceiling is never rewritten, including as part of a batch the cache math would otherwise pay for.
 - Every OpenCode request carries a `Veyyon/<version>` user agent and an `x-opencode-session` header derived from the conversation id, on the `anthropic-messages`, `openai-completions` and `openai-responses` transports and on server-side compaction, under every cache-retention setting, which the gateway requires to identify the client and route a conversation to its warm prompt cache.
@@ -128,6 +129,10 @@
 
 ### Fixed
 
+- `veyyon auth-gateway serve` honours `accounts.loadBalancing`: with it off, one account per provider serves every request the gateway forwards, where before the gateway rotated on each of the several credential reads a single request makes.
+- An autoswarm arm's model switch is ephemeral: quitting mid-arm and resuming the session no longer opens on the arm's model with nothing to restore the session's own.
+- An overlay box narrower than six columns no longer draws a title wider than its own border.
+- A warning repeated verbatim with nothing between the two, as the compaction dead-end notice was at the top of a resumed turn, renders once.
 - Settings selector displays a dimmed '(unset)' placeholder for optional text settings with empty values.
 - The subagent roster list bounds item rows and wraps custom agent hints so the list and navigation controls fit within the modal viewport.
 - The settings selector passes the target pane width to the status line preview.
