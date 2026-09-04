@@ -399,7 +399,7 @@ describe("a published surface survives the move", () => {
 	 * subpath: `"./session/*"` is one key and was 36 importable modules. Step 5 moved those modules to
 	 * `@veyyon/kernel` and every key stayed exactly where it was, so a ledger of keys reported no
 	 * change while 98 resolved subpaths stopped resolving. This cell states parity over what a
-	 * consumer can actually import: 5225 subpaths the branch point served, every one of them still
+	 * consumer can actually import: 5227 subpaths the branch point served, every one of them still
 	 * served here or carrying a successor that is.
 	 */
 	it("(b3) every resolved subpath main served is still served or relocated to one that is", () => {
@@ -436,7 +436,7 @@ describe("a published surface survives the move", () => {
 		}
 
 		expect(unserved).toEqual([]);
-		expect(compared).toBe(5225);
+		expect(compared).toBe(5227);
 	});
 
 	/**

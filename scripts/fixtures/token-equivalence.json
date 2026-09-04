@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "91ccad595600b27b90a93454995490320e586802",
+	"generatedFrom": "52bfaf4815e4023187694ab568c8597d634ec57a",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -69,7 +69,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 5036,
+	"changedCount": 5032,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -380,7 +380,6 @@
 		"packages/agent/src/agent.ts",
 		"packages/agent/src/append-only-context.ts",
 		"packages/agent/src/compaction/cache-aligned-context.ts",
-		"packages/agent/src/compaction/compaction.ts",
 		"packages/agent/src/compaction/pruning.ts",
 		"packages/agent/src/compaction/remote-compaction.ts",
 		"packages/agent/src/compaction/shake.ts",
@@ -399,8 +398,6 @@
 		"packages/ai/src/auth-credential-rows.ts",
 		"packages/ai/src/auth-gateway/server.ts",
 		"packages/ai/src/auth-storage.ts",
-		"packages/ai/src/dialect/anthropic.ts",
-		"packages/ai/src/dialect/minimax.ts",
 		"packages/ai/src/error/finalize.ts",
 		"packages/ai/src/error/flags.ts",
 		"packages/ai/src/error/validation.ts",
@@ -441,7 +438,6 @@
 		"packages/catalog/src/discovery/cursor.ts",
 		"packages/catalog/src/discovery/devin.ts",
 		"packages/catalog/src/identity/id.ts",
-		"packages/catalog/src/identity/markers.ts",
 		"packages/catalog/src/identity/reference.ts",
 		"packages/catalog/src/model-manager.ts",
 		"packages/catalog/src/provider-models/ollama.ts",
@@ -1420,6 +1416,7 @@
 		"packages/coding-agent/test/a-name-the-command-line-assigns-is-not-an-unknown-expansion.test.ts",
 		"packages/coding-agent/test/a-parked-subagent-is-pruned-on-its-own-budget.test.ts",
 		"packages/coding-agent/test/a-path-under-the-home-directory-is-shown-as-a-tilde.test.ts",
+		"packages/coding-agent/test/a-prefix-bound-model-keeps-its-warm-tool-results.test.ts",
 		"packages/coding-agent/test/a-provider-window-is-not-a-summary.test.ts",
 		"packages/coding-agent/test/a-relaunched-session-ignores-bytes-left-in-the-tty.test.ts",
 		"packages/coding-agent/test/a-repaint-never-leaves-a-second-composer-behind.test.ts",
@@ -3341,7 +3338,6 @@
 		"packages/utils/src/markdown-table.ts",
 		"packages/utils/src/module-reach-workspace.ts",
 		"packages/utils/src/module-reach.ts",
-		"packages/utils/src/module-timer.ts",
 		"packages/utils/src/motion.ts",
 		"packages/utils/src/mouse.ts",
 		"packages/utils/src/padding.ts",

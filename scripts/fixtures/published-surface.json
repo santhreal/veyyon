@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "91ccad595600b27b90a93454995490320e586802",
+	"generatedFrom": "52bfaf4815e4023187694ab568c8597d634ec57a",
 	"packages": {
 		"@veyyon/agent-core": {
 			"name": "@veyyon/agent-core",
@@ -705,6 +705,8 @@
 				"./utils/message-text.js",
 				"./utils/openai-http",
 				"./utils/openai-http.js",
+				"./utils/opencode-headers",
+				"./utils/opencode-headers.js",
 				"./utils/openrouter-headers",
 				"./utils/openrouter-headers.js",
 				"./utils/parse-bind",
@@ -829,6 +831,7 @@
 				"./utils/anthropic-auth",
 				"./utils/event-stream",
 				"./utils/message-text",
+				"./utils/opencode-headers",
 				"./utils/openrouter-headers",
 				"./utils/retry",
 				"./utils/schema",
