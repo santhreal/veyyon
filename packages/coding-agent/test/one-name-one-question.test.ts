@@ -127,7 +127,7 @@ describe("no two modules answer different questions under one name", () => {
 		expect(await declarersOf("isAssistantMessageWithBlocks")).toEqual([
 			path.join("coding-agent", "src", "modes", "terminal", "controllers", "omfg-rule.ts"),
 		]);
-		expect(await declarersOf("isLinkableAssistantEntry")).toEqual([path.join("stats", "src", "parser.ts")]);
+		expect(await declarersOf("isLinkableAssistantEntry")).toEqual([path.join("apps", "stats", "src", "parser.ts")]);
 		expect(await declarersOf("isRateableAssistantTurn")).toEqual([
 			path.join("coding-agent", "src", "modes", "terminal", "components", "status-line", "token-rate.ts"),
 		]);
