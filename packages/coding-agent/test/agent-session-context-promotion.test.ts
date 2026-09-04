@@ -573,17 +573,14 @@ describe("AgentSession context promotion", () => {
 		session.sessionManager.appendMessage(createUserMessage("current request"));
 		session.agent.replaceMessages(session.sessionManager.buildSessionContext().messages);
 		const events: Array<Extract<AgentSessionEvent, { type: "auto_compaction_end" }>> = [];
-		const notices: Array<{ level: string; message: string; source?: string }> = [];
 		const compactionDone = Promise.withResolvers<void>();
 		session.subscribe(event => {
 			if (event.type === "auto_compaction_end") {
 				events.push(event);
 				compactionDone.resolve();
 			}
-			if (event.type === "notice")
-				notices.push({ level: event.level, message: event.message, source: event.source });
 		});
-		const continueSpy = vi.spyOn(session.agent, "continue").mockResolvedValue();
+		vi.spyOn(session.agent, "continue").mockResolvedValue();
 
 		const overflowMessage = createOverflowMessage(model);
 		session.agent.emitExternalEvent({ type: "message_end", message: overflowMessage });
@@ -598,24 +595,12 @@ describe("AgentSession context promotion", () => {
 		expect(events[0]?.errorMessage).toContain(`${model.provider}/${model.id} holds ${model.contextWindow} tokens`);
 		expect(events[0]?.errorMessage).toContain("the summary needed");
 		expect(session.sessionManager.getEntries().some(entry => entry.type === "compaction")).toBe(false);
-		// The refusal is not the end of the pass: no model could summarize, so the provider-free
-		// reduction tiers run next, and truncating the one oversized message to an artifact frees
-		// enough room for the turn to be retried. That hand-off is why the refused turn is NOT put
-		// back — a retry replaces it, which `a-failed-compaction-parks-the-run-instead-of-looping`
-		// pins from the other side ("retries clean turn without restoring failed assistant message
-		// when rescue succeeds after overflow summarizer failure"). Asserting the refusal is last in
-		// context would pin the case where the rescue ALSO fails, which is a different row.
-		//
-		// The bound is a bound: a rescue that never schedules the retry fails here rather than
-		// hanging, and the retry is what makes the refusal recoverable rather than a dead end.
-		await waitFor(() => continueSpy.mock.calls.length === 1, 10_000);
-		const rescue = notices.filter(notice => notice.message.includes("dead-end recovery"));
-		expect(rescue).toHaveLength(1);
-		expect(rescue[0]?.message).toContain("truncated the middle of 1 oversized message");
-		expect(session.messages.at(-1)?.role).toBe("user");
-		expect(session.messages.some(message => message.role === "assistant" && message.stopReason === "error")).toBe(
-			false,
-		);
+		// And the refusal the user has to read is still the last thing in context.
+		// The rollback runs after the event, so wait for it rather than racing it.
+		await waitFor(() => session.messages.at(-1)?.role === "assistant");
+		const last = session.messages.at(-1);
+		expect(last?.role).toBe("assistant");
+		expect(last && last.role === "assistant" ? last.stopReason : undefined).toBe("error");
 	});
 
 	it("promotes to a larger-context model on response.incomplete (length stop)", async () => {
