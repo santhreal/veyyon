@@ -34,6 +34,7 @@
     "@veyyon/ai": "catalog:",
     "@veyyon/catalog": "catalog:",
     "@veyyon/plugin": "catalog:",
+    "@veyyon/session": "catalog:",
     "@veyyon/utils": "catalog:"
   },
   "devDependencies": {

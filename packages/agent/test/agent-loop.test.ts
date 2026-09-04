@@ -23,7 +23,7 @@ import { INTENT_FIELD } from "@veyyon/wire";
 import { type } from "arktype";
 import { createAssistantMessage, createUserMessage } from "./helpers";
 
-declare module "@veyyon/agent-core/types" {
+declare module "@veyyon/session" {
 	interface CustomAgentMessages {
 		advisor: {
 			role: "custom";

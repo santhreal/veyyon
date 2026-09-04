@@ -42,8 +42,12 @@ const ASSEMBLER = path.join(SRC, "system-prompt.ts");
 const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
 
 /**
- * Measured at 1614 against the merge base's 1581. The extra two modules are the
- * catalog OpenCode discovery header leaf this branch absorbed with origin/main.
+ * Measured at 1618 against the merge base's 1581. Two of the extra modules are the
+ * catalog OpenCode discovery header leaf this branch absorbed with origin/main; the
+ * rest is `contracts/model`, whose six leaves (`effort`, `instrumentation`,
+ * `message`, `model`, `service-tier`, `stream-block`) sit on the graph beside the
+ * `ai` and `catalog` modules that re-export them. `contracts/host`,
+ * `contracts/session` and `contracts/tool` are reached by type only and do not count.
  * The number is modules, so a split raises it while the code the launch runs
  * is the same, and re-pinning here is the decision that growth is supposed to force.
  *
@@ -51,7 +55,7 @@ const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
  * is no margin left on purpose — the next module on this graph is a barrel someone reached for
  * and owes a line here.
  */
-const LAUNCH_REACH_CEILING = 1614;
+const LAUNCH_REACH_CEILING = 1618;
 
 /**
  * Measured at 498, down from 538 at the merge base and 718 before the aggregate edge was cut. The

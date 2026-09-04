@@ -20,6 +20,7 @@ import type {
 	TSchema,
 } from "@veyyon/ai";
 import type { Dialect } from "@veyyon/ai/dialect";
+import type { AgentMessage, CustomAgentMessages } from "@veyyon/session";
 import type { ToolApproval, ToolResult, ToolUpdateCallback } from "@veyyon/tool";
 import type { ToolViewRenderer } from "@veyyon/view";
 
@@ -613,29 +614,11 @@ export interface AfterToolCallContext {
 }
 
 /**
- * Extensible interface for custom app messages.
- * Apps can extend via declaration merging:
- *
- * @example
- * ```typescript
- * declare module "@veyyon/agent" {
- *   interface CustomAgentMessages {
- *     artifact: ArtifactMessage;
- *     notification: NotificationMessage;
- *   }
- * }
- * ```
+ * {@link AgentMessage} and its {@link CustomAgentMessages} hook are declared in
+ * `@veyyon/session`; an application augments that module. Re-exported so the
+ * agent's own surface keeps naming them.
  */
-export interface CustomAgentMessages {
-	// Empty by default - apps extend via declaration merging
-}
-
-/**
- * AgentMessage: Union of LLM messages + custom messages.
- * This abstraction allows apps to add custom message types while maintaining
- * type safety and compatibility with the base LLM messages.
- */
-export type AgentMessage = Message | CustomAgentMessages[keyof CustomAgentMessages];
+export type { AgentMessage, CustomAgentMessages };
 
 /**
  * Agent state containing all configuration and conversation data.

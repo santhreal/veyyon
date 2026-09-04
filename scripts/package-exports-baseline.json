@@ -3502,6 +3502,7 @@
 		"parseSha256Sidecar"
 	],
 	"@veyyon/plugin": [],
+	"@veyyon/session": [],
 	"@veyyon/settings": [
 		"SETTING_TYPES",
 		"isSettingType"

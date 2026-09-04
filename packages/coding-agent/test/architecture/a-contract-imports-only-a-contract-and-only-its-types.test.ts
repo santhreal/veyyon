@@ -269,6 +269,8 @@ describe("a contract imports only a contract, and only its types", () => {
 	 * contract needed a shape the other owns, and copying it would have made two owners. A new pair
 	 * turns this cell red until it is added here with the same justification.
 	 *
+	 * `@veyyon/session -> @veyyon/model`: an entry records a message, an attribution, a service tier
+	 * and the content blocks the model contract owns.
 	 * `@veyyon/tool -> @veyyon/model`: a tool result holds the content blocks a message holds.
 	 * `@veyyon/wire -> @veyyon/model`: every block, stop reason and usage a guest reads is a
 	 * `Pick` of the one the model contract owns, so the two cannot drift.
@@ -278,6 +280,10 @@ describe("a contract imports only a contract, and only its types", () => {
 		for (const [from, targets] of contractGraph()) {
 			for (const to of targets) edges.push(`${from} -> ${to}`);
 		}
-		expect(edges.sort()).toEqual(["@veyyon/tool -> @veyyon/model", "@veyyon/wire -> @veyyon/model"]);
+		expect(edges.sort()).toEqual([
+			"@veyyon/session -> @veyyon/model",
+			"@veyyon/tool -> @veyyon/model",
+			"@veyyon/wire -> @veyyon/model",
+		]);
 	});
 });

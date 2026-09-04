@@ -8,7 +8,7 @@
  * nobody added a case for it.
  *
  * So the role set is enumerated from source at run time — the `Message` union in
- * `@veyyon/ai` and the `CustomAgentMessages` declaration-merge block in
+ * `@veyyon/model` and the `CustomAgentMessages` declaration-merge block in
  * `session/messages.ts` — and the expected mapping is pinned by exact equality.
  * Adding a role turns this file RED until someone records what it renders as.
  *
@@ -19,7 +19,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import type { AgentMessage } from "@veyyon/agent-core";
+import type { AgentMessage } from "@veyyon/session";
 import type { TranscriptBlock } from "@veyyon/wire/presentation";
 import {
 	blockIdFor,
@@ -28,21 +28,21 @@ import {
 	toTranscriptBlocks,
 } from "../../src/presentation/transcript-builder";
 
-const AI_TYPES = new URL("../../../ai/src/types.ts", import.meta.url).pathname;
+const MODEL_MESSAGE = new URL("../../../../contracts/model/src/message.ts", import.meta.url).pathname;
 const CODING_AGENT_MESSAGES = new URL("../../src/session/messages.ts", import.meta.url).pathname;
 
 /** Role literals of the core `Message` union, read from its own declaration. */
 function coreRoles(): string[] {
-	const source = readFileSync(AI_TYPES, "utf8");
+	const source = readFileSync(MODEL_MESSAGE, "utf8");
 	const union = /export type Message =([^;]+);/.exec(source);
-	if (union === null) throw new Error(`no 'export type Message' union in ${AI_TYPES}`);
+	if (union === null) throw new Error(`no 'export type Message' union in ${MODEL_MESSAGE}`);
 	const members = union[1]!
 		.split("|")
 		.map(part => part.trim())
 		.filter(part => part.length > 0);
 	return members.map(member => {
 		const declaration = new RegExp(`interface ${member}(?:<[^>]*>)?\\s*\\{([\\s\\S]*?)\\n\\}`).exec(source);
-		if (declaration === null) throw new Error(`no interface ${member} in ${AI_TYPES}`);
+		if (declaration === null) throw new Error(`no interface ${member} in ${MODEL_MESSAGE}`);
 		const role = /\brole:\s*"([^"]+)"/.exec(declaration[1]!);
 		if (role === null) throw new Error(`interface ${member} declares no role literal`);
 		return role[1]!;

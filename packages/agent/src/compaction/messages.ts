@@ -93,7 +93,7 @@ export interface CompactionSummaryMessage {
 
 export type CoreCompactionMessage = CustomMessage | HookMessage | BranchSummaryMessage | CompactionSummaryMessage;
 
-declare module "../types" {
+declare module "@veyyon/session" {
 	interface CustomAgentMessages {
 		custom: CustomMessage;
 		hookMessage: HookMessage;

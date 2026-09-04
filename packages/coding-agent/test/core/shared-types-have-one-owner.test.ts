@@ -134,9 +134,9 @@ const UNIFIED = [
 	},
 	{
 		name: "StopReason",
-		owner: "packages/ai/src/types.ts",
+		owner: "contracts/model/src/message.ts",
 		resolution:
-			"three declarations: the host's five literals, wire's identical-today copy (now `WireStopReason`, spelled separately because wire must stay dependency-free for the browser), and Anthropic's own wire vocabulary in `providers/anthropic-wire.ts`",
+			"three declarations: the host's five literals, wire's copy (now `WireStopReason`, a `Pick` of this one), and Anthropic's own wire vocabulary in `providers/anthropic-wire.ts`",
 	},
 	{
 		name: "WireStopReason",
@@ -158,7 +158,7 @@ const UNIFIED = [
 	},
 	{
 		name: "SessionEntry",
-		owner: "packages/agent/src/compaction/entries.ts",
+		owner: "contracts/session/src/entry.ts",
 		resolution:
 			"three unions with three widths under one name; the wire subset became `WireSessionEntry` and the stats parser's tolerant one `SessionLogEntry`, both keeping the old name as a renamed export because the packages are published",
 	},
@@ -245,7 +245,7 @@ const UNIFIED = [
 	},
 	{
 		name: "Usage",
-		owner: "packages/catalog/src/types.ts",
+		owner: "contracts/model/src/model.ts",
 		resolution:
 			"`@veyyon/stats` declared its own with the same five counters and the same `cost`, and nothing else -- so `orchestration`, `reasoningTokens`, `cttl` and `server` were present in the sessions it parses and invisible to every reader. Stats already depends on catalog, so it re-exports the writer's type",
 	},

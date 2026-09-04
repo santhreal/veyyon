@@ -64,6 +64,7 @@
     "@types/turndown": "catalog:",
     "@veyyon/hashline": "catalog:",
     "@veyyon/host": "catalog:",
+    "@veyyon/session": "catalog:",
     "@veyyon/stats": "catalog:",
     "@veyyon/agent-core": "catalog:",
     "@veyyon/ai": "catalog:",

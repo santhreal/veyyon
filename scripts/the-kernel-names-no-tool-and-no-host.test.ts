@@ -157,7 +157,7 @@ describe("the kernel names no tool and no host", () => {
 
 	// 3. The manifest half. Pinned by exact equality so a dependency arrives by decision. A contract
 	// is the one kind of member the kernel may depend on; `@veyyon/plugin` is the manifest vocabulary
-	// the loader reads.
+	// the loader reads and `@veyyon/session` the entry vocabulary the session spine persists.
 	it("declares only allowed dependencies in package.json", () => {
 		const manifestPath = path.join(kernelDir, "package.json");
 		expect(fs.existsSync(manifestPath)).toBe(true);
@@ -170,6 +170,7 @@ describe("the kernel names no tool and no host", () => {
 			"@veyyon/ai",
 			"@veyyon/catalog",
 			"@veyyon/plugin",
+			"@veyyon/session",
 			"@veyyon/utils",
 		]);
 	});

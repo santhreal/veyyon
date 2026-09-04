@@ -1,15 +1,15 @@
-import type { SessionEntry, SessionEntryBase } from "@veyyon/agent-core/compaction/entries";
 import type { Usage } from "@veyyon/ai";
 import type { InstrumentationLevel } from "@veyyon/ai/instrumentation";
+import type { SessionEntry, SessionEntryBase } from "@veyyon/session";
 
 /**
- * Every shared shape is DECLARED in `@veyyon/agent-core/compaction/entries` and re-exported
- * here, so `import type { CompactionEntry } from "./session-entries"` keeps working exactly as
- * it did while there is one definition to read and one place to add a field. This file used to
- * declare all fifteen of them a second time, plus its own copy of the `SessionEntry` union over
- * them: twelve were byte-identical and three had drifted, so compaction in the other package
- * saw `SessionInitEntry` without the `spawns`/`readSummarize` the coding agent actually writes,
- * and `ThinkingLevelChangeEntry` without `configured`.
+ * Every shared shape is DECLARED in `@veyyon/session` and re-exported here, so
+ * `import type { CompactionEntry } from "./session-entries"` keeps working exactly as it did
+ * while there is one definition to read and one place to add a field. This file used to declare
+ * all fifteen of them a second time, plus its own copy of the `SessionEntry` union over them:
+ * twelve were byte-identical and three had drifted, so compaction in the other package saw
+ * `SessionInitEntry` without the `spawns`/`readSummarize` the coding agent actually writes, and
+ * `ThinkingLevelChangeEntry` without `configured`.
  *
  * Entry kinds only this package persists reach the shared union through the
  * `CustomCompactionSessionEntries` declaration-merging hook below, so `SessionEntry`
@@ -33,9 +33,9 @@ export type {
 	ThinkingLevelChangeEntry,
 	TitleChangeEntry,
 	TtsrInjectionEntry,
-} from "@veyyon/agent-core/compaction/entries";
+} from "@veyyon/session";
 
-declare module "@veyyon/agent-core/compaction/entries" {
+declare module "@veyyon/session" {
 	interface CustomCompactionSessionEntries {
 		subagentSpawn: SubagentSpawnEntry;
 		settingsSnapshot: SettingsSnapshotEntry;

@@ -100,6 +100,16 @@
         "@types/bun": "catalog:",
       },
     },
+    "contracts/session": {
+      "name": "@veyyon/session",
+      "version": "1.3.0",
+      "dependencies": {
+        "@veyyon/model": "catalog:",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:",
+      },
+    },
     "contracts/settings": {
       "name": "@veyyon/settings",
       "version": "1.3.0",
@@ -168,6 +178,7 @@
         "@veyyon/ai": "catalog:",
         "@veyyon/catalog": "catalog:",
         "@veyyon/plugin": "catalog:",
+        "@veyyon/session": "catalog:",
         "@veyyon/utils": "catalog:",
       },
       "devDependencies": {
@@ -190,6 +201,7 @@
         "@veyyon/ai": "catalog:",
         "@veyyon/catalog": "catalog:",
         "@veyyon/natives": "catalog:",
+        "@veyyon/session": "catalog:",
         "@veyyon/tool": "catalog:",
         "@veyyon/utils": "catalog:",
         "@veyyon/view": "catalog:",
@@ -265,6 +277,7 @@
         "@veyyon/mnemopi": "catalog:",
         "@veyyon/natives": "catalog:",
         "@veyyon/plugin": "catalog:",
+        "@veyyon/session": "catalog:",
         "@veyyon/settings": "catalog:",
         "@veyyon/stats": "catalog:",
         "@veyyon/tui": "catalog:",
@@ -533,6 +546,7 @@
     "@veyyon/model": "1.3.0",
     "@veyyon/natives": "1.3.0",
     "@veyyon/plugin": "1.3.0",
+    "@veyyon/session": "1.3.0",
     "@veyyon/settings": "1.3.0",
     "@veyyon/stats": "1.3.0",
     "@veyyon/swarm-extension": "1.3.0",
@@ -1151,6 +1165,8 @@
     "@veyyon/natives": ["@veyyon/natives@workspace:natives/bridge/bindings"],
 
     "@veyyon/plugin": ["@veyyon/plugin@workspace:contracts/plugin"],
+
+    "@veyyon/session": ["@veyyon/session@workspace:contracts/session"],
 
     "@veyyon/settings": ["@veyyon/settings@workspace:contracts/settings"],
 

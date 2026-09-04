@@ -38,6 +38,7 @@
     "@veyyon/ai": "catalog:",
     "@veyyon/catalog": "catalog:",
     "@veyyon/natives": "catalog:",
+    "@veyyon/session": "catalog:",
     "@veyyon/tool": "catalog:",
     "@veyyon/utils": "catalog:",
     "@veyyon/view": "catalog:",

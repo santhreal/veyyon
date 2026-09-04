@@ -137,10 +137,19 @@ import { typeScriptMembers } from "./workspace-layout";
  * two types were, and `utils` is imported by everything, so a contract there is one nothing can
  * depend on narrowly, and a plugin that wants the host's shape should not also get the logger, the
  * stream readers and the temp-file helpers; `contracts/view` is what a tool returns to a host, and a
- * capability flows the other way; `contracts/tool` is what a tool declares about itself. A future rise
- * still needs the sentence above: which existing package was considered and why it could not serve.
+ * capability flows the other way; `contracts/tool` is what a tool declares about itself.
+ *
+ * The count went 27 -> 28 with `contracts/session`. It is what a session file is made of: the
+ * entry vocabulary, the `AgentMessage` union an entry records, and the two declaration-merging
+ * hooks a package augments to add its own kinds. `agent` held both, and `agent` is the loop: a host
+ * that displays a transcript, or a plugin that persists its own entry kind, imported the compactor
+ * and every provider behind it to name one interface. `contracts/model` is what a provider says and a
+ * message is, and a compaction summary or a mode change is not a message; `contracts/wire` is what
+ * crosses to a guest, a projection of a session rather than its file. The package imports only types
+ * from `contracts/model`. A future rise still needs the sentence above: which existing package was
+ * considered and why it could not serve.
  */
-const PACKAGE_BUDGET = 27;
+const PACKAGE_BUDGET = 28;
 
 /**
  * Every workspace member, as `<root>/<name>`.
