@@ -6384,6 +6384,7 @@
 			"@veyyon/model",
 			"@veyyon/plugin",
 			"@veyyon/settings",
+			"@veyyon/tool",
 			"@veyyon/view",
 			"@veyyon/web"
 		],

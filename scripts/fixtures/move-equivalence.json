@@ -4031,6 +4031,17 @@
 			"structuralHash": "3d1f42113994e537eb4004f5efb7506ca09cdc40ef4bd70c307730dc2b8db465",
 			"mainStructuralHash": "b7e87a3a0dbf53f214467603befab7c2567ce60d153a73e9c5a220610fa5f760"
 		},
+		"plugins/mnemopi/tsconfig.json": {
+			"old": "packages/mnemopi/tsconfig.json",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "manifest-depth",
+			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"hash": "4727b8d59142037ab3bdbf174cafaf587cb1bc7eaf0f2a34d75a4472fd2aa55c",
+			"mainHash": "8c311aa9b6154a484e086da0fc6da90d35cd5ec99bd94405937c9a5b162b106b",
+			"structuralHash": "e658471018ceb65393394f6b12620b464a83346164060fd2e5e57d2c4cba7169",
+			"mainStructuralHash": "b7e87a3a0dbf53f214467603befab7c2567ce60d153a73e9c5a220610fa5f760"
+		},
 		"contracts/wire/CHANGELOG.md": {
 			"old": "packages/wire/CHANGELOG.md",
 			"kind": "normalized",
@@ -4156,8 +4167,8 @@
 			"structuralHash": "73d48a842ccb978af567eb02d339ab5f5fc6240e93d0465cd58a30cf454c177d",
 			"mainStructuralHash": "73d48a842ccb978af567eb02d339ab5f5fc6240e93d0465cd58a30cf454c177d"
 		},
-		"plugins/mnemopi/tsconfig.json": {
-			"old": "packages/mnemopi/tsconfig.json",
+		"plugins/hashline/tsconfig.json": {
+			"old": "packages/hashline/tsconfig.json",
 			"kind": "normalized",
 			"differs": "changed",
 			"group": "manifest-depth",
@@ -4175,17 +4186,6 @@
 			"mainHash": "c730dfd7e569e5173a60e38e37bcbcc4bc19c576aa8a42510cdf46a801a8cfdc",
 			"structuralHash": "3e823dfa50a745297133ddaa28e7711dd16e54ea540bf1ec73047630ad4d99b1",
 			"mainStructuralHash": "3e823dfa50a745297133ddaa28e7711dd16e54ea540bf1ec73047630ad4d99b1"
-		},
-		"plugins/hashline/tsconfig.json": {
-			"old": "packages/hashline/tsconfig.json",
-			"kind": "normalized",
-			"differs": "changed",
-			"group": "manifest-depth",
-			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
-			"hash": "4727b8d59142037ab3bdbf174cafaf587cb1bc7eaf0f2a34d75a4472fd2aa55c",
-			"mainHash": "8c311aa9b6154a484e086da0fc6da90d35cd5ec99bd94405937c9a5b162b106b",
-			"structuralHash": "e658471018ceb65393394f6b12620b464a83346164060fd2e5e57d2c4cba7169",
-			"mainStructuralHash": "b7e87a3a0dbf53f214467603befab7c2567ce60d153a73e9c5a220610fa5f760"
 		},
 		"hosts/terminal/engine/CHANGELOG.md": {
 			"old": "packages/tui/CHANGELOG.md",
