@@ -1219,4 +1219,4 @@ Wiring you can't exercise in-process (worker spawn, install flow) is covered by 
 runtime smoke probe (`veyyon --smoke-test`) and the install-test scripts, not by a
 source grep.
 
-*Verified against `4aaaffd0a` on 2026-08-30.*
+*Verified against `d94e1c790` on 2026-09-04.*

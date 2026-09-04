@@ -295,4 +295,4 @@ sequence in an ordinary widget is a design-system bug. Keep any required raw seq
 component or terminal-protocol owner.
 
 
-*Verified against `4ef012a0dc` on 2026-09-01.*
+*Verified against `d94e1c790` on 2026-09-04.*
