@@ -164,15 +164,19 @@ describe("autoswarm is its own command", () => {
 		expect(commands.get("autoresearch")?.description).not.toContain("breadth");
 	});
 
-	it("completes the two subcommands on both, and breadth on neither", () => {
-		// `/autoswarm off` and `/autoswarm clear` still work, so they must still
-		// be offered — including before a letter is typed, which is the only point
-		// the names are discoverable without knowing them in advance. Breadth is
-		// not a subcommand any more and must not be offered on either command.
+	it("completes every subcommand on both, and breadth on neither", () => {
+		// Each of these still works, so each must still be offered — including
+		// before a letter is typed, which is the only point the names are
+		// discoverable without knowing them in advance. `status` and `goal` are
+		// listed because reaching for an unlisted word used to be swallowed as the
+		// goal and overwrite a live session's. Breadth is not a subcommand any
+		// more and must not be offered on either command.
 		const { commands } = buildHarness();
 		for (const name of ["autoswarm", "autoresearch"]) {
 			const offered = commands.get(name)?.getArgumentCompletions?.("") ?? [];
-			expect(offered.map(item => item.label)).toEqual(["off", "clear"]);
+			expect(offered.map(item => item.label)).toEqual(["status", "goal", "off", "clear"]);
+			expect((commands.get(name)?.getArgumentCompletions?.("s") ?? []).map(item => item.label)).toEqual(["status"]);
+			expect((commands.get(name)?.getArgumentCompletions?.("g") ?? []).map(item => item.label)).toEqual(["goal"]);
 			expect((commands.get(name)?.getArgumentCompletions?.("o") ?? []).map(item => item.label)).toEqual(["off"]);
 			expect((commands.get(name)?.getArgumentCompletions?.("c") ?? []).map(item => item.label)).toEqual(["clear"]);
 			expect(commands.get(name)?.getArgumentCompletions?.("b") ?? []).toEqual([]);

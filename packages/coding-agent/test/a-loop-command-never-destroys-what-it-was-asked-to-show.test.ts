@@ -31,6 +31,7 @@ import * as path from "node:path";
 import { createAutoresearchExtension } from "@veyyon/coding-agent/autoresearch";
 import { closeAllAutoresearchStorages, openAutoresearchStorage } from "@veyyon/coding-agent/autoresearch/storage";
 import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent/extensibility/extensions";
+import { theme } from "@veyyon/coding-agent/modes/theme/theme";
 import * as git from "@veyyon/coding-agent/utils/git";
 import type { AutocompleteItem } from "@veyyon/tui";
 import { stripAnsi, TempDir } from "@veyyon/utils";
@@ -67,10 +68,15 @@ interface Surface {
 	/** Confirmations asked, and the answer this surface gives. */
 	confirms: Array<{ title: string; message: string }>;
 	answer: boolean;
+	/**
+	 * Keys to drive the component with. Empty means the Escape that closes a
+	 * screen; a console under test needs the keys that reach `start`.
+	 */
+	keys: string[];
 }
 
 function newSurface(answer = true): Surface {
-	return { screens: [], statuses: [], widgets: 0, confirms: [], answer };
+	return { screens: [], statuses: [], widgets: 0, confirms: [], answer, keys: [] };
 }
 
 function buildHarness(): Harness {
@@ -137,11 +143,16 @@ function makeCtx(cwd: string, harness: Harness, surface: Surface): ExtensionCont
 				) => { render: (width: number) => readonly string[]; handleInput: (data: string) => void },
 			): Promise<T> => {
 				const settled: Array<{ value: T }> = [];
-				const component = factory({ requestRender: (): void => {} }, {}, {}, (result: T) => {
+				// The real theme the suite installed: the setup console paints through
+				// `theme.fg`, so a bare object closes the console on a TypeError.
+				const component = factory({ requestRender: (): void => {} }, theme, {}, (result: T) => {
 					if (settled.length === 0) settled.push({ value: result });
 				});
 				surface.screens.push([...component.render(100)]);
-				component.handleInput("\x1b");
+				for (const key of surface.keys.length > 0 ? surface.keys : ["\x1b"]) {
+					if (settled.length > 0) break;
+					component.handleInput(key);
+				}
 				const outcome = settled[0];
 				if (!outcome) throw new Error("the run screen never closed on escape");
 				return outcome.value;
@@ -374,9 +385,89 @@ describe("a loop command never destroys what it was asked to show", () => {
 		const harness = buildHarness();
 		for (const name of ["autoresearch", "autoswarm"]) {
 			const completions = harness.commands.get(name)?.getArgumentCompletions?.("") ?? [];
-			expect(completions.map(item => item.value)).toEqual(["off", "clear"]);
+			expect(completions.map(item => item.value)).toEqual(["status", "goal ", "off", "clear"]);
 		}
 		const flags = harness.commands.get("autoresearch")?.getArgumentCompletions?.("clear ") ?? [];
 		expect(flags.map(item => item.value)).toEqual(["clear --keep-tree", "clear --reset-tree"]);
+	});
+
+	it("answers status with the screen and leaves the stored goal alone", async () => {
+		// The reported defect: `status` is not a subcommand, so it was swallowed as
+		// the goal and a 20-run session had its goal replaced with the word
+		// "status", which was then handed to the model as the thing to optimize.
+		const harness = buildHarness();
+		const surface = newSurface();
+		const ctx = makeCtx(cwdDir.path(), harness, surface);
+		await openSessionAtHead(cwdDir.path());
+
+		await harness.commands.get("autoresearch")?.handler("status", ctx);
+
+		const storage = await openAutoresearchStorage(cwdDir.path());
+		expect(storage.getActiveSessionForBranch("autoresearch/test")?.goal).toBe("make it faster");
+		expect(surface.screens.length).toBe(1);
+		// Nothing was handed to the model: `status` is a question to the screen.
+		expect(harness.messages).toEqual([]);
+	});
+
+	it("leaves the stored goal alone on any free text, and says which word changes it", async () => {
+		// The class, not the one word: every unrecognized argument reached the
+		// same destructive write. `status` was merely the one a user types first.
+		const harness = buildHarness();
+		const ctx = makeCtx(cwdDir.path(), harness, newSurface());
+		await openSessionAtHead(cwdDir.path());
+
+		for (const word of ["status", "state", "show", "runs", "resume", "--help", "make it slower"]) {
+			await harness.commands.get("autoresearch")?.handler(word, ctx);
+			const storage = await openAutoresearchStorage(cwdDir.path());
+			expect(storage.getActiveSessionForBranch("autoresearch/test")?.goal).toBe("make it faster");
+		}
+		// Free text is not silently dropped either: it reaches the model as resume
+		// context, and the user is told which word rewrites the goal.
+		expect(harness.messages.join("\n")).toContain("make it slower");
+		expect(harness.notices.map(notice => notice.text).join("\n")).toContain("/autoresearch goal <text>");
+	});
+
+	it("rewrites the goal only where it is typed on purpose", async () => {
+		const harness = buildHarness();
+		const ctx = makeCtx(cwdDir.path(), harness, newSurface());
+		await openSessionAtHead(cwdDir.path());
+
+		await harness.commands.get("autoresearch")?.handler("goal cut the p99 latency", ctx);
+
+		const storage = await openAutoresearchStorage(cwdDir.path());
+		expect(storage.getActiveSessionForBranch("autoresearch/test")?.goal).toBe("cut the p99 latency");
+	});
+
+	it("refuses a bare goal instead of storing an empty one", async () => {
+		const harness = buildHarness();
+		const ctx = makeCtx(cwdDir.path(), harness, newSurface());
+		await openSessionAtHead(cwdDir.path());
+
+		await harness.commands.get("autoresearch")?.handler("goal", ctx);
+
+		const storage = await openAutoresearchStorage(cwdDir.path());
+		expect(storage.getActiveSessionForBranch("autoresearch/test")?.goal).toBe("make it faster");
+		expect(harness.notices.at(-1)?.level).toBe("error");
+	});
+
+	it("raises a serial session to the breadth the swarm console returns", async () => {
+		// `/autoswarm` on a live serial session left breadth at 1, so the command
+		// that exists to add arms added none.
+		const harness = buildHarness();
+		const surface = newSurface();
+		const ctx = makeCtx(cwdDir.path(), harness, surface);
+		await openSessionAtHead(cwdDir.path());
+		// The real console, driven by the keys a user presses: down to breadth,
+		// right twice to 3, down past the models row to attempts, right to 2, then
+		// the Enter that starts it.
+		surface.keys = ["\x1b[B", "\x1b[C", "\x1b[C", "\x1b[B", "\x1b[B", "\x1b[C", "\r"];
+
+		await harness.commands.get("autoswarm")?.handler("", ctx);
+
+		const storage = await openAutoresearchStorage(cwdDir.path());
+		const session = storage.getActiveSessionForBranch("autoresearch/test");
+		expect(session?.breadth).toBe(3);
+		expect(session?.attempts).toBe(2);
+		expect(session?.goal).toBe("make it faster");
 	});
 });

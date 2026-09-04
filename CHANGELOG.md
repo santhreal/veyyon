@@ -116,6 +116,9 @@
 
 ### Fixed
 
+- `/autoresearch status` and `/autoswarm status` open the run screen, where the word was swallowed as the goal and overwrote what a live session was optimizing.
+- A live session's goal changes only through `goal <text>` or the setup console, so any other text after the command reaches the model as context for the resume and leaves the stored goal as it was.
+- `/autoresearch` and `/autoswarm` offer `status` and `goal` in their argument completions, where only `off` and `clear` were listed and every other word reached the goal write.
 - Checking out a branch other than the one an autoresearch or autoswarm session records now shows `paused · session on <branch>` on the status row and keeps the session's runs readable through `ctrl+x`, where the session was looked up by its branch alone and so read as `baseline pending` with no runs whenever it was resumed off that branch.
 - An autoresearch or autoswarm loop re-reads the branch at the start of every turn, so checking the session's branch back out lifts the pause and restores the experiment tools, where a checkout mid-conversation went unnoticed and the loop kept its tools and system prompt on a branch it was not on.
 - Turning an autoresearch or autoswarm loop off while it is paused clears the pause, so the status row stops naming a branch to return to and reports the mode as off.

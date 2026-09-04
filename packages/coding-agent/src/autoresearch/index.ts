@@ -139,6 +139,8 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	// breadth control, so nothing about the serial loop changes.
 	interface ModeCommandSpec {
 		label: string;
+		/** The command as a user types it, for a message that names a subcommand. */
+		command: string;
 		/** Autoswarm opens the setup console and runs with breadth; autoresearch stays serial. */
 		swarm: boolean;
 	}
@@ -146,10 +148,20 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	const disableMode = async (ctx: ExtensionContext, runtime: AutoresearchRuntime, label: string): Promise<void> => {
 		setMode(ctx, false, runtime.goal, "off");
 		// Leaving mid-arm must not leave the user on that arm's model.
-		const restored = await leaveArm(api, runtime);
+		const exit = await leaveArm(api, runtime);
 		dashboard.update(ctx, runtime);
 		await api.setActiveTools(activeToolsFor(api.getActiveTools(), false, effectiveBreadth(runtime)));
-		ctx.ui.notify(restored ? `${label} mode disabled, and your model restored` : `${label} mode disabled`, "info");
+		if (exit.strandedOn) {
+			ctx.ui.notify(
+				`${label} mode disabled, but your model could not be restored. The session is still on ${exit.strandedOn}.`,
+				"warning",
+			);
+			return;
+		}
+		ctx.ui.notify(
+			exit.restored ? `${label} mode disabled, and your model restored` : `${label} mode disabled`,
+			"info",
+		);
 	};
 
 	/**
@@ -201,6 +213,28 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			await disableMode(ctx, runtime, spec.label);
 			return;
 		}
+		// `status` is the word a user reaches for to CHECK a run, and it used to be
+		// swallowed as the goal: `/autoresearch status` on a 20-run session
+		// overwrote its goal with "status" and fed that back to the model as the
+		// thing to optimize. Both commands answer it with the screen, running or
+		// not.
+		if (trimmed === "status") {
+			await dashboard.showScreen(ctx, runtime);
+			return;
+		}
+
+		// A live session's goal changes only where it is typed on purpose: this
+		// subcommand, or the setup console's goal field. Free text after the
+		// command is context for the resume and never a rewrite of the goal.
+		let explicitGoal: string | null = null;
+		if (trimmed === "goal" || trimmed.startsWith("goal ")) {
+			explicitGoal = trimmed === "goal" ? "" : trimmed.slice("goal ".length).trim();
+			if (explicitGoal.length === 0) {
+				ctx.ui.notify(`\`goal\` needs the text to optimize: /${spec.command} goal <what to optimize>`, "error");
+				return;
+			}
+		}
+		const freeText = explicitGoal ?? trimmed;
 		if (trimmed === "" && runtime.autoresearchMode && !spec.swarm) {
 			await dashboard.showScreen(ctx, runtime);
 			return;
@@ -239,7 +273,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			};
 		}
 
-		const goalArg = swarmSetup?.goal ?? (trimmed.length > 0 ? trimmed : null);
+		const goalArg = swarmSetup?.goal ?? (freeText.length > 0 ? freeText : null);
 		const branchResult = await ensureAutoresearchBranch(api, ctx.cwd, goalArg ?? runtime.goal);
 		if (!branchResult.ok) {
 			ctx.ui.notify(branchResult.error, "error");
@@ -255,7 +289,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		// DB if it already exists; the empty-state path must not create one.
 		const existingStorage = await openAutoresearchStorageIfExists(ctx.cwd);
 		const existingSession = existingStorage?.getActiveSessionForBranch(branchResult.branchName) ?? null;
-		const resumeContext = swarmSetup?.goal ?? trimmed;
+		const resumeContext = swarmSetup?.goal ?? (explicitGoal === null ? trimmed : "");
 		const branchStatusLine = branchResult.branchName
 			? branchResult.created
 				? `Created and checked out dedicated git branch \`${branchResult.branchName}\` before resuming.`
@@ -263,7 +297,16 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			: "Continuing on the current branch — no autoresearch branch was created.";
 
 		if (existingSession && existingStorage) {
-			if (goalArg) existingStorage.updateSession(existingSession.id, { goal: goalArg });
+			// Only a goal typed on purpose is written. Free text reaches the model
+			// as resume context, with the stored goal left as it was.
+			const deliberateGoal = swarmSetup?.goal ?? explicitGoal;
+			if (deliberateGoal) existingStorage.updateSession(existingSession.id, { goal: deliberateGoal });
+			else if (trimmed.length > 0) {
+				ctx.ui.notify(
+					`Session goal unchanged. Use \`/${spec.command} goal <text>\` to change what this session optimizes.`,
+					"info",
+				);
+			}
 			if (branchResult.branchName) {
 				existingStorage.updateSession(existingSession.id, { branch: branchResult.branchName });
 			}
@@ -305,10 +348,9 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		}
 	};
 
-	// Both commands take the same two subcommands, and both list them before a
-	// letter is typed: a subcommand nobody can see is one nobody finds. Breadth is
-	// not among them — autoswarm is configured in its console, and anything else
-	// typed after the command is the goal.
+	// Every subcommand is listed before a letter is typed: one nobody can see is
+	// one nobody finds, and reaching for an unlisted word used to overwrite the
+	// goal. Breadth is not among them — autoswarm is configured in its console.
 	function modeCompletions(argumentPrefix: string): AutocompleteItem[] | null {
 		const normalized = argumentPrefix.trim().toLowerCase();
 		if (normalized.startsWith("clear")) {
@@ -323,6 +365,8 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		}
 		if (argumentPrefix.includes(" ")) return null;
 		const completions: AutocompleteItem[] = [
+			{ label: "status", value: "status", description: "Open the run screen: goal, runs, arms" },
+			{ label: "goal", value: "goal ", description: "Change what this session optimizes" },
 			{ label: "off", value: "off", description: "Leave the mode, keep the session" },
 			{
 				label: "clear",
@@ -336,16 +380,17 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	}
 
 	api.registerCommand("autoresearch", {
-		description: `Run an optimization loop. Bare opens the run screen (${AUTORESEARCH_SCREEN_KEY}); pass a goal, off, or clear.`,
+		description: `Run an optimization loop. Bare opens the run screen (${AUTORESEARCH_SCREEN_KEY}); also status, goal <text>, off, clear.`,
 		getArgumentCompletions: modeCompletions,
-		handler: (args, ctx) => runModeCommand(args, ctx, { label: "Autoresearch", swarm: false }),
+		handler: (args, ctx) =>
+			runModeCommand(args, ctx, { label: "Autoresearch", command: "autoresearch", swarm: false }),
 	});
 
 	api.registerCommand("autoswarm", {
 		description:
 			"Autoresearch with breadth: opens a setup console, then explores several candidate arms per iteration.",
 		getArgumentCompletions: modeCompletions,
-		handler: (args, ctx) => runModeCommand(args, ctx, { label: "Autoswarm", swarm: true }),
+		handler: (args, ctx) => runModeCommand(args, ctx, { label: "Autoswarm", command: "autoswarm", swarm: true }),
 	});
 
 	api.registerShortcut(AUTORESEARCH_SCREEN_KEY, {
@@ -618,11 +663,16 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		runtime.pendingSwarm = null;
 		// Same reason as `off`: a cleared session leaves nothing behind, including
 		// the model an arm switched to.
-		await leaveArm(api, runtime);
+		const exit = await leaveArm(api, runtime);
 		setMode(ctx, false, null, "clear");
 		dashboard.update(ctx, runtime);
 		await api.setActiveTools(activeToolsFor(api.getActiveTools(), false, effectiveBreadth(runtime)));
-		ctx.ui.notify("Autoresearch session cleared.", "info");
+		ctx.ui.notify(
+			exit.strandedOn
+				? `Autoresearch session cleared, but your model could not be restored. The session is still on ${exit.strandedOn}.`
+				: "Autoresearch session cleared.",
+			exit.strandedOn ? "warning" : "info",
+		);
 	}
 };
 
