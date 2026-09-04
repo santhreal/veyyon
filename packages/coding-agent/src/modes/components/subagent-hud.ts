@@ -112,19 +112,20 @@ export function renderSubagentHudLines(sessions: readonly ObservableSession[], o
 		// which is the question behind "why is this one slower than the others".
 		if (badge !== "" && session.progress?.fellBackFrom) badge = `${theme.fg("dim", "↓")}${badge}`;
 		let badgeWidth = badge === "" ? 0 : visibleWidth(badge) + visibleWidth(theme.sep.dot);
+		const description = session.description?.trim() || session.progress?.description?.trim();
 		// The badge is fixed cost, so it comes out of the row budget before the
 		// description does. It goes when it does not fit at all, and it goes when
 		// what is left could not hold a readable description: it is a name that does
 		// not change for the agent's whole run, and the description says what the
 		// agent is for.
-		if (badge !== "" && left - badgeWidth < Math.min(TRUNCATE_LENGTHS.SHORT + DESCRIPTION_SEP, left)) {
+		const minNeeded = description ? Math.min(TRUNCATE_LENGTHS.SHORT + DESCRIPTION_SEP, left) : 0;
+		if (badge !== "" && left - badgeWidth < minNeeded) {
 			badge = "";
 			badgeWidth = 0;
 		}
 		left -= badgeWidth;
 		// The spawn description and never the prompt: a task's prompt is
 		// paragraphs, and the block is a list of what is running.
-		const description = session.description?.trim() || session.progress?.description?.trim();
 		if (description) {
 			const shown = cell(description, Math.max(0, left - DESCRIPTION_SEP));
 			if (shown !== "") line += `${theme.fg("accent", ":")} ${theme.fg("accent", shown)}`;

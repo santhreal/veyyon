@@ -21,7 +21,7 @@ export class ThinkingSelectorComponent {
 			inheritLabel: "Default",
 			inheritDescription: "Use the saved model effort, then the model default",
 		}).map(option => ({ ...option }));
-		const currentIndex = thinkingLevels.findIndex(item => item.value === currentLevel);
+		const currentIndex = thinkingLevels.findIndex(item => item.value === (currentLevel ?? ""));
 		this.#inner = new ModalSelectListComponent(
 			{
 				title: "Thinking",
