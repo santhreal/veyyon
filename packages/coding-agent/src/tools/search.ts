@@ -6,7 +6,7 @@ import type {
 	ToolTier,
 } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import { isRecord, prompt } from "@veyyon/utils";
+import { isRecord, prompt, trimTrailingSlashes } from "@veyyon/utils";
 import { z } from "zod/v4";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
@@ -96,7 +96,7 @@ export const TYPE_FIELDS: Record<SearchType, ReadonlySet<keyof SearchToolInput>>
 export function scopeFilePatterns(scope: string, input: string, cwd: string): string[] {
 	const trimmed = normalizePathLikeInput(scope).replace(/\\/g, "/");
 	// `/` reads as the workspace root here as it does in `input`.
-	const base = /^\/+$/.test(trimmed) ? "." : trimmed.replace(/\/+$/, "");
+	const base = /^\/+$/.test(trimmed) ? "." : trimTrailingSlashes(trimmed);
 	if (base.length === 0) {
 		throw new ToolError('File search `path` must name a directory; omit it to search from the workspace root (".")');
 	}
@@ -126,7 +126,7 @@ export function scopeFilePatterns(scope: string, input: string, cwd: string): st
 		}
 		const parsed = parseFindPattern(pattern);
 		const relative =
-			parsed.basePath === "." ? parsed.globPattern : `${parsed.basePath.replace(/\/+$/, "")}/${parsed.globPattern}`;
+			parsed.basePath === "." ? parsed.globPattern : `${trimTrailingSlashes(parsed.basePath)}/${parsed.globPattern}`;
 		scoped.push(`${base}/${relative}`);
 	}
 	if (scoped.length === 0) {
