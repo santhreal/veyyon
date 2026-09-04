@@ -7,7 +7,7 @@ bytes are parsed on re-runs. Tokenization (o200k_base) and the hashline edit
 parser/detectors are computed once and persisted, so analyses become pure SQL
 plus tiny Python loops.
 
-Schema (all tables prefixed `ss_` to avoid collision with packages/stats):
+Schema (all tables prefixed `ss_` to avoid collision with apps/stats):
 
   ss_sessions         one row per .jsonl, carries sync state + metadata
   ss_tool_calls       one row per toolCall content block

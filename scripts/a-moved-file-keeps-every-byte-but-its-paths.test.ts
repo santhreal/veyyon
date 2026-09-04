@@ -252,6 +252,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			"kernel-extraction",
 			"manifest-depth",
 			"oracle-freeze",
+			"overflow-rescue-row",
 			"plugin-path-expectation",
 			"plugin-source",
 			"rust-path-expectation",

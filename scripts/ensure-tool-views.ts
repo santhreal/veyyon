@@ -10,7 +10,7 @@ export const TOOL_VIEWS_GENERATED = path.join(
 );
 
 /** The command that produces it, named once for the same reason. */
-export const GENERATE_TOOL_VIEWS_COMMAND = "bun --cwd=packages/collab-web run gen:tool-views";
+export const GENERATE_TOOL_VIEWS_COMMAND = "bun --cwd=clients/web run gen:tool-views";
 
 /**
  * Ensure the generated tool-views bundle exists before any TS suite runs.
@@ -36,7 +36,7 @@ export const GENERATE_TOOL_VIEWS_COMMAND = "bun --cwd=packages/collab-web run ge
 export async function ensureToolViewsGenerated(): Promise<void> {
 	if (nodeFs.existsSync(TOOL_VIEWS_GENERATED)) return;
 	process.stdout.write("generating tool-views.generated.js (missing build artifact)\n");
-	const proc = Bun.spawn(["bun", "--cwd=packages/collab-web", "run", "gen:tool-views"], {
+	const proc = Bun.spawn(["bun", "--cwd=clients/web", "run", "gen:tool-views"], {
 		cwd: repoRoot,
 		stdout: "inherit",
 		stderr: "inherit",

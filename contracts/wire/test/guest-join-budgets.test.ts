@@ -36,7 +36,7 @@ const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 /** The guest implementations that must agree, and where each one lives. */
 const GUESTS = [
 	{ name: "the TUI guest", file: "packages/coding-agent/src/collab/guest.ts" },
-	{ name: "the web client", file: "packages/collab-web/src/lib/client.ts" },
+	{ name: "the web client", file: "clients/web/src/lib/client.ts" },
 ] as const;
 
 /** The budgets the protocol owns, each paired with the value it is pinned at. */

@@ -428,10 +428,10 @@ packages/coding-agent/test/tools/web/search/utils.test.ts
 packages/coding-agent/test/tools/web/search/zai.test.ts
 packages/coding-agent/test/worker-args.test.ts
 packages/coding-agent/test/workspace-tree.test.ts
-packages/collab-web/test/client.test.ts
-packages/collab-web/test/codec.test.ts
-packages/collab-web/test/link.test.ts
-packages/stats/test/user-metrics.test.ts
+clients/web/test/client.test.ts
+clients/web/test/codec.test.ts
+clients/web/test/link.test.ts
+apps/stats/test/user-metrics.test.ts
 packages/tool-render/test/registry.test.ts
 packages/utils/test/abortable.test.ts
 packages/utils/test/app-identity.test.ts

@@ -14,8 +14,8 @@
  * this checkout does not carry — which is what a rename of a package looks like from here.
  *
  * WHAT IT DOES NOT CATCH: whether an entry's module graph compiles, which only a binary build says,
- * and the rest of `compile-binary.ts` — `packages/stats` is still named by path there, correctly,
- * because that member has not moved.
+ * and the rest of `compile-binary.ts`, where the embedded stats archive is still named by path
+ * (`apps/stats/src/embedded-client.generated.txt`).
  */
 
 import { describe, expect, it } from "bun:test";

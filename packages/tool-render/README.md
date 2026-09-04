@@ -3,7 +3,7 @@
 Shared React components for rendering tool calls in transcripts. Consumed by:
 
 - `packages/coding-agent` HTML session exports (`<vey-tool-view>` web component)
-- `packages/collab-web` live web transcript
+- `clients/web` live web transcript
 
 ## Writing a renderer
 

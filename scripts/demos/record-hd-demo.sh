@@ -384,7 +384,7 @@ fi
 # without it opens the terminal, then the CLI dies, and the recorder reports
 # that no window ever appeared.
 if [[ ! -f packages/coding-agent/src/export/html/tool-views.generated.js ]]; then
-	"${BUN}" --cwd=packages/collab-web run gen:tool-views
+	"${BUN}" --cwd=clients/web run gen:tool-views
 fi
 if [[ ! -f natives/bridge/bindings/native/veyyon_natives.linux-x64-modern.node && ! -f natives/bridge/bindings/native/veyyon_natives.linux-x64-baseline.node ]]; then
 	"${BUN}" --cwd=natives/bridge/bindings run ensure

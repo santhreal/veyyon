@@ -318,7 +318,7 @@ describe("the real workspace resolves completely", () => {
 		expect(byName.get("@veyyon/natives")).toBe(
 			path.join(REPO_ROOT, "natives", "bridge", "bindings", "native", "index.js"),
 		);
-		expect(byName.get("@veyyon/stats")).toBe(path.join(REPO_ROOT, "packages", "stats", "src", "index.ts"));
+		expect(byName.get("@veyyon/stats")).toBe(path.join(REPO_ROOT, "apps", "stats", "src", "index.ts"));
 		expect(byName.get("@veyyon/tool-render")).toBe(
 			path.join(REPO_ROOT, "packages", "tool-render", "src", "index.ts"),
 		);

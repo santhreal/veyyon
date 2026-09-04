@@ -216,7 +216,7 @@ const ERRORMESSAGE_GRANDFATHERED = new Set<string>([]);
 // not previously reach, and its copy predates this list.
 const INLINE_ERRORMESSAGE_GRANDFATHERED = new Set([
 	"coding-agent/src/cli/first-frame-replay.ts",
-	"collab-web/src/lib/client.ts",
+	"clients/web/src/lib/client.ts",
 	"plugins/hashline/src/patcher.ts",
 	"python/veybot/web/src/state.ts",
 	"utils/src/ptree.ts",

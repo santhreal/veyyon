@@ -16,7 +16,7 @@ if [[ ! -f natives/bridge/bindings/native/veyyon_natives.linux-x64-modern.node &
 	bun --cwd=natives/bridge/bindings run ensure
 fi
 if [[ ! -f packages/coding-agent/src/export/html/tool-views.generated.js ]]; then
-	bun --cwd=packages/collab-web run gen:tool-views
+	bun --cwd=clients/web run gen:tool-views
 fi
 bun --cwd=packages/coding-agent run build
 echo "=== 2. Setting Up Recording Workspace ==="

@@ -25,7 +25,7 @@ const RUNTIME_SRC = [
 	"hosts/terminal/engine/src",
 	"packages/coding-agent/src",
 	"contracts/wire/src",
-	"packages/collab-web/src",
+	"clients/web/src",
 	"plugins/mode-swarm/src",
 	"packages/utils/src",
 	"packages/catalog/src",

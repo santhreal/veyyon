@@ -19,6 +19,51 @@
         "typescript": "catalog:",
       },
     },
+    "apps/stats": {
+      "name": "@veyyon/stats",
+      "version": "1.3.0",
+      "bin": {
+        "veyyon-stats": "./src/index.ts",
+      },
+      "dependencies": {
+        "@tailwindcss/node": "catalog:",
+        "@veyyon/ai": "catalog:",
+        "@veyyon/catalog": "catalog:",
+        "@veyyon/tool-render": "catalog:",
+        "@veyyon/utils": "catalog:",
+        "chart.js": "catalog:",
+        "date-fns": "catalog:",
+        "lucide-react": "catalog:",
+        "react": "catalog:",
+        "react-chartjs-2": "catalog:",
+        "react-dom": "catalog:",
+        "tailwindcss": "catalog:",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:",
+        "@types/react": "catalog:",
+        "@types/react-dom": "catalog:",
+        "postcss": "catalog:",
+      },
+    },
+    "clients/web": {
+      "name": "@veyyon/collab-web",
+      "version": "16.3.6",
+      "dependencies": {
+        "@veyyon/tool-render": "catalog:",
+        "@veyyon/utils": "catalog:",
+        "@veyyon/wire": "catalog:",
+        "lucide-react": "catalog:",
+        "marked": "catalog:",
+        "react": "catalog:",
+        "react-dom": "catalog:",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:",
+        "@types/react": "catalog:",
+        "@types/react-dom": "catalog:",
+      },
+    },
     "contracts/view": {
       "name": "@veyyon/view",
       "version": "1.3.0",
@@ -195,51 +240,6 @@
       "optionalDependencies": {
         "@huggingface/transformers": "catalog:",
         "sherpa-onnx-node": "1.13.2",
-      },
-    },
-    "packages/collab-web": {
-      "name": "@veyyon/collab-web",
-      "version": "16.3.6",
-      "dependencies": {
-        "@veyyon/tool-render": "catalog:",
-        "@veyyon/utils": "catalog:",
-        "@veyyon/wire": "catalog:",
-        "lucide-react": "catalog:",
-        "marked": "catalog:",
-        "react": "catalog:",
-        "react-dom": "catalog:",
-      },
-      "devDependencies": {
-        "@types/bun": "catalog:",
-        "@types/react": "catalog:",
-        "@types/react-dom": "catalog:",
-      },
-    },
-    "packages/stats": {
-      "name": "@veyyon/stats",
-      "version": "1.3.0",
-      "bin": {
-        "veyyon-stats": "./src/index.ts",
-      },
-      "dependencies": {
-        "@tailwindcss/node": "catalog:",
-        "@veyyon/ai": "catalog:",
-        "@veyyon/catalog": "catalog:",
-        "@veyyon/tool-render": "catalog:",
-        "@veyyon/utils": "catalog:",
-        "chart.js": "catalog:",
-        "date-fns": "catalog:",
-        "lucide-react": "catalog:",
-        "react": "catalog:",
-        "react-chartjs-2": "catalog:",
-        "react-dom": "catalog:",
-        "tailwindcss": "catalog:",
-      },
-      "devDependencies": {
-        "@types/bun": "catalog:",
-        "@types/react": "catalog:",
-        "@types/react-dom": "catalog:",
-        "postcss": "catalog:",
       },
     },
     "packages/tool-render": {
@@ -1077,7 +1077,7 @@
 
     "@veyyon/coding-agent": ["@veyyon/coding-agent@workspace:packages/coding-agent"],
 
-    "@veyyon/collab-web": ["@veyyon/collab-web@workspace:packages/collab-web"],
+    "@veyyon/collab-web": ["@veyyon/collab-web@workspace:clients/web"],
 
     "@veyyon/evals": ["@veyyon/evals@workspace:tests/evals"],
 
@@ -1093,7 +1093,7 @@
 
     "@veyyon/simulations": ["@veyyon/simulations@workspace:tests/simulations"],
 
-    "@veyyon/stats": ["@veyyon/stats@workspace:packages/stats"],
+    "@veyyon/stats": ["@veyyon/stats@workspace:apps/stats"],
 
     "@veyyon/swarm-extension": ["@veyyon/swarm-extension@workspace:plugins/mode-swarm"],
 

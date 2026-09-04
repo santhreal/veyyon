@@ -1,5 +1,5 @@
 {
-	"extends": "../tsconfig.workspace.json",
+	"extends": "../../packages/tsconfig.workspace.json",
 	"include": [
 		"src/client"
 	],

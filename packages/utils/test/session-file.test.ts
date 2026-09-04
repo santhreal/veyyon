@@ -300,7 +300,7 @@ describe("the naming module has one owner", () => {
 			"packages/coding-agent/src/advisor",
 			"packages/coding-agent/src/internal-urls",
 			"packages/coding-agent/src/memory",
-			"packages/stats/src",
+			"apps/stats/src",
 		];
 		const offenders: string[] = [];
 		let filesRead = 0;
@@ -330,7 +330,7 @@ describe("the naming module has one owner", () => {
 			"packages/coding-agent/src/session/session-manager.ts",
 			"kernel/src/session/session-listing.ts",
 			"packages/coding-agent/src/cli/gc-cli.ts",
-			"packages/stats/src/parser.ts",
+			"apps/stats/src/parser.ts",
 		]) {
 			const text = await Bun.file(path.join(repoRoot, file)).text();
 			expect(moduleSpecifiersIn(text), file).toContain("@veyyon/utils/session-file");

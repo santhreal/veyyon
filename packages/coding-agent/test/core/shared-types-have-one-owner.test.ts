@@ -107,7 +107,7 @@ const UNIFIED = [
 	},
 	{
 		name: "SessionLogHeader",
-		owner: "packages/stats/src/types.ts",
+		owner: "apps/stats/src/types.ts",
 		resolution: "the parser's view, whose `version` was required while the writer's is absent on v1 sessions",
 	},
 	{
@@ -169,7 +169,7 @@ const UNIFIED = [
 	},
 	{
 		name: "SessionLogEntry",
-		owner: "packages/stats/src/types.ts",
+		owner: "apps/stats/src/types.ts",
 		resolution: "the widest of the three: its `{ type: string }` arm admits any object with a `type` at all",
 	},
 	{

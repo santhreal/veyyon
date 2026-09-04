@@ -235,7 +235,7 @@ describe("one owner", () => {
 	it("neither side implements the layout again", async () => {
 		const sources = [
 			new URL("../../../packages/coding-agent/src/collab/crypto.ts", import.meta.url),
-			new URL("../../../packages/collab-web/src/lib/codec.ts", import.meta.url),
+			new URL("../../../clients/web/src/lib/codec.ts", import.meta.url),
 		];
 
 		for (const url of sources) {

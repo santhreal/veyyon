@@ -7,4 +7,4 @@
 # (packages/utils/test/helpers/real-data-tripwire.ts); only this pointer repeats,
 # because Bun offers no way to inherit a parent config. See docs/internal/testing.md.
 [test]
-preload = ["../utils/test/helpers/real-data-tripwire.ts"]
+preload = ["../../packages/utils/test/helpers/real-data-tripwire.ts"]

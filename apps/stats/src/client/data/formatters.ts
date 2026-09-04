@@ -10,7 +10,7 @@ import { formatDistanceToNow } from "date-fns";
 // the same one-decimal output, and the two disagreed on one input: this copy rendered
 // `NaN%` where the shared owner renders `0.0%`. A rate arriving as 0/0 is not a rare
 // case for a dashboard — a project with no requests yet has exactly that error rate —
-// and `packages/stats/src/index.ts` already used the shared owner, so the CLI and the
+// and `apps/stats/src/index.ts` already used the shared owner, so the CLI and the
 // dashboard printed different things for the same number.
 export { formatBytes, formatPercent };
 

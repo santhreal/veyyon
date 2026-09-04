@@ -52,6 +52,16 @@
 	},
 	"files": {
 		"includes": [
+			"apps/*/src/**/*.ts",
+			"apps/*/src/**/*.tsx",
+			"apps/*/test/**/*.ts",
+			"apps/*/scripts/**/*.ts",
+			"apps/*/*.ts",
+			"clients/*/src/**/*.ts",
+			"clients/*/src/**/*.tsx",
+			"clients/*/test/**/*.ts",
+			"clients/*/scripts/**/*.ts",
+			"clients/*/*.ts",
 			"contracts/*/src/**/*.ts",
 			"contracts/*/test/**/*.ts",
 			"hosts/terminal/engine/src/**/*.ts",

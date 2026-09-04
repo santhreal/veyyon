@@ -5,7 +5,7 @@
    ========================================================================== */
 :root {
   color-scheme: dark;
-  /* Veyyon brand palette — mirrors packages/collab-web/src/styles/tokens.css:
+  /* Veyyon brand palette — mirrors clients/web/src/styles/tokens.css:
      pitch-black ground, hue-neutral silver ramp, a single ember-sun accent
      (#f0862e); no purple/cyan/rainbow chrome, no smooth gradients. */
   --page: oklch(0 0 0);

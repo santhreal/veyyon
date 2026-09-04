@@ -266,7 +266,7 @@ function hasFloorFirst(text: string): boolean {
 // the current spelling reachable.
 const FLOOR_FIRST_GRANDFATHERED = new Set([
 	"coding-agent/src/tools/web/browser/tab-worker.ts",
-	"evals/store/experiments.ts",
+	"tests/evals/store/experiments.ts",
 ]);
 
 describe("clamp source lock", () => {

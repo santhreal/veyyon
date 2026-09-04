@@ -127,6 +127,8 @@ describe("workspace member coverage in AGENTS.md", () => {
 	 */
 	it("sweeps every top-level directory the member list reaches", () => {
 		expect(memberTopLevels()).toEqual([
+			"apps",
+			"clients",
 			"contracts",
 			"hosts",
 			"kernel",

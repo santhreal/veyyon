@@ -84,7 +84,7 @@ import { typeScriptMembers } from "./workspace-layout";
  * live anywhere else: `contracts/*` may hold no runtime at all, `hosts/terminal/engine` IS the
  * coupling being checked, `packages/tool-render` renders the wire protocol's recorded calls with
  * React for the export, the dashboard and the web client rather than drawing a live `ToolView`, and
- * `packages/collab-web` is a guest client that would drag a relay and a socket into a pure string
+ * `clients/web` is a guest client that would drag a relay and a socket into a pure string
  * function. A future rise still needs the sentence above: which existing package was considered and
  * why it could not serve.
  */

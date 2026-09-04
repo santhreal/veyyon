@@ -35,10 +35,10 @@ export type BarrelStillExportsTheControlMessage = RelayControlMessage;
  * the table load-bearing, and the ownership cases fail if a client goes back to its own copy.
  */
 
-// `contracts/wire/test` -> repo root -> `packages`. The wire contract moved out of `packages/`,
-// so the sibling packages it reads about are three levels up rather than two.
-const PACKAGES_DIR = path.resolve(import.meta.dir, "../../../packages");
-const CLIENTS = ["coding-agent/src/collab/relay-client.ts", "collab-web/src/lib/socket.ts"];
+// `contracts/wire/test` -> repo root. The two relay clients sit under different roots, so each is
+// spelled from the repository root rather than from `packages/`.
+const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
+const CLIENTS = ["packages/coding-agent/src/collab/relay-client.ts", "clients/web/src/lib/socket.ts"];
 
 describe("the fatal relay close codes", () => {
 	/**
@@ -131,9 +131,9 @@ describe("the relay protocol has one owner", () => {
 	 */
 	it("spells no reason string outside the owner", async () => {
 		const offenders: string[] = [];
-		const scanned = [...CLIENTS, "collab-web/scripts/local-relay.ts"];
+		const scanned = [...CLIENTS, "clients/web/scripts/local-relay.ts"];
 		for (const file of scanned) {
-			const text = await Bun.file(path.join(PACKAGES_DIR, file)).text();
+			const text = await Bun.file(path.join(REPO_ROOT, file)).text();
 			for (const reason of Object.values(RELAY_FATAL_CLOSE_REASONS)) {
 				if (text.includes(`"${reason}"`)) offenders.push(`${file} spells "${reason}"`);
 			}
@@ -148,7 +148,7 @@ describe("the relay protocol has one owner", () => {
 	 */
 	it("has both clients importing the table and the bound from the owner", async () => {
 		for (const file of CLIENTS) {
-			const text = await Bun.file(path.join(PACKAGES_DIR, file)).text();
+			const text = await Bun.file(path.join(REPO_ROOT, file)).text();
 			expect(text).toContain("RELAY_FATAL_CLOSE_REASONS");
 			expect(text).toContain("RELAY_MAX_PENDING_SENDS");
 			expect(moduleSpecifiersIn(text)).toContain("@veyyon/wire/relay");
@@ -161,7 +161,7 @@ describe("the relay protocol has one owner", () => {
 	 * client disagreeing about the reason for a code is exactly what a shared table prevents.
 	 */
 	it("has the dev relay closing with the owner's reasons", async () => {
-		const text = await Bun.file(path.join(PACKAGES_DIR, "collab-web/scripts/local-relay.ts")).text();
+		const text = await Bun.file(path.join(REPO_ROOT, "clients/web/scripts/local-relay.ts")).text();
 		expect(moduleSpecifiersIn(text)).toContain("@veyyon/wire/relay");
 		for (const code of [4001, 4004, 4009]) {
 			expect(text).toContain(`close(${code}, RELAY_FATAL_CLOSE_REASONS[${code}]`);

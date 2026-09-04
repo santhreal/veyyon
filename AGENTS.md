@@ -22,13 +22,13 @@ operator manual.
 |`packages/coding-agent`|Main CLI application (primary focus)|
 |`hosts/gui`|Graphical host: draws the same `ToolView` models as HTML, the second implementation that keeps `contracts/view` a contract rather than a description of the terminal|
 |`hosts/terminal/engine`|Terminal UI library with differential rendering|
-|`packages/stats`|Local observability dashboard (`veyyon stats`)|
+|`apps/stats`|Local observability dashboard (`veyyon stats`)|
 |`packages/utils`|Shared utilities (logger, streams, temp files)|
 |`plugins/argot`|Per-project shorthand vocabularies: lossless substitution codec over `AGENTS.dict`. Published standalone — depends on nothing in this repo|
 |`plugins/hashline`|Line-anchored patch language the edit tool applies, with a pluggable filesystem backend|
 |`plugins/mnemopi`|Local SQLite memory engine: triples, embeddings, recall|
 |`packages/tool-render`|Shared React tool-call renderers for HTML export, collab-web and the stats dashboard|
-|`packages/collab-web`|Browser guest client and local relay for collab live sessions (private)|
+|`clients/web`|Browser guest client and local relay for collab live sessions (private)|
 |`plugins/mode-swarm`|Swarm orchestration extension|
 |`plugins/web`|Site scrapers that turn a URL into markdown: ~80 per-site handlers, the page loader escalation ladder and the Parallel extract client, running against host capabilities passed in rather than imported|
 |`tests/evals`|Every model and agent evaluation: the DeepSWE, Terminal-Bench 3.0 and TypeScript-edit suites, harness adapters, execution backends, run store, REST/SSE API and live dashboard (private)|

@@ -24,7 +24,7 @@ import { workspaceModuleReachResolution } from "@veyyon/utils/module-reach-works
  */
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
-const CLIENT_DIR = path.join(REPO_ROOT, "packages/collab-web/src");
+const CLIENT_DIR = path.join(REPO_ROOT, "clients/web/src");
 
 /**
  * Specifiers a browser bundle cannot resolve. `bun:*` covers `bun:test`,

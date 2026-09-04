@@ -233,6 +233,6 @@ describe("the repository", () => {
 			.filter(({ text }) => text.includes('lib/jsonl"') || text.includes("lib/jsonl'"))
 			.map(({ rel }) => rel);
 
-		expect(offenders, "collab-web/src/lib/jsonl.ts was replaced by @veyyon/utils/jsonl-incremental").toEqual([]);
+		expect(offenders, "clients/web/src/lib/jsonl.ts was replaced by @veyyon/utils/jsonl-incremental").toEqual([]);
 	});
 });

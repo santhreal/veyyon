@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The package directory is `clients/web` instead of `packages/collab-web`; the package name, the relay and the guest client are unchanged.
+
 ## [16.5.1] - 2026-07-14
 
 ### Fixed

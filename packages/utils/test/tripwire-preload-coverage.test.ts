@@ -122,7 +122,7 @@ describe("the root bunfig's test discovery", () => {
 	/** The package-local config has to prune them too, because a `bun test` run
 	 *  from inside that package never reads the root config at all. */
 	it("prunes them in the evals package's own config as well", () => {
-		const local = readFileSync(path.join(PACKAGES_DIR, "evals/bunfig.toml"), "utf8");
+		const local = readFileSync(path.join(repoRoot, "tests/evals/bunfig.toml"), "utf8");
 
 		expect(local).toContain("datasets/repo-cache/**");
 		expect(local).toContain(TRIPWIRE);

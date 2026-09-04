@@ -281,6 +281,12 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 			"An arm that asserts the shared model chain seeds `subagent.sharedModel`, the switch that makes `subagent.model` and `subagent.thinkingLevel` live. Without it the arm pinned a blanket value the resolver never read.",
 	},
 	{
+		name: "overflow-rescue-row",
+		matches: relative => relative === "tests/simulations/src/turn-sim/overflow-recovery.test.ts",
+		reason:
+			"The overflow row asserted a refusal that stayed visible after the summarizer failed. A session no longer parks there: when no reducer recognizes the shape of what is too large, the last-resort tier cuts the middle out of the largest text, the pass reaches the fit bar with no summary and the scheduled retry answers. The row requires that recovery -- one dead-end notice naming the truncation, prose shorter than the prompt carried, and an answer rather than a refusal.",
+	},
+	{
 		name: "plugin-path-expectation",
 		matches: relative => /^plugins\/[^/]+\/test\//.test(relative),
 		reason:

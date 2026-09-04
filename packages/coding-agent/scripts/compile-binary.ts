@@ -104,7 +104,7 @@ export async function compileCodingAgent(options: CodingAgentCompileOptions): Pr
 	// archive; an empty placeholder compiles fine and 500s at runtime, so fail
 	// the build instead. Callers (build-binary.ts, ci-release-build-binaries.ts)
 	// run `gen:stats` first and reset afterwards.
-	const statsArchivePath = path.join(options.repoRoot, "packages", "stats", "src", "embedded-client.generated.txt");
+	const statsArchivePath = path.join(options.repoRoot, "apps", "stats", "src", "embedded-client.generated.txt");
 	if ((await Bun.file(statsArchivePath).text()).trim().length === 0) {
 		throw new Error(
 			`Embedded stats client archive is empty (${statsArchivePath}). Run \`bun run gen:stats\` before compiling — a binary built without it serves HTTP 500 for every \`veyyon stats\` dashboard request.`,

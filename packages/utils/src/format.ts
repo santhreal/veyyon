@@ -212,7 +212,7 @@ export function formatPercent(ratio: number): string {
  * Declared here rather than in `@veyyon/stats`, whose only startup-path consumers were the status
  * row and the stats CLI: importing one leaf of that package put the whole dashboard package on the
  * graph a session evaluates before it draws anything. The web client's locale-aware `formatCost`
- * (`packages/stats/src/client/data/formatters.ts`) is a different display contract and is unchanged.
+ * (`apps/stats/src/client/data/formatters.ts`) is a different display contract and is unchanged.
  */
 export function formatCostTiered(n: number): string {
 	if (n < 0.01) return `$${n.toFixed(4)}`;

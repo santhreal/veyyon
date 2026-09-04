@@ -2,7 +2,7 @@
  * The dashboard's percentages and the CLI's come from ONE formatter.
  *
  * WHY THIS SUITE EXISTS. `formatPercent` existed twice under the same name: once in
- * `@veyyon/utils/format`, which `packages/stats/src/index.ts` (the terminal report) uses, and once
+ * `@veyyon/utils/format`, which `apps/stats/src/index.ts` (the terminal report) uses, and once
  * as a local copy in `src/client/data/formatters.ts`, which every dashboard route uses. Same name,
  * same one-decimal output, and one disagreement: the copy rendered `NaN%` where the shared owner
  * renders `0.0%`. A rate of 0/0 is not exotic for a dashboard — a project with no requests yet has

@@ -1603,7 +1603,7 @@ export async function updateViaSourceAt(
 		{ label: "Installing dependencies", command: ["bun", "install"], cwd: checkoutRoot },
 		{
 			label: "Regenerating build artifacts",
-			command: ["bun", "--cwd=packages/collab-web", "run", "gen:tool-views"],
+			command: ["bun", "--cwd=clients/web", "run", "gen:tool-views"],
 			cwd: checkoutRoot,
 		},
 		{
@@ -1621,7 +1621,7 @@ export async function updateViaSourceAt(
 		{ label: "Restoring dependencies", command: ["bun", "install"], cwd: checkoutRoot },
 		{
 			label: "Restoring build artifacts",
-			command: ["bun", "--cwd=packages/collab-web", "run", "gen:tool-views"],
+			command: ["bun", "--cwd=clients/web", "run", "gen:tool-views"],
 			cwd: checkoutRoot,
 		},
 		{

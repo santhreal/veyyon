@@ -417,7 +417,7 @@ describe("the hosts have one owner", () => {
 	const DATA_FILES = new Set([
 		"catalog/src/models.json",
 		"catalog/src/provider-models/openai-compat.ts",
-		"simulations/src/cache-sim/harness.ts",
+		"tests/simulations/src/cache-sim/harness.ts",
 	]);
 
 	/** Every member's shipped `src`, keyed the way an allow-list above is written. */

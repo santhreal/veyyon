@@ -9,7 +9,7 @@ import { format } from "date-fns";
 
 // Veyyon categorical palette: the ember sun leads, then silver and the semantic
 // hues, kept distinguishable while staying on-brand — no cyan/purple/rainbow
-// (see docs/internal/brand.md, packages/collab-web/src/styles/tokens.css).
+// (see docs/internal/brand.md, clients/web/src/styles/tokens.css).
 export const MODEL_COLORS = [
 	"#f0862e", // ember sun (accent)
 	"#c6cbd4", // silver

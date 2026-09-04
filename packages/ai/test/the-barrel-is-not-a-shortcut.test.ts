@@ -172,9 +172,9 @@ describe("the modules that were repointed stay cut", () => {
 	 */
 	it.each([
 		["agent/src/proxy.ts", 145],
-		["stats/src/parser.ts", 115],
-		["stats/src/db.ts", 120],
-		["stats/src/sync-worker.ts", 120],
+		["apps/stats/src/parser.ts", 115],
+		["apps/stats/src/db.ts", 120],
+		["apps/stats/src/sync-worker.ts", 120],
 		["plugins/mnemopi/src/core/embeddings.ts", 131],
 		// Re-measured 2026-08-28 at 66, from 127. The file took `trimTrailingSlashes` and
 		// `withScopedTimeoutSignal` from the `@veyyon/utils` entry point, so every module that entry
@@ -205,7 +205,7 @@ describe("the modules that were repointed stay cut", () => {
 	 */
 	it.each([
 		"agent/src/proxy.ts",
-		"stats/src/parser.ts",
+		"apps/stats/src/parser.ts",
 		"plugins/mnemopi/src/core/embeddings.ts",
 		"plugins/mnemopi/src/core/extraction/client.ts",
 		"coding-agent/src/config/api-key-resolver.ts",

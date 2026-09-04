@@ -8,7 +8,7 @@
  * short and a line is counted twice, silently raising them. Nobody comparing a week's spend against a
  * provider bill has any reason to suspect the parser, so the offset is asserted here to the byte.
  *
- * The walk itself came from `packages/stats/src/parser.ts`, where it was a fourth hand-written JSONL
+ * The walk itself came from `apps/stats/src/parser.ts`, where it was a fourth hand-written JSONL
  * loop -- after the two string-based readers in this package -- and had drifted far enough to drop a
  * malformed line with no report at all, while both string readers had one. Unifying it is why the
  * module exists; these tests pin the contract the stats parser depends on so the next reader that

@@ -23,9 +23,9 @@ Sources: [`plugins/mode-swarm/README.md`](../../plugins/mode-swarm/README.md), [
 - Side effects/output: creates the workspace if needed and persists state/logs under `<workspace>/.swarm_<name>/`.
 - Limits/errors: validates the YAML definition, dependency graph, and cycles before execution; standalone runs have no built-in timeout.
 
-### `packages/stats`: local usage dashboard
+### `apps/stats`: local usage dashboard
 
-Sources: [`packages/stats/README.md`](../../packages/stats/README.md), [`packages/stats/package.json`](../../packages/stats/package.json), [`packages/coding-agent/src/cli/stats-cli.ts`](../../packages/coding-agent/src/cli/stats-cli.ts).
+Sources: [`apps/stats/README.md`](../../apps/stats/README.md), [`apps/stats/package.json`](../../apps/stats/package.json), [`packages/coding-agent/src/cli/stats-cli.ts`](../../packages/coding-agent/src/cli/stats-cli.ts).
 
 - Package: `@veyyon/stats`; bin: `veyyon-stats`; main user path: `veyyon stats`.
 - Feature: local observability dashboard for AI usage statistics from session JSONL logs.

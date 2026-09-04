@@ -317,6 +317,8 @@ describe("the release changelog gate", () => {
 		// The recorded decision about which trees hold changelogs at all. `python/veybot/web` is
 		// private and ships none; a new tree that starts publishing turns this red until someone says so.
 		expect([...new Set(withChangelog.map(member => member.split("/")[0]))].sort()).toEqual([
+			"apps",
+			"clients",
 			"contracts",
 			"hosts",
 			"kernel",

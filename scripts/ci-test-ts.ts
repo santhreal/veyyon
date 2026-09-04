@@ -218,7 +218,7 @@ export const fastWorkspacePackages = [
 	// why `workspaceTestPackages` below is now checked against the tree by
 	// `scripts/workspace-test-coverage.test.ts` instead of maintained by hand alone.
 	"plugins/argot",
-	"packages/stats",
+	"apps/stats",
 	"packages/tool-render",
 	"plugins/mode-swarm",
 	// mnemopi ran in NO CI job until this entry existed. It sat in
@@ -259,7 +259,7 @@ export const nativeAndIntegrationPackages = [
 	// one for the reason the comment gives: evals starts local servers and drives
 	// agent sessions against benchmark fixtures, and collab-web is browser-ish.
 	"tests/evals",
-	"packages/collab-web",
+	"clients/web",
 ];
 
 // Packages the CI buckets deliberately skip but a local full run should still

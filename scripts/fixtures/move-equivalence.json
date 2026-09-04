@@ -354,6 +354,10 @@
 			"natives/search/walker"
 		],
 		[
+			"packages/simulations",
+			"tests/simulations"
+		],
+		[
 			"crates/veyyon-shell",
 			"natives/shell"
 		],
@@ -412,7 +416,7 @@
 	],
 	"files": {
 		"contracts/view/tsconfig.json": {
-			"old": "packages/wire/tsconfig.json",
+			"old": "packages/simulations/tsconfig.json",
 			"kind": "normalized",
 			"differs": "none",
 			"hash": "8aef7ebe0daaf2899f092e24842c6ed182c7aceb60a49bf422ddce47d12f7a15",
@@ -557,15 +561,13 @@
 			"mainStructuralHash": "73d48a842ccb978af567eb02d339ab5f5fc6240e93d0465cd58a30cf454c177d"
 		},
 		"contracts/wire/tsconfig.json": {
-			"old": "packages/swarm-extension/tsconfig.json",
+			"old": "packages/wire/tsconfig.json",
 			"kind": "normalized",
-			"differs": "changed",
-			"group": "manifest-depth",
-			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"differs": "none",
 			"hash": "8aef7ebe0daaf2899f092e24842c6ed182c7aceb60a49bf422ddce47d12f7a15",
-			"mainHash": "a1e82eeae139556292d69cca788fe55b91572c668d59f86fadff1d3e92ad76b2",
+			"mainHash": "8aef7ebe0daaf2899f092e24842c6ed182c7aceb60a49bf422ddce47d12f7a15",
 			"structuralHash": "b2cd3a124b3f24b9bf45aafdf178c91bc45d17e665f2345f96a4d781c548d3be",
-			"mainStructuralHash": "e1e57951e261b35ed89913061450e826a7c3536661a8d13e1b2297f852abc808"
+			"mainStructuralHash": "b2cd3a124b3f24b9bf45aafdf178c91bc45d17e665f2345f96a4d781c548d3be"
 		},
 		"contracts/wire/tsconfig.publish.json": {
 			"old": "packages/wire/tsconfig.publish.json",
@@ -1146,8 +1148,8 @@
 			"old": "packages/tui/test/chrome-taller-than-the-viewport-never-reaches-native-scrollback.test.ts",
 			"kind": "normalized",
 			"differs": "none",
-			"hash": "c7f06ef242dbaefea36fab2b279b4ac46043621dcc3e575e092473f562f3acb8",
-			"mainHash": "c7f06ef242dbaefea36fab2b279b4ac46043621dcc3e575e092473f562f3acb8",
+			"hash": "a80c5e7c0c07fd87fad07fdef111e08a7aa0e4548b44f6e8fddd17aaa7c921d8",
+			"mainHash": "a80c5e7c0c07fd87fad07fdef111e08a7aa0e4548b44f6e8fddd17aaa7c921d8",
 			"structuralHash": "f9005015397e78fc2a0bd755bee5a9a7de07be6d6d262bb3a210df0123f3adae",
 			"mainStructuralHash": "f9005015397e78fc2a0bd755bee5a9a7de07be6d6d262bb3a210df0123f3adae"
 		},
@@ -19888,7 +19890,7 @@
 			"mainStructuralHash": "2531bc4f74fc4a6abc69a9e548a241aeb4e748619679fddebdf8c19e9c4418d5"
 		},
 		"plugins/argot/bunfig.toml": {
-			"old": "packages/swarm-extension/bunfig.toml",
+			"old": "packages/simulations/bunfig.toml",
 			"kind": "normalized",
 			"differs": "changed",
 			"group": "manifest-depth",
@@ -32957,6 +32959,17 @@
 			"structuralHash": "903e923c5951b80e9c9b54e6091748c88aba3d0334987deddf9d7373f30984fd",
 			"mainStructuralHash": "903e923c5951b80e9c9b54e6091748c88aba3d0334987deddf9d7373f30984fd"
 		},
+		"plugins/mode-swarm/tsconfig.json": {
+			"old": "packages/swarm-extension/tsconfig.json",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "manifest-depth",
+			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"hash": "9c5151f22e6936c4a25bb1aea8464bd22122ad897ba7a04474fdbace2c90b906",
+			"mainHash": "a1e82eeae139556292d69cca788fe55b91572c668d59f86fadff1d3e92ad76b2",
+			"structuralHash": "1d7f97a967e880b347d9c604ca01d126277fe741dea754142b58fc1c81b36b70",
+			"mainStructuralHash": "e1e57951e261b35ed89913061450e826a7c3536661a8d13e1b2297f852abc808"
+		},
 		"plugins/web/src/browser-fingerprint-constants.ts": {
 			"old": "packages/coding-agent/src/web/search/providers/browser-fingerprint-constants.ts",
 			"kind": "normalized",
@@ -34663,6 +34676,667 @@
 			"mainHash": "235352edeb80081fe0089f6a2dd72df7f31fbac9a2d82b8f1fa88be789aeb5df",
 			"structuralHash": "9efd072d186d24d2fcbf217d9632b883d382ae3e71ef910f33d81619ba85e718",
 			"mainStructuralHash": "9efd072d186d24d2fcbf217d9632b883d382ae3e71ef910f33d81619ba85e718"
+		},
+		"tests/simulations/CHANGELOG.md": {
+			"old": "packages/simulations/CHANGELOG.md",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "4f362a7c7b277f76b3065fb99b55b8e08ccdc6f4ea328509b17bf0e1f0b0e6fd",
+			"mainHash": "4f362a7c7b277f76b3065fb99b55b8e08ccdc6f4ea328509b17bf0e1f0b0e6fd",
+			"structuralHash": "30d75d6214dc85354c0d76dc4048467258c86be67bd851a7e0078a28b0346d51",
+			"mainStructuralHash": "30d75d6214dc85354c0d76dc4048467258c86be67bd851a7e0078a28b0346d51"
+		},
+		"tests/simulations/README.md": {
+			"old": "packages/simulations/README.md",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "8d7009652c672f8e72a8eac5066ec59bb754a6a6bf225760d2d780077647ffef",
+			"mainHash": "8d7009652c672f8e72a8eac5066ec59bb754a6a6bf225760d2d780077647ffef",
+			"structuralHash": "3b0f429f258b8a9a5029d83e6a88721e206fa2ce2954c634d33b439bd24a78ef",
+			"mainStructuralHash": "3b0f429f258b8a9a5029d83e6a88721e206fa2ce2954c634d33b439bd24a78ef"
+		},
+		"tests/simulations/package.json": {
+			"old": "packages/simulations/package.json",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "manifest-depth",
+			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"hash": "3c1518c939d9a28e90787783a45a0044f77968527091221c50c80d05530b4905",
+			"mainHash": "d770f986af6f4239418e13f05f6148a5895cb9c5b5aee7f4d12660062a0983ef",
+			"structuralHash": "1a5f3a9a3770cfc201f68a93d03cbcaacef47b2658dafa38da3cf50e482ab944",
+			"mainStructuralHash": "31ec531c6bb9ed3afe5de56408f40014d07c1be3e5cd595ccebb59194edeeb4d"
+		},
+		"tests/simulations/src/cache-sim/a-changing-system-block-costs-more-than-the-anchor-saves.test.ts": {
+			"old": "packages/simulations/src/cache-sim/a-changing-system-block-costs-more-than-the-anchor-saves.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "a9235f997c8a7d9c78839e9aac46582dd728c8a572c59f7d11880ffdbf72a0d8",
+			"mainHash": "a9235f997c8a7d9c78839e9aac46582dd728c8a572c59f7d11880ffdbf72a0d8",
+			"structuralHash": "976077d423f8982522f7d2e65dfd21ab36d019dc63ae2e5da16f28d0266aa9d5",
+			"mainStructuralHash": "976077d423f8982522f7d2e65dfd21ab36d019dc63ae2e5da16f28d0266aa9d5"
+		},
+		"tests/simulations/src/cache-sim/a-counterfactual-changes-only-the-markers.test.ts": {
+			"old": "packages/simulations/src/cache-sim/a-counterfactual-changes-only-the-markers.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "ad8145eb63397271e8db78df675db31082f9ec6876578ec411a96488272344cd",
+			"mainHash": "ad8145eb63397271e8db78df675db31082f9ec6876578ec411a96488272344cd",
+			"structuralHash": "40268fb215ea87ff7e492909a519ccaa7e88f1fd37affe457586ce2194cae671",
+			"mainStructuralHash": "40268fb215ea87ff7e492909a519ccaa7e88f1fd37affe457586ce2194cae671"
+		},
+		"tests/simulations/src/cache-sim/a-retention-switch-is-priced-before-it-is-made.test.ts": {
+			"old": "packages/simulations/src/cache-sim/a-retention-switch-is-priced-before-it-is-made.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "72ee89eeb873b7ff50d37ed22842ea958bc648d5b3665466063d788149e818ac",
+			"mainHash": "72ee89eeb873b7ff50d37ed22842ea958bc648d5b3665466063d788149e818ac",
+			"structuralHash": "d290baadffd97e5a6c0b97cb99395e1ac27c3a95b930a3bb51e8a34a31769fa9",
+			"mainStructuralHash": "d290baadffd97e5a6c0b97cb99395e1ac27c3a95b930a3bb51e8a34a31769fa9"
+		},
+		"tests/simulations/src/cache-sim/a-rewritten-earlier-message-forfeits-the-whole-history.test.ts": {
+			"old": "packages/simulations/src/cache-sim/a-rewritten-earlier-message-forfeits-the-whole-history.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "762d9e61a02c7bd2be8e8955fb0e70fdcd1f40ec3e1f7c428add1982747da52f",
+			"mainHash": "762d9e61a02c7bd2be8e8955fb0e70fdcd1f40ec3e1f7c428add1982747da52f",
+			"structuralHash": "91f237d58bc150e4345969e6cdcf1abbc6222e1e4de705353ba3167b234a7ff5",
+			"mainStructuralHash": "91f237d58bc150e4345969e6cdcf1abbc6222e1e4de705353ba3167b234a7ff5"
+		},
+		"tests/simulations/src/cache-sim/a-shared-harness-prefix-is-only-shared-when-the-marker-says-so.test.ts": {
+			"old": "packages/simulations/src/cache-sim/a-shared-harness-prefix-is-only-shared-when-the-marker-says-so.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "a1420d659550e3210095221ccd431b8e5e82dd249119a62108c113daf0fcb886",
+			"mainHash": "a1420d659550e3210095221ccd431b8e5e82dd249119a62108c113daf0fcb886",
+			"structuralHash": "0e69f99ea185dc8614d8286dd26bf231be9c45562eb7086f1a087931ab77c358",
+			"mainStructuralHash": "0e69f99ea185dc8614d8286dd26bf231be9c45562eb7086f1a087931ab77c358"
+		},
+		"tests/simulations/src/cache-sim/an-implicit-cache-forgives-appending-and-nothing-else.test.ts": {
+			"old": "packages/simulations/src/cache-sim/an-implicit-cache-forgives-appending-and-nothing-else.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "d7aeb9a846c87c41209f060371cdc180d916f4867adb0265186c31e5b15ea076",
+			"mainHash": "d7aeb9a846c87c41209f060371cdc180d916f4867adb0265186c31e5b15ea076",
+			"structuralHash": "6320c070132c71d9f46164d9516447ade2b9c19ac29a37f2b77cff10eca44bce",
+			"mainStructuralHash": "6320c070132c71d9f46164d9516447ade2b9c19ac29a37f2b77cff10eca44bce"
+		},
+		"tests/simulations/src/cache-sim/harness.ts": {
+			"old": "packages/simulations/src/cache-sim/harness.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "5bda4d314ff7b89f41294a9b84cfcd532517f6463a4332042519e7006bbddb3a",
+			"mainHash": "5bda4d314ff7b89f41294a9b84cfcd532517f6463a4332042519e7006bbddb3a",
+			"structuralHash": "56c202834d94fc2aa63f97432b7f399dcd9238e92d11fad3391431101f1f0d20",
+			"mainStructuralHash": "56c202834d94fc2aa63f97432b7f399dcd9238e92d11fad3391431101f1f0d20"
+		},
+		"tests/simulations/src/cache-sim/index.ts": {
+			"old": "packages/simulations/src/cache-sim/index.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "6f307545f935780e7d3f86154781f88dff1ed9717b2a84a8de65102b1941c2d2",
+			"mainHash": "6f307545f935780e7d3f86154781f88dff1ed9717b2a84a8de65102b1941c2d2",
+			"structuralHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+			"mainStructuralHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+		},
+		"tests/simulations/src/cache-sim/the-codex-builder-never-rewrites-a-block-it-already-sent.test.ts": {
+			"old": "packages/simulations/src/cache-sim/the-codex-builder-never-rewrites-a-block-it-already-sent.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "caaf7ab8f6f28a63a4f66712e5875a9671ebf39adeaf07b07d8902c9ee8df873",
+			"mainHash": "caaf7ab8f6f28a63a4f66712e5875a9671ebf39adeaf07b07d8902c9ee8df873",
+			"structuralHash": "0cd1e5f8cbdc18b72c4125f8b69aaa04d65257e5b8138c47a57578e26dc32b69",
+			"mainStructuralHash": "0cd1e5f8cbdc18b72c4125f8b69aaa04d65257e5b8138c47a57578e26dc32b69"
+		},
+		"tests/simulations/src/index.ts": {
+			"old": "packages/simulations/src/index.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "face05e2553421f55e1c4ff1c0ce9514f4191167cc520e7e8b74360a99c98591",
+			"mainHash": "face05e2553421f55e1c4ff1c0ce9514f4191167cc520e7e8b74360a99c98591",
+			"structuralHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+			"mainStructuralHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+		},
+		"tests/simulations/src/paint-sim/a-streaming-answer-never-repaints-the-whole-screen.test.ts": {
+			"old": "packages/simulations/src/paint-sim/a-streaming-answer-never-repaints-the-whole-screen.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "4f0593386d1d0c0d686f82206ddcae9ce7e580f793ccc1ffa8998f9ca52edd91",
+			"mainHash": "4f0593386d1d0c0d686f82206ddcae9ce7e580f793ccc1ffa8998f9ca52edd91",
+			"structuralHash": "8094cd242cddb1ee1e026c29b4b43b0c7c1082293b97ba2a13a3746d81626643",
+			"mainStructuralHash": "8094cd242cddb1ee1e026c29b4b43b0c7c1082293b97ba2a13a3746d81626643"
+		},
+		"tests/simulations/src/paint-sim/a-turn-that-ends-short-never-paints-a-blank-band-over-the-conversation.test.ts": {
+			"old": "packages/simulations/src/paint-sim/a-turn-that-ends-short-never-paints-a-blank-band-over-the-conversation.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "b23bf0589f16d865eacac60acdd929ebdae64baeb6b72149c86470459af1c6bb",
+			"mainHash": "b23bf0589f16d865eacac60acdd929ebdae64baeb6b72149c86470459af1c6bb",
+			"structuralHash": "eba4849ee5ae4bb90d0aa432949a2faecc45ab29619e5c12432a9be07ace3d95",
+			"mainStructuralHash": "eba4849ee5ae4bb90d0aa432949a2faecc45ab29619e5c12432a9be07ace3d95"
+		},
+		"tests/simulations/src/paint-sim/harness.ts": {
+			"old": "packages/simulations/src/paint-sim/harness.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "f2a42ecb0096376ce5d5ee6246d6b4f4f02f87204cc623547c364ff7b769b917",
+			"mainHash": "13df1ac28f700b69d07aac3161e294dba0ef103355ae4ae0c918eaed6ce4c63a",
+			"structuralHash": "a8f974cf67747a91af7cb5fb9974f4794ff75571666c42163b660732e68afd85",
+			"mainStructuralHash": "a8f974cf67747a91af7cb5fb9974f4794ff75571666c42163b660732e68afd85"
+		},
+		"tests/simulations/src/paint-sim/index.ts": {
+			"old": "packages/simulations/src/paint-sim/index.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "63ffcf66ec33c98f3fb51d0314e16fed1727b679546b7a1cd15d87f741f3583b",
+			"mainHash": "63ffcf66ec33c98f3fb51d0314e16fed1727b679546b7a1cd15d87f741f3583b",
+			"structuralHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+			"mainStructuralHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+		},
+		"tests/simulations/src/turn-sim/a-cross-provider-stream-matrix-settles-all-terminal-conditions-and-partial-batches.test.ts": {
+			"old": "packages/simulations/src/turn-sim/a-cross-provider-stream-matrix-settles-all-terminal-conditions-and-partial-batches.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "59c6d9f1f0b51754d481b58d637c2ac95092d5e4f4480899a1960d077170ee15",
+			"mainHash": "1b42ce3121638307554697231b16ca42042933817bbdd9498800767aa7ef448c",
+			"structuralHash": "13ae0e6038fd2abafe6cad36b4ec0281d2e309ee5920af1dc711c128aedf05ab",
+			"mainStructuralHash": "13ae0e6038fd2abafe6cad36b4ec0281d2e309ee5920af1dc711c128aedf05ab"
+		},
+		"tests/simulations/src/turn-sim/a-provider-response-error-is-retried-only-when-its-kind-permits.test.ts": {
+			"old": "packages/simulations/src/turn-sim/a-provider-response-error-is-retried-only-when-its-kind-permits.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "24f951af70313c77c20bfb3dbd75e016170810b6ab842533ebfdd224ff2dffad",
+			"mainHash": "74135021e97190fe3da41242a97726b606e7062dfcc5bcef88348a009182a5e0",
+			"structuralHash": "8f04c35161c7df096afd6397069e286c4b3dae887b313f39a8f5392fc4ba9f9a",
+			"mainStructuralHash": "8f04c35161c7df096afd6397069e286c4b3dae887b313f39a8f5392fc4ba9f9a"
+		},
+		"tests/simulations/src/turn-sim/a-repeated-stream-death-settles-cleanly-on-exhaustion-and-cancellation.test.ts": {
+			"old": "packages/simulations/src/turn-sim/a-repeated-stream-death-settles-cleanly-on-exhaustion-and-cancellation.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "979dbfd2b23c9a2d727a2b4bd2112171cc9e57f1065368452b5e2c9b38e69788",
+			"mainHash": "81ec27bee3cde8ef0a9ce6b835411972a21c2ef7e0f2764b7cc13aad8481b49c",
+			"structuralHash": "7fce86d422dcc4ea8202e63f547d9d54835ae4b669d584bea71a39cb4c4c3594",
+			"mainStructuralHash": "7fce86d422dcc4ea8202e63f547d9d54835ae4b669d584bea71a39cb4c4c3594"
+		},
+		"tests/simulations/src/turn-sim/a-simulation-cannot-script-a-payload-the-loop-guard-aborts.test.ts": {
+			"old": "packages/simulations/src/turn-sim/a-simulation-cannot-script-a-payload-the-loop-guard-aborts.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "2d6e8b5dcca6521f1efb64789f81380b7326c8e70e3636e8aae98eafce4fbfc9",
+			"mainHash": "2d6e8b5dcca6521f1efb64789f81380b7326c8e70e3636e8aae98eafce4fbfc9",
+			"structuralHash": "c1ca100b431a10e70e58fbe81c1eb8e8b247685116d2a30441a2530afba0e627",
+			"mainStructuralHash": "c1ca100b431a10e70e58fbe81c1eb8e8b247685116d2a30441a2530afba0e627"
+		},
+		"tests/simulations/src/turn-sim/aside-injection.test.ts": {
+			"old": "packages/simulations/src/turn-sim/aside-injection.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "77c701d1735732453a6f08cf98eed377005edc81195351f791d4222e64e9449a",
+			"mainHash": "77c701d1735732453a6f08cf98eed377005edc81195351f791d4222e64e9449a",
+			"structuralHash": "bef8f87468d80dffebd497b62c599875fc891d67b8a81b8d03ae1b029da944f8",
+			"mainStructuralHash": "bef8f87468d80dffebd497b62c599875fc891d67b8a81b8d03ae1b029da944f8"
+		},
+		"tests/simulations/src/turn-sim/branch-navigation.test.ts": {
+			"old": "packages/simulations/src/turn-sim/branch-navigation.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "7fe3b8d856d364544c1d25f229f100a4d5360e73e31aee02ff88fc7acc40e25d",
+			"mainHash": "7fe3b8d856d364544c1d25f229f100a4d5360e73e31aee02ff88fc7acc40e25d",
+			"structuralHash": "3534e5ddefacd9d889181224614d730d2e603e46b9c3cb20f447cedda0de6fe7",
+			"mainStructuralHash": "3534e5ddefacd9d889181224614d730d2e603e46b9c3cb20f447cedda0de6fe7"
+		},
+		"tests/simulations/src/turn-sim/cache-routing.test.ts": {
+			"old": "packages/simulations/src/turn-sim/cache-routing.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "df6b9a2f6c9bd44ae5dbf8990b6715296ac17f2a575c6161f38f98b5d15119a0",
+			"mainHash": "df6b9a2f6c9bd44ae5dbf8990b6715296ac17f2a575c6161f38f98b5d15119a0",
+			"structuralHash": "b03640f572c9013ce7c9e26a226f8fa0b542e1018b20ebc175e884c8c9959215",
+			"mainStructuralHash": "b03640f572c9013ce7c9e26a226f8fa0b542e1018b20ebc175e884c8c9959215"
+		},
+		"tests/simulations/src/turn-sim/cancel-point-matrix.test.ts": {
+			"old": "packages/simulations/src/turn-sim/cancel-point-matrix.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "9af2e9206b1146c3559997a1733c3ee875ab3a5ba91a23edb85bdd6422150ebb",
+			"mainHash": "9af2e9206b1146c3559997a1733c3ee875ab3a5ba91a23edb85bdd6422150ebb",
+			"structuralHash": "a77ab8b739ea219bf222cbfaa01638b0a389f5e3914b37954f417e7ad372abc8",
+			"mainStructuralHash": "a77ab8b739ea219bf222cbfaa01638b0a389f5e3914b37954f417e7ad372abc8"
+		},
+		"tests/simulations/src/turn-sim/classifier-request-transport.test.ts": {
+			"old": "packages/simulations/src/turn-sim/classifier-request-transport.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "89da0a41c4401d938f1222a795c4ff774ef320a1e335f21ff8e68ee94cd14ff4",
+			"mainHash": "6c2cd294a5030c661ed913525394349757e6d8a538956f371ab88a9e02c8fa27",
+			"structuralHash": "12893805f628b23643ae88a03383fc2cd2d771ede3acaa20dd7372d1a3304ad4",
+			"mainStructuralHash": "12893805f628b23643ae88a03383fc2cd2d771ede3acaa20dd7372d1a3304ad4"
+		},
+		"tests/simulations/src/turn-sim/compacted-reload.test.ts": {
+			"old": "packages/simulations/src/turn-sim/compacted-reload.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "e4653aa9a821fb5a71fbc36cee85accf245b011dc9ead58ccb65c6975da6ccfc",
+			"mainHash": "e4653aa9a821fb5a71fbc36cee85accf245b011dc9ead58ccb65c6975da6ccfc",
+			"structuralHash": "1befcf6313837d8e17c9894e47d3dafe7ef89491aa762640624ec7cfe7f64731",
+			"mainStructuralHash": "1befcf6313837d8e17c9894e47d3dafe7ef89491aa762640624ec7cfe7f64731"
+		},
+		"tests/simulations/src/turn-sim/compaction-crossings.test.ts": {
+			"old": "packages/simulations/src/turn-sim/compaction-crossings.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "cad9c6674a1891c9a363cb4aba4218b177d0f6b479a8a45c11af3a544d2a6b07",
+			"mainHash": "cad9c6674a1891c9a363cb4aba4218b177d0f6b479a8a45c11af3a544d2a6b07",
+			"structuralHash": "ee5751c5bcdeeec13d2515afad640f94b60ea4caa162540ad6c06c4d6bb5b3b3",
+			"mainStructuralHash": "ee5751c5bcdeeec13d2515afad640f94b60ea4caa162540ad6c06c4d6bb5b3b3"
+		},
+		"tests/simulations/src/turn-sim/compaction-on-another-model.test.ts": {
+			"old": "packages/simulations/src/turn-sim/compaction-on-another-model.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "6b2bbc6c82d8acbabab0565a35cc64f6984ea0a7b682262b91e072f9907770f4",
+			"mainHash": "6b2bbc6c82d8acbabab0565a35cc64f6984ea0a7b682262b91e072f9907770f4",
+			"structuralHash": "c0bfb2d7274eb87a0195ed7a6d01c148108f68484fab74f6e77cb29c7379068e",
+			"mainStructuralHash": "c0bfb2d7274eb87a0195ed7a6d01c148108f68484fab74f6e77cb29c7379068e"
+		},
+		"tests/simulations/src/turn-sim/context-promotion-ladder.test.ts": {
+			"old": "packages/simulations/src/turn-sim/context-promotion-ladder.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "1537a04c6762a2cd755e3ecdaf0581444b6cef76ea164ff6d0ed4f1bae9d575f",
+			"mainHash": "1537a04c6762a2cd755e3ecdaf0581444b6cef76ea164ff6d0ed4f1bae9d575f",
+			"structuralHash": "5dec6ac803d4bbd22f75c01d981d4720b19cf18ca119725912e86f3f329b8fc4",
+			"mainStructuralHash": "5dec6ac803d4bbd22f75c01d981d4720b19cf18ca119725912e86f3f329b8fc4"
+		},
+		"tests/simulations/src/turn-sim/context-report-after-rewrite.test.ts": {
+			"old": "packages/simulations/src/turn-sim/context-report-after-rewrite.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "cfe7284fb485703c50fa85e63e703354bd94f927d1273cd52168cf33431bc240",
+			"mainHash": "cfe7284fb485703c50fa85e63e703354bd94f927d1273cd52168cf33431bc240",
+			"structuralHash": "1ab3c4b3df34cfa57c69c7e44d202bfe5894a3c7726e74429ac8d36773a0e911",
+			"mainStructuralHash": "1ab3c4b3df34cfa57c69c7e44d202bfe5894a3c7726e74429ac8d36773a0e911"
+		},
+		"tests/simulations/src/turn-sim/elision-recovery.test.ts": {
+			"old": "packages/simulations/src/turn-sim/elision-recovery.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "e97352cf33da469e40bc0794b58659b4b910d04aeb5c81fbeb373b2553904ad0",
+			"mainHash": "e97352cf33da469e40bc0794b58659b4b910d04aeb5c81fbeb373b2553904ad0",
+			"structuralHash": "a02976bfc91c428dd870f8391cafd6ce2f513fd1bc743bc56ce527591d9115ae",
+			"mainStructuralHash": "a02976bfc91c428dd870f8391cafd6ce2f513fd1bc743bc56ce527591d9115ae"
+		},
+		"tests/simulations/src/turn-sim/errored-tool-result-is-the-tools-error.test.ts": {
+			"old": "packages/simulations/src/turn-sim/errored-tool-result-is-the-tools-error.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "c7e789656658f7e5f43d76a66b5c0f058e532774ec5c9363b5beef9260355421",
+			"mainHash": "efc716702f50682bfdfe124a113799fc618df9680980f1b973772405aebabed8",
+			"structuralHash": "343e17de15cf4e0fba0dc2493c812ec9d61619bd20175956e3f133bd181a23b5",
+			"mainStructuralHash": "343e17de15cf4e0fba0dc2493c812ec9d61619bd20175956e3f133bd181a23b5"
+		},
+		"tests/simulations/src/turn-sim/fork-lineage.test.ts": {
+			"old": "packages/simulations/src/turn-sim/fork-lineage.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "934b752bc1acdc718f33d8400ad7b6b28f76ce74d19aa906ae151cd5c2a2aff4",
+			"mainHash": "934b752bc1acdc718f33d8400ad7b6b28f76ce74d19aa906ae151cd5c2a2aff4",
+			"structuralHash": "c86edb08f076e60a2579fae4922bc84beb8fa4b1afbc8a682ae52718d7f54544",
+			"mainStructuralHash": "c86edb08f076e60a2579fae4922bc84beb8fa4b1afbc8a682ae52718d7f54544"
+		},
+		"tests/simulations/src/turn-sim/goal-budget-compaction.test.ts": {
+			"old": "packages/simulations/src/turn-sim/goal-budget-compaction.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "e8d71ac5aacfe5fca89775759a9e0b776cfaa9cd2cd5b481927c33acd9172840",
+			"mainHash": "e8d71ac5aacfe5fca89775759a9e0b776cfaa9cd2cd5b481927c33acd9172840",
+			"structuralHash": "8091db0d1065147f6525ce2054fb4d5aac3624f4b6ea94abc749d6c3ecacf9ca",
+			"mainStructuralHash": "8091db0d1065147f6525ce2054fb4d5aac3624f4b6ea94abc749d6c3ecacf9ca"
+		},
+		"tests/simulations/src/turn-sim/growth-compaction.test.ts": {
+			"old": "packages/simulations/src/turn-sim/growth-compaction.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "97e1b337cd9ecaedff8a0f1530696c7321619ac8d5a52d680969a222d7b5a3ab",
+			"mainHash": "97e1b337cd9ecaedff8a0f1530696c7321619ac8d5a52d680969a222d7b5a3ab",
+			"structuralHash": "f4bbdccdf7ca917e64a72e2f7f9f7385082c6927660d23dca8ce03f8712c75c7",
+			"mainStructuralHash": "f4bbdccdf7ca917e64a72e2f7f9f7385082c6927660d23dca8ce03f8712c75c7"
+		},
+		"tests/simulations/src/turn-sim/harness.ts": {
+			"old": "packages/simulations/src/turn-sim/harness.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "fa4ad3673dabd422d04571ca249d3ee0f207a3af202352234558ab6e3983e572",
+			"mainHash": "664d248522ded6bacc695965bc10bdfe18b143213a05e7c980125a029bc4d8c1",
+			"structuralHash": "5f01e4b6e9030135c81ae7cc1d313503d7b1b9a1d37280cc8cffbd189ec23a80",
+			"mainStructuralHash": "5f01e4b6e9030135c81ae7cc1d313503d7b1b9a1d37280cc8cffbd189ec23a80"
+		},
+		"tests/simulations/src/turn-sim/history-maintenance.test.ts": {
+			"old": "packages/simulations/src/turn-sim/history-maintenance.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "fe621ef5ae1b429f92304fa06a9633ec0857bf653d3fc6fbcca73d0ee8793cc3",
+			"mainHash": "fe621ef5ae1b429f92304fa06a9633ec0857bf653d3fc6fbcca73d0ee8793cc3",
+			"structuralHash": "8e67e4c233505a51e2b443db32cb0b0cf7afc66ade6832e6ae8f5dccbecdd414",
+			"mainStructuralHash": "8e67e4c233505a51e2b443db32cb0b0cf7afc66ade6832e6ae8f5dccbecdd414"
+		},
+		"tests/simulations/src/turn-sim/idle-flush-wake.test.ts": {
+			"old": "packages/simulations/src/turn-sim/idle-flush-wake.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "14338103eb5eaa2fb4800f8d85b8bd1978ac6965da596d1b8bdccdf4b73e8132",
+			"mainHash": "14338103eb5eaa2fb4800f8d85b8bd1978ac6965da596d1b8bdccdf4b73e8132",
+			"structuralHash": "6d99d6ab5615353175befc5627e07cf7ff510177a654361fe89af1d752cd27fa",
+			"mainStructuralHash": "6d99d6ab5615353175befc5627e07cf7ff510177a654361fe89af1d752cd27fa"
+		},
+		"tests/simulations/src/turn-sim/image-policy.test.ts": {
+			"old": "packages/simulations/src/turn-sim/image-policy.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "236cc690d99372ed3d43d64d31b12a056a600d4f6d4d6a55434b30e9df94b241",
+			"mainHash": "236cc690d99372ed3d43d64d31b12a056a600d4f6d4d6a55434b30e9df94b241",
+			"structuralHash": "9c6d1ffa38c4397d18844b0bc5b0c8855fa6c19cae84549cae49be89dba79d4a",
+			"mainStructuralHash": "9c6d1ffa38c4397d18844b0bc5b0c8855fa6c19cae84549cae49be89dba79d4a"
+		},
+		"tests/simulations/src/turn-sim/index.ts": {
+			"old": "packages/simulations/src/turn-sim/index.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "393ca966abc7b488613c842b2a3be72b49ab395ffe0fec3df481e6e01f6b72d7",
+			"mainHash": "393ca966abc7b488613c842b2a3be72b49ab395ffe0fec3df481e6e01f6b72d7",
+			"structuralHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+			"mainStructuralHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+		},
+		"tests/simulations/src/turn-sim/interjection-settling.test.ts": {
+			"old": "packages/simulations/src/turn-sim/interjection-settling.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "a8a887d8d08ee1625e7bbd40edaaf35fd9742d0cb65f46a93cff34a506d28cf1",
+			"mainHash": "a8a887d8d08ee1625e7bbd40edaaf35fd9742d0cb65f46a93cff34a506d28cf1",
+			"structuralHash": "6c19559601c570b5987794aef5c7ca9c3086fe76761fbf83eecaa4bf211e0764",
+			"mainStructuralHash": "6c19559601c570b5987794aef5c7ca9c3086fe76761fbf83eecaa4bf211e0764"
+		},
+		"tests/simulations/src/turn-sim/invariants.ts": {
+			"old": "packages/simulations/src/turn-sim/invariants.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "0e975676b6fb8185d96887cacfc78852643428634401a89463e7231be6e65cd7",
+			"mainHash": "0e975676b6fb8185d96887cacfc78852643428634401a89463e7231be6e65cd7",
+			"structuralHash": "876c310cb6534476f3640188225f0ba13dec0ef15b395a0c2e5d434076b72a6b",
+			"mainStructuralHash": "876c310cb6534476f3640188225f0ba13dec0ef15b395a0c2e5d434076b72a6b"
+		},
+		"tests/simulations/src/turn-sim/keep-recent-budget.test.ts": {
+			"old": "packages/simulations/src/turn-sim/keep-recent-budget.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "112d69057bd5a7732da77307af1a309ecfa9ec99664786e62a3937b62d7184fd",
+			"mainHash": "112d69057bd5a7732da77307af1a309ecfa9ec99664786e62a3937b62d7184fd",
+			"structuralHash": "6135383ba10b96b4658787a3e6526ad41cdec3e24ae3ba39b51d08d8df0cb53d",
+			"mainStructuralHash": "6135383ba10b96b4658787a3e6526ad41cdec3e24ae3ba39b51d08d8df0cb53d"
+		},
+		"tests/simulations/src/turn-sim/lost-blob-payload.test.ts": {
+			"old": "packages/simulations/src/turn-sim/lost-blob-payload.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "1944ec1d8698fc4984cbf27f179d205b60197d1cca0d9b54c7dbed2088d87406",
+			"mainHash": "1944ec1d8698fc4984cbf27f179d205b60197d1cca0d9b54c7dbed2088d87406",
+			"structuralHash": "238b2ea1236ee8f22090b362d648e812691bec6140e5a583671e4f5a8f59a0f0",
+			"mainStructuralHash": "238b2ea1236ee8f22090b362d648e812691bec6140e5a583671e4f5a8f59a0f0"
+		},
+		"tests/simulations/src/turn-sim/malformed-turn-endings.test.ts": {
+			"old": "packages/simulations/src/turn-sim/malformed-turn-endings.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "25cab911c63e9f452ca946a55813df26ecd71c46fb1c66ce784eb03ee9daf9db",
+			"mainHash": "25cab911c63e9f452ca946a55813df26ecd71c46fb1c66ce784eb03ee9daf9db",
+			"structuralHash": "25295aed0d70dd12cc3e606c067e1241e4f52b2f66ff1fcbf06ba350ad6c4ec3",
+			"mainStructuralHash": "25295aed0d70dd12cc3e606c067e1241e4f52b2f66ff1fcbf06ba350ad6c4ec3"
+		},
+		"tests/simulations/src/turn-sim/midrun-compaction-in-a-tool-chain.test.ts": {
+			"old": "packages/simulations/src/turn-sim/midrun-compaction-in-a-tool-chain.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "771ebbd323a54167db0a22e589dfca07e5efb2edf5902f3f067f758100d3f6c3",
+			"mainHash": "771ebbd323a54167db0a22e589dfca07e5efb2edf5902f3f067f758100d3f6c3",
+			"structuralHash": "1d4102874dcfd2a2af81ba75b5351cdd0753db5884c3d078955515dbd7d0e23a",
+			"mainStructuralHash": "1d4102874dcfd2a2af81ba75b5351cdd0753db5884c3d078955515dbd7d0e23a"
+		},
+		"tests/simulations/src/turn-sim/model-switch.test.ts": {
+			"old": "packages/simulations/src/turn-sim/model-switch.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "879e2bec831244f6d3d94874b9d95b7517a8274a16b16bcdc820392783f9bd54",
+			"mainHash": "879e2bec831244f6d3d94874b9d95b7517a8274a16b16bcdc820392783f9bd54",
+			"structuralHash": "f5459da6a6eac5e05647e21e2452655f6fb3132348121e98c33e527bf03a7da1",
+			"mainStructuralHash": "f5459da6a6eac5e05647e21e2452655f6fb3132348121e98c33e527bf03a7da1"
+		},
+		"tests/simulations/src/turn-sim/overflow-recovery.test.ts": {
+			"old": "packages/simulations/src/turn-sim/overflow-recovery.test.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "overflow-rescue-row",
+			"reason": "The overflow row asserted a refusal that stayed visible after the summarizer failed. A session no longer parks there: when no reducer recognizes the shape of what is too large, the last-resort tier cuts the middle out of the largest text, the pass reaches the fit bar with no summary and the scheduled retry answers. The row requires that recovery -- one dead-end notice naming the truncation, prose shorter than the prompt carried, and an answer rather than a refusal.",
+			"hash": "e1ec1e5c07ab7d89f0690b50f712622d5e3b73f0aaed3c6e093dd03963c90b08",
+			"mainHash": "3a16a03c9aaf3f2fb47bd95fce56782b9011b60ef58f3759517e88b6eb887569",
+			"structuralHash": "fe67b0aedd9b52efd3bf20f3b5e58e14ae3ff714000ab0bdcd2d7f2951ce740e",
+			"mainStructuralHash": "11cc03ccf2b0a6722f63102368489a57daac6af79c8e1643ce0c9f01eb54feb1"
+		},
+		"tests/simulations/src/turn-sim/plan-protection-across-passes.test.ts": {
+			"old": "packages/simulations/src/turn-sim/plan-protection-across-passes.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "d7dd40c3423fa50bc07f26df0a75a349ebb15e9c97048c61b1bdab9a5f2af69e",
+			"mainHash": "94cc8bf57dec4b7c6ad1a9d859cc85119c61f58e7ea681091d2b5bd95d2af218",
+			"structuralHash": "87f58d005c34df2bc7e59c0cc5f6a6604d928d22f9ff7617c530d07d4254bc5a",
+			"mainStructuralHash": "87f58d005c34df2bc7e59c0cc5f6a6604d928d22f9ff7617c530d07d4254bc5a"
+		},
+		"tests/simulations/src/turn-sim/provider-error-taxonomy.test.ts": {
+			"old": "packages/simulations/src/turn-sim/provider-error-taxonomy.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "a39fec708a7d962816b85b7d621ea51d724f59cbcd0dcc2ad95c83933f6cd42c",
+			"mainHash": "a39fec708a7d962816b85b7d621ea51d724f59cbcd0dcc2ad95c83933f6cd42c",
+			"structuralHash": "1debb8b9778a1bc6688bc9b0012b9537315733c1c6dd248e834de45bcf46d4fb",
+			"mainStructuralHash": "1debb8b9778a1bc6688bc9b0012b9537315733c1c6dd248e834de45bcf46d4fb"
+		},
+		"tests/simulations/src/turn-sim/provider-goes-quiet.test.ts": {
+			"old": "packages/simulations/src/turn-sim/provider-goes-quiet.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "82e3354aeb9ae749d85d5c0fbf933cb61f47c3f7c6c98bbd9c8b72fb21eb9ebe",
+			"mainHash": "82e3354aeb9ae749d85d5c0fbf933cb61f47c3f7c6c98bbd9c8b72fb21eb9ebe",
+			"structuralHash": "413622f74eddb0355529f177f50660d23e9e86b70cc532bfe54ff5a64318bdfc",
+			"mainStructuralHash": "413622f74eddb0355529f177f50660d23e9e86b70cc532bfe54ff5a64318bdfc"
+		},
+		"tests/simulations/src/turn-sim/reasoning-replay.test.ts": {
+			"old": "packages/simulations/src/turn-sim/reasoning-replay.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "cc2d24e2d6e5543beccff706e39890617aab8842f5f09c77917356b5f02f6289",
+			"mainHash": "cc2d24e2d6e5543beccff706e39890617aab8842f5f09c77917356b5f02f6289",
+			"structuralHash": "cd3039340f1e704f9ca919f7a74da67d5f8b7e22b4d62f4365abe2661da2a7d2",
+			"mainStructuralHash": "cd3039340f1e704f9ca919f7a74da67d5f8b7e22b4d62f4365abe2661da2a7d2"
+		},
+		"tests/simulations/src/turn-sim/reload-fidelity.test.ts": {
+			"old": "packages/simulations/src/turn-sim/reload-fidelity.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "b377d000ce82af12e8eadec32a260e25f81105ccc839ff64ebb925e0dbb23111",
+			"mainHash": "b377d000ce82af12e8eadec32a260e25f81105ccc839ff64ebb925e0dbb23111",
+			"structuralHash": "2d9e70b10121feab3a12d540b1b2d4206bdfe37dbe159968d0e2e307176f74bf",
+			"mainStructuralHash": "2d9e70b10121feab3a12d540b1b2d4206bdfe37dbe159968d0e2e307176f74bf"
+		},
+		"tests/simulations/src/turn-sim/retry-budgets-and-forced-choices.test.ts": {
+			"old": "packages/simulations/src/turn-sim/retry-budgets-and-forced-choices.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "d9b81a97ea7d5827e6686ab620758cb7d740af63ee590b63a91486af0ac1d302",
+			"mainHash": "0be2dcfa21e1c66630cf4d67e3a0b39a78f4b891bf76f4dd328b6641d25f235f",
+			"structuralHash": "134f074803e62b8bc1cde93258f7efd1108c0569d3490d077f134a078445df85",
+			"mainStructuralHash": "134f074803e62b8bc1cde93258f7efd1108c0569d3490d077f134a078445df85"
+		},
+		"tests/simulations/src/turn-sim/retry-model-fallback.test.ts": {
+			"old": "packages/simulations/src/turn-sim/retry-model-fallback.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "118183676292edf73b85ad538481ffe15640ee478930a0f536c4ec663c481d83",
+			"mainHash": "118183676292edf73b85ad538481ffe15640ee478930a0f536c4ec663c481d83",
+			"structuralHash": "8c44cd8de75a012b1fc88428677d0fbc0ca1a60bc1954d3409439b2220f7469d",
+			"mainStructuralHash": "8c44cd8de75a012b1fc88428677d0fbc0ca1a60bc1954d3409439b2220f7469d"
+		},
+		"tests/simulations/src/turn-sim/rewrite-survives-a-reopen.test.ts": {
+			"old": "packages/simulations/src/turn-sim/rewrite-survives-a-reopen.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "611c9b74d42a9f076f75d42f51bbc6dbd76216e2ab8741b6e714ffff2b036ffa",
+			"mainHash": "611c9b74d42a9f076f75d42f51bbc6dbd76216e2ab8741b6e714ffff2b036ffa",
+			"structuralHash": "4a5efe378b4a212990f27e7716cd43f909b29286fa13de8e6a312658a805ea0b",
+			"mainStructuralHash": "4a5efe378b4a212990f27e7716cd43f909b29286fa13de8e6a312658a805ea0b"
+		},
+		"tests/simulations/src/turn-sim/service-tier-across-a-session.test.ts": {
+			"old": "packages/simulations/src/turn-sim/service-tier-across-a-session.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "0a9eb2cfd059aeb3bf1904eba7cf3ae6f093a14e939db7c9c2c72f3eea527e3a",
+			"mainHash": "0a9eb2cfd059aeb3bf1904eba7cf3ae6f093a14e939db7c9c2c72f3eea527e3a",
+			"structuralHash": "e4bb6961aba5756a7082026c92381cdf3ded54ba7bc634f5c8cf47af184a4481",
+			"mainStructuralHash": "e4bb6961aba5756a7082026c92381cdf3ded54ba7bc634f5c8cf47af184a4481"
+		},
+		"tests/simulations/src/turn-sim/service-tier-on-side-requests.test.ts": {
+			"old": "packages/simulations/src/turn-sim/service-tier-on-side-requests.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "bd2b9897c90b5f7574ca381367499e2d27801908dcb1051ce5641dad0406cc6c",
+			"mainHash": "bd2b9897c90b5f7574ca381367499e2d27801908dcb1051ce5641dad0406cc6c",
+			"structuralHash": "2814655ccb7a451c2d8685dd6c2127606567330b6d585e1e871c998f69cb1e54",
+			"mainStructuralHash": "2814655ccb7a451c2d8685dd6c2127606567330b6d585e1e871c998f69cb1e54"
+		},
+		"tests/simulations/src/turn-sim/session-storm.test.ts": {
+			"old": "packages/simulations/src/turn-sim/session-storm.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "fe0c4c631d1f2c717057b9ea8452b4f7d737ebb2016433cd26a3850f7b06358c",
+			"mainHash": "fe0c4c631d1f2c717057b9ea8452b4f7d737ebb2016433cd26a3850f7b06358c",
+			"structuralHash": "91a21cb9bd7481825de9b31e852ecfebaf5a48eb837357a61d1c30e6dd641b06",
+			"mainStructuralHash": "91a21cb9bd7481825de9b31e852ecfebaf5a48eb837357a61d1c30e6dd641b06"
+		},
+		"tests/simulations/src/turn-sim/side-request-settings.test.ts": {
+			"old": "packages/simulations/src/turn-sim/side-request-settings.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "dd428cb45607f123ee95a005ad1bab28825af76de29dfb3493afcbda398c80bb",
+			"mainHash": "dd428cb45607f123ee95a005ad1bab28825af76de29dfb3493afcbda398c80bb",
+			"structuralHash": "7740fc04e7c3cd18a1a172edacc17013298108c31b49a9715e90ba128ff40401",
+			"mainStructuralHash": "7740fc04e7c3cd18a1a172edacc17013298108c31b49a9715e90ba128ff40401"
+		},
+		"tests/simulations/src/turn-sim/skip-reason-class-lock.test.ts": {
+			"old": "packages/simulations/src/turn-sim/skip-reason-class-lock.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "9ec8e5463e8b0100e72d246e46771df20c95f3d769802d29494e50c98b657396",
+			"mainHash": "9ec8e5463e8b0100e72d246e46771df20c95f3d769802d29494e50c98b657396",
+			"structuralHash": "f8cbfb038b28f078f333cb9a01d35c547e2d9a564faabb9aea88cfcc2566d797",
+			"mainStructuralHash": "f8cbfb038b28f078f333cb9a01d35c547e2d9a564faabb9aea88cfcc2566d797"
+		},
+		"tests/simulations/src/turn-sim/spend-accounting.test.ts": {
+			"old": "packages/simulations/src/turn-sim/spend-accounting.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "5880548a44e9ae0168eb6c2402a2fe0b17dd124830c975203bd52a9797db177e",
+			"mainHash": "5880548a44e9ae0168eb6c2402a2fe0b17dd124830c975203bd52a9797db177e",
+			"structuralHash": "bfc2b9ee95ccd5a5333c811dffdbf3d5e0dd57886d21b50901f8e04c3a184cad",
+			"mainStructuralHash": "bfc2b9ee95ccd5a5333c811dffdbf3d5e0dd57886d21b50901f8e04c3a184cad"
+		},
+		"tests/simulations/src/turn-sim/stream-death-mid-batch.test.ts": {
+			"old": "packages/simulations/src/turn-sim/stream-death-mid-batch.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "5069f05115f66746f89d0dd5839a63e7ac8dd843f254b619605143bba0045f43",
+			"mainHash": "ddd075594cbf72e3e6f5ad7d1401a9899c4dbf0940efed8fd9a49c5f5edec9f4",
+			"structuralHash": "7ef8d0f0a4090c6a0e58f48f0e7ab4bddc547d571d3631c515d190536f4b0444",
+			"mainStructuralHash": "7ef8d0f0a4090c6a0e58f48f0e7ab4bddc547d571d3631c515d190536f4b0444"
+		},
+		"tests/simulations/src/turn-sim/title-request-transport.test.ts": {
+			"old": "packages/simulations/src/turn-sim/title-request-transport.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "0d5a495fe8d61151df86892842930a67def3de6e5cbe542f55692557eb29285c",
+			"mainHash": "5463cdc980743033653773c3c16ef3c05c02343452b5767f78a31a3a2f880841",
+			"structuralHash": "dd9d3b696908b527bf0a95616f06024ccb36ba9a02e1beb676fc3a4246d1da56",
+			"mainStructuralHash": "dd9d3b696908b527bf0a95616f06024ccb36ba9a02e1beb676fc3a4246d1da56"
+		},
+		"tests/simulations/src/turn-sim/tool-batch-scheduling.test.ts": {
+			"old": "packages/simulations/src/turn-sim/tool-batch-scheduling.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "f4200b9e9f4c9fafc7602d39fa5f5e2ec439edcaa9aa2ac68c28c6a5dccded37",
+			"mainHash": "f4200b9e9f4c9fafc7602d39fa5f5e2ec439edcaa9aa2ac68c28c6a5dccded37",
+			"structuralHash": "31252cd0b491846075e02a0ebb4dda91fbcab1426d8f4c653cf6207dc89eccf0",
+			"mainStructuralHash": "31252cd0b491846075e02a0ebb4dda91fbcab1426d8f4c653cf6207dc89eccf0"
+		},
+		"tests/simulations/src/turn-sim/tool-call-id-identity.test.ts": {
+			"old": "packages/simulations/src/turn-sim/tool-call-id-identity.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "bf036a061ea253de84fa411acf5b18fb7871dc6072892c8e63f92b14a4116b6d",
+			"mainHash": "bf036a061ea253de84fa411acf5b18fb7871dc6072892c8e63f92b14a4116b6d",
+			"structuralHash": "81392db2dd8204598db1776530103410284aa42ce3fc215f774634e550283fa0",
+			"mainStructuralHash": "81392db2dd8204598db1776530103410284aa42ce3fc215f774634e550283fa0"
+		},
+		"tests/simulations/src/turn-sim/tool-call-loop-guard.test.ts": {
+			"old": "packages/simulations/src/turn-sim/tool-call-loop-guard.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "5722ead1b60254065822b85fa0e3c92c6851641e32fe4a40e8c97ececdecbed9",
+			"mainHash": "5722ead1b60254065822b85fa0e3c92c6851641e32fe4a40e8c97ececdecbed9",
+			"structuralHash": "1c385a9024710519629151156c43cf354992ee04da20277c535b35d785182c01",
+			"mainStructuralHash": "1c385a9024710519629151156c43cf354992ee04da20277c535b35d785182c01"
+		},
+		"tests/simulations/src/turn-sim/tool-wedges-and-errors.test.ts": {
+			"old": "packages/simulations/src/turn-sim/tool-wedges-and-errors.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "e04773e9fde1804250a5be3617d3c733be5d18707ecaa535c94dc0cbbdd94d34",
+			"mainHash": "e04773e9fde1804250a5be3617d3c733be5d18707ecaa535c94dc0cbbdd94d34",
+			"structuralHash": "9376f91f355a8819d2ae2427cd325d8c8988f5874fea88208cf734ce6fca0212",
+			"mainStructuralHash": "9376f91f355a8819d2ae2427cd325d8c8988f5874fea88208cf734ce6fca0212"
+		},
+		"tests/simulations/src/turn-sim/turn-shape-matrix.test.ts": {
+			"old": "packages/simulations/src/turn-sim/turn-shape-matrix.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "abe8c9c1647a09d76e4c8c17b0c5b6014c5e8563c0755e6c4d93546d63ac3145",
+			"mainHash": "abe8c9c1647a09d76e4c8c17b0c5b6014c5e8563c0755e6c4d93546d63ac3145",
+			"structuralHash": "0a8e8b3e81546330729a9d1bbdd6835bdbf0cd400abde6c6b8d2605039502c58",
+			"mainStructuralHash": "0a8e8b3e81546330729a9d1bbdd6835bdbf0cd400abde6c6b8d2605039502c58"
+		},
+		"tests/simulations/src/turn-sim/two-sessions-one-transcript.test.ts": {
+			"old": "packages/simulations/src/turn-sim/two-sessions-one-transcript.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "ea04d83f57867da92d2b5670deeec97cf0a18e94d54850b49f1c3beda3b37c84",
+			"mainHash": "ea04d83f57867da92d2b5670deeec97cf0a18e94d54850b49f1c3beda3b37c84",
+			"structuralHash": "e72f17117413b386de8bcde536cd082384aa069f3eb840b875bf1d60c454a6da",
+			"mainStructuralHash": "e72f17117413b386de8bcde536cd082384aa069f3eb840b875bf1d60c454a6da"
+		},
+		"tests/simulations/src/turn-sim/unreplayable-batch-continue.test.ts": {
+			"old": "packages/simulations/src/turn-sim/unreplayable-batch-continue.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "26cf1d5954947a805d5589d08de0890a04c53641b400012c17dbf6b56d7370ec",
+			"mainHash": "e1d8daac15ea7bd92075a77eded5a1fbc17a51d8713caba74952421b53a06eb8",
+			"structuralHash": "a3fbdcc12c9fed33e177b4740e6859302d1ba46abefcab6035606cc2a65107bf",
+			"mainStructuralHash": "a3fbdcc12c9fed33e177b4740e6859302d1ba46abefcab6035606cc2a65107bf"
+		},
+		"tests/simulations/src/turn-sim/who-may-rewake-the-agent.test.ts": {
+			"old": "packages/simulations/src/turn-sim/who-may-rewake-the-agent.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "28bf363cb4d3fb26ac5ba43481ba4e504c57f3f6975605578c3714611994d875",
+			"mainHash": "c2e29a18f6926e6a97ad8155d5ec3ca4e9774af289eb9115b37abb89f664ee41",
+			"structuralHash": "1bbdda07c8a1a11cc25dca6403ccc011ed9d0c26cc19bef0e3bbf391588744d0",
+			"mainStructuralHash": "1bbdda07c8a1a11cc25dca6403ccc011ed9d0c26cc19bef0e3bbf391588744d0"
 		}
 	},
 	"importAttributes": {

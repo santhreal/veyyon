@@ -315,7 +315,7 @@ describe("the two browser bundles", () => {
 	 */
 	it("bind the shared store instead of defining their own", async () => {
 		const packages = path("../..");
-		for (const file of ["collab-web/src/lib/theme.ts", "stats/src/client/useSystemTheme.ts"]) {
+		for (const file of ["clients/web/src/lib/theme.ts", "apps/stats/src/client/useSystemTheme.ts"]) {
 			const text = await Bun.file(`${packages}/${file}`).text();
 
 			expect(moduleSpecifiersIn(text), file).toContain("@veyyon/utils/theme-store");

@@ -140,6 +140,8 @@ describe("the shared package-source traversal", () => {
 
 			expect(collisions).toEqual([]);
 			expect(MEMBER_ROOTS).toEqual([
+				"apps",
+				"clients",
 				"contracts",
 				"hosts",
 				"kernel",

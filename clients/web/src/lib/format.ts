@@ -50,7 +50,7 @@ export function fmtPercent(p: number | null | undefined): string {
 	return `${Math.round(Math.min(100, Math.max(0, p)))}%`;
 }
 
-/** Home-relative, middle-elided path: "~/…/packages/collab-web". */
+/** Home-relative, middle-elided path: "~/…/clients/web". */
 // `shortenPath` has one owner in `@veyyon/tool-render` (browser-safe). Re-export
 // it here so existing `../../lib/format` imports keep working without a second,
 // drifting copy. Callers that want the header's long-middle elision pass

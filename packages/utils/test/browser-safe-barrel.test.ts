@@ -21,7 +21,7 @@ const repoRoot = path.resolve(import.meta.dir, "../../..");
 // Source roots that end up in a browser bundle — either the bundle entry itself
 // (collab-web, stats client) or a package pulled wholesale into one (tool-render
 // is bundled by collab-web, so all of its src must stay browser-safe).
-const BROWSER_GRAPH_ROOTS = ["packages/collab-web/src", "packages/stats/src/client", "packages/tool-render/src"];
+const BROWSER_GRAPH_ROOTS = ["clients/web/src", "apps/stats/src/client", "packages/tool-render/src"];
 
 // A bare barrel import: `from "@veyyon/utils"` (or the single-quoted form) with
 // NO trailing `/submodule`. Deep imports (`@veyyon/utils/format`) are allowed.

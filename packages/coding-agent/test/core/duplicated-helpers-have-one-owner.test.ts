@@ -405,7 +405,7 @@ describe("the collab wire envelope", () => {
 	 * available, and it is still a graph fact rather than a substring.
 	 */
 	it("is what the browser guest imports too", () => {
-		expect(packageImportsOf("collab-web/src/lib/link.ts")).toContain("@veyyon/wire");
+		expect(packageImportsOf("clients/web/src/lib/link.ts")).toContain("@veyyon/wire");
 	});
 });
 
@@ -498,7 +498,7 @@ describe("the AES-256-GCM frame seal", () => {
 
 	/** And the browser guest states the same edge, since it cannot be imported into this realm. */
 	it("is what the browser guest codec imports", () => {
-		expect(packageImportsOf("collab-web/src/lib/codec.ts")).toContain("@veyyon/wire");
+		expect(packageImportsOf("clients/web/src/lib/codec.ts")).toContain("@veyyon/wire");
 	});
 
 	/**

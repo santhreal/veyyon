@@ -2,7 +2,7 @@
  * Measure the byte-level JSONL walk against the loop it replaced.
  *
  * The stats dashboard walks session transcripts of hundreds of megabytes on every sync pass, so moving
- * that loop out of `packages/stats/src/parser.ts` and into `@veyyon/utils` is only correct if it costs
+ * that loop out of `apps/stats/src/parser.ts` and into `@veyyon/utils` is only correct if it costs
  * nothing. This script is the proof: it runs the SHIPPED `visitJsonlBytes` and a byte-for-byte copy of
  * the loop as the stats parser had it over the same synthetic corpus, and prints MB/s and ns per line
  * for both.
@@ -25,7 +25,7 @@ const LF = 0x0a;
 const CR = 0x0d;
 
 /**
- * The loop as `packages/stats/src/parser.ts` had it, kept verbatim so the comparison is against what
+ * The loop as `apps/stats/src/parser.ts` had it, kept verbatim so the comparison is against what
  * actually shipped rather than against a fresh idea of it. Do not "improve" this copy.
  */
 function visitLegacy(bytes: Uint8Array, visit: (entry: unknown) => void, parse?: (text: string) => unknown): number {
