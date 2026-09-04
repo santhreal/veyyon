@@ -627,7 +627,8 @@ class TreeList implements Component {
 			// indicates older branch context has been compressed.
 			const hasConnector = flatNode.showConnector && !flatNode.isVirtualRootChild;
 			const connectorSymbol = hasConnector ? (flatNode.isLast ? theme.tree.last : theme.tree.branch) : "";
-			const connectorChars = hasConnector ? connectorSymbol : "";
+			// Split by code point, not code unit: a themed glyph outside the BMP must not shed a lone surrogate.
+			const connectorChars = hasConnector ? Array.from(connectorSymbol) : [];
 			const renderedIndent = Math.min(displayIndent, maxIndentLevels);
 			const scrollOffset = displayIndent - renderedIndent;
 			const connectorPositionDisplay = hasConnector ? renderedIndent - 1 : -1;

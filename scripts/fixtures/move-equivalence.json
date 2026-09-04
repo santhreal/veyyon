@@ -812,9 +812,9 @@
 			"differs": "changed",
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
-			"hash": "2dc70f41e53223729f0a847ad7e99abd4e59095d20b25fb386469b7a06dcb771",
+			"hash": "c3f45938d3c0185ffabc27b3cd6788e6f302346121e4550f774ae531b000fcce",
 			"mainHash": "9a064080cfe92d4f33747520c442d37e96d0350e36abbf3b7d5a62952cf7c4d8",
-			"structuralHash": "36abb3ff924c04c34c7c3d16c85a90b56389d8cd5b0fcd577922d8426793c496",
+			"structuralHash": "ba51294fd166cb52e9e6ad813e521faf5c1e75270345e01592972f7b8a762655",
 			"mainStructuralHash": "9629f78028dc284a62827d7b0fbf9c2974d1555db6523618c6d962dbd75fcb5e"
 		},
 		"hosts/terminal/engine/src/components/settings-list.ts": {
@@ -823,9 +823,9 @@
 			"differs": "changed",
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
-			"hash": "11515b90ebf6cd14f10c6c35e27ded1529d5a0e8cfcadabe130c1b626fc694de",
+			"hash": "46d1ff7742dd44f077521428f4091a6c3bac891f4181de0dd9c66b9a82013bd2",
 			"mainHash": "39c4a94cbbfd7ced37e75d8c98568ed02fa1f7e749e869e3730efe34894be2de",
-			"structuralHash": "deea8a01efee6db72a93e6a312ed797538d2c453ebe20daa84e8909b1c4155aa",
+			"structuralHash": "21e911884b7a0464852df9de9d602c80bbd0b8f6c9e561da868f112c27ae221c",
 			"mainStructuralHash": "864ffddccec8e728a3c6951c349c80b03ca49916b26fab58542efc6c49c46c19"
 		},
 		"hosts/terminal/engine/src/components/settings-search.ts": {
@@ -11556,9 +11556,9 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "8a1f1d8f520e360a58598dc241ef18cfa4fbb30b9af211c422c0e776555c2317",
+			"hash": "0add79b2e65299d8c84f70a0ea8fea049dccf211921a578888525281e6776b31",
 			"mainHash": "8900762fe1e37d5c881c22d3637ab675ae0a71b3ca873d5fb59d68bee93b3783",
-			"structuralHash": "93aa52d5dbb36e93c1cc6c5285f759f9f094929e28c185c6d366061d4d72cd97",
+			"structuralHash": "515fc1a511ef7cf931bd93aff2eadb92f97b9b2381f543cbee50e383ac39df7b",
 			"mainStructuralHash": "f43248c915e784d45c0155692ea82c7807f196dab6f753268c30040a511c94c4"
 		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/user-message-selector.ts": {
@@ -11612,9 +11612,9 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "e708f33afab6998b4268b0907adc6d3548bfb38afa0e5ec3c6443d9c41d5baee",
+			"hash": "767b79bb5cac9c876144c97f9f3a74d0a3c68c56ca1d3fdf04c97d7e52663b9a",
 			"mainHash": "0e37525ffc75ee20b31c8481cc772428db522b0a9616c6607e2f4ac660856faf",
-			"structuralHash": "233ca9f7a49bdf6f07b6f8a7c344710b7ab92f08e107c3f5f20acc0eb61e749a",
+			"structuralHash": "6517b6ae9f075acd905d61bea7f2a2fa8fdb8314ab27c4387c84327a6d8e783a",
 			"mainStructuralHash": "9624cc8c39a53672b0de060494419bb5259ee62335cf0c34aad788ca00dade60"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/context-thresholds.ts": {
@@ -19279,9 +19279,9 @@
 			"differs": "changed",
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
-			"hash": "e54ff5997b4ac7684574cdab25e973b1cb0458bac84a7e940f228265025d85ff",
+			"hash": "a61d5eedca20bbed9de5f5be6001654db81e32cff5342c00cbd933b3ccf8fbc9",
 			"mainHash": "f19d8564aa7aa6ba88f9761cb078878476c2b9e72ea780ea7141118fef4554d1",
-			"structuralHash": "41ba3af93e1925a77a35bd99ba9116cddd0849754302e0f5d8ea44eb21ab1afa",
+			"structuralHash": "2dc1dd4d15796eac327de916467fefc3795a5fe6ef3dc2b2f6f7d8a2a4afa5e4",
 			"mainStructuralHash": "66a373a5c0be2badd1810feb893b6c3ae9fd6fc49bc2ce6bdf2b2d997731f2f5"
 		},
 		"packages/utils/src/symbols.ts": {

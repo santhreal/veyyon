@@ -1768,10 +1768,11 @@ export class StatusLineComponent implements Component {
 
 		const entries = Array.from(this.#hookStatuses.entries());
 		entries.sort(([a], [b]) => a.localeCompare(b));
+		// Same bytes as `join(" ")`: an empty status still contributes its separator.
 		let hookLine = "";
 		for (let si = 0; si < entries.length; si++) {
 			const sanitized = sanitizeStatusText(entries[si]![1]);
-			hookLine = hookLine ? `${hookLine} ${sanitized}` : sanitized;
+			hookLine = si === 0 ? sanitized : `${hookLine} ${sanitized}`;
 		}
 		return [truncateToWidth(hookLine, width)];
 	}

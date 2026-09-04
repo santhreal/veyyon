@@ -161,6 +161,14 @@ describe("StatusLineComponent effective settings cache", () => {
 		expect(component.getEffectiveSettingsForTest()).toBe(effective);
 	});
 
+	it("joins hook statuses sorted by key with one space each, an empty one included", () => {
+		const component = makeComponent({ preset: "default", showHookStatus: true });
+		component.setHookStatus("b-lint", "lint running");
+		component.setHookStatus("a-empty", "");
+		component.setHookStatus("c-test", "tests green");
+		expect(component.render(80)).toEqual([" lint running tests green"]);
+	});
+
 	it("does not mutate shared preset segment options during narrow renders", () => {
 		const before = { ...STATUS_LINE_PRESETS.default.segmentOptions?.path };
 		const component = makeComponent({ preset: "default", sessionAccent: false });

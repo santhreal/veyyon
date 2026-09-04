@@ -136,8 +136,6 @@ export function fillSurface(lines: readonly string[], width: number, spec: Surfa
 	if (strength <= 0 || lines.length === 0) return lines.slice();
 	const rows = Math.max(1, lines.length - 1);
 	const clamped = clamp01(strength);
-	const groundRgb = parseHexColor(spec.ground);
-	if (groundRgb === null) return lines.slice();
 	return paintBlockBackground(
 		lines,
 		width,
