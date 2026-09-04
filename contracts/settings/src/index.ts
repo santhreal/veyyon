@@ -220,7 +220,8 @@ interface RecordDef<T> extends SettingDefBase {
 	ui?: UiBase;
 }
 
-type SettingDef =
+/** One declared setting: its type tag, its default, and the optional `ui` block a host reads. */
+export type SettingDef =
 	| BooleanDef
 	| StringDef
 	| ModelChainDef
