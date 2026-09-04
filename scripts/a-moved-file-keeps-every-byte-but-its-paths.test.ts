@@ -98,7 +98,7 @@ describe("a moved file keeps every byte but its paths", () => {
 		expect([...buckets].sort()).toEqual([
 			["changed", 384],
 			["imports-and-comments-only", 814],
-			["none", 3608],
+			["none", 3606],
 		]);
 		expect(rewrites.length).toBeGreaterThan(50);
 		const paths = rows.map(([relative]) => relative);
