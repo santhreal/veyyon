@@ -18,6 +18,12 @@
  * that the steering terminates in a loop which turns itself off and says how to
  * get back to the runs.
  *
+ * The interrupt is the other end of the same class: a turn the user ended with
+ * Escape is not a stall and not a resume. It used to be read as a resume when a
+ * measurement was waiting, which put the loop straight back on the next turn,
+ * so the interrupt did nothing. Here it steers nothing, spends no stall budget,
+ * reports itself, and the user's next message is what continues the loop.
+ *
  * The tool sweep is derived from `EXPERIMENT_TOOL_NAMES` at run time, so a
  * seventh experiment tool is swept the day it is added rather than the day
  * someone remembers this file.
@@ -200,7 +206,13 @@ describe("a loop that advances nothing does not pass for a running one", () => {
 	});
 
 	/** One turn of the real loop: the turn starts, optional tools run, the turn ends. */
-	const turn = async (harness: Harness, ctx: ExtensionContext, tools: string[] = []): Promise<void> => {
+	const turn = async (
+		harness: Harness,
+		ctx: ExtensionContext,
+		tools: string[] = [],
+		/** How the assistant's turn ended; `aborted` is the user pressing Escape. */
+		stopReason: "stop" | "aborted" = "stop",
+	): Promise<void> => {
 		await harness.handlers.before_agent_start?.({ type: "before_agent_start", systemPrompt: [] } as never, ctx);
 		for (const toolName of tools) {
 			await harness.handlers.tool_execution_end?.(
@@ -208,7 +220,8 @@ describe("a loop that advances nothing does not pass for a running one", () => {
 				ctx,
 			);
 		}
-		await harness.handlers.agent_end?.({ type: "agent_end" } as never, ctx);
+		const messages = [{ role: "assistant", content: [], stopReason, api: "test", provider: "test", model: "test" }];
+		await harness.handlers.agent_end?.({ type: "agent_end", messages } as never, ctx);
 	};
 
 	const startedHarness = async (breadth: number, pending = false): Promise<[Harness, ExtensionContext]> => {
@@ -324,6 +337,65 @@ describe("a loop that advances nothing does not pass for a running one", () => {
 		await turn(harness, ctx);
 
 		expect(harness.steers.map(steer => steer.customType)).toEqual(["autoresearch-resume"]);
+	});
+
+	it("an interrupted turn does not resume the loop, even with a measurement waiting", async () => {
+		const cwd = cwdDir.path();
+		const sessionId = await seedSession(cwd, 1);
+		await seedPendingRun(cwd, sessionId);
+		const harness = buildHarness();
+		const ctx = makeCtx(harness, cwd);
+		await harness.handlers.session_start?.({ type: "session_start" } as never, ctx);
+
+		await turn(harness, ctx, [], "aborted");
+
+		// The waiting measurement is the one case that used to resume on its own,
+		// and Escape landing on it put the loop straight back on the next turn.
+		expect(harness.steers).toHaveLength(0);
+		expect(harness.loopArmed()).toBe(true);
+		const notice = harness.notices.at(-1);
+		expect(notice?.level).toBe("info");
+		expect(notice?.text).toContain("Autoresearch interrupted");
+	});
+
+	it("an interrupted turn is not a stall: it neither steers nor spends the stall budget", async () => {
+		const [harness, ctx] = await startedHarness(1);
+
+		await turn(harness, ctx);
+		await turn(harness, ctx);
+		await turn(harness, ctx, [], "aborted");
+		await turn(harness, ctx);
+
+		// Two stalls, an interrupt, then a stall: the loop is still on, because
+		// the interrupt reset the budget rather than counting as the third stall.
+		expect(harness.steers.map(steer => steer.customType)).toEqual([
+			"autoresearch-stall-nudge",
+			"autoresearch-stall-nudge",
+			"autoresearch-stall-nudge",
+		]);
+		expect(harness.loopArmed()).toBe(true);
+	});
+
+	it("the message after an interrupt picks the waiting measurement back up", async () => {
+		const cwd = cwdDir.path();
+		const sessionId = await seedSession(cwd, 1);
+		await seedPendingRun(cwd, sessionId);
+		const harness = buildHarness();
+		const ctx = makeCtx(harness, cwd);
+		await harness.handlers.session_start?.({ type: "session_start" } as never, ctx);
+
+		await turn(harness, ctx, [], "aborted");
+		await turn(harness, ctx);
+
+		expect(harness.steers.map(steer => steer.customType)).toEqual(["autoresearch-resume"]);
+	});
+
+	it("says autoswarm when the interrupted loop is a swarm", async () => {
+		const [harness, ctx] = await startedHarness(4);
+
+		await turn(harness, ctx, [], "aborted");
+
+		expect(harness.notices.at(-1)?.text).toContain("Autoswarm interrupted");
 	});
 
 	it("leaves a turn alone when the user has already typed the next one", async () => {

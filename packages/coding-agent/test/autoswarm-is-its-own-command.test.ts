@@ -261,10 +261,13 @@ describe("autoswarm is its own command", () => {
 		await harness.commands
 			.get("autoswarm")
 			?.handler("make it faster", makeCtx(cwdDir.path(), harness.notices, ["\x1b"], drive));
-		// Escape means the user changed their mind: no message, no mode, no tools.
+		// Escape means the user changed their mind: no message, no mode, no tools,
+		// and a line under the command saying so, since the command itself is
+		// already in the transcript.
 		expect(drive.opened).toBe(true);
 		expect(harness.messages).toEqual([]);
 		expect(harness.activeTools).toEqual([]);
+		expect(harness.notices).toEqual([{ text: "Autoswarm setup cancelled. Nothing was started.", level: "info" }]);
 	});
 
 	it("refuses to start with an empty goal, and starts once one is typed", async () => {

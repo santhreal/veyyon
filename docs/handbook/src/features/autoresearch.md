@@ -161,6 +161,11 @@ These attach in autoresearch and autoswarm, and nowhere else.
 `/autoresearch off` leaves the mode and keeps the session. A bare
 `/autoresearch` opens the run screen; it does not end anything.
 
+Escape during a turn stops that turn and pauses the loop without leaving the
+mode. The status row stays, the tools stay attached, and nothing runs until you
+send a message; a measurement that was waiting to be logged is picked up by
+that message. `/autoresearch off` from there leaves the mode.
+
 `/autoresearch clear` resets the worktree to the segment baseline, deletes
 untracked files and closes the session. It asks first, naming the commit it
 resets to and how many files hold uncommitted changes. The reset restores

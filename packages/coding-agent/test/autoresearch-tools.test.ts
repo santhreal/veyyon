@@ -547,6 +547,76 @@ describe("log_experiment", () => {
 		expect(runtime.state.bestMetric).toBe(10);
 	});
 
+	it("refuses to keep a run that does not beat the segment's best, and keeps it once justified", async () => {
+		// The rules say a flat run is a discard; a keep commits it onto the branch
+		// anyway. One loop kept eight flat runs in a row. The pending run stays
+		// pending so the next log call can record the other status.
+		const dir = freshRepo().dir;
+		const { log } = await setupRun(dir);
+		await log.execute(
+			"l",
+			{ metric: 10, status: "keep", description: "baseline" },
+			undefined,
+			undefined,
+			createCtx(dir),
+		);
+		const storage = await openAutoresearchStorage(dir);
+		const session = storage.getActiveSession()!;
+		seedCompletedRun(storage, session, {
+			preRunDirtyPaths: [],
+			parsedPrimary: 10,
+			parsedMetrics: { runtime_ms: 10 },
+		});
+
+		const flat = await log.execute(
+			"l",
+			{ metric: 10, status: "keep", description: "no-op" },
+			undefined,
+			undefined,
+			createCtx(dir),
+		);
+		const text = firstTextBlockText(flat.content);
+		expect(text).toContain("not logged");
+		expect(text).toContain("10ms");
+		expect(storage.getPendingRun(session.id)).not.toBeNull();
+		expect(storage.listLoggedRuns(session.id)).toHaveLength(1);
+
+		const worse = await log.execute(
+			"l",
+			{ metric: 11, status: "keep", description: "slower" },
+			undefined,
+			undefined,
+			createCtx(dir),
+		);
+		expect(firstTextBlockText(worse.content)).toContain("not logged");
+
+		const justified = await log.execute(
+			"l",
+			{
+				metric: 10,
+				status: "keep",
+				description: "groundwork",
+				justification: "splits the hot loop for the next step",
+			},
+			undefined,
+			undefined,
+			createCtx(dir),
+		);
+		expect((justified.details as LogDetails).experiment.status).toBe("keep");
+		expect(storage.listLoggedRuns(session.id)).toHaveLength(2);
+
+		seedCompletedRun(storage, session, { preRunDirtyPaths: [], parsedPrimary: 9, parsedMetrics: { runtime_ms: 9 } });
+		const better = await log.execute(
+			"l",
+			{ metric: 9, status: "keep", description: "faster" },
+			undefined,
+			undefined,
+			createCtx(dir),
+		);
+		expect((better.details as LogDetails).experiment.status).toBe("keep");
+		expect(storage.listLoggedRuns(session.id)).toHaveLength(3);
+	});
+
 	it("flags scope deviations and warns when justification is missing", async () => {
 		const dir = freshRepo().dir;
 		const { log } = await setupRun(dir);

@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { AgentMessage } from "@veyyon/agent-core";
 import type { AutocompleteItem } from "@veyyon/tui";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
 import type { ExtensionContext, ExtensionFactory } from "../extensibility/extensions";
@@ -157,6 +158,20 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	const modeLabel = (runtime: AutoresearchRuntime): string =>
 		effectiveBreadth(runtime) > 1 ? "Autoswarm" : "Autoresearch";
 
+	/**
+	 * Whether the turn ended because the user interrupted it. The session's own
+	 * abort flag is already cleared by the time `agent_end` reaches subscribers,
+	 * so this reads the stop reason off the last assistant message instead.
+	 */
+	const endedByAbort = (messages: readonly AgentMessage[]): boolean => {
+		for (let index = messages.length - 1; index >= 0; index -= 1) {
+			const message = messages[index];
+			if (message.role !== "assistant") continue;
+			return message.stopReason === "aborted";
+		}
+		return false;
+	};
+
 	const disableMode = async (
 		ctx: ExtensionContext,
 		runtime: AutoresearchRuntime,
@@ -281,7 +296,13 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		let swarmSetup: SwarmSetupResult | null = null;
 		if (spec.swarm) {
 			swarmSetup = await openSwarmSetupConsole(ctx, freeText);
-			if (!swarmSetup) return;
+			if (!swarmSetup) {
+				// The command is already in the transcript as the user's line; with
+				// nothing under it, Escape reads as a run that never started rather
+				// than a choice not to.
+				ctx.ui.notify("Autoswarm setup cancelled. Nothing was started.", "info");
+				return;
+			}
 			runtime.pendingSwarm = {
 				breadth: swarmSetup.breadth,
 				attempts: swarmSetup.attempts,
@@ -438,7 +459,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		getRuntime(ctx).loopToolRanThisTurn = true;
 	});
 
-	api.on("agent_end", async (_event, ctx) => {
+	api.on("agent_end", async (event, ctx) => {
 		const runtime = getRuntime(ctx);
 		runtime.runningExperiment = null;
 		dashboard.update(ctx, runtime);
@@ -446,6 +467,20 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		if (!runtime.autoresearchMode) return;
 		if (ctx.hasPendingMessages()) {
 			runtime.autoResumeArmed = false;
+			return;
+		}
+		if (endedByAbort(event.messages)) {
+			// Escape is the user stopping the loop. Resuming it from here, which
+			// this handler did whenever a measurement was waiting, put the loop
+			// back on the very next turn and left nothing the interrupt had done.
+			// The session keeps its state; the next message the user sends
+			// resumes it through `before_agent_start`.
+			runtime.autoResumeArmed = false;
+			runtime.stallNudges = 0;
+			ctx.ui.notify(
+				`${modeLabel(runtime)} interrupted. Send a message to resume the loop, or \`off\` to leave it.`,
+				"info",
+			);
 			return;
 		}
 		const { session } = await loadActiveSession(ctx);
@@ -608,6 +643,10 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 						branch: currentBranch ?? "",
 						has_baseline_warning: baselineWarning !== null,
 						baseline_warning: baselineWarning ?? "",
+						has_swarm_setup: (runtime.pendingSwarm?.breadth ?? 1) > 1,
+						swarm_breadth: runtime.pendingSwarm?.breadth ?? 1,
+						swarm_attempts: runtime.pendingSwarm?.attempts ?? 1,
+						swarm_certify: runtime.pendingSwarm?.certify ?? true,
 					}),
 				],
 			};

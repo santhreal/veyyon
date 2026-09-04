@@ -10,6 +10,7 @@
  * and can afford it.
  */
 import { sanitizeSingleLine, visibleWidth } from "@veyyon/tui";
+import { formatCount } from "@veyyon/utils";
 import type { ExtensionContext } from "../extensibility/extensions";
 import { theme } from "../modes/theme/theme";
 import { truncateToWidth } from "../tools/render-utils";
@@ -236,12 +237,12 @@ export function renderStatusRow(runtime: AutoresearchRuntime, width = process.st
 
 	if (state.results.length > 0) {
 		const current = currentResults(state.results, state.currentSegment);
-		segments.push({ text: theme.fg("muted", `${current.length} runs`), drop: 3 });
+		segments.push({ text: theme.fg("muted", formatCount("run", current.length)), drop: 3 });
 		segments.push({
 			text: theme.fg("success", `${current.filter(result => result.status === "keep").length} kept`),
 			drop: 4,
 		});
-		if (breadth > 1) segments.push({ text: theme.fg("muted", `${breadth} arms`), drop: 2 });
+		if (breadth > 1) segments.push({ text: theme.fg("muted", formatCount("arm", breadth)), drop: 2 });
 		const flagged = current.filter(result => result.flagged).length;
 		if (flagged > 0) segments.push({ text: theme.fg("warning", `${flagged} flagged`), drop: 5 });
 		// The number and what it is worth travel as one segment. `best 192.78ms`

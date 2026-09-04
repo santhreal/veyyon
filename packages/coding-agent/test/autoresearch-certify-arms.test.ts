@@ -104,9 +104,9 @@ async function openSession(
 	dir: string,
 	runtime: AutoresearchRuntime,
 	params: Record<string, unknown> = {},
-): Promise<{ storage: AutoresearchStorage; session: SessionRow }> {
+): Promise<{ storage: AutoresearchStorage; session: SessionRow; text: string }> {
 	const { init } = tools(runtime);
-	await init.execute(
+	const result = await init.execute(
 		"call-init",
 		{
 			name: "certify suite",
@@ -123,7 +123,7 @@ async function openSession(
 	const storage = await openAutoresearchStorage(dir);
 	const session = storage.getActiveSession();
 	if (!session) throw new Error("init_experiment did not open a session");
-	return { storage, session };
+	return { storage, session, text: firstTextBlockText(result.content) };
 }
 
 const CLEAN_DIFF = "--- a/solution.py\n+++ b/solution.py\n+def f():\n+    return 1\n";
@@ -194,17 +194,40 @@ describe("breadth reaches the session", () => {
 		expect(runtime.pendingSwarm).toBeNull();
 	});
 
-	it("lets an explicit tool argument beat the parked setup", async () => {
-		// The model may reconsider breadth from the harness it found. An argument
-		// it passes deliberately outranks what was parked before it looked.
+	it("keeps the console's answers over an argument the model guessed", async () => {
+		// The model never saw the console. A breadth it passes on the init that
+		// consumes the parked setup is a guess, and a guess of 1 silently turned
+		// a configured swarm into a serial loop.
 		const dir = freshRepo();
 		const runtime = createSessionRuntime();
 		runtime.pendingSwarm = { breadth: 4, attempts: 3, certify: false, armModels: ["sonnet", "", "gpt-5", ""] };
+		const { session, text } = await openSession(dir, runtime, { breadth: 1, certify: true });
+		expect(session.breadth).toBe(4);
+		expect(session.attempts).toBe(3);
+		expect(session.certify).toBe(false);
+		expect(session.armModels).toEqual(["sonnet", "", "gpt-5", ""]);
+		expect(text).toContain("4 arms per iteration");
+		expect(text).toContain("setup console");
+	});
+
+	it("lets a later init reconfigure once nothing is parked", async () => {
+		const dir = freshRepo();
+		const runtime = createSessionRuntime();
+		runtime.pendingSwarm = { breadth: 4, attempts: 3, certify: false, armModels: ["sonnet", "", "gpt-5", ""] };
+		await openSession(dir, runtime, { breadth: undefined });
 		const { session } = await openSession(dir, runtime, { breadth: 2 });
 		expect(session.breadth).toBe(2);
-		expect(session.attempts).toBe(3);
 		// Two arms now, so the two model slots past them are not carried.
 		expect(session.armModels).toEqual(["sonnet", ""]);
+	});
+
+	it("drops a unit that repeats the metric's name", async () => {
+		const dir = freshRepo();
+		const { session } = await openSession(dir, createSessionRuntime(), {
+			primary_metric: "comparisons",
+			metric_unit: "Comparisons",
+		});
+		expect(session.metricUnit).toBe("");
 	});
 
 	it("keeps the configured breadth when a later init does not mention it", async () => {

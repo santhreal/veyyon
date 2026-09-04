@@ -15,6 +15,7 @@ import {
 	formatPercentChange,
 	gitStatusPorcelain,
 	gitWorkDirPrefix,
+	isBetter,
 	mergeAsi,
 	pathMatchesSpec,
 	sanitizeAsi,
@@ -25,6 +26,7 @@ import {
 	currentResults,
 	findBaselineSecondary,
 	findBestKeptMetric,
+	findBestKeptResult,
 } from "../state";
 import { openAutoresearchStorageIfExists, type SessionRow } from "../storage";
 import type {
@@ -134,6 +136,32 @@ export function createLogExperimentTool(
 
 			const justification = params.justification?.trim() || null;
 			const warnings: string[] = [];
+
+			// `keep` commits the change onto the branch. A change that did not move
+			// the metric past the segment's best is churn on that branch: one loop
+			// kept eight flat runs in a row, each a commit that changed nothing the
+			// harness could see. The rules the model runs under say a flat run is a
+			// discard; a keep that is groundwork for a later step is still allowed,
+			// but has to say so. Nothing is logged or reverted here, so the pending
+			// run can be logged again with the other status.
+			if (params.status === "keep") {
+				const best = findBestKeptResult(
+					buildExperimentState(session, storage.listLoggedRuns(session.id)).results,
+					session.currentSegment,
+					session.direction,
+				);
+				if (best !== null && !isBetter(params.metric, best.metric, session.direction) && justification === null) {
+					const unit = session.metricUnit;
+					return {
+						content: [
+							{
+								type: "text",
+								text: `Error: not logged. ${session.primaryMetric}=${formatNum(params.metric, unit)} does not improve on the segment's best, ${formatNum(best.metric, unit)} (run ${best.runNumber ?? "?"}), and \`keep\` would commit a change the metric cannot see. Log it as \`discard\`, or pass \`justification\` if the change is groundwork a later step needs.`,
+							},
+						],
+					};
+				}
+			}
 
 			const headSha = await tryReadHeadSha(ctx.cwd);
 			const explicitCommit = params.commit?.trim();

@@ -65,7 +65,10 @@ export function createInitExperimentTool(
 			const runtime = options.getRuntime(ctx);
 
 			const direction = params.direction ?? "lower";
-			const metricUnit = params.metric_unit ?? "";
+			// `metric_unit: "comparisons"` beside `primary_metric: "comparisons"` is
+			// the name twice, and printed as `1,596,000comparisons` on every surface.
+			const unitArg = params.metric_unit?.trim() ?? "";
+			const metricUnit = unitArg.toLowerCase() === params.primary_metric.trim().toLowerCase() ? "" : unitArg;
 			const scopePaths = dedupeStrings((params.scope_paths ?? []).map(normalizePathSpec));
 			const offLimits = dedupeStrings((params.off_limits ?? []).map(normalizePathSpec));
 			const constraints = dedupeStrings(params.constraints ?? []);
@@ -83,12 +86,22 @@ export function createInitExperimentTool(
 			const requiresHarness = !existing || isNewSegmentInit;
 			// An unset value keeps whatever the session already has, so a plain
 			// reconfigure never silently collapses a swarm back to serial.
-			// The setup console parks its answers before a session exists; an
-			// explicit tool argument still wins over them.
+			// The setup console parks the operator's answers before a session
+			// exists, and they outrank the tool's arguments on the init that
+			// consumes them: the model never saw the console, so an argument it
+			// passes here is a guess, and a guess of 1 turned a configured swarm
+			// into a serial loop with nothing on screen saying so. A later init,
+			// with nothing parked, may still reconfigure from what the harness
+			// turned out to be.
 			const parked = runtime.pendingSwarm;
-			const breadth = clampCount(params.breadth, MAX_BREADTH) ?? parked?.breadth ?? existing?.breadth ?? 1;
-			const attempts = clampCount(params.attempts, MAX_ATTEMPTS) ?? parked?.attempts ?? existing?.attempts ?? 1;
-			const certify = params.certify ?? parked?.certify ?? existing?.certify ?? true;
+			const breadth = parked?.breadth ?? clampCount(params.breadth, MAX_BREADTH) ?? existing?.breadth ?? 1;
+			const attempts = parked?.attempts ?? clampCount(params.attempts, MAX_ATTEMPTS) ?? existing?.attempts ?? 1;
+			const certify = parked?.certify ?? params.certify ?? existing?.certify ?? true;
+			const overriddenByConsole =
+				parked !== null &&
+				((params.breadth !== undefined && clampCount(params.breadth, MAX_BREADTH) !== parked.breadth) ||
+					(params.attempts !== undefined && clampCount(params.attempts, MAX_ATTEMPTS) !== parked.attempts) ||
+					(params.certify !== undefined && params.certify !== parked.certify));
 			// Per-arm models are the user's choice in the setup console, never the
 			// model's: this tool takes no argument for them, and a breadth that
 			// lands back at 1 drops them, since there are no arms to spread.
@@ -228,6 +241,16 @@ export function createInitExperimentTool(
 				`Metric: ${session.primaryMetric} (${session.metricUnit || "unitless"}, ${session.direction} is better)`,
 			);
 			lines.push(`Benchmark entrypoint: ${DEFAULT_HARNESS_COMMAND}`);
+			lines.push(
+				session.breadth > 1
+					? `Breadth: ${formatCount("arm", session.breadth)} per iteration, ${formatCount("attempt", session.attempts)} each, certification ${session.certify ? "on" : "off"}. Start every arm with \`start_arm\` and measure it with \`run_experiment\`.`
+					: "Breadth: 1 (serial, no arms).",
+			);
+			if (overriddenByConsole) {
+				lines.push(
+					"The breadth, attempts and certification arguments were ignored: the setup console the user configured this run in decides them.",
+				);
+			}
 			if (session.scopePaths.length > 0) {
 				lines.push(`Files in scope: ${session.scopePaths.join(", ")}`);
 			}

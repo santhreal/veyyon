@@ -357,7 +357,7 @@ describe("a loop that stops says why it stopped", () => {
 
 		const text = stripAnsi(harness.row() ?? "");
 		expect(text).not.toContain("paused");
-		expect(text).toContain("1 runs");
+		expect(text).toContain("1 run ·");
 		// The tools come back with the loop, or the model cannot measure anything.
 		expect(harness.activeTools).toContain("run_experiment");
 	});
