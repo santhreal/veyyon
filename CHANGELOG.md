@@ -114,6 +114,7 @@
 - The rewind and checkpoint entry readers and the side-channel reply bound live in `session/rewind-checkpoint.ts` and `session/ephemeral-reply.ts` instead of as file-private helpers in `agent-session.ts`; the doc comment describing the Anthropic request metadata payload is attached to the function it describes rather than to the tool-order check below it. No behavior change.
 - `session/content-text.ts` is gone; the session modules that flattened content blocks call the `@veyyon/utils` owner, which now carries the options that copy held. Two implementations of the same flattening each documented themselves as the only one.
 - The MCP command controller races its OAuth login and its connection wait through `withTimeout` and `raceWithTimeout` in `@veyyon/utils` rather than a file-private copy, and the protocol probe's truecolor bar converts hue through `hsvToRgb` in `@veyyon/utils/color` rather than a second implementation of the same conversion. Both emit what they emitted before, byte for byte.
+- Every provider row with a `login` declares `credential: "api-key" | "oauth"`, and `OAuthProviderInfo` and `getLoginCredential(providerId)` expose it, so a login surface can tell a dashboard URL from an authorization it must open; `OpenAI` is named `OpenAI Platform` and `OpenAI Codex` is named `ChatGPT (Codex subscription)`.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
 - The session parser passes `contentText` an options object rather than a bare separator, following that helper's consolidation in `@veyyon/utils`. No change to the text it extracts.
@@ -131,6 +132,23 @@
 
 ### Fixed
 
+- `/login` for a provider that takes a pasted API key (OpenAI Platform, Groq, xAI and every other key provider) shows the dashboard where a key is obtained and prompts for the paste, instead of opening a platform login page in the browser as if it were an OAuth sign-in; the setup wizard likewise neither opens nor copies that URL.
+- The `/login` picker prints `api key` or `browser login` beside every provider, and the two OpenAI rows read `OpenAI Platform` and `ChatGPT (Codex subscription)`, so a key paste and a subscription sign-in are told apart before one is chosen.
+- `vey auth-broker login <provider>` prints `Get an API key at:` for a key provider instead of `Open this URL in your browser:`.
+- The RPC `open_url` login request carries `credential` (`"api-key"` or `"oauth"`) so a host opens only the URL a flow waits on; `RpcClient.login`'s `onOpenUrl` receives it as a fourth argument.
+- Cancelling or failing a sign-in in the setup wizard clears the provider search that started it, so the next keystroke begins a new search rather than appending to the old one and matching nothing.
+- Tool renderers sanitize raw tabs and shorten embedded home directory paths across error, output, and fallback views.
+- Print mode exits with code 130 rather than 1 when a turn is cancelled or aborted.
+- The web search command exits with code 2 on missing or invalid query arguments.
+- The TTSR command exits with code 2 on missing required subcommand parameters or unrecognized actions.
+- The shell command exits with code 2 when invoked without an interactive terminal.
+- CLI file argument processing reads attachments via portable node:fs promises rather than runtime-specific file methods.
+- The subagent HUD retains the model badge for running tasks without a description when space is available, rather than dropping it against an unused description floor.
+- Deleting a session in the session selector removes it from the folder and all-projects lists so toggling scope does not restore the deleted entry.
+- ModelSelectorPanel displays 'No matching models' when an active query yields zero results instead of the unprompted 'No models available' login hint.
+- The model browser replaces a Bun ANSI-stripping call with the portable node:util helper on disabled model rows.
+- The model picker avoids re-fetching and re-sorting the catalog on every query keystroke.
+- The thinking effort selector preselects the default row when initialized without a level override.
 - `veyyon auth-gateway serve` honours `accounts.loadBalancing`: with it off, one account per provider serves every request the gateway forwards, where before the gateway rotated on each of the several credential reads a single request makes.
 - An autoswarm arm's model switch is ephemeral: quitting mid-arm and resuming the session no longer opens on the arm's model with nothing to restore the session's own.
 - An overlay box narrower than six columns no longer draws a title wider than its own border.
@@ -242,6 +260,7 @@
 - A ChatGPT Codex server-side compaction now reduces the context it was paid to reduce: its stored window was not on the list of apis whose window can be replayed, so the entry counted as unusable, the whole pre-compaction span was re-expanded on the next rebuild, and the session crossed the threshold and compacted again on every turn.
 - Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.
 - Remote compaction forwards the session's prompt cache key to the provider, so a session whose cache key differs from its session id compacts on the same cache lineage its turns use.
+- The Alibaba Coding Plan and Qwen Portal logins validate the pasted key through the controller's `fetch` when one is supplied, instead of always using the global `fetch` and bypassing a configured proxy.
 - Reasoning recorded behind a rewritten history prefix is dropped before the request on a model that binds thinking blocks to their prefix, instead of being replayed and answered with a 400.
 - ChatGPT Codex server-side compaction streams a trailing `compaction_trigger` item to `{base}/codex/responses`, instead of posting to `{base}/codex/responses/compact`, which answers 404 and turned every compaction into a paid local pass for the rest of the session.
 - A Codex compaction stream carrying a `compaction` item with no `encrypted_content` is refused instead of being stored as a window every later turn discards.
