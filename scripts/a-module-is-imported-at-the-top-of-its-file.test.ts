@@ -1,12 +1,13 @@
 /**
  * Inline dynamic imports hide startup dependencies and break compile-time module graph analysis.
- * This gate bounds runtime dynamic imports to an explicit shrink-only baseline and prevents dynamic type imports.
- * It does not measure whether imported modules are executed after loading.
+ * This gate bounds runtime dynamic imports to an explicit shrink-only baseline, prevents dynamic
+ * type imports, and requires every relative `import("...")` specifier to name a file that is there.
+ * A leftover path after a directory move compiled and only 404'd at first use.
  */
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { Project, SyntaxKind } from "ts-morph";
+import { Node, Project, SyntaxKind } from "ts-morph";
 import { existingOnly } from "./check-doc-links";
 import { typeScriptMemberTopLevels } from "./workspace-layout";
 
@@ -51,10 +52,39 @@ function trackedSourceFiles(): string[] {
 	).sort();
 }
 
+interface MissingSpecifier {
+	readonly file: string;
+	readonly specifier: string;
+}
+
 interface ScanResult {
 	readonly scannedCount: number;
 	readonly dynamicFiles: string[];
 	readonly typeFiles: string[];
+	readonly relativeDynamicCount: number;
+	readonly missingRelative: MissingSpecifier[];
+}
+
+/**
+ * The file a relative specifier names, or `undefined` when it names none.
+ * Extensionless, `.js`→`.ts` (NodeNext), `index.ts` and asset forms all resolve.
+ */
+function resolveRelativeSpecifier(fromFile: string, specifier: string): string | undefined {
+	if (!specifier.startsWith(".")) return undefined;
+	const base = path.join(REPO_ROOT, fromFile, "..", specifier);
+	const candidates = [`${base}.ts`, `${base}.tsx`, path.join(base, "index.ts"), path.join(base, "index.tsx"), base];
+	if (specifier.endsWith(".js")) {
+		const withoutJs = base.slice(0, -3);
+		candidates.unshift(`${withoutJs}.ts`, `${withoutJs}.tsx`, path.join(withoutJs, "index.ts"));
+	}
+	for (const candidate of candidates) {
+		try {
+			if (fs.statSync(candidate).isFile()) return candidate;
+		} catch {
+			// Next candidate.
+		}
+	}
+	return undefined;
 }
 
 function sweepTrackedImports(): ScanResult {
@@ -62,6 +92,8 @@ function sweepTrackedImports(): ScanResult {
 	const project = new Project({ useInMemoryFileSystem: true });
 	const dynamicFiles = new Set<string>();
 	const typeFiles = new Set<string>();
+	const missingRelative: MissingSpecifier[] = [];
+	let relativeDynamicCount = 0;
 
 	for (const relPath of files) {
 		const fullPath = path.join(REPO_ROOT, relPath);
@@ -70,15 +102,20 @@ function sweepTrackedImports(): ScanResult {
 
 		const sourceFile = project.createSourceFile("probe.tsx", text, { overwrite: true });
 
-		const callExpressions = sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression);
-		for (const call of callExpressions) {
-			if (call.getExpression().getKind() === SyntaxKind.ImportKeyword) {
-				dynamicFiles.add(relPath);
+		for (const call of sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression)) {
+			if (call.getExpression().getKind() !== SyntaxKind.ImportKeyword) continue;
+			dynamicFiles.add(relPath);
+			const argument = call.getArguments()[0];
+			if (argument === undefined || !Node.isStringLiteral(argument)) continue;
+			const specifier = argument.getLiteralText();
+			if (!specifier.startsWith(".")) continue;
+			relativeDynamicCount += 1;
+			if (resolveRelativeSpecifier(relPath, specifier) === undefined) {
+				missingRelative.push({ file: relPath, specifier });
 			}
 		}
 
-		const importTypes = sourceFile.getDescendantsOfKind(SyntaxKind.ImportType);
-		for (const _it of importTypes) {
+		for (const _it of sourceFile.getDescendantsOfKind(SyntaxKind.ImportType)) {
 			typeFiles.add(relPath);
 		}
 
@@ -89,6 +126,8 @@ function sweepTrackedImports(): ScanResult {
 		scannedCount: files.length,
 		dynamicFiles: Array.from(dynamicFiles).sort(),
 		typeFiles: Array.from(typeFiles).sort(),
+		relativeDynamicCount,
+		missingRelative,
 	};
 }
 
@@ -133,5 +172,10 @@ describe("module import boundaries", () => {
 				? `Dynamic imports in type positions are forbidden. Use top-level 'import type' instead: ${scan.typeFiles.join(", ")}`
 				: "";
 		expect(scan.typeFiles, message).toEqual([]);
+	});
+
+	it("resolves every relative dynamic import to a file that is there", () => {
+		expect(scan.relativeDynamicCount).toBeGreaterThan(50);
+		expect(scan.missingRelative).toEqual([]);
 	});
 });
