@@ -6,7 +6,8 @@
  * union so the same adapter can be reused by print-mode, rpc-mode, and the executor.
  */
 import type { Model } from "@veyyon/ai";
-import type { CompactOptions } from "./types";
+import type { ConfiguredThinkingLevel } from "../../thinking";
+import type { CompactOptions, SetModelOptions } from "./types";
 
 interface CompactableSession {
 	compact(instructions?: string, options?: CompactOptions): Promise<unknown>;
@@ -25,16 +26,28 @@ export async function runExtensionCompact(
 interface SetModelCapableSession {
 	modelRegistry: { getApiKey(model: Model): Promise<string | undefined> };
 	setModel(model: Model): Promise<unknown>;
+	setModelTemporary(
+		model: Model,
+		thinkingLevel?: ConfiguredThinkingLevel,
+		options?: { ephemeral?: boolean },
+	): Promise<unknown>;
 }
 
 /**
  * Helper for wiring the `setModel` action of an {@link ExtensionContext}.
  *
- * Returns false when no API key is available for the requested model.
+ * Returns false when no API key is available for the requested model. An
+ * ephemeral switch is logged as a fallback, which resume ignores in favour of
+ * the session's own model.
  */
-export async function runExtensionSetModel(session: SetModelCapableSession, model: Model): Promise<boolean> {
+export async function runExtensionSetModel(
+	session: SetModelCapableSession,
+	model: Model,
+	options?: SetModelOptions,
+): Promise<boolean> {
 	const key = await session.modelRegistry.getApiKey(model);
 	if (!key) return false;
-	await session.setModel(model);
+	if (options?.ephemeral) await session.setModelTemporary(model, undefined, { ephemeral: true });
+	else await session.setModel(model);
 	return true;
 }

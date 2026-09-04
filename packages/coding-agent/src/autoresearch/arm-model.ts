@@ -49,6 +49,12 @@ export function armIndex(arm: string): number | null {
  * session model. The comparison the row was configured to make is between two
  * named models, and an arm that silently ran on the wrong one produces a result
  * that reads as a model comparison and is not one.
+ *
+ * Every switch here is ephemeral: it is logged as a fallback, not as the
+ * session's model, so a session quit mid-arm resumes on its own model. The
+ * restore target lives only in `runtime.activeArm`, which a restart does not
+ * keep, and a resumed session that opened on an arm's model would have nothing
+ * left to return it.
  */
 export async function enterArm(
 	ctx: ExtensionContext,
@@ -70,7 +76,7 @@ export async function enterArm(
 		// This arm builds on the session model, so the session has to be on it. A
 		// refusal above means it is not, and an arm on the wrong model reports a
 		// comparison it did not make.
-		if (stranded?.restore && !(await pi.setModel(stranded.restore))) {
+		if (stranded?.restore && !(await pi.setModel(stranded.restore, { ephemeral: true }))) {
 			return {
 				ok: false,
 				error: `Failed to return to "${stranded.restore.name}" for ${arm}. The session is still on ${stranded.modelLabel}.`,
@@ -90,7 +96,7 @@ export async function enterArm(
 		runtime.activeArm = { arm, modelLabel: target.name, restore: undefined };
 		return { ok: true, modelLabel: target.name, switched: false };
 	}
-	if (!(await pi.setModel(target))) {
+	if (!(await pi.setModel(target, { ephemeral: true }))) {
 		return { ok: false, error: `Failed to switch to "${spec}" for ${arm}. The session model is unchanged.` };
 	}
 	// Nothing to return to when the arm's model is the session's own, even though
@@ -119,7 +125,7 @@ export async function leaveArm(pi: ExtensionAPI, runtime: AutoresearchRuntime): 
 		runtime.activeArm = null;
 		return { restored: false, strandedOn: null };
 	}
-	if (!(await pi.setModel(active.restore))) {
+	if (!(await pi.setModel(active.restore, { ephemeral: true }))) {
 		// Keep the arm: the status row still names the model the session is on, a
 		// later leave retries, and no caller reads a restore that did not happen.
 		return { restored: false, strandedOn: active.modelLabel };

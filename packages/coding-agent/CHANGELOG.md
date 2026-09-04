@@ -26,6 +26,7 @@
 - `/autoresearch <text>` on a live session where `<text>` is the stored goal is a resume with nothing to add: it neither prints a context notice nor sends the goal to the model a second time.
 - A file search accepts `path` as the directory its `input` globs are searched under, the way `path` scopes a text search: `{ type: "files", input: "*.ts", path: "src" }` is `src/**/*.ts`, each `input` entry keeps its own depth, and a scope that is a glob or an input that is absolute is rejected naming the spelling that works.
 - Browser tool calls batched in one turn run in the order written; `run` and `close` on the same tab used to start together and the run found its tab closed.
+- `ExtensionAPI.setModel(model, { ephemeral: true })` switches the session's model for the rest of the turn without recording it as the session's own model, so a resumed session opens on the model the operator chose.
 
 ### Changed
 
@@ -99,6 +100,13 @@
 
 ### Fixed
 
+- `veyyon auth-gateway serve` honours `accounts.loadBalancing`: with it off, one account per provider serves every request the gateway forwards, where before the gateway rotated on each of the several credential reads a single request makes.
+- An autoswarm arm's model switch is ephemeral: quitting mid-arm and resuming the session no longer opens on the arm's model with nothing to restore the session's own.
+- An overlay box narrower than six columns no longer draws a title wider than its own border.
+- A warning repeated verbatim with nothing between the two, as the compaction dead-end notice was at the top of a resumed turn, renders once.
+- Settings selector displays a dimmed '(unset)' placeholder for optional text settings with empty values.
+- The subagent roster list bounds item rows and wraps custom agent hints so the list and navigation controls fit within the modal viewport.
+- The settings selector passes the target pane width to the status line preview.
 - The autoswarm setup console handles Unicode emojis, CJK characters and combining marks on backspace and windowing without splitting surrogate pairs, and supports Shift-Tab field navigation.
 - Autoswarm triage rejects candidate arms whose edits fall inside off-limits directories, where an exact string comparison only matched exact path literals.
 - Autoswarm review assigns the director as the sole reviewer when certification is disabled on the session, instead of creating peer review rings for three or more surviving arms.
