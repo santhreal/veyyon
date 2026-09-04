@@ -256,18 +256,20 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 	 * this boundary's progress.
 	 *
 	 * `-p` writes text to a pipe and renders no frame, yet its runtime graph
-	 * instantiates `@veyyon/tui` through three clusters: the theme engine, the
-	 * `src/modes/terminal/draw/` block helpers that lay out tool output, and the slash-command
-	 * registry that reaches a dialog. Each is a front-end concern filed outside the
-	 * front end, and each is its own piece of work.
+	 * instantiates `@veyyon/tui` through two clusters: the theme engine and the
+	 * slash-command registry that reaches a dialog. Each is a front-end concern
+	 * filed outside the front end, and each is its own piece of work.
 	 *
-	 * `session/image-visibility.ts`, `tools/agent/todo.ts` and
-	 * `slash-commands/builtin-registry.ts` used to be on this list.
-	 * That is the delta three probes bought: a question about a pipe is no longer
+	 * `session/image-visibility.ts`, `tools/agent/todo.ts`,
+	 * `slash-commands/builtin-registry.ts`, `modes/terminal/draw/code-cell.ts`,
+	 * `modes/terminal/draw/output-block.ts` and
+	 * `modes/terminal/draw/width-aware-text.ts` used to be on this list.
+	 * That is the delta those probes bought: a question about a pipe is no longer
 	 * answered by loading a renderer, the todo tool's drawing moved to
-	 * `tools/agent/todo-view.ts`, which print mode never reaches, and the `/collab`
+	 * `tools/agent/todo-view.ts`, which print mode never reaches, the `/collab`
 	 * QR block draws its own spacing instead of the registry stacking a terminal
-	 * component above it. Shrink-only -- a row
+	 * component above it, and the three block helpers that still import the
+	 * package are no longer on print mode's graph. Shrink-only -- a row
 	 * leaves when the edge is cut, and none is added, so a new module reaching the
 	 * package from print mode's graph reds this.
 	 *
@@ -278,12 +280,9 @@ describe("the conversation engine does not instantiate the TUI package", () => {
 	 */
 	const PRINT_MODE_TUI_EDGES = [
 		"packages/coding-agent/src/modes/terminal/components/dialogs/pause-screen.ts -> @veyyon/tui",
+		"packages/coding-agent/src/modes/terminal/draw/hyperlink.ts -> @veyyon/tui/terminal-capabilities",
 		"packages/coding-agent/src/theme/theme-class.ts -> @veyyon/tui/terminal-capabilities",
 		"packages/coding-agent/src/theme/theme.ts -> @veyyon/tui/terminal-capabilities",
-		"packages/coding-agent/src/modes/terminal/draw/code-cell.ts -> @veyyon/tui",
-		"packages/coding-agent/src/modes/terminal/draw/hyperlink.ts -> @veyyon/tui/terminal-capabilities",
-		"packages/coding-agent/src/modes/terminal/draw/output-block.ts -> @veyyon/tui",
-		"packages/coding-agent/src/modes/terminal/draw/width-aware-text.ts -> @veyyon/tui",
 	];
 
 	/** Files print mode loads at runtime, and the TUI edges among them. */
