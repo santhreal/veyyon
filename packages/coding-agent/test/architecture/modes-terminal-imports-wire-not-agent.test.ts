@@ -159,6 +159,9 @@ describe("the terminal renderer draws view-models", () => {
 			repoPath("packages/coding-agent/src/modes/terminal/interactive-mode.ts"),
 			repoPath("packages/coding-agent/src/modes/terminal/driver.ts"),
 			repoPath("packages/coding-agent/src/modes/terminal/first-frame.ts"),
+			// Published barrel: `./modes/terminal/draw` in the package exports. Nothing in the
+			// production graph imports it, but `renderFileList` is still a public export.
+			repoPath("packages/coding-agent/src/modes/terminal/draw/index.ts"),
 		];
 		const reachable = reachableFrom(roots);
 		const unreachable = typeScriptFiles(TERMINAL)
