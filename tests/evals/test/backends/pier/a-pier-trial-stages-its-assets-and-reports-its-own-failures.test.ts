@@ -180,10 +180,7 @@ describe("Pier ExecutionBackend", () => {
 	});
 
 	it("prepare and run names/directories include runId to prevent concurrent run collisions", async () => {
-		const tmpRoot = path.join(
-			os.tmpdir() === "/tmp" ? "tests/evals/runs" : os.tmpdir(),
-			`pier-runid-${Date.now()}`,
-		);
+		const tmpRoot = path.join(os.tmpdir() === "/tmp" ? "tests/evals/runs" : os.tmpdir(), `pier-runid-${Date.now()}`);
 		// Distinct directories, because the run's output belongs under the one it names: with
 		// both set to the same root, a backend deriving the path from either passed.
 		const outRoot = path.join(tmpRoot, "out");
