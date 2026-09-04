@@ -8087,6 +8087,14 @@
 					"to": "@veyyon/coding-agent/commit/git-diff.js",
 					"why": "packages/coding-agent/src/commit/git/diff.ts moved to packages/coding-agent/src/commit/git-diff.ts, which @veyyon/coding-agent publishes as ./commit/git-diff.js"
 				},
+				"./config/optional-number": {
+					"to": "@veyyon/kernel/settings/optional-number",
+					"why": "packages/coding-agent/src/config/optional-number.ts moved to kernel/src/settings/optional-number.ts, which @veyyon/kernel publishes as ./settings/optional-number"
+				},
+				"./config/optional-number.js": {
+					"to": "@veyyon/kernel/settings/optional-number.js",
+					"why": "packages/coding-agent/src/config/optional-number.ts moved to kernel/src/settings/optional-number.ts, which @veyyon/kernel publishes as ./settings/optional-number.js"
+				},
 				"./dap": {
 					"to": "@veyyon/coding-agent/debug/dap/index",
 					"why": "packages/coding-agent/src/dap/index.ts moved to packages/coding-agent/src/debug/dap/index.ts, which @veyyon/coding-agent publishes as ./debug/dap/index"

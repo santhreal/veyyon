@@ -444,12 +444,14 @@ describe("a published surface survives the move", () => {
 	 * documented key relocation, or a recorded absorption — so a rule that started matching more than
 	 * it should would otherwise pass as a wider set of correct-looking rows.
 	 *
-	 * 1310 coding-agent subpaths relocated, 108 of them into `@veyyon/kernel`: 54 modules moved and
-	 * each is served twice, extensionless and under a `.js` alias. The last eight kernel rows are the
+	 * 1312 coding-agent subpaths relocated, 110 of them into `@veyyon/kernel`: 55 modules moved and
+	 * each is served twice, extensionless and under a `.js` alias. Eight kernel rows are the
 	 * session manager, its context builder, its loader and the credential store
 	 * (`session/session-manager`, `session/session-context`, `session/session-loader`,
 	 * `session/agent-storage`), which followed the rest of the spine once the part of the message
-	 * module they call had its own kernel module. The modules this branch added
+	 * module they call had its own kernel module, and two are `config/optional-number`, the
+	 * unset-number owner the settings schema registry reads, served from
+	 * `@veyyon/kernel/settings/optional-number`. The modules this branch added
 	 * rather than moved (`extensibility/host-view`, `extensibility/widget`) carry no row, since they
 	 * were never part of the baseline surface. Two of the kernel rows are `session/compaction-policy`,
 	 * the compaction vocabulary main extracted from `agent-session.ts`, which this branch serves from
@@ -497,14 +499,15 @@ describe("a published surface survives the move", () => {
 		expect(Object.keys(rows).sort()).toEqual(["@veyyon/coding-agent", "@veyyon/tui"]);
 
 		const codingAgent = rows["@veyyon/coding-agent"] ?? {};
-		expect(Object.keys(codingAgent).length).toBe(1310);
+		expect(Object.keys(codingAgent).length).toBe(1312);
 		const intoKernel = Object.values(codingAgent).filter(note => note.to.startsWith("@veyyon/kernel/"));
-		expect(intoKernel.length).toBe(108);
+		expect(intoKernel.length).toBe(110);
 		const kernelConcerns = new Set(intoKernel.map(note => note.to.split("/").slice(0, 3).join("/")));
 		expect([...kernelConcerns].sort()).toEqual([
 			"@veyyon/kernel/loader",
 			"@veyyon/kernel/registry",
 			"@veyyon/kernel/session",
+			"@veyyon/kernel/settings",
 		]);
 
 		const tui = rows["@veyyon/tui"] ?? {};
