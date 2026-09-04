@@ -141,7 +141,10 @@ export function screenTitle(runtime: AutoresearchRuntime): string {
 	// a fresh autoswarm spends its first turn with a state that reads breadth 1,
 	// and titling that surface "Autoresearch" names the wrong loop.
 	const label = effectiveBreadth(runtime) > 1 ? "Autoswarm" : "Autoresearch";
-	const mode = runtime.autoresearchMode ? "" : "  (mode off)";
+	// A pause is the state the status row already reports; the screen reads the
+	// same one, so `esc` mid-turn does not leave a title that reads as running.
+	const paused = runtime.interrupted || runtime.pausedOnBranch !== null;
+	const mode = runtime.autoresearchMode ? (paused ? "  (paused)" : "") : "  (mode off)";
 	return name ? `${label} · ${name}${mode}` : `${label}${mode}`;
 }
 

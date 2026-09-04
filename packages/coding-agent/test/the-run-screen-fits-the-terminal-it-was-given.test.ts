@@ -160,6 +160,14 @@ describe("the run screen fits the terminal it was given", () => {
 		const off = runtimeWith(1);
 		off.autoresearchMode = false;
 		expect(screenTitle(off)).toContain("mode off");
+		// Escape mid-turn pauses the loop; the screen states it rather than reading
+		// as a loop that is still running, and `off` outranks the pause.
+		const paused = runtimeWith(1);
+		paused.interrupted = true;
+		expect(screenTitle(paused)).toContain("paused");
+		paused.autoresearchMode = false;
+		expect(screenTitle(paused)).not.toContain("paused");
+		expect(screenTitle(paused)).toContain("mode off");
 	});
 
 	it("reads a swarm the console configured before any session exists", () => {

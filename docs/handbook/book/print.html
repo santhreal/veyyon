@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4cbb2f53.js";
+            window.path_to_searchindex_js = "searchindex-4a536fc2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-b613f6a6.js"></script>
@@ -6690,11 +6690,11 @@ degenerate cases.</p>
 <code>/autoresearch</code> opens the run screen; it does not end anything.</p>
 <p>Escape during a turn stops that turn and pauses the loop without leaving the
 mode, and prints <code>Autoresearch interrupted. Send a message or /autoresearch resume to continue, /autoresearch off to leave the loop.</code> The status row reads
-<code>paused · send a message to resume</code>, the tools stay attached, and nothing runs
-until you send a message; a measurement that was waiting to be logged is picked
-up by that message. <code>/autoresearch resume</code> sends nothing but the resume, and
-with no session on the branch prints <code>No autoresearch session on this branch to resume. /autoresearch starts one.</code> <code>/autoresearch off</code> from there leaves the
-mode.</p>
+<code>paused · send a message to resume</code>, the run screen title reads <code>(paused)</code>, the
+tools stay attached, and nothing runs until you send a message; a measurement
+that was waiting to be logged is picked up by that message. <code>/autoresearch resume</code> sends nothing but the resume, and with no session on the branch prints
+<code>No autoresearch session on this branch to resume. /autoresearch starts one.</code>
+<code>/autoresearch off</code> from there leaves the mode.</p>
 <p>Text typed after the command on a live session goes to the model as context for
 the resume, and prints <code>Your text goes to the model as context for the resume. /autoresearch goal &lt;text&gt; changes what this session optimizes.</code> The stored goal
 typed back is a resume with nothing to add: no notice, and the model is not told
@@ -19177,8 +19177,9 @@ takes two required ordered fields followed by type-specific options:</p>
 <h3 id="type-specific-options-and-validation"><a class="header" href="#type-specific-options-and-validation">Type-specific options and validation</a></h3>
 <p>Options are strictly validated per <code>type</code>; cross-type fields are rejected with an actionable error:</p>
 <ul>
-<li><strong><code>type: "files"</code></strong> accepts <code>hidden</code>, <code>gitignore</code>, and <code>limit</code>:
+<li><strong><code>type: "files"</code></strong> accepts <code>path</code>, <code>hidden</code>, <code>gitignore</code>, and <code>limit</code>:
 <ul>
+<li><strong><code>path</code></strong> is one directory the <code>input</code> globs are searched under. Each entry of <code>input</code> keeps its own meaning there: <code>{ input: "*.ts", path: "src" }</code> is <code>src/**/*.ts</code>, <code>{ input: "app/*.ts", path: "src" }</code> is <code>src/app/*.ts</code>, and <code>{ input: ".", path: "src" }</code> lists <code>src</code>. A glob or internal URL in <code>path</code>, or an absolute or internal-URL <code>input</code> under a <code>path</code>, is rejected with the spelling that works.</li>
 <li><strong><code>hidden</code> (default <code>true</code>)</strong> includes dotfiles.</li>
 <li><strong><code>gitignore</code> (default <code>true</code>)</strong> respects <code>.gitignore</code> rules; set <code>false</code> to search ignored paths.</li>
 <li><strong><code>limit</code> (default <code>200</code>, max <code>200</code>)</strong> bounds returned paths; output is sorted by <code>mtime</code> descending and grouped under <code># &lt;dir&gt;/</code> directory headers.</li>
