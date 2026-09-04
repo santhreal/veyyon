@@ -32,14 +32,14 @@ import type {
 import { settings } from "../../config/settings-instance";
 import type { EvalCellResult, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "../../eval/types";
 import {
+	jsonTreeViewLines,
 	JSON_TREE_MAX_DEPTH_COLLAPSED,
 	JSON_TREE_MAX_DEPTH_EXPANDED,
 	JSON_TREE_MAX_LINES_COLLAPSED,
 	JSON_TREE_MAX_LINES_EXPANDED,
 	JSON_TREE_SCALAR_LEN_COLLAPSED,
 	JSON_TREE_SCALAR_LEN_EXPANDED,
-} from "../core/json-tree-render";
-import { jsonTreeViewLines } from "../core/json-tree-view";
+} from "../core/json-tree-view";
 import { stripOutputNotice } from "../core/output-meta";
 // The words a truncation is named by, from the leaf that owns them rather than from the styled
 // helper beside it: a view states the sentence and never the colour it is drawn in.

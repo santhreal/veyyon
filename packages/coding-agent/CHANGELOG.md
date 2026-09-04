@@ -33,6 +33,8 @@
 - `normalizeRoots` takes one working-directory string. No user-visible behavior changes.
 - `createCachedComponent` lives in `modes/terminal/draw/utils` with the rest of the terminal drawing helpers, and the source map no longer lists `src/web/` or `src/swarm/` as top-level directories. No user-visible behavior changes.
 - Tests that lived under retired folder names (`test/tui`, `test/capability`, `test/web`, `test/vibe`, `test/repair`, and the other pre-cutover aliases) now sit next to the source they cover. No user-visible behavior changes.
+- ToolView cards that walk a JSON value read their bounds and scalar formatting from `json-tree-view.ts` rather than loading the terminal walker that draws tree-rail glyphs. No user-visible behavior changes.
+- The terminal's ToolView drawer names every kind the contract declares, so a kind added to the union fails the type check instead of drawing as a one-line text row. No user-visible behavior changes.
 
 - Fifty-three modules moved from `src/session/` (35 session spine modules) and `src/extensibility/` (18 loader and registry modules) to `@veyyon/kernel`, leaving `src/session/` containing the turn loop, session factories and prompt rendering, and `src/extensibility/` containing tool, command, hook and host extensions.
 - Terminal drawing of a `ToolView` lives in `src/modes/terminal/draw/`, and web search lives in `src/tools/web/search/`. Subpath imports previously resolved through `@veyyon/coding-agent/tui` and `@veyyon/coding-agent/web/search` now name those directories. No user-visible behavior changes.

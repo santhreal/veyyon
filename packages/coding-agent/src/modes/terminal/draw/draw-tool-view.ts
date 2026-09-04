@@ -344,11 +344,23 @@ export function drawTextBlock(view: TextBlockView, theme: Theme, frame?: number)
 	return drawSpans(view.spans, theme, frame);
 }
 
+/** Every kind of view this host draws, which is every kind the contract declares. */
+export const VIEW_KINDS_DRAWN: Record<ToolView["kind"], true> = {
+	statusRow: true,
+	textBlock: true,
+	headedBlock: true,
+	framedBlock: true,
+	notice: true,
+};
+
 /** A one-line view as the terminal string that draws it. */
 export function drawToolViewText(view: LineToolView, theme: Theme, spinnerFrame?: number): string {
-	return view.kind === "statusRow"
-		? drawStatusRow(view, theme, spinnerFrame)
-		: drawTextBlock(view, theme, spinnerFrame);
+	switch (view.kind) {
+		case "statusRow":
+			return drawStatusRow(view, theme, spinnerFrame);
+		case "textBlock":
+			return drawTextBlock(view, theme, spinnerFrame);
+	}
 }
 
 /**
@@ -1043,10 +1055,17 @@ export function drawNotice(view: NoticeView, theme: Theme): Component {
  * container instead, because it owes the card a height at a width.
  */
 export function drawToolView(view: ToolView, theme: Theme, spinnerFrame?: number): Component {
-	if (view.kind === "framedBlock") return drawFramedBlock(view, theme, spinnerFrame);
-	if (view.kind === "headedBlock") return drawHeadedBlock(view, theme, spinnerFrame);
-	if (view.kind === "notice") return drawNotice(view, theme);
-	return new Text(drawToolViewText(view, theme, spinnerFrame), 0, 0);
+	switch (view.kind) {
+		case "framedBlock":
+			return drawFramedBlock(view, theme, spinnerFrame);
+		case "headedBlock":
+			return drawHeadedBlock(view, theme, spinnerFrame);
+		case "notice":
+			return drawNotice(view, theme);
+		case "statusRow":
+		case "textBlock":
+			return new Text(drawToolViewText(view, theme, spinnerFrame), 0, 0);
+	}
 }
 
 /**

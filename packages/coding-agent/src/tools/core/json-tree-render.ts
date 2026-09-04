@@ -1,93 +1,30 @@
 /**
- * JSON tree rendering utilities shared across tool renderers.
+ * JSON tree rendering as terminal strings.
+ *
+ * Bounds, scalar formatting and the one-line argument preview live in `json-tree-view.ts`, which
+ * a ToolView card can load without pulling a theme or a tree-rail glyph. This module draws the
+ * same walk with those glyphs, for the transcript fallback that still paints a JSON value as
+ * terminal bytes rather than as a view.
  */
 import { formatMoreLines, isRecord } from "@veyyon/utils";
-import { INTENT_FIELD } from "@veyyon/wire";
 import { buildTreePrefix } from "../../modes/terminal/draw/utils";
 import type { Theme } from "../../theme/theme";
+import {
+	formatScalar,
+	HIDDEN_JSON_TREE_KEYS,
+} from "./json-tree-view";
 import { truncateToWidth } from "./render-utils";
 
-/** Max depth for JSON tree rendering */
-export const JSON_TREE_MAX_DEPTH_COLLAPSED = 2;
-export const JSON_TREE_MAX_DEPTH_EXPANDED = 6;
-export const JSON_TREE_MAX_LINES_COLLAPSED = 6;
-export const JSON_TREE_MAX_LINES_EXPANDED = 200;
-export const JSON_TREE_SCALAR_LEN_COLLAPSED = 60;
-export const JSON_TREE_SCALAR_LEN_EXPANDED = 2000;
-
-const HIDDEN_ARG_KEYS = { [INTENT_FIELD]: 1, __partialJson: 1 };
-
-const ARGS_INLINE_PAIR_SEP = ", ";
-const ARGS_INLINE_PAIR_SEP_WIDTH = Bun.stringWidth(ARGS_INLINE_PAIR_SEP);
-const ARGS_INLINE_MORE = "…";
-const ARGS_INLINE_MORE_WIDTH = Bun.stringWidth(ARGS_INLINE_MORE);
-/** Minimal value footprint (quotes + a couple chars) reserved for each not-yet-rendered key. */
-const ARGS_INLINE_TAIL_VALUE_RESERVE = 4;
-
-/**
- * Format a scalar value for inline display.
- */
-export function formatScalar(value: unknown, maxLen: number): string {
-	if (value === null) return "null";
-	if (value === undefined) return "undefined";
-	if (typeof value === "boolean") return String(value);
-	if (typeof value === "number") return String(value);
-	if (typeof value === "string") {
-		const escaped = value.replace(/\n/g, "\\n").replace(/\t/g, "\\t");
-		const truncated = truncateToWidth(escaped, maxLen);
-		return `"${truncated}"`;
-	}
-	if (Array.isArray(value)) return `[${value.length} items]`;
-	if (typeof value === "object") {
-		const keys = Object.keys(value);
-		return `{${keys.length} keys}`;
-	}
-	return String(value);
-}
-
-/**
- * Format args inline for collapsed view.
- */
-export function formatArgsInline(args: Record<string, unknown>, maxWidth: number): string {
-	const keys: string[] = [];
-	for (const key in args) {
-		if (key in HIDDEN_ARG_KEYS) continue;
-		keys.push(key);
-	}
-	let result = "";
-	let width = 0;
-	for (let i = 0; i < keys.length; i++) {
-		const key = keys[i];
-		const value = args[key];
-		const sep = width > 0 ? ARGS_INLINE_PAIR_SEP : "";
-		const sepW = width > 0 ? ARGS_INLINE_PAIR_SEP_WIDTH : 0;
-		const current = width + sepW;
-		const cap = maxWidth - current - ARGS_INLINE_MORE_WIDTH;
-		if (cap <= 0) {
-			return `${result}${ARGS_INLINE_MORE}`;
-		}
-		// Reserve each still-pending key's minimal footprint (sep + name + `=` +
-		// a short value) so a long value can't starve the keys that follow it.
-		let tailReserve = 0;
-		for (let j = i + 1; j < keys.length; j++) {
-			tailReserve += ARGS_INLINE_PAIR_SEP_WIDTH + Bun.stringWidth(keys[j]) + 1 + ARGS_INLINE_TAIL_VALUE_RESERVE;
-		}
-		// Budget the whole `key=value` piece against the width left after the
-		// tail reserve, then back out the value's share. The last key reserves
-		// nothing and fills the line.
-		const pieceBudget = Math.min(cap, maxWidth - current - tailReserve);
-		const valueMaxLen = Math.max(1, pieceBudget - Bun.stringWidth(key) - 3);
-		const valueStr = formatScalar(value, valueMaxLen);
-		const piece = `${key}=${valueStr}`;
-		const pieceW = Bun.stringWidth(piece);
-		if (pieceW > pieceBudget) {
-			return `${result}${sep}${truncateToWidth(piece, cap)}`;
-		}
-		result += sep + piece;
-		width = current + pieceW;
-	}
-	return result;
-}
+export {
+	formatArgsInline,
+	formatScalar,
+	JSON_TREE_MAX_DEPTH_COLLAPSED,
+	JSON_TREE_MAX_DEPTH_EXPANDED,
+	JSON_TREE_MAX_LINES_COLLAPSED,
+	JSON_TREE_MAX_LINES_EXPANDED,
+	JSON_TREE_SCALAR_LEN_COLLAPSED,
+	JSON_TREE_SCALAR_LEN_EXPANDED,
+} from "./json-tree-view";
 
 /**
  * Render a JSON value as tree lines.
@@ -228,7 +165,7 @@ export function renderJsonTreeLines(
 	// Render root level
 	if (isRecord(value)) {
 		for (const key in value) {
-			if (key in HIDDEN_ARG_KEYS) continue;
+			if (key in HIDDEN_JSON_TREE_KEYS) continue;
 			renderNode(value[key], key, [], true, 1);
 			if (lines.length >= maxLines) {
 				truncated = true;
