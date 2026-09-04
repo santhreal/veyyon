@@ -10,6 +10,10 @@
 - A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
 - `CONTEXTUAL_USER_PREFIXES` is exported from the codex compaction module so the retained-window rule is asserted against the real list rather than a copy of it.
 - A source-path comment and the barrel-shortcut suite name the Perplexity search provider at `tools/web/search/providers/perplexity.ts`. No behavior change.
+### Added
+
+- Every OpenCode request carries a `Veyyon/<version>` user agent and an `x-opencode-session` header derived from the conversation id, on the `anthropic-messages`, `openai-completions` and `openai-responses` transports and on server-side compaction, under every cache-retention setting, which the gateway requires to identify the client and route a conversation to its warm prompt cache.
+
 ### Fixed
 
 - Reasoning recorded behind a rewritten history prefix is dropped before the request on a model that binds thinking blocks to their prefix, instead of being replayed and answered with a 400.
@@ -20,6 +24,7 @@
 - A Codex server-side compaction sends the session's `prompt_cache_key`, so it lands on the session's cached prefix instead of missing it and making the next turn re-pay full uncached input.
 - A Codex server-side compaction with no session id is refused instead of minting a random conversation identity, which opened a second cache lineage and left the post-compaction history reset with nothing to find.
 - The Claude Code user-agent reports `agent-sdk/0.3.257`, the Agent SDK release paired with the Claude Code version the same request sends.
+- A signing Anthropic endpoint that answers `stop_reason: "refusal"` with category `reasoning_extraction` has prior-turn reasoning dropped from an immediate retry and from the rest of the session, instead of failing the turn with `Refusal (reasoning_extraction)` every time reasoning demoted to prose is replayed.
 
 ### Changed
 
