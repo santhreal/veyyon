@@ -107,6 +107,22 @@ export function declareSettings<T extends SettingsTable>(table: T): T {
 }
 
 /**
+ * Empty the registry, for a test that needs the state before any table has loaded.
+ *
+ * A table registers at module scope, so it outlives the suite that imported it and the next suite
+ * in the same process reads it. One suite pins what an empty registry answers and another declares
+ * the table its store reads; each starts from empty so neither depends on the order the runner
+ * picked. Never called by a running product, where the registry only grows.
+ *
+ * @internal
+ */
+export function resetDeclaredSettingsForTest(): void {
+	for (const path of Object.keys(schema)) {
+		delete schema[path];
+	}
+}
+
+/**
  * The registry, or a loud failure when nothing has registered.
  *
  * The tables arrive by import: a package's schema module calls {@link declareSettings} when it

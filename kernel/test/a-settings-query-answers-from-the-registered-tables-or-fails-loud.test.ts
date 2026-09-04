@@ -7,15 +7,16 @@
  * closes that class: a query against an empty registry throws naming the cause, a query for a path
  * no table declared throws naming the path, and one path cannot be declared by two tables.
  *
- * It runs in the kernel, where no application composition is on the module graph, which is the
- * only place the empty state is reachable without unloading modules.
+ * It runs in the kernel, where no application composition is on the module graph, and it empties
+ * the registry first: a sibling suite's table registers at module scope and would otherwise be
+ * what an "empty" registry answers when the runner loads that file first.
  *
  * What it does not catch: a registry that is non-empty but missing the table a caller needed. That
  * is the same silence one level up, and it is caught where it can be — the composition test in the
  * application pins every domain the schema spreads.
  */
 
-import { describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import {
 	declareSettings,
 	describeSettingTypeMismatch,
@@ -27,6 +28,7 @@ import {
 	hasUi,
 	isSettingPath,
 	isUnsetNumberPath,
+	resetDeclaredSettingsForTest,
 	retiredBy,
 	type SettingPath,
 	type SettingsTable,
@@ -62,6 +64,10 @@ declare module "@veyyon/kernel/settings/schema" {
 }
 
 describe("a settings query answers from the registered tables or fails loud", () => {
+	beforeAll(() => {
+		resetDeclaredSettingsForTest();
+	});
+
 	it("throws from every query while no table has registered", () => {
 		const path: SettingPath = "example.flag";
 		expect(() => settingsSchema()).toThrow(EMPTY);

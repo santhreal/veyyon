@@ -17,11 +17,16 @@
  * suites drive the composed store.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { declareSettings, type SettingPath, type SettingsTable } from "@veyyon/kernel/settings/schema";
+import {
+	declareSettings,
+	resetDeclaredSettingsForTest,
+	type SettingPath,
+	type SettingsTable,
+} from "@veyyon/kernel/settings/schema";
 import {
 	type GlobalSettingBinding,
 	type RawSettings,
@@ -54,7 +59,11 @@ declare module "@veyyon/kernel/settings/schema" {
 	interface DeclaredSettings extends StoreSettings {}
 }
 
-declareSettings(STORE_SETTINGS);
+// From an empty registry, whichever sibling suite the runner loaded first in this process.
+beforeAll(() => {
+	resetDeclaredSettingsForTest();
+	declareSettings(STORE_SETTINGS);
+});
 
 type Call =
 	| ["migrate", RawSettings]
