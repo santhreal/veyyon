@@ -13,7 +13,7 @@
  *   1. A new session with no history lands on the same account as every other new session.
  *   2. A sessionless caller gets that same account, not a round-robin cursor.
  *   3. A session whose account is rate-limited or out of quota keeps that account and waits.
- *   4. Usage ranking (a headroom contest) never runs when nothing may move.
+ *   4. Usage ranking (a headroom contest) moves nothing: an account with less quota keeps serving.
  *   5. API keys are held to the same rule as OAuth logins.
  *   6. `sessionCredentialRouting`, the account card's source, predicts the account that will serve.
  *   7. Auth death still moves, because a refused grant cannot serve at all, and says so.
@@ -21,8 +21,8 @@
  *
  * WHAT IT DOES NOT CATCH. The product default (OFF) and the wiring from `Settings` are pinned one
  * package up in `packages/coding-agent/test/session/the-load-balancing-gate-reads-the-operators-setting.test.ts`.
- * A ranking strategy's own plan filter (Codex tiers) is exercised elsewhere; this file registers no
- * strategy, so a provider that ranks by plan eligibility is not covered here.
+ * A ranking strategy's own plan filter (Codex tiers) is exercised elsewhere; the strategy here reads
+ * the two windows of a report and nothing else, so plan eligibility is not covered here.
  */
 
 import { Database } from "bun:sqlite";
@@ -34,6 +34,7 @@ import {
 	SqliteAuthCredentialStore,
 } from "@veyyon/ai/auth-storage";
 import * as oauthUtils from "@veyyon/ai/registry/oauth";
+import type { UsageLimit, UsageReport } from "@veyyon/ai/usage";
 
 const PROVIDER = "unit-one-account-serves";
 const HOUR_MS = 60 * 60_000;
@@ -155,30 +156,62 @@ describe("with load balancing off one account serves a provider", () => {
 		expect(await storage.getApiKey(PROVIDER)).toBe("key-first");
 	});
 
-	/**
-	 * A headroom contest is a move by another name: whichever account has more quota left wins, so
-	 * the account changes as usage shifts. With nothing allowed to move, the usage endpoint is not
-	 * even asked.
-	 */
-	test("usage ranking never runs when nothing may move", async () => {
+	/** A usage report for one account: the first window near its limit or barely touched. */
+	function usageReport(accountId: string, usedFraction: number): UsageReport {
+		const limit: UsageLimit = {
+			id: `${PROVIDER}:primary`,
+			label: "1 Hour",
+			scope: { provider: PROVIDER, windowId: "1h", shared: true },
+			window: { id: "1h", label: "1 Hour", durationMs: HOUR_MS, resetsAt: NOW_MS + HOUR_MS / 2 },
+			amount: {
+				unit: "percent",
+				used: usedFraction * 100,
+				limit: 100,
+				remaining: 100 - usedFraction * 100,
+				usedFraction,
+				remainingFraction: 1 - usedFraction,
+			},
+			status: usedFraction >= 0.9 ? "warning" : "ok",
+		};
+		return { provider: PROVIDER, fetchedAt: NOW_MS, limits: [limit], metadata: { accountId } };
+	}
+
+	/** The first account is nearly out of its window; the second has barely used its own. */
+	function headroomContest(loadBalancing: boolean): AuthStorage {
 		if (!store) throw new Error("test setup failed");
-		const usageFetch = vi.fn(async (): Promise<null> => null);
-		const storage = new AuthStorage(store, {
-			loadBalancing: false,
+		return new AuthStorage(store, {
+			loadBalancing,
 			rankingStrategyResolver: () => ({
-				findWindowLimits: () => ({ primary: undefined, secondary: undefined }),
+				findWindowLimits: report => ({ primary: report.limits[0], secondary: undefined }),
 				windowDefaults: { primaryMs: HOUR_MS, secondaryMs: 7 * 24 * HOUR_MS },
 			}),
 			usageProviderResolver: () => ({
 				id: PROVIDER,
-				fetchUsage: usageFetch,
+				fetchUsage: async ({ credential }) =>
+					credential.accountId ? usageReport(credential.accountId, credential.accountId === "account-first" ? 0.95 : 0.05) : null,
 			}),
 		});
+	}
+
+	/**
+	 * A headroom contest is a move by another name: whichever account has more quota left wins, so
+	 * the account changes as usage shifts. The contest below moves the account with the setting on,
+	 * which is what makes the off arm a proof rather than a fixture that ranks nothing.
+	 */
+	test("a headroom contest moves the account with the setting on", async () => {
+		const storage = headroomContest(true);
+		await seedOAuth(storage);
+
+		expect(await storage.getApiKey(PROVIDER, SESSION_IDS[2])).toBe("access-second");
+	});
+
+	test("the same contest moves nothing with the setting off", async () => {
+		const storage = headroomContest(false);
 		await seedOAuth(storage);
 
 		expect(await storage.getApiKey(PROVIDER, SESSION_IDS[2])).toBe("access-first");
 		expect(await storage.getApiKey(PROVIDER, SESSION_IDS[3])).toBe("access-first");
-		expect(usageFetch).not.toHaveBeenCalled();
+		expect(await storage.getApiKey(PROVIDER)).toBe("access-first");
 	});
 
 	test("the account card predicts the account that will serve, blocked or not", async () => {

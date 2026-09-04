@@ -17,7 +17,7 @@
  * which delegate to the presenters swept here.
  */
 
-import { describe, expect, it, type Mock, vi } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { useTruecolorTheme } from "./helpers/theme-assertions";
@@ -26,11 +26,17 @@ useTruecolorTheme("dark");
 
 interface Host {
 	ctx: InteractiveModeContext;
-	clearWorkingLoader: Mock<() => boolean>;
+	/** Whether the `Working…` loader is still mounted; the presenter under test rests it or not. */
+	loader: { mounted: boolean };
 }
 
 function host(isStreaming: boolean): Host {
-	const clearWorkingLoader = vi.fn(() => true);
+	const loader = { mounted: true };
+	const clearWorkingLoader = (): boolean => {
+		const wasMounted = loader.mounted;
+		loader.mounted = false;
+		return wasMounted;
+	};
 	const editor = { id: "core-editor", getText: () => "", setText: () => {} };
 	const overlays: unknown[] = [];
 	const ui = {
@@ -59,7 +65,7 @@ function host(isStreaming: boolean): Host {
 		clearWorkingLoader,
 		focusActiveEditorArea: () => {},
 	} as unknown as InteractiveModeContext;
-	return { ctx, clearWorkingLoader };
+	return { ctx, loader };
 }
 
 /** How each blocking presenter is opened, then closed without an answer. */
@@ -94,24 +100,24 @@ describe("a hook UI waiting on the user is not the agent working", () => {
 
 	for (const name of Object.keys(PRESENTERS).sort()) {
 		it(`${name} rests the working loader on an idle session`, async () => {
-			const { ctx, clearWorkingLoader } = host(false);
+			const { ctx, loader } = host(false);
 			const controller = new ExtensionUiController(ctx);
 			const abort = new AbortController();
 
 			const pending = PRESENTERS[name](controller, abort.signal);
-			expect(clearWorkingLoader).toHaveBeenCalledTimes(1);
+			expect(loader.mounted).toBe(false);
 
 			abort.abort();
 			await pending;
 		});
 
 		it(`${name} leaves the loader alone mid-turn`, async () => {
-			const { ctx, clearWorkingLoader } = host(true);
+			const { ctx, loader } = host(true);
 			const controller = new ExtensionUiController(ctx);
 			const abort = new AbortController();
 
 			const pending = PRESENTERS[name](controller, abort.signal);
-			expect(clearWorkingLoader).not.toHaveBeenCalled();
+			expect(loader.mounted).toBe(true);
 
 			abort.abort();
 			await pending;
