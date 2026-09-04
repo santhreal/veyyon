@@ -314,9 +314,9 @@ describe("the two browser bundles", () => {
 	 * is the claim the title actually makes.
 	 */
 	it("bind the shared store instead of defining their own", async () => {
-		const packages = path("../..");
+		const repoRoot = path("../../..");
 		for (const file of ["clients/web/src/lib/theme.ts", "apps/stats/src/client/useSystemTheme.ts"]) {
-			const text = await Bun.file(`${packages}/${file}`).text();
+			const text = await Bun.file(`${repoRoot}/${file}`).text();
 
 			expect(moduleSpecifiersIn(text), file).toContain("@veyyon/utils/theme-store");
 		}
