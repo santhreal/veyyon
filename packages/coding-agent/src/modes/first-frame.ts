@@ -190,7 +190,7 @@ export function paintFirstFrame(version: string): FirstFrame {
 	// resting zone's exact row count, and `mountComposerZone` swaps its own
 	// chrome into those rows around this same editor rather than arriving
 	// under them.
-	mountLaunchComposer({ addChild: child => children.push(child) }, editorContainer);
+	mountLaunchComposer({ addChild: child => children.push(child) }, editorContainer, () => editor.getText());
 	for (const child of children) ui.addChild(child);
 	// Keystrokes have somewhere to land from here on: `TUI` forwards input to
 	// the focused component, and the focused component is the composer the

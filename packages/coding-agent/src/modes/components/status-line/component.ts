@@ -20,7 +20,12 @@ import type { OAuthAccountIdentity } from "../../../session/auth-storage";
 import { computeNonMessageBreakdown } from "../../../session/non-message-tokens";
 import { limitMatchesActiveAccount } from "../../../slash-commands/helpers/active-oauth-account";
 import { AUTO_THINKING } from "../../../thinking";
-import { type ActiveRepoContext, resolveActiveRepoContextSync } from "../../../utils/active-repo-context";
+import {
+	type ActiveRepoContext,
+	resolveActiveRepoContextSync,
+	resolveWorktreeContext,
+	type WorktreeContext,
+} from "../../../utils/active-repo-context";
 import * as git from "../../../utils/git";
 import { type LaunchFactsUpdate, readLaunchFacts, recordLaunchFacts } from "../../launch-facts";
 import { sanitizeStatusText } from "../../shared";
@@ -210,27 +215,6 @@ interface ActiveRepoCache {
 	effectiveGitCwd: string;
 	/** Project + worktree dir name when `projectDir` is a linked worktree, else null. */
 	worktree: WorktreeContext | null;
-}
-
-interface WorktreeContext {
-	/** Primary-checkout (project) name shown by the path segment. */
-	projectName: string;
-	/** Worktree directory name — suppressed from the path when it equals the branch. */
-	worktreeName: string;
-}
-
-/**
- * Project + worktree-dir names when `cwd` is a linked git worktree, else null.
- * The project name comes from the shared primary checkout; bare-repo worktrees
- * resolve to the shared `foo.git` dir, so a trailing `.git` is stripped.
- */
-function resolveWorktreeContext(cwd: string): WorktreeContext | null {
-	const worktree = git.repo.linkedWorktreeSync(cwd);
-	if (!worktree) return null;
-	const base = path.basename(worktree.primaryRoot);
-	const projectName = base.endsWith(".git") ? base.slice(0, -4) : base;
-	if (!projectName) return null;
-	return { projectName, worktreeName: path.basename(worktree.root) };
 }
 
 /**

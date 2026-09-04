@@ -26,6 +26,7 @@ import { getEditorTheme, initTheme } from "@veyyon/coding-agent/modes/theme/them
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { resolveActiveRepoContextSync, resolveWorktreeContext } from "@veyyon/coding-agent/utils/active-repo-context";
 import { branchLabelFromFiles, HEAD_REF_PREFIX, LOCAL_BRANCH_PREFIX } from "@veyyon/coding-agent/utils/git-head";
 import type { Component } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/tui/utils";
@@ -103,9 +104,22 @@ function launchRows(width: number): string[] {
 	return launchComposer().flatMap(child => child.render(width));
 }
 
+/** The worktree context the card resolves, the same way the live row does at its first paint. */
+function launchWorktree() {
+	const projectDir = getProjectDir();
+	const activeRepo = resolveActiveRepoContextSync(projectDir);
+	const effectiveGitCwd = activeRepo?.repoRoot ?? projectDir;
+	return activeRepo ? null : resolveWorktreeContext(effectiveGitCwd);
+}
+
 /** The location segment at the budget the preset sets for it, before any row competes for width. */
 function budgetedLocation(): string {
-	return renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
+	return renderLocation({
+		projectDir: getProjectDir(),
+		worktree: launchWorktree(),
+		branch: branchLabelFromFiles(getProjectDir()),
+		options: resolveLocationOptions(),
+	}).content;
 }
 
 /**
@@ -269,8 +283,16 @@ describe("the launch composer", () => {
 	it("honors a path budget the session overrides the preset with", () => {
 		settings.set("statusLine.segmentOptions", { path: { maxLength: 12 } });
 		try {
-			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
-			expect(visibleWidth(located)).toBeLessThanOrEqual(12);
+			const rendered = renderLocation({
+				projectDir: getProjectDir(),
+				worktree: launchWorktree(),
+				branch: branchLabelFromFiles(getProjectDir()),
+				options: resolveLocationOptions(),
+			});
+			// The budget governs the path text; the segment icon rides beside it, so the
+			// row-wide bound is the budget plus the cells the icon spends.
+			expect(visibleWidth(rendered.content)).toBeLessThanOrEqual(12 + rendered.pin);
+			const located = rendered.content;
 			const row = launchRows(100).find(candidate => candidate.includes(located));
 			expect(row).toBeDefined();
 			expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
@@ -296,7 +318,12 @@ describe("the launch composer", () => {
 	it("leaves the branch off the card when the row will not show one", () => {
 		settings.set("git.enabled", false);
 		try {
-			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
+			const located = renderLocation({
+				projectDir: getProjectDir(),
+				worktree: launchWorktree(),
+				branch: null,
+				options: resolveLocationOptions(),
+			}).content;
 			const row = launchRows(100).find(candidate => candidate.includes(located));
 			expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
 			// Nothing after the location is a branch: no separator-then-label, and

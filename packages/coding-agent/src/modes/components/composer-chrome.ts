@@ -15,6 +15,7 @@ import type { Component } from "@veyyon/tui/tui";
 import { truncateToWidth } from "@veyyon/tui/utils";
 import { getProjectDir } from "@veyyon/utils/dirs";
 import { clampLow } from "@veyyon/utils/math";
+import { estimateTokensFromText } from "@veyyon/utils/tokens";
 import { isThresholdCompactionDisabled } from "../../config/compaction-strategy";
 import { settings } from "../../config/settings-instance";
 import { branchLabelFromFiles } from "../../utils/git-head";
@@ -245,10 +246,14 @@ export function mountComposerZone(ui: { addChild(component: Component): void }, 
  * Returns the number of root children mounted, for the same reason
  * {@link mountComposerZone} does.
  */
-export function mountLaunchComposer(ui: { addChild(component: Component): void }, editorContainer: Component): number {
+export function mountLaunchComposer(
+	ui: { addChild(component: Component): void },
+	editorContainer: Component,
+	readDraft?: () => string,
+): number {
 	ui.addChild(new LaunchComposerHead());
 	ui.addChild(editorContainer);
-	ui.addChild(new LaunchComposerFoot());
+	ui.addChild(new LaunchComposerFoot(readDraft));
 	return 3;
 }
 
@@ -262,7 +267,6 @@ export class QuietZoneLine implements Component, MouseRoutable {
 	/**
 	 * Optional click handler for the line's content. `col` is 0-based within
 	 * the line as the provider rendered it (the indent is already subtracted),
-	 * matching the coordinate space of StatusLineComponent.quietSegmentAt.
 	 */
 	onClick?: (col: number) => void;
 
@@ -395,6 +399,22 @@ export function computeEditorMaxHeight(terminalRows: number): number {
 export const COMPOSER_PLACEHOLDER = "ask anything · / for commands";
 
 /**
+ * The footline's right zone at rest: the live draft's token estimate, gold, so
+ * the row the card paints and the row the mode mounts state the same thing
+ * about the same editor. Blank and bare slash-command drafts render nothing,
+ * exactly as the mode's zone does.
+ */
+export function draftTokenZone(draft: string | undefined): string | null {
+	const trimmed = (draft ?? "").trim();
+	if (trimmed.length === 0) return null;
+	// A bare slash-command token ("/se…") is menu navigation, not a draft —
+	// counting its characters is noise. The counter returns the moment the
+	// command takes arguments or the text is prose.
+	if (trimmed.startsWith("/") && !/\s/.test(trimmed)) return null;
+	return theme.fg("matchHighlight", `~${estimateTokensFromText(draft ?? "")} tok`);
+}
+
+/**
  * The launch composer's chrome above the input: an empty status row, the
  * hairline, and one pad row.
  *
@@ -440,6 +460,12 @@ export class LaunchComposerHead implements Component {
  * written was missing here and nothing failed.
  */
 export class LaunchComposerFoot implements Component {
+	#readDraft: () => string;
+
+	constructor(readDraft?: () => string) {
+		this.#readDraft = readDraft ?? (() => "");
+	}
+
 	render(width: number): string[] {
 		const w = Math.max(1, width);
 		const inset = " ".repeat(COMPOSER_INSET_COLS);
@@ -496,14 +522,16 @@ export class LaunchComposerFoot implements Component {
 				// hands the live provider (terminal minus the inset), so both rows shed at the
 				// same column and the handover moves nothing.
 				width: avail,
+				expansion: 0,
 				// No focus badge and no run clock exist before a session: both are live state the
 				// row only positions, and an empty string is how the composer spells their absence.
 				badge: "",
 				clock: "",
-				// The path expansion is a click-driven animation on the live row. Nothing has been
-				// clicked yet, so the row is at rest and the expanded half is never consulted.
-				expansion: 0,
 				expandedHalf: "path",
+				// The right zone is the draft's token estimate, read from the same editor
+				// the mode goes on mounting, so the row keeps it through the handover
+				// instead of growing it a second later.
+				locationRight: draftTokenZone(this.#readDraft()),
 				// `null` is "nothing worth a row", which the live footline answers by drawing no
 				// row at all. The card owns a fixed four-row block, so its row is blank instead.
 			}).line ?? ""

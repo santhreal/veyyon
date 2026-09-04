@@ -30,6 +30,28 @@ export interface ActiveRepoContext {
 	source: "single-direct-child-repo";
 }
 
+/** Project + worktree dir names when a cwd is a linked git worktree, else null. */
+export interface WorktreeContext {
+	/** Primary-checkout (project) name shown by the path segment. */
+	projectName: string;
+	/** Worktree directory name — suppressed from the path when it equals the branch. */
+	worktreeName: string;
+}
+
+/**
+ * Project + worktree-dir names when `cwd` is a linked git worktree, else null.
+ * The project name comes from the shared primary checkout; bare-repo worktrees
+ * resolve to the shared `foo.git` dir, so a trailing `.git` is stripped.
+ */
+export function resolveWorktreeContext(cwd: string): WorktreeContext | null {
+	const worktree = repo.linkedWorktreeSync(cwd);
+	if (!worktree) return null;
+	const base = path.basename(worktree.primaryRoot);
+	const projectName = base.endsWith(".git") ? base.slice(0, -4) : base;
+	if (!projectName) return null;
+	return { projectName, worktreeName: path.basename(worktree.root) };
+}
+
 function compareEntryNames(left: fs.Dirent, right: fs.Dirent): number {
 	if (left.name < right.name) return -1;
 	if (left.name > right.name) return 1;
