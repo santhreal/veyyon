@@ -100,6 +100,23 @@
 
 ### Fixed
 
+- `/login` for a provider that takes a pasted API key (OpenAI Platform, Groq, xAI and every other key provider) shows the dashboard where a key is obtained and prompts for the paste, instead of opening a platform login page in the browser as if it were an OAuth sign-in; the setup wizard likewise neither opens nor copies that URL.
+- The `/login` picker prints `api key` or `browser login` beside every provider, and the two OpenAI rows read `OpenAI Platform` and `ChatGPT (Codex subscription)`, so a key paste and a subscription sign-in are told apart before one is chosen.
+- `vey auth-broker login <provider>` prints `Get an API key at:` for a key provider instead of `Open this URL in your browser:`.
+- The RPC `open_url` login request carries `credential` (`"api-key"` or `"oauth"`) so a host opens only the URL a flow waits on; `RpcClient.login`'s `onOpenUrl` receives it as a fourth argument.
+- Cancelling or failing a sign-in in the setup wizard clears the provider search that started it, so the next keystroke begins a new search rather than appending to the old one and matching nothing.
+- Tool renderers sanitize raw tabs and shorten embedded home directory paths across error, output, and fallback views.
+- Print mode exits with code 130 rather than 1 when a turn is cancelled or aborted.
+- The web search command exits with code 2 on missing or invalid query arguments.
+- The TTSR command exits with code 2 on missing required subcommand parameters or unrecognized actions.
+- The shell command exits with code 2 when invoked without an interactive terminal.
+- CLI file argument processing reads attachments via portable node:fs promises rather than runtime-specific file methods.
+- The subagent HUD retains the model badge for running tasks without a description when space is available, rather than dropping it against an unused description floor.
+- Deleting a session in the session selector removes it from the folder and all-projects lists so toggling scope does not restore the deleted entry.
+- ModelSelectorPanel displays 'No matching models' when an active query yields zero results instead of the unprompted 'No models available' login hint.
+- The model browser replaces a Bun ANSI-stripping call with the portable node:util helper on disabled model rows.
+- The model picker avoids re-fetching and re-sorting the catalog on every query keystroke.
+- The thinking effort selector preselects the default row when initialized without a level override.
 - `veyyon auth-gateway serve` honours `accounts.loadBalancing`: with it off, one account per provider serves every request the gateway forwards, where before the gateway rotated on each of the several credential reads a single request makes.
 - An autoswarm arm's model switch is ephemeral: quitting mid-arm and resuming the session no longer opens on the arm's model with nothing to restore the session's own.
 - An overlay box narrower than six columns no longer draws a title wider than its own border.

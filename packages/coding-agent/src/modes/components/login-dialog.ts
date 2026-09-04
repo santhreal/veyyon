@@ -1,3 +1,5 @@
+import { getLoginCredential } from "@veyyon/ai/oauth";
+import type { LoginCredential } from "@veyyon/ai/registry/types";
 import {
 	type Component,
 	getKeybindings,
@@ -66,12 +68,14 @@ export class LoginDialogComponent implements Component {
 	#input: Input;
 	#tui: TUI;
 	#title: string;
+	/** What this provider's login asks for; decides whether an `onAuth` URL is launched or shown. */
+	#credential: LoginCredential;
 	#abortController = new AbortController();
 	#inputResolver?: (value: string) => void;
 	#inputRejecter?: (error: Error) => void;
 	#auth?: AuthState;
-	#status?: string;
 	#prompt?: PromptState;
+	#status?: string;
 	/**
 	 * What Esc does to the prompt on screen. `cancel` aborts the whole login, which is right while a
 	 * flow is still waiting for a credential. `skip` answers the question with nothing, for the
@@ -94,6 +98,7 @@ export class LoginDialogComponent implements Component {
 		// logout dialog use. Reading the browser-login table here printed a raw slug (`Login to groq`)
 		// for every provider that authenticates with a pasted key, since that table has no row for one.
 		this.#title = `Login to ${formatProviderName(providerId)}`;
+		this.#credential = getLoginCredential(providerId);
 		this.#getTerminalRows = options?.getTerminalRows ?? (() => process.stdout.rows || 40);
 		this.#input = new Input();
 		this.#input.onSubmit = () => {
@@ -171,6 +176,10 @@ export class LoginDialogComponent implements Component {
 		};
 		const auth = this.#auth;
 		if (auth) {
+			if (this.#credential === "api-key") {
+				// A dashboard where a key is obtained, not a page this login waits on.
+				say(theme.fg("dim", "Get an API key at"));
+			}
 			say(theme.fg("accent", auth.url));
 			const clickHint = process.platform === "darwin" ? "Cmd+click to open" : "Ctrl+click to open";
 			body.push(theme.fg("dim", `\x1b]8;;${auth.url}\x07${clickHint}\x1b]8;;\x07`));
@@ -260,12 +269,18 @@ export class LoginDialogComponent implements Component {
 	 * truncation-safe copy target (viewport clipping on a long authorize URL silently drops trailing
 	 * OAuth query parameters, e.g. `code_challenge_method=S256`). The OSC 8 hyperlink carries the full
 	 * URL for terminals that support click-through.
+	 *
+	 * The browser is launched only for a login that waits on it. An API-key login reports the
+	 * dashboard where a key is obtained; launching that opened a platform login page on top of the
+	 * paste prompt, so choosing "OpenAI" read as starting an OAuth login instead of pasting a key.
 	 */
 	showAuth(url: string, instructions?: string, launchUrl?: string): void {
 		this.#auth = { url, ...(launchUrl ? { launchUrl } : {}), ...(instructions ? { instructions } : {}) };
 		this.#tui.requestRender();
-		// Best-effort: a relayout must never open a second tab.
-		openPath(url);
+		if (this.#credential === "oauth") {
+			// Best-effort: a relayout must never open a second tab.
+			openPath(url);
+		}
 	}
 
 	/**

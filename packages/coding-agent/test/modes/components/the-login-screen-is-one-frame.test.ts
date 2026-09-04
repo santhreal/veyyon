@@ -151,7 +151,8 @@ describe("the login screen is one frame", () => {
 	});
 
 	it("draws one authorization block however many times the flow reports it", () => {
-		const { dialog, rows, opened } = makeDialog();
+		// A browser login: the URL is one the flow waits on, so each report opens it.
+		const { dialog, rows, opened } = makeDialog("anthropic");
 		dialog.showAuth("https://auth.example.test/authorize?code_challenge_method=S256", "Approve the request");
 		dialog.showAuth("https://auth.example.test/authorize?code_challenge_method=S256", "Approve the request");
 
