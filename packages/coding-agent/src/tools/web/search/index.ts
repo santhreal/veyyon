@@ -145,13 +145,14 @@ async function executeSearch(
 	_toolCallId: string,
 	params: SearchQueryParams,
 	options: ExecuteSearchOptions,
-): Promise<{ content: Array<{ type: "text"; text: string }>; details: SearchRenderDetails }> {
+): Promise<{ content: Array<{ type: "text"; text: string }>; details: SearchRenderDetails; isError?: boolean }> {
 	const { authStorage, sessionId, signal, resolveProviderTextTransform } = options;
 	const selection = selectSearchProviders(params.provider);
 	if ("refusal" in selection) {
 		return {
 			content: [{ type: "text" as const, text: `Error: ${selection.refusal}` }],
 			details: { response: { provider: "none", sources: [] }, error: selection.refusal },
+			isError: true,
 		};
 	}
 	const candidates = selection.candidates;
@@ -241,6 +242,7 @@ async function executeSearch(
 		return {
 			content: [{ type: "text" as const, text: `Error: ${message}` }],
 			details: { response: { provider: chosen ?? "none", sources: [] }, error: message },
+			isError: true,
 		};
 	}
 
@@ -257,6 +259,7 @@ async function executeSearch(
 			response: { provider: lastFailure?.provider.id ?? lastProvider?.id ?? "none", sources: [] },
 			error: message,
 		},
+		isError: true,
 	};
 }
 

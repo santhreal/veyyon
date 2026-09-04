@@ -937,12 +937,23 @@ function isAnsweredBatchLedgerNotice(messages: AgentMessage[], index: number, me
  * demotion and a failed format conversion are decided later, by the block that
  * drew them, and reach the sentence through the record that block keeps.
  */
+const imageVisibilityCache = new WeakMap<
+	ToolResultMessage,
+	{ sourceContent: unknown; notice: string | undefined; stamped: ToolResultMessage }
+>();
+
 function statePlacedImageVisibility(message: ToolResultMessage): ToolResultMessage {
 	const images = message.content.filter(block => block.type === "image").length;
 	if (images === 0) return message;
 	const notice = imageVisibilityNotice(imageDisplayStateForCall(message.toolCallId, images), images);
 	if (!notice) return message;
-	return { ...message, content: message.content.concat([{ type: "text", text: notice }]) };
+	const cached = imageVisibilityCache.get(message);
+	if (cached && cached.sourceContent === message.content && cached.notice === notice) {
+		return cached.stamped;
+	}
+	const stamped: ToolResultMessage = { ...message, content: [...message.content, { type: "text", text: notice }] };
+	imageVisibilityCache.set(message, { sourceContent: message.content, notice, stamped });
+	return stamped;
 }
 
 interface CachedBashExecution {
