@@ -270,6 +270,7 @@ describe("a stale tool result never speaks as the assistant", () => {
 
 	it("repairs a Codex orphan as a user note", async () => {
 		const body = {
+			model: "gpt-5-codex",
 			input: [
 				{
 					type: "function_call_output",

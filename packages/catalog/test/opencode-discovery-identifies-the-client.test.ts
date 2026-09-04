@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { FetchImpl, ModelManagerOptions } from "@veyyon/catalog/provider-models/openai-compat";
+import type { ModelManagerOptions } from "@veyyon/catalog/model-manager";
 import * as openaiCompat from "@veyyon/catalog/provider-models/openai-compat";
-import type { Api } from "@veyyon/catalog/types";
+import type { Api, FetchImpl } from "@veyyon/catalog/types";
 import { getOpenCodeUserAgent } from "@veyyon/catalog/wire/opencode-headers";
 
 /**
