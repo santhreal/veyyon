@@ -197,18 +197,25 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 
 	/**
 	 * Opens the autoswarm setup console and resolves to the chosen configuration,
-	 * or to null when the user leaves without starting. `prefill` is whatever was
-	 * typed after the command, so `/autoswarm make startup faster` lands in the
-	 * goal field rather than being parsed as arguments.
+	 * or to null when the user leaves without starting. `goalText` is what was
+	 * typed on purpose as the goal: after `goal`, or anything after the command
+	 * when no session exists yet, so `/autoswarm make startup faster` lands in
+	 * the goal field rather than being parsed as arguments. Over a live session
+	 * the field opens on that session's goal; free text is context for the
+	 * resume, and prefilling it here made Enter overwrite the goal with it.
 	 */
-	async function openSwarmSetupConsole(ctx: ExtensionContext, prefill: string): Promise<SwarmSetupResult | null> {
+	async function openSwarmSetupConsole(
+		ctx: ExtensionContext,
+		goalText: { explicit: string | null; free: string },
+	): Promise<SwarmSetupResult | null> {
 		const runtime = getRuntime(ctx);
 		const storage = await openAutoresearchStorageIfExists(ctx.cwd);
 		const session = storage?.getActiveSessionForBranch(await tryReadBranch(ctx.cwd)) ?? null;
+		const goal = goalText.explicit ?? (session ? (session.goal ?? "") : goalText.free || (runtime.goal ?? ""));
 		// Open on what this branch is already doing, so reconfiguring a live swarm
 		// shows its real breadth instead of the default.
 		const model = new SwarmSetupModel({
-			goal: prefill.length > 0 ? prefill : (session?.goal ?? runtime.goal ?? ""),
+			goal,
 			breadth: session?.breadth ?? runtime.pendingSwarm?.breadth ?? DEFAULT_SWARM_BREADTH,
 			attempts: session?.attempts ?? runtime.pendingSwarm?.attempts ?? 1,
 			certify: session?.certify ?? runtime.pendingSwarm?.certify ?? true,
@@ -290,12 +297,12 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			return;
 		}
 
-		// Autoswarm is configured in a console rather than through arguments, so
-		// whatever was typed after the command prefills the goal it opens with.
-		// After `goal`, that is the text and not the word: `freeText` has it cut.
+		// Autoswarm is configured in a console rather than through arguments. The
+		// console decides what the typed text is: the goal of a session that does
+		// not exist yet, or context for resuming one that does.
 		let swarmSetup: SwarmSetupResult | null = null;
 		if (spec.swarm) {
-			swarmSetup = await openSwarmSetupConsole(ctx, freeText);
+			swarmSetup = await openSwarmSetupConsole(ctx, { explicit: explicitGoal, free: trimmed });
 			if (!swarmSetup) {
 				// The command is already in the transcript as the user's line; with
 				// nothing under it, Escape reads as a run that never started rather
@@ -327,7 +334,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		// DB if it already exists; the empty-state path must not create one.
 		const existingStorage = await openAutoresearchStorageIfExists(ctx.cwd);
 		const existingSession = existingStorage?.getActiveSessionForBranch(branchResult.branchName) ?? null;
-		const resumeContext = swarmSetup?.goal ?? (explicitGoal === null ? trimmed : "");
+		const resumeContext = explicitGoal === null ? trimmed : "";
 		const branchStatusLine = branchResult.branchName
 			? branchResult.created
 				? `Created and checked out dedicated git branch \`${branchResult.branchName}\` before resuming.`
@@ -335,9 +342,12 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			: "Continuing on the current branch — no autoresearch branch was created.";
 
 		if (existingSession && existingStorage) {
-			// Only a goal typed on purpose is written. Free text reaches the model
-			// as resume context, with the stored goal left as it was.
-			const deliberateGoal = swarmSetup?.goal ?? explicitGoal;
+			// Only a goal typed on purpose is written: `goal <text>`, or a console
+			// goal field that left the console different from the stored goal.
+			// Free text reaches the model as resume context, with the stored goal
+			// left as it was.
+			const consoleGoal = swarmSetup && swarmSetup.goal !== (existingSession.goal ?? "") ? swarmSetup.goal : null;
+			const deliberateGoal = consoleGoal ?? explicitGoal;
 			if (deliberateGoal) existingStorage.updateSession(existingSession.id, { goal: deliberateGoal });
 			else if (trimmed.length > 0) {
 				ctx.ui.notify(

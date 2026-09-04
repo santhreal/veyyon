@@ -144,8 +144,10 @@ function makeCtx(cwd: string, harness: Harness, surface: Surface): ExtensionCont
 			): Promise<T> => {
 				const settled: Array<{ value: T }> = [];
 				// The real theme the suite installed: the setup console paints through
-				// `theme.fg`, so a bare object closes the console on a TypeError.
-				const component = factory({ requestRender: (): void => {} }, theme, {}, (result: T) => {
+				// `theme.fg`, so a bare object closes the console on a TypeError. The
+				// run screen sizes itself from the terminal minus the pinned composer.
+				const tui = { requestRender: (): void => {}, terminal: { rows: 40, columns: 100 }, pinnedFooterRows: 5 };
+				const component = factory(tui, theme, {}, (result: T) => {
 					if (settled.length === 0) settled.push({ value: result });
 				});
 				surface.screens.push([...component.render(100)]);
@@ -439,19 +441,55 @@ describe("a loop command never destroys what it was asked to show", () => {
 	it("leaves the stored goal alone on any free text, and says which word changes it", async () => {
 		// The class, not the one word: every unrecognized argument reached the
 		// same destructive write. `status` was merely the one a user types first.
+		// On autoswarm the write hid one layer down: the text prefilled the
+		// console's goal field, and the Enter that starts the run stored it.
+		await openSessionAtHead(cwdDir.path());
+		for (const name of ["autoresearch", "autoswarm"]) {
+			const harness = buildHarness();
+			const surface = newSurface();
+			const ctx = makeCtx(cwdDir.path(), harness, surface);
+
+			for (const word of ["status", "state", "show", "runs", "resume", "--help", "make it slower"]) {
+				// `status` opens the run screen, which Escape closes; every other word
+				// on autoswarm opens the console, which Enter starts.
+				surface.keys = word === "status" ? ["\x1b"] : ["\r"];
+				await harness.commands.get(name)?.handler(word, ctx);
+				const storage = await openAutoresearchStorage(cwdDir.path());
+				expect(storage.getActiveSessionForBranch("autoresearch/test")?.goal).toBe("make it faster");
+			}
+			// Free text is not silently dropped either: it reaches the model as resume
+			// context, and the user is told which word rewrites the goal.
+			expect(harness.messages.join("\n")).toContain("make it slower");
+			expect(harness.notices.map(notice => notice.text).join("\n")).toContain(`/${name} goal <text>`);
+		}
+	});
+
+	it("opens the swarm console on the session's own goal, not on the text typed after the command", async () => {
 		const harness = buildHarness();
-		const ctx = makeCtx(cwdDir.path(), harness, newSurface());
+		const surface = newSurface();
+		surface.keys = ["\r"];
+		const ctx = makeCtx(cwdDir.path(), harness, surface);
 		await openSessionAtHead(cwdDir.path());
 
-		for (const word of ["status", "state", "show", "runs", "resume", "--help", "make it slower"]) {
-			await harness.commands.get("autoresearch")?.handler(word, ctx);
-			const storage = await openAutoresearchStorage(cwdDir.path());
-			expect(storage.getActiveSessionForBranch("autoresearch/test")?.goal).toBe("make it faster");
-		}
-		// Free text is not silently dropped either: it reaches the model as resume
-		// context, and the user is told which word rewrites the goal.
-		expect(harness.messages.join("\n")).toContain("make it slower");
-		expect(harness.notices.map(notice => notice.text).join("\n")).toContain("/autoresearch goal <text>");
+		await harness.commands.get("autoswarm")?.handler("continue where it left off", ctx);
+
+		const consoleFrame = stripAnsi(surface.screens[0]?.join("\n") ?? "");
+		expect(consoleFrame).toContain("Goal          make it faster");
+		expect(consoleFrame).not.toContain("continue where it left off");
+	});
+
+	it("writes the goal a swarm console left different from the stored one", async () => {
+		const harness = buildHarness();
+		const surface = newSurface();
+		const ctx = makeCtx(cwdDir.path(), harness, surface);
+		await openSessionAtHead(cwdDir.path());
+		// Backspace over "faster", type "slower", Enter.
+		surface.keys = [...Array.from({ length: 6 }, () => "\x7f"), ..."slower", "\r"];
+
+		await harness.commands.get("autoswarm")?.handler("", ctx);
+
+		const storage = await openAutoresearchStorage(cwdDir.path());
+		expect(storage.getActiveSessionForBranch("autoresearch/test")?.goal).toBe("make it slower");
 	});
 
 	it("rewrites the goal only where it is typed on purpose", async () => {

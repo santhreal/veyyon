@@ -103,6 +103,8 @@
 - Turning an autoresearch or autoswarm loop off while it is paused clears the pause, so the status row stops naming a branch to return to and reports the mode as off.
 - Leaving the autoswarm setup console with Escape reports that nothing was started, where it returned to the prompt without a word.
 - Pressing Escape during an autoresearch or autoswarm turn pauses the loop until the next message, where a measurement waiting to be logged made the loop resume itself on the very next turn and the interrupt did nothing.
+- `/autoswarm <text>` over a live session opens the console on the session's stored goal, where it prefilled the typed text and Enter overwrote the goal with a message meant as context for the resume.
+- A slash command that opens a console or a prompt while the agent is idle no longer sits under the `Working…` loader and its elapsed clock; a prompt raised mid-turn keeps the turn's loader.
 - The autoswarm setup console's breadth, attempts and certification answers outrank the `breadth`, `attempts` and `certify` arguments the model passes to `init_experiment`, where a guessed `breadth: 1` turned a configured swarm into a serial loop; the tool's reply states the configuration in force and that the console set it.
 - A metric unit that is a word is spaced off the number (`1,596,000 comparisons`) while a symbol or abbreviation stays attached (`192.78ms`), and a `metric_unit` that repeats the metric's own name is dropped, where every surface printed `1,596,000comparisons`.
 - The autoresearch status row pluralizes its run and arm counts (`1 run`, `2 arms`), where it read `1 runs`.

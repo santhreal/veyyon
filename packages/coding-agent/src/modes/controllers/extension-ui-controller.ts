@@ -43,6 +43,7 @@ import { setSessionTerminalTitle, setTerminalTitle } from "../../utils/title-gen
 export type ExtensionUiControllerContext = Pick<
 	InteractiveModeContext,
 	| "addAutocompleteProvider"
+	| "clearWorkingLoader"
 	| "clearTransientSessionUi"
 	| "collabHost"
 	| "editor"
@@ -1162,6 +1163,7 @@ export class ExtensionUiController {
 			resolve(result);
 		};
 
+		this.#restWorkingLoaderWhileIdle();
 		Promise.try(() => factory(this.ctx.ui, theme, keybindings, close)).then(c => {
 			if (closed) {
 				c.dispose?.();
@@ -1303,6 +1305,7 @@ export class ExtensionUiController {
 			}
 			started = true;
 			this.#dialogActive = true;
+			this.#restWorkingLoaderWhileIdle();
 			try {
 				hide = present(settle);
 			} catch (error) {
@@ -1326,6 +1329,18 @@ export class ExtensionUiController {
 			startPresentation();
 		}
 		return promise;
+	}
+
+	/**
+	 * A hook UI that waits on the user is not the agent working. A slash command
+	 * mounts the `Working…` loader on submit and keeps it until its handler
+	 * returns, so a command that opens a console sat under `Working… · 0:19
+	 * ⟦esc⟧` for as long as the user read the console. Mid-turn the loader is
+	 * the turn's and stays: a tool asking a question is still a turn in flight.
+	 */
+	#restWorkingLoaderWhileIdle(): void {
+		if (this.ctx.session.isStreaming) return;
+		this.ctx.clearWorkingLoader();
 	}
 
 	#advanceDialogQueue(): void {
