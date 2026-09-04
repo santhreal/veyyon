@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "52bfaf4815e4023187694ab568c8597d634ec57a",
+	"generatedFrom": "553013c0259dd5ed1a64a4a8bb5483ea8909774f",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -69,7 +69,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 5032,
+	"changedCount": 5033,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -1534,6 +1534,7 @@
 		"packages/coding-agent/test/approval-resolve-yolo-vs-deny.test.ts",
 		"packages/coding-agent/test/approval-truncate-for-prompt-pure-matrix.test.ts",
 		"packages/coding-agent/test/architecture/a-contract-depends-on-nothing-in-this-repository.test.ts",
+		"packages/coding-agent/test/architecture/a-lazy-tool-factory-names-a-module-that-is-there.test.ts",
 		"packages/coding-agent/test/architecture/a-mode-that-is-not-the-terminal-does-not-import-the-terminal.test.ts",
 		"packages/coding-agent/test/architecture/a-settings-name-carries-information.test.ts",
 		"packages/coding-agent/test/architecture/a-tool-a-terminal-can-draw-a-gui-can-draw.test.ts",
