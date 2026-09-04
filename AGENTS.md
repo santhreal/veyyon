@@ -64,10 +64,12 @@ not a member of the root one.
 `plugins/*` is the optional layer: a member there contributes tools, modes or storage through the
 kernel's contribution registry, and the product runs with it absent. A plugin never imports another
 plugin.
-`contracts/*` is the interface layer: a member there has zero runtime dependencies on anything in
-this repository, which
-`packages/coding-agent/test/architecture/a-contract-depends-on-nothing-in-this-repository.test.ts`
-enforces by sweeping the directory rather than by naming its members.
+`contracts/*` is the interface layer: a member there imports nothing that runs. Its only admitted
+edge is `import type` from another contract, declared in its `dependencies`, with the contract graph
+acyclic; a shape one contract owns is imported, never re-declared. Every contract-to-contract pair is
+pinned by exact equality in
+`packages/coding-agent/test/architecture/a-contract-imports-only-a-contract-and-only-its-types.test.ts`,
+which enforces the rule by sweeping the directory rather than by naming its members.
 `contracts/tsconfig.workspace.json` and `packages/tsconfig.workspace.json` are shared TypeScript
 config, not packages; `natives/vendor` is vendored third-party code, not a first-party crate.
 `scripts/workspace-layout.ts` resolves the member list out of the root `package.json` and
