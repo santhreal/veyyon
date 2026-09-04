@@ -32,9 +32,17 @@ operator manual.
 |`packages/simulations`|Deterministic offline simulations driving real subsystems end to end (private)|
 |`crates/veyyon-ast`|Structural search, replace and code-block summaries over tree-sitter and ast-grep|
 |`crates/veyyon-conformance`|Whole-product conformance corpus and harness, on virtual clock, filesystem, terminal and network (test only, issue #877)|
+|`crates/veyyon-desktop`|The desktop front end binary: loads tokens and theme, opens the GPUI window, attaches to a GUI host (private)|
+|`crates/veyyon-desktop-kit`|Token-driven primitive kit for the desktop front end: buttons, fields, rows, cards, badges|
+|`crates/veyyon-desktop-model`|Desktop protocol model: host events, store, reducer, request registry, capabilities and persistence|
+|`crates/veyyon-desktop-motion`|Motion role table, spring integrator, easing curves, reduced-motion resolution and animator registry|
+|`crates/veyyon-desktop-scene`|Deterministic scene construction, headless rasterization and clutter metric evaluation (private)|
+|`crates/veyyon-desktop-surface`|The desktop surfaces: queue, session transcript, composer, run bar, right panel and terminal drawer|
+|`crates/veyyon-desktop-tokens`|Token file loaders and validators: scale, elevation, motion, ceilings, theme and the surface files, with hot reload|
 |`crates/veyyon-diff-kernel`|Line-comparison engine for unified diff, ported from GNU diff `compareseq` and `shift_boundaries`|
 |`crates/veyyon-glob`|Glob normalization, brace expansion, depth bounds and compilation|
 |`crates/veyyon-grep-kernel`|One compiled matcher over regex and PCRE2 for every search path|
+|`crates/veyyon-gpui`|The desktop front end's view of GPUI, vendored under `crates/vendor`|
 |`crates/veyyon-iso`|Copy-on-write filesystem isolation and change diffing (APFS clonefile, Linux overlayfs, Windows ProjFS)|
 |`crates/veyyon-keys`|Zero-copy parser for the Kitty keyboard protocol and legacy escape sequences|
 |`crates/veyyon-natives`|The napi addon: the only Rust surface TypeScript calls (grep, glob, text measurement, highlighting, clipboard, SIXEL)|
