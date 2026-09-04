@@ -14403,10 +14403,12 @@
 		"packages/coding-agent/src/tools/core/json-tree-render.ts": {
 			"old": "packages/coding-agent/src/tools/json-tree.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "9b07f0170f993a82c62230a30ee35e616d12e0b83d8e81121a4e5ac150cf582c",
+			"differs": "changed",
+			"group": "json-walk-split",
+			"reason": "The bounds, the scalar formatter and the one-line argument preview a `ToolView` card reads left this module for `json-tree-view.ts`, which loads without a theme or a tree-rail glyph; this module re-exports every one of them under its old name and keeps the terminal string walk unchanged.",
+			"hash": "3c7868f8f11bcbabcb62119e241973d1b1a238c84c12a5e34c1a38b8544f853a",
 			"mainHash": "ee433523f22c38f391a5f53e980c962ec046bc24132060de0d8740c65c99a3eb",
-			"structuralHash": "760d878a884f1a4fd85fb2e2d086f9b4fe3c8efbcfcd49a02fd783ccd0977f2f",
+			"structuralHash": "47e9c5bf571e09599751f0512c8057b5e626b5584a3a1b170617db1f3e2716b0",
 			"mainStructuralHash": "760d878a884f1a4fd85fb2e2d086f9b4fe3c8efbcfcd49a02fd783ccd0977f2f"
 		},
 		"packages/coding-agent/src/tools/core/jtd-to-json-schema.ts": {
