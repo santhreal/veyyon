@@ -252,7 +252,14 @@ export function createLogExperimentTool(
 			// The arm this result belongs to is over. Whatever comes next -- the next
 			// arm, triage, the next hypothesis -- runs on the session's own model
 			// until another `start_arm` says otherwise.
-			await leaveArm(options.pi, runtime);
+			const armExit = await leaveArm(options.pi, runtime);
+			if (armExit.strandedOn) {
+				// The next arm would otherwise be built on this arm's model and read
+				// as a comparison it is not.
+				warnings.push(
+					`The session could not be returned to its own model and is still on ${armExit.strandedOn}. Re-select your model before the next arm.`,
+				);
+			}
 
 			const experiment: ExperimentResult = {
 				runNumber: tentativeRun.id,

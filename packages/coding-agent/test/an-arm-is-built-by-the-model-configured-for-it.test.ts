@@ -154,6 +154,12 @@ interface Switcher {
 	calls: string[];
 	/** The model the session is on, as `models.current()` reports it. */
 	current(): Model | undefined;
+	/**
+	 * Refuse every later `setModel`, as a session does when the model it started
+	 * on loses its key mid-run. The enter succeeds and the restore is refused,
+	 * which one constructor-time flag cannot express.
+	 */
+	refuseFromNowOn(): void;
 }
 
 /**
@@ -180,7 +186,7 @@ function switcher(cwd: string, start: Model | undefined = modelNamed("session-de
 		current: () => current,
 		resolve: (spec: string) => CATALOG[spec],
 	});
-	return { api, ctx, calls, current: () => current };
+	return { api, ctx, calls, current: () => current, refuseFromNowOn: () => (accept = false) };
 }
 
 async function startArm(
@@ -493,12 +499,63 @@ describe("an arm is built by the model configured for it", () => {
 		const switching = switcher(freshRepo());
 		await enterArm(switching.ctx, switching.api, runtime, "a0", "glm");
 		expect(switching.current()?.id).toBe("glm");
-		expect(await leaveArm(switching.api, runtime)).toBe(true);
+		expect(await leaveArm(switching.api, runtime)).toEqual({ restored: true, strandedOn: null });
 		expect(switching.current()?.id).toBe("session-default");
 		expect(runtime.activeArm).toBeNull();
 		// Idempotent: leaving twice is not a second switch.
-		expect(await leaveArm(switching.api, runtime)).toBe(false);
+		expect(await leaveArm(switching.api, runtime)).toEqual({ restored: false, strandedOn: null });
 		expect(switching.calls).toEqual(["glm", "session-default"]);
+	});
+
+	it("keeps the arm and says where the session is when the restore is refused", async () => {
+		// `setModel` answers false when the model has no key, which a session can
+		// lose mid-run. Recording the restore as done would strand the user on the
+		// arm's model with nothing left that knows to put it back.
+		const runtime = createSessionRuntime();
+		const switching = switcher(freshRepo());
+		await enterArm(switching.ctx, switching.api, runtime, "a0", "glm");
+		switching.refuseFromNowOn();
+
+		expect(await leaveArm(switching.api, runtime)).toEqual({ restored: false, strandedOn: "GLM" });
+		// The session is where the refusal left it, and the arm still names it.
+		expect(switching.current()?.id).toBe("glm");
+		expect(runtime.activeArm?.arm).toBe("a0");
+		expect(runtime.activeArm?.restore?.id).toBe("session-default");
+	});
+
+	it("returns to the session model rather than to the arm a refusal stranded it on", async () => {
+		// The restore target survives the refusal, so the arm after it returns to
+		// the session's own model instead of recording `glm` as the way back.
+		const runtime = createSessionRuntime();
+		const switching = switcher(freshRepo());
+		await enterArm(switching.ctx, switching.api, runtime, "a0", "glm");
+		switching.refuseFromNowOn();
+		await leaveArm(switching.api, runtime);
+
+		const accepting = switcher(freshRepo(), modelNamed("glm"));
+		// Same runtime, a session whose provider came back.
+		const outcome = await enterArm(accepting.ctx, accepting.api, runtime, "a1", "sonnet");
+		expect(outcome.ok).toBe(true);
+		expect(runtime.activeArm?.restore?.id).toBe("session-default");
+		expect(accepting.current()?.id).toBe("sonnet");
+	});
+
+	it("refuses an arm on the session model while the session is stranded on another", async () => {
+		// An arm with no configured model builds on the session model. Starting it
+		// while a refusal holds the session on `glm` would report a comparison it
+		// did not make, so the call fails instead.
+		const runtime = createSessionRuntime();
+		const switching = switcher(freshRepo());
+		await enterArm(switching.ctx, switching.api, runtime, "a0", "glm");
+		switching.refuseFromNowOn();
+		await leaveArm(switching.api, runtime);
+
+		const outcome = await enterArm(switching.ctx, switching.api, runtime, "a1", undefined);
+		expect(outcome.ok).toBe(false);
+		if (outcome.ok) throw new Error("expected the stranded session to refuse the arm");
+		expect(outcome.error).toContain("SESSION-DEFAULT");
+		expect(outcome.error).toContain("GLM");
+		expect(switching.current()?.id).toBe("glm");
 	});
 
 	it("reads a database written before the arm-models column existed", async () => {
