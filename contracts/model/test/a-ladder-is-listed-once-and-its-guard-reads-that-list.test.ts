@@ -29,7 +29,15 @@ import {
 
 describe("a ladder is listed once and its guard reads that list", () => {
 	it("lists the six efforts least to most intensive", () => {
-		expect([...THINKING_EFFORTS]).toEqual(["minimal", "low", "medium", "high", "xhigh", "max"]);
+		expect([...THINKING_EFFORTS]).toEqual([
+			Effort.Minimal,
+			Effort.Low,
+			Effort.Medium,
+			Effort.High,
+			Effort.XHigh,
+			Effort.Max,
+		]);
+		expect(THINKING_EFFORTS.map(String)).toEqual(["minimal", "low", "medium", "high", "xhigh", "max"]);
 	});
 
 	it("recognises every effort and nothing else", () => {

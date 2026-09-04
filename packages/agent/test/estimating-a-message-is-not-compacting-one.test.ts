@@ -83,9 +83,16 @@ const PRUNING_CEILING = 195;
  * RE-MEASURED 2026-08-26: engine 302, down from 316; remote summarizer 209, down from 223. These are not
  * leaf ceilings — the engine's graph is the job it does — but a ceiling here is what stops a barrel edge
  * from coming back, which is how those 14 got there.
+ *
+ * RE-MEASURED 2026-09-04: engine 311, remote summarizer 218. The five new modules on both closures are
+ * the leaves of `contracts/model/src/` -- `effort.ts`, `model.ts`, `message.ts`, `service-tier.ts`,
+ * `stream-block.ts` -- carved out of `catalog/types.ts`, `catalog/effort.ts`, `ai/types.ts` and
+ * `ai/utils/block-symbols.ts`, which were already here and now re-export them. A contract imports nothing
+ * in this repository, so the growth is file count and no subtree; the barrel edge is still asserted by
+ * specifier below.
  */
-const COMPACTION_ENGINE_CEILING = 310;
-const REMOTE_SUMMARIZER_CEILING = 216;
+const COMPACTION_ENGINE_CEILING = 314;
+const REMOTE_SUMMARIZER_CEILING = 221;
 
 describe("the estimator is a leaf", () => {
 	it(`token-estimate reaches at most ${TOKEN_ESTIMATE_CEILING} modules`, () => {
