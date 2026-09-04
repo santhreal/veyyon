@@ -105,7 +105,7 @@ function collectShippedModules(): string[] {
  *
  * Walked over the WHOLE package rather than its `test/` directory. While the walk
  * was `<pkg>/test`, a suite sitting beside the module it tests counted for nothing,
- * and `packages/simulations` places its suites exactly there, so `harness.ts` read
+ * and `tests/simulations` places its suites exactly there, so `harness.ts` read
  * as unnamed while the scenario suite naming it sat next to it. `shippedModules`
  * already excludes `.test.` files, so widening this cannot make a test file look
  * like a shipped module.

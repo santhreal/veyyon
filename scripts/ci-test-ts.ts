@@ -243,7 +243,7 @@ export const fastWorkspacePackages = [
 	// Simulations drive a real AgentSession but need no native artifact, so they
 	// stay in the fast workspace job. Their 300ms watchdogs run sequentially
 	// inside the package through `workspaceTestParallelism` below.
-	"packages/simulations",
+	"tests/simulations",
 	// The scraper suites drive their handlers against a mocked `fetch` and never open a
 	// socket, so they need neither the native addon nor the network.
 	"plugins/web",
@@ -642,7 +642,7 @@ const workspacePackageExtraArgs: Record<string, string[]> = {
 };
 
 const workspacePackageParallelism: Readonly<Record<string, number>> = {
-	"packages/simulations": 1,
+	"tests/simulations": 1,
 };
 
 export function workspaceTestParallelism(pkg: string, requested: number): number {

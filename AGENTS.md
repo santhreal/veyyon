@@ -32,7 +32,7 @@ operator manual.
 |`plugins/mode-swarm`|Swarm orchestration extension|
 |`plugins/web`|Site scrapers that turn a URL into markdown: ~80 per-site handlers, the page loader escalation ladder and the Parallel extract client, running against host capabilities passed in rather than imported|
 |`packages/evals`|Every model and agent evaluation: the DeepSWE, Terminal-Bench 3.0 and TypeScript-edit suites, harness adapters, execution backends, run store, REST/SSE API and live dashboard (private)|
-|`packages/simulations`|Deterministic offline simulations driving real subsystems end to end (private)|
+|`tests/simulations`|Deterministic offline simulations driving real subsystems end to end (private)|
 |`natives/bridge/addon`|The napi addon: the only Rust surface TypeScript calls (grep, glob, text measurement, highlighting, clipboard, SIXEL)|
 |`natives/bridge/bindings`|Bindings for native text/image/grep operations|
 |`natives/code/ast`|Structural search, replace and code-block summaries over tree-sitter and ast-grep|

@@ -19,7 +19,8 @@
 			"natives/bridge/bindings",
 			"packages/*",
 			"plugins/*",
-			"python/veybot/web"
+			"python/veybot/web",
+			"tests/*"
 		],
 		"catalog": {
 			"@agentclientprotocol/sdk": "1.2.1",

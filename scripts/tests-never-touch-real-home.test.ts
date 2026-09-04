@@ -952,7 +952,7 @@ export function analyzeSource(file: string, rawSource: string): Violation[] {
  * one file nothing read.
  *
  * And not only `<member>/test`. That was the second half of the same blind spot: a suite that sits
- * beside the module it tests was read by nothing, and two of them do -- `packages/simulations` places
+ * beside the module it tests was read by nothing, and two of them do -- `tests/simulations` places
  * its scenarios beside their harness, and `python/veybot/web` places both of its suites in `src`.
  * The walk now crosses each member's whole tree and keeps a file that is a test or sits under a
  * `test` directory. Production modules stay out: `os.homedir()` in shipped code is how the product

@@ -20,5 +20,5 @@ Each directory under `src/` implements a simulation suite:
 
 ```sh
 export VEYYON_SANDBOX_REPO_ROOT="$(pwd -P)"
-bash scripts/test-sandbox/run.sh --rung=docker bun test ./packages/simulations/src/turn-sim
+bash scripts/test-sandbox/run.sh --rung=docker bun test ./tests/simulations/src/turn-sim
 ```

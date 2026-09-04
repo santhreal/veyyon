@@ -34,7 +34,7 @@ import { typeScriptMembers } from "./workspace-layout";
  *
  * The count went 19 -> 17: `deepswe-bench`, `metaharness` and
  * `typescript-edit-benchmark` became suites, backends and a run store inside one
- * `packages/evals`, and `packages/simulations` stayed a package of its own
+ * `packages/evals`, and `tests/simulations` stayed a package of its own
  * because it drives real sessions rather than scoring models.
  *
  * `tool-render` was folded into `collab-web` here and then restored, which is

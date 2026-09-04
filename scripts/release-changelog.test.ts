@@ -323,6 +323,7 @@ describe("the release changelog gate", () => {
 			"natives",
 			"packages",
 			"plugins",
+			"tests",
 		]);
 		expect(changelogs.map(changelog => changelog.path)).toContain("contracts/wire/CHANGELOG.md");
 		expect(changelogs.find(changelog => changelog.path === "contracts/wire/CHANGELOG.md")?.name).toBe("@veyyon/wire");

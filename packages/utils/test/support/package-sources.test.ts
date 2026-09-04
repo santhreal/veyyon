@@ -139,7 +139,16 @@ describe("the shared package-source traversal", () => {
 			const collisions = packageDirs.filter(name => MEMBER_ROOTS.includes(name));
 
 			expect(collisions).toEqual([]);
-			expect(MEMBER_ROOTS).toEqual(["contracts", "hosts", "kernel", "natives", "packages", "plugins", "python"]);
+			expect(MEMBER_ROOTS).toEqual([
+				"contracts",
+				"hosts",
+				"kernel",
+				"natives",
+				"packages",
+				"plugins",
+				"python",
+				"tests",
+			]);
 
 			// A member at depth resolves to that member, not just its top-level root.
 			expect(memberKeyOf(path.join(REPO_ROOT, "natives", "bridge", "bindings", "src", "sha256-sidecar.ts"))).toBe(
