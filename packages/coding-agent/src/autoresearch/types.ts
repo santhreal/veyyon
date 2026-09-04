@@ -173,6 +173,13 @@ export interface AutoresearchRuntime {
 	 * and its runs stay readable, so the row names the branch to switch back to.
 	 */
 	pausedOnBranch: string | null;
+	/**
+	 * The loop's turn was stopped by the user and nothing has run since. The
+	 * row states it, because the notice that reported the interrupt scrolls
+	 * away and a row reading its runs looks like a loop that is still going.
+	 * Cleared by the next turn, which is what resumes the loop.
+	 */
+	interrupted: boolean;
 	autoResumeArmed: boolean;
 	lastAutoResumePendingRunNumber: number | null;
 	lastRunDuration: number | null;

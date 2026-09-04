@@ -38,6 +38,7 @@ function fresh(
 		certify: boolean;
 		armModels: string[];
 		modelExists: (spec: string) => boolean;
+		context: SwarmSetupModel["context"];
 	}> = {},
 ) {
 	return new SwarmSetupModel({
@@ -210,6 +211,35 @@ describe("the autoswarm console configures a run before it starts", () => {
 		expect(frame).toContain("5");
 		expect(frame).toContain("off");
 		expect(frame).toContain("esc cancel");
+	});
+
+	it("states on the frame whether enter resumes a session or starts one, and whether a harness exists", () => {
+		// The same console opens over three trees. Without the line, a user
+		// reconfiguring a 12-run session and a user starting from nothing read the
+		// same screen and press the same key for opposite outcomes.
+		const resuming = new SwarmSetupModel({
+			goal: "make it faster",
+			breadth: 3,
+			attempts: 1,
+			certify: true,
+			armModels: [],
+			context: { session: { name: "sess-1", branch: "autoresearch/x", runs: 12 }, harness: true },
+		});
+		const resumingFrame = renderSetupConsole(resuming, 100, theme).join("\n");
+		expect(resumingFrame).toContain("Resumes session sess-1 on autoresearch/x (12 runs)");
+		expect(resumingFrame).toContain("enter resume");
+		expect(resumingFrame).not.toContain("enter start");
+
+		const withHarness = fresh({ context: { session: null, harness: true } });
+		const withHarnessFrame = renderSetupConsole(withHarness, 100, theme).join("\n");
+		expect(withHarnessFrame).toContain("autoresearch.sh found");
+		expect(withHarnessFrame).toContain("enter start");
+
+		const bare = fresh({ context: { session: null, harness: false } });
+		const bareFrame = renderSetupConsole(bare, 100, theme).join("\n");
+		expect(bareFrame).toContain("No autoresearch.sh yet");
+		expect(bareFrame).toContain("enter start");
+		expect(bareFrame).not.toContain("Resumes session");
 	});
 
 	it("lines the hints up in one column whatever the values are", () => {

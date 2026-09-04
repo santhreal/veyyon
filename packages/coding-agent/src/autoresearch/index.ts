@@ -10,7 +10,13 @@ import { leaveArm } from "./arm-model";
 import { createDashboardController } from "./dashboard";
 import { ensureAutoresearchBranch, parseWorkDirDirtyPaths } from "./git";
 import { formatNum, gitStatusPorcelain, gitWorkDirPrefix } from "./helpers";
-import { handleSetupKey, renderSetupConsole, SwarmSetupModel, type SwarmSetupResult } from "./setup-console";
+import {
+	handleSetupKey,
+	renderSetupConsole,
+	type SwarmSetupContext,
+	SwarmSetupModel,
+	type SwarmSetupResult,
+} from "./setup-console";
 import { AUTORESEARCH_SCREEN_KEY } from "./shortcuts";
 import {
 	buildExperimentState,
@@ -26,7 +32,7 @@ import { openAutoresearchStorageIfExists, type RunRow, type SessionRow } from ".
 import { DEFAULT_SWARM_BREADTH } from "./swarm";
 import { activeToolsChanged, activeToolsFor, EXPERIMENT_TOOL_NAMES } from "./tools";
 import { createCertifyArmsTool } from "./tools/certify-arms";
-import { createInitExperimentTool } from "./tools/init-experiment";
+import { createInitExperimentTool, HARNESS_FILENAME } from "./tools/init-experiment";
 import { createLogExperimentTool } from "./tools/log-experiment";
 import { createRunExperimentTool } from "./tools/run-experiment";
 import { createStartArmTool } from "./tools/start-arm";
@@ -40,6 +46,12 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	const getSessionKey = (ctx: ExtensionContext): string => ctx.sessionManager.getSessionId();
 	const getRuntime = (ctx: ExtensionContext): AutoresearchRuntime => runtimeStore.ensure(getSessionKey(ctx));
 
+	/** Whether `./autoresearch.sh` is in the tree: the first thing a fresh loop's turn writes when it is not. */
+	const harnessExists = (cwd: string): Promise<boolean> =>
+		fs.promises
+			.access(path.join(cwd, HARNESS_FILENAME))
+			.then(() => true)
+			.catch(() => false);
 	const loadActiveSession = async (
 		ctx: ExtensionContext,
 	): Promise<{ session: SessionRow | null; currentBranch: string | null; pausedOnBranch: string | null }> => {
@@ -121,6 +133,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		// reading `paused` after the loop was turned off, since a pause is on its
 		// own reason to report one.
 		runtime.pausedOnBranch = null;
+		runtime.interrupted = false;
 		runtime.autoResumeArmed = false;
 		runtime.goal = goal;
 		runtime.lastAutoResumePendingRunNumber = null;
@@ -212,10 +225,24 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		const storage = await openAutoresearchStorageIfExists(ctx.cwd);
 		const session = storage?.getActiveSessionForBranch(await tryReadBranch(ctx.cwd)) ?? null;
 		const goal = goalText.explicit ?? (session ? (session.goal ?? "") : goalText.free || (runtime.goal ?? ""));
+		// What Enter does is decided by what is on the branch already, so the
+		// console states it: a live session with its runs, or a fresh start and
+		// whether a harness exists to measure it with.
+		const context: SwarmSetupContext = session
+			? {
+					session: {
+						name: session.name,
+						branch: session.branch,
+						runs: storage?.listLoggedRuns(session.id).length ?? 0,
+					},
+					harness: true,
+				}
+			: { session: null, harness: await harnessExists(ctx.cwd) };
 		// Open on what this branch is already doing, so reconfiguring a live swarm
 		// shows its real breadth instead of the default.
 		const model = new SwarmSetupModel({
 			goal,
+			context,
 			breadth: session?.breadth ?? runtime.pendingSwarm?.breadth ?? DEFAULT_SWARM_BREADTH,
 			attempts: session?.attempts ?? runtime.pendingSwarm?.attempts ?? 1,
 			certify: session?.certify ?? runtime.pendingSwarm?.certify ?? true,
@@ -260,6 +287,21 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			await dashboard.showScreen(ctx, runtime);
 			return;
 		}
+		// `resume` picks an interrupted or paused loop back up with nothing to
+		// add: no console, no goal, no context. Any message resumes it too; this
+		// is the word for a user who does not know that.
+		const resumeWord = trimmed === "resume";
+		if (resumeWord) {
+			const storage = await openAutoresearchStorageIfExists(ctx.cwd);
+			const onBranch = storage?.getActiveSessionForBranch(await tryReadBranch(ctx.cwd)) ?? null;
+			if (!onBranch) {
+				ctx.ui.notify(
+					`No ${spec.label.toLowerCase()} session on this branch to resume. /${spec.command} starts one.`,
+					"warning",
+				);
+				return;
+			}
+		}
 
 		// A live session's goal changes only where it is typed on purpose: this
 		// subcommand, or the setup console's goal field. Free text after the
@@ -301,7 +343,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		// console decides what the typed text is: the goal of a session that does
 		// not exist yet, or context for resuming one that does.
 		let swarmSetup: SwarmSetupResult | null = null;
-		if (spec.swarm) {
+		if (spec.swarm && !resumeWord) {
 			swarmSetup = await openSwarmSetupConsole(ctx, { explicit: explicitGoal, free: trimmed });
 			if (!swarmSetup) {
 				// The command is already in the transcript as the user's line; with
@@ -334,7 +376,12 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		// DB if it already exists; the empty-state path must not create one.
 		const existingStorage = await openAutoresearchStorageIfExists(ctx.cwd);
 		const existingSession = existingStorage?.getActiveSessionForBranch(branchResult.branchName) ?? null;
-		const resumeContext = explicitGoal === null ? trimmed : "";
+		// Free text is context for the resume, unless it is the goal typed back:
+		// `/autoresearch make the tokenizer faster` on the session that already
+		// optimizes that is a resume with nothing to add, and telling the model
+		// the goal twice or the user that the goal is unchanged answers nothing.
+		const storedGoal = existingSession?.goal ?? "";
+		const resumeContext = explicitGoal === null && !resumeWord && trimmed !== storedGoal ? trimmed : "";
 		const branchStatusLine = branchResult.branchName
 			? branchResult.created
 				? `Created and checked out dedicated git branch \`${branchResult.branchName}\` before resuming.`
@@ -349,9 +396,9 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			const consoleGoal = swarmSetup && swarmSetup.goal !== (existingSession.goal ?? "") ? swarmSetup.goal : null;
 			const deliberateGoal = consoleGoal ?? explicitGoal;
 			if (deliberateGoal) existingStorage.updateSession(existingSession.id, { goal: deliberateGoal });
-			else if (trimmed.length > 0) {
+			else if (resumeContext.length > 0) {
 				ctx.ui.notify(
-					`Session goal unchanged. Use \`/${spec.command} goal <text>\` to change what this session optimizes.`,
+					`Your text goes to the model as context for the resume. \`/${spec.command} goal <text>\` changes what this session optimizes.`,
 					"info",
 				);
 			}
@@ -376,12 +423,34 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			setMode(ctx, true, runtime.goal, "on");
 			dashboard.update(ctx, runtime);
 			await api.setActiveTools(activeToolsFor(api.getActiveTools(), true, effectiveBreadth(runtime)));
-			api.sendUserMessage(
-				prompt.render(autoresearchPrompts["autoresearch/command-resume"].text, {
-					branch_status_line: branchStatusLine,
-					has_resume_context: resumeContext.length > 0,
-					resume_context: resumeContext,
-				}),
+			// The prompt is the model's; the user reads what is being resumed. As
+			// a user message the prompt sat in the transcript as fourteen lines of
+			// instructions nobody typed, under the command line that already says
+			// what was asked.
+			const runs = runtime.state.results.length;
+			const best = findBestKeptResult(
+				runtime.state.results,
+				runtime.state.currentSegment,
+				runtime.state.bestDirection,
+			);
+			const bestText = best ? ` · best ${formatNum(best.metric, runtime.state.metricUnit)}` : "";
+			const where = branchResult.branchName ? ` on \`${branchResult.branchName}\`` : "";
+			ctx.ui.notify(
+				`Resuming ${spec.label.toLowerCase()} ${refreshed.name}${where} · ${runs === 1 ? "1 run" : `${runs} runs`}${bestText}.`,
+				"info",
+			);
+			api.sendMessage(
+				{
+					customType: "autoresearch-command-resume",
+					content: prompt.render(autoresearchPrompts["autoresearch/command-resume"].text, {
+						branch_status_line: branchStatusLine,
+						has_resume_context: resumeContext.length > 0,
+						resume_context: resumeContext,
+					}),
+					display: false,
+					attribution: "agent",
+				},
+				{ deliverAs: "nextTurn", triggerTurn: true },
 			);
 			return;
 		}
@@ -414,6 +483,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		if (argumentPrefix.includes(" ")) return null;
 		const completions: AutocompleteItem[] = [
 			{ label: "status", value: "status", description: "Open the run screen: goal, runs, arms" },
+			{ label: "resume", value: "resume", description: "Pick an interrupted loop back up" },
 			{ label: "goal", value: "goal ", description: "Change what this session optimizes" },
 			{ label: "off", value: "off", description: "Leave the mode, keep the session" },
 			{
@@ -428,7 +498,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	}
 
 	api.registerCommand("autoresearch", {
-		description: `Run an optimization loop. Bare opens the run screen (${AUTORESEARCH_SCREEN_KEY}); also status, goal <text>, off, clear.`,
+		description: `Run an optimization loop. Bare opens the run screen (${AUTORESEARCH_SCREEN_KEY}); also status, resume, goal <text>, off, clear.`,
 		getArgumentCompletions: modeCompletions,
 		handler: (args, ctx) =>
 			runModeCommand(args, ctx, { label: "Autoresearch", command: "autoresearch", swarm: false }),
@@ -487,8 +557,11 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			// resumes it through `before_agent_start`.
 			runtime.autoResumeArmed = false;
 			runtime.stallNudges = 0;
+			runtime.interrupted = true;
+			dashboard.update(ctx, runtime);
+			const command = modeLabel(runtime).toLowerCase();
 			ctx.ui.notify(
-				`${modeLabel(runtime)} interrupted. Send a message to resume the loop, or \`off\` to leave it.`,
+				`${modeLabel(runtime)} interrupted. Send a message or \`/${command} resume\` to continue, \`/${command} off\` to leave the loop.`,
 				"info",
 			);
 			return;
@@ -582,8 +655,11 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			await api.setActiveTools(activeToolsFor(api.getActiveTools(), false, effectiveBreadth(runtime)));
 			return;
 		}
-		const resumed = runtime.pausedOnBranch !== null;
-		if (resumed) {
+		const resumedBranch = runtime.pausedOnBranch !== null;
+		// A turn starting is what resumes an interrupted loop, whatever it says.
+		const resumedInterrupt = runtime.interrupted;
+		runtime.interrupted = false;
+		if (resumedBranch) {
 			// Back on the session's branch. The pause itself records that mode was on
 			// when it was taken, so resuming is not a guess.
 			runtime.pausedOnBranch = null;
@@ -602,7 +678,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		// The row still reads `paused` until it is repainted, and this is the first
 		// point where the state behind it is the resumed one rather than the state
 		// the pause was taken with.
-		if (resumed) dashboard.update(ctx, runtime);
+		if (resumedBranch || resumedInterrupt) dashboard.update(ctx, runtime);
 		const state = runtime.state;
 		// `event.systemPrompt` is typed `string[]`, but upstream code paths can leave
 		// it unset (issue #3665). Coerce defensively so the autoresearch block still

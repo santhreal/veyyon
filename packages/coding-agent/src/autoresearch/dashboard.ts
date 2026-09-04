@@ -199,6 +199,10 @@ export function renderStatusRow(runtime: AutoresearchRuntime, width = process.st
 			// `mode off` rather than sitting beside it.
 			drop: 11,
 		});
+	} else if (runtime.interrupted) {
+		// The notice that reported the interrupt scrolls away; the row is what is
+		// still on screen when the user comes back to a loop that is not moving.
+		segments.push({ text: theme.fg("warning", "paused · send a message to resume"), drop: 11 });
 	} else if (runtime.runningExperiment) {
 		segments.push(
 			{ text: theme.fg("warning", `run #${runtime.runningExperiment.runNumber}`), drop: 8 },

@@ -162,10 +162,20 @@ These attach in autoresearch and autoswarm, and nowhere else.
 `/autoresearch` opens the run screen; it does not end anything.
 
 Escape during a turn stops that turn and pauses the loop without leaving the
-mode, and prints `Autoresearch interrupted. Send a message to resume the loop,
-or off to leave it.` The status row stays, the tools stay attached, and nothing
-runs until you send a message; a measurement that was waiting to be logged is
-picked up by that message. `/autoresearch off` from there leaves the mode.
+mode, and prints `Autoresearch interrupted. Send a message or /autoresearch
+resume to continue, /autoresearch off to leave the loop.` The status row reads
+`paused · send a message to resume`, the tools stay attached, and nothing runs
+until you send a message; a measurement that was waiting to be logged is picked
+up by that message. `/autoresearch resume` sends nothing but the resume, and
+with no session on the branch prints `No autoresearch session on this branch to
+resume. /autoresearch starts one.` `/autoresearch off` from there leaves the
+mode.
+
+Text typed after the command on a live session goes to the model as context for
+the resume, and prints `Your text goes to the model as context for the resume.
+/autoresearch goal <text> changes what this session optimizes.` The stored goal
+typed back is a resume with nothing to add: no notice, and the model is not told
+the goal a second time.
 
 `/autoresearch clear` resets the worktree to the segment baseline, deletes
 untracked files and closes the session. It asks first, naming the commit it

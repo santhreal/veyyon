@@ -72,6 +72,8 @@ interface Harness {
 	steers: Steer[];
 	notices: Array<{ text: string; level: string }>;
 	activeTools: string[];
+	/** The last text painted on the autoresearch status row; undefined when the row was cleared. */
+	statusRow: { text: string | undefined };
 	/** Whether the experiment tools are still offered, which is the loop being on. */
 	loopArmed(): boolean;
 }
@@ -105,6 +107,7 @@ function buildHarness(): Harness {
 		steers,
 		notices,
 		activeTools,
+		statusRow: { text: undefined },
 		loopArmed: () => activeTools.includes("run_experiment"),
 		__notices: notices,
 	} as Harness & { __notices: Array<{ text: string; level: string }> };
@@ -116,7 +119,9 @@ function makeCtx(harness: Harness, cwd: string, pending = false): ExtensionConte
 		hasUI: true,
 		hasPendingMessages: () => pending,
 		ui: {
-			setStatus: () => {},
+			setStatus: (_key: string, text: string | undefined) => {
+				harness.statusRow.text = text;
+			},
 			notify: (text: string, level: string) => harness.notices.push({ text, level }),
 			requestRender: () => {},
 		},
@@ -396,6 +401,22 @@ describe("a loop that advances nothing does not pass for a running one", () => {
 		await turn(harness, ctx, [], "aborted");
 
 		expect(harness.notices.at(-1)?.text).toContain("Autoswarm interrupted");
+	});
+
+	it("the row reads paused after an interrupt and stops reading paused once a turn resumes it", async () => {
+		const [harness, ctx] = await startedHarness(1);
+		await turn(harness, ctx);
+		expect(harness.statusRow.text).not.toContain("paused");
+
+		await turn(harness, ctx, [], "aborted");
+		// The notice scrolls away; the row is what stays on screen. It says how
+		// to continue, and names the same word the notice does.
+		expect(harness.statusRow.text).toContain("paused · send a message to resume");
+		expect(harness.notices.at(-1)?.text).toContain("/autoresearch resume");
+		expect(harness.notices.at(-1)?.text).toContain("/autoresearch off");
+
+		await harness.handlers.before_agent_start?.({ type: "before_agent_start", systemPrompt: [] } as never, ctx);
+		expect(harness.statusRow.text).not.toContain("paused");
 	});
 
 	it("leaves a turn alone when the user has already typed the next one", async () => {

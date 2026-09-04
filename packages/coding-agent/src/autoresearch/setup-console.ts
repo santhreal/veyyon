@@ -10,6 +10,16 @@ export interface SwarmSetupResult extends SwarmSetup {
 	goal: string;
 }
 
+/**
+ * What Enter will do, stated on the console. Over a live session it resumes
+ * that session with the values shown; otherwise it starts one, and the first
+ * turn writes `autoresearch.sh` when the tree has none.
+ */
+export interface SwarmSetupContext {
+	session: { name: string; branch: string | null; runs: number } | null;
+	harness: boolean;
+}
+
 type FieldId = "goal" | "breadth" | "models" | "attempts" | "certify";
 
 const FIELD_ORDER: readonly FieldId[] = ["goal", "breadth", "models", "attempts", "certify"] as const;
@@ -26,7 +36,10 @@ export function parseArmModels(text: string): string[] {
 	return entries;
 }
 
-const SUBTITLE = "Autoresearch with breadth. The model derives the metric from your harness.";
+const SUBTITLE =
+	"Each iteration builds one change per arm and keeps the best. The model derives the metric from your harness.";
+const HARNESS_FOUND = "autoresearch.sh found: enter starts measuring with it.";
+const HARNESS_MISSING = "No autoresearch.sh yet: the first turn writes and validates one before anything is measured.";
 
 /** `text` without its last grapheme cluster, so backspace never splits a surrogate pair or a combining mark. */
 function dropLastGrapheme(text: string): string {
@@ -55,14 +68,33 @@ export class SwarmSetupModel {
 	 * spelling and leaves the refusal to the caller that has a registry.
 	 */
 	#modelExists: (spec: string) => boolean;
+	readonly context: SwarmSetupContext;
 
-	constructor(initial: SwarmSetup & { goal?: string; modelExists?: (spec: string) => boolean }) {
+	constructor(
+		initial: SwarmSetup & {
+			goal?: string;
+			modelExists?: (spec: string) => boolean;
+			context?: SwarmSetupContext;
+		},
+	) {
 		this.goal = initial.goal ?? "";
 		this.breadth = clamp(Math.floor(initial.breadth), MIN_BREADTH, MAX_BREADTH);
 		this.attempts = clamp(Math.floor(initial.attempts), MIN_ATTEMPTS, MAX_ATTEMPTS);
 		this.certify = initial.certify;
 		this.models = initial.armModels.join(", ");
 		this.#modelExists = initial.modelExists ?? (() => true);
+		this.context = initial.context ?? { session: null, harness: false };
+	}
+
+	/** What Enter does, from the tree the console opened over. */
+	startSummary(): string {
+		const { session, harness } = this.context;
+		if (session) {
+			const where = session.branch ? ` on ${session.branch}` : "";
+			const runs = session.runs === 1 ? "1 run" : `${session.runs} runs`;
+			return `Resumes session ${session.name}${where} (${runs}) with the values below.`;
+		}
+		return harness ? HARNESS_FOUND : HARNESS_MISSING;
 	}
 
 	/**
@@ -279,7 +311,9 @@ function keyLegend(model: SwarmSetupModel): string {
 			? "enter needs a goal"
 			: model.unknownModels().length > 0
 				? "enter needs a known model"
-				: "enter start";
+				: model.context.session
+					? "enter resume"
+					: "enter start";
 	return `${local}   ↑↓ field   ${enter}   esc cancel`;
 }
 
@@ -332,6 +366,7 @@ export function renderSetupConsole(model: SwarmSetupModel, width: number, theme:
 	const dim = (line: string): string => theme.fg("dim", line);
 	const lines: string[] = [theme.bold(theme.fg("accent", "Autoswarm setup"))];
 	lines.push(...prose(SUBTITLE, width, dim));
+	lines.push(...prose(model.startSummary(), width, line => theme.fg("muted", line)));
 	lines.push("");
 	for (const row of rows) {
 		const focused = row.id === model.field;

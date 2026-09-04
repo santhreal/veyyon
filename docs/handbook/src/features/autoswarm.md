@@ -12,7 +12,8 @@ trusted, has the survivors review each other, and keeps at most one.
 
 ```
 Autoswarm setup
-Autoresearch with breadth. The model derives the metric from your harness.
+Each iteration builds one change per arm and keeps the best. The model derives the metric from your harness.
+No autoresearch.sh yet: the first turn writes and validates one before anything is measured.
 
 › Goal          make the tokenizer faster▌
   Breadth       3    candidate arms per iteration
@@ -32,6 +33,13 @@ toggles certification, Enter starts the run and Escape leaves without starting
 one. The legend lists only the keys that act on the focused field: the arrow
 range on Breadth and Attempts, `type to edit` on Goal and Models.
 
+The line under the title states what Enter does on this branch. With no
+session it reads `autoresearch.sh found: enter starts measuring with it.` or
+`No autoresearch.sh yet: the first turn writes and validates one before
+anything is measured.` Over a live session it reads `Resumes session <name> on
+<branch> (<n> runs) with the values below.` and the legend reads `enter resume`
+instead of `enter start`.
+
 The first line under the fields is the harness runs one iteration costs, breadth
 multiplied by attempts. It is a ceiling: an arm that succeeds on its first
 attempt uses one. The second line is the review topology for that breadth. The
@@ -49,6 +57,11 @@ context for the resume; the stored goal changes only through `/autoswarm goal
 Escape leaves without starting a run and prints `Autoswarm setup cancelled.
 Nothing was started.` The console is not a turn: no `Working…` loader runs under
 it while it is open.
+
+`/autoswarm resume` continues an interrupted or paused session without opening
+the console: no goal, no context, the stored values. With no session on the
+branch it prints `No autoswarm session on this branch to resume. /autoswarm
+starts one.` and starts nothing.
 
 The console opens on whatever the current branch is already doing, so running it
 during a session shows that session's breadth rather than the default, and
