@@ -30,6 +30,12 @@
  * below failed: you changed a locked file. Revert it. If the change is genuinely
  * required, make a live call of your own, get the operator to say so out loud,
  * then update the hash IN THE SAME COMMIT as the change and say why here.
+ *
+ * Re-locked 2026-09-03 with operator permission. The OpenCode request-identity
+ * fix threads `conversationIdForOpenCode(request)` into the official-host
+ * branch (`resolveOpenAiCompactRequest`) so a compaction sends the same
+ * `x-opencode-session` as the turns around it. The Codex branch, its endpoint,
+ * its trigger item and its SSE reader are byte-identical to the 2026-09-01 lock.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -50,7 +56,7 @@ const LOCKED_FILE = "packages/ai/src/providers/openai-compaction.ts";
  * SHA-256 of the locked file. Updating this constant without operator permission
  * is the exact move this gate exists to stop.
  */
-const LOCKED_SHA256 = "e380143f7edbd422ada4a9a21650e3df73b6496445f25abd925ce8cdc3c44f49";
+const LOCKED_SHA256 = "2c18e649bd3279671519feacfb14400dfb94800022d887539c69781127d51ff8";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
