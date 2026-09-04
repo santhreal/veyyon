@@ -1,5 +1,7 @@
 import { type Component, type Container, Spacer, Text } from "@veyyon/tui";
+import { theme } from "../theme/theme";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
+import { TranscriptBlock } from "./transcript-container";
 
 /**
  * Chrome for a transcript block that owns its own turn (`/btw`, `/omfg`).
@@ -50,4 +52,20 @@ export function mountTranscriptBlock(block: Container, parts: TranscriptBlockPar
 /** Body text mounted at the rail, for a block whose content is already styled. */
 export function transcriptBlockText(text: string): Text {
 	return new Text(text, COMPOSER_INSET_COLS, 0);
+}
+
+/**
+ * A command's report as a transcript block: an accent title on the header row and the
+ * already-styled body at the rail. `/account status`, `/account refresh` and `/lsp` print through
+ * this, so a report never lands in the transcript as a bare paragraph that reads like a chat
+ * message. `showMarkdownPanel` in `command-controller.ts` is the Markdown-bodied twin.
+ */
+export function reportBlock(title: string, body: string, footer?: string): TranscriptBlock {
+	const block = new TranscriptBlock();
+	mountTranscriptBlock(block, {
+		header: theme.bold(theme.fg("accent", title)),
+		body: transcriptBlockText(body),
+		...(footer !== undefined ? { footer } : {}),
+	});
+	return block;
 }
