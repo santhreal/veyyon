@@ -287,6 +287,12 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 			"The overflow row asserted a refusal that stayed visible after the summarizer failed. A session no longer parks there: when no reducer recognizes the shape of what is too large, the last-resort tier cuts the middle out of the largest text, the pass reaches the fit bar with no summary and the scheduled retry answers. The row requires that recovery -- one dead-end notice naming the truncation, prose shorter than the prompt carried, and an answer rather than a refusal.",
 	},
 	{
+		name: "site-models-regen",
+		matches: relative => relative === "apps/site/models-data.json",
+		reason:
+			"The models page's data file is generated from `packages/catalog/src/models.json` by the site build, which this branch restored to `apps/site/build.mjs` after the relocation dropped the step. The catalog is main's; main's committed copy of the data file predates its own catalog by fourteen models and one generation date, and the regenerated file is what main's build writes from main's catalog.",
+	},
+	{
 		name: "relocated-member-path",
 		matches: relative => /^(apps|clients)\/|^tests\/(evals|simulations)\//.test(relative),
 		reason:

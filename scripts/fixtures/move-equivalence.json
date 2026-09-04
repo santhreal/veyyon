@@ -218,6 +218,10 @@
 			"packages/coding-agent/test/secrets"
 		],
 		[
+			"fuzz/known-harness-signatures.toml",
+			"tests/fuzz/known-harness-signatures.toml"
+		],
+		[
 			"packages/coding-agent/src/memories",
 			"packages/coding-agent/src/memory"
 		],
@@ -260,6 +264,10 @@
 		[
 			"packages/tui/src/sub-cell-bar.ts",
 			"packages/utils/src/bar.ts"
+		],
+		[
+			"fixtures/ansi-strip-corpus.json",
+			"tests/fixtures/ansi-strip-corpus.json"
 		],
 		[
 			"packages/coding-agent/src/modes",
@@ -506,6 +514,10 @@
 			"natives/fs/iso"
 		],
 		[
+			"fuzz/fuzz_targets",
+			"tests/fuzz/fuzz_targets"
+		],
+		[
 			"packages/hashline",
 			"plugins/hashline"
 		],
@@ -554,6 +566,14 @@
 			"apps/site/site.css"
 		],
 		[
+			"fuzz/.gitignore",
+			"tests/fuzz/.gitignore"
+		],
+		[
+			"fuzz/Cargo.toml",
+			"tests/fuzz/Cargo.toml"
+		],
+		[
 			"website/og.html",
 			"apps/site/og.html"
 		],
@@ -600,6 +620,10 @@
 		[
 			"packages/tui",
 			"hosts/terminal/engine"
+		],
+		[
+			"fuzz/src",
+			"tests/fuzz/src"
 		]
 	],
 	"files": {
@@ -893,8 +917,8 @@
 			"old": "website/models-data.json",
 			"kind": "normalized",
 			"differs": "changed",
-			"group": "relocated-member-path",
-			"reason": "A member that left `packages/`, `python/` or `website/` for `apps/`, `clients/` or `tests/` states its own directory in a usage string, a command, a registry key or a comment, and climbs to the repository root by a relative path that gained one level. The move itself spells only the new location. A row here can also carry an edit this branch made before the move and every unmoved sibling carries too -- the array-spread rewrite, the `natives/` path spelling, a site page's nav fix -- each recorded in the commit that made it, none made by the relocation -- or the formatter's reflow of a call whose shorter path now fits one line.",
+			"group": "site-models-regen",
+			"reason": "The models page's data file is generated from `packages/catalog/src/models.json` by the site build, which this branch restored to `apps/site/build.mjs` after the relocation dropped the step. The catalog is main's; main's committed copy of the data file predates its own catalog by fourteen models and one generation date, and the regenerated file is what main's build writes from main's catalog.",
 			"hash": "4187d6d4ea2109573ab3100757d1db4dd23fac5d27502d4ab24a2dadebe6ee54",
 			"mainHash": "01a0d6d145aa835c9ffbb8d812f1a304e6d8bb67b6ebc87bdbf0687420a8f4f5",
 			"structuralHash": "b960a3b72cabe05f07ad7e0a82f65114734e0e5a27b62ab64121916159ec8092",
@@ -6454,8 +6478,8 @@
 			"old": "crates/veyyon-natives/src/keys.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "292f48b617b16a05bf76ffe0d26263cb939e341b3a330e571ea619c6e067cdf9",
-			"mainHash": "f2a8211b31c5b16b891923d48f5417a3a10bda8fbd10fb4f016c6d53a649c401",
+			"hash": "1577b20a453f945cf90bae08f4862be6b7af5597453924fea6d5fdb91ab95ec0",
+			"mainHash": "292f48b617b16a05bf76ffe0d26263cb939e341b3a330e571ea619c6e067cdf9",
 			"structuralHash": "1cade4a0832d9a8807580e7be17ffed94656981d03e7fe1043052f5c31a6af4e",
 			"mainStructuralHash": "1cade4a0832d9a8807580e7be17ffed94656981d03e7fe1043052f5c31a6af4e"
 		},
@@ -6589,8 +6613,8 @@
 			"old": "crates/veyyon-natives/src/text.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "fcb4f75e596c6c33ed5d79b349334ac39f6a012ba3d1defabc4dafabcc5e6ae8",
-			"mainHash": "735706566ea82eb0c956ef57a9beb00d2d6991a539ef6de437dd864eb5a8bda0",
+			"hash": "59a6dd4b15280c60b854a6aab19f670e7df338d281d2b36bb917a10798c6a583",
+			"mainHash": "fcb4f75e596c6c33ed5d79b349334ac39f6a012ba3d1defabc4dafabcc5e6ae8",
 			"structuralHash": "551c3e6c5e6e16e1a29e706bab8c19ca80ed876a6c217f152b6b0b7fab8c0ef1",
 			"mainStructuralHash": "551c3e6c5e6e16e1a29e706bab8c19ca80ed876a6c217f152b6b0b7fab8c0ef1"
 		},
@@ -7132,8 +7156,8 @@
 			"old": "crates/veyyon-ast/src/ops.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "d8a03ea55aea3ce03f2468e9f7cb10d05389c7bfdc7b5e8110a923ad82966efe",
-			"mainHash": "80c9ca241b758b8ac4ed2e0e270b0d068dc2c9a69f9b5bdeff75339aa7b38740",
+			"hash": "603ecd980ad65ceaf9719fdbb5dfbf32c8202266df8d15392a5297abec7b6196",
+			"mainHash": "d8a03ea55aea3ce03f2468e9f7cb10d05389c7bfdc7b5e8110a923ad82966efe",
 			"structuralHash": "327fae360b24117dc0cbb124aff024fa12d2ae83f5d793ad97647c0af5fd337d",
 			"mainStructuralHash": "327fae360b24117dc0cbb124aff024fa12d2ae83f5d793ad97647c0af5fd337d"
 		},
@@ -7159,8 +7183,8 @@
 			"old": "crates/veyyon-ast/tests/apply_edits.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "9e68d99436bca48e8d0185d5758dd23b0a77705666c2c141f498178c5cee11e0",
-			"mainHash": "98639f6580727940b5b1f2338716ff602a1fc1860191a4e96897d821d35bcae6",
+			"hash": "e3634555395127ad799de84becfb247bda85bd4cf2da2893a0ec3a7be317b339",
+			"mainHash": "9e68d99436bca48e8d0185d5758dd23b0a77705666c2c141f498178c5cee11e0",
 			"structuralHash": "25839bf99f792b58a771bb78e6495ea2b3d17976ba16fc3140c512e08ea3985a",
 			"mainStructuralHash": "25839bf99f792b58a771bb78e6495ea2b3d17976ba16fc3140c512e08ea3985a"
 		},
@@ -7177,8 +7201,8 @@
 			"old": "crates/veyyon-ast/tests/pattern_compilation.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "eb3adde58e1cf3e5faac554384dd883f4beebee7edbded10361d0c2a56d4d3d0",
-			"mainHash": "c26e413c963fc93bce29fc606705203d2863defce4be9277b92b9f8985b23679",
+			"hash": "d68a586ef675e364ad1f22945ff172b080e6db1a60a42196f6a31e6f2abe2db5",
+			"mainHash": "eb3adde58e1cf3e5faac554384dd883f4beebee7edbded10361d0c2a56d4d3d0",
 			"structuralHash": "f4136799a72a1a2fa236c296f8fbfb30708b1ee60c1c8043340708833bd8090e",
 			"mainStructuralHash": "f4136799a72a1a2fa236c296f8fbfb30708b1ee60c1c8043340708833bd8090e"
 		},
@@ -7368,8 +7392,8 @@
 			"old": "crates/veyyon-glob/src/lib.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "ff7276cd1c1ce77e7b3df63989266f0ecf4580c5938edf2b1aa6b0529667f9ef",
-			"mainHash": "64cbbd2ad01ee982f0899aad42d608701067ff39b980bcf12bc5aea2d7f2d87f",
+			"hash": "a00be61eaeace024a5d5a361ca4b22960134e3f151366e54458282b36514ff2d",
+			"mainHash": "ff7276cd1c1ce77e7b3df63989266f0ecf4580c5938edf2b1aa6b0529667f9ef",
 			"structuralHash": "68d26d6676c951669f30bbaac7e560b810defe197860c09721546212c5631e07",
 			"mainStructuralHash": "68d26d6676c951669f30bbaac7e560b810defe197860c09721546212c5631e07"
 		},
@@ -7377,8 +7401,8 @@
 			"old": "crates/veyyon-glob/tests/a_bounded_walk_never_prunes_a_match.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "98ea8f9d100c9ab533aeeb4ea02358af2d02cf56870b532df504219d92eeaf1c",
-			"mainHash": "e68521de984b358974e828ab11b5aca1322ac9e4b3ba20f6a75314f9e6556424",
+			"hash": "005593e49c0976019ca3ea33eb5b5dbbcf4071ac6d493dcbb07a2b3d17c6da5a",
+			"mainHash": "98ea8f9d100c9ab533aeeb4ea02358af2d02cf56870b532df504219d92eeaf1c",
 			"structuralHash": "29502acb8cf684a19f9015936425b5ffd40e8b937b3450da0f6ce24e5cb82fa5",
 			"mainStructuralHash": "29502acb8cf684a19f9015936425b5ffd40e8b937b3450da0f6ce24e5cb82fa5"
 		},
@@ -7386,8 +7410,8 @@
 			"old": "crates/veyyon-glob/tests/fast_path_agreement.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "555112acc5561b67311aa925884dd16b3090ed51f0394d0d8e16d2d3a7a41e73",
-			"mainHash": "4ba7c572c2b2b96db6f3c820cdab5b7218312512b345b9560d3c2570b78337a8",
+			"hash": "a7036b922ecd7062eb71b77e9bc88c9e2b23b693fc8b597d1fc82fc905bdef12",
+			"mainHash": "555112acc5561b67311aa925884dd16b3090ed51f0394d0d8e16d2d3a7a41e73",
 			"structuralHash": "daa699e0f94f6ddf14447e71e43f2ebd8083f119484c8b4a2b964e9161ff0d9a",
 			"mainStructuralHash": "daa699e0f94f6ddf14447e71e43f2ebd8083f119484c8b4a2b964e9161ff0d9a"
 		},
@@ -7572,8 +7596,8 @@
 			"old": "crates/veyyon-walker/src/lib.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "00953f2726d60d369aaa012c43978535b7d87e6010a8b7c1be8e45f2493cf062",
-			"mainHash": "ea23483d86fc260776f2b7a3fb266fe7f0db02cce54b78e5dada6ee49d808855",
+			"hash": "85c185186cc6c5d3f60b7d0b845ec96ba6c778477db334a1062594e8dfc44181",
+			"mainHash": "00953f2726d60d369aaa012c43978535b7d87e6010a8b7c1be8e45f2493cf062",
 			"structuralHash": "0aba36ca72c956cf72d87fca43f664e9dac91aae4d0894a85e7a4c8ef30ec01e",
 			"mainStructuralHash": "0aba36ca72c956cf72d87fca43f664e9dac91aae4d0894a85e7a4c8ef30ec01e"
 		},
@@ -7608,8 +7632,8 @@
 			"old": "crates/veyyon-walker/tests/path_order.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "f999189407729a49eadec6ab8d5a6850714a1a675dcdf9726d0029ae3b701204",
-			"mainHash": "b1f2c277ed4e0bb2d025c92608923c0657ea8a940ca5d2a99914ebce95a2ac0d",
+			"hash": "37d3b572b882e96168cc2c6ec005c825ad401633acae11dc053de6fd6aa0dfda",
+			"mainHash": "f999189407729a49eadec6ab8d5a6850714a1a675dcdf9726d0029ae3b701204",
 			"structuralHash": "c85abdee1732d20ae6d8e2fb2c49047d352d1cce83690690372493941fbcbc34",
 			"mainStructuralHash": "c85abdee1732d20ae6d8e2fb2c49047d352d1cce83690690372493941fbcbc34"
 		},
@@ -7734,8 +7758,8 @@
 			"old": "crates/veyyon-shell/src/minimizer.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "83fc76da0b25ac3d687ba7111d0a586fbd248e2f05f90cefa9aab29695e66b70",
-			"mainHash": "3c4239af6a0f6ddce938439f4e8828557c25637e2bfebf3aed7e671da13fad39",
+			"hash": "c4f7ddc7a2753e67d78fe058370d8bf93b1c998de0a81bca1ce597ea908a537a",
+			"mainHash": "83fc76da0b25ac3d687ba7111d0a586fbd248e2f05f90cefa9aab29695e66b70",
 			"structuralHash": "3c9974cd379e0c8f81d9073ff873fa6d9ddbda71c5fcb7d5e04007bbdc40cadb",
 			"mainStructuralHash": "3c9974cd379e0c8f81d9073ff873fa6d9ddbda71c5fcb7d5e04007bbdc40cadb"
 		},
@@ -8400,8 +8424,8 @@
 			"old": "crates/veyyon-shell/src/minimizer/filters/cargo.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "ff18de99013ed5c4945ec029cab24ab61b312e85a45671e1608267b0d26b2006",
-			"mainHash": "dcb0dd0f801f46b96ff16d2620ad51b0fda902ec84800b385af3fe840bbf7170",
+			"hash": "fa14ac797e7eeb8b6e92d41978094301a331e62819b3775c6780e585895df3e5",
+			"mainHash": "ff18de99013ed5c4945ec029cab24ab61b312e85a45671e1608267b0d26b2006",
 			"structuralHash": "352a1b6b0db698818f88c04330b05d94be89ef52923482b421285b4d1b838f72",
 			"mainStructuralHash": "352a1b6b0db698818f88c04330b05d94be89ef52923482b421285b4d1b838f72"
 		},
@@ -8409,8 +8433,8 @@
 			"old": "crates/veyyon-shell/src/minimizer/filters/cloud.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "fa7758b6f3a97aa7964c450e9bf13af9cd1377286624b69501f94aea30a5a8eb",
-			"mainHash": "98bd3447b8f705c5f54b24ef0fcab980c76b0a30bcb6060475383688ef1f74ed",
+			"hash": "ae736ff7abacce50cc5c522de204094443da6edd0dd80c1d3061cf7cd96475e0",
+			"mainHash": "fa7758b6f3a97aa7964c450e9bf13af9cd1377286624b69501f94aea30a5a8eb",
 			"structuralHash": "ec448bc54f0eef9545b7cbc22f1bf52b9565c4f47c06cc1b0f29b40698e2c193",
 			"mainStructuralHash": "ec448bc54f0eef9545b7cbc22f1bf52b9565c4f47c06cc1b0f29b40698e2c193"
 		},
@@ -8589,8 +8613,8 @@
 			"old": "crates/veyyon-shell/src/minimizer/filters/git.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "a423d23f173f3e17ae32e10c4ec9509ed992a2c1a5c7f8cd33e61d5dbec3be21",
-			"mainHash": "4974b3c9c8d27fc6b7f0333243ab5679fa326386a874939147c0e287d20c446e",
+			"hash": "86f3aa94869284630293aec5ebc0a7e6137ee15add6f63b436e45d983a20877b",
+			"mainHash": "a423d23f173f3e17ae32e10c4ec9509ed992a2c1a5c7f8cd33e61d5dbec3be21",
 			"structuralHash": "aaf9a492d6f6bbf9e52ef974853c0066e1400b054d9b4c407e001a95802b5e5f",
 			"mainStructuralHash": "aaf9a492d6f6bbf9e52ef974853c0066e1400b054d9b4c407e001a95802b5e5f"
 		},
@@ -8643,8 +8667,8 @@
 			"old": "crates/veyyon-shell/src/minimizer/filters/lint.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "a241a89c664d74be38f3666980d74ebb7f39f356a07b3bcfd1f4cf8aa50a5d27",
-			"mainHash": "23f9ecc98423c411c683c5da0523b6db60032df3babbfb7d2f1721f42cbb67e9",
+			"hash": "2479d755c446e5a8a2c66e1bfaf9594421e4e87f58d53d8db37c9c23aed47bba",
+			"mainHash": "a241a89c664d74be38f3666980d74ebb7f39f356a07b3bcfd1f4cf8aa50a5d27",
 			"structuralHash": "e9840ae657a17f5e44f810df6cc2e9e5496788d2269fa2aa7d628302dc6cd8b2",
 			"mainStructuralHash": "e9840ae657a17f5e44f810df6cc2e9e5496788d2269fa2aa7d628302dc6cd8b2"
 		},
@@ -8661,8 +8685,8 @@
 			"old": "crates/veyyon-shell/src/minimizer/filters/mod.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "2b33091fd664007a0d7a685a5e8fbbe28cd0cbebd96a88c795230bce12478c96",
-			"mainHash": "64ec47645f01414f16e35f560431ea7189e6d91155a8d2afebf8490d950ed6a3",
+			"hash": "3c471885fc172987e984dfb6e6d1efe51799f76b4200cec195c6a4ab492a2d07",
+			"mainHash": "2b33091fd664007a0d7a685a5e8fbbe28cd0cbebd96a88c795230bce12478c96",
 			"structuralHash": "e0c6c48bdb46da41be2a17d5189ea031ddedb3087a20923032d92bce2c05957a",
 			"mainStructuralHash": "e0c6c48bdb46da41be2a17d5189ea031ddedb3087a20923032d92bce2c05957a"
 		},
@@ -8670,8 +8694,8 @@
 			"old": "crates/veyyon-shell/src/minimizer/filters/node_tests.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "09d2746138ac98f0cd38a8def889976e63ff5581536e666d0f64a1719836a1c0",
-			"mainHash": "bb97ab68107804821807980a696ccca1761a9320bfb12cb476eedc1a8af2a825",
+			"hash": "34a35b2a60930201f3814e3bafcf413253046c4dc9e2733a78f9943ca0187d1f",
+			"mainHash": "09d2746138ac98f0cd38a8def889976e63ff5581536e666d0f64a1719836a1c0",
 			"structuralHash": "06468aa8868c3c0c8643dc7dd870ed0035dde405838889d9f0d1f17e6e9653a4",
 			"mainStructuralHash": "06468aa8868c3c0c8643dc7dd870ed0035dde405838889d9f0d1f17e6e9653a4"
 		},
@@ -8715,8 +8739,8 @@
 			"old": "crates/veyyon-shell/src/minimizer/filters/system.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "33f0d86964096231740d8a38c75835fd61ddcf49548bb394f199f2f2cae7ed6c",
-			"mainHash": "f636a83bb0e1e25409eac833b0bba6da57eb6ccfd8a9b3d73bd722e5ffc8a8fd",
+			"hash": "e36a5b3be80e403ffbdef7baa98d1b9a1919dc91469dabeb0852226c187a25cd",
+			"mainHash": "33f0d86964096231740d8a38c75835fd61ddcf49548bb394f199f2f2cae7ed6c",
 			"structuralHash": "49f0d7cbbfad9cd80d0e806f3cdde9c771e6846d01e591ce6bbc2121a72ad610",
 			"mainStructuralHash": "49f0d7cbbfad9cd80d0e806f3cdde9c771e6846d01e591ce6bbc2121a72ad610"
 		},
@@ -8742,8 +8766,8 @@
 			"old": "crates/veyyon-shell/src/minimizer/primitives.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "df696611e7e4e45cf6e90dc84d1924329c170a3e57df95100b87b662c97ed4ff",
-			"mainHash": "203f92b9f7cc1c025e42f946b14a3a690128ef1608c005cb0d60d895f226f93f",
+			"hash": "0cf9b11d849d078e5bf2511f0cdf8bfa3adb76956aa55239f93bbd1e85ea808a",
+			"mainHash": "df696611e7e4e45cf6e90dc84d1924329c170a3e57df95100b87b662c97ed4ff",
 			"structuralHash": "426d1a350e8b7f82a389433b12f22c387ea7cca797ec3b0d9fdacd92f8443f26",
 			"mainStructuralHash": "426d1a350e8b7f82a389433b12f22c387ea7cca797ec3b0d9fdacd92f8443f26"
 		},
@@ -8787,8 +8811,8 @@
 			"old": "crates/veyyon-shell/tests/a_capped_table_does_not_recount_itself.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "70033f55e3120ca84548de9eb9c84f7c265a1580868bd5f68a8d9ae1380d0880",
-			"mainHash": "8ecd5e443adff6207aac4f04b8b8f06a0d9f32f92f37c985e580a088623e78c3",
+			"hash": "4115b8e1ab1dd9fd8d301defb7c406d404c45a75aaf0097d2ce6b561fc89fbdf",
+			"mainHash": "70033f55e3120ca84548de9eb9c84f7c265a1580868bd5f68a8d9ae1380d0880",
 			"structuralHash": "4450c14b15df2fc6d4b9b92c98823c39a864e75651ac7a3d69da4fd433f16dbf",
 			"mainStructuralHash": "4450c14b15df2fc6d4b9b92c98823c39a864e75651ac7a3d69da4fd433f16dbf"
 		},
@@ -8796,8 +8820,8 @@
 			"old": "crates/veyyon-shell/tests/a_carriage_return_does_not_change_the_answer.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "42e43890ac356b266c0725b98544385002da4265ed5e5f5dd2eb4019b1cd6141",
-			"mainHash": "42912d40d00358d1e9fac6200ffad28656468137d1518cd6c618b2e842c6d898",
+			"hash": "eb8b960af842aff0338fc68b16d72a706cc9d0409998625597ddf8012599633a",
+			"mainHash": "42e43890ac356b266c0725b98544385002da4265ed5e5f5dd2eb4019b1cd6141",
 			"structuralHash": "498b32b1fbd8fbc1b3500ae08c00320c137fdf2d8e7bed61ebc6f0bb28f39944",
 			"mainStructuralHash": "498b32b1fbd8fbc1b3500ae08c00320c137fdf2d8e7bed61ebc6f0bb28f39944"
 		},
@@ -8805,8 +8829,8 @@
 			"old": "crates/veyyon-shell/tests/a_filter_never_answers_with_nothing.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "ce7bdd98408bedd2229053c59c13d7a3aa0ffe31e5b0c1fe44050b4edae8b880",
-			"mainHash": "f9b21332cce490e11f9dba225034fef8ca666ba53b55acb9f5811a8a701d94f2",
+			"hash": "dd191529117445d0ac12313030085379ab7683d277a7e12cc5b56c649b26b110",
+			"mainHash": "ce7bdd98408bedd2229053c59c13d7a3aa0ffe31e5b0c1fe44050b4edae8b880",
 			"structuralHash": "382c02316579d4a51c30a2706572e17fd5e51f51e5ddd2a02281499ca5a2e84a",
 			"mainStructuralHash": "382c02316579d4a51c30a2706572e17fd5e51f51e5ddd2a02281499ca5a2e84a"
 		},
@@ -8834,8 +8858,8 @@
 			"old": "crates/veyyon-shell/tests/a_repeat_counter_is_multiplied_not_stacked.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "afb223b41358ac3921b2a66e2cc2b7dd652c10abfde56d25f4307bd568485ea9",
-			"mainHash": "ee5e31b56f614ad4aa6c078e8bc3866613f1af6d8192def65c33fb21096b9e51",
+			"hash": "fc56459fed89795dd7491528731a8349781aa4fd08f9bbe3efbfed22d0b79d02",
+			"mainHash": "afb223b41358ac3921b2a66e2cc2b7dd652c10abfde56d25f4307bd568485ea9",
 			"structuralHash": "753e95ddcdd2cb33e9db4a19f117a07f20739e1efdbe5b10056872c0b3dc0973",
 			"mainStructuralHash": "753e95ddcdd2cb33e9db4a19f117a07f20739e1efdbe5b10056872c0b3dc0973"
 		},
@@ -8843,8 +8867,8 @@
 			"old": "crates/veyyon-shell/tests/a_salvaged_nothing_is_not_a_compaction.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "bbdca1ac83226d300cd23474b4ef2fcb1a957dd3ca07ab46181c73a77336cfd2",
-			"mainHash": "d41458afeb151d1bf7db54f90e9789c05251916d047d737a2302447659280c97",
+			"hash": "4741a289434a9653ec696b3942d0c64a3b42095d622fcbbbca13f087b6e7f6f5",
+			"mainHash": "bbdca1ac83226d300cd23474b4ef2fcb1a957dd3ca07ab46181c73a77336cfd2",
 			"structuralHash": "c14fd563ff6bb91926b2c7f1c2944eb5c0e2a7d23603ad3fdcd441a4d49b57a6",
 			"mainStructuralHash": "c14fd563ff6bb91926b2c7f1c2944eb5c0e2a7d23603ad3fdcd441a4d49b57a6"
 		},
@@ -8881,8 +8905,8 @@
 			"old": "crates/veyyon-shell/tests/a_table_row_is_not_a_download_log.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "722e659dc8b322ca53cc2d4b9b9a34134f39032d0a9c613a80060e999fe810e9",
-			"mainHash": "f9f5b14facdbe23e6699841f71eaba2354dbdaab267e8433f14dd547d4fcac8d",
+			"hash": "1bb2626c875cbe8d94d1552bc7fcc6e2dff6f519ed155ecf69623b1926a3d784",
+			"mainHash": "722e659dc8b322ca53cc2d4b9b9a34134f39032d0a9c613a80060e999fe810e9",
 			"structuralHash": "b8d16ed4c2a7a841da31d5cb48e4544ec24cfad24f84da1fbffbe0d920d4bedc",
 			"mainStructuralHash": "b8d16ed4c2a7a841da31d5cb48e4544ec24cfad24f84da1fbffbe0d920d4bedc"
 		},
@@ -8890,8 +8914,8 @@
 			"old": "crates/veyyon-shell/tests/an_escape_does_not_hide_a_carriage_return.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "a00b2718314ef90df5faa51fccca647b27d64dcab7a85682618c024e16e9904f",
-			"mainHash": "3fab80e51de242765df182b4daa20117751a8fb728a67c06715a70891d55c140",
+			"hash": "f6536dd1b58ddf13ed5d6fb17b6151caab08ac99d388bd85b990be745753a96d",
+			"mainHash": "a00b2718314ef90df5faa51fccca647b27d64dcab7a85682618c024e16e9904f",
 			"structuralHash": "9cbb1a981ae0075b6218ab8406072210e3f91d95b197487952f65bb56a33b71b",
 			"mainStructuralHash": "9cbb1a981ae0075b6218ab8406072210e3f91d95b197487952f65bb56a33b71b"
 		},
@@ -8901,17 +8925,17 @@
 			"differs": "changed",
 			"group": "rust-path-expectation",
 			"reason": "A Rust test or minimizer fixture asserts on a path string the regroup renamed. The assertion is the same rule against the new path.",
-			"hash": "4a5683b7c200aeb89ceec6e5d9d3cf04e324dd02cfce115221d0e9118e6a4fae",
-			"mainHash": "93ed61599e3cc6d6ac91f8492bca6dea88d3b01c69bbdb1e5ae2d8fce435009e",
-			"structuralHash": "bf1b1b34616c3e356d8c9a7670ccbac54f2b39dd28f55877afa1b2899cd4ff36",
-			"mainStructuralHash": "cc9d4adac4924ee8b6af37455d1458b22f86797e29ff5481cefe5b5e639e7635"
+			"hash": "582e2d21c9fabe78e48a64663dd6698b2a7ddbc276d93333547bcb9453e9e023",
+			"mainHash": "ec3ce02bcc9f2c005bcc94abfc518bf35f6482a26ace9780567d4ecb955f6cde",
+			"structuralHash": "69b5f3bca6a614d9af6c9ff1917d3c540ec183ef61221c67ea8b7fadd2e3b0a8",
+			"mainStructuralHash": "9ee9cb8a236d96210e399bd7c253f5e5ad75826c234c851118058f1c46f99f95"
 		},
 		"natives/shell/tests/ansi_stripping_is_bounded.rs": {
 			"old": "crates/veyyon-shell/tests/ansi_stripping_is_bounded.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "dc61826b98b5cecc6a733682ac2f1c19edafcc849a9236eb59652782c8dca89f",
-			"mainHash": "887d08908c1e28d8b20e16a1a71bc9d625118071152cdd5790ae47855868ddee",
+			"hash": "807ca8104a135b26e660c1a3ae3a473d5c92bc4591d626b0e3df98b4a02bc4e6",
+			"mainHash": "dc61826b98b5cecc6a733682ac2f1c19edafcc849a9236eb59652782c8dca89f",
 			"structuralHash": "3a4e6fdf0a81e869364f4a7f5cffa859e5e15892de3fd8510d23fb7afa1d0b00",
 			"mainStructuralHash": "3a4e6fdf0a81e869364f4a7f5cffa859e5e15892de3fd8510d23fb7afa1d0b00"
 		},
@@ -8937,8 +8961,8 @@
 			"old": "crates/veyyon-shell/tests/condensed_lint_output_is_not_condensed_again.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "639fe2c15dce208d27af50abd7feba33f49f77adb9d02c62f8b88e28edcef6e5",
-			"mainHash": "0dab1df52df9bab4ac639dbb6d0b1b6b8e289e7b91de182a62898d5abb4fbec3",
+			"hash": "a4540a6d898f4f3f58839f91b3abfebeab3aedc4115b3c6709e753cea8de0b70",
+			"mainHash": "639fe2c15dce208d27af50abd7feba33f49f77adb9d02c62f8b88e28edcef6e5",
 			"structuralHash": "d58d17a37b292d079996c139b1ae01af2c119b96692bda9752a8b650419f5b8b",
 			"mainStructuralHash": "d58d17a37b292d079996c139b1ae01af2c119b96692bda9752a8b650419f5b8b"
 		},
@@ -8946,8 +8970,8 @@
 			"old": "crates/veyyon-shell/tests/elision_marker_accounting.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "9d351215f7b58aacc855ea208f2687bb84b8fbf0a85d87aa495f3300ff169deb",
-			"mainHash": "30e1d61da536cbef3034ee408540c15218fb141fcb458e292da8f80cade9a9ee",
+			"hash": "96bb3b7e85b731d3d4b4c3c0ea1e4e4e1f6733df9b518a6f0f7ab349ac4a875d",
+			"mainHash": "9d351215f7b58aacc855ea208f2687bb84b8fbf0a85d87aa495f3300ff169deb",
 			"structuralHash": "a80e497482570409093e13d37873b6d6107dea09eb8ec86a56f8034ca908deb6",
 			"mainStructuralHash": "a80e497482570409093e13d37873b6d6107dea09eb8ec86a56f8034ca908deb6"
 		},
@@ -8955,8 +8979,8 @@
 			"old": "crates/veyyon-shell/tests/every_annotation_is_recognized_as_ours.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "c93710dcfceb4828a9695c1393dfde5c7588c35e2c56bf71793e7b25ee291b5c",
-			"mainHash": "f2f66f9ba869ab8c02e9dc37eb551df77d0efc09aa3f8a786dce113b269b5c88",
+			"hash": "8f2a4bdfc9e40014c038fb9bd124a8cd91a277962424546f940824c2e987f1d5",
+			"mainHash": "c93710dcfceb4828a9695c1393dfde5c7588c35e2c56bf71793e7b25ee291b5c",
 			"structuralHash": "e22aba9e8337345e64b5ea38b44c4b86dc5254d637a22e0ca14ea2a5d31b49b2",
 			"mainStructuralHash": "e22aba9e8337345e64b5ea38b44c4b86dc5254d637a22e0ca14ea2a5d31b49b2"
 		},
@@ -8964,8 +8988,8 @@
 			"old": "crates/veyyon-shell/tests/every_supported_program_settles_after_one_pass.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "99e68f15066a5bc1880dcd7aa4a477f4d3de297a16247d92091a4e6558e57927",
-			"mainHash": "e12080b178b4b8cde2436d0299c847eb50d20aec2f6d7bc1f84a38f43c6246d0",
+			"hash": "7d9ea7ae8d15129bd2857ad9914bd833f86b13e224f7eef790838606403854f3",
+			"mainHash": "99e68f15066a5bc1880dcd7aa4a477f4d3de297a16247d92091a4e6558e57927",
 			"structuralHash": "ea2fd6ab946f762931416988c24851122278cf50fa2db918dfbb22cf81d8e83d",
 			"mainStructuralHash": "ea2fd6ab946f762931416988c24851122278cf50fa2db918dfbb22cf81d8e83d"
 		},
@@ -8973,8 +8997,8 @@
 			"old": "crates/veyyon-shell/tests/filter_output_newline_invariant.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "3e66fbafb56b689bddfb7dbe82a1e4ffc04683cef0798e027dd1c12958859cc1",
-			"mainHash": "98420f4d60ba1dece251f5d44953a16591a16c4dcbd865d2b08a3ec68b18dc9e",
+			"hash": "345e258225ab6e828a8293f26fd8d836c33e0bb07603787257b46885b9069823",
+			"mainHash": "3e66fbafb56b689bddfb7dbe82a1e4ffc04683cef0798e027dd1c12958859cc1",
 			"structuralHash": "dd452784b716a63e5043b9fa35a194d780e20a0de7010b139b4dbba892bcaac4",
 			"mainStructuralHash": "dd452784b716a63e5043b9fa35a194d780e20a0de7010b139b4dbba892bcaac4"
 		},
@@ -8982,8 +9006,8 @@
 			"old": "crates/veyyon-shell/tests/filters_do_not_consume_their_own_output.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "f6a9f8c9bc0d8828c2a1d71782b4befcc4e13a8cfa7445a3778bfe9ffd1bbc70",
-			"mainHash": "6452b6e2d9b19177ee88d4b1c791f1a1c6177125958b1553321419fa4d8c45a6",
+			"hash": "f5941fdc4f585829b86d14d6ed2ae59cfc110699c812d1cae4bf8cdbe8d8a448",
+			"mainHash": "f6a9f8c9bc0d8828c2a1d71782b4befcc4e13a8cfa7445a3778bfe9ffd1bbc70",
 			"structuralHash": "c889d264584c31efb8e2647731c60adcd21007c374564157a67b338fbd3beee4",
 			"mainStructuralHash": "c889d264584c31efb8e2647731c60adcd21007c374564157a67b338fbd3beee4"
 		},
@@ -9434,8 +9458,8 @@
 			"old": "crates/veyyon-shell/tests/grouped_listings_do_not_flatten.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "f081746a6b9ce9cd645e07d358b160b1c6ec2484db235f659ac0228456ce26e3",
-			"mainHash": "76997e9c2fb5072fc89f52d448146c7bd9be0f232723357249b0cab1192f719e",
+			"hash": "453be5eb64befe8fd637c9ed2e44e5caf20f0a4a6b075b758374ee27aa05e086",
+			"mainHash": "f081746a6b9ce9cd645e07d358b160b1c6ec2484db235f659ac0228456ce26e3",
 			"structuralHash": "78500c64ec93cb157dd58d064a8580c1f374d653cca6bc156cf2316af111b6b5",
 			"mainStructuralHash": "78500c64ec93cb157dd58d064a8580c1f374d653cca6bc156cf2316af111b6b5"
 		},
@@ -9452,8 +9476,8 @@
 			"old": "crates/veyyon-shell/tests/minimizer_idempotence.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "07b68171371abaf2457bd03d006b335c384159f2e1faf6d6af8525917172504a",
-			"mainHash": "483d6b95cdcd11e5c54b89263315052a630d267f9fb2c0dbdce01872b219e8e0",
+			"hash": "0c2d778cc6629634ed00eea95f8d748e831705809ce326f1f66a77fa7839fe73",
+			"mainHash": "07b68171371abaf2457bd03d006b335c384159f2e1faf6d6af8525917172504a",
 			"structuralHash": "82a2e9771a5ef73784fc256160d20f06e3a0cbed114ca6c06aea4fa5963dd638",
 			"mainStructuralHash": "82a2e9771a5ef73784fc256160d20f06e3a0cbed114ca6c06aea4fa5963dd638"
 		},
@@ -9461,8 +9485,8 @@
 			"old": "crates/veyyon-shell/tests/minimizer_primitives.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "22436223eb46d95795a2b7d4dc3d00e890ab7edb736aa6389312cc113ba31347",
-			"mainHash": "3081117241c340836d741f4ad4408ccc4909f2395fa0de8afe32964a0b5ecda3",
+			"hash": "e6731e67dd56319522ed67f9edc7a3ec4c574260d9ba308795c29eb9319bb878",
+			"mainHash": "22436223eb46d95795a2b7d4dc3d00e890ab7edb736aa6389312cc113ba31347",
 			"structuralHash": "869b15e52ad11c8bd5f61d8cbb43a90e68675015604abab8ef293f685e687107",
 			"mainStructuralHash": "869b15e52ad11c8bd5f61d8cbb43a90e68675015604abab8ef293f685e687107"
 		},
@@ -9488,8 +9512,8 @@
 			"old": "crates/veyyon-shell/tests/pipe_table_rows_that_say_nothing_are_dropped.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "0e2899b2d82fed1f3c8e47164130c76a5ac158650ad01120446f35ba8e2bed79",
-			"mainHash": "a71749131bb83eac76d59e04ef210544c06cd1d51fb9511830f1cb88fe5979f0",
+			"hash": "5f3a0854ad4ba46010ae4077455f9aae1ad116e10b4b2d154ea4c374f2fd19ca",
+			"mainHash": "0e2899b2d82fed1f3c8e47164130c76a5ac158650ad01120446f35ba8e2bed79",
 			"structuralHash": "4978da4547a0e128f309cb255b4f379fb271e7353b9efeb8580671231e8d2c7d",
 			"mainStructuralHash": "4978da4547a0e128f309cb255b4f379fb271e7353b9efeb8580671231e8d2c7d"
 		},
@@ -9497,8 +9521,8 @@
 			"old": "crates/veyyon-shell/tests/the_router_names_the_right_filter.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "3ac42feae7681633a8a90001ada3b80dbfe20f3918d0a1a323aab3d9d44d4a86",
-			"mainHash": "b8d5e0fcfa7edc34290bd07ee2e63df839c24a2c400f7a9e0360e7a0e079f248",
+			"hash": "faa28f843258f8b9bcdfb4b74d4d93e8d5dba1759cdb021f9d2c2f8b9901530b",
+			"mainHash": "3ac42feae7681633a8a90001ada3b80dbfe20f3918d0a1a323aab3d9d44d4a86",
 			"structuralHash": "3ec23b66b937683d5f191c3395d93ec6459924dc93a41a425090926088b63c38",
 			"mainStructuralHash": "3ec23b66b937683d5f191c3395d93ec6459924dc93a41a425090926088b63c38"
 		},
@@ -9533,8 +9557,8 @@
 			"old": "crates/veyyon-keys/src/lib.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "110b0a763c5b77e4b4481184eb6853f5356ddbf9f6af1943ac09aedc9a6821e4",
-			"mainHash": "549f9aba49f890d36282b4f9a2bfabbad0e9cbc547af88d7a206afa5b48004f3",
+			"hash": "4d55af815e32997cbce2445ee24a4adabb01c2efe96368c55a9a06bbfa7fd41d",
+			"mainHash": "110b0a763c5b77e4b4481184eb6853f5356ddbf9f6af1943ac09aedc9a6821e4",
 			"structuralHash": "ea55d9c499da839a441996b372a680f394ab09cd4f7e3fe6810d9f227958a7ff",
 			"mainStructuralHash": "ea55d9c499da839a441996b372a680f394ab09cd4f7e3fe6810d9f227958a7ff"
 		},
@@ -9542,8 +9566,8 @@
 			"old": "crates/veyyon-keys/tests/escape_prefix.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "2b60353786c60f32e2fcb5757b7b46dbcb1412d4d6c06f460c5de7e4393a9757",
-			"mainHash": "5293e0c4db9ee3639b42b6fe06096882e45b816b5f732153951fad3286884564",
+			"hash": "30f398d38923e9d344d3a48605f4602e88db8a53889f5f755708724461d38d54",
+			"mainHash": "2b60353786c60f32e2fcb5757b7b46dbcb1412d4d6c06f460c5de7e4393a9757",
 			"structuralHash": "dee7af3fd65ccb486a001877dc6758003b8a16d45f0ea5bc197cc248893c663a",
 			"mainStructuralHash": "dee7af3fd65ccb486a001877dc6758003b8a16d45f0ea5bc197cc248893c663a"
 		},
@@ -9551,8 +9575,8 @@
 			"old": "crates/veyyon-keys/tests/function_key_forms.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "a35fc3896513703963dcb67823199344397daa580d8937e3288e0f801ae9bafc",
-			"mainHash": "86636ae0d5518b34f5018dd1dc849545a87dd77387a6ee40545e35d9b24052d5",
+			"hash": "9e885d919c118694dd1c1ba18dd2e0956a042c0a3fe89d13cb0a0bfbe4f33113",
+			"mainHash": "a35fc3896513703963dcb67823199344397daa580d8937e3288e0f801ae9bafc",
 			"structuralHash": "ba9c59f41dd06eaf08e7175d04dc5f99f45870823f174c8a3d1f965610898bfa",
 			"mainStructuralHash": "ba9c59f41dd06eaf08e7175d04dc5f99f45870823f174c8a3d1f965610898bfa"
 		},
@@ -9560,8 +9584,8 @@
 			"old": "crates/veyyon-keys/tests/key_id_case.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "2b8f76179264a0915ddc8b31e0611a423de609595c05b4a1b859a54d0bb95861",
-			"mainHash": "e41422d3480c2c013866ba0860fef5c0e31e8a8259bbc8c6171c4d00964986bf",
+			"hash": "083dd635d0ac29ddac5a74afee517c80bf25af0434201a45ddca3239e5aa280d",
+			"mainHash": "2b8f76179264a0915ddc8b31e0611a423de609595c05b4a1b859a54d0bb95861",
 			"structuralHash": "64ca1cd3a9403b70b266dcb9e3f9a505bbe64fa8f7f58d8db974858d37b55e53",
 			"mainStructuralHash": "64ca1cd3a9403b70b266dcb9e3f9a505bbe64fa8f7f58d8db974858d37b55e53"
 		},
@@ -9569,8 +9593,8 @@
 			"old": "crates/veyyon-keys/tests/text_codepoint_agreement.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "2eedb406c51ded6b292c3d35f20ea88d75024dad707d2322a3e6d0c9658a0841",
-			"mainHash": "8281d823f45380aa72cc6d79553737a22106d813752edb6790cba7cbc689eae4",
+			"hash": "fd76517ce8c3721f41bb0af5e8502ada7cf5da051e90a7fee235f8c7c1170610",
+			"mainHash": "2eedb406c51ded6b292c3d35f20ea88d75024dad707d2322a3e6d0c9658a0841",
 			"structuralHash": "5f13fb16499e21b46ca4958bca1f7741f5525745636eadcc30ee71bf9ff00a4f",
 			"mainStructuralHash": "5f13fb16499e21b46ca4958bca1f7741f5525745636eadcc30ee71bf9ff00a4f"
 		},
@@ -9587,8 +9611,8 @@
 			"old": "crates/veyyon-text/src/lib.rs",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "a430b38a967cef069c9dcf7d530ec323d3263c68db44db8147bddb20d4a40621",
-			"mainHash": "570e48860b2ee96d5c1cadd5d17a45919744a4f241c46d6eccff3ab557e191f2",
+			"hash": "de9bbde03e542bd9bd7ffa274f82b91f3ef18f31e737f9a592f6ae3aff36eeaa",
+			"mainHash": "0b7698768351c1f6ee50cb6d3dd72a7a70276a1e8ba355877e5303f61957d251",
 			"structuralHash": "45731d6ef326549cfd5f0e6999e4ec3ae6052013c2d4d8b552b1e7326e2aacee",
 			"mainStructuralHash": "45731d6ef326549cfd5f0e6999e4ec3ae6052013c2d4d8b552b1e7326e2aacee"
 		},
@@ -43604,6 +43628,204 @@
 			"mainHash": "c81227954112530efae573dbb31fdc1846e38c9deae27b3f532a7de8a004bf35",
 			"structuralHash": "eeadab3ba3cfa8ec0e832f1f74b2d9405f6320f570b8562e721b7a4262ed58ff",
 			"mainStructuralHash": "1c6bb305925551a580df8b5b052bb6471c57a53e49403714e3a9c15d527ab99e"
+		},
+		"tests/fixtures/ansi-strip-corpus.json": {
+			"old": "fixtures/ansi-strip-corpus.json",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "9f2533ade0a216ca83c9929a5920209477a25745a323c04d9f5ad9b1593f69d1",
+			"mainHash": "9f2533ade0a216ca83c9929a5920209477a25745a323c04d9f5ad9b1593f69d1",
+			"structuralHash": "3fccdc65f61f1044bd975efc0253db2a8a2e4e77824252ce8b4cf3ecc0ee5d55",
+			"mainStructuralHash": "3fccdc65f61f1044bd975efc0253db2a8a2e4e77824252ce8b4cf3ecc0ee5d55"
+		},
+		"tests/fuzz/.gitignore": {
+			"old": "fuzz/.gitignore",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "fe0bcb748ec181f3b8479b9a1d86ff243c5ef98eb1c7ad3ac3909acdbecdd4ea",
+			"mainHash": "fe0bcb748ec181f3b8479b9a1d86ff243c5ef98eb1c7ad3ac3909acdbecdd4ea",
+			"structuralHash": "8579c07bec452bf37c1d49e57b19e5dc89bd5ee7b239da58bddf6e8f07f663fa",
+			"mainStructuralHash": "8579c07bec452bf37c1d49e57b19e5dc89bd5ee7b239da58bddf6e8f07f663fa"
+		},
+		"tests/fuzz/Cargo.toml": {
+			"old": "fuzz/Cargo.toml",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "41717cfccfc054a7c850f83ea21ec290718ba7c13ffc561c3c0609352dc8d4b6",
+			"mainHash": "41717cfccfc054a7c850f83ea21ec290718ba7c13ffc561c3c0609352dc8d4b6",
+			"structuralHash": "b413577897f470087d1f9b113993785aeeeb6167919fbbf93159b7cffa56a844",
+			"mainStructuralHash": "b413577897f470087d1f9b113993785aeeeb6167919fbbf93159b7cffa56a844"
+		},
+		"tests/fuzz/fuzz_targets/ast_apply_edits.rs": {
+			"old": "fuzz/fuzz_targets/ast_apply_edits.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "2a9d9343afa95755251110a3c6f860d453aa725a49cc7b4385797e50e24ba846",
+			"mainHash": "2a9d9343afa95755251110a3c6f860d453aa725a49cc7b4385797e50e24ba846",
+			"structuralHash": "bd801431bb4a5d47b1eb1ae14a0c24ad00f158dd1112283f66c7ec94fb75737c",
+			"mainStructuralHash": "bd801431bb4a5d47b1eb1ae14a0c24ad00f158dd1112283f66c7ec94fb75737c"
+		},
+		"tests/fuzz/fuzz_targets/ast_block_range.rs": {
+			"old": "fuzz/fuzz_targets/ast_block_range.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "1037cc56e9d23c4dacc2aeb494b88118a06112319d0ded6155b4f2b2c468c555",
+			"mainHash": "1037cc56e9d23c4dacc2aeb494b88118a06112319d0ded6155b4f2b2c468c555",
+			"structuralHash": "3c0d781a37f1343e5acd9203274a5c06395df523da1a678c152d1410da36079e",
+			"mainStructuralHash": "3c0d781a37f1343e5acd9203274a5c06395df523da1a678c152d1410da36079e"
+		},
+		"tests/fuzz/fuzz_targets/ast_parse_and_match.rs": {
+			"old": "fuzz/fuzz_targets/ast_parse_and_match.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "210779f245866011e8170ed8be8086c9956f33727c499f4fb06cf78255b789d1",
+			"mainHash": "210779f245866011e8170ed8be8086c9956f33727c499f4fb06cf78255b789d1",
+			"structuralHash": "a7925010173b6429273f593457ae1f8adf0c2cbbeba71eabf2791f6e738e568b",
+			"mainStructuralHash": "a7925010173b6429273f593457ae1f8adf0c2cbbeba71eabf2791f6e738e568b"
+		},
+		"tests/fuzz/fuzz_targets/diff_kernel_unified.rs": {
+			"old": "fuzz/fuzz_targets/diff_kernel_unified.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "84fe1de92cb6c7feaced183c23941cf66da60530c19903d5b140c03684fde938",
+			"mainHash": "84fe1de92cb6c7feaced183c23941cf66da60530c19903d5b140c03684fde938",
+			"structuralHash": "07fb474031ebd858309c5d884e1e743665fa296723fb387a29e6b73cf13451e7",
+			"mainStructuralHash": "07fb474031ebd858309c5d884e1e743665fa296723fb387a29e6b73cf13451e7"
+		},
+		"tests/fuzz/fuzz_targets/glob_patterns.rs": {
+			"old": "fuzz/fuzz_targets/glob_patterns.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "ec1ad89e04abeb31ad207cf8130da8a8b689cd3913f608c7491b66fc25011610",
+			"mainHash": "ec1ad89e04abeb31ad207cf8130da8a8b689cd3913f608c7491b66fc25011610",
+			"structuralHash": "b6e51885d1b40239dc7a0e1865bc0a2f120fda23e831e7bc3eee85ba00a3c5aa",
+			"mainStructuralHash": "b6e51885d1b40239dc7a0e1865bc0a2f120fda23e831e7bc3eee85ba00a3c5aa"
+		},
+		"tests/fuzz/fuzz_targets/iso_git_diff_parse.rs": {
+			"old": "fuzz/fuzz_targets/iso_git_diff_parse.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "dccdbc75f1189a5743e84cd24a9c1ff3a6360408917e3b756216672717146b29",
+			"mainHash": "dccdbc75f1189a5743e84cd24a9c1ff3a6360408917e3b756216672717146b29",
+			"structuralHash": "efb348c1071a68d24c95b30e2163e06c25a23096426bf66e1dde562a99d919e9",
+			"mainStructuralHash": "efb348c1071a68d24c95b30e2163e06c25a23096426bf66e1dde562a99d919e9"
+		},
+		"tests/fuzz/fuzz_targets/keys_parse.rs": {
+			"old": "fuzz/fuzz_targets/keys_parse.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "c395f4bc1a467f1163d447291989b3bd7c467606563aa6a5477fc3d17f81cb57",
+			"mainHash": "c395f4bc1a467f1163d447291989b3bd7c467606563aa6a5477fc3d17f81cb57",
+			"structuralHash": "361afc20727b2e5c8f9e75ad432d8e9e4ec88d078e0b1f0062a2be8ddcdd71fd",
+			"mainStructuralHash": "361afc20727b2e5c8f9e75ad432d8e9e4ec88d078e0b1f0062a2be8ddcdd71fd"
+		},
+		"tests/fuzz/fuzz_targets/minimizer_detect.rs": {
+			"old": "fuzz/fuzz_targets/minimizer_detect.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "d71e2ad1beffaa731ff388bfbe4a777b2972d5fcb853c46e151b6d552f8ff42d",
+			"mainHash": "d71e2ad1beffaa731ff388bfbe4a777b2972d5fcb853c46e151b6d552f8ff42d",
+			"structuralHash": "acc463065efb017ebfb406c2150ceec4325c8f5477df000148ac95103e1dad8e",
+			"mainStructuralHash": "acc463065efb017ebfb406c2150ceec4325c8f5477df000148ac95103e1dad8e"
+		},
+		"tests/fuzz/fuzz_targets/minimizer_filters.rs": {
+			"old": "fuzz/fuzz_targets/minimizer_filters.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "b6ff93ff155c696149a4ea6c057203a204e7d252e50052a1266599bd50c3e319",
+			"mainHash": "b6ff93ff155c696149a4ea6c057203a204e7d252e50052a1266599bd50c3e319",
+			"structuralHash": "35f9d70437a432797091ed21cd6da2170f032f56426a467f548b3c43d0c0a1cd",
+			"mainStructuralHash": "35f9d70437a432797091ed21cd6da2170f032f56426a467f548b3c43d0c0a1cd"
+		},
+		"tests/fuzz/fuzz_targets/minimizer_lint_condense.rs": {
+			"old": "fuzz/fuzz_targets/minimizer_lint_condense.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "dad31a3046e3e3e67ff1994ee8abc7d688bf90839f7fcc0c56287b1bcfe35b4a",
+			"mainHash": "dad31a3046e3e3e67ff1994ee8abc7d688bf90839f7fcc0c56287b1bcfe35b4a",
+			"structuralHash": "9da4a9c2a5e9a254e52b57de3bda000ae38b574a71f164f7e015a8e90f963e02",
+			"mainStructuralHash": "9da4a9c2a5e9a254e52b57de3bda000ae38b574a71f164f7e015a8e90f963e02"
+		},
+		"tests/fuzz/fuzz_targets/minimizer_primitives.rs": {
+			"old": "fuzz/fuzz_targets/minimizer_primitives.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "f0713d7121414a3081c313a3d76916d8da4054cd840f283a0d2846a570b7a767",
+			"mainHash": "f0713d7121414a3081c313a3d76916d8da4054cd840f283a0d2846a570b7a767",
+			"structuralHash": "16edb00cb2ce82a4966e80a592a96cac3a0195c58cdf3b674abccaf4973152a2",
+			"mainStructuralHash": "16edb00cb2ce82a4966e80a592a96cac3a0195c58cdf3b674abccaf4973152a2"
+		},
+		"tests/fuzz/fuzz_targets/text_measure.rs": {
+			"old": "fuzz/fuzz_targets/text_measure.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "da3534b22d8e87b7b674c68174b11b514666187a0dedd131d8cf790f4af176dd",
+			"mainHash": "da3534b22d8e87b7b674c68174b11b514666187a0dedd131d8cf790f4af176dd",
+			"structuralHash": "bc4aaa8b5852ffcda1375cd7ba27ebc596670909d022ffcea1e8bf4001583e9f",
+			"mainStructuralHash": "bc4aaa8b5852ffcda1375cd7ba27ebc596670909d022ffcea1e8bf4001583e9f"
+		},
+		"tests/fuzz/fuzz_targets/uu_diff_argv.rs": {
+			"old": "fuzz/fuzz_targets/uu_diff_argv.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "9262d2d9ece59ced845e51cb7c14ceaaa16930e20e4d288d45f5fd2120291edc",
+			"mainHash": "9262d2d9ece59ced845e51cb7c14ceaaa16930e20e4d288d45f5fd2120291edc",
+			"structuralHash": "6e8aabc48de9bbac483f9559fc2220b75bd83a266a49dc62633b441f683333ca",
+			"mainStructuralHash": "6e8aabc48de9bbac483f9559fc2220b75bd83a266a49dc62633b441f683333ca"
+		},
+		"tests/fuzz/fuzz_targets/uu_grep_argv.rs": {
+			"old": "fuzz/fuzz_targets/uu_grep_argv.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "19721a8226965bffdb5895d700fb4459497daca9915079a5508ebe4c2df8c3f7",
+			"mainHash": "19721a8226965bffdb5895d700fb4459497daca9915079a5508ebe4c2df8c3f7",
+			"structuralHash": "05335a9bbf7ea3f821087008a82fc18a7fcabe67407a47fadea9efd2674ff83c",
+			"mainStructuralHash": "05335a9bbf7ea3f821087008a82fc18a7fcabe67407a47fadea9efd2674ff83c"
+		},
+		"tests/fuzz/fuzz_targets/uutils_ctx_scope.rs": {
+			"old": "fuzz/fuzz_targets/uutils_ctx_scope.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "e6d7a7f3a1d66c45b286b5f90f5e6378c5bd3e24b66db5274da7279427be9a5d",
+			"mainHash": "e6d7a7f3a1d66c45b286b5f90f5e6378c5bd3e24b66db5274da7279427be9a5d",
+			"structuralHash": "8b4f32ad185741e27745bad16633bad2e359a0e2618cb20b47ce0142dd4be21d",
+			"mainStructuralHash": "8b4f32ad185741e27745bad16633bad2e359a0e2618cb20b47ce0142dd4be21d"
+		},
+		"tests/fuzz/fuzz_targets/walker_glob.rs": {
+			"old": "fuzz/fuzz_targets/walker_glob.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "11b9e27d47f865f2167a3847abbb9f03012d6b7a1fc45b4cdb4a3c801a7ffbac",
+			"mainHash": "11b9e27d47f865f2167a3847abbb9f03012d6b7a1fc45b4cdb4a3c801a7ffbac",
+			"structuralHash": "8a1ac22add26fcd3147d065448168e29421bae60a35da5baf2e01154e788ee64",
+			"mainStructuralHash": "8a1ac22add26fcd3147d065448168e29421bae60a35da5baf2e01154e788ee64"
+		},
+		"tests/fuzz/fuzz_targets/walker_path_order.rs": {
+			"old": "fuzz/fuzz_targets/walker_path_order.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "b820bcb05aae143632b1f3e5697a473dc75b46da5c934c2ad9057f4c815f4609",
+			"mainHash": "b820bcb05aae143632b1f3e5697a473dc75b46da5c934c2ad9057f4c815f4609",
+			"structuralHash": "c09ccf365be1dc20b541c728e030d72e6757759506a2819d660b4d967a73b9a5",
+			"mainStructuralHash": "c09ccf365be1dc20b541c728e030d72e6757759506a2819d660b4d967a73b9a5"
+		},
+		"tests/fuzz/known-harness-signatures.toml": {
+			"old": "fuzz/known-harness-signatures.toml",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "3c54724ddba915c85d9a7ee876ad65a129b024d7756b0f600eec310a72dd0a7c",
+			"mainHash": "3c54724ddba915c85d9a7ee876ad65a129b024d7756b0f600eec310a72dd0a7c",
+			"structuralHash": "92eb6333a2d6977a9c24f2feb7a425e5c2af376a45ed5169e65f6d8aa828d5e7",
+			"mainStructuralHash": "92eb6333a2d6977a9c24f2feb7a425e5c2af376a45ed5169e65f6d8aa828d5e7"
+		},
+		"tests/fuzz/src/lib.rs": {
+			"old": "fuzz/src/lib.rs",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "5201ba0806e869d2921bc76044670c7da207fb80e8ae2ac48de42ff7877fd9d5",
+			"mainHash": "5201ba0806e869d2921bc76044670c7da207fb80e8ae2ac48de42ff7877fd9d5",
+			"structuralHash": "abcc777fa78c9c3e82375f5da1e4a05a2bfe54a1b05a06fb0c1afaa8764723dc",
+			"mainStructuralHash": "abcc777fa78c9c3e82375f5da1e4a05a2bfe54a1b05a06fb0c1afaa8764723dc"
 		},
 		"tests/simulations/CHANGELOG.md": {
 			"old": "packages/simulations/CHANGELOG.md",
