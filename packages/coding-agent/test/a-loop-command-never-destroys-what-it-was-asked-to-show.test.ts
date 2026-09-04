@@ -103,7 +103,12 @@ function buildHarness(): Harness {
 		sendUserMessage(text: string): void {
 			messages.push(text);
 		},
-		sendMessage(): void {},
+		// The resume prompt is delivered hidden (`display: false`) since the
+		// command line above it already says what was asked; the context typed
+		// after the command travels inside it, so it is recorded the same way.
+		sendMessage(message: { content: string }): void {
+			messages.push(message.content);
+		},
 	} as unknown as ExtensionAPI;
 	createAutoresearchExtension(api);
 	return { commands, shortcuts, notices, messages, activeTools };
@@ -414,7 +419,7 @@ describe("a loop command never destroys what it was asked to show", () => {
 		const harness = buildHarness();
 		for (const name of ["autoresearch", "autoswarm"]) {
 			const completions = harness.commands.get(name)?.getArgumentCompletions?.("") ?? [];
-			expect(completions.map(item => item.value)).toEqual(["status", "goal ", "off", "clear"]);
+			expect(completions.map(item => item.value)).toEqual(["status", "resume", "goal ", "off", "clear"]);
 		}
 		const flags = harness.commands.get("autoresearch")?.getArgumentCompletions?.("clear ") ?? [];
 		expect(flags.map(item => item.value)).toEqual(["clear --keep-tree", "clear --reset-tree"]);
