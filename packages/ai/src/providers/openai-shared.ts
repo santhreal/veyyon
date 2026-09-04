@@ -67,6 +67,7 @@ import {
 } from "../utils/block-symbols";
 import type { AssistantMessageEventStream } from "../utils/event-stream";
 import type { CapturedHttpErrorResponse } from "../utils/http-inspector";
+import { getOpenCodeHeaders, isOpenCodeProvider } from "../utils/opencode-headers";
 import { getOpenRouterHeaders } from "../utils/openrouter-headers";
 import { isForcedToolChoice } from "../utils/tool-choice";
 import {
@@ -93,7 +94,7 @@ import type {
 	ResponseStatus,
 	ResponseStreamEvent,
 } from "./openai-responses-wire";
-import { transformMessages } from "./transform-messages";
+import { staleToolResultNote, transformMessages } from "./transform-messages";
 import { joinTextWithImagePlaceholder, NON_VISION_IMAGE_PLACEHOLDER, partitionVisionContent } from "./vision-guard";
 
 export interface OpenAIModelIdentity {
@@ -141,6 +142,13 @@ export interface OpenAIRequestSetupOptions {
 	};
 	openAISessionId?: string;
 	promptCacheSessionId?: string;
+	/**
+	 * The conversation this request belongs to, for the OpenCode session header.
+	 * Distinct from the two above, which are withheld once cache retention is
+	 * "none", and from the routing session id, which a side-channel turn makes
+	 * unique per request while keeping the conversation's prompt-cache key.
+	 */
+	conversationId?: string;
 }
 
 export interface OpenAIRequestSetup {
@@ -199,6 +207,18 @@ export function resolveOpenAIRequestSetup(
 	let headers = { ...(model.headers ?? {}) };
 	if (model.provider === "openrouter") {
 		Object.assign(headers, getOpenRouterHeaders());
+	}
+	if (isOpenCodeProvider(model.provider)) {
+		// Set only when absent, so `model.headers` above and `extraHeaders` below
+		// both still win. Keyed on the raw conversation id rather than the
+		// prompt-cache key, so a session that disables caching still routes to one
+		// upstream provider, and so both transport families derive the same value
+		// for the same conversation.
+		for (const [name, value] of Object.entries(
+			getOpenCodeHeaders(options.conversationId ?? options.promptCacheSessionId ?? options.openAISessionId),
+		)) {
+			setHeaderIfAbsent(headers, name, value);
+		}
 	}
 	Object.assign(headers, options.extraHeaders);
 	if (model.provider === "coreweave") {
@@ -1196,7 +1216,7 @@ export function collectCustomCallIds(messages: ResponseInput): Set<string> {
 /**
  * Convert orphan `function_call_output` / `custom_tool_call_output` items —
  * those whose `call_id` has no matching preceding `function_call` /
- * `custom_tool_call` in the same input — into assistant text notes.
+ * `custom_tool_call` in the same input — into user-role notes.
  *
  * The Responses API rejects unpaired outputs with
  * `400 No tool call found for function call output with call_id …`. Orphans
@@ -1211,10 +1231,12 @@ export function collectCustomCallIds(messages: ResponseInput): Set<string> {
  *   `function_call` ever landing in any persisted provider payload.
  *
  * Dropping the result loses information the model needs to recover; sending
- * it as-is 400s the request. Folding it into an assistant `message` preserves
- * the payload (call_id + truncated output) while staying within the Responses
- * input grammar. Matches the behavior of {@link transformRequestBody} in the
- * codex provider — issue #1351 / regression of #472.
+ * it as-is 400s the request. Folding it into a `message` preserves the payload
+ * (call_id + truncated output) while staying within the Responses input
+ * grammar. {@link staleToolResultNote} decides the envelope and the role, and
+ * states why the role is never `assistant`. Matches the behavior of
+ * {@link transformRequestBody} in the codex provider — issue #1351 /
+ * regression of #472.
  */
 export function repairOrphanResponsesToolOutputs(input: ResponseInput): ResponseInput {
 	const knownCallIds = new Set<string>();
@@ -1224,17 +1246,22 @@ export function repairOrphanResponsesToolOutputs(input: ResponseInput): Response
 		if (typeof callId !== "string") continue;
 		if (t === "function_call" || t === "custom_tool_call") knownCallIds.add(callId);
 	}
-	let hasOrphan = false;
+	const orphanCallIds: string[] = [];
 	for (const item of input) {
 		const t = (item as { type?: string }).type;
 		if (t !== "function_call_output" && t !== "custom_tool_call_output") continue;
 		const callId = (item as { call_id?: unknown }).call_id;
-		if (typeof callId === "string" && !knownCallIds.has(callId)) {
-			hasOrphan = true;
-			break;
-		}
+		if (typeof callId === "string" && !knownCallIds.has(callId)) orphanCallIds.push(callId);
 	}
-	if (!hasOrphan) return input;
+	if (orphanCallIds.length === 0) return input;
+	// The fold is the only trace of how the pairing was lost. The reported
+	// occurrences (an imitated note in a session with no compaction and every
+	// result paired in storage) cannot be diagnosed from the transcript alone.
+	logger.warn("openai-responses: folding tool outputs whose call is missing from the request", {
+		orphanCallIds,
+		knownCallIds: [...knownCallIds],
+		inputItems: input.length,
+	});
 	return input.map(item => {
 		const t = (item as { type?: string }).type;
 		if (t !== "function_call_output" && t !== "custom_tool_call_output") return item;
@@ -1257,8 +1284,8 @@ export function repairOrphanResponsesToolOutputs(input: ResponseInput): Response
 		if (text.length > ORPHAN_OUTPUT_LIMIT) text = `${text.slice(0, ORPHAN_OUTPUT_LIMIT)}\n...[truncated]`;
 		return {
 			type: "message",
-			role: "assistant",
-			content: `[Orphan ${toolName} result; call_id=${callId}]: ${text}`,
+			role: "user",
+			content: staleToolResultNote({ toolName, toolCallId: callId, text }),
 		} as ResponseInput[number];
 	});
 }
@@ -1774,13 +1801,26 @@ export function appendResponsesToolResultMessages<TApi extends Api>(
 	if (strictResponsesPairing && !knownCallIds.has(normalized.callId)) {
 		// Strict backends (Azure, Copilot) reject unpaired outputs outright, but
 		// silently dropping the result loses information the model needs. Fold it
-		// into an assistant note instead (same shape as repairOrphanResponsesToolOutputs).
+		// into a note instead (same shape as repairOrphanResponsesToolOutputs).
+		logger.warn("openai-responses: folding a tool result whose call is missing from the request", {
+			provider: model.provider,
+			model: model.id,
+			toolName: toolResult.toolName,
+			toolCallId: toolResult.toolCallId,
+			normalizedCallId: normalized.callId,
+			knownCallIds: [...knownCallIds],
+		});
 		const limit = 16_000;
 		const noteText = output.length > limit ? `${output.slice(0, limit)}\n...[truncated]` : output;
 		messages.push({
 			type: "message",
-			role: "assistant",
-			content: `[Orphan ${toolResult.toolName || "tool"} result; call_id=${normalized.callId}]: ${noteText}`,
+			role: "user",
+			content: staleToolResultNote({
+				toolName: toolResult.toolName || "tool",
+				toolCallId: normalized.callId,
+				text: noteText,
+				isError: toolResult.isError,
+			}),
 		} as ResponseInput[number]);
 		return;
 	}

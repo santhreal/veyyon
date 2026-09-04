@@ -56,6 +56,7 @@ import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils"
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { boundProviderErrorDetail, ProviderHttpError, readProviderErrorDetail } from "../error";
 import type { Api, CodexCompactionRequestContext, FetchImpl, Message, Model, ProviderSessionState } from "../types";
+import { conversationIdForOpenCode } from "../utils/opencode-headers";
 import {
 	buildCodexCompactionV2Window,
 	CODEX_COMPACTION_TRIGGER_ITEM,
@@ -233,10 +234,11 @@ function resolveOpenAiCompactRequest(
 	model: Model<Api>,
 	apiKey: string,
 	messages: Message[],
+	conversationId: string | undefined,
 ): { url: string; headers: Record<string, string> } {
 	const setup = resolveOpenAIRequestSetup(
 		{ provider: model.provider, id: model.id, baseUrl: model.baseUrl, headers: model.headers },
-		{ apiKey, messages },
+		{ apiKey, messages, conversationId },
 	);
 	const baseUrl = trimTrailingSlashes(setup.baseUrl ?? "https://api.openai.com/v1");
 	return { url: `${baseUrl}/responses/compact`, headers: setup.headers };
@@ -348,7 +350,7 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 				? resolveAzureCompactRequest(model, apiKey)
 				: isCodex
 					? resolveCodexCompactRequest(model, apiKey, request)
-					: resolveOpenAiCompactRequest(model, apiKey, request.messages);
+					: resolveOpenAiCompactRequest(model, apiKey, request.messages, conversationIdForOpenCode(request));
 		const { url, headers } = resolved;
 
 		const input: Array<Record<string, unknown>> = [

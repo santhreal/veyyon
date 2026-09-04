@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-00658df1.js";
+            window.path_to_searchindex_js = "../searchindex-cbf2960b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -227,12 +227,6 @@ recorded and shown but do not decide anything.</p>
 before the first iteration, and that commit is the baseline every later run is
 measured against. Editing the harness mid-session invalidates the comparison, so
 change it only alongside a new segment.</p>
-<p>Checking out another branch pauses the session at the start of the next turn.
-The experiment tools detach and no autoresearch block is added to the turn, but
-the recorded runs stay readable: the status row reads
-<code>paused · session on &lt;branch&gt;</code> and <code>ctrl+x</code> still opens the run screen. Checking
-the branch out again lifts the pause on the next turn and reattaches the
-experiment tools.</p>
 <h2 id="segments"><a class="header" href="#segments">Segments</a></h2>
 <p>A segment is one baseline and the runs measured against it. Bumping the segment
 starts a fresh baseline inside the same session, which is what you want after
@@ -245,59 +239,6 @@ off-limits path is logged with a scope deviation, and keeping it without a
 justification is reported in the next iteration.</p>
 <p>The harness itself belongs in <code>off_limits</code>. A loop that is allowed to edit its
 own benchmark can improve the number without improving the code.</p>
-<h2 id="reading-a-run"><a class="header" href="#reading-a-run">Reading a run</a></h2>
-<p>A live loop occupies one status row:</p>
-<pre><code>autoswarm · run #5 · 1m 12s · 4 runs · 3 kept · 3 arms · best 168.40ms -12.6% · conf 3.2x · ctrl+x runs
-</code></pre>
-<p><code>ctrl+x</code> opens the run screen, and so does <code>/autoresearch</code> with nothing after
-it:</p>
-<pre><code>┌─ Autoswarm · tokenizer-laten…┬───────────────────────────────────────────────────┐
-│   OVERVIEW ───────────────── │ Best        168.40ms · -12.6% · from 192.78ms ·   │
-│ › Session                    │             run 4 · arm b                         │
-│   Playbook                   │ Trend       ▅▄█▁                                  │
-│   #5  running                │ Metric      duration · lower is better            │
-│   SEGMENT 1 ──────────────── │                                                   │
-│   #4 b  168.40ms -12.6% best │ Goal        make the tokenizer faster             │
-│   #3 c  210.10ms  +9.0% drop │                                                   │
-│   #2 b  188.40ms  -2.3% drop │ Segment     1 · 4 runs, 1 kept, 3 discarded       │
-│   #1    192.78ms       base  │                                                   │
-│                              │ Breadth     3 arms per iteration                  │
-├──────────────────────────────┴───────────────────────────────────────────────────┤
-│ up/down select   pgup/pgdn page   esc close                                      │
-└──────────────────────────────────────────────────────────────────────────────────┘
-</code></pre>
-<p>The list holds the session, the playbook, the run in flight and every logged
-run, newest first, grouped by segment. Each row states its own verdict: the run
-number, the arm that produced it, its metric, its change against the baseline of
-its own segment, and whether it is the baseline, the leader, kept, dropped,
-crashed, failed or flagged.</p>
-<p>The pane beside it shows the highlighted entry in full. The session opens with
-the best measurement of the segment, its change against the measurement the
-segment started from, and the count of runs logged since that best one. Below
-those is one block per run of the segment, oldest on the left, scaled between
-the segment’s lowest and highest measurements: a series still descending and a
-series that improved once and then flattened produce the same best and the same
-count, and the blocks separate them. A segment past the width of the pane draws
-its most recent runs, marked with a leading <code>…</code>. A run shows its metric and
-percentage change against the segment baseline, secondary metrics, confidence,
-the arm that produced it and the arm that certified it, the flag reason, scope
-deviations, the change description, the commit and the files it touched.</p>
-<p><code>log_experiment</code> requires a metric on every status, so a run that crashed before
-it measured anything is recorded with a zero. The screen states <code>no metric</code> for
-that run rather than formatting the zero, and draws it as a <code>·</code> in the blocks
-rather than as a height. A run whose harness printed its metric and then died
-shows that number, and the comparison is against it.</p>
-<p>Up and down move through the list, page up and page down move the detail pane by
-a full pane, and typing filters the list. Escape clears a live filter, and closes
-the screen when there is none. It is readable before the first run, where it
-shows the goal, the scope and the metric the session was configured with.</p>
-<p>On a terminal too narrow for two panes, the list is above the detail instead of
-beside it, both at the full width of the card, and the footer prints the widest
-hint that fits, down to <code>esc close</code>. The status row drops its segments from the
-least informative end when the terminal is narrower than the row, and prints the
-loop name and <code>ctrl+x runs</code> at every width. Where the best is not the newest
-logged run, the row carries the gap as <code>2 since best</code>, which it gives up before
-the best itself.</p>
 <h2 id="going-wider"><a class="header" href="#going-wider">Going wider</a></h2>
 <p><code>/autoresearch</code> tries one change per iteration. <a href="./autoswarm.html">Autoswarm</a> is
 the same loop with several candidate arms per iteration, cross-reviewed before
@@ -329,52 +270,12 @@ degenerate cases.</p>
 </table>
 </div>
 <h2 id="ending-a-session"><a class="header" href="#ending-a-session">Ending a session</a></h2>
-<p><code>/autoresearch off</code> leaves the mode and keeps the session. A bare
-<code>/autoresearch</code> opens the run screen; it does not end anything.</p>
-<p><code>/autoresearch clear</code> resets the worktree to the segment baseline, deletes
-untracked files and closes the session. It asks first, naming the commit it
-resets to and how many files hold uncommitted changes. Two flags:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Flag</th><th>Effect</th></tr>
-</thead>
-<tbody>
-<tr><td><code>--keep-tree</code></td><td>Close the session and leave every file alone. Nothing to confirm.</td></tr>
-<tr><td><code>--reset-tree</code></td><td>Reset even when the branch is not an <code>autoresearch/*</code> one.</td></tr>
-</tbody>
-</table>
-</div>
-<p>Any other argument after <code>clear</code> is rejected and nothing is reset, so a
-misspelled <code>--keep-tree</code> cannot fall through to the reset. A <code>clear</code> that cannot
-read git status resets nothing and leaves the session open, since the
-confirmation exists to state what the reset discards.</p>
-<p><code>/autoswarm</code> takes the same subcommands.</p>
+<p><code>/autoresearch off</code> leaves the mode and keeps the session. <code>/autoresearch clear</code>
+resets the worktree to the baseline and closes the session; <code>--keep-tree</code> leaves
+your files alone. <code>/autoswarm</code> takes the same two.</p>
 <p>State is stored per repository, under the profile directory. The database is
 keyed on the primary checkout, so worktrees of one repository share it.
 <code>VEYYON_AUTORESEARCH_DB_DIR</code> overrides the location.</p>
-<h2 id="regenerating-the-run-screen-captures"><a class="header" href="#regenerating-the-run-screen-captures">Regenerating the run screen captures</a></h2>
-<p><code>proof/scenes/autoresearch-run-screen.sh</code> drives the swarm run screen and
-<code>proof/scenes/autoresearch-serial-screen.sh</code> the serial one. Both are stills
-takes, so both lower the motion floor; at the default the recorder rejects a
-take that holds still as a stuttering capture.</p>
-<p>The run screen changes layout twice as a terminal narrows – the sidebar is
-bounded, then the panes stack – so it is captured at three widths. <code>OUT_DIR</code> is
-a bind mount and must be absolute, and each width takes its own directory,
-because one directory cannot hold two takes whose frames share a mark name.</p>
-<pre><code class="language-sh">for px in 1600 640 396; do
-	SCENE_WIDTH=${px} SCENE_MOTION_FLOOR=1 OUT_DIR="${PWD}/proof/captures/x11/w${px}" \
-		proof/docker/record-x11.sh proof/scenes/autoresearch-run-screen.sh
-	SCENE_WIDTH=${px} SCENE_MOTION_FLOOR=1 OUT_DIR="${PWD}/proof/captures/x11/before/w${px}" \
-		proof/docker/record-x11-before.sh proof/scenes/autoresearch-run-screen.sh
-done
-
-SCENE_MOTION_FLOOR=1 proof/docker/record-x11.sh proof/scenes/autoresearch-serial-screen.sh
-SCENE_MOTION_FLOOR=1 proof/docker/record-x11-before.sh proof/scenes/autoresearch-serial-screen.sh
-</code></pre>
-<p>The before arm holds every source file the branch changed at <code>origin/main</code>,
-takes away every file it added and puts back every file it deleted, then
-restores all three from memory and verifies the restore by checksum.</p>
 
                     </main>
 

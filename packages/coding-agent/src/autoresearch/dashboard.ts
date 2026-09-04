@@ -114,7 +114,9 @@ export function createDashboardController(): DashboardController {
 						runtime,
 						close: () => done(undefined),
 						requestRender,
-						rows: () => process.stdout.rows ?? 40,
+						// The rows the overlay can paint: the window minus the pinned
+						// composer zone the overlay stays above.
+						rows: () => tui.terminal.rows - tui.pinnedFooterRows,
 					});
 					return {
 						render: (width: number) => component.render(width),

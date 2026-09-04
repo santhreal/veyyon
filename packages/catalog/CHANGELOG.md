@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- A model's thinking config carries `prefixBinding`, set for Claude 5.1 and later, stating that its thinking blocks are bound to the conversation prefix they were produced against.
+- An `anthropic-messages` model's compat carries `replayDemotedPriorReasoning`, which drops prior-turn reasoning on a signing endpoint instead of replaying it as demoted prose.
+
 ### Changed
 
 - The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
@@ -9,6 +14,10 @@
 ### Fixed
 
 - The Claude Code fingerprint version is 2.1.257, so Anthropic OAuth requests for current models are no longer rejected with `claude_code_version_too_old`.
+- Antigravity discovery gives `gemini-3.8-flash-tiered` the same effort surface as 3.7: the endpoint serves 3.8 Flash only under that wire id, with no bare id and no per-tier siblings, so the row arrived raw with no effort levels. It now collapses to a logical `gemini-3.8-flash` row carrying the low/medium/high ladder models.dev declares for `google/gemini-3.8-flash` on the `google-level` transport, and its wire profile pins the 65536 output cap the endpoint reports.
+- OpenCode Zen and Go discovery resolves the wire API of an id the bundle predates from live models.dev, so `muse-spark-1.3-contributor-free` and `muse-spark-1.3-contributor` route to `/responses` instead of failing with HTTP 500 on `/chat/completions`; the bundle also carries both rows.
+- OpenCode Zen and Go model discovery sends the `Veyyon/<version>` user agent the gateway requires, so a discovery request is no longer unlabeled traffic that can be filtered into an empty model picker.
+- An OpenCode Zen or Go discovery whose models.dev lookup fails falls back to the bundle without reporting a discovery failure, so a working gateway listing is no longer warned about as a provider that could not be discovered.
 
 ## [1.3.0] - 2026-08-28
 

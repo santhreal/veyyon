@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-00658df1.js";
+            window.path_to_searchindex_js = "searchindex-cbf2960b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-b613f6a6.js"></script>
@@ -6584,12 +6584,6 @@ recorded and shown but do not decide anything.</p>
 before the first iteration, and that commit is the baseline every later run is
 measured against. Editing the harness mid-session invalidates the comparison, so
 change it only alongside a new segment.</p>
-<p>Checking out another branch pauses the session at the start of the next turn.
-The experiment tools detach and no autoresearch block is added to the turn, but
-the recorded runs stay readable: the status row reads
-<code>paused · session on &lt;branch&gt;</code> and <code>ctrl+x</code> still opens the run screen. Checking
-the branch out again lifts the pause on the next turn and reattaches the
-experiment tools.</p>
 <h2 id="segments"><a class="header" href="#segments">Segments</a></h2>
 <p>A segment is one baseline and the runs measured against it. Bumping the segment
 starts a fresh baseline inside the same session, which is what you want after
@@ -6602,59 +6596,6 @@ off-limits path is logged with a scope deviation, and keeping it without a
 justification is reported in the next iteration.</p>
 <p>The harness itself belongs in <code>off_limits</code>. A loop that is allowed to edit its
 own benchmark can improve the number without improving the code.</p>
-<h2 id="reading-a-run"><a class="header" href="#reading-a-run">Reading a run</a></h2>
-<p>A live loop occupies one status row:</p>
-<pre><code>autoswarm · run #5 · 1m 12s · 4 runs · 3 kept · 3 arms · best 168.40ms -12.6% · conf 3.2x · ctrl+x runs
-</code></pre>
-<p><code>ctrl+x</code> opens the run screen, and so does <code>/autoresearch</code> with nothing after
-it:</p>
-<pre><code>┌─ Autoswarm · tokenizer-laten…┬───────────────────────────────────────────────────┐
-│   OVERVIEW ───────────────── │ Best        168.40ms · -12.6% · from 192.78ms ·   │
-│ › Session                    │             run 4 · arm b                         │
-│   Playbook                   │ Trend       ▅▄█▁                                  │
-│   #5  running                │ Metric      duration · lower is better            │
-│   SEGMENT 1 ──────────────── │                                                   │
-│   #4 b  168.40ms -12.6% best │ Goal        make the tokenizer faster             │
-│   #3 c  210.10ms  +9.0% drop │                                                   │
-│   #2 b  188.40ms  -2.3% drop │ Segment     1 · 4 runs, 1 kept, 3 discarded       │
-│   #1    192.78ms       base  │                                                   │
-│                              │ Breadth     3 arms per iteration                  │
-├──────────────────────────────┴───────────────────────────────────────────────────┤
-│ up/down select   pgup/pgdn page   esc close                                      │
-└──────────────────────────────────────────────────────────────────────────────────┘
-</code></pre>
-<p>The list holds the session, the playbook, the run in flight and every logged
-run, newest first, grouped by segment. Each row states its own verdict: the run
-number, the arm that produced it, its metric, its change against the baseline of
-its own segment, and whether it is the baseline, the leader, kept, dropped,
-crashed, failed or flagged.</p>
-<p>The pane beside it shows the highlighted entry in full. The session opens with
-the best measurement of the segment, its change against the measurement the
-segment started from, and the count of runs logged since that best one. Below
-those is one block per run of the segment, oldest on the left, scaled between
-the segment’s lowest and highest measurements: a series still descending and a
-series that improved once and then flattened produce the same best and the same
-count, and the blocks separate them. A segment past the width of the pane draws
-its most recent runs, marked with a leading <code>…</code>. A run shows its metric and
-percentage change against the segment baseline, secondary metrics, confidence,
-the arm that produced it and the arm that certified it, the flag reason, scope
-deviations, the change description, the commit and the files it touched.</p>
-<p><code>log_experiment</code> requires a metric on every status, so a run that crashed before
-it measured anything is recorded with a zero. The screen states <code>no metric</code> for
-that run rather than formatting the zero, and draws it as a <code>·</code> in the blocks
-rather than as a height. A run whose harness printed its metric and then died
-shows that number, and the comparison is against it.</p>
-<p>Up and down move through the list, page up and page down move the detail pane by
-a full pane, and typing filters the list. Escape clears a live filter, and closes
-the screen when there is none. It is readable before the first run, where it
-shows the goal, the scope and the metric the session was configured with.</p>
-<p>On a terminal too narrow for two panes, the list is above the detail instead of
-beside it, both at the full width of the card, and the footer prints the widest
-hint that fits, down to <code>esc close</code>. The status row drops its segments from the
-least informative end when the terminal is narrower than the row, and prints the
-loop name and <code>ctrl+x runs</code> at every width. Where the best is not the newest
-logged run, the row carries the gap as <code>2 since best</code>, which it gives up before
-the best itself.</p>
 <h2 id="going-wider"><a class="header" href="#going-wider">Going wider</a></h2>
 <p><code>/autoresearch</code> tries one change per iteration. <a href="#autoswarm">Autoswarm</a> is
 the same loop with several candidate arms per iteration, cross-reviewed before
@@ -6686,52 +6627,12 @@ degenerate cases.</p>
 </table>
 </div>
 <h2 id="ending-a-session"><a class="header" href="#ending-a-session">Ending a session</a></h2>
-<p><code>/autoresearch off</code> leaves the mode and keeps the session. A bare
-<code>/autoresearch</code> opens the run screen; it does not end anything.</p>
-<p><code>/autoresearch clear</code> resets the worktree to the segment baseline, deletes
-untracked files and closes the session. It asks first, naming the commit it
-resets to and how many files hold uncommitted changes. Two flags:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Flag</th><th>Effect</th></tr>
-</thead>
-<tbody>
-<tr><td><code>--keep-tree</code></td><td>Close the session and leave every file alone. Nothing to confirm.</td></tr>
-<tr><td><code>--reset-tree</code></td><td>Reset even when the branch is not an <code>autoresearch/*</code> one.</td></tr>
-</tbody>
-</table>
-</div>
-<p>Any other argument after <code>clear</code> is rejected and nothing is reset, so a
-misspelled <code>--keep-tree</code> cannot fall through to the reset. A <code>clear</code> that cannot
-read git status resets nothing and leaves the session open, since the
-confirmation exists to state what the reset discards.</p>
-<p><code>/autoswarm</code> takes the same subcommands.</p>
+<p><code>/autoresearch off</code> leaves the mode and keeps the session. <code>/autoresearch clear</code>
+resets the worktree to the baseline and closes the session; <code>--keep-tree</code> leaves
+your files alone. <code>/autoswarm</code> takes the same two.</p>
 <p>State is stored per repository, under the profile directory. The database is
 keyed on the primary checkout, so worktrees of one repository share it.
 <code>VEYYON_AUTORESEARCH_DB_DIR</code> overrides the location.</p>
-<h2 id="regenerating-the-run-screen-captures"><a class="header" href="#regenerating-the-run-screen-captures">Regenerating the run screen captures</a></h2>
-<p><code>proof/scenes/autoresearch-run-screen.sh</code> drives the swarm run screen and
-<code>proof/scenes/autoresearch-serial-screen.sh</code> the serial one. Both are stills
-takes, so both lower the motion floor; at the default the recorder rejects a
-take that holds still as a stuttering capture.</p>
-<p>The run screen changes layout twice as a terminal narrows – the sidebar is
-bounded, then the panes stack – so it is captured at three widths. <code>OUT_DIR</code> is
-a bind mount and must be absolute, and each width takes its own directory,
-because one directory cannot hold two takes whose frames share a mark name.</p>
-<pre><code class="language-sh">for px in 1600 640 396; do
-	SCENE_WIDTH=${px} SCENE_MOTION_FLOOR=1 OUT_DIR="${PWD}/proof/captures/x11/w${px}" \
-		proof/docker/record-x11.sh proof/scenes/autoresearch-run-screen.sh
-	SCENE_WIDTH=${px} SCENE_MOTION_FLOOR=1 OUT_DIR="${PWD}/proof/captures/x11/before/w${px}" \
-		proof/docker/record-x11-before.sh proof/scenes/autoresearch-run-screen.sh
-done
-
-SCENE_MOTION_FLOOR=1 proof/docker/record-x11.sh proof/scenes/autoresearch-serial-screen.sh
-SCENE_MOTION_FLOOR=1 proof/docker/record-x11-before.sh proof/scenes/autoresearch-serial-screen.sh
-</code></pre>
-<p>The before arm holds every source file the branch changed at <code>origin/main</code>,
-takes away every file it added and puts back every file it deleted, then
-restores all three from memory and verifies the restore by checksum.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="autoswarm"><a class="header" href="#autoswarm">Autoswarm</a></h1>
 <p>Autoswarm is <a href="#autoresearch">autoresearch</a> with breadth. An iteration builds
@@ -6743,36 +6644,21 @@ trusted, has the survivors review each other, and keeps at most one.</p>
 <pre><code>Autoswarm setup
 Autoresearch with breadth. The model derives the metric from your harness.
 
-› Goal          make the tokenizer faster▌
-  Breadth       3    candidate arms per iteration
-  Models        one per arm, comma separated
-  Attempts      1    retries before an arm is abandoned
-  Certification on   arms cross-review before one is kept
+› Goal          make the tokenizer faster▌  type to edit
+  Breadth       3                           candidate arms per iteration
+  Attempts      1                           retries before an arm is abandoned
+  Certification on                          arms cross-review before one is kept
 
-3 arms × 1 attempts: up to 3 harness runs per iteration.
-Each arm is reviewed by another, and no pair reviews each other.
-Every arm runs on the session model.
+3 arms in a review ring: each arm is reviewed by another, and no pair reviews each other.
 
-type to edit   ↑↓ field   enter start   esc cancel
+↑↓ field   ←→ adjust   space toggle   enter start   esc cancel
 </code></pre>
 <p>Up and down move between fields, left and right change the focused value, space
 toggles certification, Enter starts the run and Escape leaves without starting
-one. The legend lists only the keys that act on the focused field: the arrow
-range on Breadth and Attempts, <code>type to edit</code> on Goal and Models.</p>
-<p>The first line under the fields is the harness runs one iteration costs, breadth
-multiplied by attempts. It is a ceiling: an arm that succeeds on its first
-attempt uses one. The second line is the review topology for that breadth. The
-third states which model each arm runs on. All three change with the fields
-above them.</p>
-<p>Enter does nothing while the goal is empty, and the legend reads <code>enter needs a goal</code> until one is typed. Text typed after the command prefills the goal, so
-<code>/autoswarm make the tokenizer faster</code> opens the console with that goal already
-in the field.</p>
+one. Text typed after the command prefills the goal, so <code>/autoswarm make the tokenizer faster</code> opens the console with that goal already in the field.</p>
 <p>The console opens on whatever the current branch is already doing, so running it
 during a session shows that session’s breadth rather than the default, and
 starting applies the new values from the next iteration.</p>
-<p>A bare <code>/autoswarm</code> reopens the console rather than the run screen, because the
-console is where a live swarm is reconfigured. <code>ctrl+x</code> opens the run screen from
-either loop.</p>
 <p>Everything autoresearch provides is unchanged underneath: the same
 <code>autoresearch.sh</code> harness, the same metric lines, the same segments, the same
 scope rules, the same database. Read that page first; this one covers only what
@@ -6780,45 +6666,11 @@ breadth adds.</p>
 <p><code>/autoresearch</code> is still there and still serial. Autoswarm does not replace it.</p>
 <h2 id="breadth"><a class="header" href="#breadth">Breadth</a></h2>
 <p>Breadth is 1 to 8 and opens at 3, the fewest arms a review ring needs. The
-status row states <code>N arms</code> whenever breadth is above 1, and the run screen
-states it per session.</p>
+dashboard shows <code>breadth N</code> whenever it is above 1.</p>
 <p>Arms share one worktree. They are built one at a time, measured, and reverted,
 so breadth costs iteration time rather than disk. An arm is a different idea:
 two arms that produce the same diff are counted once.</p>
 <p>Breadth 1 is the serial loop exactly. No arms, no review, no certification cost.</p>
-<h2 id="models-per-arm"><a class="header" href="#models-per-arm">Models per arm</a></h2>
-<p>The Models row assigns one model to each arm, in arm order, comma separated:</p>
-<pre><code>  Models        opus, gpt-5, glm
-</code></pre>
-<p><code>a0</code> runs on Opus, <code>a1</code> on GPT-5, <code>a2</code> on GLM. The line under the fields reads
-the assignment back as arms, so an arm that is off by one comma is visible
-before the run starts:</p>
-<pre><code>a0 opus · a1 gpt-5 · a2 glm.
-</code></pre>
-<p>An entry left empty runs that arm on the session model, so <code>, gpt-5</code> puts <code>a1</code>
-on GPT-5 and leaves <code>a0</code> where the session already is. An arm past the end of
-the list runs on the session model too, and clearing the row puts every arm
-there.</p>
-<p>Each spec resolves the way <code>--model</code> resolves one: <code>provider/id</code>, a bare id, or
-a role alias such as <code>@slow</code>. A spec that matches nothing refuses the run, and
-the legend reads <code>enter needs a known model</code> until it is fixed. The row is
-absent at breadth 1, where there are no arms to spread across models.</p>
-<p><code>start_arm</code> performs the switch. The loop calls it before the first edit of each
-arm, which is also what puts the arm on the status row (<code>a1 on GPT-5</code>) while it
-is being built. The session returns to its own model when the arm’s result is
-logged, so triage, certification and the choice of the next hypothesis run on
-the model you selected rather than on whichever arm ran last. Turning the mode
-off or clearing the session mid-arm restores it too.</p>
-<p>A round configured this way compares models as much as ideas: each arm is a
-different model writing a different change, measured by the same harness and
-reviewed by the ring. Certification still applies, and no arm reviews itself.</p>
-<p>Each run records the model in force when <code>run_experiment</code> measured it, and the
-run screen shows it under the arm as <code>Built on</code>. The arm is the attribution the
-loop declares; the model is what the session was on while the arm was built.
-Read one against the other to tell a model comparison from a round that stayed
-on one model. <code>run_experiment</code> states it in the result when an arm is measured
-with no arm in flight, or while a different arm is: both mean the diff was
-written by a model other than the one configured for that arm.</p>
 <h2 id="why-arms-are-reviewed"><a class="header" href="#why-arms-are-reviewed">Why arms are reviewed</a></h2>
 <p>Breadth searches wider, but that is the smaller half. A loop scored on a number
 will find ways to move the number that have nothing to do with the work getting
@@ -6888,30 +6740,10 @@ the fast ones.</p>
 diff against a hypothesis. The mechanical rejections above hold whatever the
 reviewer concludes; the judgement on top of them does not.</p>
 <h2 id="session-state"><a class="header" href="#session-state">Session state</a></h2>
-<p>Breadth, attempts, certification and the per-arm models belong to the session
-rather than the installation, so the setup console sets them per investigation
-and <code>/settings</code> does not carry them. A run records which arm produced it and
-which arm certified it, both stated on the run screen’s entry for that run.</p>
-<p>A winning arm has to beat the segment’s baseline, not merely the other arms of
-its iteration. An iteration where every arm regressed is a null round.</p>
-<p><code>certify_arms</code> and <code>start_arm</code> attach only while breadth is above 1. A serial
-session has one candidate, no ring and no arm to open, so there is nothing for
-either to do.</p>
-<h2 id="regenerating-the-setup-console-captures"><a class="header" href="#regenerating-the-setup-console-captures">Regenerating the setup console captures</a></h2>
-<p><code>proof/scenes/autoswarm-setup.sh</code> opens the console, moves through the fields,
-assigns a model per arm and types one nothing matches, toggles certification off
-and back on, empties the goal and leaves with Escape.
-It is a stills take that measures under 1 fps of real change, so both arms turn
-the motion gate off; at the default the recorder rejects the take as a stutter:</p>
-<pre><code class="language-sh">SCENE_MOTION_FLOOR=0 proof/docker/record-x11.sh proof/scenes/autoswarm-setup.sh
-SCENE_MOTION_FLOOR=0 proof/docker/record-x11-before.sh proof/scenes/autoswarm-setup.sh
-</code></pre>
-<p>The frame that carries the console’s layout contract is <code>certification-off</code>.
-<code>off</code> is three columns where every other value is one or two, so a value column
-measured from the values a field currently holds is a column narrower in every
-other state, and the hint beside it moves as the toggle crosses. The column is
-sized from the bounds each field can reach instead, so the hints stand still.
-A frame of any other state shows the column’s position but not that it holds.</p>
+<p>Breadth, attempts and certification belong to the session rather than the
+installation, so the setup console sets them per investigation and <code>/settings</code>
+does not carry them. A run records which arm produced it and which reviewer
+certified it.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="eval-tool-python-backend"><a class="header" href="#eval-tool-python-backend">Eval Tool Python Backend</a></h1>
 <p>The Python execution stack in <code>packages/coding-agent</code>: tool behavior, runner lifecycle,
@@ -17802,7 +17634,8 @@ render(width: number): readonly string[] {
 <ul>
 <li><code>TUI.setFocus(component)</code> routes input to that component.</li>
 <li>Overlay APIs exist in <code>TUI</code> (<code>showOverlay</code>, <code>OverlayHandle</code>). In interactive extension/custom UI, <code>custom(..., { overlay: true })</code> mounts your component through <code>TUI.showOverlay(...)</code>; without <code>overlay</code>, it replaces the editor component area directly.</li>
-<li>Overlay custom UI is anchored at <code>bottom-center</code> with full terminal width/max height and is removed through the returned overlay handle when <code>done(...)</code> closes the flow.</li>
+<li>Overlay custom UI is anchored at <code>bottom-center</code> with full terminal width and is removed through the returned overlay handle when <code>done(...)</code> closes the flow. It is placed with <code>aboveFooter: true</code>: the overlay covers the transcript region only, and the composer zone (prompt, status line, footline) stays painted under it. Size the component from <code>tui.terminal.rows - tui.pinnedFooterRows</code>; a taller render is clipped to the rows above the footer.</li>
+<li><code>OverlayOptions.aboveFooter</code> is the general form of that placement. With a pinned footer (<code>TUI.setPinnedFooterChildCount</code>), the screen rows from the footer’s top down are added to the overlay’s bottom margin every frame, so the reserve follows a footer that grows or a frame shorter than the viewport. Without a pinned footer the option does nothing.</li>
 </ul>
 <h2 id="mount-points-and-return-contracts"><a class="header" href="#mount-points-and-return-contracts">Mount points and return contracts</a></h2>
 <h2 id="1-extension-ui-extensionuicontext"><a class="header" href="#1-extension-ui-extensionuicontext">1) Extension UI (<code>ExtensionUIContext</code>)</a></h2>
@@ -17821,7 +17654,7 @@ render(width: number): readonly string[] {
 <ul>
 <li>Saves editor text.</li>
 <li>Without <code>options.overlay</code>, replaces the editor component with your component.</li>
-<li>With <code>options.overlay</code>, mounts your component as a bottom-centered overlay instead of replacing the editor.</li>
+<li>With <code>options.overlay</code>, mounts your component as a bottom-centered overlay above the composer zone instead of replacing the editor; the prompt and status line remain visible.</li>
 <li>Focuses your component.</li>
 <li>On <code>done(result)</code>: calls <code>component.dispose?.()</code>, hides the overlay if present, restores editor + text for non-overlay flows, focuses editor, resolves promise.
 So <code>done(...)</code> is mandatory for completion.</li>

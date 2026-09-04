@@ -12682,8 +12682,12 @@ export class AgentSession {
 				pruneUseless: this.settings.getGroup("compaction").dropUseless,
 				// Cache-stable boundary: never re-write the warm, already-sent prefix
 				// (deep stale/age victims) or summarized-away entries every turn.
+				// Preserved-thinking models bind each thinking block to the bytes
+				// before it, so a rewrite anywhere in the sent region also costs the
+				// reasoning chain behind it: hold the window to entries whose suffix
+				// is empty rather than pay that every turn.
 				keepBoundaryId,
-				cacheWarmSuffixTokens: PRUNE_CACHE_WARM_SUFFIX_TOKENS,
+				cacheWarmSuffixTokens: this.model?.thinking?.prefixBinding === true ? 0 : PRUNE_CACHE_WARM_SUFFIX_TOKENS,
 			}),
 		);
 		if (result.prunedCount === 0) {
@@ -12723,6 +12727,11 @@ export class AgentSession {
 				// region once the cache is genuinely cold (idle exceeds the 1h TTL).
 				keepBoundaryId,
 				idleFlushMs: PRUNE_IDLE_FLUSH_MS,
+				// See `#pruneToolOutputs`: a prefix-bound model pays for an in-place
+				// rewrite with the thinking blocks recorded after it, which the cache
+				// math cannot price — so cap eligibility instead of the tail, or a
+				// heavy enough stale result still buys itself a batch rewrite.
+				...(this.model?.thinking?.prefixBinding === true ? { cacheWarmSuffixTokens: 0 } : {}),
 			}),
 		);
 		if (result.prunedCount === 0) {

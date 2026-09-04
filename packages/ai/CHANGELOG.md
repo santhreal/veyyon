@@ -2,8 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- Every OpenCode request carries a `Veyyon/<version>` user agent and an `x-opencode-session` header derived from the conversation id, on the `anthropic-messages`, `openai-completions` and `openai-responses` transports and on server-side compaction, under every cache-retention setting, which the gateway requires to identify the client and route a conversation to its warm prompt cache.
+
 ### Fixed
 
+- Reasoning recorded behind a rewritten history prefix is dropped before the request on a model that binds thinking blocks to their prefix, instead of being replayed and answered with a 400.
 - ChatGPT Codex server-side compaction streams a trailing `compaction_trigger` item to `{base}/codex/responses`, instead of posting to `{base}/codex/responses/compact`, which answers 404 and turned every compaction into a paid local pass for the rest of the session.
 - A Codex compaction stream carrying a `compaction` item with no `encrypted_content` is refused instead of being stored as a window every later turn discards.
 - A compaction route that answers 404 is retried after 30 minutes instead of standing the model down for the whole process, so one transient 404 no longer forces a paid local compaction on every later pass.
@@ -12,6 +17,13 @@
 - A Codex server-side compaction with no session id is refused instead of minting a random conversation identity, which opened a second cache lineage and left the post-compaction history reset with nothing to find.
 - The Claude Code user-agent reports `agent-sdk/0.3.257`, the Agent SDK release paired with the Claude Code version the same request sends.
 - With `accounts.loadBalancing` off, one account per provider and credential type serves every session: the explicit choice, else the session's sticky account, else the first stored row. The resolver no longer hashes a new session across accounts, ranks accounts by headroom, or skips a rate-limited or out-of-quota account for a sibling; the session waits on its own account, and only a refused grant moves it, announced through `onCredentialFailover`. Turning the setting on restores the previous rotation and ranking.
+- A signing Anthropic endpoint that answers `stop_reason: "refusal"` with category `reasoning_extraction` has prior-turn reasoning dropped from an immediate retry and from the rest of the session, instead of failing the turn with `Refusal (reasoning_extraction)` every time reasoning demoted to prose is replayed.
+- A tool result whose originating call is no longer in the request reaches the model as a `user`-role `<stale-tool-result>` note instead of as assistant text, so a model no longer reads a tool result in its own voice and reproduces one as a visible message.
+- A resumed session drops an `[Orphan …]` or `[Previous …]` tool-result note already persisted as assistant text, so history recorded before that repair was fixed stops prompting the same visible tool-result message on every later turn.
+- The persisted note is also removed from the turn's transport-native items, which an `openai-responses` or Codex session replays in preference to the text block once warm, so a live session stops re-priming the imitation on every request after the first one instead of accumulating dozens.
+- Stripping a persisted note keeps the reply the model wrote after its byte-exact copy of the tool output, instead of dropping the whole block with the reply in it.
+- Every fold of a tool result whose call is missing from the request is logged with the call id and the ids the request does carry, so the loss of a pairing can be traced from the log instead of only from its symptom.
+- A `<stale-tool-result>` note escapes the tool name and call id it reports, so a call id carrying a quote cannot close the attribute and hand the model forged markup.
 
 ### Changed
 

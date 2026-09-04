@@ -5,9 +5,11 @@
 ### Added
 
 - Compaction can truncate the middle of an oversized text, keeping both edges, in any message role — including the roles that store their model-visible text outside `content`, such as a shell cell's `output`, a summary's `summary` and a file mention's `files[i].content`.
+- `pruneSupersededToolResults` accepts `cacheWarmSuffixTokens`, a hard ceiling on the sent context a rewrite may sit behind; a candidate over the ceiling is never rewritten, including as part of a batch the cache math would otherwise pay for.
 
 ### Fixed
 
+- A compaction summary is written from a transcript with the model's own reasoning removed, on every dialect and with none, which was quoting thinking back at the endpoint and drawing a `reasoning_extraction` refusal.
 - Codex remote compaction requests declare the `responses_compaction_v2` implementation, matching the `{base}/codex/responses` route they are sent to.
 - A ChatGPT Codex server-side compaction now reduces the context it was paid to reduce: its stored window was not on the list of apis whose window can be replayed, so the entry counted as unusable, the whole pre-compaction span was re-expanded on the next rebuild, and the session crossed the threshold and compacted again on every turn.
 - Compaction shake keeps the image blocks in a tool result instead of discarding them with the text it replaces.

@@ -68,6 +68,7 @@ export const ANTIGRAVITY_MODEL_WIRE_PROFILES: Readonly<Record<string, Antigravit
 	// is telemetry-only and the backend does not require it.
 	"gemini-3.6-flash-tiered": { maxOutputTokens: 65536 },
 	"gemini-3.7-flash-tiered": { maxOutputTokens: 65536 },
+	"gemini-3.8-flash-tiered": { maxOutputTokens: 65536 },
 	// Claude on `daily-cloudcode-pa` rejects `maxOutputTokens > 64000` with a
 	// 400 (`Request contains an invalid argument`). The model_enum label is
 	// untracked for these ids; the backend does not require it.

@@ -555,6 +555,14 @@ export interface OverlayOptions {
 	 * Called each render cycle with current terminal dimensions.
 	 */
 	visible?: (termWidth: number, termHeight: number) => boolean;
+	/**
+	 * Keep the pinned footer (see {@link TUI.setPinnedFooterChildCount}) on
+	 * screen: the footer's current row span is added to the bottom margin, so
+	 * a bottom-anchored overlay sits on the transcript region and the composer
+	 * and status rows under it stay painted. Defaults off. Without a pinned
+	 * footer this is a no-op.
+	 */
+	aboveFooter?: boolean;
 
 	// === Fullscreen ===
 	/**
@@ -1982,6 +1990,11 @@ export class TUI extends Container {
 	 * need a host-side sync. */
 	setPinnedFooterChildCount(count: number): void {
 		this.#pinnedFooterChildCount = Math.max(0, count);
+	}
+
+	/** Row span of the pinned footer in the last composed frame; 0 without one. */
+	get pinnedFooterRows(): number {
+		return this.#pinnedFooterRows;
 	}
 
 	/** True while the transcript region shows a frozen, scrolled-up slice. */
@@ -3508,13 +3521,17 @@ export class TUI extends Container {
 
 	/**
 	 * Resolve overlay layout from options.
-	 * Returns { width, row, col, maxHeight } for rendering.
+	 * Returns { width, row, col, maxHeight } for rendering. `footerTop` is the
+	 * screen row where the pinned footer starts in the window being painted
+	 * (`termHeight` when there is none); `aboveFooter` reserves everything
+	 * from that row down.
 	 */
 	#resolveOverlayLayout(
 		options: OverlayOptions | undefined,
 		overlayHeight: number,
 		termWidth: number,
 		termHeight: number,
+		footerTop: number,
 	): { width: number; row: number; col: number; maxHeight: number } {
 		const opt = options ?? {};
 
@@ -3525,7 +3542,11 @@ export class TUI extends Container {
 				: (opt.margin ?? {});
 		const marginTop = Math.max(0, margin.top ?? 0);
 		const marginRight = Math.max(0, margin.right ?? 0);
-		const marginBottom = Math.max(0, margin.bottom ?? 0);
+		// The reserve is measured from where the footer is on screen, not from
+		// its row count: on a frame shorter than the viewport the footer sits
+		// right after the transcript, and the overlay must still end above it.
+		const footerReserve = opt.aboveFooter ? clampLow(termHeight - footerTop, 0, Math.max(0, termHeight - 1)) : 0;
+		const marginBottom = Math.max(0, margin.bottom ?? 0) + footerReserve;
 		const marginLeft = Math.max(0, margin.left ?? 0);
 
 		// Available space after margins
@@ -3649,14 +3670,14 @@ export class TUI extends Container {
 	 * frozen while an overlay is visible, so overlay pixels can never enter
 	 * native scrollback.
 	 */
-	#compositeOverlaysIntoWindow(window: string[], termWidth: number, termHeight: number): string[] {
+	#compositeOverlaysIntoWindow(window: string[], termWidth: number, termHeight: number, footerTop: number): string[] {
 		const result = [...window];
 		for (const entry of this.overlayStack) {
 			if (!this.#isOverlayVisible(entry)) continue;
 			const { component, options } = entry;
 			// Get layout with height=0 first to determine width and maxHeight
 			// (width and maxHeight don't depend on overlay height).
-			const { width, maxHeight } = this.#resolveOverlayLayout(options, 0, termWidth, termHeight);
+			const { width, maxHeight } = this.#resolveOverlayLayout(options, 0, termWidth, termHeight, footerTop);
 			let overlayLines = component.render(width);
 			if (overlayLines.length > maxHeight) {
 				const anchor = options?.anchor ?? "center";
@@ -3665,7 +3686,13 @@ export class TUI extends Container {
 						? overlayLines.slice(overlayLines.length - maxHeight)
 						: overlayLines.slice(0, maxHeight);
 			}
-			const { row, col } = this.#resolveOverlayLayout(options, overlayLines.length, termWidth, termHeight);
+			const { row, col } = this.#resolveOverlayLayout(
+				options,
+				overlayLines.length,
+				termWidth,
+				termHeight,
+				footerTop,
+			);
 			for (let i = 0; i < overlayLines.length; i++) {
 				const idx = row + i;
 				if (idx < 0 || idx >= result.length) continue;
@@ -4324,6 +4351,10 @@ export class TUI extends Container {
 		// caret whose frame row sits in the frozen history above has no screen row
 		// at all and must not be drawn at a stale one.
 		let altCaret: { row: number; col: number } | null = null;
+		// Screen row where the pinned footer starts in this window, for overlays
+		// that stay above it. `height` when nothing is pinned or the footer is
+		// below the window's last row.
+		let overlayFooterTop = height;
 		if (virtualScrollSlice) {
 			// Frozen transcript rows above, live footer rows below. The region
 			// reads the scroll-space snapshot (tape + this frame's uncommitted
@@ -4336,6 +4367,7 @@ export class TUI extends Container {
 			const snapshot = this.#scrollSnapshot;
 			const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
 			const regionRows = height - footerRows;
+			overlayFooterTop = regionRows;
 			const viewTop = this.#virtualScrollTop!;
 			for (let r = 0; r < height; r++) {
 				window[r] =
@@ -4350,12 +4382,15 @@ export class TUI extends Container {
 			}
 		} else {
 			for (let r = 0; r < height; r++) window[r] = frame[windowTop + r] ?? "";
+			if (this.#pinnedFooterRows > 0) {
+				overlayFooterTop = Math.min(height, Math.max(0, frameLength - this.#pinnedFooterRows - windowTop));
+			}
 			if (cursorPos !== null && cursorPos.row >= windowTop && cursorPos.row < windowTop + height) {
 				altCaret = { row: cursorPos.row - windowTop, col: cursorPos.col };
 			}
 		}
 		if (hasVisibleOverlay) {
-			window = this.#compositeOverlaysIntoWindow(window, width, height);
+			window = this.#compositeOverlaysIntoWindow(window, width, height, overlayFooterTop);
 			const overlayMarkers = this.#extractCursorMarkers(window);
 			if (overlayMarkers.length > 0) {
 				cursorPos = { row: windowTop + overlayMarkers[0]!.row, col: overlayMarkers[0]!.col };
@@ -5161,7 +5196,8 @@ export class TUI extends Container {
 	 */
 	#renderAltFrame(width: number, height: number): void {
 		const base: string[] = new Array(Math.max(0, height)).fill("");
-		let lines = this.#compositeOverlaysIntoWindow(base, width, height);
+		// A fullscreen modal paints over a blank base: there is no footer under it.
+		let lines = this.#compositeOverlaysIntoWindow(base, width, height, height);
 		this.#extractCursorMarkers(lines);
 		lines = this.#prepareLinesArray(lines, width);
 		this.#emitAltFrame(lines, width, height);

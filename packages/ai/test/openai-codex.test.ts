@@ -211,8 +211,10 @@ describe("openai-codex request transformer", () => {
 		expect(first?.role).toBe("developer");
 		expect(first?.content).toEqual([{ type: "input_text", text: `${DEFAULT_PROMPT_PREFIX}...` }]);
 
-		const orphaned = input.find(item => item.type === "message" && item.role === "assistant");
-		expect(orphaned?.content).toMatch(/Previous tool result/);
+		const orphaned = input.find(item => item.type === "message" && typeof item.content === "string");
+		expect(orphaned?.role).toBe("user");
+		expect(orphaned?.content).toMatch(/<stale-tool-result tool="tool" id="missing">/);
+		expect(input.some(item => item.type === "message" && item.role === "assistant")).toBe(false);
 	});
 });
 
@@ -271,7 +273,7 @@ describe("openai-codex orphan tool-call repair", () => {
 		expect(output?.output as string).toMatch(/interrupted/i);
 	});
 
-	it("folds an orphan custom_tool_call_output into an assistant message", async () => {
+	it("folds an orphan custom_tool_call_output into a user note", async () => {
 		const body: RequestBody = {
 			model: "gpt-5.1-codex",
 			input: [
@@ -284,9 +286,13 @@ describe("openai-codex orphan tool-call repair", () => {
 		const input = transformed.input || [];
 
 		expect(input.some(item => item.type === "custom_tool_call_output")).toBe(false);
-		const note = input.find(item => item.type === "message" && item.role === "assistant");
+		// The note carries the payload as data on a user turn. Attributing it to
+		// the assistant primes the model to emit tool results as prose.
+		const note = input.find(item => typeof item.content === "string");
+		expect(note?.role).toBe("user");
 		expect(note?.content).toMatch(/call_custom_orphan/);
 		expect(note?.content).toMatch(/Done!/);
+		expect(input.some(item => item.type === "message" && item.role === "assistant")).toBe(false);
 	});
 });
 

@@ -73,6 +73,14 @@ export interface ThinkingConfig {
 	 */
 	supportsDisplay?: boolean;
 	/**
+	 * The API binds each thinking block's signature to the exact bytes of
+	 * everything before it — the system prompt, the tool set, and every earlier
+	 * message (Fable 5.1 and later). Replaying a block whose prefix the client
+	 * rewrote is rejected, so `transformMessages` drops the reasoning a
+	 * compaction or a branch summary orphaned instead of sending it.
+	 */
+	prefixBinding?: boolean;
+	/**
 	 * Per-effort upstream wire-id routing for collapsed effort-tier variants
 	 * (`variant-collapse.ts`). Keyed by pi effort; `"off"` applies when
 	 * thinking is disabled. Missing keys fall back to `requestModelId ?? id`.
@@ -502,6 +510,20 @@ export interface AnthropicCompat {
 	 * Default: auto-detected from provider/baseUrl and `model.reasoning`.
 	 */
 	replayUnsignedThinking?: boolean;
+	/**
+	 * Replay prior-turn reasoning that has to be demoted to text, rather than
+	 * dropping it. Only reached on a signing endpoint, where an unsigned prior
+	 * thinking block cannot be replayed natively and is otherwise rendered as
+	 * demoted prose. Anthropic's `reasoning_extraction` safety classifier reads
+	 * that prose as extracted reasoning and answers `stop_reason: "refusal"`,
+	 * and the heat is cumulative in the number of demoted blocks, so a long
+	 * cross-model session trips it where a single block does not. Set to `false`
+	 * for an endpoint that enforces the classifier; the transport also learns it
+	 * for the rest of the session the first time a refusal fires. Default:
+	 * `true`, which preserves cross-vendor reasoning across a model switch
+	 * (#3434, #3528).
+	 */
+	replayDemotedPriorReasoning?: boolean;
 	/**
 	 * Whether the endpoint requires `thinking.type: "enabled"` whenever the
 	 * model reasons. Use for models that reject omitted or disabled thinking.

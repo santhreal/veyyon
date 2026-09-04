@@ -36,6 +36,7 @@ import {
 	iterateWithIdleTimeout,
 } from "../utils/idle-iterator";
 import { OpenAIHttpError, type OpenAIStreamHandle, postOpenAIStream } from "../utils/openai-http";
+import { conversationIdForOpenCode } from "../utils/opencode-headers";
 import { notifyProviderResponse } from "../utils/provider-response";
 import { callWithCopilotModelRetry } from "../utils/retry";
 import {
@@ -410,6 +411,7 @@ const streamOpenAIResponsesOnce = (
 				extraHeaders: options?.headers,
 				initiatorOverride: options?.initiatorOverride,
 				messages: context.messages,
+				conversationId: conversationIdForOpenCode(options),
 				openAISessionId: routingSessionId,
 				promptCacheSessionId,
 			});
