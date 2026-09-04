@@ -8,7 +8,7 @@ Always pass `type` before `input`:
 </schema>
 
 <types>
-- `files` matches file names, paths, extensions, directories, and repository layout. `input` is a file, directory, glob, or semicolon-delimited set. A leading glob such as `*.json` is recursive; prefix a directory to limit depth. `path` is optional and is one directory the `input` globs are searched under: `{ type: "files", input: "*.ts", path: "src" }` is `src/**/*.ts`. `hidden`, `gitignore`, and `limit` apply only here.
+- `files` matches file names, paths, extensions, directories, and repository layout. `input` is a file, directory, glob, or semicolon-delimited set. A leading glob such as `*.json` is recursive; prefix a directory to limit depth. `path` narrows it to one directory: `input: "*.ts", path: "src"` is `src/**/*.ts`. `hidden`, `gitignore`, and `limit` apply only here.
 - `text` matches literals, comments, documentation, configuration, and regular expressions where syntax role is irrelevant. `input` supports Rust regular expressions and PCRE2 syntax; literal `\n` or `\\n` crosses lines. `path`, `case`, `paths`, `gitignore`, and `skip` apply only here.
 - `structure` matches definitions, calls, methods, types, fields, imports, operators, and syntax relationships. `input` is one valid syntax node in the target language. `$NAME` captures one node, `$_` matches one anonymously, and `$$$ARGS` captures zero or more nodes. Metavariables are uppercase and occupy whole nodes. `path` and `skip` apply only here.
 </types>
@@ -18,7 +18,7 @@ Always pass `type` before `input`:
 - For `text` and `structure`, `input` is the pattern and `path` is the scope; never swap them. Pass the narrowest known `path` instead of repeating a broad workspace search.
 - Scope `structure` to one language. Declaration forms are distinct: functions, methods, and arrow functions require their own valid patterns. C++ expression-statement calls require the trailing semicolon.
 - A structure parse error means the input or language scope is wrong. Correct it rather than falling back to `text`.
-- `path` accepts a file, directory, glob, internal URL, line selector for `text`, or semicolon-delimited set; for `files` it is one directory. `ssh://` scopes work only with `text`; use `read` to inspect remote code before a local `structure` search. Omit `path` only when the workspace root is the intended scope.
+- `path` accepts a file, directory, glob, internal URL, line selector for `text`, or semicolon-delimited set. `ssh://` scopes work only with `text`; use `read` to inspect remote code before a local `structure` search. Omit `path` only when the workspace root is the intended scope.
 </instruction>
 
 <output>
