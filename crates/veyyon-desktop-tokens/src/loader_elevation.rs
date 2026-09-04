@@ -5,31 +5,99 @@ use toml::Value;
 use crate::{
 	elevation::{ElevationLevel, ElevationTokens},
 	error::TokenError,
-	loader::{parse_toml, read_file, validate_table_keys},
+	loader::{find_key_line_col, parse_toml, read_file},
+	section::Section,
 };
+
+const ALWAYS: [&str; 6] = ["index", "role", "ground_role", "grain_enabled", "blur_px", "edge"];
+const GRAIN: [&str; 2] = ["grain_texture", "grain_opacity"];
+const GLASS: [&str; 2] = ["saturation", "ground_opacity"];
+const SHADOW: [&str; 5] =
+	["shadow_x", "shadow_y", "shadow_blur", "shadow_spread", "shadow_opacity"];
+
+/// One `[[level]]` entry. A key is present when, and only when, the flag that
+/// gives it meaning is set: a shadow parameter on a level without a shadow is
+/// a value nothing reads, and a level with a shadow and no parameters is a
+/// shadow the loader would have to invent.
+fn parse_level(level: &Section<'_>, expected_index: u8) -> Result<ElevationLevel, TokenError> {
+	let grain_enabled = level.boolean("grain_enabled")?;
+	let blur_px = level.number("blur_px")?;
+	let has_shadow = level.boolean("has_shadow")?;
+
+	let mut expected: Vec<&'static str> = ALWAYS.to_vec();
+	expected.push("has_shadow");
+	if grain_enabled {
+		expected.extend(GRAIN);
+	}
+	if blur_px > 0.0 {
+		expected.extend(GLASS);
+	}
+	if has_shadow {
+		expected.extend(SHADOW);
+	}
+	level.only(&expected)?;
+
+	let index = level.integer("index")?;
+	if index != i64::from(expected_index) {
+		let (line, column) = find_key_line_col(level.text(), level.name(), "index");
+		return Err(TokenError::OffScale {
+			path: level.path().to_path_buf(),
+			line,
+			column,
+			value: index.to_string(),
+			scale_name: format!("{}.index", level.name()),
+			allowed: format!("{expected_index}, the level's position in the list"),
+		});
+	}
+
+	let optional = |key: &str, on: bool| -> Result<Option<f32>, TokenError> {
+		if on {
+			level.number(key).map(Some)
+		} else {
+			Ok(None)
+		}
+	};
+
+	Ok(ElevationLevel {
+		index: expected_index,
+		role: level.string("role")?.to_string(),
+		ground_role: level.string("ground_role")?.to_string(),
+		grain_enabled,
+		grain_texture: if grain_enabled {
+			Some(level.string("grain_texture")?.to_string())
+		} else {
+			None
+		},
+		grain_opacity: optional("grain_opacity", grain_enabled)?,
+		blur_px,
+		saturation: optional("saturation", blur_px > 0.0)?,
+		ground_opacity: optional("ground_opacity", blur_px > 0.0)?,
+		edge: level.string("edge")?.to_string(),
+		has_shadow,
+		shadow_x: optional("shadow_x", has_shadow)?,
+		shadow_y: optional("shadow_y", has_shadow)?,
+		shadow_blur: optional("shadow_blur", has_shadow)?,
+		shadow_spread: optional("shadow_spread", has_shadow)?,
+		shadow_opacity: optional("shadow_opacity", has_shadow)?,
+	})
+}
 
 /// Parses and validates elevation.toml.
 pub fn load_elevation(path: &Path) -> Result<ElevationTokens, TokenError> {
 	let text = read_file(path)?;
 	let val = parse_toml(path, &text)?;
-	let root = val.as_table().ok_or_else(|| TokenError::MissingKey {
-		path:    path.to_path_buf(),
-		section: "root".to_string(),
-		key:     "level".to_string(),
-	})?;
+	let root = Section::root(path, &text, &val)?;
+	root.only(&["meta", "level"])?;
+	root.meta("elevation")?;
 
-	validate_table_keys(path, &text, "root", root, &["meta", "level"])?;
-
-	let levels_arr =
-		root
-			.get("level")
-			.and_then(Value::as_array)
-			.ok_or_else(|| TokenError::MissingKey {
-				path:    path.to_path_buf(),
-				section: "root".to_string(),
-				key:     "level".to_string(),
-			})?;
-
+	let levels_value = root.get("level")?;
+	let Value::Array(levels_arr) = levels_value else {
+		return Err(TokenError::MissingKey {
+			path:    path.to_path_buf(),
+			section: "root".to_string(),
+			key:     "level".to_string(),
+		});
+	};
 	if levels_arr.len() != 5 {
 		return Err(TokenError::CeilingExceeded {
 			path:         path.to_path_buf(),
@@ -41,103 +109,15 @@ pub fn load_elevation(path: &Path) -> Result<ElevationTokens, TokenError> {
 	}
 
 	let mut levels: Vec<ElevationLevel> = Vec::with_capacity(5);
-	for item in levels_arr {
-		let tbl = item.as_table().ok_or_else(|| TokenError::MissingKey {
+	for (position, item) in levels_arr.iter().enumerate() {
+		let name = format!("level.{position}");
+		let table = item.as_table().ok_or_else(|| TokenError::MissingKey {
 			path:    path.to_path_buf(),
-			section: "level".to_string(),
+			section: name.clone(),
 			key:     "index".to_string(),
 		})?;
-		let index = tbl.get("index").and_then(Value::as_integer).unwrap_or(0) as u8;
-		let role = tbl
-			.get("role")
-			.and_then(Value::as_str)
-			.unwrap_or("")
-			.to_string();
-		let ground_role = tbl
-			.get("ground_role")
-			.and_then(Value::as_str)
-			.unwrap_or("")
-			.to_string();
-		let grain_enabled = tbl
-			.get("grain_enabled")
-			.and_then(Value::as_bool)
-			.unwrap_or(false);
-		let grain_texture = tbl
-			.get("grain_texture")
-			.and_then(Value::as_str)
-			.map(ToString::to_string);
-		let grain_opacity = tbl
-			.get("grain_opacity")
-			.and_then(Value::as_float)
-			.map(|f| f as f32);
-		let blur_px = tbl
-			.get("blur_px")
-			.and_then(|v| match v {
-				Value::Integer(i) => Some(*i as f32),
-				Value::Float(f) => Some(*f as f32),
-				_ => None,
-			})
-			.unwrap_or(0.0);
-		let saturation = tbl
-			.get("saturation")
-			.and_then(Value::as_float)
-			.map(|f| f as f32);
-		let ground_opacity = tbl
-			.get("ground_opacity")
-			.and_then(Value::as_float)
-			.map(|f| f as f32);
-		let edge = tbl
-			.get("edge")
-			.and_then(Value::as_str)
-			.unwrap_or("none")
-			.to_string();
-		let has_shadow = tbl
-			.get("has_shadow")
-			.and_then(Value::as_bool)
-			.unwrap_or(false);
-		let shadow_x = tbl.get("shadow_x").and_then(|v| match v {
-			Value::Integer(i) => Some(*i as f32),
-			Value::Float(f) => Some(*f as f32),
-			_ => None,
-		});
-		let shadow_y = tbl.get("shadow_y").and_then(|v| match v {
-			Value::Integer(i) => Some(*i as f32),
-			Value::Float(f) => Some(*f as f32),
-			_ => None,
-		});
-		let shadow_blur = tbl.get("shadow_blur").and_then(|v| match v {
-			Value::Integer(i) => Some(*i as f32),
-			Value::Float(f) => Some(*f as f32),
-			_ => None,
-		});
-		let shadow_spread = tbl.get("shadow_spread").and_then(|v| match v {
-			Value::Integer(i) => Some(*i as f32),
-			Value::Float(f) => Some(*f as f32),
-			_ => None,
-		});
-		let shadow_opacity = tbl
-			.get("shadow_opacity")
-			.and_then(Value::as_float)
-			.map(|f| f as f32);
-
-		levels.push(ElevationLevel {
-			index,
-			role,
-			ground_role,
-			grain_enabled,
-			grain_texture,
-			grain_opacity,
-			blur_px,
-			saturation,
-			ground_opacity,
-			edge,
-			has_shadow,
-			shadow_x,
-			shadow_y,
-			shadow_blur,
-			shadow_spread,
-			shadow_opacity,
-		});
+		let level = root.named(name, table);
+		levels.push(parse_level(&level, position as u8)?);
 	}
 
 	let arr: [ElevationLevel; 5] = levels.try_into().map_err(|_| TokenError::MissingKey {

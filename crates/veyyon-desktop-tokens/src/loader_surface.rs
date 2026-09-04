@@ -203,66 +203,6 @@ pub fn resolve_stroke(
 	}
 }
 
-pub fn resolve_spacing_opt(
-	path: &Path,
-	text: &str,
-	section: &str,
-	key: &str,
-	val: Option<&Value>,
-	default_step: SpacingStep,
-	scale: &ScaleTokens,
-) -> Result<f32, TokenError> {
-	match val {
-		Some(v) => resolve_spacing(path, text, section, key, v, scale),
-		None => Ok(scale.spacing(default_step)),
-	}
-}
-
-pub fn resolve_radius_opt(
-	path: &Path,
-	text: &str,
-	section: &str,
-	key: &str,
-	val: Option<&Value>,
-	default_step: RadiusStep,
-	scale: &ScaleTokens,
-) -> Result<f32, TokenError> {
-	match val {
-		Some(v) => resolve_radius(path, text, section, key, v, scale),
-		None => Ok(scale.radius(default_step)),
-	}
-}
-
-pub fn resolve_stroke_opt(
-	path: &Path,
-	text: &str,
-	section: &str,
-	key: &str,
-	val: Option<&Value>,
-	default_step: StrokeStep,
-	scale: &ScaleTokens,
-) -> Result<f32, TokenError> {
-	match val {
-		Some(v) => resolve_stroke(path, text, section, key, v, scale),
-		None => Ok(scale.stroke(default_step)),
-	}
-}
-
-pub fn resolve_type_size_opt(
-	path: &Path,
-	text: &str,
-	section: &str,
-	key: &str,
-	val: Option<&Value>,
-	default_step: TypeSizeStep,
-	scale: &ScaleTokens,
-) -> Result<TypeSize, TokenError> {
-	match val {
-		Some(v) => resolve_type_size(path, text, section, key, v, scale),
-		None => Ok(*scale.type_size(default_step)),
-	}
-}
-
 /// Loads all 9 surface files from `dir/surface/*.toml`.
 pub fn load_surfaces(dir: &Path, scale: &ScaleTokens) -> Result<SurfaceTokens, TokenError> {
 	let surface_dir = dir.join("surface");

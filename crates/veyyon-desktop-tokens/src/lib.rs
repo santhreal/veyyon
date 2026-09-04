@@ -26,6 +26,7 @@ pub mod loader_surface_transcript;
 pub mod loader_theme;
 pub mod motion;
 pub mod schema;
+pub mod section;
 pub mod surface;
 pub mod watcher;
 

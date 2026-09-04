@@ -1,232 +1,107 @@
 use std::path::Path;
 
-use toml::Value;
-
 use crate::{
 	error::TokenError,
-	loader::{parse_toml, read_file, validate_table_keys},
+	loader::{find_key_line_col, parse_toml, read_file},
 	schema::{
 		MonoSizeStep, RadiusStep, ScaleTokens, SpacingStep, StrokeStep, TypeSize, TypeSizeStep,
 		TypeWeightStep,
 	},
+	section::Section,
 };
+
+/// Rejects a scale with more entries than its section 6 ceiling allows.
+fn ceiling(
+	section: &Section<'_>,
+	what: &str,
+	limit: usize,
+	spec_section: &'static str,
+) -> Result<(), TokenError> {
+	let count = section.table().len();
+	if count > limit {
+		return Err(TokenError::CeilingExceeded {
+			path: section.path().to_path_buf(),
+			section: what.to_string(),
+			count,
+			ceiling: limit,
+			spec_section,
+		});
+	}
+	Ok(())
+}
 
 /// Parses and validates scale.toml.
 pub fn load_scale(path: &Path) -> Result<ScaleTokens, TokenError> {
 	let text = read_file(path)?;
 	let val = parse_toml(path, &text)?;
-	let root = val.as_table().ok_or_else(|| TokenError::MissingKey {
-		path:    path.to_path_buf(),
-		section: "root".to_string(),
-		key:     "spacing".to_string(),
-	})?;
+	let root = Section::root(path, &text, &val)?;
+	root.only(&["meta", "spacing", "radius", "type", "stroke"])?;
+	root.meta("scale")?;
 
-	validate_table_keys(path, &text, "root", root, &[
-		"meta", "spacing", "radius", "type", "stroke",
-	])?;
-
-	let spacing_tbl = root
-		.get("spacing")
-		.and_then(Value::as_table)
-		.ok_or_else(|| TokenError::MissingKey {
-			path:    path.to_path_buf(),
-			section: "root".to_string(),
-			key:     "spacing".to_string(),
-		})?;
-
-	if spacing_tbl.len() > 16 {
-		return Err(TokenError::CeilingExceeded {
-			path:         path.to_path_buf(),
-			section:      "spacing scale".to_string(),
-			count:        spacing_tbl.len(),
-			ceiling:      16,
-			spec_section: "6.1",
-		});
-	}
-
+	let spacing_tbl = root.sub("spacing")?;
+	ceiling(&spacing_tbl, "spacing scale", 16, "6.1")?;
 	let mut spacing = [0.0f32; 14];
 	for step in SpacingStep::all() {
-		let key = step.as_token();
-		let item = spacing_tbl.get(key).ok_or_else(|| TokenError::MissingKey {
-			path:    path.to_path_buf(),
-			section: "spacing".to_string(),
-			key:     key.to_string(),
-		})?;
-		let val = match item {
-			Value::Integer(i) => *i as f32,
-			Value::Float(f) => *f as f32,
-			_ => 0.0,
-		};
-		spacing[step as usize] = val;
+		spacing[step as usize] = spacing_tbl.number(step.as_token())?;
 	}
 
-	let radius_tbl = root
-		.get("radius")
-		.and_then(Value::as_table)
-		.ok_or_else(|| TokenError::MissingKey {
-			path:    path.to_path_buf(),
-			section: "root".to_string(),
-			key:     "radius".to_string(),
-		})?;
-
-	if radius_tbl.len() > 8 {
-		return Err(TokenError::CeilingExceeded {
-			path:         path.to_path_buf(),
-			section:      "corner radii".to_string(),
-			count:        radius_tbl.len(),
-			ceiling:      8,
-			spec_section: "6.2",
-		});
-	}
-
+	let radius_tbl = root.sub("radius")?;
+	ceiling(&radius_tbl, "corner radii", 8, "6.2")?;
 	let mut radius = [0.0f32; 8];
 	for step in RadiusStep::all() {
-		let key = step.as_token();
-		let item = radius_tbl.get(key).ok_or_else(|| TokenError::MissingKey {
-			path:    path.to_path_buf(),
-			section: "radius".to_string(),
-			key:     key.to_string(),
-		})?;
-		let val = match item {
-			Value::Integer(i) => *i as f32,
-			Value::Float(f) => *f as f32,
-			_ => 0.0,
-		};
-		radius[step as usize] = val;
+		radius[step as usize] = radius_tbl.number(step.as_token())?;
 	}
 
-	let type_tbl =
-		root
-			.get("type")
-			.and_then(Value::as_table)
-			.ok_or_else(|| TokenError::MissingKey {
-				path:    path.to_path_buf(),
-				section: "root".to_string(),
-				key:     "type".to_string(),
-			})?;
+	let type_tbl = root.sub("type")?;
+	type_tbl.only(&["size", "weight", "mono"])?;
 
-	let size_tbl = type_tbl
-		.get("size")
-		.and_then(Value::as_table)
-		.ok_or_else(|| TokenError::MissingKey {
-			path:    path.to_path_buf(),
-			section: "type".to_string(),
-			key:     "size".to_string(),
-		})?;
-
-	if size_tbl.len() > 6 {
-		return Err(TokenError::CeilingExceeded {
-			path:         path.to_path_buf(),
-			section:      "typographic sizes".to_string(),
-			count:        size_tbl.len(),
-			ceiling:      6,
-			spec_section: "6.3",
-		});
-	}
-
+	let size_tbl = type_tbl.sub("size")?;
+	ceiling(&size_tbl, "typographic sizes", 6, "6.3")?;
 	let mut type_sizes = [TypeSize { size: 0.0, line_height: 0.0, tracking_em: 0.0 }; 6];
 	for step in TypeSizeStep::all() {
-		let key = step.as_token();
-		let entry =
-			size_tbl
-				.get(key)
-				.and_then(Value::as_table)
-				.ok_or_else(|| TokenError::MissingKey {
-					path:    path.to_path_buf(),
-					section: "type.size".to_string(),
-					key:     key.to_string(),
-				})?;
-		let size = entry.get("size").and_then(Value::as_integer).unwrap_or(0) as f32;
-		let line_height = entry
-			.get("line_height")
-			.and_then(Value::as_integer)
-			.unwrap_or(0) as f32;
-		let tracking_em = entry
-			.get("tracking_em")
-			.and_then(Value::as_float)
-			.unwrap_or(0.0) as f32;
-		type_sizes[step as usize] = TypeSize { size, line_height, tracking_em };
+		let entry = size_tbl.sub(step.as_token())?;
+		entry.only(&["size", "line_height", "tracking_em"])?;
+		type_sizes[step as usize] = TypeSize {
+			size:        entry.number("size")?,
+			line_height: entry.number("line_height")?,
+			tracking_em: entry.number("tracking_em")?,
+		};
 	}
 
-	let weight_tbl = type_tbl
-		.get("weight")
-		.and_then(Value::as_table)
-		.ok_or_else(|| TokenError::MissingKey {
-			path:    path.to_path_buf(),
-			section: "type".to_string(),
-			key:     "weight".to_string(),
-		})?;
-
-	if weight_tbl.len() > 3 {
-		return Err(TokenError::CeilingExceeded {
-			path:         path.to_path_buf(),
-			section:      "typographic weights".to_string(),
-			count:        weight_tbl.len(),
-			ceiling:      3,
-			spec_section: "6.3",
-		});
-	}
-
-	let mut type_weights = [400u16; 3];
+	let weight_tbl = type_tbl.sub("weight")?;
+	ceiling(&weight_tbl, "typographic weights", 3, "6.3")?;
+	let mut type_weights = [0u16; 3];
 	for step in TypeWeightStep::all() {
-		let key = step.as_token();
-		let w = weight_tbl
-			.get(key)
-			.and_then(Value::as_integer)
-			.unwrap_or(400) as u16;
-		type_weights[step as usize] = w;
+		let weight = weight_tbl.integer(step.as_token())?;
+		type_weights[step as usize] = u16::try_from(weight).map_err(|_| {
+			let (line, column) = find_key_line_col(&text, "type.weight", step.as_token());
+			TokenError::OffScale {
+				path: path.to_path_buf(),
+				line,
+				column,
+				value: weight.to_string(),
+				scale_name: format!("type.weight.{}", step.as_token()),
+				allowed: "a CSS font weight, 1 to 1000".to_string(),
+			}
+		})?;
 	}
 
-	let mono_tbl = type_tbl
-		.get("mono")
-		.and_then(Value::as_table)
-		.ok_or_else(|| TokenError::MissingKey {
-			path:    path.to_path_buf(),
-			section: "type".to_string(),
-			key:     "mono".to_string(),
-		})?;
-
+	let mono_tbl = type_tbl.sub("mono")?;
 	let mut mono_sizes = [TypeSize { size: 0.0, line_height: 0.0, tracking_em: 0.0 }; 2];
 	for step in MonoSizeStep::all() {
-		let key = step.as_token();
-		let entry =
-			mono_tbl
-				.get(key)
-				.and_then(Value::as_table)
-				.ok_or_else(|| TokenError::MissingKey {
-					path:    path.to_path_buf(),
-					section: "type.mono".to_string(),
-					key:     key.to_string(),
-				})?;
-		let size = entry.get("size").and_then(Value::as_integer).unwrap_or(0) as f32;
-		let line_height = entry
-			.get("line_height")
-			.and_then(Value::as_integer)
-			.unwrap_or(0) as f32;
-		mono_sizes[step as usize] = TypeSize { size, line_height, tracking_em: 0.0 };
+		let entry = mono_tbl.sub(step.as_token())?;
+		entry.only(&["size", "line_height"])?;
+		mono_sizes[step as usize] = TypeSize {
+			size:        entry.number("size")?,
+			line_height: entry.number("line_height")?,
+			tracking_em: 0.0,
+		};
 	}
 
-	let stroke_tbl = root
-		.get("stroke")
-		.and_then(Value::as_table)
-		.ok_or_else(|| TokenError::MissingKey {
-			path:    path.to_path_buf(),
-			section: "root".to_string(),
-			key:     "stroke".to_string(),
-		})?;
-
-	let mut strokes = [1.0f32; 3];
+	let stroke_tbl = root.sub("stroke")?;
+	let mut strokes = [0.0f32; 3];
 	for step in StrokeStep::all() {
-		let key = step.as_token();
-		let s = stroke_tbl
-			.get(key)
-			.and_then(|v| match v {
-				Value::Float(f) => Some(*f as f32),
-				Value::Integer(i) => Some(*i as f32),
-				_ => None,
-			})
-			.unwrap_or(1.0);
-		strokes[step as usize] = s;
+		strokes[step as usize] = stroke_tbl.number(step.as_token())?;
 	}
 
 	Ok(ScaleTokens { spacing, radius, type_sizes, type_weights, mono_sizes, strokes })

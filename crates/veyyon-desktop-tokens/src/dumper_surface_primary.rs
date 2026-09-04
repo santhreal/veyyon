@@ -39,9 +39,9 @@ padding_bottom = "{}"
 padding_horizontal = "{}"
 header_gap = "{}"
 body_gap = "{}"
-badge_height = {}
-title_height = {}
-subtitle_height = {}
+badge_height_px = {}
+title_height_px = {}
+subtitle_height_px = {}
 
 [geometry.section_layout]
 gap_above = "{}"

@@ -54,6 +54,19 @@ pub enum TokenError {
 	MissingKey { path: PathBuf, section: String, key: String },
 
 	#[error(
+		"[{path}:{line}:{column}] key {key:?} in section [{section}] is {found}, expected {expected}"
+	)]
+	WrongType {
+		path:     PathBuf,
+		line:     usize,
+		column:   usize,
+		section:  String,
+		key:      String,
+		expected: &'static str,
+		found:    &'static str,
+	},
+
+	#[error(
 		"[{path}:{line}:{column}] unknown key {key:?} in section [{section}]; expected one of \
 		 {expected:?}"
 	)]

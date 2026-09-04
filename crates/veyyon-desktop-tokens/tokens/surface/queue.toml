@@ -25,9 +25,9 @@ padding_bottom = "s4"
 padding_horizontal = "s5"
 header_gap = "s1"
 body_gap = "s2"
-badge_height = 20
-title_height = 20
-subtitle_height = 16
+badge_height_px = 20
+title_height_px = 20
+subtitle_height_px = 16
 
 [geometry.section_layout]
 gap_above = "s6"

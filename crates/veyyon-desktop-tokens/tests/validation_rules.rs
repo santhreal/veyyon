@@ -320,11 +320,14 @@ fn test_validation_rule_breakpoint_row_value_wrong_type() {
 
 		let err = load_from_dir(&dir).expect_err(&format!("{to:?} must fail the load"));
 		match &err {
-			TokenError::OffScale { path, scale_name, .. } => {
+			TokenError::WrongType { path, section, key: found, .. } => {
 				assert!(path.ends_with("surface/breakpoints.toml"));
-				assert_eq!(scale_name, &format!("breakpoint.wide.{key}"));
+				assert_eq!(section, "breakpoint.wide", "case {to:?}");
+				assert_eq!(found, key, "case {to:?}");
 			},
-			other => panic!("expected OffScale for {to:?}, got {other:?}"),
+			other => {
+				panic!("expected WrongType naming breakpoint.wide.{key} for {to:?}, got {other:?}")
+			},
 		}
 	}
 }
