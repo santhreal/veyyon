@@ -138,6 +138,7 @@
 - The RPC `open_url` login request carries `credential` (`"api-key"` or `"oauth"`) so a host opens only the URL a flow waits on; `RpcClient.login`'s `onOpenUrl` receives it as a fourth argument.
 - Cancelling or failing a sign-in in the setup wizard clears the provider search that started it, so the next keystroke begins a new search rather than appending to the old one and matching nothing.
 - Tool renderers sanitize raw tabs and shorten embedded home directory paths across error, output, and fallback views.
+- A `job` poll whose job failed lists each job with its own error again, instead of collapsing to the result text.
 - Print mode exits with code 130 rather than 1 when a turn is cancelled or aborted.
 - The web search command exits with code 2 on missing or invalid query arguments.
 - The TTSR command exits with code 2 on missing required subcommand parameters or unrecognized actions.
