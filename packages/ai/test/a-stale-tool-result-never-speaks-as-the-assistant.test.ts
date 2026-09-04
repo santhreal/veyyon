@@ -26,7 +26,17 @@ import { buildModel } from "@veyyon/catalog/build";
  * while attributed to the assistant. That is few-shot priming written by us, so
  * the defect is not specific to one provider, one repair site, or one model —
  * every unpaired-result repair is a member, and there were three of them across
- * the Responses family plus one on the Anthropic path.
+ * the Responses family plus one on the Anthropic path. Recorded sessions bear
+ * that out: 244 reproduced notes span two provider families and three models
+ * (`grok-4.6` and `grok-4.5` on the xAI Responses endpoint, `gpt-5.6-sol` on
+ * the ChatGPT Codex backend) and cover both wordings, `[Orphan …]` from the
+ * Responses repair and `[Previous …]` from the Codex one. The repair site is the
+ * cause, not the model.
+ *
+ * WHY THE NEUTRALIZER ANCHORS AT BLOCK START: all 244 begin their text block.
+ * The only mid-block occurrence in the same corpus is prose describing the
+ * marker, which an unanchored match would delete, so the last two cases below
+ * pin that boundary.
  *
  * THE INVARIANT: tool output reaches the model as data, never in the model's own
  * voice. Every repair rides `role: "user"` inside a `<stale-tool-result>`
