@@ -77,7 +77,7 @@ const ONBOARDED_CONFIG = "onboardingVersion: 1\n";
  * measuring `frame` on a machine the bench is not itself loading.
  */
 const ARM_GROUPS = ["version", "help", "ready", "frame", "replay"] as const;
-const OPTIONAL_ARM_GROUPS = ["settled"] as const;
+const OPTIONAL_ARM_GROUPS = ["settled", "responsive"] as const;
 type ArmGroup = (typeof ARM_GROUPS)[number] | (typeof OPTIONAL_ARM_GROUPS)[number];
 
 interface Options {
@@ -96,6 +96,8 @@ interface Options {
 	stableMs: number;
 	columns: number;
 	rows: number;
+	probeIntervalMs: number;
+	probeCount: number;
 }
 
 interface Sample {
@@ -112,6 +114,8 @@ function parseArgs(argv: string[]): Options {
 		stableMs: 1000,
 		columns: 140,
 		rows: 45,
+		probeIntervalMs: 50,
+		probeCount: 40,
 	};
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i];
@@ -130,6 +134,8 @@ function parseArgs(argv: string[]): Options {
 		else if (arg === "--stable-ms") options.stableMs = Number(argv[++i]);
 		else if (arg === "--columns") options.columns = Number(argv[++i]);
 		else if (arg === "--rows") options.rows = Number(argv[++i]);
+		else if (arg === "--probe-interval-ms") options.probeIntervalMs = Number(argv[++i]);
+		else if (arg === "--probe-count") options.probeCount = Number(argv[++i]);
 		else throw new Error(`unknown argument: ${arg}`);
 	}
 	for (const [name, value] of Object.entries({
@@ -138,13 +144,21 @@ function parseArgs(argv: string[]): Options {
 		"stable-ms": options.stableMs,
 		columns: options.columns,
 		rows: options.rows,
+		"probe-interval-ms": options.probeIntervalMs,
+		"probe-count": options.probeCount,
 	})) {
 		if (!Number.isSafeInteger(value) || value < 1) throw new Error(`--${name} must be a positive integer`);
 	}
 	if (options.source && options.bin) throw new Error("--source and --bin are mutually exclusive");
 	if (options.stableMs >= options.observationMs) throw new Error("--stable-ms must be smaller than --observe-ms");
-	if (options.only?.has("settled") && !options.expectedModel?.trim()) {
-		throw new Error("--only settled requires --expect-model with the resolved display name");
+	if (OPTIONAL_ARM_GROUPS.some(arm => options.only?.has(arm)) && !options.expectedModel?.trim()) {
+		throw new Error("Observed startup arms require --expect-model with the resolved display name");
+	}
+	if (
+		options.only?.has("responsive") &&
+		options.probeCount * options.probeIntervalMs + options.stableMs >= options.observationMs
+	) {
+		throw new Error("Input probes and --stable-ms must fit within --observe-ms");
 	}
 	return options;
 }
@@ -571,7 +585,8 @@ async function main(): Promise<void> {
 			if (replayed.statusrow !== undefined) push("replay:statusrow", replayed.statusrow);
 		}
 
-		if (options.only?.has("settled")) {
+		for (const observedArm of OPTIONAL_ARM_GROUPS) {
+			if (!options.only?.has(observedArm)) continue;
 			const seeded = await envFor();
 			const environment: Record<string, string> = {
 				PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
@@ -592,12 +607,32 @@ async function main(): Promise<void> {
 				expectedModel: options.expectedModel!,
 				observationMs: options.observationMs,
 				stableMs: options.stableMs,
-				trace: path.join(scratch, `settled-${run + 1}.json`),
+				trace: path.join(scratch, `${observedArm}-${run + 1}.json`),
+				input:
+					observedArm === "responsive"
+						? { intervalMs: options.probeIntervalMs, count: options.probeCount }
+						: undefined,
 			});
-			push("settled:first-byte", marks.firstByte);
-			push("settled:editable", marks.editable);
-			push("settled:editable-frame", marks.settledEditable);
-			push("settled:stable-tail", marks.stableForMs);
+			if (observedArm === "settled") {
+				push("settled:first-byte", marks.firstByte);
+				push("settled:editable", marks.editable);
+				push("settled:editable-frame", marks.settledEditable);
+				push("settled:stable-tail", marks.stableForMs);
+			} else {
+				if (!marks.inputProbes?.length) throw new Error("Responsive startup produced no input measurements");
+				let worst = 0;
+				for (const probe of marks.inputProbes) {
+					if (probe.renderedAt === null) throw new Error("An input probe was not rendered");
+					const latency = probe.renderedAt - probe.sentAt;
+					push("responsive:input", latency);
+					push(
+						probe.metadataReady ? "responsive:input-after-metadata" : "responsive:input-before-metadata",
+						latency,
+					);
+					worst = Math.max(worst, latency);
+				}
+				push("responsive:worst-input", worst);
+			}
 		}
 	}
 
@@ -619,6 +654,10 @@ async function main(): Promise<void> {
 		"settled:editable",
 		"settled:editable-frame",
 		"settled:stable-tail",
+		"responsive:input",
+		"responsive:input-before-metadata",
+		"responsive:input-after-metadata",
+		"responsive:worst-input",
 	];
 	const lines = [
 		`veyyon startup — ${options.bin ? `binary ${options.bin}` : "bun source"}, ${options.cold ? "cold" : "warm"} home, ${options.runs} run(s)`,
@@ -643,7 +682,7 @@ async function main(): Promise<void> {
 					source: options.source ?? CLI_SOURCE,
 					cwd: options.cwd ?? REPO_ROOT,
 					seed: options.seed,
-					settlement: options.only?.has("settled")
+					settlement: OPTIONAL_ARM_GROUPS.some(arm => options.only?.has(arm))
 						? {
 								expectedModel: options.expectedModel,
 								columns: options.columns,
@@ -651,6 +690,9 @@ async function main(): Promise<void> {
 								observationMs: options.observationMs,
 								minimumStableMs: options.stableMs,
 							}
+						: undefined,
+					input: options.only?.has("responsive")
+						? { intervalMs: options.probeIntervalMs, count: options.probeCount }
 						: undefined,
 					samples,
 				},

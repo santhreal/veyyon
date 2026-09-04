@@ -8,6 +8,13 @@ export interface StartupFrameSample {
 	editable: boolean;
 }
 
+export interface StartupInputProbe {
+	draft: string;
+	sentAt: number;
+	renderedAt: number | null;
+	metadataReady: boolean | null;
+}
+
 export interface SettledStartupFrame {
 	firstByte: number;
 	editable: number;
@@ -24,6 +31,7 @@ export interface SettledStartupFrame {
 export class StartupFrameObserver {
 	readonly terminal: Terminal;
 	readonly samples: StartupFrameSample[] = [];
+	readonly inputProbes: StartupInputProbe[] = [];
 	#expectedModel: string;
 	#probe: string;
 	#firstByte: number | undefined;
@@ -31,6 +39,7 @@ export class StartupFrameObserver {
 	#lastChange = 0;
 	#signature = "";
 	#pending: Promise<void> = Promise.resolve();
+	#composerDraft: string | undefined;
 
 	constructor(columns: number, rows: number, expectedModel: string, probe: string) {
 		if (!expectedModel.trim()) throw new Error("A resolved model display name is required for settled startup");
@@ -48,6 +57,11 @@ export class StartupFrameObserver {
 			this.#observe(at);
 		});
 		return this.#pending;
+	}
+
+	/** Record the edited draft expected from a write to the child's input stream. */
+	noteInput(draft: string, sentAt: number): void {
+		this.inputProbes.push({ draft, sentAt, renderedAt: null, metadataReady: null });
 	}
 
 	/** Wait for all queued terminal writes before persisting a trace or disposing. */
@@ -87,6 +101,18 @@ export class StartupFrameObserver {
 			!text.includes("? left") &&
 			!text.includes("no model yet") &&
 			!text.includes("no-model");
+		this.#composerDraft = lines
+			.find(line => /^\s*›\s*/u.test(line))
+			?.replace(/^\s*›\s*/u, "")
+			.trimEnd();
+		const rendered = this.inputProbes.findLast(probe => probe.draft === this.#composerDraft);
+		if (rendered) {
+			for (const probe of this.inputProbes) {
+				if (probe.renderedAt !== null || probe.sentAt > at || !rendered.draft.startsWith(probe.draft)) continue;
+				probe.renderedAt = at;
+				probe.metadataReady = ready;
+			}
+		}
 		this.samples.push({ at, text, changed, ready, editable });
 	}
 
@@ -95,6 +121,13 @@ export class StartupFrameObserver {
 		const last = this.samples.at(-1);
 		if (!last?.ready || !last.editable || this.#firstByte === undefined || this.#editable === undefined) {
 			throw new Error(`Startup did not reach resolved metadata and an editable composer in ${observationMs}ms`);
+		}
+		const lastInput = this.inputProbes.at(-1);
+		if (
+			lastInput &&
+			(this.#composerDraft !== lastInput.draft || this.inputProbes.some(probe => probe.renderedAt === null))
+		) {
+			throw new Error("Startup did not render and retain every input probe");
 		}
 		const settledEditable = Math.max(this.#lastChange, this.#editable);
 		const stableForMs = observationMs - settledEditable;

@@ -94,9 +94,34 @@ the scratch directory, including failed runs. Process-tree termination is awaite
 
 The observation interval bounds the result: an update after it is not covered.
 This measures cold profile state, not a flushed operating-system page cache.
-Terminal-parser traces are timing diagnostics, not visual proof. Background input
-responsiveness, deferred capability readiness and immediate action latency require
-separate interaction measurements; a retained startup probe does not prove them.
+Terminal-parser traces are timing diagnostics, not visual proof. The responsive arm
+measures typing separately; deferred capability readiness and immediate actions
+require their own interaction scenarios.
+
+### Input during initialization
+
+```sh
+bun scripts/bench-startup.ts --only responsive --cold --runs 5 \
+  --seed /path/to/isolated-config --expect-model 'Model Display Name' \
+  --cwd /path/to/project --json .captures/startup-input.json
+```
+
+The responsive arm sends an initial edited probe, then appends and deletes characters
+every 50 milliseconds for 40 probes. `--probe-interval-ms` and `--probe-count`
+change that schedule. Every expected draft must render, and the final screen must
+retain the entire draft. A coalesced repaint timestamps all newly visible input at
+that repaint, including time spent waiting for the event loop.
+
+`responsive:input` reports send-to-render latency for every probe.
+`responsive:worst-input` reports the maximum latency in each launch.
+The `input-before-metadata` and `input-after-metadata` subsets use the visible
+model name and context gauge at the acknowledging frame; neither establishes that
+a deferred capability is ready. Traces include each draft, send time and render time.
+
+The responsive arm runs in a separate process from the settled arm because its
+repeated edits change the screen. Run `--only settled,responsive` to record both.
+Use matching seeds, dimensions, schedules, runtime versions and source revisions
+for comparisons. This arm covers typing and deletion, not paste, submit or selectors.
 
 ## Guard a change against a regression
 

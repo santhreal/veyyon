@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import { Process } from "@veyyon/natives";
-import { type SettledStartupFrame, StartupFrameObserver } from "./startup-frame-observer";
+import { type SettledStartupFrame, StartupFrameObserver, type StartupInputProbe } from "./startup-frame-observer";
 
 export interface SettledStartupOptions {
 	command: string;
@@ -14,15 +14,21 @@ export interface SettledStartupOptions {
 	observationMs: number;
 	stableMs: number;
 	trace: string;
+	input?: { intervalMs: number; count: number };
+}
+
+export interface RecordedStartup extends SettledStartupFrame {
+	inputProbes?: readonly StartupInputProbe[];
 }
 
 /** The command must disable PTY line-discipline echo before launching the CLI. */
-export async function recordSettledStartup(options: SettledStartupOptions): Promise<SettledStartupFrame> {
+export async function recordSettledStartup(options: SettledStartupOptions): Promise<RecordedStartup> {
 	const observer = new StartupFrameObserver(options.columns, options.rows, options.expectedModel, "qjq");
 	const completed = Promise.withResolvers<SettledStartupFrame>();
 	const processState: { target: Process | null } = { target: null };
 	let observing = true;
 	let probed = false;
+	let inputTimer: NodeJS.Timeout | undefined;
 	let stderr = "";
 	const started = performance.now();
 	const child = spawn(options.command, options.args, {
@@ -52,7 +58,20 @@ export async function recordSettledStartup(options: SettledStartupOptions): Prom
 		if (!probed) {
 			probed = true;
 			// qjq is never sent literally: the editor must process deletion to produce it.
+			if (options.input) observer.noteInput("qjq", performance.now() - started);
 			child.stdin.write("qjX\x7fq");
+			if (options.input) {
+				const { intervalMs, count } = options.input;
+				let sent = 0;
+				let draft = "qjq";
+				inputTimer = setInterval(() => {
+					if (!observing) return;
+					draft += "x";
+					observer.noteInput(draft, performance.now() - started);
+					child.stdin.write("xY\x7f");
+					if (++sent === count) clearInterval(inputTimer);
+				}, intervalMs);
+			}
 		}
 	});
 	child.stderr.setEncoding("utf8");
@@ -61,6 +80,10 @@ export async function recordSettledStartup(options: SettledStartupOptions): Prom
 	});
 	const timer = setTimeout(() => {
 		observing = false;
+		if (options.input && observer.inputProbes.length !== options.input.count + 1) {
+			completed.reject(new Error("Observation ended before every input probe was sent"));
+			return;
+		}
 		void observer.finish(performance.now() - started, options.stableMs).then(completed.resolve, completed.reject);
 	}, options.observationMs);
 	const errors: unknown[] = [];
@@ -72,6 +95,7 @@ export async function recordSettledStartup(options: SettledStartupOptions): Prom
 	} finally {
 		observing = false;
 		clearTimeout(timer);
+		clearInterval(inputTimer);
 		const target = processState.target;
 		try {
 			// The stable native reference includes descendants, including the shell
@@ -96,6 +120,7 @@ export async function recordSettledStartup(options: SettledStartupOptions): Prom
 							stableMs: options.stableMs,
 							stderr,
 							samples: observer.samples,
+							inputProbes: observer.inputProbes,
 						},
 						null,
 						2,
@@ -113,5 +138,5 @@ export async function recordSettledStartup(options: SettledStartupOptions): Prom
 	}
 	if (errors.length > 0) throw new AggregateError(errors, "Settled startup measurement failed");
 	if (!result) throw new Error("Settled startup measurement produced no result");
-	return result;
+	return options.input ? { ...result, inputProbes: observer.inputProbes } : result;
 }

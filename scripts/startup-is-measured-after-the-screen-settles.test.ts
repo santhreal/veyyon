@@ -74,6 +74,42 @@ describe("settled editable startup", () => {
 		await expect(value.finish(1500, 1000)).rejects.toThrow("require 1000ms");
 	});
 
+	test("timestamps edited drafts rather than an unfinished deletion", async () => {
+		const value = observer();
+		value.noteInput("qjq", 10);
+		await value.write(frame("probe-model", "? left", "qjX"), 20);
+		await value.write(frame("probe-model", "? left"), 35);
+		value.noteInput("qjqx", 40);
+		await value.write(frame("Study Model", "71% left", "qjqxY"), 60);
+		expect(value.inputProbes[1]?.renderedAt).toBeNull();
+		await value.write(frame("Study Model", "71% left", "qjqx"), 90);
+		await value.finish(1500, 1000);
+		expect(value.inputProbes).toEqual([
+			{ draft: "qjq", sentAt: 10, renderedAt: 35, metadataReady: false },
+			{ draft: "qjqx", sentAt: 40, renderedAt: 90, metadataReady: true },
+		]);
+	});
+
+	test("counts coalesced input at the frame that first contains every edited character", async () => {
+		const value = observer();
+		value.noteInput("qjq", 10);
+		value.noteInput("qjqx", 20);
+		value.noteInput("qjqxx", 30);
+		await value.write(frame("Study Model", "71% left", "qjqxx"), 200);
+		await value.finish(1500, 1000);
+		expect(value.inputProbes.map(probe => probe.renderedAt! - probe.sentAt)).toEqual([190, 180, 170]);
+	});
+
+	test.each(["never rendered", "lost after handoff"])("rejects input %s", async failure => {
+		const value = observer();
+		value.noteInput("qjq", 10);
+		await value.write(frame("Study Model", "71% left"), 20);
+		value.noteInput("qjqx", 30);
+		if (failure === "lost after handoff") await value.write(frame("Study Model", "71% left", "qjqx"), 40);
+		await value.write(frame("Study Model", "71% left"), 100);
+		await expect(value.finish(1500, 1000)).rejects.toThrow("render and retain every input probe");
+	});
+
 	test.skipIf(process.platform === "win32")(
 		"a failed observation ends its child process tree within a bound",
 		async () => {
