@@ -11,25 +11,26 @@ import { parseDiffFileHunks, parseFileDiffs, parseFileHunks, parseNumstat } from
 import type { FileDiff, FileHunks, NumstatEntry } from "../commit/types";
 import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import { ToolAbortError, ToolError, throwIfAborted } from "../tools/tool-errors";
-import type { EntryType, GitHeadState, GitInProgressOperation, GitRepository } from "./git-head";
+import type { GitHeadState, GitInProgressOperation, GitRepository } from "./git-head";
 import {
-	EINTR_MAX_RETRIES,
-	getEntryTypeSync,
 	getRefLookupDirs,
 	HEAD_REF_PREFIX,
 	headBranchForLookup,
 	headLabel,
 	isReftableRepoSync,
 	LOCAL_BRANCH_PREFIX,
+	linkedWorktreeSync,
 	normalizeRefValue,
 	parseGitConfigHasReftable,
-	parseGitDirPointer,
 	parseHeadStateFromFiles,
 	parsePackedRefs,
+	primaryRootFromRepository,
+	primaryRootFromRepositorySync,
+	readOptionalText,
 	readOptionalTextSync,
 	resolveInProgressOperation,
+	resolveRepository,
 	resolveRepositorySync,
-	shouldRetry,
 } from "./git-head";
 
 export type {
@@ -591,107 +592,10 @@ async function writeTempPatch(content: string): Promise<string> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// Internal: Repository resolution
-// ════════════════════════════════════════════════════════════════════════════
-
-async function retryOnEintr<T>(op: () => Promise<T>): Promise<T | null> {
-	for (let attempt = 0; attempt <= EINTR_MAX_RETRIES; attempt += 1) {
-		try {
-			return await op();
-		} catch (err) {
-			if (shouldRetry(err, attempt)) continue;
-			return null;
-		}
-	}
-	throw new Error("retryOnEintr: exhausted without resolution");
-}
-
-async function getEntryType(gitEntryPath: string): Promise<EntryType | null> {
-	return retryOnEintr(async () => {
-		const stat = await fs.promises.stat(gitEntryPath);
-		if (stat.isDirectory()) return "directory";
-		if (stat.isFile()) return "file";
-		return null;
-	});
-}
-
-async function readOptionalText(filePath: string): Promise<string | null> {
-	return retryOnEintr(async () => await Bun.file(filePath).text());
-}
-
-async function resolveGitDir(gitEntryPath: string, entryType: EntryType): Promise<string | null> {
-	if (entryType === "directory") return gitEntryPath;
-	const content = await readOptionalText(gitEntryPath);
-	if (content === null) return null;
-	const parsed = parseGitDirPointer(content);
-	if (!parsed) return null;
-	const gitDir = path.resolve(path.dirname(gitEntryPath), parsed);
-	return (await getEntryType(gitDir)) === "directory" ? gitDir : null;
-}
-
-async function resolveCommonDir(gitDir: string): Promise<string> {
-	const content = await readOptionalText(path.join(gitDir, "commondir"));
-	const relative = content?.trim();
-	if (!relative) return gitDir;
-	return path.resolve(gitDir, relative);
-}
-function isLinkedWorktree(repository: GitRepository): boolean {
-	return (
-		repository.gitDir !== repository.commonDir &&
-		getEntryTypeSync(path.join(repository.gitDir, "commondir")) === "file"
-	);
-}
-
-async function isLinkedWorktreeAsync(repository: GitRepository): Promise<boolean> {
-	return (
-		repository.gitDir !== repository.commonDir &&
-		(await getEntryType(path.join(repository.gitDir, "commondir"))) === "file"
-	);
-}
-
-function primaryRootFromRepositorySync(repository: GitRepository): string {
-	if (path.basename(repository.commonDir) === ".git") return path.dirname(repository.commonDir);
-	if (isLinkedWorktree(repository)) return repository.commonDir;
-	return repository.repoRoot;
-}
-
-async function primaryRootFromRepository(repository: GitRepository): Promise<string> {
-	if (path.basename(repository.commonDir) === ".git") return path.dirname(repository.commonDir);
-	if (await isLinkedWorktreeAsync(repository)) return repository.commonDir;
-	return repository.repoRoot;
-}
-
-async function resolveRepoFromEntry(
-	repoRoot: string,
-	gitEntryPath: string,
-	entryType: EntryType,
-): Promise<GitRepository | null> {
-	const gitDir = await resolveGitDir(gitEntryPath, entryType);
-	if (!gitDir) return null;
-	return {
-		commonDir: await resolveCommonDir(gitDir),
-		gitDir,
-		gitEntryPath,
-		headPath: path.join(gitDir, "HEAD"),
-		repoRoot,
-	};
-}
-
-async function resolveRepository(startDir: string): Promise<GitRepository | null> {
-	let current = path.resolve(startDir);
-	while (true) {
-		const gitEntryPath = path.join(current, ".git");
-		const entryType = await getEntryType(gitEntryPath);
-		if (entryType) {
-			const repository = await resolveRepoFromEntry(current, gitEntryPath, entryType);
-			if (repository) return repository;
-		}
-		const parent = path.dirname(current);
-		if (parent === current) return null;
-		current = parent;
-	}
-}
-
+// The repository walk and the worktree resolution moved to `git-head.ts`,
+// beside the rest of the from-files answer: a caller that must not reach this
+// module's process layer imports them there. This module composes them with
+// the subprocess half.
 // ════════════════════════════════════════════════════════════════════════════
 // Internal: Ref resolution
 // ════════════════════════════════════════════════════════════════════════════
@@ -1949,9 +1853,7 @@ export const repo = {
 	 * so the status line may call it on every render.
 	 */
 	linkedWorktreeSync(cwd: string): { root: string; primaryRoot: string } | null {
-		const repository = resolveRepositorySync(cwd);
-		if (!repository || !isLinkedWorktree(repository)) return null;
-		return { root: repository.repoRoot, primaryRoot: primaryRootFromRepositorySync(repository) };
+		return linkedWorktreeSync(cwd);
 	},
 
 	/** Full GitRepository metadata (sync). */
