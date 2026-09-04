@@ -22,7 +22,8 @@ import {
 } from "@veyyon/utils";
 import { SESSION_BACKUP_EXTENSION, SESSION_FILE_EXTENSION } from "@veyyon/utils/session-file";
 import { tableExists } from "@veyyon/utils/sqlite";
-import { getDefault, Settings } from "../config/settings";
+import { Settings } from "../config/settings";
+import { getDefault } from "../config/settings-schema";
 
 const HASH_RE = /^[a-f0-9]{64}$/;
 const BLOB_FILE_RE = /^([a-f0-9]{64})(?:\.[A-Za-z0-9][A-Za-z0-9._-]{0,31})?$/;

@@ -6,7 +6,8 @@ import {
 	type SessionTelemetryCategory,
 	sessionTelemetryDetail,
 } from "@veyyon/ai/instrumentation";
-import { getDefault, getEnumValues, Settings } from "@veyyon/coding-agent/config/settings";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { getDefault, getEnumValues } from "@veyyon/coding-agent/config/settings-schema";
 
 const categories = [
 	"lifecycle",
