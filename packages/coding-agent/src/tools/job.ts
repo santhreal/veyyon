@@ -654,13 +654,14 @@ export const jobToolRenderer = {
 		let jobs = result.details?.jobs ?? [];
 		const agents = result.details?.agents ?? [];
 
-		if (result.isError) {
-			const fallback = result.content?.find(c => c.type === "text")?.text || "Job operation failed";
-			const header = renderStatusLine({ icon: "error", title: describeTarget(args) || "Job" }, uiTheme);
-			return new Text([header, formatErrorDetail(fallback, uiTheme)].join("\n"), 0, 0);
-		}
-
 		if (jobs.length === 0 && agents.length === 0) {
+			// A failed poll still carries its job rows in `details`, and the tree below shows each
+			// job's own error; only a result with nothing to list falls back to its text.
+			if (result.isError) {
+				const fallback = result.content?.find(c => c.type === "text")?.text || "Job operation failed";
+				const header = renderStatusLine({ icon: "error", title: describeTarget(args) || "Job" }, uiTheme);
+				return new Text([header, formatErrorDetail(fallback, uiTheme)].join("\n"), 0, 0);
+			}
 			const fallback = result.content?.find(c => c.type === "text")?.text || "No jobs to process";
 			const header = renderStatusLine({ icon: "warning", title: describeTarget(args) || "Job" }, uiTheme);
 			return new Text([header, formatEmptyMessage(shortenEmbeddedPaths(fallback), uiTheme)].join("\n"), 0, 0);
