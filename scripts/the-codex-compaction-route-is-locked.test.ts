@@ -30,6 +30,12 @@
  * below failed: you changed a locked file. Revert it. If the change is genuinely
  * required, make a live call of your own, get the operator to say so out loud,
  * then update the hash IN THE SAME COMMIT as the change and say why here.
+ *
+ * Re-locked 2026-09-03 with operator permission. The OpenCode request-identity
+ * fix threads `conversationIdForOpenCode(request)` into the official-host
+ * branch (`resolveOpenAiCompactRequest`) so a compaction sends the same
+ * `x-opencode-session` as the turns around it. The Codex branch, its endpoint,
+ * its trigger item and its SSE reader are byte-identical to the 2026-09-01 lock.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -51,13 +57,6 @@ const LOCKED_FILE = "packages/ai/src/providers/openai-compaction.ts";
  * is the exact move this gate exists to stop.
  */
 const LOCKED_SHA256 = "2c18e649bd3279671519feacfb14400dfb94800022d887539c69781127d51ff8";
-// 2026-09-04, with the operator's say-so: the lock moved from e380143f after
-// 74553de179 keyed the OpenCode session header on the conversation id. The
-// diff against the locked bytes is four lines, all in the non-Codex branch —
-// an import of `conversationIdForOpenCode`, a parameter rename, and the
-// conversation id fed into the request setup. The Codex wire above is
-// untouched: same endpoint, `stream: true`, trigger item last, SSE reply, and
-// the same client metadata.
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 

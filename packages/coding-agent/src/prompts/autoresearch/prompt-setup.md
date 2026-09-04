@@ -34,7 +34,11 @@ You MAY edit anything else needed to make `autoresearch.sh` work — benchmark b
 1. Inspect the target. Read source, identify what to measure, decide on the workload.
 2. Write `autoresearch.sh` plus any supporting files (benchmark binaries, fixtures, etc.).
 3. Validate it: invoke `bash autoresearch.sh` through the regular `bash` tool. Confirm it exits 0 and emits at least one `METRIC` line. Iterate on the harness until it does.
-4. Call `init_experiment` with the goal, primary metric (matching the `METRIC` name), and scope. This snapshots the worktree as the baseline and starts Phase 2 (the iteration loop).
+4. Call `init_experiment` with the goal, primary metric (matching the `METRIC` name), and scope. Pass `metric_unit` only for a unit that is not the metric's own name (`ms`, `MiB`); a count has no unit. This snapshots the worktree as the baseline and starts Phase 2 (the iteration loop).
+{{#if has_swarm_setup}}
+
+The user configured this run in the autoswarm setup console: {{swarm_breadth}} arms per iteration, {{swarm_attempts}} attempts each, certification {{#if swarm_certify}}on{{else}}off{{/if}}. Those values are set; do not pass `breadth`, `attempts` or `certify` to `init_experiment`. After it returns, the iteration loop runs with breadth: start each arm with `start_arm` before its first edit.
+{{/if}}
 
 ### Rules
 

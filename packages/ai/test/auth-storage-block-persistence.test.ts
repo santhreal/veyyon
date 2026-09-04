@@ -70,7 +70,9 @@ describe("AuthStorage credential block persistence", () => {
 		firstStore.saveOAuth(PROVIDER, oauthCredential("2"));
 		firstStore.saveOAuth(PROVIDER, oauthCredential("3"));
 		const rows = firstStore.listAuthCredentials(PROVIDER);
-		const firstStorage = new AuthStorage(firstStore);
+		// Every arm here asserts that a persisted block moves selection off an account, which is
+		// movement; the library holds it off unless a host opts in.
+		const firstStorage = new AuthStorage(firstStore, { loadBalancing: true });
 		await firstStorage.reload();
 		try {
 			firstStorage.upsertCredentialBlock({
@@ -90,7 +92,7 @@ describe("AuthStorage credential block persistence", () => {
 		}
 
 		const reopenedStore = await SqliteAuthCredentialStore.open(dbPath);
-		const reopenedStorage = new AuthStorage(reopenedStore);
+		const reopenedStorage = new AuthStorage(reopenedStore, { loadBalancing: true });
 		await reopenedStorage.reload();
 		try {
 			const fableKey = await reopenedStorage.getApiKey(PROVIDER, "session-3", { modelId: "claude-fable-5" });
@@ -105,7 +107,7 @@ describe("AuthStorage credential block persistence", () => {
 		store.saveOAuth(PROVIDER, oauthCredential("1"));
 		const [row] = store.listAuthCredentials(PROVIDER);
 		if (!row) throw new Error("expected credential row");
-		const storage = new AuthStorage(store);
+		const storage = new AuthStorage(store, { loadBalancing: true });
 		await storage.reload();
 		try {
 			const longerBlock = FUTURE_BLOCK_MS + 60_000;
@@ -143,7 +145,7 @@ describe("AuthStorage credential block persistence", () => {
 		store.saveOAuth(PROVIDER, oauthCredential("1"));
 		const [row] = store.listAuthCredentials(PROVIDER);
 		if (!row) throw new Error("expected credential row");
-		const storage = new AuthStorage(store);
+		const storage = new AuthStorage(store, { loadBalancing: true });
 		await storage.reload();
 		try {
 			storage.upsertCredentialBlock({
@@ -184,7 +186,7 @@ describe("AuthStorage credential block persistence", () => {
 		store.saveOAuth(PROVIDER, oauthCredential("2"));
 		store.saveOAuth(PROVIDER, oauthCredential("3"));
 		const rows = store.listAuthCredentials(PROVIDER);
-		const storage = new AuthStorage(store);
+		const storage = new AuthStorage(store, { loadBalancing: true });
 		await storage.reload();
 		try {
 			storage.upsertCredentialBlock({
@@ -202,7 +204,7 @@ describe("AuthStorage credential block persistence", () => {
 		disablingStore.close();
 
 		const reopenedStore = await SqliteAuthCredentialStore.open(dbPath);
-		const reopenedStorage = new AuthStorage(reopenedStore);
+		const reopenedStorage = new AuthStorage(reopenedStore, { loadBalancing: true });
 		await reopenedStorage.reload();
 		try {
 			const key = await reopenedStorage.getApiKey(PROVIDER, "a");

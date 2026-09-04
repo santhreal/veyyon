@@ -56,7 +56,8 @@ describe("AuthStorage api-key login upsert", () => {
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-ai-auth-api-key-login-"));
 		dbPath = path.join(tempDir, "agent.db");
 		store = await SqliteAuthCredentialStore.open(dbPath);
-		authStorage = new AuthStorage(store);
+		// Round-robin across login keys is movement; the library holds it off unless a host opts in.
+		authStorage = new AuthStorage(store, { loadBalancing: true });
 		loginDeepSeekSpy = vi.spyOn(deepseekModule, "loginDeepSeek");
 		loginKagiSpy = vi.spyOn(kagiModule, "loginKagi");
 		loginOllamaCloudSpy = vi.spyOn(ollamaCloudModule, "loginOllamaCloud");

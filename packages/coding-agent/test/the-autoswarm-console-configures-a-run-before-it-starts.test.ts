@@ -30,8 +30,25 @@ const ENTER = "\r";
 const ESCAPE = "\x1b";
 const BACKSPACE = "\x7f";
 
-function fresh(overrides: Partial<{ goal: string; breadth: number; attempts: number; certify: boolean }> = {}) {
-	return new SwarmSetupModel({ goal: "make it faster", breadth: 3, attempts: 1, certify: true, ...overrides });
+function fresh(
+	overrides: Partial<{
+		goal: string;
+		breadth: number;
+		attempts: number;
+		certify: boolean;
+		armModels: string[];
+		modelExists: (spec: string) => boolean;
+		context: SwarmSetupModel["context"];
+	}> = {},
+) {
+	return new SwarmSetupModel({
+		goal: "make it faster",
+		breadth: 3,
+		attempts: 1,
+		certify: true,
+		armModels: [],
+		...overrides,
+	});
 }
 
 function feed(model: SwarmSetupModel, keys: string[]): Array<"start" | "cancel" | null> {
@@ -49,14 +66,14 @@ describe("the autoswarm console configures a run before it starts", () => {
 		// setting nobody can change, which is the same as not shipping it.
 		const model = fresh();
 		const ids = setupRows(model).map(row => row.id);
-		expect(ids).toEqual(["goal", "breadth", "attempts", "certify"]);
+		expect(ids).toEqual(["goal", "breadth", "models", "attempts", "certify"]);
 
 		const seen: string[] = [model.field];
 		for (let index = 0; index < ids.length; index++) {
 			handleSetupKey(model, DOWN);
 			seen.push(model.field);
 		}
-		expect(seen).toEqual(["goal", "breadth", "attempts", "certify", "goal"]);
+		expect(seen).toEqual(["goal", "breadth", "models", "attempts", "certify", "goal"]);
 
 		handleSetupKey(model, UP);
 		expect(model.field).toBe("certify");
@@ -70,6 +87,8 @@ describe("the autoswarm console configures a run before it starts", () => {
 		feed(model, Array<string>(MAX_BREADTH + 4).fill(LEFT));
 		expect(model.breadth).toBe(MIN_BREADTH);
 
+		// Breadth is back at its minimum here, so the models row is gone and one
+		// step down lands on attempts.
 		handleSetupKey(model, DOWN);
 		feed(model, Array<string>(MAX_ATTEMPTS + 4).fill(RIGHT));
 		expect(model.attempts).toBe(MAX_ATTEMPTS);
@@ -108,7 +127,7 @@ describe("the autoswarm console configures a run before it starts", () => {
 		expect(model.goal).toBe("a ");
 		expect(model.certify).toBe(true);
 
-		feed(model, [DOWN, DOWN, DOWN, " "]);
+		feed(model, [DOWN, DOWN, DOWN, DOWN, " "]);
 		expect(model.field).toBe("certify");
 		expect(model.certify).toBe(false);
 		expect(model.goal).toBe("a ");
@@ -130,20 +149,27 @@ describe("the autoswarm console configures a run before it starts", () => {
 		expect(numbers.goal).toBe("keep me");
 	});
 
-	it("refuses to start without a goal, and reports why on screen", () => {
+	it("refuses to start without a goal, and reports why on the key that refuses", () => {
 		const model = fresh({ goal: "   " });
 		expect(model.canStart()).toBe(false);
 		expect(handleSetupKey(model, ENTER)).toBeNull();
-		expect(renderSetupConsole(model, 80, theme).join("\n")).toContain("A goal is required");
+		// The report is on the legend, beside `enter`, rather than a warning line
+		// somewhere above it: a legend that prints `enter start` while enter does
+		// nothing is the console contradicting itself.
+		const refusing = renderSetupConsole(model, 80, theme).join("\n");
+		expect(refusing).toContain("enter needs a goal");
+		expect(refusing).not.toContain("enter start");
 
 		handleSetupKey(model, "x");
 		expect(model.canStart()).toBe(true);
 		expect(handleSetupKey(model, ENTER)).toBe("start");
-		expect(renderSetupConsole(model, 80, theme).join("\n")).not.toContain("A goal is required");
+		const starting = renderSetupConsole(model, 80, theme).join("\n");
+		expect(starting).toContain("enter start");
+		expect(starting).not.toContain("enter needs a goal");
 	});
 
 	it("cancels on escape from any field", () => {
-		for (const prefix of [[], [DOWN], [DOWN, DOWN], [DOWN, DOWN, DOWN]]) {
+		for (const prefix of [[], [DOWN], [DOWN, DOWN], [DOWN, DOWN, DOWN], [DOWN, DOWN, DOWN, DOWN]]) {
 			const model = fresh();
 			feed(model, prefix);
 			expect(handleSetupKey(model, ESCAPE)).toBe("cancel");
@@ -152,18 +178,27 @@ describe("the autoswarm console configures a run before it starts", () => {
 
 	it("hands back a trimmed goal with the values that were set", () => {
 		const model = fresh({ goal: "  make startup faster  ", breadth: 3, attempts: 1, certify: true });
-		feed(model, [DOWN, RIGHT, DOWN, RIGHT, DOWN, " ", ENTER]);
-		expect(model.result()).toEqual({ goal: "make startup faster", breadth: 4, attempts: 2, certify: false });
+		feed(model, [DOWN, RIGHT, DOWN, DOWN, RIGHT, DOWN, " ", ENTER]);
+		expect(model.result()).toEqual({
+			goal: "make startup faster",
+			breadth: 4,
+			attempts: 2,
+			certify: false,
+			armModels: [],
+		});
 	});
 
 	it("states what the chosen breadth actually buys", () => {
-		// Breadth 2 cannot form a ring, because two arms would review each other.
-		// A console that says "review ring" at breadth 2 is lying about the run.
+		// Breadth 2 cannot form a ring, because two arms would review each other,
+		// so the director reviews both. A console that describes a ring at breadth
+		// 2 is lying about the run. The arm count is on the cost line above this
+		// one, so this sentence carries only the topology.
 		expect(fresh({ breadth: 1 }).certifierSummary()).toContain("Serial");
 		expect(fresh({ breadth: 2 }).certifierSummary()).toContain("director");
-		expect(fresh({ breadth: 2 }).certifierSummary()).not.toContain("review ring");
-		expect(fresh({ breadth: 3 }).certifierSummary()).toContain("review ring");
-		expect(fresh({ breadth: 4, certify: false }).certifierSummary()).toContain("uncertified");
+		expect(fresh({ breadth: 2 }).certifierSummary()).not.toContain("reviewed by another");
+		expect(fresh({ breadth: 3 }).certifierSummary()).toContain("reviewed by another");
+		expect(fresh({ breadth: 3 }).certifierSummary()).not.toContain("director");
+		expect(fresh({ breadth: 4, certify: false }).certifierSummary()).toContain("No cross-review");
 	});
 
 	it("renders every row, the current values and the key legend", () => {
@@ -178,26 +213,64 @@ describe("the autoswarm console configures a run before it starts", () => {
 		expect(frame).toContain("esc cancel");
 	});
 
+	it("states on the frame whether enter resumes a session or starts one, and whether a harness exists", () => {
+		// The same console opens over three trees. Without the line, a user
+		// reconfiguring a 12-run session and a user starting from nothing read the
+		// same screen and press the same key for opposite outcomes.
+		const resuming = new SwarmSetupModel({
+			goal: "make it faster",
+			breadth: 3,
+			attempts: 1,
+			certify: true,
+			armModels: [],
+			context: { session: { name: "sess-1", branch: "autoresearch/x", runs: 12 }, harness: true },
+		});
+		const resumingFrame = renderSetupConsole(resuming, 100, theme).join("\n");
+		expect(resumingFrame).toContain("Resumes session sess-1 on autoresearch/x (12 runs)");
+		expect(resumingFrame).toContain("enter resume");
+		expect(resumingFrame).not.toContain("enter start");
+
+		const withHarness = fresh({ context: { session: null, harness: true } });
+		const withHarnessFrame = renderSetupConsole(withHarness, 100, theme).join("\n");
+		expect(withHarnessFrame).toContain("autoresearch.sh found");
+		expect(withHarnessFrame).toContain("enter start");
+
+		const bare = fresh({ context: { session: null, harness: false } });
+		const bareFrame = renderSetupConsole(bare, 100, theme).join("\n");
+		expect(bareFrame).toContain("No autoresearch.sh yet");
+		expect(bareFrame).toContain("enter start");
+		expect(bareFrame).not.toContain("Resumes session");
+	});
+
 	it("lines the hints up in one column whatever the values are", () => {
 		// `on` is two cells and `3` is one, so a hint appended straight after the
 		// value hangs at a different place on every row and reads as ragged.
+		//
+		// The hints come from `setupRows` rather than from three strings copied
+		// into this file: a reworded hint used to fall out of the filter and take
+		// its row's alignment out of the assertion with it, and a fourth hinted
+		// field would never have been checked at all.
 		const model = fresh({ breadth: 3, attempts: 1, certify: true });
-		const frame = renderSetupConsole(model, 100, theme);
-		const hinted = frame.filter(
-			line => line.includes("  candidate") || line.includes("  arms cross-review") || line.includes("  retries"),
-		);
-		expect(hinted).toHaveLength(3);
-		const columns = hinted.map(line => line.search(/ {2}(candidate|retries|arms cross-review)/));
+		const hintColumns = (candidate: SwarmSetupModel): number[] =>
+			setupRows(candidate)
+				.filter(row => row.hint.length > 0)
+				.map(row => {
+					const line = renderSetupConsole(candidate, 100, theme).find(text => text.includes(`  ${row.hint}`));
+					// -1 for a hint the console did not print, so a dropped row fails
+					// here rather than quietly shrinking the set below.
+					return line === undefined ? -1 : line.indexOf(`  ${row.hint}`);
+				});
+
+		const columns = hintColumns(model);
+		expect(columns).toHaveLength(3);
+		expect(columns.every(column => column > 0)).toBe(true);
 		expect(new Set(columns).size).toBe(1);
 
 		// And it stays one column when a value changes width.
 		handleSetupKey(model, DOWN);
-		feed(model, [DOWN, DOWN, " "]);
+		feed(model, [DOWN, DOWN, DOWN, " "]);
 		expect(model.certify).toBe(false);
-		const after = renderSetupConsole(model, 100, theme)
-			.filter(line => / {2}(candidate|retries|arms cross-review)/.test(line))
-			.map(line => line.search(/ {2}(candidate|retries|arms cross-review)/));
-		expect(new Set(after).size).toBe(1);
+		expect(hintColumns(model)).toEqual(columns);
 	});
 
 	it("shows a placeholder for an empty goal instead of a blank row", () => {
@@ -236,5 +309,36 @@ describe("the autoswarm console configures a run before it starts", () => {
 			expect(handleSetupKey(model, sequence)).toBeNull();
 		}
 		expect(model.goal).toBe("keep");
+	});
+
+	it("states the harness runs the configuration commits to, at every reachable setting", () => {
+		// Breadth and attempts multiply, and neither row states it: breadth 4 with
+		// 3 attempts is twelve builds and twelve measurements per iteration. A
+		// user setting the second knob cannot see the cost of the first, which is
+		// how a loop meant to run over lunch gets configured to run overnight.
+		for (let breadth = MIN_BREADTH; breadth <= MAX_BREADTH; breadth += 1) {
+			for (let attempts = MIN_ATTEMPTS; attempts <= MAX_ATTEMPTS; attempts += 1) {
+				const model = fresh({ breadth, attempts });
+				const flat = renderSetupConsole(model, 100, theme).join("\n").replace(/\s+/g, " ");
+				const total = breadth * attempts;
+				const expected =
+					total === 1
+						? `${breadth} experiment × ${attempts} attempts: 1 harness run per iteration.`
+						: `${breadth} ${breadth === 1 ? "experiment" : "arms"} × ${attempts} attempts: up to ${total} harness runs per iteration.`;
+				expect(flat).toContain(expected);
+			}
+		}
+	});
+
+	it("holds its height while the goal is emptied and retyped", () => {
+		// The refusal used to be a line of its own that appeared the moment the
+		// goal was cleared, so the legend moved under the reader's eye on the
+		// keystroke that cleared it and moved back on the one that fixed it.
+		// What the legend then prints is the previous test's; this one is the shape.
+		const model = fresh({ goal: "x" });
+		const withGoal = renderSetupConsole(model, 80, theme);
+		handleSetupKey(model, BACKSPACE);
+		expect(model.goal).toBe("");
+		expect(renderSetupConsole(model, 80, theme).length).toBe(withGoal.length);
 	});
 });

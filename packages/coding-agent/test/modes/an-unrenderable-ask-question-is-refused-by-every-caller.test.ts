@@ -133,6 +133,7 @@ function createHarness(collabHost?: unknown): ControllerHarness {
 		focusActiveEditorArea: (): void => {},
 		setToolUIContext: (): void => {},
 		session: {},
+		clearWorkingLoader: (): boolean => false,
 	} as unknown as ExtensionUiControllerContext;
 	return { ctx, controller: new ExtensionUiController(ctx), overlays, focused };
 }

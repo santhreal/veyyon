@@ -32,6 +32,8 @@ interface Harness {
 	commands: Map<string, CommandSpec>;
 	notices: Array<{ text: string; level: string }>;
 	messages: string[];
+	/** Prompts sent to the model without a transcript line, as `sendMessage` received them. */
+	hidden: Array<{ customType: string; content: string; display: boolean }>;
 	activeTools: string[];
 }
 
@@ -51,6 +53,7 @@ function buildHarness(): Harness {
 	const commands = new Map<string, CommandSpec>();
 	const notices: Array<{ text: string; level: string }> = [];
 	const messages: string[] = [];
+	const hidden: Array<{ customType: string; content: string; display: boolean }> = [];
 	const activeTools: string[] = [];
 	const api = {
 		appendEntry(): void {},
@@ -68,10 +71,12 @@ function buildHarness(): Harness {
 		sendUserMessage(text: string): void {
 			messages.push(text);
 		},
-		sendMessage(): void {},
+		sendMessage(message: { customType: string; content: string; display: boolean }): void {
+			hidden.push({ customType: message.customType, content: message.content, display: message.display });
+		},
 	} as unknown as ExtensionAPI;
 	createAutoresearchExtension(api);
-	return { commands, notices, messages, activeTools };
+	return { commands, notices, messages, hidden, activeTools };
 }
 
 /**
@@ -164,17 +169,29 @@ describe("autoswarm is its own command", () => {
 		expect(commands.get("autoresearch")?.description).not.toContain("breadth");
 	});
 
-	it("completes the two subcommands on both, and breadth on neither", () => {
-		// `/autoswarm off` and `/autoswarm clear` still work, so they must still
-		// be offered. Breadth is not a subcommand any more and must not be
-		// offered on either command.
+	it("completes every subcommand on both, and breadth on neither", () => {
+		// Each of these still works, so each must still be offered — including
+		// before a letter is typed, which is the only point the names are
+		// discoverable without knowing them in advance. `status` and `goal` are
+		// listed because reaching for an unlisted word used to be swallowed as the
+		// goal and overwrite a live session's. Breadth is not a subcommand any
+		// more and must not be offered on either command.
 		const { commands } = buildHarness();
 		for (const name of ["autoswarm", "autoresearch"]) {
 			const offered = commands.get(name)?.getArgumentCompletions?.("") ?? [];
-			expect(offered).toEqual([]);
+			expect(offered.map(item => item.label)).toEqual(["status", "resume", "goal", "off", "clear"]);
+			expect((commands.get(name)?.getArgumentCompletions?.("s") ?? []).map(item => item.label)).toEqual(["status"]);
+			expect((commands.get(name)?.getArgumentCompletions?.("r") ?? []).map(item => item.label)).toEqual(["resume"]);
+			expect((commands.get(name)?.getArgumentCompletions?.("g") ?? []).map(item => item.label)).toEqual(["goal"]);
 			expect((commands.get(name)?.getArgumentCompletions?.("o") ?? []).map(item => item.label)).toEqual(["off"]);
 			expect((commands.get(name)?.getArgumentCompletions?.("c") ?? []).map(item => item.label)).toEqual(["clear"]);
 			expect(commands.get(name)?.getArgumentCompletions?.("b") ?? []).toEqual([]);
+			// `clear` takes exactly two flags, and offering them is how a reader
+			// learns `--keep-tree` exists before typing the destructive default.
+			expect((commands.get(name)?.getArgumentCompletions?.("clear ") ?? []).map(item => item.label)).toEqual([
+				"--keep-tree",
+				"--reset-tree",
+			]);
 		}
 	});
 
@@ -207,6 +224,22 @@ describe("autoswarm is its own command", () => {
 		expect(harness.messages).toContain("make startup faster");
 	});
 
+	/**
+	 * `goal <text>` is the one subcommand both loops share, and on autoswarm the
+	 * console was opened with the whole argument string, so the field read
+	 * `goal make startup faster` and that literal became the goal.
+	 */
+	it("prefills only the text after the goal subcommand, not the word itself", async () => {
+		const harness = buildHarness();
+		const drive: ConsoleDrive = { opened: false, overlay: false, frames: [] };
+		await harness.commands
+			.get("autoswarm")
+			?.handler("goal make startup faster", makeCtx(cwdDir.path(), harness.notices, ["\r"], drive));
+		expect(drive.frames[0]?.join("\n")).toContain("Goal          make startup faster");
+		expect(harness.messages).toContain("make startup faster");
+		expect(harness.messages).not.toContain("goal make startup faster");
+	});
+
 	it("parks the breadth chosen in the console, and opens at the ring-sized default", async () => {
 		const harness = buildHarness();
 		const drive: ConsoleDrive = { opened: false, overlay: false, frames: [] };
@@ -234,20 +267,26 @@ describe("autoswarm is its own command", () => {
 		await harness.commands
 			.get("autoswarm")
 			?.handler("make it faster", makeCtx(cwdDir.path(), harness.notices, ["\x1b"], drive));
-		// Escape means the user changed their mind: no message, no mode, no tools.
+		// Escape means the user changed their mind: no message, no mode, no tools,
+		// and a line under the command saying so, since the command itself is
+		// already in the transcript.
 		expect(drive.opened).toBe(true);
 		expect(harness.messages).toEqual([]);
 		expect(harness.activeTools).toEqual([]);
+		expect(harness.notices).toEqual([{ text: "Autoswarm setup cancelled. Nothing was started.", level: "info" }]);
 	});
 
 	it("refuses to start with an empty goal, and starts once one is typed", async () => {
 		const harness = buildHarness();
 		const drive: ConsoleDrive = { opened: false, overlay: false, frames: [] };
 		// Enter on an empty goal must not close the console. If it did, the run
-		// would start with nothing to optimize.
+		// would start with nothing to optimize. The console states it on the legend,
+		// where `enter` is, rather than printing `enter start` and ignoring the key.
 		const keys = ["\r", "g", "o", "\r"];
 		await harness.commands.get("autoswarm")?.handler("", makeCtx(cwdDir.path(), harness.notices, keys, drive));
-		expect(drive.frames[0]?.join("\n")).toContain("A goal is required");
+		const first = drive.frames[0]?.join("\n") ?? "";
+		expect(first).toContain("enter needs a goal");
+		expect(first).not.toContain("enter start");
 		expect(harness.messages).toContain("go");
 	});
 
@@ -270,5 +309,69 @@ describe("autoswarm is its own command", () => {
 		expect(harness.notices.at(-1)?.text).toBe("Autoswarm mode disabled");
 		await harness.commands.get("autoresearch")?.handler("off", ctx);
 		expect(harness.notices.at(-1)?.text).toBe("Autoresearch mode disabled");
+	});
+
+	it("resume with no session on the branch starts nothing and says what would", async () => {
+		const harness = buildHarness();
+		const drive: ConsoleDrive = { opened: false, overlay: false, frames: [] };
+		await harness.commands.get("autoswarm")?.handler("resume", makeCtx(cwdDir.path(), harness.notices, [], drive));
+		expect(drive.opened).toBe(false);
+		expect(harness.messages).toEqual([]);
+		expect(harness.hidden).toEqual([]);
+		expect(harness.notices).toEqual([
+			{ text: "No autoswarm session on this branch to resume. /autoswarm starts one.", level: "warning" },
+		]);
+	});
+
+	it("resume on a live session continues it without a console, and typing the goal back adds nothing", async () => {
+		const harness = buildHarness();
+		const storage = await openAutoresearchStorage(cwdDir.path());
+		storage.openSession({
+			name: "sess-1",
+			goal: "make the tokenizer faster",
+			primaryMetric: "tokens_per_second",
+			metricUnit: "tok/s",
+			direction: "higher",
+			preferredCommand: null,
+			branch: "autoresearch/test",
+			baselineCommit: null,
+			maxIterations: null,
+			scopePaths: [],
+			offLimits: [],
+			constraints: [],
+			secondaryMetrics: [],
+		});
+		const drive: ConsoleDrive = { opened: false, overlay: false, frames: [] };
+		await harness.commands.get("autoswarm")?.handler("resume", makeCtx(cwdDir.path(), harness.notices, [], drive));
+		// `resume` is the word for continuing with nothing to add: no console to
+		// walk, no transcript line, and no notice about text that was not typed.
+		expect(drive.opened).toBe(false);
+		expect(harness.messages).toEqual([]);
+		expect(harness.hidden.map(message => message.customType)).toEqual(["autoresearch-command-resume"]);
+		expect(harness.hidden[0]?.display).toBe(false);
+		expect(harness.notices.map(notice => notice.text).join("\n")).not.toContain("Your text goes to the model");
+		expect(harness.notices.map(notice => notice.text).join("\n")).toContain("Resuming autoswarm sess-1");
+
+		// The serial command with the stored goal typed back is the same resume:
+		// the model is not told the goal twice, and the user is not told that
+		// the goal did not change.
+		harness.notices.length = 0;
+		await harness.commands
+			.get("autoresearch")
+			?.handler("make the tokenizer faster", makeCtx(cwdDir.path(), harness.notices, [], drive));
+		expect(harness.hidden).toHaveLength(2);
+		expect(harness.hidden[1]?.content).not.toContain("make the tokenizer faster");
+		expect(harness.notices.map(notice => notice.text).join("\n")).not.toContain("Your text goes to the model");
+		expect(storage.getActiveSessionForBranch("autoresearch/test")?.goal).toBe("make the tokenizer faster");
+
+		// Free text that is not the goal reaches the model and is announced as
+		// context, and the goal is still what it was.
+		harness.notices.length = 0;
+		await harness.commands
+			.get("autoresearch")
+			?.handler("try the SIMD path next", makeCtx(cwdDir.path(), harness.notices, [], drive));
+		expect(harness.hidden[2]?.content).toContain("try the SIMD path next");
+		expect(harness.notices.map(notice => notice.text).join("\n")).toContain("Your text goes to the model");
+		expect(storage.getActiveSessionForBranch("autoresearch/test")?.goal).toBe("make the tokenizer faster");
 	});
 });

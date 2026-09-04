@@ -101,7 +101,9 @@ describe("AuthStorage google-antigravity oauth ranking", () => {
 	beforeEach(async () => {
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-ai-auth-antigravity-selection-"));
 		store = await SqliteAuthCredentialStore.open(path.join(tempDir, "agent.db"));
+		// Headroom ranking is movement; the library holds it off unless a host opts in.
 		authStorage = new AuthStorage(store, {
+			loadBalancing: true,
 			usageProviderResolver: provider => (provider === "google-antigravity" ? usageProvider : undefined),
 			rankingStrategyResolver: provider =>
 				provider === "google-antigravity" ? antigravityRankingStrategy : undefined,

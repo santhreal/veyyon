@@ -13,9 +13,12 @@ import {
 } from "@veyyon/coding-agent/tools/search";
 import { removeWithRetries } from "@veyyon/utils";
 
-/** One value per field `searchSchema` declares beyond `type` and `input`. */
+/**
+ * One value per field `searchSchema` declares beyond `type` and `input`. `path` is a directory
+ * because `files` scopes its globs under one; `text` and `structure` take a directory too.
+ */
 const FIELD_SAMPLES: Record<string, string | number | boolean> = {
-	path: "sample.ts",
+	path: ".",
 	case: true,
 	hidden: true,
 	gitignore: false,
@@ -26,7 +29,7 @@ const FIELD_SAMPLES: Record<string, string | number | boolean> = {
 
 /** The fields each mode's engine takes. Pinned by equality against the schema below. */
 const ACCEPTED_FIELDS: Record<SearchType, readonly string[]> = {
-	files: ["hidden", "gitignore", "limit"],
+	files: ["path", "hidden", "gitignore", "limit"],
 	text: ["path", "case", "gitignore", "skip", "paths"],
 	structure: ["path", "skip"],
 };

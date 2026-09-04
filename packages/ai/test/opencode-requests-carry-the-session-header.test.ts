@@ -1,11 +1,17 @@
 import { describe, expect, it } from "bun:test";
-import { getOpenCodeHeaders, isOpenCodeProvider, OPENCODE_PROVIDER_IDS, openCodeSessionHeaderValue } from "@veyyon/ai";
 import { streamAnthropic } from "@veyyon/ai/providers/anthropic";
 import { openAIResponsesServerCompaction } from "@veyyon/ai/providers/openai-compaction";
 import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
 import { streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
 import { resolveOpenAIRequestSetup } from "@veyyon/ai/providers/openai-shared";
 import type { Api, Context, Message, Model } from "@veyyon/ai/types";
+import {
+	conversationIdForOpenCode,
+	getOpenCodeHeaders,
+	isOpenCodeProvider,
+	OPENCODE_PROVIDER_IDS,
+	openCodeSessionHeaderValue,
+} from "@veyyon/ai/utils/opencode-headers";
 import { buildModel } from "@veyyon/catalog/build";
 import { getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 
@@ -362,5 +368,15 @@ describe("the session value is stable, opaque and per-conversation", () => {
 	it("carries no session header when the caller has no session id", () => {
 		expect(getOpenCodeHeaders()[SESSION_HEADER]).toBeUndefined();
 		expect(getOpenCodeHeaders("")[SESSION_HEADER]).toBeUndefined();
+	});
+
+	it("keys the conversation on the pinned cache key before the session id", () => {
+		// A side-channel turn routes under a unique per-request session id while
+		// keeping the conversation's cache key; the header has to follow the key,
+		// or the turn lands on a different upstream session and a cold cache.
+		expect(conversationIdForOpenCode({ promptCacheKey: "conv", sessionId: "conv:side:1" })).toBe("conv");
+		expect(conversationIdForOpenCode({ sessionId: "conv" })).toBe("conv");
+		expect(conversationIdForOpenCode({})).toBeUndefined();
+		expect(conversationIdForOpenCode(undefined)).toBeUndefined();
 	});
 });

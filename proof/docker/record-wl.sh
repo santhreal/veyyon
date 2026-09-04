@@ -18,6 +18,10 @@ SCENE="${1:?usage: record-wl.sh <scene.sh>}"
 OUT="${OUT_DIR:-${REPO_ROOT}/proof/captures/wl}"
 mkdir -p "${OUT}"
 
+# shellcheck source=proof/docker/native-addon.sh
+source "${REPO_ROOT}/proof/docker/native-addon.sh"
+require_native_addon "${REPO_ROOT}"
+
 # A model served by this host answers on loopback here and on the gateway alias in
 # there. proof/docker/host-endpoint.sh owns the substitution.
 # shellcheck source=proof/docker/host-endpoint.sh
@@ -92,6 +96,6 @@ docker run --rm \
 			printf '"'"'%s\n'"'"' "${SCENE_SETTINGS}" \
 				>> /sandbox/home/.veyyon/profiles/default/agent/config.yml
 		fi
-		bash /repo/proof/docker/seed-demo.sh /sandbox/home/demo
+		bash /repo/proof/docker/seed-demo.sh /sandbox/home/demo "/repo/'"${SCENE}"'"
 		exec /repo/proof/docker/wlsession.sh "/repo/'"${SCENE}"'"
 	'

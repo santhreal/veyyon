@@ -31,6 +31,7 @@ export const PROMPT_IDS: readonly string[] = [
 	"autoresearch/prompt",
 	"autoresearch/prompt-setup",
 	"autoresearch/resume-message",
+	"autoresearch/stall-nudge",
 	"bench/balance",
 	"bench/throughput",
 	"commit-agentic/analyze-file",
