@@ -35,10 +35,10 @@ range on Breadth and Attempts, `type to edit` on Goal and Models.
 
 The line under the title states what Enter does on this branch. With no
 session it reads `autoresearch.sh found: enter starts measuring with it.` or
-`No autoresearch.sh yet: the first turn writes and validates one before
-anything is measured.` Over a live session it reads `Resumes session <name> on
-<branch> (<n> runs) with the values below.` and the legend reads `enter resume`
-instead of `enter start`.
+`No autoresearch.sh yet: the first turn writes and validates one before anything is measured.`
+Over a live session it reads
+`Resumes session <name> on <branch> (<n> runs) with the values below.` and the
+legend reads `enter resume` instead of `enter start`.
 
 The first line under the fields is the harness runs one iteration costs, breadth
 multiplied by attempts. It is a ceiling: an arm that succeeds on its first

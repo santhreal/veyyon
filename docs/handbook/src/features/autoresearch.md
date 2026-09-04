@@ -172,10 +172,10 @@ resume` sends nothing but the resume, and with no session on the branch prints
 `/autoresearch off` from there leaves the mode.
 
 Text typed after the command on a live session goes to the model as context for
-the resume, and prints `Your text goes to the model as context for the resume.
-/autoresearch goal <text> changes what this session optimizes.` The stored goal
-typed back is a resume with nothing to add: no notice, and the model is not told
-the goal a second time.
+the resume, and prints
+`Your text goes to the model as context for the resume. /autoresearch goal <text> changes what this session optimizes.`
+The stored goal typed back is a resume with nothing to add: no notice, and the
+model is not told the goal a second time.
 
 `/autoresearch clear` resets the worktree to the segment baseline, deletes
 untracked files and closes the session. It asks first, naming the commit it
