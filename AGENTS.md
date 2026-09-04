@@ -55,10 +55,19 @@ operator manual.
 |`natives/text/keys`|Zero-copy parser for the Kitty keyboard protocol and legacy escape sequences|
 |`natives/text/measure`|ANSI-aware width measurement, grapheme segmentation and truncation over UTF-16|
 |`tests/conformance`|Whole-product conformance corpus and harness, on virtual clock, filesystem, terminal and network (test only, issue #877)|
+|`crates/veyyon-desktop`|The desktop front end binary: loads tokens and theme, opens the GPUI window, attaches to a GUI host (private)|
+|`crates/veyyon-desktop-kit`|Token-driven primitive kit for the desktop front end: buttons, fields, rows, cards, badges|
+|`crates/veyyon-desktop-model`|Desktop protocol model: host events, store, reducer, request registry, capabilities and persistence|
+|`crates/veyyon-desktop-motion`|Motion role table, spring integrator, easing curves, reduced-motion resolution and animator registry|
+|`crates/veyyon-desktop-scene`|Deterministic scene construction, headless rasterization and clutter metric evaluation (private)|
+|`crates/veyyon-desktop-surface`|The desktop surfaces: queue, session transcript, composer, run bar, right panel and terminal drawer|
+|`crates/veyyon-desktop-tokens`|Token file loaders and validators: scale, elevation, motion, ceilings, theme and the surface files, with hot reload|
+|`crates/veyyon-gpui`|The desktop front end's view of GPUI, vendored under `crates/vendor`|
 
 `kernel/` and every `contracts/*`, `hosts/*`, `packages/*`, `plugins/*`, `apps/*`, `clients/*` and
-`tests/*` member is TypeScript. First-party Rust is grouped by purpose under `natives/`, vendored
-Rust is `natives/vendor/`, and the whole-product conformance corpus is `tests/conformance/`.
+`tests/*` member is TypeScript. First-party Rust is grouped by purpose under `natives/`, with
+native desktop crates under `crates/`. Vendored Rust is `natives/vendor/`, and the whole-product
+conformance corpus is `tests/conformance/`.
 `apps/*` is a deployable: the stats dashboard and the website. `clients/*` is a client of the
 product that is not the terminal host: the browser guest client and the Python clients. `tests/*`
 is a test-only member: the eval suites and the offline simulations, published nowhere. `tests/fixtures/`
