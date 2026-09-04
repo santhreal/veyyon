@@ -7,9 +7,9 @@
  */
 import type { AgentTelemetryConfig } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
+import type { HostNotifier } from "@veyyon/host";
 import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
-import type { HostNotifier } from "@veyyon/utils/host-notification";
 import type { ArgotSession } from "argot";
 import type { EffortSource } from "../config/effort-resolver";
 import type { ModelRegistry } from "../config/model-registry";

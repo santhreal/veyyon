@@ -50,6 +50,7 @@
 			"@veyyon/view": "1.3.0",
 			"@veyyon/settings": "1.3.0",
 			"@veyyon/plugin": "1.3.0",
+			"@veyyon/host": "1.3.0",
 			"@veyyon/model": "1.3.0",
 			"@veyyon/tool": "1.3.0",
 			"@veyyon/tool-render": "1.3.0",

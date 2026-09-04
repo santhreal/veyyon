@@ -117,6 +117,7 @@ describe("one member pattern resolves against the tree", () => {
 		const resolved = expandMemberPattern("contracts/*", REPO_ROOT, "package.json");
 
 		expect(resolved.sort()).toEqual([
+			"contracts/host",
 			"contracts/model",
 			"contracts/plugin",
 			"contracts/settings",

@@ -10,6 +10,7 @@ import * as os from "node:os";
 import { createInterface } from "node:readline/promises";
 import { EventLoopKeepalive } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
+import type { HostNotifier } from "@veyyon/host";
 import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { describePendingToolCalls } from "@veyyon/kernel/session/exit-diagnostics";
 import { formatNotice, OperatorNotices, stderrNoticeSink } from "@veyyon/kernel/session/operator-notices";
@@ -28,7 +29,6 @@ import {
 	setProjectDir,
 	VERSION,
 } from "@veyyon/utils";
-import type { HostNotifier } from "@veyyon/utils/host-notification";
 import { isSessionFileName } from "@veyyon/utils/session-file";
 import chalk from "chalk";
 import { type Args, reportUnrecognizedFlags } from "./cli/args";

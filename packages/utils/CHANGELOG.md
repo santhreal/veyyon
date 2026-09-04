@@ -17,6 +17,7 @@
 
 ### Changed
 
+- `HostNotification` and `HostNotifier` are defined in `@veyyon/host`; `@veyyon/utils/host-notification` re-exports both, so no caller changes.
 - Source-path comments in `dirs.ts` name the website changelog generator at `apps/site/tools/gen-changelog.mjs`; behavior is unchanged.
 - Typed tuple and Set copies use spreads rather than `.concat()` or `.slice()`, which those types do not define. No user-visible behavior changes.
 - Root help lists subcommands from the registry summaries when those are present, and from the loaded command classes otherwise.

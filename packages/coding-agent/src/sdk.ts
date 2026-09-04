@@ -14,6 +14,7 @@ import {
 	getOpenAICodexTransportDetails,
 	prewarmOpenAICodexResponses,
 } from "@veyyon/ai/providers/openai-codex-responses";
+import type { HostNotifier } from "@veyyon/host";
 import { abortDetached } from "@veyyon/kernel/session/detached-abort";
 import { createInterruptedTurnAbortMessage } from "@veyyon/kernel/session/exit-diagnostics";
 import { OperatorNotices, stderrNoticeSink } from "@veyyon/kernel/session/operator-notices";
@@ -29,7 +30,6 @@ import {
 	Snowflake,
 	setProjectDir,
 } from "@veyyon/utils";
-import type { HostNotifier } from "@veyyon/utils/host-notification";
 import { type ArgotGate, shouldEncode } from "argot/policy";
 import { renderPreamble } from "argot/preamble";
 import {

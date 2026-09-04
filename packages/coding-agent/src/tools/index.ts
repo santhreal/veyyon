@@ -7,6 +7,7 @@ import type {
 } from "@veyyon/agent-core";
 import type { FetchImpl, ImageContent, Model, ServiceTierByFamily, ToolChoice } from "@veyyon/ai";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
+import type { HostNotifier } from "@veyyon/host";
 import type { ToolDomainManifest } from "@veyyon/kernel/registry/tool-domain";
 import type { ArtifactManager } from "@veyyon/kernel/session/artifacts";
 import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
@@ -15,7 +16,6 @@ import type { SubagentSpawnRecord, UsageStatistics } from "@veyyon/kernel/sessio
 import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import type { ToolChoiceQueue } from "@veyyon/kernel/session/tool-choice-queue";
 import { logger } from "@veyyon/utils";
-import type { HostNotifier } from "@veyyon/utils/host-notification";
 import type { ArgotSession } from "argot/session";
 import type { AsyncJobManager } from "../async/job-manager";
 import type { ModelRegistry } from "../config/model-registry";

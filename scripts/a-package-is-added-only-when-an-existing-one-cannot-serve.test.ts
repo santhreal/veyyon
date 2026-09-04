@@ -129,10 +129,18 @@ import { typeScriptMembers } from "./workspace-layout";
  * vocabulary and `ai` held the spec, and each is a runtime: a plugin that imported `ToolResult` from
  * `agent` would import the loop, the compactor and every provider behind it. `contracts/model` is the
  * message vocabulary, and a tool's approval tier is not a message; `contracts/view` is what a tool's
- * output means to a host, and a result is what it means to the model. A future rise still needs the
- * sentence above: which existing package was considered and why it could not serve.
+ * output means to a host, and a result is what it means to the model.
+ *
+ * The count went 26 -> 27 with `contracts/host`. It is what a host offers a plugin -- today the
+ * notification a tool asks its host to deliver and the notifier the host installs -- each capability
+ * optional and absent when the host cannot honour it, and it imports nothing. `utils` is where the
+ * two types were, and `utils` is imported by everything, so a contract there is one nothing can
+ * depend on narrowly, and a plugin that wants the host's shape should not also get the logger, the
+ * stream readers and the temp-file helpers; `contracts/view` is what a tool returns to a host, and a
+ * capability flows the other way; `contracts/tool` is what a tool declares about itself. A future rise
+ * still needs the sentence above: which existing package was considered and why it could not serve.
  */
-const PACKAGE_BUDGET = 26;
+const PACKAGE_BUDGET = 27;
 
 /**
  * Every workspace member, as `<root>/<name>`.

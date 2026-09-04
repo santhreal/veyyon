@@ -16,6 +16,7 @@ import {
 import type { CompactionOutcome } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, ImageContent, Message, Model, Usage, UsageReport } from "@veyyon/ai";
 import { modelsAreEqual } from "@veyyon/catalog/models";
+import type { HostNotifier } from "@veyyon/host";
 import type { CompactMode } from "@veyyon/kernel/session/compact-modes";
 import { HistoryStorage } from "@veyyon/kernel/session/history-storage";
 import { getRecentSessions } from "@veyyon/kernel/session/session-listing";
@@ -49,7 +50,6 @@ import {
 	prompt,
 } from "@veyyon/utils";
 import type { AutocompleteProvider, SlashCommand } from "@veyyon/utils/autocomplete";
-import type { HostNotifier } from "@veyyon/utils/host-notification";
 import { matchesKey } from "@veyyon/utils/keys";
 import { planPaintGround } from "@veyyon/utils/paint-ground";
 import { getPaddingX, setTuiTight } from "@veyyon/utils/tight-mode";

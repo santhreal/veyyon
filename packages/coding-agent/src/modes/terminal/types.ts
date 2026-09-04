@@ -1,11 +1,11 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { CompactionOutcome } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, ImageContent, Message, Usage, UsageReport } from "@veyyon/ai";
+import type { HostNotifier } from "@veyyon/host";
 import type { CompactMode } from "@veyyon/kernel/session/compact-modes";
 import type { HistoryStorage } from "@veyyon/kernel/session/history-storage";
 import type { ShakeMode } from "@veyyon/kernel/session/shake-types";
 import type { Component, Container, EditorTheme, Loader, Spacer, Text, TUI } from "@veyyon/tui";
-import type { HostNotifier } from "@veyyon/utils/host-notification";
 import type { CollabGuestLink } from "../../collab/guest";
 import type { CollabHost } from "../../collab/host";
 import type { KeybindingsManager } from "../../config/keybindings";

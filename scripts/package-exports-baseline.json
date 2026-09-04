@@ -3229,6 +3229,7 @@
 		"validateLineRef",
 		"writeFileAtomic"
 	],
+	"@veyyon/host": [],
 	"@veyyon/mnemopi": [
 		"BeamMemory",
 		"CallableLlmBackend",
