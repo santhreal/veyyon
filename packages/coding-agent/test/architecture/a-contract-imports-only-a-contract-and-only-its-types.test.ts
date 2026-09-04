@@ -270,12 +270,14 @@ describe("a contract imports only a contract, and only its types", () => {
 	 * turns this cell red until it is added here with the same justification.
 	 *
 	 * `@veyyon/tool -> @veyyon/model`: a tool result holds the content blocks a message holds.
+	 * `@veyyon/wire -> @veyyon/model`: every block, stop reason and usage a guest reads is a
+	 * `Pick` of the one the model contract owns, so the two cannot drift.
 	 */
 	test("every contract-to-contract edge is one recorded here", () => {
 		const edges: string[] = [];
 		for (const [from, targets] of contractGraph()) {
 			for (const to of targets) edges.push(`${from} -> ${to}`);
 		}
-		expect(edges.sort()).toEqual(["@veyyon/tool -> @veyyon/model"]);
+		expect(edges.sort()).toEqual(["@veyyon/tool -> @veyyon/model", "@veyyon/wire -> @veyyon/model"]);
 	});
 });

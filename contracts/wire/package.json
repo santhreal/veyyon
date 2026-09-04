@@ -30,6 +30,9 @@
     "fmt": "biome format --write .",
     "test": "bun test --parallel"
   },
+  "dependencies": {
+    "@veyyon/model": "catalog:"
+  },
   "devDependencies": {
     "@types/bun": "catalog:",
     "@veyyon/utils": "catalog:"

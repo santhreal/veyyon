@@ -1,52 +1,45 @@
 /**
  * Shared wire types for the veyyon collab live-session protocol.
  *
- * Dependency-free JSON shapes produced by `@veyyon/coding-agent`
- * (`src/collab/protocol.ts` and friends). Browser and test clients import this
- * package instead of depending on the coding-agent runtime; conformance is
- * asserted per variant in
- * `packages/coding-agent/test/collab/web-wire-conformance.test.ts`, which fails
- * the typecheck when a host-side entry stops being assignable to its wire shape.
+ * JSON shapes produced by `@veyyon/coding-agent` (`src/collab/protocol.ts` and
+ * friends). Browser and test clients import this package instead of depending on
+ * the coding-agent runtime. Each shape a guest reads is a projection of the one
+ * `@veyyon/model` owns, derived from it type-only, so a field cannot be renamed on
+ * one side and not the other; conformance of the entry types is asserted per
+ * variant in `packages/coding-agent/test/collab/web-wire-conformance.test.ts`,
+ * which fails the typecheck when a host-side entry stops being assignable to its
+ * wire shape.
  *
  * Unknown entry/event variants arrive over the wire as plain JSON. The unions
  * below cover only the variants this client renders; consumers cast at the
  * JSON boundary and every `switch` keeps a tolerant `default:` branch.
  */
 
+import type {
+	AnthropicFallbackContent,
+	ImageContent as ModelImageContent,
+	RedactedThinkingContent as ModelRedactedThinkingContent,
+	TextContent as ModelTextContent,
+	ThinkingContent as ModelThinkingContent,
+	StopReason,
+	ToolCall,
+	Usage,
+} from "@veyyon/model";
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Content blocks
 // ═══════════════════════════════════════════════════════════════════════════
 
-export interface TextContent {
-	type: "text";
-	text: string;
-}
+/** The fields of a block a guest renders; the owner in `@veyyon/model` carries the provider-side rest. */
+export type TextContent = Pick<ModelTextContent, "type" | "text">;
 
-export interface ImageContent {
-	type: "image";
-	/** Base64-encoded image data. */
-	data: string;
-	/** e.g. "image/png". */
-	mimeType: string;
-}
+export type ImageContent = Pick<ModelImageContent, "type" | "data" | "mimeType">;
 
-export interface ThinkingContent {
-	type: "thinking";
-	thinking: string;
-}
+export type ThinkingContent = Pick<ModelThinkingContent, "type" | "thinking">;
 
-export interface RedactedThinkingContent {
-	type: "redactedThinking";
-	data: string;
-}
+export type RedactedThinkingContent = Pick<ModelRedactedThinkingContent, "type" | "data">;
 
-export interface ToolCallContent {
-	type: "toolCall";
-	id: string;
-	name: string;
-	arguments: Record<string, unknown>;
-	intent?: string;
-}
+export type ToolCallContent = Pick<ToolCall, "type" | "id" | "name" | "arguments" | "intent">;
 
 /**
  * Anthropic server-side-fallback boundary marker, persisted on an assistant turn whose request opted
@@ -60,13 +53,7 @@ export interface ToolCallContent {
  * Renderers should ignore it. It marks where one model handed off to another and carries no content of
  * its own; the coding-agent's own converters strip it on any cross-provider hop for the same reason.
  */
-export interface FallbackContent {
-	type: "fallback";
-	/** The model the turn started on. */
-	from: { model: string };
-	/** The model the provider fell back to. */
-	to: { model: string };
-}
+export type FallbackContent = Pick<AnthropicFallbackContent, "type" | "from" | "to">;
 
 export type AssistantContent =
 	| TextContent
@@ -76,14 +63,10 @@ export type AssistantContent =
 	| FallbackContent;
 
 /**
- * Why a turn ended, as a guest receives it.
- *
- * The same five literals `StopReason` in `@veyyon/ai` declares today, spelled separately because
- * this package has no runtime dependencies and a browser guest must not pull the host's model
- * layer in to render a transcript. Prefixed anyway: two identical-today unions under one name are
- * how they drift apart later without either side noticing.
+ * Why a turn ended, as a guest receives it: the `StopReason` `@veyyon/model` declares, under the
+ * prefixed name a guest already imports.
  */
-export type WireStopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
+export type WireStopReason = StopReason;
 
 /**
  * The old name for {@link WireStopReason}, kept because this package is published.
@@ -93,14 +76,10 @@ export type WireStopReason = "stop" | "length" | "toolUse" | "error" | "aborted"
  */
 export type { WireStopReason as StopReason };
 
-export interface WireUsage {
-	input: number;
-	output: number;
-	cacheRead: number;
-	cacheWrite: number;
-	totalTokens: number;
-	cost: { total: number };
-}
+/** The usage fields a guest renders, with the `cost` total and not its buckets. */
+export type WireUsage = Pick<Usage, "input" | "output" | "cacheRead" | "cacheWrite" | "totalTokens"> & {
+	cost: Pick<Usage["cost"], "total">;
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Messages

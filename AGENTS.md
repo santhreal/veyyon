@@ -13,7 +13,7 @@ operator manual.
 
 |Member|Description|
 |---|---|
-|`contracts/wire`|Dependency-free wire and presentation types, so a browser, a test client or a second host need not depend on coding-agent|
+|`contracts/wire`|Wire and presentation types, so a browser, a test client or a second host need not depend on coding-agent; every block, stop reason and usage a guest reads is a projection of `@veyyon/model`, imported type-only|
 |`contracts/view`|Dependency-free tool view model, so a tool describes its output without constructing a terminal component|
 |`contracts/settings`|Dependency-free setting declaration vocabulary, so a package declares a setting without importing the store that persists it or the host that draws it|
 |`contracts/model`|Dependency-free model and message vocabulary, so a provider plugin implements a stream and a host reads a turn without importing the catalog that resolves the model or the client that drives it|
