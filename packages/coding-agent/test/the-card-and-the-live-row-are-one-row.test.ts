@@ -40,6 +40,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, type Mock, spyOn } from "bun:test";
+import * as fs from "node:fs";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import {
@@ -54,9 +55,9 @@ import * as quietRow from "@veyyon/coding-agent/modes/components/status-line/qui
 import { launchSegmentContext } from "@veyyon/coding-agent/modes/components/status-line/session-facts";
 import type { StatusLinePreset } from "@veyyon/coding-agent/modes/components/status-line/types";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { branchLabelFromFiles } from "@veyyon/coding-agent/utils/git-head";
+import { branchLabelFromFiles, HEAD_REF_PREFIX, LOCAL_BRANCH_PREFIX } from "@veyyon/coding-agent/utils/git-head";
 import * as utils from "@veyyon/utils";
-import { getProjectDir, stripAnsi } from "@veyyon/utils";
+import { getProjectDir, setProjectDir, stripAnsi, TempDir } from "@veyyon/utils";
 
 /**
  * The profile chip hides on the built-in `default` profile and shows on any named one, so the
@@ -184,8 +185,21 @@ function resolvedIds(preset: StatusLinePreset): string[] {
 const CONFIGURED_MODEL = "claude-sonnet-4-5";
 const CONFIGURED_APPROVAL = "yolo";
 
+const FIXTURE_BRANCH = "main";
+let fixtureProject: TempDir | null = null;
+let previousProjectDir: string | null = null;
+
 beforeAll(async () => {
-	await Settings.init({ inMemory: true, cwd: process.cwd() });
+	fixtureProject = TempDir.createSync("@pi-card-live-row-project-");
+	fs.mkdirSync(fixtureProject.join(".git"), { recursive: true });
+	fs.writeFileSync(
+		fixtureProject.join(".git", "HEAD"),
+		`${HEAD_REF_PREFIX} ${LOCAL_BRANCH_PREFIX}${FIXTURE_BRANCH}\n`,
+	);
+	previousProjectDir = getProjectDir();
+	setProjectDir(fixtureProject.path());
+
+	await Settings.init({ inMemory: true, cwd: fixtureProject.path() });
 	await initTheme(false);
 	settings.setModelRole("default", CONFIGURED_MODEL);
 	settings.set("tools.approvalMode", CONFIGURED_APPROVAL);
@@ -195,6 +209,14 @@ afterAll(() => {
 	// The seeded model role and approval rung are process-wide; a later file in the bucket must not
 	// inherit them, and must not inherit an in-memory store it did not initialize.
 	resetSettingsForTest();
+	if (previousProjectDir) {
+		setProjectDir(previousProjectDir);
+		previousProjectDir = null;
+	}
+	if (fixtureProject) {
+		fixtureProject.removeSync();
+		fixtureProject = null;
+	}
 });
 
 /** The one thing this suite mocks, restored per test. */
