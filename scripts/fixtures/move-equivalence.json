@@ -4009,17 +4009,6 @@
 			"structuralHash": "1d7f97a967e880b347d9c604ca01d126277fe741dea754142b58fc1c81b36b70",
 			"mainStructuralHash": "e1e57951e261b35ed89913061450e826a7c3536661a8d13e1b2297f852abc808"
 		},
-		"plugins/hashline/bunfig.toml": {
-			"old": "packages/hashline/bunfig.toml",
-			"kind": "normalized",
-			"differs": "changed",
-			"group": "manifest-depth",
-			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
-			"hash": "1cdfc76e896b4df720c8c700ea6c8e4d6473a012ad5f490fe73a29e0cb1105fa",
-			"mainHash": "e357f0514f16015c938d120055649b63d1d92e5ce69c9745766c46f30c386a77",
-			"structuralHash": "e67cafbcfa993d42c79936c2b3c96323734290b2b9be51a7f589f8cec069a2d9",
-			"mainStructuralHash": "d77fe7e12f97d22f38bab5a9245647b1325964f93f1353248eac056a4bb1f09c"
-		},
 		"hosts/terminal/engine/tsconfig.json": {
 			"old": "packages/tui/tsconfig.json",
 			"kind": "normalized",
@@ -4030,6 +4019,17 @@
 			"mainHash": "8c311aa9b6154a484e086da0fc6da90d35cd5ec99bd94405937c9a5b162b106b",
 			"structuralHash": "3d1f42113994e537eb4004f5efb7506ca09cdc40ef4bd70c307730dc2b8db465",
 			"mainStructuralHash": "b7e87a3a0dbf53f214467603befab7c2567ce60d153a73e9c5a220610fa5f760"
+		},
+		"plugins/hashline/bunfig.toml": {
+			"old": "packages/hashline/bunfig.toml",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "manifest-depth",
+			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"hash": "1cdfc76e896b4df720c8c700ea6c8e4d6473a012ad5f490fe73a29e0cb1105fa",
+			"mainHash": "e357f0514f16015c938d120055649b63d1d92e5ce69c9745766c46f30c386a77",
+			"structuralHash": "e67cafbcfa993d42c79936c2b3c96323734290b2b9be51a7f589f8cec069a2d9",
+			"mainStructuralHash": "d77fe7e12f97d22f38bab5a9245647b1325964f93f1353248eac056a4bb1f09c"
 		},
 		"plugins/mnemopi/tsconfig.json": {
 			"old": "packages/mnemopi/tsconfig.json",
@@ -6155,10 +6155,12 @@
 		"kernel/src/session/session-entries.ts": {
 			"old": "packages/coding-agent/src/session/session-entries.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "c19909eb53e33233bfa8de7c377751d7021de36ec266cd99e5ceb39e81fec80c",
+			"differs": "changed",
+			"group": "kernel-extraction",
+			"reason": "The plugin loader, contribution registry and session spine left packages/coding-agent for kernel/. Relative imports and array copies follow the move.",
+			"hash": "c878c8a0c8fe28336368aa1763485222717de10e21786438d77fc5803e5e92be",
 			"mainHash": "c19909eb53e33233bfa8de7c377751d7021de36ec266cd99e5ceb39e81fec80c",
-			"structuralHash": "fe3118970009ef8ff041881866e6b664af03d512b8cebb29bae82908bad5c260",
+			"structuralHash": "a2a9ff3df021ce5c73a686dbc5f6970520148ae73e92ec8591910b21a612beda",
 			"mainStructuralHash": "fe3118970009ef8ff041881866e6b664af03d512b8cebb29bae82908bad5c260"
 		},
 		"kernel/src/session/session-entry-shape.ts": {
@@ -19290,9 +19292,9 @@
 			"differs": "changed",
 			"group": "colocated-test",
 			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
-			"hash": "a5dffbb5b5c19c75a95f1bdf95a65508d7ae0c658e8c1f730748be4409aafd3b",
+			"hash": "a9da188ea0209c18bcc9f1a3d38f5b38c895ac19c5342cd189b935d4122754d2",
 			"mainHash": "90e688110df76a683a67778a23db361788f2bc620d8d6d93af9372a1d0848219",
-			"structuralHash": "433c6d5337b267ab8caa130eaf90c5ac126365b53c14601a79e740a8e85af0c3",
+			"structuralHash": "c42c3cd463299845d8a1664cad3e079fd01d7ef142e402a6d8ad213166d13709",
 			"mainStructuralHash": "b001a54bbbc17bf0c30761efcbdcfc0ac38b881932ae512aa30c458c301270fa"
 		},
 		"packages/coding-agent/test/cli/startup/a-launch-does-not-load-a-schema-library-it-will-not-use.test.ts": {
