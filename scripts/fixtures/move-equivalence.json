@@ -41924,10 +41924,12 @@
 		"tests/evals/test/backends/pier/a-pier-trial-stages-its-assets-and-reports-its-own-failures.test.ts": {
 			"old": "packages/evals/test/backends/pier/a-pier-trial-stages-its-assets-and-reports-its-own-failures.test.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "28a5ce703d272fcafdb70bb164405f6e763d3f876c5c152099b3f93eac684c07",
+			"differs": "changed",
+			"group": "relocated-member-path",
+			"reason": "A member that left `packages/`, `python/` or `website/` for `apps/`, `clients/` or `tests/` states its own directory in a usage string, a command, a registry key or a comment, and climbs to the repository root by a relative path that gained one level. The move itself spells only the new location. A row here can also carry an edit this branch made before the move and every unmoved sibling carries too -- the array-spread rewrite, the `natives/` path spelling, a site page's nav fix -- each recorded in the commit that made it, none made by the relocation.",
+			"hash": "ad073a53e3cce9579c687d7c7f7ceeba9af99b8876daf48a4fb607b437bf555a",
 			"mainHash": "28a5ce703d272fcafdb70bb164405f6e763d3f876c5c152099b3f93eac684c07",
-			"structuralHash": "ef13314052234d1e42cd9e84d0747d68bc7831b6e1bb16cc5ae0ff4446b19154",
+			"structuralHash": "a9362d4bc00cd817c086e64f5904a18cf1e26597134b04d1dd892eb092167aca",
 			"mainStructuralHash": "ef13314052234d1e42cd9e84d0747d68bc7831b6e1bb16cc5ae0ff4446b19154"
 		},
 		"tests/evals/test/benches/an-edit-prompt-bench-run-names-its-model-and-sums-its-own-tokens.test.ts": {

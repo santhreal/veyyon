@@ -290,7 +290,7 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 		name: "relocated-member-path",
 		matches: relative => /^(apps|clients)\/|^tests\/(evals|simulations)\//.test(relative),
 		reason:
-			"A member that left `packages/`, `python/` or `website/` for `apps/`, `clients/` or `tests/` states its own directory in a usage string, a command, a registry key or a comment, and climbs to the repository root by a relative path that gained one level. The move itself spells only the new location. A row here can also carry an edit this branch made before the move and every unmoved sibling carries too -- the array-spread rewrite, the `natives/` path spelling, a site page's nav fix -- each recorded in the commit that made it, none made by the relocation.",
+			"A member that left `packages/`, `python/` or `website/` for `apps/`, `clients/` or `tests/` states its own directory in a usage string, a command, a registry key or a comment, and climbs to the repository root by a relative path that gained one level. The move itself spells only the new location. A row here can also carry an edit this branch made before the move and every unmoved sibling carries too -- the array-spread rewrite, the `natives/` path spelling, a site page's nav fix -- each recorded in the commit that made it, none made by the relocation -- or the formatter's reflow of a call whose shorter path now fits one line.",
 	},
 	{
 		name: "plugin-path-expectation",
