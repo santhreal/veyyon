@@ -3,8 +3,8 @@
  *
  * Discovers agent definitions from:
  *   - Bundled agents (shipped with the veyyon coding agent)
- *   - ~/.veyyon/agent/agents/*.md (user-level)
- *   - .veyyon/agents/*.md (project-level)
+ *   - ~/.veyyon/subagents/*.md (authored once, read by every profile)
+ *   - agents/*.md shipped by an extension package or a marketplace plugin
  *
  * Supports:
  *   - Single agent spawn per call (parallelism = parallel task calls)

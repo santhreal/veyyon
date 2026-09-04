@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-cbf2960b.js";
+            window.path_to_searchindex_js = "../searchindex-617a7fce.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -203,23 +203,52 @@ trusted, has the survivors review each other, and keeps at most one.</p>
 <pre><code>/autoswarm
 </code></pre>
 <pre><code>Autoswarm setup
-Autoresearch with breadth. The model derives the metric from your harness.
+Each iteration builds one change per arm and keeps the best. The model derives the metric from your harness.
+No autoresearch.sh yet: the first turn writes and validates one before anything is measured.
 
-› Goal          make the tokenizer faster▌  type to edit
-  Breadth       3                           candidate arms per iteration
-  Attempts      1                           retries before an arm is abandoned
-  Certification on                          arms cross-review before one is kept
+› Goal          make the tokenizer faster▌
+  Breadth       3    candidate arms per iteration
+  Models        one per arm, comma separated
+  Attempts      1    retries before an arm is abandoned
+  Certification on   arms cross-review before one is kept
 
-3 arms in a review ring: each arm is reviewed by another, and no pair reviews each other.
+3 arms × 1 attempts: up to 3 harness runs per iteration.
+Each arm is reviewed by another, and no pair reviews each other.
+Every arm runs on the session model.
 
-↑↓ field   ←→ adjust   space toggle   enter start   esc cancel
+type to edit   ↑↓ field   enter start   esc cancel
 </code></pre>
 <p>Up and down move between fields, left and right change the focused value, space
 toggles certification, Enter starts the run and Escape leaves without starting
-one. Text typed after the command prefills the goal, so <code>/autoswarm make the tokenizer faster</code> opens the console with that goal already in the field.</p>
+one. The legend lists only the keys that act on the focused field: the arrow
+range on Breadth and Attempts, <code>type to edit</code> on Goal and Models.</p>
+<p>The line under the title states what Enter does on this branch. With no
+session it reads <code>autoresearch.sh found: enter starts measuring with it.</code> or
+<code>No autoresearch.sh yet: the first turn writes and validates one before anything is measured.</code>
+Over a live session it reads
+<code>Resumes session &lt;name&gt; on &lt;branch&gt; (&lt;n&gt; runs) with the values below.</code> and the
+legend reads <code>enter resume</code> instead of <code>enter start</code>.</p>
+<p>The first line under the fields is the harness runs one iteration costs, breadth
+multiplied by attempts. It is a ceiling: an arm that succeeds on its first
+attempt uses one. The second line is the review topology for that breadth. The
+third states which model each arm runs on. All three change with the fields
+above them.</p>
+<p>Enter does nothing while the goal is empty, and the legend reads <code>enter needs a goal</code> until one is typed. With no session on the branch, text typed after the
+command prefills the goal, so <code>/autoswarm make the tokenizer faster</code> opens the
+console with that goal already in the field. Over a session that already has a
+goal the field opens on that goal, and the typed text reaches the model as
+context for the resume; the stored goal changes only through <code>/autoswarm goal &lt;text&gt;</code> or a field that leaves the console different from it.</p>
+<p>Escape leaves without starting a run and prints <code>Autoswarm setup cancelled. Nothing was started.</code> The console is not a turn: no <code>Working…</code> loader runs under
+it while it is open.</p>
+<p><code>/autoswarm resume</code> continues an interrupted or paused session without opening
+the console: no goal, no context, the stored values. With no session on the
+branch it prints <code>No autoswarm session on this branch to resume. /autoswarm starts one.</code> and starts nothing.</p>
 <p>The console opens on whatever the current branch is already doing, so running it
 during a session shows that session’s breadth rather than the default, and
 starting applies the new values from the next iteration.</p>
+<p>A bare <code>/autoswarm</code> reopens the console rather than the run screen, because the
+console is where a live swarm is reconfigured. <code>ctrl+x</code> opens the run screen from
+either loop.</p>
 <p>Everything autoresearch provides is unchanged underneath: the same
 <code>autoresearch.sh</code> harness, the same metric lines, the same segments, the same
 scope rules, the same database. Read that page first; this one covers only what
@@ -227,11 +256,45 @@ breadth adds.</p>
 <p><code>/autoresearch</code> is still there and still serial. Autoswarm does not replace it.</p>
 <h2 id="breadth"><a class="header" href="#breadth">Breadth</a></h2>
 <p>Breadth is 1 to 8 and opens at 3, the fewest arms a review ring needs. The
-dashboard shows <code>breadth N</code> whenever it is above 1.</p>
+status row states <code>N arms</code> whenever breadth is above 1, and the run screen
+states it per session.</p>
 <p>Arms share one worktree. They are built one at a time, measured, and reverted,
 so breadth costs iteration time rather than disk. An arm is a different idea:
 two arms that produce the same diff are counted once.</p>
 <p>Breadth 1 is the serial loop exactly. No arms, no review, no certification cost.</p>
+<h2 id="models-per-arm"><a class="header" href="#models-per-arm">Models per arm</a></h2>
+<p>The Models row assigns one model to each arm, in arm order, comma separated:</p>
+<pre><code>  Models        opus, gpt-5, glm
+</code></pre>
+<p><code>a0</code> runs on Opus, <code>a1</code> on GPT-5, <code>a2</code> on GLM. The line under the fields reads
+the assignment back as arms, so an arm that is off by one comma is visible
+before the run starts:</p>
+<pre><code>a0 opus · a1 gpt-5 · a2 glm.
+</code></pre>
+<p>An entry left empty runs that arm on the session model, so <code>, gpt-5</code> puts <code>a1</code>
+on GPT-5 and leaves <code>a0</code> where the session already is. An arm past the end of
+the list runs on the session model too, and clearing the row puts every arm
+there.</p>
+<p>Each spec resolves the way <code>--model</code> resolves one: <code>provider/id</code>, a bare id, or
+a role alias such as <code>@slow</code>. A spec that matches nothing refuses the run, and
+the legend reads <code>enter needs a known model</code> until it is fixed. The row is
+absent at breadth 1, where there are no arms to spread across models.</p>
+<p><code>start_arm</code> performs the switch. The loop calls it before the first edit of each
+arm, which is also what puts the arm on the status row (<code>a1 on GPT-5</code>) while it
+is being built. The session returns to its own model when the arm’s result is
+logged, so triage, certification and the choice of the next hypothesis run on
+the model you selected rather than on whichever arm ran last. Turning the mode
+off or clearing the session mid-arm restores it too.</p>
+<p>A round configured this way compares models as much as ideas: each arm is a
+different model writing a different change, measured by the same harness and
+reviewed by the ring. Certification still applies, and no arm reviews itself.</p>
+<p>Each run records the model in force when <code>run_experiment</code> measured it, and the
+run screen shows it under the arm as <code>Built on</code>. The arm is the attribution the
+loop declares; the model is what the session was on while the arm was built.
+Read one against the other to tell a model comparison from a round that stayed
+on one model. <code>run_experiment</code> states it in the result when an arm is measured
+with no arm in flight, or while a different arm is: both mean the diff was
+written by a model other than the one configured for that arm.</p>
 <h2 id="why-arms-are-reviewed"><a class="header" href="#why-arms-are-reviewed">Why arms are reviewed</a></h2>
 <p>Breadth searches wider, but that is the smaller half. A loop scored on a number
 will find ways to move the number that have nothing to do with the work getting
@@ -301,10 +364,37 @@ the fast ones.</p>
 diff against a hypothesis. The mechanical rejections above hold whatever the
 reviewer concludes; the judgement on top of them does not.</p>
 <h2 id="session-state"><a class="header" href="#session-state">Session state</a></h2>
-<p>Breadth, attempts and certification belong to the session rather than the
-installation, so the setup console sets them per investigation and <code>/settings</code>
-does not carry them. A run records which arm produced it and which reviewer
-certified it.</p>
+<p>Breadth, attempts, certification and the per-arm models belong to the session
+rather than the installation, so the setup console sets them per investigation
+and <code>/settings</code> does not carry them. A run records which arm produced it and
+which arm certified it, both stated on the run screen’s entry for that run.</p>
+<p>A winning arm has to beat the segment’s baseline, not merely the other arms of
+its iteration. An iteration where every arm regressed is a null round.</p>
+<p><code>certify_arms</code> and <code>start_arm</code> attach only while breadth is above 1. A serial
+session has one candidate, no ring and no arm to open, so there is nothing for
+either to do.</p>
+<h2 id="regenerating-the-setup-console-captures"><a class="header" href="#regenerating-the-setup-console-captures">Regenerating the setup console captures</a></h2>
+<p><code>proof/scenes/autoswarm-setup.sh</code> opens the console, moves through the fields,
+assigns a model per arm and types one nothing matches, toggles certification off
+and back on, empties the goal and leaves with Escape.
+It is a stills take that measures under 1 fps of real change, so both arms turn
+the motion gate off; at the default the recorder rejects the take as a stutter:</p>
+<pre><code class="language-sh">SCENE_MOTION_FLOOR=0 proof/docker/record-x11.sh proof/scenes/autoswarm-setup.sh
+SCENE_MOTION_FLOOR=0 proof/docker/record-x11-before.sh proof/scenes/autoswarm-setup.sh
+</code></pre>
+<p>The frame that carries the console’s layout contract is <code>certification-off</code>.
+<code>off</code> is three columns where every other value is one or two, so a value column
+measured from the values a field currently holds is a column narrower in every
+other state, and the hint beside it moves as the toggle crosses. The column is
+sized from the bounds each field can reach instead, so the hints stand still.
+A frame of any other state shows the column’s position but not that it holds.</p>
+<p><code>proof/scenes/autoswarm-run-resume-keeps-goal.sh</code> opens the console over the
+seeded session with resume text after the command, and leaves with Escape. The
+<code>open</code> frame shows the session’s goal in the field rather than the typed text;
+<code>cancelled</code> shows the notice under the command:</p>
+<pre><code class="language-sh">SCENE_MOTION_FLOOR=0 proof/record.sh proof/scenes/autoswarm-run-resume-keeps-goal.sh
+SCENE_MOTION_FLOOR=0 proof/record.sh --before proof/scenes/autoswarm-run-resume-keeps-goal.sh
+</code></pre>
 
                     </main>
 

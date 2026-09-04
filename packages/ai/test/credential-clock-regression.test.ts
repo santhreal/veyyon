@@ -108,7 +108,9 @@ describe("AuthStorage credential selection across a backward clock jump", () => 
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-block-clock-"));
 		dbPath = path.join(tempDir, "agent.db");
 		store = await SqliteAuthCredentialStore.open(dbPath);
-		auth = new AuthStorage(store);
+		// A block taking a key out of the pool is movement; the library holds it off unless a host
+		// opts in.
+		auth = new AuthStorage(store, { loadBalancing: true });
 		await auth.set(PROVIDER, [
 			{ type: "api_key", key: "key-a", source: "login" },
 			{ type: "api_key", key: "key-b", source: "login" },
@@ -229,7 +231,7 @@ describe("AuthStorage credential selection across a backward clock jump", () => 
 
 		// Reopen exactly as a fresh process would: only the database carries state.
 		store = await SqliteAuthCredentialStore.open(dbPath);
-		auth = new AuthStorage(store);
+		auth = new AuthStorage(store, { loadBalancing: true });
 		await auth.reload();
 		expect(await selectableKeys(auth, "restarted")).toEqual(["key-a", "key-b"].sort());
 	});

@@ -40,9 +40,11 @@ export function createExperimentState(): ExperimentState {
 export function createSessionRuntime(): AutoresearchRuntime {
 	return {
 		autoresearchMode: false,
+		pausedOnBranch: null,
+		interrupted: false,
 		autoResumeArmed: false,
-		dashboardExpanded: false,
 		lastAutoResumePendingRunNumber: null,
+		dispatchedTurnId: null,
 		lastRunDuration: null,
 		lastRunAsi: null,
 		lastRunArtifactDir: null,
@@ -52,7 +54,24 @@ export function createSessionRuntime(): AutoresearchRuntime {
 		state: createExperimentState(),
 		goal: null,
 		pendingSwarm: null,
+		activeArm: null,
+		loopToolRanThisTurn: false,
+		stallNudges: 0,
 	};
+}
+
+/**
+ * The breadth this session runs at, including the one the setup console just
+ * chose.
+ *
+ * `state.breadth` is read from the stored session, which does not exist until
+ * `init_experiment` creates it — a fresh autoswarm spends the whole first turn
+ * with a state that reports breadth 1 while `pendingSwarm` holds the configured
+ * values. Anything that selects swarm or serial before that first tool call has
+ * to read both.
+ */
+export function effectiveBreadth(runtime: AutoresearchRuntime): number {
+	return Math.max(runtime.state.breadth, runtime.pendingSwarm?.breadth ?? 1);
 }
 
 export function cloneExperimentState(state: ExperimentState): ExperimentState {
@@ -89,19 +108,38 @@ export function findBaselineMetric(results: ExperimentResult[], segment: number)
 	return baseline ? baseline.metric : null;
 }
 
+/**
+ * The best run of a segment: kept, unflagged, and holding a measurement.
+ *
+ * Four copies of this scan existed — here, in the status row, in the run screen
+ * and in the prompt builder — and they disagreed about a kept run logged with
+ * the placeholder zero the log call requires of a run that measured nothing.
+ * Where lower is better that zero is the best value there is, so the ledger
+ * tagged one run `best` while the pane beside it named another. Every surface
+ * that shows a best, tags one, or counts runs since one calls this, so they
+ * cannot disagree.
+ */
+export function findBestKeptResult(
+	results: ExperimentResult[],
+	segment: number,
+	direction: MetricDirection,
+): ExperimentResult | null {
+	let best: ExperimentResult | null = null;
+	for (const result of currentResults(results, segment)) {
+		if (result.status !== "keep" || result.flagged || result.metric <= 0) continue;
+		if (best === null || isBetter(result.metric, best.metric, direction)) {
+			best = result;
+		}
+	}
+	return best;
+}
+
 export function findBestKeptMetric(
 	results: ExperimentResult[],
 	segment: number,
 	direction: MetricDirection,
 ): number | null {
-	let best: number | null = null;
-	for (const result of currentResults(results, segment)) {
-		if (result.status !== "keep" || result.flagged) continue;
-		if (best === null || isBetter(result.metric, best, direction)) {
-			best = result.metric;
-		}
-	}
-	return best;
+	return findBestKeptResult(results, segment, direction)?.metric ?? null;
 }
 
 export function findBaselineRunNumber(results: ExperimentResult[], segment: number): number | null {
@@ -188,7 +226,9 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 	state.maxExperiments = session.maxIterations;
 	state.breadth = session.breadth;
 	state.currentSegment = session.currentSegment;
-	state.secondaryMetrics = session.secondaryMetrics.map(name => ({ name, unit: inferMetricUnitFromName(name) }));
+	state.secondaryMetrics = session.secondaryMetrics
+		.filter(name => name !== state.metricName)
+		.map(name => ({ name, unit: inferMetricUnitFromName(name) }));
 
 	for (const run of loggedRuns) {
 		if (run.status === null) continue;
@@ -196,6 +236,7 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 			runNumber: run.id,
 			commit: run.commitHash ?? "",
 			metric: run.metric ?? 0,
+			measuredPrimary: run.parsedPrimary,
 			metrics: run.metrics ?? {},
 			status: run.status,
 			description: run.description ?? "",
@@ -208,10 +249,13 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 			justification: run.justification,
 			flagged: run.flagged,
 			flaggedReason: run.flaggedReason,
+			arm: run.arm,
+			certifiedBy: run.certifiedBy,
+			model: run.model,
 		};
 		state.results.push(result);
 		if (run.segment === state.currentSegment) {
-			registerSecondaryMetrics(state.secondaryMetrics, result.metrics);
+			registerSecondaryMetrics(state.secondaryMetrics, result.metrics, state.metricName);
 		}
 	}
 
@@ -254,8 +298,9 @@ export function createRuntimeStore(): RuntimeStore {
 	};
 }
 
-function registerSecondaryMetrics(metrics: MetricDef[], values: NumericMetricMap): void {
+function registerSecondaryMetrics(metrics: MetricDef[], values: NumericMetricMap, primaryName: string): void {
 	for (const name of Object.keys(values)) {
+		if (name === primaryName) continue;
 		if (metrics.some(metric => metric.name === name)) continue;
 		metrics.push({
 			name,

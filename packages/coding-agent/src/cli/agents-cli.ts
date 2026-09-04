@@ -47,6 +47,7 @@ function writeStdout(line: string): void {
 	process.stdout.write(`${line}\n`);
 }
 
+/** Where an unpacked definition goes; see the file header for why there are two targets. */
 function resolveTargetDir(flags: AgentsCommandArgs["flags"]): string {
 	if (flags.dir && flags.dir.trim().length > 0) {
 		return path.resolve(getProjectDir(), flags.dir.trim());

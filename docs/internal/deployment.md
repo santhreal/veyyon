@@ -18,7 +18,8 @@ draft, then rebuilds `veyyon.dev` so the changelog records the now-public releas
 
 The site is a static tree under `website/`, deployed to Cloudflare Pages. There is no
 build framework. Most marketing HTML is authored directly, while the build rewrites
-shared navigation and generates the changelog, blog pages, sitemap region, and installer trees.
+shared navigation and generates the changelog, the models catalog, and the installer
+trees.
 
 ### Build
 
@@ -41,12 +42,18 @@ bun run site:build      # = node website/build.mjs
 3. Stages `scripts/install.sh` and `scripts/install.ps1` at the main site root.
    These copies are build artifacts; edit the originals in `scripts/`, never
    `website/install.*`.
-4. Generates `website-get/` for the separate `veyyon-get` Pages project,
+4. Regenerates `website/models-data.json` from `packages/catalog/src/models.json`
+   and the provider descriptors via `website/tools/gen-models.mjs`. `models.html`
+   fetches that file, and the live page reads it from jsDelivr's `@main` mirror, so
+   a committed catalog regen reaches veyyon.dev without a deploy.
+5. Stages `assets/demo-hd.webp`, and `assets/agents-cockpit.webp` when it exists,
+   at the site root. The clip has one source; a dirty copy under `website/` after a
+   build means the committed one is behind.
+6. Generates `website-get/` for the separate `veyyon-get` Pages project,
    including the two installer scripts, root rewrite, and response headers.
-5. Scans the hard-coded page list in `website/build.mjs` for leaked old product
+7. Scans the hard-coded page list in `website/build.mjs` for leaked old product
    names, allowing the MIT oh-my-pi attribution and marked `OMP_` legacy aliases,
-   then writes `website/.buildinfo`. This scan does not cover arbitrary handbook
-   pages.
+   then writes `website/.buildinfo`. This scan does not cover handbook pages.
 
 The handbook at `website/docs` is a **symlink** to `docs/handbook/book` (mdBook's
 build output). If handbook sources under `docs/handbook/src/` changed, rebuild the

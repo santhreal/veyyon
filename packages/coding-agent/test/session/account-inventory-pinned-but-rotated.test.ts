@@ -100,10 +100,13 @@ describe("selectedButRotated", () => {
 	 * the second serves, which is exactly the shape a rotated pin has minus the pin. A
 	 * predicate that fell back to "the first row" as the pinned one would report this
 	 * involuntary-looking pair and put a "you asked for X" warning on a choice nobody made.
+	 *
+	 * The move itself needs `accounts.loadBalancing` on: off, a held account is waited out.
 	 */
 	test("returns undefined when the session never pinned anything, even after a rotation", async () => {
-		if (!authStorage) throw new Error("test setup failed");
-		const storage = authStorage;
+		if (!store) throw new Error("test setup failed");
+		const storage = new AuthStorage(store, { loadBalancing: true });
+		await storage.reload();
 		await storage.markUsageLimitReached(PROVIDER, SESSION_ID, {
 			credentialId: personalId,
 			retryAfterMs: BLOCK_FOR_MS,
