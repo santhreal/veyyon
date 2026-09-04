@@ -41,4 +41,5 @@ export const ollamaProvider = {
 	id: "ollama",
 	name: "Ollama (Local OpenAI-compatible)",
 	login: loginOllama,
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

@@ -24,4 +24,5 @@ export const qianfanProvider = {
 	id: "qianfan",
 	name: "Qianfan",
 	login: (cb: OAuthLoginCallbacks) => loginQianfan(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

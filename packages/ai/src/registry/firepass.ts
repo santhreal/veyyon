@@ -29,4 +29,5 @@ export const firepassProvider = {
 	id: "firepass",
 	name: "Fire Pass (Fireworks Kimi K2.6 Turbo subscription)",
 	login: (cb: OAuthLoginCallbacks) => loginFirepass(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

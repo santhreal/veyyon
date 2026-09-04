@@ -19,4 +19,5 @@ export const aimlApiProvider = {
 	id: "aimlapi",
 	name: "AIML API",
 	login: (cb: OAuthLoginCallbacks) => login(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

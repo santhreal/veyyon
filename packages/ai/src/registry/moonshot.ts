@@ -19,4 +19,5 @@ export const moonshotProvider = {
 	id: "moonshot",
 	name: "Moonshot (Kimi API)",
 	login: (cb: OAuthLoginCallbacks) => loginMoonshot(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

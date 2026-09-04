@@ -36,4 +36,5 @@ export const vercelAiGatewayProvider = {
 	id: "vercel-ai-gateway",
 	name: "Vercel AI Gateway",
 	login: (cb: OAuthLoginCallbacks) => loginVercelAiGateway(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

@@ -24,4 +24,5 @@ export const zaiProvider = {
 	id: "zai",
 	name: "Z.AI (GLM Coding Plan)",
 	login: (cb: OAuthLoginCallbacks) => loginZai(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

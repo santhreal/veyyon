@@ -12,6 +12,7 @@ export const cursorProvider = {
 			cb.onProgress ? () => cb.onProgress?.("Waiting for browser authentication...") : undefined,
 		);
 	},
+	credential: "oauth",
 	refreshToken: async (credentials: OAuthCredentials) => {
 		// Lazy import: keep heavy OAuth flow modules out of the eager registry graph.
 		const { refreshCursorToken } = await import("./oauth/cursor");

@@ -32,4 +32,5 @@ export const vllmProvider = {
 	id: "vllm",
 	name: "vLLM (Local OpenAI-compatible)",
 	login: (cb: OAuthLoginCallbacks) => loginVllm(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

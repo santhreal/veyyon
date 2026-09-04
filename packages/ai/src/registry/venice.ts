@@ -30,4 +30,5 @@ export const veniceProvider = {
 	id: "venice",
 	name: "Venice",
 	login: (cb: OAuthLoginCallbacks) => loginVenice(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

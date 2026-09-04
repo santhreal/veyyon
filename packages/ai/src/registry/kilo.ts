@@ -112,4 +112,5 @@ export const kiloProvider = {
 	id: "kilo",
 	name: "Kilo Gateway",
 	login: loginKilo,
+	credential: "oauth",
 } as const satisfies ProviderDefinition;

@@ -24,4 +24,5 @@ export const zhipuCodingPlanProvider = {
 	id: "zhipu-coding-plan",
 	name: "Zhipu Coding Plan (智谱)",
 	login: (cb: OAuthLoginCallbacks) => loginZhipuCodingPlan(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

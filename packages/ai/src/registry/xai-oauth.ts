@@ -9,6 +9,7 @@ export const xaiOauthProvider = {
 		const { loginXAIOAuth } = await import("./oauth/xai-oauth");
 		return loginXAIOAuth(cb);
 	},
+	credential: "oauth",
 	refreshToken: async (credentials: OAuthCredentials) => {
 		// Lazy import: keep heavy OAuth flow modules out of the eager registry graph.
 		const { refreshXAIOAuthToken } = await import("./oauth/xai-oauth");

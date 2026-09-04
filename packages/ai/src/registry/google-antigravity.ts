@@ -10,6 +10,7 @@ export const googleAntigravityProvider = {
 		const { loginAntigravity } = await import("./oauth/google-antigravity");
 		return loginAntigravity(cb);
 	},
+	credential: "oauth",
 	refreshToken: async (credentials: OAuthCredentials) => {
 		if (!credentials.projectId) {
 			throw new AIError.ConfigurationError("Antigravity credentials missing projectId");

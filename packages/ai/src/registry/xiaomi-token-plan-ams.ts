@@ -9,4 +9,5 @@ export const xiaomiTokenPlanAmsProvider = {
 		const { loginXiaomiTokenPlan } = await import("./oauth/xiaomi");
 		return loginXiaomiTokenPlan(cb, "ams");
 	},
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

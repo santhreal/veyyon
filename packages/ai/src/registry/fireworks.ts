@@ -25,4 +25,5 @@ export const fireworksProvider = {
 	id: "fireworks",
 	name: "Fireworks",
 	login: (cb: OAuthLoginCallbacks) => loginFireworks(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

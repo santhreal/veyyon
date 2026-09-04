@@ -25,4 +25,5 @@ export const googleProvider = {
 	id: "google",
 	name: "Google Gemini",
 	login: (cb: OAuthLoginCallbacks) => login(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

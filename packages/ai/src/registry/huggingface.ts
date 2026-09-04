@@ -26,4 +26,5 @@ export const huggingfaceProvider = {
 	id: "huggingface",
 	name: "Hugging Face Inference",
 	login: (cb: OAuthLoginCallbacks) => loginHuggingface(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

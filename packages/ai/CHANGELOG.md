@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- The Alibaba Coding Plan and Qwen Portal logins validate the pasted key through the controller's `fetch` when one is supplied, instead of always using the global `fetch` and bypassing a configured proxy.
 - Reasoning recorded behind a rewritten history prefix is dropped before the request on a model that binds thinking blocks to their prefix, instead of being replayed and answered with a 400.
 - ChatGPT Codex server-side compaction streams a trailing `compaction_trigger` item to `{base}/codex/responses`, instead of posting to `{base}/codex/responses/compact`, which answers 404 and turned every compaction into a paid local pass for the rest of the session.
 - A Codex compaction stream carrying a `compaction` item with no `encrypted_content` is refused instead of being stored as a window every later turn discards.
@@ -27,6 +28,7 @@
 
 ### Changed
 
+- Every provider row with a `login` declares `credential: "api-key" | "oauth"`, and `OAuthProviderInfo` and `getLoginCredential(providerId)` expose it, so a login surface can tell a dashboard URL from an authorization it must open; `OpenAI` is named `OpenAI Platform` and `OpenAI Codex` is named `ChatGPT (Codex subscription)`.
 - The compaction transport and codex request comments state the route each host family serves. No behavior change.
 
 ## [1.3.0] - 2026-08-28
