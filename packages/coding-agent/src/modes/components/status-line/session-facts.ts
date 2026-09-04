@@ -21,11 +21,14 @@
  * cannot grow a second one.
  */
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
+import { getProjectDir } from "@veyyon/utils/dirs";
 import { settings } from "../../../config/settings-instance";
 import type { Goal } from "../../../goals/state";
 import { AUTO_THINKING } from "../../../thinking";
 import type { ApprovalMode } from "../../../tools/approval-modes";
 import { isKnownApprovalMode } from "../../../tools/approval-modes";
+import type { ActiveRepoContext, WorktreeContext } from "../../../utils/active-repo-context";
+import { resolveActiveRepoContextSync, resolveWorktreeContext } from "../../../utils/active-repo-context";
 import { launchModelLabel, readLaunchFacts } from "../../launch-facts";
 import type { SegmentContext, StatusLineSegmentOptions } from "./types";
 
@@ -184,12 +187,45 @@ export interface LaunchContextRequest {
  * state them before anything has been measured. With nothing recorded both are null: `0%` would be
  * a measurement and a clean tree would be a claim, so the gauge spells `? left` and the branch
  * renders without its marker until the session's first paint replaces the block.
+ *
+ * `activeRepo` and `worktree` are resolved here rather than left to the session, because the path
+ * segment reads both: the worktree marker and the truncation it forces are structural, and a card
+ * that paints the plain path would be rewritten the moment the row mounts.
  */
+/** The live row's exact resolution (`#resolveActiveRepoCache`), memoized per project directory:
+ * the resolvers are directory walks and the row renders per frame. */
+let launchRepoResolutionCache:
+	| { projectDir: string; activeRepo: ActiveRepoContext | null; worktree: WorktreeContext | null }
+	| undefined;
+
+function launchRepoResolution() {
+	const projectDir = getProjectDir();
+	if (launchRepoResolutionCache?.projectDir === projectDir) return launchRepoResolutionCache;
+	// Worktree first, because the two answers are exclusive and the worktree
+	// check is the cheaper one: when `cwd` is a linked worktree it is already a
+	// repository, so the single-child scan the active-repo rule runs is
+	// guaranteed to answer null, and the scan is a readdir plus a stat per
+	// sibling. The live row's `#resolveActiveRepoCache` asks in the other order
+	// and pays for both; this row answers at the first paint, on the frame the
+	// terminal is already owed, so it asks only the question that can win.
+	const worktree = resolveWorktreeContext(projectDir);
+	const activeRepo = worktree ? null : resolveActiveRepoContextSync(projectDir);
+	launchRepoResolutionCache = { projectDir, activeRepo, worktree };
+	return launchRepoResolutionCache;
+}
+
 export function launchSegmentContext(request: LaunchContextRequest): SegmentContext {
 	const launchFacts = readLaunchFacts();
+	// The same resolution the live row runs at its first paint, so the path the
+	// card paints is the path the row keeps: the worktree marker and the
+	// truncation it forces are on screen from the first frame, and the handover
+	// writes nothing. Both resolvers read `.git` files and never spawn git, but
+	// they are still directory walks, and the row renders per frame — resolved
+	// once per project directory instead.
+	const resolved = launchRepoResolution();
 	return {
 		facts: factsAtLaunch(),
-		activeRepo: null,
+		activeRepo: resolved.activeRepo,
 		width: request.width,
 		options: request.options,
 		compactThinkingLevel: request.compactThinkingLevel,
@@ -209,7 +245,7 @@ export function launchSegmentContext(request: LaunchContextRequest): SegmentCont
 		backgroundSessionCount: 0,
 		activeMs: 0,
 		git: { branch: request.branch, status: launchFacts.gitStatus, pr: null },
-		worktree: null,
+		worktree: resolved.worktree,
 		account: null,
 		usage: null,
 	};
