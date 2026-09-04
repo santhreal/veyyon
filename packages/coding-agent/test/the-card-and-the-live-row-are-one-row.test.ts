@@ -40,7 +40,6 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, type Mock, spyOn } from "bun:test";
-import * as fs from "node:fs";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import {
@@ -55,9 +54,10 @@ import * as quietRow from "@veyyon/coding-agent/modes/components/status-line/qui
 import { launchSegmentContext } from "@veyyon/coding-agent/modes/components/status-line/session-facts";
 import type { StatusLinePreset } from "@veyyon/coding-agent/modes/components/status-line/types";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { branchLabelFromFiles, HEAD_REF_PREFIX, LOCAL_BRANCH_PREFIX } from "@veyyon/coding-agent/utils/git-head";
+import { branchLabelFromFiles } from "@veyyon/coding-agent/utils/git-head";
 import * as utils from "@veyyon/utils";
-import { getProjectDir, setProjectDir, stripAnsi, TempDir } from "@veyyon/utils";
+import { getProjectDir, stripAnsi } from "@veyyon/utils";
+import { useFixtureCheckout } from "./helpers/fixture-checkout";
 
 /**
  * The profile chip hides on the built-in `default` profile and shows on any named one, so the
@@ -83,6 +83,11 @@ const SEGMENT_WIDTH = WIDE - COMPOSER_INSET_COLS;
  * that matters: it means a segment stopped reaching the card. An id that stops being silent fails
  * here too, which is the other case that matters: it means a segment started stating a value
  * before anything measured one.
+ *
+ * `git` is in no bucket because the suite stands in a fixture checkout whose HEAD names a branch,
+ * so the segment always has one to render. Read from the ambient directory instead, this table
+ * would record whatever the run started in: a detached checkout, which every pull-request CI run
+ * is, has no branch and turns `git` silent in all six rows.
  */
 const SILENT_AT_LAUNCH: Record<string, string[]> = {
 	default: ["account", "background", "session_name"],
@@ -185,21 +190,15 @@ function resolvedIds(preset: StatusLinePreset): string[] {
 const CONFIGURED_MODEL = "claude-sonnet-4-5";
 const CONFIGURED_APPROVAL = "yolo";
 
-const FIXTURE_BRANCH = "main";
-let fixtureProject: TempDir | null = null;
-let previousProjectDir: string | null = null;
+/**
+ * The checkout the row describes, so the card's branch and path come from this file rather than
+ * from the directory the test run started in. Declared before the `beforeAll` below because the
+ * project directory has to move before anything reads it.
+ */
+const CHECKOUT = useFixtureCheckout({ branch: "launch-card-fixture" });
 
 beforeAll(async () => {
-	fixtureProject = TempDir.createSync("@pi-card-live-row-project-");
-	fs.mkdirSync(fixtureProject.join(".git"), { recursive: true });
-	fs.writeFileSync(
-		fixtureProject.join(".git", "HEAD"),
-		`${HEAD_REF_PREFIX} ${LOCAL_BRANCH_PREFIX}${FIXTURE_BRANCH}\n`,
-	);
-	previousProjectDir = getProjectDir();
-	setProjectDir(fixtureProject.path());
-
-	await Settings.init({ inMemory: true, cwd: fixtureProject.path() });
+	await Settings.init({ inMemory: true, cwd: process.cwd() });
 	await initTheme(false);
 	settings.setModelRole("default", CONFIGURED_MODEL);
 	settings.set("tools.approvalMode", CONFIGURED_APPROVAL);
@@ -209,14 +208,6 @@ afterAll(() => {
 	// The seeded model role and approval rung are process-wide; a later file in the bucket must not
 	// inherit them, and must not inherit an in-memory store it did not initialize.
 	resetSettingsForTest();
-	if (previousProjectDir) {
-		setProjectDir(previousProjectDir);
-		previousProjectDir = null;
-	}
-	if (fixtureProject) {
-		fixtureProject.removeSync();
-		fixtureProject = null;
-	}
 });
 
 /** The one thing this suite mocks, restored per test. */
@@ -246,6 +237,16 @@ describe("the card and the live row are one row", () => {
 		expect(names.length).toBeGreaterThan(3);
 		expect(resolvedIds("default")).toContain("path");
 		expect(resolvedIds("default")).toContain("model");
+	});
+
+	/**
+	 * The branch is on the card, which is what keeps `git` out of the table above.
+	 *
+	 * Without it the table would be recorded against whatever HEAD the run happened to have, and
+	 * a card that stopped rendering the segment would look like a checkout without a branch.
+	 */
+	it("names the branch the fixture checkout is on", () => {
+		expect(launchParts().get("git")).toContain(CHECKOUT.branch);
 	});
 
 	/** Every preset gets its own case, so a failure names the row that lost a segment. */

@@ -23,12 +23,20 @@ function paint(s: string): string {
 	return theme.fg("borderAccent", s);
 }
 
+/**
+ * Columns a title has inside {@link topBorder}: the rule less its corners, the
+ * one-column lead and the spaces around the title.
+ */
+export function topBorderTitleWidth(width: number): number {
+	return Math.max(0, width - 6);
+}
+
 /** Top border with an optional accent-colored title inset into the rule. */
 export function topBorder(width: number, title: string): string {
 	const box = theme.boxSharp;
 	const inner = Math.max(0, width - 2);
 	if (!title) return paint(box.topLeft + box.horizontal.repeat(inner) + box.topRight);
-	const shown = truncateToWidth(` ${title} `, Math.max(0, inner - 2));
+	const shown = truncateToWidth(` ${title} `, topBorderTitleWidth(width) + 2);
 	const fillWidth = Math.max(0, inner - 1 - visibleWidth(shown));
 	return (
 		paint(box.topLeft + box.horizontal) +
@@ -70,6 +78,14 @@ export function splitBodyWidth(width: number, sidebarWidth: number): number {
 	return Math.max(0, width - sidebarWidth - 7);
 }
 
+/**
+ * Columns a title has inside {@link topBorderSplit}: the sidebar segment of
+ * the rule less the corner, the one-column lead and the spaces around it.
+ */
+export function topBorderSplitTitleWidth(sidebarWidth: number): number {
+	return Math.max(0, splitDividerCol(sidebarWidth) - 4);
+}
+
 /** Top border carrying the title, split by a `┬` over the column divider. */
 export function topBorderSplit(width: number, title: string, sidebarWidth: number): string {
 	const box = theme.boxSharp;
@@ -80,7 +96,7 @@ export function topBorderSplit(width: number, title: string, sidebarWidth: numbe
 	if (!title) {
 		left = paint(box.topLeft + box.horizontal.repeat(leftLen));
 	} else {
-		const shown = truncateToWidth(` ${title} `, Math.max(0, leftLen - 1));
+		const shown = truncateToWidth(` ${title} `, topBorderSplitTitleWidth(sidebarWidth) + 2);
 		const fillWidth = Math.max(0, leftLen - 1 - visibleWidth(shown));
 		left =
 			paint(box.topLeft + box.horizontal) +

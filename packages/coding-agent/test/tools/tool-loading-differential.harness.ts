@@ -207,10 +207,10 @@ export const TOOL_LOAD_CASES: readonly ToolLoadCase[] = [
 		name: "delegation-off-discovery-all",
 		settings: { "tools.discoveryMode": "all", "subagent.delegation": "off" },
 	},
-	// 18 and 19 straddle the boundary exactly: the fixture registry holds 22 non-`search_tool_bm25`
-	// tools, so 22+18 = 40 is NOT "> TOOL_DISCOVERY_AUTO_THRESHOLD" and 22+19 = 41 is. A tool added
+	// 17 and 18 straddle the boundary exactly: the fixture registry holds 23 non-`search_tool_bm25`
+	// tools, so 23+17 = 40 is NOT "> TOOL_DISCOVERY_AUTO_THRESHOLD" and 23+18 = 41 is. A tool added
 	// to or removed from the registry moves this boundary, and the two cases below go red until the
 	// counts here and the frozen outcomes are re-recorded together.
-	{ name: "auto-at-threshold", extensions: [bulkToolExtension(18, "bulk")] },
-	{ name: "auto-over-threshold", extensions: [bulkToolExtension(19, "bulk")] },
+	{ name: "auto-at-threshold", extensions: [bulkToolExtension(17, "bulk")] },
+	{ name: "auto-over-threshold", extensions: [bulkToolExtension(18, "bulk")] },
 ];

@@ -2116,7 +2116,9 @@ describe("AuthStorage claude oauth ranking", () => {
 	beforeEach(async () => {
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-ai-auth-claude-selection-"));
 		store = await SqliteAuthCredentialStore.open(path.join(tempDir, "agent.db"));
+		// Headroom ranking is account movement, which the library holds off unless a host opts in.
 		authStorage = new AuthStorage(store, {
+			loadBalancing: true,
 			usageProviderResolver: provider => (provider === "anthropic" ? usageProvider : undefined),
 		});
 		usageByAccount.clear();

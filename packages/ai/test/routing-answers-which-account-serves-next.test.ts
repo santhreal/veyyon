@@ -51,7 +51,9 @@ describe("routing answers which account serves next", () => {
 	beforeEach(async () => {
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-ai-serves-next-"));
 		store = await SqliteAuthCredentialStore.open(path.join(tempDir, "agent.db"));
-		authStorage = new AuthStorage(store);
+		// Substituting a sibling for a held account is movement; the library holds it off unless a
+		// host opts in.
+		authStorage = new AuthStorage(store, { loadBalancing: true });
 		vi.spyOn(oauthUtils, "getOAuthApiKey").mockImplementation(async (provider, credentials) => {
 			const credential = credentials[provider];
 			if (!credential) return null;

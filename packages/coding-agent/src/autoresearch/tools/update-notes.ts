@@ -54,7 +54,7 @@ export function createUpdateNotesTool(
 			if (refreshed) {
 				runtime.state = buildExperimentState(refreshed, loggedRuns);
 			}
-			options.dashboard.updateWidget(ctx, runtime);
+			options.dashboard.update(ctx, runtime);
 
 			return {
 				content: [

@@ -55,6 +55,14 @@ describe("formatNum", () => {
 		expect(formatNum(1234, "ms")).toBe("1,234ms");
 		expect(formatNum(1.999, "ms")).toBe("2.00ms");
 	});
+
+	it("attaches a symbol or abbreviation and spaces a word off the number", () => {
+		expect(formatNum(12, "%")).toBe("12%");
+		expect(formatNum(12, "µs")).toBe("12µs");
+		expect(formatNum(12, "MiB")).toBe("12MiB");
+		expect(formatNum(1596000, "comparisons")).toBe("1,596,000 comparisons");
+		expect(formatNum(1596000, "")).toBe("1,596,000");
+	});
 });
 
 describe("commas", () => {

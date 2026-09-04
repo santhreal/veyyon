@@ -2031,6 +2031,14 @@ export class AgentSession {
 	#unexpectedStopRetryCount = 0;
 	#acceptTerminalEmptyStopForPrompt = false;
 	#promptGeneration = 0;
+	/**
+	 * Prompts refused as busy and waiting for the agent to go idle. Each is a
+	 * turn already committed to, held by nothing the queues can see: the hidden
+	 * next-turn message was pulled from its queue the moment it was scheduled.
+	 * Counted as queued work so an `agent_end` handler asking whether anything
+	 * is coming reads the turn that is.
+	 */
+	#promptsWaitingOnIdle = 0;
 	#pendingAgentEndEmit: AgentSessionEvent | undefined;
 	#pendingContextSnapshot: PendingContextSnapshot | undefined = undefined;
 	/**
@@ -10818,7 +10826,7 @@ export class AgentSession {
 			}
 			this.#setPendingContextSnapshot(pendingContextSnapshot);
 			try {
-				await this.#promptAgentWithIdleRetry(messages, agentPromptOptions);
+				await this.#promptAgentWithIdleRetry(messages, agentPromptOptions, generation);
 			} finally {
 				this.#setPendingContextSnapshot(undefined);
 			}
@@ -11441,14 +11449,16 @@ export class AgentSession {
 		return { steering, followUp };
 	}
 
-	/** Number of pending displayable messages (includes steering, follow-up, and next-turn messages).
-	 *  Reflects actual queued work (advisor cards included) — feeds hasPendingMessages()/RPC and the
-	 *  empty-submit abort gate. The user-restorable subset is surfaced by getQueuedMessages()/clearQueue(). */
+	/** Number of pending displayable messages (includes steering, follow-up, next-turn messages, and
+	 *  prompts waiting for the agent to go idle). Reflects actual queued work (advisor cards
+	 *  included) — feeds hasPendingMessages()/RPC and the empty-submit abort gate. The
+	 *  user-restorable subset is surfaced by getQueuedMessages()/clearQueue(). */
 	get queuedMessageCount(): number {
 		return (
 			this.agent.peekSteeringQueue().filter(isDisplayableQueuedMessage).length +
 			this.agent.peekFollowUpQueue().filter(isDisplayableQueuedMessage).length +
-			this.#pendingNextTurnMessages.length
+			this.#pendingNextTurnMessages.length +
+			this.#promptsWaitingOnIdle
 		);
 	}
 
@@ -18033,7 +18043,25 @@ export class AgentSession {
 		this.#resolveRetry();
 	}
 
-	async #promptAgentWithIdleRetry(messages: AgentMessage[], options?: { toolChoice?: ToolChoice }): Promise<void> {
+	/**
+	 * Prompt the agent, waiting out a run that is still in flight. A hidden
+	 * continuation queued from an `agent_end` handler lands here while the turn
+	 * it reacts to is still unwinding, so its first `prompt` is refused as busy.
+	 *
+	 * `generation` is the prompt cycle the caller started in. The wait ends when
+	 * the agent is idle, and a user interrupt is one way it gets there: `abort()`
+	 * bumps the generation before the loop settles, and a prompt that woke on
+	 * that settle would start the very turn the user stopped. The autoresearch
+	 * stall nudge did exactly that -- Escape ended the run and the nudge queued a
+	 * turn earlier restarted it three milliseconds later. A stale generation
+	 * returns without prompting; the messages are dropped like every other
+	 * setup-time bail-out in `#promptWithMessage`.
+	 */
+	async #promptAgentWithIdleRetry(
+		messages: AgentMessage[],
+		options: { toolChoice?: ToolChoice } | undefined,
+		generation: number,
+	): Promise<void> {
 		const deadline = Date.now() + 30_000;
 		for (;;) {
 			try {
@@ -18046,7 +18074,15 @@ export class AgentSession {
 				if (Date.now() >= deadline) {
 					throw new Error("Timed out waiting for prior agent run to finish before prompting.");
 				}
-				await this.agent.waitForIdle();
+				this.#promptsWaitingOnIdle += 1;
+				try {
+					await this.agent.waitForIdle();
+				} finally {
+					this.#promptsWaitingOnIdle -= 1;
+				}
+				if (this.#promptGeneration !== generation) {
+					return;
+				}
 			}
 		}
 	}

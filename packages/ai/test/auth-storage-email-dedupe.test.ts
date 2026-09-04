@@ -114,7 +114,9 @@ describe("AuthStorage openai-codex email dedupe", () => {
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-ai-auth-email-dedupe-"));
 		dbPath = path.join(tempDir, "agent.db");
 		store = await SqliteAuthCredentialStore.open(dbPath);
-		authStorage = new AuthStorage(store);
+		// The multi-account arms spread sessions across keys, which is movement; the library holds it
+		// off unless a host opts in.
+		authStorage = new AuthStorage(store, { loadBalancing: true });
 	});
 
 	afterEach(async () => {
@@ -747,7 +749,7 @@ describe("AuthStorage OAuth login upgrade and multi-account coexistence", () => 
 		if (!tempDir) throw new Error("test setup failed");
 
 		const dbPath = path.join(tempDir, "api-key-rotation.db");
-		const authStorage = await AuthStorage.create(dbPath);
+		const authStorage = await AuthStorage.create(dbPath, { loadBalancing: true });
 		const prompts = ["nvapi-first", "nvapi-second"];
 		const fetchMock: FetchImpl = async () =>
 			new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
@@ -796,7 +798,8 @@ describe("AuthStorage persistent session stickiness", () => {
 
 	it("persists session-sticky credentials across AuthStorage restarts", async () => {
 		// 1. Initialize AuthStorage and log in two accounts
-		let authStorage = new AuthStorage(new SqliteAuthCredentialStore(new Database(dbPath)));
+		// Per-session hashing is movement; the library holds it off unless a host opts in.
+		let authStorage = new AuthStorage(new SqliteAuthCredentialStore(new Database(dbPath)), { loadBalancing: true });
 
 		try {
 			const credential1: OAuthCredential = {
@@ -830,7 +833,7 @@ describe("AuthStorage persistent session stickiness", () => {
 			authStorage.close();
 
 			// 5. Re-instantiate AuthStorage using the same DB
-			authStorage = new AuthStorage(new SqliteAuthCredentialStore(new Database(dbPath)));
+			authStorage = new AuthStorage(new SqliteAuthCredentialStore(new Database(dbPath)), { loadBalancing: true });
 			await authStorage.reload();
 
 			// 6. Retrieve the sticky key again for session-1 (should still be access-token-1)
@@ -856,12 +859,13 @@ describe("AuthStorage persistent session stickiness", () => {
 		const initialCredentials = [mk("a"), mk("b"), mk("c"), mk("d")];
 		const remainingCredentials = initialCredentials.slice(1);
 
-		let authStorage = new AuthStorage(new SqliteAuthCredentialStore(new Database(dbPath)));
+		let authStorage = new AuthStorage(new SqliteAuthCredentialStore(new Database(dbPath)), { loadBalancing: true });
 		await authStorage.set(provider, initialCredentials);
 		let rows = authStorage.listStoredCredentials(provider);
 
 		const control = new AuthStorage(
 			new SqliteAuthCredentialStore(new Database(path.join(tempDir, "sticky-control.db"))),
+			{ loadBalancing: true },
 		);
 		await control.set(provider, remainingCredentials);
 		let session: string | undefined;
@@ -892,7 +896,7 @@ describe("AuthStorage persistent session stickiness", () => {
 		expect(await authStorage.removeCredential(provider, rows[0].id)).toBe(true);
 		authStorage.close();
 
-		authStorage = new AuthStorage(new SqliteAuthCredentialStore(new Database(dbPath)));
+		authStorage = new AuthStorage(new SqliteAuthCredentialStore(new Database(dbPath)), { loadBalancing: true });
 		await authStorage.reload();
 		rows = authStorage.listStoredCredentials(provider);
 		expect(rows.findIndex(row => row.id === stuckId)).toBe(stuckIndex - 1);

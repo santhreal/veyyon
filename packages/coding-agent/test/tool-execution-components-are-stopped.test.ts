@@ -26,18 +26,30 @@ const TEST_ROOT = path.resolve(import.meta.dir);
 const HELPER = path.join(TEST_ROOT, "helpers", "tool-execution.ts");
 const DIRECT_CONSTRUCTION = "new ToolExecutionComponent(";
 
-/** Every `.ts` file under `test/`, so a new suite is covered the moment it is added. */
-function testSources(dir: string = TEST_ROOT): string[] {
-	const found: string[] = [];
-	for (const entry of readdirSync(dir)) {
-		if (entry === "node_modules") continue;
-		const full = path.join(dir, entry);
-		if (statSync(full).isDirectory()) {
-			found.push(...testSources(full));
-			continue;
+/**
+ * Every `.ts` file under `test/`, so a new suite is covered the moment it is added, read once for
+ * the whole file. Three cases each walking and re-reading 360 sources put this suite over its
+ * five-second budget on a checkout served over the network, which reads as a defect in the rule
+ * rather than in the machine.
+ */
+let sources: Map<string, string> | undefined;
+
+function testSources(): Map<string, string> {
+	if (sources) return sources;
+	const found = new Map<string, string>();
+	const walk = (dir: string): void => {
+		for (const entry of readdirSync(dir)) {
+			if (entry === "node_modules") continue;
+			const full = path.join(dir, entry);
+			if (statSync(full).isDirectory()) {
+				walk(full);
+				continue;
+			}
+			if (entry.endsWith(".ts")) found.set(full, readFileSync(full, "utf8"));
 		}
-		if (entry.endsWith(".ts")) found.push(full);
-	}
+	};
+	walk(TEST_ROOT);
+	sources = found;
 	return found;
 }
 
@@ -45,17 +57,21 @@ describe("tool block construction in tests", () => {
 	/**
 	 * The contract. The helper itself is the one allowed constructor call, since it is what performs the
 	 * cleanup.
+	 *
+	 * The case bound is the walk plus one read of every test source. On a checkout served over the
+	 * network that is seconds, so the default five would fail on latency rather than on an offender.
 	 */
 	it("goes through the helper, never a direct constructor call", () => {
-		const offenders = testSources()
-			// The helper is the one place allowed to call the constructor, and THIS file quotes the banned
-			// string in order to search for it.
-			.filter(file => file !== HELPER && file !== path.resolve(import.meta.path))
-			.filter(file => readFileSync(file, "utf8").includes(DIRECT_CONSTRUCTION))
-			.map(file => path.relative(TEST_ROOT, file));
+		const offenders: string[] = [];
+		for (const [file, source] of testSources()) {
+			// The helper is the one place allowed to call the constructor, and THIS file quotes the
+			// banned string in order to search for it.
+			if (file === HELPER || file === import.meta.filename) continue;
+			if (source.includes(DIRECT_CONSTRUCTION)) offenders.push(path.relative(TEST_ROOT, file));
+		}
 
 		expect(offenders).toEqual([]);
-	});
+	}, 30_000);
 
 	/**
 	 * And the helper still does the thing the ban exists for. Without this, someone could satisfy the rule
@@ -75,8 +91,11 @@ describe("tool block construction in tests", () => {
 	 * because the suites were deleted would pass silently. Pin that the helper is genuinely in use.
 	 */
 	it("is used by the suites that render tool blocks", () => {
-		const users = testSources().filter(file => readFileSync(file, "utf8").includes("createToolExecution("));
+		let users = 0;
+		for (const source of testSources().values()) {
+			if (source.includes("createToolExecution(")) users += 1;
+		}
 
-		expect(users.length).toBeGreaterThanOrEqual(20);
+		expect(users).toBeGreaterThanOrEqual(20);
 	});
 });

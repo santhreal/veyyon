@@ -27,7 +27,7 @@ import {
 import { MAX_BREADTH } from "@veyyon/coding-agent/autoresearch/swarm";
 import { createCertifyArmsTool } from "@veyyon/coding-agent/autoresearch/tools/certify-arms";
 import { createInitExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/init-experiment";
-import type { AutoresearchRuntime } from "@veyyon/coding-agent/autoresearch/types";
+import type { AutoresearchRuntime, DashboardController } from "@veyyon/coding-agent/autoresearch/types";
 import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent/extensibility/extensions";
 import { TempDir } from "@veyyon/utils";
 import { $ } from "bun";
@@ -45,12 +45,12 @@ function firstTextBlockText(content: Array<TextContent | ImageContent>): string 
 	return block.text;
 }
 
-function dashboardStub() {
+function dashboardStub(): DashboardController {
 	return {
 		clear(): void {},
 		requestRender(): void {},
-		showOverlay: async (): Promise<void> => {},
-		updateWidget(): void {},
+		showScreen: async (): Promise<void> => {},
+		update(): void {},
 	};
 }
 
@@ -104,9 +104,9 @@ async function openSession(
 	dir: string,
 	runtime: AutoresearchRuntime,
 	params: Record<string, unknown> = {},
-): Promise<{ storage: AutoresearchStorage; session: SessionRow }> {
+): Promise<{ storage: AutoresearchStorage; session: SessionRow; text: string }> {
 	const { init } = tools(runtime);
-	await init.execute(
+	const result = await init.execute(
 		"call-init",
 		{
 			name: "certify suite",
@@ -123,13 +123,48 @@ async function openSession(
 	const storage = await openAutoresearchStorage(dir);
 	const session = storage.getActiveSession();
 	if (!session) throw new Error("init_experiment did not open a session");
-	return { storage, session };
+	return { storage, session, text: firstTextBlockText(result.content) };
 }
 
 const CLEAN_DIFF = "--- a/solution.py\n+++ b/solution.py\n+def f():\n+    return 1\n";
 
 function arm(name: string, diff: string, metric: number, paths = ["solution.py"]) {
 	return { arm: name, hypothesis: `${name} hypothesis`, diff, modified_paths: paths, metric };
+}
+
+/**
+ * Logs a kept baseline run into the session's current segment, the way
+ * `run_experiment` + `log_experiment` leave one behind.
+ */
+function logBaseline(
+	storage: AutoresearchStorage,
+	session: SessionRow,
+	metric: number,
+	options: { flagged?: boolean } = {},
+): void {
+	const run = storage.insertRun({
+		sessionId: session.id,
+		segment: session.currentSegment,
+		command: "./autoresearch.sh",
+		logPath: "/repo/.veyyon/autoresearch/run.log",
+		preRunDirtyPaths: [],
+		startedAt: Date.now(),
+	});
+	storage.markRunLogged({
+		runId: run.id,
+		status: "keep",
+		description: "baseline",
+		metric,
+		metrics: { ms: metric },
+		asi: null,
+		commitHash: null,
+		confidence: null,
+		modifiedPaths: [],
+		scopeDeviations: [],
+		justification: null,
+		loggedAt: Date.now(),
+	});
+	if (options.flagged) storage.flagRun(run.id, "gamed the harness");
 }
 
 describe("breadth reaches the session", () => {
@@ -150,23 +185,49 @@ describe("breadth reaches the session", () => {
 		// nothing when used in the order a user reaches for it.
 		const dir = freshRepo();
 		const runtime = createSessionRuntime();
-		runtime.pendingSwarm = { breadth: 4, attempts: 3, certify: false };
+		runtime.pendingSwarm = { breadth: 4, attempts: 3, certify: false, armModels: ["sonnet", "", "gpt-5", ""] };
 		const { session } = await openSession(dir, runtime, { breadth: undefined });
 		expect(session.breadth).toBe(4);
 		expect(session.attempts).toBe(3);
 		expect(session.certify).toBe(false);
+		expect(session.armModels).toEqual(["sonnet", "", "gpt-5", ""]);
 		expect(runtime.pendingSwarm).toBeNull();
 	});
 
-	it("lets an explicit tool argument beat the parked setup", async () => {
-		// The model may reconsider breadth from the harness it found. An argument
-		// it passes deliberately outranks what was parked before it looked.
+	it("keeps the console's answers over an argument the model guessed", async () => {
+		// The model never saw the console. A breadth it passes on the init that
+		// consumes the parked setup is a guess, and a guess of 1 silently turned
+		// a configured swarm into a serial loop.
 		const dir = freshRepo();
 		const runtime = createSessionRuntime();
-		runtime.pendingSwarm = { breadth: 4, attempts: 3, certify: false };
+		runtime.pendingSwarm = { breadth: 4, attempts: 3, certify: false, armModels: ["sonnet", "", "gpt-5", ""] };
+		const { session, text } = await openSession(dir, runtime, { breadth: 1, certify: true });
+		expect(session.breadth).toBe(4);
+		expect(session.attempts).toBe(3);
+		expect(session.certify).toBe(false);
+		expect(session.armModels).toEqual(["sonnet", "", "gpt-5", ""]);
+		expect(text).toContain("4 arms per iteration");
+		expect(text).toContain("setup console");
+	});
+
+	it("lets a later init reconfigure once nothing is parked", async () => {
+		const dir = freshRepo();
+		const runtime = createSessionRuntime();
+		runtime.pendingSwarm = { breadth: 4, attempts: 3, certify: false, armModels: ["sonnet", "", "gpt-5", ""] };
+		await openSession(dir, runtime, { breadth: undefined });
 		const { session } = await openSession(dir, runtime, { breadth: 2 });
 		expect(session.breadth).toBe(2);
-		expect(session.attempts).toBe(3);
+		// Two arms now, so the two model slots past them are not carried.
+		expect(session.armModels).toEqual(["sonnet", ""]);
+	});
+
+	it("drops a unit that repeats the metric's name", async () => {
+		const dir = freshRepo();
+		const { session } = await openSession(dir, createSessionRuntime(), {
+			primary_metric: "comparisons",
+			metric_unit: "Comparisons",
+		});
+		expect(session.metricUnit).toBe("");
 	});
 
 	it("keeps the configured breadth when a later init does not mention it", async () => {
@@ -349,6 +410,130 @@ describe("certify_arms", () => {
 		);
 		expect(result.details?.winner).toBeNull();
 		expect(firstTextBlockText(result.content)).toContain("null round");
+	});
+	it("refuses a winner when every arm regressed against the segment baseline", async () => {
+		// The defect: the bar was the WORST measured arm, so the least bad
+		// regression won a round in which nothing improved, and was then logged as
+		// an improvement and re-applied. The bar is the baseline the segment is
+		// measured against.
+		const dir = freshRepo();
+		const runtime = createSessionRuntime();
+		const { storage, session } = await openSession(dir, runtime);
+		logBaseline(storage, session, 100);
+		const { certify } = tools(runtime);
+		const result = await certify.execute(
+			"call-2",
+			{
+				arms: [arm("a0", `${CLEAN_DIFF}# a0`, 140), arm("a1", `${CLEAN_DIFF}# a1`, 120)],
+				verdicts: [
+					{ arm: "a0", certified_by: "a1", flagged: false },
+					{ arm: "a1", certified_by: "a0", flagged: false },
+				],
+			} as never,
+			new AbortController().signal,
+			() => {},
+			createCtx(dir),
+		);
+		expect(result.details?.winner).toBeNull();
+		const text = firstTextBlockText(result.content);
+		expect(text).toContain("No arm beat the baseline of 100");
+		expect(text).toContain("null round");
+	});
+
+	it("keeps the arm that beat the baseline, and states the bar it beat", async () => {
+		const dir = freshRepo();
+		const runtime = createSessionRuntime();
+		const { storage, session } = await openSession(dir, runtime);
+		logBaseline(storage, session, 100);
+		const { certify } = tools(runtime);
+		const result = await certify.execute(
+			"call-2",
+			{
+				arms: [arm("a0", `${CLEAN_DIFF}# a0`, 140), arm("a1", `${CLEAN_DIFF}# a1`, 80)],
+				verdicts: [
+					{ arm: "a0", certified_by: "a1", flagged: false },
+					{ arm: "a1", certified_by: "a0", flagged: false },
+				],
+			} as never,
+			new AbortController().signal,
+			() => {},
+			createCtx(dir),
+		);
+		expect(result.details?.winner).toBe("a1");
+		expect(firstTextBlockText(result.content)).toContain("against the baseline of 100");
+	});
+
+	it("reads the baseline in the direction the session measures", async () => {
+		// `higher is better` inverts both the bar and the comparison. The two used
+		// to be derived from different places, so one direction picked the arm the
+		// other rejected.
+		const dir = freshRepo();
+		const runtime = createSessionRuntime();
+		const { storage, session } = await openSession(dir, runtime, { direction: "higher" });
+		logBaseline(storage, session, 100);
+		const { certify } = tools(runtime);
+		const result = await certify.execute(
+			"call-2",
+			{
+				arms: [arm("a0", `${CLEAN_DIFF}# a0`, 80), arm("a1", `${CLEAN_DIFF}# a1`, 130)],
+				verdicts: [
+					{ arm: "a0", certified_by: "a1", flagged: false },
+					{ arm: "a1", certified_by: "a0", flagged: false },
+				],
+			} as never,
+			new AbortController().signal,
+			() => {},
+			createCtx(dir),
+		);
+		expect(result.details?.winner).toBe("a1");
+	});
+
+	it("falls back to the sibling floor only while the segment has no baseline", async () => {
+		// Without a logged baseline there is nothing to beat, and electing no winner
+		// would stall the first iteration. The message states which bar was used, so
+		// the two situations are distinguishable.
+		const dir = freshRepo();
+		const runtime = createSessionRuntime();
+		await openSession(dir, runtime);
+		const { certify } = tools(runtime);
+		const result = await certify.execute(
+			"call-2",
+			{
+				arms: [arm("a0", `${CLEAN_DIFF}# a0`, 140), arm("a1", `${CLEAN_DIFF}# a1`, 120)],
+				verdicts: [
+					{ arm: "a0", certified_by: "a1", flagged: false },
+					{ arm: "a1", certified_by: "a0", flagged: false },
+				],
+			} as never,
+			new AbortController().signal,
+			() => {},
+			createCtx(dir),
+		);
+		expect(result.details?.winner).toBe("a1");
+		expect(firstTextBlockText(result.content)).toContain("against the worst arm of 140");
+	});
+
+	it("ignores a flagged run when reading the baseline", async () => {
+		// A flagged run is excluded from the baseline everywhere else, and a bar
+		// read off a gamed measurement would let the next arm inherit the game.
+		const dir = freshRepo();
+		const runtime = createSessionRuntime();
+		const { storage, session } = await openSession(dir, runtime);
+		logBaseline(storage, session, 20, { flagged: true });
+		logBaseline(storage, session, 100);
+		const { certify } = tools(runtime);
+		const result = await certify.execute(
+			"call-2",
+			{
+				arms: [arm("a0", `${CLEAN_DIFF}# a0`, 90)],
+				verdicts: [{ arm: "a0", certified_by: "director", flagged: false }],
+			} as never,
+			new AbortController().signal,
+			() => {},
+			createCtx(dir),
+		);
+		expect(result.details?.winner).toBe("a0");
+		expect(firstTextBlockText(result.content)).toContain("baseline of 100");
 	});
 
 	it("states relocated cost as a measured fact rather than trusting the headline", async () => {
