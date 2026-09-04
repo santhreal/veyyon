@@ -131,13 +131,13 @@ describe("a suite is named for the behavior it defends", () => {
 		expect(issueNamed).toEqual([]);
 	});
 
-	it("keeps packages/evals at zero module-named suites", () => {
+	it("keeps tests/evals at zero module-named suites", () => {
 		const { colliding } = collectModuleNamedSuites();
-		const evalsColliding = colliding.filter(file => file.startsWith("packages/evals/"));
+		const evalsColliding = colliding.filter(file => file.startsWith("tests/evals/"));
 		expect(evalsColliding).toEqual([]);
 
 		const baseline = readBaseline();
-		const evalsBaseline = baseline.filter(file => file.startsWith("packages/evals/"));
+		const evalsBaseline = baseline.filter(file => file.startsWith("tests/evals/"));
 		expect(evalsBaseline).toEqual([]);
 	});
 

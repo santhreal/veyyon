@@ -31,7 +31,7 @@ operator manual.
 |`packages/collab-web`|Browser guest client and local relay for collab live sessions (private)|
 |`plugins/mode-swarm`|Swarm orchestration extension|
 |`plugins/web`|Site scrapers that turn a URL into markdown: ~80 per-site handlers, the page loader escalation ladder and the Parallel extract client, running against host capabilities passed in rather than imported|
-|`packages/evals`|Every model and agent evaluation: the DeepSWE, Terminal-Bench 3.0 and TypeScript-edit suites, harness adapters, execution backends, run store, REST/SSE API and live dashboard (private)|
+|`tests/evals`|Every model and agent evaluation: the DeepSWE, Terminal-Bench 3.0 and TypeScript-edit suites, harness adapters, execution backends, run store, REST/SSE API and live dashboard (private)|
 |`tests/simulations`|Deterministic offline simulations driving real subsystems end to end (private)|
 |`natives/bridge/addon`|The napi addon: the only Rust surface TypeScript calls (grep, glob, text measurement, highlighting, clipboard, SIXEL)|
 |`natives/bridge/bindings`|Bindings for native text/image/grep operations|
@@ -410,7 +410,7 @@ argot. Never hand-roll handle logic here.
   in the pull request (off arm at the default, on arm with `SCENE_SETTINGS='argot.enabled: true'`) —
   off shows only the "Argot Shorthand" master toggle, on shows it plus Models, Dictionary Budget,
   Context Cutoff and Subagents — and the bench
-  `packages/evals/suites/typescript-edit/argot-bench.ts`, which runs the edit tasks with encoding on
+  `tests/evals/suites/typescript-edit/argot-bench.ts`, which runs the edit tasks with encoding on
   and off and certifies the token delta. `test/argot-settings-e2e.test.ts` asserts every Argot
   setting end to end, including that the knobs are hidden while off. Keep all of it current.
 

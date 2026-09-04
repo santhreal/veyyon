@@ -49,7 +49,7 @@ const PATH_LEDGERS = new Set([
  * Directory names the walk never enters: foreign trees, build output and the
  * untracked run artifacts a benchmark writes. Every name here is either not
  * checked in or holds no TypeScript, so a skip can never hide a test file.
- * `packages/evals/suites/deep-swe` and `packages/evals/test/suites/deep-swe` are
+ * `tests/evals/suites/deep-swe` and `tests/evals/test/suites/deep-swe` are
  * checked-in source and are walked.
  */
 const SKIP_DIRS = new Set(["node_modules", "dist", "target", "repo-cache", "runs", "assets"]);

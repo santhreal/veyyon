@@ -226,7 +226,7 @@ function docBases(relFile: string): string[] {
  * Paths the repository itself declares are generated, asked of `.gitignore`.
  *
  * A doc that names a build output names something no clean checkout contains:
- * `packages/evals/runs/` appears on the first benchmark run,
+ * `tests/evals/runs/` appears on the first benchmark run,
  * `natives/bridge/bindings/native/.build/` when napi-rs compiles, and
  * `tool-views.generated.js` when `bun run gen:tool-views` does. The gate reported
  * all of them as rot, and they are the opposite: a doc telling you where the

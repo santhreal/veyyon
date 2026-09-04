@@ -258,7 +258,7 @@ export const nativeAndIntegrationPackages = [
 	// Same omission as above. These two belong in this bucket rather than the fast
 	// one for the reason the comment gives: evals starts local servers and drives
 	// agent sessions against benchmark fixtures, and collab-web is browser-ish.
-	"packages/evals",
+	"tests/evals",
 	"packages/collab-web",
 ];
 

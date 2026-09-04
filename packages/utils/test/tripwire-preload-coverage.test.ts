@@ -116,7 +116,7 @@ describe("the root bunfig's test discovery", () => {
 	 * that reads exactly like a real regression in a 29,000-test sweep.
 	 */
 	it("prunes the eval suites' cloned repositories", () => {
-		expect(rootBunfig).toContain("packages/evals/datasets/repo-cache/**");
+		expect(rootBunfig).toContain("tests/evals/datasets/repo-cache/**");
 	});
 
 	/** The package-local config has to prune them too, because a `bun test` run

@@ -6,7 +6,7 @@
 
 - Typed tuple copies use spreads rather than `.concat()`, which a `as const` array does not define. No user-visible behavior changes.
 
-- A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `packages/bench/`; behavior is unchanged.
+- A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `tests/evals/`; behavior is unchanged.
 - A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
 - `CONTEXTUAL_USER_PREFIXES` is exported from the codex compaction module so the retained-window rule is asserted against the real list rather than a copy of it.
 - A source-path comment and the barrel-shortcut suite name the Perplexity search provider at `tools/web/search/providers/perplexity.ts`. No behavior change.

@@ -93,17 +93,17 @@
 			"!**/devin-gen/**/*",
 			"!.worktrees/**/*",
 			"!.wt/**/*",
-			"!packages/evals/datasets/repo-cache/**/*",
-			"!packages/evals/.cache/**/*",
-			"!packages/evals/runs/**/*",
+			"!tests/evals/datasets/repo-cache/**/*",
+			"!tests/evals/.cache/**/*",
+			"!tests/evals/runs/**/*",
 			"!runs/**/*",
-			"!packages/evals/datasets/deep-swe/corpus/**/*",
-			"!packages/evals/assets/**/*"
+			"!tests/evals/datasets/deep-swe/corpus/**/*",
+			"!tests/evals/assets/**/*"
 		]
 	},
 	"overrides": [
 		{
-			"includes": ["packages/evals/src/core/**", "packages/evals/src/harnesses/**"],
+			"includes": ["tests/evals/src/core/**", "tests/evals/src/harnesses/**"],
 			"linter": {
 				"rules": {
 					"style": {

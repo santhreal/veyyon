@@ -4,7 +4,7 @@
  * WHY THIS SUITE EXISTS. Four directories at the root hold output rather than source: `runs/` (the
  * default artifact sink for the benchmark harnesses), `website-get/` (staged by `website/build.mjs`
  * and deployed to get.veyyon.dev), `relative-cache/` (a Bun cache pile), and
- * `packages/evals/{runs,.cache,datasets/repo-cache,datasets/deep-swe/corpus}` (trial output, vendored
+ * `tests/evals/{runs,.cache,datasets/repo-cache,datasets/deep-swe/corpus}` (trial output, vendored
  * task corpora and cloned task repos, several gigabytes).
  * None of them is source, and each looks exactly like source to anyone reading `ls`.
  *
@@ -12,7 +12,7 @@
  * entry at all for a while, so every `git status` offered to add a Bun cache and any `git add -A`
  * would have taken it. Once a generated tree is committed, it is committed with whatever it happened
  * to contain that day, it conflicts on every machine, and removing it later reads as deleting real
- * files. The 4G of cloned upstream repositories under `packages/evals` is the version of this mistake
+ * files. The 4G of cloned upstream repositories under `tests/evals` is the version of this mistake
  * nobody recovers from casually.
  *
  * The staging assertion is the other half. `website-get/` must stay UNTRACKED and must still be
@@ -31,15 +31,15 @@ const GENERATED: ReadonlyArray<{ dir: string; ignoreEntry: string; why: string }
 	{ dir: "runs", ignoreEntry: "/runs/", why: "default artifact sink for the benchmark harnesses" },
 	{ dir: "website-get", ignoreEntry: "/website-get/", why: "staged by website/build.mjs, deployed to get.veyyon.dev" },
 	{ dir: "relative-cache", ignoreEntry: "relative-cache/", why: "Bun cache pile written at the repo root" },
-	{ dir: "packages/evals/runs", ignoreEntry: "runs/", why: "benchmark trial output" },
-	{ dir: "packages/evals/.cache", ignoreEntry: ".cache/", why: "vendored dataset checkouts" },
+	{ dir: "tests/evals/runs", ignoreEntry: "runs/", why: "benchmark trial output" },
+	{ dir: "tests/evals/.cache", ignoreEntry: ".cache/", why: "vendored dataset checkouts" },
 	{
-		dir: "packages/evals/datasets/repo-cache",
+		dir: "tests/evals/datasets/repo-cache",
 		ignoreEntry: "datasets/repo-cache/",
 		why: "cloned upstream task repositories",
 	},
 	{
-		dir: "packages/evals/datasets/deep-swe/corpus",
+		dir: "tests/evals/datasets/deep-swe/corpus",
 		ignoreEntry: "datasets/deep-swe/corpus/",
 		why: "vendored DeepSWE task corpus",
 	},
@@ -53,7 +53,7 @@ function trackedFileCount(dir: string): number {
 
 /** The ignore file that is expected to carry an entry, since evals has its own. */
 function ignoreFileFor(dir: string): string {
-	return dir.startsWith("packages/evals/") ? "packages/evals/.gitignore" : ".gitignore";
+	return dir.startsWith("tests/evals/") ? "tests/evals/.gitignore" : ".gitignore";
 }
 
 describe("generated directories at the root", () => {

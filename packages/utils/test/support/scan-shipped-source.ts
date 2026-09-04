@@ -24,7 +24,7 @@ import { SKIP_DIR_NAMES } from "./package-sources";
  */
 export function scanShippedSourceLines(repoRoot: string, pattern: RegExp): string[] {
 	// `packages/<pkg>/src/**` and nothing deeper: a run directory under a package
-	// (`packages/evals/runs/_bench/_deps/.../node_modules/<dep>/src/x.ts`) also ends
+	// (`tests/evals/runs/_bench/_deps/.../node_modules/<dep>/src/x.ts`) also ends
 	// in `src/`, and a vendored dependency is not this repository's shipped source.
 	const glob = new Glob("packages/*/src/**/*.ts");
 	const perLine = new RegExp(pattern.source, pattern.flags.replace("g", ""));

@@ -12,7 +12,7 @@
  * ceiling that walks through it.
  *
  * Three private benchmark packages had each of those costs paid three times over
- * for one purpose — measuring this product — and became `packages/evals`.
+ * for one purpose — measuring this product — and became `tests/evals`.
  *
  * WHAT THIS DOES NOT ASSERT. Which packages exist, and whether the tables
  * describe them: `scripts/package-map-coverage.test.ts` owns both directions of
@@ -34,7 +34,7 @@ import { typeScriptMembers } from "./workspace-layout";
  *
  * The count went 19 -> 17: `deepswe-bench`, `metaharness` and
  * `typescript-edit-benchmark` became suites, backends and a run store inside one
- * `packages/evals`, and `tests/simulations` stayed a package of its own
+ * `tests/evals`, and `tests/simulations` stayed a package of its own
  * because it drives real sessions rather than scoring models.
  *
  * `tool-render` was folded into `collab-web` here and then restored, which is

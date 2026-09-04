@@ -77,13 +77,13 @@ nothing in them is tracked:
 
 | Path | Written by |
 | --- | --- |
-| `runs/` | default artifact sink for the benchmark harnesses (`packages/evals`) |
+| `runs/` | default artifact sink for the benchmark harnesses (`tests/evals`) |
 | `website-get/` | `website/build.mjs`, deployed to get.veyyon.dev by the `deploy_website` CI job |
 | `relative-cache/` | Bun, at whatever directory it is invoked from |
-| `packages/evals/runs/` | benchmark trial output |
-| `packages/evals/.cache/` | vendored dataset checkouts (Terminal-Bench and friends) |
-| `packages/evals/datasets/repo-cache/` | cloned upstream task repositories (several gigabytes) |
-| `packages/evals/datasets/deep-swe/corpus/` | vendored DeepSWE task corpus |
+| `tests/evals/runs/` | benchmark trial output |
+| `tests/evals/.cache/` | vendored dataset checkouts (Terminal-Bench and friends) |
+| `tests/evals/datasets/repo-cache/` | cloned upstream task repositories (several gigabytes) |
+| `tests/evals/datasets/deep-swe/corpus/` | vendored DeepSWE task corpus |
 
 `scripts/root-layout.test.ts` asserts each one carries a deliberate ignore entry and tracks zero
 files, and that the `website-get/` staging step still exists — an ignore rule that outlives the build

@@ -21,7 +21,7 @@
 - Root help lists subcommands from the registry summaries when those are present, and from the loaded command classes otherwise.
 
 - Source-path comments in `ansi.ts` and `sgr.ts` name the terminal output-block at `src/modes/terminal/draw/output-block.ts`. No user-visible behavior changes.
-- Source-path comments in `ansi.ts` and `eval-prompt-overrides.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.
+- Source-path comments in `ansi.ts` and `eval-prompt-overrides.ts` name the benchmark modules they cite at their new paths under `tests/evals/`; behavior is unchanged.
 - `sanitize-text.ts` imports the escape byte from `@veyyon/utils/ansi` rather than declaring a second copy of it.
 - Source-path comments in `sanitize-text.ts`, `strip-ansi.ts`, `tab-spacing.ts` and `width.ts` name the Rust modules they cite at their new paths under `natives/`. No user-visible behavior changes.
 - Source-path comments in `adversarial-strings.ts`, `ansi.ts`, `tab-spacing.ts` and `width.ts` name the modules they cite at the paths those modules occupy: `visibleWidth`, `sliceWithWidth` and the ansi escape are `packages/utils` modules and their locks are `packages/utils` suites, while the adversarial-string helpers are `hosts/terminal/engine` test helpers. No user-visible behavior changes.
