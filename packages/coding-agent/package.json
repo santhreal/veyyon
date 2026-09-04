@@ -45,7 +45,7 @@
     "gen:mupdf:reset": "bun scripts/embed-mupdf-wasm.ts --reset",
     "gen:prompt-ids": "bun scripts/gen-prompt-ids.ts",
     "gen:native": "bun --cwd=../../natives/bridge/bindings run gen:native",
-    "gen:tool-views": "bun --cwd=../collab-web run gen:tool-views",
+    "gen:tool-views": "bun --cwd=../../clients/web run gen:tool-views",
     "gen:native:reset": "bun --cwd=../../natives/bridge/bindings run gen:native:reset",
     "prepack": "bun run gen:bundle",
     "bench:guard": "bun scripts/bench-guard.ts"

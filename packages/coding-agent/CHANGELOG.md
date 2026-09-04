@@ -182,6 +182,8 @@
 
 ### Fixed
 
+- `bun run gen:tool-views` in the coding-agent package uses the relocated `clients/web` generator.
+
 - A `web_search` refusal, missing-credential, or provider-failure result is marked `isError`, so the model sees the failure as a failure.
 - A tool result whose image-visibility notice is unchanged is memoized across turns instead of allocating a new wrapper each time.
 - `edit` and `apply_patch` share one renderer object again, so a host that groups by identity (streamed-arg keys, the first-result replay) treats them as the same card. No user-visible change.
