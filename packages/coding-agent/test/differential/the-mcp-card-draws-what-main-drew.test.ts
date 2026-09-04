@@ -23,9 +23,9 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { createMCPToolView, type MCPViewResult } from "@veyyon/coding-agent/mcp/view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import { formatOutputNotice, type OutputMeta } from "@veyyon/coding-agent/tools/core/output-meta";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import * as mcpOracle from "../oracles/mcp-main-renderer";
 import {
 	COLLAPSED,

@@ -43,8 +43,6 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { interactionFixtures } from "@veyyon/coding-agent/cli/gallery-fixtures/interaction";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
-import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
-import { bashToolView } from "@veyyon/coding-agent/tools/shell/bash-view";
 import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import {
 	findRailCell,
@@ -61,6 +59,8 @@ import {
 	railIdleIntensity,
 	railRowCount,
 } from "@veyyon/coding-agent/modes/terminal/draw/rail-motion";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
+import { bashToolView } from "@veyyon/coding-agent/tools/shell/bash-view";
 import type { TUI } from "@veyyon/tui";
 import { useFullColor } from "../../../helpers/theme-assertions";
 import { createToolExecution } from "../../../helpers/tool-execution";

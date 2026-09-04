@@ -12,6 +12,7 @@ import {
 	createIrcMessageCard,
 	type IrcMessageCard,
 } from "@veyyon/coding-agent/modes/terminal/components/transcript/irc-message";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { IrcMessage } from "@veyyon/coding-agent/task/irc-bus";
 import type { ThemeColor } from "@veyyon/coding-agent/theme/color";
 import type { SymbolKey } from "@veyyon/coding-agent/theme/symbols";
@@ -19,7 +20,6 @@ import { theme } from "@veyyon/coding-agent/theme/theme";
 import type { IrcDetails } from "@veyyon/coding-agent/tools/agent/irc";
 import { type IrcViewArgs, type IrcViewResult, ircToolView } from "@veyyon/coding-agent/tools/agent/irc-view";
 import { formatExpandHint, PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/core/render-utils";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext, ViewStatus } from "@veyyon/view";
 import * as ircOracle from "../oracles/irc-main-renderer";
 import {

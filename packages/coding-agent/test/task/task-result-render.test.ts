@@ -1,9 +1,9 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { viewToolRenderer } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { taskToolView } from "@veyyon/coding-agent/task/task-view";
 import type { AgentProgress, SingleResult, TaskToolDetails } from "@veyyon/coding-agent/task/types";
 import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/theme/theme";
-import { viewToolRenderer } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 
 /** The card the terminal draws from the task tool's view, which is what the product renders. */

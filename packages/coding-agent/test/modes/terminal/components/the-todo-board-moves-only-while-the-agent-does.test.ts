@@ -28,14 +28,14 @@ import {
 	todoBoardMarkerAnimates,
 	todoBoardRailTravels,
 } from "@veyyon/coding-agent/modes/terminal/components/dashboard/todo-board";
-import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
-import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
 import {
 	RAIL_IDLE_ROW_MS,
 	RAIL_IDLE_ROWS_PER_STEP,
 	RAIL_IDLE_STEP_MS,
 	railIdleHeadAtMs,
 } from "@veyyon/coding-agent/modes/terminal/draw/rail-motion";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
+import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 
 const EXPECTED_MOTION_FIELDS = ["agentInMotion", "live", "transitions"] as const;

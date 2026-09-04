@@ -31,10 +31,10 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import type { AskToolDetails } from "@veyyon/coding-agent/tools/agent/ask";
 import { type AskRenderArgs, type AskViewResult, askToolView } from "@veyyon/coding-agent/tools/agent/ask-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import { askMainRenderer } from "../oracles/ask-main-renderer";
 import { HOST_EXPANDED, renderCompLines, useDifferentialTheme, WIDTH } from "./harness";

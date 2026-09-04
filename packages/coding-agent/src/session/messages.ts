@@ -937,11 +937,6 @@ function isAnsweredBatchLedgerNotice(messages: AgentMessage[], index: number, me
  * demotion and a failed format conversion are decided later, by the block that
  * drew them, and reach the sentence through the record that block keeps.
  */
-const imageVisibilityCache = new WeakMap<
-	ToolResultMessage,
-	{ sourceContent: unknown; notice: string | undefined; stamped: ToolResultMessage }
->();
-
 function statePlacedImageVisibility(message: ToolResultMessage): ToolResultMessage {
 	const images = message.content.filter(block => block.type === "image").length;
 	if (images === 0) return message;

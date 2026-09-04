@@ -23,8 +23,8 @@
 
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { theme } from "@veyyon/coding-agent/theme/theme";
 import { drawFramedBlock } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { theme } from "@veyyon/coding-agent/theme/theme";
 import { visibleWidth } from "@veyyon/utils/width";
 import type { FramedBlockView, StatusRowView } from "@veyyon/view";
 import { useDifferentialTheme } from "../../../differential/harness";

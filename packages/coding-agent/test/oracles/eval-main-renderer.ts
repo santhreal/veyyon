@@ -15,6 +15,12 @@ import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import type { EvalCellResult, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "@veyyon/coding-agent/eval/types";
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import { truncateToVisualLines } from "@veyyon/coding-agent/modes/terminal/components/transcript/visual-truncate";
+import {
+	markFramedBlockComponent,
+	outputBlockContentWidth,
+	renderCodeCell,
+	renderOutputBlock,
+} from "@veyyon/coding-agent/modes/terminal/draw";
 import { expandHintSuffix } from "@veyyon/coding-agent/modes/terminal/utils/key-hint";
 import { getMarkdownTheme } from "@veyyon/coding-agent/theme/markdown-theme";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
@@ -40,12 +46,6 @@ import {
 	truncateToWidth,
 	wrapBrackets,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import {
-	markFramedBlockComponent,
-	outputBlockContentWidth,
-	renderCodeCell,
-	renderOutputBlock,
-} from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Component } from "@veyyon/tui";
 import { Markdown, Text } from "@veyyon/tui";
 // `formatContextUsage` moved into the shared formatter leaf on this branch, so a domain view can

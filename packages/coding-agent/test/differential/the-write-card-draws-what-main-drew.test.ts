@@ -8,10 +8,10 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import { formatExpandHint } from "@veyyon/coding-agent/tools/core/render-utils";
 import { type WriteViewArgs, type WriteViewResult, writeToolView } from "@veyyon/coding-agent/tools/fs/write-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import * as writeOracle from "../oracles/write-main-renderer";
 import {

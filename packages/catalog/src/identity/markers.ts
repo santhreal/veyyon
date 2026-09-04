@@ -41,6 +41,6 @@ const REFERENCE_ONLY_TRAILING_MARKERS = ["search"] as const;
 
 /** Marker pattern used by proxy-reference lookup (`search` included). */
 export const REFERENCE_TRAILING_MARKER_PATTERN = new RegExp(
-	`[-:](?:${TRAILING_MARKERS.concat(REFERENCE_ONLY_TRAILING_MARKERS).join("|")})$`,
+	`[-:](?:${[...TRAILING_MARKERS, ...REFERENCE_ONLY_TRAILING_MARKERS].join("|")})$`,
 	"i",
 );

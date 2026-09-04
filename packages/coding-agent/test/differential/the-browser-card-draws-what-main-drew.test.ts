@@ -16,6 +16,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	formatOutputNotice,
@@ -29,7 +30,6 @@ import {
 	type BrowserViewResult,
 	browserToolView,
 } from "@veyyon/coding-agent/tools/web/browser/view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolView, ToolViewContext } from "@veyyon/view";
 import * as browserOracle from "../oracles/browser-main-renderer";
 import {

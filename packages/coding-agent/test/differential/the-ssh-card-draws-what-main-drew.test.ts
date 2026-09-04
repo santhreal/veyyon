@@ -14,12 +14,12 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { getStateBgColor } from "@veyyon/coding-agent/modes/terminal/draw/utils";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import { formatTruncationMetaNotice, type TruncationMeta } from "@veyyon/coding-agent/tools/core/output-notice";
 import { PREVIEW_LIMITS, previewWindowRows } from "@veyyon/coding-agent/tools/core/render-utils";
 import { type SshViewArgs, type SshViewResult, sshToolView } from "@veyyon/coding-agent/tools/shell/ssh-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
-import { getStateBgColor } from "@veyyon/coding-agent/modes/terminal/draw/utils";
 import type { ToolViewContext } from "@veyyon/view";
 import * as sshOracle from "../oracles/ssh-main-renderer";
 import { HOST_COLLAPSED, HOST_EXPANDED, renderCompLines, useDifferentialTheme, WIDTH } from "./harness";

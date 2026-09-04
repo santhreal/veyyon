@@ -4,7 +4,6 @@ import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { LocalProtocolHandler } from "@veyyon/coding-agent/internal-urls/local-protocol";
 import { tryResolveInternalUrlSync } from "@veyyon/coding-agent/internal-urls/resolve-sync";
-import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import {
 	fileHyperlink,
 	isHyperlinkEnabled,
@@ -12,6 +11,7 @@ import {
 	urlHyperlink,
 	urlHyperlinkAlways,
 } from "@veyyon/coding-agent/modes/terminal/draw/hyperlink";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import * as terminalCaps from "@veyyon/tui";
 
 // OSC 8 sequence markers

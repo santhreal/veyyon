@@ -13,6 +13,7 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	type MemoryViewResult,
@@ -21,7 +22,6 @@ import {
 	retainToolView,
 } from "@veyyon/coding-agent/tools/agent/memory-view";
 import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/core/render-utils";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolView, ToolViewContext } from "@veyyon/view";
 import * as memoryOracle from "../oracles/memory-main-renderer";
 import { COLLAPSED, EXPANDED, HOST_COLLAPSED, renderCompLines, useDifferentialTheme } from "./harness";

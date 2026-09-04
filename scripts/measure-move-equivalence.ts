@@ -299,8 +299,7 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 	{
 		name: "plugin-source",
 		matches: relative => /^plugins\/[^/]+\/src\//.test(relative),
-		reason:
-			"A plugin left packages/ for plugins/. Relative imports and array copies follow the move.",
+		reason: "A plugin left packages/ for plugins/. Relative imports and array copies follow the move.",
 	},
 	{
 		name: "host-boundary",
@@ -316,8 +315,7 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 	{
 		name: "colocated-test",
 		matches: relative => relative.startsWith("packages/coding-agent/test/"),
-		reason:
-			"A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
+		reason: "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
 	},
 	{
 		name: "kernel-absorption",

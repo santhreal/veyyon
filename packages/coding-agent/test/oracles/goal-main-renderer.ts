@@ -7,10 +7,10 @@
 
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import type { GoalStatus, GoalToolDetails } from "@veyyon/coding-agent/goals/state";
+import { framedBlock, renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw";
 import { formatDurationCoarse } from "@veyyon/coding-agent/slash-commands/helpers/format";
 import type { Theme, ThemeColor } from "@veyyon/coding-agent/theme/theme";
 import { formatErrorDetail, TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/core/render-utils";
-import { framedBlock, renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { formatNumber } from "@veyyon/utils";

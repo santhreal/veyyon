@@ -191,17 +191,17 @@ import { wrapToolWithMetaNotice } from "./tools/core/output-meta";
 import { createRepairToolCallArgumentsHook } from "./tools/core/repair/agent-hook";
 import { renderSearchToolBm25Description, SearchToolBm25Tool } from "./tools/search/search-tool-bm25";
 import { getImageGenTools, isImageProviderPreference, setPreferredImageProvider } from "./tools/web/image-gen";
-import { ttsTool } from "./tools/web/tts";
-import { resolveActiveRepoContext } from "./utils/active-repo-context";
-import { EventBus } from "./utils/event-bus";
-import { buildNamedToolChoice } from "./utils/tool-choice";
 import {
 	getSearchTools,
 	isSearchProviderId,
 	isSearchProviderPreference,
 	setExcludedSearchProviders,
 	setPreferredSearchProvider,
-} from "./web/search";
+} from "./tools/web/search";
+import { ttsTool } from "./tools/web/tts";
+import { resolveActiveRepoContext } from "./utils/active-repo-context";
+import { EventBus } from "./utils/event-bus";
+import { buildNamedToolChoice } from "./utils/tool-choice";
 import { buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
 
 // Types

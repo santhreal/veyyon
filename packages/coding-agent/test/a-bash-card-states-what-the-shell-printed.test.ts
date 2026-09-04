@@ -24,11 +24,11 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/core/render-utils";
 import { BASH_DEFAULT_PREVIEW_LINES } from "@veyyon/coding-agent/tools/shell/bash";
 import { type BashViewArgs, type BashViewResult, bashToolView } from "@veyyon/coding-agent/tools/shell/bash-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { ImageProtocol, TERMINAL } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
 import type { FramedBlockView, ToolView, ToolViewContext } from "@veyyon/view";

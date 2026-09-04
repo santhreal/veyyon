@@ -28,7 +28,9 @@
 
 ### Changed
 
-- Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
+- Typed tuple and Set copies use spreads rather than `.concat()` or `.slice()`, which those types do not define. No user-visible behavior changes.
+- `web_search` is constructed from `tools/web/search` rather than the retired `web/search` module. No user-visible behavior changes.
+- `normalizeRoots` takes one working-directory string. No user-visible behavior changes.
 - `createCachedComponent` lives in `modes/terminal/draw/utils` with the rest of the terminal drawing helpers, and the source map no longer lists `src/web/` or `src/swarm/` as top-level directories. No user-visible behavior changes.
 - Tests that lived under retired folder names (`test/tui`, `test/capability`, `test/web`, `test/vibe`, `test/repair`, and the other pre-cutover aliases) now sit next to the source they cover. No user-visible behavior changes.
 

@@ -27,7 +27,11 @@ import {
 	TINY_TITLE_MODEL_OPTIONS,
 	TINY_TITLE_MODEL_VALUES,
 } from "../../tiny/models";
-import { SEARCH_PROVIDER_OPTIONS, SEARCH_PROVIDER_PREFERENCES, type SearchProviderId } from "../../tools/web/search/types";
+import {
+	SEARCH_PROVIDER_OPTIONS,
+	SEARCH_PROVIDER_PREFERENCES,
+	type SearchProviderId,
+} from "../../tools/web/search/types";
 import { unsetNumberOption } from "../optional-number";
 
 /** Providers domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */

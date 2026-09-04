@@ -11,6 +11,13 @@
  */
 
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import {
+	fileHyperlink,
+	framedBlock,
+	outputBlockContentWidth,
+	renderStatusLine,
+	truncateToWidth,
+} from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import { classifyGroupedLines, groupLineIndicesByBlank } from "@veyyon/coding-agent/tools/core/grouped-file-output";
 import { toPathList } from "@veyyon/coding-agent/tools/core/path-utils";
@@ -30,13 +37,6 @@ import {
 	type StructureSearchDetails,
 	type StructureSearchRenderArgs,
 } from "@veyyon/coding-agent/tools/search/structure-search";
-import {
-	fileHyperlink,
-	framedBlock,
-	outputBlockContentWidth,
-	renderStatusLine,
-	truncateToWidth,
-} from "@veyyon/coding-agent/modes/terminal/draw";
 import { Ellipsis } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";

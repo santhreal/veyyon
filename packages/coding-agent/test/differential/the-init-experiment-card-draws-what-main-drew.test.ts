@@ -8,8 +8,8 @@
 import { describe, expect, it } from "bun:test";
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { createInitExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/init-experiment";
-import { theme } from "@veyyon/coding-agent/theme/theme";
 import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { theme } from "@veyyon/coding-agent/theme/theme";
 import * as initExperimentOracle from "../oracles/init-experiment-main-renderer";
 import {
 	autoresearchOptions,

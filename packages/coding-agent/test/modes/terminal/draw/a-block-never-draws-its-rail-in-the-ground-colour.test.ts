@@ -33,10 +33,10 @@
 
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
+import { renderOutputBlock } from "@veyyon/coding-agent/modes/terminal/draw/output-block";
 import { getBuiltinThemes } from "@veyyon/coding-agent/theme/builtin-themes";
 import { resetGroundTintsForTest, setDetectedTerminalGround } from "@veyyon/coding-agent/theme/ground-tints";
 import { createTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
-import { renderOutputBlock } from "@veyyon/coding-agent/modes/terminal/draw/output-block";
 import { useFullColor } from "../../../helpers/theme-assertions";
 
 /** Every block state a renderer may pass, plus the stateless block. */

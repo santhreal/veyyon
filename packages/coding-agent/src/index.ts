@@ -130,9 +130,9 @@ export * from "./tools/shell/ssh";
 export * from "./tools/web/browser";
 export * from "./tools/web/gh";
 export * from "./tools/web/image-gen";
+export * from "./tools/web/search";
 export * from "./tools/web/tts";
 export * from "./utils/git";
-export * from "./tools/web/search";
 // UI components for extensions
 export {
 	HookEditorComponent as ExtensionEditorComponent,

@@ -8,8 +8,8 @@
 import { describe, expect, it } from "bun:test";
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { createUpdateNotesTool } from "@veyyon/coding-agent/autoresearch/tools/update-notes";
-import { theme } from "@veyyon/coding-agent/theme/theme";
 import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { theme } from "@veyyon/coding-agent/theme/theme";
 import * as updateNotesOracle from "../oracles/update-notes-main-renderer";
 import {
 	autoresearchOptions,

@@ -3,10 +3,10 @@ import type { RenderResultOptions } from "@veyyon/agent-core";
 import type { SettingPath, SettingValue } from "@veyyon/coding-agent/config/settings";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import type { RetryRecoveryMode } from "@veyyon/coding-agent/modes/retry-display";
+import { viewToolRenderer } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { taskToolView } from "@veyyon/coding-agent/task/task-view";
 import type { AgentProgress, SingleResult, TaskToolDetails } from "@veyyon/coding-agent/task/types";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
-import { viewToolRenderer } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { useFullColor } from "../helpers/theme-assertions";
 
 /** The card the terminal draws from the task tool's view, which is what the product renders. */

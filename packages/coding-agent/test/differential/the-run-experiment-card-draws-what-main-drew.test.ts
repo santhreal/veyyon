@@ -9,8 +9,8 @@ import { describe, expect, it } from "bun:test";
 import { DEFAULT_HARNESS_COMMAND } from "@veyyon/coding-agent/autoresearch/tools/init-experiment";
 import { createRunExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/run-experiment";
 import type { RunDetails, RunExperimentProgressDetails } from "@veyyon/coding-agent/autoresearch/types";
-import { theme } from "@veyyon/coding-agent/theme/theme";
 import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { theme } from "@veyyon/coding-agent/theme/theme";
 import * as runExperimentOracle from "../oracles/run-experiment-main-renderer";
 import {
 	autoresearchOptions,

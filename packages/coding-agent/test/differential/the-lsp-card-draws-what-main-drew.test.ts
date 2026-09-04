@@ -46,8 +46,8 @@ import path from "node:path";
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import type { LspParams } from "@veyyon/coding-agent/lsp/types";
 import { type LspViewResult, lspToolView } from "@veyyon/coding-agent/lsp/view";
-import { theme } from "@veyyon/coding-agent/theme/theme";
 import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { theme } from "@veyyon/coding-agent/theme/theme";
 import { lspToolRenderer } from "../oracles/lsp-main-renderer";
 import { renderCompLines, useDifferentialTheme, WIDTH } from "./harness";
 

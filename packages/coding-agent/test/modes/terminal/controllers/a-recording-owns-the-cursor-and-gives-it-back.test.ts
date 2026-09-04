@@ -23,13 +23,20 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:
 import type { TUI } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/utils/width";
 import { Settings, settings } from "../../../../src/config/settings";
-import { VoiceController, type VoiceControllerContext } from "../../../../src/modes/terminal/controllers/voice-controller";
+import {
+	VoiceController,
+	type VoiceControllerContext,
+} from "../../../../src/modes/terminal/controllers/voice-controller";
 import * as downloader from "../../../../src/speech/stt/downloader";
 import * as recorder from "../../../../src/speech/stt/recorder";
 import { STTController, type SttState } from "../../../../src/speech/stt/stt-controller";
 import * as transcriber from "../../../../src/speech/stt/transcriber";
 import { initTheme, theme } from "../../../../src/theme/theme";
-import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../../../helpers/settings-test-state";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "../../../helpers/settings-test-state";
 
 type ComposerEditor = VoiceControllerContext["editor"];
 

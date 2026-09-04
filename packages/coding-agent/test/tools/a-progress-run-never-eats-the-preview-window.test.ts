@@ -24,6 +24,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { truncateToVisualLines } from "@veyyon/coding-agent/modes/terminal/components/transcript/visual-truncate";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import {
 	collapseProgressRuns,
@@ -32,7 +33,6 @@ import {
 } from "@veyyon/coding-agent/tools/core/render-utils";
 import { bashToolView } from "@veyyon/coding-agent/tools/shell/bash-view";
 import { evalToolView } from "@veyyon/coding-agent/tools/shell/eval-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
 
 const ORIGINAL_ROWS = Object.getOwnPropertyDescriptor(process.stdout, "rows");

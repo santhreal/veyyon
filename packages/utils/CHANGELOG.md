@@ -17,7 +17,8 @@
 
 ### Changed
 
-- Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
+- Typed tuple and Set copies use spreads rather than `.concat()` or `.slice()`, which those types do not define. No user-visible behavior changes.
+- Root help lists subcommands from the registry summaries when those are present, and from the loaded command classes otherwise.
 
 - Source-path comments in `ansi.ts` and `sgr.ts` name the terminal output-block at `src/modes/terminal/draw/output-block.ts`. No user-visible behavior changes.
 - Source-path comments in `ansi.ts` and `eval-prompt-overrides.ts` name the benchmark modules they cite at their new paths under `packages/bench/`; behavior is unchanged.

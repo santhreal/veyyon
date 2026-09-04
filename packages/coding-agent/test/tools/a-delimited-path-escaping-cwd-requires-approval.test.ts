@@ -33,6 +33,7 @@ import type { AgentToolContext } from "@veyyon/agent-core";
 import { AuthStorage } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
@@ -45,7 +46,6 @@ import {
 } from "@veyyon/coding-agent/tools/core/path-utils";
 import { shortenPath } from "@veyyon/coding-agent/tools/core/render-utils";
 import { readToolView } from "@veyyon/coding-agent/tools/fs/read-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 describe("a delimited path escaping cwd requires approval", () => {

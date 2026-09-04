@@ -11,6 +11,14 @@
  */
 
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import {
+	createCachedComponent,
+	Ellipsis,
+	framedBlock,
+	renderStatusLine,
+	type State,
+	truncateToWidth,
+} from "@veyyon/coding-agent/modes/terminal/draw";
 import type { IrcDeliveryReceipt } from "@veyyon/coding-agent/task/irc-bus";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import type { IrcDetails, IrcParams } from "@veyyon/coding-agent/tools/agent/irc";
@@ -23,14 +31,6 @@ import {
 	replaceTabs,
 	type ToolUIColor,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import {
-	createCachedComponent,
-	Ellipsis,
-	framedBlock,
-	renderStatusLine,
-	type State,
-	truncateToWidth,
-} from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Component } from "@veyyon/tui";
 import { formatAge, formatDuration } from "@veyyon/utils";
 

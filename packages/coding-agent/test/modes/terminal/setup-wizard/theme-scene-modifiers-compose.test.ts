@@ -27,7 +27,11 @@ import type {
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { getProjectAgentDir, TempDir } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
-import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../../../helpers/settings-test-state";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "../../../helpers/settings-test-state";
 
 const ENTER = "\r";
 const WIDTH = 90;

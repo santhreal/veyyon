@@ -26,10 +26,10 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { EvalCellResult, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "@veyyon/coding-agent/eval/types";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/theme/theme";
 import { previewWindowRows } from "@veyyon/coding-agent/tools/core/render-utils";
 import { type EvalRenderArgs, type EvalViewResult, evalToolView } from "@veyyon/coding-agent/tools/shell/eval-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import type { FramedBlockView, StatusRowView, ToolView, ToolViewContext, ViewSection, ViewStatus } from "@veyyon/view";
 

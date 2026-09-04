@@ -10,6 +10,9 @@
  */
 
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { fileHyperlink } from "@veyyon/coding-agent/modes/terminal/draw/hyperlink";
+import { framedBlock } from "@veyyon/coding-agent/modes/terminal/draw/output-block";
+import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw/status-line";
 import { highlightCode } from "@veyyon/coding-agent/theme/highlight";
 import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
 import {
@@ -32,9 +35,6 @@ import {
 	WRITE_STREAMING_PREVIEW_LINES,
 	type WriteToolDetails,
 } from "@veyyon/coding-agent/tools/fs/write";
-import { fileHyperlink } from "@veyyon/coding-agent/modes/terminal/draw/hyperlink";
-import { framedBlock } from "@veyyon/coding-agent/modes/terminal/draw/output-block";
-import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw/status-line";
 import { getLanguageFromPath } from "@veyyon/coding-agent/utils/lang-from-path";
 import type { Component } from "@veyyon/tui";
 import { formatCount } from "@veyyon/utils";

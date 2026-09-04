@@ -39,8 +39,6 @@ import type {
 	ViewTreeLines,
 } from "@veyyon/view";
 import type { RenderResultOptions } from "../../../extensibility/custom-tools/types";
-import { paintHotTail, shimmerPhase } from "../components/chrome/follow";
-import { renderDiff } from "../components/transcript/diff";
 import { highlightCode } from "../../../theme/highlight";
 import { getMarkdownTheme } from "../../../theme/markdown-theme";
 import { shimmerEnabled, shimmerText } from "../../../theme/shimmer";
@@ -55,6 +53,8 @@ import {
 } from "../../../tools/core/render-utils";
 import type { ToolUIStatus } from "../../../tools/core/tool-ui-status";
 import type { FirstResultViewportRepaint } from "../../../tools/renderers";
+import { paintHotTail, shimmerPhase } from "../components/chrome/follow";
+import { renderDiff } from "../components/transcript/diff";
 import { fileHyperlink, urlHyperlink } from "./hyperlink";
 import { framedBlock, outputBlockContentWidth } from "./output-block";
 import { renderStatusLine } from "./status-line";

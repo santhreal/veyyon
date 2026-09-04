@@ -35,9 +35,9 @@ import {
 	type TodoBoardOptions,
 	todoBoardIsLive,
 } from "@veyyon/coding-agent/modes/terminal/components/dashboard/todo-board";
+import { paintRailMotion, railIdleHeadAt } from "@veyyon/coding-agent/modes/terminal/draw/rail-motion";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
-import { paintRailMotion, railIdleHeadAt } from "@veyyon/coding-agent/modes/terminal/draw/rail-motion";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { TODO_STATUSES } from "@veyyon/wire";
 

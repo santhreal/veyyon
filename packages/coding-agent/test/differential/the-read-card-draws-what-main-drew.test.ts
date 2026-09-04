@@ -28,6 +28,7 @@ import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { settings } from "@veyyon/coding-agent/config/settings";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	formatOutputNotice,
@@ -36,7 +37,6 @@ import {
 } from "@veyyon/coding-agent/tools/core/output-notice";
 import type { ReadRenderArgs, ReadToolDetails } from "@veyyon/coding-agent/tools/fs/read";
 import { type ReadViewResult, readToolView } from "@veyyon/coding-agent/tools/fs/read-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import { readToolRenderer } from "../oracles/read-main-renderer";
 import { HOST_COLLAPSED, HOST_EXPANDED, renderCompLines, useDifferentialTheme, WIDTH } from "./harness";

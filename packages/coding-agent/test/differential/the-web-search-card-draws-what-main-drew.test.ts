@@ -37,8 +37,8 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
-import { theme } from "@veyyon/coding-agent/theme/theme";
 import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { theme } from "@veyyon/coding-agent/theme/theme";
 import type { SearchRenderDetails, SearchResponse } from "@veyyon/coding-agent/tools/web/search/types";
 import {
 	type WebSearchViewArgs,

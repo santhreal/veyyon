@@ -8,6 +8,7 @@
  */
 
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw";
 import type { VibeCli, VibeScreenSnapshot, VibeSessionState } from "@veyyon/coding-agent/session/vibe-runtime";
 import { oneLineLabel } from "@veyyon/coding-agent/task/types";
 import { shimmerEnabled, shimmerText } from "@veyyon/coding-agent/theme/shimmer";
@@ -23,7 +24,6 @@ import {
 	type ToolUIStatus,
 	truncateToWidth,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 

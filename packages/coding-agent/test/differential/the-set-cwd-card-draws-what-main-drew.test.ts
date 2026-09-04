@@ -16,11 +16,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import type { AgentToolResult, RenderResultOptions } from "@veyyon/agent-core";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import { TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/core/render-utils";
 import { SET_CWD_TOOL_NAME } from "@veyyon/coding-agent/tools/fs/reroot-hint";
 import { type SetCwdToolDetails, setCwdToolView } from "@veyyon/coding-agent/tools/fs/set-cwd";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import * as setCwdOracle from "../oracles/set-cwd-main-renderer";
 import {
 	COLLAPSED,

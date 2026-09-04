@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { IrcMessage } from "@veyyon/coding-agent/task/irc-bus";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import type { IrcDetails } from "@veyyon/coding-agent/tools/agent/irc";
 import { type IrcViewArgs, type IrcViewResult, ircToolView } from "@veyyon/coding-agent/tools/agent/irc-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { sanitizeText } from "@veyyon/utils";
 
 async function theme() {

@@ -12,6 +12,8 @@
 
 import { formatSessionSnapshot } from "@veyyon/coding-agent/debug/session-snapshot";
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { CachedOutputBlock, markFramedBlockComponent } from "@veyyon/coding-agent/modes/terminal/draw/output-block";
+import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw/status-line";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	formatExpandHint,
@@ -22,8 +24,6 @@ import {
 } from "@veyyon/coding-agent/tools/core/render-utils";
 import { formatStatusIcon } from "@veyyon/coding-agent/tools/core/tool-ui-status";
 import type { DebugParams, DebugToolDetails } from "@veyyon/coding-agent/tools/shell/debug";
-import { CachedOutputBlock, markFramedBlockComponent } from "@veyyon/coding-agent/modes/terminal/draw/output-block";
-import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw/status-line";
 import { type Component, Text } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";
 import { truncateToWidth } from "@veyyon/utils/width";

@@ -29,7 +29,11 @@ import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/terminal/compone
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import { Text } from "@veyyon/tui";
-import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../../../helpers/settings-test-state";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "../../../helpers/settings-test-state";
 
 /** Widths a block is asked for: one narrow enough to wrap every preview row, one roomy. */
 const WIDTHS = [60, 100] as const;

@@ -18,6 +18,8 @@
  */
 
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/modes/terminal/draw";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import { formatErrorMessage, replaceTabs, TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { FileSearchDetails, FileSearchRenderArgs } from "@veyyon/coding-agent/tools/search/file-search";
@@ -33,8 +35,6 @@ import {
 } from "@veyyon/coding-agent/tools/search/structure-search-view";
 import type { TextSearchDetails, TextSearchRenderArgs } from "@veyyon/coding-agent/tools/search/text-search";
 import { type TextSearchViewResult, textSearchToolView } from "@veyyon/coding-agent/tools/search/text-search-view";
-import { renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/modes/terminal/draw";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { isRecord } from "@veyyon/utils";

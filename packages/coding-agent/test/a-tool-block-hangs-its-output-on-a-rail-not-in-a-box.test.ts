@@ -46,12 +46,12 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
-import { initTheme, setThemeInstance, theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	type OutputBlockOptions,
 	outputBlockContentWidth,
 	renderOutputBlock,
 } from "@veyyon/coding-agent/modes/terminal/draw/output-block";
+import { initTheme, setThemeInstance, theme } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TERMINAL, type TUI } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/utils/width";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";

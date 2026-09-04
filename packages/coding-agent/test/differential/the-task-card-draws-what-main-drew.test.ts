@@ -49,11 +49,11 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { taskToolView } from "@veyyon/coding-agent/task/task-view";
 import type { AgentProgress, SingleResult, TaskParams, TaskToolDetails } from "@veyyon/coding-agent/task/types";
 import { UNICODE_SYMBOLS } from "@veyyon/coding-agent/theme/symbols";
 import { theme } from "@veyyon/coding-agent/theme/theme";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import * as taskOracle from "../oracles/task-main-renderer";
 import { renderCompLines, useDifferentialTheme, WIDTH } from "./harness";

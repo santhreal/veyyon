@@ -14,6 +14,12 @@ import { formatExitCodeNotice } from "@veyyon/coding-agent/exec/exit-notice";
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import { paintHotTail, shimmerPhase } from "@veyyon/coding-agent/modes/terminal/components/chrome/follow";
 import { truncateToVisualLines } from "@veyyon/coding-agent/modes/terminal/components/transcript/visual-truncate";
+import {
+	CachedOutputBlock,
+	markFramedBlockComponent,
+	outputBlockContentWidth,
+} from "@veyyon/coding-agent/modes/terminal/draw/output-block";
+import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw/status-line";
 import { expandHintSuffix } from "@veyyon/coding-agent/modes/terminal/utils/key-hint";
 import { highlightCode } from "@veyyon/coding-agent/theme/highlight";
 import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
@@ -34,12 +40,6 @@ import {
 	type BashToolDetails,
 	formatBackgroundNotice,
 } from "@veyyon/coding-agent/tools/shell/bash";
-import {
-	CachedOutputBlock,
-	markFramedBlockComponent,
-	outputBlockContentWidth,
-} from "@veyyon/coding-agent/modes/terminal/draw/output-block";
-import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw/status-line";
 import { getSixelLineMask } from "@veyyon/coding-agent/utils/sixel";
 import type { Component } from "@veyyon/tui";
 import { ImageProtocol, TERMINAL } from "@veyyon/tui";

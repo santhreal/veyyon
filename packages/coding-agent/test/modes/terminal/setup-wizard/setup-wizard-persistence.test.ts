@@ -10,8 +10,15 @@ import {
 import { ALL_SCENES } from "@veyyon/coding-agent/modes/terminal/setup-wizard/index";
 import type { SetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/types";
 import { getProjectAgentDir, TempDir } from "@veyyon/utils";
-import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../../../utils/test/helpers/isolated-config-root";
-import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../../../helpers/settings-test-state";
+import {
+	enterIsolatedConfigRoot,
+	type IsolatedConfigRoot,
+} from "../../../../../utils/test/helpers/isolated-config-root";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "../../../helpers/settings-test-state";
 
 // DOG-R2-11: the setup/welcome wizard was reported showing after EVERY update but
 // NOT on first install. The chosen contract: onboard on the FIRST install and

@@ -486,7 +486,12 @@ export class OverlayStack {
 	 * native scrollback. `footerTop` is the screen row the pinned footer starts on; overlays with
 	 * `aboveFooter` end above it.
 	 */
-	compositeIntoWindow(window: string[], termWidth: number, termHeight: number, footerTop: number = termHeight): string[] {
+	compositeIntoWindow(
+		window: string[],
+		termWidth: number,
+		termHeight: number,
+		footerTop: number = termHeight,
+	): string[] {
 		const result = [...window];
 		for (const entry of this.#entries) {
 			if (!this.isVisible(entry)) continue;

@@ -11,11 +11,11 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { settings } from "@veyyon/coding-agent/config/settings";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import { formatExpandHint } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { ReadUrlToolDetails } from "@veyyon/coding-agent/tools/web/fetch";
 import { type ReadUrlViewResult, readUrlToolView } from "@veyyon/coding-agent/tools/web/fetch-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import * as fetchOracle from "../oracles/fetch-main-renderer";
 import {
 	COLLAPSED,

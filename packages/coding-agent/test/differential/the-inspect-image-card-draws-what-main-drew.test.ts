@@ -16,6 +16,7 @@ import { describe, expect, it } from "bun:test";
 import { homedir } from "node:os";
 import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import { TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { InspectImageToolDetails } from "@veyyon/coding-agent/tools/fs/inspect-image";
@@ -24,7 +25,6 @@ import {
 	type InspectImageViewResult,
 	inspectImageToolView,
 } from "@veyyon/coding-agent/tools/fs/inspect-image-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import * as inspectImageOracle from "../oracles/inspect-image-main-renderer";
 import {

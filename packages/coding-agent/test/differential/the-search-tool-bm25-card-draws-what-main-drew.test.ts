@@ -17,6 +17,7 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import { formatExpandHint, TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/core/render-utils";
 import type {
@@ -28,7 +29,6 @@ import {
 	type SearchToolBm25ViewResult,
 	searchToolBm25ToolView,
 } from "@veyyon/coding-agent/tools/search/search-tool-bm25-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { ToolViewContext } from "@veyyon/view";
 import * as searchToolBm25Oracle from "../oracles/search-tool-bm25-main-renderer";

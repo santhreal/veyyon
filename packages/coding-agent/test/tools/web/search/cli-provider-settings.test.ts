@@ -10,8 +10,12 @@ import {
 } from "@veyyon/coding-agent/tools/web/search/provider";
 import { setAgentDir, TempDir } from "@veyyon/utils";
 import { __resetDirsFromEnvForTests, getActiveAuthDbPath } from "@veyyon/utils/dirs";
-import { runSearchCommand } from "../../../../../src/cli/web-search-cli";
-import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../../../../helpers/settings-test-state";
+import { runSearchCommand } from "../../../../src/cli/web-search-cli";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "../../../helpers/settings-test-state";
 
 const WEB_SEARCH_ENV_KEYS = [
 	"ANTHROPIC_API_KEY",

@@ -32,7 +32,11 @@ import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/terminal/compone
 import type { StatusLinePreset } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { visibleWidth } from "@veyyon/utils/width";
-import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../../../helpers/settings-test-state";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "../../../helpers/settings-test-state";
 
 let settingsState: SettingsTestState | undefined;
 

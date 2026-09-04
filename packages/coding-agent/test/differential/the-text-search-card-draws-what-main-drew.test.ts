@@ -20,6 +20,7 @@ import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { settings } from "@veyyon/coding-agent/config/settings";
 import { LocalProtocolHandler } from "@veyyon/coding-agent/internal-urls/local-protocol";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ThemeColor } from "@veyyon/coding-agent/theme/color";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import { formatExpandHint, replaceTabs } from "@veyyon/coding-agent/tools/core/render-utils";
@@ -30,7 +31,6 @@ import {
 	type TextSearchRenderArgs,
 } from "@veyyon/coding-agent/tools/search/text-search";
 import { type TextSearchViewResult, textSearchToolView } from "@veyyon/coding-agent/tools/search/text-search-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import * as textSearchOracle from "../oracles/text-search-main-renderer";
 import {

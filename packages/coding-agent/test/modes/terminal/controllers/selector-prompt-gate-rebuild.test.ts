@@ -29,7 +29,11 @@ import {
 	LIVE_PROMPT_GATE_SETTINGS,
 	promptGateFor,
 } from "@veyyon/coding-agent/system-prompt-builder/gate-registry";
-import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../../../helpers/settings-test-state";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "../../../helpers/settings-test-state";
 
 let settingsState: SettingsTestState | undefined;
 

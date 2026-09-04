@@ -4,10 +4,10 @@ import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { editToolView } from "@veyyon/coding-agent/edit/edit-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import * as themeModule from "@veyyon/coding-agent/theme/theme";
 import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/core/render-utils";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 
 /**
  * WHY:

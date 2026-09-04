@@ -178,7 +178,7 @@ function buildSpeechComponents(): SpeechComponent[] {
 			pick: async () => {
 				const chosen = await selectSetupModel(
 					"Speech-to-Text model",
-				STT_MODEL_OPTIONS.slice(),
+					STT_MODEL_OPTIONS.slice(),
 					settings.get("stt.modelName"),
 				);
 				if (chosen === null) return false;
@@ -203,7 +203,7 @@ function buildSpeechComponents(): SpeechComponent[] {
 			pick: async () => {
 				const chosen = await selectSetupModel(
 					"Text-to-Speech model",
-				TTS_LOCAL_MODEL_OPTIONS.slice(),
+					TTS_LOCAL_MODEL_OPTIONS.slice(),
 					settings.get("tts.localModel"),
 				);
 				if (chosen === null) return false;

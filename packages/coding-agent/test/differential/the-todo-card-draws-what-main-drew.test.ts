@@ -14,6 +14,7 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	TODO_STRIKE_HOLD_FRAMES,
@@ -22,7 +23,6 @@ import {
 	type TodoRenderArgs,
 } from "@veyyon/coding-agent/tools/agent/todo";
 import { type TodoViewResult, todoToolView } from "@veyyon/coding-agent/tools/agent/todo-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import { TODO_STATUSES } from "@veyyon/wire";
 import * as todoOracle from "../oracles/todo-main-renderer";

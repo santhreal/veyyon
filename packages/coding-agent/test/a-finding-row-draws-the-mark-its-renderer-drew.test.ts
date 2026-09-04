@@ -30,6 +30,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
+import { drawSpan, drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { initTheme, theme as uiTheme } from "@veyyon/coding-agent/theme/theme";
 import {
 	type FindingPriority,
@@ -37,7 +38,6 @@ import {
 	PRIORITY_LABELS,
 	reportFindingTool,
 } from "@veyyon/coding-agent/tools/agent/review";
-import { drawSpan, drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { type AnsiPolicy, type Component, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import type { ToolView } from "@veyyon/view";
 import * as reviewOracle from "./oracles/review-main-renderer";

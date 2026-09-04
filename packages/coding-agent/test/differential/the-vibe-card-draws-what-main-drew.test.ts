@@ -32,6 +32,7 @@
 import { describe, expect, it } from "bun:test";
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { settings } from "@veyyon/coding-agent/config/settings";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { VibeScreenSnapshot } from "@veyyon/coding-agent/session/vibe-runtime";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import type { VibeOp, VibeToolDetails } from "@veyyon/coding-agent/tools/agent/vibe";
@@ -40,7 +41,6 @@ import {
 	type VibeRenderArgs,
 	type VibeToolResult,
 } from "@veyyon/coding-agent/tools/agent/vibe-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { Ellipsis } from "@veyyon/natives";
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { ToolViewContext } from "@veyyon/view";

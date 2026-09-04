@@ -65,15 +65,15 @@ import {
 import { type ConfiguredThinkingLevel, hasConfigurableThinkingEffort } from "../../../thinking";
 import { shortenPath } from "../../../tools/core/render-utils";
 import { isImageProviderPreference, setPreferredImageProvider } from "../../../tools/web/image-gen";
-import { copyToClipboard } from "../../../utils/clipboard";
-import { openPath } from "../../../utils/open";
-import { setSessionTerminalTitle } from "../../../utils/title-generator";
 import {
 	isSearchProviderId,
 	isSearchProviderPreference,
 	setExcludedSearchProviders,
 	setPreferredSearchProvider,
 } from "../../../tools/web/search";
+import { copyToClipboard } from "../../../utils/clipboard";
+import { openPath } from "../../../utils/open";
+import { setSessionTerminalTitle } from "../../../utils/title-generator";
 import { AccountManagerComponent } from "../components/account/account-manager";
 import { HistorySearchComponent } from "../components/composer/history-search";
 import { AgentDashboard } from "../components/dashboard/agent-dashboard";

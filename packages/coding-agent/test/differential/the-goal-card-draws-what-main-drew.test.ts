@@ -15,9 +15,9 @@ import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { goalToolView } from "@veyyon/coding-agent/goals/goal-tool";
 import type { Goal, GoalToolDetails } from "@veyyon/coding-agent/goals/state";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import { TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/core/render-utils";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { truncateToWidth } from "@veyyon/utils/width";
 import * as goalOracle from "../oracles/goal-main-renderer";
 import {

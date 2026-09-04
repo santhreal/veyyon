@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { viewToolRenderer } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import {
@@ -15,7 +16,6 @@ import {
 	todoStrikeSplit,
 } from "@veyyon/coding-agent/tools/agent/todo";
 import { todoToolView } from "@veyyon/coding-agent/tools/agent/todo-view";
-import { viewToolRenderer } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { type Component, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { type } from "arktype";
 

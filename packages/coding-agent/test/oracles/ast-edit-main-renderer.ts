@@ -11,6 +11,13 @@
  */
 
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import {
+	Ellipsis,
+	fileHyperlink,
+	framedBlock,
+	renderStatusLine,
+	truncateToWidth,
+} from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import { classifyGroupedLines, groupLineIndicesByBlank } from "@veyyon/coding-agent/tools/core/grouped-file-output";
 import {
@@ -22,7 +29,6 @@ import {
 	formatScopeMeta,
 	PREVIEW_LIMITS,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import { Ellipsis, fileHyperlink, framedBlock, renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { collapseWhitespace } from "@veyyon/utils";

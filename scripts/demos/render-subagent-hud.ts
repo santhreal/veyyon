@@ -24,10 +24,10 @@
  */
 
 import { renderSubagentHudLines } from "../../packages/coding-agent/src/modes/terminal/components/dashboard/subagent-hud";
+import { paintRailMotion, railIdleHeadAt } from "../../packages/coding-agent/src/modes/terminal/draw/rail-motion";
 import type { ObservableSession } from "../../packages/coding-agent/src/modes/terminal/session-observer-registry";
 import type { AgentProgress } from "../../packages/coding-agent/src/task";
 import { theme } from "../../packages/coding-agent/src/theme/theme";
-import { paintRailMotion, railIdleHeadAt } from "../../packages/coding-agent/src/modes/terminal/draw/rail-motion";
 import { flag, hasFlag, initRender, renderWidth } from "./render-args";
 
 const columns = renderWidth();

@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { settings } from "@veyyon/coding-agent/config/settings";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ThemeColor } from "@veyyon/coding-agent/theme/color";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import {
@@ -36,7 +37,6 @@ import {
 	type StructureSearchViewResult,
 	structureSearchToolView,
 } from "@veyyon/coding-agent/tools/search/structure-search-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import * as structureSearchOracle from "../oracles/structure-search-main-renderer";
 import {

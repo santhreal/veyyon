@@ -27,6 +27,7 @@ import {
 	renderSubagentHudLines,
 	SUBAGENT_HUD_VISIBLE_LIMIT,
 } from "@veyyon/coding-agent/modes/terminal/components/dashboard/subagent-hud";
+import { paintRailMotion, railIdleHeadAt } from "@veyyon/coding-agent/modes/terminal/draw/rail-motion";
 import {
 	InteractiveMode,
 	SUBAGENT_OBSERVER_UI_COALESCE_MS,
@@ -45,7 +46,6 @@ import {
 	TASK_SUBAGENT_PROGRESS_CHANNEL,
 } from "@veyyon/coding-agent/task";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
-import { paintRailMotion, railIdleHeadAt } from "@veyyon/coding-agent/modes/terminal/draw/rail-motion";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";

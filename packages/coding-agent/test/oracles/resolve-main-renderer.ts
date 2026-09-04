@@ -11,10 +11,10 @@
  */
 
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { Ellipsis, padToWidth, renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import type { ResolveParams, ResolveToolDetails } from "@veyyon/coding-agent/tools/agent/resolve";
 import { replaceTabs } from "@veyyon/coding-agent/tools/core/render-utils";
-import { Ellipsis, padToWidth, renderStatusLine, truncateToWidth } from "@veyyon/coding-agent/modes/terminal/draw";
 import { type Component, Text } from "@veyyon/tui";
 
 export function renderCall(args: ResolveParams, _options: RenderResultOptions, uiTheme: Theme): Component {

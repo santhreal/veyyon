@@ -9,6 +9,8 @@
  */
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import type { LspParams, LspToolDetails } from "@veyyon/coding-agent/lsp/types";
+import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw";
+import { CachedOutputBlock, markFramedBlockComponent } from "@veyyon/coding-agent/modes/terminal/draw/output-block";
 import { highlightCode as highlightThemeCode } from "@veyyon/coding-agent/theme/highlight";
 import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
 import {
@@ -21,8 +23,6 @@ import {
 	TRUNCATE_LENGTHS,
 	truncateToWidth,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw";
-import { CachedOutputBlock, markFramedBlockComponent } from "@veyyon/coding-agent/modes/terminal/draw/output-block";
 import { getLanguageFromPath } from "@veyyon/coding-agent/utils/lang-from-path";
 import { type Component, Text } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";

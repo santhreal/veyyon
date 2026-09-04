@@ -21,6 +21,7 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import { formatGroupedFiles } from "@veyyon/coding-agent/tools/core/grouped-file-output";
 import {
@@ -35,7 +36,6 @@ import {
 	type AstEditViewResult,
 	astEditToolView,
 } from "@veyyon/coding-agent/tools/search/ast-edit-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import * as astEditOracle from "../oracles/ast-edit-main-renderer";
 import {

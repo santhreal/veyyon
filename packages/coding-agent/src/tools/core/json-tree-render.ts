@@ -3,8 +3,8 @@
  */
 import { formatMoreLines, isRecord } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
-import type { Theme } from "../../theme/theme";
 import { buildTreePrefix } from "../../modes/terminal/draw/utils";
+import type { Theme } from "../../theme/theme";
 import { truncateToWidth } from "./render-utils";
 
 /** Max depth for JSON tree rendering */

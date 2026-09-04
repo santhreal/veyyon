@@ -521,11 +521,11 @@ const DOMAIN_TOOL_FACTORIES: Record<BuiltinToolName, ToolFactory> = {
 	...agentDomain.tools,
 	// The four whose implementation is not a tool directory: the edit tool is the hashline
 	// executor, `lsp` and `task` are subsystems of their own, and `web_search` is the provider
-	// search client under `../web`.
+	// search client under `./web/search`.
 	edit: async s => new (await import("../edit")).EditTool(s),
 	lsp: async s => (await import("../lsp")).LspTool.createIf(s),
 	task: async s => (await import("../task")).TaskTool.create(s),
-	web_search: async s => new (await import("../web/search")).WebSearchTool(s),
+	web_search: async s => new (await import("./web/search")).WebSearchTool(s),
 };
 
 /**

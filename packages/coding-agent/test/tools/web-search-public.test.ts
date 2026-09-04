@@ -8,7 +8,11 @@ import {
 	mergeSources,
 	searchPublicWeb,
 } from "@veyyon/coding-agent/tools/web/search/providers/public";
-import { SearchProviderError, type SearchProviderId, type SearchSource } from "@veyyon/coding-agent/tools/web/search/types";
+import {
+	SearchProviderError,
+	type SearchProviderId,
+	type SearchSource,
+} from "@veyyon/coding-agent/tools/web/search/types";
 
 const fakeAuthStorage = {
 	async getApiKey() {

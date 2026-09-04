@@ -33,10 +33,10 @@
  * remembered to duplicate it for.
  */
 import { describe, expect, it } from "bun:test";
+import { renderCodeCell, renderMarkdownCell } from "@veyyon/coding-agent/modes/terminal/draw/code-cell";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { theme } from "@veyyon/coding-agent/theme/theme-binding";
 import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/core/render-utils";
-import { renderCodeCell, renderMarkdownCell } from "@veyyon/coding-agent/modes/terminal/draw/code-cell";
 
 /** Far larger than any ceiling in play, so an unbounded arm is unmistakable in the line count. */
 const HUGE = 5_000;

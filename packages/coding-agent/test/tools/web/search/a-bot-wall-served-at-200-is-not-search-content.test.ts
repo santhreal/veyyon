@@ -42,8 +42,8 @@ import {
 import { PUBLIC_ENGINE_IDS, searchPublicWeb } from "@veyyon/coding-agent/tools/web/search/providers/public";
 import { StartpageProvider, searchStartpage } from "@veyyon/coding-agent/tools/web/search/providers/startpage";
 import { SearchProviderError } from "@veyyon/coding-agent/tools/web/search/types";
-import { useIsolatedAgentDir } from "../../../../helpers/isolated-agent-dir";
-import { makeToolSession } from "../../../../helpers/tool-session";
+import { useIsolatedAgentDir } from "../../../helpers/isolated-agent-dir";
+import { makeToolSession } from "../../../helpers/tool-session";
 
 useIsolatedAgentDir();
 

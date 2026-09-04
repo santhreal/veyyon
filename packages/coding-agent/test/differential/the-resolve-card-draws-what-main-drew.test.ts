@@ -7,10 +7,10 @@
 
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import type { ResolveToolDetails } from "@veyyon/coding-agent/tools/agent/resolve";
 import { type ResolveViewResult, resolveToolView } from "@veyyon/coding-agent/tools/agent/resolve-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import * as resolveOracle from "../oracles/resolve-main-renderer";
 import { COLLAPSED, HOST_COLLAPSED, renderCompLines, renderCompText, useDifferentialTheme, WIDTH } from "./harness";
 

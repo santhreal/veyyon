@@ -8,10 +8,6 @@
  */
 
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
-import type { Theme } from "@veyyon/coding-agent/theme/theme";
-import { formatStyledTruncationWarning, stripOutputNotice } from "@veyyon/coding-agent/tools/core/output-meta";
-import { replaceTabs, shortenPath } from "@veyyon/coding-agent/tools/core/render-utils";
-import type { BrowserToolDetails } from "@veyyon/coding-agent/tools/web/browser";
 import {
 	Hasher,
 	isFramedBlockComponent,
@@ -19,6 +15,10 @@ import {
 	renderCodeCell,
 	renderStatusLine,
 } from "@veyyon/coding-agent/modes/terminal/draw";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import { formatStyledTruncationWarning, stripOutputNotice } from "@veyyon/coding-agent/tools/core/output-meta";
+import { replaceTabs, shortenPath } from "@veyyon/coding-agent/tools/core/render-utils";
+import type { BrowserToolDetails } from "@veyyon/coding-agent/tools/web/browser";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 

@@ -38,8 +38,15 @@ import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal
 import { getAgentDir, getGlobalConfigRootDir, setProfile, TempDir } from "@veyyon/utils";
 import { isRecord } from "@veyyon/utils/type-guards";
 import { YAML } from "bun";
-import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../../../utils/test/helpers/isolated-config-root";
-import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../../../helpers/settings-test-state";
+import {
+	enterIsolatedConfigRoot,
+	type IsolatedConfigRoot,
+} from "../../../../../utils/test/helpers/isolated-config-root";
+import {
+	beginSettingsTest,
+	restoreSettingsTestState,
+	type SettingsTestState,
+} from "../../../helpers/settings-test-state";
 
 /**
  * A config file's top-level keys, or `{}` when it is absent or not a mapping.

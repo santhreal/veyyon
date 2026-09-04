@@ -12,6 +12,14 @@
 
 import * as path from "node:path";
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import {
+	fileHyperlink,
+	framedBlock,
+	outputBlockContentWidth,
+	renderFileList,
+	renderStatusLine,
+	truncateToWidth,
+} from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import { formatFullOutputReference } from "@veyyon/coding-agent/tools/core/output-meta";
 import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/core/render-limits";
@@ -22,14 +30,6 @@ import {
 	formatMoreItems,
 } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { FileSearchDetails, FileSearchRenderArgs } from "@veyyon/coding-agent/tools/search/file-search";
-import {
-	fileHyperlink,
-	framedBlock,
-	outputBlockContentWidth,
-	renderFileList,
-	renderStatusLine,
-	truncateToWidth,
-} from "@veyyon/coding-agent/modes/terminal/draw";
 import { Ellipsis } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";

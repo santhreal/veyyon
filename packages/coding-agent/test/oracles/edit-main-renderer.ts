@@ -20,6 +20,15 @@ import type { Operation } from "@veyyon/coding-agent/edit/modes/patch";
 import type { PerFileDiffPreview } from "@veyyon/coding-agent/edit/streaming";
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import { renderDiff as renderDiffColored } from "@veyyon/coding-agent/modes/terminal/components/transcript/diff";
+import {
+	fileHyperlink,
+	framedBlock,
+	Hasher,
+	type RenderCache,
+	renderStatusLine,
+	truncateToWidth,
+	WidthAwareText,
+} from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
 import {
 	cachedRenderedString,
@@ -36,15 +45,6 @@ import {
 	shortenPath,
 	truncateDiffByHunk,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import {
-	fileHyperlink,
-	framedBlock,
-	Hasher,
-	type RenderCache,
-	renderStatusLine,
-	truncateToWidth,
-	WidthAwareText,
-} from "@veyyon/coding-agent/modes/terminal/draw";
 import type { EditMode } from "@veyyon/coding-agent/utils/edit-mode";
 import { getLanguageFromPath } from "@veyyon/coding-agent/utils/lang-from-path";
 import { HL_FILE_PREFIX, HL_FILE_SUFFIX, HL_MOVE_KEYWORD, HL_REM_KEYWORD } from "@veyyon/hashline";

@@ -9,6 +9,7 @@
 
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import type { MCPToolDetails } from "@veyyon/coding-agent/mcp/tool-bridge";
+import { renderStatusLine, WidthAwareText } from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	formatArgsInline,
@@ -22,7 +23,6 @@ import {
 } from "@veyyon/coding-agent/tools/core/json-tree-render";
 import { formatStyledTruncationWarning, stripOutputNotice } from "@veyyon/coding-agent/tools/core/output-meta";
 import { formatExpandHint, truncateToWidth } from "@veyyon/coding-agent/tools/core/render-utils";
-import { renderStatusLine, WidthAwareText } from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Component } from "@veyyon/tui";
 import { formatMoreLines } from "@veyyon/utils/format";
 

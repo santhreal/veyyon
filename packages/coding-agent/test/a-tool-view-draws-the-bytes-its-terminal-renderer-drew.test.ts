@@ -67,9 +67,6 @@ import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/c
 import type { ExtensionAPI, ToolDefinition } from "@veyyon/coding-agent/extensibility/extensions";
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { RegisteredToolAdapter } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
-import type { ThemeColor } from "@veyyon/coding-agent/theme/color";
-import { UNICODE_SYMBOLS } from "@veyyon/coding-agent/theme/symbols";
-import { initTheme, type Theme as TerminalTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	drawNotice,
 	drawSpan,
@@ -78,6 +75,9 @@ import {
 	toolDrawsItself,
 } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw/status-line";
+import type { ThemeColor } from "@veyyon/coding-agent/theme/color";
+import { UNICODE_SYMBOLS } from "@veyyon/coding-agent/theme/symbols";
+import { initTheme, type Theme as TerminalTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";

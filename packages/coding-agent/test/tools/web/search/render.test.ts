@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { SearchRenderDetails, SearchResponse } from "@veyyon/coding-agent/tools/web/search/types";
 import {
 	type WebSearchViewArgs,

@@ -28,6 +28,7 @@ import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import { settings } from "@veyyon/coding-agent/config/settings";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { TruncationResult } from "@veyyon/coding-agent/session/streaming-output";
 import type { ThemeColor } from "@veyyon/coding-agent/theme/color";
 import { theme } from "@veyyon/coding-agent/theme/theme";
@@ -35,7 +36,6 @@ import { formatFullOutputReference } from "@veyyon/coding-agent/tools/core/outpu
 import { formatExpandHint, PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { FileSearchDetails, FileSearchRenderArgs } from "@veyyon/coding-agent/tools/search/file-search";
 import { type FileSearchViewResult, fileSearchToolView } from "@veyyon/coding-agent/tools/search/file-search-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { ToolViewContext } from "@veyyon/view";
 import * as fileSearchOracle from "../oracles/file-search-main-renderer";
 import {

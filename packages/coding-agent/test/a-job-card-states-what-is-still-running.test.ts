@@ -23,6 +23,7 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
 import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/theme/theme";
 import {
@@ -32,7 +33,6 @@ import {
 	type JobToolDetails,
 } from "@veyyon/coding-agent/tools/shell/job";
 import { type JobRenderArgs, type JobViewResult, jobToolView } from "@veyyon/coding-agent/tools/shell/job-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { prompt } from "@veyyon/utils";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import type { ToolView, ToolViewContext, ViewLine } from "@veyyon/view";

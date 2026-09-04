@@ -15,7 +15,7 @@ import {
 	collapseWhitespace,
 	dateToAgeSeconds,
 	sanitizeResultLimit,
-} from "../../../../../src/tools/web/search/utils";
+} from "../../../../src/tools/web/search/utils";
 
 describe("collapseWhitespace", () => {
 	it("collapses runs of mixed whitespace to single spaces and trims the ends", () => {

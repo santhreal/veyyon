@@ -138,14 +138,6 @@ import { type ResolveToolDetails, runResolveInvocation } from "../../tools/agent
 import { todoMatchesAnyDescription } from "../../tools/agent/todo";
 import { ToolError } from "../../tools/core/tool-errors";
 import { hasForegroundBashWait, onForegroundBashWaitChange } from "../../tools/shell/bash-foreground-registry";
-import {
-	paintRailMotion,
-	RAIL_IDLE_STEP_MS,
-	RAIL_SETTLE_FRAMES,
-	type RailMotion,
-	railClockMs,
-	railIdleHeadAtMs,
-} from "./draw/rail-motion";
 import { copyToClipboard } from "../../utils/clipboard";
 import type { EventBus } from "../../utils/event-bus";
 import { getEditorCommand, openInEditor } from "../../utils/external-editor";
@@ -215,6 +207,14 @@ import { TranscriptComposer } from "./controllers/transcript-composer";
 import { VoiceController } from "./controllers/voice-controller";
 import { WelcomeController } from "./controllers/welcome-controller";
 import { WorkingLoaderController } from "./controllers/working-loader";
+import {
+	paintRailMotion,
+	RAIL_IDLE_STEP_MS,
+	RAIL_SETTLE_FRAMES,
+	type RailMotion,
+	railClockMs,
+	railIdleHeadAtMs,
+} from "./draw/rail-motion";
 import { type FirstFrame, takeFirstFrame } from "./first-frame";
 import { OAuthManualInputManager } from "./oauth-manual-input";
 import { countRunningSubagentBadgeAgents, getRunningSubagentBadgeRegistry } from "./running-subagent-badge";
@@ -856,7 +856,7 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		const builtinCommands = buildTuiBuiltinSlashCommands({ ctx: this });
 		// Store pending commands for init() where file commands are loaded async
-		this.#pendingSlashCommands = builtinCommands.concat(hookCommands, customCommands, skillCommandList);
+		this.#pendingSlashCommands = [...builtinCommands, ...hookCommands, ...customCommands, ...skillCommandList];
 
 		this.#uiHelpers = new UiHelpers(this);
 		this.#btwController = new BtwController(this);
@@ -1459,7 +1459,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				category: "custom",
 			}));
 		this.#baseAutocompleteProvider = this.#inputController.createAutocompleteProvider(
-			this.#pendingSlashCommands.concat(fileSlashCommands, promptTemplateCommands),
+			[...this.#pendingSlashCommands, ...fileSlashCommands, ...promptTemplateCommands],
 			basePath,
 		);
 		this.#applyAutocompleteProvider();

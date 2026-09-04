@@ -21,11 +21,11 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { VibeScreenSnapshot } from "@veyyon/coding-agent/session/vibe-runtime";
 import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/theme/theme";
 import type { VibeToolDetails } from "@veyyon/coding-agent/tools/agent/vibe";
 import { createVibeToolView, type VibeRenderArgs } from "@veyyon/coding-agent/tools/agent/vibe-view";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 
 const WIDTH = 100;

@@ -22,8 +22,6 @@
  * motion plays over.
  */
 
-import { theme } from "../../packages/coding-agent/src/theme/theme";
-import { bashToolView } from "../../packages/coding-agent/src/tools/shell/bash-view";
 import { drawToolView } from "../../packages/coding-agent/src/modes/terminal/draw/draw-tool-view";
 import {
 	paintRailMotion,
@@ -31,6 +29,8 @@ import {
 	type RailMotion,
 	railIdleHeadAt,
 } from "../../packages/coding-agent/src/modes/terminal/draw/rail-motion";
+import { theme } from "../../packages/coding-agent/src/theme/theme";
+import { bashToolView } from "../../packages/coding-agent/src/tools/shell/bash-view";
 import { flag, hasFlag, initRender, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

@@ -278,7 +278,7 @@ describe("a card that declares it animates", () => {
 	 * frame and the row's reason is now false, so it has to leave the list rather than sit there
 	 * describing a card that no longer behaves that way.
 	 */
-	it.each(STILL)("paints the same bytes across a glyph step, as recorded (%o)", ({ tool, mode }) => {
+	it.each([...STILL])("paints the same bytes across a glyph step, as recorded (%o)", ({ tool, mode }) => {
 		vi.useFakeTimers();
 		const component = liveCard(tool, mode);
 		const first = component.render(WIDTH).join("\n");

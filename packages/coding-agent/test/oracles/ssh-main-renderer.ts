@@ -10,17 +10,17 @@
 
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import { truncateToVisualLines } from "@veyyon/coding-agent/modes/terminal/components/transcript/visual-truncate";
-import { expandHintSuffix } from "@veyyon/coding-agent/modes/terminal/utils/key-hint";
-import type { Theme } from "@veyyon/coding-agent/theme/theme";
-import { formatStyledTruncationWarning, stripOutputNotice } from "@veyyon/coding-agent/tools/core/output-meta";
-import { capPreviewLines, PREVIEW_LIMITS, replaceTabs } from "@veyyon/coding-agent/tools/core/render-utils";
-import type { SSHToolDetails } from "@veyyon/coding-agent/tools/shell/ssh";
 import {
 	CachedOutputBlock,
 	markFramedBlockComponent,
 	outputBlockContentWidth,
 } from "@veyyon/coding-agent/modes/terminal/draw/output-block";
 import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw/status-line";
+import { expandHintSuffix } from "@veyyon/coding-agent/modes/terminal/utils/key-hint";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import { formatStyledTruncationWarning, stripOutputNotice } from "@veyyon/coding-agent/tools/core/output-meta";
+import { capPreviewLines, PREVIEW_LIMITS, replaceTabs } from "@veyyon/coding-agent/tools/core/render-utils";
+import type { SSHToolDetails } from "@veyyon/coding-agent/tools/shell/ssh";
 import type { Component } from "@veyyon/tui";
 
 // =============================================================================

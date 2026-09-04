@@ -10,9 +10,9 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import type { EditViewResult } from "@veyyon/coding-agent/edit/edit-view";
 import { type EditViewArgs, editToolView } from "@veyyon/coding-agent/edit/edit-view";
 import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import * as themeModule from "@veyyon/coding-agent/theme/theme";
-import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { InMemorySnapshotStore } from "@veyyon/hashline";
 import { getAnsiPolicy, setAnsiPolicy, Text, type TUI } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";

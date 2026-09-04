@@ -23,8 +23,8 @@ import type { SearchParams } from "@veyyon/coding-agent/tools/web/search/provide
 import { searchBrave } from "@veyyon/coding-agent/tools/web/search/providers/brave";
 import type { SearchProviderId, SearchResponse } from "@veyyon/coding-agent/tools/web/search/types";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
-import { useIsolatedAgentDir } from "../../../../helpers/isolated-agent-dir";
-import { makeToolSession } from "../../../../helpers/tool-session";
+import { useIsolatedAgentDir } from "../../../helpers/isolated-agent-dir";
+import { makeToolSession } from "../../../helpers/tool-session";
 
 // The code under test opens `AgentStorage`, which resolves `agent.db` under the
 // ACTIVE PROFILE's agent dir. Without this the suite writes into the developer's

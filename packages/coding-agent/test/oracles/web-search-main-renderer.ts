@@ -8,6 +8,12 @@
  */
 
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import {
+	framedBlock,
+	outputBlockContentWidth,
+	renderStatusLine,
+	urlHyperlink,
+} from "@veyyon/coding-agent/modes/terminal/draw";
 import { getMarkdownTheme } from "@veyyon/coding-agent/theme/markdown-theme";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import {
@@ -19,7 +25,6 @@ import {
 	replaceTabs,
 	truncateToWidth,
 } from "@veyyon/coding-agent/tools/core/render-utils";
-import { framedBlock, outputBlockContentWidth, renderStatusLine, urlHyperlink } from "@veyyon/coding-agent/modes/terminal/draw";
 import { getSearchProviderLabel } from "@veyyon/coding-agent/tools/web/search/provider";
 import type { SearchResponse } from "@veyyon/coding-agent/tools/web/search/types";
 import type { Component } from "@veyyon/tui";
