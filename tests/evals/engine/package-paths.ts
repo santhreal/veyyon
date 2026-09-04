@@ -167,7 +167,7 @@ export function repoRootDir(): string {
 
 /** Coding agent package directory (packages/coding-agent). */
 export function codingAgentDir(): string {
-	return path.resolve(evalsPackageDir(), "../coding-agent");
+	return path.join(repoRootDir(), "packages", "coding-agent");
 }
 
 /** Path to staged auth-agent.db. */
