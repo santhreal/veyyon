@@ -128,6 +128,9 @@
 
 ### Fixed
 
+- Settings selector displays a dimmed '(unset)' placeholder for optional text settings with empty values.
+- The subagent roster list bounds item rows and wraps custom agent hints so the list and navigation controls fit within the modal viewport.
+- The settings selector passes the target pane width to the status line preview.
 - The autoswarm setup console handles Unicode emojis, CJK characters and combining marks on backspace and windowing without splitting surrogate pairs, and supports Shift-Tab field navigation.
 - Autoswarm triage rejects candidate arms whose edits fall inside off-limits directories, where an exact string comparison only matched exact path literals.
 - Autoswarm review assigns the director as the sole reviewer when certification is disabled on the session, instead of creating peer review rings for three or more surviving arms.
@@ -255,6 +258,7 @@
 - A compiled binary's first launch of a version extracts only the native addon variant the host loads, instead of every variant the binary carries, so a cold start writes about 135MB rather than 270MB before the first frame; the skipped variants are written on demand if the selected one fails to load.
 - A compiled binary carries one embedded archive per native addon variant instead of one archive holding all of them, so a cold launch inflates only the variant it loads; cold first paint on linux-x64 drops from 361ms to 229ms.
 - An `Editor` with no `onSubmit` consumer leaves the draft alone when Enter arrives, instead of clearing it, so a submit typed before anything is listening cannot destroy what was typed.
+- `SettingsList` reserves two columns for the scrollbar gutter when items overflow the viewport, matching `ScrollView.contentWidth`.
 
 ## [1.3.0] - 2026-08-28
 

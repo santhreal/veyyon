@@ -98,6 +98,9 @@
 
 ### Fixed
 
+- Settings selector displays a dimmed '(unset)' placeholder for optional text settings with empty values.
+- The subagent roster list bounds item rows and wraps custom agent hints so the list and navigation controls fit within the modal viewport.
+- The settings selector passes the target pane width to the status line preview.
 - The autoswarm setup console handles Unicode emojis, CJK characters and combining marks on backspace and windowing without splitting surrogate pairs, and supports Shift-Tab field navigation.
 - Autoswarm triage rejects candidate arms whose edits fall inside off-limits directories, where an exact string comparison only matched exact path literals.
 - Autoswarm review assigns the director as the sole reviewer when certification is disabled on the session, instead of creating peer review rings for three or more surviving arms.

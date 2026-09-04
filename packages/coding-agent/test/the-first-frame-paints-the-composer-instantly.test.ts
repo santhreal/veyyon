@@ -279,8 +279,8 @@ describe("the launch composer", () => {
 	it("leaves the branch off the card when the row will not show one", () => {
 		settings.set("git.enabled", false);
 		try {
-			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
-			const row = launchRows(100).find(candidate => candidate.includes(located));
+			const located = budgetedLocation();
+			const row = launchRows(widthThatFitsTheLocation()).find(candidate => candidate.includes(located));
 			expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
 			// Nothing after the location is a branch: no separator-then-label, and
 			// no bare label anywhere else on the row.
@@ -297,9 +297,10 @@ describe("the launch composer", () => {
 		// `the-launch-card-states-what-the-last-launch-knew.test.ts`; the config root is isolated
 		// above so that file's recordings cannot answer for this one.
 		const label = branchLabelFromFiles(getProjectDir());
-		const row = launchRows(100).find(candidate => candidate.includes(CHECKOUT.branch));
+		expect(label).toBe(CHECKOUT.branch);
+		const branch = renderBranch(label, false);
+		const row = launchRows(widthThatFitsTheLocation()).find(candidate => candidate.includes(branch));
 		expect(row).toBeDefined();
-		expect(row).toContain(renderBranch(label, false));
 		expect(row).not.toContain("*");
 	});
 });

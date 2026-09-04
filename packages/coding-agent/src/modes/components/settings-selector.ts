@@ -3,6 +3,7 @@ import type { Api, Effort, Model } from "@veyyon/ai";
 import {
 	type Component,
 	Container,
+	Ellipsis,
 	extractPrintableText,
 	getKeybindings,
 	type ImageBudget,
@@ -1749,7 +1750,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			return;
 		}
 
-		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
+		this.#selectList = new SelectList(items, clamp(items.length, 1, 5), getSelectListTheme());
 		this.#selectList.onSelect = item => {
 			this.#showAgentEditor(item.value);
 			this.requestRender?.();
@@ -1767,7 +1768,6 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		this.#selectList.onSelectionChange = item => {
 			if (detail.setText(this.#detailText(item.value))) this.requestRender?.();
 		};
-		this.addChild(new Spacer(1));
 		this.addChild(detail);
 		this.addChild(new Spacer(1));
 		this.addChild(new Text(theme.fg("muted", `  ${CUSTOM_AGENT_HINT}`), 0, 0));
@@ -2682,7 +2682,7 @@ export interface SettingsCallbacks {
 	/** Called for status line preview while configuring */
 	onStatusLinePreview?: (settings: StatusLinePreviewSettings) => void;
 	/** Get current rendered status line for inline preview */
-	getStatusLinePreview?: () => string;
+	getStatusLinePreview?: (width?: number) => string;
 	/** Called when plugins change */
 	onPluginsChanged?: () => void | Promise<void>;
 	/** Called when settings panel is closed */
@@ -2986,9 +2986,9 @@ export class SettingsSelectorComponent implements Component {
 			? [
 					"",
 					theme.fg("muted", "Preview:"),
-					...this.#getStatusPreviewString()
+					...this.#getStatusPreviewString(paneWidth)
 						.split("\n")
-						.map(line => truncateToWidth(line, paneWidth)),
+						.map(line => truncateToWidth(line, paneWidth, Ellipsis.Omit)),
 				]
 			: [];
 
@@ -3490,6 +3490,7 @@ export class SettingsSelectorComponent implements Component {
 					label: def.label,
 					description: def.description,
 					currentValue: this.#formatTextInputValue(def.path, currentValue),
+					labelForValue: value => (value.length === 0 ? theme.fg("dim", "(unset)") : value),
 					submenu: (cv, done) => this.#createTextInput(def, cv, done),
 					changed,
 				};
@@ -4395,9 +4396,9 @@ export class SettingsSelectorComponent implements Component {
 	/**
 	 * Get the status line preview string.
 	 */
-	#getStatusPreviewString(): string {
+	#getStatusPreviewString(width?: number): string {
 		if (this.callbacks.getStatusLinePreview) {
-			return this.callbacks.getStatusLinePreview();
+			return this.callbacks.getStatusLinePreview(width);
 		}
 		return theme.fg("dim", "(preview not available)");
 	}

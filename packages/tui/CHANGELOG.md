@@ -13,6 +13,7 @@
 ### Fixed
 
 - An `Editor` with no `onSubmit` consumer leaves the draft alone when Enter arrives, instead of clearing it, so a submit typed before anything is listening cannot destroy what was typed.
+- `SettingsList` reserves two columns for the scrollbar gutter when items overflow the viewport, matching `ScrollView.contentWidth`.
 
 ## [1.3.0] - 2026-08-28
 
