@@ -436,6 +436,55 @@ describe("checkFreshness", () => {
 		expect(result.pathRenamedOnly).toEqual(["docs/internal/m.md"]);
 	});
 
+	/** A markdown link's target is written relative to the doc, so it names a path in the tree only
+	 *  when read from the doc's directory. A move that rewrites the target is the same statement
+	 *  about where code lives as one that rewrites a root-relative token. */
+	it("keeps the stamp when a relative link target moved to a path that exists", () => {
+		const root = makeRepo();
+		const sha = commit(root, "fixtures/corpus.json", "[]\n", "2026-01-10");
+		commit(
+			root,
+			"docs/internal/o.md",
+			`# O\n\nThe cases are in [\`@\`](../../fixtures/corpus.json).\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-01-10",
+		);
+		commit(root, "tests/fixtures/corpus.json", "[]\n", "2026-03-01");
+		remove(root, "fixtures/corpus.json", "2026-03-01");
+		commit(
+			root,
+			"docs/internal/o.md",
+			`# O\n\nThe cases are in [\`@\`](../../tests/fixtures/corpus.json).\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-03-01",
+		);
+
+		const result = checkFreshness(root, ["docs/internal/o.md"]);
+
+		expect(result.issues).toEqual([]);
+		expect(result.pathRenamedOnly).toEqual(["docs/internal/o.md"]);
+	});
+
+	it("still fails when a relative link target is rewritten to a path that does not exist", () => {
+		const root = makeRepo();
+		const sha = commit(root, "fixtures/corpus.json", "[]\n", "2026-01-10");
+		commit(
+			root,
+			"docs/internal/p.md",
+			`# P\n\nThe cases are in [\`@\`](../../fixtures/corpus.json).\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-01-10",
+		);
+		commit(
+			root,
+			"docs/internal/p.md",
+			`# P\n\nThe cases are in [\`@\`](../../tests/fixtures/corpus.json).\n\n*Verified against \`${sha}\` on 2026-01-10.*\n`,
+			"2026-03-01",
+		);
+
+		const result = checkFreshness(root, ["docs/internal/p.md"]);
+
+		expect(result.pathRenamedOnly).toEqual([]);
+		expect(result.issues).toHaveLength(1);
+	});
+
 	it("still fails when a source path move travels with a prose change", () => {
 		const root = makeRepo();
 		const sha = commit(root, "packages/tui/src/renderer.ts", "export const draw = () => {};\n", "2026-01-10");

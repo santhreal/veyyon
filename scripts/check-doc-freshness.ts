@@ -136,11 +136,17 @@ export function trackedPaths(root: string, sha?: string): Set<string> {
  * this page's claims match the code — not which directory the code sits in, which the rewrite is
  * what keeps true. Folding is granted only for a token that NAMES SOMETHING IN THE TREE it is read
  * against, so a rewrite to a path that does not exist stays a difference and the gate still asks
- * for a re-verification. Prose is untouched: a token needs a slash to be a candidate at all.
+ * for a re-verification. A token written relative to the doc (`../../kernel/src/x.ts`, the target
+ * of a markdown link) is read against the tree from the doc's own directory, `docDir`, since that
+ * is the path it names. Prose is untouched: a token needs a slash to be a candidate at all.
  */
-export function foldRepoPaths(markdown: string, known: Set<string>): string {
+export function foldRepoPaths(markdown: string, known: Set<string>, docDir = ""): string {
 	return markdown.replace(REPO_PATH_TOKEN, token => {
-		const bare = token.endsWith("/") ? token.slice(0, -1) : token;
+		const trimmed = token.endsWith("/") ? token.slice(0, -1) : token;
+		const bare =
+			trimmed.startsWith("./") || trimmed.startsWith("../")
+				? path.posix.normalize(path.posix.join(docDir, trimmed))
+				: trimmed;
 		if (known.has(bare)) return "@";
 		// A glob names a set of siblings; the directory holding them is what the token asserts.
 		const parent = bare.slice(0, bare.lastIndexOf("/"));
@@ -251,8 +257,8 @@ export function checkFreshness(root: string, files: string[]): FreshnessResult {
 			if (
 				snapshot !== null &&
 				snapshot.date <= stamp.date &&
-				foldRepoPaths(normalizeDocPaths(snapshot.markdown), treeOf(snapshot.sha)) ===
-					foldRepoPaths(normalizeDocPaths(markdown), currentTree)
+				foldRepoPaths(normalizeDocPaths(snapshot.markdown), treeOf(snapshot.sha), path.posix.dirname(file)) ===
+					foldRepoPaths(normalizeDocPaths(markdown), currentTree, path.posix.dirname(file))
 			) {
 				result.pathRenamedOnly.push(file);
 				continue;
