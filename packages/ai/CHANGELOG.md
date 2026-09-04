@@ -17,6 +17,8 @@
 - A Codex server-side compaction with no session id is refused instead of minting a random conversation identity, which opened a second cache lineage and left the post-compaction history reset with nothing to find.
 - The Claude Code user-agent reports `agent-sdk/0.3.257`, the Agent SDK release paired with the Claude Code version the same request sends.
 - A signing Anthropic endpoint that answers `stop_reason: "refusal"` with category `reasoning_extraction` has prior-turn reasoning dropped from an immediate retry and from the rest of the session, instead of failing the turn with `Refusal (reasoning_extraction)` every time reasoning demoted to prose is replayed.
+- A tool result whose originating call is no longer in the request reaches the model as a `user`-role `<stale-tool-result>` note instead of as assistant text, so a model no longer reads a tool result in its own voice and reproduces one as a visible message.
+- A resumed session drops an `[Orphan …]` or `[Previous …]` tool-result note already persisted as assistant text, so history recorded before that repair was fixed stops prompting the same visible tool-result message on every later turn.
 
 ### Changed
 

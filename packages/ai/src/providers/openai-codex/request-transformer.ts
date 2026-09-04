@@ -7,6 +7,7 @@ import {
 import { requireSupportedEffort } from "@veyyon/catalog/model-thinking";
 import type { Model } from "../../types";
 import { mapOpenAIReasoningEffort, ORPHAN_TOOL_CALL_PLACEHOLDER } from "../openai-shared";
+import { staleToolResultNote } from "../transform-messages";
 
 /** Reasoning replay scope for the Codex Responses API (`reasoning.context`). */
 export type CodexReasoningContext = "auto" | "current_turn" | "all_turns";
@@ -213,8 +214,8 @@ function orphanFunctionOutputToMessage(item: InputItem, callId: string): InputIt
 	}
 	return {
 		type: "message",
-		role: "assistant",
-		content: `[Previous ${toolName} result; call_id=${callId}]: ${text}`,
+		role: "user",
+		content: staleToolResultNote({ toolName, toolCallId: callId, text }),
 	} as InputItem;
 }
 
@@ -223,7 +224,7 @@ function orphanFunctionOutputToMessage(item: InputItem, callId: string): InputIt
  * stays valid — the API rejects either orphan with a 400:
  *
  * - `function_call_output` / `custom_tool_call_output` with no matching call →
- *   folded into an assistant message (`400 No tool call found for … output`).
+ *   folded into a user-role note (`400 No tool call found for … output`).
  *   Regression of #472 / #1351.
  * - `function_call` / `custom_tool_call` with no matching `*_output` → a
  *   placeholder output is synthesized immediately after the call
