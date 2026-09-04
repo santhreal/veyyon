@@ -74,7 +74,12 @@ for (const name of ["install.sh", "install.ps1"]) {
 	console.log(`staged ${name}`);
 }
 
-// 3. Models catalog → models-data.json (read by models.html client-side).
+// 3. Models catalog → models-data.json (read by models.html client-side). The
+// generator states that a site build regenerates this file, and models.html and
+// the changelog both describe the page as auto-synced from the bundled catalog;
+// the call was missing, so the committed copy only moved when somebody ran the
+// tool by hand.
+execFileSync(process.execPath, [join(HERE, "tools", "gen-models.mjs")], { stdio: "inherit" });
 
 // 3a. The hero clip has ONE source: `assets/demo-hd.webp`, the file the recorder
 // publishes and the README links. The site held a second copy that nothing but a
