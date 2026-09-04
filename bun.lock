@@ -79,6 +79,13 @@
         "@types/react-dom": "catalog:",
       },
     },
+    "contracts/plugin": {
+      "name": "@veyyon/plugin",
+      "version": "1.3.0",
+      "devDependencies": {
+        "@types/bun": "catalog:",
+      },
+    },
     "contracts/settings": {
       "name": "@veyyon/settings",
       "version": "1.3.0",
@@ -133,6 +140,7 @@
         "@veyyon/agent-core": "catalog:",
         "@veyyon/ai": "catalog:",
         "@veyyon/catalog": "catalog:",
+        "@veyyon/plugin": "catalog:",
         "@veyyon/utils": "catalog:",
       },
       "devDependencies": {
@@ -224,6 +232,7 @@
         "@veyyon/kernel": "catalog:",
         "@veyyon/mnemopi": "catalog:",
         "@veyyon/natives": "catalog:",
+        "@veyyon/plugin": "catalog:",
         "@veyyon/settings": "catalog:",
         "@veyyon/stats": "catalog:",
         "@veyyon/tui": "catalog:",
@@ -488,6 +497,7 @@
     "@veyyon/kernel": "1.3.0",
     "@veyyon/mnemopi": "1.3.0",
     "@veyyon/natives": "1.3.0",
+    "@veyyon/plugin": "1.3.0",
     "@veyyon/settings": "1.3.0",
     "@veyyon/stats": "1.3.0",
     "@veyyon/swarm-extension": "1.3.0",
@@ -1099,6 +1109,8 @@
     "@veyyon/mnemopi": ["@veyyon/mnemopi@workspace:plugins/mnemopi"],
 
     "@veyyon/natives": ["@veyyon/natives@workspace:natives/bridge/bindings"],
+
+    "@veyyon/plugin": ["@veyyon/plugin@workspace:contracts/plugin"],
 
     "@veyyon/settings": ["@veyyon/settings@workspace:contracts/settings"],
 

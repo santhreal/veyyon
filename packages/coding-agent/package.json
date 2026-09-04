@@ -70,6 +70,7 @@
     "@veyyon/kernel": "catalog:",
     "@veyyon/mnemopi": "catalog:",
     "@veyyon/natives": "catalog:",
+    "@veyyon/plugin": "catalog:",
     "@veyyon/settings": "catalog:",
     "@veyyon/tui": "catalog:",
     "@veyyon/utils": "catalog:",

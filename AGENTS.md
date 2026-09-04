@@ -16,6 +16,7 @@ operator manual.
 |`contracts/wire`|Dependency-free wire and presentation types, so a browser, a test client or a second host need not depend on coding-agent|
 |`contracts/view`|Dependency-free tool view model, so a tool describes its output without constructing a terminal component|
 |`contracts/settings`|Dependency-free setting declaration vocabulary, so a package declares a setting without importing the store that persists it or the host that draws it|
+|`contracts/plugin`|Dependency-free plugin manifest vocabulary, so a package declares what its `package.json` `veyyon` field contributes without importing the loader that installs it|
 |`kernel`|The only member that is not a plugin — the plugin loader, the contribution registry and the session spine, naming no tool and no host|
 |`packages/ai`|Multi-provider LLM client with streaming support|
 |`packages/catalog`|Model catalog: bundled models.json, provider descriptors, model identity/classification|

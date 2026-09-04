@@ -116,7 +116,7 @@ describe("one member pattern resolves against the tree", () => {
 	it("expands a trailing wildcard to the directories that hold the manifest", () => {
 		const resolved = expandMemberPattern("contracts/*", REPO_ROOT, "package.json");
 
-		expect(resolved.sort()).toEqual(["contracts/settings", "contracts/view", "contracts/wire"]);
+		expect(resolved.sort()).toEqual(["contracts/plugin", "contracts/settings", "contracts/view", "contracts/wire"]);
 	});
 
 	it("expands a wildcard nested two levels down", () => {

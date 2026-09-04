@@ -29,6 +29,7 @@
 
 ### Changed
 
+- The plugin loader, the plugin manager, the plugin settings dialog and the `extensibility/plugins` barrel read the manifest vocabulary from `@veyyon/plugin`; the barrel exports the same names. No user-visible behavior changes.
 - The website source is `apps/site` and the Python clients are `clients/python`, the directories that were `website` and `python`; the source-checkout `veyyon` launcher, the binary build scripts and the brand-parity checks read them there, and nothing they produce changes.
 - `veyyon update` on a source checkout regenerates the HTML export tool views from `clients/web`, the directory that was `packages/collab-web`, and the compiled binary reads the embedded stats dashboard from `apps/stats`, the directory that was `packages/stats`; the commands and their output are unchanged.
 - Typed tuple and Set copies use spreads rather than `.concat()` or `.slice()`, which those types do not define. No user-visible behavior changes.

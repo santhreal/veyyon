@@ -33,6 +33,7 @@
     "@veyyon/agent-core": "catalog:",
     "@veyyon/ai": "catalog:",
     "@veyyon/catalog": "catalog:",
+    "@veyyon/plugin": "catalog:",
     "@veyyon/utils": "catalog:"
   },
   "devDependencies": {

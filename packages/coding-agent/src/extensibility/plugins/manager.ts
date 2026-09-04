@@ -15,11 +15,10 @@ import type {
 	DoctorOptions,
 	InstalledPlugin,
 	InstallOptions,
-	PluginManifest,
 	PluginRuntimeConfig,
-	PluginSettingSchema,
 	ProjectPluginOverrides,
 } from "@veyyon/kernel/loader/plugins/types";
+import type { PluginManifest, PluginSettingSchema } from "@veyyon/plugin";
 import {
 	errorMessage,
 	getPluginsDir,

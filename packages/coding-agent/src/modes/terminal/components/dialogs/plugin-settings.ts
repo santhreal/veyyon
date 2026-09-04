@@ -8,7 +8,8 @@
  *     - Feature toggles
  *     - Config value editor
  */
-import type { InstalledPlugin, PluginSettingSchema } from "@veyyon/kernel/loader/plugins/types";
+import type { InstalledPlugin } from "@veyyon/kernel/loader/plugins/types";
+import type { PluginSettingSchema } from "@veyyon/plugin";
 import { Input, type SelectItem, SelectList, type SettingItem, SettingsList, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, logger } from "@veyyon/utils";
 import { matchesKey } from "@veyyon/utils/keys";

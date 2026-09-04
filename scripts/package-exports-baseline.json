@@ -3483,6 +3483,7 @@
 	"@veyyon/natives/sha256-sidecar": [
 		"parseSha256Sidecar"
 	],
+	"@veyyon/plugin": [],
 	"@veyyon/settings": [
 		"SETTING_TYPES",
 		"isSettingType"

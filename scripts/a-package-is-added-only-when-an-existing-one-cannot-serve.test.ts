@@ -98,8 +98,19 @@ import { typeScriptMembers } from "./workspace-layout";
  * and `utils` is imported by everything, so a contract there is one nothing can depend on narrowly.
  * A future rise still needs the sentence above: which existing package was considered and why it
  * could not serve.
+ *
+ * The count went 23 -> 24 with `contracts/plugin`. It is the vocabulary a plugin manifest is written
+ * in -- the `veyyon` field of a package.json: entry points, selectable features and the settings
+ * schema a plugin reads -- and it has no dependency at all, which is what lets a plugin author type
+ * the manifest without importing the loader. `kernel` is where it was, and the kernel is the loader:
+ * a plugin that imported the manifest shape from there would import the installer, the lock file and
+ * the marketplace client that read it; `contracts/settings` is the vocabulary a first-party package
+ * writes a setting in code, and the manifest's setting schema is a separate on-disk shape with
+ * separate readers, so folding one into the other changes the manifest format; `contracts/view` and
+ * `contracts/wire` are a tool's output and the cross-process envelopes. A future rise still needs the
+ * sentence above: which existing package was considered and why it could not serve.
  */
-const PACKAGE_BUDGET = 23;
+const PACKAGE_BUDGET = 24;
 
 /**
  * Every workspace member, as `<root>/<name>`.

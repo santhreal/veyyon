@@ -95,6 +95,7 @@ describe("every publishable package declares the workspace packages it imports",
 			.map(pkg => path.relative(REPO_ROOT, pkg.dir).replaceAll(path.sep, "/"));
 		expect(outside.sort()).toEqual([
 			"apps/stats",
+			"contracts/plugin",
 			"contracts/settings",
 			"contracts/view",
 			"contracts/wire",
