@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "fd6a6a276d735ceb640eae38eb11cda3c6e54888",
+	"generatedFrom": "aa14e0da82494dac5a06d240180cec88038a105f",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
