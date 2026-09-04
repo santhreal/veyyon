@@ -21,7 +21,7 @@ import * as path from "node:path";
 import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "@veyyon/coding-agent/tools/web/search/utils";
 import { namedImportsFrom } from "@veyyon/utils/module-reach";
 
-const PROVIDER_DIR = path.join(import.meta.dir, "../../src/tools/web/search/providers");
+const PROVIDER_DIR = path.join(import.meta.dir, "../../../src/tools/web/search/providers");
 
 /** Every provider source, by file name. */
 function providerSources(): Array<{ name: string; text: string }> {

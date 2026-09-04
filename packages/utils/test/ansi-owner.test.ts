@@ -248,7 +248,7 @@ describe("primitive ownership", () => {
 		[path.join(TUI_SRC, "core/renderer.ts"), "SGR_RESET"],
 		[path.join(UTILS_SRC, "deccara.ts"), "SGR_RESET"],
 		[path.join(TUI_SRC, "components/image.ts"), "SGR_RESET"],
-		[path.join(CODING_AGENT_SRC, "tui/hyperlink.ts"), "ST"],
+		[path.join(CODING_AGENT_SRC, "modes/terminal/draw/hyperlink.ts"), "ST"],
 		[path.join(CODING_AGENT_SRC, "modes/keywords/gradient-highlight.ts"), "SGR_FG_RESET"],
 		[path.join(CODING_AGENT_SRC, "modes/terminal/components/chrome/segment-track.ts"), "SGR_FG_RESET"],
 		[path.join(CODING_AGENT_SRC, "theme/shimmer.ts"), "SGR_FG_RESET"],

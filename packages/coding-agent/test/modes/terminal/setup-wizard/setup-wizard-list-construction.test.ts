@@ -244,7 +244,7 @@ describe("scenes build their lists through the wizard factory", () => {
 	 * `statusLegend` at all, so going through it makes the mistake unavailable.
 	 */
 	it("no scene constructs SelectList directly", () => {
-		const sceneDir = path.join(import.meta.dir, "../../src/modes/terminal/setup-wizard/scenes");
+		const sceneDir = path.join(import.meta.dir, "../../../../src/modes/terminal/setup-wizard/scenes");
 		const offenders = fs
 			.readdirSync(sceneDir)
 			.filter(name => name.endsWith(".ts") && name !== "wizard-list.ts")

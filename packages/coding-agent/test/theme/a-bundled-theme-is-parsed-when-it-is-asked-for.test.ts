@@ -38,7 +38,7 @@ import { DEFAULT_THEME_NAMES, getDefaultTheme, getDefaultThemes } from "@veyyon/
 
 /** The shipped theme files, read from disk, so a new one joins this suite by existing. */
 const SHIPPED = fs
-	.readdirSync(path.join(import.meta.dir, "..", "..", "..", "src", "theme", "defaults"))
+	.readdirSync(path.join(import.meta.dir, "..", "..", "src", "theme", "defaults"))
 	.filter(file => file.endsWith(".json"))
 	.map(file => file.slice(0, -5))
 	.sort();

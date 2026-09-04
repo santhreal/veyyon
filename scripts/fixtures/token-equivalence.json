@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "553013c0259dd5ed1a64a4a8bb5483ea8909774f",
+	"generatedFrom": "fd6a6a276d735ceb640eae38eb11cda3c6e54888",
 	"formattingOnly": {
 		"packages/agent/src/thinking.ts": "e395d9c4dc2c0b2bb7f2b428fc569e4e2264ee2d0a77b11ba4fb0077305042b1",
 		"packages/ai/src/env-api-key.ts": "f202db92789fa3f10a204d3a469957432627a9dc04626770100fe762b9c38dd0",
@@ -69,7 +69,7 @@
 		"packages/utils/test/helpers/global-state-leak-tracer.ts": "d9ac1d11599dcabaf8384c993432638dfdce52571e1048e3d8d4898437744a59"
 	},
 	"importReorder": {},
-	"changedCount": 5033,
+	"changedCount": 5034,
 	"changed": [
 		"contracts/view/src/index.ts",
 		"contracts/wire/src/index.ts",
@@ -5089,6 +5089,7 @@
 		"scripts/sync-root-changelog.ts",
 		"scripts/test-sandbox/find-test-leaks.ts",
 		"scripts/tests-never-touch-real-home.test.ts",
+		"scripts/the-codex-compaction-route-is-locked.test.ts",
 		"scripts/the-kernel-names-no-tool-and-no-host.test.ts",
 		"scripts/there-is-only-one-capture-path.test.ts",
 		"scripts/tracked-but-deleted-paths.test.ts",

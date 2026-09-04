@@ -19,7 +19,7 @@ import { getDefaultThemes } from "@veyyon/coding-agent/theme/defaults";
 import { SYMBOL_PRESETS } from "@veyyon/coding-agent/theme/symbols";
 import { createTheme } from "@veyyon/coding-agent/theme/theme";
 
-const SRC = path.resolve(import.meta.dir, "../../../src");
+const SRC = path.resolve(import.meta.dir, "../../src");
 
 describe("status.connecting / status.active symbols", () => {
 	/**

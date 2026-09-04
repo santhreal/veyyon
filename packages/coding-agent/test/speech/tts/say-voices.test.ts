@@ -16,7 +16,7 @@ import { useTrackedTempDirs } from "../../helpers/tracked-temp-dir";
 // reintroduce the leak by forgetting an `afterAll`.
 const makeSayVoicesDir = useTrackedTempDirs("veyyon-say-voices-");
 
-const cliPath = path.resolve(import.meta.dir, "../../src/cli.ts");
+const cliPath = path.resolve(import.meta.dir, "../../../src/cli.ts");
 
 async function runSay(args: string[], stdin?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	const home = makeSayVoicesDir();

@@ -61,10 +61,6 @@ const CARDS_WITHOUT_A_TITLE_ROW: Record<string, { shape: "section" | "plate"; wh
 		shape: "section",
 		why: "the `$ command` row says what a title would repeat, so the shell card draws no title",
 	},
-	resolve: {
-		shape: "plate",
-		why: "a resolution is a full-width plate, and its top inset row is what the block frames as the card's first row",
-	},
 };
 
 /**

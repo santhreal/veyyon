@@ -88,7 +88,7 @@ describe("withIcon", () => {
  * legitimately construct the old shape to assert against it.
  */
 function renderingSources(): Array<{ file: string; source: string }> {
-	const root = path.resolve(import.meta.dir, "../../../src/modes");
+	const root = path.resolve(import.meta.dir, "../../src/modes");
 	const found: Array<{ file: string; source: string }> = [];
 	const walk = (dir: string): void => {
 		for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

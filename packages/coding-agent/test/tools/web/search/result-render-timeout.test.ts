@@ -58,7 +58,7 @@ describe("readyTimeoutMs", () => {
 });
 
 describe("the render wait has one owner", () => {
-	const providerDir = new URL("../../../src/tools/web/search/providers/", import.meta.url);
+	const providerDir = new URL("../../../../src/tools/web/search/providers/", import.meta.url);
 
 	async function read(name: string): Promise<string> {
 		return await readFile(new URL(name, providerDir), "utf8");

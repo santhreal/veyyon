@@ -8,7 +8,6 @@ import {
 } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import { CollabQrCodeComponent } from "@veyyon/coding-agent/slash-commands/helpers/collab-qrcode";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import { Spacer } from "@veyyon/tui";
 
 beforeAll(async () => {
 	resetSettingsForTest();
@@ -98,9 +97,8 @@ describe("/collab slash command QR code rendering", () => {
 		const statusText = harness.showStatus.mock.calls[0]?.[0] as string;
 		expect(statusText).toContain("veyyon.dev/#started-full");
 		const presented = harness.present.mock.calls[0]?.[0] as readonly unknown[];
-		expect(presented[0]).toBeInstanceOf(Spacer);
-		expect(presented[1]).toBeInstanceOf(CollabQrCodeComponent);
-		const component = presented[1] as CollabQrCodeComponent;
+		expect(presented[0]).toBeInstanceOf(CollabQrCodeComponent);
+		const component = presented[0] as CollabQrCodeComponent;
 		expect(component.url).toBe("https://veyyon.dev/#started-full");
 		expect(component.render(120).join("\n")).toMatch(/\x1b\[(?:47|40)m/);
 	});
@@ -118,9 +116,8 @@ describe("/collab slash command QR code rendering", () => {
 		expect(statusText).toContain("veyyon.dev/#started-view");
 		expect(statusText).not.toContain("veyyon.dev/#started-full");
 		const presented = harness.present.mock.calls[0]?.[0] as readonly unknown[];
-		expect(presented[0]).toBeInstanceOf(Spacer);
-		expect(presented[1]).toBeInstanceOf(CollabQrCodeComponent);
-		const component = presented[1] as CollabQrCodeComponent;
+		expect(presented[0]).toBeInstanceOf(CollabQrCodeComponent);
+		const component = presented[0] as CollabQrCodeComponent;
 		expect(component.url).toBe("https://veyyon.dev/#started-view");
 	});
 
@@ -133,9 +130,8 @@ describe("/collab slash command QR code rendering", () => {
 		const statusText = harness.showStatus.mock.calls[0]?.[0] as string;
 		expect(statusText).toContain("veyyon.dev/#full-control");
 		const presented = harness.present.mock.calls[0]?.[0] as readonly unknown[];
-		expect(presented[0]).toBeInstanceOf(Spacer);
-		expect(presented[1]).toBeInstanceOf(CollabQrCodeComponent);
-		const component = presented[1] as CollabQrCodeComponent;
+		expect(presented[0]).toBeInstanceOf(CollabQrCodeComponent);
+		const component = presented[0] as CollabQrCodeComponent;
 		expect(component.render(120).join("\n")).toMatch(/\x1b\[(?:47|40)m/);
 	});
 
@@ -151,9 +147,8 @@ describe("/collab slash command QR code rendering", () => {
 		expect(statusText).toContain(webViewLink);
 		expect(statusText).not.toContain(webLink);
 		const presented = harness.present.mock.calls[0]?.[0] as readonly unknown[];
-		expect(presented[0]).toBeInstanceOf(Spacer);
-		expect(presented[1]).toBeInstanceOf(CollabQrCodeComponent);
-		const component = presented[1] as CollabQrCodeComponent;
+		expect(presented[0]).toBeInstanceOf(CollabQrCodeComponent);
+		const component = presented[0] as CollabQrCodeComponent;
 		expect(component.url).toBe(webViewLink);
 		expect(component.render(10).join("\n")).toContain("QR code hidden");
 	});

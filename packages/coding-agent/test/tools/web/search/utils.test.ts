@@ -134,7 +134,7 @@ describe("dateToAgeSeconds", () => {
 });
 
 describe("collapseWhitespace single-owner lock", () => {
-	const providersDir = path.resolve(import.meta.dir, "../../../src/tools/web/search/providers");
+	const providersDir = path.resolve(import.meta.dir, "../../../../src/tools/web/search/providers");
 	const files = readdirSync(providersDir).filter(f => f.endsWith(".ts") && !f.endsWith(".test.ts"));
 
 	it("scans the provider directory", () => {
@@ -153,7 +153,7 @@ describe("collapseWhitespace single-owner lock", () => {
 });
 
 describe("result-limit single-owner lock", () => {
-	const providersDir = path.resolve(import.meta.dir, "../../../src/tools/web/search/providers");
+	const providersDir = path.resolve(import.meta.dir, "../../../../src/tools/web/search/providers");
 	const files = readdirSync(providersDir).filter(f => f.endsWith(".ts") && !f.endsWith(".test.ts"));
 
 	// A caller-supplied count must never reach `Array.prototype.slice` raw. Both

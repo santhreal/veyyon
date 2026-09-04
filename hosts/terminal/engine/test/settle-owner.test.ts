@@ -22,7 +22,7 @@ import { readdir } from "node:fs/promises";
 import * as path from "node:path";
 
 const TUI_TEST_DIR = path.join(import.meta.dir);
-const CODING_AGENT_TEST_DIR = path.resolve(import.meta.dir, "..", "..", "coding-agent", "test");
+const CODING_AGENT_TEST_DIR = path.resolve(import.meta.dir, "../../../..", "packages", "coding-agent", "test");
 
 /**
  * A FUNCTION named for waiting on a frame. The `(?=\()|=\s*(?:async|\()` tail

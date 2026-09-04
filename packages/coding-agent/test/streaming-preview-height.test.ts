@@ -474,11 +474,10 @@ describe("streaming tool call preview height (bounded across renderers)", () => 
 	test("eval pending preview windows the code to the viewport tail", () => {
 		// Eval cell code is capped to the same viewport-sized TAIL window as
 		// bash/ssh: the live edge stays visible behind an "… N earlier lines"
-		// marker on top; ctrl+o uncaps. Unlike bash, the marker row sits above
-		// the window, so previewWindowRows() code lines stay visible.
+		// marker on top; ctrl+o uncaps. The marker is one of the window's rows.
 		const window = previewWindowRows();
 		const total = window + 5;
-		const hidden = total - window;
+		const hidden = total - (window - 1);
 		const longLines = Array.from({ length: total }, (_, i) => `line-${i}`);
 		const { lines, text } = renderPending("eval", {
 			language: "js",

@@ -207,7 +207,7 @@ describe("a startup root cannot reach an expensive third-party package through s
 		const roots = startupRoots();
 		// A regression that empties this set would make every other assertion vacuously true.
 		expect(roots.size).toBeGreaterThan(20);
-		expect([...roots.values()]).toContain("../tools/web/search");
+		expect([...roots.values()]).toContain("./web/search");
 		expect([...roots.values()]).toContain("./read");
 	});
 
@@ -258,9 +258,9 @@ describe("a startup root cannot reach an expensive third-party package through s
 		expect([...expensiveReachableFrom(join(SRC, "export", "markit", "registry.ts")).keys()].sort()).toContain(
 			"mammoth",
 		);
-		expect([...expensiveReachableFrom(join(SRC, "web", "search", "providers", "browser-headers.ts")).keys()]).toEqual(
-			["header-generator"],
-		);
+		expect([
+			...expensiveReachableFrom(join(SRC, "tools", "web", "search", "providers", "browser-headers.ts")).keys(),
+		]).toEqual(["header-generator"]);
 	});
 
 	it("follows a re-export edge, which is the shape that carried the converters", () => {

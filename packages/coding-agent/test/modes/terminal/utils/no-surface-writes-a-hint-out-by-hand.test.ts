@@ -32,7 +32,7 @@ import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { expandHintSuffix, keyHint } from "@veyyon/coding-agent/modes/terminal/utils/key-hint";
 import { getKeybindings, setKeybindings } from "@veyyon/utils/keybindings";
 
-const SRC = path.resolve(import.meta.dir, "../../../src");
+const SRC = path.resolve(import.meta.dir, "../../../../src");
 
 /** Every `.ts` under `src`, tests and vendored trees excluded. */
 function sources(dir: string, found: string[] = []): string[] {

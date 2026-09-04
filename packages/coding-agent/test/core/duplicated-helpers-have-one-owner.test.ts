@@ -554,14 +554,14 @@ describe("buildTreePrefix", () => {
 			// beside the helper this cell is about.
 			"modes/terminal/components/selectors/copy-selector.ts",
 			"modes/terminal/components/selectors/tree-selector.ts",
-			// Where the glyph itself is declared and resolved for a theme.
-			"theme/symbols.ts",
-			"theme/theme-class.ts",
 			// The host's view drawer, which knows a line's depth and its last-child answer and not its
 			// ancestor list, and dims each rule as it lays it down.
 			"modes/terminal/draw/draw-tool-view.ts",
 			// The owner.
 			"modes/terminal/draw/utils.ts",
+			// Where the glyph itself is declared and resolved for a theme.
+			"theme/symbols.ts",
+			"theme/theme-class.ts",
 		]);
 	});
 

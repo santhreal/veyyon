@@ -26,7 +26,7 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
-const repoRoot = path.resolve(import.meta.dirname, "../../../..");
+const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
 
 /**
  * Milliseconds under which a second `import("arktype")` means the library was already evaluated.

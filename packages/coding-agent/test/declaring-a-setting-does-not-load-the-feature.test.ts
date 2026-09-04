@@ -41,7 +41,7 @@ const DOMAINS_DIR = join(SRC, "config", "settings-domains");
  * The areas a settings domain is allowed to reach, one row per domain file.
  *
  * `config/`, `utils/` and the workspace packages are settings machinery. The
- * feature directories that remain — `stt/`, `tiny/`, `tts/`, `web/`, `tools/` —
+ * feature directories that remain — `stt/`, `tiny/`, `tts/`, `tools/` —
  * are reached for their option tables only; each of those modules is a leaf that
  * declares model keys, device names or provider ids and loads no client.
  */
@@ -53,7 +53,7 @@ const DOMAIN_REACH: Record<string, string[]> = {
 	"global.ts": ["config/", "npm:@veyyon/utils", "npm:yaml"],
 	"interaction.ts": ["config/", "npm:@veyyon/wire", "speech/"],
 	"model.ts": ["config/", "npm:@veyyon/agent-core", "npm:@veyyon/catalog", "thinking/"],
-	"providers.ts": ["config/", "npm:@veyyon/utils", "npm:yaml", "speech/", "tiny/", "web/"],
+	"providers.ts": ["config/", "npm:@veyyon/utils", "npm:yaml", "speech/", "tiny/", "tools/"],
 	"resources.ts": ["config/"],
 	"shared.ts": ["config/"],
 	"subagents.ts": ["config/"],

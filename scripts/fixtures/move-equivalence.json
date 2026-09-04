@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "553013c0259dd5ed1a64a4a8bb5483ea8909774f",
+	"generatedFrom": "fd6a6a276d735ceb640eae38eb11cda3c6e54888",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -1993,10 +1993,12 @@
 		"hosts/terminal/engine/test/settle-owner.test.ts": {
 			"old": "packages/tui/test/settle-owner.test.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "b42352cb68f18674e9bff0effeb59e5e10dda7a1435c363964ac4aed40abf7d4",
+			"differs": "changed",
+			"group": "extracted-to-utils",
+			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
+			"hash": "f12478b9ea18d71b284f5881ea5052a1b084d04a25f87d5aae3c20dabf3cd709",
 			"mainHash": "b42352cb68f18674e9bff0effeb59e5e10dda7a1435c363964ac4aed40abf7d4",
-			"structuralHash": "57b755f8224d9ac796d23a0ed7e0438a5e465ed48535b74b078e48cacaa861f9",
+			"structuralHash": "01898176afc6cfe04f95f6bdb6d2c4fdd6ce027ca43edb3c5fc4dd941be02ad3",
 			"mainStructuralHash": "57b755f8224d9ac796d23a0ed7e0438a5e465ed48535b74b078e48cacaa861f9"
 		},
 		"hosts/terminal/engine/test/sgr-coalesce.test.ts": {
@@ -15386,9 +15388,9 @@
 			"differs": "changed",
 			"group": "web-extraction",
 			"reason": "The site scrapers are `@veyyon/web`. A handler states the host capabilities it needs -- the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch preference -- through `ScrapeServices` instead of importing the agent's settings, storage and process modules, and throws a name-preserving `AbortError` rather than the agent's cancellation class. On this side the call sites name the new owner and build the services object.",
-			"hash": "d3f6e9862d0eaf7d7d89e2f0cdd6fe044a01f214b33fdc137b0bc5a46dd35b44",
+			"hash": "c1fdca10c8f81037355c15e9df7a4c845f916be3f7ceaef255372e0e3abaf8bb",
 			"mainHash": "f2caa60aee92835f1018cb1d5753f6e3e6192f30c5e530f7a09e3a5cdb15dc78",
-			"structuralHash": "ea76abe842696077ccb8e233d6cedd46ad40663bfe2269d8c23171682e694208",
+			"structuralHash": "ca64e0e12f6e4676385b7aa7936e7a99b0cd08c3ce26aba6af7a7e3359819a2a",
 			"mainStructuralHash": "d20187fcde5c699fb48edebf3d0878e86435102c80f660c3017d2ac35f42c252"
 		},
 		"packages/coding-agent/src/tools/web/search/provider.ts": {
@@ -15715,9 +15717,9 @@
 			"differs": "changed",
 			"group": "colocated-test",
 			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
-			"hash": "633913892212610910575e12bbcafb26e29fc6b901601a40ea565efe3ab15ce8",
+			"hash": "a5dffbb5b5c19c75a95f1bdf95a65508d7ae0c658e8c1f730748be4409aafd3b",
 			"mainHash": "90e688110df76a683a67778a23db361788f2bc620d8d6d93af9372a1d0848219",
-			"structuralHash": "a7166a19c2eb8bcaa1a3345235b09701f4e3eb4638dd69ecb816331eb030f0ba",
+			"structuralHash": "433c6d5337b267ab8caa130eaf90c5ac126365b53c14601a79e740a8e85af0c3",
 			"mainStructuralHash": "b001a54bbbc17bf0c30761efcbdcfc0ac38b881932ae512aa30c458c301270fa"
 		},
 		"packages/coding-agent/test/cli/startup/a-launch-does-not-load-a-schema-library-it-will-not-use.test.ts": {
@@ -18174,9 +18176,9 @@
 			"differs": "changed",
 			"group": "colocated-test",
 			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
-			"hash": "cf070ae406048484d8918905904644f8e930cd1f930e4f46f66d16960f333986",
+			"hash": "98f39ca2486e9897f76cd6e669b6b3db3824d49fba67490c48162d2a0dcb4d1b",
 			"mainHash": "921fa4201cbb554cacb9a1f011609086d133554b47d8e2185f4d0c22fa834cc6",
-			"structuralHash": "14e7b2e678166cebc1c84233e0c3b490bdb0afa48bd0041a538f96cc30487c12",
+			"structuralHash": "e380b1feaabe18a5a0499f9d16d70aad134b096d6a552741543c7a326b6a39c2",
 			"mainStructuralHash": "165ec984f306d6b31c9672ce1c948e09676754d04bc75db279963e82bff001fc"
 		},
 		"packages/coding-agent/test/modes/terminal/draw/expanded-is-a-bigger-ceiling-not-no-ceiling.test.ts": {
@@ -18658,9 +18660,9 @@
 			"differs": "changed",
 			"group": "colocated-test",
 			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
-			"hash": "e09c22913bb2b3d8dc49475df1e175152bc86d6089d7bbf5aaafc28affd1d8e5",
+			"hash": "dfd7e79d59080669a617d36741fa7ffc6223b59ec506664d27d75b6960441abd",
 			"mainHash": "31c9e544e35a963f66bc0b53ece59d135fb6d72c3d4163028c11c95d61f33a98",
-			"structuralHash": "35ad7a6a3fea932e73347b20173825e533505915d823e2598e7c63c47daf4738",
+			"structuralHash": "4b8fae7c3fe98b578c428461419c13467bacda3e8a17464151dafbbd1436aaae",
 			"mainStructuralHash": "1a3bc184ba115ecf9deaa50bb794d0608031bd51c76488fb4504df403b7bc05a"
 		},
 		"packages/coding-agent/test/theme/a-theme-file-must-carry-every-required-color.test.ts": {
@@ -19378,9 +19380,9 @@
 			"differs": "changed",
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
-			"hash": "8db43640b71d58b3091a533f67c58c065ecf34a3a067f31c07c4fd27978a2c9d",
+			"hash": "e3ec9be877e7018907278a703af18bb65b2ff8b014049c2e71533d3623df93db",
 			"mainHash": "46dfab0c26038f9edad9b7ec842b521779f6a0d6e26eb9781b655711325d52f8",
-			"structuralHash": "209f7e112cd63b567ac31620e3145e339c184f07c7f873293a320f63406fdf6f",
+			"structuralHash": "d4c07445391646038610430d716956511a1917746267cb82ad49b14648b784f7",
 			"mainStructuralHash": "043c8c189edf5847406b58fd4da441cf9482d2e100c5027b69db96ce67eb8b8f"
 		},
 		"packages/utils/test/autocomplete-scoring.test.ts": {
@@ -34701,9 +34703,6 @@
 		"packages/ai/src/registry/oauth/success-page.ts": [
 			"{ type: \"text\" }"
 		],
-		"packages/ai/src/utils/opencode-headers.ts": [
-			"{ type: \"json\" }"
-		],
 		"packages/ai/src/utils/openrouter-headers.ts": [
 			"{ type: \"json\" }"
 		],
@@ -34718,6 +34717,9 @@
 		],
 		"packages/catalog/src/models.ts": [
 			"{ type: \"text\" }"
+		],
+		"packages/catalog/src/wire/opencode-headers.ts": [
+			"{ type: \"json\" }"
 		],
 		"packages/catalog/test/catinv-bundled-pricing.test.ts": [
 			"{ type: \"json\" }"

@@ -186,10 +186,10 @@ describe("the modules that were repointed stay cut", () => {
 		// used to spell `"\x1b"` inline and now takes `ESC` from that owner. The leaf adds no edge of
 		// its own, so nothing outside this closure was gained.
 		["coding-agent/src/config/api-key-resolver.ts", 56],
-		// Re-measured 2026-07-27 at 184, from 112. The file gained a real `completeSimple` call, and the
-		// engine is 72 modules whichever specifier reaches it. Raised only after the barrel import was
-		// repointed and the number stopped moving; the 325 it sat at before that was the leak, not this.
-		["coding-agent/src/commit/shared-llm.ts", 201],
+		// Re-measured 2026-09-04 at 202, from 201. One module from the catalog OpenCode
+		// discovery header leaf; the file still takes no name from the barrel. 184 was the
+		// 2026-07-27 engine-call remasure; 325 before that was the leak.
+		["coding-agent/src/commit/shared-llm.ts", 202],
 		// The agent's hot loop and the `Agent` class. Both STREAM, so both reach the engine whatever
 		// specifier they use; the ceilings are what the other ten names cost when taken from the entry
 		// point. 378 -> 321 and 380 -> 323.
