@@ -143,11 +143,12 @@ export interface OpenAIRequestSetupOptions {
 	openAISessionId?: string;
 	promptCacheSessionId?: string;
 	/**
-	 * The raw conversation id. Distinct from the two above, which are withheld
-	 * once cache retention is "none"; the OpenCode gateway requires its session
-	 * header on every request regardless of local cache settings.
+	 * The conversation this request belongs to, for the OpenCode session header.
+	 * Distinct from the two above, which are withheld once cache retention is
+	 * "none", and from the routing session id, which a side-channel turn makes
+	 * unique per request while keeping the conversation's prompt-cache key.
 	 */
-	sessionId?: string;
+	conversationId?: string;
 }
 
 export interface OpenAIRequestSetup {
@@ -214,7 +215,7 @@ export function resolveOpenAIRequestSetup(
 		// upstream provider, and so both transport families derive the same value
 		// for the same conversation.
 		for (const [name, value] of Object.entries(
-			getOpenCodeHeaders(options.sessionId ?? options.promptCacheSessionId ?? options.openAISessionId),
+			getOpenCodeHeaders(options.conversationId ?? options.promptCacheSessionId ?? options.openAISessionId),
 		)) {
 			setHeaderIfAbsent(headers, name, value);
 		}
@@ -395,6 +396,20 @@ export function normalizeOpenAIPromptCacheKey(sessionId: string | undefined): st
 
 export function normalizeOpenRouterResponsesSessionId(sessionId: string | undefined): string | undefined {
 	return normalizeOpenAIStableId(sessionId, 256, "session_");
+}
+
+/**
+ * The conversation a request belongs to: the pinned prompt-cache key when the
+ * caller has one, else the session id. Independent of cache retention, because
+ * the OpenCode gateway requires its session header on every request, and it
+ * prefers the cache key so a side-channel turn — which deliberately routes
+ * under a unique per-request session id while keeping the conversation's cache
+ * key — lands on the conversation the operator is actually in.
+ */
+export function conversationIdForOpenCode(
+	options: Pick<OpenAICacheOptions, "promptCacheKey" | "sessionId"> | undefined,
+): string | undefined {
+	return options?.promptCacheKey ?? options?.sessionId;
 }
 
 /** Resolve a prompt-cache identity, falling back to the provider session unless caching is disabled. */

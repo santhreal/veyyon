@@ -193,7 +193,9 @@ const WIRE_ARMS: WireArm[] = [
 					messages: MESSAGES,
 					apiKey: "test-key",
 					sessionId: SESSION,
-					promptCacheKey: cacheDisabled ? undefined : "cache-key",
+					// Same conversation as the session id, so every arm derives one
+					// value; the side-channel test below covers a pinned cache key.
+					promptCacheKey: cacheDisabled ? undefined : SESSION,
 					fetch: fetchImpl,
 				});
 			} catch {
@@ -275,13 +277,70 @@ describe("every OpenCode provider labels its traffic and carries a session", () 
 			{
 				apiKey: "test-key",
 				messages: MESSAGES,
-				sessionId: SESSION,
+				conversationId: SESSION,
 				extraHeaders: { "User-Agent": "Custom/9.9" },
 			},
 		).headers;
 		expect(headerCaseInsensitive(headers, "User-Agent")).toBe("Custom/9.9");
 		expect(headerCaseInsensitive(headers, SESSION_HEADER)).toBe(openCodeSessionHeaderValue(SESSION));
 	});
+
+	/**
+	 * A side-channel turn (idle recap, /btw) deliberately routes under a fresh
+	 * per-request session id while keeping the conversation's prompt-cache key,
+	 * so routing the header on the session id would mint a new gateway session
+	 * per recap and cold-miss the prefix the header exists to hit. Both transport
+	 * families run side turns, so both are swept.
+	 */
+	const SIDE_CHANNEL_SENDERS: Array<{
+		name: string;
+		send: (sessionId: string, promptCacheKey: string) => Promise<Record<string, string>>;
+	}> = [
+		{
+			name: "openai-completions",
+			send: async (sessionId, promptCacheKey) => {
+				const { captured, fetchImpl } = captureFetch(OPENAI_SSE);
+				await drain(
+					streamOpenAICompletions(openCodeModel("openai-completions", "opencode-zen", "glm-5"), CONTEXT, {
+						apiKey: "test-key",
+						sessionId,
+						promptCacheKey,
+						fetch: fetchImpl,
+					}),
+				);
+				return captured;
+			},
+		},
+		{
+			name: "anthropic-messages",
+			send: async (sessionId, promptCacheKey) => {
+				const { captured, fetchImpl } = captureFetch(ANTHROPIC_SSE);
+				await drain(
+					streamAnthropic(openCodeModel("anthropic-messages", "opencode-zen", "claude-fable-5-1"), CONTEXT, {
+						apiKey: "test-key",
+						sessionId,
+						promptCacheKey,
+						fetch: fetchImpl,
+					}),
+				);
+				return captured;
+			},
+		},
+	];
+
+	it.each(SIDE_CHANNEL_SENDERS.map(sender => [sender.name, sender]))(
+		"%s keeps one session value across a side-channel turn",
+		async (_name, sender) => {
+			const conversation = "01a05f22-278d-7245-a5ee-73408ed7d508";
+			const sent: Array<string | undefined> = [];
+			for (const side of [1, 2]) {
+				const captured = await sender.send(`${conversation}:side:${side}`, conversation);
+				sent.push(headerCaseInsensitive(captured, SESSION_HEADER));
+			}
+			expect(sent[0]).toBe(openCodeSessionHeaderValue(conversation));
+			expect(sent[1]).toBe(sent[0]);
+		},
+	);
 });
 
 describe("the session value is stable, opaque and per-conversation", () => {
