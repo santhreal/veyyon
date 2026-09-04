@@ -17,7 +17,8 @@ import { applyListLimit } from "../core/list-limit";
 // settings schema and the tool wrapper: this file only needs the sentence an artifact is named by.
 import { formatFullOutputReference } from "../core/output-notice";
 import { getDomain } from "../core/render-utils";
-import { parseReadUrlTarget, type ReadUrlToolDetails } from "./fetch";
+import type { ReadUrlToolDetails } from "./fetch";
+import { parseReadUrlTarget } from "./read-url-target";
 
 /** The arguments the card reads off a read_url call, which is the path and how it was asked for. */
 export interface ReadUrlViewArgs {

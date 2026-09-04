@@ -1,10 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import {
-	extractDocumentLinks,
-	htmlNestingExceeds,
-	parseAlternateLinks,
-	parseReadUrlTarget,
-} from "@veyyon/coding-agent/tools/web/fetch";
+import { extractDocumentLinks, htmlNestingExceeds, parseAlternateLinks } from "@veyyon/coding-agent/tools/web/fetch";
+import { parseReadUrlTarget } from "@veyyon/coding-agent/tools/web/read-url-target";
 
 /**
  * Fetch/read-url pure parsers: URL target extraction, nesting DoS guard,

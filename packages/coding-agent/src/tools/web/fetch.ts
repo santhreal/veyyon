@@ -47,12 +47,12 @@ import { type ArchiveFormat, listArchiveRoot, sniffArchiveFormat } from "../../u
 import { applyListLimit } from "../core/list-limit";
 import { inlineBudgetFor } from "../core/output-artifact";
 import type { OutputMeta } from "../core/output-meta";
-import { isReadableUrlPath, type LineRange, parseLineRanges } from "../core/path-utils";
 import { formatBytes } from "../core/render-utils";
 import { listTables, looksLikeSqlite, renderTableList } from "../core/sqlite-reader";
 import { ToolError, throwIfAborted } from "../core/tool-errors";
 import { toolResult } from "../core/tool-result";
 import { clampTimeout } from "../core/tool-timeouts";
+import { normalizeUrl } from "./read-url-target";
 import { convertDocument, scrapeServices } from "./scrape-services";
 
 // =============================================================================
@@ -202,28 +202,6 @@ function buildLlmEndpointCandidates(url: string): string[] {
 	}
 }
 
-/**
- * Repair a URL whose scheme `//` collapsed to a single `/`. Node's `path.normalize`/
- * `path.resolve` collapse `//` → `/`, so any URL routed through path normalization arrives
- * as `https:/host/x` instead of `https://host/x`. No local filesystem path begins with
- * `http:/` or `https:/`, so repairing the scheme back to `//` is unambiguous.
- */
-function repairCollapsedScheme(value: string): string {
-	const m = value.match(/^(https?):\/(?!\/)/i);
-	return m ? `${m[1]}://${value.slice(m[0].length)}` : value;
-}
-
-/**
- * Normalize URL (repair a collapsed scheme, then add a scheme if one is missing).
- */
-function normalizeUrl(url: string): string {
-	url = repairCollapsedScheme(url);
-	if (!url.match(/^https?:\/\//i)) {
-		return `https://${url}`;
-	}
-	return url;
-}
-
 const URL_CREDENTIAL_LABELS: Record<string, true> = {
 	accesskey: true,
 	accesstoken: true,
@@ -333,108 +311,6 @@ export function hasCredentialBearingUrl(value: string): boolean {
 		}
 	}
 	return false;
-}
-
-// URL line selectors mirror the file form: `:50`, `:50-100`, `:50+150`, `:5-10,20-30`, `:raw`,
-// or `:raw:N-M` / `:N-M:raw` to combine raw mode with a range. If a URL would otherwise look
-// like `host:port`, add a trailing slash before the selector (e.g. `https://example.com/:80`
-// to read line 80 of the document at `https://example.com/`).
-
-export interface ParsedReadUrlTarget {
-	path: string;
-	raw: boolean;
-	offset?: number;
-	limit?: number;
-	/** Populated only when the selector carries 2+ ranges. Single-range stays on offset/limit. */
-	ranges?: readonly LineRange[];
-}
-
-/** Recognize a single selector token (`raw` or one/many line ranges). */
-function isUrlSelectorToken(token: string): boolean {
-	if (token.toLowerCase() === "raw") return true;
-	try {
-		return parseLineRanges(token) !== null;
-	} catch {
-		// `parseLineRanges` throws `ToolError` for malformed ranges (e.g. `5+0`). Only treat the
-		// token as a selector when it parses cleanly so URL ports like `:80` keep flowing
-		// through to the URL path.
-		return false;
-	}
-}
-
-export function parseReadUrlTarget(readPath: string): ParsedReadUrlTarget | null {
-	const repaired = repairCollapsedScheme(readPath);
-	const embedded = tryExtractEmbeddedUrlSelector(repaired);
-	const urlPath = embedded?.path ?? repaired;
-	if (!isReadableUrlPath(urlPath)) {
-		return null;
-	}
-
-	let raw = false;
-	let ranges: readonly LineRange[] | undefined;
-	for (const sel of embedded?.sels ?? []) {
-		if (sel.toLowerCase() === "raw") {
-			raw = true;
-			continue;
-		}
-		if (ranges !== undefined) {
-			// Two range groups on the same URL (`…:5-10:20-30`) — combine with commas instead.
-			throw new ToolError(
-				`URL selector has multiple range groups; combine them with commas (e.g. \`:5-10,20-30\`).`,
-			);
-		}
-		const parsed = parseLineRanges(sel);
-		if (parsed === null) {
-			// Shouldn't happen — isUrlSelectorToken vetted it. Belt-and-suspenders.
-			throw new ToolError(`Invalid URL line selector: ${sel}`);
-		}
-		ranges = parsed;
-	}
-
-	if (!ranges || ranges.length === 0) return { path: urlPath, raw };
-	if (ranges.length === 1) {
-		const r = ranges[0];
-		return {
-			path: urlPath,
-			raw,
-			offset: r.startLine,
-			limit: r.endLine !== undefined ? r.endLine - r.startLine + 1 : undefined,
-		};
-	}
-	return { path: urlPath, raw, ranges };
-}
-
-/**
- * Peel one or more selector tokens off the right of a URL string. Walks back through
- * trailing `:tok` segments while each token (a) looks like a selector and (b) leaves
- * behind a string that still parses as a URL. Returns selectors left-to-right so callers
- * can apply them in source order.
- */
-function tryExtractEmbeddedUrlSelector(readPath: string): { path: string; sels: string[] } | null {
-	let basePath = readPath;
-	const sels: string[] = [];
-	while (true) {
-		const lastColonIndex = basePath.lastIndexOf(":");
-		if (lastColonIndex <= 0) break;
-
-		const candidate = basePath.slice(lastColonIndex + 1);
-		const remainder = basePath.slice(0, lastColonIndex);
-		if (!isReadableUrlPath(remainder)) break;
-		if (!isUrlSelectorToken(candidate)) break;
-
-		try {
-			new URL(
-				remainder.startsWith("http://") || remainder.startsWith("https://") ? remainder : `https://${remainder}`,
-			);
-		} catch {
-			break;
-		}
-
-		sels.unshift(candidate);
-		basePath = remainder;
-	}
-	if (sels.length === 0) return null;
-	return { path: basePath, sels };
 }
 
 /**

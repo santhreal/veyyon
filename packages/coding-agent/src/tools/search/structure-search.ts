@@ -17,7 +17,8 @@ import { toPathList } from "../core/path-utils";
 import { capParseErrors, formatCodeFrameLine, formatParseErrors, PREVIEW_LIMITS } from "../core/render-utils";
 import { ToolError, throwIfAborted } from "../core/tool-errors";
 import { toolResult } from "../core/tool-result";
-import { materializeReadUrlToFile, parseReadUrlTarget } from "../web/fetch";
+import { loadUrlReader } from "../web/manifest";
+import { parseReadUrlTarget } from "../web/read-url-target";
 import { formatMatchLine } from "./match-line-format";
 import { isImmutableSearchSourcePath, resolveToolSearchScope } from "./search-scope";
 import { BROAD_SEARCH_INLINE_MAX_BYTES } from "./text-search";
@@ -242,6 +243,7 @@ export async function executeStructureSearch(
 			resolveExternalUrl: async rawPath => {
 				const target = parseReadUrlTarget(rawPath);
 				if (!target) return undefined;
+				const { materializeReadUrlToFile } = await loadUrlReader(session);
 				const materialized = await materializeReadUrlToFile(
 					session,
 					{ path: target.path, raw: target.raw },

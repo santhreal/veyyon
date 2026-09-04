@@ -105,13 +105,9 @@ import {
 } from "../core/sqlite-reader";
 import { ToolAbortError, ToolError, throwIfAborted, toolFailure } from "../core/tool-errors";
 import { toolResult } from "../core/tool-result";
-import {
-	executeReadUrl,
-	loadReadUrlCacheEntry,
-	type ParsedReadUrlTarget,
-	parseReadUrlTarget,
-	type ReadUrlToolDetails,
-} from "../web/fetch";
+import type { ReadUrlToolDetails } from "../web/fetch";
+import { loadUrlReader } from "../web/manifest";
+import { type ParsedReadUrlTarget, parseReadUrlTarget } from "../web/read-url-target";
 import {
 	type ConflictEntry,
 	type ConflictScope,
@@ -2711,9 +2707,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	 * once and every range reads the same body; a bare URL goes straight to the fetch path.
 	 */
 	async #readUrlTarget(target: ParsedReadUrlTarget, signal?: AbortSignal): Promise<AgentToolResult<ReadToolDetails>> {
-		if (!this.session.settings.get("fetch.enabled")) {
-			throw new ToolError("URL reads are disabled by settings.");
-		}
+		const { executeReadUrl, loadReadUrlCacheEntry } = await loadUrlReader(this.session);
 		const raw = target.raw;
 		const cacheKey = { path: target.path, raw };
 		const cacheOptions = { ensureArtifact: true, preferCached: true } as const;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseReadUrlTarget } from "@veyyon/coding-agent/tools/web/fetch";
+import { parseReadUrlTarget } from "@veyyon/coding-agent/tools/web/read-url-target";
 
 describe("parseReadUrlTarget", () => {
 	it("returns null for non-URL paths", () => {

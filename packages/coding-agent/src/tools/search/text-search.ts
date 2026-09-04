@@ -47,7 +47,8 @@ import {
 import { formatCodeFrameLine, formatCount, PREVIEW_LIMITS } from "../core/render-utils";
 import { ToolError } from "../core/tool-errors";
 import { toolResult } from "../core/tool-result";
-import { materializeReadUrlToFile, parseReadUrlTarget } from "../web/fetch";
+import { loadUrlReader } from "../web/manifest";
+import { parseReadUrlTarget } from "../web/read-url-target";
 import { formatMatchLine } from "./match-line-format";
 import { isImmutableSearchSourcePath, resolveToolSearchScope } from "./search-scope";
 import {
@@ -867,6 +868,7 @@ export async function executeTextSearch(
 		const materializeExternalUrlForSearch = async (rawPath: string) => {
 			const target = parseReadUrlTarget(rawPath);
 			if (!target) return undefined;
+			const { materializeReadUrlToFile } = await loadUrlReader(session);
 			const materialized = await materializeReadUrlToFile(session, { path: target.path, raw: target.raw }, signal);
 			materializedExternalPaths.set(rawPath, materialized.path);
 			return { sourcePath: materialized.path, immutable: true };

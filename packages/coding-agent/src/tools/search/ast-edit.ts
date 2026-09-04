@@ -20,7 +20,7 @@ import { enforcePlanModeWrite } from "../core/plan-mode-guard";
 import { capParseErrors, formatCodeFrameLine, formatCount, formatParseErrors } from "../core/render-utils";
 import { ToolError } from "../core/tool-errors";
 import { toolResult } from "../core/tool-result";
-import { parseReadUrlTarget } from "../web/fetch";
+import { parseReadUrlTarget } from "../web/read-url-target";
 import { resolveToolSearchScope } from "./search-scope";
 
 /** Chars of a changed line kept in the diff preview sent to the model and the display. */

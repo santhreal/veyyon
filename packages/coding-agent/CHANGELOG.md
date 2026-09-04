@@ -12,6 +12,7 @@
 - The 81 site scrapers, the page loader and the Parallel extraction client moved to `@veyyon/web`: a subpath import previously resolved through `@veyyon/coding-agent/web/scrapers/*` or `@veyyon/coding-agent/web/parallel` is now `@veyyon/web/scrapers/*` and `@veyyon/web/parallel`, and the search providers' `withHardTimeout` is `@veyyon/web/hard-timeout`.
 - `escapeMarkdownTableCell` and the Turndown helpers are `@veyyon/utils/markdown-table` and `@veyyon/utils/turndown`, and `htmlToBasicMarkdown` is `@veyyon/utils/html-markdown`, so a subpath import previously resolved through `@veyyon/coding-agent/utils/markdown-table`, `@veyyon/coding-agent/utils/turndown` or the scrapers barrel names the utils module.
 - The setting declaration vocabulary — `SettingDef` and its definition kinds, `SettingType`, `SETTING_TYPES`, `isSettingType`, `SettingTab`, `AnyUiMetadata` and `SubmenuOption` — moved from `@veyyon/coding-agent/config/settings-schema` to `@veyyon/settings`; the schema, its readers, the tab metadata and the tab groups stay where they were.
+- URL target parsing is exported from `tools/web/read-url-target` instead of `tools/web/fetch`.
 
 ### Added
 
@@ -29,6 +30,7 @@
 
 ### Changed
 
+- URL reader initialization is deferred until an enabled URL read or search; local tools and transcript previews no longer initialize it.
 - Vibe tools load on `/vibe` activation rather than during startup, and failed loading preserves the session toolset.
 - The settings schema registry is `@veyyon/kernel/settings/schema` and `config/optional-number` is `@veyyon/kernel/settings/optional-number`; `config/settings-schema` composes the domain tables through `declareSettings` and still exports the queries (`getDefault`, `getType`, `getUi`, `hasUi`, `getPathsForTab`, `retiredBy`, `isSettingPath`, `getEnumValues`, `isUnsetNumberPath`, `describeSettingTypeMismatch`), the `SettingPath` and `SettingValue` types, `SETTINGS_SCHEMA`, the tab metadata and the typed groups, so importing a query loads the tables it reads. No setting, default or config file changes.
 - `Settings` (`config/settings`) extends `SettingsStore` from `@veyyon/kernel/settings/store` and passes the product's hook set (the global setting bindings, the `SETTING_HOOKS` table, the config migrations, the `settings.json` and `agent.db` legacy read, the changelog-marker seed and the per-directory resolution of `enabledModels`); `config/settings` re-exports the store's vocabulary and `SettingSignal` under the same names, so every import resolves. No setting, default, config file or write order changes.

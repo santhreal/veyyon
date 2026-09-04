@@ -46,6 +46,12 @@ files (PNG, JPEG, GIF, WEBP) inline for direct visual analysis. When `inspect_im
 `read` returns image metadata instead and the model inspects the image by calling `inspect_image`
 with a question.
 
+URL reads and URL-scoped text or structural searches require `fetch.enabled: true`.
+The URL reader initializes on the first URL operation, which waits for initialization before
+fetching. Local reads, local searches, and transcript previews do not initialize the URL reader.
+With `fetch.enabled: false`, URL operations fail with `URL reads are disabled by settings.`;
+local operations remain available.
+
 ## `@path` mentions (`utils/file-mentions.ts`)
 
 A `@path` token in a prompt auto-reads the file or lists the directory it names, and the result is

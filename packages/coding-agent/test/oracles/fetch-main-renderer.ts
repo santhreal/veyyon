@@ -17,7 +17,8 @@ import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import { applyListLimit } from "@veyyon/coding-agent/tools/core/list-limit";
 import { formatStyledArtifactReference } from "@veyyon/coding-agent/tools/core/output-meta";
 import { formatExpandHint, getDomain, replaceTabs } from "@veyyon/coding-agent/tools/core/render-utils";
-import { parseReadUrlTarget, type ReadUrlToolDetails } from "@veyyon/coding-agent/tools/web/fetch";
+import type { ReadUrlToolDetails } from "@veyyon/coding-agent/tools/web/fetch";
+import { parseReadUrlTarget } from "@veyyon/coding-agent/tools/web/read-url-target";
 import { type Component, Text } from "@veyyon/tui";
 import { formatCount, formatMoreLines, truncate } from "@veyyon/utils/format";
 
