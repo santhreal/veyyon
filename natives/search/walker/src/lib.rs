@@ -2118,7 +2118,7 @@ pub fn is_relative_ancestor(parent: &str, child: &str) -> bool {
 /// includes the two most common characters in real file names.
 ///
 /// The minimal counterexample, found by
-/// `fuzz/fuzz_targets/walker_path_order.rs` in ninety seconds, is `"."`,
+/// `tests/fuzz/fuzz_targets/walker_path_order.rs` in ninety seconds, is `"."`,
 /// `"./aaaaaaaaa"`, `"...."`: the first is an ancestor of the second so it
 /// sorted greater, the second beat the third on byte order because `/` is above
 /// `.`, and yet the first sorted below the third. `src`, `src/x`, `src-gen` is

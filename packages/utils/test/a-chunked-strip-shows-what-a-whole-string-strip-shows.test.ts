@@ -25,7 +25,7 @@ interface Corpus {
 	cases: { name: string; why: string; input: string; expected: string }[];
 }
 
-const corpus: Corpus = await Bun.file(`${import.meta.dirname}/../../../fixtures/ansi-strip-corpus.json`).json();
+const corpus: Corpus = await Bun.file(`${import.meta.dirname}/../../../tests/fixtures/ansi-strip-corpus.json`).json();
 
 /** What a consumer displays after every chunk: settled text plus the provisional remainder. */
 function chunked(input: string, splits: readonly number[]): string[] {

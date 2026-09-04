@@ -11,8 +11,8 @@
 //! `.` and `-`, the two most common characters in real file names, and `src`,
 //! `src/x`, `src-gen` was already a broken triple in any checkout.
 //!
-//! `fuzz/fuzz_targets/walker_path_order.rs` found it in ninety seconds and
-//! reports the offending triple. This suite is the durable half of that
+//! `tests/fuzz/fuzz_targets/walker_path_order.rs` found it in ninety seconds
+//! and reports the offending triple. This suite is the durable half of that
 //! finding: the fuzzer explores, and these cases pin the specific orderings so
 //! the bug cannot come back the next time someone reaches for
 //! `left.cmp(right)`.

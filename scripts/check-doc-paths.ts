@@ -77,8 +77,6 @@ export const SOURCE_ROOTS = [
 	"contracts/",
 	"demo/",
 	"docs/",
-	"fixtures/",
-	"fuzz/",
 	"hosts/",
 	"kernel/",
 	"natives/",

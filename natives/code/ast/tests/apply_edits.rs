@@ -11,8 +11,8 @@
 //! the process down instead of reporting a bad edit.
 //!
 //! It was invisible to the tests that existed because hand-written fixtures are
-//! ASCII. `fuzz/fuzz_targets/ast_apply_edits.rs` found it on its first run with
-//! `"b\u{df5d7}hhh..."` and an edit deleting one byte at offset 1.
+//! ASCII. `tests/fuzz/fuzz_targets/ast_apply_edits.rs` found it on its first
+//! run with `"b\u{df5d7}hhh..."` and an edit deleting one byte at offset 1.
 //!
 //! Every case below asserts the concrete rewritten string or the concrete
 //! error, never merely that the call returned.

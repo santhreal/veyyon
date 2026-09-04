@@ -31,7 +31,8 @@
 //!
 //! Everything here is pure and takes borrowed bytes. `veyyon-natives` keeps a
 //! thin `#[napi]` wrapper in `src/keys.rs` that converts to and from the JS
-//! types, and `fuzz/fuzz_targets/keys_parse.rs` drives this crate directly.
+//! types, and `tests/fuzz/fuzz_targets/keys_parse.rs` drives this crate
+//! directly.
 
 use std::borrow::Cow;
 
@@ -111,7 +112,7 @@ const NAMEABLE_MODS: u32 = MOD_SHIFT | MOD_CTRL | MOD_ALT | MOD_SUPER;
 /// modifyOtherKeys comparator tested the raw 77 against the 13 that id parses
 /// back to. The kitty comparator had always stripped the mask and the
 /// modifyOtherKeys one had not, which is the whole bug. Found by
-/// `fuzz/fuzz_targets/keys_parse.rs`.
+/// `tests/fuzz/fuzz_targets/keys_parse.rs`.
 #[inline]
 const fn modifiers_match(actual: u32, expected: u32) -> bool {
 	actual & !LOCK_MASK == expected & !LOCK_MASK
@@ -125,7 +126,7 @@ const fn modifiers_match(actual: u32, expected: u32) -> bool {
 /// ignoring hyper answered `alt+super+Y`, which `matches_key` then refused
 /// because the wire modifier was still 26. The key read as pressed and no
 /// binding could fire on it, and had one fired it would have been the wrong
-/// binding. Found by `fuzz/fuzz_targets/keys_parse.rs`.
+/// binding. Found by `tests/fuzz/fuzz_targets/keys_parse.rs`.
 ///
 /// The kitty path had this rule inline and the modifyOtherKeys path did not,
 /// which is why it is a named predicate now: two encodings of the same idea
@@ -650,7 +651,7 @@ fn matches_key_inner(bytes: &[u8], key_id: &str, kitty_protocol_active: bool) ->
 		// tab that already says alt). `parse_key` folds those two into the same id
 		// because a modifier set either contains alt or it does not, so a matcher
 		// that only ever removed the alt answered false for the very id parsing had
-		// just produced. Found by `fuzz/fuzz_targets/keys_parse.rs`.
+		// just produced. Found by `tests/fuzz/fuzz_targets/keys_parse.rs`.
 		if matches_key_inner(inner_bytes, &build(modifier & !MOD_ALT), true) {
 			return true;
 		}
@@ -675,7 +676,7 @@ fn matches_key_inner(bytes: &[u8], key_id: &str, kitty_protocol_active: bool) ->
 		// this DECIDES whether a binding fires, so a rule applied in one and not the
 		// other means a binding the UI displays can never be triggered.
 		// `\x1b[91;1;99u` reports key `[` with text `c`, and parsing answered "c"
-		// while matching compared against `[`. Found by `fuzz/fuzz_targets/
+		// while matching compared against `[`. Found by `tests/fuzz/fuzz_targets/
 		// keys_parse.rs`.
 		//
 		// Gated on the name resolving for the same reason parsing gates on it: a text
@@ -748,8 +749,8 @@ fn matches_key_inner(bytes: &[u8], key_id: &str, kitty_protocol_active: bool) ->
 	// `kitty_matches(cp, m) || mok_matches(cp, m)` for a MODIFIED key and then
 	// drop the second half for the UNMODIFIED one, so `\x1b[27;1;9` (Tab, with
 	// the modifier field explicitly saying none held) parsed as `tab` and matched
-	// nothing. Found by `fuzz/fuzz_targets/keys_parse.rs`. The sentinel codes for
-	// arrows and function keys are negative and a wire keycode never is, so
+	// nothing. Found by `tests/fuzz/fuzz_targets/keys_parse.rs`. The sentinel codes
+	// for arrows and function keys are negative and a wire keycode never is, so
 	// routing those arms through here too costs nothing and keeps one rule.
 	let enhanced_matches =
 		|codepoint: i32, m: u32| -> bool { kitty_matches(codepoint, m) || mok_matches(codepoint, m) };
@@ -762,7 +763,7 @@ fn matches_key_inner(bytes: &[u8], key_id: &str, kitty_protocol_active: bool) ->
 		// `parse_key` names it, so refusing it here meant the key read as pressed
 		// and no binding could fire on it. Same shape as the `space` arm below,
 		// which had already learned this. Found by
-		// `fuzz/fuzz_targets/keys_parse.rs`.
+		// `tests/fuzz/fuzz_targets/keys_parse.rs`.
 		if modifier == 0 {
 			return bytes == b"\x1b" || enhanced_matches(CP_ESCAPE, 0);
 		}
@@ -984,7 +985,7 @@ fn matches_key_inner(bytes: &[u8], key_id: &str, kitty_protocol_active: bool) ->
 			// function: the key read as pressed and no binding could fire on it.
 			// xterm and Ghostty both emit that form, and `;1` is exactly what a
 			// terminal sends when it reports the modifier field unconditionally.
-			// Found by `fuzz/fuzz_targets/keys_parse.rs`, which asserts that
+			// Found by `tests/fuzz/fuzz_targets/keys_parse.rs`, which asserts that
 			// whatever id `parse_key` produces, `matches_key` accepts.
 			return matches_legacy_key(bytes, key) || enhanced_matches(cp, 0);
 		}
@@ -1231,7 +1232,7 @@ fn parse_key_inner(bytes: &[u8], kitty_protocol_active: bool) -> Option<Cow<'sta
 	// ESC-pair rule and come back as `alt+shift+o`, which this arm then turned
 	// into `alt+alt+shift+o`: an id `parse_key_id` cannot parse, so the key
 	// reported as pressed and no binding could ever fire on it. Found by
-	// `fuzz/fuzz_targets/keys_parse.rs`, which asserts that whatever id
+	// `tests/fuzz/fuzz_targets/keys_parse.rs`, which asserts that whatever id
 	// `parse_key` produces, `matches_key` accepts.
 	//
 	// The ESC run is counted rather than tested two bytes at a time, so three or
@@ -1579,7 +1580,7 @@ fn format_kitty_key(parsed: &ParsedKittySequence) -> Option<Cow<'static, str>> {
 				// all" for a sequence matching happily accepted as `tab`. Nothing
 				// is lost by falling back, because a base layout that names
 				// nothing cannot be spelled in a binding either. Found by
-				// `fuzz/fuzz_targets/keys_parse.rs`.
+				// `tests/fuzz/fuzz_targets/keys_parse.rs`.
 				parsed
 					.base_layout_key
 					.filter(|&base| format_key_name(base).is_some())

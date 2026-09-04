@@ -30,7 +30,7 @@
 //! Playwright header must name a test, not merely be followed by a space, so a
 //! line of nothing but a number and a bracket is not a header on any pass.
 //!
-//! Found by `fuzz/fuzz_targets/minimizer_filters.rs`, artifact
+//! Found by `tests/fuzz/fuzz_targets/minimizer_filters.rs`, artifact
 //! `crash-df53aa3c9a7c0a56e585941db0f96acd17e5dce8`.
 
 use veyyon_shell::minimizer::{MinimizerConfig, MinimizerCtx, filters, primitives};

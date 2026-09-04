@@ -11,8 +11,8 @@
 //!
 //! It slipped through because every fixture in the suite was realistic program
 //! output, where the blank lines are incidental and nobody was asserting on
-//! them. `fuzz/fuzz_targets/minimizer_lint_condense.rs` found it by noticing
-//! that two bytes of input had become seven bytes of output.
+//! them. `tests/fuzz/fuzz_targets/minimizer_lint_condense.rs` found it by
+//! noticing that two bytes of input had become seven bytes of output.
 //!
 //! A note on that property, because it is stated carefully below and the care
 //! is the point. "Never grows in bytes" is not true in general: collapsing

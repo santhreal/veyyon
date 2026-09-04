@@ -7,7 +7,7 @@
  *
  * The contract is shared with the Rust `strip_ansi` in
  * `natives/shell/src/minimizer/primitives.rs`, and both are tested against
- * the same cases in `fixtures/ansi-strip-corpus.json`. Read that file before
+ * the same cases in `tests/fixtures/ansi-strip-corpus.json`. Read that file before
  * changing anything here: the two implementations used to disagree, and every
  * disagreement was a defect rather than a difference of taste.
  *
@@ -96,7 +96,7 @@ export function stripAnsi(s: string): string {
 	// sequence can push a stray escape against a following `[` and MAKE a
 	// sequence that was not there before, so the same string strips to two
 	// different results depending on how many times it has been through. Found by
-	// the Rust half's fuzzer, `fuzz/fuzz_targets/minimizer_filters.rs`.
+	// the Rust half's fuzzer, `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 	return normalized.replace(ESCAPE_SEQUENCE, "").replaceAll("\x1b", "");
 }
 

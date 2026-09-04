@@ -19,7 +19,7 @@
 //! follows the percentage, and asking only that a line hold a `%`, a `[` and a
 //! `]` somewhere claimed JSON fragments and shell globs as well.
 //!
-//! Found by `fuzz/fuzz_targets/minimizer_filters.rs`.
+//! Found by `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 
 use veyyon_shell::minimizer::{MinimizerConfig, MinimizerCtx, filters};
 

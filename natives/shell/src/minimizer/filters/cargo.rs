@@ -340,7 +340,7 @@ fn failures_only(input: &str, exit_code: i32, subject: &str) -> String {
 		// everything before it, so a capture that had been minimized once came
 		// back shorter every time it was minimized again. A real header repeating
 		// consecutively would have to name the same test twice in a row, which
-		// cargo does not do. Found by `fuzz/fuzz_targets/minimizer_filters.rs`.
+		// cargo does not do. Found by `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 		if !primitives::is_minimizer_annotation(trimmed)
 			&& (trimmed.starts_with("failures:")
 				|| trimmed.starts_with("---- ")

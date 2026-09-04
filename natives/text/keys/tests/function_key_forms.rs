@@ -16,10 +16,11 @@
 //! key class in the same function already did `legacy || kitty`; the function
 //! key arm was the one that stopped at the first half.
 //!
-//! Found by `fuzz/fuzz_targets/keys_parse.rs`, whose property is that whatever
-//! id `parse_key` produces, `matches_key` accepts for the same bytes. That
-//! property is the reason the pair is tested together everywhere below: a test
-//! that only called `parse_key` would have passed throughout the bug's life.
+//! Found by `tests/fuzz/fuzz_targets/keys_parse.rs`, whose property is that
+//! whatever id `parse_key` produces, `matches_key` accepts for the same bytes.
+//! That property is the reason the pair is tested together everywhere below: a
+//! test that only called `parse_key` would have passed throughout the bug's
+//! life.
 
 use veyyon_keys::{matches_key, parse_key};
 

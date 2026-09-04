@@ -55,7 +55,9 @@ operator manual.
 Rust is `natives/vendor/`, and the whole-product conformance corpus is `tests/conformance/`.
 `apps/*` is a deployable: the stats dashboard and the website. `clients/*` is a client of the
 product that is not the terminal host: the browser guest client and the Python clients. `tests/*`
-is a test-only member: the eval suites and the offline simulations, published nowhere.
+is a test-only member: the eval suites and the offline simulations, published nowhere. `tests/fixtures/`
+holds a corpus more than one member reads, and `tests/fuzz/` is the cargo-fuzz workspace, which is
+not a member of the root one.
 `plugins/*` is the optional layer: a member there contributes tools, modes or storage through the
 kernel's contribution registry, and the product runs with it absent. A plugin never imports another
 plugin.

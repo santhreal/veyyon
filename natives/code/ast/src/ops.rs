@@ -174,9 +174,9 @@ const PROBE_SOURCES: &[&str] = &["", "a", "a b", "a(b)", "{ a }", "!^", "a; b;"]
 /// `PROBE_SOURCES`, not for every source. A pattern that only misbehaves on a
 /// shape none of them cover still gets through. The first version of this guard
 /// tried to recognise the bad patterns by their text, rejected a bare `$$$`,
-/// and `fuzz/fuzz_targets/ast_parse_and_match.rs` immediately found `"+$$$"`;
-/// the probe is a wider net rather than a complete one, and the fuzzer is what
-/// keeps widening it.
+/// and `tests/fuzz/fuzz_targets/ast_parse_and_match.rs` immediately found
+/// `"+$$$"`; the probe is a wider net rather than a complete one, and the
+/// fuzzer is what keeps widening it.
 ///
 /// This is a boundary that converts a panic into an error, not a fallback:
 /// nothing continues past it, and the message names both the pattern and what
@@ -467,7 +467,7 @@ pub fn apply_edits(content: &str, edits: &[Edit<String>]) -> Result<String> {
 		// character boundaries were not, so a source file with any non-ASCII
 		// content -- an identifier, a comment, a string literal -- could abort the
 		// process instead of reporting a bad edit. Found by
-		// `fuzz/fuzz_targets/ast_apply_edits.rs`.
+		// `tests/fuzz/fuzz_targets/ast_apply_edits.rs`.
 		if !output.is_char_boundary(start) || !output.is_char_boundary(end) {
 			return Err(anyhow!(
 				"Computed edit range {start}..{end} splits a multi-byte character; the match offsets \

@@ -597,8 +597,8 @@ pub fn group_diagnostics(input: &str) -> String {
 		// every line is one of ours nothing groups, and the function returns its
 		// input unchanged, which is exactly what idempotence means here.
 		// `is_minimizer_annotation` is the one owner of "did we write this", shared
-		// with `is_lint_noise`. Found by `fuzz/fuzz_targets/minimizer_lint_condense.
-		// rs`.
+		// with `is_lint_noise`. Found by
+		// `tests/fuzz/fuzz_targets/minimizer_lint_condense. rs`.
 		if primitives::is_minimizer_annotation(line) {
 			ungrouped.push(line.to_string());
 			continue;
@@ -633,8 +633,8 @@ pub fn group_diagnostics(input: &str) -> String {
 	// minimizer doing worse than nothing. At the bottom it inverted outright: a
 	// diagnostic whose message text is empty is counted but not printed, so ONE
 	// line of program output came back as TWO lines with nothing under them.
-	// Found by `fuzz/fuzz_targets/minimizer_lint_condense.rs`, whose property is
-	// that condensing does not grow the line count.
+	// Found by `tests/fuzz/fuzz_targets/minimizer_lint_condense.rs`, whose property
+	// is that condensing does not grow the line count.
 	//
 	// Two or more diagnostics keep the grouping even when it costs lines: at that
 	// point the header is telling you something the lines do not, and the
@@ -670,7 +670,7 @@ pub fn group_diagnostics(input: &str) -> String {
 		// pass drops a whitespace-only line, and the two passes then disagreed for
 		// the same command. The header count above is unchanged, because the
 		// diagnostic really was reported; there is simply nothing to show for it.
-		// Found by `fuzz/fuzz_targets/minimizer_lint_condense.rs`.
+		// Found by `tests/fuzz/fuzz_targets/minimizer_lint_condense.rs`.
 		for entry in entries.iter().take(12) {
 			let text = truncate_line(entry, 180);
 			if text.trim().is_empty() {
@@ -705,7 +705,7 @@ pub fn group_diagnostics(input: &str) -> String {
 	// emitted `"…(1 diagnostics)\n  \n"` and pass two answered `"…(1 diagnostics)\
 	// n"`. Two passes disagreeing means the same command minimizes differently
 	// depending on how it was captured. Found by
-	// `fuzz/fuzz_targets/minimizer_lint_condense.rs`.
+	// `tests/fuzz/fuzz_targets/minimizer_lint_condense.rs`.
 	let ungrouped: Vec<&str> = if ungrouped.is_empty() {
 		Vec::new()
 	} else {
@@ -1036,7 +1036,7 @@ mod tests {
 		// underneath them: the reshaped `file:line:col` diagnostic is already
 		// complete, so the header cost the agent two lines of context and told it
 		// nothing. See the `diag_count <= 1` branch in `group_diagnostics`, and
-		// `fuzz/fuzz_targets/minimizer_lint_condense.rs`, which found the case
+		// `tests/fuzz/fuzz_targets/minimizer_lint_condense.rs`, which found the case
 		// where the same wrapping turned one line of output into two with nothing
 		// under them.
 		//

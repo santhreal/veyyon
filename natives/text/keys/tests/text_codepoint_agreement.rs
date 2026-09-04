@@ -19,8 +19,8 @@
 //! they disagree the interface shows a binding the user cannot trigger: the
 //! help text says `c`, the key produces `c`, and nothing happens. Nothing
 //! reports it, because each function is self-consistent. Found by
-//! `fuzz/fuzz_targets/keys_parse.rs`, whose whole property is that these two
-//! agree.
+//! `tests/fuzz/fuzz_targets/keys_parse.rs`, whose whole property is that these
+//! two agree.
 //!
 //! The rule kept is the text field, because it is the one that answers "what
 //! did the user just type", which is what a binding is written against.

@@ -22,7 +22,7 @@
 //!   and make a sequence that was not there before. This half learned that from
 //!   its fuzzer; the other half had not.
 //!
-//! So the cases live in `fixtures/ansi-strip-corpus.json`, outside both
+//! So the cases live in `tests/fixtures/ansi-strip-corpus.json`, outside both
 //! languages, and both suites read them. A case added on one side only is the
 //! failure mode this arrangement removes, and the corpus carries a `why` per
 //! case so the reason a case exists travels with it rather than with one
@@ -59,7 +59,7 @@ struct Corpus {
 /// The corpus path, anchored at the crate manifest so the suite does not depend
 /// on the working directory.
 fn corpus_path() -> PathBuf {
-	PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/ansi-strip-corpus.json")
+	PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/ansi-strip-corpus.json")
 }
 
 fn corpus() -> Vec<Case> {

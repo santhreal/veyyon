@@ -17,7 +17,7 @@
 //! been minimized once instead of twice. The counter is a count of ORIGINAL
 //! lines, and that reading is what makes the operation composable.
 //!
-//! Found by `fuzz/fuzz_targets/minimizer_primitives.rs`, artifact
+//! Found by `tests/fuzz/fuzz_targets/minimizer_primitives.rs`, artifact
 //! `crash-af260edc80e597cc317a64bb3b5657df3daf3f24`.
 
 use veyyon_shell::minimizer::primitives;

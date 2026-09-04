@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * Driver for the fuzzing suite in `fuzz/`.
+ * Driver for the fuzzing suite in `tests/fuzz/`.
  *
  * `cargo fuzz` runs one target at a time in the foreground until you stop it,
  * which is the wrong shape for a machine with thirty-two cores and six targets.
@@ -17,7 +17,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 export const repoRoot = path.join(import.meta.dir, "..");
-export const fuzzDir = path.join(repoRoot, "fuzz");
+export const fuzzDir = path.join(repoRoot, "tests", "fuzz");
 
 /**
  * Where cargo writes build artifacts.
@@ -74,7 +74,7 @@ export function isCommand(value: string | undefined): value is Command {
 }
 
 /**
- * Read the target names out of a `fuzz/Cargo.toml`.
+ * Read the target names out of a `tests/fuzz/Cargo.toml`.
  *
  * WHY NOT A LIST IN THIS FILE. `cargo fuzz` requires a `[[bin]]` entry per
  * target, so the manifest is already the definitional home for the set. A second
@@ -103,7 +103,7 @@ export function parseTargetNames(manifest: string): string[] {
 		if (match?.[1] != null) names.push(match[1]);
 	}
 	if (names.length === 0) {
-		throw new UsageError("No [[bin]] targets found in fuzz/Cargo.toml.");
+		throw new UsageError("No [[bin]] targets found in tests/fuzz/Cargo.toml.");
 	}
 	return names;
 }
@@ -237,7 +237,7 @@ async function runOneTarget(target: string, seconds: number, rssLimitMb: number)
 	const code = await proc.exited;
 	await log.end();
 
-	console.log(`  ${code === 0 ? "ok  " : "FAIL"} ${target}  (log: fuzz/logs/${target}.log)`);
+	console.log(`  ${code === 0 ? "ok  " : "FAIL"} ${target}  (log: tests/fuzz/logs/${target}.log)`);
 	return code;
 }
 
@@ -296,7 +296,7 @@ async function runTargets(targets: string[], flags: ReadonlyMap<string, string>)
 	}
 	console.error(`\n${failures.length} target(s) reported findings:`);
 	for (const { target, code } of failures) {
-		console.error(`  ${target} (exit ${code}) -- reproducer in fuzz/artifacts/${target}/`);
+		console.error(`  ${target} (exit ${code}) -- reproducer in tests/fuzz/artifacts/${target}/`);
 	}
 	// Point at triage rather than at the artifacts alone. Several artifacts are
 	// usually one bug, and some of them no longer reproduce at all, so reading the

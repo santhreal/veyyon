@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * Triage for the crash artifacts the fuzzing suite leaves in `fuzz/artifacts/`.
+ * Triage for the crash artifacts the fuzzing suite leaves in `tests/fuzz/artifacts/`.
  *
  * A fuzz run that ends with "3 targets reported findings" is not yet a finding
  * anybody can act on. The artifacts pile up, several of them are the same bug,
@@ -25,7 +25,7 @@
  *    hook that aborts before unwinding, so any code whose contract is "convert a
  *    panic into an error" crashes the fuzzer while behaving correctly. That is a
  *    property of the harness. Signatures known to be that are listed in
- *    `fuzz/known-harness-signatures.toml` and reported separately rather than
+ *    `tests/fuzz/known-harness-signatures.toml` and reported separately rather than
  *    filed, because an issue for one asks somebody to break working code to
  *    silence a false alarm.
  *
@@ -162,7 +162,7 @@ export function parseCrashSignature(output: string): CrashSignature | undefined 
 function firstPartyTrees(): string[] {
 	const trees = new Set(rustMembers().map(member => member.split("/")[0]!));
 	// The fuzz harnesses are their own cargo project, excluded from the workspace.
-	trees.add("fuzz");
+	trees.add("tests/fuzz");
 	return [...trees].sort();
 }
 
@@ -207,7 +207,7 @@ export function signatureKey(target: string, signature: CrashSignature): string 
  *
  * A minimal parser rather than a TOML dependency: the file is a list of
  * `location = "..."` / `message = "..."` pairs under `[[signature]]` headers,
- * and the runner already parses `fuzz/Cargo.toml` the same way. Returns the
+ * and the runner already parses `tests/fuzz/Cargo.toml` the same way. Returns the
  * substrings to match, since a message may carry a value that varies.
  */
 export function parseHarnessSignatures(contents: string): { location: string; message: string }[] {
@@ -338,7 +338,7 @@ export function triage(
  * a finding nobody can reproduce locally is a finding nobody will fix.
  */
 export function renderIssueBody(finding: Finding): string {
-	const artifacts = finding.artifacts.map(name => `fuzz/artifacts/${finding.target}/${name}`);
+	const artifacts = finding.artifacts.map(name => `tests/fuzz/artifacts/${finding.target}/${name}`);
 	return [
 		`\`${finding.target}\` crashes with:`,
 		"",
@@ -354,12 +354,12 @@ export function renderIssueBody(finding: Finding): string {
 			: `Artifact: \`${artifacts[0]}\``,
 		"",
 		"The fuzz target's header comment says what property it is asserting and why. Read it first:",
-		`\`fuzz/fuzz_targets/${finding.target}.rs\`.`,
+		`\`tests/fuzz/fuzz_targets/${finding.target}.rs\`.`,
 		"",
 		"Constraints on the fix:",
 		"",
 		"- Do not weaken or delete the assertion that caught this. If the property is genuinely wrong, say so in the PR and make it MORE precise, never looser.",
-		"- Do not change anything under `fuzz/` except to add a target or a generator. The crash has to stop because the code is correct, not because nothing is checking.",
+		"- Do not change anything under `tests/fuzz/` except to add a target or a generator. The crash has to stop because the code is correct, not because nothing is checking.",
 		"- Land a regression test in the crate's own `tests/` directory that fails before the fix and passes after, asserting real values rather than that a call returned.",
 		"- Update the docs that describe the changed behaviour in the same change.",
 		"",

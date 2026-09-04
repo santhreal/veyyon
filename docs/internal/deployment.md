@@ -41,9 +41,14 @@ bun run site:build      # = node apps/site/build.mjs
 3. Stages `scripts/install.sh` and `scripts/install.ps1` at the main site root.
    These copies are build artifacts; edit the originals in `scripts/`, never
    `apps/site/install.*`.
-4. Generates `website-get/` for the separate `veyyon-get` Pages project,
-   including the two installer scripts, root rewrite, and response headers.
-5. Scans the hard-coded page list in `apps/site/build.mjs` for leaked old product
+4. Regenerates `apps/site/models-data.json` from `packages/catalog/src/models.json`
+   via `apps/site/tools/gen-models.mjs`; the models page fetches it client-side.
+5. Stages the hero clips `assets/demo-hd.webp` and `assets/agents-cockpit.webp`
+   into the site tree, so the site cannot serve a clip the repository does not have.
+6. Generates `website-get/` at the repository root for the separate `veyyon-get`
+   Pages project, including the two installer scripts, root rewrite, and response
+   headers.
+7. Scans the hard-coded page list in `apps/site/build.mjs` for leaked old product
    names, allowing the MIT oh-my-pi attribution and marked `OMP_` legacy aliases,
    then writes `apps/site/.buildinfo`. This scan does not cover arbitrary handbook
    pages.
@@ -294,4 +299,4 @@ merge lands:
 4. `bun run site:deploy`.
 5. If `install.sh` or `install.ps1` changed, also run `bun run site:deploy:get`.
 
-*Verified against `c003983747` on 2026-09-01.*
+*Verified against `eeffc5978d` on 2026-09-04.*

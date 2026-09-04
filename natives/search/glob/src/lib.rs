@@ -118,9 +118,10 @@ impl CompiledGlob {
 	///
 	/// This is the reference answer. [`is_match`](Self::is_match) is an
 	/// optimization over it and must agree with it on every path, which is what
-	/// `fuzz/fuzz_targets/glob_patterns.rs` checks: a fast path that disagrees
-	/// silently includes or excludes files, and nothing downstream would report
-	/// it. Exposed for that differential check rather than for ordinary use.
+	/// `tests/fuzz/fuzz_targets/glob_patterns.rs` checks: a fast path that
+	/// disagrees silently includes or excludes files, and nothing downstream
+	/// would report it. Exposed for that differential check rather than for
+	/// ordinary use.
 	#[must_use]
 	pub fn is_match_via_engine(&self, path: &str) -> bool {
 		self.glob_set.is_match(path)
@@ -186,8 +187,8 @@ pub fn walk_depth_bound(pattern: &str) -> usize {
 /// the segment count says one. The walker then prunes at depth 1 and never
 /// visits the directory holding the match, which is a silent recall loss --
 /// the caller gets fewer results with nothing to indicate it. Found by
-/// `fuzz/fuzz_targets/glob_patterns.rs` on `"*?[?!*?[?!,-[]?*"`, which matches
-/// `"b/~0ba"` at depth 2 under a claimed bound of 1.
+/// `tests/fuzz/fuzz_targets/glob_patterns.rs` on `"*?[?!*?[?!,-[]?*"`, which
+/// matches `"b/~0ba"` at depth 2 under a claimed bound of 1.
 ///
 /// Ambiguity answers YES, because the answer only ever removes an
 /// optimization: an unterminated `[`, a negated class, or anything this does
@@ -365,8 +366,8 @@ fn path_extension(path: &str) -> Option<&str> {
 /// extension is empty) and for `**/*.b.rs` against `a.b.rs` (the glob matches,
 /// the extension is `rs`), and the disagreement is silent: the tool returns a
 /// shorter file list and nothing reports that a fast path answered instead of
-/// the engine. Found by `fuzz/fuzz_targets/glob_patterns.rs`, which asks both
-/// and compares.
+/// the engine. Found by `tests/fuzz/fuzz_targets/glob_patterns.rs`, which asks
+/// both and compares.
 fn is_literal_component(value: &str) -> bool {
 	!value.is_empty()
 		&& !value
@@ -383,7 +384,7 @@ fn is_literal_component(value: &str) -> bool {
 /// names: `**/..` answers false for `a/..` where a basename comparison answers
 /// true. Whatever the engine's reason, a fast path that disagrees with it is
 /// wrong by definition, since the fast path exists to be indistinguishable from
-/// it. Found by `fuzz/fuzz_targets/glob_patterns.rs`.
+/// it. Found by `tests/fuzz/fuzz_targets/glob_patterns.rs`.
 fn is_literal_path(value: &str) -> bool {
 	!value.is_empty()
 		&& value != "."

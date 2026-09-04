@@ -150,7 +150,7 @@ fn is_pkg_lint_invocation(ctx: &MinimizerCtx<'_>) -> bool {
 /// normalized line and answered differently. Every filter in this module strips
 /// ANSI as its first act, so doing it here costs nothing and makes the two
 /// rewrites happen in the one order where neither can hide work from the other.
-/// Found by `fuzz/fuzz_targets/minimizer_filters.rs`.
+/// Found by `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 ///
 /// A filter that DECLINES still hands back the program's own bytes. Rewriting
 /// is for the filters' benefit, not the caller's, and

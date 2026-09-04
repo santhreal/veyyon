@@ -18,13 +18,13 @@
 //! both cases rather than only guarding the crash.
 //!
 //! HOW THE GUARD GOT ITS SHAPE, WHICH IS THE POINT OF THE SUITE.
-//! `fuzz/fuzz_targets/ast_parse_and_match.rs` first found `"$$$"`, and the fix
-//! was a syntax check that rejected a pattern whose whole text was an ellipsis.
-//! The same fuzzer then found `"+$$$"`, which has more than an ellipsis in it
-//! and panics anyway, so the syntactic set was never the right thing to
-//! enumerate. `compile_pattern` now PROBES instead: it runs the compiled
-//! pattern against seven trivial sources inside `catch_unwind` and converts a
-//! panic into an error carrying the matcher's own message.
+//! `tests/fuzz/fuzz_targets/ast_parse_and_match.rs` first found `"$$$"`, and
+//! the fix was a syntax check that rejected a pattern whose whole text was an
+//! ellipsis. The same fuzzer then found `"+$$$"`, which has more than an
+//! ellipsis in it and panics anyway, so the syntactic set was never the right
+//! thing to enumerate. `compile_pattern` now PROBES instead: it runs the
+//! compiled pattern against seven trivial sources inside `catch_unwind` and
+//! converts a panic into an error carrying the matcher's own message.
 //!
 //! A PROBE IS NOT A PROOF, AND AN EARLIER VERSION OF THIS COMMENT SAID IT WAS.
 //! It claimed the assert depends on the pattern's tree rather than on the

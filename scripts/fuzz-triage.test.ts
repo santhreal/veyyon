@@ -318,7 +318,7 @@ describe("renderIssueBody", () => {
 		const body = renderIssueBody(finding());
 
 		expect(body).toContain("Do not weaken or delete the assertion");
-		expect(body).toContain("Do not change anything under `fuzz/`");
+		expect(body).toContain("Do not change anything under `tests/fuzz/`");
 		expect(body).toContain("fails before the fix and passes after");
 	});
 
@@ -330,7 +330,7 @@ describe("renderIssueBody", () => {
 	/** A finding nobody can reproduce locally is a finding nobody will fix. */
 	it("carries a runnable reproduction command", () => {
 		expect(renderIssueBody(finding())).toContain(
-			"cargo +nightly fuzz run keys_parse fuzz/artifacts/keys_parse/crash-aaa",
+			"cargo +nightly fuzz run keys_parse tests/fuzz/artifacts/keys_parse/crash-aaa",
 		);
 	});
 
@@ -345,7 +345,7 @@ describe("renderIssueBody", () => {
 
 	/** It points at the target's header comment, which states the property. */
 	it("points the reader at the target that found it", () => {
-		expect(renderIssueBody(finding())).toContain("fuzz/fuzz_targets/keys_parse.rs");
+		expect(renderIssueBody(finding())).toContain("tests/fuzz/fuzz_targets/keys_parse.rs");
 	});
 });
 

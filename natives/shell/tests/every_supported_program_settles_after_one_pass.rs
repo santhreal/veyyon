@@ -2,13 +2,14 @@
 //! nothing.
 //!
 //! WHY A TABLE INSTEAD OF WAITING FOR THE FUZZER. Both properties below are
-//! already fuzzed by `fuzz/fuzz_targets/minimizer_filters.rs`, and it has found
-//! a genuine bug in nearly every session it has run: filters that re-read their
-//! own annotations, compactors that emit a line their own entry conditions
-//! drop, counters that grow on each pass, a table reshaper that answered with
-//! the empty string. Each of those took a fuzzing round to surface, one at a
-//! time, because the fuzzer has to rediscover which of sixty program names
-//! routes to the arm it is probing before it can explore that arm at all.
+//! already fuzzed by `tests/fuzz/fuzz_targets/minimizer_filters.rs`, and it has
+//! found a genuine bug in nearly every session it has run: filters that re-read
+//! their own annotations, compactors that emit a line their own entry
+//! conditions drop, counters that grow on each pass, a table reshaper that
+//! answered with the empty string. Each of those took a fuzzing round to
+//! surface, one at a time, because the fuzzer has to rediscover which of sixty
+//! program names routes to the arm it is probing before it can explore that arm
+//! at all.
 //!
 //! This suite spends that search for free. The programs are listed, the hostile
 //! captures are listed, and every pair is checked in milliseconds. A regression

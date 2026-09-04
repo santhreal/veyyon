@@ -12,9 +12,9 @@
 //! second pass read the summary as an ordinary line of program output and wrote
 //! it back terminated. A filter whose result depends on how many times it has
 //! run cannot be cached, compared across runs, or replayed, and nothing
-//! reported the difference. Found by `fuzz/fuzz_targets/minimizer_filters.rs`,
-//! whose property is that a filter does not change its own output on a second
-//! pass.
+//! reported the difference. Found by
+//! `tests/fuzz/fuzz_targets/minimizer_filters.rs`, whose property is that a
+//! filter does not change its own output on a second pass.
 //!
 //! WHERE IT IS ENFORCED. At `MinimizerOutput::transformed`, the one constructor
 //! meaning "this text was rewritten", rather than at the five places that

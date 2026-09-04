@@ -15,9 +15,9 @@
 //! diagnostic, emitted the header again above it, and the dedup pass collapsed
 //! the pair into `dotnet build: failed (×2)`.
 //!
-//! All three were found by `fuzz/fuzz_targets/minimizer_filters.rs`, whose
-//! property is that a filter does not change its own output on a second pass.
-//! They are one bug in three places, which is why the shared predicates
+//! All three were found by `tests/fuzz/fuzz_targets/minimizer_filters.rs`,
+//! whose property is that a filter does not change its own output on a second
+//! pass. They are one bug in three places, which is why the shared predicates
 //! (`is_minimizer_annotation`, `is_program_content`, `has_program_content`) are
 //! the fix rather than three local patches, and why this file tests them
 //! through the real dispatcher instead of through the predicates.

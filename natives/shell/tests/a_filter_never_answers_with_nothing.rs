@@ -20,9 +20,9 @@
 //! input, so keeping the capture makes the output report itself as a
 //! PASSTHROUGH rather than as a rewrite, and the telemetry says plainly that
 //! this filter declined to minimize. Found by
-//! `fuzz/fuzz_targets/minimizer_filters.rs`, which asserts this separately from
-//! its idempotence property precisely because it is the consequence that
-//! matters.
+//! `tests/fuzz/fuzz_targets/minimizer_filters.rs`, which asserts this
+//! separately from its idempotence property precisely because it is the
+//! consequence that matters.
 
 use veyyon_shell::minimizer::{filters, primitives::or_original};
 

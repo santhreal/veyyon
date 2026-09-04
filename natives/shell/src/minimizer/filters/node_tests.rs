@@ -259,7 +259,7 @@ fn is_error_context_line(trimmed: &str) -> bool {
 /// the next, and everything above the next real header was dropped the second
 /// time. A line that is nothing but a number and a bracket names no test and is
 /// not a failure header on any pass. Found by
-/// `fuzz/fuzz_targets/minimizer_filters.rs`.
+/// `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 fn is_playwright_numbered_failure(trimmed: &str) -> bool {
 	let Some((number, rest)) = trimmed.split_once(')') else {
 		return false;

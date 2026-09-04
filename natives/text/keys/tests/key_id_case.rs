@@ -8,9 +8,9 @@
 //! TRUE, exactly inverted. A binding on a capital letter therefore never fired
 //! when you pressed it and fired when you pressed something else.
 //!
-//! HOW IT WAS FOUND. `fuzz/fuzz_targets/keys_parse.rs` asserts the two views
-//! agree: whatever id `parse_key` produces for a sequence, `matches_key` must
-//! accept that sequence under that id. It reported
+//! HOW IT WAS FOUND. `tests/fuzz/fuzz_targets/keys_parse.rs` asserts the two
+//! views agree: whatever id `parse_key` produces for a sequence, `matches_key`
+//! must accept that sequence under that id. It reported
 //! `parse_key said [69] is "E", but matches_key disagrees` on its first run.
 //! That property is what this suite pins by enumeration, because the
 //! disagreement is invisible from either side alone: each function looks

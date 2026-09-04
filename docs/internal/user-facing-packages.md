@@ -48,4 +48,4 @@ Sources: [`tests/evals/package.json`](../../tests/evals/package.json), [`tests/e
 - Outputs: trial directories and JSON result snapshots under `tests/evals/runs/`, plus the run rows the dashboard reads.
 - Side effects/limits: extracts fixture archives, clones upstream task repositories into `datasets/repo-cache/`, vendors pinned datasets into `.cache/`, and runs Docker containers for the `pier` and `harbor` backends.
 
-*Verified against `4aaaffd0a` on 2026-08-30.*
+*Verified against `eeffc5978d` on 2026-09-04.*

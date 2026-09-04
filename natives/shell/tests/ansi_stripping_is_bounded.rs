@@ -36,8 +36,8 @@
 //! pass and `" ][:"` on the next. An idempotence property that has to be argued
 //! case by case is one a fuzzer will keep breaking.
 //!
-//! Found by `fuzz/fuzz_targets/minimizer_filters.rs`, whose property is that a
-//! filter does not change its own output on a second pass.
+//! Found by `tests/fuzz/fuzz_targets/minimizer_filters.rs`, whose property is
+//! that a filter does not change its own output on a second pass.
 
 use veyyon_shell::minimizer::primitives::strip_ansi;
 

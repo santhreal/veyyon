@@ -14,7 +14,7 @@
 //! the noise stripper deleted it, the input became empty, and the agent was
 //! handed nothing at all for a command that had printed something. Not a
 //! smaller summary, nothing. Found by
-//! `fuzz/fuzz_targets/minimizer_lint_condense.rs` asserting idempotence.
+//! `tests/fuzz/fuzz_targets/minimizer_lint_condense.rs` asserting idempotence.
 //!
 //! The fix is one predicate, `primitives::is_minimizer_annotation`, consulted
 //! before any noise pattern runs. The tests below cover every annotation shape
@@ -225,10 +225,10 @@ Found 2 errors in 1 file.
 
 /// The two ways grouped output failed to survive being grouped again.
 ///
-/// Both were found by `fuzz/fuzz_targets/minimizer_lint_condense.rs` after the
-/// annotation predicate above had already fixed the noise-stripping half. They
-/// are separate defects in `group_diagnostics` itself, and the second is the
-/// more serious of the two.
+/// Both were found by `tests/fuzz/fuzz_targets/minimizer_lint_condense.rs`
+/// after the annotation predicate above had already fixed the noise-stripping
+/// half. They are separate defects in `group_diagnostics` itself, and the
+/// second is the more serious of the two.
 mod grouped_output_survives_regrouping {
 	use veyyon_shell::minimizer::filters::lint::group_diagnostics;
 

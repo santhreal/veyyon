@@ -369,10 +369,10 @@ fn write_u32_u16(out: &mut Vec<u16>, mut val: u32) {
 /// measure as zero width and render as nothing. It also made the answer depend
 /// on bytes that a truncation or a slice might remove, which is how the same
 /// text measured one way while being cut and another way afterwards:
-/// `fuzz/fuzz_targets/text_measure.rs` produced a wrapped row of `ESC [ 9 m`,
-/// `ESC SP`, `ESC [ 2 9 m` that was built as zero cells and measured as three,
-/// because `ESC SP` was a complete sequence in the source line (a `9` followed
-/// somewhere later) and an unclassifiable one in the row.
+/// `tests/fuzz/fuzz_targets/text_measure.rs` produced a wrapped row of `ESC [ 9
+/// m`, `ESC SP`, `ESC [ 2 9 m` that was built as zero cells and measured as
+/// three, because `ESC SP` was a complete sequence in the source line (a `9`
+/// followed somewhere later) and an unclassifiable one in the row.
 ///
 /// The grammars, in the order they are matched:
 /// - `ESC [` CSI: parameter bytes `0x30..=0x3f`, then intermediates
@@ -1751,9 +1751,9 @@ pub fn slice_with_width(
 /// to eat whatever is appended after it.
 ///
 /// That is not theoretical. `truncate_to_width` appends `ESC [ 0 m` when it
-/// copied any SGR, and `fuzz/fuzz_targets/text_measure.rs` found a line whose
-/// output ended in a dangling `ESC` and a space: the scanner ran forward from
-/// that ESC, found the `m` of the reset, and read the whole run
+/// copied any SGR, and `tests/fuzz/fuzz_targets/text_measure.rs` found a line
+/// whose output ended in a dangling `ESC` and a space: the scanner ran forward
+/// from that ESC, found the `m` of the reset, and read the whole run
 /// as one sequence. The reset's own `0m` was then left over as ordinary text --
 /// two visible characters the caller never asked for, printed on the user's
 /// screen, with the reset itself gone so the colour bled into the next row. The
@@ -2183,14 +2183,14 @@ mod tests {
 	/// A dangling escape introducer never reaches the output, so nothing can be
 	/// swallowed by it.
 	///
-	/// WHY THIS SUITE EXISTS. `fuzz/fuzz_targets/text_measure.rs` found a line
-	/// that truncated to SEVEN cells against a six-cell limit. The cause was
-	/// not the width arithmetic: the copy loop wrote through an ESC that began
-	/// no sequence it could classify, so the truncated line ended in a dangling
-	/// introducer, and `truncate_to_width` then appended its `ESC [ 0 m` reset
-	/// right after it. Re-scanning that output ran forward from the dangling
-	/// ESC, found the `m` of the reset, and read the whole run as one escape
-	/// sequence -- which left the reset's own `0m` as ordinary text. Two
+	/// WHY THIS SUITE EXISTS. `tests/fuzz/fuzz_targets/text_measure.rs` found a
+	/// line that truncated to SEVEN cells against a six-cell limit. The cause
+	/// was not the width arithmetic: the copy loop wrote through an ESC that
+	/// began no sequence it could classify, so the truncated line ended in a
+	/// dangling introducer, and `truncate_to_width` then appended its `ESC [ 0
+	/// m` reset right after it. Re-scanning that output ran forward from the
+	/// dangling ESC, found the `m` of the reset, and read the whole run as one
+	/// escape sequence -- which left the reset's own `0m` as ordinary text. Two
 	/// characters the caller never wrote, printed on the user's screen, with the
 	/// reset itself consumed so the colour bled into the next row.
 	///
@@ -2405,11 +2405,11 @@ mod tests {
 
 	/// The before segment stops AT the overlay column, never past it.
 	///
-	/// WHY THIS SUITE EXISTS. `fuzz/fuzz_targets/text_measure.rs` found this on
-	/// its first run, from the input `"3\t"` with an overlay starting at column
-	/// 6: the before segment came back nine cells wide. The branch asked only
-	/// whether a grapheme STARTED before the boundary, so a tab or any two-cell
-	/// character straddling it was emitted whole.
+	/// WHY THIS SUITE EXISTS. `tests/fuzz/fuzz_targets/text_measure.rs` found
+	/// this on its first run, from the input `"3\t"` with an overlay starting
+	/// at column 6: the before segment came back nine cells wide. The branch
+	/// asked only whether a grapheme STARTED before the boundary, so a tab or
+	/// any two-cell character straddling it was emitted whole.
 	///
 	/// It is not a cosmetic overrun. `#compositeLineAt` in
 	/// `hosts/terminal/engine/src/tui.ts` absorbs the extra with

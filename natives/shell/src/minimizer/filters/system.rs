@@ -367,7 +367,7 @@ pub(super) fn compact_log_lines(
 	// first step exists to remove, and running the filter again removed it,
 	// which is a different answer for the same text. `collapse_blank_runs` is
 	// idempotent, so applying it here costs one pass and settles the result.
-	// Found by `fuzz/fuzz_targets/minimizer_filters.rs`.
+	// Found by `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 	primitives::collapse_blank_runs(&render_counted_lines(&unique, head, tail), true)
 }
 

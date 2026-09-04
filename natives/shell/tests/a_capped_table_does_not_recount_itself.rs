@@ -13,8 +13,8 @@
 //! get replayed, so this reaches real callers, and a count that grows every
 //! time the output is re-minimized is worse than no count at all: it is a
 //! number the agent has no reason to distrust. Found by
-//! `fuzz/fuzz_targets/minimizer_filters.rs`, whose property is that a filter
-//! does not change its own output on a second pass.
+//! `tests/fuzz/fuzz_targets/minimizer_filters.rs`, whose property is that a
+//! filter does not change its own output on a second pass.
 //!
 //! THE RULE NOW. `primitives::is_row_count_annotation` owns the shape, the
 //! compactor recognizes its own tally and stops, and `is_minimizer_annotation`

@@ -19,7 +19,7 @@
 //! shorter capture. The same output minimized to two different things depending
 //! on how many times it had been through, and filters chain and captures get
 //! replayed, so both answers reached real callers. Found by
-//! `fuzz/fuzz_targets/minimizer_filters.rs`.
+//! `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 //!
 //! THE RULE NOW. `filters::filter` normalizes carriage returns before it
 //! dispatches, so every filter sees exactly the bytes a second pass would see.

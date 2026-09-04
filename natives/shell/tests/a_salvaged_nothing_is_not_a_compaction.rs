@@ -29,7 +29,7 @@
 //! minimizer's own annotations, and it still must not be thrown away, because a
 //! repeat counter stands in for the output that was dropped.
 //!
-//! Found by `fuzz/fuzz_targets/minimizer_filters.rs`.
+//! Found by `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 
 use std::fmt::Write as _;
 

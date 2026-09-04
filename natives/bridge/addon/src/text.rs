@@ -19,7 +19,7 @@
 //! a benchmark, not a fuzz target. Eighteen hundred lines of index arithmetic
 //! over bytes a terminal wrote had coverage only through JavaScript, which is
 //! the exact shape that wants a fuzzer pointed at it.
-//! `fuzz/fuzz_targets/text_measure.rs` now drives `veyyon-text` directly.
+//! `tests/fuzz/fuzz_targets/text_measure.rs` now drives `veyyon-text` directly.
 //!
 //! KEEP THIS FILE THIN. Anything that decides how wide a grapheme is or where a
 //! line breaks belongs in `veyyon-text`, where it can be tested and fuzzed.

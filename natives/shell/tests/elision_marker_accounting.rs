@@ -13,8 +13,8 @@
 //! line and wrote `[…1ln elided…]`. Twenty-six hidden lines were reported as
 //! one, and the same text produced a different answer every time it passed
 //! through, so nothing downstream could compare two captures. Found by
-//! `fuzz/fuzz_targets/minimizer_filters.rs`, whose property is that a filter
-//! does not change its own output on a second pass.
+//! `tests/fuzz/fuzz_targets/minimizer_filters.rs`, whose property is that a
+//! filter does not change its own output on a second pass.
 //!
 //! THE RULE. A marker counts as what it stands for, not as one line. That makes
 //! capping both truthful (the number is the real total hidden) and idempotent

@@ -46,7 +46,8 @@ fn push_elision_marker(out: &mut String, lines: usize) {
 /// that result again dropped the marker as one more line and wrote
 /// `[…1ln elided…]`. Twenty-six hidden lines were reported as one, and the same
 /// text produced a different answer every time it passed through, which
-/// `fuzz/fuzz_targets/minimizer_filters.rs` found by asserting idempotence.
+/// `tests/fuzz/fuzz_targets/minimizer_filters.rs` found by asserting
+/// idempotence.
 ///
 /// Counting the marker by what it represents makes the operation both truthful
 /// and idempotent: re-capping already-capped output reproduces it exactly,
@@ -81,7 +82,7 @@ fn elision_line_count(line: &str) -> Option<usize> {
 /// like a tsc code-frame body line (a line-number gutter followed by source).
 /// Output that survived one pass vanished on the next, and what the agent saw
 /// for a command that printed something was nothing at all. Found by
-/// `fuzz/fuzz_targets/minimizer_lint_condense.rs` asserting idempotence.
+/// `tests/fuzz/fuzz_targets/minimizer_lint_condense.rs` asserting idempotence.
 ///
 /// The `N diagnostics in M files` header is the same hazard for the same
 /// reason, and `Top codes:` / `Top rules:` and the per-file `path (N
@@ -209,7 +210,7 @@ pub fn is_log_summary_header(line: &str) -> bool {
 /// diagnostic whose text began with digits came back as
 /// `"  000  ))::0…"`, which is shaped exactly like a tsc code-frame gutter
 /// line, so the second pass deleted the diagnostic and kept only the summary
-/// saying it existed. Found by `fuzz/fuzz_targets/minimizer_filters.rs`.
+/// saying it existed. Found by `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 #[must_use]
 pub fn is_diagnostic_count_header(line: &str) -> bool {
 	let trimmed = line.trim();
@@ -247,7 +248,7 @@ pub fn is_find_summary_header(line: &str) -> bool {
 /// (nothing survived, so the fallback ran) and just `[…70ln elided…]` on the
 /// second (the marker "survived", so the fallback did not), which is the same
 /// output deciding to be two different things depending on how many times it
-/// had been filtered. Found by `fuzz/fuzz_targets/minimizer_filters.rs`.
+/// had been filtered. Found by `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 ///
 /// This was four byte-identical private copies, in the pytest, jest, rspec, and
 /// listing filters, none of which knew about markers. One owner instead, so the
@@ -264,7 +265,7 @@ pub fn has_program_content(text: &str) -> bool {
 /// the find filter gathered every non-blank line as a path, so on a second pass
 /// it read its own `find: 1 paths in 1 dirs` header as a path named `dirs`,
 /// counted it, and printed `find: 2 paths in 1 dirs` with the old header
-/// spliced into a row. Found by `fuzz/fuzz_targets/minimizer_filters.rs`.
+/// spliced into a row. Found by `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 #[must_use]
 pub fn is_program_content(line: &str) -> bool {
 	!line.trim().is_empty() && !is_minimizer_annotation(line)
@@ -445,7 +446,7 @@ fn short_sequence_len(bytes: &[u8], start: usize) -> Option<usize> {
 /// normalized answer. `bun test` read `"00)\r"` as ordinary output, fell back
 /// to head/tail, and then read the same line as a playwright failure header on
 /// the next pass and answered with a different, much shorter capture. Found by
-/// `fuzz/fuzz_targets/minimizer_filters.rs`.
+/// `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 ///
 /// Per LINE rather than a `replace("\r\n", "\n")`, which is not the same
 /// thing and not idempotent: `"\r\r\n"` would become `"\r\n"` and the next
@@ -475,7 +476,7 @@ pub fn normalize_carriage_returns(text: &str) -> String {
 ///
 /// This contract is shared with `stripAnsi` in
 /// `packages/utils/src/strip-ansi.ts` and both are tested against the same
-/// cases in `fixtures/ansi-strip-corpus.json`; see
+/// cases in `tests/fixtures/ansi-strip-corpus.json`; see
 /// `tests/ansi_strip_contract.rs`. The two used to disagree, and each
 /// disagreement was a defect: this half handled CSI only, so an OSC hyperlink
 /// kept its body as visible text here while the TUI path stripped it.
@@ -490,7 +491,7 @@ pub fn normalize_carriage_returns(text: &str) -> String {
 /// amount depending on what happened to follow: `"\x1b\x1b\x1b\x1b[[["` became
 /// `"\x1b\x1b\x1b["` on one pass and `"\x1b\x1b"` on the next, so a filter's
 /// answer depended on how many times it had run. Found by
-/// `fuzz/fuzz_targets/minimizer_filters.rs`.
+/// `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 ///
 /// What survives a malformed run is everything EXCEPT the escape byte itself.
 /// The text after it is kept, which is the thing that was being lost; the
@@ -557,7 +558,7 @@ pub fn strip_ansi(input: &str) -> String {
 		// it had been through. Dropping the byte costs nothing an operator can
 		// see -- a lone escape renders as nothing -- while the tail after it,
 		// which is the thing that was actually being lost, is still kept in full.
-		// Found by `fuzz/fuzz_targets/minimizer_filters.rs`.
+		// Found by `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 		if bytes[idx] == 0x1b {
 			idx += 1;
 			continue;
@@ -581,8 +582,8 @@ pub fn strip_ansi(input: &str) -> String {
 /// Before this, two blank lines came back as the literal text ` (×2)`, and
 /// because blank lines separate sections in the output of cargo, tsc, eslint,
 /// git, and gh, that marker was being spliced into most of what the agent read.
-/// Found by `fuzz/fuzz_targets/minimizer_lint_condense.rs`, which noticed that
-/// two bytes of input had become seven bytes of output.
+/// Found by `tests/fuzz/fuzz_targets/minimizer_lint_condense.rs`, which noticed
+/// that two bytes of input had become seven bytes of output.
 #[must_use]
 pub fn dedup_consecutive_lines(input: &str) -> String {
 	let mut out = String::new();
@@ -621,7 +622,7 @@ fn flush_repeated(out: &mut String, line: Option<&str>, count: usize) {
 	// grows another bracket on every pass. Two runs of three identical lines is
 	// six identical lines, so the answer is `warn (×6)`, which is what the
 	// capture would have said had it been minimized once instead of twice.
-	// Found by `fuzz/fuzz_targets/minimizer_primitives.rs`.
+	// Found by `tests/fuzz/fuzz_targets/minimizer_primitives.rs`.
 	if let Some((body, existing)) = split_repeat_counter(line) {
 		let total = existing.saturating_mul(count.max(1));
 		out.push_str(body);
@@ -728,7 +729,7 @@ const GROUP_ENTRY_INDENT: &str = "  ";
 /// `"\x1b:\n  0\n"` on one pass and `"\x1b:\n0\n"` on the next. On a real
 /// capture the same thing flattens the per-file grouping of a cargo or dotnet
 /// diagnostic block, which is the whole point of the grouping. Found by
-/// `fuzz/fuzz_targets/minimizer_filters.rs`.
+/// `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 #[must_use]
 pub fn is_grouped_listing(text: &str) -> bool {
 	let mut lines = text.lines().peekable();
@@ -1016,9 +1017,9 @@ pub fn head_tail_dedup(input: &str) -> String {
 /// Handing back the original is not a silent fallback: the caller's own
 /// `text == input` check then reports the output as a passthrough rather than
 /// as a rewrite, so the telemetry says the filter declined to minimize this
-/// capture. Found by `fuzz/fuzz_targets/minimizer_filters.rs`, which asserts
-/// separately from its idempotence property that a filter never turns output
-/// into nothing.
+/// capture. Found by `tests/fuzz/fuzz_targets/minimizer_filters.rs`, which
+/// asserts separately from its idempotence property that a filter never turns
+/// output into nothing.
 #[must_use]
 pub fn or_original(compacted: String, original: &str) -> String {
 	// "Nothing survived" means no PROGRAM content survived, not no bytes.
@@ -1043,7 +1044,7 @@ pub fn or_original(compacted: String, original: &str) -> String {
 	// kept. The rule is the plain one the doc comment states: a capture that
 	// printed anything at all is never answered with nothing, and a repeat counter
 	// standing in for output that was dropped is something. Found by
-	// `fuzz/fuzz_targets/minimizer_filters.rs`.
+	// `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 	if !has_program_content(&compacted) && !original.trim().is_empty() {
 		return original.to_string();
 	}

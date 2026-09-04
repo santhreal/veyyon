@@ -25,7 +25,7 @@ interface Corpus {
 	cases: { name: string; input: string }[];
 }
 
-const corpus: Corpus = await Bun.file(`${import.meta.dirname}/../../../fixtures/ansi-strip-corpus.json`).json();
+const corpus: Corpus = await Bun.file(`${import.meta.dirname}/../../../tests/fixtures/ansi-strip-corpus.json`).json();
 
 /** What the card displayed before this change, for the whole raw buffer. */
 function wholeBuffer(raw: string): string {

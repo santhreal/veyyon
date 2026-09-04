@@ -15,7 +15,7 @@
 //! pass and `"-+-\r-\n(/[\n"` on the next. Filters chain and captures get
 //! replayed, so a filter whose answer depends on how many times it has run
 //! cannot be cached, compared across runs, or replayed. Found by
-//! `fuzz/fuzz_targets/minimizer_filters.rs`.
+//! `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 //!
 //! WHY BOTH COMPACTORS ARE TESTED HERE. They are the same shape, and fixing
 //! only the psql one left the fuzzer to find the aws one an hour later. The

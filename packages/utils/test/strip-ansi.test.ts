@@ -9,7 +9,7 @@
  * `natives/shell/src/minimizer/primitives.rs` runs inside the shell's
  * output minimizer. Two implementations of one contract is fine. Two
  * implementations of two contracts is what was there, so the cases now live
- * outside both languages in `fixtures/ansi-strip-corpus.json` and both suites
+ * outside both languages in `tests/fixtures/ansi-strip-corpus.json` and both suites
  * read them; the Rust half is `natives/shell/tests/ansi_strip_contract.rs`.
  */
 import { describe, expect, it } from "bun:test";
@@ -133,7 +133,7 @@ describe("stripAnsi against the shared cross-language corpus", () => {
 	type Case = { name: string; why: string; input: string; expected: string };
 
 	async function corpus(): Promise<Case[]> {
-		const url = new URL("../../../fixtures/ansi-strip-corpus.json", import.meta.url);
+		const url = new URL("../../../tests/fixtures/ansi-strip-corpus.json", import.meta.url);
 		const parsed = (await Bun.file(url).json()) as { cases: Case[] };
 		return parsed.cases;
 	}

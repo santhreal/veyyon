@@ -25,8 +25,8 @@
 //! the way in check before they trim. The indent itself has one owner
 //! (`GROUP_ENTRY_INDENT`), because a listing whose reader and writer disagree
 //! by one space is a listing that never settles. Found by
-//! `fuzz/fuzz_targets/minimizer_filters.rs`, whose property is that a filter
-//! does not change its own output on a second pass.
+//! `tests/fuzz/fuzz_targets/minimizer_filters.rs`, whose property is that a
+//! filter does not change its own output on a second pass.
 
 use std::fmt::Write as _;
 

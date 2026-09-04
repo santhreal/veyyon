@@ -80,4 +80,4 @@ The version is pinned. mdbook v0.5.2 renders the search index under a content-ha
 different mdbook writes a different file name for identical prose and the gate reports the whole book
 as stale.
 
-*Verified against `b6a056eee` on 2026-08-23.*
+*Verified against `eeffc5978d` on 2026-09-04.*

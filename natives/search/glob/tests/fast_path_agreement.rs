@@ -14,8 +14,9 @@
 //! answered TRUE. The equivalence it assumed does not hold: a path's extension
 //! is the text after its LAST dot, while the glob `*.X` means "anything, then a
 //! literal `.X`". Those agree only when X contains no dot, so `**/*.b.rs` had
-//! the same bug against `a.b.rs`. Found by `fuzz/fuzz_targets/glob_patterns.rs`
-//! in under three minutes of the target existing.
+//! the same bug against `a.b.rs`. Found by
+//! `tests/fuzz/fuzz_targets/glob_patterns.rs` in under three minutes of the
+//! target existing.
 //!
 //! HOW THE CASES ARE WRITTEN. Every case asserts the fast path and the engine
 //! agree AND pins the value they agree on. Agreement alone would pass if both

@@ -100,7 +100,7 @@ describe("every first-party crate inherits the workspace version", () => {
 describe("a package name is recorded against the directory that holds it", () => {
 	/**
 	 * `veyyon_uu_grep` in a directory called `veyyon-uu-grep` is not a style nit: it is what forced
-	 * `fuzz/Cargo.toml` to carry a `package = "veyyon_uu_grep"` remap, and it means
+	 * `tests/fuzz/Cargo.toml` to carry a `package = "veyyon_uu_grep"` remap, and it means
 	 * `cargo test -p veyyon-uu-grep` fails with "did not match any packages" for anybody who spells the
 	 * crate the way the tree does. The underscore half of that rule is universal and stays here; the
 	 * directory half is the table.

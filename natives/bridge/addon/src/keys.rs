@@ -20,7 +20,7 @@
 //! a benchmark, not a fuzz target. Its only real coverage was through
 //! JavaScript, and it is byte-level index arithmetic over input written by a
 //! terminal, which is the exact shape that wants a fuzzer pointed at it.
-//! `fuzz/fuzz_targets/keys_parse.rs` now drives `veyyon-keys` directly.
+//! `tests/fuzz/fuzz_targets/keys_parse.rs` now drives `veyyon-keys` directly.
 //!
 //! KEEP THIS FILE THIN. Anything that decides what a byte sequence means
 //! belongs in `veyyon-keys`, where it can be tested and fuzzed. Logic added

@@ -982,7 +982,7 @@ fn is_transfer_progress_line(line: &str) -> bool {
 /// did it to its own output: a bordered row normalizes to a leading dash run,
 /// so a capture that survived one pass lost that row on the next, and the loss
 /// looked like a quiet table rather than like a bug. Found by
-/// `fuzz/fuzz_targets/minimizer_filters.rs`.
+/// `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 ///
 /// A scheme is what RFC 3986 says it is: a letter followed by letters, digits,
 /// `+`, `-` or `.`. That is enough to tell `https://` from `::///`.
@@ -1291,7 +1291,7 @@ fn flush_record(out: &mut Vec<String>, current: &mut Vec<String>, records: usize
 /// One owner for both compactors: `compact_psql_table` and
 /// `compact_delimited_table` are the same shape, and fixing one of them left
 /// the fuzzer to find the other an hour later. Found by
-/// `fuzz/fuzz_targets/minimizer_filters.rs`.
+/// `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 fn normalize_pipe_row_if_meaningful(line: &str, style: PipeBorderStyle) -> Option<String> {
 	let normalized = normalize_pipe_row(line, style);
 	if normalized.trim().is_empty() || is_border_line(&normalized) {

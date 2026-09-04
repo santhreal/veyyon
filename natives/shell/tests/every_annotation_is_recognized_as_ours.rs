@@ -301,7 +301,8 @@ mod the_diff_summary {
 	/// unified-diff file marker, so a second pass parsed it as a file named
 	/// `Changes ---`. A two-file diff came back claiming `1 file changed` with
 	/// the second file's name spliced onto the first, and nothing about the
-	/// output looked wrong. Found by `fuzz/fuzz_targets/minimizer_filters.rs`.
+	/// output looked wrong. Found by
+	/// `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 	#[test]
 	fn the_changes_header_is_recognized() {
 		let config = enabled();

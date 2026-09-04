@@ -29,9 +29,9 @@
 //!    `sudo git status` is a `git status`, and what follows `;`, `|` or `&` is
 //!    a different command that cannot reach back and change the answer.
 //!
-//! `fuzz/fuzz_targets/minimizer_detect.rs` asserts the same four over generated
-//! commands. This suite is the part that names the cases a reader needs to see,
-//! and the one that runs in the ordinary test gate.
+//! `tests/fuzz/fuzz_targets/minimizer_detect.rs` asserts the same four over
+//! generated commands. This suite is the part that names the cases a reader
+//! needs to see, and the one that runs in the ordinary test gate.
 
 use veyyon_shell::minimizer::detect::{CommandIdentity, detect, detect_tokens};
 

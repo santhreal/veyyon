@@ -897,7 +897,7 @@ struct DiffHunk {
 /// already-compacted diff read the header as a file called `Changes ---`. A
 /// two-file diff came back claiming one file changed, with the second file's
 /// name spliced onto the first. Found by
-/// `fuzz/fuzz_targets/minimizer_filters.rs`.
+/// `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 pub(crate) const DIFF_CHANGES_HEADER: &str = "--- Changes ---";
 
 /// True when `text` is already a [`compact_diff_output`] summary.

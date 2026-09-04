@@ -19,9 +19,9 @@
 //! character class, which matches whatever it lists, `/` included. `[,-[]`
 //! spans 0x2C..=0x5B and `/` is 0x2F, so `"*?[?!*?[?!,-[]?*"` matches
 //! `"b/~0ba"` two components deep while its segment count says one.
-//! Found by `fuzz/fuzz_targets/glob_patterns.rs`, whose property is exactly the
-//! one this file states: whatever the pattern matches, the walk must be able to
-//! reach.
+//! Found by `tests/fuzz/fuzz_targets/glob_patterns.rs`, whose property is
+//! exactly the one this file states: whatever the pattern matches, the walk
+//! must be able to reach.
 //!
 //! THE RULE NOW. A pattern whose bracket class can match `/` is unbounded.
 //! Ambiguity answers "can", because that answer only ever removes an

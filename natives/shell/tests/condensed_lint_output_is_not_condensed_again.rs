@@ -18,8 +18,8 @@
 //! say what it was.
 //!
 //! Filters chain and captures get replayed, so a second pass is an ordinary
-//! event. Found by `fuzz/fuzz_targets/minimizer_filters.rs`, whose property is
-//! that a filter does not change its own output on a second pass.
+//! event. Found by `tests/fuzz/fuzz_targets/minimizer_filters.rs`, whose
+//! property is that a filter does not change its own output on a second pass.
 //!
 //! THE RULE NOW. Recognizing the header and stopping is the only reliable
 //! guard, for the same reason it is the guard `find` uses: an entry row cannot
@@ -214,7 +214,7 @@ mod one_diagnostic_needs_no_set_summary {
 	/// inverted outright: a diagnostic whose message text is empty is counted
 	/// but not printed, so ONE line of program output came back as TWO lines
 	/// with nothing under them. Found by
-	/// `fuzz/fuzz_targets/minimizer_lint_condense.rs`.
+	/// `tests/fuzz/fuzz_targets/minimizer_lint_condense.rs`.
 	#[test]
 	fn a_lone_diagnostic_is_not_wrapped_in_a_header() {
 		let grouped = group_diagnostics("src/main.rs:10: mismatched types\n");
@@ -319,7 +319,7 @@ mod an_uncondensed_capture_is_still_condensed {
 /// before it. A capture that had been minimized once came back shorter every
 /// time it was minimized again, which for a failing test run means the failure
 /// the agent needs can be the part that goes. Found by
-/// `fuzz/fuzz_targets/minimizer_filters.rs`.
+/// `tests/fuzz/fuzz_targets/minimizer_filters.rs`.
 mod a_repeat_counter_does_not_open_a_failure_block {
 	use veyyon_shell::minimizer::filters;
 

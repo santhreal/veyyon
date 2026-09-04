@@ -108,7 +108,7 @@ describe("parseTargetNames", () => {
 	 * exist, which is worse, because it is the reason a real gap goes unnoticed.
 	 */
 	it("documents exactly the targets the manifest registers", () => {
-		const docs = fs.readFileSync(path.join(fuzzDir, "..", "docs", "internal", "fuzzing.md"), "utf-8");
+		const docs = fs.readFileSync(path.join(fuzzDir, "..", "..", "docs", "internal", "fuzzing.md"), "utf-8");
 		const documented = [...docs.matchAll(/^\| `([a-z0-9_]+)` \| `veyyon-[a-z-]+` \|/gm)].map(match => match[1]);
 
 		expect(documented.sort()).toEqual(readTargetNames().sort());

@@ -87,8 +87,8 @@ impl MinimizerOutput {
 	/// `"ctest: ok\n"`, because the second pass read the summary as a line of
 	/// program output and wrote it back terminated. Captures do get replayed and
 	/// filters do chain, so the two answers reached real callers.
-	/// `fuzz/fuzz_targets/minimizer_filters.rs` found it by asserting a filter
-	/// does not change its own output on a second pass.
+	/// `tests/fuzz/fuzz_targets/minimizer_filters.rs` found it by asserting a
+	/// filter does not change its own output on a second pass.
 	///
 	/// Line endings are normalized for the same reason and in the same place.
 	/// `primitives::dedup_consecutive_lines` already strips carriage returns

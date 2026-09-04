@@ -1,6 +1,6 @@
 # Fuzzing
 
-The suite lives in [`fuzz/`](../../fuzz/). It is a set of coverage-guided fuzz targets built with
+The suite lives in [`tests/fuzz/`](../../tests/fuzz/). It is a set of coverage-guided fuzz targets built with
 [cargo-fuzz](https://rust-fuzz.github.io/book/cargo-fuzz.html), aimed at the Rust crates under
 `natives/`. This page tells you how to run it, what each target covers, and what to do when one of
 them finds something.
@@ -26,8 +26,8 @@ bun scripts/fuzz.ts run
 ```
 
 That builds the targets, runs them several at a time, writes each one's output to
-`fuzz/logs/<target>.log`, and prints a line per target saying whether it found anything. A finding
-leaves a reproducer file in `fuzz/artifacts/<target>/`.
+`tests/fuzz/logs/<target>.log`, and prints a line per target saying whether it found anything. A finding
+leaves a reproducer file in `tests/fuzz/artifacts/<target>/`.
 
 A real campaign is the same command with a longer clock. An hour per target, four at a time:
 
@@ -285,7 +285,7 @@ tools from the same nightly toolchain that built it, or the line numbers will no
 cargo +nightly fuzz coverage text_measure
 rustup run nightly llvm-cov show \
   target/x86_64-unknown-linux-gnu/coverage/x86_64-unknown-linux-gnu/release/text_measure \
-  --instr-profile=fuzz/coverage/text_measure/coverage.profdata \
+  --instr-profile=tests/fuzz/coverage/text_measure/coverage.profdata \
   --show-line-counts-or-regions --ignore-filename-regex='/\.cargo/' > /tmp/text_measure.txt
 ```
 
@@ -294,7 +294,7 @@ error branch is the exact shape of a target that only ever exercises the happy p
 uncovered region means depends on which kind it is:
 
 - **The generator cannot produce the input.** Add the shape to the target's `Arbitrary`
-  implementation in `fuzz/src/lib.rs`. This is the common case and the reason coverage is worth
+  implementation in `tests/fuzz/src/lib.rs`. This is the common case and the reason coverage is worth
   reading at all: the alphabet, not the runtime, is usually what bounds a campaign.
 - **The input is producible but rare.** Seed the corpus with a file that reaches it, then let
   libFuzzer mutate from there.
@@ -308,14 +308,14 @@ rather than as an out-of-memory. `--build-jobs=<n>` overrides the cap.
 
 ## Writing a target
 
-Put the file in `fuzz/fuzz_targets/`, add a `[[bin]]` entry for it in `fuzz/Cargo.toml`, and it is
+Put the file in `tests/fuzz/fuzz_targets/`, add a `[[bin]]` entry for it in `tests/fuzz/Cargo.toml`, and it is
 picked up automatically. `scripts/fuzz.ts` reads the target list out of that manifest, so there is no
 second list to update.
 
 Two things decide whether a target is any good.
 
 **The generator.** A target that takes `&[u8]` and lossily converts it to a string spends its whole
-run in a region of the input space the code treats identically. `fuzz/src/lib.rs` holds the shared
+run in a region of the input space the code treats identically. `tests/fuzz/src/lib.rs` holds the shared
 generators, and each one is built around a specific distinction the code under test makes. `PathLike`
 draws from an alphabet heavy in `/` and the bytes either side of it, because that is what a path
 comparator gets wrong. Reach for one of those, or add one and say what it is for.
@@ -368,16 +368,16 @@ rather than a clean sheet. Budget for that: the first fix in an area is rarely t
 
 ## What to do with a finding
 
-A crash leaves a file in `fuzz/artifacts/<target>/`. Reproduce it with:
+A crash leaves a file in `tests/fuzz/artifacts/<target>/`. Reproduce it with:
 
 ```bash
-cargo +nightly fuzz run <target> fuzz/artifacts/<target>/<file>
+cargo +nightly fuzz run <target> tests/fuzz/artifacts/<target>/<file>
 ```
 
 Then shrink it:
 
 ```bash
-cargo +nightly fuzz tmin <target> fuzz/artifacts/<target>/<file>
+cargo +nightly fuzz tmin <target> tests/fuzz/artifacts/<target>/<file>
 ```
 
 The artifact is not the deliverable. Once you have a minimal input, write a named regression test in
@@ -403,7 +403,7 @@ fixed.
 
 `bun scripts/fuzz-triage.ts issues` prints a ready issue body per distinct crash. The body carries the
 reproduction command, every artifact that shares the signature, and the constraints on a fix: do not
-weaken the assertion that caught it, do not edit anything under `fuzz/`, and land a regression test
+weaken the assertion that caught it, do not edit anything under `tests/fuzz/`, and land a regression test
 that fails before and passes after. Those constraints exist because the cheapest way to make a crash
 stop is to stop checking for it.
 
@@ -419,7 +419,7 @@ it rather than left to convention.
 
 ### Suppressions
 
-`fuzz/known-harness-signatures.toml` lists crash signatures that are artefacts of the harness rather
+`tests/fuzz/known-harness-signatures.toml` lists crash signatures that are artefacts of the harness rather
 than bugs. It ships empty, and the reason is instructive. libfuzzer-sys installs a panic hook that
 aborts before unwinding, so code whose contract is "turn a panic into an error" crashes the fuzzer
 while behaving correctly, and `compile_pattern` does exactly that. An entry for the resulting
@@ -431,15 +431,15 @@ one call allowed to panic, which is what `ast_parse_and_match` does.
 
 ## Where the suite sits relative to the build
 
-`fuzz/` is its own cargo workspace, not a member of the root one. Every target is a binary that links
+`tests/fuzz/` is its own cargo workspace, not a member of the root one. Every target is a binary that links
 libFuzzer, which supplies its own `main` and needs `-Zsanitizer=address` to build at all; as a
 workspace member, a plain `cargo build --workspace` would try to link those binaries without the
 sanitizer flags and fail for everyone who never runs a fuzzer. The cost of detaching is that
-`fuzz/Cargo.toml` repeats the root `[patch.crates-io]` section, because cargo only honours `[patch]`
+`tests/fuzz/Cargo.toml` repeats the root `[patch.crates-io]` section, because cargo only honours `[patch]`
 at a workspace root. Keep the two in sync, or the fuzzers resolve a different `brush-core` than the
 one that ships.
 
 The suite is not part of `bun run check` and does not gate a commit. It is a campaign you run
 deliberately, usually for hours, usually on a machine with cores to spare.
 
-*Verified against `dfc80d5fe` on 2026-08-09.*
+*Verified against `eeffc5978d` on 2026-09-04.*

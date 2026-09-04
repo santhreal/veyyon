@@ -13,7 +13,7 @@
 //! `alt+shift+o`, and the outer arm prepended another `alt+`. `parse_key_id`
 //! has no meaning for a repeated modifier, so `matches_key` refused it: the key
 //! reported as pressed and no binding could ever fire on it. Found by
-//! `fuzz/fuzz_targets/keys_parse.rs`, which asserts that whatever id
+//! `tests/fuzz/fuzz_targets/keys_parse.rs`, which asserts that whatever id
 //! `parse_key` produces, `matches_key` accepts for the same bytes.
 //!
 //! THE SECOND BUG, FOUND WHILE FIXING THE FIRST. Three or more ESC bytes reach
@@ -196,7 +196,7 @@ mod the_meaning_is_preserved {
 	/// `matches_key` used to remove the alt from the id and then require the
 	/// inner sequence to carry none, which answered false for the very id
 	/// parsing had produced. It now tries both readings, because both occur in
-	/// the wild. Found by `fuzz/fuzz_targets/keys_parse.rs`.
+	/// the wild. Found by `tests/fuzz/fuzz_targets/keys_parse.rs`.
 	#[test]
 	fn an_inner_sequence_may_carry_the_alt_itself() {
 		assert_eq!(parse_key(b"\x1b\x1b[9;3u", true).as_deref(), Some("alt+tab"));
